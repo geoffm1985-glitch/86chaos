@@ -1,6 +1,6 @@
 const { initAdmin, authorize, requireAppCheckIfEnforced, writeAudit } = require('./_chaos-admin');
 
-const APP_VERSION = '15.0.53';
+const APP_VERSION = '15.0.54';
 const DEFAULT_STALE_HOURS = 23;
 
 function parseDate(value) {

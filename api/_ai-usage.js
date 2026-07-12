@@ -2,6 +2,7 @@ const crypto = require('crypto');
 const { PDFDocument } = require('pdf-lib');
 const admin = require('firebase-admin');
 const { norm, masterEmails, readWorkspaceMember, userHasWorkspace, profileForWorkspace } = require('./_chaos-admin');
+const { assertPlanAllowsScan, isInternalTestingUser } = require('./_plan-access');
 
 const DEFAULT_INVOICE_PAGE_LIMIT = 40;
 const DEFAULT_MENU_PAGE_LIMIT = 10;
@@ -164,7 +165,8 @@ async function checkAndReserveAiScanPages({
   idempotencyKey,
   provider = '',
   model = '',
-  sourceRoute = ''
+  sourceRoute = '',
+  planScanLimits = null
 }) {
   const cleanRestaurantId = clean(restaurantId);
   const cleanScanType = clean(scanType).toLowerCase();
@@ -185,7 +187,7 @@ async function checkAndReserveAiScanPages({
   const eventId = createIdempotencyEventId({ restaurantId: cleanRestaurantId, monthKey, scanType: cleanScanType, userId: decoded?.uid || decoded?.user_id || decoded?.sub || '', idempotencyKey: cleanIdempotencyKey });
   const usageRef = db.collection('aiUsage').doc(usageId);
   const eventRef = usageRef.collection('events').doc(eventId);
-  const limitBypass = isMasterAdminScanExempt(decoded);
+  const limitBypass = isMasterAdminScanExempt(decoded) || isInternalTestingUser(decoded);
   const bypassReason = limitBypass ? 'master_admin_testing' : '';
   const now = admin.firestore.FieldValue.serverTimestamp();
 
@@ -231,7 +233,13 @@ async function checkAndReserveAiScanPages({
     const processedField = processedFieldFor(cleanScanType);
     const bypassPagesField = bypassPagesFieldFor(cleanScanType);
     const usedBefore = normalizePositiveInteger(base[usedField], 0);
-    const limit = normalizePositiveInteger(base[limitField], defaultLimitFor(cleanScanType));
+    const configuredPlanLimit = planScanLimits && Object.prototype.hasOwnProperty.call(planScanLimits, limitField)
+      ? Number(planScanLimits[limitField])
+      : null;
+    const existingLimit = normalizePositiveInteger(base[limitField], defaultLimitFor(cleanScanType));
+    const limit = limitBypass
+      ? Number.MAX_SAFE_INTEGER
+      : (Number.isFinite(configuredPlanLimit) && configuredPlanLimit >= 0 ? Math.floor(configuredPlanLimit) : existingLimit);
     const processedBefore = Math.max(normalizePositiveInteger(base[processedField], 0), usedBefore);
     const bypassPagesBefore = normalizePositiveInteger(base[bypassPagesField], 0);
     const wouldHaveExceededLimit = usedBefore + safePageCount > limit;
@@ -285,7 +293,7 @@ async function checkAndReserveAiScanPages({
         processedAfter: processedBefore,
         bypassPagesAfter: bypassPagesBefore,
         completedAt: now,
-        errorMessage: 'Monthly AI page limit reached.'
+        errorMessage: `Monthly ${cleanScanType} scan page limit reached for the current 86 Chaos plan.`
       });
       return {
         ok: false,
@@ -518,7 +526,7 @@ async function authorizeAiScanWorkspace({ app, decoded, restaurantId, scanType }
   const allowed = scanType === 'menu'
     ? Boolean(isOwnerOrAdmin || permissions.menuIntelligence === true || permissions.inventory === true)
     : scanType === 'recipe'
-      ? Boolean(isOwnerOrAdmin || permissions.prep === true || permissions.team === true || String(workspaceUser?.role || '').toLowerCase() === 'kitchen')
+      ? Boolean(isOwnerOrAdmin || permissions.prep === true || permissions.team === true)
       : Boolean(isOwnerOrAdmin || permissions.inventory === true || permissions.team === true);
   if (!allowed) {
     const error = new Error(scanType === 'menu'
@@ -529,6 +537,13 @@ async function authorizeAiScanWorkspace({ app, decoded, restaurantId, scanType }
     error.statusCode = 403;
     throw error;
   }
+
+  const restaurantSnap = await db.collection('restaurants').doc(cleanRestaurantId).get();
+  const workspace = restaurantSnap.exists ? { id: restaurantSnap.id, ...restaurantSnap.data() } : { id: cleanRestaurantId };
+  const planAccess = scanType === 'invoice' || scanType === 'menu'
+    ? assertPlanAllowsScan({ workspace, decoded, user: workspaceUser || user || {}, scanType })
+    : { subscription: null, plan: null, limits: null, isInternalTesting: isSuperAdmin };
+
   return {
     db,
     userDocId,
@@ -537,14 +552,21 @@ async function authorizeAiScanWorkspace({ app, decoded, restaurantId, scanType }
     member,
     isSuperAdmin,
     email,
-    restaurantId: cleanRestaurantId
+    restaurantId: cleanRestaurantId,
+    workspace,
+    subscription: planAccess.subscription,
+    plan: planAccess.plan,
+    planScanLimits: planAccess.limits,
+    isInternalTesting: planAccess.isInternalTesting
   };
 }
 
 function buildLimitResponse(reservation) {
+  const scanLabel = reservation.scanType === 'menu' ? 'menu scan' : 'invoice scan';
   return {
     ok: false,
     code: 'AI_PAGE_LIMIT_REACHED',
+    error: `Monthly ${scanLabel} page limit reached. Your current 86 Chaos plan includes ${reservation.limit} ${reservation.scanType} page(s) this month. Ask an owner or System Administrator to review Plan & Billing.`,
     scanType: reservation.scanType,
     pageCount: reservation.pageCount,
     used: reservation.usedBefore,

@@ -252,7 +252,49 @@ service cloud.firestore {
     }
 
     function isPrivateFinancialCollection(collectionName) {
-      return collectionName in ['sales', 'financialExpenses', 'financialTargets'];
+      return collectionName in [
+        'sales', 'timePunches', 'dailyCloses', 'expenses', 'financialExpenses', 'deposits',
+        'tipRecords', 'financialTargets', 'financialReports', 'posImports', 'accountingImports', 'importBatches'
+      ];
+    }
+
+    function restaurantProtectedSubscriptionKeys() {
+      return [
+        'subscription', 'planId', 'planType', 'subscriptionStatus', 'billingStatus', 'billingProvider',
+        'billingNotes', 'customPrice', 'trialDays', 'isFounderBeta', 'founderBeta', 'selectedFutureTier',
+        'futurePlanId', 'betaStartedAt', 'betaEndsAt', 'betaExtendedUntil', 'founderDiscountPercent',
+        'founderDiscountEndsAt', 'integrations', 'integrationsLocked', 'integrationSecrets',
+        'featureAccess', 'featureOverrides'
+      ];
+    }
+
+    function restaurantOwnerUpdateIsSafe(restId) {
+      return isOwnerOfRestaurantDoc() &&
+        !request.resource.data.diff(resource.data).affectedKeys().hasAny(restaurantProtectedSubscriptionKeys());
+    }
+
+    function workspaceSubscription(restId) {
+      return !hasRestaurantDoc(restId)
+        ? {}
+        : ((restaurantData(restId).get('subscription', {}) is map) ? restaurantData(restId).get('subscription', {}) : {});
+    }
+
+    function workspacePlanId(restId) {
+      return isSuperAdmin()
+        ? 'master_admin'
+        : workspaceSubscription(restId).get('planId', restaurantData(restId).get('planId', restaurantData(restId).get('planType', 'shift')));
+    }
+
+    function planAtLeastOperations(restId) {
+      return isSuperAdmin() || (hasRestaurantDoc(restId) && workspacePlanId(restId) in ['operations', 'smart_kitchen', 'owner_pro', 'master_admin']);
+    }
+
+    function planAtLeastSmartKitchen(restId) {
+      return isSuperAdmin() || (hasRestaurantDoc(restId) && workspacePlanId(restId) in ['smart_kitchen', 'owner_pro', 'master_admin']);
+    }
+
+    function planAtLeastOwnerPro(restId) {
+      return isSuperAdmin() || (hasRestaurantDoc(restId) && workspacePlanId(restId) in ['owner_pro', 'master_admin']);
     }
 
     function canEditWages(restId) {
@@ -262,7 +304,7 @@ service cloud.firestore {
     function canChooseWageAccess(restId) { return isSuperAdmin() || isRestaurantOwner(restId); }
 
     function canManageWorkspaceSettings(restId) {
-      return isSuperAdmin() || isRestaurantOwner(restId) || (isTenantMatch(restId) && (hasPermFor(restId, 'settings') || hasPermFor(restId, 'branding') || hasPermFor(restId, 'integrations')));
+      return isSuperAdmin() || isRestaurantOwner(restId) || (isTenantMatch(restId) && (hasPermFor(restId, 'settings') || hasPermFor(restId, 'branding')));
     }
 
     function canUseMenuIntelligence(restId) {
@@ -283,6 +325,25 @@ service cloud.firestore {
     function canWriteFinancials(restId) {
       return isSuperAdmin() || isRestaurantOwner(restId) || isAdminFor(restId) ||
         (isTenantMatch(restId) && (hasPermFor(restId, 'sales') || hasPermFor(restId, 'team')));
+    }
+
+    function canReadOperationsFinancials(restId) { return canReadFinancials(restId) && planAtLeastOperations(restId); }
+    function canWriteOperationsFinancials(restId) { return canWriteFinancials(restId) && planAtLeastOperations(restId); }
+    function canReadSmartFinancials(restId) { return canReadFinancials(restId) && planAtLeastSmartKitchen(restId); }
+    function canWriteSmartFinancials(restId) { return canWriteFinancials(restId) && planAtLeastSmartKitchen(restId); }
+    function canReadOwnPunch(data) {
+      return signedIn() && data.restaurantId is string && isTenantMatch(data.restaurantId) &&
+        (data.employeeId == request.auth.uid || data.userId == request.auth.uid || data.createdBy == request.auth.uid);
+    }
+
+    function ownPunchUpdateIsSafe() {
+      return canReadOwnPunch(resource.data) &&
+        request.resource.data.restaurantId == resource.data.restaurantId &&
+        request.resource.data.get('employeeId', '') == resource.data.get('employeeId', '') &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'clockOutTime', 'status', 'breakStartTime', 'breakMinutes', 'cashTips', 'creditTips',
+          'tipDeclaredAt', 'tipDeclaredBy', 'updatedAt'
+        ]);
     }
 
     function salesCloseRecordIsValid(data) {
@@ -330,7 +391,7 @@ service cloud.firestore {
     }
 
     function restaurantSettingsWriteIsSafe(restId) {
-      return canManageWorkspaceSettings(restId) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['systemSettings', 'settingsHistory', 'integrations', 'updatedAt']);
+      return canManageWorkspaceSettings(restId) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['systemSettings', 'settingsHistory', 'updatedAt']);
     }
 
     function reminderParticipant(data) {
@@ -615,7 +676,7 @@ service cloud.firestore {
     match /restaurants/{restaurantId} {
       allow read: if signedIn() && (isSuperAdmin() || isTenantMatch(restaurantId) || isOwnerOfRestaurantDoc());
       allow create, delete: if isSuperAdmin();
-      allow update: if signedIn() && (isSuperAdmin() || isOwnerOfRestaurantDoc() || restaurantSettingsWriteIsSafe(restaurantId));
+      allow update: if signedIn() && (isSuperAdmin() || restaurantOwnerUpdateIsSafe(restaurantId) || restaurantSettingsWriteIsSafe(restaurantId));
     }
 
     // ============================================================
@@ -800,7 +861,13 @@ service cloud.firestore {
     // idempotency, and event logging. Browser clients cannot edit usage or limits.
     // ============================================================
     match /aiUsage/{usageId} {
-      allow read, write: if false;
+      // Owners/admins may read the monthly workspace usage summary for Plan & Billing.
+      // Event rows can contain user-level diagnostics and stay server-only below.
+      allow read: if signedIn() && resource.data.restaurantId is string && (
+        isSuperAdmin() || isRestaurantOwner(resource.data.restaurantId) || isAdminFor(resource.data.restaurantId) ||
+        (isTenantMatch(resource.data.restaurantId) && hasPermFor(resource.data.restaurantId, 'settings'))
+      );
+      allow write: if false;
       match /events/{eventId} {
         allow read, write: if false;
       }
@@ -831,30 +898,107 @@ service cloud.firestore {
     // must agree for sales, targets, expenses, deposits, and reports.
     // ============================================================
     match /sales/{docId} {
-      allow read: if signedIn() && resource.data.restaurantId is string && canReadFinancials(resource.data.restaurantId);
-      allow create: if signedIn() && salesCloseRecordIsValid(request.resource.data) && canWriteFinancials(request.resource.data.restaurantId);
+      allow read: if signedIn() && resource.data.restaurantId is string && canReadOperationsFinancials(resource.data.restaurantId);
+      allow create: if signedIn() && salesCloseRecordIsValid(request.resource.data) && canWriteOperationsFinancials(request.resource.data.restaurantId);
       allow update: if signedIn() && resource.data.restaurantId is string &&
         request.resource.data.restaurantId == resource.data.restaurantId &&
-        salesCloseRecordIsValid(request.resource.data) && canWriteFinancials(resource.data.restaurantId);
-      allow delete: if signedIn() && resource.data.restaurantId is string && canWriteFinancials(resource.data.restaurantId);
+        salesCloseRecordIsValid(request.resource.data) && canWriteOperationsFinancials(resource.data.restaurantId);
+      allow delete: if signedIn() && resource.data.restaurantId is string && canWriteOperationsFinancials(resource.data.restaurantId);
     }
 
     match /financialExpenses/{docId} {
-      allow read: if signedIn() && resource.data.restaurantId is string && canReadFinancials(resource.data.restaurantId);
-      allow create: if signedIn() && financialExpenseRecordIsValid(request.resource.data) && canWriteFinancials(request.resource.data.restaurantId);
+      allow read: if signedIn() && resource.data.restaurantId is string && canReadSmartFinancials(resource.data.restaurantId);
+      allow create: if signedIn() && financialExpenseRecordIsValid(request.resource.data) && canWriteSmartFinancials(request.resource.data.restaurantId);
       allow update: if signedIn() && resource.data.restaurantId is string &&
         request.resource.data.restaurantId == resource.data.restaurantId &&
-        financialExpenseRecordIsValid(request.resource.data) && canWriteFinancials(resource.data.restaurantId);
-      allow delete: if signedIn() && resource.data.restaurantId is string && canWriteFinancials(resource.data.restaurantId);
+        financialExpenseRecordIsValid(request.resource.data) && canWriteSmartFinancials(resource.data.restaurantId);
+      allow delete: if signedIn() && resource.data.restaurantId is string && canWriteSmartFinancials(resource.data.restaurantId);
     }
 
     match /financialTargets/{docId} {
-      allow read: if signedIn() && resource.data.restaurantId is string && canReadFinancials(resource.data.restaurantId);
-      allow create: if signedIn() && financialTargetsRecordIsValid(request.resource.data) && canWriteFinancials(request.resource.data.restaurantId);
+      allow read: if signedIn() && resource.data.restaurantId is string && canReadSmartFinancials(resource.data.restaurantId);
+      allow create: if signedIn() && financialTargetsRecordIsValid(request.resource.data) && canWriteSmartFinancials(request.resource.data.restaurantId);
       allow update: if signedIn() && resource.data.restaurantId is string &&
         request.resource.data.restaurantId == resource.data.restaurantId &&
-        financialTargetsRecordIsValid(request.resource.data) && canWriteFinancials(resource.data.restaurantId);
-      allow delete: if signedIn() && resource.data.restaurantId is string && canWriteFinancials(resource.data.restaurantId);
+        financialTargetsRecordIsValid(request.resource.data) && canWriteSmartFinancials(resource.data.restaurantId);
+      allow delete: if signedIn() && resource.data.restaurantId is string && canWriteSmartFinancials(resource.data.restaurantId);
+    }
+
+    match /timePunches/{docId} {
+      allow read: if signedIn() && resource.data.restaurantId is string && (
+        canReadOperationsFinancials(resource.data.restaurantId) || canReadOwnPunch(resource.data)
+      );
+      allow create: if signedIn() && request.resource.data.restaurantId is string && (
+        canWriteOperationsFinancials(request.resource.data.restaurantId) || canReadOwnPunch(request.resource.data)
+      );
+      allow update: if signedIn() && resource.data.restaurantId is string &&
+        request.resource.data.restaurantId == resource.data.restaurantId && (
+          canWriteOperationsFinancials(resource.data.restaurantId) || ownPunchUpdateIsSafe()
+        );
+      allow delete: if signedIn() && resource.data.restaurantId is string && canWriteOperationsFinancials(resource.data.restaurantId);
+    }
+
+    match /dailyCloses/{docId} {
+      allow read: if signedIn() && resource.data.restaurantId is string && canReadOperationsFinancials(resource.data.restaurantId);
+      allow create: if signedIn() && request.resource.data.restaurantId is string && canWriteOperationsFinancials(request.resource.data.restaurantId);
+      allow update: if signedIn() && resource.data.restaurantId is string && request.resource.data.restaurantId == resource.data.restaurantId && canWriteOperationsFinancials(resource.data.restaurantId);
+      allow delete: if signedIn() && resource.data.restaurantId is string && canWriteOperationsFinancials(resource.data.restaurantId);
+    }
+
+    match /deposits/{docId} {
+      allow read: if signedIn() && resource.data.restaurantId is string && canReadOperationsFinancials(resource.data.restaurantId);
+      allow create: if signedIn() && request.resource.data.restaurantId is string && canWriteOperationsFinancials(request.resource.data.restaurantId);
+      allow update: if signedIn() && resource.data.restaurantId is string && request.resource.data.restaurantId == resource.data.restaurantId && canWriteOperationsFinancials(resource.data.restaurantId);
+      allow delete: if signedIn() && resource.data.restaurantId is string && canWriteOperationsFinancials(resource.data.restaurantId);
+    }
+
+    match /tipRecords/{docId} {
+      allow read: if signedIn() && resource.data.restaurantId is string && (
+        canReadOperationsFinancials(resource.data.restaurantId) || canReadOwnPunch(resource.data)
+      );
+      allow create: if signedIn() && request.resource.data.restaurantId is string && (
+        canWriteOperationsFinancials(request.resource.data.restaurantId) || canReadOwnPunch(request.resource.data)
+      );
+      allow update: if signedIn() && resource.data.restaurantId is string && request.resource.data.restaurantId == resource.data.restaurantId && (
+        canWriteOperationsFinancials(resource.data.restaurantId) || canReadOwnPunch(resource.data)
+      );
+      allow delete: if signedIn() && resource.data.restaurantId is string && canWriteOperationsFinancials(resource.data.restaurantId);
+    }
+
+    match /expenses/{docId} {
+      allow read: if signedIn() && resource.data.restaurantId is string && canReadSmartFinancials(resource.data.restaurantId);
+      allow create: if signedIn() && request.resource.data.restaurantId is string && canWriteSmartFinancials(request.resource.data.restaurantId);
+      allow update: if signedIn() && resource.data.restaurantId is string && request.resource.data.restaurantId == resource.data.restaurantId && canWriteSmartFinancials(resource.data.restaurantId);
+      allow delete: if signedIn() && resource.data.restaurantId is string && canWriteSmartFinancials(resource.data.restaurantId);
+    }
+
+    match /financialReports/{docId} {
+      allow read: if signedIn() && resource.data.restaurantId is string && canReadSmartFinancials(resource.data.restaurantId);
+      allow create: if signedIn() && request.resource.data.restaurantId is string && canWriteSmartFinancials(request.resource.data.restaurantId);
+      allow update: if signedIn() && resource.data.restaurantId is string && request.resource.data.restaurantId == resource.data.restaurantId && canWriteSmartFinancials(resource.data.restaurantId);
+      allow delete: if signedIn() && resource.data.restaurantId is string && canWriteSmartFinancials(resource.data.restaurantId);
+    }
+
+    // Future POS/accounting import collections stay locked behind Smart Kitchen+ financial access.
+    match /posImports/{docId} {
+      allow read: if signedIn() && resource.data.restaurantId is string && canReadSmartFinancials(resource.data.restaurantId);
+      allow create: if signedIn() && request.resource.data.restaurantId is string && canWriteSmartFinancials(request.resource.data.restaurantId);
+      allow update: if signedIn() && resource.data.restaurantId is string && request.resource.data.restaurantId == resource.data.restaurantId && canWriteSmartFinancials(resource.data.restaurantId);
+      allow delete: if signedIn() && resource.data.restaurantId is string && canWriteSmartFinancials(resource.data.restaurantId);
+    }
+
+    match /accountingImports/{docId} {
+      allow read: if signedIn() && resource.data.restaurantId is string && canReadSmartFinancials(resource.data.restaurantId);
+      allow create: if signedIn() && request.resource.data.restaurantId is string && canWriteSmartFinancials(request.resource.data.restaurantId);
+      allow update: if signedIn() && resource.data.restaurantId is string && request.resource.data.restaurantId == resource.data.restaurantId && canWriteSmartFinancials(resource.data.restaurantId);
+      allow delete: if signedIn() && resource.data.restaurantId is string && canWriteSmartFinancials(resource.data.restaurantId);
+    }
+
+    match /importBatches/{docId} {
+      allow read: if signedIn() && resource.data.restaurantId is string && canReadSmartFinancials(resource.data.restaurantId);
+      allow create: if signedIn() && request.resource.data.restaurantId is string && canWriteSmartFinancials(request.resource.data.restaurantId);
+      allow update: if signedIn() && resource.data.restaurantId is string && request.resource.data.restaurantId == resource.data.restaurantId && canWriteSmartFinancials(resource.data.restaurantId);
+      allow delete: if signedIn() && resource.data.restaurantId is string && canWriteSmartFinancials(resource.data.restaurantId);
     }
 
     // ============================================================

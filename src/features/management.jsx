@@ -9,6 +9,10 @@ import { MapContainer, TileLayer, Marker, Circle, useMap } from 'react-leaflet';
 import { T, db, storage, auth, messaging, firebaseConfig, secureFetch, MASTER_ADMIN_EMAIL, EVENT_TAGS, CURRENT_VERSION, useLiveCollection, formatDate, getToday, getMonthStr, formatDisplayDate, formatDisplayFullDate, formatDisplayMonth, getDaysInMonth, formatShortTime, formatClockTime, formatClockDateTime, getAvatar, generateTempPass, getExpDate, getHoliday, logAudit, customMapIcon, getRestaurantExportPrefix, safeFilenamePart, downloadCsvRows, downloadTextFile, openPrintableReport, buildPermissionPreview, buildImportBridgeTemplates, buildV14ClientGuardrailReport } from '../core/appCore';
 import { CheersLogo, Modal, DrawerMenu, DayDotPrintScreen, MapClickListener, SmartEmptyState, MiniProblemCard, getHomeProfile, calculatePunchHours, getWeekStart, getWeekDates, roleMatches, toLocalTimeInput, makeLocalIso, PunchTable, StatusTile, FriendlyEmpty, GlobalSearchModal, QuickActionDock, KitchenTVMode, ChangeLogModal, UndoBar } from '../components/common';
 import { SYSTEM_TRAINING_MANUAL_CHAPTERS } from './trainingManual';
+import { usePlanAccess } from '../hooks/usePlanAccess';
+import { LockedFeatureScreen } from '../components/PlanGate';
+import { PLAN_DEFINITIONS, CUSTOMER_PLAN_ORDER, FEATURE_KEYS } from '../config/plans';
+import { resolveSubscription, resolveFeatureAccess, getPlanDefinition, formatMoney, normalizePlanId, addDaysIso, addMonthsIso } from '../lib/featureAccess';
 
 
 const GEOFENCE_TILE_PROVIDERS = [
@@ -889,7 +893,20 @@ const TabSettings = ({ appUser, addToast, users = [], clientData = {} }) => {  c
   const isWorkspaceOwner = Boolean(appUser?.isSuperAdmin || (MASTER_ADMIN_EMAIL && settingsEmail === MASTER_ADMIN_EMAIL.toLowerCase()) || false || appUser?.isOwner === true || appUser?.accountOwner === true || appUser?.owner === true || appUser?.workspaceOwner === true || String(appUser?.accountRole || '').toLowerCase().trim() === 'owner' || (settingsOwnerEmail && settingsEmail === settingsOwnerEmail));
   const canManageWorkspaceSettings = Boolean(isWorkspaceOwner || appUser?.permissions?.settings === true);
   const canManageBranding = Boolean(isWorkspaceOwner || appUser?.permissions?.branding === true);
-  const canManageIntegrations = Boolean(isWorkspaceOwner || appUser?.permissions?.integrations === true);
+  const canManageIntegrations = Boolean(appUser?.isSuperAdmin === true || (MASTER_ADMIN_EMAIL && settingsEmail === MASTER_ADMIN_EMAIL.toLowerCase()));
+  const planAccess = usePlanAccess(appUser, clientData);
+  const subscription = planAccess.subscription;
+  const currentPlan = planAccess.plan;
+  const canViewBilling = Boolean(isWorkspaceOwner || appUser?.isAdmin || appUser?.permissions?.settings || appUser?.isSuperAdmin);
+  const billingRestaurantId = appUser?.restaurantId || clientData?.id || clientData?.restaurantId || '';
+  const billingMonthKey = getMonthStr(getToday());
+  const [billingAiUsage, setBillingAiUsage] = useState(null);
+  useEffect(() => {
+    if (!canViewBilling || !billingRestaurantId) { setBillingAiUsage(null); return undefined; }
+    return onSnapshot(doc(db, 'aiUsage', `${billingRestaurantId}_${billingMonthKey}`), (snap) => {
+      setBillingAiUsage(snap.exists() ? snap.data() : null);
+    }, () => setBillingAiUsage(null));
+  }, [canViewBilling, billingRestaurantId, billingMonthKey]);
   const sys = clientData?.systemSettings || appUser?.systemSettings || {};
   const branding = sys.branding || {};
   const [sysGeofence, setSysGeofence] = useState(sys.geofence ?? false);
@@ -1675,17 +1692,16 @@ const Toggle = ({ label, desc, checked, onChange, disabled = false }) => (
   return (
     <div className="settings-page max-w-4xl mx-auto space-y-4 pb-24 animate-[slideIn_0.2s_ease-out]">
 <div className="settings-tab-bar grid grid-cols-2 sm:flex sm:flex-wrap gap-2 border-b border-[#2A353D] mb-4 pb-2">
-        {['profile', 'accountSecurity', 'preferences', 'alerts'].concat(canManageWorkspaceSettings ? ['workspace'] : [], canManageBranding ? ['branding'] : [], canManageIntegrations ? ['integrations'] : []).map((tab) => (
+        {['profile', 'accountSecurity', 'preferences', 'alerts'].concat(canViewBilling ? ['billing'] : [], canManageWorkspaceSettings ? ['workspace'] : [], canManageBranding ? ['branding'] : [], ['integrations']).map((tab) => {
+          const integrationLocked = tab === 'integrations' && !canManageIntegrations;
+          return (
 <button type="button" key={tab} onClick={() => {
-            if (tab === 'integrations' && appUser?.planType !== 'Enterprise') {
-              return addToast('Locked', 'Upgrade to Enterprise to unlock POS & Payroll Integrations.');
-            }
             setSubTab(tab);
-          }} className={`settings-tab-button px-2 sm:px-5 py-2 text-[10px] font-black rounded-xl uppercase tracking-widest transition-all sm:flex-1 flex items-center justify-center gap-1 ${subTab === tab ? `${T.grad} text-slate-900 shadow-md` : 'bg-[#1A2126] text-slate-300 hover:text-white'} ${(tab === 'integrations' && appUser?.planType !== 'Enterprise') ? 'opacity-50 border border-[#2A353D] cursor-not-allowed' : ''}`}>
-            {(tab === 'integrations' && appUser?.planType !== 'Enterprise') ? '🔒 Integrations' : tab === 'branding' ? 'Branding' : tab === 'accountSecurity' ? 'Account Security' : tab}
-            {tab === 'integrations' && <span className="ml-1 bg-blue-900/30 text-blue-400 border border-blue-500/50 text-[8px] px-1.5 py-0.5 rounded-md uppercase tracking-widest font-black shadow-[0_0_8px_rgba(59,130,246,0.2)]">Beta</span>}
+          }} className={`settings-tab-button px-2 sm:px-5 py-2 text-[10px] font-black rounded-xl uppercase tracking-widest transition-all sm:flex-1 flex items-center justify-center gap-1 ${subTab === tab ? `${T.grad} text-slate-900 shadow-md` : 'bg-[#1A2126] text-slate-300 hover:text-white'} ${integrationLocked ? 'opacity-80 border border-[#2A353D]' : ''}`}>
+            {tab === 'integrations' && integrationLocked ? '🔒 Integrations' : tab === 'branding' ? 'Branding' : tab === 'accountSecurity' ? 'Account Security' : tab === 'billing' ? 'Plan & Billing' : tab}
+            {tab === 'integrations' && <span className="ml-1 bg-blue-900/30 text-blue-400 border border-blue-500/50 text-[8px] px-1.5 py-0.5 rounded-md uppercase tracking-widest font-black shadow-[0_0_8px_rgba(59,130,246,0.2)]">Soon</span>}
           </button>
-        ))}
+        );})}
       </div>
 
       {subTab === 'profile' && (
@@ -2391,6 +2407,77 @@ const Toggle = ({ label, desc, checked, onChange, disabled = false }) => (
         </div>
       )}
 
+
+      {subTab === 'billing' && canViewBilling && (() => {
+        const futurePlan = getPlanDefinition(subscription.selectedFutureTier || subscription.planId);
+        const betaEnd = subscription.betaExtendedUntil || subscription.betaEndsAt;
+        const included = (currentPlan.features || []).slice(0, 14).map(k => k.replace(/_/g, ' '));
+        const invoiceLimitNumber = Number.isFinite(currentPlan.invoicePagesLimit) ? currentPlan.invoicePagesLimit : null;
+        const menuLimitNumber = Number.isFinite(currentPlan.menuPagesLimit) ? currentPlan.menuPagesLimit : null;
+        const invoiceLimit = invoiceLimitNumber == null ? 'Unlimited' : invoiceLimitNumber;
+        const menuLimit = menuLimitNumber == null ? 'Unlimited' : menuLimitNumber;
+        const invoiceUsed = Number(billingAiUsage?.invoicePagesUsed || 0);
+        const menuUsed = Number(billingAiUsage?.menuPagesUsed || 0);
+        return (
+          <div className="space-y-4">
+            <div className={`${T.card} p-4 sm:p-5 border-[#D4A381]/40`}>
+              <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-4">
+                <div>
+                  <p className="text-[10px] font-black uppercase tracking-[0.25em] text-[#D4A381]">Plan & Billing</p>
+                  <h2 className="text-2xl font-black text-white mt-1">{currentPlan.label}</h2>
+                  <p className="text-sm font-bold text-slate-300 mt-2 max-w-2xl">{currentPlan.summary}</p>
+                </div>
+                <div className="grid grid-cols-2 gap-2 w-full lg:w-auto">
+                  <div className="bg-[#0B0E11] border border-[#2A353D] rounded-xl p-3"><div className={T.label}>Launch price</div><div className="text-xl font-black text-white">{currentPlan.launchPriceText}</div></div>
+                  <div className="bg-[#0B0E11] border border-[#2A353D] rounded-xl p-3"><div className={T.label}>Billing</div><div className="text-xl font-black text-amber-300">Payments coming soon</div></div>
+                </div>
+              </div>
+            </div>
+
+            {subscription.isFounderBeta && (
+              <div className={`${T.card} p-4 sm:p-5 bg-emerald-950/10 border-emerald-900/40`}>
+                <h3 className="text-xl font-black text-white">Founder Beta</h3>
+                <p className="text-sm font-bold text-emerald-100 mt-2 leading-relaxed">This workspace is in Founder Beta. Active beta access is free, then the selected tier receives {subscription.founderDiscountPercent || 50}% off for 12 months after beta ends.</p>
+                <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3 mt-4">
+                  <div className="bg-[#0B0E11] border border-[#2A353D] rounded-xl p-3"><div className={T.label}>Beta status</div><div className="text-white font-black">{subscription.betaActive ? 'Active' : 'Ended'}</div></div>
+                  <div className="bg-[#0B0E11] border border-[#2A353D] rounded-xl p-3"><div className={T.label}>Beta end</div><div className="text-white font-black">{betaEnd ? formatDisplayDate(String(betaEnd).slice(0,10)) : 'Not set'}</div></div>
+                  <div className="bg-[#0B0E11] border border-[#2A353D] rounded-xl p-3"><div className={T.label}>Future tier</div><div className="text-white font-black">{futurePlan.label}</div></div>
+                  <div className="bg-[#0B0E11] border border-[#2A353D] rounded-xl p-3"><div className={T.label}>Founder price</div><div className="text-[#D4A381] font-black">{formatMoney(futurePlan.founderPrice)}/month</div></div>
+                </div>
+              </div>
+            )}
+
+            <div className="grid lg:grid-cols-3 gap-4">
+              <div className={`${T.card} p-4`}>
+                <h3 className="font-black text-white text-lg">Scan Limits</h3>
+                <p className="text-xs text-slate-400 font-bold mt-1">Usage is enforced before expensive AI calls.</p>
+                <div className="grid grid-cols-2 gap-2 mt-4">
+                  <div className="bg-[#0B0E11] border border-[#2A353D] rounded-xl p-3"><div className={T.label}>Invoice pages</div><div className="text-2xl font-black text-white">{invoiceUsed} / {invoiceLimit}</div><div className="text-[10px] text-slate-500 font-bold">used this month</div></div>
+                  <div className="bg-[#0B0E11] border border-[#2A353D] rounded-xl p-3"><div className={T.label}>Menu pages</div><div className="text-2xl font-black text-white">{menuUsed} / {menuLimit}</div><div className="text-[10px] text-slate-500 font-bold">used this month</div></div>
+                </div>
+              </div>
+              <div className={`${T.card} p-4`}>
+                <h3 className="font-black text-white text-lg">Integrations</h3>
+                <p className="text-xs text-slate-400 font-bold mt-1">POS and accounting integrations are being tested before customer rollout. Manual entry and report imports can still be used where available.</p>
+                <div className="mt-4 rounded-xl border border-amber-900/40 bg-amber-950/20 p-3 text-amber-100 text-xs font-black uppercase tracking-widest">Locked for customer tiers</div>
+              </div>
+              <div className={`${T.card} p-4`}>
+                <h3 className="font-black text-white text-lg">Plan Changes</h3>
+                <p className="text-xs text-slate-400 font-bold mt-1">Payments and self-service upgrades are not active yet. Master Admin can change plans manually during rollout.</p>
+                <div className="grid gap-2 mt-4"><button type="button" disabled className={`${T.btnAlt} opacity-60 cursor-not-allowed`}>Upgrade coming soon</button><button type="button" disabled className={`${T.btnAlt} opacity-60 cursor-not-allowed`}>Downgrade coming soon</button></div>
+              </div>
+            </div>
+
+            <div className={`${T.card} p-4`}>
+              <h3 className="font-black text-white text-lg mb-3">Included Feature Summary</h3>
+              <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                {included.map(name => <div key={name} className="bg-[#0B0E11] border border-[#2A353D] rounded-xl p-3 text-xs font-bold text-slate-200 capitalize">{name}</div>)}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
 {subTab === 'workspace' && canManageWorkspaceSettings && (
         <form onSubmit={handleSaveSystem} className={`${T.card} p-3 sm:p-5 space-y-4 border-[#D4A381]/30 shadow-[0_0_15px_rgba(212,163,129,0.05)]`}>
           <div>
@@ -2695,13 +2782,13 @@ const Toggle = ({ label, desc, checked, onChange, disabled = false }) => (
             <div className={`${T.card} p-3 sm:p-5 space-y-3`}>
               <div>
                 <h2 className="text-base font-black text-white">Settings Access</h2>
-                <p className="text-[10px] text-slate-400 font-bold mt-1">Only the account owner can choose who may change workspace settings, branding, integrations, or Menu Intelligence.</p>
+                <p className="text-[10px] text-slate-400 font-bold mt-1">Only the account owner can choose who may change workspace settings, branding, or Menu Intelligence. Integrations stay System Administrator-only until customer rollout.</p>
               </div>
               <div className="max-h-80 overflow-y-auto custom-scrollbar space-y-2">
                 {users.filter(u => u.isActive !== false && u.id !== appUser.id).map(u => (
                   <div key={u.id} className="grid grid-cols-[minmax(0,1fr)_auto] sm:grid-cols-[minmax(0,1fr)_auto_auto_auto] gap-2 items-center bg-[#12161A] border border-[#2A353D] rounded-xl p-3">
                     <div className="min-w-0"><div className="text-xs font-black text-white truncate">{u.name || u.email}</div><div className="text-[10px] text-slate-500 font-bold truncate">{u.role || 'Staff'} • {u.email || 'no email'}</div></div>
-                    {['settings','branding','integrations','menuIntelligence'].map(key => (
+                    {['settings','branding','menuIntelligence'].map(key => (
                       <label key={key} className="flex items-center gap-1 text-[9px] font-black uppercase tracking-widest text-slate-400">
                         <input type="checkbox" checked={u.permissions?.[key] === true} onChange={e => toggleSettingsPermission(u, key, e.target.checked)} className="w-3.5 h-3.5 accent-[#8F6040]" /> {key}
                       </label>
@@ -2746,8 +2833,16 @@ const Toggle = ({ label, desc, checked, onChange, disabled = false }) => (
       )}
 
       {/* --- INTEGRATIONS ZONE --- */}
+      {subTab === 'integrations' && !canManageIntegrations && (
+        <LockedFeatureScreen access={resolveFeatureAccess({ workspace: clientData || {}, user: appUser || {}, featureKey: FEATURE_KEYS.INTEGRATIONS })} appUser={appUser} compact />
+      )}
+
       {subTab === 'integrations' && canManageIntegrations && (
         <div className="space-y-6 animate-[slideIn_0.2s_ease-out]">
+          <div className={`${T.card} p-4 border-amber-900/40 bg-amber-950/10`}>
+            <div className="text-[10px] font-black uppercase tracking-widest text-amber-300">Internal testing only</div>
+            <p className="text-sm font-bold text-slate-300 mt-2">Customers cannot access unfinished OAuth, API keys, provider setup, or integration tools. This page is visible only to Master Admin/System Admin accounts for testing.</p>
+          </div>
           
           <div className={`${T.card} p-4 sm:p-5 border-blue-900/50 shadow-[0_0_15px_rgba(59,130,246,0.05)]`}>
              <div className="mb-4 border-b border-[#2A353D] pb-2">
@@ -4225,14 +4320,41 @@ Old clients cannot reveal their original creation time, so they will be marked a
       const restRef = doc(db, "restaurants", editingRest.id);
       const beforeSnap = await getDoc(restRef);
       const beforeData = beforeSnap.exists() ? beforeSnap.data() : {};
+      const rawSubscription = editingRest.subscription || {};
+      const selectedPlanId = normalizePlanId(rawSubscription.planId || editingRest.planId || editingRest.planType || 'smart_kitchen');
+      const selectedFutureTier = normalizePlanId(rawSubscription.selectedFutureTier || rawSubscription.futurePlanId || editingRest.selectedFutureTier || selectedPlanId);
+      const nowIso = new Date().toISOString();
+      const subscriptionPayload = {
+        planId: selectedPlanId,
+        selectedFutureTier,
+        status: rawSubscription.status || editingRest.subscriptionStatus || 'active',
+        isFounderBeta: rawSubscription.isFounderBeta === true,
+        betaStartedAt: rawSubscription.betaStartedAt || null,
+        betaEndsAt: rawSubscription.betaEndsAt || null,
+        betaExtendedUntil: rawSubscription.betaExtendedUntil || null,
+        founderDiscountPercent: Number(rawSubscription.founderDiscountPercent ?? 50),
+        founderDiscountEndsAt: rawSubscription.founderDiscountEndsAt || null,
+        billingProvider: rawSubscription.billingProvider || 'none',
+        billingNotes: rawSubscription.billingNotes || '',
+        integrationsLocked: true,
+        createdAt: rawSubscription.createdAt || beforeData.subscription?.createdAt || nowIso,
+        updatedAt: nowIso
+      };
       const updatePayload = {
         name: editingRest.name,
         ownerName: editingRest.ownerName,
         ownerEmail: editingRest.ownerEmail,
         ownerPhone: editingRest.ownerPhone,
         systemSettings: editingRest.systemSettings || {},
-        planType: editingRest.planType || 'Pro',
-        billingStatus: editingRest.billingStatus || 'Paid',
+        planId: subscriptionPayload.planId,
+        planType: getPlanDefinition(subscriptionPayload.planId).label,
+        subscriptionStatus: subscriptionPayload.status,
+        billingStatus: subscriptionPayload.status === 'beta' ? 'Trial' : subscriptionPayload.status === 'past_due' ? 'Past Due' : 'Paid',
+        subscription: subscriptionPayload,
+        integrationsLocked: true,
+        isFounderBeta: subscriptionPayload.isFounderBeta,
+        founderDiscountPercent: subscriptionPayload.founderDiscountPercent,
+        founderDiscountEndsAt: subscriptionPayload.founderDiscountEndsAt || '',
         customPrice: editingRest.customPrice || '',
         trialDays: editingRest.trialDays !== undefined ? editingRest.trialDays : 14,
         isActive: editingRest.isActive ?? true,
@@ -4246,11 +4368,16 @@ Old clients cannot reveal their original creation time, so they will be marked a
         at: new Date().toISOString(),
         by: appUser?.email || appUser?.name || 'System Admin',
         summary: 'Workspace settings changed from System Administrator > Workspaces.',
-        before: { name: beforeData.name, ownerName: beforeData.ownerName, ownerEmail: beforeData.ownerEmail, ownerPhone: beforeData.ownerPhone, systemSettings: beforeData.systemSettings || {}, planType: beforeData.planType, billingStatus: beforeData.billingStatus, customPrice: beforeData.customPrice, trialDays: beforeData.trialDays, isActive: beforeData.isActive, isReadOnly: beforeData.isReadOnly, features: beforeData.features || {}, labs: beforeData.labs || {} },
+        before: { name: beforeData.name, ownerName: beforeData.ownerName, ownerEmail: beforeData.ownerEmail, ownerPhone: beforeData.ownerPhone, systemSettings: beforeData.systemSettings || {}, planId: beforeData.planId, planType: beforeData.planType, billingStatus: beforeData.billingStatus, subscription: beforeData.subscription || {}, customPrice: beforeData.customPrice, trialDays: beforeData.trialDays, isActive: beforeData.isActive, isReadOnly: beforeData.isReadOnly, features: beforeData.features || {}, labs: beforeData.labs || {} },
         after: cleanUpdatePayload
       });
       const existingHistory = Array.isArray(beforeData.settingsHistory) ? beforeData.settingsHistory.slice(-24) : [];
       await updateDoc(restRef, sanitizeForFirestore({ ...cleanUpdatePayload, settingsHistory: [...existingHistory, historyEntry] }));
+      const beforeSubText = JSON.stringify(resolveSubscription(beforeData, appUser));
+      const afterSubText = JSON.stringify(resolveSubscription(cleanUpdatePayload, appUser));
+      if (beforeSubText !== afterSubText) {
+        await logAudit(appUser, 'SUBSCRIPTION_PLAN_CHANGED', `restaurants/${editingRest.id}`, `Plan/subscription updated for ${editingRest.name || editingRest.id}. Before: ${beforeSubText.slice(0, 600)} After: ${afterSubText.slice(0, 600)}`);
+      }
       addToast('Saved', 'Client workspace configuration updated and history snapshot saved.');
       setEditingRest(null);
     } catch (err) {
@@ -5543,6 +5670,9 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
   }, {})).sort((a,b) => b.endedMs - a.endedMs).slice(0, 12);
 
   const adminManualArticles = [
+
+    { title: 'Version 15.0.54 Plans, Founder Beta, and Feature Gates', group: 'System Administrator', keywords: 'v15 15.0.54 plans tiers founder beta feature gates subscriptions scan limits billing integrations roles permissions audit', body: ['15.0.54 adds the centralized plan and feature access system for Shift, Operations, Smart Kitchen, Owner Pro, and internal Master Admin/System Admin access.', 'Every feature gate should resolve both workspace plan access and user role/permission access. Master Admin/System Admin can bypass plan locks for testing, but customer-facing tiers cannot access integrations yet.', 'Founder Beta workspaces run free during the active beta window. Default beta length is 60 days. A Master Admin/System Admin may extend the beta by 30 days, with a max intended 90-day beta. After beta, Founder Beta accounts display 50% off the selected future tier for 12 months.', 'Use System Administrator workspace plan controls to set selected future tier, start beta, extend beta, end beta, mark manual active, update founder discount dates, and review plan scan limits. Every subscription change should write an audit log.', 'Plan/subscription fields live on the workspace subscription object. Normal staff cannot edit plan fields, customer owners can view billing status, and only internal admin tools should alter subscription state until live billing exists.', 'Scan usage is enforced before expensive AI calls. Shift has no invoice/menu pages, Operations has 20 invoice and 3 menu pages, Smart Kitchen has 75 invoice and 10 menu pages, Owner Pro has 200 invoice and 25 menu pages, and internal testing accounts are exempt.', 'Integrations stay locked for all customer tiers. The customer screen must say integrations are coming soon and must not expose OAuth, API keys, provider setup, or unfinished integration tools.', 'All role-based features, including labor by role, scheduling, reports, exports, dashboards, and permissions, must use the owner custom Roster Roles from Preferences as the source of truth. Hardcoded role names are only legacy fallbacks when no custom roster roles exist.'] },
+    { title: 'Plan access troubleshooting', group: 'Plans & Billing', keywords: 'locked feature missing tab feature gate role permission plan troubleshooting direct url billing staff owner', body: ['When a user cannot see a feature, check four things in order: workspace plan, user role/permission, workspace module toggle, then direct Firestore rules access.', 'A hidden tab is not enough. Direct URL access should show the locked screen and backend rules/API checks should still reject disallowed reads, writes, scans, and integration tools.', 'Staff should not see billing controls. Owners and permitted admins may see Plan & Billing. System Administrator can inspect and change plan fields during manual beta and billing setup.', 'If a Founder Beta workspace appears locked unexpectedly, confirm subscription.isFounderBeta, subscription.status, betaEndsAt, betaExtendedUntil, selectedFutureTier, and manual feature overrides.', 'If scans fail, inspect aiUsage for the workspace/month/type, then check the plan scan limits and whether the user is an internal testing or bypass account.'] },
     { title: 'Version 15.0.49 AI Page Limits and Invoice Noise Filtering', group: 'System Administrator', keywords: 'v15 15.0.49 ai usage scan limits page limits invoice menu monthly master admin bypass idempotency non food review', body: ['Invoice and Menu Intelligence scans are now counted by AI-processed pages per workspace and month instead of by scan count. Defaults are 40 invoice pages and 10 menu pages.', 'The scan routes verify PDF page counts before calling AI, reserve pages in a Firestore transaction, and use idempotency keys so simultaneous requests and duplicate clicks cannot double-count.', 'Configured Master Admin accounts can test beyond the limit. The server verifies the Firebase token email or trusted custom claim, logs every bypass, and never trusts a frontend environment variable or customer-controlled setting.', 'Open System Administrator → AI Usage / Scan Limits to review every workspace, page totals, submitted scans, bypass pages, failures, blocks, providers/models, recent events, and monthly limit overrides.', 'Invoice Scanner now separates obvious non-food supplies and document noise from food/product review. Publish the included Firestore rules so browser clients cannot edit aiUsage counters or limits. No Storage rules, indexes, or Firebase Functions deployment is required.'] },
     { title: 'Version 15.0.48 Invoice Product Row Recovery', group: 'System Administrator', keywords: 'v15 15.0.48 invoice scanner skipped rows needs review dense distributor sysco pfg product row stock matcher', body: ['Invoice Scanner now inspects both the AI lineItems list and every allExtractedRows audit row. Valid product rows are recovered even when the entire distributor line arrives as one dense OCR string.', 'Rows beginning with a purchased quantity and unit such as 1 CS, 2 EA, or 3 PK are treated as likely products when they also contain a pack size, product code, description, or price. The scanner extracts those fields before Stock Matcher review.', 'The former Skipped Rows panel is now Needs Review. A manager can click Move to Stock Matcher on any genuine product the automatic classifier still cannot recognize.', 'Document rows such as taxes, totals, addresses, freight, fees, discounts, credits, payments, and signatures remain excluded from inventory.', 'No Firebase rules, Storage rules, indexes, or Cloud Functions deployment is required. Deploy the updated app and Vercel API routes, then rescan the invoice.'] },
     { title: 'Version 15.0.44 Automated Data Retention and Compact Menu', group: 'System Administrator', keywords: 'v15 15.0.44 retention cleanup prep 86 alerts ai uploads time punches archive workspace delete restore cloud functions menu sections compact drawer', body: ['15.0.44 adds Firebase Cloud Functions that run every day to clean up old operational data. Prep items and 86 alerts are removed after 30 days. Raw Menu Intelligence and Invoice Scanner files are removed from Storage after 30 days.', 'Time punches leave the active Firestore database after 365 days. The function writes a compressed, verified archive file before deleting the active records. Archive files are deleted at the three-year mark.', 'System Administrator workspace deletion now starts a 30-day recovery window instead of instantly deleting the restaurant record. The workspace is disabled immediately. Use Restore beside a scheduled workspace before the deadline to cancel deletion.', 'The Firebase Functions are separate from Vercel. Open DATA_RETENTION_SETUP_15_0_44.md in the ZIP and follow the testing-project steps before production. RETENTION_ARCHIVE_BUCKET must be configured or the time-clock archive job safely stops without deleting source records.', 'The main app drawer is grouped into Account, Operations, Manager Tools, Management, and System. Button spacing is tighter, but the existing copper color system and permission filtering are unchanged.'] },
@@ -7125,33 +7255,52 @@ Type RESTORE to continue.`);
 <Modal isOpen={!!editingRest} onClose={() => setEditingRest(null)} title={`Manage Client: ${editingRest?.name}`}>
         {editingRest && (() => {
           
-// --- THE TIER PRESET ENGINE ---
-          const applyTierPreset = (tier) => {
-            // 1. Start with a baseline where EVERY feature is explicitly set to FALSE
-            const baseFeatures = { schedule: false, events: false, ops: false, messages: false, prep: false, recipes: false, inventory: false, sales: false, team: false, maintenance: false, labor: false, timesheets: false };
-            let newLabs = { laborProjection: false };
-            let updatedFeatures = { ...baseFeatures };
-            
-            // 2. Merge only the allowed features as TRUE over the baseline
-            if (tier === 'Starter') {
-                updatedFeatures = { ...baseFeatures, schedule: true, events: true, ops: true, messages: true, prep: true, team: true };
-            } else if (tier === 'Pro') {
-                updatedFeatures = { ...baseFeatures, schedule: true, events: true, ops: true, messages: true, prep: true, team: true, recipes: true, inventory: true, maintenance: true };
-            } else if (tier === 'Elite') {
-                updatedFeatures = { ...baseFeatures, schedule: true, events: true, ops: true, messages: true, prep: true, team: true, recipes: true, inventory: true, maintenance: true, sales: true, labor: true, timesheets: true };
-            } else if (tier === 'Enterprise') {
-                // Enterprise: Everything (Up to 5 Locations)
-                updatedFeatures = { ...baseFeatures, schedule: true, events: true, ops: true, messages: true, prep: true, team: true, recipes: true, inventory: true, maintenance: true, sales: true, labor: true, timesheets: true };
-                newLabs = { laborProjection: true };
-            }
-
-            // 3. Save the complete object (with explicit true/false flags) to state
-            setEditingRest({
-                ...editingRest,
-                planType: tier,
-                features: updatedFeatures,
-                labs: newLabs
+// --- PLAN / SUBSCRIPTION CONTROL ENGINE ---
+          const updateSubscriptionDraft = (patch = {}) => {
+            setEditingRest(prev => {
+              const current = prev.subscription || {};
+              const merged = { ...current, ...patch, integrationsLocked: true, updatedAt: new Date().toISOString() };
+              const planId = normalizePlanId(merged.planId || prev.planId || prev.planType || 'smart_kitchen');
+              merged.planId = planId;
+              merged.selectedFutureTier = normalizePlanId(merged.selectedFutureTier || merged.futurePlanId || planId);
+              return {
+                ...prev,
+                planId,
+                planType: getPlanDefinition(planId).label,
+                subscriptionStatus: merged.status || 'active',
+                billingStatus: merged.status === 'beta' ? 'Trial' : merged.status === 'past_due' ? 'Past Due' : 'Paid',
+                integrationsLocked: true,
+                isFounderBeta: merged.isFounderBeta === true,
+                subscription: merged
+              };
             });
+          };
+          const currentSubscription = resolveSubscription(editingRest, appUser);
+          const currentPlan = getPlanDefinition(currentSubscription.planId);
+          const futurePlan = getPlanDefinition(currentSubscription.selectedFutureTier || currentSubscription.planId);
+          const setPlan = (planId) => updateSubscriptionDraft({ planId, selectedFutureTier: planId, status: editingRest.subscription?.status || 'active' });
+          const startFounderBeta = () => {
+            const started = new Date().toISOString();
+            const futureTier = normalizePlanId(editingRest.subscription?.selectedFutureTier || editingRest.subscription?.planId || editingRest.planId || 'smart_kitchen');
+            updateSubscriptionDraft({
+              planId: futureTier || 'smart_kitchen', selectedFutureTier: futureTier || 'smart_kitchen', status: 'beta', isFounderBeta: true,
+              betaStartedAt: started, betaEndsAt: addDaysIso(started, 60), betaExtendedUntil: null,
+              founderDiscountPercent: 50, founderDiscountEndsAt: null, billingProvider: 'none', billingNotes: editingRest.subscription?.billingNotes || ''
+            });
+          };
+          const extendFounderBeta = () => {
+            const baseEnd = currentSubscription.betaEndsAt || addDaysIso(currentSubscription.betaStartedAt || new Date().toISOString(), 60);
+            updateSubscriptionDraft({ status: 'beta', isFounderBeta: true, betaEndsAt: baseEnd, betaExtendedUntil: addDaysIso(baseEnd, 30), founderDiscountPercent: 50 });
+          };
+          const endFounderBeta = () => {
+            const ended = new Date().toISOString();
+            updateSubscriptionDraft({ status: 'active', isFounderBeta: true, founderDiscountPercent: 50, founderDiscountEndsAt: addMonthsIso(ended, 12), billingProvider: 'manual' });
+          };
+          const markManualActive = () => updateSubscriptionDraft({ status: 'active', billingProvider: 'manual' });
+          const planFeatureList = (currentPlan.features || []).slice(0, 14).map(key => key.replace(/_/g, ' '));
+          const applyTierPreset = (tier) => {
+            const legacyMap = { Starter: 'shift', Pro: 'operations', Elite: 'smart_kitchen', Enterprise: 'owner_pro' };
+            setPlan(legacyMap[tier] || tier);
           };
        
     
@@ -7183,13 +7332,39 @@ Type RESTORE to continue.`);
                 </div>
                 <div><label className={T.label}>Street Address</label><input type="text" value={editingRest.systemSettings?.address || ''} onChange={e => setEditingRest({...editingRest, systemSettings: { ...editingRest.systemSettings, address: e.target.value }})} className={T.input} /></div>
                 
-   <div className="grid grid-cols-1 sm:grid-cols-4 gap-2 mt-2">
-                  <div><label className={T.label}>Plan Tier</label><select value={editingRest.planType || 'Pro'} onChange={e => setEditingRest({...editingRest, planType: e.target.value})} className={T.input}><option value="Trial">Trial</option><option value="Starter">Starter</option><option value="Pro">Pro</option><option value="Elite">Elite</option><option value="Enterprise">Enterprise</option></select></div>
-                  <div><label className={T.label}>Billing Status</label><select value={editingRest.billingStatus || 'Paid'} onChange={e => setEditingRest({...editingRest, billingStatus: e.target.value})} className={`${T.input} ${editingRest.billingStatus === 'Past Due' ? 'text-red-500 font-black' : editingRest.billingStatus === 'Trial' ? 'text-blue-400 font-black' : 'text-emerald-500 font-black'}`}><option value="Trial">Trial (Free)</option><option value="Paid">Paid (Active)</option><option value="Past Due">Maintenance Lock (Lock App)</option></select></div>
-                  <div><label className={T.label}>Custom Price ($)</label><input type="number" placeholder="Default" value={editingRest.customPrice || ''} onChange={e => setEditingRest({...editingRest, customPrice: e.target.value})} className={`${T.input} placeholder-slate-600`} /></div>
-                  <div><label className={T.label}>Trial Length (Days)</label><input type="number" min="0" placeholder="14" value={editingRest.trialDays !== undefined ? editingRest.trialDays : 14} onChange={e => setEditingRest({...editingRest, trialDays: parseInt(e.target.value) || 0})} className={T.input} /></div>
+                <div className="bg-[#12161A] border border-[#2A353D] rounded-2xl p-4 space-y-4">
+                  <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-3">
+                    <div>
+                      <div className="text-[10px] font-black uppercase tracking-widest text-[#D4A381]">Plan, Founder Beta & Feature Access</div>
+                      <h3 className="text-xl font-black text-white mt-1">{currentPlan.label} • {currentSubscription.status}</h3>
+                      <p className="text-xs text-slate-400 font-bold mt-1 leading-relaxed">Plan gates unlock features. Staff still need the correct roster role and permissions before they can use anything.</p>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2 min-w-[260px]">
+                      <div className="bg-[#0B0E11] border border-[#2A353D] rounded-xl p-3"><div className="text-[8px] uppercase tracking-widest text-slate-500 font-black">Invoice pages</div><div className="text-lg font-black text-white">{currentPlan.invoicePagesLimit === Infinity ? '∞' : currentPlan.invoicePagesLimit}/mo</div></div>
+                      <div className="bg-[#0B0E11] border border-[#2A353D] rounded-xl p-3"><div className="text-[8px] uppercase tracking-widest text-slate-500 font-black">Menu pages</div><div className="text-lg font-black text-white">{currentPlan.menuPagesLimit === Infinity ? '∞' : currentPlan.menuPagesLimit}/mo</div></div>
+                    </div>
+                  </div>
+                  <div className="grid md:grid-cols-4 gap-2">
+                    {CUSTOMER_PLAN_ORDER.map(planId => { const plan = getPlanDefinition(planId); const active = currentPlan.id === plan.id; return <button key={plan.id} type="button" onClick={() => setPlan(plan.id)} className={`text-left rounded-xl border p-3 transition-colors ${active ? 'bg-[#D4A381] text-slate-950 border-[#D4A381]' : 'bg-[#0B0E11] border-[#2A353D] text-slate-300 hover:border-[#D4A381]/60'}`}><div className="text-[10px] font-black uppercase tracking-widest">{plan.label}</div><div className="text-xl font-black mt-1">${plan.monthlyPrice}</div><div className="text-[10px] font-bold opacity-80">Founder: ${plan.founderPrice?.toFixed(2)}/mo</div></button>; })}
+                  </div>
+                  <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                    <label><span className={T.label}>Status</span><select value={editingRest.subscription?.status || currentSubscription.status || 'active'} onChange={e => updateSubscriptionDraft({ status: e.target.value })} className={T.input}><option value="beta">Founder Beta / Beta</option><option value="active">Active manual</option><option value="past_due">Past Due</option><option value="canceled">Canceled</option><option value="trial_expired">Trial Expired</option><option value="internal">Internal</option></select></label>
+                    <label><span className={T.label}>Selected future tier</span><select value={currentSubscription.selectedFutureTier || currentPlan.id} onChange={e => updateSubscriptionDraft({ selectedFutureTier: e.target.value })} className={T.input}>{CUSTOMER_PLAN_ORDER.map(planId => <option key={planId} value={planId}>{getPlanDefinition(planId).label}</option>)}</select></label>
+                    <label><span className={T.label}>Billing provider</span><select value={editingRest.subscription?.billingProvider || 'none'} onChange={e => updateSubscriptionDraft({ billingProvider: e.target.value })} className={T.input}><option value="none">None / payments coming soon</option><option value="manual">Manual</option><option value="stripe_future">Stripe future</option></select></label>
+                    <label><span className={T.label}>Founder discount %</span><input type="number" min="0" max="100" value={editingRest.subscription?.founderDiscountPercent ?? 50} onChange={e => updateSubscriptionDraft({ founderDiscountPercent: Number(e.target.value || 0) })} className={T.input}/></label>
+                    <label><span className={T.label}>Beta started</span><input type="date" value={(currentSubscription.betaStartedAt || '').slice(0,10)} onChange={e => updateSubscriptionDraft({ betaStartedAt: e.target.value ? `${e.target.value}T00:00:00.000Z` : null })} className={T.input}/></label>
+                    <label><span className={T.label}>Beta ends</span><input type="date" value={(currentSubscription.betaEndsAt || '').slice(0,10)} onChange={e => updateSubscriptionDraft({ betaEndsAt: e.target.value ? `${e.target.value}T23:59:59.000Z` : null })} className={T.input}/></label>
+                    <label><span className={T.label}>Extended until</span><input type="date" value={(currentSubscription.betaExtendedUntil || '').slice(0,10)} onChange={e => updateSubscriptionDraft({ betaExtendedUntil: e.target.value ? `${e.target.value}T23:59:59.000Z` : null })} className={T.input}/></label>
+                    <label><span className={T.label}>Discount ends</span><input type="date" value={(currentSubscription.founderDiscountEndsAt || '').slice(0,10)} onChange={e => updateSubscriptionDraft({ founderDiscountEndsAt: e.target.value ? `${e.target.value}T23:59:59.000Z` : null })} className={T.input}/></label>
+                  </div>
+                  <textarea value={editingRest.subscription?.billingNotes || ''} onChange={e => updateSubscriptionDraft({ billingNotes: e.target.value })} className={T.input} rows={3} placeholder="Internal billing notes. Visible only to System Administrator tools." />
+                  <div className="grid md:grid-cols-3 gap-3">
+                    <div className="bg-blue-950/20 border border-blue-500/40 rounded-xl p-3"><div className="text-[9px] uppercase tracking-widest text-blue-300 font-black">Founder Beta</div><p className="text-xs text-slate-300 font-bold mt-1">60 days free, one 30-day extension, then 50% off {futurePlan.label} for 12 months.</p><div className="flex flex-wrap gap-2 mt-3"><button type="button" onClick={startFounderBeta} className="admin45-secondary-action">Start Beta</button><button type="button" onClick={extendFounderBeta} className="admin45-secondary-action">Extend 30 Days</button><button type="button" onClick={endFounderBeta} className="admin45-secondary-action">End Beta</button></div></div>
+                    <div className="bg-emerald-950/20 border border-emerald-500/40 rounded-xl p-3"><div className="text-[9px] uppercase tracking-widest text-emerald-300 font-black">Manual Billing</div><p className="text-xs text-slate-300 font-bold mt-1">Live payments are not active. Mark accounts active manually until billing launches.</p><button type="button" onClick={markManualActive} className="admin45-primary-action mt-3">Mark Active Manual</button></div>
+                    <div className="bg-orange-950/20 border border-orange-500/40 rounded-xl p-3"><div className="text-[9px] uppercase tracking-widest text-orange-300 font-black">Integrations Locked</div><p className="text-xs text-slate-300 font-bold mt-1">Customer tiers cannot access integrations yet. System Administrator only for internal testing.</p><div className="text-[10px] font-black text-orange-200 mt-3">Locked: yes</div></div>
+                  </div>
+                  <div className="bg-[#0B0E11] border border-[#2A353D] rounded-xl p-3"><div className="text-[9px] uppercase tracking-widest text-slate-500 font-black">Included feature sample</div><div className="flex flex-wrap gap-1.5 mt-2">{planFeatureList.map(label => <span key={label} className="px-2 py-1 rounded-full bg-[#12161A] border border-[#2A353D] text-[9px] font-black uppercase tracking-widest text-slate-300">{label}</span>)}</div></div>
                 </div>
-                
                 <div className="grid grid-cols-2 gap-2 mt-2">
                   <label className="flex items-center gap-2 p-3 bg-[#12161A] rounded-xl border border-[#2A353D] cursor-pointer hover:bg-[#1A2126] transition-colors"><input type="checkbox" checked={editingRest.isActive} onChange={e => setEditingRest({...editingRest, isActive: e.target.checked})} className="w-4 h-4 accent-emerald-500" /><span className={`text-xs font-black ${editingRest.isActive ? 'text-emerald-500' : 'text-slate-500'}`}>System Active</span></label>
                   <label className="flex items-center gap-2 p-3 bg-blue-900/10 rounded-xl border border-blue-900/50 cursor-pointer hover:bg-blue-900/20 transition-colors"><input type="checkbox" checked={editingRest.isReadOnly} onChange={e => setEditingRest({...editingRest, isReadOnly: e.target.checked})} className="w-4 h-4 accent-blue-500" /><span className={`text-xs font-black ${editingRest.isReadOnly ? 'text-blue-500' : 'text-slate-500'}`}>Read-Only Mode</span></label>
@@ -7198,22 +7373,7 @@ Type RESTORE to continue.`);
                 {/* Super-admin access is intentionally NOT managed here.
                     Use System Administrator > Access Control so elevated permissions stay in one audited place. */}
 
-                {/* QUICK APPLY TIER PRESETS */}
-                <div className="pt-4 border-t border-[#2A353D]">
-                  <label className={T.label}>Quick-Apply Tier Packages</label>
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-2">
-                    <button type="button" onClick={() => applyTierPreset('Starter')} className={`py-2.5 text-[10px] font-black uppercase tracking-widest rounded-lg border transition-colors ${editingRest.planType === 'Starter' ? 'bg-slate-100 text-slate-900 border-white shadow-[0_0_10px_rgba(255,255,255,0.2)]' : 'bg-[#12161A] text-slate-400 border-[#2A353D] hover:border-slate-500'}`}>Starter</button>
-                    <button type="button" onClick={() => applyTierPreset('Pro')} className={`py-2.5 text-[10px] font-black uppercase tracking-widest rounded-lg border transition-colors ${editingRest.planType === 'Pro' ? 'bg-[#D4A381] text-slate-900 border-[#C59373] shadow-[0_0_10px_rgba(212,163,129,0.2)]' : 'bg-[#12161A] text-slate-400 border-[#2A353D] hover:border-[#D4A381]'}`}>Pro</button>
-                    <button type="button" onClick={() => applyTierPreset('Elite')} className={`py-2.5 text-[10px] font-black uppercase tracking-widest rounded-lg border transition-colors ${editingRest.planType === 'Elite' ? 'bg-blue-500 text-white border-blue-400 shadow-[0_0_10px_rgba(59,130,246,0.2)]' : 'bg-[#12161A] text-slate-400 border-[#2A353D] hover:border-blue-500'}`}>Elite</button>
-<button type="button" onClick={() => applyTierPreset('Enterprise')} className={`py-2.5 text-[10px] font-black uppercase tracking-widest rounded-lg border transition-colors ${editingRest.planType === 'Enterprise' ? 'bg-purple-500 text-white border-purple-400 shadow-[0_0_10px_rgba(168,85,247,0.2)]' : 'bg-[#12161A] text-slate-400 border-[#2A353D] hover:border-purple-500'}`} title="Up to 5 Locations">Enterprise</button>                  </div>
-           <button type="button" onClick={() => {
-                    applyTierPreset('Pro');
-                    setEditingRest(prev => ({...prev, planType: 'Trial', billingStatus: 'Trial'}));
-                  }} className={`w-full mt-2 py-3 text-[10px] font-black uppercase tracking-widest rounded-lg border transition-colors ${editingRest.billingStatus === 'Trial' ? 'bg-blue-500 text-white border-blue-400 shadow-[0_0_10px_rgba(59,130,246,0.2)]' : 'bg-blue-900/20 text-blue-400 border-blue-900/50 hover:bg-blue-900/40'}`}>
-                    🎁 Start {editingRest.trialDays !== undefined ? editingRest.trialDays : 14}-Day Free Trial (Unlocks Pro Features)
-                  </button>
-                </div>
-
+                {/* Plan gates above are the source of truth. Legacy module overrides remain only for older workspace flags during transition. */}
                 {/* MANUAL MODULE OVERRIDES */}
                 <div className="pt-4 border-t border-[#2A353D]">
                    <label className={T.label}>Manual Module Overrides</label>
@@ -9408,6 +9568,10 @@ const HELP_ARTICLES = [
 
   { id:'start', title:'Getting started checklist', group:'Getting Started', keywords:'setup first steps owner restaurant add staff modules', body:['Open Settings and confirm restaurant name, address, geofence, and enabled modules.','Add managers first in Staff Roster, then add hourly staff. New accounts show a one-time login popup with email and temporary password.','Create roles, schedule presets, and at least one schedule template before publishing the first week.','Use Administrator → Clients → Demo Mode for safe read-only demos with contact info hidden.'] },
   { id:'app-training-manual', title:'Complete app training manual', group:'Training Manual', keywords:'training manual complete app everything explain all tabs staff manager owner help center system administrator financials inventory schedule prep recipes messages security roles', body:['The Help Center includes a searchable main-app training manual. It explains what each area does, who should use it, what to check, and safety or privacy warnings.', 'Search for plain words such as clock, schedule, prep, inventory, invoice, 86, financials, tips, expenses, training, HR, message, voice, or security. Matching manual chapters appear under the Searchable app training manual card.', 'The main-app training manual is public-facing and customer safe. It explains everyday app features without exposing System Administrator repair details, secrets, forensics, or internal support-only procedures.', 'System Administrator has its own deeper manual for super admins and support work. Keep both manuals updated whenever features are added or renamed so staff can understand what every button is for.'] },
+
+  { id:'plans-founder-beta', title:'Plans, Founder Beta, and locked features', group:'Plans & Billing', keywords:'plans tiers shift operations smart kitchen owner pro founder beta discount locked feature billing coming soon', body:['86 Chaos workspaces can be on Shift, Operations, Smart Kitchen, or Owner Pro. Some tools are included only on higher plans so the app stays simple and costs stay controlled.', 'Founder Beta is free while the beta is active. The standard beta is 60 days, and a 30-day extension may be added by support. Founder Beta restaurants keep 50% off the selected plan for 12 months after beta ends.', 'Owners and permitted admins can open Settings → Plan & Billing to see the current plan, beta dates, Founder Beta discount, normal launch price, discounted Founder price, scan limits, usage, and included features.', 'A locked feature message means the workspace plan does not include that tool, the user role or permission does not allow it, or both. Owners see upgrade guidance. Staff see a simpler unavailable message without billing clutter.', 'Billing payments are not live yet. Upgrade and downgrade buttons are marked coming soon unless support manually updates the workspace plan.'] },
+  { id:'integrations-coming-soon', title:'Integrations are coming soon', group:'Plans & Billing', keywords:'integrations pos accounting oauth api keys locked coming soon manual entry imports', body:['POS and accounting integrations are being tested before customer rollout.', 'For now, integrations are locked on every customer plan, including Founder Beta, Shift, Operations, Smart Kitchen, and Owner Pro.', 'Manual entry, Daily Close, inventory records, scans where included, and report exports can still be used where available.', 'Customer screens should not ask for OAuth, API keys, provider credentials, or unfinished provider setup. If you see that, report it from Help Center.'] },
+  { id:'plan-access-and-roles', title:'How plans and role permissions work together', group:'Plans & Billing', keywords:'feature access roles permissions roster roles custom owner preferences plan gate locked', body:['A feature unlocks only when the workspace plan includes it and the signed-in user has the correct role or permission.', 'Plans decide what the restaurant pays for. Role permissions decide who inside that restaurant may use it.', 'Roles used by schedule, labor, payroll, exports, reports, and dashboards should come from the account owner custom Roster Roles in Preferences. Generic role names are only fallback labels when no custom roster roles have been configured.', 'If someone should have access but does not, check the workspace plan first, then check that user’s role and permissions in Staff Roster or Settings.'] },
   { id:'employee-quick-start', title:'Employee Quick Start', group:'Quick Start Guides', keywords:'employee new hire first login install download app home screen clock schedule help', body:['First login opens a short guided tour. It explains how to add the web app to the phone home screen, clock in/out, view schedule, read messages, and find Help Center.','Android: open in Chrome, tap the three dots, then Add to Home screen or Install App. iPhone: open in Safari, tap Share, then Add to Home Screen.','Employees should use Time Clock & Schedule for the full schedule and punches. Schedule Builder is manager-only.','Use the Restart Guided Tour button in Help Center if someone skips it or needs training again.'] },
   { id:'manager-quick-start', title:'Manager / Restaurant Quick Start', group:'Quick Start Guides', keywords:'manager restaurant setup workspace tour add employees permissions backups geofence', body:['New workspaces open a manager setup tour that covers saving the app, adding employees, setting permissions, setting clock rules, backups, and Help Center.','Staff Roster shows the one-time generated login popup after adding employees. Copy, print, email, or text before closing.','Set the required work area in Settings so clock-out location can be reviewed.','Backup Center is under System Administrator → Forensics & Backups and requires RESTORE confirmation for restore actions.'] },
   { id:'voice-preview', title:'Using Voice Assistant Preview', group:'Voice Commands', keywords:'voice preview microphone prep quantity show schedule commands fewer clicks help center search permissions full schedule month view staff list manager brief kitchen command center 86 alert', body:['The microphone button is marked PREVIEW. Tap once and speak; safe commands like opening tabs or adding prep tasks run with fewer clicks.','Voice removes command words before saving. “Add ranch to prep list” saves Ranch, not the words add to prep list. Quantities are parsed separately, so “Prep 2 pans ranch” saves name Ranch, quantity 2, and unit pans.' , 'Saying “86 salmon”, “86 burger”, or “we’re out of ranch” posts an important 86 alert and does not edit inventory stock counts. When Menu Intelligence links exist, the alert can include the matched inventory item and unavailable menu items.','Navigation commands can pull up screens by plain name: “open manager brief”, “open kitchen command center”, “show me full schedule”, “show me month view”, “show me staff list”, “open inventory”, “open prep”, or “show schedule builder”.','Schedule voice commands open the proper Time Clock & Schedule subview. Full schedule and month view do not open Schedule Builder unless the user specifically asks for Schedule Builder and has permission.','Help Center search works from the microphone. Say “search help center for missed punch” or “help me with geofence”.','Voice can open specific recipes by name, such as “open beer cheese recipe” or “show me chicken marsala recipe”. It searches the live Recipe Book, so recipes added later work without adding new command phrases.', 'Voice navigation still follows user permissions and enabled modules, so the mic cannot open hidden tabs.'] },
@@ -9427,7 +9591,7 @@ const HELP_ARTICLES = [
   { id:'support', title:'Contacting 86 Chaos support', group:'Support', keywords:'help contact support bug error problem', body:['Search Help Center first using general words.','Use the Report a Bug / Error panel inside Help Center when the app behaves wrong. Include what you clicked and what happened.','Owners can contact support after checking the article tied to the page they are using.'] },
   { id:'admin-mobile-layout', title:'Using Admin Workspace on mobile', group:'System Administrator', keywords:'admin mobile layout phone section picker menu search calm workspace', body:['Admin Workspace uses one section selector under the search box on phones.', 'Choose the exact section from the selector, or tap Menu to open the full grouped list.', 'Every non-home page shows its title, purpose, and a Back to admin home button.', 'The old Signals and Command Deck panels were removed so the mobile page stays shorter and easier to scan.'] },
   { id:'admin-command-deck', title:'Where the old Command Deck went', group:'System Administrator', keywords:'admin command deck removed new admin workspace priority list quick actions', body:['Version 15.0.45 removed the always-visible Command Deck and dense signal board.', 'The most useful signals are now split between the three top summaries, the Admin Home priority list, and the four core numbers.', 'Open Health, Backups, Security, Workspaces, People, Push, or Support when you need the detailed data.', 'Nothing was deleted. The presentation changed so the admin area is less overwhelming.'] },
-  { id:'settings-branding-preferences', title:'Settings: branding, accent color, and access', group:'Settings', keywords:'settings preferences branding accent color logo upload display locked app name permissions integrations menu intelligence workspace', body:['Open Settings → Branding to change the workspace accent color, upload or paste a restaurant logo, set the help contact, and choose display defaults such as timezone, date/time format, currency, week start, and default staff landing tab. Logo uploads use the secure app upload path first, with Firebase Storage as a fallback.', 'The app name and 86 Chaos logo are locked. A restaurant logo can appear beside 86 Chaos branding, but it never replaces or hides the 86 Chaos brand.', 'Only account owners and Super Admin can grant Settings, Branding, Integrations, and Menu Intelligence access. Use the Settings Access area in Settings → Branding to choose trusted users.', 'After changing display settings, refresh the app to confirm the accent color, logo display, and defaults stayed saved.'] },
+  { id:'settings-branding-preferences', title:'Settings: branding, accent color, and access', group:'Settings', keywords:'settings preferences branding accent color logo upload display locked app name permissions integrations menu intelligence workspace', body:['Open Settings → Branding to change the workspace accent color, upload or paste a restaurant logo, set the help contact, and choose display defaults such as timezone, date/time format, currency, week start, and default staff landing tab. Logo uploads use the secure app upload path first, with Firebase Storage as a fallback.', 'The app name and 86 Chaos logo are locked. A restaurant logo can appear beside 86 Chaos branding, but it never replaces or hides the 86 Chaos brand.', 'Only account owners and Super Admin can grant Settings, Branding, and Menu Intelligence access. Integrations are locked for customer tiers until rollout and are visible only to System Administrator testing tools.', 'After changing display settings, refresh the app to confirm the accent color, logo display, and defaults stayed saved.'] },
   { id:'owner-wage-staff-permissions', title:'Owner staff and wage permissions', group:'Permissions', keywords:'owner wages payroll hourly rate add employee staff roster wage view edit permission denied', body:['Account owners and Super Admin can add staff from Staff Roster and edit hourly wages, including their own wage.', 'Only account owners and Super Admin should choose who can see or edit wages. Use Staff Roster permission switches or Settings → Workspace → Global Config → Wage Visibility & Edit Access.', 'View Wages lets a trusted person see wage labels and labor cost calculations. Edit Wages lets them change wage values from Staff Roster and automatically implies view access.', 'Managers/admins without wage permission can still manage staff basics if allowed, but wage fields stay hidden and Firestore rules reject wage-access changes.', 'If a save shows Missing or insufficient permissions, confirm the user is the restaurant owner or has the right wage-edit permission and publish the matching Firestore rules to the same Firebase project.'] },
   { id:'admin-edit-users', title:'Support-editing users and moving restaurants', group:'System Administrator', keywords:'admin edit user change restaurant move workspace support edit restaurantId notifications gps permissions', body:['Open System Administrator → People and search for the person by name, email, role, ID, or restaurant.','Click Support Edit to change support-safe profile details: name, email label, phone, role, wage, active status, restaurant/workspace, restaurant admin, and force password change.','Normal feature permissions are read-only here. Change those from the restaurant Staff Roster so support cannot accidentally alter a client’s access map from the platform cockpit.','The diagnostics panel shows push token status, browser notification permission, GPS permission/support, workspace geofence status, last active time, active tab, host, device, screen, and saved notification preferences.','Super-admin access is intentionally not in this editor. Use Access Control only for platform administrator access.','Add a support note before saving when the reason is not obvious. The change is logged in Forensics.'] },
   { id:'admin-forensics', title:'Using Forensics during support', group:'System Administrator', keywords:'admin forensics audit ghost raw json support diagnostics destructive actions', body:['Use Forensics when you need to know who changed what and when.','The top cards summarize audit count, Ghost actions, destructive actions, and support edits.','Use Raw JSON Inspector only when normal screens do not explain a data problem.','Look for the Ghost Action and Destructive badges before making conclusions about a client issue.'] },
@@ -9563,9 +9727,10 @@ const TabHelpCenter = ({ appUser, activeTab, voiceHelpSearchTarget = null, addTo
 
 
 
-const TabFinancials = ({ currentDate, users = [], shifts = [], sales = [], timePunches = [], addToast, appUser, initialSubTab = 'overview' }) => {
+const TabFinancials = ({ currentDate, users = [], shifts = [], sales = [], timePunches = [], addToast, appUser, clientData = {}, setActiveTab, initialSubTab = 'overview' }) => {
   const canSales = financeAccess(appUser, 'sales');
   const canLabor = financeAccess(appUser, 'labor');
+  const planAccess = usePlanAccess(appUser, clientData);
   const [subTab, setSubTab] = useState(initialSubTab === 'ledger' ? 'daily-close' : initialSubTab === 'labor' ? 'labor' : initialSubTab || 'overview');
   const [month, setMonth] = useState(getMonthStr(currentDate || getToday()));
   const [expenseForm, setExpenseForm] = useState({ date: getToday(), vendor: '', category: 'Other', amount: '', paymentMethod: 'Unpaid', dueDate: '', paid: false, notes: '' });
@@ -9635,21 +9800,23 @@ const TabFinancials = ({ currentDate, users = [], shifts = [], sales = [], timeP
   }, {})).map(([vendor, amount]) => ({ vendor, amount })).sort((a, b) => b.amount - a.amount);
 
   const financeTabs = [
-    { id: 'overview', label: 'Overview', show: canSales || canLabor },
-    { id: 'daily-close', label: 'Daily Close', show: canSales },
-    { id: 'sales', label: 'Sales', show: canSales },
-    { id: 'labor', label: 'Labor & Payroll', show: canLabor },
-    { id: 'tips', label: 'Tips', show: canLabor },
-    { id: 'cogs', label: 'COGS & Vendors', show: canSales },
-    { id: 'expenses', label: 'Expenses', show: canSales },
-    { id: 'pnl', label: 'P&L', show: canSales },
-    { id: 'targets', label: 'Targets', show: canSales },
-    { id: 'reports', label: 'Reports', show: canSales || canLabor }
+    { id: 'overview', label: 'Overview', show: canSales || canLabor, access: planAccess.canFinancialSubtab('overview') },
+    { id: 'daily-close', label: 'Daily Close', show: canSales, access: planAccess.canFinancialSubtab('daily-close') },
+    { id: 'sales', label: 'Sales', show: canSales, access: planAccess.canFinancialSubtab('ledger') },
+    { id: 'labor', label: 'Labor & Payroll', show: canLabor, access: planAccess.canFinancialSubtab('labor') },
+    { id: 'tips', label: 'Tips', show: canLabor, access: planAccess.canFinancialSubtab('tips') },
+    { id: 'cogs', label: 'COGS & Vendors', show: canSales, access: planAccess.canFinancialSubtab('cogs') },
+    { id: 'expenses', label: 'Expenses', show: canSales, access: planAccess.canFinancialSubtab('expenses') },
+    { id: 'pnl', label: 'P&L', show: canSales, access: planAccess.canFinancialSubtab('pnl') },
+    { id: 'targets', label: 'Targets', show: canSales, access: planAccess.canFinancialSubtab('targets') },
+    { id: 'reports', label: 'Reports', show: canSales || canLabor, access: planAccess.canFinancialSubtab('reports') }
   ].filter(t => t.show);
+  const selectedFinanceTab = financeTabs.find(t => t.id === subTab) || financeTabs[0];
+  const selectedFinanceAccess = selectedFinanceTab?.access;
 
   useEffect(() => {
     if (!financeTabs.some(t => t.id === subTab) && financeTabs[0]) setSubTab(financeTabs[0].id);
-  }, [canSales, canLabor, subTab]);
+  }, [canSales, canLabor, subTab, planAccess.subscription.planId]);
 
   const saveExpense = async (e) => {
     e.preventDefault();
@@ -9772,10 +9939,14 @@ const TabFinancials = ({ currentDate, users = [], shifts = [], sales = [], timeP
       </div>
 
       <div className="flex gap-2 overflow-x-auto pb-2 border-b border-[#2A353D] custom-scrollbar">
-        {financeTabs.map(tab => <button key={tab.id} onClick={() => setSubTab(tab.id)} className={`px-4 py-3 rounded-xl text-xs uppercase tracking-widest font-black whitespace-nowrap ${subTab === tab.id ? `${T.grad} text-slate-900` : 'bg-[#1A2126] text-slate-300 hover:text-white border border-[#2A353D]'}`}>{tab.label}</button>)}
+        {financeTabs.map(tab => <button key={tab.id} onClick={() => setSubTab(tab.id)} className={`px-4 py-3 rounded-xl text-xs uppercase tracking-widest font-black whitespace-nowrap ${subTab === tab.id ? `${T.grad} text-slate-900` : 'bg-[#1A2126] text-slate-300 hover:text-white border border-[#2A353D]'} ${tab.access?.allowed ? '' : 'opacity-75'}`}>{tab.access?.allowed ? tab.label : `🔒 ${tab.label}`}</button>)}
       </div>
 
-      {subTab === 'overview' && (
+      {selectedFinanceAccess && selectedFinanceAccess.allowed === false && (
+        <LockedFeatureScreen access={selectedFinanceAccess} appUser={appUser} setActiveTab={setActiveTab} />
+      )}
+
+      {selectedFinanceAccess?.allowed !== false && subTab === 'overview' && (
         <div className="space-y-4">
           <div className="grid sm:grid-cols-2 xl:grid-cols-4 gap-3">
             <Metric label="Net Sales" value={moneyText(netSales)} helper={`${monthSales.length} daily close records`} tone="text-[#D4A381]" />
@@ -9806,18 +9977,18 @@ const TabFinancials = ({ currentDate, users = [], shifts = [], sales = [], timeP
         </div>
       )}
 
-      {subTab === 'daily-close' && <TabSales sales={sales} timePunches={timePunches} users={users} addToast={addToast} appUser={appUser} />}
+      {selectedFinanceAccess?.allowed !== false && subTab === 'daily-close' && <TabSales sales={sales} timePunches={timePunches} users={users} addToast={addToast} appUser={appUser} />}
 
-      {subTab === 'sales' && (
+      {selectedFinanceAccess?.allowed !== false && subTab === 'sales' && (
         <div className="grid lg:grid-cols-2 gap-4">
           <div className={`${T.card} p-4`}><h3 className="font-black text-white text-xl mb-3">Sales Mix</h3><div className="space-y-3">{salesMix.length === 0 && <FriendlyEmpty title="No sales mix yet" text="Enter category sales in Daily Close to unlock mix reporting."/>}{salesMix.map(row => <div key={row.label}><div className="flex justify-between text-sm font-black"><span className="text-white">{row.label}</span><span className="text-[#D4A381]">{moneyText(row.value, 2)}</span></div><div className="h-2 bg-[#0B0E11] border border-[#2A353D] rounded-full mt-1 overflow-hidden"><div className="h-full bg-[#D4A381]" style={{ width: `${Math.min(100, netSales > 0 ? (row.value / netSales) * 100 : 0)}%` }} /></div></div>)}</div></div>
           <SimpleTable headers={['Date', 'Gross', 'Net', 'Cash', 'Card', 'Deposit', 'Status']} rows={monthSales.sort((a,b) => safeFinanceDate(a).localeCompare(safeFinanceDate(b))).map(s => [formatDisplayDate(safeFinanceDate(s)), moneyText(getFinancialGrossSales(s), 2), moneyText(getFinancialNetSales(s), 2), moneyText(s.cashSales, 2), moneyText(s.cardSales, 2), moneyText(s.depositAmount, 2), s.closeStatus || 'Open'])} />
         </div>
       )}
 
-      {subTab === 'labor' && <TabLabor currentDate={currentDate} users={users} shifts={shifts} sales={sales} timePunches={timePunches} addToast={addToast} appUser={appUser} />}
+      {selectedFinanceAccess?.allowed !== false && subTab === 'labor' && <TabLabor currentDate={currentDate} users={users} shifts={shifts} sales={sales} timePunches={timePunches} addToast={addToast} appUser={appUser} />}
 
-      {subTab === 'tips' && (
+      {selectedFinanceAccess?.allowed !== false && subTab === 'tips' && (
         <div className="space-y-4">
           <div className="grid sm:grid-cols-3 gap-3"><Metric label="Total Tips" value={moneyText(totalTips, 2)} helper="Cash + credit tips on time punches" tone="text-[#D4A381]"/><Metric label="Tip Records" value={monthPunches.filter(p => parseFinanceAmount(p.cashTips) || parseFinanceAmount(p.creditTips)).length} helper="Punches with declared tips"/><Metric label="Export" value="Ready" helper="CSV tip report by employee and roster role" tone="text-emerald-400"/></div>
           <button onClick={downloadTipsReport} className={T.btn}>Download Tip Report</button>
@@ -9825,21 +9996,21 @@ const TabFinancials = ({ currentDate, users = [], shifts = [], sales = [], timeP
         </div>
       )}
 
-      {subTab === 'cogs' && (
+      {selectedFinanceAccess?.allowed !== false && subTab === 'cogs' && (
         <div className="grid lg:grid-cols-2 gap-4">
           <div className="space-y-3"><Metric label="Invoice Spend" value={moneyText(invoiceSpend, 2)} helper="From invoice history in the selected month" tone="text-[#D4A381]"/><Metric label="Food + Beverage Cost" value={moneyText(foodCost + beverageCost, 2)} helper={`${pctText(netSales > 0 ? ((foodCost + beverageCost) / netSales) * 100 : 0)} of net sales`} tone={(foodPct + beveragePct) > (targets.foodPct + targets.beveragePct) ? 'text-red-400' : 'text-emerald-400'} /><Metric label="Unreviewed invoices" value={monthInvoices.filter(inv => ['Needs Review','Draft','Pending'].includes(String(inv.status || ''))).length} helper="Finish reconciliation in Inventory" /></div>
           <SimpleTable headers={['Vendor', 'Spend']} rows={vendorSpend.map(v => [v.vendor, moneyText(v.amount, 2)])} empty="No invoice vendor spend found for this month." />
         </div>
       )}
 
-      {subTab === 'expenses' && (
+      {selectedFinanceAccess?.allowed !== false && subTab === 'expenses' && (
         <div className="grid lg:grid-cols-3 gap-4">
           <form onSubmit={saveExpense} className={`${T.card} p-4 space-y-3`}><h3 className="text-xl font-black text-white">Add Expense</h3><label className={T.label}>Date</label><input type="date" value={expenseForm.date} onChange={e=>setExpenseForm({...expenseForm,date:e.target.value})} className={T.input}/><label className={T.label}>Vendor / Payee</label><input value={expenseForm.vendor} onChange={e=>setExpenseForm({...expenseForm,vendor:e.target.value})} className={T.input} placeholder="Utility company, repair tech, supplier..."/><label className={T.label}>Category</label><select value={expenseForm.category} onChange={e=>setExpenseForm({...expenseForm,category:e.target.value})} className={T.input}>{FINANCE_EXPENSE_CATEGORIES.map(c=><option key={c}>{c}</option>)}</select><label className={T.label}>Amount</label><input type="number" min="0" step="0.01" value={expenseForm.amount} onChange={e=>setExpenseForm({...expenseForm,amount:e.target.value})} className={T.input}/><label className={T.label}>Payment Method</label><select value={expenseForm.paymentMethod} onChange={e=>setExpenseForm({...expenseForm,paymentMethod:e.target.value,paid:e.target.value!=='Unpaid'})} className={T.input}>{FINANCE_PAYMENT_METHODS.map(c=><option key={c}>{c}</option>)}</select><label className={T.label}>Due Date</label><input type="date" value={expenseForm.dueDate} onChange={e=>setExpenseForm({...expenseForm,dueDate:e.target.value})} className={T.input}/><label className={T.label}>Notes</label><textarea value={expenseForm.notes} onChange={e=>setExpenseForm({...expenseForm,notes:e.target.value})} className={T.input} rows={3}></textarea><button className={`${T.btn} w-full`}>Save Expense</button></form>
           <div className="lg:col-span-2 space-y-4"><div className="grid sm:grid-cols-2 gap-3"><Metric label="Operating Expenses" value={moneyText(operatingExpenses, 2)} helper={`${monthExpenses.length} expense records`} tone="text-[#D4A381]"/><Metric label="Unpaid" value={moneyText(monthExpenses.filter(e=>!e.paid && e.paymentMethod==='Unpaid').reduce((s,e)=>s+getFinancialExpenseAmount(e),0),2)} helper="Marked Unpaid" tone="text-orange-300"/></div><SimpleTable headers={['Date','Vendor','Category','Amount','Method','Due','']} rows={monthExpenses.sort((a,b)=>safeFinanceDate(b).localeCompare(safeFinanceDate(a))).map(e => [formatDisplayDate(safeFinanceDate(e)), e.vendor || e.payee || 'Expense', e.category || 'Other', moneyText(e.amount,2), e.paymentMethod || (e.paid ? 'Paid' : 'Unpaid'), e.dueDate || '', <button onClick={() => deleteExpense(e)} className="text-red-300 hover:text-red-200 font-black">Delete</button>])} /></div>
         </div>
       )}
 
-      {subTab === 'pnl' && (
+      {selectedFinanceAccess?.allowed !== false && subTab === 'pnl' && (
         <div className="grid lg:grid-cols-2 gap-4">
           <SimpleTable headers={['Line', 'Amount']} rows={[
             ['Gross Sales', moneyText(grossSales, 2)], ['Less Discounts / Comps / Refunds', moneyText(grossSales - netSales, 2)], ['Net Sales', moneyText(netSales, 2)], ['Food Cost', moneyText(foodCost, 2)], ['Beverage Cost', moneyText(beverageCost, 2)], ['Gross Profit', moneyText(netSales - foodCost - beverageCost, 2)], ['Labor', moneyText(laborCost, 2)], ['Operating Expenses', moneyText(operatingExpenses, 2)], ['Estimated Net Profit', moneyText(estimatedProfit, 2)]
@@ -9848,11 +10019,11 @@ const TabFinancials = ({ currentDate, users = [], shifts = [], sales = [], timeP
         </div>
       )}
 
-      {subTab === 'targets' && (
+      {selectedFinanceAccess?.allowed !== false && subTab === 'targets' && (
         <form onSubmit={saveTargets} className={`${T.card} p-5 space-y-4 max-w-5xl`}><h3 className="text-2xl font-black text-white">Financial Targets & Warning Thresholds</h3><p className="text-sm text-slate-300 font-bold">Targets drive the dashboard color signals. Set realistic numbers for this restaurant, not generic industry mythology.</p><div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3">{Object.entries({ laborPct:'Target Labor %', foodPct:'Target Food %', beveragePct:'Target Beverage %', primePct:'Target Prime %', weeklySalesGoal:'Weekly Sales Goal', monthlySalesGoal:'Monthly Sales Goal', cashVarianceAlert:'Cash Variance Alert', overtimeAlertHours:'Overtime Alert Hours' }).map(([key,label]) => <label key={key}><span className="block text-xs font-black text-slate-300 mb-1">{label}</span><input type="number" step="0.01" value={targetsDraft[key] ?? ''} onChange={e=>setTargetsDraft({...targetsDraft,[key]:e.target.value})} className={T.input}/></label>)}</div><button className={T.btn}>Save Targets</button></form>
       )}
 
-      {subTab === 'reports' && (
+      {selectedFinanceAccess?.allowed !== false && subTab === 'reports' && (
         <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-4">{[
           ['Owner Financial Report', 'Printable month summary with KPIs, risks, P&L, and close status.', () => downloadFinanceReport('print')],
           ['CSV Financial Summary', 'Download the same high-level report as a spreadsheet-friendly CSV.', () => downloadFinanceReport('csv')],

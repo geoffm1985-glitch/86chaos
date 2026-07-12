@@ -13,7 +13,7 @@ const {
 } = require('./_ai-usage');
 
 
-const MENU_SCANNER_VERSION = '15.0.53';
+const MENU_SCANNER_VERSION = '15.0.54';
 const {
   getAllowedGeminiModels,
   getHardOutputTokenLimit,
@@ -325,7 +325,8 @@ module.exports = async function handler(req, res) {
       idempotencyKey,
       provider: 'google_gemini',
       model: modelCandidates[0] || '',
-      sourceRoute: '/api/scan-menu'
+      sourceRoute: '/api/scan-menu',
+      planScanLimits: access.planScanLimits
     });
     if (usageReservation.blocked) return res.status(429).json(buildLimitResponse(usageReservation));
     if (usageReservation.duplicate) return res.status(409).json(buildDuplicateResponse(usageReservation));

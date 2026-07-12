@@ -1,8 +1,4 @@
 {
-  "framework": "create-react-app",
-  "installCommand": "npx -y npm@10.9.2 ci --legacy-peer-deps --no-audit --no-fund",
-  "buildCommand": "node node_modules/react-scripts/scripts/build.js",
-  "outputDirectory": "build",
   "headers": [
     {
       "source": "/(.*)",

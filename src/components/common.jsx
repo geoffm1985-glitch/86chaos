@@ -9,6 +9,7 @@ import { T, db, storage, auth, messaging, firebaseConfig, secureFetch, MASTER_AD
 import { buildPrepCreatePayload, buildPrepQuantityUpdate, findPrepMatch, formatPrepAmount, isLikelyPrepCommand, parsePrepCommandItems, summarizePrepResults } from '../core/smartPrep';
 import { buildEightySixAlertDetails, canUseMenuIntelligence, resolveStrictEightySixMatch } from '../core/menuIntelligence';
 import { parseReminderCommand } from '../core/reminderUtils';
+import { resolveFeatureAccess, featureForRoute, isMasterAdminUser } from '../lib/featureAccess';
 
 const CheersLogo = ({ clientData }) => {
   const settings = clientData?.systemSettings || {};
@@ -58,31 +59,37 @@ const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppU
   if (!isOpen) return null;
   const tabs = [];
   const perms = appUser?.permissions || {};
-  const isGod = Boolean((MASTER_ADMIN_EMAIL && appUser?.email?.toLowerCase() === MASTER_ADMIN_EMAIL.toLowerCase()) || appUser?.isSuperAdmin);
+  const isGod = Boolean((MASTER_ADMIN_EMAIL && appUser?.email?.toLowerCase() === MASTER_ADMIN_EMAIL.toLowerCase()) || appUser?.isSuperAdmin || isMasterAdminUser(appUser));
 
   const isEnabled = (feat) => clientFeatures[feat] !== false;
+  const planAllowsTab = (tabId) => {
+    const featureKey = featureForRoute(tabId);
+    if (!featureKey) return true;
+    return resolveFeatureAccess({ workspace: clientData || {}, user: appUser || {}, featureKey }).allowed;
+  };
+  const pushTab = (tab) => { if (planAllowsTab(tab.id)) tabs.push(tab); };
 
-  tabs.push({ id: 'today', label: 'Manager Brief', icon: <Star size={18}/>, dot: hasUnreadMessages || hasMyShiftAlert || hasScheduleBuilderAlert });
-  if (isEnabled('schedule')) tabs.push({ id: 'published', label: 'Time Clock & Schedule', icon: <Clock size={18}/>, dot: hasMyShiftAlert }); 
-  if ((isEnabled('labor') || isEnabled('sales')) && (isGod || appUser?.isAdmin || perms.labor || perms.schedule || perms.sales)) tabs.push({ id: 'financials', label: 'Financials', icon: <Scale size={18}/> });
-  if (isEnabled('ops') && (isGod || appUser?.isAdmin || perms.ops)) tabs.push({ id: 'ops', label: 'Kitchen Command Center', icon: <ChefHat size={18}/> }); 
-  if (isEnabled('messages')) tabs.push({ id: 'messages', label: 'Message Board', icon: <MessageSquare size={18}/>, dot: hasUnreadMessages });
-  if (isEnabled('events') && (appUser?.isAdmin || perms.events || perms.schedule || perms.team)) tabs.push({ id: 'events', label: 'Event Calendar', icon: <Star size={18}/> });
-  if (isEnabled('prep') && (appUser?.isAdmin || appUser?.role === 'Kitchen' || perms.prep)) tabs.push({ id: 'prep', label: 'Prep & Tasks', icon: <ClipboardList size={18}/> });
-  if (isEnabled('recipes') && (appUser?.isAdmin || appUser?.role === 'Kitchen' || perms.prep || perms.team)) tabs.push({ id: 'recipes', label: 'Recipe Book', icon: <BookOpen size={18}/> });
-  if (isEnabled('inventory') && (appUser?.isAdmin || perms.inventory || perms.team)) tabs.push({ id: 'inventory', label: 'Inventory & Orders', icon: <Package size={18}/> });  
-  if (!appUser?.isDemo && (appUser?.isAdmin || perms.inventory || perms.prep || perms.team || canUseMenuIntelligence(appUser, clientData))) tabs.push({ id: 'ai-tools', label: 'AI Tools', icon: <Sparkles size={18}/> });
-  if (canUseMenuIntelligence(appUser, clientData)) tabs.push({ id: 'menu-intelligence', label: 'Menu Intelligence', icon: <Sparkles size={18}/> });
-  tabs.push({ id: 'reminders', label: 'My Reminders', icon: <Bell size={18}/> });
-  if (isEnabled('team')) tabs.push({ id: 'team', label: 'Staff Roster', icon: <Users size={18}/> });
-  if (!appUser?.isDemo && isEnabled('hr')) tabs.push({ id: 'hr-training', label: 'HR & Training', icon: <BookOpen size={18}/> });
-  if (isEnabled('maintenance') && (appUser?.isAdmin || perms.team)) tabs.push({ id: 'maintenance', label: 'Maintenance Log', icon: <Wrench size={18}/> });
+  pushTab({ id: 'today', label: 'Manager Brief', icon: <Star size={18}/>, dot: hasUnreadMessages || hasMyShiftAlert || hasScheduleBuilderAlert });
+  if (isEnabled('schedule')) pushTab({ id: 'published', label: 'Time Clock & Schedule', icon: <Clock size={18}/>, dot: hasMyShiftAlert }); 
+  if ((isEnabled('labor') || isEnabled('sales')) && (isGod || appUser?.isAdmin || perms.labor || perms.schedule || perms.sales)) pushTab({ id: 'financials', label: 'Financials', icon: <Scale size={18}/> });
+  if (isEnabled('ops') && (isGod || appUser?.isAdmin || perms.ops)) pushTab({ id: 'ops', label: 'Kitchen Command Center', icon: <ChefHat size={18}/> }); 
+  if (isEnabled('messages')) pushTab({ id: 'messages', label: 'Message Board', icon: <MessageSquare size={18}/>, dot: hasUnreadMessages });
+  if (isEnabled('events')) pushTab({ id: 'events', label: 'Event Calendar', icon: <Star size={18}/> });
+  if (isEnabled('prep')) pushTab({ id: 'prep', label: 'Prep & Tasks', icon: <ClipboardList size={18}/> });
+  if (isEnabled('recipes')) pushTab({ id: 'recipes', label: 'Recipe Book', icon: <BookOpen size={18}/> });
+  if (isEnabled('inventory')) pushTab({ id: 'inventory', label: 'Inventory & Orders', icon: <Package size={18}/> });  
+  if (!appUser?.isDemo) pushTab({ id: 'ai-tools', label: 'AI Tools', icon: <Sparkles size={18}/> });
+  if (canUseMenuIntelligence(appUser, clientData)) pushTab({ id: 'menu-intelligence', label: 'Menu Intelligence', icon: <Sparkles size={18}/> });
+  pushTab({ id: 'reminders', label: 'My Reminders', icon: <Bell size={18}/> });
+  if (isEnabled('team')) pushTab({ id: 'team', label: 'Staff Roster', icon: <Users size={18}/> });
+  if (!appUser?.isDemo && isEnabled('hr')) pushTab({ id: 'hr-training', label: 'HR & Training', icon: <BookOpen size={18}/> });
+  if (isEnabled('maintenance') && (appUser?.isAdmin || perms.team)) pushTab({ id: 'maintenance', label: 'Maintenance Log', icon: <Wrench size={18}/> });
   
   const isTrueGod = Boolean((MASTER_ADMIN_EMAIL && (appUser?.email || '').toLowerCase() === MASTER_ADMIN_EMAIL.toLowerCase()) || appUser?.isSuperAdmin === true);
-  if (isTrueGod) tabs.push({ id: 'godmode', label: 'System Administrator', icon: <Globe size={18}/> });
-  if (!appUser?.isDemo && (appUser?.isAdmin || isTrueGod)) tabs.push({ id: 'audit', label: 'System Audit', icon: <Shield size={18}/> });  
-  tabs.push({ id: 'help', label: 'Help Center', icon: <BookOpen size={18}/>, dot: hasHelpUpdate });
-  if (!appUser?.isDemo) tabs.push({ id: 'settings', label: 'Settings', icon: <Settings size={18}/> });
+  if (isTrueGod) pushTab({ id: 'godmode', label: 'System Administrator', icon: <Globe size={18}/> });
+  if (!appUser?.isDemo && (appUser?.isAdmin || isTrueGod)) pushTab({ id: 'audit', label: 'System Audit', icon: <Shield size={18}/> });  
+  pushTab({ id: 'help', label: 'Help Center', icon: <BookOpen size={18}/>, dot: hasHelpUpdate });
+  if (!appUser?.isDemo) pushTab({ id: 'settings', label: 'Settings', icon: <Settings size={18}/> });
 
   const menuActions = [
     { id: 'help-add-staff', label: 'How to add staff', tab: 'help', keywords: 'employee team roster invite user password' },

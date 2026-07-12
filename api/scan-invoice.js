@@ -10,7 +10,7 @@ const {
 // Extracts ALL visible invoice information from PDF or image files.
 // 13.1.10: Large-document scanner keeps non-product rows out of Stock Matcher/inventory updates.
 
-const INVOICE_SCANNER_VERSION = '15.0.53';
+const INVOICE_SCANNER_VERSION = '15.0.54';
 
 function cleanJsonText(text = '') {
   return String(text || '')
@@ -778,7 +778,8 @@ async function handler(req, res) {
       idempotencyKey,
       provider: 'google_gemini',
       model: modelCandidates[0] || 'gemini-2.5-flash-lite',
-      sourceRoute: '/api/scan-invoice'
+      sourceRoute: '/api/scan-invoice',
+      planScanLimits: access.planScanLimits
     });
     if (usageReservation.blocked) return res.status(429).json(buildLimitResponse(usageReservation));
     if (usageReservation.duplicate) return res.status(409).json(buildDuplicateResponse(usageReservation));

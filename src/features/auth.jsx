@@ -481,7 +481,7 @@ const LoginScreen = ({ setAppUser }) => {
         <div className="space-y-4 text-xs font-medium text-slate-300 leading-relaxed max-h-[60vh] overflow-y-auto custom-scrollbar pr-2">
           <div className="text-center border-b border-[#2A353D] pb-3 mb-3">
             <h3 className="font-black text-white text-lg uppercase tracking-widest">Privacy Policy for 86chaos</h3>
-            <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mt-1">Last Updated: July 10, 2026</p>
+            <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mt-1">Last Updated: July 12, 2026</p>
           </div>
           <p>Chilton App Works, LLC ("86 Chaos," "we," "us," or "our") operates the 86 Chaos restaurant operations web app, progressive web app, application programming interfaces, and related services (the "Service"). This policy explains what information the Service processes, why it is used, how long it is kept, and how privacy requests are handled.</p>
           <p>86 Chaos is a business-to-business workplace tool. The restaurant or other organization that creates a workspace generally decides what employee and operational information is entered and how the Service is used. In that setting, the restaurant is normally the business or data controller and 86 Chaos acts as its service provider or data processor. This policy does not replace an employer's own employee privacy notice, payroll obligations, recordkeeping duties, or consent requirements.</p>
@@ -495,11 +495,12 @@ const LoginScreen = ({ setAppUser }) => {
             <li><strong className="text-white">Restaurant Operations Content:</strong> prep lists, 86 alerts, inventory, recipes, invoices, vendor details, menu data, maintenance records, sales or ledger entries, messages, reminders, attachments, and administrative records.</li>
             <li><strong className="text-white">Camera, Files, and Photos:</strong> files submitted for menu or invoice scanning, profile photos, message attachments, maintenance photos, logos, and similar workflows.</li>
             <li><strong className="text-white">Device, Security, and Diagnostic Data:</strong> browser or device type, screen size, active app section, notification status, push-token status, service-worker and IndexedDB support, audit events, error reports, MFA status, App Check results, and recent app actions associated with troubleshooting.</li>
+            <li><strong className="text-white">Plan, Subscription, and Billing-Support Data:</strong> workspace plan, Founder Beta status and dates, selected future tier, discount status, manual billing notes, scan-limit usage, integration lock status, and plan-change audit records. Live payment processing is not active unless a separate billing provider is enabled later.</li>
           </ul>
 
           <h4 className="font-black text-[#D4A381] text-sm mt-4">2. How We Use Information</h4>
           <ul className="list-disc pl-5 space-y-1 mt-1 text-slate-400">
-            <li>Provide scheduling, time clock, staff, inventory, prep, menu, maintenance, messaging, reminders, financial/labor, backup, and support functions.</li>
+            <li>Provide scheduling, time clock, staff, inventory, prep, menu, maintenance, messaging, reminders, financial/labor, backup, plan access, scan-limit, and support functions.</li>
             <li>Verify location-based punches when enabled and flag exceptions for authorized managers.</li>
             <li>Deliver schedule, message, reminder, security, and operational notifications.</li>
             <li>Secure accounts, enforce permissions, investigate abuse, diagnose failures, maintain audit trails, and restore data.</li>
@@ -516,7 +517,7 @@ const LoginScreen = ({ setAppUser }) => {
             <li><strong className="text-white">Google Cloud and Firebase:</strong> authentication, database, Cloud Storage, push notifications, App Check, scheduled functions, logs, and related infrastructure.</li>
             <li><strong className="text-white">Vercel:</strong> web hosting, deployments, and serverless API routes.</li>
             <li><strong className="text-white">AI providers:</strong> limited content required for an enabled scan, administrator-manual, or diagnostics workflow.</li>
-            <li><strong className="text-white">Customer-selected integrations:</strong> payroll, accounting, POS, notification, or other providers connected by the restaurant.</li>
+            <li><strong className="text-white">Customer-selected integrations:</strong> payroll, accounting, POS, notification, or other providers if those integrations are enabled in the future and connected by the restaurant. Current customer integration setup is locked while rollout testing continues.</li>
             <li><strong className="text-white">Legal and safety disclosures:</strong> government authorities, courts, advisers, insurers, or affected parties when reasonably necessary and legally permitted.</li>
           </ul>
 
@@ -529,6 +530,7 @@ const LoginScreen = ({ setAppUser }) => {
             <li><strong className="text-white">Raw AI upload files:</strong> menu and invoice image files under the AI-upload storage paths are scheduled for deletion after 30 days. Parsed or manager-approved business records may remain separately in Firestore.</li>
             <li><strong className="text-white">Time punches and location logs:</strong> removed from active Firestore after 365 days, written to a restricted archive, and retained until the three-year mark measured from the record date.</li>
             <li><strong className="text-white">Deleted workspaces:</strong> disabled when marked deleted and permanently removed after a 30-day recovery period unless restored.</li>
+            <li><strong className="text-white">Plan, billing-support, and subscription records:</strong> kept as needed for account administration, Founder Beta discounts, audit logs, fraud prevention, support, disputes, tax/accounting needs if billing later activates, and legal obligations.</li>
             <li><strong className="text-white">Other records:</strong> kept only as long as reasonably needed for the Service, customer instructions, security, billing, dispute resolution, backups, fraud prevention, or legal obligations.</li>
           </ul>
           <p>Scheduled deletion normally occurs during the next cleanup run and may take up to approximately 24 hours after a stated deadline. Provider-level backups, disaster-recovery copies, or soft-deleted objects may remain inaccessible for a limited additional period before automatic expiration. Legal holds, active investigations, disputes, and mandatory recordkeeping obligations may pause deletion. When a hold ends, the applicable retention schedule resumes.</p>
