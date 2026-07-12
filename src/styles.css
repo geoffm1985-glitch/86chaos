@@ -2778,3 +2778,127 @@ select {
     justify-content: center;
   }
 }
+
+/* 15.0.55: Desktop professional density pass.
+   Keeps phone/tablet comfort intact, but stops the PC experience from feeling oversized or padded out. */
+@media (min-width: 1024px) {
+  .desktop-pro-shell {
+    --chaos-radius-card: 13px;
+    --chaos-radius-button: 10px;
+  }
+
+  .desktop-pro-shell .app-header {
+    height: 56px !important;
+    padding-left: 16px !important;
+    padding-right: 16px !important;
+  }
+
+  .desktop-pro-shell .app-header img,
+  .desktop-pro-shell .brand-logo-stack img {
+    max-height: 42px;
+  }
+
+  .desktop-pro-shell .desktop-date-strip {
+    padding-top: 10px !important;
+    padding-bottom: 10px !important;
+    min-height: 54px;
+  }
+
+  .desktop-pro-shell .app-content-shell {
+    max-width: min(1480px, calc(100vw - 32px)) !important;
+    padding-top: 16px !important;
+    padding-left: 16px !important;
+    padding-right: 16px !important;
+    padding-bottom: 72px !important;
+  }
+
+  .desktop-pro-shell .cockpit-panel,
+  .desktop-pro-shell .chaos-card {
+    border-radius: var(--chaos-radius-card) !important;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.025), 0 10px 28px rgba(0,0,0,.14) !important;
+  }
+
+  .desktop-pro-shell .rounded-3xl { border-radius: 18px !important; }
+  .desktop-pro-shell .rounded-2xl { border-radius: 14px !important; }
+  .desktop-pro-shell .rounded-xl { border-radius: 11px !important; }
+  .desktop-pro-shell .rounded-lg { border-radius: 9px !important; }
+
+  .desktop-pro-shell .app-content-shell .p-8 { padding: 1.25rem !important; }
+  .desktop-pro-shell .app-content-shell .p-7 { padding: 1.15rem !important; }
+  .desktop-pro-shell .app-content-shell .p-6 { padding: 1rem !important; }
+  .desktop-pro-shell .app-content-shell .p-5 { padding: .9rem !important; }
+  .desktop-pro-shell .app-content-shell .p-4 { padding: .75rem !important; }
+  .desktop-pro-shell .app-content-shell .p-3 { padding: .65rem !important; }
+
+  .desktop-pro-shell .app-content-shell .px-6 { padding-left: 1rem !important; padding-right: 1rem !important; }
+  .desktop-pro-shell .app-content-shell .px-5 { padding-left: .9rem !important; padding-right: .9rem !important; }
+  .desktop-pro-shell .app-content-shell .px-4 { padding-left: .75rem !important; padding-right: .75rem !important; }
+  .desktop-pro-shell .app-content-shell .py-6 { padding-top: 1rem !important; padding-bottom: 1rem !important; }
+  .desktop-pro-shell .app-content-shell .py-5 { padding-top: .85rem !important; padding-bottom: .85rem !important; }
+  .desktop-pro-shell .app-content-shell .py-4 { padding-top: .7rem !important; padding-bottom: .7rem !important; }
+  .desktop-pro-shell .app-content-shell .py-3 { padding-top: .55rem !important; padding-bottom: .55rem !important; }
+
+  .desktop-pro-shell .app-content-shell .gap-8 { gap: 1.2rem !important; }
+  .desktop-pro-shell .app-content-shell .gap-6 { gap: 1rem !important; }
+  .desktop-pro-shell .app-content-shell .gap-5 { gap: .85rem !important; }
+  .desktop-pro-shell .app-content-shell .gap-4 { gap: .7rem !important; }
+  .desktop-pro-shell .app-content-shell .gap-3 { gap: .55rem !important; }
+
+  .desktop-pro-shell .app-content-shell .space-y-8 > :not([hidden]) ~ :not([hidden]) { margin-top: 1.2rem !important; }
+  .desktop-pro-shell .app-content-shell .space-y-6 > :not([hidden]) ~ :not([hidden]) { margin-top: 1rem !important; }
+  .desktop-pro-shell .app-content-shell .space-y-5 > :not([hidden]) ~ :not([hidden]) { margin-top: .85rem !important; }
+  .desktop-pro-shell .app-content-shell .space-y-4 > :not([hidden]) ~ :not([hidden]) { margin-top: .7rem !important; }
+  .desktop-pro-shell .app-content-shell .space-y-3 > :not([hidden]) ~ :not([hidden]) { margin-top: .55rem !important; }
+
+  .desktop-pro-shell .app-content-shell .text-4xl { font-size: 2rem !important; line-height: 2.25rem !important; }
+  .desktop-pro-shell .app-content-shell .text-3xl { font-size: 1.55rem !important; line-height: 1.9rem !important; }
+  .desktop-pro-shell .app-content-shell .text-2xl { font-size: 1.32rem !important; line-height: 1.7rem !important; }
+  .desktop-pro-shell .app-content-shell .text-xl { font-size: 1.12rem !important; line-height: 1.45rem !important; }
+  .desktop-pro-shell .app-content-shell .text-lg { font-size: 1rem !important; line-height: 1.35rem !important; }
+
+  .desktop-pro-shell .app-content-shell button:not(.no-compact),
+  .desktop-pro-shell .app-content-shell .chaos-button {
+    min-height: 34px;
+    padding-top: .48rem !important;
+    padding-bottom: .48rem !important;
+  }
+
+  .desktop-pro-shell .app-content-shell input,
+  .desktop-pro-shell .app-content-shell select,
+  .desktop-pro-shell .app-content-shell textarea,
+  .desktop-pro-shell .app-content-shell .chaos-input {
+    min-height: 36px;
+    font-size: 13px;
+    padding-top: .55rem !important;
+    padding-bottom: .55rem !important;
+  }
+
+  .desktop-pro-shell .app-content-shell table th,
+  .desktop-pro-shell .app-content-shell table td,
+  .desktop-pro-shell .app-content-shell .chaos-table-heading,
+  .desktop-pro-shell .app-content-shell .chaos-table-row {
+    padding-top: .55rem !important;
+    padding-bottom: .55rem !important;
+  }
+
+  .desktop-pro-shell .app-content-shell .min-h-\[112px\] { min-height: 92px !important; }
+  .desktop-pro-shell .app-content-shell .min-h-\[140px\] { min-height: 112px !important; }
+  .desktop-pro-shell .app-content-shell .min-h-\[160px\] { min-height: 128px !important; }
+  .desktop-pro-shell .app-content-shell .min-h-\[180px\] { min-height: 144px !important; }
+
+  .desktop-pro-shell .app-content-shell .max-w-2xl { max-width: 54rem !important; }
+  .desktop-pro-shell .app-content-shell .max-w-3xl { max-width: 64rem !important; }
+  .desktop-pro-shell .app-content-shell .max-w-4xl { max-width: 74rem !important; }
+  .desktop-pro-shell .app-content-shell .max-w-5xl { max-width: 86rem !important; }
+
+  .desktop-pro-shell .custom-scrollbar::-webkit-scrollbar {
+    width: 7px;
+    height: 7px;
+  }
+}
+
+@media (min-width: 1440px) {
+  .desktop-pro-shell .app-content-shell {
+    max-width: min(1560px, calc(100vw - 40px)) !important;
+  }
+}

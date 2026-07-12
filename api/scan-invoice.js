@@ -10,7 +10,7 @@ const {
 // Extracts ALL visible invoice information from PDF or image files.
 // 13.1.10: Large-document scanner keeps non-product rows out of Stock Matcher/inventory updates.
 
-const INVOICE_SCANNER_VERSION = '15.0.54';
+const INVOICE_SCANNER_VERSION = '15.0.55';
 
 function cleanJsonText(text = '') {
   return String(text || '')

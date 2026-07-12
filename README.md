@@ -1,83 +1,54 @@
-# 86 Chaos 15.0.54
+# 86 Chaos 15.0.56
 
-86 Chaos is a restaurant-management web app built with React, Firebase Auth/Firestore/Storage, Firebase Functions, and Vercel API routes.
+86 Chaos is a restaurant/kitchen management web app built with React, Firebase Auth/Firestore/Storage, Firebase Functions, and Vercel API routes.
 
-## Current release
+Version **15.0.56** adds restaurant-group push broadcasting inside the System Administrator Push Control Center while preserving the 15.0.55 desktop density pass and the 15.0.54 tier / Founder Beta / feature gate system.
 
-Version 15.0.54 adds and hardens the centralized tier, Founder Beta, feature gate, scan-limit, and plan access system. Plans now resolve through shared frontend and API helpers instead of scattered hardcoded checks.
+## What changed in 15.0.56
 
-Customer-facing plans:
+- Added a targeted push broadcast composer in **System Administrator → Push Control Center**.
+- System Administrator can send a push notification to:
+  - one selected workspace,
+  - one selected restaurant group,
+  - or all workspaces when truly needed.
+- Restaurant-group sends preview matching workspace count, user count, and connected push-token count before sending.
+- The push API now supports multi-workspace targets safely through `restaurantIds` while keeping existing single-workspace push behavior intact.
+- Multi-workspace/group push sends require internal System Administrator/Master Admin access.
+- Server-side send logic deduplicates device tokens, respects notification preferences and quiet hours unless marked critical, and records audit logs.
+- Push results now include target mode, target group labels, target restaurant IDs, sent/failed counts, and stale token cleanup counts.
+- Added a non-secret root `.env` for build stability: disables the CRA ESLint plugin during production build and disables sourcemap generation. This avoids build-time lint hangs without changing runtime behavior.
 
-- Shift: $49/month/location
-- Operations: $99/month/location
-- Smart Kitchen: $179/month/location
-- Owner Pro: $299/month/location
+## Restaurant group targeting
 
-Internal-only plan:
+The push composer groups workspaces using the best available group label from each workspace record:
 
-- Master Admin/System Admin: not customer-facing. Used for testing, support, plan controls, Founder Beta controls, scan usage reset/review, feature access diagnostics, and integration testing.
+- `restaurantGroupId` / `groupId`
+- `restaurantGroupName`
+- `groupName`
+- `restaurantGroup`
+- `systemSettings.restaurantGroupName`
+- `branding.restaurantGroupName`
+- owner email fallback
 
-## Founder Beta and safe backfill
-
-Founder Beta workspaces use the app free during active beta. The intended beta is 60 days, with one 30-day extension available from Master Admin/System Admin controls. Founder Beta workspaces keep 50% off their selected future tier for 12 months after beta ends.
-
-Existing workspaces with no modern `subscription` object or `planId` do **not** fall back to Shift. They safely resolve as Founder Beta Smart Kitchen until a Master Admin/System Admin manually saves or changes the subscription. This prevents existing testing/customer workspaces from losing access right after deployment.
-
-### Backfill existing workspaces
-
-1. Deploy this ZIP to the testing/preview branch first.
-2. Confirm the app loads and System Administrator opens.
-3. Open **System Administrator → Workspaces**.
-4. Open each existing workspace with **Manage**.
-5. If the workspace shows the safe backfill notice, confirm the selected future tier, beta dates, and Founder Beta state.
-6. Click **Save** to persist the subscription object.
-7. Repeat for testing/Cheers and any active customer/test workspaces.
-8. Only after testing, publish the matching Firestore rules to the same Firebase project.
-
-New workspaces created from Master Admin default to Founder Beta Smart Kitchen with `selectedFutureTier: "smart_kitchen"` unless changed.
-
-## Feature access model
-
-Every gated feature should pass both checks:
-
-1. Workspace plan includes the feature.
-2. User role/permission allows access.
-
-Master Admin/System Admin bypasses plan locks for testing, but customer integrations remain hidden/locked for customer tiers.
-
-Role-driven features must use the account owner custom Roster Roles from Preferences / Roster Roles as the source of truth. Generic restaurant role names are only fallback labels when a workspace has no configured roster roles.
-
-## AI scan limits
-
-Invoice and menu scan pages are enforced before expensive API/AI calls.
-
-- Shift: 0 invoice pages/month, 0 menu pages/month
-- Operations: 20 invoice pages/month, 3 menu pages/month
-- Smart Kitchen: 75 invoice pages/month, 10 menu pages/month
-- Owner Pro: 200 invoice pages/month, 25 menu pages/month
-- Master Admin/internal testing: exempt/unlimited for testing
-
-Invoice/menu scanning itself is gated to Smart Kitchen+. Operations keeps basic inventory and burn log access.
-
-## Integrations
-
-Customer integrations are locked for all customer tiers during rollout. Customers should see the friendly "Integrations are coming soon" message. Do not expose OAuth, API keys, provider setup, or unfinished provider tools to customers.
-
-Internal integration testing screens are Master Admin/System Admin only. Live POS/accounting/payroll secrets should not be stored casually in Firestore. Future live credentials should use a server-side encrypted vault design.
+Keep customer group labels consistent on workspace records so group targeting stays clean.
 
 ## Deployment notes
 
-Use Vercel preview/testing first. Do not deploy Firestore rules directly to production until owner, manager/admin, staff, Shift, Operations, Smart Kitchen, Owner Pro, Founder Beta, and cross-restaurant access have been tested.
+- No Firebase environment variable rename is required.
+- Testing can continue using the existing full JSON `FIREBASE_SERVICE_ACCOUNT_KEY` and `CRON_SECRET` setup.
+- No live Stripe billing, POS OAuth, accounting OAuth, or customer integration provider setup is added.
+- No Firebase rules change is required for this release.
+- Deploy through the testing branch first, verify push behavior, then promote when satisfied.
 
-The testing side should continue to work with the existing generic Firebase Admin service account setup:
+## Required verification
 
-- `FIREBASE_SERVICE_ACCOUNT_KEY`: full Firebase service account JSON for the testing Firebase project
-- `CRON_SECRET`
-- Firebase client config variables for the selected environment
-- `GEMINI_API_KEY`
-- `MASTER_ADMIN_EMAIL` or `MASTER_ADMIN_EMAILS`
-- Optional `AI_SCAN_LIMIT_BYPASS_EMAILS`
+Before production rollout, test:
 
-A production service account key is **not** required for the testing side. Do not bake Firebase service account keys into source files.
+1. Push test to one selected user.
+2. Push broadcast to one selected workspace.
+3. Push broadcast to a selected restaurant group.
+4. Confirm group sends are blocked for non-System Administrator users.
+5. Confirm stale token cleanup still flags dead tokens.
+6. Confirm audit logs write for group and workspace push sends.
+7. Confirm the app still builds and loads on desktop and mobile widths.
 
-This package intentionally does not include a root `package-lock.json`, `.npmrc`, `.node-version`, or `.nvmrc`, preserving the deployment behavior that worked for the testing branch.

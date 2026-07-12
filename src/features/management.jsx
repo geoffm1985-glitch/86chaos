@@ -15,6 +15,17 @@ import { PLAN_DEFINITIONS, CUSTOMER_PLAN_ORDER, FEATURE_KEYS } from '../config/p
 import { resolveSubscription, resolveFeatureAccess, getPlanDefinition, formatMoney, normalizePlanId, addDaysIso, addMonthsIso } from '../lib/featureAccess';
 
 
+
+const PUSH_GROUP_UNASSIGNED_KEY = '__ungrouped__';
+const normalizePushGroupKey = (value = '') => String(value || 'Unassigned Group').toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 80) || PUSH_GROUP_UNASSIGNED_KEY;
+const getRestaurantGroupLabel = (restaurant = {}) => {
+  const direct = restaurant.restaurantGroupName || restaurant.groupName || restaurant.restaurantGroup || restaurant.groupLabel || restaurant.brandGroupName;
+  const nested = restaurant.systemSettings?.restaurantGroupName || restaurant.branding?.restaurantGroupName || restaurant.displaySettings?.restaurantGroupName;
+  const owner = restaurant.ownerEmail ? `Owner: ${String(restaurant.ownerEmail).toLowerCase().trim()}` : '';
+  return String(direct || nested || owner || 'Unassigned Group').trim();
+};
+const getRestaurantGroupKey = (restaurant = {}) => normalizePushGroupKey(restaurant.restaurantGroupId || restaurant.groupId || getRestaurantGroupLabel(restaurant));
+
 const GEOFENCE_TILE_PROVIDERS = [
   {
     id: 'carto-light',
@@ -4031,6 +4042,13 @@ const LEGACY_JULY_2026_SCHEDULE = [
   // Live Banner States
   const [bannerTarget, setBannerTarget] = useState('ALL');
   const [bannerText, setBannerText] = useState('');
+  const [pushBroadcastTargetMode, setPushBroadcastTargetMode] = useState('workspace');
+  const [pushBroadcastWorkspaceId, setPushBroadcastWorkspaceId] = useState('');
+  const [pushBroadcastGroupKey, setPushBroadcastGroupKey] = useState('');
+  const [pushBroadcastTitle, setPushBroadcastTitle] = useState('86 Chaos Alert');
+  const [pushBroadcastBody, setPushBroadcastBody] = useState('');
+  const [pushBroadcastCritical, setPushBroadcastCritical] = useState(true);
+  const [isPushBroadcasting, setIsPushBroadcasting] = useState(false);
 
   const handlePushBanner = async (e) => {
     e.preventDefault();
@@ -5372,6 +5390,48 @@ const activeTrials = restaurants.filter(r => resolveSubscription(r, appUser).sta
     pushStatus: !u.fcmToken ? 'missing token' : stalePushUsers.some(s => s.id === u.id) ? 'stale token' : (u.notificationPermission || u.pushTokenPermission || 'saved')
   })).sort((a,b) => (b.lastTokenSyncMs || 0) - (a.lastTokenSyncMs || 0));
 
+  const restaurantGroups = (() => {
+    const groups = new Map();
+    restaurants.forEach((restaurant) => {
+      const key = getRestaurantGroupKey(restaurant);
+      const label = getRestaurantGroupLabel(restaurant);
+      if (!groups.has(key)) groups.set(key, { key, label, restaurantIds: [], restaurantNames: [], tokenCount: 0, userCount: 0 });
+      const group = groups.get(key);
+      group.restaurantIds.push(restaurant.id);
+      group.restaurantNames.push(restaurant.name || restaurant.id);
+    });
+    const rows = Array.from(groups.values()).map((group) => {
+      const usersInGroup = allUsers.filter(u => group.restaurantIds.includes(u.restaurantId));
+      return {
+        ...group,
+        restaurantIds: [...new Set(group.restaurantIds.filter(Boolean))],
+        restaurantNames: [...new Set(group.restaurantNames.filter(Boolean))].sort((a,b) => a.localeCompare(b)),
+        userCount: usersInGroup.length,
+        tokenCount: usersInGroup.filter(u => !!u.fcmToken).length
+      };
+    });
+    return rows.sort((a,b) => a.label.localeCompare(b.label));
+  })();
+
+  const activePushWorkspaceId = pushBroadcastWorkspaceId || restaurants[0]?.id || '';
+  const activePushGroupKey = pushBroadcastGroupKey || restaurantGroups[0]?.key || '';
+  const selectedPushRestaurantIds = (() => {
+    if (pushBroadcastTargetMode === 'all') return restaurants.map(r => r.id).filter(Boolean);
+    if (pushBroadcastTargetMode === 'group') {
+      return (restaurantGroups.find(g => g.key === activePushGroupKey) || restaurantGroups[0] || { restaurantIds: [] }).restaurantIds;
+    }
+    return activePushWorkspaceId ? [activePushWorkspaceId] : [];
+  })();
+  const selectedPushRecipients = allUsers.filter(u => selectedPushRestaurantIds.includes(u.restaurantId));
+  const selectedPushTokenRecipients = selectedPushRecipients.filter(u => !!u.fcmToken);
+  const selectedPushGroup = restaurantGroups.find(g => g.key === activePushGroupKey) || restaurantGroups[0] || null;
+  const selectedPushWorkspace = restaurants.find(r => r.id === activePushWorkspaceId) || null;
+  const selectedPushTargetLabel = pushBroadcastTargetMode === 'all'
+    ? `All workspaces (${selectedPushRestaurantIds.length})`
+    : pushBroadcastTargetMode === 'group'
+      ? `${selectedPushGroup?.label || 'Selected group'} (${selectedPushRestaurantIds.length} workspace${selectedPushRestaurantIds.length === 1 ? '' : 's'})`
+      : `${selectedPushWorkspace?.name || 'Selected workspace'}`;
+
   const deploymentChecks = [
     { label: 'Firebase project ID', ok: !!firebaseConfig?.projectId, detail: firebaseConfig?.projectId || 'Missing browser Firebase project ID' },
     { label: 'Firestore rules published', ok: !adminDataErrors.users, detail: adminDataErrors.users || 'No read-rule errors detected in this session' },
@@ -5502,6 +5562,53 @@ const activeTrials = restaurants.filter(r => resolveSubscription(r, appUser).sta
       if (!response.ok || result.error) throw new Error(result.error || `Push failed: ${response.status}`);
       addToast('Test Sent', `${result.sentCount || 0} notification(s) sent to ${user.name || user.email}.`);
     } catch (err) { addToast('Push Error', err.message || 'Push test failed.'); }
+  };
+
+  const handlePushBroadcastSubmit = async (event) => {
+    event.preventDefault();
+    const title = pushBroadcastTitle.trim();
+    const body = pushBroadcastBody.trim();
+    const restaurantIds = [...new Set(selectedPushRestaurantIds.filter(Boolean))];
+    if (!title) return addToast('Title Required', 'Add a short title for the push notification.');
+    if (!body) return addToast('Message Required', 'Add the message people should see on their device.');
+    if (!restaurantIds.length) return addToast('No Target', 'Choose a workspace or restaurant group first.');
+    if (!selectedPushTokenRecipients.length) return addToast('No Push Tokens', 'No users in that target currently have a connected push token.');
+    const confirmation = `Send this push to ${selectedPushTargetLabel}?
+
+Connected devices: ${selectedPushTokenRecipients.length}
+Users in target: ${selectedPushRecipients.length}
+
+${title}
+${body}`;
+    if (!window.confirm(confirmation)) return;
+    setIsPushBroadcasting(true);
+    try {
+      const response = await secureFetch('/api/send-push', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          restaurantId: restaurantIds[0],
+          restaurantIds,
+          targetMode: pushBroadcastTargetMode,
+          targetGroupKey: pushBroadcastTargetMode === 'group' ? pushBroadcastGroupKey : '',
+          targetGroupLabel: pushBroadcastTargetMode === 'group' ? selectedPushGroup?.label || '' : '',
+          title,
+          body,
+          type: 'admin-broadcast',
+          authorName: appUser?.name || appUser?.email || 'System Administrator',
+          isCritical: pushBroadcastCritical,
+          textContent: `${title} ${body}`
+        })
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok || result.error) throw new Error(result.error || `Push failed: ${response.status}`);
+      addToast('Push Sent', `${result.sentCount || 0} notification(s) sent across ${result.restaurantCount || restaurantIds.length} workspace(s). ${result.failedCount ? `${result.failedCount} failed.` : ''}`);
+      setPushBroadcastBody('');
+    } catch (err) {
+      addToast('Push Error', err.message || 'Could not send the selected restaurant group push.');
+    } finally {
+      setIsPushBroadcasting(false);
+    }
   };
 
   const exportPushDiagnostics = () => {
@@ -5681,7 +5788,9 @@ const activeTrials = restaurants.filter(r => resolveSubscription(r, appUser).sta
   }, {})).sort((a,b) => b.endedMs - a.endedMs).slice(0, 12);
 
   const adminManualArticles = [
+    { title: 'Version 15.0.56 Restaurant Group Push Broadcasts', group: 'System Administrator', keywords: 'v15 15.0.56 push notification center restaurant group broadcast selected workspace all workspaces tokens audit', body: ['15.0.56 adds a targeted push broadcast composer inside System Administrator → Push Control Center.', 'System Administrator can send a push notification to one workspace, a selected restaurant group, or all workspaces. The screen previews matching workspaces, users, and connected push tokens before sending.', 'Restaurant groups are resolved from workspace group fields such as restaurantGroupName, groupName, restaurantGroupId, branding/system settings group names, or owner email fallback. Keep group labels consistent on workspace records for clean targeting.', 'The server route validates access, allows multi-workspace/group sends only for internal System Administrator access, deduplicates device tokens, respects notification preferences and quiet hours unless marked critical, records the last result, and writes an audit log.', 'Use restaurant group targeting instead of All Workspaces whenever a message belongs to one customer group. Staff never see these internal send controls.'] },
 
+    { title: 'Version 15.0.55 Desktop Professional Density', group: 'System Administrator', keywords: 'v15 15.0.55 desktop pc density layout compact professional laptop spacing cards tables header', body: ['15.0.55 makes the PC/laptop interface feel less oversized while preserving phone and tablet comfort.', 'The desktop shell uses a wider main work surface, slimmer header, tighter date/title strip, lighter panel shadows, smaller card radii, and reduced desktop-only spacing around cards, buttons, forms, and tables.', 'This is a layout and usability pass only. It does not change Firebase rules, tier access, Founder Beta behavior, scan limits, roles, billing placeholders, or integration locks.', 'Text remains readable. Do not solve desktop density by making the app tiny; use spacing, width, card, and table adjustments first.'] },
     { title: 'Version 15.0.54 Plans, Founder Beta, and Feature Gates', group: 'System Administrator', keywords: 'v15 15.0.54 plans tiers founder beta feature gates subscriptions scan limits billing integrations roles permissions audit', body: ['15.0.54 adds the centralized plan and feature access system for Shift, Operations, Smart Kitchen, Owner Pro, and internal Master Admin/System Admin access.', 'Every feature gate should resolve both workspace plan access and user role/permission access. Master Admin/System Admin can bypass plan locks for testing, but customer-facing tiers cannot access integrations yet.', 'Founder Beta workspaces run free during the active beta window. Default beta length is 60 days. A Master Admin/System Admin may extend the beta by 30 days, with a max intended 90-day beta. After beta, Founder Beta accounts display 50% off the selected future tier for 12 months.', 'Use System Administrator workspace plan controls to set selected future tier, start beta, extend beta, end beta, mark manual active, update founder discount dates, and review plan scan limits. Every subscription change should write an audit log.', 'Plan/subscription fields live on the workspace subscription object. Normal staff cannot edit plan fields, customer owners can view billing status, and only internal admin tools should alter subscription state until live billing exists.', 'Scan usage is enforced before expensive AI calls. Shift has no invoice/menu pages, Operations has 20 invoice and 3 menu pages, Smart Kitchen has 75 invoice and 10 menu pages, Owner Pro has 200 invoice and 25 menu pages, and internal testing accounts are exempt.', 'Integrations stay locked for all customer tiers. The customer screen must say integrations are coming soon and must not expose OAuth, API keys, provider setup, or unfinished integration tools.', 'All role-based features, including labor by role, scheduling, reports, exports, dashboards, and permissions, must use the owner custom Roster Roles from Preferences as the source of truth. Hardcoded role names are only legacy fallbacks when no custom roster roles exist.'] },
     { title: 'Plan access troubleshooting', group: 'Plans & Billing', keywords: 'locked feature missing tab feature gate role permission plan troubleshooting direct url billing staff owner', body: ['When a user cannot see a feature, check four things in order: workspace plan, user role/permission, workspace module toggle, then direct Firestore rules access.', 'A hidden tab is not enough. Direct URL access should show the locked screen and backend rules/API checks should still reject disallowed reads, writes, scans, and integration tools.', 'Staff should not see billing controls. Owners and permitted admins may see Plan & Billing. System Administrator can inspect and change plan fields during manual beta and billing setup.', 'If a Founder Beta workspace appears locked unexpectedly, confirm subscription.isFounderBeta, subscription.status, betaEndsAt, betaExtendedUntil, selectedFutureTier, and manual feature overrides.', 'If scans fail, inspect aiUsage for the workspace/month/type, then check the plan scan limits and whether the user is an internal testing or bypass account.'] },
     { title: 'Version 15.0.49 AI Page Limits and Invoice Noise Filtering', group: 'System Administrator', keywords: 'v15 15.0.49 ai usage scan limits page limits invoice menu monthly master admin bypass idempotency non food review', body: ['Invoice and Menu Intelligence scans are now counted by AI-processed pages per workspace and month instead of by scan count. Defaults are 40 invoice pages and 10 menu pages.', 'The scan routes verify PDF page counts before calling AI, reserve pages in a Firestore transaction, and use idempotency keys so simultaneous requests and duplicate clicks cannot double-count.', 'Configured Master Admin accounts can test beyond the limit. The server verifies the Firebase token email or trusted custom claim, logs every bypass, and never trusts a frontend environment variable or customer-controlled setting.', 'Open System Administrator → AI Usage / Scan Limits to review every workspace, page totals, submitted scans, bypass pages, failures, blocks, providers/models, recent events, and monthly limit overrides.', 'Invoice Scanner now separates obvious non-food supplies and document noise from food/product review. Publish the included Firestore rules so browser clients cannot edit aiUsage counters or limits. No Storage rules, indexes, or Firebase Functions deployment is required.'] },
@@ -7737,6 +7846,75 @@ Type RESTORE to continue.`);
             <CockpitMetric label="Browser Permission" value={envReport.notifications} detail={`This admin device • ${envReport.host}`} tone={envReport.notifications === 'granted' ? 'emerald' : 'amber'} />
             <CockpitMetric label="Last Push Result" value={backupStatus?.lastPushResult || 'Not logged'} detail="Server route returns exact sent/failed counts when supported" tone="blue" />
           </div>
+          <form onSubmit={handlePushBroadcastSubmit} className={`${T.card} p-4 border-blue-900/40 bg-blue-950/10 space-y-4`}>
+            <div className="flex flex-col xl:flex-row xl:items-start xl:justify-between gap-3">
+              <div>
+                <h2 className="font-black text-white flex items-center gap-2"><Bell size={18}/> Targeted Push Broadcast</h2>
+                <p className="text-xs text-slate-400 font-bold mt-1">Send a live push notification to one workspace, one restaurant group, or the whole platform. Group sends are server-checked and dedupe device tokens.</p>
+              </div>
+              <div className="grid grid-cols-3 gap-2 text-center text-[10px] font-black uppercase tracking-widest">
+                <div className="bg-[#0B0E11] border border-[#2A353D] rounded-xl p-2"><div className="text-slate-500">Workspaces</div><div className="text-white text-sm">{selectedPushRestaurantIds.length}</div></div>
+                <div className="bg-[#0B0E11] border border-[#2A353D] rounded-xl p-2"><div className="text-slate-500">Users</div><div className="text-white text-sm">{selectedPushRecipients.length}</div></div>
+                <div className="bg-[#0B0E11] border border-[#2A353D] rounded-xl p-2"><div className="text-slate-500">Tokens</div><div className="text-emerald-300 text-sm">{selectedPushTokenRecipients.length}</div></div>
+              </div>
+            </div>
+            <div className="grid lg:grid-cols-[220px_minmax(0,1fr)] gap-3">
+              <div>
+                <label className="text-[9px] font-black uppercase tracking-widest text-slate-500 block mb-1">Target Type</label>
+                <select value={pushBroadcastTargetMode} onChange={e => setPushBroadcastTargetMode(e.target.value)} className={T.input}>
+                  <option value="workspace">One workspace</option>
+                  <option value="group">Restaurant group</option>
+                  <option value="all">All workspaces</option>
+                </select>
+              </div>
+              {pushBroadcastTargetMode === 'workspace' && (
+                <div>
+                  <label className="text-[9px] font-black uppercase tracking-widest text-slate-500 block mb-1">Workspace</label>
+                  <select value={pushBroadcastWorkspaceId || restaurants[0]?.id || ''} onChange={e => setPushBroadcastWorkspaceId(e.target.value)} className={T.input}>
+                    {restaurants.map(r => <option key={r.id} value={r.id}>{r.name || r.id} • {allUsers.filter(u => u.restaurantId === r.id && u.fcmToken).length} token(s)</option>)}
+                  </select>
+                </div>
+              )}
+              {pushBroadcastTargetMode === 'group' && (
+                <div>
+                  <label className="text-[9px] font-black uppercase tracking-widest text-slate-500 block mb-1">Restaurant Group</label>
+                  <select value={pushBroadcastGroupKey || restaurantGroups[0]?.key || ''} onChange={e => setPushBroadcastGroupKey(e.target.value)} className={T.input}>
+                    {restaurantGroups.map(group => <option key={group.key} value={group.key}>{group.label} • {group.restaurantIds.length} workspace(s) • {group.tokenCount} token(s)</option>)}
+                  </select>
+                </div>
+              )}
+              {pushBroadcastTargetMode === 'all' && (
+                <div className="bg-red-950/20 border border-red-900/40 rounded-xl p-3 text-xs text-red-100 font-bold leading-snug">
+                  All workspaces is a platform-wide notification. Use restaurant group whenever the message is only for one customer group.
+                </div>
+              )}
+            </div>
+            {pushBroadcastTargetMode === 'group' && selectedPushGroup && (
+              <div className="bg-[#0B0E11] border border-[#2A353D] rounded-xl p-3">
+                <div className="text-[9px] font-black uppercase tracking-widest text-blue-300 mb-1">Selected group preview</div>
+                <div className="text-xs text-slate-300 font-bold leading-snug">{selectedPushGroup.restaurantNames.slice(0, 8).join(' • ')}{selectedPushGroup.restaurantNames.length > 8 ? ` • +${selectedPushGroup.restaurantNames.length - 8} more` : ''}</div>
+              </div>
+            )}
+            <div className="grid lg:grid-cols-[minmax(0,0.7fr)_minmax(0,1.3fr)] gap-3">
+              <div>
+                <label className="text-[9px] font-black uppercase tracking-widest text-slate-500 block mb-1">Notification Title</label>
+                <input value={pushBroadcastTitle} onChange={e => setPushBroadcastTitle(e.target.value)} maxLength={80} className={T.input} placeholder="86 Chaos Alert" />
+              </div>
+              <div>
+                <label className="text-[9px] font-black uppercase tracking-widest text-slate-500 block mb-1">Message</label>
+                <input value={pushBroadcastBody} onChange={e => setPushBroadcastBody(e.target.value)} maxLength={180} className={T.input} placeholder="Example: System maintenance begins at 2:00 AM." />
+              </div>
+            </div>
+            <div className="flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-between">
+              <label className="flex items-center gap-2 text-xs font-black text-slate-300">
+                <input type="checkbox" checked={pushBroadcastCritical} onChange={e => setPushBroadcastCritical(e.target.checked)} className="accent-[#D4A381]" />
+                Critical alert, bypass quiet hours when possible
+              </label>
+              <button type="submit" disabled={isPushBroadcasting || !selectedPushRestaurantIds.length || !selectedPushTokenRecipients.length} className="px-5 py-3 bg-blue-900/30 text-blue-200 border border-blue-700/60 rounded-xl text-xs font-black uppercase tracking-widest hover:bg-blue-900/50 disabled:opacity-40 flex items-center justify-center gap-2">
+                {isPushBroadcasting ? <Loader2 size={15} className="animate-spin"/> : <Send size={15}/>} Send Push to Selected Target
+              </button>
+            </div>
+          </form>
           <div className={`${T.card} p-4 flex flex-col sm:flex-row gap-2 sm:items-center justify-between`}>
             <div>
               <h2 className="font-black text-white">Push Token Repair Center</h2>

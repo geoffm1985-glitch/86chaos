@@ -119,16 +119,27 @@ async function loadPushUsersForRestaurant(db, restaurantId) {
   return [...pushUserMap.values()];
 }
 
-function callerCanSendForRestaurant(caller, decoded, member, restaurantId) {
-  const email = norm(decoded.email || caller.email);
+function callerIsInternalAdmin(caller, decoded) {
+  const email = norm(decoded.email || caller?.email);
   return Boolean(
-    decoded.superAdmin === true ||
+    decoded?.superAdmin === true ||
     caller?.isSuperAdmin === true ||
     caller?.systemAccess?.superAdmin === true ||
-    masterEmails().includes(email) ||
+    masterEmails().includes(email)
+  );
+}
+
+function callerCanSendForRestaurant(caller, decoded, member, restaurantId) {
+  return Boolean(
+    callerIsInternalAdmin(caller, decoded) ||
     userHasWorkspace(caller, restaurantId) ||
     member
   );
+}
+
+function normalizeRestaurantIds(body = {}) {
+  const raw = Array.isArray(body.restaurantIds) ? body.restaurantIds : [body.restaurantId];
+  return [...new Set(raw.map(id => cleanId(id)).filter(Boolean))].slice(0, 250);
 }
 
 export default async function handler(req, res) {
@@ -148,30 +159,54 @@ export default async function handler(req, res) {
   if (!await enforceRouteRateLimit(db, req, res, decoded, 'send-push', Number(process.env.PUSH_ROUTE_RATE_LIMIT || 40), 60 * 1000)) return;
 
   try {
-    const { restaurantId, targetUserId, targetUserIds, title, body, type, authorName, isCritical, textContent } = req.body;
-    if (!restaurantId) return res.status(400).json({ error: 'Missing restaurant ID' });
+    const { restaurantId, targetUserId, targetUserIds, title, body, type, authorName, isCritical, textContent, targetMode, targetGroupKey, targetGroupLabel } = req.body;
+    const restaurantIds = normalizeRestaurantIds(req.body);
+    if (!restaurantIds.length) return res.status(400).json({ error: 'Missing restaurant ID' });
+    if (!String(title || '').trim() || !String(body || '').trim()) return res.status(400).json({ error: 'Push title and message are required.' });
 
     const caller = await getCaller(db, decoded);
-    const member = await readWorkspaceMember(db, decoded.uid, decoded.email || caller.email, restaurantId);
-    const canSendForRestaurant = callerCanSendForRestaurant(caller, decoded, member, restaurantId);
-
-    if (!canSendForRestaurant) {
-      return res.status(403).json({ error: 'Forbidden: You can only send notifications for your own workspace.' });
+    const isInternalAdmin = callerIsInternalAdmin(caller, decoded);
+    if (restaurantIds.length > 1 && !isInternalAdmin) {
+      return res.status(403).json({ error: 'Only System Administrator can send group or multi-workspace push notifications.' });
     }
 
-    const allPushUsers = await loadPushUsersForRestaurant(db, restaurantId);
+    const restaurantMembers = new Map();
+    for (const rid of restaurantIds) {
+      const member = await readWorkspaceMember(db, decoded.uid, decoded.email || caller.email, rid);
+      restaurantMembers.set(rid, member);
+      if (!callerCanSendForRestaurant(caller, decoded, member, rid)) {
+        return res.status(403).json({ error: `Forbidden: You cannot send notifications for workspace ${rid}.` });
+      }
+    }
+
+    const usersById = new Map();
+    for (const rid of restaurantIds) {
+      const usersForRestaurant = await loadPushUsersForRestaurant(db, rid);
+      usersForRestaurant.forEach((user) => {
+        const key = user.id || `${norm(user.email)}:${rid}`;
+        if (!key) return;
+        const existing = usersById.get(key) || {};
+        usersById.set(key, { ...existing, ...user, restaurantId: user.restaurantId || rid, pushRestaurantIds: [...new Set([...(existing.pushRestaurantIds || []), rid])] });
+      });
+    }
+    const allPushUsers = [...usersById.values()];
     const targetSet = new Set([...(Array.isArray(targetUserIds) ? targetUserIds : []), targetUserId].filter(Boolean));
     
-    // Grab today's shifts to calculate "Smart Mute: Days Off"
+    // Grab today's shifts to calculate "Smart Mute: Days Off" without reading unrelated workspaces.
     const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Chicago' }).split('T')[0];
-    const shiftsSnap = await db.collection('shifts')
-      .where('restaurantId', '==', restaurantId)
-      .where('date', '==', todayStr)
-      .where('isPublished', '==', true)
-      .get();
-      
-    const workingTodayIds = new Set();
-    shiftsSnap.forEach(doc => workingTodayIds.add(doc.data().employeeId));
+    const workingTodayKeys = new Set();
+    await Promise.all(restaurantIds.map(async (rid) => {
+      try {
+        const shiftsSnap = await db.collection('shifts')
+          .where('restaurantId', '==', rid)
+          .where('date', '==', todayStr)
+          .where('isPublished', '==', true)
+          .get();
+        shiftsSnap.forEach(doc => workingTodayKeys.add(`${rid}:${doc.data().employeeId}`));
+      } catch (shiftErr) {
+        console.warn('Push route shift lookup skipped:', rid, shiftErr?.message || shiftErr);
+      }
+    }));
 
     // Calculate current time in Wisconsin (Central Time) for DND checks
     const now = new Date(new Date().toLocaleString("en-US", { timeZone: "America/Chicago" }));
@@ -214,7 +249,8 @@ export default async function handler(req, res) {
       // 3. Smart Mute: Days Off
       // (Never mute critical manager alerts or schedule publication drops)
       if (prefs.muteOnDaysOff && !isCritical && type !== 'schedule') {
-         if (!workingTodayIds.has(u.id)) return;
+         const userRestaurantIds = u.pushRestaurantIds?.length ? u.pushRestaurantIds : [u.restaurantId].filter(Boolean);
+         if (!userRestaurantIds.some(rid => workingTodayKeys.has(`${rid}:${u.id}`))) return;
       }
 
       // 4. Do Not Disturb (Quiet Hours)
@@ -234,9 +270,8 @@ export default async function handler(req, res) {
          if (inDnd) return;
       }
 
-      if (!tokenRecords.some(record => record.token === u.fcmToken)) tokenRecords.push({ userId: u.id, token: u.fcmToken });
+      if (!tokenRecords.some(record => record.token === u.fcmToken)) tokenRecords.push({ userId: u.id, restaurantId: u.restaurantId, token: u.fcmToken });
     });
-
     if (tokenRecords.length === 0) return res.status(200).json({ success: false, sentCount: 0, failedCount: 0, missingTokens: true, message: 'No devices eligible to receive this alert.' });
 
     const messagePayload = {
@@ -262,13 +297,30 @@ export default async function handler(req, res) {
       }
     });
     await Promise.allSettled(cleanup);
+    const pushedAt = new Date().toISOString();
+    const pushSummary = `${response.successCount} sent / ${response.failureCount} failed`;
     await db.collection('system').doc('backupStatus').set({
-      lastPushResult: `${response.successCount} sent / ${response.failureCount} failed`,
-      lastPushAt: new Date().toISOString(),
-      lastPushTargetRestaurantId: restaurantId,
+      lastPushResult: pushSummary,
+      lastPushAt: pushedAt,
+      lastPushTargetRestaurantId: restaurantIds[0],
+      lastPushTargetRestaurantIds: restaurantIds,
+      lastPushTargetMode: targetMode || (restaurantIds.length > 1 ? 'multi-workspace' : 'workspace'),
+      lastPushTargetGroupKey: targetGroupKey || '',
+      lastPushTargetGroupLabel: targetGroupLabel || '',
       lastPushFailures: failures.slice(0, 25)
     }, { merge: true }).catch(() => {});
-    return res.status(200).json({ success: response.successCount > 0, sentCount: response.successCount, failedCount: response.failureCount, staleTokensCleaned: cleanup.length, failures });
+    await db.collection('auditLogs').add({
+      restaurantId: restaurantIds.length === 1 ? restaurantIds[0] : 'platform',
+      restaurantIds,
+      action: restaurantIds.length > 1 ? 'PUSH_GROUP_BROADCAST_SENT' : 'PUSH_WORKSPACE_NOTIFICATION_SENT',
+      target: targetGroupLabel || targetGroupKey || restaurantIds.join(','),
+      details: `${pushSummary}. Title: ${String(title || '').slice(0, 80)}`,
+      userId: decoded.uid || caller?.id || 'system-admin',
+      userName: authorName || caller?.name || caller?.email || decoded.email || 'System Administrator',
+      timestamp: pushedAt,
+      metadata: { targetMode: targetMode || '', targetGroupKey: targetGroupKey || '', targetGroupLabel: targetGroupLabel || '', eligibleTokens: tokenRecords.length, staleTokensCleaned: cleanup.length }
+    }).catch(() => {});
+    return res.status(200).json({ success: response.successCount > 0, sentCount: response.successCount, failedCount: response.failureCount, staleTokensCleaned: cleanup.length, restaurantCount: restaurantIds.length, targetMode: targetMode || (restaurantIds.length > 1 ? 'multi-workspace' : 'workspace'), failures });
 
   } catch (error) {
     console.error('Push Error:', error);

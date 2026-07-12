@@ -13,7 +13,7 @@ const {
 } = require('./_ai-usage');
 
 
-const MENU_SCANNER_VERSION = '15.0.54';
+const MENU_SCANNER_VERSION = '15.0.55';
 const {
   getAllowedGeminiModels,
   getHardOutputTokenLimit,
