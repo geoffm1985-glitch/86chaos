@@ -897,6 +897,10 @@ const TabSettings = ({ appUser, addToast, users = [], clientData = {} }) => {  c
   const planAccess = usePlanAccess(appUser, clientData);
   const subscription = planAccess.subscription;
   const currentPlan = planAccess.plan;
+  const geofencePlanAccess = planAccess.canUse(FEATURE_KEYS.GEOFENCE_REVIEW).allowed;
+  const timeClockPlanAccess = planAccess.canUse(FEATURE_KEYS.TIME_CLOCK).allowed;
+  const overtimePlanAccess = planAccess.canUse(FEATURE_KEYS.OVERTIME_RISK).allowed;
+  const securityCenterPlanAccess = planAccess.canUse(FEATURE_KEYS.SECURITY_CENTER).allowed;
   const canViewBilling = Boolean(isWorkspaceOwner || appUser?.isAdmin || appUser?.permissions?.settings || appUser?.isSuperAdmin);
   const billingRestaurantId = appUser?.restaurantId || clientData?.id || clientData?.restaurantId || '';
   const billingMonthKey = getMonthStr(getToday());
@@ -2439,10 +2443,10 @@ const Toggle = ({ label, desc, checked, onChange, disabled = false }) => (
                 <h3 className="text-xl font-black text-white">Founder Beta</h3>
                 <p className="text-sm font-bold text-emerald-100 mt-2 leading-relaxed">This workspace is in Founder Beta. Active beta access is free, then the selected tier receives {subscription.founderDiscountPercent || 50}% off for 12 months after beta ends.</p>
                 <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3 mt-4">
-                  <div className="bg-[#0B0E11] border border-[#2A353D] rounded-xl p-3"><div className={T.label}>Beta status</div><div className="text-white font-black">{subscription.betaActive ? 'Active' : 'Ended'}</div></div>
+                  <div className="bg-[#0B0E11] border border-[#2A353D] rounded-xl p-3"><div className={T.label}>Beta status</div><div className="text-white font-black">{subscription.betaActive ? 'Active' : 'Ended'}</div><div className="text-[10px] text-slate-500 font-bold">{subscription.betaDaysRemaining ?? 'n/a'} days remaining</div></div>
                   <div className="bg-[#0B0E11] border border-[#2A353D] rounded-xl p-3"><div className={T.label}>Beta end</div><div className="text-white font-black">{betaEnd ? formatDisplayDate(String(betaEnd).slice(0,10)) : 'Not set'}</div></div>
                   <div className="bg-[#0B0E11] border border-[#2A353D] rounded-xl p-3"><div className={T.label}>Future tier</div><div className="text-white font-black">{futurePlan.label}</div></div>
-                  <div className="bg-[#0B0E11] border border-[#2A353D] rounded-xl p-3"><div className={T.label}>Founder price</div><div className="text-[#D4A381] font-black">{formatMoney(futurePlan.founderPrice)}/month</div></div>
+                  <div className="bg-[#0B0E11] border border-[#2A353D] rounded-xl p-3"><div className={T.label}>Founder price</div><div className="text-[#D4A381] font-black">{formatMoney(futurePlan.founderPrice)}/month</div><div className="text-[10px] text-slate-500 font-bold">Discount ends: {subscription.founderDiscountEndsAt ? formatDisplayDate(String(subscription.founderDiscountEndsAt).slice(0,10)) : 'after beta'}</div></div>
                 </div>
               </div>
             )}
@@ -2488,10 +2492,10 @@ const Toggle = ({ label, desc, checked, onChange, disabled = false }) => (
              
              <div className="mt-4 mb-2 text-[9px] font-black uppercase text-[#D4A381] tracking-widest">Time & Attendance Rules</div>
              <div className="space-y-2">
-              <div onClickCapture={(e) => { if (appUser?.planType === 'Starter' || appUser?.planType === 'Pro') { e.stopPropagation(); e.preventDefault(); addToast('Locked', 'Upgrade to Elite to enforce Strict GPS Geofencing.'); } }}>
-                <Toggle label={(appUser?.planType === 'Starter' || appUser?.planType === 'Pro') ? '🔒 Strict Geofencing (Elite)' : 'Strict Geofencing (Time Clock)'} desc="Block employees from clocking in if they are not within the GPS boundaries of the restaurant." checked={sysGeofence} onChange={e => setSysGeofence(e.target.checked)} disabled={appUser?.planType === 'Starter' || appUser?.planType === 'Pro'} />
+              <div onClickCapture={(e) => { if (!geofencePlanAccess) { e.stopPropagation(); e.preventDefault(); addToast('Locked', 'Geofence review starts with Operations access.'); } }}>
+                <Toggle label={!geofencePlanAccess ? '🔒 Strict Geofencing (Operations)' : 'Strict Geofencing (Time Clock)'} desc="Block employees from clocking in if they are not within the GPS boundaries of the restaurant." checked={sysGeofence} onChange={e => setSysGeofence(e.target.checked)} disabled={!geofencePlanAccess} />
               </div>
-              {sysGeofence && appUser?.planType !== 'Starter' && appUser?.planType !== 'Pro' && (
+              {sysGeofence && geofencePlanAccess && (
                  <div className="p-3 bg-[#12161A] border border-[#2A353D] rounded-xl space-y-3 animate-[slideIn_0.2s_ease-out] ml-4">
                    <div>
                      <label className={T.label}>Street Address (To auto-find coordinates)</label>
@@ -2556,8 +2560,8 @@ const Toggle = ({ label, desc, checked, onChange, disabled = false }) => (
                    <p className={`text-[10px] ${T.muted} font-bold uppercase tracking-widest mt-2 text-center`}>Click map to set geofence center. If tiles load gray or half-finished, tap Refresh Map. Provider: {activeMapProvider.label}.</p>
                  </div>
                )}
-               <div onClickCapture={(e) => { if (appUser?.planType === 'Starter') { e.stopPropagation(); e.preventDefault(); addToast('Locked', 'Upgrade to Pro to unlock Unpaid Break Tracking.'); } }}>
-                 <Toggle label={appUser?.planType === 'Starter' ? '🔒 Unpaid Break Tracking (Pro)' : 'Unpaid Break Tracking'} desc="Allow staff to clock out for unpaid breaks during their shift." checked={sysBreaks} onChange={e => setSysBreaks(e.target.checked)} disabled={appUser?.planType === 'Starter'} />
+               <div onClickCapture={(e) => { if (!timeClockPlanAccess) { e.stopPropagation(); e.preventDefault(); addToast('Locked', 'Time Clock starts with Operations access.'); } }}>
+                 <Toggle label={!timeClockPlanAccess ? '🔒 Unpaid Break Tracking (Operations)' : 'Unpaid Break Tracking'} desc="Allow staff to clock out for unpaid breaks during their shift." checked={sysBreaks} onChange={e => setSysBreaks(e.target.checked)} disabled={!timeClockPlanAccess} />
                </div>
                <Toggle label="Block Early Clock-Ins" desc="Prevent staff from punching in before their grace period begins." checked={sysBlockEarly} onChange={e => setSysBlockEarly(e.target.checked)} />
                <div className={`p-3 bg-[#12161A] border ${T.border} rounded-xl flex justify-between items-center gap-3`}>
@@ -2602,22 +2606,22 @@ const Toggle = ({ label, desc, checked, onChange, disabled = false }) => (
              <div className="mt-5 mb-2 text-[9px] font-black uppercase text-[#D4A381] tracking-widest">Labor & Payroll</div>
              <div className="space-y-2">
 <Toggle label="Mandatory Tip Declaration" desc="Force staff to declare cash & credit tips before they can clock out. Entering 0 is allowed when no tips were received." checked={sysTips} onChange={e => setSysTips(e.target.checked)} />               
-               <div onClickCapture={(e) => { if (appUser?.planType === 'Starter') { e.stopPropagation(); e.preventDefault(); addToast('Locked', 'Upgrade to Pro to set Overtime Alert Thresholds.'); } }} className={`p-3 bg-[#12161A] border ${T.border} rounded-xl flex justify-between items-center gap-3 ${appUser?.planType === 'Starter' ? 'opacity-50 cursor-not-allowed' : ''}`}>
+               <div onClickCapture={(e) => { if (!overtimePlanAccess) { e.stopPropagation(); e.preventDefault(); addToast('Locked', 'Overtime risk alerts start with Operations access.'); } }} className={`p-3 bg-[#12161A] border ${T.border} rounded-xl flex justify-between items-center gap-3 ${!overtimePlanAccess ? 'opacity-50 cursor-not-allowed' : ''}`}>
                  <div>
-                   <div className="text-xs font-bold text-white">{appUser?.planType === 'Starter' ? '🔒 Overtime Alert Threshold (Pro)' : 'Overtime Alert Threshold'}</div>
+                   <div className="text-xs font-bold text-white">{!overtimePlanAccess ? '🔒 Overtime Alert Threshold (Operations)' : 'Overtime Alert Threshold'}</div>
                    <div className={`text-[9px] font-medium ${T.muted} mt-0.5 leading-snug`}>Weekly hours before system flags a manager.</div>
                  </div>
-                 <input type="number" min="1" disabled={appUser?.planType === 'Starter'} value={sysOvertime} onChange={e => setSysOvertime(e.target.value)} className={`${T.input} w-16 text-center font-black py-1.5 text-xs disabled:opacity-50`} />
+                 <input type="number" min="1" disabled={!overtimePlanAccess} value={sysOvertime} onChange={e => setSysOvertime(e.target.value)} className={`${T.input} w-16 text-center font-black py-1.5 text-xs disabled:opacity-50`} />
                </div>
              </div>
 
              <div className="mt-5 mb-2 text-[9px] font-black uppercase text-[#D4A381] tracking-widest">Security & Access Control</div>
              <div className="space-y-2">
-               <div onClickCapture={(e) => { if (appUser?.planType === 'Starter' || appUser?.planType === 'Pro') { e.stopPropagation(); e.preventDefault(); addToast('Locked', 'Upgrade to Elite to enforce Strict IP Whitelisting.'); } }}>
-                 <Toggle label={(appUser?.planType === 'Starter' || appUser?.planType === 'Pro') ? '🔒 Strict IP Whitelisting (Elite)' : 'Strict IP Whitelisting'} desc="Only allow app access from specific IP addresses (e.g., the restaurant's secure Wi-Fi)." checked={sysEnableIpWhitelist} onChange={e => setSysEnableIpWhitelist(e.target.checked)} disabled={appUser?.planType === 'Starter' || appUser?.planType === 'Pro'} />
+               <div onClickCapture={(e) => { if (!securityCenterPlanAccess) { e.stopPropagation(); e.preventDefault(); addToast('Locked', 'Security Center controls start with Smart Kitchen access.'); } }}>
+                 <Toggle label={!securityCenterPlanAccess ? '🔒 Strict IP Whitelisting (Smart Kitchen)' : 'Strict IP Whitelisting'} desc="Only allow app access from specific IP addresses (e.g., the restaurant's secure Wi-Fi)." checked={sysEnableIpWhitelist} onChange={e => setSysEnableIpWhitelist(e.target.checked)} disabled={!securityCenterPlanAccess} />
                </div>
                
-               {sysEnableIpWhitelist && appUser?.planType !== 'Starter' && appUser?.planType !== 'Pro' && (
+               {sysEnableIpWhitelist && securityCenterPlanAccess && (
                  <div className="p-3 bg-[#12161A] border border-[#2A353D] rounded-xl animate-[slideIn_0.2s_ease-out] ml-4">
                    <label className={T.label}>Authorized IP Addresses (Comma Separated)</label>
                    <input type="text" value={sysIpWhitelist} onChange={e=>setSysIpWhitelist(e.target.value)} className={`${T.input} py-1.5 text-xs font-mono`} placeholder="e.g. 192.168.1.1, 10.0.0.5" />
@@ -2851,8 +2855,8 @@ const Toggle = ({ label, desc, checked, onChange, disabled = false }) => (
              </div>
              <form onSubmit={async (e) => {
                 e.preventDefault();
-                await setDoc(doc(db, "restaurants", appUser.restaurantId), { integrations: { posProvider: e.target.posProvider.value, posApiKey: e.target.posApiKey.value } }, { merge: true });
-                addToast('Saved', 'POS API Configuration Saved.');
+                await setDoc(doc(db, "restaurants", appUser.restaurantId), { integrations: { posProvider: e.target.posProvider.value, posCredentialMode: 'server_encrypted_future', posSecretStatus: 'not_saved_client_side', posApiKey: deleteField() } }, { merge: true });
+                addToast('Provider Saved', 'No POS secret was stored. Future live credentials must use the server-side encrypted vault design.');
              }} className="space-y-3">
                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                  <div>
@@ -2867,14 +2871,14 @@ const Toggle = ({ label, desc, checked, onChange, disabled = false }) => (
                  </div>
                  <div>
                    <label className={T.label}>Secure API Key / Access Token</label>
-                   <input type="password" name="posApiKey" defaultValue={clientData?.integrations?.posApiKey || ''} className={T.input} placeholder="sk_live_..." />
+                   <input type="password" name="posApiKey" value="" disabled className={`${T.input} opacity-60 cursor-not-allowed`} placeholder="Disabled until encrypted server-side vault is implemented" />
                  </div>
                </div>
                <div className="p-3 bg-[#12161A] border border-[#2A353D] rounded-xl">
                  <label className={T.label}>Your Webhook URL (Paste this into your POS dashboard)</label>
                  <code className="text-[10px] text-emerald-400 break-all select-all block mt-1">https://app.86chaos.com/api/webhooks/pos-sync?tenant={appUser.restaurantId}</code>
                </div>
-               <button type="submit" className="bg-blue-900/20 text-blue-400 font-black tracking-widest uppercase border border-blue-900/50 rounded-xl w-full py-3 hover:bg-blue-900/40 transition-colors">Connect POS</button>
+               <div className="p-3 rounded-xl border border-amber-900/40 bg-amber-950/20 text-[10px] font-bold text-amber-100">Provider selection can be saved for planning. Live API keys and OAuth secrets are intentionally disabled until the encrypted server-side vault is built.</div><button type="submit" className="bg-blue-900/20 text-blue-400 font-black tracking-widest uppercase border border-blue-900/50 rounded-xl w-full py-3 hover:bg-blue-900/40 transition-colors">Save Provider Note</button>
              </form>
           </div>
 
@@ -2885,8 +2889,8 @@ const Toggle = ({ label, desc, checked, onChange, disabled = false }) => (
              </div>
              <form onSubmit={async (e) => {
                 e.preventDefault();
-                await setDoc(doc(db, "restaurants", appUser.restaurantId), { integrations: { payrollProvider: e.target.payrollProvider.value, payrollApiKey: e.target.payrollApiKey.value } }, { merge: true });
-                addToast('Saved', 'Payroll API Configuration Saved.');
+                await setDoc(doc(db, "restaurants", appUser.restaurantId), { integrations: { payrollProvider: e.target.payrollProvider.value, payrollCredentialMode: 'server_encrypted_future', payrollSecretStatus: 'not_saved_client_side', payrollApiKey: deleteField() } }, { merge: true });
+                addToast('Provider Saved', 'No payroll secret was stored. Future live credentials must use the server-side encrypted vault design.');
              }} className="space-y-3">
                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                  <div>
@@ -2901,10 +2905,10 @@ const Toggle = ({ label, desc, checked, onChange, disabled = false }) => (
                  </div>
                  <div>
                    <label className={T.label}>Secure API Key / Bearer Token</label>
-                   <input type="password" name="payrollApiKey" defaultValue={clientData?.integrations?.payrollApiKey || ''} className={T.input} placeholder="eyJhbGciOiJIUzI1Ni..." />
+                   <input type="password" name="payrollApiKey" value="" disabled className={`${T.input} opacity-60 cursor-not-allowed`} placeholder="Disabled until encrypted server-side vault is implemented" />
                  </div>
                </div>
-               <button type="submit" className="bg-emerald-900/20 text-emerald-400 font-black tracking-widest uppercase border border-emerald-900/50 rounded-xl w-full py-3 hover:bg-emerald-900/40 transition-colors">Connect Payroll</button>
+               <div className="p-3 rounded-xl border border-amber-900/40 bg-amber-950/20 text-[10px] font-bold text-amber-100">Provider selection can be saved for planning. Live API keys and OAuth secrets are intentionally disabled until the encrypted server-side vault is built.</div><button type="submit" className="bg-emerald-900/20 text-emerald-400 font-black tracking-widest uppercase border border-emerald-900/50 rounded-xl w-full py-3 hover:bg-emerald-900/40 transition-colors">Save Provider Note</button>
              </form>
           </div>
 
@@ -3557,7 +3561,7 @@ const ADMIN_TROUBLESHOOTING_ARTICLES = [
     "keywords": "vercel env vars project mismatch firebase id token incorrect aud claim test prod",
     "body": [
       "If Firebase ID token aud says one project but API expects another, browser Firebase config and Vercel Admin credentials are mixed.",
-      "Testing should use chaos-test style project IDs and test service account JSON. Production should use production project IDs and production service account JSON.",
+      "Testing can use the existing FIREBASE_SERVICE_ACCOUNT_KEY full JSON for the testing Firebase project. Production can use its own production service account when deployed there. Project-specific test/production key names are optional aliases, not required for testing.",
       "Check Vercel variable scope: Production, Preview, Development, and branch-specific settings can differ.",
       "After editing env vars, redeploy. Old deployments keep old values."
     ]
@@ -3721,10 +3725,12 @@ const TabGodMode = ({ appUser, addToast, setGhostTenant, setActiveTab }) => {  c
   const [isScheduleReinjecting, setIsScheduleReinjecting] = useState(false);
   const [selectedClient, setSelectedClient] = useState(null);
   const [createdWorkspaceLogin, setCreatedWorkspaceLogin] = useState(null);
-  const [demoPlan, setDemoPlan] = useState('Pro');
+  const [demoPlan, setDemoPlan] = useState('smart_kitchen');
   const [demoRole, setDemoRole] = useState('manager');
   const defaultDemoFeatures = { published:true, schedule:true, events:true, ops:true, messages:true, prep:true, recipes:true, inventory:true, financials:true, team:true, maintenance:true, help:true };
   const [demoFeatures, setDemoFeatures] = useState(defaultDemoFeatures);
+  const [featureResolverFeature, setFeatureResolverFeature] = useState(FEATURE_KEYS.DAILY_CLOSE);
+  const [featureResolverUserId, setFeatureResolverUserId] = useState('owner');
   const [adminManualSearch, setAdminManualSearch] = useState('');
   const [adminToolSearch, setAdminToolSearch] = useState('');
   const [adminManualQuestion, setAdminManualQuestion] = useState('');
@@ -4019,7 +4025,7 @@ const LEGACY_JULY_2026_SCHEDULE = [
   ];
 
 // Pricing & MRR States
-  const [tierPrices, setTierPrices] = useState({ Starter: 39, Pro: 99, Elite: 149, Enterprise: 199 });
+  const [tierPrices, setTierPrices] = useState(Object.fromEntries(CUSTOMER_PLAN_ORDER.map(id => [id, PLAN_DEFINITIONS[id].monthlyPrice])));
   const [isEditingPrices, setIsEditingPrices] = useState(false);
   
   // Live Banner States
@@ -4321,23 +4327,24 @@ Old clients cannot reveal their original creation time, so they will be marked a
       const beforeSnap = await getDoc(restRef);
       const beforeData = beforeSnap.exists() ? beforeSnap.data() : {};
       const rawSubscription = editingRest.subscription || {};
-      const selectedPlanId = normalizePlanId(rawSubscription.planId || editingRest.planId || editingRest.planType || 'smart_kitchen');
-      const selectedFutureTier = normalizePlanId(rawSubscription.selectedFutureTier || rawSubscription.futurePlanId || editingRest.selectedFutureTier || selectedPlanId);
+      const resolvedDefaults = resolveSubscription(editingRest, appUser);
+      const selectedPlanId = normalizePlanId(rawSubscription.planId || editingRest.planId || resolvedDefaults.planId || 'smart_kitchen');
+      const selectedFutureTier = normalizePlanId(rawSubscription.selectedFutureTier || rawSubscription.futurePlanId || editingRest.selectedFutureTier || resolvedDefaults.selectedFutureTier || selectedPlanId);
       const nowIso = new Date().toISOString();
       const subscriptionPayload = {
         planId: selectedPlanId,
         selectedFutureTier,
-        status: rawSubscription.status || editingRest.subscriptionStatus || 'active',
-        isFounderBeta: rawSubscription.isFounderBeta === true,
-        betaStartedAt: rawSubscription.betaStartedAt || null,
-        betaEndsAt: rawSubscription.betaEndsAt || null,
-        betaExtendedUntil: rawSubscription.betaExtendedUntil || null,
-        founderDiscountPercent: Number(rawSubscription.founderDiscountPercent ?? 50),
-        founderDiscountEndsAt: rawSubscription.founderDiscountEndsAt || null,
-        billingProvider: rawSubscription.billingProvider || 'none',
-        billingNotes: rawSubscription.billingNotes || '',
+        status: rawSubscription.status || editingRest.subscriptionStatus || resolvedDefaults.status || 'beta',
+        isFounderBeta: rawSubscription.isFounderBeta ?? resolvedDefaults.isFounderBeta ?? true,
+        betaStartedAt: rawSubscription.betaStartedAt || resolvedDefaults.betaStartedAt || nowIso,
+        betaEndsAt: rawSubscription.betaEndsAt || resolvedDefaults.betaEndsAt || addDaysIso(nowIso, 60),
+        betaExtendedUntil: rawSubscription.betaExtendedUntil || resolvedDefaults.betaExtendedUntil || null,
+        founderDiscountPercent: Number(rawSubscription.founderDiscountPercent ?? resolvedDefaults.founderDiscountPercent ?? 50),
+        founderDiscountEndsAt: rawSubscription.founderDiscountEndsAt || resolvedDefaults.founderDiscountEndsAt || null,
+        billingProvider: rawSubscription.billingProvider || resolvedDefaults.billingProvider || 'none',
+        billingNotes: rawSubscription.billingNotes || resolvedDefaults.billingNotes || 'Backfilled by Master Admin plan hardening pass.',
         integrationsLocked: true,
-        createdAt: rawSubscription.createdAt || beforeData.subscription?.createdAt || nowIso,
+        createdAt: rawSubscription.createdAt || beforeData.subscription?.createdAt || resolvedDefaults.createdAt || nowIso,
         updatedAt: nowIso
       };
       const updatePayload = {
@@ -4347,7 +4354,6 @@ Old clients cannot reveal their original creation time, so they will be marked a
         ownerPhone: editingRest.ownerPhone,
         systemSettings: editingRest.systemSettings || {},
         planId: subscriptionPayload.planId,
-        planType: getPlanDefinition(subscriptionPayload.planId).label,
         subscriptionStatus: subscriptionPayload.status,
         billingStatus: subscriptionPayload.status === 'beta' ? 'Trial' : subscriptionPayload.status === 'past_due' ? 'Past Due' : 'Paid',
         subscription: subscriptionPayload,
@@ -4830,8 +4836,11 @@ Type DELETE to continue.`) || '').trim().toUpperCase();
          isReadOnly: false,
          features: { schedule: true, events: true, ops: true, messages: true, prep: true, recipes: true, inventory: true, sales: true, team: true, maintenance: true, timesheets: true, labor: true },
          labs: { laborProjection: true },
-         planType: 'Enterprise',
-         billingStatus: 'Paid',
+         planId: 'smart_kitchen',
+         selectedFutureTier: 'smart_kitchen',
+         subscriptionStatus: 'beta',
+         isFounderBeta: true,
+         integrationsLocked: true,
          createdAt: new Date().toISOString(),
          lastActive: new Date().toISOString(),
          systemSettings: { address: '123 Demo St', geofenceRadius: 300, overtime: 40, enableTargets: true, targetSales: 55000, targetLaborPct: 22.5 }
@@ -5110,7 +5119,9 @@ const handleRevokeAccess = async (user) => {
 // --- CALCULATIONS ---
   const mrr = restaurants.reduce((acc, r) => {
     if (r.customPrice !== undefined && r.customPrice !== '') return acc + parseFloat(r.customPrice);
-    return acc + (r.planType === 'Enterprise' ? 199 : r.planType === 'Elite' ? 149 : r.planType === 'Pro' ? 99 : r.planType === 'Starter' ? 49 : 0);
+    const resolved = resolveSubscription(r, appUser);
+    const def = getPlanDefinition(resolved.planId);
+    return acc + (resolved.status === 'active' ? (def.monthlyPrice || 0) : 0);
   }, 0);
   const timeAgo = (dateStr) => { if (!dateStr) return 'Never'; const days = Math.floor((Date.now() - new Date(dateStr).getTime()) / (1000 * 60 * 60 * 24)); if (days === 0) return 'Active Today'; if (days === 1) return 'Active Yesterday'; return `Inactive ${days} days`; };
 
@@ -5206,14 +5217,14 @@ const handleRevokeAccess = async (user) => {
     : autoBackupEnvironmentNote;
 
   // --- NEW SAAS HEALTH METRICS ---
-const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length;
-  const paidWorkspaces = restaurants.filter(r => r.billingStatus === 'Paid').length;
+const activeTrials = restaurants.filter(r => resolveSubscription(r, appUser).status === 'beta').length;
+  const paidWorkspaces = restaurants.filter(r => resolveSubscription(r, appUser).status === 'active').length;
   const dau = allUsers.filter(u => u.lastActive && Math.floor((Date.now() - new Date(u.lastActive).getTime()) / 86400000) === 0).length;
   const stickyRate = allUsers.length > 0 ? ((dau / allUsers.length) * 100).toFixed(0) : 0;
 
   // --- NEW INFRASTRUCTURE & FINANCIAL METRICS ---
   const arpa = paidWorkspaces > 0 ? (mrr / paidWorkspaces).toFixed(2) : 0;
-  const trialPipelineValue = activeTrials * (tierPrices.Pro || 99); 
+  const trialPipelineValue = activeTrials * (tierPrices.smart_kitchen || PLAN_DEFINITIONS.smart_kitchen.monthlyPrice || 179); 
   const crashes24h = crashLogs.filter(log => (Date.now() - new Date(log.time||0).getTime()) < 86400000).length;
   const pushOptInRate = allUsers.length > 0 ? ((allUsers.filter(u => u.fcmToken).length / allUsers.length) * 100).toFixed(0) : 0;
   const apiConnectedCount = restaurants.filter(r => r.integrations?.posProvider || r.integrations?.payrollProvider).length;
@@ -5276,9 +5287,9 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
   const selectedClientPushEnabled = selectedClientUsers.filter(u => !!u.fcmToken).length;
   const selectedClientGpsKnown = selectedClientUsers.filter(u => u.gpsPermission || u.deviceDiagnostics?.gpsPermission).length;
 
-  const pastDueWorkspaces = restaurants.filter(r => r.billingStatus === 'Past Due');
+  const pastDueWorkspaces = restaurants.filter(r => resolveSubscription(r, appUser).status === 'past_due' || r.maintenanceMode === true);
   const readOnlyWorkspaces = restaurants.filter(r => r.isReadOnly);
-  const trialWorkspaces = restaurants.filter(r => r.billingStatus === 'Trial');
+  const trialWorkspaces = restaurants.filter(r => resolveSubscription(r, appUser).status === 'beta');
   const adminUsers = allUsers.filter(u => u.isAdmin || u.isSuperAdmin);
   const inactiveUsers = allUsers.filter(u => {
     const last = getLastActiveMs(u);
@@ -5629,7 +5640,7 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
     try {
       const before = entry.before || {};
       const allowed = {};
-      ['name','ownerName','ownerEmail','ownerPhone','systemSettings','planType','billingStatus','customPrice','trialDays','isActive','isReadOnly','features','labs','branding'].forEach(key => { if (before[key] !== undefined) allowed[key] = before[key]; });
+      ['name','ownerName','ownerEmail','ownerPhone','systemSettings','planId','subscriptionStatus','subscription','integrationsLocked','isFounderBeta','founderDiscountPercent','founderDiscountEndsAt','billingStatus','customPrice','trialDays','isActive','isReadOnly','features','labs','branding'].forEach(key => { if (before[key] !== undefined) allowed[key] = before[key]; });
       if (!Object.keys(allowed).length) return addToast('No Restore Data', 'No supported fields were found in this snapshot.');
       const restRef = doc(db, 'restaurants', selectedHistoryWorkspace.id);
       const snap = await getDoc(restRef);
@@ -5676,7 +5687,7 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
     { title: 'Version 15.0.49 AI Page Limits and Invoice Noise Filtering', group: 'System Administrator', keywords: 'v15 15.0.49 ai usage scan limits page limits invoice menu monthly master admin bypass idempotency non food review', body: ['Invoice and Menu Intelligence scans are now counted by AI-processed pages per workspace and month instead of by scan count. Defaults are 40 invoice pages and 10 menu pages.', 'The scan routes verify PDF page counts before calling AI, reserve pages in a Firestore transaction, and use idempotency keys so simultaneous requests and duplicate clicks cannot double-count.', 'Configured Master Admin accounts can test beyond the limit. The server verifies the Firebase token email or trusted custom claim, logs every bypass, and never trusts a frontend environment variable or customer-controlled setting.', 'Open System Administrator → AI Usage / Scan Limits to review every workspace, page totals, submitted scans, bypass pages, failures, blocks, providers/models, recent events, and monthly limit overrides.', 'Invoice Scanner now separates obvious non-food supplies and document noise from food/product review. Publish the included Firestore rules so browser clients cannot edit aiUsage counters or limits. No Storage rules, indexes, or Firebase Functions deployment is required.'] },
     { title: 'Version 15.0.48 Invoice Product Row Recovery', group: 'System Administrator', keywords: 'v15 15.0.48 invoice scanner skipped rows needs review dense distributor sysco pfg product row stock matcher', body: ['Invoice Scanner now inspects both the AI lineItems list and every allExtractedRows audit row. Valid product rows are recovered even when the entire distributor line arrives as one dense OCR string.', 'Rows beginning with a purchased quantity and unit such as 1 CS, 2 EA, or 3 PK are treated as likely products when they also contain a pack size, product code, description, or price. The scanner extracts those fields before Stock Matcher review.', 'The former Skipped Rows panel is now Needs Review. A manager can click Move to Stock Matcher on any genuine product the automatic classifier still cannot recognize.', 'Document rows such as taxes, totals, addresses, freight, fees, discounts, credits, payments, and signatures remain excluded from inventory.', 'No Firebase rules, Storage rules, indexes, or Cloud Functions deployment is required. Deploy the updated app and Vercel API routes, then rescan the invoice.'] },
     { title: 'Version 15.0.44 Automated Data Retention and Compact Menu', group: 'System Administrator', keywords: 'v15 15.0.44 retention cleanup prep 86 alerts ai uploads time punches archive workspace delete restore cloud functions menu sections compact drawer', body: ['15.0.44 adds Firebase Cloud Functions that run every day to clean up old operational data. Prep items and 86 alerts are removed after 30 days. Raw Menu Intelligence and Invoice Scanner files are removed from Storage after 30 days.', 'Time punches leave the active Firestore database after 365 days. The function writes a compressed, verified archive file before deleting the active records. Archive files are deleted at the three-year mark.', 'System Administrator workspace deletion now starts a 30-day recovery window instead of instantly deleting the restaurant record. The workspace is disabled immediately. Use Restore beside a scheduled workspace before the deadline to cancel deletion.', 'The Firebase Functions are separate from Vercel. Open DATA_RETENTION_SETUP_15_0_44.md in the ZIP and follow the testing-project steps before production. RETENTION_ARCHIVE_BUCKET must be configured or the time-clock archive job safely stops without deleting source records.', 'The main app drawer is grouped into Account, Operations, Manager Tools, Management, and System. Button spacing is tighter, but the existing copper color system and permission filtering are unchanged.'] },
-    { title: 'Version 15.0.47 Project-Aware Backend and Dark Admin Console', group: 'System Administrator', keywords: 'v15 15.0.47 firebase project aware test production audience service account scanner push dark admin slate', body: ['Backend routes now read the Firebase project from the signed ID token and select matching server credentials instead of assuming cheers-34b8d.', 'Menu, invoice, and recipe scans verify tokens from either approved Firebase project. Menu and invoice scans can securely read the exact uploaded file from its Firebase download URL when a matching Admin credential is unavailable.', 'Push delivery and data-changing admin routes still require the matching service account. Configure FIREBASE_TEST_SERVICE_ACCOUNT_KEY for Preview and FIREBASE_PRODUCTION_SERVICE_ACCOUNT_KEY for Production.', 'Security Diagnostics now reports the active token project and which credential source was selected, without displaying secrets.', 'System Administrator now uses a darker charcoal/slate professional palette with bright readable text while preserving the compact layout.', 'No Firestore rules, Storage rules, indexes, or retention-function deployment is required for this update. Redeploy Vercel after setting the matching environment credentials.'] },
+    { title: 'Version 15.0.47 Project-Aware Backend and Dark Admin Console', group: 'System Administrator', keywords: 'v15 15.0.47 firebase project aware test production audience service account scanner push dark admin slate', body: ['Backend routes now read the Firebase project from the signed ID token and select matching server credentials instead of assuming cheers-34b8d.', 'Menu, invoice, and recipe scans verify tokens from either approved Firebase project. Menu and invoice scans can securely read the exact uploaded file from its Firebase download URL when a matching Admin credential is unavailable.', 'Push delivery and data-changing admin routes still require a matching service account. FIREBASE_SERVICE_ACCOUNT_KEY full JSON remains supported and is enough when it belongs to the active Firebase project. FIREBASE_TEST_SERVICE_ACCOUNT_KEY and FIREBASE_PRODUCTION_SERVICE_ACCOUNT_KEY are optional advanced aliases.', 'Security Diagnostics now reports the active token project and which credential source was selected, without displaying secrets.', 'System Administrator now uses a darker charcoal/slate professional palette with bright readable text while preserving the compact layout.', 'No Firestore rules, Storage rules, indexes, or retention-function deployment is required for this historical update. Redeploy Vercel after confirming the generic or project-specific Firebase Admin credential matches the active project.'] },
     { title: 'Version 15.0.46 Professional Admin Console and Gemini Authorization Repair', group: 'System Administrator', keywords: 'v15 15.0.46 professional admin console complete redesign manual knowledge desk gemini cross project authorization retired calendar tool compact', body: ['System Administrator was rebuilt again as a compact professional console. Every admin page now uses the same flat light-surface design, smaller controls, tighter tables, restrained status colors, and clearer page framing.', 'The Administrator Manual is now a three-column Knowledge Desk with search and article navigation on the left, Gemini guidance and repair playbooks in the center, and the selected article on the right.', 'Gemini Manual cross-project verification now accepts the cryptographically verified 86 Chaos owner bootstrap identity when Preview environment variables are missing, while still limiting the exception to trusted Firebase projects and the Gemini Manual route.', 'The former global calendar tool was removed completely. Platform broadcasts and other protected operations remain in their existing sections.', 'No Firestore rules, Storage rules, indexes, or Firebase Functions need publishing for this visual/API repair. Redeploy Vercel to activate it.'] },
     { title: 'Version 15.0.45 Remembered Alerts, Calm Admin Workspace, and Gemini Auth Repair', group: 'System Administrator', keywords: 'v15 15.0.45 alert dismissal seen alerts persistent banner warning admin redesign calm workspace organized gemini invalid audience chaos test production privacy policy', body: ['Dismissible warnings now save a seen-state for the signed-in user and active workspace. The app hides the exact alert after it is dismissed, including after refresh or sign-in.', 'Each alert has a fingerprint based on its real content or pending action set. A changed announcement, a new update version, a new push-repair state, or a changed set of time-off requests appears again automatically.', 'The pending time-off warning now has a clear close button. Workspace broadcasts, update notices, and push-repair notices use the same remembered-alert system.', 'System Administrator is now the Admin Workspace. The old always-visible cockpit board is gone. Start at the short priority list, use the six quick actions, or choose a section from the calmer left rail or mobile selector.', 'Gemini Manual now accepts a cryptographically verified Master Admin token from either chaos-test-d1601 or cheers-34b8d. This narrow fallback is only used for Gemini Manual and does not let testing requests operate production admin tools.', 'The Privacy Policy now documents AI processing, the automated retention schedule, legal holds, provider deletion delays, privacy requests, and restaurant responsibilities.', 'All existing tools remain available, including Gemini Manual continuation, OpenAI diagnostics guidance, backups, Security Center, Workspaces, People, Push, Support, retention controls, and Danger Zone confirmations.'] },
     { title: 'Retention job troubleshooting', group: 'System Administrator', keywords: 'retention function failed cloud scheduler archive bucket missing index prep alerts uploads time punch workspace hard delete logs', body: ['First confirm the Firebase project is the correct testing or production project. Retention functions deploy to Firebase, not Vercel.', 'If time-clock archival fails with RETENTION_ARCHIVE_BUCKET missing, create the separate archive bucket, add its bucket name to functions/.env.<project-id>, and redeploy functions. The function does not delete time punches unless the archive upload is verified.', 'If Firestore reports that an index is required, deploy firestore.indexes.json with firebase deploy --only firestore:indexes and wait for the index to finish building.', 'Use Firebase Console → Functions to confirm each retention function is deployed, then Cloud Scheduler to confirm the daily job exists. Open Logs for the exact collection, file prefix, scanned count, deleted count, or failure message.', 'A scheduled workspace can be restored from System Administrator → Workspaces before 30 days. The hard-delete function removes restaurant-scoped Firestore documents, Storage files, membership data, and workspace-only Firestore profiles. It intentionally does not automatically delete Firebase Authentication identities.'] },
@@ -5756,7 +5767,7 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
     { title: 'Version 14.0.8 Menu Workspace Switcher', group: 'System Administrator', keywords: 'v14 14.0.8 multi workspace drawer menu switch restaurant current workspace two jobs', body: ['The side menu now shows the active restaurant directly under the signed-in user name and role so employees can confirm which job they are in before clocking in or posting changes.', 'If the account has more than one active workspace, that restaurant line becomes a Change control that opens the workspace switcher without digging through the header.'] },
     { title: 'Version 14.0.4 Multi-Workspace Switcher', group: 'System Administrator', keywords: 'v14 14.0.4 multi workspace switcher multiple jobs tenant memberships staff roster presence heartbeat one login', body: ['86 Chaos now supports one Firebase login belonging to multiple restaurant workspaces through workspaceMembers membership records.', 'After login, employees with more than one active workspace choose which restaurant they are entering. The header also includes a Switch control when multiple workspaces are available.', 'Staff Roster can link an existing email to the current workspace instead of forcing duplicate accounts or resetting that person\'s password.', 'Removing a staff member removes only the current workspace membership. The Firebase Auth login stays active when the person still belongs to another restaurant.', 'Live Users and presence heartbeats are stored per workspace/user pair so activity from one job does not overwrite another job. Publish Firestore rules with this build.'] },
     { title: 'Version 14.0.2 Robustness Suite', group: 'System Administrator', keywords: 'v14 14.0.2 robustness safe write storage doctor schema doctor restore preview backup picker permission simulator import bridge offline queue release guardrails menu dependency graph', body: ['Open System Administrator → 14.0 Robustness Suite for the platform hardening tools.', 'Safe Write Engine centralizes permission checks, restaurantId enforcement, demo-mode blocking, audit logging, redacted before/after details, and offline queue support. In 14.0.2 it is wired into major kitchen forms: inventory, waste, prep, line checks, recipes, maintenance, Kitchen Command smart actions, Manager Brief quick actions, and menu dependency mapping.', 'Upload & Storage Doctor tests Firebase Admin credentials, target bucket, workspace lookup, and a real write/read/delete cycle before uploads are trusted.', 'Schema Doctor scans tenant records for missing restaurantId values, invalid dates, stale punches, negative inventory, old branding fields, and demo privacy hazards. Repair Safe Items only fixes repairable issues.', 'Restore Preview can load backups from Firebase Storage into a picker, preview a selected snapshot, count documents by collection, flag sensitive fields, and selectively restore chosen collections after typing RESTORE.', 'Permission Simulator previews visible and blocked tabs plus wage/forensics/backup access for a selected user.', 'Import Bridge downloads CSV templates for POS sales, payroll time, vendor invoices, and inventory counts.', 'Release Guardrails confirm version, 86 Chaos brand lock, demo privacy, Help Center public boundary, and rules packaging before deployment.', 'Kitchen Command Center Dependency Graph maps recipes/menu items to inventory items so low-stock inventory, prep signals, and 86 alerts can surface affected menu items more reliably.'] },
-    { title: 'Mandatory Tip Declaration reliability', group: 'Admin Tab Guide', keywords: 'tips mandatory declaration clock out payroll time clock settings schema doctor', body: ['Settings → Workspace → Labor & Payroll controls Mandatory Tip Declaration for the restaurant.', 'The setting is now a core time-clock control, not an Elite-only plan feature. When enabled, every employee clock-out opens Declare Tips before the punch closes.', 'Employees can enter 0 cash and 0 credit tips when they did not receive tips. The punch stores cashTips, creditTips, totalDeclaredTips, tipDeclarationRequired, tipDeclarationCompleted, tipDeclaredAt, and tipDeclarationVersion for payroll review.', 'Older restaurant documents that are missing systemSettings.tips default to enabled at runtime so employees do not bypass declaration. Schema Doctor flags missing tips settings as repairable and can stamp tips: true explicitly.', 'If a manager reports that the modal is not appearing, verify the workspace setting, refresh the employee device, and run Schema Doctor dry run for that workspace.'] },
+    { title: 'Mandatory Tip Declaration reliability', group: 'Admin Tab Guide', keywords: 'tips mandatory declaration clock out payroll time clock settings schema doctor', body: ['Settings → Workspace → Labor & Payroll controls Mandatory Tip Declaration for the restaurant.', 'The setting is now a core time-clock control, not a legacy tier-specific feature. When enabled, every employee clock-out opens Declare Tips before the punch closes.', 'Employees can enter 0 cash and 0 credit tips when they did not receive tips. The punch stores cashTips, creditTips, totalDeclaredTips, tipDeclarationRequired, tipDeclarationCompleted, tipDeclaredAt, and tipDeclarationVersion for payroll review.', 'Older restaurant documents that are missing systemSettings.tips default to enabled at runtime so employees do not bypass declaration. Schema Doctor flags missing tips settings as repairable and can stamp tips: true explicitly.', 'If a manager reports that the modal is not appearing, verify the workspace setting, refresh the employee device, and run Schema Doctor dry run for that workspace.'] },
     { title: 'Workspace geofence map lookup', group: 'Admin Tab Guide', keywords: 'workspace settings global config geofence find gps map lookup coordinates latitude longitude map service failed', body: ['Settings → Workspace → Global Config uses the Find GPS button to translate an address into latitude and longitude for the time-clock geofence.', 'Version 13.1.33 routes address lookup through /api/geocode-address so browsers are not solely responsible for reaching the public map service.', 'If the map service is unavailable, keep the saved latitude/longitude, enter coordinates manually, or click the map to set the geofence center. Version 13.1.34 makes the pin-drop map more resilient on desktop and mobile by forcing Leaflet size recalculation after the panel renders, adding a Refresh Map button, and rotating tile providers when tiles fail. A grey/slow tile map does not stop saved coordinates from enforcing the geofence.', 'For preview deployments, confirm api/geocode-address.js is present in Vercel. No Firebase rules are required for this route.'] },
     { title: 'Manual Presence Snapshot: how it works', group: 'Admin Tab Guide', keywords: 'manual presence snapshot live users online heartbeat reads writes super admin refresh', body: ['System Administrator → Live Activity no longer opens live Firestore listeners or runs a constant online scanner.', 'Regular staff and store managers do not see online status in Team. Only the Super Admin can press Refresh Snapshot in System Administrator.', 'Each user browser saves a low-frequency app-open presence check-in. The snapshot button reads livePresence once and shows check-ins from the recent window.', 'Because this favors low Firebase cost, it is an operational hint, not a perfect minute-by-minute surveillance tool.', 'If the snapshot fails, deploy the included API route and Firestore rules, then log out and back in so Super Admin claims refresh.'] },
     { title: 'Admin Workspace home: what the numbers mean', group: 'Admin Tab Guide', keywords: 'admin workspace home priority list quick actions metrics backup mrr crashes people workspaces', body: ['The Admin Workspace home intentionally shows only a short priority list, six quick actions, and four core numbers.', 'The priority list is the shortest path to urgent problems. Click a row to open the correct section.', 'Active workspaces, People, Crashes today, and Estimated MRR are operating signals, not accounting records.', 'Backup and Security summaries live in the three small cards at the top. Open their full sections for details.', 'Manual Presence still counts recent app check-ins only after the Super Admin presses Refresh Snapshot; it does not run in the background.'] },
@@ -6238,7 +6249,7 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
     restaurants.forEach(r => {
       const usersForRest = allUsers.filter(u => u.restaurantId === r.id);
       const modulesEnabled = moduleList.filter(key => r.features?.[key] !== false).join('|');
-      rows.push([r.id, r.name || '', r.ownerName || '', r.ownerEmail || '', r.planType || '', r.billingStatus || '', usersForRest.length, usersForRest.filter(isOnlineNow).length, r.lastActive || '', modulesEnabled]);
+      rows.push([r.id, r.name || '', r.ownerName || '', r.ownerEmail || '', getPlanDefinition(resolveSubscription(r, appUser).planId).label || '', resolveSubscription(r, appUser).status || '', usersForRest.length, usersForRest.filter(isOnlineNow).length, r.lastActive || '', modulesEnabled]);
     });
     downloadCsvRows(`86chaos-client-directory-${getToday()}.csv`, rows);
     addToast('Client Directory', 'Downloaded workspace operations CSV.');
@@ -6765,6 +6776,29 @@ Type RESTORE to continue.`);
     }
   };
 
+
+  const resetAiUsage = async (row) => {
+    const restaurantId = row?.restaurantId;
+    if (!restaurantId) return;
+    if (!window.confirm(`Reset AI scan usage for ${row.restaurantName || restaurantId} for ${aiUsageMonth}? Limits stay the same, counters go back to zero.`)) return;
+    setAiUsageSavingId(restaurantId);
+    try {
+      const response = await secureFetch('/api/ai-usage', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'reset', restaurantId, monthKey: aiUsageMonth })
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok || payload?.ok === false) throw new Error(payload?.error || 'Could not reset AI usage.');
+      addToast('AI Usage Reset', `${row.restaurantName || restaurantId} usage reset for ${aiUsageMonth}.`);
+      await loadAiUsageAdmin();
+    } catch (error) {
+      addToast('AI Reset Error', error?.message || 'Could not reset AI usage.');
+    } finally {
+      setAiUsageSavingId('');
+    }
+  };
+
   useEffect(() => {
     if (subTab === 'ai-usage') loadAiUsageAdmin();
   }, [subTab, aiUsageMonth]);
@@ -7180,8 +7214,8 @@ Type RESTORE to continue.`);
               <div className="bg-[#12161A] border border-[#2A353D] rounded-xl p-3">
                 <div className={T.label}>Client Health</div>
                 <div className="grid grid-cols-2 gap-2 text-[11px] font-bold text-slate-300">
-                  <div className="bg-[#0B0E11] border border-[#2A353D] rounded-lg p-2"><div className="text-[8px] uppercase tracking-widest text-slate-500">Billing</div><div className="text-white truncate">{selectedClient.billingStatus || 'Unknown'}</div></div>
-                  <div className="bg-[#0B0E11] border border-[#2A353D] rounded-lg p-2"><div className="text-[8px] uppercase tracking-widest text-slate-500">Plan</div><div className="text-white truncate">{selectedClient.planType || 'Pro'}</div></div>
+                  <div className="bg-[#0B0E11] border border-[#2A353D] rounded-lg p-2"><div className="text-[8px] uppercase tracking-widest text-slate-500">Billing</div><div className="text-white truncate">{resolveSubscription(selectedClient || {}, appUser).status || 'Unknown'}</div></div>
+                  <div className="bg-[#0B0E11] border border-[#2A353D] rounded-lg p-2"><div className="text-[8px] uppercase tracking-widest text-slate-500">Plan</div><div className="text-white truncate">{getPlanDefinition(resolveSubscription(selectedClient || {}, appUser).planId).label}</div></div>
                   <div className="bg-[#0B0E11] border border-[#2A353D] rounded-lg p-2"><div className="text-[8px] uppercase tracking-widest text-slate-500">Last active</div><div className="text-white truncate">{timeAgo(selectedClient.lastActive)}</div></div>
                   <div className="bg-[#0B0E11] border border-[#2A353D] rounded-lg p-2"><div className="text-[8px] uppercase tracking-widest text-slate-500">GPS/geofence</div><div className="text-white truncate">{selectedClient.systemSettings?.geofence ? 'Enabled' : 'Off / Not Set'}</div></div>
                 </div>
@@ -7201,7 +7235,7 @@ Type RESTORE to continue.`);
                 <div className="flex gap-2"><button type="button" onClick={() => startDemoMode(selectedClient, 'manager')} className={`${T.btn} text-[10px] px-3`}>Demo Manager</button><button type="button" onClick={() => startDemoMode(selectedClient, 'employee')} className={`${T.btnAlt} text-[10px] px-3`}>Demo Employee</button></div>
               </div>
               <div className="grid sm:grid-cols-2 gap-2">
-                <div><label className={T.label}>Demo tier</label><select value={demoPlan} onChange={e=>setDemoPlan(e.target.value)} className={T.input}>{['Starter','Pro','Elite','Enterprise'].map(x => <option key={x}>{x}</option>)}</select></div>
+                <div><label className={T.label}>Demo tier</label><select value={demoPlan} onChange={e=>setDemoPlan(e.target.value)} className={T.input}>{CUSTOMER_PLAN_ORDER.map(id => <option key={id} value={id}>{PLAN_DEFINITIONS[id].label}</option>)}</select></div>
                 <div><label className={T.label}>Default view</label><select value={demoRole} onChange={e=>setDemoRole(e.target.value)} className={T.input}><option value="manager">Manager demo</option><option value="employee">Regular employee demo</option></select></div>
               </div>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
@@ -7266,7 +7300,6 @@ Type RESTORE to continue.`);
               return {
                 ...prev,
                 planId,
-                planType: getPlanDefinition(planId).label,
                 subscriptionStatus: merged.status || 'active',
                 billingStatus: merged.status === 'beta' ? 'Trial' : merged.status === 'past_due' ? 'Past Due' : 'Paid',
                 integrationsLocked: true,
@@ -7278,7 +7311,12 @@ Type RESTORE to continue.`);
           const currentSubscription = resolveSubscription(editingRest, appUser);
           const currentPlan = getPlanDefinition(currentSubscription.planId);
           const futurePlan = getPlanDefinition(currentSubscription.selectedFutureTier || currentSubscription.planId);
-          const setPlan = (planId) => updateSubscriptionDraft({ planId, selectedFutureTier: planId, status: editingRest.subscription?.status || 'active' });
+          const workspaceUsersForResolver = allUsers.filter(u => u.restaurantId === editingRest.id || (Array.isArray(u.workspaceIds) && u.workspaceIds.includes(editingRest.id)));
+          const selectedResolverUser = featureResolverUserId === 'owner'
+            ? { id: 'owner', name: editingRest.ownerName || 'Owner', email: editingRest.ownerEmail || '', isOwner: true, accountOwner: true, isAdmin: true, permissions: { settings: true, team: true, schedule: true, inventory: true, sales: true, labor: true, wageView: true, wageEdit: true } }
+            : (workspaceUsersForResolver.find(u => u.id === featureResolverUserId) || { id: 'staff', name: 'Sample Staff', permissions: {} });
+          const featureResolverAccess = resolveFeatureAccess({ workspace: editingRest, user: selectedResolverUser, featureKey: featureResolverFeature });
+          const setPlan = (planId) => updateSubscriptionDraft({ planId, selectedFutureTier: planId, status: editingRest.subscription?.status || currentSubscription.status || 'beta' });
           const startFounderBeta = () => {
             const started = new Date().toISOString();
             const futureTier = normalizePlanId(editingRest.subscription?.selectedFutureTier || editingRest.subscription?.planId || editingRest.planId || 'smart_kitchen');
@@ -7289,18 +7327,21 @@ Type RESTORE to continue.`);
             });
           };
           const extendFounderBeta = () => {
-            const baseEnd = currentSubscription.betaEndsAt || addDaysIso(currentSubscription.betaStartedAt || new Date().toISOString(), 60);
-            updateSubscriptionDraft({ status: 'beta', isFounderBeta: true, betaEndsAt: baseEnd, betaExtendedUntil: addDaysIso(baseEnd, 30), founderDiscountPercent: 50 });
+            const started = currentSubscription.betaStartedAt || new Date().toISOString();
+            const baseEnd = currentSubscription.betaEndsAt || addDaysIso(started, 60);
+            const maxExtended = addDaysIso(started, 90);
+            const extension = addDaysIso(baseEnd, 30);
+            updateSubscriptionDraft({ status: 'beta', isFounderBeta: true, betaStartedAt: started, betaEndsAt: baseEnd, betaExtendedUntil: new Date(extension).getTime() > new Date(maxExtended).getTime() ? maxExtended : extension, founderDiscountPercent: 50 });
           };
           const endFounderBeta = () => {
             const ended = new Date().toISOString();
             updateSubscriptionDraft({ status: 'active', isFounderBeta: true, founderDiscountPercent: 50, founderDiscountEndsAt: addMonthsIso(ended, 12), billingProvider: 'manual' });
           };
-          const markManualActive = () => updateSubscriptionDraft({ status: 'active', billingProvider: 'manual' });
+          const cancelBeta = () => updateSubscriptionDraft({ status: 'canceled', isFounderBeta: false, billingProvider: 'manual' });
+          const markManualActive = () => updateSubscriptionDraft({ status: 'active', billingProvider: 'manual', founderDiscountEndsAt: currentSubscription.isFounderBeta ? (currentSubscription.founderDiscountEndsAt || addMonthsIso(new Date().toISOString(), 12)) : currentSubscription.founderDiscountEndsAt });
           const planFeatureList = (currentPlan.features || []).slice(0, 14).map(key => key.replace(/_/g, ' '));
           const applyTierPreset = (tier) => {
-            const legacyMap = { Starter: 'shift', Pro: 'operations', Elite: 'smart_kitchen', Enterprise: 'owner_pro' };
-            setPlan(legacyMap[tier] || tier);
+            setPlan(tier);
           };
        
     
@@ -7337,7 +7378,7 @@ Type RESTORE to continue.`);
                     <div>
                       <div className="text-[10px] font-black uppercase tracking-widest text-[#D4A381]">Plan, Founder Beta & Feature Access</div>
                       <h3 className="text-xl font-black text-white mt-1">{currentPlan.label} • {currentSubscription.status}</h3>
-                      <p className="text-xs text-slate-400 font-bold mt-1 leading-relaxed">Plan gates unlock features. Staff still need the correct roster role and permissions before they can use anything.</p>
+                      <p className="text-xs text-slate-400 font-bold mt-1 leading-relaxed">Plan gates unlock features. Staff still need the correct roster role and permissions before they can use anything. {currentSubscription.needsSubscriptionBackfill ? 'This workspace is using the safe Founder Beta Smart Kitchen migration default until saved.' : ''}</p>
                     </div>
                     <div className="grid grid-cols-2 gap-2 min-w-[260px]">
                       <div className="bg-[#0B0E11] border border-[#2A353D] rounded-xl p-3"><div className="text-[8px] uppercase tracking-widest text-slate-500 font-black">Invoice pages</div><div className="text-lg font-black text-white">{currentPlan.invoicePagesLimit === Infinity ? '∞' : currentPlan.invoicePagesLimit}/mo</div></div>
@@ -7359,9 +7400,21 @@ Type RESTORE to continue.`);
                   </div>
                   <textarea value={editingRest.subscription?.billingNotes || ''} onChange={e => updateSubscriptionDraft({ billingNotes: e.target.value })} className={T.input} rows={3} placeholder="Internal billing notes. Visible only to System Administrator tools." />
                   <div className="grid md:grid-cols-3 gap-3">
-                    <div className="bg-blue-950/20 border border-blue-500/40 rounded-xl p-3"><div className="text-[9px] uppercase tracking-widest text-blue-300 font-black">Founder Beta</div><p className="text-xs text-slate-300 font-bold mt-1">60 days free, one 30-day extension, then 50% off {futurePlan.label} for 12 months.</p><div className="flex flex-wrap gap-2 mt-3"><button type="button" onClick={startFounderBeta} className="admin45-secondary-action">Start Beta</button><button type="button" onClick={extendFounderBeta} className="admin45-secondary-action">Extend 30 Days</button><button type="button" onClick={endFounderBeta} className="admin45-secondary-action">End Beta</button></div></div>
+                    <div className="bg-blue-950/20 border border-blue-500/40 rounded-xl p-3"><div className="text-[9px] uppercase tracking-widest text-blue-300 font-black">Founder Beta</div><p className="text-xs text-slate-300 font-bold mt-1">60 days free, one 30-day extension, then 50% off {futurePlan.label} for 12 months. Days remaining: {currentSubscription.betaDaysRemaining ?? 'n/a'}.</p><div className="flex flex-wrap gap-2 mt-3"><button type="button" onClick={startFounderBeta} className="admin45-secondary-action">Start Beta</button><button type="button" onClick={extendFounderBeta} className="admin45-secondary-action">Extend 30 Days</button><button type="button" onClick={endFounderBeta} className="admin45-secondary-action">End Beta → Manual</button><button type="button" onClick={cancelBeta} className="admin45-secondary-action">Cancel</button></div><div className="text-[10px] font-black text-blue-100 mt-3">Lifecycle: {currentSubscription.betaLifecycleFlag || 'none'}</div></div>
                     <div className="bg-emerald-950/20 border border-emerald-500/40 rounded-xl p-3"><div className="text-[9px] uppercase tracking-widest text-emerald-300 font-black">Manual Billing</div><p className="text-xs text-slate-300 font-bold mt-1">Live payments are not active. Mark accounts active manually until billing launches.</p><button type="button" onClick={markManualActive} className="admin45-primary-action mt-3">Mark Active Manual</button></div>
                     <div className="bg-orange-950/20 border border-orange-500/40 rounded-xl p-3"><div className="text-[9px] uppercase tracking-widest text-orange-300 font-black">Integrations Locked</div><p className="text-xs text-slate-300 font-bold mt-1">Customer tiers cannot access integrations yet. System Administrator only for internal testing.</p><div className="text-[10px] font-black text-orange-200 mt-3">Locked: yes</div></div>
+                  </div>
+
+                  <div className="bg-[#0B0E11] border border-[#2A353D] rounded-2xl p-4 space-y-3">
+                    <div><div className="text-[10px] uppercase tracking-widest text-[#D4A381] font-black">Feature Access Resolver</div><p className="text-xs text-slate-400 font-bold mt-1">Internal diagnostic: explains why a selected user can or cannot see a feature in this workspace.</p></div>
+                    <div className="grid sm:grid-cols-2 gap-3">
+                      <label><span className={T.label}>Feature</span><select value={featureResolverFeature} onChange={e => setFeatureResolverFeature(e.target.value)} className={T.input}>{Object.values(FEATURE_KEYS).map(key => <option key={key} value={key}>{key.replace(/_/g, ' ')}</option>)}</select></label>
+                      <label><span className={T.label}>User</span><select value={featureResolverUserId} onChange={e => setFeatureResolverUserId(e.target.value)} className={T.input}><option value="owner">Workspace owner sample</option><option value="staff">Regular staff sample</option>{workspaceUsersForResolver.slice(0, 200).map(u => <option key={u.id} value={u.id}>{u.name || u.email || u.id} • {u.role || 'No role'}</option>)}</select></label>
+                    </div>
+                    <div className="grid grid-cols-2 md:grid-cols-6 gap-2">
+                      {[['Plan', currentPlan.label], ['Beta', currentSubscription.status], ['Plan OK', featureResolverAccess.planAllowed ? 'yes' : 'no'], ['Role OK', featureResolverAccess.roleAllowed ? 'yes' : 'no'], ['Manual', featureResolverAccess.manualEnabled ? 'yes' : 'no'], ['Final', featureResolverAccess.allowed ? 'allowed' : 'locked']].map(([k,v]) => <div key={k} className="bg-[#12161A] border border-[#2A353D] rounded-xl p-2"><div className="text-[8px] uppercase tracking-widest text-slate-500 font-black">{k}</div><div className={`text-xs font-black mt-1 ${v === 'locked' || v === 'no' ? 'text-red-300' : 'text-emerald-300'}`}>{v}</div></div>)}
+                    </div>
+                    <div className="bg-[#12161A] border border-[#2A353D] rounded-xl p-3 text-xs font-bold text-slate-300">Reason: {featureResolverAccess.reason || 'Allowed by plan and permission.'}</div>
                   </div>
                   <div className="bg-[#0B0E11] border border-[#2A353D] rounded-xl p-3"><div className="text-[9px] uppercase tracking-widest text-slate-500 font-black">Included feature sample</div><div className="flex flex-wrap gap-1.5 mt-2">{planFeatureList.map(label => <span key={label} className="px-2 py-1 rounded-full bg-[#12161A] border border-[#2A353D] text-[9px] font-black uppercase tracking-widest text-slate-300">{label}</span>)}</div></div>
                 </div>
@@ -7651,7 +7704,7 @@ Type RESTORE to continue.`);
                         <div className="flex items-center gap-2"><div><strong className="text-white">{Number(row.menuPagesUsed || 0)}</strong><div className="text-[9px] text-slate-500">{Number(row.menuPagesProcessed ?? row.menuPagesUsed ?? 0)} processed</div></div><span className="text-slate-600">/</span><input type="number" min="0" max="10000" value={draft.menuPagesLimit} onChange={event => setAiUsageLimitDrafts(previous => ({ ...previous, [row.restaurantId]: { ...draft, menuPagesLimit: event.target.value } }))} className="admin46-input w-20" /></div>
                         <div><div className="font-black text-white">{Number(row.invoiceScansSubmitted || 0) + Number(row.menuScansSubmitted || 0)}</div><div className="text-[9px] text-slate-500">{failures} failed · {blocks} blocked</div></div>
                         <div><div className="font-black text-blue-300">{Number(row.exemptPagesProcessed || 0)}</div><div className="text-[9px] text-slate-500">testing pages</div></div>
-                        <button type="button" onClick={() => saveAiUsageLimits(row)} disabled={aiUsageSavingId === row.restaurantId} className="admin45-primary-action px-3 py-2">{aiUsageSavingId === row.restaurantId ? 'Saving…' : 'Save limits'}</button>
+                        <div className="flex flex-col gap-1"><button type="button" onClick={() => saveAiUsageLimits(row)} disabled={aiUsageSavingId === row.restaurantId} className="admin45-primary-action px-3 py-2">{aiUsageSavingId === row.restaurantId ? 'Saving…' : 'Save limits'}</button><button type="button" onClick={() => resetAiUsage(row)} disabled={aiUsageSavingId === row.restaurantId} className="admin45-secondary-action px-3 py-2">Reset usage</button></div>
                       </div>
                     );
                   })}
@@ -8252,7 +8305,7 @@ Type RESTORE to continue.`);
                 const isBackfilledCreatedAt = r.createdAtEstimated || (!createdRaw && r.createdAtBackfilledAt);
                 const trialDurationDays = r.trialDays !== undefined ? parseInt(r.trialDays) : 14;
                 const trialEndDate = new Date(createdDate.getTime() + trialDurationDays * 24 * 60 * 60 * 1000);
-                const isTrialActive = r.billingStatus === 'Trial';
+                const isTrialActive = resolveSubscription(r, appUser).status === 'beta';
                 const daysInTrial = Math.ceil((trialEndDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
                 
                 const nextBill = new Date();
@@ -8267,7 +8320,7 @@ Type RESTORE to continue.`);
                       {!r.isActive && <span className="bg-red-500 text-white text-[8px] px-1.5 py-0.5 rounded uppercase">Suspended</span>}
                       {r.deleted_at && <span className="bg-amber-900 text-amber-300 border border-amber-500/50 text-[8px] px-1.5 py-0.5 rounded uppercase">Deletion Scheduled</span>}
                       {r.isReadOnly && <span className="bg-blue-900 text-blue-300 border border-blue-500/50 text-[8px] px-1.5 py-0.5 rounded uppercase">Read-Only</span>}
-                      {r.billingStatus === 'Past Due' ? <span className="bg-red-900 text-red-400 border border-red-500/50 text-[8px] px-1.5 py-0.5 rounded uppercase animate-pulse">Maintenance</span> : <span className="bg-emerald-900 text-emerald-400 border border-emerald-500/50 text-[8px] px-1.5 py-0.5 rounded uppercase">{r.planType || 'Pro'}</span>}
+                      {(resolveSubscription(r, appUser).status === 'past_due' || r.maintenanceMode === true) ? <span className="bg-red-900 text-red-400 border border-red-500/50 text-[8px] px-1.5 py-0.5 rounded uppercase animate-pulse">Maintenance</span> : <span className="bg-emerald-900 text-emerald-400 border border-emerald-500/50 text-[8px] px-1.5 py-0.5 rounded uppercase">{getPlanDefinition(resolveSubscription(r, appUser).planId).label}</span>}
                     </div>
                     <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Owner: {r.ownerName} <span className="mx-1">•</span> {r.ownerEmail} {r.ownerPhone && <><span className="mx-1">•</span> {r.ownerPhone}</>}</div>
                     
@@ -8287,7 +8340,7 @@ Type RESTORE to continue.`);
                       ) : (
                         <div className="flex flex-col">
                           <span className="text-[8px] font-black uppercase tracking-widest text-emerald-500">Next Billing Cycle</span>
-                          <span className="text-[10px] font-bold text-emerald-400">{r.billingStatus === 'Past Due' ? 'MAINTENANCE MODE' : nextBill.toLocaleDateString()}</span>
+                          <span className="text-[10px] font-bold text-emerald-400">{(resolveSubscription(r, appUser).status === 'past_due' || r.maintenanceMode === true) ? 'MAINTENANCE MODE' : nextBill.toLocaleDateString()}</span>
                         </div>
                       )}
                     </div>
@@ -9736,10 +9789,15 @@ const TabFinancials = ({ currentDate, users = [], shifts = [], sales = [], timeP
   const [expenseForm, setExpenseForm] = useState({ date: getToday(), vendor: '', category: 'Other', amount: '', paymentMethod: 'Unpaid', dueDate: '', paid: false, notes: '' });
   const [targetsDraft, setTargetsDraft] = useState(DEFAULT_FINANCE_TARGETS);
 
-  const dbRoles = useLiveCollection('roles', appUser?.restaurantId, { enabled: !!appUser?.restaurantId, limitCount: 250 });
-  const financialExpenses = useLiveCollection('financialExpenses', appUser?.restaurantId, { enabled: !!appUser?.restaurantId && canSales, limitCount: 250, fallbackLimitCount: 150 });
-  const financialTargets = useLiveCollection('financialTargets', appUser?.restaurantId, { enabled: !!appUser?.restaurantId && canSales, limitCount: 25, fallbackLimitCount: 25 });
-  const invoices = useLiveCollection('invoices', appUser?.restaurantId, { enabled: !!appUser?.restaurantId && canSales, limitCount: 250, fallbackLimitCount: 150 });
+  const canLaborCommand = planAccess.canUse(FEATURE_KEYS.LABOR_COMMAND).allowed || planAccess.canUse(FEATURE_KEYS.TIMESHEETS).allowed;
+  const canSmartFinancials = planAccess.canUse(FEATURE_KEYS.FINANCIAL_OVERVIEW).allowed || planAccess.canUse(FEATURE_KEYS.COGS_CENTER).allowed;
+  const canExpenses = planAccess.canUse(FEATURE_KEYS.EXPENSES).allowed;
+  const canTargets = planAccess.canUse(FEATURE_KEYS.BUDGET_TARGETS).allowed;
+  const canInvoiceData = planAccess.canUse(FEATURE_KEYS.INVOICE_TOTALS).allowed || planAccess.canUse(FEATURE_KEYS.COGS_CENTER).allowed;
+  const dbRoles = useLiveCollection('roles', appUser?.restaurantId, { enabled: !!appUser?.restaurantId && canLaborCommand, limitCount: 250 });
+  const financialExpenses = useLiveCollection('financialExpenses', appUser?.restaurantId, { enabled: !!appUser?.restaurantId && canSales && canExpenses, limitCount: 250, fallbackLimitCount: 150 });
+  const financialTargets = useLiveCollection('financialTargets', appUser?.restaurantId, { enabled: !!appUser?.restaurantId && canSales && canTargets, limitCount: 25, fallbackLimitCount: 25 });
+  const invoices = useLiveCollection('invoices', appUser?.restaurantId, { enabled: !!appUser?.restaurantId && canSales && canInvoiceData, limitCount: 250, fallbackLimitCount: 150 });
 
   const rosterRoleOptions = Array.from(new Map([
     ...dbRoles.map(r => normalizeLaborRole(r.name)),

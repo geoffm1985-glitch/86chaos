@@ -16,7 +16,7 @@ const PLAN_ORDER = [PLAN_IDS.SHIFT, PLAN_IDS.OPERATIONS, PLAN_IDS.SMART_KITCHEN,
 
 const PLAN_DEFINITIONS = {
   [PLAN_IDS.SHIFT]: { id: PLAN_IDS.SHIFT, label: 'Shift', monthlyPrice: 49, invoicePagesLimit: 0, menuPagesLimit: 0, features: [] },
-  [PLAN_IDS.OPERATIONS]: { id: PLAN_IDS.OPERATIONS, label: 'Operations', monthlyPrice: 99, invoicePagesLimit: 20, menuPagesLimit: 3, features: [FEATURE_KEYS.INVOICE_SCANNING, FEATURE_KEYS.MENU_SCANNING] },
+  [PLAN_IDS.OPERATIONS]: { id: PLAN_IDS.OPERATIONS, label: 'Operations', monthlyPrice: 99, invoicePagesLimit: 20, menuPagesLimit: 3, features: [] },
   [PLAN_IDS.SMART_KITCHEN]: { id: PLAN_IDS.SMART_KITCHEN, label: 'Smart Kitchen', monthlyPrice: 179, invoicePagesLimit: 75, menuPagesLimit: 10, features: [FEATURE_KEYS.INVOICE_SCANNING, FEATURE_KEYS.MENU_SCANNING] },
   [PLAN_IDS.OWNER_PRO]: { id: PLAN_IDS.OWNER_PRO, label: 'Owner Pro', monthlyPrice: 299, invoicePagesLimit: 200, menuPagesLimit: 25, features: [FEATURE_KEYS.INVOICE_SCANNING, FEATURE_KEYS.MENU_SCANNING] },
   [PLAN_IDS.MASTER_ADMIN]: { id: PLAN_IDS.MASTER_ADMIN, label: 'Master Admin', monthlyPrice: 0, invoicePagesLimit: Number.MAX_SAFE_INTEGER, menuPagesLimit: Number.MAX_SAFE_INTEGER, features: [FEATURE_KEYS.INVOICE_SCANNING, FEATURE_KEYS.MENU_SCANNING, FEATURE_KEYS.INTEGRATIONS] }
@@ -80,13 +80,56 @@ function isInternalTestingUser(decoded = {}, user = {}) {
     (email && decoded.email_verified !== false && bypassEmails().includes(email))
   );
 }
+function hasExplicitSubscription(workspace = {}) {
+  return Boolean(workspace.subscription && typeof workspace.subscription === 'object' && Object.keys(workspace.subscription).length > 0);
+}
+function hasExplicitModernPlan(workspace = {}) {
+  const rawPlan = clean(workspace.planId || workspace?.subscription?.planId || '');
+  return rawPlan && [PLAN_IDS.SHIFT, PLAN_IDS.OPERATIONS, PLAN_IDS.SMART_KITCHEN, PLAN_IDS.OWNER_PRO, PLAN_IDS.MASTER_ADMIN].includes(normalizePlanId(rawPlan));
+}
+function defaultFounderBetaSubscription(workspace = {}) {
+  const started = iso(workspace.createdAt || workspace.createdAtBackfilledAt) || new Date().toISOString();
+  const futureTier = normalizePlanId(workspace?.subscription?.selectedFutureTier || workspace.selectedFutureTier || PLAN_IDS.SMART_KITCHEN);
+  return {
+    planId: futureTier || PLAN_IDS.SMART_KITCHEN,
+    selectedFutureTier: futureTier || PLAN_IDS.SMART_KITCHEN,
+    status: 'beta',
+    isFounderBeta: true,
+    betaStartedAt: started,
+    betaEndsAt: addDaysIso(started, 60),
+    betaExtendedUntil: null,
+    founderDiscountPercent: 50,
+    founderDiscountEndsAt: null,
+    billingProvider: 'none',
+    integrationsLocked: true
+  };
+}
+function betaDaysRemaining(subscription = {}) {
+  const end = subscription.betaExtendedUntil || subscription.betaEndsAt;
+  if (!end || !subscription.isFounderBeta) return null;
+  const diff = toMs(end) - Date.now();
+  if (!Number.isFinite(diff)) return null;
+  return Math.ceil(diff / (24 * 60 * 60 * 1000));
+}
+function betaLifecycleFlag(subscription = {}) {
+  const days = betaDaysRemaining(subscription);
+  if (days == null) return '';
+  if (days < 0) return 'beta_ended';
+  if (days <= 1) return 'beta_ending_1_day';
+  if (days <= 7) return 'beta_ending_7_days';
+  if (days <= 14) return 'beta_ending_14_days';
+  return 'beta_active';
+}
 function resolveWorkspaceSubscription(workspace = {}, decoded = {}, user = {}) {
-  const raw = workspace.subscription || {};
+  const explicitSubscription = hasExplicitSubscription(workspace);
+  const explicitModernPlan = hasExplicitModernPlan(workspace);
+  const raw = explicitSubscription ? (workspace.subscription || {}) : (explicitModernPlan ? (workspace.subscription || {}) : defaultFounderBetaSubscription(workspace));
   const isInternal = isInternalTestingUser(decoded, user) || normalizePlanId(raw.planId || workspace.planId || workspace.planType) === PLAN_IDS.MASTER_ADMIN;
-  const isFounderBeta = raw.isFounderBeta === true || workspace.isFounderBeta === true || workspace.founderBeta === true || workspace.billingStatus === 'Trial';
-  const selectedFutureTier = normalizePlanId(raw.selectedFutureTier || raw.futurePlanId || workspace.selectedFutureTier || workspace.futurePlanId || raw.planId || workspace.planId || workspace.planType || (isFounderBeta ? PLAN_IDS.SMART_KITCHEN : PLAN_IDS.SHIFT));
-  const storedPlan = normalizePlanId(raw.planId || workspace.planId || workspace.planType || (isFounderBeta ? selectedFutureTier : PLAN_IDS.SHIFT));
-  const betaStartedAt = iso(raw.betaStartedAt || workspace.betaStartedAt);
+  const defaultedFounderBeta = !explicitSubscription && !explicitModernPlan && !isInternal;
+  const isFounderBeta = defaultedFounderBeta || raw.isFounderBeta === true || workspace.isFounderBeta === true || workspace.founderBeta === true || workspace.billingStatus === 'Trial';
+  const selectedFutureTier = normalizePlanId(raw.selectedFutureTier || raw.futurePlanId || workspace.selectedFutureTier || workspace.futurePlanId || raw.planId || workspace.planId || (isFounderBeta ? PLAN_IDS.SMART_KITCHEN : PLAN_IDS.SHIFT));
+  const storedPlan = normalizePlanId(raw.planId || workspace.planId || (isFounderBeta ? selectedFutureTier : PLAN_IDS.SHIFT));
+  const betaStartedAt = iso(raw.betaStartedAt || workspace.betaStartedAt) || (isFounderBeta ? new Date().toISOString() : '');
   const betaEndsAt = iso(raw.betaEndsAt || workspace.betaEndsAt) || (isFounderBeta && betaStartedAt ? addDaysIso(betaStartedAt, 60) : '');
   const betaExtendedUntil = iso(raw.betaExtendedUntil || workspace.betaExtendedUntil);
   const effectiveBetaEnd = betaExtendedUntil || betaEndsAt;
@@ -97,7 +140,7 @@ function resolveWorkspaceSubscription(workspace = {}, decoded = {}, user = {}) {
     ? 'internal'
     : (rawStatus ? lower(rawStatus).replace(/\s+/g, '_') : legacyBillingStatus === 'Past Due' ? 'past_due' : legacyBillingStatus === 'Trial' ? 'beta' : betaActive ? 'beta' : 'active');
   const planId = isInternal ? PLAN_IDS.MASTER_ADMIN : (isFounderBeta && betaActive ? normalizePlanId(raw.planId || selectedFutureTier || PLAN_IDS.SMART_KITCHEN) : storedPlan);
-  return {
+  const subscription = {
     planId,
     selectedFutureTier,
     status,
@@ -106,11 +149,18 @@ function resolveWorkspaceSubscription(workspace = {}, decoded = {}, user = {}) {
     betaEndsAt,
     betaExtendedUntil: betaExtendedUntil || null,
     betaActive,
+    betaDaysRemaining: null,
+    betaLifecycleFlag: '',
     founderDiscountPercent: Number(raw.founderDiscountPercent ?? workspace.founderDiscountPercent ?? 50),
     founderDiscountEndsAt: iso(raw.founderDiscountEndsAt || workspace.founderDiscountEndsAt) || (!betaActive && isFounderBeta && effectiveBetaEnd ? addMonthsIso(effectiveBetaEnd, 12) : null),
     billingProvider: raw.billingProvider || workspace.billingProvider || 'none',
-    integrationsLocked: raw.integrationsLocked !== false
+    integrationsLocked: true,
+    defaultedFounderBeta,
+    needsSubscriptionBackfill: defaultedFounderBeta
   };
+  subscription.betaDaysRemaining = betaDaysRemaining(subscription);
+  subscription.betaLifecycleFlag = betaLifecycleFlag(subscription);
+  return subscription;
 }
 function planIncludesFeature(planId, featureKey) {
   const plan = getPlanDefinition(planId);
@@ -141,7 +191,7 @@ function assertPlanAllowsScan({ workspace = {}, decoded = {}, user = {}, scanTyp
   const feature = featureForScanType(scanType);
   if (feature && !planIncludesFeature(plan.id, feature)) {
     const label = scanType === 'menu' ? 'Menu scanning' : 'Invoice scanning';
-    const error = new Error(`${label} is not included in the current ${plan.label} plan. Upgrade or ask the System Administrator to enable testing access.`);
+    const error = new Error(`${label} starts with Smart Kitchen. This workspace is currently on ${plan.label}. Ask an owner or System Administrator to review Plan & Billing.`);
     error.statusCode = 403;
     error.code = 'PLAN_FEATURE_LOCKED';
     throw error;

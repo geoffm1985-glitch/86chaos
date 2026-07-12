@@ -51,10 +51,10 @@ const TabGodMode = ({ appUser, addToast, setGhostTenant, db, auth, Modal, T, get
     e.preventDefault(); if (!rName.trim() || !oEmail.trim() || !oName.trim()) return;
     try {
       const defaultFeatures = { schedule: true, prep: true, inventory: true, recipes: true, messages: true, sales: true };
-      const newRestRef = await addDoc(collection(db, "restaurants"), { name: rName.trim(), ownerName: oName.trim(), ownerEmail: oEmail.toLowerCase().trim(), isActive: true, isReadOnly: false, features: defaultFeatures, labs: {}, planType: 'Trial', billingStatus: 'Paid', createdAt: new Date().toISOString(), lastActive: new Date().toISOString() });
+      const newRestRef = await addDoc(collection(db, "restaurants"), { name: rName.trim(), ownerName: oName.trim(), ownerEmail: oEmail.toLowerCase().trim(), isActive: true, isReadOnly: false, features: defaultFeatures, labs: {}, planId: 'smart_kitchen', subscriptionStatus: 'beta', isFounderBeta: true, integrationsLocked: true, subscription: { planId: 'smart_kitchen', selectedFutureTier: 'smart_kitchen', status: 'beta', isFounderBeta: true, founderDiscountPercent: 50, billingProvider: 'none', integrationsLocked: true }, createdAt: new Date().toISOString(), lastActive: new Date().toISOString() });
       const tPass = generateTempPass(); const secondaryApp = initializeApp(firebaseConfig, "TenantBuilder_" + Date.now()); const secondaryAuth = getAuth(secondaryApp);
       const userCredential = await createUserWithEmailAndPassword(secondaryAuth, oEmail.toLowerCase().trim(), tPass); const newAuthUid = userCredential.user.uid; await secondaryAuth.signOut();
-      await setDoc(doc(db, "users", newAuthUid), { name: oName.trim(), email: oEmail.toLowerCase().trim(), role: 'General Manager', isAdmin: true, isActive: true, forcePasswordChange: true, restaurantId: newRestRef.id, restaurantName: rName.trim(), permissions: { schedule: true, inventory: true, prep: true, sales: true, team: true }, passwordStored: false, passwordPurgedAt: new Date().toISOString() });
+      await setDoc(doc(db, "users", newAuthUid), { name: oName.trim(), email: oEmail.toLowerCase().trim(), role: 'Owner', isAdmin: true, isActive: true, forcePasswordChange: true, restaurantId: newRestRef.id, restaurantName: rName.trim(), permissions: { schedule: true, inventory: true, prep: true, sales: true, team: true }, passwordStored: false, passwordPurgedAt: new Date().toISOString() });
       const welcomeMsg = `Welcome to 86chaos!\n\nYour restaurant OS is live. Access it here: https://app.86chaos.com\n\nUsername: ${oEmail.toLowerCase().trim()}\nTemporary Password: ${tPass}\n\nPlease log in to set a permanent password.`;
       window.location.href = `mailto:${oEmail.toLowerCase().trim()}?subject=${encodeURIComponent(`Your 86 Chaos OS: ${rName.trim()}`)}&body=${encodeURIComponent(welcomeMsg)}`;
       addToast('Tenant Deployed', `${rName} is now live.`); setRName(''); setOName(''); setOEmail('');
@@ -69,8 +69,8 @@ const TabGodMode = ({ appUser, addToast, setGhostTenant, db, auth, Modal, T, get
       isReadOnly: editingRest.isReadOnly || false, 
       features: editingRest.features || {}, 
       labs: editingRest.labs || {}, 
-      planType: editingRest.planType || 'Pro', 
-      billingStatus: editingRest.billingStatus || 'Paid' 
+      planId: editingRest.planId || editingRest.subscription?.planId || 'smart_kitchen', 
+      subscriptionStatus: editingRest.subscriptionStatus || editingRest.subscription?.status || 'beta' 
     });
     setEditingRest(null); addToast('Updated', 'Restaurant profile saved.');
   };
@@ -189,7 +189,7 @@ const TabGodMode = ({ appUser, addToast, setGhostTenant, db, auth, Modal, T, get
   const handleRevokeAccess = async (user) => { if (!window.confirm(`Revoke Admin from ${user.name}?`)) return; await updateDoc(doc(db, "users", user.id), { isSuperAdmin: false }); addToast('Revoked', 'Access removed.'); };
 
   // --- CALCULATIONS ---
-  const mrr = restaurants.reduce((acc, r) => acc + (r.planType === 'Enterprise' ? 199 : r.planType === 'Pro' ? 99 : 0), 0);
+  const mrr = restaurants.reduce((acc, r) => acc + (r.subscription?.status === 'active' ? (r.subscription?.planId === 'owner_pro' ? 299 : r.subscription?.planId === 'smart_kitchen' ? 179 : r.subscription?.planId === 'operations' ? 99 : 49) : 0), 0);
   const timeAgo = (dateStr) => { if (!dateStr) return 'Never'; const days = Math.floor((Date.now() - new Date(dateStr).getTime()) / (1000 * 60 * 60 * 24)); if (days === 0) return 'Active Today'; if (days === 1) return 'Active Yesterday'; return `Inactive ${days} days`; };
   const staleTenants = restaurants.filter(r => r.isActive && Math.floor((Date.now() - new Date(r.lastActive||0).getTime()) / 86400000) > 21);
 
@@ -208,8 +208,8 @@ const TabGodMode = ({ appUser, addToast, setGhostTenant, db, auth, Modal, T, get
             <form onSubmit={handleUpdateTenant} className="space-y-4">
               <div><label className={T.label}>Business Name</label><input type="text" value={editingRest.name} onChange={e => setEditingRest({...editingRest, name: e.target.value})} className={T.input} required /></div>
               <div className="grid grid-cols-2 gap-3">
-                <div><label className={T.label}>Plan Tier</label><select value={editingRest.planType || 'Pro'} onChange={e => setEditingRest({...editingRest, planType: e.target.value})} className={T.input}><option>Trial</option><option>Pro</option><option>Enterprise</option></select></div>
-                <div><label className={T.label}>Billing Status</label><select value={editingRest.billingStatus || 'Paid'} onChange={e => setEditingRest({...editingRest, billingStatus: e.target.value})} className={`${T.input} ${editingRest.billingStatus === 'Past Due' ? 'text-red-500 font-black' : 'text-emerald-500 font-black'}`}><option value="Paid">Paid (Active)</option><option value="Past Due">Maintenance Lock (Lock App)</option></select></div>
+                <div><label className={T.label}>Plan Tier</label><select value={editingRest.subscription?.planId || editingRest.planId || 'smart_kitchen'} onChange={e => setEditingRest({...editingRest, planId: e.target.value, subscription: { ...(editingRest.subscription || {}), planId: e.target.value, selectedFutureTier: e.target.value, status: editingRest.subscription?.status || 'beta' }})} className={T.input}><option value="shift">Shift</option><option value="operations">Operations</option><option value="smart_kitchen">Smart Kitchen</option><option value="owner_pro">Owner Pro</option></select></div>
+                <div><label className={T.label}>Billing Status</label><select value={editingRest.subscription?.status || editingRest.subscriptionStatus || 'beta'} onChange={e => setEditingRest({...editingRest, subscriptionStatus: e.target.value, subscription: { ...(editingRest.subscription || {}), status: e.target.value }})} className={`${T.input} ${editingRest.subscription?.status === 'past_due' ? 'text-red-500 font-black' : 'text-emerald-500 font-black'}`}><option value="active">Active Manual</option><option value="beta">Founder Beta</option><option value="past_due">Past Due</option></select></div>
               </div>
               <div className="grid grid-cols-2 gap-2 mt-2">
                 <label className="flex items-center gap-2 p-3 bg-[#12161A] rounded-xl border border-[#2A353D] cursor-pointer"><input type="checkbox" checked={editingRest.isActive} onChange={e => setEditingRest({...editingRest, isActive: e.target.checked})} className="w-4 h-4 accent-emerald-500" /><span className={`text-xs font-black ${editingRest.isActive ? 'text-emerald-500' : 'text-slate-500'}`}>System Active</span></label>
@@ -331,7 +331,7 @@ const TabGodMode = ({ appUser, addToast, setGhostTenant, db, auth, Modal, T, get
                       {r.name} 
                       {!r.isActive && <span className="bg-red-500 text-white text-[8px] px-1.5 py-0.5 rounded uppercase">Suspended</span>}
                       {r.isReadOnly && <span className="bg-blue-900 text-blue-300 border border-blue-500/50 text-[8px] px-1.5 py-0.5 rounded uppercase">Read-Only</span>}
-                      {r.billingStatus === 'Past Due' ? <span className="bg-red-900 text-red-400 border border-red-500/50 text-[8px] px-1.5 py-0.5 rounded uppercase">Maintenance</span> : <span className="bg-emerald-900 text-emerald-400 border border-emerald-500/50 text-[8px] px-1.5 py-0.5 rounded uppercase">{r.planType || 'Pro'}</span>}
+                      {r.subscription?.status === 'past_due' ? <span className="bg-red-900 text-red-400 border border-red-500/50 text-[8px] px-1.5 py-0.5 rounded uppercase">Past Due</span> : <span className="bg-emerald-900 text-emerald-400 border border-emerald-500/50 text-[8px] px-1.5 py-0.5 rounded uppercase">{r.subscription?.planId || r.planId || 'smart_kitchen'}</span>}
                     </div>
                     <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Owner: {r.ownerName} <span className="mx-1"> </span> {r.ownerEmail} {r.ownerPhone && <><span className="mx-1"> </span> {r.ownerPhone}</>}</div>
                     <div className="text-[9px] text-slate-500 font-medium mt-0.5">ID: {r.id} <span className="mx-1"> </span> <span className="text-[#D4A381]">{userCounts[r.id] || 0} Seats</span> <span className="mx-1"> </span> <span className={timeAgo(r.lastActive).includes('Inactive') ? 'text-red-400' : 'text-emerald-500'}>Ping: {timeAgo(r.lastActive)}</span></div>

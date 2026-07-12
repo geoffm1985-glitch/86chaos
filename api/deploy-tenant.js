@@ -34,7 +34,26 @@ export default async function handler(req, res) {
     const newAuthUid = userRecord.uid;
 
     // 2. Create Restaurant Workspace in Database
+    const now = new Date();
+    const betaEnds = new Date(now);
+    betaEnds.setDate(betaEnds.getDate() + 60);
     const defaultFeatures = { schedule: true, prep: true, inventory: true, recipes: true, messages: true, sales: true, labor: true, maintenance: true, timesheets: true, events: true };
+    const subscription = {
+       planId: 'smart_kitchen',
+       selectedFutureTier: 'smart_kitchen',
+       status: 'beta',
+       isFounderBeta: true,
+       betaStartedAt: now.toISOString(),
+       betaEndsAt: betaEnds.toISOString(),
+       betaExtendedUntil: null,
+       founderDiscountPercent: 50,
+       founderDiscountEndsAt: null,
+       billingProvider: 'none',
+       billingNotes: 'New workspace defaulted to Founder Beta Smart Kitchen. Billing is not active yet.',
+       integrationsLocked: true,
+       createdAt: now.toISOString(),
+       updatedAt: now.toISOString()
+    };
     const newRestRef = app.firestore().collection('restaurants').doc();
     
     await newRestRef.set({
@@ -46,10 +65,14 @@ export default async function handler(req, res) {
        isReadOnly: false,
        features: defaultFeatures,
        labs: {},
-       planType: 'Trial',
-       billingStatus: 'Paid',
-       createdAt: new Date().toISOString(),
-       lastActive: new Date().toISOString(),
+       planId: 'smart_kitchen',
+       selectedFutureTier: 'smart_kitchen',
+       subscriptionStatus: 'beta',
+       isFounderBeta: true,
+       integrationsLocked: true,
+       subscription,
+       createdAt: now.toISOString(),
+       lastActive: now.toISOString(),
        systemSettings: { address: rAddress.trim(), geofenceRadius: 300 }
     });
 
@@ -57,13 +80,13 @@ export default async function handler(req, res) {
     await app.firestore().collection('users').doc(newAuthUid).set({
        name: oName.trim(),
        email: oEmail.toLowerCase().trim(),
-       role: 'General Manager',
+       role: 'Owner',
        isAdmin: true,
        isActive: true,
        forcePasswordChange: true,
        restaurantId: newRestRef.id,
        restaurantName: rName.trim(),
-       permissions: { schedule: true, inventory: true, prep: true, sales: true, team: true },
+       permissions: { schedule: true, inventory: true, prep: true, sales: true, team: true, labor: true, settings: true, wageView: true, wageEdit: true },
        passwordStored: false,
        passwordPurgedAt: new Date().toISOString()
     });

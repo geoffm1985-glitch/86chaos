@@ -8,6 +8,8 @@ import { buildAlertFingerprint, useRememberedAlert } from './core/alertMemory';
 import { CheersLogo, Modal, DrawerMenu, DayDotPrintScreen, GlobalSearchModal, KitchenTVMode, UndoBar, VoiceCommandDock } from './components/common';
 import { LockedFeatureScreen } from './components/PlanGate';
 import { usePlanAccess } from './hooks/usePlanAccess';
+import { resolveFeatureAccess } from './lib/featureAccess';
+import { FEATURE_KEYS } from './config/plans';
 import { LoginScreen, TabMasterSchedule, TabSchedule, TabScheduleWorkbench, TabOpsCenter, TabFinancials, TabMessages, TabPrep, TabRecipes, TabInventory, TabTeam, TabMaintenance, TabSettings, TabHelpCenter, TabGodMode, TabAuditLog, TabToday, TabPersonalReminders, TabMenuIntelligence, TabAITools, TabHrTraining } from './features';
 
 const normalizeEmail = (value) => String(value || '').toLowerCase().trim();
@@ -261,14 +263,28 @@ const [currentDate, setCurrentDate] = useState(getToday());
   // and then replace them with a tiny, stale capped snapshot. Other tabs still use tighter windows.
   const wantsToday = activeTabState === 'today';
   const wantsScheduleScreen = ['schedule', 'events', 'published'].includes(activeTabState);
-  const wantsScheduleData = wantsToday || wantsScheduleScreen || ['labor', 'ops'].includes(activeTabState);
-  const wantsLaborData = wantsToday || ['financials', 'labor', 'sales', 'ops'].includes(activeTabState);
-  const wantsInventoryData = wantsToday || ['inventory', 'ops', 'menu-intelligence'].includes(activeTabState) || isGlobalSearchOpen;
+  const subscriptionProbeUser = { ...(appUser || {}), isSuperAdmin: appUser?.isSuperAdmin === true || serverAdminCheck?.superAdmin === true };
+  const planAllowsFeature = (featureKey) => {
+    if (!featureKey) return false;
+    const access = resolveFeatureAccess({ workspace: clientData || {}, user: subscriptionProbeUser, featureKey });
+    return Boolean(access?.master || access?.planAllowed || access?.manualEnabled);
+  };
+  const planAllowsScheduleView = planAllowsFeature(FEATURE_KEYS.BASIC_SCHEDULE_VIEW);
+  const planAllowsScheduleBuilder = planAllowsFeature(FEATURE_KEYS.SCHEDULE_BUILDER);
+  const planAllowsLaborData = [FEATURE_KEYS.TIME_CLOCK, FEATURE_KEYS.TIMESHEETS, FEATURE_KEYS.LABOR_COMMAND, FEATURE_KEYS.TIP_CENTER].some(planAllowsFeature);
+  const planAllowsSalesData = [FEATURE_KEYS.DAILY_CLOSE, FEATURE_KEYS.SALES_BREAKDOWN, FEATURE_KEYS.FINANCIAL_OVERVIEW].some(planAllowsFeature);
+  const planAllowsBasicInventory = [FEATURE_KEYS.BASIC_INVENTORY, FEATURE_KEYS.BURN_LOG].some(planAllowsFeature);
+  const planAllowsSmartInventory = [FEATURE_KEYS.COGS_CENTER, FEATURE_KEYS.INVOICE_TOTALS, FEATURE_KEYS.VENDOR_SPEND].some(planAllowsFeature);
+  const planAllowsMenuData = [FEATURE_KEYS.MENU_INTELLIGENCE, FEATURE_KEYS.DEPENDENCY_TOOLS, FEATURE_KEYS.SMART_86_ALERTS].some(planAllowsFeature);
+  const planAllowsMaintenance = planAllowsFeature(FEATURE_KEYS.CLEANING_ROUTINES);
+  const wantsScheduleData = (wantsToday && planAllowsScheduleView) || (wantsScheduleScreen && (planAllowsScheduleView || planAllowsScheduleBuilder)) || (['labor', 'ops'].includes(activeTabState) && (planAllowsScheduleView || planAllowsLaborData));
+  const wantsLaborData = (wantsToday || ['financials', 'labor', 'sales', 'ops'].includes(activeTabState)) && planAllowsLaborData;
+  const wantsInventoryData = (((wantsToday || ['inventory', 'ops'].includes(activeTabState) || isGlobalSearchOpen) && (planAllowsBasicInventory || planAllowsSmartInventory)) || (activeTabState === 'menu-intelligence' && planAllowsMenuData));
   const wantsPrepData = wantsToday || ['prep', 'ops'].includes(activeTabState);
-  const wantsMenuData = wantsInventoryData || ['menu-intelligence'].includes(activeTabState);
+  const wantsMenuData = (activeTabState === 'menu-intelligence' || activeTabState === 'inventory' || wantsToday) && planAllowsMenuData;
   const wantsRecipesData = true; // Keep recipe titles available for 86 Voice exact-recipe navigation.
-  const wantsMaintenanceData = wantsToday || ['maintenance', 'ops'].includes(activeTabState);
-  const wantsSalesData = ['financials', 'sales', 'ops', 'labor'].includes(activeTabState);
+  const wantsMaintenanceData = (wantsToday || ['maintenance', 'ops'].includes(activeTabState)) && planAllowsMaintenance;
+  const wantsSalesData = ['financials', 'sales', 'ops', 'labor'].includes(activeTabState) && planAllowsSalesData;
   const shiftRangeStart = wantsScheduleScreen ? scheduleWindowStart : getToday();
   const shiftRangeEnd = wantsScheduleScreen ? scheduleWindowEnd : todayOpsWindowEnd;
   const messageRangeStart = activeTabState === 'messages' ? addDays(getToday(), -60) : recentWindowStart;
@@ -360,7 +376,7 @@ const [currentDate, setCurrentDate] = useState(getToday());
          isDemo: true,
          demoRole,
          demoFeatures,
-         planType: ghostTenant.demoMode.plan || 'Pro',
+         planId: ghostTenant.demoMode.plan || 'smart_kitchen',
          ghostMode: 'demo',
          ghostRealUserId: realAppUser.id,
          ghostRealUserName: realName,
@@ -438,7 +454,7 @@ if (liveAppUser && clientData) {
      liveAppUser = { 
        ...liveAppUser, 
        systemSettings: { tips: true, ...(clientData.systemSettings || {}) },
-       planType: clientData.planType || 'Pro',
+       planId: clientData?.subscription?.planId || clientData?.planId || 'smart_kitchen',
        restaurantName: liveAppUser.restaurantName || clientData.name || clientData.businessName || clientData.restaurantName || '86 Chaos'
      };
   }
@@ -1300,12 +1316,12 @@ What I clicked / expected:
     if (activeTabState === 'schedule' && (liveAppUser?.isAdmin || liveAppUser?.permissions?.schedule)) return <TabMasterSchedule key={`schpub-${rId}-${liveAppUser?.id}`} currentDate={currentDate} appUser={liveAppUser} users={displayUsers} shifts={shifts} shiftSwaps={shiftSwaps} timeOffRequests={timeOffRequests} events={events} addToast={addToast} initialSubTab="schedule-builder" voiceScheduleSubTabTarget={voiceScheduleSubTabTarget} clientData={displayClientData} scheduleBuilderProps={{ currentDate, users: displayUsers, shifts, events, timeOffRequests, timePunches, addToast, appUser: liveAppUser, clientData: displayClientData }} />;
     if (activeTabState === 'events' && displayClientFeatures?.events !== false && (liveAppUser?.isAdmin || liveAppUser?.permissions?.events || liveAppUser?.permissions?.schedule || liveAppUser?.permissions?.team)) return <TabSchedule key={`evt-${rId}`} currentDate={currentDate} users={displayUsers} shifts={shifts} events={events} timeOffRequests={timeOffRequests} timePunches={timePunches} addToast={addToast} appUser={liveAppUser} clientData={displayClientData} initialSubTab="events" hideSubTabs />;
     if (activeTabState === 'published') return <TabMasterSchedule key={`pub-${rId}-${liveAppUser?.id}`} currentDate={currentDate} appUser={liveAppUser} users={displayUsers} shifts={shifts} shiftSwaps={shiftSwaps} timeOffRequests={timeOffRequests} events={events} addToast={addToast} voiceScheduleSubTabTarget={voiceScheduleSubTabTarget} clientData={displayClientData} scheduleBuilderProps={{ currentDate, users: displayUsers, shifts, events, timeOffRequests, timePunches, addToast, appUser: liveAppUser, clientData: displayClientData }} />;
-    if (activeTabState === 'ops' && displayClientFeatures?.ops !== false && (liveAppUser?.isSuperAdmin || liveAppUser?.isAdmin || liveAppUser?.permissions?.ops)) return <TabOpsCenter key={`ops-${rId}`} currentDate={currentDate} appUser={liveAppUser} users={displayUsers} shifts={shifts} events={events} sales={sales} timePunches={timePunches} addToast={addToast} setActiveTab={setActiveTab} />;
+    if (activeTabState === 'ops' && displayClientFeatures?.ops !== false && (liveAppUser?.isSuperAdmin || liveAppUser?.isAdmin || liveAppUser?.permissions?.ops)) return <TabOpsCenter key={`ops-${rId}`} currentDate={currentDate} appUser={liveAppUser} users={displayUsers} shifts={shifts} events={events} sales={sales} timePunches={timePunches} addToast={addToast} setActiveTab={setActiveTab} clientData={displayClientData} />;
     if ((activeTabState === 'financials' || activeTabState === 'sales' || activeTabState === 'labor') && (liveAppUser?.isSuperAdmin || liveAppUser?.isAdmin || liveAppUser?.permissions?.labor || liveAppUser?.permissions?.sales)) return <TabFinancials key={`fin-${rId}`} currentDate={currentDate} users={displayUsers} shifts={shifts} sales={sales} timePunches={timePunches} addToast={addToast} appUser={liveAppUser} clientData={displayClientData} setActiveTab={setActiveTab} initialSubTab={activeTabState === 'sales' ? 'ledger' : activeTabState === 'labor' ? 'labor' : 'overview'} />;
     if (activeTabState === 'messages' && displayClientFeatures?.messages !== false) return <TabMessages key={`msg-${rId}`} events={events} appUser={liveAppUser} users={displayUsers} addToast={addToast} />;
     if (activeTabState === 'prep' && displayClientFeatures?.prep !== false) return <TabPrep key={`prp-${rId}`} currentDate={currentDate} appUser={liveAppUser} addToast={addToast} setLabelsToPrint={setLabelsToPrint} />;
     if (activeTabState === 'recipes' && displayClientFeatures?.recipes !== false) return <TabRecipes key={`rec-${rId}`} appUser={liveAppUser} addToast={addToast} voiceRecipeTarget={voiceRecipeTarget} />;
-    if (activeTabState === 'inventory' && displayClientFeatures?.inventory !== false) return <TabInventory key={`inv-${rId}-${inventorySubTabTarget || 'default'}`} addToast={addToast} appUser={liveAppUser} initialSubTab={inventorySubTabTarget} onInitialSubTabConsumed={() => setInventorySubTabTarget(null)} />;
+    if (activeTabState === 'inventory' && displayClientFeatures?.inventory !== false) return <TabInventory key={`inv-${rId}-${inventorySubTabTarget || 'default'}`} addToast={addToast} appUser={liveAppUser} clientData={displayClientData} initialSubTab={inventorySubTabTarget} onInitialSubTabConsumed={() => setInventorySubTabTarget(null)} />;
     if (activeTabState === 'ai-tools' && !isDemoMode && (liveAppUser?.isAdmin || liveAppUser?.permissions?.inventory || liveAppUser?.permissions?.prep || liveAppUser?.permissions?.team)) return <TabAITools key={`ai-${rId}`} appUser={liveAppUser} clientData={displayClientData} setActiveTab={setActiveTab} setInventorySubTabTarget={setInventorySubTabTarget} addToast={addToast} />;
     if (activeTabState === 'menu-intelligence' && !isDemoMode) return <TabMenuIntelligence key={`mi-${rId}`} appUser={liveAppUser} clientData={displayClientData} inventoryItems={inventoryItems} addToast={addToast} />;
     if (activeTabState === 'reminders' && !isDemoMode) return <TabPersonalReminders key={`rem-${rId}-${liveAppUser?.id}`} appUser={liveAppUser} addToast={addToast} />;
@@ -1377,7 +1393,7 @@ What I clicked / expected:
     : maintenanceAudience === 'non_admins'
       ? !liveAppUser?.isAdmin
       : true;
-  if (clientData?.billingStatus === 'Past Due' && !maintenanceExpired && maintenanceAppliesToUser && !ghostTenant && !maintenanceBypass) {
+  if ((clientData?.maintenanceMode === true || clientData?.subscription?.status === 'past_due') && !maintenanceExpired && maintenanceAppliesToUser && !ghostTenant && !maintenanceBypass) {
     return (
       <div className={`min-h-screen flex flex-col items-center justify-center p-6 text-center ${T.bg}`}>
         <div className="bg-[#1A2126] p-8 rounded-3xl border border-red-900/50 shadow-2xl max-w-md w-full">

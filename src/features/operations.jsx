@@ -13,6 +13,8 @@ import { prepareScannerUploadFile, isPdfFile } from '../core/fileCompression';
 import { createAiScanIdempotencyKey, resolveClientScanPageCount, normalizeAiUsage, aiPageLimitMessage } from '../core/aiScanUsage';
 import { classifyInvoiceRow, inferInvoiceProductFields, invoiceProductKey, invoiceRowText, isPurchasedInvoiceLine, LEADING_PURCHASE_RE, normalizeInvoiceName as normalizeName, normalizeInvoiceSku as normalizeSku } from '../core/invoiceRowClassification';
 import { CheersLogo, Modal, DrawerMenu, DayDotPrintScreen, MapClickListener, SmartEmptyState, MiniProblemCard, getHomeProfile, calculatePunchHours, getWeekStart, getWeekDates, roleMatches, toLocalTimeInput, makeLocalIso, PunchTable, StatusTile, FriendlyEmpty, GlobalSearchModal, QuickActionDock, KitchenTVMode, ChangeLogModal, UndoBar } from '../components/common';
+import { usePlanAccess } from '../hooks/usePlanAccess';
+import { FEATURE_KEYS } from '../config/plans';
 
 const PREP_TASK_TEMPLATE_PACKS = {
   kitchenOpenClose: {
@@ -525,11 +527,15 @@ const TabPrep = ({ currentDate, appUser, addToast, setLabelsToPrint }) => {
   );
 };
 
-const TabInventory = ({ addToast, appUser, initialSubTab, onInitialSubTabConsumed }) => {
-  const inventoryItems = useLiveCollection('inventoryItems', appUser?.restaurantId, { limitCount: 500 });
-  const menuDependencies = useLiveCollection('menuDependencies', appUser?.restaurantId, { limitCount: 500 });
-  const vendors = useLiveCollection('vendors', appUser?.restaurantId, { limitCount: 150 });
-  const wasteLogs = useLiveCollection('wasteLogs', appUser?.restaurantId, { limitCount: 200 });
+const TabInventory = ({ addToast, appUser, clientData = {}, initialSubTab, onInitialSubTabConsumed }) => {
+  const inventoryPlanAccess = usePlanAccess(appUser, clientData);
+  const canUseBasicInventory = inventoryPlanAccess.canUse(FEATURE_KEYS.BASIC_INVENTORY).allowed || inventoryPlanAccess.canUse(FEATURE_KEYS.BURN_LOG).allowed;
+  const canUseSmartInventory = inventoryPlanAccess.canUse(FEATURE_KEYS.COGS_CENTER).allowed || inventoryPlanAccess.canUse(FEATURE_KEYS.INVOICE_TOTALS).allowed || inventoryPlanAccess.canUse(FEATURE_KEYS.INVOICE_SCANNING).allowed;
+  const canUseMenuIntelligence = inventoryPlanAccess.canUse(FEATURE_KEYS.MENU_INTELLIGENCE).allowed || inventoryPlanAccess.canUse(FEATURE_KEYS.DEPENDENCY_TOOLS).allowed || inventoryPlanAccess.canUse(FEATURE_KEYS.SMART_86_ALERTS).allowed;
+  const inventoryItems = useLiveCollection('inventoryItems', appUser?.restaurantId, { enabled: canUseBasicInventory || canUseSmartInventory || canUseMenuIntelligence, limitCount: 500 });
+  const menuDependencies = useLiveCollection('menuDependencies', appUser?.restaurantId, { enabled: canUseMenuIntelligence, limitCount: 500 });
+  const vendors = useLiveCollection('vendors', appUser?.restaurantId, { enabled: canUseBasicInventory || canUseSmartInventory, limitCount: 150 });
+  const wasteLogs = useLiveCollection('wasteLogs', appUser?.restaurantId, { enabled: canUseBasicInventory, limitCount: 200 });
   const [invTab, setInvTab] = useState(initialSubTab || 'count');
   const [focusBelowPar, setFocusBelowPar] = useState(() => sessionStorage.getItem('inventoryFocus') === 'belowPar');
 const [searchTerm, setSearchTerm] = useState(''); 
@@ -537,7 +543,7 @@ const [searchTerm, setSearchTerm] = useState('');
   const weekDays = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
   
   // Fetch invoices securely directly inside this tab
-  const invoices = useLiveCollection('invoices', appUser?.restaurantId, { limitCount: 120 });
+  const invoices = useLiveCollection('invoices', appUser?.restaurantId, { enabled: canUseSmartInventory, limitCount: 120 });
   const [viewInvoice, setViewInvoice] = useState(null);
 
   useEffect(() => {
@@ -593,7 +599,7 @@ const [searchTerm, setSearchTerm] = useState('');
   const invoiceScanBusyRef = useRef(false);
 
   const loadInvoiceAiUsage = async () => {
-    if (!appUser?.restaurantId) return;
+    if (!appUser?.restaurantId || !canUseSmartInventory) return;
     setInvoiceAiUsageLoading(true);
     try {
       const response = await secureFetch(`/api/ai-usage?restaurantId=${encodeURIComponent(appUser.restaurantId)}&eventLimit=5`);
@@ -608,7 +614,11 @@ const [searchTerm, setSearchTerm] = useState('');
     }
   };
 
-  useEffect(() => { loadInvoiceAiUsage(); }, [appUser?.restaurantId]);
+  useEffect(() => { loadInvoiceAiUsage(); }, [appUser?.restaurantId, canUseSmartInventory]);
+
+  useEffect(() => {
+    if (invTab === 'invoices' && !canUseSmartInventory) setInvTab('count');
+  }, [invTab, canUseSmartInventory]);
 
   // Master Permission Check for Inventory Tabs
   const hasInvPerms = appUser?.isAdmin || appUser?.permissions?.inventory || appUser?.permissions?.team;
@@ -1178,6 +1188,11 @@ const executeOrder = async (method) => {
   };
 
   const handleScanInvoice = async (e) => {
+    if (!canUseSmartInventory) {
+      e.target.value = '';
+      addToast('Smart Kitchen Required', 'Invoice scanning starts with Smart Kitchen. Ask an owner or System Administrator to review Plan & Billing.');
+      return;
+    }
     if (invoiceScanBusyRef.current) return;
     const file = e.target.files?.[0];
     if (!file) return;
@@ -1796,7 +1811,7 @@ const groupedItems = inventoryItems
           {hasInvPerms && <button onClick={() => setInvTab('order')} className={`px-4 py-1.5 rounded-lg text-xs font-bold capitalize whitespace-nowrap transition-all flex-1 sm:flex-none ${invTab === 'order' ? `${T.grad} text-slate-900 shadow-sm` : 'text-slate-400 hover:text-white'}`}>order</button>}
           {hasInvPerms && <button onClick={() => setInvTab('manage')} className={`px-4 py-1.5 rounded-lg text-xs font-bold capitalize whitespace-nowrap transition-all flex-1 sm:flex-none ${invTab === 'manage' ? `${T.grad} text-slate-900 shadow-sm` : 'text-slate-400 hover:text-white'}`}>manage</button>}
           {hasInvPerms && <button onClick={() => setInvTab('vendors')} className={`px-4 py-1.5 rounded-lg text-xs font-bold capitalize whitespace-nowrap transition-all flex-1 sm:flex-none ${invTab === 'vendors' ? `${T.grad} text-slate-900 shadow-sm` : 'text-slate-400 hover:text-white'}`}>vendors</button>}
-          {hasInvPerms && <button onClick={() => setInvTab('invoices')} className={`px-4 py-1.5 rounded-lg text-xs font-bold capitalize whitespace-nowrap transition-all flex-1 sm:flex-none ${invTab === 'invoices' ? `${T.grad} text-slate-900 shadow-sm` : 'text-slate-400 hover:text-white'}`}>🧾 Invoices</button>}
+          {hasInvPerms && canUseSmartInventory && <button onClick={() => setInvTab('invoices')} className={`px-4 py-1.5 rounded-lg text-xs font-bold capitalize whitespace-nowrap transition-all flex-1 sm:flex-none ${invTab === 'invoices' ? `${T.grad} text-slate-900 shadow-sm` : 'text-slate-400 hover:text-white'}`}>🧾 Invoices</button>}
 <button onClick={() => setInvTab('waste')} className={`px-4 py-1.5 rounded-lg text-xs font-bold capitalize whitespace-nowrap transition-all flex items-center justify-center gap-1 flex-1 sm:flex-none ${invTab === 'waste' ? `bg-red-500/20 text-red-500 shadow-sm border border-red-500/50` : 'text-slate-400 hover:text-red-400'}`}>
             🚨 Burn Log <span className="inventory-preview-badge ml-1 bg-red-900/30 text-red-300 border border-red-500/50 text-[8px] px-1.5 py-0.5 rounded-md uppercase tracking-widest font-black shadow-[0_0_8px_rgba(239,68,68,0.2)]">Preview</span>
           </button>        </div>
@@ -1982,6 +1997,8 @@ const groupedItems = inventoryItems
           <div className="flex flex-col gap-3 mb-6">
             
             {/* INVOICE SCANNER: Split Camera & Upload */}
+            {canUseSmartInventory ? (
+              <>
             <div className="rounded-xl border border-[#2A353D] bg-[#12161A] p-3">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="text-[11px] font-black text-white">Invoice AI pages: {invoiceUsageSummary.used} / {invoiceUsageSummary.limit} quota · {invoiceUsageSummary.processed} actually processed this month</div>
@@ -2016,6 +2033,15 @@ const groupedItems = inventoryItems
                   {invoiceScanProgress.label}
                 </div>
                 {isScanningInvoice && <div className="mt-1 text-[10px] text-slate-500 font-bold">Keep this page open. Upload percentage is exact; large-document AI scanning shows the current stage and elapsed time.</div>}
+              </div>
+            )}
+
+              </>
+            ) : (
+              <div className="rounded-xl border border-amber-900/40 bg-amber-950/20 p-4">
+                <div className="text-[10px] font-black uppercase tracking-widest text-amber-300">Smart Kitchen Required</div>
+                <div className="text-sm font-black text-white mt-1">Invoice AI scanning is locked on this plan.</div>
+                <p className="text-xs font-bold text-amber-100/80 mt-1">Operations can still use basic inventory, ordering, vendors, and burn log tools. Smart Kitchen unlocks invoice scanning, invoice totals, COGS, vendor spend, and menu dependency tools.</p>
               </div>
             )}
 
@@ -2067,7 +2093,7 @@ const groupedItems = inventoryItems
         </div>
       )}
 
-      {hasInvPerms && invTab === 'invoices' && (
+      {hasInvPerms && invTab === 'invoices' && canUseSmartInventory && (
         <div className="space-y-4 animate-[slideIn_0.2s_ease-out]">
           <div className={`${T.card} overflow-hidden`}>
             <div className={`bg-[#12161A] p-4 border-b ${T.border} flex justify-between items-center`}>
@@ -2094,6 +2120,14 @@ const groupedItems = inventoryItems
               )}
             </div>
           </div>
+        </div>
+      )}
+
+      {hasInvPerms && invTab === 'invoices' && !canUseSmartInventory && (
+        <div className={`${T.card} p-5 text-center space-y-2 border-amber-900/40`}>
+          <div className="text-[10px] font-black uppercase tracking-widest text-amber-300">Smart Kitchen Required</div>
+          <h3 className="text-xl font-black text-white">Invoice scanning and invoice history are locked on this plan.</h3>
+          <p className="text-sm font-bold text-slate-400">Operations keeps basic inventory and burn log tools. Invoice scanning, invoice totals, COGS, and vendor spend unlock with Smart Kitchen.</p>
         </div>
       )}
 
@@ -2888,15 +2922,20 @@ const TabMaintenance = ({ appUser, addToast }) => {
 
 };
 
-const TabOpsCenter = ({ currentDate, appUser, users = [], shifts = [], events = [], sales = [], timePunches = [], addToast, setActiveTab }) => {
-  const inventoryItems = useLiveCollection('inventoryItems', appUser?.restaurantId, { limitCount: 500 });
-  const wasteLogs = useLiveCollection('wasteLogs', appUser?.restaurantId, { limitCount: 200 });
-  const maintenanceLogs = useLiveCollection('maintenanceLogs', appUser?.restaurantId, { limitCount: 200 });
-  const pmSchedules = useLiveCollection('pmSchedules', appUser?.restaurantId, { limitCount: 150 });
-  const tasks = useLiveCollection('tasks', appUser?.restaurantId, { limitCount: 350 });
-  const recipes = useLiveCollection('recipes', appUser?.restaurantId, { limitCount: 350 });
-  const menuDependencies = useLiveCollection('menuDependencies', appUser?.restaurantId, { limitCount: 500 });
-  const kitchenSpecials = useLiveCollection('kitchenSpecials', appUser?.restaurantId, { limitCount: 250 });
+const TabOpsCenter = ({ currentDate, appUser, users = [], shifts = [], events = [], sales = [], timePunches = [], addToast, setActiveTab, clientData = {} }) => {
+  const opsPlanAccess = usePlanAccess(appUser, clientData);
+  const canUseBasicInventory = opsPlanAccess.canUse(FEATURE_KEYS.BASIC_INVENTORY).allowed || opsPlanAccess.canUse(FEATURE_KEYS.BURN_LOG).allowed;
+  const canUseMenuIntelligence = opsPlanAccess.canUse(FEATURE_KEYS.MENU_INTELLIGENCE).allowed || opsPlanAccess.canUse(FEATURE_KEYS.DEPENDENCY_TOOLS).allowed;
+  const canUseCleaningRoutines = opsPlanAccess.canUse(FEATURE_KEYS.CLEANING_ROUTINES).allowed;
+  const canUseKitchenCommand = opsPlanAccess.canUse(FEATURE_KEYS.KITCHEN_COMMAND).allowed;
+  const inventoryItems = useLiveCollection('inventoryItems', appUser?.restaurantId, { enabled: !!appUser?.restaurantId && canUseBasicInventory, limitCount: 500 });
+  const wasteLogs = useLiveCollection('wasteLogs', appUser?.restaurantId, { enabled: !!appUser?.restaurantId && canUseBasicInventory, limitCount: 200 });
+  const maintenanceLogs = useLiveCollection('maintenanceLogs', appUser?.restaurantId, { enabled: !!appUser?.restaurantId && canUseCleaningRoutines, limitCount: 200 });
+  const pmSchedules = useLiveCollection('pmSchedules', appUser?.restaurantId, { enabled: !!appUser?.restaurantId && canUseCleaningRoutines, limitCount: 150 });
+  const tasks = useLiveCollection('tasks', appUser?.restaurantId, { enabled: !!appUser?.restaurantId && canUseKitchenCommand, limitCount: 350 });
+  const recipes = useLiveCollection('recipes', appUser?.restaurantId, { enabled: !!appUser?.restaurantId, limitCount: 350 });
+  const menuDependencies = useLiveCollection('menuDependencies', appUser?.restaurantId, { enabled: !!appUser?.restaurantId && canUseMenuIntelligence, limitCount: 500 });
+  const kitchenSpecials = useLiveCollection('kitchenSpecials', appUser?.restaurantId, { enabled: !!appUser?.restaurantId && canUseKitchenCommand, limitCount: 250 });
   const [depRecipeId, setDepRecipeId] = useState('');
   const [depInventoryItemId, setDepInventoryItemId] = useState('');
   const [depNotes, setDepNotes] = useState('');
@@ -2908,10 +2947,16 @@ const TabOpsCenter = ({ currentDate, appUser, users = [], shifts = [], events = 
     name: '', startDate: currentDate || getToday(), endDate: currentDate || getToday(), description: '', price: '', allergens: '', dietaryNotes: '', prepNotes: '', status: 'Scheduled'
   });
   const safeOpsWrite = (args) => safeWriteWithQueue({ user: appUser, addToast, ...args });
+  const configuredRosterRoles = Array.isArray(clientData?.rosterRoles)
+    ? clientData.rosterRoles.map(r => typeof r === 'string' ? r : (r?.name || r?.label || r?.title)).filter(Boolean)
+    : Array.isArray(clientData?.systemSettings?.rosterRoles)
+      ? clientData.systemSettings.rosterRoles.map(r => typeof r === 'string' ? r : (r?.name || r?.label || r?.title)).filter(Boolean)
+      : [];
+  const hasCustomRosterRoles = configuredRosterRoles.length > 0;
+  const legacyManagerRoleFallback = !hasCustomRosterRoles && ['General Manager', 'Manager', 'Kitchen Manager', 'Operations Manager', 'Store Manager', 'Owner', 'Shift Lead', 'Lead', 'Supervisor'].includes(String(appUser?.role || ''));
   const canManageSpecials = Boolean(
     appUser?.isSuperAdmin || appUser?.systemAccess?.superAdmin || appUser?.isAdmin || appUser?.isOwner || appUser?.accountOwner || appUser?.owner || appUser?.workspaceOwner ||
-    appUser?.permissions?.prep || appUser?.permissions?.ops || appUser?.permissions?.team ||
-    ['General Manager', 'Manager', 'Kitchen Manager', 'Operations Manager', 'Store Manager', 'Owner', 'Shift Lead', 'Lead', 'Supervisor'].includes(String(appUser?.role || ''))
+    appUser?.permissions?.prep || appUser?.permissions?.ops || appUser?.permissions?.team || legacyManagerRoleFallback
   );
   const dependencyInventoryOptions = Array.from(inventoryItems.reduce((map, item) => {
     const name = String(item?.name || item?.itemName || '').replace(/\s+/g, ' ').trim();
@@ -3173,7 +3218,7 @@ const TabOpsCenter = ({ currentDate, appUser, users = [], shifts = [], events = 
 
   const prepForecast = [
     { label: 'Forecast Sales', value: forecastSales ? `$${Math.round(forecastSales).toLocaleString()}` : 'Needs sales data', note: sameWeekdaySales.length ? 'Based on same weekdays' : 'Based on month average' },
-    { label: 'Kitchen Coverage', value: `${todayShifts.filter(s => ['Kitchen','Cook','Line Cook','Prep Cook','Chef','Sous Chef'].includes(s.role)).length} scheduled`, note: `${todayShifts.length} total published shifts` },
+    { label: hasCustomRosterRoles ? 'Roster Coverage' : 'Kitchen Coverage', value: `${todayShifts.filter(s => (hasCustomRosterRoles ? configuredRosterRoles : ['Kitchen','Cook','Line Cook','Prep Cook','Chef','Sous Chef']).includes(s.role)).length} scheduled`, note: `${todayShifts.length} total published shifts` },
     { label: 'Prep Pressure', value: forecastSales > avgMonthSales * 1.15 && avgMonthSales > 0 ? 'High' : forecastSales > 0 ? 'Normal' : 'Unknown', note: forecastSales > avgMonthSales * 1.15 && avgMonthSales > 0 ? 'Sales forecast is above normal' : 'No spike detected' },
     { label: 'Low Stock', value: `${lowStockItems.length} items`, note: lowStockItems.slice(0, 3).map(i => i.name).join(', ') || 'No par issues found' }
   ];
@@ -3206,7 +3251,7 @@ const TabOpsCenter = ({ currentDate, appUser, users = [], shifts = [], events = 
     forecastSales > avgMonthSales * 1.15 && avgMonthSales > 0 ? 'High forecast: add backup proteins, fries, sauces, and expo garnish before rush.' : null,
     importantEvents.length > 0 ? `Event prep: review ${importantEvents.slice(0, 2).map(e => e.title).join(' / ')}.` : null,
     criticalMaintenance.length > 0 ? `Equipment watch: ${criticalMaintenance[0].equipment} needs manager follow-up.` : null,
-    todayShifts.filter(s => ['Kitchen','Cook','Line Cook','Prep Cook','Chef','Sous Chef'].includes(s.role)).length < 2 ? 'Coverage risk: verify kitchen backup plan before peak service.' : null
+    todayShifts.filter(s => (hasCustomRosterRoles ? configuredRosterRoles : ['Kitchen','Cook','Line Cook','Prep Cook','Chef','Sous Chef']).includes(s.role)).length < 2 ? 'Coverage risk: verify roster-role coverage before peak service.' : null
   ].filter(Boolean).slice(0, 8);
 
   const handleBuildSmartOrder = async () => {
@@ -3706,38 +3751,46 @@ const TabOpsCenter = ({ currentDate, appUser, users = [], shifts = [], events = 
 };
 
 const TabToday = ({ currentDate, appUser, users, shifts, shiftSwaps, timeOffRequests, events, sales, timePunches, inventoryItems, maintenanceLogs, prepItems, tasks, recipes, menuDependencies = [], clientData, setActiveTab, addToast, registerUndo }) => {
+  const todayPlanAccess = usePlanAccess(appUser, clientData);
+  const canUseManagerBrief = todayPlanAccess.canUse(FEATURE_KEYS.MANAGER_BRIEF).allowed;
+  const canUseBasicInventory = todayPlanAccess.canUse(FEATURE_KEYS.BASIC_INVENTORY).allowed || todayPlanAccess.canUse(FEATURE_KEYS.BURN_LOG).allowed;
+  const canUseMenuIntelligence = todayPlanAccess.canUse(FEATURE_KEYS.MENU_INTELLIGENCE).allowed || todayPlanAccess.canUse(FEATURE_KEYS.SMART_86_ALERTS).allowed;
+  const canUseLabor = todayPlanAccess.canUse(FEATURE_KEYS.LABOR_COMMAND).allowed || todayPlanAccess.canUse(FEATURE_KEYS.TIME_CLOCK).allowed;
+  const canUseScheduleBuilder = todayPlanAccess.canUse(FEATURE_KEYS.SCHEDULE_BUILDER).allowed;
+  const canUseCleaningRoutines = todayPlanAccess.canUse(FEATURE_KEYS.CLEANING_ROUTINES).allowed;
   const [expanded, setExpanded] = useState({ brief: true, setup: false, problems: true, prefs: false });
   const today = getToday();
   const profile = getHomeProfile(appUser);
   const safeTodayWrite = (args) => safeWriteWithQueue({ user: appUser, addToast, ...args });
   const todaysShifts = shifts.filter(s => s.date === today && s.isPublished).sort((a,b) => (a.startTime || '').localeCompare(b.startTime || ''));
   const myShift = todaysShifts.find(s => s.employeeId === appUser.id);
-  const activePunches = timePunches.filter(p => ['clocked_in','on_break'].includes(p.status));
+  const activePunches = canUseLabor ? timePunches.filter(p => ['clocked_in','on_break'].includes(p.status)) : [];
   const importantNotes = events.filter(e => e.type === 'note' && e.isImportant).sort((a,b) => new Date(b.date) - new Date(a.date)).slice(0, 3);
   const todayEvents = events.filter(e => e.type === 'special_event' && e.date === today).sort((a,b) => (a.time || '').localeCompare(b.time || ''));
-  const lowStock = inventoryItems.filter(i => Number(i.parLevel || 0) > 0 && Number(i.currentStock || 0) < Number(i.parLevel || 0)).sort((a,b) => (Number(a.currentStock||0) - Number(a.parLevel||0)) - (Number(b.currentStock||0) - Number(b.parLevel||0))).slice(0, 8);
-  const urgentMaintenance = maintenanceLogs.filter(m => !['Completed','Closed','Resolved'].includes(m.status) && ['High','Critical'].includes(m.urgency)).slice(0, 5);
+  const lowStock = canUseBasicInventory ? inventoryItems.filter(i => Number(i.parLevel || 0) > 0 && Number(i.currentStock || 0) < Number(i.parLevel || 0)).sort((a,b) => (Number(a.currentStock||0) - Number(a.parLevel||0)) - (Number(b.currentStock||0) - Number(b.parLevel||0))).slice(0, 8) : [];
+  const urgentMaintenance = canUseCleaningRoutines ? maintenanceLogs.filter(m => !['Completed','Closed','Resolved'].includes(m.status) && ['High','Critical'].includes(m.urgency)).slice(0, 5) : [];
   const openPrep = prepItems.filter(p => (p.date === today || p.date === 'MASTER') && !p.isCompleted).slice(0, 8);
-  const pendingRequests = timeOffRequests.filter(r => r.status === 'pending').slice(0, 5);
-  const openSwaps = shiftSwaps.filter(s => s.status === 'available' && s.date >= today).slice(0, 5);
+  const pendingRequests = canUseScheduleBuilder ? timeOffRequests.filter(r => r.status === 'pending').slice(0, 5) : [];
+  const openSwaps = canUseScheduleBuilder ? shiftSwaps.filter(s => s.status === 'available' && s.date >= today).slice(0, 5) : [];
   const recentTabs = (() => { try { return JSON.parse(localStorage.getItem(`recentTabs_${appUser.id}`) || '[]'); } catch { return []; } })();
   const setupItems = [
-    { label: 'Restaurant profile', done: !!clientData?.name, tab: 'settings' },
-    { label: 'Add team members', done: users.length > 1, tab: 'team' },
-    { label: 'Build this week schedule', done: shifts.some(s => s.date >= today), tab: 'schedule' },
-    { label: 'Add recipes', done: recipes.length > 0, tab: 'recipes' },
-    { label: 'Add inventory items', done: inventoryItems.length > 0, tab: 'inventory' },
-    { label: 'Post first announcement', done: events.some(e => e.type === 'note'), tab: 'messages' },
-    { label: 'Add maintenance log', done: maintenanceLogs.length > 0, tab: 'maintenance' }
-  ];
+    { label: 'Restaurant profile', done: !!clientData?.name, tab: 'settings', allowed: appUser?.isAdmin || appUser?.permissions?.settings },
+    { label: 'Add team members', done: users.length > 1, tab: 'team', allowed: appUser?.isAdmin || appUser?.permissions?.team },
+    { label: 'Build this week schedule', done: shifts.some(s => s.date >= today), tab: 'schedule', allowed: canUseScheduleBuilder },
+    { label: 'Add recipes', done: recipes.length > 0, tab: 'recipes', allowed: true },
+    { label: 'Add inventory items', done: inventoryItems.length > 0, tab: 'inventory', allowed: canUseBasicInventory },
+    { label: 'Post first announcement', done: events.some(e => e.type === 'note'), tab: 'messages', allowed: true },
+    { label: 'Add maintenance log', done: maintenanceLogs.length > 0, tab: 'maintenance', allowed: canUseCleaningRoutines }
+  ].filter(item => item.allowed !== false);
   const setupDone = setupItems.filter(i => i.done).length;
+  const setupTotal = Math.max(1, setupItems.length);
   const openInventoryFocus = () => { sessionStorage.setItem('inventoryFocus', 'belowPar'); setActiveTab('inventory'); };
   const problems = [
-    lowStock.length ? { tone: 'red', title: 'Inventory below par', detail: `${lowStock.length} item${lowStock.length===1?'':'s'} need attention.`, tab: 'inventory', onClick: openInventoryFocus } : null,
-    urgentMaintenance.length ? { tone: 'red', title: 'Maintenance urgent', detail: `${urgentMaintenance.length} high priority issue${urgentMaintenance.length===1?'':'s'} open.`, tab: 'maintenance' } : null,
-    pendingRequests.length ? { tone: 'amber', title: 'Time off pending', detail: `${pendingRequests.length} request${pendingRequests.length===1?'':'s'} waiting.`, tab: 'schedule' } : null,
-    openSwaps.length ? { tone: 'blue', title: 'Shift trade board', detail: `${openSwaps.length} shift${openSwaps.length===1?'':'s'} available.`, tab: 'published' } : null,
-    !todaysShifts.length ? { tone: 'amber', title: 'No published shifts today', detail: 'Check schedule coverage before service.', tab: 'schedule' } : null
+    canUseBasicInventory && lowStock.length ? { tone: 'red', title: 'Inventory below par', detail: `${lowStock.length} item${lowStock.length===1?'':'s'} need attention.`, tab: 'inventory', onClick: openInventoryFocus } : null,
+    canUseCleaningRoutines && urgentMaintenance.length ? { tone: 'red', title: 'Maintenance urgent', detail: `${urgentMaintenance.length} high priority issue${urgentMaintenance.length===1?'':'s'} open.`, tab: 'maintenance' } : null,
+    canUseScheduleBuilder && pendingRequests.length ? { tone: 'amber', title: 'Time off pending', detail: `${pendingRequests.length} request${pendingRequests.length===1?'':'s'} waiting.`, tab: 'schedule' } : null,
+    canUseScheduleBuilder && openSwaps.length ? { tone: 'blue', title: 'Shift trade board', detail: `${openSwaps.length} shift${openSwaps.length===1?'':'s'} available.`, tab: 'published' } : null,
+    canUseScheduleBuilder && !todaysShifts.length ? { tone: 'amber', title: 'No published shifts today', detail: 'Check schedule coverage before service.', tab: 'schedule' } : null
   ].filter(Boolean);
 
   const quickCreate = async (kind) => {
@@ -3815,7 +3868,7 @@ const TabToday = ({ currentDate, appUser, users, shifts, shiftSwaps, timeOffRequ
     addToast('Notification Preset Applied', 'Your alerts now match your role.');
   };
 
-  const heroTitle = profile === 'manager' || profile === 'system' ? 'Manager Brief' : profile === 'kitchen' ? 'Kitchen Brief' : profile === 'bar' ? 'Bar Brief' : profile === 'service' ? 'Service Brief' : 'Today Brief';
+  const heroTitle = canUseManagerBrief ? (profile === 'manager' || profile === 'system' ? 'Manager Brief' : profile === 'kitchen' ? 'Kitchen Brief' : profile === 'bar' ? 'Bar Brief' : profile === 'service' ? 'Service Brief' : 'Today Brief') : 'Today Home';
   const topPriority = problems[0]?.detail || (myShift ? `You work ${formatShortTime(myShift.startTime)}-${formatShortTime(myShift.endTime)} as ${myShift.role}.` : 'No urgent problems detected.');
 
   return <div className="manager-brief-compact max-w-6xl mx-auto space-y-3 pb-24 animate-[slideIn_0.2s_ease-out]">
@@ -3839,7 +3892,7 @@ const TabToday = ({ currentDate, appUser, users, shifts, shiftSwaps, timeOffRequ
       <button onClick={() => quickCreate('86')} className="brief-quick-action bg-red-900/20 border border-red-500/40 text-red-300 rounded-xl p-3 font-black text-xs uppercase tracking-widest">+ 86 Alert</button>
       <button onClick={() => quickCreate('prep')} className="brief-quick-action bg-[#1A2126] border border-[#2A353D] text-[#D4A381] rounded-xl p-3 font-black text-xs uppercase tracking-widest">+ Prep</button>
       <button onClick={() => quickCreate('message')} className="brief-quick-action bg-[#1A2126] border border-[#2A353D] text-slate-200 rounded-xl p-3 font-black text-xs uppercase tracking-widest">+ Message</button>
-      <button onClick={() => quickCreate('maintenance')} className="brief-quick-action bg-amber-900/20 border border-amber-500/40 text-amber-300 rounded-xl p-3 font-black text-xs uppercase tracking-widest">+ Fix It</button>
+      {canUseCleaningRoutines && <button onClick={() => quickCreate('maintenance')} className="brief-quick-action bg-amber-900/20 border border-amber-500/40 text-amber-300 rounded-xl p-3 font-black text-xs uppercase tracking-widest">+ Fix It</button>}
     </div>
 
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
@@ -3854,7 +3907,7 @@ const TabToday = ({ currentDate, appUser, users, shifts, shiftSwaps, timeOffRequ
         <div className={`${T.card} brief-card p-4`}>
           <h2 className="font-black text-white text-lg mb-3">Role Home</h2>
           {profile === 'kitchen' && <div className="grid sm:grid-cols-3 gap-2"><MiniProblemCard title="Prep" detail={`${openPrep.length} open prep items`} action="Open Prep" onClick={() => setActiveTab('prep')} /><MiniProblemCard title="86 Watch" detail={`${lowStock.length} low stock item(s)`} action="Inventory" onClick={openInventoryFocus} /><MiniProblemCard title="Recipes" detail={`${recipes.length} recipes available`} action="Open" onClick={() => setActiveTab('recipes')} /></div>}
-          {profile === 'manager' || profile === 'system' ? <div className="grid sm:grid-cols-3 gap-2"><MiniProblemCard title="Labor" detail={`${activePunches.length}/${todaysShifts.length} clocked in`} action="Schedule" onClick={() => setActiveTab('schedule')} /><MiniProblemCard title="Requests" detail={`${pendingRequests.length} pending`} action="Review" onClick={() => setActiveTab('schedule')} /><MiniProblemCard title="Kitchen Command" detail="Open Kitchen Command Center" action="Open" onClick={() => setActiveTab('ops')} /></div> : null}
+          {profile === 'manager' || profile === 'system' ? <div className="grid sm:grid-cols-3 gap-2">{canUseLabor && <MiniProblemCard title="Labor" detail={`${activePunches.length}/${todaysShifts.length} clocked in`} action="Labor" onClick={() => setActiveTab('labor')} />}{canUseScheduleBuilder && <MiniProblemCard title="Requests" detail={`${pendingRequests.length} pending`} action="Review" onClick={() => setActiveTab('schedule')} />}{canUseManagerBrief && <MiniProblemCard title="Kitchen Command" detail="Open Kitchen Command Center" action="Open" onClick={() => setActiveTab('ops')} />}{!canUseLabor && !canUseScheduleBuilder && !canUseManagerBrief && <MiniProblemCard title="Today Home" detail="Messages, prep, recipes, reminders, and Help Center are available on this plan." action="Open Help" onClick={() => setActiveTab('help')} />}</div> : null}
           {['service','bar','staff'].includes(profile) && <div className="grid sm:grid-cols-3 gap-2"><MiniProblemCard title="My Shift" detail={myShift ? `${formatShortTime(myShift.startTime)}-${formatShortTime(myShift.endTime)}` : 'No shift today'} action="Open" onClick={() => setActiveTab('published')} /><MiniProblemCard title="Messages" detail={`${importantNotes.length} important post(s)`} action="Read" onClick={() => setActiveTab('messages')} /><MiniProblemCard title="Trade Board" detail={`${openSwaps.length} available`} action="Open" onClick={() => setActiveTab('published')} /></div>}
         </div>
 
@@ -3866,7 +3919,7 @@ const TabToday = ({ currentDate, appUser, users, shifts, shiftSwaps, timeOffRequ
 
       <div className="space-y-3">
         <div className={`${T.card} brief-card p-4`}>
-          <button className="w-full flex justify-between items-center" onClick={() => setExpanded(e => ({...e, setup: !e.setup}))}><h2 className="font-black text-white text-lg">Setup Checklist</h2><span className="text-[10px] font-black text-[#D4A381]">{setupDone}/7</span></button>
+          <button className="w-full flex justify-between items-center" onClick={() => setExpanded(e => ({...e, setup: !e.setup}))}><h2 className="font-black text-white text-lg">Setup Checklist</h2><span className="text-[10px] font-black text-[#D4A381]">{setupDone}/{setupTotal}</span></button>
           {expanded.setup && <div className="mt-3 space-y-2">{setupItems.map(item => <button key={item.label} onClick={() => setActiveTab(item.tab)} className="w-full flex items-center justify-between gap-2 bg-[#0B0E11] border border-[#2A353D] rounded-xl px-3 py-2 text-left"><span className="text-xs font-bold text-slate-200">{item.label}</span><span className={`text-[9px] font-black uppercase tracking-widest ${item.done ? 'text-emerald-400' : 'text-amber-400'}`}>{item.done ? 'Done' : 'Open'}</span></button>)}<button onClick={seedDemoData} className="w-full mt-2 bg-[#D4A381] text-slate-900 rounded-xl px-3 py-2 text-[10px] font-black uppercase tracking-widest">Seed Demo Mode</button></div>}
         </div>
         <div className={`${T.card} brief-card p-4`}>

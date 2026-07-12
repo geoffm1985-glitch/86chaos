@@ -482,6 +482,37 @@ async function updateAiUsageLimits({ db, restaurantId, monthKey = getMonthKey(),
 }
 
 
+async function resetAiUsageCounters({ db, restaurantId, monthKey = getMonthKey(), resetBy = '' }) {
+  const usageRef = db.collection('aiUsage').doc(usageDocumentId(restaurantId, monthKey));
+  const now = admin.firestore.FieldValue.serverTimestamp();
+  await usageRef.set({
+    restaurantId,
+    monthKey,
+    invoicePagesUsed: 0,
+    menuPagesUsed: 0,
+    invoiceScansSubmitted: 0,
+    menuScansSubmitted: 0,
+    invoicePagesProcessed: 0,
+    menuPagesProcessed: 0,
+    invoiceBypassPagesProcessed: 0,
+    menuBypassPagesProcessed: 0,
+    exemptPagesProcessed: 0,
+    resetAt: now,
+    resetBy,
+    updatedAt: now
+  }, { merge: true });
+  await usageRef.collection('events').add({
+    type: 'usage_reset',
+    scanType: 'all',
+    pageCount: 0,
+    userId: resetBy || 'system',
+    userEmail: resetBy || '',
+    createdAt: now,
+    monthKey
+  });
+  return getAiUsageSnapshot({ db, restaurantId, monthKey, eventLimit: 30 });
+}
+
 async function authorizeAiScanWorkspace({ app, decoded, restaurantId, scanType }) {
   if (!app) throw new Error('AI page enforcement requires the matching Firebase service account in Vercel.');
   const cleanRestaurantId = clean(restaurantId);
@@ -606,6 +637,7 @@ module.exports = {
   cancelAiScanReservation,
   getAiUsageSnapshot,
   updateAiUsageLimits,
+  resetAiUsageCounters,
   buildLimitResponse,
   buildDuplicateResponse,
   usageDocumentId,

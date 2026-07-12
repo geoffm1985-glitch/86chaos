@@ -128,7 +128,7 @@ module.exports = async function handler(req, res) {
           credentialConfigured: runtimeCredential.configured,
           credentialSource: runtimeCredential.source || runtimeCredential.recommendedEnv || runtimeCredential.error || 'missing',
           storageBucket: app.options?.storageBucket || process.env.FIREBASE_STORAGE_BUCKET || `${runtimeProjectId}.firebasestorage.app`,
-          note: '15.0.48 selects Firebase Admin credentials from the signed token project. Preview should use FIREBASE_TEST_SERVICE_ACCOUNT_KEY; Production should use FIREBASE_PRODUCTION_SERVICE_ACCOUNT_KEY. The older FIREBASE_SERVICE_ACCOUNT_KEY still works when it belongs to the same project.'
+          note: 'Firebase Admin credentials can use the existing FIREBASE_SERVICE_ACCOUNT_KEY full JSON. Project-specific FIREBASE_TEST_SERVICE_ACCOUNT_KEY and FIREBASE_PRODUCTION_SERVICE_ACCOUNT_KEY are optional advanced aliases only. The generic key is enough when it belongs to the active Firebase project, including testing.'
         }
       },
       app: { version: SECURITY_BUILD_VERSION, latestVersion: SECURITY_BUILD_VERSION, checkedAt: new Date().toISOString() },

@@ -10,6 +10,7 @@ import { buildPrepCreatePayload, buildPrepQuantityUpdate, findPrepMatch, formatP
 import { buildEightySixAlertDetails, canUseMenuIntelligence, resolveStrictEightySixMatch } from '../core/menuIntelligence';
 import { parseReminderCommand } from '../core/reminderUtils';
 import { resolveFeatureAccess, featureForRoute, isMasterAdminUser } from '../lib/featureAccess';
+import { FEATURE_KEYS } from '../config/plans';
 
 const CheersLogo = ({ clientData }) => {
   const settings = clientData?.systemSettings || {};
@@ -69,7 +70,8 @@ const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppU
   };
   const pushTab = (tab) => { if (planAllowsTab(tab.id)) tabs.push(tab); };
 
-  pushTab({ id: 'today', label: 'Manager Brief', icon: <Star size={18}/>, dot: hasUnreadMessages || hasMyShiftAlert || hasScheduleBuilderAlert });
+  const managerBriefAccess = resolveFeatureAccess({ workspace: clientData || {}, user: appUser || {}, featureKey: FEATURE_KEYS.MANAGER_BRIEF });
+  pushTab({ id: 'today', label: managerBriefAccess.allowed ? 'Manager Brief' : 'Today Home', icon: <Star size={18}/>, dot: hasUnreadMessages || hasMyShiftAlert || hasScheduleBuilderAlert });
   if (isEnabled('schedule')) pushTab({ id: 'published', label: 'Time Clock & Schedule', icon: <Clock size={18}/>, dot: hasMyShiftAlert }); 
   if ((isEnabled('labor') || isEnabled('sales')) && (isGod || appUser?.isAdmin || perms.labor || perms.schedule || perms.sales)) pushTab({ id: 'financials', label: 'Financials', icon: <Scale size={18}/> });
   if (isEnabled('ops') && (isGod || appUser?.isAdmin || perms.ops)) pushTab({ id: 'ops', label: 'Kitchen Command Center', icon: <ChefHat size={18}/> }); 
@@ -567,25 +569,33 @@ const isVoiceManagerOrAdmin = (user = {}) => {
 };
 const voiceFeatureEnabled = (features = {}, feature) => !feature || features?.[feature] !== false;
 const canVoiceOpenTab = (user = {}, clientFeatures = {}, tab = 'today', clientData = {}) => {
+  const featureKey = featureForRoute(tab);
+  if (featureKey) {
+    const access = resolveFeatureAccess({ workspace: clientData || {}, user: user || {}, featureKey });
+    if (!access.allowed) return false;
+  }
   const perms = user?.permissions || {};
   const isSuper = isVoiceSuperAdmin(user);
   const isAdmin = isVoiceAdmin(user);
   const role = normalizeVoiceText(user?.role || '');
-  const isKitchenRole = role.includes('kitchen') || role.includes('cook') || role.includes('chef');
+  const rosterRoles = Array.isArray(clientData?.rosterRoles) ? clientData.rosterRoles : (Array.isArray(clientData?.systemSettings?.rosterRoles) ? clientData.systemSettings.rosterRoles : []);
+  const hasCustomRosterRoles = rosterRoles.length > 0;
+  const isKitchenRole = !hasCustomRosterRoles && (role.includes('kitchen') || role.includes('cook') || role.includes('chef'));
+  const isLegacyManagerRole = !hasCustomRosterRoles && (role.includes('manager') || role.includes('owner') || role.includes('lead') || role.includes('supervisor'));
   if (tab === 'today' || tab === 'help') return true;
   if (tab === 'published') return voiceFeatureEnabled(clientFeatures, 'schedule');
   if (tab === 'schedule') return voiceFeatureEnabled(clientFeatures, 'schedule') && (isAdmin || !!perms.schedule);
   if (tab === 'events') return voiceFeatureEnabled(clientFeatures, 'events') && (isAdmin || !!perms.events || !!perms.schedule || !!perms.team);
   if (tab === 'financials' || tab === 'sales' || tab === 'labor') return (voiceFeatureEnabled(clientFeatures, 'labor') || voiceFeatureEnabled(clientFeatures, 'sales')) && (isSuper || isAdmin || !!perms.labor || !!perms.sales || !!perms.schedule);
-  if (tab === 'ops') return voiceFeatureEnabled(clientFeatures, 'ops') && (isSuper || isAdmin || !!perms.ops || role.includes('manager'));
+  if (tab === 'ops') return voiceFeatureEnabled(clientFeatures, 'ops') && (isSuper || isAdmin || !!perms.ops || isLegacyManagerRole);
   if (tab === 'messages') return voiceFeatureEnabled(clientFeatures, 'messages');
   if (tab === 'prep') return voiceFeatureEnabled(clientFeatures, 'prep') && (isAdmin || isKitchenRole || !!perms.prep);
   if (tab === 'reminders') return true;
   if (tab === 'menu-intelligence') return canUseMenuIntelligence(user, clientData);
   if (tab === 'recipes') return voiceFeatureEnabled(clientFeatures, 'recipes') && (isAdmin || isKitchenRole || !!perms.prep || !!perms.team);
-  if (tab === 'inventory') return voiceFeatureEnabled(clientFeatures, 'inventory') && (isAdmin || !!perms.inventory || !!perms.team || role.includes('manager'));
+  if (tab === 'inventory') return voiceFeatureEnabled(clientFeatures, 'inventory') && (isAdmin || !!perms.inventory || !!perms.team || isLegacyManagerRole);
   if (tab === 'team') return voiceFeatureEnabled(clientFeatures, 'team');
-  if (tab === 'maintenance') return voiceFeatureEnabled(clientFeatures, 'maintenance') && (isAdmin || !!perms.team || !!perms.maintenance || role.includes('manager'));
+  if (tab === 'maintenance') return voiceFeatureEnabled(clientFeatures, 'maintenance') && (isAdmin || !!perms.team || !!perms.maintenance || isLegacyManagerRole);
   if (tab === 'settings') return !user?.isDemo;
   if (tab === 'audit') return !user?.isDemo && (isSuper || isAdmin);
   if (tab === 'godmode') return isSuper;

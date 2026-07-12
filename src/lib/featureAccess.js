@@ -1,4 +1,4 @@
-import { PLAN_DEFINITIONS, PLAN_IDS, PLAN_ORDER, FEATURE_MIN_PLAN, FEATURE_LABELS, ROUTE_FEATURES, FINANCIAL_SUBTAB_FEATURES, FOUNDER_DISCOUNT_PERCENT } from '../config/plans';
+import { PLAN_DEFINITIONS, PLAN_IDS, PLAN_ORDER, FEATURE_MIN_PLAN, FEATURE_LABELS, ROUTE_FEATURES, FINANCIAL_SUBTAB_FEATURES, FOUNDER_DISCOUNT_PERCENT, FOUNDER_BETA_DAYS, FOUNDER_BETA_EXTENSION_DAYS } from '../config/plans';
 
 const clean = (value = '') => String(value == null ? '' : value).trim();
 const lower = (value = '') => clean(value).toLowerCase();
@@ -45,14 +45,67 @@ export const addMonthsIso = (base, months) => {
   return d.toISOString();
 };
 
+export const hasExplicitSubscription = (workspace = {}) => Boolean(
+  workspace?.subscription && typeof workspace.subscription === 'object' && Object.keys(workspace.subscription).length > 0
+);
+
+export const hasExplicitModernPlan = (workspace = {}) => {
+  const rawPlan = clean(workspace?.planId || workspace?.subscription?.planId || '');
+  return [PLAN_IDS.SHIFT, PLAN_IDS.OPERATIONS, PLAN_IDS.SMART_KITCHEN, PLAN_IDS.OWNER_PRO, PLAN_IDS.MASTER_ADMIN].includes(normalizePlanId(rawPlan)) && rawPlan !== '';
+};
+
+export const buildDefaultFounderBetaSubscription = (workspace = {}) => {
+  const started = isoFromMaybeTimestamp(workspace?.createdAt || workspace?.createdAtBackfilledAt) || new Date().toISOString();
+  const futureTier = normalizePlanId(workspace?.subscription?.selectedFutureTier || workspace?.selectedFutureTier || PLAN_IDS.SMART_KITCHEN);
+  return {
+    planId: futureTier || PLAN_IDS.SMART_KITCHEN,
+    selectedFutureTier: futureTier || PLAN_IDS.SMART_KITCHEN,
+    status: 'beta',
+    isFounderBeta: true,
+    betaStartedAt: started,
+    betaEndsAt: addDaysIso(started, FOUNDER_BETA_DAYS),
+    betaExtendedUntil: null,
+    founderDiscountPercent: FOUNDER_DISCOUNT_PERCENT,
+    founderDiscountEndsAt: null,
+    billingProvider: 'none',
+    billingNotes: 'Backfill default: existing workspace treated as Founder Beta Smart Kitchen until manually changed.',
+    integrationsLocked: true,
+    createdAt: started,
+    updatedAt: ''
+  };
+};
+
+export const betaDaysRemaining = (subscription = {}) => {
+  const end = subscription.betaExtendedUntil || subscription.betaEndsAt;
+  if (!end || !subscription.isFounderBeta) return null;
+  const diff = new Date(end).getTime() - nowMs();
+  if (!Number.isFinite(diff)) return null;
+  return Math.ceil(diff / (24 * 60 * 60 * 1000));
+};
+
+export const betaLifecycleFlag = (subscription = {}) => {
+  const days = betaDaysRemaining(subscription);
+  if (days == null) return '';
+  if (days < 0) return 'beta_ended';
+  if (days <= 1) return 'beta_ending_1_day';
+  if (days <= 7) return 'beta_ending_7_days';
+  if (days <= 14) return 'beta_ending_14_days';
+  return 'beta_active';
+};
+
 export const resolveSubscription = (workspace = {}, user = {}) => {
-  const raw = workspace?.subscription || {};
+  const rawStored = workspace?.subscription || {};
+  const explicitSubscription = hasExplicitSubscription(workspace);
+  const explicitModernPlan = hasExplicitModernPlan(workspace);
+  const raw = explicitSubscription ? rawStored : (explicitModernPlan ? rawStored : buildDefaultFounderBetaSubscription(workspace));
   const isMaster = isMasterAdminUser(user) || normalizePlanId(raw.planId || workspace?.planId || workspace?.planType) === PLAN_IDS.MASTER_ADMIN;
-  const isFounderBeta = raw.isFounderBeta === true || workspace?.isFounderBeta === true || workspace?.founderBeta === true || workspace?.billingStatus === 'Trial';
-  const selectedFutureTier = normalizePlanId(raw.selectedFutureTier || raw.futurePlanId || workspace?.selectedFutureTier || workspace?.futurePlanId || raw.planId || workspace?.planId || workspace?.planType || (isFounderBeta ? PLAN_IDS.SMART_KITCHEN : PLAN_IDS.SHIFT));
-  const planId = isMaster ? PLAN_IDS.MASTER_ADMIN : normalizePlanId(raw.planId || workspace?.planId || workspace?.planType || (isFounderBeta ? selectedFutureTier : PLAN_IDS.SHIFT));
-  const betaStartedAt = isoFromMaybeTimestamp(raw.betaStartedAt || workspace?.betaStartedAt);
-  const betaEndsAt = isoFromMaybeTimestamp(raw.betaEndsAt || workspace?.betaEndsAt) || (isFounderBeta && betaStartedAt ? addDaysIso(betaStartedAt, 60) : '');
+  const defaultedFounderBeta = !explicitSubscription && !explicitModernPlan && !isMaster;
+  const isFounderBeta = defaultedFounderBeta || raw.isFounderBeta === true || workspace?.isFounderBeta === true || workspace?.founderBeta === true || workspace?.billingStatus === 'Trial';
+  const selectedFutureTier = normalizePlanId(raw.selectedFutureTier || raw.futurePlanId || workspace?.selectedFutureTier || workspace?.futurePlanId || raw.planId || workspace?.planId || (isFounderBeta ? PLAN_IDS.SMART_KITCHEN : PLAN_IDS.SHIFT));
+  const storedPlanId = normalizePlanId(raw.planId || workspace?.planId || (isFounderBeta ? selectedFutureTier : PLAN_IDS.SHIFT));
+  const planId = isMaster ? PLAN_IDS.MASTER_ADMIN : storedPlanId;
+  const betaStartedAt = isoFromMaybeTimestamp(raw.betaStartedAt || workspace?.betaStartedAt) || (isFounderBeta ? new Date().toISOString() : '');
+  const betaEndsAt = isoFromMaybeTimestamp(raw.betaEndsAt || workspace?.betaEndsAt) || (isFounderBeta && betaStartedAt ? addDaysIso(betaStartedAt, FOUNDER_BETA_DAYS) : '');
   const betaExtendedUntil = isoFromMaybeTimestamp(raw.betaExtendedUntil || workspace?.betaExtendedUntil);
   const effectiveBetaEnd = betaExtendedUntil || betaEndsAt;
   const betaActive = Boolean(isFounderBeta && effectiveBetaEnd && new Date(effectiveBetaEnd).getTime() >= nowMs());
@@ -61,7 +114,7 @@ export const resolveSubscription = (workspace = {}, user = {}) => {
   const rawStatus = raw.status || workspace?.subscriptionStatus || '';
   const status = isMaster ? 'internal' : (rawStatus ? lower(rawStatus).replace(/\s+/g, '_') : legacyBillingStatus === 'Past Due' ? 'past_due' : legacyBillingStatus === 'Trial' ? 'beta' : betaActive ? 'beta' : 'active');
   const activePlanId = isFounderBeta && betaActive ? normalizePlanId(raw.planId || selectedFutureTier || PLAN_IDS.SMART_KITCHEN) : planId;
-  return {
+  const subscription = {
     planId: activePlanId,
     selectedFutureTier,
     status,
@@ -70,14 +123,21 @@ export const resolveSubscription = (workspace = {}, user = {}) => {
     betaEndsAt,
     betaExtendedUntil: betaExtendedUntil || null,
     betaActive,
+    betaDaysRemaining: null,
+    betaLifecycleFlag: '',
     founderDiscountPercent: Number(raw.founderDiscountPercent ?? workspace?.founderDiscountPercent ?? FOUNDER_DISCOUNT_PERCENT),
     founderDiscountEndsAt: founderDiscountEndsAt || null,
     billingProvider: raw.billingProvider || workspace?.billingProvider || 'none',
     billingNotes: raw.billingNotes || workspace?.billingNotes || '',
-    integrationsLocked: raw.integrationsLocked !== false,
+    integrationsLocked: true,
+    defaultedFounderBeta: defaultedFounderBeta,
+    needsSubscriptionBackfill: defaultedFounderBeta,
     createdAt: isoFromMaybeTimestamp(raw.createdAt) || '',
     updatedAt: isoFromMaybeTimestamp(raw.updatedAt) || ''
   };
+  subscription.betaDaysRemaining = betaDaysRemaining(subscription);
+  subscription.betaLifecycleFlag = betaLifecycleFlag(subscription);
+  return subscription;
 };
 
 export const getPlanDefinition = (planId) => PLAN_DEFINITIONS[normalizePlanId(planId)] || PLAN_DEFINITIONS[PLAN_IDS.SHIFT];
@@ -94,7 +154,7 @@ export const roleAllowsFeature = (user = {}, featureKey, workspace = {}) => {
   if (isMasterAdminUser(user)) return true;
   const perms = user?.permissions || {};
   const ownerAdmin = Boolean(user?.isOwner || user?.accountOwner || user?.workspaceOwner || user?.owner || user?.isAdmin);
-  const configuredRosterRoles = Array.isArray(workspace?.rosterRoles) ? workspace.rosterRoles : (Array.isArray(workspace?.customRosterRoles) ? workspace.customRosterRoles : []);
+  const configuredRosterRoles = Array.isArray(workspace?.rosterRoles) ? workspace.rosterRoles : (Array.isArray(workspace?.systemSettings?.rosterRoles) ? workspace.systemSettings.rosterRoles : (Array.isArray(workspace?.customRosterRoles) ? workspace.customRosterRoles : []));
   const hasCustomRosterRoles = configuredRosterRoles.length > 0;
   const legacyRoleName = lower(user?.role || user?.position || user?.jobTitle);
   const legacyKitchenFallback = !hasCustomRosterRoles && (legacyRoleName.includes('kitchen') || legacyRoleName.includes('cook') || legacyRoleName.includes('chef') || legacyRoleName.includes('prep'));
@@ -118,6 +178,7 @@ export const roleAllowsFeature = (user = {}, featureKey, workspace = {}) => {
     case 'dependency_tools': return Boolean(ownerAdmin || perms.inventory || perms.menuIntelligence || perms.team);
     case 'schedule_builder': return Boolean(ownerAdmin || perms.schedule);
     case 'time_clock': return true;
+    case 'basic_dashboard': return true;
     case 'timesheets':
     case 'labor_command':
     case 'tip_center': return Boolean(ownerAdmin || perms.labor || perms.sales || perms.schedule);

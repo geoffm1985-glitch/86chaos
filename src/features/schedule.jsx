@@ -1773,11 +1773,8 @@ const handleExportTimesheets = () => {
                 <span className="text-[9px] font-black uppercase tracking-widest text-slate-500">Proj. Period Labor</span>
                 <span className="text-emerald-400 font-black text-base">${projectedMonthLabor.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
               </div>
-<button onClick={() => {
-                if (appUser?.planType === 'Starter' || appUser?.planType === 'Pro') return addToast('Locked', 'Upgrade to Elite to use Smart Auto-Fill.');
-                setIsAutoPopulateModalOpen(true);
-              }} className={`flex-1 2xl:flex-none ${T.btnAlt} py-2.5 h-12 flex items-center justify-center font-black ${(appUser?.planType === 'Starter' || appUser?.planType === 'Pro') ? 'opacity-50 text-slate-500 border-[#2A353D]' : 'border-blue-900/50 text-blue-400'}`}>
-                <Repeat size={16} className="mr-1"/> {(appUser?.planType === 'Starter' || appUser?.planType === 'Pro') ? '🔒 Auto-Fill' : 'Auto-Fill'}
+<button onClick={() => setIsAutoPopulateModalOpen(true)} className={`flex-1 2xl:flex-none ${T.btnAlt} py-2.5 h-12 flex items-center justify-center font-black border-blue-900/50 text-blue-400`}>
+                <Repeat size={16} className="mr-1"/> Auto-Fill
               </button>              <button onClick={handlePublish} className={`flex-1 2xl:flex-none ${T.btnAlt} py-2.5 h-12 flex items-center justify-center font-black`}>Publish</button>
               <button onClick={openNewEventModal} className={`flex-1 2xl:flex-none ${T.btnAlt} border-[#D4A381] text-[#D4A381] py-2.5 h-12 flex items-center justify-center font-black`}><Plus size={16} className="mr-1"/> Event</button>
             </div>
