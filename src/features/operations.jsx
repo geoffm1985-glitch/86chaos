@@ -1580,7 +1580,7 @@ const groupedItems = inventoryItems
   const invoiceUsageWarning = aiPageLimitMessage('invoice', invoiceAiUsage);
 
   return (
-    <div className="max-w-5xl mx-auto space-y-4 pb-24">
+    <div className="inventory-desktop max-w-7xl mx-auto space-y-4 pb-24">
       
       {/* CSV IMPORT CLEANUP REVIEW MODAL */}
       <Modal isOpen={!!csvImportReview} onClose={() => isSavingCsvImport ? null : setCsvImportReview(null)} title="Inventory Import Cleanup Review">
@@ -2475,7 +2475,7 @@ const TabRecipes = ({ appUser, addToast, voiceRecipeTarget = null }) => {
   const canModifyRecipe = activeRecipe && (canManageRecipes || appUser?.id === activeRecipe.authorId);
 
   return (
-    <div className="max-w-6xl mx-auto space-y-4 pb-12 animate-[slideIn_0.2s_ease-out] recipe-compact">
+    <div className="recipes-desktop max-w-7xl mx-auto space-y-4 pb-12 animate-[slideIn_0.2s_ease-out] recipe-compact">
       
       {/* THE NEW SLEEK CONTROL PANEL */}
       <div className="bg-[#1A2126] border border-[#2A353D] rounded-2xl shadow-lg overflow-hidden mb-4">
@@ -2814,7 +2814,7 @@ const TabMaintenance = ({ appUser, addToast }) => {
   });
 
   return (
-    <div className="maintenance-center-compact max-w-6xl mx-auto space-y-3 pb-24 animate-[slideIn_0.2s_ease-out]">
+    <div className="maintenance-center-compact desktop-ops-page max-w-7xl mx-auto space-y-3 pb-24 animate-[slideIn_0.2s_ease-out]">
       <Modal isOpen={isModalOpen} onClose={() => { setIsModalOpen(false); resetForm(); }} title={editingLogId ? "Update Maintenance Record" : "Report Equipment Issue"}>
         <form onSubmit={handleSave} className="space-y-3 max-h-[70vh] overflow-y-auto custom-scrollbar pr-1">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -3426,7 +3426,7 @@ const TabOpsCenter = ({ currentDate, appUser, users = [], shifts = [], events = 
   ];
 
   return (
-    <div className="kitchen-command-compact max-w-6xl mx-auto space-y-4 pb-24 animate-[slideIn_0.2s_ease-out]">
+    <div className="kitchen-command-compact desktop-ops-page max-w-7xl mx-auto space-y-4 pb-24 animate-[slideIn_0.2s_ease-out]">
       <div className={`${T.card} command-hero p-5 bg-gradient-to-br from-[#1A2126] to-[#12161A] overflow-hidden relative`}>
         <div className="absolute -top-8 -right-6 text-[120px] font-black text-[#D4A381]/5 leading-none">86</div>
         <div className="relative z-10 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
@@ -3871,7 +3871,7 @@ const TabToday = ({ currentDate, appUser, users, shifts, shiftSwaps, timeOffRequ
   const heroTitle = canUseManagerBrief ? (profile === 'manager' || profile === 'system' ? 'Manager Brief' : profile === 'kitchen' ? 'Kitchen Brief' : profile === 'bar' ? 'Bar Brief' : profile === 'service' ? 'Service Brief' : 'Today Brief') : 'Today Home';
   const topPriority = problems[0]?.detail || (myShift ? `You work ${formatShortTime(myShift.startTime)}-${formatShortTime(myShift.endTime)} as ${myShift.role}.` : 'No urgent problems detected.');
 
-  return <div className="manager-brief-compact max-w-6xl mx-auto space-y-3 pb-24 animate-[slideIn_0.2s_ease-out]">
+  return <div className="manager-brief-compact desktop-ops-page max-w-7xl mx-auto space-y-3 pb-24 animate-[slideIn_0.2s_ease-out]">
     <div className="brief-hero cockpit-panel rounded-2xl p-4 sm:p-5 cockpit-grid overflow-hidden relative">
       <div className="absolute -right-8 -top-8 text-[9rem] font-black text-white/5 leading-none">86</div>
       <div className="relative z-10 flex flex-col sm:flex-row sm:items-start justify-between gap-3">

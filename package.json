@@ -1,6 +1,6 @@
 {
   "name": "86chaos",
-  "version": "15.0.56",
+  "version": "15.0.58",
   "private": true,
   "dependencies": {
     "firebase": "^10.8.1",

@@ -1,8 +1,9 @@
 {
-  "version": "15.0.56",
-  "name": "86 Chaos 15.0.56 Restaurant Group Push Broadcasts",
+  "version": "15.0.58",
+  "name": "86 Chaos 15.0.58 Website Claims Hardening",
   "releasedAt": "2026-07-12",
-  "label": "86 Chaos 15.0.56",
-  "build": "15.0.56",
-  "updatedAt": "2026-07-12T00:00:00.000Z"
+  "label": "86 Chaos 15.0.58",
+  "build": "15.0.58",
+  "updatedAt": "2026-07-12T00:00:00.000Z",
+  "notes": "Desktop UI refinement pass for professional PC density, scanability, modals, tables, navigation, and page widths while preserving mobile comfort and all features."
 }

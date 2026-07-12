@@ -2902,3 +2902,437 @@ select {
     max-width: min(1560px, calc(100vw - 40px)) !important;
   }
 }
+
+/* 15.0.57: Desktop UI refinement pass.
+   Professional density on PC/laptop without feature hiding or tiny text. Mobile keeps its existing touch comfort. */
+@media (min-width: 1024px) {
+  .desktop-pro-shell {
+    --chaos-radius-card: 12px;
+    --chaos-radius-button: 9px;
+    --chaos-desktop-panel-gap: .85rem;
+    --chaos-desktop-card-pad: .85rem;
+    --chaos-desktop-section-pad: 1rem;
+  }
+
+  .desktop-pro-shell .app-header {
+    height: 52px !important;
+    padding-left: 14px !important;
+    padding-right: 14px !important;
+  }
+
+  .desktop-pro-shell .brand-logo-stack {
+    gap: 8px !important;
+  }
+
+  .desktop-pro-shell .app-header img,
+  .desktop-pro-shell .brand-logo-stack img {
+    max-height: 38px;
+  }
+
+  .desktop-pro-shell .desktop-date-strip {
+    min-height: 46px;
+    padding-top: 8px !important;
+    padding-bottom: 8px !important;
+  }
+
+  .desktop-pro-shell .desktop-date-strip h2 {
+    font-size: 1.12rem !important;
+    line-height: 1.35rem !important;
+    letter-spacing: .04em !important;
+  }
+
+  .desktop-pro-shell .desktop-date-strip button {
+    min-height: 32px !important;
+    width: 34px;
+    height: 34px;
+    padding: 6px !important;
+    border-radius: 10px !important;
+  }
+
+  .desktop-pro-shell .app-content-shell {
+    max-width: min(1440px, calc(100vw - 44px)) !important;
+    padding-top: 14px !important;
+    padding-left: 12px !important;
+    padding-right: 12px !important;
+    padding-bottom: 64px !important;
+  }
+
+  .desktop-pro-shell .app-content-shell > .max-w-4xl,
+  .desktop-pro-shell .app-content-shell > .max-w-5xl,
+  .desktop-pro-shell .app-content-shell > .max-w-6xl,
+  .desktop-pro-shell .app-content-shell > .max-w-7xl,
+  .desktop-pro-shell .desktop-management-page,
+  .desktop-pro-shell .financial-center-desktop,
+  .desktop-pro-shell .inventory-desktop,
+  .desktop-pro-shell .recipes-desktop,
+  .desktop-pro-shell .schedule-desktop,
+  .desktop-pro-shell .desktop-ops-page,
+  .desktop-pro-shell .intelligence-desktop,
+  .desktop-pro-shell .hr-desktop {
+    width: 100%;
+    max-width: min(1360px, 100%) !important;
+  }
+
+  .desktop-pro-shell .app-content-shell > .max-w-2xl,
+  .desktop-pro-shell .app-content-shell > .max-w-3xl {
+    max-width: min(980px, 100%) !important;
+  }
+
+  .desktop-pro-shell .app-content-shell .cockpit-grid,
+  .desktop-pro-shell .app-content-shell .cockpit-panel,
+  .desktop-pro-shell .app-content-shell .chaos-card,
+  .desktop-pro-shell .app-content-shell article,
+  .desktop-pro-shell .app-content-shell section {
+    background-image: none !important;
+  }
+
+  .desktop-pro-shell .app-content-shell .cockpit-panel,
+  .desktop-pro-shell .app-content-shell .chaos-card {
+    border-radius: var(--chaos-radius-card) !important;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.025), 0 8px 22px rgba(0,0,0,.13) !important;
+  }
+
+  .desktop-pro-shell .app-content-shell .rounded-3xl { border-radius: 16px !important; }
+  .desktop-pro-shell .app-content-shell .rounded-2xl { border-radius: 12px !important; }
+  .desktop-pro-shell .app-content-shell .rounded-xl { border-radius: 10px !important; }
+  .desktop-pro-shell .app-content-shell .rounded-lg { border-radius: 8px !important; }
+
+  .desktop-pro-shell .app-content-shell .p-8 { padding: 1.05rem !important; }
+  .desktop-pro-shell .app-content-shell .p-7 { padding: 1rem !important; }
+  .desktop-pro-shell .app-content-shell .p-6 { padding: .95rem !important; }
+  .desktop-pro-shell .app-content-shell .p-5 { padding: .85rem !important; }
+  .desktop-pro-shell .app-content-shell .p-4 { padding: .7rem !important; }
+  .desktop-pro-shell .app-content-shell .p-3 { padding: .6rem !important; }
+  .desktop-pro-shell .app-content-shell .p-2 { padding: .45rem !important; }
+
+  .desktop-pro-shell .app-content-shell .px-6 { padding-left: .95rem !important; padding-right: .95rem !important; }
+  .desktop-pro-shell .app-content-shell .px-5 { padding-left: .85rem !important; padding-right: .85rem !important; }
+  .desktop-pro-shell .app-content-shell .px-4 { padding-left: .7rem !important; padding-right: .7rem !important; }
+  .desktop-pro-shell .app-content-shell .py-6 { padding-top: .95rem !important; padding-bottom: .95rem !important; }
+  .desktop-pro-shell .app-content-shell .py-5 { padding-top: .82rem !important; padding-bottom: .82rem !important; }
+  .desktop-pro-shell .app-content-shell .py-4 { padding-top: .68rem !important; padding-bottom: .68rem !important; }
+  .desktop-pro-shell .app-content-shell .py-3 { padding-top: .52rem !important; padding-bottom: .52rem !important; }
+
+  .desktop-pro-shell .app-content-shell .gap-8 { gap: 1.05rem !important; }
+  .desktop-pro-shell .app-content-shell .gap-7 { gap: 1rem !important; }
+  .desktop-pro-shell .app-content-shell .gap-6 { gap: .9rem !important; }
+  .desktop-pro-shell .app-content-shell .gap-5 { gap: .78rem !important; }
+  .desktop-pro-shell .app-content-shell .gap-4 { gap: .65rem !important; }
+  .desktop-pro-shell .app-content-shell .gap-3 { gap: .52rem !important; }
+  .desktop-pro-shell .app-content-shell .gap-2 { gap: .42rem !important; }
+
+  .desktop-pro-shell .app-content-shell .space-y-8 > :not([hidden]) ~ :not([hidden]) { margin-top: 1.05rem !important; }
+  .desktop-pro-shell .app-content-shell .space-y-7 > :not([hidden]) ~ :not([hidden]) { margin-top: 1rem !important; }
+  .desktop-pro-shell .app-content-shell .space-y-6 > :not([hidden]) ~ :not([hidden]) { margin-top: .9rem !important; }
+  .desktop-pro-shell .app-content-shell .space-y-5 > :not([hidden]) ~ :not([hidden]) { margin-top: .78rem !important; }
+  .desktop-pro-shell .app-content-shell .space-y-4 > :not([hidden]) ~ :not([hidden]) { margin-top: .65rem !important; }
+  .desktop-pro-shell .app-content-shell .space-y-3 > :not([hidden]) ~ :not([hidden]) { margin-top: .52rem !important; }
+  .desktop-pro-shell .app-content-shell .space-y-2 > :not([hidden]) ~ :not([hidden]) { margin-top: .42rem !important; }
+
+  .desktop-pro-shell .app-content-shell h1,
+  .desktop-pro-shell .app-content-shell h2,
+  .desktop-pro-shell .app-content-shell h3 {
+    letter-spacing: -.018em;
+  }
+
+  .desktop-pro-shell .app-content-shell .text-5xl { font-size: 2.25rem !important; line-height: 2.55rem !important; }
+  .desktop-pro-shell .app-content-shell .text-4xl { font-size: 1.85rem !important; line-height: 2.15rem !important; }
+  .desktop-pro-shell .app-content-shell .text-3xl { font-size: 1.45rem !important; line-height: 1.78rem !important; }
+  .desktop-pro-shell .app-content-shell .text-2xl { font-size: 1.24rem !important; line-height: 1.55rem !important; }
+  .desktop-pro-shell .app-content-shell .text-xl { font-size: 1.08rem !important; line-height: 1.38rem !important; }
+  .desktop-pro-shell .app-content-shell .text-lg { font-size: .98rem !important; line-height: 1.32rem !important; }
+  .desktop-pro-shell .app-content-shell .text-base { font-size: .9rem !important; line-height: 1.35rem !important; }
+  .desktop-pro-shell.non-admin-controls-compact .app-content-shell .text-sm { font-size: .82rem !important; line-height: 1.28rem !important; }
+  .desktop-pro-shell.non-admin-controls-compact .app-content-shell .text-xs { font-size: .74rem !important; line-height: 1.15rem !important; }
+
+  .desktop-pro-shell .app-content-shell button:not(.no-compact),
+  .desktop-pro-shell .app-content-shell .chaos-button {
+    min-height: 34px !important;
+    border-radius: var(--chaos-radius-button) !important;
+    padding: .48rem .7rem !important;
+    font-size: .72rem !important;
+    line-height: 1.18 !important;
+  }
+
+  .desktop-pro-shell .app-content-shell input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=color]),
+  .desktop-pro-shell .app-content-shell select,
+  .desktop-pro-shell .app-content-shell textarea,
+  .desktop-pro-shell .app-content-shell .chaos-input {
+    min-height: 36px !important;
+    border-radius: var(--chaos-radius-button) !important;
+    padding: .52rem .7rem !important;
+    font-size: .82rem !important;
+    line-height: 1.3 !important;
+  }
+
+  .desktop-pro-shell .app-content-shell textarea {
+    min-height: 74px !important;
+  }
+
+  .desktop-pro-shell .app-content-shell label,
+  .desktop-pro-shell .app-content-shell .chaos-label,
+  .desktop-pro-shell .app-content-shell .chaos-table-heading {
+    font-size: .68rem !important;
+    line-height: 1.1rem !important;
+  }
+
+  .desktop-pro-shell .app-content-shell .overflow-x-auto,
+  .desktop-pro-shell .app-content-shell .custom-scrollbar {
+    scrollbar-width: thin;
+  }
+
+  .desktop-pro-shell .app-content-shell table {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+    font-size: .76rem;
+  }
+
+  .desktop-pro-shell .app-content-shell table th,
+  .desktop-pro-shell .app-content-shell table td,
+  .desktop-pro-shell .app-content-shell .chaos-table-row,
+  .desktop-pro-shell .app-content-shell .chaos-table-heading {
+    padding: .48rem .62rem !important;
+    vertical-align: middle;
+  }
+
+  .desktop-pro-shell .app-content-shell table th {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+  }
+
+  .desktop-pro-shell .app-content-shell .min-h-\[112px\] { min-height: 86px !important; }
+  .desktop-pro-shell .app-content-shell .min-h-\[120px\] { min-height: 92px !important; }
+  .desktop-pro-shell .app-content-shell .min-h-\[140px\] { min-height: 108px !important; }
+  .desktop-pro-shell .app-content-shell .min-h-\[160px\] { min-height: 122px !important; }
+  .desktop-pro-shell .app-content-shell .min-h-\[180px\] { min-height: 136px !important; }
+
+  .desktop-pro-shell .app-content-shell .grid {
+    min-width: 0;
+    align-items: start;
+  }
+
+  .desktop-pro-shell .manager-brief-compact,
+  .desktop-pro-shell .kitchen-command-compact,
+  .desktop-pro-shell .financial-center-desktop,
+  .desktop-pro-shell .inventory-desktop,
+  .desktop-pro-shell .recipes-desktop,
+  .desktop-pro-shell .schedule-desktop,
+  .desktop-pro-shell .intelligence-desktop,
+  .desktop-pro-shell .desktop-management-page,
+  .desktop-pro-shell .hr-desktop {
+    --chaos-desktop-local-gap: .65rem;
+  }
+
+  .desktop-pro-shell .manager-brief-compact .brief-hero,
+  .desktop-pro-shell .kitchen-command-compact .command-hero,
+  .desktop-pro-shell .financial-center-desktop > .cockpit-grid,
+  .desktop-pro-shell .inventory-desktop > .chaos-card:first-of-type,
+  .desktop-pro-shell .recipes-desktop > div:first-child,
+  .desktop-pro-shell .schedule-desktop > div:first-child,
+  .desktop-pro-shell .intelligence-desktop > div:first-child,
+  .desktop-pro-shell .desktop-management-page > div:first-child,
+  .desktop-pro-shell .hr-desktop > div:first-child {
+    border-radius: 13px !important;
+    padding: .9rem !important;
+  }
+
+  .desktop-pro-shell .manager-brief-compact .brief-card,
+  .desktop-pro-shell .manager-brief-compact .mini-problem-card,
+  .desktop-pro-shell .kitchen-command-compact .command-card,
+  .desktop-pro-shell .kitchen-command-compact .command-kpi,
+  .desktop-pro-shell .maintenance-center-compact .maintenance-summary-card,
+  .desktop-pro-shell .maintenance-center-compact .maintenance-record-card {
+    border-radius: 10px !important;
+    padding: .6rem !important;
+  }
+
+  .desktop-pro-shell .manager-brief-compact .brief-hero h1,
+  .desktop-pro-shell .kitchen-command-compact .command-hero h1 {
+    font-size: 1.45rem !important;
+    line-height: 1.72rem !important;
+  }
+
+  .desktop-pro-shell .manager-brief-compact .brief-card h2,
+  .desktop-pro-shell .kitchen-command-compact .command-card h2,
+  .desktop-pro-shell .financial-center-desktop h2 {
+    font-size: 1.1rem !important;
+    line-height: 1.35rem !important;
+  }
+
+  .desktop-pro-shell .kitchen-command-compact .command-kpi {
+    min-height: 62px;
+  }
+
+  .desktop-pro-shell .kitchen-command-compact .command-kpi-value {
+    font-size: 1.05rem !important;
+  }
+
+  .desktop-pro-shell .financial-center-desktop > .flex,
+  .desktop-pro-shell .inventory-subtabs,
+  .desktop-pro-shell .settings-tab-bar {
+    gap: .4rem !important;
+  }
+
+  .desktop-pro-shell .financial-center-desktop > .flex button,
+  .desktop-pro-shell .inventory-subtabs > button,
+  .desktop-pro-shell .settings-tab-button {
+    min-height: 34px !important;
+    border-radius: 9px !important;
+    padding: .48rem .65rem !important;
+    font-size: .68rem !important;
+    letter-spacing: .08em !important;
+  }
+
+  .desktop-pro-shell .schedule-copilot-compact {
+    max-height: 360px;
+  }
+
+  .desktop-pro-shell .schedule-copilot-compact .schedule-copilot-body {
+    max-height: 210px;
+  }
+
+  .desktop-pro-shell .app-drawer-readable {
+    width: 21rem !important;
+  }
+
+  .desktop-pro-shell .app-drawer-readable button:not(.drawer-icon-button) {
+    min-height: 32px !important;
+    padding-top: 6px !important;
+    padding-bottom: 6px !important;
+    font-size: .78rem !important;
+  }
+
+  .desktop-pro-shell .app-drawer-readable input {
+    min-height: 34px !important;
+    font-size: .78rem !important;
+  }
+
+  .desktop-pro-shell .chaos-modal-backdrop {
+    padding: 28px !important;
+  }
+
+  .desktop-pro-shell .chaos-modal-panel {
+    border-radius: 14px !important;
+    box-shadow: 0 24px 60px rgba(0,0,0,.38) !important;
+  }
+
+  .desktop-pro-shell .chaos-modal-header {
+    min-height: 48px;
+    padding: .78rem .95rem !important;
+  }
+
+  .desktop-pro-shell .chaos-modal-header h3 {
+    font-size: .98rem !important;
+    line-height: 1.25rem !important;
+  }
+
+  .desktop-pro-shell .chaos-modal-body {
+    padding: .9rem !important;
+  }
+
+  .desktop-pro-shell .app-footer {
+    padding-top: .7rem !important;
+    padding-bottom: .7rem !important;
+  }
+
+  .desktop-pro-shell .app-footer img {
+    max-height: 24px;
+  }
+}
+
+@media (min-width: 1280px) {
+  .desktop-pro-shell .app-content-shell {
+    max-width: min(1500px, calc(100vw - 56px)) !important;
+  }
+
+  .desktop-pro-shell .app-content-shell > .max-w-7xl,
+  .desktop-pro-shell .desktop-management-page,
+  .desktop-pro-shell .financial-center-desktop,
+  .desktop-pro-shell .inventory-desktop,
+  .desktop-pro-shell .recipes-desktop,
+  .desktop-pro-shell .schedule-desktop,
+  .desktop-pro-shell .desktop-ops-page,
+  .desktop-pro-shell .intelligence-desktop,
+  .desktop-pro-shell .hr-desktop {
+    max-width: min(1420px, 100%) !important;
+  }
+}
+
+/* Keep the internal admin console readable. Previous density passes made some labels too tiny on desktop. */
+@media (min-width: 1024px) {
+  .admin46-shell {
+    max-width: min(1480px, calc(100vw - 44px)) !important;
+  }
+
+  .admin46-layout {
+    grid-template-columns: 232px minmax(0, 1fr) !important;
+    gap: 12px !important;
+  }
+
+  .admin46-topbar {
+    padding: 14px !important;
+    border-radius: 12px !important;
+  }
+
+  .admin46-content {
+    padding: 12px !important;
+    border-radius: 12px !important;
+  }
+
+  .admin46-nav-button {
+    min-height: 34px !important;
+    padding: 7px 8px !important;
+    font-size: 11px !important;
+  }
+
+  .admin46-mini-action,
+  .admin46-primary,
+  .admin46-secondary,
+  .admin46-back-button {
+    min-height: 32px !important;
+    font-size: 10px !important;
+  }
+
+  .admin46-eyebrow,
+  .admin46-status-chip span,
+  .admin46-status-chip small,
+  .admin46-field label,
+  .admin46-index-label {
+    font-size: 9.5px !important;
+  }
+
+  .admin46-status-chip strong {
+    font-size: 12.5px !important;
+  }
+
+  .admin46-shell #admin-content-start button:not(.admin46-primary):not(.admin46-secondary):not(.admin46-back-button):not(.admin46-nav-button):not(.admin46-mini-action) {
+    min-height: 32px !important;
+    font-size: 11px !important;
+  }
+
+  .admin46-shell #admin-content-start input,
+  .admin46-shell #admin-content-start select,
+  .admin46-shell #admin-content-start textarea {
+    min-height: 36px !important;
+    font-size: 12px !important;
+  }
+
+  .admin46-shell #admin-content-start table {
+    font-size: 11.5px !important;
+  }
+
+  .admin46-shell #admin-content-start th {
+    font-size: 9.5px !important;
+  }
+
+  .admin46-shell #admin-content-start td,
+  .admin46-shell #admin-content-start th {
+    padding: 7px 9px !important;
+  }
+
+  .admin46-shell #admin-content-start .text-xs { font-size: 11px !important; line-height: 1.35 !important; }
+  .admin46-shell #admin-content-start .text-sm { font-size: 12px !important; line-height: 1.4 !important; }
+  .admin46-shell #admin-content-start .text-base { font-size: 13px !important; line-height: 1.45 !important; }
+}

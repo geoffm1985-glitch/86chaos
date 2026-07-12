@@ -6,6 +6,10 @@ const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppU
   const tabs = [];
   const perms = appUser?.permissions || {};
   const isGod = Boolean((MASTER_ADMIN_EMAIL && appUser?.email?.toLowerCase() === MASTER_ADMIN_EMAIL.toLowerCase()) || appUser?.isSuperAdmin);
+  const knownRosterRoles = Array.isArray(appUser?.rosterRoles) ? appUser.rosterRoles : Array.isArray(appUser?.customRosterRoles) ? appUser.customRosterRoles : [];
+  const hasCustomRosterRoles = knownRosterRoles.length > 0;
+  const roleText = String(appUser?.role || '').toLowerCase();
+  const isLegacyKitchenFallback = !hasCustomRosterRoles && ['kitchen', 'cook', 'chef', 'prep'].some(token => roleText.includes(token));
 
   // Helper: If a feature is undefined, it defaults to true (prevents breaking legacy setups)
   const isEnabled = (feat) => clientFeatures[feat] !== false;
@@ -24,8 +28,8 @@ const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppU
   if (isEnabled('messages')) tabs.push({ id: 'messages', label: 'Message Board', icon: <MessageSquare size={18}/>, dot: hasUnreadMessages });
   
   if (isEnabled('schedule') && (appUser?.isAdmin || perms.schedule)) tabs.push({ id: 'schedule', label: 'Schedule Builder', icon: <Calendar size={18}/> });
-  if (isEnabled('prep') && (appUser?.isAdmin || appUser?.role === 'Kitchen' || perms.prep)) tabs.push({ id: 'prep', label: 'Prep List', icon: <ClipboardList size={18}/> });
-  if (isEnabled('recipes') && (appUser?.isAdmin || appUser?.role === 'Kitchen' || perms.prep || perms.team)) tabs.push({ id: 'recipes', label: 'Recipe Book', icon: <BookOpen size={18}/> });  
+  if (isEnabled('prep') && (appUser?.isAdmin || isLegacyKitchenFallback || perms.prep)) tabs.push({ id: 'prep', label: 'Prep List', icon: <ClipboardList size={18}/> });
+  if (isEnabled('recipes') && (appUser?.isAdmin || isLegacyKitchenFallback || perms.prep || perms.team)) tabs.push({ id: 'recipes', label: 'Recipe Book', icon: <BookOpen size={18}/> });  
   if (isEnabled('inventory') && (appUser?.isAdmin || perms.inventory || perms.team)) tabs.push({ id: 'inventory', label: 'Inventory', icon: <Package size={18}/> });  
   if (!appUser?.isDemo && (appUser?.isAdmin || perms.inventory || perms.prep || perms.team)) tabs.push({ id: 'ai-tools', label: 'AI Tools', icon: <Sparkles size={18}/> });
   

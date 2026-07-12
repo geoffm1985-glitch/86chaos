@@ -230,7 +230,7 @@ const TabPersonalReminders = ({ appUser, addToast }) => {
   };
 
   return (
-    <div className="max-w-5xl mx-auto space-y-4 pb-24">
+    <div className="reminders-desktop max-w-6xl mx-auto space-y-4 pb-24">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-[#2A353D] pb-3">
         <div>
           <h2 className="text-2xl font-black flex items-center gap-2 text-white"><Bell size={24} className={T.copper}/> My Reminders</h2>
@@ -877,7 +877,7 @@ const TabMenuIntelligence = ({ appUser, clientData, inventoryItems = [], addToas
   const menuUsageWarning = aiPageLimitMessage('menu', menuAiUsage);
 
   return (
-    <div className="max-w-6xl mx-auto space-y-4 pb-24">
+    <div className="intelligence-desktop max-w-7xl mx-auto space-y-4 pb-24">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-[#2A353D] pb-3">
         <div>
           <h2 className="text-2xl font-black flex items-center gap-2 text-white"><Sparkles size={24} className={T.copper}/> Menu Intelligence</h2>
@@ -1007,7 +1007,7 @@ const TabAITools = ({ appUser, clientData, setActiveTab, setInventorySubTabTarge
     }
   ];
   return (
-    <div className="max-w-6xl mx-auto space-y-4 pb-24">
+    <div className="intelligence-desktop max-w-7xl mx-auto space-y-4 pb-24">
       <div className="cockpit-panel cockpit-grid rounded-2xl p-5 border border-[#2A353D]">
         <div className="text-[10px] font-black uppercase tracking-widest text-[#D4A381]">Dedicated AI Tools</div>
         <h2 className="text-2xl font-black text-white mt-1 flex items-center gap-2"><Sparkles size={24}/> AI Tools</h2>

@@ -182,7 +182,7 @@ const TabTeam = ({ users, appUser, clientData, addToast }) => {
   const [name, setName] = useState(''); 
   const [email, setEmail] = useState(''); 
   const [phone, setPhone] = useState(''); 
-  const [role, setRole] = useState('Bartender'); 
+  const [role, setRole] = useState(''); 
   const [wage, setWage] = useState(''); 
   const [photoURL, setPhotoURL] = useState(''); 
   const [isAdmin, setIsAdmin] = useState(false);
@@ -203,11 +203,12 @@ const TabTeam = ({ users, appUser, clientData, addToast }) => {
   const dbRoles = useLiveCollection('roles', appUser?.restaurantId, { limitCount: 100 });
   const DEFAULT_ROLES = ['General Manager', 'Manager', 'Chef', 'Sous Chef', 'Line Cook', 'Prep Cook', 'Bartender', 'Server', 'Host', 'Dishwasher'];
   const roles = dbRoles.length > 0 ? dbRoles.map(r => r.name).sort() : DEFAULT_ROLES;
+  useEffect(() => { if (!role && roles.length) setRole(roles[0]); }, [role, roles.join('|')]);
   
   const generateTempPass = () => Math.random().toString(36).slice(-6);
 
   const resetForm = () => {
-    setName(''); setEmail(''); setPhone(''); setWage(''); setPhotoURL(''); setRole('Bartender'); setIsAdmin(false); setPerms(DEFAULT_PERMISSIONS); setEditingUserId(null);
+    setName(''); setEmail(''); setPhone(''); setWage(''); setPhotoURL(''); setRole(roles[0] || ''); setIsAdmin(false); setPerms(DEFAULT_PERMISSIONS); setEditingUserId(null);
   };
 
   const buildLoginText = (login) => login ? `Welcome to 86 Chaos!\n\nApp: https://app.86chaos.com\n\nName: ${login.name}\nEmail: ${login.email}\nTemporary Password: ${login.password}\n\nThis temporary password is shown one time. Please log in and change it.` : '';
@@ -218,7 +219,7 @@ const TabTeam = ({ users, appUser, clientData, addToast }) => {
 
   const handleEditClick = (u) => {
     if (!canManageTeam) return addToast('Read Only', 'Staff Roster is view-only for regular staff.');
-    setName(u.name); setEmail(u.email); setPhone(u.phone || ''); setWage(u.wage || ''); setPhotoURL(u.photoURL || ''); setRole(u.role || 'Bartender'); setIsAdmin(u.isAdmin || false); setPerms({ ...DEFAULT_PERMISSIONS, ...(u.permissions || {}) }); setEditingUserId(u.id);
+    setName(u.name); setEmail(u.email); setPhone(u.phone || ''); setWage(u.wage || ''); setPhotoURL(u.photoURL || ''); setRole(u.role || roles[0] || ''); setIsAdmin(u.isAdmin || false); setPerms({ ...DEFAULT_PERMISSIONS, ...(u.permissions || {}) }); setEditingUserId(u.id);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -231,7 +232,7 @@ const TabTeam = ({ users, appUser, clientData, addToast }) => {
       name: name.trim(),
       email: email.toLowerCase().trim(),
       phone: phone.trim(),
-      role,
+      role: role || roles[0] || 'Staff',
       wage: parseFloat(wage) || 0,
       photoURL: photoURL.trim(),
       isAdmin,
@@ -361,7 +362,7 @@ const handleDeactivate = async (u) => {
     return { label, tone, exact };
   };
 
-  const activeUsers = users.filter(u => u.isActive !== false).sort((a, b) => a.role === b.role ? a.name.localeCompare(b.name) : (a.role==='Bartender'?-1:1));
+  const activeUsers = users.filter(u => u.isActive !== false).sort((a, b) => String(a.role || '').localeCompare(String(b.role || '')) || String(a.name || '').localeCompare(String(b.name || '')));
 
 return (
     <div className="max-w-4xl mx-auto space-y-6 pb-24">
@@ -460,7 +461,7 @@ return (
                 <div className="min-w-0">
                   <h4 className="font-bold text-white text-sm leading-tight truncate">{u.name} {u.isAdmin && <span className="ml-1 text-[7px] uppercase tracking-widest bg-red-500 text-white px-1 py-0.5 rounded-sm">Admin</span>}</h4>
 <div className="flex items-center gap-2 mt-0.5">
-                    <span className={`text-[8px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded border ${u.role==='Bartender'?'bg-blue-900/20 text-blue-400 border-blue-900/50':'bg-[#12161A] text-[#D4A381] border-[#2A353D]'}`}>{u.role}</span>
+                    <span className="text-[8px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded border bg-[#12161A] text-[#D4A381] border-[#2A353D]">{u.role || 'Unassigned'}</span>
                     {u.phone && <span className="text-[9px] font-bold text-slate-500 truncate">{u.phone}</span>}
                     {canViewWages && u.wage > 0 && <span className="text-[9px] font-black text-emerald-500 uppercase tracking-widest bg-emerald-900/10 border border-emerald-900/30 px-1.5 py-0.5 rounded ml-1">${Number(u.wage).toFixed(2)}/hr</span>}
                   </div>
@@ -1151,6 +1152,9 @@ const handleEnableNotifications = async () => {
   const displayRoles = dbRoles.length > 0 
     ? [...dbRoles].sort((a,b) => a.name.localeCompare(b.name)) 
     : DEFAULT_ROLES.map(r => ({ id: r, name: r, isDefault: true }));
+  const hasCustomRosterRoles = dbRoles.length > 0;
+  const roleTextForSettings = String(appUser?.role || '').toLowerCase();
+  const isLegacyKitchenFallback = !hasCustomRosterRoles && ['kitchen', 'cook', 'chef', 'prep'].some(token => roleTextForSettings.includes(token));
 
   // --- Image Upload Engine ---
   const handleImageUpload = (e) => {
@@ -2164,8 +2168,8 @@ const Toggle = ({ label, desc, checked, onChange, disabled = false }) => (
                     <option value="events">Event Calendar</option>
                     <option value="team">Team Roster</option>
                     {appUser?.isAdmin || appUser?.permissions?.ops ? <option value="ops">Kitchen Command Center</option> : null}
-                    {appUser?.role === 'Kitchen' || appUser?.isAdmin ? <option value="prep">Prep List</option> : null}
-                    {appUser?.role === 'Kitchen' || appUser?.isAdmin ? <option value="recipes">Recipe Book</option> : null}
+                    {isLegacyKitchenFallback || appUser?.isAdmin ? <option value="prep">Prep List</option> : null}
+                    {isLegacyKitchenFallback || appUser?.isAdmin ? <option value="recipes">Recipe Book</option> : null}
                     {appUser?.isAdmin && <option value="inventory">Inventory & Orders</option>}
                     {appUser?.isAdmin && <option value="schedule">Master Schedule</option>}
                     {appUser?.isAdmin && <option value="sales">Sales Ledger</option>}
@@ -3113,7 +3117,7 @@ const TabSales = ({ sales, timePunches = [], users = [], addToast, appUser }) =>
   );
 
   return (
-    <div className="max-w-7xl mx-auto space-y-4 pb-24 animate-[slideIn_0.2s_ease-out]">
+    <div className="desktop-management-page max-w-7xl mx-auto space-y-4 pb-24 animate-[slideIn_0.2s_ease-out]">
       <div className="flex justify-between items-center bg-[#1A2126] border border-[#2A353D] rounded-2xl p-3 shadow-sm">
         <button onClick={() => changeWeek(-1)} className="p-2 bg-[#12161A] text-slate-300 rounded-xl hover:text-[#D4A381] border border-[#2A353D] transition-colors"><ChevronLeft size={20} /></button>
         <div className="text-center">
@@ -3212,6 +3216,18 @@ const TabSales = ({ sales, timePunches = [], users = [], addToast, appUser }) =>
 
 
 const ADMIN_TROUBLESHOOTING_ARTICLES = [
+  {
+    "title": "Version 15.0.58 Website Claim Readiness Hardening",
+    "group": "System Administrator",
+    "keywords": "v15 15.0.58 website claims readiness prep inventory invoice menu intelligence 86 alerts financial center cost visibility integrations locked",
+    "body": [
+      "15.0.58 audits the app against the public website promise and keeps every existing feature intact.",
+      "The app shell now avoids subscribing to restricted financial, labor, inventory, Menu Intelligence, and COGS collections unless the current workspace plan and user permission allow that feature. This reduces unnecessary reads and permission-denied noise.",
+      "Customer-facing language stays cautious: AI-assisted, manager review, cost visibility, snapshots, and integrations coming soon.",
+      "Invoice scanning must remain review-first before it affects inventory, invoice history, vendor spend, COGS, or reports. Menu scanning must remain review-first before it creates menu-impact links.",
+      "All role-based reporting and filtering must continue using owner-managed Roster Roles from Preferences. Hardcoded restaurant role names are allowed only as empty-workspace fallback labels."
+    ]
+  },
   {
     "title": "Version 15.0.53 Professional Financial Center and Complete Manuals",
     "group": "System Administrator",
@@ -5788,6 +5804,7 @@ ${body}`;
   }, {})).sort((a,b) => b.endedMs - a.endedMs).slice(0, 12);
 
   const adminManualArticles = [
+    { title: 'Version 15.0.57 Desktop UI Refinement', group: 'System Administrator', keywords: 'v15 15.0.57 desktop pc ui polish density professional layout spacing cards tables modals drawer navigation', body: ['15.0.57 is a desktop UI refinement pass. It keeps all existing features and focuses on making the PC/laptop app feel like a polished professional operations platform instead of an oversized mobile screen.', 'The main app shell, header, date strip, content widths, cards, forms, buttons, tables, major work areas, modal panels, and drawer menu received desktop-only density and scanability adjustments.', 'Major screens such as Manager Brief, Kitchen Command Center, Financial Center, Time Clock & Schedule, Inventory, Menu Intelligence, Recipes, Reminders, Staff Roster, Settings, Help Center, HR & Training, and System Administrator keep their functionality. This is not a feature-removal pass.', 'Mobile and tablet layouts remain touch-friendly. Do not solve future desktop polish by making the entire app tiny. Use responsive spacing, reasonable max-widths, better grids, and clearer hierarchy first.'] },
     { title: 'Version 15.0.56 Restaurant Group Push Broadcasts', group: 'System Administrator', keywords: 'v15 15.0.56 push notification center restaurant group broadcast selected workspace all workspaces tokens audit', body: ['15.0.56 adds a targeted push broadcast composer inside System Administrator → Push Control Center.', 'System Administrator can send a push notification to one workspace, a selected restaurant group, or all workspaces. The screen previews matching workspaces, users, and connected push tokens before sending.', 'Restaurant groups are resolved from workspace group fields such as restaurantGroupName, groupName, restaurantGroupId, branding/system settings group names, or owner email fallback. Keep group labels consistent on workspace records for clean targeting.', 'The server route validates access, allows multi-workspace/group sends only for internal System Administrator access, deduplicates device tokens, respects notification preferences and quiet hours unless marked critical, records the last result, and writes an audit log.', 'Use restaurant group targeting instead of All Workspaces whenever a message belongs to one customer group. Staff never see these internal send controls.'] },
 
     { title: 'Version 15.0.55 Desktop Professional Density', group: 'System Administrator', keywords: 'v15 15.0.55 desktop pc density layout compact professional laptop spacing cards tables header', body: ['15.0.55 makes the PC/laptop interface feel less oversized while preserving phone and tablet comfort.', 'The desktop shell uses a wider main work surface, slimmer header, tighter date/title strip, lighter panel shadows, smaller card radii, and reduced desktop-only spacing around cards, buttons, forms, and tables.', 'This is a layout and usability pass only. It does not change Firebase rules, tier access, Founder Beta behavior, scan limits, roles, billing placeholders, or integration locks.', 'Text remains readable. Do not solve desktop density by making the app tiny; use spacing, width, card, and table adjustments first.'] },
@@ -9712,7 +9729,7 @@ const TabLabor = ({ currentDate, users = [], shifts = [], sales = [], timePunche
   };
 
   return (
-    <div className="max-w-6xl mx-auto space-y-4 pb-24">
+    <div className="desktop-management-page max-w-7xl mx-auto space-y-4 pb-24">
       <div className={`${T.card} p-4 sm:p-5 cockpit-grid`}>
         <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-4">
           <div>
@@ -9798,6 +9815,7 @@ const HELP_ARTICLES = [
   { id:'menu-intelligence-guide', title:'Using Menu Intelligence', group:'Menu Intelligence', keywords:'menu intelligence intelligent menu menu scanner scan menu upload photo pdf approve reviewed menu links ingredient match inventory link unavailable menu items 86 burger patty beef gr pty edit delete recent menu scans', body:['Menu Intelligence helps managers connect menu items to the inventory products that make them. Once those links are approved, 86 Chaos can tell staff which menu items are affected when an ingredient is 86d or unavailable.', 'Open Menu Intelligence, choose a clear menu photo or PDF, and start the scan. Large photos are compressed before upload when possible. If a PDF is still too large, split it into smaller sections or export fewer pages.', 'When the scan finishes, review the detected menu items. The AI is a helper, not the boss. Check names, ingredients, and suggested inventory matches before approving anything.', 'For each menu item, connect the ingredients to the real inventory rows your kitchen uses. Use the actual product name when possible. For example, a burger may need to link to an inventory item named BEEF GR PTY, beef patty, hamburger patty, bun, cheese, lettuce, tomato, or other items you track.', 'Click Approve Reviewed Menu Links after the matches look right. The approval button shows progress and locks while saving so duplicate links are not created by extra clicks.', 'Use Recent Menu Scans to edit a scan when an ingredient match is wrong or delete a scan when it is outdated. Deleting a scan removes its menu-impact links so old menus do not keep affecting 86 alerts.', 'When someone posts or says an 86 alert such as 86 burger, the app can use approved Menu Intelligence links to find the best inventory match and show unavailable menu items on the Message Board, Manager Brief, and Kitchen Command Center.', 'For best results, approve links for common shorthand items staff actually say: burger, patty, wings, fries, chicken, buns, ranch, cheese, lettuce, tomatoes, and sauces. If an 86 alert does not show menu impact, edit the menu scan and make sure that ingredient is linked to the correct inventory item.'] },
 
   { id:'start', title:'Getting started checklist', group:'Getting Started', keywords:'setup first steps owner restaurant add staff modules', body:['Open Settings and confirm restaurant name, address, geofence, and enabled modules.','Add managers first in Staff Roster, then add hourly staff. New accounts show a one-time login popup with email and temporary password.','Create roles, schedule presets, and at least one schedule template before publishing the first week.','Use Administrator → Clients → Demo Mode for safe read-only demos with contact info hidden.'] },
+  { id:'website-promise-readiness', title:'What 86 Chaos connects for a restaurant', group:'Getting Started', keywords:'website promise prep inventory schedule alerts recipes reminders labor daily close cost visibility menu impact owner snapshot integrations coming soon', body:['86 Chaos is built as a restaurant operations hub, not a tax accounting system or unfinished POS connector. The app connects prep lists, inventory, schedules, 86 alerts, recipes, reminders, team messages, labor, daily close, cost visibility, and owner snapshots where the workspace plan and user permission allow it.', 'AI-assisted invoice scanning and menu scanning are helper workflows. A manager must review invoice rows before they update inventory, vendor spend, COGS, reports, or cost visibility. A manager must approve menu ingredient links before they power Menu Impact Alerts.', 'Menu Impact Alerts need approved Menu Intelligence links plus inventory items. If the setup is missing, the app should show guidance instead of pretending it knows every menu item.', 'Financial Center reports are operational snapshots for owners and managers: daily close, labor, tips, prime cost, cost visibility, and P&L snapshot. They are not tax-ready accounting and should be reconciled with the restaurant POS/accounting records.', 'Integrations are coming soon. Customer screens should stay locked and should not ask for OAuth, API keys, or unfinished provider setup. Manual entry, scan review, and exports remain available where the plan includes them.'] },
   { id:'app-training-manual', title:'Complete app training manual', group:'Training Manual', keywords:'training manual complete app everything explain all tabs staff manager owner help center system administrator financials inventory schedule prep recipes messages security roles', body:['The Help Center includes a searchable main-app training manual. It explains what each area does, who should use it, what to check, and safety or privacy warnings.', 'Search for plain words such as clock, schedule, prep, inventory, invoice, 86, financials, tips, expenses, training, HR, message, voice, or security. Matching manual chapters appear under the Searchable app training manual card.', 'The main-app training manual is public-facing and customer safe. It explains everyday app features without exposing System Administrator repair details, secrets, forensics, or internal support-only procedures.', 'System Administrator has its own deeper manual for super admins and support work. Keep both manuals updated whenever features are added or renamed so staff can understand what every button is for.'] },
 
   { id:'plans-founder-beta', title:'Plans, Founder Beta, and locked features', group:'Plans & Billing', keywords:'plans tiers shift operations smart kitchen owner pro founder beta discount locked feature billing coming soon', body:['86 Chaos workspaces can be on Shift, Operations, Smart Kitchen, or Owner Pro. Some tools are included only on higher plans so the app stays simple and costs stay controlled.', 'Founder Beta is free while the beta is active. The standard beta is 60 days, and a 30-day extension may be added by support. Founder Beta restaurants keep 50% off the selected plan for 12 months after beta ends.', 'Owners and permitted admins can open Settings → Plan & Billing to see the current plan, beta dates, Founder Beta discount, normal launch price, discounted Founder price, scan limits, usage, and included features.', 'A locked feature message means the workspace plan does not include that tool, the user role or permission does not allow it, or both. Owners see upgrade guidance. Staff see a simpler unavailable message without billing clutter.', 'Billing payments are not live yet. Upgrade and downgrade buttons are marked coming soon unless support manually updates the workspace plan.'] },
@@ -9899,7 +9917,7 @@ const TabHelpCenter = ({ appUser, activeTab, voiceHelpSearchTarget = null, addTo
   const selected = HELP_ARTICLES.find(a => a.id === selectedId) || articles[0] || HELP_ARTICLES[0];
   const related = HELP_ARTICLES.filter(a => a.keywords.includes(activeTab || '') || a.group.toLowerCase().includes(activeTab || '')).slice(0,3);
   return (
-    <div className="max-w-6xl mx-auto space-y-4 pb-24">
+    <div className="desktop-management-page max-w-7xl mx-auto space-y-4 pb-24">
       <div className={`${T.card} p-5 cockpit-grid flex flex-col lg:flex-row lg:items-end justify-between gap-3`}><div><div className="text-[10px] uppercase tracking-widest font-black text-[#D4A381]">Built-in owner manual</div><h2 className="text-2xl font-black text-white">Help Center</h2><p className="text-sm text-slate-400 font-bold mt-1 max-w-3xl">Search plain words before contacting support. This manual is updated whenever new features are added to the app.</p></div><div className="flex flex-wrap gap-2"><button type="button" onClick={() => window.dispatchEvent(new CustomEvent('chaosRestartTour', { detail: { mode: 'employee' } }))} className={T.btnAlt}>Restart Employee Tour</button>{(appUser?.isAdmin || appUser?.permissions?.team) && <button type="button" onClick={() => window.dispatchEvent(new CustomEvent('chaosRestartTour', { detail: { mode: 'manager' } }))} className={T.btn}>Restart Manager Tour</button>}</div></div>
       <div className="grid lg:grid-cols-3 gap-4">
         <div className="lg:col-span-1 space-y-3">
@@ -10159,7 +10177,7 @@ const TabFinancials = ({ currentDate, users = [], shifts = [], sales = [], timeP
   );
 
   return (
-    <div className="max-w-7xl mx-auto space-y-4 pb-24">
+    <div className="financial-center-desktop max-w-7xl mx-auto space-y-4 pb-24">
       <div className={`${T.card} p-5 cockpit-grid`}>
         <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-4">
           <div>

@@ -614,7 +614,7 @@ const handleOfferSwap = async (shift) => {
   const effectiveActivePunch = clockActionBusy && clockActionType === 'out' ? (clockActionPunch || activePunch) : (activePunch && !(clockActionBusy && clockActionType === 'in') ? activePunch : null);
 
   return (
-    <div className="max-w-6xl mx-auto space-y-4 pb-24">
+    <div className="schedule-desktop max-w-7xl mx-auto space-y-4 pb-24">
       
       <Modal isOpen={isTipModalOpen} onClose={() => setIsTipModalOpen(false)} title="Declare Tips">
         <form onSubmit={finalizeClockOut} className="space-y-4">
@@ -2283,7 +2283,7 @@ const TabMonth = ({ currentDate, users, shifts, appUser }) => {
               <span className={`text-right text-[9px] font-black ${T.muted} mb-0.5 cell-date`}>{i+1}</span>
               <div className="space-y-0.5 overflow-y-auto no-scrollbar flex-1">
                 {dayShifts.map(s=>(
-                  <div key={s.id} className={`text-[8px] font-bold px-0.5 rounded leading-tight truncate bg-[#12161A] border ${T.border} ${s.role==='Bartender'?'text-blue-400':'text-orange-400'} print-shift`}>
+                  <div key={s.id} className={`text-[8px] font-bold px-0.5 rounded leading-tight truncate bg-[#12161A] border ${T.border} text-[#D4A381] print-shift`}>
                     {users.find(u=>u.id===s.employeeId)?.name.split(' ')[0]} {formatShortTime(s.startTime)}-{formatShortTime(s.endTime)}
                   </div>
                 ))}
@@ -2361,7 +2361,7 @@ const monthEvents = events.filter(e => e.type === 'special_event' && e.date?.sta
   };
 
   return (
-    <div className="max-w-5xl mx-auto space-y-6 pb-12">
+    <div className="schedule-desktop max-w-7xl mx-auto space-y-5 pb-12">
       {appUser?.isAdmin && (
         <div className={`${T.card} overflow-hidden mb-6`}>
           <div className={`bg-[#12161A] p-3 border-b ${T.border} flex justify-between items-center`}>

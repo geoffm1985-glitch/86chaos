@@ -499,7 +499,7 @@ export const TabHrTraining = ({ appUser, users = [], addToast }) => {
   const availableTabs = TABS.filter(([id]) => id !== 'performance' || manager);
 
   return (
-    <div className="mx-auto w-full max-w-6xl space-y-5 px-3 pb-12 sm:px-5">
+    <div className="hr-desktop mx-auto w-full max-w-7xl space-y-4 px-3 pb-12 sm:px-5">
       <div className={`${T.card} overflow-hidden p-0`}>
         <div className="border-b border-[#2A353D] bg-gradient-to-br from-[#1B242B] via-[#171D22] to-[#12161A] p-5 sm:p-7">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
