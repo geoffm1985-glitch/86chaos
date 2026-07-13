@@ -1,14 +1,30 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Bell, Check, Camera, ChevronLeft, ChevronRight, MessageSquare, Plus, Trash2, Users, Calendar, Clock, X, Loader2, Package, ClipboardList, Menu, Settings, LogOut, Shield, Send, Repeat, Edit, Moon, Sun, TrendingUp, BookOpen, Search, ChefHat, Scale, Coffee, Star, Bug, Wrench, Globe, ThumbsUp } from 'lucide-react';
+import { Bell, Check, Camera, ChevronLeft, ChevronRight, MessageSquare, Plus, Trash2, Users, Calendar, Clock, X, Loader2, Package, ClipboardList, Menu, Settings, LogOut, Shield, Send, Repeat, Edit, Moon, Sun, TrendingUp, BookOpen, Search, ChefHat, Scale, Coffee, Star, Bug, Wrench, Globe, ThumbsUp, HelpCircle, Sparkles } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
-import { getFirestore, collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, where, getDoc, setDoc, getDocs } from 'firebase/firestore';
+import { getFirestore, collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, where, getDoc, setDoc, getDocs, Timestamp, deleteField } from 'firebase/firestore';
 import { getAuth, signInWithEmailAndPassword, sendPasswordResetEmail, createUserWithEmailAndPassword, updatePassword, EmailAuthProvider, reauthenticateWithCredential, sendEmailVerification, multiFactor, PhoneAuthProvider, PhoneMultiFactorGenerator, RecaptchaVerifier } from 'firebase/auth';
 import { getToken, onMessage } from 'firebase/messaging';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { MapContainer, TileLayer, Marker, Circle, useMap } from 'react-leaflet';
 import { T, db, storage, auth, messaging, firebaseConfig, secureFetch, MASTER_ADMIN_EMAIL, EVENT_TAGS, CURRENT_VERSION, useLiveCollection, formatDate, getToday, getMonthStr, formatDisplayDate, formatDisplayFullDate, formatDisplayMonth, getDaysInMonth, formatShortTime, formatClockTime, formatClockDateTime, getAvatar, generateTempPass, getExpDate, getHoliday, logAudit, customMapIcon, getRestaurantExportPrefix, safeFilenamePart, downloadCsvRows, downloadTextFile, openPrintableReport, buildPermissionPreview, buildImportBridgeTemplates, buildV14ClientGuardrailReport } from '../core/appCore';
 import { CheersLogo, Modal, DrawerMenu, DayDotPrintScreen, MapClickListener, SmartEmptyState, MiniProblemCard, getHomeProfile, calculatePunchHours, getWeekStart, getWeekDates, roleMatches, toLocalTimeInput, makeLocalIso, PunchTable, StatusTile, FriendlyEmpty, GlobalSearchModal, QuickActionDock, KitchenTVMode, ChangeLogModal, UndoBar } from '../components/common';
+import { SYSTEM_TRAINING_MANUAL_CHAPTERS } from './trainingManual';
+import { usePlanAccess } from '../hooks/usePlanAccess';
+import { LockedFeatureScreen } from '../components/PlanGate';
+import { PLAN_DEFINITIONS, CUSTOMER_PLAN_ORDER, FEATURE_KEYS } from '../config/plans';
+import { resolveSubscription, resolveFeatureAccess, getPlanDefinition, formatMoney, normalizePlanId, addDaysIso, addMonthsIso } from '../lib/featureAccess';
 
+
+
+const PUSH_GROUP_UNASSIGNED_KEY = '__ungrouped__';
+const normalizePushGroupKey = (value = '') => String(value || 'Unassigned Group').toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 80) || PUSH_GROUP_UNASSIGNED_KEY;
+const getRestaurantGroupLabel = (restaurant = {}) => {
+  const direct = restaurant.restaurantGroupName || restaurant.groupName || restaurant.restaurantGroup || restaurant.groupLabel || restaurant.brandGroupName;
+  const nested = restaurant.systemSettings?.restaurantGroupName || restaurant.branding?.restaurantGroupName || restaurant.displaySettings?.restaurantGroupName;
+  const owner = restaurant.ownerEmail ? `Owner: ${String(restaurant.ownerEmail).toLowerCase().trim()}` : '';
+  return String(direct || nested || owner || 'Unassigned Group').trim();
+};
+const getRestaurantGroupKey = (restaurant = {}) => normalizePushGroupKey(restaurant.restaurantGroupId || restaurant.groupId || getRestaurantGroupLabel(restaurant));
 
 const GEOFENCE_TILE_PROVIDERS = [
   {
@@ -58,6 +74,38 @@ const sanitizeForFirestore = (value) => {
       if (next !== undefined) cleaned[key] = next;
     });
     return cleaned;
+  }
+  return value;
+};
+
+const redactDiagnosticSecrets = (value) => {
+  if (value === undefined) return undefined;
+  if (value === null) return null;
+  if (Array.isArray(value)) return value.slice(0, 100).map(redactDiagnosticSecrets);
+  if (value && typeof value === 'object') {
+    const cleaned = {};
+    Object.entries(value).slice(0, 300).forEach(([key, item]) => {
+      const lower = String(key || '').toLowerCase();
+      if (/signed.?url|download.?url/.test(lower)) {
+        cleaned[key] = '[redacted signed URL]';
+      } else if (/authorization|cookie|secret|private.?key|token|api.?key|bearer|password|credential|client.?secret/.test(lower)) {
+        cleaned[key] = typeof item === 'boolean' ? item : '[redacted credential]';
+      } else if (/(^|_)(email|phone|address|owneremail|useremail|clientemail|employeeemail)($|_)/.test(lower)) {
+        cleaned[key] = '[redacted personal data]';
+      } else {
+        cleaned[key] = redactDiagnosticSecrets(item);
+      }
+    });
+    return cleaned;
+  }
+  if (typeof value === 'string') {
+    if (/X-Goog-Signature=|GoogleAccessId=|X-Amz-Signature=|Signature=/i.test(value)) return '[redacted signed URL]';
+    return value
+      .replace(/-----BEGIN(?: RSA)? PRIVATE KEY-----[\s\S]*?-----END(?: RSA)? PRIVATE KEY-----/gi, '[redacted private key]')
+      .replace(/Bearer\s+[A-Za-z0-9._~+\/-]+=*/gi, 'Bearer [redacted]')
+      .replace(/\beyJ[a-zA-Z0-9_-]{10,}\.[a-zA-Z0-9_-]{10,}\.[a-zA-Z0-9_-]{10,}\b/g, '[redacted token]')
+      .replace(/\bsk-[A-Za-z0-9_-]{12,}\b/g, '[redacted API key]')
+      .replace(/\bAIza[A-Za-z0-9_-]{20,}\b/g, '[redacted API key]');
   }
   return value;
 };
@@ -134,11 +182,11 @@ const TabTeam = ({ users, appUser, clientData, addToast }) => {
   const [name, setName] = useState(''); 
   const [email, setEmail] = useState(''); 
   const [phone, setPhone] = useState(''); 
-  const [role, setRole] = useState('Bartender'); 
+  const [role, setRole] = useState(''); 
   const [wage, setWage] = useState(''); 
   const [photoURL, setPhotoURL] = useState(''); 
   const [isAdmin, setIsAdmin] = useState(false);
-  const DEFAULT_PERMISSIONS = { schedule: false, events: false, ops: false, inventory: false, prep: false, sales: false, team: false, labor: false, settings: false, branding: false, integrations: false, menuIntelligence: false, wageView: false, wageEdit: false };
+  const DEFAULT_PERMISSIONS = { schedule: false, events: false, ops: false, inventory: false, prep: false, sales: false, team: false, labor: false, settings: false, branding: false, integrations: false, menuIntelligence: false, hr: false, wageView: false, wageEdit: false };
   const PERMISSION_PRESETS = {
     'Read Only': { schedule: false, events: false, ops: false, inventory: false, prep: false, sales: false, team: false, labor: false },
     'Kitchen Manager': { schedule: false, events: true, ops: true, inventory: true, prep: true, sales: false, team: false, labor: false },
@@ -155,11 +203,12 @@ const TabTeam = ({ users, appUser, clientData, addToast }) => {
   const dbRoles = useLiveCollection('roles', appUser?.restaurantId, { limitCount: 100 });
   const DEFAULT_ROLES = ['General Manager', 'Manager', 'Chef', 'Sous Chef', 'Line Cook', 'Prep Cook', 'Bartender', 'Server', 'Host', 'Dishwasher'];
   const roles = dbRoles.length > 0 ? dbRoles.map(r => r.name).sort() : DEFAULT_ROLES;
+  useEffect(() => { if (!role && roles.length) setRole(roles[0]); }, [role, roles.join('|')]);
   
   const generateTempPass = () => Math.random().toString(36).slice(-6);
 
   const resetForm = () => {
-    setName(''); setEmail(''); setPhone(''); setWage(''); setPhotoURL(''); setRole('Bartender'); setIsAdmin(false); setPerms(DEFAULT_PERMISSIONS); setEditingUserId(null);
+    setName(''); setEmail(''); setPhone(''); setWage(''); setPhotoURL(''); setRole(roles[0] || ''); setIsAdmin(false); setPerms(DEFAULT_PERMISSIONS); setEditingUserId(null);
   };
 
   const buildLoginText = (login) => login ? `Welcome to 86 Chaos!\n\nApp: https://app.86chaos.com\n\nName: ${login.name}\nEmail: ${login.email}\nTemporary Password: ${login.password}\n\nThis temporary password is shown one time. Please log in and change it.` : '';
@@ -170,7 +219,7 @@ const TabTeam = ({ users, appUser, clientData, addToast }) => {
 
   const handleEditClick = (u) => {
     if (!canManageTeam) return addToast('Read Only', 'Staff Roster is view-only for regular staff.');
-    setName(u.name); setEmail(u.email); setPhone(u.phone || ''); setWage(u.wage || ''); setPhotoURL(u.photoURL || ''); setRole(u.role || 'Bartender'); setIsAdmin(u.isAdmin || false); setPerms({ ...DEFAULT_PERMISSIONS, ...(u.permissions || {}) }); setEditingUserId(u.id);
+    setName(u.name); setEmail(u.email); setPhone(u.phone || ''); setWage(u.wage || ''); setPhotoURL(u.photoURL || ''); setRole(u.role || roles[0] || ''); setIsAdmin(u.isAdmin || false); setPerms({ ...DEFAULT_PERMISSIONS, ...(u.permissions || {}) }); setEditingUserId(u.id);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -183,7 +232,7 @@ const TabTeam = ({ users, appUser, clientData, addToast }) => {
       name: name.trim(),
       email: email.toLowerCase().trim(),
       phone: phone.trim(),
-      role,
+      role: role || roles[0] || 'Staff',
       wage: parseFloat(wage) || 0,
       photoURL: photoURL.trim(),
       isAdmin,
@@ -313,7 +362,7 @@ const handleDeactivate = async (u) => {
     return { label, tone, exact };
   };
 
-  const activeUsers = users.filter(u => u.isActive !== false).sort((a, b) => a.role === b.role ? a.name.localeCompare(b.name) : (a.role==='Bartender'?-1:1));
+  const activeUsers = users.filter(u => u.isActive !== false).sort((a, b) => String(a.role || '').localeCompare(String(b.role || '')) || String(a.name || '').localeCompare(String(b.name || '')));
 
 return (
     <div className="max-w-4xl mx-auto space-y-6 pb-24">
@@ -380,9 +429,9 @@ return (
               <div className="flex flex-wrap gap-4">
                 {Object.keys(perms).map(k => {
                   const wageAccessToggle = k === 'wageView' || k === 'wageEdit';
-                  const ownerOnlyToggle = wageAccessToggle || k === 'settings' || k === 'branding' || k === 'integrations' || k === 'menuIntelligence';
+                  const ownerOnlyToggle = wageAccessToggle || k === 'settings' || k === 'branding' || k === 'integrations' || k === 'menuIntelligence' || k === 'hr';
                   const disabled = ownerOnlyToggle && !canChooseWageAccess;
-                  const label = { schedule: 'Schedule Builder', events: 'Event Calendar', ops: 'Kitchen Command Center', inventory: 'Inventory', prep: 'Prep / Recipes', sales: 'Financials: Daily Ledger', team: 'Team Management', labor: 'Financials: Labor / Timesheets', settings: 'Workspace Settings', branding: 'Branding Settings', integrations: 'Integrations Settings', menuIntelligence: 'Menu Intelligence', wageView: 'View Wages', wageEdit: 'Edit Wages' }[k] || k;
+                  const label = { schedule: 'Schedule Builder', events: 'Event Calendar', ops: 'Kitchen Command Center', inventory: 'Inventory', prep: 'Prep / Recipes', sales: 'Financials: Daily Ledger', team: 'Team Management', labor: 'Financials: Labor / Timesheets', settings: 'Workspace Settings', branding: 'Branding Settings', integrations: 'Integrations Settings', menuIntelligence: 'Menu Intelligence', hr: 'HR Administration', wageView: 'View Wages', wageEdit: 'Edit Wages' }[k] || k;
                   return (
                   <label key={k} className={`flex items-center gap-2 text-xs font-bold uppercase ${disabled ? 'opacity-45 cursor-not-allowed text-slate-500' : 'cursor-pointer text-slate-300'}`} title={disabled ? 'Only the account owner can choose this access.' : ''}>
                     <input type="checkbox" disabled={disabled} checked={!!perms[k]} onChange={e=>setPerms({...perms, [k]: e.target.checked, ...(k === 'wageEdit' && e.target.checked ? { wageView: true } : {})})} className="w-4 h-4 accent-[#8F6040] bg-[#1A2126] border-[#2A353D] rounded disabled:opacity-40" /> 
@@ -412,7 +461,7 @@ return (
                 <div className="min-w-0">
                   <h4 className="font-bold text-white text-sm leading-tight truncate">{u.name} {u.isAdmin && <span className="ml-1 text-[7px] uppercase tracking-widest bg-red-500 text-white px-1 py-0.5 rounded-sm">Admin</span>}</h4>
 <div className="flex items-center gap-2 mt-0.5">
-                    <span className={`text-[8px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded border ${u.role==='Bartender'?'bg-blue-900/20 text-blue-400 border-blue-900/50':'bg-[#12161A] text-[#D4A381] border-[#2A353D]'}`}>{u.role}</span>
+                    <span className="text-[8px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded border bg-[#12161A] text-[#D4A381] border-[#2A353D]">{u.role || 'Unassigned'}</span>
                     {u.phone && <span className="text-[9px] font-bold text-slate-500 truncate">{u.phone}</span>}
                     {canViewWages && u.wage > 0 && <span className="text-[9px] font-black text-emerald-500 uppercase tracking-widest bg-emerald-900/10 border border-emerald-900/30 px-1.5 py-0.5 rounded ml-1">${Number(u.wage).toFixed(2)}/hr</span>}
                   </div>
@@ -856,7 +905,24 @@ const TabSettings = ({ appUser, addToast, users = [], clientData = {} }) => {  c
   const isWorkspaceOwner = Boolean(appUser?.isSuperAdmin || (MASTER_ADMIN_EMAIL && settingsEmail === MASTER_ADMIN_EMAIL.toLowerCase()) || false || appUser?.isOwner === true || appUser?.accountOwner === true || appUser?.owner === true || appUser?.workspaceOwner === true || String(appUser?.accountRole || '').toLowerCase().trim() === 'owner' || (settingsOwnerEmail && settingsEmail === settingsOwnerEmail));
   const canManageWorkspaceSettings = Boolean(isWorkspaceOwner || appUser?.permissions?.settings === true);
   const canManageBranding = Boolean(isWorkspaceOwner || appUser?.permissions?.branding === true);
-  const canManageIntegrations = Boolean(isWorkspaceOwner || appUser?.permissions?.integrations === true);
+  const canManageIntegrations = Boolean(appUser?.isSuperAdmin === true || (MASTER_ADMIN_EMAIL && settingsEmail === MASTER_ADMIN_EMAIL.toLowerCase()));
+  const planAccess = usePlanAccess(appUser, clientData);
+  const subscription = planAccess.subscription;
+  const currentPlan = planAccess.plan;
+  const geofencePlanAccess = planAccess.canUse(FEATURE_KEYS.GEOFENCE_REVIEW).allowed;
+  const timeClockPlanAccess = planAccess.canUse(FEATURE_KEYS.TIME_CLOCK).allowed;
+  const overtimePlanAccess = planAccess.canUse(FEATURE_KEYS.OVERTIME_RISK).allowed;
+  const securityCenterPlanAccess = planAccess.canUse(FEATURE_KEYS.SECURITY_CENTER).allowed;
+  const canViewBilling = Boolean(isWorkspaceOwner || appUser?.isAdmin || appUser?.permissions?.settings || appUser?.isSuperAdmin);
+  const billingRestaurantId = appUser?.restaurantId || clientData?.id || clientData?.restaurantId || '';
+  const billingMonthKey = getMonthStr(getToday());
+  const [billingAiUsage, setBillingAiUsage] = useState(null);
+  useEffect(() => {
+    if (!canViewBilling || !billingRestaurantId) { setBillingAiUsage(null); return undefined; }
+    return onSnapshot(doc(db, 'aiUsage', `${billingRestaurantId}_${billingMonthKey}`), (snap) => {
+      setBillingAiUsage(snap.exists() ? snap.data() : null);
+    }, () => setBillingAiUsage(null));
+  }, [canViewBilling, billingRestaurantId, billingMonthKey]);
   const sys = clientData?.systemSettings || appUser?.systemSettings || {};
   const branding = sys.branding || {};
   const [sysGeofence, setSysGeofence] = useState(sys.geofence ?? false);
@@ -907,7 +973,12 @@ const TabSettings = ({ appUser, addToast, users = [], clientData = {} }) => {  c
   const accountSecurityDebug = mfaStatus?.debug || {};
   const firestoreProfileMissing = mfaStatus && mfaStatus.firestoreUserDocExists === false;
   const canAdminVerifyEmail = Boolean(mfaStatus?.canAdminVerifyEmail || mfaStatus?.isMasterAdminEmail || appUser?.isSuperAdmin);
-  const canRecoverUserMfa = Boolean(mfaStatus?.canMfaRecovery || appUser?.isSuperAdmin || appUser?.systemAccess?.superAdmin || (MASTER_ADMIN_EMAIL && settingsEmail === MASTER_ADMIN_EMAIL.toLowerCase()) || false);
+  const canRecoverUserMfa = Boolean(
+    auth.currentUser?.uid &&
+    mfaStatus?.authUid === auth.currentUser.uid &&
+    mfaStatus?.isMasterAdminEmail === true &&
+    mfaStatus?.canMfaRecovery === true
+  );
   const mfaRecoveryUsers = [...(users || [])].filter(u => u?.id && (u.email || u.name)).sort((a, b) => String(a.name || a.email || '').localeCompare(String(b.name || b.email || '')));
   const selectedMfaRecoveryUser = mfaRecoveryUsers.find(u => u.id === mfaRecoveryTargetId) || null;
   const mfaFactorLimitReached = Number(mfaStatus?.mfaFactorCount || 0) >= 5;
@@ -980,7 +1051,7 @@ const TabSettings = ({ appUser, addToast, users = [], clientData = {} }) => {  c
   };
 
   useEffect(() => {
-    if ((subTab === 'profile' || subTab === 'accountSecurity') && appUser?.id) refreshAccountSecurityStatus({ silent: true });
+    if (subTab === 'accountSecurity' && appUser?.id) refreshAccountSecurityStatus({ silent: true });
   }, [subTab, appUser?.id]);
 
   useEffect(() => {
@@ -1081,6 +1152,9 @@ const handleEnableNotifications = async () => {
   const displayRoles = dbRoles.length > 0 
     ? [...dbRoles].sort((a,b) => a.name.localeCompare(b.name)) 
     : DEFAULT_ROLES.map(r => ({ id: r, name: r, isDefault: true }));
+  const hasCustomRosterRoles = dbRoles.length > 0;
+  const roleTextForSettings = String(appUser?.role || '').toLowerCase();
+  const isLegacyKitchenFallback = !hasCustomRosterRoles && ['kitchen', 'cook', 'chef', 'prep'].some(token => roleTextForSettings.includes(token));
 
   // --- Image Upload Engine ---
   const handleImageUpload = (e) => {
@@ -1635,19 +1709,18 @@ const Toggle = ({ label, desc, checked, onChange, disabled = false }) => (
   
 
   return (
-    <div className="max-w-4xl mx-auto space-y-4 pb-24 animate-[slideIn_0.2s_ease-out]">
-<div className={`grid ${appUser?.isAdmin ? 'grid-cols-2 sm:flex sm:flex-wrap' : 'grid-cols-3'} gap-2 border-b border-[#2A353D] mb-4 pb-2`}>
-        {['profile', 'accountSecurity', 'preferences', 'alerts'].concat(canManageWorkspaceSettings ? ['workspace'] : [], canManageBranding ? ['branding'] : [], canManageIntegrations ? ['integrations'] : []).map((tab) => (
+    <div className="settings-page max-w-4xl mx-auto space-y-4 pb-24 animate-[slideIn_0.2s_ease-out]">
+<div className="settings-tab-bar grid grid-cols-2 sm:flex sm:flex-wrap gap-2 border-b border-[#2A353D] mb-4 pb-2">
+        {['profile', 'accountSecurity', 'preferences', 'alerts'].concat(canViewBilling ? ['billing'] : [], canManageWorkspaceSettings ? ['workspace'] : [], canManageBranding ? ['branding'] : [], ['integrations']).map((tab) => {
+          const integrationLocked = tab === 'integrations' && !canManageIntegrations;
+          return (
 <button type="button" key={tab} onClick={() => {
-            if (tab === 'integrations' && appUser?.planType !== 'Enterprise') {
-              return addToast('Locked', 'Upgrade to Enterprise to unlock POS & Payroll Integrations.');
-            }
             setSubTab(tab);
-          }} className={`px-2 sm:px-5 py-2 text-[10px] font-black rounded-xl uppercase tracking-widest transition-all sm:flex-1 flex items-center justify-center gap-1 ${subTab === tab ? `${T.grad} text-slate-900 shadow-md` : 'bg-[#1A2126] text-slate-400 hover:text-white'} ${(tab === 'integrations' && appUser?.planType !== 'Enterprise') ? 'opacity-50 border border-[#2A353D] cursor-not-allowed' : ''}`}>
-            {(tab === 'integrations' && appUser?.planType !== 'Enterprise') ? '🔒 Integrations' : tab === 'branding' ? 'Branding' : tab === 'accountSecurity' ? 'Account Security' : tab}
-            {tab === 'integrations' && <span className="ml-1 bg-blue-900/30 text-blue-400 border border-blue-500/50 text-[8px] px-1.5 py-0.5 rounded-md uppercase tracking-widest font-black shadow-[0_0_8px_rgba(59,130,246,0.2)]">Beta</span>}
+          }} className={`settings-tab-button px-2 sm:px-5 py-2 text-[10px] font-black rounded-xl uppercase tracking-widest transition-all sm:flex-1 flex items-center justify-center gap-1 ${subTab === tab ? `${T.grad} text-slate-900 shadow-md` : 'bg-[#1A2126] text-slate-300 hover:text-white'} ${integrationLocked ? 'opacity-80 border border-[#2A353D]' : ''}`}>
+            {tab === 'integrations' && integrationLocked ? '🔒 Integrations' : tab === 'branding' ? 'Branding' : tab === 'accountSecurity' ? 'Account Security' : tab === 'billing' ? 'Plan & Billing' : tab}
+            {tab === 'integrations' && <span className="ml-1 bg-blue-900/30 text-blue-400 border border-blue-500/50 text-[8px] px-1.5 py-0.5 rounded-md uppercase tracking-widest font-black shadow-[0_0_8px_rgba(59,130,246,0.2)]">Soon</span>}
           </button>
-        ))}
+        );})}
       </div>
 
       {subTab === 'profile' && (
@@ -1683,6 +1756,11 @@ const Toggle = ({ label, desc, checked, onChange, disabled = false }) => (
               <button type="submit" className={`w-full ${T.btn} py-2`}>Save Profile</button>
             </form>
           </div>
+        </div>
+      )}
+
+      {false && (
+        <div className="space-y-3">
           <div className={`${T.card} p-3 sm:p-5 border-blue-900/40 bg-blue-950/10 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3`}>
              <div>
                <h3 className="text-xs font-black text-blue-300 uppercase tracking-widest mb-1">Account Security / Two-Step Login</h3>
@@ -1829,7 +1907,7 @@ const Toggle = ({ label, desc, checked, onChange, disabled = false }) => (
               <div className="bg-red-950/10 border border-red-900/40 rounded-xl p-3 space-y-3">
                 <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
                   <div>
-                    <div className="text-[10px] font-black uppercase tracking-widest text-red-300">Super Admin MFA Recovery</div>
+                    <div className="text-[10px] font-black uppercase tracking-widest text-red-300">Master Admin MFA Recovery</div>
                     <p className="text-[10px] text-slate-400 font-bold leading-snug mt-1">Use only after verifying the person in real life. This removes their Firebase MFA factors and records the reason in audit logs.</p>
                   </div>
                   <div className="px-2 py-1 rounded-lg border border-red-900/50 bg-red-900/20 text-red-200 text-[8px] font-black uppercase tracking-widest">Audit Logged</div>
@@ -1885,6 +1963,13 @@ const Toggle = ({ label, desc, checked, onChange, disabled = false }) => (
 
       {subTab === 'accountSecurity' && (
         <div className="space-y-3">
+          <div className={`${T.card} p-3 sm:p-4 bg-red-950/10 border-red-900/40 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3`}>
+             <div>
+               <h3 className="text-sm font-black text-red-300 uppercase tracking-widest mb-1">Password Security</h3>
+               <p className="text-xs text-slate-300 font-medium">Send a secure password-reset link to the signed-in email address.</p>
+             </div>
+             <button type="button" onClick={handlePasswordReset} className="w-full sm:w-auto bg-[#12161A] text-red-300 border border-red-900/50 hover:bg-red-900/30 font-bold px-4 py-2 rounded-xl transition-colors text-xs whitespace-nowrap">Reset Password</button>
+          </div>
           <div className={`${T.card} p-3 sm:p-5 border-blue-900/40 bg-blue-950/10 space-y-4`}>
             <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
               <div>
@@ -2015,7 +2100,7 @@ const Toggle = ({ label, desc, checked, onChange, disabled = false }) => (
               <div className="bg-red-950/10 border border-red-900/40 rounded-xl p-3 space-y-3">
                 <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
                   <div>
-                    <div className="text-[10px] font-black uppercase tracking-widest text-red-300">Super Admin MFA Recovery</div>
+                    <div className="text-[10px] font-black uppercase tracking-widest text-red-300">Master Admin MFA Recovery</div>
                     <p className="text-[10px] text-slate-400 font-bold leading-snug mt-1">Use only after verifying the person in real life. This removes their Firebase MFA factors and records the reason in audit logs.</p>
                   </div>
                   <div className="px-2 py-1 rounded-lg border border-red-900/50 bg-red-900/20 text-red-200 text-[8px] font-black uppercase tracking-widest">Audit Logged</div>
@@ -2083,8 +2168,8 @@ const Toggle = ({ label, desc, checked, onChange, disabled = false }) => (
                     <option value="events">Event Calendar</option>
                     <option value="team">Team Roster</option>
                     {appUser?.isAdmin || appUser?.permissions?.ops ? <option value="ops">Kitchen Command Center</option> : null}
-                    {appUser?.role === 'Kitchen' || appUser?.isAdmin ? <option value="prep">Prep List</option> : null}
-                    {appUser?.role === 'Kitchen' || appUser?.isAdmin ? <option value="recipes">Recipe Book</option> : null}
+                    {isLegacyKitchenFallback || appUser?.isAdmin ? <option value="prep">Prep List</option> : null}
+                    {isLegacyKitchenFallback || appUser?.isAdmin ? <option value="recipes">Recipe Book</option> : null}
                     {appUser?.isAdmin && <option value="inventory">Inventory & Orders</option>}
                     {appUser?.isAdmin && <option value="schedule">Master Schedule</option>}
                     {appUser?.isAdmin && <option value="sales">Sales Ledger</option>}
@@ -2341,6 +2426,77 @@ const Toggle = ({ label, desc, checked, onChange, disabled = false }) => (
         </div>
       )}
 
+
+      {subTab === 'billing' && canViewBilling && (() => {
+        const futurePlan = getPlanDefinition(subscription.selectedFutureTier || subscription.planId);
+        const betaEnd = subscription.betaExtendedUntil || subscription.betaEndsAt;
+        const included = (currentPlan.features || []).slice(0, 14).map(k => k.replace(/_/g, ' '));
+        const invoiceLimitNumber = Number.isFinite(currentPlan.invoicePagesLimit) ? currentPlan.invoicePagesLimit : null;
+        const menuLimitNumber = Number.isFinite(currentPlan.menuPagesLimit) ? currentPlan.menuPagesLimit : null;
+        const invoiceLimit = invoiceLimitNumber == null ? 'Unlimited' : invoiceLimitNumber;
+        const menuLimit = menuLimitNumber == null ? 'Unlimited' : menuLimitNumber;
+        const invoiceUsed = Number(billingAiUsage?.invoicePagesUsed || 0);
+        const menuUsed = Number(billingAiUsage?.menuPagesUsed || 0);
+        return (
+          <div className="space-y-4">
+            <div className={`${T.card} p-4 sm:p-5 border-[#D4A381]/40`}>
+              <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-4">
+                <div>
+                  <p className="text-[10px] font-black uppercase tracking-[0.25em] text-[#D4A381]">Plan & Billing</p>
+                  <h2 className="text-2xl font-black text-white mt-1">{currentPlan.label}</h2>
+                  <p className="text-sm font-bold text-slate-300 mt-2 max-w-2xl">{currentPlan.summary}</p>
+                </div>
+                <div className="grid grid-cols-2 gap-2 w-full lg:w-auto">
+                  <div className="bg-[#0B0E11] border border-[#2A353D] rounded-xl p-3"><div className={T.label}>Launch price</div><div className="text-xl font-black text-white">{currentPlan.launchPriceText}</div></div>
+                  <div className="bg-[#0B0E11] border border-[#2A353D] rounded-xl p-3"><div className={T.label}>Billing</div><div className="text-xl font-black text-amber-300">Payments coming soon</div></div>
+                </div>
+              </div>
+            </div>
+
+            {subscription.isFounderBeta && (
+              <div className={`${T.card} p-4 sm:p-5 bg-emerald-950/10 border-emerald-900/40`}>
+                <h3 className="text-xl font-black text-white">Founder Beta</h3>
+                <p className="text-sm font-bold text-emerald-100 mt-2 leading-relaxed">This workspace is in Founder Beta. Active beta access is free, then the selected tier receives {subscription.founderDiscountPercent || 50}% off for 12 months after beta ends.</p>
+                <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3 mt-4">
+                  <div className="bg-[#0B0E11] border border-[#2A353D] rounded-xl p-3"><div className={T.label}>Beta status</div><div className="text-white font-black">{subscription.betaActive ? 'Active' : 'Ended'}</div><div className="text-[10px] text-slate-500 font-bold">{subscription.betaDaysRemaining ?? 'n/a'} days remaining</div></div>
+                  <div className="bg-[#0B0E11] border border-[#2A353D] rounded-xl p-3"><div className={T.label}>Beta end</div><div className="text-white font-black">{betaEnd ? formatDisplayDate(String(betaEnd).slice(0,10)) : 'Not set'}</div></div>
+                  <div className="bg-[#0B0E11] border border-[#2A353D] rounded-xl p-3"><div className={T.label}>Future tier</div><div className="text-white font-black">{futurePlan.label}</div></div>
+                  <div className="bg-[#0B0E11] border border-[#2A353D] rounded-xl p-3"><div className={T.label}>Founder price</div><div className="text-[#D4A381] font-black">{formatMoney(futurePlan.founderPrice)}/month</div><div className="text-[10px] text-slate-500 font-bold">Discount ends: {subscription.founderDiscountEndsAt ? formatDisplayDate(String(subscription.founderDiscountEndsAt).slice(0,10)) : 'after beta'}</div></div>
+                </div>
+              </div>
+            )}
+
+            <div className="grid lg:grid-cols-3 gap-4">
+              <div className={`${T.card} p-4`}>
+                <h3 className="font-black text-white text-lg">Scan Limits</h3>
+                <p className="text-xs text-slate-400 font-bold mt-1">Usage is enforced before expensive AI calls.</p>
+                <div className="grid grid-cols-2 gap-2 mt-4">
+                  <div className="bg-[#0B0E11] border border-[#2A353D] rounded-xl p-3"><div className={T.label}>Invoice pages</div><div className="text-2xl font-black text-white">{invoiceUsed} / {invoiceLimit}</div><div className="text-[10px] text-slate-500 font-bold">used this month</div></div>
+                  <div className="bg-[#0B0E11] border border-[#2A353D] rounded-xl p-3"><div className={T.label}>Menu pages</div><div className="text-2xl font-black text-white">{menuUsed} / {menuLimit}</div><div className="text-[10px] text-slate-500 font-bold">used this month</div></div>
+                </div>
+              </div>
+              <div className={`${T.card} p-4`}>
+                <h3 className="font-black text-white text-lg">Integrations</h3>
+                <p className="text-xs text-slate-400 font-bold mt-1">POS and accounting integrations are being tested before customer rollout. Manual entry and report imports can still be used where available.</p>
+                <div className="mt-4 rounded-xl border border-amber-900/40 bg-amber-950/20 p-3 text-amber-100 text-xs font-black uppercase tracking-widest">Locked for customer tiers</div>
+              </div>
+              <div className={`${T.card} p-4`}>
+                <h3 className="font-black text-white text-lg">Plan Changes</h3>
+                <p className="text-xs text-slate-400 font-bold mt-1">Payments and self-service upgrades are not active yet. Master Admin can change plans manually during rollout.</p>
+                <div className="grid gap-2 mt-4"><button type="button" disabled className={`${T.btnAlt} opacity-60 cursor-not-allowed`}>Upgrade coming soon</button><button type="button" disabled className={`${T.btnAlt} opacity-60 cursor-not-allowed`}>Downgrade coming soon</button></div>
+              </div>
+            </div>
+
+            <div className={`${T.card} p-4`}>
+              <h3 className="font-black text-white text-lg mb-3">Included Feature Summary</h3>
+              <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                {included.map(name => <div key={name} className="bg-[#0B0E11] border border-[#2A353D] rounded-xl p-3 text-xs font-bold text-slate-200 capitalize">{name}</div>)}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
 {subTab === 'workspace' && canManageWorkspaceSettings && (
         <form onSubmit={handleSaveSystem} className={`${T.card} p-3 sm:p-5 space-y-4 border-[#D4A381]/30 shadow-[0_0_15px_rgba(212,163,129,0.05)]`}>
           <div>
@@ -2351,10 +2507,10 @@ const Toggle = ({ label, desc, checked, onChange, disabled = false }) => (
              
              <div className="mt-4 mb-2 text-[9px] font-black uppercase text-[#D4A381] tracking-widest">Time & Attendance Rules</div>
              <div className="space-y-2">
-              <div onClickCapture={(e) => { if (appUser?.planType === 'Starter' || appUser?.planType === 'Pro') { e.stopPropagation(); e.preventDefault(); addToast('Locked', 'Upgrade to Elite to enforce Strict GPS Geofencing.'); } }}>
-                <Toggle label={(appUser?.planType === 'Starter' || appUser?.planType === 'Pro') ? '🔒 Strict Geofencing (Elite)' : 'Strict Geofencing (Time Clock)'} desc="Block employees from clocking in if they are not within the GPS boundaries of the restaurant." checked={sysGeofence} onChange={e => setSysGeofence(e.target.checked)} disabled={appUser?.planType === 'Starter' || appUser?.planType === 'Pro'} />
+              <div onClickCapture={(e) => { if (!geofencePlanAccess) { e.stopPropagation(); e.preventDefault(); addToast('Locked', 'Geofence review starts with Operations access.'); } }}>
+                <Toggle label={!geofencePlanAccess ? '🔒 Strict Geofencing (Operations)' : 'Strict Geofencing (Time Clock)'} desc="Block employees from clocking in if they are not within the GPS boundaries of the restaurant." checked={sysGeofence} onChange={e => setSysGeofence(e.target.checked)} disabled={!geofencePlanAccess} />
               </div>
-              {sysGeofence && appUser?.planType !== 'Starter' && appUser?.planType !== 'Pro' && (
+              {sysGeofence && geofencePlanAccess && (
                  <div className="p-3 bg-[#12161A] border border-[#2A353D] rounded-xl space-y-3 animate-[slideIn_0.2s_ease-out] ml-4">
                    <div>
                      <label className={T.label}>Street Address (To auto-find coordinates)</label>
@@ -2419,8 +2575,8 @@ const Toggle = ({ label, desc, checked, onChange, disabled = false }) => (
                    <p className={`text-[10px] ${T.muted} font-bold uppercase tracking-widest mt-2 text-center`}>Click map to set geofence center. If tiles load gray or half-finished, tap Refresh Map. Provider: {activeMapProvider.label}.</p>
                  </div>
                )}
-               <div onClickCapture={(e) => { if (appUser?.planType === 'Starter') { e.stopPropagation(); e.preventDefault(); addToast('Locked', 'Upgrade to Pro to unlock Unpaid Break Tracking.'); } }}>
-                 <Toggle label={appUser?.planType === 'Starter' ? '🔒 Unpaid Break Tracking (Pro)' : 'Unpaid Break Tracking'} desc="Allow staff to clock out for unpaid breaks during their shift." checked={sysBreaks} onChange={e => setSysBreaks(e.target.checked)} disabled={appUser?.planType === 'Starter'} />
+               <div onClickCapture={(e) => { if (!timeClockPlanAccess) { e.stopPropagation(); e.preventDefault(); addToast('Locked', 'Time Clock starts with Operations access.'); } }}>
+                 <Toggle label={!timeClockPlanAccess ? '🔒 Unpaid Break Tracking (Operations)' : 'Unpaid Break Tracking'} desc="Allow staff to clock out for unpaid breaks during their shift." checked={sysBreaks} onChange={e => setSysBreaks(e.target.checked)} disabled={!timeClockPlanAccess} />
                </div>
                <Toggle label="Block Early Clock-Ins" desc="Prevent staff from punching in before their grace period begins." checked={sysBlockEarly} onChange={e => setSysBlockEarly(e.target.checked)} />
                <div className={`p-3 bg-[#12161A] border ${T.border} rounded-xl flex justify-between items-center gap-3`}>
@@ -2465,22 +2621,22 @@ const Toggle = ({ label, desc, checked, onChange, disabled = false }) => (
              <div className="mt-5 mb-2 text-[9px] font-black uppercase text-[#D4A381] tracking-widest">Labor & Payroll</div>
              <div className="space-y-2">
 <Toggle label="Mandatory Tip Declaration" desc="Force staff to declare cash & credit tips before they can clock out. Entering 0 is allowed when no tips were received." checked={sysTips} onChange={e => setSysTips(e.target.checked)} />               
-               <div onClickCapture={(e) => { if (appUser?.planType === 'Starter') { e.stopPropagation(); e.preventDefault(); addToast('Locked', 'Upgrade to Pro to set Overtime Alert Thresholds.'); } }} className={`p-3 bg-[#12161A] border ${T.border} rounded-xl flex justify-between items-center gap-3 ${appUser?.planType === 'Starter' ? 'opacity-50 cursor-not-allowed' : ''}`}>
+               <div onClickCapture={(e) => { if (!overtimePlanAccess) { e.stopPropagation(); e.preventDefault(); addToast('Locked', 'Overtime risk alerts start with Operations access.'); } }} className={`p-3 bg-[#12161A] border ${T.border} rounded-xl flex justify-between items-center gap-3 ${!overtimePlanAccess ? 'opacity-50 cursor-not-allowed' : ''}`}>
                  <div>
-                   <div className="text-xs font-bold text-white">{appUser?.planType === 'Starter' ? '🔒 Overtime Alert Threshold (Pro)' : 'Overtime Alert Threshold'}</div>
+                   <div className="text-xs font-bold text-white">{!overtimePlanAccess ? '🔒 Overtime Alert Threshold (Operations)' : 'Overtime Alert Threshold'}</div>
                    <div className={`text-[9px] font-medium ${T.muted} mt-0.5 leading-snug`}>Weekly hours before system flags a manager.</div>
                  </div>
-                 <input type="number" min="1" disabled={appUser?.planType === 'Starter'} value={sysOvertime} onChange={e => setSysOvertime(e.target.value)} className={`${T.input} w-16 text-center font-black py-1.5 text-xs disabled:opacity-50`} />
+                 <input type="number" min="1" disabled={!overtimePlanAccess} value={sysOvertime} onChange={e => setSysOvertime(e.target.value)} className={`${T.input} w-16 text-center font-black py-1.5 text-xs disabled:opacity-50`} />
                </div>
              </div>
 
              <div className="mt-5 mb-2 text-[9px] font-black uppercase text-[#D4A381] tracking-widest">Security & Access Control</div>
              <div className="space-y-2">
-               <div onClickCapture={(e) => { if (appUser?.planType === 'Starter' || appUser?.planType === 'Pro') { e.stopPropagation(); e.preventDefault(); addToast('Locked', 'Upgrade to Elite to enforce Strict IP Whitelisting.'); } }}>
-                 <Toggle label={(appUser?.planType === 'Starter' || appUser?.planType === 'Pro') ? '🔒 Strict IP Whitelisting (Elite)' : 'Strict IP Whitelisting'} desc="Only allow app access from specific IP addresses (e.g., the restaurant's secure Wi-Fi)." checked={sysEnableIpWhitelist} onChange={e => setSysEnableIpWhitelist(e.target.checked)} disabled={appUser?.planType === 'Starter' || appUser?.planType === 'Pro'} />
+               <div onClickCapture={(e) => { if (!securityCenterPlanAccess) { e.stopPropagation(); e.preventDefault(); addToast('Locked', 'Security Center controls start with Smart Kitchen access.'); } }}>
+                 <Toggle label={!securityCenterPlanAccess ? '🔒 Strict IP Whitelisting (Smart Kitchen)' : 'Strict IP Whitelisting'} desc="Only allow app access from specific IP addresses (e.g., the restaurant's secure Wi-Fi)." checked={sysEnableIpWhitelist} onChange={e => setSysEnableIpWhitelist(e.target.checked)} disabled={!securityCenterPlanAccess} />
                </div>
                
-               {sysEnableIpWhitelist && appUser?.planType !== 'Starter' && appUser?.planType !== 'Pro' && (
+               {sysEnableIpWhitelist && securityCenterPlanAccess && (
                  <div className="p-3 bg-[#12161A] border border-[#2A353D] rounded-xl animate-[slideIn_0.2s_ease-out] ml-4">
                    <label className={T.label}>Authorized IP Addresses (Comma Separated)</label>
                    <input type="text" value={sysIpWhitelist} onChange={e=>setSysIpWhitelist(e.target.value)} className={`${T.input} py-1.5 text-xs font-mono`} placeholder="e.g. 192.168.1.1, 10.0.0.5" />
@@ -2645,13 +2801,13 @@ const Toggle = ({ label, desc, checked, onChange, disabled = false }) => (
             <div className={`${T.card} p-3 sm:p-5 space-y-3`}>
               <div>
                 <h2 className="text-base font-black text-white">Settings Access</h2>
-                <p className="text-[10px] text-slate-400 font-bold mt-1">Only the account owner can choose who may change workspace settings, branding, integrations, or Menu Intelligence.</p>
+                <p className="text-[10px] text-slate-400 font-bold mt-1">Only the account owner can choose who may change workspace settings, branding, or Menu Intelligence. Integrations stay System Administrator-only until customer rollout.</p>
               </div>
               <div className="max-h-80 overflow-y-auto custom-scrollbar space-y-2">
                 {users.filter(u => u.isActive !== false && u.id !== appUser.id).map(u => (
                   <div key={u.id} className="grid grid-cols-[minmax(0,1fr)_auto] sm:grid-cols-[minmax(0,1fr)_auto_auto_auto] gap-2 items-center bg-[#12161A] border border-[#2A353D] rounded-xl p-3">
                     <div className="min-w-0"><div className="text-xs font-black text-white truncate">{u.name || u.email}</div><div className="text-[10px] text-slate-500 font-bold truncate">{u.role || 'Staff'} • {u.email || 'no email'}</div></div>
-                    {['settings','branding','integrations','menuIntelligence'].map(key => (
+                    {['settings','branding','menuIntelligence'].map(key => (
                       <label key={key} className="flex items-center gap-1 text-[9px] font-black uppercase tracking-widest text-slate-400">
                         <input type="checkbox" checked={u.permissions?.[key] === true} onChange={e => toggleSettingsPermission(u, key, e.target.checked)} className="w-3.5 h-3.5 accent-[#8F6040]" /> {key}
                       </label>
@@ -2696,8 +2852,16 @@ const Toggle = ({ label, desc, checked, onChange, disabled = false }) => (
       )}
 
       {/* --- INTEGRATIONS ZONE --- */}
+      {subTab === 'integrations' && !canManageIntegrations && (
+        <LockedFeatureScreen access={resolveFeatureAccess({ workspace: clientData || {}, user: appUser || {}, featureKey: FEATURE_KEYS.INTEGRATIONS })} appUser={appUser} compact />
+      )}
+
       {subTab === 'integrations' && canManageIntegrations && (
         <div className="space-y-6 animate-[slideIn_0.2s_ease-out]">
+          <div className={`${T.card} p-4 border-amber-900/40 bg-amber-950/10`}>
+            <div className="text-[10px] font-black uppercase tracking-widest text-amber-300">Internal testing only</div>
+            <p className="text-sm font-bold text-slate-300 mt-2">Customers cannot access unfinished OAuth, API keys, provider setup, or integration tools. This page is visible only to Master Admin/System Admin accounts for testing.</p>
+          </div>
           
           <div className={`${T.card} p-4 sm:p-5 border-blue-900/50 shadow-[0_0_15px_rgba(59,130,246,0.05)]`}>
              <div className="mb-4 border-b border-[#2A353D] pb-2">
@@ -2706,8 +2870,8 @@ const Toggle = ({ label, desc, checked, onChange, disabled = false }) => (
              </div>
              <form onSubmit={async (e) => {
                 e.preventDefault();
-                await setDoc(doc(db, "restaurants", appUser.restaurantId), { integrations: { posProvider: e.target.posProvider.value, posApiKey: e.target.posApiKey.value } }, { merge: true });
-                addToast('Saved', 'POS API Configuration Saved.');
+                await setDoc(doc(db, "restaurants", appUser.restaurantId), { integrations: { posProvider: e.target.posProvider.value, posCredentialMode: 'server_encrypted_future', posSecretStatus: 'not_saved_client_side', posApiKey: deleteField() } }, { merge: true });
+                addToast('Provider Saved', 'No POS secret was stored. Future live credentials must use the server-side encrypted vault design.');
              }} className="space-y-3">
                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                  <div>
@@ -2722,14 +2886,14 @@ const Toggle = ({ label, desc, checked, onChange, disabled = false }) => (
                  </div>
                  <div>
                    <label className={T.label}>Secure API Key / Access Token</label>
-                   <input type="password" name="posApiKey" defaultValue={clientData?.integrations?.posApiKey || ''} className={T.input} placeholder="sk_live_..." />
+                   <input type="password" name="posApiKey" value="" disabled className={`${T.input} opacity-60 cursor-not-allowed`} placeholder="Disabled until encrypted server-side vault is implemented" />
                  </div>
                </div>
                <div className="p-3 bg-[#12161A] border border-[#2A353D] rounded-xl">
                  <label className={T.label}>Your Webhook URL (Paste this into your POS dashboard)</label>
                  <code className="text-[10px] text-emerald-400 break-all select-all block mt-1">https://app.86chaos.com/api/webhooks/pos-sync?tenant={appUser.restaurantId}</code>
                </div>
-               <button type="submit" className="bg-blue-900/20 text-blue-400 font-black tracking-widest uppercase border border-blue-900/50 rounded-xl w-full py-3 hover:bg-blue-900/40 transition-colors">Connect POS</button>
+               <div className="p-3 rounded-xl border border-amber-900/40 bg-amber-950/20 text-[10px] font-bold text-amber-100">Provider selection can be saved for planning. Live API keys and OAuth secrets are intentionally disabled until the encrypted server-side vault is built.</div><button type="submit" className="bg-blue-900/20 text-blue-400 font-black tracking-widest uppercase border border-blue-900/50 rounded-xl w-full py-3 hover:bg-blue-900/40 transition-colors">Save Provider Note</button>
              </form>
           </div>
 
@@ -2740,8 +2904,8 @@ const Toggle = ({ label, desc, checked, onChange, disabled = false }) => (
              </div>
              <form onSubmit={async (e) => {
                 e.preventDefault();
-                await setDoc(doc(db, "restaurants", appUser.restaurantId), { integrations: { payrollProvider: e.target.payrollProvider.value, payrollApiKey: e.target.payrollApiKey.value } }, { merge: true });
-                addToast('Saved', 'Payroll API Configuration Saved.');
+                await setDoc(doc(db, "restaurants", appUser.restaurantId), { integrations: { payrollProvider: e.target.payrollProvider.value, payrollCredentialMode: 'server_encrypted_future', payrollSecretStatus: 'not_saved_client_side', payrollApiKey: deleteField() } }, { merge: true });
+                addToast('Provider Saved', 'No payroll secret was stored. Future live credentials must use the server-side encrypted vault design.');
              }} className="space-y-3">
                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                  <div>
@@ -2756,10 +2920,10 @@ const Toggle = ({ label, desc, checked, onChange, disabled = false }) => (
                  </div>
                  <div>
                    <label className={T.label}>Secure API Key / Bearer Token</label>
-                   <input type="password" name="payrollApiKey" defaultValue={clientData?.integrations?.payrollApiKey || ''} className={T.input} placeholder="eyJhbGciOiJIUzI1Ni..." />
+                   <input type="password" name="payrollApiKey" value="" disabled className={`${T.input} opacity-60 cursor-not-allowed`} placeholder="Disabled until encrypted server-side vault is implemented" />
                  </div>
                </div>
-               <button type="submit" className="bg-emerald-900/20 text-emerald-400 font-black tracking-widest uppercase border border-emerald-900/50 rounded-xl w-full py-3 hover:bg-emerald-900/40 transition-colors">Connect Payroll</button>
+               <div className="p-3 rounded-xl border border-amber-900/40 bg-amber-950/20 text-[10px] font-bold text-amber-100">Provider selection can be saved for planning. Live API keys and OAuth secrets are intentionally disabled until the encrypted server-side vault is built.</div><button type="submit" className="bg-emerald-900/20 text-emerald-400 font-black tracking-widest uppercase border border-emerald-900/50 rounded-xl w-full py-3 hover:bg-emerald-900/40 transition-colors">Save Provider Note</button>
              </form>
           </div>
 
@@ -2812,7 +2976,7 @@ const TabAuditLog = ({ appUser }) => {
 
 const TabSales = ({ sales, timePunches = [], users = [], addToast, appUser }) => {
   const getMonday = (dStr) => {
-    const d = new Date(dStr + 'T12:00:00');
+    const d = new Date((dStr || getToday()) + 'T12:00:00');
     const day = d.getDay();
     const diff = d.getDate() - day + (day === 0 ? -6 : 1);
     return new Date(d.setDate(diff));
@@ -2820,42 +2984,56 @@ const TabSales = ({ sales, timePunches = [], users = [], addToast, appUser }) =>
 
   const [weekStart, setWeekStart] = useState(getMonday(getToday()));
   const [editData, setEditData] = useState({});
-
-  const weekDays = Array.from({length: 7}).map((_, i) => {
+  const weekDays = Array.from({ length: 7 }).map((_, i) => {
     const d = new Date(weekStart);
     d.setDate(d.getDate() + i);
     return d.toISOString().split('T')[0];
   });
 
-  // --- AUTO-LABOR CALCULATION ENGINE ---
-  const calculatePunchHours = (inTime, outTime, breakMins = 0) => {
-      if (!inTime) return 0;
-      const end = outTime ? new Date(outTime) : new Date(); // If currently on clock, calc up to this exact minute
-      const rawMins = (end - new Date(inTime)) / 60000;
-      return Math.max(0, (rawMins - breakMins) / 60);
-  };
+  const calculateDailyLabor = (date) => timePunches
+    .filter(p => p.date === date)
+    .reduce((acc, p) => {
+      const emp = users.find(u => u.id === p.employeeId);
+      const hours = calculatePunchHours(p.clockInTime, p.clockOutTime, p.breakMinutes || 0);
+      return acc + (hours * parseFinanceAmount(emp?.wage));
+    }, 0);
 
-  const getDailyLabor = (date) => {
-      const dayPunches = timePunches.filter(p => p.date === date);
-      return dayPunches.reduce((acc, p) => {
-          const emp = users.find(u => u.id === p.employeeId);
-          const hours = calculatePunchHours(p.clockInTime, p.clockOutTime, p.breakMinutes || 0);
-          return acc + (hours * (emp?.wage || 0));
-      }, 0);
-  };
+  const blankClose = (record = {}) => ({
+    grossSales: record.grossSales ?? '',
+    netSales: record.netSales ?? '',
+    cashSales: record.cashSales ?? '',
+    cardSales: record.cardSales ?? '',
+    giftCardSales: record.giftCardSales ?? '',
+    discounts: record.discounts ?? '',
+    comps: record.comps ?? '',
+    refunds: record.refunds ?? '',
+    salesTax: record.salesTax ?? '',
+    foodSales: record.foodSales ?? '',
+    liquorSales: record.liquorSales ?? '',
+    beerSales: record.beerSales ?? '',
+    wineSales: record.wineSales ?? '',
+    beverageSales: record.beverageSales ?? '',
+    specialsSales: record.specialsSales ?? '',
+    cateringSales: record.cateringSales ?? '',
+    otherSales: record.otherSales ?? '',
+    laborCost: record.laborCost !== undefined ? record.laborCost : '',
+    foodCost: record.foodCost ?? '',
+    beverageCost: record.beverageCost ?? '',
+    tipsPaidOut: record.tipsPaidOut ?? '',
+    startingBank: record.startingBank ?? '',
+    cashPaidOut: record.cashPaidOut ?? '',
+    cashCounted: record.cashCounted ?? '',
+    depositAmount: record.depositAmount ?? '',
+    depositStatus: record.depositStatus || 'Not Prepared',
+    closeStatus: record.closeStatus || 'Open',
+    managerSignOff: record.managerSignOff || '',
+    notes: record.notes || ''
+  });
 
   useEffect(() => {
-    const newEditData = {};
-    weekDays.forEach(date => {
-      const daySale = sales.find(s => s.date === date);
-      newEditData[date] = {
-        grossSales: daySale?.grossSales || '',
-        laborCost: daySale?.laborCost !== undefined ? daySale.laborCost : '',
-        foodCost: daySale?.foodCost || '',
-        notes: daySale?.notes || ''
-      };
-    });
-    setEditData(newEditData);
+    const next = {};
+    weekDays.forEach(date => next[date] = blankClose(sales.find(s => s.date === date)));
+    setEditData(next);
   }, [weekStart, sales]);
 
   const changeWeek = (offset) => {
@@ -2864,122 +3042,753 @@ const TabSales = ({ sales, timePunches = [], users = [], addToast, appUser }) =>
     setWeekStart(newDate);
   };
 
-  const handleSave = async (date) => {
-    const data = editData[date];
-    const existing = sales.find(s => s.date === date);
-    const autoLabor = getDailyLabor(date);
-    
-    // If they didn't type anything, grab the auto-calculated labor
-    const finalLabor = data.laborCost !== '' ? parseFloat(data.laborCost) : autoLabor;
+  const handleInputChange = (date, field, value) => setEditData(prev => ({ ...prev, [date]: { ...prev[date], [field]: value } }));
 
+  const dayMath = (date) => {
+    const data = editData[date] || blankClose();
+    const gross = parseFinanceAmount(data.grossSales);
+    const discounts = parseFinanceAmount(data.discounts);
+    const comps = parseFinanceAmount(data.comps);
+    const refunds = parseFinanceAmount(data.refunds);
+    const net = parseFinanceAmount(data.netSales) || Math.max(0, gross - discounts - comps - refunds);
+    const labor = data.laborCost !== '' ? parseFinanceAmount(data.laborCost) : calculateDailyLabor(date);
+    const food = parseFinanceAmount(data.foodCost);
+    const beverage = parseFinanceAmount(data.beverageCost);
+    const startingBank = parseFinanceAmount(data.startingBank);
+    const expectedCash = startingBank + parseFinanceAmount(data.cashSales) - parseFinanceAmount(data.tipsPaidOut) - parseFinanceAmount(data.cashPaidOut);
+    const variance = parseFinanceAmount(data.cashCounted) - expectedCash;
+    const categoryTotal = FINANCE_SALES_CATEGORIES.reduce((sum, [key]) => sum + parseFinanceAmount(data[key]), 0);
+    return { gross, discounts, comps, refunds, net, labor, food, beverage, expectedCash, variance, categoryTotal, profit: net - labor - food - beverage };
+  };
+
+  const handleSave = async (date) => {
+    const data = editData[date] || blankClose();
+    const existing = sales.find(s => s.date === date);
+    const m = dayMath(date);
     const payload = {
+      ...Object.fromEntries(Object.entries(data).map(([key, value]) => {
+        const numeric = ['grossSales','netSales','cashSales','cardSales','giftCardSales','discounts','comps','refunds','salesTax','foodSales','liquorSales','beerSales','wineSales','beverageSales','specialsSales','cateringSales','otherSales','laborCost','foodCost','beverageCost','tipsPaidOut','startingBank','cashPaidOut','cashCounted','depositAmount'].includes(key);
+        return [key, numeric ? parseFinanceAmount(value) : value];
+      })),
       date,
-      grossSales: parseFloat(data.grossSales) || 0,
-      laborCost: finalLabor || 0,
-      foodCost: parseFloat(data.foodCost) || 0,
-      notes: data.notes || '',
+      netSales: m.net,
+      expectedCash: m.expectedCash,
+      cashVariance: m.variance,
+      categorySalesTotal: m.categoryTotal,
+      estimatedProfit: m.profit,
       restaurantId: appUser.restaurantId,
-      loggedBy: appUser.name,
-      timestamp: new Date().toISOString()
+      loggedBy: appUser.name || appUser.email || 'Manager',
+      updatedAt: new Date().toISOString(),
+      timestamp: new Date().toISOString(),
+      source: 'financial_center_daily_close'
     };
 
     try {
       if (existing) {
-        await updateDoc(doc(db, "sales", existing.id), payload);
+        await updateDoc(doc(db, 'sales', existing.id), payload);
+        await logAudit(appUser, 'FINANCIAL_CLOSE_UPDATED', `sales/${existing.id}`, `Updated daily close for ${date}`);
       } else {
-        await addDoc(collection(db, "sales"), payload);
+        const refObj = await addDoc(collection(db, 'sales'), { ...payload, createdAt: new Date().toISOString() });
+        await logAudit(appUser, 'FINANCIAL_CLOSE_CREATED', `sales/${refObj.id}`, `Created daily close for ${date}`);
       }
-      addToast('Saved', `Data for ${new Date(date+'T12:00').toLocaleDateString()} locked in.`);
+      addToast('Daily Close Saved', `${formatDisplayDate(date)} financial close saved.`);
     } catch (err) {
       addToast('Error', err.message);
     }
   };
 
-  const handleInputChange = (date, field, value) => {
-    setEditData(prev => ({ ...prev, [date]: { ...prev[date], [field]: value } }));
-  };
+  const weekly = weekDays.reduce((acc, date) => {
+    const m = dayMath(date);
+    acc.gross += m.gross; acc.net += m.net; acc.labor += m.labor; acc.food += m.food; acc.beverage += m.beverage; acc.profit += m.profit; acc.variance += m.variance;
+    return acc;
+  }, { gross: 0, net: 0, labor: 0, food: 0, beverage: 0, profit: 0, variance: 0 });
+  const wtdLaborPct = weekly.net > 0 ? (weekly.labor / weekly.net) * 100 : 0;
+  const wtdFoodPct = weekly.net > 0 ? (weekly.food / weekly.net) * 100 : 0;
+  const wtdPrimePct = weekly.net > 0 ? ((weekly.labor + weekly.food + weekly.beverage) / weekly.net) * 100 : 0;
 
-  let wtdGross = 0; let wtdLabor = 0; let wtdFood = 0;
-  weekDays.forEach(d => {
-    const s = sales.find(x => x.date === d);
-    const autoLabor = getDailyLabor(d);
-    if (s) { 
-      wtdGross += (s.grossSales||0); 
-      wtdLabor += (s.laborCost > 0 ? s.laborCost : autoLabor); 
-      wtdFood += (s.foodCost||0); 
-    } else {
-      wtdLabor += autoLabor; // Add auto-labor even if not saved yet to show running trends
-    }
-  });
-  
-  const wtdLaborPct = wtdGross > 0 ? ((wtdLabor / wtdGross) * 100).toFixed(1) : 0;
-  const wtdFoodPct = wtdGross > 0 ? ((wtdFood / wtdGross) * 100).toFixed(1) : 0;
-  const wtdProfit = wtdGross - (wtdLabor + wtdFood);
+  const MoneyInput = ({ date, field, label, value, placeholder = '0.00' }) => (
+    <label className="block">
+      <span className="block text-xs font-black text-slate-300 mb-1">{label}</span>
+      <div className="relative">
+        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-slate-500 font-black">$</span>
+        <input type="number" inputMode="decimal" min="0" step="0.01" value={value ?? ''} onChange={e => handleInputChange(date, field, e.target.value)} placeholder={placeholder} className="w-full bg-[#0B0E11] border border-[#2A353D] text-white text-sm font-bold pl-7 pr-3 py-2.5 rounded-xl outline-none focus:border-[#D4A381]" />
+      </div>
+    </label>
+  );
 
   return (
-    <div className="max-w-4xl mx-auto space-y-4 pb-24 animate-[slideIn_0.2s_ease-out]">
-      
-      {/* Tight Weekly Controls */}
-      <div className="flex justify-between items-center bg-[#1A2126] border border-[#2A353D] rounded-xl p-2 shadow-sm">
-         <button onClick={() => changeWeek(-1)} className="p-2 bg-[#12161A] text-slate-400 rounded-lg hover:text-[#D4A381] border border-[#2A353D] transition-colors"><ChevronLeft size={18} /></button>
-         <div className="text-center">
-           <h2 className="text-sm font-black text-white uppercase tracking-widest">Week of {weekStart.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</h2>
-         </div>
-         <button onClick={() => changeWeek(1)} className="p-2 bg-[#12161A] text-slate-400 rounded-lg hover:text-[#D4A381] border border-[#2A353D] transition-colors"><ChevronRight size={18} /></button>
+    <div className="desktop-management-page max-w-7xl mx-auto space-y-4 pb-24 animate-[slideIn_0.2s_ease-out]">
+      <div className="flex justify-between items-center bg-[#1A2126] border border-[#2A353D] rounded-2xl p-3 shadow-sm">
+        <button onClick={() => changeWeek(-1)} className="p-2 bg-[#12161A] text-slate-300 rounded-xl hover:text-[#D4A381] border border-[#2A353D] transition-colors"><ChevronLeft size={20} /></button>
+        <div className="text-center">
+          <div className="text-xs uppercase tracking-widest font-black text-[#D4A381]">Daily Close</div>
+          <h2 className="text-lg sm:text-xl font-black text-white">Week of {weekStart.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</h2>
+        </div>
+        <button onClick={() => changeWeek(1)} className="p-2 bg-[#12161A] text-slate-300 rounded-xl hover:text-[#D4A381] border border-[#2A353D] transition-colors"><ChevronRight size={20} /></button>
       </div>
 
-      {/* Expanded WTD KPIs */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-        <div className={`${T.card} p-2 sm:p-3 text-center`}><div className={`text-[8px] sm:text-[10px] font-black uppercase tracking-widest ${T.muted}`}>WTD Gross</div><div className="text-sm sm:text-lg font-black text-[#D4A381]">${wtdGross.toLocaleString(undefined, {minimumFractionDigits: 0, maximumFractionDigits: 0})}</div></div>
-        <div className={`${T.card} p-2 sm:p-3 text-center`}><div className={`text-[8px] sm:text-[10px] font-black uppercase tracking-widest ${T.muted}`}>WTD Labor</div><div className={`text-sm sm:text-lg font-black ${wtdLaborPct > 30 ? 'text-red-400' : 'text-emerald-400'}`}>{wtdLaborPct}%</div></div>
-        <div className={`${T.card} p-2 sm:p-3 text-center`}><div className={`text-[8px] sm:text-[10px] font-black uppercase tracking-widest ${T.muted}`}>WTD Food</div><div className={`text-sm sm:text-lg font-black ${wtdFoodPct > 33 ? 'text-red-400' : 'text-emerald-400'}`}>{wtdFoodPct}%</div></div>
-        <div className={`${T.card} p-2
- sm:p-3 text-center`}><div className={`text-[8px] sm:text-[10px] font-black uppercase tracking-widest ${T.muted}`}>WTD Profit</div><div className={`text-sm sm:text-lg font-black ${wtdProfit < 0 ? 'text-red-400' : 'text-emerald-400'}`}>${wtdProfit.toLocaleString(undefined, {minimumFractionDigits: 0, maximumFractionDigits: 0})}</div></div>
+      <div className="grid sm:grid-cols-2 xl:grid-cols-5 gap-3">
+        <StatusTile label="WTD Net Sales" value={moneyText(weekly.net)} icon={TrendingUp} color="text-[#D4A381]" />
+        <StatusTile label="Labor" value={pctText(wtdLaborPct)} icon={Users} color={wtdLaborPct > 30 ? 'text-red-400' : 'text-emerald-400'} />
+        <StatusTile label="Food Cost" value={pctText(wtdFoodPct)} icon={Package} color={wtdFoodPct > 33 ? 'text-red-400' : 'text-emerald-400'} />
+        <StatusTile label="Prime Cost" value={pctText(wtdPrimePct)} icon={Scale} color={wtdPrimePct > 65 ? 'text-red-400' : 'text-emerald-400'} />
+        <StatusTile label="Est. Profit" value={moneyText(weekly.profit)} icon={Star} color={weekly.profit < 0 ? 'text-red-400' : 'text-emerald-400'} />
       </div>
 
-      {/* Ultra-Compact 7-Day Ledger with Notes */}
-      <div className={`${T.card} overflow-hidden`}>
-         <div className="divide-y divide-[#2A353D]">
-           {weekDays.map(date => {
-              const data = editData[date] || { grossSales: '', laborCost: '', foodCost: '', notes: '' };
-              const isToday = date === getToday();
-              const hasData = sales.find(s => s.date === date);
-              const autoLabor = getDailyLabor(date);
-              
-              const displayLabor = data.laborCost !== '' ? data.laborCost : (autoLabor > 0 ? autoLabor.toFixed(2) : '');
-
-              return (
-                <div key={date} className={`p-2 sm:p-3 flex flex-col gap-2 ${isToday ? 'bg-[#12161A] border-l-2 border-[#D4A381]' : 'hover:bg-[#12161A]/50 transition-colors'}`}>
-                   <div className="flex justify-between items-center">
-                      <span className={`text-[10px] font-black uppercase tracking-widest ${isToday ? 'text-[#D4A381]' : 'text-slate-300'}`}>{new Date(date+'T12:00').toLocaleDateString('en-US', {weekday:'short', month:'numeric', day:'numeric'})}</span>
-                      <div className="flex items-center gap-2">
-                         {data.laborCost === '' && autoLabor > 0 && <span className="text-[8px] text-emerald-500 font-black uppercase tracking-widest bg-emerald-900/20 px-1.5 py-0.5 rounded border border-emerald-900/50">Auto-Labor</span>}
-                         {hasData && <span className="text-[8px] text-[#D4A381] font-black uppercase tracking-widest bg-[#8F6040]/20 px-1.5 py-0.5 rounded border border-[#D4A381]/30">Saved</span>}
-                         {hasData && appUser?.isAdmin && <button onClick={() => { if(window.confirm("Delete record?")) deleteDoc(doc(db,"sales",hasData.id)); }} className="text-slate-500 hover:text-red-500"><Trash2 size={12}/></button>}
-                      </div>
-                   </div>
-                   <div className="flex flex-col gap-1.5">
-                      <div className="flex gap-1.5">
-                        <div className="relative flex-1"><span className="absolute left-1.5 top-1/2 -translate-y-1/2 text-[9px] text-slate-500 font-bold">$</span><input type="number" value={data.grossSales} onChange={e=>handleInputChange(date, 'grossSales', e.target.value)} placeholder="Gross" className="w-full bg-[#0B0E11] border border-[#2A353D] text-white text-[10px] sm:text-xs font-bold pl-4 pr-1 py-1.5 rounded outline-none focus:border-[#D4A381]" /></div>
-                        <div className="relative flex-1"><span className={`absolute left-1.5 top-1/2 -translate-y-1/2 text-[9px] font-bold ${data.laborCost === '' && autoLabor > 0 ? 'text-emerald-500' : 'text-slate-500'}`}>$</span><input type="number" value={displayLabor} onChange={e=>handleInputChange(date, 'laborCost', e.target.value)} placeholder="Labor" className={`w-full bg-[#0B0E11] border border-[#2A353D] text-[10px] sm:text-xs font-bold pl-4 pr-1 py-1.5 rounded outline-none focus:border-[#D4A381] ${data.laborCost === '' && autoLabor > 0 ? 'text-emerald-400 bg-emerald-900/10 border-emerald-900/50' : 'text-white'}`} /></div>
-                        <div className="relative flex-1"><span className="absolute left-1.5 top-1/2 -translate-y-1/2 text-[9px] text-slate-500 font-bold">$</span><input type="number" value={data.foodCost} onChange={e=>handleInputChange(date, 'foodCost', e.target.value)} placeholder="Food" className="w-full bg-[#0B0E11] border border-[#2A353D] text-white text-[10px] sm:text-xs font-bold pl-4 pr-1 py-1.5 rounded outline-none focus:border-[#D4A381]" /></div>
-                      </div>
-                      <div className="flex gap-1.5">
-                        <input type="text" value={data.notes} onChange={e=>handleInputChange(date, 'notes', e.target.value)} placeholder="Context notes (e.g., Event, Weather, Promos)..." className="flex-1 w-full bg-[#0B0E11] border border-[#2A353D] text-slate-300 text-[10px] sm:text-xs font-medium px-2 py-1.5 rounded outline-none focus:border-[#D4A381]" />
-                        <button onClick={()=>handleSave(date)} className="w-16 bg-gradient-to-r from-[#C59373] to-[#8F6040] text-slate-900 text-[10px] font-black uppercase tracking-wider rounded flex items-center justify-center flex-shrink-0 hover:opacity-80 transition-opacity">Save</button>
-                      </div>
-                   </div>
+      <div className="space-y-4">
+        {weekDays.map(date => {
+          const data = editData[date] || blankClose();
+          const existing = sales.find(s => s.date === date);
+          const autoLabor = calculateDailyLabor(date);
+          const m = dayMath(date);
+          const isToday = date === getToday();
+          return (
+            <div key={date} className={`${T.card} overflow-hidden ${isToday ? 'border-[#D4A381]/60' : ''}`}>
+              <div className="p-4 bg-[#12161A] border-b border-[#2A353D] flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+                <div>
+                  <div className="text-xs uppercase tracking-widest font-black text-[#D4A381]">{formatDisplayFullDate(date)}</div>
+                  <h3 className="text-xl font-black text-white">Closeout Worksheet</h3>
                 </div>
-              )
-           })}
-         </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  {data.laborCost === '' && autoLabor > 0 && <span className="px-3 py-1 rounded-full border border-emerald-800/60 bg-emerald-900/20 text-emerald-300 text-xs font-black">Auto labor {moneyText(autoLabor, 2)}</span>}
+                  {existing && <span className="px-3 py-1 rounded-full border border-[#D4A381]/30 bg-[#8F6040]/20 text-[#D4A381] text-xs font-black">Saved</span>}
+                  {existing && appUser?.isAdmin && <button onClick={async () => { if (window.confirm('Delete this daily close record?')) { await deleteDoc(doc(db, 'sales', existing.id)); await logAudit(appUser, 'FINANCIAL_CLOSE_DELETED', `sales/${existing.id}`, `Deleted daily close for ${date}`); addToast('Deleted', 'Daily close record removed.'); } }} className="p-2 text-slate-400 hover:text-red-400"><Trash2 size={16}/></button>}
+                </div>
+              </div>
+
+              <div className="p-4 grid xl:grid-cols-12 gap-4">
+                <section className="xl:col-span-4 space-y-3">
+                  <h4 className="font-black text-white flex items-center gap-2"><Scale size={17} className="text-[#D4A381]"/> Sales Summary</h4>
+                  <div className="grid sm:grid-cols-2 gap-3">
+                    <MoneyInput date={date} field="grossSales" label="Gross Sales" value={data.grossSales} />
+                    <MoneyInput date={date} field="netSales" label="Net Sales" value={data.netSales} />
+                    <MoneyInput date={date} field="discounts" label="Discounts" value={data.discounts} />
+                    <MoneyInput date={date} field="comps" label="Comps" value={data.comps} />
+                    <MoneyInput date={date} field="refunds" label="Refunds" value={data.refunds} />
+                    <MoneyInput date={date} field="salesTax" label="Sales Tax" value={data.salesTax} />
+                  </div>
+                  <div className="grid sm:grid-cols-2 gap-3">
+                    {FINANCE_SALES_CATEGORIES.map(([key, label]) => <MoneyInput key={key} date={date} field={key} label={label} value={data[key]} />)}
+                  </div>
+                </section>
+
+                <section className="xl:col-span-4 space-y-3">
+                  <h4 className="font-black text-white flex items-center gap-2"><Coffee size={17} className="text-[#D4A381]"/> Cash, Deposits & Cost</h4>
+                  <div className="grid sm:grid-cols-2 gap-3">
+                    <MoneyInput date={date} field="cashSales" label="Cash Sales" value={data.cashSales} />
+                    <MoneyInput date={date} field="cardSales" label="Card Sales" value={data.cardSales} />
+                    <MoneyInput date={date} field="giftCardSales" label="Gift Cards" value={data.giftCardSales} />
+                    <MoneyInput date={date} field="startingBank" label="Starting Bank" value={data.startingBank} />
+                    <MoneyInput date={date} field="cashPaidOut" label="Paid Out" value={data.cashPaidOut} />
+                    <MoneyInput date={date} field="tipsPaidOut" label="Tips Paid Out" value={data.tipsPaidOut} />
+                    <MoneyInput date={date} field="cashCounted" label="Cash Counted" value={data.cashCounted} />
+                    <MoneyInput date={date} field="depositAmount" label="Deposit Amount" value={data.depositAmount} />
+                    <MoneyInput date={date} field="laborCost" label="Labor Cost" value={data.laborCost === '' && autoLabor > 0 ? autoLabor.toFixed(2) : data.laborCost} />
+                    <MoneyInput date={date} field="foodCost" label="Food Cost" value={data.foodCost} />
+                    <MoneyInput date={date} field="beverageCost" label="Beverage Cost" value={data.beverageCost} />
+                  </div>
+                  <div className="grid sm:grid-cols-2 gap-3">
+                    <label><span className="block text-xs font-black text-slate-300 mb-1">Deposit Status</span><select value={data.depositStatus} onChange={e => handleInputChange(date, 'depositStatus', e.target.value)} className={T.input}>{FINANCE_DEPOSIT_STATUSES.map(status => <option key={status}>{status}</option>)}</select></label>
+                    <label><span className="block text-xs font-black text-slate-300 mb-1">Close Status</span><select value={data.closeStatus} onChange={e => handleInputChange(date, 'closeStatus', e.target.value)} className={T.input}>{FINANCE_CLOSE_STATUSES.map(status => <option key={status}>{status}</option>)}</select></label>
+                  </div>
+                </section>
+
+                <section className="xl:col-span-4 space-y-3">
+                  <h4 className="font-black text-white flex items-center gap-2"><ClipboardList size={17} className="text-[#D4A381]"/> Manager Review</h4>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="bg-[#0B0E11] border border-[#2A353D] rounded-xl p-3"><div className="text-xs font-black text-slate-400">Expected Cash</div><div className="text-lg font-black text-white">{moneyText(m.expectedCash, 2)}</div></div>
+                    <div className="bg-[#0B0E11] border border-[#2A353D] rounded-xl p-3"><div className="text-xs font-black text-slate-400">Over / Short</div><div className={`text-lg font-black ${Math.abs(m.variance) > 10 ? 'text-red-400' : 'text-emerald-400'}`}>{moneyText(m.variance, 2)}</div></div>
+                    <div className="bg-[#0B0E11] border border-[#2A353D] rounded-xl p-3"><div className="text-xs font-black text-slate-400">Category Total</div><div className="text-lg font-black text-white">{moneyText(m.categoryTotal, 2)}</div></div>
+                    <div className="bg-[#0B0E11] border border-[#2A353D] rounded-xl p-3"><div className="text-xs font-black text-slate-400">Est. Profit</div><div className={`text-lg font-black ${m.profit < 0 ? 'text-red-400' : 'text-emerald-400'}`}>{moneyText(m.profit, 2)}</div></div>
+                  </div>
+                  <label><span className="block text-xs font-black text-slate-300 mb-1">Manager Sign-off</span><input value={data.managerSignOff} onChange={e => handleInputChange(date, 'managerSignOff', e.target.value)} placeholder="Manager name or initials" className={T.input}/></label>
+                  <label><span className="block text-xs font-black text-slate-300 mb-1">Close Notes</span><textarea value={data.notes} onChange={e => handleInputChange(date, 'notes', e.target.value)} rows={4} placeholder="Weather, events, drawer explanation, unusual discounts, staffing notes..." className={T.input}></textarea></label>
+                  <button onClick={() => handleSave(date)} className={`${T.btn} w-full py-3 text-sm`}>Save Daily Close</button>
+                </section>
+              </div>
+            </div>
+          );
+        })}
       </div>
     </div>
   );
 };
 
+
+const ADMIN_TROUBLESHOOTING_ARTICLES = [
+  {
+    "title": "Version 15.0.59 Complete Manual Coverage and IP Whitelisting Documentation",
+    "group": "System Administrator",
+    "keywords": "v15 15.0.59 manuals help center training manual administrator manual ip whitelist whitelisting push groups integrations plan billing feature map docs coverage",
+    "body": [
+      "15.0.59 is a documentation hardening pass. It expands Help Center, the Complete App Training Manual, and the internal Administrator Manual without removing features or changing runtime behavior.",
+      "The manuals now include explicit IP whitelisting guidance, including what it does, how it differs from geofencing, static/public IP cautions, mobile data/VPN lockout risks, and recovery checks.",
+      "Coverage was expanded for the full app map, plans and Founder Beta, scan limits, integrations-coming-soon safety, push notification center and restaurant group broadcasts, owner snapshots, Cost Center, P&L, custom Roster Roles as source of truth, and Help Center versus Administrator Manual boundaries.",
+      "Keep Help Center customer-safe. Do not expose Master Admin bypasses, Firebase secrets, Vercel secrets, signed URLs, provider credentials, raw internal repair procedures, or unfinished integration details there.",
+      "When future features are added, update both customer-facing training language and internal System Administrator manual language before shipping."
+    ]
+  },
+  {
+    "title": "IP whitelisting lockout prevention and recovery",
+    "group": "System Administrator / Security",
+    "keywords": "ip whitelist whitelisting whistling strict ip authorized address static dynamic lockout recovery security center workspace settings geofence app check mfa",
+    "body": [
+      "Strict IP Whitelisting is a high-risk access control. It limits app access to approved public IP addresses and can block owners, managers, staff, mobile data, VPN users, and remote support if the saved list is wrong.",
+      "Before enabling it for a live workspace, confirm the restaurant has a stable public IP, test from the restaurant network, test an owner/admin account, and confirm a System Administrator recovery path from an approved network.",
+      "Do not confuse IP whitelisting with time-clock geofencing. Geofencing uses GPS evidence for punch review; IP whitelisting restricts network access to the app.",
+      "If users are locked out, determine their current public IP/network, compare it to the saved whitelist, confirm whether the ISP changed the address, then disable or update the control from an approved owner/System Administrator path.",
+      "IP whitelisting complements App Check, MFA, Firebase rules, role permissions, plan gates, audit logging, and account security."
+    ]
+  },
+  {
+    "title": "Manual coverage checklist for every release",
+    "group": "System Administrator / Documentation",
+    "keywords": "manual coverage checklist help center administrator manual training manual release docs update all features current release notes qa",
+    "body": [
+      "For every release, check whether a feature change affects Help Center, Complete App Training Manual, Administrator Manual, README, Privacy Policy, release notes, and QA.",
+      "Customer-facing docs should explain what the feature does, who should use it, setup required, what data it uses, what locked states mean, and how to avoid common mistakes.",
+      "Internal docs should explain feature gates, role gates, Firebase/Vercel requirements, audit behavior, server routes, rule expectations, support diagnostics, recovery paths, and dangerous controls.",
+      "Never include old release notes in the clean source ZIP. Keep only current-version release notes and current-version QA files unless the user explicitly asks for history.",
+      "When in doubt, add a customer-safe Help Center article and a deeper System Administrator article rather than leaving a feature undocumented."
+    ]
+  },
+  {
+    "title": "Integration placeholder and secret-storage safety",
+    "group": "System Administrator / Integrations",
+    "keywords": "integrations locked customers oauth api keys pos accounting payroll secrets firestore encrypted server side provider setup coming soon",
+    "body": [
+      "Customer integrations remain locked for all customer tiers. Customers should see Integrations are coming soon and must not see unfinished OAuth/provider setup or raw secret entry tools.",
+      "Internal testing screens may exist for Master Admin/System Administrator only, but future live POS/accounting/payroll secrets must not be casually stored in normal Firestore workspace settings.",
+      "A production integration design should use server-side encrypted storage, provider-specific scopes, rotation, revocation, disconnect flow, audit logging, and clear environment separation.",
+      "If a placeholder field is visible internally, label it non-production or disable saving until the secure server-side design exists."
+    ]
+  },
+  {
+    "title": "Restaurant group push broadcast support guide",
+    "group": "System Administrator / Push",
+    "keywords": "push notification center restaurant group broadcast selected workspace all workspaces token stale quiet hours audit group name owner email fallback",
+    "body": [
+      "Push Control Center can target one workspace, a restaurant group, or all workspaces. Group and all-workspace sends are internal-only operations and should be audited.",
+      "Restaurant group matching uses workspace fields such as restaurantGroupName, groupName, restaurantGroupId, branding/system setting labels, or owner email fallback.",
+      "Preview workspace, user, and token counts before sending. Prefer selected group over All Workspaces unless the message is truly platform-wide.",
+      "If delivery is questioned, check notification permission, token age, stale/missing token warnings, quiet hours, last send result, audit log, and whether the device/browser suppressed the notification."
+    ]
+  },
+  {
+    "title": "Version 15.0.60 Voice Mark-Done Matching",
+    "group": "System Administrator",
+    "keywords": "v15 15.0.60 voice mark done prep tasks complete check off fuzzy matching kitchen speech",
+    "body": [
+      "15.0.60 expands 86 Voice so staff can mark Prep List rows and Daily, Weekly, or Monthly Tasks done by voice, not only create prep rows or recurring tasks.",
+      "Examples include mark onions done, check off sliced tomatoes, finished clean fryer, complete weekly hood filter task, and ranch is done.",
+      "The parser refreshes current prep/task candidates, uses fuzzy matching for plural/singular and imperfect kitchen speech, and asks the user to choose when a match is not confident enough.",
+      "Mark-done commands set completion only; they do not toggle a completed row back open. Prep completion writes completion metadata and recurring tasks update the correct daily, weekly, or monthly completion period.",
+      "Voice mark-done access still requires Prep & Tasks feature access plus the signed-in user's role/permission access. Every completion write is audit logged."
+    ]
+  },
+  {
+    "title": "Version 15.0.58 Website Claim Readiness Hardening",
+    "group": "System Administrator",
+    "keywords": "v15 15.0.58 website claims readiness prep inventory invoice menu intelligence 86 alerts financial center cost visibility integrations locked",
+    "body": [
+      "15.0.58 audits the app against the public website promise and keeps every existing feature intact.",
+      "The app shell now avoids subscribing to restricted financial, labor, inventory, Menu Intelligence, and COGS collections unless the current workspace plan and user permission allow that feature. This reduces unnecessary reads and permission-denied noise.",
+      "Customer-facing language stays cautious: AI-assisted, manager review, cost visibility, snapshots, and integrations coming soon.",
+      "Invoice scanning must remain review-first before it affects inventory, invoice history, vendor spend, COGS, or reports. Menu scanning must remain review-first before it creates menu-impact links.",
+      "All role-based reporting and filtering must continue using owner-managed Roster Roles from Preferences. Hardcoded restaurant role names are allowed only as empty-workspace fallback labels."
+    ]
+  },
+  {
+    "title": "Version 15.0.53 Professional Financial Center and Complete Manuals",
+    "group": "System Administrator",
+    "keywords": "v15 15.0.53 financial center daily close sales labor payroll tips cogs vendors expenses pnl targets reports help center training manual roster roles",
+    "body": [
+      "15.0.53 turns Financials into a professional Financial Center with Overview, Daily Close, Sales, Labor & Payroll, Tips, COGS & Vendors, Expenses, P&L, Targets, and Reports.",
+      "Daily Close now records sales categories, discounts, comps, refunds, tax, cash/card/gift cards, tips paid out, starting bank, cash counted, deposit amount, close status, manager sign-off, and variance math.",
+      "Labor-by-role, payroll filters, tips, schedule coverage, exports, and financial reports must use the account owner custom Roster Roles from Preferences as the source of truth.",
+      "Help Center now includes a searchable main-app training manual, while System Administrator keeps the deeper admin manual for support, security, diagnostics, permissions, and deployment work.",
+      "Firestore rules add explicit financial protection for sales, financialExpenses, and financialTargets so financial records no longer rely only on the broad tenant catch-all rule."
+    ]
+  },
+  {
+    "title": "Master admin exists in Auth but not Firestore users",
+    "group": "System Administrator / Troubleshooting",
+    "keywords": "master admin missing user profile firestore auth users locked out rules super admin repair button MASTER_ADMIN_EMAILS",
+    "body": [
+      "Firebase Authentication and Firestore users are separate systems. An email can log in through Auth while the app still lacks users/{authUid}, which breaks roles, restaurant routing, and hardened Firestore rules.",
+      "Open System Administrator -> Overview -> Master Admin Self-Repair before publishing strict rules. The button repairs only emails configured in MASTER_ADMIN_EMAIL or MASTER_ADMIN_EMAILS.",
+      "The repair route creates or updates users/{authUid}, sets isSuperAdmin=true, systemAccess.superAdmin=true, admin permissions, active flags, and a Firebase custom claim superAdmin=true.",
+      "After the repair says created or updated, log out and back in so the browser receives fresh Firebase custom claims. Then run diagnostics again and publish rules only after your admin profile appears in Firestore."
+    ]
+  },
+  {
+    "title": "Version 15.0.33 Deployment Syntax Hotfix",
+    "group": "System Administrator",
+    "keywords": "v15 15.0.33 deployment syntax hotfix JSX manual build failed vercel adjacent jsx elements",
+    "body": [
+      "15.0.33 fixes the Vercel build failure from 15.0.32. The System Administrator Manual support console was missing one closing wrapper around the manual tab JSX, which caused the build compiler to report adjacent JSX elements near the end of src/features/management.jsx.",
+      "No Firebase rule changes, Storage rule changes, API route changes, or new environment variables are included in this hotfix.",
+      "After deploy, confirm /version.json reports 15.0.33, then open System Administrator -> Manual and type a support question to verify the console renders."
+    ]
+  },
+  {
+    "title": "Version 15.0.32 AI Support Manual and Production Hardening",
+    "group": "System Administrator",
+    "keywords": "v15 15.0.32 ai support manual troubleshooting security hardening account deletion recovery codes firebase rules storage rules production",
+    "body": [
+      "15.0.32 turns the System Administrator Manual into a question-driven support console. Type the customer's problem, read the first checks, follow the fix steps, then open the most relevant articles.",
+      "Security Center now shows account deletion requests so privacy requests can be reviewed, marked complete, or denied with an audit trail.",
+      "Recovery codes now require RECOVERY_CODE_SECRET in Vercel before they can be generated or used. The secret must be at least 32 characters and must be set in both Preview and Production if both environments are used.",
+      "Firebase rules no longer depend on a baked-in personal email. Super Admin access must come from a Firebase custom claim, Firestore users/{uid}.isSuperAdmin, users/{uid}.systemAccess.superAdmin, or the server env master email list for API routes.",
+      "Use the included README and QA checklist before production. Test on the testing Firebase/Vercel side first, then repeat on the main side only after login, manual search, MFA recovery, backups, push, menu scan, invoice scan, and deletion review all pass."
+    ]
+  },
+  {
+    "title": "Customer says the app is blank or stuck loading",
+    "group": "Troubleshooting",
+    "keywords": "blank screen stuck loading app load white screen chrome cache version deployment firebase config service worker",
+    "body": [
+      "First ask for the URL, device, browser, and screenshot. Confirm they are on the correct testing or production link.",
+      "Open /version.json on that same link and confirm it matches the deployed release. If the version is old, the browser or deployment cache is probably stale.",
+      "Have the customer hard refresh, close all tabs, reopen the app, or clear site data. On mobile Chrome, use the browser menu, History, Clear browsing data, then reopen.",
+      "If only one workspace is blank, check the user's restaurantId and the workspace document. If everyone is blank, check Vercel deployment status and Firebase project settings.",
+      "If the browser console shows permission-denied, publish the matching Firestore rules and Storage rules for that Firebase project, then log out and back in."
+    ]
+  },
+  {
+    "title": "Customer cannot log in or is locked out",
+    "group": "Access / Troubleshooting",
+    "keywords": "cannot login locked out password reset email verification mfa recovery code lost phone force password disabled account",
+    "body": [
+      "Confirm the exact email they are typing. Search the email in System Administrator People and Firebase Authentication.",
+      "If the password is wrong, send a Firebase password reset. If the account is disabled, confirm why before enabling it.",
+      "If MFA blocks them because they lost a phone, use Account Security MFA recovery as a System Administrator, write a reason, and have them enroll again.",
+      "If recovery codes are missing, set RECOVERY_CODE_SECRET in Vercel, redeploy, then generate recovery codes from Account Security.",
+      "If they can log in but see the wrong restaurant, fix restaurantId, activeRestaurantId, membership, or workspace routing before changing permissions."
+    ]
+  },
+  {
+    "title": "Push notifications only go to one person or do not arrive",
+    "group": "Push Notifications",
+    "keywords": "push notifications only geoff one person not receiving fcm token repair notification permission token stale send-push schedule alert",
+    "body": [
+      "Check whether the user has allowed notifications in the browser or phone settings. Blocked browser permission means the app cannot send pushes to that device.",
+      "Open System Administrator Push tools and check token counts, stale tokens, and per-user test push results.",
+      "Have the user open the app on the device they want notifications on. The app needs to save a fresh token from that device.",
+      "Run push token repair if tokens look stale or attached to the wrong profile. Then send a per-user test push before sending a broadcast.",
+      "If only Super Admin receives pushes, confirm Firestore rules allow each signed-in user to write their own token and confirm the send route is not filtering to the admin account."
+    ]
+  },
+  {
+    "title": "Menu or invoice AI scan fails",
+    "group": "AI Scans",
+    "keywords": "menu intelligence invoice scan gemini invalid json model not found api key v1beta flash pdf photo storage upload",
+    "body": [
+      "First read the exact error toast. Model-not-found means the Gemini model name or API version is wrong for the key. Invalid JSON means the AI replied in a shape the parser rejected.",
+      "Check Vercel environment variables for the Gemini/API key on the same deployment environment the customer is using.",
+      "Confirm the upload is a supported image or PDF and under the allowed size. Storage rules must allow the scan folder and required metadata.",
+      "Try a clearer photo or smaller PDF. Blurry, sideways, cropped, or handwritten invoices are much more likely to fail.",
+      "If the scan reaches 100 percent then fails, the upload worked and the failure is in the AI route or parser. Check Vercel function logs for scan-menu or scan-invoice."
+    ]
+  },
+  {
+    "title": "Firebase rules after security hardening",
+    "group": "Firebase / Rules",
+    "keywords": "firebase rules firestore storage publish testing production super admin claim isSuperAdmin systemAccess lockout",
+    "body": [
+      "Publish Firestore rules and Storage rules to the testing Firebase project first. Test login, System Administrator, account security, push, scan uploads, schedule, inventory, and manual support search.",
+      "Before publishing hardened rules, make sure your Super Admin account has a real admin source: Firebase custom claim superAdmin=true, users/{uid}.isSuperAdmin=true, or users/{uid}.systemAccess.superAdmin=true.",
+      "Server env master emails can authorize API routes, but Firebase rules cannot read Vercel env vars. Do not rely on MASTER_ADMIN_EMAIL for Firestore or Storage rules.",
+      "After publishing rules, log out and back in so Firebase auth claims refresh.",
+      "Repeat the same process on production only after the testing side works."
+    ]
+  },
+  {
+    "title": "Account deletion request workflow",
+    "group": "Privacy / App Store Readiness",
+    "keywords": "account deletion request privacy app store google play delete account export anonymize retention review complete deny",
+    "body": [
+      "Customers can request account deletion from Account Security. This creates an accountDeletionRequests record and a Security Center alert.",
+      "Open System Administrator Security Center and review the request. Mark Reviewing when you start working it.",
+      "Before marking Complete, confirm identity, check legal/operational retention needs, export anything required, then delete or anonymize the account data using the protected admin tools.",
+      "Use Deny only when the request is invalid, duplicate, canceled through another channel, or cannot be completed for a documented reason.",
+      "Every review action writes admin notes and an audit log so store/privacy reviews have a paper trail."
+    ]
+  },
+  {
+    "title": "Recovery codes and MFA safety",
+    "group": "MFA / Account Security",
+    "keywords": "recovery codes mfa lost phone RECOVERY_CODE_SECRET two step login sms admin reset backup code",
+    "body": [
+      "RECOVERY_CODE_SECRET must be set in Vercel before recovery codes can be generated or used. Use a random 32+ character value and never reuse a public API key.",
+      "Generate recovery codes only after the user has MFA enrolled. Codes are shown once and should be saved somewhere private.",
+      "If a user loses a phone, try a recovery code first. If that fails, a System Administrator can reset MFA factors from Account Security with a written reason.",
+      "Keep MFA enforcement off until at least one owner and one System Administrator have enrolled, logged out, logged back in with MFA, and tested recovery.",
+      "Never disable MFA for every user just to fix one lost phone."
+    ]
+  },
+  {
+    "title": "Version 15.0.31 App Load Hotfix",
+    "group": "System Administrator",
+    "keywords": "v15 15.0.31 app load hotfix version mismatch system administrator locked out master admin env whoami",
+    "body": [
+      "15.0.31 fixes a startup crash from the 15.0.30 System Administrator access update so the app loads normally again.",
+      "System Administrator lockout now shows a plain-English access report instead of the generic page-not-available card. It shows the signed-in email, Firebase UID, frontend env match, server /api/whoami result, master-admin env status, custom claim status, and Firestore super-admin flag status.",
+      "The app now asks /api/whoami whether the server recognizes the account as Super Admin. This helps when MASTER_ADMIN_EMAIL is configured in Vercel server env but REACT_APP_MASTER_ADMIN_EMAIL was not set for frontend menu visibility.",
+      "System Administrator includes an Admin Access signal card that explains which authority source opened the tab: server master-admin env, Firebase custom claim, Firestore profile flag, or local profile state.",
+      "The 15.0.30 Super Admin diagnostics and the 15.0.29 question-mark helpers, menu-search cleanup, and backup troubleshooting manual remain included."
+    ]
+  },
+  {
+    "title": "System Administrator account is locked out after productization cleanup",
+    "group": "Access / Troubleshooting",
+    "keywords": "system administrator locked out master admin geoff master_admin_email react_app_master_admin_email superAdmin custom claim firestore isSuperAdmin",
+    "body": [
+      "Version 15.0.28 removed hardcoded personal-email master-admin fallbacks for public release readiness. That means every platform admin must come from real configuration instead of a baked-in email.",
+      "Fast rescue: set MASTER_ADMIN_EMAIL and MASTER_ADMIN_EMAILS in the correct Vercel environment. Preview/testing and Production are separate. Add the locked-out email and redeploy.",
+      "For the menu to show System Administrator before /api/whoami finishes, also set REACT_APP_MASTER_ADMIN_EMAIL for the same environment and redeploy. React env vars are baked into the browser build at deploy time.",
+      "Long-term fix: use Firebase custom claim superAdmin=true or Firestore users/{uid}.isSuperAdmin=true / systemAccess.superAdmin=true, granted from Access Control by an existing Super Admin.",
+      "If one admin email works and another does not, compare their Firestore profile flags, custom claims, and whether the email is included in MASTER_ADMIN_EMAILS."
+    ]
+  },
+  {
+    "title": "Why the automatic backup did not run",
+    "group": "Backups / Troubleshooting",
+    "keywords": "automatic backup did not run 53h ago stale backup cron preview production vercel scheduled",
+    "body": [
+      "Vercel Cron jobs are invoked from production deployments, not preview/testing deployments. If you are looking at a testing branch URL, the countdown is a plan, but the real scheduled call will not fire there.",
+      "For testing/Preview, use Run Backup Now because Vercel Cron only invokes production deployments. For production, open Vercel \u2192 Project \u2192 Deployments/Logs or Cron Jobs and confirm /api/firestore-backup ran near 9:00 UTC / 4:00 AM Central.",
+      "If production missed it, check CRON_SECRET, FIREBASE_SERVICE_ACCOUNT_KEY, FIREBASE_PROJECT_ID, FIREBASE_STORAGE_BUCKET, and whether the latest production deployment includes vercel.json with both backup cron routes.",
+      "If Run Backup Now works but automatic does not, the Firebase wiring is probably fine and the issue is scheduling, production deployment, cron auth, Vercel cron configuration, or the app being viewed on a Preview URL."
+    ]
+  },
+  {
+    "title": "Backup triage flow",
+    "group": "Backups / Troubleshooting",
+    "keywords": "backup triage last backup stale cron secret storage bucket firestore backup failed",
+    "body": [
+      "Step 1: Check Last Backup. Anything older than roughly 30 hours means the daily window was probably missed.",
+      "Step 2: Click Run Backup Now. If manual backup fails, read the toast/error and then open Vercel function logs for /api/firestore-backup.",
+      "Step 3: If manual works but automatic is stale, confirm the deployment is production and that Vercel Cron is listed for /api/firestore-backup and /api/firestore-backup-watchdog.",
+      "Step 4: Check Storage for backups/firestore/scheduled and backups/firestore/watchdog. If only manual backups exist, production cron is not firing.",
+      "Step 5: After a successful backup, verify document count, collection count, integrity status, Storage path, and restore-drill status before risky releases."
+    ]
+  },
+  {
+    "title": "CRON_SECRET troubleshooting",
+    "group": "Backups / Troubleshooting",
+    "keywords": "cron_secret authorization bearer vercel cron unauthorized backup route",
+    "body": [
+      "The backup route accepts Vercel Cron when the Authorization header matches Bearer CRON_SECRET.",
+      "If CRON_SECRET is missing from Vercel, the app may still show Configured incorrectly if you are checking a different environment. Confirm it is set in the production environment that actually runs cron.",
+      "If you rotate CRON_SECRET, redeploy after editing env vars. Old deployments keep old environment values.",
+      "If manual backup works but cron says unauthorized, compare the production env var scope and make sure the cron route is not protected by deployment auth or preview-only settings."
+    ]
+  },
+  {
+    "title": "Backup integrity failed",
+    "group": "Backups / Troubleshooting",
+    "keywords": "backup integrity failed gzip checksum sha json storage round trip",
+    "body": [
+      "Do not restore from a backup marked failed unless you have manually inspected it.",
+      "Run Backup Now again. A second good backup is safer than debugging a bad archive during a customer emergency.",
+      "Open Storage and confirm the file exists under backups/firestore and ends in .json.gz.",
+      "Use Backup Center download to confirm the file can be downloaded. If download works but integrity fails, check gzip/contentEncoding metadata and Vercel logs.",
+      "If multiple integrity failures occur, stop destructive changes and copy a forensic bundle before continuing."
+    ]
+  },
+  {
+    "title": "Restore drill monthly routine",
+    "group": "Backups / Restore Drill",
+    "keywords": "restore drill monthly safe test project backup verify recovery",
+    "body": [
+      "A backup is only trusted after you prove it can restore into a safe testing project.",
+      "Once per month, pick a recent backup, restore into a non-production Firebase project, confirm critical collections exist, then record the drill in Security Center.",
+      "Never run a drill directly into production. Use a test project and test Vercel environment.",
+      "Record who ran it, which backup path was used, whether counts matched, and any follow-up notes."
+    ]
+  },
+  {
+    "title": "System Administrator signal cards",
+    "group": "System Administrator / Help",
+    "keywords": "question marks signal cards command deck tooltip explain displays",
+    "body": [
+      "Click the small question mark on a metric or signal to see what it means, what makes it green/yellow/red, and where to go next.",
+      "Use the signal board as a first-response map: red means act now, amber means inspect soon, green means synchronized/healthy, and blue/purple usually means informational.",
+      "Question marks are support training wheels, not customer-facing help. They are intentionally inside System Administrator only."
+    ]
+  },
+  {
+    "title": "Platform status card",
+    "group": "System Administrator / Displays",
+    "keywords": "platform status needs attention monitoring clean action queue",
+    "body": [
+      "Platform summarizes the biggest risk queues: stale backups, permission blocks, missing owners, duplicate users, crashes, stale clients, and deployment readiness.",
+      "Click it to jump to the command overview and action queue.",
+      "If Platform is red, copy diagnostics before changing data so support has a before/after trail."
+    ]
+  },
+  {
+    "title": "Health card",
+    "group": "System Administrator / Displays",
+    "keywords": "health firestore latency api routes backup integrity diagnostics",
+    "body": [
+      "Health combines Firestore latency, API route readiness, backup integrity, and server diagnostics.",
+      "Run Refresh Health before blaming Firebase, Vercel, or the browser.",
+      "If API checks fail, open Vercel logs for the matching route and confirm environment variables are scoped to the deployment being tested."
+    ]
+  },
+  {
+    "title": "Manual presence card",
+    "group": "System Administrator / Displays",
+    "keywords": "manual presence live users online recent users snapshot cost reads",
+    "body": [
+      "Manual Presence uses an on-demand snapshot so the app does not constantly read online status for every customer.",
+      "Refresh only when troubleshooting live-user visibility, push repair, or shift accountability.",
+      "If only one person appears online, check browser visibility, service worker/presence heartbeat, and whether the user has opened the current workspace recently."
+    ]
+  },
+  {
+    "title": "Push opt-in card",
+    "group": "Push / Troubleshooting",
+    "keywords": "push opt in fcm tokens notifications not receiving device stale token",
+    "body": [
+      "Push Opt-In shows how many user profiles have usable push tokens.",
+      "Low opt-in usually means staff declined browser notifications, service worker registration failed, or tokens are stale after a deploy/domain change.",
+      "Use Push Control Center to send a test, request repair, clear stale tokens, and copy a reconnect link for the employee."
+    ]
+  },
+  {
+    "title": "Stale clients card",
+    "group": "Clients / Troubleshooting",
+    "keywords": "stale clients inactive 21 days customer no activity workspace dormant",
+    "body": [
+      "Stale Clients counts workspaces that look inactive for 21+ days.",
+      "Before changing billing or locking a customer, inspect their recent users, last active dates, audit logs, and support history.",
+      "A stale count can also mean lastActive is not being written correctly, so check presence/session updates before assuming a customer quit."
+    ]
+  },
+  {
+    "title": "Missing owner accounts",
+    "group": "Users / Troubleshooting",
+    "keywords": "missing owner account owner email no user doc auth firestore mismatch",
+    "body": [
+      "Missing Owner means a restaurant has an ownerEmail but no matching user profile in Firestore.",
+      "The owner may exist in Firebase Authentication but lack users/{uid}, or the owner email may be misspelled on the restaurant record.",
+      "Use Account Repair or create/link the correct user profile. Do not make a second ghost account unless you know the intended UID and workspace."
+    ]
+  },
+  {
+    "title": "Duplicate emails",
+    "group": "Users / Troubleshooting",
+    "keywords": "duplicate email auth profile user duplicate ghost account login wrong workspace",
+    "body": [
+      "Duplicate email groups are dangerous because the app may not know which profile owns permissions or restaurant routing.",
+      "Compare UIDs, restaurantId, membership records, and Auth user. Keep the correct active account and disable/archive the wrong profile only after taking notes.",
+      "If the user can log in but sees the wrong restaurant, duplicate profiles or workspace memberships are prime suspects."
+    ]
+  },
+  {
+    "title": "No restaurantId users",
+    "group": "Users / Troubleshooting",
+    "keywords": "no restaurantid orphan user cannot see data blank app no workspace",
+    "body": [
+      "A user without restaurantId or workspace membership may log in but see blank screens or wrong defaults.",
+      "Find the correct workspace, repair the profile, and confirm the user appears in Staff Roster/Workspace Members.",
+      "After repair, have the user log out and back in so cached session data refreshes."
+    ]
+  },
+  {
+    "title": "Permission denied fires",
+    "group": "Rules / Troubleshooting",
+    "keywords": "permission denied firestore rules blocked missing tab cannot save",
+    "body": [
+      "Permission denied means Firestore rules blocked a read or write. It is usually a rules/role mismatch, not a broken button.",
+      "Check which screen/action failed, the user role, restaurantId, workspace membership, and the exact collection path if logs show it.",
+      "For security-related changes, fix both the frontend permission check and Firestore rules. Hiding a button alone is not protection."
+    ]
+  },
+  {
+    "title": "MFA enrollment troubleshooting",
+    "group": "MFA / Troubleshooting",
+    "keywords": "mfa sms two step login enroll phone region unverified email recaptcha operation not allowed",
+    "body": [
+      "Email must be verified before Firebase lets a user enroll SMS MFA.",
+      "SMS MFA must be enabled in the same Firebase project used by the app. Browser Project and API/Admin Project should match in Account Security debug.",
+      "If Firebase blocks SMS setup, check SMS regions first. A missing United States region can cause operation-not-allowed even when MFA is enabled.",
+      "Use full phone format such as +19205551234. Test phone numbers use the fake code you configured in Firebase."
+    ]
+  },
+  {
+    "title": "MFA lost phone recovery",
+    "group": "MFA / Troubleshooting",
+    "keywords": "lost phone broken phone mfa reset recovery code backup phone",
+    "body": [
+      "Use recovery codes first when the user saved them. A used code is burned and cannot be reused.",
+      "If the user has a backup phone, enroll or challenge the backup factor.",
+      "If neither is available, a Super Admin can reset MFA factors after verifying the person in real life and entering a written reason.",
+      "The reset should create audit/security alerts. The user must immediately re-enroll a new MFA method after logging in."
+    ]
+  },
+  {
+    "title": "Account deletion request flow",
+    "group": "Privacy / Troubleshooting",
+    "keywords": "account deletion request app store privacy delete user customer request",
+    "body": [
+      "Account Deletion Request records a reviewable request instead of instantly destroying operational records.",
+      "Before approving, identify whether the person is an employee, owner, or platform admin. Owners may have workspace/business records that require retention or handoff.",
+      "Archive/export necessary payroll, scheduling, ledger, and audit records according to the restaurant policy before final deletion.",
+      "Document the action in audit logs and notify the requester when complete."
+    ]
+  },
+  {
+    "title": "App Check troubleshooting",
+    "group": "Security / Troubleshooting",
+    "keywords": "app check recaptcha enterprise enforce firebase blocked invalid token aud project mismatch",
+    "body": [
+      "Do not enforce App Check until login, Firestore, Storage uploads, scanners, reminders, push, and Security Center all work in testing.",
+      "Project mismatch errors usually mean the browser is using one Firebase project while Vercel Admin credentials use another.",
+      "The site key belongs to reCAPTCHA Enterprise for the matching project. Domains must be bare domains, no https, slash, or path.",
+      "Keep APP_CHECK_ENFORCE=false until all critical workflows pass on the same environment."
+    ]
+  },
+  {
+    "title": "Environment variable mismatch",
+    "group": "Deployment / Troubleshooting",
+    "keywords": "vercel env vars project mismatch firebase id token incorrect aud claim test prod",
+    "body": [
+      "If Firebase ID token aud says one project but API expects another, browser Firebase config and Vercel Admin credentials are mixed.",
+      "Testing can use the existing FIREBASE_SERVICE_ACCOUNT_KEY full JSON for the testing Firebase project. Production can use its own production service account when deployed there. Project-specific test/production key names are optional aliases, not required for testing.",
+      "Check Vercel variable scope: Production, Preview, Development, and branch-specific settings can differ.",
+      "After editing env vars, redeploy. Old deployments keep old values."
+    ]
+  },
+  {
+    "title": "Deployment failed with no obvious summary",
+    "group": "Deployment / Troubleshooting",
+    "keywords": "vercel deployment failed npm run build exited 1 no summary syntax error",
+    "body": [
+      "Open the failed deployment and check Build Logs. If the UI summary is empty, use Vercel build logs and inspect the latest commit for syntax changes.",
+      "Common causes in this app are unescaped apostrophes in strings, JSX tags not closed, accidental merge conflict text, or package/version mismatches.",
+      "Run a React/JSX parse check locally if possible before pushing a hotfix.",
+      "If only a help/manual string changed, check quotes first. Tiny apostrophe goblins can stop the whole build."
+    ]
+  },
+  {
+    "title": "Menu drawer search auto-filled",
+    "group": "Navigation / Troubleshooting",
+    "keywords": "hamburger menu search auto populated drawer search old query clears",
+    "body": [
+      "The drawer search is a convenience filter for tabs and support actions.",
+      "If the drawer opens with old text, clear the search and refresh. Version 15.0.31 resets drawer search on open/close so stale queries do not linger.",
+      "If it still appears, check whether a voice command or global search shortcut is sending text into the menu state."
+    ]
+  },
+  {
+    "title": "Invoice scanner troubleshooting",
+    "group": "AI Scans / Troubleshooting",
+    "keywords": "invoice scanner upload failed payload too large invalid json stuck spinner gemini",
+    "body": [
+      "If upload fails, check file size, type, Storage rules, and whether the file was compressed before upload.",
+      "If Gemini returns invalid JSON, use the raw scan review panel and retry with a clearer image or smaller PDF.",
+      "The scanner should not silently change inventory. Managers should review Stock Matcher, Raw Rows, Needs Review, quantities, pack sizes, and units before saving.",
+      "Version 15.0.48 recovers dense distributor lines such as “1 CS 4/10 LB ... CK522 CHICKEN WING ...” even when OCR places the entire product row into one text field.",
+      "If a genuine product still appears under Needs Review, click Move to Stock Matcher, then match it to inventory or mark it as a new item before approval.",
+      "If the route times out, check Vercel logs for /api/scan-invoice and Gemini API key/env vars."
+    ]
+  },
+  {
+    "title": "Menu Intelligence troubleshooting",
+    "group": "AI Scans / Troubleshooting",
+    "keywords": "menu intelligence confidence needs review approve skip ingredient inventory match unavailable menu item",
+    "body": [
+      "Confidence badges are hints, not permission to skip review.",
+      "Approve only ingredients that match real inventory rows. Skip or edit low-confidence rows.",
+      "If 86 alerts do not show menu impact, inspect approved menu links for that ingredient and add synonyms staff actually say.",
+      "Deleting an outdated menu scan should remove old menu-impact links so stale menus do not affect service."
+    ]
+  },
+  {
+    "title": "Voice Assistant Preview troubleshooting",
+    "group": "Voice / Troubleshooting",
+    "keywords": "voice assistant preview microphone beta permissions command wrong tab prep duplicate",
+    "body": [
+      "If voice does nothing, check browser microphone permission and whether the current device supports speech recognition.",
+      "Voice navigation must respect user permissions. If a user asks for a restricted tab, the app should block the action instead of routing there.",
+      "Prep voice should update matching prep rows instead of duplicating when there is a confident match, and mark-done voice commands should complete matching prep rows or recurring tasks without adding duplicates.",
+      "For bad voice parses, copy the original phrase into Report Problem so the parser can be trained around real kitchen wording."
+    ]
+  },
+  {
+    "title": "Staff cannot see a tab",
+    "group": "Permissions / Troubleshooting",
+    "keywords": "missing tab staff cannot see inventory financials schedule permissions role",
+    "body": [
+      "Check whether the module is enabled for the workspace and whether the user role/permissions allow it.",
+      "If the tab appears but data is blank, check restaurantId/workspace membership and Firestore rules.",
+      "Financials should be tightly restricted. Inventory, recipes, and schedule editing should follow role settings and owner selections.",
+      "Use Full Permissions Preview before changing a real customer's access."
+    ]
+  },
+  {
+    "title": "Clock in/out troubleshooting",
+    "group": "Time Clock / Troubleshooting",
+    "keywords": "clock in clock out stuck wrong status refresh geofence unscheduled punch tip declaration",
+    "body": [
+      "If a user says clock in/out is backwards, compare local cached user state to the latest timePunches record.",
+      "If geofence blocks or flags a punch, inspect device location permission, workspace address/GPS, radius, and clock-out status.",
+      "Open punches need manager review before payroll export. Long shifts, negative hours, and unscheduled punches should be corrected with a reason.",
+      "Tip declaration issues usually need role/user permission plus the active punch record checked."
+    ]
+  },
+  {
+    "title": "Schedule Builder troubleshooting",
+    "group": "Scheduling / Troubleshooting",
+    "keywords": "schedule builder cannot edit july publish overwrite duplicate shifts roles coverage targets",
+    "body": [
+      "Schedule Builder should use the same role source as Schedule Copilot and Staff Roster.",
+      "If a month cannot edit, check rescue protection flags, published/draft status, restored legacy shifts, and date filters.",
+      "If importing/recovering a month, run backup first, then overwrite the target month cleanly instead of layering duplicate shifts.",
+      "After publish, test employee view, next shift tile, full schedule, and notifications."
+    ]
+  },
+  {
+    "title": "Push notification troubleshooting",
+    "group": "Push / Troubleshooting",
+    "keywords": "push notifications stopped stale token test push fcm service worker android ios",
+    "body": [
+      "Check browser permission first. If it is denied, the app cannot force notifications on.",
+      "Stale tokens should be repaired through Push Control Center. Force-refresh only the affected user when possible.",
+      "A test push should report sent/failed counts. If route fails, check Vercel logs for /api/send-push and Firebase Admin credentials.",
+      "Users may need to reopen the app after service worker or domain changes."
+    ]
+  },
+  {
+    "title": "Customer onboarding troubleshooting",
+    "group": "Onboarding / Troubleshooting",
+    "keywords": "customer onboarding wizard first restaurant setup owner staff roles push mfa setup",
+    "body": [
+      "A new restaurant should complete name, owner, staff import, roles, schedule settings, notification setup, MFA setup for elevated users, first test push, and first backup.",
+      "If the owner cannot log in, check Auth user, Firestore user profile, ownerEmail on restaurant, workspace membership, and temporary password handoff.",
+      "Do not enable elevated-role MFA enforcement until the owner/Super Admin is enrolled and recovery is tested.",
+      "Create a review stamp after onboarding so support knows the setup was verified."
+    ]
+  },
+  {
+    "title": "When to use Report Problem",
+    "group": "Support / Troubleshooting",
+    "keywords": "report problem error bug support diagnostics screenshot device camera mic storage",
+    "body": [
+      "Use Report Problem when a major error toast appears, a scan fails, voice misreads a command, or a customer reports a broken workflow.",
+      "The report should include device diagnostics where possible, the screen name, what the user expected, what actually happened, and whether the issue repeats.",
+      "For customer support, ask for a screenshot only after collecting the app's own report so you do not lose technical clues."
+    ]
+  }
+];
+
 const TabGodMode = ({ appUser, addToast, setGhostTenant, setActiveTab }) => {  const [subTab, setSubTab] = useState('overview');
-  const [isCommandDeckOpen, setIsCommandDeckOpen] = useState(() => {
+  const [isCommandDeckOpen, setIsCommandDeckOpen] = useState(false);
+  const [isAdminNavOpen, setIsAdminNavOpen] = useState(() => {
     if (typeof window === 'undefined') return true;
     return window.matchMedia('(min-width: 1024px)').matches;
   });
@@ -2995,6 +3804,7 @@ const TabGodMode = ({ appUser, addToast, setGhostTenant, setActiveTab }) => {  c
   const [adminDataErrors, setAdminDataErrors] = useState({});
   const [backupCountdownTick, setBackupCountdownTick] = useState(Date.now());
   const [isBackupRunning, setIsBackupRunning] = useState(false);
+  const [isBackupWatchdogRunning, setIsBackupWatchdogRunning] = useState(false);
   const [backupRestorePath, setBackupRestorePath] = useState('');
   const [isBackupRestoring, setIsBackupRestoring] = useState(false);
   const [backupList, setBackupList] = useState([]);
@@ -3006,14 +3816,28 @@ const TabGodMode = ({ appUser, addToast, setGhostTenant, setActiveTab }) => {  c
   const [healthError, setHealthError] = useState('');
   const [isDiagnosticsRunning, setIsDiagnosticsRunning] = useState(false);
   const [lastDiagnosticsReport, setLastDiagnosticsReport] = useState(null);
+  const [openAiDiagnosticsResult, setOpenAiDiagnosticsResult] = useState(null);
+  const [openAiDiagnosticsError, setOpenAiDiagnosticsError] = useState('');
+  const [isOpenAiDiagnosticsLoading, setIsOpenAiDiagnosticsLoading] = useState(false);
   const [isScheduleReinjecting, setIsScheduleReinjecting] = useState(false);
   const [selectedClient, setSelectedClient] = useState(null);
   const [createdWorkspaceLogin, setCreatedWorkspaceLogin] = useState(null);
-  const [demoPlan, setDemoPlan] = useState('Pro');
+  const [demoPlan, setDemoPlan] = useState('smart_kitchen');
   const [demoRole, setDemoRole] = useState('manager');
   const defaultDemoFeatures = { published:true, schedule:true, events:true, ops:true, messages:true, prep:true, recipes:true, inventory:true, financials:true, team:true, maintenance:true, help:true };
   const [demoFeatures, setDemoFeatures] = useState(defaultDemoFeatures);
+  const [featureResolverFeature, setFeatureResolverFeature] = useState(FEATURE_KEYS.DAILY_CLOSE);
+  const [featureResolverUserId, setFeatureResolverUserId] = useState('owner');
   const [adminManualSearch, setAdminManualSearch] = useState('');
+  const [adminToolSearch, setAdminToolSearch] = useState('');
+  const [adminManualQuestion, setAdminManualQuestion] = useState('');
+  const [adminManualCategory, setAdminManualCategory] = useState('All');
+  const [selectedAdminArticleId, setSelectedAdminArticleId] = useState('');
+  const [trainingManualSearch, setTrainingManualSearch] = useState('');
+  const [trainingManualCategory, setTrainingManualCategory] = useState('All');
+  const [activeTrainingManualChapterId, setActiveTrainingManualChapterId] = useState(SYSTEM_TRAINING_MANUAL_CHAPTERS[0]?.id || '');
+  const [selectedTrainingManualChapterIds, setSelectedTrainingManualChapterIds] = useState(() => SYSTEM_TRAINING_MANUAL_CHAPTERS.map(chapter => chapter.id));
+  const [adminHelpModal, setAdminHelpModal] = useState(null);
   const [userCounts, setUserCounts] = useState({});
   const [totalInstalls, setTotalInstalls] = useState(0);
   const [presenceSnapshot, setPresenceSnapshot] = useState({ users: [], recentUsers: [], fetchedAt: '', windowMinutes: 15, livePresenceCount: 0, onlineCount: 0, recentCount: 0 });
@@ -3024,6 +3848,22 @@ const TabGodMode = ({ appUser, addToast, setGhostTenant, setActiveTab }) => {  c
   const [securityError, setSecurityError] = useState(''); 
   const [restoreDrillStatus, setRestoreDrillStatus] = useState(null);
   const [isRestoreDrillBusy, setIsRestoreDrillBusy] = useState(false);
+  const [accountDeletionRequests, setAccountDeletionRequests] = useState([]);
+  const [isAccountDeletionAdminBusy, setIsAccountDeletionAdminBusy] = useState(false);
+  const [isMasterAdminRepairing, setIsMasterAdminRepairing] = useState(false);
+  const [masterAdminRepairResult, setMasterAdminRepairResult] = useState(null);
+  const [geminiManualQuestion, setGeminiManualQuestion] = useState('');
+  const [geminiManualAnswer, setGeminiManualAnswer] = useState('');
+  const [geminiManualMeta, setGeminiManualMeta] = useState(null);
+  const [geminiManualError, setGeminiManualError] = useState('');
+  const [isGeminiManualLoading, setIsGeminiManualLoading] = useState(false);
+  const geminiManualRequestKeyRef = useRef({ signature: '', key: '' });
+  const [aiUsageRows, setAiUsageRows] = useState([]);
+  const [aiUsageMonth, setAiUsageMonth] = useState(() => new Date().toISOString().slice(0, 7));
+  const [aiUsageLoading, setAiUsageLoading] = useState(false);
+  const [aiUsageError, setAiUsageError] = useState('');
+  const [aiUsageLimitDrafts, setAiUsageLimitDrafts] = useState({});
+  const [aiUsageSavingId, setAiUsageSavingId] = useState('');
 
   const ROLE_MANAGER_ROLES = ['Owner', 'Super Admin', 'Admin', 'Manager', 'Kitchen Lead', 'Bartender', 'Server', 'Staff'];
   const ROLE_MANAGER_PERMISSIONS = [
@@ -3115,7 +3955,10 @@ const [editingRest, setEditingRest] = useState(null);
   useEffect(() => {
     if (typeof window === 'undefined') return undefined;
     const closeDeckOnSmallScreens = () => {
-      if (window.matchMedia('(max-width: 1023px)').matches) setIsCommandDeckOpen(false);
+      if (window.matchMedia('(max-width: 1023px)').matches) {
+        setIsCommandDeckOpen(false);
+        setIsAdminNavOpen(false);
+      }
     };
     closeDeckOnSmallScreens();
     window.addEventListener('orientationchange', closeDeckOnSmallScreens);
@@ -3198,13 +4041,42 @@ const [editingRest, setEditingRest] = useState(null);
     }
   };
 
+  const handleAccountDeletionAdminAction = async (request, action) => {
+    const label = action === 'review' ? 'mark this request as reviewing' : action === 'complete' ? 'mark this request complete' : 'deny this request';
+    const defaultNote = action === 'complete'
+      ? 'Verified identity, checked retention needs, completed export/anonymize/delete steps as required.'
+      : action === 'review'
+        ? 'Request accepted for administrator review.'
+        : '';
+    const notes = window.prompt(`Account deletion request for ${request.email || request.uid || request.id}.\n\nAdd an admin note to ${label}.`, defaultNote);
+    if (notes === null) return;
+    if (['complete', 'deny'].includes(action) && notes.trim().length < 8) {
+      addToast('More Detail Needed', 'Add a short note so the privacy audit trail is useful.');
+      return;
+    }
+    setIsAccountDeletionAdminBusy(true);
+    try {
+      const response = await secureFetch('/api/account-deletion-request', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: `admin-${action}`, targetUid: request.uid || request.id, adminNotes: notes })
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || data?.ok === false) throw new Error(data?.error || `Could not ${label}.`);
+      addToast('Account Deletion Updated', data.message || `Request marked ${data.status || action}.`);
+    } catch (err) {
+      addToast('Deletion Request Error', err.message || 'Could not update the account deletion request.');
+    } finally {
+      setIsAccountDeletionAdminBusy(false);
+    }
+  };
+
   const buildWorkspaceLoginText = (login) => login ? `Welcome to 86 Chaos!\n\nWorkspace: ${login.restaurantName}\nApp: https://app.86chaos.com\n\nOwner: ${login.ownerName}\nEmail: ${login.email}\nTemporary Password: ${login.password}\n\nThis temporary password is shown one time. Please log in and change it.` : '';
   const copyWorkspaceLogin = async (login) => { try { await navigator.clipboard.writeText(buildWorkspaceLoginText(login)); addToast('Copied', 'Workspace login info copied.'); } catch(e) { addToast('Copy Failed', 'Highlight and copy the login info manually.'); } };
   const printWorkspaceLogin = (login) => { const w = window.open('', '_blank'); if (!w) return addToast('Popup Blocked', 'Allow popups to print the login sheet.'); w.document.write(`<pre style="font-family:Arial,sans-serif;font-size:18px;white-space:pre-wrap;line-height:1.5">${buildWorkspaceLoginText(login).replace(/</g,'&lt;')}</pre>`); w.document.close(); w.focus(); w.print(); };
   const emailWorkspaceLogin = (login) => { window.location.href = `mailto:${login.email}?subject=${encodeURIComponent(`Your 86 Chaos OS: ${login.restaurantName}`)}&body=${encodeURIComponent(buildWorkspaceLoginText(login))}`; };
   const textWorkspaceLogin = (login) => { if (!login.phone) return addToast('No Phone', 'No owner phone number was entered.'); const smsChar = /iPad|iPhone|iPod/.test(navigator.userAgent) ? '&' : '?'; window.location.href = `sms:${login.phone}${smsChar}body=${encodeURIComponent(buildWorkspaceLoginText(login))}`; };
   const startDemoMode = (client, role = demoRole) => { if (!client?.id) return; setGhostTenant({ id: client.id, name: client.name, mode: 'demo', demoMode: { plan: demoPlan, role, features: demoFeatures } }); setSelectedClient(null); setActiveTab('published'); addToast('Demo Mode', `${role === 'employee' ? 'Employee' : 'Manager'} demo started. Use the banner to exit.`); };
-  const [forgeEventTitle, setForgeEventTitle] = useState(''); const [forgeEventDate, setForgeEventDate] = useState(getToday());
   const [userSearch, setUserSearch] = useState('');
   const [bulkDeleteEmails, setBulkDeleteEmails] = useState('');
   const [selectedBulkDeleteUserIds, setSelectedBulkDeleteUserIds] = useState([]);
@@ -3250,12 +4122,19 @@ const LEGACY_JULY_2026_SCHEDULE = [
   ];
 
 // Pricing & MRR States
-  const [tierPrices, setTierPrices] = useState({ Starter: 39, Pro: 99, Elite: 149, Enterprise: 199 });
+  const [tierPrices, setTierPrices] = useState(Object.fromEntries(CUSTOMER_PLAN_ORDER.map(id => [id, PLAN_DEFINITIONS[id].monthlyPrice])));
   const [isEditingPrices, setIsEditingPrices] = useState(false);
   
   // Live Banner States
   const [bannerTarget, setBannerTarget] = useState('ALL');
   const [bannerText, setBannerText] = useState('');
+  const [pushBroadcastTargetMode, setPushBroadcastTargetMode] = useState('workspace');
+  const [pushBroadcastWorkspaceId, setPushBroadcastWorkspaceId] = useState('');
+  const [pushBroadcastGroupKey, setPushBroadcastGroupKey] = useState('');
+  const [pushBroadcastTitle, setPushBroadcastTitle] = useState('86 Chaos Alert');
+  const [pushBroadcastBody, setPushBroadcastBody] = useState('');
+  const [pushBroadcastCritical, setPushBroadcastCritical] = useState(true);
+  const [isPushBroadcasting, setIsPushBroadcasting] = useState(false);
 
   const handlePushBanner = async (e) => {
     e.preventDefault();
@@ -3265,10 +4144,10 @@ const LEGACY_JULY_2026_SCHEDULE = [
     addToast('Deploying', 'Pushing banner to selected workspace(s)...');
     try {
       if (bannerTarget === 'ALL') {
-        const promises = restaurants.map(r => updateDoc(doc(db, "restaurants", r.id), { systemBanner: bannerText.trim() }));
+        const promises = restaurants.map(r => updateDoc(doc(db, "restaurants", r.id), { systemBanner: bannerText.trim(), systemBannerUpdatedAt: new Date().toISOString() }));
         await Promise.all(promises);
       } else {
-        await updateDoc(doc(db, "restaurants", bannerTarget), { systemBanner: bannerText.trim() });
+        await updateDoc(doc(db, "restaurants", bannerTarget), { systemBanner: bannerText.trim(), systemBannerUpdatedAt: new Date().toISOString() });
       }
       addToast('Success', 'Banner deployed successfully.');
       setBannerText('');
@@ -3280,10 +4159,10 @@ const LEGACY_JULY_2026_SCHEDULE = [
     addToast('Clearing', 'Removing banners...');
     try {
       if (bannerTarget === 'ALL') {
-        const promises = restaurants.map(r => updateDoc(doc(db, "restaurants", r.id), { systemBanner: null }));
+        const promises = restaurants.map(r => updateDoc(doc(db, "restaurants", r.id), { systemBanner: null, systemBannerUpdatedAt: null }));
         await Promise.all(promises);
       } else {
-        await updateDoc(doc(db, "restaurants", bannerTarget), { systemBanner: null });
+        await updateDoc(doc(db, "restaurants", bannerTarget), { systemBanner: null, systemBannerUpdatedAt: null });
       }
       addToast('Success', 'Banner(s) cleared.');
     } catch(err) { addToast('Error', err.message); }
@@ -3354,11 +4233,15 @@ const unsubAudit = onSnapshot(collection(db, 'auditLogs'), snap => {
        clearLoadError('restoreDrillStatus');
        setRestoreDrillStatus(docSnap.exists() ? { id: docSnap.id, ...docSnap.data() } : null);
     }, err => { setRestoreDrillStatus(null); noteLoadError('restoreDrillStatus', err); });
+    const unsubDeletionRequests = onSnapshot(collection(db, 'accountDeletionRequests'), snap => {
+       clearLoadError('accountDeletionRequests');
+       setAccountDeletionRequests(snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a,b) => new Date(b.updatedAt || b.requestedAt || 0) - new Date(a.updatedAt || a.requestedAt || 0)).slice(0, 100));
+    }, err => { setAccountDeletionRequests([]); noteLoadError('accountDeletionRequests', err); });
     const unsubOpsReview = onSnapshot(doc(db, 'system', 'operationsReview'), docSnap => {
        clearLoadError('operationsReview');
        setOperationsReview(docSnap.exists() ? { id: docSnap.id, ...docSnap.data() } : null);
     }, err => { setOperationsReview(null); noteLoadError('operationsReview', err); });
-    return () => { unsubRests(); unsubAdmins(); unsubUsers(); unsubCrashes(); unsubAudit(); unsubPricing(); unsubBackup(); unsubRestoreDrill(); unsubOpsReview(); };
+    return () => { unsubRests(); unsubAdmins(); unsubUsers(); unsubCrashes(); unsubAudit(); unsubPricing(); unsubBackup(); unsubRestoreDrill(); unsubDeletionRequests(); unsubOpsReview(); };
   }, []);
 
 
@@ -3401,16 +4284,48 @@ const unsubAudit = onSnapshot(collection(db, 'auditLogs'), snap => {
 // --- 1. TENANT MANAGEMENT & DEPLOYMENT ---
 
    const handleDeleteTenant = async (tenantId, tenantName) => {
-    if (prompt(`CRITICAL: Type "DELETE" to permanently remove the workspace registry for ${tenantName}. \n\nNOTE: You should use the 'Danger Zone' Nuke tool in the Manage menu first to wipe their underlying data.`) !== 'DELETE') {
+    if (prompt(`Type "DELETE" to schedule ${tenantName} for permanent deletion in 30 days.
+
+The workspace will be disabled now. The retention function will remove its data after the 30-day recovery window.`) !== 'DELETE') {
       return addToast('Aborted', 'Workspace deletion canceled.');
     }
 
-    addToast('Deleting', `Removing workspace ${tenantName}...`);
+    addToast('Scheduling Deletion', `Disabling ${tenantName} and starting the 30-day recovery window...`);
     try {
-      await deleteDoc(doc(db, "restaurants", tenantId));
-      addToast('Deleted', `${tenantName} has been permanently removed from the roster.`);
+      const deletedAt = Timestamp.now();
+      const deletionScheduledFor = Timestamp.fromMillis(deletedAt.toMillis() + (30 * 24 * 60 * 60 * 1000));
+      await updateDoc(doc(db, "restaurants", tenantId), {
+        isActive: false,
+        archived: true,
+        deleted_at: deletedAt,
+        deletionScheduledFor,
+        deletionStatus: 'scheduled',
+        deletedBy: appUser?.email || appUser?.id || 'system-administrator',
+        updatedAt: new Date().toISOString()
+      });
+      addToast('Deletion Scheduled', `${tenantName} is disabled and will be permanently deleted after 30 days unless restored.`);
     } catch (err) {
       addToast('Error', err.message);
+    }
+  };
+
+  const handleRestoreTenant = async (tenantId, tenantName) => {
+    if (!window.confirm(`Restore ${tenantName} and cancel its scheduled deletion?`)) return;
+    try {
+      await updateDoc(doc(db, "restaurants", tenantId), {
+        isActive: true,
+        archived: false,
+        deleted_at: deleteField(),
+        deletionScheduledFor: deleteField(),
+        deletionStatus: deleteField(),
+        deletedBy: deleteField(),
+        restoredAt: new Date().toISOString(),
+        restoredBy: appUser?.email || appUser?.id || 'system-administrator',
+        updatedAt: new Date().toISOString()
+      });
+      addToast('Workspace Restored', `${tenantName} is active again and will not be deleted.`);
+    } catch (err) {
+      addToast('Restore Failed', err.message);
     }
   };                 
 
@@ -3515,14 +4430,41 @@ Old clients cannot reveal their original creation time, so they will be marked a
       const restRef = doc(db, "restaurants", editingRest.id);
       const beforeSnap = await getDoc(restRef);
       const beforeData = beforeSnap.exists() ? beforeSnap.data() : {};
+      const rawSubscription = editingRest.subscription || {};
+      const resolvedDefaults = resolveSubscription(editingRest, appUser);
+      const selectedPlanId = normalizePlanId(rawSubscription.planId || editingRest.planId || resolvedDefaults.planId || 'smart_kitchen');
+      const selectedFutureTier = normalizePlanId(rawSubscription.selectedFutureTier || rawSubscription.futurePlanId || editingRest.selectedFutureTier || resolvedDefaults.selectedFutureTier || selectedPlanId);
+      const nowIso = new Date().toISOString();
+      const subscriptionPayload = {
+        planId: selectedPlanId,
+        selectedFutureTier,
+        status: rawSubscription.status || editingRest.subscriptionStatus || resolvedDefaults.status || 'beta',
+        isFounderBeta: rawSubscription.isFounderBeta ?? resolvedDefaults.isFounderBeta ?? true,
+        betaStartedAt: rawSubscription.betaStartedAt || resolvedDefaults.betaStartedAt || nowIso,
+        betaEndsAt: rawSubscription.betaEndsAt || resolvedDefaults.betaEndsAt || addDaysIso(nowIso, 60),
+        betaExtendedUntil: rawSubscription.betaExtendedUntil || resolvedDefaults.betaExtendedUntil || null,
+        founderDiscountPercent: Number(rawSubscription.founderDiscountPercent ?? resolvedDefaults.founderDiscountPercent ?? 50),
+        founderDiscountEndsAt: rawSubscription.founderDiscountEndsAt || resolvedDefaults.founderDiscountEndsAt || null,
+        billingProvider: rawSubscription.billingProvider || resolvedDefaults.billingProvider || 'none',
+        billingNotes: rawSubscription.billingNotes || resolvedDefaults.billingNotes || 'Backfilled by Master Admin plan hardening pass.',
+        integrationsLocked: true,
+        createdAt: rawSubscription.createdAt || beforeData.subscription?.createdAt || resolvedDefaults.createdAt || nowIso,
+        updatedAt: nowIso
+      };
       const updatePayload = {
         name: editingRest.name,
         ownerName: editingRest.ownerName,
         ownerEmail: editingRest.ownerEmail,
         ownerPhone: editingRest.ownerPhone,
         systemSettings: editingRest.systemSettings || {},
-        planType: editingRest.planType || 'Pro',
-        billingStatus: editingRest.billingStatus || 'Paid',
+        planId: subscriptionPayload.planId,
+        subscriptionStatus: subscriptionPayload.status,
+        billingStatus: subscriptionPayload.status === 'beta' ? 'Trial' : subscriptionPayload.status === 'past_due' ? 'Past Due' : 'Paid',
+        subscription: subscriptionPayload,
+        integrationsLocked: true,
+        isFounderBeta: subscriptionPayload.isFounderBeta,
+        founderDiscountPercent: subscriptionPayload.founderDiscountPercent,
+        founderDiscountEndsAt: subscriptionPayload.founderDiscountEndsAt || '',
         customPrice: editingRest.customPrice || '',
         trialDays: editingRest.trialDays !== undefined ? editingRest.trialDays : 14,
         isActive: editingRest.isActive ?? true,
@@ -3536,11 +4478,16 @@ Old clients cannot reveal their original creation time, so they will be marked a
         at: new Date().toISOString(),
         by: appUser?.email || appUser?.name || 'System Admin',
         summary: 'Workspace settings changed from System Administrator > Workspaces.',
-        before: { name: beforeData.name, ownerName: beforeData.ownerName, ownerEmail: beforeData.ownerEmail, ownerPhone: beforeData.ownerPhone, systemSettings: beforeData.systemSettings || {}, planType: beforeData.planType, billingStatus: beforeData.billingStatus, customPrice: beforeData.customPrice, trialDays: beforeData.trialDays, isActive: beforeData.isActive, isReadOnly: beforeData.isReadOnly, features: beforeData.features || {}, labs: beforeData.labs || {} },
+        before: { name: beforeData.name, ownerName: beforeData.ownerName, ownerEmail: beforeData.ownerEmail, ownerPhone: beforeData.ownerPhone, systemSettings: beforeData.systemSettings || {}, planId: beforeData.planId, planType: beforeData.planType, billingStatus: beforeData.billingStatus, subscription: beforeData.subscription || {}, customPrice: beforeData.customPrice, trialDays: beforeData.trialDays, isActive: beforeData.isActive, isReadOnly: beforeData.isReadOnly, features: beforeData.features || {}, labs: beforeData.labs || {} },
         after: cleanUpdatePayload
       });
       const existingHistory = Array.isArray(beforeData.settingsHistory) ? beforeData.settingsHistory.slice(-24) : [];
       await updateDoc(restRef, sanitizeForFirestore({ ...cleanUpdatePayload, settingsHistory: [...existingHistory, historyEntry] }));
+      const beforeSubText = JSON.stringify(resolveSubscription(beforeData, appUser));
+      const afterSubText = JSON.stringify(resolveSubscription(cleanUpdatePayload, appUser));
+      if (beforeSubText !== afterSubText) {
+        await logAudit(appUser, 'SUBSCRIPTION_PLAN_CHANGED', `restaurants/${editingRest.id}`, `Plan/subscription updated for ${editingRest.name || editingRest.id}. Before: ${beforeSubText.slice(0, 600)} After: ${afterSubText.slice(0, 600)}`);
+      }
       addToast('Saved', 'Client workspace configuration updated and history snapshot saved.');
       setEditingRest(null);
     } catch (err) {
@@ -3993,8 +4940,11 @@ Type DELETE to continue.`) || '').trim().toUpperCase();
          isReadOnly: false,
          features: { schedule: true, events: true, ops: true, messages: true, prep: true, recipes: true, inventory: true, sales: true, team: true, maintenance: true, timesheets: true, labor: true },
          labs: { laborProjection: true },
-         planType: 'Enterprise',
-         billingStatus: 'Paid',
+         planId: 'smart_kitchen',
+         selectedFutureTier: 'smart_kitchen',
+         subscriptionStatus: 'beta',
+         isFounderBeta: true,
+         integrationsLocked: true,
          createdAt: new Date().toISOString(),
          lastActive: new Date().toISOString(),
          systemSettings: { address: '123 Demo St', geofenceRadius: 300, overtime: 40, enableTargets: true, targetSales: 55000, targetLaborPct: 22.5 }
@@ -4150,9 +5100,9 @@ Type DELETE to continue.`) || '').trim().toUpperCase();
     }
   };
 
-  // --- 2. SYSTEM OPERATIONS & FORGE ---
+  // --- SYSTEM OPERATIONS ---
 
-  // --- 2. SYSTEM OPERATIONS & FORGE ---
+  // --- SYSTEM OPERATIONS ---
   const handleMegaphone = async (e) => {
     e.preventDefault(); 
     if(!broadcastMsg.trim()) return; 
@@ -4175,24 +5125,6 @@ Type DELETE to continue.`) || '').trim().toUpperCase();
     setBroadcastMsg('');
   };
 
- const handleForgePush = async (e, type) => {
-    e.preventDefault(); 
-    if(!window.confirm(`Push this ${type} to ALL clients globally?`)) return;
-    
-    addToast('Deploying', `Pushing ${type} to all shards...`);
-    let success = 0; let failed = 0;
-
-    for (const r of restaurants) {
-      try {
-        if (type === 'Event') await addDoc(collection(db, "events"), { type: 'special_event', date: forgeEventDate, title: forgeEventTitle.trim(), addedBy: '86 Chaos System', restaurantId: r.id });
-        success++;
-      } catch (err) { failed++; }
-    }
-    
-    if (failed > 0) addToast('Partial Deploy', `Pushed to ${success}, but failed on ${failed}.`);
-    else addToast('Forge Deployed', `${type} injected globally into ${success} databases.`);
-    setForgeEventTitle('');
-  };
 
                const handleTestPush = async () => {
     if (!window.confirm("Send a plain test notification to all opted-in devices in your workspace?")) return;
@@ -4291,7 +5223,9 @@ const handleRevokeAccess = async (user) => {
 // --- CALCULATIONS ---
   const mrr = restaurants.reduce((acc, r) => {
     if (r.customPrice !== undefined && r.customPrice !== '') return acc + parseFloat(r.customPrice);
-    return acc + (r.planType === 'Enterprise' ? 199 : r.planType === 'Elite' ? 149 : r.planType === 'Pro' ? 99 : r.planType === 'Starter' ? 49 : 0);
+    const resolved = resolveSubscription(r, appUser);
+    const def = getPlanDefinition(resolved.planId);
+    return acc + (resolved.status === 'active' ? (def.monthlyPrice || 0) : 0);
   }, 0);
   const timeAgo = (dateStr) => { if (!dateStr) return 'Never'; const days = Math.floor((Date.now() - new Date(dateStr).getTime()) / (1000 * 60 * 60 * 24)); if (days === 0) return 'Active Today'; if (days === 1) return 'Active Yesterday'; return `Inactive ${days} days`; };
 
@@ -4329,16 +5263,21 @@ const handleRevokeAccess = async (user) => {
     .map(r => parseAnyDate(r.lastWeeklyMaintenanceAt || r.weeklyMaintenance?.lastRunAt || r.weeklyMaintenance?.lastSuccessfulRunAt))
     .filter(Boolean)
     .sort((a,b) => b.getTime() - a.getTime())[0] || null;
-  const lastBackupDate = parseAnyDate(backupStatus?.lastBackupAt || backupStatus?.lastSuccessfulBackupAt || backupStatus?.lastExportAt || backupStatus?.lastRunAt) || latestWorkspaceMaintenance;
+  const lastActualBackupDate = parseAnyDate(backupStatus?.lastBackupAt || backupStatus?.lastSuccessfulBackupAt || backupStatus?.lastExportAt);
+  const lastBackupDate = lastActualBackupDate || parseAnyDate(backupStatus?.lastRunAt) || latestWorkspaceMaintenance;
   const backupAgeHours = lastBackupDate ? Math.round((Date.now() - lastBackupDate.getTime()) / 36e5) : null;
+  const actualBackupAgeHours = lastActualBackupDate ? Math.round((Date.now() - lastActualBackupDate.getTime()) / 36e5) : null;
   const backupRunning = backupStatus?.status === 'running';
-  const backupStatusLabel = backupRunning ? 'Running...' : (lastBackupDate ? `${Math.max(0, backupAgeHours)}h ago` : 'Not Reported');
-  const backupIsStale = !backupRunning && (!lastBackupDate || backupAgeHours > 7 * 24);
-  const backupDetail = backupStatus?.status === 'ok' && backupStatus?.documentCount ? `${backupStatus.documentCount} docs • ${backupStatus.collectionCount || 0} collections` : (backupStatus?.status || backupStatus?.lastStatus || (latestWorkspaceMaintenance ? 'weekly maintenance stamp' : 'No backup status doc'));
+  const backupStatusLabel = backupRunning ? 'Running...' : (lastActualBackupDate ? `${Math.max(0, actualBackupAgeHours)}h ago` : (lastBackupDate ? `${Math.max(0, backupAgeHours)}h ago` : 'Not Reported'));
+  const backupMissedDailyWindow = !backupRunning && (!lastActualBackupDate || actualBackupAgeHours > 30);
+  const backupIsStale = backupMissedDailyWindow;
+  const backupDetail = backupStatus?.status === 'ok' && backupStatus?.documentCount ? `${backupStatus.documentCount} docs • ${backupStatus.collectionCount || 0} collections` : (backupStatus?.status || backupStatus?.lastStatus || (latestWorkspaceMaintenance ? 'weekly maintenance stamp only' : 'No backup status doc'));
   const restoreDrillDate = parseAnyDate(restoreDrillStatus?.lastDrillAt || restoreDrillStatus?.updatedAt);
   const restoreDrillAgeDays = restoreDrillDate ? Math.floor((Date.now() - restoreDrillDate.getTime()) / 86400000) : null;
   const restoreDrillStale = !restoreDrillDate || restoreDrillAgeDays > 35 || ['failed', 'needs_followup'].includes(String(restoreDrillStatus?.status || '').toLowerCase());
   const restoreDrillLabel = restoreDrillDate ? `${restoreDrillAgeDays}d ago` : 'Not recorded';
+  const activeAccountDeletionRequests = accountDeletionRequests.filter(req => ['requested', 'reviewing'].includes(String(req.status || '').toLowerCase()));
+  const completedAccountDeletionRequests = accountDeletionRequests.filter(req => ['completed', 'denied', 'canceled'].includes(String(req.status || '').toLowerCase())).slice(0, 8);
   const getNextAutoBackupDate = () => {
     const explicit = parseAnyDate(backupStatus?.nextBackupAt || backupStatus?.nextScheduledAt || backupStatus?.nextRunAt);
     if (explicit && explicit.getTime() > backupCountdownTick) return explicit;
@@ -4360,18 +5299,36 @@ const handleRevokeAccess = async (user) => {
   const nextAutoBackupDate = getNextAutoBackupDate();
   const nextBackupCountdown = backupRunning ? 'running now' : formatCountdown(nextAutoBackupDate.getTime() - backupCountdownTick);
   const nextBackupLocalTime = nextAutoBackupDate.toLocaleString([], { weekday: 'short', hour: 'numeric', minute: '2-digit', timeZoneName: 'short' });
-  const backupCommandDeckDetail = `${backupDetail} • Next: ${nextBackupCountdown}`;
+  const backupWatchdogDetail = backupStatus?.lastWatchdogResult ? `Watchdog: ${backupStatus.lastWatchdogResult}` : 'Watchdog fallback scheduled for production';
+  const backupCommandDeckDetail = `${backupDetail} • Next: ${nextBackupCountdown} • ${backupWatchdogDetail}`;
   const filteredBackupList = backupList.filter(b => backupListFilter === 'all' || b.mode === backupListFilter);
+  const envReport = typeof window !== 'undefined' ? {
+    host: window.location.host,
+    path: window.location.pathname,
+    online: navigator.onLine,
+    serviceWorker: 'serviceWorker' in navigator,
+    indexedDb: 'indexedDB' in window,
+    notifications: typeof Notification !== 'undefined' ? Notification.permission : 'unsupported',
+    storageUser: !!(localStorage.getItem('86chaosUser') || sessionStorage.getItem('86chaosUser')),
+    userAgent: navigator.userAgent
+  } : { host: 'server', online: false, serviceWorker: false, indexedDb: false, notifications: 'unknown', storageUser: false, userAgent: 'unknown' };
+  const isPreviewLikeHost = /-git-|localhost|127\.0\.0\.1|testing|preview/i.test(String(envReport.host || ''));
+  const autoBackupEnvironmentNote = isPreviewLikeHost
+    ? 'Preview/testing deployments do not receive Vercel Cron invocations. Use Run Backup Now in testing; verify automatic scheduled backups on production. 15.0.48 keeps the retention system, project-aware Firebase routing, the readable dark Admin Console, and adds invoice product-row recovery.'
+    : 'Production cron should call /api/firestore-backup daily at 9:00 UTC / 4:00 AM Central when the production deployment is live.';
+  const backupTroubleshootingSummary = backupMissedDailyWindow
+    ? `${autoBackupEnvironmentNote} Check Vercel Cron logs, CRON_SECRET, Firebase Admin credentials, and Storage bucket if production is stale.`
+    : autoBackupEnvironmentNote;
 
   // --- NEW SAAS HEALTH METRICS ---
-const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length;
-  const paidWorkspaces = restaurants.filter(r => r.billingStatus === 'Paid').length;
+const activeTrials = restaurants.filter(r => resolveSubscription(r, appUser).status === 'beta').length;
+  const paidWorkspaces = restaurants.filter(r => resolveSubscription(r, appUser).status === 'active').length;
   const dau = allUsers.filter(u => u.lastActive && Math.floor((Date.now() - new Date(u.lastActive).getTime()) / 86400000) === 0).length;
   const stickyRate = allUsers.length > 0 ? ((dau / allUsers.length) * 100).toFixed(0) : 0;
 
   // --- NEW INFRASTRUCTURE & FINANCIAL METRICS ---
   const arpa = paidWorkspaces > 0 ? (mrr / paidWorkspaces).toFixed(2) : 0;
-  const trialPipelineValue = activeTrials * (tierPrices.Pro || 99); 
+  const trialPipelineValue = activeTrials * (tierPrices.smart_kitchen || PLAN_DEFINITIONS.smart_kitchen.monthlyPrice || 179); 
   const crashes24h = crashLogs.filter(log => (Date.now() - new Date(log.time||0).getTime()) < 86400000).length;
   const pushOptInRate = allUsers.length > 0 ? ((allUsers.filter(u => u.fcmToken).length / allUsers.length) * 100).toFixed(0) : 0;
   const apiConnectedCount = restaurants.filter(r => r.integrations?.posProvider || r.integrations?.payrollProvider).length;
@@ -4434,9 +5391,9 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
   const selectedClientPushEnabled = selectedClientUsers.filter(u => !!u.fcmToken).length;
   const selectedClientGpsKnown = selectedClientUsers.filter(u => u.gpsPermission || u.deviceDiagnostics?.gpsPermission).length;
 
-  const pastDueWorkspaces = restaurants.filter(r => r.billingStatus === 'Past Due');
+  const pastDueWorkspaces = restaurants.filter(r => resolveSubscription(r, appUser).status === 'past_due' || r.maintenanceMode === true);
   const readOnlyWorkspaces = restaurants.filter(r => r.isReadOnly);
-  const trialWorkspaces = restaurants.filter(r => r.billingStatus === 'Trial');
+  const trialWorkspaces = restaurants.filter(r => resolveSubscription(r, appUser).status === 'beta');
   const adminUsers = allUsers.filter(u => u.isAdmin || u.isSuperAdmin);
   const inactiveUsers = allUsers.filter(u => {
     const last = getLastActiveMs(u);
@@ -4453,17 +5410,21 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
   }, {})).filter(([, group]) => group.length > 1);
   const usersMissingPush = allUsers.filter(u => !u.fcmToken);
   const permissionDeniedLogs = crashLogs.filter(log => `${log.message || ''} ${log.stack || ''}`.toLowerCase().includes('permission-denied'));
-  const endpointList = ['admin-access', 'whoami', 'security-diagnostics', 'firestore-backup', 'list-backups', 'weekly-maintenance', 'dispatch-reminders', 'deploy-tenant', 'delete-user', 'delete-users-bulk', 'brand-logo', 'storage-doctor', 'schema-doctor', 'backup-preview', 'safe-write', 'scan-invoice', 'scan-menu', 'send-push', 'send-schedule-alert', 'presence-heartbeat', 'presence-snapshot', 'push-token-repair', 'staff-member', 'voice-command', 'alerts', 'health-checks', 'account-deletion-request', 'restore-drill', 'mfa-recovery-code'];
-  const envReport = typeof window !== 'undefined' ? {
-    host: window.location.host,
-    path: window.location.pathname,
-    online: navigator.onLine,
-    serviceWorker: 'serviceWorker' in navigator,
-    indexedDb: 'indexedDB' in window,
-    notifications: typeof Notification !== 'undefined' ? Notification.permission : 'unsupported',
-    storageUser: !!(localStorage.getItem('86chaosUser') || sessionStorage.getItem('86chaosUser')),
-    userAgent: navigator.userAgent
-  } : { host: 'server', online: false, serviceWorker: false, indexedDb: false, notifications: 'unknown', storageUser: false, userAgent: 'unknown' };
+  const endpointList = ['admin-access', 'master-admin-repair', 'whoami', 'security-diagnostics', 'firestore-backup', 'list-backups', 'weekly-maintenance', 'dispatch-reminders', 'deploy-tenant', 'delete-user', 'delete-users-bulk', 'brand-logo', 'storage-doctor', 'schema-doctor', 'backup-preview', 'safe-write', 'scan-invoice', 'scan-menu', 'ai-usage', 'send-push', 'send-schedule-alert', 'presence-heartbeat', 'presence-snapshot', 'push-token-repair', 'staff-member', 'voice-command', 'alerts', 'health-checks', 'account-deletion-request', 'restore-drill', 'mfa-recovery-code'];
+
+  const adminAccessSourceLabel = appUser?.serverAdminCheck?.serverMasterAdminMatched ? 'Server env' :
+    appUser?.serverAdminCheck?.customClaimSuperAdmin ? 'Custom claim' :
+    appUser?.serverAdminCheck?.firestoreSuperAdmin ? 'Firestore flag' :
+    appUser?.isSuperAdmin ? (appUser?.superAdminAccessSource || 'Profile flag') : 'Unknown';
+  const adminAccessDetail = appUser?.serverAdminCheck?.masterAdminEnvConfigured
+    ? `${appUser.serverAdminCheck.masterAdminEmailCount || 1} master email(s) configured`
+    : 'Check MASTER_ADMIN_EMAIL(S) and REACT_APP_MASTER_ADMIN_EMAIL';
+  const currentAdminEmailKey = String(appUser?.email || '').toLowerCase().trim();
+  const currentAdminProfile = currentAdminEmailKey
+    ? allUsers.find(u => u.id === appUser?.id || String(u.email || '').toLowerCase().trim() === currentAdminEmailKey)
+    : null;
+  const currentAdminProfileMissing = Boolean(currentAdminEmailKey && (appUser?.isSuperAdmin === true || appUser?.serverAdminCheck?.superAdmin === true) && allUsers.length > 0 && !currentAdminProfile);
+
   const currentAdminSessionId = (() => {
     try { return sessionStorage.getItem('chaosSessionId') || ''; } catch (_) { return ''; }
   })();
@@ -4491,6 +5452,7 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
   ].join('\n');
 
   const adminRiskQueue = [
+    currentAdminProfileMissing ? { tone: 'red', title: 'Master admin profile missing', detail: `${appUser?.email || 'Current admin'} can enter System Administrator, but no Firestore users profile was found. Run Master Admin Repair before publishing hardened rules.`, jump: 'overview' } : null,
     crashes24h > 0 ? { tone: crashes24h > 10 ? 'red' : 'amber', title: 'Fresh crash reports', detail: `${crashes24h} crash/bug log(s) in the last 24 hours.`, jump: 'support' } : null,
     permissionDeniedLogs.length > 0 ? { tone: 'red', title: 'Permission denied errors', detail: `${permissionDeniedLogs.length} log(s) look like Firestore rule blocks.`, jump: 'support' } : null,
     pastDueWorkspaces.length > 0 ? { tone: 'amber', title: 'Maintenance-locked workspaces', detail: `${pastDueWorkspaces.length} workspace(s) are currently locked behind the maintenance screen.`, jump: 'tenants' } : null,
@@ -4498,7 +5460,7 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
     usersWithoutRestaurant.length > 0 ? { tone: 'amber', title: 'Users missing restaurantId', detail: `${usersWithoutRestaurant.length} user profile(s) cannot route correctly.`, jump: 'support' } : null,
     duplicateEmailGroups.length > 0 ? { tone: 'red', title: 'Duplicate user emails', detail: `${duplicateEmailGroups.length} duplicate email group(s) found.`, jump: 'support' } : null,
     pushOptInRate < 30 && allUsers.length > 0 ? { tone: 'amber', title: 'Low push adoption', detail: `${pushOptInRate}% of users have notification tokens.`, jump: 'users' } : null,
-    backupIsStale ? { tone: 'amber', title: 'Backup status stale', detail: `Last reported backup/maintenance: ${backupStatusLabel}.`, jump: 'health' } : null,
+    backupIsStale ? { tone: 'amber', title: 'Backup window missed', detail: `Last successful backup: ${backupStatusLabel}. ${isPreviewLikeHost ? 'Preview cron will not auto-run.' : 'Check production cron.'}`, jump: 'health' } : null,
     (backupStatus?.lastIntegrityStatus === 'failed' || backupStatus?.backupIntegrity?.status === 'failed') ? { tone: 'red', title: 'Backup integrity failed', detail: 'Latest backup did not pass Storage round-trip verification.', jump: 'health' } : null
   ].filter(Boolean);
   const platformStatus = adminRiskQueue.some(r => r.tone === 'red') ? 'Needs Attention' : adminRiskQueue.length ? 'Monitoring' : 'Clean';
@@ -4513,6 +5475,48 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
     lastTokenSyncMs: parsePresenceTimeMs(u.fcmTokenUpdatedAt || u.lastPushTokenSyncAt),
     pushStatus: !u.fcmToken ? 'missing token' : stalePushUsers.some(s => s.id === u.id) ? 'stale token' : (u.notificationPermission || u.pushTokenPermission || 'saved')
   })).sort((a,b) => (b.lastTokenSyncMs || 0) - (a.lastTokenSyncMs || 0));
+
+  const restaurantGroups = (() => {
+    const groups = new Map();
+    restaurants.forEach((restaurant) => {
+      const key = getRestaurantGroupKey(restaurant);
+      const label = getRestaurantGroupLabel(restaurant);
+      if (!groups.has(key)) groups.set(key, { key, label, restaurantIds: [], restaurantNames: [], tokenCount: 0, userCount: 0 });
+      const group = groups.get(key);
+      group.restaurantIds.push(restaurant.id);
+      group.restaurantNames.push(restaurant.name || restaurant.id);
+    });
+    const rows = Array.from(groups.values()).map((group) => {
+      const usersInGroup = allUsers.filter(u => group.restaurantIds.includes(u.restaurantId));
+      return {
+        ...group,
+        restaurantIds: [...new Set(group.restaurantIds.filter(Boolean))],
+        restaurantNames: [...new Set(group.restaurantNames.filter(Boolean))].sort((a,b) => a.localeCompare(b)),
+        userCount: usersInGroup.length,
+        tokenCount: usersInGroup.filter(u => !!u.fcmToken).length
+      };
+    });
+    return rows.sort((a,b) => a.label.localeCompare(b.label));
+  })();
+
+  const activePushWorkspaceId = pushBroadcastWorkspaceId || restaurants[0]?.id || '';
+  const activePushGroupKey = pushBroadcastGroupKey || restaurantGroups[0]?.key || '';
+  const selectedPushRestaurantIds = (() => {
+    if (pushBroadcastTargetMode === 'all') return restaurants.map(r => r.id).filter(Boolean);
+    if (pushBroadcastTargetMode === 'group') {
+      return (restaurantGroups.find(g => g.key === activePushGroupKey) || restaurantGroups[0] || { restaurantIds: [] }).restaurantIds;
+    }
+    return activePushWorkspaceId ? [activePushWorkspaceId] : [];
+  })();
+  const selectedPushRecipients = allUsers.filter(u => selectedPushRestaurantIds.includes(u.restaurantId));
+  const selectedPushTokenRecipients = selectedPushRecipients.filter(u => !!u.fcmToken);
+  const selectedPushGroup = restaurantGroups.find(g => g.key === activePushGroupKey) || restaurantGroups[0] || null;
+  const selectedPushWorkspace = restaurants.find(r => r.id === activePushWorkspaceId) || null;
+  const selectedPushTargetLabel = pushBroadcastTargetMode === 'all'
+    ? `All workspaces (${selectedPushRestaurantIds.length})`
+    : pushBroadcastTargetMode === 'group'
+      ? `${selectedPushGroup?.label || 'Selected group'} (${selectedPushRestaurantIds.length} workspace${selectedPushRestaurantIds.length === 1 ? '' : 's'})`
+      : `${selectedPushWorkspace?.name || 'Selected workspace'}`;
 
   const deploymentChecks = [
     { label: 'Firebase project ID', ok: !!firebaseConfig?.projectId, detail: firebaseConfig?.projectId || 'Missing browser Firebase project ID' },
@@ -4646,6 +5650,53 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
     } catch (err) { addToast('Push Error', err.message || 'Push test failed.'); }
   };
 
+  const handlePushBroadcastSubmit = async (event) => {
+    event.preventDefault();
+    const title = pushBroadcastTitle.trim();
+    const body = pushBroadcastBody.trim();
+    const restaurantIds = [...new Set(selectedPushRestaurantIds.filter(Boolean))];
+    if (!title) return addToast('Title Required', 'Add a short title for the push notification.');
+    if (!body) return addToast('Message Required', 'Add the message people should see on their device.');
+    if (!restaurantIds.length) return addToast('No Target', 'Choose a workspace or restaurant group first.');
+    if (!selectedPushTokenRecipients.length) return addToast('No Push Tokens', 'No users in that target currently have a connected push token.');
+    const confirmation = `Send this push to ${selectedPushTargetLabel}?
+
+Connected devices: ${selectedPushTokenRecipients.length}
+Users in target: ${selectedPushRecipients.length}
+
+${title}
+${body}`;
+    if (!window.confirm(confirmation)) return;
+    setIsPushBroadcasting(true);
+    try {
+      const response = await secureFetch('/api/send-push', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          restaurantId: restaurantIds[0],
+          restaurantIds,
+          targetMode: pushBroadcastTargetMode,
+          targetGroupKey: pushBroadcastTargetMode === 'group' ? pushBroadcastGroupKey : '',
+          targetGroupLabel: pushBroadcastTargetMode === 'group' ? selectedPushGroup?.label || '' : '',
+          title,
+          body,
+          type: 'admin-broadcast',
+          authorName: appUser?.name || appUser?.email || 'System Administrator',
+          isCritical: pushBroadcastCritical,
+          textContent: `${title} ${body}`
+        })
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok || result.error) throw new Error(result.error || `Push failed: ${response.status}`);
+      addToast('Push Sent', `${result.sentCount || 0} notification(s) sent across ${result.restaurantCount || restaurantIds.length} workspace(s). ${result.failedCount ? `${result.failedCount} failed.` : ''}`);
+      setPushBroadcastBody('');
+    } catch (err) {
+      addToast('Push Error', err.message || 'Could not send the selected restaurant group push.');
+    } finally {
+      setIsPushBroadcasting(false);
+    }
+  };
+
   const exportPushDiagnostics = () => {
     const report = { generatedAt: new Date().toISOString(), version: CURRENT_VERSION, pushOptInRate, totals: { users: allUsers.length, tokens: pushEnabledUsers.length, stale: stalePushUsers.length, missing: usersMissingPush.length }, rows: pushRows.map(u => ({ id: u.id, name: u.name, email: u.email, restaurantId: u.restaurantId, notificationPermission: u.notificationPermission || u.pushTokenPermission || '', hasToken: !!u.fcmToken, deviceCount: u.deviceCount, tokenHost: u.pushTokenHost || '', lastTokenSync: u.fcmTokenUpdatedAt || u.lastPushTokenSyncAt || null, pushStatus: u.pushStatus })) };
     downloadTextFile(`86chaos-push-diagnostics-${getToday()}.json`, JSON.stringify(report, null, 2), 'application/json;charset=utf-8;');
@@ -4719,15 +5770,41 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
     const targetRestaurants = maintenanceScope === 'global' ? restaurants : restaurants.filter(r => r.id === maintenanceRestaurantId);
     if (!targetRestaurants.length) return addToast('Missing Target', 'Choose a workspace or global scope.');
     if (!window.confirm(`Apply maintenance mode to ${targetRestaurants.length} workspace(s)? Super Admin remains able to enter.`)) return;
-    const payload = { billingStatus: 'Past Due', maintenanceMode: true, maintenanceAudience, maintenanceMessage, maintenanceStartsAt: maintenanceStartsAt || null, maintenanceEndsAt: maintenanceEndsAt || null, maintenanceUpdatedAt: new Date().toISOString(), maintenanceUpdatedBy: appUser?.email || appUser?.name || 'System Admin' };
+    const actor = appUser?.email || appUser?.name || 'System Admin';
+    const safeMessage = String(maintenanceMessage || '').trim() || '86 Chaos is down for maintenance. Please try again shortly.';
+    const safeAudience = maintenanceAudience || 'everyone_except_super_admin';
+    const payload = sanitizeForFirestore({
+      billingStatus: 'Past Due',
+      maintenanceMode: true,
+      maintenanceAudience: safeAudience,
+      maintenanceMessage: safeMessage,
+      maintenanceStartsAt: maintenanceStartsAt || null,
+      maintenanceEndsAt: maintenanceEndsAt || null,
+      maintenanceUpdatedAt: new Date().toISOString(),
+      maintenanceUpdatedBy: actor
+    });
     try {
       await Promise.all(targetRestaurants.map(async (r) => {
         const restRef = doc(db, 'restaurants', r.id);
         const beforeSnap = await getDoc(restRef);
         const beforeData = beforeSnap.exists() ? beforeSnap.data() : {};
-        const historyEntry = { type: 'maintenance_mode_enabled', at: new Date().toISOString(), by: appUser?.email || appUser?.name || 'System Admin', summary: 'Maintenance mode enabled from System Administrator.', before: { billingStatus: beforeData.billingStatus, maintenanceMode: beforeData.maintenanceMode, maintenanceMessage: beforeData.maintenanceMessage }, after: payload };
-        const existingHistory = Array.isArray(beforeData.settingsHistory) ? beforeData.settingsHistory.slice(-24) : [];
-        await updateDoc(restRef, { ...payload, settingsHistory: [...existingHistory, historyEntry] });
+        const historyEntry = sanitizeForFirestore({
+          type: 'maintenance_mode_enabled',
+          at: new Date().toISOString(),
+          by: actor,
+          summary: 'Maintenance mode enabled from System Administrator.',
+          before: {
+            billingStatus: beforeData.billingStatus ?? null,
+            maintenanceMode: beforeData.maintenanceMode ?? null,
+            maintenanceAudience: beforeData.maintenanceAudience ?? null,
+            maintenanceMessage: beforeData.maintenanceMessage ?? null,
+            maintenanceStartsAt: beforeData.maintenanceStartsAt ?? null,
+            maintenanceEndsAt: beforeData.maintenanceEndsAt ?? null
+          },
+          after: payload
+        });
+        const existingHistory = Array.isArray(beforeData.settingsHistory) ? beforeData.settingsHistory.slice(-24).map(h => sanitizeForFirestore(h)).filter(Boolean) : [];
+        await updateDoc(restRef, sanitizeForFirestore({ ...payload, settingsHistory: [...existingHistory, historyEntry] }));
       }));
       addToast('Maintenance Enabled', `${targetRestaurants.length} workspace(s) locked with maintenance message.`);
     } catch (err) { addToast('Maintenance Error', err.message || 'Could not enable maintenance mode.'); }
@@ -4737,15 +5814,39 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
     const targetRestaurants = maintenanceScope === 'global' ? restaurants : restaurants.filter(r => r.id === maintenanceRestaurantId);
     if (!targetRestaurants.length) return addToast('Missing Target', 'Choose a workspace or global scope.');
     if (!window.confirm(`Clear maintenance mode for ${targetRestaurants.length} workspace(s)?`)) return;
+    const actor = appUser?.email || appUser?.name || 'System Admin';
     try {
       await Promise.all(targetRestaurants.map(async (r) => {
         const restRef = doc(db, 'restaurants', r.id);
         const beforeSnap = await getDoc(restRef);
         const beforeData = beforeSnap.exists() ? beforeSnap.data() : {};
-        const clearPayload = { billingStatus: 'Paid', maintenanceMode: false, maintenanceClearedAt: new Date().toISOString(), maintenanceClearedBy: appUser?.email || appUser?.name || 'System Admin' };
-        const historyEntry = { type: 'maintenance_mode_cleared', at: new Date().toISOString(), by: appUser?.email || appUser?.name || 'System Admin', summary: 'Maintenance mode cleared from System Administrator.', before: { billingStatus: beforeData.billingStatus, maintenanceMode: beforeData.maintenanceMode, maintenanceMessage: beforeData.maintenanceMessage }, after: clearPayload };
-        const existingHistory = Array.isArray(beforeData.settingsHistory) ? beforeData.settingsHistory.slice(-24) : [];
-        await updateDoc(restRef, { ...clearPayload, settingsHistory: [...existingHistory, historyEntry] });
+        const clearPayload = sanitizeForFirestore({
+          billingStatus: 'Paid',
+          maintenanceMode: false,
+          maintenanceAudience: null,
+          maintenanceStartsAt: null,
+          maintenanceEndsAt: null,
+          maintenanceMessage: null,
+          maintenanceClearedAt: new Date().toISOString(),
+          maintenanceClearedBy: actor
+        });
+        const historyEntry = sanitizeForFirestore({
+          type: 'maintenance_mode_cleared',
+          at: new Date().toISOString(),
+          by: actor,
+          summary: 'Maintenance mode cleared from System Administrator.',
+          before: {
+            billingStatus: beforeData.billingStatus ?? null,
+            maintenanceMode: beforeData.maintenanceMode ?? null,
+            maintenanceAudience: beforeData.maintenanceAudience ?? null,
+            maintenanceMessage: beforeData.maintenanceMessage ?? null,
+            maintenanceStartsAt: beforeData.maintenanceStartsAt ?? null,
+            maintenanceEndsAt: beforeData.maintenanceEndsAt ?? null
+          },
+          after: clearPayload
+        });
+        const existingHistory = Array.isArray(beforeData.settingsHistory) ? beforeData.settingsHistory.slice(-24).map(h => sanitizeForFirestore(h)).filter(Boolean) : [];
+        await updateDoc(restRef, sanitizeForFirestore({ ...clearPayload, settingsHistory: [...existingHistory, historyEntry] }));
       }));
       addToast('Maintenance Cleared', `${targetRestaurants.length} workspace(s) restored.`);
     } catch (err) { addToast('Maintenance Error', err.message || 'Could not clear maintenance mode.'); }
@@ -4782,7 +5883,7 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
     try {
       const before = entry.before || {};
       const allowed = {};
-      ['name','ownerName','ownerEmail','ownerPhone','systemSettings','planType','billingStatus','customPrice','trialDays','isActive','isReadOnly','features','labs','branding'].forEach(key => { if (before[key] !== undefined) allowed[key] = before[key]; });
+      ['name','ownerName','ownerEmail','ownerPhone','systemSettings','planId','subscriptionStatus','subscription','integrationsLocked','isFounderBeta','founderDiscountPercent','founderDiscountEndsAt','billingStatus','customPrice','trialDays','isActive','isReadOnly','features','labs','branding'].forEach(key => { if (before[key] !== undefined) allowed[key] = before[key]; });
       if (!Object.keys(allowed).length) return addToast('No Restore Data', 'No supported fields were found in this snapshot.');
       const restRef = doc(db, 'restaurants', selectedHistoryWorkspace.id);
       const snap = await getDoc(restRef);
@@ -4823,6 +5924,32 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
   }, {})).sort((a,b) => b.endedMs - a.endedMs).slice(0, 12);
 
   const adminManualArticles = [
+    { title: 'Version 15.0.62 Voice Reminder Timing', group: 'System Administrator', keywords: 'v15 15.0.62 86voice remind me in 20 minutes remind me at 6pm reminders relative time shared reminders production retention firebase deletion setup', body: ['15.0.62 hardens 86Voice reminder timing. Personal reminder commands now understand relative timing such as “remind me in 20 minutes,” “remind me in 2 hours,” and “remind me after 1 day.”', 'Time-only commands such as “remind me at 6pm” now schedule the next matching time. If that time has already passed today, the app schedules it for tomorrow instead of creating an already-due reminder.', 'Reminder title cleanup was improved so “remind me tomorrow at 10 to call Performance” stores “call Performance,” while a bare timing command stores a simple “Reminder.”', 'Shared reminder parsing also supports timing before the task, such as “remind Sarah in 20 minutes to check hood filters.” Shared reminders still require permission, real workspace staff matching, and teammate confirmation.', 'Production Firebase retention setup is documented separately so the live side can use the same scheduled cleanup/deletion behavior that was tested on the testing side.'] },
+    { title: 'Version 15.0.61 86Voice Intelligent Commands', group: 'System Administrator', keywords: 'v15 15.0.61 86voice intelligent voice commands prep task done fuzzy matching 86 alert menu impact reminders shared undo audit permissions plan gates', body: ['15.0.61 hardens 86Voice into an intelligent kitchen command assistant. It preserves the existing voice workflow and adds central fuzzy matching, natural-language prep/task upserts, mark-done commands, 86 alerts, menu impact questions, status questions, shared reminders, recurring reminders, and safe undo.', 'Voice actions must pass the same plan gates, role permissions, workspace membership, and staff visibility rules as tapping through the app. Voice cannot expose financial, wage, admin, owner-only, integrations, or security data to a user who could not access that area normally.', 'Prep and task commands search existing rows first. High-confidence matches update or complete the existing row. Medium/ambiguous matches show a review picker. Low-confidence work becomes a new safe item only when the command is not high-risk.', '86 alert commands create alerts and can show affected menu items from approved Menu Intelligence dependency links. They do not edit inventory quantities. Missing dependencies should produce setup guidance, not fake impact data.', 'Shared reminders require assignment permission and use real workspace staff records. Personal reminders remain private. Recurring voice reminders are scheduled through the existing reminder dispatcher and advance after a successful push.', 'Undo is intentionally limited to safe recent voice actions such as created/updated prep, created/updated task, marked done, and reminder creation. Voice must not undo invoice approvals, menu scan approvals, payroll readiness, daily close signoff, plan/billing changes, admin/security settings, or integrations.', 'Audit logs should capture meaningful voice actions and blocked attempts with workspace, user, raw transcript, parsed intent, target record, old/new values where available, confidence, timestamp, and source voice.'] },
+    { title: 'Version 15.0.57 Desktop UI Refinement', group: 'System Administrator', keywords: 'v15 15.0.57 desktop pc ui polish density professional layout spacing cards tables modals drawer navigation', body: ['15.0.57 is a desktop UI refinement pass. It keeps all existing features and focuses on making the PC/laptop app feel like a polished professional operations platform instead of an oversized mobile screen.', 'The main app shell, header, date strip, content widths, cards, forms, buttons, tables, major work areas, modal panels, and drawer menu received desktop-only density and scanability adjustments.', 'Major screens such as Manager Brief, Kitchen Command Center, Financial Center, Time Clock & Schedule, Inventory, Menu Intelligence, Recipes, Reminders, Staff Roster, Settings, Help Center, HR & Training, and System Administrator keep their functionality. This is not a feature-removal pass.', 'Mobile and tablet layouts remain touch-friendly. Do not solve future desktop polish by making the entire app tiny. Use responsive spacing, reasonable max-widths, better grids, and clearer hierarchy first.'] },
+    { title: 'Version 15.0.56 Restaurant Group Push Broadcasts', group: 'System Administrator', keywords: 'v15 15.0.56 push notification center restaurant group broadcast selected workspace all workspaces tokens audit', body: ['15.0.56 adds a targeted push broadcast composer inside System Administrator → Push Control Center.', 'System Administrator can send a push notification to one workspace, a selected restaurant group, or all workspaces. The screen previews matching workspaces, users, and connected push tokens before sending.', 'Restaurant groups are resolved from workspace group fields such as restaurantGroupName, groupName, restaurantGroupId, branding/system settings group names, or owner email fallback. Keep group labels consistent on workspace records for clean targeting.', 'The server route validates access, allows multi-workspace/group sends only for internal System Administrator access, deduplicates device tokens, respects notification preferences and quiet hours unless marked critical, records the last result, and writes an audit log.', 'Use restaurant group targeting instead of All Workspaces whenever a message belongs to one customer group. Staff never see these internal send controls.'] },
+
+    { title: 'Version 15.0.55 Desktop Professional Density', group: 'System Administrator', keywords: 'v15 15.0.55 desktop pc density layout compact professional laptop spacing cards tables header', body: ['15.0.55 makes the PC/laptop interface feel less oversized while preserving phone and tablet comfort.', 'The desktop shell uses a wider main work surface, slimmer header, tighter date/title strip, lighter panel shadows, smaller card radii, and reduced desktop-only spacing around cards, buttons, forms, and tables.', 'This is a layout and usability pass only. It does not change Firebase rules, tier access, Founder Beta behavior, scan limits, roles, billing placeholders, or integration locks.', 'Text remains readable. Do not solve desktop density by making the app tiny; use spacing, width, card, and table adjustments first.'] },
+    { title: 'Version 15.0.54 Plans, Founder Beta, and Feature Gates', group: 'System Administrator', keywords: 'v15 15.0.54 plans tiers founder beta feature gates subscriptions scan limits billing integrations roles permissions audit', body: ['15.0.54 adds the centralized plan and feature access system for Shift, Operations, Smart Kitchen, Owner Pro, and internal Master Admin/System Admin access.', 'Every feature gate should resolve both workspace plan access and user role/permission access. Master Admin/System Admin can bypass plan locks for testing, but customer-facing tiers cannot access integrations yet.', 'Founder Beta workspaces run free during the active beta window. Default beta length is 60 days. A Master Admin/System Admin may extend the beta by 30 days, with a max intended 90-day beta. After beta, Founder Beta accounts display 50% off the selected future tier for 12 months.', 'Use System Administrator workspace plan controls to set selected future tier, start beta, extend beta, end beta, mark manual active, update founder discount dates, and review plan scan limits. Every subscription change should write an audit log.', 'Plan/subscription fields live on the workspace subscription object. Normal staff cannot edit plan fields, customer owners can view billing status, and only internal admin tools should alter subscription state until live billing exists.', 'Scan usage is enforced before expensive AI calls. Shift has no invoice/menu pages, Operations has 20 invoice and 3 menu pages, Smart Kitchen has 75 invoice and 10 menu pages, Owner Pro has 200 invoice and 25 menu pages, and internal testing accounts are exempt.', 'Integrations stay locked for all customer tiers. The customer screen must say integrations are coming soon and must not expose OAuth, API keys, provider setup, or unfinished integration tools.', 'All role-based features, including labor by role, scheduling, reports, exports, dashboards, and permissions, must use the owner custom Roster Roles from Preferences as the source of truth. Hardcoded role names are only legacy fallbacks when no custom roster roles exist.'] },
+    { title: 'Plan access troubleshooting', group: 'Plans & Billing', keywords: 'locked feature missing tab feature gate role permission plan troubleshooting direct url billing staff owner', body: ['When a user cannot see a feature, check four things in order: workspace plan, user role/permission, workspace module toggle, then direct Firestore rules access.', 'A hidden tab is not enough. Direct URL access should show the locked screen and backend rules/API checks should still reject disallowed reads, writes, scans, and integration tools.', 'Staff should not see billing controls. Owners and permitted admins may see Plan & Billing. System Administrator can inspect and change plan fields during manual beta and billing setup.', 'If a Founder Beta workspace appears locked unexpectedly, confirm subscription.isFounderBeta, subscription.status, betaEndsAt, betaExtendedUntil, selectedFutureTier, and manual feature overrides.', 'If scans fail, inspect aiUsage for the workspace/month/type, then check the plan scan limits and whether the user is an internal testing or bypass account.'] },
+    { title: 'Version 15.0.49 AI Page Limits and Invoice Noise Filtering', group: 'System Administrator', keywords: 'v15 15.0.49 ai usage scan limits page limits invoice menu monthly master admin bypass idempotency non food review', body: ['Invoice and Menu Intelligence scans are now counted by AI-processed pages per workspace and month instead of by scan count. Defaults are 40 invoice pages and 10 menu pages.', 'The scan routes verify PDF page counts before calling AI, reserve pages in a Firestore transaction, and use idempotency keys so simultaneous requests and duplicate clicks cannot double-count.', 'Configured Master Admin accounts can test beyond the limit. The server verifies the Firebase token email or trusted custom claim, logs every bypass, and never trusts a frontend environment variable or customer-controlled setting.', 'Open System Administrator → AI Usage / Scan Limits to review every workspace, page totals, submitted scans, bypass pages, failures, blocks, providers/models, recent events, and monthly limit overrides.', 'Invoice Scanner now separates obvious non-food supplies and document noise from food/product review. Publish the included Firestore rules so browser clients cannot edit aiUsage counters or limits. No Storage rules, indexes, or Firebase Functions deployment is required.'] },
+    { title: 'Version 15.0.48 Invoice Product Row Recovery', group: 'System Administrator', keywords: 'v15 15.0.48 invoice scanner skipped rows needs review dense distributor sysco pfg product row stock matcher', body: ['Invoice Scanner now inspects both the AI lineItems list and every allExtractedRows audit row. Valid product rows are recovered even when the entire distributor line arrives as one dense OCR string.', 'Rows beginning with a purchased quantity and unit such as 1 CS, 2 EA, or 3 PK are treated as likely products when they also contain a pack size, product code, description, or price. The scanner extracts those fields before Stock Matcher review.', 'The former Skipped Rows panel is now Needs Review. A manager can click Move to Stock Matcher on any genuine product the automatic classifier still cannot recognize.', 'Document rows such as taxes, totals, addresses, freight, fees, discounts, credits, payments, and signatures remain excluded from inventory.', 'No Firebase rules, Storage rules, indexes, or Cloud Functions deployment is required. Deploy the updated app and Vercel API routes, then rescan the invoice.'] },
+    { title: 'Version 15.0.44 Automated Data Retention and Compact Menu', group: 'System Administrator', keywords: 'v15 15.0.44 retention cleanup prep 86 alerts ai uploads time punches archive workspace delete restore cloud functions menu sections compact drawer', body: ['15.0.44 adds Firebase Cloud Functions that run every day to clean up old operational data. Prep items and 86 alerts are removed after 30 days. Raw Menu Intelligence and Invoice Scanner files are removed from Storage after 30 days.', 'Time punches leave the active Firestore database after 365 days. The function writes a compressed, verified archive file before deleting the active records. Archive files are deleted at the three-year mark.', 'System Administrator workspace deletion now starts a 30-day recovery window instead of instantly deleting the restaurant record. The workspace is disabled immediately. Use Restore beside a scheduled workspace before the deadline to cancel deletion.', 'The Firebase Functions are separate from Vercel. Open DATA_RETENTION_SETUP_15_0_44.md in the ZIP and follow the testing-project steps before production. RETENTION_ARCHIVE_BUCKET must be configured or the time-clock archive job safely stops without deleting source records.', 'The main app drawer is grouped into Account, Operations, Manager Tools, Management, and System. Button spacing is tighter, but the existing copper color system and permission filtering are unchanged.'] },
+    { title: 'Version 15.0.47 Project-Aware Backend and Dark Admin Console', group: 'System Administrator', keywords: 'v15 15.0.47 firebase project aware test production audience service account scanner push dark admin slate', body: ['Backend routes now read the Firebase project from the signed ID token and select matching server credentials instead of assuming cheers-34b8d.', 'Menu, invoice, and recipe scans verify tokens from either approved Firebase project. Menu and invoice scans can securely read the exact uploaded file from its Firebase download URL when a matching Admin credential is unavailable.', 'Push delivery and data-changing admin routes still require a matching service account. FIREBASE_SERVICE_ACCOUNT_KEY full JSON remains supported and is enough when it belongs to the active Firebase project. FIREBASE_TEST_SERVICE_ACCOUNT_KEY and FIREBASE_PRODUCTION_SERVICE_ACCOUNT_KEY are optional advanced aliases.', 'Security Diagnostics now reports the active token project and which credential source was selected, without displaying secrets.', 'System Administrator now uses a darker charcoal/slate professional palette with bright readable text while preserving the compact layout.', 'No Firestore rules, Storage rules, indexes, or retention-function deployment is required for this historical update. Redeploy Vercel after confirming the generic or project-specific Firebase Admin credential matches the active project.'] },
+    { title: 'Version 15.0.46 Professional Admin Console and Gemini Authorization Repair', group: 'System Administrator', keywords: 'v15 15.0.46 professional admin console complete redesign manual knowledge desk gemini cross project authorization retired calendar tool compact', body: ['System Administrator was rebuilt again as a compact professional console. Every admin page now uses the same flat light-surface design, smaller controls, tighter tables, restrained status colors, and clearer page framing.', 'The Administrator Manual is now a three-column Knowledge Desk with search and article navigation on the left, Gemini guidance and repair playbooks in the center, and the selected article on the right.', 'Gemini Manual cross-project verification now accepts the cryptographically verified 86 Chaos owner bootstrap identity when Preview environment variables are missing, while still limiting the exception to trusted Firebase projects and the Gemini Manual route.', 'The former global calendar tool was removed completely. Platform broadcasts and other protected operations remain in their existing sections.', 'No Firestore rules, Storage rules, indexes, or Firebase Functions need publishing for this visual/API repair. Redeploy Vercel to activate it.'] },
+    { title: 'Version 15.0.45 Remembered Alerts, Calm Admin Workspace, and Gemini Auth Repair', group: 'System Administrator', keywords: 'v15 15.0.45 alert dismissal seen alerts persistent banner warning admin redesign calm workspace organized gemini invalid audience chaos test production privacy policy', body: ['Dismissible warnings now save a seen-state for the signed-in user and active workspace. The app hides the exact alert after it is dismissed, including after refresh or sign-in.', 'Each alert has a fingerprint based on its real content or pending action set. A changed announcement, a new update version, a new push-repair state, or a changed set of time-off requests appears again automatically.', 'The pending time-off warning now has a clear close button. Workspace broadcasts, update notices, and push-repair notices use the same remembered-alert system.', 'System Administrator is now the Admin Workspace. The old always-visible cockpit board is gone. Start at the short priority list, use the six quick actions, or choose a section from the calmer left rail or mobile selector.', 'Gemini Manual now accepts a cryptographically verified Master Admin token from either chaos-test-d1601 or cheers-34b8d. This narrow fallback is only used for Gemini Manual and does not let testing requests operate production admin tools.', 'The Privacy Policy now documents AI processing, the automated retention schedule, legal holds, provider deletion delays, privacy requests, and restaurant responsibilities.', 'All existing tools remain available, including Gemini Manual continuation, OpenAI diagnostics guidance, backups, Security Center, Workspaces, People, Push, Support, retention controls, and Danger Zone confirmations.'] },
+    { title: 'Retention job troubleshooting', group: 'System Administrator', keywords: 'retention function failed cloud scheduler archive bucket missing index prep alerts uploads time punch workspace hard delete logs', body: ['First confirm the Firebase project is the correct testing or production project. Retention functions deploy to Firebase, not Vercel.', 'If time-clock archival fails with RETENTION_ARCHIVE_BUCKET missing, create the separate archive bucket, add its bucket name to functions/.env.<project-id>, and redeploy functions. The function does not delete time punches unless the archive upload is verified.', 'If Firestore reports that an index is required, deploy firestore.indexes.json with firebase deploy --only firestore:indexes and wait for the index to finish building.', 'Use Firebase Console → Functions to confirm each retention function is deployed, then Cloud Scheduler to confirm the daily job exists. Open Logs for the exact collection, file prefix, scanned count, deleted count, or failure message.', 'A scheduled workspace can be restored from System Administrator → Workspaces before 30 days. The hard-delete function removes restaurant-scoped Firestore documents, Storage files, membership data, and workspace-only Firestore profiles. It intentionally does not automatically delete Firebase Authentication identities.'] },
+    { title: 'Version 15.0.43 Safer Voice 86 and OpenAI Diagnostics', group: 'System Administrator', keywords: 'v15 15.0.43 voice 86 out of stock confirmation ambiguous item review openai diagnostics explain search event calendar', body: ['15.0.43 treats every voice 86 or out-of-stock command as a high-risk action. A strict inventory or Menu Intelligence match must be found, the user must confirm it, and the item is rechecked immediately before the alert is written.', 'Ambiguous voice matches now show a choose-item review instead of guessing. AI classification is never allowed to silently select an inventory record or send an 86 alert, and inventory quantities are never changed by an 86 command.', 'Health Dashboard now includes Explain with OpenAI for structured diagnostics repair guidance. The server route is Super Admin-only and redacts credentials, signed URLs, tokens, private keys, and personal contact fields before sending operational data.', 'System Administrator includes a desktop/mobile search for tools, sections, actions, and manual articles. The Event Calendar top heading now says Event Calendar instead of repeating the large month/date.'] },
+    { title: 'Version 15.0.42 Gemini Manual Completion Guard', group: 'System Administrator', keywords: 'v15 15.0.42 gemini manual assistant cut off max tokens continue answer incomplete finish reason system administrator', body: ['15.0.42 improves the Gemini-powered System Administrator Manual assistant so long answers are less likely to stop mid-sentence.', 'The server route now uses a larger output token budget, checks Gemini finish reasons, detects dangling endings, and automatically asks Gemini to continue when it hits the output limit.', 'If Gemini still appears cut off, the Manual panel shows a warning and a Continue Gemini Answer button so the Super Admin can finish the answer without starting over.', 'The Gemini response metadata now shows finish reason and auto-continuation count, which helps troubleshoot model output limits without exposing secrets or signed URLs.'] },
+    { title: 'Version 15.0.41 System Administrator Tool Reorganization', group: 'System Administrator', keywords: 'v15 15.0.41 system administrator reorganized categories recategorized navigation tool map left menu mobile groups', body: ['15.0.41 reorganizes the entire System Administrator into clearer tool neighborhoods: Start Here, Backup & Recovery, Security & Access, Workspaces & People, Support & Monitoring, Maintenance & Releases, and Platform Tools.', 'The left desktop rail, mobile picker, and overview Tool Map now use the same categories so the correct tools sit together instead of being scattered through one long command list.', 'Use Start Here for daily status and the AI Administrator Manual. Use Backup & Recovery before risky changes. Use Security & Access for lockouts, MFA, App Check, rules, and permission design. Use Workspaces & People for restaurants, clients, profiles, setup, and branding.', 'High-risk global tools now live under Platform Tools so they are easier to find when needed but less likely to be clicked while doing normal support work.'] },
+    { title: 'Version 15.0.40 System Administrator Mobile Usability', group: 'System Administrator', keywords: 'v15 15.0.40 mobile phone system administrator menu quick jump sticky nav touch friendly command deck', body: ['15.0.40 makes System Administrator easier to operate from a phone by adding a mobile command strip with critical status, section picker, and quick-jump chips for the most common admin tools.', 'The left Admin Menu still lives on the left side on desktop, but on phones it opens immediately under the System Administrator header instead of getting buried below the Command Deck.', 'Mobile admin buttons now have larger touch targets, shorter labels, and a two-column menu layout where space allows. The active section is easier to see and switching sections automatically closes the mobile menu.', 'The Command Deck stays available, but it no longer has to be the first thing you fight through on a mobile device. Use Show Info Board only when you need the full signal board.'] },
+    { title: 'Version 15.0.39 Gemini Manual Instruction Upgrade', group: 'System Administrator', keywords: 'v15 15.0.39 gemini manual assistant instructions step by step what to do system administrator support', body: ['15.0.39 improves the Gemini-powered System Administrator Manual assistant so answers are structured around what the issue means, where to go in System Administrator, what to click or check, how to verify success, what not to touch yet, and what needs separate Vercel/Firebase deployment.', 'The manual assistant now sends current admin context such as active admin section, backup freshness, health attention count, risky user count, and environment clues when available. It redacts secrets and signed URLs before sending context.', 'If Gemini fails or returns no useful text, the route now returns a local manual fallback answer from the matched playbook instead of leaving the admin with a dead panel.', 'Use Ask Gemini for troubleshooting guidance only. Do not paste service account JSON, raw tokens, private employee/customer information, or signed backup download URLs into the question.'] },
+    { title: 'Version 15.0.38 Diagnostics Cleanup and Admin Nav Top Rail', group: 'System Administrator', keywords: 'v15 15.0.38 diagnostics health checks api manifest signed urls backup watchdog admin menu left nav top rail', body: ['15.0.38 fixes the Health Checks API manifest so Vercel serverless packaging no longer makes every API route look missing.', 'Backup lists now omit signed download URLs by default so Full System Diagnostics exports do not leak temporary Storage links. Backup Center asks for signed URLs only when the download button needs them.', 'System Administrator now keeps the left Admin Menu pinned at the top of the desktop layout, while the Command Deck lives to the right instead of pushing the menu downward.', 'The backup cards now include a manual Check Watchdog Now control so a Super Admin can force the stale-backup watchdog check from the app after deploying.'] },
+    { title: 'Version 15.0.37 Gemini Manual and Backup Watchdog', group: 'System Administrator', keywords: 'v15 15.0.37 gemini system administrator manual assistant backup watchdog automatic backup cron vercel production preview', body: ['15.0.37 adds a Gemini-powered System Administrator Manual assistant. It answers from the matched manual articles/playbook through /api/gemini-admin-manual and requires GEMINI_API_KEY on the server.', 'The Gemini assistant is Super Admin only and keeps the API key on Vercel. It should be used for troubleshooting guidance, not for exposing customer records, service account JSON, signed backup URLs, or secrets.', 'Automatic backups still run from Vercel Cron on production. Preview and testing deployments do not receive Vercel Cron calls, so testing must use Run Backup Now.', 'A new /api/firestore-backup-watchdog route is scheduled as a production fallback. If the daily backup is stale, the watchdog triggers a catch-up backup using CRON_SECRET.', 'The backup route now stamps cron schedule headers and watchdog metadata into system/backupStatus so the Command Deck can show whether production cron actually hit the route.'] },
+    { title: 'Version 15.0.36 Master Admin Repair Verification', group: 'System Administrator', keywords: 'v15 15.0.36 master admin repair firestore users auth uid verified project mismatch placeholder env whoami', body: ['15.0.36 hardens Master Admin Self-Repair so /api/master-admin-repair writes users/{authUid} and immediately reads the document back to verify it exists.', 'The repair result now shows the Firebase project the API wrote to. If you are checking chaos-test-d1601 but the result shows cheers-34b8d, fix Vercel Firebase admin env vars and run repair again.', 'Invalid placeholder values such as SECOND_ADMIN_EMAIL_HERE are skipped and shown in the result instead of making a successful repair look failed.', 'After the row shows Verified: yes, log out and back in before publishing hardened Firestore rules so Firebase custom claims refresh.'] },
+    { title: 'Version 15.0.35 Administrator Layout Polish', group: 'System Administrator', keywords: 'v15 15.0.35 administrator layout left menu info board command deck mobile collapsible navigation', body: ['15.0.35 moves System Administrator section buttons from the top of the tab into a left-side admin menu on desktop.', 'On phones, the admin menu is collapsible. Tap Menu from the current-section bar to open it, then pick a section and the menu closes automatically.', 'The Command Deck / signal information board now sits above the main admin workspace and remains collapsible through Show Info Board / Hide Info Board.', 'This layout keeps troubleshooting signals visible at the top while leaving the actual tools easier to scan from the left rail.'] },
+    ...ADMIN_TROUBLESHOOTING_ARTICLES,
+    { title: 'Version 15.0.34 Master Admin Self-Repair', group: 'System Administrator', keywords: 'v15 15.0.34 master admin repair firestore users auth uid super admin custom claim rules lockout', body: ['15.0.34 adds a Master Admin Self-Repair button in System Administrator -> Overview.', 'The button calls /api/master-admin-repair and recreates missing Firestore users profiles for emails configured in MASTER_ADMIN_EMAIL or MASTER_ADMIN_EMAILS.', 'It also sets Super Admin profile flags and a Firebase custom claim. Log out and back in after running it so the new claim appears in the browser token.', 'Run this before publishing hardened Firestore rules if an admin email exists in Firebase Authentication but not in Firestore users.'] },
     { title: 'Version 15.0.28 Productization Cleanup', group: 'System Administrator', keywords: 'v15 15.0.28 public release productization hardcoded admin account deletion restore drill security center', body: ['15.0.28 removes hardcoded personal master-admin fallbacks from app and API checks. Use MASTER_ADMIN_EMAIL, MASTER_ADMIN_EMAILS, custom claims, or isSuperAdmin profile flags instead.', 'Account Security now includes an in-app account deletion request flow for app-store/privacy readiness. It records a request for admin review instead of silently deleting operational records.', 'Security Center now includes restore-drill readiness so backups are paired with monthly safe test restores into a non-production project.', 'Public wording was cleaned for old internal System Administrator and restaurant-specific labels.'] },
     { title: 'Version 15.0.27 Public-Readiness Security Polish', group: 'System Administrator', keywords: 'v15 15.0.27 recovery codes mfa lost phone security alerts voice preview security center', body: ['15.0.27 adds one-time recovery codes for MFA accounts. Save the codes after generating them because they are shown once.', 'The two-step login screen now has a recovery-code reset path for lost or broken phones. A used code is burned and cannot be reused.', 'When a System Administrator resets a user MFA factors, the app writes a security alert for the affected user and records the action in audit logs.', 'Account Security now shows a simple readiness status so owners know whether it is safe to turn on elevated-role MFA enforcement.', 'The voice control now says Voice Assistant Preview, and Security Center shows version and backup status tiles.'] },
     { title: 'Version 15.0.26 MFA Recovery & Safer Enforcement', group: 'System Administrator', keywords: 'v15 15.0.26 mfa recovery reset lost phone backup phone elevated roles enforcement', body: ['15.0.26 adds Super Admin MFA Recovery inside Account Security so a lost or broken phone can be handled without disabling MFA for everyone.', 'Recovery lets a Super Admin inspect a user MFA status, remove enrolled Firebase MFA factors, require a written reason, and write the action to audit logs.', 'Account Security now supports adding a backup SMS phone after the first factor is enrolled. MFA should be required for owners, managers, admins, and System Administrators when enforcement is on. Standard employees can enroll optionally.'] },
@@ -4879,7 +6006,7 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
     { title: 'Version 15.0.0 Kitchen Intelligence Release', group: 'System Administrator', keywords: 'v15 15.0.0 smart prep menu intelligence personal reminders cron firebase rules storage schedule past shifts invoice scanner invalid json gemini model fallback slice dice chop voice tomorrow friday', body: ['Smart prep matching now updates confident existing prep rows from typed or voice commands instead of creating duplicate prep tasks.', '86 Voice now recognizes kitchen prep phrasing such as slice tomato, dice onions, chop lettuce, thaw shrimp, portion ranch, and quantity/unit commands like 3 pans tomatoes.', 'Prep commands are day-aware: phrases like prep tomatoes for Friday, slice three tomato tomorrow, or prep ranch on 7/10 save to that target prep day and open Prep there.', 'Menu Intelligence adds owner-controlled menu scanning, reviewed inventory dependency links, zero-stock menu impact panels, and menu-impact text on 86 alerts.', 'My Reminders adds private user reminders with typed or voice creation and a protected /api/dispatch-reminders cron route.', 'My Schedule and Full Schedule now dim past shifts and completed day sections based on real shift end time, so old shifts no longer look active.', 'Menu Intelligence no longer depends on the retired gemini-1.5-flash default; it tries newer Gemini Flash models and tolerates common JSON formatting problems.', 'Invoice scanning now tolerates common Gemini JSON formatting problems like code fences, leading text, and trailing commas before failing the scan. Publish the included Firestore and Storage rules before production testing.'] },
     { title: '15.0.0 deployment checklist', group: 'System Administrator', keywords: '15.0.0 deploy firebase rules storage rules vercel env cron gemini reminders menu intelligence', body: ['Deploy the updated app through Vercel, then confirm public/version.json reports 15.0.0.', 'Publish the included firestore.rules in Firebase Firestore Rules and the included storage.rules in Firebase Storage Rules for the same Firebase project that the deployed app uses.', 'Confirm Vercel environment variables include the existing Firebase Admin credentials plus CRON_SECRET and GEMINI_API_KEY or GOOGLE_GENERATIVE_AI_API_KEY.', 'Confirm /api/scan-menu and /api/dispatch-reminders are live from System Administrator Health Dashboard after deploy.', 'Vercel Cron only runs on production deployments. The reminder dispatcher is scheduled every five minutes, which requires a Vercel plan that supports that cadence and the total number of cron jobs in vercel.json.'] },
     { title: 'Menu Intelligence operations', group: 'System Administrator', keywords: 'menu intelligence scan menu upload pdf image permissions owner menuDependencies menuIntelligenceScans storage rules', body: ['Menu Intelligence is visible to Super Admin, the account owner, and users granted Menu Intelligence access. Grant access from Settings → Branding → Settings Access.', 'The menu upload path is restaurant-scoped in Storage under {restaurantId}/menuUploads. If upload says unauthorized, publish storage.rules to the matching Firebase project.', 'The AI scanner returns review data only. Nothing becomes a live dependency until a permitted user reviews and approves the inventory matches.', 'Approved links save to menuDependencies and scan summaries save to menuIntelligenceScans. These records power zero-stock menu impact panels and 86 alert impact text. Recent scans can be edited or deleted by permitted Menu Intelligence users; deleting a scan removes its approved dependency links but leaves the original upload in secure Storage.', 'If scans fail, check GEMINI_API_KEY or GOOGLE_GENERATIVE_AI_API_KEY in Vercel and confirm /api/scan-menu can read Firebase Storage with the Admin service account.'] },
-    { title: 'Personal Reminders operations', group: 'System Administrator', keywords: 'personal reminders my reminders private cron dispatch reminders CRON_SECRET push tokens scheduled notifications concurrency transaction claim', body: ['My Reminders is private to the signed-in user. Firestore rules allow each user to read and write only their own personalReminders documents.', 'The /api/dispatch-reminders route is protected by CRON_SECRET. Vercel calls it on the production cron schedule; manual tests must send Authorization: Bearer CRON_SECRET.', 'The dispatcher transaction-claims each scheduled reminder before sending so overlapping cron/manual runs should not send the same reminder twice.', 'Reminder sends run with controlled concurrency instead of one slow sequential loop. Optional tuning variables are REMINDER_DISPATCH_QUERY_LIMIT and REMINDER_DISPATCH_CONCURRENCY.', 'Reminder pushes go only to the reminder owner using that user profile push token. If a reminder changes to no_push_token, the user needs to open the app and reconnect notifications on their own device.', 'The dispatcher writes dispatchKey and dispatchedAt so the same scheduled reminder is not sent twice. Delivery problems are recorded on the reminder document for troubleshooting.', 'If reminders do not fire, check Vercel production cron logs, CRON_SECRET, Firebase Admin credentials, whether the target user has a current fcmToken, and the dispatch response counts.'] },
+    { title: 'Personal Reminders operations', group: 'System Administrator', keywords: 'personal reminders my reminders private cron dispatch reminders CRON_SECRET push tokens scheduled notifications concurrency transaction claim', body: ['My Reminders is private to the signed-in user. Firestore rules allow each user to read and write only their own personalReminders documents.', 'The /api/dispatch-reminders route is protected by CRON_SECRET. Vercel calls it on the production cron schedule; preview/testing deployments need manual tests, and protected manual tests must send Authorization: Bearer CRON_SECRET.', 'The dispatcher transaction-claims each scheduled reminder before sending so overlapping cron/manual runs should not send the same reminder twice.', 'Reminder sends run with controlled concurrency instead of one slow sequential loop. Optional tuning variables are REMINDER_DISPATCH_QUERY_LIMIT and REMINDER_DISPATCH_CONCURRENCY.', 'Reminder pushes go only to the reminder owner using that user profile push token. If a reminder changes to no_push_token, the user needs to open the app and reconnect notifications on their own device.', 'The dispatcher writes dispatchKey and dispatchedAt so the same scheduled reminder is not sent twice. Delivery problems are recorded on the reminder document for troubleshooting.', 'If reminders do not fire, check Vercel production cron logs, CRON_SECRET, Firebase Admin credentials, whether the target user has a current fcmToken, and the dispatch response counts.'] },
     { title: 'Smart prep matching operations', group: 'System Administrator', keywords: 'smart prep duplicate prep voice typed matching quantity changed after completion', body: ['Typed prep and 86 Voice prep commands now use the same parser and matcher. Confident matches update quantity/unit on the existing prep row instead of adding a duplicate.', 'Commands like prep 2 pans onions and lettuce can create or update multiple prep rows. Commands with more or extra increment the matched quantity.', 'If a completed prep item gets its quantity changed later, the row keeps completion history and shows a QTY CHANGED badge so the kitchen can review it.', 'If matching is not confident, the app creates a new prep row. This is safer than overwriting the wrong task.', 'Prep writes still go through Safe Write Engine and Firestore tenant rules. Permission errors usually mean the user lacks Prep/Team/Admin access or firestore.rules was not published.'] },
     { title: '15.0.0 Firebase rules notes', group: 'System Administrator', keywords: 'firestore rules storage rules menu uploads reminders menu dependencies permissions firebase deploy production testing', body: ['Publish Firestore rules and Storage rules to every Firebase project that will run this build. If you maintain separate testing and main Firebase projects, each project needs the matching rules before testing that environment.', 'Firestore adds private personalReminders rules, owner-controlled menuIntelligenceScans rules, and tighter menuDependencies write access.', 'Storage adds the restaurant-scoped menuUploads path and multi-workspace-aware tenant matching.', 'Do not paste firebase.json into the Firebase console rules editor. Paste the contents of firestore.rules into Firestore Rules and the contents of storage.rules into Storage Rules.', 'If a rule publish is skipped, Menu Intelligence uploads/scans, private reminders, or approved dependency saves may fail with Missing or insufficient permissions.'] },
     { title: 'Version 14.0.10 Push and Workspace Wiring Audit', group: 'System Administrator', keywords: 'v14 14.0.10 push schedule alert workspace members repair stale token firebase host wiring', body: ['Push alerts and schedule publication alerts now resolve active staff through workspaceMembers as well as legacy user restaurant fields, so multi-restaurant employees receive alerts for the selected workspace.', 'Push Token Repair Center stale-token pruning now scans the same workspace-aware staff set before clearing and queueing reconnect repair.', 'Production Firebase Messaging host detection now covers app.86chaos.com, 86chaos.com, and www.86chaos.com so foreground tokens and the service worker use the same production project.'] },
@@ -4888,10 +6015,10 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
     { title: 'Version 14.0.8 Menu Workspace Switcher', group: 'System Administrator', keywords: 'v14 14.0.8 multi workspace drawer menu switch restaurant current workspace two jobs', body: ['The side menu now shows the active restaurant directly under the signed-in user name and role so employees can confirm which job they are in before clocking in or posting changes.', 'If the account has more than one active workspace, that restaurant line becomes a Change control that opens the workspace switcher without digging through the header.'] },
     { title: 'Version 14.0.4 Multi-Workspace Switcher', group: 'System Administrator', keywords: 'v14 14.0.4 multi workspace switcher multiple jobs tenant memberships staff roster presence heartbeat one login', body: ['86 Chaos now supports one Firebase login belonging to multiple restaurant workspaces through workspaceMembers membership records.', 'After login, employees with more than one active workspace choose which restaurant they are entering. The header also includes a Switch control when multiple workspaces are available.', 'Staff Roster can link an existing email to the current workspace instead of forcing duplicate accounts or resetting that person\'s password.', 'Removing a staff member removes only the current workspace membership. The Firebase Auth login stays active when the person still belongs to another restaurant.', 'Live Users and presence heartbeats are stored per workspace/user pair so activity from one job does not overwrite another job. Publish Firestore rules with this build.'] },
     { title: 'Version 14.0.2 Robustness Suite', group: 'System Administrator', keywords: 'v14 14.0.2 robustness safe write storage doctor schema doctor restore preview backup picker permission simulator import bridge offline queue release guardrails menu dependency graph', body: ['Open System Administrator → 14.0 Robustness Suite for the platform hardening tools.', 'Safe Write Engine centralizes permission checks, restaurantId enforcement, demo-mode blocking, audit logging, redacted before/after details, and offline queue support. In 14.0.2 it is wired into major kitchen forms: inventory, waste, prep, line checks, recipes, maintenance, Kitchen Command smart actions, Manager Brief quick actions, and menu dependency mapping.', 'Upload & Storage Doctor tests Firebase Admin credentials, target bucket, workspace lookup, and a real write/read/delete cycle before uploads are trusted.', 'Schema Doctor scans tenant records for missing restaurantId values, invalid dates, stale punches, negative inventory, old branding fields, and demo privacy hazards. Repair Safe Items only fixes repairable issues.', 'Restore Preview can load backups from Firebase Storage into a picker, preview a selected snapshot, count documents by collection, flag sensitive fields, and selectively restore chosen collections after typing RESTORE.', 'Permission Simulator previews visible and blocked tabs plus wage/forensics/backup access for a selected user.', 'Import Bridge downloads CSV templates for POS sales, payroll time, vendor invoices, and inventory counts.', 'Release Guardrails confirm version, 86 Chaos brand lock, demo privacy, Help Center public boundary, and rules packaging before deployment.', 'Kitchen Command Center Dependency Graph maps recipes/menu items to inventory items so low-stock inventory, prep signals, and 86 alerts can surface affected menu items more reliably.'] },
-    { title: 'Mandatory Tip Declaration reliability', group: 'Admin Tab Guide', keywords: 'tips mandatory declaration clock out payroll time clock settings schema doctor', body: ['Settings → Workspace → Labor & Payroll controls Mandatory Tip Declaration for the restaurant.', 'The setting is now a core time-clock control, not an Elite-only plan feature. When enabled, every employee clock-out opens Declare Tips before the punch closes.', 'Employees can enter 0 cash and 0 credit tips when they did not receive tips. The punch stores cashTips, creditTips, totalDeclaredTips, tipDeclarationRequired, tipDeclarationCompleted, tipDeclaredAt, and tipDeclarationVersion for payroll review.', 'Older restaurant documents that are missing systemSettings.tips default to enabled at runtime so employees do not bypass declaration. Schema Doctor flags missing tips settings as repairable and can stamp tips: true explicitly.', 'If a manager reports that the modal is not appearing, verify the workspace setting, refresh the employee device, and run Schema Doctor dry run for that workspace.'] },
+    { title: 'Mandatory Tip Declaration reliability', group: 'Admin Tab Guide', keywords: 'tips mandatory declaration clock out payroll time clock settings schema doctor', body: ['Settings → Workspace → Labor & Payroll controls Mandatory Tip Declaration for the restaurant.', 'The setting is now a core time-clock control, not a legacy tier-specific feature. When enabled, every employee clock-out opens Declare Tips before the punch closes.', 'Employees can enter 0 cash and 0 credit tips when they did not receive tips. The punch stores cashTips, creditTips, totalDeclaredTips, tipDeclarationRequired, tipDeclarationCompleted, tipDeclaredAt, and tipDeclarationVersion for payroll review.', 'Older restaurant documents that are missing systemSettings.tips default to enabled at runtime so employees do not bypass declaration. Schema Doctor flags missing tips settings as repairable and can stamp tips: true explicitly.', 'If a manager reports that the modal is not appearing, verify the workspace setting, refresh the employee device, and run Schema Doctor dry run for that workspace.'] },
     { title: 'Workspace geofence map lookup', group: 'Admin Tab Guide', keywords: 'workspace settings global config geofence find gps map lookup coordinates latitude longitude map service failed', body: ['Settings → Workspace → Global Config uses the Find GPS button to translate an address into latitude and longitude for the time-clock geofence.', 'Version 13.1.33 routes address lookup through /api/geocode-address so browsers are not solely responsible for reaching the public map service.', 'If the map service is unavailable, keep the saved latitude/longitude, enter coordinates manually, or click the map to set the geofence center. Version 13.1.34 makes the pin-drop map more resilient on desktop and mobile by forcing Leaflet size recalculation after the panel renders, adding a Refresh Map button, and rotating tile providers when tiles fail. A grey/slow tile map does not stop saved coordinates from enforcing the geofence.', 'For preview deployments, confirm api/geocode-address.js is present in Vercel. No Firebase rules are required for this route.'] },
     { title: 'Manual Presence Snapshot: how it works', group: 'Admin Tab Guide', keywords: 'manual presence snapshot live users online heartbeat reads writes super admin refresh', body: ['System Administrator → Live Activity no longer opens live Firestore listeners or runs a constant online scanner.', 'Regular staff and store managers do not see online status in Team. Only the Super Admin can press Refresh Snapshot in System Administrator.', 'Each user browser saves a low-frequency app-open presence check-in. The snapshot button reads livePresence once and shows check-ins from the recent window.', 'Because this favors low Firebase cost, it is an operational hint, not a perfect minute-by-minute surveillance tool.', 'If the snapshot fails, deploy the included API route and Firestore rules, then log out and back in so Super Admin claims refresh.'] },
-    { title: 'Dashboard / Command Deck: what the numbers mean', group: 'Admin Tab Guide', keywords: 'dashboard command deck metrics backup countdown action queue mrr crashes stale clients push adoption', body: ['Manual Presence counts recent app check-ins only after the Super Admin presses Refresh Snapshot; it does not run in the background.', 'Crashes shows recent crash reports and should be used with Support before editing code or rules.', 'Backup info shows the last backup and the countdown to the next automatic backup.', 'MRR, trial, stale client, push opt-in, and sticky-rate cards are operating signals, not accounting books. Use them to spot accounts that need attention.', 'The Administrator Action Queue is the shortest path to urgent problems. Click a card to jump to the relevant admin section.'] },
+    { title: 'Admin Workspace home: what the numbers mean', group: 'Admin Tab Guide', keywords: 'admin workspace home priority list quick actions metrics backup mrr crashes people workspaces', body: ['The Admin Workspace home intentionally shows only a short priority list, six quick actions, and four core numbers.', 'The priority list is the shortest path to urgent problems. Click a row to open the correct section.', 'Active workspaces, People, Crashes today, and Estimated MRR are operating signals, not accounting records.', 'Backup and Security summaries live in the three small cards at the top. Open their full sections for details.', 'Manual Presence still counts recent app check-ins only after the Super Admin presses Refresh Snapshot; it does not run in the background.'] },
     { title: 'Workspaces: what to use it for', group: 'Admin Tab Guide', keywords: 'clients workspace restaurant tenant modules billing demo users possess owner restaurant id plan tabs', body: ['Use Workspaces to manage restaurant/customer environments, not individual shifts or menu work.', 'The workspace drawer shows users, admin counts, online counts, push token adoption, GPS permission snapshots, enabled modules, plan/status state, and ownership clues.', 'Demo Manager and Demo Employee let you show a customer only selected tabs/features without saving real changes or exposing sensitive owner/customer data.', 'Support Edit is for correcting routing, roles, status, force password flags, and account metadata when a restaurant cannot self-fix it.', 'Possess Workspace or Possess User is for troubleshooting only. Exit Ghost/Demo mode when finished.'] },
     { title: 'People: what to use it for', group: 'Admin Tab Guide', keywords: 'users global accounts employee account search routing restaurant id support edit force password push token gps status', body: ['Use Users when the problem follows a person instead of a restaurant.', 'Check restaurantId first. A wrong restaurantId makes tabs/data look missing even when permissions are correct.', 'Check status, role, admin flags, custom permissions, forcePasswordChange, push token, GPS permission, and last heartbeat.', 'Use Support Edit only to correct account routing or support fields. Do not use it as a substitute for normal Staff Roster management when the restaurant can manage the employee themselves.', 'Use Possess to verify the exact experience after editing.'] },
     { title: 'Support: what each support tool means', group: 'Admin Tab Guide', keywords: 'support crashes permission denied raw inspector broadcast banner diagnostics user action telemetry', body: ['Crash reports show errors collected from the app and may include screen size, user agent, breadcrumbs, and stack details.', 'Permission-denied clues usually point to Firestore or Storage rule blocks. Check rules before assuming the UI is broken.', 'Raw Database Inspector lets a platform admin view a specific document by collection and document ID. Use it carefully and copy diagnostics before edits.', 'Broadcast Message sends a one-time message-style alert. Top-of-App Banner pins persistent text below the main header for selected workspaces or all workspaces.', 'Support should be used to diagnose and confirm before making risky changes in Operations or Forensics.'] },
@@ -4901,22 +6028,369 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
     { title: 'Support triage: user says something is missing', group: 'Troubleshooting', keywords: 'missing tab missing data blank cannot see permission restaurantId feature module', body: ['Search the user in System Administrator → People or open the client in Clients → Users.', 'Confirm the user belongs to the correct restaurant/workspace.', 'Check whether the client module is enabled, then check Staff Roster permissions inside the restaurant.', 'Possess the user only after checking the routing fields so you know whether it is a permission issue or missing data.'] },
     { title: 'Support triage: permission-denied or Ghost Mode blocked', group: 'Troubleshooting', keywords: 'permission denied firebase rules ghost possess blocked insufficient permissions', body: ['Open Support and check Permission Denied counts and crash reports.', 'Confirm your account is master admin or has superAdmin access under Grant Access.', 'If Ghost Mode loads the shell but data is blank, inspect Firestore rules and restaurantId routing.', 'Copy diagnostics before changing rules.'] },
     { title: 'Client user management from Workspaces', group: 'Clients', keywords: 'client users manage restaurant users support edit possess delete force logout notifications gps', body: ['Open System Administrator → Workspaces and click the workspace name or People button.', 'The workspace drawer shows all users, admins, online users, push tokens, GPS permission snapshots, modules, and status state.', 'Use Support Edit to move a user, update role/wage/status, or force password change.', 'Use Possess to verify exactly what that workspace or user sees.'] },
-    { title: 'Admin/Settings command-center upgrade', group: 'System Administrator', keywords: 'admin overview command center roles permissions push live presence setup wizard deployment readiness audit settings history import export maintenance branding danger zone', body: ['System Administrator is organized into Overview, Customer Operations, Support & Safety, Platform Settings, and Reference.', 'Command Center shows system status, active users, backup status, push health, recent admin actions, and deployment readiness on one landing page.', 'Permission & Role Manager is the platform guide for who should be able to edit staff, schedules, financials, inventory, recipes, diagnostics, and forensics. The Full Permissions Preview shows allowed screens, blocked screens, and sensitive-access flags for a selected user.', 'Push Control Center is where you troubleshoot tokens, browser permission, token freshness, per-user test pushes, repair flags, and push diagnostic exports.', 'Deployment Readiness should be run before production deploys. It gives READY TO DEPLOY or DO NOT DEPLOY YET with exact reasons.'] },
+    { title: 'Using the calm Admin Workspace', group: 'System Administrator', keywords: 'admin workspace overview priority list quick actions sections search mobile navigation organized calm', body: ['System Administrator now opens as the Admin Workspace. The home page shows only the short priority list, six common actions, four core numbers, and the organized admin areas.', 'Use the left rail on desktop or the section selector on mobile. Each page has a plain title, purpose statement, and Back to admin home button.', 'Search at the top finds tools, actions, customers, and Administrator Manual articles without exposing unauthorized sections.', 'The old always-visible Command Deck and dense signal board were removed. Detailed information still lives inside Health, Security, Backups, People, Workspaces, Push, and Support.', 'Danger Zone remains separated at the bottom of Platform Tools and still requires confirmations.'] },
     { title: 'Maintenance, branding, data, and Danger Zone', group: 'System Administrator', keywords: 'maintenance mode custom message auto unlock branding display logo data import export danger zone restore reset disable clear demo', body: ['Maintenance Mode can lock every workspace or one workspace while leaving Super Admin able to enter and fix the app.', 'Branding / Display settings keep the app name locked as 86 Chaos, store restaurant/group display name, customer logo URL/display preference, accent color, login message, Help Center contact, timezone, and date/time formats on the workspace record. Customer logo uploads use a secure server route first, with Firebase Storage rules as fallback protection. The customer logo can appear beside 86 Chaos, but cannot replace or hide it.', 'Import / Export Center exports staff, recipes, inventory, punches, schedules, and audit logs. Imports require preview-before-apply.', 'Danger Zone separates destructive tools such as backup restore, staff deletion, schedule reset, demo-data cleanup, workspace disablement, stale push cleanup, and restaurant config reset. Run Backup Now first.'] },
-    { title: 'Backup status in Command Deck', group: 'Backups', keywords: 'database backup status last backup maintenance cron firestore export storage run now', body: ['The Command Deck reads system/backupStatus, which is written by the automatic Firestore backup route.', 'Click Last Backup or open Forensics to inspect backup status and run a manual backup.', 'A stale or missing backup status means the Vercel cron route, CRON_SECRET, Firebase service account, or Storage bucket should be checked.', 'Weekly maintenance is housekeeping; Firestore Backup is the JSON data export saved to Firebase Storage.'] },
+    { title: 'Backup status in Admin Workspace', group: 'Backups', keywords: 'database backup status last backup maintenance cron firestore export storage run now', body: ['The Backup summary at the top of Admin Workspace reads system/backupStatus, which is written by the automatic Firestore backup route.', 'Click the Backup summary, Run backup on Admin Home, or open Backup Center & Audit Trail to inspect status and run a manual backup.', 'A stale or missing backup status means the Vercel cron route, CRON_SECRET, Firebase service account, or Storage bucket should be checked.', 'Weekly maintenance is housekeeping; Firestore Backup is the JSON data export saved to Firebase Storage.'] },
     { title: 'Automatic database backups', group: 'Backups', keywords: 'automatic daily database backup firestore storage cron secret firebase storage bucket restore export', body: ['The scheduled route /api/firestore-backup runs from Vercel Cron every day and exports Firestore data to Firebase Storage.', 'It writes progress and results to system/backupStatus so the Command Deck can show the last backup.', 'Required Vercel variables: FIREBASE_SERVICE_ACCOUNT_KEY, CRON_SECRET, and optionally FIREBASE_STORAGE_BUCKET.', 'Use Run Backup Now from the Command Deck or Forensics after installing the route to verify everything works.'] },
     { title: 'Restoring a full Firestore backup', group: 'Backups', keywords: 'restore full backup firestore storage path json gzip deleted data recover database', body: ['Open System Administrator → Forensics & Backups.', 'Copy the backup storage path from Command Deck Last Backup or Firebase Storage, for example backups/firestore/manual/...json.gz.', 'Open Backup Center, choose the backup from the list, then type RESTORE when prompted.', 'The restore is merge-based: it recreates missing/deleted documents and overwrites damaged documents from the backup, but it does not delete newer documents that are not in the backup. For schedules, use Emergency Schedule Rescue after a full restore if a month needs a clean hard replacement.'] },
     { title: 'Restoring a full Firestore backup', group: 'Backups', keywords: 'restore backup firestore storage path deleted documents recovery database', body: ['Open System Administrator → Forensics & Backups.', 'Run Backup Now first if you need a current safety copy.', 'Open Backup Center and select the backup file from the list instead of pasting a Storage path.', 'Type RESTORE. The restore is merge-based: it restores documents from the backup but does not delete newer documents. If restored schedule data mixes with old/current schedule records, run the Emergency Schedule Rescue for that month so the month is hard-replaced.'] },
     { title: 'Health Dashboard and full diagnostics', group: 'System Administrator', keywords: 'health dashboard firestore latency storage usage api response times sync diagnostics deployment report', body: ['Open System Administrator → Health Dashboard to see Firestore read latency, backup Storage usage, API route response times, backup integrity, and last successful sync.', 'Click Refresh Health to retest live timings without changing data.', 'Click Run Full System Diagnostics before deployments to download a JSON report with client runtime health plus server-side Firebase/Admin/Storage checks.', 'A failed backup-integrity badge means the latest backup could not be verified after upload and should be checked before deploying risky changes.'] },
     { title: 'Audit timeline by administrator session', group: 'System Administrator', keywords: 'audit timeline sessions administrator actions grouped session forensics', body: ['Open System Administrator → Forensics & Backups and review Administrator Session Timeline.', 'Actions are grouped by the saved browser session ID when available. Older logs without a session ID are grouped into 30-minute actor windows.', 'Use this timeline to reconstruct what a support/admin user did during one troubleshooting visit instead of reading a flat log stream.', 'Server-side actions such as automatic backups use the run ID or route actor as their session clue.'] },
     { title: 'Backup integrity verification', group: 'Backups', keywords: 'backup integrity verification sha checksum storage round trip automatic backups firestore backup', body: ['Every Firestore backup now verifies itself after uploading to Firebase Storage.', 'The backup route downloads the saved gzip, checks it can be decompressed, validates document and collection counts, and compares a SHA-256 checksum.', 'The Command Deck and Health Dashboard show the latest verification status from system/backupStatus.', 'If verification fails, do not restore or rely on that backup. Run another backup and check Vercel/Firebase Storage logs.'] },
-    { title: 'Financials workflow', group: 'Financials', keywords: 'financials labor timesheets daily ledger sales payroll', body: ['Financials is the main money tab for managers.', 'Labor & Timesheets handles punch corrections, tips, payroll exports, and role filtering.', 'Daily Ledger handles sales, food cost, labor cost, and business notes.', 'Use the client feature toggles for labor and sales to control access.'] },
+    { title: 'Financial Center workflow', group: 'Financials', keywords: 'financials financial center overview daily close sales payroll tips cogs vendors expenses pnl targets reports roster roles permissions', body: ['Financial Center is the professional money area for owners and permitted managers. It includes Overview, Daily Close, Sales, Labor & Payroll, Tips, COGS & Vendors, Expenses, P&L, Targets, and Reports.', 'Overview shows net sales, labor percent, food and beverage cost, prime cost, estimated profit, cash variance, missing daily closes, pending deposits, and open payroll issues.', 'Daily Close records end-of-day sales, discounts, comps, refunds, tax, sales categories, cash/card/gift card totals, tips paid out, starting bank, cash counted, deposit amount, manager sign-off, close status, and notes.', 'Labor & Payroll, Tips, payroll exports, and labor-by-role must use the account owner custom Roster Roles from Preferences. Do not hardcode generic restaurant roles for financial reports or scheduling logic.', 'COGS & Vendors summarizes invoice history from Inventory. Expenses tracks operating costs. P&L is an operational estimate, not tax accounting. Targets set the thresholds that color the dashboard.', 'Keep sales, labor, wage view/edit, expense, target, and report permissions restricted. Firestore has explicit financial rules for sales, financialExpenses, and financialTargets, so UI access and backend enforcement stay aligned.'] },
     { title: 'Schedule Builder location', group: 'Scheduling', keywords: 'schedule builder time clock shifts subtab permissions', body: ['Schedule Builder is now a protected subtab inside Time Clock & Schedule.', 'Users still need schedule permission or admin access.', 'Event Calendar remains separate because it is not the same thing as staff scheduling.', 'Old Schedule Builder links route into the same protected schedule workflow.'] },
     { title: 'Staying on the current page', group: 'Navigation', keywords: 'five minutes away landing page app hidden background return today logout stale session', body: ['86 Chaos no longer returns users to Manager Brief after five minutes away.', 'Users stay on the page they were using so managers do not lose their place while checking another app or taking a call.', 'This does not change normal logout behavior; users only sign out when they choose Log Out or their browser/session expires.'] },
     ...HELP_ARTICLES.map(a => ({ ...a, group: `App Manual / ${a.group}` }))
   ];
-  const adminManualQuery = adminManualSearch.trim().toLowerCase();
-  const filteredAdminManualArticles = adminManualArticles.filter(a => !adminManualQuery || `${a.title} ${a.group} ${a.keywords || ''} ${(a.body || []).join(' ')}`.toLowerCase().includes(adminManualQuery)).slice(0, 80);
+  const adminSupportPlaybooks = [
+    {
+      title: 'Login or Account Access',
+      triggers: 'login password locked out email verification disabled account mfa lost phone recovery code two step',
+      likelyCause: 'The account is either using the wrong email, blocked by password/MFA/email verification, disabled, or routed to the wrong workspace.',
+      firstChecks: ['Confirm the exact email and Firebase Auth UID.', 'Search the user in System Administrator People.', 'Check disabled status, emailVerified, forcePasswordChange, MFA status, and restaurantId.', 'Ask whether the issue started after a phone change, new browser, password reset, or new deployment.'],
+      fixSteps: ['Send password reset if the password is the issue.', 'Repair the Firestore profile if Auth exists but the user document is missing.', 'Use MFA recovery or recovery codes for lost-phone cases.', 'Fix restaurantId/membership if login works but the wrong workspace opens.', 'Have the user log out and back in after claim or profile changes.'],
+      doNot: ['Do not delete the account to fix login.', 'Do not disable MFA globally for one user.', 'Do not publish rules until your own Super Admin access is confirmed.'],
+      escalation: 'Escalate if Firebase Auth cannot find the user, /api/whoami disagrees with Firestore, or multiple users cannot log in after a deployment.'
+    },
+    {
+      title: 'Missing Tab, Missing Data, or Wrong Restaurant',
+      triggers: 'missing tab cannot see schedule inventory financials team messages settings wrong restaurant data blank permissions module feature',
+      likelyCause: 'The user is signed in but their workspace routing, module toggle, role, or permission set does not allow the screen.',
+      firstChecks: ['Open the user profile and confirm restaurantId, activeRestaurantId, and memberships.', 'Open the workspace and confirm the feature/module is enabled.', 'Check role and permissions in Staff Roster or System Administrator support edit.', 'Possess only after checking the saved routing fields.'],
+      fixSteps: ['Correct restaurantId or membership first.', 'Enable the workspace feature if the whole restaurant is missing it.', 'Grant the smallest needed permission instead of making everyone admin.', 'Ask the user to refresh or log out/in after the change.'],
+      doNot: ['Do not grant System Administrator access to fix a restaurant-level permission.', 'Do not edit production data while in Ghost Mode unless you are intentionally supporting that exact customer.'],
+      escalation: 'Escalate if rules block reads after the user has correct workspace and permissions.'
+    },
+    {
+      title: 'Time Clock, GPS, Punches, or Schedule',
+      triggers: 'clock in clock out punch unscheduled gps location geofence schedule shift swap gray passed day shift labor timesheet',
+      likelyCause: 'Most clock and schedule issues come from missing shift data, device location permission, geofence setup, or a punch that needs manager correction.',
+      firstChecks: ['Confirm the date, employee, scheduled shift, and workspace.', 'Check browser/location permission on the device.', 'Check restaurant geofence address, radius, latitude, and longitude.', 'Review punch status and any unscheduled punch alert.'],
+      fixSteps: ['Fix the schedule or shift first when the employee is expected to work.', 'Have the employee allow location and reopen the app.', 'Use Labor/Timesheets for corrections with a reason note.', 'If a past day still looks active, confirm the current date/timezone and app version.'],
+      doNot: ['Do not manually change wages while fixing a punch unless payroll specifically requires it.', 'Do not ignore unscheduled punch alerts; they are evidence for manager review.'],
+      escalation: 'Escalate if all users in one restaurant lose GPS or if maps/geocoding fail after deployment.'
+    },
+    {
+      title: 'Push Notifications',
+      triggers: 'push notification alert not receiving only one person token fcm schedule alert message alert browser permission',
+      likelyCause: 'The device has no current push token, browser notifications are blocked, or the token is stale/written to the wrong profile.',
+      firstChecks: ['Check the user notification permission and fcmToken in People/Push tools.', 'Ask which device should receive the alert and confirm they opened the app on that device.', 'Send a per-user test push before sending a broadcast.', 'Check Vercel/Firebase Admin env vars if every push fails.'],
+      fixSteps: ['Have the user allow notifications and reopen the app.', 'Run push token repair if tokens are stale or mismatched.', 'Send one test push to the user.', 'If broadcasts fail but direct push works, inspect the audience/filter logic.'],
+      doNot: ['Do not assume one working admin token means everyone is configured.', 'Do not ask users to reinstall before checking browser notification permission.'],
+      escalation: 'Escalate if the send-push API route returns credential errors or no non-admin users can save tokens.'
+    },
+    {
+      title: 'AI Menu or Invoice Scans',
+      triggers: 'menu intelligence invoice scan gemini ai invalid json model not found pdf photo upload parse scanner ingredients vendor',
+      likelyCause: 'The file uploaded but Gemini/model configuration, file type, storage rules, or parser output caused the scan to stop.',
+      firstChecks: ['Read the exact error toast and Vercel function log.', 'Confirm Gemini/API key exists in the same Vercel environment.', 'Confirm the file is a supported image/PDF and under the allowed size.', 'Check Storage rules and purpose metadata for scan uploads.'],
+      fixSteps: ['Try a clearer/smaller image or PDF.', 'Fix model/API version errors in the scan route env/config.', 'If invalid JSON repeats, capture the raw response in logs and tighten parser handling.', 'Approve only reviewed scan rows; do not bulk-save questionable AI output.'],
+      doNot: ['Do not paste invoices or menus into public tickets with secrets/customer data.', 'Do not turn scanner storage rules wide open to fix one upload.'],
+      escalation: 'Escalate when multiple good files fail at 100 percent or model-not-found appears.'
+    },
+    {
+      title: 'Blank Screen, App Load, or Version Mismatch',
+      triggers: 'blank screen stuck loading app load white screen version cache service worker deployment vercel firebase config',
+      likelyCause: 'The browser is using an old build/cache, the wrong deployment URL, or a runtime startup error is blocking React.',
+      firstChecks: ['Open /version.json on the exact URL.', 'Check Vercel deployment status and browser console errors.', 'Ask whether it happens on one device or everyone.', 'Check Firebase project IDs in the app and API diagnostics.'],
+      fixSteps: ['Hard refresh, close tabs, and clear site data.', 'Redeploy the latest build if /version.json is old.', 'Run Health Dashboard and full diagnostics.', 'If permission-denied appears, publish the matching rules and refresh claims.'],
+      doNot: ['Do not change Firebase rules until you know whether this is cache, deploy, or permissions.', 'Do not test production fixes only on a preview URL.'],
+      escalation: 'Escalate if the current build crashes before login or the app/API Firebase project IDs differ.'
+    },
+    {
+      title: 'Firebase Rules or Admin Lockout',
+      triggers: 'firebase rules firestore storage permission denied super admin locked out master admin claim isSuperAdmin systemAccess publish testing production',
+      likelyCause: 'Rules cannot see Vercel env vars, so Super Admin access must exist as Firebase custom claims or Firestore profile flags before hardened rules are published.',
+      firstChecks: ['Confirm your own user document has isSuperAdmin=true or systemAccess.superAdmin=true, or your Auth token has custom claim superAdmin=true.', 'Check /api/whoami for server recognition.', 'Publish rules to testing first.', 'Log out and back in after claim changes.'],
+      fixSteps: ['Use Access Control from an existing Super Admin to grant access.', 'Publish firestore.rules and storage.rules to the matching Firebase project.', 'Retest System Administrator, Storage uploads, push token writes, scans, and account security.', 'Repeat on production only after testing passes.'],
+      doNot: ['Do not rely on MASTER_ADMIN_EMAIL for Firestore or Storage rules.', 'Do not paste firebase.json into the rules editor; paste the actual rules file content.'],
+      escalation: 'Escalate immediately if no account can access System Administrator after publishing rules.'
+    },
+    {
+      title: 'Privacy or Account Deletion',
+      triggers: 'delete account deletion privacy app store google play export anonymize retain data request complete deny',
+      likelyCause: 'The customer has asked for account deletion, which requires identity review, retention review, and a documented completion trail.',
+      firstChecks: ['Find the request in Security Center.', 'Confirm who requested it and which workspace/account it affects.', 'Check whether legal/payroll/audit retention applies.', 'Decide whether export, anonymize, delete, or denial is appropriate.'],
+      fixSteps: ['Mark Reviewing when you start.', 'Use protected admin deletion/anonymization tools only after review.', 'Write a clear completion note.', 'Mark Complete or Deny in Security Center so the audit trail is closed.'],
+      doNot: ['Do not silently delete operational records without review.', 'Do not mark Complete until the real work is done.', 'Do not promise deletion of legally retained payroll/audit records without checking retention policy.'],
+      escalation: 'Escalate if the request involves a restaurant owner, payroll/legal records, or a disputed identity.'
+    }
+  ];
+  const tokenizeManualText = (value) => String(value || '').toLowerCase().replace(/[^a-z0-9\s]/g, ' ').split(/\s+/).filter(word => word.length > 2);
+  const supportQuestion = (adminManualQuestion || adminManualSearch || '').trim();
+  const supportTokens = tokenizeManualText(supportQuestion);
+  const scoreBlob = (blob, weight = 1) => {
+    const lower = String(blob || '').toLowerCase();
+    if (!supportTokens.length) return 0;
+    return supportTokens.reduce((score, token) => score + (lower.includes(token) ? weight : 0), 0);
+  };
+  const scoreArticle = (article) => {
+    const title = scoreBlob(article.title, 5);
+    const group = scoreBlob(article.group, 3);
+    const keywords = scoreBlob(article.keywords, 4);
+    const body = scoreBlob((article.body || []).join(' '), 1);
+    const phraseBoost = supportQuestion && `${article.title} ${article.keywords || ''} ${(article.body || []).join(' ')}`.toLowerCase().includes(supportQuestion.toLowerCase()) ? 8 : 0;
+    return title + group + keywords + body + phraseBoost;
+  };
+  const adminManualCategories = ['All', ...Array.from(new Set(adminManualArticles.map(a => a.group || 'General'))).slice(0, 32)];
+  const scoredAdminManualArticles = adminManualArticles
+    .map((article, idx) => ({ ...article, manualId: `${idx}-${String(article.title || 'article').toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 50)}`, score: scoreArticle(article) }))
+    .filter(article => adminManualCategory === 'All' || article.group === adminManualCategory)
+    .sort((a, b) => (b.score - a.score) || String(a.title).localeCompare(String(b.title)));
+  const filteredAdminManualArticles = (supportTokens.length ? scoredAdminManualArticles.filter(a => a.score > 0) : scoredAdminManualArticles).slice(0, 30);
+  const scoredPlaybooks = adminSupportPlaybooks
+    .map(playbook => ({ ...playbook, score: scoreBlob(`${playbook.title} ${playbook.triggers} ${playbook.likelyCause} ${playbook.firstChecks.join(' ')} ${playbook.fixSteps.join(' ')}`, 1) + scoreBlob(playbook.title, 5) + scoreBlob(playbook.triggers, 4) }))
+    .sort((a, b) => b.score - a.score);
+  const primarySupportPlaybook = scoredPlaybooks.find(p => p.score > 0) || adminSupportPlaybooks[0];
+  const relatedSupportPlaybooks = scoredPlaybooks.filter(p => p.score > 0 && p.title !== primarySupportPlaybook.title).slice(0, 3);
+  const topManualArticles = filteredAdminManualArticles.slice(0, 8);
+  const selectedAdminArticle = scoredAdminManualArticles.find(a => a.manualId === selectedAdminArticleId) || topManualArticles[0] || scoredAdminManualArticles[0];
+  const trainingManualCategories = ['All', ...Array.from(new Set(SYSTEM_TRAINING_MANUAL_CHAPTERS.map(chapter => chapter.group)))];
+  const trainingManualTokens = String(trainingManualSearch || '').toLowerCase().replace(/[^a-z0-9\s]/g, ' ').split(/\s+/).filter(word => word.length > 1);
+  const visibleTrainingManualChapters = SYSTEM_TRAINING_MANUAL_CHAPTERS.filter(chapter => {
+    if (trainingManualCategory !== 'All' && chapter.group !== trainingManualCategory) return false;
+    if (!trainingManualTokens.length) return true;
+    const searchable = [
+      chapter.title,
+      chapter.tab,
+      chapter.group,
+      chapter.audience,
+      chapter.summary,
+      chapter.keywords,
+      ...(chapter.sections || []).flatMap(section => [section.title, ...(section.steps || [])]),
+      ...(chapter.notes || [])
+    ].join(' ').toLowerCase();
+    return trainingManualTokens.every(token => searchable.includes(token));
+  });
+  const activeTrainingManualChapter = visibleTrainingManualChapters.find(chapter => chapter.id === activeTrainingManualChapterId)
+    || visibleTrainingManualChapters[0]
+    || null;
+  const selectedTrainingManualChapterIdSet = new Set(selectedTrainingManualChapterIds);
+  const selectedTrainingManualChapters = SYSTEM_TRAINING_MANUAL_CHAPTERS.filter(chapter => selectedTrainingManualChapterIdSet.has(chapter.id));
+  const toggleTrainingManualChapterSelection = (chapterId) => {
+    setSelectedTrainingManualChapterIds(current => current.includes(chapterId)
+      ? current.filter(id => id !== chapterId)
+      : [...current, chapterId]);
+  };
+  const selectAllTrainingManualChapters = () => setSelectedTrainingManualChapterIds(SYSTEM_TRAINING_MANUAL_CHAPTERS.map(chapter => chapter.id));
+  const clearTrainingManualChapters = () => setSelectedTrainingManualChapterIds([]);
+  const selectVisibleTrainingManualChapters = () => setSelectedTrainingManualChapterIds(current => Array.from(new Set([...current, ...visibleTrainingManualChapters.map(chapter => chapter.id)])));
+  const handlePrintTrainingManual = () => {
+    if (!selectedTrainingManualChapters.length) {
+      addToast('Choose Manual Sections', 'Select at least one chapter before opening the print dialog.');
+      return;
+    }
+    const escapePrintHtml = (value) => String(value ?? '').replace(/[&<>"']/g, character => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    }[character]));
+    const chapterHtml = selectedTrainingManualChapters.map(chapter => {
+      const chapterNumber = SYSTEM_TRAINING_MANUAL_CHAPTERS.findIndex(item => item.id === chapter.id) + 1;
+      const sections = (chapter.sections || []).map((section, sectionIndex) => `
+        <section>
+          <h3>${sectionIndex + 1}. ${escapePrintHtml(section.title)}</h3>
+          <ol>${(section.steps || []).map(step => `<li>${escapePrintHtml(step)}</li>`).join('')}</ol>
+        </section>`).join('');
+      const notes = (chapter.notes || []).map(note => `<p class="note"><strong>Important:</strong> ${escapePrintHtml(note)}</p>`).join('');
+      return `<article class="chapter">
+        <div class="chapter-label">Chapter ${chapterNumber} · ${escapePrintHtml(chapter.group)} · ${escapePrintHtml(chapter.tab)}</div>
+        <h2>${escapePrintHtml(chapter.title)}</h2>
+        <p class="summary">${escapePrintHtml(chapter.summary)}</p>
+        <p class="audience"><strong>Who uses it:</strong> ${escapePrintHtml(chapter.audience)}</p>
+        ${sections}${notes}
+      </article>`;
+    }).join('');
+    const tableOfContents = selectedTrainingManualChapters.map(chapter => `<li>${escapePrintHtml(chapter.title)}</li>`).join('');
+    const printedDate = new Date().toLocaleDateString();
+    const printableHtml = `<!doctype html><html><head><meta charset="utf-8"><title>86 Chaos Complete App Training Manual</title>
+      <style>
+        @page{size:auto;margin:.58in .62in .62in}*{box-sizing:border-box}body{margin:0;color:#1d2b33;background:#fff;font-family:Arial,Helvetica,sans-serif;font-size:10.5pt;line-height:1.5}
+        .print-action{position:fixed;z-index:10;right:18px;top:18px;border:0;border-radius:9px;background:#1d3949;color:#fff;padding:10px 14px;font-weight:800;box-shadow:0 5px 16px #0003}.cover{min-height:9in;display:flex;flex-direction:column;justify-content:center;border-top:10px solid #223d4e;border-bottom:2px solid #c89672;padding:.5in .1in;break-after:page}.brand{color:#986744;font-size:11pt;font-weight:800;letter-spacing:.18em}.cover h1{max-width:7in;margin:.16in 0 .1in;color:#172b37;font-size:35pt;line-height:1.06}.cover p{color:#586873;font-size:11pt}.intro{break-after:page}.intro h2,.chapter h2{margin:0 0 .12in;color:#1c394a;font-size:22pt;line-height:1.15}.intro h3,.chapter h3{margin:.2in 0 .07in;color:#263c49;font-size:13.5pt;break-after:avoid}.intro ol,.chapter ol{padding-left:.27in}.intro li,.chapter li{margin-bottom:.06in}.chapter{break-before:page}.chapter-label{margin-bottom:.11in;border-bottom:1px solid #aebcc4;color:#7b583f;padding-bottom:.08in;font-size:9pt;font-weight:800;letter-spacing:.07em;text-transform:uppercase}.summary{border-left:3px solid #3f7794;background:#edf4f7;padding:.1in .13in}.audience{margin:.12in 0}.note{border:1px solid #d6b998;background:#fff8ef;padding:.1in .12in;break-inside:avoid}section{break-inside:auto}.footer{margin-top:.3in;border-top:1px solid #bcc7cd;color:#657680;padding-top:.08in;font-size:8.5pt;text-align:center}
+        @media print{.print-action{display:none}.cover{min-height:8.4in}}
+      </style></head><body>
+      <button class="print-action" onclick="window.print()">Print / Save as PDF</button>
+      <header class="cover"><div class="brand">86 CHAOS</div><h1>Complete App Training Manual</h1><p>Selected chapters · Version ${escapePrintHtml(CURRENT_VERSION)} · Printed ${escapePrintHtml(printedDate)}</p></header>
+      <section class="intro"><h2>How to use this manual</h2><p>This plain-English reference covers the selected 86 Chaos tabs and workflows. Features still follow workspace settings and user permissions, so a reader may not see every control described here. This manual is static: searching and printing it makes no AI calls.</p><h3>Selected chapters</h3><ol>${tableOfContents}</ol></section>
+      ${chapterHtml}<div class="footer">86 Chaos · Complete App Training Manual · ${selectedTrainingManualChapters.length} selected chapter(s)</div>
+      </body></html>`;
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) {
+      addToast('Popup Blocked', 'Allow popups for 86 Chaos, then choose Print selected again.');
+      return;
+    }
+    printWindow.document.open();
+    printWindow.document.write(printableHtml);
+    printWindow.document.close();
+    printWindow.focus();
+    addToast('Print Manual', `Opening ${selectedTrainingManualChapters.length} selected chapter(s). Choose Save as PDF in the print dialog for a PDF copy.`);
+    window.setTimeout(() => { if (!printWindow.closed) printWindow.print(); }, 350);
+  };
+  const supportAnswerLines = primarySupportPlaybook ? [
+    `Customer question: ${supportQuestion || 'No question entered yet.'}`,
+    `Likely area: ${primarySupportPlaybook.title}`,
+    `Likely cause: ${primarySupportPlaybook.likelyCause}`,
+    '',
+    'First checks:',
+    ...primarySupportPlaybook.firstChecks.map((line, idx) => `${idx + 1}. ${line}`),
+    '',
+    'Fix steps:',
+    ...primarySupportPlaybook.fixSteps.map((line, idx) => `${idx + 1}. ${line}`),
+    '',
+    'Do not:',
+    ...primarySupportPlaybook.doNot.map(line => `- ${line}`),
+    '',
+    `Escalate when: ${primarySupportPlaybook.escalation}`,
+    '',
+    'Relevant articles:',
+    ...topManualArticles.slice(0, 5).map(article => `- ${article.title}`)
+  ] : [];
+  const buildGeminiManualRequestPayload = (question, extras = {}) => ({
+    question,
+    currentState: {
+      appVersion: CURRENT_VERSION,
+      activeAdminSection: subTab,
+      browserVersion: envReport.host,
+      vercelEnv: isPreviewLikeHost ? 'preview/testing host' : 'production-like host',
+      firebaseProjectId: healthSnapshot?.env?.firebaseProjectId || securityReport?.security?.environmentSeparation?.projectId || '',
+      storageBucket: healthSnapshot?.env?.firebaseStorageBucket || securityReport?.security?.environmentSeparation?.storageBucket || '',
+      lastBackupAt: backupStatus?.lastBackupAt || backupStatus?.lastSuccessfulBackupAt || backupStatus?.lastRunAt || '',
+      lastBackupStatus: backupStatus?.status || backupStatus?.lastStatus || '',
+      backupAgeHours: actualBackupAgeHours ?? backupAgeHours,
+      backupStale: backupIsStale,
+      nextBackupAt: nextAutoBackupDate?.toISOString?.() || backupStatus?.nextBackupAt || backupStatus?.nextScheduledAt || '',
+      watchdogStatus: backupWatchdogDetail,
+      healthOk: healthSnapshot ? (healthSnapshot.ok !== false && !(healthSnapshot.apiChecks || []).some(check => !check.ok)) : null,
+      healthAttentionCount: healthSnapshot?.apiRouteManifest?.filter?.(route => route.status !== 'ready')?.length ?? null,
+      riskyUserCount: securityReport?.riskyUsers?.length ?? null,
+      suspiciousActivityCount: securityReport?.suspiciousActivity?.count ?? null,
+      notes: [
+        backupIsStale ? 'Backup is currently stale or missed the daily window.' : '',
+        isPreviewLikeHost ? 'Preview/testing hosts do not receive Vercel Cron invocations automatically.' : 'Production-like host should receive Vercel Cron invocations.',
+        healthSnapshot ? 'Health Checks have been run in this session.' : 'Health Checks have not been run in this session.',
+        securityReport ? 'Security Diagnostics have been loaded in this session.' : 'Security Diagnostics have not been loaded in this session.'
+      ].filter(Boolean)
+    },
+    playbook: primarySupportPlaybook,
+    articles: topManualArticles.slice(0, 12).map(article => ({
+      title: article.title,
+      group: article.group,
+      keywords: article.keywords,
+      body: article.body
+    })),
+    ...extras
+  });
+
+  const appendGeminiManualText = (base = '', next = '') => {
+    const left = String(base || '').trimEnd();
+    const right = String(next || '').trim();
+    if (!left) return right;
+    if (!right) return left;
+    if (/\b(if|because|and|or|when|while|with|for|to|from|that|the|a|an|by|after|before|unless|until)$|[,;:]$/i.test(left.trim())) {
+      return `${left} ${right.replace(/^[-*•\s]+/, '')}`.trim();
+    }
+    return `${left}\n\n${right}`.trim();
+  };
+
+  const getGeminiManualRequestKey = (signature) => {
+    if (geminiManualRequestKeyRef.current.signature === signature && geminiManualRequestKeyRef.current.key) {
+      return geminiManualRequestKeyRef.current.key;
+    }
+    const randomPart = window.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const key = `manual-${randomPart}`.slice(0, 180);
+    geminiManualRequestKeyRef.current = { signature, key };
+    return key;
+  };
+
+  const clearGeminiManualRequestKey = () => {
+    geminiManualRequestKeyRef.current = { signature: '', key: '' };
+  };
+
+  const handleAskGeminiAdminManual = async () => {
+    const question = (geminiManualQuestion || adminManualQuestion || adminManualSearch || '').trim();
+    if (!question) {
+      addToast('Gemini Manual', 'Type a System Administrator question first.');
+      return;
+    }
+    if (isGeminiManualLoading) return;
+    setGeminiManualQuestion(question);
+    setGeminiManualAnswer('');
+    setGeminiManualError('');
+    setGeminiManualMeta(null);
+    setIsGeminiManualLoading(true);
+    try {
+      const requestSignature = `ask:${CURRENT_VERSION}:${question}`;
+      const idempotencyKey = getGeminiManualRequestKey(requestSignature);
+      const response = await secureFetch('/api/gemini-admin-manual', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(buildGeminiManualRequestPayload(question, { idempotencyKey }))
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok || result.ok === false) throw new Error(result.error || `Gemini manual failed with status ${response.status}`);
+      setGeminiManualAnswer(result.answer || 'Gemini returned no answer.');
+      setGeminiManualMeta(result);
+      clearGeminiManualRequestKey();
+      const continuationNote = result.autoContinuationCount ? ` • auto-continued ${result.autoContinuationCount}x` : '';
+      addToast('Gemini Manual Ready', `${result.articleCount || 0} article(s) used • ${result.model || 'Gemini'}${continuationNote}`);
+      if (result.answerIncomplete) addToast('Gemini Answer Needs Continue', result.incompleteReason || 'Gemini may have stopped before the answer was finished.');
+    } catch (err) {
+      const message = err.message || 'Gemini manual assistant failed.';
+      setGeminiManualError(message);
+      addToast('Gemini Manual Error', message);
+    } finally {
+      setIsGeminiManualLoading(false);
+    }
+  };
+
+  const handleContinueGeminiAdminManual = async () => {
+    const question = (geminiManualQuestion || adminManualQuestion || adminManualSearch || '').trim();
+    if (!question || !geminiManualAnswer) {
+      addToast('Gemini Manual', 'Ask Gemini first, then continue a cut-off answer.');
+      return;
+    }
+    if (isGeminiManualLoading) return;
+    setGeminiManualError('');
+    setIsGeminiManualLoading(true);
+    try {
+      const requestSignature = `continue:${CURRENT_VERSION}:${question}:${geminiManualAnswer.length}:${geminiManualAnswer.slice(-160)}`;
+      const idempotencyKey = getGeminiManualRequestKey(requestSignature);
+      const response = await secureFetch('/api/gemini-admin-manual', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(buildGeminiManualRequestPayload(question, { continueFrom: geminiManualAnswer, idempotencyKey }))
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok || result.ok === false) throw new Error(result.error || `Gemini manual continue failed with status ${response.status}`);
+      setGeminiManualAnswer(prev => appendGeminiManualText(prev, result.answer || ''));
+      setGeminiManualMeta(result);
+      clearGeminiManualRequestKey();
+      addToast('Gemini Continued', result.answerIncomplete ? 'Added more text, but Gemini may still need one more continuation.' : 'Answer completed.');
+    } catch (err) {
+      const message = err.message || 'Gemini manual continuation failed.';
+      setGeminiManualError(message);
+      addToast('Gemini Manual Error', message);
+    } finally {
+      setIsGeminiManualLoading(false);
+    }
+  };
+
+  const copyAdminSupportAnswer = async () => {
+    try {
+      await navigator.clipboard.writeText(supportAnswerLines.join('\n'));
+      addToast('Copied', 'Support answer copied.');
+    } catch (err) {
+      addToast('Copy Failed', 'Highlight the support answer and copy it manually.');
+    }
+  };
+  const sampleAdminQuestions = [
+    'Customer cannot log in after changing phones',
+    'Only I receive push notifications',
+    'Menu scan says invalid JSON',
+    'Employee cannot see Schedule tab',
+    'App is blank after deploy',
+    'Do I publish Firebase rules to testing and production?',
+    'Why are automatic backups stale on preview?',
+    'Tell me exactly what to do when Health Checks says API routes are missing'
+  ];
 
   const handleCopyPlatformSnapshot = async () => {
     try {
@@ -5023,7 +6497,7 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
     restaurants.forEach(r => {
       const usersForRest = allUsers.filter(u => u.restaurantId === r.id);
       const modulesEnabled = moduleList.filter(key => r.features?.[key] !== false).join('|');
-      rows.push([r.id, r.name || '', r.ownerName || '', r.ownerEmail || '', r.planType || '', r.billingStatus || '', usersForRest.length, usersForRest.filter(isOnlineNow).length, r.lastActive || '', modulesEnabled]);
+      rows.push([r.id, r.name || '', r.ownerName || '', r.ownerEmail || '', getPlanDefinition(resolveSubscription(r, appUser).planId).label || '', resolveSubscription(r, appUser).status || '', usersForRest.length, usersForRest.filter(isOnlineNow).length, r.lastActive || '', modulesEnabled]);
     });
     downloadCsvRows(`86chaos-client-directory-${getToday()}.csv`, rows);
     addToast('Client Directory', 'Downloaded workspace operations CSV.');
@@ -5079,6 +6553,44 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
     addToast('Device Cache Cleared', 'Temporary local cache was cleared on this browser.');
   };
 
+  const handleMasterAdminRepair = async () => {
+    const defaultRestaurantId = appUser?.restaurantId || restaurants[0]?.id || '';
+    const confirmed = window.confirm('Repair Firestore users profiles for every email listed in MASTER_ADMIN_EMAIL or MASTER_ADMIN_EMAILS? This writes only configured master-admin accounts, adds Super Admin flags, and refreshes Firebase custom claims.');
+    if (!confirmed) return;
+    setIsMasterAdminRepairing(true);
+    setMasterAdminRepairResult(null);
+    try {
+      const response = await secureFetch('/api/master-admin-repair', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ restaurantId: defaultRestaurantId })
+      });
+      const result = await response.json().catch(() => ({}));
+      const repaired = (result.results || []).filter(r => (r.status === 'created' || r.status === 'updated') && r.firestoreWriteVerified !== false).length;
+      const hasVerifiedRepair = repaired > 0;
+      if (!response.ok || (!hasVerifiedRepair && result.ok === false)) throw new Error(result.error || 'Master admin repair failed.');
+      let serverCheckAfterRepair = null;
+      try {
+        const whoamiRes = await secureFetch('/api/whoami', { method: 'GET', forceTokenRefresh: true });
+        serverCheckAfterRepair = { ok: whoamiRes.ok, ...(await whoamiRes.json().catch(() => ({}))) };
+      } catch (refreshErr) {
+        serverCheckAfterRepair = { ok: false, error: refreshErr.message || String(refreshErr) };
+      }
+      const nextResult = { ...result, serverCheckAfterRepair };
+      setMasterAdminRepairResult(nextResult);
+      if (result.ok === false) {
+        addToast('Master Admin Repair Partly Complete', `${repaired}/${(result.results || []).length} admin profile(s) verified. Check the row details before publishing hardened rules.`);
+      } else {
+        addToast('Master Admin Repair Complete', `${repaired}/${(result.results || []).length} configured admin profile(s) verified in Firestore. Log out and back in before publishing hardened rules.`);
+      }
+    } catch (err) {
+      setMasterAdminRepairResult({ ok: false, error: err.message || String(err), results: [] });
+      addToast('Master Admin Repair Failed', err.message || 'Could not repair master admin profiles.');
+    } finally {
+      setIsMasterAdminRepairing(false);
+    }
+  };
+
 
   const formatBackupBytes = (bytes) => {
     const n = Number(bytes || 0);
@@ -5098,7 +6610,7 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
     setIsBackupListLoading(true);
     setBackupListError('');
     try {
-      const response = await secureFetch('/api/list-backups', { method: 'GET' });
+      const response = await secureFetch('/api/list-backups?includeSignedUrls=1', { method: 'GET' });
       const result = await response.json().catch(() => ({}));
       if (!response.ok || result.ok === false) throw new Error(result.error || `Backup list failed with status ${response.status}`);
       setBackupList(Array.isArray(result.backups) ? result.backups : []);
@@ -5117,7 +6629,7 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
     try {
       const response = await secureFetch(url, options);
       const result = await response.json().catch(() => ({}));
-      return { label, url, ok: response.ok && result.ok !== false, status: response.status, ms: Math.round(performance.now() - started), result };
+      return { label, url, ok: response.ok && result.ok !== false, status: response.status, ms: Math.round(performance.now() - started), result: redactDiagnosticSecrets(result) };
     } catch (err) {
       return { label, url, ok: false, status: 0, ms: Math.round(performance.now() - started), error: err.message || 'Request failed' };
     }
@@ -5203,14 +6715,52 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
         ]
       };
       const stamp = new Date().toISOString().replace(/[:.]/g, '-');
-      downloadTextFile(`86chaos-full-system-diagnostics-${stamp}.json`, JSON.stringify(report, null, 2), 'application/json;charset=utf-8;');
-      setLastDiagnosticsReport(report);
+      const safeReport = redactDiagnosticSecrets(report);
+      downloadTextFile(`86chaos-full-system-diagnostics-${stamp}.json`, JSON.stringify(safeReport, null, 2), 'application/json;charset=utf-8;');
+      setLastDiagnosticsReport(safeReport);
       setHealthSnapshot(prev => ({ ...(prev || clientHealth || {}), serverDiagnostics: serverReport, generatedAt: new Date().toISOString() }));
       addToast('Diagnostics Complete', 'Full system diagnostics report downloaded.');
     } catch (err) {
       addToast('Diagnostics Error', err.message || 'Full system diagnostics failed. Check Vercel logs.');
     } finally {
       setIsDiagnosticsRunning(false);
+    }
+  };
+
+  const handleExplainDiagnosticsWithOpenAI = async () => {
+    if (isOpenAiDiagnosticsLoading) return;
+    setIsOpenAiDiagnosticsLoading(true);
+    setOpenAiDiagnosticsError('');
+    try {
+      const currentHealth = healthSnapshot || await refreshHealthDashboard({ silent: true });
+      if (!currentHealth && !lastDiagnosticsReport) throw new Error('Run Health Dashboard or Full System Diagnostics first so OpenAI has a report to explain.');
+      const response = await secureFetch('/api/openai-diagnostics-explain', {
+        method:'POST',
+        headers:{ 'Content-Type':'application/json' },
+        body: JSON.stringify({
+          diagnostics: redactDiagnosticSecrets(lastDiagnosticsReport || null),
+          health: redactDiagnosticSecrets(currentHealth || null),
+          context: redactDiagnosticSecrets({
+            version: CURRENT_VERSION,
+            activeAdminSection: subTab,
+            platformStatus,
+            backupStatus: backupStatusLabel,
+            backupIsStale,
+            deploymentReady,
+            environment: envReport?.host || 'unknown'
+          })
+        })
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok || result.ok === false) throw new Error(result.error || `OpenAI diagnostics failed with status ${response.status}`);
+      setOpenAiDiagnosticsResult(result);
+      addToast('OpenAI Explanation Ready', `${result.guidance?.issues?.length || 0} structured issue(s) explained.`);
+    } catch (err) {
+      const message = err.message || 'OpenAI diagnostics explanation failed.';
+      setOpenAiDiagnosticsError(message);
+      addToast('OpenAI Diagnostics', message);
+    } finally {
+      setIsOpenAiDiagnosticsLoading(false);
     }
   };
 
@@ -5231,6 +6781,26 @@ const activeTrials = restaurants.filter(r => r.billingStatus === 'Trial').length
       addToast('Backup Error', err.message || 'Backup route failed. Check Vercel logs.');
     } finally {
       setIsBackupRunning(false);
+    }
+  };
+
+
+  const handleRunBackupWatchdog = async () => {
+    if (isBackupWatchdogRunning) return;
+    setIsBackupWatchdogRunning(true);
+    addToast('Backup Watchdog Started', 'Checking whether a catch-up backup is needed.');
+    try {
+      const response = await secureFetch('/api/firestore-backup-watchdog', { method: 'POST' });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok || result.ok === false) throw new Error(result.error || `Watchdog failed with status ${response.status}`);
+      if (result.ranBackup) addToast('Watchdog Backup Complete', `Catch-up backup ran. Age before run: ${result.backupAgeHours ?? 'unknown'}h.`);
+      else addToast('Watchdog Check Complete', 'Backup is fresh. No catch-up backup needed.');
+      loadBackupList({ silent: true });
+      refreshHealthDashboard({ silent: true });
+    } catch (err) {
+      addToast('Watchdog Error', err.message || 'Backup watchdog route failed. Check Vercel logs.');
+    } finally {
+      setIsBackupWatchdogRunning(false);
     }
   };
 
@@ -5323,7 +6893,7 @@ Type RESTORE to continue.`);
   const handleClearAllBanners = async () => {
     if (!window.confirm('Clear system banners from every workspace?')) return;
     try {
-      await Promise.all(restaurants.map(r => updateDoc(doc(db, 'restaurants', r.id), { systemBanner: null })));
+      await Promise.all(restaurants.map(r => updateDoc(doc(db, 'restaurants', r.id), { systemBanner: null, systemBannerUpdatedAt: null })));
       addToast('Banners Cleared', 'All workspace banners were removed.');
     } catch (err) { addToast('Error', err.message); }
   };
@@ -5333,65 +6903,287 @@ Type RESTORE to continue.`);
     return <span className={`inline-flex items-center gap-1.5 text-[9px] font-black uppercase tracking-widest ${colors.split(' ')[0]}`}><span className={`cockpit-light ${hot ? 'hot' : 'quiet'} ${colors.split(' ')[1]}`}></span>{label}</span>;
   };
 
-  const CockpitMetric = ({ label, value, detail, tone = 'emerald', hot = false, onClick }) => {
-    const Wrapper = onClick ? 'button' : 'div';
+  const ADMIN_METRIC_HELP = {
+    'Platform': 'Overall platform condition. It rolls up urgent action items such as stale backups, permission blocks, crashes, missing owners, duplicate users, stale clients, and deployment readiness. Click the card to jump to the command overview.',
+    'Health': 'Live technical health. It focuses on Firestore latency, API route readiness, and backup integrity. Run Refresh Health before opening Vercel/Firebase logs.',
+    'Manual Presence': 'On-demand online/recent-user snapshot. It is manual to avoid expensive constant presence reads across customers.',
+    'MRR': 'Estimated monthly recurring revenue from workspace plan/pricing data. Use it as a planning signal, not final accounting.',
+    'Crashes 24h': 'Crash/error reports seen in the last 24 hours. Open Support logs before deploying if this is hot.',
+    'Push Opt-In': 'Share of users/devices with push tokens. Low opt-in points to denied browser permissions, stale service workers, or users who never enabled notifications.',
+    'Stale Clients': 'Workspaces with no recent activity. Inspect before assuming churn because stale lastActive fields can also mean presence writes are broken.',
+    'Last Backup': 'Age of the latest successful Firestore backup. Daily backups should usually be under 30 hours old. Preview/testing deployments do not auto-run Vercel Cron.',
+    'Connected Devices': 'Users with saved push tokens. This is the starting count for push troubleshooting.',
+    'Stale Tokens': 'Push tokens older than the repair window. Clear/repair these when notifications stop working after device, browser, or domain changes.',
+    'Browser Permission': 'Notification permission on this admin device. It does not prove every employee device is configured.',
+    'Last Push Result': 'Most recent server push result when the route recorded one. Use it to see sent/failed counts.',
+    'Firestore Latency': 'How quickly Firestore responded during the latest health check. High latency can be network, rules, query shape, or Firebase service health.',
+    'Backup Storage': 'Total Storage usage detected for backup files. Use it to watch backup growth and prune behavior.',
+    'API Routes': 'How many Vercel API routes responded during health checks. A failed route usually needs Vercel logs and env-var scope review.',
+    'Last Successful Sync': 'Most recent successful backup/status sync written by the backup route.',
+    'Backup Integrity': 'Round-trip verification status for the latest backup. Failed integrity means do not rely on that backup for restore.',
+    'Permission Denied': 'Count of Firestore rule blocks seen in logs. Usually indicates a role/rules/path mismatch.',
+    'Missing Owners': 'Restaurants whose owner email does not match an existing user profile. Fix before onboarding or billing handoff.',
+    'No Restaurant ID': 'Users without workspace routing. These users can log in but may see blank or wrong data.',
+    'Duplicate Emails': 'Multiple profiles with the same email. This can cause ghost accounts and wrong permissions.',
+    'Audit Logs': 'Recent global/platform action records. Use this for incident timelines.',
+    'Ghost Actions': 'Support possession or ghost-mode actions. These deserve extra review.',
+    'Destructive': 'Deletes, nukes, locks, sweeps, or other high-risk actions.',
+    'Support Edits': 'Profile/routing/support changes made by admin tools.',
+    'Access Changes': 'Grant/revoke/admin access changes. Review these during security audits.',
+    'Rule Blocks': 'Permission-denied clues from Firestore rules.',
+    'Orphan Users': 'Users missing restaurantId/workspace membership.',
+    'Backup Status': 'Combined backup age/status. Open Forensics & Backups for backup list, restore, and restore drill tools.',
+    'Version': 'Current deployed 86 Chaos version reported by the browser build.',
+    'Admin Access': 'Shows whether this session is running with Super Admin authority. If the wrong account is locked out, check MASTER_ADMIN_EMAIL, MASTER_ADMIN_EMAILS, REACT_APP_MASTER_ADMIN_EMAIL, Firebase custom claims, and Firestore isSuperAdmin/systemAccess flags.',
+    'Restore Drill': 'Shows the last time a backup was safely restored into a test/sandbox project. Backups are not proven until a restore drill has passed.'
+  };
+
+  const AdminInfoButton = ({ title, body }) => (
+    <button
+      type="button"
+      onClick={(event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        setAdminHelpModal({ title, body });
+      }}
+      className="inline-flex items-center justify-center w-5 h-5 rounded-full border border-[#2A353D] bg-[#12161A] text-slate-500 hover:text-[#D4A381] hover:border-[#D4A381]/60 transition-colors flex-shrink-0"
+      title={`Explain ${title}`}
+      aria-label={`Explain ${title}`}
+    >
+      <HelpCircle size={12} />
+    </button>
+  );
+
+  const CockpitMetric = ({ label, value, detail, tone = 'emerald', hot = false, onClick, help }) => {
+    const metricHelp = help || ADMIN_METRIC_HELP[label] || 'This System Administrator display summarizes live support data. Click through or search the Administrator Manual for the label name to see deeper troubleshooting steps.';
     return (
-      <Wrapper type={onClick ? 'button' : undefined} onClick={onClick} className={`w-full text-left cockpit-panel cockpit-grid rounded-xl p-3 min-h-[92px] flex flex-col justify-between ${onClick ? 'hover:border-[#D4A381]/50 hover:bg-[#12161A]/70 transition-all cursor-pointer' : ''}`}>
-        <div className="flex items-center justify-between gap-2">
-          <span className="text-[9px] font-black uppercase tracking-widest text-slate-500 truncate">{label}</span>
+    <div
+      role={onClick ? 'button' : undefined}
+      tabIndex={onClick ? 0 : undefined}
+      onClick={onClick}
+      onKeyDown={(event) => { if (onClick && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); onClick(); } }}
+      className={`w-full text-left cockpit-panel cockpit-grid rounded-xl p-3 min-h-[92px] flex flex-col justify-between ${onClick ? 'hover:border-[#D4A381]/50 hover:bg-[#12161A]/70 transition-all cursor-pointer' : ''}`}
+    >
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-[9px] font-black uppercase tracking-widest text-slate-500 truncate">{label}</span>
+        <div className="flex items-center gap-2">
+          <AdminInfoButton title={label} body={metricHelp} />
           <SignalPip tone={tone} label={hot ? 'HOT' : 'SYNC'} hot={hot} />
         </div>
-        <div className="text-2xl font-black text-white leading-none mt-2">{value}</div>
-        <div className="text-[10px] text-slate-400 font-bold mt-2 truncate">{detail}</div>
-      </Wrapper>
+      </div>
+      <div className="text-2xl font-black text-white leading-none mt-2">{value}</div>
+      <div className="text-[10px] text-slate-400 font-bold mt-2 truncate">{detail}</div>
+    </div>
     );
   };
 
+  const loadAiUsageAdmin = async () => {
+    setAiUsageLoading(true);
+    setAiUsageError('');
+    try {
+      const response = await secureFetch(`/api/ai-usage?all=1&monthKey=${encodeURIComponent(aiUsageMonth)}&eventLimit=20`);
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok || payload?.ok === false) throw new Error(payload?.error || 'Could not load AI usage.');
+      const rows = Array.isArray(payload.rows) ? payload.rows : [];
+      setAiUsageRows(rows);
+      setAiUsageLimitDrafts(Object.fromEntries(rows.map(row => [row.restaurantId, {
+        invoicePagesLimit: Number(row.invoicePagesLimit ?? 40),
+        menuPagesLimit: Number(row.menuPagesLimit ?? 10)
+      }])));
+    } catch (error) {
+      setAiUsageError(error?.message || 'Could not load AI usage.');
+    } finally {
+      setAiUsageLoading(false);
+    }
+  };
+
+  const saveAiUsageLimits = async (row) => {
+    const restaurantId = row?.restaurantId;
+    const draft = aiUsageLimitDrafts[restaurantId] || {};
+    if (!restaurantId) return;
+    setAiUsageSavingId(restaurantId);
+    try {
+      const response = await secureFetch('/api/ai-usage', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          restaurantId,
+          monthKey: aiUsageMonth,
+          invoicePagesLimit: Number(draft.invoicePagesLimit),
+          menuPagesLimit: Number(draft.menuPagesLimit)
+        })
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok || payload?.ok === false) throw new Error(payload?.error || 'Could not save AI page limits.');
+      addToast('AI Limits Saved', `${row.restaurantName || restaurantId}: invoice ${draft.invoicePagesLimit}, menu ${draft.menuPagesLimit}.`);
+      await loadAiUsageAdmin();
+    } catch (error) {
+      addToast('AI Limit Error', error?.message || 'Could not save AI page limits.');
+    } finally {
+      setAiUsageSavingId('');
+    }
+  };
+
+
+  const resetAiUsage = async (row) => {
+    const restaurantId = row?.restaurantId;
+    if (!restaurantId) return;
+    if (!window.confirm(`Reset AI scan usage for ${row.restaurantName || restaurantId} for ${aiUsageMonth}? Limits stay the same, counters go back to zero.`)) return;
+    setAiUsageSavingId(restaurantId);
+    try {
+      const response = await secureFetch('/api/ai-usage', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'reset', restaurantId, monthKey: aiUsageMonth })
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok || payload?.ok === false) throw new Error(payload?.error || 'Could not reset AI usage.');
+      addToast('AI Usage Reset', `${row.restaurantName || restaurantId} usage reset for ${aiUsageMonth}.`);
+      await loadAiUsageAdmin();
+    } catch (error) {
+      addToast('AI Reset Error', error?.message || 'Could not reset AI usage.');
+    } finally {
+      setAiUsageSavingId('');
+    }
+  };
+
+  useEffect(() => {
+    if (subTab === 'ai-usage') loadAiUsageAdmin();
+  }, [subTab, aiUsageMonth]);
+
   const adminTabGroups = [
-    { title:'Security', summary:'App Check, MFA, rules, risky users', tabs:[
-      {id:'security', label:'Security Center', short:'Security'},
-      {id:'admins', label:'Access Control', short:'Access'}
-    ]},
-    { title:'Deployments', summary:'Readiness, health, diagnostics, versions', tabs:[
-      {id:'overview', label:'Command Center', short:'Home'},
-      {id:'deployment', label:'Deployment Readiness', short:'Deploy'},
-      {id:'health', label:'Health Dashboard', short:'Health'},
-      {id:'v14', label:'14.0 Robustness Suite', short:'V14'},
-      {id:'history', label:'Settings Version History', short:'History'}
-    ]},
-    { title:'Customers', summary:'Workspaces, people, roles, setup', tabs:[
-      {id:'tenants', label:'Workspaces', short:'Clients'},
-      {id:'users', label:'People Directory', short:'People'},
-      {id:'roles', label:'Permission & Role Manager', short:'Roles'},
-      {id:'setup', label:'Workspace Setup Wizard', short:'Setup'}
-    ]},
-    { title:'Diagnostics', summary:'Push, presence, support, imports', tabs:[
-      {id:'push', label:'Push Control Center', short:'Push'},
-      {id:'live', label:'Manual Presence Snapshot', short:'Presence'},
-      {id:'support', label:'Support Desk', short:'Support'},
-      {id:'data', label:'Import / Export Center', short:'Data'}
-    ]},
-    { title:'Backups', summary:'Backups, audits, guarded tools', tabs:[
-      {id:'forensics', label:'Audit & Forensics', short:'Audit'},
-      {id:'danger', label:'Danger Zone', short:'Danger'}
-    ]},
-    { title:'AI Tools', summary:'Scanner safety and platform operations', tabs:[
-      {id:'ops', label:'Platform Operations', short:'Ops'}
-    ]},
-    { title:'Audit', summary:'Manual, maintenance, branding', tabs:[
-      {id:'maintenance', label:'Maintenance Mode', short:'Maint'},
-      {id:'branding', label:'Branding / Display', short:'Brand'},
-      {id:'manual', label:'Administrator Manual', short:'Manual'}
-    ]}
+    {
+      title:'Start Here',
+      summary:'Daily command center, system health, deployment readiness, complete app training, and AI-assisted troubleshooting.',
+      helper:'Use this first when you are not sure where to go. It explains the current state, teaches every app tab, shows live health, and sends you to the right repair area.',
+      tabs:[
+        {id:'overview', label:'Command Center', short:'Home', intent:'Start here for live status and suggested next actions.'},
+        {id:'health', label:'Health Dashboard', short:'Health', intent:'Check API routes, Firebase connection, backup integrity, and runtime status.'},
+        {id:'deployment', label:'Deployment Readiness', short:'Deploy', intent:'Confirm env vars, rules, versions, and production readiness before releases.'},
+        {id:'manual', label:'Training & Administrator Manuals', short:'Manuals', intent:'Search the complete non-AI app training guide or use the preserved Gemini troubleshooting desk.'}
+      ]
+    },
+    {
+      title:'Backup & Recovery',
+      summary:'Backups, restore checks, forensic exports, import/export, and restore drill evidence.',
+      helper:'Use this for protecting data, proving backups work, downloading diagnostics, and moving data in or out safely.',
+      tabs:[
+        {id:'forensics', label:'Backup Center & Audit Trail', short:'Backups', intent:'Run backups, verify backup files, review audits, export forensics, and record restore drills.'},
+        {id:'data', label:'Import / Export Center', short:'Data', intent:'Use controlled data import/export tools and migration bridges.'}
+      ]
+    },
+    {
+      title:'Security & Access',
+      summary:'Super Admin access, App Check, MFA, rules status, and role permission design.',
+      helper:'Use this when someone is locked out, rules are being hardened, MFA is being enforced, or permissions feel wrong.',
+      tabs:[
+        {id:'security', label:'Security Center', short:'Security', intent:'Review App Check, MFA, Firestore/Storage rules, risky users, and environment separation.'},
+        {id:'admins', label:'Super Admin Access', short:'Access', intent:'Grant or revoke platform-level System Administrator access.'},
+        {id:'roles', label:'Permission & Role Manager', short:'Roles', intent:'Design and review restaurant-level role packages and permission toggles.'}
+      ]
+    },
+    {
+      title:'Workspaces & People',
+      summary:'Restaurants, clients, staff profiles, workspace setup, modules, and branding.',
+      helper:'Use this to onboard a restaurant, fix workspace routing, support a staff profile, or adjust visible customer branding.',
+      tabs:[
+        {id:'tenants', label:'Workspaces / Clients', short:'Clients', intent:'Manage restaurant accounts, billing state, modules, and workspace configuration.'},
+        {id:'users', label:'People Directory', short:'People', intent:'Find users across workspaces, support-edit profiles, routing, password resets, and device clues.'},
+        {id:'setup', label:'Workspace Setup Wizard', short:'Setup', intent:'Create or deploy a new workspace with owner login handoff.'},
+        {id:'branding', label:'Branding / Display', short:'Branding', intent:'Manage display/branding tools while keeping 86 Chaos branding locked on.'}
+      ]
+    },
+    {
+      title:'Support & Monitoring',
+      summary:'Push notifications, presence snapshots, crash reports, runtime logs, and support diagnostics.',
+      helper:'Use this when a customer says something is broken, alerts are not arriving, or you need a safe view into current sessions.',
+      tabs:[
+        {id:'support', label:'Support Diagnostics', short:'Support', intent:'Review crashes, API clues, auth/runtime state, rule blocks, and support diagnostics.'},
+        {id:'ai-usage', label:'AI Usage / Scan Limits', short:'AI Usage', intent:'Review monthly invoice and menu AI pages, failures, blocked scans, bypass logs, and workspace limits.'},
+        {id:'push', label:'Push Control Center', short:'Push', intent:'Audit push tokens, stale devices, opt-in status, and test delivery.'},
+        {id:'live', label:'Manual Presence Snapshot', short:'Presence', intent:'Take an on-demand low-cost live user/workspace snapshot.'}
+      ]
+    },
+    {
+      title:'Maintenance & Releases',
+      summary:'Maintenance mode, hardening suite, version history, and legacy release checks.',
+      helper:'Use this for release verification, customer-facing maintenance screens, and older hardening/diagnostic suites.',
+      tabs:[
+        {id:'maintenance', label:'Maintenance Mode', short:'Maint', intent:'Control workspace maintenance screens and platform messaging.'},
+        {id:'v14', label:'Robustness Suite', short:'Hardening', intent:'Run legacy storage, schema, permissions, backup, and client guardrail checks.'},
+        {id:'history', label:'Settings Version History', short:'History', intent:'Review settings/version history and release notes.'}
+      ]
+    },
+    {
+      title:'Platform Tools',
+      summary:'Platform broadcasts, guarded operations, and high-risk actions.',
+      helper:'Use this last. These tools can affect many restaurants and should usually follow diagnostics and a backup.',
+      danger:true,
+      tabs:[
+        {id:'ops', label:'Platform Operations', short:'Ops', intent:'Send platform banners, global alerts, demo workspaces, and operational broadcasts.'},
+        {id:'danger', label:'Danger Zone', short:'Danger', intent:'High-risk destructive or global operations with extra confirmation.'}
+      ]
+    }
   ];
   const adminTabs = adminTabGroups.flatMap(group => group.tabs.map(tab => ({ ...tab, group: group.title, groupSummary: group.summary })));
-  const activeAdminTab = adminTabs.find(tab => tab.id === subTab) || adminTabs[0];
-  const mobilePrimaryTabs = ['overview', 'health', 'v14', 'deployment', 'live', 'roles', 'push', 'setup', 'data', 'maintenance', 'manual'];
-
-  const jumpToAdminIssue = (target) => {
-    setSubTab(target || 'overview');
-    setTimeout(() => document.getElementById(`admin-${target || 'overview'}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
+  const adminSearchActions = [
+    { label:'Run Full System Diagnostics', tab:'health', keywords:'diagnostics deployment report health api routes' },
+    { label:'Explain Diagnostics with OpenAI', tab:'health', keywords:'openai repair guidance explain errors health' },
+    { label:'Run Backup Now', tab:'forensics', keywords:'backup manual storage restore watchdog' },
+    { label:'Check Backup Watchdog', tab:'forensics', keywords:'stale scheduled backup cron preview production' },
+    { label:'Find or Repair a User', tab:'users', keywords:'people employee profile login routing reset password' },
+    { label:'Test Push Notifications', tab:'push', keywords:'push token fcm alert device' },
+    { label:'Review AI Scan Page Usage', tab:'ai-usage', keywords:'invoice menu ai pages limits scans failures blocked bypass model provider' },
+    { label:'Review App Check and MFA', tab:'security', keywords:'security app check mfa rules environment' },
+    { label:'Open Complete App Training Manual', tab:'manual', keywords:'non ai training whole app tab guide print pdf instructions manual' },
+    { label:'Ask Gemini Administrator Manual', tab:'manual', keywords:'gemini help instructions troubleshooting repair manual' },
+    { label:'Check Deployment Readiness', tab:'deployment', keywords:'deploy vercel firebase publish production readiness' },
+    { label:'Create a Workspace', tab:'setup', keywords:'client restaurant owner onboarding setup' }
+  ];
+  const normalizedAdminToolSearch = adminToolSearch.trim().toLowerCase();
+  const scoreAdminSearchText = (text = '') => {
+    if (!normalizedAdminToolSearch) return 0;
+    const haystack = String(text || '').toLowerCase();
+    const tokens = normalizedAdminToolSearch.split(/\s+/).filter(Boolean);
+    let score = haystack.includes(normalizedAdminToolSearch) ? 20 : 0;
+    tokens.forEach(token => { if (haystack.includes(token)) score += 4; });
+    return score;
   };
+  const adminSearchResults = normalizedAdminToolSearch ? [
+    ...adminTabs.map(tab => ({ type:'tool', label:tab.label, detail:`${tab.group} • ${tab.intent}`, tab:tab.id, score:scoreAdminSearchText(`${tab.label} ${tab.short || ''} ${tab.group} ${tab.groupSummary} ${tab.intent}`) })),
+    ...adminSearchActions.map(action => ({ type:'action', label:action.label, detail:`Action • ${action.keywords}`, tab:action.tab, score:scoreAdminSearchText(`${action.label} ${action.keywords}`) })),
+    ...adminManualArticles.map((article, idx) => ({ type:'article', label:article.title, detail:`Manual • ${article.group}`, tab:'manual', manualId:`${idx}-${String(article.title || 'article').toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 50)}`, score:scoreAdminSearchText(`${article.title} ${article.group} ${article.keywords || ''} ${(article.body || []).join(' ')}`) }))
+  ].filter(result => result.score > 0).sort((a,b) => b.score - a.score || a.label.localeCompare(b.label)).slice(0, 12) : [];
+  const activeAdminTab = adminTabs.find(tab => tab.id === subTab) || adminTabs[0];
+  const mobilePrimaryTabs = ['overview', 'health', 'manual', 'forensics', 'security', 'admins', 'roles', 'tenants', 'users', 'support', 'ai-usage', 'push', 'live'];
+  const mobileQuickTabs = mobilePrimaryTabs.map(id => adminTabs.find(tab => tab.id === id)).filter(Boolean);
+
+  const selectAdminTab = (target = 'overview', scroll = true) => {
+    const nextTarget = target || 'overview';
+    setSubTab(nextTarget);
+    if (typeof window !== 'undefined' && window.matchMedia('(max-width: 1023px)').matches) {
+      setIsAdminNavOpen(false);
+    }
+    if (scroll && typeof window !== 'undefined') {
+      window.setTimeout(() => {
+        const anchor = document.getElementById(`admin-${nextTarget}`) || document.getElementById('admin-content-start');
+        anchor?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }, 60);
+    }
+  };
+
+  const selectAdminSearchResult = (result) => {
+    if (!result) return;
+    if (result.type === 'article') {
+      setAdminManualCategory('All');
+      setAdminManualSearch(result.label);
+      setSelectedAdminArticleId(result.manualId || '');
+    }
+    selectAdminTab(result.tab || 'overview');
+    setAdminToolSearch('');
+  };
+
+  const jumpToAdminIssue = (target) => selectAdminTab(target || 'overview');
 
   const v14TargetRestaurantId = v14WorkspaceId || editingRest?.id || appUser?.restaurantId || restaurants[0]?.id || '';
   const v14PermissionUser = allUsers.find(u => u.id === v14PermissionUserId) || allUsers.find(u => u.restaurantId === v14TargetRestaurantId) || allUsers[0] || null;
@@ -5434,7 +7226,7 @@ Type RESTORE to continue.`);
   const loadV14Backups = async () => {
     setV14BusyTool('backups');
     try {
-      const response = await secureFetch('/api/list-backups?includeUsage=0');
+      const response = await secureFetch('/api/list-backups?includeUsage=0&includeSignedUrls=0');
       const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(data.error || 'Could not list backups.');
       const backups = Array.isArray(data.backups) ? data.backups : [];
@@ -5486,7 +7278,7 @@ Type RESTORE to continue.`);
 
 
   return (
-    <div className="max-w-7xl mx-auto space-y-4 pb-24 animate-[slideIn_0.2s_ease-out]">
+    <div className="admin46-shell max-w-[1500px] mx-auto pb-24 px-2 sm:px-4 lg:px-5 animate-[slideIn_0.2s_ease-out]">
       <Modal isOpen={!!createdWorkspaceLogin} onClose={() => setCreatedWorkspaceLogin(null)} title="Workspace Login Created">
         {createdWorkspaceLogin && <div className="space-y-4">
           <div className="bg-emerald-900/10 border border-emerald-900/40 rounded-xl p-3 text-xs font-bold text-emerald-200">This owner login is shown one time only. Copy, print, email, or text it before closing.</div>
@@ -5499,150 +7291,83 @@ Type RESTORE to continue.`);
           <button type="button" onClick={() => setCreatedWorkspaceLogin(null)} className={`w-full ${T.btn}`}>Done</button>
         </div>}
       </Modal>
-      {/* ADMIN TOP BAR */}
-      <div className="cockpit-panel rounded-2xl p-4 overflow-hidden relative">
-        <div className="absolute inset-0 cockpit-grid opacity-35 pointer-events-none"></div>
-        <div className="relative flex flex-col lg:flex-row lg:items-end justify-between gap-4 mb-4">
-          <div>
-            <div className="flex flex-wrap items-center gap-2 mb-2">
-              <SignalPip tone="emerald" label="PLATFORM LIVE" hot />
-              <SignalPip tone={platformStatus === 'Needs Attention' ? 'red' : platformStatus === 'Monitoring' ? 'amber' : 'emerald'} label={platformStatus} hot={platformStatus === 'Needs Attention'} />
-              <SignalPip tone="blue" label="FIREBASE" />
-              <SignalPip tone="purple" label="GHOST READY" />
-            </div>
-            <h1 className="text-xl sm:text-2xl font-black text-white tracking-tight">System Administrator</h1>
-            <p className="text-xs text-slate-400 font-bold mt-1">Professional control center for workspaces, people, support, backups, review stamps, and platform operations.</p>
+      <Modal isOpen={!!adminHelpModal} onClose={() => setAdminHelpModal(null)} title={adminHelpModal?.title || 'System Administrator Help'}>
+        {adminHelpModal && <div className="space-y-3">
+          <div className="bg-[#0B0E11] border border-[#2A353D] rounded-xl p-4 text-sm font-bold text-slate-300 leading-relaxed whitespace-pre-line">{adminHelpModal.body}</div>
+          <button type="button" onClick={() => setAdminHelpModal(null)} className={T.btn}>Got it</button>
+        </div>}
+      </Modal>
+      {/* 15.0.46 PROFESSIONAL ADMIN CONSOLE */}
+      <section className="admin46-topbar">
+        <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-5">
+          <div className="min-w-0">
+            <div className="text-[10px] font-black uppercase tracking-[0.28em] text-[#D4A381]">System Administration</div>
+            <h1 className="text-2xl sm:text-3xl font-black text-white mt-1">Operations Console</h1>
+            <p className="text-xs sm:text-sm text-slate-400 font-semibold mt-2 max-w-2xl leading-relaxed">A compact workspace for platform health, access, customers, recovery, and support.</p>
           </div>
-          <button type="button" onClick={() => setIsCommandDeckOpen(v => !v)} className="bg-[#0B0E11] border border-[#2A353D] text-slate-300 hover:text-[#D4A381] rounded-xl px-3 py-2 text-[10px] font-black uppercase tracking-widest">
-            {isCommandDeckOpen ? 'Hide Command Deck' : 'Show Command Deck'}
-          </button>
+          <div className="grid grid-cols-3 gap-2 w-full xl:w-auto xl:min-w-[420px]">
+            <button type="button" onClick={() => selectAdminTab('overview')} className="admin46-status-chip text-left">
+              <span>Platform</span><strong className={platformStatus === 'Needs Attention' ? 'text-red-300' : platformStatus === 'Monitoring' ? 'text-amber-300' : 'text-emerald-300'}>{platformStatus}</strong><small>{adminRiskQueue.length} item{adminRiskQueue.length === 1 ? '' : 's'}</small>
+            </button>
+            <button type="button" onClick={() => selectAdminTab('forensics')} className="admin46-status-chip text-left">
+              <span>Backup</span><strong className={backupIsStale ? 'text-amber-300' : 'text-emerald-300'}>{backupStatusLabel}</strong><small>{nextBackupCountdown}</small>
+            </button>
+            <button type="button" onClick={() => selectAdminTab('security')} className="admin46-status-chip text-left">
+              <span>Security</span><strong className={(securityReport?.riskyUsers || []).length ? 'text-amber-300' : 'text-slate-100'}>{(securityReport?.riskyUsers || []).length} flagged</strong><small>Review center</small>
+            </button>
+          </div>
         </div>
 
-        {/* ORGANIZED ADMIN NAVIGATION */}
-        <div className="relative space-y-3">
-          <div className="lg:hidden bg-[#0B0E11]/80 border border-[#2A353D] rounded-2xl p-3 space-y-3">
-            <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0">
-                <div className="text-[8px] font-black uppercase tracking-widest text-[#D4A381]">Mobile Admin Layout</div>
-                <div className="text-sm font-black text-white truncate">{activeAdminTab.label}</div>
-                <div className="text-[10px] font-bold text-slate-500 truncate">{activeAdminTab.group} • {activeAdminTab.groupSummary}</div>
-              </div>
-              <button type="button" onClick={() => setIsCommandDeckOpen(v => !v)} className="flex-shrink-0 bg-[#12161A] border border-[#2A353D] text-[#D4A381] rounded-xl px-3 py-2 text-[9px] font-black uppercase tracking-widest">
-                {isCommandDeckOpen ? 'Hide Signals' : 'Signals'}
-              </button>
+        <div className="relative mt-5" id="admin-tool-search">
+          <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" />
+          <input value={adminToolSearch} onChange={e => setAdminToolSearch(e.target.value)} className="w-full min-h-[52px] rounded-2xl border border-[#303B43] bg-[#0B0E11] pl-12 pr-12 text-sm font-bold text-white outline-none placeholder:text-slate-600 focus:border-[#D4A381]" placeholder="Search tools, users, workspaces, or manual..." aria-label="Search System Administrator" />
+          {adminToolSearch && <button type="button" onClick={() => setAdminToolSearch('')} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500 hover:text-white"><X size={17}/></button>}
+          {normalizedAdminToolSearch && <div className="absolute z-50 left-0 right-0 mt-2 bg-[#0B0E11] border border-[#D4A381]/40 rounded-2xl p-2 shadow-2xl max-h-[52vh] overflow-y-auto custom-scrollbar">
+            {adminSearchResults.length === 0 ? <div className="p-4 text-xs font-bold text-slate-500">No matching authorized result.</div> : adminSearchResults.map((result, idx) => <button key={`${result.type}-${result.label}-${idx}`} type="button" onClick={() => selectAdminSearchResult(result)} className="w-full text-left rounded-xl px-3 py-3 hover:bg-[#161C21] border border-transparent hover:border-[#2A353D] transition-colors">
+              <div className="flex items-center justify-between gap-2"><span className="text-xs font-black text-white">{result.label}</span><span className="text-[8px] font-black uppercase tracking-widest text-[#D4A381]">{result.type}</span></div>
+              <div className="text-[10px] font-bold text-slate-500 mt-1 leading-snug">{result.detail}</div>
+            </button>)}
+          </div>}
+        </div>
+
+        <div className="lg:hidden mt-3 flex gap-2">
+          <select value={subTab} onChange={event => selectAdminTab(event.target.value)} className="flex-1 min-h-[48px] rounded-xl border border-[#303B43] bg-[#0B0E11] px-3 text-sm font-black text-white outline-none focus:border-[#D4A381]">
+            {adminTabGroups.map(group => <optgroup key={group.title} label={group.title}>{group.tabs.map(tab => <option key={tab.id} value={tab.id}>{tab.label}</option>)}</optgroup>)}
+          </select>
+          <button type="button" onClick={() => setIsAdminNavOpen(v => !v)} className="min-h-[48px] rounded-xl border border-[#303B43] bg-[#161C21] px-4 text-[10px] font-black uppercase tracking-widest text-[#D4A381]">{isAdminNavOpen ? 'Close' : 'Menu'}</button>
+        </div>
+      </section>
+
+      <div className="admin46-layout grid gap-3 lg:grid-cols-[218px_minmax(0,1fr)] lg:items-start">
+        <aside className={`${isAdminNavOpen ? 'block' : 'hidden lg:block'} lg:sticky lg:top-4 h-max`} id="admin-left-nav">
+          <nav className="admin46-nav">
+            <div className="flex items-center justify-between gap-2 px-2 py-2 border-b border-[#252E35] mb-2">
+              <div><div className="text-[9px] font-black uppercase tracking-[0.22em] text-[#D4A381]">Sections</div><div className="text-xs font-bold text-slate-500 mt-1">Choose one job</div></div>
+              <button type="button" onClick={() => setIsAdminNavOpen(false)} className="lg:hidden rounded-lg border border-[#303B43] p-2 text-slate-400"><X size={15}/></button>
             </div>
-            <select
-              value={subTab}
-              onChange={(e) => setSubTab(e.target.value)}
-              className={`${T.input} text-sm font-black`}
-              aria-label="Choose administrator section"
-            >
+            <div className="space-y-3 max-lg:max-h-[68vh] max-lg:overflow-y-auto custom-scrollbar pr-1">
               {adminTabGroups.map(group => (
-                <optgroup key={group.title} label={group.title}>
-                  {group.tabs.map(t => <option key={t.id} value={t.id}>{t.label}</option>)}
-                </optgroup>
-              ))}
-            </select>
-            <div className="grid grid-cols-4 gap-1.5">
-              {adminTabs.filter(t => mobilePrimaryTabs.includes(t.id)).map(t => (
-                <button key={t.id} type="button" onClick={() => setSubTab(t.id)} className={`px-2 py-2 rounded-xl border text-[8px] font-black uppercase tracking-widest transition-all ${subTab === t.id ? 'bg-red-600 text-white border-red-500' : 'bg-[#12161A] text-slate-400 border-[#2A353D]'}`}>
-                  {t.short || t.label}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div className="hidden lg:grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
-            {adminTabGroups.map(group => (
-              <div key={group.title} className="bg-[#0B0E11]/70 border border-[#2A353D] rounded-2xl p-2">
-                <div className="text-[8px] font-black uppercase tracking-widest text-slate-500 px-1.5 pb-0.5">{group.title}</div>
-                <div className="text-[9px] font-bold text-slate-600 px-1.5 pb-1.5 truncate">{group.summary}</div>
-                <div className="grid grid-cols-1 gap-1.5">
-                  {group.tabs.map((t) => (
-                    <button key={t.id} onClick={() => setSubTab(t.id)} className={`px-3 py-2.5 text-left text-[10px] sm:text-[11px] font-black rounded-xl uppercase tracking-widest transition-all border ${subTab === t.id ? 'bg-red-600 text-white shadow-lg border-red-500' : 'bg-[#1A2126] text-slate-400 border-[#2A353D] hover:text-white hover:border-slate-600'}`}>
-                      {t.label}
-                    </button>
-                  ))}
+                <div key={group.title}>
+                  <div className={`px-2 pb-1 text-[9px] font-black uppercase tracking-[0.18em] ${group.danger ? 'text-red-300' : 'text-slate-500'}`}>{group.title}</div>
+                  <div className="space-y-1">
+                    {group.tabs.map(tab => (
+                      <button key={tab.id} type="button" onClick={() => selectAdminTab(tab.id)} className={`admin46-nav-button ${subTab === tab.id ? 'is-active' : ''} ${group.danger ? 'is-danger' : ''}`}>
+                        <span>{tab.label}</span>
+                        {subTab === tab.id && <ChevronRight size={14}/>} 
+                      </button>
+                    ))}
+                  </div>
                 </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-      <div className={`grid gap-4 ${isCommandDeckOpen ? 'lg:grid-cols-[300px_minmax(0,1fr)]' : 'lg:grid-cols-1'}`}>
-        {isCommandDeckOpen && (
-          <aside className="lg:sticky lg:top-4 h-max space-y-3 max-lg:max-h-[58vh] max-lg:overflow-y-auto max-lg:pr-1 custom-scrollbar" id="admin-command-deck">
-            <div className="cockpit-panel rounded-2xl p-3 overflow-hidden relative">
-              <div className="absolute inset-0 cockpit-grid opacity-40 pointer-events-none"></div>
-              <div className="relative flex items-center justify-between gap-2 mb-3">
-                <div>
-                  <div className="text-[9px] font-black uppercase tracking-widest text-[#D4A381]">Command Deck</div>
-                  <div className="text-sm font-black text-white">Clickable Signal Board</div>
-                </div>
-                <button type="button" onClick={() => setIsCommandDeckOpen(false)} className="text-slate-500 hover:text-white border border-[#2A353D] rounded-lg px-2 py-1 text-[9px] font-black uppercase">Hide</button>
-              </div>
-              <div className="relative space-y-2">
-                <CockpitMetric label="Platform" value={platformStatus} detail={`${adminRiskQueue.length} action item(s)`} tone={platformStatus === 'Needs Attention' ? 'red' : platformStatus === 'Monitoring' ? 'amber' : 'emerald'} hot={platformStatus === 'Needs Attention'} onClick={() => jumpToAdminIssue('overview')} />
-                <CockpitMetric label="Health" value={healthSnapshot ? `${healthSnapshot.firestoreLatencyMs}ms` : 'Check'} detail={`Integrity: ${backupStatus?.lastIntegrityStatus || backupStatus?.backupIntegrity?.status || 'not checked'}`} tone={(backupStatus?.lastIntegrityStatus || backupStatus?.backupIntegrity?.status) === 'failed' ? 'red' : healthSnapshot?.firestoreLatencyMs > 800 ? 'amber' : 'emerald'} hot={(backupStatus?.lastIntegrityStatus || backupStatus?.backupIntegrity?.status) === 'failed'} onClick={() => jumpToAdminIssue('health')} />
-                <CockpitMetric label="Manual Presence" value={presenceSnapshot.fetchedAt ? onlineUsers.length : '—'} detail={presenceSnapshot.fetchedAt ? `${onlineRestaurants.length} workspaces` : 'Press refresh'} tone={presenceSnapshot.fetchedAt ? 'emerald' : 'blue'} onClick={() => jumpToAdminIssue('live')} />
-                <CockpitMetric label="MRR" value={`$${mrr}`} detail={`ARPA $${arpa}`} tone="emerald" onClick={() => jumpToAdminIssue('tenants')} />
-                <CockpitMetric label="Crashes 24h" value={crashes24h} detail={crashes24h ? 'Open support logs' : 'No fresh crashes'} tone={crashes24h ? 'amber' : 'emerald'} hot={crashes24h > 10} onClick={() => jumpToAdminIssue('support')} />
-                <CockpitMetric label="Push Opt-In" value={`${pushOptInRate}%`} detail={`${allUsers.filter(u => u.fcmToken).length} devices`} tone={pushOptInRate < 30 ? 'amber' : 'emerald'} onClick={() => jumpToAdminIssue('users')} />
-                <CockpitMetric label="Stale Clients" value={staleTenants.length} detail="Inactive 21+ days" tone={staleTenants.length ? 'amber' : 'emerald'} onClick={() => jumpToAdminIssue('tenants')} />
-                <CockpitMetric label="Last Backup" value={backupStatusLabel} detail={backupCommandDeckDetail} tone={backupIsStale ? 'amber' : 'emerald'} hot={backupIsStale} onClick={() => jumpToAdminIssue('forensics')} />
-                <button type="button" onClick={() => jumpToAdminIssue('forensics')} className="w-full text-left bg-[#0B0E11] border border-[#2A353D] hover:border-[#D4A381]/50 rounded-xl p-3 transition-colors">
-                  <div className="flex items-center justify-between gap-2"><span className="text-[9px] font-black uppercase tracking-widest text-slate-500">Next Automatic Backup</span><SignalPip tone={backupRunning ? 'blue' : 'emerald'} label={backupRunning ? 'RUNNING' : 'COUNTDOWN'} hot={backupRunning} /></div>
-                  <div className="text-xl font-black text-white mt-2">{nextBackupCountdown}</div>
-                  <div className="text-[10px] font-bold text-slate-400 mt-1">Scheduled for {nextBackupLocalTime}</div>
-                </button>
-                <button type="button" onClick={handleRunBackupNow} disabled={isBackupRunning || backupRunning} className="w-full bg-[#12161A] border border-[#2A353D] hover:border-[#D4A381]/60 disabled:opacity-50 disabled:cursor-not-allowed rounded-xl px-3 py-2 text-[10px] font-black uppercase tracking-widest text-[#D4A381] hover:text-white transition-colors flex items-center justify-center gap-2">
-                  {(isBackupRunning || backupRunning) ? <Loader2 size={14} className="animate-spin" /> : <Shield size={14} />}
-                  {(isBackupRunning || backupRunning) ? 'Backup Running' : 'Run Backup Now'}
-                </button>
-              </div>
-            </div>
-
-            <div className="cockpit-panel rounded-2xl p-3 space-y-2">
-              <div className="text-[9px] font-black uppercase tracking-widest text-[#D4A381] mb-2">Action Queue</div>
-              {adminRiskQueue.length === 0 && <button type="button" onClick={() => jumpToAdminIssue('overview')} className="w-full text-left bg-emerald-900/10 border border-emerald-900/40 rounded-xl p-3"><SignalPip tone="emerald" label="CLEAN"/><div className="text-xs font-bold text-slate-300 mt-2">No urgent platform issues.</div></button>}
-              {adminRiskQueue.map((item, idx) => (
-                <button key={`${item.title}-${idx}`} type="button" onClick={() => jumpToAdminIssue(item.jump)} className="w-full text-left bg-[#0B0E11] border border-[#2A353D] hover:border-[#D4A381]/50 rounded-xl p-3 transition-colors">
-                  <SignalPip tone={item.tone} label={item.title} hot={item.tone === 'red'} />
-                  <div className="text-[10px] text-slate-400 font-bold mt-2 leading-snug">{item.detail}</div>
-                </button>
               ))}
             </div>
-
-            <div className="cockpit-panel rounded-2xl p-3">
-              <div className="text-[9px] font-black uppercase tracking-widest text-[#D4A381] mb-2">Quick Controls</div>
-              <div className="grid grid-cols-2 gap-2">
-                <button type="button" onClick={handleCopyPlatformSnapshot} className="bg-[#0B0E11] border border-[#2A353D] text-slate-300 hover:text-[#D4A381] rounded-lg px-2 py-2 text-[9px] font-black uppercase tracking-widest">Copy Snapshot</button>
-                <button type="button" onClick={handleClearAllBanners} className="bg-[#0B0E11] border border-[#2A353D] text-slate-300 hover:text-red-300 rounded-lg px-2 py-2 text-[9px] font-black uppercase tracking-widest">Clear Banners</button>
-                <button type="button" onClick={() => jumpToAdminIssue('live')} className="bg-emerald-900/15 border border-emerald-900/50 text-emerald-300 rounded-lg px-2 py-2 text-[9px] font-black uppercase tracking-widest">Live Radar</button>
-                <button type="button" onClick={() => jumpToAdminIssue('tenants')} className="bg-purple-900/15 border border-purple-900/50 text-purple-300 rounded-lg px-2 py-2 text-[9px] font-black uppercase tracking-widest">Clients</button>
-                <button type="button" onClick={handleDownloadForensicBundle} className="bg-blue-900/15 border border-blue-900/50 text-blue-300 rounded-lg px-2 py-2 text-[9px] font-black uppercase tracking-widest">Forensics JSON</button>
-                <button type="button" onClick={handleRunFullSystemDiagnostics} disabled={isDiagnosticsRunning} className="bg-cyan-900/15 border border-cyan-900/50 text-cyan-300 rounded-lg px-2 py-2 text-[9px] font-black uppercase tracking-widest disabled:opacity-50">Full Diag</button>
-                <button type="button" onClick={handleDownloadClientDirectory} className="bg-amber-900/15 border border-amber-900/50 text-amber-300 rounded-lg px-2 py-2 text-[9px] font-black uppercase tracking-widest">Client CSV</button>
-              </div>
+            <div className="mt-3 pt-3 border-t border-[#252E35] grid grid-cols-2 gap-2">
+              <button type="button" onClick={() => selectAdminTab('manual')} className="admin46-mini-action">Manual</button>
+              <button type="button" onClick={handleRunFullSystemDiagnostics} disabled={isDiagnosticsRunning} className="admin46-mini-action disabled:opacity-50">{isDiagnosticsRunning ? 'Running' : 'Diagnostics'}</button>
             </div>
+          </nav>
+        </aside>
 
-            <div className="cockpit-panel rounded-2xl p-3 grid grid-cols-2 gap-2">
-              <button type="button" onClick={() => jumpToAdminIssue('tenants')} className="bg-[#0B0E11] border border-[#2A353D] rounded-lg p-2 text-left"><div className="text-[8px] font-black uppercase tracking-widest text-slate-500">Trials</div><div className="text-xl font-black text-white">{trialWorkspaces.length}</div></button>
-              <button type="button" onClick={() => jumpToAdminIssue('users')} className="bg-[#0B0E11] border border-[#2A353D] rounded-lg p-2 text-left"><div className="text-[8px] font-black uppercase tracking-widest text-slate-500">Inactive Users</div><div className="text-xl font-black text-white">{inactiveUsers.length}</div></button>
-              <button type="button" onClick={() => jumpToAdminIssue('tenants')} className="bg-[#0B0E11] border border-[#2A353D] rounded-lg p-2 text-left"><div className="text-[8px] font-black uppercase tracking-widest text-slate-500">Modules Live</div><div className="text-xl font-black text-white">{featureAdoption.filter(f => f.count > 0).length}/{moduleList.length}</div></button>
-              <button type="button" onClick={() => jumpToAdminIssue('manual')} className="bg-[#0B0E11] border border-[#2A353D] rounded-lg p-2 text-left"><div className="text-[8px] font-black uppercase tracking-widest text-slate-500">Version</div><div className="text-sm font-black text-white truncate">{CURRENT_VERSION}</div></button>
-            </div>
-          </aside>
-        )}
-
-        <div className="min-w-0 space-y-6">
-          <div className="lg:hidden bg-[#0B0E11] border border-[#2A353D] rounded-2xl px-3 py-2 flex items-center justify-between gap-3">
-            <div className="min-w-0"><div className="text-[8px] font-black uppercase tracking-widest text-slate-500">Current Admin Section</div><div className="text-sm font-black text-white truncate">{activeAdminTab.label}</div></div>
-            <span className="text-[8px] font-black uppercase tracking-widest text-slate-500 flex-shrink-0">{activeAdminTab.group}</span>
-          </div>
-          {!isCommandDeckOpen && (
-            <button type="button" onClick={() => setIsCommandDeckOpen(true)} className="bg-[#1A2126] border border-[#2A353D] text-[#D4A381] hover:text-white rounded-xl px-3 py-2 text-[10px] font-black uppercase tracking-widest">Open Signal Board</button>
-          )}
+        <div id="admin-content-start" className="admin46-content min-w-0 space-y-3">
 <Modal isOpen={!!editingGlobalUser} onClose={() => { setEditingGlobalUser(null); setSupportUserForm({}); }} title={`Support Edit User: ${editingGlobalUser?.name || editingGlobalUser?.email || ''}`}>
         {editingGlobalUser && (
           <form onSubmit={handleSupportUserUpdate} className="space-y-4 max-h-[72vh] overflow-y-auto pr-2 custom-scrollbar">
@@ -5737,8 +7462,8 @@ Type RESTORE to continue.`);
               <div className="bg-[#12161A] border border-[#2A353D] rounded-xl p-3">
                 <div className={T.label}>Client Health</div>
                 <div className="grid grid-cols-2 gap-2 text-[11px] font-bold text-slate-300">
-                  <div className="bg-[#0B0E11] border border-[#2A353D] rounded-lg p-2"><div className="text-[8px] uppercase tracking-widest text-slate-500">Billing</div><div className="text-white truncate">{selectedClient.billingStatus || 'Unknown'}</div></div>
-                  <div className="bg-[#0B0E11] border border-[#2A353D] rounded-lg p-2"><div className="text-[8px] uppercase tracking-widest text-slate-500">Plan</div><div className="text-white truncate">{selectedClient.planType || 'Pro'}</div></div>
+                  <div className="bg-[#0B0E11] border border-[#2A353D] rounded-lg p-2"><div className="text-[8px] uppercase tracking-widest text-slate-500">Billing</div><div className="text-white truncate">{resolveSubscription(selectedClient || {}, appUser).status || 'Unknown'}</div></div>
+                  <div className="bg-[#0B0E11] border border-[#2A353D] rounded-lg p-2"><div className="text-[8px] uppercase tracking-widest text-slate-500">Plan</div><div className="text-white truncate">{getPlanDefinition(resolveSubscription(selectedClient || {}, appUser).planId).label}</div></div>
                   <div className="bg-[#0B0E11] border border-[#2A353D] rounded-lg p-2"><div className="text-[8px] uppercase tracking-widest text-slate-500">Last active</div><div className="text-white truncate">{timeAgo(selectedClient.lastActive)}</div></div>
                   <div className="bg-[#0B0E11] border border-[#2A353D] rounded-lg p-2"><div className="text-[8px] uppercase tracking-widest text-slate-500">GPS/geofence</div><div className="text-white truncate">{selectedClient.systemSettings?.geofence ? 'Enabled' : 'Off / Not Set'}</div></div>
                 </div>
@@ -5758,7 +7483,7 @@ Type RESTORE to continue.`);
                 <div className="flex gap-2"><button type="button" onClick={() => startDemoMode(selectedClient, 'manager')} className={`${T.btn} text-[10px] px-3`}>Demo Manager</button><button type="button" onClick={() => startDemoMode(selectedClient, 'employee')} className={`${T.btnAlt} text-[10px] px-3`}>Demo Employee</button></div>
               </div>
               <div className="grid sm:grid-cols-2 gap-2">
-                <div><label className={T.label}>Demo tier</label><select value={demoPlan} onChange={e=>setDemoPlan(e.target.value)} className={T.input}>{['Starter','Pro','Elite','Enterprise'].map(x => <option key={x}>{x}</option>)}</select></div>
+                <div><label className={T.label}>Demo tier</label><select value={demoPlan} onChange={e=>setDemoPlan(e.target.value)} className={T.input}>{CUSTOMER_PLAN_ORDER.map(id => <option key={id} value={id}>{PLAN_DEFINITIONS[id].label}</option>)}</select></div>
                 <div><label className={T.label}>Default view</label><select value={demoRole} onChange={e=>setDemoRole(e.target.value)} className={T.input}><option value="manager">Manager demo</option><option value="employee">Regular employee demo</option></select></div>
               </div>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
@@ -5812,33 +7537,59 @@ Type RESTORE to continue.`);
 <Modal isOpen={!!editingRest} onClose={() => setEditingRest(null)} title={`Manage Client: ${editingRest?.name}`}>
         {editingRest && (() => {
           
-// --- THE TIER PRESET ENGINE ---
-          const applyTierPreset = (tier) => {
-            // 1. Start with a baseline where EVERY feature is explicitly set to FALSE
-            const baseFeatures = { schedule: false, events: false, ops: false, messages: false, prep: false, recipes: false, inventory: false, sales: false, team: false, maintenance: false, labor: false, timesheets: false };
-            let newLabs = { laborProjection: false };
-            let updatedFeatures = { ...baseFeatures };
-            
-            // 2. Merge only the allowed features as TRUE over the baseline
-            if (tier === 'Starter') {
-                updatedFeatures = { ...baseFeatures, schedule: true, events: true, ops: true, messages: true, prep: true, team: true };
-            } else if (tier === 'Pro') {
-                updatedFeatures = { ...baseFeatures, schedule: true, events: true, ops: true, messages: true, prep: true, team: true, recipes: true, inventory: true, maintenance: true };
-            } else if (tier === 'Elite') {
-                updatedFeatures = { ...baseFeatures, schedule: true, events: true, ops: true, messages: true, prep: true, team: true, recipes: true, inventory: true, maintenance: true, sales: true, labor: true, timesheets: true };
-            } else if (tier === 'Enterprise') {
-                // Enterprise: Everything (Up to 5 Locations)
-                updatedFeatures = { ...baseFeatures, schedule: true, events: true, ops: true, messages: true, prep: true, team: true, recipes: true, inventory: true, maintenance: true, sales: true, labor: true, timesheets: true };
-                newLabs = { laborProjection: true };
-            }
-
-            // 3. Save the complete object (with explicit true/false flags) to state
-            setEditingRest({
-                ...editingRest,
-                planType: tier,
-                features: updatedFeatures,
-                labs: newLabs
+// --- PLAN / SUBSCRIPTION CONTROL ENGINE ---
+          const updateSubscriptionDraft = (patch = {}) => {
+            setEditingRest(prev => {
+              const current = prev.subscription || {};
+              const merged = { ...current, ...patch, integrationsLocked: true, updatedAt: new Date().toISOString() };
+              const planId = normalizePlanId(merged.planId || prev.planId || prev.planType || 'smart_kitchen');
+              merged.planId = planId;
+              merged.selectedFutureTier = normalizePlanId(merged.selectedFutureTier || merged.futurePlanId || planId);
+              return {
+                ...prev,
+                planId,
+                subscriptionStatus: merged.status || 'active',
+                billingStatus: merged.status === 'beta' ? 'Trial' : merged.status === 'past_due' ? 'Past Due' : 'Paid',
+                integrationsLocked: true,
+                isFounderBeta: merged.isFounderBeta === true,
+                subscription: merged
+              };
             });
+          };
+          const currentSubscription = resolveSubscription(editingRest, appUser);
+          const currentPlan = getPlanDefinition(currentSubscription.planId);
+          const futurePlan = getPlanDefinition(currentSubscription.selectedFutureTier || currentSubscription.planId);
+          const workspaceUsersForResolver = allUsers.filter(u => u.restaurantId === editingRest.id || (Array.isArray(u.workspaceIds) && u.workspaceIds.includes(editingRest.id)));
+          const selectedResolverUser = featureResolverUserId === 'owner'
+            ? { id: 'owner', name: editingRest.ownerName || 'Owner', email: editingRest.ownerEmail || '', isOwner: true, accountOwner: true, isAdmin: true, permissions: { settings: true, team: true, schedule: true, inventory: true, sales: true, labor: true, wageView: true, wageEdit: true } }
+            : (workspaceUsersForResolver.find(u => u.id === featureResolverUserId) || { id: 'staff', name: 'Sample Staff', permissions: {} });
+          const featureResolverAccess = resolveFeatureAccess({ workspace: editingRest, user: selectedResolverUser, featureKey: featureResolverFeature });
+          const setPlan = (planId) => updateSubscriptionDraft({ planId, selectedFutureTier: planId, status: editingRest.subscription?.status || currentSubscription.status || 'beta' });
+          const startFounderBeta = () => {
+            const started = new Date().toISOString();
+            const futureTier = normalizePlanId(editingRest.subscription?.selectedFutureTier || editingRest.subscription?.planId || editingRest.planId || 'smart_kitchen');
+            updateSubscriptionDraft({
+              planId: futureTier || 'smart_kitchen', selectedFutureTier: futureTier || 'smart_kitchen', status: 'beta', isFounderBeta: true,
+              betaStartedAt: started, betaEndsAt: addDaysIso(started, 60), betaExtendedUntil: null,
+              founderDiscountPercent: 50, founderDiscountEndsAt: null, billingProvider: 'none', billingNotes: editingRest.subscription?.billingNotes || ''
+            });
+          };
+          const extendFounderBeta = () => {
+            const started = currentSubscription.betaStartedAt || new Date().toISOString();
+            const baseEnd = currentSubscription.betaEndsAt || addDaysIso(started, 60);
+            const maxExtended = addDaysIso(started, 90);
+            const extension = addDaysIso(baseEnd, 30);
+            updateSubscriptionDraft({ status: 'beta', isFounderBeta: true, betaStartedAt: started, betaEndsAt: baseEnd, betaExtendedUntil: new Date(extension).getTime() > new Date(maxExtended).getTime() ? maxExtended : extension, founderDiscountPercent: 50 });
+          };
+          const endFounderBeta = () => {
+            const ended = new Date().toISOString();
+            updateSubscriptionDraft({ status: 'active', isFounderBeta: true, founderDiscountPercent: 50, founderDiscountEndsAt: addMonthsIso(ended, 12), billingProvider: 'manual' });
+          };
+          const cancelBeta = () => updateSubscriptionDraft({ status: 'canceled', isFounderBeta: false, billingProvider: 'manual' });
+          const markManualActive = () => updateSubscriptionDraft({ status: 'active', billingProvider: 'manual', founderDiscountEndsAt: currentSubscription.isFounderBeta ? (currentSubscription.founderDiscountEndsAt || addMonthsIso(new Date().toISOString(), 12)) : currentSubscription.founderDiscountEndsAt });
+          const planFeatureList = (currentPlan.features || []).slice(0, 14).map(key => key.replace(/_/g, ' '));
+          const applyTierPreset = (tier) => {
+            setPlan(tier);
           };
        
     
@@ -5870,13 +7621,51 @@ Type RESTORE to continue.`);
                 </div>
                 <div><label className={T.label}>Street Address</label><input type="text" value={editingRest.systemSettings?.address || ''} onChange={e => setEditingRest({...editingRest, systemSettings: { ...editingRest.systemSettings, address: e.target.value }})} className={T.input} /></div>
                 
-   <div className="grid grid-cols-1 sm:grid-cols-4 gap-2 mt-2">
-                  <div><label className={T.label}>Plan Tier</label><select value={editingRest.planType || 'Pro'} onChange={e => setEditingRest({...editingRest, planType: e.target.value})} className={T.input}><option value="Trial">Trial</option><option value="Starter">Starter</option><option value="Pro">Pro</option><option value="Elite">Elite</option><option value="Enterprise">Enterprise</option></select></div>
-                  <div><label className={T.label}>Billing Status</label><select value={editingRest.billingStatus || 'Paid'} onChange={e => setEditingRest({...editingRest, billingStatus: e.target.value})} className={`${T.input} ${editingRest.billingStatus === 'Past Due' ? 'text-red-500 font-black' : editingRest.billingStatus === 'Trial' ? 'text-blue-400 font-black' : 'text-emerald-500 font-black'}`}><option value="Trial">Trial (Free)</option><option value="Paid">Paid (Active)</option><option value="Past Due">Maintenance Lock (Lock App)</option></select></div>
-                  <div><label className={T.label}>Custom Price ($)</label><input type="number" placeholder="Default" value={editingRest.customPrice || ''} onChange={e => setEditingRest({...editingRest, customPrice: e.target.value})} className={`${T.input} placeholder-slate-600`} /></div>
-                  <div><label className={T.label}>Trial Length (Days)</label><input type="number" min="0" placeholder="14" value={editingRest.trialDays !== undefined ? editingRest.trialDays : 14} onChange={e => setEditingRest({...editingRest, trialDays: parseInt(e.target.value) || 0})} className={T.input} /></div>
+                <div className="bg-[#12161A] border border-[#2A353D] rounded-2xl p-4 space-y-4">
+                  <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-3">
+                    <div>
+                      <div className="text-[10px] font-black uppercase tracking-widest text-[#D4A381]">Plan, Founder Beta & Feature Access</div>
+                      <h3 className="text-xl font-black text-white mt-1">{currentPlan.label} • {currentSubscription.status}</h3>
+                      <p className="text-xs text-slate-400 font-bold mt-1 leading-relaxed">Plan gates unlock features. Staff still need the correct roster role and permissions before they can use anything. {currentSubscription.needsSubscriptionBackfill ? 'This workspace is using the safe Founder Beta Smart Kitchen migration default until saved.' : ''}</p>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2 min-w-[260px]">
+                      <div className="bg-[#0B0E11] border border-[#2A353D] rounded-xl p-3"><div className="text-[8px] uppercase tracking-widest text-slate-500 font-black">Invoice pages</div><div className="text-lg font-black text-white">{currentPlan.invoicePagesLimit === Infinity ? '∞' : currentPlan.invoicePagesLimit}/mo</div></div>
+                      <div className="bg-[#0B0E11] border border-[#2A353D] rounded-xl p-3"><div className="text-[8px] uppercase tracking-widest text-slate-500 font-black">Menu pages</div><div className="text-lg font-black text-white">{currentPlan.menuPagesLimit === Infinity ? '∞' : currentPlan.menuPagesLimit}/mo</div></div>
+                    </div>
+                  </div>
+                  <div className="grid md:grid-cols-4 gap-2">
+                    {CUSTOMER_PLAN_ORDER.map(planId => { const plan = getPlanDefinition(planId); const active = currentPlan.id === plan.id; return <button key={plan.id} type="button" onClick={() => setPlan(plan.id)} className={`text-left rounded-xl border p-3 transition-colors ${active ? 'bg-[#D4A381] text-slate-950 border-[#D4A381]' : 'bg-[#0B0E11] border-[#2A353D] text-slate-300 hover:border-[#D4A381]/60'}`}><div className="text-[10px] font-black uppercase tracking-widest">{plan.label}</div><div className="text-xl font-black mt-1">${plan.monthlyPrice}</div><div className="text-[10px] font-bold opacity-80">Founder: ${plan.founderPrice?.toFixed(2)}/mo</div></button>; })}
+                  </div>
+                  <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                    <label><span className={T.label}>Status</span><select value={editingRest.subscription?.status || currentSubscription.status || 'active'} onChange={e => updateSubscriptionDraft({ status: e.target.value })} className={T.input}><option value="beta">Founder Beta / Beta</option><option value="active">Active manual</option><option value="past_due">Past Due</option><option value="canceled">Canceled</option><option value="trial_expired">Trial Expired</option><option value="internal">Internal</option></select></label>
+                    <label><span className={T.label}>Selected future tier</span><select value={currentSubscription.selectedFutureTier || currentPlan.id} onChange={e => updateSubscriptionDraft({ selectedFutureTier: e.target.value })} className={T.input}>{CUSTOMER_PLAN_ORDER.map(planId => <option key={planId} value={planId}>{getPlanDefinition(planId).label}</option>)}</select></label>
+                    <label><span className={T.label}>Billing provider</span><select value={editingRest.subscription?.billingProvider || 'none'} onChange={e => updateSubscriptionDraft({ billingProvider: e.target.value })} className={T.input}><option value="none">None / payments coming soon</option><option value="manual">Manual</option><option value="stripe_future">Stripe future</option></select></label>
+                    <label><span className={T.label}>Founder discount %</span><input type="number" min="0" max="100" value={editingRest.subscription?.founderDiscountPercent ?? 50} onChange={e => updateSubscriptionDraft({ founderDiscountPercent: Number(e.target.value || 0) })} className={T.input}/></label>
+                    <label><span className={T.label}>Beta started</span><input type="date" value={(currentSubscription.betaStartedAt || '').slice(0,10)} onChange={e => updateSubscriptionDraft({ betaStartedAt: e.target.value ? `${e.target.value}T00:00:00.000Z` : null })} className={T.input}/></label>
+                    <label><span className={T.label}>Beta ends</span><input type="date" value={(currentSubscription.betaEndsAt || '').slice(0,10)} onChange={e => updateSubscriptionDraft({ betaEndsAt: e.target.value ? `${e.target.value}T23:59:59.000Z` : null })} className={T.input}/></label>
+                    <label><span className={T.label}>Extended until</span><input type="date" value={(currentSubscription.betaExtendedUntil || '').slice(0,10)} onChange={e => updateSubscriptionDraft({ betaExtendedUntil: e.target.value ? `${e.target.value}T23:59:59.000Z` : null })} className={T.input}/></label>
+                    <label><span className={T.label}>Discount ends</span><input type="date" value={(currentSubscription.founderDiscountEndsAt || '').slice(0,10)} onChange={e => updateSubscriptionDraft({ founderDiscountEndsAt: e.target.value ? `${e.target.value}T23:59:59.000Z` : null })} className={T.input}/></label>
+                  </div>
+                  <textarea value={editingRest.subscription?.billingNotes || ''} onChange={e => updateSubscriptionDraft({ billingNotes: e.target.value })} className={T.input} rows={3} placeholder="Internal billing notes. Visible only to System Administrator tools." />
+                  <div className="grid md:grid-cols-3 gap-3">
+                    <div className="bg-blue-950/20 border border-blue-500/40 rounded-xl p-3"><div className="text-[9px] uppercase tracking-widest text-blue-300 font-black">Founder Beta</div><p className="text-xs text-slate-300 font-bold mt-1">60 days free, one 30-day extension, then 50% off {futurePlan.label} for 12 months. Days remaining: {currentSubscription.betaDaysRemaining ?? 'n/a'}.</p><div className="flex flex-wrap gap-2 mt-3"><button type="button" onClick={startFounderBeta} className="admin45-secondary-action">Start Beta</button><button type="button" onClick={extendFounderBeta} className="admin45-secondary-action">Extend 30 Days</button><button type="button" onClick={endFounderBeta} className="admin45-secondary-action">End Beta → Manual</button><button type="button" onClick={cancelBeta} className="admin45-secondary-action">Cancel</button></div><div className="text-[10px] font-black text-blue-100 mt-3">Lifecycle: {currentSubscription.betaLifecycleFlag || 'none'}</div></div>
+                    <div className="bg-emerald-950/20 border border-emerald-500/40 rounded-xl p-3"><div className="text-[9px] uppercase tracking-widest text-emerald-300 font-black">Manual Billing</div><p className="text-xs text-slate-300 font-bold mt-1">Live payments are not active. Mark accounts active manually until billing launches.</p><button type="button" onClick={markManualActive} className="admin45-primary-action mt-3">Mark Active Manual</button></div>
+                    <div className="bg-orange-950/20 border border-orange-500/40 rounded-xl p-3"><div className="text-[9px] uppercase tracking-widest text-orange-300 font-black">Integrations Locked</div><p className="text-xs text-slate-300 font-bold mt-1">Customer tiers cannot access integrations yet. System Administrator only for internal testing.</p><div className="text-[10px] font-black text-orange-200 mt-3">Locked: yes</div></div>
+                  </div>
+
+                  <div className="bg-[#0B0E11] border border-[#2A353D] rounded-2xl p-4 space-y-3">
+                    <div><div className="text-[10px] uppercase tracking-widest text-[#D4A381] font-black">Feature Access Resolver</div><p className="text-xs text-slate-400 font-bold mt-1">Internal diagnostic: explains why a selected user can or cannot see a feature in this workspace.</p></div>
+                    <div className="grid sm:grid-cols-2 gap-3">
+                      <label><span className={T.label}>Feature</span><select value={featureResolverFeature} onChange={e => setFeatureResolverFeature(e.target.value)} className={T.input}>{Object.values(FEATURE_KEYS).map(key => <option key={key} value={key}>{key.replace(/_/g, ' ')}</option>)}</select></label>
+                      <label><span className={T.label}>User</span><select value={featureResolverUserId} onChange={e => setFeatureResolverUserId(e.target.value)} className={T.input}><option value="owner">Workspace owner sample</option><option value="staff">Regular staff sample</option>{workspaceUsersForResolver.slice(0, 200).map(u => <option key={u.id} value={u.id}>{u.name || u.email || u.id} • {u.role || 'No role'}</option>)}</select></label>
+                    </div>
+                    <div className="grid grid-cols-2 md:grid-cols-6 gap-2">
+                      {[['Plan', currentPlan.label], ['Beta', currentSubscription.status], ['Plan OK', featureResolverAccess.planAllowed ? 'yes' : 'no'], ['Role OK', featureResolverAccess.roleAllowed ? 'yes' : 'no'], ['Manual', featureResolverAccess.manualEnabled ? 'yes' : 'no'], ['Final', featureResolverAccess.allowed ? 'allowed' : 'locked']].map(([k,v]) => <div key={k} className="bg-[#12161A] border border-[#2A353D] rounded-xl p-2"><div className="text-[8px] uppercase tracking-widest text-slate-500 font-black">{k}</div><div className={`text-xs font-black mt-1 ${v === 'locked' || v === 'no' ? 'text-red-300' : 'text-emerald-300'}`}>{v}</div></div>)}
+                    </div>
+                    <div className="bg-[#12161A] border border-[#2A353D] rounded-xl p-3 text-xs font-bold text-slate-300">Reason: {featureResolverAccess.reason || 'Allowed by plan and permission.'}</div>
+                  </div>
+                  <div className="bg-[#0B0E11] border border-[#2A353D] rounded-xl p-3"><div className="text-[9px] uppercase tracking-widest text-slate-500 font-black">Included feature sample</div><div className="flex flex-wrap gap-1.5 mt-2">{planFeatureList.map(label => <span key={label} className="px-2 py-1 rounded-full bg-[#12161A] border border-[#2A353D] text-[9px] font-black uppercase tracking-widest text-slate-300">{label}</span>)}</div></div>
                 </div>
-                
                 <div className="grid grid-cols-2 gap-2 mt-2">
                   <label className="flex items-center gap-2 p-3 bg-[#12161A] rounded-xl border border-[#2A353D] cursor-pointer hover:bg-[#1A2126] transition-colors"><input type="checkbox" checked={editingRest.isActive} onChange={e => setEditingRest({...editingRest, isActive: e.target.checked})} className="w-4 h-4 accent-emerald-500" /><span className={`text-xs font-black ${editingRest.isActive ? 'text-emerald-500' : 'text-slate-500'}`}>System Active</span></label>
                   <label className="flex items-center gap-2 p-3 bg-blue-900/10 rounded-xl border border-blue-900/50 cursor-pointer hover:bg-blue-900/20 transition-colors"><input type="checkbox" checked={editingRest.isReadOnly} onChange={e => setEditingRest({...editingRest, isReadOnly: e.target.checked})} className="w-4 h-4 accent-blue-500" /><span className={`text-xs font-black ${editingRest.isReadOnly ? 'text-blue-500' : 'text-slate-500'}`}>Read-Only Mode</span></label>
@@ -5885,22 +7674,7 @@ Type RESTORE to continue.`);
                 {/* Super-admin access is intentionally NOT managed here.
                     Use System Administrator > Access Control so elevated permissions stay in one audited place. */}
 
-                {/* QUICK APPLY TIER PRESETS */}
-                <div className="pt-4 border-t border-[#2A353D]">
-                  <label className={T.label}>Quick-Apply Tier Packages</label>
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-2">
-                    <button type="button" onClick={() => applyTierPreset('Starter')} className={`py-2.5 text-[10px] font-black uppercase tracking-widest rounded-lg border transition-colors ${editingRest.planType === 'Starter' ? 'bg-slate-100 text-slate-900 border-white shadow-[0_0_10px_rgba(255,255,255,0.2)]' : 'bg-[#12161A] text-slate-400 border-[#2A353D] hover:border-slate-500'}`}>Starter</button>
-                    <button type="button" onClick={() => applyTierPreset('Pro')} className={`py-2.5 text-[10px] font-black uppercase tracking-widest rounded-lg border transition-colors ${editingRest.planType === 'Pro' ? 'bg-[#D4A381] text-slate-900 border-[#C59373] shadow-[0_0_10px_rgba(212,163,129,0.2)]' : 'bg-[#12161A] text-slate-400 border-[#2A353D] hover:border-[#D4A381]'}`}>Pro</button>
-                    <button type="button" onClick={() => applyTierPreset('Elite')} className={`py-2.5 text-[10px] font-black uppercase tracking-widest rounded-lg border transition-colors ${editingRest.planType === 'Elite' ? 'bg-blue-500 text-white border-blue-400 shadow-[0_0_10px_rgba(59,130,246,0.2)]' : 'bg-[#12161A] text-slate-400 border-[#2A353D] hover:border-blue-500'}`}>Elite</button>
-<button type="button" onClick={() => applyTierPreset('Enterprise')} className={`py-2.5 text-[10px] font-black uppercase tracking-widest rounded-lg border transition-colors ${editingRest.planType === 'Enterprise' ? 'bg-purple-500 text-white border-purple-400 shadow-[0_0_10px_rgba(168,85,247,0.2)]' : 'bg-[#12161A] text-slate-400 border-[#2A353D] hover:border-purple-500'}`} title="Up to 5 Locations">Enterprise</button>                  </div>
-           <button type="button" onClick={() => {
-                    applyTierPreset('Pro');
-                    setEditingRest(prev => ({...prev, planType: 'Trial', billingStatus: 'Trial'}));
-                  }} className={`w-full mt-2 py-3 text-[10px] font-black uppercase tracking-widest rounded-lg border transition-colors ${editingRest.billingStatus === 'Trial' ? 'bg-blue-500 text-white border-blue-400 shadow-[0_0_10px_rgba(59,130,246,0.2)]' : 'bg-blue-900/20 text-blue-400 border-blue-900/50 hover:bg-blue-900/40'}`}>
-                    🎁 Start {editingRest.trialDays !== undefined ? editingRest.trialDays : 14}-Day Free Trial (Unlocks Pro Features)
-                  </button>
-                </div>
-
+                {/* Plan gates above are the source of truth. Legacy module overrides remain only for older workspace flags during transition. */}
                 {/* MANUAL MODULE OVERRIDES */}
                 <div className="pt-4 border-t border-[#2A353D]">
                    <label className={T.label}>Manual Module Overrides</label>
@@ -5980,120 +7754,109 @@ Type RESTORE to continue.`);
         </form>
       </Modal>
 
+      {subTab !== 'overview' && (
+        <section className="admin45-content-card p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="min-w-0">
+            <div className="text-[9px] font-black uppercase tracking-[0.2em] text-[#D4A381]">{activeAdminTab.group}</div>
+            <h2 className="text-xl sm:text-2xl font-black text-white mt-1">{activeAdminTab.label}</h2>
+            <p className="text-xs font-semibold text-slate-500 mt-1 leading-relaxed">{activeAdminTab.intent}</p>
+          </div>
+          <button type="button" onClick={() => selectAdminTab('overview')} className="admin45-secondary-action flex-shrink-0">Back to admin home</button>
+        </section>
+      )}
+
 {/* --- TAB: OVERVIEW --- */}
+      {subTab !== 'overview' && (
+        <div className="admin46-pagebar">
+          <div className="min-w-0">
+            <div className="admin46-eyebrow">{activeAdminTab.group}</div>
+            <h2>{activeAdminTab.label}</h2>
+            <p>{activeAdminTab.intent}</p>
+          </div>
+          <button type="button" onClick={() => selectAdminTab('overview')} className="admin46-back-button"><ChevronLeft size={14}/> Console home</button>
+        </div>
+      )}
+
       {subTab === 'overview' && (
-        <div className="space-y-6 animate-[slideIn_0.2s_ease-out]">
-          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
-            {commandWidgets.map(widget => (
-              <button key={widget.title} type="button" onClick={() => setSubTab(widget.jump)} className={`text-left ${T.card} p-4 border ${widget.tone === 'red' ? 'border-red-900/50' : widget.tone === 'amber' ? 'border-amber-900/50' : widget.tone === 'blue' ? 'border-blue-900/50' : 'border-emerald-900/30'} hover:bg-[#12161A] transition-colors`}>
-                <div className="flex items-center justify-between gap-2 mb-2"><div className="text-[10px] font-black uppercase tracking-widest text-slate-500">{widget.title}</div><SignalPip tone={widget.tone} label={widget.tone === 'red' ? 'CHECK' : 'LIVE'} hot={widget.tone === 'red' || widget.tone === 'amber'} /></div>
-                <div className="text-2xl font-black text-white">{widget.value}</div>
-                <div className="text-[10px] text-slate-400 font-bold mt-2 leading-snug">{widget.detail}</div>
-              </button>
-            ))}
-          </div>
-
-          {/* PRIMARY REVENUE ROW */}
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-            <div className={`${T.card} p-5 bg-gradient-to-br from-[#1A2126] to-[#12161A] border-emerald-900/30`}><div className="text-[10px] font-black text-emerald-500 uppercase tracking-widest mb-1">Est. Platform MRR</div><div className="text-3xl lg:text-4xl font-black text-white">${mrr.toLocaleString()}<span className="text-sm lg:text-lg text-slate-500">/mo</span></div></div>
-            <div className={`${T.card} p-5 bg-gradient-to-br from-[#1A2126] to-[#12161A]`}><div className="text-[10px] font-black text-[#D4A381] uppercase tracking-widest mb-1">Active Tenants</div><div className="text-3xl lg:text-4xl font-black text-white">{restaurants.filter(r=>r.isActive).length}</div></div>
-            <div className={`${T.card} p-5 bg-gradient-to-br from-[#1A2126] to-[#12161A]`}><div className="text-[10px] font-black text-blue-400 uppercase tracking-widest mb-1">Network Users</div><div className="text-3xl lg:text-4xl font-black text-white">{allUsers.length}</div></div>
-            {appUser?.isSuperAdmin === true && (
-              <div className={`${T.card} p-5 bg-gradient-to-br from-[#1A2126] to-[#12161A] border-fuchsia-900/30`}><div className="text-[10px] font-black text-fuchsia-400 uppercase tracking-widest mb-1">Total App Installs</div><div className="text-3xl lg:text-4xl font-black text-white">{totalInstalls}</div></div>
-            )}          
-          </div>
-
-{/* SECONDARY ENGAGEMENT & PIPELINE ROW */}
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-            <div className={`${T.card} p-4 bg-gradient-to-br from-[#1A2126] to-[#12161A]`}><div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Paid Workspaces</div><div className="text-2xl lg:text-3xl font-black text-white">{paidWorkspaces} <span className="text-[10px] text-slate-300 tracking-widest uppercase align-middle bg-[#12161A] border border-[#2A353D] px-1.5 py-0.5 rounded">ARPA: ${arpa}</span></div></div>
-            <div className={`${T.card} p-4 bg-gradient-to-br from-[#1A2126] to-[#12161A] border-blue-900/30`}><div className="text-[10px] font-black text-blue-400 uppercase tracking-widest mb-1">Active Trials</div><div className="text-2xl lg:text-3xl font-black text-white">{activeTrials} <span className="text-[10px] text-blue-400 tracking-widest uppercase align-middle bg-blue-900/20 border border-blue-900/50 px-1.5 py-0.5 rounded">Pipe: ${trialPipelineValue}</span></div></div>
-            <div className={`${T.card} p-4 bg-gradient-to-br from-[#1A2126] to-[#12161A]`}><div className="text-[10px] font-black text-orange-400 uppercase tracking-widest mb-1">Daily Active (DAU)</div><div className="text-2xl lg:text-3xl font-black text-white">{dau} <span className="text-[10px] text-orange-500 tracking-widest uppercase align-middle bg-orange-900/20 border border-orange-900/50 px-1.5 py-0.5 rounded">Today</span></div></div>
-            <div className={`${T.card} p-4 bg-gradient-to-br from-[#1A2126] to-[#12161A]`}><div className="text-[10px] font-black text-purple-400 uppercase tracking-widest mb-1">App Sticky Rate</div><div className={`text-2xl lg:text-3xl font-black ${stickyRate < 30 ? 'text-red-400' : 'text-emerald-400'}`}>{stickyRate}% <span className="text-[10px] text-slate-500 tracking-widest uppercase align-middle bg-[#12161A] border border-[#2A353D] px-1.5 py-0.5 rounded text-white">Adoption</span></div></div>
-          </div>
-
-          {/* PRICING & MRR CONFIG */}
-          {/* ... (Your pricing and stale account code remains exactly the same here) ... */}
-
-          <div className={`${T.card} p-4`}>
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-3">
+        <div className="space-y-4 animate-[slideIn_0.2s_ease-out]">
+          <section className="admin45-content-card p-4 sm:p-6">
+            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
               <div>
-                <h3 className="font-black text-white text-sm flex items-center gap-2"><Shield size={18} className={T.copper}/> Administrator Action Queue</h3>
-                <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mt-1">Only the important warnings. Less disco ball, more control tower.</p>
+                <div className="text-[10px] font-black uppercase tracking-[0.22em] text-[#D4A381]">Start here</div>
+                <h2 className="text-2xl font-black text-white mt-1">What needs your attention?</h2>
+                <p className="text-sm text-slate-400 font-semibold mt-2">Only the important things are shown here. Everything else stays tucked inside its section.</p>
               </div>
-              <span className={`text-[10px] font-black uppercase tracking-widest px-3 py-1 rounded-lg border ${platformStatus === 'Clean' ? 'bg-emerald-900/20 text-emerald-400 border-emerald-900/50' : platformStatus === 'Monitoring' ? 'bg-amber-900/20 text-amber-400 border-amber-900/50' : 'bg-red-900/20 text-red-400 border-red-900/50'}`}>{platformStatus}</span>
+              <div className="flex flex-wrap gap-2">
+                <button type="button" onClick={handleRunFullSystemDiagnostics} disabled={isDiagnosticsRunning} className="admin45-primary-action">{isDiagnosticsRunning ? 'Running diagnostics…' : 'Run diagnostics'}</button>
+                <button type="button" onClick={handleRunBackupNow} disabled={isBackupRunning || backupRunning} className="admin45-secondary-action">{isBackupRunning || backupRunning ? 'Backup running…' : 'Run backup'}</button>
+              </div>
             </div>
-            {adminRiskQueue.length === 0 ? (
-              <div className="bg-[#12161A] border border-[#2A353D] rounded-xl p-4 text-sm font-bold text-emerald-400">No urgent admin issues detected.</div>
-            ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-2">
-                {adminRiskQueue.slice(0, 6).map((item, idx) => (
-                  <button key={idx} type="button" onClick={() => setSubTab(item.jump)} className={`text-left bg-[#12161A] border rounded-xl p-3 hover:bg-[#0B0E11] transition-colors ${item.tone === 'red' ? 'border-red-900/50' : item.tone === 'amber' ? 'border-amber-900/50' : 'border-[#2A353D]'}`}>
-                    <div className={`text-[10px] font-black uppercase tracking-widest mb-1 ${item.tone === 'red' ? 'text-red-400' : item.tone === 'amber' ? 'text-amber-400' : 'text-emerald-400'}`}>{item.title}</div>
-                    <div className="text-xs text-slate-300 font-bold leading-snug">{item.detail}</div>
-                  </button>
-                ))}
+          </section>
+
+          <div className="grid lg:grid-cols-[1.25fr_.75fr] gap-4">
+            <section className="admin45-content-card p-4 sm:p-5">
+              <div className="flex items-center justify-between gap-3 mb-3">
+                <div><div className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-500">Priority list</div><div className="text-lg font-black text-white mt-1">Next actions</div></div>
+                <span className="rounded-full border border-[#303B43] bg-[#0B0E11] px-3 py-1 text-[10px] font-black text-slate-400">{adminRiskQueue.length}</span>
               </div>
-            )}
+              {adminRiskQueue.length === 0 ? (
+                <div className="rounded-2xl border border-emerald-900/40 bg-emerald-950/10 p-5">
+                  <div className="text-sm font-black text-emerald-300">Nothing urgent</div>
+                  <div className="text-xs font-semibold text-slate-400 mt-1">The platform has no red or amber items waiting right now.</div>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {adminRiskQueue.slice(0, 5).map((item, idx) => (
+                    <button key={`${item.title}-${idx}`} type="button" onClick={() => selectAdminTab(item.jump)} className="admin45-task-row">
+                      <span className={`admin45-task-dot ${item.tone === 'red' ? 'is-red' : 'is-amber'}`}></span>
+                      <span className="min-w-0 flex-1"><strong>{item.title}</strong><small>{item.detail}</small></span>
+                      <ChevronRight size={16}/>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </section>
+
+            <section className="admin45-content-card p-4 sm:p-5">
+              <div className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-500">Quick work</div>
+              <div className="grid grid-cols-2 gap-2 mt-3">
+                <button type="button" onClick={() => selectAdminTab('health')} className="admin45-quick-tile"><Shield size={17}/><span>Health</span></button>
+                <button type="button" onClick={() => selectAdminTab('tenants')} className="admin45-quick-tile"><Globe size={17}/><span>Workspaces</span></button>
+                <button type="button" onClick={() => selectAdminTab('users')} className="admin45-quick-tile"><Users size={17}/><span>People</span></button>
+                <button type="button" onClick={() => selectAdminTab('push')} className="admin45-quick-tile"><Bell size={17}/><span>Push</span></button>
+                <button type="button" onClick={() => selectAdminTab('ai-usage')} className="admin45-quick-tile"><Scale size={17}/><span>AI Usage</span></button>
+                <button type="button" onClick={() => selectAdminTab('forensics')} className="admin45-quick-tile"><ClipboardList size={17}/><span>Backups</span></button>
+                <button type="button" onClick={() => selectAdminTab('manual')} className="admin45-quick-tile"><BookOpen size={17}/><span>Manual</span></button>
+              </div>
+            </section>
           </div>
 
-          {/* --- GLOBAL INFRASTRUCTURE & HEALTH MATRIX --- */}
-          <div className={`${T.card} overflow-hidden border-slate-700/50`}>
-            <div className={`bg-[#12161A] p-4 border-b ${T.border} flex justify-between items-center`}>
-              <h3 className="font-black text-lg text-white flex items-center gap-2"><Globe className="text-blue-500" size={18}/> Infrastructure Health Matrix</h3>
-              <span className="bg-[#1A2126] text-slate-400 px-2 py-1 rounded text-[10px] font-black uppercase tracking-widest border border-[#2A353D]">Version {CURRENT_VERSION}</span>
+          <section className="grid grid-cols-2 xl:grid-cols-4 gap-3">
+            <button type="button" onClick={() => selectAdminTab('tenants')} className="admin45-number-card"><span>Active workspaces</span><strong>{restaurants.filter(r => r.isActive).length}</strong><small>{paidWorkspaces} paid</small></button>
+            <button type="button" onClick={() => selectAdminTab('users')} className="admin45-number-card"><span>People</span><strong>{allUsers.length}</strong><small>{inactiveUsers.length} inactive</small></button>
+            <button type="button" onClick={() => selectAdminTab('support')} className="admin45-number-card"><span>Crashes today</span><strong>{crashes24h}</strong><small>{permissionDeniedLogs.length} permission clues</small></button>
+            <button type="button" onClick={() => selectAdminTab('tenants')} className="admin45-number-card"><span>Estimated MRR</span><strong>${mrr.toLocaleString()}</strong><small>ARPA ${arpa}</small></button>
+          </section>
+
+          <section className="admin45-content-card p-4 sm:p-5">
+            <div className="flex items-center justify-between gap-3 mb-4">
+              <div><div className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-500">Browse</div><h3 className="text-lg font-black text-white mt-1">Admin areas</h3></div>
+              <div className="text-[10px] font-bold text-slate-500">Everything is still here, just quieter.</div>
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 divide-y md:divide-y-0 md:divide-x divide-[#2A353D]">
-              
-              {/* Shard Status */}
-              <div className="p-5 flex items-center justify-between hover:bg-[#12161A]/50 transition-colors">
-                <div>
-                  <div className="font-black text-white text-sm">Core Database Shards</div>
-                  <div className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-0.5">Firebase Firestore DB</div>
+            <div className="grid md:grid-cols-2 gap-3">
+              {adminTabGroups.map(group => (
+                <div key={group.title} className={`rounded-2xl border p-3 ${group.danger ? 'border-red-900/40 bg-red-950/5' : 'border-[#2A353D] bg-[#0B0E11]/60'}`}>
+                  <div className={`text-[10px] font-black uppercase tracking-[0.18em] ${group.danger ? 'text-red-300' : 'text-[#D4A381]'}`}>{group.title}</div>
+                  <div className="text-[11px] font-semibold text-slate-500 mt-1 leading-relaxed">{group.summary}</div>
+                  <div className="mt-3 space-y-1">
+                    {group.tabs.map(tab => (
+                      <button key={tab.id} type="button" onClick={() => selectAdminTab(tab.id)} className="admin45-area-link"><span>{tab.label}</span><ChevronRight size={14}/></button>
+                    ))}
+                  </div>
                 </div>
-                <div className="flex items-center gap-2 bg-emerald-900/20 border border-emerald-900/50 px-3 py-1.5 rounded-lg">
-                  <span className="cockpit-light quiet bg-emerald-400 text-emerald-400"></span>
-                  <span className="text-[10px] font-black uppercase tracking-widest text-emerald-400">Operational</span>
-                </div>
-              </div>
-
-              {/* Stability Status */}
-              <div className="p-5 flex items-center justify-between hover:bg-[#12161A]/50 transition-colors">
-                <div>
-                  <div className="font-black text-white text-sm">Application Stability</div>
-                  <div className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-0.5">{crashes24h} Crashes (Last 24h)</div>
-                </div>
-                <div className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border ${crashes24h > 10 ? 'bg-red-900/20 border-red-900/50 text-red-400 animate-pulse' : crashes24h > 0 ? 'bg-orange-900/20 border-orange-900/50 text-orange-400' : 'bg-emerald-900/20 border-emerald-900/50 text-emerald-400'}`}>
-                  {crashes24h > 10 ? <Bug size={14}/> : <Check size={14}/>}
-                  <span className="text-[10px] font-black uppercase tracking-widest">{crashes24h > 10 ? 'Degraded' : crashes24h > 0 ? 'Monitoring' : 'Stable'}</span>
-                </div>
-              </div>
-
-              {/* Push Relay Status */}
-              <div className="p-5 flex items-center justify-between border-t border-[#2A353D] hover:bg-[#12161A]/50 transition-colors">
-                <div>
-                  <div className="font-black text-white text-sm">Push Notification Relay</div>
-                  <div className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-0.5">{pushOptInRate}% Global Opt-In Rate</div>
-                </div>
-                <div className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border ${pushOptInRate < 30 ? 'bg-orange-900/20 border-orange-900/50 text-orange-400' : 'bg-emerald-900/20 border-emerald-900/50 text-emerald-400'}`}>
-                  <Bell size={14}/>
-                  <span className="text-[10px] font-black uppercase tracking-widest">{pushOptInRate < 30 ? 'Low Adoption' : 'Active'}</span>
-                </div>
-              </div>
-
-              {/* API Webhooks Status */}
-              <div className="p-5 flex items-center justify-between border-t border-[#2A353D] hover:bg-[#12161A]/50 transition-colors">
-                <div>
-                  <div className="font-black text-white text-sm">External API Webhooks</div>
-                  <div className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-0.5">POS & Payroll Sync</div>
-                </div>
-                <div className="flex items-center gap-2 bg-[#12161A] border border-[#2A353D] px-3 py-1.5 rounded-lg">
-                  <Repeat size={14} className="text-blue-400"/>
-                  <span className="text-[10px] font-black uppercase tracking-widest text-slate-300">{apiConnectedCount} Endpoints Live</span>
-                </div>
-              </div>
-
+              ))}
             </div>
-          </div>
+          </section>
         </div>
       )}
 
@@ -6136,6 +7899,84 @@ Type RESTORE to continue.`);
         </div>
       )}
 
+      {subTab === 'ai-usage' && (() => {
+        const allEvents = aiUsageRows.flatMap(row => (row.events || []).map(event => ({ ...event, restaurantName: row.restaurantName || row.restaurantId })));
+        const totalInvoicePages = aiUsageRows.reduce((sum, row) => sum + Number(row.invoicePagesUsed || 0), 0);
+        const totalMenuPages = aiUsageRows.reduce((sum, row) => sum + Number(row.menuPagesUsed || 0), 0);
+        const totalInvoiceProcessed = aiUsageRows.reduce((sum, row) => sum + Number(row.invoicePagesProcessed ?? row.invoicePagesUsed ?? 0), 0);
+        const totalMenuProcessed = aiUsageRows.reduce((sum, row) => sum + Number(row.menuPagesProcessed ?? row.menuPagesUsed ?? 0), 0);
+        const failedScans = allEvents.filter(event => event.status === 'failed').length;
+        const blockedScans = allEvents.filter(event => event.status === 'blocked').length;
+        const bypassPages = aiUsageRows.reduce((sum, row) => sum + Number(row.exemptPagesProcessed || 0), 0);
+        return (
+          <div id="admin-ai-usage" className="space-y-4 animate-[slideIn_0.2s_ease-out]">
+            <section className="admin45-content-card p-4 sm:p-5">
+              <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-3">
+                <div>
+                  <div className="admin46-eyebrow">Cost controls</div>
+                  <h3 className="text-lg font-black text-white mt-1">Monthly AI scan pages</h3>
+                  <p className="text-[11px] font-semibold text-slate-400 mt-1">Usage is reserved in a Firestore transaction before AI runs. Duplicate requests do not count twice.</p>
+                </div>
+                <div className="flex flex-wrap items-end gap-2">
+                  <label className="text-[9px] font-black uppercase tracking-widest text-slate-500">Month<input type="month" value={aiUsageMonth} onChange={event => setAiUsageMonth(event.target.value)} className="admin46-input mt-1 block" /></label>
+                  <button type="button" onClick={loadAiUsageAdmin} disabled={aiUsageLoading} className="admin45-secondary-action">{aiUsageLoading ? 'Refreshing…' : 'Refresh'}</button>
+                </div>
+              </div>
+              {aiUsageError && <div className="mt-3 rounded-lg border border-red-900/50 bg-red-950/20 p-3 text-[11px] font-bold text-red-200">{aiUsageError}</div>}
+            </section>
+
+            <section className="grid grid-cols-2 xl:grid-cols-5 gap-3">
+              <div className="admin45-number-card"><span>Invoice pages charged</span><strong>{totalInvoicePages}</strong><small>{totalInvoiceProcessed} actually processed</small></div>
+              <div className="admin45-number-card"><span>Menu pages charged</span><strong>{totalMenuPages}</strong><small>{totalMenuProcessed} actually processed</small></div>
+              <div className="admin45-number-card"><span>Testing bypass pages</span><strong>{bypassPages}</strong><small>Logged, not blocked</small></div>
+              <div className="admin45-number-card"><span>Failed scans</span><strong>{failedScans}</strong><small>AI was called</small></div>
+              <div className="admin45-number-card"><span>Blocked scans</span><strong>{blockedScans}</strong><small>AI was not called</small></div>
+            </section>
+
+            <section className="admin45-content-card overflow-hidden">
+              <div className="admin46-table-head grid grid-cols-[minmax(180px,1.3fr)_minmax(150px,.8fr)_minmax(150px,.8fr)_110px_110px_120px] gap-2 px-3 py-2 text-[9px] font-black uppercase tracking-widest text-slate-500">
+                <div>Workspace</div><div>Invoice charged / processed</div><div>Menu charged / processed</div><div>Scans</div><div>Bypass</div><div>Action</div>
+              </div>
+              {aiUsageLoading && aiUsageRows.length === 0 ? <div className="p-6 text-center text-xs font-bold text-slate-500">Loading AI usage…</div> : aiUsageRows.length === 0 ? <div className="p-6 text-center text-xs font-bold text-slate-500">No workspace usage documents exist for this month yet.</div> : (
+                <div className="divide-y divide-[#2A353D] overflow-x-auto">
+                  {aiUsageRows.map(row => {
+                    const draft = aiUsageLimitDrafts[row.restaurantId] || { invoicePagesLimit: Number(row.invoicePagesLimit ?? 40), menuPagesLimit: Number(row.menuPagesLimit ?? 10) };
+                    const events = row.events || [];
+                    const latest = events[0] || {};
+                    const failures = events.filter(event => event.status === 'failed').length;
+                    const blocks = events.filter(event => event.status === 'blocked').length;
+                    return (
+                      <div key={row.restaurantId} className="min-w-[900px] px-3 py-3 grid grid-cols-[minmax(180px,1.3fr)_minmax(150px,.8fr)_minmax(150px,.8fr)_110px_110px_120px] gap-2 items-center text-[11px]">
+                        <div className="min-w-0"><div className="font-black text-white truncate">{row.restaurantName || row.restaurantId}</div><div className="text-[9px] font-bold text-slate-500 truncate">{row.restaurantId}</div>{latest.model && <div className="text-[9px] font-bold text-slate-500 truncate">Latest: {latest.provider || 'provider'} / {latest.model}</div>}</div>
+                        <div className="flex items-center gap-2"><div><strong className="text-white">{Number(row.invoicePagesUsed || 0)}</strong><div className="text-[9px] text-slate-500">{Number(row.invoicePagesProcessed ?? row.invoicePagesUsed ?? 0)} processed</div></div><span className="text-slate-600">/</span><input type="number" min="0" max="10000" value={draft.invoicePagesLimit} onChange={event => setAiUsageLimitDrafts(previous => ({ ...previous, [row.restaurantId]: { ...draft, invoicePagesLimit: event.target.value } }))} className="admin46-input w-20" /></div>
+                        <div className="flex items-center gap-2"><div><strong className="text-white">{Number(row.menuPagesUsed || 0)}</strong><div className="text-[9px] text-slate-500">{Number(row.menuPagesProcessed ?? row.menuPagesUsed ?? 0)} processed</div></div><span className="text-slate-600">/</span><input type="number" min="0" max="10000" value={draft.menuPagesLimit} onChange={event => setAiUsageLimitDrafts(previous => ({ ...previous, [row.restaurantId]: { ...draft, menuPagesLimit: event.target.value } }))} className="admin46-input w-20" /></div>
+                        <div><div className="font-black text-white">{Number(row.invoiceScansSubmitted || 0) + Number(row.menuScansSubmitted || 0)}</div><div className="text-[9px] text-slate-500">{failures} failed · {blocks} blocked</div></div>
+                        <div><div className="font-black text-blue-300">{Number(row.exemptPagesProcessed || 0)}</div><div className="text-[9px] text-slate-500">testing pages</div></div>
+                        <div className="flex flex-col gap-1"><button type="button" onClick={() => saveAiUsageLimits(row)} disabled={aiUsageSavingId === row.restaurantId} className="admin45-primary-action px-3 py-2">{aiUsageSavingId === row.restaurantId ? 'Saving…' : 'Save limits'}</button><button type="button" onClick={() => resetAiUsage(row)} disabled={aiUsageSavingId === row.restaurantId} className="admin45-secondary-action px-3 py-2">Reset usage</button></div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </section>
+
+            <section className="admin45-content-card overflow-hidden">
+              <div className="px-4 py-3 border-b border-[#2A353D]"><div className="text-[9px] font-black uppercase tracking-widest text-slate-500">Recent scan events</div><div className="text-sm font-black text-white mt-1">Submitted, completed, failed, blocked, and testing-bypass records</div></div>
+              <div className="max-h-[520px] overflow-auto divide-y divide-[#2A353D]">
+                {allEvents.length === 0 ? <div className="p-6 text-center text-xs font-bold text-slate-500">No scan events for this month.</div> : allEvents.sort((a,b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0)).slice(0, 100).map((event, index) => (
+                  <div key={`${event.id || event.idempotencyKey || index}`} className="px-4 py-3 grid sm:grid-cols-[1.2fr_.55fr_.55fr_.7fr] gap-2 text-[10px]">
+                    <div><div className="font-black text-white">{event.restaurantName}</div><div className="font-bold text-slate-500 truncate">{event.userEmail || event.userId || 'Unknown user'}</div></div>
+                    <div><div className="font-black uppercase text-[#D4A381]">{event.scanType}</div><div className="text-slate-500">{event.pageCount || 0} page(s)</div></div>
+                    <div><div className={`font-black uppercase ${event.status === 'failed' || event.status === 'blocked' ? 'text-red-300' : event.status === 'completed' ? 'text-emerald-300' : 'text-amber-300'}`}>{event.status}</div><div className="text-slate-500">Quota {event.usedBefore || 0} → {event.usedAfter || 0} / {event.limit || 0}{event.processedAfter !== undefined ? ` · processed ${event.processedAfter}` : ''}</div></div>
+                    <div><div className="font-bold text-slate-300 truncate">{event.provider || '—'} {event.model ? `· ${event.model}` : ''}</div><div className="text-slate-500">{event.limitBypass ? 'Testing bypass' : event.wouldHaveExceededLimit ? 'Would exceed' : event.createdAt ? new Date(event.createdAt).toLocaleString() : ''}</div>{event.errorMessage && <div className="text-red-300 mt-1 break-words">{event.errorMessage}</div>}</div>
+                  </div>
+                ))}
+              </div>
+            </section>
+          </div>
+        );
+      })()}
+
       {subTab === 'push' && (
         <div className="space-y-4 animate-[slideIn_0.2s_ease-out]">
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
@@ -6144,6 +7985,75 @@ Type RESTORE to continue.`);
             <CockpitMetric label="Browser Permission" value={envReport.notifications} detail={`This admin device • ${envReport.host}`} tone={envReport.notifications === 'granted' ? 'emerald' : 'amber'} />
             <CockpitMetric label="Last Push Result" value={backupStatus?.lastPushResult || 'Not logged'} detail="Server route returns exact sent/failed counts when supported" tone="blue" />
           </div>
+          <form onSubmit={handlePushBroadcastSubmit} className={`${T.card} p-4 border-blue-900/40 bg-blue-950/10 space-y-4`}>
+            <div className="flex flex-col xl:flex-row xl:items-start xl:justify-between gap-3">
+              <div>
+                <h2 className="font-black text-white flex items-center gap-2"><Bell size={18}/> Targeted Push Broadcast</h2>
+                <p className="text-xs text-slate-400 font-bold mt-1">Send a live push notification to one workspace, one restaurant group, or the whole platform. Group sends are server-checked and dedupe device tokens.</p>
+              </div>
+              <div className="grid grid-cols-3 gap-2 text-center text-[10px] font-black uppercase tracking-widest">
+                <div className="bg-[#0B0E11] border border-[#2A353D] rounded-xl p-2"><div className="text-slate-500">Workspaces</div><div className="text-white text-sm">{selectedPushRestaurantIds.length}</div></div>
+                <div className="bg-[#0B0E11] border border-[#2A353D] rounded-xl p-2"><div className="text-slate-500">Users</div><div className="text-white text-sm">{selectedPushRecipients.length}</div></div>
+                <div className="bg-[#0B0E11] border border-[#2A353D] rounded-xl p-2"><div className="text-slate-500">Tokens</div><div className="text-emerald-300 text-sm">{selectedPushTokenRecipients.length}</div></div>
+              </div>
+            </div>
+            <div className="grid lg:grid-cols-[220px_minmax(0,1fr)] gap-3">
+              <div>
+                <label className="text-[9px] font-black uppercase tracking-widest text-slate-500 block mb-1">Target Type</label>
+                <select value={pushBroadcastTargetMode} onChange={e => setPushBroadcastTargetMode(e.target.value)} className={T.input}>
+                  <option value="workspace">One workspace</option>
+                  <option value="group">Restaurant group</option>
+                  <option value="all">All workspaces</option>
+                </select>
+              </div>
+              {pushBroadcastTargetMode === 'workspace' && (
+                <div>
+                  <label className="text-[9px] font-black uppercase tracking-widest text-slate-500 block mb-1">Workspace</label>
+                  <select value={pushBroadcastWorkspaceId || restaurants[0]?.id || ''} onChange={e => setPushBroadcastWorkspaceId(e.target.value)} className={T.input}>
+                    {restaurants.map(r => <option key={r.id} value={r.id}>{r.name || r.id} • {allUsers.filter(u => u.restaurantId === r.id && u.fcmToken).length} token(s)</option>)}
+                  </select>
+                </div>
+              )}
+              {pushBroadcastTargetMode === 'group' && (
+                <div>
+                  <label className="text-[9px] font-black uppercase tracking-widest text-slate-500 block mb-1">Restaurant Group</label>
+                  <select value={pushBroadcastGroupKey || restaurantGroups[0]?.key || ''} onChange={e => setPushBroadcastGroupKey(e.target.value)} className={T.input}>
+                    {restaurantGroups.map(group => <option key={group.key} value={group.key}>{group.label} • {group.restaurantIds.length} workspace(s) • {group.tokenCount} token(s)</option>)}
+                  </select>
+                </div>
+              )}
+              {pushBroadcastTargetMode === 'all' && (
+                <div className="bg-red-950/20 border border-red-900/40 rounded-xl p-3 text-xs text-red-100 font-bold leading-snug">
+                  All workspaces is a platform-wide notification. Use restaurant group whenever the message is only for one customer group.
+                </div>
+              )}
+            </div>
+            {pushBroadcastTargetMode === 'group' && selectedPushGroup && (
+              <div className="bg-[#0B0E11] border border-[#2A353D] rounded-xl p-3">
+                <div className="text-[9px] font-black uppercase tracking-widest text-blue-300 mb-1">Selected group preview</div>
+                <div className="text-xs text-slate-300 font-bold leading-snug">{selectedPushGroup.restaurantNames.slice(0, 8).join(' • ')}{selectedPushGroup.restaurantNames.length > 8 ? ` • +${selectedPushGroup.restaurantNames.length - 8} more` : ''}</div>
+              </div>
+            )}
+            <div className="grid lg:grid-cols-[minmax(0,0.7fr)_minmax(0,1.3fr)] gap-3">
+              <div>
+                <label className="text-[9px] font-black uppercase tracking-widest text-slate-500 block mb-1">Notification Title</label>
+                <input value={pushBroadcastTitle} onChange={e => setPushBroadcastTitle(e.target.value)} maxLength={80} className={T.input} placeholder="86 Chaos Alert" />
+              </div>
+              <div>
+                <label className="text-[9px] font-black uppercase tracking-widest text-slate-500 block mb-1">Message</label>
+                <input value={pushBroadcastBody} onChange={e => setPushBroadcastBody(e.target.value)} maxLength={180} className={T.input} placeholder="Example: System maintenance begins at 2:00 AM." />
+              </div>
+            </div>
+            <div className="flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-between">
+              <label className="flex items-center gap-2 text-xs font-black text-slate-300">
+                <input type="checkbox" checked={pushBroadcastCritical} onChange={e => setPushBroadcastCritical(e.target.checked)} className="accent-[#D4A381]" />
+                Critical alert, bypass quiet hours when possible
+              </label>
+              <button type="submit" disabled={isPushBroadcasting || !selectedPushRestaurantIds.length || !selectedPushTokenRecipients.length} className="px-5 py-3 bg-blue-900/30 text-blue-200 border border-blue-700/60 rounded-xl text-xs font-black uppercase tracking-widest hover:bg-blue-900/50 disabled:opacity-40 flex items-center justify-center gap-2">
+                {isPushBroadcasting ? <Loader2 size={15} className="animate-spin"/> : <Send size={15}/>} Send Push to Selected Target
+              </button>
+            </div>
+          </form>
           <div className={`${T.card} p-4 flex flex-col sm:flex-row gap-2 sm:items-center justify-between`}>
             <div>
               <h2 className="font-black text-white">Push Token Repair Center</h2>
@@ -6331,11 +8241,33 @@ Type RESTORE to continue.`);
               </div>
               <div className={`${T.card} p-4`}>
                 <h3 className="font-black text-white text-sm flex items-center gap-2"><Wrench size={16} className="text-blue-300"/> Deployment Diagnostics</h3>
-                <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mt-1 leading-snug">Run this before pushing production changes. It downloads a JSON report with server checks and client health, then writes a system audit record.</p>
-                <button type="button" onClick={handleRunFullSystemDiagnostics} disabled={isDiagnosticsRunning} className="mt-3 w-full bg-blue-900/20 text-blue-300 border border-blue-900/50 hover:bg-blue-900/40 disabled:opacity-50 rounded-xl py-3 text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-2">
-                  {isDiagnosticsRunning ? <Loader2 size={14} className="animate-spin"/> : <Wrench size={14}/>} Run Full System Diagnostics
-                </button>
+                <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mt-1 leading-snug">Run diagnostics, then ask OpenAI for structured repair steps. Operational data is redacted again on the server before it leaves 86 Chaos.</p>
+                <div className="grid sm:grid-cols-2 gap-2 mt-3">
+                  <button type="button" onClick={handleRunFullSystemDiagnostics} disabled={isDiagnosticsRunning} className="w-full bg-blue-900/20 text-blue-300 border border-blue-900/50 hover:bg-blue-900/40 disabled:opacity-50 rounded-xl py-3 text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-2">
+                    {isDiagnosticsRunning ? <Loader2 size={14} className="animate-spin"/> : <Wrench size={14}/>} Run Full Diagnostics
+                  </button>
+                  <button type="button" onClick={handleExplainDiagnosticsWithOpenAI} disabled={isOpenAiDiagnosticsLoading} className="w-full bg-purple-900/20 text-purple-300 border border-purple-900/50 hover:bg-purple-900/40 disabled:opacity-50 rounded-xl py-3 text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-2">
+                    {isOpenAiDiagnosticsLoading ? <Loader2 size={14} className="animate-spin"/> : <Sparkles size={14}/>} Explain with OpenAI
+                  </button>
+                </div>
                 {lastDiagnosticsReport && <div className="mt-3 bg-[#0B0E11] border border-[#2A353D] rounded-xl p-3 text-[10px] font-bold text-slate-400">Last report: {formatBackupTimestamp(lastDiagnosticsReport.generatedAt)} • Duration {lastDiagnosticsReport.durationMs || 0}ms • Integrity {lastDiagnosticsReport.backupIntegrity?.status || 'unknown'}</div>}
+                {openAiDiagnosticsError && <div className="mt-3 bg-amber-900/15 border border-amber-500/30 rounded-xl p-3 text-[10px] font-bold text-amber-200 leading-snug">{openAiDiagnosticsError}</div>}
+                {openAiDiagnosticsResult?.guidance && <div className="mt-3 space-y-3">
+                  <div className="bg-[#0B0E11] border border-purple-900/40 rounded-xl p-3">
+                    <div className="flex items-center justify-between gap-2"><div className="text-[9px] font-black uppercase tracking-widest text-purple-300">OpenAI Repair Guidance</div><span className="text-[8px] font-black uppercase tracking-widest text-slate-500">{openAiDiagnosticsResult.model}</span></div>
+                    <div className="text-xs font-bold text-slate-300 mt-2 leading-relaxed">{openAiDiagnosticsResult.guidance.summary}</div>
+                  </div>
+                  {(openAiDiagnosticsResult.guidance.issues || []).map((issue, idx) => {
+                    const severityClass = issue.severity === 'critical' || issue.severity === 'high' ? 'text-red-300 border-red-900/50 bg-red-950/10' : issue.severity === 'medium' ? 'text-amber-300 border-amber-900/50 bg-amber-950/10' : 'text-blue-300 border-blue-900/50 bg-blue-950/10';
+                    return <div key={`${issue.issue}-${idx}`} className={`border rounded-xl p-3 ${severityClass}`}>
+                      <div className="flex items-start justify-between gap-2"><div className="text-sm font-black text-white">{issue.issue}</div><span className="text-[8px] font-black uppercase tracking-widest">{issue.severity}</span></div>
+                      <div className="mt-2 text-[10px] font-bold text-slate-300 leading-relaxed"><span className="text-slate-500 uppercase tracking-widest">What it means:</span> {issue.whatItMeans}</div>
+                      <div className="mt-2 text-[10px] font-bold text-slate-300 leading-relaxed"><span className="text-slate-500 uppercase tracking-widest">Likely cause:</span> {issue.likelyCause}</div>
+                      {[['Exact repair steps', issue.repairSteps], ['Where to click', issue.whereToClick], ['Deploy / publish / env notes', issue.deployPublishEnvNotes], ['Verify it worked', issue.verificationSteps]].map(([title, rows]) => Array.isArray(rows) && rows.length > 0 ? <div key={title} className="mt-3"><div className="text-[9px] font-black uppercase tracking-widest text-slate-500">{title}</div><div className="space-y-1 mt-1">{rows.map((row, rowIdx) => <div key={rowIdx} className="text-[10px] font-bold text-slate-300 leading-relaxed">{rowIdx + 1}. {row}</div>)}</div></div> : null)}
+                      <div className="mt-3 text-[10px] font-bold text-slate-300 leading-relaxed"><span className="text-slate-500 uppercase tracking-widest">Escalate:</span> {issue.whenToEscalate}</div>
+                    </div>;
+                  })}
+                </div>}
               </div>
             </div>
           </div>
@@ -6356,7 +8288,7 @@ Type RESTORE to continue.`);
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-8 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-9 gap-4">
             <StatusTile label="Firestore Rules" value={securityReport?.security?.firestoreRules?.status || 'Not checked'} />
             <StatusTile label="Storage Rules" value={securityReport?.security?.storageRules?.status || 'Not checked'} />
             <StatusTile label="App Check" value={securityReport?.security?.appCheck?.status || 'Not checked'} />
@@ -6364,6 +8296,7 @@ Type RESTORE to continue.`);
             <StatusTile label="Risky Users" value={securityReport?.riskyUsers?.length ?? '—'} />
             <StatusTile label="Last Backup" value={securityReport?.cron?.lastBackupAt ? formatClockDateTime(securityReport.cron.lastBackupAt) : 'Not checked'} />
             <StatusTile label="Restore Drill" value={restoreDrillStatus?.lastDrillAt ? formatBackupTimestamp(restoreDrillStatus.lastDrillAt) : 'Not recorded'} />
+            <StatusTile label="Deletion Requests" value={activeAccountDeletionRequests.length} />
             <StatusTile label="Version" value={securityReport?.app?.version || CURRENT_VERSION || 'Unknown'} />
           </div>
 
@@ -6395,6 +8328,45 @@ Type RESTORE to continue.`);
                 <div key={event.id} className={`${T.row}`}><div className="font-black text-white text-sm">{event.action || 'Event'}</div><div className="text-[10px] text-slate-500 font-bold mt-1">{event.userName || 'Unknown'} • {event.restaurantId || 'platform'} • {event.timestamp ? formatClockDateTime(event.timestamp) : 'no time'}</div><div className="text-[10px] text-slate-400 font-mono mt-1 truncate">{event.target || ''}</div></div>
               ))}
             </div>
+          </div>
+
+          <div className={`${T.card} overflow-hidden`}>
+            <div className={`${T.th} flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2`}>
+              <span>Account Deletion Requests</span>
+              <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">{activeAccountDeletionRequests.length} active / {accountDeletionRequests.length} total</span>
+            </div>
+            {adminDataErrors.accountDeletionRequests && <div className={`${T.row} bg-red-900/10 text-red-100 text-xs font-bold`}>Deletion request queue is blocked by rules or auth: {adminDataErrors.accountDeletionRequests}</div>}
+            {activeAccountDeletionRequests.length === 0 ? (
+              <SmartEmptyState title="No active deletion requests" desc="When a customer requests account deletion from Account Security, review it here before taking destructive action." />
+            ) : activeAccountDeletionRequests.map(req => (
+              <div key={req.id || req.uid} className={`${T.row} flex flex-col xl:flex-row xl:items-center justify-between gap-3`}>
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <div className="font-black text-white text-sm truncate">{req.email || req.displayName || req.uid || req.id}</div>
+                    <SignalPip tone={String(req.status || '').toLowerCase() === 'reviewing' ? 'amber' : 'red'} label={req.status || 'requested'} />
+                  </div>
+                  <div className="text-[10px] text-slate-500 font-bold mt-1">{req.restaurantId || 'system'} - requested {req.requestedAt ? formatClockDateTime(req.requestedAt) : 'unknown'} - updated {req.updatedAt ? formatClockDateTime(req.updatedAt) : 'not yet'}</div>
+                  {req.reason && <div className="text-xs text-slate-300 font-bold mt-2 leading-relaxed line-clamp-2">{req.reason}</div>}
+                  {req.adminNotes && <div className="text-[10px] text-amber-200 font-bold mt-2 leading-relaxed">Admin note: {req.adminNotes}</div>}
+                </div>
+                <div className="flex flex-wrap gap-2 xl:justify-end">
+                  {String(req.status || '').toLowerCase() !== 'reviewing' && <button type="button" onClick={() => handleAccountDeletionAdminAction(req, 'review')} disabled={isAccountDeletionAdminBusy} className="px-3 py-2 bg-amber-900/20 border border-amber-500/40 text-amber-200 rounded-lg text-[10px] font-black uppercase tracking-widest disabled:opacity-50">Reviewing</button>}
+                  <button type="button" onClick={() => handleAccountDeletionAdminAction(req, 'complete')} disabled={isAccountDeletionAdminBusy} className="px-3 py-2 bg-emerald-900/20 border border-emerald-500/40 text-emerald-200 rounded-lg text-[10px] font-black uppercase tracking-widest disabled:opacity-50">Mark Complete</button>
+                  <button type="button" onClick={() => handleAccountDeletionAdminAction(req, 'deny')} disabled={isAccountDeletionAdminBusy} className="px-3 py-2 bg-red-900/20 border border-red-500/40 text-red-200 rounded-lg text-[10px] font-black uppercase tracking-widest disabled:opacity-50">Deny</button>
+                </div>
+              </div>
+            ))}
+            {completedAccountDeletionRequests.length > 0 && (
+              <div className="border-t border-[#2A353D] bg-[#0B0E11]/50">
+                <div className="px-4 py-3 text-[10px] font-black uppercase tracking-widest text-slate-500">Recent closed requests</div>
+                {completedAccountDeletionRequests.map(req => (
+                  <div key={`closed-${req.id || req.uid}`} className="px-4 py-2 border-t border-[#2A353D] text-[10px] font-bold text-slate-400 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1">
+                    <span className="truncate">{req.email || req.displayName || req.uid || req.id}</span>
+                    <span>{req.status || 'closed'} - {req.updatedAt ? formatClockDateTime(req.updatedAt) : 'no date'}</span>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           <div className={`${T.card} p-4 border ${restoreDrillStale ? 'border-amber-900/50' : 'border-emerald-900/40'}`}>
@@ -6650,7 +8622,7 @@ Type RESTORE to continue.`);
                 const isBackfilledCreatedAt = r.createdAtEstimated || (!createdRaw && r.createdAtBackfilledAt);
                 const trialDurationDays = r.trialDays !== undefined ? parseInt(r.trialDays) : 14;
                 const trialEndDate = new Date(createdDate.getTime() + trialDurationDays * 24 * 60 * 60 * 1000);
-                const isTrialActive = r.billingStatus === 'Trial';
+                const isTrialActive = resolveSubscription(r, appUser).status === 'beta';
                 const daysInTrial = Math.ceil((trialEndDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
                 
                 const nextBill = new Date();
@@ -6663,8 +8635,9 @@ Type RESTORE to continue.`);
                     <div className="font-black text-white text-lg flex items-center gap-2 flex-wrap">
                       <button type="button" onClick={() => setSelectedClient(r)} className="truncate text-left hover:text-[#D4A381] underline-offset-4 hover:underline">{r.name}</button>
                       {!r.isActive && <span className="bg-red-500 text-white text-[8px] px-1.5 py-0.5 rounded uppercase">Suspended</span>}
+                      {r.deleted_at && <span className="bg-amber-900 text-amber-300 border border-amber-500/50 text-[8px] px-1.5 py-0.5 rounded uppercase">Deletion Scheduled</span>}
                       {r.isReadOnly && <span className="bg-blue-900 text-blue-300 border border-blue-500/50 text-[8px] px-1.5 py-0.5 rounded uppercase">Read-Only</span>}
-                      {r.billingStatus === 'Past Due' ? <span className="bg-red-900 text-red-400 border border-red-500/50 text-[8px] px-1.5 py-0.5 rounded uppercase animate-pulse">Maintenance</span> : <span className="bg-emerald-900 text-emerald-400 border border-emerald-500/50 text-[8px] px-1.5 py-0.5 rounded uppercase">{r.planType || 'Pro'}</span>}
+                      {(resolveSubscription(r, appUser).status === 'past_due' || r.maintenanceMode === true) ? <span className="bg-red-900 text-red-400 border border-red-500/50 text-[8px] px-1.5 py-0.5 rounded uppercase animate-pulse">Maintenance</span> : <span className="bg-emerald-900 text-emerald-400 border border-emerald-500/50 text-[8px] px-1.5 py-0.5 rounded uppercase">{getPlanDefinition(resolveSubscription(r, appUser).planId).label}</span>}
                     </div>
                     <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Owner: {r.ownerName} <span className="mx-1">•</span> {r.ownerEmail} {r.ownerPhone && <><span className="mx-1">•</span> {r.ownerPhone}</>}</div>
                     
@@ -6684,18 +8657,19 @@ Type RESTORE to continue.`);
                       ) : (
                         <div className="flex flex-col">
                           <span className="text-[8px] font-black uppercase tracking-widest text-emerald-500">Next Billing Cycle</span>
-                          <span className="text-[10px] font-bold text-emerald-400">{r.billingStatus === 'Past Due' ? 'MAINTENANCE MODE' : nextBill.toLocaleDateString()}</span>
+                          <span className="text-[10px] font-bold text-emerald-400">{(resolveSubscription(r, appUser).status === 'past_due' || r.maintenanceMode === true) ? 'MAINTENANCE MODE' : nextBill.toLocaleDateString()}</span>
                         </div>
                       )}
                     </div>
 
                     <div className="text-[9px] text-slate-500 font-medium mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1">ID: {r.id}<span>•</span><span className="text-white font-bold">{userCounts[r.id] || 0} Seats</span><span>•</span><span className="text-emerald-400 font-black flex items-center gap-1"><span className="cockpit-light bg-emerald-400 text-emerald-400"></span>{presenceSnapshot.fetchedAt ? `${onlineUsers.filter(u => u.restaurantId === r.id).length} snapshot` : 'snapshot not run'}</span><span>•</span><span className={timeAgo(r.lastActive).includes('Inactive') ? 'text-red-400' : 'text-emerald-500'}>Ping: {timeAgo(r.lastActive)}</span></div>
+                    {r.deletionScheduledFor && <div className="mt-1.5 text-[9px] font-black uppercase tracking-widest text-amber-300">Permanent deletion after {r.deletionScheduledFor?.toDate ? r.deletionScheduledFor.toDate().toLocaleString() : new Date(r.deletionScheduledFor).toLocaleString()}</div>}
                   </div>
                   <div className="flex flex-wrap gap-2 flex-shrink-0">
 <button onClick={() => setSelectedClient(r)} className="px-3 py-1.5 bg-blue-900/20 border border-blue-500/50 text-blue-300 font-bold text-[10px] uppercase tracking-widest rounded-lg hover:bg-blue-900/40 transition-colors shadow-sm flex items-center gap-1"><Users size={14} /> Users</button>
 <button onClick={() => setEditingRest(r)} className="px-3 py-1.5 bg-[#12161A] border border-[#2A353D] text-slate-300 font-bold text-[10px] uppercase tracking-widest rounded-lg hover:text-[#D4A381] hover:border-[#D4A381]/50 transition-colors shadow-sm flex items-center gap-1"><Settings size={14} /> Manage</button>
                     <button onClick={() => { setGhostTenant({ id: r.id, name: r.name, mode: 'workspace' }); setActiveTab('published'); }} className="px-3 py-1.5 bg-purple-900/20 border border-purple-500/50 text-purple-400 font-bold text-[10px] uppercase tracking-widest rounded-lg hover:bg-purple-900/50 transition-colors shadow-sm flex items-center gap-1"><Moon size={14} /> Possess</button>
-                    <button onClick={() => handleDeleteTenant(r.id, r.name)} className="px-3 py-1.5 bg-red-900/10 border border-red-900/30 text-red-500 font-bold text-[10px] uppercase tracking-widest rounded-lg hover:bg-red-900/40 transition-colors shadow-sm"><Trash2 size={12}/></button>
+                    {r.deleted_at ? <button onClick={() => handleRestoreTenant(r.id, r.name)} className="px-3 py-1.5 bg-emerald-900/20 border border-emerald-500/40 text-emerald-300 font-bold text-[10px] uppercase tracking-widest rounded-lg hover:bg-emerald-900/40 transition-colors shadow-sm">Restore</button> : <button onClick={() => handleDeleteTenant(r.id, r.name)} title="Schedule workspace deletion in 30 days" className="px-3 py-1.5 bg-red-900/10 border border-red-900/30 text-red-500 font-bold text-[10px] uppercase tracking-widest rounded-lg hover:bg-red-900/40 transition-colors shadow-sm"><Trash2 size={12}/></button>}
                   </div>
                 </div>
               )})}
@@ -6828,15 +8802,7 @@ another@email.com"></textarea>
         </div>
       )}
 
-{/* --- TAB: THE FORGE --- */}
-      {subTab === 'forge' && (
-        <div className="space-y-6 animate-[slideIn_0.2s_ease-out]">
-          <form onSubmit={(e) => handleForgePush(e, 'Event')} className={`${T.card} p-5`}>
-            <div className="mb-4 pb-2 border-b border-[#2A353D]"><h2 className="text-lg font-black text-white flex items-center gap-2"><Calendar className={T.copper} size={18}/> Global Event Injection</h2><p className="text-[10px] text-slate-400 uppercase tracking-widest font-bold mt-1">Force an event onto every client's calendar simultaneously.</p></div>
-            <div className="flex flex-col sm:flex-row gap-3"><input type="date" value={forgeEventDate} onChange={e=>setForgeEventDate(e.target.value)} className={`${T.input} sm:w-48`} required /><input type="text" placeholder="Event Title (e.g. Mother's Day)" value={forgeEventTitle} onChange={e=>setForgeEventTitle(e.target.value)} className={T.input} required /><button type="submit" className={`${T.btn} px-8 whitespace-nowrap`}>Push Event</button></div>
-          </form>
-        </div>
-      )}
+
 
       {/* --- TAB: SUPPORT & CRASHES --- */}
       {subTab === 'support' && (
@@ -6891,7 +8857,9 @@ another@email.com"></textarea>
                 <div className="flex items-center justify-between mb-2"><div className="text-[10px] font-black uppercase tracking-widest text-slate-500">Access Model</div><SignalPip tone="purple" label="RULES"/></div>
                 <div className="space-y-1.5 text-[10px] font-bold text-slate-400">
                   <div className="flex justify-between gap-2"><span>Super admins</span><span className="text-white">{superAdmins.length}</span></div>
-                  <div className="flex justify-between gap-2"><span>Master email</span><span className="text-[#D4A381]">{MASTER_ADMIN_EMAIL}</span></div>
+                  <div className="flex justify-between gap-2"><span>Access source</span><span className="text-[#D4A381]">{adminAccessSourceLabel}</span></div>
+                  <div className="flex justify-between gap-2"><span>Frontend master env</span><span className="text-[#D4A381]">{MASTER_ADMIN_EMAIL || 'not set'}</span></div>
+                  <div className="flex justify-between gap-2"><span>Server master env</span><span className={appUser?.serverAdminCheck?.masterAdminEnvConfigured ? 'text-emerald-400' : 'text-amber-400'}>{appUser?.serverAdminCheck?.masterAdminEnvConfigured ? `${appUser.serverAdminCheck.masterAdminEmailCount || 1} configured` : 'not confirmed'}</span></div>
                   <div className="flex justify-between gap-2"><span>Ghost needs rules</span><span className="text-emerald-400">isSuperAdmin()</span></div>
                   <div className="flex justify-between gap-2"><span>Read-only clients</span><span className="text-blue-400">{readOnlyWorkspaces.length}</span></div>
                   <div className="flex justify-between gap-2"><span>Past due lockouts</span><span className="text-red-400">{pastDueWorkspaces.length}</span></div>
@@ -7077,11 +9045,12 @@ another@email.com"></textarea>
               </div>
             </div>
             <div className="grid md:grid-cols-4 gap-2">
-              <div className="bg-[#0B0E11] border border-[#2A353D] rounded-xl p-3"><div className="text-[8px] font-black uppercase tracking-widest text-slate-500">Next Auto Backup</div><div className="text-lg font-black text-white">{nextBackupCountdown}</div><div className="text-[9px] text-slate-500 font-bold">{nextBackupLocalTime}</div></div>
+              <div className={`bg-[#0B0E11] border ${backupMissedDailyWindow ? 'border-amber-500/40' : 'border-[#2A353D]'} rounded-xl p-3`}><div className="flex items-center justify-between gap-2"><div className="text-[8px] font-black uppercase tracking-widest text-slate-500">Next Auto Backup</div><AdminInfoButton title="Next Auto Backup" body={backupTroubleshootingSummary} /></div><div className="text-lg font-black text-white">{nextBackupCountdown}</div><div className="text-[9px] text-slate-500 font-bold">{nextBackupLocalTime}</div><div className="text-[9px] text-slate-500 font-bold mt-1">{backupWatchdogDetail}</div>{backupStatus?.lastWatchdogCheckAt && <div className="text-[8px] text-slate-600 font-bold mt-1">Last watchdog: {formatBackupTimestamp(backupStatus.lastWatchdogCheckAt)}</div>}{backupMissedDailyWindow && <div className="text-[9px] text-amber-300 font-black uppercase tracking-widest mt-1">Daily window missed</div>}<button type="button" onClick={handleRunBackupWatchdog} disabled={isBackupWatchdogRunning} className="mt-2 w-full bg-amber-900/20 text-amber-200 border border-amber-900/50 hover:bg-amber-900/40 disabled:opacity-50 text-[8px] font-black uppercase tracking-widest px-2 py-1.5 rounded-lg transition-colors flex items-center justify-center gap-1">{isBackupWatchdogRunning && <Loader2 size={10} className="animate-spin" />} Check Watchdog Now</button></div>
               <div className="bg-[#0B0E11] border border-[#2A353D] rounded-xl p-3"><div className="text-[8px] font-black uppercase tracking-widest text-slate-500">Data Watchlist</div><div className="text-lg font-black text-white">{usersWithoutRestaurant.length + missingOwnerAccounts.length + duplicateEmailGroups.length}</div><div className="text-[9px] text-slate-500 font-bold">routing / owner / duplicates</div></div>
               <div className="bg-[#0B0E11] border border-[#2A353D] rounded-xl p-3"><div className="text-[8px] font-black uppercase tracking-widest text-slate-500">Sensitive Actions</div><div className="text-lg font-black text-white">{destructiveAuditLogs.length}</div><div className="text-[9px] text-slate-500 font-bold">delete / nuke / lock / sweep</div></div>
               <div className="bg-[#0B0E11] border border-[#2A353D] rounded-xl p-3"><div className="text-[8px] font-black uppercase tracking-widest text-slate-500">Rule Blocks</div><div className={`text-lg font-black ${permissionDeniedLogs.length ? 'text-red-300' : 'text-emerald-400'}`}>{permissionDeniedLogs.length}</div><div className="text-[9px] text-slate-500 font-bold">permission-denied logs</div></div>
             </div>
+            {backupMissedDailyWindow && <div className="mt-3 bg-amber-900/15 border border-amber-500/30 rounded-xl p-3 text-xs font-bold text-amber-100 leading-relaxed"><div className="font-black uppercase tracking-widest text-amber-300 text-[10px] mb-1">Automatic backup needs review</div>{backupTroubleshootingSummary}</div>}
           </div>
 
           <div className="grid lg:grid-cols-3 gap-4">
@@ -7112,8 +9081,8 @@ another@email.com"></textarea>
                       {isBackupListLoading && <Loader2 size={10} className="animate-spin" />} Refresh
                     </button>
                   </div>
-                  <div className="grid grid-cols-3 gap-1">
-                    {['all','scheduled','manual'].map(mode => (
+                  <div className="grid grid-cols-4 gap-1">
+                    {['all','scheduled','watchdog','manual'].map(mode => (
                       <button key={mode} type="button" onClick={() => setBackupListFilter(mode)} className={`text-[9px] font-black uppercase tracking-widest px-2 py-1.5 rounded-lg border transition-colors ${backupListFilter === mode ? 'bg-[#D4A381] text-slate-900 border-[#D4A381]' : 'bg-[#0B0E11] text-slate-400 border-[#2A353D] hover:text-white'}`}>{mode}</button>
                     ))}
                   </div>
@@ -7244,7 +9213,7 @@ another@email.com"></textarea>
                       </div>
                       <button type="button" onClick={async () => {
                         if(!window.confirm(`Clear banner for ${r.name}?`)) return;
-                        await updateDoc(doc(db, "restaurants", r.id), { systemBanner: null });
+                        await updateDoc(doc(db, "restaurants", r.id), { systemBanner: null, systemBannerUpdatedAt: null });
                         addToast('Cleared', `Banner removed from ${r.name}.`);
                       }} className="text-slate-400 hover:text-red-500 p-2 flex-shrink-0 transition-colors bg-[#1A2126] rounded-lg border border-[#2A353D]"><Trash2 size={14}/></button>
                     </div>
@@ -7322,44 +9291,293 @@ another@email.com"></textarea>
       )}
 
       {subTab === 'manual' && (
-        <div id="admin-manual" className="space-y-4 animate-[slideIn_0.2s_ease-out]">
-          <div className={`${T.card} p-5 cockpit-grid`}>
-            <div className="text-[10px] uppercase tracking-widest font-black text-[#D4A381]">Internal support manual</div>
-            <h2 className="text-2xl font-black text-white">Administrator Manual + Troubleshooting Database</h2>
-            <p className="text-sm text-slate-400 font-bold mt-1 max-w-3xl">Search this before touching a client. It covers administrator workflows and the entire app help library so future support hires can debug from keywords users actually say.</p>
-            <div className="relative mt-4 max-w-3xl">
-              <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
-              <input value={adminManualSearch} onChange={e => setAdminManualSearch(e.target.value)} placeholder="Search admin manual: permission denied, missing tab, punch, backup, ghost, GPS, schedule..." className="w-full bg-[#12161A] border border-[#2A353D] rounded-xl pl-10 pr-3 py-3 text-sm font-bold text-white outline-none focus:border-[#D4A381]" />
+        <div id="admin-manual" className="admin-manual-stack">
+          <section className="training-manual-shell" aria-labelledby="complete-training-manual-title">
+            <div className="training-manual-heading">
+              <div>
+                <div className="training-manual-kicker"><BookOpen size={14}/> Complete app training</div>
+                <h2 id="complete-training-manual-title">86 Chaos Training Manual</h2>
+                <p>Plain-English instructions for the whole app, tab by tab. Search happens on this device and makes no AI calls.</p>
+              </div>
+              <div className="training-manual-heading-actions">
+                <span className="training-manual-local-badge"><Shield size={13}/> Non-AI / local search</span>
+                <button type="button" onClick={handlePrintTrainingManual} className="training-manual-print-button">
+                  <BookOpen size={15}/> Print selected / Save as PDF
+                </button>
+              </div>
+            </div>
+
+            <div className="training-manual-toolbar">
+              <div className="training-manual-search-field">
+                <label htmlFor="training-manual-search">Search every chapter</label>
+                <div>
+                  <Search size={16}/>
+                  <input
+                    id="training-manual-search"
+                    value={trainingManualSearch}
+                    onChange={event => setTrainingManualSearch(event.target.value)}
+                    placeholder="Try: prep labels, MFA, invoice, schedule, specials..."
+                  />
+                  {trainingManualSearch && <button type="button" onClick={() => setTrainingManualSearch('')} aria-label="Clear training manual search"><X size={15}/></button>}
+                </div>
+              </div>
+              <div className="training-manual-category-field">
+                <label htmlFor="training-manual-category">Chapter group</label>
+                <select id="training-manual-category" value={trainingManualCategory} onChange={event => setTrainingManualCategory(event.target.value)}>
+                  {trainingManualCategories.map(category => <option key={category} value={category}>{category}</option>)}
+                </select>
+              </div>
+              <div className="training-manual-counts" aria-live="polite">
+                <strong>{visibleTrainingManualChapters.length}</strong>
+                <span>matching</span>
+                <strong>{selectedTrainingManualChapters.length}</strong>
+                <span>selected to print</span>
+              </div>
+            </div>
+
+            <div className="training-manual-selection-bar">
+              <span>Choose exactly what belongs in the printable manual.</span>
+              <div>
+                <button type="button" onClick={selectAllTrainingManualChapters}>Select all</button>
+                <button type="button" onClick={selectVisibleTrainingManualChapters}>Select matching</button>
+                <button type="button" onClick={clearTrainingManualChapters}>Clear all</button>
+              </div>
+            </div>
+
+            <div className="training-manual-layout">
+              <aside className="training-manual-chapter-index" aria-label="Training manual chapters">
+                {visibleTrainingManualChapters.length === 0 && (
+                  <div className="training-manual-empty">No chapter matched all of those words. Try a shorter search such as "labels" or "security".</div>
+                )}
+                {visibleTrainingManualChapters.map((chapter, index) => {
+                  const isSelected = selectedTrainingManualChapterIdSet.has(chapter.id);
+                  const isActive = activeTrainingManualChapter?.id === chapter.id;
+                  const fullChapterNumber = SYSTEM_TRAINING_MANUAL_CHAPTERS.findIndex(item => item.id === chapter.id) + 1;
+                  return (
+                    <div key={chapter.id} className={`training-manual-index-row ${isActive ? 'is-active' : ''} ${isSelected ? 'is-selected' : ''}`}>
+                      <label title={isSelected ? 'Remove from printable manual' : 'Add to printable manual'}>
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={() => toggleTrainingManualChapterSelection(chapter.id)}
+                          aria-label={`${isSelected ? 'Remove' : 'Add'} ${chapter.title} ${isSelected ? 'from' : 'to'} printable manual`}
+                        />
+                        <span aria-hidden="true"><Check size={13}/></span>
+                      </label>
+                      <button type="button" onClick={() => setActiveTrainingManualChapterId(chapter.id)}>
+                        <small>Chapter {fullChapterNumber} · {chapter.group}</small>
+                        <strong>{chapter.title}</strong>
+                        <em>{chapter.tab}</em>
+                      </button>
+                    </div>
+                  );
+                })}
+              </aside>
+
+              <article className="training-manual-reader">
+                {activeTrainingManualChapter ? (
+                  <>
+                    <div className="training-manual-reader-topline">
+                      <div>
+                        <span>{activeTrainingManualChapter.group}</span>
+                        <span>{activeTrainingManualChapter.tab}</span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => toggleTrainingManualChapterSelection(activeTrainingManualChapter.id)}
+                        className={selectedTrainingManualChapterIdSet.has(activeTrainingManualChapter.id) ? 'is-selected' : ''}
+                      >
+                        <Check size={14}/>
+                        {selectedTrainingManualChapterIdSet.has(activeTrainingManualChapter.id) ? 'Selected for print' : 'Add to print'}
+                      </button>
+                    </div>
+                    <h3>{activeTrainingManualChapter.title}</h3>
+                    <p className="training-manual-summary">{activeTrainingManualChapter.summary}</p>
+                    <div className="training-manual-audience"><Users size={15}/><strong>Who uses it:</strong><span>{activeTrainingManualChapter.audience}</span></div>
+
+                    <div className="training-manual-sections">
+                      {(activeTrainingManualChapter.sections || []).map((section, sectionIndex) => (
+                        <section key={`${activeTrainingManualChapter.id}-${section.title}`}>
+                          <h4><span>{sectionIndex + 1}</span>{section.title}</h4>
+                          <ol>
+                            {(section.steps || []).map((step, stepIndex) => <li key={stepIndex}>{step}</li>)}
+                          </ol>
+                        </section>
+                      ))}
+                    </div>
+                    {(activeTrainingManualChapter.notes || []).length > 0 && (
+                      <div className="training-manual-notes">
+                        <strong>Important</strong>
+                        {(activeTrainingManualChapter.notes || []).map((note, index) => <p key={index}>{note}</p>)}
+                      </div>
+                    )}
+                  </>
+                ) : <div className="training-manual-empty">Choose a chapter.</div>}
+              </article>
+            </div>
+          </section>
+
+          <div className="admin46-manual">
+          <div className="admin46-manual-heading">
+            <div>
+              <div className="admin46-eyebrow">Internal knowledge system</div>
+              <h2>Administrator Manual</h2>
+              <p>Search documented procedures, ask Gemini for a repair plan, and keep the selected article visible while you work.</p>
+            </div>
+            <div className="admin46-manual-stats">
+              <span><strong>{adminManualArticles.length}</strong> articles</span>
+              <span><strong>{adminSupportPlaybooks.length}</strong> playbooks</span>
+              <span><strong>{CURRENT_VERSION}</strong> build</span>
             </div>
           </div>
 
-          <div className="grid lg:grid-cols-[280px_minmax(0,1fr)] gap-4">
-            <div className={`${T.card} p-4 h-max`}>
-              <div className="text-[10px] uppercase tracking-widest font-black text-[#D4A381] mb-3">Fast support routine</div>
-              {[
-                'Search the client or user first.',
-                'Confirm restaurantId before editing.',
-                'Check Command Deck action queue.',
-                'Copy diagnostics before risky changes.',
-                'Use Grant Access only for platform admin.',
-                'Possess, verify, fix, then exit Ghost Mode.'
-              ].map((line, idx) => <div key={idx} className="flex gap-2 text-xs font-bold text-slate-300 mb-2"><span className="w-5 h-5 rounded-full bg-[#D4A381] text-slate-900 flex items-center justify-center text-[10px] font-black flex-shrink-0">{idx+1}</span><span>{line}</span></div>)}
-            </div>
-
-            <div className="space-y-3">
-              <div className="text-[10px] uppercase tracking-widest font-black text-slate-500">{filteredAdminManualArticles.length} searchable result(s)</div>
-              {filteredAdminManualArticles.length === 0 && <div className={`${T.card} p-6 text-center text-xs font-bold text-slate-500`}>No manual results. Try a simpler word like “tab”, “punch”, “backup”, “delete”, “GPS”, or “permission”.</div>}
-              {filteredAdminManualArticles.map((article, idx) => (
-                <div key={`${article.title}-${idx}`} className={`${T.card} p-4`}>
-                  <div className="text-[9px] uppercase tracking-widest font-black text-[#D4A381] mb-1">{article.group}</div>
-                  <h3 className="font-black text-white text-base mb-3">{article.title}</h3>
-                  <div className="space-y-2">
-                    {(article.body || []).map((line, i) => <div key={i} className="flex gap-2 text-xs font-bold text-slate-300 leading-relaxed"><span className="w-5 h-5 rounded-full bg-[#12161A] border border-[#2A353D] text-[#D4A381] flex items-center justify-center text-[10px] font-black flex-shrink-0">{i+1}</span><span>{line}</span></div>)}
-                  </div>
-                  <div className="mt-3 text-[9px] font-mono text-slate-600 break-words">Search terms: {article.keywords || 'manual support'}</div>
+          <div className="admin46-manual-grid">
+            <aside className="admin46-manual-index">
+              <div className="admin46-field">
+                <label>Search documentation</label>
+                <div className="relative">
+                  <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"/>
+                  <input
+                    value={adminManualSearch}
+                    onChange={event => setAdminManualSearch(event.target.value)}
+                    placeholder="backup, MFA, push, permissions..."
+                    className="admin46-input pl-9"
+                  />
                 </div>
-              ))}
-            </div>
+              </div>
+              <div className="admin46-field">
+                <label>Category</label>
+                <select value={adminManualCategory} onChange={event => setAdminManualCategory(event.target.value)} className="admin46-input">
+                  {adminManualCategories.map(category => <option key={category} value={category}>{category}</option>)}
+                </select>
+              </div>
+
+              <div className="admin46-index-label">Suggested questions</div>
+              <div className="admin46-question-list">
+                {sampleAdminQuestions.slice(0, 5).map(question => (
+                  <button key={question} type="button" onClick={() => { setAdminManualQuestion(question); setGeminiManualQuestion(question); }} title={question}>
+                    {question}
+                  </button>
+                ))}
+              </div>
+
+              <div className="admin46-index-label">Matching articles</div>
+              <div className="admin46-article-list">
+                {topManualArticles.length === 0 && <div className="admin46-empty">No articles matched. Try one or two simpler words.</div>}
+                {topManualArticles.map(article => (
+                  <button
+                    key={article.manualId}
+                    type="button"
+                    onClick={() => setSelectedAdminArticleId(article.manualId)}
+                    className={selectedAdminArticle?.manualId === article.manualId ? 'is-active' : ''}
+                  >
+                    <span>{article.group}</span>
+                    <strong>{article.title}</strong>
+                  </button>
+                ))}
+              </div>
+            </aside>
+
+            <main className="admin46-manual-workbench">
+              <section className="admin46-assistant">
+                <div className="admin46-assistant-title">
+                  <div>
+                    <div className="admin46-eyebrow"><Sparkles size={12}/> Gemini repair assistant</div>
+                    <h3>Describe the problem</h3>
+                  </div>
+                  <button type="button" onClick={handleAskGeminiAdminManual} disabled={isGeminiManualLoading} className="admin46-primary">
+                    {isGeminiManualLoading ? <Loader2 size={14} className="animate-spin"/> : <Sparkles size={14}/>}
+                    {isGeminiManualLoading ? 'Working…' : 'Generate plan'}
+                  </button>
+                </div>
+                <textarea
+                  value={geminiManualQuestion || adminManualQuestion}
+                  onChange={event => { setGeminiManualQuestion(event.target.value); setAdminManualQuestion(event.target.value); }}
+                  rows={4}
+                  placeholder="Example: Automatic backups are stale on the testing deployment. What should I check?"
+                  className="admin46-textarea"
+                />
+                <div className="admin46-privacy-note">Questions are sent with matched manual excerpts and redacted system context. Never paste passwords, keys, tokens, signed URLs, or employee files.</div>
+
+                {geminiManualError && (
+                  <div className="admin46-error">
+                    <strong>Gemini could not authorize this request.</strong>
+                    <span>{geminiManualError}</span>
+                  </div>
+                )}
+
+                {geminiManualAnswer ? (
+                  <div className="admin46-answer">
+                    <div className="admin46-answer-meta">
+                      <span>{geminiManualMeta?.model || 'Gemini'}</span>
+                      <span>{geminiManualMeta?.durationMs || 0} ms</span>
+                      {geminiManualMeta?.finishReason && <span>{geminiManualMeta.finishReason}</span>}
+                      {geminiManualMeta?.crossProjectAuth && <span>trusted preview identity</span>}
+                    </div>
+                    {geminiManualMeta?.answerIncomplete && (
+                      <div className="admin46-warning">The answer may be incomplete: {geminiManualMeta.incompleteReason || 'output limit reached'}.</div>
+                    )}
+                    <div className="admin46-answer-copy">{geminiManualAnswer}</div>
+                    <div className="admin46-answer-actions">
+                      {geminiManualMeta?.canContinue && <button type="button" onClick={handleContinueGeminiAdminManual} disabled={isGeminiManualLoading} className="admin46-secondary">Continue answer</button>}
+                      <button type="button" onClick={() => { navigator.clipboard?.writeText(geminiManualAnswer); addToast('Copied', 'Gemini manual answer copied.'); }} className="admin46-secondary">Copy answer</button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="admin46-assistant-empty">
+                    <Sparkles size={22}/>
+                    <strong>No generated plan yet</strong>
+                    <span>Enter an exact error or choose a suggested question.</span>
+                  </div>
+                )}
+              </section>
+
+              <section className="admin46-playbook">
+                <div className="admin46-playbook-header">
+                  <div>
+                    <div className="admin46-eyebrow">Matched local playbook</div>
+                    <h3>{primarySupportPlaybook?.title || 'General administrator triage'}</h3>
+                  </div>
+                  <button type="button" onClick={copyAdminSupportAnswer} className="admin46-secondary">Copy local plan</button>
+                </div>
+                <p className="admin46-cause">{primarySupportPlaybook?.likelyCause}</p>
+                <div className="admin46-step-columns">
+                  <div>
+                    <h4>Check first</h4>
+                    {(primarySupportPlaybook?.firstChecks || []).map((line, index) => <div key={index} className="admin46-step"><span>{index + 1}</span><p>{line}</p></div>)}
+                  </div>
+                  <div>
+                    <h4>Repair order</h4>
+                    {(primarySupportPlaybook?.fixSteps || []).map((line, index) => <div key={index} className="admin46-step is-repair"><span>{index + 1}</span><p>{line}</p></div>)}
+                  </div>
+                </div>
+                <div className="admin46-do-not">
+                  <strong>Do not touch yet</strong>
+                  <div>{(primarySupportPlaybook?.doNot || []).map((line, index) => <span key={index}>{line}</span>)}</div>
+                </div>
+              </section>
+            </main>
+
+            <aside className="admin46-article-reader">
+              {selectedAdminArticle ? (
+                <>
+                  <div className="admin46-eyebrow"><BookOpen size={12}/> {selectedAdminArticle.group}</div>
+                  <h3>{selectedAdminArticle.title}</h3>
+                  <div className="admin46-article-body">
+                    {(selectedAdminArticle.body || []).map((line, index) => (
+                      <div key={index}>
+                        <span>{index + 1}</span>
+                        <p>{line}</p>
+                      </div>
+                    ))}
+                  </div>
+                  <button type="button" onClick={() => { navigator.clipboard?.writeText((selectedAdminArticle.body || []).join('\n')); addToast('Copied', 'Manual article copied.'); }} className="admin46-secondary w-full">Copy article</button>
+                </>
+              ) : (
+                <div className="admin46-empty">Choose an article from the index.</div>
+              )}
+            </aside>
+          </div>
           </div>
         </div>
       )}
@@ -7378,6 +9596,31 @@ const ROLE_KEYWORDS = {
 
 const normalizeLaborRole = (role) => String(role || 'Unassigned').trim() || 'Unassigned';
 const roleFilterKey = (role) => normalizeLaborRole(role).toLowerCase();
+const parseFinanceAmount = (value) => Number.isFinite(parseFloat(value)) ? parseFloat(value) : 0;
+const moneyText = (value, digits = 0) => `$${parseFinanceAmount(value).toLocaleString(undefined, { minimumFractionDigits: digits, maximumFractionDigits: digits })}`;
+const pctText = (value, digits = 1) => `${(Number.isFinite(parseFloat(value)) ? parseFloat(value) : 0).toFixed(digits)}%`;
+const safeFinanceDate = (item = {}) => item.date || item.businessDate || item.invoiceDate || item.createdAt?.slice?.(0, 10) || '';
+const getFinancialGrossSales = (item = {}) => parseFinanceAmount(item.grossSales ?? item.netSales ?? item.amount ?? item.totalSales ?? item.sales);
+const getFinancialNetSales = (item = {}) => {
+  const stored = parseFinanceAmount(item.netSales);
+  if (stored > 0) return stored;
+  const gross = getFinancialGrossSales(item);
+  return Math.max(0, gross - parseFinanceAmount(item.discounts) - parseFinanceAmount(item.comps) - parseFinanceAmount(item.refunds));
+};
+const getFinancialLaborCost = (item = {}) => parseFinanceAmount(item.laborCost);
+const getFinancialFoodCost = (item = {}) => parseFinanceAmount(item.foodCost);
+const getFinancialBeverageCost = (item = {}) => parseFinanceAmount(item.beverageCost);
+const getFinancialExpenseAmount = (item = {}) => parseFinanceAmount(item.amount ?? item.total ?? item.extendedCost ?? item.invoiceTotal);
+const getFinancialInvoiceAmount = (item = {}) => parseFinanceAmount(item.total ?? item.invoiceTotal ?? item.amount ?? item.grandTotal ?? item.subtotal);
+const FINANCE_SALES_CATEGORIES = [
+  ['foodSales', 'Food'], ['liquorSales', 'Liquor'], ['beerSales', 'Beer'], ['wineSales', 'Wine'], ['beverageSales', 'NA Bev'], ['specialsSales', 'Specials'], ['cateringSales', 'Catering'], ['otherSales', 'Other']
+];
+const FINANCE_EXPENSE_CATEGORIES = ['Food', 'Liquor / Beer / Wine', 'Payroll', 'Rent', 'Utilities', 'Repairs & Maintenance', 'Supplies', 'Marketing', 'Fees', 'Insurance', 'Technology', 'Other'];
+const FINANCE_PAYMENT_METHODS = ['Unpaid', 'Cash', 'Card', 'ACH', 'Check', 'Auto Pay', 'Owner Paid', 'Other'];
+const FINANCE_DEPOSIT_STATUSES = ['Not Prepared', 'Prepared', 'Deposited', 'Verified'];
+const FINANCE_CLOSE_STATUSES = ['Open', 'Manager Reviewed', 'Locked'];
+const DEFAULT_FINANCE_TARGETS = { laborPct: 28, foodPct: 32, beveragePct: 22, primePct: 60, weeklySalesGoal: 0, monthlySalesGoal: 0, cashVarianceAlert: 10, overtimeAlertHours: 40 };
+const financeAccess = (user = {}, perm = '') => Boolean(user?.isSuperAdmin || user?.isAdmin || user?.isOwner || user?.accountOwner || user?.owner || user?.workspaceOwner || user?.accountRole === 'owner' || (perm && user?.permissions?.[perm]));
 
 const TabLabor = ({ currentDate, users = [], shifts = [], sales = [], timePunches = [], addToast, appUser }) => {
   const [subTab, setSubTab] = useState('fixer');
@@ -7422,7 +9665,7 @@ const TabLabor = ({ currentDate, users = [], shifts = [], sales = [], timePunche
   }
 
   const exceptionPunches = timePunches.filter(p => getPunchIssue(p)).sort((a,b) => new Date(b.clockInTime || 0) - new Date(a.clockInTime || 0));
-  const rangeSales = sales.filter(s => (s.date || '') >= rangeStart && (s.date || '') <= rangeEnd).reduce((sum, s) => sum + (parseFloat(s.amount || s.totalSales || s.sales || 0) || 0), 0);
+  const rangeSales = sales.filter(s => (s.date || '') >= rangeStart && (s.date || '') <= rangeEnd).reduce((sum, s) => sum + getFinancialNetSales(s), 0);
   const payrollRows = visiblePunches.map(p => {
     const emp = users.find(u => u.id === p.employeeId) || {};
     const hours = calculatePunchHours(p.clockInTime, p.clockOutTime, p.breakMinutes || 0);
@@ -7608,7 +9851,7 @@ const TabLabor = ({ currentDate, users = [], shifts = [], sales = [], timePunche
   };
 
   return (
-    <div className="max-w-6xl mx-auto space-y-4 pb-24">
+    <div className="desktop-management-page max-w-7xl mx-auto space-y-4 pb-24">
       <div className={`${T.card} p-4 sm:p-5 cockpit-grid`}>
         <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-4">
           <div>
@@ -7688,72 +9931,32 @@ const TabLabor = ({ currentDate, users = [], shifts = [], sales = [], timePunche
 };
 
 const HELP_ARTICLES = [
-  { id:'new-15028', title:'What changed in version 15.0.28', group:'Release Notes', keywords:'new update 15.0.28 productization account deletion restore drill security center hardcoded admin', body:['Account Security now has an Account Deletion Request flow that records a reviewable request instead of silently deleting operational records.', 'Security Center now includes Restore Drill status so backups can be proven with a safe test restore.', 'System Administrator access no longer relies on hardcoded personal email fallbacks. Use configured env vars, custom claims, or Super Admin profile flags.', 'Several internal/testing labels were cleaned up for public-readiness polish.'] },
-  { id:'new-15027', title:'What changed in version 15.0.27', group:'Release Notes', keywords:'new update 15.0.27 recovery codes mfa lost phone security alerts voice preview', body:['Account Security now supports one-time recovery codes for lost-phone MFA recovery.', 'The two-step login screen can use a saved recovery code to reset MFA and let the user sign in again.', 'System Administrator MFA reset now writes a security alert for the affected user and keeps the audit trail clear.', 'Account Security has a simple readiness status so owners know whether enforcement is safe.', 'The floating voice button now says Voice Assistant Preview, and Security Center shows version and backup status tiles.'] },
-  { id:'new-15026', title:'What changed in version 15.0.26', group:'Release Notes', keywords:'new update 15.0.26 mfa recovery reset lost phone backup phone elevated roles', body:['Account Security now supports backup SMS MFA phone enrollment after the first factor is enabled.', 'Super Admin MFA Recovery can inspect a user MFA status, reset lost-phone MFA factors, require a written reason, and log the action for audit review.', 'MFA enforcement guidance now clearly targets owners, managers, admins, and System Administrators while keeping regular employee enrollment optional.'] },
-  { id:'new-15025', title:'What changed in version 15.0.25', group:'Release Notes', keywords:'new update 15.0.25 account repair verification debug mfa firebase auth firestore profile rescue link', body:['Account Security now shows Auth UID/email, browser Firebase project, Vercel API/Admin Firebase project, Firestore profile status, and MFA status in one debug panel.', 'If a Firebase Auth user is missing its Firestore users/{uid} profile, Account Security can repair the profile instead of leaving MFA setup in limbo.', 'If Firebase Console email delivery works but the app verification email does not arrive, Account Security can generate a verification rescue link for the signed-in user.'] },
-  { id:'new-15022', title:'What changed in version 15.0.22', group:'Release Notes', keywords:'new update 15.0.22 account security email verification mfa two step login sms', body:['Account Security now includes Send Verification Email for accounts blocked by Firebase auth/unverified-email.', 'After clicking the Firebase inbox link, Refresh Email Status reloads the Firebase Auth user and lets SMS MFA setup continue.', '/api/account-security now reports emailVerified, so Vercel redeploy is required.'] },
-  { id:'new-15021', title:'What changed in version 15.0.21', group:'Release Notes', keywords:'new update 15.0.21 account security settings mfa two step login tab mobile', body:['Account Security now has its own visible Settings tab instead of being buried below the Profile form.', 'Profile also includes an Open Account Security button so elevated users can get to MFA setup quickly on phone screens.', 'No new Firebase rules, Storage rules, API routes, or Vercel environment variables are required.'] },
-  { id:'new-15019', title:'What changed in version 15.0.19', group:'Release Notes', keywords:'new update 15.0.19 ai tools invoice scanner inventory shortcut invoices', body:['AI Tools now opens the Invoice Scanner directly on Inventory → Invoices instead of dropping users on the default Inventory view.', 'The button now says Open Invoice Scanner so it matches where it goes.', 'No new Firebase rules, Storage rules, API routes, or Vercel environment variables are required.'] },
-  { id:'new-15018', title:'What changed in version 15.0.18', group:'Release Notes', keywords:'new update 15.0.18 owner setup onboarding prep voice invoice import mobile print export', body:['Mobile screens get safer touch targets, scrolling, modal sizing, and layout polish.', 'Invoice History and Invoice Details can now print or save as PDF.', 'No new Firebase rules, Storage rules, API routes, or Vercel environment variables are required.'] },
-  { id:'new-15017', title:'What changed in version 15.0.17', group:'Release Notes', keywords:'new update 15.0.17 owner setup onboarding prep voice invoice import mobile print export', body:['Invoice scanning now has matched, raw, and skipped review panels before approval.', 'CSV inventory imports now go through a cleanup review screen with create/update/skip actions.', 'No new Firebase rules, Storage rules, API routes, or Vercel environment variables are required.'] },
-  { id:'new-15016', title:'What changed in version 15.0.16', group:'Release Notes', keywords:'new update 15.0.16 owner setup onboarding prep voice invoice import mobile print export', body:['Prep voice better understands date, station, unit, and multiple items in one command.', 'Managers can load recurring prep template packs for daily, weekly, and monthly kitchen routines.', 'No new Firebase rules, Storage rules, API routes, or Vercel environment variables are required.'] },
-  { id:'new-15015', title:'What changed in version 15.0.15', group:'Release Notes', keywords:'new update 15.0.15 owner setup onboarding prep voice invoice import mobile print export', body:['Owner Dashboard, Setup Wizard, and Staff Onboarding are grouped into a cleaner launch flow.', 'Managers can print an owner snapshot and staff onboarding packet for rollout meetings.', 'No new Firebase rules, Storage rules, API routes, or Vercel environment variables are required.'] },
-  { id:'new-15014', title:'What changed in version 15.0.14', group:'Release Notes', keywords:'new update 15.0.14 ai tools report problem device diagnostics offline queue menu confidence approve skip api health', body:['AI Tools now has its own page with shortcuts to Menu Intelligence, Invoice Scanner, voice commands, and Smart Prep Matching.', 'Error toasts and the header bug button can open an in-app Report Problem form with device diagnostics attached automatically.', 'Menu Intelligence review now shows confidence badges and lets managers approve or skip each ingredient before saving menu-impact links.', 'The app can show when offline writes are queued and gives managers a safer way to try syncing them.', 'System Administrator Health Dashboard now includes a full Vercel API route manifest through the new health-checks route.'] },
-  { id:'new-15020', title:'What changed in version 15.0.20', group:'Release Notes', keywords:'new update 15.0.20 mfa two step login account security sms elevated roles permissions preview', body:['Account Security under Settings now supports SMS two-step login enrollment for elevated users after Firebase SMS MFA is enabled.', 'Login now handles Firebase multi-factor challenges and asks for a code when an enrolled account signs in.', 'System Administrator Security Center now reports MFA enforcement status and risky elevated accounts using Firebase Auth enrollment where possible.', 'Permission & Role Manager now has a Full Permissions Preview that shows allowed screens, blocked screens, and sensitive-access flags for a selected user.', 'Protected admin API routes that use the shared admin guard can require a fresh MFA sign-in when MFA_ENFORCE_ELEVATED_ROLES is turned on in Vercel.'] },
-  { id:'new-15013', title:'What changed in version 15.0.13', group:'Release Notes', keywords:'new update 15.0.13 shared reminders security center app check mfa rate limiting upload protection professional look', body:['Reminders can now be shared with a teammate from a dropdown. Choose Just me for a private reminder or choose a team member so they can see and complete it.', 'Security Center was added for system admins to check setup health, including rules status, storage status, App Check readiness, missing environment variables, cron status, risky elevated users, and suspicious activity signals.', 'Expensive routes such as AI scans, voice, push, and reminder dispatch now include rate limiting so one device cannot hammer costly actions.', 'Menu and invoice uploads now include stricter file purpose, path, type, and size protection.', 'The app also starts a cleaner visual system with more consistent spacing, buttons, badges, mobile controls, and status colors.'] },
+  { id:'voice-intelligent-commands', title:'Using 86Voice intelligent commands', group:'Voice Commands', keywords:'86 voice intelligent commands prep task mark done 86 alert menu impact reminder shared reminder open search undo confirmation', body:['86Voice accepts speech or typed commands from the floating microphone panel. It shows what it heard, the intent it detected, the item or task it matched, and whether confirmation is needed.', 'Prep examples: say Prep 2 pans onions, Add two containers ranch, or Chop 2 pans of onion. 86Voice searches the current prep list first and updates a confident matching row instead of creating a duplicate.', 'Mark-done examples: say Mark tomatoes done, Finish onions, Check off burgers, or Done with ranch bottles. If there are multiple possible matches, choose the correct row before anything is marked done.', 'Task examples: say Add clean wall behind fryers to tasks, Put check nacho cheese machine on daily tasks, Add deep clean ovens monthly, or Mark fryer wall done. Task creation and shared task updates still require the same permissions as the Prep & Tasks screen.', '86 alert examples: say 86 chicken breast, We are out of ribeye, No more brioche buns, or Kill ribeye for tonight. Voice-created 86 alerts do not edit inventory counts. When approved menu ingredient links exist, affected menu items are shown; otherwise the app explains that Menu Intelligence setup is needed.', 'Menu impact examples: ask What does chicken breast affect? or What menu items use ribeye? The answer is based only on approved Menu Intelligence dependency links.', 'Reminder examples: say Remind me tomorrow at 10 to call Performance or Remind Sarah to check hood filters Wednesday. Personal reminders stay private. Shared reminders require permission and use the real workspace staff list.', 'Navigation and search examples: say Open prep, Open daily close, Open inventory, Show beer cheese recipe, Search Help for invoice scanning, or What needs done? Voice follows the same plan and role gates as normal tapping.', 'Use Undo that or Cancel last command to roll back a recent safe voice-created or voice-updated prep, task, 86 basic alert, or reminder when rollback is available. High-risk approvals, payroll, financial signoffs, plan changes, admin/security settings, and integrations are not undone by voice.', 'When 86Voice asks for confirmation, read the preview carefully. Confirmation is required for ambiguous matches, shared reminders, 86 alerts, low-confidence matches, and anything that could affect other people.'] },
+  { id:'complete-feature-map', title:'Complete 86 Chaos feature map', group:'Getting Started', keywords:'complete feature map all tabs dashboard manager brief kitchen command center prep inventory invoice scan menu intelligence alerts recipes reminders message board schedule time clock labor financials daily close tips cogs reports settings billing help training manual admin', body:['86 Chaos is organized around the work a restaurant does every day: prep, inventory, schedules, 86 alerts, recipes, reminders, labor, daily close, cost visibility, menu impact alerts, team communication, and owner-ready snapshots.','Use the menu search if you do not know where something lives. Important areas include Today Home or Manager Brief, Kitchen Command Center, Time Clock & Schedule, Prep & Tasks, Inventory & Orders, Recipe Book, Message Board, My Reminders, Staff Roster, Settings, Financial Center, HR & Training, Help Center, and System Audit where allowed.','Some screens are plan-gated and permission-gated. A feature appears only when the workspace plan includes it and the signed-in user role/permissions allow it.','If a panel is empty, check setup first: roster roles, staff records, schedule dates, inventory items, approved invoices, approved menu dependencies, Daily Close records, and selected workspace.'] },
+  { id:'ip-whitelisting-guide', title:'IP whitelisting and access safety', group:'Security', keywords:'ip whitelist whitelisting whistling strict ip authorized ip address security center settings workspace wifi static ip dynamic ip lockout geofence mfa app check', body:['Strict IP Whitelisting limits app access to approved public IP addresses, usually the restaurant secure Wi-Fi. It is different from geofencing, which is about GPS review for time-clock behavior.','Only use IP whitelisting when the restaurant has a reliable public IP and a tested recovery path. Mobile data, home Wi-Fi, VPNs, and changing internet-provider addresses may be blocked if they are not listed.','Before turning it on, test with an owner/admin from the restaurant network and confirm a System Administrator or owner can reverse the setting if someone is locked out.','IP whitelisting is only one layer. Keep passwords, MFA for elevated users, role permissions, plan gates, App Check, Firebase rules, and audit logging in place.'] },
+  { id:'invoice-menu-review-first', title:'AI-assisted invoice and menu scanning require review', group:'Inventory', keywords:'ai assisted invoice scanning menu scanning manager review approve inventory vendor spend cogs menu intelligence dependency affected menu items cost visibility', body:['Invoice and menu scanning are AI-assisted tools, not automatic bookkeeping or automatic menu setup. A manager must review and approve scan results before they should affect inventory, vendor spend, COGS, reports, menu dependencies, or menu impact alerts.','Invoice review should confirm vendor, invoice date, line items, quantities, pack sizes, credits, taxes/fees, and which rows are real stock items versus notes or totals.','Menu review should confirm menu item names and ingredient dependencies before using those links to explain affected menu items on 86 alerts.','When setup is missing, the app should guide managers to finish Inventory or Menu Intelligence setup instead of showing blank or misleading impact data.'] },
+  { id:'push-groups-customer-safe', title:'Push notifications, tokens, and restaurant groups', group:'Communication', keywords:'push notification token permission stale device restaurant group broadcast message board 86 alert reminder quiet hours', body:['Users must allow notifications on their device/browser before push notifications can appear. Clearing browser data, changing devices, or denying permission can make a token stale.','Regular restaurant work may create push/in-app notifications for supported messages, reminders, schedule alerts, and 86 alerts. Device settings can still stop a push from displaying.','Restaurant-group broadcast tools are internal System Administrator tools for support/platform messages. Staff do not manage group broadcasts.','Never put passwords, recovery codes, employee private records, wages, provider keys, or signed links in a push notification.'] },
+  { id:'owner-snapshots-not-accounting', title:'Owner snapshots, Cost Center, Prime Cost, and P&L', group:'Financials', keywords:'owner snapshot cost center cogs prime cost pnl profit loss reports daily close expenses invoices vendor spend accounting tax bookkeeping', body:['Financial Center reports are operational snapshots for restaurant decisions. They are not full accounting software, tax filing, or bank reconciliation.','Daily Close feeds sales, cash, deposit, close status, and variance information. Approved invoices, vendor spend, burn/waste data, inventory cost, labor, tips, expenses, and targets help build cost visibility where available.','Prime Cost combines labor and food/beverage cost visibility. P&L Snapshot estimates operating results from the data currently entered and approved in the app.','If numbers look incomplete, check approved invoices, item costs, Daily Close status, punch corrections, tips, expense entries, and date range before relying on the report.'] },
+  { id:'roster-roles-source-of-truth', title:'Roster Roles are the source of truth', group:'Staff Roster', keywords:'roster roles custom roles preferences schedule coverage labor by role reports filters permissions dashboard hardcoded kitchen cook bartender server manager fallback', body:['The account owner custom Roster Roles from Preferences / Roster Roles are the source of truth for role-based scheduling, labor by role, coverage, exports, reports, dashboards, filters, and permissions.','Generic labels such as Kitchen, Cook, Chef, Bartender, Server, or Manager should be used only as fallback labels when a workspace has not created custom roster roles yet.','If a role is missing from a report or schedule filter, check Preferences / Roster Roles and the role assigned to active staff first.','Changing a roster role affects how future role-based views group people and work. Review reports after large role changes.'] },
+  { id:'billing-integrations-coming-soon-safe', title:'Plan & Billing and integrations coming soon', group:'Plans & Billing', keywords:'plan billing founder beta pricing tiers shift operations smart kitchen owner pro payments coming soon integrations locked pos accounting oauth api keys', body:['Plan & Billing shows the workspace plan, Founder Beta status, selected future tier where available, scan usage, included features, launch price, founder discount price, and Payments coming soon.','Staff should not see billing controls. Owners/admins may see plan information and locked-feature explanations depending on their permission.','Integrations are currently locked for customer tiers while POS/accounting connections are tested. Manual entry, uploads, and report imports can still be used where available.','Do not enter live POS, payroll, accounting, OAuth, or API secrets into customer-facing fields or support reports.'] },
+  { id:'admin-manual-and-help-boundary', title:'Help Center, training manual, and Administrator Manual boundaries', group:'Help Center', keywords:'help center training manual administrator manual public customer internal system administrator secrets forensics backups diagnostics docs', body:['Help Center is customer-facing and safe for owners, managers, and staff. It explains how to use the app without exposing private platform procedures or secrets.','The searchable Complete 86 Chaos Training Manual explains each major app area, who should use it, what data it uses, common setup states, and what not to store there.','The Administrator Manual is internal to System Administrator. It explains platform diagnostics, access repair, backups, Firebase/Vercel readiness, plan controls, feature resolver, IP controls, integration safety, push center, forensics, and guarded destructive tools.','When a feature is added or changed, update both the customer-safe Help Center/training coverage and the internal Administrator Manual coverage when relevant.'] },
+  { id:'data-retention-basics', title:'How long 86 Chaos keeps common data', group:'Privacy & Account', keywords:'retention old data delete prep 86 alert invoice scan menu scan time punch workspace canceled restaurant', body:['Prep-list records and 86 alerts are kept for 30 days.', 'Raw menu and invoice scan files are kept for 30 days. Reviewed or parsed business records may remain in the app.', 'Time-punch and separate location-log records leave the active database after one year and are kept in a restricted archive until the three-year mark.', 'When a restaurant workspace is scheduled for deletion, it is disabled immediately and can be restored during a 30-day recovery window. After that window, its workspace data is permanently removed.', 'Some records may be kept longer when required for legal, billing, fraud-prevention, backup, or support reasons.'] },
   { id:'shared-reminders-guide', title:'Sharing Reminders', group:'Reminders', keywords:'shared reminders share reminder teammate assign dropdown just me personal reminders team member', body:['Open My Reminders and type the reminder you want to create.', 'Use Share With to choose Just me for a private reminder or select a teammate from the list.', 'Pick the reminder date and time, then save it. Shared reminders appear for both the person who created them and the teammate they were assigned to.', 'The assigned teammate can mark the reminder done. The person who created the reminder can edit or delete it.', 'Use shared reminders for simple handoffs like check the walk-in, order buns, call vendor, prep sauce, or follow up on a maintenance item.'] },
   { id:'security-center-overview', title:'Security Center Overview', group:'Security', keywords:'security center rules app check mfa risky users suspicious activity environment variables cron status', body:['Security Center gives system admins a plain-English snapshot of important setup checks.', 'It can show whether rules, storage protection, App Check readiness, MFA enrollment/enforcement status, cron setup, environment variables, rate limiting, and risky elevated accounts need attention.', 'Some security steps still happen outside the app in Firebase or Vercel. For example, App Check enforcement, enabling SMS MFA, Vercel MFA enforcement env vars, and secret rotation must be completed in those admin consoles.', 'If a card shows warning or action needed, follow the Administrator Manual checklist before changing production settings.'] },
-  { id:'new-15012', title:'What changed in version 15.0.12', group:'Release Notes', keywords:'new update 15.0.12 menu intelligence help guide intelligent menu instructions scan approve edit delete 86 impact', body:['Help Center now has a dedicated Using Menu Intelligence guide instead of only release notes.', 'The guide walks managers through menu upload, file compression, AI review, matching ingredients to inventory, approving links, editing scans, deleting scans, and checking menu impact when something is 86d.', 'The article uses public-facing wording and avoids System Administrator, Forensics, backup, and security internals.', 'No Firebase rules, Storage rules, API routes, or environment variables changed in this help-only polish build.'] },
   { id:'menu-intelligence-guide', title:'Using Menu Intelligence', group:'Menu Intelligence', keywords:'menu intelligence intelligent menu menu scanner scan menu upload photo pdf approve reviewed menu links ingredient match inventory link unavailable menu items 86 burger patty beef gr pty edit delete recent menu scans', body:['Menu Intelligence helps managers connect menu items to the inventory products that make them. Once those links are approved, 86 Chaos can tell staff which menu items are affected when an ingredient is 86d or unavailable.', 'Open Menu Intelligence, choose a clear menu photo or PDF, and start the scan. Large photos are compressed before upload when possible. If a PDF is still too large, split it into smaller sections or export fewer pages.', 'When the scan finishes, review the detected menu items. The AI is a helper, not the boss. Check names, ingredients, and suggested inventory matches before approving anything.', 'For each menu item, connect the ingredients to the real inventory rows your kitchen uses. Use the actual product name when possible. For example, a burger may need to link to an inventory item named BEEF GR PTY, beef patty, hamburger patty, bun, cheese, lettuce, tomato, or other items you track.', 'Click Approve Reviewed Menu Links after the matches look right. The approval button shows progress and locks while saving so duplicate links are not created by extra clicks.', 'Use Recent Menu Scans to edit a scan when an ingredient match is wrong or delete a scan when it is outdated. Deleting a scan removes its menu-impact links so old menus do not keep affecting 86 alerts.', 'When someone posts or says an 86 alert such as 86 burger, the app can use approved Menu Intelligence links to find the best inventory match and show unavailable menu items on the Message Board, Manager Brief, and Kitchen Command Center.', 'For best results, approve links for common shorthand items staff actually say: burger, patty, wings, fries, chicken, buns, ranch, cheese, lettuce, tomatoes, and sauces. If an 86 alert does not show menu impact, edit the menu scan and make sure that ingredient is linked to the correct inventory item.'] },
-  { id:'new-15011', title:'What changed in version 15.0.11', group:'Release Notes', keywords:'new update 15.0.11 kitchen 86 alerts voice navigation menu intelligence burger simple command center', body:['86 Voice now refreshes Inventory and Menu Intelligence context only when an 86 command runs, so alerts are smarter without adding constant reads.', 'Kitchen phrases like “86 burger” can match approved Menu Intelligence links and inventory names such as beef patties, hamburger patties, or BEEF GR PTY.', '86 alert posts now show the matched inventory item and unavailable menu items when the app can identify them.', 'Voice navigation understands more plain screen names, including Manager Brief, Kitchen Command Center, Inventory, Prep, Time Off, Financials, and Help Center.', 'Kitchen Command Center wording was simplified so the screen is easier to use during service.'] },
-  { id:'new-15010', title:'What changed in version 15.0.10', group:'Release Notes', keywords:'new update 15.0.10 86 voice alerts menu intelligence burger unavailable menu items manager brief kitchen command center', body:['86 Voice alerts can now use Menu Intelligence links when the spoken item is not an exact inventory name. For example, “86 burger” can match an inventory product such as beef patties when the approved menu links point there.', '86 alert posts now include unavailable menu items from Menu Intelligence on the Message Board, so staff can see what can no longer be sold.', 'The same 86 alert appears in Manager Brief and Kitchen Command Center without creating a stack of duplicate alerts.', 'The main menu now says Manager Brief instead of Today Command Center, and Kitchen Command Center instead of Ops Command Center.'] },
-  { id:'new-1504', title:'What changed in version 15.0.4', group:'Release Notes', keywords:'new update 15.0.4 menu intelligence scan menu progress timer approve edit delete scans', body:['Menu Intelligence scan uploads now show a progress bar, percent, status text, and elapsed time instead of a plain spinner.', 'Approving reviewed menu links now shows save progress and prevents accidental double-click duplicate approvals.', 'Approved menu scans can now be edited or deleted from Recent Menu Scans.', 'Editing a scan lets approved users adjust menu items and ingredient inventory matches. Deleting a scan removes its approved menu-impact links.'] },
-  { id:'new-1503', title:'What changed in version 15.0.3', group:'Release Notes', keywords:'new update 15.0.3 invoice inventory notification toast saved items csv import', body:['Bulk invoice and CSV inventory saves now show one clean summary instead of a stack of separate Saved notifications.', 'Approving a scanned invoice reports the total saved items, including updated and newly added inventory items.', 'CSV import reports one imported-item total after the file finishes.', 'No new Firebase rules or Storage rules are required for this notification cleanup.'] },
-  { id:'new-1501', title:'What changed in version 15.0.1', group:'Release Notes', keywords:'new update 15.0.1 invoice scanner gemini invalid json timeout compact retry repair pdf photo', body:['Invoice scanning is more reliable when the AI finishes reading but returns messy JSON.', 'The scanner now cleans more common JSON problems, retries in a compact mode when the response looks too large, and attempts a safe repair before failing.', 'This targets the Scan Error message that said Gemini returned invalid JSON at 100%.', 'No new Firebase rules or Storage rules are required for this scanner-only fix.'] },
-  { id:'new-1500', title:'What changed in version 15.0.0', group:'Release Notes', keywords:'new update 15.0.0 smart prep menu intelligence reminders voice cron firebase rules schedule past shifts invoice scanner invalid json gemini model fallback slice dice chop tomorrow friday', body:['Prep is smarter: typed and voice prep commands can update a matching prep item instead of creating duplicates, including multi-item commands.', '86 Voice now understands kitchen prep wording like slice tomato, dice onions, chop lettuce, and 3 pans tomatoes.', 'Prep commands can include a day, like prep tomatoes for Friday or slice tomato tomorrow, and the item saves to that prep date.', 'Menu Intelligence lets approved users upload a menu, review AI ingredient matches, and save menu-to-inventory links so zero-stock items show menu impact.', 'Menu scanning now uses newer Gemini Flash model fallbacks instead of depending on the retired gemini-1.5-flash default.', 'My Reminders is a private reminder tab with typed or mic creation and scheduled push delivery through the protected reminder cron route.', 'My Schedule and Full Schedule now gray out shifts that have already ended, and Full Schedule dims completed day sections.', 'Invoice scans are more forgiving when Gemini returns JSON inside code fences or with small formatting mistakes.'] },
-  { id:'new-14010', title:'What changed in version 14.0.10', group:'Release Notes', keywords:'new update 14.0.10 push notifications schedule alerts workspace reliability', body:['Push notifications are more reliable for employees who work in more than one restaurant.', 'Schedule publish alerts now reach active staff for the selected workspace more consistently.', 'Production notification setup now stays aligned across the app and background notification service.'] },
-  { id:'new-1406', title:'What changed in version 14.0.6', group:'Release Notes', keywords:'new update 14.0.6 client management save staff roster read only banner', body:['Workspace management saves are more reliable and no longer fail when an old workspace setting contains an empty unsupported value.', 'Staff Roster keeps manager/admin-only editing, but the read-only notice banner was removed for regular staff.'] },
-  { id:'new-1409', title:'What changed in version 14.0.9', group:'Release Notes', keywords:'new update 14.0.9 push notifications repair reconnect stale missing token', body:['Push notification diagnostics now include repair actions for missing or stale device tokens.', 'Managers with access can request a reconnect or send an employee a reconnect link. The employee still has to open the app on their own device so browser notifications can safely reconnect.'] },
-  { id:'new-1408', title:'What changed in version 14.0.8', group:'Release Notes', keywords:'new update 14.0.8 menu drawer restaurant workspace switcher multiple restaurants two jobs', body:['The side menu now shows the active restaurant under the employee name and role.', 'Employees with more than one active restaurant can tap that restaurant line to open the workspace switcher and change restaurants.'] },
-  { id:'new-1405', title:'What changed in version 14.0.5', group:'Release Notes', keywords:'new update 14.0.5 next shift schedule time clock my schedule ended shift rollover', body:['My Schedule now checks the scheduled end time before choosing the next shift.', 'A shift that already ended today no longer stays pinned as the next shift.', 'The card refreshes while the screen is open and refreshes when the app returns from the background, so employees should not need to reload just to see the next shift.'] },
-  { id:'new-1404', title:'What changed in version 14.0.4', group:'Release Notes', keywords:'new update 14.0.4 multi workspace switcher multiple jobs restaurants one login staff roster', body:['Employees who work at more than one restaurant using 86 Chaos can now use one login and choose the workspace they are entering.', 'The app header shows the active restaurant and offers Switch when more than one workspace is available.', 'Managers can add an existing 86 Chaos email to their staff roster without creating a duplicate login or changing that employee\'s password.', 'Removing someone from Staff Roster now removes only that restaurant membership when the person still belongs to another workspace.'] },
-  { id:'new-1402', title:'What changed in version 14.0.2', group:'Release Notes', keywords:'new update 14.0.2 tip declaration clock out time clock payroll tips staff', body:['Mandatory Tip Declaration is now treated as a core Time Clock & Schedule feature for every workspace.', 'When enabled, staff see the Declare Tips modal before clock-out even if an older workspace document was missing the setting field.', 'Employees can enter 0 when they did not receive tips, and completed punches store declaration metadata for manager review.', 'Settings → Workspace no longer plan-locks Mandatory Tip Declaration, so managers can turn it on for the whole restaurant.'] },
-  { id:'new-13134', title:'What changed in version 13.1.34', group:'Release Notes', keywords:'new update 13.1.34 geofence map pin drop tiles loading gray half image settings workspace', body:['The geofence pin-drop map in Settings → Workspace → Global Config now loads more reliably on desktop and mobile.', 'The app forces the map to resize after the settings panel renders, after browser resize events, and after returning to the tab so gray or half-loaded tiles are less likely.', 'A Refresh Map button was added, and the map can switch tile providers if the current map tiles fail to load.'] },
-  { id:'new-13133', title:'What changed in version 13.1.33', group:'Release Notes', keywords:'new update 13.1.33 geofence gps map lookup settings coordinates', body:['Geofence address lookup now uses a safer app-side map lookup instead of relying only on the browser reaching the map service directly.', 'If live map lookup is unavailable, saved latitude and longitude values remain usable and the app gives clearer guidance instead of a vague map-service error.', 'The geofence map tile source was refreshed for better loading in Settings.'] },
-  { id:'new-13132', title:'What changed in version 13.1.32', group:'Release Notes', keywords:'new update 13.1.32 live status activity backup verification reliability', body:['Live staff status is more reliable on phones after login or refresh.', 'Backup verification now recognizes readable backup data even when cloud storage returns it already decompressed.', 'Administrator troubleshooting text was updated for live status and backup integrity checks.'] },
-  { id:'new-13131', title:'What changed in version 13.1.31', group:'Release Notes', keywords:'new update 13.1.31 mobile zoom pinch double tap stable kitchen screens', body:['Mobile phone screens now stay at the intended app scale instead of pinch-zooming or double-tap zooming during use.', 'Form fields use a mobile-safe text size so phones are less likely to zoom when staff tap into inputs.', 'This keeps time clock, roster, inventory, and schedule screens steadier on kitchen devices.'] },
 
-  { id:'new-13129', title:'What changed in version 13.1.29', group:'Release Notes', keywords:'new update 13.1.29 live activity online presence staff roster heartbeat', body:['Live Activity now uses a stable one-document-per-user heartbeat so old session history cannot hide currently online users.', 'Staff Roster and System Administrator Live Activity both merge the same live presence source.', 'The admin Live Activity screen includes a compact debug strip with user and online counts for faster troubleshooting.', 'Publish the included Firestore rules before testing this version.'] },
-  { id:'new-13121', title:'What changed in version 13.1.21', group:'Release Notes', keywords:'new update 13.1.21 time clock clock in clock out loading label refresh employee punch', body:['The Time Clock button now shows the correct saving label while employees clock in or clock out.', 'Clock In stays on CLOCKING IN while saving, then changes to Clock Out.', 'Clock Out stays on CLOCKING OUT while saving, then changes back to Clock In without requiring a refresh.'] },
   { id:'start', title:'Getting started checklist', group:'Getting Started', keywords:'setup first steps owner restaurant add staff modules', body:['Open Settings and confirm restaurant name, address, geofence, and enabled modules.','Add managers first in Staff Roster, then add hourly staff. New accounts show a one-time login popup with email and temporary password.','Create roles, schedule presets, and at least one schedule template before publishing the first week.','Use Administrator → Clients → Demo Mode for safe read-only demos with contact info hidden.'] },
+  { id:'website-promise-readiness', title:'What 86 Chaos connects for a restaurant', group:'Getting Started', keywords:'website promise prep inventory schedule alerts recipes reminders labor daily close cost visibility menu impact owner snapshot integrations coming soon', body:['86 Chaos is built as a restaurant operations hub, not a tax accounting system or unfinished POS connector. The app connects prep lists, inventory, schedules, 86 alerts, recipes, reminders, team messages, labor, daily close, cost visibility, and owner snapshots where the workspace plan and user permission allow it.', 'AI-assisted invoice scanning and menu scanning are helper workflows. A manager must review invoice rows before they update inventory, vendor spend, COGS, reports, or cost visibility. A manager must approve menu ingredient links before they power Menu Impact Alerts.', 'Menu Impact Alerts need approved Menu Intelligence links plus inventory items. If the setup is missing, the app should show guidance instead of pretending it knows every menu item.', 'Financial Center reports are operational snapshots for owners and managers: daily close, labor, tips, prime cost, cost visibility, and P&L snapshot. They are not tax-ready accounting and should be reconciled with the restaurant POS/accounting records.', 'Integrations are coming soon. Customer screens should stay locked and should not ask for OAuth, API keys, or unfinished provider setup. Manual entry, scan review, and exports remain available where the plan includes them.'] },
+  { id:'app-training-manual', title:'Complete app training manual', group:'Training Manual', keywords:'training manual complete app everything explain all tabs staff manager owner help center system administrator financials inventory schedule prep recipes messages security roles', body:['The Help Center includes a searchable main-app training manual. It explains what each area does, who should use it, what to check, and safety or privacy warnings.', 'Search for plain words such as clock, schedule, prep, inventory, invoice, 86, financials, tips, expenses, training, HR, message, voice, or security. Matching manual chapters appear under the Searchable app training manual card.', 'The main-app training manual is public-facing and customer safe. It explains everyday app features without exposing System Administrator repair details, secrets, forensics, or internal support-only procedures.', 'System Administrator has its own deeper manual for super admins and support work. Keep both manuals updated whenever features are added or renamed so staff can understand what every button is for.'] },
+
+  { id:'plans-founder-beta', title:'Plans, Founder Beta, and locked features', group:'Plans & Billing', keywords:'plans tiers shift operations smart kitchen owner pro founder beta discount locked feature billing coming soon', body:['86 Chaos workspaces can be on Shift, Operations, Smart Kitchen, or Owner Pro. Some tools are included only on higher plans so the app stays simple and costs stay controlled.', 'Founder Beta is free while the beta is active. The standard beta is 60 days, and a 30-day extension may be added by support. Founder Beta restaurants keep 50% off the selected plan for 12 months after beta ends.', 'Owners and permitted admins can open Settings → Plan & Billing to see the current plan, beta dates, Founder Beta discount, normal launch price, discounted Founder price, scan limits, usage, and included features.', 'A locked feature message means the workspace plan does not include that tool, the user role or permission does not allow it, or both. Owners see upgrade guidance. Staff see a simpler unavailable message without billing clutter.', 'Billing payments are not live yet. Upgrade and downgrade buttons are marked coming soon unless support manually updates the workspace plan.'] },
+  { id:'integrations-coming-soon', title:'Integrations are coming soon', group:'Plans & Billing', keywords:'integrations pos accounting oauth api keys locked coming soon manual entry imports', body:['POS and accounting integrations are being tested before customer rollout.', 'For now, integrations are locked on every customer plan, including Founder Beta, Shift, Operations, Smart Kitchen, and Owner Pro.', 'Manual entry, Daily Close, inventory records, scans where included, and report exports can still be used where available.', 'Customer screens should not ask for OAuth, API keys, provider credentials, or unfinished provider setup. If you see that, report it from Help Center.'] },
+  { id:'plan-access-and-roles', title:'How plans and role permissions work together', group:'Plans & Billing', keywords:'feature access roles permissions roster roles custom owner preferences plan gate locked', body:['A feature unlocks only when the workspace plan includes it and the signed-in user has the correct role or permission.', 'Plans decide what the restaurant pays for. Role permissions decide who inside that restaurant may use it.', 'Roles used by schedule, labor, payroll, exports, reports, and dashboards should come from the account owner custom Roster Roles in Preferences. Generic role names are only fallback labels when no custom roster roles have been configured.', 'If someone should have access but does not, check the workspace plan first, then check that user’s role and permissions in Staff Roster or Settings.'] },
   { id:'employee-quick-start', title:'Employee Quick Start', group:'Quick Start Guides', keywords:'employee new hire first login install download app home screen clock schedule help', body:['First login opens a short guided tour. It explains how to add the web app to the phone home screen, clock in/out, view schedule, read messages, and find Help Center.','Android: open in Chrome, tap the three dots, then Add to Home screen or Install App. iPhone: open in Safari, tap Share, then Add to Home Screen.','Employees should use Time Clock & Schedule for the full schedule and punches. Schedule Builder is manager-only.','Use the Restart Guided Tour button in Help Center if someone skips it or needs training again.'] },
   { id:'manager-quick-start', title:'Manager / Restaurant Quick Start', group:'Quick Start Guides', keywords:'manager restaurant setup workspace tour add employees permissions backups geofence', body:['New workspaces open a manager setup tour that covers saving the app, adding employees, setting permissions, setting clock rules, backups, and Help Center.','Staff Roster shows the one-time generated login popup after adding employees. Copy, print, email, or text before closing.','Set the required work area in Settings so clock-out location can be reviewed.','Backup Center is under System Administrator → Forensics & Backups and requires RESTORE confirmation for restore actions.'] },
   { id:'voice-preview', title:'Using Voice Assistant Preview', group:'Voice Commands', keywords:'voice preview microphone prep quantity show schedule commands fewer clicks help center search permissions full schedule month view staff list manager brief kitchen command center 86 alert', body:['The microphone button is marked PREVIEW. Tap once and speak; safe commands like opening tabs or adding prep tasks run with fewer clicks.','Voice removes command words before saving. “Add ranch to prep list” saves Ranch, not the words add to prep list. Quantities are parsed separately, so “Prep 2 pans ranch” saves name Ranch, quantity 2, and unit pans.' , 'Saying “86 salmon”, “86 burger”, or “we’re out of ranch” posts an important 86 alert and does not edit inventory stock counts. When Menu Intelligence links exist, the alert can include the matched inventory item and unavailable menu items.','Navigation commands can pull up screens by plain name: “open manager brief”, “open kitchen command center”, “show me full schedule”, “show me month view”, “show me staff list”, “open inventory”, “open prep”, or “show schedule builder”.','Schedule voice commands open the proper Time Clock & Schedule subview. Full schedule and month view do not open Schedule Builder unless the user specifically asks for Schedule Builder and has permission.','Help Center search works from the microphone. Say “search help center for missed punch” or “help me with geofence”.','Voice can open specific recipes by name, such as “open beer cheese recipe” or “show me chicken marsala recipe”. It searches the live Recipe Book, so recipes added later work without adding new command phrases.', 'Voice navigation still follows user permissions and enabled modules, so the mic cannot open hidden tabs.'] },
   { id:'clock-out-geofence-review', title:'Clock-out location review', group:'Time Clock', keywords:'geofence clock out outside area manager alerted timesheet note location', body:['If a location rule is enabled and an employee clocks out outside the required area, the app still lets them clock out.','The employee sees a warning, the manager gets an important alert, and the punch is marked in Financials → Timesheets with a manager review note.','This avoids trapping someone on the clock while still keeping a clean accountability trail.','If location is denied or unavailable, the punch is saved and marked for review.'] },
   { id:'safe-demo-mode', title:'Safe customer demo mode', group:'System Administrator', keywords:'demo mode customer tier tabs read only hide phone email address employee manager', body:['Open System Administrator → Workspaces, choose a workspace, then start Demo Manager or Demo Employee.','Choose the tier and visible tabs before starting the demo. Demo mode hides System Administrator and masks emails, phone numbers, addresses, and wages.','Demo mode is read-only. Buttons that would save, publish, restore, delete, upload, post, clock, or edit are blocked.','Use the banner at the top to exit demo mode and return to System Administrator.'] },
-  { id:'new-13118', title:'What changed in version 13.1.18', group:'Release Notes', keywords:'new update stability reliability fixes', body:['Fixed stability issues, cleaned up internal tools, and improved reliability.'] },
-  { id:'new-13117', title:'What changed in version 13.1.17', group:'Release Notes', keywords:'new update stability reliability fixes operations backup privacy', body:['Fixed stability issues, improved reliability, and polished system operations.'] },
-  { id:'new-13114', title:'What changed in version 13.1.14', group:'Release Notes', keywords:'new update stability reliability fixes', body:['Fixed stability issues, cleaned up internal tools, and improved reliability.'] },
-  { id:'new-13115', title:'What changed in version 13.1.15', group:'Release Notes', keywords:'new update stability reliability fixes schedule builder', body:['Fixed stability issues, cleaned up internal tools, and improved reliability.'] },
-  { id:'new-13116', title:'What changed in version 13.1.16', group:'Release Notes', keywords:'new update stability reliability fixes schedule editing', body:['Fixed stability issues and improved schedule reliability.'] },
-  { id:'new-13113', title:'What changed in version 13.1.13', group:'Release Notes', keywords:'new update stability reliability fixes', body:['Fixed stability issues, cleaned up internal tools, and improved reliability.'] },
-  { id:'new-13112', title:'What changed in version 13.1.12', group:'Release Notes', keywords:'new update stability reliability fixes', body:['Fixed stability issues, cleaned up internal tools, and improved reliability.'] },
-  { id:'new-13111', title:'What changed in version 13.1.11', group:'Release Notes', keywords:'new update stability reliability fixes', body:['Fixed stability issues, cleaned up internal tools, and improved reliability.'] },
-  { id:'new-13110', title:'What changed in version 13.1.10', group:'Release Notes', keywords:'new update stability reliability fixes', body:['Fixed stability issues, cleaned up internal tools, and improved reliability.'] },
-  { id:'new-13144', title:'What changed in version 13.1.44', group:'Release Notes', keywords:'new update 13.1.44 settings branding restaurant logo upload locked 86 chaos brand', body:['Restaurant logo uploads now use the secure app upload path first, so owners and approved branding managers are not blocked by stale browser Storage rules.', 'The restaurant/customer logo can still be shown beside 86 Chaos branding.', '86 Chaos branding remains locked and always visible. The customer logo cannot replace or hide it.', 'The upload message now explains what to deploy if Firebase blocks the fallback upload.'] },
-  { id:'new-13143', title:'What changed in version 13.1.43', group:'Release Notes', keywords:'new update 13.1.43 settings branding restaurant logo upload storage locked 86 chaos brand', body:['Restaurant/customer logo upload and display controls are available again in Settings → Branding.', '86 Chaos branding is locked and always displayed. The restaurant logo can only appear beside it and can never replace it.', 'Saving Branding & Display now preserves the restaurant logo URL and display choice while still saving accent color, help contact, login/help message, timezone, date/time, currency, week-start, and default staff landing-tab controls.', 'Restaurant logo upload permissions were tightened so approved branding managers can upload logos without the old permission error.'] },
-  { id:'new-13140', title:'What changed in version 13.1.40', group:'Release Notes', keywords:'new update 13.1.40 owner staff delete remove deactivate roster payroll api permissions', body:['Account owners can now remove staff from the active roster through the same verified staff API used for staff creation and wage edits.', 'The removal flow keeps historical schedule and payroll records intact by deactivating the staff profile instead of deleting past records.', 'The staff API now blocks self-removal and protects account-owner profiles unless a Super Admin performs the action.', 'Staff removals write a sensitive audit event so roster changes are visible in Forensics.'] },
-  { id:'new-13138', title:'What changed in version 13.1.38', group:'Release Notes', keywords:'new update 13.1.38 account owner staff wages permissions add employees payroll owner', body:['Account owners can add staff and edit wages, including their own wage, without Firestore blocking the save.', 'Only account owners and Super Admin can choose who can view or edit wages. Wage access now has separate View Wages and Edit Wages switches.', 'Staff Roster hides wage fields from users without wage access and uses clearer permission messages when Firebase blocks a sensitive staff update.', 'Firestore rules now recognize restaurant ownership for staff creation and payroll edits while still protecting Super Admin/system fields.'] },
-  { id:'new-13137', title:'What changed in version 13.1.37', group:'Release Notes', keywords:'new update 13.1.37 admin settings command center roles push live presence deployment readiness maintenance branding danger import export', body:['System Administrator now includes the full Admin/Settings command-center upgrade: overview widgets, role/permission matrix, push control center, live activity monitor, setup wizard, deployment readiness checker, audit filters, settings history, import/export center, maintenance controls, branding/display settings, and a separate Danger Zone.', 'Push notifications now have a dedicated cockpit with connected device counts, token freshness, per-user test pushes, stale-token repair flags, and a downloadable diagnostic report.', 'Deployment Readiness gives a clear READY TO DEPLOY or DO NOT DEPLOY YET result with exact checks for Firebase, rules, API health, push, backup integrity, domains, version, and packaging.', 'Mobile Administrator navigation keeps the compact section picker while exposing the new professional admin categories.'] },
-  { id:'new-13136', title:'What changed in version 13.1.36', group:'Release Notes', keywords:'new update 13.1.36 administrator admin mobile command center layout settings', body:['System Administrator now has a cleaner command-center layout with grouped sections for Overview, Customer Operations, Support & Safety, and Reference.', 'On phones, the admin tab opens with a compact section picker instead of forcing you through a long Command Deck scroll.', 'The Command Deck now defaults closed on mobile and can be opened with Signals when needed.', 'Desktop still keeps the full professional grouped navigation and left-side signal board.'] },
-  { id:'new-13135', title:'What changed in version 13.1.35', group:'Release Notes', keywords:'new update 13.1.35 voice recipes recipe book specific recipe open search microphone', body:['86 Voice can now open a specific recipe from the Recipe Book by name.', 'Commands like “open beer cheese recipe”, “show me chicken marsala recipe”, or “what is the recipe for ranch” search the live Recipe Book instead of relying on hardcoded recipe names.', 'If a recipe is added later, the same voice command pattern will work for it automatically.', 'If the app cannot find an exact match, it opens Recipe Book with the useful search phrase filled in.'] },
-  { id:'new-1502', title:'What changed in version 15.0.2', group:'Release Notes', keywords:'new update 15.0.2 heartbeat live users reminders invoice menu scan 20MB stability', body:['Live user status now uses the dedicated presence system instead of updating the main user profile on every heartbeat.', 'The app sends fewer routine heartbeat writes while still keeping Team and Live Activity status current.', 'Personal reminder delivery is more reliable under heavier use because reminders are claimed before sending and dispatched in safe batches.', 'Invoice and menu scans now have a 20MB upload limit with clearer too-large messages. Compress, split, or rescan fewer pages when a file is too large.'] },
-  { id:'new-1319', title:'What changed in version 13.1.9', group:'Release Notes', keywords:'new update 13.1.9 invoice scanner large documents Gemini Files API timeout bigger PDF progress', body:['Invoice scanning now uses a large-document AI handoff so uploaded PDFs/photos are sent to Gemini as files instead of giant inline payloads.', 'The scanner timeout was extended for larger multipage invoices, and the progress bar now explains the large-document AI stage instead of looking stuck.', 'The upload stage still shows exact Firebase upload progress. The AI reading stage shows status and elapsed time because Gemini does not provide line-by-line progress while it reads the document.', 'The scanner app limit was raised to 100MB, with clearer errors if the AI service itself rejects a file.'] },
-  { id:'new-1318', title:'What changed in version 13.1.8', group:'Release Notes', keywords:'new update 13.1.8 invoice scanner progress bar upload timeout stuck spinning AI scan', body:['Invoice scanning now shows a progress bar instead of an endless loading spinner.','The upload stage uses real Firebase upload progress so managers can see whether the file is actually moving.','The AI extraction stage now shows a clear scanner status and has a timeout so it cannot spin forever without reporting what happened.','Large invoices still upload through Firebase Storage first, then the scanner reads the stored file and opens the Reconcile Invoice review screen.'] },
-  { id:'new-1316', title:'What changed in version 13.1.6', group:'Release Notes', keywords:'new update 13.1.6 voice navigation show me help center search permissions full schedule month view staff list', body:['86 Voice can now pull up common screens from plain commands like “show me the full schedule”, “show me the month view”, “show me staff list”, “open inventory”, or “show schedule builder”.','Schedule voice commands route to the correct Time Clock & Schedule subview. Full schedule/month view open the employee schedule area, while Schedule Builder only opens for users with schedule-builder permission.','Help Center search is now available through the microphone. Say “search help center for missed punch” or “help me with geofence” and Help Center opens with that search filled in.','Voice navigation checks the same module/permission rules before opening anything, so users cannot use the microphone to bypass hidden tabs.'] },
-  { id:'new-1315', title:'What changed in version 13.1.5', group:'Release Notes', keywords:'new update 13.1.5 schedule copilot builder coverage targets staff roles linked', body:['Schedule Copilot and Schedule Builder now use the same staff role source.','Coverage Target role choices come from Staff Roster / Settings and match the role group names shown in the Schedule Builder staff list.','Smart Fill now creates draft shifts using the employee actual staff role, while preserving the requested target role for review.','Older coverage targets are normalized against the current staff role list when checking missing coverage.'] },
-  { id:'new-1314', title:'What changed in version 13.1.4', group:'Release Notes', keywords:'new update stability reliability fixes', body:['Fixed stability issues, cleaned up internal tools, and improved reliability.'] },
   { id:'menu-search', title:'Using the menu search bar', group:'Navigation', keywords:'search menu find feature where is tool', body:['Open the side menu and type a plain word like “punch”, “recipe”, “schedule”, “broken”, “password”, or “inventory”.','The search shows matching tabs and suggested actions. It includes common synonyms so users do not need to know the exact tab name.','This is the fastest way to help tired staff find the correct place without hunting.'] },
   { id:'labor', title:'Fixing missed punches and timesheets', group:'Labor', keywords:'time punch clock in clock out missed labor payroll timesheet tips', body:['Go to Financials → Timesheets → Punch Fixer.','Review the Needs Attention cards first. These show open punches, missed clock-outs, long shifts, unscheduled punches, and time errors.','Click Fix to edit a punch, or Add Punch to enter a manual shift. Always choose a reason and write a manager note.','Use Export to download the current range for payroll review as time punch detail or total hours summary. Use the role filter to print Whole Restaurant or any role created in Settings.'] },
   { id:'labor-export-pdf', title:'Exporting timesheets as CSV or PDF', group:'Labor', keywords:'export pdf csv payroll timesheet restaurant filename total hours punch detail', body:['Go to Financials → Timesheets → Export.','Choose Whole Restaurant or a custom role first, then choose Time Punch Detail for every clock-in/out row, or Total Hours Summary for one row per employee.','Use Download CSV for spreadsheets/accountants. Use Print / Save PDF for owner records or a clean printable copy.','Export filenames start with the restaurant name so multi-location owners do not get a pile of generic 86chaos files.'] },
@@ -7766,9 +9969,9 @@ const HELP_ARTICLES = [
   { id:'inventory', title:'Inventory basics', group:'Inventory', keywords:'stock par order vendor low inventory', body:['Use Inventory & Orders to track items, par levels, vendor notes, and low-stock warnings.','Low-stock items flow into Today and Kitchen Command Center.','Smart Order can queue suggested order quantities when stock is below par.'] },
   { id:'maintenance', title:'Reporting equipment problems', group:'Maintenance', keywords:'broken fryer cooler freezer repair maintenance photo', body:['Go to Maintenance Log and add the issue as soon as it is noticed.','Use clear titles like “Fryer 2 won’t hold temp” or “Walk-in dripping by fan”.','Add urgency and a photo when possible. Open urgent issues appear in Manager Brief and Kitchen Command Center.'] },
   { id:'support', title:'Contacting 86 Chaos support', group:'Support', keywords:'help contact support bug error problem', body:['Search Help Center first using general words.','Use the Report a Bug / Error panel inside Help Center when the app behaves wrong. Include what you clicked and what happened.','Owners can contact support after checking the article tied to the page they are using.'] },
-  { id:'admin-mobile-layout', title:'Using the Administrator tab on mobile', group:'System Administrator', keywords:'admin mobile layout phone section picker signals command deck scroll', body:['The mobile Administrator tab is organized around a section picker instead of the full desktop grid.', 'Use the dropdown to jump directly to Health, Live Activity, Workspaces, People, Forensics, Operations, or the Manual.', 'The quick buttons under the dropdown open the most-used admin sections with one tap.', 'The Signals button opens the Command Deck in a contained panel. Keep it closed when you want a shorter, cleaner phone layout.'] },
-  { id:'admin-command-deck', title:'Administrator Command Deck', group:'System Administrator', keywords:'admin command deck clickable signals support hire dashboard cockpit mobile layout signals section picker', body:['Open System Administrator. On desktop, grouped section buttons are at the top and the Command Deck is the optional signal panel on the left. On mobile, use the section picker and quick buttons; tap Signals only when you want the Command Deck.','Every Command Deck metric is clickable. Crashes opens Support, Manual Presence opens Live Activity, MRR and stale workspaces open Workspaces, and push adoption opens People.','Use Hide Command Deck when you need more screen space. On mobile, the Command Deck starts hidden so the admin tab does not become one long scroll.','The Action Queue shows the highest-priority platform issues first. Click an issue to jump to the correct admin section.'] },
-  { id:'settings-branding-preferences', title:'Settings: branding, accent color, and access', group:'Settings', keywords:'settings preferences branding accent color logo upload display locked app name permissions integrations menu intelligence workspace', body:['Open Settings → Branding to change the workspace accent color, upload or paste a restaurant logo, set the help contact, and choose display defaults such as timezone, date/time format, currency, week start, and default staff landing tab. Logo uploads use the secure app upload path first, with Firebase Storage as a fallback.', 'The app name and 86 Chaos logo are locked. A restaurant logo can appear beside 86 Chaos branding, but it never replaces or hides the 86 Chaos brand.', 'Only account owners and Super Admin can grant Settings, Branding, Integrations, and Menu Intelligence access. Use the Settings Access area in Settings → Branding to choose trusted users.', 'After changing display settings, refresh the app to confirm the accent color, logo display, and defaults stayed saved.'] },
+  { id:'admin-mobile-layout', title:'Using Admin Workspace on mobile', group:'System Administrator', keywords:'admin mobile layout phone section picker menu search calm workspace', body:['Admin Workspace uses one section selector under the search box on phones.', 'Choose the exact section from the selector, or tap Menu to open the full grouped list.', 'Every non-home page shows its title, purpose, and a Back to admin home button.', 'The old Signals and Command Deck panels were removed so the mobile page stays shorter and easier to scan.'] },
+  { id:'admin-command-deck', title:'Where the old Command Deck went', group:'System Administrator', keywords:'admin command deck removed new admin workspace priority list quick actions', body:['Version 15.0.45 removed the always-visible Command Deck and dense signal board.', 'The most useful signals are now split between the three top summaries, the Admin Home priority list, and the four core numbers.', 'Open Health, Backups, Security, Workspaces, People, Push, or Support when you need the detailed data.', 'Nothing was deleted. The presentation changed so the admin area is less overwhelming.'] },
+  { id:'settings-branding-preferences', title:'Settings: branding, accent color, and access', group:'Settings', keywords:'settings preferences branding accent color logo upload display locked app name permissions integrations menu intelligence workspace', body:['Open Settings → Branding to change the workspace accent color, upload or paste a restaurant logo, set the help contact, and choose display defaults such as timezone, date/time format, currency, week start, and default staff landing tab. Logo uploads use the secure app upload path first, with Firebase Storage as a fallback.', 'The app name and 86 Chaos logo are locked. A restaurant logo can appear beside 86 Chaos branding, but it never replaces or hides the 86 Chaos brand.', 'Only account owners and Super Admin can grant Settings, Branding, and Menu Intelligence access. Integrations are locked for customer tiers until rollout and are visible only to System Administrator testing tools.', 'After changing display settings, refresh the app to confirm the accent color, logo display, and defaults stayed saved.'] },
   { id:'owner-wage-staff-permissions', title:'Owner staff and wage permissions', group:'Permissions', keywords:'owner wages payroll hourly rate add employee staff roster wage view edit permission denied', body:['Account owners and Super Admin can add staff from Staff Roster and edit hourly wages, including their own wage.', 'Only account owners and Super Admin should choose who can see or edit wages. Use Staff Roster permission switches or Settings → Workspace → Global Config → Wage Visibility & Edit Access.', 'View Wages lets a trusted person see wage labels and labor cost calculations. Edit Wages lets them change wage values from Staff Roster and automatically implies view access.', 'Managers/admins without wage permission can still manage staff basics if allowed, but wage fields stay hidden and Firestore rules reject wage-access changes.', 'If a save shows Missing or insufficient permissions, confirm the user is the restaurant owner or has the right wage-edit permission and publish the matching Firestore rules to the same Firebase project.'] },
   { id:'admin-edit-users', title:'Support-editing users and moving restaurants', group:'System Administrator', keywords:'admin edit user change restaurant move workspace support edit restaurantId notifications gps permissions', body:['Open System Administrator → People and search for the person by name, email, role, ID, or restaurant.','Click Support Edit to change support-safe profile details: name, email label, phone, role, wage, active status, restaurant/workspace, restaurant admin, and force password change.','Normal feature permissions are read-only here. Change those from the restaurant Staff Roster so support cannot accidentally alter a client’s access map from the platform cockpit.','The diagnostics panel shows push token status, browser notification permission, GPS permission/support, workspace geofence status, last active time, active tab, host, device, screen, and saved notification preferences.','Super-admin access is intentionally not in this editor. Use Access Control only for platform administrator access.','Add a support note before saving when the reason is not obvious. The change is logged in Forensics.'] },
   { id:'admin-forensics', title:'Using Forensics during support', group:'System Administrator', keywords:'admin forensics audit ghost raw json support diagnostics destructive actions', body:['Use Forensics when you need to know who changed what and when.','The top cards summarize audit count, Ghost actions, destructive actions, and support edits.','Use Raw JSON Inspector only when normal screens do not explain a data problem.','Look for the Ghost Action and Destructive badges before making conclusions about a client issue.'] },
@@ -7776,41 +9979,26 @@ const HELP_ARTICLES = [
   { id:'admin-client-users', title:'Viewing and managing people from a workspace', group:'System Administrator', keywords:'client users restaurant users support edit possess force logout delete notifications gps billing modules', body:['Open System Administrator → Workspaces and click the workspace name or People button.','The workspace drawer shows all people in that workspace, admin count, online users, push token count, GPS permission snapshots, billing state, and enabled modules.','Use Support Edit from the workspace drawer to move a user, update their role/status, force password change, or correct workspace routing.','Use Possess from the workspace drawer to troubleshoot exactly what that user sees.'] },
   { id:'admin-backup-status', title:'Checking database backup status', group:'System Administrator', keywords:'database backup last backup status command deck weekly maintenance firestore export storage run now integrity gzip header', body:['The System Administrator Command Deck includes Last Backup.','The app reads system/backupStatus when the automatic Firestore backup route writes it.','Click Last Backup or open Forensics to run a manual backup and verify the route.','A stale backup warning means you should check Vercel cron, CRON_SECRET, Firebase service account credentials, and Firebase Storage bucket settings.','If backup integrity says incorrect header or plain-json warning, run Full System Diagnostics. Version 13.1.32 treats readable backup JSON as valid even when cloud storage auto-decompresses a .json.gz object.'] },
   { id:'no-auto-return', title:'Does the app still return users to Today after five minutes?', group:'Navigation', keywords:'landing page today away five minutes background tab phone stale session logout', body:['No. The automatic return-to-Today behavior was removed.','Users stay on the page they were using when they return from another app, lock screen, or browser tab.','Use Log Out when a device should be signed out.'] },
-  { id:'voice-commands', title:'Using 86 Voice commands', group:'Voice Commands', keywords:'voice mic microphone command 86 salmon prep message maintenance burn waste open schedule recipe', body:['Tap the floating microphone button in the lower-left corner. Say one short command, then confirm the suggested action.','Examples: “86 salmon”, “open beer cheese recipe”, “add weekly task clean fryer Monday”, “prep 2 pans tomatoes”, “post message cooler is high”, “open Friday schedule”, or “waste 2 pounds chicken breast”.','Destructive actions like setting inventory to zero, posting alerts, maintenance reports, and burn logs require confirmation before the app writes data. Creating recurring daily/weekly/monthly tasks is manager/admin-only.','If the browser does not support speech recognition, type the command into the same voice panel.'] },
+  { id:'voice-commands', title:'Using 86 Voice commands', group:'Voice Commands', keywords:'voice mic microphone command 86 salmon prep done task complete check off message maintenance burn waste open schedule recipe reminder in 20 minutes at 6pm', body:['Tap the floating microphone button in the lower-left corner. Say one short command, then confirm the suggested action when the app asks.', 'Examples: “86 salmon”, “open beer cheese recipe”, “prep 2 pans tomatoes”, “mark onions done”, “finish clean fryer”, “add weekly task clean fryer Monday”, “post message cooler is high”, “open Friday schedule”, “remind me in 20 minutes”, “remind me at 6pm”, “remind me tomorrow at 10 to call Performance”, or “waste 2 pounds chicken breast”.', 'Voice can add/update prep rows, create recurring tasks for managers/admins, create personal reminders, and mark existing prep rows or daily/weekly/monthly tasks done. It uses fuzzy matching because staff may say “onions” even when the row says “slice onion”. If the match is not confident, choose the correct row before anything is marked done.', 'Reminder commands can use exact times or relative times. “Remind me at 6pm” schedules the next 6pm. “Remind me in 20 minutes” schedules a reminder 20 minutes from now. Shared reminders still require permission and a real teammate match.', 'Destructive actions like posting 86 alerts, maintenance reports, and burn logs require confirmation before the app writes data. Mark-done commands only complete matching rows and do not toggle completed rows back open.', 'If the browser does not support speech recognition, type the command into the same voice panel.'] },
   { id:'read-saver', title:'Why some tabs load data only when opened', group:'Performance', keywords:'firebase reads read saver loading data missing old history month current week cost', body:['To reduce Firebase reads, 86 Chaos now loads each tab’s live data only when that tab needs it.','Schedule, punches, sales, messages, prep, and events use smaller date windows instead of loading years of history on login.','If an old record is not visible, use the relevant date range or open the feature tab that owns that data.','This protects multi-location clients from unnecessary Firestore costs.'] },
   { id:'labor-role-export', title:'Printing timesheets by custom role', group:'Labor', keywords:'role export print pdf cook bartender server manager custom roles settings whole restaurant labor timesheets payroll', body:['Go to Financials → Timesheets → Export.','Choose Whole Restaurant or any role created in Settings, such as Line Cook, Bartender, Server, Manager, Host, or any custom role your client created.','Choose Time Punch Detail for every punch row or Total Hours Summary for one row per employee, then Download CSV or Print / Save PDF.','The role filter reads from Settings → Roles and also includes active user roles already in use, so each restaurant exports by its own job structure.'] },
-  { id:'new-1290', title:'What changed in version 12.9.0', group:'Release Notes', keywords:'new update stability reliability fixes', body:['Fixed stability issues, cleaned up internal tools, and improved reliability.'] },
-  { id:'new-1281', title:'What changed in version 12.8.1', group:'Release Notes', keywords:'new update stability reliability fixes', body:['Fixed stability issues, cleaned up internal tools, and improved reliability.'] },
-  { id:'new-1282', title:'What changed in version 12.8.2', group:'Release Notes', keywords:'new update stability reliability fixes', body:['Fixed stability issues, cleaned up internal tools, and improved reliability.'] },
-  { id:'new-1280', title:'What changed in version 12.8.0', group:'Release Notes', keywords:'new update stability reliability fixes', body:['Fixed stability issues, cleaned up internal tools, and improved reliability.'] },
   { id:'schedule-stability', title:'Schedule stability and restore help', group:'Scheduling', keywords:'schedule restore deleted shifts missing old data stability', body:['Fixed stability issues around schedule restore and month loading.', 'If a schedule looks wrong after a restore, contact a system administrator so the month can be repaired safely.'] },
   { id:'backup-center', title:'Using Backup Center', group:'System Administrator', keywords:'backup center select restore download backups list manual scheduled no path paste gzip json integrity', body:['Open System Administrator → Forensics & Backups → Backup Center.', 'Click Refresh to list manual and scheduled backups from Firebase Storage.', 'Use Download to save a copy locally, or Restore to merge that backup back into Firestore. The restore reader accepts the current compressed JSON backup format and readable JSON returned by cloud storage.', 'Restores still require typing RESTORE so nobody can accidentally roll the database backward.'] },
-  { id:'new-1311', title:'What changed in version 13.1.1', group:'Release Notes', keywords:'new update stability reliability fixes', body:['Fixed stability issues, cleaned up internal tools, and improved reliability.'] },
-  { id:'weekly-maintenance', title:'Daily backups and weekly maintenance', group:'Support', keywords:'database update daily weekly maintenance backup cron automatic refresh firestore storage', body:['Daily Firestore backups run through the Vercel cron backup route and update the Command Deck backup status.','The Firestore backup route exports the database to Firebase Storage and writes system/backupStatus for the Command Deck.','Use System Administrator → Forensics & Backups → Run Backup Now after setup to test the backup route.','If status is stale, check Vercel env vars CRON_SECRET, FIREBASE_SERVICE_ACCOUNT_KEY, and FIREBASE_STORAGE_BUCKET.'] },
-  { id:'financials-tab', title:'Using Financials', group:'Financials', keywords:'financials labor timesheets daily ledger sales payroll export costs', body:['Financials combines Labor & Timesheets with Daily Ledger so managers do not jump between separate money screens.', 'Use the Labor & Timesheets subtab for punches, payroll exports, role filters, tips, and punch corrections.', 'Use the Daily Ledger subtab for sales, labor cost, food cost, and context notes.', 'Old links for Labor or Daily Ledger still open Financials and land on the matching subtab.'] },
+  { id:'weekly-maintenance', title:'Daily backups and weekly maintenance', group:'Support', keywords:'database update daily weekly maintenance backup cron automatic refresh firestore storage', body:['Daily Firestore backups run through the production Vercel cron backup route and update the Command Deck backup status.','The Firestore backup route exports the database to Firebase Storage and writes system/backupStatus for the Command Deck.','Use System Administrator → Forensics & Backups → Run Backup Now after setup to test the backup route.','If status is stale, check Vercel env vars CRON_SECRET, FIREBASE_SERVICE_ACCOUNT_KEY, and FIREBASE_STORAGE_BUCKET.'] },
+  { id:'financials-tab', title:'Using the Financial Center', group:'Financials', keywords:'financials financial center overview daily close sales labor payroll tips cogs vendors expenses profit loss pnl targets reports custom roster roles', body:['Financial Center is the professional money hub for owners and permitted managers. It combines Overview, Daily Close, Sales, Labor & Payroll, Tips, COGS & Vendors, Expenses, P&L, Targets, and Reports.', 'Overview answers the owner question fast: net sales, prime cost, estimated profit, cash variance, deposits pending, missing daily closes, open payroll issues, and labor by role.', 'Daily Close is the end-of-day worksheet. Enter gross and net sales, sales categories, discounts, comps, refunds, tax, cash, card, gift cards, tips paid out, starting bank, cash counted, deposit amount, deposit status, close status, manager sign-off, and notes.', 'Sales shows the monthly sales mix and daily close status. Category sales make food, liquor, beer, wine, NA beverage, specials, catering, and other revenue easier to understand.', 'Labor & Payroll handles punch correction, timesheet review, role-filtered payroll exports, geofence review, open punches, and payroll readiness. Role filters use the Roster Roles created in Preferences, plus active roles already assigned to staff.', 'Tips summarizes cash and credit tips from time punches by employee and roster role, then exports a payroll-ready tip report.', 'COGS & Vendors summarizes invoice spend and vendor spend from Inventory invoice history. Expenses records non-invoice operating costs. P&L combines sales, COGS, labor, and expenses into an estimated operating snapshot.', 'Targets stores warning thresholds for labor percent, food percent, beverage percent, prime cost, sales goals, cash variance, and overtime risk. Reports gives owner-ready print and CSV outputs. Financial access is permission-controlled and should be limited to people with a real business need.'] },
   { id:'schedule-builder-under-shifts', title:'Finding Schedule Builder', group:'Scheduling', keywords:'schedule builder maker time clock shifts subtab publish template coverage', body:['Schedule Builder now lives inside Time Clock & Schedule as a subtab for users with schedule access.', 'Open Time Clock & Schedule, then choose Schedule Builder from the subtab row.', 'The Schedule Builder is still hidden from staff who do not have schedule permission.', 'Event Calendar remains its own main menu tab.'] },
   { id:'full-backup-restore', title:'Restoring a full database backup', group:'System Administrator', keywords:'restore backup firestore storage path deleted data database recovery gzip json integrity', body:['Full automatic backups are saved to Firebase Storage as compressed JSON files.', 'To restore one, open System Administrator → Forensics & Backups → Backup Center, select a backup, and click Restore.', 'The restore reader now checks the backup bytes first. If cloud storage returns already-readable JSON instead of raw gzip, restore can still read the backup instead of throwing an incorrect-header error.', 'The restore is merge-based: it puts back missing/deleted documents and overwrites damaged documents from the backup, without deleting new documents that are not in the backup. If you use full database restore and a schedule month looks contaminated by old records, run that month’s Emergency Schedule Rescue afterward so the schedule month is hard-replaced cleanly.', 'Always run a fresh backup before restoring so there is a current safety copy.'] },
-  { id:'new-1310', title:'What changed in version 13.1.0', group:'Release Notes', keywords:'new update stability reliability fixes', body:['Fixed stability issues, cleaned up internal tools, and improved reliability.'] },
-  { id:'new-1291', title:'What changed in version 12.9.1', group:'Release Notes', keywords:'new update stability reliability fixes', body:['Fixed stability issues, cleaned up internal tools, and improved reliability.'] },
   { id:'labor-export-modes', title:'Exporting labor totals or detailed punches', group:'Labor', keywords:'export payroll time punches total hours summary csv staff labor', body:['Go to Financials → Timesheets → Export.','Choose Time Punch Detail when payroll needs every clock-in and clock-out row.','Choose Total Hours Summary when you only need one line per employee with total hours, estimated pay, tips, punch count, and issue count.','The export uses the current date range and employee/status filters.'] },
   { id:'low-stock-focus', title:'Finding below-par inventory from alerts', group:'Inventory', keywords:'below par low stock inventory alert highlight command center today', body:['Below-par alerts only count items where current stock is less than par. Items equal to par are not considered low.','Click a low-stock alert from Today or Command Center to open Inventory in Below-Par Focus mode.','Below-Par Focus filters the list to low items and highlights them so managers can update stock, par, or ordering quickly.'] },
 
-  { id:'invoice-full-extraction', title:'Invoice scanner: full PDF/photo extraction', group:'Inventory', keywords:'invoice pdf photo scan upload missing information line items gemini ai extraction all rows product rows stock matcher non inventory skipped', body:['The invoice scanner sends PDFs/photos through the large-document scanner path so small product rows, vendor details, invoice numbers, terms, fees, credits, taxes, deposits, and footer notes can still be preserved in the invoice audit.','The Stock Matcher only shows purchased product rows that can update inventory. Email headers, From/To lines, addresses, customer info, totals, taxes, fees, deposits, notes, and footers are kept in Full Extraction Audit only and cannot be added as stock.','After scanning, review Product Rows and Skipped Non-Stock counts. Match real products to existing inventory or choose Add as New Item only for products you actually purchased.','Use the Full Extraction Audit section to check raw text and warnings. Always verify the scan before approving because damaged photos or blurry PDFs can still need human review.'] },
+  { id:'invoice-full-extraction', title:'Invoice scanner: full PDF/photo extraction', group:'Inventory', keywords:'invoice pdf photo scan upload missing information line items gemini ai extraction all rows product rows stock matcher needs review skipped distributor case pack', body:['The invoice scanner sends PDFs/photos through the large-document scanner path so small product rows, vendor details, invoice numbers, terms, fees, credits, taxes, deposits, and footer notes can still be preserved in the invoice audit.','Stock Matcher uses both the AI product list and the full extracted rows. Dense distributor lines that begin with quantities such as 1 CS or 2 EA can be recovered into product code, description, quantity, pack size, and price fields.','Email headers, addresses, customer information, totals, taxes, fees, deposits, notes, and footers remain outside inventory. Uncertain rows appear under Needs Review instead of being silently discarded.','If a purchased product appears under Needs Review, click Move to Stock Matcher, then match it to an existing item or choose Add as New Item. Always verify quantities and case packs before approval.'] },
   { id:'burn-log-weight-mode', title:'Burn Log: count, weight, case, or note-only waste', group:'Inventory', keywords:'burn log chicken breast pounds weight catch weight case each count quantity waste stock deduction', body:['Burn Log supports four modes: Count/each, Weight in pounds, Whole stock units/cases, and Record only.','Use Count for items with a clear yield, such as 24 patties in a case. Burning 1 patty deducts 1/24 of a case.','Use Weight for catch-weight foods like chicken breasts, beef, fish, cheese, and produce. Example: if one stock unit is 5 lb and you burn 2 lb, the app deducts 0.4 stock units.','Use Record only for notes or waste that should not change inventory.','Each inventory item can save a default burn mode, units per case, weight per stock unit, and burn label in Edit Item.'] },
-  { id:'new-1270', title:'What changed in version 12.7.0', group:'Release Notes', keywords:'new update 12.7 invoice scanner burn log weight pdf photo ai extraction', body:['Invoice scanning now supports direct PDF extraction and higher-detail image scanning. The extraction keeps all rows and raw document notes instead of only inventory lines.','The Reconcile Invoice modal now shows full extraction details, confidence, warnings, row types, and raw text.','Burn Log now supports count, weight, whole-case, and record-only modes for more accurate stock deductions.','Inventory items now have burn setup fields for default burn mode, weight per stock unit, and burn unit labels.'] },
   { id:'burn-log-stock', title:'Burn Log stock deduction rules', group:'Inventory', keywords:'burn log waste case each unit deduct stock par inventory', body:['Burn Log can deduct by count, weight, whole stock unit, or record-only note. Use the mode selector before saving a burn.','For case-based count inventory, set Yield/Units Per Stock Unit on the inventory item. Example: a 24-count case should use yield 24, so burning 1 deducts 1/24 of a case.','For catch-weight items, set Weight per Stock Unit. Example: one pack is 5 lb and you burn 2 lb, so the app deducts 0.4 stock units.','The Burn Log preview shows how much stock will be deducted before you save. Deleting or editing a burn restores/adjusts the exact amount that was deducted.'] },
   { id:'mobile-drag-board', title:'Moving shifts on phones', group:'Scheduling', keywords:'drag board mobile move shift day schedule phone', body:['On desktop, drag shift cards between days in Schedule Builder → Schedule Copilot → Drag Board.','On phones/tablets, use the Move to day dropdown on the shift card. Mobile browsers can be clumsy with drag-and-drop, so the dropdown is the safer touch-friendly option.','Changing the day, employee, start time, or end time saves immediately.'] },
 
   { id:'schedule-publish-backup', title:'Schedule publish creates a backup file', group:'Scheduling', keywords:'schedule publish backup download json restore shifts deleted duplicate', body:['When a manager clicks Publish, the app downloads a JSON backup of the current month shifts and all unpublished shifts before anything is changed.','Keep this file if you are making major schedule edits or publishing a rebuilt month. It can help support restore shifts if something is accidentally deleted.','The backup filename starts with the restaurant name and includes the schedule month and timestamp.'] },
 
-  { id:'new-1309', title:'What changed in version 13.0.9', group:'Release Notes', keywords:'new update stability reliability fixes', body:['Fixed stability issues, cleaned up internal tools, and improved reliability.'] },
   { id:'invoice-payload-storage-scan', title:'Invoice scanner: upload, progress, and timeout help', group:'Inventory', keywords:'invoice pdf scan payload too large 413 Vercel upload firebase storage large file crash scanner progress bar stuck spinning timeout 20MB', body:['The invoice scanner uploads the original PDF or image directly to Firebase Storage first, then sends the stored file to the large-document AI scanner. This avoids browser/Vercel payload limits and keeps the original file quality for extraction.','Invoice scans are capped at 20MB to protect the scanner from huge phone photos or oversized PDFs. Compress, split, or rescan fewer pages if a file is too large.','The progress bar shows exact upload progress during the Firebase upload stage. After upload completes, the AI extraction stage shows scanner status while the invoice is being read.','If the scanner takes too long, it stops with a clear timeout message instead of spinning forever. Try the same file again once before splitting pages.','After a successful scan, review the Reconcile Invoice window and click Approve & Update Stock to save the invoice into history and apply stock changes.'] },
-  { id:'new-1303', title:'What changed in version 13.0.3', group:'Release Notes', keywords:'new update 13.0.3 invoice scanner pdf payload storage scan', body:['Invoice scanning now uses Firebase Storage handoff for PDFs and images instead of sending the whole file through Vercel.','This fixes payload-too-large scanner crashes on normal invoice PDFs and keeps the full original file quality for extraction.'] },
-  { id:'new-1302', title:'What changed in version 13.0.2', group:'Release Notes', keywords:'new update stability reliability fixes', body:['Fixed stability issues, cleaned up internal tools, and improved reliability.'] },
-  { id:'new-1301', title:'What changed in version 13.0.1', group:'Release Notes', keywords:'new update 13.0.1 labor export roles custom settings timesheets payroll', body:['Financials → Timesheets export now filters by the exact roles each restaurant creates in Settings instead of fixed departments.','Exports still support Whole Restaurant, Time Punch Detail, Total Hours Summary, CSV, and Print / Save PDF.','The employee dropdown follows the selected role, and export filenames use the restaurant name and selected role.'] },
-  { id:'new-1260', title:'What changed in version 12.6.0', group:'Release Notes', keywords:'new update stability reliability fixes', body:['Fixed stability issues, cleaned up internal tools, and improved reliability.'] },
-  { id:'new-1242', title:'What changed in version 12.4.2', group:'Release Notes', keywords:'new update 12.4.2 time format 12 hour 24 hour military labor timesheets punches settings preferences', body:['Time format preferences now control schedule times, punch ledger times, Financials → Timesheets displays, Kitchen Command timeline times, toast messages, maintenance logs, and payroll CSV exports.','Native time entry fields may still use the device/browser picker, but saved/displayed times honor the selected preference.'] },
-  { id:'new-124', title:'What changed in version 12.4.1', group:'Release Notes', keywords:'new update 12.4 bug report help center weekly database maintenance cron', body:['Report a Bug / Error moved out of the side menu and into Help Center.','Help Center now includes a searchable article for weekly database maintenance.','The optional weekly maintenance pack adds a Vercel Cron endpoint for support housekeeping.'] }
 ];
 
 const TabHelpCenter = ({ appUser, activeTab, voiceHelpSearchTarget = null, addToast }) => {
@@ -7859,11 +10047,9 @@ const TabHelpCenter = ({ appUser, activeTab, voiceHelpSearchTarget = null, addTo
   const articles = HELP_ARTICLES.filter(a => group === 'All' || a.group === group).filter(a => !q || `${a.title} ${a.group} ${a.keywords} ${a.body.join(' ')}`.toLowerCase().includes(q));
   const selected = HELP_ARTICLES.find(a => a.id === selectedId) || articles[0] || HELP_ARTICLES[0];
   const related = HELP_ARTICLES.filter(a => a.keywords.includes(activeTab || '') || a.group.toLowerCase().includes(activeTab || '')).slice(0,3);
-  const latestRelease = HELP_ARTICLES.find(a => a.id === `new-${String(CURRENT_VERSION).replace(/\D/g, '')}`);
   return (
-    <div className="max-w-6xl mx-auto space-y-4 pb-24">
+    <div className="desktop-management-page max-w-7xl mx-auto space-y-4 pb-24">
       <div className={`${T.card} p-5 cockpit-grid flex flex-col lg:flex-row lg:items-end justify-between gap-3`}><div><div className="text-[10px] uppercase tracking-widest font-black text-[#D4A381]">Built-in owner manual</div><h2 className="text-2xl font-black text-white">Help Center</h2><p className="text-sm text-slate-400 font-bold mt-1 max-w-3xl">Search plain words before contacting support. This manual is updated whenever new features are added to the app.</p></div><div className="flex flex-wrap gap-2"><button type="button" onClick={() => window.dispatchEvent(new CustomEvent('chaosRestartTour', { detail: { mode: 'employee' } }))} className={T.btnAlt}>Restart Employee Tour</button>{(appUser?.isAdmin || appUser?.permissions?.team) && <button type="button" onClick={() => window.dispatchEvent(new CustomEvent('chaosRestartTour', { detail: { mode: 'manager' } }))} className={T.btn}>Restart Manager Tour</button>}</div></div>
-      {latestRelease && <button type="button" onClick={() => { setSelectedId(latestRelease.id); setGroup('Release Notes'); }} className="w-full text-left bg-blue-900/15 border border-blue-500/40 rounded-xl p-4 hover:bg-blue-900/25 transition-colors"><div className="text-[10px] uppercase tracking-widest font-black text-blue-300 mb-1">Latest update brief</div><div className="font-black text-white">{latestRelease.title}</div><div className="text-xs text-slate-300 font-bold mt-1 line-clamp-2">{latestRelease.body?.[0]}</div></button>}
       <div className="grid lg:grid-cols-3 gap-4">
         <div className="lg:col-span-1 space-y-3">
           <div className={`${T.card} p-3`}><div className="relative"><Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500"/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Search help: punch, schedule, password..." className="w-full bg-[#12161A] border border-[#2A353D] rounded-xl pl-10 pr-3 py-3 text-sm font-bold text-white outline-none focus:border-[#D4A381]"/></div><select value={group} onChange={e=>setGroup(e.target.value)} className={`${T.input} mt-2`}>{groups.map(g=><option key={g}>{g}</option>)}</select></div>
@@ -7872,6 +10058,29 @@ const TabHelpCenter = ({ appUser, activeTab, voiceHelpSearchTarget = null, addTo
         <div className="lg:col-span-2 space-y-4">
           <div className={`${T.card} p-5`}><div className="text-[10px] uppercase tracking-widest font-black text-[#D4A381] mb-1">{selected.group}</div><h3 className="text-2xl font-black text-white mb-4">{selected.title}</h3><div className="space-y-3">{selected.body.map((line, i) => <div key={i} className="flex gap-3 bg-[#12161A] border border-[#2A353D] rounded-xl p-3"><div className="w-6 h-6 rounded-full bg-[#D4A381] text-slate-900 flex items-center justify-center text-xs font-black flex-shrink-0">{i+1}</div><p className="text-sm font-bold text-slate-200 leading-relaxed">{line}</p></div>)}</div><div className="mt-4 flex flex-wrap gap-2"><button onClick={() => { navigator.clipboard?.writeText(`${selected.title}\n\n${selected.body.map((b,i)=>`${i+1}. ${b}`).join('\n')}`); addToast?.('Copied', 'Help article copied.'); }} className={T.btnAlt}>Copy Instructions</button><button onClick={() => window.print()} className={T.btnAlt}>Print</button></div></div>
           <div className={`${T.card} p-4`}><h4 className="font-black text-white mb-2">Page-aware help</h4><p className="text-xs text-slate-400 font-bold mb-3">You are signed in as {appUser?.role || 'Staff'}. Start with these common articles:</p><div className="grid sm:grid-cols-3 gap-2">{(related.length ? related : HELP_ARTICLES.slice(0,3)).map(a => <button key={a.id} onClick={()=>setSelectedId(a.id)} className="bg-[#12161A] border border-[#2A353D] rounded-xl p-3 text-left hover:border-[#D4A381]/50"><div className="font-black text-white text-sm">{a.title}</div><div className="text-[10px] text-slate-500 font-black uppercase tracking-widest mt-1">{a.group}</div></button>)}</div></div>
+          <div className={`${T.card} p-4`}>
+            <div className="flex items-center justify-between gap-3 mb-3">
+              <div>
+                <div className="text-xs uppercase tracking-widest font-black text-[#D4A381]">Searchable app training manual</div>
+                <h4 className="font-black text-white text-xl">Complete 86 Chaos Training Manual</h4>
+              </div>
+              <BookOpen className="text-[#D4A381]" size={22}/>
+            </div>
+            <p className="text-sm text-slate-300 font-bold leading-relaxed mb-3">This is the same deterministic, non-AI main-app manual used for full training. It explains what each area is for, who should use it, what to check, and what not to put in the app.</p>
+            <div className="grid sm:grid-cols-2 gap-2 max-h-[360px] overflow-y-auto custom-scrollbar pr-1">
+              {SYSTEM_TRAINING_MANUAL_CHAPTERS
+                .filter(chapter => !q || `${chapter.title} ${chapter.group} ${chapter.tab} ${chapter.audience} ${chapter.summary} ${chapter.keywords} ${(chapter.sections || []).map(section => `${section.title} ${(section.steps || []).join(' ')}`).join(' ')}`.toLowerCase().includes(q))
+                .slice(0, 16)
+                .map(chapter => (
+                  <button key={chapter.id} type="button" onClick={() => { setQuery(chapter.title); setSelectedId('app-training-manual'); }} className="bg-[#12161A] border border-[#2A353D] rounded-xl p-3 text-left hover:border-[#D4A381]/50">
+                    <div className="text-xs uppercase tracking-widest font-black text-slate-500">{chapter.group} • {chapter.audience}</div>
+                    <div className="font-black text-white mt-1">{chapter.title}</div>
+                    <p className="text-xs text-slate-400 font-bold mt-1 leading-relaxed">{chapter.summary}</p>
+                  </button>
+                ))}
+            </div>
+          </div>
+
           <div className={`${T.card} p-4 border-orange-900/40`}>
             <div className="flex items-center gap-2 mb-2"><Bug size={18} className="text-orange-300"/><h4 className="font-black text-orange-300">Report a Bug / Error</h4></div>
             <p className="text-xs text-slate-400 font-bold mb-3">Send problems from here instead of the side menu. Include exactly what you clicked, what you expected, and what happened. Device, screen, page, and browser details are attached automatically.</p>
@@ -7898,26 +10107,320 @@ const TabHelpCenter = ({ appUser, activeTab, voiceHelpSearchTarget = null, addTo
 
 
 
-const TabFinancials = ({ currentDate, users = [], shifts = [], sales = [], timePunches = [], addToast, appUser, initialSubTab = 'labor' }) => {
-  const [subTab, setSubTab] = useState(initialSubTab);
+const TabFinancials = ({ currentDate, users = [], shifts = [], sales = [], timePunches = [], addToast, appUser, clientData = {}, setActiveTab, initialSubTab = 'overview' }) => {
+  const canSales = financeAccess(appUser, 'sales');
+  const canLabor = financeAccess(appUser, 'labor');
+  const planAccess = usePlanAccess(appUser, clientData);
+  const [subTab, setSubTab] = useState(initialSubTab === 'ledger' ? 'daily-close' : initialSubTab === 'labor' ? 'labor' : initialSubTab || 'overview');
+  const [month, setMonth] = useState(getMonthStr(currentDate || getToday()));
+  const [expenseForm, setExpenseForm] = useState({ date: getToday(), vendor: '', category: 'Other', amount: '', paymentMethod: 'Unpaid', dueDate: '', paid: false, notes: '' });
+  const [targetsDraft, setTargetsDraft] = useState(DEFAULT_FINANCE_TARGETS);
+
+  const canLaborCommand = planAccess.canUse(FEATURE_KEYS.LABOR_COMMAND).allowed || planAccess.canUse(FEATURE_KEYS.TIMESHEETS).allowed;
+  const canSmartFinancials = planAccess.canUse(FEATURE_KEYS.FINANCIAL_OVERVIEW).allowed || planAccess.canUse(FEATURE_KEYS.COGS_CENTER).allowed;
+  const canExpenses = planAccess.canUse(FEATURE_KEYS.EXPENSES).allowed;
+  const canTargets = planAccess.canUse(FEATURE_KEYS.BUDGET_TARGETS).allowed;
+  const canInvoiceData = planAccess.canUse(FEATURE_KEYS.INVOICE_TOTALS).allowed || planAccess.canUse(FEATURE_KEYS.COGS_CENTER).allowed;
+  const dbRoles = useLiveCollection('roles', appUser?.restaurantId, { enabled: !!appUser?.restaurantId && canLaborCommand, limitCount: 250 });
+  const financialExpenses = useLiveCollection('financialExpenses', appUser?.restaurantId, { enabled: !!appUser?.restaurantId && canSales && canExpenses, limitCount: 250, fallbackLimitCount: 150 });
+  const financialTargets = useLiveCollection('financialTargets', appUser?.restaurantId, { enabled: !!appUser?.restaurantId && canSales && canTargets, limitCount: 25, fallbackLimitCount: 25 });
+  const invoices = useLiveCollection('invoices', appUser?.restaurantId, { enabled: !!appUser?.restaurantId && canSales && canInvoiceData, limitCount: 250, fallbackLimitCount: 150 });
+
+  const rosterRoleOptions = Array.from(new Map([
+    ...dbRoles.map(r => normalizeLaborRole(r.name)),
+    ...users.filter(u => u.isActive !== false).map(u => normalizeLaborRole(u.role))
+  ].filter(Boolean).map(role => [roleFilterKey(role), role])).values()).sort((a, b) => a.localeCompare(b));
+
+  const monthStart = `${month}-01`;
+  const monthEnd = `${month}-${String(getDaysInMonth(month)).padStart(2, '0')}`;
+  const monthSales = sales.filter(s => safeFinanceDate(s) >= monthStart && safeFinanceDate(s) <= monthEnd);
+  const monthPunches = timePunches.filter(p => (p.date || '') >= monthStart && (p.date || '') <= monthEnd);
+  const monthExpenses = financialExpenses.filter(e => safeFinanceDate(e) >= monthStart && safeFinanceDate(e) <= monthEnd);
+  const monthInvoices = invoices.filter(inv => safeFinanceDate(inv) >= monthStart && safeFinanceDate(inv) <= monthEnd);
+  const targetRecord = financialTargets[0] || null;
+  const targets = { ...DEFAULT_FINANCE_TARGETS, ...(targetRecord || {}) };
+
+  useEffect(() => {
+    setTargetsDraft({ ...DEFAULT_FINANCE_TARGETS, ...(targetRecord || {}) });
+  }, [targetRecord?.id, targetRecord?.updatedAt]);
+
+  const activeUsers = users.filter(u => u.isActive !== false);
+  const userForPunch = (p) => users.find(u => u.id === p.employeeId) || {};
+  const payrollRows = monthPunches.map(p => {
+    const emp = userForPunch(p);
+    const hours = calculatePunchHours(p.clockInTime, p.clockOutTime, p.breakMinutes || 0);
+    return { punch: p, emp, role: normalizeLaborRole(emp.role), hours, pay: hours * parseFinanceAmount(emp.wage), tips: parseFinanceAmount(p.cashTips) + parseFinanceAmount(p.creditTips), issue: ['clocked_in','on_break'].includes(p.status) || !p.clockOutTime || hours > 12 || p.requiresManagerReview };
+  });
+  const grossSales = monthSales.reduce((sum, s) => sum + getFinancialGrossSales(s), 0);
+  const netSales = monthSales.reduce((sum, s) => sum + getFinancialNetSales(s), 0);
+  const laborCost = payrollRows.reduce((sum, row) => sum + row.pay, 0) || monthSales.reduce((sum, s) => sum + getFinancialLaborCost(s), 0);
+  const foodCost = monthSales.reduce((sum, s) => sum + getFinancialFoodCost(s), 0);
+  const beverageCost = monthSales.reduce((sum, s) => sum + getFinancialBeverageCost(s), 0);
+  const operatingExpenses = monthExpenses.reduce((sum, e) => sum + getFinancialExpenseAmount(e), 0);
+  const invoiceSpend = monthInvoices.reduce((sum, inv) => sum + getFinancialInvoiceAmount(inv), 0);
+  const totalTips = payrollRows.reduce((sum, row) => sum + row.tips, 0);
+  const openPayrollIssues = payrollRows.filter(row => row.issue).length;
+  const cashVariance = monthSales.reduce((sum, s) => sum + parseFinanceAmount(s.cashVariance), 0);
+  const depositsPending = monthSales.filter(s => !['Deposited', 'Verified'].includes(String(s.depositStatus || '')) && getFinancialGrossSales(s) > 0).length;
+  const missingCloseDays = Array.from({ length: getDaysInMonth(month) }).map((_, i) => `${month}-${String(i + 1).padStart(2, '0')}`).filter(date => new Date(date + 'T12:00:00') <= new Date() && !monthSales.some(s => s.date === date)).length;
+  const primeCost = laborCost + foodCost + beverageCost;
+  const laborPct = netSales > 0 ? (laborCost / netSales) * 100 : 0;
+  const foodPct = netSales > 0 ? (foodCost / netSales) * 100 : 0;
+  const beveragePct = netSales > 0 ? (beverageCost / netSales) * 100 : 0;
+  const primePct = netSales > 0 ? (primeCost / netSales) * 100 : 0;
+  const estimatedProfit = netSales - primeCost - operatingExpenses;
+
+  const roleBreakdown = rosterRoleOptions.map(role => {
+    const key = roleFilterKey(role);
+    const rows = payrollRows.filter(row => roleFilterKey(row.role) === key);
+    return { role, hours: rows.reduce((s, r) => s + r.hours, 0), pay: rows.reduce((s, r) => s + r.pay, 0), tips: rows.reduce((s, r) => s + r.tips, 0), issues: rows.filter(r => r.issue).length };
+  }).filter(row => row.hours > 0 || row.pay > 0 || row.tips > 0);
+
+  const salesMix = FINANCE_SALES_CATEGORIES.map(([key, label]) => ({ label, value: monthSales.reduce((sum, s) => sum + parseFinanceAmount(s[key]), 0) })).filter(row => row.value > 0);
+  const expenseBreakdown = FINANCE_EXPENSE_CATEGORIES.map(category => ({ category, amount: monthExpenses.filter(e => e.category === category).reduce((s, e) => s + getFinancialExpenseAmount(e), 0) })).filter(row => row.amount > 0);
+  const vendorSpend = Object.entries(monthInvoices.reduce((acc, inv) => {
+    const name = inv.vendorName || inv.vendor || inv.supplier || 'Unassigned vendor';
+    acc[name] = (acc[name] || 0) + getFinancialInvoiceAmount(inv);
+    return acc;
+  }, {})).map(([vendor, amount]) => ({ vendor, amount })).sort((a, b) => b.amount - a.amount);
+
+  const financeTabs = [
+    { id: 'overview', label: 'Overview', show: canSales || canLabor, access: planAccess.canFinancialSubtab('overview') },
+    { id: 'daily-close', label: 'Daily Close', show: canSales, access: planAccess.canFinancialSubtab('daily-close') },
+    { id: 'sales', label: 'Sales', show: canSales, access: planAccess.canFinancialSubtab('ledger') },
+    { id: 'labor', label: 'Labor & Payroll', show: canLabor, access: planAccess.canFinancialSubtab('labor') },
+    { id: 'tips', label: 'Tips', show: canLabor, access: planAccess.canFinancialSubtab('tips') },
+    { id: 'cogs', label: 'COGS & Vendors', show: canSales, access: planAccess.canFinancialSubtab('cogs') },
+    { id: 'expenses', label: 'Expenses', show: canSales, access: planAccess.canFinancialSubtab('expenses') },
+    { id: 'pnl', label: 'P&L', show: canSales, access: planAccess.canFinancialSubtab('pnl') },
+    { id: 'targets', label: 'Targets', show: canSales, access: planAccess.canFinancialSubtab('targets') },
+    { id: 'reports', label: 'Reports', show: canSales || canLabor, access: planAccess.canFinancialSubtab('reports') }
+  ].filter(t => t.show);
+  const selectedFinanceTab = financeTabs.find(t => t.id === subTab) || financeTabs[0];
+  const selectedFinanceAccess = selectedFinanceTab?.access;
+
+  useEffect(() => {
+    if (!financeTabs.some(t => t.id === subTab) && financeTabs[0]) setSubTab(financeTabs[0].id);
+  }, [canSales, canLabor, subTab, planAccess.subscription.planId]);
+
+  const saveExpense = async (e) => {
+    e.preventDefault();
+    if (!expenseForm.vendor.trim()) return addToast('Vendor Needed', 'Enter a vendor or payee for this expense.');
+    if (parseFinanceAmount(expenseForm.amount) <= 0) return addToast('Amount Needed', 'Enter an expense amount greater than zero.');
+    const payload = {
+      ...expenseForm,
+      vendor: expenseForm.vendor.trim(),
+      amount: parseFinanceAmount(expenseForm.amount),
+      paid: expenseForm.paid === true || expenseForm.paymentMethod !== 'Unpaid',
+      restaurantId: appUser.restaurantId,
+      createdAt: new Date().toISOString(),
+      createdBy: appUser.name || appUser.email || 'Manager',
+      updatedAt: new Date().toISOString()
+    };
+    try {
+      const refObj = await addDoc(collection(db, 'financialExpenses'), payload);
+      await logAudit(appUser, 'FINANCIAL_EXPENSE_CREATED', `financialExpenses/${refObj.id}`, `Added ${moneyText(payload.amount, 2)} expense for ${payload.vendor}`);
+      setExpenseForm({ date: getToday(), vendor: '', category: 'Other', amount: '', paymentMethod: 'Unpaid', dueDate: '', paid: false, notes: '' });
+      addToast('Expense Saved', 'Expense added to Financial Center.');
+    } catch (err) { addToast('Error', err.message); }
+  };
+
+  const deleteExpense = async (expense) => {
+    if (!window.confirm(`Delete ${expense.vendor || 'this expense'} for ${moneyText(expense.amount, 2)}?`)) return;
+    try {
+      await deleteDoc(doc(db, 'financialExpenses', expense.id));
+      await logAudit(appUser, 'FINANCIAL_EXPENSE_DELETED', `financialExpenses/${expense.id}`, `Deleted expense ${expense.vendor || ''}`);
+      addToast('Expense Deleted', 'Expense removed.');
+    } catch (err) { addToast('Error', err.message); }
+  };
+
+  const saveTargets = async (e) => {
+    e.preventDefault();
+    const payload = {
+      ...Object.fromEntries(Object.entries(targetsDraft).map(([key, value]) => [key, parseFinanceAmount(value)])),
+      restaurantId: appUser.restaurantId,
+      updatedAt: new Date().toISOString(),
+      updatedBy: appUser.name || appUser.email || 'Manager'
+    };
+    try {
+      await setDoc(doc(db, 'financialTargets', appUser.restaurantId), payload, { merge: true });
+      await logAudit(appUser, 'FINANCIAL_TARGETS_UPDATED', `financialTargets/${appUser.restaurantId}`, 'Updated Financial Center targets');
+      addToast('Targets Saved', 'Financial goals and warning thresholds updated.');
+    } catch (err) { addToast('Error', err.message); }
+  };
+
+  const reportPrefix = getRestaurantExportPrefix(appUser, '86chaos');
+  const downloadFinanceReport = (type = 'overview') => {
+    const rows = [
+      ['Metric', 'Value'],
+      ['Month', formatDisplayMonth(month)],
+      ['Gross Sales', moneyText(grossSales, 2)],
+      ['Net Sales', moneyText(netSales, 2)],
+      ['Labor Cost', moneyText(laborCost, 2)],
+      ['Labor %', pctText(laborPct)],
+      ['Food Cost', moneyText(foodCost, 2)],
+      ['Food %', pctText(foodPct)],
+      ['Beverage Cost', moneyText(beverageCost, 2)],
+      ['Prime Cost %', pctText(primePct)],
+      ['Operating Expenses', moneyText(operatingExpenses, 2)],
+      ['Invoice Spend', moneyText(invoiceSpend, 2)],
+      ['Estimated Profit', moneyText(estimatedProfit, 2)],
+      ['Cash Variance', moneyText(cashVariance, 2)],
+      ['Open Payroll Issues', openPayrollIssues],
+      ['Pending Deposits', depositsPending],
+      ['Missing Daily Closes', missingCloseDays]
+    ];
+    if (type === 'csv') downloadCsvRows(`${reportPrefix}_financial_center_${month}.csv`, rows);
+    else openPrintableReport({ title: 'Financial Center Report', subtitle: `${formatDisplayMonth(month)} • ${appUser?.restaurantName || appUser?.restaurant || 'Restaurant'}`, rows, filename: `${reportPrefix}_financial_center_${month}` });
+  };
+
+  const downloadTipsReport = () => {
+    const rows = [['Employee', 'Roster Role', 'Hours', 'Cash Tips', 'Credit Tips', 'Total Tips'], ...activeUsers.map(user => {
+      const rows = monthPunches.filter(p => p.employeeId === user.id);
+      const hours = rows.reduce((s, p) => s + calculatePunchHours(p.clockInTime, p.clockOutTime, p.breakMinutes || 0), 0);
+      const cash = rows.reduce((s, p) => s + parseFinanceAmount(p.cashTips), 0);
+      const credit = rows.reduce((s, p) => s + parseFinanceAmount(p.creditTips), 0);
+      return [user.name || user.email || 'Employee', normalizeLaborRole(user.role), hours.toFixed(2), cash.toFixed(2), credit.toFixed(2), (cash + credit).toFixed(2)];
+    }).filter(row => parseFinanceAmount(row[2]) || parseFinanceAmount(row[5]))];
+    downloadCsvRows(`${reportPrefix}_tips_${month}.csv`, rows);
+  };
+
+  const Metric = ({ label, value, helper, tone = 'text-white' }) => (
+    <div className="bg-[#12161A] border border-[#2A353D] rounded-2xl p-4">
+      <div className="text-xs uppercase tracking-widest font-black text-slate-400">{label}</div>
+      <div className={`text-2xl font-black mt-1 ${tone}`}>{value}</div>
+      {helper && <div className="text-xs text-slate-400 font-bold mt-1 leading-relaxed">{helper}</div>}
+    </div>
+  );
+
+  const SimpleTable = ({ headers, rows, empty = 'No records found.' }) => (
+    <div className={`${T.card} overflow-hidden`}>
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead className="bg-[#12161A] text-slate-300"><tr>{headers.map(h => <th key={h} className="text-left p-3 font-black whitespace-nowrap">{h}</th>)}</tr></thead>
+          <tbody className="divide-y divide-[#2A353D]">
+            {rows.length === 0 && <tr><td colSpan={headers.length} className="p-6 text-center text-slate-400 font-bold">{empty}</td></tr>}
+            {rows.map((row, idx) => <tr key={idx} className="hover:bg-[#12161A]/60">{row.map((cell, i) => <td key={i} className="p-3 text-slate-200 align-top whitespace-nowrap">{cell}</td>)}</tr>)}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+
   return (
-    <div className="max-w-6xl mx-auto space-y-4 pb-24">
-      <div className={`${T.card} p-4 sm:p-5 cockpit-grid`}>
-        <div className="text-[10px] font-black uppercase tracking-widest text-[#D4A381] mb-1">Financials</div>
-        <h2 className="text-2xl font-black text-white tracking-tight">Financials</h2>
-        <p className="text-xs text-slate-400 font-bold mt-1 max-w-3xl">Labor & Timesheets and Daily Ledger now live together here. Labor handles payroll reality; Daily Ledger handles sales, costs, and trend notes.</p>
+    <div className="financial-center-desktop max-w-7xl mx-auto space-y-4 pb-24">
+      <div className={`${T.card} p-5 cockpit-grid`}>
+        <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-4">
+          <div>
+            <div className="text-xs font-black uppercase tracking-widest text-[#D4A381] mb-1">Financial Center</div>
+            <h2 className="text-3xl font-black text-white tracking-tight">Professional Financial Center</h2>
+            <p className="text-sm text-slate-300 font-bold mt-2 max-w-4xl">Daily close, sales mix, labor, tips, COGS, expenses, P&L, targets, and owner-ready reports in one readable command center. Role views use the custom Roster Roles created in Preferences.</p>
+          </div>
+          <div className="flex flex-wrap gap-2 items-center">
+            <input type="month" value={month} onChange={e => setMonth(e.target.value)} className={`${T.input} w-auto`}/>
+            <button onClick={() => downloadFinanceReport('print')} className={T.btnAlt}>Print Report</button>
+          </div>
+        </div>
       </div>
-      <div className="flex flex-wrap gap-2 border-b border-[#2A353D] pb-3">
-        <button onClick={() => setSubTab('labor')} className={`px-3 py-2 rounded-xl text-[10px] uppercase tracking-widest font-black ${subTab === 'labor' ? `${T.grad} text-slate-900` : 'bg-[#1A2126] text-slate-400 hover:text-white'}`}>Labor & Timesheets</button>
-        <button onClick={() => setSubTab('ledger')} className={`px-3 py-2 rounded-xl text-[10px] uppercase tracking-widest font-black ${subTab === 'ledger' ? `${T.grad} text-slate-900` : 'bg-[#1A2126] text-slate-400 hover:text-white'}`}>Daily Ledger</button>
+
+      <div className="flex gap-2 overflow-x-auto pb-2 border-b border-[#2A353D] custom-scrollbar">
+        {financeTabs.map(tab => <button key={tab.id} onClick={() => setSubTab(tab.id)} className={`px-4 py-3 rounded-xl text-xs uppercase tracking-widest font-black whitespace-nowrap ${subTab === tab.id ? `${T.grad} text-slate-900` : 'bg-[#1A2126] text-slate-300 hover:text-white border border-[#2A353D]'} ${tab.access?.allowed ? '' : 'opacity-75'}`}>{tab.access?.allowed ? tab.label : `🔒 ${tab.label}`}</button>)}
       </div>
-      {subTab === 'labor' ? (
-        <TabLabor currentDate={currentDate} users={users} shifts={shifts} sales={sales} timePunches={timePunches} addToast={addToast} appUser={appUser} />
-      ) : (
-        <TabSales sales={sales} timePunches={timePunches} users={users} addToast={addToast} appUser={appUser} />
+
+      {selectedFinanceAccess && selectedFinanceAccess.allowed === false && (
+        <LockedFeatureScreen access={selectedFinanceAccess} appUser={appUser} setActiveTab={setActiveTab} />
+      )}
+
+      {selectedFinanceAccess?.allowed !== false && subTab === 'overview' && (
+        <div className="space-y-4">
+          <div className="grid sm:grid-cols-2 xl:grid-cols-4 gap-3">
+            <Metric label="Net Sales" value={moneyText(netSales)} helper={`${monthSales.length} daily close records`} tone="text-[#D4A381]" />
+            <Metric label="Prime Cost" value={pctText(primePct)} helper={`${moneyText(primeCost)} labor + food + beverage`} tone={primePct > targets.primePct ? 'text-red-400' : 'text-emerald-400'} />
+            <Metric label="Estimated Profit" value={moneyText(estimatedProfit)} helper="Net sales minus prime cost and expenses" tone={estimatedProfit < 0 ? 'text-red-400' : 'text-emerald-400'} />
+            <Metric label="Cash Variance" value={moneyText(cashVariance, 2)} helper={`${depositsPending} pending deposits`} tone={Math.abs(cashVariance) > parseFinanceAmount(targets.cashVarianceAlert) ? 'text-red-400' : 'text-emerald-400'} />
+          </div>
+          <div className="grid lg:grid-cols-3 gap-4">
+            <div className={`${T.card} p-4 lg:col-span-2`}>
+              <h3 className="font-black text-white text-xl mb-3">Financial Health</h3>
+              <div className="grid sm:grid-cols-3 gap-3">
+                <Metric label="Labor" value={pctText(laborPct)} helper={`Target ${pctText(targets.laborPct)}`} tone={laborPct > targets.laborPct ? 'text-red-400' : 'text-emerald-400'} />
+                <Metric label="Food" value={pctText(foodPct)} helper={`Target ${pctText(targets.foodPct)}`} tone={foodPct > targets.foodPct ? 'text-red-400' : 'text-emerald-400'} />
+                <Metric label="Beverage" value={pctText(beveragePct)} helper={`Target ${pctText(targets.beveragePct)}`} tone={beveragePct > targets.beveragePct ? 'text-red-400' : 'text-emerald-400'} />
+              </div>
+            </div>
+            <div className={`${T.card} p-4`}>
+              <h3 className="font-black text-white text-xl mb-3">Needs Attention</h3>
+              <div className="space-y-2 text-sm font-bold">
+                <div className="flex justify-between gap-3"><span className="text-slate-400">Open payroll issues</span><span className={openPayrollIssues ? 'text-red-400' : 'text-emerald-400'}>{openPayrollIssues}</span></div>
+                <div className="flex justify-between gap-3"><span className="text-slate-400">Missing daily closes</span><span className={missingCloseDays ? 'text-orange-300' : 'text-emerald-400'}>{missingCloseDays}</span></div>
+                <div className="flex justify-between gap-3"><span className="text-slate-400">Deposits pending</span><span className={depositsPending ? 'text-orange-300' : 'text-emerald-400'}>{depositsPending}</span></div>
+                <div className="flex justify-between gap-3"><span className="text-slate-400">Expenses unpaid</span><span className={monthExpenses.filter(e => !e.paid && e.paymentMethod === 'Unpaid').length ? 'text-orange-300' : 'text-emerald-400'}>{monthExpenses.filter(e => !e.paid && e.paymentMethod === 'Unpaid').length}</span></div>
+              </div>
+            </div>
+          </div>
+          <SimpleTable headers={['Roster Role', 'Hours', 'Labor Cost', 'Tips', 'Issues']} rows={roleBreakdown.map(r => [r.role, r.hours.toFixed(2), moneyText(r.pay, 2), moneyText(r.tips, 2), r.issues])} empty="No labor by role for this month yet. Role names come from Preferences > Roster Roles." />
+        </div>
+      )}
+
+      {selectedFinanceAccess?.allowed !== false && subTab === 'daily-close' && <TabSales sales={sales} timePunches={timePunches} users={users} addToast={addToast} appUser={appUser} />}
+
+      {selectedFinanceAccess?.allowed !== false && subTab === 'sales' && (
+        <div className="grid lg:grid-cols-2 gap-4">
+          <div className={`${T.card} p-4`}><h3 className="font-black text-white text-xl mb-3">Sales Mix</h3><div className="space-y-3">{salesMix.length === 0 && <FriendlyEmpty title="No sales mix yet" text="Enter category sales in Daily Close to unlock mix reporting."/>}{salesMix.map(row => <div key={row.label}><div className="flex justify-between text-sm font-black"><span className="text-white">{row.label}</span><span className="text-[#D4A381]">{moneyText(row.value, 2)}</span></div><div className="h-2 bg-[#0B0E11] border border-[#2A353D] rounded-full mt-1 overflow-hidden"><div className="h-full bg-[#D4A381]" style={{ width: `${Math.min(100, netSales > 0 ? (row.value / netSales) * 100 : 0)}%` }} /></div></div>)}</div></div>
+          <SimpleTable headers={['Date', 'Gross', 'Net', 'Cash', 'Card', 'Deposit', 'Status']} rows={monthSales.sort((a,b) => safeFinanceDate(a).localeCompare(safeFinanceDate(b))).map(s => [formatDisplayDate(safeFinanceDate(s)), moneyText(getFinancialGrossSales(s), 2), moneyText(getFinancialNetSales(s), 2), moneyText(s.cashSales, 2), moneyText(s.cardSales, 2), moneyText(s.depositAmount, 2), s.closeStatus || 'Open'])} />
+        </div>
+      )}
+
+      {selectedFinanceAccess?.allowed !== false && subTab === 'labor' && <TabLabor currentDate={currentDate} users={users} shifts={shifts} sales={sales} timePunches={timePunches} addToast={addToast} appUser={appUser} />}
+
+      {selectedFinanceAccess?.allowed !== false && subTab === 'tips' && (
+        <div className="space-y-4">
+          <div className="grid sm:grid-cols-3 gap-3"><Metric label="Total Tips" value={moneyText(totalTips, 2)} helper="Cash + credit tips on time punches" tone="text-[#D4A381]"/><Metric label="Tip Records" value={monthPunches.filter(p => parseFinanceAmount(p.cashTips) || parseFinanceAmount(p.creditTips)).length} helper="Punches with declared tips"/><Metric label="Export" value="Ready" helper="CSV tip report by employee and roster role" tone="text-emerald-400"/></div>
+          <button onClick={downloadTipsReport} className={T.btn}>Download Tip Report</button>
+          <SimpleTable headers={['Employee', 'Roster Role', 'Hours', 'Cash Tips', 'Credit Tips', 'Total']} rows={activeUsers.map(user => { const rows = monthPunches.filter(p => p.employeeId === user.id); const hours = rows.reduce((s,p)=>s+calculatePunchHours(p.clockInTime,p.clockOutTime,p.breakMinutes||0),0); const cash = rows.reduce((s,p)=>s+parseFinanceAmount(p.cashTips),0); const credit = rows.reduce((s,p)=>s+parseFinanceAmount(p.creditTips),0); return [user.name || user.email || 'Employee', normalizeLaborRole(user.role), hours.toFixed(2), moneyText(cash,2), moneyText(credit,2), moneyText(cash+credit,2)]; }).filter(row => parseFinanceAmount(row[2]) || row[5] !== moneyText(0,2))} />
+        </div>
+      )}
+
+      {selectedFinanceAccess?.allowed !== false && subTab === 'cogs' && (
+        <div className="grid lg:grid-cols-2 gap-4">
+          <div className="space-y-3"><Metric label="Invoice Spend" value={moneyText(invoiceSpend, 2)} helper="From invoice history in the selected month" tone="text-[#D4A381]"/><Metric label="Food + Beverage Cost" value={moneyText(foodCost + beverageCost, 2)} helper={`${pctText(netSales > 0 ? ((foodCost + beverageCost) / netSales) * 100 : 0)} of net sales`} tone={(foodPct + beveragePct) > (targets.foodPct + targets.beveragePct) ? 'text-red-400' : 'text-emerald-400'} /><Metric label="Unreviewed invoices" value={monthInvoices.filter(inv => ['Needs Review','Draft','Pending'].includes(String(inv.status || ''))).length} helper="Finish reconciliation in Inventory" /></div>
+          <SimpleTable headers={['Vendor', 'Spend']} rows={vendorSpend.map(v => [v.vendor, moneyText(v.amount, 2)])} empty="No invoice vendor spend found for this month." />
+        </div>
+      )}
+
+      {selectedFinanceAccess?.allowed !== false && subTab === 'expenses' && (
+        <div className="grid lg:grid-cols-3 gap-4">
+          <form onSubmit={saveExpense} className={`${T.card} p-4 space-y-3`}><h3 className="text-xl font-black text-white">Add Expense</h3><label className={T.label}>Date</label><input type="date" value={expenseForm.date} onChange={e=>setExpenseForm({...expenseForm,date:e.target.value})} className={T.input}/><label className={T.label}>Vendor / Payee</label><input value={expenseForm.vendor} onChange={e=>setExpenseForm({...expenseForm,vendor:e.target.value})} className={T.input} placeholder="Utility company, repair tech, supplier..."/><label className={T.label}>Category</label><select value={expenseForm.category} onChange={e=>setExpenseForm({...expenseForm,category:e.target.value})} className={T.input}>{FINANCE_EXPENSE_CATEGORIES.map(c=><option key={c}>{c}</option>)}</select><label className={T.label}>Amount</label><input type="number" min="0" step="0.01" value={expenseForm.amount} onChange={e=>setExpenseForm({...expenseForm,amount:e.target.value})} className={T.input}/><label className={T.label}>Payment Method</label><select value={expenseForm.paymentMethod} onChange={e=>setExpenseForm({...expenseForm,paymentMethod:e.target.value,paid:e.target.value!=='Unpaid'})} className={T.input}>{FINANCE_PAYMENT_METHODS.map(c=><option key={c}>{c}</option>)}</select><label className={T.label}>Due Date</label><input type="date" value={expenseForm.dueDate} onChange={e=>setExpenseForm({...expenseForm,dueDate:e.target.value})} className={T.input}/><label className={T.label}>Notes</label><textarea value={expenseForm.notes} onChange={e=>setExpenseForm({...expenseForm,notes:e.target.value})} className={T.input} rows={3}></textarea><button className={`${T.btn} w-full`}>Save Expense</button></form>
+          <div className="lg:col-span-2 space-y-4"><div className="grid sm:grid-cols-2 gap-3"><Metric label="Operating Expenses" value={moneyText(operatingExpenses, 2)} helper={`${monthExpenses.length} expense records`} tone="text-[#D4A381]"/><Metric label="Unpaid" value={moneyText(monthExpenses.filter(e=>!e.paid && e.paymentMethod==='Unpaid').reduce((s,e)=>s+getFinancialExpenseAmount(e),0),2)} helper="Marked Unpaid" tone="text-orange-300"/></div><SimpleTable headers={['Date','Vendor','Category','Amount','Method','Due','']} rows={monthExpenses.sort((a,b)=>safeFinanceDate(b).localeCompare(safeFinanceDate(a))).map(e => [formatDisplayDate(safeFinanceDate(e)), e.vendor || e.payee || 'Expense', e.category || 'Other', moneyText(e.amount,2), e.paymentMethod || (e.paid ? 'Paid' : 'Unpaid'), e.dueDate || '', <button onClick={() => deleteExpense(e)} className="text-red-300 hover:text-red-200 font-black">Delete</button>])} /></div>
+        </div>
+      )}
+
+      {selectedFinanceAccess?.allowed !== false && subTab === 'pnl' && (
+        <div className="grid lg:grid-cols-2 gap-4">
+          <SimpleTable headers={['Line', 'Amount']} rows={[
+            ['Gross Sales', moneyText(grossSales, 2)], ['Less Discounts / Comps / Refunds', moneyText(grossSales - netSales, 2)], ['Net Sales', moneyText(netSales, 2)], ['Food Cost', moneyText(foodCost, 2)], ['Beverage Cost', moneyText(beverageCost, 2)], ['Gross Profit', moneyText(netSales - foodCost - beverageCost, 2)], ['Labor', moneyText(laborCost, 2)], ['Operating Expenses', moneyText(operatingExpenses, 2)], ['Estimated Net Profit', moneyText(estimatedProfit, 2)]
+          ]} />
+          <div className={`${T.card} p-4`}><h3 className="font-black text-white text-xl mb-3">P&L Notes</h3><p className="text-sm text-slate-300 font-bold leading-relaxed">This is an operational P&L snapshot, not tax accounting. It uses entered Daily Close numbers, time punches, invoices, and expenses saved in 86 Chaos. Use it to manage the restaurant week-to-week, then reconcile against your accountant or POS/accounting system.</p><div className="mt-4 grid sm:grid-cols-2 gap-3"><Metric label="Gross Profit" value={moneyText(netSales - foodCost - beverageCost, 2)} /><Metric label="Net Profit" value={moneyText(estimatedProfit, 2)} tone={estimatedProfit < 0 ? 'text-red-400' : 'text-emerald-400'} /></div></div>
+        </div>
+      )}
+
+      {selectedFinanceAccess?.allowed !== false && subTab === 'targets' && (
+        <form onSubmit={saveTargets} className={`${T.card} p-5 space-y-4 max-w-5xl`}><h3 className="text-2xl font-black text-white">Financial Targets & Warning Thresholds</h3><p className="text-sm text-slate-300 font-bold">Targets drive the dashboard color signals. Set realistic numbers for this restaurant, not generic industry mythology.</p><div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3">{Object.entries({ laborPct:'Target Labor %', foodPct:'Target Food %', beveragePct:'Target Beverage %', primePct:'Target Prime %', weeklySalesGoal:'Weekly Sales Goal', monthlySalesGoal:'Monthly Sales Goal', cashVarianceAlert:'Cash Variance Alert', overtimeAlertHours:'Overtime Alert Hours' }).map(([key,label]) => <label key={key}><span className="block text-xs font-black text-slate-300 mb-1">{label}</span><input type="number" step="0.01" value={targetsDraft[key] ?? ''} onChange={e=>setTargetsDraft({...targetsDraft,[key]:e.target.value})} className={T.input}/></label>)}</div><button className={T.btn}>Save Targets</button></form>
+      )}
+
+      {selectedFinanceAccess?.allowed !== false && subTab === 'reports' && (
+        <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-4">{[
+          ['Owner Financial Report', 'Printable month summary with KPIs, risks, P&L, and close status.', () => downloadFinanceReport('print')],
+          ['CSV Financial Summary', 'Download the same high-level report as a spreadsheet-friendly CSV.', () => downloadFinanceReport('csv')],
+          ['Tip Report', 'Employee tips by roster role for payroll review.', downloadTipsReport],
+          ['Payroll Detail', 'Use Labor & Payroll > Export for punch-level CSV or print-ready PDF.', () => setSubTab('labor')],
+          ['Daily Close Review', 'Open Daily Close to save or print individual closeout worksheets.', () => setSubTab('daily-close')],
+          ['COGS & Vendor Spend', 'Review invoice totals and vendor spend before ordering or budgeting.', () => setSubTab('cogs')]
+        ].map(([title, desc, action]) => <button key={title} onClick={action} className={`${T.card} p-5 text-left hover:border-[#D4A381]/60 transition-colors`}><h3 className="text-lg font-black text-white">{title}</h3><p className="text-sm text-slate-400 font-bold mt-2 leading-relaxed">{desc}</p></button>)}</div>
       )}
     </div>
   );
 };
+
 
 export { TabTeam, TabMessages, TabSettings, TabAuditLog, TabSales, TabFinancials, TabGodMode, ROLE_KEYWORDS, TabLabor, HELP_ARTICLES, TabHelpCenter };

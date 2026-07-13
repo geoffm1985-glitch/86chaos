@@ -47,13 +47,26 @@ function readFirstEnv(names = []) {
 }
 
 function parseJsonCredential(raw, sourceName) {
-  try {
-    const parsed = JSON.parse(raw);
-    if (!parsed || typeof parsed !== 'object') throw new Error('not an object');
-    return parsed;
-  } catch (error) {
-    throw new Error(`${sourceName} is not valid Firebase service-account JSON.`);
+  const attempts = [];
+  const original = String(raw || '').trim();
+  if (original) attempts.push(original);
+  if ((original.startsWith('\"') && original.endsWith('\"')) || (original.startsWith("'") && original.endsWith("'"))) {
+    attempts.push(original.slice(1, -1));
   }
+  try {
+    if (original && /^[A-Za-z0-9+/=\r\n]+$/.test(original) && !original.includes('{')) {
+      attempts.push(Buffer.from(original, 'base64').toString('utf8').trim());
+    }
+  } catch (_) {}
+
+  for (const value of attempts) {
+    try {
+      const parsed = JSON.parse(value);
+      if (!parsed || typeof parsed !== 'object') throw new Error('not an object');
+      return parsed;
+    } catch (_) {}
+  }
+  throw new Error(`${sourceName} is not valid Firebase service-account JSON. Paste the complete service account JSON value, including project_id, client_email, and private_key.`);
 }
 
 function credentialProjectId(credential = {}) {
@@ -90,6 +103,13 @@ function readGenericCredential() {
 function readProjectCredential(projectId) {
   const aliases = PROJECT_ENV_ALIASES[projectId] || { json: [], projectId: [], clientEmail: [], privateKey: [], storageBucket: [] };
 
+  // Backward compatibility: the original 86 Chaos deployment used one generic
+  // FIREBASE_SERVICE_ACCOUNT_KEY. Honor it first when its embedded project_id
+  // matches the requested Firebase project so testing deployments do not need a
+  // separate production/test key split.
+  const generic = readGenericCredential();
+  if (generic && credentialProjectId(generic.credential) === projectId) return generic;
+
   for (const name of aliases.json || []) {
     const raw = process.env[name];
     if (!raw || !String(raw).trim()) continue;
@@ -111,8 +131,6 @@ function readProjectCredential(projectId) {
     };
   }
 
-  const generic = readGenericCredential();
-  if (generic && credentialProjectId(generic.credential) === projectId) return generic;
   return null;
 }
 
@@ -148,6 +166,57 @@ function getTokenProjectId(token) {
   return clean(decodeJwtJson(parts[1]).aud);
 }
 
+function parseCredentialProjectIdFromEnv(name) {
+  const raw = process.env[name];
+  if (!raw || !String(raw).trim()) return '';
+  try {
+    const credential = JSON.parse(String(raw));
+    return credentialProjectId(credential);
+  } catch (_) {
+    return '';
+  }
+}
+
+function getConfiguredDefaultProjectId() {
+  const explicit = readFirstEnv([
+    'FIREBASE_ADMIN_PROJECT_ID',
+    'FIREBASE_SERVER_PROJECT_ID',
+    'FIREBASE_TEST_PROJECT_ID',
+    'TEST_FIREBASE_PROJECT_ID',
+    'REACT_APP_TEST_FIREBASE_PROJECT_ID',
+    'FIREBASE_PROJECT_ID',
+    'REACT_APP_FIREBASE_PROJECT_ID',
+    'FIREBASE_PRODUCTION_PROJECT_ID',
+    'PROD_FIREBASE_PROJECT_ID'
+  ]);
+  if (explicit && TRUSTED_PROJECTS.includes(explicit)) return explicit;
+
+  // Server-to-server jobs like /api/dispatch-reminders have no Firebase ID
+  // token, so resolve the default project from the generic service-account JSON
+  // before any Vercel production/preview assumptions. This preserves the 15.0.52
+  // deployment behavior where FIREBASE_SERVICE_ACCOUNT_KEY alone was enough.
+  for (const name of ['FIREBASE_SERVICE_ACCOUNT_KEY', 'FIREBASE_ADMIN_CREDENTIALS']) {
+    const fromCredential = parseCredentialProjectIdFromEnv(name);
+    if (fromCredential && TRUSTED_PROJECTS.includes(fromCredential)) return fromCredential;
+  }
+
+  const projectSpecificJsonNames = [];
+  for (const projectId of TRUSTED_PROJECTS) {
+    const aliases = PROJECT_ENV_ALIASES[projectId] || {};
+    for (const name of aliases.json || []) projectSpecificJsonNames.push({ name, projectId });
+  }
+
+  for (const { name, projectId } of projectSpecificJsonNames) {
+    const raw = process.env[name];
+    if (!raw || !String(raw).trim()) continue;
+    const fromCredential = parseCredentialProjectIdFromEnv(name);
+    if (fromCredential && TRUSTED_PROJECTS.includes(fromCredential)) return fromCredential;
+    return projectId;
+  }
+
+  return '';
+}
+
 function getRequestedProjectId(req, fallback = '') {
   const token = getBearerToken(req);
   if (token) {
@@ -155,8 +224,17 @@ function getRequestedProjectId(req, fallback = '') {
     catch (_) {}
   }
   if (fallback) return clean(fallback);
+
+  // Cron and other server-to-server calls do not carry a Firebase ID token, so
+  // they cannot be project-resolved from auth. In testing deployments that are
+  // treated by Vercel as a production environment, defaulting to the production
+  // Firebase project can make the route ask for the wrong service account. Pick
+  // the configured Firebase project/key first, then fall back to Vercel's env.
+  const configuredProjectId = getConfiguredDefaultProjectId();
+  if (configuredProjectId) return configuredProjectId;
+
   if (String(process.env.VERCEL_ENV || '').toLowerCase() === 'preview') return 'chaos-test-d1601';
-  return clean(process.env.FIREBASE_PROJECT_ID) || 'cheers-34b8d';
+  return 'cheers-34b8d';
 }
 
 function appNameForProject(projectId) {
@@ -178,8 +256,8 @@ function getAdminAppForProject(projectId, { requireCredentials = true } = {}) {
     const recommended = wanted === 'chaos-test-d1601' ? 'FIREBASE_TEST_SERVICE_ACCOUNT_KEY' : 'FIREBASE_PRODUCTION_SERVICE_ACCOUNT_KEY';
     throw new Error(
       `No server credential is configured for Firebase project ${wanted}. ` +
-      `Add ${recommended} in Vercel for the matching environment, then redeploy. ` +
-      `The existing FIREBASE_SERVICE_ACCOUNT_KEY may remain as a backward-compatible value only when it belongs to ${wanted}.`
+      `FIREBASE_SERVICE_ACCOUNT_KEY is enough when it contains the complete JSON for ${wanted}. ` +
+      `Optional advanced aliases are ${recommended}, FIREBASE_ADMIN_CREDENTIALS, or split FIREBASE_PROJECT_ID/FIREBASE_CLIENT_EMAIL/FIREBASE_PRIVATE_KEY. Redeploy after changing Vercel env vars.`
     );
   }
 

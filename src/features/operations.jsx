@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { Bell, Check, Camera, ChevronLeft, ChevronRight, MessageSquare, Plus, Trash2, Users, Calendar, Clock, X, Loader2, Package, ClipboardList, Menu, Settings, LogOut, Shield, Send, Repeat, Edit, Moon, Sun, TrendingUp, BookOpen, Search, ChefHat, Scale, Coffee, Star, Bug, Wrench, Globe } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { Archive, Bell, Check, Camera, ChevronLeft, ChevronRight, MessageSquare, Plus, Trash2, Users, Calendar, Clock, X, Loader2, Package, ClipboardList, Menu, Settings, LogOut, Shield, Send, Repeat, Edit, Moon, Sun, TrendingUp, BookOpen, Search, ChefHat, Scale, Coffee, Star, Bug, Wrench, Globe } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
 import { getFirestore, collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, where, getDoc, setDoc, getDocs } from 'firebase/firestore';
 import { getAuth, signInWithEmailAndPassword, sendPasswordResetEmail, createUserWithEmailAndPassword, updatePassword } from 'firebase/auth';
@@ -10,7 +10,11 @@ import { T, db, storage, auth, messaging, firebaseConfig, secureFetch, MASTER_AD
 import { buildPrepCreatePayload, buildPrepQuantityUpdate, findPrepMatch, formatPrepAmount, parsePrepCommandItems, summarizePrepResults } from '../core/smartPrep';
 import { buildEightySixAlertDetails, buildMenuImpactText, getMenuImpactForInventoryItem, getZeroStockMenuImpacts, resolveEightySixInventoryMatch } from '../core/menuIntelligence';
 import { prepareScannerUploadFile, isPdfFile } from '../core/fileCompression';
+import { createAiScanIdempotencyKey, resolveClientScanPageCount, normalizeAiUsage, aiPageLimitMessage } from '../core/aiScanUsage';
+import { classifyInvoiceRow, inferInvoiceProductFields, invoiceProductKey, invoiceRowText, isPurchasedInvoiceLine, LEADING_PURCHASE_RE, normalizeInvoiceName as normalizeName, normalizeInvoiceSku as normalizeSku } from '../core/invoiceRowClassification';
 import { CheersLogo, Modal, DrawerMenu, DayDotPrintScreen, MapClickListener, SmartEmptyState, MiniProblemCard, getHomeProfile, calculatePunchHours, getWeekStart, getWeekDates, roleMatches, toLocalTimeInput, makeLocalIso, PunchTable, StatusTile, FriendlyEmpty, GlobalSearchModal, QuickActionDock, KitchenTVMode, ChangeLogModal, UndoBar } from '../components/common';
+import { usePlanAccess } from '../hooks/usePlanAccess';
+import { FEATURE_KEYS } from '../config/plans';
 
 const PREP_TASK_TEMPLATE_PACKS = {
   kitchenOpenClose: {
@@ -68,6 +72,7 @@ const TabPrep = ({ currentDate, appUser, addToast, setLabelsToPrint }) => {
 
   // Local selection state (Fixes checkboxes staying checked across days)
   const [selectedPreps, setSelectedPreps] = useState([]);
+  useEffect(() => { setSelectedPreps([]); }, [prepDate]);
 
   // Prep Form State
   const [text, setText] = useState(''); 
@@ -98,6 +103,7 @@ const TabPrep = ({ currentDate, appUser, addToast, setLabelsToPrint }) => {
 
   // --- PREP LOGIC ---
   const activePrep = prepItems.filter(p => p.date === prepDate || p.isMaster);
+  const selectedActivePrep = activePrep.filter(item => selectedPreps.includes(item.id));
   
   const handleAddPrep = async (e) => { 
     e.preventDefault(); 
@@ -485,17 +491,21 @@ const TabPrep = ({ currentDate, appUser, addToast, setLabelsToPrint }) => {
           </div>
           <div className={`fixed bottom-0 left-0 right-0 p-4 bg-[#161D22] border-t ${T.border} z-50 backdrop-blur-md bg-opacity-95`}>
             <div className="max-w-2xl mx-auto flex gap-3">
-              <button onClick={() => { 
-                  const sel = activePrep.filter(i=>selectedPreps.includes(i.id)); 
-                  if(sel.length===0)return; 
-                  const toP=[]; 
-                  sel.forEach(i=>{for(let j=0;j<(i.qty ?? 1);j++)toP.push({...i, printId:`${i.id}-${j}`});}); 
-                  setLabelsToPrint({items:toP, prepDate}); 
-              }} disabled={selectedPreps.length===0} className={`flex-1 ${T.btn} disabled:opacity-50 flex items-center justify-center gap-2`}><ClipboardList size={18}/> Print Selected</button>
+              <button onClick={() => {
+                  if (selectedActivePrep.length === 0) {
+                    addToast?.('Choose Prep Items', 'Select at least one item from this prep date before printing labels.');
+                    return;
+                  }
+                  const labels = selectedActivePrep.map((item, index) => ({
+                    ...item,
+                    printId: `${item.id || 'prep'}-${prepDate}-${index}`,
+                    labelQuantity: formatPrepAmount(item.qty ?? 1, item.unit || 'item')
+                  }));
+                  setLabelsToPrint({items: labels, prepDate});
+              }} disabled={selectedActivePrep.length===0} className={`flex-1 ${T.btn} disabled:opacity-50 flex items-center justify-center gap-2`}><ClipboardList size={18}/> Print {selectedActivePrep.length || ''} {selectedActivePrep.length === 1 ? 'Label' : 'Labels'}</button>
               
               <button onClick={async () => { 
-                  const sel = activePrep.filter(i=>selectedPreps.includes(i.id)); 
-                  for(const item of sel){ 
+                  for(const item of selectedActivePrep){
                       if(item.isMaster){ 
                           const dts={...(item.completedDates||{})}; 
                           dts[prepDate]=appUser.name; 
@@ -505,7 +515,7 @@ const TabPrep = ({ currentDate, appUser, addToast, setLabelsToPrint }) => {
                       }
                   } 
                   setSelectedPreps([]);
-              }} disabled={selectedPreps.length===0} className={`flex-1 ${T.btn} disabled:opacity-50 flex items-center justify-center gap-2`}><Check size={18}/> Mark Done</button>
+              }} disabled={selectedActivePrep.length===0} className={`flex-1 ${T.btn} disabled:opacity-50 flex items-center justify-center gap-2`}><Check size={18}/> Mark Done</button>
             </div>
           </div>
   
@@ -517,11 +527,15 @@ const TabPrep = ({ currentDate, appUser, addToast, setLabelsToPrint }) => {
   );
 };
 
-const TabInventory = ({ addToast, appUser, initialSubTab, onInitialSubTabConsumed }) => {
-  const inventoryItems = useLiveCollection('inventoryItems', appUser?.restaurantId, { limitCount: 500 });
-  const menuDependencies = useLiveCollection('menuDependencies', appUser?.restaurantId, { limitCount: 500 });
-  const vendors = useLiveCollection('vendors', appUser?.restaurantId, { limitCount: 150 });
-  const wasteLogs = useLiveCollection('wasteLogs', appUser?.restaurantId, { limitCount: 200 });
+const TabInventory = ({ addToast, appUser, clientData = {}, initialSubTab, onInitialSubTabConsumed }) => {
+  const inventoryPlanAccess = usePlanAccess(appUser, clientData);
+  const canUseBasicInventory = inventoryPlanAccess.canUse(FEATURE_KEYS.BASIC_INVENTORY).allowed || inventoryPlanAccess.canUse(FEATURE_KEYS.BURN_LOG).allowed;
+  const canUseSmartInventory = inventoryPlanAccess.canUse(FEATURE_KEYS.COGS_CENTER).allowed || inventoryPlanAccess.canUse(FEATURE_KEYS.INVOICE_TOTALS).allowed || inventoryPlanAccess.canUse(FEATURE_KEYS.INVOICE_SCANNING).allowed;
+  const canUseMenuIntelligence = inventoryPlanAccess.canUse(FEATURE_KEYS.MENU_INTELLIGENCE).allowed || inventoryPlanAccess.canUse(FEATURE_KEYS.DEPENDENCY_TOOLS).allowed || inventoryPlanAccess.canUse(FEATURE_KEYS.SMART_86_ALERTS).allowed;
+  const inventoryItems = useLiveCollection('inventoryItems', appUser?.restaurantId, { enabled: canUseBasicInventory || canUseSmartInventory || canUseMenuIntelligence, limitCount: 500 });
+  const menuDependencies = useLiveCollection('menuDependencies', appUser?.restaurantId, { enabled: canUseMenuIntelligence, limitCount: 500 });
+  const vendors = useLiveCollection('vendors', appUser?.restaurantId, { enabled: canUseBasicInventory || canUseSmartInventory, limitCount: 150 });
+  const wasteLogs = useLiveCollection('wasteLogs', appUser?.restaurantId, { enabled: canUseBasicInventory, limitCount: 200 });
   const [invTab, setInvTab] = useState(initialSubTab || 'count');
   const [focusBelowPar, setFocusBelowPar] = useState(() => sessionStorage.getItem('inventoryFocus') === 'belowPar');
 const [searchTerm, setSearchTerm] = useState(''); 
@@ -529,7 +543,7 @@ const [searchTerm, setSearchTerm] = useState('');
   const weekDays = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
   
   // Fetch invoices securely directly inside this tab
-  const invoices = useLiveCollection('invoices', appUser?.restaurantId, { limitCount: 120 });
+  const invoices = useLiveCollection('invoices', appUser?.restaurantId, { enabled: canUseSmartInventory, limitCount: 120 });
   const [viewInvoice, setViewInvoice] = useState(null);
 
   useEffect(() => {
@@ -579,6 +593,32 @@ const [searchTerm, setSearchTerm] = useState('');
   const [invoiceReviewTab, setInvoiceReviewTab] = useState('matched');
   const [csvImportReview, setCsvImportReview] = useState(null);
   const [isSavingCsvImport, setIsSavingCsvImport] = useState(false);
+  const [invoiceAiUsage, setInvoiceAiUsage] = useState({ invoicePagesUsed: 0, invoicePagesLimit: 40, invoicePagesProcessed: 0, invoiceBypassPagesProcessed: 0 });
+  const [invoiceAiUsageLoading, setInvoiceAiUsageLoading] = useState(false);
+  const [invoiceAiExempt, setInvoiceAiExempt] = useState(false);
+  const invoiceScanBusyRef = useRef(false);
+
+  const loadInvoiceAiUsage = async () => {
+    if (!appUser?.restaurantId || !canUseSmartInventory) return;
+    setInvoiceAiUsageLoading(true);
+    try {
+      const response = await secureFetch(`/api/ai-usage?restaurantId=${encodeURIComponent(appUser.restaurantId)}&eventLimit=5`);
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok || payload?.ok === false) throw new Error(payload?.error || 'Could not load AI page usage.');
+      setInvoiceAiUsage(payload.usage || { invoicePagesUsed: 0, invoicePagesLimit: 40, invoicePagesProcessed: 0, invoiceBypassPagesProcessed: 0 });
+      setInvoiceAiExempt(payload.isExempt === true);
+    } catch (error) {
+      console.warn('Invoice AI usage could not load:', error?.message || error);
+    } finally {
+      setInvoiceAiUsageLoading(false);
+    }
+  };
+
+  useEffect(() => { loadInvoiceAiUsage(); }, [appUser?.restaurantId, canUseSmartInventory]);
+
+  useEffect(() => {
+    if (invTab === 'invoices' && !canUseSmartInventory) setInvTab('count');
+  }, [invTab, canUseSmartInventory]);
 
   // Master Permission Check for Inventory Tabs
   const hasInvPerms = appUser?.isAdmin || appUser?.permissions?.inventory || appUser?.permissions?.team;
@@ -1094,40 +1134,6 @@ const executeOrder = async (method) => {
     reader.readAsDataURL(file);
   });
 
-  const normalizeSku = (value) => String(value || '').toLowerCase().replace(/[^a-z0-9]/g, '');
-  const normalizeName = (value) => String(value || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
-
-  const parseInvoiceAmount = (value) => {
-    if (value === null || value === undefined || value === '') return 0;
-    const cleaned = String(value).replace(/[$,]/g, '').replace(/[()]/g, '-').trim();
-    const num = Number.parseFloat(cleaned);
-    return Number.isFinite(num) ? num : 0;
-  };
-
-  const hasInvoiceValue = (value) => value !== null && value !== undefined && String(value).trim() !== '';
-
-  const isPurchasedInvoiceLine = (item = {}) => {
-    const rowType = String(item.rowType || item.lineType || item.type || '').toLowerCase();
-    const itemName = String(item.itemName || item.description || item.name || item.rawText || '').trim();
-    const rawText = String(item.rawText || '').trim();
-    const combined = `${rowType} ${itemName} ${rawText}`.toLowerCase();
-    if (!itemName || itemName.length < 2) return false;
-    if (/(header|footer|note|memo|terms|customer|bill\s*to|ship\s*to|sold\s*to|remit|address|phone|email|metadata|page|route|invoice\s*(number|date)?|statement|subtotal|grand\s*total|total\s*due|balance|tax|freight|delivery|fuel|service\s*charge|fee|charge|deposit|discount|credit|payment|amount\s*due|change\s*due|signature)/i.test(combined)) return false;
-    if (/(^|\s)(from|to|cc|bcc|subject|sent|date):/i.test(itemName)) return false;
-    if (/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i.test(itemName) || /no\s*reply|noreply|do\s*not\s*reply/i.test(combined)) return false;
-    if (/https?:\/\/|www\.|\.com\b|\.net\b|\.org\b/i.test(itemName) && !hasInvoiceValue(item.quantity)) return false;
-
-    const qty = parseInvoiceAmount(item.quantity ?? item.qty ?? item.shippedQty ?? item.receivedQty ?? item.orderedQty);
-    const unitPrice = parseInvoiceAmount(item.unitPrice ?? item.priceEach ?? item.casePrice);
-    const totalPrice = parseInvoiceAmount(item.totalPrice ?? item.extendedPrice ?? item.lineTotal);
-    const hasQuantity = qty > 0;
-    const hasPrice = unitPrice > 0 || totalPrice > 0;
-    const hasSku = hasInvoiceValue(item.productCode || item.sku || item.itemNumber || item.itemCode || item.code || item.pfgCode);
-    const hasPack = hasInvoiceValue(item.packSize || item.pack || item.size || item.uom || item.unitOfMeasure || item.weight || item.catchWeight);
-
-    return hasQuantity && (hasPrice || hasSku || hasPack);
-  };
-
 
   const updateInvoiceProgress = (percent, label, phase = 'working') => {
     const safePercent = Math.max(0, Math.min(100, Math.round(Number(percent) || 0)));
@@ -1167,8 +1173,10 @@ const executeOrder = async (method) => {
       );
     });
 
+    const downloadUrl = await getDownloadURL(fileRef);
     return {
       storagePath,
+      downloadUrl,
       mimeType: file.type || (ext === 'pdf' ? 'application/pdf' : 'application/octet-stream'),
       fileName: originalFile?.name || file.name,
       uploadedFileName: file.name,
@@ -1180,9 +1188,34 @@ const executeOrder = async (method) => {
   };
 
   const handleScanInvoice = async (e) => {
+    if (!canUseSmartInventory) {
+      e.target.value = '';
+      addToast('Smart Kitchen Required', 'Invoice scanning starts with Smart Kitchen. Ask an owner or System Administrator to review Plan & Billing.');
+      return;
+    }
+    if (invoiceScanBusyRef.current) return;
     const file = e.target.files?.[0];
     if (!file) return;
+    invoiceScanBusyRef.current = true;
 
+    let requestedPages = 0;
+    try {
+      requestedPages = await resolveClientScanPageCount(file);
+    } catch (pageError) {
+      addToast('Cannot Count PDF Pages', pageError.message || 'The page count could not be verified safely.');
+      invoiceScanBusyRef.current = false;
+      e.target.value = '';
+      return;
+    }
+    const currentUsage = normalizeAiUsage(invoiceAiUsage, 'invoice');
+    if (!invoiceAiExempt && requestedPages > currentUsage.remaining) {
+      addToast('Invoice AI Page Limit', aiPageLimitMessage('invoice', invoiceAiUsage, requestedPages));
+      invoiceScanBusyRef.current = false;
+      e.target.value = '';
+      return;
+    }
+
+    const idempotencyKey = createAiScanIdempotencyKey('invoice', appUser?.restaurantId);
     const maxBytes = 20 * 1024 * 1024;
     setIsScanningInvoice(true);
     setScannedInvoice(null);
@@ -1228,7 +1261,7 @@ const executeOrder = async (method) => {
       const response = await secureFetch('/api/scan-invoice', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({ ...payload, idempotencyKey }),
         signal: controller.signal
       });
 
@@ -1243,47 +1276,89 @@ const executeOrder = async (method) => {
 
       const data = await response.json();
       if (!response.ok) {
+        if (data.code === 'AI_PAGE_LIMIT_REACHED') {
+          setInvoiceAiUsage(previous => ({ ...previous, invoicePagesUsed: data.used, invoicePagesLimit: data.limit }));
+          throw new Error(`This restaurant has used all invoice AI pages for ${data.monthKey}. Used ${data.used} of ${data.limit}; ${data.remaining} remain.`);
+        }
+        if (data.code === 'AI_SCAN_ALREADY_SUBMITTED') throw new Error('This invoice scan was already submitted. Wait for the first request to finish before trying again.');
         throw new Error(data.error || data.details || 'Failed to scan invoice.');
+      }
+      if (data.aiUsage) {
+        setInvoiceAiUsage(previous => ({ ...previous, invoicePagesUsed: data.aiUsage.usedAfter, invoicePagesLimit: data.aiUsage.limit, invoicePagesProcessed: data.aiUsage.processedAfter ?? Math.max(Number(previous.invoicePagesProcessed || 0), Number(data.aiUsage.usedAfter || 0)), invoiceBypassPagesProcessed: data.aiUsage.bypassPagesAfter ?? Number(previous.invoiceBypassPagesProcessed || 0) }));
       }
 
       const fullRows = Array.isArray(data.allExtractedRows) ? data.allExtractedRows : (Array.isArray(data.invoiceRows) ? data.invoiceRows : []);
-      const candidateRows = Array.isArray(data.lineItems) && data.lineItems.length ? data.lineItems : fullRows;
-      const normalizedCandidates = candidateRows.map((item, rowIndex) => {
-         const itemName = item.itemName || item.description || item.name || item.rawText || `Invoice Row ${rowIndex + 1}`;
-         const incomingCode = item.productCode || item.sku || item.itemNumber || item.pfgCode || item.code || item.itemCode || '';
-         const skuKey = normalizeSku(incomingCode);
-         const nameKey = normalizeName(itemName);
-         const rowType = String(item.rowType || item.lineType || item.type || 'item').toLowerCase();
-         const draftRow = {
-           ...item,
-           itemName,
-           productCode: incomingCode,
-           quantity: item.quantity ?? item.qty ?? item.shippedQty ?? item.receivedQty ?? '',
-           packSize: item.packSize || item.pack || item.size || item.uom || '',
-           unitPrice: item.unitPrice ?? item.priceEach ?? item.casePrice ?? '',
-           totalPrice: item.totalPrice ?? item.extendedPrice ?? item.lineTotal ?? '',
-           rowType,
-           rawText: item.rawText || ''
-         };
-         const isInventoryLine = isPurchasedInvoiceLine(draftRow);
-         const matchByCode = skuKey ? inventoryItems.find(inv => normalizeSku(inv.pfgCode) === skuKey) : null;
-         const matchByName = isInventoryLine ? inventoryItems.find(inv => normalizeName(inv.name) === nameKey || (nameKey && normalizeName(inv.name).includes(nameKey)) || (normalizeName(inv.name) && nameKey.includes(normalizeName(inv.name)))) : null;
-         const match = matchByCode || matchByName;
-         return { 
-           ...draftRow,
-           isInventoryLine,
-           matchedItemId: isInventoryLine && match ? match.id : '',
-           matchId: isInventoryLine && match ? match.id : '',
-           matchName: isInventoryLine && match ? match.name : '',
-           action: isInventoryLine ? (match ? 'update' : 'create') : 'record'
-         };
+      const modelRows = Array.isArray(data.lineItems) ? data.lineItems : [];
+      const sourceRows = [...modelRows, ...fullRows];
+
+      const prepareReviewRow = (sourceItem, rowIndex) => {
+        const inferred = inferInvoiceProductFields(sourceItem);
+        const classification = classifyInvoiceRow(inferred);
+        const itemName = inferred.itemName || inferred.description || inferred.name || inferred.rawText || `Invoice Row ${rowIndex + 1}`;
+        const incomingCode = inferred.productCode || inferred.sku || inferred.itemNumber || inferred.pfgCode || inferred.code || inferred.itemCode || '';
+        const skuKey = normalizeSku(incomingCode);
+        const nameKey = normalizeName(itemName);
+        const isInventoryLine = ['stock', 'non_food'].includes(classification.kind);
+        const matchByCode = isInventoryLine && skuKey ? inventoryItems.find(inv => normalizeSku(inv.pfgCode) === skuKey) : null;
+        const matchByName = isInventoryLine ? inventoryItems.find(inv => normalizeName(inv.name) === nameKey || (nameKey && normalizeName(inv.name).includes(nameKey)) || (normalizeName(inv.name) && nameKey.includes(normalizeName(inv.name)))) : null;
+        const match = matchByCode || matchByName;
+        return {
+          ...inferred,
+          ...classification.row,
+          itemName,
+          productCode: incomingCode,
+          quantity: inferred.quantity ?? inferred.qty ?? inferred.shippedQty ?? inferred.receivedQty ?? '',
+          packSize: inferred.packSize || inferred.pack || inferred.size || inferred.uom || '',
+          unitPrice: inferred.unitPrice ?? inferred.priceEach ?? inferred.casePrice ?? '',
+          totalPrice: inferred.totalPrice ?? inferred.extendedPrice ?? inferred.lineTotal ?? '',
+          rowType: String(inferred.rowType || inferred.lineType || inferred.type || 'item').toLowerCase(),
+          rawText: inferred.rawText || '',
+          scannerClassification: classification.kind,
+          classificationCategory: classification.category,
+          classificationReason: classification.reason,
+          isInventoryLine,
+          matchedItemId: isInventoryLine && match ? match.id : '',
+          matchId: isInventoryLine && match ? match.id : '',
+          matchName: isInventoryLine && match ? match.name : '',
+          action: isInventoryLine ? (match ? 'update' : 'create') : 'record'
+        };
+      };
+
+      const preparedRows = sourceRows.map(prepareReviewRow);
+      const lineItemMap = new Map();
+      preparedRows.filter(row => ['stock', 'non_food'].includes(row.scannerClassification)).forEach(row => {
+        const key = invoiceProductKey(row);
+        const previous = lineItemMap.get(key) || {};
+        lineItemMap.set(key, { ...previous, ...row, isInventoryLine: true, rowType: row.scannerClassification === 'non_food' ? 'non_food_supply' : 'product' });
       });
-      const normalizedLineItems = normalizedCandidates.filter(isPurchasedInvoiceLine).map(i => ({ ...i, isInventoryLine: true }));
-      const skippedRows = (fullRows.length ? fullRows : normalizedCandidates).filter(row => !isPurchasedInvoiceLine(row));
+      const normalizedLineItems = Array.from(lineItemMap.values());
+      const productKeys = new Set(normalizedLineItems.map(invoiceProductKey));
+      const normalizedFullRows = (fullRows.length ? fullRows : sourceRows).map(prepareReviewRow);
+
+      const reviewMap = new Map();
+      normalizedFullRows
+        .filter(row => row.scannerClassification === 'review')
+        .filter(row => !productKeys.has(invoiceProductKey(row)))
+        .forEach(row => reviewMap.set(invoiceProductKey(row), { ...row, isInventoryLine: false }));
+      const skippedRows = Array.from(reviewMap.values());
+      const ignoredDocumentRowCount = normalizedFullRows.filter(row => row.scannerClassification === 'document').length;
+
       updateInvoiceProgress(100, 'Review ready.', 'done');
       setInvoiceReviewTab('matched');
-      setScannedInvoice({ ...data, lineItems: normalizedLineItems, skippedRows, allExtractedRows: fullRows.length ? fullRows : normalizedCandidates, sourceFile: file.name, scanCompression: payload.compression || null, scanUploadedFileName: payload.uploadedFileName || '' });
-      addToast('Scan Complete', `Found ${normalizedLineItems.length} purchased product rows. ${skippedRows.length ? `${skippedRows.length} non-product rows were kept in the audit only.` : 'No non-product rows were sent to Stock Matcher.'}`);
+      setScannedInvoice({
+        ...data,
+        lineItems: normalizedLineItems,
+        skippedRows,
+        ignoredDocumentRowCount,
+        allExtractedRows: normalizedFullRows,
+        sourceFile: file.name,
+        scanCompression: payload.compression || null,
+        scanUploadedFileName: payload.uploadedFileName || ''
+      });
+      const recoveredCount = normalizedLineItems.filter(row => /recovered from distributor/i.test(row.classificationReason || '')).length;
+      const reviewText = skippedRows.length ? `${skippedRows.length} uncertain purchase row${skippedRows.length === 1 ? '' : 's'} need review.` : 'No uncertain rows need review.';
+      const supplyCount = normalizedLineItems.filter(row => row.scannerClassification === 'non_food').length;
+      addToast('Scan Complete', `Found ${normalizedLineItems.length} purchased inventory rows${supplyCount ? `, including ${supplyCount} non-food suppl${supplyCount === 1 ? 'y' : 'ies'}` : ''}${recoveredCount ? ` and ${recoveredCount} recovered from dense invoice text` : ''}. ${reviewText}`);
     } catch (err) {
       if (aiPulseId) window.clearInterval(aiPulseId);
       if (timeoutId) window.clearTimeout(timeoutId);
@@ -1294,11 +1369,84 @@ const executeOrder = async (method) => {
       updateInvoiceProgress(100, message, 'error');
       addToast(/over|compress|split|large/i.test(message) ? 'Invoice Too Large' : 'Scan Error', message);
     } finally {
+      invoiceScanBusyRef.current = false;
       setIsScanningInvoice(false);
       e.target.value = '';
+      loadInvoiceAiUsage();
     }
   };
+  const promoteInvoiceReviewRow = (row, rowIndex, sourceList = 'skippedRows') => {
+    const inferred = inferInvoiceProductFields(row);
+    const itemName = inferred.itemName || inferred.description || inferred.name || inferred.rawText || `Recovered invoice row ${rowIndex + 1}`;
+    const incomingCode = inferred.productCode || inferred.sku || inferred.itemNumber || inferred.pfgCode || inferred.code || inferred.itemCode || '';
+    const skuKey = normalizeSku(incomingCode);
+    const nameKey = normalizeName(itemName);
+    const matchByCode = skuKey ? inventoryItems.find(inv => normalizeSku(inv.pfgCode) === skuKey) : null;
+    const matchByName = inventoryItems.find(inv => normalizeName(inv.name) === nameKey || (nameKey && normalizeName(inv.name).includes(nameKey)) || (normalizeName(inv.name) && nameKey.includes(normalizeName(inv.name))));
+    const match = matchByCode || matchByName;
+    const promoted = {
+      ...inferred,
+      itemName,
+      productCode: incomingCode,
+      rowType: 'product',
+      scannerClassification: 'stock',
+      classificationCategory: 'Food or inventory product',
+      isInventoryLine: true,
+      matchedItemId: match?.id || '',
+      matchId: match?.id || '',
+      matchName: match?.name || '',
+      action: match ? 'update' : 'create',
+      classificationReason: 'Manually promoted from Needs Review'
+    };
+
+    setScannedInvoice(previous => {
+      if (!previous) return previous;
+      const nextItems = [...(previous.lineItems || [])];
+      const key = invoiceProductKey(promoted);
+      if (!nextItems.some(item => invoiceProductKey(item) === key)) nextItems.push(promoted);
+      return {
+        ...previous,
+        lineItems: nextItems,
+        [sourceList]: (previous[sourceList] || []).filter((_, index) => index !== rowIndex)
+      };
+    });
+    setInvoiceReviewTab('matched');
+    addToast('Moved to Stock Matcher', `${itemName} is ready to match or add as a new inventory item.`);
+  };
+
+  const excludeInvoiceReviewRow = (row, rowIndex) => {
+    const dismissed = {
+      ...row,
+      scannerClassification: 'document',
+      classificationCategory: 'Manually excluded document row',
+      classificationReason: 'Reviewer confirmed this row is not a purchased inventory item',
+      isInventoryLine: false
+    };
+    setScannedInvoice(previous => {
+      if (!previous) return previous;
+      return {
+        ...previous,
+        skippedRows: (previous.skippedRows || []).filter((_, index) => index !== rowIndex),
+        excludedReviewRows: [...(previous.excludedReviewRows || []), dismissed]
+      };
+    });
+    addToast('Row Excluded', 'The row was confirmed as document noise or a non-inventory charge.');
+  };
+
   const handleApproveInvoice = async () => {
+     const unresolvedReviewRows = scannedInvoice?.skippedRows || [];
+     if (unresolvedReviewRows.length) {
+       setInvoiceReviewTab('skipped');
+       addToast('Review Needed', `${unresolvedReviewRows.length} uncertain invoice row${unresolvedReviewRows.length === 1 ? '' : 's'} must be moved to Stock Matcher or deliberately excluded as a document/charge before approval. Nothing was saved or changed.`);
+       return;
+     }
+     const unresolvedProducts = (scannedInvoice?.lineItems || []).filter(item => item.isInventoryLine && !item.matchedItemId);
+     if (unresolvedProducts.length) {
+       setInvoiceReviewTab('matched');
+       addToast('Review Needed', `${unresolvedProducts.length} purchased product row${unresolvedProducts.length === 1 ? '' : 's'} still need an inventory match or “Add as New Item” selection. Nothing was saved or changed.`);
+       return;
+     }
+
      try {
        // 1. Log the invoice record for history
        await safeInventoryWrite({ quiet: true, action: "add", collectionName: "invoices", label: "Invoice scan", data: {
@@ -1335,15 +1483,17 @@ for (const item of scannedInvoice.lineItems) {
 if (item.matchedItemId === 'CREATE_NEW') {
              // Smart Auto-Categorizer
              const n = (item.itemName || '').toLowerCase();
-             let autoCat = 'Other';
-             if (n.includes('beef') || n.includes('chicken') || n.includes('pork') || n.includes('steak') || n.includes('bacon') || n.includes('sausage') || n.includes('turkey')) autoCat = 'Meat';
-             else if (n.includes('lettuce') || n.includes('tomato') || n.includes('onion') || n.includes('potato') || n.includes('apple') || n.includes('lemon') || n.includes('lime') || n.includes('pepper') || n.includes('produce')) autoCat = 'Produce';
-             else if (n.includes('milk') || n.includes('cheese') || n.includes('cream') || n.includes('butter') || n.includes('yogurt') || n.includes('dairy')) autoCat = 'Dairy';
-             else if (n.includes('bread') || n.includes('bun') || n.includes('roll') || n.includes('tortilla') || n.includes('dough')) autoCat = 'Bakery';
-             else if (n.includes('fish') || n.includes('shrimp') || n.includes('salmon') || n.includes('crab') || n.includes('seafood')) autoCat = 'Seafood';
-             else if (n.includes('fry') || n.includes('fries') || n.includes('frozen') || n.includes('ice')) autoCat = 'Frozen';
-             else if (n.includes('box') || n.includes('cup') || n.includes('napkin') || n.includes('fork') || n.includes('towel') || n.includes('lid') || n.includes('straw') || n.includes('container') || n.includes('bag') || n.includes('foil') || n.includes('wrap')) autoCat = 'Supplies';
-             else if (n.includes('beer') || n.includes('wine') || n.includes('soda') || n.includes('juice') || n.includes('syrup') || n.includes('water') || n.includes('tea') || n.includes('coffee')) autoCat = 'Beverage';
+             let autoCat = item.scannerClassification === 'non_food' ? 'Supplies' : 'Other';
+             if (item.scannerClassification !== 'non_food') {
+               if (n.includes('beef') || n.includes('chicken') || n.includes('pork') || n.includes('steak') || n.includes('bacon') || n.includes('sausage') || n.includes('turkey')) autoCat = 'Meat';
+               else if (n.includes('lettuce') || n.includes('tomato') || n.includes('onion') || n.includes('potato') || n.includes('apple') || n.includes('lemon') || n.includes('lime') || n.includes('pepper') || n.includes('produce')) autoCat = 'Produce';
+               else if (n.includes('milk') || n.includes('cheese') || n.includes('cream') || n.includes('butter') || n.includes('yogurt') || n.includes('dairy')) autoCat = 'Dairy';
+               else if (n.includes('bread') || n.includes('bun') || n.includes('roll') || n.includes('tortilla') || n.includes('dough')) autoCat = 'Bakery';
+               else if (n.includes('fish') || n.includes('shrimp') || n.includes('salmon') || n.includes('crab') || n.includes('seafood')) autoCat = 'Seafood';
+               else if (n.includes('fry') || n.includes('fries') || n.includes('frozen') || n.includes('ice')) autoCat = 'Frozen';
+               else if (n.includes('box') || n.includes('cup') || n.includes('napkin') || n.includes('fork') || n.includes('towel') || n.includes('lid') || n.includes('straw') || n.includes('container') || n.includes('bag') || n.includes('foil') || n.includes('wrap')) autoCat = 'Supplies';
+               else if (n.includes('beer') || n.includes('wine') || n.includes('soda') || n.includes('juice') || n.includes('syrup') || n.includes('water') || n.includes('tea') || n.includes('coffee')) autoCat = 'Beverage';
+             }
 
              const packProfile = parsePackProfile(item.packSize || item.uom || item.size || '');
              await safeInventoryWrite({ quiet: true, action: "add", collectionName: "inventoryItems", label: "Invoice inventory item", data: {
@@ -1362,6 +1512,8 @@ if (item.matchedItemId === 'CREATE_NEW') {
                 pendingQty: 0,
                 isStarred: false,
                 lastOrderedDate: null,
+                inventorySourceType: item.scannerClassification === 'non_food' ? 'non_food_supply' : 'food_product',
+                invoiceSupplyCategory: item.scannerClassification === 'non_food' ? (item.classificationCategory || 'Supplies') : '',
                 lastInvoiceRaw: item,
                 restaurantId: appUser.restaurantId
              } });
@@ -1392,7 +1544,8 @@ if (item.matchedItemId === 'CREATE_NEW') {
        addToast('Invoice Processed', `Saved ${updateCount + newCount} item${updateCount + newCount === 1 ? '' : 's'}: updated ${updateCount}, added ${newCount}.`);
        setScannedInvoice(null);
      } catch(e) {
-       addToast('Error', 'Failed to process invoice updates.');
+       console.error('Invoice approval failed:', e);
+       addToast('Invoice Not Processed', e?.message || 'The invoice could not be saved. No further stock updates will be attempted until the error is corrected.');
      }
   };
 
@@ -1423,8 +1576,11 @@ const groupedItems = inventoryItems
     openPrintableReport({ title: `Invoice ${invoice.invoiceNumber || ''}`.trim() || 'Invoice Detail', subtitle: `${invoice.vendorName || 'Unknown vendor'} • ${invoice.invoiceDate || ''}`, rows, filename: `86chaos-invoice-${invoice.invoiceNumber || getToday()}` });
   };
 
+  const invoiceUsageSummary = normalizeAiUsage(invoiceAiUsage, 'invoice');
+  const invoiceUsageWarning = aiPageLimitMessage('invoice', invoiceAiUsage);
+
   return (
-    <div className="max-w-5xl mx-auto space-y-4 pb-24">
+    <div className="inventory-desktop max-w-7xl mx-auto space-y-4 pb-24">
       
       {/* CSV IMPORT CLEANUP REVIEW MODAL */}
       <Modal isOpen={!!csvImportReview} onClose={() => isSavingCsvImport ? null : setCsvImportReview(null)} title="Inventory Import Cleanup Review">
@@ -1471,11 +1627,13 @@ const groupedItems = inventoryItems
 <div className="text-xl font-black text-emerald-400">${Number(scannedInvoice.invoiceTotal || scannedInvoice.grandTotal || 0).toFixed(2)}</div>
             </div>
 
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-              <div className="bg-[#12161A] border border-[#2A353D] rounded-xl p-2"><div className="text-[8px] uppercase tracking-widest text-slate-500 font-black">Product Rows</div><div className="text-lg font-black text-white">{(scannedInvoice.lineItems || []).length}</div></div>
-              <div className="bg-[#12161A] border border-[#2A353D] rounded-xl p-2"><div className="text-[8px] uppercase tracking-widest text-slate-500 font-black">Skipped Non-Stock</div><div className="text-lg font-black text-white">{(scannedInvoice.skippedRows || []).length}</div></div>
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
+              <div className="bg-[#12161A] border border-[#2A353D] rounded-xl p-2"><div className="text-[8px] uppercase tracking-widest text-slate-500 font-black">Purchased Items</div><div className="text-lg font-black text-white">{(scannedInvoice.lineItems || []).length}</div></div>
+              <div className="bg-[#12161A] border border-[#2A353D] rounded-xl p-2"><div className="text-[8px] uppercase tracking-widest text-slate-500 font-black">Food / Beverage</div><div className="text-lg font-black text-emerald-300">{(scannedInvoice.lineItems || []).filter(row => row.scannerClassification === 'stock').length}</div></div>
+              <div className="bg-[#12161A] border border-[#2A353D] rounded-xl p-2"><div className="text-[8px] uppercase tracking-widest text-slate-500 font-black">Needs Review</div><div className={`text-lg font-black ${(scannedInvoice.skippedRows || []).length ? 'text-amber-300' : 'text-emerald-300'}`}>{(scannedInvoice.skippedRows || []).length}</div></div>
+              <div className="bg-[#12161A] border border-[#2A353D] rounded-xl p-2"><div className="text-[8px] uppercase tracking-widest text-slate-500 font-black">Non-food Supplies</div><div className="text-lg font-black text-blue-300">{(scannedInvoice.lineItems || []).filter(row => row.scannerClassification === 'non_food').length}</div></div>
+              <div className="bg-[#12161A] border border-[#2A353D] rounded-xl p-2"><div className="text-[8px] uppercase tracking-widest text-slate-500 font-black">Document Rows</div><div className="text-lg font-black text-slate-300">{Number(scannedInvoice.ignoredDocumentRowCount || 0)}</div></div>
               <div className="bg-[#12161A] border border-[#2A353D] rounded-xl p-2"><div className="text-[8px] uppercase tracking-widest text-slate-500 font-black">Confidence</div><div className="text-lg font-black text-[#D4A381]">{scannedInvoice.confidence || 'Review'}</div></div>
-              <div className="bg-[#12161A] border border-[#2A353D] rounded-xl p-2"><div className="text-[8px] uppercase tracking-widest text-slate-500 font-black">Terms</div><div className="text-xs font-black text-white truncate">{scannedInvoice.paymentTerms || scannedInvoice.terms || '—'}</div></div>
             </div>
 
             {(scannedInvoice.extractionWarnings || scannedInvoice.extractionNotes || scannedInvoice.rawTranscription) && (
@@ -1488,13 +1646,13 @@ const groupedItems = inventoryItems
             )}
             
             {(scannedInvoice.skippedRows || []).length > 0 && (
-              <div className="bg-blue-900/10 border border-blue-500/30 rounded-xl p-2 text-[10px] text-blue-200 font-bold leading-snug">
-                Non-product rows like email headers, addresses, taxes, totals, fees, and notes were kept in the Full Extraction Audit only. They will not be added to inventory.
+              <div className="bg-amber-900/10 border border-amber-500/30 rounded-xl p-2 text-[10px] text-amber-100 font-bold leading-snug">
+                Only uncertain purchase-looking rows appear in Needs Review. Move a real purchased item to Stock Matcher or choose Exclude Row before approval.
               </div>
             )}
             
             <div className="flex flex-wrap gap-2 bg-[#12161A] border border-[#2A353D] rounded-xl p-1">
-              {[['matched','Stock Matcher'], ['raw','Raw Rows'], ['skipped','Skipped Rows']].map(([id,label]) => <button key={id} type="button" onClick={() => setInvoiceReviewTab(id)} className={`flex-1 px-3 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest ${invoiceReviewTab === id ? `${T.grad} text-slate-900` : 'text-slate-400 hover:text-white'}`}>{label}</button>)}
+              {[['matched','Stock Matcher'], ['skipped',`Needs Review (${(scannedInvoice.skippedRows || []).length})`], ['raw','Raw Audit']].map(([id,label]) => <button key={id} type="button" onClick={() => setInvoiceReviewTab(id)} className={`flex-1 min-w-[120px] px-3 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest ${invoiceReviewTab === id ? `${T.grad} text-slate-900` : 'text-slate-400 hover:text-white'}`}>{label}</button>)}
             </div>
 
             {invoiceReviewTab === 'matched' && <div className="flex justify-between items-center mt-2 mb-1">
@@ -1517,6 +1675,7 @@ const groupedItems = inventoryItems
 <div className="font-bold text-white text-sm flex items-center gap-1.5">
   {item.productCode && <span className="text-[#D4A381] font-black">[{item.productCode}]</span>}
   {item.itemName}
+  {item.scannerClassification === 'non_food' && <span className="text-[8px] bg-blue-900/30 text-blue-200 border border-blue-500/30 px-1.5 py-0.5 rounded uppercase">Supply</span>}
   {!item.isInventoryLine && <span className="text-[8px] bg-slate-800 text-slate-400 border border-[#2A353D] px-1.5 py-0.5 rounded uppercase">{item.rowType || 'non-stock'}</span>}
 </div>                      <div className="text-[9px] text-[#D4A381] font-black uppercase tracking-widest mt-0.5">
                         Qty: {item.quantity || item.shippedQty || '—'} {item.packSize || item.uom || ''} • Unit: ${Number(item.unitPrice || item.casePrice || 0).toFixed(2)} • Total: ${Number(item.totalPrice || item.extendedPrice || item.lineTotal || 0).toFixed(2)}
@@ -1538,7 +1697,7 @@ const groupedItems = inventoryItems
                     }}
                     className={`${T.input} py-2 text-xs font-bold outline-none cursor-pointer ${item.matchedItemId === 'CREATE_NEW' ? 'border-blue-500/50 text-blue-400 bg-blue-900/10' : item.matchedItemId ? 'border-emerald-500/50 text-emerald-400 bg-emerald-900/10' : 'border-orange-500/50 text-orange-400 bg-orange-900/10'}`}
                   >
-                    <option value="">{item.isInventoryLine ? '-- Do Not Import / Skip --' : '-- Non-inventory row saved to invoice only --'}</option>
+                    <option value="">{item.isInventoryLine ? '-- Select an inventory match or Add as New --' : '-- Non-inventory row saved to invoice only --'}</option>
                     {item.isInventoryLine && <option value="CREATE_NEW">➕ Add as New Item</option>}
                     {inventoryItems.map(inv => (
                       <option key={inv.id} value={inv.id}>{inv.name}</option>
@@ -1550,9 +1709,27 @@ const groupedItems = inventoryItems
 
             {invoiceReviewTab === 'raw' && <div className="max-h-[50vh] overflow-y-auto custom-scrollbar border border-[#2A353D] rounded-xl divide-y divide-[#2A353D]">{(scannedInvoice.allExtractedRows || []).length ? scannedInvoice.allExtractedRows.map((row, idx) => <div key={idx} className="p-3 bg-[#1A2126]"><div className="text-[9px] text-[#D4A381] font-black uppercase tracking-widest">Raw row {idx + 1}</div><pre className="mt-1 whitespace-pre-wrap text-[10px] text-slate-300">{typeof row === 'string' ? row : JSON.stringify(row, null, 2)}</pre></div>) : <div className="p-6 text-center text-slate-500 font-bold">No raw rows returned by scanner.</div>}</div>}
 
-            {invoiceReviewTab === 'skipped' && <div className="max-h-[50vh] overflow-y-auto custom-scrollbar border border-[#2A353D] rounded-xl divide-y divide-[#2A353D]">{(scannedInvoice.skippedRows || []).length ? scannedInvoice.skippedRows.map((row, idx) => <div key={idx} className="p-3 bg-[#1A2126]"><div className="text-sm text-white font-black">{row.itemName || row.description || row.rawText || `Skipped row ${idx + 1}`}</div><div className="text-[10px] text-slate-400 font-bold mt-1">{row.rowType || row.reason || 'Kept on invoice audit only'}</div></div>) : <div className="p-6 text-center text-slate-500 font-bold">No skipped rows.</div>}</div>}
+            {invoiceReviewTab === 'skipped' && <div className="max-h-[50vh] overflow-y-auto custom-scrollbar border border-[#2A353D] rounded-xl divide-y divide-[#2A353D]">
+              {(scannedInvoice.skippedRows || []).length ? scannedInvoice.skippedRows.map((row, idx) => (
+                <div key={idx} className="p-3 bg-[#1A2126] flex flex-col sm:flex-row sm:items-center gap-3">
+                  <div className="min-w-0 flex-1">
+                    <div className="text-sm text-white font-black">{row.itemName || row.description || row.rawText || `Review row ${idx + 1}`}</div>
+                    <div className="text-[10px] text-amber-200 font-bold mt-1">{row.classificationReason || 'Possible purchase row with incomplete evidence'}</div>
+                    {row.rawText && row.rawText !== row.itemName && <div className="text-[9px] text-slate-500 font-bold mt-1 break-words">Raw: {row.rawText}</div>}
+                  </div>
+                  <div className="flex flex-wrap gap-2 shrink-0">
+                    <button type="button" onClick={() => excludeInvoiceReviewRow(row, idx)} className="rounded-lg border border-slate-600 bg-slate-900/40 px-3 py-2 text-[9px] font-black uppercase tracking-widest text-slate-300 hover:text-white">
+                      Exclude Row
+                    </button>
+                    <button type="button" onClick={() => promoteInvoiceReviewRow(row, idx, 'skippedRows')} className="rounded-lg border border-[#D4A381]/50 bg-[#D4A381]/10 px-3 py-2 text-[9px] font-black uppercase tracking-widest text-[#F4C8A8] hover:bg-[#D4A381]/20">
+                      Move to Stock Matcher
+                    </button>
+                  </div>
+                </div>
+              )) : <div className="p-6 text-center text-emerald-300 font-bold">No uncertain rows need review.</div>}
+            </div>}
 
-            <button onClick={handleApproveInvoice} className={`w-full ${T.btn} py-3`}>Approve & Update Stock</button>
+            <button onClick={handleApproveInvoice} disabled={(scannedInvoice.skippedRows || []).length > 0 || (scannedInvoice.lineItems || []).some(item => item.isInventoryLine && !item.matchedItemId)} className={`w-full ${T.btn} py-3 disabled:opacity-50 disabled:cursor-not-allowed`}>Approve & Update Stock</button>
           </div>
         )}
       </Modal>
@@ -1629,14 +1806,14 @@ const groupedItems = inventoryItems
 
       <div className={`flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 border-b ${T.border} pb-3`}>
         <h2 className="text-2xl font-black flex items-center gap-2 text-white"><ClipboardList size={24} className={T.copper}/> Inventory</h2>
-        <div className={`bg-[#12161A] p-1 rounded-xl flex flex-wrap border ${T.border} w-full sm:w-auto`}>
+        <div className={`inventory-subtabs bg-[#12161A] p-1 rounded-xl flex flex-wrap border ${T.border} w-full sm:w-auto`}>
           <button onClick={() => setInvTab('count')} className={`px-4 py-1.5 rounded-lg text-xs font-bold capitalize whitespace-nowrap transition-all flex-1 sm:flex-none ${invTab === 'count' ? `${T.grad} text-slate-900 shadow-sm` : 'text-slate-400 hover:text-white'}`}>count</button>
           {hasInvPerms && <button onClick={() => setInvTab('order')} className={`px-4 py-1.5 rounded-lg text-xs font-bold capitalize whitespace-nowrap transition-all flex-1 sm:flex-none ${invTab === 'order' ? `${T.grad} text-slate-900 shadow-sm` : 'text-slate-400 hover:text-white'}`}>order</button>}
           {hasInvPerms && <button onClick={() => setInvTab('manage')} className={`px-4 py-1.5 rounded-lg text-xs font-bold capitalize whitespace-nowrap transition-all flex-1 sm:flex-none ${invTab === 'manage' ? `${T.grad} text-slate-900 shadow-sm` : 'text-slate-400 hover:text-white'}`}>manage</button>}
           {hasInvPerms && <button onClick={() => setInvTab('vendors')} className={`px-4 py-1.5 rounded-lg text-xs font-bold capitalize whitespace-nowrap transition-all flex-1 sm:flex-none ${invTab === 'vendors' ? `${T.grad} text-slate-900 shadow-sm` : 'text-slate-400 hover:text-white'}`}>vendors</button>}
-          {hasInvPerms && <button onClick={() => setInvTab('invoices')} className={`px-4 py-1.5 rounded-lg text-xs font-bold capitalize whitespace-nowrap transition-all flex-1 sm:flex-none ${invTab === 'invoices' ? `${T.grad} text-slate-900 shadow-sm` : 'text-slate-400 hover:text-white'}`}>🧾 Invoices</button>}
+          {hasInvPerms && canUseSmartInventory && <button onClick={() => setInvTab('invoices')} className={`px-4 py-1.5 rounded-lg text-xs font-bold capitalize whitespace-nowrap transition-all flex-1 sm:flex-none ${invTab === 'invoices' ? `${T.grad} text-slate-900 shadow-sm` : 'text-slate-400 hover:text-white'}`}>🧾 Invoices</button>}
 <button onClick={() => setInvTab('waste')} className={`px-4 py-1.5 rounded-lg text-xs font-bold capitalize whitespace-nowrap transition-all flex items-center justify-center gap-1 flex-1 sm:flex-none ${invTab === 'waste' ? `bg-red-500/20 text-red-500 shadow-sm border border-red-500/50` : 'text-slate-400 hover:text-red-400'}`}>
-            🚨 Burn Log <span className="ml-1 bg-red-900/30 text-red-400 border border-red-500/50 text-[8px] px-1.5 py-0.5 rounded-md uppercase tracking-widest font-black shadow-[0_0_8px_rgba(239,68,68,0.2)]">Beta</span>
+            🚨 Burn Log <span className="inventory-preview-badge ml-1 bg-red-900/30 text-red-300 border border-red-500/50 text-[8px] px-1.5 py-0.5 rounded-md uppercase tracking-widest font-black shadow-[0_0_8px_rgba(239,68,68,0.2)]">Preview</span>
           </button>        </div>
       </div>
 
@@ -1820,16 +1997,27 @@ const groupedItems = inventoryItems
           <div className="flex flex-col gap-3 mb-6">
             
             {/* INVOICE SCANNER: Split Camera & Upload */}
-            <div id="invoice-scanner-panel" className={`flex bg-[#12161A] border border-[#2A353D] rounded-xl overflow-hidden shadow-sm h-16 ${isScanningInvoice ? 'opacity-60 pointer-events-none' : ''}`}>
+            {canUseSmartInventory ? (
+              <>
+            <div className="rounded-xl border border-[#2A353D] bg-[#12161A] p-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="text-[11px] font-black text-white">Invoice AI pages: {invoiceUsageSummary.used} / {invoiceUsageSummary.limit} quota · {invoiceUsageSummary.processed} actually processed this month</div>
+                <button type="button" onClick={loadInvoiceAiUsage} disabled={invoiceAiUsageLoading} className="text-[9px] font-black uppercase tracking-widest text-[#D4A381] disabled:opacity-50">{invoiceAiUsageLoading ? 'Refreshing…' : 'Refresh'}</button>
+              </div>
+              {invoiceAiExempt && <div className="mt-1 text-[10px] font-bold text-blue-300">Testing bypass active. Processed pages are logged separately and do not consume the customer quota.</div>}
+              {!invoiceAiExempt && invoiceUsageWarning && <div className={`mt-1 text-[10px] font-bold ${invoiceUsageSummary.reached ? 'text-red-300' : 'text-amber-300'}`}>{invoiceUsageWarning}</div>}
+            </div>
+            <div id="invoice-scanner-panel" className={`flex bg-[#12161A] border border-[#2A353D] rounded-xl overflow-hidden shadow-sm h-16 ${(isScanningInvoice || (!invoiceAiExempt && invoiceUsageSummary.reached)) ? 'opacity-60 pointer-events-none' : ''}`}>
                <label className="w-20 flex items-center justify-center cursor-pointer hover:bg-[#1A2126] transition-colors border-r border-[#2A353D] text-[#D4A381]" title="Take Photo">
                   {isScanningInvoice ? <span className="text-[11px] font-black tabular-nums">{invoiceScanProgress.percent}%</span> : <Camera size={24} />}
-                  <input type="file" accept="image/*,application/pdf" capture="environment" onChange={handleScanInvoice} className="hidden" disabled={isScanningInvoice} />
+                  <input type="file" accept="image/*,application/pdf" capture="environment" onChange={handleScanInvoice} className="hidden" disabled={isScanningInvoice || (!invoiceAiExempt && invoiceUsageSummary.reached)} />
                </label>
                <label className="flex-1 flex items-center justify-center cursor-pointer hover:bg-[#1A2126] transition-colors text-[#D4A381] font-black uppercase tracking-widest text-[11px] sm:text-xs" title="Upload Photo or PDF">
                   <span>{isScanningInvoice ? 'Scanning Invoice...' : '📄 Scan Invoice (PDF/Photo)'}</span>
-                  <input type="file" accept="image/*,application/pdf" onChange={handleScanInvoice} className="hidden" disabled={isScanningInvoice} />
+                  <input type="file" accept="image/*,application/pdf" onChange={handleScanInvoice} className="hidden" disabled={isScanningInvoice || (!invoiceAiExempt && invoiceUsageSummary.reached)} />
                </label>
             </div>
+            {!invoiceAiExempt && invoiceUsageSummary.reached && <div className="rounded-xl border border-red-900/50 bg-red-950/20 p-3 text-[11px] font-bold text-red-200">This restaurant has used all invoice AI pages for this month.</div>}
             {(isScanningInvoice || invoiceScanProgress.phase === 'error') && (
               <div className={`bg-[#12161A] border rounded-xl p-3 shadow-sm ${invoiceScanProgress.phase === 'error' ? 'border-red-500/40' : 'border-[#2A353D]'}`}>
                 <div className="flex items-center justify-between gap-3 mb-2">
@@ -1845,6 +2033,15 @@ const groupedItems = inventoryItems
                   {invoiceScanProgress.label}
                 </div>
                 {isScanningInvoice && <div className="mt-1 text-[10px] text-slate-500 font-bold">Keep this page open. Upload percentage is exact; large-document AI scanning shows the current stage and elapsed time.</div>}
+              </div>
+            )}
+
+              </>
+            ) : (
+              <div className="rounded-xl border border-amber-900/40 bg-amber-950/20 p-4">
+                <div className="text-[10px] font-black uppercase tracking-widest text-amber-300">Smart Kitchen Required</div>
+                <div className="text-sm font-black text-white mt-1">Invoice AI scanning is locked on this plan.</div>
+                <p className="text-xs font-bold text-amber-100/80 mt-1">Operations can still use basic inventory, ordering, vendors, and burn log tools. Smart Kitchen unlocks invoice scanning, invoice totals, COGS, vendor spend, and menu dependency tools.</p>
               </div>
             )}
 
@@ -1896,7 +2093,7 @@ const groupedItems = inventoryItems
         </div>
       )}
 
-      {hasInvPerms && invTab === 'invoices' && (
+      {hasInvPerms && invTab === 'invoices' && canUseSmartInventory && (
         <div className="space-y-4 animate-[slideIn_0.2s_ease-out]">
           <div className={`${T.card} overflow-hidden`}>
             <div className={`bg-[#12161A] p-4 border-b ${T.border} flex justify-between items-center`}>
@@ -1926,6 +2123,14 @@ const groupedItems = inventoryItems
         </div>
       )}
 
+      {hasInvPerms && invTab === 'invoices' && !canUseSmartInventory && (
+        <div className={`${T.card} p-5 text-center space-y-2 border-amber-900/40`}>
+          <div className="text-[10px] font-black uppercase tracking-widest text-amber-300">Smart Kitchen Required</div>
+          <h3 className="text-xl font-black text-white">Invoice scanning and invoice history are locked on this plan.</h3>
+          <p className="text-sm font-bold text-slate-400">Operations keeps basic inventory and burn log tools. Invoice scanning, invoice totals, COGS, and vendor spend unlock with Smart Kitchen.</p>
+        </div>
+      )}
+
       {invTab === 'waste' && (
         <div className="space-y-4 animate-[slideIn_0.2s_ease-out]">
           
@@ -1945,7 +2150,7 @@ const groupedItems = inventoryItems
           <form onSubmit={handleLogWaste} className={`${T.card} p-4 space-y-3 bg-[#1A2126]`}>
 <h3 className="text-sm font-black uppercase text-red-400 tracking-widest flex items-center gap-2">
               🚨 The Burn Log
-              <span className="bg-red-900/30 text-red-400 border border-red-500/50 text-[8px] px-1.5 py-0.5 rounded-md uppercase tracking-widest font-black shadow-[0_0_8px_rgba(239,68,68,0.2)]">Beta</span>
+              <span className="inventory-preview-badge bg-red-900/30 text-red-300 border border-red-500/50 text-[8px] px-1.5 py-0.5 rounded-md uppercase tracking-widest font-black shadow-[0_0_8px_rgba(239,68,68,0.2)]">Preview</span>
             </h3>            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 items-start">
               
               {/* THE FILTERABLE DROPDOWN */}
@@ -2097,11 +2302,16 @@ const TabRecipes = ({ appUser, addToast, voiceRecipeTarget = null }) => {
         const base64Data = base64Compressed.split(',')[1];
 
         try {
+          const idempotencyKey = createAiScanIdempotencyKey('recipe', appUser?.restaurantId);
           // THIS IS THE CRITICAL BLOCK. It MUST explicitly say POST.
           const response = await secureFetch('/api/scan', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ imageBase64: base64Data })
+            body: JSON.stringify({
+              imageBase64: base64Data,
+              restaurantId: appUser?.restaurantId,
+              idempotencyKey
+            })
           });
 
           // Prevent the "Unexpected token A" HTML crash
@@ -2265,7 +2475,7 @@ const TabRecipes = ({ appUser, addToast, voiceRecipeTarget = null }) => {
   const canModifyRecipe = activeRecipe && (canManageRecipes || appUser?.id === activeRecipe.authorId);
 
   return (
-    <div className="max-w-6xl mx-auto space-y-4 pb-12 animate-[slideIn_0.2s_ease-out] recipe-compact">
+    <div className="recipes-desktop max-w-7xl mx-auto space-y-4 pb-12 animate-[slideIn_0.2s_ease-out] recipe-compact">
       
       {/* THE NEW SLEEK CONTROL PANEL */}
       <div className="bg-[#1A2126] border border-[#2A353D] rounded-2xl shadow-lg overflow-hidden mb-4">
@@ -2447,6 +2657,8 @@ const TabMaintenance = ({ appUser, addToast }) => {
   const [cost, setCost] = useState('');
   const [notes, setNotes] = useState('');
   const [editingLogId, setEditingLogId] = useState(null);
+  const [issueSearch, setIssueSearch] = useState('');
+  const [issueStatusFilter, setIssueStatusFilter] = useState('Open');
 
   // PM Form State
   const [pmTitle, setPmTitle] = useState('');
@@ -2573,161 +2785,203 @@ const TabMaintenance = ({ appUser, addToast }) => {
     return (pm.frequencyDays - Math.floor((todayMs - lastMs) / 86400000)) <= 0;
   }).length;
 
+  const openLogs = logs.filter(log => (log.status || 'Reported') !== 'Resolved');
+  const criticalLogs = openLogs.filter(log => ['Critical', 'High'].includes(log.urgency));
+  const inProgressLogs = openLogs.filter(log => ['In Progress', 'Pending Parts'].includes(log.status));
+  const totalRepairCost = logs.reduce((sum, log) => sum + (Number(log.cost) || 0), 0);
+  const sortedLogs = logs.slice().sort((a,b) => {
+    if ((a.status || 'Reported') !== 'Resolved' && (b.status || 'Reported') === 'Resolved') return -1;
+    if ((a.status || 'Reported') === 'Resolved' && (b.status || 'Reported') !== 'Resolved') return 1;
+    const urgencyRank = { Critical: 0, High: 1, Standard: 2 };
+    const rankDiff = (urgencyRank[a.urgency] ?? 3) - (urgencyRank[b.urgency] ?? 3);
+    if (rankDiff) return rankDiff;
+    return new Date(b.lastUpdated || b.reportedAt || 0) - new Date(a.lastUpdated || a.reportedAt || 0);
+  });
+  const normalizedIssueSearch = issueSearch.trim().toLowerCase();
+  const visibleLogs = sortedLogs.filter(log => {
+    const matchesStatus = issueStatusFilter === 'All'
+      || (issueStatusFilter === 'Open' && (log.status || 'Reported') !== 'Resolved')
+      || log.status === issueStatusFilter;
+    const haystack = `${log.equipment || ''} ${log.issue || ''} ${log.notes || ''} ${log.reportedBy || ''}`.toLowerCase();
+    return matchesStatus && (!normalizedIssueSearch || haystack.includes(normalizedIssueSearch));
+  });
+  const sortedPmSchedules = pmSchedules.slice().sort((a,b) => {
+    const aLast = new Date((a.lastCompleted || getToday())+'T12:00:00').getTime();
+    const bLast = new Date((b.lastCompleted || getToday())+'T12:00:00').getTime();
+    const aLeft = Number(a.frequencyDays || 30) - Math.floor((todayMs - aLast) / 86400000);
+    const bLeft = Number(b.frequencyDays || 30) - Math.floor((todayMs - bLast) / 86400000);
+    return aLeft - bLeft;
+  });
+
   return (
-    <div className="max-w-5xl mx-auto space-y-4 pb-24 animate-[slideIn_0.2s_ease-out]">
-      
-      {/* REACTIVE MODAL */}
-      <Modal isOpen={isModalOpen} onClose={() => { setIsModalOpen(false); resetForm(); }} title={editingLogId ? "Update Maintenance Log" : "Report Equipment Issue"}>
-        <form onSubmit={handleSave} className="space-y-4 max-h-[70vh] overflow-y-auto custom-scrollbar pr-2">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div><label className={T.label}>Equipment / Area</label><input type="text" value={equipment} onChange={e=>setEquipment(e.target.value)} className={T.input} placeholder="e.g. Walk-in Cooler, Fryer #1" required /></div>
-            <div><label className={T.label}>Urgency Level</label><select value={urgency} onChange={e=>setUrgency(e.target.value)} className={T.input}><option value="Standard">Standard (Monitor)</option><option value="High">High (Needs Repair Soon)</option><option value="Critical">Critical (Down/Hazard)</option></select></div>
+    <div className="maintenance-center-compact desktop-ops-page max-w-7xl mx-auto space-y-3 pb-24 animate-[slideIn_0.2s_ease-out]">
+      <Modal isOpen={isModalOpen} onClose={() => { setIsModalOpen(false); resetForm(); }} title={editingLogId ? "Update Maintenance Record" : "Report Equipment Issue"}>
+        <form onSubmit={handleSave} className="space-y-3 max-h-[70vh] overflow-y-auto custom-scrollbar pr-1">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            <div><label className={T.label}>Equipment / Area</label><input type="text" value={equipment} onChange={e=>setEquipment(e.target.value)} className={T.input} placeholder="Walk-in cooler, fryer 1, prep sink" required /></div>
+            <div><label className={T.label}>Urgency</label><select value={urgency} onChange={e=>setUrgency(e.target.value)} className={T.input}><option value="Standard">Standard</option><option value="High">High</option><option value="Critical">Critical / Down</option></select></div>
           </div>
-          <div><label className={T.label}>Issue Description</label><textarea value={issue} onChange={e=>setIssue(e.target.value)} rows="2" className={T.input} placeholder="What is broken or acting up?" required></textarea></div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-3 border-t border-[#2A353D]">
-            <div><label className={T.label}>Current Status</label><select value={status} onChange={e=>setStatus(e.target.value)} className={T.input}><option value="Reported">Reported (Open)</option><option value="In Progress">In Progress</option><option value="Pending Parts">Pending Parts</option><option value="Resolved">Resolved / Fixed</option></select></div>
-            <div><label className={T.label}>Repair Cost ($)</label><input type="number" step="0.01" min="0" value={cost} onChange={e=>setCost(e.target.value)} className={T.input} placeholder="Invoice or part cost..." /></div>
+          <div><label className={T.label}>Issue</label><textarea value={issue} onChange={e=>setIssue(e.target.value)} rows="3" className={T.input} placeholder="Describe what is happening and when it started." required /></div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            <div><label className={T.label}>Status</label><select value={status} onChange={e=>setStatus(e.target.value)} className={T.input}><option value="Reported">Reported</option><option value="In Progress">In Progress</option><option value="Pending Parts">Pending Parts</option><option value="Resolved">Resolved</option></select></div>
+            <div><label className={T.label}>Repair Cost</label><input type="number" step="0.01" min="0" value={cost} onChange={e=>setCost(e.target.value)} className={T.input} placeholder="0.00" /></div>
           </div>
-          <div><label className={T.label}>Repair Notes / Vendor Used</label><input type="text" value={notes} onChange={e=>setNotes(e.target.value)} className={T.input} placeholder="e.g. Call Steve's HVAC, ordered part on Amazon" /></div>
-          <button type="submit" className={`w-full ${T.btn} py-3 mt-2`}>{editingLogId ? 'Update Log' : 'Submit Report'}</button>
+          <div><label className={T.label}>Vendor / Repair Notes</label><input type="text" value={notes} onChange={e=>setNotes(e.target.value)} className={T.input} placeholder="Vendor, part ordered, temporary workaround" /></div>
+          <button type="submit" className={`w-full ${T.btn}`}>{editingLogId ? 'Save Changes' : 'Create Maintenance Record'}</button>
         </form>
       </Modal>
 
-      {/* PM MODAL */}
-      <Modal isOpen={isPmModalOpen} onClose={() => { setIsPmModalOpen(false); resetPmForm(); }} title={editingPmId ? "Edit PM Schedule" : "New Preventative Maintenance"}>
-        <form onSubmit={handleSavePm} className="space-y-4">
-          <div><label className={T.label}>Task Title</label><input type="text" value={pmTitle} onChange={e=>setPmTitle(e.target.value)} className={T.input} placeholder="e.g. Clean Hood Vents" required /></div>
-          <div><label className={T.label}>Equipment / Area</label><input type="text" value={pmEquipment} onChange={e=>setPmEquipment(e.target.value)} className={T.input} placeholder="e.g. Grill Line" required /></div>
-          <div><label className={T.label}>Frequency (In Days)</label><input type="number" min="1" value={pmDays} onChange={e=>setPmDays(e.target.value)} className={T.input} placeholder="e.g. 90 for quarterly" required /></div>
-          <button type="submit" className={`w-full ${T.btn} py-3 mt-2`}>{editingPmId ? 'Update Schedule' : 'Start Countdown'}</button>
+      <Modal isOpen={isPmModalOpen} onClose={() => { setIsPmModalOpen(false); resetPmForm(); }} title={editingPmId ? "Edit Preventative Schedule" : "New Preventative Schedule"}>
+        <form onSubmit={handleSavePm} className="space-y-3">
+          <div><label className={T.label}>Task</label><input type="text" value={pmTitle} onChange={e=>setPmTitle(e.target.value)} className={T.input} placeholder="Clean condenser coils" required /></div>
+          <div><label className={T.label}>Equipment / Area</label><input type="text" value={pmEquipment} onChange={e=>setPmEquipment(e.target.value)} className={T.input} placeholder="Walk-in cooler" required /></div>
+          <div><label className={T.label}>Repeat Every</label><div className="flex items-center gap-2"><input type="number" min="1" value={pmDays} onChange={e=>setPmDays(e.target.value)} className={T.input} required /><span className="text-xs font-bold text-slate-400">days</span></div></div>
+          <button type="submit" className={`w-full ${T.btn}`}>{editingPmId ? 'Save Schedule' : 'Create Schedule'}</button>
         </form>
       </Modal>
 
-      <div className="flex flex-wrap gap-2 border-b border-[#2A353D] pb-3">
-        <button onClick={() => setSubTab('issues')} className={`px-4 py-2 text-[10px] sm:text-xs font-black rounded-xl uppercase tracking-widest transition-all ${subTab === 'issues' ? `${T.grad} text-slate-900 shadow-md` : 'bg-[#1A2126] text-slate-400 hover:text-white'}`}>Reactive Repairs</button>
-        <button onClick={() => setSubTab('pm')} className={`relative px-4 py-2 text-[10px] sm:text-xs font-black rounded-xl uppercase tracking-widest transition-all ${subTab === 'pm' ? `${T.grad} text-slate-900 shadow-md` : 'bg-[#1A2126] text-slate-400 hover:text-white'}`}>
-          PM Schedules
-          {overdueCount > 0 && <span className="absolute -top-1.5 -right-1.5 bg-red-500 text-white w-5 h-5 rounded-full flex items-center justify-center text-[10px] shadow-lg animate-pulse">{overdueCount}</span>}
-        </button>
+      <div className={`${T.card} p-3`}>
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+          <div>
+            <div className="text-[9px] font-black uppercase tracking-[0.2em] text-[#D4A381]">Equipment Care</div>
+            <h1 className="text-xl font-black text-white leading-tight flex items-center gap-2"><Wrench size={19} className={T.copper}/> Maintenance Center</h1>
+            <p className="text-xs text-slate-400 font-bold mt-1">Repairs, costs, vendors, and preventative work in one compact workspace.</p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <button onClick={() => { resetForm(); setIsModalOpen(true); }} className={`${T.btn} flex items-center gap-1.5`}><Plus size={14}/> Report Issue</button>
+            <button onClick={() => { resetPmForm(); setIsPmModalOpen(true); }} className={`${T.btnAlt} flex items-center gap-1.5`}><Calendar size={14}/> Add PM</button>
+          </div>
+        </div>
       </div>
 
-      {subTab === 'issues' && (
-        <div className="space-y-4 animate-[slideIn_0.2s_ease-out]">
-          <div className="flex justify-between items-center bg-[#1A2126] p-4 rounded-2xl border border-[#2A353D] shadow-sm">
-            <div>
-              <h2 className="text-xl font-black text-white flex items-center gap-2"><Wrench className={T.copper} size={20}/> Logged Repairs</h2>
-              <p className="text-[10px] text-slate-400 uppercase tracking-widest font-bold mt-1">Track broken equipment and repair costs.</p>
-            </div>
-            <button onClick={() => setIsModalOpen(true)} className={`${T.btn} flex items-center gap-2 px-4 py-2 text-xs`}><Plus size={16}/> Report Issue</button>
-          </div>
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
+        {[
+          ['Open Repairs', openLogs.length, openLogs.length ? 'text-orange-300' : 'text-emerald-400'],
+          ['High Priority', criticalLogs.length, criticalLogs.length ? 'text-red-400' : 'text-emerald-400'],
+          ['In Progress', inProgressLogs.length, 'text-blue-300'],
+          ['Recorded Cost', `$${totalRepairCost.toFixed(2)}`, 'text-[#D4A381]']
+        ].map(([label,value,color]) => <div key={label} className="maintenance-summary-card bg-[#1A2126] border border-[#2A353D]"><div className="text-[9px] uppercase tracking-widest font-black text-slate-500">{label}</div><div className={`text-lg font-black mt-1 ${color}`}>{value}</div></div>)}
+      </div>
 
-          <div className={`${T.card} overflow-hidden`}>
-            <div className={T.th}>Active & Resolved Issues</div>
-            <div className={`divide-y ${T.border}`}>
-              {logs.length === 0 && <div className="p-8 text-center text-slate-500 font-bold text-sm">No maintenance issues logged.</div>}
-              {logs.sort((a,b) => {
-                  if (a.status !== 'Resolved' && b.status === 'Resolved') return -1;
-                  if (a.status === 'Resolved' && b.status !== 'Resolved') return 1;
-                  if (a.urgency === 'Critical' && b.urgency !== 'Critical') return -1;
-                  if (b.urgency === 'Critical' && a.urgency !== 'Critical') return 1;
-                  return new Date(b.lastUpdated || 0) - new Date(a.lastUpdated || 0);
-              }).map(log => (
-                <div key={log.id} className={`${T.row} flex flex-col md:flex-row justify-between md:items-center gap-4 ${log.status === 'Resolved' && !log.issue.includes('[PM') ? 'opacity-60 hover:opacity-100 transition-opacity' : ''}`}>
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="font-bold text-white text-base">{log.equipment}</span>
-                      <span className={`text-[8px] font-black uppercase tracking-widest px-2 py-0.5 rounded border ${getStatusColor(log.status)}`}>{log.status}</span>
-                      {log.issue.includes('[PM COMPLETED]') && <span className="text-[8px] font-black uppercase tracking-widest bg-blue-900/20 text-blue-400 px-2 py-0.5 rounded border border-blue-900/50">Auto-Logged PM</span>}
-                      {log.status === 'Resolved' && log.cost > 0 && <span className="text-[8px] font-black uppercase tracking-widest bg-emerald-900/10 text-emerald-500 px-2 py-0.5 rounded border border-emerald-900/30">Cost: ${parseFloat(log.cost).toFixed(2)}</span>}
-                    </div>
-                    <div className={`text-sm font-medium mt-1 ${log.issue.includes('[PM') ? 'text-blue-300' : 'text-slate-300'}`}>{log.issue}</div>
-                    <div className="text-[9px] font-bold uppercase tracking-widest text-slate-500 mt-2 flex gap-3 flex-wrap">
-                      {!log.issue.includes('[PM') && <span className={getUrgencyColor(log.urgency)}>Priority: {log.urgency}</span>}
-                      <span>Reported: {new Date(log.reportedAt).toLocaleDateString()} by {log.reportedBy}</span>
-                      {log.notes && <span className="text-[#D4A381]">Notes: {log.notes}</span>}
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-1 md:self-end">
-                    <button onClick={() => handleEdit(log)} className="p-2 text-slate-400 hover:text-[#D4A381] bg-[#12161A] rounded-lg border border-[#2A353D] transition-colors"><Edit size={14}/></button>
-                    <button onClick={() => { if(window.confirm("Delete this log permanently?")) safeMaintenanceWrite({ action: "delete", collectionName: "maintenanceLogs", docId: log.id, label: "Maintenance log", before: log }); }} className="p-2 text-slate-400 hover:text-red-500 bg-[#12161A] rounded-lg border border-[#2A353D] transition-colors"><Trash2 size={14}/></button>
-                  </div>
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-2 border-b border-[#2A353D] pb-2">
+        <div className="flex gap-1.5 overflow-x-auto custom-scrollbar">
+          <button onClick={() => setSubTab('issues')} className={`flex-shrink-0 px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest ${subTab === 'issues' ? `${T.grad} text-slate-900` : 'bg-[#1A2126] text-slate-400 border border-[#2A353D]'}`}>Repair Board</button>
+          <button onClick={() => setSubTab('pm')} className={`relative flex-shrink-0 px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest ${subTab === 'pm' ? `${T.grad} text-slate-900` : 'bg-[#1A2126] text-slate-400 border border-[#2A353D]'}`}>Preventative Maintenance{overdueCount > 0 && <span className="ml-2 inline-flex min-w-4 h-4 px-1 rounded-full bg-red-500 text-white items-center justify-center text-[9px]">{overdueCount}</span>}</button>
+        </div>
+        {subTab === 'issues' && <div className="flex flex-col sm:flex-row gap-2 w-full md:w-auto">
+          <input value={issueSearch} onChange={e=>setIssueSearch(e.target.value)} className={`${T.input} md:w-56`} placeholder="Search equipment, issue, vendor" />
+          <select value={issueStatusFilter} onChange={e=>setIssueStatusFilter(e.target.value)} className={`${T.input} md:w-36`}><option value="Open">Open</option><option value="All">All</option><option value="Reported">Reported</option><option value="In Progress">In Progress</option><option value="Pending Parts">Pending Parts</option><option value="Resolved">Resolved</option></select>
+        </div>}
+      </div>
+
+      {subTab === 'issues' && <div className="animate-[slideIn_0.2s_ease-out]">
+        <div className="flex items-center justify-between mb-2"><div><h2 className="text-sm font-black text-white">Repair Board</h2><p className="text-[10px] uppercase tracking-widest font-bold text-slate-500">{visibleLogs.length} record{visibleLogs.length === 1 ? '' : 's'} shown</p></div></div>
+        {visibleLogs.length === 0 ? <SmartEmptyState icon={<Wrench size={22}/>} title="No maintenance records match" desc="Change the filter or report a new equipment issue." /> : <div className="grid grid-cols-1 xl:grid-cols-2 gap-2">
+          {visibleLogs.map(log => {
+            const reportedDate = log.reportedAt ? new Date(log.reportedAt).toLocaleDateString() : 'Date unavailable';
+            const isResolved = (log.status || 'Reported') === 'Resolved';
+            const isPmLog = String(log.issue || '').includes('[PM COMPLETED]');
+            return <article key={log.id} className={`maintenance-record-card bg-[#1A2126] border ${log.urgency === 'Critical' && !isResolved ? 'border-red-500/50' : 'border-[#2A353D]'} ${isResolved ? 'opacity-75' : ''}`}>
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-1.5"><h3 className="font-black text-white truncate">{log.equipment || 'Equipment'}</h3><span className={`text-[8px] font-black uppercase tracking-widest px-2 py-0.5 rounded border ${getStatusColor(log.status || 'Reported')}`}>{log.status || 'Reported'}</span>{isPmLog && <span className="text-[8px] font-black uppercase tracking-widest px-2 py-0.5 rounded border border-blue-900/50 bg-blue-900/20 text-blue-300">PM History</span>}</div>
+                  <div className={`text-[9px] font-black uppercase tracking-widest mt-1 ${getUrgencyColor(log.urgency)}`}>{isPmLog ? 'Preventative maintenance' : `${log.urgency || 'Standard'} priority`}</div>
                 </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
+                <div className="flex gap-1 flex-shrink-0"><button onClick={() => handleEdit(log)} className="no-compact w-8 h-8 rounded-lg border border-[#2A353D] bg-[#12161A] text-slate-400 hover:text-[#D4A381] flex items-center justify-center" title="Edit record"><Edit size={14}/></button><button onClick={() => { if(window.confirm('Delete this maintenance record permanently?')) safeMaintenanceWrite({ action: 'delete', collectionName: 'maintenanceLogs', docId: log.id, label: 'Maintenance log', before: log }); }} className="no-compact w-8 h-8 rounded-lg border border-[#2A353D] bg-[#12161A] text-slate-400 hover:text-red-400 flex items-center justify-center" title="Delete record"><Trash2 size={14}/></button></div>
+              </div>
+              <div className="mt-2 rounded-lg bg-[#12161A] border border-[#2A353D] px-3 py-2 text-sm font-bold text-slate-200 leading-snug">{String(log.issue || '').replace('[PM COMPLETED] ', '')}</div>
+              {log.notes && <div className="mt-2 text-xs font-bold text-[#D4A381] line-clamp-2">{log.notes}</div>}
+              <div className="mt-2 pt-2 border-t border-[#2A353D] grid grid-cols-2 sm:grid-cols-3 gap-2 text-[9px] uppercase tracking-widest font-black text-slate-500"><span>Reported {reportedDate}</span><span className="truncate">By {log.reportedBy || log.updatedBy || 'Unknown'}</span><span className="text-right sm:text-left">Cost ${Number(log.cost || 0).toFixed(2)}</span></div>
+            </article>;
+          })}
+        </div>}
+      </div>}
 
-      {subTab === 'pm' && (
-        <div className="space-y-4 animate-[slideIn_0.2s_ease-out]">
-          <div className="flex justify-between items-center bg-[#1A2126] p-4 rounded-2xl border border-[#2A353D] shadow-sm">
-            <div>
-              <h2 className="text-xl font-black text-white flex items-center gap-2"><Calendar className={T.copper} size={20}/> Preventative Schedules</h2>
-              <p className="text-[10px] text-slate-400 uppercase tracking-widest font-bold mt-1">Automated countdowns for recurring tasks.</p>
-            </div>
-            <button onClick={() => setIsPmModalOpen(true)} className={`${T.btn} flex items-center gap-2 px-4 py-2 text-xs`}><Plus size={16}/> New PM</button>
-          </div>
-
-          <div className={`${T.card} overflow-hidden`}>
-            <div className={T.th}>Active PM Countdowns</div>
-            <div className={`divide-y ${T.border}`}>
-              {pmSchedules.length === 0 && <div className="p-8 text-center text-slate-500 font-bold text-sm">No preventative maintenance schedules set up.</div>}
-              {pmSchedules.sort((a,b) => {
-                const aDaysLeft = a.frequencyDays - Math.floor((todayMs - new Date(a.lastCompleted+'T12:00:00').getTime()) / 86400000);
-                const bDaysLeft = b.frequencyDays - Math.floor((todayMs - new Date(b.lastCompleted+'T12:00:00').getTime()) / 86400000);
-                return aDaysLeft - bDaysLeft;
-              }).map(pm => {
-                const lastMs = new Date(pm.lastCompleted+'T12:00:00').getTime();
-                const daysSince = Math.floor((todayMs - lastMs) / 86400000);
-                const daysLeft = pm.frequencyDays - daysSince;
-                
-                let statusColor = 'text-emerald-500 bg-emerald-900/20 border-emerald-900/50';
-                let statusText = `${daysLeft} Days Left`;
-                if (daysLeft <= 0) { statusColor = 'text-red-500 bg-red-900/20 border-red-900/50 animate-pulse'; statusText = `OVERDUE (${Math.abs(daysLeft)}d)`; }
-                else if (daysLeft <= 7) { statusColor = 'text-orange-400 bg-orange-900/20 border-orange-900/50'; statusText = `DUE SOON (${daysLeft}d)`; }
-
-                return (
-                  <div key={pm.id} className={`${T.row} flex flex-col md:flex-row justify-between md:items-center gap-4`}>
-                    <div className="flex-1">
-                      <div className="font-bold text-white text-base">{pm.title}</div>
-                      <div className="text-[10px] font-black uppercase tracking-widest text-[#D4A381] mt-0.5">{pm.equipment} • Every {pm.frequencyDays} Days</div>
-                      <div className="text-[9px] text-slate-500 font-bold mt-1 uppercase tracking-widest">Last Done: {new Date(pm.lastCompleted+'T12:00:00').toLocaleDateString()}</div>
-                    </div>
-                    <div className="flex items-center gap-3 md:self-end">
-                      <div className={`text-[10px] font-black uppercase tracking-widest px-3 py-1.5 rounded-lg border ${statusColor}`}>
-                        {statusText}
-                      </div>
-                      <button onClick={() => handleMarkPmDone(pm)} className="bg-[#12161A] text-emerald-500 border border-[#2A353D] hover:bg-[#1A2126] hover:border-emerald-900/50 font-black text-[10px] uppercase tracking-widest px-3 py-1.5 rounded-lg transition-colors shadow-sm flex items-center gap-1">
-                        <Check size={14}/> Mark Done
-                      </button>
-                      <div className="flex gap-1 border-l border-[#2A353D] pl-2 ml-1">
-                        <button onClick={() => { setPmTitle(pm.title); setPmEquipment(pm.equipment); setPmDays(pm.frequencyDays.toString()); setEditingPmId(pm.id); setIsPmModalOpen(true); }} className="p-1.5 text-slate-400 hover:text-[#D4A381] transition-colors"><Edit size={14}/></button>
-                        <button onClick={() => { if(window.confirm("Delete this PM Schedule?")) safeMaintenanceWrite({ action: "delete", collectionName: "pmSchedules", docId: pm.id, label: "PM schedule", before: pm }); }} className="p-1.5 text-slate-400 hover:text-red-500 transition-colors"><Trash2 size={14}/></button>
-                      </div>
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
-          </div>
-        </div>
-      )}
+      {subTab === 'pm' && <div className="animate-[slideIn_0.2s_ease-out]">
+        <div className="flex items-center justify-between mb-2"><div><h2 className="text-sm font-black text-white">Preventative Maintenance</h2><p className="text-[10px] uppercase tracking-widest font-bold text-slate-500">Recurring equipment care and due dates</p></div></div>
+        {sortedPmSchedules.length === 0 ? <SmartEmptyState icon={<Calendar size={22}/>} title="No preventative schedules" desc="Add recurring equipment care to build the maintenance calendar." /> : <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-2">
+          {sortedPmSchedules.map(pm => {
+            const lastCompleted = pm.lastCompleted || getToday();
+            const lastMs = new Date(lastCompleted+'T12:00:00').getTime();
+            const daysSince = Math.max(0, Math.floor((todayMs - lastMs) / 86400000));
+            const frequency = Math.max(1, Number(pm.frequencyDays || 30));
+            const daysLeft = frequency - daysSince;
+            const progress = Math.max(0, Math.min(100, Math.round((daysSince / frequency) * 100)));
+            const statusText = daysLeft <= 0 ? `${Math.abs(daysLeft)} day${Math.abs(daysLeft) === 1 ? '' : 's'} overdue` : daysLeft <= 7 ? `Due in ${daysLeft} day${daysLeft === 1 ? '' : 's'}` : `${daysLeft} days left`;
+            const statusClass = daysLeft <= 0 ? 'text-red-300 border-red-500/40 bg-red-950/20' : daysLeft <= 7 ? 'text-orange-300 border-orange-500/40 bg-orange-950/20' : 'text-emerald-300 border-emerald-500/30 bg-emerald-950/10';
+            return <article key={pm.id} className="maintenance-record-card bg-[#1A2126] border border-[#2A353D]">
+              <div className="flex items-start justify-between gap-2"><div className="min-w-0"><h3 className="font-black text-white truncate">{pm.title}</h3><div className="text-[9px] uppercase tracking-widest font-black text-[#D4A381] mt-1 truncate">{pm.equipment}</div></div><span className={`text-[9px] font-black uppercase tracking-widest px-2 py-1 rounded-lg border flex-shrink-0 ${statusClass}`}>{statusText}</span></div>
+              <div className="mt-3"><div className="h-1.5 rounded-full bg-[#0B0E11] overflow-hidden"><div className={`${daysLeft <= 0 ? 'bg-red-500' : daysLeft <= 7 ? 'bg-orange-400' : 'bg-emerald-500'} h-full rounded-full`} style={{ width: `${Math.max(4, progress)}%` }} /></div><div className="flex justify-between text-[9px] uppercase tracking-widest font-black text-slate-500 mt-1"><span>Last {new Date(lastCompleted+'T12:00:00').toLocaleDateString()}</span><span>Every {frequency} days</span></div></div>
+              <div className="mt-3 flex gap-1.5"><button onClick={() => handleMarkPmDone(pm)} className={`${T.btn} flex-1 flex items-center justify-center gap-1`}><Check size={13}/> Complete</button><button onClick={() => { setPmTitle(pm.title); setPmEquipment(pm.equipment); setPmDays(String(pm.frequencyDays || 30)); setEditingPmId(pm.id); setIsPmModalOpen(true); }} className="no-compact w-9 h-9 rounded-lg border border-[#2A353D] bg-[#12161A] text-slate-400 hover:text-[#D4A381] flex items-center justify-center"><Edit size={14}/></button><button onClick={() => { if(window.confirm('Delete this preventative schedule?')) safeMaintenanceWrite({ action: 'delete', collectionName: 'pmSchedules', docId: pm.id, label: 'PM schedule', before: pm }); }} className="no-compact w-9 h-9 rounded-lg border border-[#2A353D] bg-[#12161A] text-slate-400 hover:text-red-400 flex items-center justify-center"><Trash2 size={14}/></button></div>
+            </article>;
+          })}
+        </div>}
+      </div>}
     </div>
   );
+
 };
 
-const TabOpsCenter = ({ currentDate, appUser, users = [], shifts = [], events = [], sales = [], timePunches = [], addToast, setActiveTab }) => {
-  const inventoryItems = useLiveCollection('inventoryItems', appUser?.restaurantId, { limitCount: 500 });
-  const wasteLogs = useLiveCollection('wasteLogs', appUser?.restaurantId, { limitCount: 200 });
-  const maintenanceLogs = useLiveCollection('maintenanceLogs', appUser?.restaurantId, { limitCount: 200 });
-  const pmSchedules = useLiveCollection('pmSchedules', appUser?.restaurantId, { limitCount: 150 });
-  const tasks = useLiveCollection('tasks', appUser?.restaurantId, { limitCount: 350 });
-  const recipes = useLiveCollection('recipes', appUser?.restaurantId, { limitCount: 350 });
-  const menuDependencies = useLiveCollection('menuDependencies', appUser?.restaurantId, { limitCount: 500 });
+const TabOpsCenter = ({ currentDate, appUser, users = [], shifts = [], events = [], sales = [], timePunches = [], addToast, setActiveTab, clientData = {} }) => {
+  const opsPlanAccess = usePlanAccess(appUser, clientData);
+  const canUseBasicInventory = opsPlanAccess.canUse(FEATURE_KEYS.BASIC_INVENTORY).allowed || opsPlanAccess.canUse(FEATURE_KEYS.BURN_LOG).allowed;
+  const canUseMenuIntelligence = opsPlanAccess.canUse(FEATURE_KEYS.MENU_INTELLIGENCE).allowed || opsPlanAccess.canUse(FEATURE_KEYS.DEPENDENCY_TOOLS).allowed;
+  const canUseCleaningRoutines = opsPlanAccess.canUse(FEATURE_KEYS.CLEANING_ROUTINES).allowed;
+  const canUseKitchenCommand = opsPlanAccess.canUse(FEATURE_KEYS.KITCHEN_COMMAND).allowed;
+  const inventoryItems = useLiveCollection('inventoryItems', appUser?.restaurantId, { enabled: !!appUser?.restaurantId && canUseBasicInventory, limitCount: 500 });
+  const wasteLogs = useLiveCollection('wasteLogs', appUser?.restaurantId, { enabled: !!appUser?.restaurantId && canUseBasicInventory, limitCount: 200 });
+  const maintenanceLogs = useLiveCollection('maintenanceLogs', appUser?.restaurantId, { enabled: !!appUser?.restaurantId && canUseCleaningRoutines, limitCount: 200 });
+  const pmSchedules = useLiveCollection('pmSchedules', appUser?.restaurantId, { enabled: !!appUser?.restaurantId && canUseCleaningRoutines, limitCount: 150 });
+  const tasks = useLiveCollection('tasks', appUser?.restaurantId, { enabled: !!appUser?.restaurantId && canUseKitchenCommand, limitCount: 350 });
+  const recipes = useLiveCollection('recipes', appUser?.restaurantId, { enabled: !!appUser?.restaurantId, limitCount: 350 });
+  const menuDependencies = useLiveCollection('menuDependencies', appUser?.restaurantId, { enabled: !!appUser?.restaurantId && canUseMenuIntelligence, limitCount: 500 });
+  const kitchenSpecials = useLiveCollection('kitchenSpecials', appUser?.restaurantId, { enabled: !!appUser?.restaurantId && canUseKitchenCommand, limitCount: 250 });
   const [depRecipeId, setDepRecipeId] = useState('');
   const [depInventoryItemId, setDepInventoryItemId] = useState('');
   const [depNotes, setDepNotes] = useState('');
+  const [specialEditorOpen, setSpecialEditorOpen] = useState(false);
+  const [specialSaving, setSpecialSaving] = useState(false);
+  const [editingSpecial, setEditingSpecial] = useState(null);
+  const [specialView, setSpecialView] = useState('current');
+  const [specialForm, setSpecialForm] = useState({
+    name: '', startDate: currentDate || getToday(), endDate: currentDate || getToday(), description: '', price: '', allergens: '', dietaryNotes: '', prepNotes: '', status: 'Scheduled'
+  });
   const safeOpsWrite = (args) => safeWriteWithQueue({ user: appUser, addToast, ...args });
+  const configuredRosterRoles = Array.isArray(clientData?.rosterRoles)
+    ? clientData.rosterRoles.map(r => typeof r === 'string' ? r : (r?.name || r?.label || r?.title)).filter(Boolean)
+    : Array.isArray(clientData?.systemSettings?.rosterRoles)
+      ? clientData.systemSettings.rosterRoles.map(r => typeof r === 'string' ? r : (r?.name || r?.label || r?.title)).filter(Boolean)
+      : [];
+  const hasCustomRosterRoles = configuredRosterRoles.length > 0;
+  const legacyManagerRoleFallback = !hasCustomRosterRoles && ['General Manager', 'Manager', 'Kitchen Manager', 'Operations Manager', 'Store Manager', 'Owner', 'Shift Lead', 'Lead', 'Supervisor'].includes(String(appUser?.role || ''));
+  const canManageSpecials = Boolean(
+    appUser?.isSuperAdmin || appUser?.systemAccess?.superAdmin || appUser?.isAdmin || appUser?.isOwner || appUser?.accountOwner || appUser?.owner || appUser?.workspaceOwner ||
+    appUser?.permissions?.prep || appUser?.permissions?.ops || appUser?.permissions?.team || legacyManagerRoleFallback
+  );
+  const dependencyInventoryOptions = Array.from(inventoryItems.reduce((map, item) => {
+    const name = String(item?.name || item?.itemName || '').replace(/\s+/g, ' ').trim();
+    if (!item?.id || !name || name.length < 2 || name.length > 100 || item.isArchived === true || item.deleted === true) return map;
+    const normalized = name.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+    const looksLikeNoise = !/[a-z]{2}/i.test(name)
+      || /^(?:inventory item|item|product|unknown|misc|n\/?a)$/i.test(name)
+      || /(?:\bshipper\b|\bbill to\b|\bship to\b|\bdue \d|\bt\/?wt\b|\bsuite \d|\bhighway\b|\bhwy\b|\bphone\b|\bfax\b|\binvoice\b|\baccount\b)/i.test(name)
+      || /(?:\(?\d{3}\)?[-.\s]\d{3}[-.\s]\d{4})/.test(name)
+      || /^(?:[\d./-]+\s*){2,}$/.test(name);
+    if (looksLikeNoise) return map;
+    const classification = classifyInvoiceRow({
+      itemName: name,
+      description: name,
+      rawText: name,
+      rowType: 'item',
+      quantity: 1,
+      uom: item.unit || item.uom || 'EA',
+      productCode: item.productCode || item.sku || ''
+    });
+    if (classification.kind === 'document') return map;
+    if (!map.has(normalized)) map.set(normalized, { ...item, name });
+    return map;
+  }, new Map()).values()).sort((a,b) => a.name.localeCompare(b.name));
+  const hiddenDependencyNoiseCount = Math.max(0, inventoryItems.length - dependencyInventoryOptions.length);
 
   const today = currentDate || getToday();
   const todayDate = new Date(today + 'T12:00:00');
@@ -2736,6 +2990,109 @@ const TabOpsCenter = ({ currentDate, appUser, users = [], shifts = [], events = 
   const yesterday = formatDate(yesterdayDate);
   const todayName = todayDate.toLocaleDateString('en-US', { weekday: 'long' });
   const monthStr = getMonthStr(today);
+
+  const sortedSpecials = [...kitchenSpecials].sort((a, b) => {
+    const dateDiff = String(b.startDate || '').localeCompare(String(a.startDate || ''));
+    return dateDiff || String(a.name || '').localeCompare(String(b.name || ''));
+  });
+  const currentSpecials = sortedSpecials.filter(special => {
+    const start = special.startDate || today;
+    const end = special.endDate || start;
+    return special.isArchived !== true && ['Scheduled', 'Active', 'Sold Out'].includes(special.status || 'Scheduled') && start <= today && end >= today;
+  });
+  const upcomingSpecials = sortedSpecials
+    .filter(special => special.isArchived !== true && ['Scheduled', 'Active'].includes(special.status || 'Scheduled') && (special.startDate || '') > today)
+    .sort((a, b) => String(a.startDate || '').localeCompare(String(b.startDate || '')));
+  const displayedSpecials = canManageSpecials && specialView === 'all'
+    ? sortedSpecials
+    : [...currentSpecials, ...upcomingSpecials].filter((special, index, rows) => rows.findIndex(row => row.id === special.id) === index).slice(0, 8);
+
+  const resetSpecialForm = () => {
+    setSpecialForm({ name: '', startDate: today, endDate: today, description: '', price: '', allergens: '', dietaryNotes: '', prepNotes: '', status: 'Scheduled' });
+    setEditingSpecial(null);
+  };
+
+  const openNewSpecial = () => {
+    resetSpecialForm();
+    setSpecialEditorOpen(true);
+  };
+
+  const openSpecialEditor = (special) => {
+    setEditingSpecial(special);
+    setSpecialForm({
+      name: special.name || '',
+      startDate: special.startDate || today,
+      endDate: special.endDate || special.startDate || today,
+      description: special.description || '',
+      price: special.price === 0 || special.price ? String(special.price) : '',
+      allergens: special.allergens || '',
+      dietaryNotes: special.dietaryNotes || '',
+      prepNotes: special.prepNotes || '',
+      status: special.status || 'Scheduled'
+    });
+    setSpecialEditorOpen(true);
+  };
+
+  const handleSaveSpecial = async (event) => {
+    event.preventDefault();
+    if (specialSaving) return;
+    const name = specialForm.name.replace(/\s+/g, ' ').trim();
+    const startDate = specialForm.startDate || today;
+    const endDate = specialForm.endDate || startDate;
+    const parsedPrice = Number(specialForm.price || 0);
+    if (!name) return addToast('Special Name Needed', 'Enter the name guests and the kitchen should use.');
+    if (endDate < startDate) return addToast('Check Service Dates', 'The end date cannot be before the start date.');
+    const payload = {
+      name: name.slice(0, 120),
+      startDate,
+      endDate,
+      description: specialForm.description.trim().slice(0, 1200),
+      price: Number.isFinite(parsedPrice) ? Math.min(100000, Math.max(0, parsedPrice)) : 0,
+      allergens: specialForm.allergens.trim().slice(0, 500),
+      dietaryNotes: specialForm.dietaryNotes.trim().slice(0, 500),
+      prepNotes: specialForm.prepNotes.trim().slice(0, 1200),
+      status: specialForm.status,
+      isArchived: specialForm.status === 'Archived',
+      restaurantId: appUser.restaurantId,
+      ...(editingSpecial ? {} : { createdAt: new Date().toISOString(), createdBy: appUser?.name || appUser?.email || 'Kitchen Manager' })
+    };
+    try {
+      setSpecialSaving(true);
+      await safeOpsWrite({
+        action: editingSpecial ? 'update' : 'add',
+        collectionName: 'kitchenSpecials',
+        docId: editingSpecial?.id || '',
+        label: editingSpecial ? 'Kitchen special updated' : 'Kitchen special published',
+        before: editingSpecial,
+        data: payload
+      });
+      setSpecialEditorOpen(false);
+      resetSpecialForm();
+    } catch (_) {
+      // safeWriteWithQueue already presents the user-facing save error.
+    } finally {
+      setSpecialSaving(false);
+    }
+  };
+
+  const handleArchiveSpecial = async (special) => {
+    if (!window.confirm(`Archive ${special.name || 'this special'}? It will remain in the history.`)) return;
+    try {
+      await safeOpsWrite({
+        action: 'update', collectionName: 'kitchenSpecials', docId: special.id, label: 'Kitchen special archived', before: special,
+        data: { status: 'Archived', isArchived: true, archivedAt: new Date().toISOString(), archivedBy: appUser?.name || appUser?.email || 'Kitchen Manager' }
+      });
+    } catch (_) {}
+  };
+
+  const handleSpecialStatus = async (special, status) => {
+    try {
+      await safeOpsWrite({
+        action: 'update', collectionName: 'kitchenSpecials', docId: special.id, label: `Special marked ${status}`, before: special,
+        data: { status, isArchived: false }
+      });
+    } catch (_) {}
+  };
 
   const sameDay = (date) => date === today;
   const openMaintenance = maintenanceLogs.filter(l => (l.status || 'Reported') !== 'Resolved');
@@ -2861,7 +3218,7 @@ const TabOpsCenter = ({ currentDate, appUser, users = [], shifts = [], events = 
 
   const prepForecast = [
     { label: 'Forecast Sales', value: forecastSales ? `$${Math.round(forecastSales).toLocaleString()}` : 'Needs sales data', note: sameWeekdaySales.length ? 'Based on same weekdays' : 'Based on month average' },
-    { label: 'Kitchen Coverage', value: `${todayShifts.filter(s => ['Kitchen','Cook','Line Cook','Prep Cook','Chef','Sous Chef'].includes(s.role)).length} scheduled`, note: `${todayShifts.length} total published shifts` },
+    { label: hasCustomRosterRoles ? 'Roster Coverage' : 'Kitchen Coverage', value: `${todayShifts.filter(s => (hasCustomRosterRoles ? configuredRosterRoles : ['Kitchen','Cook','Line Cook','Prep Cook','Chef','Sous Chef']).includes(s.role)).length} scheduled`, note: `${todayShifts.length} total published shifts` },
     { label: 'Prep Pressure', value: forecastSales > avgMonthSales * 1.15 && avgMonthSales > 0 ? 'High' : forecastSales > 0 ? 'Normal' : 'Unknown', note: forecastSales > avgMonthSales * 1.15 && avgMonthSales > 0 ? 'Sales forecast is above normal' : 'No spike detected' },
     { label: 'Low Stock', value: `${lowStockItems.length} items`, note: lowStockItems.slice(0, 3).map(i => i.name).join(', ') || 'No par issues found' }
   ];
@@ -2894,7 +3251,7 @@ const TabOpsCenter = ({ currentDate, appUser, users = [], shifts = [], events = 
     forecastSales > avgMonthSales * 1.15 && avgMonthSales > 0 ? 'High forecast: add backup proteins, fries, sauces, and expo garnish before rush.' : null,
     importantEvents.length > 0 ? `Event prep: review ${importantEvents.slice(0, 2).map(e => e.title).join(' / ')}.` : null,
     criticalMaintenance.length > 0 ? `Equipment watch: ${criticalMaintenance[0].equipment} needs manager follow-up.` : null,
-    todayShifts.filter(s => ['Kitchen','Cook','Line Cook','Prep Cook','Chef','Sous Chef'].includes(s.role)).length < 2 ? 'Coverage risk: verify kitchen backup plan before peak service.' : null
+    todayShifts.filter(s => (hasCustomRosterRoles ? configuredRosterRoles : ['Kitchen','Cook','Line Cook','Prep Cook','Chef','Sous Chef']).includes(s.role)).length < 2 ? 'Coverage risk: verify roster-role coverage before peak service.' : null
   ].filter(Boolean).slice(0, 8);
 
   const handleBuildSmartOrder = async () => {
@@ -2985,6 +3342,7 @@ const TabOpsCenter = ({ currentDate, appUser, users = [], shifts = [], events = 
     ...todayWaste.map(w => ({ at: w.timestamp || today, type: 'Waste', title: `${w.itemName || 'Item'} wasted`, detail: `${w.qty || ''} ${w.reason || ''}` })),
     ...maintenanceLogs.filter(l => (l.reportedAt || '').startsWith(today) || (l.lastUpdated || '').startsWith(today)).map(l => ({ at: l.lastUpdated || l.reportedAt, type: 'Maintenance', title: l.equipment, detail: l.issue })),
     ...todayEvents.map(e => ({ at: e.date || e.timestamp || today, type: e.messageCategory || e.type || 'Event', title: e.title || 'Event', detail: e.notes || e.menuImpact || e.author || '' })),
+    ...currentSpecials.map(special => ({ at: `${special.startDate || today}T12:00:00`, type: `Special - ${special.status || 'Scheduled'}`, title: special.name || 'Kitchen special', detail: special.description || special.prepNotes || '' })),
     ...todayShifts.slice(0, 12).map(s => ({ at: `${today}T${s.startTime || '00:00'}:00`, type: 'Scheduled', title: `${users.find(u => u.id === s.employeeId)?.name || 'Staff'} ${s.role || ''}`, detail: `${formatShortTime(s.startTime)} - ${formatShortTime(s.endTime)}` }))
   ].filter(x => x.at).sort((a,b) => new Date(b.at) - new Date(a.at)).slice(0, 18);
 
@@ -2996,6 +3354,7 @@ const TabOpsCenter = ({ currentDate, appUser, users = [], shifts = [], events = 
       todaySales ? `Today sales entered: $${Number(todaySales.grossSales || 0).toLocaleString()}.` : 'Today sales are not entered yet.',
       `Today: ${todayShifts.length} shifts, ${activePunches.length} currently clocked in.`,
       `Open tasks: ${openTasks.length}. Low-stock items: ${lowStockItems.length}. Open maintenance: ${openMaintenance.length}.`,
+      currentSpecials.length ? `Current specials: ${currentSpecials.map(special => special.name).join(', ')}.` : 'No current specials are posted.',
       `Top priority: ${recommendations.find(Boolean) || 'Keep service smooth.'}`
     ];
     return lines.join('\n');
@@ -3058,6 +3417,7 @@ const TabOpsCenter = ({ currentDate, appUser, users = [], shifts = [], events = 
   const kpiCards = [
     { label: 'Shift Health', value: `${healthScore}/100`, detail: healthScore >= 85 ? 'Looking good' : healthScore >= 70 ? 'Check weak spots' : 'Needs manager attention' },
     { label: 'Open Tasks', value: `${openTasks.length}`, detail: `${doneTasks.length}/${dueTasks.length || 0} completed today` },
+    { label: 'Specials', value: `${currentSpecials.length}`, detail: currentSpecials.length ? 'On for service today' : `${upcomingSpecials.length} upcoming` },
     { label: 'Low Stock', value: `${lowStockItems.length}`, detail: `${pendingOrderItems.length} already pending` },
     { label: 'Menu Impact', value: `${affectedMenuItems.length}`, detail: affectedMenuItems.length ? 'Menu items affected' : 'Menu looks clear' },
     { label: 'Maintenance', value: `${openMaintenance.length}`, detail: `${criticalMaintenance.length} high priority` },
@@ -3066,8 +3426,8 @@ const TabOpsCenter = ({ currentDate, appUser, users = [], shifts = [], events = 
   ];
 
   return (
-    <div className="max-w-6xl mx-auto space-y-4 pb-24 animate-[slideIn_0.2s_ease-out]">
-      <div className={`${T.card} p-5 bg-gradient-to-br from-[#1A2126] to-[#12161A] overflow-hidden relative`}>
+    <div className="kitchen-command-compact desktop-ops-page max-w-7xl mx-auto space-y-4 pb-24 animate-[slideIn_0.2s_ease-out]">
+      <div className={`${T.card} command-hero p-5 bg-gradient-to-br from-[#1A2126] to-[#12161A] overflow-hidden relative`}>
         <div className="absolute -top-8 -right-6 text-[120px] font-black text-[#D4A381]/5 leading-none">86</div>
         <div className="relative z-10 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
           <div>
@@ -3086,17 +3446,17 @@ const TabOpsCenter = ({ currentDate, appUser, users = [], shifts = [], events = 
         </div>
       </div>
 
-      <div className="grid grid-cols-2 lg:grid-cols-6 gap-2">
+      <div className="grid grid-cols-2 lg:grid-cols-4 xl:grid-cols-8 gap-2">
         {kpiCards.map(card => (
-          <button key={card.label} type="button" onClick={card.label === 'Low Stock' ? openInventoryFocus : undefined} className={`${T.card} p-3 text-center ${card.label === 'Low Stock' ? 'hover:border-red-500/60 transition-colors cursor-pointer' : 'cursor-default'}`}>
+          <button key={card.label} type="button" onClick={card.label === 'Low Stock' ? openInventoryFocus : undefined} className={`${T.card} command-kpi p-3 text-center ${card.label === 'Low Stock' ? 'hover:border-red-500/60 transition-colors cursor-pointer' : 'cursor-default'}`}>
             <div className={`text-[9px] font-black uppercase tracking-widest ${T.muted}`}>{card.label}</div>
-            <div className="text-xl font-black text-[#D4A381] mt-1">{card.value}</div>
+            <div className="command-kpi-value text-xl font-black text-[#D4A381] mt-1">{card.value}</div>
             <div className="text-[10px] text-slate-500 font-bold mt-1 truncate">{card.detail}</div>
           </button>
         ))}
       </div>
 
-      <div className={`${T.card} p-4 grid grid-cols-1 lg:grid-cols-3 gap-3`}>
+      <div className={`${T.card} command-card p-4 grid grid-cols-1 lg:grid-cols-3 gap-3`}>
         <div className="lg:col-span-2">
           <h2 className="font-black text-white flex items-center gap-2"><Scale size={18} className={T.copper}/> Do These First</h2>
           <p className="text-xs text-slate-400 font-bold mt-1">The few actions managers need during service.</p>
@@ -3108,7 +3468,7 @@ const TabOpsCenter = ({ currentDate, appUser, users = [], shifts = [], events = 
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        <div className={`${T.card} p-4 lg:col-span-2`}>
+        <div className={`${T.card} command-card p-4 lg:col-span-2`}>
           <div className="flex items-center justify-between border-b border-[#2A353D] pb-3 mb-3">
             <h2 className="font-black text-white flex items-center gap-2"><ChefHat size={18} className={T.copper}/> Today’s Priorities</h2>
             <span className="text-[9px] font-black uppercase tracking-widest text-slate-500">{formatDisplayFullDate(today)}</span>
@@ -3123,7 +3483,7 @@ const TabOpsCenter = ({ currentDate, appUser, users = [], shifts = [], events = 
           </div>
         </div>
 
-        <div className={`${T.card} p-4`}>
+        <div className={`${T.card} command-card p-4`}>
           <h2 className="font-black text-white flex items-center gap-2 border-b border-[#2A353D] pb-3 mb-3"><TrendingUp size={18} className={T.copper}/> Prep Forecast</h2>
           <div className="space-y-2">
             {prepForecast.map(row => (
@@ -3142,7 +3502,7 @@ const TabOpsCenter = ({ currentDate, appUser, users = [], shifts = [], events = 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <div className={`${T.card} overflow-hidden`}>
           <div className={`${T.th} flex items-center gap-2`}><Package size={14}/> Stock to Check</div>
-          <div className={`divide-y ${T.border} max-h-[360px] overflow-y-auto custom-scrollbar`}>
+          <div className={`divide-y ${T.border} command-scroll max-h-[360px] overflow-y-auto custom-scrollbar`}>
             {lowStockItems.length === 0 && <div className="p-6 text-center text-slate-500 font-bold text-sm">No par problems detected.</div>}
             {lowStockItems.slice(0, 12).map(item => {
               const par = Number(item.parLevel || 0);
@@ -3166,7 +3526,7 @@ const TabOpsCenter = ({ currentDate, appUser, users = [], shifts = [], events = 
 
         <div className={`${T.card} overflow-hidden`}>
           <div className={`${T.th} flex items-center gap-2`}><Wrench size={14}/> Fixes to Check</div>
-          <div className={`divide-y ${T.border} max-h-[360px] overflow-y-auto custom-scrollbar`}>
+          <div className={`divide-y ${T.border} command-scroll max-h-[360px] overflow-y-auto custom-scrollbar`}>
             {openMaintenance.length === 0 && overduePm.length === 0 && <div className="p-6 text-center text-slate-500 font-bold text-sm">No equipment warnings right now.</div>}
             {criticalMaintenance.concat(openMaintenance.filter(l => !criticalMaintenance.includes(l))).slice(0, 8).map(log => (
               <div key={log.id} className={`${T.row}`}>
@@ -3206,7 +3566,7 @@ const TabOpsCenter = ({ currentDate, appUser, users = [], shifts = [], events = 
 
         <div className={`${T.card} overflow-hidden`}>
           <div className={`${T.th} flex items-center gap-2`}><Clock size={14}/> Kitchen Timeline</div>
-          <div className={`divide-y ${T.border} max-h-[420px] overflow-y-auto custom-scrollbar`}>
+          <div className={`divide-y ${T.border} command-scroll max-h-[420px] overflow-y-auto custom-scrollbar`}>
             {timeline.length === 0 && <div className="p-6 text-center text-slate-500 font-bold text-sm">No timeline activity for this day yet.</div>}
             {timeline.map((item, idx) => (
               <div key={`${item.type}-${idx}`} className={`${T.row} flex gap-3`}>
@@ -3222,7 +3582,75 @@ const TabOpsCenter = ({ currentDate, appUser, users = [], shifts = [], events = 
         </div>
       </div>
 
-      <div className={`${T.card} p-4`}>
+      <section className={`${T.card} command-card overflow-hidden`} aria-labelledby="kitchen-specials-heading">
+        <div className="p-4 sm:p-5 border-b border-[#2A353D] bg-gradient-to-r from-[#1A2126] to-[#12161A]">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+              <h2 id="kitchen-specials-heading" className="text-lg font-black text-white flex items-center gap-2"><Star size={19} className={T.copper}/> Service Specials</h2>
+              <p className="text-xs sm:text-sm text-slate-400 font-medium mt-1">The official list for pre-shift, line execution, allergens, and 86 status. Posted directly - no AI.</p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              {canManageSpecials && <>
+                <button type="button" onClick={() => setSpecialView('current')} className={`${specialView === 'current' ? T.btn : T.btnAlt} px-3`}>Current</button>
+                <button type="button" onClick={() => setSpecialView('all')} className={`${specialView === 'all' ? T.btn : T.btnAlt} px-3`}>All & History</button>
+                <button type="button" onClick={openNewSpecial} className={`${T.btn} flex items-center gap-1.5`}><Plus size={15}/> Add Special</button>
+              </>}
+            </div>
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-4">
+            <div className="bg-[#0B0E11]/70 border border-[#2A353D] rounded-xl p-3"><div className="text-[11px] uppercase tracking-wider font-black text-slate-500">On Today</div><div className="text-2xl font-black text-[#D4A381] mt-1">{currentSpecials.length}</div></div>
+            <div className="bg-[#0B0E11]/70 border border-[#2A353D] rounded-xl p-3"><div className="text-[11px] uppercase tracking-wider font-black text-slate-500">Upcoming</div><div className="text-2xl font-black text-white mt-1">{upcomingSpecials.length}</div></div>
+            <div className="bg-[#0B0E11]/70 border border-[#2A353D] rounded-xl p-3"><div className="text-[11px] uppercase tracking-wider font-black text-slate-500">Sold Out</div><div className="text-2xl font-black text-red-300 mt-1">{currentSpecials.filter(s => s.status === 'Sold Out').length}</div></div>
+            <div className="bg-[#0B0E11]/70 border border-[#2A353D] rounded-xl p-3"><div className="text-[11px] uppercase tracking-wider font-black text-slate-500">Total Records</div><div className="text-2xl font-black text-white mt-1">{kitchenSpecials.length}</div></div>
+          </div>
+        </div>
+
+        <div className="p-4 sm:p-5">
+          {displayedSpecials.length === 0 ? (
+            <div className="rounded-xl border border-dashed border-[#3A464F] bg-[#0B0E11]/50 p-7 text-center">
+              <Star size={26} className="mx-auto text-[#D4A381] mb-2"/>
+              <div className="font-black text-white">No specials are posted for service</div>
+              <div className="text-sm text-slate-400 mt-1">{canManageSpecials ? 'Add a special so the whole kitchen has one accurate source of truth.' : 'Your kitchen lead will post upcoming and current specials here.'}</div>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+              {displayedSpecials.map(special => {
+                const isCurrent = currentSpecials.some(row => row.id === special.id);
+                const serviceDates = special.startDate === special.endDate || !special.endDate
+                  ? formatDisplayFullDate(special.startDate)
+                  : `${formatDisplayDate(special.startDate)} - ${formatDisplayDate(special.endDate)}`;
+                const statusClass = special.status === 'Sold Out' ? 'border-red-500/50 bg-red-950/20 text-red-300' : special.status === 'Active' ? 'border-emerald-500/40 bg-emerald-950/20 text-emerald-300' : special.status === 'Archived' ? 'border-slate-600 bg-slate-900/40 text-slate-400' : special.status === 'Draft' ? 'border-amber-500/40 bg-amber-950/20 text-amber-300' : 'border-[#D4A381]/40 bg-[#D4A381]/10 text-[#E7B997]';
+                return <article key={special.id} className={`rounded-2xl border p-4 ${isCurrent ? 'border-[#D4A381]/50 bg-gradient-to-br from-[#1A2126] to-[#12161A]' : 'border-[#2A353D] bg-[#12161A]'}`}>
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        {isCurrent && <span className="text-[11px] font-black uppercase tracking-wider text-[#D4A381]">On Today</span>}
+                        <span className={`text-[11px] font-black uppercase tracking-wider border rounded-full px-2 py-1 ${statusClass}`}>{special.status || 'Scheduled'}</span>
+                      </div>
+                      <h3 className="text-lg font-black text-white mt-2 leading-tight">{special.name}</h3>
+                      <div className="text-xs font-bold text-slate-400 mt-1">{serviceDates}</div>
+                    </div>
+                    <div className="text-right flex-shrink-0"><div className="text-xl font-black text-[#D4A381]">{Number(special.price || 0) > 0 ? `$${Number(special.price).toFixed(2)}` : 'Market'}</div><div className="text-[11px] uppercase tracking-wider font-bold text-slate-500">Menu price</div></div>
+                  </div>
+                  {special.description && <p className="text-sm leading-relaxed font-medium text-slate-200 mt-3 whitespace-pre-wrap">{special.description}</p>}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-3">
+                    <div className="rounded-xl border border-[#2A353D] bg-[#0B0E11]/70 p-3"><div className="text-[11px] font-black uppercase tracking-wider text-orange-300">Allergens</div><div className="text-sm text-slate-300 font-medium mt-1 whitespace-pre-wrap">{special.allergens || 'None listed - verify the recipe before answering a guest.'}</div></div>
+                    <div className="rounded-xl border border-[#2A353D] bg-[#0B0E11]/70 p-3"><div className="text-[11px] font-black uppercase tracking-wider text-emerald-300">Dietary Notes</div><div className="text-sm text-slate-300 font-medium mt-1 whitespace-pre-wrap">{special.dietaryNotes || 'No dietary claims listed.'}</div></div>
+                  </div>
+                  {special.prepNotes && <div className="rounded-xl border border-[#2A353D] bg-[#0B0E11]/70 p-3 mt-2"><div className="text-[11px] font-black uppercase tracking-wider text-[#D4A381]">Prep / 86 Notes</div><div className="text-sm text-slate-200 font-medium mt-1 whitespace-pre-wrap">{special.prepNotes}</div></div>}
+                  {canManageSpecials && <div className="flex flex-wrap gap-2 mt-4 pt-3 border-t border-[#2A353D]">
+                    {special.status === 'Sold Out' ? <button type="button" onClick={() => handleSpecialStatus(special, 'Active')} className={T.btnAlt}>Put Back On</button> : special.status !== 'Archived' && <button type="button" onClick={() => handleSpecialStatus(special, 'Sold Out')} className={T.btnAlt}>Mark Sold Out</button>}
+                    <button type="button" onClick={() => openSpecialEditor(special)} className={`${T.btnAlt} flex items-center gap-1.5`}><Edit size={14}/> Edit</button>
+                    {special.status !== 'Archived' && <button type="button" onClick={() => handleArchiveSpecial(special)} className={`${T.btnAlt} flex items-center gap-1.5 text-red-300`}><Archive size={14}/> Archive</button>}
+                  </div>}
+                </article>;
+              })}
+            </div>
+          )}
+        </div>
+      </section>
+
+      <div className={`${T.card} command-card p-4`}>
         <div className="flex items-center justify-between border-b border-[#2A353D] pb-3 mb-3">
           <h2 className="font-black text-white flex items-center gap-2"><BookOpen size={18} className={T.copper}/> Recipe & Menu Brain</h2>
           <span className="text-[9px] font-black uppercase tracking-widest text-slate-500">{recipes.length} recipes tracked</span>
@@ -3256,14 +3684,15 @@ const TabOpsCenter = ({ currentDate, appUser, users = [], shifts = [], events = 
                 {recipes.slice().sort((a,b)=>String(a.title || a.name || '').localeCompare(String(b.title || b.name || ''))).map(r => <option key={r.id} value={r.id}>{r.title || r.name || 'Recipe'}</option>)}
               </select>
               <select value={depInventoryItemId} onChange={e => setDepInventoryItemId(e.target.value)} className={T.input}>
-                <option value="">Choose inventory item</option>
-                {inventoryItems.slice().sort((a,b)=>String(a.name || '').localeCompare(String(b.name || ''))).map(i => <option key={i.id} value={i.id}>{i.name || 'Inventory item'}</option>)}
+                <option value="">Choose inventory item ({dependencyInventoryOptions.length})</option>
+                {dependencyInventoryOptions.map(i => <option key={i.id} value={i.id}>{i.name} • {i.category || 'Inventory'} • Stock {Number(i.currentStock || 0)}</option>)}
               </select>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-[1fr_auto] gap-2">
               <input value={depNotes} onChange={e => setDepNotes(e.target.value)} className={T.input} placeholder="Optional note, station, substitute, or recovery hint" />
               <button className={T.btn}>Map Dependency</button>
             </div>
+            <div className="text-[9px] font-bold text-slate-500">Showing real inventory records only.{hiddenDependencyNoiseCount > 0 ? ` ${hiddenDependencyNoiseCount} invoice-noise or duplicate record${hiddenDependencyNoiseCount === 1 ? '' : 's'} hidden from this chooser.` : ''}</div>
           </form>
           <div className="bg-[#0B0E11] border border-[#2A353D] rounded-xl p-3">
             <div className="font-black text-white text-sm">Graph Status</div>
@@ -3290,43 +3719,78 @@ const TabOpsCenter = ({ currentDate, appUser, users = [], shifts = [], events = 
           </div>
         </div>
       </div>
+
+      <Modal isOpen={specialEditorOpen} onClose={() => { setSpecialEditorOpen(false); resetSpecialForm(); }} title={editingSpecial ? 'Edit Service Special' : 'Add Service Special'} sizeClass="max-w-3xl">
+        <form onSubmit={handleSaveSpecial} className="space-y-4">
+          <div className="rounded-xl border border-[#2A353D] bg-[#0B0E11] p-3 text-sm text-slate-300">
+            Keep this practical: what the dish is, when it runs, what the line needs to know, and exactly what staff may say about allergens or dietary needs.
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-[1fr_150px] gap-3">
+            <div><label className={T.label}>Special Name</label><input value={specialForm.name} onChange={e => setSpecialForm(form => ({ ...form, name: e.target.value }))} className={T.input} maxLength={120} required placeholder="e.g. Friday Fish Fry" /></div>
+            <div><label className={T.label}>Menu Price</label><input type="number" min="0" max="100000" step="0.01" value={specialForm.price} onChange={e => setSpecialForm(form => ({ ...form, price: e.target.value }))} className={T.input} placeholder="0.00" /></div>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div><label className={T.label}>First Service Date</label><input type="date" value={specialForm.startDate} onChange={e => setSpecialForm(form => ({ ...form, startDate: e.target.value, endDate: form.endDate < e.target.value ? e.target.value : form.endDate }))} className={T.input} required /></div>
+            <div><label className={T.label}>Last Service Date</label><input type="date" min={specialForm.startDate} value={specialForm.endDate} onChange={e => setSpecialForm(form => ({ ...form, endDate: e.target.value }))} className={T.input} required /></div>
+            <div><label className={T.label}>Service Status</label><select value={specialForm.status} onChange={e => setSpecialForm(form => ({ ...form, status: e.target.value }))} className={T.input}><option>Draft</option><option>Scheduled</option><option>Active</option><option>Sold Out</option>{editingSpecial?.status === 'Archived' && <option>Archived</option>}</select></div>
+          </div>
+          <div><label className={T.label}>Guest-Facing Description</label><textarea rows="3" maxLength={1200} value={specialForm.description} onChange={e => setSpecialForm(form => ({ ...form, description: e.target.value }))} className={T.input} placeholder="Plain-English description, sides, preparation, and what makes it special." /></div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div><label className={T.label}>Allergens</label><textarea rows="3" maxLength={500} value={specialForm.allergens} onChange={e => setSpecialForm(form => ({ ...form, allergens: e.target.value }))} className={T.input} placeholder="List known allergens and cross-contact cautions. Never guess." /></div>
+            <div><label className={T.label}>Dietary Notes</label><textarea rows="3" maxLength={500} value={specialForm.dietaryNotes} onChange={e => setSpecialForm(form => ({ ...form, dietaryNotes: e.target.value }))} className={T.input} placeholder="Only verified claims, substitutions, and restrictions." /></div>
+          </div>
+          <div><label className={T.label}>Prep, Pickup & 86 Notes</label><textarea rows="4" maxLength={1200} value={specialForm.prepNotes} onChange={e => setSpecialForm(form => ({ ...form, prepNotes: e.target.value }))} className={T.input} placeholder="Station, batch size, plating, pickup call, pars, substitutions, and what to do when sold out." /></div>
+          <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2 pt-1">
+            <button type="button" onClick={() => { setSpecialEditorOpen(false); resetSpecialForm(); }} className={T.btnAlt}>Cancel</button>
+            <button type="submit" disabled={specialSaving} className={`${T.btn} flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-wait`}>{specialSaving ? <Loader2 size={16} className="animate-spin"/> : <Check size={16}/>} {specialSaving ? 'Saving...' : editingSpecial ? 'Save Changes' : specialForm.status === 'Draft' ? 'Save Draft' : 'Publish Special'}</button>
+          </div>
+        </form>
+      </Modal>
     </div>
   );
 };
 
 const TabToday = ({ currentDate, appUser, users, shifts, shiftSwaps, timeOffRequests, events, sales, timePunches, inventoryItems, maintenanceLogs, prepItems, tasks, recipes, menuDependencies = [], clientData, setActiveTab, addToast, registerUndo }) => {
+  const todayPlanAccess = usePlanAccess(appUser, clientData);
+  const canUseManagerBrief = todayPlanAccess.canUse(FEATURE_KEYS.MANAGER_BRIEF).allowed;
+  const canUseBasicInventory = todayPlanAccess.canUse(FEATURE_KEYS.BASIC_INVENTORY).allowed || todayPlanAccess.canUse(FEATURE_KEYS.BURN_LOG).allowed;
+  const canUseMenuIntelligence = todayPlanAccess.canUse(FEATURE_KEYS.MENU_INTELLIGENCE).allowed || todayPlanAccess.canUse(FEATURE_KEYS.SMART_86_ALERTS).allowed;
+  const canUseLabor = todayPlanAccess.canUse(FEATURE_KEYS.LABOR_COMMAND).allowed || todayPlanAccess.canUse(FEATURE_KEYS.TIME_CLOCK).allowed;
+  const canUseScheduleBuilder = todayPlanAccess.canUse(FEATURE_KEYS.SCHEDULE_BUILDER).allowed;
+  const canUseCleaningRoutines = todayPlanAccess.canUse(FEATURE_KEYS.CLEANING_ROUTINES).allowed;
   const [expanded, setExpanded] = useState({ brief: true, setup: false, problems: true, prefs: false });
   const today = getToday();
   const profile = getHomeProfile(appUser);
   const safeTodayWrite = (args) => safeWriteWithQueue({ user: appUser, addToast, ...args });
   const todaysShifts = shifts.filter(s => s.date === today && s.isPublished).sort((a,b) => (a.startTime || '').localeCompare(b.startTime || ''));
   const myShift = todaysShifts.find(s => s.employeeId === appUser.id);
-  const activePunches = timePunches.filter(p => ['clocked_in','on_break'].includes(p.status));
+  const activePunches = canUseLabor ? timePunches.filter(p => ['clocked_in','on_break'].includes(p.status)) : [];
   const importantNotes = events.filter(e => e.type === 'note' && e.isImportant).sort((a,b) => new Date(b.date) - new Date(a.date)).slice(0, 3);
   const todayEvents = events.filter(e => e.type === 'special_event' && e.date === today).sort((a,b) => (a.time || '').localeCompare(b.time || ''));
-  const lowStock = inventoryItems.filter(i => Number(i.parLevel || 0) > 0 && Number(i.currentStock || 0) < Number(i.parLevel || 0)).sort((a,b) => (Number(a.currentStock||0) - Number(a.parLevel||0)) - (Number(b.currentStock||0) - Number(b.parLevel||0))).slice(0, 8);
-  const urgentMaintenance = maintenanceLogs.filter(m => !['Completed','Closed','Resolved'].includes(m.status) && ['High','Critical'].includes(m.urgency)).slice(0, 5);
+  const lowStock = canUseBasicInventory ? inventoryItems.filter(i => Number(i.parLevel || 0) > 0 && Number(i.currentStock || 0) < Number(i.parLevel || 0)).sort((a,b) => (Number(a.currentStock||0) - Number(a.parLevel||0)) - (Number(b.currentStock||0) - Number(b.parLevel||0))).slice(0, 8) : [];
+  const urgentMaintenance = canUseCleaningRoutines ? maintenanceLogs.filter(m => !['Completed','Closed','Resolved'].includes(m.status) && ['High','Critical'].includes(m.urgency)).slice(0, 5) : [];
   const openPrep = prepItems.filter(p => (p.date === today || p.date === 'MASTER') && !p.isCompleted).slice(0, 8);
-  const pendingRequests = timeOffRequests.filter(r => r.status === 'pending').slice(0, 5);
-  const openSwaps = shiftSwaps.filter(s => s.status === 'available' && s.date >= today).slice(0, 5);
+  const pendingRequests = canUseScheduleBuilder ? timeOffRequests.filter(r => r.status === 'pending').slice(0, 5) : [];
+  const openSwaps = canUseScheduleBuilder ? shiftSwaps.filter(s => s.status === 'available' && s.date >= today).slice(0, 5) : [];
   const recentTabs = (() => { try { return JSON.parse(localStorage.getItem(`recentTabs_${appUser.id}`) || '[]'); } catch { return []; } })();
   const setupItems = [
-    { label: 'Restaurant profile', done: !!clientData?.name, tab: 'settings' },
-    { label: 'Add team members', done: users.length > 1, tab: 'team' },
-    { label: 'Build this week schedule', done: shifts.some(s => s.date >= today), tab: 'schedule' },
-    { label: 'Add recipes', done: recipes.length > 0, tab: 'recipes' },
-    { label: 'Add inventory items', done: inventoryItems.length > 0, tab: 'inventory' },
-    { label: 'Post first announcement', done: events.some(e => e.type === 'note'), tab: 'messages' },
-    { label: 'Add maintenance log', done: maintenanceLogs.length > 0, tab: 'maintenance' }
-  ];
+    { label: 'Restaurant profile', done: !!clientData?.name, tab: 'settings', allowed: appUser?.isAdmin || appUser?.permissions?.settings },
+    { label: 'Add team members', done: users.length > 1, tab: 'team', allowed: appUser?.isAdmin || appUser?.permissions?.team },
+    { label: 'Build this week schedule', done: shifts.some(s => s.date >= today), tab: 'schedule', allowed: canUseScheduleBuilder },
+    { label: 'Add recipes', done: recipes.length > 0, tab: 'recipes', allowed: true },
+    { label: 'Add inventory items', done: inventoryItems.length > 0, tab: 'inventory', allowed: canUseBasicInventory },
+    { label: 'Post first announcement', done: events.some(e => e.type === 'note'), tab: 'messages', allowed: true },
+    { label: 'Add maintenance log', done: maintenanceLogs.length > 0, tab: 'maintenance', allowed: canUseCleaningRoutines }
+  ].filter(item => item.allowed !== false);
   const setupDone = setupItems.filter(i => i.done).length;
+  const setupTotal = Math.max(1, setupItems.length);
   const openInventoryFocus = () => { sessionStorage.setItem('inventoryFocus', 'belowPar'); setActiveTab('inventory'); };
   const problems = [
-    lowStock.length ? { tone: 'red', title: 'Inventory below par', detail: `${lowStock.length} item${lowStock.length===1?'':'s'} need attention.`, tab: 'inventory', onClick: openInventoryFocus } : null,
-    urgentMaintenance.length ? { tone: 'red', title: 'Maintenance urgent', detail: `${urgentMaintenance.length} high priority issue${urgentMaintenance.length===1?'':'s'} open.`, tab: 'maintenance' } : null,
-    pendingRequests.length ? { tone: 'amber', title: 'Time off pending', detail: `${pendingRequests.length} request${pendingRequests.length===1?'':'s'} waiting.`, tab: 'schedule' } : null,
-    openSwaps.length ? { tone: 'blue', title: 'Shift trade board', detail: `${openSwaps.length} shift${openSwaps.length===1?'':'s'} available.`, tab: 'published' } : null,
-    !todaysShifts.length ? { tone: 'amber', title: 'No published shifts today', detail: 'Check schedule coverage before service.', tab: 'schedule' } : null
+    canUseBasicInventory && lowStock.length ? { tone: 'red', title: 'Inventory below par', detail: `${lowStock.length} item${lowStock.length===1?'':'s'} need attention.`, tab: 'inventory', onClick: openInventoryFocus } : null,
+    canUseCleaningRoutines && urgentMaintenance.length ? { tone: 'red', title: 'Maintenance urgent', detail: `${urgentMaintenance.length} high priority issue${urgentMaintenance.length===1?'':'s'} open.`, tab: 'maintenance' } : null,
+    canUseScheduleBuilder && pendingRequests.length ? { tone: 'amber', title: 'Time off pending', detail: `${pendingRequests.length} request${pendingRequests.length===1?'':'s'} waiting.`, tab: 'schedule' } : null,
+    canUseScheduleBuilder && openSwaps.length ? { tone: 'blue', title: 'Shift trade board', detail: `${openSwaps.length} shift${openSwaps.length===1?'':'s'} available.`, tab: 'published' } : null,
+    canUseScheduleBuilder && !todaysShifts.length ? { tone: 'amber', title: 'No published shifts today', detail: 'Check schedule coverage before service.', tab: 'schedule' } : null
   ].filter(Boolean);
 
   const quickCreate = async (kind) => {
@@ -3404,11 +3868,11 @@ const TabToday = ({ currentDate, appUser, users, shifts, shiftSwaps, timeOffRequ
     addToast('Notification Preset Applied', 'Your alerts now match your role.');
   };
 
-  const heroTitle = profile === 'manager' || profile === 'system' ? 'Manager Brief' : profile === 'kitchen' ? 'Kitchen Brief' : profile === 'bar' ? 'Bar Brief' : profile === 'service' ? 'Service Brief' : 'Today Brief';
+  const heroTitle = canUseManagerBrief ? (profile === 'manager' || profile === 'system' ? 'Manager Brief' : profile === 'kitchen' ? 'Kitchen Brief' : profile === 'bar' ? 'Bar Brief' : profile === 'service' ? 'Service Brief' : 'Today Brief') : 'Today Home';
   const topPriority = problems[0]?.detail || (myShift ? `You work ${formatShortTime(myShift.startTime)}-${formatShortTime(myShift.endTime)} as ${myShift.role}.` : 'No urgent problems detected.');
 
-  return <div className="max-w-6xl mx-auto space-y-3 pb-24 animate-[slideIn_0.2s_ease-out]">
-    <div className="cockpit-panel rounded-2xl p-4 sm:p-5 cockpit-grid overflow-hidden relative">
+  return <div className="manager-brief-compact desktop-ops-page max-w-7xl mx-auto space-y-3 pb-24 animate-[slideIn_0.2s_ease-out]">
+    <div className="brief-hero cockpit-panel rounded-2xl p-4 sm:p-5 cockpit-grid overflow-hidden relative">
       <div className="absolute -right-8 -top-8 text-[9rem] font-black text-white/5 leading-none">86</div>
       <div className="relative z-10 flex flex-col sm:flex-row sm:items-start justify-between gap-3">
         <div>
@@ -3425,44 +3889,44 @@ const TabToday = ({ currentDate, appUser, users, shifts, shiftSwaps, timeOffRequ
     </div>
 
     <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-      <button onClick={() => quickCreate('86')} className="bg-red-900/20 border border-red-500/40 text-red-300 rounded-xl p-3 font-black text-xs uppercase tracking-widest">+ 86 Alert</button>
-      <button onClick={() => quickCreate('prep')} className="bg-[#1A2126] border border-[#2A353D] text-[#D4A381] rounded-xl p-3 font-black text-xs uppercase tracking-widest">+ Prep</button>
-      <button onClick={() => quickCreate('message')} className="bg-[#1A2126] border border-[#2A353D] text-slate-200 rounded-xl p-3 font-black text-xs uppercase tracking-widest">+ Message</button>
-      <button onClick={() => quickCreate('maintenance')} className="bg-amber-900/20 border border-amber-500/40 text-amber-300 rounded-xl p-3 font-black text-xs uppercase tracking-widest">+ Fix It</button>
+      <button onClick={() => quickCreate('86')} className="brief-quick-action bg-red-900/20 border border-red-500/40 text-red-300 rounded-xl p-3 font-black text-xs uppercase tracking-widest">+ 86 Alert</button>
+      <button onClick={() => quickCreate('prep')} className="brief-quick-action bg-[#1A2126] border border-[#2A353D] text-[#D4A381] rounded-xl p-3 font-black text-xs uppercase tracking-widest">+ Prep</button>
+      <button onClick={() => quickCreate('message')} className="brief-quick-action bg-[#1A2126] border border-[#2A353D] text-slate-200 rounded-xl p-3 font-black text-xs uppercase tracking-widest">+ Message</button>
+      {canUseCleaningRoutines && <button onClick={() => quickCreate('maintenance')} className="brief-quick-action bg-amber-900/20 border border-amber-500/40 text-amber-300 rounded-xl p-3 font-black text-xs uppercase tracking-widest">+ Fix It</button>}
     </div>
 
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
       <div className="lg:col-span-2 space-y-3">
-        <div className={`${T.card} p-4`}>
+        <div className={`${T.card} brief-card p-4`}>
           <button className="w-full flex justify-between items-center" onClick={() => setExpanded(e => ({...e, problems: !e.problems}))}><h2 className="font-black text-white text-lg">Need Attention</h2><ChevronRight className={`transition-transform ${expanded.problems ? 'rotate-90' : ''}`} size={18}/></button>
           {expanded.problems && <div className="grid sm:grid-cols-2 gap-2 mt-3">
             {problems.length ? problems.map((p, idx) => <MiniProblemCard key={idx} {...p} action="Open" onClick={() => p.onClick ? p.onClick() : setActiveTab(p.tab)} />) : <SmartEmptyState icon={<Check size={24}/>} title="Nothing urgent right now" desc="Everything looks clear right now." />}
           </div>}
         </div>
 
-        <div className={`${T.card} p-4`}>
+        <div className={`${T.card} brief-card p-4`}>
           <h2 className="font-black text-white text-lg mb-3">Role Home</h2>
           {profile === 'kitchen' && <div className="grid sm:grid-cols-3 gap-2"><MiniProblemCard title="Prep" detail={`${openPrep.length} open prep items`} action="Open Prep" onClick={() => setActiveTab('prep')} /><MiniProblemCard title="86 Watch" detail={`${lowStock.length} low stock item(s)`} action="Inventory" onClick={openInventoryFocus} /><MiniProblemCard title="Recipes" detail={`${recipes.length} recipes available`} action="Open" onClick={() => setActiveTab('recipes')} /></div>}
-          {profile === 'manager' || profile === 'system' ? <div className="grid sm:grid-cols-3 gap-2"><MiniProblemCard title="Labor" detail={`${activePunches.length}/${todaysShifts.length} clocked in`} action="Schedule" onClick={() => setActiveTab('schedule')} /><MiniProblemCard title="Requests" detail={`${pendingRequests.length} pending`} action="Review" onClick={() => setActiveTab('schedule')} /><MiniProblemCard title="Kitchen Command" detail="Open Kitchen Command Center" action="Open" onClick={() => setActiveTab('ops')} /></div> : null}
+          {profile === 'manager' || profile === 'system' ? <div className="grid sm:grid-cols-3 gap-2">{canUseLabor && <MiniProblemCard title="Labor" detail={`${activePunches.length}/${todaysShifts.length} clocked in`} action="Labor" onClick={() => setActiveTab('labor')} />}{canUseScheduleBuilder && <MiniProblemCard title="Requests" detail={`${pendingRequests.length} pending`} action="Review" onClick={() => setActiveTab('schedule')} />}{canUseManagerBrief && <MiniProblemCard title="Kitchen Command" detail="Open Kitchen Command Center" action="Open" onClick={() => setActiveTab('ops')} />}{!canUseLabor && !canUseScheduleBuilder && !canUseManagerBrief && <MiniProblemCard title="Today Home" detail="Messages, prep, recipes, reminders, and Help Center are available on this plan." action="Open Help" onClick={() => setActiveTab('help')} />}</div> : null}
           {['service','bar','staff'].includes(profile) && <div className="grid sm:grid-cols-3 gap-2"><MiniProblemCard title="My Shift" detail={myShift ? `${formatShortTime(myShift.startTime)}-${formatShortTime(myShift.endTime)}` : 'No shift today'} action="Open" onClick={() => setActiveTab('published')} /><MiniProblemCard title="Messages" detail={`${importantNotes.length} important post(s)`} action="Read" onClick={() => setActiveTab('messages')} /><MiniProblemCard title="Trade Board" detail={`${openSwaps.length} available`} action="Open" onClick={() => setActiveTab('published')} /></div>}
         </div>
 
-        <div className={`${T.card} p-4`}>
+        <div className={`${T.card} brief-card p-4`}>
           <div className="flex justify-between items-center gap-2"><h2 className="font-black text-white text-lg">Important Messages</h2><button onClick={() => setActiveTab('messages')} className="text-[10px] font-black uppercase tracking-widest text-[#D4A381]">Open Board</button></div>
           <div className="mt-3 space-y-2">{importantNotes.length ? importantNotes.map(n => <div key={n.id} className="bg-red-950/10 border border-red-500/30 rounded-xl p-3"><div className="text-[9px] font-black uppercase tracking-widest text-red-300">{n.messageCategory || 'Important'} • {n.author}</div><div className="text-sm text-white font-bold mt-1 line-clamp-2">{n.title}</div>{(n.notes || n.menuImpact) && <div className="text-[11px] text-slate-300 font-bold mt-1 whitespace-pre-wrap line-clamp-3">{n.notes || n.menuImpact}</div>}</div>) : <SmartEmptyState icon={<MessageSquare size={22}/>} title="No important posts" desc="When a manager marks something important, it lands here first." />}</div>
         </div>
       </div>
 
       <div className="space-y-3">
-        <div className={`${T.card} p-4`}>
-          <button className="w-full flex justify-between items-center" onClick={() => setExpanded(e => ({...e, setup: !e.setup}))}><h2 className="font-black text-white text-lg">Setup Checklist</h2><span className="text-[10px] font-black text-[#D4A381]">{setupDone}/7</span></button>
+        <div className={`${T.card} brief-card p-4`}>
+          <button className="w-full flex justify-between items-center" onClick={() => setExpanded(e => ({...e, setup: !e.setup}))}><h2 className="font-black text-white text-lg">Setup Checklist</h2><span className="text-[10px] font-black text-[#D4A381]">{setupDone}/{setupTotal}</span></button>
           {expanded.setup && <div className="mt-3 space-y-2">{setupItems.map(item => <button key={item.label} onClick={() => setActiveTab(item.tab)} className="w-full flex items-center justify-between gap-2 bg-[#0B0E11] border border-[#2A353D] rounded-xl px-3 py-2 text-left"><span className="text-xs font-bold text-slate-200">{item.label}</span><span className={`text-[9px] font-black uppercase tracking-widest ${item.done ? 'text-emerald-400' : 'text-amber-400'}`}>{item.done ? 'Done' : 'Open'}</span></button>)}<button onClick={seedDemoData} className="w-full mt-2 bg-[#D4A381] text-slate-900 rounded-xl px-3 py-2 text-[10px] font-black uppercase tracking-widest">Seed Demo Mode</button></div>}
         </div>
-        <div className={`${T.card} p-4`}>
+        <div className={`${T.card} brief-card p-4`}>
           <h2 className="font-black text-white text-lg mb-3">Recently Used</h2>
           <div className="flex flex-wrap gap-2">{recentTabs.length ? recentTabs.map(t => <button key={t} onClick={() => setActiveTab(t)} className="px-3 py-2 bg-[#0B0E11] border border-[#2A353D] rounded-lg text-[10px] text-slate-300 font-black uppercase tracking-widest">{t}</button>) : <p className="text-xs text-slate-500 font-bold">Tabs you use will appear here.</p>}</div>
         </div>
-        <div className={`${T.card} p-4`}>
+        <div className={`${T.card} brief-card p-4`}>
           <button className="w-full flex justify-between items-center" onClick={() => setExpanded(e => ({...e, prefs: !e.prefs}))}><h2 className="font-black text-white text-lg">My Preferences</h2><Settings size={16}/></button>
           {expanded.prefs && <div className="mt-3 space-y-2"><button onClick={applyNotificationPreset} className="w-full bg-[#0B0E11] border border-[#2A353D] rounded-xl p-3 text-[10px] font-black uppercase tracking-widest text-[#D4A381]">Apply {profile} Notification Preset</button><button onClick={() => setActiveTab('settings')} className="w-full bg-[#0B0E11] border border-[#2A353D] rounded-xl p-3 text-[10px] font-black uppercase tracking-widest text-slate-300">Open Full Settings</button></div>}
         </div>

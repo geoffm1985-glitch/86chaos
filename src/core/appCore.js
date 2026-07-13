@@ -20,17 +20,17 @@ export const customMapIcon = new L.Icon({
 // --- Master Theme (Mapped to Image 6187_2.png) ---
 export const T = {
   bg: "bg-[#12161A] text-slate-100",
-  card: "bg-[#1A2126] border border-[#2A353D] shadow-lg rounded-xl",
+  card: "chaos-card bg-[#1A2126] border border-[#2A353D] shadow-lg rounded-xl",
   border: "border-[#2A353D]",
   copper: "text-[#D4A381]",
   grad: "bg-gradient-to-r from-[#C59373] to-[#8F6040]",
-  btn: "bg-gradient-to-r from-[#C59373] to-[#8F6040] text-slate-900 font-black uppercase tracking-wider rounded-lg shadow-md hover:opacity-90 transition-all px-3 py-2 text-xs text-center",
-  btnAlt: "bg-[#12161A] text-slate-300 border border-[#2A353D] font-bold rounded-lg hover:text-[#D4A381] transition-all px-3 py-2 text-xs",
-  input: "w-full p-2.5 bg-[#12161A] border border-[#2A353D] text-white rounded-lg outline-none focus:border-[#D4A381] transition-colors font-medium text-sm",
-  label: "block text-[10px] uppercase tracking-widest font-bold text-slate-400 mb-1",
+  btn: "chaos-button chaos-button-primary bg-gradient-to-r from-[#C59373] to-[#8F6040] text-slate-900 font-black uppercase tracking-wider rounded-lg shadow-md hover:opacity-90 transition-all px-3 py-2 text-xs text-center",
+  btnAlt: "chaos-button chaos-button-secondary bg-[#12161A] text-slate-300 border border-[#2A353D] font-bold rounded-lg hover:text-[#D4A381] transition-all px-3 py-2 text-xs",
+  input: "chaos-input w-full p-2.5 bg-[#12161A] border border-[#2A353D] text-white rounded-lg outline-none focus:border-[#D4A381] transition-colors font-medium text-sm",
+  label: "chaos-label block text-[10px] uppercase tracking-widest font-bold text-slate-300 mb-1",
   muted: "text-slate-400",
-  th: "bg-[#12161A] border-b border-[#2A353D] text-[10px] font-black text-[#D4A381] uppercase tracking-widest p-2.5",
-  row: "hover:bg-[#12161A]/50 border-b border-[#2A353D] transition-colors p-2.5",
+  th: "chaos-table-heading bg-[#12161A] border-b border-[#2A353D] text-[10px] font-black text-[#D4A381] uppercase tracking-widest p-2.5",
+  row: "chaos-table-row hover:bg-[#12161A]/50 border-b border-[#2A353D] transition-colors p-2.5",
 };
 
 // --- Firebase Initialization ---
@@ -156,7 +156,7 @@ export const MASTER_ADMIN_EMAIL = (process.env.REACT_APP_MASTER_ADMIN_EMAIL || '
 export const EVENT_TAGS = ['Standard Day', 'Packers Game', 'Brewers Game', 'Live Music', 'Severe Weather', 'Private Catering', 'Holiday'];
 
 // --- VERSION TRACKING ---
-export const CURRENT_VERSION = '15.0.28';
+export const CURRENT_VERSION = '15.0.63';
 
 // --- Helpers ---
 export const useLiveCollection = (coll, restId, options = {}) => {
@@ -444,14 +444,15 @@ export const logAudit = async (user, action, target, details) => {
 // Central helpers for safer writes, permission previews, offline queueing, import
 // templates, schema guardrails, and kitchen dependency analysis.
 // ============================================================================
-const V14_SENSITIVE_KEYS = ['password', 'temporaryPassword', 'ssn', 'address', 'phone', 'email', 'wage', 'hourlyRate', 'payRate', 'fcmToken', 'notesPrivate'];
-const V14_TENANT_COLLECTIONS = ['events','messages','shiftSwaps','tasks','timePunches','tempLogs','wasteLogs','maintenanceLogs','prepItems','prepCategories','lineCheckItems','recipes','inventoryItems','vendors','orders','invoices','shifts','timeOffRequests','roles','pmSchedules','sales','menuDependencies','offlineWriteReceipts','scheduleTemplates','scheduleCoverageTargets'];
+const V14_SENSITIVE_KEYS = ['password', 'temporaryPassword', 'ssn', 'address', 'phone', 'email', 'wage', 'hourlyRate', 'payRate', 'fcmToken', 'notesPrivate', 'confidentialSummary', 'nextSteps'];
+const V14_TENANT_COLLECTIONS = ['events','messages','shiftSwaps','tasks','timePunches','tempLogs','wasteLogs','maintenanceLogs','prepItems','prepCategories','lineCheckItems','recipes','inventoryItems','vendors','orders','invoices','shifts','timeOffRequests','roles','pmSchedules','sales','menuDependencies','kitchenSpecials','trainingManuals','hrOnboardingTasks','hrCertifications','hrPerformanceNotes','financialExpenses','financialTargets','offlineWriteReceipts','scheduleTemplates','scheduleCoverageTargets'];
 const V14_WRITE_PERMISSIONS = {
   shifts: ['schedule', 'team'], timeOffRequests: ['schedule', 'team'], scheduleTemplates: ['schedule', 'team'], scheduleCoverageTargets: ['schedule', 'team'],
   inventoryItems: ['inventory', 'team'], vendors: ['inventory', 'team'], orders: ['inventory', 'team'], invoices: ['inventory', 'team'],
-  prepItems: ['prep', 'team'], prepCategories: ['prep', 'team'], lineCheckItems: ['prep', 'team'], recipes: ['prep', 'team'], menuDependencies: ['prep', 'inventory', 'team'],
-  sales: ['sales', 'labor', 'team'], timePunches: ['labor', 'team'],
+  prepItems: ['prep', 'team'], prepCategories: ['prep', 'team'], lineCheckItems: ['prep', 'team'], recipes: ['prep', 'team'], menuDependencies: ['prep', 'inventory', 'team'], kitchenSpecials: ['prep', 'ops', 'team'],
+  sales: ['sales', 'labor', 'team'], timePunches: ['labor', 'team'], financialExpenses: ['sales', 'team'], financialTargets: ['sales', 'team'],
   pmSchedules: ['team'], maintenanceLogs: ['team'], tasks: ['prep', 'team'],
+  trainingManuals: ['hr'], hrOnboardingTasks: ['hr'], hrCertifications: ['hr'], hrPerformanceNotes: ['hr'],
   events: ['events', 'schedule', 'team'], messages: ['messages', 'team'], shiftSwaps: ['schedule', 'team'], tempLogs: ['prep', 'team'], wasteLogs: ['inventory', 'prep', 'team']
 };
 
@@ -476,6 +477,7 @@ export const canUserWriteCollection = (user = {}, collectionName = '') => {
   if (!collectionName) return false;
   if (isSuperAdminUser(user)) return true;
   if (user?.demoMode || user?.isDemo) return false;
+  if (collectionName === 'kitchenSpecials' && ['General Manager', 'Manager', 'Kitchen Manager', 'Operations Manager', 'Store Manager', 'Owner', 'Shift Lead', 'Lead', 'Supervisor'].includes(String(user?.role || ''))) return true;
   const needed = V14_WRITE_PERMISSIONS[collectionName] || [];
   if (needed.length === 0) return isWorkspaceManager(user);
   return hasAnyPermission(user, needed);
@@ -579,6 +581,7 @@ export const buildPermissionPreview = (user = {}, features = {}) => {
   push('ops', 'Ops Center', features.ops !== false && (superAdmin || admin || user?.permissions?.ops), 'Ops permission');
   push('financials', 'Financials', superAdmin || admin || user?.permissions?.labor || user?.permissions?.sales, 'Labor/sales permission');
   push('team', 'Team', features.team !== false && (admin || user?.permissions?.team), 'Team permission');
+  push('hr-training', 'HR & Training', !user?.demoMode, 'Published training is available to employees; administration requires HR or team permission');
   push('maintenance', 'Maintenance', features.maintenance !== false && (admin || user?.permissions?.team), 'Manager/team permission');
   push('settings', 'Settings', !user?.demoMode && (admin || user?.permissions?.settings || user?.permissions?.branding || user?.permissions?.integrations), 'Settings/owner permission');
   push('godmode', 'System Administrator', superAdmin, 'Super Admin only');

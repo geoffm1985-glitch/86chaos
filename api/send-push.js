@@ -1,27 +1,10 @@
-import { initializeApp, cert, getApps } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
 import { getMessaging } from 'firebase-admin/messaging';
-import { getAuth } from 'firebase-admin/auth';
+import projectAdmin from './_firebase-project-admin.js';
 
-function loadServiceAccount() {
-  const raw = process.env.FIREBASE_SERVICE_ACCOUNT_KEY || process.env.FIREBASE_ADMIN_CREDENTIALS;
-  if (raw) {
-    try { return JSON.parse(raw); }
-    catch (_) { throw new Error('Firebase service account JSON is invalid. Set FIREBASE_SERVICE_ACCOUNT_KEY in Vercel.'); }
-  }
-  return {
-    projectId: process.env.FIREBASE_PROJECT_ID,
-    clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-    privateKey: (process.env.FIREBASE_PRIVATE_KEY || '').replace(/\\n/g, '\n')
-  };
-}
+const { verifyRequestToken } = projectAdmin;
 
-if (!getApps().length) {
-  initializeApp({ credential: cert(loadServiceAccount()) });
-}
-const db = getFirestore();
-
-async function requireAppCheckIfEnforced(req, res) {
+async function requireAppCheckIfEnforced(req, res, app) {
   const enforced = ['true', '1', 'yes', 'enforce'].includes(String(process.env.APP_CHECK_ENFORCE || '').toLowerCase().trim());
   if (!enforced) return true;
   const token = String(req.headers['x-firebase-appcheck'] || req.headers['X-Firebase-AppCheck'] || '').trim();
@@ -31,7 +14,7 @@ async function requireAppCheckIfEnforced(req, res) {
   }
   try {
     const { getAppCheck } = await import('firebase-admin/app-check');
-    await getAppCheck().verifyToken(token);
+    await getAppCheck(app).verifyToken(token);
     return true;
   } catch (err) {
     res.status(401).json({ error: `App Check verification failed: ${err.message}` });
@@ -41,7 +24,7 @@ async function requireAppCheckIfEnforced(req, res) {
 
 
 
-async function enforceRouteRateLimit(req, res, decoded, routeName, limit = 30, windowMs = 60 * 1000) {
+async function enforceRouteRateLimit(db, req, res, decoded, routeName, limit = 30, windowMs = 60 * 1000) {
   const now = Date.now();
   const windowStart = Math.floor(now / windowMs) * windowMs;
   const ip = String(req.headers['x-forwarded-for'] || req.socket?.remoteAddress || '').split(',')[0].trim();
@@ -72,16 +55,15 @@ const masterEmails = () => [process.env.MASTER_ADMIN_EMAIL, process.env.MASTER_A
   .filter(Boolean);
 
 function userHasWorkspace(user, restaurantId) {
+  const member = user?.memberships?.[restaurantId];
   return Boolean(
     user?.restaurantId === restaurantId ||
-    user?.activeRestaurantId === restaurantId ||
-    user?.defaultRestaurantId === restaurantId ||
     user?.workspaceIds?.includes?.(restaurantId) ||
-    user?.memberships?.[restaurantId]?.isActive === true
+    (member && typeof member === 'object' && member.isActive !== false)
   );
 }
 
-async function getCaller(decoded) {
+async function getCaller(db, decoded) {
   const direct = await db.collection('users').doc(decoded.uid).get();
   if (direct.exists) return { id: direct.id, ...direct.data() };
   const email = norm(decoded.email);
@@ -91,7 +73,7 @@ async function getCaller(decoded) {
   return { id: decoded.uid, email };
 }
 
-async function readWorkspaceMember(uid, email, restaurantId) {
+async function readWorkspaceMember(db, uid, email, restaurantId) {
   if (!restaurantId) return null;
   const direct = await db.collection('workspaceMembers').doc(memberDocId(uid, restaurantId)).get();
   if (direct.exists && direct.data()?.isActive !== false) return { id: direct.id, ...direct.data() };
@@ -106,7 +88,7 @@ async function readWorkspaceMember(uid, email, restaurantId) {
   return null;
 }
 
-async function loadPushUsersForRestaurant(restaurantId) {
+async function loadPushUsersForRestaurant(db, restaurantId) {
   const pushUserMap = new Map();
   const usersSnap = await db.collection('users').where('restaurantId', '==', restaurantId).get();
   usersSnap.forEach(doc => pushUserMap.set(doc.id, { id: doc.id, ...doc.data() }));
@@ -137,65 +119,94 @@ async function loadPushUsersForRestaurant(restaurantId) {
   return [...pushUserMap.values()];
 }
 
-function callerCanSendForRestaurant(caller, decoded, member, restaurantId) {
-  const email = norm(decoded.email || caller.email);
+function callerIsInternalAdmin(caller, decoded) {
+  const email = norm(decoded.email || caller?.email);
   return Boolean(
-    decoded.superAdmin === true ||
+    decoded?.superAdmin === true ||
     caller?.isSuperAdmin === true ||
-    masterEmails().includes(email) ||
+    caller?.systemAccess?.superAdmin === true ||
+    masterEmails().includes(email)
+  );
+}
+
+function callerCanSendForRestaurant(caller, decoded, member, restaurantId) {
+  return Boolean(
+    callerIsInternalAdmin(caller, decoded) ||
     userHasWorkspace(caller, restaurantId) ||
     member
   );
 }
 
+function normalizeRestaurantIds(body = {}) {
+  const raw = Array.isArray(body.restaurantIds) ? body.restaurantIds : [body.restaurantId];
+  return [...new Set(raw.map(id => cleanId(id)).filter(Boolean))].slice(0, 250);
+}
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method Not Allowed' });
-  if (!await requireAppCheckIfEnforced(req, res)) return;
 
-  // --- THE BOUNCER: VERIFY FIREBASE AUTH TOKEN ---
-  const authHeader = req.headers.authorization;
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    return res.status(401).json({ error: 'Unauthorized: Missing or invalid token. Bots get bounced.' });
-  }
-
-  const authToken = authHeader.split('Bearer ')[1];
-  let decoded = null;
-
+  let authContext;
   try {
-    // This checks with Google's servers to guarantee the user is actually logged into 86chaos
-    decoded = await getAuth().verifyIdToken(authToken);
-    // The user is verified. The velvet rope opens.
+    authContext = await verifyRequestToken(req, { requireProjectCredentials: true });
   } catch (error) {
-    return res.status(403).json({ error: 'Forbidden: Fake or expired token.' });
+    return res.status(403).json({ error: `Push authorization failed: ${error.message}` });
   }
-  // --- END OF BOUNCER ---
-  if (!await enforceRouteRateLimit(req, res, decoded, 'send-push', Number(process.env.PUSH_ROUTE_RATE_LIMIT || 40), 60 * 1000)) return;
+
+  const { app, decoded, projectId } = authContext;
+  const db = getFirestore(app);
+  const messaging = getMessaging(app);
+  if (!await requireAppCheckIfEnforced(req, res, app)) return;
+  if (!await enforceRouteRateLimit(db, req, res, decoded, 'send-push', Number(process.env.PUSH_ROUTE_RATE_LIMIT || 40), 60 * 1000)) return;
 
   try {
-    const { restaurantId, targetUserId, targetUserIds, title, body, type, authorName, isCritical, textContent } = req.body;
-    if (!restaurantId) return res.status(400).json({ error: 'Missing restaurant ID' });
+    const { restaurantId, targetUserId, targetUserIds, title, body, type, authorName, isCritical, textContent, targetMode, targetGroupKey, targetGroupLabel } = req.body;
+    const restaurantIds = normalizeRestaurantIds(req.body);
+    if (!restaurantIds.length) return res.status(400).json({ error: 'Missing restaurant ID' });
+    if (!String(title || '').trim() || !String(body || '').trim()) return res.status(400).json({ error: 'Push title and message are required.' });
 
-    const caller = await getCaller(decoded);
-    const member = await readWorkspaceMember(decoded.uid, decoded.email || caller.email, restaurantId);
-    const canSendForRestaurant = callerCanSendForRestaurant(caller, decoded, member, restaurantId);
-
-    if (!canSendForRestaurant) {
-      return res.status(403).json({ error: 'Forbidden: You can only send notifications for your own workspace.' });
+    const caller = await getCaller(db, decoded);
+    const isInternalAdmin = callerIsInternalAdmin(caller, decoded);
+    if (restaurantIds.length > 1 && !isInternalAdmin) {
+      return res.status(403).json({ error: 'Only System Administrator can send group or multi-workspace push notifications.' });
     }
 
-    const allPushUsers = await loadPushUsersForRestaurant(restaurantId);
+    const restaurantMembers = new Map();
+    for (const rid of restaurantIds) {
+      const member = await readWorkspaceMember(db, decoded.uid, decoded.email || caller.email, rid);
+      restaurantMembers.set(rid, member);
+      if (!callerCanSendForRestaurant(caller, decoded, member, rid)) {
+        return res.status(403).json({ error: `Forbidden: You cannot send notifications for workspace ${rid}.` });
+      }
+    }
+
+    const usersById = new Map();
+    for (const rid of restaurantIds) {
+      const usersForRestaurant = await loadPushUsersForRestaurant(db, rid);
+      usersForRestaurant.forEach((user) => {
+        const key = user.id || `${norm(user.email)}:${rid}`;
+        if (!key) return;
+        const existing = usersById.get(key) || {};
+        usersById.set(key, { ...existing, ...user, restaurantId: user.restaurantId || rid, pushRestaurantIds: [...new Set([...(existing.pushRestaurantIds || []), rid])] });
+      });
+    }
+    const allPushUsers = [...usersById.values()];
     const targetSet = new Set([...(Array.isArray(targetUserIds) ? targetUserIds : []), targetUserId].filter(Boolean));
     
-    // Grab today's shifts to calculate "Smart Mute: Days Off"
+    // Grab today's shifts to calculate "Smart Mute: Days Off" without reading unrelated workspaces.
     const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Chicago' }).split('T')[0];
-    const shiftsSnap = await db.collection('shifts')
-      .where('restaurantId', '==', restaurantId)
-      .where('date', '==', todayStr)
-      .where('isPublished', '==', true)
-      .get();
-      
-    const workingTodayIds = new Set();
-    shiftsSnap.forEach(doc => workingTodayIds.add(doc.data().employeeId));
+    const workingTodayKeys = new Set();
+    await Promise.all(restaurantIds.map(async (rid) => {
+      try {
+        const shiftsSnap = await db.collection('shifts')
+          .where('restaurantId', '==', rid)
+          .where('date', '==', todayStr)
+          .where('isPublished', '==', true)
+          .get();
+        shiftsSnap.forEach(doc => workingTodayKeys.add(`${rid}:${doc.data().employeeId}`));
+      } catch (shiftErr) {
+        console.warn('Push route shift lookup skipped:', rid, shiftErr?.message || shiftErr);
+      }
+    }));
 
     // Calculate current time in Wisconsin (Central Time) for DND checks
     const now = new Date(new Date().toLocaleString("en-US", { timeZone: "America/Chicago" }));
@@ -238,7 +249,8 @@ export default async function handler(req, res) {
       // 3. Smart Mute: Days Off
       // (Never mute critical manager alerts or schedule publication drops)
       if (prefs.muteOnDaysOff && !isCritical && type !== 'schedule') {
-         if (!workingTodayIds.has(u.id)) return;
+         const userRestaurantIds = u.pushRestaurantIds?.length ? u.pushRestaurantIds : [u.restaurantId].filter(Boolean);
+         if (!userRestaurantIds.some(rid => workingTodayKeys.has(`${rid}:${u.id}`))) return;
       }
 
       // 4. Do Not Disturb (Quiet Hours)
@@ -258,9 +270,8 @@ export default async function handler(req, res) {
          if (inDnd) return;
       }
 
-      if (!tokenRecords.some(record => record.token === u.fcmToken)) tokenRecords.push({ userId: u.id, token: u.fcmToken });
+      if (!tokenRecords.some(record => record.token === u.fcmToken)) tokenRecords.push({ userId: u.id, restaurantId: u.restaurantId, token: u.fcmToken });
     });
-
     if (tokenRecords.length === 0) return res.status(200).json({ success: false, sentCount: 0, failedCount: 0, missingTokens: true, message: 'No devices eligible to receive this alert.' });
 
     const messagePayload = {
@@ -268,7 +279,7 @@ export default async function handler(req, res) {
       tokens: tokenRecords.map(t => t.token),
     };
 
-    const response = await getMessaging().sendEachForMulticast(messagePayload);
+    const response = await messaging.sendEachForMulticast(messagePayload);
     const staleCodes = new Set([
       'messaging/registration-token-not-registered',
       'messaging/invalid-registration-token',
@@ -286,16 +297,33 @@ export default async function handler(req, res) {
       }
     });
     await Promise.allSettled(cleanup);
+    const pushedAt = new Date().toISOString();
+    const pushSummary = `${response.successCount} sent / ${response.failureCount} failed`;
     await db.collection('system').doc('backupStatus').set({
-      lastPushResult: `${response.successCount} sent / ${response.failureCount} failed`,
-      lastPushAt: new Date().toISOString(),
-      lastPushTargetRestaurantId: restaurantId,
+      lastPushResult: pushSummary,
+      lastPushAt: pushedAt,
+      lastPushTargetRestaurantId: restaurantIds[0],
+      lastPushTargetRestaurantIds: restaurantIds,
+      lastPushTargetMode: targetMode || (restaurantIds.length > 1 ? 'multi-workspace' : 'workspace'),
+      lastPushTargetGroupKey: targetGroupKey || '',
+      lastPushTargetGroupLabel: targetGroupLabel || '',
       lastPushFailures: failures.slice(0, 25)
     }, { merge: true }).catch(() => {});
-    return res.status(200).json({ success: response.successCount > 0, sentCount: response.successCount, failedCount: response.failureCount, staleTokensCleaned: cleanup.length, failures });
+    await db.collection('auditLogs').add({
+      restaurantId: restaurantIds.length === 1 ? restaurantIds[0] : 'platform',
+      restaurantIds,
+      action: restaurantIds.length > 1 ? 'PUSH_GROUP_BROADCAST_SENT' : 'PUSH_WORKSPACE_NOTIFICATION_SENT',
+      target: targetGroupLabel || targetGroupKey || restaurantIds.join(','),
+      details: `${pushSummary}. Title: ${String(title || '').slice(0, 80)}`,
+      userId: decoded.uid || caller?.id || 'system-admin',
+      userName: authorName || caller?.name || caller?.email || decoded.email || 'System Administrator',
+      timestamp: pushedAt,
+      metadata: { targetMode: targetMode || '', targetGroupKey: targetGroupKey || '', targetGroupLabel: targetGroupLabel || '', eligibleTokens: tokenRecords.length, staleTokensCleaned: cleanup.length }
+    }).catch(() => {});
+    return res.status(200).json({ success: response.successCount > 0, sentCount: response.successCount, failedCount: response.failureCount, staleTokensCleaned: cleanup.length, restaurantCount: restaurantIds.length, targetMode: targetMode || (restaurantIds.length > 1 ? 'multi-workspace' : 'workspace'), failures });
 
   } catch (error) {
     console.error('Push Error:', error);
-    return res.status(500).json({ error: 'Failed to send notifications' });
+    return res.status(500).json({ error: error.message || 'Failed to send notifications', firebaseProject: projectId });
   }
 }

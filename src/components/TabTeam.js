@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { collection, doc, updateDoc, setDoc } from 'firebase/firestore';
 import { initializeApp } from 'firebase/app';
 import { getAuth, createUserWithEmailAndPassword, sendPasswordResetEmail } from 'firebase/auth';
@@ -10,7 +10,7 @@ const TabTeam = ({ users, appUser, addToast, db, auth, firebaseConfig, T, useLiv
   const [name, setName] = useState(''); 
   const [email, setEmail] = useState(''); 
   const [phone, setPhone] = useState(''); 
-  const [role, setRole] = useState('Bartender'); 
+  const [role, setRole] = useState(''); 
   const [wage, setWage] = useState(''); 
   const [photoURL, setPhotoURL] = useState(''); 
   const [isAdmin, setIsAdmin] = useState(false);
@@ -20,16 +20,18 @@ const TabTeam = ({ users, appUser, addToast, db, auth, firebaseConfig, T, useLiv
   const dbRoles = useLiveCollection('roles', appUser?.restaurantId);
   const DEFAULT_ROLES = ['General Manager', 'Manager', 'Chef', 'Sous Chef', 'Line Cook', 'Prep Cook', 'Bartender', 'Server', 'Host', 'Dishwasher'];
   const roles = dbRoles.length > 0 ? dbRoles.map(r => r.name).sort() : DEFAULT_ROLES;
+
+  useEffect(() => { if (!role && roles.length) setRole(roles[0]); }, [role, roles.join('|')]);
   
   const generateTempPass = () => Math.random().toString(36).slice(-6);
 
   const resetForm = () => {
-    setName(''); setEmail(''); setPhone(''); setWage(''); setPhotoURL(''); setRole('Bartender'); setIsAdmin(false); setPerms({ schedule: false, inventory: false, prep: false, sales: false, team: false }); setEditingUserId(null);
+    setName(''); setEmail(''); setPhone(''); setWage(''); setPhotoURL(''); setRole(roles[0] || ''); setIsAdmin(false); setPerms({ schedule: false, inventory: false, prep: false, sales: false, team: false }); setEditingUserId(null);
   };
 
   const handleEditClick = (u) => {
     if (!canManageTeam) return addToast('Read Only', 'Staff Roster is view-only for regular staff.');
-    setName(u.name); setEmail(u.email); setPhone(u.phone || ''); setWage(u.wage || ''); setPhotoURL(u.photoURL || ''); setRole(u.role || 'Bartender'); setIsAdmin(u.isAdmin || false); setPerms(u.permissions || { schedule: false, inventory: false, prep: false, sales: false, team: false }); setEditingUserId(u.id);
+    setName(u.name); setEmail(u.email); setPhone(u.phone || ''); setWage(u.wage || ''); setPhotoURL(u.photoURL || ''); setRole(u.role || roles[0] || ''); setIsAdmin(u.isAdmin || false); setPerms(u.permissions || { schedule: false, inventory: false, prep: false, sales: false, team: false }); setEditingUserId(u.id);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -42,7 +44,7 @@ const TabTeam = ({ users, appUser, addToast, db, auth, firebaseConfig, T, useLiv
       name: name.trim(),
       email: email.toLowerCase().trim(),
       phone: phone.trim(),
-      role,
+      role: role || roles[0] || 'Staff',
       wage: parseFloat(wage) || 0,
       isAdmin,
       permissions: perms,
@@ -157,7 +159,7 @@ Please log in and update your password.`;
     return { label, tone, exact };
   };
 
-  const activeUsers = users.filter(u => u.isActive !== false).sort((a, b) => a.role === b.role ? a.name.localeCompare(b.name) : (a.role==='Bartender'?-1:1));
+  const activeUsers = users.filter(u => u.isActive !== false).sort((a, b) => String(a.role || '').localeCompare(String(b.role || '')) || String(a.name || '').localeCompare(String(b.name || '')));
 
 return (
     <div className="max-w-4xl mx-auto space-y-6 pb-24">
@@ -233,7 +235,7 @@ return (
                 <div className="min-w-0">
                   <h4 className="font-bold text-white text-sm leading-tight truncate">{u.name} {u.isAdmin && <span className="ml-1 text-[7px] uppercase tracking-widest bg-red-500 text-white px-1 py-0.5 rounded-sm">Admin</span>}</h4>
                   <div className="flex items-center gap-2 mt-0.5">
-                    <span className={`text-[8px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded border ${u.role==='Bartender'?'bg-blue-900/20 text-blue-400 border-blue-900/50':'bg-[#12161A] text-[#D4A381] border-[#2A353D]'}`}>{u.role}</span>
+                    <span className="text-[8px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded border bg-[#12161A] text-[#D4A381] border-[#2A353D]">{u.role || 'Unassigned'}</span>
                     {u.phone && <span className="text-[9px] font-bold text-slate-500 truncate">{u.phone}</span>}
                     {canManageTeam && u.wage > 0 && <span className="text-[9px] font-black text-emerald-500 uppercase tracking-widest bg-emerald-900/10 border border-emerald-900/30 px-1.5 py-0.5 rounded ml-1">${Number(u.wage).toFixed(2)}/hr</span>}
                   </div>

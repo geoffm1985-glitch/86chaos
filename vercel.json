@@ -32,6 +32,10 @@
       "schedule": "0 9 * * *"
     },
     {
+      "path": "/api/firestore-backup-watchdog",
+      "schedule": "0 21 * * *"
+    },
+    {
       "path": "/api/weekly-maintenance",
       "schedule": "0 10 * * 1"
     },
@@ -58,6 +62,26 @@
       "memory": 1024
     },
     "api/presence-snapshot.js": {
+      "maxDuration": 60,
+      "memory": 512
+    },
+    "api/firestore-backup.js": {
+      "maxDuration": 300,
+      "memory": 1024
+    },
+    "api/firestore-backup-watchdog.js": {
+      "maxDuration": 120,
+      "memory": 512
+    },
+    "api/gemini-admin-manual.js": {
+      "maxDuration": 60,
+      "memory": 512
+    },
+    "api/health-checks.js": {
+      "maxDuration": 60,
+      "memory": 512
+    },
+    "api/openai-diagnostics-explain.js": {
       "maxDuration": 60,
       "memory": 512
     }

@@ -15,10 +15,6 @@ service firebase.storage {
       return /databases/(default)/documents/users/$(request.auth.uid);
     }
 
-    function hasUserDoc() {
-      return signedIn() && firestore.exists(userPath());
-    }
-
     function userDoc() {
       return firestore.get(userPath()).data;
     }
@@ -27,45 +23,32 @@ service firebase.storage {
       return /databases/(default)/documents/restaurants/$(restaurantId);
     }
 
-    function hasRestaurantDoc(restaurantId) {
-      return restaurantId is string && firestore.exists(restaurantPath(restaurantId));
-    }
-
     function restaurantDoc(restaurantId) {
       return firestore.get(restaurantPath(restaurantId)).data;
-    }
-
-    function isMasterEmail() {
-      return signedIn() && (
-        request.auth.token.email == 'geoffrm1985@gmail.com' ||
-        request.auth.token.email == 'geoffm1985@gmail.com'
-      );
     }
 
     function isSuperAdmin() {
       return signedIn() && (
         request.auth.token.superAdmin == true ||
-        isMasterEmail() ||
-        (hasUserDoc() && (userDoc().isSuperAdmin == true || userDoc().systemAccess.superAdmin == true))
+        userDoc().get('isSuperAdmin', false) == true ||
+        userDoc().get('systemAccess', {}).get('superAdmin', false) == true
       );
     }
 
     function membershipMapHas(restaurantId) {
-      return hasUserDoc() &&
+      return signedIn() &&
         userDoc().memberships is map &&
         userDoc().memberships[restaurantId] is map &&
         userDoc().memberships[restaurantId].isActive == true;
     }
 
     function workspaceIdsHas(restaurantId) {
-      return hasUserDoc() && userDoc().workspaceIds is list && userDoc().workspaceIds.hasAny([restaurantId]);
+      return signedIn() && userDoc().workspaceIds is list && userDoc().workspaceIds.hasAny([restaurantId]);
     }
 
     function isTenantMatch(restaurantId) {
-      return signedIn() && hasUserDoc() && (
+      return signedIn() && (
         userDoc().restaurantId == restaurantId ||
-        userDoc().activeRestaurantId == restaurantId ||
-        userDoc().defaultRestaurantId == restaurantId ||
         workspaceIdsHas(restaurantId) ||
         membershipMapHas(restaurantId)
       );
@@ -75,22 +58,51 @@ service firebase.storage {
       return signedIn() && (
         isSuperAdmin() ||
         (
-          hasRestaurantDoc(restaurantId) && (
-            restaurantDoc(restaurantId).ownerEmail == request.auth.token.email ||
-            restaurantDoc(restaurantId).ownerEmailLower == request.auth.token.email ||
-            restaurantDoc(restaurantId).ownerUserEmail == request.auth.token.email ||
-            restaurantDoc(restaurantId).ownerUserId == request.auth.uid ||
-            restaurantDoc(restaurantId).ownerUid == request.auth.uid
+          restaurantDoc(restaurantId).get('ownerEmail', '') == request.auth.token.email ||
+          restaurantDoc(restaurantId).get('ownerEmailLower', '') == request.auth.token.email ||
+          restaurantDoc(restaurantId).get('ownerUserEmail', '') == request.auth.token.email ||
+          restaurantDoc(restaurantId).get('ownerUserId', '') == request.auth.uid ||
+          restaurantDoc(restaurantId).get('ownerUid', '') == request.auth.uid
+        ) ||
+        (
+          membershipMapHas(restaurantId) && (
+            userDoc().memberships[restaurantId].get('isOwner', false) == true ||
+            userDoc().memberships[restaurantId].get('accountOwner', false) == true ||
+            userDoc().memberships[restaurantId].get('workspaceOwner', false) == true ||
+            userDoc().memberships[restaurantId].get('accountRole', '') == 'owner'
           )
         ) ||
         (
-          isTenantMatch(restaurantId) && (
-            userDoc().isOwner == true ||
-            userDoc().accountOwner == true ||
-            userDoc().owner == true ||
-            userDoc().workspaceOwner == true ||
-            userDoc().accountRole == 'owner'
+          !membershipMapHas(restaurantId) && userDoc().restaurantId == restaurantId && (
+            userDoc().get('isOwner', false) == true ||
+            userDoc().get('accountOwner', false) == true ||
+            userDoc().get('owner', false) == true ||
+            userDoc().get('workspaceOwner', false) == true ||
+            userDoc().get('accountRole', '') == 'owner'
           )
+        )
+      );
+    }
+
+    function isAdminFor(restaurantId) {
+      return isTenantMatch(restaurantId) && (
+        (membershipMapHas(restaurantId) && userDoc().memberships[restaurantId].get('isAdmin', false) == true) ||
+        (!membershipMapHas(restaurantId) && userDoc().restaurantId == restaurantId && userDoc().get('isAdmin', false) == true)
+      );
+    }
+
+    function hasPermFor(restaurantId, permission) {
+      return isTenantMatch(restaurantId) && (
+        (
+          membershipMapHas(restaurantId) &&
+          userDoc().memberships[restaurantId].permissions is map &&
+          userDoc().memberships[restaurantId].permissions[permission] == true
+        ) ||
+        (
+          !membershipMapHas(restaurantId) &&
+          userDoc().restaurantId == restaurantId &&
+          userDoc().permissions is map &&
+          userDoc().permissions[permission] == true
         )
       );
     }
@@ -98,25 +110,15 @@ service firebase.storage {
     function canManageBrandAssets(restaurantId) {
       return isSuperAdmin() ||
         isRestaurantOwner(restaurantId) ||
-        (isTenantMatch(restaurantId) && (
-          userDoc().isAdmin == true ||
-          (userDoc().permissions is map && (
-            userDoc().permissions.branding == true ||
-            userDoc().permissions.settings == true
-          ))
-        ));
+        isAdminFor(restaurantId) ||
+        hasPermFor(restaurantId, 'branding') ||
+        hasPermFor(restaurantId, 'settings');
     }
 
     function canUseMenuIntelligence(restaurantId) {
       return isSuperAdmin() ||
         isRestaurantOwner(restaurantId) ||
-        (isTenantMatch(restaurantId) && (
-          userDoc().permissions.menuIntelligence == true ||
-          (
-            membershipMapHas(restaurantId) &&
-            userDoc().memberships[restaurantId].permissions.menuIntelligence == true
-          )
-        ));
+        hasPermFor(restaurantId, 'menuIntelligence');
     }
 
     function isAllowedImage() {
@@ -131,7 +133,80 @@ service firebase.storage {
         (
           request.resource.contentType.matches('image/.*') ||
           request.resource.contentType == 'application/pdf'
-        );
+      );
+    }
+
+    function isHrOwnerFor(restaurantId) {
+      return signedIn() && (
+        (
+          membershipMapHas(restaurantId) && (
+            userDoc().memberships[restaurantId].get('isOwner', false) == true ||
+            userDoc().memberships[restaurantId].get('accountOwner', false) == true ||
+            userDoc().memberships[restaurantId].get('workspaceOwner', false) == true ||
+            userDoc().memberships[restaurantId].get('accountRole', '') == 'owner'
+          )
+        ) ||
+        (
+          !membershipMapHas(restaurantId) && userDoc().restaurantId == restaurantId && (
+            userDoc().get('isOwner', false) == true ||
+            userDoc().get('accountOwner', false) == true ||
+            userDoc().get('owner', false) == true ||
+            userDoc().get('workspaceOwner', false) == true ||
+            userDoc().get('accountRole', '') == 'owner'
+          )
+        )
+      );
+    }
+
+    function isHrAdminFor(restaurantId) {
+      return isTenantMatch(restaurantId) && (
+        (membershipMapHas(restaurantId) && userDoc().memberships[restaurantId].get('isAdmin', false) == true) ||
+        (!membershipMapHas(restaurantId) && userDoc().restaurantId == restaurantId && userDoc().get('isAdmin', false) == true)
+      );
+    }
+
+    function hasHrPermissionFor(restaurantId) {
+      return isTenantMatch(restaurantId) && (
+        (
+          membershipMapHas(restaurantId) &&
+          userDoc().memberships[restaurantId].permissions is map &&
+          userDoc().memberships[restaurantId].permissions.hr == true
+        ) ||
+        (
+          !membershipMapHas(restaurantId) &&
+          userDoc().restaurantId == restaurantId &&
+          userDoc().permissions is map &&
+          userDoc().permissions.hr == true
+        )
+      );
+    }
+
+    function canManageHr(restaurantId) {
+      return isSuperAdmin() || isHrOwnerFor(restaurantId) || isHrAdminFor(restaurantId) || hasHrPermissionFor(restaurantId);
+    }
+
+    function trainingManualPath(manualId) {
+      return /databases/(default)/documents/trainingManuals/$(manualId);
+    }
+
+    function publishedTrainingManualFor(restaurantId, manualId) {
+      let manual = firestore.get(trainingManualPath(manualId)).data;
+      return manual.restaurantId == restaurantId && manual.status == 'Published';
+    }
+
+    function isAllowedTrainingManual(restaurantId, manualId) {
+      return request.resource != null &&
+        uploadPurposeIs('hr-training-manual') &&
+        request.resource.metadata.restaurantId == restaurantId &&
+        request.resource.metadata.manualId == manualId &&
+        request.resource.size > 0 &&
+        request.resource.size <= 15 * 1024 * 1024 &&
+        request.resource.contentType in [
+          'application/pdf',
+          'application/msword',
+          'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+          'text/plain'
+        ];
     }
 
     function isAllowedInvoiceScan() {
@@ -197,6 +272,17 @@ service firebase.storage {
     match /{restaurantId}/menuUploads/{allPaths=**} {
       allow read: if canUseMenuIntelligence(restaurantId);
       allow write: if canUseMenuIntelligence(restaurantId) && isAllowedMenuUpload();
+    }
+
+    // Versioned HR training manuals. Employees may fetch only files whose
+    // matching Firestore record is currently Published. HR managers may upload,
+    // inspect, and delete any version for their own workspace.
+    match /{restaurantId}/hrTrainingManuals/{manualId}/{allPaths=**} {
+      allow read: if canManageHr(restaurantId) ||
+        (isTenantMatch(restaurantId) && publishedTrainingManualFor(restaurantId, manualId));
+      allow create: if canManageHr(restaurantId) && isAllowedTrainingManual(restaurantId, manualId);
+      allow update: if false;
+      allow delete: if canManageHr(restaurantId);
     }
 
     // Backups are Super Admin only. No regular signed-in user can read or write backups.

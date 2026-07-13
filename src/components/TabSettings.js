@@ -52,6 +52,9 @@ const TabSettings = ({ appUser, addToast, users = [], clientData = {}, db, auth,
   const displayRoles = dbRoles.length > 0 
     ? [...dbRoles].sort((a,b) => a.name.localeCompare(b.name)) 
     : DEFAULT_ROLES.map(r => ({ id: r, name: r, isDefault: true }));
+  const hasCustomRosterRoles = dbRoles.length > 0;
+  const roleTextForSettings = String(appUser?.role || '').toLowerCase();
+  const isLegacyKitchenFallback = !hasCustomRosterRoles && ['kitchen', 'cook', 'chef', 'prep'].some(token => roleTextForSettings.includes(token));
 
   // --- Image Upload Engine ---
   const handleImageUpload = (e) => {
@@ -236,7 +239,7 @@ const TabSettings = ({ appUser, addToast, users = [], clientData = {}, db, auth,
                     <option value="published">My Schedule</option>
                     <option value="messages">Message Board</option>
                     <option value="team">Team Roster</option>
-                    {appUser?.role === 'Kitchen' || appUser?.isAdmin ? <option value="prep">Prep List</option> : null}
+                    {isLegacyKitchenFallback || appUser?.isAdmin ? <option value="prep">Prep List</option> : null}
                     {appUser?.isAdmin && <option value="schedule">Master Schedule</option>}
                     {appUser?.isAdmin && <option value="sales">Sales Ledger</option>}
                   </select>

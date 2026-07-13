@@ -4,7 +4,8 @@ const {
   getMonthKey,
   isMasterAdminScanExempt,
   getAiUsageSnapshot,
-  updateAiUsageLimits
+  updateAiUsageLimits,
+  resetAiUsageCounters
 } = require('./_ai-usage');
 
 function clean(value = '') {
@@ -122,6 +123,17 @@ module.exports = async function handler(req, res) {
     const body = await readBody(req);
     const restaurantId = clean(body.restaurantId);
     if (!restaurantId) return res.status(400).json({ ok: false, error: 'restaurantId is required.' });
+    if (body.action === 'reset') {
+      const usage = await resetAiUsageCounters({ db: caller.db, restaurantId, monthKey, resetBy: auth.decoded.email || auth.decoded.uid || 'system-admin' });
+      await writeAudit(caller.db, {
+        uid: auth.decoded.uid,
+        userDocId: caller.userDocId,
+        email: auth.decoded.email || '',
+        user: caller.user,
+        restaurantId
+      }, 'AI_SCAN_USAGE_RESET', restaurantId, `AI scan usage reset for ${monthKey}.`, restaurantId);
+      return res.status(200).json({ ok: true, usage });
+    }
     const invoicePagesLimit = Number.parseInt(body.invoicePagesLimit, 10);
     const menuPagesLimit = Number.parseInt(body.menuPagesLimit, 10);
     if (!Number.isInteger(invoicePagesLimit) || invoicePagesLimit < 0 || invoicePagesLimit > 10000) {

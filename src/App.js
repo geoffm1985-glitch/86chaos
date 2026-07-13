@@ -4,11 +4,46 @@ import { addDoc, collection, doc, onSnapshot, updateDoc } from 'firebase/firesto
 import { getToken, onMessage } from 'firebase/messaging';
 import 'leaflet/dist/leaflet.css';
 import { T, db, auth, messaging, firebaseConfig, CURRENT_VERSION, MASTER_ADMIN_EMAIL, useLiveCollection, secureFetch, waitForAuthCurrentUser, getToday, getMonthStr, formatDate, formatDisplayFullDate, formatDisplayMonth, logAudit, setActiveTimeFormat, getOfflineQueue, replayOfflineQueue } from './core/appCore';
+import { buildAlertFingerprint, useRememberedAlert } from './core/alertMemory';
 import { CheersLogo, Modal, DrawerMenu, DayDotPrintScreen, GlobalSearchModal, KitchenTVMode, UndoBar, VoiceCommandDock } from './components/common';
-import { LoginScreen, TabMasterSchedule, TabSchedule, TabScheduleWorkbench, TabOpsCenter, TabFinancials, TabMessages, TabPrep, TabRecipes, TabInventory, TabTeam, TabMaintenance, TabSettings, TabHelpCenter, TabGodMode, TabAuditLog, TabToday, TabPersonalReminders, TabMenuIntelligence, TabAITools } from './features';
+import { LockedFeatureScreen } from './components/PlanGate';
+import { usePlanAccess } from './hooks/usePlanAccess';
+import { resolveFeatureAccess } from './lib/featureAccess';
+import { FEATURE_KEYS } from './config/plans';
+import { LoginScreen, TabMasterSchedule, TabSchedule, TabScheduleWorkbench, TabOpsCenter, TabFinancials, TabMessages, TabPrep, TabRecipes, TabInventory, TabTeam, TabMaintenance, TabSettings, TabHelpCenter, TabGodMode, TabAuditLog, TabToday, TabPersonalReminders, TabMenuIntelligence, TabAITools, TabHrTraining } from './features';
 
 const normalizeEmail = (value) => String(value || '').toLowerCase().trim();
 const safeWorkspaceName = (workspace = {}) => workspace.restaurantName || workspace.name || workspace.businessName || workspace.restaurantId || '86 Chaos Workspace';
+const hasOwn = (value, key) => Boolean(value && Object.prototype.hasOwnProperty.call(value, key));
+const resolveWorkspaceAccess = (currentUser = {}, workspace = {}) => {
+  const restaurantId = workspace.restaurantId || currentUser.restaurantId || '';
+  const mappedMembership = currentUser?.memberships?.[restaurantId];
+  const hasScopedMembership = Boolean(
+    mappedMembership ||
+    workspace.membershipSource ||
+    workspace.workspaceMemberId ||
+    ['permissions', 'isAdmin', 'isOwner', 'accountOwner', 'workspaceOwner'].some(key => hasOwn(workspace, key))
+  );
+  const scoped = mappedMembership ? { ...mappedMembership, ...workspace, permissions: { ...(mappedMembership.permissions || {}), ...(workspace.permissions || {}) } } : workspace;
+  const primaryIds = new Set([
+    currentUser.restaurantId,
+    currentUser.defaultRestaurantId,
+    currentUser?.accountProfile?.defaultRestaurantId
+  ].filter(Boolean));
+  const mayUseLegacyProfile = !hasScopedMembership && (!restaurantId || primaryIds.has(restaurantId));
+  return {
+    restaurantId,
+    hasScopedMembership,
+    permissions: hasScopedMembership ? { ...(scoped.permissions || {}) } : (mayUseLegacyProfile ? { ...(currentUser.permissions || {}) } : {}),
+    isAdmin: hasScopedMembership ? scoped.isAdmin === true : Boolean(mayUseLegacyProfile && currentUser.isAdmin === true),
+    isOwner: hasScopedMembership
+      ? Boolean(scoped.isOwner === true || scoped.accountOwner === true || scoped.workspaceOwner === true)
+      : Boolean(mayUseLegacyProfile && (currentUser.isOwner === true || currentUser.accountOwner === true || currentUser.owner === true || currentUser.workspaceOwner === true || String(currentUser.accountRole || '').toLowerCase() === 'owner')),
+    accountOwner: hasScopedMembership ? scoped.accountOwner === true : Boolean(mayUseLegacyProfile && currentUser.accountOwner === true),
+    workspaceOwner: hasScopedMembership ? scoped.workspaceOwner === true : Boolean(mayUseLegacyProfile && currentUser.workspaceOwner === true),
+    accountRole: hasScopedMembership ? String(scoped.accountRole || '') : (mayUseLegacyProfile ? String(currentUser.accountRole || '') : '')
+  };
+};
 const buildWorkspaceUser = (currentUser = {}, workspace = {}) => {
   const accountProfile = currentUser.accountProfile || {
     id: currentUser.id,
@@ -23,6 +58,7 @@ const buildWorkspaceUser = (currentUser = {}, workspace = {}) => {
     memberships: currentUser.memberships || {}
   };
   const userId = currentUser.id || workspace.userId || workspace.uid || accountProfile.id;
+  const scopedAccess = resolveWorkspaceAccess(currentUser, workspace);
   return {
     ...currentUser,
     id: userId,
@@ -37,29 +73,39 @@ const buildWorkspaceUser = (currentUser = {}, workspace = {}) => {
     role: workspace.role || currentUser.role || 'Staff',
     wage: workspace.wage ?? currentUser.wage ?? 0,
     photoURL: workspace.photoURL || currentUser.photoURL || accountProfile.photoURL || '',
-    isAdmin: workspace.isAdmin === true || currentUser.isSuperAdmin === true,
-    isOwner: workspace.isOwner === true || workspace.accountOwner === true || workspace.workspaceOwner === true || currentUser.isOwner === true,
-    accountOwner: workspace.accountOwner === true || currentUser.accountOwner === true,
-    workspaceOwner: workspace.workspaceOwner === true || currentUser.workspaceOwner === true,
-    permissions: { ...(currentUser.permissions || {}), ...(workspace.permissions || {}) },
+    isAdmin: currentUser.isSuperAdmin === true || scopedAccess.isAdmin,
+    isOwner: scopedAccess.isOwner,
+    owner: scopedAccess.isOwner,
+    accountOwner: scopedAccess.accountOwner,
+    workspaceOwner: scopedAccess.workspaceOwner,
+    accountRole: scopedAccess.accountRole,
+    permissions: scopedAccess.permissions,
     activeRestaurantId: workspace.restaurantId || currentUser.activeRestaurantId || currentUser.restaurantId,
     defaultRestaurantId: currentUser.defaultRestaurantId || workspace.restaurantId || currentUser.restaurantId,
     availableWorkspaces: currentUser.availableWorkspaces || [],
     workspaceSwitcherReady: true
   };
 };
-const userFromWorkspaceMember = (member = {}, accountUser = {}) => ({
-  ...accountUser,
-  ...Object.fromEntries(Object.entries(member).filter(([key]) => key !== 'id')),
-  id: member.userId || member.uid || accountUser.id || member.id,
-  userId: member.userId || member.uid || accountUser.id || member.id,
-  membershipId: member.membershipId || member.id || '',
-  restaurantId: member.restaurantId || accountUser.restaurantId,
-  restaurantName: safeWorkspaceName(member),
-  permissions: { ...(accountUser.permissions || {}), ...(member.permissions || {}) },
-  isAdmin: member.isAdmin === true || accountUser.isSuperAdmin === true || (accountUser.restaurantId === member.restaurantId && accountUser.isAdmin === true),
-  isActive: member.isActive !== false && accountUser.isActive !== false
-});
+const userFromWorkspaceMember = (member = {}, accountUser = {}) => {
+  const memberOwner = Boolean(member.isOwner === true || member.accountOwner === true || member.workspaceOwner === true);
+  return {
+    ...accountUser,
+    ...Object.fromEntries(Object.entries(member).filter(([key]) => key !== 'id')),
+    id: member.userId || member.uid || accountUser.id || member.id,
+    userId: member.userId || member.uid || accountUser.id || member.id,
+    membershipId: member.membershipId || member.id || '',
+    restaurantId: member.restaurantId || accountUser.restaurantId,
+    restaurantName: safeWorkspaceName(member),
+    permissions: { ...(member.permissions || {}) },
+    isAdmin: member.isAdmin === true || accountUser.isSuperAdmin === true,
+    isOwner: memberOwner,
+    owner: memberOwner,
+    accountOwner: member.accountOwner === true,
+    workspaceOwner: member.workspaceOwner === true,
+    accountRole: memberOwner ? 'owner' : String(member.accountRole || ''),
+    isActive: member.isActive !== false && accountUser.isActive !== false
+  };
+};
 
 export default function App() {
   const [appUser, setAppUser] = useState(() => { 
@@ -92,11 +138,12 @@ export default function App() {
   const [workspaceMembershipRefreshKey] = useState(0);
   const [isPushRepairing, setIsPushRepairing] = useState(false);
   const [pushRepairDismissed, setPushRepairDismissed] = useState(false);
+  const [serverAdminCheck, setServerAdminCheck] = useState(null);
   
   // --- VERSION CHECKER STATE & LOGIC ---
   const [showUpdateBanner, setShowUpdateBanner] = useState(false);
-  const helpReleaseBriefDisabled = ['15.0.5', '15.0.6', '15.0.7', '15.0.8', '15.0.9'].includes(CURRENT_VERSION);
-  const [hasHelpUpdate, setHasHelpUpdate] = useState(() => !helpReleaseBriefDisabled && localStorage.getItem(`helpBriefSeen_${CURRENT_VERSION}`) !== 'true');
+  const [availableVersion, setAvailableVersion] = useState('');
+  const [hasHelpUpdate, setHasHelpUpdate] = useState(false);
   const [tourMode, setTourMode] = useState(null);
   const [tourStep, setTourStep] = useState(0);
 
@@ -107,7 +154,11 @@ export default function App() {
         if (response.ok) {
           const data = await response.json();
           if (data.version !== CURRENT_VERSION) {
+            setAvailableVersion(data.version || 'new-version');
             setShowUpdateBanner(true);
+          } else {
+            setAvailableVersion('');
+            setShowUpdateBanner(false);
           }
         }
       } catch (error) {
@@ -133,6 +184,43 @@ export default function App() {
     window.addEventListener('appinstalled', handleAppInstall);
     return () => window.removeEventListener('appinstalled', handleAppInstall);
   }, []);
+
+
+  useEffect(() => {
+    if (!appUser?.id || appUser.id === 'dev-backdoor') {
+      setServerAdminCheck(null);
+      return;
+    }
+    let canceled = false;
+    const checkServerAdminAccess = async () => {
+      try {
+        const res = await secureFetch('/api/whoami');
+        const data = await res.json().catch(() => ({}));
+        if (canceled) return;
+        setServerAdminCheck({ ok: res.ok, ...data });
+        if (res.ok && data.superAdmin === true) {
+          setAppUser(prev => {
+            if (!prev?.id || prev.id !== appUser.id || prev.isSuperAdmin === true) return prev;
+            const next = {
+              ...prev,
+              isSuperAdmin: true,
+              systemAccess: { ...(prev.systemAccess || {}), superAdmin: true },
+              superAdminAccessSource: data.serverMasterAdminMatched ? 'server-master-admin-env' : data.customClaimSuperAdmin ? 'firebase-custom-claim' : data.firestoreSuperAdmin ? 'firestore-profile-flag' : 'api-whoami'
+            };
+            try {
+              const storage = localStorage.getItem('86chaosUser') ? localStorage : sessionStorage;
+              storage.setItem('86chaosUser', JSON.stringify(next));
+            } catch (_) {}
+            return next;
+          });
+        }
+      } catch (err) {
+        if (!canceled) setServerAdminCheck({ ok: false, error: err?.message || 'Could not check server admin config.' });
+      }
+    };
+    checkServerAdminAccess();
+    return () => { canceled = true; };
+  }, [appUser?.id, appUser?.email]);
 
 const [currentDate, setCurrentDate] = useState(getToday());
 
@@ -175,14 +263,32 @@ const [currentDate, setCurrentDate] = useState(getToday());
   // and then replace them with a tiny, stale capped snapshot. Other tabs still use tighter windows.
   const wantsToday = activeTabState === 'today';
   const wantsScheduleScreen = ['schedule', 'events', 'published'].includes(activeTabState);
-  const wantsScheduleData = wantsToday || wantsScheduleScreen || ['labor', 'ops'].includes(activeTabState);
-  const wantsLaborData = wantsToday || ['financials', 'labor', 'sales', 'ops'].includes(activeTabState);
-  const wantsInventoryData = wantsToday || ['inventory', 'ops', 'menu-intelligence'].includes(activeTabState) || isGlobalSearchOpen;
+  const subscriptionProbeUser = { ...(appUser || {}), isSuperAdmin: appUser?.isSuperAdmin === true || serverAdminCheck?.superAdmin === true };
+  const featureAccessForShell = (featureKey) => {
+    if (!featureKey) return null;
+    return resolveFeatureAccess({ workspace: clientData || {}, user: subscriptionProbeUser, featureKey });
+  };
+  const planAllowsFeature = (featureKey) => {
+    const access = featureAccessForShell(featureKey);
+    return Boolean(access?.master || access?.planAllowed || access?.manualEnabled);
+  };
+  const roleAndPlanAllowFeature = (featureKey) => Boolean(featureAccessForShell(featureKey)?.allowed);
+  const canReadScheduleView = roleAndPlanAllowFeature(FEATURE_KEYS.BASIC_SCHEDULE_VIEW);
+  const canReadScheduleBuilder = roleAndPlanAllowFeature(FEATURE_KEYS.SCHEDULE_BUILDER);
+  const canReadOperationsLabor = [FEATURE_KEYS.TIMESHEETS, FEATURE_KEYS.LABOR_COMMAND, FEATURE_KEYS.TIP_CENTER, FEATURE_KEYS.PAYROLL_READINESS].some(roleAndPlanAllowFeature);
+  const canReadSalesCollections = [FEATURE_KEYS.DAILY_CLOSE, FEATURE_KEYS.SALES_BREAKDOWN, FEATURE_KEYS.FINANCIAL_OVERVIEW, FEATURE_KEYS.PRIME_COST].some(roleAndPlanAllowFeature);
+  const canReadBasicInventory = [FEATURE_KEYS.BASIC_INVENTORY, FEATURE_KEYS.BURN_LOG].some(roleAndPlanAllowFeature);
+  const canReadSmartInventory = [FEATURE_KEYS.COGS_CENTER, FEATURE_KEYS.INVOICE_TOTALS, FEATURE_KEYS.VENDOR_SPEND, FEATURE_KEYS.INVOICE_SCANNING].some(roleAndPlanAllowFeature);
+  const canReadMenuCollections = [FEATURE_KEYS.MENU_INTELLIGENCE, FEATURE_KEYS.DEPENDENCY_TOOLS, FEATURE_KEYS.SMART_86_ALERTS].some(roleAndPlanAllowFeature);
+  const canReadMaintenance = roleAndPlanAllowFeature(FEATURE_KEYS.CLEANING_ROUTINES);
+  const wantsScheduleData = (wantsToday && canReadScheduleView) || (wantsScheduleScreen && (canReadScheduleView || canReadScheduleBuilder)) || (['labor', 'ops'].includes(activeTabState) && (canReadScheduleView || canReadOperationsLabor));
+  const wantsLaborData = (['financials', 'labor', 'sales', 'ops'].includes(activeTabState) || (wantsToday && canReadOperationsLabor)) && canReadOperationsLabor;
+  const wantsInventoryData = (((wantsToday || ['inventory', 'ops'].includes(activeTabState) || isGlobalSearchOpen) && (canReadBasicInventory || canReadSmartInventory)) || (activeTabState === 'menu-intelligence' && canReadMenuCollections));
   const wantsPrepData = wantsToday || ['prep', 'ops'].includes(activeTabState);
-  const wantsMenuData = wantsInventoryData || ['menu-intelligence'].includes(activeTabState);
+  const wantsMenuData = (activeTabState === 'menu-intelligence' || activeTabState === 'inventory' || wantsToday) && canReadMenuCollections;
   const wantsRecipesData = true; // Keep recipe titles available for 86 Voice exact-recipe navigation.
-  const wantsMaintenanceData = wantsToday || ['maintenance', 'ops'].includes(activeTabState);
-  const wantsSalesData = ['financials', 'sales', 'ops', 'labor'].includes(activeTabState);
+  const wantsMaintenanceData = (wantsToday || ['maintenance', 'ops'].includes(activeTabState)) && canReadMaintenance;
+  const wantsSalesData = ['financials', 'sales', 'ops', 'labor'].includes(activeTabState) && canReadSalesCollections;
   const shiftRangeStart = wantsScheduleScreen ? scheduleWindowStart : getToday();
   const shiftRangeEnd = wantsScheduleScreen ? scheduleWindowEnd : todayOpsWindowEnd;
   const messageRangeStart = activeTabState === 'messages' ? addDays(getToday(), -60) : recentWindowStart;
@@ -274,7 +380,7 @@ const [currentDate, setCurrentDate] = useState(getToday());
          isDemo: true,
          demoRole,
          demoFeatures,
-         planType: ghostTenant.demoMode.plan || 'Pro',
+         planId: ghostTenant.demoMode.plan || 'smart_kitchen',
          ghostMode: 'demo',
          ghostRealUserId: realAppUser.id,
          ghostRealUserName: realName,
@@ -318,6 +424,18 @@ const [currentDate, setCurrentDate] = useState(getToday());
     }
   }
 
+
+  const isDemoMode = !!liveAppUser?.isDemo;
+  const serverSaysSuperAdmin = Boolean(serverAdminCheck?.superAdmin === true);
+  if (!isDemoMode && liveAppUser && serverSaysSuperAdmin && liveAppUser.isSuperAdmin !== true) {
+    liveAppUser = {
+      ...liveAppUser,
+      isSuperAdmin: true,
+      systemAccess: { ...(liveAppUser.systemAccess || {}), superAdmin: true },
+      superAdminAccessSource: serverAdminCheck.serverMasterAdminMatched ? 'server-master-admin-env' : serverAdminCheck.customClaimSuperAdmin ? 'firebase-custom-claim' : serverAdminCheck.firestoreSuperAdmin ? 'firestore-profile-flag' : 'api-whoami'
+    };
+  }
+
   // --- REMOTE SESSION KILL SWITCH ---
   useEffect(() => {
     if (liveAppUser?.forceLogout) {
@@ -340,13 +458,12 @@ if (liveAppUser && clientData) {
      liveAppUser = { 
        ...liveAppUser, 
        systemSettings: { tips: true, ...(clientData.systemSettings || {}) },
-       planType: clientData.planType || 'Pro',
+       planId: clientData?.subscription?.planId || clientData?.planId || 'smart_kitchen',
        restaurantName: liveAppUser.restaurantName || clientData.name || clientData.businessName || clientData.restaurantName || '86 Chaos'
      };
   }
   setActiveTimeFormat(liveAppUser?.preferences?.timeFormat || '12h');
 
-  const isDemoMode = !!liveAppUser?.isDemo;
   const rawDemoFeatures = liveAppUser?.demoFeatures || {};
   const displayClientFeatures = isDemoMode ? {
     schedule: rawDemoFeatures.published !== false && rawDemoFeatures.schedule !== false,
@@ -420,7 +537,7 @@ if (liveAppUser && clientData) {
   const wageEditAccess = Array.isArray(wageSettings.wageEditAccess) ? wageSettings.wageEditAccess : [];
   const sessionEmail = (liveAppUser?.email || appUser?.email || '').toLowerCase().trim();
   const sessionOwnerEmail = (clientData?.ownerEmail || '').toLowerCase().trim();
-  const sessionIsOwner = Boolean(liveAppUser?.isSuperAdmin || (MASTER_ADMIN_EMAIL && sessionEmail === MASTER_ADMIN_EMAIL.toLowerCase()) || liveAppUser?.isOwner || liveAppUser?.accountOwner || (sessionOwnerEmail && sessionEmail === sessionOwnerEmail));
+  const sessionIsOwner = Boolean(liveAppUser?.isSuperAdmin || serverSaysSuperAdmin || (MASTER_ADMIN_EMAIL && sessionEmail === MASTER_ADMIN_EMAIL.toLowerCase()) || liveAppUser?.isOwner || liveAppUser?.accountOwner || (sessionOwnerEmail && sessionEmail === sessionOwnerEmail));
   const sessionCanViewWages = Boolean(sessionIsOwner || liveAppUser?.permissions?.wageView || liveAppUser?.permissions?.wageEdit || wageViewAccess.includes(liveAppUser?.id) || wageEditAccess.includes(liveAppUser?.id));
 
   const displayUsers = useMemo(() => {
@@ -444,6 +561,7 @@ if (liveAppUser && clientData) {
     liveAppUser = { ...liveAppUser, id: displayUsers[0].id, name: 'Demo Employee', role: displayUsers[0].role || 'Demo Employee', isAdmin: false, isSuperAdmin: false, permissions: { help: true } };
   }
   const displayClientData = isDemoMode && clientData ? { ...clientData, ownerEmail: 'Hidden for demo', ownerPhone: 'Hidden for demo', address: 'Hidden for demo', businessAddress: 'Hidden for demo', systemSettings: { tips: true, ...(clientData.systemSettings || {}), address: 'Hidden for demo', geofenceAddress: 'Hidden for demo' } } : clientData;
+  const planAccess = usePlanAccess(liveAppUser, displayClientData);
   const mfaEnvValue = String(process.env.REACT_APP_MFA_ENFORCE_ELEVATED_ROLES || '').toLowerCase().trim();
   const mfaFrontendEnforced = ['true', '1', 'yes', 'enforce'].includes(mfaEnvValue) || displayClientData?.systemSettings?.mfaEnforceElevatedRoles === true || displayClientData?.securityCenter?.mfaEnforceElevatedRoles === true;
   const elevatedRoleText = `${liveAppUser?.role || ''} ${liveAppUser?.accountRole || ''} ${liveAppUser?.title || ''}`.toLowerCase();
@@ -1142,14 +1260,39 @@ What I clicked / expected:
     return () => window.removeEventListener('keydown', handleKey);
   }, []);
 
+  const updateAlertMemory = useRememberedAlert({
+    user: liveAppUser,
+    workspaceId: rId,
+    alertId: 'system-update-available',
+    fingerprint: buildAlertFingerprint(CURRENT_VERSION, availableVersion || 'unknown')
+  });
+  const broadcastAlertMemory = useRememberedAlert({
+    user: liveAppUser,
+    workspaceId: rId,
+    alertId: 'workspace-system-banner',
+    fingerprint: buildAlertFingerprint(displayClientData?.systemBanner || '', displayClientData?.systemBannerUpdatedAt || '')
+  });
+  const pushRepairAlertMemory = useRememberedAlert({
+    user: liveAppUser,
+    workspaceId: rId,
+    alertId: 'push-repair-needed',
+    fingerprint: buildAlertFingerprint(
+      liveAppUser?.pushNeedsRepair === true,
+      liveAppUser?.pushForceServiceWorkerRefresh === true,
+      liveAppUser?.lastPushFailureCode || '',
+      liveAppUser?.pushRepairStatus || '',
+      typeof window !== 'undefined' ? window.location.hostname : ''
+    )
+  });
+
   const prevDay = () => { const d = new Date(currentDate + 'T12:00:00'); d.setDate(d.getDate() - 1); setCurrentDate(formatDate(d)); };
   const nextDay = () => { const d = new Date(currentDate + 'T12:00:00'); d.setDate(d.getDate() + 1); setCurrentDate(formatDate(d)); };
   const prevMonth = () => { const d = new Date(currentDate + 'T12:00:00'); d.setMonth(d.getMonth() - 1); setCurrentDate(formatDate(d)); };
   const nextMonth = () => { const d = new Date(currentDate + 'T12:00:00'); d.setMonth(d.getMonth() + 1); setCurrentDate(formatDate(d)); };
 
-  if (labelsToPrint) return <DayDotPrintScreen labelsToPrint={labelsToPrint.items} prepDate={labelsToPrint.prepDate} appUser={liveAppUser} onClose={() => setLabelsToPrint(null)} />;
+  if (labelsToPrint) return <div className="non-admin-controls-compact"><DayDotPrintScreen labelsToPrint={labelsToPrint.items} prepDate={labelsToPrint.prepDate} appUser={liveAppUser} onClose={() => setLabelsToPrint(null)} /></div>;
 
-  if (!liveAppUser) return <LoginScreen users={displayUsers} setAppUser={setAppUser} addToast={addToast} />;
+  if (!liveAppUser) return <div className="non-admin-controls-compact"><LoginScreen users={displayUsers} setAppUser={setAppUser} addToast={addToast} /></div>;
 
 
   const renderMainContent = () => {
@@ -1170,24 +1313,55 @@ What I clicked / expected:
         </div>
       );
     }
+    const routeAccess = planAccess.canRoute(activeTabState);
+    const routeIsInternalAdmin = activeTabState === 'godmode' || activeTabState === 'audit';
+    if (!routeIsInternalAdmin && routeAccess && routeAccess.allowed === false) return <LockedFeatureScreen access={routeAccess} appUser={liveAppUser} setActiveTab={setActiveTab} />;
     if (activeTabState === 'today') return <TabToday key={`tdy-${rId}`} currentDate={currentDate} appUser={liveAppUser} users={displayUsers} shifts={shifts} shiftSwaps={shiftSwaps} timeOffRequests={timeOffRequests} events={events} sales={sales} timePunches={timePunches} inventoryItems={inventoryItems} maintenanceLogs={maintenanceLogs} prepItems={prepItems} tasks={tasks} recipes={recipes} menuDependencies={menuDependencies} clientData={displayClientData} setActiveTab={setActiveTab} addToast={addToast} registerUndo={registerUndo} />;
     if (activeTabState === 'schedule' && (liveAppUser?.isAdmin || liveAppUser?.permissions?.schedule)) return <TabMasterSchedule key={`schpub-${rId}-${liveAppUser?.id}`} currentDate={currentDate} appUser={liveAppUser} users={displayUsers} shifts={shifts} shiftSwaps={shiftSwaps} timeOffRequests={timeOffRequests} events={events} addToast={addToast} initialSubTab="schedule-builder" voiceScheduleSubTabTarget={voiceScheduleSubTabTarget} clientData={displayClientData} scheduleBuilderProps={{ currentDate, users: displayUsers, shifts, events, timeOffRequests, timePunches, addToast, appUser: liveAppUser, clientData: displayClientData }} />;
     if (activeTabState === 'events' && displayClientFeatures?.events !== false && (liveAppUser?.isAdmin || liveAppUser?.permissions?.events || liveAppUser?.permissions?.schedule || liveAppUser?.permissions?.team)) return <TabSchedule key={`evt-${rId}`} currentDate={currentDate} users={displayUsers} shifts={shifts} events={events} timeOffRequests={timeOffRequests} timePunches={timePunches} addToast={addToast} appUser={liveAppUser} clientData={displayClientData} initialSubTab="events" hideSubTabs />;
     if (activeTabState === 'published') return <TabMasterSchedule key={`pub-${rId}-${liveAppUser?.id}`} currentDate={currentDate} appUser={liveAppUser} users={displayUsers} shifts={shifts} shiftSwaps={shiftSwaps} timeOffRequests={timeOffRequests} events={events} addToast={addToast} voiceScheduleSubTabTarget={voiceScheduleSubTabTarget} clientData={displayClientData} scheduleBuilderProps={{ currentDate, users: displayUsers, shifts, events, timeOffRequests, timePunches, addToast, appUser: liveAppUser, clientData: displayClientData }} />;
-    if (activeTabState === 'ops' && displayClientFeatures?.ops !== false && (liveAppUser?.isSuperAdmin || liveAppUser?.isAdmin || liveAppUser?.permissions?.ops)) return <TabOpsCenter key={`ops-${rId}`} currentDate={currentDate} appUser={liveAppUser} users={displayUsers} shifts={shifts} events={events} sales={sales} timePunches={timePunches} addToast={addToast} setActiveTab={setActiveTab} />;
-    if ((activeTabState === 'financials' || activeTabState === 'sales' || activeTabState === 'labor') && (liveAppUser?.isSuperAdmin || liveAppUser?.isAdmin || liveAppUser?.permissions?.labor || liveAppUser?.permissions?.sales)) return <TabFinancials key={`fin-${rId}`} currentDate={currentDate} users={displayUsers} shifts={shifts} sales={sales} timePunches={timePunches} addToast={addToast} appUser={liveAppUser} initialSubTab={activeTabState === 'sales' ? 'ledger' : activeTabState === 'labor' ? 'labor' : 'labor'} />;
+    if (activeTabState === 'ops' && displayClientFeatures?.ops !== false && (liveAppUser?.isSuperAdmin || liveAppUser?.isAdmin || liveAppUser?.permissions?.ops)) return <TabOpsCenter key={`ops-${rId}`} currentDate={currentDate} appUser={liveAppUser} users={displayUsers} shifts={shifts} events={events} sales={sales} timePunches={timePunches} addToast={addToast} setActiveTab={setActiveTab} clientData={displayClientData} />;
+    if ((activeTabState === 'financials' || activeTabState === 'sales' || activeTabState === 'labor') && (liveAppUser?.isSuperAdmin || liveAppUser?.isAdmin || liveAppUser?.permissions?.labor || liveAppUser?.permissions?.sales)) return <TabFinancials key={`fin-${rId}`} currentDate={currentDate} users={displayUsers} shifts={shifts} sales={sales} timePunches={timePunches} addToast={addToast} appUser={liveAppUser} clientData={displayClientData} setActiveTab={setActiveTab} initialSubTab={activeTabState === 'sales' ? 'ledger' : activeTabState === 'labor' ? 'labor' : 'overview'} />;
     if (activeTabState === 'messages' && displayClientFeatures?.messages !== false) return <TabMessages key={`msg-${rId}`} events={events} appUser={liveAppUser} users={displayUsers} addToast={addToast} />;
     if (activeTabState === 'prep' && displayClientFeatures?.prep !== false) return <TabPrep key={`prp-${rId}`} currentDate={currentDate} appUser={liveAppUser} addToast={addToast} setLabelsToPrint={setLabelsToPrint} />;
     if (activeTabState === 'recipes' && displayClientFeatures?.recipes !== false) return <TabRecipes key={`rec-${rId}`} appUser={liveAppUser} addToast={addToast} voiceRecipeTarget={voiceRecipeTarget} />;
-    if (activeTabState === 'inventory' && displayClientFeatures?.inventory !== false) return <TabInventory key={`inv-${rId}-${inventorySubTabTarget || 'default'}`} addToast={addToast} appUser={liveAppUser} initialSubTab={inventorySubTabTarget} onInitialSubTabConsumed={() => setInventorySubTabTarget(null)} />;
+    if (activeTabState === 'inventory' && displayClientFeatures?.inventory !== false) return <TabInventory key={`inv-${rId}-${inventorySubTabTarget || 'default'}`} addToast={addToast} appUser={liveAppUser} clientData={displayClientData} initialSubTab={inventorySubTabTarget} onInitialSubTabConsumed={() => setInventorySubTabTarget(null)} />;
     if (activeTabState === 'ai-tools' && !isDemoMode && (liveAppUser?.isAdmin || liveAppUser?.permissions?.inventory || liveAppUser?.permissions?.prep || liveAppUser?.permissions?.team)) return <TabAITools key={`ai-${rId}`} appUser={liveAppUser} clientData={displayClientData} setActiveTab={setActiveTab} setInventorySubTabTarget={setInventorySubTabTarget} addToast={addToast} />;
     if (activeTabState === 'menu-intelligence' && !isDemoMode) return <TabMenuIntelligence key={`mi-${rId}`} appUser={liveAppUser} clientData={displayClientData} inventoryItems={inventoryItems} addToast={addToast} />;
     if (activeTabState === 'reminders' && !isDemoMode) return <TabPersonalReminders key={`rem-${rId}-${liveAppUser?.id}`} appUser={liveAppUser} addToast={addToast} />;
     if (activeTabState === 'team' && displayClientFeatures?.team !== false) return <TabTeam key={`tea-${rId}`} appUser={liveAppUser} users={displayUsers} clientData={displayClientData} addToast={addToast} />;
+    if (activeTabState === 'hr-training' && !isDemoMode && displayClientFeatures?.hr !== false) return <TabHrTraining key={`hrt-${rId}-${liveAppUser?.id}`} appUser={liveAppUser} users={displayUsers} addToast={addToast} />;
     if (activeTabState === 'maintenance' && displayClientFeatures?.maintenance !== false && (liveAppUser?.isAdmin || liveAppUser?.permissions?.team)) return <TabMaintenance key={`mtn-${rId}`} appUser={liveAppUser} addToast={addToast} />;
     if (activeTabState === 'settings' && !isDemoMode) return <TabSettings key={`set-${rId}`} addToast={addToast} appUser={liveAppUser} clientData={displayClientData} users={displayUsers} />;
     if (activeTabState === 'help') return <TabHelpCenter key={`help-${rId}`} appUser={liveAppUser} activeTab={activeTabState} voiceHelpSearchTarget={voiceHelpSearchTarget} addToast={addToast} />;
-    if (activeTabState === 'godmode' && ((MASTER_ADMIN_EMAIL && (liveAppUser?.email || '').toLowerCase() === MASTER_ADMIN_EMAIL.toLowerCase()) || liveAppUser?.isSuperAdmin === true)) return <TabGodMode key={`god-${rId}`} appUser={liveAppUser} addToast={addToast} setGhostTenant={setGhostTenant} setActiveTab={setActiveTab} />;
+    if (activeTabState === 'godmode' && (liveAppUser?.isSuperAdmin === true || serverSaysSuperAdmin || (MASTER_ADMIN_EMAIL && (liveAppUser?.email || '').toLowerCase() === MASTER_ADMIN_EMAIL.toLowerCase()))) return <TabGodMode key={`god-${rId}`} appUser={{ ...liveAppUser, isSuperAdmin: true, serverAdminCheck }} addToast={addToast} setGhostTenant={setGhostTenant} setActiveTab={setActiveTab} />;
+    if (activeTabState === 'godmode') return (
+      <div className={`${T.card} p-5 sm:p-8 max-w-3xl mx-auto space-y-4 border-red-900/40`}>
+        <div className="flex items-start gap-3">
+          <div className="w-12 h-12 rounded-2xl bg-red-900/20 border border-red-900/50 flex items-center justify-center text-red-300 text-2xl">🔐</div>
+          <div>
+            <h2 className="text-xl font-black text-white">System Administrator access is not active for this account</h2>
+            <p className="text-sm font-bold text-slate-400 mt-2">The old hardcoded master-admin backdoor was removed for public-readiness. This account now needs a real Super Admin source: Vercel master-admin env var, Firebase custom claim, or Firestore user flag.</p>
+          </div>
+        </div>
+        <div className="grid sm:grid-cols-2 gap-2 text-[11px] font-bold">
+          <div className="bg-[#0B0E11] border border-[#2A353D] rounded-xl p-3"><div className={T.label}>Signed-in email</div><div className="text-white break-all">{liveAppUser?.email || appUser?.email || 'Unknown'}</div></div>
+          <div className="bg-[#0B0E11] border border-[#2A353D] rounded-xl p-3"><div className={T.label}>Firebase UID</div><div className="text-white break-all">{liveAppUser?.id || appUser?.id || 'Unknown'}</div></div>
+          <div className="bg-[#0B0E11] border border-[#2A353D] rounded-xl p-3"><div className={T.label}>Frontend env match</div><div className="text-white">{MASTER_ADMIN_EMAIL ? ((MASTER_ADMIN_EMAIL && (liveAppUser?.email || '').toLowerCase() === MASTER_ADMIN_EMAIL.toLowerCase()) ? 'Matched' : 'Not matched') : 'REACT_APP_MASTER_ADMIN_EMAIL not set'}</div></div>
+          <div className="bg-[#0B0E11] border border-[#2A353D] rounded-xl p-3"><div className={T.label}>Server admin check</div><div className="text-white">{serverAdminCheck?.ok ? (serverAdminCheck.superAdmin ? 'Allowed by server' : 'Server says not Super Admin') : (serverAdminCheck?.error || 'Checking /api/whoami...')}</div></div>
+          <div className="bg-[#0B0E11] border border-[#2A353D] rounded-xl p-3"><div className={T.label}>Server master env</div><div className="text-white">{serverAdminCheck?.masterAdminEnvConfigured ? `${serverAdminCheck.masterAdminEmailCount || 1} configured` : 'Missing or not visible to this deployment'}</div></div>
+          <div className="bg-[#0B0E11] border border-[#2A353D] rounded-xl p-3"><div className={T.label}>Firestore / claim</div><div className="text-white">Claim: {serverAdminCheck?.customClaimSuperAdmin ? 'yes' : 'no'} • Firestore: {serverAdminCheck?.firestoreSuperAdmin ? 'yes' : 'no'}</div></div>
+        </div>
+        <div className="bg-amber-900/10 border border-amber-700/40 rounded-xl p-3 text-xs font-bold text-amber-100 leading-relaxed">
+          Fast fix: in Vercel Preview env vars, set <span className="font-mono text-white">MASTER_ADMIN_EMAIL</span> and <span className="font-mono text-white">MASTER_ADMIN_EMAILS</span> to include this email, then redeploy. For frontend menu visibility, also set <span className="font-mono text-white">REACT_APP_MASTER_ADMIN_EMAIL</span>. Or log in with an existing Super Admin and grant this account from Access Control.
+        </div>
+        <div className="flex flex-col sm:flex-row gap-2">
+          <button onClick={() => setActiveTab('settings')} className={T.btn}>Open Settings</button>
+          <button onClick={() => setActiveTab('help')} className={T.btnAlt}>Open Help</button>
+          <button onClick={() => { localStorage.removeItem('86chaosUser'); sessionStorage.removeItem('86chaosUser'); setAppUser(null); }} className={T.btnAlt}>Log Out</button>
+        </div>
+      </div>
+    );
     if (activeTabState === 'audit' && !isDemoMode && (liveAppUser?.isAdmin || liveAppUser?.isSuperAdmin)) return <TabAuditLog key={`aud-${rId}`} appUser={liveAppUser} />;
 
     return (
@@ -1212,6 +1386,7 @@ What I clicked / expected:
   // the platform owner/super-admin account that needs to lift the lockdown.
   const maintenanceBypass = Boolean(
     liveAppUser?.isSuperAdmin === true ||
+    serverSaysSuperAdmin ||
     (MASTER_ADMIN_EMAIL && (liveAppUser?.email || '').toLowerCase() === MASTER_ADMIN_EMAIL.toLowerCase())
   );
   const maintenanceEndsMs = clientData?.maintenanceEndsAt ? new Date(clientData.maintenanceEndsAt).getTime() : 0;
@@ -1222,7 +1397,7 @@ What I clicked / expected:
     : maintenanceAudience === 'non_admins'
       ? !liveAppUser?.isAdmin
       : true;
-  if (clientData?.billingStatus === 'Past Due' && !maintenanceExpired && maintenanceAppliesToUser && !ghostTenant && !maintenanceBypass) {
+  if ((clientData?.maintenanceMode === true || clientData?.subscription?.status === 'past_due') && !maintenanceExpired && maintenanceAppliesToUser && !ghostTenant && !maintenanceBypass) {
     return (
       <div className={`min-h-screen flex flex-col items-center justify-center p-6 text-center ${T.bg}`}>
         <div className="bg-[#1A2126] p-8 rounded-3xl border border-red-900/50 shadow-2xl max-w-md w-full">
@@ -1240,7 +1415,7 @@ What I clicked / expected:
   const appThemeStyle = { '--chaos-accent': appAccentColor };
 
 return (
-    <div style={appThemeStyle} onClickCapture={blockDemoMutation} onSubmitCapture={blockDemoMutation} className={`ui-v13-polished ui-v12-compact cockpit-shell kitchen-simple-shell ui-density-${liveAppUser?.preferences?.uiDensity || displayClientData?.systemSettings?.uiDensity || 'compact'} recipe-density-${liveAppUser?.preferences?.recipeDensity || displayClientData?.systemSettings?.recipeCardDensity || 'tight'} motion-${liveAppUser?.preferences?.motionMode || displayClientData?.systemSettings?.cockpitLights || 'normal'} min-h-screen font-sans flex flex-col w-full max-w-[100vw] overflow-x-hidden ${T.bg}`}>
+    <div style={appThemeStyle} onClickCapture={blockDemoMutation} onSubmitCapture={blockDemoMutation} className={`desktop-pro-shell ui-v13-polished ui-v12-compact cockpit-shell ${activeTabState === 'godmode' ? '' : 'non-admin-controls-compact'} kitchen-simple-shell ui-density-${liveAppUser?.preferences?.uiDensity || displayClientData?.systemSettings?.uiDensity || 'compact'} recipe-density-${liveAppUser?.preferences?.recipeDensity || displayClientData?.systemSettings?.recipeCardDensity || 'tight'} motion-${liveAppUser?.preferences?.motionMode || displayClientData?.systemSettings?.cockpitLights || 'normal'} min-h-screen font-sans flex flex-col w-full max-w-[100vw] overflow-x-hidden ${T.bg}`}>
       
       {/* GHOST / DEMO MODE BANNER */}
       {ghostTenant && (
@@ -1319,22 +1494,25 @@ return (
       `}</style>
 
       {/* UPDATE ALERT BANNER */}
-      {showUpdateBanner && (
+      {showUpdateBanner && !updateAlertMemory.isDismissed && (
         <div className="bg-red-600 text-white text-[11px] sm:text-xs font-black px-4 py-2.5 flex items-center justify-between sticky top-0 z-[9999] shadow-2xl uppercase tracking-wider">
           <div className="flex items-center gap-2 min-w-0">
             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="flex-shrink-0 animate-pulse text-white"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"></path><path d="M12 9v4"></path><path d="M12 17h.01"></path></svg>
             <span className="truncate">System update available. Refresh to prevent database desync.</span>
           </div>
-          <button 
-            onClick={() => window.location.reload(true)} 
-            className="bg-white text-red-600 px-3 py-1.5 rounded-lg font-black text-[10px] shadow-md hover:bg-slate-100 transition-all tracking-widest flex-shrink-0 ml-3"
-          >
-            REFRESH NOW
-          </button>
+          <div className="flex items-center gap-2 flex-shrink-0 ml-3">
+            <button 
+              onClick={() => window.location.reload(true)} 
+              className="bg-white text-red-600 px-3 py-1.5 rounded-lg font-black text-[10px] shadow-md hover:bg-slate-100 transition-all tracking-widest"
+            >
+              REFRESH NOW
+            </button>
+            <button type="button" onClick={updateAlertMemory.dismiss} className="p-1.5 rounded-lg bg-red-700/70 hover:bg-red-800 text-white" title="Dismiss this update notice"><X size={14}/></button>
+          </div>
         </div>
       )}
 
-      {pushRepairRequested && !pushRepairDismissed && (
+      {pushRepairRequested && !pushRepairDismissed && !pushRepairAlertMemory.isDismissed && (
         <div className="bg-amber-500 text-slate-950 text-[11px] sm:text-xs font-black px-4 py-2.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2 sticky top-0 z-[9998] shadow-2xl uppercase tracking-wider border-b border-amber-300">
           <div className="flex items-center gap-2 min-w-0">
             <Bell size={15} className="flex-shrink-0" />
@@ -1342,12 +1520,12 @@ return (
           </div>
           <div className="flex gap-2 flex-shrink-0">
             <button onClick={() => repairPushOnThisDevice('manual')} disabled={isPushRepairing} className="bg-slate-950 text-amber-200 px-3 py-1.5 rounded-lg font-black text-[10px] shadow-md disabled:opacity-60">{isPushRepairing ? 'FIXING...' : 'FIX NOW'}</button>
-            <button onClick={() => setPushRepairDismissed(true)} className="bg-amber-200/60 text-slate-950 px-3 py-1.5 rounded-lg font-black text-[10px]">LATER</button>
+            <button onClick={() => { setPushRepairDismissed(true); pushRepairAlertMemory.dismiss(); }} className="bg-amber-200/60 text-slate-950 px-3 py-1.5 rounded-lg font-black text-[10px]">DON'T SHOW AGAIN</button>
           </div>
         </div>
       )}
 
-      <header className="sticky top-0 z-40 shadow-sm border-b h-16 flex items-center justify-between px-4 bg-[#12161A]/95 backdrop-blur-md border-[#2A353D]">
+      <header className="app-header sticky top-0 z-40 shadow-sm border-b h-16 flex items-center justify-between px-4 bg-[#12161A]/95 backdrop-blur-md border-[#2A353D]">
         <CheersLogo clientData={displayClientData} />
 
         {/* ACTIVE WORKSPACE NAME / SWITCHER */}
@@ -1375,12 +1553,13 @@ return (
       </header>
 
       {/* SYSTEM BROADCAST BANNER */}
-      {displayClientData?.systemBanner && (
+      {displayClientData?.systemBanner && !broadcastAlertMemory.isDismissed && (
         <div className="bg-blue-600 border-b border-blue-800 text-white text-[11px] sm:text-xs font-black px-4 py-2.5 flex items-center justify-center shadow-lg uppercase tracking-wider w-full relative z-30 animate-[slideIn_0.2s_ease-out]">
-          <div className="flex items-center gap-2 text-center">
+          <div className="flex items-center gap-2 text-center pr-10">
             <Bell size={14} className="animate-pulse flex-shrink-0" />
             <span>{displayClientData.systemBanner}</span>
           </div>
+          <button type="button" onClick={broadcastAlertMemory.dismiss} className="absolute right-3 top-1/2 -translate-y-1/2 p-1.5 rounded-lg bg-blue-700/70 hover:bg-blue-800 text-white" title="Dismiss this announcement"><X size={14}/></button>
         </div>
       )}
 
@@ -1388,7 +1567,7 @@ return (
       <GlobalSearchModal isOpen={isGlobalSearchOpen} onClose={() => setIsGlobalSearchOpen(false)} queryText={globalSearchQuery} setQueryText={setGlobalSearchQuery} users={displayUsers} events={events} shifts={shifts} recipes={recipes} inventoryItems={inventoryItems} maintenanceLogs={maintenanceLogs} setActiveTab={setActiveTab} />
       <KitchenTVMode isOpen={isKitchenTVOpen} onClose={() => setIsKitchenTVOpen(false)} shifts={shifts} events={events} prepItems={prepItems} maintenanceLogs={maintenanceLogs} inventoryItems={inventoryItems} />
       <UndoBar undoItem={undoItem} clearUndo={() => setUndoItem(null)} />
-      <VoiceCommandDock appUser={liveAppUser} inventoryItems={inventoryItems} recipes={recipes} users={displayUsers} prepItems={prepItems} menuDependencies={menuDependencies} clientFeatures={displayClientFeatures} clientData={displayClientData} setActiveTab={setActiveTab} setCurrentDate={setCurrentDate} setScheduleSubTabTarget={setVoiceScheduleSubTabTarget} setHelpSearchTarget={setVoiceHelpSearchTarget} setRecipeTarget={setVoiceRecipeTarget} addToast={addToast} />
+      <VoiceCommandDock appUser={liveAppUser} inventoryItems={inventoryItems} recipes={recipes} users={displayUsers} prepItems={prepItems} tasks={tasks} events={events} maintenanceLogs={maintenanceLogs} menuDependencies={menuDependencies} clientFeatures={displayClientFeatures} clientData={displayClientData} setActiveTab={setActiveTab} setCurrentDate={setCurrentDate} setScheduleSubTabTarget={setVoiceScheduleSubTabTarget} setHelpSearchTarget={setVoiceHelpSearchTarget} setRecipeTarget={setVoiceRecipeTarget} addToast={addToast} />
 
       <Modal isOpen={problemModal.open} onClose={() => !isSubmittingProblem && setProblemModal({ open: false, title: '', message: '', category: 'Bug / Error' })} title="Report Problem" sizeClass="max-w-3xl">
         <form onSubmit={submitProblemReport} className="space-y-4">
@@ -1419,7 +1598,7 @@ return (
       )}
       
       {['schedule', 'events', 'published', 'month', 'financials', 'sales', 'prep'].includes(activeTabState) && (
-        <div className="py-4 px-4 shadow-sm z-30 border-b flex justify-between items-center bg-[#1A2126] border-[#2A353D] relative">
+        <div className="desktop-date-strip py-4 px-4 shadow-sm z-30 border-b flex justify-between items-center bg-[#1A2126] border-[#2A353D] relative">
           {(activeTabState === 'sales' || activeTabState === 'financials') ? (
             <div className="w-full text-center">
               <h2 className="text-xl sm:text-2xl font-black tracking-widest text-white uppercase">Financials</h2>
@@ -1430,7 +1609,7 @@ return (
               
               <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                 <h2 onClick={() => setIsDateModalOpen(true)} className="text-xl sm:text-2xl font-black tracking-tight text-center cursor-pointer transition-colors text-white hover:text-[#D4A381] pointer-events-auto">
-                  {activeTabState === 'prep' ? formatDisplayFullDate(currentDate) : formatDisplayMonth(getMonthStr(currentDate))}
+                  {activeTabState === 'events' ? 'Event Calendar' : activeTabState === 'prep' ? formatDisplayFullDate(currentDate) : formatDisplayMonth(getMonthStr(currentDate))}
                 </h2>
               </div>
 
@@ -1501,7 +1680,7 @@ return (
         </div>}
       </Modal>
 
-      <main className="flex-1 max-w-6xl mx-auto w-full p-3 sm:p-6 pb-24">
+      <main className="app-content-shell flex-1 max-w-[1480px] mx-auto w-full p-3 sm:p-5 lg:p-4 xl:p-5 pb-24">
         {renderMainContent()}
       </main>
       
@@ -1515,7 +1694,7 @@ return (
         ))}
       </div>
       
-      <div className="w-full flex flex-col items-center justify-center py-4 border-t z-10 mt-auto bg-[#161D22] border-[#2A353D]">
+      <div className="app-footer w-full flex flex-col items-center justify-center py-4 border-t z-10 mt-auto bg-[#161D22] border-[#2A353D]">
         <img src="/6139.png" alt="86 Chaos OS" className="h-6 sm:h-8 w-auto mb-1.5 rounded shadow-sm opacity-80" onError={(e) => e.target.style.display = 'none'}/>
         <span className="text-slate-500 font-bold text-[10px] tracking-widest uppercase">Version {CURRENT_VERSION}</span>
         <span className="text-slate-600 font-bold text-[8px] tracking-widest uppercase mt-1">© 2026 Chilton App Works LLC</span>

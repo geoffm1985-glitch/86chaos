@@ -7,7 +7,8 @@ import { getToken, onMessage } from 'firebase/messaging';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { MapContainer, TileLayer, Marker, Circle, useMapEvents } from 'react-leaflet';
 import { T, db, storage, auth, messaging, firebaseConfig, secureFetch, MASTER_ADMIN_EMAIL, EVENT_TAGS, CURRENT_VERSION, useLiveCollection, formatDate, getToday, getMonthStr, formatDisplayDate, formatDisplayFullDate, formatDisplayMonth, getDaysInMonth, formatShortTime, formatClockTime, formatClockDateTime, getAvatar, generateTempPass, getExpDate, getHoliday, logAudit, customMapIcon, getRestaurantExportPrefix, safeFilenamePart, downloadCsvRows, downloadTextFile, openPrintableReport } from '../core/appCore';
-import { CheersLogo, Modal, DrawerMenu, DayDotPrintScreen, MapClickListener, SmartEmptyState, MiniProblemCard, getHomeProfile, calculatePunchHours, getWeekStart, getWeekDates, roleMatches, toLocalTimeInput, makeLocalIso, PunchTable, StatusTile, FriendlyEmpty, GlobalSearchModal, QuickActionDock, KitchenTVMode, ChangeLogModal, UndoBar } from '../components/common';
+import { buildAlertFingerprint, useRememberedAlert } from '../core/alertMemory';
+import { CheersLogo, Modal, DrawerMenu, DayDotPrintScreen, MapClickListener, SmartEmptyState, MiniProblemCard, getHomeProfile, calculatePunchHours, getWeekStart, getWeekDates, roleMatches, toLocalTimeInput, makeLocalIso, PunchTable, FriendlyEmpty, GlobalSearchModal, QuickActionDock, KitchenTVMode, ChangeLogModal, UndoBar } from '../components/common';
 
 
 const cleanScheduleRoleName = (role = '') => String(role || '').replace(/\s+/g, ' ').trim();
@@ -613,7 +614,7 @@ const handleOfferSwap = async (shift) => {
   const effectiveActivePunch = clockActionBusy && clockActionType === 'out' ? (clockActionPunch || activePunch) : (activePunch && !(clockActionBusy && clockActionType === 'in') ? activePunch : null);
 
   return (
-    <div className="max-w-6xl mx-auto space-y-4 pb-24">
+    <div className="schedule-desktop max-w-7xl mx-auto space-y-4 pb-24">
       
       <Modal isOpen={isTipModalOpen} onClose={() => setIsTipModalOpen(false)} title="Declare Tips">
         <form onSubmit={finalizeClockOut} className="space-y-4">
@@ -626,7 +627,7 @@ const handleOfferSwap = async (shift) => {
             <label className={T.label}>Credit Card Tips ($)</label>
             <input type="number" step="0.01" min="0" value={tipCredit} onChange={e=>setTipCredit(e.target.value)} className={T.input} placeholder="0.00"/>
           </div>
-          <button type="submit" disabled={clockActionBusy} className={`w-full ${T.btn} disabled:opacity-60 disabled:cursor-not-allowed`}>{clockActionBusy ? 'Finalizing...' : 'Finalize Clock Out'}</button>
+          <button type="submit" disabled={clockActionBusy} className={`clock-action-button no-compact w-full ${T.btn} disabled:opacity-60 disabled:cursor-not-allowed`}>{clockActionBusy ? 'Finalizing...' : 'Finalize Clock Out'}</button>
         </form>
       </Modal>
 
@@ -664,20 +665,20 @@ const handleOfferSwap = async (shift) => {
             
             {effectiveActivePunch ? (
               <div className="space-y-2 relative z-10">
-                <button onClick={initiateClockOut} disabled={clockActionBusy} className="w-full py-4 bg-red-900/80 text-red-100 rounded-xl font-black text-sm uppercase tracking-widest shadow-[0_0_15px_rgba(220,38,38,0.4)] hover:bg-red-800 border border-red-500/50 transition-all flex flex-col items-center justify-center gap-1 disabled:opacity-60 disabled:cursor-not-allowed">
+                <button onClick={initiateClockOut} disabled={clockActionBusy} className="clock-action-button no-compact w-full py-4 bg-red-900/80 text-red-100 rounded-xl font-black text-sm uppercase tracking-widest shadow-[0_0_15px_rgba(220,38,38,0.4)] hover:bg-red-800 border border-red-500/50 transition-all flex flex-col items-center justify-center gap-1 disabled:opacity-60 disabled:cursor-not-allowed">
                   <span>{clockActionBusy && clockActionType === 'out' ? 'CLOCKING OUT...' : 'CLOCK OUT'}</span>
-                  <span className="text-[10px] text-red-300 font-medium normal-case tracking-normal">Clocked in at {formatClockTime(effectiveActivePunch.clockInTime)}</span>
+                  <span className="clock-action-meta text-[10px] text-red-300 font-medium normal-case tracking-normal">Clocked in at {formatClockTime(effectiveActivePunch.clockInTime)}</span>
                 </button>
                 {mergeWorkspaceSettings(appUser, clientData).breaks && (
                   effectiveActivePunch.status === 'on_break' ? (
-                    <button onClick={handleEndBreak} className="w-full py-3 bg-blue-900/80 text-blue-100 rounded-xl font-black text-sm uppercase tracking-widest hover:bg-blue-800 border border-blue-500/50 transition-all">END BREAK</button>
+                    <button onClick={handleEndBreak} className="clock-action-button no-compact w-full py-3 bg-blue-900/80 text-blue-100 rounded-xl font-black text-sm uppercase tracking-widest hover:bg-blue-800 border border-blue-500/50 transition-all">END BREAK</button>
                   ) : (
-                    <button onClick={handleStartBreak} className="w-full py-3 bg-slate-800/50 text-slate-900 rounded-xl font-black text-sm uppercase tracking-widest hover:bg-slate-800 hover:text-white border border-slate-700 transition-all">START UNPAID BREAK</button>
+                    <button onClick={handleStartBreak} className="clock-action-button no-compact w-full py-3 bg-slate-800/50 text-slate-900 rounded-xl font-black text-sm uppercase tracking-widest hover:bg-slate-800 hover:text-white border border-slate-700 transition-all">START UNPAID BREAK</button>
                   )
                 )}
               </div>
             ) : (
-              <button onClick={handleClockIn} disabled={clockActionBusy} className="w-full py-4 bg-emerald-600/20 text-emerald-400 rounded-xl font-black text-sm uppercase tracking-widest shadow-[0_0_15px_rgba(16,185,129,0.1)] hover:bg-emerald-600/30 border border-emerald-500/50 transition-all relative z-10 disabled:opacity-60 disabled:cursor-not-allowed">
+              <button onClick={handleClockIn} disabled={clockActionBusy} className="clock-action-button no-compact w-full py-4 bg-emerald-600/20 text-emerald-400 rounded-xl font-black text-sm uppercase tracking-widest shadow-[0_0_15px_rgba(16,185,129,0.1)] hover:bg-emerald-600/30 border border-emerald-500/50 transition-all relative z-10 disabled:opacity-60 disabled:cursor-not-allowed">
                 {clockActionBusy && clockActionType === 'in' ? 'CLOCKING IN...' : 'CLOCK IN'}
               </button>
             )}
@@ -1508,21 +1509,36 @@ const handleExportTimesheets = () => {
      return { id: u.id, name: u.name, weekly, total: weekly.reduce((a,b)=>a+b,0) };
   }).filter(u => u.total > 0);
 
+  const pendingTimeOffAlertRequests = timeOffRequests.filter(r => r.status === 'pending' && r.date >= schedulePeriodBounds.start && r.date <= schedulePeriodBounds.end);
+  const pendingTimeOffAlertMemory = useRememberedAlert({
+    user: appUser,
+    workspaceId: clientData?.id || clientData?.restaurantId || appUser?.restaurantId,
+    alertId: 'pending-time-off-manager-warning',
+    fingerprint: buildAlertFingerprint(
+      schedulePeriodBounds.start,
+      schedulePeriodBounds.end,
+      pendingTimeOffAlertRequests
+        .map(request => `${request.id || ''}:${request.date || ''}:${request.updatedAt || request.createdAt || ''}`)
+        .sort()
+    )
+  });
+
   return (
     <div className="space-y-4 pb-12 w-full">
 
 {/* MANAGER EXPLANATION BANNER */}
-      {timeOffRequests.filter(r => r.status === 'pending' && r.date >= schedulePeriodBounds.start && r.date <= schedulePeriodBounds.end).length > 0 && (
+      {pendingTimeOffAlertRequests.length > 0 && !pendingTimeOffAlertMemory.isDismissed && (
         <div className="bg-red-900/20 border border-red-500/50 p-4 rounded-xl flex items-center justify-between gap-4 shadow-lg animate-[slideIn_0.2s_ease-out]">
-          <div className="flex items-center gap-3">
-            <Shield className="text-red-500 flex-shrink-0 animate-pulse" size={24} />
-            <div>
-              <h3 className="text-red-400 font-black text-sm uppercase tracking-widest">Action Required</h3>
+          <div className="flex items-center gap-3 min-w-0">
+            <Shield className="text-red-500 flex-shrink-0" size={24} />
+            <div className="min-w-0">
+              <h3 className="text-red-400 font-black text-sm uppercase tracking-widest">Time-Off Requests Waiting</h3>
               <p className="text-xs text-red-200/80 font-medium mt-0.5">
-                You have pending time-off requests this month. Go to <strong className="text-white">My Shift {'->'} Request Off</strong> to approve them in the Master Override Log.
+                {pendingTimeOffAlertRequests.length} request{pendingTimeOffAlertRequests.length === 1 ? '' : 's'} need review. Go to <strong className="text-white">My Shift {'->'} Request Off</strong> when you are ready.
               </p>
             </div>
           </div>
+          <button type="button" onClick={pendingTimeOffAlertMemory.dismiss} className="flex-shrink-0 rounded-xl border border-red-500/40 bg-red-950/50 p-2 text-red-200 hover:bg-red-900/60 hover:text-white" title="Dismiss this warning"><X size={18}/></button>
         </div>
       )}
 
@@ -1757,11 +1773,8 @@ const handleExportTimesheets = () => {
                 <span className="text-[9px] font-black uppercase tracking-widest text-slate-500">Proj. Period Labor</span>
                 <span className="text-emerald-400 font-black text-base">${projectedMonthLabor.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
               </div>
-<button onClick={() => {
-                if (appUser?.planType === 'Starter' || appUser?.planType === 'Pro') return addToast('Locked', 'Upgrade to Elite to use Smart Auto-Fill.');
-                setIsAutoPopulateModalOpen(true);
-              }} className={`flex-1 2xl:flex-none ${T.btnAlt} py-2.5 h-12 flex items-center justify-center font-black ${(appUser?.planType === 'Starter' || appUser?.planType === 'Pro') ? 'opacity-50 text-slate-500 border-[#2A353D]' : 'border-blue-900/50 text-blue-400'}`}>
-                <Repeat size={16} className="mr-1"/> {(appUser?.planType === 'Starter' || appUser?.planType === 'Pro') ? '🔒 Auto-Fill' : 'Auto-Fill'}
+<button onClick={() => setIsAutoPopulateModalOpen(true)} className={`flex-1 2xl:flex-none ${T.btnAlt} py-2.5 h-12 flex items-center justify-center font-black border-blue-900/50 text-blue-400`}>
+                <Repeat size={16} className="mr-1"/> Auto-Fill
               </button>              <button onClick={handlePublish} className={`flex-1 2xl:flex-none ${T.btnAlt} py-2.5 h-12 flex items-center justify-center font-black`}>Publish</button>
               <button onClick={openNewEventModal} className={`flex-1 2xl:flex-none ${T.btnAlt} border-[#D4A381] text-[#D4A381] py-2.5 h-12 flex items-center justify-center font-black`}><Plus size={16} className="mr-1"/> Event</button>
             </div>
@@ -2270,7 +2283,7 @@ const TabMonth = ({ currentDate, users, shifts, appUser }) => {
               <span className={`text-right text-[9px] font-black ${T.muted} mb-0.5 cell-date`}>{i+1}</span>
               <div className="space-y-0.5 overflow-y-auto no-scrollbar flex-1">
                 {dayShifts.map(s=>(
-                  <div key={s.id} className={`text-[8px] font-bold px-0.5 rounded leading-tight truncate bg-[#12161A] border ${T.border} ${s.role==='Bartender'?'text-blue-400':'text-orange-400'} print-shift`}>
+                  <div key={s.id} className={`text-[8px] font-bold px-0.5 rounded leading-tight truncate bg-[#12161A] border ${T.border} text-[#D4A381] print-shift`}>
                     {users.find(u=>u.id===s.employeeId)?.name.split(' ')[0]} {formatShortTime(s.startTime)}-{formatShortTime(s.endTime)}
                   </div>
                 ))}
@@ -2348,7 +2361,7 @@ const monthEvents = events.filter(e => e.type === 'special_event' && e.date?.sta
   };
 
   return (
-    <div className="max-w-5xl mx-auto space-y-6 pb-12">
+    <div className="schedule-desktop max-w-7xl mx-auto space-y-5 pb-12">
       {appUser?.isAdmin && (
         <div className={`${T.card} overflow-hidden mb-6`}>
           <div className={`bg-[#12161A] p-3 border-b ${T.border} flex justify-between items-center`}>
@@ -2495,7 +2508,7 @@ const ScheduleCopilot = ({ currentDate, users = [], shifts = [], timeOffRequests
   const weekEnd = weekDates[6];
   const weekShifts = shifts.filter(s => weekDates.includes(s.date));
   const activeUsers = users.filter(u => u.isActive !== false);
-  const [open, setOpen] = useState(true);
+  const [open, setOpen] = useState(false);
   const [activeTool, setActiveTool] = useState('targets');
   const [templateId, setTemplateId] = useState('');
   const [editingTemplateId, setEditingTemplateId] = useState(null);
@@ -2521,7 +2534,7 @@ const ScheduleCopilot = ({ currentDate, users = [], shifts = [], timeOffRequests
     }));
   }, [firstScheduleRole, scheduleRoleOptions.join('|')]);
 
-  const templateOptions = templates.sort((a,b) => (a.name || '').localeCompare(b.name || ''));
+  const templateOptions = [...templates].sort((a,b) => (a.name || '').localeCompare(b.name || ''));
   const activeTemplate = templates.find(t => t.id === templateId) || null;
   const draftCount = weekShifts.filter(s => !s.isPublished).length;
   const conflictList = getScheduleWarnings(weekShifts, users, timeOffRequests, weekDates);
@@ -2537,7 +2550,7 @@ const ScheduleCopilot = ({ currentDate, users = [], shifts = [], timeOffRequests
     const warnings = [];
     schedule.forEach(s => {
       const emp = allUsers.find(u => u.id === s.employeeId);
-      const off = requests.find(r => (r.userId === s.employeeId || r.employeeId === s.employeeId) && r.date === s.date && ['approved','Accepted','approved_by_manager'].includes(String(r.status || '').toLowerCase()));
+      const off = requests.find(r => (r.userId === s.employeeId || r.employeeId === s.employeeId) && r.date === s.date && ['approved','accepted','approved_by_manager'].includes(String(r.status || '').toLowerCase()));
       if (off) warnings.push(`${emp?.name || 'Someone'} is scheduled on requested-off date ${formatDisplayDate(s.date)}.`);
     });
     allUsers.forEach(u => {
@@ -2545,8 +2558,12 @@ const ScheduleCopilot = ({ currentDate, users = [], shifts = [], timeOffRequests
       if (count >= 6) warnings.push(`${u.name} has ${count} scheduled days this week.`);
     });
     dates.forEach(d => {
-      const cooks = schedule.filter(s => s.date === d && roleMatches(s.role, 'Cook')).length;
-      if (cooks === 0) warnings.push(`No cook coverage on ${formatDisplayDate(d)}.`);
+      const targetForDay = coverageTargets.filter(t => weekDates[parseInt(t.dayIndex || 0, 10)] === d);
+      targetForDay.forEach(t => {
+        const targetRole = canonicalScheduleRole(t.role);
+        const existing = schedule.filter(s => s.date === d && roleMatches(s.role, targetRole)).length;
+        if (existing < (parseInt(t.count || 0, 10) || 0)) warnings.push(`Coverage target short on ${formatDisplayDate(d)} for ${targetRole}.`);
+      });
     });
     return [...new Set(warnings)].slice(0, 12);
   }
@@ -2581,7 +2598,7 @@ const ScheduleCopilot = ({ currentDate, users = [], shifts = [], timeOffRequests
     const scheduleRole = canonicalScheduleRole(role);
     const candidates = activeUsers.filter(u => !usedIds.includes(u.id)).filter(u => roleMatches(u.role, scheduleRole));
     const pool = candidates.length ? candidates : activeUsers.filter(u => !usedIds.includes(u.id));
-    return pool.find(u => !timeOffRequests.some(r => (r.userId === u.id || r.employeeId === u.id) && r.date === date && String(r.status || '').toLowerCase().includes('approved'))) || pool[0];
+    return pool.find(u => !timeOffRequests.some(r => (r.userId === u.id || r.employeeId === u.id) && r.date === date && ['approved','accepted','approved_by_manager'].includes(String(r.status || '').toLowerCase()))) || pool[0];
   };
 
   const createShiftDraft = async (row, date, usedIds = []) => {
@@ -2678,21 +2695,38 @@ const ScheduleCopilot = ({ currentDate, users = [], shifts = [], timeOffRequests
     } catch (err) { addToast('Error', err.message); }
   };
 
-  if (!open) return <button onClick={() => setOpen(true)} className={`${T.btnAlt} w-full flex items-center justify-center gap-2`}><ChefHat size={15}/> Open Schedule Copilot</button>;
+  if (!open) return (
+    <div className={`${T.card} schedule-copilot-launcher p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-[#D4A381]/30`}>
+      <div className="min-w-0">
+        <div className="text-[10px] uppercase tracking-widest font-black text-[#D4A381]">Schedule Copilot</div>
+        <div className="text-sm font-black text-white mt-0.5">{draftCount} drafts · {missingTargets.length} gaps · {conflictList.length} warnings</div>
+        <div className="text-xs text-slate-400 font-bold mt-0.5">{formatDisplayDate(weekStart)} through {formatDisplayDate(weekEnd)}</div>
+      </div>
+      <button onClick={() => setOpen(true)} className={`${T.btnAlt} flex items-center justify-center gap-2 flex-shrink-0`}><ChefHat size={16}/> Open Copilot Tools</button>
+    </div>
+  );
 
   return (
-    <div className={`${T.card} p-4 space-y-4 border-[#D4A381]/30`}>
-      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
-        <div><div className="text-[10px] uppercase tracking-widest font-black text-[#D4A381]">Schedule Copilot</div><h3 className="text-xl font-black text-white">Templates, Coverage, Smart Fill & Publish Preview</h3><p className="text-xs text-slate-400 font-bold">Week of {formatDisplayDate(weekStart)} through {formatDisplayDate(weekEnd)}. Templates, coverage targets, and the builder now use the same staff role list for this restaurant.</p></div>
-        <div className="flex flex-wrap gap-2"><button onClick={copyPreviousWeek} className={T.btnAlt}>Copy Previous Week</button><button onClick={smartFill} className={T.btnAlt}>Smart Fill</button><button onClick={publishWeek} className={`${T.btn} py-2`}>Publish Preview</button><button onClick={() => setOpen(false)} className={T.btnAlt}>Hide</button></div>
+    <div className={`${T.card} schedule-copilot-compact p-3 space-y-2 border-[#D4A381]/30`}>
+      <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-2 border-b border-[#2A353D] pb-2">
+        <div className="min-w-0">
+          <div className="text-[9px] uppercase tracking-widest font-black text-[#D4A381]">Schedule Copilot</div>
+          <h3 className="text-sm sm:text-base font-black text-white leading-tight">Templates, Coverage, Smart Fill & Publish Preview</h3>
+          <p className="text-[10px] text-slate-400 font-bold leading-snug mt-0.5">{formatDisplayDate(weekStart)} through {formatDisplayDate(weekEnd)} • shared Schedule Builder staff roles</p>
+        </div>
+        <div className="flex flex-wrap gap-1.5 flex-shrink-0"><button onClick={copyPreviousWeek} className={T.btnAlt}>Copy Week</button><button onClick={smartFill} className={T.btnAlt}>Smart Fill</button><button onClick={publishWeek} className={T.btn}>Publish</button><button onClick={() => setOpen(false)} className={T.btnAlt}>Hide</button></div>
       </div>
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2"><StatusTile label="Drafts" value={draftCount}/><StatusTile label="Missing Targets" value={missingTargets.length}/><StatusTile label="Warnings" value={conflictList.length}/><StatusTile label="Templates" value={templates.length}/></div>
-      <div className="flex flex-wrap gap-2 border-b border-[#2A353D] pb-2">{[['targets','Coverage Targets'],['templates','Templates'],['template-editor', editingTemplateId ? 'Edit Template' : 'Create Template'],['drag','Drag Board'],['warnings','Warnings']].map(([id,label]) => <button key={id} onClick={() => setActiveTool(id)} className={`px-3 py-2 rounded-xl text-[10px] uppercase tracking-widest font-black ${activeTool===id ? `${T.grad} text-slate-900` : 'bg-[#12161A] text-slate-400 hover:text-white'}`}>{label}</button>)}</div>
+      <div className="grid grid-cols-4 gap-1.5">
+        {[['Drafts',draftCount],['Missing',missingTargets.length],['Warnings',conflictList.length],['Templates',templates.length]].map(([label,value]) => <div key={label} className="schedule-copilot-metric bg-[#12161A] border border-[#2A353D]"><span className="text-[8px] uppercase tracking-widest font-black text-slate-500">{label}</span><strong className="text-white">{value}</strong></div>)}
+      </div>
+      <div className="flex gap-1.5 overflow-x-auto custom-scrollbar border-b border-[#2A353D] pb-2">{[['targets','Coverage'],['templates','Templates'],['template-editor', editingTemplateId ? 'Edit Template' : 'Create Template'],['drag','Drag Board'],['warnings','Warnings']].map(([id,label]) => <button key={id} onClick={() => setActiveTool(id)} className={`flex-shrink-0 px-2.5 py-1.5 rounded-lg text-[9px] uppercase tracking-widest font-black ${activeTool===id ? `${T.grad} text-slate-900` : 'bg-[#12161A] text-slate-400 hover:text-white'}`}>{label}</button>)}</div>
+      <div className="schedule-copilot-body custom-scrollbar space-y-3">
       {activeTool === 'targets' && <div className="grid lg:grid-cols-2 gap-4"><form onSubmit={addCoverageTarget} className="bg-[#12161A] border border-[#2A353D] rounded-xl p-3 space-y-2"><h4 className="font-black text-white">Add Coverage Target</h4><p className="text-[10px] font-bold text-slate-400">Roles come from Staff Roster / Settings and match the Schedule Builder staff list.</p><div className="grid grid-cols-2 gap-2"><select value={targetForm.dayIndex} onChange={e=>setTargetForm({...targetForm, dayIndex:e.target.value})} className={T.input}>{dayNames.map((d,i)=><option key={d} value={i}>{d}</option>)}</select><select value={targetForm.role} onChange={e=>setTargetForm({...targetForm, role:e.target.value})} className={T.input}>{scheduleRoleOptions.map(r => <option key={r} value={r}>{r}</option>)}</select><input type="time" value={targetForm.startTime} onChange={e=>setTargetForm({...targetForm, startTime:e.target.value})} className={T.input}/><input type="time" value={targetForm.endTime} onChange={e=>setTargetForm({...targetForm, endTime:e.target.value})} className={T.input}/><input type="number" min="1" value={targetForm.count} onChange={e=>setTargetForm({...targetForm, count:e.target.value})} className={T.input}/><button className={`${T.btn} py-2`}>Save Target</button></div></form><div className="space-y-2">{coverageTargets.length === 0 ? <FriendlyEmpty title="No coverage targets yet" text="Add targets from the same roles shown in the Schedule Builder staff list. Smart Fill and the builder now use one shared role source."/> : coverageTargets.map(t => <div key={t.id} className="bg-[#12161A] border border-[#2A353D] rounded-xl p-3 flex justify-between items-center"><div><div className="font-black text-white">{dayNames[t.dayIndex]} • {t.role} x{t.count}</div><div className="text-xs text-slate-400 font-bold">{formatShortTime(t.startTime)} - {formatShortTime(t.endTime)}</div></div><button onClick={() => deleteDoc(doc(db,'scheduleCoverageTargets',t.id))} className="p-2 text-slate-400 hover:text-red-400"><Trash2 size={14}/></button></div>)}</div></div>}
       {activeTool === 'templates' && <div className="space-y-3"><div className="flex flex-col md:flex-row gap-2"><select value={templateId} onChange={e => setTemplateId(e.target.value)} className={`${T.input} flex-1`}><option value="">Select template to apply</option>{templateOptions.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}</select><button onClick={applyTemplate} className={`${T.btn} py-2`}>Apply to Current Week</button><button onClick={saveCurrentWeekAsTemplate} className={T.btnAlt}>Save Current Week</button></div>{templateOptions.length === 0 ? <FriendlyEmpty title="No templates yet" text="Create a Normal Week, Packers Sunday, Fish Fry Friday, or Live Music template. Each restaurant gets its own library."/> : templateOptions.map(t => <div key={t.id} className="bg-[#12161A] border border-[#2A353D] rounded-xl p-3 flex justify-between items-center"><div><div className="font-black text-white">{t.name}</div><div className="text-xs text-slate-400 font-bold">{t.description || 'No description'} • {(t.rows || []).length} rules</div></div><div className="flex gap-2"><button onClick={() => editTemplate(t)} className={T.btnAlt}>Edit</button><button onClick={() => deleteTemplate(t)} className="px-3 py-2 rounded-xl bg-red-900/20 text-red-300 border border-red-900/50 text-xs font-black">Delete</button></div></div>)}</div>}
       {activeTool === 'template-editor' && <form onSubmit={saveTemplate} className="space-y-3"><div className="grid md:grid-cols-2 gap-2"><input value={templateName} onChange={e=>setTemplateName(e.target.value)} className={T.input} placeholder="Template name" required/><input value={templateDesc} onChange={e=>setTemplateDesc(e.target.value)} className={T.input} placeholder="Description"/></div><div className="space-y-2">{templateRows.map((r,idx)=><div key={idx} className="grid grid-cols-2 md:grid-cols-6 gap-2 bg-[#12161A] border border-[#2A353D] rounded-xl p-2"><select value={r.dayIndex} onChange={e=>updateTemplateRow(idx,{dayIndex:e.target.value})} className={T.input}>{dayNames.map((d,i)=><option key={d} value={i}>{d}</option>)}</select><select value={r.role} onChange={e=>updateTemplateRow(idx,{role:e.target.value})} className={T.input}>{scheduleRoleOptions.map(roleName => <option key={roleName} value={roleName}>{roleName}</option>)}</select><input type="time" value={r.startTime} onChange={e=>updateTemplateRow(idx,{startTime:e.target.value})} className={T.input}/><input type="time" value={r.endTime} onChange={e=>updateTemplateRow(idx,{endTime:e.target.value})} className={T.input}/><input type="number" min="1" value={r.count} onChange={e=>updateTemplateRow(idx,{count:e.target.value})} className={T.input}/><button type="button" onClick={()=>removeTemplateRow(idx)} className="bg-red-900/20 border border-red-900/50 text-red-300 rounded-xl font-black text-xs">Remove</button></div>)}</div><div className="flex gap-2"><button type="button" onClick={addTemplateRow} className={T.btnAlt}>Add Row</button><button type="submit" className={`${T.btn} py-2`}>{editingTemplateId ? 'Update Template' : 'Create Template'}</button></div></form>}
       {activeTool === 'drag' && <div className="space-y-3"><p className="text-xs text-slate-400 font-bold">Drag shifts between days on desktop, or use the Move to day dropdown on mobile. Quick edit controls can change employee/time without opening the big schedule grid.</p><div className="grid md:grid-cols-7 gap-2">{weekDates.map((date, dayIdx) => <div key={date} onDragOver={e => e.preventDefault()} onDrop={() => moveShiftToDay(date)} className="min-h-[160px] bg-[#12161A] border border-[#2A353D] rounded-xl p-2"><div className="text-[10px] font-black uppercase tracking-widest text-[#D4A381] mb-2">{dayNames[dayIdx]}<br/><span className="text-slate-500">{date.substring(5)}</span></div>{weekShifts.filter(s => s.date === date).sort((a,b)=>(a.startTime||'').localeCompare(b.startTime||'')).map(shift => <div key={shift.id} draggable onDragStart={() => setDraggedShiftId(shift.id)} onDragEnd={() => setDraggedShiftId(null)} className={`mb-2 rounded-lg border p-2 cursor-move ${draggedShiftId === shift.id ? 'border-[#D4A381] bg-[#D4A381]/10' : 'border-[#2A353D] bg-[#1A2126]'}`}><div className="font-black text-white text-xs truncate">{shift.employeeName || users.find(u=>u.id===shift.employeeId)?.name || 'Unassigned'}</div><div className="text-[9px] text-slate-400 font-bold uppercase">{shift.role} • {formatShortTime(shift.startTime)}-{formatShortTime(shift.endTime)}</div><div className="grid grid-cols-1 gap-1 mt-2"><select value="" onChange={e=>e.target.value && quickUpdateShift(shift,{date:e.target.value})} className="bg-[#12161A] border border-[#2A353D] rounded-md px-1.5 py-1 text-[10px] text-[#D4A381] outline-none md:hidden"><option value="">Move to day...</option>{weekDates.map((d,i)=><option key={d} value={d}>{dayNames[i]} {d.substring(5)}</option>)}</select><select value={shift.employeeId || ''} onChange={e=>quickUpdateShift(shift,{employeeId:e.target.value})} className="bg-[#12161A] border border-[#2A353D] rounded-md px-1.5 py-1 text-[10px] text-white outline-none"><option value="">Unassigned</option>{activeUsers.map(u=><option key={u.id} value={u.id}>{u.name}</option>)}</select><div className="flex gap-1"><input type="time" defaultValue={shift.startTime || '09:00'} onBlur={e=>e.target.value && quickUpdateShift(shift,{startTime:e.target.value})} className="w-full bg-[#12161A] border border-[#2A353D] rounded-md px-1 py-1 text-[10px] text-white"/><input type="time" defaultValue={shift.endTime || '17:00'} onBlur={e=>e.target.value && quickUpdateShift(shift,{endTime:e.target.value})} className="w-full bg-[#12161A] border border-[#2A353D] rounded-md px-1 py-1 text-[10px] text-white"/></div></div></div>)}{weekShifts.filter(s => s.date === date).length === 0 && <div className="border border-dashed border-[#2A353D] rounded-lg p-3 text-center text-[10px] font-bold text-slate-500">Drop shifts here</div>}</div>)}</div></div>}
       {activeTool === 'warnings' && <div className="grid md:grid-cols-2 gap-3"><div>{missingTargets.length === 0 ? <FriendlyEmpty title="Coverage targets met" text="No target gaps found for the current week."/> : missingTargets.map(m => <div key={`${m.id}-${m.date}`} className="bg-amber-900/10 border border-amber-900/40 rounded-xl p-3 mb-2"><div className="font-black text-amber-300">{formatDisplayDate(m.date)} needs {m.needed} more {m.role}</div><div className="text-xs text-slate-400">Existing: {m.existing} • Target: {m.count}</div></div>)}</div><div>{conflictList.length === 0 ? <FriendlyEmpty title="No conflicts found" text="No schedule warning dragons spotted this week."/> : conflictList.map((w,i)=><div key={i} className="bg-red-900/10 border border-red-900/40 rounded-xl p-3 mb-2 text-sm font-bold text-red-200">{w}</div>)}</div></div>}
+      </div>
     </div>
   );
 };
