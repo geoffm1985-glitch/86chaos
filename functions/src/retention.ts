@@ -29,6 +29,24 @@ const ARCHIVE_PREFIX = "archive/time_clock/";
 const RETENTION_ARCHIVE_BUCKET = String(process.env.RETENTION_ARCHIVE_BUCKET || "").trim();
 const AI_UPLOADS_BUCKET = String(process.env.AI_UPLOADS_BUCKET || "").trim();
 
+// 86 Chaos legal retention policy, aligned to the July 9, 2026 legal packet:
+// - Transient operational data: 30 days.
+// - Raw AI prompts/uploads/scans: 30 days. Reviewed/parsed business records stay in-app.
+// - Deleted workspace data: 30-day recovery window, then hard delete.
+// - Database backups: 30-day rolling retention.
+// - Audit/security logs: 1 year.
+// - Workforce/time-clock/geofence logs: archive after 1 year and retain until 3 years from event.
+// - Active core data, including recipes and inventory, remains while the account is active.
+const RETENTION_POLICY = Object.freeze({
+  transientDays: 30,
+  rawAiDays: 30,
+  deletedWorkspaceDays: 30,
+  backupDays: 30,
+  auditSecurityDays: 365,
+  workforceArchiveAfterDays: 365,
+  workforceDeleteAfterYears: 3,
+});
+
 const TENANT_COLLECTIONS = [
   "events",
   "messages",
@@ -109,6 +127,27 @@ const TRANSIENT_RULES: PurgeRule[] = [
   // Requested/future snake_case schema support.
   { collection: "prep_lists", field: "created_at", cutoffKind: "timestamp" },
   { collection: "86_alerts", field: "created_at", cutoffKind: "timestamp" },
+];
+
+const AI_PROMPT_RULES: PurgeRule[] = [
+  // Raw/diagnostic AI request records. These are intentionally separate from
+  // reviewed invoice/menu business records, which remain as parsed operational
+  // data after manager review.
+  { collection: "aiPrompts", field: "createdAt", cutoffKind: "timestamp" },
+  { collection: "aiFeatureLogs", field: "createdAt", cutoffKind: "timestamp" },
+  { collection: "aiRequestLogs", field: "createdAt", cutoffKind: "timestamp" },
+  { collection: "aiScanRawRequests", field: "createdAt", cutoffKind: "timestamp" },
+  { collection: "aiUploads", field: "createdAt", cutoffKind: "timestamp" },
+];
+
+const AUDIT_SECURITY_RULES: PurgeRule[] = [
+  { collection: "auditLogs", field: "timestamp", cutoffKind: "iso" },
+  { collection: "securityAlerts", field: "createdAt", cutoffKind: "iso" },
+  { collection: "securityEvents", field: "createdAt", cutoffKind: "timestamp" },
+  { collection: "suspiciousActivity", field: "createdAt", cutoffKind: "timestamp" },
+  { collection: "crashReports", field: "createdAt", cutoffKind: "iso" },
+  { collection: "presenceSessions", field: "lastSeenAt", cutoffKind: "timestamp" },
+  { collection: "livePresence", field: "lastSeenAt", cutoffKind: "timestamp" },
 ];
 
 const ARCHIVE_RULES: ArchiveRule[] = [
@@ -248,7 +287,6 @@ async function purgeRule(
     query = query
       .where(rule.field, "<", cutoff)
       .orderBy(rule.field, "asc")
-      .orderBy(FieldPath.documentId(), "asc")
       .limit(Math.min(PAGE_SIZE, MAX_DOCS_PER_RULE_PER_RUN - scanned));
     if (cursor) query = query.startAfter(cursor);
 
@@ -348,7 +386,7 @@ async function uploadArchiveShard(
   const sha256 = createHash("sha256").update(ndjson).digest("hex");
   const compressed = gzipSync(Buffer.from(ndjson, "utf8"), { level: 9 });
   const newestEvent = new Date(Math.max(...records.map((record) => new Date(record.eventTime).getTime())));
-  const deleteAfter = addUtcCalendarYears(newestEvent, 3);
+  const deleteAfter = addUtcCalendarYears(newestEvent, RETENTION_POLICY.workforceDeleteAfterYears);
   const eventDay = records[0].eventTime.slice(0, 10);
   const objectName = `${ARCHIVE_PREFIX}${rule.collection}/event_date=${eventDay}/${sha256.slice(0, 32)}.ndjson.gz`;
   const file = archiveBucket().file(objectName);
@@ -402,7 +440,6 @@ async function archiveRule(
     let query: Query<DocumentData> = db.collection(rule.collection)
       .where(rule.field, "<", cutoff)
       .orderBy(rule.field, "asc")
-      .orderBy(FieldPath.documentId(), "asc")
       .limit(Math.min(PAGE_SIZE, MAX_DOCS_PER_RULE_PER_RUN - scanned));
     if (cursor) query = query.startAfter(cursor);
 
@@ -474,6 +511,15 @@ async function deleteStoragePrefix(
   } while (pageToken);
 
   return { scanned, deleted, failed, complete: !pageToken };
+}
+
+async function deleteStoragePrefixByAge(
+  bucketName: string,
+  prefix: string,
+  retentionDays: number,
+  startedAt: number
+): Promise<{ scanned: number; deleted: number; failed: number; complete: boolean }> {
+  return deleteStoragePrefix(bucketName, prefix, Date.now() - retentionDays * 24 * 60 * 60 * 1000, startedAt);
 }
 
 async function listRestaurantIds(startedAt: number): Promise<string[]> {
@@ -603,8 +649,8 @@ export const purgeTransientOperationalData = functions
     const startedAt = Date.now();
     await withJobLock("purgeTransientOperationalData", async () => {
       for (const rule of TRANSIENT_RULES) {
-        const result = await purgeRule(rule, 30, startedAt);
-        functions.logger.info("Transient retention rule completed.", { rule, ...result });
+        const result = await purgeRule(rule, RETENTION_POLICY.transientDays, startedAt);
+        functions.logger.info("Transient retention rule completed.", { policy: "transient-30-days", rule, ...result });
       }
       return null;
     });
@@ -620,18 +666,37 @@ export const purgeExpiredAiUploads = functions
     const startedAt = Date.now();
     await withJobLock("purgeExpiredAiUploads", async () => {
       const bucket = aiBucket();
-      const cutoffMs = Date.now() - 30 * 24 * 60 * 60 * 1000;
+      const cutoffMs = Date.now() - RETENTION_POLICY.rawAiDays * 24 * 60 * 60 * 1000;
 
-      const directResult = await deleteStoragePrefix(bucket.name, "ai_uploads/", cutoffMs, startedAt);
-      functions.logger.info("Legacy AI upload path purge completed.", { prefix: "ai_uploads/", ...directResult });
+      for (const prefix of ["ai_uploads/", "menuUploads/", "invoiceUploads/", "menu-scans/", "invoice-scans/"]) {
+        const result = await deleteStoragePrefix(bucket.name, prefix, cutoffMs, startedAt);
+        if (result.scanned || result.deleted || result.failed) {
+          functions.logger.info("Legacy/global raw AI upload path purge completed.", { policy: "raw-ai-30-days", prefix, ...result });
+        }
+      }
+
+      for (const rule of AI_PROMPT_RULES) {
+        const result = await purgeRule(rule, RETENTION_POLICY.rawAiDays, startedAt);
+        if (result.scanned || result.deleted || result.failed) {
+          functions.logger.info("Raw AI prompt/request retention rule completed.", { policy: "raw-ai-30-days", rule, ...result });
+        }
+      }
 
       const restaurantIds = await listRestaurantIds(startedAt);
       for (const restaurantId of restaurantIds) {
         if (outOfTime(startedAt)) break;
-        for (const prefix of [`${restaurantId}/menuUploads/`, `${restaurantId}/invoices/scans/`]) {
+        for (const prefix of [
+          `${restaurantId}/menuUploads/`,
+          `${restaurantId}/invoices/scans/`,
+          `${restaurantId}/invoiceUploads/`,
+          `${restaurantId}/menu-scans/`,
+          `${restaurantId}/invoice-scans/`,
+          `restaurants/${restaurantId}/menuUploads/`,
+          `restaurants/${restaurantId}/invoices/scans/`,
+        ]) {
           const result = await deleteStoragePrefix(bucket.name, prefix, cutoffMs, startedAt);
           if (result.scanned || result.deleted || result.failed) {
-            functions.logger.info("86 Chaos AI upload path purge completed.", { restaurantId, prefix, ...result });
+            functions.logger.info("86 Chaos raw AI upload path purge completed.", { policy: "raw-ai-30-days", restaurantId, prefix, ...result });
           }
         }
       }
@@ -650,8 +715,8 @@ export const archiveExpiredTimeClockData = functions
     await withJobLock("archiveExpiredTimeClockData", async () => {
       archiveBucket();
       for (const rule of ARCHIVE_RULES) {
-        const result = await archiveRule(rule, 365, startedAt);
-        functions.logger.info("Time-clock archive rule completed.", { rule, ...result });
+        const result = await archiveRule(rule, RETENTION_POLICY.workforceArchiveAfterDays, startedAt);
+        functions.logger.info("Time-clock/geofence archive rule completed.", { policy: "archive-after-1-year-retain-3-years", rule, ...result });
       }
       return null;
     });
@@ -695,6 +760,42 @@ export const purgeExpiredTimeClockArchives = functions
     return null;
   });
 
+export const purgeExpiredDatabaseBackups = functions
+  .region(REGION)
+  .runWith({ timeoutSeconds: 540, memory: "512MB" })
+  .pubsub.schedule("55 3 * * *")
+  .timeZone(TIME_ZONE)
+  .onRun(async () => {
+    const startedAt = Date.now();
+    await withJobLock("purgeExpiredDatabaseBackups", async () => {
+      const bucket = storage.bucket();
+      const result = await deleteStoragePrefixByAge(bucket.name, "backups/firestore/", RETENTION_POLICY.backupDays, startedAt);
+      functions.logger.info("Expired database backups purged.", { policy: "database-backups-30-days-rolling", bucket: bucket.name, prefix: "backups/firestore/", ...result });
+      return null;
+    });
+    return null;
+  });
+
+export const purgeExpiredAuditSecurityLogs = functions
+  .region(REGION)
+  .runWith({ timeoutSeconds: 540, memory: "512MB" })
+  .pubsub.schedule("25 4 * * *")
+  .timeZone(TIME_ZONE)
+  .onRun(async () => {
+    const startedAt = Date.now();
+    await withJobLock("purgeExpiredAuditSecurityLogs", async () => {
+      for (const rule of AUDIT_SECURITY_RULES) {
+        const result = await purgeRule(rule, RETENTION_POLICY.auditSecurityDays, startedAt);
+        if (result.scanned || result.deleted || result.failed) {
+          functions.logger.info("Audit/security retention rule completed.", { policy: "audit-security-1-year", rule, ...result });
+        }
+        if (outOfTime(startedAt)) break;
+      }
+      return null;
+    });
+    return null;
+  });
+
 export const hardDeleteExpiredWorkspaces = functions
   .region(REGION)
   .runWith({ timeoutSeconds: 540, memory: "1GB" })
@@ -704,7 +805,7 @@ export const hardDeleteExpiredWorkspaces = functions
     const startedAt = Date.now();
     await withJobLock("hardDeleteExpiredWorkspaces", async () => {
       const snapshot = await db.collection("restaurants")
-        .where("deleted_at", "<", cutoffTimestamp(30))
+        .where("deleted_at", "<", cutoffTimestamp(RETENTION_POLICY.deletedWorkspaceDays))
         .orderBy("deleted_at", "asc")
         .orderBy(FieldPath.documentId(), "asc")
         .limit(20)

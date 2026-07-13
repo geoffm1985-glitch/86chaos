@@ -192,13 +192,22 @@ async function exportCollection(collectionRef, collectionPath, backup, counters)
   }
 }
 
-async function pruneOldBackups(bucket, keepCount = 35) {
+async function pruneOldBackups(bucket, retentionDays = 30, emergencyKeepCount = 40) {
+  // Legal packet policy: database backups are retained on a 30-day rolling basis.
+  // Keep a small count-based safety valve only for unusually dense manual testing bursts.
   try {
+    const cutoffMs = Date.now() - retentionDays * 24 * 60 * 60 * 1000;
     const [files] = await bucket.getFiles({ prefix: 'backups/firestore/' });
     const backupFiles = files
       .filter(file => file.name.endsWith('.json.gz'))
       .sort((a, b) => b.name.localeCompare(a.name));
-    const toDelete = backupFiles.slice(keepCount);
+    const expiredByAge = backupFiles.filter(file => {
+      const created = Date.parse(String(file.metadata?.timeCreated || ''));
+      return Number.isFinite(created) && created < cutoffMs;
+    });
+    const excessByCount = backupFiles.slice(emergencyKeepCount);
+    const byName = new Map([...expiredByAge, ...excessByCount].map(file => [file.name, file]));
+    const toDelete = Array.from(byName.values());
     await Promise.all(toDelete.map(file => file.delete().catch(() => null)));
     return toDelete.length;
   } catch (_) {
@@ -394,7 +403,7 @@ async function handler(req, res) {
       }
     }).catch(() => null);
 
-    const deletedOldBackups = await pruneOldBackups(bucket);
+    const deletedOldBackups = await pruneOldBackups(bucket, 30);
 
     const statusPayload = {
       status: 'ok',

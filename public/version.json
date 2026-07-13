@@ -1,9 +1,9 @@
 {
-  "version": "15.0.63",
-  "name": "86 Chaos 15.0.63 Maintenance Mode Undefined Field Hotfix",
+  "version": "15.0.64",
+  "name": "86 Chaos 15.0.64 Legal Retention + Admin Console Cleanup",
   "releasedAt": "2026-07-12",
-  "label": "86 Chaos 15.0.63",
-  "build": "15.0.63",
-  "updatedAt": "2026-07-12T00:00:00.000Z",
-  "notes": "Hotfix for System Administrator maintenance mode: strips undefined values from restaurant update payloads/history so Firestore accepts maintenance enable/clear actions."
+  "label": "86 Chaos 15.0.64",
+  "build": "15.0.64",
+  "updatedAt": "2026-07-13T00:00:00.000Z",
+  "notes": "Adds one-button legal data-retention setup, aligns retention schedules with the legal packet, rebuilds System Administrator mobile navigation into grouped tool cards, restores visible help/question-mark controls, and compacts diagnostics payloads before AI repair guidance."
 }

@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { collection, query, where, onSnapshot, addDoc, updateDoc, deleteDoc, doc, getDocs, setDoc } from 'firebase/firestore';
 import { initializeApp } from 'firebase/app';
 import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword } from 'firebase/auth';
-import { Package, Trash2, Moon, Search, Calendar, BookOpen, Bug, Bell, Shield, Loader2, ClipboardList } from 'lucide-react';
+import { Package, Trash2, Moon, Search, Calendar, BookOpen, Bug, Bell, Shield, Loader2, ClipboardList, HelpCircle, Users, LifeBuoy, Radio, KeyRound, ChevronRight } from 'lucide-react';
 
 const TabGodMode = ({ appUser, addToast, setGhostTenant, db, auth, Modal, T, getToday, generateTempPass, firebaseConfig, CURRENT_VERSION, logAudit }) => {
   const [subTab, setSubTab] = useState('overview');
@@ -21,6 +21,9 @@ const TabGodMode = ({ appUser, addToast, setGhostTenant, db, auth, Modal, T, get
   const [broadcastMsg, setBroadcastMsg] = useState('');
   const [editingRest, setEditingRest] = useState(null);
   const [userSearch, setUserSearch] = useState('');
+  const [retentionSaving, setRetentionSaving] = useState(false);
+  const [lastRetentionSetup, setLastRetentionSetup] = useState(null);
+  const [adminHelpTopic, setAdminHelpTopic] = useState(null);
 
   // Nuke Security States
   const [nukeTarget, setNukeTarget] = useState(null);
@@ -188,19 +191,157 @@ const TabGodMode = ({ appUser, addToast, setGhostTenant, db, auth, Modal, T, get
   const handleGrantAccess = async (e) => { e.preventDefault(); const snap = await getDocs(query(collection(db, "users"), where("email", "==", adminEmail.toLowerCase().trim()))); if (snap.empty) return addToast('Not Found', 'User not found.'); await updateDoc(doc(db, "users", snap.docs[0].id), { isSuperAdmin: true }); setAdminEmail(''); addToast('Granted', 'Administrator access given.'); };
   const handleRevokeAccess = async (user) => { if (!window.confirm(`Revoke Admin from ${user.name}?`)) return; await updateDoc(doc(db, "users", user.id), { isSuperAdmin: false }); addToast('Revoked', 'Access removed.'); };
 
+  const RETENTION_POLICY = {
+    activeCoreData: 'While account is active',
+    workforceTimeClockGeofence: '3 years total; archive active records after 1 year',
+    transientPrepAnd86: '30 days',
+    rawAiPromptsAndUploads: '30 days; parsed/reviewed business data retained',
+    deletedWorkspaceData: '30-day recovery window before hard delete',
+    databaseBackups: '30-day rolling retention',
+    auditSecurityLogs: '1 year'
+  };
+
+  const handleInitializeRetentionConfig = async () => {
+    if (!window.confirm('Create/update the legal data-retention config for the current Firebase project? This does not delete data by itself.')) return;
+    setRetentionSaving(true);
+    try {
+      const payload = {
+        policySource: '86 Chaos Legal Document Packet - Security, Backup, and Data Retention Policy section 6.4',
+        policyVersion: '2026-07-09',
+        appVersion: CURRENT_VERSION,
+        schedule: RETENTION_POLICY,
+        automations: {
+          purgeTransientOperationalData: 'Daily at 2:10 AM Central - prep lists, 86 alerts, AI locks, rate-limit records older than 30 days.',
+          purgeExpiredAiUploads: 'Daily at 2:35 AM Central - raw AI scan/upload files and raw prompt/request logs older than 30 days.',
+          archiveExpiredTimeClockData: 'Daily at 3:05 AM Central - archive active time-clock/geofence records after 1 year before deleting active copies.',
+          purgeExpiredTimeClockArchives: 'Daily at 3:40 AM Central - remove archived time-clock/geofence files after 3 years from event date.',
+          purgeExpiredDatabaseBackups: 'Daily at 3:55 AM Central - remove database backups outside the 30-day rolling window.',
+          hardDeleteExpiredWorkspaces: 'Daily at 4:15 AM Central - hard-delete workspaces after the 30-day deleted-workspace grace period.',
+          purgeExpiredAuditSecurityLogs: 'Daily at 4:25 AM Central - remove audit/security logs older than 1 year.'
+        },
+        requiredFunctionEnv: {
+          RETENTION_ARCHIVE_BUCKET: 'Required for time-clock/geofence archival. Use the bucket NAME only, not gs://.',
+          AI_UPLOADS_BUCKET: 'Optional. Leave blank to use the default Firebase Storage bucket.'
+        },
+        safetyNotes: [
+          'This config document is a production checklist/status marker. Deletion is performed only by deployed Firebase Functions.',
+          'The time-clock archive job refuses to delete source records unless the archive upload is verified.',
+          'Active core records such as recipes and inventory are retained while the workspace account is active.',
+          'Run a fresh backup before first production retention deployment.'
+        ],
+        updatedAt: new Date().toISOString(),
+        updatedBy: appUser?.email || appUser?.name || 'System Administrator'
+      };
+      await setDoc(doc(db, 'system', 'dataRetention'), payload, { merge: true });
+      await logAudit?.(appUser, 'DATA_RETENTION_CONFIG_INITIALIZED', 'system/dataRetention', 'Initialized legal retention configuration from System Administrator.');
+      setLastRetentionSetup(payload.updatedAt);
+      addToast('Retention Config Saved', 'Legal retention policy marker saved. Deploy Firebase Functions separately to run the schedules.');
+    } catch (error) {
+      addToast('Retention Setup Failed', error?.message || 'Could not save retention config.');
+    } finally {
+      setRetentionSaving(false);
+    }
+  };
+
   // --- CALCULATIONS ---
   const mrr = restaurants.reduce((acc, r) => acc + (r.subscription?.status === 'active' ? (r.subscription?.planId === 'owner_pro' ? 299 : r.subscription?.planId === 'smart_kitchen' ? 179 : r.subscription?.planId === 'operations' ? 99 : 49) : 0), 0);
   const timeAgo = (dateStr) => { if (!dateStr) return 'Never'; const days = Math.floor((Date.now() - new Date(dateStr).getTime()) / (1000 * 60 * 60 * 24)); if (days === 0) return 'Active Today'; if (days === 1) return 'Active Yesterday'; return `Inactive ${days} days`; };
   const staleTenants = restaurants.filter(r => r.isActive && Math.floor((Date.now() - new Date(r.lastActive||0).getTime()) / 86400000) > 21);
 
+  const ADMIN_SECTIONS = [
+    { id:'overview', label:'Metrics', icon: Package, tone:'emerald', description:'Platform health, revenue, install, client activity, and stale-location snapshots.' },
+    { id:'tenants', label:'Clients', icon: Users, tone:'blue', description:'Create restaurants, manage plans, deploy owner accounts, ghost into clients, export users, and control tenant status.' },
+    { id:'users', label:'Global Users', icon: Search, tone:'slate', description:'Search every user across all restaurants, inspect roles, workspace ties, and account status.' },
+    { id:'support', label:'Support', icon: LifeBuoy, tone:'amber', description:'Crash reports, diagnostics, support triage, and customer problem investigation tools.' },
+    { id:'forensics', label:'Forensics', icon: Shield, tone:'purple', description:'Audit timeline, ghost-action review, security activity, and administrator accountability records.' },
+    { id:'ops', label:'Operations', icon: Radio, tone:'red', description:'Global refresh, platform broadcast, orphan sweeps, and operational maintenance actions.' },
+    { id:'retention', label:'Retention', icon: Calendar, tone:'emerald', description:'One-button legal data-retention setup marker, official retention schedule, and production setup checklist.' },
+    { id:'admins', label:'Access', icon: KeyRound, tone:'red', description:'Grant or revoke internal System Administrator access.' },
+  ];
+
+  const activeAdminSection = ADMIN_SECTIONS.find(section => section.id === subTab) || ADMIN_SECTIONS[0];
+
+  const openAdminHelp = (sectionId, event) => {
+    event?.preventDefault?.();
+    event?.stopPropagation?.();
+    setAdminHelpTopic(ADMIN_SECTIONS.find(section => section.id === sectionId) || null);
+  };
+
+
   return (
     <div className="max-w-6xl mx-auto space-y-6 pb-24 animate-[slideIn_0.2s_ease-out]">
       {/* MASTER NAVIGATION */}
-      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-2 border-b border-[#2A353D] mb-6 pb-4">
-        {[{id:'overview', label:'Metrics'}, {id:'tenants', label:'Clients'}, {id:'users', label:'Global Users'}, {id:'support', label:'Support'}, {id:'forensics', label:'Forensics'}, {id:'ops', label:'Operations'}, {id:'admins', label:'Access'}].map((t) => (
-          <button key={t.id} onClick={() => setSubTab(t.id)} className={`px-2 py-2.5 text-[10px] sm:text-[11px] font-black rounded-xl uppercase tracking-widest transition-all ${subTab === t.id ? 'bg-red-600 text-white shadow-lg scale-[1.02]' : 'bg-[#1A2126] text-slate-400 border border-[#2A353D] hover:text-white hover:border-slate-500'}`}>{t.label}</button>
-        ))}
+      <div className="space-y-3 border-b border-[#2A353D] mb-6 pb-4">
+        <div className="md:hidden bg-[#12161A] border border-[#2A353D] rounded-2xl p-3 shadow-lg">
+          <div className="flex items-start justify-between gap-3 mb-3">
+            <div>
+              <div className="text-[10px] font-black uppercase tracking-[0.22em] text-[#D4A381]">System Administrator</div>
+              <h2 className="text-lg font-black text-white leading-tight mt-1">{activeAdminSection.label}</h2>
+              <p className="text-xs text-slate-400 font-bold leading-5 mt-1">{activeAdminSection.description}</p>
+            </div>
+            <button type="button" onClick={(event) => openAdminHelp(activeAdminSection.id, event)} className="shrink-0 w-10 h-10 rounded-xl border border-[#D4A381]/50 bg-[#0B0E11] text-[#D4A381] flex items-center justify-center" aria-label={`Explain ${activeAdminSection.label}`} title={`Explain ${activeAdminSection.label}`}>
+              <HelpCircle size={19}/>
+            </button>
+          </div>
+          <div className="grid grid-cols-1 gap-2">
+            {ADMIN_SECTIONS.map((section) => {
+              const Icon = section.icon;
+              const active = subTab === section.id;
+              return (
+                <div key={section.id} className={`rounded-2xl border ${active ? 'border-[#D4A381] bg-[#D4A381]/10' : 'border-[#2A353D] bg-[#0B0E11]'} overflow-hidden`}>
+                  <div className="flex items-stretch">
+                    <button type="button" onClick={() => setSubTab(section.id)} className="flex-1 min-w-0 p-3 text-left flex items-center gap-3">
+                      <span className={`w-10 h-10 rounded-xl flex items-center justify-center border ${active ? 'border-[#D4A381]/60 text-[#D4A381] bg-[#0B0E11]' : 'border-[#2A353D] text-slate-400 bg-[#12161A]'}`}><Icon size={18}/></span>
+                      <span className="min-w-0 flex-1">
+                        <span className={`block text-sm font-black ${active ? 'text-white' : 'text-slate-200'}`}>{section.label}</span>
+                        <span className="block text-[11px] text-slate-500 font-bold leading-4 truncate">{section.description}</span>
+                      </span>
+                      <ChevronRight size={16} className={active ? 'text-[#D4A381]' : 'text-slate-600'}/>
+                    </button>
+                    <button type="button" onClick={(event) => openAdminHelp(section.id, event)} className="w-12 border-l border-[#2A353D] text-[#D4A381] bg-[#12161A]/60 flex items-center justify-center" aria-label={`What is ${section.label}?`} title={`What is ${section.label}?`}>
+                      <HelpCircle size={17}/>
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        <div className="hidden md:grid md:grid-cols-4 lg:grid-cols-8 gap-2">
+          {ADMIN_SECTIONS.map((section) => {
+            const Icon = section.icon;
+            return (
+              <div key={section.id} className="relative group">
+                <button onClick={() => setSubTab(section.id)} className={`w-full px-2 py-2.5 text-[10px] sm:text-[11px] font-black rounded-xl uppercase tracking-widest transition-all flex items-center justify-center gap-1.5 ${subTab === section.id ? 'bg-red-600 text-white shadow-lg scale-[1.02]' : 'bg-[#1A2126] text-slate-400 border border-[#2A353D] hover:text-white hover:border-slate-500'}`}>
+                  <Icon size={13}/>{section.label}
+                </button>
+                <button type="button" onClick={(event) => openAdminHelp(section.id, event)} className="absolute -right-1 -top-1 w-5 h-5 rounded-full border border-[#D4A381]/60 bg-[#0B0E11] text-[#D4A381] hidden group-hover:flex items-center justify-center shadow-md" aria-label={`Explain ${section.label}`} title={`Explain ${section.label}`}>
+                  <HelpCircle size={12}/>
+                </button>
+              </div>
+            );
+          })}
+        </div>
       </div>
+
+      <Modal isOpen={!!adminHelpTopic} onClose={() => setAdminHelpTopic(null)} title={`${adminHelpTopic?.label || 'System Administrator'} help`}>
+        {adminHelpTopic && (
+          <div className="space-y-4 text-sm text-slate-300 font-bold leading-6">
+            <p>{adminHelpTopic.description}</p>
+            <div className="rounded-xl border border-[#2A353D] bg-[#12161A] p-4">
+              <div className="text-[10px] font-black uppercase tracking-widest text-[#D4A381] mb-2">Access note</div>
+              <p className="text-xs text-slate-400 leading-5">This area is internal-only for verified System Administrator or Master Admin accounts. Customer owners, managers, and staff should not see these controls.</p>
+            </div>
+            {adminHelpTopic.id === 'retention' && (
+              <div className="rounded-xl border border-emerald-500/30 bg-emerald-900/10 p-4">
+                <div className="text-[10px] font-black uppercase tracking-widest text-emerald-300 mb-2">Retention warning</div>
+                <p className="text-xs text-slate-300 leading-5">The setup button saves the legal retention policy marker and checklist only. Actual deletion/archive jobs run from deployed Firebase Functions after production setup is complete.</p>
+              </div>
+            )}
+          </div>
+        )}
+      </Modal>
 
       <Modal isOpen={!!editingRest} onClose={() => setEditingRest(null)} title={`Manage Client: ${editingRest?.name}`}>
         {editingRest && (
@@ -462,6 +603,64 @@ const TabGodMode = ({ appUser, addToast, setGhostTenant, db, auth, Modal, T, get
               <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-4 leading-snug">Scans all global databases for shifts assigned to employees that have been fully deleted. Reclaims server space.</p>
               <button onClick={handleOrphanSweep} className="w-full bg-blue-900/20 text-blue-400 border border-blue-900/50 font-black text-xs uppercase tracking-widest py-3 rounded-xl hover:bg-blue-900/40 transition-colors">Run DB Sweep</button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* --- TAB: LEGAL DATA RETENTION SETUP --- */}
+      {subTab === 'retention' && (
+        <div className="space-y-6 animate-[slideIn_0.2s_ease-out]">
+          <div className={`${T.card} p-5 border-emerald-900/40`}>
+            <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
+              <div>
+                <h2 className="text-xl font-black text-white flex items-center gap-2"><Shield size={20} className="text-emerald-400"/> Legal Data Retention Setup</h2>
+                <p className="text-xs text-slate-400 font-bold leading-6 mt-2 max-w-3xl">This saves the official 86 Chaos retention policy marker into Firestore and gives the exact production checklist. It does not delete anything by itself. Automatic deletion/archive only runs after Firebase Functions are deployed in the production Firebase project.</p>
+              </div>
+              <div className="flex flex-col sm:flex-row gap-2">
+                <button onClick={handleInitializeRetentionConfig} disabled={retentionSaving} className="bg-emerald-900/30 border border-emerald-500/40 text-emerald-200 hover:text-white rounded-xl px-4 py-3 text-xs font-black uppercase tracking-widest disabled:opacity-50">
+                  {retentionSaving ? 'Saving...' : 'One-Click App Setup'}
+                </button>
+                <button type="button" onClick={() => { navigator.clipboard?.writeText('firebase deploy --only functions --project YOUR_PRODUCTION_PROJECT_ID'); addToast('Copied', 'Firebase Functions deploy command copied.'); }} className="bg-[#12161A] border border-[#2A353D] text-[#D4A381] hover:text-white rounded-xl px-4 py-3 text-xs font-black uppercase tracking-widest">Copy Deploy Command</button>
+              </div>
+            </div>
+            {lastRetentionSetup && <div className="mt-3 text-[10px] font-black uppercase tracking-widest text-emerald-300">Saved {new Date(lastRetentionSetup).toLocaleString()}</div>}
+          </div>
+
+          <div className="grid lg:grid-cols-2 gap-4">
+            <div className={`${T.card} p-5`}>
+              <h3 className="font-black text-white mb-3">Official Retention Schedule</h3>
+              <div className="space-y-2 text-sm">
+                {Object.entries(RETENTION_POLICY).map(([key, value]) => (
+                  <div key={key} className="flex justify-between gap-3 border-b border-[#2A353D]/70 pb-2">
+                    <span className="text-slate-400 font-black uppercase tracking-widest text-[10px]">{key.replace(/([A-Z])/g, ' $1')}</span>
+                    <span className="text-slate-100 font-bold text-right">{value}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className={`${T.card} p-5`}>
+              <h3 className="font-black text-white mb-3">Production Setup Checklist</h3>
+              <ol className="list-decimal list-inside space-y-2 text-sm text-slate-300 font-bold leading-6">
+                <li>Create a private production archive bucket for time-clock/geofence archives.</li>
+                <li>Add <code className="text-[#D4A381]">RETENTION_ARCHIVE_BUCKET</code> to the production Firebase Functions env file.</li>
+                <li>Optionally add <code className="text-[#D4A381]">AI_UPLOADS_BUCKET</code>; blank uses the default Storage bucket.</li>
+                <li>Run a fresh production backup before deploying retention functions.</li>
+                <li>Deploy Firebase Functions from the production project.</li>
+                <li>Open Firebase Functions and Cloud Scheduler and confirm all retention jobs exist.</li>
+                <li>Check logs after the first run before trusting automatic deletion.</li>
+              </ol>
+            </div>
+          </div>
+
+          <div className={`${T.card} p-5`}>
+            <h3 className="font-black text-white mb-3">Expected Firebase Functions</h3>
+            <div className="grid md:grid-cols-2 gap-3 text-xs font-bold text-slate-300">
+              {['purgeTransientOperationalData', 'purgeExpiredAiUploads', 'archiveExpiredTimeClockData', 'purgeExpiredTimeClockArchives', 'purgeExpiredDatabaseBackups', 'hardDeleteExpiredWorkspaces', 'purgeExpiredAuditSecurityLogs'].map(name => (
+                <div key={name} className="bg-[#12161A] border border-[#2A353D] rounded-xl p-3"><span className="text-[#D4A381] font-black">{name}</span></div>
+              ))}
+            </div>
+            <p className="text-[11px] text-slate-500 font-bold mt-4 leading-5">Do not run destructive tests on live customer data. The archive job is intentionally fail-closed: if the archive bucket is missing or archive verification fails, time-clock records are not deleted.</p>
           </div>
         </div>
       )}

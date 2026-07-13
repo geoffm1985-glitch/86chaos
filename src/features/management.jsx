@@ -110,6 +110,77 @@ const redactDiagnosticSecrets = (value) => {
   return value;
 };
 
+
+const summarizeDiagnosticValue = (value, depth = 0) => {
+  if (depth > 3) return '[summary depth limit]';
+  if (value === undefined || value === null || typeof value === 'boolean' || typeof value === 'number') return value ?? null;
+  if (typeof value === 'string') return value.length > 700 ? `${value.slice(0, 700)}…[truncated]` : value;
+  if (Array.isArray(value)) return value.slice(0, 25).map(item => summarizeDiagnosticValue(item, depth + 1));
+  if (typeof value === 'object') {
+    const source = redactDiagnosticSecrets(value) || {};
+    const importantKeys = ['ok', 'status', 'code', 'error', 'message', 'warning', 'warnings', 'errors', 'ms', 'durationMs', 'generatedAt', 'lastRunAt', 'lastBackupAt', 'lastSuccessfulBackupAt', 'backupIntegrity', 'latestIntegrity', 'projectId', 'storageBucket', 'configured', 'serviceAccountSource', 'route', 'statusCode', 'count', 'total', 'failed', 'passed'];
+    const cleaned = {};
+    importantKeys.forEach(key => {
+      if (Object.prototype.hasOwnProperty.call(source, key)) cleaned[key] = summarizeDiagnosticValue(source[key], depth + 1);
+    });
+    Object.entries(source).slice(0, 35).forEach(([key, item]) => {
+      if (cleaned[key] !== undefined) return;
+      if (/secret|token|credential|key|signed|url/i.test(key)) return;
+      cleaned[key] = summarizeDiagnosticValue(item, depth + 1);
+    });
+    return cleaned;
+  }
+  return String(value);
+};
+
+const compactDiagnosticsForAi = ({ diagnostics, health, context, buildFallback }) => {
+  const safeDiagnostics = redactDiagnosticSecrets(diagnostics || {}) || {};
+  const safeHealth = redactDiagnosticSecrets(health || {}) || {};
+  const fallback = typeof buildFallback === 'function' ? (buildFallback() || {}) : {};
+  const checks = safeDiagnostics.checks || {};
+  const compactChecks = {};
+  Object.entries(checks).slice(0, 24).forEach(([name, check]) => {
+    compactChecks[name] = {
+      ok: check?.ok === true,
+      ms: check?.ms || 0,
+      error: check?.error || null,
+      value: summarizeDiagnosticValue(check?.value ?? check)
+    };
+  });
+  const routeManifest = Array.isArray(safeHealth.apiRouteManifest) ? safeHealth.apiRouteManifest : [];
+  const failedRoutes = routeManifest.filter(route => route.status !== 'ready' && route.ok !== true).slice(0, 40);
+  const compact = {
+    purpose: 'Compact 86 Chaos diagnostic summary for repair guidance. Full raw report is downloaded locally, not sent to AI.',
+    generatedAt: safeDiagnostics.generatedAt || safeHealth.generatedAt || new Date().toISOString(),
+    version: safeDiagnostics.version || context?.version || CURRENT_VERSION,
+    environment: summarizeDiagnosticValue(safeDiagnostics.environment || safeHealth.environment || {}),
+    health: {
+      ok: safeHealth.ok ?? null,
+      generatedAt: safeHealth.generatedAt || null,
+      apiRoutesTotal: routeManifest.length,
+      failedRoutes,
+      backupIntegrity: summarizeDiagnosticValue(safeHealth.backupIntegrity || safeDiagnostics.backupIntegrity || checks.storageList?.value?.latestIntegrity || {})
+    },
+    checks: compactChecks,
+    platform: {
+      status: context?.platformStatus || fallback.platform?.status || 'unknown',
+      backupStatus: context?.backupStatus || fallback.backup?.status || 'unknown',
+      deploymentReady: context?.deploymentReady ?? null,
+      activeAdminSection: context?.activeAdminSection || 'unknown'
+    },
+    counts: summarizeDiagnosticValue(safeDiagnostics.frontendSnapshot?.counts || fallback.counts || {}),
+    topActionItems: summarizeDiagnosticValue((fallback.platform?.actionItems || []).slice?.(0, 8) || []),
+    context: summarizeDiagnosticValue(context || {})
+  };
+  let text = JSON.stringify(compact);
+  if (text.length > 52000) {
+    compact.checks = summarizeDiagnosticValue(compact.checks, 1);
+    compact.health.failedRoutes = compact.health.failedRoutes.slice(0, 15);
+    compact.topActionItems = compact.topActionItems.slice?.(0, 5) || [];
+  }
+  return compact;
+};
+
 const GeofenceMapStabilizer = ({ lat, lon, radius, refreshNonce }) => {
   const map = useMap();
 
@@ -3787,11 +3858,76 @@ const ADMIN_TROUBLESHOOTING_ARTICLES = [
 ];
 
 const TabGodMode = ({ appUser, addToast, setGhostTenant, setActiveTab }) => {  const [subTab, setSubTab] = useState('overview');
-  const [isCommandDeckOpen, setIsCommandDeckOpen] = useState(false);
-  const [isAdminNavOpen, setIsAdminNavOpen] = useState(() => {
-    if (typeof window === 'undefined') return true;
-    return window.matchMedia('(min-width: 1024px)').matches;
+
+  const LEGAL_RETENTION_POLICY = Object.freeze({
+    policySource: '86 Chaos Legal Document Packet - Security, Backup, and Data Retention Policy section 6.4',
+    policyVersion: '2026-07-09',
+    activeCoreData: 'while_account_active',
+    transientDays: 30,
+    rawAiDays: 30,
+    deletedWorkspaceDays: 30,
+    backupDays: 30,
+    auditSecurityDays: 365,
+    workforceArchiveAfterDays: 365,
+    workforceDeleteAfterYears: 3,
+    notes: {
+      activeCoreData: 'Recipes, inventory, approved parsed invoice/menu data, and other core business records remain available while the account is active.',
+      transientDays: 'Prep lists and 86 alerts are automatically purged after 30 days.',
+      rawAiDays: 'Raw AI prompts, raw uploaded scan files/images, and raw scanner request logs are purged after 30 days. Reviewed/parsed business records remain in-app.',
+      deletedWorkspaceDays: 'Deleted workspaces get a 30-day recovery/export window before hard deletion.',
+      backupDays: 'Database backups are kept on a 30-day rolling schedule.',
+      auditSecurityDays: 'Audit/security records are retained for 1 year unless a legal hold or incident review requires longer retention.',
+      workforceArchiveAfterDays: 'Time-clock/geofence records leave the active database after 1 year and are moved to restricted archival storage.',
+      workforceDeleteAfterYears: 'Archived workforce/time-clock/geofence records are deleted at the 3-year mark.'
+    }
   });
+  const LEGAL_RETENTION_FUNCTIONS = Object.freeze([
+    { name: 'purgeTransientOperationalData', schedule: 'Daily 2:10 AM Central', purpose: 'Deletes prep-list rows, 86 alerts, expired AI locks, and rate-limit records after 30 days.' },
+    { name: 'purgeExpiredAiUploads', schedule: 'Daily 2:35 AM Central', purpose: 'Deletes raw AI prompts, raw request logs, and uploaded scan files after 30 days.' },
+    { name: 'archiveExpiredTimeClockData', schedule: 'Daily 3:05 AM Central', purpose: 'Archives time-clock/geofence records after 1 year before removing them from the active database.' },
+    { name: 'purgeExpiredTimeClockArchives', schedule: 'Daily 3:40 AM Central', purpose: 'Deletes time-clock/geofence archive objects after their 3-year delete-after date.' },
+    { name: 'purgeExpiredDatabaseBackups', schedule: 'Daily 3:55 AM Central', purpose: 'Maintains a 30-day rolling backup window.' },
+    { name: 'purgeExpiredAuditSecurityLogs', schedule: 'Daily 4:25 AM Central', purpose: 'Deletes audit/security logs after 1 year where no legal hold applies.' },
+    { name: 'hardDeleteExpiredWorkspaces', schedule: 'Daily 4:15 AM Central', purpose: 'Hard-deletes workspace data after the 30-day deleted-workspace recovery period.' }
+  ]);
+  const buildLegalRetentionSetupPayload = () => ({
+    ...LEGAL_RETENTION_POLICY,
+    app: '86 Chaos',
+    appVersion: CURRENT_VERSION,
+    updatedAt: new Date().toISOString(),
+    updatedBy: appUser?.email || appUser?.name || 'System Administrator',
+    automations: Object.fromEntries(LEGAL_RETENTION_FUNCTIONS.map(fn => [fn.name, `${fn.schedule} - ${fn.purpose}`])),
+    requiredFunctionEnv: {
+      RETENTION_ARCHIVE_BUCKET: 'required for time-clock/geofence archive jobs',
+      AI_UPLOADS_BUCKET: 'optional; blank uses default Firebase Storage bucket'
+    },
+    setupStatus: {
+      appPolicyInitialized: true,
+      deletesDataByItself: false,
+      requiresFirebaseFunctionsDeploy: true,
+      requiresProductionArchiveBucket: true,
+      lastSafeSetupButtonRunAt: new Date().toISOString()
+    }
+  });
+  const buildRetentionDeployCommands = () => `# 86 Chaos production data retention setup
+# Run from the app repository root after selecting the PRODUCTION Firebase project.
+
+firebase login
+firebase use --add
+# Choose your production Firebase project and give it an alias like prod.
+
+# Create functions/.env.prod or functions/.env.<your-production-project-id> with:
+RETENTION_ARCHIVE_BUCKET=your-production-archive-bucket-name
+AI_UPLOADS_BUCKET=your-production-firebase-storage-bucket
+
+npm --prefix functions install
+npm --prefix functions run build
+firebase deploy --only functions --project YOUR_PRODUCTION_PROJECT_ID
+
+# Then open Firebase Console -> Functions and Google Cloud Console -> Cloud Scheduler.
+# Confirm all retention jobs are present before trusting automatic deletion.`;
+  const [isCommandDeckOpen, setIsCommandDeckOpen] = useState(false);
+  const [isAdminNavOpen, setIsAdminNavOpen] = useState(true);
   
   // Master Data States
   const [restaurants, setRestaurants] = useState([]);
@@ -3864,6 +4000,9 @@ const TabGodMode = ({ appUser, addToast, setGhostTenant, setActiveTab }) => {  c
   const [aiUsageError, setAiUsageError] = useState('');
   const [aiUsageLimitDrafts, setAiUsageLimitDrafts] = useState({});
   const [aiUsageSavingId, setAiUsageSavingId] = useState('');
+  const [retentionConfig, setRetentionConfig] = useState(null);
+  const [retentionSaving, setRetentionSaving] = useState(false);
+  const [retentionCopied, setRetentionCopied] = useState(false);
 
   const ROLE_MANAGER_ROLES = ['Owner', 'Super Admin', 'Admin', 'Manager', 'Kitchen Lead', 'Bartender', 'Server', 'Staff'];
   const ROLE_MANAGER_PERMISSIONS = [
@@ -3933,6 +4072,14 @@ const [editingRest, setEditingRest] = useState(null);
   }, []);
 
   useEffect(() => {
+    let cancelled = false;
+    getDoc(doc(db, 'system', 'dataRetention')).then(snapshot => {
+      if (!cancelled && snapshot.exists()) setRetentionConfig({ id: snapshot.id, ...snapshot.data() });
+    }).catch(err => console.warn('Data retention config load failed', err?.message || err));
+    return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
     const selected = restaurants.find(r => r.id === brandingWorkspaceId);
     if (!selected) return;
     const sysSettings = selected.systemSettings || {};
@@ -3951,18 +4098,20 @@ const [editingRest, setEditingRest] = useState(null);
     });
   }, [brandingWorkspaceId, restaurants]);
 
-  // Mobile admin should open as a clean section picker, not a mile-long cockpit scroll.
+  // Mobile System Administrator stays organized as a visible tool directory.
+  // Do not collapse it into the old dropdown maze. The user can hide the directory
+  // manually, but the default mobile experience shows grouped tools and help cues.
   useEffect(() => {
     if (typeof window === 'undefined') return undefined;
-    const closeDeckOnSmallScreens = () => {
+    const prepMobileAdmin = () => {
       if (window.matchMedia('(max-width: 1023px)').matches) {
         setIsCommandDeckOpen(false);
-        setIsAdminNavOpen(false);
+        setIsAdminNavOpen(true);
       }
     };
-    closeDeckOnSmallScreens();
-    window.addEventListener('orientationchange', closeDeckOnSmallScreens);
-    return () => window.removeEventListener('orientationchange', closeDeckOnSmallScreens);
+    prepMobileAdmin();
+    window.addEventListener('orientationchange', prepMobileAdmin);
+    return () => window.removeEventListener('orientationchange', prepMobileAdmin);
   }, []);
 
   useEffect(() => {
@@ -5451,8 +5600,12 @@ const activeTrials = restaurants.filter(r => resolveSubscription(r, appUser).sta
     `Generated: ${formatClockDateTime(new Date())}`
   ].join('\n');
 
+  const retentionConfigured = retentionConfig?.policyVersion === LEGAL_RETENTION_POLICY.policyVersion && retentionConfig?.setupStatus?.appPolicyInitialized === true;
+  const retentionSummary = retentionConfigured ? `Saved ${retentionConfig?.updatedAt ? formatClockDateTime(retentionConfig.updatedAt) : 'recently'}` : 'Not initialized';
+
   const adminRiskQueue = [
     currentAdminProfileMissing ? { tone: 'red', title: 'Master admin profile missing', detail: `${appUser?.email || 'Current admin'} can enter System Administrator, but no Firestore users profile was found. Run Master Admin Repair before publishing hardened rules.`, jump: 'overview' } : null,
+    !retentionConfigured ? { tone: 'amber', title: 'Legal retention setup not initialized', detail: 'Run the safe app-side retention setup before pushing production cleanup/deletion jobs live.', jump: 'retention' } : null,
     crashes24h > 0 ? { tone: crashes24h > 10 ? 'red' : 'amber', title: 'Fresh crash reports', detail: `${crashes24h} crash/bug log(s) in the last 24 hours.`, jump: 'support' } : null,
     permissionDeniedLogs.length > 0 ? { tone: 'red', title: 'Permission denied errors', detail: `${permissionDeniedLogs.length} log(s) look like Firestore rule blocks.`, jump: 'support' } : null,
     pastDueWorkspaces.length > 0 ? { tone: 'amber', title: 'Maintenance-locked workspaces', detail: `${pastDueWorkspaces.length} workspace(s) are currently locked behind the maintenance screen.`, jump: 'tenants' } : null,
@@ -5628,6 +5781,52 @@ const activeTrials = restaurants.filter(r => resolveSubscription(r, appUser).sta
       setImportCsvText(''); setImportPreviewRows([]);
     } catch (err) { addToast('Import Error', err.message || 'Import failed.'); }
     setIsImportingRows(false);
+  };
+
+
+  const handleInitializeLegalRetentionConfig = async () => {
+    const ok = window.confirm('This will save the official legal retention schedule in Firestore. It will NOT delete data. Automatic deletion only starts after Firebase Functions are deployed in the production Firebase project. Continue?');
+    if (!ok) return;
+    setRetentionSaving(true);
+    try {
+      const payload = buildLegalRetentionSetupPayload();
+      await setDoc(doc(db, 'system', 'dataRetention'), payload, { merge: true });
+      await addDoc(collection(db, 'auditLogs'), {
+        restaurantId: 'platform',
+        action: 'DATA_RETENTION_CONFIG_INITIALIZED',
+        target: 'system/dataRetention',
+        details: 'Legal data retention configuration initialized from System Administrator safe setup button.',
+        userId: appUser?.id || 'system-admin',
+        userName: appUser?.email || appUser?.name || 'System Administrator',
+        timestamp: payload.updatedAt,
+        source: 'system-admin'
+      }).catch(() => {});
+      setRetentionConfig(payload);
+      addToast('Retention Setup Saved', 'Legal retention policy marker saved. Next: deploy Firebase Functions in production.');
+    } catch (err) {
+      addToast('Retention Setup Error', err.message || 'Could not save data retention config.');
+    } finally {
+      setRetentionSaving(false);
+    }
+  };
+
+  const copyRetentionDeployCommands = async () => {
+    const commands = buildRetentionDeployCommands();
+    try {
+      await navigator.clipboard.writeText(commands);
+      setRetentionCopied(true);
+      addToast('Copied', 'Production retention deploy commands copied.');
+      window.setTimeout(() => setRetentionCopied(false), 3500);
+    } catch (_) {
+      downloadTextFile(`86chaos-production-retention-commands-${getToday()}.txt`, commands, 'text/plain;charset=utf-8;');
+      addToast('Downloaded', 'Clipboard was blocked, so the commands were downloaded as a text file.');
+    }
+  };
+
+  const downloadRetentionPolicyJson = () => {
+    const payload = buildLegalRetentionSetupPayload();
+    downloadTextFile(`86chaos-legal-retention-policy-${getToday()}.json`, JSON.stringify(payload, null, 2), 'application/json;charset=utf-8;');
+    addToast('Downloaded', 'Legal retention policy JSON downloaded.');
   };
 
   const saveRoleMatrix = async () => {
@@ -5924,6 +6123,7 @@ ${body}`;
   }, {})).sort((a,b) => b.endedMs - a.endedMs).slice(0, 12);
 
   const adminManualArticles = [
+    { title: 'Version 15.0.64 Legal Retention Setup and Mobile Admin Navigation', group: 'System Administrator', keywords: 'v15 15.0.64 legal retention automatic deletion storage archive firebase functions mobile system administrator navigation data retention setup', body: ['15.0.64 adds a Legal Data Retention Setup area inside System Administrator. The main button safely writes system/dataRetention with the official legal policy marker and audit log. It does not delete data by itself.', 'Retention dates match the legal packet: active core data remains while the account is active; transient prep and 86-alert data is 30 days; raw AI prompts/uploads/scans are 30 days; deleted workspaces have a 30-day recovery window; database backups are 30 days rolling; audit/security logs are 1 year; workforce, time-clock, and geofencing records are retained 3 years with archival storage after 1 year.', 'Automatic cleanup still requires production Firebase Functions deployment and a private RETENTION_ARCHIVE_BUCKET. The time-clock archive job fails closed, so source records are not deleted if archive upload or verification fails.', 'The System Administrator mobile navigation no longer relies on the old dropdown selector. Mobile now uses quick tiles, a current-area card, and grouped section cards so tools are easier to find without scrolling through a giant list.', 'Do not expose internal retention bucket names, service-account secrets, or Cloud Scheduler internals in customer Help Center content. Keep customer-facing language focused on policy, privacy, and export/deletion request routing.'] },
     { title: 'Version 15.0.62 Voice Reminder Timing', group: 'System Administrator', keywords: 'v15 15.0.62 86voice remind me in 20 minutes remind me at 6pm reminders relative time shared reminders production retention firebase deletion setup', body: ['15.0.62 hardens 86Voice reminder timing. Personal reminder commands now understand relative timing such as “remind me in 20 minutes,” “remind me in 2 hours,” and “remind me after 1 day.”', 'Time-only commands such as “remind me at 6pm” now schedule the next matching time. If that time has already passed today, the app schedules it for tomorrow instead of creating an already-due reminder.', 'Reminder title cleanup was improved so “remind me tomorrow at 10 to call Performance” stores “call Performance,” while a bare timing command stores a simple “Reminder.”', 'Shared reminder parsing also supports timing before the task, such as “remind Sarah in 20 minutes to check hood filters.” Shared reminders still require permission, real workspace staff matching, and teammate confirmation.', 'Production Firebase retention setup is documented separately so the live side can use the same scheduled cleanup/deletion behavior that was tested on the testing side.'] },
     { title: 'Version 15.0.61 86Voice Intelligent Commands', group: 'System Administrator', keywords: 'v15 15.0.61 86voice intelligent voice commands prep task done fuzzy matching 86 alert menu impact reminders shared undo audit permissions plan gates', body: ['15.0.61 hardens 86Voice into an intelligent kitchen command assistant. It preserves the existing voice workflow and adds central fuzzy matching, natural-language prep/task upserts, mark-done commands, 86 alerts, menu impact questions, status questions, shared reminders, recurring reminders, and safe undo.', 'Voice actions must pass the same plan gates, role permissions, workspace membership, and staff visibility rules as tapping through the app. Voice cannot expose financial, wage, admin, owner-only, integrations, or security data to a user who could not access that area normally.', 'Prep and task commands search existing rows first. High-confidence matches update or complete the existing row. Medium/ambiguous matches show a review picker. Low-confidence work becomes a new safe item only when the command is not high-risk.', '86 alert commands create alerts and can show affected menu items from approved Menu Intelligence dependency links. They do not edit inventory quantities. Missing dependencies should produce setup guidance, not fake impact data.', 'Shared reminders require assignment permission and use real workspace staff records. Personal reminders remain private. Recurring voice reminders are scheduled through the existing reminder dispatcher and advance after a successful push.', 'Undo is intentionally limited to safe recent voice actions such as created/updated prep, created/updated task, marked done, and reminder creation. Voice must not undo invoice approvals, menu scan approvals, payroll readiness, daily close signoff, plan/billing changes, admin/security settings, or integrations.', 'Audit logs should capture meaningful voice actions and blocked attempts with workspace, user, raw transcript, parsed intent, target record, old/new values where available, confidence, timestamp, and source voice.'] },
     { title: 'Version 15.0.57 Desktop UI Refinement', group: 'System Administrator', keywords: 'v15 15.0.57 desktop pc ui polish density professional layout spacing cards tables modals drawer navigation', body: ['15.0.57 is a desktop UI refinement pass. It keeps all existing features and focuses on making the PC/laptop app feel like a polished professional operations platform instead of an oversized mobile screen.', 'The main app shell, header, date strip, content widths, cards, forms, buttons, tables, major work areas, modal panels, and drawer menu received desktop-only density and scanability adjustments.', 'Major screens such as Manager Brief, Kitchen Command Center, Financial Center, Time Clock & Schedule, Inventory, Menu Intelligence, Recipes, Reminders, Staff Roster, Settings, Help Center, HR & Training, and System Administrator keep their functionality. This is not a feature-removal pass.', 'Mobile and tablet layouts remain touch-friendly. Do not solve future desktop polish by making the entire app tiny. Use responsive spacing, reasonable max-widths, better grids, and clearer hierarchy first.'] },
@@ -6738,16 +6938,19 @@ ${body}`;
         method:'POST',
         headers:{ 'Content-Type':'application/json' },
         body: JSON.stringify({
-          diagnostics: redactDiagnosticSecrets(lastDiagnosticsReport || null),
-          health: redactDiagnosticSecrets(currentHealth || null),
-          context: redactDiagnosticSecrets({
-            version: CURRENT_VERSION,
-            activeAdminSection: subTab,
-            platformStatus,
-            backupStatus: backupStatusLabel,
-            backupIsStale,
-            deploymentReady,
-            environment: envReport?.host || 'unknown'
+          diagnostics: compactDiagnosticsForAi({
+            diagnostics: lastDiagnosticsReport || null,
+            health: currentHealth || null,
+            context: {
+              version: CURRENT_VERSION,
+              activeAdminSection: subTab,
+              platformStatus,
+              backupStatus: backupStatusLabel,
+              backupIsStale,
+              deploymentReady,
+              environment: envReport?.host || 'unknown'
+            },
+            buildFallback: buildForensicBundle
           })
         })
       });
@@ -7069,6 +7272,7 @@ Type RESTORE to continue.`);
       helper:'Use this for protecting data, proving backups work, downloading diagnostics, and moving data in or out safely.',
       tabs:[
         {id:'forensics', label:'Backup Center & Audit Trail', short:'Backups', intent:'Run backups, verify backup files, review audits, export forensics, and record restore drills.'},
+        {id:'retention', label:'Legal Data Retention Setup', short:'Retention', intent:'One-button app-side retention setup plus production Firebase checklist for automatic client-data deletion/archive.'},
         {id:'data', label:'Import / Export Center', short:'Data', intent:'Use controlled data import/export tools and migration bridges.'}
       ]
     },
@@ -7130,6 +7334,7 @@ Type RESTORE to continue.`);
     { label:'Run Full System Diagnostics', tab:'health', keywords:'diagnostics deployment report health api routes' },
     { label:'Explain Diagnostics with OpenAI', tab:'health', keywords:'openai repair guidance explain errors health' },
     { label:'Run Backup Now', tab:'forensics', keywords:'backup manual storage restore watchdog' },
+    { label:'Set Up Legal Data Retention', tab:'retention', keywords:'data retention automatic deletion storage archive legal policy firebase functions cloud scheduler production' },
     { label:'Check Backup Watchdog', tab:'forensics', keywords:'stale scheduled backup cron preview production' },
     { label:'Find or Repair a User', tab:'users', keywords:'people employee profile login routing reset password' },
     { label:'Test Push Notifications', tab:'push', keywords:'push token fcm alert device' },
@@ -7155,15 +7360,15 @@ Type RESTORE to continue.`);
     ...adminManualArticles.map((article, idx) => ({ type:'article', label:article.title, detail:`Manual • ${article.group}`, tab:'manual', manualId:`${idx}-${String(article.title || 'article').toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 50)}`, score:scoreAdminSearchText(`${article.title} ${article.group} ${article.keywords || ''} ${(article.body || []).join(' ')}`) }))
   ].filter(result => result.score > 0).sort((a,b) => b.score - a.score || a.label.localeCompare(b.label)).slice(0, 12) : [];
   const activeAdminTab = adminTabs.find(tab => tab.id === subTab) || adminTabs[0];
-  const mobilePrimaryTabs = ['overview', 'health', 'manual', 'forensics', 'security', 'admins', 'roles', 'tenants', 'users', 'support', 'ai-usage', 'push', 'live'];
+  const activeAdminHelpText = `${activeAdminTab.label} lives under ${activeAdminTab.group}. ${activeAdminTab.intent || ''} ${adminTabGroups.find(group => group.title === activeAdminTab.group)?.helper || ''}`.trim();
+  const mobilePrimaryTabs = ['overview', 'retention', 'forensics', 'health', 'security', 'tenants', 'users', 'push', 'manual'];
   const mobileQuickTabs = mobilePrimaryTabs.map(id => adminTabs.find(tab => tab.id === id)).filter(Boolean);
 
   const selectAdminTab = (target = 'overview', scroll = true) => {
     const nextTarget = target || 'overview';
     setSubTab(nextTarget);
-    if (typeof window !== 'undefined' && window.matchMedia('(max-width: 1023px)').matches) {
-      setIsAdminNavOpen(false);
-    }
+    // Keep the mobile tool directory available. Hiding it after every tap made
+    // System Administrator feel like a guessing game.
     if (scroll && typeof window !== 'undefined') {
       window.setTimeout(() => {
         const anchor = document.getElementById(`admin-${nextTarget}`) || document.getElementById('admin-content-start');
@@ -7305,7 +7510,7 @@ Type RESTORE to continue.`);
             <h1 className="text-2xl sm:text-3xl font-black text-white mt-1">Operations Console</h1>
             <p className="text-xs sm:text-sm text-slate-400 font-semibold mt-2 max-w-2xl leading-relaxed">A compact workspace for platform health, access, customers, recovery, and support.</p>
           </div>
-          <div className="grid grid-cols-3 gap-2 w-full xl:w-auto xl:min-w-[420px]">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 w-full xl:w-auto xl:min-w-[560px]">
             <button type="button" onClick={() => selectAdminTab('overview')} className="admin46-status-chip text-left">
               <span>Platform</span><strong className={platformStatus === 'Needs Attention' ? 'text-red-300' : platformStatus === 'Monitoring' ? 'text-amber-300' : 'text-emerald-300'}>{platformStatus}</strong><small>{adminRiskQueue.length} item{adminRiskQueue.length === 1 ? '' : 's'}</small>
             </button>
@@ -7314,6 +7519,9 @@ Type RESTORE to continue.`);
             </button>
             <button type="button" onClick={() => selectAdminTab('security')} className="admin46-status-chip text-left">
               <span>Security</span><strong className={(securityReport?.riskyUsers || []).length ? 'text-amber-300' : 'text-slate-100'}>{(securityReport?.riskyUsers || []).length} flagged</strong><small>Review center</small>
+            </button>
+            <button type="button" onClick={() => selectAdminTab('retention')} className="admin46-status-chip text-left">
+              <span>Retention</span><strong className={retentionConfigured ? 'text-emerald-300' : 'text-amber-300'}>{retentionConfigured ? 'Ready' : 'Setup needed'}</strong><small>{retentionConfigured ? 'Policy saved' : 'Tap to set up'}</small>
             </button>
           </div>
         </div>
@@ -7330,16 +7538,53 @@ Type RESTORE to continue.`);
           </div>}
         </div>
 
-        <div className="lg:hidden mt-3 flex gap-2">
-          <select value={subTab} onChange={event => selectAdminTab(event.target.value)} className="flex-1 min-h-[48px] rounded-xl border border-[#303B43] bg-[#0B0E11] px-3 text-sm font-black text-white outline-none focus:border-[#D4A381]">
-            {adminTabGroups.map(group => <optgroup key={group.title} label={group.title}>{group.tabs.map(tab => <option key={tab.id} value={tab.id}>{tab.label}</option>)}</optgroup>)}
-          </select>
-          <button type="button" onClick={() => setIsAdminNavOpen(v => !v)} className="min-h-[48px] rounded-xl border border-[#303B43] bg-[#161C21] px-4 text-[10px] font-black uppercase tracking-widest text-[#D4A381]">{isAdminNavOpen ? 'Close' : 'Menu'}</button>
+        <div className="admin46-mobile-controls lg:hidden mt-4">
+          <div className="admin46-mobile-current">
+            <div className="min-w-0">
+              <span>Current area</span>
+              <strong>{activeAdminTab.label}</strong>
+              <small>{activeAdminTab.group}</small>
+            </div>
+            <div className="admin46-mobile-current-actions">
+              <button type="button" className="admin46-mobile-help" onClick={() => setAdminHelpModal({ title: activeAdminTab.label, body: activeAdminHelpText })} aria-label={`Explain ${activeAdminTab.label}`}>?</button>
+              <button type="button" onClick={() => setIsAdminNavOpen(v => !v)}>{isAdminNavOpen ? 'Hide directory' : 'Show directory'}</button>
+            </div>
+          </div>
+          <div className="admin46-mobile-quickgrid">
+            {mobileQuickTabs.map(tab => (
+              <button key={tab.id} type="button" onClick={() => selectAdminTab(tab.id)} className={`admin46-mobile-quick ${subTab === tab.id ? 'is-active' : ''}`}>
+                <span>{tab.short || tab.label}</span>
+              </button>
+            ))}
+          </div>
+          {isAdminNavOpen && (
+            <div className="admin46-mobile-section-panel">
+              {adminTabGroups.map(group => (
+                <section key={group.title} className={`admin46-mobile-section-card ${group.danger ? 'is-danger' : ''}`}>
+                  <div className="admin46-mobile-section-head">
+                    <div className="admin46-mobile-section-title">
+                      <strong>{group.title}</strong>
+                      <button type="button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); setAdminHelpModal({ title: group.title, body: `${group.summary}\n\n${group.helper || ''}` }); }} aria-label={`Explain ${group.title}`}>?</button>
+                    </div>
+                    <span>{group.summary}</span>
+                  </div>
+                  <div className="admin46-mobile-tool-grid">
+                    {group.tabs.map(tab => (
+                      <button key={tab.id} type="button" onClick={() => selectAdminTab(tab.id)} className={subTab === tab.id ? 'is-active' : ''}>
+                        <strong>{tab.short || tab.label}</strong>
+                        <span>{tab.intent}</span>
+                      </button>
+                    ))}
+                  </div>
+                </section>
+              ))}
+            </div>
+          )}
         </div>
       </section>
 
       <div className="admin46-layout grid gap-3 lg:grid-cols-[218px_minmax(0,1fr)] lg:items-start">
-        <aside className={`${isAdminNavOpen ? 'block' : 'hidden lg:block'} lg:sticky lg:top-4 h-max`} id="admin-left-nav">
+        <aside className="hidden lg:block lg:sticky lg:top-4 h-max" id="admin-left-nav">
           <nav className="admin46-nav">
             <div className="flex items-center justify-between gap-2 px-2 py-2 border-b border-[#252E35] mb-2">
               <div><div className="text-[9px] font-black uppercase tracking-[0.22em] text-[#D4A381]">Sections</div><div className="text-xs font-bold text-slate-500 mt-1">Choose one job</div></div>
@@ -7348,7 +7593,10 @@ Type RESTORE to continue.`);
             <div className="space-y-3 max-lg:max-h-[68vh] max-lg:overflow-y-auto custom-scrollbar pr-1">
               {adminTabGroups.map(group => (
                 <div key={group.title}>
-                  <div className={`px-2 pb-1 text-[9px] font-black uppercase tracking-[0.18em] ${group.danger ? 'text-red-300' : 'text-slate-500'}`}>{group.title}</div>
+                  <div className={`px-2 pb-1 text-[9px] font-black uppercase tracking-[0.18em] ${group.danger ? 'text-red-300' : 'text-slate-500'} flex items-center justify-between gap-2`}>
+                    <span>{group.title}</span>
+                    <button type="button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); setAdminHelpModal({ title: group.title, body: `${group.summary}\n\n${group.helper || ''}` }); }} className="admin46-nav-help" aria-label={`Explain ${group.title}`}>?</button>
+                  </div>
                   <div className="space-y-1">
                     {group.tabs.map(tab => (
                       <button key={tab.id} type="button" onClick={() => selectAdminTab(tab.id)} className={`admin46-nav-button ${subTab === tab.id ? 'is-active' : ''} ${group.danger ? 'is-danger' : ''}`}>
@@ -7754,17 +8002,6 @@ Type RESTORE to continue.`);
         </form>
       </Modal>
 
-      {subTab !== 'overview' && (
-        <section className="admin45-content-card p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <div className="min-w-0">
-            <div className="text-[9px] font-black uppercase tracking-[0.2em] text-[#D4A381]">{activeAdminTab.group}</div>
-            <h2 className="text-xl sm:text-2xl font-black text-white mt-1">{activeAdminTab.label}</h2>
-            <p className="text-xs font-semibold text-slate-500 mt-1 leading-relaxed">{activeAdminTab.intent}</p>
-          </div>
-          <button type="button" onClick={() => selectAdminTab('overview')} className="admin45-secondary-action flex-shrink-0">Back to admin home</button>
-        </section>
-      )}
-
 {/* --- TAB: OVERVIEW --- */}
       {subTab !== 'overview' && (
         <div className="admin46-pagebar">
@@ -7773,7 +8010,10 @@ Type RESTORE to continue.`);
             <h2>{activeAdminTab.label}</h2>
             <p>{activeAdminTab.intent}</p>
           </div>
-          <button type="button" onClick={() => selectAdminTab('overview')} className="admin46-back-button"><ChevronLeft size={14}/> Console home</button>
+          <div className="admin46-pagebar-actions">
+            <AdminInfoButton title={activeAdminTab.label} body={activeAdminHelpText} />
+            <button type="button" onClick={() => selectAdminTab('overview')} className="admin46-back-button"><ChevronLeft size={14}/> Console home</button>
+          </div>
         </div>
       )}
 
@@ -7826,6 +8066,7 @@ Type RESTORE to continue.`);
                 <button type="button" onClick={() => selectAdminTab('push')} className="admin45-quick-tile"><Bell size={17}/><span>Push</span></button>
                 <button type="button" onClick={() => selectAdminTab('ai-usage')} className="admin45-quick-tile"><Scale size={17}/><span>AI Usage</span></button>
                 <button type="button" onClick={() => selectAdminTab('forensics')} className="admin45-quick-tile"><ClipboardList size={17}/><span>Backups</span></button>
+                <button type="button" onClick={() => selectAdminTab('retention')} className="admin45-quick-tile"><Shield size={17}/><span>Retention</span></button>
                 <button type="button" onClick={() => selectAdminTab('manual')} className="admin45-quick-tile"><BookOpen size={17}/><span>Manual</span></button>
               </div>
             </section>
@@ -8271,6 +8512,81 @@ Type RESTORE to continue.`);
               </div>
             </div>
           </div>
+        </div>
+      )}
+
+
+      {subTab === 'retention' && (
+        <div className="space-y-4 animate-[slideIn_0.2s_ease-out]">
+          <section className="admin46-retention-hero">
+            <div className="min-w-0">
+              <div className="admin46-eyebrow">Legal retention automation</div>
+              <h2>Client Data Storage & Automatic Deletion Setup</h2>
+              <p>This is the safe app-side button for the legal retention system. It records the official policy in Firestore and gives the exact production Firebase steps. It does not delete anything until Firebase Functions are deployed.</p>
+            </div>
+            <div className={`admin46-retention-badge ${retentionConfigured ? 'is-ready' : 'is-needed'}`}>
+              <span>{retentionConfigured ? 'Config saved' : 'Needs setup'}</span>
+              <strong>{retentionConfigured ? 'Legal policy ready' : 'Run setup'}</strong>
+              <small>{retentionSummary}</small>
+            </div>
+          </section>
+
+          <section className="admin46-retention-action-card">
+            <div>
+              <span className="admin46-eyebrow">Step 1</span>
+              <h3>Press this first</h3>
+              <p>Creates or updates <code>system/dataRetention</code> with the legal schedule from the 86 Chaos legal packet: 30-day transient/AI/deleted-workspace/backups, 1-year audit/security logs, and 3-year workforce/time-clock/geofence retention.</p>
+            </div>
+            <button type="button" onClick={handleInitializeLegalRetentionConfig} disabled={retentionSaving} className="admin46-retention-main-button">
+              {retentionSaving ? <><Loader2 size={16} className="animate-spin"/> Saving...</> : <><Shield size={16}/> Set Up Legal Data Retention</>}
+            </button>
+          </section>
+
+          <div className="grid lg:grid-cols-[1.05fr_.95fr] gap-4">
+            <section className="admin46-retention-panel">
+              <div className="admin46-retention-panel-head"><span className="admin46-eyebrow">Legal schedule</span><h3>Retention dates locked to legal packet</h3></div>
+              <div className="admin46-retention-policy-list">
+                <div><strong>Active core data</strong><span>Recipes, inventory, approved parsed business records: while account is active.</span></div>
+                <div><strong>Transient data</strong><span>Prep lists and 86 alerts: 30 days.</span></div>
+                <div><strong>Raw AI prompts/uploads/scans</strong><span>Raw images/files/prompts/logs: 30 days. Reviewed parsed data remains.</span></div>
+                <div><strong>Deleted workspaces</strong><span>30-day recovery/export window, then hard deletion.</span></div>
+                <div><strong>Database backups</strong><span>30-day rolling backup retention.</span></div>
+                <div><strong>Audit/security logs</strong><span>1 year unless legal/security hold requires longer.</span></div>
+                <div><strong>Workforce, time clock, geofencing</strong><span>Archive after 1 year. Delete at 3 years from event date.</span></div>
+              </div>
+            </section>
+
+            <section className="admin46-retention-panel">
+              <div className="admin46-retention-panel-head"><span className="admin46-eyebrow">Step 2</span><h3>Production Firebase checklist</h3></div>
+              <ol className="admin46-retention-steps">
+                <li>Make a fresh production backup.</li>
+                <li>Create a private production archive bucket for time-clock/geofence archives.</li>
+                <li>Add <code>RETENTION_ARCHIVE_BUCKET</code> to the production Functions env file.</li>
+                <li>Optionally set <code>AI_UPLOADS_BUCKET</code>; blank uses the default Storage bucket.</li>
+                <li>Deploy Firebase Functions to production.</li>
+                <li>Confirm Functions and Cloud Scheduler show the retention jobs.</li>
+                <li>Check logs after the first run before trusting deletion.</li>
+              </ol>
+              <div className="grid sm:grid-cols-2 gap-2 mt-3">
+                <button type="button" onClick={copyRetentionDeployCommands} className="admin46-secondary">{retentionCopied ? 'Copied' : 'Copy commands'}</button>
+                <button type="button" onClick={downloadRetentionPolicyJson} className="admin46-secondary">Download policy JSON</button>
+              </div>
+            </section>
+          </div>
+
+          <section className="admin46-retention-panel">
+            <div className="admin46-retention-panel-head"><span className="admin46-eyebrow">Step 3</span><h3>Expected automatic jobs</h3></div>
+            <div className="admin46-retention-function-grid">
+              {LEGAL_RETENTION_FUNCTIONS.map(fn => (
+                <div key={fn.name}>
+                  <strong>{fn.name}</strong>
+                  <span>{fn.schedule}</span>
+                  <p>{fn.purpose}</p>
+                </div>
+              ))}
+            </div>
+            <div className="admin46-retention-warning">The time-clock archive job fails closed. If the archive bucket is missing or archive verification fails, source records are not deleted.</div>
+          </section>
         </div>
       )}
 
@@ -9941,6 +10257,7 @@ const HELP_ARTICLES = [
   { id:'billing-integrations-coming-soon-safe', title:'Plan & Billing and integrations coming soon', group:'Plans & Billing', keywords:'plan billing founder beta pricing tiers shift operations smart kitchen owner pro payments coming soon integrations locked pos accounting oauth api keys', body:['Plan & Billing shows the workspace plan, Founder Beta status, selected future tier where available, scan usage, included features, launch price, founder discount price, and Payments coming soon.','Staff should not see billing controls. Owners/admins may see plan information and locked-feature explanations depending on their permission.','Integrations are currently locked for customer tiers while POS/accounting connections are tested. Manual entry, uploads, and report imports can still be used where available.','Do not enter live POS, payroll, accounting, OAuth, or API secrets into customer-facing fields or support reports.'] },
   { id:'admin-manual-and-help-boundary', title:'Help Center, training manual, and Administrator Manual boundaries', group:'Help Center', keywords:'help center training manual administrator manual public customer internal system administrator secrets forensics backups diagnostics docs', body:['Help Center is customer-facing and safe for owners, managers, and staff. It explains how to use the app without exposing private platform procedures or secrets.','The searchable Complete 86 Chaos Training Manual explains each major app area, who should use it, what data it uses, common setup states, and what not to store there.','The Administrator Manual is internal to System Administrator. It explains platform diagnostics, access repair, backups, Firebase/Vercel readiness, plan controls, feature resolver, IP controls, integration safety, push center, forensics, and guarded destructive tools.','When a feature is added or changed, update both the customer-safe Help Center/training coverage and the internal Administrator Manual coverage when relevant.'] },
   { id:'data-retention-basics', title:'How long 86 Chaos keeps common data', group:'Privacy & Account', keywords:'retention old data delete prep 86 alert invoice scan menu scan time punch workspace canceled restaurant', body:['Prep-list records and 86 alerts are kept for 30 days.', 'Raw menu and invoice scan files are kept for 30 days. Reviewed or parsed business records may remain in the app.', 'Time-punch and separate location-log records leave the active database after one year and are kept in a restricted archive until the three-year mark.', 'When a restaurant workspace is scheduled for deletion, it is disabled immediately and can be restored during a 30-day recovery window. After that window, its workspace data is permanently removed.', 'Some records may be kept longer when required for legal, billing, fraud-prevention, backup, or support reasons.'] },
+  { id:'data-retention-legal-schedule', title:'86 Chaos data retention schedule', group:'Privacy & Account', keywords:'data retention automatic deletion legal schedule backup audit security time clock geofence ai uploads raw scans deleted workspace', body:['The retention schedule is based on the 86 Chaos legal packet. Active core business records such as recipes and inventory stay available while the account is active.', 'Prep lists and 86 alerts are considered transient operational data and are kept for 30 days.', 'Raw AI prompts, raw uploaded scan images/files, and raw AI request records are kept for 30 days. Reviewed or parsed business records may remain in the app after manager review.', 'Deleted workspaces have a 30-day recovery/export window before hard deletion.', 'Database backups are kept on a 30-day rolling basis. Audit and security logs are kept for 1 year. Workforce, time-clock, and geofencing records are retained for 3 years, with archival storage after 1 year.', 'Employees should ask their employer or restaurant administrator about workplace records. Owners/admins can contact support or security for export or deletion request guidance.'] },
   { id:'shared-reminders-guide', title:'Sharing Reminders', group:'Reminders', keywords:'shared reminders share reminder teammate assign dropdown just me personal reminders team member', body:['Open My Reminders and type the reminder you want to create.', 'Use Share With to choose Just me for a private reminder or select a teammate from the list.', 'Pick the reminder date and time, then save it. Shared reminders appear for both the person who created them and the teammate they were assigned to.', 'The assigned teammate can mark the reminder done. The person who created the reminder can edit or delete it.', 'Use shared reminders for simple handoffs like check the walk-in, order buns, call vendor, prep sauce, or follow up on a maintenance item.'] },
   { id:'security-center-overview', title:'Security Center Overview', group:'Security', keywords:'security center rules app check mfa risky users suspicious activity environment variables cron status', body:['Security Center gives system admins a plain-English snapshot of important setup checks.', 'It can show whether rules, storage protection, App Check readiness, MFA enrollment/enforcement status, cron setup, environment variables, rate limiting, and risky elevated accounts need attention.', 'Some security steps still happen outside the app in Firebase or Vercel. For example, App Check enforcement, enabling SMS MFA, Vercel MFA enforcement env vars, and secret rotation must be completed in those admin consoles.', 'If a card shows warning or action needed, follow the Administrator Manual checklist before changing production settings.'] },
   { id:'menu-intelligence-guide', title:'Using Menu Intelligence', group:'Menu Intelligence', keywords:'menu intelligence intelligent menu menu scanner scan menu upload photo pdf approve reviewed menu links ingredient match inventory link unavailable menu items 86 burger patty beef gr pty edit delete recent menu scans', body:['Menu Intelligence helps managers connect menu items to the inventory products that make them. Once those links are approved, 86 Chaos can tell staff which menu items are affected when an ingredient is 86d or unavailable.', 'Open Menu Intelligence, choose a clear menu photo or PDF, and start the scan. Large photos are compressed before upload when possible. If a PDF is still too large, split it into smaller sections or export fewer pages.', 'When the scan finishes, review the detected menu items. The AI is a helper, not the boss. Check names, ingredients, and suggested inventory matches before approving anything.', 'For each menu item, connect the ingredients to the real inventory rows your kitchen uses. Use the actual product name when possible. For example, a burger may need to link to an inventory item named BEEF GR PTY, beef patty, hamburger patty, bun, cheese, lettuce, tomato, or other items you track.', 'Click Approve Reviewed Menu Links after the matches look right. The approval button shows progress and locks while saving so duplicate links are not created by extra clicks.', 'Use Recent Menu Scans to edit a scan when an ingredient match is wrong or delete a scan when it is outdated. Deleting a scan removes its menu-impact links so old menus do not keep affecting 86 alerts.', 'When someone posts or says an 86 alert such as 86 burger, the app can use approved Menu Intelligence links to find the best inventory match and show unavailable menu items on the Message Board, Manager Brief, and Kitchen Command Center.', 'For best results, approve links for common shorthand items staff actually say: burger, patty, wings, fries, chicken, buns, ranch, cheese, lettuce, tomatoes, and sauces. If an 86 alert does not show menu impact, edit the menu scan and make sure that ingredient is linked to the correct inventory item.'] },

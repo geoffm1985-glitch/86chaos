@@ -1,7 +1,7 @@
 const { initAdmin, authorize, requireAppCheckIfEnforced, readBody, writeAudit } = require('./_chaos-admin');
 const { enforceRateLimit, sendRateLimited } = require('./_rate-limit');
 
-const MAX_INPUT_BYTES = 70000;
+const MAX_INPUT_BYTES = 120000;
 const MAX_ARRAY_ITEMS = 80;
 const MAX_STRING_LENGTH = 5000;
 const MAX_REQUESTS_PER_MINUTE = 8;
@@ -27,6 +27,45 @@ function redactString(value = '') {
     .replace(OPENAI_KEY_PATTERN, '[redacted API key]')
     .replace(GOOGLE_KEY_PATTERN, '[redacted API key]');
   return text.length > MAX_STRING_LENGTH ? `${text.slice(0, MAX_STRING_LENGTH)}…[truncated]` : text;
+}
+
+
+function compactDiagnosticsValue(value, depth = 0) {
+  if (depth > 4) return '[summary depth limit]';
+  if (value === undefined) return undefined;
+  if (value === null || typeof value === 'boolean' || typeof value === 'number') return value;
+  if (typeof value === 'string') return value.length > 900 ? `${value.slice(0, 900)}…[truncated]` : value;
+  if (Array.isArray(value)) return value.slice(0, 30).map(item => compactDiagnosticsValue(item, depth + 1));
+  if (typeof value === 'object') {
+    const important = ['ok', 'status', 'code', 'error', 'message', 'warning', 'warnings', 'errors', 'ms', 'durationMs', 'generatedAt', 'lastRunAt', 'lastBackupAt', 'lastSuccessfulBackupAt', 'backupIntegrity', 'latestIntegrity', 'projectId', 'storageBucket', 'configured', 'serviceAccountSource', 'route', 'statusCode', 'count', 'total', 'failed', 'passed', 'checks', 'health', 'environment', 'platform', 'counts'];
+    const cleaned = {};
+    for (const key of important) {
+      if (Object.prototype.hasOwnProperty.call(value, key)) cleaned[key] = compactDiagnosticsValue(value[key], depth + 1);
+    }
+    for (const [key, item] of Object.entries(value).slice(0, 40)) {
+      if (cleaned[key] !== undefined || SECRET_KEY_PATTERN.test(key) || SIGNED_URL_PATTERN.test(String(item || ''))) continue;
+      cleaned[key] = compactDiagnosticsValue(item, depth + 1);
+    }
+    return cleaned;
+  }
+  return String(value);
+}
+
+function fitDiagnosticsPayload(value) {
+  const sanitized = sanitizeDiagnostics(value);
+  let serialized = JSON.stringify(sanitized);
+  if (Buffer.byteLength(serialized, 'utf8') <= MAX_INPUT_BYTES) return { payload: sanitized, compacted: false, bytes: Buffer.byteLength(serialized, 'utf8') };
+  const compacted = compactDiagnosticsValue(sanitized);
+  serialized = JSON.stringify(compacted);
+  if (Buffer.byteLength(serialized, 'utf8') <= MAX_INPUT_BYTES) return { payload: compacted, compacted: true, bytes: Buffer.byteLength(serialized, 'utf8') };
+  const emergency = {
+    note: 'Diagnostics were still large after compaction; this emergency summary preserves top-level status only.',
+    generatedAt: new Date().toISOString(),
+    diagnostics: compactDiagnosticsValue(sanitized?.diagnostics || {}, 2),
+    health: compactDiagnosticsValue(sanitized?.health || {}, 2),
+    context: compactDiagnosticsValue(sanitized?.context || {}, 2)
+  };
+  return { payload: emergency, compacted: true, bytes: Buffer.byteLength(JSON.stringify(emergency), 'utf8') };
 }
 
 function sanitizeDiagnostics(value, depth = 0) {
@@ -127,15 +166,13 @@ module.exports = async function handler(req, res) {
       return res.status(400).json({ ok: false, error: 'Diagnostics or health data is required.' });
     }
 
-    const sanitized = sanitizeDiagnostics({
+    const fitted = fitDiagnosticsPayload({
       diagnostics: body.diagnostics || null,
       health: body.health || null,
       context: body.context || null
     });
+    const sanitized = fitted.payload;
     const serialized = JSON.stringify(sanitized);
-    if (Buffer.byteLength(serialized, 'utf8') > MAX_INPUT_BYTES) {
-      return res.status(413).json({ ok: false, error: 'Diagnostics payload is too large. Run a fresh focused diagnostic report and try again.' });
-    }
 
     const model = String(process.env.OPENAI_DIAGNOSTICS_MODEL || 'gpt-5-mini').trim();
     if (!ALLOWED_DIAGNOSTICS_MODELS.has(model)) {
@@ -168,7 +205,7 @@ module.exports = async function handler(req, res) {
           'If evidence is incomplete, say what must be checked next and lower the severity. Do not recommend disabling security controls as a shortcut.',
           'Return valid JSON matching the provided schema.'
         ].join('\n'),
-        input: `Explain this redacted 86 Chaos diagnostics payload and produce repair guidance:\n${serialized}`,
+        input: `Explain this redacted 86 Chaos diagnostics payload and produce repair guidance. Payload bytes: ${fitted.bytes}. Compacted: ${fitted.compacted ? 'yes' : 'no'}.\n${serialized}`,
         text: {
           format: {
             type: 'json_schema',

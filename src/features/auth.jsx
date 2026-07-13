@@ -530,6 +530,8 @@ const LoginScreen = ({ setAppUser }) => {
             <li><strong className="text-white">Prep lists and 86 alerts:</strong> scheduled for permanent deletion after 30 days.</li>
             <li><strong className="text-white">Raw AI upload files:</strong> menu and invoice image files under the AI-upload storage paths are scheduled for deletion after 30 days. Parsed or manager-approved business records may remain separately in Firestore.</li>
             <li><strong className="text-white">Time punches and location logs:</strong> removed from active Firestore after 365 days, written to a restricted archive, and retained until the three-year mark measured from the record date.</li>
+            <li><strong className="text-white">Database backups:</strong> kept on a 30-day rolling basis.</li>
+            <li><strong className="text-white">Audit and security logs:</strong> retained for 1 year unless a legal hold, security investigation, dispute, or required recordkeeping obligation applies.</li>
             <li><strong className="text-white">Deleted workspaces:</strong> disabled when marked deleted and permanently removed after a 30-day recovery period unless restored.</li>
             <li><strong className="text-white">Plan, billing-support, and subscription records:</strong> kept as needed for account administration, Founder Beta discounts, audit logs, fraud prevention, support, disputes, tax/accounting needs if billing later activates, and legal obligations.</li>
             <li><strong className="text-white">Other records:</strong> kept only as long as reasonably needed for the Service, customer instructions, security, billing, dispute resolution, backups, fraud prevention, or legal obligations.</li>
