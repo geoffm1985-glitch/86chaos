@@ -860,11 +860,17 @@ const parseVoiceSharedReminderPayload = (text = '') => {
   const raw = String(text || '').trim();
   const q = normalizeVoiceText(raw);
   if (!/^remind\s+/.test(q) || /^remind\s+me\b/.test(q)) return null;
-  const match = raw.match(/^remind\s+(.+?)\s+(?:to\s+)?(.+)$/i);
-  if (!match?.[1] || !match?.[2]) return null;
+
+  const timingPattern = '(?:in\\s+(?:an?|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fourty|fifty|sixty|half|quarter|\\d+(?:\\.\\d+)?)\\s*(?:minutes?|mins?|min|hours?|hrs?|hr|days?|weeks?)|(?:at|by|around|about)\\s*\\d{1,2}(?::\\d{2})?\\s*(?:am|pm|a m|p m)?|today|tomorrow|tonight|next\\s+(?:sunday|monday|tuesday|wednesday|thursday|friday|saturday)|sunday|monday|tuesday|wednesday|thursday|friday|saturday)';
+  const beforeTo = raw.match(new RegExp(`^remind\\s+(.+?)\\s+(${timingPattern})\\s+to\\s+(.+)$`, 'i'));
+  const normal = raw.match(/^remind\s+(.+?)\s+to\s+(.+)$/i) || raw.match(/^remind\s+(\S+)\s+(.+)$/i);
+  const match = beforeTo || normal;
+  if (!match?.[1]) return null;
+
   const assigneePhrase = cleanVoiceItemName(match[1]);
-  const reminderText = match[2].trim();
+  const reminderText = beforeTo ? `${match[3]} ${match[2]}` : String(match[2] || '').trim();
   if (!assigneePhrase || !reminderText) return null;
+
   const parsed = parseReminderCommand(`remind me to ${reminderText}`);
   let scheduledAt = parsed?.scheduledAt || '';
   if (!scheduledAt) {

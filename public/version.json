@@ -1,9 +1,9 @@
 {
-  "version": "15.0.61",
-  "name": "86 Chaos 15.0.61 86Voice Intelligent Commands",
+  "version": "15.0.63",
+  "name": "86 Chaos 15.0.63 Maintenance Mode Undefined Field Hotfix",
   "releasedAt": "2026-07-12",
-  "label": "86 Chaos 15.0.61",
-  "build": "15.0.61",
+  "label": "86 Chaos 15.0.63",
+  "build": "15.0.63",
   "updatedAt": "2026-07-12T00:00:00.000Z",
-  "notes": "Intelligent 86Voice command hardening: prep/task upsert and completion, 86 alert menu impact, reminders, status questions, undo, permission/plan-safe voice results."
+  "notes": "Hotfix for System Administrator maintenance mode: strips undefined values from restaurant update payloads/history so Firestore accepts maintenance enable/clear actions."
 }

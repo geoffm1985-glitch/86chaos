@@ -5770,15 +5770,41 @@ ${body}`;
     const targetRestaurants = maintenanceScope === 'global' ? restaurants : restaurants.filter(r => r.id === maintenanceRestaurantId);
     if (!targetRestaurants.length) return addToast('Missing Target', 'Choose a workspace or global scope.');
     if (!window.confirm(`Apply maintenance mode to ${targetRestaurants.length} workspace(s)? Super Admin remains able to enter.`)) return;
-    const payload = { billingStatus: 'Past Due', maintenanceMode: true, maintenanceAudience, maintenanceMessage, maintenanceStartsAt: maintenanceStartsAt || null, maintenanceEndsAt: maintenanceEndsAt || null, maintenanceUpdatedAt: new Date().toISOString(), maintenanceUpdatedBy: appUser?.email || appUser?.name || 'System Admin' };
+    const actor = appUser?.email || appUser?.name || 'System Admin';
+    const safeMessage = String(maintenanceMessage || '').trim() || '86 Chaos is down for maintenance. Please try again shortly.';
+    const safeAudience = maintenanceAudience || 'everyone_except_super_admin';
+    const payload = sanitizeForFirestore({
+      billingStatus: 'Past Due',
+      maintenanceMode: true,
+      maintenanceAudience: safeAudience,
+      maintenanceMessage: safeMessage,
+      maintenanceStartsAt: maintenanceStartsAt || null,
+      maintenanceEndsAt: maintenanceEndsAt || null,
+      maintenanceUpdatedAt: new Date().toISOString(),
+      maintenanceUpdatedBy: actor
+    });
     try {
       await Promise.all(targetRestaurants.map(async (r) => {
         const restRef = doc(db, 'restaurants', r.id);
         const beforeSnap = await getDoc(restRef);
         const beforeData = beforeSnap.exists() ? beforeSnap.data() : {};
-        const historyEntry = { type: 'maintenance_mode_enabled', at: new Date().toISOString(), by: appUser?.email || appUser?.name || 'System Admin', summary: 'Maintenance mode enabled from System Administrator.', before: { billingStatus: beforeData.billingStatus, maintenanceMode: beforeData.maintenanceMode, maintenanceMessage: beforeData.maintenanceMessage }, after: payload };
-        const existingHistory = Array.isArray(beforeData.settingsHistory) ? beforeData.settingsHistory.slice(-24) : [];
-        await updateDoc(restRef, { ...payload, settingsHistory: [...existingHistory, historyEntry] });
+        const historyEntry = sanitizeForFirestore({
+          type: 'maintenance_mode_enabled',
+          at: new Date().toISOString(),
+          by: actor,
+          summary: 'Maintenance mode enabled from System Administrator.',
+          before: {
+            billingStatus: beforeData.billingStatus ?? null,
+            maintenanceMode: beforeData.maintenanceMode ?? null,
+            maintenanceAudience: beforeData.maintenanceAudience ?? null,
+            maintenanceMessage: beforeData.maintenanceMessage ?? null,
+            maintenanceStartsAt: beforeData.maintenanceStartsAt ?? null,
+            maintenanceEndsAt: beforeData.maintenanceEndsAt ?? null
+          },
+          after: payload
+        });
+        const existingHistory = Array.isArray(beforeData.settingsHistory) ? beforeData.settingsHistory.slice(-24).map(h => sanitizeForFirestore(h)).filter(Boolean) : [];
+        await updateDoc(restRef, sanitizeForFirestore({ ...payload, settingsHistory: [...existingHistory, historyEntry] }));
       }));
       addToast('Maintenance Enabled', `${targetRestaurants.length} workspace(s) locked with maintenance message.`);
     } catch (err) { addToast('Maintenance Error', err.message || 'Could not enable maintenance mode.'); }
@@ -5788,15 +5814,39 @@ ${body}`;
     const targetRestaurants = maintenanceScope === 'global' ? restaurants : restaurants.filter(r => r.id === maintenanceRestaurantId);
     if (!targetRestaurants.length) return addToast('Missing Target', 'Choose a workspace or global scope.');
     if (!window.confirm(`Clear maintenance mode for ${targetRestaurants.length} workspace(s)?`)) return;
+    const actor = appUser?.email || appUser?.name || 'System Admin';
     try {
       await Promise.all(targetRestaurants.map(async (r) => {
         const restRef = doc(db, 'restaurants', r.id);
         const beforeSnap = await getDoc(restRef);
         const beforeData = beforeSnap.exists() ? beforeSnap.data() : {};
-        const clearPayload = { billingStatus: 'Paid', maintenanceMode: false, maintenanceClearedAt: new Date().toISOString(), maintenanceClearedBy: appUser?.email || appUser?.name || 'System Admin' };
-        const historyEntry = { type: 'maintenance_mode_cleared', at: new Date().toISOString(), by: appUser?.email || appUser?.name || 'System Admin', summary: 'Maintenance mode cleared from System Administrator.', before: { billingStatus: beforeData.billingStatus, maintenanceMode: beforeData.maintenanceMode, maintenanceMessage: beforeData.maintenanceMessage }, after: clearPayload };
-        const existingHistory = Array.isArray(beforeData.settingsHistory) ? beforeData.settingsHistory.slice(-24) : [];
-        await updateDoc(restRef, { ...clearPayload, settingsHistory: [...existingHistory, historyEntry] });
+        const clearPayload = sanitizeForFirestore({
+          billingStatus: 'Paid',
+          maintenanceMode: false,
+          maintenanceAudience: null,
+          maintenanceStartsAt: null,
+          maintenanceEndsAt: null,
+          maintenanceMessage: null,
+          maintenanceClearedAt: new Date().toISOString(),
+          maintenanceClearedBy: actor
+        });
+        const historyEntry = sanitizeForFirestore({
+          type: 'maintenance_mode_cleared',
+          at: new Date().toISOString(),
+          by: actor,
+          summary: 'Maintenance mode cleared from System Administrator.',
+          before: {
+            billingStatus: beforeData.billingStatus ?? null,
+            maintenanceMode: beforeData.maintenanceMode ?? null,
+            maintenanceAudience: beforeData.maintenanceAudience ?? null,
+            maintenanceMessage: beforeData.maintenanceMessage ?? null,
+            maintenanceStartsAt: beforeData.maintenanceStartsAt ?? null,
+            maintenanceEndsAt: beforeData.maintenanceEndsAt ?? null
+          },
+          after: clearPayload
+        });
+        const existingHistory = Array.isArray(beforeData.settingsHistory) ? beforeData.settingsHistory.slice(-24).map(h => sanitizeForFirestore(h)).filter(Boolean) : [];
+        await updateDoc(restRef, sanitizeForFirestore({ ...clearPayload, settingsHistory: [...existingHistory, historyEntry] }));
       }));
       addToast('Maintenance Cleared', `${targetRestaurants.length} workspace(s) restored.`);
     } catch (err) { addToast('Maintenance Error', err.message || 'Could not clear maintenance mode.'); }
@@ -5874,6 +5924,7 @@ ${body}`;
   }, {})).sort((a,b) => b.endedMs - a.endedMs).slice(0, 12);
 
   const adminManualArticles = [
+    { title: 'Version 15.0.62 Voice Reminder Timing', group: 'System Administrator', keywords: 'v15 15.0.62 86voice remind me in 20 minutes remind me at 6pm reminders relative time shared reminders production retention firebase deletion setup', body: ['15.0.62 hardens 86Voice reminder timing. Personal reminder commands now understand relative timing such as “remind me in 20 minutes,” “remind me in 2 hours,” and “remind me after 1 day.”', 'Time-only commands such as “remind me at 6pm” now schedule the next matching time. If that time has already passed today, the app schedules it for tomorrow instead of creating an already-due reminder.', 'Reminder title cleanup was improved so “remind me tomorrow at 10 to call Performance” stores “call Performance,” while a bare timing command stores a simple “Reminder.”', 'Shared reminder parsing also supports timing before the task, such as “remind Sarah in 20 minutes to check hood filters.” Shared reminders still require permission, real workspace staff matching, and teammate confirmation.', 'Production Firebase retention setup is documented separately so the live side can use the same scheduled cleanup/deletion behavior that was tested on the testing side.'] },
     { title: 'Version 15.0.61 86Voice Intelligent Commands', group: 'System Administrator', keywords: 'v15 15.0.61 86voice intelligent voice commands prep task done fuzzy matching 86 alert menu impact reminders shared undo audit permissions plan gates', body: ['15.0.61 hardens 86Voice into an intelligent kitchen command assistant. It preserves the existing voice workflow and adds central fuzzy matching, natural-language prep/task upserts, mark-done commands, 86 alerts, menu impact questions, status questions, shared reminders, recurring reminders, and safe undo.', 'Voice actions must pass the same plan gates, role permissions, workspace membership, and staff visibility rules as tapping through the app. Voice cannot expose financial, wage, admin, owner-only, integrations, or security data to a user who could not access that area normally.', 'Prep and task commands search existing rows first. High-confidence matches update or complete the existing row. Medium/ambiguous matches show a review picker. Low-confidence work becomes a new safe item only when the command is not high-risk.', '86 alert commands create alerts and can show affected menu items from approved Menu Intelligence dependency links. They do not edit inventory quantities. Missing dependencies should produce setup guidance, not fake impact data.', 'Shared reminders require assignment permission and use real workspace staff records. Personal reminders remain private. Recurring voice reminders are scheduled through the existing reminder dispatcher and advance after a successful push.', 'Undo is intentionally limited to safe recent voice actions such as created/updated prep, created/updated task, marked done, and reminder creation. Voice must not undo invoice approvals, menu scan approvals, payroll readiness, daily close signoff, plan/billing changes, admin/security settings, or integrations.', 'Audit logs should capture meaningful voice actions and blocked attempts with workspace, user, raw transcript, parsed intent, target record, old/new values where available, confidence, timestamp, and source voice.'] },
     { title: 'Version 15.0.57 Desktop UI Refinement', group: 'System Administrator', keywords: 'v15 15.0.57 desktop pc ui polish density professional layout spacing cards tables modals drawer navigation', body: ['15.0.57 is a desktop UI refinement pass. It keeps all existing features and focuses on making the PC/laptop app feel like a polished professional operations platform instead of an oversized mobile screen.', 'The main app shell, header, date strip, content widths, cards, forms, buttons, tables, major work areas, modal panels, and drawer menu received desktop-only density and scanability adjustments.', 'Major screens such as Manager Brief, Kitchen Command Center, Financial Center, Time Clock & Schedule, Inventory, Menu Intelligence, Recipes, Reminders, Staff Roster, Settings, Help Center, HR & Training, and System Administrator keep their functionality. This is not a feature-removal pass.', 'Mobile and tablet layouts remain touch-friendly. Do not solve future desktop polish by making the entire app tiny. Use responsive spacing, reasonable max-widths, better grids, and clearer hierarchy first.'] },
     { title: 'Version 15.0.56 Restaurant Group Push Broadcasts', group: 'System Administrator', keywords: 'v15 15.0.56 push notification center restaurant group broadcast selected workspace all workspaces tokens audit', body: ['15.0.56 adds a targeted push broadcast composer inside System Administrator → Push Control Center.', 'System Administrator can send a push notification to one workspace, a selected restaurant group, or all workspaces. The screen previews matching workspaces, users, and connected push tokens before sending.', 'Restaurant groups are resolved from workspace group fields such as restaurantGroupName, groupName, restaurantGroupId, branding/system settings group names, or owner email fallback. Keep group labels consistent on workspace records for clean targeting.', 'The server route validates access, allows multi-workspace/group sends only for internal System Administrator access, deduplicates device tokens, respects notification preferences and quiet hours unless marked critical, records the last result, and writes an audit log.', 'Use restaurant group targeting instead of All Workspaces whenever a message belongs to one customer group. Staff never see these internal send controls.'] },
@@ -9928,7 +9979,7 @@ const HELP_ARTICLES = [
   { id:'admin-client-users', title:'Viewing and managing people from a workspace', group:'System Administrator', keywords:'client users restaurant users support edit possess force logout delete notifications gps billing modules', body:['Open System Administrator → Workspaces and click the workspace name or People button.','The workspace drawer shows all people in that workspace, admin count, online users, push token count, GPS permission snapshots, billing state, and enabled modules.','Use Support Edit from the workspace drawer to move a user, update their role/status, force password change, or correct workspace routing.','Use Possess from the workspace drawer to troubleshoot exactly what that user sees.'] },
   { id:'admin-backup-status', title:'Checking database backup status', group:'System Administrator', keywords:'database backup last backup status command deck weekly maintenance firestore export storage run now integrity gzip header', body:['The System Administrator Command Deck includes Last Backup.','The app reads system/backupStatus when the automatic Firestore backup route writes it.','Click Last Backup or open Forensics to run a manual backup and verify the route.','A stale backup warning means you should check Vercel cron, CRON_SECRET, Firebase service account credentials, and Firebase Storage bucket settings.','If backup integrity says incorrect header or plain-json warning, run Full System Diagnostics. Version 13.1.32 treats readable backup JSON as valid even when cloud storage auto-decompresses a .json.gz object.'] },
   { id:'no-auto-return', title:'Does the app still return users to Today after five minutes?', group:'Navigation', keywords:'landing page today away five minutes background tab phone stale session logout', body:['No. The automatic return-to-Today behavior was removed.','Users stay on the page they were using when they return from another app, lock screen, or browser tab.','Use Log Out when a device should be signed out.'] },
-  { id:'voice-commands', title:'Using 86 Voice commands', group:'Voice Commands', keywords:'voice mic microphone command 86 salmon prep done task complete check off message maintenance burn waste open schedule recipe', body:['Tap the floating microphone button in the lower-left corner. Say one short command, then confirm the suggested action when the app asks.', 'Examples: “86 salmon”, “open beer cheese recipe”, “prep 2 pans tomatoes”, “mark onions done”, “finish clean fryer”, “add weekly task clean fryer Monday”, “post message cooler is high”, “open Friday schedule”, or “waste 2 pounds chicken breast”.', 'Voice can add/update prep rows, create recurring tasks for managers/admins, and mark existing prep rows or daily/weekly/monthly tasks done. It uses fuzzy matching because staff may say “onions” even when the row says “slice onion”. If the match is not confident, choose the correct row before anything is marked done.', 'Destructive actions like posting 86 alerts, maintenance reports, and burn logs require confirmation before the app writes data. Mark-done commands only complete matching rows and do not toggle completed rows back open.', 'If the browser does not support speech recognition, type the command into the same voice panel.'] },
+  { id:'voice-commands', title:'Using 86 Voice commands', group:'Voice Commands', keywords:'voice mic microphone command 86 salmon prep done task complete check off message maintenance burn waste open schedule recipe reminder in 20 minutes at 6pm', body:['Tap the floating microphone button in the lower-left corner. Say one short command, then confirm the suggested action when the app asks.', 'Examples: “86 salmon”, “open beer cheese recipe”, “prep 2 pans tomatoes”, “mark onions done”, “finish clean fryer”, “add weekly task clean fryer Monday”, “post message cooler is high”, “open Friday schedule”, “remind me in 20 minutes”, “remind me at 6pm”, “remind me tomorrow at 10 to call Performance”, or “waste 2 pounds chicken breast”.', 'Voice can add/update prep rows, create recurring tasks for managers/admins, create personal reminders, and mark existing prep rows or daily/weekly/monthly tasks done. It uses fuzzy matching because staff may say “onions” even when the row says “slice onion”. If the match is not confident, choose the correct row before anything is marked done.', 'Reminder commands can use exact times or relative times. “Remind me at 6pm” schedules the next 6pm. “Remind me in 20 minutes” schedules a reminder 20 minutes from now. Shared reminders still require permission and a real teammate match.', 'Destructive actions like posting 86 alerts, maintenance reports, and burn logs require confirmation before the app writes data. Mark-done commands only complete matching rows and do not toggle completed rows back open.', 'If the browser does not support speech recognition, type the command into the same voice panel.'] },
   { id:'read-saver', title:'Why some tabs load data only when opened', group:'Performance', keywords:'firebase reads read saver loading data missing old history month current week cost', body:['To reduce Firebase reads, 86 Chaos now loads each tab’s live data only when that tab needs it.','Schedule, punches, sales, messages, prep, and events use smaller date windows instead of loading years of history on login.','If an old record is not visible, use the relevant date range or open the feature tab that owns that data.','This protects multi-location clients from unnecessary Firestore costs.'] },
   { id:'labor-role-export', title:'Printing timesheets by custom role', group:'Labor', keywords:'role export print pdf cook bartender server manager custom roles settings whole restaurant labor timesheets payroll', body:['Go to Financials → Timesheets → Export.','Choose Whole Restaurant or any role created in Settings, such as Line Cook, Bartender, Server, Manager, Host, or any custom role your client created.','Choose Time Punch Detail for every punch row or Total Hours Summary for one row per employee, then Download CSV or Print / Save PDF.','The role filter reads from Settings → Roles and also includes active user roles already in use, so each restaurant exports by its own job structure.'] },
   { id:'schedule-stability', title:'Schedule stability and restore help', group:'Scheduling', keywords:'schedule restore deleted shifts missing old data stability', body:['Fixed stability issues around schedule restore and month loading.', 'If a schedule looks wrong after a restore, contact a system administrator so the month can be repaired safely.'] },
