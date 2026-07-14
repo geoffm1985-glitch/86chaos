@@ -1,9 +1,7 @@
 {
-  "version": "15.0.63",
-  "name": "86 Chaos 15.0.63 Maintenance Mode Undefined Field Hotfix",
-  "releasedAt": "2026-07-12",
-  "label": "86 Chaos 15.0.63",
-  "build": "15.0.63",
-  "updatedAt": "2026-07-12T00:00:00.000Z",
-  "notes": "Hotfix for System Administrator maintenance mode: strips undefined values from restaurant update payloads/history so Firestore accepts maintenance enable/clear actions."
+  "version": "15.0.65",
+  "name": "86 Chaos 15.0.65 System Administrator Control Center Rebuild",
+  "date": "2026-07-14",
+  "label": "86 Chaos 15.0.65",
+  "build": "15.0.65"
 }

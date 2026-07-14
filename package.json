@@ -1,6 +1,6 @@
 {
   "name": "86chaos",
-  "version": "15.0.63",
+  "version": "15.0.65",
   "private": true,
   "dependencies": {
     "firebase": "^10.8.1",
@@ -17,7 +17,8 @@
   },
   "scripts": {
     "start": "react-scripts start",
-    "build": "react-scripts build"
+    "build": "react-scripts build",
+    "retention:setup": "node scripts/setup-production-retention.js"
   },
   "browserslist": {
     "production": [
