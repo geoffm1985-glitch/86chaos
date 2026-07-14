@@ -1,9 +1,7 @@
 {
-  "version": "15.0.64",
-  "name": "86 Chaos 15.0.64 Legal Retention + Admin Console Cleanup",
-  "releasedAt": "2026-07-12",
-  "label": "86 Chaos 15.0.64",
-  "build": "15.0.64",
-  "updatedAt": "2026-07-13T00:00:00.000Z",
-  "notes": "Adds one-button legal data-retention setup, aligns retention schedules with the legal packet, rebuilds System Administrator mobile navigation into grouped tool cards, restores visible help/question-mark controls, and compacts diagnostics payloads before AI repair guidance."
+  "version": "15.0.65",
+  "name": "86 Chaos 15.0.65 System Administrator Control Center Rebuild",
+  "date": "2026-07-14",
+  "label": "86 Chaos 15.0.65",
+  "build": "15.0.65"
 }

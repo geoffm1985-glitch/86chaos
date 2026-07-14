@@ -6123,6 +6123,7 @@ ${body}`;
   }, {})).sort((a,b) => b.endedMs - a.endedMs).slice(0, 12);
 
   const adminManualArticles = [
+    { title: 'Version 15.0.65 System Administrator Control Center Rebuild', group: 'System Administrator', keywords: 'v15 15.0.65 system administrator mobile control center rebuild admin navigation diagnostics payload readable organized no branding', body: ['15.0.65 fully rebuilds the System Administrator shell into a true control center with clear zones: Command Center, Customers & Users, Security & Access, Backups & Retention, Support & Signals, Maintenance & Releases, and High-Risk Platform Tools.', 'Mobile no longer uses the washed-out card directory or old dropdown maze. It uses a dark, high-contrast command header, compact quick actions, and a readable tool list.', 'The System Administrator Branding / Display shortcut was removed from the internal admin navigation because workspace owners control branding from Settings. The customer-facing Settings branding workflow remains intact.', 'Health Checks now distinguish a responding route with warnings from an actual failed route, so /api/health-checks no longer appears as ERR 200 just because one nested route needs attention.', 'OpenAI diagnostics payloads are further compacted and redacted before sending so support explanations do not trip over giant full-system reports.'] },
     { title: 'Version 15.0.64 Legal Retention Setup and Mobile Admin Navigation', group: 'System Administrator', keywords: 'v15 15.0.64 legal retention automatic deletion storage archive firebase functions mobile system administrator navigation data retention setup', body: ['15.0.64 adds a Legal Data Retention Setup area inside System Administrator. The main button safely writes system/dataRetention with the official legal policy marker and audit log. It does not delete data by itself.', 'Retention dates match the legal packet: active core data remains while the account is active; transient prep and 86-alert data is 30 days; raw AI prompts/uploads/scans are 30 days; deleted workspaces have a 30-day recovery window; database backups are 30 days rolling; audit/security logs are 1 year; workforce, time-clock, and geofencing records are retained 3 years with archival storage after 1 year.', 'Automatic cleanup still requires production Firebase Functions deployment and a private RETENTION_ARCHIVE_BUCKET. The time-clock archive job fails closed, so source records are not deleted if archive upload or verification fails.', 'The System Administrator mobile navigation no longer relies on the old dropdown selector. Mobile now uses quick tiles, a current-area card, and grouped section cards so tools are easier to find without scrolling through a giant list.', 'Do not expose internal retention bucket names, service-account secrets, or Cloud Scheduler internals in customer Help Center content. Keep customer-facing language focused on policy, privacy, and export/deletion request routing.'] },
     { title: 'Version 15.0.62 Voice Reminder Timing', group: 'System Administrator', keywords: 'v15 15.0.62 86voice remind me in 20 minutes remind me at 6pm reminders relative time shared reminders production retention firebase deletion setup', body: ['15.0.62 hardens 86Voice reminder timing. Personal reminder commands now understand relative timing such as “remind me in 20 minutes,” “remind me in 2 hours,” and “remind me after 1 day.”', 'Time-only commands such as “remind me at 6pm” now schedule the next matching time. If that time has already passed today, the app schedules it for tomorrow instead of creating an already-due reminder.', 'Reminder title cleanup was improved so “remind me tomorrow at 10 to call Performance” stores “call Performance,” while a bare timing command stores a simple “Reminder.”', 'Shared reminder parsing also supports timing before the task, such as “remind Sarah in 20 minutes to check hood filters.” Shared reminders still require permission, real workspace staff matching, and teammate confirmation.', 'Production Firebase retention setup is documented separately so the live side can use the same scheduled cleanup/deletion behavior that was tested on the testing side.'] },
     { title: 'Version 15.0.61 86Voice Intelligent Commands', group: 'System Administrator', keywords: 'v15 15.0.61 86voice intelligent voice commands prep task done fuzzy matching 86 alert menu impact reminders shared undo audit permissions plan gates', body: ['15.0.61 hardens 86Voice into an intelligent kitchen command assistant. It preserves the existing voice workflow and adds central fuzzy matching, natural-language prep/task upserts, mark-done commands, 86 alerts, menu impact questions, status questions, shared reminders, recurring reminders, and safe undo.', 'Voice actions must pass the same plan gates, role permissions, workspace membership, and staff visibility rules as tapping through the app. Voice cannot expose financial, wage, admin, owner-only, integrations, or security data to a user who could not access that area normally.', 'Prep and task commands search existing rows first. High-confidence matches update or complete the existing row. Medium/ambiguous matches show a review picker. Low-confidence work becomes a new safe item only when the command is not high-risk.', '86 alert commands create alerts and can show affected menu items from approved Menu Intelligence dependency links. They do not edit inventory quantities. Missing dependencies should produce setup guidance, not fake impact data.', 'Shared reminders require assignment permission and use real workspace staff records. Personal reminders remain private. Recurring voice reminders are scheduled through the existing reminder dispatcher and advance after a successful push.', 'Undo is intentionally limited to safe recent voice actions such as created/updated prep, created/updated task, marked done, and reminder creation. Voice must not undo invoice approvals, menu scan approvals, payroll readiness, daily close signoff, plan/billing changes, admin/security settings, or integrations.', 'Audit logs should capture meaningful voice actions and blocked attempts with workspace, user, raw transcript, parsed intent, target record, old/new values where available, confidence, timestamp, and source voice.'] },
@@ -6458,7 +6459,7 @@ ${body}`;
       backupStale: backupIsStale,
       nextBackupAt: nextAutoBackupDate?.toISOString?.() || backupStatus?.nextBackupAt || backupStatus?.nextScheduledAt || '',
       watchdogStatus: backupWatchdogDetail,
-      healthOk: healthSnapshot ? (healthSnapshot.ok !== false && !(healthSnapshot.apiChecks || []).some(check => !check.ok)) : null,
+      healthOk: healthSnapshot ? (healthSnapshot.ok !== false && !(healthSnapshot.apiChecks || []).some(check => check.severity === 'error')) : null,
       healthAttentionCount: healthSnapshot?.apiRouteManifest?.filter?.(route => route.status !== 'ready')?.length ?? null,
       riskyUserCount: securityReport?.riskyUsers?.length ?? null,
       suspiciousActivityCount: securityReport?.suspiciousActivity?.count ?? null,
@@ -6829,9 +6830,21 @@ ${body}`;
     try {
       const response = await secureFetch(url, options);
       const result = await response.json().catch(() => ({}));
-      return { label, url, ok: response.ok && result.ok !== false, status: response.status, ms: Math.round(performance.now() - started), result: redactDiagnosticSecrets(result) };
+      const routeAttentionCount = Array.isArray(result?.routes) ? result.routes.filter(route => String(route.status || '').toLowerCase() !== 'ready').length : 0;
+      const warning = response.ok && result?.ok === false;
+      return {
+        label,
+        url,
+        ok: response.ok,
+        warning,
+        severity: response.ok ? (warning ? 'warning' : 'ok') : 'error',
+        status: response.status,
+        ms: Math.round(performance.now() - started),
+        result: redactDiagnosticSecrets(result),
+        note: warning ? (routeAttentionCount ? `${routeAttentionCount} route(s) need attention, but the manifest route responded.` : 'Route responded with warnings.') : ''
+      };
     } catch (err) {
-      return { label, url, ok: false, status: 0, ms: Math.round(performance.now() - started), error: err.message || 'Request failed' };
+      return { label, url, ok: false, severity: 'error', status: 0, ms: Math.round(performance.now() - started), error: err.message || 'Request failed' };
     }
   };
 
@@ -7256,76 +7269,75 @@ Type RESTORE to continue.`);
 
   const adminTabGroups = [
     {
-      title:'Start Here',
-      summary:'Daily command center, system health, deployment readiness, complete app training, and AI-assisted troubleshooting.',
-      helper:'Use this first when you are not sure where to go. It explains the current state, teaches every app tab, shows live health, and sends you to the right repair area.',
+      title:'Command Center',
+      summary:'Start here. Live platform status, health checks, deployment readiness, and the main training/manual desk.',
+      helper:'Use Command Center first. It answers: is the platform healthy, what needs attention, what should be checked before deploy, and where is the correct manual article?',
       tabs:[
-        {id:'overview', label:'Command Center', short:'Home', intent:'Start here for live status and suggested next actions.'},
-        {id:'health', label:'Health Dashboard', short:'Health', intent:'Check API routes, Firebase connection, backup integrity, and runtime status.'},
-        {id:'deployment', label:'Deployment Readiness', short:'Deploy', intent:'Confirm env vars, rules, versions, and production readiness before releases.'},
-        {id:'manual', label:'Training & Administrator Manuals', short:'Manuals', intent:'Search the complete non-AI app training guide or use the preserved Gemini troubleshooting desk.'}
+        {id:'overview', label:'Home', short:'Home', intent:'Priority queue, platform snapshot, and the next safest action.'},
+        {id:'health', label:'Health Checks', short:'Health', intent:'API timing, Firebase connection, backup integrity, and route readiness.'},
+        {id:'deployment', label:'Deployment', short:'Deploy', intent:'Vercel/Firebase/rules/version readiness before a release.'},
+        {id:'manual', label:'Manuals', short:'Manuals', intent:'Complete app training manual and internal administrator troubleshooting.'}
       ]
     },
     {
-      title:'Backup & Recovery',
-      summary:'Backups, restore checks, forensic exports, import/export, and restore drill evidence.',
-      helper:'Use this for protecting data, proving backups work, downloading diagnostics, and moving data in or out safely.',
+      title:'Customers & Users',
+      summary:'Restaurants, owners, workspace setup, user routing, and profile support.',
+      helper:'Use this for onboarding restaurants, finding users, fixing workspace routing, and creating/deploying new locations. Branding/display is intentionally not here because owners manage it in Settings.',
       tabs:[
-        {id:'forensics', label:'Backup Center & Audit Trail', short:'Backups', intent:'Run backups, verify backup files, review audits, export forensics, and record restore drills.'},
-        {id:'retention', label:'Legal Data Retention Setup', short:'Retention', intent:'One-button app-side retention setup plus production Firebase checklist for automatic client-data deletion/archive.'},
-        {id:'data', label:'Import / Export Center', short:'Data', intent:'Use controlled data import/export tools and migration bridges.'}
+        {id:'tenants', label:'Workspaces', short:'Workspaces', intent:'Manage restaurants, plans, modules, Founder Beta, and workspace state.'},
+        {id:'users', label:'People', short:'People', intent:'Search and support-edit user profiles, roles, routing, and device clues.'},
+        {id:'setup', label:'New Workspace', short:'Setup', intent:'Create a restaurant workspace and owner login handoff.'}
       ]
     },
     {
       title:'Security & Access',
-      summary:'Super Admin access, App Check, MFA, rules status, and role permission design.',
-      helper:'Use this when someone is locked out, rules are being hardened, MFA is being enforced, or permissions feel wrong.',
+      summary:'System Administrator access, MFA, App Check, rules status, suspicious activity, and role matrix tools.',
+      helper:'Use this when someone is locked out, rules are being hardened, elevated access changes, or permissions do not make sense.',
       tabs:[
-        {id:'security', label:'Security Center', short:'Security', intent:'Review App Check, MFA, Firestore/Storage rules, risky users, and environment separation.'},
-        {id:'admins', label:'Super Admin Access', short:'Access', intent:'Grant or revoke platform-level System Administrator access.'},
-        {id:'roles', label:'Permission & Role Manager', short:'Roles', intent:'Design and review restaurant-level role packages and permission toggles.'}
+        {id:'security', label:'Security Center', short:'Security', intent:'App Check, MFA, rules, risky users, environment separation, and suspicious activity.'},
+        {id:'admins', label:'Admin Access', short:'Access', intent:'Grant or revoke internal System Administrator access.'},
+        {id:'roles', label:'Role Matrix', short:'Roles', intent:'Review owner-defined roster roles and permission packages.'}
       ]
     },
     {
-      title:'Workspaces & People',
-      summary:'Restaurants, clients, staff profiles, workspace setup, modules, and branding.',
-      helper:'Use this to onboard a restaurant, fix workspace routing, support a staff profile, or adjust visible customer branding.',
+      title:'Backups & Retention',
+      summary:'Backups, restore proof, legal data retention, client export/import, and safe deletion setup.',
+      helper:'Use this before risky operations. Backups and retention are grouped together because both protect customer data and legal commitments.',
       tabs:[
-        {id:'tenants', label:'Workspaces / Clients', short:'Clients', intent:'Manage restaurant accounts, billing state, modules, and workspace configuration.'},
-        {id:'users', label:'People Directory', short:'People', intent:'Find users across workspaces, support-edit profiles, routing, password resets, and device clues.'},
-        {id:'setup', label:'Workspace Setup Wizard', short:'Setup', intent:'Create or deploy a new workspace with owner login handoff.'},
-        {id:'branding', label:'Branding / Display', short:'Branding', intent:'Manage display/branding tools while keeping 86 Chaos branding locked on.'}
+        {id:'forensics', label:'Backups & Audit', short:'Backups', intent:'Run backups, verify backup files, export forensics, and record restore drills.'},
+        {id:'retention', label:'Legal Retention', short:'Retention', intent:'One-button app-side legal retention setup plus production Firebase checklist.'},
+        {id:'data', label:'Data Tools', short:'Data', intent:'Controlled import/export and migration bridge tools.'}
       ]
     },
     {
-      title:'Support & Monitoring',
-      summary:'Push notifications, presence snapshots, crash reports, runtime logs, and support diagnostics.',
-      helper:'Use this when a customer says something is broken, alerts are not arriving, or you need a safe view into current sessions.',
+      title:'Support & Signals',
+      summary:'Customer troubleshooting, push notifications, AI scan usage, live presence snapshots, and problem evidence.',
+      helper:'Use this when a customer reports a broken feature, push alerts are not arriving, scans are blocked, or you need evidence without digging through every tab.',
       tabs:[
-        {id:'support', label:'Support Diagnostics', short:'Support', intent:'Review crashes, API clues, auth/runtime state, rule blocks, and support diagnostics.'},
-        {id:'ai-usage', label:'AI Usage / Scan Limits', short:'AI Usage', intent:'Review monthly invoice and menu AI pages, failures, blocked scans, bypass logs, and workspace limits.'},
-        {id:'push', label:'Push Control Center', short:'Push', intent:'Audit push tokens, stale devices, opt-in status, and test delivery.'},
-        {id:'live', label:'Manual Presence Snapshot', short:'Presence', intent:'Take an on-demand low-cost live user/workspace snapshot.'}
+        {id:'support', label:'Support Desk', short:'Support', intent:'Crash reports, problem reports, diagnostics clues, and runtime support.'},
+        {id:'push', label:'Push Center', short:'Push', intent:'Push tokens, restaurant-group broadcasts, stale devices, and test delivery.'},
+        {id:'ai-usage', label:'AI Usage', short:'AI Usage', intent:'Invoice/menu scan page limits, blocked scans, resets, and usage review.'},
+        {id:'live', label:'Presence Snapshot', short:'Presence', intent:'On-demand user/workspace activity snapshot without a constant read drain.'}
       ]
     },
     {
       title:'Maintenance & Releases',
-      summary:'Maintenance mode, hardening suite, version history, and legacy release checks.',
-      helper:'Use this for release verification, customer-facing maintenance screens, and older hardening/diagnostic suites.',
+      summary:'Maintenance mode, release history, legacy hardening tools, and production readiness support.',
+      helper:'Use this for customer maintenance screens, release verification, and older hardening suites that still matter.',
       tabs:[
-        {id:'maintenance', label:'Maintenance Mode', short:'Maint', intent:'Control workspace maintenance screens and platform messaging.'},
-        {id:'v14', label:'Robustness Suite', short:'Hardening', intent:'Run legacy storage, schema, permissions, backup, and client guardrail checks.'},
-        {id:'history', label:'Settings Version History', short:'History', intent:'Review settings/version history and release notes.'}
+        {id:'maintenance', label:'Maintenance Mode', short:'Maint', intent:'Lock selected workspaces or the platform with a clear customer-facing message.'},
+        {id:'history', label:'Version History', short:'History', intent:'Settings and release-history records.'},
+        {id:'v14', label:'Hardening Suite', short:'Hardening', intent:'Legacy storage, schema, permission, backup, and guardrail diagnostics.'}
       ]
     },
     {
-      title:'Platform Tools',
-      summary:'Platform broadcasts, guarded operations, and high-risk actions.',
-      helper:'Use this last. These tools can affect many restaurants and should usually follow diagnostics and a backup.',
+      title:'High-Risk Platform Tools',
+      summary:'Global broadcasts and destructive actions. Use only after diagnostics and a backup.',
+      helper:'These tools can affect many customers. Run diagnostics and a backup first. Confirm exactly what you are changing.',
       danger:true,
       tabs:[
-        {id:'ops', label:'Platform Operations', short:'Ops', intent:'Send platform banners, global alerts, demo workspaces, and operational broadcasts.'},
-        {id:'danger', label:'Danger Zone', short:'Danger', intent:'High-risk destructive or global operations with extra confirmation.'}
+        {id:'ops', label:'Platform Ops', short:'Ops', intent:'Global alerts, refresh commands, orphan sweeps, and guarded platform operations.'},
+        {id:'danger', label:'Danger Zone', short:'Danger', intent:'Destructive or global operations with extra confirmation.'}
       ]
     }
   ];
@@ -7361,7 +7373,7 @@ Type RESTORE to continue.`);
   ].filter(result => result.score > 0).sort((a,b) => b.score - a.score || a.label.localeCompare(b.label)).slice(0, 12) : [];
   const activeAdminTab = adminTabs.find(tab => tab.id === subTab) || adminTabs[0];
   const activeAdminHelpText = `${activeAdminTab.label} lives under ${activeAdminTab.group}. ${activeAdminTab.intent || ''} ${adminTabGroups.find(group => group.title === activeAdminTab.group)?.helper || ''}`.trim();
-  const mobilePrimaryTabs = ['overview', 'retention', 'forensics', 'health', 'security', 'tenants', 'users', 'push', 'manual'];
+  const mobilePrimaryTabs = ['overview', 'health', 'tenants', 'security', 'forensics', 'retention', 'support', 'push'];
   const mobileQuickTabs = mobilePrimaryTabs.map(id => adminTabs.find(tab => tab.id === id)).filter(Boolean);
 
   const selectAdminTab = (target = 'overview', scroll = true) => {
@@ -7483,7 +7495,7 @@ Type RESTORE to continue.`);
 
 
   return (
-    <div className="admin46-shell max-w-[1500px] mx-auto pb-24 px-2 sm:px-4 lg:px-5 animate-[slideIn_0.2s_ease-out]">
+    <div className="admin65-shell admin46-shell max-w-[1500px] mx-auto pb-24 px-2 sm:px-4 lg:px-5 animate-[slideIn_0.2s_ease-out]">
       <Modal isOpen={!!createdWorkspaceLogin} onClose={() => setCreatedWorkspaceLogin(null)} title="Workspace Login Created">
         {createdWorkspaceLogin && <div className="space-y-4">
           <div className="bg-emerald-900/10 border border-emerald-900/40 rounded-xl p-3 text-xs font-bold text-emerald-200">This owner login is shown one time only. Copy, print, email, or text it before closing.</div>
@@ -7502,13 +7514,13 @@ Type RESTORE to continue.`);
           <button type="button" onClick={() => setAdminHelpModal(null)} className={T.btn}>Got it</button>
         </div>}
       </Modal>
-      {/* 15.0.46 PROFESSIONAL ADMIN CONSOLE */}
-      <section className="admin46-topbar">
+      {/* 15.0.65 rebuilt System Administrator control center */}
+      <section className="admin46-topbar admin65-hero">
         <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-5">
           <div className="min-w-0">
             <div className="text-[10px] font-black uppercase tracking-[0.28em] text-[#D4A381]">System Administration</div>
-            <h1 className="text-2xl sm:text-3xl font-black text-white mt-1">Operations Console</h1>
-            <p className="text-xs sm:text-sm text-slate-400 font-semibold mt-2 max-w-2xl leading-relaxed">A compact workspace for platform health, access, customers, recovery, and support.</p>
+            <h1 className="text-2xl sm:text-3xl font-black text-white mt-1">System Control Center</h1>
+            <p className="text-xs sm:text-sm text-slate-400 font-semibold mt-2 max-w-2xl leading-relaxed">One organized command surface for platform health, customers, security, backups, retention, support, and releases.</p>
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 w-full xl:w-auto xl:min-w-[560px]">
             <button type="button" onClick={() => selectAdminTab('overview')} className="admin46-status-chip text-left">
@@ -7541,13 +7553,13 @@ Type RESTORE to continue.`);
         <div className="admin46-mobile-controls lg:hidden mt-4">
           <div className="admin46-mobile-current">
             <div className="min-w-0">
-              <span>Current area</span>
+              <span>Current tool</span>
               <strong>{activeAdminTab.label}</strong>
               <small>{activeAdminTab.group}</small>
             </div>
             <div className="admin46-mobile-current-actions">
               <button type="button" className="admin46-mobile-help" onClick={() => setAdminHelpModal({ title: activeAdminTab.label, body: activeAdminHelpText })} aria-label={`Explain ${activeAdminTab.label}`}>?</button>
-              <button type="button" onClick={() => setIsAdminNavOpen(v => !v)}>{isAdminNavOpen ? 'Hide directory' : 'Show directory'}</button>
+              <button type="button" onClick={() => setIsAdminNavOpen(v => !v)}>{isAdminNavOpen ? 'Hide tools' : 'Show tools'}</button>
             </div>
           </div>
           <div className="admin46-mobile-quickgrid">
@@ -8435,7 +8447,7 @@ Type RESTORE to continue.`);
           <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
             <CockpitMetric label="Firestore Latency" value={healthSnapshot ? `${healthSnapshot.firestoreLatencyMs}ms` : 'Run Check'} detail={healthSnapshot?.firestoreStatus || 'Not tested yet'} tone={!healthSnapshot ? 'blue' : healthSnapshot.firestoreLatencyMs > 1800 ? 'red' : healthSnapshot.firestoreLatencyMs > 800 ? 'amber' : 'emerald'} hot={!!healthSnapshot && healthSnapshot.firestoreLatencyMs > 1800} />
             <CockpitMetric label="Backup Storage" value={healthSnapshot ? formatBackupBytes(healthSnapshot.storageUsage?.totalBytes) : formatBackupBytes(backupList.reduce((sum, b) => sum + Number(b.sizeBytes || 0), 0))} detail={`${healthSnapshot?.storageUsage?.totalFiles ?? backupList.length} Storage file(s) • ${healthSnapshot?.storageUsage?.backupFiles ?? backupList.length} backup(s)`} tone="blue" />
-            <CockpitMetric label="API Routes" value={healthSnapshot ? healthSnapshot.apiRouteManifest?.length ? `${healthSnapshot.apiRouteManifest.filter(r => r.status === 'ready').length}/${healthSnapshot.apiRouteManifest.length}` : `${(healthSnapshot.apiChecks || []).filter(c => c.ok).length}/${(healthSnapshot.apiChecks || []).length}` : 'Run Check'} detail={healthSnapshot ? `${Math.round((healthSnapshot.apiChecks || []).reduce((sum, c) => sum + (c.ms || 0), 0) / Math.max(1, (healthSnapshot.apiChecks || []).length))}ms avg` : 'whoami / security / backups / route manifest'} tone={healthSnapshot && (healthSnapshot.apiChecks || []).some(c => !c.ok) ? 'amber' : 'emerald'} />
+            <CockpitMetric label="API Routes" value={healthSnapshot ? healthSnapshot.apiRouteManifest?.length ? `${healthSnapshot.apiRouteManifest.filter(r => r.status === 'ready').length}/${healthSnapshot.apiRouteManifest.length}` : `${(healthSnapshot.apiChecks || []).filter(c => c.ok && !c.warning).length}/${(healthSnapshot.apiChecks || []).length}` : 'Run Check'} detail={healthSnapshot ? `${Math.round((healthSnapshot.apiChecks || []).reduce((sum, c) => sum + (c.ms || 0), 0) / Math.max(1, (healthSnapshot.apiChecks || []).length))}ms avg` : 'whoami / security / backups / route manifest'} tone={healthSnapshot && (healthSnapshot.apiChecks || []).some(c => c.severity === 'error') ? 'red' : healthSnapshot && (healthSnapshot.apiChecks || []).some(c => c.warning) ? 'amber' : 'emerald'} />
             <CockpitMetric label="Last Successful Sync" value={formatBackupTimestamp(healthSnapshot?.lastSuccessfulSync || backupStatus?.lastSuccessfulBackupAt || backupStatus?.lastBackupAt || backupStatus?.lastRunAt)} detail={backupStatus?.storagePath || 'Backup status route'} tone={backupIsStale ? 'amber' : 'emerald'} hot={backupIsStale} />
             <CockpitMetric label="Backup Integrity" value={healthSnapshot?.backupIntegrity?.status || backupStatus?.lastIntegrityStatus || backupStatus?.backupIntegrity?.status || 'Not Checked'} detail={healthSnapshot?.backupIntegrity?.verifiedAt ? formatBackupTimestamp(healthSnapshot.backupIntegrity.verifiedAt) : (backupStatus?.lastIntegrityVerifiedAt ? formatBackupTimestamp(backupStatus.lastIntegrityVerifiedAt) : 'Round-trip verification')} tone={(healthSnapshot?.backupIntegrity?.status || backupStatus?.lastIntegrityStatus || backupStatus?.backupIntegrity?.status) === 'failed' ? 'red' : (healthSnapshot?.backupIntegrity?.status || backupStatus?.lastIntegrityStatus || backupStatus?.backupIntegrity?.status) === 'verified' ? 'emerald' : 'amber'} hot={(healthSnapshot?.backupIntegrity?.status || backupStatus?.lastIntegrityStatus || backupStatus?.backupIntegrity?.status) === 'failed'} />
           </div>
@@ -8458,10 +8470,10 @@ Type RESTORE to continue.`);
                       <div className="text-[9px] font-mono text-slate-500 break-all">{check.url}</div>
                     </div>
                     <div className="flex items-center gap-2">
-                      <span className={`text-[9px] font-black uppercase tracking-widest px-2 py-1 rounded border ${check.ok ? 'bg-emerald-900/20 text-emerald-300 border-emerald-900/50' : 'bg-red-900/20 text-red-300 border-red-900/50'}`}>{check.ok ? 'OK' : `ERR ${check.status || ''}`}</span>
+                      <span className={`text-[9px] font-black uppercase tracking-widest px-2 py-1 rounded border ${check.severity === 'error' ? 'bg-red-900/20 text-red-300 border-red-900/50' : check.warning ? 'bg-amber-900/20 text-amber-200 border-amber-500/50' : 'bg-emerald-900/20 text-emerald-300 border-emerald-900/50'}`}>{check.severity === 'error' ? `ERR ${check.status || ''}` : check.warning ? `WARN ${check.status || ''}` : 'OK'}</span>
                       <span className="text-sm font-black text-white min-w-[70px] text-right">{check.ms}ms</span>
                     </div>
-                    {check.error && <div className="sm:col-span-2 text-[10px] font-bold text-red-300">{check.error}</div>}
+                    {(check.error || check.note) && <div className={`sm:col-span-2 text-[10px] font-bold ${check.error ? 'text-red-300' : 'text-amber-200'}`}>{check.error || check.note}</div>}
                   </div>
                 ))}
                 {(healthSnapshot?.apiRouteManifest || []).length > 0 && <div className="p-3 bg-[#0B0E11]/60 border-t border-[#2A353D]"><div className="text-[10px] font-black uppercase tracking-widest text-[#D4A381] mb-2">Full Vercel API Route Manifest</div><div className="grid sm:grid-cols-2 gap-1.5 max-h-72 overflow-y-auto custom-scrollbar">{healthSnapshot.apiRouteManifest.map(route => <div key={route.route} className="flex items-center justify-between gap-2 bg-[#12161A] border border-[#2A353D] rounded-lg px-2 py-1.5"><span className="text-[10px] font-mono text-slate-300 truncate">{route.route}</span><span className={`text-[8px] font-black uppercase tracking-widest ${route.status === 'ready' ? 'text-emerald-300' : 'text-red-300'}`}>{route.status}</span></div>)}</div></div>}
