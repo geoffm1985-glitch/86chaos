@@ -219,32 +219,37 @@ function parseCredentialProjectIdFromEnv(name) {
 }
 
 function getConfiguredDefaultProjectId(req = null) {
-  const explicitServer = readFirstEnv([
+  // 86 Chaos uses a one-key deployment flow: FIREBASE_SERVICE_ACCOUNT_KEY is
+  // the source of truth for server routes unless a request carries a Firebase
+  // ID token. This prevents a stale FIREBASE_PROJECT_ID / REACT_APP value in
+  // Vercel from forcing testing cron/API routes to look for the production
+  // cheers-34b8d credential.
+  for (const name of ['FIREBASE_SERVICE_ACCOUNT_KEY', 'FIREBASE_ADMIN_CREDENTIALS']) {
+    const fromCredential = parseCredentialProjectIdFromEnv(name);
+    if (fromCredential && TRUSTED_PROJECTS.includes(fromCredential)) return fromCredential;
+  }
+
+  const explicitPinnedServer = readFirstEnv([
     'FIREBASE_ACTIVE_PROJECT_ID',
     'FIREBASE_ADMIN_PROJECT_ID',
     'FIREBASE_SERVER_PROJECT_ID',
-    'FIREBASE_PROJECT_ID',
     'FIREBASE_TEST_PROJECT_ID',
     'TEST_FIREBASE_PROJECT_ID',
     'FIREBASE_PRODUCTION_PROJECT_ID',
     'PROD_FIREBASE_PROJECT_ID'
   ]);
-  if (explicitServer && TRUSTED_PROJECTS.includes(explicitServer)) return explicitServer;
+  if (explicitPinnedServer && TRUSTED_PROJECTS.includes(explicitPinnedServer)) return explicitPinnedServer;
+
+  // Only use FIREBASE_PROJECT_ID as a split-credential hint. If the full JSON
+  // key is present, the embedded project_id above already won.
+  const splitProjectId = clean(process.env.FIREBASE_PROJECT_ID);
+  if (splitProjectId && TRUSTED_PROJECTS.includes(splitProjectId) && process.env.FIREBASE_CLIENT_EMAIL && process.env.FIREBASE_PRIVATE_KEY) return splitProjectId;
 
   // A testing/preview deployment should never quietly fall back to the live
   // cheers project just because Vercel treats the branch as a production build.
   // The public client uses the test Firebase config on every non-production
   // host, so server-to-server routes should follow the same rule.
   if (deploymentLooksLikeTesting(req)) return 'chaos-test-d1601';
-
-  // Server-to-server jobs like /api/dispatch-reminders have no Firebase ID
-  // token. If no explicit project was set, use the project embedded inside the
-  // normal FIREBASE_SERVICE_ACCOUNT_KEY. This keeps the one-key deployment flow
-  // working for both testing and production.
-  for (const name of ['FIREBASE_SERVICE_ACCOUNT_KEY', 'FIREBASE_ADMIN_CREDENTIALS']) {
-    const fromCredential = parseCredentialProjectIdFromEnv(name);
-    if (fromCredential && TRUSTED_PROJECTS.includes(fromCredential)) return fromCredential;
-  }
 
   const projectSpecificJsonNames = [];
   for (const projectId of TRUSTED_PROJECTS) {
@@ -315,7 +320,9 @@ function getAdminAppForProject(projectId, { requireCredentials = true } = {}) {
       : '';
     throw new Error(
       `No usable server credential is configured for Firebase project ${wanted}. ` +
-      `Use your normal FIREBASE_SERVICE_ACCOUNT_KEY env var with the complete Firebase service-account JSON for the project this deployment is using.${mismatchNote} ` +
+      `86 Chaos does not require a separate production key: FIREBASE_SERVICE_ACCOUNT_KEY should contain the complete Firebase service-account JSON for whichever project this deployment uses. ` +
+      `For testing, that JSON must have project_id chaos-test-d1601; for production, it must have project_id cheers-34b8d.${mismatchNote} ` +
+      `If FIREBASE_PROJECT_ID or REACT_APP_FIREBASE_PROJECT_ID still points at the wrong project in Vercel, remove it or change it to match the service account key. ` +
       `Do not put service account JSON in app code. Optional aliases are ${recommended}, FIREBASE_ADMIN_CREDENTIALS, or split FIREBASE_PROJECT_ID/FIREBASE_CLIENT_EMAIL/FIREBASE_PRIVATE_KEY. Redeploy after changing Vercel env vars.`
     );
   }
@@ -436,6 +443,28 @@ function projectCredentialStatus(projectId) {
   }
 }
 
+function firebaseAdminEnvSummary(req = null) {
+  const safeProjectFrom = (name) => {
+    try { return parseCredentialProjectIdFromEnv(name); }
+    catch (_) { return ''; }
+  };
+  let requestedProjectId = '';
+  try { requestedProjectId = getRequestedProjectId(req); }
+  catch (error) { requestedProjectId = `unresolved: ${error.message}`; }
+  return {
+    requestedProjectId,
+    serviceAccountProjectId: safeProjectFrom('FIREBASE_SERVICE_ACCOUNT_KEY'),
+    adminCredentialsProjectId: safeProjectFrom('FIREBASE_ADMIN_CREDENTIALS'),
+    activeProjectIdEnv: clean(process.env.FIREBASE_ACTIVE_PROJECT_ID),
+    firebaseProjectIdEnv: clean(process.env.FIREBASE_PROJECT_ID),
+    reactAppProjectIdEnv: clean(process.env.REACT_APP_FIREBASE_PROJECT_ID),
+    deploymentModeEnv: clean(process.env.FIREBASE_DEPLOYMENT_MODE || process.env.REACT_APP_FIREBASE_DEPLOYMENT_MODE),
+    vercelEnv: clean(process.env.VERCEL_ENV),
+    host: requestHost(req) || requestOriginHost(req),
+    looksLikeTesting: deploymentLooksLikeTesting(req)
+  };
+}
+
 module.exports = {
   admin,
   TRUSTED_PROJECTS,
@@ -447,6 +476,7 @@ module.exports = {
   verifyTrustedFirebaseIdToken,
   verifyRequestToken,
   projectCredentialStatus,
+  firebaseAdminEnvSummary,
   readProjectCredential,
   getStorageBucketForProject,
   validateFirebaseDownloadUrl,

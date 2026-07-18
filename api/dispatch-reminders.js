@@ -1,4 +1,5 @@
 const { initAdmin } = require('./_chaos-admin');
+const { firebaseAdminEnvSummary } = require('./_firebase-project-admin');
 const { enforceRateLimit, sendRateLimited } = require('./_rate-limit');
 
 function getCronSecret(req) {
@@ -65,12 +66,17 @@ module.exports = async function handler(req, res) {
   try {
     app = initAdmin(req);
   } catch (error) {
-    console.error('[dispatch-reminders] Firebase Admin setup is missing or invalid:', error?.message || error);
+    const envSummary = (() => {
+      try { return firebaseAdminEnvSummary(req); }
+      catch (_) { return {}; }
+    })();
+    console.error('[dispatch-reminders] Firebase Admin setup is missing or invalid:', error?.message || error, envSummary);
     return res.status(503).json({
       ok: false,
       code: 'firebase_admin_not_configured',
       error: 'Firebase server credentials are not configured for this Vercel environment.',
-      details: error?.message || String(error || 'Unknown Firebase Admin setup error')
+      details: error?.message || String(error || 'Unknown Firebase Admin setup error'),
+      envSummary
     });
   }
   const db = app.firestore();
