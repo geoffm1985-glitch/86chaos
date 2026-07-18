@@ -124,7 +124,7 @@ function initAdmin(reqOrProject = null) {
   if (reqOrProject && typeof reqOrProject === 'object' && reqOrProject.headers) {
     return getAdminAppForRequest(reqOrProject);
   }
-  return getAdminAppForProject(getRequestedProjectId(null));
+  return getAdminAppForRequest(null);
 }
 
 

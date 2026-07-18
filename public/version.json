@@ -1,9 +1,9 @@
 {
-  "version": "15.0.70",
-  "name": "86 Chaos 15.0.70 Clean Source Firebase Testing Hotfix",
-  "releasedAt": "2026-07-18",
-  "label": "86 Chaos 15.0.70",
-  "build": "15.0.70",
-  "updatedAt": "2026-07-18T00:00:00.000Z",
-  "notes": "Rebuilt from the clean 15.0.64 upload. Firebase Admin server routes now trust the project_id inside FIREBASE_SERVICE_ACCOUNT_KEY first so testing deployments can use chaos-test-d1601 without requiring a separate production key."
+  "version": "15.0.71",
+  "name": "86 Chaos 15.0.71 Stable Testing Firebase Load Fix",
+  "releasedAt": "2026-07-12",
+  "label": "86 Chaos 15.0.71",
+  "build": "15.0.71",
+  "updatedAt": "2026-07-13T00:00:00.000Z",
+  "notes": "Rebuilt from the clean 15.0.64 upload. Server routes use the project_id inside FIREBASE_SERVICE_ACCOUNT_KEY for no-token cron/server jobs, and the browser can be forced to the testing Firebase project with REACT_APP_FIREBASE_DEPLOYMENT_MODE=testing or REACT_APP_FIREBASE_ACTIVE_PROJECT_ID=chaos-test-d1601."
 }

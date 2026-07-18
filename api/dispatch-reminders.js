@@ -65,22 +65,22 @@ module.exports = async function handler(req, res) {
   try {
     app = initAdmin(req);
   } catch (error) {
-    const safeEnvSnapshot = {
-      firebaseProjectId: process.env.FIREBASE_PROJECT_ID || '',
-      activeProjectId: process.env.FIREBASE_ACTIVE_PROJECT_ID || '',
-      reactProjectId: process.env.REACT_APP_FIREBASE_PROJECT_ID || '',
-      hasServiceAccountKey: Boolean(process.env.FIREBASE_SERVICE_ACCOUNT_KEY),
-      hasAdminCredentials: Boolean(process.env.FIREBASE_ADMIN_CREDENTIALS),
+    const safeDiagnostics = {
       vercelEnv: process.env.VERCEL_ENV || '',
-      gitRef: process.env.VERCEL_GIT_COMMIT_REF || ''
+      host: String(req.headers.host || ''),
+      activeProjectId: process.env.FIREBASE_ACTIVE_PROJECT_ID || '',
+      firebaseProjectId: process.env.FIREBASE_PROJECT_ID || '',
+      hasGenericServiceAccountKey: Boolean(process.env.FIREBASE_SERVICE_ACCOUNT_KEY),
+      hasAdminCredentials: Boolean(process.env.FIREBASE_ADMIN_CREDENTIALS),
+      hasSplitCredentialParts: Boolean(process.env.FIREBASE_PROJECT_ID && process.env.FIREBASE_CLIENT_EMAIL && process.env.FIREBASE_PRIVATE_KEY)
     };
-    console.error('[dispatch-reminders] Firebase Admin setup is missing or invalid:', error?.message || error, safeEnvSnapshot);
+    console.error('[dispatch-reminders] Firebase Admin setup is missing or invalid:', error?.message || error, safeDiagnostics);
     return res.status(503).json({
       ok: false,
       code: 'firebase_admin_not_configured',
       error: 'Firebase server credentials are not configured for this Vercel environment.',
       details: error?.message || String(error || 'Unknown Firebase Admin setup error'),
-      safeEnvSnapshot
+      diagnostics: safeDiagnostics
     });
   }
   const db = app.firestore();

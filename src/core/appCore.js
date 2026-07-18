@@ -61,8 +61,18 @@ export const prodConfig = {
 export const PROD_FIREBASE_HOSTS = ['app.86chaos.com', '86chaos.com', 'www.86chaos.com'];
 export const isProdFirebaseHost = (hostname = '') => PROD_FIREBASE_HOSTS.includes(String(hostname || '').toLowerCase());
 
-// 3. THE SWITCHER (Automatically routes the database based on the URL)
-export const firebaseConfig = isProdFirebaseHost(window.location.hostname) ? prodConfig : testConfig;
+const normalizeDeployMode = (value = '') => String(value || '').trim().toLowerCase();
+const explicitFirebaseProject = normalizeDeployMode(env('REACT_APP_FIREBASE_ACTIVE_PROJECT_ID', env('REACT_APP_FIREBASE_PROJECT_ID', '')));
+const explicitDeployMode = normalizeDeployMode(env('REACT_APP_FIREBASE_DEPLOYMENT_MODE', ''));
+const forceTestingFirebase = ['chaos-test-d1601', 'test', 'testing', 'preview', 'staging', 'dev', 'development'].includes(explicitFirebaseProject) || ['test', 'testing', 'preview', 'staging', 'dev', 'development'].includes(explicitDeployMode);
+const forceProductionFirebase = ['cheers-34b8d', 'prod', 'production', 'live'].includes(explicitFirebaseProject) || ['prod', 'production', 'live'].includes(explicitDeployMode);
+
+// 3. THE SWITCHER
+// Default rule: production custom domains use production; every preview/testing
+// host uses the test Firebase project. Explicit REACT_APP_FIREBASE_DEPLOYMENT_MODE
+// or REACT_APP_FIREBASE_ACTIVE_PROJECT_ID can override the host for split GitHub/
+// Vercel testing setups.
+export const firebaseConfig = forceTestingFirebase ? testConfig : (forceProductionFirebase || isProdFirebaseHost(window.location.hostname) ? prodConfig : testConfig);
 
 export const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app);
@@ -156,7 +166,7 @@ export const MASTER_ADMIN_EMAIL = (process.env.REACT_APP_MASTER_ADMIN_EMAIL || '
 export const EVENT_TAGS = ['Standard Day', 'Packers Game', 'Brewers Game', 'Live Music', 'Severe Weather', 'Private Catering', 'Holiday'];
 
 // --- VERSION TRACKING ---
-export const CURRENT_VERSION = '15.0.70';
+export const CURRENT_VERSION = '15.0.71';
 
 // --- Helpers ---
 export const useLiveCollection = (coll, restId, options = {}) => {

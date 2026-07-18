@@ -56,14 +56,22 @@ function isProductionWebHost(hostname = '') {
 }
 
 function deploymentLooksLikeTesting(req = null) {
+  const explicitMode = String(process.env.FIREBASE_DEPLOYMENT_MODE || process.env.REACT_APP_FIREBASE_DEPLOYMENT_MODE || '').toLowerCase().trim();
+  if (['test', 'testing', 'preview', 'staging', 'dev', 'development'].includes(explicitMode)) return true;
+  if (['prod', 'production', 'live'].includes(explicitMode)) return false;
+
+  const activeProject = String(process.env.FIREBASE_ACTIVE_PROJECT_ID || process.env.REACT_APP_FIREBASE_ACTIVE_PROJECT_ID || '').trim();
+  if (activeProject === 'chaos-test-d1601') return true;
+  if (activeProject === 'cheers-34b8d') return false;
+
   const host = requestHost(req) || requestOriginHost(req);
   if (host && !isProductionWebHost(host)) return true;
-  const explicitMode = String(process.env.FIREBASE_DEPLOYMENT_MODE || process.env.REACT_APP_FIREBASE_DEPLOYMENT_MODE || '').toLowerCase();
-  if (['test', 'testing', 'preview', 'staging', 'dev', 'development'].includes(explicitMode)) return true;
-  const vercelEnv = String(process.env.VERCEL_ENV || '').toLowerCase();
+
+  const vercelEnv = String(process.env.VERCEL_ENV || '').toLowerCase().trim();
   if (vercelEnv === 'preview' || vercelEnv === 'development') return true;
+
   const gitRef = String(process.env.VERCEL_GIT_COMMIT_REF || process.env.VERCEL_BRANCH_URL || '').toLowerCase();
-  if (/(test|testing|preview|staging|dev|development)/.test(gitRef)) return true;
+  if (/\b(test|testing|preview|staging|dev|development)\b/.test(gitRef)) return true;
   return false;
 }
 
@@ -223,10 +231,10 @@ function readGenericCredentialProject() {
 }
 
 function getConfiguredDefaultProjectId(req = null) {
-  // 86 Chaos uses one Firebase Admin JSON per deployment. The project_id inside
-  // FIREBASE_SERVICE_ACCOUNT_KEY is the safest source of truth for server routes.
-  // This prevents testing deployments from being accidentally forced back to
-  // cheers-34b8d by a stale FIREBASE_PROJECT_ID or REACT_APP_FIREBASE_PROJECT_ID.
+  // 86 Chaos uses one Firebase Admin JSON per deployment. For server-to-server
+  // routes, the project_id inside FIREBASE_SERVICE_ACCOUNT_KEY is the source of
+  // truth. This keeps testing deployments on chaos-test-d1601 even if an old
+  // FIREBASE_PROJECT_ID env var still says cheers-34b8d.
   const generic = readGenericCredentialProject();
   if (generic?.projectId) return generic.projectId;
 
@@ -241,8 +249,6 @@ function getConfiguredDefaultProjectId(req = null) {
   ]);
   if (explicitPinnedServer && TRUSTED_PROJECTS.includes(explicitPinnedServer)) return explicitPinnedServer;
 
-  // Only honor FIREBASE_PROJECT_ID as a split-credential hint when the split
-  // credential pieces are also present. A full JSON key above wins first.
   const splitProjectId = clean(process.env.FIREBASE_PROJECT_ID);
   if (splitProjectId && TRUSTED_PROJECTS.includes(splitProjectId) && process.env.FIREBASE_CLIENT_EMAIL && process.env.FIREBASE_PRIVATE_KEY) return splitProjectId;
 
@@ -251,6 +257,7 @@ function getConfiguredDefaultProjectId(req = null) {
     const aliases = PROJECT_ENV_ALIASES[projectId] || {};
     for (const name of aliases.json || []) projectSpecificJsonNames.push({ name, projectId });
   }
+
   for (const { name, projectId } of projectSpecificJsonNames) {
     const raw = process.env[name];
     if (!raw || !String(raw).trim()) continue;
@@ -270,14 +277,8 @@ function getRequestedProjectId(req, fallback = '') {
     catch (_) {}
   }
 
-  // Server-to-server jobs like /api/dispatch-reminders have no Firebase ID
-  // token. Use the service-account JSON project first, then explicit pinned
-  // server variables, then host/deployment heuristics. Do not let old public
-  // React env vars silently choose production for a testing deployment.
-  const configuredProjectId = getConfiguredDefaultProjectId(req);
-  if (configuredProjectId) return configuredProjectId;
   if (fallback) return clean(fallback);
-  return deploymentLooksLikeTesting(req) ? 'chaos-test-d1601' : 'cheers-34b8d';
+  return getConfiguredDefaultProjectId(req);
 }
 
 function appNameForProject(projectId) {
@@ -285,30 +286,25 @@ function appNameForProject(projectId) {
 }
 
 function getAdminAppForProject(projectId, { requireCredentials = true } = {}) {
-  let wanted = clean(projectId);
-  const generic = readGenericCredentialProject();
-  if (!wanted && generic?.projectId) wanted = generic.projectId;
+  const wanted = clean(projectId);
   if (!wanted) throw new Error('Could not determine the Firebase project for this request.');
   if (!TRUSTED_PROJECTS.includes(wanted)) throw new Error(`Firebase project ${wanted} is not approved for 86 Chaos.`);
-
-  // If the deployment uses the one-key setup, the JSON key's embedded project
-  // must win. This makes testing GitHub/Vercel deployments with a
-  // chaos-test-d1601 key work even when a stale FIREBASE_PROJECT_ID still says
-  // cheers-34b8d.
-  if (generic?.projectId && generic.projectId !== wanted) {
-    wanted = generic.projectId;
-  }
 
   const appName = appNameForProject(wanted);
   const existing = admin.apps.find(app => app.name === appName);
   if (existing) return existing;
 
-  const found = readProjectCredential(wanted) || generic;
+  const found = readProjectCredential(wanted);
   if (!found) {
     if (!requireCredentials) return null;
+    const generic = readGenericCredentialProject();
+    const genericNote = generic?.projectId
+      ? ` FIREBASE_SERVICE_ACCOUNT_KEY currently contains project_id ${generic.projectId}; this route requested ${wanted}.`
+      : '';
     const recommended = wanted === 'chaos-test-d1601' ? 'FIREBASE_TEST_SERVICE_ACCOUNT_KEY' : 'FIREBASE_PRODUCTION_SERVICE_ACCOUNT_KEY';
     throw new Error(
-      `No server credential is configured for Firebase project ${wanted}. ` +
+      `No server credential is configured for Firebase project ${wanted}.` +
+      genericNote + ' ' +
       `Use FIREBASE_SERVICE_ACCOUNT_KEY with the complete service-account JSON for the active deployment project. ` +
       `Testing should use project_id chaos-test-d1601; production should use project_id cheers-34b8d. ` +
       `Optional advanced aliases are ${recommended}, FIREBASE_ADMIN_CREDENTIALS, or split FIREBASE_PROJECT_ID/FIREBASE_CLIENT_EMAIL/FIREBASE_PRIVATE_KEY. Redeploy after changing Vercel env vars.`
