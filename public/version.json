@@ -1,7 +1,9 @@
 {
   "version": "15.0.65",
-  "name": "86 Chaos 15.0.65 System Administrator Control Center Rebuild",
-  "date": "2026-07-14",
+  "name": "86 Chaos 15.0.65 Voice, Scheduling, Availability, Reminders, and Event Reminder Polish",
+  "releasedAt": "2026-07-17",
   "label": "86 Chaos 15.0.65",
-  "build": "15.0.65"
+  "build": "15.0.65",
+  "updatedAt": "2026-07-17T00:00:00.000Z",
+  "notes": "Fixes duplicate voice reminder commits, adds request-off archive/history filters, adds employee availability records and Schedule Builder warnings, adds reminder snooze and due dots, dedupes in-app toasts, adds Event Calendar push/order reminder settings, updates Brother QL-810W prep label printing, and reorders the main menu with Time Clock & Schedule first."
 }

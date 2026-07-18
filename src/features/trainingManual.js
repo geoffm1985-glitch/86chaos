@@ -11,7 +11,7 @@ export const SYSTEM_TRAINING_MANUAL_CHAPTERS = [
     keywords: "start navigation hamburger menu search voice workspace switch restaurant date alerts permissions install phone mobile demo",
     sections: [
       { title: "Open the right area", steps: [
-        "Tap the menu button in the top-right corner. Tabs are grouped into Account, Operations, Manager Tools, Management, and System.",
+        "Tap the menu button in the top-right corner. Tabs are grouped into People & Scheduling, Today, Kitchen Operations, Business & Financials, Tools & Automation, and System & Support. Time Clock & Schedule is the first clickable option.",
         "Use the menu search when you know what you want to do but not where it lives. Searching for words such as punch, schedule, inventory, or help also shows useful shortcuts.",
         "The app only shows tabs your role is allowed to use. A missing tab usually means the workspace module is turned off or your permissions do not include it.",
         "If you belong to more than one restaurant, use the workspace switcher in the menu. Always confirm the restaurant name before saving, publishing, or deleting anything."
@@ -30,6 +30,39 @@ export const SYSTEM_TRAINING_MANUAL_CHAPTERS = [
       ]}
     ],
     notes: ["When in doubt, open Help Center first. System Administrators can use this full manual for deeper tab-by-tab instructions."]
+  },
+  {
+    id: "scheduling-reminders-availability-update",
+    group: "Scheduling & Reminders",
+    title: "Request-Off, Availability, Reminders, and Event Reminder Basics",
+    tab: "Time Clock & Schedule / My Reminders / Event Calendar",
+    audience: "Everyone; manager actions require permission",
+    summary: "Request specific days off, manage weekly availability, snooze reminders, and understand event/order reminders.",
+    keywords: "request off time off archive availability weekly availability preferred shifts snooze reminders event reminders order reminders brother ql-810w labels",
+    sections: [
+      { title: "Request-off vs availability", steps: [
+        "Use Request Off for specific dates or date ranges, such as vacation, appointments, or one partial day.",
+        "Use Availability for your normal weekly schedule, preferred shifts, preferred days off, max hours, or temporary school/seasonal availability.",
+        "Old request-off records stay in history instead of being deleted. Managers can filter Needs Review, Upcoming Approved, Published/Archived, or All.",
+        "After a schedule is published, approved and denied request-offs from that date range move out of the active workflow. Pending items remain visible for manager review."
+      ]},
+      { title: "Reminders and snooze", steps: [
+        "Due or overdue reminders show a red dot where reminders are surfaced.",
+        "Use Snooze to move the next reminder time forward in 30-minute increments without deleting the original reminder.",
+        "Private reminders stay private. Shared reminders stay visible only to the intended teammate and the creator."
+      ]},
+      { title: "Event and order reminders", steps: [
+        "When creating or editing an event, add one or more push reminders such as 30 minutes, 1 hour, 1 day, or 1 week before the event.",
+        "Order Reminders can be turned on for events that need ordering before cutoff days. Choose cutoff weekdays and recipients based on your permissions.",
+        "Changing or deleting an event cancels or recalculates future event and order reminders so old reminders do not keep firing."
+      ]},
+      { title: "Prep label printing", steps: [
+        "Prep labels are formatted for kitchen label printing and the print view hides the full app shell.",
+        "The prep label helper text notes that the profile is intended for Brother QL-810W label printer use.",
+        "Check your browser print preview before printing a large batch."
+      ]}
+    ],
+    notes: ["Manager-only archive, restore, approval, and override details are covered in the Administrator Manual."]
   },
   {
     id: "voice-assistant-preview",

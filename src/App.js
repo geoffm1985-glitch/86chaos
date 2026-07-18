@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { Bell, Bug, ChevronLeft, ChevronRight, Loader2, Menu, Moon, Send, X } from 'lucide-react';
 import { addDoc, collection, doc, onSnapshot, updateDoc } from 'firebase/firestore';
 import { getToken, onMessage } from 'firebase/messaging';
@@ -125,6 +125,7 @@ export default function App() {
       
   const rId = ghostTenant ? ghostTenant.id : appUser?.restaurantId;
   const [activeTabState, setActiveTabState] = useState(() => appUser?.preferences?.defaultTab || 'today');
+  const [scheduleShellSubTab, setScheduleShellSubTab] = useState('');
   const [clientData, setClientData] = useState(null);
   const [heartbeatDebug, setHeartbeatDebug] = useState(null);
   const clientFeatures = clientData?.features || {};
@@ -978,12 +979,29 @@ What I clicked / expected:
     }
   };
 
-  const addToast = (title, message) => {
-    const id = Date.now();
-    const reportable = isReportableToast(title, message);
-    setToasts(prev => [...prev, { id, title, message, reportable }]);
+  const toastDedupeRef = useRef(new Map());
+  const addToast = useCallback((title, message, options = {}) => {
+    const cleanTitle = String(title || 'Notice').trim();
+    const cleanMessage = String(message || '').trim();
+    const now = Date.now();
+    const dedupeWindowMs = Number(options.dedupeWindowMs || 3200);
+    const type = options.type || (isReportableToast(cleanTitle, cleanMessage) ? 'reportable' : 'info');
+    const dedupeKey = options.dedupeKey || `${type}:${cleanTitle.toLowerCase()}:${cleanMessage.toLowerCase()}`;
+    const lastShownAt = toastDedupeRef.current.get(dedupeKey) || 0;
+    if (!options.allowDuplicate && now - lastShownAt < dedupeWindowMs) {
+      if (import.meta?.env?.DEV) console.debug('[86chaos toast deduped]', { cleanTitle, cleanMessage, dedupeKey });
+      return null;
+    }
+    toastDedupeRef.current.set(dedupeKey, now);
+    for (const [key, seenAt] of toastDedupeRef.current.entries()) {
+      if (now - seenAt > 30000) toastDedupeRef.current.delete(key);
+    }
+    const id = `${now}_${Math.random().toString(36).slice(2, 8)}`;
+    const reportable = isReportableToast(cleanTitle, cleanMessage);
+    setToasts(prev => [...prev, { id, title: cleanTitle, message: cleanMessage, reportable }]);
     setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), reportable ? 9000 : 6000);
-  };
+    return id;
+  }, []);
 
   const offlineQueue = liveAppUser ? getOfflineQueue(liveAppUser.restaurantId, liveAppUser.id) : [];
 
@@ -1317,9 +1335,9 @@ What I clicked / expected:
     const routeIsInternalAdmin = activeTabState === 'godmode' || activeTabState === 'audit';
     if (!routeIsInternalAdmin && routeAccess && routeAccess.allowed === false) return <LockedFeatureScreen access={routeAccess} appUser={liveAppUser} setActiveTab={setActiveTab} />;
     if (activeTabState === 'today') return <TabToday key={`tdy-${rId}`} currentDate={currentDate} appUser={liveAppUser} users={displayUsers} shifts={shifts} shiftSwaps={shiftSwaps} timeOffRequests={timeOffRequests} events={events} sales={sales} timePunches={timePunches} inventoryItems={inventoryItems} maintenanceLogs={maintenanceLogs} prepItems={prepItems} tasks={tasks} recipes={recipes} menuDependencies={menuDependencies} clientData={displayClientData} setActiveTab={setActiveTab} addToast={addToast} registerUndo={registerUndo} />;
-    if (activeTabState === 'schedule' && (liveAppUser?.isAdmin || liveAppUser?.permissions?.schedule)) return <TabMasterSchedule key={`schpub-${rId}-${liveAppUser?.id}`} currentDate={currentDate} appUser={liveAppUser} users={displayUsers} shifts={shifts} shiftSwaps={shiftSwaps} timeOffRequests={timeOffRequests} events={events} addToast={addToast} initialSubTab="schedule-builder" voiceScheduleSubTabTarget={voiceScheduleSubTabTarget} clientData={displayClientData} scheduleBuilderProps={{ currentDate, users: displayUsers, shifts, events, timeOffRequests, timePunches, addToast, appUser: liveAppUser, clientData: displayClientData }} />;
+    if (activeTabState === 'schedule' && (liveAppUser?.isAdmin || liveAppUser?.permissions?.schedule)) return <TabMasterSchedule key={`schpub-${rId}-${liveAppUser?.id}`} currentDate={currentDate} setCurrentDate={setCurrentDate} onSubTabChange={setScheduleShellSubTab} appUser={liveAppUser} users={displayUsers} shifts={shifts} shiftSwaps={shiftSwaps} timeOffRequests={timeOffRequests} events={events} addToast={addToast} initialSubTab="schedule-builder" voiceScheduleSubTabTarget={voiceScheduleSubTabTarget} clientData={displayClientData} scheduleBuilderProps={{ currentDate, users: displayUsers, shifts, events, timeOffRequests, timePunches, addToast, appUser: liveAppUser, clientData: displayClientData }} />;
     if (activeTabState === 'events' && displayClientFeatures?.events !== false && (liveAppUser?.isAdmin || liveAppUser?.permissions?.events || liveAppUser?.permissions?.schedule || liveAppUser?.permissions?.team)) return <TabSchedule key={`evt-${rId}`} currentDate={currentDate} users={displayUsers} shifts={shifts} events={events} timeOffRequests={timeOffRequests} timePunches={timePunches} addToast={addToast} appUser={liveAppUser} clientData={displayClientData} initialSubTab="events" hideSubTabs />;
-    if (activeTabState === 'published') return <TabMasterSchedule key={`pub-${rId}-${liveAppUser?.id}`} currentDate={currentDate} appUser={liveAppUser} users={displayUsers} shifts={shifts} shiftSwaps={shiftSwaps} timeOffRequests={timeOffRequests} events={events} addToast={addToast} voiceScheduleSubTabTarget={voiceScheduleSubTabTarget} clientData={displayClientData} scheduleBuilderProps={{ currentDate, users: displayUsers, shifts, events, timeOffRequests, timePunches, addToast, appUser: liveAppUser, clientData: displayClientData }} />;
+    if (activeTabState === 'published') return <TabMasterSchedule key={`pub-${rId}-${liveAppUser?.id}`} currentDate={currentDate} setCurrentDate={setCurrentDate} onSubTabChange={setScheduleShellSubTab} appUser={liveAppUser} users={displayUsers} shifts={shifts} shiftSwaps={shiftSwaps} timeOffRequests={timeOffRequests} events={events} addToast={addToast} voiceScheduleSubTabTarget={voiceScheduleSubTabTarget} clientData={displayClientData} scheduleBuilderProps={{ currentDate, users: displayUsers, shifts, events, timeOffRequests, timePunches, addToast, appUser: liveAppUser, clientData: displayClientData }} />;
     if (activeTabState === 'ops' && displayClientFeatures?.ops !== false && (liveAppUser?.isSuperAdmin || liveAppUser?.isAdmin || liveAppUser?.permissions?.ops)) return <TabOpsCenter key={`ops-${rId}`} currentDate={currentDate} appUser={liveAppUser} users={displayUsers} shifts={shifts} events={events} sales={sales} timePunches={timePunches} addToast={addToast} setActiveTab={setActiveTab} clientData={displayClientData} />;
     if ((activeTabState === 'financials' || activeTabState === 'sales' || activeTabState === 'labor') && (liveAppUser?.isSuperAdmin || liveAppUser?.isAdmin || liveAppUser?.permissions?.labor || liveAppUser?.permissions?.sales)) return <TabFinancials key={`fin-${rId}`} currentDate={currentDate} users={displayUsers} shifts={shifts} sales={sales} timePunches={timePunches} addToast={addToast} appUser={liveAppUser} clientData={displayClientData} setActiveTab={setActiveTab} initialSubTab={activeTabState === 'sales' ? 'ledger' : activeTabState === 'labor' ? 'labor' : 'overview'} />;
     if (activeTabState === 'messages' && displayClientFeatures?.messages !== false) return <TabMessages key={`msg-${rId}`} events={events} appUser={liveAppUser} users={displayUsers} addToast={addToast} />;
@@ -1597,7 +1615,7 @@ return (
         </div>
       )}
       
-      {['schedule', 'events', 'published', 'month', 'financials', 'sales', 'prep'].includes(activeTabState) && (
+      {['schedule', 'events', 'published', 'month', 'financials', 'sales', 'prep'].includes(activeTabState) && !(['schedule', 'published'].includes(activeTabState) && ['time-off', 'availability'].includes(scheduleShellSubTab)) && (
         <div className="desktop-date-strip py-4 px-4 shadow-sm z-30 border-b flex justify-between items-center bg-[#1A2126] border-[#2A353D] relative">
           {(activeTabState === 'sales' || activeTabState === 'financials') ? (
             <div className="w-full text-center">

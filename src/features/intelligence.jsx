@@ -24,6 +24,14 @@ const formatElapsedSeconds = (seconds = 0) => {
 
 const formatUploadBytes = (bytes = 0) => `${(Math.max(0, bytes) / (1024 * 1024)).toFixed(1)}MB`;
 
+
+const REMINDER_SNOOZE_OPTIONS = [30, 60, 90, 120, 180, 240];
+const reminderIsAttentionDue = (reminder = {}) => {
+  if (!reminder || ['done', 'completed', 'cancelled', 'canceled', 'archived'].includes(String(reminder.status || '').toLowerCase())) return false;
+  const dueAt = new Date(reminder.snoozedUntil || reminder.nextReminderAt || reminder.scheduledAt || reminder.dueAt || 0).getTime();
+  return Number.isFinite(dueAt) && dueAt <= Date.now();
+};
+
 const FIRESTORE_BATCH_DELETE_LIMIT = 450;
 
 const batchDeleteRefs = async (refs = [], onProgress = null) => {
@@ -83,6 +91,7 @@ const TabPersonalReminders = ({ appUser, addToast }) => {
   const [assignedToUserId, setAssignedToUserId] = useState(appUser?.id || '');
   const [editing, setEditing] = useState(null);
   const [listening, setListening] = useState(false);
+  const [snoozeSelections, setSnoozeSelections] = useState({});
   const reminderMap = new Map();
   [...ownReminders, ...createdReminders, ...assignedReminders].forEach(reminder => reminder?.id && reminderMap.set(reminder.id, reminder));
   const sortedReminders = [...reminderMap.values()].sort((a, b) => String(a.scheduledAt || '').localeCompare(String(b.scheduledAt || '')));
@@ -184,8 +193,10 @@ const TabPersonalReminders = ({ appUser, addToast }) => {
       shared: isShared,
       visibility: isShared ? 'shared_reminder' : 'private_reminder',
       title: title.trim(),
+      titleNormalized: title.trim().toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim(),
       notes: notes.trim(),
       scheduledAt: scheduledDate.toISOString(),
+      dueAt: scheduledDate.toISOString(),
       status: 'scheduled',
       updatedAt: new Date().toISOString(),
       source: editing ? 'manual_update' : (isShared ? 'manual_shared_reminder' : 'manual_private_reminder')
@@ -221,6 +232,24 @@ const TabPersonalReminders = ({ appUser, addToast }) => {
   const markDone = async (reminder) => {
     await updateDoc(doc(db, 'personalReminders', reminder.id), { status: 'done', completedAt: new Date().toISOString() });
     addToast('Reminder Done', reminder.title || 'Reminder');
+  };
+
+  const snoozeReminder = async (reminder) => {
+    const minutes = Math.max(30, Number(snoozeSelections[reminder.id] || 30));
+    const nextAt = new Date(Date.now() + minutes * 60000).toISOString();
+    await updateDoc(doc(db, 'personalReminders', reminder.id), {
+      scheduledAt: nextAt,
+      dueAt: nextAt,
+      snoozedUntil: nextAt,
+      snoozedAt: new Date().toISOString(),
+      snoozedBy: appUser?.id || '',
+      snoozeMinutes: minutes,
+      status: 'scheduled',
+      dispatchedAt: null,
+      dispatchKey: ''
+    });
+    await logAudit(appUser, 'REMINDER_SNOOZED', reminder.title || 'Reminder', `${minutes} minutes`);
+    addToast('Reminder Snoozed', `${reminder.title || 'Reminder'} will return in ${minutes} minutes.`);
   };
 
   const removeReminder = async (reminder) => {
@@ -277,14 +306,19 @@ const TabPersonalReminders = ({ appUser, addToast }) => {
             const canEditReminder = createdByMe;
             const canDeleteReminder = createdByMe;
             const shareLabel = reminder.shared ? (createdByMe ? `For ${reminder.assignedToName || 'team member'}` : `From ${reminder.createdByName || 'team member'}`) : 'Just me';
+            const attentionDue = reminderIsAttentionDue(reminder);
             return (
-            <div key={reminder.id} className={`${T.row} flex items-center justify-between gap-3`}>
+            <div key={reminder.id} className={`${T.row} flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${attentionDue ? 'border-red-500/50 bg-red-950/10' : ''}`}>
               <div className="min-w-0">
-                <div className="font-black text-white text-sm truncate flex items-center gap-2">{reminder.shared && <Share2 size={13} className="text-blue-300"/>}{reminder.title}</div>
+                <div className="font-black text-white text-sm truncate flex items-center gap-2">{attentionDue && <span className="w-2.5 h-2.5 rounded-full bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.9)] animate-pulse" title="Due or overdue"/>}{reminder.shared && <Share2 size={13} className="text-blue-300"/>}{reminder.title}</div>
                 <div className="text-[10px] text-[#D4A381] font-black uppercase tracking-widest mt-1 flex items-center gap-1"><Clock size={12}/> {reminder.scheduledAt ? formatClockDateTime(reminder.scheduledAt) : 'No time'} • {shareLabel}</div>
                 {reminder.notes && <div className="text-xs text-slate-500 font-bold mt-1 truncate">{reminder.notes}</div>}
               </div>
-              <div className="flex items-center gap-1">
+              <div className="flex flex-wrap items-center gap-1 justify-end">
+                <select value={snoozeSelections[reminder.id] || 30} onChange={e => setSnoozeSelections(prev => ({ ...prev, [reminder.id]: Number(e.target.value) }))} className="bg-[#12161A] border border-[#2A353D] rounded-lg px-2 py-2 text-[10px] font-black text-slate-200">
+                  {REMINDER_SNOOZE_OPTIONS.map(minutes => <option key={minutes} value={minutes}>{minutes === 90 ? '1.5 hours' : minutes < 60 ? `${minutes} minutes` : `${minutes / 60} hours`}</option>)}
+                </select>
+                <button onClick={() => snoozeReminder(reminder)} disabled={!assignedToMe && !createdByMe} className="px-2 py-2 rounded-lg bg-[#12161A] text-[#D4A381] border border-[#2A353D] text-[10px] font-black uppercase disabled:opacity-40">Snooze</button>
                 <button onClick={() => markDone(reminder)} disabled={!assignedToMe && !createdByMe} className="p-2 rounded-lg bg-emerald-900/20 text-emerald-300 border border-emerald-900/50 disabled:opacity-40"><Check size={16}/></button>
                 <button onClick={() => editReminder(reminder)} disabled={!canEditReminder} className="p-2 rounded-lg bg-[#12161A] text-slate-300 border border-[#2A353D] disabled:opacity-40"><Calendar size={16}/></button>
                 <button onClick={() => removeReminder(reminder)} disabled={!canDeleteReminder} className="p-2 rounded-lg bg-red-900/20 text-red-300 border border-red-900/50 disabled:opacity-40"><Trash2 size={16}/></button>

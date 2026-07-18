@@ -38,7 +38,7 @@ async function main() {
   const payload = {
     ...POLICY,
     app: '86 Chaos',
-    appVersion: '15.0.64',
+    appVersion: '15.0.65',
     updatedAt: new Date().toISOString(),
     updatedBy: process.env.RETENTION_SETUP_ACTOR || 'retention-setup-script',
     automations: {

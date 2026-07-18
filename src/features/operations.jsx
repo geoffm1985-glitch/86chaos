@@ -503,6 +503,7 @@ const TabPrep = ({ currentDate, appUser, addToast, setLabelsToPrint }) => {
                   }));
                   setLabelsToPrint({items: labels, prepDate});
               }} disabled={selectedActivePrep.length===0} className={`flex-1 ${T.btn} disabled:opacity-50 flex items-center justify-center gap-2`}><ClipboardList size={18}/> Print {selectedActivePrep.length || ''} {selectedActivePrep.length === 1 ? 'Label' : 'Labels'}</button>
+              <p className="absolute left-4 right-4 -top-5 text-center text-[10px] font-bold text-slate-500">* Intended for use with Brother QL-810W label printer.</p>
               
               <button onClick={async () => { 
                   for(const item of selectedActivePrep){
