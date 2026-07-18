@@ -239,6 +239,8 @@ const normalizeTipAmount = (value) => {
 
 const TabMasterSchedule = ({ currentDate, setCurrentDate = null, onSubTabChange = null, appUser, users, shifts, shiftSwaps, timeOffRequests, events, addToast, initialSubTab = 'my-schedule', voiceScheduleSubTabTarget = null, scheduleBuilderProps = null, clientData = null }) => {
   const [rosterFilterDate, setRosterFilterDate] = useState('');
+  const [isFullSchedulePickerOpen, setIsFullSchedulePickerOpen] = useState(false);
+  const [fullSchedulePickerMonth, setFullSchedulePickerMonth] = useState(getMonthStr(currentDate));
   const monthStr = getMonthStr(currentDate);
   
   // --- TIME CLOCK LOGIC ---
@@ -267,9 +269,25 @@ const TabMasterSchedule = ({ currentDate, setCurrentDate = null, onSubTabChange 
 
   useEffect(() => { onSubTabChange?.(subTab); }, [subTab, onSubTabChange]);
 
+  useEffect(() => {
+    setFullSchedulePickerMonth(getMonthStr(currentDate));
+  }, [currentDate]);
+
   const jumpFullScheduleDate = (dateKey = '') => {
     setRosterFilterDate(dateKey);
     if (dateKey && typeof setCurrentDate === 'function') setCurrentDate(dateKey);
+  };
+
+  const changeFullSchedulePickerMonth = (offset) => {
+    const base = new Date((fullSchedulePickerMonth || monthStr) + '-01T12:00:00');
+    base.setMonth(base.getMonth() + offset);
+    setFullSchedulePickerMonth(base.toISOString().substring(0, 7));
+  };
+
+  const selectFullSchedulePickerDate = (dateKey) => {
+    jumpFullScheduleDate(dateKey);
+    setFullSchedulePickerMonth(getMonthStr(dateKey));
+    setIsFullSchedulePickerOpen(false);
   };
 
   useEffect(() => {
@@ -846,18 +864,51 @@ const handleOfferSwap = async (shift) => {
           acc[key].push(shift);
           return acc;
         }, {});
+        const pickerMonth = fullSchedulePickerMonth || monthStr;
+        const pickerDays = Array.from({ length: getDaysInMonth(pickerMonth) }).map((_, i) => `${pickerMonth}-${String(i + 1).padStart(2, '0')}`);
+        const pickerFirstDayOffset = new Date(pickerMonth + '-01T12:00:00').getDay();
+        const publishedShiftDays = new Set(shifts.filter(s => s?.isPublished && String(s.date || '').startsWith(pickerMonth)).map(s => s.date));
         return (
           <div className={`${T.card} overflow-hidden animate-[slideIn_0.2s_ease-out]`}>
-            <div className="bg-[#12161A] p-3 border-b border-[#2A353D] flex flex-col sm:flex-row justify-between sm:items-center gap-3">
-              <div className="flex items-center gap-2">
-                 <h3 className={`text-xs font-black uppercase tracking-widest ${T.copper}`}>Active Roster</h3>
-                 <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider hidden sm:inline">({formatDisplayMonth(currentDate)})</span>
+            <div className="bg-[#12161A] p-3 border-b border-[#2A353D] flex flex-col gap-3">
+              <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-3">
+                <button type="button" onClick={() => setIsFullSchedulePickerOpen(prev => !prev)} className="flex items-center gap-2 text-left rounded-xl border border-[#2A353D] bg-[#0B0E11] px-3 py-2 hover:border-[#D4A381]/60 transition-colors">
+                  <Calendar size={16} className={T.copper}/>
+                  <div>
+                    <h3 className={`text-xs font-black uppercase tracking-widest ${T.copper}`}>Active Roster</h3>
+                    <span className="text-[10px] text-slate-300 font-black uppercase tracking-wider">{rosterFilterDate ? formatDisplayDate(rosterFilterDate) : formatDisplayMonth(currentDate)}</span>
+                  </div>
+                </button>
+                <div className="flex items-center gap-2">
+                  {rosterFilterDate && <button type="button" onClick={() => setRosterFilterDate('')} className="text-[10px] font-black uppercase tracking-widest text-slate-300 hover:text-white border border-[#2A353D] rounded-xl px-3 py-2">Show Full Month</button>}
+                  <button type="button" onClick={() => setIsFullSchedulePickerOpen(prev => !prev)} className={T.btnAlt}>Jump to Date</button>
+                </div>
               </div>
-              <div className="flex items-center gap-2">
-                 <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">Filter Day:</span>
-                 <input type="date" value={rosterFilterDate} onChange={(e) => jumpFullScheduleDate(e.target.value)} className={`${T.input} py-1 px-2 text-xs w-auto min-w-[130px]`} />
-                 {rosterFilterDate && <button onClick={() => setRosterFilterDate('')} className="text-slate-400 hover:text-red-400 p-1"><X size={14}/></button>}
-              </div>
+              {isFullSchedulePickerOpen && (
+                <div className="rounded-2xl border border-[#2A353D] bg-[#0B0E11] overflow-hidden shadow-2xl max-w-full sm:max-w-md">
+                  <div className="bg-[#12161A] p-3 border-b border-[#2A353D] flex justify-between items-center">
+                    <button type="button" onClick={() => changeFullSchedulePickerMonth(-1)} className={T.btnAlt}><ChevronLeft size={16}/></button>
+                    <div className="font-black text-sm text-white tracking-tight text-center">{formatDisplayMonth(pickerMonth)}</div>
+                    <button type="button" onClick={() => changeFullSchedulePickerMonth(1)} className={T.btnAlt}><ChevronRight size={16}/></button>
+                  </div>
+                  <div className="grid grid-cols-7 border-t border-[#2A353D]">
+                    {['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map(day => <div key={day} className={`py-1.5 text-center text-[9px] font-black ${T.copper} uppercase border-b border-[#2A353D] bg-[#12161A]`}>{day}</div>)}
+                    {Array.from({ length: pickerFirstDayOffset }).map((_, i) => <div key={`full-empty-${i}`} className="min-h-[42px] border-b border-r border-[#2A353D] bg-[#1A2126]/60" />)}
+                    {pickerDays.map(day => {
+                      const hasShifts = publishedShiftDays.has(day);
+                      const selected = day === rosterFilterDate;
+                      const today = day === getToday();
+                      return (
+                        <button type="button" key={day} onClick={() => selectFullSchedulePickerDate(day)} className={`min-h-[48px] p-1 border-b border-r border-[#2A353D] flex flex-col items-center justify-center transition-colors ${selected ? 'bg-[#8F6040]/25 ring-1 ring-[#D4A381] text-[#D4A381]' : 'bg-[#10161B] hover:bg-[#1A2126] text-slate-300'}`}>
+                          <span className={`text-xs font-black ${today ? T.copper : ''}`}>{Number(day.slice(-2))}</span>
+                          {hasShifts && <span className="mt-1 h-1.5 w-1.5 rounded-full bg-[#D4A381]" />}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <div className="p-2 text-[10px] font-bold text-slate-500">Tap a day to jump straight to that date. Dots show published shifts.</div>
+                </div>
+              )}
             </div>
             <div className="divide-y divide-[#2A353D] max-h-[60vh] overflow-y-auto custom-scrollbar">
               {filteredRosterShifts.map((shift, index) => {
@@ -920,6 +971,9 @@ const [eventDate, setEventDate] = useState(getToday());
   const [repeatUntil, setRepeatUntil] = useState('');
   const [eventPushReminders, setEventPushReminders] = useState([]);
   const [newEventReminderOffset, setNewEventReminderOffset] = useState('60');
+  const [newEventReminderMode, setNewEventReminderMode] = useState('offset');
+  const [newEventReminderDate, setNewEventReminderDate] = useState(getToday());
+  const [newEventReminderTime, setNewEventReminderTime] = useState('09:00');
   const [orderReminderEnabled, setOrderReminderEnabled] = useState(false);
   const [orderReminderDays, setOrderReminderDays] = useState([]);
   const [eventReminderRecipientMode, setEventReminderRecipientMode] = useState('creator');
@@ -1312,12 +1366,53 @@ const eventReminderOptions = [
   { label: '1 week before', minutes: 10080 }
 ];
 const orderReminderWeekdays = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+const getEventStartDateTime = (dateKey = eventDate, timeValue = eventTime) => {
+  if (!dateKey) return null;
+  const safeTime = timeValue || '09:00';
+  const d = new Date(`${dateKey}T${safeTime}:00`);
+  return Number.isFinite(d.getTime()) ? d : null;
+};
+const getEventReminderKey = (rem = {}) => rem.id || rem.reminderKey || (rem.scheduledAt ? `absolute:${rem.scheduledAt}` : `offset:${Number(rem.minutesBefore || 0)}`);
+const getEventReminderSortTime = (rem = {}) => {
+  if (rem.scheduledAt) { const d = new Date(rem.scheduledAt); if (Number.isFinite(d.getTime())) return d.getTime(); }
+  const start = getEventStartDateTime();
+  return start ? start.getTime() - Number(rem.minutesBefore || 0) * 60000 : 0;
+};
+const labelEventReminder = (rem = {}) => {
+  if (rem.scheduledAt) {
+    const dateKey = rem.absoluteDate || String(rem.scheduledAt).slice(0, 10);
+    const timeKey = rem.absoluteTime || String(rem.scheduledAt).slice(11, 16);
+    return rem.label || `${formatDisplayDate(dateKey)} at ${formatShortTime(timeKey)}`;
+  }
+  return rem.label || eventReminderOptions.find(o => Number(o.minutes) === Number(rem.minutesBefore))?.label || `${rem.minutesBefore} minutes before`;
+};
 const addEventReminderOffset = () => {
+  if (newEventReminderMode === 'absolute') {
+    if (!newEventReminderDate || !newEventReminderTime) return addToast?.('Reminder Needs Time', 'Choose the reminder day and time.');
+    const scheduled = new Date(`${newEventReminderDate}T${newEventReminderTime}:00`);
+    if (!Number.isFinite(scheduled.getTime())) return addToast?.('Invalid Reminder', 'Choose a valid reminder day and time.');
+    const eventStart = getEventStartDateTime();
+    if (eventStart && scheduled.getTime() > eventStart.getTime()) return addToast?.('Reminder After Event', 'Choose a reminder time before or at the event start.');
+    const reminder = {
+      id: `absolute:${newEventReminderDate}:${newEventReminderTime}`,
+      reminderType: 'absolute',
+      scheduledAt: scheduled.toISOString(),
+      absoluteDate: newEventReminderDate,
+      absoluteTime: newEventReminderTime,
+      label: `${formatDisplayDate(newEventReminderDate)} at ${formatShortTime(newEventReminderTime)}`
+    };
+    setEventPushReminders(prev => prev.some(r => getEventReminderKey(r) === reminder.id || r.scheduledAt === reminder.scheduledAt) ? prev : [...prev, reminder].sort((a,b) => getEventReminderSortTime(a) - getEventReminderSortTime(b)));
+    return;
+  }
   const minutes = Number(newEventReminderOffset);
   if (!Number.isFinite(minutes) || minutes < 0) return;
-  setEventPushReminders(prev => prev.some(r => Number(r.minutesBefore) === minutes) ? prev : [...prev, { minutesBefore: minutes, label: eventReminderOptions.find(o => o.minutes === minutes)?.label || `${minutes} minutes before` }].sort((a,b) => b.minutesBefore - a.minutesBefore));
+  const reminder = { id: `offset:${minutes}`, reminderType: 'offset', minutesBefore: minutes, label: eventReminderOptions.find(o => o.minutes === minutes)?.label || `${minutes} minutes before` };
+  setEventPushReminders(prev => prev.some(r => Number(r.minutesBefore) === minutes && !r.scheduledAt) ? prev : [...prev, reminder].sort((a,b) => getEventReminderSortTime(a) - getEventReminderSortTime(b)));
 };
-const removeEventReminderOffset = (minutes) => setEventPushReminders(prev => prev.filter(r => Number(r.minutesBefore) !== Number(minutes)));
+const removeEventReminderOffset = (reminderOrMinutes) => setEventPushReminders(prev => prev.filter(r => {
+  if (typeof reminderOrMinutes === 'object') return getEventReminderKey(r) !== getEventReminderKey(reminderOrMinutes);
+  return !(Number(r.minutesBefore) === Number(reminderOrMinutes) && !r.scheduledAt);
+}));
 const toggleOrderReminderDay = (day) => setOrderReminderDays(prev => prev.includes(day) ? prev.filter(d => d !== day) : [...prev, day]);
 const getEventReminderRecipientIds = () => {
   if (eventReminderRecipientMode === 'managers') return users.filter(u => u?.isAdmin || u?.permissions?.events || u?.permissions?.schedule || u?.permissions?.inventory).map(u => u.id).filter(Boolean);
@@ -1341,9 +1436,18 @@ const saveEventReminderDocs = async (eventId, eventData) => {
   if (!Number.isFinite(eventStart.getTime())) return;
   const now = new Date();
   const docs = [];
-  eventPushReminders.forEach(rem => {
-    const scheduled = new Date(eventStart.getTime() - (Number(rem.minutesBefore || 0) * 60000));
-    if (scheduled >= now) docs.push({ type:'eventReminder', scheduledAt: scheduled.toISOString(), minutesBefore: Number(rem.minutesBefore || 0), label: rem.label || `${rem.minutesBefore} minutes before` });
+  const remindersToSave = Array.isArray(eventData?.pushReminders) ? eventData.pushReminders : eventPushReminders;
+  remindersToSave.forEach(rem => {
+    const scheduled = rem.scheduledAt ? new Date(rem.scheduledAt) : new Date(eventStart.getTime() - (Number(rem.minutesBefore || 0) * 60000));
+    if (scheduled >= now) docs.push({
+      type:'eventReminder',
+      scheduledAt: scheduled.toISOString(),
+      minutesBefore: rem.scheduledAt ? null : Number(rem.minutesBefore || 0),
+      reminderType: rem.scheduledAt ? 'absolute' : 'offset',
+      absoluteDate: rem.absoluteDate || (rem.scheduledAt ? String(rem.scheduledAt).slice(0, 10) : ''),
+      absoluteTime: rem.absoluteTime || (rem.scheduledAt ? String(rem.scheduledAt).slice(11, 16) : ''),
+      label: labelEventReminder(rem)
+    });
   });
   if (orderReminderEnabled && orderReminderDays.length) {
     const cursor = new Date(eventStart);
@@ -1380,7 +1484,7 @@ const saveEventReminderDocs = async (eventId, eventData) => {
     createdByName: appUser?.name || appUser?.email || ''
   })));
 };
-const resetEventReminderSettings = () => { setEventPushReminders([]); setNewEventReminderOffset('60'); setOrderReminderEnabled(false); setOrderReminderDays([]); setEventReminderRecipientMode('creator'); };
+const resetEventReminderSettings = () => { setEventPushReminders([]); setNewEventReminderOffset('60'); setNewEventReminderMode('offset'); setNewEventReminderDate(getToday()); setNewEventReminderTime('09:00'); setOrderReminderEnabled(false); setOrderReminderDays([]); setEventReminderRecipientMode('creator'); };
 
 const handleAddEvent = async (e) => { 
     e.preventDefault(); 
@@ -1400,7 +1504,16 @@ const handleAddEvent = async (e) => {
       }
     }
 
-    const baseEventData = { type: 'special_event', time: eventTime, title: eventTitle.trim(), notes: eventNotes.trim(), addedBy: appUser.name, restaurantId: appUser.restaurantId, pushReminders: eventPushReminders, orderReminder: { enabled: orderReminderEnabled, cutoffDays: orderReminderDays, recipientMode: eventReminderRecipientMode, startsDaysBefore: 7 }, reminderSettingsUpdatedAt: new Date().toISOString() };
+    const cleanPushReminders = eventPushReminders.map(rem => ({
+      id: getEventReminderKey(rem),
+      reminderType: rem.scheduledAt ? 'absolute' : 'offset',
+      minutesBefore: rem.scheduledAt ? null : Number(rem.minutesBefore || 0),
+      scheduledAt: rem.scheduledAt || '',
+      absoluteDate: rem.absoluteDate || (rem.scheduledAt ? String(rem.scheduledAt).slice(0, 10) : ''),
+      absoluteTime: rem.absoluteTime || (rem.scheduledAt ? String(rem.scheduledAt).slice(11, 16) : ''),
+      label: labelEventReminder(rem)
+    }));
+    const baseEventData = { type: 'special_event', time: eventTime, title: eventTitle.trim(), notes: eventNotes.trim(), addedBy: appUser.name, restaurantId: appUser.restaurantId, pushReminders: cleanPushReminders, orderReminder: { enabled: orderReminderEnabled, cutoffDays: orderReminderDays, recipientMode: eventReminderRecipientMode, startsDaysBefore: 7 }, reminderSettingsUpdatedAt: new Date().toISOString() };
     if (photoUrl) baseEventData.imageUrl = photoUrl; 
 
     if (editingEventId) {
@@ -1442,11 +1555,11 @@ const handleAddEvent = async (e) => {
   };
 
   const openEditEventModal = (ev) => {
-    setEventDate(ev.date); setEventTime(ev.time || ''); setEventTitle(ev.title || ''); setEventNotes(ev.notes || ''); setEditingEventId(ev.id); setEventImageFile(null); setEventPushReminders(Array.isArray(ev.pushReminders) ? ev.pushReminders : []); setOrderReminderEnabled(!!ev.orderReminder?.enabled); setOrderReminderDays(Array.isArray(ev.orderReminder?.cutoffDays) ? ev.orderReminder.cutoffDays : []); setEventReminderRecipientMode(ev.orderReminder?.recipientMode || 'creator'); setIsEventModalOpen(true);
+    setEventDate(ev.date); setEventTime(ev.time || ''); setEventTitle(ev.title || ''); setEventNotes(ev.notes || ''); setEditingEventId(ev.id); setEventImageFile(null); setEventPushReminders(Array.isArray(ev.pushReminders) ? ev.pushReminders : []); setNewEventReminderDate(ev.date || getToday()); setNewEventReminderTime(ev.time || '09:00'); setOrderReminderEnabled(!!ev.orderReminder?.enabled); setOrderReminderDays(Array.isArray(ev.orderReminder?.cutoffDays) ? ev.orderReminder.cutoffDays : []); setEventReminderRecipientMode(ev.orderReminder?.recipientMode || 'creator'); setIsEventModalOpen(true);
   };
 
   const openNewEventModal = () => {
-    setEventDate(currentDate); setEventTime(''); setEventTitle(''); setEventNotes(''); setEditingEventId(null); setEventImageFile(null); resetEventReminderSettings(); setIsEventModalOpen(true);
+    setEventDate(currentDate); setEventTime(''); setEventTitle(''); setEventNotes(''); setEditingEventId(null); setEventImageFile(null); resetEventReminderSettings(); setNewEventReminderDate(currentDate || getToday()); setIsEventModalOpen(true);
   };
 
   const handleDeleteEvent = async (ev) => {
@@ -1798,8 +1911,34 @@ const handleExportTimesheets = () => {
         )}
 
           <div className="bg-[#12161A] p-3 rounded-xl border border-[#2A353D] space-y-3">
-            <div className="flex items-center justify-between gap-2"><div><label className={T.label}>Push Reminders</label><p className={`text-[10px] font-bold ${T.muted}`}>Add one or more reminders before the event.</p></div><div className="flex gap-2"><select value={newEventReminderOffset} onChange={e=>setNewEventReminderOffset(e.target.value)} className={T.input}>{eventReminderOptions.map(opt => <option key={opt.minutes} value={opt.minutes}>{opt.label}</option>)}</select><button type="button" onClick={addEventReminderOffset} className={T.btnAlt}>Add</button></div></div>
-            <div className="flex flex-wrap gap-2">{eventPushReminders.length === 0 && <span className="text-xs font-bold text-slate-500">No push reminders yet.</span>}{eventPushReminders.map(rem => <button type="button" key={rem.minutesBefore} onClick={() => removeEventReminderOffset(rem.minutesBefore)} className="text-[10px] font-black uppercase tracking-widest rounded-full border border-[#2A353D] bg-[#0B0E11] text-slate-300 px-3 py-1">{rem.label || `${rem.minutesBefore} min before`} ×</button>)}</div>
+            <div className="flex flex-col gap-3">
+              <div>
+                <label className={T.label}>Push Reminders</label>
+                <p className={`text-[10px] font-bold ${T.muted}`}>Add reminder offsets or pick the exact day and time the push should fire.</p>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-[.7fr_1fr_auto] gap-2 items-end">
+                <div>
+                  <label className={T.label}>Reminder Type</label>
+                  <select value={newEventReminderMode} onChange={e=>setNewEventReminderMode(e.target.value)} className={T.input}>
+                    <option value="offset">Before event</option>
+                    <option value="absolute">Specific day/time</option>
+                  </select>
+                </div>
+                {newEventReminderMode === 'offset' ? (
+                  <div>
+                    <label className={T.label}>When</label>
+                    <select value={newEventReminderOffset} onChange={e=>setNewEventReminderOffset(e.target.value)} className={T.input}>{eventReminderOptions.map(opt => <option key={opt.minutes} value={opt.minutes}>{opt.label}</option>)}</select>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-2 gap-2">
+                    <div><label className={T.label}>Reminder Day</label><input type="date" value={newEventReminderDate} onChange={e=>setNewEventReminderDate(e.target.value)} className={T.input}/></div>
+                    <div><label className={T.label}>Reminder Time</label><input type="time" value={newEventReminderTime} onChange={e=>setNewEventReminderTime(e.target.value)} className={T.input}/></div>
+                  </div>
+                )}
+                <button type="button" onClick={addEventReminderOffset} className={T.btnAlt}>Add</button>
+              </div>
+            </div>
+            <div className="flex flex-wrap gap-2">{eventPushReminders.length === 0 && <span className="text-xs font-bold text-slate-500">No push reminders yet.</span>}{eventPushReminders.map(rem => <button type="button" key={getEventReminderKey(rem)} onClick={() => removeEventReminderOffset(rem)} className="text-[10px] font-black uppercase tracking-widest rounded-full border border-[#2A353D] bg-[#0B0E11] text-slate-300 px-3 py-1 text-left">{labelEventReminder(rem)} ×</button>)}</div>
           </div>
 
           <div className="bg-[#12161A] p-3 rounded-xl border border-[#2A353D] space-y-3">
@@ -2144,7 +2283,7 @@ const handleExportTimesheets = () => {
 
                 return (
                   <div key={d} onClick={() => {
-                    setEventDate(d); setEventTime(''); setEventTitle(''); setEventNotes(''); setEditingEventId(null); setEventImageFile(null); setIsEventModalOpen(true);
+                    setEventDate(d); setEventTime(''); setEventTitle(''); setEventNotes(''); setEditingEventId(null); setEventImageFile(null); resetEventReminderSettings(); setNewEventReminderDate(d); setIsEventModalOpen(true);
                   }} className={`p-1 border-b border-r ${T.border} min-h-[70px] flex flex-col items-center justify-start pt-1 transition-colors hover:bg-[#12161A]/50 cursor-pointer group`}>
                     <span className={`text-xs font-black ${d === getToday() ? T.copper : 'text-slate-300'}`}>{parseInt(d.split('-')[2])}</span>
                     
@@ -2180,7 +2319,7 @@ const handleExportTimesheets = () => {
                   <div className="flex-1 min-w-0">
                       <h4 className="font-bold text-white">{ev.title} {ev.time && <span className="text-[#D4A381] ml-2">@ {formatShortTime(ev.time)}</span>}</h4>
                       {ev.notes && <p className="text-xs text-slate-300 mt-1 font-medium bg-[#12161A] p-2 rounded-lg border border-[#2A353D] whitespace-pre-wrap">{ev.notes}</p>}
-                      {(ev.pushReminders?.length > 0 || ev.orderReminder?.enabled) && <div className="mt-2 flex flex-wrap gap-1">{(ev.pushReminders || []).map(rem => <span key={rem.minutesBefore} className="text-[8px] font-black uppercase tracking-widest px-2 py-1 rounded border border-[#2A353D] bg-[#12161A] text-[#D4A381]">Push: {rem.label || `${rem.minutesBefore} min before`}</span>)}{ev.orderReminder?.enabled && <span className="text-[8px] font-black uppercase tracking-widest px-2 py-1 rounded border border-amber-900/50 bg-amber-900/20 text-amber-300">Order: {(ev.orderReminder.cutoffDays || []).join(', ')}</span>}</div>}
+                      {(ev.pushReminders?.length > 0 || ev.orderReminder?.enabled) && <div className="mt-2 flex flex-wrap gap-1">{(ev.pushReminders || []).map(rem => <span key={getEventReminderKey(rem)} className="text-[8px] font-black uppercase tracking-widest px-2 py-1 rounded border border-[#2A353D] bg-[#12161A] text-[#D4A381]">Push: {labelEventReminder(rem)}</span>)}{ev.orderReminder?.enabled && <span className="text-[8px] font-black uppercase tracking-widest px-2 py-1 rounded border border-amber-900/50 bg-amber-900/20 text-amber-300">Order: {(ev.orderReminder.cutoffDays || []).join(', ')}</span>}</div>}
                       {ev.imageUrl && (
                         <div className="mt-2 overflow-hidden rounded-xl border border-[#2A353D] shadow-inner bg-[#0B0E11] max-w-sm">
                           <img src={ev.imageUrl} alt="Attached" className="w-full max-h-48 object-contain" />

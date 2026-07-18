@@ -230,17 +230,32 @@ const ACTIVE_PREP_LABEL_PRINT_PROFILE = PREP_LABEL_PRINT_PROFILES.brotherQl810w;
 const DayDotPrintScreen = ({ labelsToPrint, prepDate, appUser, onClose }) => {
   const onCloseRef = useRef(onClose);
   const historyPushedRef = useRef(false);
+  const closingRef = useRef(false);
 
   useEffect(() => { onCloseRef.current = onClose; }, [onClose]);
   useEffect(() => {
-    const handleBackButton = () => onCloseRef.current?.();
+    const closePrintScreenOnce = () => {
+      if (closingRef.current) return;
+      closingRef.current = true;
+      onCloseRef.current?.();
+    };
+    const handleBackButton = () => closePrintScreenOnce();
+    const handleAfterPrint = () => closePrintScreenOnce();
     if (!historyPushedRef.current) {
       window.history.pushState({ tab: 'prep', printScreen: true }, '');
       historyPushedRef.current = true;
     }
     window.addEventListener('popstate', handleBackButton);
-    const timer = setTimeout(() => window.print(), 800);
-    return () => { clearTimeout(timer); window.removeEventListener('popstate', handleBackButton); };
+    window.addEventListener('afterprint', handleAfterPrint);
+    const timer = setTimeout(() => {
+      window.print();
+      setTimeout(closePrintScreenOnce, 1200);
+    }, 800);
+    return () => {
+      clearTimeout(timer);
+      window.removeEventListener('popstate', handleBackButton);
+      window.removeEventListener('afterprint', handleAfterPrint);
+    };
   }, []);
   return (
     <div id="master-print-wrapper" className="fixed inset-0 z-[999999] bg-white overflow-y-auto text-black print:static print:block print:overflow-visible print:h-auto print:w-auto">
@@ -260,7 +275,7 @@ const DayDotPrintScreen = ({ labelsToPrint, prepDate, appUser, onClose }) => {
          <Loader2 className="animate-spin text-[#8F6040] mb-6" size={64} />
          <h2 className="text-3xl font-black text-slate-900 mb-2">Generating Labels</h2>
          <p className="text-sm font-bold text-slate-600 text-center max-w-xs">* Intended for use with Brother QL-810W label printer.</p>
-         <button onClick={() => window.history.back()} className="bg-slate-900 text-white px-10 py-5 rounded-xl font-black text-lg shadow-xl hover:bg-slate-800 w-full max-w-xs mt-8">Return to App</button>
+         <button onClick={() => onCloseRef.current?.()} className="bg-slate-900 text-white px-10 py-5 rounded-xl font-black text-lg shadow-xl hover:bg-slate-800 w-full max-w-xs mt-8">Return to App</button>
       </div>
       <div id="print-data">
         {(Array.isArray(labelsToPrint) ? labelsToPrint : []).map((item, idx) => {

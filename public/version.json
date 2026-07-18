@@ -1,9 +1,9 @@
 {
-  "version": "15.0.72",
-  "name": "86 Chaos 15.0.72 Voice Schedule Availability Full Pass",
+  "version": "15.0.73",
+  "name": "86 Chaos 15.0.73 Event Reminder and Print Hotfix",
   "releasedAt": "2026-07-18",
-  "label": "86 Chaos 15.0.72",
-  "build": "15.0.72",
+  "label": "86 Chaos 15.0.73",
+  "build": "15.0.73",
   "updatedAt": "2026-07-18T00:00:00.000Z",
-  "notes": "Implements voice reminder duplicate protection, Time Clock & Schedule date picker and time-off cleanup, request-off archive filters, employee availability, reminder due dots/snooze, toast dedupe, Event Calendar push/order reminders, Brother QL-810W prep label printing, and mobile menu polish."
+  "notes": "Fixes Event Calendar push reminder day/time selection, saved reminder editing/unmark-done controls, Full Schedule clickable calendar jump, and the prep label print screen auto-return behavior."
 }

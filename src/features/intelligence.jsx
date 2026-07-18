@@ -243,6 +243,23 @@ const TabPersonalReminders = ({ appUser, addToast }) => {
     addToast('Reminder Done', reminder.title || 'Reminder');
   };
 
+  const reopenReminder = async (reminder) => {
+    const now = new Date().toISOString();
+    const wakeAt = getReminderWakeAt(reminder) || now;
+    await updateDoc(doc(db, 'personalReminders', reminder.id), {
+      status: 'scheduled',
+      completedAt: null,
+      reopenedAt: now,
+      reopenedBy: appUser?.id || '',
+      nextReminderAt: wakeAt,
+      dispatchedAt: null,
+      dispatchKey: '',
+      updatedAt: now
+    });
+    await logAudit(appUser, 'REMINDER_REOPENED', reminder.title || 'Reminder', reminder.id || '');
+    addToast('Reminder Reopened', reminder.title || 'Reminder');
+  };
+
   const snoozeReminder = async (reminder, minutes) => {
     const requested = Number(minutes) || 30;
     const safeMinutes = Math.max(30, Math.round(requested / 30) * 30);
@@ -333,7 +350,7 @@ const TabPersonalReminders = ({ appUser, addToast }) => {
                   {REMINDER_SNOOZE_OPTIONS.map(minutes => <option key={minutes} value={minutes}>{formatSnoozeLabel(minutes)}</option>)}
                 </select>
                 <button onClick={() => markDone(reminder)} disabled={!assignedToMe && !createdByMe} className="p-2 rounded-lg bg-emerald-900/20 text-emerald-300 border border-emerald-900/50 disabled:opacity-40"><Check size={16}/></button>
-                <button onClick={() => editReminder(reminder)} disabled={!canEditReminder} className="p-2 rounded-lg bg-[#12161A] text-slate-300 border border-[#2A353D] disabled:opacity-40"><Calendar size={16}/></button>
+                <button onClick={() => editReminder(reminder)} disabled={!canEditReminder} title="Edit reminder" className="p-2 rounded-lg bg-[#12161A] text-slate-300 border border-[#2A353D] disabled:opacity-40"><Edit3 size={16}/></button>
                 <button onClick={() => removeReminder(reminder)} disabled={!canDeleteReminder} className="p-2 rounded-lg bg-red-900/20 text-red-300 border border-red-900/50 disabled:opacity-40"><Trash2 size={16}/></button>
               </div>
             </div>
@@ -341,12 +358,22 @@ const TabPersonalReminders = ({ appUser, addToast }) => {
         </div>
         <div className={`${T.card} overflow-hidden`}>
           <div className={T.th}>Recently Closed</div>
-          {completedReminders.length === 0 ? <div className="p-6 text-center text-xs font-bold text-slate-500">Completed and cancelled reminders show here.</div> : completedReminders.map(reminder => (
-            <div key={reminder.id} className={`${T.row}`}>
-              <div className="font-bold text-slate-300 text-sm line-through">{reminder.title}</div>
-              <div className="text-[10px] text-slate-500 font-bold mt-1">{reminder.status}</div>
+          {completedReminders.length === 0 ? <div className="p-6 text-center text-xs font-bold text-slate-500">Completed and cancelled reminders show here.</div> : completedReminders.map(reminder => {
+            const createdByMe = (reminder.createdBy || reminder.userId) === currentUserId;
+            const assignedToMe = (reminder.assignedToUserId || reminder.userId) === currentUserId;
+            return (
+            <div key={reminder.id} className={`${T.row} flex items-center justify-between gap-3`}>
+              <div className="min-w-0">
+                <div className="font-bold text-slate-300 text-sm line-through truncate">{reminder.title}</div>
+                <div className="text-[10px] text-slate-500 font-bold mt-1 uppercase tracking-widest">{reminder.status}{reminder.completedAt ? ` • ${formatClockDateTime(reminder.completedAt)}` : ''}</div>
+              </div>
+              <div className="flex items-center gap-1 shrink-0">
+                <button onClick={() => reopenReminder(reminder)} disabled={!assignedToMe && !createdByMe || reminder.status === 'cancelled'} title="Unmark done" className="p-2 rounded-lg bg-emerald-900/20 text-emerald-300 border border-emerald-900/50 disabled:opacity-40"><Check size={16}/></button>
+                <button onClick={() => editReminder(reminder)} disabled={!createdByMe} title="Edit reminder" className="p-2 rounded-lg bg-[#12161A] text-slate-300 border border-[#2A353D] disabled:opacity-40"><Edit3 size={16}/></button>
+                <button onClick={() => removeReminder(reminder)} disabled={!createdByMe} title="Delete reminder" className="p-2 rounded-lg bg-red-900/20 text-red-300 border border-red-900/50 disabled:opacity-40"><Trash2 size={16}/></button>
+              </div>
             </div>
-          ))}
+          );})}
         </div>
       </div>
     </div>

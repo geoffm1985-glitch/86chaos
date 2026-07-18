@@ -3788,7 +3788,7 @@ select {
   }
 }
 
-/* 15.0.72 mobile drawer polish: keep the circular close control actually centered. */
+/* 15.0.72+ mobile drawer polish: keep the circular close control actually centered. */
 .app-drawer-readable .drawer-icon-button {
   display: inline-flex !important;
   align-items: center !important;

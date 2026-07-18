@@ -1,14 +1,20 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { Loader2 } from 'lucide-react';
 
 const DayDotPrintScreen = ({ labelsToPrint, prepDate, appUser, onClose, formatDisplayDate, getExpDate }) => {
+  const onCloseRef = useRef(onClose);
+  const closingRef = useRef(false);
+  useEffect(() => { onCloseRef.current = onClose; }, [onClose]);
   useEffect(() => {
-    const handleBackButton = () => onClose(); 
+    const closePrintScreenOnce = () => { if (closingRef.current) return; closingRef.current = true; onCloseRef.current?.(); };
+    const handleBackButton = () => closePrintScreenOnce(); 
+    const handleAfterPrint = () => closePrintScreenOnce();
     window.history.pushState({ tab: 'prep', printScreen: true }, ''); 
     window.addEventListener('popstate', handleBackButton);
-    const timer = setTimeout(() => window.print(), 800);
-    return () => { clearTimeout(timer); window.removeEventListener('popstate', handleBackButton); };
-  }, [onClose]);
+    window.addEventListener('afterprint', handleAfterPrint);
+    const timer = setTimeout(() => { window.print(); setTimeout(closePrintScreenOnce, 1200); }, 800);
+    return () => { clearTimeout(timer); window.removeEventListener('popstate', handleBackButton); window.removeEventListener('afterprint', handleAfterPrint); };
+  }, []);
   
   return (
     <div id="master-print-wrapper" className="fixed inset-0 z-[999999] bg-white overflow-y-auto text-black print:static print:block print:overflow-visible print:h-auto print:w-auto">
@@ -25,7 +31,7 @@ const DayDotPrintScreen = ({ labelsToPrint, prepDate, appUser, onClose, formatDi
       <div className="no-print p-6 flex flex-col items-center justify-center min-h-screen bg-slate-100">
          <Loader2 className="animate-spin text-[#8F6040] mb-6" size={64} />
          <h2 className="text-3xl font-black text-slate-900 mb-2">Generating Labels</h2>
-         <button onClick={() => window.history.back()} className="bg-slate-900 text-white px-10 py-5 rounded-xl font-black text-lg shadow-xl hover:bg-slate-800 w-full max-w-xs mt-8">Return to App</button>
+         <button onClick={() => onCloseRef.current?.()} className="bg-slate-900 text-white px-10 py-5 rounded-xl font-black text-lg shadow-xl hover:bg-slate-800 w-full max-w-xs mt-8">Return to App</button>
       </div>
       <div id="print-data">
         {labelsToPrint.map((item, idx) => {

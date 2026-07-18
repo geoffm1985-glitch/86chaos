@@ -449,7 +449,7 @@ service cloud.firestore {
     function reminderRecipientStatusUpdate() {
       return request.resource.data.diff(resource.data).affectedKeys().hasOnly([
         'status', 'completedAt', 'cancelledAt', 'updatedAt',
-        'snoozedUntil', 'nextReminderAt', 'snoozeMinutes', 'snoozedAt', 'snoozedBy', 'dispatchedAt', 'dispatchKey'
+        'snoozedUntil', 'nextReminderAt', 'snoozeMinutes', 'snoozedAt', 'snoozedBy', 'reopenedAt', 'reopenedBy', 'dispatchedAt', 'dispatchKey'
       ]);
     }
 
