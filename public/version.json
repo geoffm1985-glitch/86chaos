@@ -1,9 +1,9 @@
 {
-  "version": "15.0.74",
-  "name": "86 Chaos 15.0.74 Event Calendar Past-Date Guard",
+  "version": "15.0.75",
+  "name": "86 Chaos 15.0.75 Diagnostics Manifest Fix",
   "releasedAt": "2026-07-18",
-  "label": "86 Chaos 15.0.74",
-  "build": "15.0.74",
+  "label": "86 Chaos 15.0.75",
+  "build": "15.0.75",
   "updatedAt": "2026-07-18T00:00:00.000Z",
-  "notes": "Fixes Event Calendar push reminder day/time selection, saved reminder editing/unmark-done controls, Full Schedule clickable calendar jump, and the prep label print screen auto-return behavior."
+  "notes": "Fixes the System Administrator API route manifest so /api/openai-diagnostics-explain is registered as a load-checked route instead of falsely showing ATTENTION/ERR 200 when the route exists."
 }
