@@ -1,9 +1,9 @@
 {
-  "version": "15.0.73",
-  "name": "86 Chaos 15.0.73 Event Reminder and Print Hotfix",
+  "version": "15.0.74",
+  "name": "86 Chaos 15.0.74 Event Calendar Past-Date Guard",
   "releasedAt": "2026-07-18",
-  "label": "86 Chaos 15.0.73",
-  "build": "15.0.73",
+  "label": "86 Chaos 15.0.74",
+  "build": "15.0.74",
   "updatedAt": "2026-07-18T00:00:00.000Z",
   "notes": "Fixes Event Calendar push reminder day/time selection, saved reminder editing/unmark-done controls, Full Schedule clickable calendar jump, and the prep label print screen auto-return behavior."
 }
