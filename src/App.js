@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { Bell, Bug, ChevronLeft, ChevronRight, Loader2, Menu, Moon, Send, X } from 'lucide-react';
 import { addDoc, collection, doc, onSnapshot, updateDoc } from 'firebase/firestore';
 import { getToken, onMessage } from 'firebase/messaging';
@@ -223,6 +223,7 @@ export default function App() {
   }, [appUser?.id, appUser?.email]);
 
 const [currentDate, setCurrentDate] = useState(getToday());
+  const [activeScheduleSubTab, setActiveScheduleSubTab] = useState('my-schedule');
 
   useEffect(() => {
     try {
@@ -293,6 +294,8 @@ const [currentDate, setCurrentDate] = useState(getToday());
   const shiftRangeEnd = wantsScheduleScreen ? scheduleWindowEnd : todayOpsWindowEnd;
   const messageRangeStart = activeTabState === 'messages' ? addDays(getToday(), -60) : recentWindowStart;
   const prepDateWindow = Array.from(new Set([currentDate, getToday(), 'MASTER']));
+  const canViewTeamScheduleData = Boolean(appUser?.isSuperAdmin || appUser?.isAdmin || appUser?.isOwner || appUser?.accountOwner || appUser?.workspaceOwner || appUser?.permissions?.schedule || appUser?.permissions?.team);
+  const timeOffRequestClauses = canViewTeamScheduleData ? [] : [['userId', '==', appUser?.id || '']];
 
   const users = useLiveCollection('users', rId, { enabled: !!rId, limitCount: activeTabState === 'godmode' ? 400 : 160, fallbackLimitCount: 60 });
   const workspaceMembers = useLiveCollection('workspaceMembers', rId, { enabled: !!rId, limitCount: activeTabState === 'team' ? 400 : 180, fallbackLimitCount: 80 });
@@ -328,7 +331,7 @@ const [currentDate, setCurrentDate] = useState(getToday());
   const shiftSwaps = useLiveCollection('shiftSwaps', rId, { enabled: !!rId && wantsScheduleData, whereClauses: [['date','>=', getToday()], ['date','<=', futureWindowEnd]], orderByField: 'date', orderDirection: 'asc', limitCount: 50, fallbackLimitCount: 25 });
   const events = useLiveCollection('events', rId, { enabled: !!rId && (wantsToday || activeTabState === 'messages' || activeTabState === 'events' || activeTabState === 'ops' || isGlobalSearchOpen), whereClauses: [['date','>=', messageRangeStart]], orderByField: 'date', orderDirection: 'desc', limitCount: activeTabState === 'messages' ? 90 : 35, fallbackLimitCount: 25 });
   const sales = useLiveCollection('sales', rId, { enabled: !!rId && wantsSalesData, whereClauses: [['date','>=', monthBounds.start], ['date','<=', monthBounds.end]], orderByField: 'date', orderDirection: 'desc', limitCount: 45, fallbackLimitCount: 20 });
-  const timeOffRequests = useLiveCollection('timeOffRequests', rId, { enabled: !!rId && wantsScheduleData, limitCount: wantsScheduleScreen ? 70 : 30, fallbackLimitCount: 25 });
+  const timeOffRequests = useLiveCollection('timeOffRequests', rId, { enabled: !!rId && wantsScheduleData, whereClauses: timeOffRequestClauses, limitCount: wantsScheduleScreen ? 70 : 30, fallbackLimitCount: 25 });
   const timePunches = useLiveCollection('timePunches', rId, { enabled: !!rId && wantsLaborData, whereClauses: [['date','>=', activeTabState === 'labor' ? laborPunchWindowStart : lightPunchWindowStart], ['date','<=', activeTabState === 'labor' ? laborPunchWindowEnd : lightPunchWindowEnd]], orderByField: 'date', orderDirection: 'desc', limitCount: activeTabState === 'labor' ? 180 : 35, fallbackLimitCount: 30 });
   const inventoryItems = useLiveCollection('inventoryItems', rId, { enabled: !!rId && wantsInventoryData, limitCount: activeTabState === 'inventory' ? 240 : 75, fallbackLimitCount: 55 });
   const menuDependencies = useLiveCollection('menuDependencies', rId, { enabled: !!rId && wantsMenuData, limitCount: activeTabState === 'menu-intelligence' ? 500 : 120, fallbackLimitCount: 80 });
@@ -978,12 +981,24 @@ What I clicked / expected:
     }
   };
 
-  const addToast = (title, message) => {
-    const id = Date.now();
-    const reportable = isReportableToast(title, message);
-    setToasts(prev => [...prev, { id, title, message, reportable }]);
+  const toastDedupeRef = useRef({});
+  const addToast = useCallback((title, message) => {
+    const cleanTitle = String(title || '').trim();
+    const cleanMessage = String(message || '').trim();
+    const key = `${cleanTitle.toLowerCase()}::${cleanMessage.toLowerCase()}`;
+    const now = Date.now();
+    const last = toastDedupeRef.current[key] || 0;
+    if (now - last < 2500) {
+      if (process.env.NODE_ENV !== 'production') console.debug('[86chaos] duplicate toast suppressed', { title: cleanTitle, message: cleanMessage });
+      return;
+    }
+    toastDedupeRef.current[key] = now;
+    Object.keys(toastDedupeRef.current).forEach(k => { if (now - toastDedupeRef.current[k] > 10000) delete toastDedupeRef.current[k]; });
+    const id = now + Math.random();
+    const reportable = isReportableToast(cleanTitle, cleanMessage);
+    setToasts(prev => [...prev, { id, title: cleanTitle, message: cleanMessage, reportable }]);
     setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), reportable ? 9000 : 6000);
-  };
+  }, []);
 
   const offlineQueue = liveAppUser ? getOfflineQueue(liveAppUser.restaurantId, liveAppUser.id) : [];
 
@@ -1317,9 +1332,9 @@ What I clicked / expected:
     const routeIsInternalAdmin = activeTabState === 'godmode' || activeTabState === 'audit';
     if (!routeIsInternalAdmin && routeAccess && routeAccess.allowed === false) return <LockedFeatureScreen access={routeAccess} appUser={liveAppUser} setActiveTab={setActiveTab} />;
     if (activeTabState === 'today') return <TabToday key={`tdy-${rId}`} currentDate={currentDate} appUser={liveAppUser} users={displayUsers} shifts={shifts} shiftSwaps={shiftSwaps} timeOffRequests={timeOffRequests} events={events} sales={sales} timePunches={timePunches} inventoryItems={inventoryItems} maintenanceLogs={maintenanceLogs} prepItems={prepItems} tasks={tasks} recipes={recipes} menuDependencies={menuDependencies} clientData={displayClientData} setActiveTab={setActiveTab} addToast={addToast} registerUndo={registerUndo} />;
-    if (activeTabState === 'schedule' && (liveAppUser?.isAdmin || liveAppUser?.permissions?.schedule)) return <TabMasterSchedule key={`schpub-${rId}-${liveAppUser?.id}`} currentDate={currentDate} appUser={liveAppUser} users={displayUsers} shifts={shifts} shiftSwaps={shiftSwaps} timeOffRequests={timeOffRequests} events={events} addToast={addToast} initialSubTab="schedule-builder" voiceScheduleSubTabTarget={voiceScheduleSubTabTarget} clientData={displayClientData} scheduleBuilderProps={{ currentDate, users: displayUsers, shifts, events, timeOffRequests, timePunches, addToast, appUser: liveAppUser, clientData: displayClientData }} />;
+    if (activeTabState === 'schedule' && (liveAppUser?.isAdmin || liveAppUser?.permissions?.schedule)) return <TabMasterSchedule key={`schpub-${rId}-${liveAppUser?.id}`} currentDate={currentDate} setCurrentDate={setCurrentDate} onSubTabChange={setActiveScheduleSubTab} appUser={liveAppUser} users={displayUsers} shifts={shifts} shiftSwaps={shiftSwaps} timeOffRequests={timeOffRequests} events={events} addToast={addToast} initialSubTab="schedule-builder" voiceScheduleSubTabTarget={voiceScheduleSubTabTarget} clientData={displayClientData} scheduleBuilderProps={{ currentDate, users: displayUsers, shifts, events, timeOffRequests, timePunches, addToast, appUser: liveAppUser, clientData: displayClientData }} />;
     if (activeTabState === 'events' && displayClientFeatures?.events !== false && (liveAppUser?.isAdmin || liveAppUser?.permissions?.events || liveAppUser?.permissions?.schedule || liveAppUser?.permissions?.team)) return <TabSchedule key={`evt-${rId}`} currentDate={currentDate} users={displayUsers} shifts={shifts} events={events} timeOffRequests={timeOffRequests} timePunches={timePunches} addToast={addToast} appUser={liveAppUser} clientData={displayClientData} initialSubTab="events" hideSubTabs />;
-    if (activeTabState === 'published') return <TabMasterSchedule key={`pub-${rId}-${liveAppUser?.id}`} currentDate={currentDate} appUser={liveAppUser} users={displayUsers} shifts={shifts} shiftSwaps={shiftSwaps} timeOffRequests={timeOffRequests} events={events} addToast={addToast} voiceScheduleSubTabTarget={voiceScheduleSubTabTarget} clientData={displayClientData} scheduleBuilderProps={{ currentDate, users: displayUsers, shifts, events, timeOffRequests, timePunches, addToast, appUser: liveAppUser, clientData: displayClientData }} />;
+    if (activeTabState === 'published') return <TabMasterSchedule key={`pub-${rId}-${liveAppUser?.id}`} currentDate={currentDate} setCurrentDate={setCurrentDate} onSubTabChange={setActiveScheduleSubTab} appUser={liveAppUser} users={displayUsers} shifts={shifts} shiftSwaps={shiftSwaps} timeOffRequests={timeOffRequests} events={events} addToast={addToast} voiceScheduleSubTabTarget={voiceScheduleSubTabTarget} clientData={displayClientData} scheduleBuilderProps={{ currentDate, users: displayUsers, shifts, events, timeOffRequests, timePunches, addToast, appUser: liveAppUser, clientData: displayClientData }} />;
     if (activeTabState === 'ops' && displayClientFeatures?.ops !== false && (liveAppUser?.isSuperAdmin || liveAppUser?.isAdmin || liveAppUser?.permissions?.ops)) return <TabOpsCenter key={`ops-${rId}`} currentDate={currentDate} appUser={liveAppUser} users={displayUsers} shifts={shifts} events={events} sales={sales} timePunches={timePunches} addToast={addToast} setActiveTab={setActiveTab} clientData={displayClientData} />;
     if ((activeTabState === 'financials' || activeTabState === 'sales' || activeTabState === 'labor') && (liveAppUser?.isSuperAdmin || liveAppUser?.isAdmin || liveAppUser?.permissions?.labor || liveAppUser?.permissions?.sales)) return <TabFinancials key={`fin-${rId}`} currentDate={currentDate} users={displayUsers} shifts={shifts} sales={sales} timePunches={timePunches} addToast={addToast} appUser={liveAppUser} clientData={displayClientData} setActiveTab={setActiveTab} initialSubTab={activeTabState === 'sales' ? 'ledger' : activeTabState === 'labor' ? 'labor' : 'overview'} />;
     if (activeTabState === 'messages' && displayClientFeatures?.messages !== false) return <TabMessages key={`msg-${rId}`} events={events} appUser={liveAppUser} users={displayUsers} addToast={addToast} />;
@@ -1597,7 +1612,7 @@ return (
         </div>
       )}
       
-      {['schedule', 'events', 'published', 'month', 'financials', 'sales', 'prep'].includes(activeTabState) && (
+      {['schedule', 'events', 'published', 'month', 'financials', 'sales', 'prep'].includes(activeTabState) && !( ['schedule','published'].includes(activeTabState) && activeScheduleSubTab === 'time-off') && (
         <div className="desktop-date-strip py-4 px-4 shadow-sm z-30 border-b flex justify-between items-center bg-[#1A2126] border-[#2A353D] relative">
           {(activeTabState === 'sales' || activeTabState === 'financials') ? (
             <div className="w-full text-center">
@@ -1609,7 +1624,7 @@ return (
               
               <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                 <h2 onClick={() => setIsDateModalOpen(true)} className="text-xl sm:text-2xl font-black tracking-tight text-center cursor-pointer transition-colors text-white hover:text-[#D4A381] pointer-events-auto">
-                  {activeTabState === 'events' ? 'Event Calendar' : activeTabState === 'prep' ? formatDisplayFullDate(currentDate) : formatDisplayMonth(getMonthStr(currentDate))}
+                  {activeTabState === 'events' ? 'Event Calendar' : activeTabState === 'prep' || ((activeTabState === 'schedule' || activeTabState === 'published') && activeScheduleSubTab === 'full-schedule') ? formatDisplayFullDate(currentDate) : formatDisplayMonth(getMonthStr(currentDate))}
                 </h2>
               </div>
 
@@ -1622,11 +1637,11 @@ return (
       <Modal isOpen={isDateModalOpen} onClose={() => setIsDateModalOpen(false)} title="Select Date">
         <div className="space-y-4">
           <input 
-            type={activeTabState === 'prep' || activeTabState === 'sales' ? 'date' : 'month'} 
-            value={activeTabState === 'prep' || activeTabState === 'sales' ? currentDate : getMonthStr(currentDate)} 
+            type={activeTabState === 'prep' || activeTabState === 'sales' || ((activeTabState === 'schedule' || activeTabState === 'published') && activeScheduleSubTab === 'full-schedule') ? 'date' : 'month'} 
+            value={activeTabState === 'prep' || activeTabState === 'sales' || ((activeTabState === 'schedule' || activeTabState === 'published') && activeScheduleSubTab === 'full-schedule') ? currentDate : getMonthStr(currentDate)} 
             onChange={e => { 
               if (e.target.value) { 
-                setCurrentDate(activeTabState === 'prep' || activeTabState === 'sales' ? e.target.value : e.target.value + '-01'); 
+                setCurrentDate(activeTabState === 'prep' || activeTabState === 'sales' || ((activeTabState === 'schedule' || activeTabState === 'published') && activeScheduleSubTab === 'full-schedule') ? e.target.value : e.target.value + '-01'); 
                 setIsDateModalOpen(false); 
               } 
             }} 

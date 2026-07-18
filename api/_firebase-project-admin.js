@@ -32,6 +32,49 @@ const PROJECT_ENV_ALIASES = {
   }
 };
 
+const PROD_FIREBASE_HOSTS = new Set(['app.86chaos.com', '86chaos.com', 'www.86chaos.com']);
+
+function requestHost(req) {
+  const headers = req?.headers || {};
+  const forwarded = String(headers['x-forwarded-host'] || headers['x-vercel-forwarded-host'] || '').split(',')[0].trim();
+  const rawHost = forwarded || String(headers.host || '').split(',')[0].trim();
+  return rawHost.replace(/^https?:\/\//i, '').split('/')[0].split(':')[0].toLowerCase();
+}
+
+function requestOriginHost(req) {
+  const headers = req?.headers || {};
+  for (const headerName of ['origin', 'referer']) {
+    const raw = String(headers[headerName] || '').trim();
+    if (!raw) continue;
+    try { return new URL(raw).hostname.toLowerCase(); } catch (_) {}
+  }
+  return '';
+}
+
+function isProductionWebHost(hostname = '') {
+  return PROD_FIREBASE_HOSTS.has(String(hostname || '').toLowerCase());
+}
+
+function deploymentLooksLikeTesting(req = null) {
+  const explicitMode = String(process.env.FIREBASE_DEPLOYMENT_MODE || process.env.REACT_APP_FIREBASE_DEPLOYMENT_MODE || '').toLowerCase().trim();
+  if (['test', 'testing', 'preview', 'staging', 'dev', 'development'].includes(explicitMode)) return true;
+  if (['prod', 'production', 'live'].includes(explicitMode)) return false;
+
+  const activeProject = String(process.env.FIREBASE_ACTIVE_PROJECT_ID || process.env.REACT_APP_FIREBASE_ACTIVE_PROJECT_ID || '').trim();
+  if (activeProject === 'chaos-test-d1601') return true;
+  if (activeProject === 'cheers-34b8d') return false;
+
+  const host = requestHost(req) || requestOriginHost(req);
+  if (host && !isProductionWebHost(host)) return true;
+
+  const vercelEnv = String(process.env.VERCEL_ENV || '').toLowerCase().trim();
+  if (vercelEnv === 'preview' || vercelEnv === 'development') return true;
+
+  const gitRef = String(process.env.VERCEL_GIT_COMMIT_REF || process.env.VERCEL_BRANCH_URL || '').toLowerCase();
+  if (/\b(test|testing|preview|staging|dev|development)\b/.test(gitRef)) return true;
+  return false;
+}
+
 let secureTokenCertCache = { expiresAt: 0, certs: {} };
 
 function clean(value = '') {
@@ -170,35 +213,44 @@ function parseCredentialProjectIdFromEnv(name) {
   const raw = process.env[name];
   if (!raw || !String(raw).trim()) return '';
   try {
-    const credential = JSON.parse(String(raw));
+    const credential = normalizedCredential(parseJsonCredential(String(raw), name));
     return credentialProjectId(credential);
   } catch (_) {
     return '';
   }
 }
 
-function getConfiguredDefaultProjectId() {
-  const explicit = readFirstEnv([
+function readGenericCredentialProject() {
+  try {
+    const generic = readGenericCredential();
+    const projectId = credentialProjectId(generic?.credential || {});
+    return projectId && TRUSTED_PROJECTS.includes(projectId) ? { ...generic, projectId } : null;
+  } catch (_) {
+    return null;
+  }
+}
+
+function getConfiguredDefaultProjectId(req = null) {
+  // 86 Chaos uses one Firebase Admin JSON per deployment. For server-to-server
+  // routes, the project_id inside FIREBASE_SERVICE_ACCOUNT_KEY is the source of
+  // truth. This keeps testing deployments on chaos-test-d1601 even if an old
+  // FIREBASE_PROJECT_ID env var still says cheers-34b8d.
+  const generic = readGenericCredentialProject();
+  if (generic?.projectId) return generic.projectId;
+
+  const explicitPinnedServer = readFirstEnv([
+    'FIREBASE_ACTIVE_PROJECT_ID',
     'FIREBASE_ADMIN_PROJECT_ID',
     'FIREBASE_SERVER_PROJECT_ID',
     'FIREBASE_TEST_PROJECT_ID',
     'TEST_FIREBASE_PROJECT_ID',
-    'REACT_APP_TEST_FIREBASE_PROJECT_ID',
-    'FIREBASE_PROJECT_ID',
-    'REACT_APP_FIREBASE_PROJECT_ID',
     'FIREBASE_PRODUCTION_PROJECT_ID',
     'PROD_FIREBASE_PROJECT_ID'
   ]);
-  if (explicit && TRUSTED_PROJECTS.includes(explicit)) return explicit;
+  if (explicitPinnedServer && TRUSTED_PROJECTS.includes(explicitPinnedServer)) return explicitPinnedServer;
 
-  // Server-to-server jobs like /api/dispatch-reminders have no Firebase ID
-  // token, so resolve the default project from the generic service-account JSON
-  // before any Vercel production/preview assumptions. This preserves the 15.0.52
-  // deployment behavior where FIREBASE_SERVICE_ACCOUNT_KEY alone was enough.
-  for (const name of ['FIREBASE_SERVICE_ACCOUNT_KEY', 'FIREBASE_ADMIN_CREDENTIALS']) {
-    const fromCredential = parseCredentialProjectIdFromEnv(name);
-    if (fromCredential && TRUSTED_PROJECTS.includes(fromCredential)) return fromCredential;
-  }
+  const splitProjectId = clean(process.env.FIREBASE_PROJECT_ID);
+  if (splitProjectId && TRUSTED_PROJECTS.includes(splitProjectId) && process.env.FIREBASE_CLIENT_EMAIL && process.env.FIREBASE_PRIVATE_KEY) return splitProjectId;
 
   const projectSpecificJsonNames = [];
   for (const projectId of TRUSTED_PROJECTS) {
@@ -214,7 +266,8 @@ function getConfiguredDefaultProjectId() {
     return projectId;
   }
 
-  return '';
+  if (deploymentLooksLikeTesting(req)) return 'chaos-test-d1601';
+  return 'cheers-34b8d';
 }
 
 function getRequestedProjectId(req, fallback = '') {
@@ -223,18 +276,9 @@ function getRequestedProjectId(req, fallback = '') {
     try { return getTokenProjectId(token); }
     catch (_) {}
   }
+
   if (fallback) return clean(fallback);
-
-  // Cron and other server-to-server calls do not carry a Firebase ID token, so
-  // they cannot be project-resolved from auth. In testing deployments that are
-  // treated by Vercel as a production environment, defaulting to the production
-  // Firebase project can make the route ask for the wrong service account. Pick
-  // the configured Firebase project/key first, then fall back to Vercel's env.
-  const configuredProjectId = getConfiguredDefaultProjectId();
-  if (configuredProjectId) return configuredProjectId;
-
-  if (String(process.env.VERCEL_ENV || '').toLowerCase() === 'preview') return 'chaos-test-d1601';
-  return 'cheers-34b8d';
+  return getConfiguredDefaultProjectId(req);
 }
 
 function appNameForProject(projectId) {
@@ -253,19 +297,31 @@ function getAdminAppForProject(projectId, { requireCredentials = true } = {}) {
   const found = readProjectCredential(wanted);
   if (!found) {
     if (!requireCredentials) return null;
+    const generic = readGenericCredentialProject();
+    const genericNote = generic?.projectId
+      ? ` FIREBASE_SERVICE_ACCOUNT_KEY currently contains project_id ${generic.projectId}; this route requested ${wanted}.`
+      : '';
     const recommended = wanted === 'chaos-test-d1601' ? 'FIREBASE_TEST_SERVICE_ACCOUNT_KEY' : 'FIREBASE_PRODUCTION_SERVICE_ACCOUNT_KEY';
     throw new Error(
-      `No server credential is configured for Firebase project ${wanted}. ` +
-      `FIREBASE_SERVICE_ACCOUNT_KEY is enough when it contains the complete JSON for ${wanted}. ` +
+      `No server credential is configured for Firebase project ${wanted}.` +
+      genericNote + ' ' +
+      `Use FIREBASE_SERVICE_ACCOUNT_KEY with the complete service-account JSON for the active deployment project. ` +
+      `Testing should use project_id chaos-test-d1601; production should use project_id cheers-34b8d. ` +
       `Optional advanced aliases are ${recommended}, FIREBASE_ADMIN_CREDENTIALS, or split FIREBASE_PROJECT_ID/FIREBASE_CLIENT_EMAIL/FIREBASE_PRIVATE_KEY. Redeploy after changing Vercel env vars.`
     );
   }
 
+  const credentialProject = credentialProjectId(found.credential) || wanted;
+  const finalProjectId = TRUSTED_PROJECTS.includes(credentialProject) ? credentialProject : wanted;
+  const finalAppName = appNameForProject(finalProjectId);
+  const finalExisting = admin.apps.find(app => app.name === finalAppName);
+  if (finalExisting) return finalExisting;
+
   return admin.initializeApp({
-    credential: admin.credential.cert(found.credential),
-    projectId: wanted,
-    storageBucket: getStorageBucketForProject(wanted)
-  }, appName);
+    credential: admin.credential.cert({ ...found.credential, projectId: finalProjectId }),
+    projectId: finalProjectId,
+    storageBucket: getStorageBucketForProject(finalProjectId)
+  }, finalAppName);
 }
 
 function getAdminAppForRequest(req, options = {}) {

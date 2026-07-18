@@ -1,7 +1,9 @@
 {
-  "version": "15.0.65",
-  "name": "86 Chaos 15.0.65 System Administrator Control Center Rebuild",
-  "date": "2026-07-14",
-  "label": "86 Chaos 15.0.65",
-  "build": "15.0.65"
+  "version": "15.0.73",
+  "name": "86 Chaos 15.0.73 Event Reminder and Print Hotfix",
+  "releasedAt": "2026-07-18",
+  "label": "86 Chaos 15.0.73",
+  "build": "15.0.73",
+  "updatedAt": "2026-07-18T00:00:00.000Z",
+  "notes": "Fixes Event Calendar push reminder day/time selection, saved reminder editing/unmark-done controls, Full Schedule clickable calendar jump, and the prep label print screen auto-return behavior."
 }

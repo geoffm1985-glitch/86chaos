@@ -1,9 +1,9 @@
 const { initAdmin, authorize, requireAppCheckIfEnforced, readBody, writeAudit } = require('./_chaos-admin');
 const { enforceRateLimit, sendRateLimited } = require('./_rate-limit');
 
-const MAX_INPUT_BYTES = 60000;
-const MAX_ARRAY_ITEMS = 40;
-const MAX_STRING_LENGTH = 1800;
+const MAX_INPUT_BYTES = 120000;
+const MAX_ARRAY_ITEMS = 80;
+const MAX_STRING_LENGTH = 5000;
 const MAX_REQUESTS_PER_MINUTE = 8;
 const HARD_MAX_OUTPUT_TOKENS = 5000;
 const ALLOWED_DIAGNOSTICS_MODELS = new Set(['gpt-5-mini']);
@@ -34,15 +34,15 @@ function compactDiagnosticsValue(value, depth = 0) {
   if (depth > 4) return '[summary depth limit]';
   if (value === undefined) return undefined;
   if (value === null || typeof value === 'boolean' || typeof value === 'number') return value;
-  if (typeof value === 'string') return value.length > 450 ? `${value.slice(0, 450)}…[truncated]` : value;
-  if (Array.isArray(value)) return value.slice(0, 16).map(item => compactDiagnosticsValue(item, depth + 1));
+  if (typeof value === 'string') return value.length > 900 ? `${value.slice(0, 900)}…[truncated]` : value;
+  if (Array.isArray(value)) return value.slice(0, 30).map(item => compactDiagnosticsValue(item, depth + 1));
   if (typeof value === 'object') {
     const important = ['ok', 'status', 'code', 'error', 'message', 'warning', 'warnings', 'errors', 'ms', 'durationMs', 'generatedAt', 'lastRunAt', 'lastBackupAt', 'lastSuccessfulBackupAt', 'backupIntegrity', 'latestIntegrity', 'projectId', 'storageBucket', 'configured', 'serviceAccountSource', 'route', 'statusCode', 'count', 'total', 'failed', 'passed', 'checks', 'health', 'environment', 'platform', 'counts'];
     const cleaned = {};
     for (const key of important) {
       if (Object.prototype.hasOwnProperty.call(value, key)) cleaned[key] = compactDiagnosticsValue(value[key], depth + 1);
     }
-    for (const [key, item] of Object.entries(value).slice(0, 24)) {
+    for (const [key, item] of Object.entries(value).slice(0, 40)) {
       if (cleaned[key] !== undefined || SECRET_KEY_PATTERN.test(key) || SIGNED_URL_PATTERN.test(String(item || ''))) continue;
       cleaned[key] = compactDiagnosticsValue(item, depth + 1);
     }

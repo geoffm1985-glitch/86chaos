@@ -251,6 +251,10 @@ service cloud.firestore {
       return collectionName in ['trainingManuals', 'trainingAcknowledgements', 'hrOnboardingTasks', 'hrCertifications', 'hrPerformanceNotes'];
     }
 
+    function isPrivateSchedulingCollection(collectionName) {
+      return collectionName in ['personalReminders', 'timeOffRequests', 'availabilityRecords', 'eventReminders'];
+    }
+
     function isPrivateFinancialCollection(collectionName) {
       return collectionName in [
         'sales', 'timePunches', 'dailyCloses', 'expenses', 'financialExpenses', 'deposits',
@@ -443,7 +447,52 @@ service cloud.firestore {
     }
 
     function reminderRecipientStatusUpdate() {
-      return request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'completedAt', 'cancelledAt', 'updatedAt']);
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+        'status', 'completedAt', 'cancelledAt', 'updatedAt',
+        'snoozedUntil', 'nextReminderAt', 'snoozeMinutes', 'snoozedAt', 'snoozedBy', 'reopenedAt', 'reopenedBy', 'dispatchedAt', 'dispatchKey'
+      ]);
+    }
+
+    function canManageScheduleData(restId) {
+      return isSuperAdmin() || isRestaurantOwner(restId) || (isTenantMatch(restId) && (isAdminFor(restId) || hasPermFor(restId, 'schedule') || hasPermFor(restId, 'team')));
+    }
+
+    function canManageEventData(restId) {
+      return canManageScheduleData(restId) || (isTenantMatch(restId) && hasPermFor(restId, 'events'));
+    }
+
+    function timeOffParticipant(data) {
+      return signedIn() && (
+        data.userId == request.auth.uid ||
+        data.employeeId == request.auth.uid ||
+        data.createdBy == request.auth.uid
+      );
+    }
+
+    function ownTimeOffStatusUpdate() {
+      return request.resource.data.restaurantId == resource.data.restaurantId &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'previousStatus', 'archived', 'cancelledAt', 'cancelledBy', 'updatedAt', 'updatedBy']);
+    }
+
+    function availabilityParticipant(data) {
+      return signedIn() && (
+        data.employeeId == request.auth.uid ||
+        data.createdBy == request.auth.uid
+      );
+    }
+
+    function ownAvailabilityPendingUpdate() {
+      return resource.data.status == 'pending' &&
+        request.resource.data.restaurantId == resource.data.restaurantId &&
+        request.resource.data.employeeId == resource.data.employeeId &&
+        request.resource.data.createdBy == resource.data.createdBy;
+    }
+
+    function eventReminderParticipant(data) {
+      return signedIn() && (
+        data.createdBy == request.auth.uid ||
+        (data.recipientUserIds is list && data.recipientUserIds.hasAny([request.auth.uid]))
+      );
     }
 
     function isOwnerOfRestaurantDoc() { return signedIn() && request.auth.token.email == resource.data.ownerEmail; }
@@ -751,6 +800,39 @@ service cloud.firestore {
         resource.data.createdBy == request.auth.uid || reminderRecipientStatusUpdate()
       );
       allow delete: if signedIn() && reminderTenant(resource.data) && (resource.data.createdBy == request.auth.uid || resource.data.userId == request.auth.uid);
+    }
+
+    match /timeOffRequests/{docId} {
+      allow read: if signedIn() && resource.data.restaurantId is string && isTenantMatch(resource.data.restaurantId) && (canManageScheduleData(resource.data.restaurantId) || timeOffParticipant(resource.data));
+      allow create: if signedIn() && request.resource.data.restaurantId is string && isTenantMatch(request.resource.data.restaurantId) && (
+        canManageScheduleData(request.resource.data.restaurantId) ||
+        (request.resource.data.userId == request.auth.uid && request.resource.data.employeeId == request.auth.uid && request.resource.data.createdBy == request.auth.uid)
+      );
+      allow update: if signedIn() && resource.data.restaurantId is string && request.resource.data.restaurantId == resource.data.restaurantId && isTenantMatch(resource.data.restaurantId) && (
+        canManageScheduleData(resource.data.restaurantId) ||
+        (timeOffParticipant(resource.data) && ownTimeOffStatusUpdate())
+      );
+      allow delete: if signedIn() && isSuperAdmin();
+    }
+
+    match /availabilityRecords/{docId} {
+      allow read: if signedIn() && resource.data.restaurantId is string && isTenantMatch(resource.data.restaurantId) && (canManageScheduleData(resource.data.restaurantId) || availabilityParticipant(resource.data));
+      allow create: if signedIn() && request.resource.data.restaurantId is string && isTenantMatch(request.resource.data.restaurantId) && (
+        canManageScheduleData(request.resource.data.restaurantId) ||
+        (request.resource.data.employeeId == request.auth.uid && request.resource.data.createdBy == request.auth.uid)
+      );
+      allow update: if signedIn() && resource.data.restaurantId is string && request.resource.data.restaurantId == resource.data.restaurantId && isTenantMatch(resource.data.restaurantId) && (
+        canManageScheduleData(resource.data.restaurantId) ||
+        (availabilityParticipant(resource.data) && ownAvailabilityPendingUpdate())
+      );
+      allow delete: if signedIn() && isSuperAdmin();
+    }
+
+    match /eventReminders/{docId} {
+      allow read: if signedIn() && resource.data.restaurantId is string && isTenantMatch(resource.data.restaurantId) && (canManageEventData(resource.data.restaurantId) || eventReminderParticipant(resource.data));
+      allow create: if signedIn() && request.resource.data.restaurantId is string && canManageEventData(request.resource.data.restaurantId);
+      allow update: if signedIn() && resource.data.restaurantId is string && request.resource.data.restaurantId == resource.data.restaurantId && canManageEventData(resource.data.restaurantId);
+      allow delete: if signedIn() && isSuperAdmin();
     }
 
 
@@ -1067,9 +1149,9 @@ service cloud.firestore {
     // STANDARD TENANT COLLECTIONS
     // ============================================================
     match /{collectionName}/{docId} {
-      allow read: if collectionName != 'aiUsage' && collectionName != 'aiRequestLocks' && collectionName != '_retentionJobLocks' && !isPrivateHrCollection(collectionName) && !isPrivateFinancialCollection(collectionName) && !isPlanSensitiveCollection(collectionName) && signedIn() && (isSuperAdmin() || (resource.data.restaurantId is string && isTenantMatch(resource.data.restaurantId)));
-      allow create: if collectionName != 'aiUsage' && collectionName != 'aiRequestLocks' && collectionName != '_retentionJobLocks' && !isPrivateHrCollection(collectionName) && !isPrivateFinancialCollection(collectionName) && !isPlanSensitiveCollection(collectionName) && signedIn() && (isSuperAdmin() || (request.resource.data.restaurantId is string && canTenantWriteCollection(collectionName, request.resource.data.restaurantId)));
-      allow update, delete: if collectionName != 'aiUsage' && collectionName != 'aiRequestLocks' && collectionName != '_retentionJobLocks' && !isPrivateHrCollection(collectionName) && !isPrivateFinancialCollection(collectionName) && !isPlanSensitiveCollection(collectionName) && signedIn() && (isSuperAdmin() || (resource.data.restaurantId is string && canTenantWriteCollection(collectionName, resource.data.restaurantId)));
+      allow read: if collectionName != 'aiUsage' && collectionName != 'aiRequestLocks' && collectionName != '_retentionJobLocks' && !isPrivateHrCollection(collectionName) && !isPrivateSchedulingCollection(collectionName) && !isPrivateFinancialCollection(collectionName) && !isPlanSensitiveCollection(collectionName) && signedIn() && (isSuperAdmin() || (resource.data.restaurantId is string && isTenantMatch(resource.data.restaurantId)));
+      allow create: if collectionName != 'aiUsage' && collectionName != 'aiRequestLocks' && collectionName != '_retentionJobLocks' && !isPrivateHrCollection(collectionName) && !isPrivateSchedulingCollection(collectionName) && !isPrivateFinancialCollection(collectionName) && !isPlanSensitiveCollection(collectionName) && signedIn() && (isSuperAdmin() || (request.resource.data.restaurantId is string && canTenantWriteCollection(collectionName, request.resource.data.restaurantId)));
+      allow update, delete: if collectionName != 'aiUsage' && collectionName != 'aiRequestLocks' && collectionName != '_retentionJobLocks' && !isPrivateHrCollection(collectionName) && !isPrivateSchedulingCollection(collectionName) && !isPrivateFinancialCollection(collectionName) && !isPlanSensitiveCollection(collectionName) && signedIn() && (isSuperAdmin() || (resource.data.restaurantId is string && canTenantWriteCollection(collectionName, resource.data.restaurantId)));
     }
   }
 }

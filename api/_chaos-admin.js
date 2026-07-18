@@ -124,10 +124,7 @@ function initAdmin(reqOrProject = null) {
   if (reqOrProject && typeof reqOrProject === 'object' && reqOrProject.headers) {
     return getAdminAppForRequest(reqOrProject);
   }
-  const fallbackProjectId = String(process.env.VERCEL_ENV || '').toLowerCase() === 'preview'
-    ? 'chaos-test-d1601'
-    : (process.env.FIREBASE_PROJECT_ID || 'cheers-34b8d');
-  return getAdminAppForProject(fallbackProjectId);
+  return getAdminAppForRequest(null);
 }
 
 
