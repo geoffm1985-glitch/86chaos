@@ -21,6 +21,92 @@ function collectTokens(user = {}) {
   return [...tokens].filter(Boolean);
 }
 
+
+function norm(value = '') {
+  return String(value || '').toLowerCase().trim();
+}
+
+function cleanId(value = '') {
+  return String(value || '').replace(/[^A-Za-z0-9_-]/g, '_').slice(0, 140);
+}
+
+function memberDocId(uid, restaurantId) {
+  return `${cleanId(uid)}_${cleanId(restaurantId)}`.slice(0, 240);
+}
+
+function mergeTokenSource(tokens, source) {
+  collectTokens(source).forEach(token => tokens.add(token));
+}
+
+async function lookupUserByIdOrEmail(db, idOrEmail, restaurantId = '') {
+  const value = String(idOrEmail || '').trim();
+  if (!value) return null;
+  try {
+    const direct = await db.collection('users').doc(value).get();
+    if (direct.exists) return { id: direct.id, ...direct.data() };
+  } catch (_) {}
+  const email = norm(value);
+  if (email && email.includes('@')) {
+    try {
+      const byEmail = await db.collection('users').where('email', '==', email).limit(1).get();
+      if (!byEmail.empty) return { id: byEmail.docs[0].id, ...byEmail.docs[0].data() };
+    } catch (_) {}
+  }
+  if (restaurantId) {
+    try {
+      const member = await db.collection('workspaceMembers').doc(memberDocId(value, restaurantId)).get();
+      if (member.exists) {
+        const data = member.data() || {};
+        const userId = data.userId || data.uid || '';
+        if (userId && userId !== value) return lookupUserByIdOrEmail(db, userId, restaurantId);
+        if (data.email) return lookupUserByIdOrEmail(db, data.email, restaurantId);
+      }
+    } catch (_) {}
+  }
+  return null;
+}
+
+async function collectEventReminderTokens(db, reminder = {}) {
+  const tokens = new Set();
+  mergeTokenSource(tokens, reminder);
+  if (Array.isArray(reminder.recipientPushTokens)) reminder.recipientPushTokens.forEach(token => token && tokens.add(token));
+  if (Array.isArray(reminder.pushTokenSnapshot)) reminder.pushTokenSnapshot.forEach(token => token && tokens.add(token));
+
+  const restaurantId = reminder.restaurantId || reminder.workspaceId || '';
+  const lookups = new Set();
+  (Array.isArray(reminder.recipientUserIds) ? reminder.recipientUserIds : []).forEach(id => id && lookups.add(String(id)));
+  (Array.isArray(reminder.recipientEmails) ? reminder.recipientEmails : []).forEach(email => email && lookups.add(String(email)));
+  (Array.isArray(reminder.recipientUsers) ? reminder.recipientUsers : []).forEach(user => {
+    if (user?.id) lookups.add(String(user.id));
+    if (user?.uid) lookups.add(String(user.uid));
+    if (user?.userId) lookups.add(String(user.userId));
+    if (user?.email) lookups.add(String(user.email));
+  });
+  if (reminder.createdBy) lookups.add(String(reminder.createdBy));
+  if (reminder.createdByEmail) lookups.add(String(reminder.createdByEmail));
+
+  const resolvedUsers = [];
+  await Promise.all([...lookups].slice(0, 100).map(async (idOrEmail) => {
+    const user = await lookupUserByIdOrEmail(db, idOrEmail, restaurantId);
+    if (user) {
+      resolvedUsers.push({ id: user.id, email: user.email || '' });
+      mergeTokenSource(tokens, user);
+    }
+  }));
+  return { tokens: [...tokens].filter(Boolean), resolvedUsers };
+}
+
+function isRetryableEventReminderStatus(status) {
+  const key = String(status || 'scheduled').toLowerCase();
+  return ['scheduled', 'no_push_token', 'delivery_problem', 'dispatching'].includes(key);
+}
+
+function minutesSinceIso(iso) {
+  const t = new Date(iso || 0).getTime();
+  if (!Number.isFinite(t)) return Infinity;
+  return (Date.now() - t) / 60000;
+}
+
 function safeInt(value, fallback, min, max) {
   const parsed = parseInt(String(value || ''), 10);
   if (!Number.isFinite(parsed)) return fallback;
@@ -208,12 +294,21 @@ module.exports = async function handler(req, res) {
           const fresh = await tx.get(ref);
           if (!fresh.exists) return { claimed: false, reason: 'missing' };
           const reminder = fresh.data() || {};
-          if (reminder.status !== 'scheduled') return { claimed: false, reason: 'not_scheduled' };
+          if (!isRetryableEventReminderStatus(reminder.status)) return { claimed: false, reason: 'not_retryable' };
+          if (String(reminder.status || '').toLowerCase() === 'dispatching' && minutesSinceIso(reminder.dispatchAttemptAt) < 5) return { claimed: false, reason: 'already_dispatching' };
+          if (['no_push_token', 'delivery_problem'].includes(String(reminder.status || '').toLowerCase()) && minutesSinceIso(reminder.dispatchAttemptAt || reminder.dispatchedAt) < 10) return { claimed: false, reason: 'retry_window' };
           const effectiveDueAt = reminder.snoozedUntil || reminder.nextReminderAt || reminder.scheduledAt || '';
           if (effectiveDueAt && String(effectiveDueAt) > nowIso) return { claimed: false, reason: 'snoozed_or_not_due' };
           const dispatchKey = `${docSnap.id}:${effectiveDueAt || reminder.scheduledAt || ''}`;
-          if (reminder.dispatchKey === dispatchKey || reminder.dispatchedAt) return { claimed: false, reason: 'already_dispatched' };
-          tx.update(ref, { status: 'dispatching', dispatchAttemptAt: nowIso, dispatchKey, effectiveDueAt });
+          if ((reminder.status === 'sent' || Number(reminder.pushSuccessCount || 0) > 0) && (reminder.dispatchKey === dispatchKey || reminder.dispatchedAt)) return { claimed: false, reason: 'already_sent' };
+          tx.update(ref, {
+            status: 'dispatching',
+            dispatchAttemptAt: nowIso,
+            dispatchKey,
+            effectiveDueAt,
+            dispatchAttemptCount: Number(reminder.dispatchAttemptCount || 0) + 1,
+            updatedAt: nowIso
+          });
           return { claimed: true, reminder, dispatchKey, effectiveDueAt };
         });
 
@@ -223,16 +318,20 @@ module.exports = async function handler(req, res) {
         }
 
         const reminder = claim.reminder || {};
-        const recipientIds = Array.isArray(reminder.recipientUserIds) ? reminder.recipientUserIds.filter(Boolean) : [];
-        const tokens = new Set();
-        await Promise.all(recipientIds.map(async (userId) => {
-          const userSnap = await db.collection('users').doc(userId).get();
-          if (userSnap.exists) collectTokens(userSnap.data()).forEach(token => tokens.add(token));
-        }));
+        const { tokens, resolvedUsers } = await collectEventReminderTokens(db, reminder);
 
-        if (!tokens.size) {
+        if (!tokens.length) {
           stats.noToken += 1;
-          await ref.update({ status: 'no_push_token', dispatchedAt: nowIso, dispatchKey: claim.dispatchKey, dispatchError: 'No saved push token for event reminder recipients.' });
+          await ref.update({
+            status: 'no_push_token',
+            dispatchAttemptAt: nowIso,
+            lastNoTokenAt: nowIso,
+            dispatchKey: claim.dispatchKey,
+            dispatchError: 'No saved push token for event reminder recipients. Ask recipients to open the app once and allow notifications, then the cron will retry.',
+            resolvedRecipientCount: resolvedUsers.length,
+            tokenSource: 'none',
+            updatedAt: nowIso
+          });
           return;
         }
 
@@ -245,12 +344,12 @@ module.exports = async function handler(req, res) {
           },
           data: {
             type: isOrder ? 'event_order_reminder' : 'event_reminder',
-            eventReminderId: docSnap.id,
-            eventId: reminder.eventId || '',
-            restaurantId: reminder.restaurantId || '',
+            eventReminderId: String(docSnap.id),
+            eventId: String(reminder.eventId || ''),
+            restaurantId: String(reminder.restaurantId || ''),
             click_action: '/?tab=events'
           },
-          tokens: [...tokens]
+          tokens
         };
 
         const result = await messaging.sendEachForMulticast(payload);
@@ -259,26 +358,34 @@ module.exports = async function handler(req, res) {
           await ref.update({
             status: 'sent',
             dispatchedAt: nowIso,
+            lastSuccessfulDispatchAt: nowIso,
             dispatchKey: claim.dispatchKey,
             pushSuccessCount: result.successCount,
-            pushFailureCount: result.failureCount || 0
+            pushFailureCount: result.failureCount || 0,
+            resolvedRecipientCount: resolvedUsers.length,
+            tokenSource: reminder.recipientPushTokens?.length ? 'snapshot+user_lookup' : 'user_lookup',
+            updatedAt: nowIso
           });
         } else {
           stats.failed += 1;
           await ref.update({
             status: 'delivery_problem',
-            dispatchedAt: nowIso,
+            dispatchAttemptAt: nowIso,
             dispatchKey: claim.dispatchKey,
-            pushFailureCount: result.failureCount || tokens.size,
-            dispatchError: result.responses?.[0]?.error?.message || 'No push sends succeeded.'
+            pushFailureCount: result.failureCount || tokens.length,
+            resolvedRecipientCount: resolvedUsers.length,
+            tokenSource: reminder.recipientPushTokens?.length ? 'snapshot+user_lookup' : 'user_lookup',
+            dispatchError: result.responses?.[0]?.error?.message || 'No push sends succeeded.',
+            updatedAt: nowIso
           });
         }
       } catch (err) {
         stats.failed += 1;
         await ref.update({
           status: 'delivery_problem',
-          dispatchedAt: nowIso,
-          dispatchError: err.message || 'Event reminder dispatch failed.'
+          dispatchAttemptAt: nowIso,
+          dispatchError: err.message || 'Event reminder dispatch failed.',
+          updatedAt: nowIso
         }).catch(() => {});
       }
     };
