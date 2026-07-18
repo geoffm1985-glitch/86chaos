@@ -1485,10 +1485,43 @@ const saveEventReminderDocs = async (eventId, eventData) => {
   })));
 };
 const resetEventReminderSettings = () => { setEventPushReminders([]); setNewEventReminderOffset('60'); setNewEventReminderMode('offset'); setNewEventReminderDate(getToday()); setNewEventReminderTime('09:00'); setOrderReminderEnabled(false); setOrderReminderDays([]); setEventReminderRecipientMode('creator'); };
+const isPastEventDate = (dateKey) => !!dateKey && dateKey < getToday();
+const getSafeEventCreateDate = (dateKey) => isPastEventDate(dateKey) ? getToday() : (dateKey || getToday());
+const openNewEventModalForDate = (dateKey, options = {}) => {
+  const safeDate = getSafeEventCreateDate(dateKey);
+  const isPastSelection = isPastEventDate(dateKey);
+  if (isPastSelection) {
+    addToast('Past Date Locked', 'Events can only be added for today or a future date.');
+    if (!options.allowTodayFallback) return;
+  }
+  setEventDate(safeDate);
+  setEventTime('');
+  setEventTitle('');
+  setEventNotes('');
+  setEditingEventId(null);
+  setEventImageFile(null);
+  setIsRepeating(false);
+  setRepeatUntil('');
+  resetEventReminderSettings();
+  setNewEventReminderDate(safeDate);
+  setIsEventModalOpen(true);
+};
 
 const handleAddEvent = async (e) => { 
     e.preventDefault(); 
     if(!eventTitle.trim()) return; 
+    if (!editingEventId && isPastEventDate(eventDate)) {
+      addToast('Past Date Locked', 'Events can only be added for today or a future date.');
+      return;
+    }
+    if (!editingEventId && isRepeating && repeatUntil && repeatUntil < getToday()) {
+      addToast('Past Date Locked', 'Repeating events must end today or later.');
+      return;
+    }
+    if (!editingEventId && isRepeating && repeatUntil && repeatUntil < eventDate) {
+      addToast('Check Repeat Dates', 'The repeat-until date must be the same day or later than the event date.');
+      return;
+    }
     setIsEventUploading(true);
 
     let photoUrl = null;
@@ -1559,7 +1592,7 @@ const handleAddEvent = async (e) => {
   };
 
   const openNewEventModal = () => {
-    setEventDate(currentDate); setEventTime(''); setEventTitle(''); setEventNotes(''); setEditingEventId(null); setEventImageFile(null); resetEventReminderSettings(); setNewEventReminderDate(currentDate || getToday()); setIsEventModalOpen(true);
+    openNewEventModalForDate(currentDate, { allowTodayFallback: true });
   };
 
   const handleDeleteEvent = async (ev) => {
@@ -1874,7 +1907,7 @@ const handleExportTimesheets = () => {
       <Modal isOpen={isEventModalOpen} onClose={()=>setIsEventModalOpen(false)} title={editingEventId ? "Edit Special Event" : "Add Special Event"}>
         <form onSubmit={handleAddEvent} className="space-y-4">
           <div className="grid grid-cols-2 gap-3">
-            <div><label className={T.label}>Date</label><input type="date" value={eventDate} onChange={e=>setEventDate(e.target.value)} className={T.input} required/></div>
+            <div><label className={T.label}>Date</label><input type="date" min={!editingEventId ? getToday() : undefined} value={eventDate} onChange={e=>{ const nextDate = e.target.value; if (!editingEventId && isPastEventDate(nextDate)) { addToast('Past Date Locked', 'Events can only be added for today or a future date.'); setEventDate(getToday()); setNewEventReminderDate(getToday()); return; } setEventDate(nextDate); if (!editingEventId) setNewEventReminderDate(nextDate || getToday()); }} className={T.input} required/></div>
          <div>
               <label className={T.label}>Time (Optional)</label>
               <input type="time" value={eventTime} onChange={e=>setEventTime(e.target.value)} className={T.input}/>
@@ -2280,22 +2313,25 @@ const handleExportTimesheets = () => {
               {eventsMonthDays.map(d => {
                 const holiday = getHoliday(d);
                 const dayEvents = eventsCalEvents.filter(e => e.date === d);
+                const isPastCalendarDay = isPastEventDate(d);
 
                 return (
                   <div key={d} onClick={() => {
-                    setEventDate(d); setEventTime(''); setEventTitle(''); setEventNotes(''); setEditingEventId(null); setEventImageFile(null); resetEventReminderSettings(); setNewEventReminderDate(d); setIsEventModalOpen(true);
-                  }} className={`p-1 border-b border-r ${T.border} min-h-[70px] flex flex-col items-center justify-start pt-1 transition-colors hover:bg-[#12161A]/50 cursor-pointer group`}>
-                    <span className={`text-xs font-black ${d === getToday() ? T.copper : 'text-slate-300'}`}>{parseInt(d.split('-')[2])}</span>
+                    if (isPastCalendarDay) { addToast('Past Date Locked', 'Events can only be added for today or a future date.'); return; }
+                    openNewEventModalForDate(d);
+                  }} className={`p-1 border-b border-r ${T.border} min-h-[70px] flex flex-col items-center justify-start pt-1 transition-colors group ${isPastCalendarDay ? 'bg-[#0B0E11]/60 opacity-60 cursor-not-allowed' : 'hover:bg-[#12161A]/50 cursor-pointer'}`}>
+                    <span className={`text-xs font-black ${d === getToday() ? T.copper : isPastCalendarDay ? 'text-slate-600' : 'text-slate-300'}`}>{parseInt(d.split('-')[2])}</span>
                     
                     {holiday && <span className="text-[6px] sm:text-[7px] text-amber-500 font-bold uppercase text-center leading-tight mt-0.5 px-0.5">{holiday}</span>}
+                    {isPastCalendarDay && <span className="text-[6px] sm:text-[7px] text-slate-600 font-black uppercase text-center leading-tight mt-0.5 px-0.5">Past</span>}
                     {dayEvents.map(ev => (
                       <span key={ev.id} className="text-[6px] sm:text-[7px] text-blue-400 font-bold uppercase text-center leading-tight mt-1 px-1 py-0.5 w-full truncate bg-blue-900/20 border border-blue-900/50 rounded" title={ev.title}>
                         {ev.time ? `${formatShortTime(ev.time)} ` : ''}{ev.title}
                       </span>
                     ))}
-                    <div className="mt-auto pt-1 opacity-0 group-hover:opacity-100 text-[8px] text-slate-500 font-bold uppercase transition-opacity pb-1">
+                    {!isPastCalendarDay && <div className="mt-auto pt-1 opacity-0 group-hover:opacity-100 text-[8px] text-slate-500 font-bold uppercase transition-opacity pb-1">
                       + Add
-                    </div>
+                    </div>}
                   </div>
                 )
               })}
