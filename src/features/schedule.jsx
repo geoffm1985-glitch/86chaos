@@ -290,13 +290,25 @@ const TabMasterSchedule = ({ currentDate, setCurrentDate = null, onSubTabChange 
     setIsFullSchedulePickerOpen(false);
   };
 
-  useEffect(() => {
-    const requested = voiceScheduleSubTabTarget?.subTab;
+  const openScheduleSubTabSafely = (requested = '') => {
     if (!requested) return;
     const allowed = ['my-schedule', 'full-schedule', 'month-view', 'trade-board', 'time-off', 'availability'];
     if ((appUser?.isAdmin || appUser?.permissions?.schedule) && scheduleBuilderProps) allowed.push('schedule-builder');
     if (allowed.includes(requested)) setSubTab(requested);
+  };
+
+  useEffect(() => {
+    openScheduleSubTabSafely(voiceScheduleSubTabTarget?.subTab);
   }, [voiceScheduleSubTabTarget?.id]);
+
+  useEffect(() => {
+    let requested = '';
+    try {
+      requested = sessionStorage.getItem('scheduleFocus') || '';
+      if (requested) sessionStorage.removeItem('scheduleFocus');
+    } catch (e) {}
+    openScheduleSubTabSafely(requested);
+  }, []);
 
   useEffect(() => {
     if (!appUser?.id || !appUser?.restaurantId) {

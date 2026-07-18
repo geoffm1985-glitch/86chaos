@@ -534,12 +534,14 @@ const TabInventory = ({ addToast, appUser, clientData = {}, initialSubTab, onIni
   const canUseBasicInventory = inventoryPlanAccess.canUse(FEATURE_KEYS.BASIC_INVENTORY).allowed || inventoryPlanAccess.canUse(FEATURE_KEYS.BURN_LOG).allowed;
   const canUseSmartInventory = inventoryPlanAccess.canUse(FEATURE_KEYS.COGS_CENTER).allowed || inventoryPlanAccess.canUse(FEATURE_KEYS.INVOICE_TOTALS).allowed || inventoryPlanAccess.canUse(FEATURE_KEYS.INVOICE_SCANNING).allowed;
   const canUseMenuIntelligence = inventoryPlanAccess.canUse(FEATURE_KEYS.MENU_INTELLIGENCE).allowed || inventoryPlanAccess.canUse(FEATURE_KEYS.DEPENDENCY_TOOLS).allowed || inventoryPlanAccess.canUse(FEATURE_KEYS.SMART_86_ALERTS).allowed;
+  const canUseAiOrdering = inventoryPlanAccess.canUse(FEATURE_KEYS.AI_ORDER_ASSISTANT).allowed;
+  const canUsePythonIntelligence = inventoryPlanAccess.canUse(FEATURE_KEYS.PYTHON_INTELLIGENCE).allowed;
   const inventoryItems = useLiveCollection('inventoryItems', appUser?.restaurantId, { enabled: canUseBasicInventory || canUseSmartInventory || canUseMenuIntelligence, limitCount: 500 });
   const menuDependencies = useLiveCollection('menuDependencies', appUser?.restaurantId, { enabled: canUseMenuIntelligence, limitCount: 500 });
   const vendors = useLiveCollection('vendors', appUser?.restaurantId, { enabled: canUseBasicInventory || canUseSmartInventory, limitCount: 150 });
   const wasteLogs = useLiveCollection('wasteLogs', appUser?.restaurantId, { enabled: canUseBasicInventory, limitCount: 200 });
-  const futureEvents = useLiveCollection('events', appUser?.restaurantId, { enabled: canUseBasicInventory || canUseSmartInventory, whereClauses: [['date','>=', getToday()]], orderByField: 'date', orderDirection: 'asc', limitCount: 120, fallbackLimitCount: 60 });
-  const prepItemsForOrdering = useLiveCollection('prepItems', appUser?.restaurantId, { enabled: canUseBasicInventory || canUseSmartInventory, limitCount: 220, fallbackLimitCount: 80 });
+  const futureEvents = useLiveCollection('events', appUser?.restaurantId, { enabled: canUseAiOrdering, whereClauses: [['date','>=', getToday()]], orderByField: 'date', orderDirection: 'asc', limitCount: 120, fallbackLimitCount: 60 });
+  const prepItemsForOrdering = useLiveCollection('prepItems', appUser?.restaurantId, { enabled: canUseAiOrdering, limitCount: 220, fallbackLimitCount: 80 });
   const [invTab, setInvTab] = useState(initialSubTab || 'count');
   const [focusBelowPar, setFocusBelowPar] = useState(() => sessionStorage.getItem('inventoryFocus') === 'belowPar');
 const [searchTerm, setSearchTerm] = useState(''); 
@@ -568,9 +570,14 @@ const [searchTerm, setSearchTerm] = useState('');
       setTimeout(() => document.getElementById('below-par-focus-panel')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 100);
     }
     if (sessionStorage.getItem('inventoryFocus') === 'aiOrder') {
-      setInvTab('ai-order');
       sessionStorage.removeItem('inventoryFocus');
-      setTimeout(() => document.getElementById('ai-order-assistant-panel')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 100);
+      if (canUseAiOrdering) {
+        setInvTab('ai-order');
+        setTimeout(() => document.getElementById('ai-order-assistant-panel')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 100);
+      } else {
+        setInvTab('count');
+        addToast?.('Smart Kitchen Required', 'AI assisted ordering starts with the Smart Kitchen plan.');
+      }
     }
   }, []);
 
@@ -636,11 +643,12 @@ const [searchTerm, setSearchTerm] = useState('');
 
   useEffect(() => {
     if (invTab === 'invoices' && !canUseSmartInventory) setInvTab('count');
-  }, [invTab, canUseSmartInventory]);
+    if (invTab === 'ai-order' && !canUseAiOrdering) setInvTab('count');
+  }, [invTab, canUseSmartInventory, canUseAiOrdering]);
 
   // Master Permission Check for Inventory Tabs
-  const hasInvPerms = appUser?.isAdmin || appUser?.permissions?.inventory || appUser?.permissions?.team;
-  const opsIntelEnabled = !!(appUser?.restaurantId && hasInvPerms && invTab === 'ai-order');
+  const hasInvPerms = appUser?.isSuperAdmin || appUser?.isAdmin || appUser?.isOwner || appUser?.accountOwner || appUser?.workspaceOwner || appUser?.permissions?.inventory || appUser?.permissions?.team;
+  const opsIntelEnabled = false; // Python Ops Scan now lives in Manager Brief to avoid loading large admin datasets inside Inventory.
   const opsUsers = useLiveCollection('users', appUser?.restaurantId, { enabled: opsIntelEnabled, limitCount: 260, fallbackLimitCount: 80 });
   const opsShifts = useLiveCollection('shifts', appUser?.restaurantId, { enabled: opsIntelEnabled, limitCount: 1200, fallbackLimitCount: 160 });
   const opsTimePunches = useLiveCollection('timePunches', appUser?.restaurantId, { enabled: opsIntelEnabled, limitCount: 650, fallbackLimitCount: 120 });
@@ -1956,7 +1964,7 @@ const groupedItems = inventoryItems
         <div className={`inventory-subtabs bg-[#12161A] p-1 rounded-xl flex flex-wrap border ${T.border} w-full sm:w-auto`}>
           <button onClick={() => setInvTab('count')} className={`px-4 py-1.5 rounded-lg text-xs font-bold capitalize whitespace-nowrap transition-all flex-1 sm:flex-none ${invTab === 'count' ? `${T.grad} text-slate-900 shadow-sm` : 'text-slate-400 hover:text-white'}`}>count</button>
           {hasInvPerms && <button onClick={() => setInvTab('order')} className={`px-4 py-1.5 rounded-lg text-xs font-bold capitalize whitespace-nowrap transition-all flex-1 sm:flex-none ${invTab === 'order' ? `${T.grad} text-slate-900 shadow-sm` : 'text-slate-400 hover:text-white'}`}>order</button>}
-          {hasInvPerms && <button onClick={() => setInvTab('ai-order')} className={`px-4 py-1.5 rounded-lg text-xs font-bold capitalize whitespace-nowrap transition-all flex-1 sm:flex-none ${invTab === 'ai-order' ? `${T.grad} text-slate-900 shadow-sm` : 'text-slate-400 hover:text-white'}`}>🤖 AI Order</button>}
+          {hasInvPerms && canUseAiOrdering && <button onClick={() => setInvTab('ai-order')} className={`px-4 py-1.5 rounded-lg text-xs font-bold capitalize whitespace-nowrap transition-all flex-1 sm:flex-none ${invTab === 'ai-order' ? `${T.grad} text-slate-900 shadow-sm` : 'text-slate-400 hover:text-white'}`}>🤖 AI Order</button>}
           {hasInvPerms && <button onClick={() => setInvTab('manage')} className={`px-4 py-1.5 rounded-lg text-xs font-bold capitalize whitespace-nowrap transition-all flex-1 sm:flex-none ${invTab === 'manage' ? `${T.grad} text-slate-900 shadow-sm` : 'text-slate-400 hover:text-white'}`}>manage</button>}
           {hasInvPerms && <button onClick={() => setInvTab('vendors')} className={`px-4 py-1.5 rounded-lg text-xs font-bold capitalize whitespace-nowrap transition-all flex-1 sm:flex-none ${invTab === 'vendors' ? `${T.grad} text-slate-900 shadow-sm` : 'text-slate-400 hover:text-white'}`}>vendors</button>}
           {hasInvPerms && canUseSmartInventory && <button onClick={() => setInvTab('invoices')} className={`px-4 py-1.5 rounded-lg text-xs font-bold capitalize whitespace-nowrap transition-all flex-1 sm:flex-none ${invTab === 'invoices' ? `${T.grad} text-slate-900 shadow-sm` : 'text-slate-400 hover:text-white'}`}>🧾 Invoices</button>}
@@ -2015,7 +2023,7 @@ const groupedItems = inventoryItems
         </div>
       )}
 
-      {hasInvPerms && invTab === 'ai-order' && (
+      {hasInvPerms && canUseAiOrdering && invTab === 'ai-order' && (
         <div className="space-y-4 animate-[slideIn_0.2s_ease-out]">
           <div id="ai-order-assistant-panel" className={`${T.card} p-4 sm:p-5 border-[#D4A381]/40 bg-gradient-to-br from-[#1A2126] to-[#0B0E11]`}>
             <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-4">
@@ -2040,11 +2048,10 @@ const groupedItems = inventoryItems
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mt-2">
               <button type="button" onClick={saveAiOrderDraft} className="w-full rounded-xl bg-emerald-900/20 border border-emerald-500/40 text-emerald-300 py-3 text-xs font-black uppercase tracking-widest hover:bg-emerald-900/30">Save AI Draft to Orders</button>
-              <button type="button" onClick={runPythonOrderIntelligence} disabled={pythonOrderLoading} className="w-full rounded-xl bg-blue-900/20 border border-blue-500/40 text-blue-200 py-3 text-xs font-black uppercase tracking-widest hover:bg-blue-900/30 disabled:opacity-60">{pythonOrderLoading ? 'Running Python Forecast…' : 'Run Python Forecast'}</button>
-              <button type="button" onClick={runPythonOpsIntelligence} disabled={pythonOpsLoading} className="w-full rounded-xl bg-purple-900/20 border border-purple-500/40 text-purple-200 py-3 text-xs font-black uppercase tracking-widest hover:bg-purple-900/30 disabled:opacity-60">{pythonOpsLoading ? 'Running Ops Scan…' : 'Run Python Ops Scan'}</button>
+              {canUsePythonIntelligence ? <button type="button" onClick={runPythonOrderIntelligence} disabled={pythonOrderLoading} className="w-full rounded-xl bg-blue-900/20 border border-blue-500/40 text-blue-200 py-3 text-xs font-black uppercase tracking-widest hover:bg-blue-900/30 disabled:opacity-60">{pythonOrderLoading ? 'Running Python Forecast…' : 'Run Python Forecast'}</button> : <div className="rounded-xl border border-amber-500/30 bg-amber-950/10 p-3 text-[11px] font-black text-amber-100">Python forecasting starts with Smart Kitchen.</div>}
             </div>
             {pythonOrderError && <div className="mt-2 rounded-xl border border-amber-500/30 bg-amber-950/20 p-3 text-[11px] font-bold text-amber-100">Python analysis did not finish: {pythonOrderError}. The regular AI Order Assistant is still active.</div>}
-            {pythonOpsError && <div className="mt-2 rounded-xl border border-amber-500/30 bg-amber-950/20 p-3 text-[11px] font-bold text-amber-100">Python Ops scan did not finish: {pythonOpsError}. The normal app screens still work.</div>}
+
           </div>
 
           {pythonOrderIntel && (
@@ -2082,7 +2089,7 @@ const groupedItems = inventoryItems
           )}
 
 
-          {pythonOpsIntel && (
+          {false && pythonOpsIntel && (
             <div className="space-y-4">
               <div className={`${T.card} p-4 border-purple-500/30 bg-purple-950/10`}>
                 <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
@@ -4062,7 +4069,13 @@ const TabToday = ({ currentDate, appUser, users, shifts, shiftSwaps, timeOffRequ
   const openPrep = prepItems.filter(p => (p.date === today || p.date === 'MASTER') && !p.isCompleted).slice(0, 8);
   const pendingRequests = canUseScheduleBuilder ? timeOffRequests.filter(r => r.status === 'pending').slice(0, 5) : [];
   const openSwaps = canUseScheduleBuilder ? shiftSwaps.filter(s => s.status === 'available' && s.date >= today).slice(0, 5) : [];
-  const aiBrief = canUseBasicInventory ? buildAiOrderAssistant({ inventoryItems, vendors: [], wasteLogs: [], invoices: [], events, prepItems, menuDependencies, currentDate: today, daysAhead: 7, eventDaysAhead: 14 }) : { managerBrief: [], recommendations: [], eventNeeds: [], priceWarnings: [] };
+  const briefVendors = useLiveCollection('vendors', appUser?.restaurantId, { enabled: !!appUser?.restaurantId && canUseAiOrdering, limitCount: 80, fallbackLimitCount: 35 });
+  const briefWasteLogs = useLiveCollection('wasteLogs', appUser?.restaurantId, { enabled: !!appUser?.restaurantId && canUseAiOrdering, limitCount: 120, fallbackLimitCount: 35 });
+  const briefInvoices = useLiveCollection('invoices', appUser?.restaurantId, { enabled: !!appUser?.restaurantId && canUseAiOrdering, limitCount: 80, fallbackLimitCount: 30 });
+  const briefAvailabilityRecords = useLiveCollection('availabilityRecords', appUser?.restaurantId, { enabled: !!appUser?.restaurantId && canUsePythonIntelligence, limitCount: 160, fallbackLimitCount: 45 });
+  const briefReminders = useLiveCollection('personalReminders', appUser?.restaurantId, { enabled: !!appUser?.restaurantId && canUsePythonIntelligence, limitCount: 160, fallbackLimitCount: 45 });
+  const briefAuditLogs = useLiveCollection('auditLogs', appUser?.restaurantId, { enabled: !!appUser?.restaurantId && canUsePythonIntelligence, limitCount: 160, fallbackLimitCount: 45 });
+  const aiBrief = canUseAiOrdering ? buildAiOrderAssistant({ inventoryItems, vendors: briefVendors, wasteLogs: briefWasteLogs, invoices: briefInvoices, events, prepItems, menuDependencies, currentDate: today, daysAhead: 7, eventDaysAhead: 14 }) : { managerBrief: [], recommendations: [], eventNeeds: [], priceWarnings: [] };
   const aiBriefTop = aiBrief.recommendations?.filter(row => row.suggestedQty > 0).slice(0, 3) || [];
   const recentTabs = (() => { try { return JSON.parse(localStorage.getItem(`recentTabs_${appUser.id}`) || '[]'); } catch { return []; } })();
   const setupItems = [
@@ -4196,11 +4209,33 @@ const TabToday = ({ currentDate, appUser, users, shifts, shiftSwaps, timeOffRequ
           </div>}
         </div>
 
-        {canUseBasicInventory && (aiBriefTop.length || aiBrief.eventNeeds?.length) && <div className={`${T.card} brief-card p-4 border-[#D4A381]/30`}>
+        {canUseAiOrdering && (aiBriefTop.length || aiBrief.eventNeeds?.length) && <div className={`${T.card} brief-card p-4 border-[#D4A381]/30`}>
           <div className="flex justify-between items-center gap-2"><h2 className="font-black text-white text-lg flex items-center gap-2"><Sparkles size={18} className="text-[#D4A381]"/> AI Ordering Attention</h2><button onClick={() => { sessionStorage.setItem('inventoryFocus', 'aiOrder'); setActiveTab('inventory'); }} className="text-[10px] font-black uppercase tracking-widest text-[#D4A381]">Open AI Order</button></div>
           <div className="grid sm:grid-cols-3 gap-2 mt-3">
             {aiBriefTop.length ? aiBriefTop.map(row => <MiniProblemCard key={row.itemId || row.itemName} title={row.itemName} detail={`Suggest ${row.suggestedQty}${row.reasons?.[0] ? ` • ${row.reasons[0]}` : ''}`} action="Review" onClick={() => { sessionStorage.setItem('inventoryFocus', 'aiOrder'); setActiveTab('inventory'); }} />) : <MiniProblemCard title="Order Draft" detail="No urgent order items. Review event supply checks." action="Open" onClick={() => { sessionStorage.setItem('inventoryFocus', 'aiOrder'); setActiveTab('inventory'); }} />}
           </div>
+        </div>}
+
+        {canUsePythonIntelligence && <div className={`${T.card} brief-card p-4 border-purple-500/30`}>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+              <h2 className="font-black text-white text-lg flex items-center gap-2"><Sparkles size={18} className="text-purple-300"/> Python Ops Scan</h2>
+              <p className="text-xs text-slate-400 font-bold mt-1 leading-snug">Runs the deeper ops check from Manager Brief, then lets you tap each finding to jump to the place that fixes it.</p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <button onClick={runBriefPythonOps} disabled={briefOpsLoading} className="rounded-xl bg-purple-900/20 border border-purple-500/40 text-purple-200 px-3 py-2 text-[10px] font-black uppercase tracking-widest hover:bg-purple-900/30 disabled:opacity-60">{briefOpsLoading ? 'Scanning…' : 'Run Ops Scan'}</button>
+              {briefOpsIntel && <button onClick={copyBriefOpsReport} className="rounded-xl bg-[#12161A] border border-[#2A353D] text-slate-200 px-3 py-2 text-[10px] font-black uppercase tracking-widest">{briefOpsCopied ? 'Copied' : 'Copy Report'}</button>}
+            </div>
+          </div>
+          {briefOpsError && <div className="mt-3 rounded-xl border border-amber-500/30 bg-amber-950/20 p-3 text-xs font-bold text-amber-100">Python Ops scan did not finish: {briefOpsError}</div>}
+          {briefOpsIntel && <div className="mt-3 space-y-3">
+            <div className="grid grid-cols-3 sm:grid-cols-7 gap-2">
+              {[['Prices', briefOpsSummary.priceWarningCount || 0], ['Pars', briefOpsSummary.parRecommendationCount || 0], ['Waste', briefOpsSummary.wasteInsightCount || 0], ['Menu', briefOpsSummary.menuCostCount || 0], ['Labor', briefOpsSummary.laborWarningCount || 0], ['Health', briefOpsSummary.dataHealthCount || 0], ['Backups', briefOpsSummary.backupCheckCount || 0]].map(([label, value]) => <div key={label} className="rounded-xl border border-purple-500/20 bg-[#12161A] p-2 text-center"><div className="font-black text-white">{value}</div><div className="text-[7px] uppercase tracking-widest text-slate-500 font-black">{label}</div></div>)}
+            </div>
+            <div className="space-y-2">
+              {briefOpsFindings.length ? briefOpsFindings.map((row, idx) => <button key={`${row.area}-${row.title}-${idx}`} onClick={() => openOpsFinding(row)} className="w-full text-left rounded-xl border border-purple-500/20 bg-[#12161A] hover:border-[#D4A381]/50 p-3 transition-colors"><div className="flex items-center justify-between gap-2"><div className="text-[9px] uppercase tracking-widest font-black text-purple-200">{row.area}</div><div className="text-[9px] uppercase tracking-widest font-black text-[#D4A381]">Open Fix</div></div><div className="font-black text-white text-sm mt-1">{row.title}</div><div className="text-xs text-slate-400 font-bold mt-1 leading-snug">{row.detail}</div></button>) : <SmartEmptyState icon={<Check size={22}/>} title="No major ops findings" desc="The scan did not find a priority problem in this window." />}
+            </div>
+          </div>}
         </div>}
 
         <div className={`${T.card} brief-card p-4`}>

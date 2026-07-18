@@ -1,10 +1,10 @@
 {
-  "version": "15.0.83",
+  "version": "15.0.85",
   "name": "86 Chaos",
   "releasedAt": "2026-07-18",
-  "label": "86 Chaos 15.0.83",
-  "build": "15.0.83",
+  "label": "86 Chaos 15.0.85",
+  "build": "15.0.85",
   "updatedAt": "2026-07-18T00:00:00.000Z",
-  "notes": "Converts Python intelligence from Node spawn calls to real Vercel Python API engine routes with secure Node auth wrappers.",
-  "release": "Vercel Python API engine routing fix"
+  "notes": "Moves Python Ops Scan into Manager Brief with clickable findings, locks AI assisted ordering/Python intelligence behind Smart Kitchen+, improves menu placement, fixes Schedule Copilot layout, and refreshes customer-facing feature alignment.",
+  "release": "Manager Brief Python ops, tier locks, menu polish, and website alignment prompt"
 }
