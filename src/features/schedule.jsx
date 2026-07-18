@@ -1200,10 +1200,11 @@ const handlePublish = async () => {
       return;
     }
 
+    const publishPeriodStart = schedulePeriodBounds.start;
+    const publishPeriodEnd = schedulePeriodBounds.end;
+    const publishPeriodLabel = schedulePeriodLabel;
+
     try {
-      const publishPeriodStart = schedulePeriodBounds.start;
-      const publishPeriodEnd = schedulePeriodBounds.end;
-      const publishPeriodLabel = schedulePeriodLabel;
       const restaurantPrefix = getRestaurantExportPrefix(appUser, appUser?.restaurantId || '86chaos');
       const now = new Date();
       const backupPayload = {

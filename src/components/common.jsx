@@ -1568,7 +1568,7 @@ const VoiceCommandDock = ({ appUser, inventoryItems = [], recipes = [], users = 
     return { intent:'help', label:'Search Help', tab:'help', summary:`I could not safely turn “${raw}” into an action. Opening Help Center/search is safer.`, safe:true };
   };
 
-  const processText = async (text) => {
+  const processText = async (text, sourceMeta = {}) => {
     if (pending && /\b(cancel|never mind|nevermind|stop|scratch that)\b/i.test(String(text || ''))) {
       setPending(null);
       setVoiceResult({ label:'Voice command cancelled', summary:'Pending voice action was cancelled before anything else was saved.' });

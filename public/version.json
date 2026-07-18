@@ -1,9 +1,9 @@
 {
-  "version": "15.0.65",
-  "name": "86 Chaos 15.0.65 Voice, Scheduling, Availability, Reminders, and Event Reminder Polish",
+  "version": "15.0.66",
+  "name": "86 Chaos 15.0.66 Load Hotfix",
   "releasedAt": "2026-07-17",
-  "label": "86 Chaos 15.0.65",
-  "build": "15.0.65",
-  "updatedAt": "2026-07-17T00:00:00.000Z",
-  "notes": "Fixes duplicate voice reminder commits, adds request-off archive/history filters, adds employee availability records and Schedule Builder warnings, adds reminder snooze and due dots, dedupes in-app toasts, adds Event Calendar push/order reminder settings, updates Brother QL-810W prep label printing, and reorders the main menu with Time Clock & Schedule first."
+  "label": "86 Chaos 15.0.66",
+  "build": "15.0.66",
+  "updatedAt": "2026-07-17T23:59:00.000Z",
+  "notes": "15.0.66 hotfix: fixed load-blocking voice/schedule scope errors and removed non-runtime docs from app ZIP."
 }
