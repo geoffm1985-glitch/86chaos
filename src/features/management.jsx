@@ -6836,7 +6836,7 @@ ${body}`;
       const result = await response.json().catch(() => ({}));
       return { label, url, ok: response.ok && result.ok !== false, status: response.status, ms: Math.round(performance.now() - started), result: redactDiagnosticSecrets(result) };
     } catch (err) {
-      return { label, url, ok: false, severity: 'error', status: 0, ms: Math.round(performance.now() - started), error: err.message || 'Request failed' };
+      return { label, url, ok: false, status: 0, ms: Math.round(performance.now() - started), error: err.message || 'Request failed' };
     }
   };
 
@@ -8463,10 +8463,10 @@ Type RESTORE to continue.`);
                       <div className="text-[9px] font-mono text-slate-500 break-all">{check.url}</div>
                     </div>
                     <div className="flex items-center gap-2">
-                      <span className={`text-[9px] font-black uppercase tracking-widest px-2 py-1 rounded border ${check.severity === 'error' ? 'bg-red-900/20 text-red-300 border-red-900/50' : check.warning ? 'bg-amber-900/20 text-amber-200 border-amber-500/50' : 'bg-emerald-900/20 text-emerald-300 border-emerald-900/50'}`}>{check.severity === 'error' ? `ERR ${check.status || ''}` : check.warning ? `WARN ${check.status || ''}` : 'OK'}</span>
+                      <span className={`text-[9px] font-black uppercase tracking-widest px-2 py-1 rounded border ${check.ok ? 'bg-emerald-900/20 text-emerald-300 border-emerald-900/50' : 'bg-red-900/20 text-red-300 border-red-900/50'}`}>{check.ok ? 'OK' : `ERR ${check.status || ''}`}</span>
                       <span className="text-sm font-black text-white min-w-[70px] text-right">{check.ms}ms</span>
                     </div>
-                    {(check.error || check.note) && <div className={`sm:col-span-2 text-[10px] font-bold ${check.error ? 'text-red-300' : 'text-amber-200'}`}>{check.error || check.note}</div>}
+                    {check.error && <div className="sm:col-span-2 text-[10px] font-bold text-red-300">{check.error}</div>}
                   </div>
                 ))}
                 {(healthSnapshot?.apiRouteManifest || []).length > 0 && <div className="p-3 bg-[#0B0E11]/60 border-t border-[#2A353D]"><div className="text-[10px] font-black uppercase tracking-widest text-[#D4A381] mb-2">Full Vercel API Route Manifest</div><div className="grid sm:grid-cols-2 gap-1.5 max-h-72 overflow-y-auto custom-scrollbar">{healthSnapshot.apiRouteManifest.map(route => <div key={route.route} className="flex items-center justify-between gap-2 bg-[#12161A] border border-[#2A353D] rounded-lg px-2 py-1.5"><span className="text-[10px] font-mono text-slate-300 truncate">{route.route}</span><span className={`text-[8px] font-black uppercase tracking-widest ${route.status === 'ready' ? 'text-emerald-300' : 'text-red-300'}`}>{route.status}</span></div>)}</div></div>}

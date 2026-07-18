@@ -58,6 +58,7 @@ const HANDLER_LOADERS = {
   'firestore-backup.js': () => require('./firestore-backup'),
   'firestore-backup-watchdog.js': () => require('./firestore-backup-watchdog'),
   'gemini-admin-manual.js': () => require('./gemini-admin-manual'),
+  'openai-diagnostics-explain.js': () => require('./openai-diagnostics-explain'),
   'full-system-diagnostics.js': () => require('./full-system-diagnostics'),
   'geocode-address.js': () => require('./geocode-address'),
   'import-cheers-july-schedule.js': () => require('./import-cheers-july-schedule'),
