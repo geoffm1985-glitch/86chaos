@@ -3787,3 +3787,22 @@ select {
     padding-right: 8px;
   }
 }
+
+/* 15.0.72 mobile drawer polish: keep the circular close control actually centered. */
+.app-drawer-readable .drawer-icon-button {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  flex: 0 0 40px !important;
+  min-width: 40px !important;
+  min-height: 40px !important;
+  width: 40px !important;
+  height: 40px !important;
+  padding: 0 !important;
+  line-height: 1 !important;
+}
+.app-drawer-readable .drawer-icon-button svg {
+  display: block !important;
+  margin: 0 !important;
+  flex-shrink: 0 !important;
+}

@@ -24,6 +24,25 @@ const formatElapsedSeconds = (seconds = 0) => {
 
 const formatUploadBytes = (bytes = 0) => `${(Math.max(0, bytes) / (1024 * 1024)).toFixed(1)}MB`;
 
+
+const REMINDER_SNOOZE_OPTIONS = [30, 60, 90, 120, 180, 240];
+
+const getReminderWakeAt = (reminder = {}) => reminder.snoozedUntil || reminder.nextReminderAt || reminder.scheduledAt || '';
+
+const reminderNeedsAttention = (reminder = {}) => {
+  const status = String(reminder.status || '').toLowerCase();
+  if (status === 'done' || status === 'cancelled' || status === 'archived') return false;
+  const target = Date.parse(getReminderWakeAt(reminder));
+  return Number.isFinite(target) && target <= Date.now();
+};
+
+const formatSnoozeLabel = (minutes = 30) => {
+  const safe = Math.max(30, Number(minutes) || 30);
+  if (safe === 30) return '30 minutes';
+  if (safe % 60 === 0) return `${safe / 60} hour${safe === 60 ? '' : 's'}`;
+  return `${safe / 60} hours`;
+};
+
 const FIRESTORE_BATCH_DELETE_LIMIT = 450;
 
 const batchDeleteRefs = async (refs = [], onProgress = null) => {
@@ -87,6 +106,7 @@ const TabPersonalReminders = ({ appUser, addToast }) => {
   [...ownReminders, ...createdReminders, ...assignedReminders].forEach(reminder => reminder?.id && reminderMap.set(reminder.id, reminder));
   const sortedReminders = [...reminderMap.values()].sort((a, b) => String(a.scheduledAt || '').localeCompare(String(b.scheduledAt || '')));
   const pendingReminders = sortedReminders.filter(r => r.status !== 'done' && r.status !== 'cancelled');
+  const dueReminderCount = pendingReminders.filter(reminderNeedsAttention).length;
   const completedReminders = sortedReminders.filter(r => r.status === 'done' || r.status === 'cancelled').slice(0, 20);
   const currentUserId = appUser?.id || '';
 
@@ -219,8 +239,28 @@ const TabPersonalReminders = ({ appUser, addToast }) => {
   };
 
   const markDone = async (reminder) => {
-    await updateDoc(doc(db, 'personalReminders', reminder.id), { status: 'done', completedAt: new Date().toISOString() });
+    await updateDoc(doc(db, 'personalReminders', reminder.id), { status: 'done', completedAt: new Date().toISOString(), updatedAt: new Date().toISOString() });
     addToast('Reminder Done', reminder.title || 'Reminder');
+  };
+
+  const snoozeReminder = async (reminder, minutes) => {
+    const requested = Number(minutes) || 30;
+    const safeMinutes = Math.max(30, Math.round(requested / 30) * 30);
+    const now = new Date().toISOString();
+    const snoozedUntil = new Date(Date.now() + safeMinutes * 60 * 1000).toISOString();
+    await updateDoc(doc(db, 'personalReminders', reminder.id), {
+      snoozedUntil,
+      nextReminderAt: snoozedUntil,
+      snoozeMinutes: safeMinutes,
+      snoozedAt: now,
+      snoozedBy: appUser?.id || '',
+      status: 'scheduled',
+      dispatchedAt: null,
+      dispatchKey: '',
+      updatedAt: now
+    });
+    await logAudit(appUser, 'REMINDER_SNOOZED', reminder.title || 'Reminder', `${safeMinutes} minutes`);
+    addToast('Reminder Snoozed', `${reminder.title || 'Reminder'} for ${formatSnoozeLabel(safeMinutes)}.`);
   };
 
   const removeReminder = async (reminder) => {
@@ -234,7 +274,7 @@ const TabPersonalReminders = ({ appUser, addToast }) => {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-[#2A353D] pb-3">
         <div>
           <h2 className="text-2xl font-black flex items-center gap-2 text-white"><Bell size={24} className={T.copper}/> My Reminders</h2>
-          <p className="text-xs text-slate-400 font-bold mt-1">Remind yourself or share a reminder with one teammate.</p>
+          <p className="text-xs text-slate-400 font-bold mt-1 flex flex-wrap items-center gap-2">Remind yourself or share a reminder with one teammate. {dueReminderCount > 0 && <span className="inline-flex items-center gap-1 rounded-full border border-red-500/40 bg-red-500/10 px-2 py-0.5 text-[10px] font-black uppercase tracking-widest text-red-200"><span className="h-2 w-2 rounded-full bg-red-500"/> {dueReminderCount} due</span>}</p>
         </div>
         <button type="button" onClick={startListening} className={`${T.btnAlt} flex items-center justify-center gap-2 ${listening ? 'text-red-300 border-red-500/40' : ''}`}><Mic size={16}/> {listening ? 'Listening' : 'Speak Reminder'}</button>
       </div>
@@ -270,21 +310,28 @@ const TabPersonalReminders = ({ appUser, addToast }) => {
 
       <div className="grid lg:grid-cols-[1fr_.8fr] gap-4">
         <div className={`${T.card} overflow-hidden`}>
-          <div className={T.th}>Upcoming</div>
+          <div className={`${T.th} flex items-center justify-between`}><span>Upcoming</span>{dueReminderCount > 0 && <span className="inline-flex items-center gap-1 text-[10px] text-red-200"><span className="h-2.5 w-2.5 rounded-full bg-red-500 shadow-[0_0_12px_rgba(239,68,68,.8)]"/> Due / overdue</span>}</div>
           {pendingReminders.length === 0 ? <SmartEmptyState title="No reminders yet" desc="Add one by typing, sharing, or using the mic." /> : pendingReminders.map(reminder => {
             const createdByMe = (reminder.createdBy || reminder.userId) === currentUserId;
             const assignedToMe = (reminder.assignedToUserId || reminder.userId) === currentUserId;
             const canEditReminder = createdByMe;
             const canDeleteReminder = createdByMe;
+            const canSnoozeReminder = assignedToMe || createdByMe;
+            const isDue = reminderNeedsAttention(reminder);
+            const wakeAt = getReminderWakeAt(reminder);
             const shareLabel = reminder.shared ? (createdByMe ? `For ${reminder.assignedToName || 'team member'}` : `From ${reminder.createdByName || 'team member'}`) : 'Just me';
             return (
-            <div key={reminder.id} className={`${T.row} flex items-center justify-between gap-3`}>
-              <div className="min-w-0">
-                <div className="font-black text-white text-sm truncate flex items-center gap-2">{reminder.shared && <Share2 size={13} className="text-blue-300"/>}{reminder.title}</div>
-                <div className="text-[10px] text-[#D4A381] font-black uppercase tracking-widest mt-1 flex items-center gap-1"><Clock size={12}/> {reminder.scheduledAt ? formatClockDateTime(reminder.scheduledAt) : 'No time'} • {shareLabel}</div>
+            <div key={reminder.id} className={`${T.row} flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${isDue ? 'bg-red-950/10 border-red-500/25' : ''}`}>
+              <div className="min-w-0 flex-1">
+                <div className="font-black text-white text-sm truncate flex items-center gap-2">{isDue && <span className="h-2.5 w-2.5 rounded-full bg-red-500 shadow-[0_0_12px_rgba(239,68,68,.8)] shrink-0" title="Due or overdue"/>}{reminder.shared && <Share2 size={13} className="text-blue-300"/>}{reminder.title}</div>
+                <div className="text-[10px] text-[#D4A381] font-black uppercase tracking-widest mt-1 flex flex-wrap items-center gap-1"><Clock size={12}/> {wakeAt ? formatClockDateTime(wakeAt) : 'No time'} • {shareLabel}{reminder.snoozedUntil && <span className="text-amber-200">• Snoozed</span>}{isDue && <span className="text-red-200">• Needs attention</span>}</div>
                 {reminder.notes && <div className="text-xs text-slate-500 font-bold mt-1 truncate">{reminder.notes}</div>}
               </div>
-              <div className="flex items-center gap-1">
+              <div className="flex flex-wrap items-center gap-1 justify-end">
+                <select aria-label="Snooze reminder" value="" onChange={e => { if (e.target.value) snoozeReminder(reminder, Number(e.target.value)); }} disabled={!canSnoozeReminder} className="h-9 rounded-lg bg-[#12161A] border border-[#2A353D] px-2 text-[10px] font-black uppercase tracking-widest text-slate-300 disabled:opacity-40">
+                  <option value="">Snooze</option>
+                  {REMINDER_SNOOZE_OPTIONS.map(minutes => <option key={minutes} value={minutes}>{formatSnoozeLabel(minutes)}</option>)}
+                </select>
                 <button onClick={() => markDone(reminder)} disabled={!assignedToMe && !createdByMe} className="p-2 rounded-lg bg-emerald-900/20 text-emerald-300 border border-emerald-900/50 disabled:opacity-40"><Check size={16}/></button>
                 <button onClick={() => editReminder(reminder)} disabled={!canEditReminder} className="p-2 rounded-lg bg-[#12161A] text-slate-300 border border-[#2A353D] disabled:opacity-40"><Calendar size={16}/></button>
                 <button onClick={() => removeReminder(reminder)} disabled={!canDeleteReminder} className="p-2 rounded-lg bg-red-900/20 text-red-300 border border-red-900/50 disabled:opacity-40"><Trash2 size={16}/></button>
