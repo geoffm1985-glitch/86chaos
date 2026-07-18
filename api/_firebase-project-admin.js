@@ -108,7 +108,13 @@ function readProjectCredential(projectId) {
   // matches the requested Firebase project so testing deployments do not need a
   // separate production/test key split.
   const generic = readGenericCredential();
-  if (generic && credentialProjectId(generic.credential) === projectId) return generic;
+  if (generic) {
+    const genericProject = credentialProjectId(generic.credential);
+    if (genericProject === projectId) return generic;
+    if (!genericProject) {
+      return { credential: { ...generic.credential, projectId }, source: `${generic.source} with ${projectId} fallback project id` };
+    }
+  }
 
   for (const name of aliases.json || []) {
     const raw = process.env[name];
@@ -170,7 +176,7 @@ function parseCredentialProjectIdFromEnv(name) {
   const raw = process.env[name];
   if (!raw || !String(raw).trim()) return '';
   try {
-    const credential = JSON.parse(String(raw));
+    const credential = parseJsonCredential(String(raw), name);
     return credentialProjectId(credential);
   } catch (_) {
     return '';
@@ -178,27 +184,26 @@ function parseCredentialProjectIdFromEnv(name) {
 }
 
 function getConfiguredDefaultProjectId() {
-  const explicit = readFirstEnv([
-    'FIREBASE_ADMIN_PROJECT_ID',
-    'FIREBASE_SERVER_PROJECT_ID',
-    'FIREBASE_TEST_PROJECT_ID',
-    'TEST_FIREBASE_PROJECT_ID',
-    'REACT_APP_TEST_FIREBASE_PROJECT_ID',
-    'FIREBASE_PROJECT_ID',
-    'REACT_APP_FIREBASE_PROJECT_ID',
-    'FIREBASE_PRODUCTION_PROJECT_ID',
-    'PROD_FIREBASE_PROJECT_ID'
-  ]);
-  if (explicit && TRUSTED_PROJECTS.includes(explicit)) return explicit;
-
   // Server-to-server jobs like /api/dispatch-reminders have no Firebase ID
-  // token, so resolve the default project from the generic service-account JSON
-  // before any Vercel production/preview assumptions. This preserves the 15.0.52
-  // deployment behavior where FIREBASE_SERVICE_ACCOUNT_KEY alone was enough.
+  // token. The safest default is the project embedded in the one normal
+  // FIREBASE_SERVICE_ACCOUNT_KEY value, because that is the credential Vercel
+  // can actually use. Do this before reading REACT_APP_* values so a browser
+  // project id cannot force the server to ask for a second production key.
   for (const name of ['FIREBASE_SERVICE_ACCOUNT_KEY', 'FIREBASE_ADMIN_CREDENTIALS']) {
     const fromCredential = parseCredentialProjectIdFromEnv(name);
     if (fromCredential && TRUSTED_PROJECTS.includes(fromCredential)) return fromCredential;
   }
+
+  const explicitServer = readFirstEnv([
+    'FIREBASE_ADMIN_PROJECT_ID',
+    'FIREBASE_SERVER_PROJECT_ID',
+    'FIREBASE_PROJECT_ID',
+    'FIREBASE_TEST_PROJECT_ID',
+    'TEST_FIREBASE_PROJECT_ID',
+    'FIREBASE_PRODUCTION_PROJECT_ID',
+    'PROD_FIREBASE_PROJECT_ID'
+  ]);
+  if (explicitServer && TRUSTED_PROJECTS.includes(explicitServer)) return explicitServer;
 
   const projectSpecificJsonNames = [];
   for (const projectId of TRUSTED_PROJECTS) {
@@ -213,6 +218,12 @@ function getConfiguredDefaultProjectId() {
     if (fromCredential && TRUSTED_PROJECTS.includes(fromCredential)) return fromCredential;
     return projectId;
   }
+
+  const explicitBrowser = readFirstEnv([
+    'REACT_APP_FIREBASE_PROJECT_ID',
+    'REACT_APP_TEST_FIREBASE_PROJECT_ID'
+  ]);
+  if (explicitBrowser && TRUSTED_PROJECTS.includes(explicitBrowser)) return explicitBrowser;
 
   return '';
 }
@@ -254,10 +265,21 @@ function getAdminAppForProject(projectId, { requireCredentials = true } = {}) {
   if (!found) {
     if (!requireCredentials) return null;
     const recommended = wanted === 'chaos-test-d1601' ? 'FIREBASE_TEST_SERVICE_ACCOUNT_KEY' : 'FIREBASE_PRODUCTION_SERVICE_ACCOUNT_KEY';
+    const genericProject = (() => {
+      try {
+        const generic = readGenericCredential();
+        return generic ? credentialProjectId(generic.credential) : '';
+      } catch (_) {
+        return '';
+      }
+    })();
+    const mismatchNote = genericProject && genericProject !== wanted
+      ? ` The current FIREBASE_SERVICE_ACCOUNT_KEY belongs to ${genericProject}, so it cannot safely administer ${wanted}.`
+      : '';
     throw new Error(
-      `No server credential is configured for Firebase project ${wanted}. ` +
-      `FIREBASE_SERVICE_ACCOUNT_KEY is enough when it contains the complete JSON for ${wanted}. ` +
-      `Optional advanced aliases are ${recommended}, FIREBASE_ADMIN_CREDENTIALS, or split FIREBASE_PROJECT_ID/FIREBASE_CLIENT_EMAIL/FIREBASE_PRIVATE_KEY. Redeploy after changing Vercel env vars.`
+      `No usable server credential is configured for Firebase project ${wanted}. ` +
+      `Use your normal FIREBASE_SERVICE_ACCOUNT_KEY env var with the complete Firebase service-account JSON for the project this deployment is using.${mismatchNote} ` +
+      `You do not need a separate production-named key. Optional aliases are ${recommended}, FIREBASE_ADMIN_CREDENTIALS, or split FIREBASE_PROJECT_ID/FIREBASE_CLIENT_EMAIL/FIREBASE_PRIVATE_KEY. Redeploy after changing Vercel env vars.`
     );
   }
 

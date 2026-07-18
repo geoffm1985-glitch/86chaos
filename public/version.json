@@ -1,9 +1,9 @@
 {
-  "version": "15.0.66",
-  "name": "86 Chaos 15.0.66 Load Hotfix",
-  "releasedAt": "2026-07-17",
-  "label": "86 Chaos 15.0.66",
-  "build": "15.0.66",
-  "updatedAt": "2026-07-17T23:59:00.000Z",
-  "notes": "15.0.66 hotfix: fixed load-blocking voice/schedule scope errors and removed non-runtime docs from app ZIP."
+  "version": "15.0.67",
+  "name": "86 Chaos 15.0.67 Firebase Credential Hotfix",
+  "releasedAt": "2026-07-18",
+  "label": "86 Chaos 15.0.67",
+  "build": "15.0.67",
+  "updatedAt": "2026-07-18T00:20:00.000-05:00",
+  "notes": "15.0.67 hotfix: server credential resolver now treats FIREBASE_SERVICE_ACCOUNT_KEY as the primary Firebase Admin credential and no longer implies a separate production key is required."
 }
