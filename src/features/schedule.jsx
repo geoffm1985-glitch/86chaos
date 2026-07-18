@@ -1414,11 +1414,44 @@ const removeEventReminderOffset = (reminderOrMinutes) => setEventPushReminders(p
   return !(Number(r.minutesBefore) === Number(reminderOrMinutes) && !r.scheduledAt);
 }));
 const toggleOrderReminderDay = (day) => setOrderReminderDays(prev => prev.includes(day) ? prev.filter(d => d !== day) : [...prev, day]);
-const getEventReminderRecipientIds = () => {
-  if (eventReminderRecipientMode === 'managers') return users.filter(u => u?.isAdmin || u?.permissions?.events || u?.permissions?.schedule || u?.permissions?.inventory).map(u => u.id).filter(Boolean);
-  if (eventReminderRecipientMode === 'team' && (appUser?.isAdmin || appUser?.permissions?.events || appUser?.permissions?.schedule)) return users.filter(u => u?.isActive !== false).map(u => u.id).filter(Boolean);
-  return [appUser?.id].filter(Boolean);
+const getEventReminderRecipientRecords = () => {
+  const isManagerish = (u) => u?.isAdmin || u?.permissions?.events || u?.permissions?.schedule || u?.permissions?.inventory;
+  let recipients = [];
+  if (eventReminderRecipientMode === 'managers') recipients = users.filter(isManagerish);
+  else if (eventReminderRecipientMode === 'team' && (appUser?.isAdmin || appUser?.permissions?.events || appUser?.permissions?.schedule)) recipients = users.filter(u => u?.isActive !== false);
+  else recipients = [appUser].filter(Boolean);
+  const seen = new Set();
+  return recipients.filter(Boolean).filter(u => {
+    const key = String(u?.id || u?.uid || u?.userId || u?.email || '').toLowerCase();
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 };
+const getEventReminderRecipientIds = () => getEventReminderRecipientRecords().map(u => u?.id || u?.uid || u?.userId).filter(Boolean);
+const getEventReminderRecipientEmails = () => getEventReminderRecipientRecords().map(u => String(u?.email || '').toLowerCase().trim()).filter(Boolean);
+const getEventReminderPushTokens = () => {
+  const tokens = new Set();
+  getEventReminderRecipientRecords().forEach(u => {
+    if (u?.fcmToken) tokens.add(u.fcmToken);
+    if (Array.isArray(u?.fcmTokens)) u.fcmTokens.forEach(t => t && tokens.add(t));
+    if (Array.isArray(u?.pushTokens)) u.pushTokens.forEach(t => t && tokens.add(typeof t === 'string' ? t : t?.token));
+    if (u?.pushDevices && typeof u.pushDevices === 'object') {
+      Object.values(u.pushDevices).forEach(device => {
+        if (typeof device === 'string') tokens.add(device);
+        if (device?.token) tokens.add(device.token);
+        if (device?.fcmToken) tokens.add(device.fcmToken);
+      });
+    }
+  });
+  return [...tokens].filter(Boolean);
+};
+const getEventReminderRecipientSnapshots = () => getEventReminderRecipientRecords().map(u => ({
+  id: u?.id || '',
+  uid: u?.uid || u?.userId || '',
+  email: String(u?.email || '').toLowerCase().trim(),
+  name: u?.name || u?.displayName || ''
+}));
 const cancelFutureEventReminders = async (eventId) => {
   if (!eventId || !appUser?.restaurantId) return;
   const snap = await getDocs(query(collection(db, 'eventReminders'), where('restaurantId', '==', appUser.restaurantId), where('eventId', '==', eventId)));
@@ -1432,6 +1465,9 @@ const cancelFutureEventReminders = async (eventId) => {
 const saveEventReminderDocs = async (eventId, eventData) => {
   if (!eventId || !eventData?.date) return;
   const recipients = getEventReminderRecipientIds();
+  const recipientEmails = getEventReminderRecipientEmails();
+  const recipientSnapshots = getEventReminderRecipientSnapshots();
+  const recipientPushTokens = getEventReminderPushTokens();
   const eventStart = new Date(`${eventData.date}T${eventData.time || '09:00'}:00`);
   if (!Number.isFinite(eventStart.getTime())) return;
   const now = new Date();
@@ -1473,16 +1509,25 @@ const saveEventReminderDocs = async (eventId, eventData) => {
     type: rem.type,
     label: rem.label,
     scheduledAt: rem.scheduledAt,
+    scheduledLocalDate: String(rem.scheduledAt || '').slice(0, 10),
+    scheduledLocalTime: String(rem.scheduledAt || '').slice(11, 16),
     minutesBefore: rem.minutesBefore ?? null,
     cutoffDay: rem.cutoffDay || '',
     recipientMode: eventReminderRecipientMode,
     recipientUserIds: recipients,
+    recipientEmails,
+    recipientUsers: recipientSnapshots,
+    recipientPushTokens,
+    tokenSnapshotCount: recipientPushTokens.length,
     status: 'scheduled',
+    dispatchAttemptCount: 0,
     createdAt: nowIso,
     updatedAt: nowIso,
     createdBy: appUser?.id || '',
+    createdByEmail: String(appUser?.email || '').toLowerCase().trim(),
     createdByName: appUser?.name || appUser?.email || ''
   })));
+  return docs.length;
 };
 const resetEventReminderSettings = () => { setEventPushReminders([]); setNewEventReminderOffset('60'); setNewEventReminderMode('offset'); setNewEventReminderDate(getToday()); setNewEventReminderTime('09:00'); setOrderReminderEnabled(false); setOrderReminderDays([]); setEventReminderRecipientMode('creator'); };
 const isPastEventDate = (dateKey) => !!dateKey && dateKey < getToday();
@@ -1553,8 +1598,9 @@ const handleAddEvent = async (e) => {
       const updatedEvent = { ...baseEventData, date: eventDate, ...(photoUrl && { imageUrl: photoUrl }) };
       await updateDoc(doc(db, "events", editingEventId), updatedEvent);
       await cancelFutureEventReminders(editingEventId);
-      await saveEventReminderDocs(editingEventId, updatedEvent);
-      addToast('Updated', 'Event modified successfully.');
+      const scheduledReminderCount = await saveEventReminderDocs(editingEventId, updatedEvent);
+      if ((eventPushReminders.length || orderReminderDays.length) && scheduledReminderCount === 0) addToast('Event Updated', 'Event saved, but no future push reminders were scheduled. Check the reminder day/time.');
+      else addToast('Updated', 'Event modified successfully.');
     } else {
       if (isRepeating && repeatUntil) {
         const seriesId = Date.now().toString();
@@ -1580,8 +1626,9 @@ const handleAddEvent = async (e) => {
       } else {
         const eventPayload = { ...baseEventData, date: eventDate };
         const eventRef = await addDoc(collection(db, "events"), eventPayload);
-        await saveEventReminderDocs(eventRef.id, eventPayload);
-        addToast('Event Added', 'Calendar updated.');
+        const scheduledReminderCount = await saveEventReminderDocs(eventRef.id, eventPayload);
+        if ((eventPushReminders.length || orderReminderDays.length) && scheduledReminderCount === 0) addToast('Event Added', 'Event saved, but no future push reminders were scheduled. Check the reminder day/time.');
+        else addToast('Event Added', 'Calendar updated.');
       }
     }
     setEventTitle(''); setEventTime(''); setEventNotes(''); setEditingEventId(null); setEventImageFile(null); setIsEventUploading(false); setIsEventModalOpen(false); setIsRepeating(false); setRepeatUntil(''); resetEventReminderSettings(); 
@@ -1949,6 +1996,14 @@ const handleExportTimesheets = () => {
                 <label className={T.label}>Push Reminders</label>
                 <p className={`text-[10px] font-bold ${T.muted}`}>Add reminder offsets or pick the exact day and time the push should fire.</p>
               </div>
+              <div>
+                <label className={T.label}>Who Gets Event Pushes</label>
+                <select value={eventReminderRecipientMode} onChange={e=>setEventReminderRecipientMode(e.target.value)} className={T.input}>
+                  <option value="creator">Just me</option>
+                  <option value="managers">Managers / ordering users</option>
+                  {(appUser?.isAdmin || appUser?.permissions?.schedule || appUser?.permissions?.events) && <option value="team">Entire active team</option>}
+                </select>
+              </div>
               <div className="grid grid-cols-1 sm:grid-cols-[.7fr_1fr_auto] gap-2 items-end">
                 <div>
                   <label className={T.label}>Reminder Type</label>
@@ -1976,7 +2031,7 @@ const handleExportTimesheets = () => {
 
           <div className="bg-[#12161A] p-3 rounded-xl border border-[#2A353D] space-y-3">
             <label className="flex items-center gap-2 text-xs font-bold text-slate-300 cursor-pointer"><input type="checkbox" checked={orderReminderEnabled} onChange={e=>setOrderReminderEnabled(e.target.checked)} className="w-4 h-4 rounded bg-[#1A2126] border-[#2A353D] accent-[#8F6040]" />Order Reminder</label>
-            {orderReminderEnabled && <><p className={`text-[10px] font-bold ${T.muted}`}>Starts one week before the event and fires only on selected cutoff days.</p><div className="flex flex-wrap gap-2">{orderReminderWeekdays.map(day => <button type="button" key={day} onClick={() => toggleOrderReminderDay(day)} className={orderReminderDays.includes(day) ? T.btn : T.btnAlt}>{day.slice(0,3)}</button>)}</div><div><label className={T.label}>Recipients</label><select value={eventReminderRecipientMode} onChange={e=>setEventReminderRecipientMode(e.target.value)} className={T.input}><option value="creator">Just me</option><option value="managers">Managers / ordering users</option>{(appUser?.isAdmin || appUser?.permissions?.schedule || appUser?.permissions?.events) && <option value="team">Entire active team</option>}</select></div></>}
+            {orderReminderEnabled && <><p className={`text-[10px] font-bold ${T.muted}`}>Starts one week before the event and fires only on selected cutoff days. Uses the same recipients selected in Push Reminders.</p><div className="flex flex-wrap gap-2">{orderReminderWeekdays.map(day => <button type="button" key={day} onClick={() => toggleOrderReminderDay(day)} className={orderReminderDays.includes(day) ? T.btn : T.btnAlt}>{day.slice(0,3)}</button>)}</div></>}
           </div>
 
           <div>

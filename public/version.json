@@ -1,9 +1,9 @@
 {
-  "version": "15.0.75",
-  "name": "86 Chaos 15.0.75 Diagnostics Manifest Fix",
+  "version": "15.0.76",
+  "name": "86 Chaos 15.0.76 Event Push Reminder Delivery Fix",
   "releasedAt": "2026-07-18",
-  "label": "86 Chaos 15.0.75",
-  "build": "15.0.75",
+  "label": "86 Chaos 15.0.76",
+  "build": "15.0.76",
   "updatedAt": "2026-07-18T00:00:00.000Z",
-  "notes": "Fixes the System Administrator API route manifest so /api/openai-diagnostics-explain is registered as a load-checked route instead of falsely showing ATTENTION/ERR 200 when the route exists."
+  "notes": "Fixes scheduled event push reminder delivery by saving recipient/token snapshots, resolving recipients through users and workspace memberships, retrying no-token/delivery-problem event reminders, and exposing recipient selection in the event push reminder section."
 }
