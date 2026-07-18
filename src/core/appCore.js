@@ -60,17 +60,9 @@ export const prodConfig = {
 
 export const PROD_FIREBASE_HOSTS = ['app.86chaos.com', '86chaos.com', 'www.86chaos.com'];
 export const isProdFirebaseHost = (hostname = '') => PROD_FIREBASE_HOSTS.includes(String(hostname || '').toLowerCase());
-export const firebaseDeploymentMode = String(env('REACT_APP_FIREBASE_DEPLOYMENT_MODE', '') || '').toLowerCase().trim();
-export const forceTestFirebase = ['test', 'testing', 'preview', 'staging', 'dev', 'development'].includes(firebaseDeploymentMode);
-export const forceProdFirebase = ['prod', 'production', 'live'].includes(firebaseDeploymentMode);
 
 // 3. THE SWITCHER (Automatically routes the database based on the URL)
-// Production hosts use live Firebase. Every other host uses test Firebase unless
-// REACT_APP_FIREBASE_DEPLOYMENT_MODE explicitly overrides it. This keeps the
-// testing GitHub/Vercel side from accidentally loading the live project.
-export const firebaseConfig = forceProdFirebase
-  ? prodConfig
-  : (forceTestFirebase || !isProdFirebaseHost(window.location.hostname) ? testConfig : prodConfig);
+export const firebaseConfig = isProdFirebaseHost(window.location.hostname) ? prodConfig : testConfig;
 
 export const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app);
@@ -164,7 +156,7 @@ export const MASTER_ADMIN_EMAIL = (process.env.REACT_APP_MASTER_ADMIN_EMAIL || '
 export const EVENT_TAGS = ['Standard Day', 'Packers Game', 'Brewers Game', 'Live Music', 'Severe Weather', 'Private Catering', 'Holiday'];
 
 // --- VERSION TRACKING ---
-export const CURRENT_VERSION = '15.0.65';
+export const CURRENT_VERSION = '15.0.70';
 
 // --- Helpers ---
 export const useLiveCollection = (coll, restId, options = {}) => {

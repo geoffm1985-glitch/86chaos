@@ -184,60 +184,13 @@ const isTipDeclarationEnabled = (appUser = {}, clientData = {}) => {
   return settingBool(raw, true);
 };
 
-
-const SCHEDULE_WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-
-const getScheduleWeekdayName = (dateKey = '') => {
-  try { return SCHEDULE_WEEKDAYS[new Date(`${dateKey}T12:00:00`).getDay()] || ''; } catch (err) { return ''; }
-};
-
-const normalizeAvailabilityStatus = (status = '') => String(status || 'approved').toLowerCase();
-
-const isAvailabilityActiveForDate = (record = {}, dateKey = '') => {
-  if (!record || !dateKey) return false;
-  const status = normalizeAvailabilityStatus(record.status);
-  if (!['approved', 'active'].includes(status)) return false;
-  if (record.archived === true || status === 'archived' || status === 'denied') return false;
-  if (record.effectiveStartDate && record.effectiveStartDate > dateKey) return false;
-  if (record.effectiveEndDate && record.effectiveEndDate < dateKey) return false;
-  return true;
-};
-
-const getActiveAvailabilityForDate = (employeeId = '', dateKey = '', availabilityRecords = []) => {
-  return (availabilityRecords || [])
-    .filter(record => String(record.employeeId || record.userId || '') === String(employeeId || '') && isAvailabilityActiveForDate(record, dateKey))
-    .sort((a, b) => new Date(b.updatedAt || b.createdAt || b.effectiveStartDate || 0) - new Date(a.updatedAt || a.createdAt || a.effectiveStartDate || 0))[0] || null;
-};
-
-const timeWindowOverlaps = (startA = '', endA = '', startB = '', endB = '') => {
-  if (!startA || !endA || !startB || !endB) return false;
-  return startA < endB && endA > startB;
-};
-
-const getAvailabilityConflict = (availabilityRecord = null, dateKey = '', startTime = '', endTime = '') => {
-  if (!availabilityRecord || !dateKey || !startTime || !endTime) return null;
-  const dayName = getScheduleWeekdayName(dateKey);
-  const weekly = availabilityRecord.weeklyAvailability || {};
-  const day = weekly[dayName] || weekly[dayName?.toLowerCase?.()] || null;
-  const unavailableWindows = Array.isArray(availabilityRecord.unavailableWindows) ? availabilityRecord.unavailableWindows : [];
-  const preferredWindows = Array.isArray(availabilityRecord.preferredWindows) ? availabilityRecord.preferredWindows : [];
-  const unavailableHit = unavailableWindows.find(win => (win.day === dayName || win.day === dayName.toLowerCase()) && timeWindowOverlaps(startTime, endTime, win.start || win.startTime || '00:00', win.end || win.endTime || '23:59'));
-  if (unavailableHit) return { level: 'unavailable', message: `${dayName} ${startTime}-${endTime} overlaps an unavailable window.` };
-  if (!day || day.available === false) return { level: 'outside', message: `${dayName} is not listed as available.` };
-  const availableStart = day.start || day.startTime || '00:00';
-  const availableEnd = day.end || day.endTime || '23:59';
-  if (startTime < availableStart || endTime > availableEnd) return { level: 'outside', message: `Shift ${startTime}-${endTime} is outside availability ${availableStart}-${availableEnd}.` };
-  const preferredHit = day.preferred === true || preferredWindows.some(win => (win.day === dayName || win.day === dayName.toLowerCase()) && timeWindowOverlaps(startTime, endTime, win.start || win.startTime || '00:00', win.end || win.endTime || '23:59'));
-  return preferredHit ? { level: 'preferred', message: 'Preferred availability window.' } : { level: 'available', message: 'Available.' };
-};
-
 const normalizeTipAmount = (value) => {
   const n = Number.parseFloat(value);
   if (!Number.isFinite(n) || n <= 0) return 0;
   return Math.round(n * 100) / 100;
 };
 
-const TabMasterSchedule = ({ currentDate, setCurrentDate = null, onSubTabChange = null, appUser, users, shifts, shiftSwaps, timeOffRequests, events, addToast, initialSubTab = 'my-schedule', voiceScheduleSubTabTarget = null, scheduleBuilderProps = null, clientData = null }) => {
+const TabMasterSchedule = ({ currentDate, appUser, users, shifts, shiftSwaps, timeOffRequests, events, addToast, initialSubTab = 'my-schedule', voiceScheduleSubTabTarget = null, scheduleBuilderProps = null, clientData = null }) => {
   const [rosterFilterDate, setRosterFilterDate] = useState('');
   const monthStr = getMonthStr(currentDate);
   
@@ -261,19 +214,11 @@ const TabMasterSchedule = ({ currentDate, setCurrentDate = null, onSubTabChange 
   const [tipCash, setTipCash] = useState('');
   const [tipCredit, setTipCredit] = useState('');
   const [subTab, setSubTab] = useState(initialSubTab);
-  const availabilityRecords = useLiveCollection('availabilityRecords', appUser?.restaurantId, { enabled: !!appUser?.restaurantId, limitCount: 500, fallbackLimitCount: 120 });
-
-  useEffect(() => { onSubTabChange?.(subTab); }, [subTab, onSubTabChange]);
-
-  const jumpFullScheduleDate = (dateKey = '') => {
-    setRosterFilterDate(dateKey);
-    if (dateKey && typeof setCurrentDate === 'function') setCurrentDate(dateKey);
-  };
 
   useEffect(() => {
     const requested = voiceScheduleSubTabTarget?.subTab;
     if (!requested) return;
-    const allowed = ['my-schedule', 'full-schedule', 'month-view', 'trade-board', 'time-off', 'availability'];
+    const allowed = ['my-schedule', 'full-schedule', 'month-view', 'trade-board', 'time-off'];
     if ((appUser?.isAdmin || appUser?.permissions?.schedule) && scheduleBuilderProps) allowed.push('schedule-builder');
     if (allowed.includes(requested)) setSubTab(requested);
   }, [voiceScheduleSubTabTarget?.id]);
@@ -687,16 +632,16 @@ const handleOfferSwap = async (shift) => {
       </Modal>
 
       <div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-2 border-b border-[#2A353D] mb-4 pb-2">
-        {['my-schedule', 'full-schedule', 'month-view', 'time-off', 'availability', ...((appUser?.isAdmin || appUser?.permissions?.schedule) && scheduleBuilderProps ? ['schedule-builder'] : [])].map((tab) => (
+        {['my-schedule', 'full-schedule', 'month-view', 'time-off', ...((appUser?.isAdmin || appUser?.permissions?.schedule) && scheduleBuilderProps ? ['schedule-builder'] : [])].map((tab) => (
           <button key={tab} onClick={() => setSubTab(tab)} className={`px-2 sm:px-4 py-2 text-[10px] sm:text-xs font-black rounded-xl uppercase tracking-widest transition-all sm:flex-1 ${subTab === tab ? `${T.grad} text-slate-900 shadow-md` : 'bg-[#1A2126] text-slate-400 hover:text-white'}`}>
-            {tab === 'time-off' ? 'Request Off' : tab === 'availability' ? 'Availability' : tab.replace('-', ' ')}
+            {tab.replace('-', ' ')}
           </button>
         ))}
       </div>
 
       {subTab === 'schedule-builder' && scheduleBuilderProps && (
         <div className="animate-[slideIn_0.2s_ease-out]">
-          <TabScheduleWorkbench {...scheduleBuilderProps} availabilityRecords={availabilityRecords} />
+          <TabScheduleWorkbench {...scheduleBuilderProps} />
         </div>
       )}
 
@@ -853,7 +798,7 @@ const handleOfferSwap = async (shift) => {
               </div>
               <div className="flex items-center gap-2">
                  <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">Filter Day:</span>
-                 <input type="date" value={rosterFilterDate} onChange={(e) => jumpFullScheduleDate(e.target.value)} className={`${T.input} py-1 px-2 text-xs w-auto min-w-[130px]`} />
+                 <input type="date" value={rosterFilterDate} onChange={(e) => setRosterFilterDate(e.target.value)} className={`${T.input} py-1 px-2 text-xs w-auto min-w-[130px]`} />
                  {rosterFilterDate && <button onClick={() => setRosterFilterDate('')} className="text-slate-400 hover:text-red-400 p-1"><X size={14}/></button>}
               </div>
             </div>
@@ -889,13 +834,12 @@ const handleOfferSwap = async (shift) => {
       })()}
 
       {subTab === 'month-view' && <div className="animate-[slideIn_0.2s_ease-out]"><TabMonth currentDate={currentDate} users={users} shifts={shifts} appUser={appUser} /></div>}
-      {subTab === 'time-off' && <div className="animate-[slideIn_0.2s_ease-out]"><TabTimeOff timeOffRequests={timeOffRequests} appUser={appUser} users={users} addToast={addToast} events={events} shifts={shifts} clientData={clientData} /></div>}
-      {subTab === 'availability' && <div className="animate-[slideIn_0.2s_ease-out]"><TabAvailability availabilityRecords={availabilityRecords} appUser={appUser} users={users} addToast={addToast} clientData={clientData} /></div>}  
+      {subTab === 'time-off' && <div className="animate-[slideIn_0.2s_ease-out]"><TabTimeOff timeOffRequests={timeOffRequests} appUser={appUser} users={users} addToast={addToast} events={events} shifts={shifts} clientData={clientData} /></div>}  
     </div>
   );
 };
 
-const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, timePunches = [], addToast, appUser, clientData = null, initialSubTab = 'schedule', hideSubTabs = false, availabilityRecords = [] }) => {
+const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, timePunches = [], addToast, appUser, clientData = null, initialSubTab = 'schedule', hideSubTabs = false }) => {
   const [subTab, setSubTab] = useState(initialSubTab); 
   const [selectedEmp, setSelectedEmp] = useState(''); 
   const [assignDates, setAssignDates] = useState([]); 
@@ -916,11 +860,6 @@ const [eventDate, setEventDate] = useState(getToday());
   const [isRepeating, setIsRepeating] = useState(false);
   const [repeatType, setRepeatType] = useState('weekly');
   const [repeatUntil, setRepeatUntil] = useState('');
-  const [eventPushReminders, setEventPushReminders] = useState([]);
-  const [newEventReminderOffset, setNewEventReminderOffset] = useState('60');
-  const [orderReminderEnabled, setOrderReminderEnabled] = useState(false);
-  const [orderReminderDays, setOrderReminderDays] = useState([]);
-  const [eventReminderRecipientMode, setEventReminderRecipientMode] = useState('creator');
 
   // --- EVENTS CALENDAR STATE ---
   const [eventsCalMonth, setEventsCalMonth] = useState(getMonthStr(currentDate));
@@ -1098,10 +1037,14 @@ const [eventDate, setEventDate] = useState(getToday());
 
   const getRoleColors = (role, isPublished) => {
     if (!isPublished) return 'bg-slate-400 text-slate-900';
-    const palette = ['bg-blue-400 text-blue-950', 'bg-emerald-400 text-emerald-950', 'bg-pink-400 text-pink-950', 'bg-purple-400 text-purple-950', 'bg-cyan-400 text-cyan-950', 'bg-amber-400 text-amber-950', 'bg-[#D4A381] text-slate-900'];
-    const clean = String(role || 'Unassigned');
-    const hash = clean.split('').reduce((sum, char) => sum + char.charCodeAt(0), 0);
-    return palette[hash % palette.length];
+    const r = (role || '').toLowerCase();
+    if (r.includes('bartender')) return 'bg-blue-400 text-blue-950';
+    if (r.includes('cook') || r.includes('chef') || r.includes('kitchen')) return 'bg-orange-400 text-orange-950';
+    if (r.includes('server') || r.includes('wait')) return 'bg-pink-400 text-pink-950';
+    if (r.includes('host')) return 'bg-emerald-400 text-emerald-950';
+    if (r.includes('manager')) return 'bg-purple-400 text-purple-950';
+    if (r.includes('dish')) return 'bg-cyan-400 text-cyan-950';
+    return 'bg-[#D4A381] text-slate-900'; 
   };
 
   const rescueEditableMonths = Array.from(new Set([
@@ -1124,26 +1067,14 @@ const [eventDate, setEventDate] = useState(getToday());
   const handleAssign = async () => {
     if (!selectedEmp || assignDates.length === 0) return; const emp = users.find(u => u.id === selectedEmp);
     const validDates = [];
-    const availabilityOverrides = {};
     for (const d of assignDates) { 
       const existingShift = shifts.find(s => s.date === d && s.employeeId === emp.id);
       if (existingShift) { addToast('Blocked', `${(emp.name||'Unknown').split(' ')[0]} is already scheduled on ${formatDisplayDate(d)}.`); return; }
       
-      const req = timeOffRequests.find(r => r.date === d && (r.userId === emp.id || r.employeeId === emp.id) && !['pending','cancelled','canceled','archived','processed'].includes(String(r.status || '').toLowerCase()));
+      const req = timeOffRequests.find(r => r.date === d && r.userId === emp.id && r.status !== 'pending');
       if (req) {
         if (!req.isPartial) { addToast('Blocked', `${(emp.name||'Unknown').split(' ')[0]} requested ${formatDisplayDate(d)} off.`); return; } 
         else { const reqEnd = req.endTime || '23:59'; if ((startTime < reqEnd) && (endTime > req.startTime)) { addToast('Blocked', `${(emp.name||'Unknown').split(' ')[0]} is unavailable from ${formatShortTime(req.startTime)} to ${formatShortTime(req.endTime)} on ${formatDisplayDate(d)}.`); return; } }
-      }
-      const availabilityRecord = getActiveAvailabilityForDate(emp.id, d, availabilityRecords);
-      const availabilityCheck = getAvailabilityConflict(availabilityRecord, d, startTime, endTime);
-      if (availabilityCheck && ['unavailable', 'outside'].includes(availabilityCheck.level)) {
-        const reason = window.prompt(`${emp.name || 'Employee'} is outside approved availability on ${formatDisplayDate(d)}. Enter an override reason to continue, or cancel.`);
-        if (!reason) {
-          addToast('Availability Warning', 'Assignment cancelled until an override reason is entered.');
-          return;
-        }
-        availabilityOverrides[d] = { reason, warning: availabilityCheck.message, availabilityId: availabilityRecord?.id || '' };
-        await logAudit(appUser, 'AVAILABILITY_OVERRIDE_SCHEDULE', emp.name || emp.id, `${d} ${startTime}-${endTime}: ${reason}`);
       }
       validDates.push(d);
     }
@@ -1170,12 +1101,6 @@ const [eventDate, setEventDate] = useState(getToday());
         createdBy: appUser?.id || appUser?.email || 'schedule-builder',
         updatedBy: appUser?.id || appUser?.email || 'schedule-builder'
       };
-      if (availabilityOverrides[d]) {
-        shiftData.availabilityOverrideReason = availabilityOverrides[d].reason;
-        shiftData.availabilityWarning = availabilityOverrides[d].warning;
-        shiftData.availabilityRecordId = availabilityOverrides[d].availabilityId;
-        shiftData.scheduledOutsideAvailability = true;
-      }
       if (rescueEdit) {
         shiftData.rescueProtected = true;
         shiftData.rescueEditable = true;
@@ -1200,11 +1125,10 @@ const handlePublish = async () => {
       return;
     }
 
-    const publishPeriodStart = schedulePeriodBounds.start;
-    const publishPeriodEnd = schedulePeriodBounds.end;
-    const publishPeriodLabel = schedulePeriodLabel;
-
     try {
+      const publishPeriodStart = schedulePeriodBounds.start;
+      const publishPeriodEnd = schedulePeriodBounds.end;
+      const publishPeriodLabel = schedulePeriodLabel;
       const restaurantPrefix = getRestaurantExportPrefix(appUser, appUser?.restaurantId || '86chaos');
       const now = new Date();
       const backupPayload = {
@@ -1232,39 +1156,9 @@ const handlePublish = async () => {
     addToast('Publishing...', `Pushing ${unpub.length} ${publishPeriodLabel} draft shift(s) live. Please wait.`);
     
     try {
-      const publishedAtIso = new Date().toISOString();
-      const scheduleId = `schedule_${appUser.restaurantId}_${publishPeriodStart}_${publishPeriodEnd}_${Date.now()}`;
-      await Promise.all(unpub.map(s => updateDoc(doc(db, "shifts", s.id), { isPublished: true, publishedAt: publishedAtIso, publishedBy: appUser?.id || appUser?.email || 'unknown', scheduleId, schedulePeriodStart: publishPeriodStart, schedulePeriodEnd: publishPeriodEnd })));
-      const inRangeRequests = (timeOffRequests || []).filter(r => r?.date >= publishPeriodStart && r?.date <= publishPeriodEnd && String(r.restaurantId || r.workspaceId || appUser.restaurantId) === String(appUser.restaurantId));
-      const processedRequests = inRangeRequests.filter(r => ['approved', 'denied'].includes(String(r.status || '').toLowerCase()) && r.archived !== true && r.processed !== true);
-      const pendingPublishedOverlap = inRangeRequests.filter(r => String(r.status || '').toLowerCase() === 'pending');
-      await Promise.all(processedRequests.map(r => updateDoc(doc(db, 'timeOffRequests', r.id), {
-        previousStatus: r.status || '',
-        status: 'processed',
-        processed: true,
-        archived: true,
-        processedAt: publishedAtIso,
-        processedBy: appUser?.id || appUser?.email || '',
-        processedByName: appUser?.name || appUser?.email || '',
-        scheduleId,
-        schedulePeriodStart: publishPeriodStart,
-        schedulePeriodEnd: publishPeriodEnd,
-        publishedAt: publishedAtIso,
-        publishedBy: appUser?.id || appUser?.email || '',
-        publishedByName: appUser?.name || appUser?.email || ''
-      })));
-      await Promise.all(pendingPublishedOverlap.map(r => updateDoc(doc(db, 'timeOffRequests', r.id), {
-        overlapsPublishedSchedule: true,
-        unresolvedPublishedOverlap: true,
-        scheduleId,
-        schedulePeriodStart: publishPeriodStart,
-        schedulePeriodEnd: publishPeriodEnd,
-        updatedAt: publishedAtIso
-      })));
-      if (processedRequests.length) await logAudit(appUser, 'TIME_OFF_AUTO_ARCHIVED_ON_PUBLISH', `${processedRequests.length} request-offs`, scheduleId);
-      if (pendingPublishedOverlap.length) await logAudit(appUser, 'TIME_OFF_PENDING_OVERLAPS_PUBLISHED_SCHEDULE', `${pendingPublishedOverlap.length} pending request-offs`, scheduleId);
+      await Promise.all(unpub.map(s => updateDoc(doc(db, "shifts", s.id), { isPublished: true, publishedAt: new Date().toISOString(), publishedBy: appUser?.id || appUser?.email || 'unknown' })));
       
-      addToast("Published", `Schedule is live, backup downloaded, and ${processedRequests.length} request-off records were archived to history.`); 
+      addToast("Published", "Schedule is live and a backup file was downloaded."); 
       logAudit(appUser, 'PUBLISH_SCHEDULE', 'Master Roster', `Pushed ${unpub.length} shifts live for ${publishPeriodLabel}. Local backup JSON downloaded before publish.`); 
 
 // --- NEW: TRIGGER PUSH NOTIFICATIONS ---
@@ -1301,86 +1195,6 @@ const handlePublish = async () => {
     }
   };
   
-const eventReminderOptions = [
-  { label: 'At event time', minutes: 0 },
-  { label: '30 minutes before', minutes: 30 },
-  { label: '1 hour before', minutes: 60 },
-  { label: '2 hours before', minutes: 120 },
-  { label: '1 day before', minutes: 1440 },
-  { label: '2 days before', minutes: 2880 },
-  { label: '1 week before', minutes: 10080 }
-];
-const orderReminderWeekdays = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
-const addEventReminderOffset = () => {
-  const minutes = Number(newEventReminderOffset);
-  if (!Number.isFinite(minutes) || minutes < 0) return;
-  setEventPushReminders(prev => prev.some(r => Number(r.minutesBefore) === minutes) ? prev : [...prev, { minutesBefore: minutes, label: eventReminderOptions.find(o => o.minutes === minutes)?.label || `${minutes} minutes before` }].sort((a,b) => b.minutesBefore - a.minutesBefore));
-};
-const removeEventReminderOffset = (minutes) => setEventPushReminders(prev => prev.filter(r => Number(r.minutesBefore) !== Number(minutes)));
-const toggleOrderReminderDay = (day) => setOrderReminderDays(prev => prev.includes(day) ? prev.filter(d => d !== day) : [...prev, day]);
-const getEventReminderRecipientIds = () => {
-  if (eventReminderRecipientMode === 'managers') return users.filter(u => u?.isAdmin || u?.permissions?.events || u?.permissions?.schedule || u?.permissions?.inventory).map(u => u.id).filter(Boolean);
-  if (eventReminderRecipientMode === 'team' && (appUser?.isAdmin || appUser?.permissions?.events || appUser?.permissions?.schedule)) return users.filter(u => u?.isActive !== false).map(u => u.id).filter(Boolean);
-  return [appUser?.id].filter(Boolean);
-};
-const cancelFutureEventReminders = async (eventId) => {
-  if (!eventId || !appUser?.restaurantId) return;
-  const snap = await getDocs(query(collection(db, 'eventReminders'), where('restaurantId', '==', appUser.restaurantId), where('eventId', '==', eventId)));
-  const nowIso = new Date().toISOString();
-  await Promise.all(snap.docs.map(d => {
-    const data = d.data();
-    if (['sent','completed','dismissed'].includes(String(data.status || '').toLowerCase())) return Promise.resolve();
-    return updateDoc(doc(db, 'eventReminders', d.id), { status:'cancelled', cancelledAt: nowIso, cancelledBy: appUser?.id || '' });
-  }));
-};
-const saveEventReminderDocs = async (eventId, eventData) => {
-  if (!eventId || !eventData?.date) return;
-  const recipients = getEventReminderRecipientIds();
-  const eventStart = new Date(`${eventData.date}T${eventData.time || '09:00'}:00`);
-  if (!Number.isFinite(eventStart.getTime())) return;
-  const now = new Date();
-  const docs = [];
-  eventPushReminders.forEach(rem => {
-    const scheduled = new Date(eventStart.getTime() - (Number(rem.minutesBefore || 0) * 60000));
-    if (scheduled >= now) docs.push({ type:'eventReminder', scheduledAt: scheduled.toISOString(), minutesBefore: Number(rem.minutesBefore || 0), label: rem.label || `${rem.minutesBefore} minutes before` });
-  });
-  if (orderReminderEnabled && orderReminderDays.length) {
-    const cursor = new Date(eventStart);
-    cursor.setDate(cursor.getDate() - 7);
-    cursor.setHours(9, 0, 0, 0);
-    const end = new Date(eventStart);
-    end.setHours(23, 59, 59, 0);
-    while (cursor <= end) {
-      const dayName = orderReminderWeekdays[cursor.getDay()];
-      if (orderReminderDays.includes(dayName) && cursor >= now) docs.push({ type:'orderReminder', scheduledAt: cursor.toISOString(), cutoffDay: dayName, label: `Order reminder: ${dayName}` });
-      cursor.setDate(cursor.getDate() + 1);
-    }
-  }
-  const nowIso = new Date().toISOString();
-  await Promise.all(docs.map(rem => addDoc(collection(db, 'eventReminders'), {
-    restaurantId: appUser.restaurantId,
-    workspaceId: appUser.restaurantId,
-    eventId,
-    eventTitle: eventData.title || eventTitle.trim(),
-    eventDate: eventData.date,
-    eventTime: eventData.time || eventTime || '',
-    reminderType: rem.type,
-    type: rem.type,
-    label: rem.label,
-    scheduledAt: rem.scheduledAt,
-    minutesBefore: rem.minutesBefore ?? null,
-    cutoffDay: rem.cutoffDay || '',
-    recipientMode: eventReminderRecipientMode,
-    recipientUserIds: recipients,
-    status: 'scheduled',
-    createdAt: nowIso,
-    updatedAt: nowIso,
-    createdBy: appUser?.id || '',
-    createdByName: appUser?.name || appUser?.email || ''
-  })));
-};
-const resetEventReminderSettings = () => { setEventPushReminders([]); setNewEventReminderOffset('60'); setOrderReminderEnabled(false); setOrderReminderDays([]); setEventReminderRecipientMode('creator'); };
-
 const handleAddEvent = async (e) => { 
     e.preventDefault(); 
     if(!eventTitle.trim()) return; 
@@ -1399,14 +1213,11 @@ const handleAddEvent = async (e) => {
       }
     }
 
-    const baseEventData = { type: 'special_event', time: eventTime, title: eventTitle.trim(), notes: eventNotes.trim(), addedBy: appUser.name, restaurantId: appUser.restaurantId, pushReminders: eventPushReminders, orderReminder: { enabled: orderReminderEnabled, cutoffDays: orderReminderDays, recipientMode: eventReminderRecipientMode, startsDaysBefore: 7 }, reminderSettingsUpdatedAt: new Date().toISOString() };
+    const baseEventData = { type: 'special_event', time: eventTime, title: eventTitle.trim(), notes: eventNotes.trim(), addedBy: appUser.name, restaurantId: appUser.restaurantId };
     if (photoUrl) baseEventData.imageUrl = photoUrl; 
 
     if (editingEventId) {
-      const updatedEvent = { ...baseEventData, date: eventDate, ...(photoUrl && { imageUrl: photoUrl }) };
-      await updateDoc(doc(db, "events", editingEventId), updatedEvent);
-      await cancelFutureEventReminders(editingEventId);
-      await saveEventReminderDocs(editingEventId, updatedEvent);
+      await updateDoc(doc(db, "events", editingEventId), { date: eventDate, time: eventTime, title: eventTitle.trim(), notes: eventNotes.trim(), ...(photoUrl && { imageUrl: photoUrl }) });
       addToast('Updated', 'Event modified successfully.');
     } else {
       if (isRepeating && repeatUntil) {
@@ -1418,8 +1229,7 @@ const handleAddEvent = async (e) => {
 
         while (currentDateObj <= endDateObj && count < 365) { // Hard cap at 365 events to prevent DB crash loops
           const dateStr = currentDateObj.toISOString().split('T')[0];
-          const eventPayload = { ...baseEventData, date: dateStr, seriesId };
-          promises.push(addDoc(collection(db, "events"), eventPayload).then(ref => saveEventReminderDocs(ref.id, eventPayload)));
+          promises.push(addDoc(collection(db, "events"), { ...baseEventData, date: dateStr, seriesId }));
           
           if (repeatType === 'daily') currentDateObj.setDate(currentDateObj.getDate() + 1);
           else if (repeatType === 'weekly') currentDateObj.setDate(currentDateObj.getDate() + 7);
@@ -1431,28 +1241,19 @@ const handleAddEvent = async (e) => {
         await Promise.all(promises);
         addToast('Events Generated', `Created ${count} recurring events.`);
       } else {
-        const eventPayload = { ...baseEventData, date: eventDate };
-        const eventRef = await addDoc(collection(db, "events"), eventPayload);
-        await saveEventReminderDocs(eventRef.id, eventPayload);
+        await addDoc(collection(db, "events"), { ...baseEventData, date: eventDate }); 
         addToast('Event Added', 'Calendar updated.');
       }
     }
-    setEventTitle(''); setEventTime(''); setEventNotes(''); setEditingEventId(null); setEventImageFile(null); setIsEventUploading(false); setIsEventModalOpen(false); setIsRepeating(false); setRepeatUntil(''); resetEventReminderSettings(); 
+    setEventTitle(''); setEventTime(''); setEventNotes(''); setEditingEventId(null); setEventImageFile(null); setIsEventUploading(false); setIsEventModalOpen(false); setIsRepeating(false); setRepeatUntil(''); 
   };
 
   const openEditEventModal = (ev) => {
-    setEventDate(ev.date); setEventTime(ev.time || ''); setEventTitle(ev.title || ''); setEventNotes(ev.notes || ''); setEditingEventId(ev.id); setEventImageFile(null); setEventPushReminders(Array.isArray(ev.pushReminders) ? ev.pushReminders : []); setOrderReminderEnabled(!!ev.orderReminder?.enabled); setOrderReminderDays(Array.isArray(ev.orderReminder?.cutoffDays) ? ev.orderReminder.cutoffDays : []); setEventReminderRecipientMode(ev.orderReminder?.recipientMode || 'creator'); setIsEventModalOpen(true);
+    setEventDate(ev.date); setEventTime(ev.time || ''); setEventTitle(ev.title || ''); setEventNotes(ev.notes || ''); setEditingEventId(ev.id); setEventImageFile(null); setIsEventModalOpen(true);
   };
 
   const openNewEventModal = () => {
-    setEventDate(currentDate); setEventTime(''); setEventTitle(''); setEventNotes(''); setEditingEventId(null); setEventImageFile(null); resetEventReminderSettings(); setIsEventModalOpen(true);
-  };
-
-  const handleDeleteEvent = async (ev) => {
-    if (!ev?.id || !window.confirm('Delete event? Future event and order reminders will be cancelled.')) return;
-    await cancelFutureEventReminders(ev.id);
-    await deleteDoc(doc(db, 'events', ev.id));
-    addToast('Event Deleted', 'Event removed and future reminders cancelled.');
+    setEventDate(currentDate); setEventTime(''); setEventTitle(''); setEventNotes(''); setEditingEventId(null); setEventImageFile(null); setIsEventModalOpen(true);
   };
 
   // --- AUTO-POPULATE SCHEDULE ENGINE ---
@@ -1795,16 +1596,6 @@ const handleExportTimesheets = () => {
             )}
           </div>
         )}
-
-          <div className="bg-[#12161A] p-3 rounded-xl border border-[#2A353D] space-y-3">
-            <div className="flex items-center justify-between gap-2"><div><label className={T.label}>Push Reminders</label><p className={`text-[10px] font-bold ${T.muted}`}>Add one or more reminders before the event.</p></div><div className="flex gap-2"><select value={newEventReminderOffset} onChange={e=>setNewEventReminderOffset(e.target.value)} className={T.input}>{eventReminderOptions.map(opt => <option key={opt.minutes} value={opt.minutes}>{opt.label}</option>)}</select><button type="button" onClick={addEventReminderOffset} className={T.btnAlt}>Add</button></div></div>
-            <div className="flex flex-wrap gap-2">{eventPushReminders.length === 0 && <span className="text-xs font-bold text-slate-500">No push reminders yet.</span>}{eventPushReminders.map(rem => <button type="button" key={rem.minutesBefore} onClick={() => removeEventReminderOffset(rem.minutesBefore)} className="text-[10px] font-black uppercase tracking-widest rounded-full border border-[#2A353D] bg-[#0B0E11] text-slate-300 px-3 py-1">{rem.label || `${rem.minutesBefore} min before`} ×</button>)}</div>
-          </div>
-
-          <div className="bg-[#12161A] p-3 rounded-xl border border-[#2A353D] space-y-3">
-            <label className="flex items-center gap-2 text-xs font-bold text-slate-300 cursor-pointer"><input type="checkbox" checked={orderReminderEnabled} onChange={e=>setOrderReminderEnabled(e.target.checked)} className="w-4 h-4 rounded bg-[#1A2126] border-[#2A353D] accent-[#8F6040]" />Order Reminder</label>
-            {orderReminderEnabled && <><p className={`text-[10px] font-bold ${T.muted}`}>Starts one week before the event and fires only on selected cutoff days.</p><div className="flex flex-wrap gap-2">{orderReminderWeekdays.map(day => <button type="button" key={day} onClick={() => toggleOrderReminderDay(day)} className={orderReminderDays.includes(day) ? T.btn : T.btnAlt}>{day.slice(0,3)}</button>)}</div><div><label className={T.label}>Recipients</label><select value={eventReminderRecipientMode} onChange={e=>setEventReminderRecipientMode(e.target.value)} className={T.input}><option value="creator">Just me</option><option value="managers">Managers / ordering users</option>{(appUser?.isAdmin || appUser?.permissions?.schedule || appUser?.permissions?.events) && <option value="team">Entire active team</option>}</select></div></>}
-          </div>
 
           <div>
             <label className={T.label}>Notes & Photo (Optional)</label>
@@ -2179,7 +1970,6 @@ const handleExportTimesheets = () => {
                   <div className="flex-1 min-w-0">
                       <h4 className="font-bold text-white">{ev.title} {ev.time && <span className="text-[#D4A381] ml-2">@ {formatShortTime(ev.time)}</span>}</h4>
                       {ev.notes && <p className="text-xs text-slate-300 mt-1 font-medium bg-[#12161A] p-2 rounded-lg border border-[#2A353D] whitespace-pre-wrap">{ev.notes}</p>}
-                      {(ev.pushReminders?.length > 0 || ev.orderReminder?.enabled) && <div className="mt-2 flex flex-wrap gap-1">{(ev.pushReminders || []).map(rem => <span key={rem.minutesBefore} className="text-[8px] font-black uppercase tracking-widest px-2 py-1 rounded border border-[#2A353D] bg-[#12161A] text-[#D4A381]">Push: {rem.label || `${rem.minutesBefore} min before`}</span>)}{ev.orderReminder?.enabled && <span className="text-[8px] font-black uppercase tracking-widest px-2 py-1 rounded border border-amber-900/50 bg-amber-900/20 text-amber-300">Order: {(ev.orderReminder.cutoffDays || []).join(', ')}</span>}</div>}
                       {ev.imageUrl && (
                         <div className="mt-2 overflow-hidden rounded-xl border border-[#2A353D] shadow-inner bg-[#0B0E11] max-w-sm">
                           <img src={ev.imageUrl} alt="Attached" className="w-full max-h-48 object-contain" />
@@ -2190,7 +1980,7 @@ const handleExportTimesheets = () => {
                   </div>
                   <div className="flex items-center gap-1 sm:self-end self-start">
                     <button onClick={() => openEditEventModal(ev)} className="p-2 text-slate-400 hover:text-[#D4A381] transition-colors bg-[#12161A] rounded-lg border border-[#2A353D]"><Edit size={14}/></button>
-                    <button onClick={() => handleDeleteEvent(ev)} className="p-2 text-slate-400 hover:text-red-500 transition-colors bg-[#12161A] rounded-lg border border-[#2A353D]"><Trash2 size={14}/></button>
+                    <button onClick={() => { if(window.confirm("Delete event?")) deleteDoc(doc(db,"events",ev.id)); }} className="p-2 text-slate-400 hover:text-red-500 transition-colors bg-[#12161A] rounded-lg border border-[#2A353D]"><Trash2 size={14}/></button>
                   </div>
                 </div>
               ))}
@@ -2506,291 +2296,206 @@ const TabMonth = ({ currentDate, users, shifts, appUser }) => {
   );
 };
 
-const TabAvailability = ({ availabilityRecords = [], appUser, users = [], addToast, clientData = null }) => {
-  const [mode, setMode] = useState('mine');
-  const [effectiveStartDate, setEffectiveStartDate] = useState(getToday());
-  const [effectiveEndDate, setEffectiveEndDate] = useState('');
-  const [notes, setNotes] = useState('');
-  const [maxHoursPerWeek, setMaxHoursPerWeek] = useState('');
-  const [maxShiftsPerWeek, setMaxShiftsPerWeek] = useState('');
-  const [preferredDaysOff, setPreferredDaysOff] = useState([]);
-  const [weeklyAvailability, setWeeklyAvailability] = useState(() => SCHEDULE_WEEKDAYS.reduce((acc, day) => ({ ...acc, [day]: { available: !['Sunday'].includes(day), start: '09:00', end: '17:00', preferred: false } }), {}));
-
-  const perms = appUser?.permissions || {};
-  const canManage = !!(appUser?.isSuperAdmin || appUser?.isAdmin || perms.schedule || perms.team);
-  const settings = mergeWorkspaceSettings(appUser, clientData);
-  const approvalRequired = settings.requireAvailabilityApproval !== false;
-  const myRecords = (availabilityRecords || []).filter(r => String(r.employeeId || r.userId || '') === String(appUser?.id || '')).sort((a,b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
-  const visibleTeamRecords = canManage ? [...(availabilityRecords || [])].sort((a,b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0)) : myRecords;
-  const pendingRecords = visibleTeamRecords.filter(r => normalizeAvailabilityStatus(r.status) === 'pending' && r.archived !== true);
-  const historyRecords = visibleTeamRecords.filter(r => ['approved','denied','archived'].includes(normalizeAvailabilityStatus(r.status)) || r.archived === true);
-
-  const toggleDay = (day) => setWeeklyAvailability(prev => ({ ...prev, [day]: { ...(prev[day] || {}), available: !(prev[day]?.available !== false) } }));
-  const updateDay = (day, field, value) => setWeeklyAvailability(prev => ({ ...prev, [day]: { ...(prev[day] || {}), [field]: value } }));
-  const togglePreferredDayOff = (day) => setPreferredDaysOff(prev => prev.includes(day) ? prev.filter(d => d !== day) : [...prev, day]);
-
-  const submitAvailability = async (e) => {
-    e.preventDefault();
-    const status = approvalRequired && !canManage ? 'pending' : 'approved';
-    const nowIso = new Date().toISOString();
-    const payload = {
-      restaurantId: appUser.restaurantId,
-      workspaceId: appUser.restaurantId,
-      employeeId: appUser.id || '',
-      employeeName: appUser.name || appUser.email || 'Employee',
-      employeeEmail: appUser.email || '',
-      weeklyAvailability,
-      unavailableWindows: SCHEDULE_WEEKDAYS.filter(day => weeklyAvailability?.[day]?.available === false).map(day => ({ day, start: '00:00', end: '23:59', type: 'unavailable' })),
-      preferredWindows: SCHEDULE_WEEKDAYS.filter(day => weeklyAvailability?.[day]?.preferred === true).map(day => ({ day, start: weeklyAvailability[day].start || '09:00', end: weeklyAvailability[day].end || '17:00', type: 'preferred' })),
-      preferredDaysOff,
-      maxHoursPerWeek: Number(maxHoursPerWeek) || null,
-      maxShiftsPerWeek: Number(maxShiftsPerWeek) || null,
-      effectiveStartDate,
-      effectiveEndDate: effectiveEndDate || null,
-      status,
-      approvalRequired,
-      notes: notes.trim(),
-      createdAt: nowIso,
-      updatedAt: nowIso,
-      createdBy: appUser.id || '',
-      createdByName: appUser.name || appUser.email || ''
-    };
-    await addDoc(collection(db, 'availabilityRecords'), payload);
-    await logAudit(appUser, 'AVAILABILITY_SUBMITTED', appUser.name || appUser.email || 'Availability', `${status} starting ${effectiveStartDate}`);
-    addToast(status === 'pending' ? 'Availability Submitted' : 'Availability Saved', status === 'pending' ? 'A manager needs to approve it before Schedule Builder uses it.' : 'Schedule Builder can now use this availability.');
-    setNotes('');
-  };
-
-  const updateAvailabilityStatus = async (record, status) => {
-    const nowIso = new Date().toISOString();
-    const update = { status, updatedAt: nowIso };
-    if (status === 'approved') Object.assign(update, { approvedAt: nowIso, approvedBy: appUser.id || '', approvedByName: appUser.name || appUser.email || '' });
-    if (status === 'denied') Object.assign(update, { deniedAt: nowIso, deniedBy: appUser.id || '', deniedByName: appUser.name || appUser.email || '' });
-    if (status === 'archived') Object.assign(update, { archived: true, archivedAt: nowIso, archivedBy: appUser.id || '', previousStatus: record.status || 'approved' });
-    if (status === 'restored') Object.assign(update, { status: record.previousStatus || 'pending', archived: false, restoredAt: nowIso, restoredBy: appUser.id || '' });
-    await updateDoc(doc(db, 'availabilityRecords', record.id), update);
-    await logAudit(appUser, `AVAILABILITY_${status.toUpperCase()}`, record.employeeName || record.employeeId || 'Availability', record.id);
-    addToast('Availability Updated', `Availability ${status === 'restored' ? 'restored' : status}.`);
-  };
-
-  const AvailabilityCard = ({ record }) => (
-    <div className={`${T.row} items-start gap-3`}>
-      <div className="flex-1 min-w-0">
-        <div className="font-black text-white text-sm">{record.employeeName || 'Employee'}</div>
-        <div className={`text-[10px] font-bold ${T.muted} mt-0.5`}>{formatDisplayDate(record.effectiveStartDate || getToday())}{record.effectiveEndDate ? ` to ${formatDisplayDate(record.effectiveEndDate)}` : ' onward'} • {record.status || 'pending'}</div>
-        {record.notes && <p className="text-xs text-slate-400 font-bold mt-1 line-clamp-2">{record.notes}</p>}
-        <div className="mt-2 flex flex-wrap gap-1">
-          {SCHEDULE_WEEKDAYS.map(day => {
-            const d = record.weeklyAvailability?.[day];
-            if (!d) return null;
-            return <span key={day} className={`text-[8px] font-black uppercase tracking-widest px-2 py-1 rounded border ${d.available === false ? 'bg-red-900/20 text-red-300 border-red-900/50' : d.preferred ? 'bg-emerald-900/20 text-emerald-300 border-emerald-900/50' : 'bg-[#12161A] text-slate-300 border-[#2A353D]'}`}>{day.slice(0,3)} {d.available === false ? 'off' : `${formatShortTime(d.start)}-${formatShortTime(d.end)}`}</span>;
-          })}
-        </div>
-      </div>
-      {canManage && (
-        <div className="flex flex-wrap justify-end gap-2">
-          {record.status === 'pending' && <button onClick={() => updateAvailabilityStatus(record, 'approved')} className="p-2 rounded-lg bg-emerald-900/20 text-emerald-300 border border-emerald-900/50"><Check size={14}/></button>}
-          {record.status === 'pending' && <button onClick={() => updateAvailabilityStatus(record, 'denied')} className="p-2 rounded-lg bg-red-900/20 text-red-300 border border-red-900/50"><X size={14}/></button>}
-          {record.archived || record.status === 'archived' ? <button onClick={() => updateAvailabilityStatus(record, 'restored')} className={T.btnAlt}>Restore</button> : <button onClick={() => updateAvailabilityStatus(record, 'archived')} className={T.btnAlt}>Archive</button>}
-        </div>
-      )}
-    </div>
-  );
-
-  return (
-    <div className="space-y-4">
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
-        <div className={`${T.card} p-4 xl:col-span-2`}>
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-4">
-            <div><h3 className="font-black text-white text-lg">My Availability</h3><p className={`text-xs font-bold ${T.muted}`}>Normal weekly availability is separate from one-time request-offs.</p></div>
-            <div className="flex gap-2"><button onClick={() => setMode('mine')} className={mode === 'mine' ? T.btn : T.btnAlt}>Mine</button>{canManage && <button onClick={() => setMode('team')} className={mode === 'team' ? T.btn : T.btnAlt}>Team</button>}</div>
-          </div>
-          <form onSubmit={submitAvailability} className="space-y-3">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3"><div><label className={T.label}>Effective Start</label><input type="date" value={effectiveStartDate} onChange={e=>setEffectiveStartDate(e.target.value)} className={T.input} required /></div><div><label className={T.label}>Optional End</label><input type="date" value={effectiveEndDate} onChange={e=>setEffectiveEndDate(e.target.value)} className={T.input} /></div></div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-              {SCHEDULE_WEEKDAYS.map(day => {
-                const row = weeklyAvailability[day] || {};
-                return <div key={day} className="rounded-xl border border-[#2A353D] bg-[#12161A] p-3 space-y-2"><label className="flex items-center gap-2 text-xs font-black text-white"><input type="checkbox" checked={row.available !== false} onChange={() => toggleDay(day)} className="accent-[#8F6040]" />{day}</label>{row.available !== false && <div className="grid grid-cols-2 gap-2"><input type="time" value={row.start || '09:00'} onChange={e=>updateDay(day,'start',e.target.value)} className={T.input}/><input type="time" value={row.end || '17:00'} onChange={e=>updateDay(day,'end',e.target.value)} className={T.input}/></div>}<label className="flex items-center gap-2 text-[10px] font-bold text-slate-400"><input type="checkbox" checked={row.preferred === true} onChange={e=>updateDay(day,'preferred',e.target.checked)} className="accent-[#8F6040]" />Preferred shift window</label><label className="flex items-center gap-2 text-[10px] font-bold text-slate-400"><input type="checkbox" checked={preferredDaysOff.includes(day)} onChange={() => togglePreferredDayOff(day)} className="accent-[#8F6040]" />Preferred day off</label></div>;
-              })}
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3"><div><label className={T.label}>Max Shifts / Week</label><input value={maxShiftsPerWeek} onChange={e=>setMaxShiftsPerWeek(e.target.value)} type="number" min="0" className={T.input}/></div><div><label className={T.label}>Max Hours / Week</label><input value={maxHoursPerWeek} onChange={e=>setMaxHoursPerWeek(e.target.value)} type="number" min="0" className={T.input}/></div></div>
-            <div><label className={T.label}>Optional Notes</label><textarea value={notes} onChange={e=>setNotes(e.target.value)} className={T.input} rows="3" placeholder="School schedule, seasonal change, pickup needs, etc." /></div>
-            <div className="rounded-xl border border-amber-900/40 bg-amber-900/10 p-3 text-xs font-bold text-amber-200">Approval is {approvalRequired ? 'required' : 'not required'} for employee availability changes in this workspace.</div>
-            <button className={T.btn}>Submit Availability Change</button>
-          </form>
-        </div>
-        <div className="space-y-4">
-          <div className={`${T.card} p-4`}><h3 className="font-black text-white text-sm mb-3">Pending Availability Changes</h3><div className="space-y-2 max-h-[420px] overflow-y-auto custom-scrollbar">{pendingRecords.length === 0 && <FriendlyEmpty title="Nothing waiting" text="Pending availability changes will land here." />}{pendingRecords.map(record => <AvailabilityCard key={record.id} record={record}/>)}</div></div>
-          <div className={`${T.card} p-4`}><h3 className="font-black text-white text-sm mb-3">Availability History</h3><div className="space-y-2 max-h-[360px] overflow-y-auto custom-scrollbar">{historyRecords.length === 0 && <FriendlyEmpty title="No history yet" text="Approved, denied, archived, and restored availability stays here." />}{historyRecords.slice(0,80).map(record => <AvailabilityCard key={record.id} record={record}/>)}</div></div>
-        </div>
-      </div>
-    </div>
-  );
-};
-
 const TabTimeOff = ({ timeOffRequests, appUser, users, addToast, events = [], shifts = [], clientData = null }) => {
-  const [calMonth, setCalMonth] = useState(getToday().substring(0, 7));
-  const [selectedDates, setSelectedDates] = useState([]);
-  const [isPartial, setIsPartial] = useState(false);
-  const [startTime, setStartTime] = useState('09:00');
+  const [calMonth, setCalMonth] = useState(getToday().substring(0, 7)); 
+  const [selectedDates, setSelectedDates] = useState([]); 
+  const [isPartial, setIsPartial] = useState(false); 
+  const [startTime, setStartTime] = useState('09:00'); 
   const [endTime, setEndTime] = useState('17:00');
-  const [viewFilter, setViewFilter] = useState('needs-review');
-  const [dateFilter, setDateFilter] = useState('this-month');
-  const [customStart, setCustomStart] = useState(getToday());
-  const [customEnd, setCustomEnd] = useState(getToday());
-  const [selectedRequestIds, setSelectedRequestIds] = useState([]);
 
-  const perms = appUser?.permissions || {};
-  const canManage = !!(appUser?.isSuperAdmin || appUser?.isAdmin || perms.schedule || perms.team);
-  const myId = appUser?.id || '';
+  const myRequests = timeOffRequests.filter(r => r.userId === appUser.id).sort((a,b) => new Date(a.date) - new Date(b.date)); 
+  const myFutureRequests = myRequests.filter(r => r.date >= getToday());
+  const allFutureRequests = timeOffRequests.filter(r => r.date >= getToday()).sort((a,b) => new Date(a.date) - new Date(b.date));
   const schedulePublishingSettings = getSchedulePublishingSettings(appUser, clientData);
   const postPublishedTimeOffAllowed = schedulePublishingSettings.allowPostPublishedTimeOff;
-  const monthDays = Array.from({length: getDaysInMonth(calMonth)}).map((_, i) => `${calMonth}-${String(i+1).padStart(2, '0')}`);
+  
+  const monthDays = Array.from({length: getDaysInMonth(calMonth)}).map((_, i) => `${calMonth}-${String(i+1).padStart(2, '0')}`); 
   const firstDayOffset = new Date(calMonth+'-01T12:00:00').getDay();
-  const monthEvents = events.filter(e => e.type === 'special_event' && e.date?.startsWith(calMonth));
-  const isArchivedRequest = (r = {}) => r.archived === true || r.processed === true || ['archived','processed','cancelled','canceled'].includes(String(r.status || '').toLowerCase());
-  const normalizeStatus = (r = {}) => String(r.status || 'pending').toLowerCase();
-  const visibleRequests = (timeOffRequests || []).filter(r => canManage || r.userId === myId || r.employeeId === myId || r.createdBy === myId);
-  const myRequests = visibleRequests.filter(r => r.userId === myId || r.employeeId === myId || r.createdBy === myId).sort((a,b) => new Date(a.date || 0) - new Date(b.date || 0));
 
-  const getDateFilterRange = () => {
-    const today = new Date(`${getToday()}T12:00:00`);
-    const start = new Date(today);
-    const end = new Date(today);
-    if (dateFilter === 'this-week') { start.setDate(today.getDate() - today.getDay()); end.setDate(start.getDate() + 6); }
-    if (dateFilter === 'next-week') { start.setDate(today.getDate() - today.getDay() + 7); end.setDate(start.getDate() + 6); }
-    if (dateFilter === 'this-month') { const m = getMonthStr(getToday()); return { start: `${m}-01`, end: `${m}-${String(getDaysInMonth(m)).padStart(2,'0')}` }; }
-    if (dateFilter === 'next-month') { const d = new Date(`${getToday()}T12:00:00`); d.setMonth(d.getMonth()+1); const m = getMonthStr(formatDate(d)); return { start: `${m}-01`, end: `${m}-${String(getDaysInMonth(m)).padStart(2,'0')}` }; }
-    if (dateFilter === 'custom') return { start: customStart || '0000-01-01', end: customEnd || '9999-12-31' };
-    return { start: '0000-01-01', end: '9999-12-31' };
-  };
-  const range = getDateFilterRange();
-  const filteredRequests = visibleRequests
-    .filter(r => !r.date || (r.date >= range.start && r.date <= range.end))
-    .filter(r => {
-      const status = normalizeStatus(r);
-      if (viewFilter === 'needs-review') return status === 'pending' && !isArchivedRequest(r);
-      if (viewFilter === 'upcoming-approved') return status === 'approved' && !isArchivedRequest(r) && r.date >= getToday();
-      if (viewFilter === 'archived') return isArchivedRequest(r);
-      return true;
-    })
-    .sort((a,b) => new Date(a.date || 0) - new Date(b.date || 0));
-
-  const changeMonth = (offset) => { const d = new Date(calMonth + '-01T12:00:00'); d.setMonth(d.getMonth() + offset); setCalMonth(d.toISOString().substring(0, 7)); };
-  const updateRequest = async (r, update, action = 'TIME_OFF_UPDATED') => {
-    await updateDoc(doc(db, 'timeOffRequests', r.id), { ...update, updatedAt: new Date().toISOString(), updatedBy: appUser.id || '' });
-    await logAudit(appUser, action, r.userName || r.employeeName || r.userId || 'Request off', `${r.date || ''} ${r.id || ''}`);
-  };
-  const approveRequest = async (r) => { await updateRequest(r, { status:'approved', approvedAt:new Date().toISOString(), approvedBy: appUser.id || '', approvedByName: appUser.name || appUser.email || '' }, 'TIME_OFF_APPROVED'); addToast('Approved', 'Request-off approved.'); };
-  const denyRequest = async (r) => { await updateRequest(r, { status:'denied', deniedAt:new Date().toISOString(), deniedBy: appUser.id || '', deniedByName: appUser.name || appUser.email || '' }, 'TIME_OFF_DENIED'); addToast('Denied', 'Request-off denied.'); };
-  const archiveRequest = async (r) => { await updateRequest(r, { previousStatus: r.status || 'pending', status:'archived', archived:true, archivedAt:new Date().toISOString(), archivedBy: appUser.id || '', archivedByName: appUser.name || appUser.email || '' }, 'TIME_OFF_ARCHIVED'); addToast('Archived', 'Request moved to history.'); };
-  const restoreRequest = async (r) => { await updateRequest(r, { status: r.previousStatus || 'pending', archived:false, processed:false, restoredAt:new Date().toISOString(), restoredBy: appUser.id || '' }, 'TIME_OFF_RESTORED'); addToast('Restored', 'Request restored to the active workflow.'); };
-  const cancelRequest = async (r) => { await updateRequest(r, { previousStatus: r.status || 'pending', status:'cancelled', archived:true, cancelledAt:new Date().toISOString(), cancelledBy: appUser.id || '' }, 'TIME_OFF_CANCELLED'); addToast('Canceled', 'Request was canceled and kept in history.'); };
-  const archiveSelected = async () => {
-    const selected = filteredRequests.filter(r => selectedRequestIds.includes(r.id));
-    await Promise.all(selected.map(archiveRequest));
-    setSelectedRequestIds([]);
+const monthEvents = events.filter(e => e.type === 'special_event' && e.date?.startsWith(calMonth));
+  const changeMonth = (offset) => { 
+    const d = new Date(calMonth + '-01T12:00:00'); d.setMonth(d.getMonth() + offset); setCalMonth(d.toISOString().substring(0, 7)); 
   };
 
-  const handleToggleDate = (d) => {
-    if (d < getToday()) return addToast('Locked', 'Cannot request past dates.');
-    if (!postPublishedTimeOffAllowed && !appUser?.isAdmin && isDateInsidePublishedSchedule(d, shifts)) return addToast('Schedule Published', 'This workspace blocks employee time-off requests after that date has already been published. Ask a manager to adjust the schedule.');
-    const existingReq = myRequests.find(r => r.date === d && !isArchivedRequest(r));
-    if (existingReq) { if (window.confirm(`Cancel your time-off request for ${formatDisplayDate(d)}?`)) cancelRequest(existingReq); return; }
-    setSelectedDates(prev => prev.includes(d) ? prev.filter(x => x !== d) : [...prev, d]);
+  const handleToggleDate = (d) => { 
+    if (d < getToday()) return addToast('Locked', 'Cannot request past dates.'); 
+    if (!postPublishedTimeOffAllowed && !appUser?.isAdmin && isDateInsidePublishedSchedule(d, shifts)) {
+      return addToast('Schedule Published', 'This workspace blocks employee time-off requests after that date has already been published. Ask a manager to adjust the schedule.');
+    }
+    
+    const existingReq = myRequests.find(r => r.date === d); 
+    if (existingReq) { 
+      if (window.confirm(`Cancel your time-off request for ${formatDisplayDate(d)}?`)) {
+        deleteDoc(doc(db, "timeOffRequests", existingReq.id));
+        addToast('Canceled', 'Time off request removed.');
+      }
+      return; 
+    } 
+    
+    setSelectedDates(prev => prev.includes(d) ? prev.filter(x => x !== d) : [...prev, d]); 
   };
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    if (selectedDates.length === 0) return addToast('Error', 'Select days on the calendar first.');
-    if (isPartial && (!startTime || !endTime)) return addToast('Error', 'Please set partial times.');
+  
+  const handleSubmit = async (e) => { 
+    e.preventDefault(); 
+    if (selectedDates.length === 0) return addToast('Error', 'Select days on the calendar first.'); 
+    if (isPartial && (!startTime || !endTime)) return addToast('Error', 'Please set partial times.'); 
+    
+    const currentMonth = getToday().substring(0, 7);
     const blockedAfterPublish = selectedDates.filter(d => !postPublishedTimeOffAllowed && !appUser?.isAdmin && isDateInsidePublishedSchedule(d, shifts));
-    if (blockedAfterPublish.length) return addToast('Schedule Published', 'One or more selected dates are already published. Ask a manager to adjust the schedule.');
-    const nowIso = new Date().toISOString();
-    await Promise.all(selectedDates.map(d => addDoc(collection(db, 'timeOffRequests'), {
-      restaurantId: appUser.restaurantId,
-      workspaceId: appUser.restaurantId,
-      userId: appUser.id,
-      employeeId: appUser.id,
-      userName: appUser.name || appUser.email || 'Employee',
-      employeeName: appUser.name || appUser.email || 'Employee',
-      date: d,
-      isPartial,
-      startTime: isPartial ? startTime : '',
-      endTime: isPartial ? endTime : '',
-      status: 'pending',
-      archived: false,
-      processed: false,
-      submittedAt: nowIso,
-      createdAt: nowIso,
-      updatedAt: nowIso,
-      createdBy: appUser.id || '',
-      source: 'time_off_request'
-    })));
-    await logAudit(appUser, 'TIME_OFF_SUBMITTED', appUser.name || appUser.email || 'Request off', selectedDates.join(', '));
-    setSelectedDates([]);
-    addToast('Submitted', 'Your request-off dates were sent for review.');
-  };
+    if (blockedAfterPublish.length > 0) {
+      return addToast('Schedule Published', `${blockedAfterPublish.length} selected day(s) are already on a published schedule. Ask a manager to adjust those days.`);
+    }
 
-  const RequestCard = ({ r }) => {
-    const status = normalizeStatus(r);
-    const publishedFlag = r.unresolvedPublishedOverlap || r.overlapsPublishedSchedule;
-    return <div className={`${T.row} items-start gap-3 ${publishedFlag ? 'border-amber-500/40 bg-amber-900/10' : ''}`}>
-      {canManage && <input type="checkbox" checked={selectedRequestIds.includes(r.id)} onChange={e => setSelectedRequestIds(prev => e.target.checked ? [...prev, r.id] : prev.filter(id => id !== r.id))} className="mt-1 accent-[#8F6040]" />}
-      <div className="flex-1 min-w-0">
-        <div className="font-black text-white text-sm">{r.userName || r.employeeName || 'Employee'}</div>
-        <div className={`text-[10px] font-bold ${T.muted} flex flex-wrap gap-2 mt-0.5`}><span>{formatDisplayDate(r.date)}</span>{r.isPartial && <span className="text-[#D4A381]">{formatShortTime(r.startTime)} - {formatShortTime(r.endTime)}</span>}<span className="uppercase tracking-widest">{status}</span>{publishedFlag && <span className="text-amber-300">Unresolved on published schedule</span>}</div>
-        {isArchivedRequest(r) && <div className="mt-1 text-[10px] font-bold text-slate-500">{r.scheduleId ? `Schedule: ${r.scheduleId}` : 'History record'}{r.publishedAt ? ` • Published ${formatClockDateTime(r.publishedAt)} by ${r.publishedByName || r.publishedBy || 'manager'}` : ''}{r.approvedAt ? ` • Approved ${formatClockDateTime(r.approvedAt)} by ${r.approvedByName || r.approvedBy || ''}` : ''}{r.deniedAt ? ` • Denied ${formatClockDateTime(r.deniedAt)} by ${r.deniedByName || r.deniedBy || ''}` : ''}</div>}
-      </div>
-      <div className="flex flex-wrap justify-end gap-2">
-        {canManage && status === 'pending' && !isArchivedRequest(r) && <button onClick={() => approveRequest(r)} className="p-2 rounded-lg bg-emerald-900/20 text-emerald-300 border border-emerald-900/50"><Check size={14}/></button>}
-        {canManage && status === 'pending' && !isArchivedRequest(r) && <button onClick={() => denyRequest(r)} className="p-2 rounded-lg bg-red-900/20 text-red-300 border border-red-900/50"><X size={14}/></button>}
-        {canManage && (isArchivedRequest(r) ? <button onClick={() => restoreRequest(r)} className={T.btnAlt}>Restore</button> : <button onClick={() => archiveRequest(r)} className={T.btnAlt}>Archive</button>)}
-        {!canManage && (status === 'pending' || status === 'approved') && !isArchivedRequest(r) && <button onClick={() => { if(window.confirm('Cancel this request-off?')) cancelRequest(r); }} className="text-slate-400 hover:text-red-500 p-2 bg-[#1A2126] rounded-lg border border-[#2A353D]"><Trash2 size={14}/></button>}
-      </div>
-    </div>;
+    for (const d of selectedDates) { 
+      const reqMonth = d.substring(0, 7);
+      const needsApproval = reqMonth <= currentMonth;
+
+      await addDoc(collection(db, "timeOffRequests"), { 
+        userId: appUser.id, userName: appUser.name, date: d, isPartial, startTime: isPartial ? startTime : null, endTime: isPartial ? endTime : null, submittedAt: new Date().toISOString(), restaurantId: appUser.restaurantId,
+        status: needsApproval ? 'pending' : 'approved'
+      }); 
+    } 
+    addToast('Recorded', `Logged ${selectedDates.length} days off.`); 
+    setSelectedDates([]); 
+    setIsPartial(false); 
   };
 
   return (
-    <div className="space-y-4">
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        <div className={`lg:col-span-2 ${T.card} overflow-hidden`}>
-          <div className={`bg-[#12161A] p-3 border-b ${T.border} flex justify-between items-center`}><button onClick={() => changeMonth(-1)} className={T.btnAlt}><ChevronLeft size={16}/></button><h3 className="font-black text-base text-white tracking-tight">{formatDisplayMonth(calMonth)}</h3><button onClick={() => changeMonth(1)} className={T.btnAlt}><ChevronRight size={16}/></button></div>
+    <div className="schedule-desktop max-w-7xl mx-auto space-y-5 pb-12">
+      {appUser?.isAdmin && (
+        <div className={`${T.card} overflow-hidden mb-6`}>
+          <div className={`bg-[#12161A] p-3 border-b ${T.border} flex justify-between items-center`}>
+            <h3 className="font-black text-sm text-white flex items-center gap-2"><Shield size={14} className="text-red-500"/> Master Override Log</h3>
+            <span className={`text-[10px] font-bold ${T.muted}`}>Approve or delete requests.</span>
+          </div>
+          <div className={`max-h-48 overflow-y-auto custom-scrollbar divide-y ${T.border}`}>
+            {allFutureRequests.length === 0 && <div className={`p-4 text-center text-xs font-bold ${T.muted}`}>No upcoming time off for any staff.</div>}
+            {allFutureRequests.map(r => (
+              <div key={r.id} className={T.row}>
+                <div className="flex-1">
+                  <div className="font-black text-sm text-white leading-tight">{r.userName}</div>
+          <div className={`text-[10px] font-bold ${T.muted} mt-0.5 flex flex-wrap items-center gap-2`}>
+                    {formatDisplayDate(r.date)} {r.isPartial && <span className={`text-[#D4A381] bg-[#12161A] border ${T.border} px-1 rounded`}>({formatShortTime(r.startTime)} - {formatShortTime(r.endTime)})</span>}
+                    {r.status === 'pending' && <span className="bg-orange-900/40 text-orange-400 border border-orange-900/50 px-1.5 py-0.5 rounded uppercase tracking-widest text-[8px]">Pending</span>}
+                    {r.submittedAt && <span className="text-slate-500 border-l border-[#2A353D] pl-2 ml-1">Req: {formatClockDateTime(r.submittedAt)}</span>}
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  {r.status === 'pending' && (
+                    <button onClick={() => updateDoc(doc(db, "timeOffRequests", r.id), { status: 'approved' })} className="text-slate-400 hover:text-emerald-500 p-1.5 bg-[#12161A] border border-[#2A353D] rounded"><Check size={14}/></button>
+                  )}
+                  <button onClick={() => { if(window.confirm("Force delete this request?")) deleteDoc(doc(db,"timeOffRequests",r.id)); }} className="text-slate-400 hover:text-red-500 p-1.5 bg-[#12161A] border border-[#2A353D] rounded"><Trash2 size={14}/></button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className={`md:col-span-2 ${T.card} overflow-hidden`}>
+          <div className={`bg-[#12161A] p-3 border-b ${T.border} flex justify-between items-center`}>
+            <button onClick={() => changeMonth(-1)} className={T.btnAlt}><ChevronLeft size={16}/></button>
+            <h3 className="font-black text-base text-white tracking-tight">{formatDisplayMonth(calMonth)}</h3>
+            <button onClick={() => changeMonth(1)} className={T.btnAlt}><ChevronRight size={16}/></button>
+          </div>
           <div className={`grid grid-cols-7 border-t ${T.border}`}>
             {['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map(d=><div key={d} className={`py-1.5 text-center text-[9px] font-black ${T.copper} uppercase border-b border-[#2A353D] bg-[#12161A]`}>{d}</div>)}
             {Array.from({length: firstDayOffset}).map((_,i) => <div key={`empty-${i}`} className={`p-1 border-b border-r ${T.border} bg-[#1A2126] min-h-[45px]`} />)}
             {monthDays.map(d => {
-              const isSelected = selectedDates.includes(d);
-              const existingReq = myRequests.find(r => r.date === d && !isArchivedRequest(r));
+              const isSelected = selectedDates.includes(d); 
+              const existingReq = myRequests.find(r => r.date === d); 
               const isPast = d < getToday();
               const holiday = getHoliday(d);
               const dayEvents = monthEvents.filter(e => e.date === d);
-              return <div key={d} onClick={() => !isPast && handleToggleDate(d)} className={`p-1 border-b border-r ${T.border} min-h-[50px] flex flex-col items-center justify-start pt-1 transition-colors ${isPast ? 'bg-[#12161A]/50 opacity-50 cursor-not-allowed' : existingReq ? 'bg-red-900/10 cursor-pointer hover:bg-red-900/20 border border-red-900/30 shadow-inner' : isSelected ? 'bg-[#8F6040]/20 border border-[#C59373] cursor-pointer shadow-inner' : 'hover:bg-[#12161A] cursor-pointer'}`}><span className={`text-xs font-black ${isSelected ? T.copper : existingReq ? 'text-red-400' : 'text-slate-300'}`}>{parseInt(d.split('-')[2])}</span>{holiday && <span className="text-[6px] sm:text-[7px] text-amber-500 font-bold uppercase text-center leading-tight mt-0.5 px-0.5">{holiday}</span>}{dayEvents.map(ev => <span key={ev.id} className="text-[6px] sm:text-[7px] text-blue-400 font-bold uppercase text-center leading-tight mt-0.5 px-0.5 w-full truncate" title={ev.title}>{ev.title}</span>)}{existingReq && <span className={`text-[7px] font-black uppercase mt-auto mb-1 ${existingReq.status === 'pending' ? 'text-orange-400' : 'text-red-500'}`}>{existingReq.status === 'pending' ? 'Pend' : 'Off'}</span>}{isSelected && <Check size={10} className={`mt-auto mb-1 ${T.copper}`}/>}</div>;
+
+              return (
+                <div key={d} onClick={() => !isPast && handleToggleDate(d)} className={`p-1 border-b border-r ${T.border} min-h-[50px] flex flex-col items-center justify-start pt-1 transition-colors ${isPast ? 'bg-[#12161A]/50 opacity-50 cursor-not-allowed' : existingReq ? 'bg-red-900/10 cursor-pointer hover:bg-red-900/20 border border-red-900/30 shadow-inner' : isSelected ? 'bg-[#8F6040]/20 border border-[#C59373] cursor-pointer shadow-inner' : 'hover:bg-[#12161A] cursor-pointer'}`}>
+                  <span className={`text-xs font-black ${isSelected ? T.copper : existingReq ? 'text-red-400' : 'text-slate-300'}`}>{parseInt(d.split('-')[2])}</span>
+                  
+                  {holiday && <span className="text-[6px] sm:text-[7px] text-amber-500 font-bold uppercase text-center leading-tight mt-0.5 px-0.5">{holiday}</span>}
+                  {dayEvents.map(ev => (
+                    <span key={ev.id} className="text-[6px] sm:text-[7px] text-blue-400 font-bold uppercase text-center leading-tight mt-0.5 px-0.5 w-full truncate" title={ev.title}>
+                      {ev.title}
+                    </span>
+                  ))}
+
+                  {existingReq && <span className={`text-[7px] font-black uppercase mt-auto mb-1 ${existingReq.status === 'pending' ? 'text-orange-400' : 'text-red-500'}`}>{existingReq.status === 'pending' ? 'Pend' : 'Off'}</span>}
+                  {isSelected && <Check size={10} className={`mt-auto mb-1 ${T.copper}`}/>}
+                </div>
+              )
             })}
           </div>
         </div>
-        <div className={`${T.card} p-4 sm:p-5 h-max`}>
-          <h3 className="font-black text-base mb-1 text-white">Request Off</h3>
-          <p className={`text-[10px] font-bold ${T.muted} mb-2 leading-tight`}>Tap specific dates to request off. Use Availability for normal weekly schedules.</p>
-          {!postPublishedTimeOffAllowed && !appUser?.isAdmin && <div className="mb-4 bg-amber-900/15 border border-amber-900/40 rounded-xl p-2 text-[10px] font-bold text-amber-200 leading-snug">Time-off requests close once that schedule period has been published.</div>}
-          <form onSubmit={handleSubmit} className="space-y-4"><label className={`flex items-center gap-2 text-xs font-bold text-slate-300 cursor-pointer p-2.5 bg-[#12161A] rounded-xl border ${T.border}`}><input type="checkbox" checked={isPartial} onChange={e=>setIsPartial(e.target.checked)} className="w-4 h-4 rounded bg-[#1A2126] border-[#2A353D] accent-[#8F6040]" />Partial Day Only?</label>{isPartial && <div className="grid grid-cols-2 gap-3"><div><label className={T.label}>Start Time</label><input type="time" value={startTime} onChange={e=>setStartTime(e.target.value)} className={T.input} required /></div><div><label className={T.label}>End Time</label><input type="time" value={endTime} onChange={e=>setEndTime(e.target.value)} className={T.input} required /></div></div>}<button type="submit" disabled={selectedDates.length === 0} className={`w-full ${T.btn} disabled:opacity-50 disabled:cursor-not-allowed`}>Submit {selectedDates.length > 0 ? `(${selectedDates.length})` : ''}</button></form>
+
+        <div className="md:col-span-1">
+          <div className={`${T.card} p-4 sm:p-5 sticky top-20`}>
+            <h3 className="font-black text-base mb-1 text-white">Log Availability</h3>
+            <p className={`text-[10px] font-bold ${T.muted} mb-2 leading-tight`}>Tap days on the calendar to mark yourself unavailable.</p>
+            {!postPublishedTimeOffAllowed && !appUser?.isAdmin && (
+              <div className="mb-4 bg-amber-900/15 border border-amber-900/40 rounded-xl p-2 text-[10px] font-bold text-amber-200 leading-snug">Time-off requests close once that schedule period has been published.</div>
+            )}
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <label className={`flex items-center gap-2 text-xs font-bold text-slate-300 cursor-pointer p-2.5 bg-[#12161A] rounded-xl border ${T.border}`}>
+                <input type="checkbox" checked={isPartial} onChange={e=>setIsPartial(e.target.checked)} className="w-4 h-4 rounded bg-[#1A2126] border-[#2A353D] accent-[#8F6040]" />
+                Partial Day Only?
+              </label>
+              {isPartial && (
+              <div className="grid grid-cols-2 gap-3">
+                    <div>
+                        <label className={T.label}>Start Time</label>
+                        <input type="time" value={startTime} onChange={e=>setStartTime(e.target.value)} className={T.input} required />
+                    </div>
+                    <div>
+                        <label className={T.label}>End Time</label>
+                        <input type="time" value={endTime} onChange={e=>setEndTime(e.target.value)} className={T.input} required />
+                    </div>
+                </div>
+              )}
+              <button type="submit" disabled={selectedDates.length === 0} className={`w-full ${T.btn} disabled:opacity-50 disabled:cursor-not-allowed`}>Submit {selectedDates.length > 0 ? `(${selectedDates.length})` : ''}</button>
+            </form>
+
+            <div className="mt-6 pt-6 border-t border-[#2A353D]">
+              <h3 className="font-black text-sm text-white mb-3">My Pending Requests</h3>
+              <div className="space-y-2 max-h-60 overflow-y-auto custom-scrollbar">
+                {myFutureRequests.length === 0 && <div className="text-xs font-bold text-slate-500 text-center py-2 border border-dashed border-[#2A353D] rounded-xl">No upcoming requests.</div>}
+                {myFutureRequests.map(r => (
+                  <div key={r.id} className="flex items-center justify-between bg-[#12161A] p-2.5 rounded-xl border border-[#2A353D] hover:border-[#D4A381]/50 transition-colors">
+                    <div>
+                      <div className="text-xs font-bold text-white flex items-center gap-2">
+                        {formatDisplayDate(r.date)}
+                        {r.status === 'pending' && <span className="bg-orange-900/40 text-orange-400 border border-orange-900/50 px-1 rounded uppercase tracking-widest text-[8px]">Pending</span>}
+                      </div>
+             {r.isPartial ? (
+                        <div className="text-[9px] text-[#D4A381] font-black uppercase tracking-wider mt-0.5">{formatShortTime(r.startTime)} - {formatShortTime(r.endTime)}</div>
+                      ) : (
+                        <div className="text-[9px] text-red-400 font-black uppercase tracking-wider mt-0.5">Full Day Off</div>
+                      )}
+                      {r.submittedAt && <div className="text-[9px] font-bold text-slate-500 mt-1">Submitted: {formatClockDateTime(r.submittedAt)}</div>}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => { if(window.confirm(`Cancel your request for ${formatDisplayDate(r.date)}?`)) deleteDoc(doc(db,"timeOffRequests",r.id)); }}
+                      className="text-slate-400 hover:text-red-500 p-2 transition-colors bg-[#1A2126] rounded-lg border border-[#2A353D]"
+                    >
+                      <Trash2 size={14}/>
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+          </div>
         </div>
       </div>
-      <div className={`${T.card} p-4`}>
-        <div className="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-3 mb-3"><div><h3 className="font-black text-white">Request-Off Workflow</h3><p className={`text-xs font-bold ${T.muted}`}>Default view only shows items that need attention. Published and archived requests stay searchable.</p></div>{canManage && selectedRequestIds.length > 0 && <button onClick={archiveSelected} className={T.btnAlt}>Archive selected ({selectedRequestIds.length})</button>}</div>
-        <div className="flex flex-wrap gap-2 mb-3">{[['needs-review','Needs Review'],['upcoming-approved','Upcoming Approved'],['archived','Published/Archived'],['all','All']].map(([id,label]) => <button key={id} onClick={() => setViewFilter(id)} className={viewFilter === id ? T.btn : T.btnAlt}>{label}</button>)}</div>
-        <div className="flex flex-wrap gap-2 mb-4">{[['this-week','This Week'],['next-week','Next Week'],['this-month','This Month'],['next-month','Next Month'],['custom','Custom Range']].map(([id,label]) => <button key={id} onClick={() => setDateFilter(id)} className={dateFilter === id ? T.btn : T.btnAlt}>{label}</button>)}{dateFilter === 'custom' && <><input type="date" value={customStart} onChange={e=>setCustomStart(e.target.value)} className={T.input}/><input type="date" value={customEnd} onChange={e=>setCustomEnd(e.target.value)} className={T.input}/></>}</div>
-        <div className="space-y-2 max-h-[520px] overflow-y-auto custom-scrollbar">{filteredRequests.length === 0 && <FriendlyEmpty title="No requests here" text="Switch filters to review history or upcoming approvals." />}{filteredRequests.map(r => <RequestCard key={r.id} r={r}/>)}</div>
-      </div>
-      {canManage && <div className={`${T.card} p-4`}><h3 className="font-black text-white text-sm mb-2">Master Override Log</h3><p className={`text-xs font-bold ${T.muted}`}>Manager approvals, denials, archives, restores, cancellations, and published-schedule processing are preserved in audit logs and request history.</p></div>}
     </div>
   );
 };
 
-const TabScheduleWorkbench = ({ currentDate, users, shifts, events, timeOffRequests, timePunches, addToast, appUser, clientData = null, availabilityRecords = [] }) => (
+const TabScheduleWorkbench = ({ currentDate, users, shifts, events, timeOffRequests, timePunches, addToast, appUser, clientData = null }) => (
   <div className="space-y-5">
     <ScheduleCopilot currentDate={currentDate} users={users} shifts={shifts} timeOffRequests={timeOffRequests} addToast={addToast} appUser={appUser} />
-    <TabSchedule currentDate={currentDate} users={users} shifts={shifts} events={events} timeOffRequests={timeOffRequests} timePunches={timePunches} addToast={addToast} appUser={appUser} clientData={clientData} availabilityRecords={availabilityRecords} />
+    <TabSchedule currentDate={currentDate} users={users} shifts={shifts} events={events} timeOffRequests={timeOffRequests} timePunches={timePunches} addToast={addToast} appUser={appUser} clientData={clientData} />
   </div>
 );
 

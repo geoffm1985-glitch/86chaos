@@ -49,21 +49,6 @@ const Modal = ({ isOpen, onClose, title, children, sizeClass = 'max-w-md' }) => 
   );
 };
 
-
-const reminderNeedsAttention = (reminder = {}, appUser = {}) => {
-  if (!reminder || ['done', 'completed', 'cancelled', 'canceled', 'archived'].includes(String(reminder.status || '').toLowerCase())) return false;
-  const userId = appUser?.id || appUser?.uid || '';
-  const isCreator = reminder.userId === userId || reminder.createdBy === userId;
-  const isAssigned = reminder.assignedToUserId === userId || (Array.isArray(reminder.recipientUserIds) && reminder.recipientUserIds.includes(userId));
-  const isPrivate = reminder.visibility === 'private_reminder' || reminder.scope === 'private' || reminder.isPrivate === true;
-  if (isPrivate && !isCreator) return false;
-  if (!isCreator && !isAssigned && reminder.visibility !== 'workspace') return false;
-  const dueValue = reminder.snoozedUntil || reminder.nextReminderAt || reminder.scheduledAt || reminder.dueAt;
-  if (!dueValue) return false;
-  const dueAt = new Date(dueValue).getTime();
-  return Number.isFinite(dueAt) && dueAt <= Date.now();
-};
-
 const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppUser, hasUnreadMessages, hasMyShiftAlert, hasScheduleBuilderAlert, hasHelpUpdate = false, clientFeatures = {}, clientData = {}, addToast, availableWorkspaces = [], activeWorkspaceName = '', onOpenWorkspaceSwitcher }) => {
   const [menuSearch, setMenuSearch] = useState('');
 
@@ -72,9 +57,6 @@ const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppU
   useEffect(() => {
     setMenuSearch('');
   }, [isOpen]);
-
-  const drawerReminders = useLiveCollection('personalReminders', appUser?.restaurantId, { enabled: !!isOpen && !!appUser?.restaurantId && !!appUser?.id, limitCount: 120, fallbackLimitCount: 60 });
-  const hasReminderAlert = (drawerReminders || []).some(reminder => reminderNeedsAttention(reminder, appUser));
 
   if (!isOpen) return null;
   const tabs = [];
@@ -101,7 +83,7 @@ const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppU
   if (isEnabled('inventory')) pushTab({ id: 'inventory', label: 'Inventory & Orders', icon: <Package size={18}/> });  
   if (!appUser?.isDemo) pushTab({ id: 'ai-tools', label: 'AI Tools', icon: <Sparkles size={18}/> });
   if (canUseMenuIntelligence(appUser, clientData)) pushTab({ id: 'menu-intelligence', label: 'Menu Intelligence', icon: <Sparkles size={18}/> });
-  pushTab({ id: 'reminders', label: 'My Reminders', icon: <Bell size={18}/>, dot: hasReminderAlert });
+  pushTab({ id: 'reminders', label: 'My Reminders', icon: <Bell size={18}/> });
   if (isEnabled('team')) pushTab({ id: 'team', label: 'Staff Roster', icon: <Users size={18}/> });
   if (!appUser?.isDemo && isEnabled('hr')) pushTab({ id: 'hr-training', label: 'HR & Training', icon: <BookOpen size={18}/> });
   if (isEnabled('maintenance') && (appUser?.isAdmin || perms.team)) pushTab({ id: 'maintenance', label: 'Maintenance Log', icon: <Wrench size={18}/> });
@@ -122,12 +104,12 @@ const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppU
     { id: 'go-support', label: 'Contact Support / Bug Report', tab: 'help', keywords: 'support faq problem broken help manual' }
   ];
   const menuSections = [
-    { label: 'PEOPLE & SCHEDULING', ids: ['published', 'team', 'hr-training'] },
-    { label: 'TODAY', ids: ['today', 'ops', 'reminders', 'events', 'messages'] },
-    { label: 'KITCHEN OPERATIONS', ids: ['prep', 'inventory', 'recipes', 'menu-intelligence', 'maintenance'] },
-    { label: 'BUSINESS & FINANCIALS', ids: ['financials'] },
-    { label: 'TOOLS & AUTOMATION', ids: ['ai-tools'] },
-    { label: 'SYSTEM & SUPPORT', ids: ['settings', 'help', 'audit', 'godmode'] }
+    { label: 'People & Scheduling', ids: ['published', 'team', 'hr-training'] },
+    { label: 'Today', ids: ['today', 'ops', 'reminders', 'events', 'messages'] },
+    { label: 'Kitchen Operations', ids: ['prep', 'inventory', 'recipes', 'menu-intelligence', 'maintenance'] },
+    { label: 'Business & Financials', ids: ['financials'] },
+    { label: 'Tools & Automation', ids: ['ai-tools'] },
+    { label: 'System & Support', ids: ['settings', 'help', 'audit', 'godmode'] }
   ].map(section => ({ ...section, tabs: section.ids.map(id => tabs.find(tab => tab.id === id)).filter(Boolean) })).filter(section => section.tabs.length > 0);
 
   const q = menuSearch.trim().toLowerCase();
@@ -216,17 +198,6 @@ const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppU
   );
 };
 
-const PREP_LABEL_PRINT_PROFILES = {
-  brotherQl810w: {
-    name: 'Brother QL-810W',
-    pageSize: '3.5in 1.1in',
-    labelWidth: '3.5in',
-    labelHeight: '1.1in'
-  }
-};
-
-const ACTIVE_PREP_LABEL_PRINT_PROFILE = PREP_LABEL_PRINT_PROFILES.brotherQl810w;
-
 const DayDotPrintScreen = ({ labelsToPrint, prepDate, appUser, onClose }) => {
   const onCloseRef = useRef(onClose);
   const historyPushedRef = useRef(false);
@@ -245,11 +216,11 @@ const DayDotPrintScreen = ({ labelsToPrint, prepDate, appUser, onClose }) => {
   return (
     <div id="master-print-wrapper" className="fixed inset-0 z-[999999] bg-white overflow-y-auto text-black print:static print:block print:overflow-visible print:h-auto print:w-auto">
       <style>{`@media print { 
-        @page { size: ${ACTIVE_PREP_LABEL_PRINT_PROFILE.pageSize}; margin: 0; } 
+        @page { size: 3.5in 1.1in; margin: 0; } 
         body, html { margin: 0 !important; background: white !important; height: auto !important; } 
         #master-print-wrapper { position: static !important; overflow: visible !important; height: auto !important; display: block !important; }
         .no-print { display: none !important; } 
-        .dk-label { width: ${ACTIVE_PREP_LABEL_PRINT_PROFILE.labelWidth} !important; height: ${ACTIVE_PREP_LABEL_PRINT_PROFILE.labelHeight} !important; display: flex !important; flex-direction: column !important; justify-content: center !important; padding: 0.04in 0.13in !important; box-sizing: border-box !important; page-break-after: always !important; break-after: page !important; margin: 0 !important; font-family: Arial, sans-serif !important; overflow: hidden !important; } 
+        .dk-label { width: 3.5in !important; height: 1.1in !important; display: flex !important; flex-direction: column !important; justify-content: center !important; padding: 0.04in 0.13in !important; box-sizing: border-box !important; page-break-after: always !important; break-after: page !important; margin: 0 !important; font-family: Arial, sans-serif !important; overflow: hidden !important; } 
         .dk-label:last-child { page-break-after: auto !important; break-after: auto !important; } 
         .dk-title { display: -webkit-box !important; -webkit-box-orient: vertical !important; -webkit-line-clamp: 2 !important; max-height: 0.34in !important; overflow: hidden !important; font-size: 14px !important; line-height: 1.02 !important; font-weight: 900 !important; text-transform: uppercase !important; text-align: center !important; margin-bottom: 2px !important; } 
         .dk-row { display: flex !important; justify-content: space-between !important; gap: 8px !important; font-size: 9px !important; line-height: 1.05 !important; font-weight: 800 !important; margin-bottom: 2px !important; text-transform: uppercase !important; white-space: nowrap !important; overflow: hidden !important; } 
@@ -259,7 +230,6 @@ const DayDotPrintScreen = ({ labelsToPrint, prepDate, appUser, onClose }) => {
       <div className="no-print p-6 flex flex-col items-center justify-center min-h-screen bg-slate-100">
          <Loader2 className="animate-spin text-[#8F6040] mb-6" size={64} />
          <h2 className="text-3xl font-black text-slate-900 mb-2">Generating Labels</h2>
-         <p className="text-sm font-bold text-slate-600 text-center max-w-xs">* Intended for use with Brother QL-810W label printer.</p>
          <button onClick={() => window.history.back()} className="bg-slate-900 text-white px-10 py-5 rounded-xl font-black text-lg shadow-xl hover:bg-slate-800 w-full max-w-xs mt-8">Return to App</button>
       </div>
       <div id="print-data">
@@ -1114,21 +1084,6 @@ const isPlainNavigationPhrase = (q = '') => {
   return cleaned.split(' ').length <= 4 && !!buildVoiceNavigationAction(cleaned);
 };
 
-
-const normalizeVoiceReminderTitle = (value = '') => String(value || '')
-  .toLowerCase()
-  .replace(/[^a-z0-9]+/g, ' ')
-  .replace(/\s+/g, ' ')
-  .trim();
-
-const buildVoiceClientCommandId = (voiceSessionId = '', action = {}, sourceText = '') => [
-  'voice-reminder',
-  voiceSessionId || 'manual',
-  normalizeVoiceReminderTitle(action.title || sourceText).slice(0, 60),
-  String(action.scheduledAt || action.dueAt || '').slice(0, 25),
-  action.intent || 'reminder'
-].join(':');
-
 const VoiceCommandDock = ({ appUser, inventoryItems = [], recipes = [], users = [], prepItems = [], tasks = [], events = [], maintenanceLogs = [], menuDependencies = [], clientFeatures = {}, clientData = {}, setActiveTab, setCurrentDate, setScheduleSubTabTarget, setHelpSearchTarget, setRecipeTarget, addToast }) => {
   const [open, setOpen] = useState(false);
   const [listening, setListening] = useState(false);
@@ -1140,43 +1095,55 @@ const VoiceCommandDock = ({ appUser, inventoryItems = [], recipes = [], users = 
   const SpeechRecognition = typeof window !== 'undefined' ? (window.SpeechRecognition || window.webkitSpeechRecognition) : null;
   const canUseSpeech = Boolean(SpeechRecognition);
   const eightySixContextRef = useRef({ restaurantId: '', loadedAt: 0, inventoryItems: [], menuDependencies: [] });
-  const voiceSessionRef = useRef({ id: '', startedAt: 0, commits: 0, finalFingerprint: '' });
-  const processedVoiceCommandRef = useRef(new Set());
+  const recognitionRef = useRef(null);
+  const activeVoiceSessionRef = useRef('');
+  const committedVoiceReminderKeysRef = useRef(new Set());
 
-  const resetVoiceReminderSession = () => {
-    const id = `voice_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-    voiceSessionRef.current = { id, startedAt: Date.now(), commits: 0, finalFingerprint: '' };
-    return id;
+  const stopVoiceListening = () => {
+    try { recognitionRef.current?.stop?.(); } catch (_) {}
+    recognitionRef.current = null;
+    setListening(false);
   };
 
-  const findRecentReminderDuplicate = async ({ title, scheduledAt, visibility, assignedToUserId, clientCommandId }) => {
-    if (!appUser?.restaurantId) return null;
-    const titleNormalized = normalizeVoiceReminderTitle(title);
-    const since = Date.now() - 30000;
-    try {
-      const snap = await getDocs(query(
-        collection(db, 'personalReminders'),
-        where('restaurantId', '==', appUser.restaurantId),
-        where('createdBy', '==', appUser.id || '')
-      ));
-      let found = null;
-      snap.forEach(docSnap => {
-        if (found) return;
-        const r = { id: docSnap.id, ...docSnap.data() };
-        const createdAt = new Date(r.createdAt || r.updatedAt || 0).getTime();
-        if (!Number.isFinite(createdAt) || createdAt < since) return;
-        const sameCommand = clientCommandId && r.clientCommandId === clientCommandId;
-        const sameTitle = normalizeVoiceReminderTitle(r.title || r.titleNormalized || '') === titleNormalized;
-        const sameDue = String(r.scheduledAt || r.dueAt || '') === String(scheduledAt || '');
-        const sameVisibility = String(r.visibility || '') === String(visibility || '');
-        const sameAssignee = String(r.assignedToUserId || '') === String(assignedToUserId || '');
-        if (sameCommand || (sameTitle && sameDue && sameVisibility && sameAssignee)) found = r;
-      });
-      return found;
-    } catch (err) {
-      console.warn('Voice reminder duplicate check failed:', err?.message || err);
-      return null;
-    }
+  const normalizeVoiceReminderTitle = (value = '') => String(value || '')
+    .toLowerCase()
+    .replace(/(just\s+me|only\s+me|for\s+me|private|myself)/g, ' ')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  const voiceReminderKey = (action = {}) => [
+    appUser?.restaurantId || '',
+    action.shared ? 'shared' : 'private',
+    action.assignee?.id || action.assignee?.email || appUser?.id || appUser?.email || '',
+    normalizeVoiceReminderTitle(action.title || ''),
+    action.scheduledAt || '',
+    action.recurrence || 'none'
+  ].join('|');
+
+  const buildVoiceCommandId = (action = {}, sourceMeta = {}) => {
+    const sessionId = sourceMeta.voiceSessionId || activeVoiceSessionRef.current || `typed-${Date.now()}`;
+    const base = `${sessionId}|${voiceReminderKey(action)}`;
+    let hash = 0;
+    for (let i = 0; i < base.length; i += 1) hash = ((hash << 5) - hash + base.charCodeAt(i)) | 0;
+    return `voice-reminder-${Math.abs(hash)}-${sessionId}`.slice(0, 120);
+  };
+
+  const findRecentVoiceReminderDuplicate = async (action = {}, { assignedToUserId = '', visibility = '' } = {}) => {
+    const normalizedTitle = normalizeVoiceReminderTitle(action.title || '');
+    if (!normalizedTitle || !action.scheduledAt || !appUser?.id) return null;
+    const cutoff = Date.now() - 30000;
+    const snap = await getDocs(query(collection(db, 'personalReminders'), where('createdBy', '==', appUser.id || '')));
+    return snap.docs.find(docSnap => {
+      const r = docSnap.data() || {};
+      const createdMs = Date.parse(r.createdAt || r.created_at || 0);
+      if (!Number.isFinite(createdMs) || createdMs < cutoff) return false;
+      return String(r.restaurantId || '') === String(appUser.restaurantId || '')
+        && String(r.scheduledAt || '') === String(action.scheduledAt || '')
+        && normalizeVoiceReminderTitle(r.normalizedTitle || r.title || '') === normalizedTitle
+        && String(r.visibility || '') === String(visibility || '')
+        && String(r.assignedToUserId || r.userId || '') === String(assignedToUserId || '');
+    }) || null;
   };
 
   const getVoiceEightySixContext = async () => {
@@ -1194,6 +1161,8 @@ const VoiceCommandDock = ({ appUser, inventoryItems = [], recipes = [], users = 
   };
 
   const openDock = () => {
+    stopVoiceListening();
+    activeVoiceSessionRef.current = `voice-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     setOpen(true);
     setPending(null);
     setHeardText('');
@@ -1313,12 +1282,16 @@ const VoiceCommandDock = ({ appUser, inventoryItems = [], recipes = [], users = 
       if (parsedReminder.needsManualTime) {
         return { intent:'navigate', label:'Open My Reminders', tab:'reminders', summary:'Open My Reminders so you can choose the exact date and time.', safe:true };
       }
+      const reminderTitle = String(parsedReminder.title || '').replace(/(just\s+me|only\s+me|for\s+me|private|myself)/ig, ' ').replace(/\s+/g, ' ').trim();
+      const normalizedTitle = normalizeVoiceReminderTitle(reminderTitle);
       return {
         intent:'create_personal_reminder',
         label:'Create personal reminder',
         ...parsedReminder,
-        summary:`Remind you: ${parsedReminder.title} at ${formatClockDateTime(parsedReminder.scheduledAt)}.`,
-        needsConfirmation:false
+        title: reminderTitle || parsedReminder.title,
+        normalizedTitle,
+        summary:`Remind you: ${reminderTitle || parsedReminder.title} at ${formatClockDateTime(parsedReminder.scheduledAt)}.`,
+        needsConfirmation: !normalizedTitle || normalizedTitle.length < 3
       };
     }
 
@@ -1569,6 +1542,7 @@ const VoiceCommandDock = ({ appUser, inventoryItems = [], recipes = [], users = 
   };
 
   const processText = async (text, sourceMeta = {}) => {
+    if (sourceMeta.source === 'speech' && sourceMeta.isFinal === false) return;
     if (pending && /\b(cancel|never mind|nevermind|stop|scratch that)\b/i.test(String(text || ''))) {
       setPending(null);
       setVoiceResult({ label:'Voice command cancelled', summary:'Pending voice action was cancelled before anything else was saved.' });
@@ -1579,19 +1553,30 @@ const VoiceCommandDock = ({ appUser, inventoryItems = [], recipes = [], users = 
     const action = await parseCommand(text);
     setHeardText(text);
     if (!action) return addToast('Voice Command', 'I did not hear a command. Try again or type it.');
-    const actionWithVoiceMeta = sourceMeta.fromVoice ? { ...action, voiceSessionId: sourceMeta.voiceSessionId, createdFromFinalTranscript: true } : action;
-    setPending(actionWithVoiceMeta);
+    if (['create_personal_reminder', 'create_shared_reminder'].includes(action.intent)) {
+      action.voiceSessionId = sourceMeta.voiceSessionId || activeVoiceSessionRef.current || '';
+      action.clientCommandId = buildVoiceCommandId(action, sourceMeta);
+      if (sourceMeta.source === 'speech' && committedVoiceReminderKeysRef.current.has(action.clientCommandId)) {
+        await logAudit(appUser, 'VOICE_REMINDER_DUPLICATE_BLOCKED', action.title || 'Reminder', `Repeated final transcript ignored: ${text}`);
+        setVoiceResult({ label:'Duplicate reminder blocked', summary:'That voice reminder was already saved from this voice session.' });
+        return;
+      }
+    }
+    setPending(action);
     const instantIntents = ['navigate', 'navigate_schedule', 'help_search', 'open_recipe', 'smart_prep', 'complete_list_item', 'create_personal_reminder', 'upsert_task', 'status_summary', 'out_of_stock_summary', 'menu_impact_answer', 'undo_last_voice', 'blocked'];
-    if (!actionWithVoiceMeta.needsConfirmation && instantIntents.includes(actionWithVoiceMeta.intent)) {
-      await executeAction(actionWithVoiceMeta, text, true, false);
+    if (!action.needsConfirmation && instantIntents.includes(action.intent)) {
+      await executeAction(action, text, true, false, sourceMeta);
     }
   };
 
   const startListening = () => {
     if (!canUseSpeech) return setOpen(true);
     try {
-      const voiceSessionId = resetVoiceReminderSession();
+      stopVoiceListening();
       const rec = new SpeechRecognition();
+      const voiceSessionId = activeVoiceSessionRef.current || `voice-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      activeVoiceSessionRef.current = voiceSessionId;
+      recognitionRef.current = rec;
       rec.lang = 'en-US';
       rec.interimResults = true;
       rec.maxAlternatives = 1;
@@ -1605,16 +1590,8 @@ const VoiceCommandDock = ({ appUser, inventoryItems = [], recipes = [], users = 
             setHeardText(text);
             continue;
           }
-          const fingerprint = normalizeVoiceText(text);
-          if (!fingerprint) continue;
-          if (voiceSessionRef.current.finalFingerprint === fingerprint) {
-            logAudit(appUser, 'VOICE_DUPLICATE_FINAL_BLOCKED', 'Duplicate final transcript', text);
-            continue;
-          }
-          voiceSessionRef.current.finalFingerprint = fingerprint;
           setListening(false);
-          try { rec.stop(); } catch (e) {}
-          processText(text, { fromVoice: true, isFinal: true, voiceSessionId });
+          processText(text, { source: 'speech', isFinal: true, voiceSessionId });
           break;
         }
       };
@@ -1654,7 +1631,7 @@ const VoiceCommandDock = ({ appUser, inventoryItems = [], recipes = [], users = 
     setLastUndo(null);
   };
 
-  const executeAction = async (actionToRun = pending, sourceText = heardText, closeWhenDone = true, confirmedByUser = false) => {
+  const executeAction = async (actionToRun = pending, sourceText = heardText, closeWhenDone = true, confirmedByUser = false, sourceMeta = {}) => {
     if (!actionToRun || !appUser?.restaurantId) return;
     try {
       if (['navigate', 'navigate_schedule', 'help_search', 'open_recipe'].includes(actionToRun.intent)) {
@@ -1990,29 +1967,21 @@ const VoiceCommandDock = ({ appUser, inventoryItems = [], recipes = [], users = 
           if (closeWhenDone) setOpen(false);
           return;
         }
-        const voiceSessionId = actionToRun.voiceSessionId || voiceSessionRef.current.id || '';
-        const clientCommandId = actionToRun.clientCommandId || buildVoiceClientCommandId(voiceSessionId, actionToRun, sourceText);
-        const isVoiceReminder = !!voiceSessionId || actionToRun.createdFromFinalTranscript;
-        if (isVoiceReminder && voiceSessionRef.current.commits >= 1 && !actionToRun.allowsMultipleReminders) {
-          await logAudit(appUser, 'VOICE_REMINDER_DUPLICATE_BLOCKED', title, `${sourceText} | session already committed`);
-          addToast('Duplicate Blocked', 'That voice session already saved a reminder.');
+        const clientCommandId = actionToRun.clientCommandId || buildVoiceCommandId({ ...actionToRun, shared: true }, sourceMeta);
+        if (committedVoiceReminderKeysRef.current.has(clientCommandId)) {
+          await logAudit(appUser, 'VOICE_REMINDER_DUPLICATE_BLOCKED', title, `Duplicate shared reminder command blocked: ${sourceText}`);
+          addToast('Duplicate Blocked', 'That shared reminder was already saved from this voice session.');
+          return;
+        }
+        const duplicate = await findRecentVoiceReminderDuplicate({ ...actionToRun, title, shared: true }, { assignedToUserId: assignee.id || '', visibility: 'shared_reminder' });
+        if (duplicate) {
+          committedVoiceReminderKeysRef.current.add(clientCommandId);
+          await logAudit(appUser, 'VOICE_REMINDER_DUPLICATE_BLOCKED', title, `Matched recent shared reminder ${duplicate.id}.`);
+          addToast('Duplicate Blocked', 'That shared reminder already exists.');
           if (closeWhenDone) setOpen(false);
           return;
         }
-        if (processedVoiceCommandRef.current.has(clientCommandId)) {
-          await logAudit(appUser, 'VOICE_REMINDER_DUPLICATE_BLOCKED', title, `${sourceText} | repeated clientCommandId`);
-          addToast('Duplicate Blocked', 'That reminder was already saved.');
-          if (closeWhenDone) setOpen(false);
-          return;
-        }
-        const existingDuplicate = await findRecentReminderDuplicate({ title, scheduledAt: actionToRun.scheduledAt, visibility: 'shared_reminder', assignedToUserId: assignee.id || '', clientCommandId });
-        if (existingDuplicate) {
-          await logAudit(appUser, 'VOICE_REMINDER_DUPLICATE_BLOCKED', title, `${sourceText} | matched ${existingDuplicate.id}`);
-          addToast('Duplicate Blocked', 'That reminder was already saved once.');
-          setActiveTab('reminders');
-          if (closeWhenDone) setOpen(false);
-          return;
-        }
+        committedVoiceReminderKeysRef.current.add(clientCommandId);
         const reminderRef = await addDoc(collection(db, 'personalReminders'), {
           restaurantId: appUser.restaurantId,
           userId: appUser.id || '',
@@ -2025,10 +1994,8 @@ const VoiceCommandDock = ({ appUser, inventoryItems = [], recipes = [], users = 
           shared: true,
           visibility: 'shared_reminder',
           title,
-          titleNormalized: normalizeVoiceReminderTitle(title),
           notes: '',
           scheduledAt: actionToRun.scheduledAt,
-          dueAt: actionToRun.scheduledAt,
           recurrence: actionToRun.recurrence || 'none',
           recurrenceSource: actionToRun.recurrence ? '86_voice_recurring_reminder' : '',
           status: 'scheduled',
@@ -2036,53 +2003,44 @@ const VoiceCommandDock = ({ appUser, inventoryItems = [], recipes = [], users = 
           createdBy: appUser.id || '',
           source: '86_voice_shared_reminder',
           voiceCommand: sourceText,
-          voiceSessionId,
           clientCommandId,
-          createdFromFinalTranscript: !!actionToRun.createdFromFinalTranscript,
-          voiceFinalTranscript: !!actionToRun.createdFromFinalTranscript,
+          voiceSessionId: actionToRun.voiceSessionId || sourceMeta.voiceSessionId || activeVoiceSessionRef.current || '',
+          normalizedTitle: normalizeVoiceReminderTitle(title),
+          scopeKey: `shared:${assignee.id || assignee.email || ''}`,
           voiceMatchConfidence: Number(actionToRun.matchConfidence || 0),
           dispatchedAt: null,
           dispatchKey: ''
         });
-        processedVoiceCommandRef.current.add(clientCommandId);
-        if (isVoiceReminder) voiceSessionRef.current.commits += 1;
         rememberVoiceUndo(`shared reminder: ${title}`, [{ kind:'delete', collectionName:'personalReminders', id:reminderRef.id }]);
         await logAudit(appUser, 'VOICE_SHARED_REMINDER', title, `Assigned to ${assignee.name || assignee.email || 'teammate'} | ${actionToRun.scheduledAt}`);
         addToast('Shared Reminder Saved', `${title} was assigned to ${assignee.name || assignee.email || 'teammate'}.`);
-        setActiveTab('reminders'); setPending(null); setListening(false); if (closeWhenDone) setOpen(false); return;
+        stopVoiceListening();
+        setPending(null);
+        setActiveTab('reminders'); if (closeWhenDone) setOpen(false); return;
       }
       if (actionToRun.intent === 'create_personal_reminder') {
         const title = String(actionToRun.title || 'Personal reminder').trim();
-        if (!actionToRun.scheduledAt || !title || title.length < 3) {
-          setPending({ ...actionToRun, needsConfirmation: true, summary: 'I need a clearer reminder title and time before saving this voice reminder.' });
+        if (!actionToRun.scheduledAt) {
           setActiveTab('reminders');
-          addToast('Reminder Needs Review', 'Confirm a clear title and time before I save it.');
+          addToast('Reminder Needs Time', 'Open My Reminders and choose the date and time.');
           if (closeWhenDone) setOpen(false);
           return;
         }
-        const voiceSessionId = actionToRun.voiceSessionId || voiceSessionRef.current.id || '';
-        const clientCommandId = actionToRun.clientCommandId || buildVoiceClientCommandId(voiceSessionId, actionToRun, sourceText);
-        const isVoiceReminder = !!voiceSessionId || actionToRun.createdFromFinalTranscript;
-        if (isVoiceReminder && voiceSessionRef.current.commits >= 1 && !actionToRun.allowsMultipleReminders) {
-          await logAudit(appUser, 'VOICE_REMINDER_DUPLICATE_BLOCKED', title, `${sourceText} | session already committed`);
-          addToast('Duplicate Blocked', 'That voice session already saved a reminder.');
+        const clientCommandId = actionToRun.clientCommandId || buildVoiceCommandId({ ...actionToRun, shared: false }, sourceMeta);
+        if (committedVoiceReminderKeysRef.current.has(clientCommandId)) {
+          await logAudit(appUser, 'VOICE_REMINDER_DUPLICATE_BLOCKED', title, `Duplicate private reminder command blocked: ${sourceText}`);
+          addToast('Duplicate Blocked', 'That reminder was already saved from this voice session.');
+          return;
+        }
+        const duplicate = await findRecentVoiceReminderDuplicate({ ...actionToRun, title, shared: false }, { assignedToUserId: appUser.id || '', visibility: 'private_reminder' });
+        if (duplicate) {
+          committedVoiceReminderKeysRef.current.add(clientCommandId);
+          await logAudit(appUser, 'VOICE_REMINDER_DUPLICATE_BLOCKED', title, `Matched recent private reminder ${duplicate.id}.`);
+          addToast('Duplicate Blocked', 'That reminder already exists.');
           if (closeWhenDone) setOpen(false);
           return;
         }
-        if (processedVoiceCommandRef.current.has(clientCommandId)) {
-          await logAudit(appUser, 'VOICE_REMINDER_DUPLICATE_BLOCKED', title, `${sourceText} | repeated clientCommandId`);
-          addToast('Duplicate Blocked', 'That reminder was already saved.');
-          if (closeWhenDone) setOpen(false);
-          return;
-        }
-        const existingDuplicate = await findRecentReminderDuplicate({ title, scheduledAt: actionToRun.scheduledAt, visibility: 'private_reminder', assignedToUserId: appUser.id || '', clientCommandId });
-        if (existingDuplicate) {
-          await logAudit(appUser, 'VOICE_REMINDER_DUPLICATE_BLOCKED', title, `${sourceText} | matched ${existingDuplicate.id}`);
-          addToast('Duplicate Blocked', 'That reminder was already saved once.');
-          setActiveTab('reminders');
-          if (closeWhenDone) setOpen(false);
-          return;
-        }
+        committedVoiceReminderKeysRef.current.add(clientCommandId);
         const reminderRef = await addDoc(collection(db, 'personalReminders'), {
           restaurantId: appUser.restaurantId,
           userId: appUser.id || '',
@@ -2095,10 +2053,8 @@ const VoiceCommandDock = ({ appUser, inventoryItems = [], recipes = [], users = 
           shared: false,
           visibility: 'private_reminder',
           title,
-          titleNormalized: normalizeVoiceReminderTitle(title),
           notes: '',
           scheduledAt: actionToRun.scheduledAt,
-          dueAt: actionToRun.scheduledAt,
           recurrence: actionToRun.recurrence || 'none',
           recurrenceSource: actionToRun.recurrence ? '86_voice_recurring_reminder' : '',
           status: 'scheduled',
@@ -2106,19 +2062,19 @@ const VoiceCommandDock = ({ appUser, inventoryItems = [], recipes = [], users = 
           createdBy: appUser.id || '',
           source: actionToRun.recurrence ? '86_voice_recurring_reminder' : '86_voice_personal_reminder',
           voiceCommand: sourceText,
-          voiceSessionId,
           clientCommandId,
-          createdFromFinalTranscript: !!actionToRun.createdFromFinalTranscript,
-          voiceFinalTranscript: !!actionToRun.createdFromFinalTranscript,
+          voiceSessionId: actionToRun.voiceSessionId || sourceMeta.voiceSessionId || activeVoiceSessionRef.current || '',
+          normalizedTitle: normalizeVoiceReminderTitle(title),
+          scopeKey: `private:${appUser.id || appUser.email || ''}`,
           dispatchedAt: null,
           dispatchKey: ''
         });
-        processedVoiceCommandRef.current.add(clientCommandId);
-        if (isVoiceReminder) voiceSessionRef.current.commits += 1;
         rememberVoiceUndo(`personal reminder: ${title}`, [{ kind:'delete', collectionName:'personalReminders', id:reminderRef.id }]);
         await logAudit(appUser, 'VOICE_PERSONAL_REMINDER', title, actionToRun.scheduledAt);
         addToast('Reminder Saved', `${title} at ${formatClockDateTime(actionToRun.scheduledAt)}.`);
-        setActiveTab('reminders'); setPending(null); setListening(false); if (closeWhenDone) setOpen(false); return;
+        stopVoiceListening();
+        setPending(null);
+        setActiveTab('reminders'); if (closeWhenDone) setOpen(false); return;
       }
       if (actionToRun.intent === 'smart_prep') {
         if (!voiceFeatureEnabled(clientFeatures, 'prep') || !canVoiceOpenTab(appUser, clientFeatures, 'prep', clientData)) {
@@ -2293,7 +2249,7 @@ const VoiceCommandDock = ({ appUser, inventoryItems = [], recipes = [], users = 
     });
   };
 
-  const executePending = () => executeAction(pending, heardText, true, true);
+  const executePending = () => executeAction(pending, heardText, true, true, { source: 'confirmation', isFinal: true, voiceSessionId: pending?.voiceSessionId || activeVoiceSessionRef.current || '' });
 
   return <div className="fixed bottom-5 left-4 z-50 flex flex-col items-start gap-2">
     {open && <div className="cockpit-panel rounded-2xl p-3 w-[min(92vw,360px)] shadow-2xl border border-[#2A353D] bg-[#1A2126]">
@@ -2385,9 +2341,9 @@ const KitchenTVMode = ({ isOpen, onClose, shifts, events, prepItems, maintenance
 
 const ChangeLogModal = ({ isOpen, onClose }) => isOpen ? <Modal isOpen={isOpen} onClose={onClose} title={`What's New in ${CURRENT_VERSION}`}>
   <div className="space-y-3 text-sm text-slate-300 font-bold leading-snug">
-    <p>Voice reminders now commit once per final transcript, reminders have snooze and due dots, request-offs move cleanly into history after publish, and Availability now helps managers schedule without hard-blocking control.</p>
+    <p>Alerts you dismiss now stay dismissed for your user and workspace until the alert actually changes. System Administrator has also been rebuilt as a calmer, task-first workspace instead of a wall of controls.</p>
     <div className="grid grid-cols-2 gap-2 text-[10px] uppercase tracking-widest font-black">
-      {['Voice dedupe','Request-off archive','Availability warnings','Event/order reminders','Brother QL-810W labels','Menu reordered'].map(x => <div key={x} className="bg-[#12161A] border border-[#2A353D] rounded-lg p-2 text-[#D4A381]">{x}</div>)}
+      {['Remembered alerts','New alert fingerprints','Calm admin home','Task-first navigation'].map(x => <div key={x} className="bg-[#12161A] border border-[#2A353D] rounded-lg p-2 text-[#D4A381]">{x}</div>)}
     </div>
     <button onClick={onClose} className={`w-full ${T.btn}`}>Got it</button>
   </div>

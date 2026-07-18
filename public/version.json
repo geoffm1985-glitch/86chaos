@@ -1,9 +1,9 @@
 {
-  "version": "15.0.69",
-  "name": "86 Chaos 15.0.69 Firebase Credential Project Selection Hotfix",
+  "version": "15.0.70",
+  "name": "86 Chaos 15.0.70 Clean Source Firebase Testing Hotfix",
   "releasedAt": "2026-07-18",
-  "label": "86 Chaos 15.0.69",
-  "build": "15.0.69",
-  "updatedAt": "2026-07-18T05:55:00.000-05:00",
-  "notes": "15.0.69 hotfix: server routes now choose the Firebase project embedded inside FIREBASE_SERVICE_ACCOUNT_KEY before stale FIREBASE_PROJECT_ID/REACT_APP values, so testing deployments can use chaos-test-d1601 without a separate production key."
+  "label": "86 Chaos 15.0.70",
+  "build": "15.0.70",
+  "updatedAt": "2026-07-18T00:00:00.000Z",
+  "notes": "Rebuilt from the clean 15.0.64 upload. Firebase Admin server routes now trust the project_id inside FIREBASE_SERVICE_ACCOUNT_KEY first so testing deployments can use chaos-test-d1601 without requiring a separate production key."
 }

@@ -1,5 +1,4 @@
 const { initAdmin } = require('./_chaos-admin');
-const { firebaseAdminEnvSummary } = require('./_firebase-project-admin');
 const { enforceRateLimit, sendRateLimited } = require('./_rate-limit');
 
 function getCronSecret(req) {
@@ -66,17 +65,22 @@ module.exports = async function handler(req, res) {
   try {
     app = initAdmin(req);
   } catch (error) {
-    const envSummary = (() => {
-      try { return firebaseAdminEnvSummary(req); }
-      catch (_) { return {}; }
-    })();
-    console.error('[dispatch-reminders] Firebase Admin setup is missing or invalid:', error?.message || error, envSummary);
+    const safeEnvSnapshot = {
+      firebaseProjectId: process.env.FIREBASE_PROJECT_ID || '',
+      activeProjectId: process.env.FIREBASE_ACTIVE_PROJECT_ID || '',
+      reactProjectId: process.env.REACT_APP_FIREBASE_PROJECT_ID || '',
+      hasServiceAccountKey: Boolean(process.env.FIREBASE_SERVICE_ACCOUNT_KEY),
+      hasAdminCredentials: Boolean(process.env.FIREBASE_ADMIN_CREDENTIALS),
+      vercelEnv: process.env.VERCEL_ENV || '',
+      gitRef: process.env.VERCEL_GIT_COMMIT_REF || ''
+    };
+    console.error('[dispatch-reminders] Firebase Admin setup is missing or invalid:', error?.message || error, safeEnvSnapshot);
     return res.status(503).json({
       ok: false,
       code: 'firebase_admin_not_configured',
       error: 'Firebase server credentials are not configured for this Vercel environment.',
       details: error?.message || String(error || 'Unknown Firebase Admin setup error'),
-      envSummary
+      safeEnvSnapshot
     });
   }
   const db = app.firestore();
@@ -84,7 +88,7 @@ module.exports = async function handler(req, res) {
   if (!cronRate.ok) return sendRateLimited(res, cronRate);
   const messaging = app.messaging();
   const nowIso = new Date().toISOString();
-  const stats = { scanned: 0, claimed: 0, sent: 0, skipped: 0, failed: 0, noToken: 0, eventScanned: 0, eventSent: 0, eventSkipped: 0 };
+  const stats = { scanned: 0, claimed: 0, sent: 0, skipped: 0, failed: 0, noToken: 0 };
   const limit = safeInt(process.env.REMINDER_DISPATCH_QUERY_LIMIT, 200, 1, 500);
   const concurrency = safeInt(process.env.REMINDER_DISPATCH_CONCURRENCY, 12, 1, 25);
 
@@ -188,63 +192,6 @@ module.exports = async function handler(req, res) {
     };
 
     await runWithConcurrency(snap.docs, concurrency, processReminder);
-
-    const eventSnap = await db.collection('eventReminders')
-      .where('scheduledAt', '<=', nowIso)
-      .limit(limit)
-      .get();
-
-    const processEventReminder = async (docSnap) => {
-      stats.eventScanned += 1;
-      const ref = db.collection('eventReminders').doc(docSnap.id);
-      try {
-        const claim = await db.runTransaction(async (tx) => {
-          const fresh = await tx.get(ref);
-          if (!fresh.exists) return { claimed: false };
-          const reminder = fresh.data() || {};
-          if (reminder.status !== 'scheduled') return { claimed: false, reason: 'not_scheduled' };
-          const dispatchKey = `${docSnap.id}:${reminder.scheduledAt || ''}`;
-          if (reminder.dispatchKey === dispatchKey || reminder.dispatchedAt) return { claimed: false, reason: 'already_dispatched' };
-          tx.update(ref, { status: 'dispatching', dispatchAttemptAt: nowIso, dispatchKey });
-          return { claimed: true, reminder, dispatchKey };
-        });
-        if (!claim.claimed) { stats.eventSkipped += 1; return; }
-        const reminder = claim.reminder || {};
-        const recipientIds = Array.isArray(reminder.recipientUserIds) ? reminder.recipientUserIds.filter(Boolean) : [];
-        const tokens = new Set();
-        await Promise.all(recipientIds.map(async (userId) => {
-          const userSnap = await db.collection('users').doc(userId).get();
-          if (userSnap.exists) collectTokens(userSnap.data()).forEach(t => tokens.add(t));
-        }));
-        if (!tokens.size) {
-          stats.noToken += 1;
-          await ref.update({ status: 'no_push_token', dispatchedAt: nowIso, dispatchKey: claim.dispatchKey, dispatchError: 'No saved push token for event reminder recipients.' });
-          return;
-        }
-        const isOrder = String(reminder.reminderType || reminder.type || '').toLowerCase() === 'orderreminder';
-        const payload = {
-          notification: {
-            title: isOrder ? '86 Chaos Order Reminder' : '86 Chaos Event Reminder',
-            body: isOrder ? `Order reminder for ${reminder.eventTitle || 'event'}` : `${reminder.eventTitle || 'Event'}${reminder.eventTime ? ` at ${reminder.eventTime}` : ''}`
-          },
-          data: { type: isOrder ? 'event_order_reminder' : 'event_reminder', eventReminderId: docSnap.id, eventId: reminder.eventId || '', restaurantId: reminder.restaurantId || '', click_action: '/?tab=events' },
-          tokens: [...tokens]
-        };
-        const result = await messaging.sendEachForMulticast(payload);
-        if (result.successCount > 0) {
-          stats.eventSent += 1;
-          await ref.update({ status: 'sent', dispatchedAt: nowIso, dispatchKey: claim.dispatchKey, pushSuccessCount: result.successCount, pushFailureCount: result.failureCount || 0 });
-        } else {
-          stats.failed += 1;
-          await ref.update({ status: 'delivery_problem', dispatchedAt: nowIso, dispatchKey: claim.dispatchKey, pushFailureCount: result.failureCount || tokens.size, dispatchError: result.responses?.[0]?.error?.message || 'No push sends succeeded.' });
-        }
-      } catch (err) {
-        stats.failed += 1;
-        await ref.update({ status: 'delivery_problem', dispatchedAt: nowIso, dispatchError: err.message || 'Event reminder dispatch failed.' }).catch(() => {});
-      }
-    };
-
-    await runWithConcurrency(eventSnap.docs, concurrency, processEventReminder);
     return res.status(200).json({ ok: true, now: nowIso, limit, concurrency, ...stats });
   } catch (err) {
     return res.status(500).json({ ok: false, error: err.message || 'Reminder dispatch failed.', limit, concurrency, ...stats });

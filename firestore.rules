@@ -443,11 +443,7 @@ service cloud.firestore {
     }
 
     function reminderRecipientStatusUpdate() {
-      return request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-        'status', 'completedAt', 'cancelledAt', 'updatedAt',
-        'scheduledAt', 'dueAt', 'snoozedUntil', 'snoozedAt', 'snoozedBy', 'snoozeMinutes',
-        'dispatchedAt', 'dispatchKey'
-      ]);
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'completedAt', 'cancelledAt', 'updatedAt']);
     }
 
     function isOwnerOfRestaurantDoc() { return signedIn() && request.auth.token.email == resource.data.ownerEmail; }
@@ -755,46 +751,6 @@ service cloud.firestore {
         resource.data.createdBy == request.auth.uid || reminderRecipientStatusUpdate()
       );
       allow delete: if signedIn() && reminderTenant(resource.data) && (resource.data.createdBy == request.auth.uid || resource.data.userId == request.auth.uid);
-    }
-
-
-    // ============================================================
-    // EMPLOYEE AVAILABILITY
-    // Normal weekly availability is separate from request-off records.
-    // Employees can manage their own submissions. Schedule/team managers can review the team.
-    // ============================================================
-    match /availabilityRecords/{docId} {
-      allow read: if signedIn() && resource.data.restaurantId is string && isTenantMatch(resource.data.restaurantId) && (
-        resource.data.employeeId == request.auth.uid ||
-        resource.data.userId == request.auth.uid ||
-        isSuperAdmin() || isRestaurantOwner(resource.data.restaurantId) || isAdminFor(resource.data.restaurantId) || hasPermFor(resource.data.restaurantId, 'schedule') || hasPermFor(resource.data.restaurantId, 'team')
-      );
-      allow create: if signedIn() && request.resource.data.restaurantId is string && isTenantMatch(request.resource.data.restaurantId) && (
-        request.resource.data.employeeId == request.auth.uid ||
-        isSuperAdmin() || isRestaurantOwner(request.resource.data.restaurantId) || isAdminFor(request.resource.data.restaurantId) || hasPermFor(request.resource.data.restaurantId, 'schedule') || hasPermFor(request.resource.data.restaurantId, 'team')
-      );
-      allow update: if signedIn() && resource.data.restaurantId is string && request.resource.data.restaurantId == resource.data.restaurantId && isTenantMatch(resource.data.restaurantId) && (
-        isSuperAdmin() || isRestaurantOwner(resource.data.restaurantId) || isAdminFor(resource.data.restaurantId) || hasPermFor(resource.data.restaurantId, 'schedule') || hasPermFor(resource.data.restaurantId, 'team') ||
-        (resource.data.employeeId == request.auth.uid && request.resource.data.employeeId == resource.data.employeeId && request.resource.data.status in ['pending','archived'])
-      );
-      allow delete: if false;
-    }
-
-    // ============================================================
-    // EVENT + ORDER REMINDERS
-    // Browser clients can create/edit their own event reminder settings; dispatch state is written by Admin SDK.
-    // ============================================================
-    match /eventReminders/{docId} {
-      allow read: if signedIn() && resource.data.restaurantId is string && isTenantMatch(resource.data.restaurantId) && (
-        isSuperAdmin() || isRestaurantOwner(resource.data.restaurantId) || isAdminFor(resource.data.restaurantId) || hasPermFor(resource.data.restaurantId, 'events') || hasPermFor(resource.data.restaurantId, 'schedule') || hasPermFor(resource.data.restaurantId, 'team') || resource.data.createdBy == request.auth.uid
-      );
-      allow create: if signedIn() && request.resource.data.restaurantId is string && isTenantMatch(request.resource.data.restaurantId) && (
-        request.resource.data.createdBy == request.auth.uid || isSuperAdmin() || isRestaurantOwner(request.resource.data.restaurantId) || isAdminFor(request.resource.data.restaurantId) || hasPermFor(request.resource.data.restaurantId, 'events') || hasPermFor(request.resource.data.restaurantId, 'schedule')
-      );
-      allow update: if signedIn() && resource.data.restaurantId is string && request.resource.data.restaurantId == resource.data.restaurantId && isTenantMatch(resource.data.restaurantId) && (
-        resource.data.createdBy == request.auth.uid || isSuperAdmin() || isRestaurantOwner(resource.data.restaurantId) || isAdminFor(resource.data.restaurantId) || hasPermFor(resource.data.restaurantId, 'events') || hasPermFor(resource.data.restaurantId, 'schedule')
-      );
-      allow delete: if false;
     }
 
 
