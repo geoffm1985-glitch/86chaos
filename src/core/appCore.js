@@ -60,9 +60,17 @@ export const prodConfig = {
 
 export const PROD_FIREBASE_HOSTS = ['app.86chaos.com', '86chaos.com', 'www.86chaos.com'];
 export const isProdFirebaseHost = (hostname = '') => PROD_FIREBASE_HOSTS.includes(String(hostname || '').toLowerCase());
+export const firebaseDeploymentMode = String(env('REACT_APP_FIREBASE_DEPLOYMENT_MODE', '') || '').toLowerCase().trim();
+export const forceTestFirebase = ['test', 'testing', 'preview', 'staging', 'dev', 'development'].includes(firebaseDeploymentMode);
+export const forceProdFirebase = ['prod', 'production', 'live'].includes(firebaseDeploymentMode);
 
 // 3. THE SWITCHER (Automatically routes the database based on the URL)
-export const firebaseConfig = isProdFirebaseHost(window.location.hostname) ? prodConfig : testConfig;
+// Production hosts use live Firebase. Every other host uses test Firebase unless
+// REACT_APP_FIREBASE_DEPLOYMENT_MODE explicitly overrides it. This keeps the
+// testing GitHub/Vercel side from accidentally loading the live project.
+export const firebaseConfig = forceProdFirebase
+  ? prodConfig
+  : (forceTestFirebase || !isProdFirebaseHost(window.location.hostname) ? testConfig : prodConfig);
 
 export const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app);

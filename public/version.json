@@ -1,9 +1,9 @@
 {
-  "version": "15.0.67",
-  "name": "86 Chaos 15.0.67 Firebase Credential Hotfix",
+  "version": "15.0.68",
+  "name": "86 Chaos 15.0.68 Testing Firebase Project Hotfix",
   "releasedAt": "2026-07-18",
-  "label": "86 Chaos 15.0.67",
-  "build": "15.0.67",
-  "updatedAt": "2026-07-18T00:20:00.000-05:00",
-  "notes": "15.0.67 hotfix: server credential resolver now treats FIREBASE_SERVICE_ACCOUNT_KEY as the primary Firebase Admin credential and no longer implies a separate production key is required."
+  "label": "86 Chaos 15.0.68",
+  "build": "15.0.68",
+  "updatedAt": "2026-07-18T00:45:00.000-05:00",
+  "notes": "15.0.68 hotfix: testing/non-production deployments now default server routes to chaos-test-d1601 and use FIREBASE_SERVICE_ACCOUNT_KEY for the matching project without requiring a separate production key."
 }
