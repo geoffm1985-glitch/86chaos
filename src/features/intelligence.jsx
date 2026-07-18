@@ -1052,6 +1052,16 @@ const TabAITools = ({ appUser, clientData, setActiveTab, setInventorySubTabTarge
       note: 'Best for owners/managers after inventory names are cleaned up.'
     },
     {
+      title: 'AI Order Assistant',
+      tag: 'Inventory',
+      desc: 'Build manager-reviewed order drafts and run Python forecasting, invoice watchdog, menu costing, labor warnings, data health, and backup checks.',
+      action: 'Open AI Order Assistant',
+      tab: 'inventory',
+      subTab: 'ai-order',
+      enabled: true,
+      note: 'AI and Python only suggest, report, and draft. Managers still approve, edit, and send vendor orders.'
+    },
+    {
       title: 'Invoice Scanner',
       tag: 'Inventory',
       desc: 'Scan vendor invoices from Inventory, review raw extraction details, and approve stock changes.',

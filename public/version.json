@@ -1,9 +1,10 @@
 {
-  "version": "15.0.76",
-  "name": "86 Chaos 15.0.76 Event Push Reminder Delivery Fix",
+  "version": "15.0.82",
+  "name": "86 Chaos",
   "releasedAt": "2026-07-18",
-  "label": "86 Chaos 15.0.76",
-  "build": "15.0.76",
+  "label": "86 Chaos 15.0.82",
+  "build": "15.0.82",
   "updatedAt": "2026-07-18T00:00:00.000Z",
-  "notes": "Fixes scheduled event push reminder delivery by saving recipient/token snapshots, resolving recipients through users and workspace memberships, retrying no-token/delivery-problem event reminders, and exposing recipient selection in the event push reminder section."
+  "notes": "Adds Python Automation Center, scheduled ops intelligence, critical push alerts, approval queue suggestions, and Super Admin safety rails.",
+  "release": "Python Automation Center and safety rails"
 }

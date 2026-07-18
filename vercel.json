@@ -42,6 +42,10 @@
     {
       "path": "/api/dispatch-reminders",
       "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/python-automation-run",
+      "schedule": "30 10 * * *"
     }
   ],
   "functions": {
@@ -84,6 +88,18 @@
     "api/openai-diagnostics-explain.js": {
       "maxDuration": 60,
       "memory": 512
+    },
+    "api/python-order-intelligence.js": {
+      "maxDuration": 60,
+      "memory": 512
+    },
+    "api/python-ops-intelligence.js": {
+      "maxDuration": 60,
+      "memory": 512
+    },
+    "api/python-automation-run.js": {
+      "maxDuration": 300,
+      "memory": 1024
     }
   }
 }

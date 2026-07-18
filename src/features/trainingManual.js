@@ -420,10 +420,10 @@ export const SYSTEM_TRAINING_MANUAL_CHAPTERS = [
     tab: "AI Tools",
     audience: "Permitted managers and inventory or prep users",
     summary: "Open supported scanners from one place while understanding limits, review requirements, and cost controls.",
-    keywords: "ai tools invoice recipe scanner limits cheapest model pages output tokens idempotency review privacy",
+    keywords: "ai tools ai order assistant ordering copilot smart order drafts event supply invoice price warnings prep prediction recipe scanner limits cheapest model pages output tokens idempotency review privacy",
     sections: [
       { title: "What this tab does", steps: [
-        "AI Tools is a launcher for supported extraction workflows such as invoice or recipe scanning. It does not replace the normal Inventory or Recipe Book approval screens.",
+        "AI Tools is a launcher for supported extraction workflows such as invoice or recipe scanning plus the AI Order Assistant. It does not replace the normal Inventory, Orders, Event Calendar, Prep, or Recipe Book approval screens.",
         "Each scanner accepts only approved file types and sizes. Page caps, an approved low-cost model list, output limits, rate limits, call budgets, and duplicate-request protection are enforced on the server.",
         "A failed or blocked scan should show a reason. Do not keep clicking; correct the file, permissions, or limit problem first.",
         "Always review extracted data. AI can misread text, rows, prices, quantities, units, ingredients, or instructions."
@@ -437,6 +437,15 @@ export const SYSTEM_TRAINING_MANUAL_CHAPTERS = [
         "The server checks the real file signature and PDF page count instead of trusting the filename. Usage logs record safe counts, model, attempts, and failures without storing secrets in the manual.",
         "Image scans also have server-verified pixel and edge limits, so a visually ordinary but extremely high-resolution image is rejected before any provider call.",
         "HR training-manual uploads use no AI at all. The employer uploads the original file and enters the title, version, summary, requirement, and acknowledgment details directly."
+      ]},
+      { title: "AI Order Assistant", steps: [
+        "Open Inventory & Orders > AI Order Assistant to review smart order suggestions built from par levels, current stock, pending deliveries, upcoming events, prep demand, menu impact links, waste logs, and invoice history.",
+        "Use Apply to Order Screen to load suggested quantities into the normal order review. Use Copy Full Draft or Save AI Draft when you want a reviewable vendor draft instead of dispatching right away.",
+        "Run Python Forecast to use the heavier behind-the-scenes Python ordering layer. It calculates demand forecasts, confidence scores, par recommendations, invoice price trends, waste insights, prep checks, and event supply signals.",
+        "Python Intelligence never sends orders, changes pars, edits schedules, or changes staff records by itself. Run Python Ops Scan for invoice anomalies, menu costing, labor/schedule warnings, data health issues, backup checks, and copyable manager/CSV reports. Every run writes a safe audit entry.",
+        "Event Supply Planning shows upcoming events that appear to need inventory attention. The stronger your Event Calendar notes and Menu Intelligence links are, the better the suggestions become.",
+        "Invoice Price Warnings compare recent invoice rows against previous prices and flag notable jumps or drops. Confirm with the actual invoice before changing vendors or pars.",
+        "86Voice can answer phrases such as what should I order, build an order draft, what do we need for Saturday's event, explain ranch, or open AI ordering. Voice still opens review screens instead of secretly sending vendor orders."
       ]},
       { title: "Privacy and cost", steps: [
         "Upload only the business document needed for the task. Remove unrelated personal, payment, medical, or confidential pages first.",
