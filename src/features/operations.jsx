@@ -4052,10 +4052,16 @@ const TabToday = ({ currentDate, appUser, users, shifts, shiftSwaps, timeOffRequ
   const canUseManagerBrief = todayPlanAccess.canUse(FEATURE_KEYS.MANAGER_BRIEF).allowed;
   const canUseBasicInventory = todayPlanAccess.canUse(FEATURE_KEYS.BASIC_INVENTORY).allowed || todayPlanAccess.canUse(FEATURE_KEYS.BURN_LOG).allowed;
   const canUseMenuIntelligence = todayPlanAccess.canUse(FEATURE_KEYS.MENU_INTELLIGENCE).allowed || todayPlanAccess.canUse(FEATURE_KEYS.SMART_86_ALERTS).allowed;
+  const canUseAiOrdering = todayPlanAccess.canUse(FEATURE_KEYS.AI_ORDER_ASSISTANT).allowed;
+  const canUsePythonIntelligence = todayPlanAccess.canUse(FEATURE_KEYS.PYTHON_INTELLIGENCE).allowed;
   const canUseLabor = todayPlanAccess.canUse(FEATURE_KEYS.LABOR_COMMAND).allowed || todayPlanAccess.canUse(FEATURE_KEYS.TIME_CLOCK).allowed;
   const canUseScheduleBuilder = todayPlanAccess.canUse(FEATURE_KEYS.SCHEDULE_BUILDER).allowed;
   const canUseCleaningRoutines = todayPlanAccess.canUse(FEATURE_KEYS.CLEANING_ROUTINES).allowed;
   const [expanded, setExpanded] = useState({ brief: true, setup: false, problems: true, prefs: false });
+  const [briefOpsIntel, setBriefOpsIntel] = useState(null);
+  const [briefOpsLoading, setBriefOpsLoading] = useState(false);
+  const [briefOpsError, setBriefOpsError] = useState('');
+  const [briefOpsCopied, setBriefOpsCopied] = useState(false);
   const today = getToday();
   const profile = getHomeProfile(appUser);
   const safeTodayWrite = (args) => safeWriteWithQueue({ user: appUser, addToast, ...args });
@@ -4077,6 +4083,18 @@ const TabToday = ({ currentDate, appUser, users, shifts, shiftSwaps, timeOffRequ
   const briefAuditLogs = useLiveCollection('auditLogs', appUser?.restaurantId, { enabled: !!appUser?.restaurantId && canUsePythonIntelligence, limitCount: 160, fallbackLimitCount: 45 });
   const aiBrief = canUseAiOrdering ? buildAiOrderAssistant({ inventoryItems, vendors: briefVendors, wasteLogs: briefWasteLogs, invoices: briefInvoices, events, prepItems, menuDependencies, currentDate: today, daysAhead: 7, eventDaysAhead: 14 }) : { managerBrief: [], recommendations: [], eventNeeds: [], priceWarnings: [] };
   const aiBriefTop = aiBrief.recommendations?.filter(row => row.suggestedQty > 0).slice(0, 3) || [];
+  const briefOpsSummary = briefOpsIntel?.summary || {};
+  const briefOpsFindings = [
+    ...(briefOpsIntel?.priceWatch || []).map(row => ({ area: 'Inventory', title: row.itemName || 'Price watch', detail: row.summary || row.detail || 'Review invoice pricing.', tab: 'inventory', focus: 'invoices', severity: row.severity || 'medium' })),
+    ...(briefOpsIntel?.invoiceAnomalies || []).map(row => ({ area: 'Inventory', title: row.title || 'Invoice anomaly', detail: row.detail || row.recommendation || 'Review invoice history.', tab: 'inventory', focus: 'invoices', severity: row.severity || 'medium' })),
+    ...(briefOpsIntel?.parRecommendations || []).map(row => ({ area: 'Inventory', title: row.itemName ? `Par review: ${row.itemName}` : 'Par recommendation', detail: row.reason || `Suggested par ${row.suggestedPar || ''}`.trim() || 'Review par level.', tab: 'inventory', focus: 'belowPar', severity: 'medium' })),
+    ...(briefOpsIntel?.wasteInsights || []).map(row => ({ area: 'Inventory', title: row.itemName ? `Waste pattern: ${row.itemName}` : 'Waste pattern', detail: row.suggestion || row.detail || 'Review burn/waste logs.', tab: 'inventory', focus: 'waste', severity: row.severity || 'medium' })),
+    ...(briefOpsIntel?.eventSupplyPlan || []).map(row => ({ area: 'Event Calendar', title: row.eventTitle || row.title || 'Event supply risk', detail: row.summary || row.detail || 'Review event supply planning.', tab: 'events', severity: row.severity || 'medium' })),
+    ...(briefOpsIntel?.menuCosting || []).map(row => ({ area: 'Menu Intelligence', title: row.recipeName || 'Menu costing review', detail: row.foodCostPct ? `${row.foodCostPct}% food cost estimate. Review recipe links and invoice costs.` : 'Review recipe costing and ingredient links.', tab: 'menu-intelligence', severity: 'low' })),
+    ...(briefOpsIntel?.laborScheduleWarnings || []).map(row => ({ area: 'Financials', title: row.title || 'Labor/schedule warning', detail: row.detail || 'Review labor, punches, or schedule coverage.', tab: String(row.type || '').includes('request') || String(row.title || '').toLowerCase().includes('request') ? 'published' : 'financials', scheduleFocus: String(row.title || '').toLowerCase().includes('availability') ? 'availability' : 'time-off', severity: row.severity || 'medium' })),
+    ...(briefOpsIntel?.dataHealth || []).map(row => ({ area: row.area || 'System Administrator', title: row.title || 'Data health finding', detail: Array.isArray(row.issues) ? row.issues.join(', ') : (row.detail || 'Review the affected records.'), tab: String(row.area || '').toLowerCase().includes('inventory') ? 'inventory' : String(row.area || '').toLowerCase().includes('menu') ? 'menu-intelligence' : String(row.area || '').toLowerCase().includes('staff') ? 'team' : 'godmode', severity: row.severity || 'medium' })),
+    ...(briefOpsIntel?.backupChecks || []).map(row => ({ area: 'System Administrator', title: row.title || 'Backup check', detail: row.detail || row.recommendation || 'Review backup center.', tab: 'godmode', severity: row.status === 'attention' ? 'high' : 'low' }))
+  ].slice(0, 18);
   const recentTabs = (() => { try { return JSON.parse(localStorage.getItem(`recentTabs_${appUser.id}`) || '[]'); } catch { return []; } })();
   const setupItems = [
     { label: 'Restaurant profile', done: !!clientData?.name, tab: 'settings', allowed: appUser?.isAdmin || appUser?.permissions?.settings },
@@ -4090,6 +4108,72 @@ const TabToday = ({ currentDate, appUser, users, shifts, shiftSwaps, timeOffRequ
   const setupDone = setupItems.filter(i => i.done).length;
   const setupTotal = Math.max(1, setupItems.length);
   const openInventoryFocus = () => { sessionStorage.setItem('inventoryFocus', 'belowPar'); setActiveTab('inventory'); };
+  const openOpsFinding = (row = {}) => {
+    const tab = row.tab || 'godmode';
+    try {
+      if (tab === 'inventory' && row.focus) sessionStorage.setItem('inventoryFocus', row.focus === 'invoices' ? 'invoices' : row.focus === 'waste' ? 'waste' : row.focus);
+      if (tab === 'published' && row.scheduleFocus) sessionStorage.setItem('scheduleFocus', row.scheduleFocus);
+    } catch (e) {}
+    setActiveTab(tab);
+  };
+  const runBriefPythonOps = async () => {
+    if (!appUser?.restaurantId) return addToast?.('Missing Workspace', 'Choose a workspace before running Python Ops Scan.');
+    if (!canUsePythonIntelligence) return addToast?.('Smart Kitchen Required', 'Python Ops Scan starts with Smart Kitchen.');
+    setBriefOpsLoading(true);
+    setBriefOpsError('');
+    setBriefOpsCopied(false);
+    try {
+      const response = await secureFetch('/api/python-ops-intelligence', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          restaurantId: appUser.restaurantId,
+          currentDate: today,
+          daysAhead: 7,
+          inventoryItems,
+          vendors: briefVendors,
+          wasteLogs: briefWasteLogs,
+          invoices: briefInvoices,
+          events,
+          prepItems,
+          menuDependencies,
+          recipes,
+          users,
+          shifts,
+          timePunches,
+          timeOffRequests,
+          availabilityRecords: briefAvailabilityRecords,
+          reminders: briefReminders,
+          tasks,
+          maintenanceLogs,
+          auditLogs: briefAuditLogs,
+          backupStatus: {}
+        })
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok || payload?.ok === false) throw new Error(payload?.error || 'Python Ops Intelligence failed.');
+      setBriefOpsIntel(payload);
+      addToast?.('Python Ops Scan Ready', `${payload?.summary?.dataHealthCount || 0} data issues, ${payload?.summary?.laborWarningCount || 0} labor warnings, ${payload?.summary?.menuCostCount || 0} menu cost checks.`);
+    } catch (error) {
+      const message = error?.message || 'Python Ops Intelligence is unavailable.';
+      setBriefOpsError(message);
+      addToast?.('Python Ops Scan Unavailable', message);
+    } finally {
+      setBriefOpsLoading(false);
+    }
+  };
+  const copyBriefOpsReport = async () => {
+    const value = briefOpsIntel?.reports?.text || JSON.stringify(briefOpsIntel || {}, null, 2);
+    if (!briefOpsIntel) return addToast?.('No Report Ready', 'Run Python Ops Scan first.');
+    try {
+      await navigator.clipboard.writeText(value);
+      setBriefOpsCopied(true);
+      setTimeout(() => setBriefOpsCopied(false), 1600);
+      addToast?.('Ops Report Copied', 'Paste it into a document, email, or notes for review.');
+    } catch (err) {
+      addToast?.('Copy Failed', 'Your browser blocked clipboard access.');
+    }
+  };
   const problems = [
     canUseBasicInventory && lowStock.length ? { tone: 'red', title: 'Inventory below par', detail: `${lowStock.length} item${lowStock.length===1?'':'s'} need attention.`, tab: 'inventory', onClick: openInventoryFocus } : null,
     canUseCleaningRoutines && urgentMaintenance.length ? { tone: 'red', title: 'Maintenance urgent', detail: `${urgentMaintenance.length} high priority issue${urgentMaintenance.length===1?'':'s'} open.`, tab: 'maintenance' } : null,

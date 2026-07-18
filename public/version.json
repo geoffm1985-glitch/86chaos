@@ -1,10 +1,10 @@
 {
-  "version": "15.0.85",
+  "version": "15.0.86",
   "name": "86 Chaos",
   "releasedAt": "2026-07-18",
-  "label": "86 Chaos 15.0.85",
-  "build": "15.0.85",
+  "label": "86 Chaos 15.0.86",
+  "build": "15.0.86",
   "updatedAt": "2026-07-18T00:00:00.000Z",
-  "notes": "Moves Python Ops Scan into Manager Brief with clickable findings, locks AI assisted ordering/Python intelligence behind Smart Kitchen+, improves menu placement, fixes Schedule Copilot layout, and refreshes customer-facing feature alignment.",
-  "release": "Manager Brief Python ops, tier locks, menu polish, and website alignment prompt"
+  "notes": "Hotfixes the 15.0.85 startup crash by defining Manager Brief Python Ops state/actions and fixes schedule publish metadata scope while preserving the Manager Brief, tier, menu, and layout changes.",
+  "release": "Load hotfix for Manager Brief Python Ops and schedule publish scope"
 }

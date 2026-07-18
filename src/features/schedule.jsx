@@ -1262,6 +1262,9 @@ const handlePublish = async () => {
     if(!window.confirm("Publish schedule? Notifications will be sent. A backup file will download first.")) return; 
     
     const unpub = schedulePeriodShifts.filter(s => !s.isPublished); 
+    const publishPeriodStart = schedulePeriodBounds.start;
+    const publishPeriodEnd = schedulePeriodBounds.end;
+    const publishPeriodLabel = schedulePeriodLabel;
     
     if (unpub.length === 0) {
       addToast('Notice', 'No unpublished shifts found.');
@@ -1269,9 +1272,6 @@ const handlePublish = async () => {
     }
 
     try {
-      const publishPeriodStart = schedulePeriodBounds.start;
-      const publishPeriodEnd = schedulePeriodBounds.end;
-      const publishPeriodLabel = schedulePeriodLabel;
       const restaurantPrefix = getRestaurantExportPrefix(appUser, appUser?.restaurantId || '86chaos');
       const now = new Date();
       const backupPayload = {
