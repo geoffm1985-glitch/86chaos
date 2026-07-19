@@ -1792,12 +1792,12 @@ select {
 }
 
 .schedule-copilot-compact {
-  max-height: 410px;
-  overflow: hidden;
+  max-height: none;
+  overflow: visible;
 }
 
 .schedule-copilot-compact .schedule-copilot-body {
-  max-height: 245px;
+  max-height: 420px;
   overflow-y: auto;
   padding-right: 3px;
 }
@@ -3186,11 +3186,12 @@ select {
   }
 
   .desktop-pro-shell .schedule-copilot-compact {
-    max-height: 360px;
+    max-height: none;
+    overflow: visible;
   }
 
   .desktop-pro-shell .schedule-copilot-compact .schedule-copilot-body {
-    max-height: 210px;
+    max-height: 420px;
   }
 
   .desktop-pro-shell .app-drawer-readable {

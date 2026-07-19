@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { collection, query, where, onSnapshot, addDoc, updateDoc, deleteDoc, doc, getDocs, setDoc } from 'firebase/firestore';
 import { initializeApp } from 'firebase/app';
 import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword } from 'firebase/auth';
-import { Package, Trash2, Moon, Search, Calendar, BookOpen, Bug, Bell, Shield, Loader2, ClipboardList, HelpCircle, Users, LifeBuoy, Radio, KeyRound, ChevronRight } from 'lucide-react';
+import { secureFetch } from '../core/appCore';
+import { Package, Trash2, Moon, Search, Calendar, BookOpen, Bug, Bell, Shield, Loader2, ClipboardList, HelpCircle, Users, LifeBuoy, Radio, KeyRound, ChevronRight, Sparkles } from 'lucide-react';
 
 const TabGodMode = ({ appUser, addToast, setGhostTenant, db, auth, Modal, T, getToday, generateTempPass, firebaseConfig, CURRENT_VERSION, logAudit }) => {
   const [subTab, setSubTab] = useState('overview');
@@ -13,6 +14,12 @@ const TabGodMode = ({ appUser, addToast, setGhostTenant, db, auth, Modal, T, get
   const [allUsers, setAllUsers] = useState([]);
   const [crashLogs, setCrashLogs] = useState([]);
   const [auditLogs, setAuditLogs] = useState([]);
+  const [automationReports, setAutomationReports] = useState([]);
+  const [automationRuns, setAutomationRuns] = useState([]);
+  const [automationQueue, setAutomationQueue] = useState([]);
+  const [automationConfigs, setAutomationConfigs] = useState([]);
+  const [automationLoading, setAutomationLoading] = useState(false);
+  const [automationTargetId, setAutomationTargetId] = useState('');
   const [userCounts, setUserCounts] = useState({});
   const [totalInstalls, setTotalInstalls] = useState(0); 
 
@@ -46,7 +53,22 @@ const TabGodMode = ({ appUser, addToast, setGhostTenant, db, auth, Modal, T, get
        setAuditLogs(rawLogs.sort((a,b) => new Date(b.timestamp) - new Date(a.timestamp)).slice(0, 100));
        setTotalInstalls(rawLogs.filter(log => log.action === 'APP_INSTALLED').length);
     });
-    return () => { unsubRests(); unsubAdmins(); unsubUsers(); unsubCrashes(); unsubAudit(); };
+    const unsubAutomationReports = onSnapshot(collection(db, 'opsIntelligenceReports'), snap => {
+       const rows = snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a,b) => new Date(b.createdAt || b.generatedAt || 0) - new Date(a.createdAt || a.generatedAt || 0)).slice(0, 80);
+       setAutomationReports(rows);
+    });
+    const unsubAutomationRuns = onSnapshot(collection(db, 'pythonAutomationRuns'), snap => {
+       const rows = snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a,b) => new Date(b.startedAt || 0) - new Date(a.startedAt || 0)).slice(0, 80);
+       setAutomationRuns(rows);
+    });
+    const unsubAutomationQueue = onSnapshot(collection(db, 'aiRecommendationQueue'), snap => {
+       const rows = snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a,b) => new Date(b.updatedAt || b.createdAt || 0) - new Date(a.updatedAt || a.createdAt || 0)).slice(0, 120);
+       setAutomationQueue(rows);
+    });
+    const unsubAutomationConfigs = onSnapshot(collection(db, 'pythonAutomationConfigs'), snap => {
+       setAutomationConfigs(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    });
+    return () => { unsubRests(); unsubAdmins(); unsubUsers(); unsubCrashes(); unsubAudit(); unsubAutomationReports(); unsubAutomationRuns(); unsubAutomationQueue(); unsubAutomationConfigs(); };
   }, [db]);
 
   // --- 1. TENANT MANAGEMENT & DEPLOYMENT ---
@@ -243,6 +265,74 @@ const TabGodMode = ({ appUser, addToast, setGhostTenant, db, auth, Modal, T, get
     }
   };
 
+
+  // --- PYTHON AUTOMATION CENTER ---
+  const PYTHON_AUTOMATION_JOBS = [
+    { key:'nightlyOpsScan', label:'Nightly Ops Scan', cadence:'Nightly', mode:'Automatic report', description:'Runs ordering, invoice, waste, labor, backup, and data-health analysis.' },
+    { key:'morningManagerBrief', label:'Morning Manager Brief', cadence:'Daily morning', mode:'Automatic report', description:'Turns scan findings into a manager-ready summary.' },
+    { key:'backupIntegrityCheck', label:'Backup Integrity Check', cadence:'After backup / daily', mode:'Critical alerts allowed', description:'Flags stale, missing, or suspicious backup status.' },
+    { key:'dataHealthScanner', label:'Data Health Scanner', cadence:'Nightly', mode:'Suggestions only', description:'Finds broken IDs, missing setup, orphaned links, and data that weakens AI accuracy.' },
+    { key:'invoicePriceWatcher', label:'Invoice Price Watcher', cadence:'Invoice + nightly', mode:'Critical alerts allowed', description:'Finds price jumps, duplicate invoice fingerprints, and pack-size changes.' },
+    { key:'eventSupplyRiskCheck', label:'Event Supply Risk Check', cadence:'Daily', mode:'Suggestions only', description:'Flags upcoming events that may need ordering or prep planning.' },
+    { key:'wastePatternScanner', label:'Waste Pattern Scanner', cadence:'Weekly / nightly signal', mode:'Suggestions only', description:'Finds repeat waste/burn patterns before changing pars or prep.' },
+    { key:'parRecommendationEngine', label:'Par Recommendation Engine', cadence:'Weekly / nightly signal', mode:'Approval required', description:'Suggests par changes but never applies them automatically.' },
+    { key:'recipeCostingRefresh', label:'Recipe/Menu Costing Refresh', cadence:'Weekly / invoice signal', mode:'Approval required', description:'Estimates menu cost movement from invoice and recipe data.' },
+    { key:'releaseDataQaScanner', label:'Release/Data QA Scanner', cadence:'On demand + nightly', mode:'Suggestions only', description:'Looks for obvious app-data issues before releases or risky changes.' },
+    { key:'criticalPushAlerts', label:'Critical Push Alerts', cadence:'When serious findings exist', mode:'Alert only', description:'Pushes owners/super admins for backup failures, huge price jumps, and corruption risk.' },
+    { key:'approvalQueue', label:'Approval Queue', cadence:'Every run', mode:'Human approval required', description:'Creates review items for repairs, par changes, costing, labor, and invoice findings.' }
+  ];
+
+  const PYTHON_SAFETY_POLICY = {
+    can: ['Analyze data', 'Create reports', 'Create suggestions', 'Send critical alerts', 'Create drafts for review'],
+    approval: ['Change pars', 'Save order drafts', 'Repair broken records', 'Update official recipe costs', 'Archive or restore records'],
+    never: ['Send vendor orders', 'Spend money', 'Edit/publish schedules', 'Approve payroll', 'Change wages/permissions/billing/security', 'Delete records permanently']
+  };
+
+  const selectedAutomationConfig = automationConfigs.find(c => c.id === automationTargetId || c.restaurantId === automationTargetId) || null;
+
+  const handleRunPythonAutomation = async () => {
+    if (!window.confirm(automationTargetId ? 'Run Python Automation Center for the selected workspace now?' : 'Run Python Automation Center for active workspaces now?')) return;
+    setAutomationLoading(true);
+    try {
+      const response = await secureFetch('/api/python-automation-run', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode: 'manual', restaurantId: automationTargetId || '', maxRestaurants: 8 })
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok || payload?.ok === false) throw new Error(payload?.error || 'Python automation did not finish.');
+      const completed = (payload.results || []).filter(row => row.ok).length;
+      const skipped = (payload.results || []).filter(row => row.skipped).length;
+      addToast('Python Automation Complete', `${completed} workspace(s) scanned${skipped ? `, ${skipped} skipped` : ''}.`);
+    } catch (error) {
+      addToast('Python Automation Failed', error?.message || 'Could not run automation.');
+    } finally {
+      setAutomationLoading(false);
+    }
+  };
+
+  const handleTogglePythonAutomationPause = async () => {
+    if (!automationTargetId) return addToast('Choose Workspace', 'Pick a workspace before pausing or resuming Python automation.');
+    const rest = restaurants.find(r => r.id === automationTargetId);
+    const nextPaused = !(selectedAutomationConfig?.paused === true);
+    await setDoc(doc(db, 'pythonAutomationConfigs', automationTargetId), {
+      restaurantId: automationTargetId,
+      workspaceId: automationTargetId,
+      restaurantName: rest?.name || selectedAutomationConfig?.restaurantName || automationTargetId,
+      paused: nextPaused,
+      jobs: selectedAutomationConfig?.jobs || {},
+      updatedAt: new Date().toISOString(),
+      updatedBy: appUser.id || appUser.email || 'system-admin',
+      updatedByName: appUser.name || appUser.email || 'System Administrator'
+    }, { merge: true });
+    addToast(nextPaused ? 'Automation Paused' : 'Automation Resumed', rest?.name || automationTargetId);
+  };
+
+  const updateQueueStatus = async (item, status) => {
+    await updateDoc(doc(db, 'aiRecommendationQueue', item.id), { status, reviewedAt: new Date().toISOString(), reviewedBy: appUser.id || appUser.email || '', reviewedByName: appUser.name || appUser.email || 'System Administrator', updatedAt: new Date().toISOString() });
+    addToast('Recommendation Updated', `${item.title || 'Item'} marked ${status}.`);
+  };
+
   // --- CALCULATIONS ---
   const mrr = restaurants.reduce((acc, r) => acc + (r.subscription?.status === 'active' ? (r.subscription?.planId === 'owner_pro' ? 299 : r.subscription?.planId === 'smart_kitchen' ? 179 : r.subscription?.planId === 'operations' ? 99 : 49) : 0), 0);
   const timeAgo = (dateStr) => { if (!dateStr) return 'Never'; const days = Math.floor((Date.now() - new Date(dateStr).getTime()) / (1000 * 60 * 60 * 24)); if (days === 0) return 'Active Today'; if (days === 1) return 'Active Yesterday'; return `Inactive ${days} days`; };
@@ -254,6 +344,7 @@ const TabGodMode = ({ appUser, addToast, setGhostTenant, db, auth, Modal, T, get
     { id:'users', label:'Global Users', icon: Search, tone:'slate', description:'Search every user across all restaurants, inspect roles, workspace ties, and account status.' },
     { id:'support', label:'Support', icon: LifeBuoy, tone:'amber', description:'Crash reports, diagnostics, support triage, and customer problem investigation tools.' },
     { id:'forensics', label:'Forensics', icon: Shield, tone:'purple', description:'Audit timeline, ghost-action review, security activity, and administrator accountability records.' },
+    { id:'automation', label:'Automation', icon: Sparkles, tone:'purple', description:'Python job controls, scheduled intelligence, critical alerts, approval queue, and safety rails.' },
     { id:'ops', label:'Operations', icon: Radio, tone:'red', description:'Global refresh, platform broadcast, orphan sweeps, and operational maintenance actions.' },
     { id:'retention', label:'Retention', icon: Calendar, tone:'emerald', description:'One-button legal data-retention setup marker, official retention schedule, and production setup checklist.' },
     { id:'admins', label:'Access', icon: KeyRound, tone:'red', description:'Grant or revoke internal System Administrator access.' },
@@ -579,6 +670,109 @@ const TabGodMode = ({ appUser, addToast, setGhostTenant, db, auth, Modal, T, get
                 </div>
               </div>
             ))}
+          </div>
+        </div>
+      )}
+
+
+      {/* --- TAB: PYTHON AUTOMATION CENTER --- */}
+      {subTab === 'automation' && (
+        <div className="space-y-6 animate-[slideIn_0.2s_ease-out]">
+          <div className={`${T.card} p-5 border-purple-500/30 bg-purple-950/10`}>
+            <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-4">
+              <div>
+                <div className="text-[10px] font-black uppercase tracking-[0.22em] text-purple-300 flex items-center gap-2"><Sparkles size={15}/> Python Automation Center</div>
+                <h2 className="text-xl font-black text-white mt-1">Run everything Python should run, and nothing it should not.</h2>
+                <p className="text-xs text-slate-400 font-bold leading-6 mt-2 max-w-3xl">Python is allowed to analyze, report, suggest, draft, and send critical alerts. Anything that changes money, schedules, payroll, permissions, pars, records, or vendor orders stays in a human approval lane.</p>
+              </div>
+              <div className="w-full lg:w-[360px] space-y-2">
+                <select value={automationTargetId} onChange={e => setAutomationTargetId(e.target.value)} className={T.input}>
+                  <option value="">All active workspaces, limited batch</option>
+                  {restaurants.map(r => <option key={r.id} value={r.id}>{r.name || r.id}</option>)}
+                </select>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  <button onClick={handleRunPythonAutomation} disabled={automationLoading} className="bg-purple-900/30 border border-purple-500/50 text-purple-100 rounded-xl px-4 py-3 text-xs font-black uppercase tracking-widest disabled:opacity-50">{automationLoading ? 'Running…' : 'Run Now'}</button>
+                  <button onClick={handleTogglePythonAutomationPause} disabled={!automationTargetId} className="bg-[#12161A] border border-[#2A353D] text-[#D4A381] rounded-xl px-4 py-3 text-xs font-black uppercase tracking-widest disabled:opacity-40">{selectedAutomationConfig?.paused ? 'Resume' : 'Pause'}</button>
+                </div>
+                <div className="text-[10px] text-slate-500 font-bold leading-4">Scheduled run: Vercel cron hits <span className="text-purple-200 font-black">/api/python-automation-run</span>. Manual runs use your Super Admin login.</div>
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+            <div className={`${T.card} p-4 border-emerald-500/20`}>
+              <h3 className="font-black text-emerald-200 mb-3">Python Can</h3>
+              <div className="space-y-2">{PYTHON_SAFETY_POLICY.can.map(item => <div key={item} className="rounded-xl bg-emerald-950/10 border border-emerald-500/20 p-2 text-xs font-bold text-emerald-100">✓ {item}</div>)}</div>
+            </div>
+            <div className={`${T.card} p-4 border-amber-500/20`}>
+              <h3 className="font-black text-amber-200 mb-3">Approval Required</h3>
+              <div className="space-y-2">{PYTHON_SAFETY_POLICY.approval.map(item => <div key={item} className="rounded-xl bg-amber-950/10 border border-amber-500/20 p-2 text-xs font-bold text-amber-100">Review: {item}</div>)}</div>
+            </div>
+            <div className={`${T.card} p-4 border-red-500/20`}>
+              <h3 className="font-black text-red-200 mb-3">Python Never Does Alone</h3>
+              <div className="space-y-2">{PYTHON_SAFETY_POLICY.never.map(item => <div key={item} className="rounded-xl bg-red-950/10 border border-red-500/20 p-2 text-xs font-bold text-red-100">✕ {item}</div>)}</div>
+            </div>
+          </div>
+
+          <div className={`${T.card} p-5`}>
+            <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-3 mb-4">
+              <div>
+                <h3 className="font-black text-white text-lg">Scheduled Python Jobs</h3>
+                <p className="text-xs text-slate-500 font-bold mt-1">Jobs are report/suggestion/alert only. The approval queue is where real changes wait for people.</p>
+              </div>
+              <div className="text-right text-[10px] uppercase tracking-widest font-black text-slate-500">{automationConfigs.length} configured workspace(s)</div>
+            </div>
+            <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-3">
+              {PYTHON_AUTOMATION_JOBS.map(job => (
+                <div key={job.key} className="rounded-2xl border border-[#2A353D] bg-[#12161A] p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0"><div className="font-black text-white">{job.label}</div><div className="text-[10px] uppercase tracking-widest font-black text-purple-300 mt-1">{job.cadence}</div></div>
+                    <span className="text-[8px] rounded-full border border-[#2A353D] px-2 py-1 text-slate-400 font-black uppercase">{job.mode}</span>
+                  </div>
+                  <p className="text-xs text-slate-400 font-bold leading-5 mt-3">{job.description}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
+            <div className={`${T.card} p-5 xl:col-span-2`}>
+              <h3 className="font-black text-white text-lg mb-3">Latest Python Reports</h3>
+              <div className="space-y-2 max-h-[520px] overflow-y-auto custom-scrollbar">
+                {automationReports.length ? automationReports.slice(0, 18).map(report => (
+                  <div key={report.id} className={`rounded-2xl border p-3 ${report.status === 'critical' ? 'border-red-500/40 bg-red-950/10' : report.status === 'attention' ? 'border-amber-500/40 bg-amber-950/10' : report.status === 'failed' ? 'border-red-500/40 bg-red-950/10' : 'border-[#2A353D] bg-[#12161A]'}`}>
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2"><div><div className="font-black text-white">{report.restaurantName || report.restaurantId}</div><div className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">{new Date(report.createdAt || report.generatedAt || Date.now()).toLocaleString()} • {report.status || 'ok'}</div></div><div className="text-[10px] text-purple-200 font-black uppercase">{report.criticalFindings?.length || 0} alert(s)</div></div>
+                    <div className="grid grid-cols-3 sm:grid-cols-7 gap-2 mt-3">
+                      {['priceWarningCount','parRecommendationCount','wasteInsightCount','menuCostCount','laborWarningCount','dataHealthCount','backupCheckCount'].map(key => <div key={key} className="rounded-xl border border-[#2A353D] bg-[#0B0E11] p-2 text-center"><div className="font-black text-white">{report.summary?.[key] || 0}</div><div className="text-[7px] uppercase tracking-widest text-slate-500 font-black">{key.replace('Count','').replace(/([A-Z])/g,' $1')}</div></div>)}
+                    </div>
+                    {(report.managerBrief || []).slice(0, 3).map((line, idx) => <div key={idx} className="mt-2 text-xs font-bold text-slate-300 leading-5">• {line}</div>)}
+                  </div>
+                )) : <p className="text-xs text-slate-500 font-bold">No Python automation reports yet. Run it once or wait for the nightly cron.</p>}
+              </div>
+            </div>
+
+            <div className={`${T.card} p-5`}>
+              <h3 className="font-black text-white text-lg mb-3">Recent Runs</h3>
+              <div className="space-y-2 max-h-[520px] overflow-y-auto custom-scrollbar">
+                {automationRuns.length ? automationRuns.slice(0, 20).map(run => <div key={run.id} className="rounded-xl border border-[#2A353D] bg-[#12161A] p-3"><div className="flex justify-between gap-2"><span className="font-black text-white text-sm">{run.restaurantName || run.restaurantId || 'Workspace'}</span><span className={`text-[9px] font-black uppercase ${run.status === 'failed' ? 'text-red-300' : run.status === 'running' ? 'text-amber-300' : 'text-emerald-300'}`}>{run.status}</span></div><div className="text-[10px] text-slate-500 font-bold mt-1">{new Date(run.startedAt || Date.now()).toLocaleString()}</div>{run.error && <div className="text-[11px] text-red-200 font-bold mt-2">{run.error}</div>}</div>) : <p className="text-xs text-slate-500 font-bold">No runs recorded.</p>}
+              </div>
+            </div>
+          </div>
+
+          <div className={`${T.card} p-5`}>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4"><div><h3 className="font-black text-white text-lg">AI Recommendation Approval Queue</h3><p className="text-xs text-slate-500 font-bold mt-1">Python can put work here. It cannot apply the change by itself.</p></div><div className="text-[10px] font-black uppercase tracking-widest text-slate-500">{automationQueue.filter(i => (i.status || 'open') === 'open').length} open</div></div>
+            <div className="space-y-2 max-h-[560px] overflow-y-auto custom-scrollbar">
+              {automationQueue.length ? automationQueue.slice(0, 50).map(item => (
+                <div key={item.id} className="rounded-2xl border border-[#2A353D] bg-[#12161A] p-3 flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+                  <div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><span className="font-black text-white">{item.title}</span><span className="text-[8px] uppercase tracking-widest font-black rounded-full border border-purple-500/30 bg-purple-950/20 text-purple-200 px-2 py-0.5">{item.type}</span><span className="text-[8px] uppercase tracking-widest font-black rounded-full border border-[#2A353D] text-slate-400 px-2 py-0.5">{item.status || 'open'}</span></div><div className="text-[11px] text-slate-400 font-bold mt-1">{item.restaurantName || item.restaurantId}</div><div className="text-xs text-slate-300 font-bold leading-5 mt-1">{item.detail}</div></div>
+                  <div className="flex flex-wrap gap-2 shrink-0">
+                    <button onClick={() => updateQueueStatus(item, 'reviewed')} className="px-3 py-2 rounded-lg border border-emerald-500/40 bg-emerald-950/10 text-emerald-200 text-[10px] font-black uppercase">Reviewed</button>
+                    <button onClick={() => updateQueueStatus(item, 'snoozed')} className="px-3 py-2 rounded-lg border border-amber-500/40 bg-amber-950/10 text-amber-200 text-[10px] font-black uppercase">Snooze</button>
+                    <button onClick={() => updateQueueStatus(item, 'dismissed')} className="px-3 py-2 rounded-lg border border-red-500/40 bg-red-950/10 text-red-200 text-[10px] font-black uppercase">Dismiss</button>
+                  </div>
+                </div>
+              )) : <p className="text-xs text-slate-500 font-bold">No approval items yet.</p>}
+            </div>
           </div>
         </div>
       )}

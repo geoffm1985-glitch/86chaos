@@ -23,7 +23,12 @@ function decodedHadSecondFactor(decoded = {}) {
 }
 
 function roleNeedsMfa(user = {}, decoded = {}) {
-  const role = norm(user.role || user.accountRole || decoded.role || '');
+  const permissions = user.permissions || {};
+  const privilegedPermission = [
+    'settings', 'security', 'billing', 'team', 'wageView', 'wageEdit',
+    'sales', 'salesRead', 'salesEdit', 'financialRead', 'financialEdit',
+    'labor', 'laborRead', 'laborEdit', 'backup', 'restore', 'pushNotifications'
+  ].some(permission => permissions?.[permission] === true);
   return Boolean(
     decoded.superAdmin === true ||
     user.isSuperAdmin === true ||
@@ -33,7 +38,7 @@ function roleNeedsMfa(user = {}, decoded = {}) {
     user.accountOwner === true ||
     user.owner === true ||
     user.workspaceOwner === true ||
-    ['owner', 'manager', 'admin', 'general manager', 'super admin', 'system administrator'].some(token => role.includes(token))
+    privilegedPermission
   );
 }
 

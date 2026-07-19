@@ -1,6 +1,6 @@
 {
   "name": "86chaos",
-  "version": "15.0.77",
+  "version": "15.0.79",
   "private": true,
   "dependencies": {
     "firebase": "^10.8.1",
@@ -19,11 +19,13 @@
     "start": "react-scripts start",
     "build": "react-scripts build",
     "retention:setup": "node scripts/setup-production-retention.js",
-    "test": "node scripts/validate-auth-hotfix.js",
-    "test:ci": "node scripts/validate-auth-hotfix.js",
+    "test": "node scripts/validate-15-0-79.js",
+    "test:ci": "node scripts/validate-15-0-79.js",
     "validate:auth-hotfix": "node scripts/validate-auth-hotfix.js",
     "vercel:install": "npm ci --omit=optional --no-audit --no-fund --progress=false",
-    "deploy:check": "npm ci --omit=optional --no-audit --no-fund --progress=false && npm test && NODE_OPTIONS=--max-old-space-size=4096 GENERATE_SOURCEMAP=false DISABLE_ESLINT_PLUGIN=true npm run build"
+    "deploy:check": "npm ci --omit=optional --no-audit --no-fund --progress=false && npm test && NODE_OPTIONS=--max-old-space-size=4096 GENERATE_SOURCEMAP=false DISABLE_ESLINT_PLUGIN=true npm run build",
+    "validate:audit-repair": "node scripts/validate-repair.js",
+    "rules:check": "node scripts/validate-rules.js"
   },
   "browserslist": {
     "production": [
@@ -39,7 +41,7 @@
   },
   "packageManager": "npm@10.8.2",
   "engines": {
-    "node": "20.x",
-    "npm": "10.x"
+    "node": "24.x",
+    "npm": ">=10"
   }
 }

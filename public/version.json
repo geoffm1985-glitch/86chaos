@@ -1,9 +1,9 @@
 {
-  "version": "15.0.77",
-  "name": "86 Chaos 15.0.77 Auth Network Login Hotfix",
+  "version": "15.0.79",
+  "name": "86 Chaos 15.0.79 Safe Component Split + Inventory Load Control",
   "releasedAt": "2026-07-19",
-  "label": "86 Chaos 15.0.77",
-  "build": "15.0.77",
+  "label": "86 Chaos 15.0.79",
+  "build": "15.0.79",
   "updatedAt": "2026-07-19T00:00:00.000Z",
-  "notes": "Fixes Vercel Preview Firebase project selection, adds single-click login protection with clear loading/timeout feedback, and keeps production custom domains on production Firebase."
+  "notes": "Splits heavy authenticated feature areas behind a safe login shell, isolates Inventory into its own feature chunk, removes duplicate shell inventory listeners, and loads Inventory invoices, burn logs, AI order data, menu graph, events, and prep-order data only when their sub-tabs need them."
 }
