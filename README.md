@@ -1,29 +1,31 @@
-# 86 Chaos 15.0.79
+# 86 Chaos 15.0.80
 
-86 Chaos is a restaurant and kitchen management web app for independent restaurants, bars, and kitchens. This package is a safe performance/refactor build based on the production-safe 15.0.76/15.0.78 line.
+## What changed in 15.0.80
 
-## What changed in 15.0.79
+This build restores the Python Ops/Python Order Intelligence runtime that was referenced by the app UI but missing from the 15.0.79 safe split package.
 
-- Kept login/auth eager-loaded to avoid another lockout.
-- Split authenticated tabs into lazy route chunks.
-- Isolated Inventory into its own feature module.
-- Reduced duplicate Inventory reads from the app shell.
-- Changed Inventory data loading so Count opens light and heavier data loads only when its sub-tab needs it.
-- Reduced always-on recipe reads.
-- Updated Vercel Node engine to 24.x.
+### Restored Python Intelligence routes
 
-## Important deployment note
+- `/api/python-ops-intelligence` Node authenticated wrapper
+- `/api/python-order-intelligence` Node authenticated wrapper
+- `/api/python-automation-run` scheduled/manual automation wrapper
+- `/api/python-ops-engine.py` Vercel Python function
+- `/api/python-order-engine.py` Vercel Python function
+- `api/_python-function-client.js` internal route client
+- `scripts/python/ops_intelligence.py`
+- `scripts/python/order_intelligence.py`
+- root `requirements.txt` so Vercel packages Python functions cleanly
 
-Google Cloud API key website restrictions still must include the exact Vercel Preview URL you open, for example `https://cheers-portal-4oxv-git-testing-cheers-portal-s-projects.vercel.app/*`. Firebase Auth authorized domains must also include the same hostname without `https://` or `/*`.
+### Preserved from 15.0.79
 
-## Validation
+- Login/Auth stays eager-loaded.
+- Heavy authenticated tabs remain lazy-loaded only after login.
+- Inventory stays in its own feature chunk.
+- Inventory sub-data still loads on demand by sub-tab.
+- Audit/security repairs from 15.0.78 remain in place.
 
-Run:
+### Deployment note
 
-```bash
-npm ci --omit=optional --no-audit --no-fund --progress=false
-npm test
-NODE_OPTIONS=--max-old-space-size=4096 GENERATE_SOURCEMAP=false DISABLE_ESLINT_PLUGIN=true npm run build
-```
+Use Vercel **Clear Build Cache** for the next Preview deploy so the restored Python functions are packaged from a clean cache.
 
-See `README_15_0_79_RELEASE_NOTES.md` and `QA_15_0_79_PERFORMANCE_SAFE_SPLIT.md` before production rollout.
+See `README_15_0_80_RELEASE_NOTES.md` and `QA_15_0_80_PYTHON_OPS_RESTORE.md` before production rollout.

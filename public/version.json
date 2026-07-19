@@ -1,9 +1,9 @@
 {
-  "version": "15.0.79",
-  "name": "86 Chaos 15.0.79 Safe Component Split + Inventory Load Control",
+  "version": "15.0.80",
+  "name": "86 Chaos 15.0.80 Python Ops Restore + Safe Component Split",
   "releasedAt": "2026-07-19",
-  "label": "86 Chaos 15.0.79",
-  "build": "15.0.79",
+  "label": "86 Chaos 15.0.80",
+  "build": "15.0.80",
   "updatedAt": "2026-07-19T00:00:00.000Z",
-  "notes": "Splits heavy authenticated feature areas behind a safe login shell, isolates Inventory into its own feature chunk, removes duplicate shell inventory listeners, and loads Inventory invoices, burn logs, AI order data, menu graph, events, and prep-order data only when their sub-tabs need them."
+  "notes": "Restores the Python Ops and Python Order intelligence API wrappers, Vercel Python engine functions, internal Python routing client, and standard-library intelligence scripts while keeping login/auth eager-loaded and preserving the 15.0.79 safe component and Inventory load split."
 }

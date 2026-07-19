@@ -1,6 +1,6 @@
 {
   "name": "86chaos-retention-functions",
-  "version": "15.0.79",
+  "version": "15.0.80",
   "private": true,
   "main": "lib/index.js",
   "engines": {
