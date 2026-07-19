@@ -322,7 +322,7 @@ function aiBucket() {
   return AI_UPLOADS_BUCKET ? storage.bucket(AI_UPLOADS_BUCKET) : storage.bucket();
 }
 
-function serialize(value: any): unknown {
+function serialize(value: unknown): unknown {
   if (value instanceof Timestamp) return { __type: "timestamp", value: value.toDate().toISOString() };
   if (Buffer.isBuffer(value) || value instanceof Uint8Array) {
     return { __type: "bytes", base64: Buffer.from(value).toString("base64") };
@@ -486,7 +486,7 @@ async function deleteStoragePrefix(
       pageToken,
     });
     scanned += files.length;
-    const expired = (files as any[]).filter((file) => {
+    const expired = files.filter((file) => {
       const created = Date.parse(String(file.metadata.timeCreated || ""));
       return Number.isFinite(created) && created < cutoffMs;
     });
@@ -743,7 +743,7 @@ export const purgeExpiredTimeClockArchives = functions
           pageToken,
         });
         scanned += files.length;
-        const expired = (files as any[]).filter((file) => {
+        const expired = files.filter((file) => {
           const value = file.metadata.metadata?.deleteAfter;
           return Boolean(value) && Date.parse(String(value)) <= Date.now();
         });

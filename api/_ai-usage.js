@@ -549,15 +549,16 @@ async function authorizeAiScanWorkspace({ app, decoded, restaurantId, scanType }
     isSuperAdmin ||
     workspaceUser?.isOwner === true ||
     workspaceUser?.accountOwner === true ||
-    workspaceUser?.owner === true ||
     workspaceUser?.workspaceOwner === true ||
-    workspaceUser?.isAdmin === true
+    workspaceUser?.isAdmin === true ||
+    workspaceUser?.role === 'Owner' ||
+    workspaceUser?.role === 'Admin'
   );
   const allowed = scanType === 'menu'
-    ? Boolean(isOwnerOrAdmin || permissions.menuIntelligence === true || permissions.inventory === true || permissions.inventoryEdit === true)
+    ? Boolean(isOwnerOrAdmin || permissions.menuIntelligence === true || permissions.inventory === true)
     : scanType === 'recipe'
-      ? Boolean(isOwnerOrAdmin || permissions.prep === true || permissions.kitchen === true)
-      : Boolean(isOwnerOrAdmin || permissions.inventory === true || permissions.inventoryEdit === true || permissions.invoiceScan === true || permissions.scans === true || permissions.financialEdit === true);
+      ? Boolean(isOwnerOrAdmin || permissions.prep === true || permissions.team === true)
+      : Boolean(isOwnerOrAdmin || permissions.inventory === true || permissions.team === true);
   if (!allowed) {
     const error = new Error(scanType === 'menu'
       ? 'Menu Intelligence access is required.'

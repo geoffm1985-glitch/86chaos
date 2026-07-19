@@ -6,7 +6,7 @@ import { getAuth, signInWithEmailAndPassword, sendPasswordResetEmail, createUser
 import { getToken, onMessage } from 'firebase/messaging';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { MapContainer, TileLayer, Marker, Circle, useMapEvents } from 'react-leaflet';
-import { T, db, storage, auth, messaging, firebaseConfig, secureFetch, MASTER_ADMIN_EMAIL, EVENT_TAGS, CURRENT_VERSION, useLiveCollection, formatDate, getToday, getMonthStr, formatDisplayDate, formatDisplayFullDate, formatDisplayMonth, getDaysInMonth, formatShortTime, formatClockTime, formatClockDateTime, getAvatar, generateTempPass, getExpDate, getHoliday, logAudit, customMapIcon } from '../core/appCore';
+import { T, db, storage, auth, messaging, firebaseConfig, firebaseDiagnostics, secureFetch, MASTER_ADMIN_EMAIL, EVENT_TAGS, CURRENT_VERSION, useLiveCollection, formatDate, getToday, getMonthStr, formatDisplayDate, formatDisplayFullDate, formatDisplayMonth, getDaysInMonth, formatShortTime, formatClockTime, formatClockDateTime, getAvatar, generateTempPass, getExpDate, getHoliday, logAudit, customMapIcon } from '../core/appCore';
 import { CheersLogo, Modal, DrawerMenu, DayDotPrintScreen, MapClickListener, SmartEmptyState, MiniProblemCard, getHomeProfile, calculatePunchHours, getWeekStart, getWeekDates, roleMatches, toLocalTimeInput, makeLocalIso, PunchTable, StatusTile, FriendlyEmpty, GlobalSearchModal, QuickActionDock, KitchenTVMode, ChangeLogModal, UndoBar } from '../components/common';
 
 const normEmail = (value) => String(value || '').toLowerCase().trim();
@@ -62,6 +62,7 @@ const LoginScreen = ({ setAppUser }) => {
   const [workspaceChoices, setWorkspaceChoices] = useState([]);
   const [workspaceUser, setWorkspaceUser] = useState(null);
   const [workspaceLoading, setWorkspaceLoading] = useState(false);
+  const [isLoginBusy, setIsLoginBusy] = useState(false);
   
   // New state to hold the user temporarily if they need to change their password
   const [pendingUser, setPendingUser] = useState(null);
@@ -226,15 +227,56 @@ const LoginScreen = ({ setAppUser }) => {
     }
   };
 
+  const authDiagnosticSuffix = () => {
+    const host = firebaseDiagnostics?.host || (typeof window !== 'undefined' ? window.location.hostname : 'unknown-host');
+    return `Firebase: ${firebaseDiagnostics?.projectId || firebaseConfig?.projectId || 'unknown-project'} on ${host}.`;
+  };
+
+  const formatLoginError = (error) => {
+    const code = error?.code || '';
+    const message = error?.message || 'Login failed.';
+    if (code === 'auth/network-request-failed') {
+      return `Firebase Auth network request failed. ${authDiagnosticSuffix()} Hard refresh once and try again; if this repeats, the deployed Firebase browser key/domain is still mismatched or blocked.`;
+    }
+    if (code && code.includes('requests-from-referrer')) {
+      return `Firebase is blocking this Vercel domain for the active browser API key. ${authDiagnosticSuffix()}`;
+    }
+    if (code === 'auth/invalid-credential' || code === 'auth/wrong-password' || code === 'auth/user-not-found') {
+      return 'Email or password was not accepted.';
+    }
+    if (code === 'auth/too-many-requests') {
+      return 'Too many login attempts. Wait a few minutes before trying again.';
+    }
+    return message;
+  };
+
+  const withLoginTimeout = (promise, timeoutMs = 25000) => new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(`Firebase login timed out after ${Math.round(timeoutMs / 1000)} seconds. ${authDiagnosticSuffix()}`)), timeoutMs);
+    promise.then((value) => {
+      clearTimeout(timer);
+      resolve(value);
+    }).catch((err) => {
+      clearTimeout(timer);
+      reject(err);
+    });
+  });
+
   const handleLogin = async (e) => {
     e.preventDefault();
+    if (isLoginBusy || workspaceLoading) return;
+    const cleanEmail = normEmail(email);
+    if (!cleanEmail || !password) {
+      setLoginError('Enter your email and password first.');
+      return;
+    }
     setLoginError('');
     setWorkspaceChoices([]);
     setWorkspaceUser(null);
     clearMfaChallenge();
+    setIsLoginBusy(true);
     
     try {
-      const userCredential = await signInWithEmailAndPassword(auth, email, password);
+      const userCredential = await withLoginTimeout(signInWithEmailAndPassword(auth, cleanEmail, password));
       await completeFirebaseLogin(userCredential);
     } catch (error) {
       if (error?.code === 'auth/multi-factor-auth-required') {
@@ -248,7 +290,9 @@ const LoginScreen = ({ setAppUser }) => {
           return;
         }
       }
-      setLoginError(error.message);
+      setLoginError(formatLoginError(error));
+    } finally {
+      setIsLoginBusy(false);
     }
   };
 
@@ -451,19 +495,19 @@ const LoginScreen = ({ setAppUser }) => {
             {loginError && <div className="p-3 bg-red-900/50 border border-red-500/50 rounded-xl text-red-200 text-xs font-bold text-center">{loginError}</div>}
 
             <div>
-              <input type="text" placeholder="Email Address" value={email} onChange={e => setEmail(e.target.value)} className="w-full text-center text-lg font-bold bg-[#0B0E11] border border-[#2A353D] rounded-xl py-4 text-white focus:outline-none focus:border-[#D4A381] transition-colors shadow-inner" />
+              <input type="text" placeholder="Email Address" value={email} onChange={e => setEmail(e.target.value)} disabled={isLoginBusy || workspaceLoading} autoComplete="email" className="w-full text-center text-lg font-bold bg-[#0B0E11] border border-[#2A353D] rounded-xl py-4 text-white focus:outline-none focus:border-[#D4A381] transition-colors shadow-inner" />
             </div>
      <div>
-              <input type="password" placeholder="Password" value={password} onChange={e => setPassword(e.target.value)} className="w-full text-center text-lg font-bold bg-[#0B0E11] border border-[#2A353D] rounded-xl py-4 text-white focus:outline-none focus:border-[#D4A381] transition-colors shadow-inner" />
+              <input type="password" placeholder="Password" value={password} onChange={e => setPassword(e.target.value)} disabled={isLoginBusy || workspaceLoading} autoComplete="current-password" className="w-full text-center text-lg font-bold bg-[#0B0E11] border border-[#2A353D] rounded-xl py-4 text-white focus:outline-none focus:border-[#D4A381] transition-colors shadow-inner" />
             </div>
 
             <label className="flex items-center justify-center gap-2 cursor-pointer mt-2">
-              <input type="checkbox" checked={rememberMe} onChange={(e) => setRememberMe(e.target.checked)} className="w-4 h-4 accent-[#D4A381] bg-[#0B0E11] border border-[#2A353D] rounded cursor-pointer" />
+              <input type="checkbox" checked={rememberMe} onChange={(e) => setRememberMe(e.target.checked)} disabled={isLoginBusy || workspaceLoading} className="w-4 h-4 accent-[#D4A381] bg-[#0B0E11] border border-[#2A353D] rounded cursor-pointer" />
               <span className="text-[10px] uppercase font-bold text-slate-400 tracking-widest">Remember Me</span>
             </label>
             
-            <button type="submit" disabled={workspaceLoading} className="w-full bg-gradient-to-r from-[#D4A381] to-[#b58563] disabled:opacity-60 disabled:cursor-wait text-slate-900 font-black tracking-widest uppercase text-lg py-4 rounded-xl shadow-[0_0_20px_rgba(212,163,129,0.2)] hover:scale-[1.02] transition-all mt-4">
-              {workspaceLoading ? 'Checking Workspaces...' : 'Unlock System'}
+            <button type="submit" disabled={isLoginBusy || workspaceLoading} className="w-full bg-gradient-to-r from-[#D4A381] to-[#b58563] disabled:opacity-60 disabled:cursor-wait text-slate-900 font-black tracking-widest uppercase text-lg py-4 rounded-xl shadow-[0_0_20px_rgba(212,163,129,0.2)] hover:scale-[1.02] transition-all mt-4">
+              {isLoginBusy ? 'Unlocking...' : (workspaceLoading ? 'Checking Workspaces...' : 'Unlock System')}
             </button>
 <div className="pt-3 text-center flex flex-col gap-2">
               <button type="button" onClick={handleForgotCredentials} className="text-[10px] font-bold text-slate-500 uppercase tracking-widest hover:text-[#D4A381] transition-colors">
@@ -478,13 +522,13 @@ const LoginScreen = ({ setAppUser }) => {
         <div id="mfa-login-recaptcha-container" className="hidden"></div>
       </div>
 
-      <Modal isOpen={isPrivacyModalOpen} onClose={() => setIsPrivacyModalOpen(false)} title="Privacy Policy & Terms">
+      <Modal isOpen={isPrivacyModalOpen} onClose={() => setIsPrivacyModalOpen(false)} title="Privacy Policy">
         <div className="space-y-4 text-xs font-medium text-slate-300 leading-relaxed max-h-[60vh] overflow-y-auto custom-scrollbar pr-2">
           <div className="text-center border-b border-[#2A353D] pb-3 mb-3">
-            <h3 className="font-black text-white text-lg uppercase tracking-widest">Privacy Policy & Terms for 86chaos</h3>
-            <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mt-1">Last Updated: July 18, 2026</p>
+            <h3 className="font-black text-white text-lg uppercase tracking-widest">Privacy Policy for 86chaos</h3>
+            <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mt-1">Last Updated: July 12, 2026</p>
           </div>
-          <p>Chilton App Works, LLC ("86 Chaos," "we," "us," or "our") operates the 86 Chaos restaurant operations web app, progressive web app, application programming interfaces, artificial-intelligence tools, Python intelligence tools, and related services (the "Service"). This legal notice explains what information the Service processes, why it is used, how long it is kept, how privacy requests are handled, and the basic terms that apply when a workspace uses 86 Chaos.</p>
+          <p>Chilton App Works, LLC ("86 Chaos," "we," "us," or "our") operates the 86 Chaos restaurant operations web app, progressive web app, application programming interfaces, and related services (the "Service"). This policy explains what information the Service processes, why it is used, how long it is kept, and how privacy requests are handled.</p>
           <p>86 Chaos is a business-to-business workplace tool. The restaurant or other organization that creates a workspace generally decides what employee and operational information is entered and how the Service is used. In that setting, the restaurant is normally the business or data controller and 86 Chaos acts as its service provider or data processor. This policy does not replace an employer's own employee privacy notice, payroll obligations, recordkeeping duties, or consent requirements.</p>
 
           <h4 className="font-black text-[#D4A381] text-sm mt-4">1. Information We Process</h4>
@@ -509,8 +553,8 @@ const LoginScreen = ({ setAppUser }) => {
           </ul>
 
           <h4 className="font-black text-[#D4A381] text-sm mt-4">3. AI-Assisted Features</h4>
-          <p>Menu scans, invoice scans, 86Voice parsing, AI Order Assistant, Python Order Intelligence, Python Ops Intelligence, diagnostics, and administrator-support tools may process workspace data to extract information, classify records, generate suggestions, detect issues, produce reports, or explain likely next steps. Some enabled workflows may send limited content to AI providers or infrastructure providers. The Service is designed to reduce or redact credentials, tokens, signed URLs, and similar secrets before diagnostics are sent, but administrators must not intentionally paste private keys, passwords, full employee files, or other unnecessary personal information into AI prompts.</p>
-          <p>AI and Python-generated output may be incomplete, delayed, or incorrect and must be reviewed by an authorized person. AI may suggest, explain, draft, alert, summarize, and report, but 86 Chaos does not use AI output by itself to make hiring, firing, discipline, wage, scheduling, payroll, vendor-ordering, legal, tax, or other legally significant business decisions. Customers remain responsible for reviewing and approving any real-world action.</p>
+          <p>Menu and invoice scans may be sent to an AI provider for extraction or classification. The Gemini Administrator Manual may receive a Super Admin's question, matched help articles, and redacted system context. OpenAI diagnostics may receive redacted health information for structured repair guidance. The Service is designed to remove credentials, tokens, signed URLs, and similar secrets before diagnostics are sent, but administrators must not intentionally paste private keys, passwords, full employee files, or other unnecessary personal information into AI prompts.</p>
+          <p>AI output may be incomplete or incorrect and must be reviewed by an authorized person. 86 Chaos does not use AI output by itself to make hiring, firing, discipline, wage, scheduling, or other legally significant employment decisions.</p>
 
           <h4 className="font-black text-[#D4A381] text-sm mt-4">4. Sharing and Service Providers</h4>
           <p>We do not sell personal information, and we do not share personal information for cross-context behavioral advertising. Information may be disclosed only as reasonably necessary to operate the Service, follow workspace instructions, comply with law, complete a business transaction, or protect rights and safety.</p>
@@ -523,7 +567,7 @@ const LoginScreen = ({ setAppUser }) => {
           </ul>
 
           <h4 className="font-black text-[#D4A381] text-sm mt-4">5. Restaurant and Employer Responsibilities</h4>
-          <p>Restaurants control most workspace records and determine who may access them. Restaurants are responsible for giving legally required employee notices, obtaining any required consent for location or monitoring features, configuring permissions, reviewing AI output, responding to employment-record requests, selecting retention periods that satisfy their own legal obligations, and maintaining their own independent off-platform backups or exports of important business records. Employees should normally contact their restaurant first to access or correct workplace records.</p>
+          <p>Restaurants control most workspace records and determine who may access them. Restaurants are responsible for giving legally required employee notices, obtaining any required consent for location or monitoring features, configuring permissions, reviewing AI output, responding to employment-record requests, and selecting retention periods that satisfy their own legal obligations. Employees should normally contact their restaurant first to access or correct workplace records.</p>
 
           <h4 className="font-black text-[#D4A381] text-sm mt-4">6. Data Retention and Deletion</h4>
           <ul className="list-disc pl-5 space-y-1 mt-1 text-slate-400">
@@ -537,7 +581,6 @@ const LoginScreen = ({ setAppUser }) => {
             <li><strong className="text-white">Other records:</strong> kept only as long as reasonably needed for the Service, customer instructions, security, billing, dispute resolution, backups, fraud prevention, or legal obligations.</li>
           </ul>
           <p>Scheduled deletion normally occurs during the next cleanup run and may take up to approximately 24 hours after a stated deadline. Provider-level backups, disaster-recovery copies, or soft-deleted objects may remain inaccessible for a limited additional period before automatic expiration. Legal holds, active investigations, disputes, and mandatory recordkeeping obligations may pause deletion. When a hold ends, the applicable retention schedule resumes.</p>
-          <p><strong className="text-white">Customer backup responsibility:</strong> 86 Chaos may maintain application backups, archives, or recovery tools for disaster recovery, testing, security, and support, but those tools are not a substitute for the customer's own records. Each restaurant or workspace owner is responsible for regularly exporting, saving, and maintaining independent off-site or off-platform copies of any records it must keep for business, tax, payroll, labor, food-safety, legal, operational, or compliance reasons, especially during beta testing.</p>
 
           <h4 className="font-black text-[#D4A381] text-sm mt-4">7. Privacy Rights and Requests</h4>
           <p>Depending on where you live, you may have the right to request access, correction, deletion, restriction, objection, or a portable copy of personal information. You may also have the right to appeal a denied request. Because workplace information is usually controlled by the restaurant, we may forward a request to the appropriate workspace administrator. We may verify identity and authority before acting, and an authorized agent may be required to provide proof of authority.</p>
@@ -560,14 +603,7 @@ const LoginScreen = ({ setAppUser }) => {
 
           <h4 className="font-black text-[#D4A381] text-sm mt-4">13. Contact and Privacy Requests</h4>
           <p>Questions, privacy requests, suspected security incidents, and requests to appeal a privacy decision may be sent to:</p>
-          <p className="text-white font-bold mt-1">Email: support@86chaos.com<br/>Company: Chilton App Works, LLC<br/>Product: 86 Chaos</p>
-
-          <h4 className="font-black text-[#D4A381] text-sm mt-4">14. Beta Testing and Service Availability</h4>
-          <p>During beta testing, preview releases, testing deployments, and early-access periods, the Service may contain bugs, incomplete features, downtime, data errors, breaking changes, missing integrations, or unfinished documentation. Beta users should not rely on 86 Chaos as the only copy of critical business, payroll, tax, safety, legal, employee, inventory, or financial records. The customer must maintain separate off-platform backups and verify important records independently.</p>
-
-          <h4 className="font-black text-[#D4A381] text-sm mt-4">15. Terms of Use, Disclaimers, and Limits</h4>
-          <p>86 Chaos is provided as a restaurant operations tool and does not provide legal, tax, accounting, payroll, HR, food-safety, employment, medical, or financial advice. Customers are responsible for their own compliance decisions, employee notices, wage and hour rules, food-safety rules, recordkeeping duties, vendor orders, staffing decisions, and review of all AI or automated suggestions. To the fullest extent permitted by law, the Service is provided without guarantees that it will be uninterrupted, error-free, or fit for every specific business purpose.</p>
-          <p>Customers must not use the Service to violate law, upload unlawful content, invade employee privacy, bypass security controls, misuse AI tools, or store information they are not authorized to process. Customers are responsible for users they invite, permissions they grant, data they enter, backups they keep, and business decisions they make using the Service.</p>        </div>
+          <p className="text-white font-bold mt-1">Email: support@86chaos.com<br/>Company: Chilton App Works, LLC<br/>Product: 86 Chaos</p>        </div>
       </Modal>
     </div>
   );

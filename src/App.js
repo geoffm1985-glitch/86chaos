@@ -1,5 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef, useCallback, Suspense } from 'react';
-import { LoginScreen } from './features/auth';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { Bell, Bug, ChevronLeft, ChevronRight, Loader2, Menu, Moon, Send, X } from 'lucide-react';
 import { addDoc, collection, doc, onSnapshot, updateDoc } from 'firebase/firestore';
 import { getToken, onMessage } from 'firebase/messaging';
@@ -11,46 +10,10 @@ import { LockedFeatureScreen } from './components/PlanGate';
 import { usePlanAccess } from './hooks/usePlanAccess';
 import { resolveFeatureAccess } from './lib/featureAccess';
 import { FEATURE_KEYS } from './config/plans';
-const lazyNamed = (loader, exportName) => React.lazy(() => loader().then(module => ({ default: module[exportName] })));
-const TabMasterSchedule = lazyNamed(() => import('./features/schedule'), 'TabMasterSchedule');
-const TabSchedule = lazyNamed(() => import('./features/schedule'), 'TabSchedule');
-const TabOpsCenter = lazyNamed(() => import('./features/operations'), 'TabOpsCenter');
-const TabToday = lazyNamed(() => import('./features/operations'), 'TabToday');
-const TabPrep = lazyNamed(() => import('./features/operations'), 'TabPrep');
-const TabRecipes = lazyNamed(() => import('./features/operations'), 'TabRecipes');
-const TabInventory = lazyNamed(() => import('./features/operations'), 'TabInventory');
-const TabMaintenance = lazyNamed(() => import('./features/operations'), 'TabMaintenance');
-const TabFinancials = lazyNamed(() => import('./features/management'), 'TabFinancials');
-const TabMessages = lazyNamed(() => import('./features/management'), 'TabMessages');
-const TabTeam = lazyNamed(() => import('./features/management'), 'TabTeam');
-const TabSettings = lazyNamed(() => import('./features/management'), 'TabSettings');
-const TabHelpCenter = lazyNamed(() => import('./features/management'), 'TabHelpCenter');
-const TabGodMode = lazyNamed(() => import('./features/management'), 'TabGodMode');
-const TabAuditLog = lazyNamed(() => import('./features/management'), 'TabAuditLog');
-const TabPersonalReminders = lazyNamed(() => import('./features/intelligence'), 'TabPersonalReminders');
-const TabMenuIntelligence = lazyNamed(() => import('./features/intelligence'), 'TabMenuIntelligence');
-const TabAITools = lazyNamed(() => import('./features/intelligence'), 'TabAITools');
-const TabHrTraining = lazyNamed(() => import('./features/hr'), 'TabHrTraining');
+import { LoginScreen, TabMasterSchedule, TabSchedule, TabScheduleWorkbench, TabOpsCenter, TabFinancials, TabMessages, TabPrep, TabRecipes, TabInventory, TabTeam, TabMaintenance, TabSettings, TabHelpCenter, TabGodMode, TabAuditLog, TabToday, TabPersonalReminders, TabMenuIntelligence, TabAITools, TabHrTraining } from './features';
 
 const normalizeEmail = (value) => String(value || '').toLowerCase().trim();
 const safeWorkspaceName = (workspace = {}) => workspace.restaurantName || workspace.name || workspace.businessName || workspace.restaurantId || '86 Chaos Workspace';
-const buildSafeSessionCache = (user = {}) => user ? {
-  id: user.id || user.userId || '',
-  userId: user.userId || user.id || '',
-  name: user.name || 'Staff',
-  photoURL: user.photoURL || '',
-  restaurantId: user.restaurantId || '',
-  activeRestaurantId: user.activeRestaurantId || user.restaurantId || '',
-  defaultRestaurantId: user.defaultRestaurantId || user.restaurantId || '',
-  restaurantName: user.restaurantName || '',
-  membershipId: user.membershipId || '',
-  workspaceSwitcherReady: user.workspaceSwitcherReady === true,
-  sessionCached: true
-} : null;
-const parseCachedSessionUser = (raw = '') => {
-  try { return buildSafeSessionCache(JSON.parse(raw)); }
-  catch (_) { return null; }
-};
 const hasOwn = (value, key) => Boolean(value && Object.prototype.hasOwnProperty.call(value, key));
 const resolveWorkspaceAccess = (currentUser = {}, workspace = {}) => {
   const restaurantId = workspace.restaurantId || currentUser.restaurantId || '';
@@ -149,7 +112,7 @@ export default function App() {
     try {
       const savedLocal = localStorage.getItem('86chaosUser'); 
       const savedSession = sessionStorage.getItem('86chaosUser');
-      return savedLocal ? parseCachedSessionUser(savedLocal) : (savedSession ? parseCachedSessionUser(savedSession) : null);
+      return savedLocal ? JSON.parse(savedLocal) : (savedSession ? JSON.parse(savedSession) : null);
     } catch (err) {
       console.warn('Stored session was corrupted. Clearing local session cache.', err);
       localStorage.removeItem('86chaosUser');
@@ -246,7 +209,7 @@ export default function App() {
             };
             try {
               const storage = localStorage.getItem('86chaosUser') ? localStorage : sessionStorage;
-              storage.setItem('86chaosUser', JSON.stringify(buildSafeSessionCache(next)));
+              storage.setItem('86chaosUser', JSON.stringify(next));
             } catch (_) {}
             return next;
           });
@@ -321,10 +284,10 @@ const [currentDate, setCurrentDate] = useState(getToday());
   const canReadMaintenance = roleAndPlanAllowFeature(FEATURE_KEYS.CLEANING_ROUTINES);
   const wantsScheduleData = (wantsToday && canReadScheduleView) || (wantsScheduleScreen && (canReadScheduleView || canReadScheduleBuilder)) || (['labor', 'ops'].includes(activeTabState) && (canReadScheduleView || canReadOperationsLabor));
   const wantsLaborData = (['financials', 'labor', 'sales', 'ops'].includes(activeTabState) || (wantsToday && canReadOperationsLabor)) && canReadOperationsLabor;
-  const wantsInventoryData = (((wantsToday || activeTabState === 'ops' || isGlobalSearchOpen) && (canReadBasicInventory || canReadSmartInventory)) || (activeTabState === 'menu-intelligence' && canReadMenuCollections));
+  const wantsInventoryData = (((wantsToday || ['inventory', 'ops'].includes(activeTabState) || isGlobalSearchOpen) && (canReadBasicInventory || canReadSmartInventory)) || (activeTabState === 'menu-intelligence' && canReadMenuCollections));
   const wantsPrepData = wantsToday || ['prep', 'ops'].includes(activeTabState);
-  const wantsMenuData = (activeTabState === 'menu-intelligence' || wantsToday) && canReadMenuCollections;
-  const wantsRecipesData = activeTabState === 'recipes' || isGlobalSearchOpen; // Load recipe documents on demand instead of every app boot.
+  const wantsMenuData = (activeTabState === 'menu-intelligence' || activeTabState === 'inventory' || wantsToday) && canReadMenuCollections;
+  const wantsRecipesData = true; // Keep recipe titles available for 86 Voice exact-recipe navigation.
   const wantsMaintenanceData = (wantsToday || ['maintenance', 'ops'].includes(activeTabState)) && canReadMaintenance;
   const wantsSalesData = ['financials', 'sales', 'ops', 'labor'].includes(activeTabState) && canReadSalesCollections;
   const shiftRangeStart = wantsScheduleScreen ? scheduleWindowStart : getToday();
@@ -865,10 +828,10 @@ useEffect(() => {
     const shouldRemember = localStorage.getItem('chaosRememberMe') !== 'false';
     if (appUser) {
       if (shouldRemember) {
-        localStorage.setItem('86chaosUser', JSON.stringify(buildSafeSessionCache(appUser)));
+        localStorage.setItem('86chaosUser', JSON.stringify(appUser));
         sessionStorage.removeItem('86chaosUser');
       } else {
-        sessionStorage.setItem('86chaosUser', JSON.stringify(buildSafeSessionCache(appUser)));
+        sessionStorage.setItem('86chaosUser', JSON.stringify(appUser));
         localStorage.removeItem('86chaosUser');
       }
     } else {
@@ -977,27 +940,23 @@ What I clicked / expected:
     setIsSubmittingProblem(true);
     try {
       const diagnostics = Object.fromEntries(getDeviceDiagnostics());
-      const res = await secureFetch('/api/report-bug', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          category: problemModal.category || 'Bug / Error',
-          title: problemModal.title || 'Report Problem',
-          message: problemText.trim(),
-          sourceToastMessage: problemModal.message || '',
-          restaurantId: liveAppUser?.restaurantId || 'Unknown',
-          restaurantName: liveAppUser?.restaurantName || '',
-          activeTab: activeTabState || '',
-          diagnostics,
-          userAgent: navigator.userAgent,
-          screenSize: `${window.innerWidth}x${window.innerHeight}`,
-          url: window.location.href
-        })
+      await addDoc(collection(db, 'crashReports'), {
+        type: 'user_reported_problem',
+        category: problemModal.category || 'Bug / Error',
+        title: problemModal.title || 'Report Problem',
+        message: problemText.trim(),
+        sourceToastMessage: problemModal.message || '',
+        user: liveAppUser?.name || 'Unknown',
+        userEmail: liveAppUser?.email || '',
+        userId: liveAppUser?.id || '',
+        restaurantId: liveAppUser?.restaurantId || 'Unknown',
+        activeTab: activeTabState || '',
+        diagnostics,
+        userAgent: navigator.userAgent,
+        screenSize: `${window.innerWidth}x${window.innerHeight}`,
+        url: window.location.href,
+        time: new Date().toISOString()
       });
-      if (!res.ok) {
-        const errBody = await res.json().catch(() => ({}));
-        throw new Error(errBody.error || 'Could not send problem report.');
-      }
       setProblemModal({ open: false, title: '', message: '', category: 'Bug / Error' });
       setProblemText('');
       addToast('Report Sent', 'Support report sent with device diagnostics.');
@@ -1737,9 +1696,7 @@ return (
       </Modal>
 
       <main className="app-content-shell flex-1 max-w-[1480px] mx-auto w-full p-3 sm:p-5 lg:p-4 xl:p-5 pb-24">
-        <Suspense fallback={<div className={`${T.card} p-6 text-center text-sm font-black text-slate-300`}>Loading workspace tool…</div>}>
-          {renderMainContent()}
-        </Suspense>
+        {renderMainContent()}
       </main>
       
       <div className="fixed top-20 inset-x-0 mx-auto w-full max-w-md z-50 flex flex-col gap-2 px-4 pointer-events-none">

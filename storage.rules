@@ -118,29 +118,7 @@ service firebase.storage {
     function canUseMenuIntelligence(restaurantId) {
       return isSuperAdmin() ||
         isRestaurantOwner(restaurantId) ||
-        isAdminFor(restaurantId) ||
-        hasPermFor(restaurantId, 'menuIntelligence') ||
-        hasPermFor(restaurantId, 'inventory') ||
-        hasPermFor(restaurantId, 'inventoryEdit');
-    }
-
-    function canUseInvoiceScans(restaurantId) {
-      return isSuperAdmin() ||
-        isRestaurantOwner(restaurantId) ||
-        isAdminFor(restaurantId) ||
-        hasPermFor(restaurantId, 'inventory') ||
-        hasPermFor(restaurantId, 'inventoryEdit') ||
-        hasPermFor(restaurantId, 'invoiceScan') ||
-        hasPermFor(restaurantId, 'scans') ||
-        hasPermFor(restaurantId, 'financialEdit');
-    }
-
-    function canManageProfilePhoto(restaurantId, uid) {
-      return isSuperAdmin() ||
-        (signedIn() && request.auth.uid == uid) ||
-        isRestaurantOwner(restaurantId) ||
-        isAdminFor(restaurantId) ||
-        hasPermFor(restaurantId, 'team');
+        hasPermFor(restaurantId, 'menuIntelligence');
     }
 
     function isAllowedImage() {
@@ -251,15 +229,10 @@ service firebase.storage {
         );
     }
 
-    // Restaurant-scoped profile photos. Users may manage only their own photo unless they manage staff.
-    match /{restaurantId}/profilePhotos/{uid}/{fileName} {
-      allow read: if isSuperAdmin() || isTenantMatch(restaurantId);
-      allow write: if canManageProfilePhoto(restaurantId, uid) && isAllowedImage();
-    }
-
+    // Restaurant-scoped profile photos.
     match /{restaurantId}/profilePhotos/{allPaths=**} {
       allow read: if isSuperAdmin() || isTenantMatch(restaurantId);
-      allow write: if false;
+      allow write: if (isSuperAdmin() || isTenantMatch(restaurantId)) && isAllowedImage();
     }
 
     // Restaurant-scoped branding/logo assets.
@@ -289,10 +262,10 @@ service firebase.storage {
       allow write: if (isSuperAdmin() || isTenantMatch(restaurantId)) && isAllowedImage();
     }
 
-    // Restaurant-scoped invoice scans. Invoice files are limited to inventory/scan/financial-authorized users.
+    // Restaurant-scoped invoice scans.
     match /{restaurantId}/invoices/{allPaths=**} {
-      allow read: if canUseInvoiceScans(restaurantId);
-      allow write: if canUseInvoiceScans(restaurantId) && isAllowedInvoiceScan();
+      allow read: if isSuperAdmin() || isTenantMatch(restaurantId);
+      allow write: if (isSuperAdmin() || isTenantMatch(restaurantId)) && isAllowedInvoiceScan();
     }
 
     // Restaurant-scoped menu uploads for Menu Intelligence review.

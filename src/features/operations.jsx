@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { Archive, Bell, Check, Camera, ChevronLeft, ChevronRight, MessageSquare, Plus, Trash2, Users, Calendar, Clock, X, Loader2, Package, ClipboardList, Menu, Settings, LogOut, Shield, Send, Repeat, Edit, Moon, Sun, TrendingUp, BookOpen, Search, ChefHat, Scale, Coffee, Star, Bug, Wrench, Globe, Sparkles } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { Archive, Bell, Check, Camera, ChevronLeft, ChevronRight, MessageSquare, Plus, Trash2, Users, Calendar, Clock, X, Loader2, Package, ClipboardList, Menu, Settings, LogOut, Shield, Send, Repeat, Edit, Moon, Sun, TrendingUp, BookOpen, Search, ChefHat, Scale, Coffee, Star, Bug, Wrench, Globe } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
 import { getFirestore, collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, where, getDoc, setDoc, getDocs } from 'firebase/firestore';
 import { getAuth, signInWithEmailAndPassword, sendPasswordResetEmail, createUserWithEmailAndPassword, updatePassword } from 'firebase/auth';
@@ -11,7 +11,6 @@ import { buildPrepCreatePayload, buildPrepQuantityUpdate, findPrepMatch, formatP
 import { buildEightySixAlertDetails, buildMenuImpactText, getMenuImpactForInventoryItem, getZeroStockMenuImpacts, resolveEightySixInventoryMatch } from '../core/menuIntelligence';
 import { prepareScannerUploadFile, isPdfFile } from '../core/fileCompression';
 import { createAiScanIdempotencyKey, resolveClientScanPageCount, normalizeAiUsage, aiPageLimitMessage } from '../core/aiScanUsage';
-import { buildAiOrderAssistant, formatAiOrderDraftText, summarizeAiOrderAssistant } from '../core/aiOrderAssistant';
 import { classifyInvoiceRow, inferInvoiceProductFields, invoiceProductKey, invoiceRowText, isPurchasedInvoiceLine, LEADING_PURCHASE_RE, normalizeInvoiceName as normalizeName, normalizeInvoiceSku as normalizeSku } from '../core/invoiceRowClassification';
 import { CheersLogo, Modal, DrawerMenu, DayDotPrintScreen, MapClickListener, SmartEmptyState, MiniProblemCard, getHomeProfile, calculatePunchHours, getWeekStart, getWeekDates, roleMatches, toLocalTimeInput, makeLocalIso, PunchTable, StatusTile, FriendlyEmpty, GlobalSearchModal, QuickActionDock, KitchenTVMode, ChangeLogModal, UndoBar } from '../components/common';
 import { usePlanAccess } from '../hooks/usePlanAccess';
@@ -534,28 +533,18 @@ const TabInventory = ({ addToast, appUser, clientData = {}, initialSubTab, onIni
   const canUseBasicInventory = inventoryPlanAccess.canUse(FEATURE_KEYS.BASIC_INVENTORY).allowed || inventoryPlanAccess.canUse(FEATURE_KEYS.BURN_LOG).allowed;
   const canUseSmartInventory = inventoryPlanAccess.canUse(FEATURE_KEYS.COGS_CENTER).allowed || inventoryPlanAccess.canUse(FEATURE_KEYS.INVOICE_TOTALS).allowed || inventoryPlanAccess.canUse(FEATURE_KEYS.INVOICE_SCANNING).allowed;
   const canUseMenuIntelligence = inventoryPlanAccess.canUse(FEATURE_KEYS.MENU_INTELLIGENCE).allowed || inventoryPlanAccess.canUse(FEATURE_KEYS.DEPENDENCY_TOOLS).allowed || inventoryPlanAccess.canUse(FEATURE_KEYS.SMART_86_ALERTS).allowed;
-  const canUseAiOrdering = inventoryPlanAccess.canUse(FEATURE_KEYS.AI_ORDER_ASSISTANT).allowed;
-  const canUsePythonIntelligence = inventoryPlanAccess.canUse(FEATURE_KEYS.PYTHON_INTELLIGENCE).allowed;
+  const inventoryItems = useLiveCollection('inventoryItems', appUser?.restaurantId, { enabled: canUseBasicInventory || canUseSmartInventory || canUseMenuIntelligence, limitCount: 500 });
+  const menuDependencies = useLiveCollection('menuDependencies', appUser?.restaurantId, { enabled: canUseMenuIntelligence, limitCount: 500 });
+  const vendors = useLiveCollection('vendors', appUser?.restaurantId, { enabled: canUseBasicInventory || canUseSmartInventory, limitCount: 150 });
+  const wasteLogs = useLiveCollection('wasteLogs', appUser?.restaurantId, { enabled: canUseBasicInventory, limitCount: 200 });
   const [invTab, setInvTab] = useState(initialSubTab || 'count');
-  const [inventoryFetchLimit, setInventoryFetchLimit] = useState(180);
-  const inventoryNeedsFullContext = invTab === 'order' || invTab === 'manage' || invTab === 'waste' || invTab === 'invoices' || invTab === 'ai-order';
-  const inventoryItems = useLiveCollection('inventoryItems', appUser?.restaurantId, { enabled: canUseBasicInventory || canUseSmartInventory || canUseMenuIntelligence, limitCount: inventoryNeedsFullContext ? 500 : inventoryFetchLimit, fallbackLimitCount: 120 });
-  const menuDependencies = useLiveCollection('menuDependencies', appUser?.restaurantId, { enabled: canUseMenuIntelligence && (invTab === 'count' || invTab === 'ai-order'), limitCount: invTab === 'ai-order' ? 500 : 160, fallbackLimitCount: 80 });
-  const vendors = useLiveCollection('vendors', appUser?.restaurantId, { enabled: (canUseBasicInventory || canUseSmartInventory) && ['count','order','manage','vendors','invoices','ai-order'].includes(invTab), limitCount: 120, fallbackLimitCount: 60 });
-  const wasteLogs = useLiveCollection('wasteLogs', appUser?.restaurantId, { enabled: canUseBasicInventory && (invTab === 'waste' || invTab === 'ai-order'), limitCount: invTab === 'ai-order' ? 200 : 100, fallbackLimitCount: 60 });
-  const futureEvents = useLiveCollection('events', appUser?.restaurantId, { enabled: canUseAiOrdering && invTab === 'ai-order', whereClauses: [['date','>=', getToday()]], orderByField: 'date', orderDirection: 'asc', limitCount: 120, fallbackLimitCount: 60 });
-  const prepItemsForOrdering = useLiveCollection('prepItems', appUser?.restaurantId, { enabled: canUseAiOrdering && invTab === 'ai-order', limitCount: 220, fallbackLimitCount: 80 });
   const [focusBelowPar, setFocusBelowPar] = useState(() => sessionStorage.getItem('inventoryFocus') === 'belowPar');
 const [searchTerm, setSearchTerm] = useState(''); 
   const [groupBy, setGroupBy] = useState('Category');
-  useEffect(() => {
-    const needsMore = invTab !== 'count' || focusBelowPar || String(searchTerm || '').trim().length >= 2;
-    setInventoryFetchLimit(needsMore ? 500 : 180);
-  }, [invTab, focusBelowPar, searchTerm]);
   const weekDays = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
   
   // Fetch invoices securely directly inside this tab
-  const invoices = useLiveCollection('invoices', appUser?.restaurantId, { enabled: canUseSmartInventory && (invTab === 'invoices' || invTab === 'ai-order'), limitCount: invTab === 'ai-order' ? 90 : 70, fallbackLimitCount: 40 });
+  const invoices = useLiveCollection('invoices', appUser?.restaurantId, { enabled: canUseSmartInventory, limitCount: 120 });
   const [viewInvoice, setViewInvoice] = useState(null);
 
   useEffect(() => {
@@ -575,16 +564,6 @@ const [searchTerm, setSearchTerm] = useState('');
       sessionStorage.removeItem('inventoryFocus');
       setTimeout(() => document.getElementById('below-par-focus-panel')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 100);
     }
-    if (sessionStorage.getItem('inventoryFocus') === 'aiOrder') {
-      sessionStorage.removeItem('inventoryFocus');
-      if (canUseAiOrdering) {
-        setInvTab('ai-order');
-        setTimeout(() => document.getElementById('ai-order-assistant-panel')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 100);
-      } else {
-        setInvTab('count');
-        addToast?.('Smart Kitchen Required', 'AI assisted ordering starts with the Smart Kitchen plan.');
-      }
-    }
   }, []);
 
   // Inventory Form
@@ -592,15 +571,6 @@ const [searchTerm, setSearchTerm] = useState('');
   const [editItem, setEditItem] = useState(null); 
   const [orderOverrides, setOrderOverrides] = useState({}); 
   const [confirmModal, setConfirmModal] = useState({ isOpen: false, vendorId: null, items: [] });
-  const [aiOrderDaysAhead, setAiOrderDaysAhead] = useState(7);
-  const [aiEventDaysAhead, setAiEventDaysAhead] = useState(14);
-  const [pythonOrderIntel, setPythonOrderIntel] = useState(null);
-  const [pythonOrderLoading, setPythonOrderLoading] = useState(false);
-  const [pythonOrderError, setPythonOrderError] = useState('');
-  const [pythonOpsIntel, setPythonOpsIntel] = useState(null);
-  const [pythonOpsLoading, setPythonOpsLoading] = useState(false);
-  const [pythonOpsError, setPythonOpsError] = useState('');
-  const [opsBackupStatus, setOpsBackupStatus] = useState(null);
   
   // Vendor Form
   const [vName, setVName] = useState(''); const [vRep, setVRep] = useState(''); const [vPhone, setVPhone] = useState(''); const [vEmail, setVEmail] = useState(''); const [vDays, setVDays] = useState([]); const [vTime, setVTime] = useState('');
@@ -645,33 +615,14 @@ const [searchTerm, setSearchTerm] = useState('');
     }
   };
 
-  useEffect(() => { if (invTab === 'invoices') loadInvoiceAiUsage(); }, [appUser?.restaurantId, canUseSmartInventory, invTab]);
+  useEffect(() => { loadInvoiceAiUsage(); }, [appUser?.restaurantId, canUseSmartInventory]);
 
   useEffect(() => {
     if (invTab === 'invoices' && !canUseSmartInventory) setInvTab('count');
-    if (invTab === 'ai-order' && !canUseAiOrdering) setInvTab('count');
-  }, [invTab, canUseSmartInventory, canUseAiOrdering]);
+  }, [invTab, canUseSmartInventory]);
 
   // Master Permission Check for Inventory Tabs
-  const hasInvPerms = appUser?.isSuperAdmin || appUser?.isAdmin || appUser?.isOwner || appUser?.accountOwner || appUser?.workspaceOwner || appUser?.permissions?.inventory || appUser?.permissions?.team;
-  const opsIntelEnabled = false; // Python Ops Scan now lives in Manager Brief to avoid loading large admin datasets inside Inventory.
-  const opsUsers = useLiveCollection('users', appUser?.restaurantId, { enabled: opsIntelEnabled, limitCount: 260, fallbackLimitCount: 80 });
-  const opsShifts = useLiveCollection('shifts', appUser?.restaurantId, { enabled: opsIntelEnabled, limitCount: 1200, fallbackLimitCount: 160 });
-  const opsTimePunches = useLiveCollection('timePunches', appUser?.restaurantId, { enabled: opsIntelEnabled, limitCount: 650, fallbackLimitCount: 120 });
-  const opsTimeOffRequests = useLiveCollection('timeOffRequests', appUser?.restaurantId, { enabled: opsIntelEnabled, limitCount: 350, fallbackLimitCount: 80 });
-  const opsAvailabilityRecords = useLiveCollection('availabilityRecords', appUser?.restaurantId, { enabled: opsIntelEnabled, limitCount: 350, fallbackLimitCount: 80 });
-  const opsReminders = useLiveCollection('personalReminders', appUser?.restaurantId, { enabled: opsIntelEnabled, limitCount: 600, fallbackLimitCount: 120 });
-  const opsTasks = useLiveCollection('tasks', appUser?.restaurantId, { enabled: opsIntelEnabled, limitCount: 600, fallbackLimitCount: 120 });
-  const opsMaintenanceLogs = useLiveCollection('maintenanceLogs', appUser?.restaurantId, { enabled: opsIntelEnabled, limitCount: 350, fallbackLimitCount: 80 });
-  const opsRecipes = useLiveCollection('recipes', appUser?.restaurantId, { enabled: opsIntelEnabled, limitCount: 240, fallbackLimitCount: 80 });
-  const opsAuditLogs = useLiveCollection('auditLogs', appUser?.restaurantId, { enabled: opsIntelEnabled, limitCount: 450, fallbackLimitCount: 80 });
-
-  useEffect(() => {
-    if (!opsIntelEnabled) { setOpsBackupStatus(null); return undefined; }
-    const unsub = onSnapshot(doc(db, 'system', 'backupStatus'), snap => setOpsBackupStatus(snap.exists() ? { id: snap.id, ...snap.data() } : null), () => setOpsBackupStatus(null));
-    return () => unsub();
-  }, [opsIntelEnabled]);
-
+  const hasInvPerms = appUser?.isAdmin || appUser?.permissions?.inventory || appUser?.permissions?.team;
   const safeInventoryWrite = ({ quiet = false, ...args } = {}) => safeWriteWithQueue({ user: appUser, addToast: quiet ? null : addToast, ...args });
 
   // --- LOGIC ---
@@ -958,128 +909,14 @@ const handleLogWaste = async (e) => {
     addToast('Log Updated', 'Burn log and stock adjusted.');
   };
 
-  const itemsToOrder = useMemo(() => inventoryItems.filter(i => { const override = orderOverrides[i.id]; return override !== undefined ? override > 0 : (i.currentStock || 0) < (i.parLevel || 0); }), [inventoryItems, orderOverrides]);
-  const vendorsWithDeficits = useMemo(() => vendors.filter(v => itemsToOrder.some(i => i.supplierId === v.id)), [vendors, itemsToOrder]);
-  const pendingVendors = useMemo(() => vendors.filter(v => inventoryItems.some(i => i.supplierId === v.id && (i.pendingQty || 0) > 0)), [vendors, inventoryItems]);
-  const aiOrderAssistant = useMemo(() => invTab === 'ai-order'
-    ? buildAiOrderAssistant({ inventoryItems, vendors, wasteLogs, invoices, events: futureEvents, prepItems: prepItemsForOrdering, menuDependencies, currentDate: getToday(), daysAhead: aiOrderDaysAhead, eventDaysAhead: aiEventDaysAhead })
-    : { recommendations: [], vendorDrafts: [], eventNeeds: [], priceWarnings: [] },
-    [invTab, inventoryItems, vendors, wasteLogs, invoices, futureEvents, prepItemsForOrdering, menuDependencies, aiOrderDaysAhead, aiEventDaysAhead]);
-  const aiOrderSummaryText = invTab === 'ai-order' ? summarizeAiOrderAssistant(aiOrderAssistant) : '';
-  const aiOrderRecommendations = aiOrderAssistant.recommendations || [];
-  const aiOrderDraftGroups = aiOrderAssistant.vendorDrafts || [];
-  const pythonForecastRows = pythonOrderIntel?.orderForecasts || [];
-  const pythonManagerBrief = pythonOrderIntel?.managerBrief || [];
-  const pythonSummary = pythonOrderIntel?.summary || null;
-  const pythonOpsSummary = pythonOpsIntel?.summary || null;
-  const pythonOpsBrief = pythonOpsIntel?.managerBrief || [];
-  const pythonOpsHealthRows = pythonOpsIntel?.dataHealth || [];
-  const pythonOpsLaborRows = pythonOpsIntel?.laborScheduleWarnings || [];
-  const pythonOpsMenuRows = pythonOpsIntel?.menuCosting || [];
+  const itemsToOrder = inventoryItems.filter(i => { const override = orderOverrides[i.id]; return override !== undefined ? override > 0 : (i.currentStock || 0) < (i.parLevel || 0); });
+  const vendorsWithDeficits = vendors.filter(v => itemsToOrder.some(i => i.supplierId === v.id));
+  const pendingVendors = vendors.filter(v => inventoryItems.some(i => i.supplierId === v.id && (i.pendingQty || 0) > 0));
 
   const handleReviewOrder = (vendorId) => {
     const list = itemsToOrder.filter(i => i.supplierId === vendorId).map(item => { const deficit = Math.max(0, (item.parLevel||0) - (item.currentStock||0)); const qty = orderOverrides[item.id] !== undefined ? orderOverrides[item.id] : Math.ceil(deficit); return { ...item, orderQty: qty }; }).filter(i => i.orderQty > 0);
     if (list.length === 0) return addToast('Order Empty', `No deficits for this vendor.`);
     setConfirmModal({ isOpen: true, vendorId, items: list });
-  };
-
-  const handleReviewAiOrder = (group) => {
-    const list = (group?.items || []).map(row => ({ ...(row.item || {}), id: row.itemId || row.item?.id, orderQty: Math.max(1, Number(row.suggestedQty || 0)), aiReasons: row.reasons || [], aiPriority: row.priority, aiEstimatedCost: row.estimatedCost }));
-    if (!list.length) return addToast('Order Empty', 'No AI suggestions for that vendor.');
-    setConfirmModal({ isOpen: true, vendorId: group.vendorId || list[0]?.supplierId || '', items: list });
-  };
-
-  const applyAiOrderOverrides = () => {
-    const next = {};
-    aiOrderRecommendations.filter(row => row.suggestedQty > 0).forEach(row => { next[row.itemId] = Math.max(0, Number(row.suggestedQty || 0)); });
-    setOrderOverrides(prev => ({ ...prev, ...next }));
-    setInvTab('order');
-    addToast('AI Draft Applied', `${Object.keys(next).length} suggested quantities were loaded into the order screen for review.`);
-  };
-
-  const copyAiOrderDraft = async () => {
-    const text = formatAiOrderDraftText(aiOrderAssistant);
-    if (!text) return addToast('Draft Empty', 'No AI order draft is ready yet.');
-    try { await navigator.clipboard.writeText(text); addToast('AI Draft Copied', 'Order draft copied for review.'); }
-    catch (err) { addToast('Copy Failed', 'Your browser blocked clipboard access.'); }
-  };
-
-  const saveAiOrderDraft = async () => {
-    const items = aiOrderRecommendations.filter(row => row.suggestedQty > 0).map(row => ({
-      itemId: row.itemId, itemName: row.itemName, vendorId: row.vendorId, vendorName: row.vendorName, qty: row.suggestedQty, packSize: row.packSize || '', estimatedCost: row.estimatedCost || 0, priority: row.priority, reasons: row.reasons || []
-    }));
-    if (!items.length) return addToast('Draft Empty', 'No suggested order items to save.');
-    await safeInventoryWrite({ action: 'add', collectionName: 'orders', label: 'AI order draft', data: {
-      restaurantId: appUser.restaurantId, workspaceId: appUser.restaurantId, status: 'draft', source: 'ai_order_assistant', title: `AI Order Draft ${getToday()}`, date: getToday(), createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), createdBy: appUser.id || '', createdByName: appUser.name || appUser.email || '', items, vendorDrafts: aiOrderDraftGroups.map(group => ({ vendorId: group.vendorId, vendorName: group.vendorName, total: group.total, itemCount: group.items.length })), summary: aiOrderSummaryText, managerBrief: aiOrderAssistant.managerBrief || [], eventNeeds: (aiOrderAssistant.eventNeeds || []).slice(0, 10).map(row => ({ eventId: row.event.id || '', eventTitle: row.event.title || '', date: row.date, itemNames: row.items.map(i => i.itemName).slice(0, 8) })), priceWarnings: (aiOrderAssistant.priceWarnings || []).slice(0, 20), pythonIntelligence: pythonOrderIntel ? { generatedAt: pythonOrderIntel.generatedAt, summary: pythonOrderIntel.summary || {}, managerBrief: pythonOrderIntel.managerBrief || [], topForecasts: (pythonOrderIntel.orderForecasts || []).slice(0, 20), priceTrends: (pythonOrderIntel.priceTrends || []).slice(0, 20), parRecommendations: (pythonOrderIntel.parRecommendations || []).slice(0, 20), wasteInsights: (pythonOrderIntel.wasteInsights || []).slice(0, 20), eventSupplyPlan: (pythonOrderIntel.eventSupplyPlan || []).slice(0, 30) } : null
-    } });
-    addToast('AI Draft Saved', 'Saved to Orders as a draft. Review before sending to vendors.');
-  };
-
-  const runPythonOrderIntelligence = async () => {
-    if (!appUser?.restaurantId) return addToast('Missing Workspace', 'Choose a workspace before running Python order intelligence.');
-    setPythonOrderLoading(true);
-    setPythonOrderError('');
-    try {
-      const response = await secureFetch('/api/python-order-intelligence', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          restaurantId: appUser.restaurantId,
-          currentDate: getToday(),
-          daysAhead: aiOrderDaysAhead,
-          eventDaysAhead: aiEventDaysAhead,
-          inventoryItems, vendors, wasteLogs, invoices, events: futureEvents, prepItems: prepItemsForOrdering, menuDependencies
-        })
-      });
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok || payload?.ok === false) throw new Error(payload?.error || 'Python order intelligence failed.');
-      setPythonOrderIntel(payload);
-      addToast('Python Forecast Ready', `${payload?.summary?.forecastCount || 0} forecasts, ${payload?.summary?.priceWarningCount || 0} price warnings, ${payload?.summary?.eventSupplyCount || 0} event supply signals.`);
-    } catch (error) {
-      const message = error?.message || 'Python order intelligence is unavailable.';
-      setPythonOrderError(message);
-      addToast('Python Forecast Unavailable', `${message} The normal AI Order Assistant is still available.`);
-    } finally {
-      setPythonOrderLoading(false);
-    }
-  };
-
-  const runPythonOpsIntelligence = async () => {
-    if (!appUser?.restaurantId) return addToast('Missing Workspace', 'Choose a workspace before running Python Ops Intelligence.');
-    setPythonOpsLoading(true);
-    setPythonOpsError('');
-    try {
-      const response = await secureFetch('/api/python-ops-intelligence', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          restaurantId: appUser.restaurantId,
-          currentDate: getToday(),
-          daysAhead: aiOrderDaysAhead,
-          inventoryItems, vendors, wasteLogs, invoices, events: futureEvents, prepItems: prepItemsForOrdering, menuDependencies,
-          recipes: opsRecipes, users: opsUsers, shifts: opsShifts, timePunches: opsTimePunches, timeOffRequests: opsTimeOffRequests,
-          availabilityRecords: opsAvailabilityRecords, reminders: opsReminders, tasks: opsTasks, maintenanceLogs: opsMaintenanceLogs, auditLogs: opsAuditLogs,
-          backupStatus: opsBackupStatus || {}
-        })
-      });
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok || payload?.ok === false) throw new Error(payload?.error || 'Python Ops Intelligence failed.');
-      setPythonOpsIntel(payload);
-      addToast('Python Ops Scan Ready', `${payload?.summary?.dataHealthCount || 0} data issues, ${payload?.summary?.laborWarningCount || 0} labor warnings, ${payload?.summary?.menuCostCount || 0} menu cost checks.`);
-    } catch (error) {
-      const message = error?.message || 'Python Ops Intelligence is unavailable.';
-      setPythonOpsError(message);
-      addToast('Python Ops Scan Unavailable', `${message} The normal AI Order Assistant is still available.`);
-    } finally {
-      setPythonOpsLoading(false);
-    }
-  };
-
-  const copyPythonOpsReport = async (format = 'text') => {
-    const value = format === 'csv' ? pythonOpsIntel?.reports?.csv : pythonOpsIntel?.reports?.text;
-    if (!value) return addToast('No Report Ready', 'Run Python Ops Scan before copying a report.');
-    try { await navigator.clipboard.writeText(value); addToast(format === 'csv' ? 'CSV Report Copied' : 'Ops Report Copied', 'Paste it into a document, email, or spreadsheet for review.'); }
-    catch (err) { addToast('Copy Failed', 'Your browser blocked clipboard access.'); }
   };
 
 const executeOrder = async (method) => {
@@ -1714,21 +1551,20 @@ if (item.matchedItemId === 'CREATE_NEW') {
   };
 
 const isBelowPar = (item) => Number(item.parLevel || 0) > 0 && Number(item.currentStock || 0) < Number(item.parLevel || 0);
-const vendorById = useMemo(() => Object.fromEntries((vendors || []).map(v => [v.id, v])), [vendors]);
-const belowParItems = useMemo(() => inventoryItems.filter(isBelowPar), [inventoryItems]);
-const zeroStockMenuImpacts = useMemo(() => invTab === 'count' ? getZeroStockMenuImpacts(inventoryItems, menuDependencies) : [], [invTab, inventoryItems, menuDependencies]);
-const selectedWasteItem = useMemo(() => inventoryItems.find(i => i.id === wItemId) || null, [inventoryItems, wItemId]);
+const belowParItems = inventoryItems.filter(isBelowPar);
+const zeroStockMenuImpacts = getZeroStockMenuImpacts(inventoryItems, menuDependencies);
+const selectedWasteItem = inventoryItems.find(i => i.id === wItemId) || null;
 const selectedWasteUnitsPerStock = selectedWasteItem ? getBurnUnitsPerStockUnit(selectedWasteItem) : 1;
 const selectedWasteWeightPerStock = selectedWasteItem ? (parseFloat(wWeightPerStockUnit) || getBurnWeightPerStockUnit(selectedWasteItem)) : 0;
 const selectedWasteDeductionPreview = selectedWasteItem && wQty ? getBurnStockDeduction(wQty, selectedWasteItem, { mode: wMode, weightPerStockUnit: selectedWasteWeightPerStock, unitsPerStockUnit: selectedWasteUnitsPerStock }) : 0;
 const selectedWastePackProfile = selectedWasteItem ? parsePackProfile(selectedWasteItem.packSize) : { notes: [] };
-const groupedItems = useMemo(() => inventoryItems
+const groupedItems = inventoryItems
   .filter(i => !focusBelowPar || isBelowPar(i))
   .filter(i => (i.name || '').toLowerCase().includes(searchTerm.toLowerCase()) || (i.pfgCode && i.pfgCode.includes(searchTerm)))
   .reduce((acc, item) => { 
-    const key = groupBy === 'Vendor' ? (vendorById[item.supplierId]?.name || 'Unassigned Vendor') : (item.category || 'Uncategorized');
+    const key = groupBy === 'Vendor' ? (vendors.find(v=>v.id===item.supplierId)?.name || 'Unassigned Vendor') : (item.category || 'Uncategorized');
     if (!acc[key]) acc[key] = []; acc[key].push(item); return acc; 
-  }, {}), [inventoryItems, focusBelowPar, searchTerm, groupBy, vendorById]);
+  }, {});
   const orderTotal = confirmModal.items.reduce((sum, item) => sum + ((item.price||0) * item.orderQty), 0);
 
   const printInvoiceHistory = () => {
@@ -1931,7 +1767,7 @@ const groupedItems = useMemo(() => inventoryItems
         )}
       </Modal>
 
-      <Modal isOpen={confirmModal.isOpen} onClose={() => setConfirmModal({ isOpen: false, vendorId: null, items: [] })} title={`Review Order: ${vendorById[confirmModal.vendorId]?.name}`}>
+      <Modal isOpen={confirmModal.isOpen} onClose={() => setConfirmModal({ isOpen: false, vendorId: null, items: [] })} title={`Review Order: ${vendors.find(v=>v.id===confirmModal.vendorId)?.name}`}>
          <div className="space-y-4">
            <div className={`max-h-60 overflow-y-auto border ${T.border} rounded-xl divide-y divide-[#2A353D]`}>{confirmModal.items.map(item => (<div key={item.id} className="p-3 flex justify-between items-center bg-[#12161A]"><div><span className="font-bold text-sm block text-white">{item.name}</span><span className={`text-xs ${T.muted}`}>{item.packSize}</span><div className="text-[9px] text-[#D4A381] mt-0.5 uppercase tracking-widest font-black">Est: ${((item.price||0) * item.orderQty).toFixed(2)}</div></div><div className={`font-black ${T.copper} text-lg`}>{item.orderQty}</div></div>))}</div>
            <div className="flex justify-between items-center bg-[#1A2126] p-3 rounded-xl border border-[#2A353D]"><span className="text-xs font-bold text-slate-400 uppercase tracking-widest">Estimated Total</span><span className="text-lg font-black text-emerald-400">${orderTotal.toFixed(2)}</span></div>
@@ -1974,7 +1810,6 @@ const groupedItems = useMemo(() => inventoryItems
         <div className={`inventory-subtabs bg-[#12161A] p-1 rounded-xl flex flex-wrap border ${T.border} w-full sm:w-auto`}>
           <button onClick={() => setInvTab('count')} className={`px-4 py-1.5 rounded-lg text-xs font-bold capitalize whitespace-nowrap transition-all flex-1 sm:flex-none ${invTab === 'count' ? `${T.grad} text-slate-900 shadow-sm` : 'text-slate-400 hover:text-white'}`}>count</button>
           {hasInvPerms && <button onClick={() => setInvTab('order')} className={`px-4 py-1.5 rounded-lg text-xs font-bold capitalize whitespace-nowrap transition-all flex-1 sm:flex-none ${invTab === 'order' ? `${T.grad} text-slate-900 shadow-sm` : 'text-slate-400 hover:text-white'}`}>order</button>}
-          {hasInvPerms && canUseAiOrdering && <button onClick={() => setInvTab('ai-order')} className={`px-4 py-1.5 rounded-lg text-xs font-bold capitalize whitespace-nowrap transition-all flex-1 sm:flex-none ${invTab === 'ai-order' ? `${T.grad} text-slate-900 shadow-sm` : 'text-slate-400 hover:text-white'}`}>🤖 AI Order</button>}
           {hasInvPerms && <button onClick={() => setInvTab('manage')} className={`px-4 py-1.5 rounded-lg text-xs font-bold capitalize whitespace-nowrap transition-all flex-1 sm:flex-none ${invTab === 'manage' ? `${T.grad} text-slate-900 shadow-sm` : 'text-slate-400 hover:text-white'}`}>manage</button>}
           {hasInvPerms && <button onClick={() => setInvTab('vendors')} className={`px-4 py-1.5 rounded-lg text-xs font-bold capitalize whitespace-nowrap transition-all flex-1 sm:flex-none ${invTab === 'vendors' ? `${T.grad} text-slate-900 shadow-sm` : 'text-slate-400 hover:text-white'}`}>vendors</button>}
           {hasInvPerms && canUseSmartInventory && <button onClick={() => setInvTab('invoices')} className={`px-4 py-1.5 rounded-lg text-xs font-bold capitalize whitespace-nowrap transition-all flex-1 sm:flex-none ${invTab === 'invoices' ? `${T.grad} text-slate-900 shadow-sm` : 'text-slate-400 hover:text-white'}`}>🧾 Invoices</button>}
@@ -1994,7 +1829,6 @@ const groupedItems = useMemo(() => inventoryItems
             <button type="button" onClick={() => setFocusBelowPar(v => !v)} className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest border transition-all ${focusBelowPar ? 'bg-red-900/30 border-red-500/50 text-red-300' : 'bg-[#12161A] border-[#2A353D] text-slate-400 hover:text-white'}`}>
               {focusBelowPar ? `Showing ${belowParItems.length} Below Par` : `Below-Par Focus (${belowParItems.length})`}
             </button>
-            {inventoryFetchLimit < 500 && <button type="button" onClick={() => setInventoryFetchLimit(500)} className={`${T.btnAlt} sm:w-auto`}>Load full list</button>}
           </div>
           {focusBelowPar && belowParItems.length === 0 && <div className="bg-emerald-900/10 border border-emerald-500/30 text-emerald-300 rounded-xl p-4 text-sm font-bold">No inventory items are currently below par. Items equal to par are not counted as low.</div>}
           {zeroStockMenuImpacts.length > 0 && (
@@ -2021,7 +1855,7 @@ const groupedItems = useMemo(() => inventoryItems
               <h4 className={`text-base font-black border-b ${T.border} pb-0.5 uppercase tracking-wide text-slate-400`}>{category}</h4>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-2">{items.map(item => (
                   <div key={item.id} className={`${T.card} p-2 flex items-center justify-between gap-2 ${isBelowPar(item) ? 'border-red-500/70 shadow-[0_0_18px_rgba(239,68,68,0.15)] bg-red-950/10' : ''}`}>
-                    <div className="flex-1 min-w-0"><div className="font-bold text-white text-sm truncate">{item.name}</div><div className={`text-[9px] font-bold ${T.muted} uppercase`}>{vendorById[item.supplierId]?.name || 'No Vendor'}   {item.packSize || '1 CS'}   YIELD: {item.yieldQty||1}</div></div>
+                    <div className="flex-1 min-w-0"><div className="font-bold text-white text-sm truncate">{item.name}</div><div className={`text-[9px] font-bold ${T.muted} uppercase`}>{vendors.find(v=>v.id===item.supplierId)?.name || 'No Vendor'}   {item.packSize || '1 CS'}   YIELD: {item.yieldQty||1}</div></div>
                     <div className={`flex items-center gap-2 bg-[#12161A] p-1 rounded-md border ${T.border} flex-shrink-0`}>
                       <div className="flex flex-col items-center"><span className={`text-[8px] font-bold ${T.muted} uppercase`}>PAR</span><input type="number" min="0" value={item.parLevel} onChange={(e) => updatePar(item.id, e.target.value)} disabled={!hasInvPerms} className={`w-8 text-center font-bold border rounded py-0.5 outline-none text-xs bg-[#1A2126] text-white border-[#2A353D]`} /></div>
                       <div className={`h-6 w-px bg-[#2A353D]`}></div>
@@ -2031,147 +1865,6 @@ const groupedItems = useMemo(() => inventoryItems
                 ))}</div>
             </div>
           ))}
-        </div>
-      )}
-
-      {hasInvPerms && canUseAiOrdering && invTab === 'ai-order' && (
-        <div className="space-y-4 animate-[slideIn_0.2s_ease-out]">
-          <div id="ai-order-assistant-panel" className={`${T.card} p-4 sm:p-5 border-[#D4A381]/40 bg-gradient-to-br from-[#1A2126] to-[#0B0E11]`}>
-            <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-4">
-              <div>
-                <div className="text-[10px] font-black uppercase tracking-widest text-[#D4A381] flex items-center gap-2"><Sparkles size={14}/> AI Order Assistant</div>
-                <h3 className="text-2xl font-black text-white mt-1">Smart order drafts, event supply checks, price warnings</h3>
-                <p className="text-sm text-slate-300 font-bold mt-2 max-w-3xl">AI suggests and explains. Managers still review, edit, copy, export, email, text, or save drafts before anything becomes a real vendor order.</p>
-                <div className="mt-3 text-xs font-bold text-slate-400">{aiOrderSummaryText}</div>
-              </div>
-              <div className="grid grid-cols-2 gap-2 min-w-[220px]">
-                <div className="rounded-xl border border-[#2A353D] bg-[#12161A] p-3 text-center"><div className="text-xl font-black text-white">{aiOrderRecommendations.filter(r => r.suggestedQty > 0).length}</div><div className="text-[8px] uppercase tracking-widest text-slate-500 font-black">Suggested</div></div>
-                <div className="rounded-xl border border-[#2A353D] bg-[#12161A] p-3 text-center"><div className="text-xl font-black text-amber-300">{aiOrderAssistant.eventNeeds.length}</div><div className="text-[8px] uppercase tracking-widest text-slate-500 font-black">Event Checks</div></div>
-                <div className="rounded-xl border border-[#2A353D] bg-[#12161A] p-3 text-center"><div className="text-xl font-black text-red-300">{aiOrderAssistant.priceWarnings.length}</div><div className="text-[8px] uppercase tracking-widest text-slate-500 font-black">Price Warnings</div></div>
-                <div className="rounded-xl border border-[#2A353D] bg-[#12161A] p-3 text-center"><div className="text-xl font-black text-emerald-300">{aiOrderDraftGroups.length}</div><div className="text-[8px] uppercase tracking-widest text-slate-500 font-black">Vendor Drafts</div></div>
-              </div>
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 mt-4">
-              <div><label className={T.label}>Order lookahead</label><select value={aiOrderDaysAhead} onChange={e=>setAiOrderDaysAhead(Number(e.target.value)||7)} className={T.input}><option value={3}>3 days</option><option value={7}>7 days</option><option value={14}>14 days</option></select></div>
-              <div><label className={T.label}>Event lookahead</label><select value={aiEventDaysAhead} onChange={e=>setAiEventDaysAhead(Number(e.target.value)||14)} className={T.input}><option value={7}>7 days</option><option value={14}>14 days</option><option value={30}>30 days</option></select></div>
-              <button type="button" onClick={applyAiOrderOverrides} className={`${T.btn} self-end py-3`}>Apply to Order Screen</button>
-              <button type="button" onClick={copyAiOrderDraft} className={`${T.btnAlt} self-end py-3`}>Copy Full Draft</button>
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mt-2">
-              <button type="button" onClick={saveAiOrderDraft} className="w-full rounded-xl bg-emerald-900/20 border border-emerald-500/40 text-emerald-300 py-3 text-xs font-black uppercase tracking-widest hover:bg-emerald-900/30">Save AI Draft to Orders</button>
-              {canUsePythonIntelligence ? <button type="button" onClick={runPythonOrderIntelligence} disabled={pythonOrderLoading} className="w-full rounded-xl bg-blue-900/20 border border-blue-500/40 text-blue-200 py-3 text-xs font-black uppercase tracking-widest hover:bg-blue-900/30 disabled:opacity-60">{pythonOrderLoading ? 'Running Python Forecast…' : 'Run Python Forecast'}</button> : <div className="rounded-xl border border-amber-500/30 bg-amber-950/10 p-3 text-[11px] font-black text-amber-100">Python forecasting starts with Smart Kitchen.</div>}
-            </div>
-            {pythonOrderError && <div className="mt-2 rounded-xl border border-amber-500/30 bg-amber-950/20 p-3 text-[11px] font-bold text-amber-100">Python analysis did not finish: {pythonOrderError}. The regular AI Order Assistant is still active.</div>}
-
-          </div>
-
-          {pythonOrderIntel && (
-            <div className="grid grid-cols-1 xl:grid-cols-4 gap-4">
-              <div className={`${T.card} p-4 xl:col-span-4 border-blue-500/30 bg-blue-950/10`}>
-                <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
-                  <div>
-                    <div className="text-[10px] font-black uppercase tracking-widest text-blue-200">Python Intelligence Layer</div>
-                    <h3 className="font-black text-white text-xl mt-1">Forecasts, par tuning, invoice trends, waste strategy</h3>
-                    <p className="text-xs font-bold text-slate-400 mt-1">This is the behind-the-scenes Python analysis layer. It does not send orders. It adds heavier forecasting math to the manager review workflow.</p>
-                  </div>
-                  <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
-                    <div className="rounded-xl border border-blue-500/30 bg-[#12161A] p-2 text-center"><div className="font-black text-white">{pythonSummary?.forecastCount || 0}</div><div className="text-[7px] uppercase tracking-widest text-slate-500 font-black">Forecasts</div></div>
-                    <div className="rounded-xl border border-blue-500/30 bg-[#12161A] p-2 text-center"><div className="font-black text-white">{pythonSummary?.parChangeCount || 0}</div><div className="text-[7px] uppercase tracking-widest text-slate-500 font-black">Par Ideas</div></div>
-                    <div className="rounded-xl border border-blue-500/30 bg-[#12161A] p-2 text-center"><div className="font-black text-white">{pythonSummary?.priceWarningCount || 0}</div><div className="text-[7px] uppercase tracking-widest text-slate-500 font-black">Prices</div></div>
-                    <div className="rounded-xl border border-blue-500/30 bg-[#12161A] p-2 text-center"><div className="font-black text-white">{pythonSummary?.wasteInsightCount || 0}</div><div className="text-[7px] uppercase tracking-widest text-slate-500 font-black">Waste</div></div>
-                    <div className="rounded-xl border border-blue-500/30 bg-[#12161A] p-2 text-center"><div className="font-black text-white">{pythonSummary?.eventSupplyCount || 0}</div><div className="text-[7px] uppercase tracking-widest text-slate-500 font-black">Events</div></div>
-                    <div className="rounded-xl border border-blue-500/30 bg-[#12161A] p-2 text-center"><div className="font-black text-white">{pythonSummary?.prepForecastCount || 0}</div><div className="text-[7px] uppercase tracking-widest text-slate-500 font-black">Prep</div></div>
-                  </div>
-                </div>
-              </div>
-              <div className={`${T.card} p-4 xl:col-span-2`}>
-                <h3 className="font-black text-white text-lg mb-3">Python Order Forecasts</h3>
-                <div className="space-y-2 max-h-96 overflow-y-auto custom-scrollbar">{pythonForecastRows.length ? pythonForecastRows.slice(0, 16).map(row => <div key={`py-${row.itemId || row.itemName}`} className="rounded-xl border border-[#2A353D] bg-[#12161A] p-3"><div className="flex flex-wrap items-center gap-2"><span className="font-black text-white">{row.itemName}</span><span className="text-[8px] px-2 py-0.5 rounded-full border border-blue-500/40 text-blue-200 uppercase tracking-widest font-black">{row.confidence}% confidence</span><span className="text-[8px] px-2 py-0.5 rounded-full border border-[#2A353D] text-slate-300 uppercase tracking-widest font-black">{row.priority}</span></div><div className="text-[11px] text-slate-400 font-bold mt-1">Suggest {row.suggestedQty} • Weekly velocity {row.weeklyVelocity || 0} • Stock {row.stock} / Par {row.par}</div><div className="text-[11px] text-slate-300 mt-1">{(row.reasons || []).slice(0, 4).join(' • ') || 'Review setup and history.'}</div></div>) : <p className="text-xs text-slate-500 font-bold">Run Python Forecast to see deeper order analysis.</p>}</div>
-              </div>
-              <div className={`${T.card} p-4`}>
-                <h3 className="font-black text-white text-lg mb-3">Par + Waste</h3>
-                <div className="space-y-2 max-h-96 overflow-y-auto custom-scrollbar">{[...(pythonOrderIntel.parRecommendations || []).map(row => `${row.itemName}: ${row.direction} par from ${row.currentPar} to ${row.suggestedPar}. ${row.reason}`), ...(pythonOrderIntel.wasteInsights || []).map(row => `${row.itemName}: ${row.suggestion} Recent waste ${row.recentWaste}.`)].length ? [...(pythonOrderIntel.parRecommendations || []).map(row => `${row.itemName}: ${row.direction} par from ${row.currentPar} to ${row.suggestedPar}. ${row.reason}`), ...(pythonOrderIntel.wasteInsights || []).map(row => `${row.itemName}: ${row.suggestion} Recent waste ${row.recentWaste}.`)].slice(0, 12).map((line, idx) => <div key={idx} className="rounded-xl border border-[#2A353D] bg-[#12161A] p-3 text-xs font-bold text-slate-300">{line}</div>) : <p className="text-xs text-slate-500 font-bold">No par or waste insights yet.</p>}</div>
-              </div>
-              <div className={`${T.card} p-4`}>
-                <h3 className="font-black text-white text-lg mb-3">Python Brief</h3>
-                <div className="space-y-2">{pythonManagerBrief.length ? pythonManagerBrief.map((line, idx) => <div key={idx} className="rounded-xl border border-blue-500/20 bg-[#12161A] p-3 text-xs font-bold text-blue-100">{line}</div>) : <p className="text-xs text-slate-500 font-bold">No Python brief yet.</p>}</div>
-              </div>
-            </div>
-          )}
-
-
-          {false && pythonOpsIntel && (
-            <div className="space-y-4">
-              <div className={`${T.card} p-4 border-purple-500/30 bg-purple-950/10`}>
-                <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
-                  <div>
-                    <div className="text-[10px] font-black uppercase tracking-widest text-purple-200">Python Ops Intelligence</div>
-                    <h3 className="font-black text-white text-xl mt-1">Invoice watchdog, menu costing, labor warnings, data health, backup checks</h3>
-                    <p className="text-xs font-bold text-slate-400 mt-1">This scan suggests repairs and reports only. It does not change pars, submit orders, edit schedules, or modify staff records.</p>
-                  </div>
-                  <div className="grid grid-cols-3 sm:grid-cols-7 gap-2">
-                    <div className="rounded-xl border border-purple-500/30 bg-[#12161A] p-2 text-center"><div className="font-black text-white">{pythonOpsSummary?.priceWarningCount || 0}</div><div className="text-[7px] uppercase tracking-widest text-slate-500 font-black">Prices</div></div>
-                    <div className="rounded-xl border border-purple-500/30 bg-[#12161A] p-2 text-center"><div className="font-black text-white">{pythonOpsSummary?.parRecommendationCount || 0}</div><div className="text-[7px] uppercase tracking-widest text-slate-500 font-black">Pars</div></div>
-                    <div className="rounded-xl border border-purple-500/30 bg-[#12161A] p-2 text-center"><div className="font-black text-white">{pythonOpsSummary?.wasteInsightCount || 0}</div><div className="text-[7px] uppercase tracking-widest text-slate-500 font-black">Waste</div></div>
-                    <div className="rounded-xl border border-purple-500/30 bg-[#12161A] p-2 text-center"><div className="font-black text-white">{pythonOpsSummary?.menuCostCount || 0}</div><div className="text-[7px] uppercase tracking-widest text-slate-500 font-black">Menu</div></div>
-                    <div className="rounded-xl border border-purple-500/30 bg-[#12161A] p-2 text-center"><div className="font-black text-white">{pythonOpsSummary?.laborWarningCount || 0}</div><div className="text-[7px] uppercase tracking-widest text-slate-500 font-black">Labor</div></div>
-                    <div className="rounded-xl border border-purple-500/30 bg-[#12161A] p-2 text-center"><div className="font-black text-white">{pythonOpsSummary?.dataHealthCount || 0}</div><div className="text-[7px] uppercase tracking-widest text-slate-500 font-black">Health</div></div>
-                    <div className="rounded-xl border border-purple-500/30 bg-[#12161A] p-2 text-center"><div className="font-black text-white">{pythonOpsSummary?.backupCheckCount || 0}</div><div className="text-[7px] uppercase tracking-widest text-slate-500 font-black">Backups</div></div>
-                  </div>
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-3">
-                  <button type="button" onClick={() => copyPythonOpsReport('text')} className="rounded-xl border border-purple-500/40 bg-[#12161A] text-purple-100 py-3 text-xs font-black uppercase tracking-widest">Copy Manager Report</button>
-                  <button type="button" onClick={() => copyPythonOpsReport('csv')} className="rounded-xl border border-purple-500/40 bg-[#12161A] text-purple-100 py-3 text-xs font-black uppercase tracking-widest">Copy CSV Findings</button>
-                </div>
-              </div>
-              <div className="grid grid-cols-1 xl:grid-cols-4 gap-4">
-                <div className={`${T.card} p-4 xl:col-span-2`}><h3 className="font-black text-white text-lg mb-3">Python Ops Brief</h3><div className="space-y-2">{pythonOpsBrief.length ? pythonOpsBrief.map((line, idx) => <div key={idx} className="rounded-xl border border-purple-500/20 bg-[#12161A] p-3 text-xs font-bold text-purple-100">{line}</div>) : <p className="text-xs text-slate-500 font-bold">No ops brief yet.</p>}</div></div>
-                <div className={`${T.card} p-4`}><h3 className="font-black text-white text-lg mb-3">Menu Costing</h3><div className="space-y-2 max-h-80 overflow-y-auto custom-scrollbar">{pythonOpsMenuRows.length ? pythonOpsMenuRows.slice(0, 10).map(row => <div key={row.recipeId || row.recipeName} className="rounded-xl border border-[#2A353D] bg-[#12161A] p-3"><div className="font-black text-white">{row.recipeName}</div><div className="text-[11px] text-slate-400 font-bold mt-1">Cost ${Number(row.estimatedCost || 0).toFixed(2)}{row.foodCostPct ? ` • ${row.foodCostPct}% food cost` : ''}</div><div className="text-[10px] text-slate-500 font-bold mt-1">Missing: {(row.missingIngredients || []).slice(0, 4).join(', ') || 'none flagged'}</div></div>) : <p className="text-xs text-slate-500 font-bold">No menu cost findings yet. Add recipes, menu prices, invoice history, and ingredient links.</p>}</div></div>
-                <div className={`${T.card} p-4`}><h3 className="font-black text-white text-lg mb-3">Labor + Schedule</h3><div className="space-y-2 max-h-80 overflow-y-auto custom-scrollbar">{pythonOpsLaborRows.length ? pythonOpsLaborRows.slice(0, 10).map((row, idx) => <div key={idx} className="rounded-xl border border-amber-500/30 bg-amber-950/10 p-3"><div className="font-black text-amber-100">{row.title}</div><div className="text-[11px] text-slate-300 font-bold mt-1">{row.detail}</div></div>) : <p className="text-xs text-slate-500 font-bold">No labor warnings in the scan window.</p>}</div></div>
-              </div>
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-                <div className={`${T.card} p-4`}><h3 className="font-black text-white text-lg mb-3">Invoice Watchdog</h3><div className="space-y-2 max-h-72 overflow-y-auto custom-scrollbar">{[...(pythonOpsIntel.priceWatch || []).map(row => row.summary), ...(pythonOpsIntel.invoiceAnomalies || []).map(row => row.detail)].length ? [...(pythonOpsIntel.priceWatch || []).map(row => row.summary), ...(pythonOpsIntel.invoiceAnomalies || []).map(row => row.detail)].slice(0, 12).map((line, idx) => <div key={idx} className="rounded-xl border border-red-500/30 bg-red-950/10 p-3 text-xs font-bold text-red-100">{line}</div>) : <p className="text-xs text-slate-500 font-bold">No invoice anomalies found.</p>}</div></div>
-                <div className={`${T.card} p-4`}><h3 className="font-black text-white text-lg mb-3">Data Health Scanner</h3><div className="space-y-2 max-h-72 overflow-y-auto custom-scrollbar">{pythonOpsHealthRows.length ? pythonOpsHealthRows.slice(0, 12).map((row, idx) => <div key={idx} className="rounded-xl border border-[#2A353D] bg-[#12161A] p-3"><div className="font-black text-white">{row.area}: {row.title}</div><div className="text-[11px] text-slate-400 font-bold mt-1">{(row.issues || []).join(', ')}</div></div>) : <p className="text-xs text-slate-500 font-bold">No major data health issues found.</p>}</div></div>
-                <div className={`${T.card} p-4`}><h3 className="font-black text-white text-lg mb-3">Backup Checks</h3><div className="space-y-2 max-h-72 overflow-y-auto custom-scrollbar">{(pythonOpsIntel.backupChecks || []).length ? pythonOpsIntel.backupChecks.map((row, idx) => <div key={idx} className={`rounded-xl border p-3 text-xs font-bold ${row.status === 'attention' ? 'border-amber-500/30 bg-amber-950/10 text-amber-100' : 'border-emerald-500/30 bg-emerald-950/10 text-emerald-100'}`}><div className="font-black">{row.title}</div><div className="mt-1">{row.detail}</div><div className="mt-1 text-slate-400">{row.recommendation}</div></div>) : <p className="text-xs text-slate-500 font-bold">No backup check was returned.</p>}</div></div>
-              </div>
-            </div>
-          )}
-
-          <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
-            <div className={`${T.card} p-4 xl:col-span-2`}>
-              <div className="flex items-center justify-between mb-3"><h3 className="font-black text-white text-lg">Top Order Suggestions</h3><span className="text-[10px] font-black uppercase tracking-widest text-slate-500">Review required</span></div>
-              <div className="space-y-2">
-                {aiOrderRecommendations.length ? aiOrderRecommendations.slice(0, 18).map(row => (
-                  <div key={row.itemId || row.itemName} className="rounded-xl border border-[#2A353D] bg-[#12161A] p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                    <div className="min-w-0">
-                      <div className="flex flex-wrap items-center gap-2"><span className="font-black text-white">{row.itemName}</span><span className={`text-[8px] px-2 py-0.5 rounded-full border uppercase tracking-widest font-black ${row.priority === 'critical' ? 'text-red-300 border-red-500/50 bg-red-900/20' : row.priority === 'high' ? 'text-amber-300 border-amber-500/50 bg-amber-900/20' : 'text-slate-300 border-[#2A353D] bg-[#0B0E11]'}`}>{row.priority}</span><span className="text-[10px] text-[#D4A381] font-black">{row.vendorName}</span></div>
-                      <div className="text-[11px] text-slate-400 font-bold mt-1">Par {row.par} • Stock {row.stock} • Pending {row.pending} • Suggest {row.suggestedQty} {row.packSize}</div>
-                      <div className="text-[11px] text-slate-300 mt-1 leading-snug">{row.reasons.slice(0, 4).join(' • ') || 'Review item setup, par, and usage history.'}</div>
-                      {row.priceWarning && <div className="mt-1 text-[10px] font-black text-red-300">⚠ {row.priceWarning.summary}</div>}
-                    </div>
-                    <div className="flex items-center gap-2 shrink-0"><button type="button" onClick={() => setOrderOverrides(prev => ({ ...prev, [row.itemId]: row.suggestedQty }))} className="px-3 py-2 rounded-lg border border-[#2A353D] bg-[#0B0E11] text-[#D4A381] text-[10px] font-black uppercase">Use Qty</button></div>
-                  </div>
-                )) : <SmartEmptyState icon={<Check size={22}/>} title="No order pressure detected" desc="Set par levels, inventory stock, vendors, menu links, events, and invoice history to sharpen the assistant." />}
-              </div>
-            </div>
-
-            <div className="space-y-4">
-              <div className={`${T.card} p-4`}>
-                <h3 className="font-black text-white text-lg mb-3">Vendor Drafts</h3>
-                <div className="space-y-2">{aiOrderDraftGroups.length ? aiOrderDraftGroups.map(group => <div key={group.vendorId || group.vendorName} className="rounded-xl border border-[#2A353D] bg-[#12161A] p-3"><div className="flex justify-between gap-2"><div><div className="font-black text-white">{group.vendorName}</div><div className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">{group.items.length} items • est. ${Number(group.total||0).toFixed(2)}</div></div><button type="button" onClick={() => handleReviewAiOrder(group)} className="text-[10px] font-black uppercase tracking-widest text-[#D4A381]">Review</button></div></div>) : <p className="text-xs text-slate-500 font-bold">No vendor draft yet.</p>}</div>
-              </div>
-              <div className={`${T.card} p-4`}>
-                <h3 className="font-black text-white text-lg mb-3">Manager Brief</h3>
-                <div className="space-y-2">{aiOrderAssistant.managerBrief.map((line, idx) => <div key={idx} className="rounded-xl bg-[#12161A] border border-[#2A353D] p-3 text-xs font-bold text-slate-300 leading-snug">{line}</div>)}</div>
-              </div>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-            <div className={`${T.card} p-4`}><h3 className="font-black text-white text-lg mb-3">Event Supply Planning</h3><div className="space-y-2 max-h-72 overflow-y-auto custom-scrollbar">{aiOrderAssistant.eventNeeds.length ? aiOrderAssistant.eventNeeds.map((row, idx) => <div key={idx} className="rounded-xl border border-[#2A353D] bg-[#12161A] p-3"><div className="text-[10px] font-black uppercase tracking-widest text-[#D4A381]">{row.date}</div><div className="font-black text-white">{row.event.title || 'Event'}</div><div className="text-[11px] text-slate-400 font-bold mt-1">{[...row.items.map(i => i.itemName), ...row.mentionedItems.map(m => m.item.name)].slice(0, 8).join(', ') || 'Review notes/menu.'}</div></div>) : <p className="text-xs text-slate-500 font-bold">No event supply signals in this window.</p>}</div></div>
-            <div className={`${T.card} p-4`}><h3 className="font-black text-white text-lg mb-3">Prep Prediction</h3><div className="space-y-2 max-h-72 overflow-y-auto custom-scrollbar">{aiOrderAssistant.prepSuggestions.length ? aiOrderAssistant.prepSuggestions.map((row, idx) => <div key={idx} className="rounded-xl border border-[#2A353D] bg-[#12161A] p-3"><div className="font-black text-white">{row.text}</div><div className="text-[11px] text-slate-400 font-bold mt-1">{row.reason}</div></div>) : <p className="text-xs text-slate-500 font-bold">Prep suggestions appear when prep, events, or low-stock items line up.</p>}</div></div>
-            <div className={`${T.card} p-4`}><h3 className="font-black text-white text-lg mb-3">Warnings</h3><div className="space-y-2 max-h-72 overflow-y-auto custom-scrollbar">{[...aiOrderAssistant.priceWarnings.map(w => w.summary), ...aiOrderAssistant.wasteWarnings.map(w => w.summary)].length ? [...aiOrderAssistant.priceWarnings.map(w => w.summary), ...aiOrderAssistant.wasteWarnings.map(w => w.summary)].slice(0, 10).map((line, idx) => <div key={idx} className="rounded-xl border border-red-500/30 bg-red-950/10 p-3 text-xs font-bold text-red-100 leading-snug">{line}</div>) : <p className="text-xs text-slate-500 font-bold">No invoice price or waste warnings detected.</p>}</div></div>
-          </div>
         </div>
       )}
 
@@ -4063,16 +3756,10 @@ const TabToday = ({ currentDate, appUser, users, shifts, shiftSwaps, timeOffRequ
   const canUseManagerBrief = todayPlanAccess.canUse(FEATURE_KEYS.MANAGER_BRIEF).allowed;
   const canUseBasicInventory = todayPlanAccess.canUse(FEATURE_KEYS.BASIC_INVENTORY).allowed || todayPlanAccess.canUse(FEATURE_KEYS.BURN_LOG).allowed;
   const canUseMenuIntelligence = todayPlanAccess.canUse(FEATURE_KEYS.MENU_INTELLIGENCE).allowed || todayPlanAccess.canUse(FEATURE_KEYS.SMART_86_ALERTS).allowed;
-  const canUseAiOrdering = todayPlanAccess.canUse(FEATURE_KEYS.AI_ORDER_ASSISTANT).allowed;
-  const canUsePythonIntelligence = todayPlanAccess.canUse(FEATURE_KEYS.PYTHON_INTELLIGENCE).allowed;
   const canUseLabor = todayPlanAccess.canUse(FEATURE_KEYS.LABOR_COMMAND).allowed || todayPlanAccess.canUse(FEATURE_KEYS.TIME_CLOCK).allowed;
   const canUseScheduleBuilder = todayPlanAccess.canUse(FEATURE_KEYS.SCHEDULE_BUILDER).allowed;
   const canUseCleaningRoutines = todayPlanAccess.canUse(FEATURE_KEYS.CLEANING_ROUTINES).allowed;
   const [expanded, setExpanded] = useState({ brief: true, setup: false, problems: true, prefs: false });
-  const [briefOpsIntel, setBriefOpsIntel] = useState(null);
-  const [briefOpsLoading, setBriefOpsLoading] = useState(false);
-  const [briefOpsError, setBriefOpsError] = useState('');
-  const [briefOpsCopied, setBriefOpsCopied] = useState(false);
   const today = getToday();
   const profile = getHomeProfile(appUser);
   const safeTodayWrite = (args) => safeWriteWithQueue({ user: appUser, addToast, ...args });
@@ -4086,26 +3773,6 @@ const TabToday = ({ currentDate, appUser, users, shifts, shiftSwaps, timeOffRequ
   const openPrep = prepItems.filter(p => (p.date === today || p.date === 'MASTER') && !p.isCompleted).slice(0, 8);
   const pendingRequests = canUseScheduleBuilder ? timeOffRequests.filter(r => r.status === 'pending').slice(0, 5) : [];
   const openSwaps = canUseScheduleBuilder ? shiftSwaps.filter(s => s.status === 'available' && s.date >= today).slice(0, 5) : [];
-  const briefVendors = useLiveCollection('vendors', appUser?.restaurantId, { enabled: !!appUser?.restaurantId && canUseAiOrdering, limitCount: 80, fallbackLimitCount: 35 });
-  const briefWasteLogs = useLiveCollection('wasteLogs', appUser?.restaurantId, { enabled: !!appUser?.restaurantId && canUseAiOrdering, limitCount: 120, fallbackLimitCount: 35 });
-  const briefInvoices = useLiveCollection('invoices', appUser?.restaurantId, { enabled: !!appUser?.restaurantId && canUseAiOrdering, limitCount: 80, fallbackLimitCount: 30 });
-  const briefAvailabilityRecords = useLiveCollection('availabilityRecords', appUser?.restaurantId, { enabled: !!appUser?.restaurantId && canUsePythonIntelligence, limitCount: 160, fallbackLimitCount: 45 });
-  const briefReminders = useLiveCollection('personalReminders', appUser?.restaurantId, { enabled: !!appUser?.restaurantId && canUsePythonIntelligence, limitCount: 160, fallbackLimitCount: 45 });
-  const briefAuditLogs = useLiveCollection('auditLogs', appUser?.restaurantId, { enabled: !!appUser?.restaurantId && canUsePythonIntelligence, limitCount: 160, fallbackLimitCount: 45 });
-  const aiBrief = canUseAiOrdering ? buildAiOrderAssistant({ inventoryItems, vendors: briefVendors, wasteLogs: briefWasteLogs, invoices: briefInvoices, events, prepItems, menuDependencies, currentDate: today, daysAhead: 7, eventDaysAhead: 14 }) : { managerBrief: [], recommendations: [], eventNeeds: [], priceWarnings: [] };
-  const aiBriefTop = aiBrief.recommendations?.filter(row => row.suggestedQty > 0).slice(0, 3) || [];
-  const briefOpsSummary = briefOpsIntel?.summary || {};
-  const briefOpsFindings = [
-    ...(briefOpsIntel?.priceWatch || []).map(row => ({ area: 'Inventory', title: row.itemName || 'Price watch', detail: row.summary || row.detail || 'Review invoice pricing.', tab: 'inventory', focus: 'invoices', severity: row.severity || 'medium' })),
-    ...(briefOpsIntel?.invoiceAnomalies || []).map(row => ({ area: 'Inventory', title: row.title || 'Invoice anomaly', detail: row.detail || row.recommendation || 'Review invoice history.', tab: 'inventory', focus: 'invoices', severity: row.severity || 'medium' })),
-    ...(briefOpsIntel?.parRecommendations || []).map(row => ({ area: 'Inventory', title: row.itemName ? `Par review: ${row.itemName}` : 'Par recommendation', detail: row.reason || `Suggested par ${row.suggestedPar || ''}`.trim() || 'Review par level.', tab: 'inventory', focus: 'belowPar', severity: 'medium' })),
-    ...(briefOpsIntel?.wasteInsights || []).map(row => ({ area: 'Inventory', title: row.itemName ? `Waste pattern: ${row.itemName}` : 'Waste pattern', detail: row.suggestion || row.detail || 'Review burn/waste logs.', tab: 'inventory', focus: 'waste', severity: row.severity || 'medium' })),
-    ...(briefOpsIntel?.eventSupplyPlan || []).map(row => ({ area: 'Event Calendar', title: row.eventTitle || row.title || 'Event supply risk', detail: row.summary || row.detail || 'Review event supply planning.', tab: 'events', severity: row.severity || 'medium' })),
-    ...(briefOpsIntel?.menuCosting || []).map(row => ({ area: 'Menu Intelligence', title: row.recipeName || 'Menu costing review', detail: row.foodCostPct ? `${row.foodCostPct}% food cost estimate. Review recipe links and invoice costs.` : 'Review recipe costing and ingredient links.', tab: 'menu-intelligence', severity: 'low' })),
-    ...(briefOpsIntel?.laborScheduleWarnings || []).map(row => ({ area: 'Financials', title: row.title || 'Labor/schedule warning', detail: row.detail || 'Review labor, punches, or schedule coverage.', tab: String(row.type || '').includes('request') || String(row.title || '').toLowerCase().includes('request') ? 'published' : 'financials', scheduleFocus: String(row.title || '').toLowerCase().includes('availability') ? 'availability' : 'time-off', severity: row.severity || 'medium' })),
-    ...(briefOpsIntel?.dataHealth || []).map(row => ({ area: row.area || 'System Administrator', title: row.title || 'Data health finding', detail: Array.isArray(row.issues) ? row.issues.join(', ') : (row.detail || 'Review the affected records.'), tab: String(row.area || '').toLowerCase().includes('inventory') ? 'inventory' : String(row.area || '').toLowerCase().includes('menu') ? 'menu-intelligence' : String(row.area || '').toLowerCase().includes('staff') ? 'team' : 'godmode', severity: row.severity || 'medium' })),
-    ...(briefOpsIntel?.backupChecks || []).map(row => ({ area: 'System Administrator', title: row.title || 'Backup check', detail: row.detail || row.recommendation || 'Review backup center.', tab: 'godmode', severity: row.status === 'attention' ? 'high' : 'low' }))
-  ].slice(0, 18);
   const recentTabs = (() => { try { return JSON.parse(localStorage.getItem(`recentTabs_${appUser.id}`) || '[]'); } catch { return []; } })();
   const setupItems = [
     { label: 'Restaurant profile', done: !!clientData?.name, tab: 'settings', allowed: appUser?.isAdmin || appUser?.permissions?.settings },
@@ -4119,72 +3786,6 @@ const TabToday = ({ currentDate, appUser, users, shifts, shiftSwaps, timeOffRequ
   const setupDone = setupItems.filter(i => i.done).length;
   const setupTotal = Math.max(1, setupItems.length);
   const openInventoryFocus = () => { sessionStorage.setItem('inventoryFocus', 'belowPar'); setActiveTab('inventory'); };
-  const openOpsFinding = (row = {}) => {
-    const tab = row.tab || 'godmode';
-    try {
-      if (tab === 'inventory' && row.focus) sessionStorage.setItem('inventoryFocus', row.focus === 'invoices' ? 'invoices' : row.focus === 'waste' ? 'waste' : row.focus);
-      if (tab === 'published' && row.scheduleFocus) sessionStorage.setItem('scheduleFocus', row.scheduleFocus);
-    } catch (e) {}
-    setActiveTab(tab);
-  };
-  const runBriefPythonOps = async () => {
-    if (!appUser?.restaurantId) return addToast?.('Missing Workspace', 'Choose a workspace before running Python Ops Scan.');
-    if (!canUsePythonIntelligence) return addToast?.('Smart Kitchen Required', 'Python Ops Scan starts with Smart Kitchen.');
-    setBriefOpsLoading(true);
-    setBriefOpsError('');
-    setBriefOpsCopied(false);
-    try {
-      const response = await secureFetch('/api/python-ops-intelligence', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          restaurantId: appUser.restaurantId,
-          currentDate: today,
-          daysAhead: 7,
-          inventoryItems,
-          vendors: briefVendors,
-          wasteLogs: briefWasteLogs,
-          invoices: briefInvoices,
-          events,
-          prepItems,
-          menuDependencies,
-          recipes,
-          users,
-          shifts,
-          timePunches,
-          timeOffRequests,
-          availabilityRecords: briefAvailabilityRecords,
-          reminders: briefReminders,
-          tasks,
-          maintenanceLogs,
-          auditLogs: briefAuditLogs,
-          backupStatus: {}
-        })
-      });
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok || payload?.ok === false) throw new Error(payload?.error || 'Python Ops Intelligence failed.');
-      setBriefOpsIntel(payload);
-      addToast?.('Python Ops Scan Ready', `${payload?.summary?.dataHealthCount || 0} data issues, ${payload?.summary?.laborWarningCount || 0} labor warnings, ${payload?.summary?.menuCostCount || 0} menu cost checks.`);
-    } catch (error) {
-      const message = error?.message || 'Python Ops Intelligence is unavailable.';
-      setBriefOpsError(message);
-      addToast?.('Python Ops Scan Unavailable', message);
-    } finally {
-      setBriefOpsLoading(false);
-    }
-  };
-  const copyBriefOpsReport = async () => {
-    const value = briefOpsIntel?.reports?.text || JSON.stringify(briefOpsIntel || {}, null, 2);
-    if (!briefOpsIntel) return addToast?.('No Report Ready', 'Run Python Ops Scan first.');
-    try {
-      await navigator.clipboard.writeText(value);
-      setBriefOpsCopied(true);
-      setTimeout(() => setBriefOpsCopied(false), 1600);
-      addToast?.('Ops Report Copied', 'Paste it into a document, email, or notes for review.');
-    } catch (err) {
-      addToast?.('Copy Failed', 'Your browser blocked clipboard access.');
-    }
-  };
   const problems = [
     canUseBasicInventory && lowStock.length ? { tone: 'red', title: 'Inventory below par', detail: `${lowStock.length} item${lowStock.length===1?'':'s'} need attention.`, tab: 'inventory', onClick: openInventoryFocus } : null,
     canUseCleaningRoutines && urgentMaintenance.length ? { tone: 'red', title: 'Maintenance urgent', detail: `${urgentMaintenance.length} high priority issue${urgentMaintenance.length===1?'':'s'} open.`, tab: 'maintenance' } : null,
@@ -4303,35 +3904,6 @@ const TabToday = ({ currentDate, appUser, users, shifts, shiftSwaps, timeOffRequ
             {problems.length ? problems.map((p, idx) => <MiniProblemCard key={idx} {...p} action="Open" onClick={() => p.onClick ? p.onClick() : setActiveTab(p.tab)} />) : <SmartEmptyState icon={<Check size={24}/>} title="Nothing urgent right now" desc="Everything looks clear right now." />}
           </div>}
         </div>
-
-        {canUseAiOrdering && (aiBriefTop.length || aiBrief.eventNeeds?.length) && <div className={`${T.card} brief-card p-4 border-[#D4A381]/30`}>
-          <div className="flex justify-between items-center gap-2"><h2 className="font-black text-white text-lg flex items-center gap-2"><Sparkles size={18} className="text-[#D4A381]"/> AI Ordering Attention</h2><button onClick={() => { sessionStorage.setItem('inventoryFocus', 'aiOrder'); setActiveTab('inventory'); }} className="text-[10px] font-black uppercase tracking-widest text-[#D4A381]">Open AI Order</button></div>
-          <div className="grid sm:grid-cols-3 gap-2 mt-3">
-            {aiBriefTop.length ? aiBriefTop.map(row => <MiniProblemCard key={row.itemId || row.itemName} title={row.itemName} detail={`Suggest ${row.suggestedQty}${row.reasons?.[0] ? ` • ${row.reasons[0]}` : ''}`} action="Review" onClick={() => { sessionStorage.setItem('inventoryFocus', 'aiOrder'); setActiveTab('inventory'); }} />) : <MiniProblemCard title="Order Draft" detail="No urgent order items. Review event supply checks." action="Open" onClick={() => { sessionStorage.setItem('inventoryFocus', 'aiOrder'); setActiveTab('inventory'); }} />}
-          </div>
-        </div>}
-
-        {canUsePythonIntelligence && <div className={`${T.card} brief-card p-4 border-purple-500/30`}>
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div>
-              <h2 className="font-black text-white text-lg flex items-center gap-2"><Sparkles size={18} className="text-purple-300"/> Python Ops Scan</h2>
-              <p className="text-xs text-slate-400 font-bold mt-1 leading-snug">Runs the deeper ops check from Manager Brief, then lets you tap each finding to jump to the place that fixes it.</p>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <button onClick={runBriefPythonOps} disabled={briefOpsLoading} className="rounded-xl bg-purple-900/20 border border-purple-500/40 text-purple-200 px-3 py-2 text-[10px] font-black uppercase tracking-widest hover:bg-purple-900/30 disabled:opacity-60">{briefOpsLoading ? 'Scanning…' : 'Run Ops Scan'}</button>
-              {briefOpsIntel && <button onClick={copyBriefOpsReport} className="rounded-xl bg-[#12161A] border border-[#2A353D] text-slate-200 px-3 py-2 text-[10px] font-black uppercase tracking-widest">{briefOpsCopied ? 'Copied' : 'Copy Report'}</button>}
-            </div>
-          </div>
-          {briefOpsError && <div className="mt-3 rounded-xl border border-amber-500/30 bg-amber-950/20 p-3 text-xs font-bold text-amber-100">Python Ops scan did not finish: {briefOpsError}</div>}
-          {briefOpsIntel && <div className="mt-3 space-y-3">
-            <div className="grid grid-cols-3 sm:grid-cols-7 gap-2">
-              {[['Prices', briefOpsSummary.priceWarningCount || 0], ['Pars', briefOpsSummary.parRecommendationCount || 0], ['Waste', briefOpsSummary.wasteInsightCount || 0], ['Menu', briefOpsSummary.menuCostCount || 0], ['Labor', briefOpsSummary.laborWarningCount || 0], ['Health', briefOpsSummary.dataHealthCount || 0], ['Backups', briefOpsSummary.backupCheckCount || 0]].map(([label, value]) => <div key={label} className="rounded-xl border border-purple-500/20 bg-[#12161A] p-2 text-center"><div className="font-black text-white">{value}</div><div className="text-[7px] uppercase tracking-widest text-slate-500 font-black">{label}</div></div>)}
-            </div>
-            <div className="space-y-2">
-              {briefOpsFindings.length ? briefOpsFindings.map((row, idx) => <button key={`${row.area}-${row.title}-${idx}`} onClick={() => openOpsFinding(row)} className="w-full text-left rounded-xl border border-purple-500/20 bg-[#12161A] hover:border-[#D4A381]/50 p-3 transition-colors"><div className="flex items-center justify-between gap-2"><div className="text-[9px] uppercase tracking-widest font-black text-purple-200">{row.area}</div><div className="text-[9px] uppercase tracking-widest font-black text-[#D4A381]">Open Fix</div></div><div className="font-black text-white text-sm mt-1">{row.title}</div><div className="text-xs text-slate-400 font-bold mt-1 leading-snug">{row.detail}</div></button>) : <SmartEmptyState icon={<Check size={22}/>} title="No major ops findings" desc="The scan did not find a priority problem in this window." />}
-            </div>
-          </div>}
-        </div>}
 
         <div className={`${T.card} brief-card p-4`}>
           <h2 className="font-black text-white text-lg mb-3">Role Home</h2>

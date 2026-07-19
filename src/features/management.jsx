@@ -1195,7 +1195,7 @@ const handleEnableNotifications = async () => {
     try {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 12000);
-      const res = await secureFetch(`/api/geocode-address?q=${encodeURIComponent(address)}&restaurantId=${encodeURIComponent(appUser?.restaurantId || '')}`, { signal: controller.signal });
+      const res = await fetch(`/api/geocode-address?q=${encodeURIComponent(address)}`, { signal: controller.signal });
       clearTimeout(timeoutId);
       const data = await res.json().catch(() => ({}));
       if (res.ok && data?.ok && Number.isFinite(parseFloat(data.lat)) && Number.isFinite(parseFloat(data.lon))) {
@@ -3939,12 +3939,6 @@ firebase deploy --only functions --project YOUR_PRODUCTION_PROJECT_ID
   const [allUsers, setAllUsers] = useState([]);
   const [crashLogs, setCrashLogs] = useState([]);
   const [auditLogs, setAuditLogs] = useState([]);
-  const [automationReports, setAutomationReports] = useState([]);
-  const [automationRuns, setAutomationRuns] = useState([]);
-  const [automationQueue, setAutomationQueue] = useState([]);
-  const [automationConfigs, setAutomationConfigs] = useState([]);
-  const [automationLoading, setAutomationLoading] = useState(false);
-  const [automationTargetId, setAutomationTargetId] = useState('');
   const [backupStatus, setBackupStatus] = useState(null);
   const [operationsReview, setOperationsReview] = useState(null);
   const [adminDataErrors, setAdminDataErrors] = useState({});
@@ -4380,22 +4374,6 @@ const unsubAudit = onSnapshot(collection(db, 'auditLogs'), snap => {
        setAuditLogs(rawLogs.sort((a,b) => new Date(b.timestamp) - new Date(a.timestamp)).slice(0, 100));
        setTotalInstalls(rawLogs.filter(log => log.action === 'APP_INSTALLED').length);
     }, err => noteLoadError('auditLogs', err));
-    const unsubAutomationReports = onSnapshot(collection(db, 'opsIntelligenceReports'), snap => {
-       clearLoadError('opsIntelligenceReports');
-       setAutomationReports(snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a,b) => new Date(b.createdAt || b.generatedAt || 0) - new Date(a.createdAt || a.generatedAt || 0)).slice(0, 80));
-    }, err => { setAutomationReports([]); noteLoadError('opsIntelligenceReports', err); });
-    const unsubAutomationRuns = onSnapshot(collection(db, 'pythonAutomationRuns'), snap => {
-       clearLoadError('pythonAutomationRuns');
-       setAutomationRuns(snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a,b) => new Date(b.startedAt || 0) - new Date(a.startedAt || 0)).slice(0, 80));
-    }, err => { setAutomationRuns([]); noteLoadError('pythonAutomationRuns', err); });
-    const unsubAutomationQueue = onSnapshot(collection(db, 'aiRecommendationQueue'), snap => {
-       clearLoadError('aiRecommendationQueue');
-       setAutomationQueue(snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a,b) => new Date(b.updatedAt || b.createdAt || 0) - new Date(a.updatedAt || a.createdAt || 0)).slice(0, 120));
-    }, err => { setAutomationQueue([]); noteLoadError('aiRecommendationQueue', err); });
-    const unsubAutomationConfigs = onSnapshot(collection(db, 'pythonAutomationConfigs'), snap => {
-       clearLoadError('pythonAutomationConfigs');
-       setAutomationConfigs(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-    }, err => { setAutomationConfigs([]); noteLoadError('pythonAutomationConfigs', err); });
     const unsubPricing = onSnapshot(doc(db, 'system', 'pricing'), docSnap => {
        clearLoadError('pricing');
        if (docSnap.exists()) setTierPrices(docSnap.data());
@@ -4416,7 +4394,7 @@ const unsubAudit = onSnapshot(collection(db, 'auditLogs'), snap => {
        clearLoadError('operationsReview');
        setOperationsReview(docSnap.exists() ? { id: docSnap.id, ...docSnap.data() } : null);
     }, err => { setOperationsReview(null); noteLoadError('operationsReview', err); });
-    return () => { unsubRests(); unsubAdmins(); unsubUsers(); unsubCrashes(); unsubAudit(); unsubAutomationReports(); unsubAutomationRuns(); unsubAutomationQueue(); unsubAutomationConfigs(); unsubPricing(); unsubBackup(); unsubRestoreDrill(); unsubDeletionRequests(); unsubOpsReview(); };
+    return () => { unsubRests(); unsubAdmins(); unsubUsers(); unsubCrashes(); unsubAudit(); unsubPricing(); unsubBackup(); unsubRestoreDrill(); unsubDeletionRequests(); unsubOpsReview(); };
   }, []);
 
 
@@ -4911,7 +4889,10 @@ Type DELETE to continue.`) || '').trim().toUpperCase();
           addToast('Bulk Delete Complete', `${profileDeleted} profile(s) removed. ${authDeleted} auth login(s) removed.`);
           setBulkDeleteEmails('');
           setSelectedBulkDeleteUserIds([]);
-          await logAudit(appUser, 'BULK_DELETE_USERS', 'users', `Bulk deleted ${profileDeleted} profile(s). Selected IDs: ${targets.map(u => u.id).join(', ')}. Emails: ${emails.join(', ')}.`);
+          await addDoc(collection(db, 'auditLogs'), {
+            userId: appUser?.id || 'system', userName: appUser?.name || 'System Admin', action: 'BULK_DELETE_USERS', target: 'users',
+            details: `Bulk deleted ${profileDeleted} profile(s). Selected IDs: ${targets.map(u => u.id).join(', ')}. Emails: ${emails.join(', ')}.`, timestamp: new Date().toISOString(), restaurantId: appUser?.restaurantId || 'system', sessionId: currentAdminSessionId, isGhost: appUser?.isGhost || false
+          }).catch(()=>{});
           return;
         }
         throw new Error(result.error || 'Bulk delete API unavailable.');
@@ -4939,7 +4920,11 @@ Type DELETE to continue.`) || '').trim().toUpperCase();
         }
       }
 
-      await logAudit(appUser, 'BULK_DELETE_USERS', 'users', `Bulk deleted ${profileDeleted} selected profile(s). Auth deleted: ${authDeleted}. Selected IDs: ${targets.map(u => u.id).join(', ')}. Errors: ${errors.slice(0, 5).join(' | ') || 'none'}`);
+      await addDoc(collection(db, 'auditLogs'), {
+        userId: appUser?.id || 'system', userName: appUser?.name || 'System Admin', action: 'BULK_DELETE_USERS', target: 'users',
+        details: `Bulk deleted ${profileDeleted} selected profile(s). Auth deleted: ${authDeleted}. Selected IDs: ${targets.map(u => u.id).join(', ')}. Errors: ${errors.slice(0, 5).join(' | ') || 'none'}`,
+        timestamp: new Date().toISOString(), restaurantId: appUser?.restaurantId || 'system', sessionId: currentAdminSessionId, isGhost: appUser?.isGhost || false
+      }).catch(()=>{});
 
       addToast(errors.length ? 'Partial Delete' : 'Bulk Delete Complete', `${profileDeleted} profile(s) removed. ${authDeleted} auth login(s) removed.`);
       if (!errors.length) { setBulkDeleteEmails(''); setSelectedBulkDeleteUserIds([]); }
@@ -5022,7 +5007,16 @@ Type DELETE to continue.`) || '').trim().toUpperCase();
       if ((supportUserForm.email || '').trim()) updates.email = supportUserForm.email.toLowerCase().trim();
 
       await updateDoc(doc(db, 'users', editingGlobalUser.id), updates);
-      await logAudit({ ...appUser, restaurantId: updates.restaurantId || appUser?.restaurantId || 'system' }, 'SUPPORT_USER_EDIT', `users/${editingGlobalUser.id}`, `Support edited ${updates.email || editingGlobalUser.email || editingGlobalUser.id}; workspace=${updates.restaurantName}; role=${updates.role}; admin=${updates.isAdmin}; active=${updates.isActive}; note=${supportUserForm.supportNote || 'none'}`);
+      await addDoc(collection(db, 'auditLogs'), {
+        userId: appUser?.id || 'system',
+        userName: appUser?.name || 'System Administrator',
+        action: 'SUPPORT_USER_EDIT',
+        target: `users/${editingGlobalUser.id}`,
+        details: `Support edited ${updates.email || editingGlobalUser.email || editingGlobalUser.id}; workspace=${updates.restaurantName}; role=${updates.role}; admin=${updates.isAdmin}; active=${updates.isActive}; note=${supportUserForm.supportNote || 'none'}`,
+        timestamp: new Date().toISOString(),
+        restaurantId: updates.restaurantId || appUser?.restaurantId || 'system',
+        isGhost: appUser?.isGhost || false
+      }).catch(()=>{});
       addToast('User Updated', `${updates.name} now belongs to ${updates.restaurantName}.`);
       setEditingGlobalUser(null);
       setSupportUserForm({});
@@ -5569,7 +5563,7 @@ const activeTrials = restaurants.filter(r => resolveSubscription(r, appUser).sta
   }, {})).filter(([, group]) => group.length > 1);
   const usersMissingPush = allUsers.filter(u => !u.fcmToken);
   const permissionDeniedLogs = crashLogs.filter(log => `${log.message || ''} ${log.stack || ''}`.toLowerCase().includes('permission-denied'));
-  const endpointList = ['admin-access', 'master-admin-repair', 'whoami', 'security-diagnostics', 'firestore-backup', 'list-backups', 'weekly-maintenance', 'dispatch-reminders', 'deploy-tenant', 'delete-user', 'delete-users-bulk', 'brand-logo', 'storage-doctor', 'schema-doctor', 'backup-preview', 'safe-write', 'scan-invoice', 'scan-menu', 'ai-usage', 'python-order-intelligence', 'python-ops-intelligence', 'python-automation-run', 'send-push', 'send-schedule-alert', 'presence-heartbeat', 'presence-snapshot', 'push-token-repair', 'staff-member', 'voice-command', 'alerts', 'health-checks', 'account-deletion-request', 'restore-drill', 'mfa-recovery-code'];
+  const endpointList = ['admin-access', 'master-admin-repair', 'whoami', 'security-diagnostics', 'firestore-backup', 'list-backups', 'weekly-maintenance', 'dispatch-reminders', 'deploy-tenant', 'delete-user', 'delete-users-bulk', 'brand-logo', 'storage-doctor', 'schema-doctor', 'backup-preview', 'safe-write', 'scan-invoice', 'scan-menu', 'ai-usage', 'send-push', 'send-schedule-alert', 'presence-heartbeat', 'presence-snapshot', 'push-token-repair', 'staff-member', 'voice-command', 'alerts', 'health-checks', 'account-deletion-request', 'restore-drill', 'mfa-recovery-code'];
 
   const adminAccessSourceLabel = appUser?.serverAdminCheck?.serverMasterAdminMatched ? 'Server env' :
     appUser?.serverAdminCheck?.customClaimSuperAdmin ? 'Custom claim' :
@@ -5801,7 +5795,16 @@ const activeTrials = restaurants.filter(r => resolveSubscription(r, appUser).sta
     try {
       const payload = buildLegalRetentionSetupPayload();
       await setDoc(doc(db, 'system', 'dataRetention'), payload, { merge: true });
-      await logAudit({ ...appUser, restaurantId: 'platform' }, 'DATA_RETENTION_CONFIG_INITIALIZED', 'system/dataRetention', 'Legal data retention configuration initialized from System Administrator safe setup button.');
+      await addDoc(collection(db, 'auditLogs'), {
+        restaurantId: 'platform',
+        action: 'DATA_RETENTION_CONFIG_INITIALIZED',
+        target: 'system/dataRetention',
+        details: 'Legal data retention configuration initialized from System Administrator safe setup button.',
+        userId: appUser?.id || 'system-admin',
+        userName: appUser?.email || appUser?.name || 'System Administrator',
+        timestamp: payload.updatedAt,
+        source: 'system-admin'
+      }).catch(() => {});
       setRetentionConfig(payload);
       addToast('Retention Setup Saved', 'Legal retention policy marker saved. Next: deploy Firebase Functions in production.');
     } catch (err) {
@@ -5834,7 +5837,7 @@ const activeTrials = restaurants.filter(r => resolveSubscription(r, appUser).sta
     setIsSavingRoleMatrix(true);
     try {
       await setDoc(doc(db, 'system', 'rolePermissionMatrix'), { matrix: rolePermissionMatrix, updatedAt: new Date().toISOString(), updatedBy: appUser?.email || appUser?.name || 'System Admin' }, { merge: true });
-      await logAudit({ ...appUser, restaurantId: 'platform' }, 'ROLE_PERMISSION_MATRIX_UPDATED', 'system/rolePermissionMatrix', 'Platform role permission guide was updated.');
+      await addDoc(collection(db, 'auditLogs'), { restaurantId: 'platform', action: 'ROLE_PERMISSION_MATRIX_UPDATED', target: 'system/rolePermissionMatrix', details: 'Platform role permission guide was updated.', userId: appUser?.id || 'system-admin', userName: appUser?.email || appUser?.name || 'System Admin', timestamp: new Date().toISOString(), sessionId: currentAdminSessionId }).catch(() => {});
       addToast('Role Matrix Saved', 'Permission guide updated. Apply specific staff permissions from Staff Roster when needed.');
     } catch (err) { addToast('Save Error', err.message || 'Could not save role matrix.'); }
     setIsSavingRoleMatrix(false);
@@ -6727,7 +6730,17 @@ ${body}`;
     };
     try {
       await setDoc(doc(db, 'system', 'operationsReview'), payload, { merge: true });
-      await logAudit({ ...appUser, restaurantId: 'platform' }, 'SYSTEM_OPERATIONS_REVIEW_STAMP', 'system/operationsReview', `Operations review stamped. Status: ${platformStatus}. Action items: ${adminRiskQueue.length}.`);
+      await addDoc(collection(db, 'auditLogs'), {
+        restaurantId: 'platform',
+        action: 'SYSTEM_OPERATIONS_REVIEW_STAMP',
+        target: 'system/operationsReview',
+        details: `Operations review stamped. Status: ${platformStatus}. Action items: ${adminRiskQueue.length}.`,
+        userId: appUser?.id || 'system-admin',
+        userName: appUser?.email || appUser?.name || 'System Admin',
+        timestamp: stamp,
+        sessionId: currentAdminSessionId,
+        isGhost: appUser?.isGhost || false
+      }).catch(() => {});
       addToast('Review Stamp Created', 'System operations review stamp updated. View it under Forensics & Backups.');
     } catch (err) {
       addToast('Ops Review Error', err.message || 'Could not write operations review.');
@@ -7061,7 +7074,17 @@ Type RESTORE to continue.`);
         downloadTextFile(backupName, JSON.stringify(result.backup, null, 2), 'application/json;charset=utf-8;');
       }
 
-      await logAudit({ ...appUser, restaurantId: LEGACY_RESTORE_RESTAURANT_ID }, 'EMERGENCY_REINJECT_JULY_SCHEDULE_BUTTON', 'shifts', `System Administrator button overwrote the July 2026 Schedule Builder. Deleted ${result.deletedCount || 0} existing/restored shift(s), imported ${result.importedCount || 0} unpublished draft shift(s). Run ${result.runId || 'unknown'}.`);
+      await addDoc(collection(db, 'auditLogs'), {
+        restaurantId: LEGACY_RESTORE_RESTAURANT_ID,
+        action: 'EMERGENCY_REINJECT_JULY_SCHEDULE_BUTTON',
+        target: 'shifts',
+        details: `System Administrator button overwrote the July 2026 Schedule Builder. Deleted ${result.deletedCount || 0} existing/restored shift(s), imported ${result.importedCount || 0} unpublished draft shift(s). Run ${result.runId || 'unknown'}.`,
+        userId: appUser?.id || 'system-admin',
+        userName: appUser?.email || appUser?.name || 'System Admin',
+        timestamp: new Date().toISOString(),
+        sessionId: currentAdminSessionId,
+        isGhost: appUser?.isGhost || false
+      }).catch(() => {});
 
       addToast('Schedule Builder Loaded', `${result.importedCount || 0} July draft shift(s) loaded for review and republish. Reloading to clear schedule cache.`);
       window.alert(`Schedule Builder overwrite complete.\n\nRestaurant: ${result.restaurantId || LEGACY_RESTORE_RESTAURANT_ID}\nDeleted old/restored July shifts: ${result.deletedCount || 0}\nLoaded draft July shifts: ${result.importedCount || 0}\nRun ID: ${result.runId || 'n/a'}\n\nA backup JSON of replaced July shifts was downloaded to this computer.\n\nThe app will reload once. Then open Time Clock & Schedule → Schedule Builder, go to July 2026, review the draft, and click Publish Schedule.`);
@@ -7236,79 +7259,6 @@ Type RESTORE to continue.`);
     if (subTab === 'ai-usage') loadAiUsageAdmin();
   }, [subTab, aiUsageMonth]);
 
-
-  const pythonAutomationJobs = [
-    { key:'nightlyOpsScan', label:'Nightly Ops Scan', cadence:'Nightly', mode:'Automatic report', description:'Runs ordering, invoice, waste, labor, backup, and data-health analysis.' },
-    { key:'morningManagerBrief', label:'Morning Manager Brief', cadence:'Daily morning', mode:'Automatic report', description:'Turns scan findings into a manager-ready summary.' },
-    { key:'backupIntegrityCheck', label:'Backup Integrity Check', cadence:'After backup / daily', mode:'Critical alerts allowed', description:'Flags stale, missing, or suspicious backup status.' },
-    { key:'dataHealthScanner', label:'Data Health Scanner', cadence:'Nightly', mode:'Suggestions only', description:'Finds broken IDs, missing setup, orphaned links, and data that weakens AI accuracy.' },
-    { key:'invoicePriceWatcher', label:'Invoice Price Watcher', cadence:'Invoice + nightly', mode:'Critical alerts allowed', description:'Finds price jumps, duplicate invoice fingerprints, and pack-size changes.' },
-    { key:'eventSupplyRiskCheck', label:'Event Supply Risk Check', cadence:'Daily', mode:'Suggestions only', description:'Flags upcoming events that may need ordering or prep planning.' },
-    { key:'wastePatternScanner', label:'Waste Pattern Scanner', cadence:'Weekly / nightly signal', mode:'Suggestions only', description:'Finds repeat waste/burn patterns before changing pars or prep.' },
-    { key:'parRecommendationEngine', label:'Par Recommendation Engine', cadence:'Weekly / nightly signal', mode:'Approval required', description:'Suggests par changes but never applies them automatically.' },
-    { key:'recipeCostingRefresh', label:'Recipe/Menu Costing Refresh', cadence:'Weekly / invoice signal', mode:'Approval required', description:'Estimates menu cost movement from invoice and recipe data.' },
-    { key:'releaseDataQaScanner', label:'Release/Data QA Scanner', cadence:'On demand + nightly', mode:'Suggestions only', description:'Looks for obvious app-data issues before releases or risky changes.' },
-    { key:'criticalPushAlerts', label:'Critical Push Alerts', cadence:'When serious findings exist', mode:'Alert only', description:'Pushes owners/super admins for backup failures, huge price jumps, and corruption risk.' },
-    { key:'approvalQueue', label:'Approval Queue', cadence:'Every run', mode:'Human approval required', description:'Creates review items for repairs, par changes, costing, labor, and invoice findings.' }
-  ];
-  const pythonSafetyPolicy = {
-    can: ['Analyze data', 'Create reports', 'Create suggestions', 'Send critical alerts', 'Create drafts for review'],
-    approval: ['Change pars', 'Save order drafts', 'Repair broken records', 'Update official recipe costs', 'Archive or restore records'],
-    never: ['Send vendor orders', 'Spend money', 'Edit/publish schedules', 'Approve payroll', 'Change wages/permissions/billing/security', 'Delete records permanently']
-  };
-  const selectedAutomationConfig = automationConfigs.find(c => c.id === automationTargetId || c.restaurantId === automationTargetId) || null;
-  const openAutomationItems = automationQueue.filter(item => String(item.status || 'open').toLowerCase() === 'open');
-  const latestAutomationAttention = automationReports.filter(report => ['critical', 'attention', 'failed'].includes(String(report.status || '').toLowerCase())).slice(0, 12);
-
-  const handleRunPythonAutomation = async () => {
-    if (!window.confirm(automationTargetId ? 'Run Python Automation Center for the selected workspace now?' : 'Run Python Automation Center for active workspaces now?')) return;
-    setAutomationLoading(true);
-    try {
-      const response = await secureFetch('/api/python-automation-run', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ mode: 'manual', restaurantId: automationTargetId || '', maxRestaurants: 8 })
-      });
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok || payload?.ok === false) throw new Error(payload?.error || 'Python automation did not finish.');
-      const completed = (payload.results || []).filter(row => row.ok).length;
-      const skipped = (payload.results || []).filter(row => row.skipped).length;
-      addToast('Python Automation Complete', `${completed} workspace(s) scanned${skipped ? `, ${skipped} skipped` : ''}.`);
-    } catch (error) {
-      addToast('Python Automation Failed', error?.message || 'Could not run automation.');
-    } finally {
-      setAutomationLoading(false);
-    }
-  };
-
-  const handleTogglePythonAutomationPause = async () => {
-    if (!automationTargetId) return addToast('Choose Workspace', 'Pick a workspace before pausing or resuming Python automation.');
-    const rest = restaurants.find(r => r.id === automationTargetId);
-    const nextPaused = !(selectedAutomationConfig?.paused === true);
-    await setDoc(doc(db, 'pythonAutomationConfigs', automationTargetId), {
-      restaurantId: automationTargetId,
-      workspaceId: automationTargetId,
-      restaurantName: rest?.name || selectedAutomationConfig?.restaurantName || automationTargetId,
-      paused: nextPaused,
-      jobs: selectedAutomationConfig?.jobs || {},
-      updatedAt: new Date().toISOString(),
-      updatedBy: appUser.id || appUser.email || 'system-admin',
-      updatedByName: appUser.name || appUser.email || 'System Administrator'
-    }, { merge: true });
-    addToast(nextPaused ? 'Automation Paused' : 'Automation Resumed', rest?.name || automationTargetId);
-  };
-
-  const updateAutomationQueueStatus = async (item, status) => {
-    await updateDoc(doc(db, 'aiRecommendationQueue', item.id), {
-      status,
-      reviewedAt: new Date().toISOString(),
-      reviewedBy: appUser.id || appUser.email || '',
-      reviewedByName: appUser.name || appUser.email || 'System Administrator',
-      updatedAt: new Date().toISOString()
-    });
-    addToast('Recommendation Updated', `${item.title || 'Item'} marked ${status}.`);
-  };
-
   const adminTabGroups = [
     {
       title:'Start Here',
@@ -7359,7 +7309,6 @@ Type RESTORE to continue.`);
       tabs:[
         {id:'support', label:'Support Diagnostics', short:'Support', intent:'Review crashes, API clues, auth/runtime state, rule blocks, and support diagnostics.'},
         {id:'ai-usage', label:'AI Usage / Scan Limits', short:'AI Usage', intent:'Review monthly invoice and menu AI pages, failures, blocked scans, bypass logs, and workspace limits.'},
-        {id:'automation', label:'Python Automation Center', short:'Python', intent:'Control scheduled Python jobs, critical alerts, approval queue suggestions, and automation safety rails.'},
         {id:'push', label:'Push Control Center', short:'Push', intent:'Audit push tokens, stale devices, opt-in status, and test delivery.'},
         {id:'live', label:'Manual Presence Snapshot', short:'Presence', intent:'Take an on-demand low-cost live user/workspace snapshot.'}
       ]
@@ -7395,7 +7344,6 @@ Type RESTORE to continue.`);
     { label:'Find or Repair a User', tab:'users', keywords:'people employee profile login routing reset password' },
     { label:'Test Push Notifications', tab:'push', keywords:'push token fcm alert device' },
     { label:'Review AI Scan Page Usage', tab:'ai-usage', keywords:'invoice menu ai pages limits scans failures blocked bypass model provider' },
-    { label:'Open Python Automation Center', tab:'automation', keywords:'python automation nightly ops scan manager brief critical alerts approval queue recommendations' },
     { label:'Review App Check and MFA', tab:'security', keywords:'security app check mfa rules environment' },
     { label:'Open Complete App Training Manual', tab:'manual', keywords:'non ai training whole app tab guide print pdf instructions manual' },
     { label:'Ask Gemini Administrator Manual', tab:'manual', keywords:'gemini help instructions troubleshooting repair manual' },
@@ -7418,7 +7366,7 @@ Type RESTORE to continue.`);
   ].filter(result => result.score > 0).sort((a,b) => b.score - a.score || a.label.localeCompare(b.label)).slice(0, 12) : [];
   const activeAdminTab = adminTabs.find(tab => tab.id === subTab) || adminTabs[0];
   const activeAdminHelpText = `${activeAdminTab.label} lives under ${activeAdminTab.group}. ${activeAdminTab.intent || ''} ${adminTabGroups.find(group => group.title === activeAdminTab.group)?.helper || ''}`.trim();
-  const mobilePrimaryTabs = ['overview', 'automation', 'retention', 'forensics', 'health', 'security', 'tenants', 'users', 'push', 'manual'];
+  const mobilePrimaryTabs = ['overview', 'retention', 'forensics', 'health', 'security', 'tenants', 'users', 'push', 'manual'];
   const mobileQuickTabs = mobilePrimaryTabs.map(id => adminTabs.find(tab => tab.id === id)).filter(Boolean);
 
   const selectAdminTab = (target = 'overview', scroll = true) => {
@@ -9262,11 +9210,10 @@ another@email.com"></textarea>
                     <span className="text-xs font-black text-orange-400 bg-orange-900/20 px-2 py-0.5 rounded border border-orange-900/50 break-all leading-tight">{log.message}</span>
                     <span className={`text-[9px] font-bold ${T.muted} whitespace-nowrap ml-2`}>{formatClockDateTime(log.time)}</span>
                   </div>
-                  {(log.restaurantId || log.user || log.supportPushRequested) && (
+                  {(log.restaurantId || log.user) && (
                     <div className="text-[9px] mt-1 flex flex-wrap gap-1.5">
                       {log.restaurantId && <span className="bg-[#0B0E11] border border-[#2A353D] px-2 py-0.5 rounded text-slate-400 font-bold">restaurantId: {log.restaurantId}</span>}
                       {log.user && <span className="bg-[#0B0E11] border border-[#2A353D] px-2 py-0.5 rounded text-slate-400 font-bold">user: {log.user}</span>}
-                      {log.supportPushRequested && <span className={`bg-[#0B0E11] border px-2 py-0.5 rounded font-bold ${Number(log.supportPushSentCount || 0) > 0 ? 'border-emerald-900/60 text-emerald-300' : 'border-orange-900/60 text-orange-300'}`}>super admin push: {Number(log.supportPushSentCount || 0)} sent{log.supportPushMissingTokens ? ' • no eligible tokens' : ''}</span>}
                     </div>
                   )}
                   {(log.screenSize || log.userAgent) && (
@@ -9541,109 +9488,6 @@ another@email.com"></textarea>
                   </div>
                 </div>
               ))}
-            </div>
-          </div>
-        </div>
-      )}
-
-
-      {/* --- TAB: PYTHON AUTOMATION CENTER --- */}
-      {subTab === 'automation' && (
-        <div className="space-y-6 animate-[slideIn_0.2s_ease-out]">
-          <div className={`${T.card} p-5 border-purple-500/30 bg-purple-950/10`}>
-            <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-4">
-              <div>
-                <div className="text-[10px] font-black uppercase tracking-[0.22em] text-purple-300 flex items-center gap-2"><Sparkles size={15}/> Python Automation Center</div>
-                <h2 className="text-xl font-black text-white mt-1">Run everything Python should run, and nothing it should not.</h2>
-                <p className="text-xs text-slate-400 font-bold leading-6 mt-2 max-w-3xl">Python is fenced into analysis, reports, suggestions, drafts, and critical alerts. Vendor orders, money, schedules, payroll, permissions, deletion, and official data changes stay human-controlled.</p>
-              </div>
-              <div className="w-full lg:w-[360px] space-y-2">
-                <select value={automationTargetId} onChange={e => setAutomationTargetId(e.target.value)} className={T.input}>
-                  <option value="">All active workspaces, limited batch</option>
-                  {restaurants.map(r => <option key={r.id} value={r.id}>{r.name || r.id}</option>)}
-                </select>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                  <button type="button" onClick={handleRunPythonAutomation} disabled={automationLoading} className="bg-purple-900/30 border border-purple-500/50 text-purple-100 rounded-xl px-4 py-3 text-xs font-black uppercase tracking-widest disabled:opacity-50">{automationLoading ? 'Running…' : 'Run Now'}</button>
-                  <button type="button" onClick={handleTogglePythonAutomationPause} disabled={!automationTargetId} className="bg-[#12161A] border border-[#2A353D] text-[#D4A381] rounded-xl px-4 py-3 text-xs font-black uppercase tracking-widest disabled:opacity-40">{selectedAutomationConfig?.paused ? 'Resume' : 'Pause'}</button>
-                </div>
-                <div className="text-[10px] text-slate-500 font-bold leading-4">Scheduled run: Vercel Cron hits <span className="text-purple-200 font-black">/api/python-automation-run</span>. Manual runs use your Super Admin login.</div>
-              </div>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-            <div className={`${T.card} p-4 border-emerald-500/20`}>
-              <h3 className="font-black text-emerald-200 mb-3">Python Can</h3>
-              <div className="space-y-2">{pythonSafetyPolicy.can.map(item => <div key={item} className="rounded-xl bg-emerald-950/10 border border-emerald-500/20 p-2 text-xs font-bold text-emerald-100">✓ {item}</div>)}</div>
-            </div>
-            <div className={`${T.card} p-4 border-amber-500/20`}>
-              <h3 className="font-black text-amber-200 mb-3">Approval Required</h3>
-              <div className="space-y-2">{pythonSafetyPolicy.approval.map(item => <div key={item} className="rounded-xl bg-amber-950/10 border border-amber-500/20 p-2 text-xs font-bold text-amber-100">Review: {item}</div>)}</div>
-            </div>
-            <div className={`${T.card} p-4 border-red-500/20`}>
-              <h3 className="font-black text-red-200 mb-3">Python Never Does Alone</h3>
-              <div className="space-y-2">{pythonSafetyPolicy.never.map(item => <div key={item} className="rounded-xl bg-red-950/10 border border-red-500/20 p-2 text-xs font-bold text-red-100">✕ {item}</div>)}</div>
-            </div>
-          </div>
-
-          <div className={`${T.card} p-5`}>
-            <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-3 mb-4">
-              <div>
-                <h3 className="font-black text-white text-lg">Scheduled Python Jobs</h3>
-                <p className="text-xs text-slate-500 font-bold mt-1">Jobs are report/suggestion/alert only. The approval queue is where real changes wait for people.</p>
-              </div>
-              <div className="text-right text-[10px] uppercase tracking-widest font-black text-slate-500">{automationConfigs.length} configured workspace(s)</div>
-            </div>
-            <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-3">
-              {pythonAutomationJobs.map(job => (
-                <div key={job.key} className="rounded-2xl border border-[#2A353D] bg-[#12161A] p-4">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0"><div className="font-black text-white">{job.label}</div><div className="text-[10px] uppercase tracking-widest font-black text-purple-300 mt-1">{job.cadence}</div></div>
-                    <span className="text-[8px] rounded-full border border-[#2A353D] px-2 py-1 text-slate-400 font-black uppercase">{job.mode}</span>
-                  </div>
-                  <p className="text-xs text-slate-400 font-bold leading-5 mt-3">{job.description}</p>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
-            <div className={`${T.card} p-5 xl:col-span-2`}>
-              <h3 className="font-black text-white text-lg mb-3">Latest Python Reports</h3>
-              <div className="space-y-2 max-h-[520px] overflow-y-auto custom-scrollbar">
-                {automationReports.length ? automationReports.slice(0, 18).map(report => (
-                  <div key={report.id} className={`rounded-2xl border p-3 ${report.status === 'critical' ? 'border-red-500/40 bg-red-950/10' : report.status === 'attention' ? 'border-amber-500/40 bg-amber-950/10' : report.status === 'failed' ? 'border-red-500/40 bg-red-950/10' : 'border-[#2A353D] bg-[#12161A]'}`}>
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2"><div><div className="font-black text-white">{report.restaurantName || report.restaurantId}</div><div className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">{formatClockDateTime(report.createdAt || report.generatedAt)} • {report.status || 'ok'}</div></div><div className="text-[10px] text-purple-200 font-black uppercase">{report.criticalFindings?.length || 0} alert(s)</div></div>
-                    <div className="grid grid-cols-3 sm:grid-cols-7 gap-2 mt-3">
-                      {['priceWarningCount','parRecommendationCount','wasteInsightCount','menuCostCount','laborWarningCount','dataHealthCount','backupCheckCount'].map(key => <div key={key} className="rounded-xl border border-[#2A353D] bg-[#0B0E11] p-2 text-center"><div className="font-black text-white">{report.summary?.[key] || 0}</div><div className="text-[7px] uppercase tracking-widest text-slate-500 font-black">{key.replace('Count','').replace(/([A-Z])/g,' $1')}</div></div>)}
-                    </div>
-                    {(report.managerBrief || []).slice(0, 3).map((line, idx) => <div key={idx} className="mt-2 text-xs font-bold text-slate-300 leading-5">• {line}</div>)}
-                  </div>
-                )) : <p className="text-xs text-slate-500 font-bold">No Python automation reports yet. Run it once or wait for the nightly cron.</p>}
-              </div>
-            </div>
-
-            <div className={`${T.card} p-5`}>
-              <h3 className="font-black text-white text-lg mb-3">Recent Runs</h3>
-              <div className="space-y-2 max-h-[520px] overflow-y-auto custom-scrollbar">
-                {automationRuns.length ? automationRuns.slice(0, 20).map(run => <div key={run.id} className="rounded-xl border border-[#2A353D] bg-[#12161A] p-3"><div className="flex justify-between gap-2"><span className="font-black text-white text-sm">{run.restaurantName || run.restaurantId || 'Workspace'}</span><span className={`text-[9px] font-black uppercase ${run.status === 'failed' ? 'text-red-300' : run.status === 'running' ? 'text-amber-300' : 'text-emerald-300'}`}>{run.status}</span></div><div className="text-[10px] text-slate-500 font-bold mt-1">{formatClockDateTime(run.startedAt)}</div>{run.error && <div className="text-[11px] text-red-200 font-bold mt-2">{run.error}</div>}</div>) : <p className="text-xs text-slate-500 font-bold">No runs recorded.</p>}
-              </div>
-            </div>
-          </div>
-
-          <div className={`${T.card} p-5`}>
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4"><div><h3 className="font-black text-white text-lg">AI Recommendation Approval Queue</h3><p className="text-xs text-slate-500 font-bold mt-1">Python can put work here. It cannot apply the change by itself.</p></div><div className="text-[10px] font-black uppercase tracking-widest text-slate-500">{openAutomationItems.length} open</div></div>
-            <div className="space-y-2 max-h-[560px] overflow-y-auto custom-scrollbar">
-              {automationQueue.length ? automationQueue.slice(0, 50).map(item => (
-                <div key={item.id} className="rounded-2xl border border-[#2A353D] bg-[#12161A] p-3 flex flex-col lg:flex-row lg:items-center justify-between gap-3">
-                  <div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><span className="font-black text-white">{item.title}</span><span className="text-[8px] uppercase tracking-widest font-black rounded-full border border-purple-500/30 bg-purple-950/20 text-purple-200 px-2 py-0.5">{item.type}</span><span className="text-[8px] uppercase tracking-widest font-black rounded-full border border-[#2A353D] text-slate-400 px-2 py-0.5">{item.status || 'open'}</span></div><div className="text-[11px] text-slate-400 font-bold mt-1">{item.restaurantName || item.restaurantId}</div><div className="text-xs text-slate-300 font-bold leading-5 mt-1">{item.detail}</div></div>
-                  <div className="flex flex-wrap gap-2 shrink-0">
-                    <button type="button" onClick={() => updateAutomationQueueStatus(item, 'reviewed')} className="px-3 py-2 rounded-lg border border-emerald-500/40 bg-emerald-950/10 text-emerald-200 text-[10px] font-black uppercase">Reviewed</button>
-                    <button type="button" onClick={() => updateAutomationQueueStatus(item, 'snoozed')} className="px-3 py-2 rounded-lg border border-amber-500/40 bg-amber-950/10 text-amber-200 text-[10px] font-black uppercase">Snooze</button>
-                    <button type="button" onClick={() => updateAutomationQueueStatus(item, 'dismissed')} className="px-3 py-2 rounded-lg border border-red-500/40 bg-red-950/10 text-red-200 text-[10px] font-black uppercase">Dismiss</button>
-                  </div>
-                </div>
-              )) : <p className="text-xs text-slate-500 font-bold">No approval items yet.</p>}
             </div>
           </div>
         </div>
@@ -10417,8 +10261,8 @@ const HELP_ARTICLES = [
   { id:'roster-roles-source-of-truth', title:'Roster Roles are the source of truth', group:'Staff Roster', keywords:'roster roles custom roles preferences schedule coverage labor by role reports filters permissions dashboard hardcoded kitchen cook bartender server manager fallback', body:['The account owner custom Roster Roles from Preferences / Roster Roles are the source of truth for role-based scheduling, labor by role, coverage, exports, reports, dashboards, filters, and permissions.','Generic labels such as Kitchen, Cook, Chef, Bartender, Server, or Manager should be used only as fallback labels when a workspace has not created custom roster roles yet.','If a role is missing from a report or schedule filter, check Preferences / Roster Roles and the role assigned to active staff first.','Changing a roster role affects how future role-based views group people and work. Review reports after large role changes.'] },
   { id:'billing-integrations-coming-soon-safe', title:'Plan & Billing and integrations coming soon', group:'Plans & Billing', keywords:'plan billing founder beta pricing tiers shift operations smart kitchen owner pro payments coming soon integrations locked pos accounting oauth api keys', body:['Plan & Billing shows the workspace plan, Founder Beta status, selected future tier where available, scan usage, included features, launch price, founder discount price, and Payments coming soon.','Staff should not see billing controls. Owners/admins may see plan information and locked-feature explanations depending on their permission.','Integrations are currently locked for customer tiers while POS/accounting connections are tested. Manual entry, uploads, and report imports can still be used where available.','Do not enter live POS, payroll, accounting, OAuth, or API secrets into customer-facing fields or support reports.'] },
   { id:'admin-manual-and-help-boundary', title:'Help Center, training manual, and Administrator Manual boundaries', group:'Help Center', keywords:'help center training manual administrator manual public customer internal system administrator secrets forensics backups diagnostics docs', body:['Help Center is customer-facing and safe for owners, managers, and staff. It explains how to use the app without exposing private platform procedures or secrets.','The searchable Complete 86 Chaos Training Manual explains each major app area, who should use it, what data it uses, common setup states, and what not to store there.','The Administrator Manual is internal to System Administrator. It explains platform diagnostics, access repair, backups, Firebase/Vercel readiness, plan controls, feature resolver, IP controls, integration safety, push center, forensics, and guarded destructive tools.','When a feature is added or changed, update both the customer-safe Help Center/training coverage and the internal Administrator Manual coverage when relevant.'] },
-  { id:'data-retention-basics', title:'How long 86 Chaos keeps common data', group:'Privacy & Account', keywords:'retention old data delete prep 86 alert invoice scan menu scan time punch workspace canceled restaurant', body:['Prep-list records and 86 alerts are kept for 30 days.', 'Raw menu and invoice scan files are kept for 30 days. Reviewed or parsed business records may remain in the app.', 'Time-punch and separate location-log records leave the active database after one year and are kept in a restricted archive until the three-year mark.', 'When a restaurant workspace is scheduled for deletion, it is disabled immediately and can be restored during a 30-day recovery window. After that window, its workspace data is permanently removed.', 'Some records may be kept longer when required for legal, billing, fraud-prevention, backup, or support reasons.', '86 Chaos backups and recovery tools are not a substitute for the restaurant\'s own records. Workspace owners should regularly export and store independent off-platform backups of records they must keep.'] },
-  { id:'data-retention-legal-schedule', title:'86 Chaos data retention schedule', group:'Privacy & Account', keywords:'data retention automatic deletion legal schedule backup audit security time clock geofence ai uploads raw scans deleted workspace', body:['The retention schedule is based on the 86 Chaos legal packet. Active core business records such as recipes and inventory stay available while the account is active.', 'Prep lists and 86 alerts are considered transient operational data and are kept for 30 days.', 'Raw AI prompts, raw uploaded scan images/files, and raw AI request records are kept for 30 days. Reviewed or parsed business records may remain in the app after manager review.', 'Deleted workspaces have a 30-day recovery/export window before hard deletion.', 'Database backups are kept on a 30-day rolling basis. Audit and security logs are kept for 1 year. Workforce, time-clock, and geofencing records are retained for 3 years, with archival storage after 1 year.', 'Employees should ask their employer or restaurant administrator about workplace records. Owners/admins can contact support or security for export or deletion request guidance.', 'During beta and after launch, customers remain responsible for maintaining their own off-site/off-platform backups of critical operational, payroll, tax, employee, inventory, and compliance records.'] },
+  { id:'data-retention-basics', title:'How long 86 Chaos keeps common data', group:'Privacy & Account', keywords:'retention old data delete prep 86 alert invoice scan menu scan time punch workspace canceled restaurant', body:['Prep-list records and 86 alerts are kept for 30 days.', 'Raw menu and invoice scan files are kept for 30 days. Reviewed or parsed business records may remain in the app.', 'Time-punch and separate location-log records leave the active database after one year and are kept in a restricted archive until the three-year mark.', 'When a restaurant workspace is scheduled for deletion, it is disabled immediately and can be restored during a 30-day recovery window. After that window, its workspace data is permanently removed.', 'Some records may be kept longer when required for legal, billing, fraud-prevention, backup, or support reasons.'] },
+  { id:'data-retention-legal-schedule', title:'86 Chaos data retention schedule', group:'Privacy & Account', keywords:'data retention automatic deletion legal schedule backup audit security time clock geofence ai uploads raw scans deleted workspace', body:['The retention schedule is based on the 86 Chaos legal packet. Active core business records such as recipes and inventory stay available while the account is active.', 'Prep lists and 86 alerts are considered transient operational data and are kept for 30 days.', 'Raw AI prompts, raw uploaded scan images/files, and raw AI request records are kept for 30 days. Reviewed or parsed business records may remain in the app after manager review.', 'Deleted workspaces have a 30-day recovery/export window before hard deletion.', 'Database backups are kept on a 30-day rolling basis. Audit and security logs are kept for 1 year. Workforce, time-clock, and geofencing records are retained for 3 years, with archival storage after 1 year.', 'Employees should ask their employer or restaurant administrator about workplace records. Owners/admins can contact support or security for export or deletion request guidance.'] },
   { id:'shared-reminders-guide', title:'Sharing Reminders', group:'Reminders', keywords:'shared reminders share reminder teammate assign dropdown just me personal reminders team member', body:['Open My Reminders and type the reminder you want to create.', 'Use Share With to choose Just me for a private reminder or select a teammate from the list.', 'Pick the reminder date and time, then save it. Shared reminders appear for both the person who created them and the teammate they were assigned to.', 'The assigned teammate can mark the reminder done. The person who created the reminder can edit or delete it.', 'Use shared reminders for simple handoffs like check the walk-in, order buns, call vendor, prep sauce, or follow up on a maintenance item.'] },
   { id:'security-center-overview', title:'Security Center Overview', group:'Security', keywords:'security center rules app check mfa risky users suspicious activity environment variables cron status', body:['Security Center gives system admins a plain-English snapshot of important setup checks.', 'It can show whether rules, storage protection, App Check readiness, MFA enrollment/enforcement status, cron setup, environment variables, rate limiting, and risky elevated accounts need attention.', 'Some security steps still happen outside the app in Firebase or Vercel. For example, App Check enforcement, enabling SMS MFA, Vercel MFA enforcement env vars, and secret rotation must be completed in those admin consoles.', 'If a card shows warning or action needed, follow the Administrator Manual checklist before changing production settings.'] },
   { id:'menu-intelligence-guide', title:'Using Menu Intelligence', group:'Menu Intelligence', keywords:'menu intelligence intelligent menu menu scanner scan menu upload photo pdf approve reviewed menu links ingredient match inventory link unavailable menu items 86 burger patty beef gr pty edit delete recent menu scans', body:['Menu Intelligence helps managers connect menu items to the inventory products that make them. Once those links are approved, 86 Chaos can tell staff which menu items are affected when an ingredient is 86d or unavailable.', 'Open Menu Intelligence, choose a clear menu photo or PDF, and start the scan. Large photos are compressed before upload when possible. If a PDF is still too large, split it into smaller sections or export fewer pages.', 'When the scan finishes, review the detected menu items. The AI is a helper, not the boss. Check names, ingredients, and suggested inventory matches before approving anything.', 'For each menu item, connect the ingredients to the real inventory rows your kitchen uses. Use the actual product name when possible. For example, a burger may need to link to an inventory item named BEEF GR PTY, beef patty, hamburger patty, bun, cheese, lettuce, tomato, or other items you track.', 'Click Approve Reviewed Menu Links after the matches look right. The approval button shows progress and locks while saving so duplicate links are not created by extra clicks.', 'Use Recent Menu Scans to edit a scan when an ingredient match is wrong or delete a scan when it is outdated. Deleting a scan removes its menu-impact links so old menus do not keep affecting 86 alerts.', 'When someone posts or says an 86 alert such as 86 burger, the app can use approved Menu Intelligence links to find the best inventory match and show unavailable menu items on the Message Board, Manager Brief, and Kitchen Command Center.', 'For best results, approve links for common shorthand items staff actually say: burger, patty, wings, fries, chicken, buns, ranch, cheese, lettuce, tomatoes, and sauces. If an 86 alert does not show menu impact, edit the menu scan and make sure that ingredient is linked to the correct inventory item.'] },
@@ -10446,7 +10290,7 @@ const HELP_ARTICLES = [
   { id:'permissions', title:'Why can’t someone see a tab?', group:'Permissions', keywords:'tab missing access permission role manage user', body:['Check that the restaurant has the module enabled.','Check the employee’s permissions in Staff Roster.','Some tabs also require Admin, Manager, or specific feature permissions.','Super Admin and Ghost Mode can see more because they are support tools.'] },
   { id:'inventory', title:'Inventory basics', group:'Inventory', keywords:'stock par order vendor low inventory', body:['Use Inventory & Orders to track items, par levels, vendor notes, and low-stock warnings.','Low-stock items flow into Today and Kitchen Command Center.','Smart Order can queue suggested order quantities when stock is below par.'] },
   { id:'maintenance', title:'Reporting equipment problems', group:'Maintenance', keywords:'broken fryer cooler freezer repair maintenance photo', body:['Go to Maintenance Log and add the issue as soon as it is noticed.','Use clear titles like “Fryer 2 won’t hold temp” or “Walk-in dripping by fan”.','Add urgency and a photo when possible. Open urgent issues appear in Manager Brief and Kitchen Command Center.'] },
-  { id:'support', title:'Contacting 86 Chaos support', group:'Support', keywords:'help contact support bug error problem', body:['Search Help Center first using general words.','Use the Report a Bug / Error panel inside Help Center when the app behaves wrong. Include what you clicked and what happened. Super admins receive a push alert when the report is submitted, if their device push token is active.','Owners can contact support after checking the article tied to the page they are using.'] },
+  { id:'support', title:'Contacting 86 Chaos support', group:'Support', keywords:'help contact support bug error problem', body:['Search Help Center first using general words.','Use the Report a Bug / Error panel inside Help Center when the app behaves wrong. Include what you clicked and what happened.','Owners can contact support after checking the article tied to the page they are using.'] },
   { id:'admin-mobile-layout', title:'Using Admin Workspace on mobile', group:'System Administrator', keywords:'admin mobile layout phone section picker menu search calm workspace', body:['Admin Workspace uses one section selector under the search box on phones.', 'Choose the exact section from the selector, or tap Menu to open the full grouped list.', 'Every non-home page shows its title, purpose, and a Back to admin home button.', 'The old Signals and Command Deck panels were removed so the mobile page stays shorter and easier to scan.'] },
   { id:'admin-command-deck', title:'Where the old Command Deck went', group:'System Administrator', keywords:'admin command deck removed new admin workspace priority list quick actions', body:['Version 15.0.45 removed the always-visible Command Deck and dense signal board.', 'The most useful signals are now split between the three top summaries, the Admin Home priority list, and the four core numbers.', 'Open Health, Backups, Security, Workspaces, People, Push, or Support when you need the detailed data.', 'Nothing was deleted. The presentation changed so the admin area is less overwhelming.'] },
   { id:'settings-branding-preferences', title:'Settings: branding, accent color, and access', group:'Settings', keywords:'settings preferences branding accent color logo upload display locked app name permissions integrations menu intelligence workspace', body:['Open Settings → Branding to change the workspace accent color, upload or paste a restaurant logo, set the help contact, and choose display defaults such as timezone, date/time format, currency, week start, and default staff landing tab. Logo uploads use the secure app upload path first, with Firebase Storage as a fallback.', 'The app name and 86 Chaos logo are locked. A restaurant logo can appear beside 86 Chaos branding, but it never replaces or hides the 86 Chaos brand.', 'Only account owners and Super Admin can grant Settings, Branding, and Menu Intelligence access. Integrations are locked for customer tiers until rollout and are visible only to System Administrator testing tools.', 'After changing display settings, refresh the app to confirm the accent color, logo display, and defaults stayed saved.'] },
@@ -10500,37 +10344,21 @@ const TabHelpCenter = ({ appUser, activeTab, voiceHelpSearchTarget = null, addTo
     if (!bugText.trim()) return;
     setIsSubmittingBug(true);
     try {
-      let response;
-      try {
-        response = await secureFetch('/api/report-bug', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            category: bugCategory,
-            message: bugText.trim(),
-            user: appUser?.name || 'Unknown',
-            userEmail: appUser?.email || '',
-            restaurantId: appUser?.restaurantId || 'Unknown',
-            restaurantName: appUser?.restaurantName || appUser?.restaurant || '',
-            activeTab: activeTab || 'help',
-            userAgent: navigator.userAgent,
-            screenSize: `${window.innerWidth}x${window.innerHeight}`,
-            url: window.location.href
-          })
-        });
-      } catch (secureErr) {
-        response = null;
-      }
-
-      if (response?.ok) {
-        const result = await response.json().catch(() => ({}));
-        setBugText('');
-        const sentCount = Number(result.supportPushSentCount || 0);
-        addToast?.('Report Sent', sentCount > 0 ? `Support report sent. ${sentCount} super admin device${sentCount === 1 ? '' : 's'} notified.` : 'Support report saved. No super admin push devices were eligible.');
-      } else {
-        const details = response ? await response.json().catch(() => ({})) : {};
-        throw new Error(details.error || 'Server report route unavailable. The browser is no longer allowed to write crash reports directly.');
-      }
+      await addDoc(collection(db, "crashReports"), {
+        type: 'user_reported_bug',
+        category: bugCategory,
+        message: `USER REPORT: ${bugText.trim()}`,
+        user: appUser?.name || 'Unknown',
+        userEmail: appUser?.email || '',
+        restaurantId: appUser?.restaurantId || 'Unknown',
+        activeTab: activeTab || 'help',
+        userAgent: navigator.userAgent,
+        screenSize: `${window.innerWidth}x${window.innerHeight}`,
+        url: window.location.href,
+        time: new Date().toISOString()
+      });
+      setBugText('');
+      addToast?.('Report Sent', 'Support report sent with device details.');
     } catch (err) {
       addToast?.('Error', 'Failed to send support report.');
     }
