@@ -1,11 +1,11 @@
 {
-  "version": "15.0.87",
+  "version": "15.0.89",
   "name": "86 Chaos",
-  "releasedAt": "2026-07-18",
-  "label": "86 Chaos 15.0.87",
-  "build": "15.0.87",
-  "updatedAt": "2026-07-18T00:00:00.000Z",
-  "notes": "Repairs audit findings across permissions, Firebase/Storage rules, audit logging, Founder Beta entitlement defaults, reminder dispatch reliability, browser crash reporting, geocode authorization, CSP headers, asset weight, and validation coverage.",
-  "release": "Audit repair hardening pass",
-  "releaseName": "Audit repair hardening pass"
+  "releasedAt": "2026-07-19",
+  "label": "86 Chaos 15.0.89",
+  "build": "15.0.89",
+  "updatedAt": "2026-07-19T04:45:00.000Z",
+  "notes": "Version synchronization hotfix: aligns the browser CURRENT_VERSION, /version.json, package metadata, Functions metadata, and API version markers so the system update banner only appears for real newer deployments.",
+  "release": "Version synchronization hotfix",
+  "releaseName": "Version synchronization hotfix"
 }

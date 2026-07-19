@@ -1,6 +1,6 @@
 # Firebase Setup
 
-Deploy these with the 15.0.87 app build:
+Deploy these with the 15.0.89 app build:
 
 ```bash
 firebase deploy --only firestore:rules

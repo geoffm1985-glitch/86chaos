@@ -3,7 +3,7 @@ const { initAdmin, authorize, readBody, masterEmails, norm } = require('./_chaos
 const { callPythonFunction } = require('./_python-function-client');
 const { resolveWorkspaceSubscription, planIsAtLeast, PLAN_IDS } = require('./_plan-access');
 
-const APP_VERSION = '15.0.86';
+const APP_VERSION = '15.0.89';
 const PYTHON_TIMEOUT_MS = 35000;
 const MAX_PAYLOAD_BYTES = 1500000;
 const COLLECTION_LIMITS = {

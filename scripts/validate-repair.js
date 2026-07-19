@@ -19,6 +19,27 @@ const adminShared = read('api/_chaos-admin.js');
 const adminProject = read('api/_firebase-project-admin.js');
 const reminders = read('api/dispatch-reminders.js');
 
+const packageJson = JSON.parse(read('package.json'));
+const packageLock = JSON.parse(read('package-lock.json'));
+const functionsPackageJson = JSON.parse(read('functions/package.json'));
+const functionsPackageLock = JSON.parse(read('functions/package-lock.json'));
+const publicVersion = JSON.parse(read('public/version.json'));
+const currentVersionMatch = appCore.match(/export const CURRENT_VERSION = ['\"]([^'\"]+)['\"]/);
+const currentVersion = currentVersionMatch ? currentVersionMatch[1] : '';
+const versionValues = [
+  ['src/core/appCore.js CURRENT_VERSION', currentVersion],
+  ['public/version.json version', publicVersion.version],
+  ['public/version.json build', publicVersion.build],
+  ['package.json version', packageJson.version],
+  ['package-lock.json version', packageLock.version],
+  ['package-lock root package version', packageLock.packages && packageLock.packages[''] && packageLock.packages[''].version],
+  ['functions/package.json version', functionsPackageJson.version],
+  ['functions/package-lock.json version', functionsPackageLock.version],
+  ['functions/package-lock root package version', functionsPackageLock.packages && functionsPackageLock.packages[''] && functionsPackageLock.packages[''].version]
+];
+const mismatchedVersionValues = versionValues.filter(([, value]) => value !== currentVersion);
+
+check('VERSION_FILES_SYNC', !!currentVersion && mismatchedVersionValues.length === 0, `App version files are synchronized. ${versionValues.map(([name, value]) => `${name}=${value || 'missing'}`).join('; ')}`);
 check('BETA_DAYS_90', /FOUNDER_BETA_DAYS\s*=\s*90/.test(plans), 'Founder Beta default is 90 days.');
 check('DEPLOY_TENANT_90', /betaEnds\.setDate\(betaEnds\.getDate\(\) \+ 90\)/.test(deployTenant), 'Tenant creation uses 90-day beta window.');
 check('SERVICE_ACCOUNT_GENERIC_PRESERVED', /FIREBASE_SERVICE_ACCOUNT_KEY/.test(adminProject) && /JSON\.parse\((raw|value)\)/.test(adminProject), 'Generic FIREBASE_SERVICE_ACCOUNT_KEY JSON parsing remains available.');
