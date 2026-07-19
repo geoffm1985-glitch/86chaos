@@ -7,8 +7,8 @@ export const PLAN_IDS = {
 };
 
 export const BILLING_STATUSES = ['beta', 'active', 'past_due', 'canceled', 'trial_expired', 'internal'];
-export const FOUNDER_BETA_DAYS = 60;
-export const FOUNDER_BETA_EXTENSION_DAYS = 30;
+export const FOUNDER_BETA_DAYS = 90;
+export const FOUNDER_BETA_EXTENSION_DAYS = 0;
 export const FOUNDER_BETA_MAX_DAYS = 90;
 export const FOUNDER_DISCOUNT_PERCENT = 50;
 export const FOUNDER_DISCOUNT_MONTHS = 12;

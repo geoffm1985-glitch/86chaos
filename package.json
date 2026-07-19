@@ -1,6 +1,6 @@
 {
   "name": "86chaos",
-  "version": "15.0.86",
+  "version": "15.0.87",
   "private": true,
   "dependencies": {
     "firebase": "^10.8.1",
@@ -18,7 +18,11 @@
   "scripts": {
     "start": "react-scripts start",
     "build": "react-scripts build",
-    "retention:setup": "node scripts/setup-production-retention.js"
+    "retention:setup": "node scripts/setup-production-retention.js",
+    "test": "node scripts/validate-repair.js",
+    "test:ci": "node scripts/validate-repair.js",
+    "validate:source": "node scripts/validate-repair.js",
+    "rules:check": "node scripts/validate-rules.js"
   },
   "browserslist": {
     "production": [

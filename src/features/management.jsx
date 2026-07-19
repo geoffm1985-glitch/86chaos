@@ -1195,7 +1195,7 @@ const handleEnableNotifications = async () => {
     try {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 12000);
-      const res = await fetch(`/api/geocode-address?q=${encodeURIComponent(address)}`, { signal: controller.signal });
+      const res = await secureFetch(`/api/geocode-address?q=${encodeURIComponent(address)}&restaurantId=${encodeURIComponent(appUser?.restaurantId || '')}`, { signal: controller.signal });
       clearTimeout(timeoutId);
       const data = await res.json().catch(() => ({}));
       if (res.ok && data?.ok && Number.isFinite(parseFloat(data.lat)) && Number.isFinite(parseFloat(data.lon))) {
@@ -4911,10 +4911,7 @@ Type DELETE to continue.`) || '').trim().toUpperCase();
           addToast('Bulk Delete Complete', `${profileDeleted} profile(s) removed. ${authDeleted} auth login(s) removed.`);
           setBulkDeleteEmails('');
           setSelectedBulkDeleteUserIds([]);
-          await addDoc(collection(db, 'auditLogs'), {
-            userId: appUser?.id || 'system', userName: appUser?.name || 'System Admin', action: 'BULK_DELETE_USERS', target: 'users',
-            details: `Bulk deleted ${profileDeleted} profile(s). Selected IDs: ${targets.map(u => u.id).join(', ')}. Emails: ${emails.join(', ')}.`, timestamp: new Date().toISOString(), restaurantId: appUser?.restaurantId || 'system', sessionId: currentAdminSessionId, isGhost: appUser?.isGhost || false
-          }).catch(()=>{});
+          await logAudit(appUser, 'BULK_DELETE_USERS', 'users', `Bulk deleted ${profileDeleted} profile(s). Selected IDs: ${targets.map(u => u.id).join(', ')}. Emails: ${emails.join(', ')}.`);
           return;
         }
         throw new Error(result.error || 'Bulk delete API unavailable.');
@@ -4942,11 +4939,7 @@ Type DELETE to continue.`) || '').trim().toUpperCase();
         }
       }
 
-      await addDoc(collection(db, 'auditLogs'), {
-        userId: appUser?.id || 'system', userName: appUser?.name || 'System Admin', action: 'BULK_DELETE_USERS', target: 'users',
-        details: `Bulk deleted ${profileDeleted} selected profile(s). Auth deleted: ${authDeleted}. Selected IDs: ${targets.map(u => u.id).join(', ')}. Errors: ${errors.slice(0, 5).join(' | ') || 'none'}`,
-        timestamp: new Date().toISOString(), restaurantId: appUser?.restaurantId || 'system', sessionId: currentAdminSessionId, isGhost: appUser?.isGhost || false
-      }).catch(()=>{});
+      await logAudit(appUser, 'BULK_DELETE_USERS', 'users', `Bulk deleted ${profileDeleted} selected profile(s). Auth deleted: ${authDeleted}. Selected IDs: ${targets.map(u => u.id).join(', ')}. Errors: ${errors.slice(0, 5).join(' | ') || 'none'}`);
 
       addToast(errors.length ? 'Partial Delete' : 'Bulk Delete Complete', `${profileDeleted} profile(s) removed. ${authDeleted} auth login(s) removed.`);
       if (!errors.length) { setBulkDeleteEmails(''); setSelectedBulkDeleteUserIds([]); }
@@ -5029,16 +5022,7 @@ Type DELETE to continue.`) || '').trim().toUpperCase();
       if ((supportUserForm.email || '').trim()) updates.email = supportUserForm.email.toLowerCase().trim();
 
       await updateDoc(doc(db, 'users', editingGlobalUser.id), updates);
-      await addDoc(collection(db, 'auditLogs'), {
-        userId: appUser?.id || 'system',
-        userName: appUser?.name || 'System Administrator',
-        action: 'SUPPORT_USER_EDIT',
-        target: `users/${editingGlobalUser.id}`,
-        details: `Support edited ${updates.email || editingGlobalUser.email || editingGlobalUser.id}; workspace=${updates.restaurantName}; role=${updates.role}; admin=${updates.isAdmin}; active=${updates.isActive}; note=${supportUserForm.supportNote || 'none'}`,
-        timestamp: new Date().toISOString(),
-        restaurantId: updates.restaurantId || appUser?.restaurantId || 'system',
-        isGhost: appUser?.isGhost || false
-      }).catch(()=>{});
+      await logAudit({ ...appUser, restaurantId: updates.restaurantId || appUser?.restaurantId || 'system' }, 'SUPPORT_USER_EDIT', `users/${editingGlobalUser.id}`, `Support edited ${updates.email || editingGlobalUser.email || editingGlobalUser.id}; workspace=${updates.restaurantName}; role=${updates.role}; admin=${updates.isAdmin}; active=${updates.isActive}; note=${supportUserForm.supportNote || 'none'}`);
       addToast('User Updated', `${updates.name} now belongs to ${updates.restaurantName}.`);
       setEditingGlobalUser(null);
       setSupportUserForm({});
@@ -5817,16 +5801,7 @@ const activeTrials = restaurants.filter(r => resolveSubscription(r, appUser).sta
     try {
       const payload = buildLegalRetentionSetupPayload();
       await setDoc(doc(db, 'system', 'dataRetention'), payload, { merge: true });
-      await addDoc(collection(db, 'auditLogs'), {
-        restaurantId: 'platform',
-        action: 'DATA_RETENTION_CONFIG_INITIALIZED',
-        target: 'system/dataRetention',
-        details: 'Legal data retention configuration initialized from System Administrator safe setup button.',
-        userId: appUser?.id || 'system-admin',
-        userName: appUser?.email || appUser?.name || 'System Administrator',
-        timestamp: payload.updatedAt,
-        source: 'system-admin'
-      }).catch(() => {});
+      await logAudit({ ...appUser, restaurantId: 'platform' }, 'DATA_RETENTION_CONFIG_INITIALIZED', 'system/dataRetention', 'Legal data retention configuration initialized from System Administrator safe setup button.');
       setRetentionConfig(payload);
       addToast('Retention Setup Saved', 'Legal retention policy marker saved. Next: deploy Firebase Functions in production.');
     } catch (err) {
@@ -5859,7 +5834,7 @@ const activeTrials = restaurants.filter(r => resolveSubscription(r, appUser).sta
     setIsSavingRoleMatrix(true);
     try {
       await setDoc(doc(db, 'system', 'rolePermissionMatrix'), { matrix: rolePermissionMatrix, updatedAt: new Date().toISOString(), updatedBy: appUser?.email || appUser?.name || 'System Admin' }, { merge: true });
-      await addDoc(collection(db, 'auditLogs'), { restaurantId: 'platform', action: 'ROLE_PERMISSION_MATRIX_UPDATED', target: 'system/rolePermissionMatrix', details: 'Platform role permission guide was updated.', userId: appUser?.id || 'system-admin', userName: appUser?.email || appUser?.name || 'System Admin', timestamp: new Date().toISOString(), sessionId: currentAdminSessionId }).catch(() => {});
+      await logAudit({ ...appUser, restaurantId: 'platform' }, 'ROLE_PERMISSION_MATRIX_UPDATED', 'system/rolePermissionMatrix', 'Platform role permission guide was updated.');
       addToast('Role Matrix Saved', 'Permission guide updated. Apply specific staff permissions from Staff Roster when needed.');
     } catch (err) { addToast('Save Error', err.message || 'Could not save role matrix.'); }
     setIsSavingRoleMatrix(false);
@@ -6752,17 +6727,7 @@ ${body}`;
     };
     try {
       await setDoc(doc(db, 'system', 'operationsReview'), payload, { merge: true });
-      await addDoc(collection(db, 'auditLogs'), {
-        restaurantId: 'platform',
-        action: 'SYSTEM_OPERATIONS_REVIEW_STAMP',
-        target: 'system/operationsReview',
-        details: `Operations review stamped. Status: ${platformStatus}. Action items: ${adminRiskQueue.length}.`,
-        userId: appUser?.id || 'system-admin',
-        userName: appUser?.email || appUser?.name || 'System Admin',
-        timestamp: stamp,
-        sessionId: currentAdminSessionId,
-        isGhost: appUser?.isGhost || false
-      }).catch(() => {});
+      await logAudit({ ...appUser, restaurantId: 'platform' }, 'SYSTEM_OPERATIONS_REVIEW_STAMP', 'system/operationsReview', `Operations review stamped. Status: ${platformStatus}. Action items: ${adminRiskQueue.length}.`);
       addToast('Review Stamp Created', 'System operations review stamp updated. View it under Forensics & Backups.');
     } catch (err) {
       addToast('Ops Review Error', err.message || 'Could not write operations review.');
@@ -7096,17 +7061,7 @@ Type RESTORE to continue.`);
         downloadTextFile(backupName, JSON.stringify(result.backup, null, 2), 'application/json;charset=utf-8;');
       }
 
-      await addDoc(collection(db, 'auditLogs'), {
-        restaurantId: LEGACY_RESTORE_RESTAURANT_ID,
-        action: 'EMERGENCY_REINJECT_JULY_SCHEDULE_BUTTON',
-        target: 'shifts',
-        details: `System Administrator button overwrote the July 2026 Schedule Builder. Deleted ${result.deletedCount || 0} existing/restored shift(s), imported ${result.importedCount || 0} unpublished draft shift(s). Run ${result.runId || 'unknown'}.`,
-        userId: appUser?.id || 'system-admin',
-        userName: appUser?.email || appUser?.name || 'System Admin',
-        timestamp: new Date().toISOString(),
-        sessionId: currentAdminSessionId,
-        isGhost: appUser?.isGhost || false
-      }).catch(() => {});
+      await logAudit({ ...appUser, restaurantId: LEGACY_RESTORE_RESTAURANT_ID }, 'EMERGENCY_REINJECT_JULY_SCHEDULE_BUTTON', 'shifts', `System Administrator button overwrote the July 2026 Schedule Builder. Deleted ${result.deletedCount || 0} existing/restored shift(s), imported ${result.importedCount || 0} unpublished draft shift(s). Run ${result.runId || 'unknown'}.`);
 
       addToast('Schedule Builder Loaded', `${result.importedCount || 0} July draft shift(s) loaded for review and republish. Reloading to clear schedule cache.`);
       window.alert(`Schedule Builder overwrite complete.\n\nRestaurant: ${result.restaurantId || LEGACY_RESTORE_RESTAURANT_ID}\nDeleted old/restored July shifts: ${result.deletedCount || 0}\nLoaded draft July shifts: ${result.importedCount || 0}\nRun ID: ${result.runId || 'n/a'}\n\nA backup JSON of replaced July shifts was downloaded to this computer.\n\nThe app will reload once. Then open Time Clock & Schedule → Schedule Builder, go to July 2026, review the draft, and click Publish Schedule.`);
@@ -10574,24 +10529,7 @@ const TabHelpCenter = ({ appUser, activeTab, voiceHelpSearchTarget = null, addTo
         addToast?.('Report Sent', sentCount > 0 ? `Support report sent. ${sentCount} super admin device${sentCount === 1 ? '' : 's'} notified.` : 'Support report saved. No super admin push devices were eligible.');
       } else {
         const details = response ? await response.json().catch(() => ({})) : {};
-        await addDoc(collection(db, "crashReports"), {
-          type: 'user_reported_bug',
-          category: bugCategory,
-          message: `USER REPORT: ${bugText.trim()}`,
-          user: appUser?.name || 'Unknown',
-          userEmail: appUser?.email || '',
-          restaurantId: appUser?.restaurantId || 'Unknown',
-          activeTab: activeTab || 'help',
-          userAgent: navigator.userAgent,
-          screenSize: `${window.innerWidth}x${window.innerHeight}`,
-          url: window.location.href,
-          time: new Date().toISOString(),
-          supportPushRequested: true,
-          supportPushFallbackUsed: true,
-          supportPushError: details.error || 'Server report route unavailable'
-        });
-        setBugText('');
-        addToast?.('Report Saved', 'Support report saved, but the super-admin push route did not complete.');
+        throw new Error(details.error || 'Server report route unavailable. The browser is no longer allowed to write crash reports directly.');
       }
     } catch (err) {
       addToast?.('Error', 'Failed to send support report.');

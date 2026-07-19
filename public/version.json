@@ -1,10 +1,11 @@
 {
-  "version": "15.0.86",
+  "version": "15.0.87",
   "name": "86 Chaos",
   "releasedAt": "2026-07-18",
-  "label": "86 Chaos 15.0.86",
-  "build": "15.0.86",
+  "label": "86 Chaos 15.0.87",
+  "build": "15.0.87",
   "updatedAt": "2026-07-18T00:00:00.000Z",
-  "notes": "Hotfixes the 15.0.85 startup crash by defining Manager Brief Python Ops state/actions and fixes schedule publish metadata scope while preserving the Manager Brief, tier, menu, and layout changes.",
-  "release": "Load hotfix for Manager Brief Python Ops and schedule publish scope"
+  "notes": "Repairs audit findings across permissions, Firebase/Storage rules, audit logging, Founder Beta entitlement defaults, reminder dispatch reliability, browser crash reporting, geocode authorization, CSP headers, asset weight, and validation coverage.",
+  "release": "Audit repair hardening pass",
+  "releaseName": "Audit repair hardening pass"
 }

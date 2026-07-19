@@ -101,6 +101,11 @@ function isRetryableEventReminderStatus(status) {
   return ['scheduled', 'no_push_token', 'delivery_problem', 'dispatching'].includes(key);
 }
 
+function isRetryablePersonalReminderStatus(status) {
+  const key = String(status || 'scheduled').toLowerCase();
+  return ['scheduled', 'no_push_token', 'delivery_problem', 'dispatching'].includes(key);
+}
+
 function minutesSinceIso(iso) {
   const t = new Date(iso || 0).getTime();
   if (!Number.isFinite(t)) return Infinity;
@@ -113,21 +118,47 @@ function safeInt(value, fallback, min, max) {
   return Math.max(min, Math.min(max, parsed));
 }
 
+function daysInUtcMonth(year, month) {
+  return new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
+}
+
+function addUtcMonthsClamped(date, months, anchorDay) {
+  const year = date.getUTCFullYear();
+  const month = date.getUTCMonth() + months;
+  const targetYear = year + Math.floor(month / 12);
+  const targetMonth = ((month % 12) + 12) % 12;
+  const day = Math.min(anchorDay || date.getUTCDate(), daysInUtcMonth(targetYear, targetMonth));
+  return new Date(Date.UTC(
+    targetYear,
+    targetMonth,
+    day,
+    date.getUTCHours(),
+    date.getUTCMinutes(),
+    date.getUTCSeconds(),
+    date.getUTCMilliseconds()
+  ));
+}
+
 function getNextRecurringReminderAt(scheduledAt, recurrence) {
   const mode = String(recurrence || 'none').toLowerCase();
   if (!['daily', 'weekly', 'monthly'].includes(mode)) return '';
   const base = new Date(scheduledAt || Date.now());
   if (Number.isNaN(base.getTime())) return '';
-  const next = new Date(base.getTime());
+  let next = new Date(base.getTime());
+  const anchorDay = base.getUTCDate();
   const now = Date.now();
   let guard = 0;
-  while (next.getTime() <= now && guard < 36) {
-    if (mode === 'daily') next.setDate(next.getDate() + 1);
-    if (mode === 'weekly') next.setDate(next.getDate() + 7);
-    if (mode === 'monthly') next.setMonth(next.getMonth() + 1);
+  while (next.getTime() <= now && guard < 400) {
+    if (mode === 'daily') next = new Date(next.getTime() + 24 * 60 * 60 * 1000);
+    if (mode === 'weekly') next = new Date(next.getTime() + 7 * 24 * 60 * 60 * 1000);
+    if (mode === 'monthly') next = addUtcMonthsClamped(next, 1, anchorDay);
     guard += 1;
   }
   return Number.isNaN(next.getTime()) ? '' : next.toISOString();
+}
+
+function retryAt(minutes = 10) {
+  return new Date(Date.now() + minutes * 60 * 1000).toISOString();
 }
 
 async function runWithConcurrency(items, limit, worker) {
@@ -181,6 +212,7 @@ module.exports = async function handler(req, res) {
   try {
     const snap = await db.collection('personalReminders')
       .where('scheduledAt', '<=', nowIso)
+      .orderBy('scheduledAt', 'asc')
       .limit(limit)
       .get();
 
@@ -192,12 +224,21 @@ module.exports = async function handler(req, res) {
           const fresh = await tx.get(ref);
           if (!fresh.exists) return { claimed: false, reason: 'missing' };
           const reminder = fresh.data() || {};
-          if (reminder.status !== 'scheduled') return { claimed: false, reason: 'not_scheduled' };
+          if (!isRetryablePersonalReminderStatus(reminder.status)) return { claimed: false, reason: 'not_retryable' };
+          if (String(reminder.status || '').toLowerCase() === 'dispatching' && minutesSinceIso(reminder.dispatchAttemptAt) < 5) return { claimed: false, reason: 'already_dispatching' };
+          if (['no_push_token', 'delivery_problem'].includes(String(reminder.status || '').toLowerCase()) && minutesSinceIso(reminder.dispatchAttemptAt || reminder.dispatchedAt) < 10) return { claimed: false, reason: 'retry_window' };
           const effectiveDueAt = reminder.snoozedUntil || reminder.nextReminderAt || reminder.scheduledAt || '';
           if (effectiveDueAt && String(effectiveDueAt) > nowIso) return { claimed: false, reason: 'snoozed_or_not_due' };
           const dispatchKey = `${docSnap.id}:${effectiveDueAt || reminder.scheduledAt || ''}`;
-          if (reminder.dispatchKey === dispatchKey || reminder.dispatchedAt) return { claimed: false, reason: 'already_dispatched' };
-          tx.update(ref, { status: 'dispatching', dispatchAttemptAt: nowIso, dispatchKey, effectiveDueAt });
+          if ((String(reminder.status || '').toLowerCase() === 'sent' || Number(reminder.pushSuccessCount || 0) > 0) && (reminder.dispatchKey === dispatchKey || reminder.dispatchedAt)) return { claimed: false, reason: 'already_dispatched' };
+          tx.update(ref, {
+            status: 'dispatching',
+            dispatchAttemptAt: nowIso,
+            dispatchKey,
+            effectiveDueAt,
+            dispatchAttemptCount: Number(reminder.dispatchAttemptCount || 0) + 1,
+            updatedAt: nowIso
+          });
           return { claimed: true, reminder, dispatchKey, effectiveDueAt };
         });
 
@@ -216,7 +257,20 @@ module.exports = async function handler(req, res) {
 
         if (!tokens.length) {
           stats.noToken += 1;
-          await ref.update({ status: 'no_push_token', dispatchKey, dispatchedAt: nowIso, dispatchError: 'No saved push token for reminder recipient.' });
+          const nextScheduledAt = getNextRecurringReminderAt(reminder.scheduledAt, reminder.recurrence);
+          const nextRetryAt = nextScheduledAt || retryAt(10);
+          await ref.update({
+            status: nextScheduledAt ? 'scheduled' : 'no_push_token',
+            scheduledAt: nextScheduledAt || reminder.scheduledAt || null,
+            nextDispatchAt: nextRetryAt,
+            dispatchAttemptAt: nowIso,
+            dispatchedAt: null,
+            previousDispatchKey: dispatchKey,
+            dispatchKey: nextScheduledAt ? '' : dispatchKey,
+            lastNoTokenAt: nowIso,
+            dispatchError: 'No saved push token for reminder recipient. Ask the user to open the app once and allow notifications, then the cron will retry.',
+            updatedAt: nowIso
+          });
           return;
         }
 
@@ -242,6 +296,7 @@ module.exports = async function handler(req, res) {
             await ref.update({
               status: 'scheduled',
               scheduledAt: nextScheduledAt,
+              nextDispatchAt: nextScheduledAt,
               lastDispatchedAt: nowIso,
               dispatchedAt: null,
               previousDispatchKey: dispatchKey,
@@ -254,6 +309,7 @@ module.exports = async function handler(req, res) {
             await ref.update({
               status: 'sent',
               dispatchedAt: nowIso,
+              nextDispatchAt: null,
               dispatchKey,
               pushSuccessCount: result.successCount,
               pushFailureCount: result.failureCount || 0
@@ -263,18 +319,24 @@ module.exports = async function handler(req, res) {
           stats.failed += 1;
           await ref.update({
             status: 'delivery_problem',
+            dispatchAttemptAt: nowIso,
+            nextDispatchAt: retryAt(10),
             dispatchedAt: nowIso,
             dispatchKey,
             pushFailureCount: result.failureCount || tokens.length,
-            dispatchError: result.responses?.[0]?.error?.message || 'No push sends succeeded.'
+            dispatchError: result.responses?.[0]?.error?.message || 'No push sends succeeded.',
+            updatedAt: nowIso
           });
         }
       } catch (err) {
         stats.failed += 1;
         await ref.update({
           status: 'delivery_problem',
+          dispatchAttemptAt: nowIso,
+          nextDispatchAt: retryAt(10),
           dispatchedAt: nowIso,
-          dispatchError: err.message || 'Dispatch failed.'
+          dispatchError: err.message || 'Dispatch failed.',
+          updatedAt: nowIso
         }).catch(() => {});
       }
     };
@@ -283,6 +345,7 @@ module.exports = async function handler(req, res) {
 
     const eventSnap = await db.collection('eventReminders')
       .where('scheduledAt', '<=', nowIso)
+      .orderBy('scheduledAt', 'asc')
       .limit(limit)
       .get();
 
@@ -325,6 +388,7 @@ module.exports = async function handler(req, res) {
           await ref.update({
             status: 'no_push_token',
             dispatchAttemptAt: nowIso,
+            nextDispatchAt: retryAt(10),
             lastNoTokenAt: nowIso,
             dispatchKey: claim.dispatchKey,
             dispatchError: 'No saved push token for event reminder recipients. Ask recipients to open the app once and allow notifications, then the cron will retry.',
@@ -371,6 +435,7 @@ module.exports = async function handler(req, res) {
           await ref.update({
             status: 'delivery_problem',
             dispatchAttemptAt: nowIso,
+            nextDispatchAt: retryAt(10),
             dispatchKey: claim.dispatchKey,
             pushFailureCount: result.failureCount || tokens.length,
             resolvedRecipientCount: resolvedUsers.length,
@@ -384,6 +449,7 @@ module.exports = async function handler(req, res) {
         await ref.update({
           status: 'delivery_problem',
           dispatchAttemptAt: nowIso,
+          nextDispatchAt: retryAt(10),
           dispatchError: err.message || 'Event reminder dispatch failed.',
           updatedAt: nowIso
         }).catch(() => {});
