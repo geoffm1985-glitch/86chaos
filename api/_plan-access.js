@@ -9,6 +9,8 @@ const PLAN_IDS = {
 const FEATURE_KEYS = {
   INVOICE_SCANNING: 'invoice_scanning',
   MENU_SCANNING: 'menu_scanning',
+  AI_ORDER_ASSISTANT: 'ai_order_assistant',
+  PYTHON_INTELLIGENCE: 'python_intelligence',
   INTEGRATIONS: 'integrations'
 };
 
@@ -17,9 +19,9 @@ const PLAN_ORDER = [PLAN_IDS.SHIFT, PLAN_IDS.OPERATIONS, PLAN_IDS.SMART_KITCHEN,
 const PLAN_DEFINITIONS = {
   [PLAN_IDS.SHIFT]: { id: PLAN_IDS.SHIFT, label: 'Shift', monthlyPrice: 49, invoicePagesLimit: 0, menuPagesLimit: 0, features: [] },
   [PLAN_IDS.OPERATIONS]: { id: PLAN_IDS.OPERATIONS, label: 'Operations', monthlyPrice: 99, invoicePagesLimit: 20, menuPagesLimit: 3, features: [] },
-  [PLAN_IDS.SMART_KITCHEN]: { id: PLAN_IDS.SMART_KITCHEN, label: 'Smart Kitchen', monthlyPrice: 179, invoicePagesLimit: 75, menuPagesLimit: 10, features: [FEATURE_KEYS.INVOICE_SCANNING, FEATURE_KEYS.MENU_SCANNING] },
-  [PLAN_IDS.OWNER_PRO]: { id: PLAN_IDS.OWNER_PRO, label: 'Owner Pro', monthlyPrice: 299, invoicePagesLimit: 200, menuPagesLimit: 25, features: [FEATURE_KEYS.INVOICE_SCANNING, FEATURE_KEYS.MENU_SCANNING] },
-  [PLAN_IDS.MASTER_ADMIN]: { id: PLAN_IDS.MASTER_ADMIN, label: 'Master Admin', monthlyPrice: 0, invoicePagesLimit: Number.MAX_SAFE_INTEGER, menuPagesLimit: Number.MAX_SAFE_INTEGER, features: [FEATURE_KEYS.INVOICE_SCANNING, FEATURE_KEYS.MENU_SCANNING, FEATURE_KEYS.INTEGRATIONS] }
+  [PLAN_IDS.SMART_KITCHEN]: { id: PLAN_IDS.SMART_KITCHEN, label: 'Smart Kitchen', monthlyPrice: 179, invoicePagesLimit: 75, menuPagesLimit: 10, features: [FEATURE_KEYS.INVOICE_SCANNING, FEATURE_KEYS.MENU_SCANNING, FEATURE_KEYS.AI_ORDER_ASSISTANT, FEATURE_KEYS.PYTHON_INTELLIGENCE] },
+  [PLAN_IDS.OWNER_PRO]: { id: PLAN_IDS.OWNER_PRO, label: 'Owner Pro', monthlyPrice: 299, invoicePagesLimit: 200, menuPagesLimit: 25, features: [FEATURE_KEYS.INVOICE_SCANNING, FEATURE_KEYS.MENU_SCANNING, FEATURE_KEYS.AI_ORDER_ASSISTANT, FEATURE_KEYS.PYTHON_INTELLIGENCE] },
+  [PLAN_IDS.MASTER_ADMIN]: { id: PLAN_IDS.MASTER_ADMIN, label: 'Master Admin', monthlyPrice: 0, invoicePagesLimit: Number.MAX_SAFE_INTEGER, menuPagesLimit: Number.MAX_SAFE_INTEGER, features: [FEATURE_KEYS.INVOICE_SCANNING, FEATURE_KEYS.MENU_SCANNING, FEATURE_KEYS.AI_ORDER_ASSISTANT, FEATURE_KEYS.PYTHON_INTELLIGENCE, FEATURE_KEYS.INTEGRATIONS] }
 };
 
 function clean(value = '') { return String(value == null ? '' : value).trim(); }

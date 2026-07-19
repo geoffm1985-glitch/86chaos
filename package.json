@@ -1,6 +1,6 @@
 {
   "name": "86chaos",
-  "version": "15.0.83",
+  "version": "15.0.88",
   "private": true,
   "dependencies": {
     "firebase": "^10.8.1",
@@ -18,7 +18,13 @@
   "scripts": {
     "start": "react-scripts start",
     "build": "react-scripts build",
-    "retention:setup": "node scripts/setup-production-retention.js"
+    "retention:setup": "node scripts/setup-production-retention.js",
+    "test": "node scripts/validate-repair.js",
+    "test:ci": "node scripts/validate-repair.js",
+    "validate:source": "node scripts/validate-repair.js",
+    "rules:check": "node scripts/validate-rules.js",
+    "vercel:install": "npm ci --omit=optional --no-audit --no-fund --progress=false",
+    "deploy:check": "npm ci --omit=optional --no-audit --no-fund --progress=false && npm test && npm run rules:check && NODE_OPTIONS=--max-old-space-size=4096 GENERATE_SOURCEMAP=false DISABLE_ESLINT_PLUGIN=true npm run build"
   },
   "browserslist": {
     "production": [
@@ -31,5 +37,10 @@
       "last 1 firefox version",
       "last 1 safari version"
     ]
+  },
+  "packageManager": "npm@10.8.2",
+  "engines": {
+    "node": "20.x",
+    "npm": "10.x"
   }
 }

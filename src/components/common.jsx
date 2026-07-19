@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Bell, Check, Camera, ChevronLeft, ChevronRight, MessageSquare, Plus, Trash2, Users, Calendar, Clock, X, Loader2, Package, ClipboardList, Menu, Settings, LogOut, Shield, Send, Repeat, Edit, Moon, Sun, TrendingUp, BookOpen, Search, ChefHat, Scale, Coffee, Star, Bug, Wrench, Globe, Mic, MicOff, Sparkles } from 'lucide-react';
+import { Bell, Check, Camera, ChevronLeft, ChevronRight, MessageSquare, Plus, Trash2, Users, Calendar, Clock, X, Loader2, Package, ClipboardList, Menu, Settings, LogOut, Shield, Send, Repeat, Edit, Moon, Sun, TrendingUp, BookOpen, Search, ChefHat, Scale, Coffee, Star, Bug, Wrench, Globe, Mic, MicOff, Sparkles, Network } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
 import { getFirestore, collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, where, getDoc, setDoc, getDocs } from 'firebase/firestore';
 import { getAuth, signInWithEmailAndPassword, sendPasswordResetEmail, createUserWithEmailAndPassword, updatePassword } from 'firebase/auth';
@@ -36,13 +36,35 @@ const CheersLogo = ({ clientData }) => {
 };
 
 const Modal = ({ isOpen, onClose, title, children, sizeClass = 'max-w-md' }) => {
+  const panelRef = useRef(null);
+  const previousFocusRef = useRef(null);
+  const titleIdRef = useRef(`chaos-modal-title-${Math.random().toString(36).slice(2)}`);
+
+  useEffect(() => {
+    if (!isOpen) return undefined;
+    previousFocusRef.current = typeof document !== 'undefined' ? document.activeElement : null;
+    const focusTimer = window.setTimeout(() => {
+      const firstFocusable = panelRef.current?.querySelector('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])');
+      (firstFocusable || panelRef.current)?.focus?.();
+    }, 0);
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape') onClose?.();
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.clearTimeout(focusTimer);
+      window.removeEventListener('keydown', handleKeyDown);
+      previousFocusRef.current?.focus?.();
+    };
+  }, [isOpen, onClose]);
+
   if (!isOpen) return null;
   return (
-    <div className="chaos-modal-backdrop fixed inset-0 bg-[#12161A]/80 z-[60] flex items-center justify-center p-4 backdrop-blur-md transition-opacity">
-      <div className={`chaos-modal-panel ${T.card} ${sizeClass} w-full max-h-[90vh] overflow-y-auto`}>
+    <div className="chaos-modal-backdrop fixed inset-0 bg-[#12161A]/80 z-[60] flex items-center justify-center p-4 backdrop-blur-md transition-opacity" role="presentation">
+      <div ref={panelRef} role="dialog" aria-modal="true" aria-labelledby={titleIdRef.current} tabIndex={-1} className={`chaos-modal-panel ${T.card} ${sizeClass} w-full max-h-[90vh] overflow-y-auto outline-none`}>
         <div className={`chaos-modal-header flex justify-between items-center p-4 border-b ${T.border}`}>
-          <h3 className="font-bold text-lg text-white">{title}</h3>
-          <button onClick={onClose} className="p-1.5 hover:bg-[#12161A] rounded-full text-slate-400 hover:text-white transition-colors"><X size={20}/></button>
+          <h3 id={titleIdRef.current} className="font-bold text-lg text-white">{title}</h3>
+          <button type="button" aria-label={`Close ${title || 'dialog'}`} onClick={onClose} className="p-1.5 hover:bg-[#12161A] rounded-full text-slate-400 hover:text-white transition-colors focus:outline-none focus:ring-2 focus:ring-[#D4A381]"><X size={20}/></button>
         </div>
         <div className="chaos-modal-body p-4">{children}</div>
       </div>
@@ -71,8 +93,13 @@ const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppU
   // Reset the drawer search every time the hamburger menu opens/closes.
   // This prevents an old search term from reappearing and making the drawer look auto-filled.
   useEffect(() => {
-    setMenuSearch('');
-  }, [isOpen]);
+    if (!isOpen) return undefined;
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape') onClose?.();
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, onClose]);
 
   const drawerReminders = useLiveCollection('personalReminders', appUser?.restaurantId, { enabled: !!isOpen && !!appUser?.restaurantId && !!appUser?.id, limitCount: 120, fallbackLimitCount: 60 });
   const hasReminderAlert = (drawerReminders || []).some(reminder => reminderNeedsAttention(reminder, appUser));
@@ -101,7 +128,7 @@ const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppU
   if (isEnabled('recipes')) pushTab({ id: 'recipes', label: 'Recipe Book', icon: <BookOpen size={18}/> });
   if (isEnabled('inventory')) pushTab({ id: 'inventory', label: 'Inventory & Orders', icon: <Package size={18}/> });  
   if (!appUser?.isDemo) pushTab({ id: 'ai-tools', label: 'AI Tools', icon: <Sparkles size={18}/> });
-  if (canUseMenuIntelligence(appUser, clientData)) pushTab({ id: 'menu-intelligence', label: 'Menu Intelligence', icon: <Sparkles size={18}/> });
+  if (canUseMenuIntelligence(appUser, clientData)) pushTab({ id: 'menu-intelligence', label: 'Menu Intelligence', icon: <Network size={18}/> });
   pushTab({ id: 'reminders', label: 'My Reminders', icon: <Bell size={18}/>, dot: hasReminderAlert });
   if (isEnabled('team')) pushTab({ id: 'team', label: 'Staff Roster', icon: <Users size={18}/> });
   if (!appUser?.isDemo && isEnabled('hr')) pushTab({ id: 'hr-training', label: 'HR & Training', icon: <BookOpen size={18}/> });
@@ -125,9 +152,9 @@ const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppU
   const menuSections = [
     { label: 'PEOPLE & SCHEDULING', ids: ['published', 'team', 'hr-training'] },
     { label: 'TODAY', ids: ['today', 'ops', 'reminders', 'events', 'messages'] },
-    { label: 'KITCHEN OPERATIONS', ids: ['prep', 'inventory', 'recipes', 'menu-intelligence', 'maintenance'] },
-    { label: 'BUSINESS & FINANCIALS', ids: ['financials'] },
-    { label: 'TOOLS & AUTOMATION', ids: ['ai-tools'] },
+    { label: 'KITCHEN OPERATIONS', ids: ['prep', 'inventory', 'recipes'] },
+    { label: 'BUSINESS & FINANCIALS', ids: ['financials', 'maintenance'] },
+    { label: 'TOOLS & AUTOMATION', ids: ['ai-tools', 'menu-intelligence'] },
     { label: 'SYSTEM & SUPPORT', ids: ['settings', 'help', 'audit', 'godmode'] }
   ].map(section => ({ ...section, tabs: section.ids.map(id => tabs.find(tab => tab.id === id)).filter(Boolean) })).filter(section => section.tabs.length > 0);
 
@@ -151,9 +178,9 @@ const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppU
   return (
     <>
       {isOpen && (
-        <div className="fixed inset-0 z-[70] flex justify-end">
+        <div className="fixed inset-0 z-[70] flex justify-end" role="presentation">
           <div className="absolute inset-0 bg-[#12161A]/60 backdrop-blur-sm" onClick={onClose}></div>
-          <div className={`app-drawer-readable w-72 bg-[#1A2126] border-l ${T.border} h-full shadow-2xl flex flex-col relative animate-[slideIn_0.3s_ease-out]`}>
+          <div className={`app-drawer-readable w-72 bg-[#1A2126] border-l ${T.border} h-full shadow-2xl flex flex-col relative animate-[slideIn_0.3s_ease-out]`} role="dialog" aria-modal="true" aria-label="Main menu">
             <div className={`p-4 border-b ${T.border} bg-[#12161A] flex justify-between items-start`}>
                <div className="flex items-center gap-3">
                  <img src={getAvatar(appUser.name, appUser.photoURL)} alt="Profile" className={`w-10 h-10 rounded-full border ${T.border} object-cover`}/>
@@ -179,7 +206,7 @@ const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppU
             <div className="p-2 border-b border-[#2A353D]">
               <div className="relative">
                 <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
-                <input value={menuSearch} onChange={e => setMenuSearch(e.target.value)} placeholder="Search menu, help, tools..." className="w-full bg-[#12161A] border border-[#2A353D] rounded-xl pl-9 pr-3 py-1.5 text-xs font-bold text-white outline-none focus:border-[#D4A381]" />
+                <input value={menuSearch} onChange={e => setMenuSearch(e.target.value)} placeholder="Search menu, help, tools..." aria-label="Search menu, help, and tools" className="w-full bg-[#12161A] border border-[#2A353D] rounded-xl pl-9 pr-3 py-1.5 text-xs font-bold text-white outline-none focus:border-[#D4A381]" />
               </div>
             </div>
             <div className="flex-1 overflow-y-auto px-3 py-2">

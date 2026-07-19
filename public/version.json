@@ -1,10 +1,11 @@
 {
-  "version": "15.0.83",
+  "version": "15.0.87",
   "name": "86 Chaos",
   "releasedAt": "2026-07-18",
-  "label": "86 Chaos 15.0.83",
-  "build": "15.0.83",
+  "label": "86 Chaos 15.0.87",
+  "build": "15.0.87",
   "updatedAt": "2026-07-18T00:00:00.000Z",
-  "notes": "Converts Python intelligence from Node spawn calls to real Vercel Python API engine routes with secure Node auth wrappers.",
-  "release": "Vercel Python API engine routing fix"
+  "notes": "Repairs audit findings across permissions, Firebase/Storage rules, audit logging, Founder Beta entitlement defaults, reminder dispatch reliability, browser crash reporting, geocode authorization, CSP headers, asset weight, and validation coverage.",
+  "release": "Audit repair hardening pass",
+  "releaseName": "Audit repair hardening pass"
 }

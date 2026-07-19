@@ -109,5 +109,9 @@
       "maxDuration": 60,
       "memory": 512
     }
-  }
+  },
+  "framework": "create-react-app",
+  "installCommand": "npm ci --omit=optional --no-audit --no-fund --progress=false",
+  "buildCommand": "NODE_OPTIONS=--max-old-space-size=4096 GENERATE_SOURCEMAP=false DISABLE_ESLINT_PLUGIN=true npm run build",
+  "outputDirectory": "build"
 }

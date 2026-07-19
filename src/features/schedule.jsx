@@ -290,13 +290,25 @@ const TabMasterSchedule = ({ currentDate, setCurrentDate = null, onSubTabChange 
     setIsFullSchedulePickerOpen(false);
   };
 
-  useEffect(() => {
-    const requested = voiceScheduleSubTabTarget?.subTab;
+  const openScheduleSubTabSafely = (requested = '') => {
     if (!requested) return;
     const allowed = ['my-schedule', 'full-schedule', 'month-view', 'trade-board', 'time-off', 'availability'];
     if ((appUser?.isAdmin || appUser?.permissions?.schedule) && scheduleBuilderProps) allowed.push('schedule-builder');
     if (allowed.includes(requested)) setSubTab(requested);
+  };
+
+  useEffect(() => {
+    openScheduleSubTabSafely(voiceScheduleSubTabTarget?.subTab);
   }, [voiceScheduleSubTabTarget?.id]);
+
+  useEffect(() => {
+    let requested = '';
+    try {
+      requested = sessionStorage.getItem('scheduleFocus') || '';
+      if (requested) sessionStorage.removeItem('scheduleFocus');
+    } catch (e) {}
+    openScheduleSubTabSafely(requested);
+  }, []);
 
   useEffect(() => {
     if (!appUser?.id || !appUser?.restaurantId) {
@@ -1250,6 +1262,9 @@ const handlePublish = async () => {
     if(!window.confirm("Publish schedule? Notifications will be sent. A backup file will download first.")) return; 
     
     const unpub = schedulePeriodShifts.filter(s => !s.isPublished); 
+    const publishPeriodStart = schedulePeriodBounds.start;
+    const publishPeriodEnd = schedulePeriodBounds.end;
+    const publishPeriodLabel = schedulePeriodLabel;
     
     if (unpub.length === 0) {
       addToast('Notice', 'No unpublished shifts found.');
@@ -1257,9 +1272,6 @@ const handlePublish = async () => {
     }
 
     try {
-      const publishPeriodStart = schedulePeriodBounds.start;
-      const publishPeriodEnd = schedulePeriodBounds.end;
-      const publishPeriodLabel = schedulePeriodLabel;
       const restaurantPrefix = getRestaurantExportPrefix(appUser, appUser?.restaurantId || '86chaos');
       const now = new Date();
       const backupPayload = {
