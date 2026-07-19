@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { initializeApp } from 'firebase/app';
 import { getFirestore, collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, where, getDoc, setDoc, getDocs, enableIndexedDbPersistence, orderBy, limit as firestoreLimit } from 'firebase/firestore';
 import { getAuth, onAuthStateChanged } from 'firebase/auth';
-import { getMessaging, isSupported } from 'firebase/messaging';
+import { getMessaging } from 'firebase/messaging';
 import { getStorage } from 'firebase/storage';
 import L from 'leaflet';
 
@@ -77,22 +77,7 @@ export const firebaseConfig = forceTestingFirebase ? testConfig : (forceProducti
 export const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app);
 export const storage = getStorage(app);
-const safeGetMessaging = () => {
-  if (typeof window === "undefined") return null;
-  try { return getMessaging(app); }
-  catch (err) {
-    console.warn('Firebase Messaging is unavailable on this browser:', err?.message || err);
-    return null;
-  }
-};
-
-export const messaging = safeGetMessaging();
-export const messagingReady = typeof window !== "undefined"
-  ? isSupported().then((supported) => supported ? messaging : null).catch((err) => {
-      console.warn('Firebase Messaging support check failed:', err?.message || err);
-      return null;
-    })
-  : Promise.resolve(null);
+export const messaging = typeof window !== "undefined" ? getMessaging(app) : null;
 
 // Kitchen Wi-Fi Armor: Keep app working in walk-in coolers
 enableIndexedDbPersistence(db).catch((err) => console.warn("Offline mode issue:", err.code));
@@ -181,7 +166,7 @@ export const MASTER_ADMIN_EMAIL = (process.env.REACT_APP_MASTER_ADMIN_EMAIL || '
 export const EVENT_TAGS = ['Standard Day', 'Packers Game', 'Brewers Game', 'Live Music', 'Severe Weather', 'Private Catering', 'Holiday'];
 
 // --- VERSION TRACKING ---
-export const CURRENT_VERSION = '15.0.86';
+export const CURRENT_VERSION = '15.0.83';
 
 // --- Helpers ---
 export const useLiveCollection = (coll, restId, options = {}) => {
@@ -222,9 +207,14 @@ export const useLiveCollection = (coll, restId, options = {}) => {
         console.error(`Live collection error for ${coll} / ${restId} (${label}):`, err);
         const canFallback = label !== 'fallback' && (err?.code === 'failed-precondition' || /index|requires an index|invalid/i.test(err?.message || ''));
         if (canFallback) {
-          console.warn(`Missing Firestore index for ${coll}. Refusing to display a semantically different fallback query.`);
+          console.warn(`Falling back to capped ${coll} query while Firestore index is missing.`);
+          const fallbackConstraints = [where("restaurantId", "==", restId)];
+          const cap = Number(fallbackLimitCount || limitCount || 75);
+          if (cap > 0) fallbackConstraints.push(firestoreLimit(cap));
+          fallbackUnsubscribe = subscribe(fallbackConstraints, 'fallback');
+        } else {
+          setData([]);
         }
-        setData([]);
       }
     );
 
@@ -394,26 +384,17 @@ if (typeof window !== 'undefined' && !window.crashCatcherAttached) {
     }
   }, true);
 
-  window.onerror = (msg, url, lineNo, columnNo, error) => {
-    try {
-      if (auth.currentUser) {
-        secureFetch('/api/report-bug', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            category: 'Crash / Error',
-            message: String(msg || 'Browser error').slice(0, 2000),
-            rawStack: String(error?.stack || '').slice(0, 2500),
-            breadcrumbs: window.breadcrumbs || [],
-            userAgent: navigator.userAgent,
-            screenSize: `${window.innerWidth}x${window.innerHeight}`,
-            url: window.location.href,
-            source: 'window_onerror'
-          })
-        }).catch(()=>{});
-      }
-    } catch (_) {}
-    return false;
+  window.onerror = (msg, url, lineNo, columnNo, error) => { 
+    addDoc(collection(db, "crashReports"), { 
+      type: 'error', 
+      message: msg, 
+      stack: error?.stack || '', 
+      breadcrumbs: window.breadcrumbs || [], // Attach the breadcrumbs to the crash
+      userAgent: navigator.userAgent, // Captures device, OS, and browser info
+      screenSize: `${window.innerWidth}x${window.innerHeight}`, // Helps debug UI clipping
+      time: new Date().toISOString() 
+    }).catch(()=>{}); 
+    return false; 
   }; 
 }
 
@@ -448,22 +429,21 @@ export const logAudit = async (user, action, target, details) => {
   if (!user || !user.restaurantId) return;
   try {
     const isGhost = !!user.isGhost;
-    await secureFetch('/api/audit-log', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        restaurantId: user.restaurantId,
-        action: String(action || '').slice(0, 160),
-        target: String(target || '').slice(0, 320),
-        details: typeof details === 'string' ? details.slice(0, 2500) : JSON.stringify(scrubForAudit(details)).slice(0, 2500),
-        sessionId: (() => { try { return sessionStorage.getItem('chaosSessionId') || ''; } catch (_) { return ''; } })(),
-        isGhost,
-        ghostRealUserId: user.ghostRealUserId || user.id || '',
-        ghostRealUserName: user.ghostRealUserName || user.name || '',
-        ghostTargetUserId: user.ghostTargetUserId || null,
-        ghostTargetUserName: user.ghostTargetUserName || null,
-        ghostWorkspaceId: isGhost ? user.restaurantId : null
-      })
+    await addDoc(collection(db, "auditLogs"), {
+      userId: isGhost ? (user.ghostRealUserId || user.id || 'system') : (user.id || 'system'),
+      userName: isGhost
+        ? `${user.ghostRealUserName || user.name || 'System'} (Ghost${user.ghostTargetUserName ? ` as ${user.ghostTargetUserName}` : ''})`
+        : (user.name || 'System'),
+      ghostTargetUserId: user.ghostTargetUserId || null,
+      ghostTargetUserName: user.ghostTargetUserName || null,
+      ghostWorkspaceId: isGhost ? user.restaurantId : null,
+      action,
+      target,
+      details,
+      timestamp: new Date().toISOString(),
+      restaurantId: user.restaurantId,
+      sessionId: (() => { try { return sessionStorage.getItem('chaosSessionId') || ''; } catch (_) { return ''; } })(),
+      isGhost
     });
   } catch (err) { console.error("Audit log failed:", err); }
 };
@@ -478,12 +458,12 @@ const V14_SENSITIVE_KEYS = ['password', 'temporaryPassword', 'ssn', 'address', '
 const V14_TENANT_COLLECTIONS = ['events','messages','shiftSwaps','tasks','timePunches','tempLogs','wasteLogs','maintenanceLogs','prepItems','prepCategories','lineCheckItems','recipes','inventoryItems','vendors','orders','invoices','shifts','timeOffRequests','roles','pmSchedules','sales','menuDependencies','kitchenSpecials','trainingManuals','hrOnboardingTasks','hrCertifications','hrPerformanceNotes','financialExpenses','financialTargets','offlineWriteReceipts','scheduleTemplates','scheduleCoverageTargets'];
 const V14_WRITE_PERMISSIONS = {
   shifts: ['schedule', 'team'], timeOffRequests: ['schedule', 'team'], scheduleTemplates: ['schedule', 'team'], scheduleCoverageTargets: ['schedule', 'team'],
-  inventoryItems: ['inventory', 'inventoryEdit'], vendors: ['inventory', 'inventoryEdit'], orders: ['inventory', 'inventoryEdit'], invoices: ['inventory', 'invoiceScan', 'scans'],
-  prepItems: ['prep', 'team'], prepCategories: ['prep', 'team'], lineCheckItems: ['prep', 'team'], recipes: ['prep', 'team'], menuDependencies: ['prep', 'inventory', 'menuIntelligence'], kitchenSpecials: ['prep', 'ops', 'team'],
-  sales: ['sales', 'salesEdit', 'financialEdit'], timePunches: ['labor', 'laborEdit'], financialExpenses: ['sales', 'salesEdit', 'financialEdit'], financialTargets: ['sales', 'salesEdit', 'financialEdit'],
+  inventoryItems: ['inventory', 'team'], vendors: ['inventory', 'team'], orders: ['inventory', 'team'], invoices: ['inventory', 'team'],
+  prepItems: ['prep', 'team'], prepCategories: ['prep', 'team'], lineCheckItems: ['prep', 'team'], recipes: ['prep', 'team'], menuDependencies: ['prep', 'inventory', 'team'], kitchenSpecials: ['prep', 'ops', 'team'],
+  sales: ['sales', 'labor', 'team'], timePunches: ['labor', 'team'], financialExpenses: ['sales', 'team'], financialTargets: ['sales', 'team'],
   pmSchedules: ['team'], maintenanceLogs: ['team'], tasks: ['prep', 'team'],
   trainingManuals: ['hr'], hrOnboardingTasks: ['hr'], hrCertifications: ['hr'], hrPerformanceNotes: ['hr'],
-  events: ['events', 'schedule', 'team'], messages: ['messages', 'team'], shiftSwaps: ['schedule', 'team'], tempLogs: ['prep', 'team'], wasteLogs: ['inventory', 'prep']
+  events: ['events', 'schedule', 'team'], messages: ['messages', 'team'], shiftSwaps: ['schedule', 'team'], tempLogs: ['prep', 'team'], wasteLogs: ['inventory', 'prep', 'team']
 };
 
 export const isSuperAdminUser = (user = {}) => Boolean(user?.isSuperAdmin === true || user?.systemAccess?.superAdmin === true || (MASTER_ADMIN_EMAIL && String(user?.email || '').toLowerCase() === MASTER_ADMIN_EMAIL.toLowerCase()));

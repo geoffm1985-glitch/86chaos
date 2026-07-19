@@ -1,9 +1,8 @@
 const crypto = require('crypto');
 const { initAdmin, authorize, readBody, masterEmails, norm } = require('./_chaos-admin');
 const { callPythonFunction } = require('./_python-function-client');
-const { resolveWorkspaceSubscription, planIsAtLeast, PLAN_IDS } = require('./_plan-access');
 
-const APP_VERSION = '15.0.86';
+const APP_VERSION = '15.0.83';
 const PYTHON_TIMEOUT_MS = 35000;
 const MAX_PAYLOAD_BYTES = 1500000;
 const COLLECTION_LIMITS = {
@@ -406,11 +405,6 @@ module.exports = async function handler(req, res) {
 
   const results = [];
   for (const restaurant of restaurants) {
-    const subscription = resolveWorkspaceSubscription(restaurant, {}, {});
-    if (!planIsAtLeast(subscription.planId, PLAN_IDS.SMART_KITCHEN)) {
-      results.push({ restaurantId: restaurant.id, restaurantName: restaurant.name || '', ok: true, skipped: true, reason: 'smart_kitchen_required', detail: 'Python automation is limited to Smart Kitchen and higher.' });
-      continue;
-    }
     results.push(await processRestaurant({ app, db, restaurant, source, requestedMode }));
   }
   return res.status(200).json({ ok: true, version: APP_VERSION, source, requestedMode, restaurantCount: restaurants.length, results, safetyPolicy: SAFE_POLICY });

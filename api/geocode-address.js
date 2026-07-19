@@ -1,6 +1,3 @@
-const { initAdmin, authorize, requireAppCheckIfEnforced } = require('./_chaos-admin');
-const { enforceRateLimit, sendRateLimited } = require('./_rate-limit');
-
 const FALLBACK_LOCATIONS = [
   {
     test: (q) => /cheers/i.test(q) || (/chilton/i.test(q) && /(n\s*34|highway\s*57|hwy\s*57|57\b)/i.test(q)),
@@ -41,7 +38,7 @@ async function geocodeNominatim(q) {
     headers: {
       'Accept': 'application/json',
       'Accept-Language': 'en-US,en;q=0.9',
-      'User-Agent': '86Chaos-Geocoder/15.0.87 (https://app.86chaos.com)'
+      'User-Agent': '86Chaos-Geocoder/14.0.2 (https://app.86chaos.com)'
     }
   });
   if (!response.ok) throw new Error(`Nominatim ${response.status}`);
@@ -69,19 +66,6 @@ async function geocodePhoton(q) {
 
 module.exports = async function handler(req, res) {
   if (req.method !== 'GET') return send(res, 405, { ok: false, error: 'Method not allowed' });
-  let auth;
-  try {
-    const app = initAdmin(req);
-    const appCheck = await requireAppCheckIfEnforced(app, req);
-    if (!appCheck.ok) return send(res, appCheck.status || 401, { ok: false, error: appCheck.error });
-    auth = await authorize(req, app, { allowTenantAdmin: true, targetRestaurantId: String(req.query.restaurantId || '') });
-    if (!auth.ok) return send(res, auth.status || 403, { ok: false, error: auth.error || 'Workspace admin access is required for geocoding.' });
-    const rate = await enforceRateLimit({ db: auth.db, req, decoded: auth.decoded, routeName: 'geocode-address', limit: Number(process.env.GEOCODE_RATE_LIMIT || 30), windowMs: 60 * 1000 });
-    if (!rate.ok) return sendRateLimited(res, rate);
-  } catch (err) {
-    return send(res, 403, { ok: false, error: `Geocode authorization failed: ${err.message || err}` });
-  }
-
   const q = normalizeQuery(req.query.q);
   if (q.length < 4) return send(res, 400, { ok: false, error: 'Enter a fuller address before searching.' });
   if (q.length > 220) return send(res, 400, { ok: false, error: 'Address search is too long.' });

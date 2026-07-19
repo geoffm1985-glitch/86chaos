@@ -14,23 +14,6 @@ import { LoginScreen, TabMasterSchedule, TabSchedule, TabScheduleWorkbench, TabO
 
 const normalizeEmail = (value) => String(value || '').toLowerCase().trim();
 const safeWorkspaceName = (workspace = {}) => workspace.restaurantName || workspace.name || workspace.businessName || workspace.restaurantId || '86 Chaos Workspace';
-const buildSafeSessionCache = (user = {}) => user ? {
-  id: user.id || user.userId || '',
-  userId: user.userId || user.id || '',
-  name: user.name || 'Staff',
-  photoURL: user.photoURL || '',
-  restaurantId: user.restaurantId || '',
-  activeRestaurantId: user.activeRestaurantId || user.restaurantId || '',
-  defaultRestaurantId: user.defaultRestaurantId || user.restaurantId || '',
-  restaurantName: user.restaurantName || '',
-  membershipId: user.membershipId || '',
-  workspaceSwitcherReady: user.workspaceSwitcherReady === true,
-  sessionCached: true
-} : null;
-const parseCachedSessionUser = (raw = '') => {
-  try { return buildSafeSessionCache(JSON.parse(raw)); }
-  catch (_) { return null; }
-};
 const hasOwn = (value, key) => Boolean(value && Object.prototype.hasOwnProperty.call(value, key));
 const resolveWorkspaceAccess = (currentUser = {}, workspace = {}) => {
   const restaurantId = workspace.restaurantId || currentUser.restaurantId || '';
@@ -129,7 +112,7 @@ export default function App() {
     try {
       const savedLocal = localStorage.getItem('86chaosUser'); 
       const savedSession = sessionStorage.getItem('86chaosUser');
-      return savedLocal ? parseCachedSessionUser(savedLocal) : (savedSession ? parseCachedSessionUser(savedSession) : null);
+      return savedLocal ? JSON.parse(savedLocal) : (savedSession ? JSON.parse(savedSession) : null);
     } catch (err) {
       console.warn('Stored session was corrupted. Clearing local session cache.', err);
       localStorage.removeItem('86chaosUser');
@@ -226,7 +209,7 @@ export default function App() {
             };
             try {
               const storage = localStorage.getItem('86chaosUser') ? localStorage : sessionStorage;
-              storage.setItem('86chaosUser', JSON.stringify(buildSafeSessionCache(next)));
+              storage.setItem('86chaosUser', JSON.stringify(next));
             } catch (_) {}
             return next;
           });
@@ -845,10 +828,10 @@ useEffect(() => {
     const shouldRemember = localStorage.getItem('chaosRememberMe') !== 'false';
     if (appUser) {
       if (shouldRemember) {
-        localStorage.setItem('86chaosUser', JSON.stringify(buildSafeSessionCache(appUser)));
+        localStorage.setItem('86chaosUser', JSON.stringify(appUser));
         sessionStorage.removeItem('86chaosUser');
       } else {
-        sessionStorage.setItem('86chaosUser', JSON.stringify(buildSafeSessionCache(appUser)));
+        sessionStorage.setItem('86chaosUser', JSON.stringify(appUser));
         localStorage.removeItem('86chaosUser');
       }
     } else {
@@ -957,27 +940,23 @@ What I clicked / expected:
     setIsSubmittingProblem(true);
     try {
       const diagnostics = Object.fromEntries(getDeviceDiagnostics());
-      const res = await secureFetch('/api/report-bug', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          category: problemModal.category || 'Bug / Error',
-          title: problemModal.title || 'Report Problem',
-          message: problemText.trim(),
-          sourceToastMessage: problemModal.message || '',
-          restaurantId: liveAppUser?.restaurantId || 'Unknown',
-          restaurantName: liveAppUser?.restaurantName || '',
-          activeTab: activeTabState || '',
-          diagnostics,
-          userAgent: navigator.userAgent,
-          screenSize: `${window.innerWidth}x${window.innerHeight}`,
-          url: window.location.href
-        })
+      await addDoc(collection(db, 'crashReports'), {
+        type: 'user_reported_problem',
+        category: problemModal.category || 'Bug / Error',
+        title: problemModal.title || 'Report Problem',
+        message: problemText.trim(),
+        sourceToastMessage: problemModal.message || '',
+        user: liveAppUser?.name || 'Unknown',
+        userEmail: liveAppUser?.email || '',
+        userId: liveAppUser?.id || '',
+        restaurantId: liveAppUser?.restaurantId || 'Unknown',
+        activeTab: activeTabState || '',
+        diagnostics,
+        userAgent: navigator.userAgent,
+        screenSize: `${window.innerWidth}x${window.innerHeight}`,
+        url: window.location.href,
+        time: new Date().toISOString()
       });
-      if (!res.ok) {
-        const errBody = await res.json().catch(() => ({}));
-        throw new Error(errBody.error || 'Could not send problem report.');
-      }
       setProblemModal({ open: false, title: '', message: '', category: 'Bug / Error' });
       setProblemText('');
       addToast('Report Sent', 'Support report sent with device diagnostics.');

@@ -8,8 +8,6 @@ import { canUseMenuIntelligence, getZeroStockMenuImpacts } from '../core/menuInt
 import { prepareScannerUploadFile, formatScannerBytes } from '../core/fileCompression';
 import { createAiScanIdempotencyKey, resolveClientScanPageCount, normalizeAiUsage, aiPageLimitMessage } from '../core/aiScanUsage';
 import { makeReminderDate, parseReminderCommand, toDateInputValue, toTimeInputValue } from '../core/reminderUtils';
-import { usePlanAccess } from '../hooks/usePlanAccess';
-import { FEATURE_KEYS } from '../config/plans';
 
 const getInitialReminderDate = () => {
   const d = new Date();
@@ -1042,10 +1040,7 @@ const TabMenuIntelligence = ({ appUser, clientData, inventoryItems = [], addToas
 
 
 const TabAITools = ({ appUser, clientData, setActiveTab, setInventorySubTabTarget, addToast }) => {
-  const planAccess = usePlanAccess(appUser, clientData);
   const canMenu = canUseMenuIntelligence(appUser, clientData);
-  const canAiOrder = planAccess.canUse(FEATURE_KEYS.AI_ORDER_ASSISTANT).allowed;
-  const aiLockedText = 'AI assisted ordering and Python intelligence start with Smart Kitchen.';
   const cards = [
     {
       title: 'Menu Intelligence',
@@ -1058,13 +1053,12 @@ const TabAITools = ({ appUser, clientData, setActiveTab, setInventorySubTabTarge
     },
     {
       title: 'AI Order Assistant',
-      tag: canAiOrder ? 'Smart Kitchen' : 'Smart Kitchen+',
-      desc: 'Build manager-reviewed order drafts, event supply plans, prep predictions, and Python forecasts. Python Ops Scan now lives in Manager Brief.',
+      tag: 'Inventory',
+      desc: 'Build manager-reviewed order drafts and run Python forecasting, invoice watchdog, menu costing, labor warnings, data health, and backup checks.',
       action: 'Open AI Order Assistant',
       tab: 'inventory',
       subTab: 'ai-order',
-      enabled: canAiOrder,
-      lockedMessage: aiLockedText,
+      enabled: true,
       note: 'AI and Python only suggest, report, and draft. Managers still approve, edit, and send vendor orders.'
     },
     {
@@ -1089,7 +1083,7 @@ const TabAITools = ({ appUser, clientData, setActiveTab, setInventorySubTabTarge
     {
       title: 'Smart Prep Matching',
       tag: 'Kitchen',
-      desc: 'Recognizes matching prep items by name, quantity, unit, station, and date so new prep requests update the right row instead of creating duplicate work.',
+      desc: 'Prep voice now prefers updating an existing matching prep row instead of creating duplicates.',
       action: 'Open Prep',
       tab: 'prep',
       enabled: true,
@@ -1111,7 +1105,7 @@ const TabAITools = ({ appUser, clientData, setActiveTab, setInventorySubTabTarge
               <span className={`px-2 py-1 rounded-lg border text-[9px] font-black uppercase tracking-widest ${card.enabled ? 'bg-emerald-900/20 text-emerald-300 border-emerald-900/50' : 'bg-amber-900/20 text-amber-300 border-amber-900/50'}`}>{card.tag}</span>
             </div>
             <p className="text-[10px] font-bold text-slate-500 leading-snug">{card.note}</p>
-            <button type="button" onClick={() => { if (!card.enabled) return addToast?.('Access Needed', card.lockedMessage || 'Ask the account owner to enable this tool first.'); if (card.tab === 'inventory' && card.subTab) setInventorySubTabTarget?.(card.subTab); setActiveTab(card.tab); }} className={card.enabled ? T.btn : T.btnAlt}>{card.action}</button>
+            <button type="button" onClick={() => { if (!card.enabled) return addToast?.('Access Needed', 'Ask the account owner to enable Menu Intelligence access first.'); if (card.tab === 'inventory' && card.subTab) setInventorySubTabTarget?.(card.subTab); setActiveTab(card.tab); }} className={card.enabled ? T.btn : T.btnAlt}>{card.action}</button>
           </div>
         ))}
       </div>

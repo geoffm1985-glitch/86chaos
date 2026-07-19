@@ -1,6 +1,5 @@
 const { initAdmin, authorize, requireAppCheckIfEnforced, readBody } = require('./_chaos-admin');
 const { callPythonFunction } = require('./_python-function-client');
-const { resolveWorkspaceSubscription, planIsAtLeast, PLAN_IDS } = require('./_plan-access');
 
 const MAX_PAYLOAD_BYTES = 1200000;
 const PYTHON_TIMEOUT_MS = 25000;
@@ -56,13 +55,6 @@ module.exports = async function handler(req, res) {
     if (!ctx.ok) return res.status(ctx.status || 403).json({ ok: false, error: ctx.error || 'Not authorized.' });
     const canUseOpsIntel = ctx.isSuperAdmin || ctx.user?.isAdmin || ctx.user?.isOwner || ctx.permissions?.inventory === true || ctx.permissions?.sales === true || ctx.permissions?.team === true || ctx.permissions?.labor === true;
     if (!canUseOpsIntel) return res.status(403).json({ ok: false, error: 'Owner, manager, inventory, labor, sales, or team permission is required for Python Ops Intelligence.' });
-
-    const restSnap = await ctx.db.collection('restaurants').doc(restaurantId).get();
-    const workspace = restSnap.exists ? { id: restSnap.id, ...restSnap.data() } : {};
-    const subscription = resolveWorkspaceSubscription(workspace, ctx.decoded || {}, ctx.user || {});
-    if (!ctx.isSuperAdmin && !planIsAtLeast(subscription.planId, PLAN_IDS.SMART_KITCHEN)) {
-      return res.status(403).json({ ok: false, code: 'PLAN_FEATURE_LOCKED', error: 'Python Ops Intelligence starts with Smart Kitchen. Ask an owner or System Administrator to review Plan & Billing.' });
-    }
 
     const payload = compactPayload(body);
     const result = await runPythonOpsEngine(req, payload);

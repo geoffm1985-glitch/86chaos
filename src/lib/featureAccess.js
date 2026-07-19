@@ -158,7 +158,7 @@ export const roleAllowsFeature = (user = {}, featureKey, workspace = {}) => {
   const hasCustomRosterRoles = configuredRosterRoles.length > 0;
   const legacyRoleName = lower(user?.role || user?.position || user?.jobTitle);
   const legacyKitchenFallback = !hasCustomRosterRoles && (legacyRoleName.includes('kitchen') || legacyRoleName.includes('cook') || legacyRoleName.includes('chef') || legacyRoleName.includes('prep'));
-  const rolePermissionAllows = Boolean(perms[featureKey] === true);
+  const rolePermissionAllows = Boolean(perms[featureKey] === true || perms.team === true);
   switch (featureKey) {
     case ROUTE_FEATURES.settings:
     case 'basic_permissions': return true;
@@ -169,19 +169,19 @@ export const roleAllowsFeature = (user = {}, featureKey, workspace = {}) => {
     case 'team_messages': return true;
     case 'staff_roster_basic': return true;
     case 'prep_lists':
-    case 'recipes_basic': return Boolean(ownerAdmin || perms.prep || perms.kitchen || legacyKitchenFallback);
+    case 'recipes_basic': return Boolean(ownerAdmin || perms.prep || perms.team || legacyKitchenFallback);
     case 'basic_inventory':
     case 'burn_log':
     case 'invoice_scanning':
     case 'menu_scanning':
     case 'menu_intelligence':
-    case 'dependency_tools': return Boolean(ownerAdmin || perms.inventory || perms.inventoryEdit || perms.menuIntelligence || perms.scans);
+    case 'dependency_tools': return Boolean(ownerAdmin || perms.inventory || perms.menuIntelligence || perms.team);
     case 'schedule_builder': return Boolean(ownerAdmin || perms.schedule);
     case 'time_clock': return true;
     case 'basic_dashboard': return true;
     case 'timesheets':
     case 'labor_command':
-    case 'tip_center': return Boolean(ownerAdmin || perms.labor || perms.laborRead || perms.sales || perms.salesRead || perms.schedule);
+    case 'tip_center': return Boolean(ownerAdmin || perms.labor || perms.sales || perms.schedule);
     case 'daily_close':
     case 'sales_breakdown':
     case 'financial_overview':
@@ -192,7 +192,7 @@ export const roleAllowsFeature = (user = {}, featureKey, workspace = {}) => {
     case 'budget_targets':
     case 'basic_reports':
     case 'advanced_reports':
-    case 'advanced_financial_audit': return Boolean(ownerAdmin || perms.sales || perms.salesRead || perms.financialRead || perms.financialEdit || perms.labor || perms.laborRead || perms.wageView || perms.wageEdit);
+    case 'advanced_financial_audit': return Boolean(ownerAdmin || perms.sales || perms.labor || perms.team || perms.wageView || perms.wageEdit);
     case 'integrations': return isMasterAdminUser(user);
     default: return Boolean(ownerAdmin || rolePermissionAllows);
   }

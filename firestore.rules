@@ -304,27 +304,16 @@ service cloud.firestore {
           : 'smart_kitchen');
     }
 
-    function workspaceSubscriptionStatus(restId) {
-      return workspaceSubscription(restId).get('status', restaurantData(restId).get('subscriptionStatus', restaurantData(restId).get('billingStatus', 'active')));
-    }
-
-    function hasActiveEntitlement(restId) {
-      return isSuperAdmin() || (hasRestaurantDoc(restId) &&
-        workspaceSubscription(restId).get('entitlementActive', true) != false &&
-        !(workspaceSubscriptionStatus(restId) in ['canceled', 'cancelled', 'trial_expired', 'expired', 'disabled', 'suspended'])
-      );
-    }
-
     function planAtLeastOperations(restId) {
-      return isSuperAdmin() || (hasActiveEntitlement(restId) && workspacePlanId(restId) in ['operations', 'smart_kitchen', 'owner_pro', 'master_admin']);
+      return isSuperAdmin() || (hasRestaurantDoc(restId) && workspacePlanId(restId) in ['operations', 'smart_kitchen', 'owner_pro', 'master_admin']);
     }
 
     function planAtLeastSmartKitchen(restId) {
-      return isSuperAdmin() || (hasActiveEntitlement(restId) && workspacePlanId(restId) in ['smart_kitchen', 'owner_pro', 'master_admin']);
+      return isSuperAdmin() || (hasRestaurantDoc(restId) && workspacePlanId(restId) in ['smart_kitchen', 'owner_pro', 'master_admin']);
     }
 
     function planAtLeastOwnerPro(restId) {
-      return isSuperAdmin() || (hasActiveEntitlement(restId) && workspacePlanId(restId) in ['owner_pro', 'master_admin']);
+      return isSuperAdmin() || (hasRestaurantDoc(restId) && workspacePlanId(restId) in ['owner_pro', 'master_admin']);
     }
 
     function canEditWages(restId) {
@@ -338,15 +327,15 @@ service cloud.firestore {
     }
 
     function canUseMenuIntelligence(restId) {
-      return planAtLeastSmartKitchen(restId) && (isSuperAdmin() || isRestaurantOwner(restId) || isAdminFor(restId) || (isTenantMatch(restId) && (hasPermFor(restId, 'menuIntelligence') || hasPermFor(restId, 'inventory') || hasPermFor(restId, 'inventoryEdit') || hasPermFor(restId, 'ops'))));
+      return planAtLeastSmartKitchen(restId) && (isSuperAdmin() || isRestaurantOwner(restId) || isAdminFor(restId) || (isTenantMatch(restId) && (hasPermFor(restId, 'menuIntelligence') || hasPermFor(restId, 'inventory') || hasPermFor(restId, 'team') || hasPermFor(restId, 'ops'))));
     }
 
     function canReadBasicInventory(restId) {
-      return planAtLeastOperations(restId) && (isSuperAdmin() || isRestaurantOwner(restId) || isAdminFor(restId) || (isTenantMatch(restId) && (hasPermFor(restId, 'inventory') || hasPermFor(restId, 'inventoryEdit') || hasPermFor(restId, 'ops'))));
+      return planAtLeastOperations(restId) && (isSuperAdmin() || isRestaurantOwner(restId) || isAdminFor(restId) || (isTenantMatch(restId) && (hasPermFor(restId, 'inventory') || hasPermFor(restId, 'team') || hasPermFor(restId, 'ops'))));
     }
 
     function canWriteBasicInventory(restId) {
-      return planAtLeastOperations(restId) && (isSuperAdmin() || isRestaurantOwner(restId) || isAdminFor(restId) || (isTenantMatch(restId) && (hasPermFor(restId, 'inventory') || hasPermFor(restId, 'inventoryEdit'))));
+      return planAtLeastOperations(restId) && (isSuperAdmin() || isRestaurantOwner(restId) || isAdminFor(restId) || (isTenantMatch(restId) && (hasPermFor(restId, 'inventory') || hasPermFor(restId, 'team'))));
     }
 
     function canReadSmartInventory(restId) {
@@ -361,10 +350,8 @@ service cloud.firestore {
       return isSuperAdmin() || isRestaurantOwner(restId) || isAdminFor(restId) ||
         (isTenantMatch(restId) && (
           hasPermFor(restId, 'sales') ||
-          hasPermFor(restId, 'salesRead') ||
-          hasPermFor(restId, 'financialRead') ||
           hasPermFor(restId, 'labor') ||
-          hasPermFor(restId, 'laborRead') ||
+          hasPermFor(restId, 'team') ||
           hasPermFor(restId, 'wageView') ||
           hasPermFor(restId, 'wageEdit')
         ));
@@ -372,7 +359,7 @@ service cloud.firestore {
 
     function canWriteFinancials(restId) {
       return isSuperAdmin() || isRestaurantOwner(restId) || isAdminFor(restId) ||
-        (isTenantMatch(restId) && (hasPermFor(restId, 'sales') || hasPermFor(restId, 'salesEdit') || hasPermFor(restId, 'financialEdit')));
+        (isTenantMatch(restId) && (hasPermFor(restId, 'sales') || hasPermFor(restId, 'team')));
     }
 
     function canReadOperationsFinancials(restId) { return canReadFinancials(restId) && planAtLeastOperations(restId); }
@@ -663,8 +650,7 @@ service cloud.firestore {
     }
 
     function inventoryWriteAllowed(collectionName, restId) {
-      return (collectionName in ['inventoryItems', 'vendors', 'orders'] && (isAdminFor(restId) || hasPermFor(restId, 'inventory') || hasPermFor(restId, 'inventoryEdit'))) ||
-        (collectionName in ['invoices'] && (isAdminFor(restId) || hasPermFor(restId, 'inventory') || hasPermFor(restId, 'inventoryEdit') || hasPermFor(restId, 'invoiceScan') || hasPermFor(restId, 'scans')));
+      return collectionName in ['inventoryItems', 'vendors', 'orders', 'invoices'] && (isAdminFor(restId) || hasPermFor(restId, 'inventory') || hasPermFor(restId, 'team'));
     }
 
     function scheduleWriteAllowed(collectionName, restId) {
@@ -672,8 +658,7 @@ service cloud.firestore {
     }
 
     function managerWriteAllowed(collectionName, restId) {
-      return (collectionName in ['roles', 'pmSchedules'] && (isAdminFor(restId) || hasPermFor(restId, 'team'))) ||
-        (collectionName in ['sales'] && (isAdminFor(restId) || hasPermFor(restId, 'sales') || hasPermFor(restId, 'salesEdit') || hasPermFor(restId, 'financialEdit')));
+      return collectionName in ['roles', 'pmSchedules', 'sales'] && (isAdminFor(restId) || hasPermFor(restId, 'team') || hasPermFor(restId, 'sales'));
     }
 
     function canTenantWriteCollection(collectionName, restId) {
@@ -768,13 +753,13 @@ service cloud.firestore {
     // ============================================================
     match /auditLogs/{docId} {
       allow read: if signedIn() && (isSuperAdmin() || (resource.data.restaurantId is string && canManageStaff(resource.data.restaurantId)));
-      allow create: if isSuperAdmin();
+      allow create: if signedIn() && (isSuperAdmin() || (request.resource.data.restaurantId is string && isTenantMatch(request.resource.data.restaurantId)));
       allow update, delete: if false;
     }
 
     match /crashReports/{docId} {
+      allow create: if signedIn();
       allow read, update, delete: if isSuperAdmin();
-      allow create: if false;
     }
 
     match /system/{docId} { allow read, write: if isSuperAdmin(); }
@@ -1160,23 +1145,13 @@ service cloud.firestore {
       allow delete: if signedIn() && resource.data.restaurantId is string && canWriteSmartFinancials(resource.data.restaurantId);
     }
 
-
-    function isStandardTenantCollection(collectionName) {
-      return collectionName in [
-        'events', 'messages', 'shiftSwaps', 'tasks', 'maintenanceLogs',
-        'prepItems', 'prepCategories', 'lineCheckItems', 'recipes', 'roles',
-        'pmSchedules', 'shifts', 'scheduleTemplates', 'scheduleCoverageTargets',
-        'kitchenSpecials', 'tempLogs'
-      ];
-    }
-
     // ============================================================
     // STANDARD TENANT COLLECTIONS
     // ============================================================
     match /{collectionName}/{docId} {
-      allow read: if isStandardTenantCollection(collectionName) && signedIn() && (isSuperAdmin() || (resource.data.restaurantId is string && isTenantMatch(resource.data.restaurantId)));
-      allow create: if isStandardTenantCollection(collectionName) && signedIn() && (isSuperAdmin() || (request.resource.data.restaurantId is string && canTenantWriteCollection(collectionName, request.resource.data.restaurantId)));
-      allow update, delete: if isStandardTenantCollection(collectionName) && signedIn() && (isSuperAdmin() || (resource.data.restaurantId is string && canTenantWriteCollection(collectionName, resource.data.restaurantId)));
+      allow read: if collectionName != 'aiUsage' && collectionName != 'aiRequestLocks' && collectionName != '_retentionJobLocks' && !isPrivateHrCollection(collectionName) && !isPrivateSchedulingCollection(collectionName) && !isPrivateFinancialCollection(collectionName) && !isPlanSensitiveCollection(collectionName) && signedIn() && (isSuperAdmin() || (resource.data.restaurantId is string && isTenantMatch(resource.data.restaurantId)));
+      allow create: if collectionName != 'aiUsage' && collectionName != 'aiRequestLocks' && collectionName != '_retentionJobLocks' && !isPrivateHrCollection(collectionName) && !isPrivateSchedulingCollection(collectionName) && !isPrivateFinancialCollection(collectionName) && !isPlanSensitiveCollection(collectionName) && signedIn() && (isSuperAdmin() || (request.resource.data.restaurantId is string && canTenantWriteCollection(collectionName, request.resource.data.restaurantId)));
+      allow update, delete: if collectionName != 'aiUsage' && collectionName != 'aiRequestLocks' && collectionName != '_retentionJobLocks' && !isPrivateHrCollection(collectionName) && !isPrivateSchedulingCollection(collectionName) && !isPrivateFinancialCollection(collectionName) && !isPlanSensitiveCollection(collectionName) && signedIn() && (isSuperAdmin() || (resource.data.restaurantId is string && canTenantWriteCollection(collectionName, resource.data.restaurantId)));
     }
   }
 }
