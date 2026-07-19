@@ -1,4 +1,4 @@
-# 86 Chaos 15.0.89 Post-Repair QA Checklist
+# 86 Chaos 15.0.90 Post-Repair QA Checklist
 
 ## Must pass before beta use
 
@@ -41,3 +41,13 @@
 - Confirm no `requirements.txt does not contain any dependencies` warning appears.
 - Confirm no package tarball URL points to an internal audit registry.
 - Confirm the Vercel build command uses `NODE_OPTIONS=--max-old-space-size=4096`, disables sourcemaps, and completes the React build.
+
+## 15.0.90 Performance QA Addendum
+
+- Fresh mobile load: confirm the app lands on Today/Home without waiting for Inventory, Invoices, AI Order, Recipes, or System Administrator chunks.
+- Inventory Count: confirm initial rows load quickly and **Load full list** appears when the lighter snapshot is active.
+- Inventory Search: type at least two characters and confirm the broader inventory snapshot loads.
+- Below-Par Focus: confirm the below-par list still works and loads the broader snapshot.
+- Inventory sub-tabs: open Order, AI Order, Manage, Vendors, Invoices, and Burn Log. Confirm each sub-tab loads its own data when selected.
+- AI Order: confirm suggestions do not calculate on the Count tab and appear after opening AI Order.
+- Voice: confirm core navigation still opens Inventory and Recipes, with recipe search loading when needed.

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Archive, Bell, Check, Camera, ChevronLeft, ChevronRight, MessageSquare, Plus, Trash2, Users, Calendar, Clock, X, Loader2, Package, ClipboardList, Menu, Settings, LogOut, Shield, Send, Repeat, Edit, Moon, Sun, TrendingUp, BookOpen, Search, ChefHat, Scale, Coffee, Star, Bug, Wrench, Globe, Sparkles } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
 import { getFirestore, collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, where, getDoc, setDoc, getDocs } from 'firebase/firestore';
@@ -536,20 +536,26 @@ const TabInventory = ({ addToast, appUser, clientData = {}, initialSubTab, onIni
   const canUseMenuIntelligence = inventoryPlanAccess.canUse(FEATURE_KEYS.MENU_INTELLIGENCE).allowed || inventoryPlanAccess.canUse(FEATURE_KEYS.DEPENDENCY_TOOLS).allowed || inventoryPlanAccess.canUse(FEATURE_KEYS.SMART_86_ALERTS).allowed;
   const canUseAiOrdering = inventoryPlanAccess.canUse(FEATURE_KEYS.AI_ORDER_ASSISTANT).allowed;
   const canUsePythonIntelligence = inventoryPlanAccess.canUse(FEATURE_KEYS.PYTHON_INTELLIGENCE).allowed;
-  const inventoryItems = useLiveCollection('inventoryItems', appUser?.restaurantId, { enabled: canUseBasicInventory || canUseSmartInventory || canUseMenuIntelligence, limitCount: 500 });
-  const menuDependencies = useLiveCollection('menuDependencies', appUser?.restaurantId, { enabled: canUseMenuIntelligence, limitCount: 500 });
-  const vendors = useLiveCollection('vendors', appUser?.restaurantId, { enabled: canUseBasicInventory || canUseSmartInventory, limitCount: 150 });
-  const wasteLogs = useLiveCollection('wasteLogs', appUser?.restaurantId, { enabled: canUseBasicInventory, limitCount: 200 });
-  const futureEvents = useLiveCollection('events', appUser?.restaurantId, { enabled: canUseAiOrdering, whereClauses: [['date','>=', getToday()]], orderByField: 'date', orderDirection: 'asc', limitCount: 120, fallbackLimitCount: 60 });
-  const prepItemsForOrdering = useLiveCollection('prepItems', appUser?.restaurantId, { enabled: canUseAiOrdering, limitCount: 220, fallbackLimitCount: 80 });
   const [invTab, setInvTab] = useState(initialSubTab || 'count');
+  const [inventoryFetchLimit, setInventoryFetchLimit] = useState(180);
+  const inventoryNeedsFullContext = invTab === 'order' || invTab === 'manage' || invTab === 'waste' || invTab === 'invoices' || invTab === 'ai-order';
+  const inventoryItems = useLiveCollection('inventoryItems', appUser?.restaurantId, { enabled: canUseBasicInventory || canUseSmartInventory || canUseMenuIntelligence, limitCount: inventoryNeedsFullContext ? 500 : inventoryFetchLimit, fallbackLimitCount: 120 });
+  const menuDependencies = useLiveCollection('menuDependencies', appUser?.restaurantId, { enabled: canUseMenuIntelligence && (invTab === 'count' || invTab === 'ai-order'), limitCount: invTab === 'ai-order' ? 500 : 160, fallbackLimitCount: 80 });
+  const vendors = useLiveCollection('vendors', appUser?.restaurantId, { enabled: (canUseBasicInventory || canUseSmartInventory) && ['count','order','manage','vendors','invoices','ai-order'].includes(invTab), limitCount: 120, fallbackLimitCount: 60 });
+  const wasteLogs = useLiveCollection('wasteLogs', appUser?.restaurantId, { enabled: canUseBasicInventory && (invTab === 'waste' || invTab === 'ai-order'), limitCount: invTab === 'ai-order' ? 200 : 100, fallbackLimitCount: 60 });
+  const futureEvents = useLiveCollection('events', appUser?.restaurantId, { enabled: canUseAiOrdering && invTab === 'ai-order', whereClauses: [['date','>=', getToday()]], orderByField: 'date', orderDirection: 'asc', limitCount: 120, fallbackLimitCount: 60 });
+  const prepItemsForOrdering = useLiveCollection('prepItems', appUser?.restaurantId, { enabled: canUseAiOrdering && invTab === 'ai-order', limitCount: 220, fallbackLimitCount: 80 });
   const [focusBelowPar, setFocusBelowPar] = useState(() => sessionStorage.getItem('inventoryFocus') === 'belowPar');
 const [searchTerm, setSearchTerm] = useState(''); 
   const [groupBy, setGroupBy] = useState('Category');
+  useEffect(() => {
+    const needsMore = invTab !== 'count' || focusBelowPar || String(searchTerm || '').trim().length >= 2;
+    setInventoryFetchLimit(needsMore ? 500 : 180);
+  }, [invTab, focusBelowPar, searchTerm]);
   const weekDays = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
   
   // Fetch invoices securely directly inside this tab
-  const invoices = useLiveCollection('invoices', appUser?.restaurantId, { enabled: canUseSmartInventory, limitCount: 120 });
+  const invoices = useLiveCollection('invoices', appUser?.restaurantId, { enabled: canUseSmartInventory && (invTab === 'invoices' || invTab === 'ai-order'), limitCount: invTab === 'ai-order' ? 90 : 70, fallbackLimitCount: 40 });
   const [viewInvoice, setViewInvoice] = useState(null);
 
   useEffect(() => {
@@ -639,7 +645,7 @@ const [searchTerm, setSearchTerm] = useState('');
     }
   };
 
-  useEffect(() => { loadInvoiceAiUsage(); }, [appUser?.restaurantId, canUseSmartInventory]);
+  useEffect(() => { if (invTab === 'invoices') loadInvoiceAiUsage(); }, [appUser?.restaurantId, canUseSmartInventory, invTab]);
 
   useEffect(() => {
     if (invTab === 'invoices' && !canUseSmartInventory) setInvTab('count');
@@ -952,11 +958,14 @@ const handleLogWaste = async (e) => {
     addToast('Log Updated', 'Burn log and stock adjusted.');
   };
 
-  const itemsToOrder = inventoryItems.filter(i => { const override = orderOverrides[i.id]; return override !== undefined ? override > 0 : (i.currentStock || 0) < (i.parLevel || 0); });
-  const vendorsWithDeficits = vendors.filter(v => itemsToOrder.some(i => i.supplierId === v.id));
-  const pendingVendors = vendors.filter(v => inventoryItems.some(i => i.supplierId === v.id && (i.pendingQty || 0) > 0));
-  const aiOrderAssistant = buildAiOrderAssistant({ inventoryItems, vendors, wasteLogs, invoices, events: futureEvents, prepItems: prepItemsForOrdering, menuDependencies, currentDate: getToday(), daysAhead: aiOrderDaysAhead, eventDaysAhead: aiEventDaysAhead });
-  const aiOrderSummaryText = summarizeAiOrderAssistant(aiOrderAssistant);
+  const itemsToOrder = useMemo(() => inventoryItems.filter(i => { const override = orderOverrides[i.id]; return override !== undefined ? override > 0 : (i.currentStock || 0) < (i.parLevel || 0); }), [inventoryItems, orderOverrides]);
+  const vendorsWithDeficits = useMemo(() => vendors.filter(v => itemsToOrder.some(i => i.supplierId === v.id)), [vendors, itemsToOrder]);
+  const pendingVendors = useMemo(() => vendors.filter(v => inventoryItems.some(i => i.supplierId === v.id && (i.pendingQty || 0) > 0)), [vendors, inventoryItems]);
+  const aiOrderAssistant = useMemo(() => invTab === 'ai-order'
+    ? buildAiOrderAssistant({ inventoryItems, vendors, wasteLogs, invoices, events: futureEvents, prepItems: prepItemsForOrdering, menuDependencies, currentDate: getToday(), daysAhead: aiOrderDaysAhead, eventDaysAhead: aiEventDaysAhead })
+    : { recommendations: [], vendorDrafts: [], eventNeeds: [], priceWarnings: [] },
+    [invTab, inventoryItems, vendors, wasteLogs, invoices, futureEvents, prepItemsForOrdering, menuDependencies, aiOrderDaysAhead, aiEventDaysAhead]);
+  const aiOrderSummaryText = invTab === 'ai-order' ? summarizeAiOrderAssistant(aiOrderAssistant) : '';
   const aiOrderRecommendations = aiOrderAssistant.recommendations || [];
   const aiOrderDraftGroups = aiOrderAssistant.vendorDrafts || [];
   const pythonForecastRows = pythonOrderIntel?.orderForecasts || [];
@@ -1705,20 +1714,21 @@ if (item.matchedItemId === 'CREATE_NEW') {
   };
 
 const isBelowPar = (item) => Number(item.parLevel || 0) > 0 && Number(item.currentStock || 0) < Number(item.parLevel || 0);
-const belowParItems = inventoryItems.filter(isBelowPar);
-const zeroStockMenuImpacts = getZeroStockMenuImpacts(inventoryItems, menuDependencies);
-const selectedWasteItem = inventoryItems.find(i => i.id === wItemId) || null;
+const vendorById = useMemo(() => Object.fromEntries((vendors || []).map(v => [v.id, v])), [vendors]);
+const belowParItems = useMemo(() => inventoryItems.filter(isBelowPar), [inventoryItems]);
+const zeroStockMenuImpacts = useMemo(() => invTab === 'count' ? getZeroStockMenuImpacts(inventoryItems, menuDependencies) : [], [invTab, inventoryItems, menuDependencies]);
+const selectedWasteItem = useMemo(() => inventoryItems.find(i => i.id === wItemId) || null, [inventoryItems, wItemId]);
 const selectedWasteUnitsPerStock = selectedWasteItem ? getBurnUnitsPerStockUnit(selectedWasteItem) : 1;
 const selectedWasteWeightPerStock = selectedWasteItem ? (parseFloat(wWeightPerStockUnit) || getBurnWeightPerStockUnit(selectedWasteItem)) : 0;
 const selectedWasteDeductionPreview = selectedWasteItem && wQty ? getBurnStockDeduction(wQty, selectedWasteItem, { mode: wMode, weightPerStockUnit: selectedWasteWeightPerStock, unitsPerStockUnit: selectedWasteUnitsPerStock }) : 0;
 const selectedWastePackProfile = selectedWasteItem ? parsePackProfile(selectedWasteItem.packSize) : { notes: [] };
-const groupedItems = inventoryItems
+const groupedItems = useMemo(() => inventoryItems
   .filter(i => !focusBelowPar || isBelowPar(i))
   .filter(i => (i.name || '').toLowerCase().includes(searchTerm.toLowerCase()) || (i.pfgCode && i.pfgCode.includes(searchTerm)))
   .reduce((acc, item) => { 
-    const key = groupBy === 'Vendor' ? (vendors.find(v=>v.id===item.supplierId)?.name || 'Unassigned Vendor') : (item.category || 'Uncategorized');
+    const key = groupBy === 'Vendor' ? (vendorById[item.supplierId]?.name || 'Unassigned Vendor') : (item.category || 'Uncategorized');
     if (!acc[key]) acc[key] = []; acc[key].push(item); return acc; 
-  }, {});
+  }, {}), [inventoryItems, focusBelowPar, searchTerm, groupBy, vendorById]);
   const orderTotal = confirmModal.items.reduce((sum, item) => sum + ((item.price||0) * item.orderQty), 0);
 
   const printInvoiceHistory = () => {
@@ -1921,7 +1931,7 @@ const groupedItems = inventoryItems
         )}
       </Modal>
 
-      <Modal isOpen={confirmModal.isOpen} onClose={() => setConfirmModal({ isOpen: false, vendorId: null, items: [] })} title={`Review Order: ${vendors.find(v=>v.id===confirmModal.vendorId)?.name}`}>
+      <Modal isOpen={confirmModal.isOpen} onClose={() => setConfirmModal({ isOpen: false, vendorId: null, items: [] })} title={`Review Order: ${vendorById[confirmModal.vendorId]?.name}`}>
          <div className="space-y-4">
            <div className={`max-h-60 overflow-y-auto border ${T.border} rounded-xl divide-y divide-[#2A353D]`}>{confirmModal.items.map(item => (<div key={item.id} className="p-3 flex justify-between items-center bg-[#12161A]"><div><span className="font-bold text-sm block text-white">{item.name}</span><span className={`text-xs ${T.muted}`}>{item.packSize}</span><div className="text-[9px] text-[#D4A381] mt-0.5 uppercase tracking-widest font-black">Est: ${((item.price||0) * item.orderQty).toFixed(2)}</div></div><div className={`font-black ${T.copper} text-lg`}>{item.orderQty}</div></div>))}</div>
            <div className="flex justify-between items-center bg-[#1A2126] p-3 rounded-xl border border-[#2A353D]"><span className="text-xs font-bold text-slate-400 uppercase tracking-widest">Estimated Total</span><span className="text-lg font-black text-emerald-400">${orderTotal.toFixed(2)}</span></div>
@@ -1984,6 +1994,7 @@ const groupedItems = inventoryItems
             <button type="button" onClick={() => setFocusBelowPar(v => !v)} className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest border transition-all ${focusBelowPar ? 'bg-red-900/30 border-red-500/50 text-red-300' : 'bg-[#12161A] border-[#2A353D] text-slate-400 hover:text-white'}`}>
               {focusBelowPar ? `Showing ${belowParItems.length} Below Par` : `Below-Par Focus (${belowParItems.length})`}
             </button>
+            {inventoryFetchLimit < 500 && <button type="button" onClick={() => setInventoryFetchLimit(500)} className={`${T.btnAlt} sm:w-auto`}>Load full list</button>}
           </div>
           {focusBelowPar && belowParItems.length === 0 && <div className="bg-emerald-900/10 border border-emerald-500/30 text-emerald-300 rounded-xl p-4 text-sm font-bold">No inventory items are currently below par. Items equal to par are not counted as low.</div>}
           {zeroStockMenuImpacts.length > 0 && (
@@ -2010,7 +2021,7 @@ const groupedItems = inventoryItems
               <h4 className={`text-base font-black border-b ${T.border} pb-0.5 uppercase tracking-wide text-slate-400`}>{category}</h4>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-2">{items.map(item => (
                   <div key={item.id} className={`${T.card} p-2 flex items-center justify-between gap-2 ${isBelowPar(item) ? 'border-red-500/70 shadow-[0_0_18px_rgba(239,68,68,0.15)] bg-red-950/10' : ''}`}>
-                    <div className="flex-1 min-w-0"><div className="font-bold text-white text-sm truncate">{item.name}</div><div className={`text-[9px] font-bold ${T.muted} uppercase`}>{vendors.find(v=>v.id===item.supplierId)?.name || 'No Vendor'}   {item.packSize || '1 CS'}   YIELD: {item.yieldQty||1}</div></div>
+                    <div className="flex-1 min-w-0"><div className="font-bold text-white text-sm truncate">{item.name}</div><div className={`text-[9px] font-bold ${T.muted} uppercase`}>{vendorById[item.supplierId]?.name || 'No Vendor'}   {item.packSize || '1 CS'}   YIELD: {item.yieldQty||1}</div></div>
                     <div className={`flex items-center gap-2 bg-[#12161A] p-1 rounded-md border ${T.border} flex-shrink-0`}>
                       <div className="flex flex-col items-center"><span className={`text-[8px] font-bold ${T.muted} uppercase`}>PAR</span><input type="number" min="0" value={item.parLevel} onChange={(e) => updatePar(item.id, e.target.value)} disabled={!hasInvPerms} className={`w-8 text-center font-bold border rounded py-0.5 outline-none text-xs bg-[#1A2126] text-white border-[#2A353D]`} /></div>
                       <div className={`h-6 w-px bg-[#2A353D]`}></div>

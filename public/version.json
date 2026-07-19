@@ -1,11 +1,11 @@
 {
-  "version": "15.0.89",
+  "version": "15.0.90",
   "name": "86 Chaos",
   "releasedAt": "2026-07-19",
-  "label": "86 Chaos 15.0.89",
-  "build": "15.0.89",
-  "updatedAt": "2026-07-19T04:45:00.000Z",
-  "notes": "Version synchronization hotfix: aligns the browser CURRENT_VERSION, /version.json, package metadata, Functions metadata, and API version markers so the system update banner only appears for real newer deployments.",
-  "release": "Version synchronization hotfix",
-  "releaseName": "Version synchronization hotfix"
+  "label": "86 Chaos 15.0.90",
+  "build": "15.0.90",
+  "updatedAt": "2026-07-19T05:25:00.000Z",
+  "notes": "Inventory and app-load performance hotfix: lazy routes, lighter startup reads, and on-demand inventory side data.",
+  "release": "Inventory performance hotfix",
+  "releaseName": "Inventory performance hotfix"
 }

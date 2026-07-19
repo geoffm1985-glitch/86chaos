@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback, Suspense } from 'react';
 import { Bell, Bug, ChevronLeft, ChevronRight, Loader2, Menu, Moon, Send, X } from 'lucide-react';
 import { addDoc, collection, doc, onSnapshot, updateDoc } from 'firebase/firestore';
 import { getToken, onMessage } from 'firebase/messaging';
@@ -10,7 +10,27 @@ import { LockedFeatureScreen } from './components/PlanGate';
 import { usePlanAccess } from './hooks/usePlanAccess';
 import { resolveFeatureAccess } from './lib/featureAccess';
 import { FEATURE_KEYS } from './config/plans';
-import { LoginScreen, TabMasterSchedule, TabSchedule, TabScheduleWorkbench, TabOpsCenter, TabFinancials, TabMessages, TabPrep, TabRecipes, TabInventory, TabTeam, TabMaintenance, TabSettings, TabHelpCenter, TabGodMode, TabAuditLog, TabToday, TabPersonalReminders, TabMenuIntelligence, TabAITools, TabHrTraining } from './features';
+const lazyNamed = (loader, exportName) => React.lazy(() => loader().then(module => ({ default: module[exportName] })));
+const LoginScreen = lazyNamed(() => import('./features/auth'), 'LoginScreen');
+const TabMasterSchedule = lazyNamed(() => import('./features/schedule'), 'TabMasterSchedule');
+const TabSchedule = lazyNamed(() => import('./features/schedule'), 'TabSchedule');
+const TabOpsCenter = lazyNamed(() => import('./features/operations'), 'TabOpsCenter');
+const TabToday = lazyNamed(() => import('./features/operations'), 'TabToday');
+const TabPrep = lazyNamed(() => import('./features/operations'), 'TabPrep');
+const TabRecipes = lazyNamed(() => import('./features/operations'), 'TabRecipes');
+const TabInventory = lazyNamed(() => import('./features/operations'), 'TabInventory');
+const TabMaintenance = lazyNamed(() => import('./features/operations'), 'TabMaintenance');
+const TabFinancials = lazyNamed(() => import('./features/management'), 'TabFinancials');
+const TabMessages = lazyNamed(() => import('./features/management'), 'TabMessages');
+const TabTeam = lazyNamed(() => import('./features/management'), 'TabTeam');
+const TabSettings = lazyNamed(() => import('./features/management'), 'TabSettings');
+const TabHelpCenter = lazyNamed(() => import('./features/management'), 'TabHelpCenter');
+const TabGodMode = lazyNamed(() => import('./features/management'), 'TabGodMode');
+const TabAuditLog = lazyNamed(() => import('./features/management'), 'TabAuditLog');
+const TabPersonalReminders = lazyNamed(() => import('./features/intelligence'), 'TabPersonalReminders');
+const TabMenuIntelligence = lazyNamed(() => import('./features/intelligence'), 'TabMenuIntelligence');
+const TabAITools = lazyNamed(() => import('./features/intelligence'), 'TabAITools');
+const TabHrTraining = lazyNamed(() => import('./features/hr'), 'TabHrTraining');
 
 const normalizeEmail = (value) => String(value || '').toLowerCase().trim();
 const safeWorkspaceName = (workspace = {}) => workspace.restaurantName || workspace.name || workspace.businessName || workspace.restaurantId || '86 Chaos Workspace';
@@ -301,10 +321,10 @@ const [currentDate, setCurrentDate] = useState(getToday());
   const canReadMaintenance = roleAndPlanAllowFeature(FEATURE_KEYS.CLEANING_ROUTINES);
   const wantsScheduleData = (wantsToday && canReadScheduleView) || (wantsScheduleScreen && (canReadScheduleView || canReadScheduleBuilder)) || (['labor', 'ops'].includes(activeTabState) && (canReadScheduleView || canReadOperationsLabor));
   const wantsLaborData = (['financials', 'labor', 'sales', 'ops'].includes(activeTabState) || (wantsToday && canReadOperationsLabor)) && canReadOperationsLabor;
-  const wantsInventoryData = (((wantsToday || ['inventory', 'ops'].includes(activeTabState) || isGlobalSearchOpen) && (canReadBasicInventory || canReadSmartInventory)) || (activeTabState === 'menu-intelligence' && canReadMenuCollections));
+  const wantsInventoryData = (((wantsToday || activeTabState === 'ops' || isGlobalSearchOpen) && (canReadBasicInventory || canReadSmartInventory)) || (activeTabState === 'menu-intelligence' && canReadMenuCollections));
   const wantsPrepData = wantsToday || ['prep', 'ops'].includes(activeTabState);
-  const wantsMenuData = (activeTabState === 'menu-intelligence' || activeTabState === 'inventory' || wantsToday) && canReadMenuCollections;
-  const wantsRecipesData = true; // Keep recipe titles available for 86 Voice exact-recipe navigation.
+  const wantsMenuData = (activeTabState === 'menu-intelligence' || wantsToday) && canReadMenuCollections;
+  const wantsRecipesData = activeTabState === 'recipes' || isGlobalSearchOpen; // Load recipe documents on demand instead of every app boot.
   const wantsMaintenanceData = (wantsToday || ['maintenance', 'ops'].includes(activeTabState)) && canReadMaintenance;
   const wantsSalesData = ['financials', 'sales', 'ops', 'labor'].includes(activeTabState) && canReadSalesCollections;
   const shiftRangeStart = wantsScheduleScreen ? scheduleWindowStart : getToday();
@@ -1717,7 +1737,9 @@ return (
       </Modal>
 
       <main className="app-content-shell flex-1 max-w-[1480px] mx-auto w-full p-3 sm:p-5 lg:p-4 xl:p-5 pb-24">
-        {renderMainContent()}
+        <Suspense fallback={<div className={`${T.card} p-6 text-center text-sm font-black text-slate-300`}>Loading workspace tool…</div>}>
+          {renderMainContent()}
+        </Suspense>
       </main>
       
       <div className="fixed top-20 inset-x-0 mx-auto w-full max-w-md z-50 flex flex-col gap-2 px-4 pointer-events-none">
