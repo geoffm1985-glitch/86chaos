@@ -18,6 +18,7 @@ const aiUsage = read('api/_ai-usage.js');
 const adminShared = read('api/_chaos-admin.js');
 const adminProject = read('api/_firebase-project-admin.js');
 const reminders = read('api/dispatch-reminders.js');
+const appShell = read('src/App.js');
 
 const packageJson = JSON.parse(read('package.json'));
 const packageLock = JSON.parse(read('package-lock.json'));
@@ -56,6 +57,7 @@ check('REMINDER_RETRYABLE_PERSONAL', /isRetryablePersonalReminderStatus/.test(re
 check('MESSAGING_SUPPORT_GUARD', /isSupported/.test(appCore) && /safeGetMessaging/.test(appCore), 'Firebase Messaging startup is guarded for unsupported browsers.');
 check('GEOCODE_AUTHED', /authorize\(req, app/.test(read('api/geocode-address.js')) && /restaurantId=/.test(read('src/features/management.jsx')), 'Geocode lookup is routed through authenticated API authorization.');
 check('STANDARD_TENANT_ALLOWLIST', /function isStandardTenantCollection/.test(fireRules), 'Catch-all tenant access is restricted to an explicit allowlist.');
+check('LOGIN_SCREEN_EAGER', /import \{ LoginScreen \} from ['\"]\.\/features\/auth['\"]/.test(appShell) && !/const LoginScreen\s*=\s*lazyNamed/.test(appShell), 'LoginScreen is eagerly imported so unauthenticated users do not hit a lazy Suspense gap.');
 
 const failed = checks.filter(c => !c.ok);
 for (const c of checks) console.log(`${c.ok ? 'PASS' : 'FAIL'} ${c.id}: ${c.message}`);

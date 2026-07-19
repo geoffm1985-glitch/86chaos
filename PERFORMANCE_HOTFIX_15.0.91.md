@@ -1,4 +1,4 @@
-# 86 Chaos 15.0.90 Performance Hotfix
+# 86 Chaos 15.0.91 Performance Hotfix
 
 ## Problem addressed
 The app was loading too much JavaScript and too much Inventory-related Firebase data before the user actually needed it. Inventory was especially heavy because the tab opened multiple live listeners and calculated AI ordering data even when the user was only trying to count stock.
@@ -53,3 +53,8 @@ The previous audit build reported the main app bundle around `890 kB` gzipped, s
 ## Not changed
 - Firebase service-account-key handling was not changed.
 - Firestore rules and Storage rules security hardening from prior audit repairs remain in place.
+
+
+## 15.0.91 Login Guardrail
+
+The LoginScreen is intentionally eager-loaded. Do not move the unauthenticated login screen back behind React.lazy unless it is wrapped by a Suspense boundary that is active before auth state resolves. Inventory and other workspace tools remain lazy-loaded after login.

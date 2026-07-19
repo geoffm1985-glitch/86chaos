@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback, Suspense } from 'react';
+import { LoginScreen } from './features/auth';
 import { Bell, Bug, ChevronLeft, ChevronRight, Loader2, Menu, Moon, Send, X } from 'lucide-react';
 import { addDoc, collection, doc, onSnapshot, updateDoc } from 'firebase/firestore';
 import { getToken, onMessage } from 'firebase/messaging';
@@ -11,7 +12,6 @@ import { usePlanAccess } from './hooks/usePlanAccess';
 import { resolveFeatureAccess } from './lib/featureAccess';
 import { FEATURE_KEYS } from './config/plans';
 const lazyNamed = (loader, exportName) => React.lazy(() => loader().then(module => ({ default: module[exportName] })));
-const LoginScreen = lazyNamed(() => import('./features/auth'), 'LoginScreen');
 const TabMasterSchedule = lazyNamed(() => import('./features/schedule'), 'TabMasterSchedule');
 const TabSchedule = lazyNamed(() => import('./features/schedule'), 'TabSchedule');
 const TabOpsCenter = lazyNamed(() => import('./features/operations'), 'TabOpsCenter');

@@ -1,4 +1,4 @@
-# 86 Chaos 15.0.90 Audit Repair Summary
+# 86 Chaos 15.0.91 Audit Repair Summary
 
 ## Source of truth
 
@@ -66,17 +66,17 @@ The following require live safe credentials, emulator seed data, or Firebase Con
 
 Manual steps are listed in `POST_REPAIR_QA.md`.
 
-## 15.0.88 and 15.0.90 hotfix validation
+## 15.0.88 and 15.0.91 hotfix validation
 
 - Clean root install with Vercel install command completed.
 - Root lockfile was checked for internal registry URLs and none remain.
 - The comment-only `requirements.txt` file was removed to prevent Vercel Python dependency warnings.
 - Production build completed with the Vercel build memory/sourcemap settings.
-- 15.0.90 production build completed successfully with the synchronized version files.
+- 15.0.91 production build completed successfully with the synchronized version files.
 
 
-## 15.0.90 version-sync validation
+## 15.0.91 version-sync validation
 
-- Runtime `CURRENT_VERSION`, `/version.json`, root package metadata, root lockfile metadata, Functions package metadata, and Functions lockfile metadata now all report `15.0.90`.
+- Runtime `CURRENT_VERSION`, `/version.json`, root package metadata, root lockfile metadata, Functions package metadata, and Functions lockfile metadata now all report `15.0.91`.
 - `scripts/validate-repair.js` now fails if those values drift apart again.
 - The Firebase service-account-key handling was not changed.

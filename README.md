@@ -1,8 +1,8 @@
-# 86 Chaos 15.0.90
+# 86 Chaos 15.0.91
 
 86 Chaos is a restaurant and kitchen management web app for independent restaurants, bars, and kitchens. This package is the audit-repair hardening build based on the uploaded 15.0.86 hotfix source.
 
-## What changed in 15.0.87, 15.0.88, and 15.0.90
+## What changed in 15.0.87, 15.0.88, 15.0.90, and 15.0.91
 
 - Separated Team Management from financial, inventory, scan, and system security authority.
 - Added server-side audit logging through `/api/audit-log` and blocked normal client-created `auditLogs` records in Firestore rules.
@@ -20,9 +20,9 @@
 - Added validation scripts and current-version docs.
 
 
-## Version sync hotfix in 15.0.90
+## Version sync hotfix in 15.0.91
 
-- `src/core/appCore.js` `CURRENT_VERSION`, `/public/version.json`, root package metadata, root lockfile metadata, Functions package metadata, and API version markers all report `15.0.90`.
+- `src/core/appCore.js` `CURRENT_VERSION`, `/public/version.json`, root package metadata, root lockfile metadata, Functions package metadata, and API version markers all report `15.0.91`.
 - `npm test` now includes a version-sync guard so this mismatch fails before another ZIP ships.
 - The 15.0.88 Vercel install fix remains: Vercel uses `npm ci`, the root lockfile uses the public npm registry, the empty `requirements.txt` is gone, and build memory/sourcemap settings are declared in `vercel.json`.
 
@@ -41,4 +41,9 @@ npm --prefix functions run build
 
 Deploy the app, Firestore rules, Storage rules, and Functions/API changes together. This release changes security boundaries, so deploying only the frontend is not enough.
 
-See `POST_REPAIR_QA.md`, `SECURITY.md`, `DEPLOYMENT.md`, and `RELEASE_NOTES_15.0.90.md` before production rollout.
+See `POST_REPAIR_QA.md`, `SECURITY.md`, `DEPLOYMENT.md`, and `RELEASE_NOTES_15.0.91.md` before production rollout.
+
+
+## 15.0.91 Login stability hotfix
+
+15.0.91 restores LoginScreen to an eager-loaded path while keeping inventory and workspace feature performance improvements lazy-loaded after authentication. This prevents unauthenticated users from hitting a Suspense boundary gap before login.

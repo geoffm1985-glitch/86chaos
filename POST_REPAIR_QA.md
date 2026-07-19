@@ -1,4 +1,4 @@
-# 86 Chaos 15.0.90 Post-Repair QA Checklist
+# 86 Chaos 15.0.91 Post-Repair QA Checklist
 
 ## Must pass before beta use
 
@@ -42,7 +42,7 @@
 - Confirm no package tarball URL points to an internal audit registry.
 - Confirm the Vercel build command uses `NODE_OPTIONS=--max-old-space-size=4096`, disables sourcemaps, and completes the React build.
 
-## 15.0.90 Performance QA Addendum
+## 15.0.91 Performance QA Addendum
 
 - Fresh mobile load: confirm the app lands on Today/Home without waiting for Inventory, Invoices, AI Order, Recipes, or System Administrator chunks.
 - Inventory Count: confirm initial rows load quickly and **Load full list** appears when the lighter snapshot is active.

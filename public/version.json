@@ -1,9 +1,9 @@
 {
-  "version": "15.0.90",
+  "version": "15.0.91",
   "name": "86 Chaos",
   "releasedAt": "2026-07-19",
-  "label": "86 Chaos 15.0.90",
-  "build": "15.0.90",
+  "label": "86 Chaos 15.0.91",
+  "build": "15.0.91",
   "updatedAt": "2026-07-19T05:25:00.000Z",
   "notes": "Inventory and app-load performance hotfix: lazy routes, lighter startup reads, and on-demand inventory side data.",
   "release": "Inventory performance hotfix",
