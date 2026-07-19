@@ -1,10 +1,10 @@
 {
-  "version": "15.0.82",
+  "version": "15.0.83",
   "name": "86 Chaos",
   "releasedAt": "2026-07-18",
-  "label": "86 Chaos 15.0.82",
-  "build": "15.0.82",
+  "label": "86 Chaos 15.0.83",
+  "build": "15.0.83",
   "updatedAt": "2026-07-18T00:00:00.000Z",
-  "notes": "Adds Python Automation Center, scheduled ops intelligence, critical push alerts, approval queue suggestions, and Super Admin safety rails.",
-  "release": "Python Automation Center and safety rails"
+  "notes": "Converts Python intelligence from Node spawn calls to real Vercel Python API engine routes with secure Node auth wrappers.",
+  "release": "Vercel Python API engine routing fix"
 }

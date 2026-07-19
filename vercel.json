@@ -100,6 +100,14 @@
     "api/python-automation-run.js": {
       "maxDuration": 300,
       "memory": 1024
+    },
+    "api/python-order-engine.py": {
+      "maxDuration": 60,
+      "memory": 512
+    },
+    "api/python-ops-engine.py": {
+      "maxDuration": 60,
+      "memory": 512
     }
   }
 }

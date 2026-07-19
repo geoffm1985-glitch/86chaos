@@ -1,6 +1,5 @@
-const path = require('path');
-const { spawn } = require('child_process');
 const { initAdmin, authorize, requireAppCheckIfEnforced, readBody } = require('./_chaos-admin');
+const { callPythonFunction } = require('./_python-function-client');
 
 const MAX_PAYLOAD_BYTES = 1200000;
 const PYTHON_TIMEOUT_MS = 25000;
@@ -34,61 +33,12 @@ function compactPayload(body = {}) {
   };
 }
 
-function runPythonOpsEngine(payload) {
-  return new Promise((resolve, reject) => {
-    const scriptPath = path.join(process.cwd(), 'scripts', 'python', 'ops_intelligence.py');
-    const candidates = ['python3', 'python'];
-    let candidateIndex = 0;
-    const input = JSON.stringify(payload || {});
-    if (Buffer.byteLength(input, 'utf8') > MAX_PAYLOAD_BYTES) {
-      reject(new Error('Python ops payload is too large. Narrow the date window or reduce history.'));
-      return;
-    }
-
-    const trySpawn = () => {
-      const command = candidates[candidateIndex];
-      const child = spawn(command, [scriptPath], { stdio: ['pipe', 'pipe', 'pipe'] });
-      let stdout = '';
-      let stderr = '';
-      let settled = false;
-      const timer = setTimeout(() => {
-        if (settled) return;
-        settled = true;
-        try { child.kill('SIGKILL'); } catch (_) {}
-        reject(new Error('Python ops intelligence timed out.'));
-      }, PYTHON_TIMEOUT_MS);
-
-      child.stdout.on('data', chunk => { stdout += chunk.toString('utf8'); });
-      child.stderr.on('data', chunk => { stderr += chunk.toString('utf8'); });
-      child.on('error', err => {
-        clearTimeout(timer);
-        if (settled) return;
-        if (/ENOENT/i.test(err?.code || err?.message || '') && candidateIndex < candidates.length - 1) {
-          candidateIndex += 1;
-          trySpawn();
-          return;
-        }
-        settled = true;
-        reject(new Error(`Python runtime unavailable: ${err.message}`));
-      });
-      child.on('close', code => {
-        clearTimeout(timer);
-        if (settled) return;
-        settled = true;
-        if (code !== 0) {
-          reject(new Error(stderr.trim() || stdout.trim() || `Python ops intelligence exited with ${code}.`));
-          return;
-        }
-        try {
-          resolve(JSON.parse(stdout || '{}'));
-        } catch (err) {
-          reject(new Error(`Python ops intelligence returned invalid JSON: ${err.message}`));
-        }
-      });
-      child.stdin.write(input);
-      child.stdin.end();
-    };
-    trySpawn();
+async function runPythonOpsEngine(req, payload) {
+  return callPythonFunction(req, '/api/python-ops-engine', payload, {
+    caller: 'python-ops-intelligence',
+    timeoutMs: PYTHON_TIMEOUT_MS,
+    maxPayloadBytes: MAX_PAYLOAD_BYTES,
+    payloadError: 'Python ops payload is too large. Narrow the date window or reduce history.'
   });
 }
 
@@ -107,7 +57,7 @@ module.exports = async function handler(req, res) {
     if (!canUseOpsIntel) return res.status(403).json({ ok: false, error: 'Owner, manager, inventory, labor, sales, or team permission is required for Python Ops Intelligence.' });
 
     const payload = compactPayload(body);
-    const result = await runPythonOpsEngine(payload);
+    const result = await runPythonOpsEngine(req, payload);
     const ok = result?.ok !== false;
     await ctx.db.collection('auditLogs').add({
       restaurantId,

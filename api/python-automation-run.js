@@ -1,9 +1,8 @@
-const path = require('path');
 const crypto = require('crypto');
-const { spawn } = require('child_process');
 const { initAdmin, authorize, readBody, masterEmails, norm } = require('./_chaos-admin');
+const { callPythonFunction } = require('./_python-function-client');
 
-const APP_VERSION = '15.0.82';
+const APP_VERSION = '15.0.83';
 const PYTHON_TIMEOUT_MS = 35000;
 const MAX_PAYLOAD_BYTES = 1500000;
 const COLLECTION_LIMITS = {
@@ -116,55 +115,12 @@ function collectTokens(user = {}) {
   return [...tokens].filter(Boolean);
 }
 
-function runPythonOpsEngine(payload) {
-  return new Promise((resolve, reject) => {
-    const input = JSON.stringify(payload || {});
-    if (Buffer.byteLength(input, 'utf8') > MAX_PAYLOAD_BYTES) {
-      reject(new Error('Python automation payload is too large. Narrow the history window.'));
-      return;
-    }
-    const scriptPath = path.join(process.cwd(), 'scripts', 'python', 'ops_intelligence.py');
-    const candidates = ['python3', 'python'];
-    let candidateIndex = 0;
-    const trySpawn = () => {
-      const child = spawn(candidates[candidateIndex], [scriptPath], { stdio: ['pipe', 'pipe', 'pipe'] });
-      let stdout = '';
-      let stderr = '';
-      let settled = false;
-      const timer = setTimeout(() => {
-        if (settled) return;
-        settled = true;
-        try { child.kill('SIGKILL'); } catch (_) {}
-        reject(new Error('Python automation timed out.'));
-      }, PYTHON_TIMEOUT_MS);
-      child.stdout.on('data', chunk => { stdout += chunk.toString('utf8'); });
-      child.stderr.on('data', chunk => { stderr += chunk.toString('utf8'); });
-      child.on('error', err => {
-        clearTimeout(timer);
-        if (settled) return;
-        if (/ENOENT/i.test(err?.code || err?.message || '') && candidateIndex < candidates.length - 1) {
-          candidateIndex += 1;
-          trySpawn();
-          return;
-        }
-        settled = true;
-        reject(new Error(`Python runtime unavailable: ${err.message}`));
-      });
-      child.on('close', code => {
-        clearTimeout(timer);
-        if (settled) return;
-        settled = true;
-        if (code !== 0) {
-          reject(new Error(stderr.trim() || stdout.trim() || `Python automation exited with ${code}.`));
-          return;
-        }
-        try { resolve(JSON.parse(stdout || '{}')); }
-        catch (err) { reject(new Error(`Python automation returned invalid JSON: ${err.message}`)); }
-      });
-      child.stdin.write(input);
-      child.stdin.end();
-    };
-    trySpawn();
+async function runPythonOpsEngine(req, payload) {
+  return callPythonFunction(req, '/api/python-ops-engine', payload, {
+    caller: 'python-automation-run',
+    timeoutMs: PYTHON_TIMEOUT_MS,
+    maxPayloadBytes: MAX_PAYLOAD_BYTES,
+    payloadError: 'Python automation payload is too large. Narrow the history window.'
   });
 }
 
@@ -360,7 +316,7 @@ async function processRestaurant({ app, db, restaurant, source, requestedMode })
   await runRef.set({ id: runId, restaurantId: restaurant.id, workspaceId: restaurant.id, restaurantName: restaurant.name || '', source, requestedMode, status: 'running', startedAt, appVersion: APP_VERSION, jobs: gate.config.jobs, safetyPolicy: SAFE_POLICY }, { merge: true });
   try {
     const payload = await loadPayloadForRestaurant(db, restaurant);
-    const result = await runPythonOpsEngine(payload);
+    const result = await runPythonOpsEngine(req, payload);
     const criticalFindings = criticalFindingsFrom(result);
     const reportRef = db.collection('opsIntelligenceReports').doc(runId);
     const queueStats = gate.config.jobs?.approvalQueue === false ? { written: 0, considered: 0, disabled: true } : await writeRecommendations(db, restaurant, result, runId, source);

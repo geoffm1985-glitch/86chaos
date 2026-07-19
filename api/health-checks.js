@@ -1,3 +1,5 @@
+const fs = require('fs');
+const path = require('path');
 const { initAdmin, authorize, requireAppCheckIfEnforced } = require('./_chaos-admin');
 const { projectCredentialStatus } = require('./_firebase-project-admin');
 
@@ -16,9 +18,11 @@ const ROUTE_CHECKS = [
   { route: '/api/firestore-backup-watchdog', file: 'firestore-backup-watchdog.js', method: 'GET/POST', auth: 'cron-or-admin', notes: 'Daily backup fallback watchdog. Runs a catch-up backup only when last successful backup is stale.' },
   { route: '/api/gemini-admin-manual', file: 'gemini-admin-manual.js', method: 'POST', auth: 'super-admin', notes: 'Gemini-powered System Administrator manual assistant.' },
   { route: '/api/openai-diagnostics-explain', file: 'openai-diagnostics-explain.js', method: 'POST', auth: 'super-admin', notes: 'OpenAI structured diagnostics repair guidance with server-side redaction.' },
-  { route: '/api/python-order-intelligence', file: 'python-order-intelligence.js', method: 'POST', auth: 'workspace-inventory-admin', notes: 'Python-powered order forecasting, par tuning, price trend, waste, prep, and event supply analysis.' },
-  { route: '/api/python-ops-intelligence', file: 'python-ops-intelligence.js', method: 'POST', auth: 'workspace-manager', notes: 'Python-powered operations scan for invoice anomalies, menu costing, labor warnings, data health, backup checks, and report exports.' },
-  { route: '/api/python-automation-run', file: 'python-automation-run.js', method: 'GET/POST', auth: 'cron-or-super-admin', notes: 'Scheduled Python Automation Center runner for nightly ops scans, manager briefs, approval queue suggestions, and critical push alerts.' },
+  { route: '/api/python-order-intelligence', file: 'python-order-intelligence.js', method: 'POST', auth: 'workspace-inventory-admin', notes: 'Node auth wrapper for Python order forecasting, par tuning, price trend, waste, prep, and event supply analysis.' },
+  { route: '/api/python-order-engine', file: 'python-order-engine.py', method: 'POST', auth: 'internal-python-secret', notes: 'Vercel Python Function that runs the order intelligence engine without Node spawning Python.' },
+  { route: '/api/python-ops-intelligence', file: 'python-ops-intelligence.js', method: 'POST', auth: 'workspace-manager', notes: 'Node auth wrapper for Python operations scans, invoice anomalies, menu costing, labor warnings, data health, backup checks, and report exports.' },
+  { route: '/api/python-ops-engine', file: 'python-ops-engine.py', method: 'POST', auth: 'internal-python-secret', notes: 'Vercel Python Function that runs the Ops Intelligence engine without Node spawning Python.' },
+  { route: '/api/python-automation-run', file: 'python-automation-run.js', method: 'GET/POST', auth: 'cron-or-super-admin', notes: 'Scheduled Python Automation Center runner that calls the Vercel Python Ops engine for nightly scans, manager briefs, approval queue suggestions, and critical push alerts.' },
   { route: '/api/full-system-diagnostics', file: 'full-system-diagnostics.js', method: 'POST', auth: 'super-admin', notes: 'Full diagnostics bundle route.' },
   { route: '/api/geocode-address', file: 'geocode-address.js', method: 'POST', auth: 'workspace-admin', notes: 'Address/geofence helper.' },
   { route: '/api/import-cheers-july-schedule', file: 'import-cheers-july-schedule.js', method: 'POST', auth: 'super-admin', notes: 'Legacy guarded schedule import helper. Hidden from public workflows.' },
@@ -95,6 +99,10 @@ const HANDLER_LOADERS = {
 
 const safeRequire = (file) => {
   try {
+    if (/\.py$/i.test(file)) {
+      const exists = fs.existsSync(path.join(__dirname, file));
+      return { ok: exists, exists, error: exists ? '' : 'Python route file is missing.' };
+    }
     const loader = HANDLER_LOADERS[file];
     if (!loader) return { ok: false, exists: false, error: 'Route is listed but no static loader is registered.' };
     const loaded = loader();
