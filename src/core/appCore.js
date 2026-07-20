@@ -35,11 +35,14 @@ export const T = {
 
 // --- Firebase Initialization ---
 const env = (key, fallback = '') => (process.env[key] || fallback);
+const envFlag = (key) => String(process.env[key] || '').trim().toLowerCase() === 'true';
+const LOCKED_TEST_FIREBASE_API_KEY = 'AIzaSyBIRGMeLnVE3w3i1WZJzurcp-LkeaNZ3hw';
 
 // 1. TEST DATABASE CONFIG (Sandbox)
-// Prefer Vercel env vars so preview/testing and production can stay completely separate.
+// Preview/testing must never drift onto the production browser key. The test browser
+// API key is intentionally locked unless an explicit override flag is set.
 export const testConfig = {
-  apiKey: env('REACT_APP_TEST_FIREBASE_API_KEY', 'AIzaSyBIRGMeLnVE3w3i1WZJzurcp-LkeaNZ3hw'),
+  apiKey: envFlag('REACT_APP_ALLOW_TEST_FIREBASE_API_KEY_OVERRIDE') ? env('REACT_APP_TEST_FIREBASE_API_KEY', LOCKED_TEST_FIREBASE_API_KEY) : LOCKED_TEST_FIREBASE_API_KEY,
   authDomain: env('REACT_APP_TEST_FIREBASE_AUTH_DOMAIN', 'chaos-test-d1601.firebaseapp.com'),
   projectId: env('REACT_APP_TEST_FIREBASE_PROJECT_ID', 'chaos-test-d1601'),
   storageBucket: env('REACT_APP_TEST_FIREBASE_STORAGE_BUCKET', 'chaos-test-d1601.firebasestorage.app'),
@@ -67,6 +70,7 @@ const explicitDeployMode = normalizeDeployMode(env('REACT_APP_FIREBASE_DEPLOYMEN
 const genericFirebaseProjectId = env('REACT_APP_FIREBASE_PROJECT_ID', '').trim();
 const currentHostname = typeof window !== 'undefined' ? String(window.location.hostname || '').toLowerCase() : '';
 const isVercelPreviewHost = currentHostname === 'localhost' || currentHostname === '127.0.0.1' || currentHostname.endsWith('.vercel.app');
+const isProductionFirebaseHost = isProdFirebaseHost(currentHostname);
 const trustedBrowserProjects = ['chaos-test-d1601', 'cheers-34b8d'];
 const exactGenericBrowserProject = trustedBrowserProjects.includes(genericFirebaseProjectId) ? genericFirebaseProjectId : '';
 const forceTestingFirebase = ['chaos-test-d1601', 'test', 'testing', 'preview', 'staging', 'dev', 'development'].includes(explicitFirebaseProject) || ['test', 'testing', 'preview', 'staging', 'dev', 'development'].includes(explicitDeployMode);
@@ -83,19 +87,21 @@ const genericBrowserConfig = {
 const genericConfigIsUsable = Boolean(genericBrowserConfig.apiKey && genericBrowserConfig.authDomain && exactGenericBrowserProject && genericBrowserConfig.appId);
 
 // 3. THE SWITCHER
-// Login/Auth stays eager-loaded, but the browser Firebase project now honors an
-// explicit generic REACT_APP_FIREBASE_PROJECT_ID when it is one of the two known
-// 86 Chaos Firebase projects. That keeps Vercel Preview from signing into the
-// test browser project while API routes are wired to the production Admin JSON,
-// which was the source of the repeated credential mismatch banners.
-const activeFirebaseProjectId = forceTestingFirebase
+// Login/Auth stays eager-loaded. Vercel preview/local hosts are hard-locked to
+// the test Firebase project and the locked test browser API key above. This
+// prevents a generic production env var from pushing the testing app onto the
+// live/main Firebase key and causing Google Cloud referrer blocks.
+const activeFirebaseProjectId = (isVercelPreviewHost || forceTestingFirebase)
   ? 'chaos-test-d1601'
-  : forceProductionFirebase
+  : (isProductionFirebaseHost || forceProductionFirebase)
     ? 'cheers-34b8d'
-    : exactGenericBrowserProject || (isProdFirebaseHost(currentHostname) ? 'cheers-34b8d' : 'chaos-test-d1601');
+    : exactGenericBrowserProject || 'chaos-test-d1601';
 export const activeFirebaseMode = activeFirebaseProjectId === 'cheers-34b8d' ? 'production' : 'test';
 const configForProject = (projectId) => {
-  if (genericConfigIsUsable && genericBrowserConfig.projectId === projectId) return genericBrowserConfig;
+  // Never use the generic browser config on localhost/Vercel preview. Those
+  // environments must use the locked test config so a stale production
+  // REACT_APP_FIREBASE_* value cannot sneak into the testing app.
+  if (!isVercelPreviewHost && genericConfigIsUsable && genericBrowserConfig.projectId === projectId) return genericBrowserConfig;
   return projectId === 'cheers-34b8d' ? prodConfig : testConfig;
 };
 export const firebaseConfig = configForProject(activeFirebaseProjectId);
@@ -105,7 +111,8 @@ export const firebaseDiagnostics = {
   authDomain: firebaseConfig.authDomain,
   host: currentHostname,
   vercelPreview: isVercelPreviewHost,
-  genericProjectHonored: Boolean(genericConfigIsUsable && genericBrowserConfig.projectId === activeFirebaseProjectId)
+  browserApiKeyTail: String(firebaseConfig.apiKey || '').slice(-6),
+  genericProjectHonored: Boolean(!isVercelPreviewHost && genericConfigIsUsable && genericBrowserConfig.projectId === activeFirebaseProjectId)
 };
 
 export const app = initializeApp(firebaseConfig);
@@ -215,7 +222,7 @@ export const MASTER_ADMIN_EMAIL = (process.env.REACT_APP_MASTER_ADMIN_EMAIL || '
 export const EVENT_TAGS = ['Standard Day', 'Packers Game', 'Brewers Game', 'Live Music', 'Severe Weather', 'Private Catering', 'Holiday'];
 
 // --- VERSION TRACKING ---
-export const CURRENT_VERSION = '15.0.83';
+export const CURRENT_VERSION = '15.0.84';
 
 // --- Helpers ---
 export const useLiveCollection = (coll, restId, options = {}) => {

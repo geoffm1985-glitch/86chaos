@@ -1,9 +1,9 @@
 {
-  "version": "15.0.83",
-  "name": "86 Chaos 15.0.83 Manager Brief, Firebase Credential, Training Manual, and Radar Fix",
+  "version": "15.0.84",
+  "name": "86 Chaos 15.0.84 Testing Firebase Key Lock",
   "releasedAt": "2026-07-19",
-  "label": "15.0.83 Manager Brief, Firebase credential, training manual, and radar fix",
-  "build": "15.0.83-manager-brief-env-training-radar-fix",
+  "label": "15.0.84 Testing Firebase key lock",
+  "build": "15.0.84-testing-firebase-key-lock",
   "updatedAt": "2026-07-19T00:00:00.000Z",
-  "notes": "Fixes Firebase credential mismatch handling, Manager Brief schedule counts and navigation buttons, larger onboarding checklist editing, compressed training manual uploads up to 50MB source files, AI Ordering wording, and a more precise Menu Dependency Radar. Login/auth and service-account key values remain untouched."
+  "notes": "Hard-locks localhost and Vercel Preview builds to the chaos-test-d1601 Firebase browser project and testing Web API key so testing cannot accidentally use the main app Firebase key. Production custom domains still use cheers-34b8d."
 }
