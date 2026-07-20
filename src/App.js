@@ -43,6 +43,22 @@ const RouteLoading = ({ label = 'Loading section...' }) => (
 
 const normalizeEmail = (value) => String(value || '').toLowerCase().trim();
 const safeWorkspaceName = (workspace = {}) => workspace.restaurantName || workspace.name || workspace.businessName || workspace.restaurantId || '86 Chaos Workspace';
+
+const LEGACY_TAB_ALIASES = {
+  'manager-brief': 'today',
+  'today-home': 'today',
+  'kitchen-command': 'ops',
+  'command-center': 'ops',
+  'time-clock': 'published',
+  'timeclock': 'published',
+  'my-schedule': 'published',
+  'staff-roster': 'team',
+  'roster': 'team',
+  'message-board': 'messages',
+  'help-center': 'help',
+  'admin-manual': 'help'
+};
+const normalizeRouteTab = (tab = 'today') => LEGACY_TAB_ALIASES[String(tab || '').trim()] || String(tab || 'today').trim() || 'today';
 const buildSafeSessionCache = (user = {}) => user ? {
   id: user.id || user.userId || '',
   userId: user.userId || user.id || '',
@@ -170,7 +186,7 @@ export default function App() {
   const [ghostTenant, setGhostTenant] = useState(null);
       
   const rId = ghostTenant ? ghostTenant.id : appUser?.restaurantId;
-  const [activeTabState, setActiveTabState] = useState(() => appUser?.preferences?.defaultTab || 'today');
+  const [activeTabState, setActiveTabState] = useState(() => normalizeRouteTab(appUser?.preferences?.defaultTab || 'today'));
   const [clientData, setClientData] = useState(null);
   const [heartbeatDebug, setHeartbeatDebug] = useState(null);
   const clientFeatures = clientData?.features || {};
@@ -838,16 +854,22 @@ if (liveAppUser && clientData) {
 
  
   useEffect(() => {
-    const handlePopState = (e) => { if (e.state && e.state.tab) setActiveTabState(e.state.tab); else setActiveTabState('published'); };
+    const handlePopState = (e) => {
+      const params = new URLSearchParams(window.location.search);
+      const nextTab = normalizeRouteTab(e?.state?.tab || params.get('tab') || 'published');
+      setActiveTabState(nextTab);
+    };
     window.addEventListener('popstate', handlePopState);
     const params = new URLSearchParams(window.location.search);
-    const preferredTab = appUser?.preferences?.defaultTab || 'today';
-    const tab = params.get('tab') || preferredTab;
+    const preferredTab = normalizeRouteTab(appUser?.preferences?.defaultTab || 'today');
+    const rawTab = params.get('tab') || preferredTab;
+    const tab = normalizeRouteTab(rawTab);
     setActiveTabState(tab); window.history.replaceState({ tab }, '', `?tab=${tab}`);
     return () => window.removeEventListener('popstate', handlePopState);
   }, [appUser]);
 
   const setActiveTab = (tab) => {
+    tab = normalizeRouteTab(tab);
     if (mfaFrontendLockActive && !['settings', 'help'].includes(tab)) {
       addToast('Two-Step Login Required', 'Open Account Security in Settings to finish MFA setup before using elevated tools.');
       tab = 'settings';
@@ -1140,8 +1162,9 @@ What I clicked / expected:
     setGhostTenant(null);
     setClientData(null);
     setAppUser(nextUser);
-    setActiveTabState(nextUser.preferences?.defaultTab || 'today');
-    try { window.history.replaceState({ tab: nextUser.preferences?.defaultTab || 'today' }, '', `?tab=${nextUser.preferences?.defaultTab || 'today'}`); } catch (_) {}
+    const nextDefaultTab = normalizeRouteTab(nextUser.preferences?.defaultTab || 'today');
+    setActiveTabState(nextDefaultTab);
+    try { window.history.replaceState({ tab: nextDefaultTab }, '', `?tab=${nextDefaultTab}`); } catch (_) {}
     setIsWorkspaceSwitcherOpen(false);
     addToast('Workspace Switched', `Now working in ${safeWorkspaceName(workspace)}.`);
   };
