@@ -17,6 +17,19 @@ import { CheersLogo, Modal, DrawerMenu, DayDotPrintScreen, MapClickListener, Sma
 import { usePlanAccess } from '../hooks/usePlanAccess';
 import { FEATURE_KEYS } from '../config/plans';
 
+const readableApiError = (value) => {
+  if (!value) return '';
+  if (typeof value === 'string') return value;
+  if (value instanceof Error) return value.message || value.name || 'Unknown error';
+  if (typeof value === 'object') {
+    const direct = value.message || value.error || value.detail || value.reason || value.code;
+    if (direct && direct !== value) return readableApiError(direct);
+    try { return JSON.stringify(value); } catch (err) { return String(value); }
+  }
+  return String(value);
+};
+
+
 const PREP_TASK_TEMPLATE_PACKS = {
   kitchenOpenClose: {
     label: 'Kitchen Open/Close',
@@ -2150,7 +2163,7 @@ const TabToday = ({ currentDate, appUser, users, shifts, shiftSwaps, timeOffRequ
         })
       });
       const payload = await response.json().catch(() => ({}));
-      if (!response.ok || payload?.ok === false) throw new Error(payload?.error || 'Python Ops Intelligence failed.');
+      if (!response.ok || payload?.ok === false) throw new Error(readableApiError(payload?.error || payload?.message || payload) || 'Python Ops Intelligence failed.');
       setBriefOpsIntel(payload);
       addToast?.('Python Ops Scan Ready', `${payload?.summary?.dataHealthCount || 0} data issues, ${payload?.summary?.laborWarningCount || 0} labor warnings, ${payload?.summary?.menuCostCount || 0} menu cost checks.`);
     } catch (error) {

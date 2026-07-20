@@ -1,6 +1,7 @@
 const { readBody } = require('./_chaos-admin');
 const { authorizePythonPayloadRoute } = require('./_python-auth-fallback');
 const { callPythonFunction } = require('./_python-function-client');
+const { buildFallbackOpsResult, safeErrorMessage } = require('./_ops-intelligence-fallback');
 const { resolveWorkspaceSubscription, planIsAtLeast, PLAN_IDS } = require('./_plan-access');
 
 const MAX_PAYLOAD_BYTES = 1200000;
@@ -67,18 +68,28 @@ module.exports = async function handler(req, res) {
     }
 
     const payload = compactPayload(body);
-    const result = await runPythonOpsEngine(req, payload);
+    let result;
+    let usedFallback = false;
+    try {
+      result = await runPythonOpsEngine(req, payload);
+    } catch (engineError) {
+      usedFallback = true;
+      result = buildFallbackOpsResult(payload, engineError);
+    }
     const ok = result?.ok !== false;
     if (auth.warning) {
-      result.warning = auth.warning;
+      result.authWarning = auth.warning;
       result.authMode = auth.mode;
+    }
+    if (usedFallback) {
+      result.pythonEngineStatus = 'fallback_used';
     }
     if (ctx.db) {
       await ctx.db.collection('auditLogs').add({
         restaurantId,
         action: 'PYTHON_OPS_INTELLIGENCE_RUN',
         target: 'api/python-ops-intelligence',
-        details: ok ? `Python Ops Intelligence generated ${result?.summary?.dataHealthCount || 0} data health issues, ${result?.summary?.laborWarningCount || 0} labor warnings, ${result?.summary?.menuCostCount || 0} menu cost checks, and ${result?.summary?.backupCheckCount || 0} backup checks.` : `Python Ops Intelligence returned an error: ${result?.error || 'unknown'}`,
+        details: ok ? `Python Ops Intelligence generated ${result?.summary?.dataHealthCount || 0} data health issues, ${result?.summary?.laborWarningCount || 0} labor warnings, ${result?.summary?.menuCostCount || 0} menu cost checks, and ${result?.summary?.backupCheckCount || 0} backup checks${usedFallback ? ' using safe fallback mode' : ''}.` : `Python Ops Intelligence returned an error: ${safeErrorMessage(result?.error) || 'unknown'}`,
         userId: ctx.userDocId || ctx.uid || '',
         userName: ctx.user?.name || ctx.email || 'Ops User',
         timestamp: new Date().toISOString(),
@@ -87,7 +98,7 @@ module.exports = async function handler(req, res) {
     }
     return res.status(ok ? 200 : 500).json(result);
   } catch (err) {
-    return res.status(500).json({ ok: false, engine: 'python-ops-intelligence', error: err.message });
+    return res.status(500).json({ ok: false, engine: 'python-ops-intelligence', error: safeErrorMessage(err) || 'Python Ops Intelligence failed.' });
   }
 };
 

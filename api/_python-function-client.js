@@ -4,6 +4,19 @@ function bodySize(value) {
   return Buffer.byteLength(JSON.stringify(value || {}), 'utf8');
 }
 
+
+function safeErrorMessage(error) {
+  if (!error) return '';
+  if (typeof error === 'string') return error;
+  if (error instanceof Error) return error.message || error.name || 'Unknown error';
+  if (typeof error === 'object') {
+    const direct = error.message || error.error || error.detail || error.reason || error.code;
+    if (direct && direct !== error) return safeErrorMessage(direct);
+    try { return JSON.stringify(error); } catch (_) { return String(error); }
+  }
+  return String(error);
+}
+
 function getInternalSecret() {
   return String(process.env.PYTHON_INTERNAL_SECRET || process.env.CRON_SECRET || '').trim();
 }
@@ -46,7 +59,7 @@ async function callPythonFunction(req, route, payload, options = {}) {
     try { data = text ? JSON.parse(text) : {}; }
     catch (err) { throw new Error(`Python function returned invalid JSON: ${err.message}`); }
     if (!response.ok || data?.ok === false) {
-      const message = data?.error || data?.message || `Python function returned HTTP ${response.status}.`;
+      const message = safeErrorMessage(data?.error || data?.message || data) || `Python function returned HTTP ${response.status}.`;
       throw new Error(message);
     }
     return data;
@@ -58,4 +71,4 @@ async function callPythonFunction(req, route, payload, options = {}) {
   }
 }
 
-module.exports = { callPythonFunction };
+module.exports = { callPythonFunction, safeErrorMessage };

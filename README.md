@@ -1,22 +1,14 @@
-# 86 Chaos 15.0.81
+# 86 Chaos 15.0.82
 
-## What changed in 15.0.81
+## What changed in 15.0.82
 
-This build fixes Python Ops Scan and Python Order Intelligence on Preview deployments where the browser is signed into the test Firebase project but the generic server `FIREBASE_SERVICE_ACCOUNT_KEY` belongs to production.
+This release fixes the Python Ops Scan failure that could show `[object Object]` in Manager Brief.
 
-### Key fixes
+- Keeps login/auth eager-loaded and untouched.
+- Keeps service-account-key handling untouched.
+- Runs the Python Ops engine first when available.
+- Falls back to a safe payload-based Ops Scan when the Python runtime returns a structured error or fails.
+- Converts object-shaped API errors into readable diagnostics.
+- Keeps the audit repairs, safe component split, and Inventory lazy-loading work from the prior safe releases.
 
-- Login/auth remains eager-loaded and untouched.
-- Python Ops and Python Order first try the full Firebase Admin authorization path.
-- If a matching Admin credential is unavailable, those routes use a verified Firebase ID token and analyze the already-loaded client payload instead of failing with a service-account project mismatch.
-- Server audit logging and server plan checks still run when full Admin credentials are available.
-- Fallback mode is limited to client-loaded payload analysis and does not write audit logs.
-- Recognized service-account aliases are expanded for test and production deployments.
-- The restored Python runtime from 15.0.80 remains in place.
-- The safe component and Inventory split from 15.0.79 remains in place.
-
-### Deployment
-
-Deploy with Vercel Clear Build Cache enabled. Do not change or paste Firebase service-account keys into the codebase.
-
-See `README_15_0_81_RELEASE_NOTES.md` and `QA_15_0_81_PYTHON_OPS_CREDENTIAL_FALLBACK.md` before production rollout.
+See `README_15_0_82_RELEASE_NOTES.md` and `QA_15_0_82_PYTHON_OPS_FALLBACK_FIX.md` before production rollout.
