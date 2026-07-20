@@ -6,7 +6,7 @@ const read = (rel) => fs.readFileSync(path.join(root, rel), 'utf8');
 const checks = [
   {
     name: 'Current version marker is synced',
-    pass: () => read('src/core/appCore.js').includes("CURRENT_VERSION = '15.0.82'") && JSON.parse(read('public/version.json')).version === '15.0.82' && JSON.parse(read('package.json')).version === '15.0.82'
+    pass: () => read('src/core/appCore.js').includes("CURRENT_VERSION = '15.0.83'") && JSON.parse(read('public/version.json')).version === '15.0.83' && JSON.parse(read('package.json')).version === '15.0.83'
   },
   {
     name: 'Preview Firebase selection ignores generic REACT_APP_FIREBASE_PROJECT_ID',

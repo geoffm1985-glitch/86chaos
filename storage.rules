@@ -216,6 +216,15 @@ service firebase.storage {
       return manual.restaurantId == restaurantId && manual.status == 'Published';
     }
 
+    function isAllowedTrainingManualType(contentType) {
+      return contentType in [
+        'application/pdf',
+        'application/msword',
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        'text/plain'
+      ];
+    }
+
     function isAllowedTrainingManual(restaurantId, manualId) {
       return request.resource != null &&
         uploadPurposeIs('hr-training-manual') &&
@@ -223,12 +232,14 @@ service firebase.storage {
         request.resource.metadata.manualId == manualId &&
         request.resource.size > 0 &&
         request.resource.size <= 15 * 1024 * 1024 &&
-        request.resource.contentType in [
-          'application/pdf',
-          'application/msword',
-          'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-          'text/plain'
-        ];
+        (
+          isAllowedTrainingManualType(request.resource.contentType) ||
+          (
+            request.resource.contentType == 'application/gzip' &&
+            request.resource.metadata.compression == 'gzip' &&
+            isAllowedTrainingManualType(request.resource.metadata.originalContentType)
+          )
+        );
     }
 
     function isAllowedInvoiceScan() {

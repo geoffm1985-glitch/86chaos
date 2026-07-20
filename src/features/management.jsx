@@ -1414,11 +1414,46 @@ const handleEnableNotifications = async () => {
     } catch (err) { addToast('Save Failed', err.message || 'Could not save branding settings.'); }
   };
 
+  const looksLikeProjectCredentialError = (message = '') => /No server credential is configured|FIREBASE_SERVICE_ACCOUNT_KEY currently contains project_id|route requested|active deployment project|Redeploy after changing Vercel env vars/i.test(String(message || ''));
+  const memberDocIdFor = (uid = '', restaurantId = '') => `${String(uid || '').replace(/[^A-Za-z0-9_-]/g, '_')}_${String(restaurantId || '').replace(/[^A-Za-z0-9_-]/g, '_')}`.slice(0, 240);
+  const saveSettingsPermissionDirect = async (user, nextPermissions) => {
+    const restaurantId = appUser.restaurantId || appUser.activeRestaurantId || appUser.defaultRestaurantId;
+    if (!restaurantId) throw new Error('Missing workspace ID for settings access.');
+    const targetId = user.id || user.uid || user.authUid;
+    if (!targetId) throw new Error('Missing employee ID for settings access.');
+    const now = new Date().toISOString();
+    const safeEmail = String(user.email || '').toLowerCase().trim();
+    await setDoc(doc(db, 'workspaceMembers', memberDocIdFor(targetId, restaurantId)), {
+      userId: targetId,
+      uid: targetId,
+      restaurantId,
+      restaurantName: appUser.restaurantName || appUser.businessName || clientData?.name || restaurantId,
+      name: user.name || safeEmail || 'Staff',
+      email: safeEmail,
+      role: user.role || 'Staff',
+      permissions: nextPermissions,
+      isAdmin: user.isAdmin === true,
+      isOwner: user.isOwner === true || user.accountOwner === true || user.workspaceOwner === true,
+      isActive: user.isActive !== false,
+      membershipSource: 'settings-direct-owner-fallback',
+      updatedAt: now,
+      updatedBy: appUser.id || auth.currentUser?.uid || '',
+      updatedByEmail: appUser.email || auth.currentUser?.email || ''
+    }, { merge: true });
+    const userPatch = {
+      [`memberships.${restaurantId}.permissions`]: nextPermissions,
+      [`memberships.${restaurantId}.updatedAt`]: now,
+      updatedAt: now
+    };
+    if (!user.restaurantId || user.restaurantId === restaurantId) userPatch.permissions = nextPermissions;
+    await setDoc(doc(db, 'users', targetId), userPatch, { merge: true });
+  };
+
   const toggleSettingsPermission = async (user, key, checked) => {
     if (!isWorkspaceOwner) return addToast('Owner Only', 'Only the account owner can grant Settings, Branding, or Integrations access.');
     if (!user?.id) return;
+    const nextPermissions = { ...(user.permissions || {}), [key]: checked };
     try {
-      const nextPermissions = { ...(user.permissions || {}), [key]: checked };
       const response = await secureFetch('/api/staff-member', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1434,6 +1469,16 @@ const handleEnableNotifications = async () => {
       if (!response.ok || result?.ok === false) throw new Error(result?.error || 'Permission update failed.');
       addToast('Access Updated', `${user.name || user.email} ${checked ? 'can now' : 'can no longer'} manage ${key}.`);
     } catch (err) {
+      if (looksLikeProjectCredentialError(err?.message)) {
+        try {
+          await saveSettingsPermissionDirect(user, nextPermissions);
+          addToast('Access Updated', `${user.name || user.email} ${checked ? 'can now' : 'can no longer'} manage ${key}. Saved directly while the API credential scope catches up.`);
+          return;
+        } catch (fallbackErr) {
+          addToast('Access Save Failed', fallbackErr.message || 'Could not update settings access.');
+          return;
+        }
+      }
       addToast('Access Save Failed', err.message || 'Could not update settings access.');
     }
   };

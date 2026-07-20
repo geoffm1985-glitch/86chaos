@@ -29,7 +29,9 @@ import {
 } from '../core/appCore';
 import { FriendlyEmpty, Modal } from '../components/common';
 
-const MANUAL_MAX_BYTES = 15 * 1024 * 1024;
+const MANUAL_STORAGE_MAX_BYTES = 15 * 1024 * 1024;
+const MANUAL_ORIGINAL_MAX_BYTES = 50 * 1024 * 1024;
+const MANUAL_MAX_BYTES = MANUAL_STORAGE_MAX_BYTES;
 const MANUAL_TYPES = new Set([
   'application/pdf',
   'application/msword',
@@ -56,6 +58,51 @@ const TABS = [
 const nowIso = () => new Date().toISOString();
 const todayIso = () => new Date().toISOString().slice(0, 10);
 const safeFileName = (name = 'manual') => String(name).replace(/[^a-zA-Z0-9._-]+/g, '-').replace(/-+/g, '-').slice(-120);
+
+const mbLabel = (bytes = 0) => `${Math.max(0.01, Number(bytes || 0) / 1048576).toFixed(2)} MB`;
+const supportsGzipCompression = () => typeof window !== 'undefined' && typeof window.CompressionStream === 'function';
+const supportsGzipDecompression = () => typeof window !== 'undefined' && typeof window.DecompressionStream === 'function';
+const gzipBlob = async (blob) => {
+  if (!supportsGzipCompression()) throw new Error('This browser cannot compress large manuals. Use Chrome or Edge, or export the file as a smaller PDF.');
+  const stream = blob.stream().pipeThrough(new CompressionStream('gzip'));
+  return new Response(stream).blob();
+};
+const gunzipBlob = async (blob, contentType = 'application/octet-stream') => {
+  if (!supportsGzipDecompression()) return null;
+  const stream = blob.stream().pipeThrough(new DecompressionStream('gzip'));
+  const decompressed = await new Response(stream).blob();
+  return new Blob([decompressed], { type: contentType || 'application/octet-stream' });
+};
+const prepareTrainingManualUpload = async (file) => {
+  if (!file) throw new Error('Choose a training manual file.');
+  if (file.size <= 0) throw new Error('The selected training manual is empty.');
+  if (file.size > MANUAL_ORIGINAL_MAX_BYTES) throw new Error('Training manuals can be up to 50 MB before compression. Split the file or reduce image quality.');
+  if (file.size <= MANUAL_STORAGE_MAX_BYTES) {
+    return {
+      blob: file,
+      compressed: false,
+      compression: '',
+      uploadName: safeFileName(file.name),
+      uploadSize: file.size,
+      contentType: file.type,
+      originalContentType: file.type
+    };
+  }
+  const compressedBlob = await gzipBlob(file);
+  if (compressedBlob.size > MANUAL_STORAGE_MAX_BYTES) {
+    throw new Error(`Compressed manual is still ${mbLabel(compressedBlob.size)}. Reduce image quality or split the manual so the stored file is under 15 MB.`);
+  }
+  return {
+    blob: compressedBlob,
+    compressed: true,
+    compression: 'gzip',
+    uploadName: `${safeFileName(file.name)}.gz`,
+    uploadSize: compressedBlob.size,
+    contentType: 'application/gzip',
+    originalContentType: file.type
+  };
+};
+
 const prettyDate = (value) => {
   if (!value) return 'Not set';
   const parsed = new Date(value.length === 10 ? `${value}T12:00:00` : value);
@@ -139,17 +186,18 @@ const ManualUploadModal = ({ open, onClose, appUser, manuals, addToast }) => {
       addToast?.('File Not Accepted', 'Use a PDF, Word document, DOCX file, or plain-text file.');
       return;
     }
-    if (file.size <= 0 || file.size > MANUAL_MAX_BYTES) {
-      addToast?.('File Too Large', 'Training manuals must be 15 MB or smaller.');
+    if (file.size <= 0 || file.size > MANUAL_ORIGINAL_MAX_BYTES) {
+      addToast?.('File Too Large', 'Training manuals can be up to 50 MB before compression. Split the file or reduce image quality.');
       return;
     }
     setSaving(true);
     let manualId = '';
     let storagePath = '';
     try {
+      const prepared = await prepareTrainingManualUpload(file);
       const manualRef = doc(collection(db, 'trainingManuals'));
       manualId = manualRef.id;
-      storagePath = `${appUser.restaurantId}/hrTrainingManuals/${manualId}/${safeFileName(file.name)}`;
+      storagePath = `${appUser.restaurantId}/hrTrainingManuals/${manualId}/${prepared.uploadName}`;
       await safeWrite({
         user: appUser,
         action: 'set',
@@ -166,7 +214,12 @@ const ManualUploadModal = ({ open, onClose, appUser, manuals, addToast }) => {
           status: 'Uploading',
           fileName: file.name,
           fileType: file.type,
-          fileSize: file.size,
+          fileSize: prepared.uploadSize,
+          originalFileSize: file.size,
+          compressed: prepared.compressed,
+          compression: prepared.compression,
+          storedFileName: prepared.uploadName,
+          storedFileType: prepared.contentType,
           storagePath,
           uploadedById: currentUid(appUser),
           uploadedByName: appUser.name || appUser.email || 'Manager',
@@ -176,12 +229,16 @@ const ManualUploadModal = ({ open, onClose, appUser, manuals, addToast }) => {
 
       const uploadRef = ref(storage, storagePath);
       await new Promise((resolve, reject) => {
-        const task = uploadBytesResumable(uploadRef, file, {
-          contentType: file.type,
+        const task = uploadBytesResumable(uploadRef, prepared.blob, {
+          contentType: prepared.contentType,
           customMetadata: {
             purpose: 'hr-training-manual',
             restaurantId: appUser.restaurantId,
-            manualId
+            manualId,
+            originalFileName: file.name,
+            originalContentType: prepared.originalContentType,
+            compression: prepared.compression,
+            compressed: prepared.compression
           }
         });
         task.on('state_changed', snapshot => {
@@ -215,7 +272,7 @@ const ManualUploadModal = ({ open, onClose, appUser, manuals, addToast }) => {
           console.error('A prior training-manual version could not be archived after the new version was published:', archiveError);
         }
       }
-      addToast?.('Manual Published', `${title.trim()} version ${version.trim()} is available to the team.${archiveFailures ? ` ${archiveFailures} older version(s) still need archival review.` : ''}`);
+      addToast?.('Manual Published', `${title.trim()} version ${version.trim()} is available to the team.${file.size > MANUAL_STORAGE_MAX_BYTES ? ` Large file compressed from ${mbLabel(file.size)} before secure storage.` : ''}${archiveFailures ? ` ${archiveFailures} older version(s) still need archival review.` : ''}`);
       reset();
       onClose();
     } catch (error) {
@@ -247,8 +304,8 @@ const ManualUploadModal = ({ open, onClose, appUser, manuals, addToast }) => {
         </div>
         <label className="block cursor-pointer rounded-2xl border border-dashed border-[#D4A381]/45 bg-[#D4A381]/5 p-5 text-center transition hover:bg-[#D4A381]/10">
           <Upload className="mx-auto text-[#E6BB9F]" size={28} />
-          <div className="mt-2 text-sm font-black text-white">{file ? file.name : 'Choose a PDF, Word document, DOCX, or text file'}</div>
-          <div className="mt-1 text-xs font-semibold text-slate-400">Hard limit: 15 MB. No AI processing.</div>
+          <div className="mt-2 text-sm font-black text-white">{file ? `${file.name} • ${mbLabel(file.size)}` : 'Choose a PDF, Word document, DOCX, or text file'}</div>
+          <div className="mt-1 text-xs font-semibold text-slate-400">Files up to 50 MB are compressed into the 15 MB secure storage envelope. No AI processing.</div>
           <input type="file" className="sr-only" accept=".pdf,.doc,.docx,.txt,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain" onChange={e => setFile(e.target.files?.[0] || null)} />
         </label>
         {saving && <div><div className="mb-1 flex justify-between text-xs font-bold text-slate-300"><span>Secure upload</span><span>{progress}%</span></div><div className="h-2 overflow-hidden rounded-full bg-[#12161A]"><div className="h-full bg-[#D4A381] transition-all" style={{ width: `${progress}%` }} /></div></div>}
@@ -302,13 +359,13 @@ const AddOnboardingModal = ({ open, onClose, appUser, users, addToast }) => {
     } finally { setSaving(false); }
   };
   return (
-    <Modal isOpen={open} onClose={onClose} title="Assign Onboarding Checklist" sizeClass="max-w-2xl">
+    <Modal isOpen={open} onClose={onClose} title="Assign Onboarding Checklist" sizeClass="max-w-4xl">
       <form className="space-y-4" onSubmit={submit}>
         <div className="grid gap-4 sm:grid-cols-2">
           <label><span className={T.label}>Employee</span><select className={T.input} value={userId} onChange={e => setUserId(e.target.value)}><option value="">Select employee</option>{eligibleUsers.map(user => <option key={employeeAuthUid(user)} value={employeeAuthUid(user)}>{user.name || user.email || employeeAuthUid(user)}</option>)}</select></label>
           <label><span className={T.label}>Target completion date</span><input className={T.input} type="date" value={dueDate} onChange={e => setDueDate(e.target.value)} /></label>
         </div>
-        <label><span className={T.label}>Checklist — one task per line</span><textarea className={`${T.input} min-h-[220px]`} value={tasksText} onChange={e => setTasksText(e.target.value)} /></label>
+        <label><span className={T.label}>Checklist — one task per line</span><textarea className={`${T.input} min-h-[360px] text-base leading-7`} rows={14} value={tasksText} onChange={e => setTasksText(e.target.value)} /></label>
         <div className="flex justify-end gap-2"><button type="button" className={T.btnAlt} onClick={onClose}>Cancel</button><button className={T.btn} disabled={saving}>{saving ? 'Assigning…' : 'Assign Checklist'}</button></div>
       </form>
     </Modal>
@@ -423,11 +480,23 @@ export const TabHrTraining = ({ appUser, users = [], addToast }) => {
     if (!manual.storagePath) return;
     setBusyId(`download:${manual.id}`);
     try {
-      const blob = await getBlob(ref(storage, manual.storagePath), MANUAL_MAX_BYTES);
-      const url = URL.createObjectURL(blob);
+      const storedLimit = Math.max(MANUAL_STORAGE_MAX_BYTES, Number(manual.fileSize || 0) + 1024);
+      const blob = await getBlob(ref(storage, manual.storagePath), storedLimit);
+      let downloadBlob = blob;
+      let downloadName = manual.fileName || `${safeFileName(manual.title)}.${String(manual.fileName || '').split('.').pop() || 'pdf'}`;
+      if (manual.compressed === true || manual.compression === 'gzip') {
+        const unzipped = await gunzipBlob(blob, manual.fileType || 'application/octet-stream');
+        if (unzipped) {
+          downloadBlob = unzipped;
+        } else {
+          downloadName = manual.storedFileName || `${downloadName}.gz`;
+          addToast?.('Download Needs Decompression', 'This browser could not expand the compressed manual, so the stored .gz file is downloading.');
+        }
+      }
+      const url = URL.createObjectURL(downloadBlob);
       const anchor = document.createElement('a');
       anchor.href = url;
-      anchor.download = manual.fileName || `${safeFileName(manual.title)}.${String(manual.fileName || '').split('.').pop() || 'pdf'}`;
+      anchor.download = downloadName;
       document.body.appendChild(anchor);
       anchor.click();
       anchor.remove();
@@ -535,7 +604,7 @@ export const TabHrTraining = ({ appUser, users = [], addToast }) => {
           {visibleManuals.map(manual => {
             const acknowledged = acknowledgedIds.has(manual.id);
             const ackCount = acknowledgements.filter(item => item.manualId === manual.id).length;
-            return <article key={manual.id} className={`${T.card} p-4 sm:p-5`}><div className="flex flex-col gap-4 lg:flex-row lg:items-center"><div className="flex min-w-0 flex-1 gap-3"><div className="h-fit rounded-xl border border-blue-400/20 bg-blue-500/10 p-2.5 text-blue-200"><FileText size={22} /></div><div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><h3 className="text-base font-black text-white">{manual.title}</h3><StatusPill tone={manual.status === 'Published' ? 'green' : manual.status === 'Uploading' ? 'amber' : 'slate'}>{manual.status}</StatusPill>{manual.required && <StatusPill tone="blue">Required</StatusPill>}</div><div className="mt-1 text-xs font-bold text-slate-400">Version {manual.version} • {manual.category} • Effective {prettyDate(manual.effectiveDate)}</div>{manual.description && <p className="mt-2 text-sm font-medium leading-6 text-slate-300">{manual.description}</p>}<div className="mt-2 text-[11px] font-semibold text-slate-500">{manual.fileName} • {Math.max(0.01, Number(manual.fileSize || 0) / 1048576).toFixed(2)} MB{manager ? ` • ${ackCount} acknowledgment${ackCount === 1 ? '' : 's'}` : ''}</div></div></div><div className="flex flex-wrap gap-2"><button type="button" className={T.btnAlt} onClick={() => downloadManual(manual)} disabled={!!busyId || manual.status === 'Uploading'}><Download size={16} className="mr-2 inline" />{busyId === `download:${manual.id}` ? 'Preparing…' : 'Download'}</button>{manual.status === 'Published' && !acknowledged && <button type="button" className={T.btn} onClick={() => acknowledgeManual(manual)} disabled={!!busyId}><CheckCircle2 size={16} className="mr-2 inline" />Acknowledge</button>}{acknowledged && <span className="flex min-h-[42px] items-center gap-2 rounded-xl border border-emerald-400/25 bg-emerald-500/10 px-3 text-xs font-black text-emerald-200"><Check size={16} />Acknowledged</span>}{manager && <button type="button" className="min-h-[42px] rounded-xl border border-red-400/20 bg-red-500/5 px-3 text-red-300 hover:bg-red-500/10" onClick={() => deleteManual(manual)} disabled={!!busyId} aria-label={`Delete ${manual.title}`}><Trash2 size={16} /></button>}</div></div></article>;
+            return <article key={manual.id} className={`${T.card} p-4 sm:p-5`}><div className="flex flex-col gap-4 lg:flex-row lg:items-center"><div className="flex min-w-0 flex-1 gap-3"><div className="h-fit rounded-xl border border-blue-400/20 bg-blue-500/10 p-2.5 text-blue-200"><FileText size={22} /></div><div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><h3 className="text-base font-black text-white">{manual.title}</h3><StatusPill tone={manual.status === 'Published' ? 'green' : manual.status === 'Uploading' ? 'amber' : 'slate'}>{manual.status}</StatusPill>{manual.required && <StatusPill tone="blue">Required</StatusPill>}</div><div className="mt-1 text-xs font-bold text-slate-400">Version {manual.version} • {manual.category} • Effective {prettyDate(manual.effectiveDate)}</div>{manual.description && <p className="mt-2 text-sm font-medium leading-6 text-slate-300">{manual.description}</p>}<div className="mt-2 text-[11px] font-semibold text-slate-500">{manual.fileName} • {mbLabel(manual.originalFileSize || manual.fileSize)}{manual.compressed ? ` • compressed to ${mbLabel(manual.fileSize)}` : ''}{manager ? ` • ${ackCount} acknowledgment${ackCount === 1 ? '' : 's'}` : ''}</div></div></div><div className="flex flex-wrap gap-2"><button type="button" className={T.btnAlt} onClick={() => downloadManual(manual)} disabled={!!busyId || manual.status === 'Uploading'}><Download size={16} className="mr-2 inline" />{busyId === `download:${manual.id}` ? 'Preparing…' : 'Download'}</button>{manual.status === 'Published' && !acknowledged && <button type="button" className={T.btn} onClick={() => acknowledgeManual(manual)} disabled={!!busyId}><CheckCircle2 size={16} className="mr-2 inline" />Acknowledge</button>}{acknowledged && <span className="flex min-h-[42px] items-center gap-2 rounded-xl border border-emerald-400/25 bg-emerald-500/10 px-3 text-xs font-black text-emerald-200"><Check size={16} />Acknowledged</span>}{manager && <button type="button" className="min-h-[42px] rounded-xl border border-red-400/20 bg-red-500/5 px-3 text-red-300 hover:bg-red-500/10" onClick={() => deleteManual(manual)} disabled={!!busyId} aria-label={`Delete ${manual.title}`}><Trash2 size={16} /></button>}</div></div></article>;
           })}
           {visibleManuals.length === 0 && <Empty title="No training manuals yet" text={manager ? 'Publish the first controlled training document for this workspace.' : 'Your employer has not published a training manual yet.'} />}
         </div>

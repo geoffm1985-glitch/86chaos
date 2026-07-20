@@ -156,6 +156,10 @@ service cloud.firestore {
         data.fileName is string && data.fileName.size() > 0 && data.fileName.size() <= 255 &&
         data.fileType in ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'text/plain'] &&
         data.fileSize is number && data.fileSize > 0 && data.fileSize <= 15 * 1024 * 1024 &&
+        (!('originalFileSize' in data) || (data.originalFileSize is number && data.originalFileSize > 0 && data.originalFileSize <= 50 * 1024 * 1024)) &&
+        (!('compressed' in data) || data.compressed is bool) &&
+        (!('compression' in data) || data.compression in ['', 'gzip']) &&
+        (!('storedFileType' in data) || data.storedFileType in ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'text/plain', 'application/gzip']) &&
         data.storagePath is string;
     }
 

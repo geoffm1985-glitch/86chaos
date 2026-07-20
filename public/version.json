@@ -1,9 +1,9 @@
 {
-  "version": "15.0.82",
-  "name": "86 Chaos 15.0.82 Python Ops Fallback Fix",
+  "version": "15.0.83",
+  "name": "86 Chaos 15.0.83 Manager Brief, Firebase Credential, Training Manual, and Radar Fix",
   "releasedAt": "2026-07-19",
-  "label": "86 Chaos 15.0.82",
-  "build": "15.0.82-python-ops-fallback-fix",
+  "label": "15.0.83 Manager Brief, Firebase credential, training manual, and radar fix",
+  "build": "15.0.83-manager-brief-env-training-radar-fix",
   "updatedAt": "2026-07-19T00:00:00.000Z",
-  "notes": "Fixes Python Ops and Python Order intelligence on Preview deployments where the browser Firebase project and available server service-account credential do not match. The routes now use verified-token payload-only fallback for client-loaded scan data instead of failing, expand recognized service-account aliases, and keep login/auth untouched."
+  "notes": "Fixes Firebase credential mismatch handling, Manager Brief schedule counts and navigation buttons, larger onboarding checklist editing, compressed training manual uploads up to 50MB source files, AI Ordering wording, and a more precise Menu Dependency Radar. Login/auth and service-account key values remain untouched."
 }

@@ -64,26 +64,48 @@ export const isProdFirebaseHost = (hostname = '') => PROD_FIREBASE_HOSTS.include
 const normalizeDeployMode = (value = '') => String(value || '').trim().toLowerCase();
 const explicitFirebaseProject = normalizeDeployMode(env('REACT_APP_FIREBASE_ACTIVE_PROJECT_ID', ''));
 const explicitDeployMode = normalizeDeployMode(env('REACT_APP_FIREBASE_DEPLOYMENT_MODE', ''));
+const genericFirebaseProjectId = env('REACT_APP_FIREBASE_PROJECT_ID', '').trim();
 const currentHostname = typeof window !== 'undefined' ? String(window.location.hostname || '').toLowerCase() : '';
 const isVercelPreviewHost = currentHostname === 'localhost' || currentHostname === '127.0.0.1' || currentHostname.endsWith('.vercel.app');
+const trustedBrowserProjects = ['chaos-test-d1601', 'cheers-34b8d'];
+const exactGenericBrowserProject = trustedBrowserProjects.includes(genericFirebaseProjectId) ? genericFirebaseProjectId : '';
 const forceTestingFirebase = ['chaos-test-d1601', 'test', 'testing', 'preview', 'staging', 'dev', 'development'].includes(explicitFirebaseProject) || ['test', 'testing', 'preview', 'staging', 'dev', 'development'].includes(explicitDeployMode);
 const forceProductionFirebase = ['cheers-34b8d', 'prod', 'production', 'live'].includes(explicitFirebaseProject) || ['prod', 'production', 'live'].includes(explicitDeployMode);
+const genericBrowserConfig = {
+  apiKey: env('REACT_APP_FIREBASE_API_KEY', ''),
+  authDomain: env('REACT_APP_FIREBASE_AUTH_DOMAIN', ''),
+  projectId: genericFirebaseProjectId,
+  storageBucket: env('REACT_APP_FIREBASE_STORAGE_BUCKET', ''),
+  messagingSenderId: env('REACT_APP_FIREBASE_MESSAGING_SENDER_ID', ''),
+  appId: env('REACT_APP_FIREBASE_APP_ID', ''),
+  measurementId: env('REACT_APP_FIREBASE_MEASUREMENT_ID', '')
+};
+const genericConfigIsUsable = Boolean(genericBrowserConfig.apiKey && genericBrowserConfig.authDomain && exactGenericBrowserProject && genericBrowserConfig.appId);
 
 // 3. THE SWITCHER
-// Production custom domains use production Firebase. Vercel preview/local hosts
-// use the test Firebase project unless REACT_APP_FIREBASE_DEPLOYMENT_MODE or
-// REACT_APP_FIREBASE_ACTIVE_PROJECT_ID explicitly says otherwise. Do NOT use the
-// generic REACT_APP_FIREBASE_PROJECT_ID as a deployment selector; Vercel projects
-// often carry that variable for other SDK/tooling needs, and treating it as an
-// override can point a preview build at the wrong Firebase browser API key.
-export const activeFirebaseMode = forceTestingFirebase ? 'test' : (forceProductionFirebase ? 'production' : (isProdFirebaseHost(currentHostname) ? 'production' : 'test'));
-export const firebaseConfig = activeFirebaseMode === 'production' ? prodConfig : testConfig;
+// Login/Auth stays eager-loaded, but the browser Firebase project now honors an
+// explicit generic REACT_APP_FIREBASE_PROJECT_ID when it is one of the two known
+// 86 Chaos Firebase projects. That keeps Vercel Preview from signing into the
+// test browser project while API routes are wired to the production Admin JSON,
+// which was the source of the repeated credential mismatch banners.
+const activeFirebaseProjectId = forceTestingFirebase
+  ? 'chaos-test-d1601'
+  : forceProductionFirebase
+    ? 'cheers-34b8d'
+    : exactGenericBrowserProject || (isProdFirebaseHost(currentHostname) ? 'cheers-34b8d' : 'chaos-test-d1601');
+export const activeFirebaseMode = activeFirebaseProjectId === 'cheers-34b8d' ? 'production' : 'test';
+const configForProject = (projectId) => {
+  if (genericConfigIsUsable && genericBrowserConfig.projectId === projectId) return genericBrowserConfig;
+  return projectId === 'cheers-34b8d' ? prodConfig : testConfig;
+};
+export const firebaseConfig = configForProject(activeFirebaseProjectId);
 export const firebaseDiagnostics = {
   mode: activeFirebaseMode,
   projectId: firebaseConfig.projectId,
   authDomain: firebaseConfig.authDomain,
   host: currentHostname,
-  vercelPreview: isVercelPreviewHost
+  vercelPreview: isVercelPreviewHost,
+  genericProjectHonored: Boolean(genericConfigIsUsable && genericBrowserConfig.projectId === activeFirebaseProjectId)
 };
 
 export const app = initializeApp(firebaseConfig);
@@ -193,7 +215,7 @@ export const MASTER_ADMIN_EMAIL = (process.env.REACT_APP_MASTER_ADMIN_EMAIL || '
 export const EVENT_TAGS = ['Standard Day', 'Packers Game', 'Brewers Game', 'Live Music', 'Severe Weather', 'Private Catering', 'Holiday'];
 
 // --- VERSION TRACKING ---
-export const CURRENT_VERSION = '15.0.82';
+export const CURRENT_VERSION = '15.0.83';
 
 // --- Helpers ---
 export const useLiveCollection = (coll, restId, options = {}) => {
@@ -647,61 +669,172 @@ export const buildImportBridgeTemplates = () => ({
 });
 
 export const buildMenuDependencyReport = ({ recipes = [], inventoryItems = [], prepItems = [], menuDependencies = [], events = [] }) => {
-  const normalize = (v) => String(v || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+  const normalize = (v) => String(v || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').replace(/\s+/g, ' ').trim();
+  const words = (v) => normalize(v).split(' ').filter(Boolean);
+  const noise = new Set([
+    'and','with','the','for','from','item','items','case','cs','bag','bags','box','boxes','pack','packs','pkg','pk','lb','lbs','oz','ounce','ounces','gal','gallon','ct','count','slice','slices','sliced','sli','whole','fresh','frozen','iqf','bulk','portion','portions','brand','food','foods','bbrlcls','demo','test','120','100','80','20'
+  ]);
+  const genericIngredient = new Set(['cheese','sauce','dip','dressing','bread','bun','buns','roll','rolls','mix','seasoning','beer','wine','liquor','oil','salt','pepper','flour','egg','eggs','milk','cream','lettuce','tomato','onion']);
+  const aliasGroups = {
+    fries: ['fries','fry','french fry','potato fry'],
+    wing: ['wing','wings','chicken wing'],
+    burger: ['burger','patty','patties','hamburger','ground beef'],
+    chicken: ['chicken','chix','chkn','ckn','breast','tender','tenders'],
+    tortilla: ['tortilla','wrap','shell'],
+    mozzarella: ['mozzarella','moz'],
+    american: ['american','amer'],
+    swiss: ['swiss'],
+    cheddar: ['cheddar'],
+    ranch: ['ranch'],
+    bacon: ['bacon'],
+    cod: ['cod','fish'],
+    haddock: ['haddock','fish']
+  };
+  const significantTokens = (value) => Array.from(new Set(words(value).filter(w => w.length > 2 && !noise.has(w))));
+  const recipeTextFor = (recipe = {}) => normalize([
+    recipe.name,
+    recipe.title,
+    recipe.description,
+    recipe.ingredients,
+    recipe.instructions,
+    recipe.category,
+    ...(Array.isArray(recipe.items) ? recipe.items.map(x => [x.name, x.item, x.text, x.ingredientName].filter(Boolean).join(' ')) : [])
+  ].filter(Boolean).join(' '));
+  const itemTextFor = (item = {}) => normalize([item.name, item.title, item.category, item.supplierName, item.vendorName].filter(Boolean).join(' '));
+  const containsPhrase = (hay, needle) => Boolean(hay && needle && (` ${hay} `).includes(` ${needle} `));
+  const aliasHitsFor = (tokens, hay) => {
+    const hits = [];
+    for (const token of tokens) {
+      for (const [canonical, aliases] of Object.entries(aliasGroups)) {
+        if (token === canonical || aliases.includes(token)) {
+          aliases.forEach(alias => { if (containsPhrase(hay, normalize(alias))) hits.push(alias); });
+        }
+      }
+    }
+    return Array.from(new Set(hits));
+  };
+  const scoreRecipeAgainstItem = (recipeText, item = {}) => {
+    const itemText = itemTextFor(item);
+    const nameKey = normalize(item.name || item.title || '');
+    const tokens = significantTokens(itemText);
+    const nonGenericTokens = tokens.filter(t => !genericIngredient.has(t));
+    let score = 0;
+    const reasons = [];
+
+    if (nameKey.length >= 7 && containsPhrase(recipeText, nameKey)) {
+      score += 95;
+      reasons.push('exact inventory phrase');
+    }
+
+    const phrasePieces = [];
+    for (let i = 0; i < nonGenericTokens.length - 1; i += 1) phrasePieces.push(`${nonGenericTokens[i]} ${nonGenericTokens[i + 1]}`);
+    phrasePieces.forEach(phrase => {
+      if (containsPhrase(recipeText, phrase)) {
+        score += 42;
+        reasons.push(`ingredient phrase: ${phrase}`);
+      }
+    });
+
+    const directTokenHits = nonGenericTokens.filter(token => containsPhrase(recipeText, token));
+    if (directTokenHits.length >= 2) {
+      score += directTokenHits.length * 22;
+      reasons.push(`matched ${directTokenHits.slice(0, 3).join(', ')}`);
+    } else if (directTokenHits.length === 1 && tokens.length <= 2 && !genericIngredient.has(directTokenHits[0])) {
+      score += 34;
+      reasons.push(`matched ${directTokenHits[0]}`);
+    } else if (directTokenHits.length === 1 && tokens.length > 2) {
+      score += 12;
+    }
+
+    const aliasHits = aliasHitsFor(tokens, recipeText);
+    if (aliasHits.length && (directTokenHits.length || tokens.some(t => ['fries','wing','burger','chicken','tortilla','ranch','bacon','cod','haddock'].includes(t)))) {
+      score += Math.min(42, aliasHits.length * 12);
+      reasons.push(`alias ${aliasHits.slice(0, 2).join(', ')}`);
+    }
+
+    // Generic-only hits are noisy. A cheese slice should not automatically mark
+    // every recipe with the word cheese unless a manual graph link or a modifier
+    // such as swiss/american/cheddar also appears.
+    const genericOnly = directTokenHits.length === 0 && tokens.some(t => genericIngredient.has(t) && containsPhrase(recipeText, t));
+    if (genericOnly && nonGenericTokens.length === 0) score = Math.min(score, 18);
+    if (genericOnly && nonGenericTokens.length > 0 && !directTokenHits.length) score = Math.min(score, 20);
+
+    return { score, reasons: Array.from(new Set(reasons)) };
+  };
+
   const low = inventoryItems.filter(i => Number(i.parLevel || 0) > 0 && Number(i.currentStock || 0) < Number(i.parLevel || 0));
   const lowById = new Map(low.map(item => [item.id, item]));
   const inventoryById = new Map(inventoryItems.map(item => [item.id, item]));
   const recipeById = new Map(recipes.map(recipe => [recipe.id, recipe]));
-  const lowTokens = low.map(i => ({ item: i, key: normalize(i.name) })).filter(x => x.key);
-  const activePrep = prepItems.filter(p => p.isMaster || p.date === getToday() || p.frequency);
-  const activePrepKeys = activePrep.map(p => normalize(p.text || p.title || p.name));
   const recipeHits = new Map();
   const ensure = (recipe) => {
     const id = recipe?.id || normalize(recipe?.name || recipe?.title || 'recipe');
-    if (!recipeHits.has(id)) recipeHits.set(id, { recipe, lowStockMatches: [], prepMatches: [], explicitDependencies: [], eightySixAlerts: [] });
+    if (!recipeHits.has(id)) recipeHits.set(id, { recipe, lowStockMatches: [], prepMatches: [], explicitDependencies: [], eightySixAlerts: [], confidence: 0, matchReasons: [] });
     return recipeHits.get(id);
   };
+  const pushReason = (hit, reason) => { if (reason && !hit.matchReasons.includes(reason)) hit.matchReasons.push(reason); };
 
-  // Manual dependency graph beats text guessing. These docs are created from Ops Center.
   (menuDependencies || []).forEach(dep => {
     const recipe = recipeById.get(dep.recipeId) || { id: dep.recipeId || dep.id, name: dep.recipeName || dep.menuItemName || 'Menu item' };
-    const lowItem = lowById.get(dep.inventoryItemId);
+    const lowItem = lowById.get(dep.inventoryItemId) || low.find(item => normalize(item.name) && normalize(item.name) === normalize(dep.inventoryItemName || dep.ingredientName || dep.itemName || ''));
     if (lowItem) {
       const hit = ensure(recipe);
       if (!hit.lowStockMatches.some(i => i.id === lowItem.id)) hit.lowStockMatches.push(lowItem);
       hit.explicitDependencies.push({ ...dep, inventoryItem: lowItem });
+      hit.confidence = Math.max(hit.confidence, Number(dep.confidence || dep.matchConfidence || 95));
+      pushReason(hit, 'manual dependency graph');
     }
   });
 
-  // Text fallback catches recipes that have ingredients listed but no manual graph yet.
   recipes.forEach(recipe => {
-    const text = normalize([recipe.name, recipe.title, recipe.description, recipe.ingredients, ...(Array.isArray(recipe.items) ? recipe.items.map(x => x.name || x.item || x.text || '') : [])].join(' '));
-    const hits = lowTokens.filter(({ key }) => key && (text.includes(key) || key.split(' ').some(part => part.length > 3 && text.includes(part))));
-    const prepHits = activePrepKeys.filter(key => key && text.includes(key));
-    if (hits.length || prepHits.length) {
-      const hit = ensure(recipe);
-      hits.forEach(h => { if (!hit.lowStockMatches.some(i => i.id === h.item.id)) hit.lowStockMatches.push(h.item); });
-      hit.prepMatches = Array.from(new Set([...(hit.prepMatches || []), ...prepHits]));
-    }
-  });
-
-  // 86 alerts are pulled into the same brain so the radar sees both inventory math and manager alerts.
-  const active86Alerts = (events || []).filter(e => {
-    const hay = normalize(`${e.messageCategory || ''} ${e.title || ''} ${e.notes || ''}`);
-    return hay.includes('86') || hay.includes('eighty six') || hay.includes('out of');
-  });
-  active86Alerts.forEach(alert => {
-    const alertText = normalize(`${alert.title || ''} ${alert.notes || ''}`);
-    recipes.forEach(recipe => {
-      const recipeNameKey = normalize(recipe.name || recipe.title || '');
-      const recipeText = normalize(`${recipe.name || recipe.title || ''} ${recipe.ingredients || ''}`);
-      if (alertText && recipeText && ((recipeNameKey && alertText.includes(recipeNameKey)) || recipeText.split(' ').some(part => part.length > 4 && alertText.includes(part)))) {
-        ensure(recipe).eightySixAlerts.push(alert);
+    const recipeText = recipeTextFor(recipe);
+    low.forEach(item => {
+      const scored = scoreRecipeAgainstItem(recipeText, item);
+      if (scored.score >= 55) {
+        const hit = ensure(recipe);
+        if (!hit.lowStockMatches.some(i => i.id === item.id)) hit.lowStockMatches.push(item);
+        hit.confidence = Math.max(hit.confidence, Math.min(92, scored.score));
+        scored.reasons.forEach(reason => pushReason(hit, reason));
       }
     });
   });
 
-  const affectedRecipes = Array.from(recipeHits.values()).filter(r => r.lowStockMatches.length || r.prepMatches.length || r.eightySixAlerts.length);
+  const activePrep = prepItems.filter(p => p.isMaster || p.date === getToday() || p.frequency);
+  const activePrepKeys = activePrep.map(p => normalize(p.text || p.title || p.name)).filter(k => k.length >= 5);
+  recipes.forEach(recipe => {
+    const recipeText = recipeTextFor(recipe);
+    const prepHits = activePrepKeys.filter(key => containsPhrase(recipeText, key)).slice(0, 5);
+    if (prepHits.length) {
+      const hit = ensure(recipe);
+      hit.prepMatches = Array.from(new Set([...(hit.prepMatches || []), ...prepHits]));
+      hit.confidence = Math.max(hit.confidence, 45);
+      pushReason(hit, 'prep signal');
+    }
+  });
+
+  const active86Alerts = (events || []).filter(e => {
+    const hay = normalize(`${e.messageCategory || ''} ${e.title || ''} ${e.notes || ''}`);
+    return containsPhrase(hay, '86') || containsPhrase(hay, 'eighty six') || hay.includes('out of');
+  });
+  active86Alerts.forEach(alert => {
+    const alertText = normalize(`${alert.title || ''} ${alert.notes || ''} ${alert.inventoryItemName || ''}`);
+    const alertTokens = significantTokens(alertText).filter(t => !genericIngredient.has(t));
+    recipes.forEach(recipe => {
+      const recipeText = recipeTextFor(recipe);
+      const nameKey = normalize(recipe.name || recipe.title || '');
+      const itemHits = alertTokens.filter(token => containsPhrase(recipeText, token));
+      if ((nameKey && containsPhrase(alertText, nameKey)) || itemHits.length >= 1) {
+        const hit = ensure(recipe);
+        hit.eightySixAlerts.push(alert);
+        hit.confidence = Math.max(hit.confidence, nameKey && containsPhrase(alertText, nameKey) ? 90 : 65);
+        pushReason(hit, 'active 86 alert');
+      }
+    });
+  });
+
+  const affectedRecipes = Array.from(recipeHits.values())
+    .filter(r => r.lowStockMatches.length || r.prepMatches.length || r.eightySixAlerts.length)
+    .sort((a, b) => (b.confidence || 0) - (a.confidence || 0));
   const mappedDependencyCount = (menuDependencies || []).filter(dep => recipeById.has(dep.recipeId) && inventoryById.has(dep.inventoryItemId)).length;
   return {
     lowStockItems: low,
@@ -709,7 +842,8 @@ export const buildMenuDependencyReport = ({ recipes = [], inventoryItems = [], p
     active86Alerts,
     mappedDependencyCount,
     explicitDependencyCount: (menuDependencies || []).length,
-    recoveryCount: low.filter(i => Number(i.pendingQty || 0) > 0).length
+    recoveryCount: low.filter(i => Number(i.pendingQty || 0) > 0).length,
+    engineVersion: '15.0.83-precision-radar'
   };
 };
 

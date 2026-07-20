@@ -58,6 +58,15 @@ const TabPrep = ({ currentDate, appUser, addToast, setLabelsToPrint }) => {
   const tasks = useLiveCollection('tasks', appUser?.restaurantId, { limitCount: 350 });
   const [subTab, setSubTab] = useState('prep');
   const [prepDate, setPrepDate] = useState(currentDate);
+  useEffect(() => {
+    try {
+      if (sessionStorage.getItem('prepFocus') === 'plan') {
+        sessionStorage.removeItem('prepFocus');
+        setSubTab('prep');
+        setTaskFreq('daily');
+      }
+    } catch (e) {}
+  }, []);
 
   // --- USDA Food Safety Standards Engine ---
   const USDA_CATEGORIES = {
@@ -1413,7 +1422,11 @@ const TabOpsCenter = ({ currentDate, appUser, users = [], shifts = [], events = 
   const todayWaste = wasteLogs.filter(w => w.date === today);
   const todayEvents = events.filter(e => (e.date || '').startsWith(today) || e.date === today);
   const importantEvents = todayEvents.filter(e => e.isImportant || (e.title || '').toLowerCase().includes('86'));
-  const todayShifts = shifts.filter(s => s.date === today && s.isPublished).sort((a,b) => (a.startTime || '').localeCompare(b.startTime || ''));
+  const commandActiveUserIds = new Set(users.filter(u => u?.isActive !== false).flatMap(u => [u.id, u.uid, u.authUid, u.userId].filter(Boolean)));
+  const todayShifts = shifts
+    .filter(s => s.date === today && s.isPublished && s.isDeleted !== true && s.cancelled !== true && !s.deletedAt)
+    .filter(s => !s.employeeId || commandActiveUserIds.has(s.employeeId))
+    .sort((a,b) => (a.startTime || '').localeCompare(b.startTime || ''));
   const activePunches = timePunches.filter(p => p.date === today && ['clocked_in', 'on_break'].includes(p.status));
   const yesterdaySales = sales.find(s => s.date === yesterday);
   const todaySales = sales.find(s => s.date === today);
@@ -1565,16 +1578,16 @@ const TabOpsCenter = ({ currentDate, appUser, users = [], shifts = [], events = 
 
   const handleBuildSmartOrder = async () => {
     const items = lowStockItems.filter(i => stockNeed(i) > 0);
-    if (items.length === 0) return addToast('Smart Order', 'No below-par items found.');
+    if (items.length === 0) return addToast('AI Ordering', 'No below-par items found.');
     if (!window.confirm(`Build pending order quantities for ${items.length} below-par items?`)) return;
     try {
-      await Promise.all(items.map(i => safeOpsWrite({ action: 'update', collectionName: 'inventoryItems', docId: i.id, label: 'Smart order', before: i, data: {
+      await Promise.all(items.map(i => safeOpsWrite({ action: 'update', collectionName: 'inventoryItems', docId: i.id, label: 'AI ordering', before: i, data: {
         pendingQty: Math.max(Number(i.pendingQty || 0), stockNeed(i)),
-        lastSmartOrderDate: getToday(),
-        lastSmartOrderBy: appUser?.name || 'Kitchen Command Center'
+        lastAiOrderDate: getToday(),
+        lastAiOrderBy: appUser?.name || 'Kitchen Command Center'
       } })));
-      await logAudit(appUser, 'SMART_ORDER_BUILT', 'inventoryItems', `Queued ${items.length} below-par items from Kitchen Command Center.`);
-      addToast('Smart Order Built', `${items.length} item(s) queued for ordering.`);
+      await logAudit(appUser, 'AI_ORDERING_BUILT', 'inventoryItems', `Queued ${items.length} below-par items from Kitchen Command Center.`);
+      addToast('AI Ordering Built', `${items.length} item(s) queued for ordering.`);
     } catch (err) { addToast('Error', err.message); }
   };
 
@@ -1722,6 +1735,8 @@ const TabOpsCenter = ({ currentDate, appUser, users = [], shifts = [], events = 
   };
 
   const openInventoryFocus = () => { sessionStorage.setItem('inventoryFocus', 'belowPar'); setActiveTab?.('inventory'); };
+  const openAiOrdering = () => { sessionStorage.setItem('inventoryFocus', 'aiOrder'); setActiveTab?.('inventory'); };
+  const openPrepPlan = () => { sessionStorage.setItem('prepFocus', 'plan'); setActiveTab?.('prep'); };
 
   const kpiCards = [
     { label: 'Shift Health', value: `${healthScore}/100`, detail: healthScore >= 85 ? 'Looking good' : healthScore >= 70 ? 'Check weak spots' : 'Needs manager attention' },
@@ -1746,9 +1761,9 @@ const TabOpsCenter = ({ currentDate, appUser, users = [], shifts = [], events = 
           </div>
           <div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-2">
             <button onClick={handlePostBrief} className={`${T.btn} flex items-center justify-center gap-2`}><Send size={16}/> Post Brief</button>
-            <button onClick={handleCreateSmartPrepTasks} className={`${T.btnAlt} flex items-center justify-center gap-2`}><ClipboardList size={16}/> Prep Plan</button>
-            <button onClick={handleBuildSmartOrder} className={`${T.btnAlt} flex items-center justify-center gap-2`}><Package size={16}/> Smart Order</button>
-            <button onClick={handlePost86Alert} className={`${T.btnAlt} flex items-center justify-center gap-2`}><Bell size={16}/> 86 Alert</button>
+            <button onClick={openPrepPlan} className={`${T.btnAlt} flex items-center justify-center gap-2`}><ClipboardList size={16}/> Prep Plan</button>
+            <button onClick={openAiOrdering} className={`${T.btnAlt} flex items-center justify-center gap-2`}><Package size={16}/> AI Ordering</button>
+            <button onClick={openInventoryFocus} className={`${T.btnAlt} flex items-center justify-center gap-2`}><Bell size={16}/> 86 Alert</button>
             <button onClick={handleMarkOpsReviewed} className={`${T.btnAlt} flex items-center justify-center gap-2`}><Check size={16}/> Reviewed</button>
             {(appUser?.isAdmin || appUser?.permissions?.prep || appUser?.permissions?.team) && <button onClick={handleSeedKitchenOps} className={`${T.btnAlt} flex items-center justify-center gap-2`}><Plus size={16}/> Seed Standards</button>}
           </div>
@@ -2016,12 +2031,12 @@ const TabOpsCenter = ({ currentDate, appUser, users = [], shifts = [], events = 
           </div>
         </div>
         <div className="mt-4 bg-[#0B0E11] border border-[#2A353D] rounded-xl overflow-hidden">
-          <div className="p-3 border-b border-[#2A353D] flex items-center justify-between gap-2"><div className="font-black text-white text-sm">Menu Dependency Radar</div><span className="text-[9px] font-black uppercase tracking-widest text-[#D4A381]">v14.0.2 graph</span></div>
+          <div className="p-3 border-b border-[#2A353D] flex items-center justify-between gap-2"><div className="font-black text-white text-sm">Menu Dependency Radar</div><span className="text-[9px] font-black uppercase tracking-widest text-[#D4A381]">v15.0.83 precision graph</span></div>
           <div className="divide-y divide-[#2A353D] max-h-[260px] overflow-y-auto custom-scrollbar">
             {affectedMenuItems.length === 0 && <div className="p-4 text-xs font-bold text-slate-500">No dependency collisions detected. Map recipes to ingredients above, or add ingredient names to recipes to sharpen the radar.</div>}
-            {affectedMenuItems.map(({ recipe, lowStockMatches, prepMatches, explicitDependencies, eightySixAlerts }) => (
+            {affectedMenuItems.map(({ recipe, lowStockMatches, prepMatches, explicitDependencies, eightySixAlerts, confidence, matchReasons }) => (
               <div key={recipe.id} className="p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                <div className="min-w-0"><div className="font-black text-white text-sm truncate">{recipe.name || recipe.title || 'Recipe'}</div><div className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">{lowStockMatches.length ? `Affected by ${lowStockMatches.map(i => i.name).join(', ')}` : 'Affected by 86/prep signal'}</div><div className="text-[10px] text-slate-600 font-bold mt-1">{explicitDependencies?.length ? 'Manual graph link • ' : 'Text match • '}{prepMatches?.length ? `${prepMatches.length} prep signal(s) • ` : ''}{eightySixAlerts?.length ? `${eightySixAlerts.length} active 86 alert(s)` : ''}</div></div>
+                <div className="min-w-0"><div className="font-black text-white text-sm truncate">{recipe.name || recipe.title || 'Recipe'}</div><div className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">{lowStockMatches.length ? `Affected by ${lowStockMatches.map(i => i.name).join(', ')}` : 'Affected by 86/prep signal'}</div><div className="text-[10px] text-slate-600 font-bold mt-1">{explicitDependencies?.length ? 'Manual graph link • ' : (matchReasons?.length ? `High-confidence match: ${matchReasons.slice(0, 2).join(', ')} • ` : 'Signal match • ')}{confidence ? `${Math.round(confidence)}% confidence • ` : ''}{prepMatches?.length ? `${prepMatches.length} prep signal(s) • ` : ''}{eightySixAlerts?.length ? `${eightySixAlerts.length} active 86 alert(s)` : ''}</div></div>
                 <div className="text-[10px] font-black uppercase tracking-widest text-orange-300">{lowStockMatches.some(i => Number(i.pendingQty || 0) > 0) ? 'Recovery pending' : 'Needs action'}</div>
               </div>
             ))}
@@ -2077,8 +2092,12 @@ const TabToday = ({ currentDate, appUser, users, shifts, shiftSwaps, timeOffRequ
   const today = getToday();
   const profile = getHomeProfile(appUser);
   const safeTodayWrite = (args) => safeWriteWithQueue({ user: appUser, addToast, ...args });
-  const todaysShifts = shifts.filter(s => s.date === today && s.isPublished).sort((a,b) => (a.startTime || '').localeCompare(b.startTime || ''));
-  const myShift = todaysShifts.find(s => s.employeeId === appUser.id);
+  const activeUserIds = new Set(users.filter(u => u?.isActive !== false).flatMap(u => [u.id, u.uid, u.authUid, u.userId].filter(Boolean)));
+  const todaysShifts = shifts
+    .filter(s => s.date === today && s.isPublished && s.isDeleted !== true && s.cancelled !== true && !s.deletedAt)
+    .filter(s => !s.employeeId || activeUserIds.has(s.employeeId))
+    .sort((a,b) => (a.startTime || '').localeCompare(b.startTime || ''));
+  const myShift = todaysShifts.find(s => [appUser.id, appUser.uid, appUser.authUid].filter(Boolean).includes(s.employeeId));
   const activePunches = canUseLabor ? timePunches.filter(p => ['clocked_in','on_break'].includes(p.status)) : [];
   const importantNotes = events.filter(e => e.type === 'note' && e.isImportant).sort((a,b) => new Date(b.date) - new Date(a.date)).slice(0, 3);
   const todayEvents = events.filter(e => e.type === 'special_event' && e.date === today).sort((a,b) => (a.time || '').localeCompare(b.time || ''));
@@ -2120,6 +2139,11 @@ const TabToday = ({ currentDate, appUser, users, shifts, shiftSwaps, timeOffRequ
   const setupDone = setupItems.filter(i => i.done).length;
   const setupTotal = Math.max(1, setupItems.length);
   const openInventoryFocus = () => { sessionStorage.setItem('inventoryFocus', 'belowPar'); setActiveTab('inventory'); };
+  const openAiOrdering = () => { sessionStorage.setItem('inventoryFocus', 'aiOrder'); setActiveTab('inventory'); };
+  const openPrepPlan = () => { sessionStorage.setItem('prepFocus', 'plan'); setActiveTab('prep'); };
+  const openMaintenanceCenter = () => { setActiveTab('maintenance'); };
+  const openMessageBoard = () => { setActiveTab('messages'); };
+  const open86Center = () => { sessionStorage.setItem('inventoryFocus', 'belowPar'); setActiveTab('inventory'); };
   const openOpsFinding = (row = {}) => {
     const tab = row.tab || 'godmode';
     try {
@@ -2290,10 +2314,10 @@ const TabToday = ({ currentDate, appUser, users, shifts, shiftSwaps, timeOffRequ
     </div>
 
     <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-      <button onClick={() => quickCreate('86')} className="brief-quick-action bg-red-900/20 border border-red-500/40 text-red-300 rounded-xl p-3 font-black text-xs uppercase tracking-widest">+ 86 Alert</button>
-      <button onClick={() => quickCreate('prep')} className="brief-quick-action bg-[#1A2126] border border-[#2A353D] text-[#D4A381] rounded-xl p-3 font-black text-xs uppercase tracking-widest">+ Prep</button>
-      <button onClick={() => quickCreate('message')} className="brief-quick-action bg-[#1A2126] border border-[#2A353D] text-slate-200 rounded-xl p-3 font-black text-xs uppercase tracking-widest">+ Message</button>
-      {canUseCleaningRoutines && <button onClick={() => quickCreate('maintenance')} className="brief-quick-action bg-amber-900/20 border border-amber-500/40 text-amber-300 rounded-xl p-3 font-black text-xs uppercase tracking-widest">+ Fix It</button>}
+      <button onClick={open86Center} className="brief-quick-action bg-red-900/20 border border-red-500/40 text-red-300 rounded-xl p-3 font-black text-xs uppercase tracking-widest">Open 86 Alerts</button>
+      <button onClick={openPrepPlan} className="brief-quick-action bg-[#1A2126] border border-[#2A353D] text-[#D4A381] rounded-xl p-3 font-black text-xs uppercase tracking-widest">Open Prep</button>
+      <button onClick={openMessageBoard} className="brief-quick-action bg-[#1A2126] border border-[#2A353D] text-slate-200 rounded-xl p-3 font-black text-xs uppercase tracking-widest">Open Messages</button>
+      {canUseCleaningRoutines && <button onClick={openMaintenanceCenter} className="brief-quick-action bg-amber-900/20 border border-amber-500/40 text-amber-300 rounded-xl p-3 font-black text-xs uppercase tracking-widest">Open Fix It</button>}
     </div>
 
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
@@ -2306,7 +2330,7 @@ const TabToday = ({ currentDate, appUser, users, shifts, shiftSwaps, timeOffRequ
         </div>
 
         {canUseAiOrdering && (aiBriefTop.length || aiBrief.eventNeeds?.length) && <div className={`${T.card} brief-card p-4 border-[#D4A381]/30`}>
-          <div className="flex justify-between items-center gap-2"><h2 className="font-black text-white text-lg flex items-center gap-2"><Sparkles size={18} className="text-[#D4A381]"/> AI Ordering Attention</h2><button onClick={() => { sessionStorage.setItem('inventoryFocus', 'aiOrder'); setActiveTab('inventory'); }} className="text-[10px] font-black uppercase tracking-widest text-[#D4A381]">Open AI Order</button></div>
+          <div className="flex justify-between items-center gap-2"><h2 className="font-black text-white text-lg flex items-center gap-2"><Sparkles size={18} className="text-[#D4A381]"/> AI Ordering Attention</h2><button onClick={() => { sessionStorage.setItem('inventoryFocus', 'aiOrder'); setActiveTab('inventory'); }} className="text-[10px] font-black uppercase tracking-widest text-[#D4A381]">Open AI Ordering</button></div>
           <div className="grid sm:grid-cols-3 gap-2 mt-3">
             {aiBriefTop.length ? aiBriefTop.map(row => <MiniProblemCard key={row.itemId || row.itemName} title={row.itemName} detail={`Suggest ${row.suggestedQty}${row.reasons?.[0] ? ` • ${row.reasons[0]}` : ''}`} action="Review" onClick={() => { sessionStorage.setItem('inventoryFocus', 'aiOrder'); setActiveTab('inventory'); }} />) : <MiniProblemCard title="Order Draft" detail="No urgent order items. Review event supply checks." action="Open" onClick={() => { sessionStorage.setItem('inventoryFocus', 'aiOrder'); setActiveTab('inventory'); }} />}
           </div>
