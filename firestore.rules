@@ -1018,6 +1018,37 @@ service cloud.firestore {
       allow delete: if signedIn() && resource.data.restaurantId is string && canManageHr(resource.data.restaurantId);
     }
 
+
+    // ============================================================
+    // RESTAURANT OWNER/ADMIN ALERTS
+    // Python Automation writes these through Firebase Admin SDK only.
+    // Browser clients can read and acknowledge them only when they are
+    // owners/admins for the same restaurant. System Administrators may
+    // inspect them, but Python/System Admin scans do not apply changes.
+    // ============================================================
+    function canReadRestaurantAdminAlert(restId) {
+      return signedIn() && restId is string && (
+        isSuperAdmin() || isRestaurantOwner(restId) || isAdminFor(restId) || hasPermFor(restId, 'settings') || hasPermFor(restId, 'team')
+      );
+    }
+
+    function canAcknowledgeRestaurantAdminAlert(restId) {
+      return signedIn() && restId is string && (
+        isRestaurantOwner(restId) || isAdminFor(restId) || hasPermFor(restId, 'settings') || hasPermFor(restId, 'team')
+      );
+    }
+
+    match /restaurantAdminAlerts/{alertId} {
+      allow read: if resource.data.restaurantId is string && canReadRestaurantAdminAlert(resource.data.restaurantId);
+      allow create: if false;
+      allow update: if resource.data.restaurantId is string &&
+        request.resource.data.restaurantId == resource.data.restaurantId &&
+        canAcknowledgeRestaurantAdminAlert(resource.data.restaurantId) &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'acknowledgedAt', 'acknowledgedBy', 'acknowledgedByName', 'reviewedAt', 'reviewedBy', 'reviewedByName', 'updatedAt']) &&
+        request.resource.data.status in ['open', 'acknowledged', 'dismissed', 'resolved'];
+      allow delete: if false;
+    }
+
     // ============================================================
     // SERVER-ONLY AI PAGE USAGE + LIMITS
     // Firebase Admin SDK enforces access, monthly limits, bypass identity,

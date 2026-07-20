@@ -1,9 +1,9 @@
 {
-  "version": "15.0.89",
-  "name": "86 Chaos 15.0.89 CSP and Route Alias Cleanup",
-  "releasedAt": "2026-07-19",
-  "label": "15.0.89 CSP and Route Alias Cleanup",
-  "build": "15.0.89",
+  "version": "15.0.91",
+  "name": "86 Chaos 15.0.91 Python Alert-Only Guardrails",
+  "releasedAt": "2026-07-20",
+  "label": "15.0.91 Python Alert-Only Guardrails",
+  "build": "15.0.91",
   "updatedAt": "2026-07-20T00:00:00.000Z",
-  "notes": "Separates Firebase Auth from workspace bootstrap, ignores generic/production App Check keys on testing preview, adds a server login-bootstrap check, and makes login failures identify the failing step instead of forcing manual Firebase digging."
+  "notes": "Changes System Administrator Python Automation to read-only scan-and-alert mode. Findings are sent to restaurant owners/admins, and System Admin runs apply zero restaurant changes."
 }

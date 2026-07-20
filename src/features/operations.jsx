@@ -2074,7 +2074,7 @@ const TabOpsCenter = ({ currentDate, appUser, users = [], shifts = [], events = 
   );
 };
 
-const TabToday = ({ currentDate, appUser, users, shifts, shiftSwaps, timeOffRequests, events, sales, timePunches, inventoryItems, maintenanceLogs, prepItems, tasks, recipes, menuDependencies = [], clientData, setActiveTab, addToast, registerUndo }) => {
+const TabToday = ({ currentDate, appUser, users, shifts, shiftSwaps, timeOffRequests, events, sales, timePunches, inventoryItems, maintenanceLogs, prepItems, tasks, recipes, menuDependencies = [], restaurantAdminAlerts = [], clientData, setActiveTab, addToast, registerUndo }) => {
   const todayPlanAccess = usePlanAccess(appUser, clientData);
   const canUseManagerBrief = todayPlanAccess.canUse(FEATURE_KEYS.MANAGER_BRIEF).allowed;
   const canUseBasicInventory = todayPlanAccess.canUse(FEATURE_KEYS.BASIC_INVENTORY).allowed || todayPlanAccess.canUse(FEATURE_KEYS.BURN_LOG).allowed;
@@ -2210,7 +2210,32 @@ const TabToday = ({ currentDate, appUser, users, shifts, shiftSwaps, timeOffRequ
       addToast?.('Copy Failed', 'Your browser blocked clipboard access.');
     }
   };
+  const canReviewRestaurantAdminAlerts = Boolean(appUser?.isOwner || appUser?.owner || appUser?.accountOwner || appUser?.workspaceOwner || appUser?.isAdmin || appUser?.permissions?.settings || appUser?.permissions?.team);
+  const openRestaurantAdminAlerts = (restaurantAdminAlerts || [])
+    .filter(alert => !['acknowledged', 'dismissed', 'resolved', 'completed'].includes(String(alert.status || 'open').toLowerCase()))
+    .sort((a, b) => new Date(b.updatedAt || b.createdAt || 0) - new Date(a.updatedAt || a.createdAt || 0))
+    .slice(0, 5);
+  const acknowledgeRestaurantAdminAlert = async (alert) => {
+    if (!canReviewRestaurantAdminAlerts) return addToast?.('Owner/Admin Only', 'Only restaurant owners/admins can acknowledge this alert.');
+    try {
+      await updateDoc(doc(db, 'restaurantAdminAlerts', alert.id), {
+        status: 'acknowledged',
+        acknowledgedAt: new Date().toISOString(),
+        acknowledgedBy: appUser.id || appUser.email || '',
+        acknowledgedByName: appUser.name || appUser.email || 'Restaurant Admin',
+        reviewedAt: new Date().toISOString(),
+        reviewedBy: appUser.id || appUser.email || '',
+        reviewedByName: appUser.name || appUser.email || 'Restaurant Admin',
+        updatedAt: new Date().toISOString()
+      });
+      addToast?.('Alert Acknowledged', alert.title || 'Owner/admin alert');
+    } catch (error) {
+      addToast?.('Could Not Acknowledge Alert', error?.message || 'Check owner/admin permission.');
+    }
+  };
+
   const problems = [
+    canReviewRestaurantAdminAlerts && openRestaurantAdminAlerts.length ? { tone: 'amber', title: 'Owner/Admin alerts', detail: `${openRestaurantAdminAlerts.length} Python scan alert${openRestaurantAdminAlerts.length===1?'':'s'} need review.`, tab: 'today' } : null,
     canUseBasicInventory && lowStock.length ? { tone: 'red', title: 'Inventory below par', detail: `${lowStock.length} item${lowStock.length===1?'':'s'} need attention.`, tab: 'inventory', onClick: openInventoryFocus } : null,
     canUseCleaningRoutines && urgentMaintenance.length ? { tone: 'red', title: 'Maintenance urgent', detail: `${urgentMaintenance.length} high priority issue${urgentMaintenance.length===1?'':'s'} open.`, tab: 'maintenance' } : null,
     canUseScheduleBuilder && pendingRequests.length ? { tone: 'amber', title: 'Time off pending', detail: `${pendingRequests.length} request${pendingRequests.length===1?'':'s'} waiting.`, tab: 'schedule' } : null,
@@ -2324,6 +2349,28 @@ const TabToday = ({ currentDate, appUser, users, shifts, shiftSwaps, timeOffRequ
 
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
       <div className="lg:col-span-2 space-y-3">
+        {canReviewRestaurantAdminAlerts && openRestaurantAdminAlerts.length > 0 && <div className={`${T.card} brief-card p-4 border-purple-500/30 bg-purple-950/10`}>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-3">
+            <div>
+              <h2 className="font-black text-white text-lg flex items-center gap-2"><Bell size={18} className="text-purple-300"/> Owner/Admin Alerts</h2>
+              <p className="text-xs text-slate-400 font-bold mt-1 leading-snug">Python/System Admin scans can only send alerts here. They cannot change your restaurant data.</p>
+            </div>
+            <span className="rounded-full border border-purple-500/30 bg-purple-950/20 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-purple-200">{openRestaurantAdminAlerts.length} open</span>
+          </div>
+          <div className="space-y-2">
+            {openRestaurantAdminAlerts.map(alert => <div key={alert.id} className="rounded-xl border border-purple-500/20 bg-[#12161A] p-3">
+              <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <div className="text-[9px] uppercase tracking-widest font-black text-purple-200">{alert.type || 'python_alert'} • {alert.severity || 'review'}</div>
+                  <div className="font-black text-white text-sm mt-1">{alert.title || 'Python scan alert'}</div>
+                  <div className="text-xs text-slate-300 font-bold leading-5 mt-1">{alert.detail || 'Review this recommendation before changing anything.'}</div>
+                </div>
+                <button type="button" onClick={() => acknowledgeRestaurantAdminAlert(alert)} className="shrink-0 rounded-lg border border-emerald-500/40 bg-emerald-950/10 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-emerald-200 hover:bg-emerald-950/20">Acknowledge</button>
+              </div>
+            </div>)}
+          </div>
+        </div>}
+
         <div className={`${T.card} brief-card p-4`}>
           <button className="w-full flex justify-between items-center" onClick={() => setExpanded(e => ({...e, problems: !e.problems}))}><h2 className="font-black text-white text-lg">Need Attention</h2><ChevronRight className={`transition-transform ${expanded.problems ? 'rotate-90' : ''}`} size={18}/></button>
           {expanded.problems && <div className="grid sm:grid-cols-2 gap-2 mt-3">
