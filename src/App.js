@@ -1657,7 +1657,7 @@ return (
         <div className="flex items-center gap-2 flex-shrink-0">
           <button type="button" onClick={() => openProblemReport({ title: 'Manual Problem Report', message: `Page: ${activeTabState}`, category: 'Bug / Error' })} className="hidden sm:flex p-2 border rounded-xl shadow-sm bg-[#1A2126] border-[#2A353D] text-orange-300 hover:text-white" title="Report a problem"><Bug size={18}/></button>
           {offlineQueue.length > 0 && <button type="button" onClick={() => openProblemReport({ title: 'Offline Queue', message: `${offlineQueue.length} queued action(s) waiting to sync.`, category: 'Data Looks Wrong' })} className="hidden sm:flex px-2.5 py-2 border rounded-xl shadow-sm bg-amber-900/20 border-amber-500/40 text-amber-200 text-[10px] font-black uppercase tracking-widest" title="Offline queued actions">Queue {offlineQueue.length}</button>}
-        <button onClick={() => setIsMenuOpen(true)} className={`relative p-2 border rounded-xl shadow-sm transition-all outline-none bg-[#1A2126] border-[#2A353D] ${T.copper} hover:text-white flex-shrink-0`}>
+        <button type="button" aria-label="Open Menu" title="Open Menu" data-testid="main-menu-button" onClick={() => setIsMenuOpen(true)} className={`relative p-2 border rounded-xl shadow-sm transition-all outline-none bg-[#1A2126] border-[#2A353D] ${T.copper} hover:text-white flex-shrink-0`}>
           <Menu size={20} />
           {hasAnyMenuAlert && <span className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full border-2 border-[#12161A] shadow-[0_0_8px_rgba(239,68,68,0.8)] animate-pulse"></span>}
         </button>

@@ -216,7 +216,7 @@ const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppU
                    <div className="drawer-section-label px-2 pt-1.5 pb-0.5 text-[9px] font-black uppercase tracking-[0.18em] text-slate-500">{section.label}</div>
                    <div className="space-y-0.5">
                      {section.tabs.map(tab => (
-                       <button key={tab.id} onClick={() => { setActiveTab(tab.id); onClose(); }} className={`w-full flex items-center justify-between px-3 py-1.5 rounded-lg font-bold text-[13px] transition-all duration-200 ${activeTab === tab.id ? `${T.grad} text-slate-900 shadow-md` : 'text-slate-400 hover:bg-[#12161A] hover:text-white'}`}>
+                       <button key={tab.id} data-testid={`menu-tab-${tab.id}`} onClick={() => { setActiveTab(tab.id); onClose(); }} className={`w-full flex items-center justify-between px-3 py-1.5 rounded-lg font-bold text-[13px] transition-all duration-200 ${activeTab === tab.id ? `${T.grad} text-slate-900 shadow-md` : 'text-slate-400 hover:bg-[#12161A] hover:text-white'}`}>
                          <div className="flex items-center gap-2.5">
                            <div className="relative flex items-center">
                              <span className={activeTab === tab.id ? 'text-slate-900' : T.copper}>{tab.icon}</span>
