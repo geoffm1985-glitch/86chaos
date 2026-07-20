@@ -141,9 +141,18 @@ enableIndexedDbPersistence(db).catch((err) => console.warn("Offline mode issue:"
 export const auth = getAuth(app);
 
 // --- OPTIONAL APP CHECK + SECURE API KEYCHAIN ---
-// Put your Firebase App Check reCAPTCHA Enterprise site key here after enabling App Check in Firebase.
-// Example: const APPCHECK_RECAPTCHA_ENTERPRISE_SITE_KEY = '6Lc...';
-const APPCHECK_RECAPTCHA_ENTERPRISE_SITE_KEY = process.env.REACT_APP_FIREBASE_APPCHECK_SITE_KEY || '';
+// App Check site keys are project-specific. Preview/local must not inherit the
+// production/generic App Check key, because a wrong reCAPTCHA Enterprise key can
+// stall Firebase Auth and make one account look "locked out" behind a timeout.
+const rawTestAppCheckSiteKey = env('REACT_APP_TEST_FIREBASE_APPCHECK_SITE_KEY', '');
+const rawProdAppCheckSiteKey = env('REACT_APP_PROD_FIREBASE_APPCHECK_SITE_KEY', '');
+const rawGenericAppCheckSiteKey = env('REACT_APP_FIREBASE_APPCHECK_SITE_KEY', '');
+const APPCHECK_RECAPTCHA_ENTERPRISE_SITE_KEY = activeFirebaseProjectId === 'chaos-test-d1601'
+  ? rawTestAppCheckSiteKey
+  : (rawProdAppCheckSiteKey || (!isVercelPreviewHost ? rawGenericAppCheckSiteKey : ''));
+firebaseDiagnostics.appCheckEnabled = Boolean(APPCHECK_RECAPTCHA_ENTERPRISE_SITE_KEY);
+firebaseDiagnostics.appCheckSiteKeyTail = APPCHECK_RECAPTCHA_ENTERPRISE_SITE_KEY ? String(APPCHECK_RECAPTCHA_ENTERPRISE_SITE_KEY).slice(-6) : 'off';
+firebaseDiagnostics.genericAppCheckIgnored = Boolean(isVercelPreviewHost && activeFirebaseProjectId === 'chaos-test-d1601' && rawGenericAppCheckSiteKey && !rawTestAppCheckSiteKey);
 let appCheckInstance = null;
 
 if (typeof window !== "undefined" && APPCHECK_RECAPTCHA_ENTERPRISE_SITE_KEY && !window.__chaosAppCheckBooted) {
@@ -222,7 +231,7 @@ export const MASTER_ADMIN_EMAIL = (process.env.REACT_APP_MASTER_ADMIN_EMAIL || '
 export const EVENT_TAGS = ['Standard Day', 'Packers Game', 'Brewers Game', 'Live Music', 'Severe Weather', 'Private Catering', 'Holiday'];
 
 // --- VERSION TRACKING ---
-export const CURRENT_VERSION = '15.0.86';
+export const CURRENT_VERSION = '15.0.87';
 
 // --- Helpers ---
 export const useLiveCollection = (coll, restId, options = {}) => {
