@@ -1,9 +1,9 @@
 {
-  "version": "15.0.92",
-  "name": "86 Chaos 15.0.92 Back Office Suite",
+  "version": "15.0.93",
+  "name": "86 Chaos 15.0.93 QuickBooks Phase 2",
   "releasedAt": "2026-07-20",
-  "label": "15.0.92 Back Office Suite",
-  "build": "15.0.92",
+  "label": "15.0.93 QuickBooks Phase 2",
+  "build": "15.0.93",
   "updatedAt": "2026-07-20T00:00:00.000Z",
-  "notes": "Adds the Owner Pro Back Office Suite with deposits, document vault records, approval queue, owner reports, admin alerts, and a safe QuickBooks integration hub while keeping Financials available on Operations/Smart Kitchen as designed."
+  "notes": "Adds Owner Pro QuickBooks Phase 2: invoice-scan bill drafts, vendor matching, vendor credit drafts, sync repair queue, and webhook receiver scaffolding. All accounting sync remains owner-reviewed and no live QuickBooks write occurs without credentials and approval."
 }
