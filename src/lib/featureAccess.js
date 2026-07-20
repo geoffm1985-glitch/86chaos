@@ -193,6 +193,13 @@ export const roleAllowsFeature = (user = {}, featureKey, workspace = {}) => {
     case 'basic_reports':
     case 'advanced_reports':
     case 'advanced_financial_audit': return Boolean(ownerAdmin || perms.sales || perms.salesRead || perms.financialRead || perms.financialEdit || perms.labor || perms.laborRead || perms.wageView || perms.wageEdit);
+    case 'back_office_suite':
+    case 'back_office_dashboard':
+    case 'back_office_deposit_log':
+    case 'back_office_documents':
+    case 'back_office_approvals':
+    case 'back_office_owner_reports':
+    case 'quickbooks_integration': return Boolean(ownerAdmin || perms.backOffice || perms.ownerTools || perms.settings || perms.financialEdit);
     case 'integrations': return isMasterAdminUser(user);
     default: return Boolean(ownerAdmin || rolePermissionAllows);
   }

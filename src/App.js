@@ -22,6 +22,7 @@ const TabRecipes = lazyFeature(() => import('./features/operations'), 'TabRecipe
 const TabMaintenance = lazyFeature(() => import('./features/operations'), 'TabMaintenance');
 const TabInventory = lazyFeature(() => import('./features/inventory'), 'TabInventory');
 const TabFinancials = lazyFeature(() => import('./features/management'), 'TabFinancials');
+const TabBackOffice = lazyFeature(() => import('./features/management'), 'TabBackOffice');
 const TabMessages = lazyFeature(() => import('./features/management'), 'TabMessages');
 const TabTeam = lazyFeature(() => import('./features/management'), 'TabTeam');
 const TabSettings = lazyFeature(() => import('./features/management'), 'TabSettings');
@@ -56,7 +57,11 @@ const LEGACY_TAB_ALIASES = {
   'roster': 'team',
   'message-board': 'messages',
   'help-center': 'help',
-  'admin-manual': 'help'
+  'admin-manual': 'help',
+  'backoffice': 'back-office',
+  'owner-office': 'back-office',
+  'office': 'back-office',
+  'back-office-suite': 'back-office'
 };
 const normalizeRouteTab = (tab = 'today') => LEGACY_TAB_ALIASES[String(tab || '').trim()] || String(tab || 'today').trim() || 'today';
 const buildSafeSessionCache = (user = {}) => user ? {
@@ -532,7 +537,7 @@ if (liveAppUser && clientData) {
     liveAppUser.isSuperAdmin || liveAppUser.isOwner || liveAppUser.owner || liveAppUser.accountOwner ||
     liveAppUser.workspaceOwner || liveAppUser.isAdmin || liveAppUser.permissions?.settings || liveAppUser.permissions?.team
   ));
-  const restaurantAdminAlerts = useLiveCollection('restaurantAdminAlerts', rId, { enabled: !!rId && canSeeRestaurantAdminAlerts && (activeTabState === 'today' || activeTabState === 'godmode'), limitCount: 30, fallbackLimitCount: 10 });
+  const restaurantAdminAlerts = useLiveCollection('restaurantAdminAlerts', rId, { enabled: !!rId && canSeeRestaurantAdminAlerts && (activeTabState === 'today' || activeTabState === 'godmode' || activeTabState === 'back-office'), limitCount: 30, fallbackLimitCount: 10 });
 
   const rawDemoFeatures = liveAppUser?.demoFeatures || {};
   const displayClientFeatures = isDemoMode ? {
@@ -1438,6 +1443,7 @@ What I clicked / expected:
     if (activeTabState === 'events' && displayClientFeatures?.events !== false && (liveAppUser?.isAdmin || liveAppUser?.permissions?.events || liveAppUser?.permissions?.schedule || liveAppUser?.permissions?.team)) return <TabSchedule key={`evt-${rId}`} currentDate={currentDate} users={displayUsers} shifts={shifts} events={events} timeOffRequests={timeOffRequests} timePunches={timePunches} addToast={addToast} appUser={liveAppUser} clientData={displayClientData} initialSubTab="events" hideSubTabs />;
     if (activeTabState === 'published') return <TabMasterSchedule key={`pub-${rId}-${liveAppUser?.id}`} currentDate={currentDate} setCurrentDate={setCurrentDate} onSubTabChange={setActiveScheduleSubTab} appUser={liveAppUser} users={displayUsers} shifts={shifts} shiftSwaps={shiftSwaps} timeOffRequests={timeOffRequests} events={events} addToast={addToast} voiceScheduleSubTabTarget={voiceScheduleSubTabTarget} clientData={displayClientData} scheduleBuilderProps={{ currentDate, users: displayUsers, shifts, events, timeOffRequests, timePunches, addToast, appUser: liveAppUser, clientData: displayClientData }} />;
     if (activeTabState === 'ops' && displayClientFeatures?.ops !== false && (liveAppUser?.isSuperAdmin || liveAppUser?.isAdmin || liveAppUser?.permissions?.ops)) return <TabOpsCenter key={`ops-${rId}`} currentDate={currentDate} appUser={liveAppUser} users={displayUsers} shifts={shifts} events={events} sales={sales} timePunches={timePunches} addToast={addToast} setActiveTab={setActiveTab} clientData={displayClientData} />;
+    if (activeTabState === 'back-office' && !isDemoMode) return <TabBackOffice key={`bo-${rId}`} currentDate={currentDate} users={displayUsers} sales={sales} timePunches={timePunches} restaurantAdminAlerts={restaurantAdminAlerts} appUser={liveAppUser} clientData={displayClientData} setActiveTab={setActiveTab} addToast={addToast} />;
     if ((activeTabState === 'financials' || activeTabState === 'sales' || activeTabState === 'labor') && (liveAppUser?.isSuperAdmin || liveAppUser?.isAdmin || liveAppUser?.permissions?.labor || liveAppUser?.permissions?.sales)) return <TabFinancials key={`fin-${rId}`} currentDate={currentDate} users={displayUsers} shifts={shifts} sales={sales} timePunches={timePunches} addToast={addToast} appUser={liveAppUser} clientData={displayClientData} setActiveTab={setActiveTab} initialSubTab={activeTabState === 'sales' ? 'ledger' : activeTabState === 'labor' ? 'labor' : 'overview'} />;
     if (activeTabState === 'messages' && displayClientFeatures?.messages !== false) return <TabMessages key={`msg-${rId}`} events={events} appUser={liveAppUser} users={displayUsers} addToast={addToast} />;
     if (activeTabState === 'prep' && displayClientFeatures?.prep !== false) return <TabPrep key={`prp-${rId}`} currentDate={currentDate} appUser={liveAppUser} addToast={addToast} setLabelsToPrint={setLabelsToPrint} />;
@@ -1714,11 +1720,11 @@ return (
         </div>
       )}
       
-      {['schedule', 'events', 'published', 'month', 'financials', 'sales', 'prep'].includes(activeTabState) && !( ['schedule','published'].includes(activeTabState) && activeScheduleSubTab === 'time-off') && (
+      {['schedule', 'events', 'published', 'month', 'financials', 'sales', 'back-office', 'prep'].includes(activeTabState) && !( ['schedule','published'].includes(activeTabState) && activeScheduleSubTab === 'time-off') && (
         <div className="desktop-date-strip py-4 px-4 shadow-sm z-30 border-b flex justify-between items-center bg-[#1A2126] border-[#2A353D] relative">
-          {(activeTabState === 'sales' || activeTabState === 'financials') ? (
+          {(activeTabState === 'sales' || activeTabState === 'financials' || activeTabState === 'back-office') ? (
             <div className="w-full text-center">
-              <h2 className="text-xl sm:text-2xl font-black tracking-widest text-white uppercase">Financials</h2>
+              <h2 className="text-xl sm:text-2xl font-black tracking-widest text-white uppercase">{activeTabState === 'back-office' ? 'Back Office' : 'Financials'}</h2>
             </div>
           ) : (
             <>
