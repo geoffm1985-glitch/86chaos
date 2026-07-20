@@ -36,6 +36,8 @@ const safeLine = (line = {}, index = 0) => ({
   unitCost: Number(line.unitCost || line.unitPrice || line.casePrice || 0) || 0,
   amount: Number(line.amount || line.totalPrice || line.extendedPrice || 0) || 0,
   accountName: clean(line.accountName || 'Food Purchases').slice(0, 160),
+  className: clean(line.className || '').slice(0, 160),
+  locationName: clean(line.locationName || '').slice(0, 160),
   inventoryItemId: clean(line.inventoryItemId || '').slice(0, 160),
   productCode: clean(line.productCode || '').slice(0, 120),
   sourceClassification: clean(line.sourceClassification || 'invoice_line').slice(0, 80)
@@ -62,6 +64,9 @@ const normalizeDraft = (draft = {}) => {
     vendorId: clean(draft.vendorId || ''),
     vendorMatchSource: clean(draft.vendorMatchSource || ''),
     accountsPayable: clean(draft.accountsPayable || 'Accounts Payable'),
+    defaultClass: clean(draft.defaultClass || '').slice(0, 160),
+    defaultLocation: clean(draft.defaultLocation || '').slice(0, 160),
+    memo: clean(draft.memo || '').slice(0, 500),
     totalAmount,
     lines,
     ownerApprovalRequired: true,

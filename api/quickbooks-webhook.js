@@ -45,7 +45,7 @@ module.exports = async function handler(req, res) {
       signatureValid,
       liveWritesEnabled: false,
       eventCount: Array.isArray(payload?.eventNotifications) ? payload.eventNotifications.length : 0,
-      message: 'QuickBooks webhook received. Phase 2 acknowledges events only; no restaurant data or QuickBooks data is changed automatically.'
+      message: 'QuickBooks webhook received. Phase 3 acknowledges events only; no restaurant data or QuickBooks data is changed automatically.'
     });
   } catch (error) {
     return json(res, 500, { ok: false, message: error?.message || 'QuickBooks webhook failed safely.' });

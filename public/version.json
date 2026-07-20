@@ -1,9 +1,9 @@
 {
-  "version": "15.0.93",
-  "name": "86 Chaos 15.0.93 QuickBooks Phase 2",
+  "version": "15.0.94",
+  "name": "86 Chaos 15.0.94 QuickBooks Phase 3",
   "releasedAt": "2026-07-20",
-  "label": "15.0.93 QuickBooks Phase 2",
-  "build": "15.0.93",
+  "label": "15.0.94 QuickBooks Phase 3",
+  "build": "15.0.94",
   "updatedAt": "2026-07-20T00:00:00.000Z",
-  "notes": "Adds Owner Pro QuickBooks Phase 2: invoice-scan bill drafts, vendor matching, vendor credit drafts, sync repair queue, and webhook receiver scaffolding. All accounting sync remains owner-reviewed and no live QuickBooks write occurs without credentials and approval."
+  "notes": "Adds Owner Pro QuickBooks Phase 3: accountant packet export, monthly close packet, class/location mapping, sync health scoring, suggested mappings, and owner multi-location rollup. All accounting sync remains review-first with no automatic QuickBooks posting."
 }

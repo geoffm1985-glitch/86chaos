@@ -3247,7 +3247,7 @@ const TabSales = ({ sales, timePunches = [], users = [], addToast, appUser }) =>
         <button onClick={() => changeWeek(1)} className="p-2 bg-[#12161A] text-slate-300 rounded-xl hover:text-[#D4A381] border border-[#2A353D] transition-colors"><ChevronRight size={20} /></button>
       </div>
 
-      <div className="grid sm:grid-cols-2 xl:grid-cols-5 gap-3">
+      <div className="grid sm:grid-cols-2 xl:grid-cols-6 gap-3">
         <StatusTile label="WTD Net Sales" value={moneyText(weekly.net)} icon={TrendingUp} color="text-[#D4A381]" />
         <StatusTile label="Labor" value={pctText(wtdLaborPct)} icon={Users} color={wtdLaborPct > 30 ? 'text-red-400' : 'text-emerald-400'} />
         <StatusTile label="Food Cost" value={pctText(wtdFoodPct)} icon={Package} color={wtdFoodPct > 33 ? 'text-red-400' : 'text-emerald-400'} />
@@ -10978,10 +10978,12 @@ const TabBackOffice = ({ currentDate, users = [], sales = [], timePunches = [], 
   const [depositForm, setDepositForm] = useState({ date: getToday(), cashSales: '', cardSales: '', tipsPaid: '', payouts: '', depositAmount: '', drawerVariance: '', closedBy: appUser?.name || '', notes: '' });
   const [documentForm, setDocumentForm] = useState({ title: '', category: 'License / Permit', expiresAt: '', location: '', notes: '' });
   const [approvalForm, setApprovalForm] = useState({ title: '', category: 'Owner Review', priority: 'normal', requestedBy: appUser?.name || '', notes: '' });
-  const [qbMapping, setQbMapping] = useState({ bankAccount: '', accountsPayable: '', salesIncome: '', tipsPayable: '', cashOverShort: '', foodPurchases: '', beveragePurchases: '', supplies: '', cogs: '', taxAccount: '', classTracking: 'off' });
+  const [qbMapping, setQbMapping] = useState({ bankAccount: '', accountsPayable: '', salesIncome: '', tipsPayable: '', cashOverShort: '', foodPurchases: '', beveragePurchases: '', supplies: '', cogs: '', taxAccount: '', classTracking: 'off', defaultClass: '', defaultLocation: '', foodClass: '', beverageClass: '', suppliesClass: '', salesClass: '', taxAgency: '', memoTemplate: '86 Chaos {month} {vendor} {number}', exportBasis: 'accrual' });
   const [qbCreditForm, setQbCreditForm] = useState({ vendorName: '', creditDate: getToday(), amount: '', invoiceNumber: '', reason: '', account: 'Food Purchases' });
+  const [qbPacketForm, setQbPacketForm] = useState({ closeMonth: getToday().slice(0, 7), preparedBy: appUser?.name || appUser?.email || '', accountantEmail: '', notes: '' });
   const [qbStatus, setQbStatus] = useState({ checking: false, configured: false, message: 'Not connected. QuickBooks sync is owner-approved and safe by default.' });
   const [webhookStatus, setWebhookStatus] = useState({ checking: false, message: 'Webhook receiver scaffold is ready for setup check.' });
+  const [syncHealth, setSyncHealth] = useState({ checking: false, score: null, message: 'Phase 3 sync health check has not run yet.' });
 
   const records = useLiveCollection('backOfficeRecords', restaurantId, { enabled: !!restaurantId && backOfficeAccess.allowed, limitCount: 350, fallbackLimitCount: 150 });
   const invoices = useLiveCollection('invoices', restaurantId, { enabled: !!restaurantId && backOfficeAccess.allowed && quickBooksAccess.allowed, limitCount: 150, fallbackLimitCount: 80 });
@@ -10989,22 +10991,13 @@ const TabBackOffice = ({ currentDate, users = [], sales = [], timePunches = [], 
   const deposits = records.filter(r => r.type === 'deposit').sort((a,b) => String(b.date || b.createdAt || '').localeCompare(String(a.date || a.createdAt || '')));
   const documents = records.filter(r => r.type === 'document').sort((a,b) => String(a.expiresAt || '9999').localeCompare(String(b.expiresAt || '9999')));
   const approvals = records.filter(r => r.type === 'approval').sort((a,b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
-  const qbRecords = records.filter(r => ['quickbooks', 'quickbooks_bill_draft', 'quickbooks_vendor_match', 'quickbooks_vendor_credit_draft', 'quickbooks_sync_event'].includes(r.type));
+  const qbRecords = records.filter(r => ['quickbooks', 'quickbooks_mapping', 'quickbooks_bill_draft', 'quickbooks_vendor_match', 'quickbooks_vendor_credit_draft', 'quickbooks_sync_event', 'quickbooks_accountant_packet', 'quickbooks_owner_rollup', 'quickbooks_sync_health'].includes(r.type));
   const qbBillDrafts = qbRecords.filter(r => r.type === 'quickbooks_bill_draft');
   const qbVendorMatches = qbRecords.filter(r => r.type === 'quickbooks_vendor_match' && !['dismissed', 'inactive'].includes(String(r.status || '').toLowerCase()));
   const qbVendorCredits = qbRecords.filter(r => r.type === 'quickbooks_vendor_credit_draft');
   const qbRepairQueue = qbRecords.filter(r => ['sync_failed', 'needs_mapping', 'needs_credentials', 'retry_ready', 'draft_needs_review', 'send_blocked'].includes(String(r.status || '').toLowerCase()));
   const openAlerts = (restaurantAdminAlerts || []).filter(a => !['resolved', 'dismissed'].includes(String(a.status || 'open').toLowerCase()));
   const openApprovals = approvals.filter(a => !['approved', 'dismissed', 'done'].includes(String(a.status || 'pending').toLowerCase()));
-  const month = (currentDate || getToday()).slice(0, 7);
-  const monthSales = (sales || []).filter(s => safeFinanceDate(s).startsWith(month));
-  const netSales = monthSales.reduce((sum, item) => sum + getFinancialNetSales(item), 0);
-  const depositTotal = deposits.filter(d => String(d.date || '').startsWith(month)).reduce((sum, d) => sum + parseFinanceAmount(d.depositAmount), 0);
-  const cashVariance = deposits.filter(d => String(d.date || '').startsWith(month)).reduce((sum, d) => sum + parseFinanceAmount(d.drawerVariance), 0);
-  const expiringDocs = documents.filter(d => d.expiresAt && new Date(d.expiresAt).getTime() - Date.now() < 45 * 86400000 && new Date(d.expiresAt).getTime() >= Date.now());
-
-  if (!backOfficeAccess.allowed) return <LockedFeatureScreen access={backOfficeAccess} appUser={appUser} setActiveTab={setActiveTab} />;
-
   const stamp = () => Timestamp.now();
   const vendorKey = (value = '') => String(value || '').toLowerCase().trim().replace(/[^a-z0-9]+/g, ' ').replace(/\s+/g, ' ').trim();
   const simpleKey = (value = '') => vendorKey(value).replace(/\b(inc|llc|ltd|co|company|foods|foodservice|distributing|distributor|sysco|pfg)\b/g, '').replace(/\s+/g, ' ').trim();
@@ -11014,6 +11007,39 @@ const TabBackOffice = ({ currentDate, users = [], sales = [], timePunches = [], 
   const existingBillDraftInvoiceIds = new Set(qbBillDrafts.map(r => String(r.invoiceId || '')).filter(Boolean));
   const sortedInvoices = invoices.slice().sort((a,b) => String(invoiceDate(b)).localeCompare(String(invoiceDate(a))));
   const unmappedInvoiceVendors = Array.from(new Set(sortedInvoices.map(inv => inv.vendorName || inv.vendor || '').filter(Boolean))).filter(name => !qbVendorMatches.some(m => vendorKey(m.vendorAlias) === vendorKey(name)));
+
+  const month = (currentDate || getToday()).slice(0, 7);
+  const monthSales = (sales || []).filter(s => safeFinanceDate(s).startsWith(month));
+  const netSales = monthSales.reduce((sum, item) => sum + getFinancialNetSales(item), 0);
+  const depositTotal = deposits.filter(d => String(d.date || '').startsWith(month)).reduce((sum, d) => sum + parseFinanceAmount(d.depositAmount), 0);
+  const cashVariance = deposits.filter(d => String(d.date || '').startsWith(month)).reduce((sum, d) => sum + parseFinanceAmount(d.drawerVariance), 0);
+  const expiringDocs = documents.filter(d => d.expiresAt && new Date(d.expiresAt).getTime() - Date.now() < 45 * 86400000 && new Date(d.expiresAt).getTime() >= Date.now());
+  const closeMonth = qbPacketForm.closeMonth || month;
+  const recordMonth = (record = {}) => String(record.invoiceDate || record.creditDate || record.closeMonth || record.date || record.createdAt?.toDate?.()?.toISOString?.() || record.createdAt || '').slice(0, 7);
+  const qbMonthlyRecords = qbRecords.filter(r => recordMonth(r) === closeMonth);
+  const qbMonthlyBillDrafts = qbBillDrafts.filter(r => recordMonth(r) === closeMonth);
+  const qbMonthlyCredits = qbVendorCredits.filter(r => recordMonth(r) === closeMonth);
+  const qbDraftTotal = qbMonthlyBillDrafts.reduce((sum, r) => sum + moneyValue(r.invoiceTotal), 0);
+  const qbCreditTotal = qbMonthlyCredits.reduce((sum, r) => sum + moneyValue(r.amount), 0);
+  const qbReadyRecords = qbRecords.filter(r => ['ready_to_send', 'retry_ready', 'draft_needs_review'].includes(String(r.status || '').toLowerCase()));
+  const qbBlockedRecords = qbRecords.filter(r => ['needs_mapping', 'needs_credentials', 'sync_failed', 'send_blocked'].includes(String(r.status || '').toLowerCase()));
+  const qbMappingMissing = ['accountsPayable', 'bankAccount', 'salesIncome', 'foodPurchases', 'beveragePurchases', 'supplies', 'cashOverShort'].filter(key => !String(qbMapping[key] || '').trim());
+  const qbSuggestedMappings = [
+    ['Accounts Payable', qbMapping.accountsPayable || 'Accounts Payable'],
+    ['Bank / Deposit Account', qbMapping.bankAccount || 'Undeposited Funds'],
+    ['Sales Income', qbMapping.salesIncome || 'Sales'],
+    ['Tips Payable', qbMapping.tipsPayable || 'Tips Payable'],
+    ['Cash Over / Short', qbMapping.cashOverShort || 'Cash Over and Short'],
+    ['Food Purchases', qbMapping.foodPurchases || 'Food Purchases'],
+    ['Beverage Purchases', qbMapping.beveragePurchases || 'Beverage Purchases'],
+    ['Supplies', qbMapping.supplies || 'Supplies'],
+    ['COGS', qbMapping.cogs || 'Cost of Goods Sold']
+  ];
+  const qbCloseReadiness = Math.max(0, Math.min(100, 100 - (qbMappingMissing.length * 10) - (unmappedInvoiceVendors.length * 5) - (qbBlockedRecords.length * 4)));
+  const workspaceRoster = Array.isArray(appUser?.workspaces) ? appUser.workspaces : Array.isArray(appUser?.restaurants) ? appUser.restaurants : [];
+  const ownerLocationRows = [{ name: clientData?.name || appUser?.restaurantName || 'Current workspace', restaurantId, netSales, depositTotal, cashVariance, openAlerts: openAlerts.length, qbDrafts: qbBillDrafts.length, repairQueue: qbRepairQueue.length }].concat(workspaceRoster.filter(w => String(w?.id || w?.restaurantId || '') !== String(restaurantId || '')).slice(0, 12).map(w => ({ name: w.name || w.restaurantName || w.label || w.id || 'Workspace', restaurantId: w.id || w.restaurantId || '', netSales: '', depositTotal: '', cashVariance: '', openAlerts: '', qbDrafts: '', repairQueue: 'Open workspace to load live totals' })));
+
+  if (!backOfficeAccess.allowed) return <LockedFeatureScreen access={backOfficeAccess} appUser={appUser} setActiveTab={setActiveTab} />;
 
   const resolveVendorMatch = (vendorName = '') => {
     const key = vendorKey(vendorName);
@@ -11034,6 +11060,12 @@ const TabBackOffice = ({ currentDate, users = [], sales = [], timePunches = [], 
     return qbMapping.foodPurchases || qbMapping.cogs || 'Food Purchases';
   };
 
+  const classLocationForLine = (line = {}) => {
+    const text = String([line.category, line.classificationCategory, line.scannerClassification, line.itemName, line.name, line.description].filter(Boolean).join(' ')).toLowerCase();
+    const className = /beer|wine|liquor|beverage|soda|syrup|coffee|tea/.test(text) ? qbMapping.beverageClass : /napkin|foil|container|box|bag|cup|lid|straw|clean|chemical|glove|paper|supply|supplies/.test(text) ? qbMapping.suppliesClass : qbMapping.foodClass;
+    return { className: className || qbMapping.defaultClass || '', locationName: qbMapping.defaultLocation || '' };
+  };
+
   const buildQuickBooksBillDraft = (invoice = {}) => {
     const vendorMatch = resolveVendorMatch(invoice.vendorName || invoice.vendor || '');
     const rawLines = Array.isArray(invoice.lineItems) ? invoice.lineItems : [];
@@ -11047,6 +11079,7 @@ const TabBackOffice = ({ currentDate, users = [], sales = [], timePunches = [], 
         unitCost: qty ? Number((amount / qty).toFixed(4)) : moneyValue(line.unitPrice || line.casePrice || line.price),
         amount,
         accountName: categoryAccountForLine(line),
+        ...classLocationForLine(line),
         inventoryItemId: line.matchedItemId || line.matchId || '',
         productCode: line.productCode || line.sku || line.pfgCode || line.itemNumber || '',
         sourceClassification: line.scannerClassification || line.rowType || 'invoice_line'
@@ -11067,6 +11100,9 @@ const TabBackOffice = ({ currentDate, users = [], sales = [], timePunches = [], 
       accountsPayable: qbMapping.accountsPayable || 'Accounts Payable',
       lines,
       mappingSnapshot: qbMapping,
+      defaultClass: qbMapping.defaultClass || '',
+      defaultLocation: qbMapping.defaultLocation || '',
+      memo: String(qbMapping.memoTemplate || '86 Chaos {month} {vendor} {number}').replace('{month}', month).replace('{vendor}', vendorMatch.name || '').replace('{number}', invoice.invoiceNumber || invoice.number || ''),
       ownerApprovalRequired: true,
       sendStatus: 'not_sent'
     };
@@ -11121,7 +11157,7 @@ const TabBackOffice = ({ currentDate, users = [], sales = [], timePunches = [], 
   };
 
   const saveQuickBooksMapping = async () => {
-    await saveRecord({ type: 'quickbooks', status: 'mapping_saved', title: 'QuickBooks account mapping', category: 'QuickBooks', mapping: qbMapping, notes: 'Owner Pro QuickBooks mapping saved in 86 Chaos. No OAuth tokens or QuickBooks secrets are stored in browser-writable records.' }, 'QuickBooks Mapping Saved');
+    await saveRecord({ type: 'quickbooks_mapping', status: qbMappingMissing.length ? 'needs_mapping' : 'mapping_saved', title: 'QuickBooks account/class/location mapping', category: 'QuickBooks', mapping: qbMapping, missingFields: qbMappingMissing, notes: 'Owner Pro QuickBooks mapping saved in 86 Chaos. No OAuth tokens or QuickBooks secrets are stored in browser-writable records.' }, 'QuickBooks Mapping Saved');
   };
 
   const checkQuickBooksConnect = async () => {
@@ -11148,6 +11184,18 @@ const TabBackOffice = ({ currentDate, users = [], sales = [], timePunches = [], 
       setWebhookStatus({ checking: false, message: result?.message || 'Webhook scaffold checked.' });
     } catch (error) {
       setWebhookStatus({ checking: false, message: error?.message || 'Webhook status check failed. Live sync remains off.' });
+    }
+  };
+
+  const checkQuickBooksSyncHealth = async () => {
+    setSyncHealth({ checking: true, score: null, message: 'Checking QuickBooks Phase 3 sync health...' });
+    try {
+      const response = await secureFetch('/api/quickbooks-sync-health', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ restaurantId, closeMonth, mapping: qbMapping, counts: { missingMappings: qbMappingMissing.length, unmappedVendors: unmappedInvoiceVendors.length, blocked: qbBlockedRecords.length, ready: qbReadyRecords.length } }) });
+      const result = typeof response?.json === 'function' ? await response.json() : response;
+      setSyncHealth({ checking: false, score: result?.score ?? qbCloseReadiness, message: result?.message || 'Sync health checked. Live QuickBooks writes remain owner-approved and guarded.' });
+      await saveRecord({ type: 'quickbooks_sync_health', status: result?.status || 'checked', title: `QuickBooks sync health: ${closeMonth}`, category: 'QuickBooks Health', closeMonth, score: result?.score ?? qbCloseReadiness, details: result || {}, notes: result?.message || 'Phase 3 sync health check saved.' }, 'Sync Health Saved');
+    } catch (error) {
+      setSyncHealth({ checking: false, score: qbCloseReadiness, message: error?.message || 'Sync health check failed safely. No accounting data was changed.' });
     }
   };
 
@@ -11205,6 +11253,51 @@ const TabBackOffice = ({ currentDate, users = [], sales = [], timePunches = [], 
     openPrintableReport({ title: '86 Chaos Owner Back Office Report', subtitle: `${clientData?.name || appUser?.restaurantName || 'Restaurant'} • ${month}`, rows, filename: `${getRestaurantExportPrefix(appUser, '86chaos')}_back_office_owner_report_${month}` });
   };
 
+  const buildAccountantPacketRows = () => {
+    return [
+      ['Section', 'Item', 'Value', 'Notes'],
+      ['Monthly close', 'Close month', closeMonth, qbPacketForm.notes || ''],
+      ['Monthly close', 'Prepared by', qbPacketForm.preparedBy || appUser?.name || '', qbPacketForm.accountantEmail ? `Accountant: ${qbPacketForm.accountantEmail}` : ''],
+      ['Sales', 'Net sales', moneyText(netSales, 2), `${monthSales.length} daily close record(s)`],
+      ['Deposits', 'Deposit total', moneyText(depositTotal, 2), 'Back Office deposit log'],
+      ['Deposits', 'Cash variance', moneyText(cashVariance, 2), 'Drawer over/short total'],
+      ['QuickBooks', 'Bill draft total', moneyText(qbDraftTotal, 2), `${qbMonthlyBillDrafts.length} bill draft(s)`],
+      ['QuickBooks', 'Vendor credit total', moneyText(qbCreditTotal, 2), `${qbMonthlyCredits.length} credit draft(s)`],
+      ['QuickBooks', 'Ready records', qbReadyRecords.length, 'Ready/review records, not auto-posted'],
+      ['QuickBooks', 'Repair queue', qbBlockedRecords.length, 'Needs mapping, credentials, or retry'],
+      ['QuickBooks', 'Missing mappings', qbMappingMissing.join(', ') || 'None', 'Owner Pro mapping screen'],
+      ['QuickBooks', 'Unmapped invoice vendors', unmappedInvoiceVendors.join(', ') || 'None', 'Vendor match queue'],
+      ['Alerts', 'Open owner/admin alerts', openAlerts.length, 'Restaurant admin alerts'],
+      ['Approvals', 'Open approvals', openApprovals.length, 'Owner/admin decisions'],
+      ['Documents', 'Expiring soon', expiringDocs.length, 'Within 45 days']
+    ];
+  };
+
+  const downloadAccountantPacketCsv = async () => {
+    const rows = buildAccountantPacketRows();
+    try {
+      await secureFetch('/api/quickbooks-accountant-export', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ restaurantId, closeMonth, rows, mapping: qbMapping, counts: { billDrafts: qbMonthlyBillDrafts.length, vendorCredits: qbMonthlyCredits.length, blocked: qbBlockedRecords.length } }) });
+    } catch (error) {
+      // Export still works locally. Server packet preflight is informational only.
+    }
+    downloadCsvRows(`${getRestaurantExportPrefix(appUser, '86chaos')}_quickbooks_accountant_packet_${closeMonth}.csv`, rows);
+  };
+
+  const downloadMonthlyClosePacket = () => {
+    const rows = buildAccountantPacketRows();
+    const text = [`86 Chaos QuickBooks Monthly Close Packet`, `Workspace: ${clientData?.name || appUser?.restaurantName || 'Restaurant'}`, `Month: ${closeMonth}`, `Prepared by: ${qbPacketForm.preparedBy || appUser?.name || ''}`, `Accountant: ${qbPacketForm.accountantEmail || ''}`, '', ...rows.slice(1).map(row => `${row[0]} — ${row[1]}: ${row[2]}${row[3] ? ` (${row[3]})` : ''}`), '', 'Safety: this packet is an owner-reviewed export. It does not post to QuickBooks or change restaurant data.'].join('\n');
+    downloadTextFile(`${getRestaurantExportPrefix(appUser, '86chaos')}_monthly_close_packet_${closeMonth}.txt`, text);
+  };
+
+  const saveMonthlyClosePacket = async () => {
+    await saveRecord({ type: 'quickbooks_accountant_packet', status: qbBlockedRecords.length ? 'needs_review' : 'ready_for_accountant', title: `QuickBooks accountant packet: ${closeMonth}`, category: 'Accountant Packet', closeMonth, preparedBy: qbPacketForm.preparedBy, accountantEmail: qbPacketForm.accountantEmail, rows: buildAccountantPacketRows(), mappingSnapshot: qbMapping, readinessScore: qbCloseReadiness, notes: qbPacketForm.notes || 'Owner Pro monthly close packet prepared for accountant review.' }, 'Accountant Packet Saved');
+  };
+
+  const downloadOwnerRollupCsv = () => {
+    const rows = [['Workspace','Restaurant ID','Net Sales','Deposits','Cash Variance','Open Alerts','QB Drafts','Repair Queue']].concat(ownerLocationRows.map(row => [row.name, row.restaurantId, row.netSales === '' ? '' : moneyText(row.netSales, 2), row.depositTotal === '' ? '' : moneyText(row.depositTotal, 2), row.cashVariance === '' ? '' : moneyText(row.cashVariance, 2), row.openAlerts, row.qbDrafts, row.repairQueue]));
+    downloadCsvRows(`${getRestaurantExportPrefix(appUser, '86chaos')}_owner_multi_location_rollup_${month}.csv`, rows);
+  };
+
   const downloadBackOfficeCsv = () => {
     const rows = [['Type','Title','Status','Date','Amount','Category','Vendor','Notes']].concat(records.map(r => [r.type || '', r.title || r.closedBy || '', r.status || '', r.date || r.expiresAt || r.invoiceDate || r.creditDate || '', r.depositAmount || r.amount || r.invoiceTotal || '', r.category || '', r.vendorName || '', r.notes || r.syncError || '']));
     downloadCsvRows(`${getRestaurantExportPrefix(appUser, '86chaos')}_back_office_records.csv`, rows);
@@ -11229,30 +11322,32 @@ const TabBackOffice = ({ currentDate, users = [], sales = [], timePunches = [], 
           <div>
             <div className="text-xs font-black uppercase tracking-widest text-[#D4A381] mb-1">Owner Pro</div>
             <h2 className="text-3xl font-black text-white tracking-tight">Back Office Suite</h2>
-            <p className="text-sm text-slate-300 font-bold mt-2 max-w-4xl">Owner-level deposits, documents, approvals, Python/admin alerts, reports, and QuickBooks Phase 2 bill-draft workflows without moving normal Financials out of Operations or Smart Kitchen.</p>
+            <p className="text-sm text-slate-300 font-bold mt-2 max-w-4xl">Owner-level deposits, documents, approvals, Python/admin alerts, reports, and QuickBooks Phase 3 accounting bridge workflows without moving normal Financials out of Operations or Smart Kitchen.</p>
           </div>
           <div className="flex flex-wrap gap-2">
             <button type="button" onClick={printOwnerReport} className={T.btn}>Print Owner Report</button>
+            <button type="button" onClick={downloadAccountantPacketCsv} className={T.btn}>Accountant Packet</button>
             <button type="button" onClick={downloadBackOfficeCsv} className={T.btnAlt}>Download CSV</button>
           </div>
         </div>
       </div>
 
-      <div className="grid sm:grid-cols-2 xl:grid-cols-5 gap-3">
+      <div className="grid sm:grid-cols-2 xl:grid-cols-6 gap-3">
         <MetricBox label="Net Sales" value={moneyText(netSales, 2)} helper="This month from Daily Close" tone="text-[#D4A381]" />
         <MetricBox label="Deposits" value={moneyText(depositTotal, 2)} helper="Back Office deposit log" />
         <MetricBox label="Open Alerts" value={openAlerts.length} helper="Owner/admin attention" tone={openAlerts.length ? 'text-orange-300' : 'text-emerald-400'} />
         <MetricBox label="Approvals" value={openApprovals.length} helper="Pending owner decisions" tone={openApprovals.length ? 'text-orange-300' : 'text-emerald-400'} />
         <MetricBox label="QB Drafts" value={qbBillDrafts.length} helper="Bill drafts pending review" tone={qbRepairQueue.length ? 'text-orange-300' : 'text-emerald-400'} />
+        <MetricBox label="QB Ready" value={`${qbCloseReadiness}%`} helper="Phase 3 close readiness" tone={qbCloseReadiness >= 85 ? 'text-emerald-400' : 'text-orange-300'} />
       </div>
 
       <div className="flex gap-2 overflow-x-auto pb-2 border-b border-[#2A353D] custom-scrollbar">
-        {[["dashboard","Dashboard"],["deposits","Deposit Log"],["approvals","Approval Queue"],["documents","Document Vault"],["reports","Owner Reports"],["quickbooks","QuickBooks"]].map(([id,label]) => <button key={id} type="button" onClick={() => setSubTab(id)} className={`px-4 py-3 rounded-xl text-xs uppercase tracking-widest font-black whitespace-nowrap ${subTab === id ? `${T.grad} text-slate-900` : 'bg-[#1A2126] text-slate-300 hover:text-white border border-[#2A353D]'}`}>{label}</button>)}
+        {[["dashboard","Dashboard"],["deposits","Deposit Log"],["approvals","Approval Queue"],["documents","Document Vault"],["reports","Owner Reports"],["quickbooks","QuickBooks"],["accountant-packet","Accountant Packet"],["owner-rollup","Owner Rollup"]].map(([id,label]) => <button key={id} type="button" onClick={() => setSubTab(id)} className={`px-4 py-3 rounded-xl text-xs uppercase tracking-widest font-black whitespace-nowrap ${subTab === id ? `${T.grad} text-slate-900` : 'bg-[#1A2126] text-slate-300 hover:text-white border border-[#2A353D]'}`}>{label}</button>)}
       </div>
 
       {subTab === 'dashboard' && <div className="grid lg:grid-cols-2 gap-4">
         <div className={`${T.card} p-4 space-y-3`}><h3 className="text-xl font-black text-white">Owner Attention</h3>{openAlerts.length === 0 && openApprovals.length === 0 && <FriendlyEmpty title="Nothing screaming" text="No open owner/admin alerts or approvals right now." />}{openAlerts.slice(0, 6).map(alert => <Row key={alert.id}><div className="flex justify-between gap-3"><div><div className="text-sm font-black text-white">{alert.title || alert.issue || 'Admin Alert'}</div><div className="text-xs font-bold text-slate-400 mt-1">{alert.summary || alert.message || alert.recommendation || 'Review this alert.'}</div></div><button type="button" onClick={() => acknowledgeAlert(alert, 'acknowledged')} className={T.btnAlt}>Acknowledge</button></div></Row>)}{openApprovals.slice(0, 6).map(item => <Row key={item.id}><div className="flex justify-between gap-3"><div><div className="text-sm font-black text-white">{item.title}</div><div className="text-xs font-bold text-slate-400 mt-1">{item.notes}</div></div><div className="flex gap-2"><button type="button" onClick={() => updateRecordStatus(item, 'approved')} className={T.btn}>Approve</button><button type="button" onClick={() => updateRecordStatus(item, 'dismissed')} className={T.btnAlt}>Dismiss</button></div></div></Row>)}</div>
-        <div className={`${T.card} p-4 space-y-3`}><h3 className="text-xl font-black text-white">Back Office Guardrails</h3><p className="text-sm text-slate-300 font-bold leading-relaxed">System Admin and Python scanning can send alerts here, but cannot apply restaurant changes. Owner/admin users review, approve, dismiss, export, or assign the work.</p><div className="grid sm:grid-cols-2 gap-3 text-xs font-bold text-slate-300"><Row>Financials remains Operations+ for labor, timesheets, sales, tips, and daily close.</Row><Row>Smart Kitchen keeps COGS, invoices, P&L, budgets, AI ordering, scans, and advanced reports.</Row><Row>Owner Pro adds Back Office, document vault, approval queue, owner reports, multi-location, and QuickBooks hub.</Row><Row>QuickBooks Phase 2 creates review-first bill/credit drafts. No live posting without owner approval and server credentials.</Row></div></div>
+        <div className={`${T.card} p-4 space-y-3`}><h3 className="text-xl font-black text-white">Back Office Guardrails</h3><p className="text-sm text-slate-300 font-bold leading-relaxed">System Admin and Python scanning can send alerts here, but cannot apply restaurant changes. Owner/admin users review, approve, dismiss, export, or assign the work.</p><div className="grid sm:grid-cols-2 gap-3 text-xs font-bold text-slate-300"><Row>Financials remains Operations+ for labor, timesheets, sales, tips, and daily close.</Row><Row>Smart Kitchen keeps COGS, invoices, P&L, budgets, AI ordering, scans, and advanced reports.</Row><Row>Owner Pro adds Back Office, document vault, approval queue, owner reports, multi-location, and QuickBooks hub.</Row><Row>QuickBooks Phase 3 adds accountant packets, sync health, class/location mapping, and review-first bill/credit drafts. No live posting without owner approval and server credentials.</Row></div></div>
       </div>}
 
       {subTab === 'deposits' && <div className="grid lg:grid-cols-3 gap-4"><form onSubmit={saveDeposit} className={`${T.card} p-4 space-y-3`}><h3 className="text-xl font-black text-white">Add Deposit / Close Record</h3><label className={T.label}>Date</label><input type="date" value={depositForm.date} onChange={e=>setDepositForm({...depositForm,date:e.target.value})} className={T.input}/><label className={T.label}>Cash Sales</label><input type="number" step="0.01" value={depositForm.cashSales} onChange={e=>setDepositForm({...depositForm,cashSales:e.target.value})} className={T.input}/><label className={T.label}>Card Sales</label><input type="number" step="0.01" value={depositForm.cardSales} onChange={e=>setDepositForm({...depositForm,cardSales:e.target.value})} className={T.input}/><label className={T.label}>Tips Paid / Payouts</label><div className="grid grid-cols-2 gap-2"><input type="number" step="0.01" value={depositForm.tipsPaid} onChange={e=>setDepositForm({...depositForm,tipsPaid:e.target.value})} className={T.input} placeholder="Tips"/><input type="number" step="0.01" value={depositForm.payouts} onChange={e=>setDepositForm({...depositForm,payouts:e.target.value})} className={T.input} placeholder="Payouts"/></div><label className={T.label}>Bank Deposit</label><input type="number" step="0.01" value={depositForm.depositAmount} onChange={e=>setDepositForm({...depositForm,depositAmount:e.target.value})} className={T.input}/><label className={T.label}>Drawer Over/Short</label><input type="number" step="0.01" value={depositForm.drawerVariance} onChange={e=>setDepositForm({...depositForm,drawerVariance:e.target.value})} className={T.input}/><label className={T.label}>Notes</label><textarea value={depositForm.notes} onChange={e=>setDepositForm({...depositForm,notes:e.target.value})} className={T.input} rows={3}/><button className={`${T.btn} w-full`}>Save Deposit</button></form><div className="lg:col-span-2 space-y-3">{deposits.length === 0 && <FriendlyEmpty title="No deposits yet" text="Save close/deposit records here for owner review and future QuickBooks sync." />}{deposits.slice(0, 30).map(d => <Row key={d.id}><div className="flex justify-between gap-3"><div><div className="text-sm font-black text-white">{formatDisplayDate(d.date)} • {moneyText(d.depositAmount, 2)}</div><div className="text-xs font-bold text-slate-400">Cash {moneyText(d.cashSales,2)} • Card {moneyText(d.cardSales,2)} • Variance {moneyText(d.drawerVariance,2)}</div>{d.notes && <div className="text-xs text-slate-500 mt-1">{d.notes}</div>}</div><button type="button" onClick={() => updateRecordStatus(d, 'reviewed')} className={T.btnAlt}>Mark Reviewed</button></div></Row>)}</div></div>}
@@ -11262,6 +11357,18 @@ const TabBackOffice = ({ currentDate, users = [], sales = [], timePunches = [], 
       {subTab === 'documents' && <div className="grid lg:grid-cols-3 gap-4"><form onSubmit={saveDocument} className={`${T.card} p-4 space-y-3`}><h3 className="text-xl font-black text-white">Add Document Record</h3><p className="text-xs font-bold text-slate-400">This saves the document record and renewal reminder data. File upload storage can be added after the owner/admin permission flow is tested.</p><label className={T.label}>Title</label><input value={documentForm.title} onChange={e=>setDocumentForm({...documentForm,title:e.target.value})} className={T.input} placeholder="Liquor license, insurance, hood inspection..."/><label className={T.label}>Category</label><select value={documentForm.category} onChange={e=>setDocumentForm({...documentForm,category:e.target.value})} className={T.input}>{['License / Permit','Insurance','Inspection','Vendor Contract','Equipment Manual','Employee Document','Lease / Utility','Other'].map(x=><option key={x}>{x}</option>)}</select><label className={T.label}>Expiration / Renewal Date</label><input type="date" value={documentForm.expiresAt} onChange={e=>setDocumentForm({...documentForm,expiresAt:e.target.value})} className={T.input}/><label className={T.label}>Storage Location / Link Note</label><input value={documentForm.location} onChange={e=>setDocumentForm({...documentForm,location:e.target.value})} className={T.input}/><label className={T.label}>Notes</label><textarea value={documentForm.notes} onChange={e=>setDocumentForm({...documentForm,notes:e.target.value})} className={T.input} rows={3}/><button className={`${T.btn} w-full`}>Save Document Record</button></form><div className="lg:col-span-2 space-y-3">{documents.length === 0 && <FriendlyEmpty title="No documents yet" text="Track licenses, permits, insurance, contracts, inspections, and renewal dates here." />}{documents.slice(0, 40).map(docItem => <Row key={docItem.id}><div className="flex justify-between gap-3"><div><div className="text-sm font-black text-white">{docItem.title}</div><div className="text-xs font-bold text-slate-400">{docItem.category} • Expires {docItem.expiresAt ? formatDisplayDate(docItem.expiresAt) : 'No date'} • {docItem.location || 'No location note'}</div>{docItem.notes && <div className="text-xs text-slate-500 mt-1">{docItem.notes}</div>}</div><button type="button" onClick={() => updateRecordStatus(docItem, 'reviewed')} className={T.btnAlt}>Reviewed</button></div></Row>)}</div></div>}
 
       {subTab === 'reports' && <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-4">{[['Owner Summary','KPIs, alerts, approvals, deposits, documents, and QuickBooks draft status.', printOwnerReport],['Back Office CSV','Spreadsheet-friendly export of Back Office records.', downloadBackOfficeCsv],['QuickBooks Prep CSV','Export bill drafts, vendor matches, credits, and repair queue.', downloadQuickBooksCsv],['Financial Center','Open the regular Financials tab for daily close, labor, tips, COGS, P&L, and budgets.', () => setActiveTab?.('financials')],['Document Review','Open vault records and renewal dates.', () => setSubTab('documents')],['QuickBooks Prep','Review invoice bill drafts, vendor credits, mappings, and sync repair.', () => setSubTab('quickbooks')]].map(([title, desc, action]) => <button type="button" key={title} onClick={action} className={`${T.card} p-5 text-left hover:border-[#D4A381]/60 transition-colors`}><h3 className="text-lg font-black text-white">{title}</h3><p className="text-sm text-slate-400 font-bold mt-2 leading-relaxed">{desc}</p></button>)}</div>}
+
+      {subTab === 'accountant-packet' && <div className="grid lg:grid-cols-3 gap-4">
+        <form onSubmit={(e)=>{e.preventDefault(); saveMonthlyClosePacket();}} className={`${T.card} p-4 space-y-3`}><h3 className="text-xl font-black text-white">Monthly Accountant Packet</h3><p className="text-xs font-bold text-slate-400">Phase 3 creates a clean month-end packet for accountant review. It exports data only. It does not post to QuickBooks.</p><label className={T.label}>Close Month</label><input type="month" value={qbPacketForm.closeMonth} onChange={e=>setQbPacketForm({...qbPacketForm,closeMonth:e.target.value})} className={T.input}/><label className={T.label}>Prepared By</label><input value={qbPacketForm.preparedBy} onChange={e=>setQbPacketForm({...qbPacketForm,preparedBy:e.target.value})} className={T.input}/><label className={T.label}>Accountant Email / Firm</label><input value={qbPacketForm.accountantEmail} onChange={e=>setQbPacketForm({...qbPacketForm,accountantEmail:e.target.value})} className={T.input} placeholder="Optional"/><label className={T.label}>Notes</label><textarea value={qbPacketForm.notes} onChange={e=>setQbPacketForm({...qbPacketForm,notes:e.target.value})} className={T.input} rows={3}/><button className={`${T.btn} w-full`}>Save Packet Record</button><button type="button" onClick={downloadAccountantPacketCsv} className={`${T.btnAlt} w-full`}>Download Accountant CSV</button><button type="button" onClick={downloadMonthlyClosePacket} className={`${T.btnAlt} w-full`}>Download Close Packet TXT</button></form>
+        <div className="lg:col-span-2 space-y-4"><div className="grid sm:grid-cols-3 gap-3"><MetricBox label="Close Readiness" value={`${qbCloseReadiness}%`} helper="Mapping + vendor + repair score" tone={qbCloseReadiness >= 85 ? 'text-emerald-400' : 'text-orange-300'} /><MetricBox label="Bill Draft Total" value={moneyText(qbDraftTotal, 2)} helper={`${qbMonthlyBillDrafts.length} monthly bill draft(s)`}/><MetricBox label="Credits" value={moneyText(qbCreditTotal, 2)} helper={`${qbMonthlyCredits.length} vendor credit draft(s)`}/></div><SimpleTable headers={['Section','Item','Value','Notes']} rows={buildAccountantPacketRows().slice(1)} empty="No accountant packet rows yet." /><div className={`${T.card} p-4 space-y-2`}><h3 className="text-xl font-black text-white">Suggested QuickBooks Mappings</h3>{qbSuggestedMappings.map(([label, value]) => <div key={label} className="flex justify-between gap-3 text-xs font-bold border-b border-[#2A353D] py-2"><span className="text-slate-400">{label}</span><span className="text-white text-right">{value}</span></div>)}</div></div>
+      </div>}
+
+      {subTab === 'owner-rollup' && <div className="space-y-4">
+        <div className={`${T.card} p-4 flex flex-col md:flex-row md:items-center justify-between gap-3`}><div><h3 className="text-xl font-black text-white">Owner Multi-Location Rollup</h3><p className="text-xs font-bold text-slate-400 mt-1">Phase 3 owner rollup shows the current workspace live and lists connected owner workspaces when your account profile exposes them. Open each workspace to load its live totals safely.</p></div><button type="button" onClick={downloadOwnerRollupCsv} className={T.btn}>Download Rollup CSV</button></div>
+        <div className="grid sm:grid-cols-4 gap-3"><MetricBox label="Locations Listed" value={ownerLocationRows.length} helper="Current + profile workspaces"/><MetricBox label="Current Net Sales" value={moneyText(netSales,2)} helper={month}/><MetricBox label="Open Alerts" value={openAlerts.length} helper="Current workspace" tone={openAlerts.length ? 'text-orange-300' : 'text-emerald-400'}/><MetricBox label="QB Repair Queue" value={qbRepairQueue.length} helper="Current workspace" tone={qbRepairQueue.length ? 'text-orange-300' : 'text-emerald-400'}/></div>
+        <SimpleTable headers={['Workspace','Restaurant ID','Net Sales','Deposits','Cash Variance','Open Alerts','QB Drafts','Repair Queue']} rows={ownerLocationRows.map(row => [row.name, row.restaurantId, row.netSales === '' ? 'Open workspace' : moneyText(row.netSales, 2), row.depositTotal === '' ? 'Open workspace' : moneyText(row.depositTotal, 2), row.cashVariance === '' ? 'Open workspace' : moneyText(row.cashVariance, 2), row.openAlerts, row.qbDrafts, row.repairQueue])} />
+        <div className={`${T.card} p-4 text-xs font-bold text-slate-400`}>Safety: this rollup does not cross-write restaurant records or QuickBooks companies. It is owner-visible reporting only. Live cross-location sync still requires explicit owner permission, correct workspace access, and server credentials.</div>
+      </div>}
 
       {subTab === 'quickbooks' && <div className="space-y-4">
         {!quickBooksAccess.allowed && <LockedFeatureScreen compact access={quickBooksAccess} appUser={appUser} setActiveTab={setActiveTab} />}
@@ -11274,8 +11381,8 @@ const TabBackOffice = ({ currentDate, users = [], sales = [], timePunches = [], 
           </div>
 
           <div className="grid lg:grid-cols-3 gap-4">
-            <div className={`${T.card} p-4 space-y-3`}><h3 className="text-xl font-black text-white">QuickBooks Integration Hub</h3><p className="text-sm text-slate-300 font-bold leading-relaxed">Phase 2 turns approved invoice scans into owner-reviewed QuickBooks bill drafts, adds vendor matching, vendor credit drafts, sync repair, and webhook setup checks. Live posting stays blocked until server credentials, tokens, and owner approval are present.</p><button type="button" onClick={checkQuickBooksConnect} className={`${T.btn} w-full`}>{qbStatus.checking ? 'Checking...' : 'Connect QuickBooks'}</button><div className="text-xs font-bold text-slate-400 bg-[#0B0E11] border border-[#2A353D] rounded-xl p-3">{qbStatus.message}</div><button type="button" onClick={checkWebhookStatus} className={`${T.btnAlt} w-full`}>{webhookStatus.checking ? 'Checking webhook...' : 'Check Webhook Setup'}</button><div className="text-xs font-bold text-slate-400 bg-[#0B0E11] border border-[#2A353D] rounded-xl p-3">{webhookStatus.message}</div><div className="text-[10px] font-black uppercase tracking-widest text-slate-500">Safety: no automatic posting, no vendor ordering, no payroll approval, no token stored in browser-writeable Firestore.</div></div>
-            <div className="lg:col-span-2 space-y-4"><div className={`${T.card} p-4 space-y-3`}><h3 className="text-xl font-black text-white">Account Mapping</h3><div className="grid sm:grid-cols-2 gap-3">{Object.entries({ accountsPayable:'Accounts Payable', bankAccount:'Bank / Deposit Account', salesIncome:'Sales Income', tipsPayable:'Tips Payable', cashOverShort:'Cash Over / Short', foodPurchases:'Food Purchases', beveragePurchases:'Beverage Purchases', supplies:'Supplies', cogs:'COGS', taxAccount:'Tax / Fees' }).map(([key,label]) => <label key={key}><span className={T.label}>{label}</span><input value={qbMapping[key]} onChange={e=>setQbMapping({...qbMapping,[key]:e.target.value})} className={T.input} placeholder="QuickBooks account name"/></label>)}<label><span className={T.label}>Class / Location Tracking</span><select value={qbMapping.classTracking} onChange={e=>setQbMapping({...qbMapping,classTracking:e.target.value})} className={T.input}><option value="off">Off</option><option value="class">QuickBooks Class</option><option value="location">QuickBooks Location</option></select></label></div><button type="button" onClick={saveQuickBooksMapping} className={T.btn}>Save Mapping for Review</button></div></div>
+            <div className={`${T.card} p-4 space-y-3`}><h3 className="text-xl font-black text-white">QuickBooks Integration Hub</h3><p className="text-sm text-slate-300 font-bold leading-relaxed">Phase 3 adds monthly accountant packets, sync health, class/location mapping, owner rollups, and close readiness on top of invoice bill drafts, vendor matching, vendor credits, repair, and webhook checks. Live posting stays blocked until server credentials, tokens, and owner approval are present.</p><button type="button" onClick={checkQuickBooksConnect} className={`${T.btn} w-full`}>{qbStatus.checking ? 'Checking...' : 'Connect QuickBooks'}</button><div className="text-xs font-bold text-slate-400 bg-[#0B0E11] border border-[#2A353D] rounded-xl p-3">{qbStatus.message}</div><button type="button" onClick={checkWebhookStatus} className={`${T.btnAlt} w-full`}>{webhookStatus.checking ? 'Checking webhook...' : 'Check Webhook Setup'}</button><div className="text-xs font-bold text-slate-400 bg-[#0B0E11] border border-[#2A353D] rounded-xl p-3">{webhookStatus.message}</div><div className="text-[10px] font-black uppercase tracking-widest text-slate-500">Safety: no automatic posting, no vendor ordering, no payroll approval, no token stored in browser-writeable Firestore.</div></div>
+            <div className="lg:col-span-2 space-y-4"><div className={`${T.card} p-4 space-y-3`}><h3 className="text-xl font-black text-white">Account / Class / Location Mapping</h3><div className="grid sm:grid-cols-2 gap-3">{Object.entries({ accountsPayable:'Accounts Payable', bankAccount:'Bank / Deposit Account', salesIncome:'Sales Income', tipsPayable:'Tips Payable', cashOverShort:'Cash Over / Short', foodPurchases:'Food Purchases', beveragePurchases:'Beverage Purchases', supplies:'Supplies', cogs:'COGS', taxAccount:'Tax / Fees', defaultClass:'Default Class', defaultLocation:'Default Location', foodClass:'Food Class', beverageClass:'Beverage Class', suppliesClass:'Supplies Class', salesClass:'Sales Class', taxAgency:'Tax Agency', memoTemplate:'Memo Template' }).map(([key,label]) => <label key={key}><span className={T.label}>{label}</span><input value={qbMapping[key] || ''} onChange={e=>setQbMapping({...qbMapping,[key]:e.target.value})} className={T.input} placeholder={key === 'memoTemplate' ? '86 Chaos {month} {vendor} {number}' : 'QuickBooks name'}/></label>)}<label><span className={T.label}>Class / Location Tracking</span><select value={qbMapping.classTracking} onChange={e=>setQbMapping({...qbMapping,classTracking:e.target.value})} className={T.input}><option value="off">Off</option><option value="class">QuickBooks Class</option><option value="location">QuickBooks Location</option><option value="both">Class + Location</option></select></label><label><span className={T.label}>Export Basis</span><select value={qbMapping.exportBasis} onChange={e=>setQbMapping({...qbMapping,exportBasis:e.target.value})} className={T.input}><option value="accrual">Accrual</option><option value="cash">Cash</option><option value="manager-review">Manager Review</option></select></label></div><div className="flex flex-wrap gap-2"><button type="button" onClick={saveQuickBooksMapping} className={T.btn}>Save Mapping for Review</button><button type="button" onClick={checkQuickBooksSyncHealth} className={T.btnAlt}>{syncHealth.checking ? 'Checking...' : 'Check Sync Health'}</button></div><div className="text-xs font-bold text-slate-400 bg-[#0B0E11] border border-[#2A353D] rounded-xl p-3">{syncHealth.message} {syncHealth.score !== null ? `Score: ${syncHealth.score}%` : ''}</div>{qbMappingMissing.length > 0 && <div className="text-xs font-bold text-orange-300">Missing recommended mappings: {qbMappingMissing.join(', ')}</div>}</div></div>
           </div>
 
           <div className="grid xl:grid-cols-2 gap-4">
