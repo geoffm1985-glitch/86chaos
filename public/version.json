@@ -1,9 +1,9 @@
 {
-  "version": "15.0.91",
-  "name": "86 Chaos 15.0.91 Python Alert-Only Guardrails",
+  "version": "15.0.92",
+  "name": "86 Chaos 15.0.92 Back Office Suite",
   "releasedAt": "2026-07-20",
-  "label": "15.0.91 Python Alert-Only Guardrails",
-  "build": "15.0.91",
+  "label": "15.0.92 Back Office Suite",
+  "build": "15.0.92",
   "updatedAt": "2026-07-20T00:00:00.000Z",
-  "notes": "Changes System Administrator Python Automation to read-only scan-and-alert mode. Findings are sent to restaurant owners/admins, and System Admin runs apply zero restaurant changes."
+  "notes": "Adds the Owner Pro Back Office Suite with deposits, document vault records, approval queue, owner reports, admin alerts, and a safe QuickBooks integration hub while keeping Financials available on Operations/Smart Kitchen as designed."
 }

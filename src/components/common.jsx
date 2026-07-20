@@ -121,6 +121,7 @@ const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppU
   pushTab({ id: 'today', label: managerBriefAccess.allowed ? 'Manager Brief' : 'Today Home', icon: <Star size={18}/>, dot: hasUnreadMessages || hasMyShiftAlert || hasScheduleBuilderAlert });
   if (isEnabled('schedule')) pushTab({ id: 'published', label: 'Time Clock & Schedule', icon: <Clock size={18}/>, dot: hasMyShiftAlert }); 
   if ((isEnabled('labor') || isEnabled('sales')) && (isGod || appUser?.isAdmin || perms.labor || perms.schedule || perms.sales)) pushTab({ id: 'financials', label: 'Financials', icon: <Scale size={18}/> });
+  if (!appUser?.isDemo && (isGod || appUser?.isOwner || appUser?.accountOwner || appUser?.workspaceOwner || appUser?.isAdmin || perms.settings || perms.backOffice || perms.ownerTools || perms.financialEdit)) pushTab({ id: 'back-office', label: 'Back Office', icon: <ClipboardList size={18}/> });
   if (isEnabled('ops') && (isGod || appUser?.isAdmin || perms.ops)) pushTab({ id: 'ops', label: 'Kitchen Command Center', icon: <ChefHat size={18}/> }); 
   if (isEnabled('messages')) pushTab({ id: 'messages', label: 'Message Board', icon: <MessageSquare size={18}/>, dot: hasUnreadMessages });
   if (isEnabled('events')) pushTab({ id: 'events', label: 'Event Calendar', icon: <Star size={18}/> });
@@ -147,13 +148,14 @@ const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppU
     { id: 'help-permissions', label: 'Update permissions', tab: 'help', keywords: 'tab access manage user permissions ops labor inventory' },
     { id: 'go-labor-punch', label: 'Add/Edit Time Punch', tab: 'financials', keywords: 'timesheet labor clock in out edit punch payroll financials' },
     { id: 'go-schedule-template', label: 'Schedule Templates', tab: 'published', keywords: 'schedule builder copy previous week template smart fill coverage' },
-    { id: 'go-support', label: 'Contact Support / Bug Report', tab: 'help', keywords: 'support faq problem broken help manual' }
+    { id: 'go-support', label: 'Contact Support / Bug Report', tab: 'help', keywords: 'support faq problem broken help manual' },
+    { id: 'go-back-office', label: 'Open Back Office', tab: 'back-office', keywords: 'owner office documents approvals deposits alerts reports vault quickbooks back office suite' }
   ];
   const menuSections = [
     { label: 'PEOPLE & SCHEDULING', ids: ['published', 'team', 'hr-training'] },
     { label: 'TODAY', ids: ['today', 'ops', 'reminders', 'events', 'messages'] },
     { label: 'KITCHEN OPERATIONS', ids: ['prep', 'inventory', 'recipes'] },
-    { label: 'BUSINESS & FINANCIALS', ids: ['financials', 'maintenance'] },
+    { label: 'BUSINESS & FINANCIALS', ids: ['financials', 'back-office', 'maintenance'] },
     { label: 'TOOLS & AUTOMATION', ids: ['ai-tools', 'menu-intelligence'] },
     { label: 'SYSTEM & SUPPORT', ids: ['settings', 'help', 'audit', 'godmode'] }
   ].map(section => ({ ...section, tabs: section.ids.map(id => tabs.find(tab => tab.id === id)).filter(Boolean) })).filter(section => section.tabs.length > 0);
@@ -664,6 +666,7 @@ const canVoiceOpenTab = (user = {}, clientFeatures = {}, tab = 'today', clientDa
   if (tab === 'published') return voiceFeatureEnabled(clientFeatures, 'schedule');
   if (tab === 'schedule') return voiceFeatureEnabled(clientFeatures, 'schedule') && (isAdmin || !!perms.schedule);
   if (tab === 'events') return voiceFeatureEnabled(clientFeatures, 'events') && (isAdmin || !!perms.events || !!perms.schedule || !!perms.team);
+  if (tab === 'back-office') return !user?.isDemo && (isSuper || isAdmin || !!user?.isOwner || !!user?.accountOwner || !!user?.workspaceOwner || !!perms.settings || !!perms.backOffice || !!perms.ownerTools || !!perms.financialEdit);
   if (tab === 'financials' || tab === 'sales' || tab === 'labor') return (voiceFeatureEnabled(clientFeatures, 'labor') || voiceFeatureEnabled(clientFeatures, 'sales')) && (isSuper || isAdmin || !!perms.labor || !!perms.sales || !!perms.schedule);
   if (tab === 'ops') return voiceFeatureEnabled(clientFeatures, 'ops') && (isSuper || isAdmin || !!perms.ops || isLegacyManagerRole);
   if (tab === 'messages') return voiceFeatureEnabled(clientFeatures, 'messages');

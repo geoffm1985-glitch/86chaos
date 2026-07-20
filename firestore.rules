@@ -383,6 +383,20 @@ service cloud.firestore {
     function canWriteOperationsFinancials(restId) { return canWriteFinancials(restId) && planAtLeastOperations(restId); }
     function canReadSmartFinancials(restId) { return canReadFinancials(restId) && planAtLeastSmartKitchen(restId); }
     function canWriteSmartFinancials(restId) { return canWriteFinancials(restId) && planAtLeastSmartKitchen(restId); }
+    function canReadBackOffice(restId) {
+      return planAtLeastOwnerPro(restId) && (
+        isSuperAdmin() || isRestaurantOwner(restId) || isAdminFor(restId) ||
+        (isTenantMatch(restId) && (hasPermFor(restId, 'backOffice') || hasPermFor(restId, 'ownerTools') || hasPermFor(restId, 'settings') || hasPermFor(restId, 'financialEdit')))
+      );
+    }
+    function canWriteBackOffice(restId) { return canReadBackOffice(restId); }
+    function backOfficeRecordIsValid(data) {
+      return data.restaurantId is string &&
+        data.type in ['deposit', 'document', 'approval', 'quickbooks', 'ownerReport'] &&
+        data.status is string &&
+        data.createdAt != null &&
+        data.updatedAt != null;
+    }
     function canReadOwnPunch(data) {
       return signedIn() && data.restaurantId is string && isTenantMatch(data.restaurantId) &&
         (data.employeeId == request.auth.uid || data.userId == request.auth.uid || data.createdBy == request.auth.uid);
@@ -1171,6 +1185,27 @@ service cloud.firestore {
       allow create: if signedIn() && request.resource.data.restaurantId is string && canWriteSmartFinancials(request.resource.data.restaurantId);
       allow update: if signedIn() && resource.data.restaurantId is string && request.resource.data.restaurantId == resource.data.restaurantId && canWriteSmartFinancials(resource.data.restaurantId);
       allow delete: if signedIn() && resource.data.restaurantId is string && canWriteSmartFinancials(resource.data.restaurantId);
+    }
+
+
+    match /backOfficeRecords/{docId} {
+      allow read: if signedIn() && resource.data.restaurantId is string && canReadBackOffice(resource.data.restaurantId);
+      allow create: if signedIn() && backOfficeRecordIsValid(request.resource.data) && canWriteBackOffice(request.resource.data.restaurantId);
+      allow update: if signedIn() && resource.data.restaurantId is string &&
+        request.resource.data.restaurantId == resource.data.restaurantId &&
+        backOfficeRecordIsValid(request.resource.data) &&
+        canWriteBackOffice(resource.data.restaurantId);
+      allow delete: if signedIn() && resource.data.restaurantId is string && canWriteBackOffice(resource.data.restaurantId);
+    }
+
+    match /quickBooksSettings/{docId} {
+      allow read: if signedIn() && resource.data.restaurantId is string && canReadBackOffice(resource.data.restaurantId);
+      allow create: if signedIn() && request.resource.data.restaurantId is string && canWriteBackOffice(request.resource.data.restaurantId) && !request.resource.data.keys().hasAny(['accessToken', 'refreshToken', 'clientSecret', 'privateKey']);
+      allow update: if signedIn() && resource.data.restaurantId is string &&
+        request.resource.data.restaurantId == resource.data.restaurantId &&
+        canWriteBackOffice(resource.data.restaurantId) &&
+        !request.resource.data.keys().hasAny(['accessToken', 'refreshToken', 'clientSecret', 'privateKey']);
+      allow delete: if false;
     }
 
     // Future POS/accounting import collections stay locked behind Smart Kitchen+ financial access.

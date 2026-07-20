@@ -10969,4 +10969,168 @@ const TabFinancials = ({ currentDate, users = [], shifts = [], sales = [], timeP
 };
 
 
-export { TabTeam, TabMessages, TabSettings, TabAuditLog, TabSales, TabFinancials, TabGodMode, ROLE_KEYWORDS, TabLabor, HELP_ARTICLES, TabHelpCenter };
+const TabBackOffice = ({ currentDate, users = [], sales = [], timePunches = [], restaurantAdminAlerts = [], appUser, clientData = {}, setActiveTab, addToast }) => {
+  const restaurantId = appUser?.restaurantId || clientData?.id || clientData?.restaurantId;
+  const planAccess = usePlanAccess(appUser, clientData);
+  const backOfficeAccess = planAccess.canUse(FEATURE_KEYS.BACK_OFFICE_SUITE);
+  const quickBooksAccess = planAccess.canUse(FEATURE_KEYS.QUICKBOOKS_INTEGRATION);
+  const [subTab, setSubTab] = useState('dashboard');
+  const [depositForm, setDepositForm] = useState({ date: getToday(), cashSales: '', cardSales: '', tipsPaid: '', payouts: '', depositAmount: '', drawerVariance: '', closedBy: appUser?.name || '', notes: '' });
+  const [documentForm, setDocumentForm] = useState({ title: '', category: 'License / Permit', expiresAt: '', location: '', notes: '' });
+  const [approvalForm, setApprovalForm] = useState({ title: '', category: 'Owner Review', priority: 'normal', requestedBy: appUser?.name || '', notes: '' });
+  const [qbMapping, setQbMapping] = useState({ bankAccount: '', salesIncome: '', tipsPayable: '', cashOverShort: '', foodPurchases: '', beveragePurchases: '', supplies: '', cogs: '', classTracking: 'off' });
+  const [qbStatus, setQbStatus] = useState({ checking: false, configured: false, message: 'Not connected. QuickBooks sync is owner-approved and safe by default.' });
+
+  const records = useLiveCollection('backOfficeRecords', restaurantId, { enabled: !!restaurantId && backOfficeAccess.allowed, limitCount: 250, fallbackLimitCount: 100 });
+  const deposits = records.filter(r => r.type === 'deposit').sort((a,b) => String(b.date || b.createdAt || '').localeCompare(String(a.date || a.createdAt || '')));
+  const documents = records.filter(r => r.type === 'document').sort((a,b) => String(a.expiresAt || '9999').localeCompare(String(b.expiresAt || '9999')));
+  const approvals = records.filter(r => r.type === 'approval').sort((a,b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
+  const qbRecords = records.filter(r => r.type === 'quickbooks');
+  const openAlerts = (restaurantAdminAlerts || []).filter(a => !['resolved', 'dismissed'].includes(String(a.status || 'open').toLowerCase()));
+  const openApprovals = approvals.filter(a => !['approved', 'dismissed', 'done'].includes(String(a.status || 'pending').toLowerCase()));
+  const month = (currentDate || getToday()).slice(0, 7);
+  const monthSales = (sales || []).filter(s => safeFinanceDate(s).startsWith(month));
+  const netSales = monthSales.reduce((sum, item) => sum + getFinancialNetSales(item), 0);
+  const depositTotal = deposits.filter(d => String(d.date || '').startsWith(month)).reduce((sum, d) => sum + parseFinanceAmount(d.depositAmount), 0);
+  const cashVariance = deposits.filter(d => String(d.date || '').startsWith(month)).reduce((sum, d) => sum + parseFinanceAmount(d.drawerVariance), 0);
+  const expiringDocs = documents.filter(d => d.expiresAt && new Date(d.expiresAt).getTime() - Date.now() < 45 * 86400000 && new Date(d.expiresAt).getTime() >= Date.now());
+
+  if (!backOfficeAccess.allowed) return <LockedFeatureScreen access={backOfficeAccess} appUser={appUser} setActiveTab={setActiveTab} />;
+
+  const stamp = () => Timestamp.now();
+  const saveRecord = async (payload, successTitle = 'Saved') => {
+    if (!restaurantId) return addToast?.('Missing Workspace', 'No restaurant workspace was loaded.');
+    await addDoc(collection(db, 'backOfficeRecords'), sanitizeForFirestore({
+      ...payload,
+      restaurantId,
+      workspaceName: clientData?.name || clientData?.restaurantName || appUser?.restaurantName || '',
+      createdAt: stamp(),
+      updatedAt: stamp(),
+      createdBy: appUser?.id || auth.currentUser?.uid || '',
+      createdByName: appUser?.name || appUser?.email || 'Owner/Admin'
+    }));
+    addToast?.(successTitle, 'Back Office record saved.');
+  };
+
+  const saveDeposit = async (event) => {
+    event.preventDefault();
+    const depositAmount = parseFinanceAmount(depositForm.depositAmount);
+    if (!depositForm.date || depositAmount < 0) return addToast?.('Deposit Not Saved', 'Enter a date and deposit amount.');
+    await saveRecord({ type: 'deposit', status: 'open', ...depositForm, depositAmount, cashSales: parseFinanceAmount(depositForm.cashSales), cardSales: parseFinanceAmount(depositForm.cardSales), tipsPaid: parseFinanceAmount(depositForm.tipsPaid), payouts: parseFinanceAmount(depositForm.payouts), drawerVariance: parseFinanceAmount(depositForm.drawerVariance) }, 'Deposit Saved');
+    setDepositForm({ date: getToday(), cashSales: '', cardSales: '', tipsPaid: '', payouts: '', depositAmount: '', drawerVariance: '', closedBy: appUser?.name || '', notes: '' });
+  };
+
+  const saveDocument = async (event) => {
+    event.preventDefault();
+    if (!documentForm.title.trim()) return addToast?.('Document Not Saved', 'Add a document title.');
+    await saveRecord({ type: 'document', status: 'active', ...documentForm }, 'Document Record Saved');
+    setDocumentForm({ title: '', category: 'License / Permit', expiresAt: '', location: '', notes: '' });
+  };
+
+  const saveApproval = async (event) => {
+    event.preventDefault();
+    if (!approvalForm.title.trim()) return addToast?.('Approval Not Saved', 'Add an approval title.');
+    await saveRecord({ type: 'approval', status: 'pending', ...approvalForm }, 'Approval Created');
+    setApprovalForm({ title: '', category: 'Owner Review', priority: 'normal', requestedBy: appUser?.name || '', notes: '' });
+  };
+
+  const updateRecordStatus = async (record, status) => {
+    if (!record?.id) return;
+    await updateDoc(doc(db, 'backOfficeRecords', record.id), sanitizeForFirestore({ status, updatedAt: stamp(), reviewedAt: stamp(), reviewedBy: appUser?.id || auth.currentUser?.uid || '', reviewedByName: appUser?.name || appUser?.email || 'Owner/Admin' }));
+    addToast?.('Updated', `${record.title || 'Record'} marked ${status}.`);
+  };
+
+  const acknowledgeAlert = async (alert, status = 'acknowledged') => {
+    if (!alert?.id) return;
+    await updateDoc(doc(db, 'restaurantAdminAlerts', alert.id), sanitizeForFirestore({ status, acknowledgedAt: stamp(), acknowledgedBy: appUser?.id || auth.currentUser?.uid || '', acknowledgedByName: appUser?.name || appUser?.email || 'Owner/Admin', updatedAt: stamp() }));
+    addToast?.('Alert Updated', `Restaurant admin alert marked ${status}.`);
+  };
+
+  const saveQuickBooksMapping = async () => {
+    await saveRecord({ type: 'quickbooks', status: 'mapping_saved', title: 'QuickBooks account mapping', category: 'QuickBooks', mapping: qbMapping, notes: 'Owner Pro QuickBooks mapping saved in 86 Chaos. No OAuth tokens or QuickBooks secrets are stored in browser-writable records.' }, 'QuickBooks Mapping Saved');
+  };
+
+  const checkQuickBooksConnect = async () => {
+    setQbStatus({ checking: true, configured: false, message: 'Checking QuickBooks configuration...' });
+    try {
+      const result = await secureFetch('/api/quickbooks-connect', { method: 'POST', body: JSON.stringify({ restaurantId }) });
+      if (result?.connectUrl) {
+        setQbStatus({ checking: false, configured: true, message: 'QuickBooks OAuth is configured. Open the secure Intuit connection window when you are ready.' });
+        window.open(result.connectUrl, '_blank', 'noopener,noreferrer');
+      } else {
+        setQbStatus({ checking: false, configured: false, message: result?.message || 'QuickBooks credentials are not configured yet. Mapping and review tools are ready, live sync stays off.' });
+      }
+    } catch (error) {
+      setQbStatus({ checking: false, configured: false, message: error?.message || 'QuickBooks preflight failed. Live sync remains off.' });
+    }
+  };
+
+  const printOwnerReport = () => {
+    const rows = [
+      ['Metric', 'Value', 'Notes'],
+      ['Net sales this month', moneyText(netSales, 2), `${monthSales.length} daily close record(s)`],
+      ['Deposit total this month', moneyText(depositTotal, 2), `${deposits.filter(d => String(d.date || '').startsWith(month)).length} deposit record(s)`],
+      ['Cash variance this month', moneyText(cashVariance, 2), 'From Back Office deposits'],
+      ['Open admin alerts', openAlerts.length, 'Python/System Admin alerts for owner/admin review'],
+      ['Open approvals', openApprovals.length, 'Owner/admin decisions waiting'],
+      ['Documents expiring soon', expiringDocs.length, 'Due within 45 days']
+    ];
+    openPrintableReport({ title: '86 Chaos Owner Back Office Report', subtitle: `${clientData?.name || appUser?.restaurantName || 'Restaurant'} • ${month}`, rows, filename: `${getRestaurantExportPrefix(appUser, '86chaos')}_back_office_owner_report_${month}` });
+  };
+
+  const downloadBackOfficeCsv = () => {
+    const rows = [['Type','Title','Status','Date','Amount','Category','Notes']].concat(records.map(r => [r.type || '', r.title || r.closedBy || '', r.status || '', r.date || r.expiresAt || '', r.depositAmount || r.amount || '', r.category || '', r.notes || '']));
+    downloadCsvRows(`${getRestaurantExportPrefix(appUser, '86chaos')}_back_office_records.csv`, rows);
+  };
+
+  const MetricBox = ({ label, value, helper, tone = 'text-white' }) => <div className={`${T.card} p-4`}><div className="text-[9px] font-black uppercase tracking-widest text-slate-500">{label}</div><div className={`text-2xl font-black mt-1 ${tone}`}>{value}</div>{helper && <div className="text-xs font-bold text-slate-400 mt-1">{helper}</div>}</div>;
+  const Row = ({ children }) => <div className="p-3 bg-[#0B0E11] border border-[#2A353D] rounded-xl">{children}</div>;
+
+  return (
+    <div className="max-w-7xl mx-auto space-y-4 pb-24">
+      <div className={`${T.card} p-5 border-[#D4A381]/30`}>
+        <div className="flex flex-col xl:flex-row xl:items-end justify-between gap-4">
+          <div>
+            <div className="text-xs font-black uppercase tracking-widest text-[#D4A381] mb-1">Owner Pro</div>
+            <h2 className="text-3xl font-black text-white tracking-tight">Back Office Suite</h2>
+            <p className="text-sm text-slate-300 font-bold mt-2 max-w-4xl">Owner-level deposits, documents, approvals, Python/admin alerts, reports, and QuickBooks prep without moving normal Financials out of Operations or Smart Kitchen.</p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <button type="button" onClick={printOwnerReport} className={T.btn}>Print Owner Report</button>
+            <button type="button" onClick={downloadBackOfficeCsv} className={T.btnAlt}>Download CSV</button>
+          </div>
+        </div>
+      </div>
+
+      <div className="grid sm:grid-cols-2 xl:grid-cols-5 gap-3">
+        <MetricBox label="Net Sales" value={moneyText(netSales, 2)} helper="This month from Daily Close" tone="text-[#D4A381]" />
+        <MetricBox label="Deposits" value={moneyText(depositTotal, 2)} helper="Back Office deposit log" />
+        <MetricBox label="Open Alerts" value={openAlerts.length} helper="Owner/admin attention" tone={openAlerts.length ? 'text-orange-300' : 'text-emerald-400'} />
+        <MetricBox label="Approvals" value={openApprovals.length} helper="Pending owner decisions" tone={openApprovals.length ? 'text-orange-300' : 'text-emerald-400'} />
+        <MetricBox label="Expiring Docs" value={expiringDocs.length} helper="Due within 45 days" tone={expiringDocs.length ? 'text-red-300' : 'text-emerald-400'} />
+      </div>
+
+      <div className="flex gap-2 overflow-x-auto pb-2 border-b border-[#2A353D] custom-scrollbar">
+        {[['dashboard','Dashboard'],['deposits','Deposit Log'],['approvals','Approval Queue'],['documents','Document Vault'],['reports','Owner Reports'],['quickbooks','QuickBooks']].map(([id,label]) => <button key={id} type="button" onClick={() => setSubTab(id)} className={`px-4 py-3 rounded-xl text-xs uppercase tracking-widest font-black whitespace-nowrap ${subTab === id ? `${T.grad} text-slate-900` : 'bg-[#1A2126] text-slate-300 hover:text-white border border-[#2A353D]'}`}>{label}</button>)}
+      </div>
+
+      {subTab === 'dashboard' && <div className="grid lg:grid-cols-2 gap-4">
+        <div className={`${T.card} p-4 space-y-3`}><h3 className="text-xl font-black text-white">Owner Attention</h3>{openAlerts.length === 0 && openApprovals.length === 0 && <FriendlyEmpty title="Nothing screaming" text="No open owner/admin alerts or approvals right now." />}{openAlerts.slice(0, 6).map(alert => <Row key={alert.id}><div className="flex justify-between gap-3"><div><div className="text-sm font-black text-white">{alert.title || alert.issue || 'Admin Alert'}</div><div className="text-xs font-bold text-slate-400 mt-1">{alert.summary || alert.message || alert.recommendation || 'Review this alert.'}</div></div><button type="button" onClick={() => acknowledgeAlert(alert, 'acknowledged')} className={T.btnAlt}>Acknowledge</button></div></Row>)}{openApprovals.slice(0, 6).map(item => <Row key={item.id}><div className="flex justify-between gap-3"><div><div className="text-sm font-black text-white">{item.title}</div><div className="text-xs font-bold text-slate-400 mt-1">{item.notes}</div></div><div className="flex gap-2"><button type="button" onClick={() => updateRecordStatus(item, 'approved')} className={T.btn}>Approve</button><button type="button" onClick={() => updateRecordStatus(item, 'dismissed')} className={T.btnAlt}>Dismiss</button></div></div></Row>)}</div>
+        <div className={`${T.card} p-4 space-y-3`}><h3 className="text-xl font-black text-white">Back Office Guardrails</h3><p className="text-sm text-slate-300 font-bold leading-relaxed">System Admin and Python scanning can send alerts here, but cannot apply restaurant changes. Owner/admin users review, approve, dismiss, export, or assign the work.</p><div className="grid sm:grid-cols-2 gap-3 text-xs font-bold text-slate-300"><Row>Financials remains Operations+ for labor, timesheets, sales, tips, and daily close.</Row><Row>Smart Kitchen keeps COGS, invoices, P&L, budgets, AI ordering, scans, and advanced reports.</Row><Row>Owner Pro adds Back Office, document vault, approval queue, owner reports, multi-location, and QuickBooks hub.</Row><Row>QuickBooks live posting is off until OAuth credentials and owner approval are configured.</Row></div></div>
+      </div>}
+
+      {subTab === 'deposits' && <div className="grid lg:grid-cols-3 gap-4"><form onSubmit={saveDeposit} className={`${T.card} p-4 space-y-3`}><h3 className="text-xl font-black text-white">Add Deposit / Close Record</h3><label className={T.label}>Date</label><input type="date" value={depositForm.date} onChange={e=>setDepositForm({...depositForm,date:e.target.value})} className={T.input}/><label className={T.label}>Cash Sales</label><input type="number" step="0.01" value={depositForm.cashSales} onChange={e=>setDepositForm({...depositForm,cashSales:e.target.value})} className={T.input}/><label className={T.label}>Card Sales</label><input type="number" step="0.01" value={depositForm.cardSales} onChange={e=>setDepositForm({...depositForm,cardSales:e.target.value})} className={T.input}/><label className={T.label}>Tips Paid / Payouts</label><div className="grid grid-cols-2 gap-2"><input type="number" step="0.01" value={depositForm.tipsPaid} onChange={e=>setDepositForm({...depositForm,tipsPaid:e.target.value})} className={T.input} placeholder="Tips"/><input type="number" step="0.01" value={depositForm.payouts} onChange={e=>setDepositForm({...depositForm,payouts:e.target.value})} className={T.input} placeholder="Payouts"/></div><label className={T.label}>Bank Deposit</label><input type="number" step="0.01" value={depositForm.depositAmount} onChange={e=>setDepositForm({...depositForm,depositAmount:e.target.value})} className={T.input}/><label className={T.label}>Drawer Over/Short</label><input type="number" step="0.01" value={depositForm.drawerVariance} onChange={e=>setDepositForm({...depositForm,drawerVariance:e.target.value})} className={T.input}/><label className={T.label}>Notes</label><textarea value={depositForm.notes} onChange={e=>setDepositForm({...depositForm,notes:e.target.value})} className={T.input} rows={3}/><button className={`${T.btn} w-full`}>Save Deposit</button></form><div className="lg:col-span-2 space-y-3">{deposits.length === 0 && <FriendlyEmpty title="No deposits yet" text="Save close/deposit records here for owner review and future QuickBooks sync." />}{deposits.slice(0, 30).map(d => <Row key={d.id}><div className="flex justify-between gap-3"><div><div className="text-sm font-black text-white">{formatDisplayDate(d.date)} • {moneyText(d.depositAmount, 2)}</div><div className="text-xs font-bold text-slate-400">Cash {moneyText(d.cashSales,2)} • Card {moneyText(d.cardSales,2)} • Variance {moneyText(d.drawerVariance,2)}</div>{d.notes && <div className="text-xs text-slate-500 mt-1">{d.notes}</div>}</div><button type="button" onClick={() => updateRecordStatus(d, 'reviewed')} className={T.btnAlt}>Mark Reviewed</button></div></Row>)}</div></div>}
+
+      {subTab === 'approvals' && <div className="grid lg:grid-cols-3 gap-4"><form onSubmit={saveApproval} className={`${T.card} p-4 space-y-3`}><h3 className="text-xl font-black text-white">Create Approval Item</h3><label className={T.label}>Title</label><input value={approvalForm.title} onChange={e=>setApprovalForm({...approvalForm,title:e.target.value})} className={T.input} placeholder="Price jump, repair quote, menu change..."/><label className={T.label}>Category</label><select value={approvalForm.category} onChange={e=>setApprovalForm({...approvalForm,category:e.target.value})} className={T.input}>{['Owner Review','Invoice Issue','Vendor Credit','Repair / Maintenance','Menu / Pricing','Payroll / Labor','Python Alert Follow-up'].map(x=><option key={x}>{x}</option>)}</select><label className={T.label}>Priority</label><select value={approvalForm.priority} onChange={e=>setApprovalForm({...approvalForm,priority:e.target.value})} className={T.input}><option value="normal">Normal</option><option value="high">High</option><option value="urgent">Urgent</option></select><label className={T.label}>Notes</label><textarea value={approvalForm.notes} onChange={e=>setApprovalForm({...approvalForm,notes:e.target.value})} className={T.input} rows={4}/><button className={`${T.btn} w-full`}>Add to Approval Queue</button></form><div className="lg:col-span-2 space-y-3">{approvals.length === 0 && <FriendlyEmpty title="No approvals yet" text="Manager suggestions, Python findings, and owner decisions can live here." />}{approvals.slice(0, 40).map(item => <Row key={item.id}><div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3"><div><div className="text-sm font-black text-white">{item.title}</div><div className="text-[10px] font-black uppercase tracking-widest text-[#D4A381] mt-1">{item.category} • {item.priority} • {item.status || 'pending'}</div><div className="text-xs font-bold text-slate-400 mt-1">{item.notes}</div></div><div className="flex gap-2"><button type="button" onClick={() => updateRecordStatus(item, 'approved')} className={T.btn}>Approve</button><button type="button" onClick={() => updateRecordStatus(item, 'dismissed')} className={T.btnAlt}>Dismiss</button></div></div></Row>)}</div></div>}
+
+      {subTab === 'documents' && <div className="grid lg:grid-cols-3 gap-4"><form onSubmit={saveDocument} className={`${T.card} p-4 space-y-3`}><h3 className="text-xl font-black text-white">Add Document Record</h3><p className="text-xs font-bold text-slate-400">This saves the document record and renewal reminder data. File upload storage can be added after the owner/admin permission flow is tested.</p><label className={T.label}>Title</label><input value={documentForm.title} onChange={e=>setDocumentForm({...documentForm,title:e.target.value})} className={T.input} placeholder="Liquor license, insurance, hood inspection..."/><label className={T.label}>Category</label><select value={documentForm.category} onChange={e=>setDocumentForm({...documentForm,category:e.target.value})} className={T.input}>{['License / Permit','Insurance','Inspection','Vendor Contract','Equipment Manual','Employee Document','Lease / Utility','Other'].map(x=><option key={x}>{x}</option>)}</select><label className={T.label}>Expiration / Renewal Date</label><input type="date" value={documentForm.expiresAt} onChange={e=>setDocumentForm({...documentForm,expiresAt:e.target.value})} className={T.input}/><label className={T.label}>Storage Location / Link Note</label><input value={documentForm.location} onChange={e=>setDocumentForm({...documentForm,location:e.target.value})} className={T.input}/><label className={T.label}>Notes</label><textarea value={documentForm.notes} onChange={e=>setDocumentForm({...documentForm,notes:e.target.value})} className={T.input} rows={3}/><button className={`${T.btn} w-full`}>Save Document Record</button></form><div className="lg:col-span-2 space-y-3">{documents.length === 0 && <FriendlyEmpty title="No documents yet" text="Track licenses, permits, insurance, contracts, inspections, and renewal dates here." />}{documents.slice(0, 40).map(docItem => <Row key={docItem.id}><div className="flex justify-between gap-3"><div><div className="text-sm font-black text-white">{docItem.title}</div><div className="text-xs font-bold text-slate-400">{docItem.category} • Expires {docItem.expiresAt ? formatDisplayDate(docItem.expiresAt) : 'No date'} • {docItem.location || 'No location note'}</div>{docItem.notes && <div className="text-xs text-slate-500 mt-1">{docItem.notes}</div>}</div><button type="button" onClick={() => updateRecordStatus(docItem, 'reviewed')} className={T.btnAlt}>Reviewed</button></div></Row>)}</div></div>}
+
+      {subTab === 'reports' && <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-4">{[['Owner Summary','KPIs, alerts, approvals, deposits, and expiring documents.', printOwnerReport],['Back Office CSV','Spreadsheet-friendly export of Back Office records.', downloadBackOfficeCsv],['Financial Center','Open the regular Financials tab for daily close, labor, tips, COGS, P&L, and budgets.', () => setActiveTab?.('financials')],['Admin Alerts','Review Python/System Admin alerts sent to restaurant owners/admins.', () => setSubTab('dashboard')],['Document Review','Open vault records and renewal dates.', () => setSubTab('documents')],['QuickBooks Prep','Review mapping and sync-readiness before any accounting posting.', () => setSubTab('quickbooks')]].map(([title, desc, action]) => <button type="button" key={title} onClick={action} className={`${T.card} p-5 text-left hover:border-[#D4A381]/60 transition-colors`}><h3 className="text-lg font-black text-white">{title}</h3><p className="text-sm text-slate-400 font-bold mt-2 leading-relaxed">{desc}</p></button>)}</div>}
+
+      {subTab === 'quickbooks' && <div className="grid lg:grid-cols-3 gap-4"><div className={`${T.card} p-4 space-y-3`}><h3 className="text-xl font-black text-white">QuickBooks Integration Hub</h3>{!quickBooksAccess.allowed && <LockedFeatureScreen compact access={quickBooksAccess} appUser={appUser} setActiveTab={setActiveTab} />} {quickBooksAccess.allowed && <><p className="text-sm text-slate-300 font-bold leading-relaxed">Owner Pro gets the QuickBooks prep flow. Live OAuth requires Intuit credentials in Vercel first. Until then, 86 Chaos saves mappings and review records only.</p><button type="button" onClick={checkQuickBooksConnect} className={`${T.btn} w-full`}>{qbStatus.checking ? 'Checking...' : 'Connect QuickBooks'}</button><div className="text-xs font-bold text-slate-400 bg-[#0B0E11] border border-[#2A353D] rounded-xl p-3">{qbStatus.message}</div><div className="text-[10px] font-black uppercase tracking-widest text-slate-500">Safety: no automatic posting, no vendor ordering, no payroll approval, no token stored in browser-writeable Firestore.</div></>}</div><div className="lg:col-span-2 space-y-4"><div className={`${T.card} p-4 space-y-3`}><h3 className="text-xl font-black text-white">Account Mapping</h3><div className="grid sm:grid-cols-2 gap-3">{Object.entries({ bankAccount:'Bank / Deposit Account', salesIncome:'Sales Income', tipsPayable:'Tips Payable', cashOverShort:'Cash Over / Short', foodPurchases:'Food Purchases', beveragePurchases:'Beverage Purchases', supplies:'Supplies', cogs:'COGS' }).map(([key,label]) => <label key={key}><span className={T.label}>{label}</span><input value={qbMapping[key]} onChange={e=>setQbMapping({...qbMapping,[key]:e.target.value})} className={T.input} placeholder="QuickBooks account name"/></label>)}<label><span className={T.label}>Class / Location Tracking</span><select value={qbMapping.classTracking} onChange={e=>setQbMapping({...qbMapping,classTracking:e.target.value})} className={T.input}><option value="off">Off</option><option value="class">QuickBooks Class</option><option value="location">QuickBooks Location</option></select></label></div><button type="button" onClick={saveQuickBooksMapping} className={T.btn}>Save Mapping for Review</button></div><div className={`${T.card} p-4`}><h3 className="text-xl font-black text-white mb-3">Sync Readiness</h3><div className="grid sm:grid-cols-2 gap-3 text-sm font-bold text-slate-300"><Row>Daily Close / Deposits → future Sales Receipt or Journal Entry draft</Row><Row>Invoice Scans → future QuickBooks Bill draft after vendor/account mapping</Row><Row>Vendor Credits → future Vendor Credit draft</Row><Row>Owner/admin approval required before any send</Row></div>{qbRecords.length > 0 && <div className="mt-4 text-xs font-bold text-slate-400">{qbRecords.length} QuickBooks prep record(s) saved.</div>}</div></div></div>}
+    </div>
+  );
+};
+
+
+export { TabTeam, TabMessages, TabSettings, TabAuditLog, TabSales, TabFinancials, TabBackOffice, TabGodMode, ROLE_KEYWORDS, TabLabor, HELP_ARTICLES, TabHelpCenter };

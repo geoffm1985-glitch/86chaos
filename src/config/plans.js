@@ -78,6 +78,14 @@ export const FEATURE_KEYS = {
   SECURITY_CENTER: 'security_center',
   EXPENSES: 'expenses',
 
+  BACK_OFFICE_SUITE: 'back_office_suite',
+  BACK_OFFICE_DASHBOARD: 'back_office_dashboard',
+  BACK_OFFICE_DEPOSIT_LOG: 'back_office_deposit_log',
+  BACK_OFFICE_DOCUMENTS: 'back_office_documents',
+  BACK_OFFICE_APPROVALS: 'back_office_approvals',
+  BACK_OFFICE_OWNER_REPORTS: 'back_office_owner_reports',
+  QUICKBOOKS_INTEGRATION: 'quickbooks_integration',
+
   MULTI_LOCATION_DASHBOARD: 'multi_location_dashboard',
   CROSS_LOCATION_REPORTING: 'cross_location_reporting',
   ADVANCED_OWNER_TOOLS: 'advanced_owner_tools',
@@ -118,6 +126,9 @@ const SMART_KITCHEN_ADDS = [
 ];
 
 const OWNER_PRO_ADDS = [
+  FEATURE_KEYS.BACK_OFFICE_SUITE, FEATURE_KEYS.BACK_OFFICE_DASHBOARD, FEATURE_KEYS.BACK_OFFICE_DEPOSIT_LOG,
+  FEATURE_KEYS.BACK_OFFICE_DOCUMENTS, FEATURE_KEYS.BACK_OFFICE_APPROVALS, FEATURE_KEYS.BACK_OFFICE_OWNER_REPORTS,
+  FEATURE_KEYS.QUICKBOOKS_INTEGRATION,
   FEATURE_KEYS.MULTI_LOCATION_DASHBOARD, FEATURE_KEYS.CROSS_LOCATION_REPORTING, FEATURE_KEYS.ADVANCED_OWNER_TOOLS,
   FEATURE_KEYS.HIGHER_SCAN_LIMITS, FEATURE_KEYS.MORE_BACKUP_HISTORY, FEATURE_KEYS.PRIORITY_SUPPORT,
   FEATURE_KEYS.ADVANCED_AUDIT_EXPORTS, FEATURE_KEYS.CUSTOM_ONBOARDING, FEATURE_KEYS.EARLY_ACCESS
@@ -177,7 +188,7 @@ export const PLAN_DEFINITIONS = {
     founderPrice: 149.50,
     invoicePagesLimit: 200,
     menuPagesLimit: 25,
-    summary: 'Smart Kitchen plus multi-location placeholders, cross-location reporting, advanced owner tools, higher scan limits, and priority/onboarding placeholders.',
+    summary: 'Smart Kitchen plus the Back Office Suite, owner deposit records, document vault, approval queue, QuickBooks integration hub, owner reports, multi-location tools, higher scan limits, priority support, and onboarding.',
     features: PLAN_FEATURES[PLAN_IDS.OWNER_PRO]
   },
   [PLAN_IDS.MASTER_ADMIN]: {
@@ -223,6 +234,7 @@ export const ROUTE_FEATURES = {
   events: FEATURE_KEYS.KITCHEN_COMMAND,
   ops: FEATURE_KEYS.KITCHEN_COMMAND,
   financials: FEATURE_KEYS.DAILY_CLOSE,
+  'back-office': FEATURE_KEYS.BACK_OFFICE_SUITE,
   sales: FEATURE_KEYS.SALES_BREAKDOWN,
   labor: FEATURE_KEYS.LABOR_COMMAND,
   messages: FEATURE_KEYS.TEAM_MESSAGES,
@@ -250,6 +262,13 @@ export const FEATURE_LABELS = {
   [FEATURE_KEYS.PRIME_COST]: 'Prime Cost Dashboard',
   [FEATURE_KEYS.COGS_CENTER]: 'Cost Center / COGS Center',
   [FEATURE_KEYS.EXPENSES]: 'Expenses & Bills',
+  [FEATURE_KEYS.BACK_OFFICE_SUITE]: 'Back Office Suite',
+  [FEATURE_KEYS.BACK_OFFICE_DASHBOARD]: 'Back Office Dashboard',
+  [FEATURE_KEYS.BACK_OFFICE_DEPOSIT_LOG]: 'Back Office Deposit Log',
+  [FEATURE_KEYS.BACK_OFFICE_DOCUMENTS]: 'Back Office Document Vault',
+  [FEATURE_KEYS.BACK_OFFICE_APPROVALS]: 'Back Office Approval Queue',
+  [FEATURE_KEYS.BACK_OFFICE_OWNER_REPORTS]: 'Back Office Owner Reports',
+  [FEATURE_KEYS.QUICKBOOKS_INTEGRATION]: 'QuickBooks Integration Hub',
   [FEATURE_KEYS.PNL_SNAPSHOT]: 'P&L Snapshot',
   [FEATURE_KEYS.BUDGET_TARGETS]: 'Budget & Targets',
   [FEATURE_KEYS.INVOICE_SCANNING]: 'Invoice Scanning',
