@@ -1,31 +1,22 @@
-# 86 Chaos 15.0.80
+# 86 Chaos 15.0.81
 
-## What changed in 15.0.80
+## What changed in 15.0.81
 
-This build restores the Python Ops/Python Order Intelligence runtime that was referenced by the app UI but missing from the 15.0.79 safe split package.
+This build fixes Python Ops Scan and Python Order Intelligence on Preview deployments where the browser is signed into the test Firebase project but the generic server `FIREBASE_SERVICE_ACCOUNT_KEY` belongs to production.
 
-### Restored Python Intelligence routes
+### Key fixes
 
-- `/api/python-ops-intelligence` Node authenticated wrapper
-- `/api/python-order-intelligence` Node authenticated wrapper
-- `/api/python-automation-run` scheduled/manual automation wrapper
-- `/api/python-ops-engine.py` Vercel Python function
-- `/api/python-order-engine.py` Vercel Python function
-- `api/_python-function-client.js` internal route client
-- `scripts/python/ops_intelligence.py`
-- `scripts/python/order_intelligence.py`
-- root `requirements.txt` so Vercel packages Python functions cleanly
+- Login/auth remains eager-loaded and untouched.
+- Python Ops and Python Order first try the full Firebase Admin authorization path.
+- If a matching Admin credential is unavailable, those routes use a verified Firebase ID token and analyze the already-loaded client payload instead of failing with a service-account project mismatch.
+- Server audit logging and server plan checks still run when full Admin credentials are available.
+- Fallback mode is limited to client-loaded payload analysis and does not write audit logs.
+- Recognized service-account aliases are expanded for test and production deployments.
+- The restored Python runtime from 15.0.80 remains in place.
+- The safe component and Inventory split from 15.0.79 remains in place.
 
-### Preserved from 15.0.79
+### Deployment
 
-- Login/Auth stays eager-loaded.
-- Heavy authenticated tabs remain lazy-loaded only after login.
-- Inventory stays in its own feature chunk.
-- Inventory sub-data still loads on demand by sub-tab.
-- Audit/security repairs from 15.0.78 remain in place.
+Deploy with Vercel Clear Build Cache enabled. Do not change or paste Firebase service-account keys into the codebase.
 
-### Deployment note
-
-Use Vercel **Clear Build Cache** for the next Preview deploy so the restored Python functions are packaged from a clean cache.
-
-See `README_15_0_80_RELEASE_NOTES.md` and `QA_15_0_80_PYTHON_OPS_RESTORE.md` before production rollout.
+See `README_15_0_81_RELEASE_NOTES.md` and `QA_15_0_81_PYTHON_OPS_CREDENTIAL_FALLBACK.md` before production rollout.

@@ -1,4 +1,5 @@
-const { initAdmin, authorize, requireAppCheckIfEnforced, readBody } = require('./_chaos-admin');
+const { readBody } = require('./_chaos-admin');
+const { authorizePythonPayloadRoute } = require('./_python-auth-fallback');
 const { callPythonFunction } = require('./_python-function-client');
 const { resolveWorkspaceSubscription, planIsAtLeast, PLAN_IDS } = require('./_plan-access');
 
@@ -38,34 +39,41 @@ module.exports = async function handler(req, res) {
     const body = await readBody(req);
     const restaurantId = String(body.restaurantId || body.workspaceId || '').trim();
     if (!restaurantId) return res.status(400).json({ ok: false, error: 'restaurantId is required.' });
-    const app = initAdmin(req);
-    const appCheck = await requireAppCheckIfEnforced(app, req);
-    if (!appCheck.ok) return res.status(appCheck.status || 401).json({ ok: false, error: appCheck.error });
-    const ctx = await authorize(req, app, { allowTenantAdmin: true, targetRestaurantId: restaurantId });
-    if (!ctx.ok) return res.status(ctx.status || 403).json({ ok: false, error: ctx.error || 'Not authorized.' });
-    const canUseInventory = ctx.isSuperAdmin || ctx.user?.isAdmin || ctx.user?.isOwner || ctx.permissions?.inventory === true || ctx.permissions?.team === true;
-    if (!canUseInventory) return res.status(403).json({ ok: false, error: 'Inventory permission is required for Python order intelligence.' });
+    const auth = await authorizePythonPayloadRoute(req, restaurantId, { featureName: 'Python Order Intelligence' });
+    if (!auth.ok) return res.status(auth.status || 403).json({ ok: false, error: auth.error || 'Not authorized.' });
+    const ctx = auth.ctx || {};
 
-    const restSnap = await ctx.db.collection('restaurants').doc(restaurantId).get();
-    const workspace = restSnap.exists ? { id: restSnap.id, ...restSnap.data() } : {};
-    const subscription = resolveWorkspaceSubscription(workspace, ctx.decoded || {}, ctx.user || {});
-    if (!ctx.isSuperAdmin && !planIsAtLeast(subscription.planId, PLAN_IDS.SMART_KITCHEN)) {
-      return res.status(403).json({ ok: false, code: 'PLAN_FEATURE_LOCKED', error: 'AI assisted ordering starts with Smart Kitchen. Ask an owner or System Administrator to review Plan & Billing.' });
+    if (!ctx.verifiedTokenPayloadOnly) {
+      const canUseInventory = ctx.isSuperAdmin || ctx.user?.isAdmin || ctx.user?.isOwner || ctx.permissions?.inventory === true || ctx.permissions?.team === true;
+      if (!canUseInventory) return res.status(403).json({ ok: false, error: 'Inventory permission is required for Python order intelligence.' });
+
+      const restSnap = await ctx.db.collection('restaurants').doc(restaurantId).get();
+      const workspace = restSnap.exists ? { id: restSnap.id, ...restSnap.data() } : {};
+      const subscription = resolveWorkspaceSubscription(workspace, ctx.decoded || {}, ctx.user || {});
+      if (!ctx.isSuperAdmin && !planIsAtLeast(subscription.planId, PLAN_IDS.SMART_KITCHEN)) {
+        return res.status(403).json({ ok: false, code: 'PLAN_FEATURE_LOCKED', error: 'AI assisted ordering starts with Smart Kitchen. Ask an owner or System Administrator to review Plan & Billing.' });
+      }
     }
 
     const payload = compactPayload(body);
     const result = await runPythonOrderEngine(req, payload);
     const ok = result?.ok !== false;
-    await ctx.db.collection('auditLogs').add({
-      restaurantId,
-      action: 'PYTHON_ORDER_INTELLIGENCE_RUN',
-      target: 'api/python-order-intelligence',
-      details: ok ? `Python order intelligence generated ${result?.summary?.forecastCount || 0} forecasts, ${result?.summary?.priceWarningCount || 0} price warnings, and ${result?.summary?.eventSupplyCount || 0} event supply signals.` : `Python order intelligence returned an error: ${result?.error || 'unknown'}`,
-      userId: ctx.userDocId || ctx.uid || '',
-      userName: ctx.user?.name || ctx.email || 'Inventory User',
-      timestamp: new Date().toISOString(),
-      source: 'python_order_intelligence'
-    }).catch(() => null);
+    if (auth.warning) {
+      result.warning = auth.warning;
+      result.authMode = auth.mode;
+    }
+    if (ctx.db) {
+      await ctx.db.collection('auditLogs').add({
+        restaurantId,
+        action: 'PYTHON_ORDER_INTELLIGENCE_RUN',
+        target: 'api/python-order-intelligence',
+        details: ok ? `Python order intelligence generated ${result?.summary?.forecastCount || 0} forecasts, ${result?.summary?.priceWarningCount || 0} price warnings, and ${result?.summary?.eventSupplyCount || 0} event supply signals.` : `Python order intelligence returned an error: ${result?.error || 'unknown'}`,
+        userId: ctx.userDocId || ctx.uid || '',
+        userName: ctx.user?.name || ctx.email || 'Inventory User',
+        timestamp: new Date().toISOString(),
+        source: 'python_order_intelligence'
+      }).catch(() => null);
+    }
     return res.status(ok ? 200 : 500).json(result);
   } catch (err) {
     return res.status(500).json({ ok: false, engine: 'python-order-intelligence', error: err.message });

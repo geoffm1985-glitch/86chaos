@@ -1,9 +1,9 @@
 {
-  "version": "15.0.80",
-  "name": "86 Chaos 15.0.80 Python Ops Restore + Safe Component Split",
+  "version": "15.0.81",
+  "name": "86 Chaos 15.0.81 Python Ops Credential-Safe Fallback",
   "releasedAt": "2026-07-19",
-  "label": "86 Chaos 15.0.80",
-  "build": "15.0.80",
+  "label": "86 Chaos 15.0.81",
+  "build": "15.0.81",
   "updatedAt": "2026-07-19T00:00:00.000Z",
-  "notes": "Restores the Python Ops and Python Order intelligence API wrappers, Vercel Python engine functions, internal Python routing client, and standard-library intelligence scripts while keeping login/auth eager-loaded and preserving the 15.0.79 safe component and Inventory load split."
+  "notes": "Fixes Python Ops and Python Order intelligence on Preview deployments where the browser Firebase project and available server service-account credential do not match. The routes now use verified-token payload-only fallback for client-loaded scan data instead of failing, expand recognized service-account aliases, and keep login/auth untouched."
 }
