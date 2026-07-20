@@ -7316,9 +7316,17 @@ Type RESTORE to continue.`);
       });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok || payload?.ok === false) throw new Error(payload?.error || 'Python automation did not finish.');
-      const completed = (payload.results || []).filter(row => row.ok).length;
-      const skipped = (payload.results || []).filter(row => row.skipped).length;
-      addToast('Python Automation Complete', `${completed} workspace(s) scanned${skipped ? `, ${skipped} skipped` : ''}.`);
+      const rows = Array.isArray(payload.results) ? payload.results : [];
+      const failed = rows.filter(row => row.ok === false).length;
+      const skipped = rows.filter(row => row.skipped).length;
+      const completed = rows.filter(row => row.ok === true && row.skipped !== true).length;
+      const scanned = rows.length;
+      const failurePreview = rows.find(row => row.ok === false)?.error || '';
+      if (failed) {
+        addToast('Python Automation Finished with Errors', `${completed}/${scanned} workspace(s) completed, ${failed} failed${skipped ? `, ${skipped} skipped` : ''}${failurePreview ? `. First error: ${failurePreview}` : ''}`);
+      } else {
+        addToast('Python Automation Complete', `${completed}/${scanned} workspace(s) completed${skipped ? `, ${skipped} skipped` : ''}.`);
+      }
     } catch (error) {
       addToast('Python Automation Failed', error?.message || 'Could not run automation.');
     } finally {

@@ -1,9 +1,9 @@
 {
   "version": "15.0.90",
-  "name": "86 Chaos 15.0.90 Playwright Owner Route Stability",
-  "releasedAt": "2026-07-19",
-  "label": "15.0.90 Playwright Owner Route Stability",
+  "name": "86 Chaos 15.0.90 Python Automation Runner Fix",
+  "releasedAt": "2026-07-20",
+  "label": "15.0.90 Python Automation Runner Fix",
   "build": "15.0.90",
   "updatedAt": "2026-07-20T00:00:00.000Z",
-  "notes": "Separates Firebase Auth from workspace bootstrap, ignores generic/production App Check keys on testing preview, adds a server login-bootstrap check, and makes login failures identify the failing step instead of forcing manual Firebase digging."
+  "notes": "Fixes Python Automation Center manual runs by passing the request context into the Python ops runner, updates automation toast counts, and keeps failure messages actionable."
 }

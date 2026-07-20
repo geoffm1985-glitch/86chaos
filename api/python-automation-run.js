@@ -3,7 +3,7 @@ const { initAdmin, authorize, readBody, masterEmails, norm } = require('./_chaos
 const { callPythonFunction } = require('./_python-function-client');
 const { resolveWorkspaceSubscription, planIsAtLeast, PLAN_IDS } = require('./_plan-access');
 
-const APP_VERSION = '15.0.86';
+const APP_VERSION = '15.0.90';
 const PYTHON_TIMEOUT_MS = 35000;
 const MAX_PAYLOAD_BYTES = 1500000;
 const COLLECTION_LIMITS = {
@@ -306,7 +306,7 @@ function compactResultForStorage(result = {}) {
   };
 }
 
-async function processRestaurant({ app, db, restaurant, source, requestedMode }) {
+async function processRestaurant({ req, app, db, restaurant, source, requestedMode }) {
   const runId = `pyauto_${restaurant.id}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
   const startedAt = new Date().toISOString();
   const gate = await shouldRunRestaurant(db, restaurant, requestedMode);
@@ -411,7 +411,7 @@ module.exports = async function handler(req, res) {
       results.push({ restaurantId: restaurant.id, restaurantName: restaurant.name || '', ok: true, skipped: true, reason: 'smart_kitchen_required', detail: 'Python automation is limited to Smart Kitchen and higher.' });
       continue;
     }
-    results.push(await processRestaurant({ app, db, restaurant, source, requestedMode }));
+    results.push(await processRestaurant({ req, app, db, restaurant, source, requestedMode }));
   }
   return res.status(200).json({ ok: true, version: APP_VERSION, source, requestedMode, restaurantCount: restaurants.length, results, safetyPolicy: SAFE_POLICY });
 };

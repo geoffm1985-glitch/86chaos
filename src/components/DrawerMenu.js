@@ -69,7 +69,7 @@ const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppU
           </div>
           <div className="flex-1 overflow-y-auto p-3 space-y-1">
              {tabs.map(tab => (
-               <button key={tab.id} data-testid={`menu-tab-${tab.id}`} onClick={() => { setActiveTab(tab.id); onClose(); }} className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl font-bold text-sm transition-all duration-200 ${activeTab === tab.id ? `${T.grad} text-slate-900 shadow-md` : 'text-slate-400 hover:bg-[#12161A] hover:text-white'}`}>
+               <button key={tab.id} onClick={() => { setActiveTab(tab.id); onClose(); }} className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl font-bold text-sm transition-all duration-200 ${activeTab === tab.id ? `${T.grad} text-slate-900 shadow-md` : 'text-slate-400 hover:bg-[#12161A] hover:text-white'}`}>
                  <div className="flex items-center gap-3">
                    <div className="relative">
                      <span className={activeTab === tab.id ? 'text-slate-900' : T.copper}>{tab.icon}</span>
