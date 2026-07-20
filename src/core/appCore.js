@@ -222,7 +222,7 @@ export const MASTER_ADMIN_EMAIL = (process.env.REACT_APP_MASTER_ADMIN_EMAIL || '
 export const EVENT_TAGS = ['Standard Day', 'Packers Game', 'Brewers Game', 'Live Music', 'Severe Weather', 'Private Catering', 'Holiday'];
 
 // --- VERSION TRACKING ---
-export const CURRENT_VERSION = '15.0.84';
+export const CURRENT_VERSION = '15.0.86';
 
 // --- Helpers ---
 export const useLiveCollection = (coll, restId, options = {}) => {
@@ -260,10 +260,12 @@ export const useLiveCollection = (coll, restId, options = {}) => {
       query(collection(db, coll), ...constraints),
       snap => setData(snap.docs.map(d => ({ id: d.id, ...d.data() }))),
       err => {
-        console.error(`Live collection error for ${coll} / ${restId} (${label}):`, err);
-        const canFallback = label !== 'fallback' && (err?.code === 'failed-precondition' || /index|requires an index|invalid/i.test(err?.message || ''));
-        if (canFallback) {
-          console.warn(`Missing Firestore index for ${coll}. Refusing to display a semantically different fallback query.`);
+        const message = err?.message || String(err || '');
+        const isIndexProblem = err?.code === 'failed-precondition' || /index|requires an index|currently building/i.test(message);
+        if (isIndexProblem) {
+          console.warn(`Firestore index pending for ${coll} / ${restId} (${label}). Waiting for the deployed index instead of showing a mismatched fallback query.`, message);
+        } else {
+          console.error(`Live collection error for ${coll} / ${restId} (${label}):`, err);
         }
         setData([]);
       }

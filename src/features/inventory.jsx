@@ -11,7 +11,7 @@ import { buildPrepCreatePayload, buildPrepQuantityUpdate, findPrepMatch, formatP
 import { buildEightySixAlertDetails, buildMenuImpactText, getMenuImpactForInventoryItem, getZeroStockMenuImpacts, resolveEightySixInventoryMatch } from '../core/menuIntelligence';
 import { prepareScannerUploadFile, isPdfFile } from '../core/fileCompression';
 import { createAiScanIdempotencyKey, resolveClientScanPageCount, normalizeAiUsage, aiPageLimitMessage } from '../core/aiScanUsage';
-import { buildAiOrderAssistant, formatAiOrderDraftText, summarizeAiOrderAssistant } from '../core/aiOrderAssistant';
+import { buildAiOrderAssistant, formatAiOrderDraftText, summarizeAiOrderAssistant, isLikelyInvoiceNoiseInventoryItem } from '../core/aiOrderAssistant';
 import { classifyInvoiceRow, inferInvoiceProductFields, invoiceProductKey, invoiceRowText, isPurchasedInvoiceLine, LEADING_PURCHASE_RE, normalizeInvoiceName as normalizeName, normalizeInvoiceSku as normalizeSku } from '../core/invoiceRowClassification';
 import { CheersLogo, Modal, DrawerMenu, DayDotPrintScreen, MapClickListener, SmartEmptyState, MiniProblemCard, getHomeProfile, calculatePunchHours, getWeekStart, getWeekDates, roleMatches, toLocalTimeInput, makeLocalIso, PunchTable, StatusTile, FriendlyEmpty, GlobalSearchModal, QuickActionDock, KitchenTVMode, ChangeLogModal, UndoBar } from '../components/common';
 import { usePlanAccess } from '../hooks/usePlanAccess';
@@ -59,6 +59,7 @@ const TabInventory = ({ addToast, appUser, clientData = {}, initialSubTab, onIni
   const needsMenuGraph = isAiOrderTab || focusBelowPar;
   const inventoryLimit = (isManageTab || isOrderTab || isInvoiceTab || isAiOrderTab || isWasteTab || inventorySearchActive) ? 500 : 220;
   const inventoryItems = useLiveCollection('inventoryItems', appUser?.restaurantId, { enabled: needsInventoryCatalog, limitCount: inventoryLimit, fallbackLimitCount: 120 });
+  const orderableInventoryItems = inventoryItems.filter(item => !isLikelyInvoiceNoiseInventoryItem(item));
   const menuDependencies = useLiveCollection('menuDependencies', appUser?.restaurantId, { enabled: canUseMenuIntelligence && needsMenuGraph, limitCount: isAiOrderTab ? 500 : 160, fallbackLimitCount: 80 });
   const vendors = useLiveCollection('vendors', appUser?.restaurantId, { enabled: (canUseBasicInventory || canUseSmartInventory) && needsVendorDirectory, limitCount: 150, fallbackLimitCount: 60 });
   const wasteLogs = useLiveCollection('wasteLogs', appUser?.restaurantId, { enabled: canUseBasicInventory && needsWasteHistory, limitCount: isAiOrderTab ? 200 : 80, fallbackLimitCount: 35 });
@@ -100,6 +101,7 @@ const TabInventory = ({ addToast, appUser, clientData = {}, initialSubTab, onIni
   const [newItemName, setNewItemName] = useState(''); const [newItemCat, setNewItemCat] = useState(''); const [newItemCode, setNewItemCode] = useState(''); const [newItemSupplier, setNewItemSupplier] = useState(''); const [newItemPackSize, setNewItemPackSize] = useState('1 CS'); const [newItemYield, setNewItemYield] = useState('1'); const [newItemPrice, setNewItemPrice] = useState(''); 
   const [editItem, setEditItem] = useState(null); 
   const [orderOverrides, setOrderOverrides] = useState({}); 
+  const [selectedAiOrderIds, setSelectedAiOrderIds] = useState({}); 
   const [confirmModal, setConfirmModal] = useState({ isOpen: false, vendorId: null, items: [] });
   const [aiOrderDaysAhead, setAiOrderDaysAhead] = useState(7);
   const [aiEventDaysAhead, setAiEventDaysAhead] = useState(14);
@@ -470,9 +472,12 @@ const handleLogWaste = async (e) => {
   const itemsToOrder = inventoryItems.filter(i => { const override = orderOverrides[i.id]; return override !== undefined ? override > 0 : (i.currentStock || 0) < (i.parLevel || 0); });
   const vendorsWithDeficits = vendors.filter(v => itemsToOrder.some(i => i.supplierId === v.id));
   const pendingVendors = vendors.filter(v => inventoryItems.some(i => i.supplierId === v.id && (i.pendingQty || 0) > 0));
-  const aiOrderAssistant = (isAiOrderTab && canUseAiOrdering) ? buildAiOrderAssistant({ inventoryItems, vendors, wasteLogs, invoices, events: futureEvents, prepItems: prepItemsForOrdering, menuDependencies, currentDate: getToday(), daysAhead: aiOrderDaysAhead, eventDaysAhead: aiEventDaysAhead }) : EMPTY_AI_ORDER_ASSISTANT;
+  const aiOrderAssistant = (isAiOrderTab && canUseAiOrdering) ? buildAiOrderAssistant({ inventoryItems: orderableInventoryItems, vendors, wasteLogs, invoices, events: futureEvents, prepItems: prepItemsForOrdering, menuDependencies, currentDate: getToday(), daysAhead: aiOrderDaysAhead, eventDaysAhead: aiEventDaysAhead }) : EMPTY_AI_ORDER_ASSISTANT;
   const aiOrderSummaryText = summarizeAiOrderAssistant(aiOrderAssistant);
   const aiOrderRecommendations = aiOrderAssistant.recommendations || [];
+  const aiSuggestedRows = aiOrderRecommendations.filter(row => Number(row.suggestedQty || 0) > 0 && (row.itemId || row.itemName));
+  const selectedAiSuggestionRows = aiSuggestedRows.filter(row => selectedAiOrderIds[row.itemId || row.itemName]);
+  const allVisibleAiSuggestionsSelected = aiSuggestedRows.length > 0 && aiSuggestedRows.every(row => selectedAiOrderIds[row.itemId || row.itemName]);
   const aiOrderDraftGroups = aiOrderAssistant.vendorDrafts || [];
   const pythonForecastRows = pythonOrderIntel?.orderForecasts || [];
   const pythonManagerBrief = pythonOrderIntel?.managerBrief || [];
@@ -495,12 +500,51 @@ const handleLogWaste = async (e) => {
     setConfirmModal({ isOpen: true, vendorId: group.vendorId || list[0]?.supplierId || '', items: list });
   };
 
-  const applyAiOrderOverrides = () => {
+  const isAiSuggestionApplied = (row = {}) => {
+    if (!row.itemId) return false;
+    const suggested = Math.max(0, Number(row.suggestedQty || 0));
+    return Number(orderOverrides[row.itemId] || 0) === suggested && suggested > 0;
+  };
+
+  const applyAiOrderRows = (rows = [], { openOrderScreen = false, label = 'suggested' } = {}) => {
     const next = {};
-    aiOrderRecommendations.filter(row => row.suggestedQty > 0).forEach(row => { next[row.itemId] = Math.max(0, Number(row.suggestedQty || 0)); });
+    rows.filter(row => row?.itemId && Number(row.suggestedQty || 0) > 0).forEach(row => {
+      next[row.itemId] = Math.max(0, Number(row.suggestedQty || 0));
+    });
+    const count = Object.keys(next).length;
+    if (!count) return addToast('AI Draft Empty', 'No suggested quantities were selected.');
     setOrderOverrides(prev => ({ ...prev, ...next }));
-    setInvTab('order');
-    addToast('AI Draft Applied', `${Object.keys(next).length} suggested quantities were loaded into the order screen for review.`);
+    if (openOrderScreen) setInvTab('order');
+    addToast('AI Draft Updated', `${count} ${label} order ${count === 1 ? 'quantity was' : 'quantities were'} loaded for manager review.`);
+  };
+
+  const applyAiOrderOverrides = () => applyAiOrderRows(aiSuggestedRows, { openOrderScreen: true, label: 'AI-suggested' });
+
+  const applySelectedAiOrderOverrides = () => {
+    applyAiOrderRows(selectedAiSuggestionRows, { openOrderScreen: false, label: 'selected' });
+  };
+
+  const toggleAiOrderSelection = (row = {}) => {
+    const key = row.itemId || row.itemName;
+    if (!key) return;
+    setSelectedAiOrderIds(prev => ({ ...prev, [key]: !prev[key] }));
+  };
+
+  const toggleAllAiOrderSelections = () => {
+    if (allVisibleAiSuggestionsSelected) return setSelectedAiOrderIds({});
+    const next = {};
+    aiSuggestedRows.forEach(row => { next[row.itemId || row.itemName] = true; });
+    setSelectedAiOrderIds(next);
+  };
+
+  const undoAiSuggestedQty = (row = {}) => {
+    if (!row.itemId) return;
+    setOrderOverrides(prev => {
+      const next = { ...prev };
+      delete next[row.itemId];
+      return next;
+    });
+    addToast('Suggested Qty Removed', `${row.itemName || 'Item'} was removed from the draft quantity overrides.`);
   };
 
   const copyAiOrderDraft = async () => {
@@ -1220,14 +1264,14 @@ if (item.matchedItemId === 'CREATE_NEW') {
   };
 
 const isBelowPar = (item) => Number(item.parLevel || 0) > 0 && Number(item.currentStock || 0) < Number(item.parLevel || 0);
-const belowParItems = inventoryItems.filter(isBelowPar);
-const zeroStockMenuImpacts = getZeroStockMenuImpacts(inventoryItems, menuDependencies);
+const belowParItems = orderableInventoryItems.filter(isBelowPar);
+const zeroStockMenuImpacts = getZeroStockMenuImpacts(orderableInventoryItems, menuDependencies);
 const selectedWasteItem = inventoryItems.find(i => i.id === wItemId) || null;
 const selectedWasteUnitsPerStock = selectedWasteItem ? getBurnUnitsPerStockUnit(selectedWasteItem) : 1;
 const selectedWasteWeightPerStock = selectedWasteItem ? (parseFloat(wWeightPerStockUnit) || getBurnWeightPerStockUnit(selectedWasteItem)) : 0;
 const selectedWasteDeductionPreview = selectedWasteItem && wQty ? getBurnStockDeduction(wQty, selectedWasteItem, { mode: wMode, weightPerStockUnit: selectedWasteWeightPerStock, unitsPerStockUnit: selectedWasteUnitsPerStock }) : 0;
 const selectedWastePackProfile = selectedWasteItem ? parsePackProfile(selectedWasteItem.packSize) : { notes: [] };
-const groupedItems = inventoryItems
+const groupedItems = orderableInventoryItems
   .filter(i => !focusBelowPar || isBelowPar(i))
   .filter(i => (i.name || '').toLowerCase().includes(searchTerm.toLowerCase()) || (i.pfgCode && i.pfgCode.includes(searchTerm)))
   .reduce((acc, item) => { 
@@ -1558,12 +1602,13 @@ const groupedItems = inventoryItems
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 mt-4">
               <div><label className={T.label}>Order lookahead</label><select value={aiOrderDaysAhead} onChange={e=>setAiOrderDaysAhead(Number(e.target.value)||7)} className={T.input}><option value={3}>3 days</option><option value={7}>7 days</option><option value={14}>14 days</option></select></div>
               <div><label className={T.label}>Event lookahead</label><select value={aiEventDaysAhead} onChange={e=>setAiEventDaysAhead(Number(e.target.value)||14)} className={T.input}><option value={7}>7 days</option><option value={14}>14 days</option><option value={30}>30 days</option></select></div>
-              <button type="button" onClick={applyAiOrderOverrides} className={`${T.btn} self-end py-3`}>Apply to Order Screen</button>
+              <button type="button" onClick={applyAiOrderOverrides} className={`${T.btn} self-end py-3`}>Apply All Suggestions</button>
               <button type="button" onClick={copyAiOrderDraft} className={`${T.btnAlt} self-end py-3`}>Copy Full Draft</button>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mt-2">
               <button type="button" onClick={saveAiOrderDraft} className="w-full rounded-xl bg-emerald-900/20 border border-emerald-500/40 text-emerald-300 py-3 text-xs font-black uppercase tracking-widest hover:bg-emerald-900/30">Save AI Draft to Orders</button>
               {canUsePythonIntelligence ? <button type="button" onClick={runPythonOrderIntelligence} disabled={pythonOrderLoading} className="w-full rounded-xl bg-blue-900/20 border border-blue-500/40 text-blue-200 py-3 text-xs font-black uppercase tracking-widest hover:bg-blue-900/30 disabled:opacity-60">{pythonOrderLoading ? 'Running Python Forecast…' : 'Run Python Forecast'}</button> : <div className="rounded-xl border border-amber-500/30 bg-amber-950/10 p-3 text-[11px] font-black text-amber-100">Python forecasting starts with Smart Kitchen.</div>}
+              <button type="button" onClick={applySelectedAiOrderOverrides} disabled={!selectedAiSuggestionRows.length} className="w-full rounded-xl bg-[#0B0E11] border border-[#2A353D] text-[#D4A381] py-3 text-xs font-black uppercase tracking-widest hover:border-[#D4A381]/60 disabled:opacity-40">Apply Selected to Draft</button>
             </div>
             {pythonOrderError && <div className="mt-2 rounded-xl border border-amber-500/30 bg-amber-950/20 p-3 text-[11px] font-bold text-amber-100">Python analysis did not finish: {pythonOrderError}. The regular AI Order Assistant is still active.</div>}
 
@@ -1643,19 +1688,40 @@ const groupedItems = inventoryItems
 
           <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
             <div className={`${T.card} p-4 xl:col-span-2`}>
-              <div className="flex items-center justify-between mb-3"><h3 className="font-black text-white text-lg">Top Order Suggestions</h3><span className="text-[10px] font-black uppercase tracking-widest text-slate-500">Review required</span></div>
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3"><h3 className="font-black text-white text-lg">Top Order Suggestions</h3><div className="flex flex-wrap items-center gap-2"><button type="button" onClick={toggleAllAiOrderSelections} className="rounded-lg border border-[#2A353D] bg-[#0B0E11] px-3 py-2 text-[10px] font-black uppercase tracking-widest text-slate-300">{allVisibleAiSuggestionsSelected ? 'Clear Selection' : 'Select All'}</button><span className="text-[10px] font-black uppercase tracking-widest text-slate-500">Review required</span></div></div>
               <div className="space-y-2">
-                {aiOrderRecommendations.length ? aiOrderRecommendations.slice(0, 18).map(row => (
-                  <div key={row.itemId || row.itemName} className="rounded-xl border border-[#2A353D] bg-[#12161A] p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                    <div className="min-w-0">
-                      <div className="flex flex-wrap items-center gap-2"><span className="font-black text-white">{row.itemName}</span><span className={`text-[8px] px-2 py-0.5 rounded-full border uppercase tracking-widest font-black ${row.priority === 'critical' ? 'text-red-300 border-red-500/50 bg-red-900/20' : row.priority === 'high' ? 'text-amber-300 border-amber-500/50 bg-amber-900/20' : 'text-slate-300 border-[#2A353D] bg-[#0B0E11]'}`}>{row.priority}</span><span className="text-[10px] text-[#D4A381] font-black">{row.vendorName}</span></div>
-                      <div className="text-[11px] text-slate-400 font-bold mt-1">Par {row.par} • Stock {row.stock} • Pending {row.pending} • Suggest {row.suggestedQty} {row.packSize}</div>
-                      <div className="text-[11px] text-slate-300 mt-1 leading-snug">{row.reasons.slice(0, 4).join(' • ') || 'Review item setup, par, and usage history.'}</div>
+                {aiOrderRecommendations.length ? aiOrderRecommendations.slice(0, 18).map(row => {
+                  const rowKey = row.itemId || row.itemName;
+                  const applied = isAiSuggestionApplied(row);
+                  const selected = !!selectedAiOrderIds[rowKey];
+                  const suggestedLabel = `${row.suggestedQty || 0}${row.packSize ? ` ${row.packSize}` : ''}`;
+                  return (
+                  <div key={rowKey} className={`rounded-xl border ${applied ? 'border-emerald-500/40 bg-emerald-950/10' : selected ? 'border-[#D4A381]/50 bg-[#D4A381]/5' : 'border-[#2A353D] bg-[#12161A]'} p-3 flex flex-col lg:flex-row lg:items-center justify-between gap-3`}>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <label className="inline-flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-slate-400">
+                          <input type="checkbox" checked={selected} onChange={() => toggleAiOrderSelection(row)} disabled={Number(row.suggestedQty || 0) <= 0} className="accent-[#D4A381]" /> Select
+                        </label>
+                        <span className="font-black text-white">{row.itemName}</span>
+                        <span className={`text-[8px] px-2 py-0.5 rounded-full border uppercase tracking-widest font-black ${row.priority === 'critical' ? 'text-red-300 border-red-500/50 bg-red-900/20' : row.priority === 'high' ? 'text-amber-300 border-amber-500/50 bg-amber-900/20' : 'text-slate-300 border-[#2A353D] bg-[#0B0E11]'}`}>{row.priority}</span>
+                        <span className="text-[10px] text-[#D4A381] font-black">{row.vendorName}</span>
+                      </div>
+                      <div className="mt-2 grid grid-cols-2 sm:grid-cols-4 gap-2">
+                        <div className="rounded-lg border border-emerald-500/30 bg-emerald-950/10 p-2"><div className="text-[8px] uppercase tracking-widest font-black text-emerald-300">Suggested</div><div className="text-xl font-black text-emerald-200">{suggestedLabel}</div></div>
+                        <div className="rounded-lg border border-[#2A353D] bg-[#0B0E11] p-2"><div className="text-[8px] uppercase tracking-widest font-black text-slate-500">Par</div><div className="font-black text-white">{row.par}</div></div>
+                        <div className="rounded-lg border border-[#2A353D] bg-[#0B0E11] p-2"><div className="text-[8px] uppercase tracking-widest font-black text-slate-500">Stock</div><div className="font-black text-white">{row.stock}</div></div>
+                        <div className="rounded-lg border border-[#2A353D] bg-[#0B0E11] p-2"><div className="text-[8px] uppercase tracking-widest font-black text-slate-500">Pending</div><div className="font-black text-white">{row.pending}</div></div>
+                      </div>
+                      <div className="text-[11px] text-slate-300 mt-2 leading-snug">{row.reasons.slice(0, 4).join(' • ') || 'Review item setup, par, and usage history.'}</div>
                       {row.priceWarning && <div className="mt-1 text-[10px] font-black text-red-300">⚠ {row.priceWarning.summary}</div>}
                     </div>
-                    <div className="flex items-center gap-2 shrink-0"><button type="button" onClick={() => setOrderOverrides(prev => ({ ...prev, [row.itemId]: row.suggestedQty }))} className="px-3 py-2 rounded-lg border border-[#2A353D] bg-[#0B0E11] text-[#D4A381] text-[10px] font-black uppercase">Use Qty</button></div>
+                    <div className="flex flex-wrap items-center gap-2 shrink-0">
+                      <button type="button" disabled={applied || Number(row.suggestedQty || 0) <= 0} onClick={() => applyAiOrderRows([row], { label: 'suggested' })} className={`px-3 py-2 rounded-lg border text-[10px] font-black uppercase ${applied ? 'border-emerald-500/40 bg-slate-800 text-slate-400 cursor-default' : 'border-[#2A353D] bg-[#0B0E11] text-[#D4A381] hover:border-[#D4A381]/60'}`}>{applied ? 'Applied ✓' : 'Use Suggested Qty'}</button>
+                      {applied && <button type="button" onClick={() => undoAiSuggestedQty(row)} className="px-3 py-2 rounded-lg border border-[#2A353D] bg-[#0B0E11] text-slate-300 text-[10px] font-black uppercase">Undo</button>}
+                    </div>
                   </div>
-                )) : <SmartEmptyState icon={<Check size={22}/>} title="No order pressure detected" desc="Set par levels, inventory stock, vendors, menu links, events, and invoice history to sharpen the assistant." />}
+                  );
+                }) : <SmartEmptyState icon={<Check size={22}/>} title="No order pressure detected" desc="Set par levels, inventory stock, vendors, menu links, events, and invoice history to sharpen the assistant." />}
               </div>
             </div>
 
@@ -1970,7 +2036,7 @@ const groupedItems = inventoryItems
                 <input type="text" placeholder="Type to filter inventory..." value={wSearchTerm} onChange={e=>setWSearchTerm(e.target.value)} className={`${T.input} py-2 text-xs border-red-900/30 focus:border-red-500`} />
                 <select value={wItemId} onChange={e=>handleWasteItemSelect(e.target.value)} className={T.input} required>
                   <option value="">Select Item to Burn...</option>
-                  {inventoryItems
+                  {orderableInventoryItems
                     .filter(i => (i.name||'').toLowerCase().includes((wSearchTerm||'').toLowerCase()) || (i.pfgCode||'').toLowerCase().includes((wSearchTerm||'').toLowerCase()))
                     .map(i=><option key={i.id} value={i.id}>{i.name}</option>)}
                 </select>

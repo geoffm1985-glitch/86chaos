@@ -2295,6 +2295,7 @@ const TabToday = ({ currentDate, appUser, users, shifts, shiftSwaps, timeOffRequ
 
   const heroTitle = canUseManagerBrief ? (profile === 'manager' || profile === 'system' ? 'Manager Brief' : profile === 'kitchen' ? 'Kitchen Brief' : profile === 'bar' ? 'Bar Brief' : profile === 'service' ? 'Service Brief' : 'Today Brief') : 'Today Home';
   const topPriority = problems[0]?.detail || (myShift ? `You work ${formatShortTime(myShift.startTime)}-${formatShortTime(myShift.endTime)} as ${myShift.role}.` : 'No urgent problems detected.');
+  const managerBriefMathText = `${todaysShifts.length} On Schedule ${activePunches.length} Clocked In ${problems.length} Needs Eyes`;
 
   return <div className="manager-brief-compact desktop-ops-page max-w-7xl mx-auto space-y-3 pb-24 animate-[slideIn_0.2s_ease-out]">
     <div className="brief-hero cockpit-panel rounded-2xl p-4 sm:p-5 cockpit-grid overflow-hidden relative">
@@ -2304,6 +2305,7 @@ const TabToday = ({ currentDate, appUser, users, shifts, shiftSwaps, timeOffRequ
           <div className="text-[10px] font-black uppercase tracking-widest text-[#D4A381]">{formatDisplayFullDate(today)}</div>
           <h1 className="text-2xl sm:text-3xl font-black text-white mt-1">{heroTitle}</h1>
           <p className="text-sm text-slate-300 font-bold mt-2 max-w-2xl leading-snug">{topPriority}</p>
+          <p className="text-[10px] text-slate-500 font-black uppercase tracking-widest mt-2" data-testid="manager-brief-math-summary">{managerBriefMathText}</p>
         </div>
         <div className="grid grid-cols-3 gap-2 min-w-[230px]">
           <div className="bg-[#0B0E11] border border-[#2A353D] rounded-xl p-2 text-center"><div className="text-lg font-black text-white">{todaysShifts.length}</div><div className="text-[8px] uppercase tracking-widest font-black text-slate-500">On Schedule</div></div>

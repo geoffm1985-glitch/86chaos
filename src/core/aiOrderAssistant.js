@@ -52,6 +52,26 @@ const lineItemText = (line = {}) => [line.itemName, line.name, line.description,
 
 const getItemVendor = (item = {}, vendors = []) => vendors.find(v => v.id === item.supplierId || v.id === item.vendorId || v.name === item.vendorName) || null;
 
+export const isLikelyInvoiceNoiseInventoryItem = (item = {}) => {
+  const label = itemLabel(item).trim();
+  if (!label) return true;
+  const compact = label.toLowerCase().replace(/\s+/g, ' ').trim();
+  const source = clean([item.source, item.importSource, item.scanSource, item.category, item.vendorName].filter(Boolean).join(' '));
+  const obviousNoise = /\b(group total|sub total|invoice total|invoice date|customer invoice|remit to|remittance|p\.?o\.? box|shipper#?|manifest#?|driver['’]?s?|payable on or before|fuel surcharge|misc charges?|important pack provision|representative capacity|gross wt|open:\s*\d|close:\s*\d|code price|price code|qty pack size|last page|signed invoice|invoice evidences|route terms|past due balances|subject to service charge|customer number|customer invoice|purchase order|sales tax|taxable|non taxable|measure$|total$|invoice$)\b/i;
+  const categoryOnly = /^(?:dairy products|produce|poultry|canned & dry|canned dry|misc charges|tax|measure|invoice|total|remit to|driver|route terms)$/i;
+  const addressOrContact = /\b(?:fairfax|virginia|west jordan|utah|lee highway|suite\s+\d|p\.?o\.? box|\(?\d{3}\)?[-.\s]\d{3}[-.\s]\d{4})\b/i;
+  const productWords = /\b(?:cheese|chicken|wing|fries|sauce|lemon|tortilla|salt|seasoning|perch|fish|carrot|salad|lettuce|tomato|onion|potato|beef|pork|bacon|ham|turkey|bread|bun|roll|milk|cream|butter|egg|flour|rice|bean|coke|syrup|coffee|tea|ranch|dip|soup|pepper|jalapeno|pickle|mushroom|oil|vinegar)\b/i;
+  if (obviousNoise.test(compact) || categoryOnly.test(label)) return true;
+  if (addressOrContact.test(label) && !productWords.test(label)) return true;
+  if (label.length > 96 && !item.sku && !item.pfgCode && !item.productCode && !productWords.test(label)) return true;
+  if (/^(\d+[\s.\-\/]+){4,}/.test(compact)) return true;
+  if (/^[\d\s.,$*-]+$/.test(compact)) return true;
+  if (/^[A-Z0-9\s.,#:/&'’*\-]{18,}$/.test(label) && !productWords.test(label) && !/\b(?:CS|CASE|EA|LB|OZ|GAL|QT|PT|PACK|PK|BAG|BTL|CAN)\b/.test(label)) return true;
+  if (source.includes('invoice noise') || source.includes('ocr noise')) return true;
+  return false;
+};
+
+
 const approvedDependencies = (deps = []) => (deps || []).filter(dep => {
   const status = clean(dep.status || dep.reviewStatus || dep.approvalStatus || dep.sourceStatus || 'approved');
   return !status || ['approved', 'active', 'linked', 'verified'].includes(status);
@@ -151,7 +171,8 @@ const getPriceWarning = (item = {}, invoices = []) => {
 
 export const buildAiOrderAssistant = ({ inventoryItems = [], vendors = [], wasteLogs = [], invoices = [], events = [], prepItems = [], menuDependencies = [], currentDate = todayKey(), daysAhead = 7, eventDaysAhead = 14 } = {}) => {
   const upcomingEvents = getUpcomingEvents(events, { currentDate, daysAhead: eventDaysAhead });
-  const recommendations = (inventoryItems || []).map(item => {
+  const orderableItems = (inventoryItems || []).filter(item => !isLikelyInvoiceNoiseInventoryItem(item));
+  const recommendations = orderableItems.map(item => {
     const par = num(item.parLevel, 0);
     const stock = num(item.currentStock, 0);
     const pending = num(item.pendingQty, 0);
@@ -205,7 +226,7 @@ export const buildAiOrderAssistant = ({ inventoryItems = [], vendors = [], waste
     const matches = recommendations
       .filter(rec => rec.eventMatches.some(m => m.event.id === event.id))
       .slice(0, 8);
-    const rawMentions = (inventoryItems || []).map(item => {
+    const rawMentions = orderableItems.map(item => {
       const score = textScore(itemLabel(item), eventText(event));
       return score >= 35 ? { item, score } : null;
     }).filter(Boolean).sort((a, b) => b.score - a.score).slice(0, 8);
