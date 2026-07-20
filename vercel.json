@@ -21,7 +21,7 @@
         },
         {
           "key": "Content-Security-Policy",
-          "value": "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.tailwindcss.com https://www.gstatic.com https://www.googleapis.com https://www.google.com https://www.recaptcha.net https://www.googletagmanager.com; style-src 'self' 'unsafe-inline' https://unpkg.com; img-src 'self' data: blob: https://*.googleapis.com https://*.gstatic.com https://ui-avatars.com https://unpkg.com https://*.tile.openstreetmap.org; connect-src 'self' https://*.googleapis.com https://*.firebaseio.com https://*.firestore.googleapis.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://fcmregistrations.googleapis.com https://firebaseinstallations.googleapis.com https://*.cloudfunctions.net https://*.vercel.app wss://*.firebaseio.com; font-src 'self' data:; frame-src 'self' https://www.google.com https://www.recaptcha.net; object-src 'none'; base-uri 'self'; form-action 'self'"
+          "value": "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.tailwindcss.com https://vercel.live https://*.vercel.live https://www.gstatic.com https://*.gstatic.com https://www.googleapis.com https://www.google.com https://*.google.com https://www.recaptcha.net https://*.recaptcha.net https://www.googletagmanager.com; script-src-elem 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.tailwindcss.com https://vercel.live https://*.vercel.live https://www.gstatic.com https://*.gstatic.com https://www.googleapis.com https://www.google.com https://*.google.com https://www.recaptcha.net https://*.recaptcha.net https://www.googletagmanager.com; style-src 'self' 'unsafe-inline' https://unpkg.com; img-src 'self' data: blob: https://www.google.com https://*.google.com https://www.gstatic.com https://*.gstatic.com https://www.recaptcha.net https://*.recaptcha.net https://*.googleapis.com https://ui-avatars.com https://unpkg.com https://*.tile.openstreetmap.org; connect-src 'self' https://www.google.com https://*.google.com https://www.recaptcha.net https://*.recaptcha.net https://vercel.live https://*.vercel.live wss://vercel.live wss://*.vercel.live https://*.googleapis.com https://*.firebaseio.com https://*.firestore.googleapis.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://fcmregistrations.googleapis.com https://firebaseinstallations.googleapis.com https://*.cloudfunctions.net https://*.vercel.app wss://*.firebaseio.com; font-src 'self' data:; frame-src 'self' https://www.google.com https://*.google.com https://www.recaptcha.net https://*.recaptcha.net https://vercel.live https://*.vercel.live; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'"
         }
       ]
     }
@@ -42,6 +42,10 @@
     {
       "path": "/api/dispatch-reminders",
       "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/python-automation-run",
+      "schedule": "30 10 * * *"
     }
   ],
   "functions": {
@@ -84,6 +88,30 @@
     "api/openai-diagnostics-explain.js": {
       "maxDuration": 60,
       "memory": 512
+    },
+    "api/python-order-intelligence.js": {
+      "maxDuration": 60,
+      "memory": 512
+    },
+    "api/python-ops-intelligence.js": {
+      "maxDuration": 60,
+      "memory": 512
+    },
+    "api/python-automation-run.js": {
+      "maxDuration": 300,
+      "memory": 1024
+    },
+    "api/python-order-engine.py": {
+      "maxDuration": 60,
+      "memory": 512
+    },
+    "api/python-ops-engine.py": {
+      "maxDuration": 60,
+      "memory": 512
     }
-  }
+  },
+  "framework": "create-react-app",
+  "installCommand": "npm ci --omit=optional --no-audit --no-fund --progress=false",
+  "buildCommand": "NODE_OPTIONS=--max-old-space-size=4096 GENERATE_SOURCEMAP=false DISABLE_ESLINT_PLUGIN=true npm run build",
+  "outputDirectory": "build"
 }

@@ -217,8 +217,24 @@ function boolEnv(name) { return ['true', '1', 'yes', 'enforce'].includes(String(
 function mfaEnforcementEnabled() { return boolEnv('MFA_ENFORCE_ELEVATED_ROLES') || boolEnv('FIREBASE_MFA_ENFORCE_ELEVATED_ROLES') || boolEnv('REACT_APP_MFA_ENFORCE_ELEVATED_ROLES'); }
 function decodedHasMfa(decoded = {}) { const fb = decoded.firebase || {}; return Boolean(fb.sign_in_second_factor || fb.second_factor_identifier || decoded.sign_in_second_factor || decoded.mfa === true); }
 function roleNeedsMfa(user = {}, decoded = {}, isSuperAdmin = false) {
-  const role = norm(user.role || user.accountRole || decoded.role || '');
-  return Boolean(isSuperAdmin || decoded.superAdmin === true || user.isSuperAdmin === true || user.systemAccess?.superAdmin === true || user.isAdmin === true || user.isOwner === true || user.accountOwner === true || user.owner === true || user.workspaceOwner === true || ['owner', 'manager', 'admin', 'general manager', 'super admin', 'system administrator'].some(token => role.includes(token)));
+  const permissions = user.permissions || {};
+  const privilegedPermission = [
+    'settings', 'security', 'billing', 'team', 'wageView', 'wageEdit',
+    'sales', 'salesRead', 'salesEdit', 'financialRead', 'financialEdit',
+    'labor', 'laborRead', 'laborEdit', 'backup', 'restore', 'pushNotifications'
+  ].some(permission => permissions?.[permission] === true);
+  return Boolean(
+    isSuperAdmin ||
+    decoded.superAdmin === true ||
+    user.isSuperAdmin === true ||
+    user.systemAccess?.superAdmin === true ||
+    user.isAdmin === true ||
+    user.isOwner === true ||
+    user.accountOwner === true ||
+    user.owner === true ||
+    user.workspaceOwner === true ||
+    privilegedPermission
+  );
 }
 function requireMfaIfEnforced(decoded = {}, user = {}, isSuperAdmin = false) {
   if (!mfaEnforcementEnabled()) return { ok: true, enforced: false };

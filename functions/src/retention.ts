@@ -323,7 +323,7 @@ function aiBucket() {
 }
 
 function serialize(value: unknown): unknown {
-  if (value instanceof Timestamp) return { __type: "timestamp", value: value.toDate().toISOString() };
+  if (value instanceof Timestamp) return { __type: "timestamp", value: (value as Timestamp).toDate().toISOString() };
   if (Buffer.isBuffer(value) || value instanceof Uint8Array) {
     return { __type: "bytes", base64: Buffer.from(value).toString("base64") };
   }
@@ -479,20 +479,21 @@ async function deleteStoragePrefix(
   let failed = 0;
 
   do {
-    const [files, nextQuery] = await bucket.getFiles({
+    const [filesRaw, nextQuery] = await bucket.getFiles({
       prefix,
       autoPaginate: false,
       maxResults: Math.min(1000, MAX_STORAGE_OBJECTS_PER_RUN - scanned),
       pageToken,
     });
+    const files = filesRaw as any[];
     scanned += files.length;
-    const expired = files.filter((file) => {
+    const expired = files.filter((file: any) => {
       const created = Date.parse(String(file.metadata.timeCreated || ""));
       return Number.isFinite(created) && created < cutoffMs;
     });
 
     for (const group of chunk(expired, 25)) {
-      const results = await Promise.allSettled(group.map((file) => file.delete({ ignoreNotFound: true })));
+      const results = await Promise.allSettled(group.map((file: any) => file.delete({ ignoreNotFound: true })));
       results.forEach((result, index) => {
         if (result.status === "fulfilled") deleted += 1;
         else {
@@ -736,19 +737,20 @@ export const purgeExpiredTimeClockArchives = functions
       let scanned = 0;
       let deleted = 0;
       do {
-        const [files, nextQuery] = await bucket.getFiles({
+        const [filesRaw, nextQuery] = await bucket.getFiles({
           prefix: ARCHIVE_PREFIX,
           autoPaginate: false,
           maxResults: Math.min(1000, MAX_STORAGE_OBJECTS_PER_RUN - scanned),
           pageToken,
         });
+        const files = filesRaw as any[];
         scanned += files.length;
-        const expired = files.filter((file) => {
+        const expired = files.filter((file: any) => {
           const value = file.metadata.metadata?.deleteAfter;
           return Boolean(value) && Date.parse(String(value)) <= Date.now();
         });
         for (const group of chunk(expired, 25)) {
-          await Promise.all(group.map((file) => file.delete({ ignoreNotFound: true })));
+          await Promise.all(group.map((file: any) => file.delete({ ignoreNotFound: true })));
           deleted += group.length;
         }
         pageToken = (nextQuery as { pageToken?: string } | null | undefined)?.pageToken;

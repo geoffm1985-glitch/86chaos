@@ -118,7 +118,29 @@ service firebase.storage {
     function canUseMenuIntelligence(restaurantId) {
       return isSuperAdmin() ||
         isRestaurantOwner(restaurantId) ||
-        hasPermFor(restaurantId, 'menuIntelligence');
+        isAdminFor(restaurantId) ||
+        hasPermFor(restaurantId, 'menuIntelligence') ||
+        hasPermFor(restaurantId, 'inventory') ||
+        hasPermFor(restaurantId, 'inventoryEdit');
+    }
+
+    function canUseInvoiceScans(restaurantId) {
+      return isSuperAdmin() ||
+        isRestaurantOwner(restaurantId) ||
+        isAdminFor(restaurantId) ||
+        hasPermFor(restaurantId, 'inventory') ||
+        hasPermFor(restaurantId, 'inventoryEdit') ||
+        hasPermFor(restaurantId, 'invoiceScan') ||
+        hasPermFor(restaurantId, 'scans') ||
+        hasPermFor(restaurantId, 'financialEdit');
+    }
+
+    function canManageProfilePhoto(restaurantId, uid) {
+      return isSuperAdmin() ||
+        (signedIn() && request.auth.uid == uid) ||
+        isRestaurantOwner(restaurantId) ||
+        isAdminFor(restaurantId) ||
+        hasPermFor(restaurantId, 'team');
     }
 
     function isAllowedImage() {
@@ -194,6 +216,15 @@ service firebase.storage {
       return manual.restaurantId == restaurantId && manual.status == 'Published';
     }
 
+    function isAllowedTrainingManualType(contentType) {
+      return contentType in [
+        'application/pdf',
+        'application/msword',
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        'text/plain'
+      ];
+    }
+
     function isAllowedTrainingManual(restaurantId, manualId) {
       return request.resource != null &&
         uploadPurposeIs('hr-training-manual') &&
@@ -201,12 +232,14 @@ service firebase.storage {
         request.resource.metadata.manualId == manualId &&
         request.resource.size > 0 &&
         request.resource.size <= 15 * 1024 * 1024 &&
-        request.resource.contentType in [
-          'application/pdf',
-          'application/msword',
-          'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-          'text/plain'
-        ];
+        (
+          isAllowedTrainingManualType(request.resource.contentType) ||
+          (
+            request.resource.contentType == 'application/gzip' &&
+            request.resource.metadata.compression == 'gzip' &&
+            isAllowedTrainingManualType(request.resource.metadata.originalContentType)
+          )
+        );
     }
 
     function isAllowedInvoiceScan() {
@@ -229,10 +262,15 @@ service firebase.storage {
         );
     }
 
-    // Restaurant-scoped profile photos.
+    // Restaurant-scoped profile photos. Users may manage only their own photo unless they manage staff.
+    match /{restaurantId}/profilePhotos/{uid}/{fileName} {
+      allow read: if isSuperAdmin() || isTenantMatch(restaurantId);
+      allow write: if canManageProfilePhoto(restaurantId, uid) && isAllowedImage();
+    }
+
     match /{restaurantId}/profilePhotos/{allPaths=**} {
       allow read: if isSuperAdmin() || isTenantMatch(restaurantId);
-      allow write: if (isSuperAdmin() || isTenantMatch(restaurantId)) && isAllowedImage();
+      allow write: if false;
     }
 
     // Restaurant-scoped branding/logo assets.
@@ -262,10 +300,10 @@ service firebase.storage {
       allow write: if (isSuperAdmin() || isTenantMatch(restaurantId)) && isAllowedImage();
     }
 
-    // Restaurant-scoped invoice scans.
+    // Restaurant-scoped invoice scans. Invoice files are limited to inventory/scan/financial-authorized users.
     match /{restaurantId}/invoices/{allPaths=**} {
-      allow read: if isSuperAdmin() || isTenantMatch(restaurantId);
-      allow write: if (isSuperAdmin() || isTenantMatch(restaurantId)) && isAllowedInvoiceScan();
+      allow read: if canUseInvoiceScans(restaurantId);
+      allow write: if canUseInvoiceScans(restaurantId) && isAllowedInvoiceScan();
     }
 
     // Restaurant-scoped menu uploads for Menu Intelligence review.

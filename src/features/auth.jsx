@@ -6,7 +6,7 @@ import { getAuth, signInWithEmailAndPassword, sendPasswordResetEmail, createUser
 import { getToken, onMessage } from 'firebase/messaging';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { MapContainer, TileLayer, Marker, Circle, useMapEvents } from 'react-leaflet';
-import { T, db, storage, auth, messaging, firebaseConfig, secureFetch, MASTER_ADMIN_EMAIL, EVENT_TAGS, CURRENT_VERSION, useLiveCollection, formatDate, getToday, getMonthStr, formatDisplayDate, formatDisplayFullDate, formatDisplayMonth, getDaysInMonth, formatShortTime, formatClockTime, formatClockDateTime, getAvatar, generateTempPass, getExpDate, getHoliday, logAudit, customMapIcon } from '../core/appCore';
+import { T, db, storage, auth, messaging, firebaseConfig, firebaseDiagnostics, secureFetch, MASTER_ADMIN_EMAIL, EVENT_TAGS, CURRENT_VERSION, useLiveCollection, formatDate, getToday, getMonthStr, formatDisplayDate, formatDisplayFullDate, formatDisplayMonth, getDaysInMonth, formatShortTime, formatClockTime, formatClockDateTime, getAvatar, generateTempPass, getExpDate, getHoliday, logAudit, customMapIcon } from '../core/appCore';
 import { CheersLogo, Modal, DrawerMenu, DayDotPrintScreen, MapClickListener, SmartEmptyState, MiniProblemCard, getHomeProfile, calculatePunchHours, getWeekStart, getWeekDates, roleMatches, toLocalTimeInput, makeLocalIso, PunchTable, StatusTile, FriendlyEmpty, GlobalSearchModal, QuickActionDock, KitchenTVMode, ChangeLogModal, UndoBar } from '../components/common';
 
 const normEmail = (value) => String(value || '').toLowerCase().trim();
@@ -62,6 +62,9 @@ const LoginScreen = ({ setAppUser }) => {
   const [workspaceChoices, setWorkspaceChoices] = useState([]);
   const [workspaceUser, setWorkspaceUser] = useState(null);
   const [workspaceLoading, setWorkspaceLoading] = useState(false);
+  const [isLoginBusy, setIsLoginBusy] = useState(false);
+  const [loginDiagnostics, setLoginDiagnostics] = useState(null);
+  const [loginStep, setLoginStep] = useState('');
   
   // New state to hold the user temporarily if they need to change their password
   const [pendingUser, setPendingUser] = useState(null);
@@ -160,7 +163,7 @@ const LoginScreen = ({ setAppUser }) => {
       }
       localStorage.setItem('chaosRememberMe', rememberMe);
       localStorage.setItem(`chaosActiveRestaurantId_${baseUser.id}`, preferred.restaurantId);
-      updateDoc(doc(db, 'users', baseUser.id), {
+      updateDoc(doc(db, 'users', baseUser.profileDocId || baseUser.id), {
         activeRestaurantId: preferred.restaurantId,
         lastWorkspaceId: preferred.restaurantId,
         lastWorkspaceSwitchedAt: new Date().toISOString()
@@ -176,7 +179,7 @@ const LoginScreen = ({ setAppUser }) => {
     localStorage.setItem('chaosRememberMe', rememberMe);
     localStorage.setItem(`chaosActiveRestaurantId_${workspaceUser.id}`, workspace.restaurantId);
     try { sessionStorage.setItem(`chaosWorkspacePickerSeen_${workspaceUser.id}`, 'true'); } catch (_) {}
-    updateDoc(doc(db, 'users', workspaceUser.id), {
+    updateDoc(doc(db, 'users', workspaceUser.profileDocId || workspaceUser.id), {
       activeRestaurantId: workspace.restaurantId,
       lastWorkspaceId: workspace.restaurantId,
       lastWorkspaceSwitchedAt: new Date().toISOString()
@@ -208,33 +211,168 @@ const LoginScreen = ({ setAppUser }) => {
     }
   };
 
+  const loadLoginBootstrapFromServer = async (firebaseUser) => {
+    const res = await secureFetch('/api/login-bootstrap', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: normEmail(firebaseUser?.email) })
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || data?.ok === false) {
+      const detail = data?.error || res.statusText || 'Login bootstrap failed.';
+      const hint = data?.hint ? ` ${data.hint}` : '';
+      throw new Error(`${detail}${hint}`);
+    }
+    return data;
+  };
+
+  const finishLoginWithPreloadedWorkspaces = async (baseUser, firebaseUser, preloadedWorkspaces = [], { forcePicker = false } = {}) => {
+    if (Array.isArray(preloadedWorkspaces) && preloadedWorkspaces.length) {
+      setWorkspaceLoading(true);
+      try {
+        const choices = preloadedWorkspaces.filter(w => w && w.isActive !== false);
+        if (!choices.length) throw new Error('This login is not attached to an active restaurant workspace.');
+        const savedRestaurantId = localStorage.getItem(`chaosActiveRestaurantId_${baseUser.id}`);
+        const preferred = choices.find(w => w.restaurantId === savedRestaurantId) || choices.find(w => w.restaurantId === baseUser.activeRestaurantId) || choices.find(w => w.restaurantId === baseUser.defaultRestaurantId) || choices.find(w => w.restaurantId === baseUser.restaurantId) || choices[0];
+        if (choices.length > 1 && forcePicker) {
+          setWorkspaceUser(baseUser);
+          setWorkspaceChoices(choices);
+          return;
+        }
+        localStorage.setItem('chaosRememberMe', rememberMe);
+        localStorage.setItem(`chaosActiveRestaurantId_${baseUser.id}`, preferred.restaurantId);
+        const profileDocId = baseUser.profileDocId || baseUser.id;
+        updateDoc(doc(db, 'users', profileDocId), {
+          activeRestaurantId: preferred.restaurantId,
+          lastWorkspaceId: preferred.restaurantId,
+          lastWorkspaceSwitchedAt: new Date().toISOString()
+        }).catch(() => {});
+        setAppUser({ ...buildActiveUserForWorkspace(baseUser, preferred), availableWorkspaces: choices });
+      } finally {
+        setWorkspaceLoading(false);
+      }
+      return;
+    }
+    await finishLoginWithWorkspace(baseUser, firebaseUser, { forcePicker });
+  };
+
   const completeFirebaseLogin = async (userCredential) => {
     const firebaseUser = userCredential.user;
+    setLoginStep('Firebase accepted password. Loading account profile...');
+    setLoginDiagnostics(null);
     await syncAccountSecurity();
-    const userDocRef = doc(db, 'users', firebaseUser.uid);
-    const userDocSnap = await getDoc(userDocRef);
-    if (userDocSnap.exists()) {
-      const userData = { id: firebaseUser.uid, ...userDocSnap.data() };
-      delete userData.password;
-      if (userData.forcePasswordChange) {
-        setPendingUser(userData);
-      } else {
-        await finishLoginWithWorkspace(userData, firebaseUser, { forcePicker: true });
+
+    let userData = null;
+    let preloadedWorkspaces = null;
+    let bootstrapDiag = null;
+
+    try {
+      const userDocRef = doc(db, 'users', firebaseUser.uid);
+      const userDocSnap = await getDoc(userDocRef);
+      if (userDocSnap.exists()) {
+        userData = { id: firebaseUser.uid, profileDocId: firebaseUser.uid, ...userDocSnap.data() };
       }
-    } else {
-      setLoginError('Login successful, but user profile is missing in the database.');
+    } catch (profileErr) {
+      bootstrapDiag = { browserProfileReadError: profileErr?.message || String(profileErr) };
+      console.warn('Browser profile lookup failed, trying server login bootstrap:', profileErr?.message || profileErr);
     }
+
+    if (!userData) {
+      setLoginStep('Checking account and workspace access on the server...');
+      const bootstrap = await loadLoginBootstrapFromServer(firebaseUser);
+      bootstrapDiag = { ...(bootstrapDiag || {}), ...(bootstrap.diagnostics || {}) };
+      setLoginDiagnostics(bootstrapDiag);
+      if (bootstrap?.user) {
+        userData = { id: firebaseUser.uid, ...bootstrap.user, id: firebaseUser.uid, uid: firebaseUser.uid, profileDocId: bootstrap.user.profileDocId || bootstrap.user.id || firebaseUser.uid };
+        preloadedWorkspaces = Array.isArray(bootstrap.workspaces) ? bootstrap.workspaces : [];
+      }
+    }
+
+    if (!userData) {
+      throw new Error(`Firebase Auth accepted this login, but no matching Firestore profile could be loaded. ${authDiagnosticSuffix()}`);
+    }
+
+    delete userData.password;
+    if (userData.forcePasswordChange) {
+      setPendingUser(userData);
+      return;
+    }
+
+    setLoginStep('Loading workspace access...');
+    await finishLoginWithPreloadedWorkspaces(userData, firebaseUser, preloadedWorkspaces, { forcePicker: true });
   };
+
+  const authDiagnosticSuffix = () => {
+    const host = firebaseDiagnostics?.host || (typeof window !== 'undefined' ? window.location.hostname : 'unknown-host');
+    const keyTail = firebaseDiagnostics?.browserApiKeyTail ? ` key:${firebaseDiagnostics.browserApiKeyTail}` : '';
+    const appCheck = firebaseDiagnostics?.appCheckSiteKeyTail ? ` appCheck:${firebaseDiagnostics.appCheckSiteKeyTail}` : '';
+    return `Firebase: ${firebaseDiagnostics?.projectId || firebaseConfig?.projectId || 'unknown-project'} on ${host}${keyTail}${appCheck}.`;
+  };
+
+  const formatLoginError = (error) => {
+    const code = error?.code || '';
+    const message = error?.message || 'Login failed.';
+    if (code === 'auth/network-request-failed') {
+      return `Firebase Auth network request failed. ${authDiagnosticSuffix()} Hard refresh once and try again; if this repeats, the deployed Firebase browser key/domain is still mismatched or blocked.`;
+    }
+    if (code && code.includes('requests-from-referrer')) {
+      return `Firebase is blocking this Vercel domain for the active browser API key. ${authDiagnosticSuffix()}`;
+    }
+    if (code === 'auth/invalid-credential' || code === 'auth/wrong-password' || code === 'auth/user-not-found') {
+      return 'Email or password was not accepted.';
+    }
+    if (code === 'auth/too-many-requests') {
+      return 'Too many login attempts. Wait a few minutes before trying again.';
+    }
+    return message;
+  };
+
+  const withLoginTimeout = (promise, timeoutMs = 55000) => new Promise((resolve, reject) => {
+    let settled = false;
+    let unsubscribe = () => {};
+    const finish = (fn, value) => {
+      if (settled) return;
+      settled = true;
+      try { unsubscribe(); } catch (_) {}
+      clearTimeout(timer);
+      fn(value);
+    };
+    const timer = setTimeout(() => {
+      if (auth.currentUser) {
+        finish(resolve, { user: auth.currentUser, recoveredFromAuthState: true });
+        return;
+      }
+      finish(reject, new Error(`Firebase login did not finish within ${Math.round(timeoutMs / 1000)} seconds. ${authDiagnosticSuffix()} This usually means the browser key, App Check key, or network path is blocking Firebase Auth.`));
+    }, timeoutMs);
+    try {
+      import('firebase/auth').then(({ onAuthStateChanged }) => {
+        if (settled) return;
+        unsubscribe = onAuthStateChanged(auth, (user) => {
+          if (user) finish(resolve, { user, recoveredFromAuthState: true });
+        });
+      }).catch(() => {});
+    } catch (_) {}
+    promise.then((value) => finish(resolve, value)).catch((err) => finish(reject, err));
+  });
 
   const handleLogin = async (e) => {
     e.preventDefault();
+    if (isLoginBusy || workspaceLoading) return;
+    const cleanEmail = normEmail(email);
+    if (!cleanEmail || !password) {
+      setLoginError('Enter your email and password first.');
+      return;
+    }
     setLoginError('');
+    setLoginDiagnostics(null);
+    setLoginStep('Contacting Firebase Auth...');
     setWorkspaceChoices([]);
     setWorkspaceUser(null);
     clearMfaChallenge();
+    setIsLoginBusy(true);
     
     try {
-      const userCredential = await signInWithEmailAndPassword(auth, email, password);
+      const userCredential = await withLoginTimeout(signInWithEmailAndPassword(auth, cleanEmail, password));
       await completeFirebaseLogin(userCredential);
     } catch (error) {
       if (error?.code === 'auth/multi-factor-auth-required') {
@@ -248,7 +386,10 @@ const LoginScreen = ({ setAppUser }) => {
           return;
         }
       }
-      setLoginError(error.message);
+      setLoginError(formatLoginError(error));
+    } finally {
+      setIsLoginBusy(false);
+      setLoginStep('');
     }
   };
 
@@ -449,21 +590,26 @@ const LoginScreen = ({ setAppUser }) => {
           <form onSubmit={handleLogin} className="w-full space-y-4">
             
             {loginError && <div className="p-3 bg-red-900/50 border border-red-500/50 rounded-xl text-red-200 text-xs font-bold text-center">{loginError}</div>}
+            {!loginError && loginStep && <div className="p-2 bg-slate-900/70 border border-[#2A353D] rounded-xl text-slate-300 text-[10px] font-bold text-center uppercase tracking-widest">{loginStep}</div>}
+            {loginError && loginDiagnostics && <details className="text-left text-[10px] bg-[#0B0E11] border border-[#2A353D] rounded-xl p-3 text-slate-300">
+              <summary className="cursor-pointer font-black text-[#D4A381] uppercase tracking-widest">Login check details</summary>
+              <pre className="mt-2 whitespace-pre-wrap break-words text-slate-400">{JSON.stringify(loginDiagnostics, null, 2)}</pre>
+            </details>}
 
             <div>
-              <input type="text" placeholder="Email Address" value={email} onChange={e => setEmail(e.target.value)} className="w-full text-center text-lg font-bold bg-[#0B0E11] border border-[#2A353D] rounded-xl py-4 text-white focus:outline-none focus:border-[#D4A381] transition-colors shadow-inner" />
+              <input type="text" placeholder="Email Address" value={email} onChange={e => setEmail(e.target.value)} disabled={isLoginBusy || workspaceLoading} autoComplete="email" className="w-full text-center text-lg font-bold bg-[#0B0E11] border border-[#2A353D] rounded-xl py-4 text-white focus:outline-none focus:border-[#D4A381] transition-colors shadow-inner" />
             </div>
      <div>
-              <input type="password" placeholder="Password" value={password} onChange={e => setPassword(e.target.value)} className="w-full text-center text-lg font-bold bg-[#0B0E11] border border-[#2A353D] rounded-xl py-4 text-white focus:outline-none focus:border-[#D4A381] transition-colors shadow-inner" />
+              <input type="password" placeholder="Password" value={password} onChange={e => setPassword(e.target.value)} disabled={isLoginBusy || workspaceLoading} autoComplete="current-password" className="w-full text-center text-lg font-bold bg-[#0B0E11] border border-[#2A353D] rounded-xl py-4 text-white focus:outline-none focus:border-[#D4A381] transition-colors shadow-inner" />
             </div>
 
             <label className="flex items-center justify-center gap-2 cursor-pointer mt-2">
-              <input type="checkbox" checked={rememberMe} onChange={(e) => setRememberMe(e.target.checked)} className="w-4 h-4 accent-[#D4A381] bg-[#0B0E11] border border-[#2A353D] rounded cursor-pointer" />
+              <input type="checkbox" checked={rememberMe} onChange={(e) => setRememberMe(e.target.checked)} disabled={isLoginBusy || workspaceLoading} className="w-4 h-4 accent-[#D4A381] bg-[#0B0E11] border border-[#2A353D] rounded cursor-pointer" />
               <span className="text-[10px] uppercase font-bold text-slate-400 tracking-widest">Remember Me</span>
             </label>
             
-            <button type="submit" disabled={workspaceLoading} className="w-full bg-gradient-to-r from-[#D4A381] to-[#b58563] disabled:opacity-60 disabled:cursor-wait text-slate-900 font-black tracking-widest uppercase text-lg py-4 rounded-xl shadow-[0_0_20px_rgba(212,163,129,0.2)] hover:scale-[1.02] transition-all mt-4">
-              {workspaceLoading ? 'Checking Workspaces...' : 'Unlock System'}
+            <button type="submit" disabled={isLoginBusy || workspaceLoading} className="w-full bg-gradient-to-r from-[#D4A381] to-[#b58563] disabled:opacity-60 disabled:cursor-wait text-slate-900 font-black tracking-widest uppercase text-lg py-4 rounded-xl shadow-[0_0_20px_rgba(212,163,129,0.2)] hover:scale-[1.02] transition-all mt-4">
+              {isLoginBusy ? 'Unlocking...' : (workspaceLoading ? 'Checking Workspaces...' : 'Unlock System')}
             </button>
 <div className="pt-3 text-center flex flex-col gap-2">
               <button type="button" onClick={handleForgotCredentials} className="text-[10px] font-bold text-slate-500 uppercase tracking-widest hover:text-[#D4A381] transition-colors">

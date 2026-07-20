@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Bell, Check, Camera, ChevronLeft, ChevronRight, MessageSquare, Plus, Trash2, Users, Calendar, Clock, X, Loader2, Package, ClipboardList, Menu, Settings, LogOut, Shield, Send, Repeat, Edit, Moon, Sun, TrendingUp, BookOpen, Search, ChefHat, Scale, Coffee, Star, Bug, Wrench, Globe, Mic, MicOff, Sparkles } from 'lucide-react';
+import { Bell, Check, Camera, ChevronLeft, ChevronRight, MessageSquare, Plus, Trash2, Users, Calendar, Clock, X, Loader2, Package, ClipboardList, Menu, Settings, LogOut, Shield, Send, Repeat, Edit, Moon, Sun, TrendingUp, BookOpen, Search, ChefHat, Scale, Coffee, Star, Bug, Wrench, Globe, Mic, MicOff, Sparkles, Network } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
 import { getFirestore, collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, where, getDoc, setDoc, getDocs } from 'firebase/firestore';
 import { getAuth, signInWithEmailAndPassword, sendPasswordResetEmail, createUserWithEmailAndPassword, updatePassword } from 'firebase/auth';
@@ -10,6 +10,7 @@ import { buildPrepCreatePayload, buildPrepQuantityUpdate, findPrepMatch, formatP
 import { buildEightySixAlertDetails, canUseMenuIntelligence, resolveStrictEightySixMatch } from '../core/menuIntelligence';
 import { parseReminderCommand } from '../core/reminderUtils';
 import { getVoiceMatchScore, resolveVoiceMatch } from '../core/voiceIntelligence';
+import { buildAiOrderAssistant, parseAiOrderingVoiceIntent, summarizeAiOrderAssistant } from '../core/aiOrderAssistant';
 import { resolveFeatureAccess, featureForRoute, isMasterAdminUser } from '../lib/featureAccess';
 import { FEATURE_KEYS } from '../config/plans';
 
@@ -35,13 +36,35 @@ const CheersLogo = ({ clientData }) => {
 };
 
 const Modal = ({ isOpen, onClose, title, children, sizeClass = 'max-w-md' }) => {
+  const panelRef = useRef(null);
+  const previousFocusRef = useRef(null);
+  const titleIdRef = useRef(`chaos-modal-title-${Math.random().toString(36).slice(2)}`);
+
+  useEffect(() => {
+    if (!isOpen) return undefined;
+    previousFocusRef.current = typeof document !== 'undefined' ? document.activeElement : null;
+    const focusTimer = window.setTimeout(() => {
+      const firstFocusable = panelRef.current?.querySelector('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])');
+      (firstFocusable || panelRef.current)?.focus?.();
+    }, 0);
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape') onClose?.();
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.clearTimeout(focusTimer);
+      window.removeEventListener('keydown', handleKeyDown);
+      previousFocusRef.current?.focus?.();
+    };
+  }, [isOpen, onClose]);
+
   if (!isOpen) return null;
   return (
-    <div className="chaos-modal-backdrop fixed inset-0 bg-[#12161A]/80 z-[60] flex items-center justify-center p-4 backdrop-blur-md transition-opacity">
-      <div className={`chaos-modal-panel ${T.card} ${sizeClass} w-full max-h-[90vh] overflow-y-auto`}>
+    <div className="chaos-modal-backdrop fixed inset-0 bg-[#12161A]/80 z-[60] flex items-center justify-center p-4 backdrop-blur-md transition-opacity" role="presentation">
+      <div ref={panelRef} role="dialog" aria-modal="true" aria-labelledby={titleIdRef.current} tabIndex={-1} className={`chaos-modal-panel ${T.card} ${sizeClass} w-full max-h-[90vh] overflow-y-auto outline-none`}>
         <div className={`chaos-modal-header flex justify-between items-center p-4 border-b ${T.border}`}>
-          <h3 className="font-bold text-lg text-white">{title}</h3>
-          <button onClick={onClose} className="p-1.5 hover:bg-[#12161A] rounded-full text-slate-400 hover:text-white transition-colors"><X size={20}/></button>
+          <h3 id={titleIdRef.current} className="font-bold text-lg text-white">{title}</h3>
+          <button type="button" aria-label={`Close ${title || 'dialog'}`} onClick={onClose} className="p-1.5 hover:bg-[#12161A] rounded-full text-slate-400 hover:text-white transition-colors focus:outline-none focus:ring-2 focus:ring-[#D4A381]"><X size={20}/></button>
         </div>
         <div className="chaos-modal-body p-4">{children}</div>
       </div>
@@ -70,8 +93,13 @@ const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppU
   // Reset the drawer search every time the hamburger menu opens/closes.
   // This prevents an old search term from reappearing and making the drawer look auto-filled.
   useEffect(() => {
-    setMenuSearch('');
-  }, [isOpen]);
+    if (!isOpen) return undefined;
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape') onClose?.();
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, onClose]);
 
   const drawerReminders = useLiveCollection('personalReminders', appUser?.restaurantId, { enabled: !!isOpen && !!appUser?.restaurantId && !!appUser?.id, limitCount: 120, fallbackLimitCount: 60 });
   const hasReminderAlert = (drawerReminders || []).some(reminder => reminderNeedsAttention(reminder, appUser));
@@ -100,7 +128,7 @@ const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppU
   if (isEnabled('recipes')) pushTab({ id: 'recipes', label: 'Recipe Book', icon: <BookOpen size={18}/> });
   if (isEnabled('inventory')) pushTab({ id: 'inventory', label: 'Inventory & Orders', icon: <Package size={18}/> });  
   if (!appUser?.isDemo) pushTab({ id: 'ai-tools', label: 'AI Tools', icon: <Sparkles size={18}/> });
-  if (canUseMenuIntelligence(appUser, clientData)) pushTab({ id: 'menu-intelligence', label: 'Menu Intelligence', icon: <Sparkles size={18}/> });
+  if (canUseMenuIntelligence(appUser, clientData)) pushTab({ id: 'menu-intelligence', label: 'Menu Intelligence', icon: <Network size={18}/> });
   pushTab({ id: 'reminders', label: 'My Reminders', icon: <Bell size={18}/>, dot: hasReminderAlert });
   if (isEnabled('team')) pushTab({ id: 'team', label: 'Staff Roster', icon: <Users size={18}/> });
   if (!appUser?.isDemo && isEnabled('hr')) pushTab({ id: 'hr-training', label: 'HR & Training', icon: <BookOpen size={18}/> });
@@ -124,9 +152,9 @@ const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppU
   const menuSections = [
     { label: 'PEOPLE & SCHEDULING', ids: ['published', 'team', 'hr-training'] },
     { label: 'TODAY', ids: ['today', 'ops', 'reminders', 'events', 'messages'] },
-    { label: 'KITCHEN OPERATIONS', ids: ['prep', 'inventory', 'recipes', 'menu-intelligence', 'maintenance'] },
-    { label: 'BUSINESS & FINANCIALS', ids: ['financials'] },
-    { label: 'TOOLS & AUTOMATION', ids: ['ai-tools'] },
+    { label: 'KITCHEN OPERATIONS', ids: ['prep', 'inventory', 'recipes'] },
+    { label: 'BUSINESS & FINANCIALS', ids: ['financials', 'maintenance'] },
+    { label: 'TOOLS & AUTOMATION', ids: ['ai-tools', 'menu-intelligence'] },
     { label: 'SYSTEM & SUPPORT', ids: ['settings', 'help', 'audit', 'godmode'] }
   ].map(section => ({ ...section, tabs: section.ids.map(id => tabs.find(tab => tab.id === id)).filter(Boolean) })).filter(section => section.tabs.length > 0);
 
@@ -150,9 +178,9 @@ const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppU
   return (
     <>
       {isOpen && (
-        <div className="fixed inset-0 z-[70] flex justify-end">
+        <div className="fixed inset-0 z-[70] flex justify-end" role="presentation">
           <div className="absolute inset-0 bg-[#12161A]/60 backdrop-blur-sm" onClick={onClose}></div>
-          <div className={`app-drawer-readable w-72 bg-[#1A2126] border-l ${T.border} h-full shadow-2xl flex flex-col relative animate-[slideIn_0.3s_ease-out]`}>
+          <div className={`app-drawer-readable w-72 bg-[#1A2126] border-l ${T.border} h-full shadow-2xl flex flex-col relative animate-[slideIn_0.3s_ease-out]`} role="dialog" aria-modal="true" aria-label="Main menu">
             <div className={`p-4 border-b ${T.border} bg-[#12161A] flex justify-between items-start`}>
                <div className="flex items-center gap-3">
                  <img src={getAvatar(appUser.name, appUser.photoURL)} alt="Profile" className={`w-10 h-10 rounded-full border ${T.border} object-cover`}/>
@@ -178,7 +206,7 @@ const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppU
             <div className="p-2 border-b border-[#2A353D]">
               <div className="relative">
                 <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
-                <input value={menuSearch} onChange={e => setMenuSearch(e.target.value)} placeholder="Search menu, help, tools..." className="w-full bg-[#12161A] border border-[#2A353D] rounded-xl pl-9 pr-3 py-1.5 text-xs font-bold text-white outline-none focus:border-[#D4A381]" />
+                <input value={menuSearch} onChange={e => setMenuSearch(e.target.value)} placeholder="Search menu, help, tools..." aria-label="Search menu, help, and tools" className="w-full bg-[#12161A] border border-[#2A353D] rounded-xl pl-9 pr-3 py-1.5 text-xs font-bold text-white outline-none focus:border-[#D4A381]" />
               </div>
             </div>
             <div className="flex-1 overflow-y-auto px-3 py-2">
@@ -1107,7 +1135,9 @@ const buildVoiceNavigationAction = (q = '') => {
   if (/\b(month view|monthly view|month schedule|calendar view)\b/.test(q)) return makeVoiceNav({ label:'Open Month View', tab:'published', subTab:'month-view', date, summary:'Open Time Clock & Schedule → Month View.' });
   if (/\b(my schedule|my shifts|mine|my shift|next shift|time clock|clock in|clock out)\b/.test(q)) return makeVoiceNav({ label:'Open My Schedule', tab:'published', subTab:'my-schedule', date, summary:'Open Time Clock & Schedule → My Schedule.' });
   if (/\b(trade board|shift swap|swap board)\b/.test(q)) return makeVoiceNav({ label:'Open Trade Board', tab:'published', subTab:'trade-board', date, summary:'Open Time Clock & Schedule → Trade Board.' });
-  if (/\b(time off|request off|vacation request|availability)\b/.test(q)) return makeVoiceNav({ label:'Open Time Off', tab:'published', subTab:'time-off', date, summary:'Open Time Clock & Schedule → Request Off.' });
+  if (/\b(availability|available|unavailable|preferred shifts|preferred days|school schedule|seasonal schedule)\b/.test(q) && !/\b(time off|request off|vacation request|pto)\b/.test(q)) return makeVoiceNav({ label:'Open Availability', tab:'published', subTab:'availability', date, summary:'Open Time Clock & Schedule → Availability.' });
+  if (/\b(time off|request off|vacation request|pto)\b/.test(q)) return makeVoiceNav({ label:'Open Time Off', tab:'published', subTab:'time-off', date, summary:'Open Time Clock & Schedule → Request Off.' });
+  if (/\b(event calendar|events calendar|event planner|calendar events|events|party calendar)\b/.test(q) && !/\b(add|create|schedule|make|new|remind|reminder)\b/.test(q)) return makeVoiceNav({ label:'Open Event Calendar', tab:'events', date, summary:'Open Event Calendar.' });
   if (/\b(full schedule|schedule days|published schedule|whole schedule|team schedule|all schedule|everyone schedule|schedule)\b/.test(q) && !/\b(my schedule|my shifts|mine|my shift|schedule builder|schedule maker)\b/.test(q)) return makeVoiceNav({ label:'Open Full Schedule', tab:'published', subTab:'full-schedule', date, summary: date ? `Open the full schedule on ${formatDisplayDate(date)}.` : 'Open Time Clock & Schedule → Full Schedule.' });
   if (/\b(staff list|staff roster|team list|employee list|employees|roster|team)\b/.test(q)) return makeVoiceNav({ label:'Open Staff Roster', tab:'team', summary:'Open Staff Roster.' });
   if (/\b(inventory|orders|order guide|stock count|stock)\b/.test(q)) return makeVoiceNav({ label:'Open Inventory', tab:'inventory', summary:'Open Inventory & Orders.' });
@@ -1143,6 +1173,239 @@ const buildVoiceClientCommandId = (voiceSessionId = '', action = {}, sourceText 
   String(action.scheduledAt || action.dueAt || '').slice(0, 25),
   action.intent || 'reminder'
 ].join(':');
+
+
+const VOICE_MONTHS = {
+  january:0, jan:0, february:1, feb:1, march:2, mar:2, april:3, apr:3, may:4, june:5, jun:5,
+  july:6, jul:6, august:7, aug:7, september:8, sept:8, sep:8, october:9, oct:9, november:10, nov:10, december:11, dec:11
+};
+const normalizeVoiceTimeMeridiem = (value = '') => String(value || '').toLowerCase().replace(/a\s*m\b/g, 'am').replace(/p\s*m\b/g, 'pm').replace(/\s+/g, ' ').trim();
+const parseVoiceTimeTo24Hour = (value = '', fallbackMeridiem = '') => {
+  const raw = normalizeVoiceTimeMeridiem(value);
+  const m = raw.match(/\b(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\b/);
+  if (!m) return '';
+  let hour = parseInt(m[1], 10);
+  const minute = m[2] ? parseInt(m[2], 10) : 0;
+  const meridiem = m[3] || fallbackMeridiem || '';
+  if (!Number.isFinite(hour) || !Number.isFinite(minute) || hour < 0 || hour > 23 || minute < 0 || minute > 59) return '';
+  if (meridiem === 'pm' && hour < 12) hour += 12;
+  if (meridiem === 'am' && hour === 12) hour = 0;
+  return `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
+};
+const parseVoiceTimeRange = (text = '') => {
+  const q = normalizeVoiceTimeMeridiem(text);
+  const m = q.match(/\b(?:from\s+)?(\d{1,2}(?::\d{2})?\s*(?:am|pm)?)\s*(?:to|until|-|through|thru)\s*(\d{1,2}(?::\d{2})?\s*(?:am|pm)?)\b/);
+  if (!m) return null;
+  const endMeridiem = (m[2].match(/\b(am|pm)\b/) || [])[1] || '';
+  let start = parseVoiceTimeTo24Hour(m[1], endMeridiem);
+  let end = parseVoiceTimeTo24Hour(m[2]);
+  if (!start || !end) return null;
+  const hasMeridiem = /\b(am|pm)\b/.test(`${m[1]} ${m[2]}`);
+  const toMinutes = (v) => { const [h, min] = String(v).split(':').map(Number); return h * 60 + min; };
+  const fromMinutes = (mins) => `${String(Math.floor(mins / 60) % 24).padStart(2, '0')}:${String(mins % 60).padStart(2, '0')}`;
+  if (!hasMeridiem && toMinutes(end) <= toMinutes(start) && toMinutes(end) + 12 * 60 < 24 * 60) end = fromMinutes(toMinutes(end) + 12 * 60);
+  return { start, end, matchedText: m[0] };
+};
+const parseVoiceSingleTime = (text = '') => {
+  const q = normalizeVoiceTimeMeridiem(text);
+  const m = q.match(/\b(?:at|by|around|about)\s+(noon|midnight|\d{1,2}(?::\d{2})?\s*(?:am|pm)?)\b/);
+  if (!m) return '';
+  if (m[1] === 'noon') return '12:00';
+  if (m[1] === 'midnight') return '00:00';
+  const explicit = /\b(am|pm)\b/.test(m[1]);
+  const rawHour = parseInt((m[1].match(/\d{1,2}/) || [''])[0], 10);
+  const fallbackMeridiem = !explicit && rawHour >= 1 && rawHour <= 7 ? 'pm' : '';
+  return parseVoiceTimeTo24Hour(m[1], fallbackMeridiem);
+};
+const getNextVoiceWeekdayDate = (weekdayIndex, forceNext = false) => {
+  const now = new Date(`${getToday()}T12:00:00`);
+  const out = new Date(now);
+  let delta = (weekdayIndex - now.getDay() + 7) % 7;
+  if (forceNext && delta === 0) delta = 7;
+  out.setDate(now.getDate() + delta);
+  return formatDate(out);
+};
+const parseVoiceDateFromText = (text = '') => {
+  const raw = String(text || '');
+  const q = normalizeVoiceText(raw);
+  if (/\btoday\b/.test(q)) return { date:getToday(), matchedText:'today', confidence:95 };
+  if (/\btomorrow\b/.test(q)) { const d = new Date(`${getToday()}T12:00:00`); d.setDate(d.getDate()+1); return { date:formatDate(d), matchedText:'tomorrow', confidence:95 }; }
+  const slash = q.match(/\b(\d{1,2})[\/\-](\d{1,2})(?:[\/\-](\d{2,4}))?\b/);
+  if (slash) {
+    const now = new Date(`${getToday()}T12:00:00`);
+    let year = slash[3] ? parseInt(slash[3], 10) : now.getFullYear();
+    if (year < 100) year += 2000;
+    const d = new Date(year, parseInt(slash[1], 10)-1, parseInt(slash[2], 10), 12, 0, 0);
+    if (Number.isFinite(d.getTime())) return { date:formatDate(d), matchedText:slash[0], confidence:95 };
+  }
+  const monthNames = Object.keys(VOICE_MONTHS).join('|');
+  const monthMatch = q.match(new RegExp(`\\b(${monthNames})\\s+(\\d{1,2})(?:st|nd|rd|th)?(?:,?\\s*(\\d{4}))?\\b`));
+  if (monthMatch) {
+    const now = new Date(`${getToday()}T12:00:00`);
+    const year = monthMatch[3] ? parseInt(monthMatch[3], 10) : now.getFullYear();
+    const d = new Date(year, VOICE_MONTHS[monthMatch[1]], parseInt(monthMatch[2], 10), 12, 0, 0);
+    if (Number.isFinite(d.getTime())) return { date:formatDate(d), matchedText:monthMatch[0], confidence:95 };
+  }
+  const nextDay = q.match(/\bnext\s+(sunday|monday|tuesday|wednesday|thursday|friday|saturday)\b/);
+  if (nextDay) return { date:getNextVoiceWeekdayDate(VOICE_WEEKDAYS.indexOf(nextDay[1]), true), matchedText:nextDay[0], confidence:90 };
+  const day = q.match(/\b(sunday|monday|tuesday|wednesday|thursday|friday|saturday)\b/);
+  if (day) return { date:getNextVoiceWeekdayDate(VOICE_WEEKDAYS.indexOf(day[1]), false), matchedText:day[0], confidence:82 };
+  return { date:'', matchedText:'', confidence:0 };
+};
+const stripVoiceDateAndTimePhrases = (text = '') => {
+  let out = String(text || '');
+  out = out.replace(/\b(today|tomorrow|tonight)\b/ig, ' ')
+    .replace(/\bnext\s+(sunday|monday|tuesday|wednesday|thursday|friday|saturday)\b/ig, ' ')
+    .replace(/\b(sunday|monday|tuesday|wednesday|thursday|friday|saturday)\b/ig, ' ')
+    .replace(/\b\d{1,2}[\/\-]\d{1,2}(?:[\/\-]\d{2,4})?\b/g, ' ')
+    .replace(/\b(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t|tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\s+\d{1,2}(?:st|nd|rd|th)?(?:,?\s*\d{4})?\b/ig, ' ')
+    .replace(/\b(?:at|by|around|about)\s+(noon|midnight|\d{1,2}(?::\d{2})?\s*(?:a\s*m|p\s*m|am|pm)?)\b/ig, ' ')
+    .replace(/\b(?:from\s+)?\d{1,2}(?::\d{2})?\s*(?:a\s*m|p\s*m|am|pm)?\s*(?:to|until|-|through|thru)\s*\d{1,2}(?::\d{2})?\s*(?:a\s*m|p\s*m|am|pm)?\b/ig, ' ');
+  return out.replace(/\s+/g, ' ').trim();
+};
+const cleanVoiceActionTitle = (text = '', extras = []) => {
+  const extra = extras.length ? `|${extras.map(v => String(v).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')}` : '';
+  const re = new RegExp(`\\b(please|can you|could you|a|an|the|create|add|make|put|new|set up|schedule|calendar|event|events|party|banquet|catering|reservation|for|on|at|called|named${extra})\\b`, 'ig');
+  return stripVoiceDateAndTimePhrases(text).replace(re, ' ').replace(/\s+/g, ' ').trim();
+};
+const eventIsVisibleToVoice = (ev = {}) => ev?.type === 'special_event' || ev?.eventType === 'special_event' || ev?.date;
+const getUpcomingVoiceEvents = (events = [], startDate = getToday(), endDate = '9999-12-31') => (events || [])
+  .filter(eventIsVisibleToVoice)
+  .filter(e => e.date && e.date >= startDate && e.date <= endDate)
+  .sort((a,b) => `${a.date || ''} ${a.time || ''}`.localeCompare(`${b.date || ''} ${b.time || ''}`));
+const findVoiceEventMatch = (events = [], eventPhrase = '', targetDate = '') => {
+  const pool = getUpcomingVoiceEvents(events, getToday()).filter(e => !targetDate || e.date === targetDate || e.date >= getToday());
+  const q = cleanVoiceActionTitle(eventPhrase, ['reminder','remind','push','notification','notify']).trim() || eventPhrase;
+  if (!pool.length) return null;
+  const match = resolveVoiceMatch(pool, q, { getLabel: ev => ev.title || ev.name || '', getAliases: ev => [ev.notes, ev.date, ev.time].filter(Boolean), minScore: 35, highThreshold: 82, margin: 12 });
+  return match?.top?.item ? { event: match.top.item, confidence: match.confidence, isHighConfidence: match.isHighConfidence, alternatives: match.alternatives || [] } : null;
+};
+const buildVoiceEventsSummaryAction = (text = '', events = []) => {
+  const q = normalizeVoiceText(text);
+  if (!/\b(event|events|calendar|party|parties|banquet|banquets|catering)\b/.test(q)) return null;
+  if (!/\b(what|show|list|coming up|upcoming|today|tomorrow|this week|next week|on)\b/.test(q)) return null;
+  const dateInfo = parseVoiceDateFromText(text);
+  const today = getToday();
+  let start = today;
+  let end = '9999-12-31';
+  let label = 'Upcoming events';
+  if (/\btoday\b/.test(q)) { start = today; end = today; label = 'Events today'; }
+  else if (dateInfo.date) { start = dateInfo.date; end = dateInfo.date; label = `Events on ${formatDisplayDate(dateInfo.date)}`; }
+  else if (/\bthis week\b/.test(q)) { const d = new Date(`${today}T12:00:00`); const s = new Date(d); s.setDate(d.getDate() - d.getDay()); const e = new Date(s); e.setDate(s.getDate()+6); start = formatDate(s); end = formatDate(e); label = 'Events this week'; }
+  else if (/\bnext week\b/.test(q)) { const d = new Date(`${today}T12:00:00`); const s = new Date(d); s.setDate(d.getDate() - d.getDay() + 7); const e = new Date(s); e.setDate(s.getDate()+6); start = formatDate(s); end = formatDate(e); label = 'Events next week'; }
+  const rows = getUpcomingVoiceEvents(events, start, end).slice(0, 10).map(e => ({ menuItemName:`${formatDisplayDate(e.date)}${e.time ? ` ${formatShortTime(e.time)}` : ''} — ${e.title || 'Event'}`, severity:e.notes || 'event' }));
+  return { intent:'event_summary', label, tab:'events', date:start, eventRows:rows, summary: rows.length ? `${label}: ${rows.map(r => r.menuItemName).join('; ')}.` : `${label}: no events found.`, safe:true, needsConfirmation:false };
+};
+
+const buildVoiceAiOrderingAction = ({ raw = '', inventoryItems = [], events = [], prepItems = [], menuDependencies = [], appUser = {}, clientFeatures = {}, clientData = {} } = {}) => {
+  const parsed = parseAiOrderingVoiceIntent(raw);
+  if (!parsed) return null;
+  if (!canVoiceOpenTab(appUser, clientFeatures, 'inventory', clientData)) {
+    return { intent:'blocked', label:'AI Ordering Blocked', summary:'You do not have access to Inventory & Orders, so 86Voice cannot open AI ordering suggestions.', safe:true };
+  }
+  const assistant = buildAiOrderAssistant({ inventoryItems, events, prepItems, menuDependencies, currentDate:getToday(), daysAhead:7, eventDaysAhead:21 });
+  const topRows = (assistant.recommendations || []).filter(row => row.suggestedQty > 0).slice(0, 8).map(row => ({
+    menuItemName: `${row.itemName}: suggest ${row.suggestedQty}${row.packSize ? ` ${row.packSize}` : ''}`,
+    severity: row.reasons?.slice(0, 3).join(' • ') || row.priority
+  }));
+  if (parsed.intent === 'ai_event_supply_summary') {
+    const rows = (assistant.eventNeeds || []).slice(0, 8).map(row => ({
+      menuItemName: `${formatDisplayDate(row.date)} — ${row.event.title || 'Event'}`,
+      severity: [...row.items.map(i => i.itemName), ...row.mentionedItems.map(m => m.item?.name || '')].filter(Boolean).slice(0, 8).join(', ') || 'Review event notes and menu links'
+    }));
+    return { intent:'ai_order_summary', label:'AI Event Supply Check', tab:'inventory', summary: rows.length ? `Event supply checks: ${rows.map(r => r.menuItemName).join('; ')}.` : 'No event supply signals found yet. Open AI Order Assistant to review event notes, menu links, and inventory setup.', rows, safe:true, needsConfirmation:false };
+  }
+  if (parsed.intent === 'ai_order_explain_item') {
+    const match = resolveVoiceMatch(assistant.recommendations || [], parsed.itemPhrase || raw, { getLabel: row => row.itemName, getAliases: row => row.reasons || [], minScore: 35, highThreshold: 70, margin: 10 });
+    const row = match?.top?.item;
+    return { intent:'ai_order_summary', label: row ? `Why ${row.itemName}?` : 'AI Order Explanation', tab:'inventory', summary: row ? `${row.itemName}: ${row.reasons?.join(' • ') || 'Review stock, par, events, menu impact, prep, and waste.'}` : 'I could not match that item to an AI order suggestion. Opening AI Order Assistant.', rows: row ? [{ menuItemName:`Suggest ${row.suggestedQty} ${row.itemName}`, severity: row.reasons?.join(' • ') || row.priority }] : topRows, safe:true, needsConfirmation:false };
+  }
+  if (parsed.intent === 'ai_order_add_item') {
+    const match = resolveVoiceMatch(inventoryItems || [], parsed.itemPhrase || raw, { getLabel: item => item.name || item.itemName || '', getAliases: item => [item.category, item.pfgCode, item.packSize].filter(Boolean), minScore: 35, highThreshold: 70, margin: 10 });
+    return { intent:'ai_order_summary', label: match?.top?.item ? `Review ${match.top.item.name}` : 'Open AI Order Draft', tab:'inventory', summary: match?.top?.item ? `Opening AI Order Assistant. Review ${match.top.item.name} and add it to the draft before dispatching.` : 'Opening AI Order Assistant so you can add the item to the draft before dispatching.', rows: topRows, safe:true, needsConfirmation:false };
+  }
+  return { intent:'ai_order_summary', label:'AI Order Assistant', tab:'inventory', summary: summarizeAiOrderAssistant(assistant), rows: topRows, safe:true, needsConfirmation:false };
+};
+
+const parseVoiceEventCreatePayload = (text = '') => {
+  const q = normalizeVoiceText(text);
+  if (!/\b(create|add|make|put|new|set up|schedule)\b/.test(q)) return null;
+  if (!/\b(event|event calendar|party|banquet|catering|reservation|private party)\b/.test(q)) return null;
+  const dateInfo = parseVoiceDateFromText(text);
+  const time = parseVoiceSingleTime(text);
+  const title = cleanVoiceActionTitle(text, ['event calendar','private']).replace(/\breminder\b/ig, ' ').replace(/\s+/g, ' ').trim();
+  if (!dateInfo.date || dateInfo.date < getToday()) return { intent:'navigate', label:'Open Event Calendar', tab:'events', summary:'Open Event Calendar so you can choose a valid future date for the event.', safe:true };
+  if (!title || title.length < 3) return { intent:'navigate', label:'Open Event Calendar', tab:'events', date:dateInfo.date, summary:'Open Event Calendar so you can enter the event title.', safe:true };
+  return { intent:'create_event_calendar', label:`Create event: ${title}`, title, date:dateInfo.date, time:time || '', notes:`Created by 86Voice from: ${text}`, summary:`Create Event Calendar item “${title}” for ${formatDisplayDate(dateInfo.date)}${time ? ` at ${formatShortTime(time)}` : ''}.`, needsConfirmation:true, safe:true };
+};
+const parseVoiceEventReminderPayload = (text = '', events = []) => {
+  const q = normalizeVoiceText(text);
+  if (!/\b(remind|reminder|notification|notify|push)\b/.test(q) || !/\b(event|calendar|party|banquet|catering)\b/.test(q)) return null;
+  if (/\b(order reminder|order cutoff|ordering reminder)\b/.test(q)) return null;
+  const dateInfo = parseVoiceDateFromText(text);
+  const absoluteTime = parseVoiceSingleTime(text);
+  const offsetMatch = q.match(/\b(at event time|(?:\d+|one|two|three|four|five|six|seven|eight|nine|ten|twelve)\s*(?:minutes?|mins?|hours?|days?|weeks?)\s+before)\b/);
+  let minutesBefore = null;
+  if (offsetMatch) {
+    if (offsetMatch[1] === 'at event time') minutesBefore = 0;
+    else {
+      const parts = offsetMatch[1].match(/(\d+|one|two|three|four|five|six|seven|eight|nine|ten|twelve)\s*(minutes?|mins?|hours?|days?|weeks?)/);
+      if (parts) {
+        const n = /^\d+$/.test(parts[1]) ? parseInt(parts[1], 10) : (VOICE_NUMBER_WORDS[parts[1]] || 1);
+        const unit = parts[2];
+        minutesBefore = unit.startsWith('hour') ? n*60 : unit.startsWith('day') ? n*1440 : unit.startsWith('week') ? n*10080 : n;
+      }
+    }
+  }
+  let eventPhrase = q.replace(/\b(add|create|set|make|push|notification|notify|remind|reminder|for|the|event|calendar|before|at event time)\b/g, ' ');
+  eventPhrase = stripVoiceDateAndTimePhrases(eventPhrase).replace(/\b\d+\s*(minutes?|mins?|hours?|days?|weeks?)\b/g, ' ').replace(/\s+/g, ' ').trim();
+  const matched = findVoiceEventMatch(events, eventPhrase, dateInfo.date);
+  if (!matched?.event?.id || (!matched.isHighConfidence && matched.confidence < 70)) return { intent:'navigate', label:'Open Event Calendar', tab:'events', date:dateInfo.date || getToday(), summary:'Open Event Calendar so you can choose the exact event before adding a reminder.', safe:true };
+  let scheduledAt = '';
+  let label = '';
+  if (minutesBefore !== null) {
+    const start = new Date(`${matched.event.date}T${matched.event.time || '09:00'}:00`);
+    if (!Number.isFinite(start.getTime())) return null;
+    scheduledAt = new Date(start.getTime() - minutesBefore*60000).toISOString();
+    label = minutesBefore === 0 ? 'At event time' : `${minutesBefore} minutes before`;
+  } else if (dateInfo.date && absoluteTime) {
+    scheduledAt = new Date(`${dateInfo.date}T${absoluteTime}:00`).toISOString();
+    label = `${formatDisplayDate(dateInfo.date)} at ${formatShortTime(absoluteTime)}`;
+  } else {
+    return { intent:'navigate', label:'Open Event Calendar', tab:'events', date:matched.event.date || getToday(), summary:'Open Event Calendar so you can choose the exact reminder day and time.', safe:true };
+  }
+  if (scheduledAt && new Date(scheduledAt).getTime() <= Date.now()) return { intent:'navigate', label:'Open Event Calendar', tab:'events', date:matched.event.date || getToday(), summary:'That reminder time is in the past. Open Event Calendar and choose a future day/time.', safe:true };
+  return { intent:'create_event_push_reminder', label:`Add event reminder: ${matched.event.title}`, event:matched.event, scheduledAt, minutesBefore, reminderLabel:label, summary:`Add push reminder for “${matched.event.title}”: ${label}.`, needsConfirmation:true, safe:true };
+};
+const parseVoiceTimeOffPayload = (text = '') => {
+  const q = normalizeVoiceText(text);
+  if (!/\b(request|need|take|put in|submit|ask for)\b/.test(q) || !/\b(time off|off|pto|vacation)\b/.test(q)) return null;
+  const dateInfo = parseVoiceDateFromText(text);
+  const range = parseVoiceTimeRange(text);
+  if (!dateInfo.date || dateInfo.date < getToday()) return { intent:'navigate', label:'Open Request Off', tab:'published', subTab:'time-off', summary:'Open Request Off so you can choose a valid future date.', safe:true };
+  return { intent:'create_time_off_request', label:`Request off ${formatDisplayDate(dateInfo.date)}`, date:dateInfo.date, isPartial:!!range, startTime:range?.start || '', endTime:range?.end || '', summary:`Submit request off for ${formatDisplayDate(dateInfo.date)}${range ? ` from ${formatShortTime(range.start)} to ${formatShortTime(range.end)}` : ''}.`, needsConfirmation:true, safe:true };
+};
+const parseVoiceAvailabilityPayload = (text = '') => {
+  const q = normalizeVoiceText(text);
+  if (!/\b(availability|available|unavailable|prefer|preferred|can work|can't work|cannot work|max hours|max shifts)\b/.test(q)) return null;
+  if (/\b(open|show|go to|take me to|pull up)\b/.test(q)) return null;
+  const days = VOICE_WEEKDAYS.filter(day => new RegExp(`\\b${day}s?\\b`).test(q));
+  if (/\bweekdays\b/.test(q)) days.splice(0, days.length, 'monday','tuesday','wednesday','thursday','friday');
+  if (/\bweekends\b/.test(q)) days.splice(0, days.length, 'saturday','sunday');
+  const uniqueDays = [...new Set(days)];
+  const range = parseVoiceTimeRange(text);
+  const unavailable = /\b(unavailable|not available|can't work|cannot work|off)\b/.test(q);
+  const preferred = /\b(prefer|preferred|favorite|would rather)\b/.test(q);
+  const maxHours = (q.match(/\bmax(?:imum)?\s+(\d{1,3})\s+hours?\b/) || q.match(/\b(\d{1,3})\s+hours?\s+max\b/) || [])[1] || '';
+  const maxShifts = (q.match(/\bmax(?:imum)?\s+(\d{1,2})\s+shifts?\b/) || q.match(/\b(\d{1,2})\s+shifts?\s+max\b/) || [])[1] || '';
+  const effective = parseVoiceDateFromText(text);
+  if (!uniqueDays.length && !maxHours && !maxShifts) return { intent:'navigate', label:'Open Availability', tab:'published', subTab:'availability', summary:'Open Availability so you can enter the weekly days and time windows.', safe:true };
+  const weeklyAvailability = {};
+  uniqueDays.forEach(day => {
+    weeklyAvailability[day] = { available: !unavailable, preferred, start: unavailable ? '' : (range?.start || '09:00'), end: unavailable ? '' : (range?.end || '17:00') };
+  });
+  return { intent:'submit_availability_change', label:'Submit availability change', weeklyAvailability, maxHoursPerWeek:maxHours ? Number(maxHours) : null, maxShiftsPerWeek:maxShifts ? Number(maxShifts) : null, effectiveStartDate: effective.date && effective.date >= getToday() ? effective.date : getToday(), effectiveEndDate:'', notes:`Created by 86Voice from: ${text}`, summary:`Submit availability change${uniqueDays.length ? ` for ${uniqueDays.join(', ')}` : ''}${range && !unavailable ? ` ${formatShortTime(range.start)}-${formatShortTime(range.end)}` : ''}${unavailable ? ' as unavailable' : ''}${preferred ? ' as preferred' : ''}. Manager approval may be required.`, needsConfirmation:true, safe:true };
+};
 
 const VoiceCommandDock = ({ appUser, inventoryItems = [], recipes = [], users = [], prepItems = [], tasks = [], events = [], maintenanceLogs = [], menuDependencies = [], clientFeatures = {}, clientData = {}, setActiveTab, setCurrentDate, setScheduleSubTabTarget, setHelpSearchTarget, setRecipeTarget, addToast }) => {
   const [open, setOpen] = useState(false);
@@ -1226,6 +1489,9 @@ const VoiceCommandDock = ({ appUser, inventoryItems = [], recipes = [], users = 
       return { intent:'undo_last_voice', label:'Undo last voice command', summary:'Undo the most recent safe voice action if rollback is available.', needsConfirmation:false, safe:true };
     }
 
+    const aiOrderingAction = buildVoiceAiOrderingAction({ raw, inventoryItems, events, prepItems, menuDependencies, appUser, clientFeatures, clientData });
+    if (aiOrderingAction) return aiOrderingAction;
+
     if (isVoiceWorkStatusQuestion(raw)) {
       return {
         intent:'status_summary',
@@ -1247,6 +1513,21 @@ const VoiceCommandDock = ({ appUser, inventoryItems = [], recipes = [], users = 
         needsConfirmation:false
       };
     }
+
+    const eventSummary = buildVoiceEventsSummaryAction(raw, events);
+    if (eventSummary) return eventSummary;
+
+    const eventReminderPayload = parseVoiceEventReminderPayload(raw, events);
+    if (eventReminderPayload) return eventReminderPayload;
+
+    const eventCreatePayload = parseVoiceEventCreatePayload(raw);
+    if (eventCreatePayload) return eventCreatePayload;
+
+    const timeOffPayload = parseVoiceTimeOffPayload(raw);
+    if (timeOffPayload) return timeOffPayload;
+
+    const availabilityPayload = parseVoiceAvailabilityPayload(raw);
+    if (availabilityPayload) return availabilityPayload;
 
     const impactQuestion = extractVoiceMenuImpactQuestion(raw);
     if (impactQuestion) {
@@ -1596,7 +1877,7 @@ const VoiceCommandDock = ({ appUser, inventoryItems = [], recipes = [], users = 
     if (!action) return addToast('Voice Command', 'I did not hear a command. Try again or type it.');
     const actionWithVoiceMeta = sourceMeta.fromVoice ? { ...action, voiceSessionId: sourceMeta.voiceSessionId, createdFromFinalTranscript: true } : action;
     setPending(actionWithVoiceMeta);
-    const instantIntents = ['navigate', 'navigate_schedule', 'help_search', 'open_recipe', 'smart_prep', 'complete_list_item', 'create_personal_reminder', 'upsert_task', 'status_summary', 'out_of_stock_summary', 'menu_impact_answer', 'undo_last_voice', 'blocked'];
+    const instantIntents = ['navigate', 'navigate_schedule', 'help_search', 'open_recipe', 'smart_prep', 'complete_list_item', 'create_personal_reminder', 'upsert_task', 'status_summary', 'out_of_stock_summary', 'menu_impact_answer', 'event_summary', 'ai_order_summary', 'undo_last_voice', 'blocked'];
     if (!actionWithVoiceMeta.needsConfirmation && instantIntents.includes(actionWithVoiceMeta.intent)) {
       await executeAction(actionWithVoiceMeta, text, true, false);
     }
@@ -1699,8 +1980,16 @@ const VoiceCommandDock = ({ appUser, inventoryItems = [], recipes = [], users = 
         await runVoiceUndo(sourceText);
         return;
       }
-      if (['status_summary', 'out_of_stock_summary', 'menu_impact_answer'].includes(actionToRun.intent)) {
-        setVoiceResult({ label: actionToRun.label || 'Voice Result', summary: actionToRun.summary || '', rows: actionToRun.impactRows || [], itemName: actionToRun.itemName || '', matchConfidence: actionToRun.matchConfidence || 0 });
+      if (['status_summary', 'out_of_stock_summary', 'menu_impact_answer', 'event_summary', 'ai_order_summary'].includes(actionToRun.intent)) {
+        setVoiceResult({ label: actionToRun.label || 'Voice Result', summary: actionToRun.summary || '', rows: actionToRun.impactRows || actionToRun.eventRows || [], itemName: actionToRun.itemName || '', matchConfidence: actionToRun.matchConfidence || 0 });
+        if (actionToRun.intent === 'event_summary') {
+          if (actionToRun.date && setCurrentDate) setCurrentDate(actionToRun.date);
+          setActiveTab('events');
+        }
+        if (actionToRun.intent === 'ai_order_summary') {
+          try { sessionStorage.setItem('inventoryFocus', 'aiOrder'); } catch (e) {}
+          setActiveTab('inventory');
+        }
         addToast(actionToRun.label || '86 Voice', actionToRun.summary || 'Done.');
         return;
       }
@@ -1711,6 +2000,158 @@ const VoiceCommandDock = ({ appUser, inventoryItems = [], recipes = [], users = 
         return;
       }
       if (appUser?.isDemo) return addToast('Demo Mode', 'Demo mode is read-only. Nothing was saved.');
+      if (actionToRun.intent === 'create_event_calendar') {
+        if (!confirmedByUser) { addToast('Event Needs Confirmation', 'Confirm before adding this Event Calendar item.'); return; }
+        if (!canVoiceOpenTab(appUser, clientFeatures, 'events', clientData)) {
+          await logAudit(appUser, 'VOICE_BLOCKED_EVENT_CREATE', actionToRun.title || 'Event', sourceText);
+          addToast('Access Blocked', 'You do not have permission to add Event Calendar items.');
+          return;
+        }
+        if (!actionToRun.date || actionToRun.date < getToday()) { addToast('Past Date Locked', 'Events can only be added for today or a future date.'); return; }
+        const eventPayload = {
+          restaurantId: appUser.restaurantId,
+          type:'special_event',
+          date:actionToRun.date,
+          time:actionToRun.time || '',
+          title:actionToRun.title,
+          notes:actionToRun.notes || '',
+          addedBy:appUser.name || appUser.email || '86Voice',
+          createdBy:appUser.id || '',
+          createdByEmail:String(appUser.email || '').toLowerCase().trim(),
+          createdAt:new Date().toISOString(),
+          source:'86_voice_event_create',
+          voiceCommand:sourceText,
+          pushReminders:[],
+          orderReminder:{ enabled:false, cutoffDays:[], recipientMode:'creator', startsDaysBefore:7 }
+        };
+        const eventRef = await addDoc(collection(db, 'events'), eventPayload);
+        rememberVoiceUndo(`event create: ${actionToRun.title}`, [{ kind:'delete', collectionName:'events', id:eventRef.id }]);
+        await logAudit(appUser, 'VOICE_CREATE_EVENT', actionToRun.title, `${actionToRun.date} ${actionToRun.time || ''}`);
+        addToast('Event Added', `${actionToRun.title} was added to Event Calendar.`);
+        if (setCurrentDate) setCurrentDate(actionToRun.date);
+        setActiveTab('events'); if (closeWhenDone) setOpen(false); return;
+      }
+      if (actionToRun.intent === 'create_event_push_reminder') {
+        if (!confirmedByUser) { addToast('Event Reminder Needs Confirmation', 'Confirm before scheduling this event push reminder.'); return; }
+        if (!canVoiceOpenTab(appUser, clientFeatures, 'events', clientData)) {
+          await logAudit(appUser, 'VOICE_BLOCKED_EVENT_REMINDER', actionToRun.event?.title || 'Event reminder', sourceText);
+          addToast('Access Blocked', 'You do not have permission to add event reminders.');
+          return;
+        }
+        const ev = actionToRun.event || {};
+        if (!ev.id || !actionToRun.scheduledAt) throw new Error('No event or reminder time was selected.');
+        const scheduledDate = new Date(actionToRun.scheduledAt);
+        if (!Number.isFinite(scheduledDate.getTime()) || scheduledDate.getTime() <= Date.now()) { addToast('Reminder Time Locked', 'Event reminders must be scheduled in the future.'); return; }
+        const recipientId = appUser.id || appUser.uid || '';
+        const recipientEmail = String(appUser.email || '').toLowerCase().trim();
+        const reminderRef = await addDoc(collection(db, 'eventReminders'), {
+          restaurantId: appUser.restaurantId,
+          workspaceId: appUser.restaurantId,
+          eventId: ev.id,
+          eventTitle: ev.title || 'Event',
+          eventDate: ev.date || '',
+          eventTime: ev.time || '',
+          reminderType:'eventReminder',
+          type:'eventReminder',
+          label:actionToRun.reminderLabel || 'Voice event reminder',
+          scheduledAt:actionToRun.scheduledAt,
+          scheduledLocalDate:String(actionToRun.scheduledAt || '').slice(0, 10),
+          scheduledLocalTime:String(actionToRun.scheduledAt || '').slice(11, 16),
+          minutesBefore:actionToRun.minutesBefore ?? null,
+          recipientMode:'creator',
+          recipientUserIds:recipientId ? [recipientId] : [],
+          recipientEmails:recipientEmail ? [recipientEmail] : [],
+          recipientUsers:[{ id:recipientId, uid:appUser.uid || '', email:recipientEmail, name:appUser.name || appUser.email || '' }],
+          recipientPushTokens:[],
+          tokenSnapshotCount:0,
+          status:'scheduled',
+          dispatchAttemptCount:0,
+          createdAt:new Date().toISOString(),
+          updatedAt:new Date().toISOString(),
+          createdBy:recipientId,
+          createdByEmail:recipientEmail,
+          createdByName:appUser.name || appUser.email || '',
+          source:'86_voice_event_reminder',
+          voiceCommand:sourceText
+        });
+        rememberVoiceUndo(`event reminder: ${ev.title || 'Event'}`, [{ kind:'delete', collectionName:'eventReminders', id:reminderRef.id }]);
+        await logAudit(appUser, 'VOICE_CREATE_EVENT_REMINDER', ev.title || 'Event', actionToRun.scheduledAt);
+        addToast('Event Reminder Added', `${ev.title || 'Event'} reminder scheduled.`);
+        if (setCurrentDate && ev.date) setCurrentDate(ev.date);
+        setActiveTab('events'); if (closeWhenDone) setOpen(false); return;
+      }
+      if (actionToRun.intent === 'create_time_off_request') {
+        if (!confirmedByUser) { addToast('Request Off Needs Confirmation', 'Confirm before submitting this request off.'); return; }
+        if (!actionToRun.date || actionToRun.date < getToday()) { addToast('Past Date Locked', 'Request-off dates must be today or later.'); return; }
+        const nowIso = new Date().toISOString();
+        const existing = (await getDocs(query(collection(db, 'timeOffRequests'), where('restaurantId', '==', appUser.restaurantId), where('userId', '==', appUser.id || ''), where('date', '==', actionToRun.date)))).docs
+          .map(d => ({ id:d.id, ...d.data() }))
+          .find(r => !['cancelled','canceled','archived','processed'].includes(String(r.status || '').toLowerCase()));
+        if (existing) { addToast('Already Requested', 'You already have an active request for that date.'); setActiveTab('published'); if (setScheduleSubTabTarget) setScheduleSubTabTarget({ subTab:'time-off', id:Date.now() }); if (closeWhenDone) setOpen(false); return; }
+        const requestRef = await addDoc(collection(db, 'timeOffRequests'), {
+          restaurantId:appUser.restaurantId,
+          workspaceId:appUser.restaurantId,
+          userId:appUser.id || '',
+          employeeId:appUser.id || '',
+          userName:appUser.name || appUser.email || 'Employee',
+          employeeName:appUser.name || appUser.email || 'Employee',
+          date:actionToRun.date,
+          isPartial:!!actionToRun.isPartial,
+          startTime:actionToRun.startTime || '',
+          endTime:actionToRun.endTime || '',
+          status:'pending',
+          archived:false,
+          processed:false,
+          submittedAt:nowIso,
+          createdAt:nowIso,
+          updatedAt:nowIso,
+          createdBy:appUser.id || '',
+          source:'86_voice_request_off',
+          voiceCommand:sourceText
+        });
+        rememberVoiceUndo(`request off: ${actionToRun.date}`, [{ kind:'delete', collectionName:'timeOffRequests', id:requestRef.id }]);
+        await logAudit(appUser, 'VOICE_REQUEST_OFF', appUser.name || appUser.email || 'Employee', actionToRun.date);
+        addToast('Request Off Submitted', `Request submitted for ${formatDisplayDate(actionToRun.date)}.`);
+        if (setCurrentDate) setCurrentDate(actionToRun.date);
+        if (setScheduleSubTabTarget) setScheduleSubTabTarget({ subTab:'time-off', id:Date.now() });
+        setActiveTab('published'); if (closeWhenDone) setOpen(false); return;
+      }
+      if (actionToRun.intent === 'submit_availability_change') {
+        if (!confirmedByUser) { addToast('Availability Needs Confirmation', 'Confirm before submitting this availability change.'); return; }
+        const approvalRequired = clientData?.settings?.requireAvailabilityApproval !== false && clientData?.systemSettings?.requireAvailabilityApproval !== false;
+        const nowIso = new Date().toISOString();
+        const recordRef = await addDoc(collection(db, 'availabilityRecords'), {
+          restaurantId:appUser.restaurantId,
+          workspaceId:appUser.restaurantId,
+          employeeId:appUser.id || '',
+          userId:appUser.id || '',
+          employeeName:appUser.name || appUser.email || 'Employee',
+          employeeEmail:String(appUser.email || '').toLowerCase().trim(),
+          weeklyAvailability:actionToRun.weeklyAvailability || {},
+          unavailableWindows:[],
+          preferredWindows:[],
+          maxHoursPerWeek:actionToRun.maxHoursPerWeek,
+          maxShiftsPerWeek:actionToRun.maxShiftsPerWeek,
+          effectiveStartDate:actionToRun.effectiveStartDate || getToday(),
+          effectiveEndDate:actionToRun.effectiveEndDate || '',
+          status:approvalRequired ? 'pending' : 'approved',
+          approvalRequired,
+          approvedBy:approvalRequired ? '' : (appUser.id || ''),
+          approvedAt:approvalRequired ? '' : nowIso,
+          notes:actionToRun.notes || '',
+          archived:false,
+          createdAt:nowIso,
+          updatedAt:nowIso,
+          createdBy:appUser.id || '',
+          source:'86_voice_availability',
+          voiceCommand:sourceText
+        });
+        rememberVoiceUndo('availability change', [{ kind:'delete', collectionName:'availabilityRecords', id:recordRef.id }]);
+        await logAudit(appUser, 'VOICE_SUBMIT_AVAILABILITY', appUser.name || appUser.email || 'Employee', actionToRun.summary || sourceText);
+        addToast('Availability Submitted', approvalRequired ? 'Sent for manager approval.' : 'Availability is active.');
+        if (setScheduleSubTabTarget) setScheduleSubTabTarget({ subTab:'availability', id:Date.now() });
+        setActiveTab('published'); if (closeWhenDone) setOpen(false); return;
+      }
       if (actionToRun.intent === 'eighty_six_review') {
         addToast('86 Review Required', 'Choose a specific inventory item before an 86 alert can be confirmed.');
         return;
@@ -2320,7 +2761,7 @@ const VoiceCommandDock = ({ appUser, inventoryItems = [], recipes = [], users = 
         <button type="button" onClick={startListening} className={`w-full ${listening ? 'bg-red-900/30 text-red-300 border-red-500/40' : 'bg-[#12161A] text-[#D4A381] border-[#2A353D]'} border rounded-xl py-3 font-black uppercase tracking-widest text-xs flex items-center justify-center gap-2`}>
           {listening ? <MicOff size={16}/> : <Mic size={16}/>} {listening ? 'Listening...' : 'Start Listening'}
         </button>
-        <textarea value={manualText} onChange={e=>setManualText(e.target.value)} className={T.input} rows="2" placeholder='Try: "86 salmon", "prep 2 pans tomatoes", "mark onions done", "finish clean fryer", "open Friday schedule"' />
+        <textarea value={manualText} onChange={e=>setManualText(e.target.value)} className={T.input} rows="2" placeholder='Try: "86 salmon", "prep 2 pans tomatoes", "add event Friday at 6pm", "request off next Monday", "set availability Tuesday 10am to 4pm"' />
         <button type="button" onClick={() => processText(manualText)} className={`${T.btnAlt} w-full`}>Parse Typed Command</button>
         {heardText && <div className="bg-[#12161A] border border-[#2A353D] rounded-xl p-2 text-xs"><span className="text-slate-500 font-black uppercase tracking-widest">Heard</span><div className="font-bold text-white mt-1">{heardText}</div></div>}
         {pending && <div className="bg-[#0B0E11] border border-[#D4A381]/40 rounded-xl p-3">

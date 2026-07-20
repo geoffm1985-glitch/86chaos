@@ -1,9 +1,9 @@
 {
-  "version": "15.0.76",
-  "name": "86 Chaos 15.0.76 Event Push Reminder Delivery Fix",
-  "releasedAt": "2026-07-18",
-  "label": "86 Chaos 15.0.76",
-  "build": "15.0.76",
-  "updatedAt": "2026-07-18T00:00:00.000Z",
-  "notes": "Fixes scheduled event push reminder delivery by saving recipient/token snapshots, resolving recipients through users and workspace memberships, retrying no-token/delivery-problem event reminders, and exposing recipient selection in the event push reminder section."
+  "version": "15.0.89",
+  "name": "86 Chaos 15.0.89 CSP and Route Alias Cleanup",
+  "releasedAt": "2026-07-19",
+  "label": "15.0.89 CSP and Route Alias Cleanup",
+  "build": "15.0.89",
+  "updatedAt": "2026-07-20T00:00:00.000Z",
+  "notes": "Separates Firebase Auth from workspace bootstrap, ignores generic/production App Check keys on testing preview, adds a server login-bootstrap check, and makes login failures identify the failing step instead of forcing manual Firebase digging."
 }

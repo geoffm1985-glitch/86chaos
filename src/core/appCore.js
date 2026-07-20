@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { initializeApp } from 'firebase/app';
 import { getFirestore, collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, where, getDoc, setDoc, getDocs, enableIndexedDbPersistence, orderBy, limit as firestoreLimit } from 'firebase/firestore';
 import { getAuth, onAuthStateChanged } from 'firebase/auth';
-import { getMessaging } from 'firebase/messaging';
+import { getMessaging, isSupported } from 'firebase/messaging';
 import { getStorage } from 'firebase/storage';
 import L from 'leaflet';
 
@@ -35,11 +35,14 @@ export const T = {
 
 // --- Firebase Initialization ---
 const env = (key, fallback = '') => (process.env[key] || fallback);
+const envFlag = (key) => String(process.env[key] || '').trim().toLowerCase() === 'true';
+const LOCKED_TEST_FIREBASE_API_KEY = 'AIzaSyBIRGMeLnVE3w3i1WZJzurcp-LkeaNZ3hw';
 
 // 1. TEST DATABASE CONFIG (Sandbox)
-// Prefer Vercel env vars so preview/testing and production can stay completely separate.
+// Preview/testing must never drift onto the production browser key. The test browser
+// API key is intentionally locked unless an explicit override flag is set.
 export const testConfig = {
-  apiKey: env('REACT_APP_TEST_FIREBASE_API_KEY', 'AIzaSyBIRGMeLnVE3w3i1WZJzurcp-LkeaNZ3hw'),
+  apiKey: envFlag('REACT_APP_ALLOW_TEST_FIREBASE_API_KEY_OVERRIDE') ? env('REACT_APP_TEST_FIREBASE_API_KEY', LOCKED_TEST_FIREBASE_API_KEY) : LOCKED_TEST_FIREBASE_API_KEY,
   authDomain: env('REACT_APP_TEST_FIREBASE_AUTH_DOMAIN', 'chaos-test-d1601.firebaseapp.com'),
   projectId: env('REACT_APP_TEST_FIREBASE_PROJECT_ID', 'chaos-test-d1601'),
   storageBucket: env('REACT_APP_TEST_FIREBASE_STORAGE_BUCKET', 'chaos-test-d1601.firebasestorage.app'),
@@ -62,22 +65,75 @@ export const PROD_FIREBASE_HOSTS = ['app.86chaos.com', '86chaos.com', 'www.86cha
 export const isProdFirebaseHost = (hostname = '') => PROD_FIREBASE_HOSTS.includes(String(hostname || '').toLowerCase());
 
 const normalizeDeployMode = (value = '') => String(value || '').trim().toLowerCase();
-const explicitFirebaseProject = normalizeDeployMode(env('REACT_APP_FIREBASE_ACTIVE_PROJECT_ID', env('REACT_APP_FIREBASE_PROJECT_ID', '')));
+const explicitFirebaseProject = normalizeDeployMode(env('REACT_APP_FIREBASE_ACTIVE_PROJECT_ID', ''));
 const explicitDeployMode = normalizeDeployMode(env('REACT_APP_FIREBASE_DEPLOYMENT_MODE', ''));
+const genericFirebaseProjectId = env('REACT_APP_FIREBASE_PROJECT_ID', '').trim();
+const currentHostname = typeof window !== 'undefined' ? String(window.location.hostname || '').toLowerCase() : '';
+const isVercelPreviewHost = currentHostname === 'localhost' || currentHostname === '127.0.0.1' || currentHostname.endsWith('.vercel.app');
+const isProductionFirebaseHost = isProdFirebaseHost(currentHostname);
+const trustedBrowserProjects = ['chaos-test-d1601', 'cheers-34b8d'];
+const exactGenericBrowserProject = trustedBrowserProjects.includes(genericFirebaseProjectId) ? genericFirebaseProjectId : '';
 const forceTestingFirebase = ['chaos-test-d1601', 'test', 'testing', 'preview', 'staging', 'dev', 'development'].includes(explicitFirebaseProject) || ['test', 'testing', 'preview', 'staging', 'dev', 'development'].includes(explicitDeployMode);
 const forceProductionFirebase = ['cheers-34b8d', 'prod', 'production', 'live'].includes(explicitFirebaseProject) || ['prod', 'production', 'live'].includes(explicitDeployMode);
+const genericBrowserConfig = {
+  apiKey: env('REACT_APP_FIREBASE_API_KEY', ''),
+  authDomain: env('REACT_APP_FIREBASE_AUTH_DOMAIN', ''),
+  projectId: genericFirebaseProjectId,
+  storageBucket: env('REACT_APP_FIREBASE_STORAGE_BUCKET', ''),
+  messagingSenderId: env('REACT_APP_FIREBASE_MESSAGING_SENDER_ID', ''),
+  appId: env('REACT_APP_FIREBASE_APP_ID', ''),
+  measurementId: env('REACT_APP_FIREBASE_MEASUREMENT_ID', '')
+};
+const genericConfigIsUsable = Boolean(genericBrowserConfig.apiKey && genericBrowserConfig.authDomain && exactGenericBrowserProject && genericBrowserConfig.appId);
 
 // 3. THE SWITCHER
-// Default rule: production custom domains use production; every preview/testing
-// host uses the test Firebase project. Explicit REACT_APP_FIREBASE_DEPLOYMENT_MODE
-// or REACT_APP_FIREBASE_ACTIVE_PROJECT_ID can override the host for split GitHub/
-// Vercel testing setups.
-export const firebaseConfig = forceTestingFirebase ? testConfig : (forceProductionFirebase || isProdFirebaseHost(window.location.hostname) ? prodConfig : testConfig);
+// Login/Auth stays eager-loaded. Vercel preview/local hosts are hard-locked to
+// the test Firebase project and the locked test browser API key above. This
+// prevents a generic production env var from pushing the testing app onto the
+// live/main Firebase key and causing Google Cloud referrer blocks.
+const activeFirebaseProjectId = (isVercelPreviewHost || forceTestingFirebase)
+  ? 'chaos-test-d1601'
+  : (isProductionFirebaseHost || forceProductionFirebase)
+    ? 'cheers-34b8d'
+    : exactGenericBrowserProject || 'chaos-test-d1601';
+export const activeFirebaseMode = activeFirebaseProjectId === 'cheers-34b8d' ? 'production' : 'test';
+const configForProject = (projectId) => {
+  // Never use the generic browser config on localhost/Vercel preview. Those
+  // environments must use the locked test config so a stale production
+  // REACT_APP_FIREBASE_* value cannot sneak into the testing app.
+  if (!isVercelPreviewHost && genericConfigIsUsable && genericBrowserConfig.projectId === projectId) return genericBrowserConfig;
+  return projectId === 'cheers-34b8d' ? prodConfig : testConfig;
+};
+export const firebaseConfig = configForProject(activeFirebaseProjectId);
+export const firebaseDiagnostics = {
+  mode: activeFirebaseMode,
+  projectId: firebaseConfig.projectId,
+  authDomain: firebaseConfig.authDomain,
+  host: currentHostname,
+  vercelPreview: isVercelPreviewHost,
+  browserApiKeyTail: String(firebaseConfig.apiKey || '').slice(-6),
+  genericProjectHonored: Boolean(!isVercelPreviewHost && genericConfigIsUsable && genericBrowserConfig.projectId === activeFirebaseProjectId)
+};
 
 export const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app);
 export const storage = getStorage(app);
-export const messaging = typeof window !== "undefined" ? getMessaging(app) : null;
+const safeGetMessaging = () => {
+  if (typeof window === "undefined") return null;
+  try { return getMessaging(app); }
+  catch (err) {
+    console.warn('Firebase Messaging is unavailable on this browser:', err?.message || err);
+    return null;
+  }
+};
+
+export const messaging = safeGetMessaging();
+export const messagingReady = typeof window !== "undefined"
+  ? isSupported().then((supported) => supported ? messaging : null).catch((err) => {
+      console.warn('Firebase Messaging support check failed:', err?.message || err);
+      return null;
+    })
+  : Promise.resolve(null);
 
 // Kitchen Wi-Fi Armor: Keep app working in walk-in coolers
 enableIndexedDbPersistence(db).catch((err) => console.warn("Offline mode issue:", err.code));
@@ -85,9 +141,18 @@ enableIndexedDbPersistence(db).catch((err) => console.warn("Offline mode issue:"
 export const auth = getAuth(app);
 
 // --- OPTIONAL APP CHECK + SECURE API KEYCHAIN ---
-// Put your Firebase App Check reCAPTCHA Enterprise site key here after enabling App Check in Firebase.
-// Example: const APPCHECK_RECAPTCHA_ENTERPRISE_SITE_KEY = '6Lc...';
-const APPCHECK_RECAPTCHA_ENTERPRISE_SITE_KEY = process.env.REACT_APP_FIREBASE_APPCHECK_SITE_KEY || '';
+// App Check site keys are project-specific. Preview/local must not inherit the
+// production/generic App Check key, because a wrong reCAPTCHA Enterprise key can
+// stall Firebase Auth and make one account look "locked out" behind a timeout.
+const rawTestAppCheckSiteKey = env('REACT_APP_TEST_FIREBASE_APPCHECK_SITE_KEY', '');
+const rawProdAppCheckSiteKey = env('REACT_APP_PROD_FIREBASE_APPCHECK_SITE_KEY', '');
+const rawGenericAppCheckSiteKey = env('REACT_APP_FIREBASE_APPCHECK_SITE_KEY', '');
+const APPCHECK_RECAPTCHA_ENTERPRISE_SITE_KEY = activeFirebaseProjectId === 'chaos-test-d1601'
+  ? rawTestAppCheckSiteKey
+  : (rawProdAppCheckSiteKey || (!isVercelPreviewHost ? rawGenericAppCheckSiteKey : ''));
+firebaseDiagnostics.appCheckEnabled = Boolean(APPCHECK_RECAPTCHA_ENTERPRISE_SITE_KEY);
+firebaseDiagnostics.appCheckSiteKeyTail = APPCHECK_RECAPTCHA_ENTERPRISE_SITE_KEY ? String(APPCHECK_RECAPTCHA_ENTERPRISE_SITE_KEY).slice(-6) : 'off';
+firebaseDiagnostics.genericAppCheckIgnored = Boolean(isVercelPreviewHost && activeFirebaseProjectId === 'chaos-test-d1601' && rawGenericAppCheckSiteKey && !rawTestAppCheckSiteKey);
 let appCheckInstance = null;
 
 if (typeof window !== "undefined" && APPCHECK_RECAPTCHA_ENTERPRISE_SITE_KEY && !window.__chaosAppCheckBooted) {
@@ -166,7 +231,7 @@ export const MASTER_ADMIN_EMAIL = (process.env.REACT_APP_MASTER_ADMIN_EMAIL || '
 export const EVENT_TAGS = ['Standard Day', 'Packers Game', 'Brewers Game', 'Live Music', 'Severe Weather', 'Private Catering', 'Holiday'];
 
 // --- VERSION TRACKING ---
-export const CURRENT_VERSION = '15.0.76';
+export const CURRENT_VERSION = '15.0.89';
 
 // --- Helpers ---
 export const useLiveCollection = (coll, restId, options = {}) => {
@@ -204,17 +269,14 @@ export const useLiveCollection = (coll, restId, options = {}) => {
       query(collection(db, coll), ...constraints),
       snap => setData(snap.docs.map(d => ({ id: d.id, ...d.data() }))),
       err => {
-        console.error(`Live collection error for ${coll} / ${restId} (${label}):`, err);
-        const canFallback = label !== 'fallback' && (err?.code === 'failed-precondition' || /index|requires an index|invalid/i.test(err?.message || ''));
-        if (canFallback) {
-          console.warn(`Falling back to capped ${coll} query while Firestore index is missing.`);
-          const fallbackConstraints = [where("restaurantId", "==", restId)];
-          const cap = Number(fallbackLimitCount || limitCount || 75);
-          if (cap > 0) fallbackConstraints.push(firestoreLimit(cap));
-          fallbackUnsubscribe = subscribe(fallbackConstraints, 'fallback');
+        const message = err?.message || String(err || '');
+        const isIndexProblem = err?.code === 'failed-precondition' || /index|requires an index|currently building/i.test(message);
+        if (isIndexProblem) {
+          console.warn(`Firestore index pending for ${coll} / ${restId} (${label}). Waiting for the deployed index instead of showing a mismatched fallback query.`, message);
         } else {
-          setData([]);
+          console.error(`Live collection error for ${coll} / ${restId} (${label}):`, err);
         }
+        setData([]);
       }
     );
 
@@ -384,17 +446,26 @@ if (typeof window !== 'undefined' && !window.crashCatcherAttached) {
     }
   }, true);
 
-  window.onerror = (msg, url, lineNo, columnNo, error) => { 
-    addDoc(collection(db, "crashReports"), { 
-      type: 'error', 
-      message: msg, 
-      stack: error?.stack || '', 
-      breadcrumbs: window.breadcrumbs || [], // Attach the breadcrumbs to the crash
-      userAgent: navigator.userAgent, // Captures device, OS, and browser info
-      screenSize: `${window.innerWidth}x${window.innerHeight}`, // Helps debug UI clipping
-      time: new Date().toISOString() 
-    }).catch(()=>{}); 
-    return false; 
+  window.onerror = (msg, url, lineNo, columnNo, error) => {
+    try {
+      if (auth.currentUser) {
+        secureFetch('/api/report-bug', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            category: 'Crash / Error',
+            message: String(msg || 'Browser error').slice(0, 2000),
+            rawStack: String(error?.stack || '').slice(0, 2500),
+            breadcrumbs: window.breadcrumbs || [],
+            userAgent: navigator.userAgent,
+            screenSize: `${window.innerWidth}x${window.innerHeight}`,
+            url: window.location.href,
+            source: 'window_onerror'
+          })
+        }).catch(()=>{});
+      }
+    } catch (_) {}
+    return false;
   }; 
 }
 
@@ -429,21 +500,22 @@ export const logAudit = async (user, action, target, details) => {
   if (!user || !user.restaurantId) return;
   try {
     const isGhost = !!user.isGhost;
-    await addDoc(collection(db, "auditLogs"), {
-      userId: isGhost ? (user.ghostRealUserId || user.id || 'system') : (user.id || 'system'),
-      userName: isGhost
-        ? `${user.ghostRealUserName || user.name || 'System'} (Ghost${user.ghostTargetUserName ? ` as ${user.ghostTargetUserName}` : ''})`
-        : (user.name || 'System'),
-      ghostTargetUserId: user.ghostTargetUserId || null,
-      ghostTargetUserName: user.ghostTargetUserName || null,
-      ghostWorkspaceId: isGhost ? user.restaurantId : null,
-      action,
-      target,
-      details,
-      timestamp: new Date().toISOString(),
-      restaurantId: user.restaurantId,
-      sessionId: (() => { try { return sessionStorage.getItem('chaosSessionId') || ''; } catch (_) { return ''; } })(),
-      isGhost
+    await secureFetch('/api/audit-log', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        restaurantId: user.restaurantId,
+        action: String(action || '').slice(0, 160),
+        target: String(target || '').slice(0, 320),
+        details: typeof details === 'string' ? details.slice(0, 2500) : JSON.stringify(scrubForAudit(details)).slice(0, 2500),
+        sessionId: (() => { try { return sessionStorage.getItem('chaosSessionId') || ''; } catch (_) { return ''; } })(),
+        isGhost,
+        ghostRealUserId: user.ghostRealUserId || user.id || '',
+        ghostRealUserName: user.ghostRealUserName || user.name || '',
+        ghostTargetUserId: user.ghostTargetUserId || null,
+        ghostTargetUserName: user.ghostTargetUserName || null,
+        ghostWorkspaceId: isGhost ? user.restaurantId : null
+      })
     });
   } catch (err) { console.error("Audit log failed:", err); }
 };
@@ -458,12 +530,12 @@ const V14_SENSITIVE_KEYS = ['password', 'temporaryPassword', 'ssn', 'address', '
 const V14_TENANT_COLLECTIONS = ['events','messages','shiftSwaps','tasks','timePunches','tempLogs','wasteLogs','maintenanceLogs','prepItems','prepCategories','lineCheckItems','recipes','inventoryItems','vendors','orders','invoices','shifts','timeOffRequests','roles','pmSchedules','sales','menuDependencies','kitchenSpecials','trainingManuals','hrOnboardingTasks','hrCertifications','hrPerformanceNotes','financialExpenses','financialTargets','offlineWriteReceipts','scheduleTemplates','scheduleCoverageTargets'];
 const V14_WRITE_PERMISSIONS = {
   shifts: ['schedule', 'team'], timeOffRequests: ['schedule', 'team'], scheduleTemplates: ['schedule', 'team'], scheduleCoverageTargets: ['schedule', 'team'],
-  inventoryItems: ['inventory', 'team'], vendors: ['inventory', 'team'], orders: ['inventory', 'team'], invoices: ['inventory', 'team'],
-  prepItems: ['prep', 'team'], prepCategories: ['prep', 'team'], lineCheckItems: ['prep', 'team'], recipes: ['prep', 'team'], menuDependencies: ['prep', 'inventory', 'team'], kitchenSpecials: ['prep', 'ops', 'team'],
-  sales: ['sales', 'labor', 'team'], timePunches: ['labor', 'team'], financialExpenses: ['sales', 'team'], financialTargets: ['sales', 'team'],
+  inventoryItems: ['inventory', 'inventoryEdit'], vendors: ['inventory', 'inventoryEdit'], orders: ['inventory', 'inventoryEdit'], invoices: ['inventory', 'invoiceScan', 'scans'],
+  prepItems: ['prep', 'team'], prepCategories: ['prep', 'team'], lineCheckItems: ['prep', 'team'], recipes: ['prep', 'team'], menuDependencies: ['prep', 'inventory', 'menuIntelligence'], kitchenSpecials: ['prep', 'ops', 'team'],
+  sales: ['sales', 'salesEdit', 'financialEdit'], timePunches: ['labor', 'laborEdit'], financialExpenses: ['sales', 'salesEdit', 'financialEdit'], financialTargets: ['sales', 'salesEdit', 'financialEdit'],
   pmSchedules: ['team'], maintenanceLogs: ['team'], tasks: ['prep', 'team'],
   trainingManuals: ['hr'], hrOnboardingTasks: ['hr'], hrCertifications: ['hr'], hrPerformanceNotes: ['hr'],
-  events: ['events', 'schedule', 'team'], messages: ['messages', 'team'], shiftSwaps: ['schedule', 'team'], tempLogs: ['prep', 'team'], wasteLogs: ['inventory', 'prep', 'team']
+  events: ['events', 'schedule', 'team'], messages: ['messages', 'team'], shiftSwaps: ['schedule', 'team'], tempLogs: ['prep', 'team'], wasteLogs: ['inventory', 'prep']
 };
 
 export const isSuperAdminUser = (user = {}) => Boolean(user?.isSuperAdmin === true || user?.systemAccess?.superAdmin === true || (MASTER_ADMIN_EMAIL && String(user?.email || '').toLowerCase() === MASTER_ADMIN_EMAIL.toLowerCase()));
@@ -615,61 +687,172 @@ export const buildImportBridgeTemplates = () => ({
 });
 
 export const buildMenuDependencyReport = ({ recipes = [], inventoryItems = [], prepItems = [], menuDependencies = [], events = [] }) => {
-  const normalize = (v) => String(v || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+  const normalize = (v) => String(v || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').replace(/\s+/g, ' ').trim();
+  const words = (v) => normalize(v).split(' ').filter(Boolean);
+  const noise = new Set([
+    'and','with','the','for','from','item','items','case','cs','bag','bags','box','boxes','pack','packs','pkg','pk','lb','lbs','oz','ounce','ounces','gal','gallon','ct','count','slice','slices','sliced','sli','whole','fresh','frozen','iqf','bulk','portion','portions','brand','food','foods','bbrlcls','demo','test','120','100','80','20'
+  ]);
+  const genericIngredient = new Set(['cheese','sauce','dip','dressing','bread','bun','buns','roll','rolls','mix','seasoning','beer','wine','liquor','oil','salt','pepper','flour','egg','eggs','milk','cream','lettuce','tomato','onion']);
+  const aliasGroups = {
+    fries: ['fries','fry','french fry','potato fry'],
+    wing: ['wing','wings','chicken wing'],
+    burger: ['burger','patty','patties','hamburger','ground beef'],
+    chicken: ['chicken','chix','chkn','ckn','breast','tender','tenders'],
+    tortilla: ['tortilla','wrap','shell'],
+    mozzarella: ['mozzarella','moz'],
+    american: ['american','amer'],
+    swiss: ['swiss'],
+    cheddar: ['cheddar'],
+    ranch: ['ranch'],
+    bacon: ['bacon'],
+    cod: ['cod','fish'],
+    haddock: ['haddock','fish']
+  };
+  const significantTokens = (value) => Array.from(new Set(words(value).filter(w => w.length > 2 && !noise.has(w))));
+  const recipeTextFor = (recipe = {}) => normalize([
+    recipe.name,
+    recipe.title,
+    recipe.description,
+    recipe.ingredients,
+    recipe.instructions,
+    recipe.category,
+    ...(Array.isArray(recipe.items) ? recipe.items.map(x => [x.name, x.item, x.text, x.ingredientName].filter(Boolean).join(' ')) : [])
+  ].filter(Boolean).join(' '));
+  const itemTextFor = (item = {}) => normalize([item.name, item.title, item.category, item.supplierName, item.vendorName].filter(Boolean).join(' '));
+  const containsPhrase = (hay, needle) => Boolean(hay && needle && (` ${hay} `).includes(` ${needle} `));
+  const aliasHitsFor = (tokens, hay) => {
+    const hits = [];
+    for (const token of tokens) {
+      for (const [canonical, aliases] of Object.entries(aliasGroups)) {
+        if (token === canonical || aliases.includes(token)) {
+          aliases.forEach(alias => { if (containsPhrase(hay, normalize(alias))) hits.push(alias); });
+        }
+      }
+    }
+    return Array.from(new Set(hits));
+  };
+  const scoreRecipeAgainstItem = (recipeText, item = {}) => {
+    const itemText = itemTextFor(item);
+    const nameKey = normalize(item.name || item.title || '');
+    const tokens = significantTokens(itemText);
+    const nonGenericTokens = tokens.filter(t => !genericIngredient.has(t));
+    let score = 0;
+    const reasons = [];
+
+    if (nameKey.length >= 7 && containsPhrase(recipeText, nameKey)) {
+      score += 95;
+      reasons.push('exact inventory phrase');
+    }
+
+    const phrasePieces = [];
+    for (let i = 0; i < nonGenericTokens.length - 1; i += 1) phrasePieces.push(`${nonGenericTokens[i]} ${nonGenericTokens[i + 1]}`);
+    phrasePieces.forEach(phrase => {
+      if (containsPhrase(recipeText, phrase)) {
+        score += 42;
+        reasons.push(`ingredient phrase: ${phrase}`);
+      }
+    });
+
+    const directTokenHits = nonGenericTokens.filter(token => containsPhrase(recipeText, token));
+    if (directTokenHits.length >= 2) {
+      score += directTokenHits.length * 22;
+      reasons.push(`matched ${directTokenHits.slice(0, 3).join(', ')}`);
+    } else if (directTokenHits.length === 1 && tokens.length <= 2 && !genericIngredient.has(directTokenHits[0])) {
+      score += 34;
+      reasons.push(`matched ${directTokenHits[0]}`);
+    } else if (directTokenHits.length === 1 && tokens.length > 2) {
+      score += 12;
+    }
+
+    const aliasHits = aliasHitsFor(tokens, recipeText);
+    if (aliasHits.length && (directTokenHits.length || tokens.some(t => ['fries','wing','burger','chicken','tortilla','ranch','bacon','cod','haddock'].includes(t)))) {
+      score += Math.min(42, aliasHits.length * 12);
+      reasons.push(`alias ${aliasHits.slice(0, 2).join(', ')}`);
+    }
+
+    // Generic-only hits are noisy. A cheese slice should not automatically mark
+    // every recipe with the word cheese unless a manual graph link or a modifier
+    // such as swiss/american/cheddar also appears.
+    const genericOnly = directTokenHits.length === 0 && tokens.some(t => genericIngredient.has(t) && containsPhrase(recipeText, t));
+    if (genericOnly && nonGenericTokens.length === 0) score = Math.min(score, 18);
+    if (genericOnly && nonGenericTokens.length > 0 && !directTokenHits.length) score = Math.min(score, 20);
+
+    return { score, reasons: Array.from(new Set(reasons)) };
+  };
+
   const low = inventoryItems.filter(i => Number(i.parLevel || 0) > 0 && Number(i.currentStock || 0) < Number(i.parLevel || 0));
   const lowById = new Map(low.map(item => [item.id, item]));
   const inventoryById = new Map(inventoryItems.map(item => [item.id, item]));
   const recipeById = new Map(recipes.map(recipe => [recipe.id, recipe]));
-  const lowTokens = low.map(i => ({ item: i, key: normalize(i.name) })).filter(x => x.key);
-  const activePrep = prepItems.filter(p => p.isMaster || p.date === getToday() || p.frequency);
-  const activePrepKeys = activePrep.map(p => normalize(p.text || p.title || p.name));
   const recipeHits = new Map();
   const ensure = (recipe) => {
     const id = recipe?.id || normalize(recipe?.name || recipe?.title || 'recipe');
-    if (!recipeHits.has(id)) recipeHits.set(id, { recipe, lowStockMatches: [], prepMatches: [], explicitDependencies: [], eightySixAlerts: [] });
+    if (!recipeHits.has(id)) recipeHits.set(id, { recipe, lowStockMatches: [], prepMatches: [], explicitDependencies: [], eightySixAlerts: [], confidence: 0, matchReasons: [] });
     return recipeHits.get(id);
   };
+  const pushReason = (hit, reason) => { if (reason && !hit.matchReasons.includes(reason)) hit.matchReasons.push(reason); };
 
-  // Manual dependency graph beats text guessing. These docs are created from Ops Center.
   (menuDependencies || []).forEach(dep => {
     const recipe = recipeById.get(dep.recipeId) || { id: dep.recipeId || dep.id, name: dep.recipeName || dep.menuItemName || 'Menu item' };
-    const lowItem = lowById.get(dep.inventoryItemId);
+    const lowItem = lowById.get(dep.inventoryItemId) || low.find(item => normalize(item.name) && normalize(item.name) === normalize(dep.inventoryItemName || dep.ingredientName || dep.itemName || ''));
     if (lowItem) {
       const hit = ensure(recipe);
       if (!hit.lowStockMatches.some(i => i.id === lowItem.id)) hit.lowStockMatches.push(lowItem);
       hit.explicitDependencies.push({ ...dep, inventoryItem: lowItem });
+      hit.confidence = Math.max(hit.confidence, Number(dep.confidence || dep.matchConfidence || 95));
+      pushReason(hit, 'manual dependency graph');
     }
   });
 
-  // Text fallback catches recipes that have ingredients listed but no manual graph yet.
   recipes.forEach(recipe => {
-    const text = normalize([recipe.name, recipe.title, recipe.description, recipe.ingredients, ...(Array.isArray(recipe.items) ? recipe.items.map(x => x.name || x.item || x.text || '') : [])].join(' '));
-    const hits = lowTokens.filter(({ key }) => key && (text.includes(key) || key.split(' ').some(part => part.length > 3 && text.includes(part))));
-    const prepHits = activePrepKeys.filter(key => key && text.includes(key));
-    if (hits.length || prepHits.length) {
-      const hit = ensure(recipe);
-      hits.forEach(h => { if (!hit.lowStockMatches.some(i => i.id === h.item.id)) hit.lowStockMatches.push(h.item); });
-      hit.prepMatches = Array.from(new Set([...(hit.prepMatches || []), ...prepHits]));
-    }
-  });
-
-  // 86 alerts are pulled into the same brain so the radar sees both inventory math and manager alerts.
-  const active86Alerts = (events || []).filter(e => {
-    const hay = normalize(`${e.messageCategory || ''} ${e.title || ''} ${e.notes || ''}`);
-    return hay.includes('86') || hay.includes('eighty six') || hay.includes('out of');
-  });
-  active86Alerts.forEach(alert => {
-    const alertText = normalize(`${alert.title || ''} ${alert.notes || ''}`);
-    recipes.forEach(recipe => {
-      const recipeNameKey = normalize(recipe.name || recipe.title || '');
-      const recipeText = normalize(`${recipe.name || recipe.title || ''} ${recipe.ingredients || ''}`);
-      if (alertText && recipeText && ((recipeNameKey && alertText.includes(recipeNameKey)) || recipeText.split(' ').some(part => part.length > 4 && alertText.includes(part)))) {
-        ensure(recipe).eightySixAlerts.push(alert);
+    const recipeText = recipeTextFor(recipe);
+    low.forEach(item => {
+      const scored = scoreRecipeAgainstItem(recipeText, item);
+      if (scored.score >= 55) {
+        const hit = ensure(recipe);
+        if (!hit.lowStockMatches.some(i => i.id === item.id)) hit.lowStockMatches.push(item);
+        hit.confidence = Math.max(hit.confidence, Math.min(92, scored.score));
+        scored.reasons.forEach(reason => pushReason(hit, reason));
       }
     });
   });
 
-  const affectedRecipes = Array.from(recipeHits.values()).filter(r => r.lowStockMatches.length || r.prepMatches.length || r.eightySixAlerts.length);
+  const activePrep = prepItems.filter(p => p.isMaster || p.date === getToday() || p.frequency);
+  const activePrepKeys = activePrep.map(p => normalize(p.text || p.title || p.name)).filter(k => k.length >= 5);
+  recipes.forEach(recipe => {
+    const recipeText = recipeTextFor(recipe);
+    const prepHits = activePrepKeys.filter(key => containsPhrase(recipeText, key)).slice(0, 5);
+    if (prepHits.length) {
+      const hit = ensure(recipe);
+      hit.prepMatches = Array.from(new Set([...(hit.prepMatches || []), ...prepHits]));
+      hit.confidence = Math.max(hit.confidence, 45);
+      pushReason(hit, 'prep signal');
+    }
+  });
+
+  const active86Alerts = (events || []).filter(e => {
+    const hay = normalize(`${e.messageCategory || ''} ${e.title || ''} ${e.notes || ''}`);
+    return containsPhrase(hay, '86') || containsPhrase(hay, 'eighty six') || hay.includes('out of');
+  });
+  active86Alerts.forEach(alert => {
+    const alertText = normalize(`${alert.title || ''} ${alert.notes || ''} ${alert.inventoryItemName || ''}`);
+    const alertTokens = significantTokens(alertText).filter(t => !genericIngredient.has(t));
+    recipes.forEach(recipe => {
+      const recipeText = recipeTextFor(recipe);
+      const nameKey = normalize(recipe.name || recipe.title || '');
+      const itemHits = alertTokens.filter(token => containsPhrase(recipeText, token));
+      if ((nameKey && containsPhrase(alertText, nameKey)) || itemHits.length >= 1) {
+        const hit = ensure(recipe);
+        hit.eightySixAlerts.push(alert);
+        hit.confidence = Math.max(hit.confidence, nameKey && containsPhrase(alertText, nameKey) ? 90 : 65);
+        pushReason(hit, 'active 86 alert');
+      }
+    });
+  });
+
+  const affectedRecipes = Array.from(recipeHits.values())
+    .filter(r => r.lowStockMatches.length || r.prepMatches.length || r.eightySixAlerts.length)
+    .sort((a, b) => (b.confidence || 0) - (a.confidence || 0));
   const mappedDependencyCount = (menuDependencies || []).filter(dep => recipeById.has(dep.recipeId) && inventoryById.has(dep.inventoryItemId)).length;
   return {
     lowStockItems: low,
@@ -677,7 +860,8 @@ export const buildMenuDependencyReport = ({ recipes = [], inventoryItems = [], p
     active86Alerts,
     mappedDependencyCount,
     explicitDependencyCount: (menuDependencies || []).length,
-    recoveryCount: low.filter(i => Number(i.pendingQty || 0) > 0).length
+    recoveryCount: low.filter(i => Number(i.pendingQty || 0) > 0).length,
+    engineVersion: '15.0.83-precision-radar'
   };
 };
 

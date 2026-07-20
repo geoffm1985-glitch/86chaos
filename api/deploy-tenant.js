@@ -36,7 +36,7 @@ export default async function handler(req, res) {
     // 2. Create Restaurant Workspace in Database
     const now = new Date();
     const betaEnds = new Date(now);
-    betaEnds.setDate(betaEnds.getDate() + 60);
+    betaEnds.setDate(betaEnds.getDate() + 90);
     const defaultFeatures = { schedule: true, prep: true, inventory: true, recipes: true, messages: true, sales: true, labor: true, maintenance: true, timesheets: true, events: true };
     const subscription = {
        planId: 'smart_kitchen',
@@ -46,6 +46,9 @@ export default async function handler(req, res) {
        betaStartedAt: now.toISOString(),
        betaEndsAt: betaEnds.toISOString(),
        betaExtendedUntil: null,
+       entitlementActive: true,
+       entitlementStatus: 'active',
+       entitlementReviewedAt: now.toISOString(),
        founderDiscountPercent: 50,
        founderDiscountEndsAt: null,
        billingProvider: 'none',
@@ -68,6 +71,7 @@ export default async function handler(req, res) {
        planId: 'smart_kitchen',
        selectedFutureTier: 'smart_kitchen',
        subscriptionStatus: 'beta',
+       entitlementActive: true,
        isFounderBeta: true,
        integrationsLocked: true,
        subscription,
