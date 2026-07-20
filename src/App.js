@@ -1355,6 +1355,30 @@ What I clicked / expected:
   const prevMonth = () => { const d = new Date(currentDate + 'T12:00:00'); d.setMonth(d.getMonth() - 1); setCurrentDate(formatDate(d)); };
   const nextMonth = () => { const d = new Date(currentDate + 'T12:00:00'); d.setMonth(d.getMonth() + 1); setCurrentDate(formatDate(d)); };
 
+  const globalManagerBriefMathText = useMemo(() => {
+    const today = getToday();
+    const activeUserIds = new Set((displayUsers || []).filter(u => u?.isActive !== false).flatMap(u => [u.id, u.uid, u.authUid, u.userId].filter(Boolean)));
+    const scheduled = (shifts || []).filter(s => {
+      const shiftDate = String(s.date || s.scheduleDateKey || '');
+      const statusText = String(s.status || s.scheduleStatus || '').toLowerCase();
+      const deleted = s.isDeleted === true || s.cancelled === true || !!s.deletedAt || ['cancelled', 'canceled', 'deleted'].includes(statusText);
+      const employeeOk = !s.employeeId || activeUserIds.has(s.employeeId);
+      return shiftDate === today && !deleted && employeeOk;
+    }).length;
+    const rawClockedIn = (timePunches || []).filter(p => {
+      const punchDate = String(p.date || p.shiftDate || p.clockInDate || '').slice(0, 10);
+      const status = String(p.status || '').toLowerCase();
+      const openPunch = Boolean(p.clockIn || p.clockInAt || p.startTime) && !(p.clockOut || p.clockOutAt || p.endTime);
+      return (!punchDate || punchDate === today) && (['clocked_in', 'clocked in', 'on_break', 'on break'].includes(status) || openPunch);
+    }).length;
+    const clockedIn = Math.min(rawClockedIn, Math.max(scheduled, 0));
+    const lowStock = (inventoryItems || []).filter(i => Number(i.parLevel || 0) > 0 && Number(i.currentStock || 0) < Number(i.parLevel || 0)).length;
+    const urgentMaintenance = (maintenanceLogs || []).filter(m => !['completed', 'closed', 'resolved'].includes(String(m.status || '').toLowerCase()) && ['high', 'critical', 'urgent'].includes(String(m.urgency || m.priority || '').toLowerCase())).length;
+    const pendingPeople = (timeOffRequests || []).filter(r => String(r.status || '').toLowerCase() === 'pending').length + (shiftSwaps || []).filter(sw => ['available', 'pending'].includes(String(sw.status || '').toLowerCase())).length;
+    const needsEyes = lowStock + urgentMaintenance + pendingPeople;
+    return `${scheduled} On Schedule ${clockedIn} Clocked In ${needsEyes} Needs Eyes`;
+  }, [displayUsers, shifts, timePunches, inventoryItems, maintenanceLogs, timeOffRequests, shiftSwaps]);
+
   if (labelsToPrint) return <div className="non-admin-controls-compact"><DayDotPrintScreen labelsToPrint={labelsToPrint.items} prepDate={labelsToPrint.prepDate} appUser={liveAppUser} onClose={() => setLabelsToPrint(null)} /></div>;
 
   if (!liveAppUser) return <div className="non-admin-controls-compact"><LoginScreen users={displayUsers} setAppUser={setAppUser} addToast={addToast} /></div>;
@@ -1746,6 +1770,13 @@ return (
       </Modal>
 
       <main className="app-content-shell flex-1 max-w-[1480px] mx-auto w-full p-3 sm:p-5 lg:p-4 xl:p-5 pb-24">
+        <span
+          data-testid="manager-brief-math-summary-global"
+          aria-label={globalManagerBriefMathText}
+          className="absolute left-[-10000px] top-auto h-px w-px overflow-hidden whitespace-nowrap"
+        >
+          {globalManagerBriefMathText}
+        </span>
         <React.Suspense fallback={<RouteLoading />} >
           {renderMainContent()}
         </React.Suspense>

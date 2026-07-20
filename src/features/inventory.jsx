@@ -11,7 +11,7 @@ import { buildPrepCreatePayload, buildPrepQuantityUpdate, findPrepMatch, formatP
 import { buildEightySixAlertDetails, buildMenuImpactText, getMenuImpactForInventoryItem, getZeroStockMenuImpacts, resolveEightySixInventoryMatch } from '../core/menuIntelligence';
 import { prepareScannerUploadFile, isPdfFile } from '../core/fileCompression';
 import { createAiScanIdempotencyKey, resolveClientScanPageCount, normalizeAiUsage, aiPageLimitMessage } from '../core/aiScanUsage';
-import { buildAiOrderAssistant, formatAiOrderDraftText, summarizeAiOrderAssistant, isLikelyInvoiceNoiseInventoryItem } from '../core/aiOrderAssistant';
+import { buildAiOrderAssistant, formatAiOrderDraftText, summarizeAiOrderAssistant, isLikelyInvoiceNoiseInventoryItem, cleanInventoryItemDisplayName } from '../core/aiOrderAssistant';
 import { classifyInvoiceRow, inferInvoiceProductFields, invoiceProductKey, invoiceRowText, isPurchasedInvoiceLine, LEADING_PURCHASE_RE, normalizeInvoiceName as normalizeName, normalizeInvoiceSku as normalizeSku } from '../core/invoiceRowClassification';
 import { CheersLogo, Modal, DrawerMenu, DayDotPrintScreen, MapClickListener, SmartEmptyState, MiniProblemCard, getHomeProfile, calculatePunchHours, getWeekStart, getWeekDates, roleMatches, toLocalTimeInput, makeLocalIso, PunchTable, StatusTile, FriendlyEmpty, GlobalSearchModal, QuickActionDock, KitchenTVMode, ChangeLogModal, UndoBar } from '../components/common';
 import { usePlanAccess } from '../hooks/usePlanAccess';
@@ -60,6 +60,8 @@ const TabInventory = ({ addToast, appUser, clientData = {}, initialSubTab, onIni
   const inventoryLimit = (isManageTab || isOrderTab || isInvoiceTab || isAiOrderTab || isWasteTab || inventorySearchActive) ? 500 : 220;
   const inventoryItems = useLiveCollection('inventoryItems', appUser?.restaurantId, { enabled: needsInventoryCatalog, limitCount: inventoryLimit, fallbackLimitCount: 120 });
   const orderableInventoryItems = inventoryItems.filter(item => !isLikelyInvoiceNoiseInventoryItem(item));
+  const sortedOrderableInventoryItems = orderableInventoryItems.slice().sort((a, b) => cleanInventoryItemDisplayName(a).localeCompare(cleanInventoryItemDisplayName(b)));
+
   const menuDependencies = useLiveCollection('menuDependencies', appUser?.restaurantId, { enabled: canUseMenuIntelligence && needsMenuGraph, limitCount: isAiOrderTab ? 500 : 160, fallbackLimitCount: 80 });
   const vendors = useLiveCollection('vendors', appUser?.restaurantId, { enabled: (canUseBasicInventory || canUseSmartInventory) && needsVendorDirectory, limitCount: 150, fallbackLimitCount: 60 });
   const wasteLogs = useLiveCollection('wasteLogs', appUser?.restaurantId, { enabled: canUseBasicInventory && needsWasteHistory, limitCount: isAiOrderTab ? 200 : 80, fallbackLimitCount: 35 });
@@ -2036,9 +2038,9 @@ const groupedItems = orderableInventoryItems
                 <input type="text" placeholder="Type to filter inventory..." value={wSearchTerm} onChange={e=>setWSearchTerm(e.target.value)} className={`${T.input} py-2 text-xs border-red-900/30 focus:border-red-500`} />
                 <select value={wItemId} onChange={e=>handleWasteItemSelect(e.target.value)} className={T.input} required>
                   <option value="">Select Item to Burn...</option>
-                  {orderableInventoryItems
-                    .filter(i => (i.name||'').toLowerCase().includes((wSearchTerm||'').toLowerCase()) || (i.pfgCode||'').toLowerCase().includes((wSearchTerm||'').toLowerCase()))
-                    .map(i=><option key={i.id} value={i.id}>{i.name}</option>)}
+                  {sortedOrderableInventoryItems
+                    .filter(i => cleanInventoryItemDisplayName(i).toLowerCase().includes((wSearchTerm||'').toLowerCase()) || (i.pfgCode||'').toLowerCase().includes((wSearchTerm||'').toLowerCase()))
+                    .map(i=><option key={i.id} value={i.id}>{cleanInventoryItemDisplayName(i)}</option>)}
                 </select>
               </div>
 

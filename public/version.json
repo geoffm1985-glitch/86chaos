@@ -1,9 +1,9 @@
 {
-  "version": "15.0.87",
-  "name": "86 Chaos 15.0.87 Login Bootstrap and App Check Guard",
+  "version": "15.0.88",
+  "name": "86 Chaos 15.0.88 Login Bootstrap and App Check Guard",
   "releasedAt": "2026-07-19",
-  "label": "15.0.87 Login Bootstrap and App Check Guard",
-  "build": "15.0.87",
+  "label": "15.0.88 Login Bootstrap and App Check Guard",
+  "build": "15.0.88",
   "updatedAt": "2026-07-20T00:00:00.000Z",
   "notes": "Separates Firebase Auth from workspace bootstrap, ignores generic/production App Check keys on testing preview, adds a server login-bootstrap check, and makes login failures identify the failing step instead of forcing manual Firebase digging."
 }

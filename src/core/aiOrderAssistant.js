@@ -57,11 +57,15 @@ export const isLikelyInvoiceNoiseInventoryItem = (item = {}) => {
   if (!label) return true;
   const compact = label.toLowerCase().replace(/\s+/g, ' ').trim();
   const source = clean([item.source, item.importSource, item.scanSource, item.category, item.vendorName].filter(Boolean).join(' '));
-  const obviousNoise = /\b(group total|sub total|invoice total|invoice date|customer invoice|remit to|remittance|p\.?o\.? box|shipper#?|manifest#?|driver['’]?s?|payable on or before|fuel surcharge|misc charges?|important pack provision|representative capacity|gross wt|open:\s*\d|close:\s*\d|code price|price code|qty pack size|last page|signed invoice|invoice evidences|route terms|past due balances|subject to service charge|customer number|customer invoice|purchase order|sales tax|taxable|non taxable|measure$|total$|invoice$)\b/i;
-  const categoryOnly = /^(?:dairy products|produce|poultry|canned & dry|canned dry|misc charges|tax|measure|invoice|total|remit to|driver|route terms)$/i;
+  const obviousNoise = /\b(group total|sub total|invoice total|invoice date|customer invoice|remit to|remittance|p\.?o\.? box|shipper#?|manifest#?|driver['’]?s?|payable on or before|fuel surcharge|misc charges?|important pack provision|representative capacity|gross wt|open:\s*\d|close:\s*\d|code price|price code|qty pack size|last page|signed invoice|invoice evidences|route terms|past due balances|subject to service charge|customer number|customer invoice|purchase order|sales tax|taxable|non taxable|measure$|invoice$)\b/i;
+  const categoryOnly = /^(?:dairy products|produce|poultry|canned & dry|canned dry|misc charges|tax|measure|invoice|total|subtotal|sub total|remit to|driver|route terms)$/i;
+  const numericSummaryOnly = /^(?:total|sub\s*total|group\s*total|tax|t\/?wt|gross\s+wt)\b[\s*$#:\-.0-9/]*$/i;
+  const weightSummaryOnly = /^\d+(?:\.\d+)?\s+(?:t\/?wt|gross\s+wt)\b/i;
+  const invoiceLegalOrHeader = /^(?:important pack provision|representative capacity|route terms|cases split|qty pack size|code price|invoice date|driver:|sign delvd|manifest#?|customer invoice number)\b/i;
   const addressOrContact = /\b(?:fairfax|virginia|west jordan|utah|lee highway|suite\s+\d|p\.?o\.? box|\(?\d{3}\)?[-.\s]\d{3}[-.\s]\d{4})\b/i;
   const productWords = /\b(?:cheese|chicken|wing|fries|sauce|lemon|tortilla|salt|seasoning|perch|fish|carrot|salad|lettuce|tomato|onion|potato|beef|pork|bacon|ham|turkey|bread|bun|roll|milk|cream|butter|egg|flour|rice|bean|coke|syrup|coffee|tea|ranch|dip|soup|pepper|jalapeno|pickle|mushroom|oil|vinegar)\b/i;
-  if (obviousNoise.test(compact) || categoryOnly.test(label)) return true;
+  if (obviousNoise.test(compact) || categoryOnly.test(label) || numericSummaryOnly.test(label) || weightSummaryOnly.test(label) || invoiceLegalOrHeader.test(label)) return true;
+  if (/^total\b/i.test(label) || /^sub\s*total\b/i.test(label) || /^group\s*total/i.test(label)) return true;
   if (addressOrContact.test(label) && !productWords.test(label)) return true;
   if (label.length > 96 && !item.sku && !item.pfgCode && !item.productCode && !productWords.test(label)) return true;
   if (/^(\d+[\s.\-\/]+){4,}/.test(compact)) return true;
@@ -71,6 +75,17 @@ export const isLikelyInvoiceNoiseInventoryItem = (item = {}) => {
   return false;
 };
 
+export const cleanInventoryItemDisplayName = (item = {}) => {
+  const raw = itemLabel(item).trim();
+  if (!raw) return '';
+  let label = raw.replace(/\s+/g, ' ').trim();
+  label = label.replace(/^(?:C|D)\s+/i, '');
+  label = label.replace(/^(?:\d+[A-Z]?\s*){1,3}(?:ONLYS?|SCS|CS|CASE|EA|LB|OZ|GAL|QT|PT|PACK|PK|BAG|BTL|CAN|#?AVG[A-Z]*|SYS\s+CLS|IMP\/?MCC|IMPFRSH|PACKER|MORTON|BBRLCLS)\s+/i, '');
+  label = label.replace(/\s+\d{5,}\s+\d{5,}(?:\s+\d+(?:\.\d{2,3})?){1,3}$/i, '');
+  label = label.replace(/\s+\d{4,}(?:\s+\d+(?:\.\d{2,3})?){1,3}$/i, '');
+  label = label.replace(/\s+\d+(?:\.\d{2,3})\s+\d+(?:\.\d{2,3})$/i, '');
+  return label.trim() || raw;
+};
 
 const approvedDependencies = (deps = []) => (deps || []).filter(dep => {
   const status = clean(dep.status || dep.reviewStatus || dep.approvalStatus || dep.sourceStatus || 'approved');
