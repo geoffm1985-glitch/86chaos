@@ -4433,10 +4433,10 @@ const unsubAudit = onSnapshot(collection(db, 'auditLogs'), snap => {
        clearLoadError('pythonAutomationRuns');
        setAutomationRuns(snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a,b) => new Date(b.startedAt || 0) - new Date(a.startedAt || 0)).slice(0, 80));
     }, err => { setAutomationRuns([]); noteLoadError('pythonAutomationRuns', err); });
-    const unsubAutomationQueue = onSnapshot(collection(db, 'aiRecommendationQueue'), snap => {
-       clearLoadError('aiRecommendationQueue');
+    const unsubAutomationQueue = onSnapshot(collection(db, 'restaurantAdminAlerts'), snap => {
+       clearLoadError('restaurantAdminAlerts');
        setAutomationQueue(snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a,b) => new Date(b.updatedAt || b.createdAt || 0) - new Date(a.updatedAt || a.createdAt || 0)).slice(0, 120));
-    }, err => { setAutomationQueue([]); noteLoadError('aiRecommendationQueue', err); });
+    }, err => { setAutomationQueue([]); noteLoadError('restaurantAdminAlerts', err); });
     const unsubAutomationConfigs = onSnapshot(collection(db, 'pythonAutomationConfigs'), snap => {
        clearLoadError('pythonAutomationConfigs');
        setAutomationConfigs(snap.docs.map(d => ({ id: d.id, ...d.data() })));
@@ -7294,10 +7294,10 @@ Type RESTORE to continue.`);
     { key:'recipeCostingRefresh', label:'Recipe/Menu Costing Refresh', cadence:'Weekly / invoice signal', mode:'Approval required', description:'Estimates menu cost movement from invoice and recipe data.' },
     { key:'releaseDataQaScanner', label:'Release/Data QA Scanner', cadence:'On demand + nightly', mode:'Suggestions only', description:'Looks for obvious app-data issues before releases or risky changes.' },
     { key:'criticalPushAlerts', label:'Critical Push Alerts', cadence:'When serious findings exist', mode:'Alert only', description:'Pushes owners/super admins for backup failures, huge price jumps, and corruption risk.' },
-    { key:'approvalQueue', label:'Approval Queue', cadence:'Every run', mode:'Human approval required', description:'Creates review items for repairs, par changes, costing, labor, and invoice findings.' }
+    { key:'approvalQueue', label:'Owner/Admin Alerts', cadence:'Every run', mode:'Restaurant review required', description:'Sends read-only review alerts to restaurant owners/admins instead of applying changes.' }
   ];
   const pythonSafetyPolicy = {
-    can: ['Analyze data', 'Create reports', 'Create suggestions', 'Send critical alerts', 'Create drafts for review'],
+    can: ['Analyze data', 'Create reports', 'Create suggestions', 'Send owner/admin alerts', 'Create alert-only review records'],
     approval: ['Change pars', 'Save order drafts', 'Repair broken records', 'Update official recipe costs', 'Archive or restore records'],
     never: ['Send vendor orders', 'Spend money', 'Edit/publish schedules', 'Approve payroll', 'Change wages/permissions/billing/security', 'Delete records permanently']
   };
@@ -7306,7 +7306,7 @@ Type RESTORE to continue.`);
   const latestAutomationAttention = automationReports.filter(report => ['critical', 'attention', 'failed'].includes(String(report.status || '').toLowerCase())).slice(0, 12);
 
   const handleRunPythonAutomation = async () => {
-    if (!window.confirm(automationTargetId ? 'Run Python Automation Center for the selected workspace now?' : 'Run Python Automation Center for active workspaces now?')) return;
+    if (!window.confirm(automationTargetId ? 'Run a read-only Python scan and send owner/admin alerts for the selected workspace? No restaurant records will be changed.' : 'Run read-only Python scans and send owner/admin alerts for active workspaces? No restaurant records will be changed.')) return;
     setAutomationLoading(true);
     try {
       const response = await secureFetch('/api/python-automation-run', {
@@ -7321,11 +7321,14 @@ Type RESTORE to continue.`);
       const skipped = rows.filter(row => row.skipped).length;
       const completed = rows.filter(row => row.ok === true && row.skipped !== true).length;
       const scanned = rows.length;
+      const ownerAdminAlerts = rows.reduce((sum, row) => sum + Number(row.ownerAdminAlertsWritten || 0), 0);
+      const pushesSent = rows.reduce((sum, row) => sum + Number(row.pushSentCount || 0), 0);
+      const changesApplied = rows.reduce((sum, row) => sum + Number(row.changesApplied || 0), 0);
       const failurePreview = rows.find(row => row.ok === false)?.error || '';
       if (failed) {
-        addToast('Python Automation Finished with Errors', `${completed}/${scanned} workspace(s) completed, ${failed} failed${skipped ? `, ${skipped} skipped` : ''}${failurePreview ? `. First error: ${failurePreview}` : ''}`);
+        addToast('Scan Finished with Errors', `${completed}/${scanned} completed, ${failed} failed${skipped ? `, ${skipped} skipped` : ''}. ${ownerAdminAlerts} owner/admin alert(s), ${pushesSent} push(es), ${changesApplied} changes applied.${failurePreview ? ` First error: ${failurePreview}` : ''}`);
       } else {
-        addToast('Python Automation Complete', `${completed}/${scanned} workspace(s) completed${skipped ? `, ${skipped} skipped` : ''}.`);
+        addToast('Scan Complete, Alerts Sent', `${completed}/${scanned} completed${skipped ? `, ${skipped} skipped` : ''}. ${ownerAdminAlerts} owner/admin alert(s), ${pushesSent} push(es), ${changesApplied} changes applied.`);
       }
     } catch (error) {
       addToast('Python Automation Failed', error?.message || 'Could not run automation.');
@@ -7412,7 +7415,7 @@ Type RESTORE to continue.`);
       tabs:[
         {id:'support', label:'Support Diagnostics', short:'Support', intent:'Review crashes, API clues, auth/runtime state, rule blocks, and support diagnostics.'},
         {id:'ai-usage', label:'AI Usage / Scan Limits', short:'AI Usage', intent:'Review monthly invoice and menu AI pages, failures, blocked scans, bypass logs, and workspace limits.'},
-        {id:'automation', label:'Python Automation Center', short:'Python', intent:'Control scheduled Python jobs, critical alerts, approval queue suggestions, and automation safety rails.'},
+        {id:'automation', label:'Python Automation Center', short:'Python', intent:'Control scheduled Python jobs, owner/admin alerts, read-only scans, and automation safety rails.'},
         {id:'push', label:'Push Control Center', short:'Push', intent:'Audit push tokens, stale devices, opt-in status, and test delivery.'},
         {id:'live', label:'Manual Presence Snapshot', short:'Presence', intent:'Take an on-demand low-cost live user/workspace snapshot.'}
       ]
@@ -7448,7 +7451,7 @@ Type RESTORE to continue.`);
     { label:'Find or Repair a User', tab:'users', keywords:'people employee profile login routing reset password' },
     { label:'Test Push Notifications', tab:'push', keywords:'push token fcm alert device' },
     { label:'Review AI Scan Page Usage', tab:'ai-usage', keywords:'invoice menu ai pages limits scans failures blocked bypass model provider' },
-    { label:'Open Python Automation Center', tab:'automation', keywords:'python automation nightly ops scan manager brief critical alerts approval queue recommendations' },
+    { label:'Open Python Automation Center', tab:'automation', keywords:'python automation nightly ops scan manager brief owner admin alerts read only recommendations' },
     { label:'Review App Check and MFA', tab:'security', keywords:'security app check mfa rules environment' },
     { label:'Open Complete App Training Manual', tab:'manual', keywords:'non ai training whole app tab guide print pdf instructions manual' },
     { label:'Ask Gemini Administrator Manual', tab:'manual', keywords:'gemini help instructions troubleshooting repair manual' },
@@ -9607,7 +9610,7 @@ another@email.com"></textarea>
             <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-4">
               <div>
                 <div className="text-[10px] font-black uppercase tracking-[0.22em] text-purple-300 flex items-center gap-2"><Sparkles size={15}/> Python Automation Center</div>
-                <h2 className="text-xl font-black text-white mt-1">Run everything Python should run, and nothing it should not.</h2>
+                <h2 className="text-xl font-black text-white mt-1">Scan workspaces, alert owners/admins, apply nothing.</h2>
                 <p className="text-xs text-slate-400 font-bold leading-6 mt-2 max-w-3xl">Python is fenced into analysis, reports, suggestions, drafts, and critical alerts. Vendor orders, money, schedules, payroll, permissions, deletion, and official data changes stay human-controlled.</p>
               </div>
               <div className="w-full lg:w-[360px] space-y-2">
@@ -9616,7 +9619,7 @@ another@email.com"></textarea>
                   {restaurants.map(r => <option key={r.id} value={r.id}>{r.name || r.id}</option>)}
                 </select>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                  <button type="button" onClick={handleRunPythonAutomation} disabled={automationLoading} className="bg-purple-900/30 border border-purple-500/50 text-purple-100 rounded-xl px-4 py-3 text-xs font-black uppercase tracking-widest disabled:opacity-50">{automationLoading ? 'Running…' : 'Run Now'}</button>
+                  <button type="button" onClick={handleRunPythonAutomation} disabled={automationLoading} className="bg-purple-900/30 border border-purple-500/50 text-purple-100 rounded-xl px-4 py-3 text-xs font-black uppercase tracking-widest disabled:opacity-50">{automationLoading ? 'Scanning…' : 'Scan & Alert Owners'}</button>
                   <button type="button" onClick={handleTogglePythonAutomationPause} disabled={!automationTargetId} className="bg-[#12161A] border border-[#2A353D] text-[#D4A381] rounded-xl px-4 py-3 text-xs font-black uppercase tracking-widest disabled:opacity-40">{selectedAutomationConfig?.paused ? 'Resume' : 'Pause'}</button>
                 </div>
                 <div className="text-[10px] text-slate-500 font-bold leading-4">Scheduled run: Vercel Cron hits <span className="text-purple-200 font-black">/api/python-automation-run</span>. Manual runs use your Super Admin login.</div>
@@ -9643,7 +9646,7 @@ another@email.com"></textarea>
             <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-3 mb-4">
               <div>
                 <h3 className="font-black text-white text-lg">Scheduled Python Jobs</h3>
-                <p className="text-xs text-slate-500 font-bold mt-1">Jobs are report/suggestion/alert only. The approval queue is where real changes wait for people.</p>
+                <p className="text-xs text-slate-500 font-bold mt-1">Jobs are scan-and-alert only. Restaurant owners/admins review the alerts inside their workspace before anything changes.</p>
               </div>
               <div className="text-right text-[10px] uppercase tracking-widest font-black text-slate-500">{automationConfigs.length} configured workspace(s)</div>
             </div>
@@ -9685,16 +9688,12 @@ another@email.com"></textarea>
           </div>
 
           <div className={`${T.card} p-5`}>
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4"><div><h3 className="font-black text-white text-lg">AI Recommendation Approval Queue</h3><p className="text-xs text-slate-500 font-bold mt-1">Python can put work here. It cannot apply the change by itself.</p></div><div className="text-[10px] font-black uppercase tracking-widest text-slate-500">{openAutomationItems.length} open</div></div>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4"><div><h3 className="font-black text-white text-lg">Restaurant Owner/Admin Alerts</h3><p className="text-xs text-slate-500 font-bold mt-1">Python sends these to restaurant owners/admins. System Administrator can view them but cannot apply, approve, or dismiss restaurant actions.</p></div><div className="text-[10px] font-black uppercase tracking-widest text-slate-500">{openAutomationItems.length} open</div></div>
             <div className="space-y-2 max-h-[560px] overflow-y-auto custom-scrollbar">
               {automationQueue.length ? automationQueue.slice(0, 50).map(item => (
                 <div key={item.id} className="rounded-2xl border border-[#2A353D] bg-[#12161A] p-3 flex flex-col lg:flex-row lg:items-center justify-between gap-3">
                   <div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><span className="font-black text-white">{item.title}</span><span className="text-[8px] uppercase tracking-widest font-black rounded-full border border-purple-500/30 bg-purple-950/20 text-purple-200 px-2 py-0.5">{item.type}</span><span className="text-[8px] uppercase tracking-widest font-black rounded-full border border-[#2A353D] text-slate-400 px-2 py-0.5">{item.status || 'open'}</span></div><div className="text-[11px] text-slate-400 font-bold mt-1">{item.restaurantName || item.restaurantId}</div><div className="text-xs text-slate-300 font-bold leading-5 mt-1">{item.detail}</div></div>
-                  <div className="flex flex-wrap gap-2 shrink-0">
-                    <button type="button" onClick={() => updateAutomationQueueStatus(item, 'reviewed')} className="px-3 py-2 rounded-lg border border-emerald-500/40 bg-emerald-950/10 text-emerald-200 text-[10px] font-black uppercase">Reviewed</button>
-                    <button type="button" onClick={() => updateAutomationQueueStatus(item, 'snoozed')} className="px-3 py-2 rounded-lg border border-amber-500/40 bg-amber-950/10 text-amber-200 text-[10px] font-black uppercase">Snooze</button>
-                    <button type="button" onClick={() => updateAutomationQueueStatus(item, 'dismissed')} className="px-3 py-2 rounded-lg border border-red-500/40 bg-red-950/10 text-red-200 text-[10px] font-black uppercase">Dismiss</button>
-                  </div>
+                  <div className="shrink-0 rounded-xl border border-purple-500/20 bg-purple-950/10 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-purple-200">Restaurant Review Only</div>
                 </div>
               )) : <p className="text-xs text-slate-500 font-bold">No approval items yet.</p>}
             </div>

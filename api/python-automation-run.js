@@ -3,7 +3,7 @@ const { initAdmin, authorize, readBody, masterEmails, norm } = require('./_chaos
 const { callPythonFunction } = require('./_python-function-client');
 const { resolveWorkspaceSubscription, planIsAtLeast, PLAN_IDS } = require('./_plan-access');
 
-const APP_VERSION = '15.0.90';
+const APP_VERSION = '15.0.91';
 const PYTHON_TIMEOUT_MS = 35000;
 const MAX_PAYLOAD_BYTES = 1500000;
 const COLLECTION_LIMITS = {
@@ -45,10 +45,10 @@ const DEFAULT_JOBS = {
 const SAFE_POLICY = {
   can: [
     'Analyze app data and create reports',
-    'Create suggestions and approval-queue items',
-    'Send critical push alerts for serious findings',
-    'Create draft intelligence records for manager review',
-    'Track run history, failures, and next actions'
+    'Create recommendation records for restaurant owner/admin review',
+    'Send owner/admin alerts to the restaurant for serious findings',
+    'Create read-only intelligence records for manager review',
+    'Track run history, alert delivery, failures, and next actions'
   ],
   approvalRequired: [
     'Change par levels',
@@ -203,62 +203,153 @@ function criticalFindingsFrom(result = {}) {
   return findings.slice(0, 25);
 }
 
+function isOwnerAdminLike(record = {}) {
+  const roleText = norm([record.role, record.accountRole, record.title, record.position, record.accessLevel].filter(Boolean).join(' '));
+  return Boolean(
+    record.isOwner === true ||
+    record.accountOwner === true ||
+    record.owner === true ||
+    record.workspaceOwner === true ||
+    record.isAdmin === true ||
+    record.admin === true ||
+    /\b(owner|admin|administrator)\b/.test(roleText)
+  );
+}
+
+function hasRestaurantScope(record = {}, restaurantId = '') {
+  if (!restaurantId) return false;
+  return Boolean(
+    record.restaurantId === restaurantId ||
+    record.activeRestaurantId === restaurantId ||
+    record.defaultRestaurantId === restaurantId ||
+    (Array.isArray(record.workspaceIds) && record.workspaceIds.includes(restaurantId)) ||
+    (record.memberships && typeof record.memberships === 'object' && record.memberships[restaurantId] && record.memberships[restaurantId].isActive !== false)
+  );
+}
+
+function mergeRecipient(base = {}, overlay = {}, restaurantId = '') {
+  const membership = base?.memberships?.[restaurantId] || {};
+  return {
+    ...(base || {}),
+    ...(overlay || {}),
+    permissions: { ...(base.permissions || {}), ...(membership.permissions || {}), ...(overlay.permissions || {}) },
+    membershipRole: overlay.role || membership.role || base.role || '',
+    membershipAccountRole: overlay.accountRole || membership.accountRole || base.accountRole || ''
+  };
+}
+
+async function addUserById(db, users, userId, membership = {}, restaurantId = '') {
+  const cleanId = clean(userId || '', '');
+  if (!cleanId) return;
+  const snap = await db.collection('users').doc(cleanId).get().catch(() => null);
+  if (snap?.exists) users.set(snap.id, mergeRecipient({ id: snap.id, ...snap.data() }, membership, restaurantId));
+}
+
+async function addUsersByEmail(db, users, email, membership = {}, restaurantId = '') {
+  const emailKey = norm(email || '');
+  if (!emailKey) return;
+  const snap = await db.collection('users').where('email', '==', emailKey).limit(5).get().catch(() => null);
+  snap?.forEach?.(docSnap => users.set(docSnap.id, mergeRecipient({ id: docSnap.id, ...docSnap.data() }, membership, restaurantId)));
+}
+
 function makeRecommendations(restaurant, result = {}, runId, source) {
   const restaurantId = restaurant.id;
   const rows = [];
-  const base = { restaurantId, workspaceId: restaurantId, restaurantName: restaurant.name || restaurant.restaurantName || '', runId, source, status: 'open', requiresApproval: true, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), safety: 'suggestion_only' };
-  (result.parRecommendations || []).slice(0, 30).forEach(row => rows.push({ ...base, type: 'par_recommendation', title: `Review par for ${row.itemName || 'inventory item'}`, detail: row.reason || row.summary || `Suggested par: ${row.suggestedPar || row.recommendedPar || 'review'}`, payload: row }));
-  (result.wastePatterns || []).slice(0, 25).forEach(row => rows.push({ ...base, type: 'waste_pattern', title: `Review waste pattern for ${row.itemName || row.title || 'item'}`, detail: row.recommendation || row.summary || row.detail || 'Review waste trend before changing prep or par.', payload: row }));
-  (result.menuCosting || []).filter(row => ['high', 'medium'].includes(String(row.severity || '').toLowerCase())).slice(0, 25).forEach(row => rows.push({ ...base, type: 'menu_costing', title: `Review menu cost for ${row.recipeName || 'recipe'}`, detail: `Estimated cost $${Number(row.estimatedCost || 0).toFixed(2)}${row.foodCostPct ? ` • ${row.foodCostPct}% food cost` : ''}`, payload: row }));
-  (result.dataHealth || []).slice(0, 25).forEach(row => rows.push({ ...base, type: 'data_health_repair', title: `${row.area || 'Data'}: ${row.title || 'Repair suggested'}`, detail: (row.issues || []).join(', ') || row.recommendation || 'Review before repairing data.', payload: row }));
-  (result.invoiceAnomalies || []).slice(0, 20).forEach(row => rows.push({ ...base, type: 'invoice_review', title: row.title || 'Invoice needs review', detail: row.detail || 'Review invoice before acting.', payload: row }));
-  (result.laborScheduleWarnings || []).slice(0, 20).forEach(row => rows.push({ ...base, type: 'labor_schedule_review', title: row.title || 'Labor or schedule review', detail: row.detail || 'Review before changing records.', payload: row }));
+  const now = new Date().toISOString();
+  const base = {
+    restaurantId,
+    workspaceId: restaurantId,
+    restaurantName: restaurant.name || restaurant.restaurantName || '',
+    runId,
+    source,
+    status: 'open',
+    requiresApproval: true,
+    audience: 'owners_admins',
+    destination: 'restaurant_admin_alert',
+    createdAt: now,
+    updatedAt: now,
+    safety: 'alert_only_owner_admin_review_required',
+    systemAdminCanApply: false,
+    changesApplied: 0,
+    mutationBlocked: true
+  };
+  (result.parRecommendations || []).slice(0, 30).forEach(row => rows.push({ ...base, type: 'par_recommendation', severity: 'medium', title: `Review par for ${row.itemName || 'inventory item'}`, detail: row.reason || row.summary || `Suggested par: ${row.suggestedPar || row.recommendedPar || 'review'}`, payload: row }));
+  (result.wastePatterns || []).slice(0, 25).forEach(row => rows.push({ ...base, type: 'waste_pattern', severity: row.severity || 'medium', title: `Review waste pattern for ${row.itemName || row.title || 'item'}`, detail: row.recommendation || row.summary || row.detail || 'Review waste trend before changing prep or par.', payload: row }));
+  (result.menuCosting || []).filter(row => ['high', 'medium'].includes(String(row.severity || '').toLowerCase())).slice(0, 25).forEach(row => rows.push({ ...base, type: 'menu_costing', severity: row.severity || 'medium', title: `Review menu cost for ${row.recipeName || 'recipe'}`, detail: `Estimated cost $${Number(row.estimatedCost || 0).toFixed(2)}${row.foodCostPct ? ` • ${row.foodCostPct}% food cost` : ''}`, payload: row }));
+  (result.dataHealth || []).slice(0, 25).forEach(row => rows.push({ ...base, type: 'data_health_review', severity: row.severity || 'medium', title: `${row.area || 'Data'}: ${row.title || 'Review suggested'}`, detail: (row.issues || []).join(', ') || row.recommendation || 'Review before changing data.', payload: row }));
+  (result.invoiceAnomalies || []).slice(0, 20).forEach(row => rows.push({ ...base, type: 'invoice_review', severity: row.severity || 'high', title: row.title || 'Invoice needs review', detail: row.detail || 'Review invoice before acting.', payload: row }));
+  (result.laborScheduleWarnings || []).slice(0, 20).forEach(row => rows.push({ ...base, type: 'labor_schedule_review', severity: row.severity || 'medium', title: row.title || 'Labor or schedule review', detail: row.detail || 'Review before changing records.', payload: row }));
   return rows;
 }
 
-async function writeRecommendations(db, restaurant, result, runId, source) {
+async function writeRestaurantAdminAlerts(db, restaurant, result, runId, source) {
   const rows = makeRecommendations(restaurant, result, runId, source);
   let written = 0;
+  const alertRows = [];
   for (const row of rows) {
     const id = hashId([row.restaurantId, row.type, row.title, dateKey(row.createdAt)]);
-    const ref = db.collection('aiRecommendationQueue').doc(id);
+    const ref = db.collection('restaurantAdminAlerts').doc(id);
     const snap = await ref.get().catch(() => null);
-    if (snap?.exists && ['approved', 'dismissed', 'completed'].includes(String(snap.data()?.status || '').toLowerCase())) continue;
-    await ref.set({ ...row, id, lastSeenAt: new Date().toISOString(), seenCount: (Number(snap?.data()?.seenCount || 0) + 1) }, { merge: true });
+    if (snap?.exists && ['acknowledged', 'dismissed', 'completed', 'resolved'].includes(String(snap.data()?.status || '').toLowerCase())) continue;
+    const doc = { ...row, id, lastSeenAt: new Date().toISOString(), seenCount: (Number(snap?.data()?.seenCount || 0) + 1) };
+    await ref.set(doc, { merge: true });
+    alertRows.push(doc);
     written += 1;
   }
-  return { written, considered: rows.length };
+  return { written, considered: rows.length, alerts: alertRows };
 }
 
-async function loadAlertRecipients(db, restaurantId) {
+async function loadAlertRecipients(db, restaurantId, restaurant = {}) {
   const users = new Map();
-  const add = docSnap => { if (docSnap?.exists) users.set(docSnap.id, { id: docSnap.id, ...docSnap.data() }); };
+  const memberships = new Map();
+  const addUser = (docSnap, membership = {}) => {
+    if (!docSnap?.exists) return;
+    users.set(docSnap.id, mergeRecipient({ id: docSnap.id, ...docSnap.data() }, membership, restaurantId));
+  };
   await Promise.allSettled([
-    db.collection('users').where('isSuperAdmin', '==', true).limit(100).get().then(snap => snap.forEach(add)),
-    db.collection('users').where('systemAccess.superAdmin', '==', true).limit(100).get().then(snap => snap.forEach(add)),
-    db.collection('users').where('restaurantId', '==', restaurantId).limit(250).get().then(snap => snap.forEach(add))
+    db.collection('users').where('restaurantId', '==', restaurantId).limit(250).get().then(snap => snap.forEach(addUser)),
+    db.collection('users').where('workspaceIds', 'array-contains', restaurantId).limit(250).get().then(snap => snap.forEach(addUser)),
+    db.collection('workspaceMembers').where('restaurantId', '==', restaurantId).limit(300).get().then(snap => snap.forEach(docSnap => {
+      const data = { id: docSnap.id, ...docSnap.data() };
+      if (data.isActive === false || data.disabled === true) return;
+      memberships.set(docSnap.id, data);
+    }))
   ]);
-  await Promise.allSettled(masterEmails().slice(0, 25).map(async email => {
-    const snap = await db.collection('users').where('email', '==', norm(email)).limit(5).get();
-    snap.forEach(add);
-  }));
-  return [...users.values()].filter(user => user?.isActive !== false && user?.disabled !== true && (user.isSuperAdmin === true || user.systemAccess?.superAdmin === true || user.isOwner === true || user.accountOwner === true || user.workspaceOwner === true || user.isAdmin === true));
+
+  for (const member of memberships.values()) {
+    if (!isOwnerAdminLike(member)) continue;
+    await addUserById(db, users, member.userId || member.uid || member.authUid, member, restaurantId);
+    await addUsersByEmail(db, users, member.email, member, restaurantId);
+  }
+
+  await Promise.allSettled([
+    addUserById(db, users, restaurant.ownerUserId || restaurant.ownerUid || restaurant.accountOwnerUid, { isOwner: true, accountOwner: true }, restaurantId),
+    addUsersByEmail(db, users, restaurant.ownerEmail || restaurant.ownerEmailLower || restaurant.ownerUserEmail, { isOwner: true, accountOwner: true }, restaurantId)
+  ]);
+
+  return [...users.values()].filter(user => {
+    if (user?.isActive === false || user?.disabled === true) return false;
+    const scopedMembership = user?.memberships?.[restaurantId] || {};
+    const scopedRecord = mergeRecipient(user, scopedMembership, restaurantId);
+    const restaurantScoped = hasRestaurantScope(user, restaurantId) || hasRestaurantScope(scopedMembership, restaurantId) || norm(user.email) === norm(restaurant.ownerEmail || restaurant.ownerEmailLower || restaurant.ownerUserEmail || '');
+    return restaurantScoped && isOwnerAdminLike(scopedRecord);
+  });
 }
 
-async function sendCriticalPush(app, db, restaurant, criticalFindings, runId) {
-  if (!criticalFindings.length) return { attempted: false, sentCount: 0, failedCount: 0, tokenCount: 0 };
-  const recipients = await loadAlertRecipients(db, restaurant.id);
+async function sendRestaurantOwnerAdminPush(app, db, restaurant, attentionItems, runId) {
+  if (!attentionItems.length) return { attempted: false, sentCount: 0, failedCount: 0, tokenCount: 0, eligibleRecipientCount: 0 };
+  const recipients = await loadAlertRecipients(db, restaurant.id, restaurant);
   const tokens = [];
   const seen = new Set();
   recipients.forEach(user => collectTokens(user).forEach(token => { if (!seen.has(token)) { seen.add(token); tokens.push(token); } }));
   if (!tokens.length) return { attempted: true, sentCount: 0, failedCount: 0, tokenCount: 0, missingTokens: true, eligibleRecipientCount: recipients.length };
-  const top = criticalFindings[0];
+  const top = attentionItems[0];
   const payloadBase = {
     notification: {
-      title: `86 Chaos Python alert: ${restaurant.name || restaurant.id}`.slice(0, 100),
-      body: `${top.area}: ${top.title}`.slice(0, 240)
+      title: `86 Chaos owner/admin alert: ${restaurant.name || restaurant.id}`.slice(0, 100),
+      body: `${attentionItems.length} item(s) need owner/admin review. ${top.area || top.type || 'Review'}: ${top.title}`.slice(0, 240)
     },
-    data: { type: 'python_ops_alert', route: 'godmode', targetTab: 'automation', runId: String(runId), restaurantId: String(restaurant.id) }
+    data: { type: 'python_owner_admin_alert', route: 'today', targetTab: 'today', runId: String(runId), restaurantId: String(restaurant.id), alertOnly: 'true', changesApplied: '0' }
   };
   let sentCount = 0;
   let failedCount = 0;
@@ -320,8 +411,9 @@ async function processRestaurant({ req, app, db, restaurant, source, requestedMo
     const result = await runPythonOpsEngine(req, payload);
     const criticalFindings = criticalFindingsFrom(result);
     const reportRef = db.collection('opsIntelligenceReports').doc(runId);
-    const queueStats = gate.config.jobs?.approvalQueue === false ? { written: 0, considered: 0, disabled: true } : await writeRecommendations(db, restaurant, result, runId, source);
-    const pushResult = gate.config.jobs?.criticalPushAlerts === false ? { attempted: false, disabled: true, sentCount: 0, failedCount: 0 } : await sendCriticalPush(app, db, restaurant, criticalFindings, runId).catch(error => ({ attempted: true, sentCount: 0, failedCount: 1, error: error.message || String(error) }));
+    const alertStats = gate.config.jobs?.approvalQueue === false ? { written: 0, considered: 0, disabled: true, alerts: [] } : await writeRestaurantAdminAlerts(db, restaurant, result, runId, source);
+    const pushItems = [...criticalFindings, ...(alertStats.alerts || [])].slice(0, 30);
+    const pushResult = gate.config.jobs?.criticalPushAlerts === false ? { attempted: false, disabled: true, sentCount: 0, failedCount: 0 } : await sendRestaurantOwnerAdminPush(app, db, restaurant, pushItems, runId).catch(error => ({ attempted: true, sentCount: 0, failedCount: 1, error: error.message || String(error) }));
     const finishedAt = new Date().toISOString();
     const summary = result.summary || {};
     await reportRef.set({
@@ -338,12 +430,15 @@ async function processRestaurant({ req, app, db, restaurant, source, requestedMo
       managerBrief: result.managerBrief || [],
       criticalFindings,
       result: compactResultForStorage(result),
-      queueStats,
+      alertStats,
+      queueStats: { written: 0, considered: 0, disabled: true, redirectedTo: 'restaurantAdminAlerts' },
       pushResult,
       safetyPolicy: SAFE_POLICY,
+      changesApplied: 0,
+      systemAdminCanApply: false,
       appVersion: APP_VERSION
     }, { merge: true });
-    await runRef.set({ status: 'completed', finishedAt, summary, reportId: reportRef.id, criticalFindingCount: criticalFindings.length, queueStats, pushResult }, { merge: true });
+    await runRef.set({ status: 'completed', finishedAt, summary, reportId: reportRef.id, criticalFindingCount: criticalFindings.length, alertStats, queueStats: { written: 0, considered: 0, disabled: true, redirectedTo: 'restaurantAdminAlerts' }, pushResult, changesApplied: 0, systemAdminCanApply: false }, { merge: true });
     await db.collection('pythonAutomationConfigs').doc(restaurant.id).set({
       restaurantId: restaurant.id,
       workspaceId: restaurant.id,
@@ -356,13 +451,13 @@ async function processRestaurant({ req, app, db, restaurant, source, requestedMo
       nextRunHint: source === 'manual' ? 'Next scheduled nightly run' : 'Tomorrow morning',
       updatedAt: finishedAt
     }, { merge: true });
-    await db.collection('auditLogs').add({ restaurantId: restaurant.id, action: 'PYTHON_AUTOMATION_RUN', target: `opsIntelligenceReports/${runId}`, details: `Python Automation completed with ${criticalFindings.length} critical/attention finding(s) and ${queueStats.written || 0} approval queue item(s).`, userId: source, userName: source === 'cron' ? 'Vercel Cron' : 'System Administrator', timestamp: finishedAt, source: 'python_automation_center' }).catch(() => null);
-    return { restaurantId: restaurant.id, restaurantName: restaurant.name || '', ok: true, runId, status: criticalFindings.length ? 'attention' : 'ok', summary, criticalFindingCount: criticalFindings.length, queueItemsWritten: queueStats.written || 0, pushSentCount: pushResult.sentCount || 0 };
+    await db.collection('auditLogs').add({ restaurantId: restaurant.id, action: 'PYTHON_AUTOMATION_ALERT_ONLY_RUN', target: `opsIntelligenceReports/${runId}`, details: `Python Automation completed with ${criticalFindings.length} critical/attention finding(s), ${alertStats.written || 0} owner/admin alert(s), and 0 restaurant changes applied.`, userId: source, userName: source === 'cron' ? 'Vercel Cron' : 'System Administrator', timestamp: finishedAt, source: 'python_automation_center', changesApplied: 0, systemAdminCanApply: false }).catch(() => null);
+    return { restaurantId: restaurant.id, restaurantName: restaurant.name || '', ok: true, runId, status: criticalFindings.length ? 'attention' : 'ok', summary, criticalFindingCount: criticalFindings.length, ownerAdminAlertsWritten: alertStats.written || 0, queueItemsWritten: 0, pushSentCount: pushResult.sentCount || 0, eligibleOwnerAdminRecipients: pushResult.eligibleRecipientCount || 0, changesApplied: 0, systemAdminCanApply: false };
   } catch (error) {
     const finishedAt = new Date().toISOString();
     await runRef.set({ status: 'failed', finishedAt, error: error.message || String(error) }, { merge: true });
-    await db.collection('opsIntelligenceReports').doc(runId).set({ id: runId, runId, restaurantId: restaurant.id, workspaceId: restaurant.id, restaurantName: restaurant.name || '', source, createdAt: finishedAt, generatedAt: finishedAt, status: 'failed', error: error.message || String(error), summary: {}, managerBrief: [`Python automation failed: ${error.message || error}`], criticalFindings: [{ severity: 'critical', area: 'Python Automation', title: 'Automation failed', detail: error.message || String(error) }], appVersion: APP_VERSION }, { merge: true });
-    return { restaurantId: restaurant.id, restaurantName: restaurant.name || '', ok: false, runId, error: error.message || String(error) };
+    await db.collection('opsIntelligenceReports').doc(runId).set({ id: runId, runId, restaurantId: restaurant.id, workspaceId: restaurant.id, restaurantName: restaurant.name || '', source, createdAt: finishedAt, generatedAt: finishedAt, status: 'failed', error: error.message || String(error), summary: {}, managerBrief: [`Python automation failed: ${error.message || error}`], criticalFindings: [{ severity: 'critical', area: 'Python Automation', title: 'Automation failed', detail: error.message || String(error) }], appVersion: APP_VERSION, changesApplied: 0, systemAdminCanApply: false }, { merge: true });
+    return { restaurantId: restaurant.id, restaurantName: restaurant.name || '', ok: false, runId, error: error.message || String(error), changesApplied: 0, systemAdminCanApply: false };
   }
 }
 
@@ -413,7 +508,7 @@ module.exports = async function handler(req, res) {
     }
     results.push(await processRestaurant({ req, app, db, restaurant, source, requestedMode }));
   }
-  return res.status(200).json({ ok: true, version: APP_VERSION, source, requestedMode, restaurantCount: restaurants.length, results, safetyPolicy: SAFE_POLICY });
+  return res.status(200).json({ ok: true, version: APP_VERSION, source, requestedMode, restaurantCount: restaurants.length, results, safetyPolicy: SAFE_POLICY, changesApplied: 0, systemAdminCanApply: false, alertDestination: 'restaurantAdminAlerts' });
 };
 
 module.exports.config = { maxDuration: 300 };

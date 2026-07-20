@@ -61,7 +61,7 @@ const TabGodMode = ({ appUser, addToast, setGhostTenant, db, auth, Modal, T, get
        const rows = snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a,b) => new Date(b.startedAt || 0) - new Date(a.startedAt || 0)).slice(0, 80);
        setAutomationRuns(rows);
     });
-    const unsubAutomationQueue = onSnapshot(collection(db, 'aiRecommendationQueue'), snap => {
+    const unsubAutomationQueue = onSnapshot(collection(db, 'restaurantAdminAlerts'), snap => {
        const rows = snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a,b) => new Date(b.updatedAt || b.createdAt || 0) - new Date(a.updatedAt || a.createdAt || 0)).slice(0, 120);
        setAutomationQueue(rows);
     });
@@ -279,11 +279,11 @@ const TabGodMode = ({ appUser, addToast, setGhostTenant, db, auth, Modal, T, get
     { key:'recipeCostingRefresh', label:'Recipe/Menu Costing Refresh', cadence:'Weekly / invoice signal', mode:'Approval required', description:'Estimates menu cost movement from invoice and recipe data.' },
     { key:'releaseDataQaScanner', label:'Release/Data QA Scanner', cadence:'On demand + nightly', mode:'Suggestions only', description:'Looks for obvious app-data issues before releases or risky changes.' },
     { key:'criticalPushAlerts', label:'Critical Push Alerts', cadence:'When serious findings exist', mode:'Alert only', description:'Pushes owners/super admins for backup failures, huge price jumps, and corruption risk.' },
-    { key:'approvalQueue', label:'Approval Queue', cadence:'Every run', mode:'Human approval required', description:'Creates review items for repairs, par changes, costing, labor, and invoice findings.' }
+    { key:'approvalQueue', label:'Owner/Admin Alerts', cadence:'Every run', mode:'Restaurant review required', description:'Sends read-only review alerts to restaurant owners/admins instead of applying changes.' }
   ];
 
   const PYTHON_SAFETY_POLICY = {
-    can: ['Analyze data', 'Create reports', 'Create suggestions', 'Send critical alerts', 'Create drafts for review'],
+    can: ['Analyze data', 'Create reports', 'Create suggestions', 'Send owner/admin alerts', 'Create alert-only review records'],
     approval: ['Change pars', 'Save order drafts', 'Repair broken records', 'Update official recipe costs', 'Archive or restore records'],
     never: ['Send vendor orders', 'Spend money', 'Edit/publish schedules', 'Approve payroll', 'Change wages/permissions/billing/security', 'Delete records permanently']
   };
@@ -291,7 +291,7 @@ const TabGodMode = ({ appUser, addToast, setGhostTenant, db, auth, Modal, T, get
   const selectedAutomationConfig = automationConfigs.find(c => c.id === automationTargetId || c.restaurantId === automationTargetId) || null;
 
   const handleRunPythonAutomation = async () => {
-    if (!window.confirm(automationTargetId ? 'Run Python Automation Center for the selected workspace now?' : 'Run Python Automation Center for active workspaces now?')) return;
+    if (!window.confirm(automationTargetId ? 'Run a read-only Python scan and send owner/admin alerts for the selected workspace? No restaurant records will be changed.' : 'Run read-only Python scans and send owner/admin alerts for active workspaces? No restaurant records will be changed.')) return;
     setAutomationLoading(true);
     try {
       const response = await secureFetch('/api/python-automation-run', {
@@ -306,11 +306,14 @@ const TabGodMode = ({ appUser, addToast, setGhostTenant, db, auth, Modal, T, get
       const skipped = rows.filter(row => row.skipped).length;
       const completed = rows.filter(row => row.ok === true && row.skipped !== true).length;
       const scanned = rows.length;
+      const ownerAdminAlerts = rows.reduce((sum, row) => sum + Number(row.ownerAdminAlertsWritten || 0), 0);
+      const pushesSent = rows.reduce((sum, row) => sum + Number(row.pushSentCount || 0), 0);
+      const changesApplied = rows.reduce((sum, row) => sum + Number(row.changesApplied || 0), 0);
       const failurePreview = rows.find(row => row.ok === false)?.error || '';
       if (failed) {
-        addToast('Python Automation Finished with Errors', `${completed}/${scanned} workspace(s) completed, ${failed} failed${skipped ? `, ${skipped} skipped` : ''}${failurePreview ? `. First error: ${failurePreview}` : ''}`);
+        addToast('Scan Finished with Errors', `${completed}/${scanned} completed, ${failed} failed${skipped ? `, ${skipped} skipped` : ''}. ${ownerAdminAlerts} owner/admin alert(s), ${pushesSent} push(es), ${changesApplied} changes applied.${failurePreview ? ` First error: ${failurePreview}` : ''}`);
       } else {
-        addToast('Python Automation Complete', `${completed}/${scanned} workspace(s) completed${skipped ? `, ${skipped} skipped` : ''}.`);
+        addToast('Scan Complete, Alerts Sent', `${completed}/${scanned} completed${skipped ? `, ${skipped} skipped` : ''}. ${ownerAdminAlerts} owner/admin alert(s), ${pushesSent} push(es), ${changesApplied} changes applied.`);
       }
     } catch (error) {
       addToast('Python Automation Failed', error?.message || 'Could not run automation.');
@@ -352,7 +355,7 @@ const TabGodMode = ({ appUser, addToast, setGhostTenant, db, auth, Modal, T, get
     { id:'users', label:'Global Users', icon: Search, tone:'slate', description:'Search every user across all restaurants, inspect roles, workspace ties, and account status.' },
     { id:'support', label:'Support', icon: LifeBuoy, tone:'amber', description:'Crash reports, diagnostics, support triage, and customer problem investigation tools.' },
     { id:'forensics', label:'Forensics', icon: Shield, tone:'purple', description:'Audit timeline, ghost-action review, security activity, and administrator accountability records.' },
-    { id:'automation', label:'Automation', icon: Sparkles, tone:'purple', description:'Python job controls, scheduled intelligence, critical alerts, approval queue, and safety rails.' },
+    { id:'automation', label:'Automation', icon: Sparkles, tone:'purple', description:'Python job controls, scheduled intelligence, owner/admin alerts, read-only scans, and safety rails.' },
     { id:'ops', label:'Operations', icon: Radio, tone:'red', description:'Global refresh, platform broadcast, orphan sweeps, and operational maintenance actions.' },
     { id:'retention', label:'Retention', icon: Calendar, tone:'emerald', description:'One-button legal data-retention setup marker, official retention schedule, and production setup checklist.' },
     { id:'admins', label:'Access', icon: KeyRound, tone:'red', description:'Grant or revoke internal System Administrator access.' },
@@ -690,8 +693,8 @@ const TabGodMode = ({ appUser, addToast, setGhostTenant, db, auth, Modal, T, get
             <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-4">
               <div>
                 <div className="text-[10px] font-black uppercase tracking-[0.22em] text-purple-300 flex items-center gap-2"><Sparkles size={15}/> Python Automation Center</div>
-                <h2 className="text-xl font-black text-white mt-1">Run everything Python should run, and nothing it should not.</h2>
-                <p className="text-xs text-slate-400 font-bold leading-6 mt-2 max-w-3xl">Python is allowed to analyze, report, suggest, draft, and send critical alerts. Anything that changes money, schedules, payroll, permissions, pars, records, or vendor orders stays in a human approval lane.</p>
+                <h2 className="text-xl font-black text-white mt-1">Scan workspaces, alert owners/admins, apply nothing.</h2>
+                <p className="text-xs text-slate-400 font-bold leading-6 mt-2 max-w-3xl">Python is allowed to analyze, report, suggest, and alert the restaurant owners/admins. System Administrator runs cannot change money, schedules, payroll, permissions, pars, records, inventory, or vendor orders.</p>
               </div>
               <div className="w-full lg:w-[360px] space-y-2">
                 <select value={automationTargetId} onChange={e => setAutomationTargetId(e.target.value)} className={T.input}>
@@ -699,7 +702,7 @@ const TabGodMode = ({ appUser, addToast, setGhostTenant, db, auth, Modal, T, get
                   {restaurants.map(r => <option key={r.id} value={r.id}>{r.name || r.id}</option>)}
                 </select>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                  <button onClick={handleRunPythonAutomation} disabled={automationLoading} className="bg-purple-900/30 border border-purple-500/50 text-purple-100 rounded-xl px-4 py-3 text-xs font-black uppercase tracking-widest disabled:opacity-50">{automationLoading ? 'Running…' : 'Run Now'}</button>
+                  <button onClick={handleRunPythonAutomation} disabled={automationLoading} className="bg-purple-900/30 border border-purple-500/50 text-purple-100 rounded-xl px-4 py-3 text-xs font-black uppercase tracking-widest disabled:opacity-50">{automationLoading ? 'Scanning…' : 'Scan & Alert Owners'}</button>
                   <button onClick={handleTogglePythonAutomationPause} disabled={!automationTargetId} className="bg-[#12161A] border border-[#2A353D] text-[#D4A381] rounded-xl px-4 py-3 text-xs font-black uppercase tracking-widest disabled:opacity-40">{selectedAutomationConfig?.paused ? 'Resume' : 'Pause'}</button>
                 </div>
                 <div className="text-[10px] text-slate-500 font-bold leading-4">Scheduled run: Vercel cron hits <span className="text-purple-200 font-black">/api/python-automation-run</span>. Manual runs use your Super Admin login.</div>
@@ -726,7 +729,7 @@ const TabGodMode = ({ appUser, addToast, setGhostTenant, db, auth, Modal, T, get
             <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-3 mb-4">
               <div>
                 <h3 className="font-black text-white text-lg">Scheduled Python Jobs</h3>
-                <p className="text-xs text-slate-500 font-bold mt-1">Jobs are report/suggestion/alert only. The approval queue is where real changes wait for people.</p>
+                <p className="text-xs text-slate-500 font-bold mt-1">Jobs are scan-and-alert only. Restaurant owners/admins review the alerts inside their workspace before anything changes.</p>
               </div>
               <div className="text-right text-[10px] uppercase tracking-widest font-black text-slate-500">{automationConfigs.length} configured workspace(s)</div>
             </div>
@@ -768,16 +771,12 @@ const TabGodMode = ({ appUser, addToast, setGhostTenant, db, auth, Modal, T, get
           </div>
 
           <div className={`${T.card} p-5`}>
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4"><div><h3 className="font-black text-white text-lg">AI Recommendation Approval Queue</h3><p className="text-xs text-slate-500 font-bold mt-1">Python can put work here. It cannot apply the change by itself.</p></div><div className="text-[10px] font-black uppercase tracking-widest text-slate-500">{automationQueue.filter(i => (i.status || 'open') === 'open').length} open</div></div>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4"><div><h3 className="font-black text-white text-lg">Restaurant Owner/Admin Alerts</h3><p className="text-xs text-slate-500 font-bold mt-1">Python sends these to restaurant owners/admins. System Administrator can view them but cannot apply, approve, or dismiss restaurant actions.</p></div><div className="text-[10px] font-black uppercase tracking-widest text-slate-500">{automationQueue.filter(i => (i.status || 'open') === 'open').length} open</div></div>
             <div className="space-y-2 max-h-[560px] overflow-y-auto custom-scrollbar">
               {automationQueue.length ? automationQueue.slice(0, 50).map(item => (
                 <div key={item.id} className="rounded-2xl border border-[#2A353D] bg-[#12161A] p-3 flex flex-col lg:flex-row lg:items-center justify-between gap-3">
                   <div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><span className="font-black text-white">{item.title}</span><span className="text-[8px] uppercase tracking-widest font-black rounded-full border border-purple-500/30 bg-purple-950/20 text-purple-200 px-2 py-0.5">{item.type}</span><span className="text-[8px] uppercase tracking-widest font-black rounded-full border border-[#2A353D] text-slate-400 px-2 py-0.5">{item.status || 'open'}</span></div><div className="text-[11px] text-slate-400 font-bold mt-1">{item.restaurantName || item.restaurantId}</div><div className="text-xs text-slate-300 font-bold leading-5 mt-1">{item.detail}</div></div>
-                  <div className="flex flex-wrap gap-2 shrink-0">
-                    <button onClick={() => updateQueueStatus(item, 'reviewed')} className="px-3 py-2 rounded-lg border border-emerald-500/40 bg-emerald-950/10 text-emerald-200 text-[10px] font-black uppercase">Reviewed</button>
-                    <button onClick={() => updateQueueStatus(item, 'snoozed')} className="px-3 py-2 rounded-lg border border-amber-500/40 bg-amber-950/10 text-amber-200 text-[10px] font-black uppercase">Snooze</button>
-                    <button onClick={() => updateQueueStatus(item, 'dismissed')} className="px-3 py-2 rounded-lg border border-red-500/40 bg-red-950/10 text-red-200 text-[10px] font-black uppercase">Dismiss</button>
-                  </div>
+                  <div className="shrink-0 rounded-xl border border-purple-500/20 bg-purple-950/10 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-purple-200">Restaurant Review Only</div>
                 </div>
               )) : <p className="text-xs text-slate-500 font-bold">No approval items yet.</p>}
             </div>
