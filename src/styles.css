@@ -3807,3 +3807,376 @@ select {
   margin: 0 !important;
   flex-shrink: 0 !important;
 }
+
+/* 15.0.101 Premium App UI Polish
+   Calmer restaurant-ops console styling without changing feature structure. */
+.premium-app-shell {
+  --premium-bg: #0B0F13;
+  --premium-surface: #121820;
+  --premium-panel: #151C23;
+  --premium-panel-soft: #18212A;
+  --premium-line: rgba(109, 128, 145, .20);
+  --premium-line-strong: rgba(212, 163, 129, .28);
+  --premium-text: #F6F8FA;
+  --premium-muted: #8B98A5;
+  --premium-copper: var(--chaos-accent, #D4A381);
+  background: var(--premium-bg) !important;
+}
+
+.premium-app-shell::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.018), transparent 26%),
+    radial-gradient(circle at 18% -12%, rgba(212,163,129,.055), transparent 34rem),
+    radial-gradient(circle at 92% 8%, rgba(74,103,123,.05), transparent 30rem);
+}
+
+.premium-app-shell > * {
+  position: relative;
+}
+
+.premium-app-shell .native-command-bar {
+  height: 56px !important;
+  background: rgba(11, 15, 19, .94) !important;
+  border-bottom: 1px solid var(--premium-line) !important;
+  box-shadow: none !important;
+}
+
+.premium-app-shell .native-command-left {
+  flex: 1 1 auto;
+  max-width: min(44vw, 520px);
+}
+
+.premium-app-shell .native-command-separator {
+  width: 1px;
+  height: 30px;
+  background: var(--premium-line);
+}
+
+.premium-app-shell .native-workspace-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  max-width: min(34vw, 420px);
+  min-height: 34px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(109,128,145,.20);
+  background: rgba(18,24,32,.64);
+  color: #DCE4EA;
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.premium-app-shell .native-workspace-chip.is-switchable:hover {
+  color: #fff;
+  border-color: var(--premium-line-strong);
+  background: rgba(212,163,129,.08);
+}
+
+.premium-app-shell .native-workspace-action {
+  color: var(--premium-copper);
+  font-size: 9px;
+  letter-spacing: .14em;
+}
+
+.premium-app-shell .native-icon-button,
+.premium-app-shell .native-queue-button {
+  min-height: 34px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(109,128,145,.20);
+  border-radius: 11px;
+  background: rgba(18,24,32,.68);
+  color: #AAB6C2;
+  box-shadow: none;
+  transition: color .15s ease, background .15s ease, border-color .15s ease;
+}
+
+.premium-app-shell .native-icon-button {
+  width: 36px;
+  padding: 0;
+}
+
+.premium-app-shell .native-icon-button:hover,
+.premium-app-shell .native-queue-button:hover {
+  color: #fff;
+  border-color: var(--premium-line-strong);
+  background: rgba(212,163,129,.08);
+}
+
+.premium-app-shell .native-menu-button {
+  color: var(--premium-copper);
+}
+
+.premium-app-shell .native-alert-dot {
+  position: absolute;
+  top: -3px;
+  right: -3px;
+  width: 9px;
+  height: 9px;
+  border-radius: 999px;
+  background: #EF4444;
+  border: 2px solid var(--premium-bg);
+}
+
+.premium-app-shell .native-queue-button {
+  padding: 0 10px;
+  font-size: 10px;
+  font-weight: 1000;
+  text-transform: uppercase;
+  letter-spacing: .11em;
+  color: #FCD34D;
+}
+
+@media (min-width: 768px) {
+  .premium-app-shell .native-desktop-rail {
+    left: 0 !important;
+    top: 56px !important;
+    bottom: 0 !important;
+    width: 80px !important;
+    padding: 14px 10px !important;
+    border: 0 !important;
+    border-right: 1px solid var(--premium-line) !important;
+    border-radius: 0 !important;
+    background: #0A0D11 !important;
+    box-shadow: none !important;
+    backdrop-filter: none !important;
+    gap: 10px !important;
+  }
+
+  .premium-app-shell .native-app-shell .native-mobile-bottom-nav,
+  .premium-app-shell .native-mobile-bottom-nav {
+    display: none !important;
+  }
+
+  .premium-app-shell .native-nav-desktop {
+    width: 58px !important;
+    min-height: 56px !important;
+    height: 56px !important;
+    border-radius: 13px !important;
+    border: 1px solid transparent !important;
+    background: transparent !important;
+    color: #81909F !important;
+  }
+
+  .premium-app-shell .native-nav-desktop:hover {
+    background: rgba(255,255,255,.035) !important;
+    border-color: rgba(109,128,145,.14) !important;
+    color: #E9EEF2 !important;
+  }
+
+  .premium-app-shell .native-nav-desktop.is-active {
+    background: rgba(212,163,129,.12) !important;
+    border-color: rgba(212,163,129,.24) !important;
+    color: #fff !important;
+    box-shadow: none !important;
+  }
+
+  .premium-app-shell .native-nav-desktop.is-active::before {
+    content: "";
+    position: absolute;
+    left: -11px;
+    width: 3px;
+    height: 28px;
+    border-radius: 999px;
+    background: var(--premium-copper);
+  }
+
+  .premium-app-shell .native-nav-label {
+    font-size: 9px;
+    letter-spacing: .01em;
+  }
+
+  .premium-app-shell .app-content-shell {
+    margin-left: 80px !important;
+    max-width: none !important;
+    padding-top: 16px !important;
+    padding-left: 18px !important;
+    padding-right: 18px !important;
+    background: transparent !important;
+  }
+
+  .premium-app-shell .desktop-date-strip {
+    margin-left: 80px !important;
+    border-left: 0 !important;
+    border-bottom-left-radius: 0 !important;
+    background: rgba(13, 18, 23, .92) !important;
+    box-shadow: none !important;
+  }
+}
+
+@media (max-width: 767px) {
+  .premium-app-shell .native-command-left {
+    max-width: 42vw;
+  }
+
+  .premium-app-shell .native-workspace-chip {
+    max-width: 34vw;
+    padding: 0 9px;
+    min-height: 31px;
+    font-size: 9px;
+  }
+
+  .premium-app-shell .native-mobile-bottom-nav {
+    left: 0 !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    border-left: 0 !important;
+    border-right: 0 !important;
+    border-bottom: 0 !important;
+    border-radius: 18px 18px 0 0 !important;
+    background: rgba(10, 13, 17, .96) !important;
+    box-shadow: 0 -16px 40px rgba(0,0,0,.34) !important;
+  }
+}
+
+/* Calmer, premium surfaces. */
+.premium-app-shell .chaos-card,
+.premium-app-shell .cockpit-panel,
+.premium-app-shell .app-content-shell article,
+.premium-app-shell .app-content-shell section {
+  background: linear-gradient(180deg, rgba(21,28,35,.96), rgba(17,23,29,.96)) !important;
+  border-color: rgba(109,128,145,.20) !important;
+  box-shadow: 0 1px 0 rgba(255,255,255,.026), 0 12px 30px rgba(0,0,0,.16) !important;
+  background-image: none !important;
+}
+
+.premium-app-shell .app-content-shell .bg-\[\#12161A\] {
+  background-color: rgba(12, 17, 22, .72) !important;
+}
+
+.premium-app-shell .app-content-shell .bg-\[\#1A2126\] {
+  background-color: rgba(21, 28, 35, .88) !important;
+}
+
+.premium-app-shell .app-content-shell [class*="shadow-[0_0"],
+.premium-app-shell .app-content-shell [class*="shadow-\[0_0"],
+.premium-app-shell .app-content-shell .animate-pulse:not(.cockpit-light) {
+  box-shadow: none !important;
+}
+
+.premium-app-shell .chaos-button-primary,
+.premium-app-shell .app-content-shell .bg-gradient-to-r.from-\[\#C59373\].to-\[\#8F6040\] {
+  background-image: none !important;
+  background-color: var(--premium-copper) !important;
+  color: #111820 !important;
+  box-shadow: none !important;
+}
+
+.premium-app-shell .chaos-button-secondary,
+.premium-app-shell .app-content-shell button,
+.premium-app-shell .app-content-shell input,
+.premium-app-shell .app-content-shell select,
+.premium-app-shell .app-content-shell textarea {
+  box-shadow: none !important;
+}
+
+.premium-app-shell .chaos-input,
+.premium-app-shell .app-content-shell input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=color]),
+.premium-app-shell .app-content-shell select,
+.premium-app-shell .app-content-shell textarea {
+  background-color: rgba(10, 14, 18, .84) !important;
+  border-color: rgba(109,128,145,.24) !important;
+}
+
+.premium-app-shell .chaos-input:focus,
+.premium-app-shell .app-content-shell input:focus,
+.premium-app-shell .app-content-shell select:focus,
+.premium-app-shell .app-content-shell textarea:focus {
+  border-color: rgba(212,163,129,.56) !important;
+  outline: 2px solid rgba(212,163,129,.08) !important;
+  outline-offset: 1px !important;
+}
+
+.premium-app-shell .app-content-shell .border-\[\#2A353D\] {
+  border-color: rgba(109,128,145,.20) !important;
+}
+
+.premium-app-shell .app-content-shell .text-slate-400,
+.premium-app-shell .app-content-shell .text-slate-500 {
+  color: var(--premium-muted) !important;
+}
+
+/* Inventory gets the clearest professional treatment because it is one of the busiest work screens. */
+.premium-app-shell .premium-inventory {
+  max-width: none !important;
+}
+
+.premium-app-shell .premium-inventory > .flex:first-of-type {
+  border-bottom-color: rgba(109,128,145,.18) !important;
+  padding-bottom: 12px !important;
+}
+
+.premium-app-shell .premium-inventory .inventory-subtabs {
+  background: rgba(10,14,18,.68) !important;
+  border-color: rgba(109,128,145,.20) !important;
+  border-radius: 13px !important;
+}
+
+.premium-app-shell .premium-inventory h4 {
+  border-bottom-color: rgba(109,128,145,.16) !important;
+  color: #B7C1CA !important;
+  font-size: .78rem !important;
+  letter-spacing: .12em !important;
+  padding-top: 4px !important;
+}
+
+.premium-app-shell .premium-inventory .inventory-count-row {
+  min-height: 64px;
+  border-radius: 10px !important;
+  border-color: rgba(109,128,145,.16) !important;
+  background: rgba(15,21,27,.78) !important;
+  box-shadow: none !important;
+  transition: border-color .15s ease, background .15s ease;
+}
+
+.premium-app-shell .premium-inventory .inventory-count-row:hover {
+  border-color: rgba(212,163,129,.30) !important;
+  background: rgba(22,29,36,.92) !important;
+}
+
+.premium-app-shell .premium-inventory .inventory-count-row.is-below-par {
+  background: rgba(69, 22, 28, .30) !important;
+  border-color: rgba(248,113,113,.35) !important;
+}
+
+.premium-app-shell .premium-inventory .inventory-count-controls {
+  border-radius: 9px !important;
+  border-color: rgba(109,128,145,.18) !important;
+  background: rgba(8,12,16,.70) !important;
+  padding: 6px !important;
+}
+
+.premium-app-shell .premium-inventory .inventory-count-input {
+  width: 40px !important;
+  min-height: 28px !important;
+  border-radius: 8px !important;
+  background: rgba(18,24,31,.82) !important;
+}
+
+.premium-app-shell .premium-inventory .inventory-stepper-btn {
+  width: 26px !important;
+  height: 26px !important;
+  min-height: 26px !important;
+  border-radius: 8px !important;
+  background: rgba(18,24,31,.82) !important;
+}
+
+.premium-app-shell .premium-inventory .inventory-stock-value {
+  min-width: 32px !important;
+  color: #F8FAFC;
+}
+
+@media (min-width: 1024px) {
+  .premium-app-shell .premium-inventory .grid.grid-cols-1.md\:grid-cols-2 {
+    gap: 8px !important;
+  }
+}

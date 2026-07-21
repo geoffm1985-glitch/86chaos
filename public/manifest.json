@@ -1,7 +1,7 @@
 {
   "short_name": "86 Chaos",
   "name": "86 Chaos Kitchen Management OS",
-  "description": "Restaurant and kitchen management app for scheduling, time clock, prep, inventory, alerts, financials, and owner tools.",
+  "description": "Native-feeling restaurant operations app for scheduling, time clock, prep, inventory, alerts, financials, and owner tools.",
   "icons": [
     {
       "src": "app-icon.png",
@@ -13,7 +13,11 @@
   "start_url": "/?tab=today",
   "scope": "/",
   "display": "standalone",
-  "display_override": ["window-controls-overlay", "standalone", "minimal-ui"],
+  "display_override": [
+    "window-controls-overlay",
+    "standalone",
+    "minimal-ui"
+  ],
   "orientation": "portrait-primary",
   "theme_color": "#12161A",
   "background_color": "#0F1318"

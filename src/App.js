@@ -1240,7 +1240,7 @@ What I clicked / expected:
         pushTokenPermission: permission,
         pushTokenHost: window.location.hostname,
         pushTokenCanonical: true,
-        pushTokenDedupeVersion: '15.0.99',
+        pushTokenDedupeVersion: '15.0.101',
         pushNeedsRepair: false,
         pushForceServiceWorkerRefresh: false,
         pushRepairStatus: 'connected',
@@ -1313,7 +1313,7 @@ What I clicked / expected:
           pushTokenPermission: permission,
           pushTokenHost: window.location.hostname,
           pushTokenCanonical: true,
-          pushTokenDedupeVersion: '15.0.99',
+          pushTokenDedupeVersion: '15.0.101',
           pushNeedsRepair: false,
           pushForceServiceWorkerRefresh: false,
           pushRepairStatus: 'connected',
@@ -1444,6 +1444,35 @@ What I clicked / expected:
       </button>
     );
   };
+
+  const activeScreenTitle = useMemo(() => {
+    const labels = {
+      today: 'Today',
+      ops: 'Command Center',
+      published: 'Schedule',
+      schedule: 'Schedule Builder',
+      events: 'Events',
+      month: 'Month View',
+      prep: 'Prep',
+      inventory: 'Inventory',
+      recipes: 'Recipes',
+      maintenance: 'Maintenance',
+      financials: 'Financials',
+      sales: 'Sales',
+      'back-office': 'Back Office',
+      messages: 'Messages',
+      team: 'Team',
+      settings: 'Settings',
+      help: 'Help Center',
+      reminders: 'Reminders',
+      menu: 'Menu Intelligence',
+      ai: 'AI Tools',
+      manuals: 'HR & Training',
+      audit: 'Audit Log',
+      godmode: 'System Administrator'
+    };
+    return labels[activeTabState] || String(activeTabState || 'Today').replace(/[-_]/g, ' ');
+  }, [activeTabState]);
 
   const globalManagerBriefMathText = useMemo(() => {
     const today = getToday();
@@ -1583,7 +1612,7 @@ What I clicked / expected:
   const appThemeStyle = { '--chaos-accent': appAccentColor };
 
 return (
-    <div style={appThemeStyle} onClickCapture={blockDemoMutation} onSubmitCapture={blockDemoMutation} className={`native-app-shell desktop-pro-shell ui-v13-polished ui-v12-compact cockpit-shell ${activeTabState === 'godmode' ? '' : 'non-admin-controls-compact'} kitchen-simple-shell ui-density-${liveAppUser?.preferences?.uiDensity || displayClientData?.systemSettings?.uiDensity || 'compact'} recipe-density-${liveAppUser?.preferences?.recipeDensity || displayClientData?.systemSettings?.recipeCardDensity || 'tight'} motion-${liveAppUser?.preferences?.motionMode || displayClientData?.systemSettings?.cockpitLights || 'normal'} min-h-screen font-sans flex flex-col w-full max-w-[100vw] overflow-x-hidden ${T.bg}`}>
+    <div style={appThemeStyle} onClickCapture={blockDemoMutation} onSubmitCapture={blockDemoMutation} className={`native-app-shell premium-app-shell desktop-pro-shell ui-v13-polished ui-v12-compact cockpit-shell ${activeTabState === 'godmode' ? '' : 'non-admin-controls-compact'} kitchen-simple-shell ui-density-${liveAppUser?.preferences?.uiDensity || displayClientData?.systemSettings?.uiDensity || 'compact'} recipe-density-${liveAppUser?.preferences?.recipeDensity || displayClientData?.systemSettings?.recipeCardDensity || 'tight'} motion-${liveAppUser?.preferences?.motionMode || displayClientData?.systemSettings?.cockpitLights || 'normal'} min-h-screen font-sans flex flex-col w-full max-w-[100vw] overflow-x-hidden ${T.bg}`}>
       
       {/* GHOST / DEMO MODE BANNER */}
       {ghostTenant && (
@@ -1646,18 +1675,29 @@ return (
 
         .native-app-shell {
           --native-bottom-nav-height: 74px;
+          --native-desktop-rail-width: 72px;
           background:
-            radial-gradient(circle at top left, rgba(212,163,129,.08), transparent 34rem),
-            radial-gradient(circle at bottom right, rgba(73,95,112,.12), transparent 34rem),
+            radial-gradient(circle at top left, rgba(212,163,129,.075), transparent 32rem),
+            radial-gradient(circle at bottom right, rgba(73,95,112,.10), transparent 34rem),
             #0F1318 !important;
         }
         .native-app-shell .app-header {
           height: 58px;
           border-bottom-color: rgba(212,163,129,.18) !important;
-          box-shadow: 0 10px 36px rgba(0,0,0,.28);
+          box-shadow: 0 10px 34px rgba(0,0,0,.26);
         }
         .native-app-shell .app-content-shell {
           min-height: calc(100dvh - 120px);
+        }
+        @media (min-width: 768px) {
+          .native-app-shell {
+            background:
+              linear-gradient(180deg, rgba(15,19,24,.98), rgba(11,14,17,.98)),
+              #0F1318 !important;
+          }
+          .native-app-shell .app-header {
+            height: 54px !important;
+          }
         }
         .native-route-loader {
           backdrop-filter: blur(18px);
@@ -1705,13 +1745,13 @@ return (
           bottom: max(10px, env(safe-area-inset-bottom));
           z-index: 60;
           min-height: 64px;
-          display: grid;
+          display: none;
           grid-template-columns: repeat(5, minmax(0, 1fr));
           gap: 4px;
           padding: 8px;
           border: 1px solid rgba(42,53,61,.95);
           border-radius: 24px;
-          background: rgba(15,19,24,.9);
+          background: rgba(15,19,24,.92);
           box-shadow: 0 20px 60px rgba(0,0,0,.42), inset 0 1px 0 rgba(255,255,255,.04);
           backdrop-filter: blur(20px);
         }
@@ -1797,6 +1837,8 @@ return (
         }
 
         @media (max-width: 767px) {
+          .native-mobile-bottom-nav { display: grid !important; }
+          .native-app-shell .native-desktop-rail { display: none !important; }
           .native-app-shell .app-header {
             height: 56px !important;
             padding-left: 10px !important;
@@ -1817,25 +1859,32 @@ return (
           }
         }
 
-        @media (min-width: 1024px) {
-          .native-app-shell .native-desktop-rail { display: flex; }
+        @media (min-width: 768px) {
+          .native-app-shell .native-mobile-bottom-nav { display: none !important; }
+          .native-app-shell .native-desktop-rail { display: flex !important; }
           .native-app-shell .app-content-shell {
-            padding-left: 92px !important;
-            max-width: min(1520px, calc(100vw - 36px)) !important;
+            margin-left: calc(var(--native-desktop-rail-width) + 22px) !important;
+            padding-left: 14px !important;
+            padding-right: 18px !important;
+            padding-bottom: 18px !important;
+            max-width: none !important;
           }
           .native-app-shell .desktop-date-strip {
-            margin-left: 88px;
+            margin-left: calc(var(--native-desktop-rail-width) + 18px);
             border-left: 1px solid rgba(42,53,61,.72);
             border-bottom-left-radius: 18px;
-            background: rgba(18,24,29,.82) !important;
+            background: rgba(18,24,29,.84) !important;
             backdrop-filter: blur(14px);
           }
           .native-app-shell .app-footer {
-            min-height: 0;
-            padding: 8px 18px !important;
-            align-items: flex-end !important;
-            background: transparent !important;
-            border-top: 0 !important;
+            display: none !important;
+          }
+        }
+
+        @media (min-width: 1180px) {
+          .native-app-shell .app-content-shell {
+            padding-left: 18px !important;
+            padding-right: 22px !important;
           }
         }
       `}</style>
@@ -1872,31 +1921,37 @@ return (
         </div>
       )}
 
-      <header className="app-header sticky top-0 z-40 shadow-sm border-b h-16 flex items-center justify-between px-4 bg-[#12161A]/95 backdrop-blur-md border-[#2A353D]">
-        <CheersLogo clientData={displayClientData} />
+      <header className="app-header native-command-bar sticky top-0 z-40 border-b flex items-center justify-between px-3 sm:px-4 bg-[#0F1318]/96 backdrop-blur-md border-[#202A31]">
+        <div className="native-command-left min-w-0 flex items-center gap-3">
+          <CheersLogo clientData={displayClientData} />
+          <div className="native-command-separator hidden md:block" />
+          <div className="native-command-title min-w-0 hidden sm:block">
+            <div className="text-[9px] font-black uppercase tracking-[0.22em] text-slate-500 leading-none">Current Tool</div>
+            <div className="text-sm font-black text-white leading-tight truncate">{activeScreenTitle}</div>
+          </div>
+        </div>
 
         {/* ACTIVE WORKSPACE NAME / SWITCHER */}
         {liveAppUser && (
-          <div className="flex-1 text-center px-4 truncate mt-1">
-            <button
-              type="button"
-              onClick={() => availableWorkspaces.length > 1 && !ghostTenant && !isDemoMode ? setIsWorkspaceSwitcherOpen(true) : null}
-              className={`max-w-full truncate text-[10px] sm:text-[11px] font-black uppercase tracking-widest ${availableWorkspaces.length > 1 && !ghostTenant && !isDemoMode ? 'text-[#D4A381] hover:text-white cursor-pointer' : 'text-slate-500 cursor-default'}`}
-              title={availableWorkspaces.length > 1 ? 'Switch workspace' : 'Active workspace'}
-            >
-              {liveAppUser.restaurantName || "Restaurant"}{availableWorkspaces.length > 1 && !ghostTenant && !isDemoMode ? ' • Switch' : ''}
-            </button>
-          </div>
+          <button
+            type="button"
+            onClick={() => availableWorkspaces.length > 1 && !ghostTenant && !isDemoMode ? setIsWorkspaceSwitcherOpen(true) : null}
+            className={`native-workspace-chip min-w-0 truncate ${availableWorkspaces.length > 1 && !ghostTenant && !isDemoMode ? 'is-switchable' : ''}`}
+            title={availableWorkspaces.length > 1 ? 'Switch workspace' : 'Active workspace'}
+          >
+            <span className="native-workspace-name truncate">{liveAppUser.restaurantName || 'Restaurant'}</span>
+            {availableWorkspaces.length > 1 && !ghostTenant && !isDemoMode && <span className="native-workspace-action hidden sm:inline">Switch</span>}
+          </button>
         )}
 
-        <div className="flex items-center gap-2 flex-shrink-0">
-          <span className="native-version-pill hidden md:inline-flex px-2.5 py-1 rounded-full text-[9px] font-black uppercase tracking-widest text-slate-400">Version {CURRENT_VERSION}</span>
-          <button type="button" onClick={() => openProblemReport({ title: 'Manual Problem Report', message: `Page: ${activeTabState}`, category: 'Bug / Error' })} className="hidden sm:flex p-2 border rounded-xl shadow-sm bg-[#1A2126] border-[#2A353D] text-orange-300 hover:text-white" title="Report a problem"><Bug size={18}/></button>
-          {offlineQueue.length > 0 && <button type="button" onClick={() => openProblemReport({ title: 'Offline Queue', message: `${offlineQueue.length} queued action(s) waiting to sync.`, category: 'Data Looks Wrong' })} className="hidden sm:flex px-2.5 py-2 border rounded-xl shadow-sm bg-amber-900/20 border-amber-500/40 text-amber-200 text-[10px] font-black uppercase tracking-widest" title="Offline queued actions">Queue {offlineQueue.length}</button>}
-        <button onClick={() => setIsMenuOpen(true)} className={`relative p-2 border rounded-xl shadow-sm transition-all outline-none bg-[#1A2126] border-[#2A353D] ${T.copper} hover:text-white flex-shrink-0`}>
-          <Menu size={20} />
-          {hasAnyMenuAlert && <span className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full border-2 border-[#12161A] shadow-[0_0_8px_rgba(239,68,68,0.8)] animate-pulse"></span>}
-        </button>
+        <div className="native-command-actions flex items-center gap-2 flex-shrink-0">
+          <span className="native-version-pill hidden lg:inline-flex px-2.5 py-1 rounded-full text-[9px] font-black uppercase tracking-widest text-slate-400">v{CURRENT_VERSION}</span>
+          <button type="button" onClick={() => openProblemReport({ title: 'Manual Problem Report', message: `Page: ${activeTabState}`, category: 'Bug / Error' })} className="native-icon-button hidden sm:flex" title="Report a problem"><Bug size={17}/></button>
+          {offlineQueue.length > 0 && <button type="button" onClick={() => openProblemReport({ title: 'Offline Queue', message: `${offlineQueue.length} queued action(s) waiting to sync.`, category: 'Data Looks Wrong' })} className="native-queue-button hidden sm:flex" title="Offline queued actions">Queue {offlineQueue.length}</button>}
+          <button onClick={() => setIsMenuOpen(true)} className="native-icon-button native-menu-button relative" title="Open menu">
+            <Menu size={20} />
+            {hasAnyMenuAlert && <span className="native-alert-dot"></span>}
+          </button>
         </div>
       </header>
 
@@ -1921,7 +1976,7 @@ return (
         </button>
       </nav>
 
-      <nav className="native-mobile-bottom-nav lg:hidden" aria-label="Primary app navigation">
+      <nav className="native-mobile-bottom-nav" aria-label="Primary app navigation">
         {primaryAppNav.map(item => <NativeNavButton key={item.id} item={item} mode="mobile" />)}
         <button type="button" onClick={() => setIsMenuOpen(true)} className="native-nav-btn native-nav-mobile" title="More tools">
           <span className="native-nav-icon-wrap"><MoreHorizontal size={20} />{hasAnyMenuAlert && <span className="native-nav-badge">!</span>}</span>
@@ -2044,7 +2099,7 @@ return (
         </div>}
       </Modal>
 
-      <main className="app-content-shell flex-1 max-w-[1480px] mx-auto w-full p-3 sm:p-5 lg:p-4 xl:p-5 pb-28">
+      <main className="app-content-shell native-console-content flex-1 max-w-[1480px] mx-auto w-full p-3 sm:p-5 lg:p-4 xl:p-5 pb-28">
         <span
           data-testid="manager-brief-math-summary-global"
           aria-label={globalManagerBriefMathText}
