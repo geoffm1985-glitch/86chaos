@@ -1,9 +1,9 @@
 {
-  "version": "15.0.94",
-  "name": "86 Chaos 15.0.94 QuickBooks Phase 3",
+  "version": "15.0.95",
+  "name": "86 Chaos 15.0.95 System Admin Gate Hotfix",
   "releasedAt": "2026-07-20",
-  "label": "15.0.94 QuickBooks Phase 3",
-  "build": "15.0.94",
+  "label": "15.0.95 System Admin Gate Hotfix",
+  "build": "15.0.95",
   "updatedAt": "2026-07-20T00:00:00.000Z",
-  "notes": "Adds Owner Pro QuickBooks Phase 3: accountant packet export, monthly close packet, class/location mapping, sync health scoring, suggested mappings, and owner multi-location rollup. All accounting sync remains review-first with no automatic QuickBooks posting."
+  "notes": "System Admin Gate hotfix: non-super-admin accounts now see a generic Plan & Permission Gate on internal System Administrator routes. Internal Super Admin diagnostics are no longer exposed to unauthorized accounts."
 }
