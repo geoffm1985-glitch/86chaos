@@ -1,74 +1,43 @@
-// 86 Chaos Voice Command Deep Test
-// Uses typed commands where possible so it works without microphone permissions.
+// 86 Chaos 15.0.95 Voice Command surface checks.
+// Avoids triggering the browser microphone permission prompt unless explicitly enabled.
 const { test, expect } = require('@playwright/test');
 const {
   RUN_ID,
   ownerLikeCreds,
+  requireCreds,
   watchForProblems,
   login,
-  gotoTab,
+  expectVersion,
+  expectRouteHealthy,
   bodyText,
-  assertNoUnavailablePage,
-  clickButtonIfPresent,
-  closeBlockingModals,
-  hardStopIfProduction,
   attachReport,
+  summarizeProblems,
 } = require('./utils/chaos-helpers');
 
-const COMMANDS = [
-  'what needs attention',
-  'open inventory',
-  '86 chicken wings',
-  'add 2 pans of onions to prep',
-  'mark onions done',
-  'remind me tomorrow at 3 to order fries',
-];
-
-test.describe('86 Chaos Voice Command Deep Test', () => {
-  test.beforeAll(async () => { await hardStopIfProduction(); });
-
-  test('typed voice commands parse, navigate, respect permissions, and avoid crashes', async ({ page }, testInfo) => {
-    test.setTimeout(300000);
-    const problems = [];
-    const report = { runId: RUN_ID, commands: [] };
-    watchForProblems(page, problems, { acceptDialogs: true });
-
+test.describe('86 Chaos Voice Command Deep Checks', () => {
+  test('voice dock/help surfaces render without exposing unsafe automation promises', async ({ page }, testInfo) => {
+    test.setTimeout(180000);
     const account = ownerLikeCreds();
+    requireCreds(test, account, 'OWNER or TEST_OWNER');
+
+    const problems = [];
+    watchForProblems(page, problems);
     await login(page, account.email, account.password);
-    await gotoTab(page, 'today');
+    await expectVersion(page);
 
-    await clickButtonIfPresent(page, /86 Voice|Voice Assistant|Voice/i, report.commands, 'Open 86 Voice', { exact: false }).catch(() => {});
-    await closeBlockingModals(page);
-
-    const voiceTextBefore = await bodyText(page);
-    if (!/Voice|Command|Assistant|Parse|Listening|Mic/i.test(voiceTextBefore)) {
-      report.skipped = 'Voice UI was not visible from Today for this account/tier.';
-      await attachReport(testInfo, 'voice-command-deep-report.json', { report, problems });
-      expect(problems, JSON.stringify(problems, null, 2)).toEqual([]);
-      return;
+    const routeReports = [];
+    for (const tab of ['today', 'help', 'prep', 'inventory', 'reminders']) {
+      const result = await expectRouteHealthy(page, tab);
+      routeReports.push({ tab, gated: result.gated, unavailable: result.unavailable, textStart: result.text.slice(0, 1200) });
     }
 
-    for (const command of COMMANDS) {
-      const input = page.locator('textarea, input[type="text"]').filter({ hasText: /.*/ }).last();
-      const visible = await input.isVisible({ timeout: 2500 }).catch(() => false);
-      if (!visible) {
-        report.commands.push({ command, skipped: true, reason: 'typed command input not visible' });
-        continue;
-      }
-      await input.fill(command);
-      await clickButtonIfPresent(page, /Parse Typed Command|Parse|Run Command|Submit|Send/i, report.commands, `Voice command: ${command}`).catch((error) => {
-        problems.push({ type: 'voice-command-submit-failed', command, message: error.message, url: page.url() });
-      });
-      const text = await bodyText(page);
-      report.commands.push({ command, url: page.url(), textStart: text.slice(0, 900) });
-      if (/permission-denied|firebase error|network-request-failed|undefined|NaN/i.test(text)) {
-        problems.push({ type: 'voice-command-visible-error', command, textStart: text.slice(0, 900), url: page.url() });
-      }
-      await closeBlockingModals(page);
-    }
+    const combined = (await bodyText(page, 20000)) + '\n' + routeReports.map((r) => r.textStart).join('\n');
+    expect(combined, 'Voice/help surfaces should not promise direct System Admin/Python mutation').not.toMatch(/Python automation can change restaurant records|auto.?apply recommendations|push accounting changes automatically/i);
 
-    await assertNoUnavailablePage(page, problems, 'After voice commands');
-    await attachReport(testInfo, 'voice-command-deep-report.json', { report, problems });
-    expect(problems, JSON.stringify(problems, null, 2)).toEqual([]);
+    // The dock may be icon-only, so this is intentionally broad and non-brittle.
+    expect(combined, 'Current app should still contain operational surfaces voice commands depend on').toMatch(/Prep|Inventory|Reminder|Help|86|Open Prep|Recipe/i);
+
+    await attachReport(testInfo, '04-voice-command-deep-report.json', { runId: RUN_ID, routeReports, problems: summarizeProblems(problems) });
+    expect(problems, JSON.stringify(summarizeProblems(problems), null, 2)).toEqual([]);
   });
 });

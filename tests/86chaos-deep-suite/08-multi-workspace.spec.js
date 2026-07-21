@@ -1,59 +1,55 @@
-// 86 Chaos Multi-Workspace / Multi-Location Deep Test
+// 86 Chaos 15.0.95 multi-workspace/multi-location safety checks.
 const { test, expect } = require('@playwright/test');
 const {
   RUN_ID,
   ownerLikeCreds,
+  requireCreds,
   watchForProblems,
   login,
-  gotoTab,
+  expectVersion,
+  expectRouteHealthy,
   bodyText,
-  assertNoUnavailablePage,
-  clickButtonIfPresent,
+  openMenu,
+  closeTransientUi,
   attachReport,
-  closeBlockingModals,
+  summarizeProblems,
 } = require('./utils/chaos-helpers');
 
-test.describe('86 Chaos Multi-Workspace Deep Test', () => {
-  test('workspace picker, current workspace display, and workspace-specific owner surfaces', async ({ page }, testInfo) => {
-    test.setTimeout(240000);
-    const problems = [];
-    const report = { runId: RUN_ID, workspaces: [], pages: [] };
-    watchForProblems(page, problems);
+test.describe('86 Chaos Multi-Workspace / Multi-Location', () => {
+  test('workspace identity is visible and switching surfaces do not break current workspace', async ({ page }, testInfo) => {
+    test.setTimeout(180000);
     const account = ownerLikeCreds();
+    requireCreds(test, account, 'OWNER or TEST_OWNER');
+
+    const problems = [];
+    watchForProblems(page, problems);
     await login(page, account.email, account.password);
+    await expectVersion(page);
 
-    for (const tab of ['today', 'back-office', 'financials', 'inventory']) {
-      await gotoTab(page, tab);
-      await assertNoUnavailablePage(page, problems, `workspace page ${tab}`);
-      report.pages.push({ tab, textStart: (await bodyText(page)).slice(0, 700), url: page.url() });
-    }
+    const today = await expectRouteHealthy(page, 'today');
+    expect(today.text, 'Today should show current workspace/app context').toMatch(/TESTAURANT|PREVIEW|Cheers|Restaurant|Workspace|Today Home/i);
 
-    // Open workspace switcher if present.
-    const workspaceButton = page.getByRole('button', { name: /Active workspace|workspace|restaurant|switch/i }).first();
-    const visible = await workspaceButton.isVisible({ timeout: 2500 }).catch(() => false);
-    if (visible) {
-      await workspaceButton.click({ timeout: 5000 }).catch((error) => problems.push({ type: 'workspace-switcher-open-failed', message: error.message, url: page.url() }));
-      await page.waitForTimeout(700);
-      const text = await bodyText(page);
-      report.switcherTextStart = text.slice(0, 1200);
-      const candidates = await page.getByRole('button').allTextContents().catch(() => []);
-      report.workspaces = candidates.filter((x) => /Cheers|Restaurant|Kitchen|Workspace|Bobby|Countryside|Chef/i.test(x)).slice(0, 12);
-      await closeBlockingModals(page);
-    } else {
-      report.workspaceSwitcher = 'No explicit workspace switcher button visible for this account.';
-    }
+    await expectRouteHealthy(page, 'settings');
+    const settingsText = await bodyText(page);
+    expect(settingsText, 'Settings should not expose another workspace as active without user action').not.toMatch(/ghost tenant|impersonating workspace without audit/i);
 
-    // Owner Pro multi-location rollup should live in Back Office if enabled.
-    await gotoTab(page, 'back-office');
-    const bo = await bodyText(page);
-    report.backOfficeTextStart = bo.slice(0, 1200);
-    if (/multi-location|location rollup|Owner Summary|Open Alerts|QB Drafts|Back Office/i.test(bo)) {
-      report.ownerRollupSurface = true;
-    } else {
-      problems.push({ type: 'owner-rollup-surface-missing', textStart: bo.slice(0, 900), url: page.url() });
-    }
+    await openMenu(page);
+    const menuText = await bodyText(page);
+    const hasWorkspaceLabel = /TESTAURANT|PREVIEW|Current Restaurant|workspace|restaurant/i.test(menuText);
+    await closeTransientUi(page);
 
-    await attachReport(testInfo, 'multi-workspace-report.json', { report, problems });
-    expect(problems, JSON.stringify(problems, null, 2)).toEqual([]);
+    await expectRouteHealthy(page, 'today');
+    const afterText = await bodyText(page);
+    expect(afterText, 'Current workspace should still render after menu/workspace surface check').toMatch(/Today Home|Role Home|No urgent problems|Need Attention/i);
+
+    await attachReport(testInfo, '08-multi-workspace-report.json', {
+      runId: RUN_ID,
+      hasWorkspaceLabel,
+      todayText: today.text.slice(0, 1200),
+      settingsText: settingsText.slice(0, 1200),
+      menuText: menuText.slice(0, 1200),
+      problems: summarizeProblems(problems),
+    });
+    expect(problems, JSON.stringify(summarizeProblems(problems), null, 2)).toEqual([]);
   });
 });

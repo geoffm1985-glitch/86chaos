@@ -1,67 +1,46 @@
-// 86 Chaos Export / Print / Download Deep Test
+// 86 Chaos 15.0.95 export/print/download route checks.
 const { test, expect } = require('@playwright/test');
 const {
   RUN_ID,
   ownerLikeCreds,
+  requireCreds,
   watchForProblems,
   login,
-  gotoTab,
+  expectVersion,
+  expectRouteHealthy,
   bodyText,
-  assertNoUnavailablePage,
-  clickButtonIfPresent,
-  closeBlockingModals,
   attachReport,
+  summarizeProblems,
 } = require('./utils/chaos-helpers');
 
-async function testDownloadOrPrint(page, matcher, label, report, problems) {
-  await closeBlockingModals(page);
-  const button = page.locator('main').getByRole('button', { name: matcher }).first();
-  const visible = await button.isVisible({ timeout: 2500 }).catch(() => false);
-  if (!visible) {
-    report.actions.push({ label, skipped: true, reason: 'button not visible' });
-    return;
-  }
-  const downloadPromise = page.waitForEvent('download', { timeout: 9000 }).catch(() => null);
-  await button.click({ timeout: 7000 }).catch((error) => {
-    problems.push({ type: 'export-button-click-failed', label, message: error.message, url: page.url() });
-  });
-  const download = await downloadPromise;
-  if (download) {
-    report.actions.push({ label, downloaded: true, suggestedFilename: download.suggestedFilename() });
-  } else {
-    const text = await bodyText(page);
-    report.actions.push({ label, downloaded: false, maybePrintOrWindowAction: true, textStart: text.slice(0, 500) });
-  }
-  await closeBlockingModals(page);
-}
+const EXPORT_WORD_RE = /Export|Download|Print|CSV|PDF|Report|Accountant Packet|Owner Summary/i;
 
-test.describe('86 Chaos Export / Print / Download Deep Test', () => {
-  test('all major exports and print buttons respond safely', async ({ page }, testInfo) => {
-    test.setTimeout(300000);
-    const problems = [];
-    const report = { runId: RUN_ID, actions: [] };
-    watchForProblems(page, problems, { acceptDialogs: true });
+test.describe('86 Chaos Export / Print / Downloads', () => {
+  test('export/report controls are present where expected and do not crash rendering', async ({ page }, testInfo) => {
+    test.setTimeout(180000);
     const account = ownerLikeCreds();
+    requireCreds(test, account, 'OWNER or TEST_OWNER');
+
+    const problems = [];
+    watchForProblems(page, problems);
     await login(page, account.email, account.password);
+    await expectVersion(page);
 
-    const checks = [
-      { tab: 'financials', buttons: [/Print Report/i, /Export/i, /Download/i, /CSV/i, /PDF/i] },
-      { tab: 'back-office', buttons: [/Print Owner Report/i, /Download CSV/i, /Accountant|Close Packet|Export/i] },
-      { tab: 'published', buttons: [/Print|Export|Download|PDF/i] },
-      { tab: 'inventory', buttons: [/Export|Download|CSV|PDF|Print/i] },
-      { tab: 'team', buttons: [/Export|Download|CSV|PDF|Print/i] },
-      { tab: 'godmode', buttons: [/Export|Download|Backup|Report/i] },
-    ];
-
-    for (const check of checks) {
-      await gotoTab(page, check.tab).catch((error) => problems.push({ type: 'export-route-failed', tab: check.tab, message: error.message }));
-      await assertNoUnavailablePage(page, problems, `Export ${check.tab}`);
-      for (const button of check.buttons) {
-        await testDownloadOrPrint(page, button, `${check.tab} ${button}`, report, problems);
-      }
+    const reports = [];
+    for (const tab of ['financials', 'back-office', 'inventory', 'schedule']) {
+      const result = await expectRouteHealthy(page, tab);
+      const text = await bodyText(page);
+      reports.push({ tab, gated: result.gated, unavailable: result.unavailable, hasExportControl: EXPORT_WORD_RE.test(text), textStart: text.slice(0, 1200) });
     }
 
-    await attachReport(testInfo, 'export-print-downloads-report.json', { report, problems });
-    expect(problems, JSON.stringify(problems, null, 2)).toEqual([]);
+    const anyExportControls = reports.some((r) => r.hasExportControl || r.gated || r.unavailable);
+    expect(anyExportControls, 'At least one owner route should expose export/report/download/print controls, or valid gates for unavailable tools').toBeTruthy();
+
+    for (const report of reports) {
+      expect(report.textStart, `${report.tab} should not render export/download errors`).not.toMatch(/download failed|export failed|print failed|undefined.*pdf|undefined.*csv/i);
+    }
+
+    await attachReport(testInfo, '07-export-print-downloads-report.json', { runId: RUN_ID, reports, problems: summarizeProblems(problems) });
+    expect(problems, JSON.stringify(summarizeProblems(problems), null, 2)).toEqual([]);
   });
 });

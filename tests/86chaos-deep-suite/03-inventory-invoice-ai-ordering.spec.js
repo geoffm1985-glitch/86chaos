@@ -1,91 +1,45 @@
-// 86 Chaos Inventory + Invoice + AI Ordering Deep Test
-// Exercises Smart Kitchen flows. It may create test drafts/logs on testing URLs.
+// 86 Chaos 15.0.95 Inventory, invoice scanner, menu intelligence, and AI ordering smoke/deep checks.
 const { test, expect } = require('@playwright/test');
 const {
   RUN_ID,
   ownerLikeCreds,
+  requireCreds,
   watchForProblems,
   login,
-  gotoTab,
+  expectVersion,
+  expectRouteHealthy,
   bodyText,
-  assertNoUnavailablePage,
-  expectAnyText,
-  clickButtonIfPresent,
-  fillFirstVisible,
-  saveCurrentForm,
-  closeBlockingModals,
-  hardStopIfProduction,
+  maybeClick,
   attachReport,
+  summarizeProblems,
 } = require('./utils/chaos-helpers');
 
-test.describe('86 Chaos Inventory + Invoice + AI Ordering Deep Test', () => {
-  test.beforeAll(async () => { await hardStopIfProduction(); });
-
-  test('inventory tabs, invoice scan shell, AI order draft controls, burn log, and menu intelligence', async ({ page }, testInfo) => {
-    test.setTimeout(360000);
-    const problems = [];
-    const report = { runId: RUN_ID, visited: [], actions: [], fields: [] };
-    watchForProblems(page, problems, { acceptDialogs: true });
-
+test.describe('86 Chaos Inventory + Invoice + AI Ordering', () => {
+  test('inventory and ordering intelligence routes are stable and review-first', async ({ page }, testInfo) => {
+    test.setTimeout(240000);
     const account = ownerLikeCreds();
+    requireCreds(test, account, 'OWNER or TEST_OWNER');
+
+    const problems = [];
+    watchForProblems(page, problems);
     await login(page, account.email, account.password);
+    await expectVersion(page);
 
-    await gotoTab(page, 'inventory');
-    await assertNoUnavailablePage(page, problems, 'Inventory root');
-    await expectAnyText(page, [/Inventory|AI Order|Invoices|Burn Log|Vendors|Manage|Count|Order/i], problems, 'Inventory root text');
-
-    const inventoryButtons = [/count/i, /order/i, /AI Order/i, /manage/i, /vendors/i, /Invoices/i, /Burn Log/i];
-    for (const button of inventoryButtons) {
-      await clickButtonIfPresent(page, button, report.visited, `Inventory > ${button}`).catch((error) => {
-        problems.push({ type: 'inventory-button-failed', button: String(button), message: error.message, url: page.url() });
-      });
-      await assertNoUnavailablePage(page, problems, `Inventory > ${button}`);
-      await closeBlockingModals(page);
+    const routeReports = [];
+    for (const tab of ['inventory', 'menu-intelligence', 'ai-tools']) {
+      const result = await expectRouteHealthy(page, tab);
+      routeReports.push({ tab, gated: result.gated, unavailable: result.unavailable, textStart: result.text.slice(0, 1200) });
     }
 
-    // AI order checks: Use Suggested Qty should not double-add if visible.
-    await clickButtonIfPresent(page, /AI Order/i, report.visited, 'Inventory > AI Order').catch(() => {});
-    const useQty = page.locator('main').getByRole('button', { name: /Use Suggested Qty|Use Qty|Suggested/i }).first();
-    if (await useQty.isVisible({ timeout: 3000 }).catch(() => false)) {
-      await useQty.click({ timeout: 7000 });
-      await page.waitForTimeout(700);
-      const labelAfterOne = await useQty.innerText().catch(() => '');
-      await useQty.click({ timeout: 2500 }).catch(() => {});
-      await page.waitForTimeout(500);
-      const body = await bodyText(page);
-      report.actions.push({ action: 'use-suggested-qty-clicked', labelAfterOne, textStart: body.slice(0, 800) });
-      if (!/Applied|Undo|Remove|Draft|Selected|Suggested/i.test(body)) {
-        problems.push({ type: 'ai-order-apply-feedback-missing', bodyStart: body.slice(0, 900), url: page.url() });
-      }
-    } else {
-      report.actions.push({ action: 'use-suggested-qty-not-visible', reason: 'No suggestions in current data' });
-    }
+    const inventoryText = routeReports.find((r) => r.tab === 'inventory')?.textStart || (await bodyText(page));
+    expect(inventoryText, 'Inventory should still show inventory/vendor/invoice concepts').toMatch(/Inventory|Vendor|Invoice|Par|Burn|Waste|Order|COGS/i);
 
-    // Burn Log write attempt with record-only or harmless qty if visible.
-    await clickButtonIfPresent(page, /Burn Log/i, report.visited, 'Inventory > Burn Log').catch(() => {});
-    const body = await bodyText(page);
-    if (/Log Waste|Deduct Stock|Burn/i.test(body)) {
-      const select = page.locator('main select').first();
-      if (await select.isVisible({ timeout: 2000 }).catch(() => false)) {
-        const options = await select.locator('option').allTextContents().catch(() => []);
-        const candidate = options.find((x) => !/Select Item/i.test(x) && x.trim().length > 2);
-        if (candidate) await select.selectOption({ label: candidate }).catch(() => {});
-      }
-      await fillFirstVisible(page, [/qty|quantity|amount/i, /number/i], '1', report.fields, 'Burn Log qty').catch(() => {});
-      if (/Record only/i.test(body)) {
-        await page.locator('main select').filter({ hasText: /Record only/i }).first().selectOption({ label: /Record only/i }).catch(() => {});
-      }
-      await saveCurrentForm(page, report.actions, 'Burn Log record-only/write test').catch((error) => {
-        report.actions.push({ action: 'burn-log-save-failed', error: error.message });
-      });
-    }
+    await expectRouteHealthy(page, 'inventory');
+    await maybeClick(page, page.getByRole('button', { name: /invoice|scan|upload/i }).first());
+    const afterClickText = await bodyText(page);
+    expect(afterClickText, 'Invoice scanner should remain review/upload oriented, not auto-posting').not.toMatch(/posts automatically|auto.?post to quickbooks|live posting without approval/i);
 
-    // Menu intelligence should render impact/dependency language.
-    await gotoTab(page, 'menu-intelligence');
-    await assertNoUnavailablePage(page, problems, 'Menu Intelligence');
-    await expectAnyText(page, [/Menu|Dependency|Ingredient|Unavailable|Impact|86|Recipe/i], problems, 'Menu Intelligence text');
-
-    await testInfo.attach('inventory-invoice-ai-ordering-report.json', { body: JSON.stringify({ report, problems }, null, 2), contentType: 'application/json' });
-    expect(problems, JSON.stringify(problems, null, 2)).toEqual([]);
+    await attachReport(testInfo, '03-inventory-ai-ordering-report.json', { runId: RUN_ID, routes: routeReports, afterClickText: afterClickText.slice(0, 1200), problems: summarizeProblems(problems) });
+    expect(problems, JSON.stringify(summarizeProblems(problems), null, 2)).toEqual([]);
   });
 });

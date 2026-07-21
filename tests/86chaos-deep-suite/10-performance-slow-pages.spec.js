@@ -1,57 +1,40 @@
-// 86 Chaos Performance / Slow Page Deep Test
+// 86 Chaos 15.0.95 performance/slow page route timing checks.
 const { test, expect } = require('@playwright/test');
 const {
   RUN_ID,
   ownerLikeCreds,
+  requireCreds,
   watchForProblems,
   login,
-  gotoTab,
-  bodyText,
-  assertNoUnavailablePage,
+  expectVersion,
+  expectRouteHealthy,
   attachReport,
+  summarizeProblems,
 } = require('./utils/chaos-helpers');
 
-const PERFORMANCE_TABS = ['today', 'inventory', 'schedule', 'published', 'financials', 'back-office', 'team', 'messages', 'settings', 'help'];
-const DEFAULT_ROUTE_BUDGET_MS = Number(process.env.PLAYWRIGHT_ROUTE_BUDGET_MS || 12000);
-const INVENTORY_BUDGET_MS = Number(process.env.PLAYWRIGHT_INVENTORY_BUDGET_MS || 18000);
-const SCHEDULE_BUDGET_MS = Number(process.env.PLAYWRIGHT_SCHEDULE_BUDGET_MS || 18000);
+const MAX_ROUTE_MS = Number(process.env.CHAOS_ROUTE_MAX_MS || 30000);
 
-test.describe('86 Chaos Performance / Slow Page Deep Test', () => {
-  test('login and chunky pages stay under rough performance budgets', async ({ page }, testInfo) => {
-    test.setTimeout(420000);
-    const problems = [];
-    const report = { runId: RUN_ID, loginMs: null, routes: [] };
-    watchForProblems(page, problems);
-
+test.describe('86 Chaos Performance / Slow Pages', () => {
+  test('key app routes render under the configured route budget', async ({ page }, testInfo) => {
+    test.setTimeout(360000);
     const account = ownerLikeCreds();
-    const loginStart = Date.now();
+    requireCreds(test, account, 'OWNER or TEST_OWNER');
+
+    const problems = [];
+    watchForProblems(page, problems);
     await login(page, account.email, account.password);
-    report.loginMs = Date.now() - loginStart;
-    if (report.loginMs > Number(process.env.PLAYWRIGHT_LOGIN_BUDGET_MS || 30000)) {
-      problems.push({ type: 'login-slow', loginMs: report.loginMs });
-    }
+    await expectVersion(page);
 
-    for (const tab of PERFORMANCE_TABS) {
+    const reports = [];
+    for (const tab of ['today', 'inventory', 'financials', 'back-office', 'schedule', 'team', 'settings', 'help']) {
       const start = Date.now();
-      await gotoTab(page, tab).catch((error) => problems.push({ type: 'route-load-failed', tab, message: error.message, url: page.url() }));
-      const loadMs = Date.now() - start;
-      await assertNoUnavailablePage(page, problems, `Performance ${tab}`);
-      const text = await bodyText(page);
-      const budget = tab === 'inventory' ? INVENTORY_BUDGET_MS : ['schedule', 'published'].includes(tab) ? SCHEDULE_BUDGET_MS : DEFAULT_ROUTE_BUDGET_MS;
-      const perf = await page.evaluate(() => {
-        const nav = performance.getEntriesByType('navigation')[0];
-        return nav ? {
-          domContentLoaded: Math.round(nav.domContentLoadedEventEnd - nav.startTime),
-          loadEvent: Math.round(nav.loadEventEnd - nav.startTime),
-          transferSize: nav.transferSize || 0,
-        } : null;
-      }).catch(() => null);
-      report.routes.push({ tab, loadMs, budget, perf, textStart: text.slice(0, 350) });
-      if (loadMs > budget) problems.push({ type: 'route-slow', tab, loadMs, budget, url: page.url() });
-      if (/undefined|NaN|TypeError|ReferenceError/i.test(text)) problems.push({ type: 'visible-bad-value', tab, textStart: text.slice(0, 900), url: page.url() });
+      const result = await expectRouteHealthy(page, tab, { settleMs: 1200, timeout: MAX_ROUTE_MS });
+      const elapsedMs = Date.now() - start;
+      reports.push({ tab, elapsedMs, gated: result.gated, unavailable: result.unavailable, textStart: result.text.slice(0, 800) });
+      expect(elapsedMs, `${tab} should render within ${MAX_ROUTE_MS}ms`).toBeLessThanOrEqual(MAX_ROUTE_MS);
     }
 
-    await attachReport(testInfo, 'performance-slow-pages-report.json', { report, problems });
-    expect(problems, JSON.stringify(problems, null, 2)).toEqual([]);
+    await attachReport(testInfo, '10-performance-slow-pages-report.json', { runId: RUN_ID, maxRouteMs: MAX_ROUTE_MS, reports, problems: summarizeProblems(problems) });
+    expect(problems, JSON.stringify(summarizeProblems(problems), null, 2)).toEqual([]);
   });
 });

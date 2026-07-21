@@ -1,9 +1,9 @@
 {
-  "version": "15.0.95",
-  "name": "86 Chaos 15.0.95 System Admin Gate Hotfix",
+  "version": "15.0.96",
+  "name": "86 Chaos 15.0.96 Help Center Safety + Test Route Wait Fix",
   "releasedAt": "2026-07-20",
-  "label": "15.0.95 System Admin Gate Hotfix",
-  "build": "15.0.95",
+  "label": "15.0.96 Help Center Safety + Test Route Wait Fix",
+  "build": "15.0.96",
   "updatedAt": "2026-07-20T00:00:00.000Z",
-  "notes": "System Admin Gate hotfix: non-super-admin accounts now see a generic Plan & Permission Gate on internal System Administrator routes. Internal Super Admin diagnostics are no longer exposed to unauthorized accounts."
+  "notes": "Help Center safety hotfix: non-super-admin Help Center and training manual views no longer surface internal System Administrator, Forensics, Backup Center, Security Center, QuickBooks integration, Python automation, or pay-rate setup material. System Admin route gate remains generic for unauthorized accounts."
 }

@@ -1,70 +1,64 @@
-// 86 Chaos Backup / Restore / Admin Safety Deep Test
-// Opens System Administrator surfaces. Destructive restore is blocked unless PLAYWRIGHT_ALLOW_RESTORE_DRILL=true.
+// 86 Chaos 15.0.95 backup/restore/admin safety checks.
 const { test, expect } = require('@playwright/test');
 const {
   RUN_ID,
+  hasCreds,
+  creds,
+  staffCredsOrNull,
   ownerLikeCreds,
+  requireCreds,
   watchForProblems,
   login,
-  gotoTab,
+  expectVersion,
+  expectRouteHealthy,
   bodyText,
-  assertNoUnavailablePage,
-  expectAnyText,
-  clickButtonIfPresent,
-  closeBlockingModals,
+  INTERNAL_ADMIN_DEBUG_RE,
   attachReport,
+  summarizeProblems,
 } = require('./utils/chaos-helpers');
 
-const ALLOW_RESTORE_DRILL = String(process.env.PLAYWRIGHT_ALLOW_RESTORE_DRILL || '').toLowerCase() === 'true';
+test.describe('86 Chaos Backup / Restore / Admin Safety', () => {
+  test('staff godmode is a generic permission gate with no admin diagnostics', async ({ page }, testInfo) => {
+    test.setTimeout(180000);
+    const account = staffCredsOrNull();
+    requireCreds(test, account, 'STAFF');
 
-test.describe('86 Chaos Backup / Restore / Admin Safety Deep Test', () => {
-  test('system admin, backup, restore safety, security, python automation, and audit surfaces', async ({ page }, testInfo) => {
-    test.setTimeout(300000);
     const problems = [];
-    const report = { runId: RUN_ID, actions: [] };
-    watchForProblems(page, problems, { acceptDialogs: ALLOW_RESTORE_DRILL });
-    const account = ownerLikeCreds();
+    watchForProblems(page, problems);
     await login(page, account.email, account.password);
+    await expectVersion(page);
 
-    await gotoTab(page, 'godmode').catch((error) => problems.push({ type: 'godmode-open-failed', message: error.message, url: page.url() }));
-    await assertNoUnavailablePage(page, problems, 'System Administrator');
-    await expectAnyText(page, [/System Administrator|Backup|Security|Python|Forensics|Diagnostics|Push|Deployment|Audit/i], problems, 'System Administrator text');
+    const result = await expectRouteHealthy(page, 'godmode');
+    const text = await bodyText(page);
+    expect(result.gated || result.unavailable, 'STAFF godmode should be gated or unavailable').toBeTruthy();
+    expect(text, 'STAFF godmode must not expose super-admin diagnostics/setup instructions').not.toMatch(INTERNAL_ADMIN_DEBUG_RE);
+    expect(text, 'STAFF godmode should not expose dangerous backup/restore actions').not.toMatch(/Backup Now|Restore Backup|Nuke|Grant Access|Security Diagnostics|Forensics Timeline/i);
 
-    const adminButtons = [/Overview/i, /Backup/i, /Security/i, /Python Automation/i, /Push/i, /Forensics/i, /Diagnostics/i, /Deployment/i, /Permission/i, /Role/i];
-    for (const button of adminButtons) {
-      await clickButtonIfPresent(page, button, report.actions, `Godmode ${button}`, { exact: false }).catch((error) => {
-        problems.push({ type: 'godmode-button-failed', button: String(button), message: error.message, url: page.url() });
-      });
-      const text = await bodyText(page);
-      if (/undefined|NaN|TypeError|ReferenceError/i.test(text)) problems.push({ type: 'godmode-visible-error', button: String(button), textStart: text.slice(0, 900), url: page.url() });
-      await closeBlockingModals(page);
+    await attachReport(testInfo, '09-staff-admin-safety-report.json', { runId: RUN_ID, textStart: text.slice(0, 1500), problems: summarizeProblems(problems) });
+    expect(problems, JSON.stringify(summarizeProblems(problems), null, 2)).toEqual([]);
+  });
+
+  test('system admin route is available only to configured super admin credentials', async ({ page }, testInfo) => {
+    test.setTimeout(180000);
+    const account = hasCreds('SYSTEM_ADMIN') ? creds('SYSTEM_ADMIN') : ownerLikeCreds();
+    requireCreds(test, account, 'SYSTEM_ADMIN or OWNER');
+
+    const problems = [];
+    watchForProblems(page, problems);
+    await login(page, account.email, account.password);
+    await expectVersion(page);
+
+    const result = await expectRouteHealthy(page, 'godmode');
+    const text = await bodyText(page);
+
+    if (/SYSTEM_ADMIN/i.test(account.label)) {
+      expect(text, 'Configured SYSTEM_ADMIN should see admin center content').toMatch(/System Administrator|Backup Center|Security Center|Forensics|Admin/i);
+      expect(text, 'Admin center should not display raw private keys or tokens').not.toMatch(/private_key|refresh token|access token|firebase-adminsdk/i);
+    } else {
+      expect(result.gated || result.unavailable, 'Non-system-admin owner/test account should not get raw godmode unless configured as super admin').toBeTruthy();
     }
 
-    // Backup actions are okay; restore should require confirmation and is not clicked unless explicitly allowed.
-    const backupButton = page.locator('main').getByRole('button', { name: /run backup|create backup|backup now|manual backup/i }).first();
-    if (await backupButton.isVisible({ timeout: 2500 }).catch(() => false)) {
-      await backupButton.click({ timeout: 7000 }).catch((error) => report.actions.push({ action: 'backup-click-failed', error: error.message }));
-      await page.waitForTimeout(1500);
-      report.actions.push({ action: 'backup-click-attempted' });
-      await closeBlockingModals(page);
-    }
-
-    const restoreButton = page.locator('main').getByRole('button', { name: /restore/i }).first();
-    if (await restoreButton.isVisible({ timeout: 2500 }).catch(() => false)) {
-      if (ALLOW_RESTORE_DRILL) {
-        await restoreButton.click({ timeout: 7000 }).catch((error) => problems.push({ type: 'restore-click-failed', message: error.message, url: page.url() }));
-        report.actions.push({ action: 'restore-drill-clicked', allowedByEnv: true });
-      } else {
-        report.actions.push({ action: 'restore-visible-not-clicked', reason: 'PLAYWRIGHT_ALLOW_RESTORE_DRILL not true' });
-      }
-    }
-
-    await gotoTab(page, 'audit').catch(() => {});
-    const auditText = await bodyText(page);
-    report.auditTextStart = auditText.slice(0, 900);
-    if (/Audit|Forensics|Action|Timeline|Admin/i.test(auditText)) report.actions.push({ action: 'audit-surface-visible' });
-
-    await attachReport(testInfo, 'backup-restore-admin-safety-report.json', { report, problems });
-    expect(problems, JSON.stringify(problems, null, 2)).toEqual([]);
+    await attachReport(testInfo, '09-system-admin-route-report.json', { runId: RUN_ID, account: account.label, result: { gated: result.gated, unavailable: result.unavailable }, textStart: text.slice(0, 1500), problems: summarizeProblems(problems) });
+    expect(problems, JSON.stringify(summarizeProblems(problems), null, 2)).toEqual([]);
   });
 });

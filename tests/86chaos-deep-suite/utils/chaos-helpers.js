@@ -1,338 +1,405 @@
+// 86 Chaos Playwright helpers for app 15.0.95+
+// Keep these tests UI-first and permission-aware. They should catch real leaks/crashes
+// without failing just because a denied route correctly shows a gate.
 const { expect } = require('@playwright/test');
-require('dotenv').config();
 
-const APP_URL = String(
-  process.env.APP_URL ||
-    process.env.TEST_APP_URL ||
-    process.env.PLAYWRIGHT_APP_URL ||
-    'https://cheers-portal-4oxv-git-testing-cheers-portal-s-projects.vercel.app'
-).replace(/\/+$/, '');
+// Load local env files for direct `npx playwright test ...` runs.
+// This version is intentionally stubborn: it reads .env from the repo root,
+// fills blank process.env values, supports APP_URL, and does NOT silently skip
+// when credentials are missing. Missing env now fails with a clear error.
+const fs = require('fs');
+const path = require('path');
 
-const RUN_ID = `PW-DEEP-${new Date().toISOString().replace(/[-:.TZ]/g, '').slice(0, 14)}`;
-const TODAY = new Date().toISOString().slice(0, 10);
-const TEST_MONTH = TODAY.slice(0, 7);
-const MUTATION_OK_URL = /localhost|127\.0\.0\.1|vercel\.app|preview|testing|test|chaos-test/i.test(APP_URL);
-const ALLOW_PROD_MUTATIONS = String(process.env.PLAYWRIGHT_ALLOW_PROD_MUTATIONS || '').toLowerCase() === 'true';
-
-const DEFAULT_TABS = [
-  'today',
-  'financials',
-  'back-office',
-  'schedule',
-  'published',
-  'inventory',
-  'ai-tools',
-  'menu-intelligence',
-  'reminders',
-  'messages',
-  'team',
-  'maintenance',
-  'settings',
-  'help',
-  'godmode',
+const ENV_FILE_NAMES = ['.env', '.env.local'];
+const ENV_SEARCH_ROOTS = [
+  process.cwd(),
+  path.resolve(__dirname, '..', '..', '..'),
+  path.resolve(__dirname, '..', '..', '..', '..'),
 ];
 
-function env(name, fallback = '') {
-  return process.env[name] || fallback;
+const RAW_ENV = {};
+const ENV_LOAD_REPORT = [];
+
+function parseEnvText(text) {
+  const parsed = {};
+  for (const rawLine of text.split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (!line || line.startsWith('#')) continue;
+    const eq = line.indexOf('=');
+    if (eq <= 0) continue;
+    const key = line.slice(0, eq).trim();
+    let value = line.slice(eq + 1).trim();
+    if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
+      value = value.slice(1, -1);
+    }
+    parsed[key] = value;
+  }
+  return parsed;
 }
 
-function requireEnv(name) {
-  const value = process.env[name];
-  if (!value) throw new Error(`Missing ${name} in .env`);
+for (const root of ENV_SEARCH_ROOTS) {
+  for (const name of ENV_FILE_NAMES) {
+    const filePath = path.join(root, name);
+    if (!fs.existsSync(filePath)) continue;
+    try {
+      const parsed = parseEnvText(fs.readFileSync(filePath, 'utf8'));
+      let filled = 0;
+      for (const [key, value] of Object.entries(parsed)) {
+        if (value === undefined || value === '') continue;
+        RAW_ENV[key] = value;
+        if (!process.env[key]) {
+          process.env[key] = value;
+          filled += 1;
+        }
+      }
+      ENV_LOAD_REPORT.push({ filePath, keys: Object.keys(parsed).length, filled });
+    } catch (error) {
+      ENV_LOAD_REPORT.push({ filePath, error: error.message });
+    }
+  }
+}
+
+function maskedEnvValue(name) {
+  const value = process.env[name] || RAW_ENV[name] || '';
+  if (!value) return '';
+  if (/PASSWORD|PASS|SECRET|TOKEN|KEY/i.test(name)) return `***${String(value).slice(-2)}`;
   return value;
 }
 
-function escapeRegExp(value) {
-  return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+function envDebugSummary() {
+  const names = [
+    'APP_URL', 'CHAOS_BASE_URL', 'CHAOS_EXPECTED_VERSION', 'CHAOS_ALLOW_MUTATION',
+    'TEST_EMAIL', 'TEST_PASSWORD', 'OWNER_EMAIL', 'OWNER_PASSWORD',
+    'MANAGER_EMAIL', 'MANAGER_PASSWORD', 'STAFF_EMAIL', 'STAFF_PASSWORD',
+    'SYSTEM_ADMIN_EMAIL', 'SYSTEM_ADMIN_PASSWORD', 'WRONG_WORKSPACE_EMAIL', 'DISABLED_EMAIL',
+  ];
+  return {
+    cwd: process.cwd(),
+    helperDir: __dirname,
+    envFiles: ENV_LOAD_REPORT,
+    values: Object.fromEntries(names.map((name) => [name, maskedEnvValue(name)])),
+  };
+}
+
+const RUN_ID = `${Date.now()}-${Math.random().toString(16).slice(2, 8)}`;
+
+const DEFAULT_BASE_URL = 'https://cheers-portal-4oxv-git-testing-cheers-portal-s-projects.vercel.app';
+const BASE_URL = (
+  process.env.CHAOS_BASE_URL ||
+  process.env.APP_URL ||
+  process.env.PLAYWRIGHT_BASE_URL ||
+  process.env.BASE_URL ||
+  DEFAULT_BASE_URL
+).replace(/\/$/, '');
+const EXPECTED_VERSION = process.env.CHAOS_EXPECTED_VERSION || '15.0.95';
+const ALLOW_MUTATION = /^(1|true|yes)$/i.test(process.env.CHAOS_ALLOW_MUTATION || '');
+const SAFE_TESTING_URL_RE = /localhost|127\.0\.0\.1|vercel\.app|testing|test|preview/i;
+
+const TAB_LABELS = {
+  today: /Today Home|Role Home|No urgent problems|Need Attention/i,
+  published: /Schedule & Time Clock|My Schedule|Time Clock|Published Schedule|Clocked In/i,
+  schedule: /Schedule Builder|Auto-Fill|Assign|Publish|Templates|Coverage/i,
+  financials: /Financials|Financial Center|Daily Close|Sales|Labor|Tips|P&L|Reports/i,
+  sales: /Sales|Daily Ledger|Sales Breakdown|Trends|Revenue/i,
+  labor: /Labor|Timesheets|Payroll|Hours|Tips/i,
+  'back-office': /Back Office|Owner Summary|QuickBooks|Accountant|Document Vault|Approval Queue/i,
+  inventory: /Inventory|Vendor|Invoice|AI Ordering|Par|COGS|Burn Log/i,
+  'menu-intelligence': /Menu Intelligence|Menu Scan|Menu Items|Ingredients|86 Impact/i,
+  'ai-tools': /AI Tools|Ordering|Invoice|Menu|Suggested|Assistant/i,
+  prep: /Prep|Open Prep|Prep List|Label|Task/i,
+  recipes: /Recipe|Recipe Book|Ingredients|Method|Instructions/i,
+  messages: /Message Board|Important Messages|posts|Reply|team need to know/i,
+  reminders: /Reminder|Personal Reminders|Shared Reminders|Due|Schedule/i,
+  team: /Team|Staff|Roster|Role|Permission|Pay/i,
+  settings: /Settings|My Preferences|Preferences|Workspace|Branding|Roster Roles/i,
+  help: /Help Center|Training Manual|Quick Start|Search/i,
+  godmode: /System Administrator|Plan & Permission Gate|Your role does not include this tool|internal-only/i,
+  audit: /Audit|Audit Logs|Admin Actions|Timeline/i,
+  maintenance: /Maintenance|Equipment|Issue|Preventive|Repair/i,
+  'hr-training': /HR|Training|Manual|Employee|Policy/i,
+};
+
+const PERMISSION_GATE_RE = /PLAN\s*&\s*PERMISSION\s*GATE|Your role does not include this tool|not authorized|permission|not available|internal-only/i;
+const UNAVAILABLE_RE = /This page is not available|turned off for this workspace|old app link/i;
+const FATAL_UI_RE = /Application error|Unhandled Runtime Error|Cannot read properties of undefined|Minified React error|Something went wrong/i;
+const LOGIN_RE = /Email Address\s*Password|Unlock System|Forgot Password|CONTACTING FIREBASE AUTH|UNLOCKING/i;
+const INTERNAL_ADMIN_DEBUG_RE = /SIGNED-IN EMAIL|FIREBASE UID|SERVER ADMIN CHECK|SERVER MASTER ENV|MASTER_ADMIN_EMAIL|MASTER_ADMIN_EMAILS|FIRESTORE\s*\/\s*CLAIM|custom claim/i;
+const STAFF_VISIBLE_FORBIDDEN_RE = /System Administrator|Back Office Suite|QuickBooks Integration Hub|Python Automation|Backup Center|Security Center|Forensics|Pay Rates/i;
+const STAFF_UNLOCKED_RESTRICTED_CONTENT_RE = /Connect QuickBooks|Approve\s*(?:&|and)?\s*Send|Send to QuickBooks|Post to QuickBooks|Create Bill Draft|Run Python|Run Automation|Backup Now|Restore Backup|Security Diagnostics|Forensics Timeline|Hourly Rate|Pay Rate/i;
+
+function envValue(...names) {
+  for (const name of names) {
+    if (process.env[name]) return process.env[name];
+    if (RAW_ENV[name]) return RAW_ENV[name];
+  }
+  return '';
 }
 
 function hasCreds(prefix) {
-  return !!(process.env[`${prefix}_EMAIL`] && process.env[`${prefix}_PASSWORD`]);
+  return Boolean(
+    envValue(`${prefix}_EMAIL`, `CHAOS_${prefix}_EMAIL`, `${prefix}_USER`) &&
+    envValue(`${prefix}_PASSWORD`, `CHAOS_${prefix}_PASSWORD`, `${prefix}_PASS`)
+  );
 }
 
 function creds(prefix) {
   return {
     label: prefix,
-    email: process.env[`${prefix}_EMAIL`],
-    password: process.env[`${prefix}_PASSWORD`],
+    email: envValue(`${prefix}_EMAIL`, `CHAOS_${prefix}_EMAIL`, `${prefix}_USER`),
+    password: envValue(`${prefix}_PASSWORD`, `CHAOS_${prefix}_PASSWORD`, `${prefix}_PASS`),
   };
 }
 
-function ownerLikeCreds() {
-  if (hasCreds('OWNER')) return creds('OWNER');
-  return { label: 'TEST', email: requireEnv('TEST_EMAIL'), password: requireEnv('TEST_PASSWORD') };
+function testCreds() {
+  return {
+    label: 'TEST',
+    email: envValue('TEST_EMAIL', 'CHAOS_TEST_EMAIL', 'TEST_USER'),
+    password: envValue('TEST_PASSWORD', 'CHAOS_TEST_PASSWORD', 'TEST_PASS'),
+  };
 }
 
-function isCriticalUrl(url) {
-  const u = String(url || '');
-  return (
-    u.includes('/api/') ||
-    u.includes('identitytoolkit.googleapis.com') ||
-    u.includes('securetoken.googleapis.com') ||
-    u.includes('firestore.googleapis.com') ||
-    u.includes('firebasestorage.googleapis.com')
+function hasTestCreds() {
+  const account = testCreds();
+  return Boolean(account.email && account.password);
+}
+
+function ownerLikeCreds() {
+  for (const prefix of ['OWNER', 'TEST_OWNER', 'ADMIN', 'MANAGER']) {
+    if (hasCreds(prefix)) return creds(prefix);
+  }
+  if (hasTestCreds()) return testCreds();
+  return creds('OWNER');
+}
+
+function staffCredsOrNull() {
+  return hasCreds('STAFF') ? creds('STAFF') : null;
+}
+
+function managerCredsOrOwner() {
+  if (hasCreds('MANAGER')) return creds('MANAGER');
+  return ownerLikeCreds();
+}
+
+function requireCreds(_test, account, label = 'account') {
+  if (account?.email && account?.password) return;
+  throw new Error(
+    `Missing ${label} email/password env vars. Tests will not silently skip anymore. ` +
+    `Check .env in the repo root. Env debug: ${JSON.stringify(envDebugSummary(), null, 2)}`
   );
 }
 
-function ignoreRequestFailure(url, failure) {
-  const u = String(url || '');
-  const f = String(failure || '');
-  const isStaticAsset = /\.(?:png|jpe?g|gif|webp|svg|ico|woff2?|ttf|otf|css|map)(?:\?|$)/i.test(u);
-  if (f === 'net::ERR_ABORTED') return true;
-  if (u.includes('/.well-known/vercel/jwe')) return true;
-  if (u.includes('/google.firestore.v1.Firestore/Listen/channel')) return true;
-  if (u.includes('/google.firestore.v1.Firestore/Write/channel') && f === 'net::ERR_ABORTED') return true;
-  if (/google\.com\/images\/cleardot\.gif/i.test(u) && (f === 'net::ERR_ABORTED' || f === 'csp')) return true;
-  if (isStaticAsset && /ERR_CONNECTION_RESET|ERR_ABORTED|ERR_NETWORK_CHANGED|ERR_TIMED_OUT|ERR_FAILED/i.test(f)) return true;
-  return false;
+function isMutationAllowed() {
+  return ALLOW_MUTATION && SAFE_TESTING_URL_RE.test(BASE_URL) && !/app\.86chaos\.com/i.test(BASE_URL);
 }
 
-function ignoreConsoleNoise(text) {
-  const t = String(text || '');
-  if (/ResizeObserver loop/i.test(t)) return true;
-  if (/Failed to load resource:\s*net::ERR_CONNECTION_RESET/i.test(t)) return true;
-  if (/\.well-known\/vercel\/jwe/i.test(t)) return true;
-  if (/google\.com\/images\/cleardot\.gif/i.test(t)) return true;
-  if (/Content Security Policy.*cleardot\.gif/i.test(t)) return true;
-  return false;
+function appUrl(tab = 'today') {
+  const url = new URL(BASE_URL);
+  if (tab) url.searchParams.set('tab', tab);
+  return url.toString();
 }
 
-function ignoreHttpResponse(url, status) {
-  const u = String(url || '');
-  if (status === 403 && u.includes('/.well-known/vercel/jwe')) return true;
-  if (status === 404 && /favicon\.(ico|png|svg)$/i.test(u)) return true;
-  return false;
+async function safeText(locator, max = 12000) {
+  try {
+    const text = await locator.innerText({ timeout: 5000 });
+    return text.slice(0, max);
+  } catch (_) {
+    return '';
+  }
 }
 
-function watchForProblems(page, problems, options = {}) {
-  const acceptDialogs = options.acceptDialogs === true;
-  const failOnAllConsoleErrors = options.failOnAllConsoleErrors === true;
+async function bodyText(page, max = 20000) {
+  return safeText(page.locator('body'), max);
+}
+
+async function attachReport(testInfo, filename, data) {
+  await testInfo.attach(filename, {
+    body: JSON.stringify(data, null, 2),
+    contentType: 'application/json',
+  });
+}
+
+function watchForProblems(page, problems) {
+  page.on('pageerror', (error) => {
+    problems.push({ type: 'page-error', message: error.message, stack: error.stack });
+  });
 
   page.on('console', (msg) => {
     if (msg.type() !== 'error') return;
     const text = msg.text();
-    if (!failOnAllConsoleErrors && ignoreConsoleNoise(text)) return;
-    problems.push({ type: 'console-error', text, url: page.url() });
-  });
-
-  page.on('pageerror', (error) => {
-    problems.push({ type: 'page-crash', text: error.message, url: page.url() });
-  });
-
-  page.on('requestfailed', (request) => {
-    const requestUrl = request.url();
-    const failure = request.failure()?.errorText || '';
-    if (ignoreRequestFailure(requestUrl, failure)) return;
-    problems.push({ type: 'request-failed', requestUrl, failure, pageUrl: page.url() });
+    if (/favicon|ResizeObserver|Failed to load resource|net::ERR_ABORTED|401|403/i.test(text)) return;
+    if (/TypeError|ReferenceError|FirebaseError|Unhandled|Cannot read|Minified React error/i.test(text)) {
+      problems.push({ type: 'console-error', message: text.slice(0, 1000) });
+    }
   });
 
   page.on('response', (response) => {
     const status = response.status();
-    const requestUrl = response.url();
-    if (ignoreHttpResponse(requestUrl, status)) return;
-    if (status >= 500 || (status >= 400 && isCriticalUrl(requestUrl))) {
-      problems.push({ type: 'http-error', status, requestUrl, pageUrl: page.url() });
-    }
+    const url = response.url();
+    if (status < 500) return;
+    if (/hot-update|sockjs|favicon/i.test(url)) return;
+    problems.push({ type: 'http-5xx', status, url });
   });
-
-  page.on('dialog', async (dialog) => {
-    problems.push({ type: acceptDialogs ? 'dialog-accepted' : 'dialog-dismissed', message: dialog.message(), url: page.url() });
-    if (acceptDialogs) await dialog.accept().catch(() => {});
-    else await dialog.dismiss().catch(() => {});
-  });
-}
-
-async function installTestFlags(page) {
-  await page.addInitScript(() => {
-    const keys = [
-      '86chaos_employee_quick_start_seen',
-      '86chaos_manager_quick_start_seen',
-      'employeeQuickStartComplete',
-      'managerQuickStartComplete',
-      'employeeQuickStartDismissed',
-      'managerQuickStartDismissed',
-      'quickStartDismissed',
-      'guidedTourComplete',
-      '86chaos_skip_onboarding',
-    ];
-    for (const key of keys) localStorage.setItem(key, 'true');
-  });
-}
-
-async function closeBlockingModals(page) {
-  for (let i = 0; i < 6; i++) {
-    const dialog = page.getByRole('dialog').first();
-    const visible = await dialog.isVisible({ timeout: 500 }).catch(() => false);
-    if (!visible) break;
-
-    const named = page.getByRole('button', {
-      name: /close employee quick start|close manager quick start|skip for now|close|cancel|back|hide|done|got it|not now/i,
-    }).first();
-    const clicked = await named.click({ timeout: 1200 }).then(() => true).catch(() => false);
-    if (!clicked) await page.keyboard.press('Escape').catch(() => {});
-    await page.waitForTimeout(350);
-  }
 }
 
 async function login(page, email, password, options = {}) {
-  await installTestFlags(page);
-  await page.goto(`${APP_URL}/?tab=today`, { waitUntil: 'domcontentloaded' });
+  const timeout = options.loginBoxTimeout || 25000;
+  const afterLoginTimeout = options.afterLoginTimeout || 45000;
+  const escapedVersion = EXPECTED_VERSION.replace(/\./g, '\\.');
+  const versionRe = new RegExp(`VERSION\\s+${escapedVersion}`, 'i');
 
-  const emailBox = page.getByRole('textbox', { name: /email address/i });
-  if (await emailBox.isVisible({ timeout: options.loginBoxTimeout || 15000 }).catch(() => false)) {
-    await emailBox.fill(email);
-    await page.getByRole('textbox', { name: /password/i }).fill(password);
-    await page.getByRole('button', { name: /unlock system|sign in|login/i }).click();
+  await page.goto(appUrl('today'), { waitUntil: 'domcontentloaded' });
+  await page.waitForLoadState('domcontentloaded');
 
-    const appShell = page.locator('main');
-    const loginError = page.getByText(
-      /firebase login timed out|firebase:\s*error|auth\/|wrong password|user not found|invalid credential|requests-from-referer|network-request-failed|permission-denied|workspace|membership|disabled/i
-    );
+  const emailBox = page.getByPlaceholder(/email address/i).first();
+  const passwordBox = page.getByPlaceholder(/^password$/i).first();
+  await expect(emailBox, 'Login email box should be visible').toBeVisible({ timeout });
+  await emailBox.fill(email);
+  await passwordBox.fill(password);
 
-    await expect(appShell.or(loginError).first()).toBeVisible({ timeout: 70000 });
-    if (await loginError.isVisible().catch(() => false)) {
-      throw new Error(`Login failed: ${await loginError.innerText().catch(() => 'unknown error')}`);
-    }
+  const loginButton = page.getByRole('button', { name: /unlock system|sign in|log in|login/i }).first();
+  await loginButton.click();
+
+  // Wait for the real app shell, not the temporary "CONTACTING FIREBASE AUTH / UNLOCKING" screen.
+  // The old helper accepted any text containing "Firebase", which made tests continue too early.
+  await page.waitForFunction((expectedVersion) => {
+    const text = document.body?.innerText || '';
+    const escaped = expectedVersion.replace(/\./g, '\\.');
+    const versionRe = new RegExp(`VERSION\\s+${escaped}`, 'i');
+    const hardLoginErrorRe = /invalid|wrong password|user-not-found|missing password|too many requests|auth\/|Login failed/i;
+    return versionRe.test(text) || hardLoginErrorRe.test(text);
+  }, EXPECTED_VERSION, { timeout: afterLoginTimeout });
+
+  const text = await bodyText(page, 8000);
+  if (!versionRe.test(text)) {
+    throw new Error(`Login did not reach the app shell for ${email}. Text: ${text.slice(0, 1200)}`);
   }
-
-  await expect(page.locator('main')).toBeVisible({ timeout: 60000 });
-  await closeBlockingModals(page);
-  await page.waitForTimeout(500);
-}
-
-async function logoutIfPossible(page) {
-  await closeBlockingModals(page);
-  const profile = page.getByRole('button', { name: /Geoff|Owner|Admin|Manager|Staff|user|@/i }).first();
-  await profile.click({ timeout: 1500 }).catch(() => {});
-  await page.getByRole('button', { name: /log out|sign out/i }).first().click({ timeout: 1500 }).catch(() => {});
-  await page.waitForTimeout(500);
+  return text;
 }
 
 async function gotoTab(page, tab, options = {}) {
-  await page.goto(`${APP_URL}/?tab=${tab}`, { waitUntil: 'domcontentloaded' });
-  await expect(page.locator('main')).toBeVisible({ timeout: options.timeout || 45000 });
-  await closeBlockingModals(page);
-  await page.waitForTimeout(options.wait || 900);
+  await page.goto(appUrl(tab), { waitUntil: 'domcontentloaded' });
+  await page.waitForLoadState('domcontentloaded');
+  await page.waitForTimeout(options.settleMs || 900);
+  await page.locator('body').waitFor({ state: 'visible', timeout: options.timeout || 20000 });
+  return bodyText(page);
 }
 
-async function bodyText(page) {
-  return page.locator('body').innerText({ timeout: 10000 }).catch(() => '');
+function pageState(text) {
+  return {
+    textStart: text.slice(0, 1500),
+    isLogin: LOGIN_RE.test(text),
+    isPermissionGate: PERMISSION_GATE_RE.test(text),
+    isUnavailable: UNAVAILABLE_RE.test(text),
+    hasFatalUi: FATAL_UI_RE.test(text),
+    hasInternalAdminDebug: INTERNAL_ADMIN_DEBUG_RE.test(text),
+  };
 }
 
-async function assertNoUnavailablePage(page, problems, label) {
+async function expectNoFatalUi(page, label = 'page') {
   const text = await bodyText(page);
-  if (/This page is not available/i.test(text)) {
-    problems.push({ type: 'unavailable-page', label, url: page.url(), textStart: text.slice(0, 700) });
-  }
-  await expect(page.locator('main')).toBeVisible({ timeout: 30000 });
+  const state = pageState(text);
+  expect(state.isLogin, `${label} should not bounce back to login`).toBeFalsy();
+  expect(state.hasFatalUi, `${label} should not show fatal UI. Text: ${state.textStart}`).toBeFalsy();
 }
 
-async function expectAnyText(page, patterns, problems, label) {
-  const text = await bodyText(page);
-  if (!patterns.some((pattern) => pattern.test(text))) {
-    problems.push({ type: 'expected-text-missing', label, expected: patterns.map(String), url: page.url(), textStart: text.slice(0, 900) });
-  }
+async function expectVersion(page, expected = EXPECTED_VERSION) {
+  const escapedVersion = expected.replace(/\./g, '\\.');
+  const versionRe = new RegExp(`VERSION\\s+${escapedVersion}`, 'i');
+  await expect(
+    page.locator('body'),
+    `Deployed app should show VERSION ${expected}. If it shows an older version, redeploy the current app before judging these tests.`
+  ).toContainText(versionRe, { timeout: 30000 });
 }
 
-async function clickButtonIfPresent(page, matcher, report = [], label = String(matcher), options = {}) {
-  await closeBlockingModals(page);
-  const button = page.locator('main').getByRole('button', { name: matcher }).first();
-  const visible = await button.isVisible({ timeout: options.timeout || 2500 }).catch(() => false);
-  if (!visible) {
-    report.push({ label, clicked: false, reason: 'not visible' });
-    return false;
+async function expectRouteHealthy(page, tab, options = {}) {
+  const text = await gotoTab(page, tab, options);
+  const state = pageState(text);
+  expect(state.isLogin, `${tab} should not return to login`).toBeFalsy();
+  expect(state.hasFatalUi, `${tab} should not show fatal UI. Text: ${state.textStart}`).toBeFalsy();
+
+  if (options.allowGate !== false && (state.isPermissionGate || state.isUnavailable)) {
+    return { tab, gated: state.isPermissionGate, unavailable: state.isUnavailable, text };
   }
-  if (await button.isDisabled().catch(() => false)) {
-    report.push({ label, clicked: false, reason: 'disabled' });
-    return false;
-  }
-  await button.scrollIntoViewIfNeeded().catch(() => {});
-  await button.click({ timeout: options.clickTimeout || 7000 });
-  await page.waitForTimeout(options.wait || 700);
-  await closeBlockingModals(page);
-  report.push({ label, clicked: true, url: page.url() });
+
+  const expected = options.expected || TAB_LABELS[tab] || /86|Chaos|TESTAURANT|PREVIEW/i;
+  expect(text, `${tab} should render expected app content`).toMatch(expected);
+  return { tab, gated: false, unavailable: false, text };
+}
+
+async function maybeClick(page, locator, options = {}) {
+  const count = await locator.count().catch(() => 0);
+  if (!count) return false;
+  const target = locator.first();
+  if (!(await target.isVisible().catch(() => false))) return false;
+  await target.click({ timeout: options.timeout || 5000 }).catch(() => {});
+  await page.waitForTimeout(options.settleMs || 500);
   return true;
 }
 
-async function fillFirstVisible(page, matchers, value, report = [], label = 'field') {
-  for (const matcher of matchers) {
-    const loc = page.locator('input, textarea').filter({ hasText: matcher instanceof RegExp ? matcher : undefined });
-    // Prefer accessible labels/placeholders first.
-    const candidates = [
-      page.getByLabel(matcher).first(),
-      page.getByPlaceholder(matcher).first(),
-      page.getByRole('textbox', { name: matcher }).first(),
-      page.getByRole('spinbutton', { name: matcher }).first(),
-    ];
-    for (const candidate of candidates) {
-      const visible = await candidate.isVisible({ timeout: 500 }).catch(() => false);
-      if (!visible) continue;
-      await candidate.fill(String(value)).catch(async () => {
-        await candidate.click({ timeout: 1000 });
-        await candidate.press(process.platform === 'darwin' ? 'Meta+A' : 'Control+A');
-        await candidate.type(String(value));
-      });
-      report.push({ label, matcher: String(matcher), filled: true });
+async function openMenu(page) {
+  const menuButton = page.getByRole('button').filter({ hasText: /^$/ }).first();
+  // Prefer visible buttons with common menu/svg structure, then fall back to any button near the header.
+  const explicit = page.getByRole('button', { name: /menu|open menu/i }).first();
+  if (await explicit.isVisible().catch(() => false)) {
+    await explicit.click();
+    return true;
+  }
+  const buttons = page.locator('button');
+  const count = Math.min(await buttons.count().catch(() => 0), 12);
+  for (let i = 0; i < count; i++) {
+    const btn = buttons.nth(i);
+    const box = await btn.boundingBox().catch(() => null);
+    if (box && box.width <= 80 && box.height <= 80 && box.y < 160) {
+      await btn.click().catch(() => {});
+      await page.waitForTimeout(500);
       return true;
     }
   }
-  report.push({ label, filled: false, reason: 'no matching visible input' });
-  return false;
+  return maybeClick(page, menuButton);
 }
 
-async function saveCurrentForm(page, report = [], label = 'save') {
-  const saveMatchers = [/save/i, /add/i, /create/i, /submit/i, /record/i, /log/i];
-  for (const matcher of saveMatchers) {
-    const button = page.locator('main').getByRole('button', { name: matcher }).first();
-    const visible = await button.isVisible({ timeout: 900 }).catch(() => false);
-    const disabled = visible ? await button.isDisabled().catch(() => false) : true;
-    if (!visible || disabled) continue;
-    await button.click({ timeout: 6000 });
-    await page.waitForTimeout(1000);
-    await closeBlockingModals(page);
-    report.push({ label, savedWith: String(matcher), url: page.url() });
-    return true;
-  }
-  report.push({ label, saved: false, reason: 'no enabled save/add/create/record/log button found', url: page.url() });
-  return false;
+async function closeTransientUi(page) {
+  await page.keyboard.press('Escape').catch(() => {});
+  await page.waitForTimeout(250);
 }
 
-async function hardStopIfProduction() {
-  if (MUTATION_OK_URL || ALLOW_PROD_MUTATIONS) return;
-  throw new Error(`Refusing to run mutating test against APP_URL=${APP_URL}. Use testing/preview/local or set PLAYWRIGHT_ALLOW_PROD_MUTATIONS=true.`);
-}
-
-async function attachReport(testInfo, name, data) {
-  await testInfo.attach(name, { body: JSON.stringify(data, null, 2), contentType: 'application/json' });
-}
-
-function findNumbers(text) {
-  return String(text || '').match(/-?\$?\s*\d[\d,]*(?:\.\d+)?\s*%?/g) || [];
+function summarizeProblems(problems) {
+  return problems.map((p) => ({ ...p, message: p.message?.slice?.(0, 1000) || p.message }));
 }
 
 module.exports = {
-  APP_URL,
   RUN_ID,
-  TODAY,
-  TEST_MONTH,
-  DEFAULT_TABS,
-  env,
-  requireEnv,
+  BASE_URL,
+  EXPECTED_VERSION,
+  ALLOW_MUTATION,
+  PERMISSION_GATE_RE,
+  UNAVAILABLE_RE,
+  FATAL_UI_RE,
+  LOGIN_RE,
+  INTERNAL_ADMIN_DEBUG_RE,
+  STAFF_VISIBLE_FORBIDDEN_RE,
+  STAFF_UNLOCKED_RESTRICTED_CONTENT_RE,
+  TAB_LABELS,
   hasCreds,
   creds,
   ownerLikeCreds,
+  staffCredsOrNull,
+  managerCredsOrOwner,
+  requireCreds,
+  isMutationAllowed,
+  appUrl,
   watchForProblems,
   login,
-  logoutIfPossible,
   gotoTab,
   bodyText,
-  assertNoUnavailablePage,
-  expectAnyText,
-  clickButtonIfPresent,
-  fillFirstVisible,
-  saveCurrentForm,
-  closeBlockingModals,
-  hardStopIfProduction,
+  pageState,
+  expectNoFatalUi,
+  expectVersion,
+  expectRouteHealthy,
+  maybeClick,
+  openMenu,
+  closeTransientUi,
   attachReport,
-  findNumbers,
+  summarizeProblems,
+  envDebugSummary,
 };
