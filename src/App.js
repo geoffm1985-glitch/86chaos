@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
-import { Bell, Bug, ChevronLeft, ChevronRight, Loader2, Menu, Moon, Send, X } from 'lucide-react';
+import { AlertTriangle, Bell, Bug, CalendarDays, ChevronLeft, ChevronRight, ClipboardList, Home, Loader2, Menu, Moon, MoreHorizontal, Send, X } from 'lucide-react';
 import { addDoc, collection, doc, onSnapshot, updateDoc } from 'firebase/firestore';
 import { getToken, onMessage } from 'firebase/messaging';
 import 'leaflet/dist/leaflet.css';
@@ -35,10 +35,21 @@ const TabAITools = lazyFeature(() => import('./features/intelligence'), 'TabAITo
 const TabHrTraining = lazyFeature(() => import('./features/hr'), 'TabHrTraining');
 
 const RouteLoading = ({ label = 'Loading section...' }) => (
-  <div className={`${T.card} p-6 sm:p-8 max-w-xl mx-auto text-center space-y-3`}>
-    <Loader2 className="animate-spin mx-auto text-[#D4A381]" size={28} />
-    <div className="text-[10px] font-black uppercase tracking-[0.25em] text-[#D4A381]">86 Chaos</div>
-    <p className="text-sm font-bold text-slate-300">{label}</p>
+  <div className="native-route-loader max-w-3xl mx-auto rounded-2xl border border-[#2A353D] bg-[#11181E]/92 p-4 sm:p-5 shadow-2xl">
+    <div className="flex items-center gap-3">
+      <div className="h-10 w-10 rounded-2xl bg-[#D4A381]/10 border border-[#D4A381]/30 flex items-center justify-center text-[#D4A381]">
+        <Loader2 className="animate-spin" size={20} />
+      </div>
+      <div className="min-w-0 flex-1">
+        <div className="text-[10px] font-black uppercase tracking-[0.22em] text-[#D4A381]">86 Chaos</div>
+        <p className="text-sm font-bold text-slate-300">{label}</p>
+      </div>
+    </div>
+    <div className="mt-4 grid gap-2">
+      <div className="h-3 rounded-full bg-slate-700/40 overflow-hidden"><span className="native-loader-bar block h-full w-1/2 rounded-full bg-[#D4A381]/40" /></div>
+      <div className="h-3 w-3/4 rounded-full bg-slate-700/30" />
+      <div className="h-3 w-1/2 rounded-full bg-slate-700/20" />
+    </div>
   </div>
 );
 
@@ -1229,7 +1240,7 @@ What I clicked / expected:
         pushTokenPermission: permission,
         pushTokenHost: window.location.hostname,
         pushTokenCanonical: true,
-        pushTokenDedupeVersion: '15.0.98',
+        pushTokenDedupeVersion: '15.0.99',
         pushNeedsRepair: false,
         pushForceServiceWorkerRefresh: false,
         pushRepairStatus: 'connected',
@@ -1302,7 +1313,7 @@ What I clicked / expected:
           pushTokenPermission: permission,
           pushTokenHost: window.location.hostname,
           pushTokenCanonical: true,
-          pushTokenDedupeVersion: '15.0.98',
+          pushTokenDedupeVersion: '15.0.99',
           pushNeedsRepair: false,
           pushForceServiceWorkerRefresh: false,
           pushRepairStatus: 'connected',
@@ -1391,6 +1402,48 @@ What I clicked / expected:
   const nextDay = () => { const d = new Date(currentDate + 'T12:00:00'); d.setDate(d.getDate() + 1); setCurrentDate(formatDate(d)); };
   const prevMonth = () => { const d = new Date(currentDate + 'T12:00:00'); d.setMonth(d.getMonth() - 1); setCurrentDate(formatDate(d)); };
   const nextMonth = () => { const d = new Date(currentDate + 'T12:00:00'); d.setMonth(d.getMonth() + 1); setCurrentDate(formatDate(d)); };
+
+  const needsEyesCount = useMemo(() => {
+    const lowStock = (inventoryItems || []).filter(i => Number(i.parLevel || 0) > 0 && Number(i.currentStock || 0) < Number(i.parLevel || 0)).length;
+    const urgentMaintenance = (maintenanceLogs || []).filter(m => !['completed', 'closed', 'resolved'].includes(String(m.status || '').toLowerCase()) && ['high', 'critical', 'urgent'].includes(String(m.urgency || m.priority || '').toLowerCase())).length;
+    const peopleQueue = (timeOffRequests || []).filter(r => String(r.status || '').toLowerCase() === 'pending').length + (shiftSwaps || []).filter(sw => ['available', 'pending'].includes(String(sw.status || '').toLowerCase())).length;
+    return lowStock + urgentMaintenance + peopleQueue;
+  }, [inventoryItems, maintenanceLogs, timeOffRequests, shiftSwaps]);
+
+  const primaryAppNav = useMemo(() => {
+    const items = [
+      { id: 'today', label: 'Today', Icon: Home, badge: needsEyesCount > 0 ? String(Math.min(needsEyesCount, 9)) : '' },
+      { id: 'published', label: 'Schedule', Icon: CalendarDays, badge: hasMyShiftAlert ? '!' : '' },
+      { id: 'prep', label: 'Prep', Icon: ClipboardList, badge: '' },
+      { id: 'inventory', label: '86', Icon: AlertTriangle, badge: '' },
+    ];
+    return items.filter(item => {
+      if (item.id === 'published') return displayClientFeatures?.schedule !== false;
+      if (item.id === 'prep') return displayClientFeatures?.prep !== false;
+      if (item.id === 'inventory') return displayClientFeatures?.inventory !== false;
+      return true;
+    });
+  }, [displayClientFeatures, hasMyShiftAlert, needsEyesCount]);
+
+  const NativeNavButton = ({ item, mode = 'mobile' }) => {
+    const Icon = item.Icon;
+    const active = activeTabState === item.id || (item.id === 'published' && ['schedule', 'events', 'month'].includes(activeTabState));
+    return (
+      <button
+        type="button"
+        onClick={() => setActiveTab(item.id)}
+        className={`native-nav-btn native-nav-${mode} ${active ? 'is-active' : ''}`}
+        aria-current={active ? 'page' : undefined}
+        title={item.label}
+      >
+        <span className="native-nav-icon-wrap">
+          <Icon size={mode === 'desktop' ? 18 : 20} />
+          {item.badge && <span className="native-nav-badge">{item.badge}</span>}
+        </span>
+        <span className="native-nav-label">{item.label}</span>
+      </button>
+    );
+  };
 
   const globalManagerBriefMathText = useMemo(() => {
     const today = getToday();
@@ -1530,7 +1583,7 @@ What I clicked / expected:
   const appThemeStyle = { '--chaos-accent': appAccentColor };
 
 return (
-    <div style={appThemeStyle} onClickCapture={blockDemoMutation} onSubmitCapture={blockDemoMutation} className={`desktop-pro-shell ui-v13-polished ui-v12-compact cockpit-shell ${activeTabState === 'godmode' ? '' : 'non-admin-controls-compact'} kitchen-simple-shell ui-density-${liveAppUser?.preferences?.uiDensity || displayClientData?.systemSettings?.uiDensity || 'compact'} recipe-density-${liveAppUser?.preferences?.recipeDensity || displayClientData?.systemSettings?.recipeCardDensity || 'tight'} motion-${liveAppUser?.preferences?.motionMode || displayClientData?.systemSettings?.cockpitLights || 'normal'} min-h-screen font-sans flex flex-col w-full max-w-[100vw] overflow-x-hidden ${T.bg}`}>
+    <div style={appThemeStyle} onClickCapture={blockDemoMutation} onSubmitCapture={blockDemoMutation} className={`native-app-shell desktop-pro-shell ui-v13-polished ui-v12-compact cockpit-shell ${activeTabState === 'godmode' ? '' : 'non-admin-controls-compact'} kitchen-simple-shell ui-density-${liveAppUser?.preferences?.uiDensity || displayClientData?.systemSettings?.uiDensity || 'compact'} recipe-density-${liveAppUser?.preferences?.recipeDensity || displayClientData?.systemSettings?.recipeCardDensity || 'tight'} motion-${liveAppUser?.preferences?.motionMode || displayClientData?.systemSettings?.cockpitLights || 'normal'} min-h-screen font-sans flex flex-col w-full max-w-[100vw] overflow-x-hidden ${T.bg}`}>
       
       {/* GHOST / DEMO MODE BANNER */}
       {ghostTenant && (
@@ -1591,6 +1644,142 @@ return (
         .motion-reduced .cockpit-light::after, .motion-quiet .cockpit-light::after { animation: none !important; opacity: .08 !important; }
         .motion-quiet .cockpit-light { box-shadow: none !important; }
 
+        .native-app-shell {
+          --native-bottom-nav-height: 74px;
+          background:
+            radial-gradient(circle at top left, rgba(212,163,129,.08), transparent 34rem),
+            radial-gradient(circle at bottom right, rgba(73,95,112,.12), transparent 34rem),
+            #0F1318 !important;
+        }
+        .native-app-shell .app-header {
+          height: 58px;
+          border-bottom-color: rgba(212,163,129,.18) !important;
+          box-shadow: 0 10px 36px rgba(0,0,0,.28);
+        }
+        .native-app-shell .app-content-shell {
+          min-height: calc(100dvh - 120px);
+        }
+        .native-route-loader {
+          backdrop-filter: blur(18px);
+        }
+        .native-loader-bar {
+          animation: nativeLoaderSweep 1.4s ease-in-out infinite;
+        }
+        @keyframes nativeLoaderSweep {
+          0% { transform: translateX(-105%); }
+          55%, 100% { transform: translateX(210%); }
+        }
+        .native-version-pill {
+          border: 1px solid rgba(212,163,129,.18);
+          background: rgba(18,24,29,.72);
+          backdrop-filter: blur(14px);
+        }
+        .native-desktop-rail {
+          position: fixed;
+          left: 12px;
+          top: 72px;
+          bottom: 18px;
+          width: 66px;
+          z-index: 35;
+          display: none;
+          flex-direction: column;
+          align-items: center;
+          gap: 8px;
+          padding: 10px 8px;
+          border: 1px solid rgba(42,53,61,.95);
+          border-radius: 22px;
+          background: rgba(15,19,24,.82);
+          box-shadow: 0 18px 55px rgba(0,0,0,.32), inset 0 1px 0 rgba(255,255,255,.035);
+          backdrop-filter: blur(18px);
+        }
+        .native-desktop-rail-divider {
+          width: 28px;
+          height: 1px;
+          background: rgba(212,163,129,.18);
+          margin: 4px 0;
+        }
+        .native-mobile-bottom-nav {
+          position: fixed;
+          left: max(10px, env(safe-area-inset-left));
+          right: max(10px, env(safe-area-inset-right));
+          bottom: max(10px, env(safe-area-inset-bottom));
+          z-index: 60;
+          min-height: 64px;
+          display: grid;
+          grid-template-columns: repeat(5, minmax(0, 1fr));
+          gap: 4px;
+          padding: 8px;
+          border: 1px solid rgba(42,53,61,.95);
+          border-radius: 24px;
+          background: rgba(15,19,24,.9);
+          box-shadow: 0 20px 60px rgba(0,0,0,.42), inset 0 1px 0 rgba(255,255,255,.04);
+          backdrop-filter: blur(20px);
+        }
+        .native-nav-btn {
+          position: relative;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          border: 1px solid transparent;
+          color: #94a3b8;
+          background: transparent;
+          font-weight: 900;
+          transition: color .16s ease, background .16s ease, border-color .16s ease, transform .16s ease;
+          touch-action: manipulation;
+          -webkit-tap-highlight-color: transparent;
+        }
+        .native-nav-mobile {
+          flex-direction: column;
+          gap: 3px;
+          min-height: 48px;
+          border-radius: 17px;
+          padding: 5px 2px;
+          font-size: 10px;
+          letter-spacing: .01em;
+        }
+        .native-nav-desktop {
+          width: 48px;
+          height: 50px;
+          flex-direction: column;
+          gap: 2px;
+          border-radius: 16px;
+          font-size: 9px;
+        }
+        .native-nav-btn:hover {
+          color: #fff;
+          background: rgba(212,163,129,.08);
+          border-color: rgba(212,163,129,.18);
+        }
+        .native-nav-btn.is-active {
+          color: #fff;
+          background: linear-gradient(180deg, rgba(212,163,129,.22), rgba(143,96,64,.14));
+          border-color: rgba(212,163,129,.36);
+          box-shadow: inset 0 1px 0 rgba(255,255,255,.08), 0 8px 24px rgba(0,0,0,.22);
+        }
+        .native-nav-icon-wrap { position: relative; display: inline-flex; }
+        .native-nav-badge {
+          position: absolute;
+          top: -8px;
+          right: -10px;
+          min-width: 17px;
+          height: 17px;
+          padding: 0 4px;
+          border-radius: 999px;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          background: #ef4444;
+          color: #fff;
+          border: 2px solid #0F1318;
+          font-size: 9px;
+          line-height: 1;
+          font-weight: 1000;
+        }
+        .native-nav-label {
+          line-height: 1;
+          white-space: nowrap;
+        }
+
         @media (max-width: 640px) {
           .ui-v12-compact main { padding: .75rem !important; }
           .ui-v12-compact button:not(.no-compact) { min-height: 32px !important; padding-top: .42rem !important; padding-bottom: .42rem !important; }
@@ -1605,6 +1794,49 @@ return (
           .ui-v12-compact .text-2xl { font-size: 1.25rem !important; line-height: 1.55rem !important; }
           .ui-v12-compact .text-xl { font-size: 1.05rem !important; line-height: 1.4rem !important; }
           .ui-v12-compact .text-lg { font-size: .98rem !important; line-height: 1.3rem !important; }
+        }
+
+        @media (max-width: 767px) {
+          .native-app-shell .app-header {
+            height: 56px !important;
+            padding-left: 10px !important;
+            padding-right: 10px !important;
+          }
+          .native-app-shell .app-content-shell {
+            padding-bottom: calc(var(--native-bottom-nav-height) + 36px) !important;
+          }
+          .native-app-shell .desktop-date-strip {
+            position: sticky;
+            top: 56px;
+            z-index: 29;
+            padding-top: 8px !important;
+            padding-bottom: 8px !important;
+          }
+          .native-app-shell .app-footer {
+            padding-bottom: calc(var(--native-bottom-nav-height) + 12px) !important;
+          }
+        }
+
+        @media (min-width: 1024px) {
+          .native-app-shell .native-desktop-rail { display: flex; }
+          .native-app-shell .app-content-shell {
+            padding-left: 92px !important;
+            max-width: min(1520px, calc(100vw - 36px)) !important;
+          }
+          .native-app-shell .desktop-date-strip {
+            margin-left: 88px;
+            border-left: 1px solid rgba(42,53,61,.72);
+            border-bottom-left-radius: 18px;
+            background: rgba(18,24,29,.82) !important;
+            backdrop-filter: blur(14px);
+          }
+          .native-app-shell .app-footer {
+            min-height: 0;
+            padding: 8px 18px !important;
+            align-items: flex-end !important;
+            background: transparent !important;
+            border-top: 0 !important;
+          }
         }
       `}</style>
 
@@ -1658,6 +1890,7 @@ return (
         )}
 
         <div className="flex items-center gap-2 flex-shrink-0">
+          <span className="native-version-pill hidden md:inline-flex px-2.5 py-1 rounded-full text-[9px] font-black uppercase tracking-widest text-slate-400">Version {CURRENT_VERSION}</span>
           <button type="button" onClick={() => openProblemReport({ title: 'Manual Problem Report', message: `Page: ${activeTabState}`, category: 'Bug / Error' })} className="hidden sm:flex p-2 border rounded-xl shadow-sm bg-[#1A2126] border-[#2A353D] text-orange-300 hover:text-white" title="Report a problem"><Bug size={18}/></button>
           {offlineQueue.length > 0 && <button type="button" onClick={() => openProblemReport({ title: 'Offline Queue', message: `${offlineQueue.length} queued action(s) waiting to sync.`, category: 'Data Looks Wrong' })} className="hidden sm:flex px-2.5 py-2 border rounded-xl shadow-sm bg-amber-900/20 border-amber-500/40 text-amber-200 text-[10px] font-black uppercase tracking-widest" title="Offline queued actions">Queue {offlineQueue.length}</button>}
         <button onClick={() => setIsMenuOpen(true)} className={`relative p-2 border rounded-xl shadow-sm transition-all outline-none bg-[#1A2126] border-[#2A353D] ${T.copper} hover:text-white flex-shrink-0`}>
@@ -1679,6 +1912,22 @@ return (
       )}
 
       <DrawerMenu isOpen={isMenuOpen} onClose={() => setIsMenuOpen(false)} activeTab={activeTabState} setActiveTab={setActiveTab} appUser={liveAppUser} setAppUser={setAppUser} hasUnreadMessages={hasUnreadMessages} hasMyShiftAlert={hasMyShiftAlert} hasScheduleBuilderAlert={hasScheduleBuilderAlert} hasHelpUpdate={hasHelpUpdate} clientFeatures={displayClientFeatures} clientData={displayClientData} addToast={addToast} availableWorkspaces={availableWorkspaces} activeWorkspaceName={liveAppUser?.restaurantName || displayClientData?.name || ''} onOpenWorkspaceSwitcher={() => !ghostTenant && !isDemoMode && setIsWorkspaceSwitcherOpen(true)} />
+      <nav className="native-desktop-rail" aria-label="Primary app shortcuts">
+        {primaryAppNav.map(item => <NativeNavButton key={item.id} item={item} mode="desktop" />)}
+        <div className="native-desktop-rail-divider" />
+        <button type="button" onClick={() => setIsMenuOpen(true)} className="native-nav-btn native-nav-desktop" title="More tools">
+          <span className="native-nav-icon-wrap"><MoreHorizontal size={19} /></span>
+          <span className="native-nav-label">More</span>
+        </button>
+      </nav>
+
+      <nav className="native-mobile-bottom-nav lg:hidden" aria-label="Primary app navigation">
+        {primaryAppNav.map(item => <NativeNavButton key={item.id} item={item} mode="mobile" />)}
+        <button type="button" onClick={() => setIsMenuOpen(true)} className="native-nav-btn native-nav-mobile" title="More tools">
+          <span className="native-nav-icon-wrap"><MoreHorizontal size={20} />{hasAnyMenuAlert && <span className="native-nav-badge">!</span>}</span>
+          <span className="native-nav-label">More</span>
+        </button>
+      </nav>
       <GlobalSearchModal isOpen={isGlobalSearchOpen} onClose={() => setIsGlobalSearchOpen(false)} queryText={globalSearchQuery} setQueryText={setGlobalSearchQuery} users={displayUsers} events={events} shifts={shifts} recipes={recipes} inventoryItems={inventoryItems} maintenanceLogs={maintenanceLogs} setActiveTab={setActiveTab} />
       <KitchenTVMode isOpen={isKitchenTVOpen} onClose={() => setIsKitchenTVOpen(false)} shifts={shifts} events={events} prepItems={prepItems} maintenanceLogs={maintenanceLogs} inventoryItems={inventoryItems} />
       <UndoBar undoItem={undoItem} clearUndo={() => setUndoItem(null)} />
@@ -1795,7 +2044,7 @@ return (
         </div>}
       </Modal>
 
-      <main className="app-content-shell flex-1 max-w-[1480px] mx-auto w-full p-3 sm:p-5 lg:p-4 xl:p-5 pb-24">
+      <main className="app-content-shell flex-1 max-w-[1480px] mx-auto w-full p-3 sm:p-5 lg:p-4 xl:p-5 pb-28">
         <span
           data-testid="manager-brief-math-summary-global"
           aria-label={globalManagerBriefMathText}
@@ -1818,10 +2067,10 @@ return (
         ))}
       </div>
       
-      <div className="app-footer w-full flex flex-col items-center justify-center py-4 border-t z-10 mt-auto bg-[#161D22] border-[#2A353D]">
-        <img src="/6139.png" alt="86 Chaos OS" className="h-6 sm:h-8 w-auto mb-1.5 rounded shadow-sm opacity-80" onError={(e) => e.target.style.display = 'none'}/>
-        <span className="text-slate-500 font-bold text-[10px] tracking-widest uppercase">Version {CURRENT_VERSION}</span>
-        <span className="text-slate-600 font-bold text-[8px] tracking-widest uppercase mt-1">© 2026 Chilton App Works LLC</span>
+      <div className="app-footer w-full flex items-center justify-center sm:justify-end gap-2 py-2 px-4 border-t z-10 mt-auto bg-[#161D22] border-[#2A353D]">
+        <span className="text-slate-500 font-black text-[9px] tracking-widest uppercase">Version {CURRENT_VERSION}</span>
+        <span className="text-slate-700 font-black text-[9px] tracking-widest uppercase">•</span>
+        <span className="text-slate-600 font-black text-[9px] tracking-widest uppercase">Chilton App Works</span>
       </div>
     </div>
   );

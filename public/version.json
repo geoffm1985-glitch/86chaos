@@ -1,12 +1,12 @@
 {
-  "version": "15.0.98",
-  "name": "86 Chaos 15.0.98 Push Duplicate Browser Token Hotfix",
-  "releasedAt": "2026-07-21T04:22:00.000Z",
-  "label": "15.0.98 Push Duplicate Browser Token Hotfix",
-  "build": "15.0.98",
+  "version": "15.0.99",
+  "name": "86 Chaos 15.0.99 Native App Shell Polish",
+  "releasedAt": "2026-07-21T05:35:00.000Z",
+  "label": "15.0.99 Native App Shell Polish",
+  "build": "15.0.99",
   "notes": [
-    "Keeps the 15.0.97 service-worker duplicate-notification protection for Android and desktop browsers.",
-    "Stops reminder dispatch from sending both the current fcmToken and old legacy browser tokens to the same user.",
-    "Marks newly synced browser push tokens as canonical so future dispatches use one current token per user instead of historical token piles."
+    "Adds a native-feeling PWA app shell with persistent mobile bottom navigation and desktop shortcut rail.",
+    "Tightens the header/footer chrome so the app feels less like stacked webpages while keeping desktop browser usability.",
+    "Improves route loading with app-style skeleton feedback while preserving existing pages, routes, permissions, and push duplicate fixes."
   ]
 }
