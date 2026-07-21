@@ -1482,29 +1482,34 @@ What I clicked / expected:
 
 
   const referenceNavItems = useMemo(() => ([
-    { id: 'today', label: 'Today', Icon: Home, route: 'today' },
-    { id: 'published', label: 'Schedule', Icon: CalendarDays, route: liveAppUser?.isAdmin || liveAppUser?.permissions?.schedule ? 'schedule' : 'published' },
-    { id: 'published-timeclock', label: 'Time Clock', Icon: Clock, route: 'published' },
-    { id: 'financials', label: 'Financials', Icon: DollarSign, route: 'financials' },
-    { id: 'inventory', label: 'Inventory', Icon: Package, route: 'inventory' },
-    { id: 'recipes', label: 'Recipes', Icon: BookOpen, route: 'recipes' },
-    { id: 'prep', label: 'Prep & Tasks', Icon: ClipboardList, route: 'prep' },
-    { id: 'messages', label: 'Message Board', Icon: MessageSquare, route: 'messages', badge: hasUnreadMessages ? '2' : '' },
+    { id: 'today', label: 'Today', Icon: Home, route: 'today', badge: needsEyesCount > 0 ? String(Math.min(needsEyesCount, 9)) : '' },
+    { id: 'ops', label: 'Manager Brain', Icon: Rocket, route: 'ops' },
+    { id: 'published', label: 'Schedule & Time Clock', Icon: Clock, route: 'published', badge: hasMyShiftAlert ? '!' : '' },
+    { id: 'schedule', label: 'Schedule Builder', Icon: CalendarDays, route: 'schedule', adminOrPerm: 'schedule' },
+    { id: 'prep', label: 'Prep & Tasks', Icon: ClipboardList, route: 'prep', feature: 'prep' },
+    { id: 'inventory', label: 'Inventory & 86', Icon: Package, route: 'inventory', feature: 'inventory' },
+    { id: 'recipes', label: 'Recipes', Icon: BookOpen, route: 'recipes', feature: 'recipes' },
+    { id: 'menu-intelligence', label: 'Menu Intelligence', Icon: AlertTriangle, route: 'menu-intelligence', feature: 'inventory' },
+    { id: 'financials', label: 'Financials', Icon: DollarSign, route: 'financials', adminOrPerm: 'sales' },
+    { id: 'sales', label: 'Sales Import', Icon: TrendingUp, route: 'sales', adminOrPerm: 'sales' },
+    { id: 'back-office', label: 'Back Office', Icon: ClipboardList, route: 'back-office', adminOrPerm: 'financials' },
+    { id: 'maintenance', label: 'Maintenance', Icon: AlertTriangle, route: 'maintenance' },
+    { id: 'reminders', label: 'Reminders', Icon: Bell, route: 'reminders' },
+    { id: 'messages', label: 'Message Board', Icon: MessageSquare, route: 'messages', feature: 'messages', badge: hasUnreadMessages ? '!' : '' },
     { id: 'team', label: 'Staff Roster', Icon: Users, route: 'team' },
-    { id: 'ai', label: 'Voice Command', Icon: Mic, route: 'ai' },
-    { id: 'ops', label: 'Manager Brief', Icon: Rocket, route: 'ops' },
-    { id: 'settings', label: 'Settings', Icon: Settings, route: 'settings' },
+    { id: 'ai-tools', label: '86Voice / AI Tools', Icon: Mic, route: 'ai-tools' },
     { id: 'help', label: 'Help Center', Icon: HelpCircle, route: 'help' },
-    { id: 'godmode', label: 'System Admin', Icon: Shield, route: 'godmode', adminOnly: true },
+    { id: 'settings', label: 'Settings', Icon: Settings, route: 'settings' },
+    { id: 'audit', label: 'Audit Log', Icon: Shield, route: 'audit', adminOnly: true },
+    { id: 'godmode', label: 'System Administrator', Icon: Shield, route: 'godmode', superAdminOnly: true },
   ]).filter(item => {
-    if (item.adminOnly) return liveAppUser?.isSuperAdmin || liveAppUser?.isAdmin || serverSaysSuperAdmin;
-    if (item.route === 'financials') return liveAppUser?.isAdmin || liveAppUser?.permissions?.sales || liveAppUser?.permissions?.financials;
-    if (item.route === 'inventory') return displayClientFeatures?.inventory !== false;
-    if (item.route === 'recipes') return displayClientFeatures?.recipes !== false;
-    if (item.route === 'prep') return displayClientFeatures?.prep !== false;
-    if (item.route === 'messages') return displayClientFeatures?.messages !== false;
+    if (item.superAdminOnly) return liveAppUser?.isSuperAdmin || serverSaysSuperAdmin;
+    if (item.adminOnly) return liveAppUser?.isAdmin || liveAppUser?.isSuperAdmin || serverSaysSuperAdmin;
+    if (item.feature && displayClientFeatures?.[item.feature] === false) return false;
+    if (item.adminOrPerm) return liveAppUser?.isAdmin || liveAppUser?.isSuperAdmin || Boolean(liveAppUser?.permissions?.[item.adminOrPerm]) || serverSaysSuperAdmin;
+    if (item.route === 'schedule') return liveAppUser?.isAdmin || Boolean(liveAppUser?.permissions?.schedule) || serverSaysSuperAdmin;
     return true;
-  }), [displayClientFeatures, hasUnreadMessages, liveAppUser, serverSaysSuperAdmin]);
+  }), [displayClientFeatures, hasMyShiftAlert, hasUnreadMessages, liveAppUser, needsEyesCount, serverSaysSuperAdmin]);
 
   const ReferenceSidebarButton = ({ item }) => {
     const Icon = item.Icon;
@@ -1538,8 +1543,8 @@ What I clicked / expected:
       settings: 'Settings',
       help: 'Help Center',
       reminders: 'Reminders',
-      menu: 'Menu Intelligence',
-      ai: 'AI Tools',
+      'menu-intelligence': 'Menu Intelligence',
+      'ai-tools': 'AI Tools',
       manuals: 'HR & Training',
       audit: 'Audit Log',
       godmode: 'System Administrator'
@@ -2458,10 +2463,10 @@ return (
           .reference-app-v151 .app-header.native-command-bar {
             position: sticky !important;
             top: 0 !important;
-            left: 220px !important;
+            left: 248px !important;
             height: 70px !important;
-            margin-left: 220px !important;
-            width: calc(100vw - 220px) !important;
+            margin-left: 248px !important;
+            width: calc(100vw - 248px) !important;
             padding: 0 22px !important;
             background: rgba(7,16,20,.985) !important;
             border: 0 !important;
@@ -2471,14 +2476,14 @@ return (
             z-index: 42 !important;
           }
           .reference-app-v151 .app-content-shell {
-            margin-left: 220px !important;
-            width: calc(100vw - 220px) !important;
+            margin-left: 248px !important;
+            width: calc(100vw - 248px) !important;
             max-width: none !important;
             padding: 18px 22px 24px !important;
             overflow-x: hidden !important;
             box-sizing: border-box !important;
           }
-          .reference-app-v151 .desktop-date-strip { margin-left: 220px !important; width: calc(100vw - 220px) !important; background: #071014 !important; border-color: var(--ref151-line) !important; box-shadow: none !important; }
+          .reference-app-v151 .desktop-date-strip { margin-left: 248px !important; width: calc(100vw - 248px) !important; background: #071014 !important; border-color: var(--ref151-line) !important; box-shadow: none !important; }
         }
         @media (max-width: 899px) {
           .reference-app-v151 .reference-sidebar { display: none !important; }
@@ -2489,7 +2494,7 @@ return (
         .reference-sidebar {
           position: fixed;
           inset: 0 auto 0 0;
-          width: 220px;
+          width: 248px;
           z-index: 60;
           background: linear-gradient(180deg, #081117 0%, #060b10 100%);
           border-right: 1px solid var(--ref151-line);
@@ -2501,6 +2506,11 @@ return (
         .reference-sidebar-logo { height: 54px; display: flex; align-items: center; border-bottom: 1px solid var(--ref151-line); margin-bottom: 10px; }
         .reference-sidebar-logo .brand-logo-stack img { max-height: 34px !important; width: auto !important; object-fit: contain !important; }
         .reference-sidebar-nav { display: grid; gap: 2px; overflow-y: auto; padding: 8px 0 10px; }
+        .reference-app-v151 .reference-sidebar { width: 248px !important; }
+        .reference-app-v151 .reference-sidebar-nav { gap: 1px !important; }
+        .reference-app-v151 .reference-sidebar-link { min-height: 35px !important; font-size: 12.5px !important; letter-spacing: .01em !important; }
+        .reference-app-v151 .reference-sidebar-link.active { background: rgba(196,124,63,.16) !important; border-color: rgba(196,124,63,.50) !important; }
+        .reference-app-v151 .reference-sidebar-link b { border-radius: 3px !important; min-width: 18px !important; height: 18px !important; }
         .reference-sidebar-link {
           display: grid;
           grid-template-columns: 22px minmax(0, 1fr) auto;
@@ -2673,7 +2683,6 @@ return (
           <button type="button" onClick={() => setActiveTab('ai-tools')} className="reference-top-action"><Mic size={17}/> <span className="hidden sm:inline">86Voice Command</span></button>
           <button type="button" onClick={() => setActiveTab('messages')} className="native-icon-button" title="Messages"><MessageSquare size={18}/>{hasUnreadMessages && <span className="native-alert-dot"></span>}</button>
           <button type="button" onClick={() => openProblemReport({ title: 'Manual Problem Report', message: `Page: ${activeTabState}`, category: 'Bug / Error' })} className="native-icon-button" title="Report a problem"><Bug size={17}/></button>
-          <button onClick={() => setIsMenuOpen(true)} className="native-icon-button native-menu-button relative" title="Open menu"><Menu size={21} />{hasAnyMenuAlert && <span className="native-alert-dot"></span>}</button>
           <button type="button" onClick={() => setActiveTab('settings')} className="reference-profile-button" title="Profile / settings">
             <span className="avatar">{(liveAppUser?.name || liveAppUser?.email || 'SA').slice(0,2).toUpperCase()}</span>
             <div className="hidden lg:block text-left"><strong>{liveAppUser?.name || 'System Admin'}</strong><small>{liveAppUser?.role || (liveAppUser?.isSuperAdmin ? 'Super Administrator' : 'User')}</small></div>
@@ -2693,15 +2702,6 @@ return (
       )}
 
       <DrawerMenu isOpen={isMenuOpen} onClose={() => setIsMenuOpen(false)} activeTab={activeTabState} setActiveTab={setActiveTab} appUser={liveAppUser} setAppUser={setAppUser} hasUnreadMessages={hasUnreadMessages} hasMyShiftAlert={hasMyShiftAlert} hasScheduleBuilderAlert={hasScheduleBuilderAlert} hasHelpUpdate={hasHelpUpdate} clientFeatures={displayClientFeatures} clientData={displayClientData} addToast={addToast} availableWorkspaces={availableWorkspaces} activeWorkspaceName={liveAppUser?.restaurantName || displayClientData?.name || ''} onOpenWorkspaceSwitcher={() => !ghostTenant && !isDemoMode && setIsWorkspaceSwitcherOpen(true)} />
-      <nav className="native-desktop-rail" aria-label="Primary app shortcuts">
-        {primaryAppNav.map(item => <NativeNavButton key={item.id} item={item} mode="desktop" />)}
-        <div className="native-desktop-rail-divider" />
-        <button type="button" onClick={() => setIsMenuOpen(true)} className="native-nav-btn native-nav-desktop" title="More tools">
-          <span className="native-nav-icon-wrap"><MoreHorizontal size={19} /></span>
-          <span className="native-nav-label">More</span>
-        </button>
-      </nav>
-
       <nav className="native-mobile-bottom-nav" aria-label="Primary app navigation">
         {primaryAppNav.map(item => <NativeNavButton key={item.id} item={item} mode="mobile" />)}
         <button type="button" onClick={() => setIsMenuOpen(true)} className="native-nav-btn native-nav-mobile" title="More tools">
