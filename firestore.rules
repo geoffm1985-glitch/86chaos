@@ -1232,7 +1232,7 @@ service cloud.firestore {
 
 
 
-    // 15.1.1 Manager Brain summary docs. Optional/cache-style operational summaries.
+    // 15.1.2 Manager Brain summary docs. Optional/cache-style operational summaries.
     // Docs must carry restaurantId and stay behind tenant + manager/ops/financial permissions.
     function canReadManagerBrain(restId) {
       return isSuperAdmin() || isRestaurantOwner(restId) || isAdminFor(restId) || hasPermFor(restId, 'ops') || hasPermFor(restId, 'inventory') || hasPermFor(restId, 'schedule') || hasPermFor(restId, 'labor') || hasPermFor(restId, 'team');

@@ -4,10 +4,10 @@ const root = path.resolve(__dirname, '..');
 const read = (p) => fs.readFileSync(path.join(root, p), 'utf8');
 const exists = (p) => fs.existsSync(path.join(root, p));
 const checks = [
-  ['package.json', /"version"\s*:\s*"15\.1\.1"/, 'package.json version 15.1.1'],
-  ['package.json', /"test"\s*:\s*"node scripts\/validate-15-1-1\.js"/, 'npm test points to current validator'],
-  ['public/version.json', /15\.1\.1/, 'public version 15.1.1'],
-  ['src/core/appCore.js', /CURRENT_VERSION\s*=\s*'15\.1\.1'/, 'runtime version 15.1.1'],
+  ['package.json', /"version"\s*:\s*"15\.1\.2"/, 'package.json version 15.1.2'],
+  ['package.json', /"test"\s*:\s*"node scripts\/validate-15-1-2\.js"/, 'npm test points to current validator'],
+  ['public/version.json', /15\.1\.2/, 'public version 15.1.2'],
+  ['src/core/appCore.js', /CURRENT_VERSION\s*=\s*'15\.1\.2'/, 'runtime version 15.1.2'],
   ['src/core/needsAttentionEngine.js', /export const buildNeedsAttentionCards/, 'unified Needs Attention engine exists'],
   ['src/core/needsAttentionEngine.js', /severity:\s*"critical"|critical.*high.*medium.*low/s, 'normalized severity levels exist'],
   ['src/core/needsAttentionEngine.js', /dedupeAttentionCards/, 'attention cards dedupe overlapping sources'],
@@ -45,8 +45,8 @@ for (const [file, re, label] of checks) {
   console.log(`${ok ? 'OK' : 'FAIL'} ${label}`);
   if (!ok) failed = true;
 }
-if (!exists('README_15_1_1_RELEASE_NOTES.md')) { console.error('FAIL release notes missing'); failed = true; } else console.log('OK release notes created');
-if (!exists('QA_15_1_1_MANAGER_BRAIN_CONTROL_PANEL.md')) { console.error('FAIL QA checklist missing'); failed = true; } else console.log('OK QA checklist created');
+if (!exists('README_15_1_2_RELEASE_NOTES.md')) { console.error('FAIL release notes missing'); failed = true; } else console.log('OK release notes created');
+if (!exists('QA_15_1_2_MANAGER_BRAIN_BUILD_FIX.md')) { console.error('FAIL QA checklist missing'); failed = true; } else console.log('OK QA checklist created');
 const help = read('src/features/management.jsx');
 const helpChecks = ['Manager Brief / Needs Attention','86 alerts and menu impact','AI ordering review-first','sales CSV import','setup quality checklist','labor forecast limitations'];
 for (const term of helpChecks) {
@@ -58,5 +58,14 @@ if (/FIREBASE_SERVICE_ACCOUNT_KEY\s*=/.test(read('package.json'))) {
   console.error('FAIL package must not contain Firebase service credentials');
   failed = true;
 }
+
+const management = read('src/features/management.jsx');
+const csvRegexOk = /split\(\/\\r\?\\n\//.test(management);
+console.log(`${csvRegexOk ? 'OK' : 'FAIL'} Sales CSV parser uses valid escaped newline regex`);
+if (!csvRegexOk) failed = true;
+const csvParserOk = /parseSalesCsv/.test(management);
+console.log(`${csvParserOk ? 'OK' : 'FAIL'} Sales CSV parser still exists`);
+if (!csvParserOk) failed = true;
+
 if (failed) process.exit(1);
-console.log('15.1.1 Manager Brain Control Panel validation passed.');
+console.log('15.1.2 Manager Brain Control Panel validation passed.');

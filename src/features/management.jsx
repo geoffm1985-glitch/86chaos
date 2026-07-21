@@ -10896,9 +10896,7 @@ const TabFinancials = ({ currentDate, users = [], shifts = [], sales = [], timeP
 
   const parseSalesCsv = (text = '', mode = salesCsvPreview.mode || 'skip') => {
     const required = ['date','grossSales','netSales','tax','tips','discounts','guestCount','ticketCount','source'];
-    const lines = String(text || '').split(/
-?
-/).map(line => line.trim()).filter(Boolean);
+    const lines = String(text || '').split(/\r?\n/).map(line => line.trim()).filter(Boolean);
     if (!lines.length) return { rows: [], errors: ['Paste or upload CSV rows first.'], mode };
     const splitLine = (line) => line.match(/(?:"[^"]*(?:""[^"]*)*"|[^,])+/g)?.map(v => v.replace(/^"|"$/g, '').replace(/""/g, '"').trim()) || [];
     const headers = splitLine(lines[0]).map(h => h.trim());
