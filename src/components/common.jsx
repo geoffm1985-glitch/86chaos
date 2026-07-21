@@ -182,12 +182,12 @@ const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppU
       {isOpen && (
         <div className="fixed inset-0 z-[70] flex justify-end" role="presentation">
           <div className="absolute inset-0 bg-[#12161A]/60 backdrop-blur-sm" onClick={onClose}></div>
-          <div className={`app-drawer-readable w-72 bg-[#1A2126] border-l ${T.border} h-full shadow-2xl flex flex-col relative animate-[slideIn_0.3s_ease-out]`} role="dialog" aria-modal="true" aria-label="Main menu">
-            <div className={`p-4 border-b ${T.border} bg-[#12161A] flex justify-between items-start`}>
-               <div className="flex items-start gap-3 min-w-0">
+          <div className={`app-drawer-readable w-[22rem] max-w-[92vw] bg-[#1A2126] border-l ${T.border} h-full shadow-2xl flex flex-col relative animate-[slideIn_0.3s_ease-out]`} role="dialog" aria-modal="true" aria-label="Main menu">
+            <div className={`p-4 border-b ${T.border} bg-[#12161A] flex justify-between items-start gap-3`}>
+               <div className="flex items-start gap-3 min-w-0 flex-1">
                  <div className="min-w-0">
                    <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Signed in as</div>
-                   <div className="text-white font-black text-lg tracking-tight leading-none truncate">{appUser.name}</div>
+                   <div className="drawer-username text-white font-black text-lg tracking-tight leading-none truncate max-w-full" title={appUser.name || appUser.email || 'Signed-in user'}>{appUser.name || appUser.email || 'User'}</div>
                    <div className={`inline-flex items-center gap-1 ${T.copper} text-[10px] font-bold uppercase tracking-wider mt-1`}>{appUser.isAdmin && <Shield size={10} />} {appUser.role}</div>
                    <button
                      type="button"
@@ -207,7 +207,7 @@ const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppU
             <div className="p-2 border-b border-[#2A353D]">
               <div className="relative">
                 <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
-                <input value={menuSearch} onChange={e => setMenuSearch(e.target.value)} placeholder="Search menu, help, tools..." aria-label="Search menu, help, and tools" className="w-full bg-transparent border-0 border-b border-[#2A353D] rounded-none pl-9 pr-3 py-2 text-xs font-bold text-white outline-none focus:border-[#D4A381]" />
+                <input value={menuSearch} onChange={e => setMenuSearch(e.target.value)} placeholder="Search menu, help, tools..." aria-label="Search menu, help, and tools" className="drawer-search-input w-full bg-transparent border-0 border-b border-[#2A353D] rounded-none pl-9 pr-3 py-2 text-xs font-bold text-white outline-none focus:border-[#D4A381]" />
               </div>
             </div>
             <div className="flex-1 overflow-y-auto px-3 py-2">

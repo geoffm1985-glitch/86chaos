@@ -4417,3 +4417,180 @@ select {
 .premium-app-shell .app-drawer-readable [class*="animate-pulse"] {
   box-shadow: none !important;
 }
+
+/* 15.0.105 lean System Administrator console overhaul */
+.system-admin-v105 {
+  --admin-bg: #0f151a;
+  --admin-panel: #141b21;
+  --admin-panel-soft: #182128;
+  --admin-ink: #f3f7fa;
+  --admin-muted: #9aaaB8;
+  --admin-line: #2a3740;
+  --admin-copper: #d4a381;
+}
+.system-admin-v105.admin46-shell {
+  max-width: min(1500px, calc(100vw - 18px));
+  margin-top: 0;
+}
+.system-admin-v105 .admin46-topbar {
+  padding: 10px 12px !important;
+  border-radius: 10px !important;
+  border-color: #26323a !important;
+  background: #11181e !important;
+  box-shadow: none !important;
+}
+.system-admin-v105 .admin46-topbar h1 {
+  font-size: clamp(20px, 2vw, 25px) !important;
+  line-height: 1.05 !important;
+  margin-top: 2px !important;
+}
+.system-admin-v105 .admin46-topbar p {
+  margin-top: 3px !important;
+  font-size: 11px !important;
+  line-height: 1.35 !important;
+  max-width: 580px !important;
+}
+.system-admin-v105 .admin46-topbar > div:first-child {
+  gap: 10px !important;
+}
+.system-admin-v105 .admin46-topbar > div:first-child > div:last-child {
+  min-width: 0 !important;
+  width: auto !important;
+  gap: 6px !important;
+}
+.system-admin-v105 .admin46-status-chip {
+  min-height: 42px !important;
+  padding: 6px 8px !important;
+  border-radius: 8px !important;
+  border-color: #2d3a43 !important;
+  background: #141c22 !important;
+  box-shadow: none !important;
+}
+.system-admin-v105 .admin46-status-chip span,
+.system-admin-v105 .admin46-status-chip small {
+  font-size: 7px !important;
+  letter-spacing: .1em !important;
+  line-height: 1.1 !important;
+}
+.system-admin-v105 .admin46-status-chip strong {
+  font-size: 11px !important;
+  margin: 2px 0 !important;
+  line-height: 1.1 !important;
+}
+.system-admin-v105 #admin-tool-search {
+  margin-top: 10px !important;
+}
+.system-admin-v105 .admin46-command-search-input {
+  min-height: 42px !important;
+  padding-left: 48px !important;
+  padding-right: 40px !important;
+  border-radius: 9px !important;
+  background: #0d1318 !important;
+  border-color: #2d3a43 !important;
+  font-size: 13px !important;
+}
+.system-admin-v105 .admin46-search-icon {
+  left: 17px !important;
+  z-index: 1;
+}
+.system-admin-v105 .admin46-layout {
+  grid-template-columns: 222px minmax(0, 1fr) !important;
+  gap: 10px !important;
+}
+.system-admin-v105 .admin46-nav {
+  border-radius: 10px !important;
+  border-color: #26323a !important;
+  background: #10171d !important;
+  box-shadow: none !important;
+  padding: 8px !important;
+  max-height: calc(100vh - 112px) !important;
+}
+.system-admin-v105 .admin46-nav > div:first-child {
+  padding: 4px 4px 7px !important;
+  margin-bottom: 7px !important;
+}
+.system-admin-v105 .admin46-nav-button {
+  min-height: 29px !important;
+  border-radius: 6px !important;
+  padding: 6px 7px !important;
+  font-size: 10px !important;
+  background: transparent !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+}
+.system-admin-v105 .admin46-nav-button:hover {
+  background: rgba(255,255,255,.035) !important;
+}
+.system-admin-v105 .admin46-nav-button.is-active {
+  background: transparent !important;
+  border-color: transparent !important;
+  color: #fff !important;
+  box-shadow: inset 2px 0 0 var(--admin-copper) !important;
+}
+.system-admin-v105 .admin46-mini-action {
+  min-height: 29px !important;
+  border-radius: 6px !important;
+  background: transparent !important;
+  border-color: #2d3a43 !important;
+  box-shadow: none !important;
+}
+.system-admin-v105 .admin46-content {
+  border-radius: 10px !important;
+  border-color: #26323a !important;
+  background: #0f151a !important;
+  box-shadow: none !important;
+  padding: 10px !important;
+}
+.system-admin-v105 .admin46-pagebar {
+  padding-bottom: 8px !important;
+  margin-bottom: 8px !important;
+}
+.system-admin-v105 .admin46-pagebar h2 {
+  font-size: 17px !important;
+}
+.system-admin-v105 .admin46-pagebar p {
+  font-size: 10.5px !important;
+}
+.system-admin-v105 .admin46-mobile-current,
+.system-admin-v105 .admin46-mobile-section-card,
+.system-admin-v105 .admin46-mobile-section-panel {
+  border-radius: 10px !important;
+  box-shadow: none !important;
+}
+.system-admin-v105 .admin46-mobile-quick {
+  border-radius: 7px !important;
+  min-height: 34px !important;
+  box-shadow: none !important;
+}
+.system-admin-v105 [class*="bg-gradient"],
+.system-admin-v105 [class*="shadow-2xl"],
+.system-admin-v105 [class*="shadow-lg"] {
+  box-shadow: none !important;
+}
+@media (max-width: 1023px) {
+  .system-admin-v105 .admin46-topbar {
+    padding: 10px !important;
+  }
+  .system-admin-v105 .admin46-content {
+    padding: 8px !important;
+  }
+}
+
+/* 15.0.105 drawer polish: keep menu search text off the icon and prevent name clipping */
+.app-drawer-readable .drawer-search-input {
+  padding-left: 38px !important;
+  padding-right: 14px !important;
+  min-height: 38px !important;
+}
+.app-drawer-readable .drawer-username {
+  display: block;
+  max-width: 235px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+@media (max-width: 420px) {
+  .app-drawer-readable .drawer-username {
+    max-width: 185px;
+  }
+}

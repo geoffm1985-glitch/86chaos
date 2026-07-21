@@ -1,26 +1,26 @@
 {
   "name": "86chaos",
-  "version": "15.0.104",
+  "version": "15.0.105",
   "private": true,
   "dependencies": {
-    "ajv": "^8.20.0",
-    "ajv-keywords": "^5.1.0",
     "firebase": "^10.8.1",
     "firebase-admin": "^12.1.1",
     "leaflet": "^1.9.4",
     "lucide-react": "^0.344.0",
-    "pdf-lib": "^1.17.1",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-leaflet": "^4.2.1",
-    "react-scripts": "5.0.1"
+    "react-scripts": "5.0.1",
+    "pdf-lib": "^1.17.1",
+    "ajv": "^8.20.0",
+    "ajv-keywords": "^5.1.0"
   },
   "scripts": {
     "start": "react-scripts start",
     "build": "react-scripts build",
     "retention:setup": "node scripts/setup-production-retention.js",
-    "test": "node scripts/validate-15-0-104.js",
-    "test:ci": "node scripts/validate-15-0-104.js",
+    "test": "node scripts/validate-15-0-105.js",
+    "test:ci": "node scripts/validate-15-0-105.js",
     "validate:auth-hotfix": "node scripts/validate-auth-hotfix.js",
     "vercel:install": "npm ci --omit=optional --no-audit --no-fund --progress=false",
     "deploy:check": "npm ci --omit=optional --no-audit --no-fund --progress=false && npm test && NODE_OPTIONS=--max-old-space-size=4096 GENERATE_SOURCEMAP=false DISABLE_ESLINT_PLUGIN=true npm run build",
@@ -43,9 +43,5 @@
   "engines": {
     "node": "24.x",
     "npm": ">=10"
-  },
-  "devDependencies": {
-    "@playwright/test": "^1.61.1",
-    "dotenv": "^17.4.2"
   }
 }
