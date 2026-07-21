@@ -1491,7 +1491,6 @@ What I clicked / expected:
     { id: 'recipes', label: 'Recipes', Icon: BookOpen, route: 'recipes', feature: 'recipes' },
     { id: 'menu-intelligence', label: 'Menu Intelligence', Icon: AlertTriangle, route: 'menu-intelligence', feature: 'inventory' },
     { id: 'financials', label: 'Financials', Icon: DollarSign, route: 'financials', adminOrPerm: 'sales' },
-    { id: 'sales', label: 'Sales Import', Icon: TrendingUp, route: 'sales', adminOrPerm: 'sales' },
     { id: 'back-office', label: 'Back Office', Icon: ClipboardList, route: 'back-office', adminOrPerm: 'financials' },
     { id: 'maintenance', label: 'Maintenance', Icon: AlertTriangle, route: 'maintenance' },
     { id: 'reminders', label: 'Reminders', Icon: Bell, route: 'reminders' },
@@ -2488,8 +2487,66 @@ return (
         @media (max-width: 899px) {
           .reference-app-v151 .reference-sidebar { display: none !important; }
           .reference-app-v151 .native-mobile-bottom-nav { display: grid !important; }
-          .reference-app-v151 .app-header.native-command-bar { height: 58px !important; }
-          .reference-app-v151 .app-content-shell { width: 100% !important; margin-left: 0 !important; padding: 12px 12px 92px !important; }
+          .reference-app-v151 .app-header.native-command-bar {
+            height: 58px !important;
+            padding: 0 10px !important;
+            display: grid !important;
+            grid-template-columns: minmax(0, 1fr) auto !important;
+            gap: 8px !important;
+            overflow: hidden !important;
+          }
+          .reference-app-v151 .native-command-left { gap: 8px !important; min-width: 0 !important; overflow: hidden !important; }
+          .reference-app-v151 .reference-tool-dropdown {
+            min-width: 0 !important;
+            width: auto !important;
+            max-width: 46vw !important;
+            padding: 0 !important;
+            border: 0 !important;
+            background: transparent !important;
+            gap: 7px !important;
+          }
+          .reference-app-v151 .reference-tool-dropdown svg:last-child { display: none !important; }
+          .reference-app-v151 .reference-tool-dropdown div { min-width: 0 !important; }
+          .reference-app-v151 .reference-tool-dropdown strong { display: block !important; overflow: hidden !important; text-overflow: ellipsis !important; white-space: nowrap !important; font-size: 12px !important; }
+          .reference-app-v151 .reference-tool-dropdown small { font-size: 9px !important; }
+          .reference-app-v151 .reference-command-search {
+            width: 34px !important;
+            min-width: 34px !important;
+            height: 34px !important;
+            padding: 0 !important;
+            justify-content: center !important;
+            border: 0 !important;
+            background: transparent !important;
+          }
+          .reference-app-v151 .reference-command-search input { display: none !important; }
+          .reference-app-v151 .reference-command-search kbd { display: none !important; }
+          .reference-app-v151 .native-command-actions { gap: 6px !important; min-width: 0 !important; }
+          .reference-app-v151 .reference-top-action {
+            width: 34px !important;
+            height: 34px !important;
+            min-width: 34px !important;
+            padding: 0 !important;
+            justify-content: center !important;
+            border: 0 !important;
+            background: transparent !important;
+          }
+          .reference-app-v151 .reference-top-action span { display: none !important; }
+          .reference-app-v151 .native-icon-button { width: 34px !important; min-width: 34px !important; height: 34px !important; min-height: 34px !important; border: 0 !important; background: transparent !important; }
+          .reference-app-v151 .reference-profile-button {
+            width: 34px !important;
+            min-width: 34px !important;
+            height: 34px !important;
+            padding: 0 !important;
+            border: 0 !important;
+            background: transparent !important;
+          }
+          .reference-app-v151 .reference-profile-button .avatar { width: 32px !important; height: 32px !important; font-size: 11px !important; }
+          .reference-app-v151 .app-content-shell { width: 100% !important; margin-left: 0 !important; padding: 12px 12px 96px !important; overflow-x: hidden !important; }
+          .reference-app-v151 .app-content-shell h1,
+          .reference-app-v151 .app-content-shell .text-4xl,
+          .reference-app-v151 .app-content-shell .text-3xl { font-size: 1.55rem !important; line-height: 1.8rem !important; letter-spacing: .12em !important; }
+          .reference-app-v151 .app-content-shell .grid { grid-template-columns: 1fr !important; }
+          .reference-app-v151 .app-content-shell button { max-width: 100% !important; }
         }
         .reference-sidebar {
           position: fixed;
@@ -2564,6 +2621,9 @@ return (
         .reference-profile-button .avatar { width:36px; height:36px; border-radius:50%; border:1px solid var(--ref151-copper); display:flex; align-items:center; justify-content:center; font-weight:900; color:#fff; }
         .reference-profile-button strong { font-size: 13px; color:#fff; display:block; }
         .reference-profile-button small { color: var(--ref151-muted); display:block; font-size: 10px; margin-top:2px; }
+        .reference-app-v151 .voice-floating-dock,
+        .reference-app-v151 .voice-command-dock,
+        .reference-app-v151 .quick-action-dock { display: none !important; }
         .reference-app-v151 .native-version-pill { display:none !important; }
         .reference-app-v151 .native-icon-button,
         .reference-app-v151 .native-menu-button,
@@ -2671,12 +2731,11 @@ return (
 
       <header className="app-header native-command-bar sticky top-0 z-40 border-b flex items-center justify-between px-3 sm:px-4 bg-[#0F1318]/96 backdrop-blur-md border-[#202A31]">
         <div className="native-command-left min-w-0 flex items-center gap-3">
-          <button type="button" onClick={() => setIsMenuOpen(true)} className="native-icon-button native-menu-button md:hidden" title="Open menu"><Menu size={20}/>{hasAnyMenuAlert && <span className="native-alert-dot"></span>}</button>
           <button type="button" onClick={() => availableWorkspaces.length > 1 && !ghostTenant && !isDemoMode ? setIsWorkspaceSwitcherOpen(true) : null} className="reference-tool-dropdown" title="Active workspace">
             <Package size={18}/><div><strong>{liveAppUser?.restaurantName || displayClientData?.name || '86 Chaos'}</strong><small>Workspace</small></div><ChevronRight size={14}/>
           </button>
           <button type="button" className="reference-command-search" onClick={() => setIsGlobalSearchOpen(true)}>
-            <Search size={17}/><input readOnly value="" placeholder="Search or run command..."/><kbd>⌘ K</kbd>
+            <Search size={17}/><input readOnly value="" placeholder="Search or run command..."/>
           </button>
         </div>
         <div className="native-command-actions flex items-center gap-2 flex-shrink-0">
@@ -2712,7 +2771,6 @@ return (
       <GlobalSearchModal isOpen={isGlobalSearchOpen} onClose={() => setIsGlobalSearchOpen(false)} queryText={globalSearchQuery} setQueryText={setGlobalSearchQuery} users={displayUsers} events={events} shifts={shifts} recipes={recipes} inventoryItems={inventoryItems} maintenanceLogs={maintenanceLogs} setActiveTab={setActiveTab} />
       <KitchenTVMode isOpen={isKitchenTVOpen} onClose={() => setIsKitchenTVOpen(false)} shifts={shifts} events={events} prepItems={prepItems} maintenanceLogs={maintenanceLogs} inventoryItems={inventoryItems} />
       <UndoBar undoItem={undoItem} clearUndo={() => setUndoItem(null)} />
-      <VoiceCommandDock appUser={liveAppUser} inventoryItems={inventoryItems} recipes={recipes} users={displayUsers} prepItems={prepItems} tasks={tasks} events={events} maintenanceLogs={maintenanceLogs} menuDependencies={menuDependencies} clientFeatures={displayClientFeatures} clientData={displayClientData} setActiveTab={setActiveTab} setCurrentDate={setCurrentDate} setScheduleSubTabTarget={setVoiceScheduleSubTabTarget} setHelpSearchTarget={setVoiceHelpSearchTarget} setRecipeTarget={setVoiceRecipeTarget} addToast={addToast} />
 
       <Modal isOpen={problemModal.open} onClose={() => !isSubmittingProblem && setProblemModal({ open: false, title: '', message: '', category: 'Bug / Error' })} title="Report Problem" sizeClass="max-w-3xl">
         <form onSubmit={submitProblemReport} className="space-y-4">
