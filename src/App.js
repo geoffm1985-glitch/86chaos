@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
-import { AlertTriangle, Bell, BookOpen, Bug, CalendarDays, ChevronLeft, ChevronRight, ClipboardList, Clock, DollarSign, HelpCircle, Home, Loader2, Menu, MessageSquare, Mic, Moon, MoreHorizontal, Package, Rocket, Search, Settings, Shield, Send, Users, X } from 'lucide-react';
+import { AlertTriangle, Bell, BookOpen, Bug, CalendarDays, ChevronLeft, ChevronRight, ClipboardList, Clock, DollarSign, HelpCircle, Home, Loader2, Menu, MessageSquare, Mic, Moon, MoreHorizontal, Package, Rocket, Search, Settings, Shield, Send, TrendingUp, Users, X } from 'lucide-react';
 import { addDoc, collection, doc, onSnapshot, updateDoc } from 'firebase/firestore';
 import { getToken, onMessage } from 'firebase/messaging';
 import 'leaflet/dist/leaflet.css';
