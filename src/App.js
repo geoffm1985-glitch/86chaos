@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
-import { AlertTriangle, Bell, BookOpen, Bug, CalendarDays, ChevronLeft, ChevronRight, ClipboardList, Clock, DollarSign, HelpCircle, Home, Loader2, Menu, MessageSquare, Mic, Package, Rocket, Search, Settings, Shield, Send, Users, X } from 'lucide-react';
+import { AlertTriangle, Bell, BookOpen, Bug, CalendarDays, ChevronLeft, ChevronRight, ClipboardList, Clock, DollarSign, HelpCircle, Home, Loader2, Menu, MessageSquare, Mic, Moon, MoreHorizontal, Package, Rocket, Search, Settings, Shield, Send, Users, X } from 'lucide-react';
 import { addDoc, collection, doc, onSnapshot, updateDoc } from 'firebase/firestore';
 import { getToken, onMessage } from 'firebase/messaging';
 import 'leaflet/dist/leaflet.css';
@@ -2670,7 +2670,7 @@ return (
           </button>
         </div>
         <div className="native-command-actions flex items-center gap-2 flex-shrink-0">
-          <button type="button" onClick={() => setActiveTab('ai')} className="reference-top-action"><Mic size={17}/> <span className="hidden sm:inline">86Voice Command</span></button>
+          <button type="button" onClick={() => setActiveTab('ai-tools')} className="reference-top-action"><Mic size={17}/> <span className="hidden sm:inline">86Voice Command</span></button>
           <button type="button" onClick={() => setActiveTab('messages')} className="native-icon-button" title="Messages"><MessageSquare size={18}/>{hasUnreadMessages && <span className="native-alert-dot"></span>}</button>
           <button type="button" onClick={() => openProblemReport({ title: 'Manual Problem Report', message: `Page: ${activeTabState}`, category: 'Bug / Error' })} className="native-icon-button" title="Report a problem"><Bug size={17}/></button>
           <button onClick={() => setIsMenuOpen(true)} className="native-icon-button native-menu-button relative" title="Open menu"><Menu size={21} />{hasAnyMenuAlert && <span className="native-alert-dot"></span>}</button>

@@ -1,6 +1,6 @@
 {
   "name": "86chaos",
-  "version": "15.1.3",
+  "version": "15.1.4",
   "private": true,
   "dependencies": {
     "firebase": "^10.8.1",
@@ -19,8 +19,8 @@
     "start": "react-scripts start",
     "build": "react-scripts build",
     "retention:setup": "node scripts/setup-production-retention.js",
-    "test": "node scripts/validate-15-1-3.js",
-    "test:ci": "node scripts/validate-15-1-3.js",
+    "test": "node scripts/validate-15-1-4.js",
+    "test:ci": "node scripts/validate-15-1-4.js",
     "validate:auth-hotfix": "node scripts/validate-auth-hotfix.js",
     "vercel:install": "npm ci --omit=optional --no-audit --no-fund --progress=false",
     "deploy:check": "npm ci --omit=optional --no-audit --no-fund --progress=false && npm test && NODE_OPTIONS=--max-old-space-size=4096 GENERATE_SOURCEMAP=false DISABLE_ESLINT_PLUGIN=true npm run build",
