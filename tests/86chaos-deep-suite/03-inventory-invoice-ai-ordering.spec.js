@@ -1,4 +1,4 @@
-// 86 Chaos 15.0.95 Inventory, invoice scanner, menu intelligence, and AI ordering smoke/deep checks.
+// 86 Chaos 15.0.96 Inventory, invoice scanner, menu intelligence, and AI ordering smoke/deep checks.
 const { test, expect } = require('@playwright/test');
 const {
   RUN_ID,

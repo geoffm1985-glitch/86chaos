@@ -1,9 +1,12 @@
 {
-  "version": "15.0.96",
-  "name": "86 Chaos 15.0.96 Help Center Safety + Test Route Wait Fix",
-  "releasedAt": "2026-07-20",
-  "label": "15.0.96 Help Center Safety + Test Route Wait Fix",
-  "build": "15.0.96",
-  "updatedAt": "2026-07-20T00:00:00.000Z",
-  "notes": "Help Center safety hotfix: non-super-admin Help Center and training manual views no longer surface internal System Administrator, Forensics, Backup Center, Security Center, QuickBooks integration, Python automation, or pay-rate setup material. System Admin route gate remains generic for unauthorized accounts."
+  "version": "15.0.98",
+  "name": "86 Chaos 15.0.98 Push Duplicate Browser Token Hotfix",
+  "releasedAt": "2026-07-21T04:22:00.000Z",
+  "label": "15.0.98 Push Duplicate Browser Token Hotfix",
+  "build": "15.0.98",
+  "notes": [
+    "Keeps the 15.0.97 service-worker duplicate-notification protection for Android and desktop browsers.",
+    "Stops reminder dispatch from sending both the current fcmToken and old legacy browser tokens to the same user.",
+    "Marks newly synced browser push tokens as canonical so future dispatches use one current token per user instead of historical token piles."
+  ]
 }

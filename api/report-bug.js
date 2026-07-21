@@ -92,19 +92,22 @@ async function sendSuperAdminPush(app, db, report, reporter) {
   const restaurant = cleanText(report.restaurantName || report.restaurantId || 'Unknown workspace', 120);
   const reporterName = cleanText(reporter?.name || report.user || report.userEmail || 'A user', 80);
   const snippet = cleanText(report.rawMessage || report.message || '', 160);
+  const title = `86 Chaos bug report: ${category}`;
+  const body = `${reporterName} • ${restaurant}: ${snippet || 'Open System Administrator → Support to review.'}`.slice(0, 240);
+  const tag = `86chaos-bug-report:${String(report.reportId || category || Date.now())}`.replace(/[^A-Za-z0-9_.:-]/g, '_').slice(0, 120);
   const payload = {
-    notification: {
-      title: `86 Chaos bug report: ${category}`,
-      body: `${reporterName} • ${restaurant}: ${snippet || 'Open System Administrator → Support to review.'}`.slice(0, 240)
-    },
+    notification: { title, body },
     data: {
       type: 'bug_report',
       reportId: String(report.reportId || ''),
       restaurantId: String(report.restaurantId || ''),
       category,
       route: 'godmode',
-      targetTab: 'support'
+      targetTab: 'support',
+      click_action: '/?tab=godmode',
+      notificationTag: tag
     },
+    webpush: { notification: { tag, renotify: false, icon: '/app-icon.png', badge: '/app-icon.png' }, fcmOptions: { link: '/?tab=godmode' } },
     tokens: tokenRecords.map(record => record.token)
   };
 

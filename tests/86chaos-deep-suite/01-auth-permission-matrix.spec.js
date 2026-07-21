@@ -1,4 +1,4 @@
-// 86 Chaos 15.0.95 Auth + Permission Matrix
+// 86 Chaos 15.0.96 Auth + Permission Matrix
 // Checks owner/admin/staff/system-admin boundaries through the real UI.
 const { test, expect } = require('@playwright/test');
 const {

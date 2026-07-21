@@ -1,4 +1,4 @@
-// 86 Chaos 15.0.95 Voice Command surface checks.
+// 86 Chaos 15.0.96 Voice Command surface checks.
 // Avoids triggering the browser microphone permission prompt unless explicitly enabled.
 const { test, expect } = require('@playwright/test');
 const {

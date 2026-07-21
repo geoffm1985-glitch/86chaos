@@ -6,19 +6,37 @@ function getCronSecret(req) {
   return auth || String(req.headers['x-cron-secret'] || '').trim();
 }
 
-function collectTokens(user = {}) {
+function normalizeToken(token) {
+  return String(token || '').trim();
+}
+
+function collectLegacyTokens(user = {}) {
   const tokens = new Set();
-  if (user.fcmToken) tokens.add(user.fcmToken);
-  if (Array.isArray(user.fcmTokens)) user.fcmTokens.forEach(t => t && tokens.add(t));
-  if (Array.isArray(user.pushTokens)) user.pushTokens.forEach(t => t && tokens.add(typeof t === 'string' ? t : t?.token));
+  if (Array.isArray(user.fcmTokens)) user.fcmTokens.forEach(t => {
+    const token = normalizeToken(t);
+    if (token) tokens.add(token);
+  });
+  if (Array.isArray(user.pushTokens)) user.pushTokens.forEach(t => {
+    const token = normalizeToken(typeof t === 'string' ? t : t?.token);
+    if (token) tokens.add(token);
+  });
   if (user.pushDevices && typeof user.pushDevices === 'object') {
     Object.values(user.pushDevices).forEach(device => {
-      if (typeof device === 'string') tokens.add(device);
-      if (device?.token) tokens.add(device.token);
-      if (device?.fcmToken) tokens.add(device.fcmToken);
+      const token = normalizeToken(typeof device === 'string' ? device : (device?.token || device?.fcmToken));
+      if (token) tokens.add(token);
     });
   }
   return [...tokens].filter(Boolean);
+}
+
+function collectTokens(user = {}) {
+  // 15.0.98 duplicate-push guard:
+  // The app now treats users.fcmToken as the current canonical device token.
+  // Older fields like fcmTokens/pushTokens/pushDevices can contain stale tokens from prior browser installs
+  // or service-worker repairs. Sending every historical token can create duplicate desktop/browser alerts.
+  const primary = normalizeToken(user.fcmToken);
+  if (primary) return [primary];
+  return collectLegacyTokens(user);
 }
 
 
@@ -29,6 +47,35 @@ function norm(value = '') {
 function cleanId(value = '') {
   return String(value || '').replace(/[^A-Za-z0-9_-]/g, '_').slice(0, 140);
 }
+
+function hashForNotificationTag(value = '') {
+  let hash = 0;
+  const text = String(value || '');
+  for (let i = 0; i < text.length; i += 1) hash = ((hash << 5) - hash + text.charCodeAt(i)) | 0;
+  return Math.abs(hash).toString(36);
+}
+
+function notificationTag(prefix, ...parts) {
+  const clean = [prefix, ...parts]
+    .map(part => cleanId(String(part || '')))
+    .filter(Boolean)
+    .join(':')
+    .slice(0, 120);
+  return clean || `${prefix}:${hashForNotificationTag(parts.join('|'))}`;
+}
+
+function webPushOptions(tag, link = '/') {
+  return {
+    notification: {
+      tag,
+      renotify: false,
+      icon: '/app-icon.png',
+      badge: '/app-icon.png'
+    },
+    fcmOptions: { link }
+  };
+}
+
 
 function memberDocId(uid, restaurantId) {
   return `${cleanId(uid)}_${cleanId(restaurantId)}`.slice(0, 240);
@@ -274,17 +321,19 @@ module.exports = async function handler(req, res) {
           return;
         }
 
+        const title = reminder.shared ? '86 Chaos Shared Reminder' : '86 Chaos Reminder';
+        const body = reminder.shared && reminder.createdByName ? `${reminder.createdByName}: ${reminder.title || 'Reminder'}` : (reminder.title || 'Personal reminder');
+        const tag = notificationTag('86chaos-reminder', docSnap.id, dispatchKey || reminder.scheduledAt || body);
         const payload = {
-          notification: {
-            title: reminder.shared ? '86 Chaos Shared Reminder' : '86 Chaos Reminder',
-            body: reminder.shared && reminder.createdByName ? `${reminder.createdByName}: ${reminder.title || 'Reminder'}` : (reminder.title || 'Personal reminder')
-          },
+          notification: { title, body },
           data: {
             type: 'personal_reminder',
-            reminderId: docSnap.id,
-            restaurantId: reminder.restaurantId || '',
-            click_action: '/?tab=reminders'
+            reminderId: String(docSnap.id),
+            restaurantId: String(reminder.restaurantId || ''),
+            click_action: '/?tab=reminders',
+            notificationTag: tag
           },
+          webpush: webPushOptions(tag, '/?tab=reminders'),
           tokens
         };
 
@@ -401,18 +450,20 @@ module.exports = async function handler(req, res) {
 
         const typeKey = String(reminder.reminderType || reminder.type || '').toLowerCase();
         const isOrder = typeKey === 'orderreminder' || typeKey === 'order_reminder';
+        const title = isOrder ? '86 Chaos Order Reminder' : '86 Chaos Event Reminder';
+        const body = isOrder ? `Order reminder for ${reminder.eventTitle || 'event'}` : `${reminder.eventTitle || 'Event'}${reminder.eventTime ? ` at ${reminder.eventTime}` : ''}`;
+        const tag = notificationTag('86chaos-event-reminder', docSnap.id, claim.dispatchKey || reminder.scheduledAt || body);
         const payload = {
-          notification: {
-            title: isOrder ? '86 Chaos Order Reminder' : '86 Chaos Event Reminder',
-            body: isOrder ? `Order reminder for ${reminder.eventTitle || 'event'}` : `${reminder.eventTitle || 'Event'}${reminder.eventTime ? ` at ${reminder.eventTime}` : ''}`
-          },
+          notification: { title, body },
           data: {
             type: isOrder ? 'event_order_reminder' : 'event_reminder',
             eventReminderId: String(docSnap.id),
             eventId: String(reminder.eventId || ''),
             restaurantId: String(reminder.restaurantId || ''),
-            click_action: '/?tab=events'
+            click_action: '/?tab=events',
+            notificationTag: tag
           },
+          webpush: webPushOptions(tag, '/?tab=events'),
           tokens
         };
 

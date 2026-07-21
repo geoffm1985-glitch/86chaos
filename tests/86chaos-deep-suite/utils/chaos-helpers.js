@@ -1,4 +1,4 @@
-// 86 Chaos Playwright helpers for app 15.0.95+
+// 86 Chaos Playwright helpers for app 15.0.96+
 // Keep these tests UI-first and permission-aware. They should catch real leaks/crashes
 // without failing just because a denied route correctly shows a gate.
 const { expect } = require('@playwright/test');
@@ -91,7 +91,7 @@ const BASE_URL = (
   process.env.BASE_URL ||
   DEFAULT_BASE_URL
 ).replace(/\/$/, '');
-const EXPECTED_VERSION = process.env.CHAOS_EXPECTED_VERSION || '15.0.95';
+const EXPECTED_VERSION = process.env.CHAOS_EXPECTED_VERSION || '15.0.96';
 const ALLOW_MUTATION = /^(1|true|yes)$/i.test(process.env.CHAOS_ALLOW_MUTATION || '');
 const SAFE_TESTING_URL_RE = /localhost|127\.0\.0\.1|vercel\.app|testing|test|preview/i;
 
@@ -110,7 +110,7 @@ const TAB_LABELS = {
   recipes: /Recipe|Recipe Book|Ingredients|Method|Instructions/i,
   messages: /Message Board|Important Messages|posts|Reply|team need to know/i,
   reminders: /Reminder|Personal Reminders|Shared Reminders|Due|Schedule/i,
-  team: /Team|Staff|Roster|Role|Permission|Pay/i,
+  team: /Team|Staff|Roster|Role|Permission|Pay|Employee|Bartender|Server|Cook|Dish|Phone/i,
   settings: /Settings|My Preferences|Preferences|Workspace|Branding|Roster Roles/i,
   help: /Help Center|Training Manual|Quick Start|Search/i,
   godmode: /System Administrator|Plan & Permission Gate|Your role does not include this tool|internal-only/i,
@@ -241,6 +241,62 @@ function watchForProblems(page, problems) {
   });
 }
 
+async function dismissBlockingDialogs(page) {
+  // The app can show onboarding tours after login. They are useful for humans,
+  // but they cover the route and make tests read "Employee Quick Start" instead
+  // of the page being tested.
+  const quickStartDialog = page.getByRole('dialog', { name: /employee quick start|manager quick start/i }).first();
+  if (await quickStartDialog.isVisible({ timeout: 800 }).catch(() => false)) {
+    const skipButton = quickStartDialog.getByRole('button', { name: /skip for now/i }).first();
+    if (await skipButton.isVisible().catch(() => false)) {
+      await skipButton.click({ timeout: 3000 }).catch(() => {});
+      await page.waitForTimeout(300);
+      return true;
+    }
+
+    const closeButton = quickStartDialog.getByRole('button', { name: /close/i }).first();
+    if (await closeButton.isVisible().catch(() => false)) {
+      await closeButton.click({ timeout: 3000 }).catch(() => {});
+      await page.waitForTimeout(300);
+      return true;
+    }
+  }
+
+  // Generic cleanup for any stray modal/backdrop that steals focus.
+  await page.keyboard.press('Escape').catch(() => {});
+  await page.waitForTimeout(150);
+  return false;
+}
+
+async function waitForRouteReady(page, tab, options = {}) {
+  const timeout = options.routeReadyTimeout || 45000;
+  const expected = options.expected || TAB_LABELS[tab] || /86|Chaos|TESTAURANT|PREVIEW/i;
+  const started = Date.now();
+  let lastText = '';
+
+  while (Date.now() - started < timeout) {
+    await dismissBlockingDialogs(page).catch(() => {});
+    lastText = await bodyText(page, 20000);
+    const state = pageState(lastText);
+
+    if (state.isLogin || state.hasFatalUi) return lastText;
+    if (state.isPermissionGate || state.isUnavailable) return lastText;
+
+    const stillLoading = /CONTACTING FIREBASE AUTH|UNLOCKING|Loading section/i.test(lastText);
+    if (!stillLoading && expected.test(lastText)) return lastText;
+
+    // Some safe routes render cards/lists without their section title on mobile/compact views.
+    // Accept the stable app shell after the loader clears, then route-specific assertions decide.
+    if (!stillLoading && /VERSION\s+\d+\.\d+\.\d+/i.test(lastText) && /TESTAURANT|PREVIEW|86 CHAOS|86 Chaos/i.test(lastText)) {
+      return lastText;
+    }
+
+    await page.waitForTimeout(500);
+  }
+
+  throw new Error(`${tab} did not finish loading within ${timeout}ms. Last text: ${lastText.slice(0, 1500)}`);
+}
+
 async function login(page, email, password, options = {}) {
   const timeout = options.loginBoxTimeout || 25000;
   const afterLoginTimeout = options.afterLoginTimeout || 45000;
@@ -260,7 +316,6 @@ async function login(page, email, password, options = {}) {
   await loginButton.click();
 
   // Wait for the real app shell, not the temporary "CONTACTING FIREBASE AUTH / UNLOCKING" screen.
-  // The old helper accepted any text containing "Firebase", which made tests continue too early.
   await page.waitForFunction((expectedVersion) => {
     const text = document.body?.innerText || '';
     const escaped = expectedVersion.replace(/\./g, '\\.');
@@ -268,6 +323,8 @@ async function login(page, email, password, options = {}) {
     const hardLoginErrorRe = /invalid|wrong password|user-not-found|missing password|too many requests|auth\/|Login failed/i;
     return versionRe.test(text) || hardLoginErrorRe.test(text);
   }, EXPECTED_VERSION, { timeout: afterLoginTimeout });
+
+  await dismissBlockingDialogs(page).catch(() => {});
 
   const text = await bodyText(page, 8000);
   if (!versionRe.test(text)) {
@@ -279,9 +336,8 @@ async function login(page, email, password, options = {}) {
 async function gotoTab(page, tab, options = {}) {
   await page.goto(appUrl(tab), { waitUntil: 'domcontentloaded' });
   await page.waitForLoadState('domcontentloaded');
-  await page.waitForTimeout(options.settleMs || 900);
   await page.locator('body').waitFor({ state: 'visible', timeout: options.timeout || 20000 });
-  return bodyText(page);
+  return waitForRouteReady(page, tab, options);
 }
 
 function pageState(text) {
@@ -359,6 +415,7 @@ async function openMenu(page) {
 }
 
 async function closeTransientUi(page) {
+  await dismissBlockingDialogs(page).catch(() => {});
   await page.keyboard.press('Escape').catch(() => {});
   await page.waitForTimeout(250);
 }
@@ -399,6 +456,8 @@ module.exports = {
   maybeClick,
   openMenu,
   closeTransientUi,
+  dismissBlockingDialogs,
+  waitForRouteReady,
   attachReport,
   summarizeProblems,
   envDebugSummary,

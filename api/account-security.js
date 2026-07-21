@@ -205,7 +205,13 @@ async function bestEffortPush(app, targetUser = {}, title = '86 Chaos Security A
   const token = targetUser.fcmToken || targetUser.pushToken || targetUser.messagingToken || targetUser.deviceToken;
   if (!token) return false;
   try {
-    await app.messaging().send({ token, notification: { title, body } });
+    const tag = `86chaos-account-security:${String(targetUser.id || targetUser.email || 'user')}:${String(title).slice(0, 60)}`.replace(/[^A-Za-z0-9_.:-]/g, '_').slice(0, 120);
+    await app.messaging().send({
+      token,
+      notification: { title, body },
+      data: { type: 'account_security', click_action: '/?tab=settings', notificationTag: tag },
+      webpush: { notification: { tag, renotify: false, icon: '/app-icon.png', badge: '/app-icon.png' }, fcmOptions: { link: '/?tab=settings' } }
+    });
     return true;
   } catch (_) { return false; }
 }

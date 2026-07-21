@@ -1,4 +1,4 @@
-// 86 Chaos 15.0.95 full financials + schedule smoke/deep pass.
+// 86 Chaos 15.0.96 full financials + schedule smoke/deep pass.
 // Default mode is safe/non-mutating. Set CHAOS_ALLOW_MUTATION=1 only on testing/local if you want optional clicks.
 const { test, expect } = require('@playwright/test');
 const {
@@ -39,7 +39,7 @@ test.describe('86 Chaos Full Financials + Schedule Current Suite', () => {
     expect(financialText, 'Financials should still include the core finance buckets').toMatch(/Daily Close|Sales|Labor|Tips|P&L|Reports|Financial/i);
 
     const backOfficeText = routeResults.find((r) => r.tab === 'back-office')?.text || '';
-    expect(backOfficeText, 'Back Office should remain review/export oriented for QuickBooks Phase 3/15.0.95').toMatch(/Back Office|QuickBooks|Accountant|Approval|Document|Owner Summary/i);
+    expect(backOfficeText, 'Back Office should remain review/export oriented for QuickBooks Phase 3/15.0.96').toMatch(/Back Office|QuickBooks|Accountant|Approval|Document|Owner Summary/i);
     expect(backOfficeText, 'QuickBooks must not claim automatic live posting').not.toMatch(/auto.?post|automatic live posting|posts automatically/i);
 
     const scheduleText = routeResults.find((r) => r.tab === 'schedule')?.text || '';

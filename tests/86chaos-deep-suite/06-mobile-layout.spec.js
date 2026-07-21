@@ -1,4 +1,4 @@
-// 86 Chaos 15.0.95 Mobile layout checks.
+// 86 Chaos 15.0.96 Mobile layout checks.
 const { test, expect, devices } = require('@playwright/test');
 const {
   RUN_ID,

@@ -1,4 +1,4 @@
-// 86 Chaos 15.0.95 multi-workspace/multi-location safety checks.
+// 86 Chaos 15.0.96 multi-workspace/multi-location safety checks.
 const { test, expect } = require('@playwright/test');
 const {
   RUN_ID,
