@@ -7600,9 +7600,27 @@ Type RESTORE to continue.`);
     </div>
   );
 
+  const activeAdminGroup = adminTabGroups.find(group => group.title === activeAdminTab.group) || adminTabGroups[0];
+  const AdminSectionMap = () => activeAdminGroup ? (
+    <section className="admin106-section-map" aria-label="System Administrator section map">
+      <div className="admin106-section-map-head">
+        <span>{activeAdminGroup.title}</span>
+        <strong>{activeAdminGroup.tabs.length} tool{activeAdminGroup.tabs.length === 1 ? '' : 's'}</strong>
+      </div>
+      <div className="admin106-section-map-grid">
+        {activeAdminGroup.tabs.map(tab => (
+          <button key={tab.id} type="button" onClick={() => selectAdminTab(tab.id)} className={subTab === tab.id ? 'is-active' : ''}>
+            <span>{tab.short || tab.label}</span>
+            <small>{tab.intent}</small>
+          </button>
+        ))}
+      </div>
+    </section>
+  ) : null;
+
 
   return (
-    <div className="admin46-shell system-admin-v105 max-w-[1500px] mx-auto pb-24 px-2 sm:px-4 lg:px-5 animate-[slideIn_0.2s_ease-out]">
+    <div className="admin46-shell system-admin-v105 system-admin-v106 max-w-[1500px] mx-auto pb-24 px-2 sm:px-4 lg:px-5 animate-[slideIn_0.2s_ease-out]">
       <Modal isOpen={!!createdWorkspaceLogin} onClose={() => setCreatedWorkspaceLogin(null)} title="Workspace Login Created">
         {createdWorkspaceLogin && <div className="space-y-4">
           <div className="bg-emerald-900/10 border border-emerald-900/40 rounded-xl p-3 text-xs font-bold text-emerald-200">This owner login is shown one time only. Copy, print, email, or text it before closing.</div>
@@ -8123,17 +8141,20 @@ Type RESTORE to continue.`);
 
 {/* --- TAB: OVERVIEW --- */}
       {subTab !== 'overview' && (
-        <div className="admin46-pagebar">
-          <div className="min-w-0">
-            <div className="admin46-eyebrow">{activeAdminTab.group}</div>
-            <h2>{activeAdminTab.label}</h2>
-            <p>{activeAdminTab.intent}</p>
+        <>
+          <div className="admin46-pagebar admin106-pagebar">
+            <div className="min-w-0">
+              <div className="admin46-eyebrow">{activeAdminTab.group}</div>
+              <h2>{activeAdminTab.label}</h2>
+              <p>{activeAdminTab.intent}</p>
+            </div>
+            <div className="admin46-pagebar-actions">
+              <AdminInfoButton title={activeAdminTab.label} body={activeAdminHelpText} />
+              <button type="button" onClick={() => selectAdminTab('overview')} className="admin46-back-button"><ChevronLeft size={14}/> Console home</button>
+            </div>
           </div>
-          <div className="admin46-pagebar-actions">
-            <AdminInfoButton title={activeAdminTab.label} body={activeAdminHelpText} />
-            <button type="button" onClick={() => selectAdminTab('overview')} className="admin46-back-button"><ChevronLeft size={14}/> Console home</button>
-          </div>
-        </div>
+          <AdminSectionMap />
+        </>
       )}
 
       {subTab === 'overview' && (
@@ -8501,7 +8522,7 @@ Type RESTORE to continue.`);
         </div>
       )}
 
-      {/* Branding / Display was removed from System Administrator in 15.0.105.
+      {/* Branding / Display was removed from System Administrator in 15.0.105 and remains in user/workspace Settings.
           Workspace branding now lives in Settings where owners/admins expect it. */}
 
       {subTab === 'danger' && (
@@ -8624,8 +8645,8 @@ Type RESTORE to continue.`);
           <section className="admin46-retention-hero">
             <div className="min-w-0">
               <div className="admin46-eyebrow">Legal retention automation</div>
-              <h2>Client Data Storage & Automatic Deletion Setup</h2>
-              <p>This is the safe app-side button for the legal retention system. It records the official policy in Firestore and gives the exact production Firebase steps. It does not delete anything until Firebase Functions are deployed.</p>
+              <h2>Retention Setup</h2>
+              <p>Compact setup for the legal retention record, production checklist, and expected scheduled jobs. The app-side button only writes policy metadata; it does not delete records by itself.</p>
             </div>
             <div className={`admin46-retention-badge ${retentionConfigured ? 'is-ready' : 'is-needed'}`}>
               <span>{retentionConfigured ? 'Config saved' : 'Needs setup'}</span>
@@ -8647,7 +8668,7 @@ Type RESTORE to continue.`);
 
           <div className="grid lg:grid-cols-[1.05fr_.95fr] gap-4">
             <section className="admin46-retention-panel">
-              <div className="admin46-retention-panel-head"><span className="admin46-eyebrow">Legal schedule</span><h3>Retention dates locked to legal packet</h3></div>
+              <div className="admin46-retention-panel-head"><span className="admin46-eyebrow">Legal schedule</span><h3>Legal schedule</h3></div>
               <div className="admin46-retention-policy-list">
                 <div><strong>Active core data</strong><span>Recipes, inventory, approved parsed business records: while account is active.</span></div>
                 <div><strong>Transient data</strong><span>Prep lists and 86 alerts: 30 days.</span></div>

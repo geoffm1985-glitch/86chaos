@@ -1,7 +1,7 @@
 {
-  "version": "15.0.105",
-  "name": "86 Chaos 15.0.105 System Administrator Console Overhaul",
-  "forceRefresh": false,
-  "label": "15.0.105 System Administrator Console Overhaul",
-  "build": "15.0.105"
+  "version": "15.0.106",
+  "name": "86 Chaos 15.0.106 System Administrator Content Rebuild",
+  "releasedAt": "2026-07-21T00:00:00.000Z",
+  "label": "15.0.106 System Administrator Content Rebuild",
+  "build": "15.0.106"
 }

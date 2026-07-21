@@ -4594,3 +4594,378 @@ select {
     max-width: 185px;
   }
 }
+
+/* 15.0.106 FULL System Administrator content rebuild polish
+   This is intentionally broader than the 15.0.105 menu pass. It changes the
+   actual clicked tool pages into compact, dark, readable workbenches. */
+.system-admin-v106 {
+  --admin-bg: #0a0f13 !important;
+  --admin-panel: #10171d !important;
+  --admin-panel-soft: #131c23 !important;
+  --admin-panel-row: #0e151b !important;
+  --admin-ink: #eef4f8 !important;
+  --admin-muted: #9fb0bd !important;
+  --admin-dim: #71828f !important;
+  --admin-line: #26323a !important;
+  --admin-line-strong: #35434d !important;
+  --admin-copper: #d4a381 !important;
+  --admin-blue: #8bb8d8 !important;
+  --admin-green: #7fd9aa !important;
+  --admin-red: #ff8d91 !important;
+  --admin-amber: #ffc46b !important;
+  color: var(--admin-ink) !important;
+}
+
+.system-admin-v106.admin46-shell {
+  max-width: min(1540px, calc(100vw - 18px)) !important;
+  padding-bottom: 28px !important;
+}
+
+/* Stop the old pale admin theme from bleeding into actual tool pages. */
+.system-admin-v106 .admin46-content,
+.system-admin-v106 #admin-content-start,
+.system-admin-v106 #admin-content-start > div,
+.system-admin-v106 #admin-content-start > section,
+.system-admin-v106 #admin-content-start form,
+.system-admin-v106 #admin-content-start article,
+.system-admin-v106 .admin46-retention-hero,
+.system-admin-v106 .admin46-retention-action-card,
+.system-admin-v106 .admin46-retention-panel,
+.system-admin-v106 #admin-content-start .admin45-content-card,
+.system-admin-v106 #admin-content-start .cockpit-panel,
+.system-admin-v106 #admin-content-start .cockpit-grid {
+  background: var(--admin-panel) !important;
+  background-image: none !important;
+  color: var(--admin-ink) !important;
+  border-color: var(--admin-line) !important;
+  box-shadow: none !important;
+}
+
+.system-admin-v106 .admin46-topbar {
+  background: #0e151a !important;
+  border-color: var(--admin-line) !important;
+}
+.system-admin-v106 .admin46-topbar h1,
+.system-admin-v106 .admin46-topbar p,
+.system-admin-v106 .admin46-topbar strong,
+.system-admin-v106 .admin46-topbar span,
+.system-admin-v106 .admin46-topbar small {
+  color: inherit;
+}
+.system-admin-v106 .admin46-status-chip {
+  background: transparent !important;
+  border-color: var(--admin-line) !important;
+}
+.system-admin-v106 .admin46-status-chip strong { color: var(--admin-ink) !important; }
+.system-admin-v106 .admin46-status-chip span,
+.system-admin-v106 .admin46-status-chip small { color: var(--admin-dim) !important; }
+
+.system-admin-v106 .admin46-content {
+  display: flex;
+  flex-direction: column;
+  min-height: calc(100vh - 142px);
+  overflow: hidden;
+  padding: 10px !important;
+}
+
+.system-admin-v106 #admin-content-start {
+  min-width: 0;
+  overflow: hidden;
+}
+
+.system-admin-v106 #admin-content-start > div:not(.admin46-pagebar):not(.admin106-section-map),
+.system-admin-v106 #admin-content-start > section:not(.admin106-section-map) {
+  max-height: calc(100vh - 268px);
+  overflow: auto;
+  padding-right: 6px;
+  scrollbar-width: thin;
+  scrollbar-color: #526471 transparent;
+}
+
+.system-admin-v106 #admin-content-start > div:not(.admin46-pagebar):not(.admin106-section-map)::-webkit-scrollbar,
+.system-admin-v106 #admin-content-start > section:not(.admin106-section-map)::-webkit-scrollbar {
+  width: 9px;
+  height: 9px;
+}
+.system-admin-v106 #admin-content-start > div:not(.admin46-pagebar):not(.admin106-section-map)::-webkit-scrollbar-thumb,
+.system-admin-v106 #admin-content-start > section:not(.admin106-section-map)::-webkit-scrollbar-thumb {
+  background: #526471;
+  border-radius: 999px;
+}
+
+/* Compact section map. This replaces the mental model of one giant scroll. */
+.system-admin-v106 .admin106-section-map {
+  margin: 0 0 9px;
+  padding: 8px;
+  border: 1px solid var(--admin-line);
+  border-radius: 8px;
+  background: #0c1217 !important;
+}
+.system-admin-v106 .admin106-section-map-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 7px;
+  color: var(--admin-dim);
+  font-size: 8px;
+  font-weight: 900;
+  letter-spacing: .17em;
+  text-transform: uppercase;
+}
+.system-admin-v106 .admin106-section-map-head strong {
+  color: var(--admin-copper);
+  font-size: 8px;
+}
+.system-admin-v106 .admin106-section-map-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(145px, 1fr));
+  gap: 6px;
+}
+.system-admin-v106 .admin106-section-map-grid button {
+  min-height: 42px !important;
+  border: 1px solid var(--admin-line) !important;
+  border-radius: 7px !important;
+  background: #10171d !important;
+  color: var(--admin-muted) !important;
+  text-align: left;
+  padding: 7px 8px !important;
+}
+.system-admin-v106 .admin106-section-map-grid button.is-active {
+  border-color: rgba(212,163,129,.65) !important;
+  background: #151b20 !important;
+  color: #fff !important;
+  box-shadow: inset 2px 0 0 var(--admin-copper) !important;
+}
+.system-admin-v106 .admin106-section-map-grid span {
+  display: block;
+  color: var(--admin-ink);
+  font-size: 10px;
+  font-weight: 900;
+  line-height: 1.1;
+}
+.system-admin-v106 .admin106-section-map-grid small {
+  display: block;
+  margin-top: 3px;
+  color: var(--admin-dim);
+  font-size: 8px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+/* Page heading is a command strip, not another giant card. */
+.system-admin-v106 .admin106-pagebar,
+.system-admin-v106 .admin46-pagebar {
+  min-height: 52px;
+  margin-bottom: 8px !important;
+  padding: 6px 2px 8px !important;
+  border-bottom: 1px solid var(--admin-line) !important;
+}
+.system-admin-v106 .admin46-pagebar h2 {
+  color: var(--admin-ink) !important;
+  font-size: clamp(16px, 1.35vw, 19px) !important;
+  line-height: 1.08 !important;
+}
+.system-admin-v106 .admin46-pagebar p {
+  color: var(--admin-muted) !important;
+  max-width: 780px;
+}
+.system-admin-v106 .admin46-eyebrow { color: var(--admin-copper) !important; }
+
+/* Universal dark readability for old nested admin panels. */
+.system-admin-v106 #admin-content-start [class*="bg-[#0B0E11]"],
+.system-admin-v106 #admin-content-start [class*="bg-[#101418]"],
+.system-admin-v106 #admin-content-start [class*="bg-[#12161A]"],
+.system-admin-v106 #admin-content-start [class*="bg-[#151B20]"],
+.system-admin-v106 #admin-content-start [class*="bg-[#161C21]"],
+.system-admin-v106 #admin-content-start [class*="bg-[#1A2126]"],
+.system-admin-v106 #admin-content-start [class*="bg-white"],
+.system-admin-v106 #admin-content-start [class*="bg-slate"],
+.system-admin-v106 #admin-content-start [class*="bg-gray"] {
+  background: var(--admin-panel-row) !important;
+  background-image: none !important;
+}
+.system-admin-v106 #admin-content-start [class*="text-white"],
+.system-admin-v106 #admin-content-start h1,
+.system-admin-v106 #admin-content-start h2,
+.system-admin-v106 #admin-content-start h3,
+.system-admin-v106 #admin-content-start h4,
+.system-admin-v106 #admin-content-start strong {
+  color: var(--admin-ink) !important;
+}
+.system-admin-v106 #admin-content-start [class*="text-slate-300"],
+.system-admin-v106 #admin-content-start [class*="text-slate-400"],
+.system-admin-v106 #admin-content-start p,
+.system-admin-v106 #admin-content-start li,
+.system-admin-v106 #admin-content-start small,
+.system-admin-v106 #admin-content-start span {
+  color: var(--admin-muted);
+}
+.system-admin-v106 #admin-content-start [class*="text-slate-500"],
+.system-admin-v106 #admin-content-start [class*="text-slate-600"] {
+  color: var(--admin-dim) !important;
+}
+.system-admin-v106 #admin-content-start [class*="text-[#D4A381]"] { color: var(--admin-copper) !important; }
+.system-admin-v106 #admin-content-start [class*="border-[#2A353D]"],
+.system-admin-v106 #admin-content-start [class*="border-[#303B43]"],
+.system-admin-v106 #admin-content-start [class*="border-slate"],
+.system-admin-v106 #admin-content-start [class*="border-white"] {
+  border-color: var(--admin-line) !important;
+}
+
+/* Make every clicked System Admin tool feel like a software workbench, not a document page. */
+.system-admin-v106 #admin-content-start .space-y-4,
+.system-admin-v106 #admin-content-start .space-y-5,
+.system-admin-v106 #admin-content-start .space-y-6 {
+  row-gap: 10px !important;
+}
+.system-admin-v106 #admin-content-start [class*="rounded-2xl"],
+.system-admin-v106 #admin-content-start [class*="rounded-xl"],
+.system-admin-v106 #admin-content-start [class*="rounded-["],
+.system-admin-v106 .admin46-retention-hero,
+.system-admin-v106 .admin46-retention-action-card,
+.system-admin-v106 .admin46-retention-panel {
+  border-radius: 7px !important;
+}
+.system-admin-v106 #admin-content-start [class*="p-8"] { padding: 14px !important; }
+.system-admin-v106 #admin-content-start [class*="p-6"] { padding: 12px !important; }
+.system-admin-v106 #admin-content-start [class*="p-5"] { padding: 11px !important; }
+.system-admin-v106 #admin-content-start [class*="p-4"] { padding: 9px !important; }
+.system-admin-v106 #admin-content-start [class*="gap-6"] { gap: 10px !important; }
+.system-admin-v106 #admin-content-start [class*="gap-4"] { gap: 8px !important; }
+
+.system-admin-v106 #admin-content-start input,
+.system-admin-v106 #admin-content-start select,
+.system-admin-v106 #admin-content-start textarea,
+.system-admin-v106 .admin46-command-search-input {
+  background: #0b1116 !important;
+  color: var(--admin-ink) !important;
+  border-color: var(--admin-line-strong) !important;
+  border-radius: 6px !important;
+  min-height: 34px !important;
+  box-shadow: none !important;
+}
+.system-admin-v106 #admin-content-start input::placeholder,
+.system-admin-v106 #admin-content-start textarea::placeholder,
+.system-admin-v106 .admin46-command-search-input::placeholder { color: #667885 !important; }
+
+.system-admin-v106 #admin-content-start button:not(.admin46-nav-button):not(.admin46-mini-action) {
+  border-radius: 6px !important;
+  box-shadow: none !important;
+}
+
+/* Retention page: no more white unreadable slabs. */
+.system-admin-v106 .admin46-retention-hero {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px !important;
+  padding: 10px !important;
+}
+.system-admin-v106 .admin46-retention-hero h2 {
+  color: var(--admin-ink) !important;
+  font-size: clamp(18px, 1.7vw, 23px) !important;
+  margin: 0 !important;
+}
+.system-admin-v106 .admin46-retention-hero p,
+.system-admin-v106 .admin46-retention-action-card p {
+  color: var(--admin-muted) !important;
+  max-width: 860px !important;
+  font-size: 11px !important;
+  line-height: 1.35 !important;
+}
+.system-admin-v106 .admin46-retention-badge {
+  min-width: 170px !important;
+  padding: 8px !important;
+  border-radius: 6px !important;
+  background: #0b1116 !important;
+  border-color: var(--admin-line) !important;
+}
+.system-admin-v106 .admin46-retention-action-card {
+  padding: 10px !important;
+}
+.system-admin-v106 .admin46-retention-panel { padding: 10px !important; }
+.system-admin-v106 .admin46-retention-panel-head {
+  padding-bottom: 7px !important;
+  margin-bottom: 8px !important;
+  border-color: var(--admin-line) !important;
+}
+.system-admin-v106 .admin46-retention-policy-list {
+  gap: 6px !important;
+}
+.system-admin-v106 .admin46-retention-policy-list div,
+.system-admin-v106 .admin46-retention-function-grid div {
+  display: grid;
+  grid-template-columns: minmax(140px, .32fr) minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  min-height: 38px;
+  background: #0b1116 !important;
+  border-color: var(--admin-line) !important;
+  border-radius: 6px !important;
+  padding: 8px !important;
+}
+.system-admin-v106 .admin46-retention-policy-list strong,
+.system-admin-v106 .admin46-retention-function-grid strong {
+  color: var(--admin-ink) !important;
+  font-size: 11px !important;
+}
+.system-admin-v106 .admin46-retention-policy-list span,
+.system-admin-v106 .admin46-retention-function-grid span,
+.system-admin-v106 .admin46-retention-function-grid p,
+.system-admin-v106 .admin46-retention-steps {
+  color: var(--admin-muted) !important;
+  font-size: 10.5px !important;
+  line-height: 1.35 !important;
+  margin-top: 0 !important;
+}
+.system-admin-v106 .admin46-retention-function-grid {
+  display: grid !important;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)) !important;
+  gap: 6px !important;
+}
+.system-admin-v106 .admin46-retention-function-grid div {
+  grid-template-columns: 1fr !important;
+  align-items: start;
+}
+.system-admin-v106 .admin46-retention-warning {
+  margin-top: 8px !important;
+  background: rgba(255,196,107,.08) !important;
+  border: 1px solid rgba(255,196,107,.28) !important;
+  color: #ffd89b !important;
+  border-radius: 6px !important;
+  padding: 8px !important;
+}
+
+/* Make big operational lists split and readable instead of forever scroll. */
+.system-admin-v106 #admin-content-start .grid,
+.system-admin-v106 #admin-content-start [class*="grid-cols"] {
+  align-items: start;
+}
+.system-admin-v106 #admin-content-start table {
+  background: #0b1116 !important;
+  color: var(--admin-muted) !important;
+  border-color: var(--admin-line) !important;
+}
+.system-admin-v106 #admin-content-start th {
+  background: #111a21 !important;
+  color: var(--admin-copper) !important;
+  border-color: var(--admin-line) !important;
+}
+.system-admin-v106 #admin-content-start td {
+  border-color: var(--admin-line) !important;
+  color: var(--admin-muted) !important;
+}
+
+@media (max-width: 1023px) {
+  .system-admin-v106 .admin46-content { min-height: auto; overflow: visible; }
+  .system-admin-v106 #admin-content-start > div:not(.admin46-pagebar):not(.admin106-section-map),
+  .system-admin-v106 #admin-content-start > section:not(.admin106-section-map) {
+    max-height: none;
+    overflow: visible;
+    padding-right: 0;
+  }
+  .system-admin-v106 .admin106-section-map-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .system-admin-v106 .admin46-retention-hero { grid-template-columns: 1fr; }
+  .system-admin-v106 .admin46-retention-policy-list div,
+  .system-admin-v106 .admin46-retention-function-grid div { grid-template-columns: 1fr; }
+}
