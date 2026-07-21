@@ -4969,3 +4969,365 @@ select {
   .system-admin-v106 .admin46-retention-policy-list div,
   .system-admin-v106 .admin46-retention-function-grid div { grid-template-columns: 1fr; }
 }
+
+/* 15.0.107 System Administrator ground-up console redesign
+   This intentionally stops treating System Administrator like pages inside a webpage.
+   The tool becomes a command board: categories, current workflow, tool strip, then a clean work surface. */
+.system-admin-v107 {
+  --sa-bg: #070b0f;
+  --sa-panel: #0b1116;
+  --sa-panel-2: #101820;
+  --sa-panel-3: #131d25;
+  --sa-line: #21313c;
+  --sa-line-2: #314653;
+  --sa-text: #eef5f9;
+  --sa-muted: #8da0ad;
+  --sa-faint: #5f737f;
+  --sa-copper: #d4a381;
+  --sa-blue: #76b8e5;
+  --sa-green: #7ed9aa;
+  --sa-red: #ff8d91;
+  --sa-amber: #ffc66d;
+  max-width: min(1680px, calc(100vw - 12px)) !important;
+  margin-inline: auto !important;
+  padding-inline: clamp(4px, 1vw, 14px) !important;
+  color: var(--sa-text) !important;
+}
+
+.system-admin-v107 .admin46-topbar {
+  border: 0 !important;
+  border-bottom: 1px solid var(--sa-line) !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  padding: 0 0 10px !important;
+  margin: 0 0 10px !important;
+}
+.system-admin-v107 .admin46-topbar > div:first-child {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) auto !important;
+  align-items: end !important;
+  gap: 16px !important;
+}
+.system-admin-v107 .admin46-topbar h1 {
+  font-size: clamp(24px, 2.4vw, 36px) !important;
+  letter-spacing: -0.045em !important;
+  line-height: .95 !important;
+}
+.system-admin-v107 .admin46-topbar p {
+  max-width: 720px !important;
+  color: var(--sa-muted) !important;
+  font-size: 12px !important;
+  line-height: 1.45 !important;
+}
+.system-admin-v107 .admin46-topbar .grid.grid-cols-2.sm\:grid-cols-4,
+.system-admin-v107 .admin46-status-chip {
+  display: none !important;
+}
+.system-admin-v107 #admin-tool-search {
+  margin-top: 12px !important;
+  max-width: none !important;
+}
+.system-admin-v107 .admin46-command-search-input {
+  height: 42px !important;
+  min-height: 42px !important;
+  padding-left: 46px !important;
+  padding-right: 42px !important;
+  border-radius: 0 !important;
+  border: 1px solid var(--sa-line-2) !important;
+  background: #080d11 !important;
+  font-size: 13px !important;
+  font-weight: 850 !important;
+  letter-spacing: -.01em !important;
+}
+.system-admin-v107 .admin46-search-icon { left: 16px !important; }
+
+.system-admin-v107 .admin107-command-board {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+}
+.system-admin-v107 .admin107-command-topline {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  min-height: 48px;
+  border-top: 1px solid var(--sa-line);
+  border-bottom: 1px solid var(--sa-line);
+  background: linear-gradient(90deg, rgba(118,184,229,.055), transparent 55%);
+  padding: 8px 0;
+}
+.system-admin-v107 .admin107-command-topline span,
+.system-admin-v107 .admin107-command-topline small {
+  display: block;
+  color: var(--sa-faint) !important;
+  font-size: 8px;
+  line-height: 1.15;
+  font-weight: 950;
+  text-transform: uppercase;
+  letter-spacing: .18em;
+}
+.system-admin-v107 .admin107-command-topline strong {
+  display: block;
+  color: var(--sa-text) !important;
+  font-size: 17px;
+  line-height: 1.1;
+  margin: 2px 0;
+  letter-spacing: -.025em;
+}
+.system-admin-v107 .admin107-quick-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+}
+.system-admin-v107 .admin107-quick-actions button {
+  min-height: 32px !important;
+  border-radius: 0 !important;
+  border: 1px solid var(--sa-line-2) !important;
+  background: transparent !important;
+  color: var(--sa-muted) !important;
+  padding: 0 10px !important;
+  font-size: 9px !important;
+  font-weight: 950 !important;
+  text-transform: uppercase;
+  letter-spacing: .12em;
+  box-shadow: none !important;
+}
+.system-admin-v107 .admin107-quick-actions button:hover { color: white !important; border-color: var(--sa-copper) !important; }
+.system-admin-v107 .admin107-category-strip,
+.system-admin-v107 .admin107-tool-strip {
+  display: flex;
+  gap: 1px;
+  overflow-x: auto;
+  scrollbar-width: thin;
+  padding-bottom: 1px;
+  border-bottom: 1px solid var(--sa-line);
+}
+.system-admin-v107 .admin107-category-strip button,
+.system-admin-v107 .admin107-tool-strip button {
+  border-radius: 0 !important;
+  border: 0 !important;
+  background: transparent !important;
+  color: var(--sa-muted) !important;
+  box-shadow: none !important;
+  text-align: left;
+  transition: color .15s ease, background .15s ease, box-shadow .15s ease;
+}
+.system-admin-v107 .admin107-category-strip button {
+  min-width: 152px;
+  padding: 9px 10px 8px !important;
+}
+.system-admin-v107 .admin107-tool-strip button {
+  min-width: 174px;
+  max-width: 260px;
+  padding: 8px 10px !important;
+}
+.system-admin-v107 .admin107-category-strip span,
+.system-admin-v107 .admin107-tool-strip span {
+  display: block;
+  color: inherit !important;
+  font-size: 10px;
+  font-weight: 950;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  white-space: nowrap;
+}
+.system-admin-v107 .admin107-category-strip small,
+.system-admin-v107 .admin107-tool-strip small {
+  display: block;
+  color: var(--sa-faint) !important;
+  font-size: 9px;
+  font-weight: 750;
+  line-height: 1.25;
+  margin-top: 2px;
+}
+.system-admin-v107 .admin107-category-strip button.is-active,
+.system-admin-v107 .admin107-tool-strip button.is-active {
+  color: white !important;
+  background: rgba(212,163,129,.055) !important;
+  box-shadow: inset 0 -2px 0 var(--sa-copper) !important;
+}
+.system-admin-v107 .admin107-category-strip button:hover,
+.system-admin-v107 .admin107-tool-strip button:hover {
+  color: white !important;
+  background: rgba(255,255,255,.035) !important;
+}
+
+/* The old left admin directory is gone on desktop. It was the junk drawer. */
+.system-admin-v107 .admin46-layout {
+  display: block !important;
+  grid-template-columns: none !important;
+}
+.system-admin-v107 #admin-left-nav,
+.system-admin-v107 .admin46-mobile-controls,
+.system-admin-v107 .admin106-section-map,
+.system-admin-v107 .admin46-pagebar,
+.system-admin-v107 .admin106-pagebar {
+  display: none !important;
+}
+.system-admin-v107 .admin46-content {
+  min-height: auto !important;
+  overflow: visible !important;
+  padding: 0 !important;
+  border: 0 !important;
+  background: transparent !important;
+}
+.system-admin-v107 #admin-content-start {
+  margin-top: 12px !important;
+  padding: 0 !important;
+  border: 0 !important;
+  background: transparent !important;
+  overflow: visible !important;
+}
+.system-admin-v107 #admin-content-start > div,
+.system-admin-v107 #admin-content-start > section {
+  max-height: none !important;
+  overflow: visible !important;
+  padding-right: 0 !important;
+}
+
+/* Reset admin content from document/card soup to a flat console surface. */
+.system-admin-v107 #admin-content-start .admin45-content-card,
+.system-admin-v107 #admin-content-start .cockpit-panel,
+.system-admin-v107 #admin-content-start .admin46-retention-hero,
+.system-admin-v107 #admin-content-start .admin46-retention-action-card,
+.system-admin-v107 #admin-content-start .admin46-retention-panel,
+.system-admin-v107 #admin-content-start [class*="bg-[#0B0E11]"],
+.system-admin-v107 #admin-content-start [class*="bg-[#12161A]"],
+.system-admin-v107 #admin-content-start [class*="bg-[#1A2126]"],
+.system-admin-v107 #admin-content-start [class*="bg-white"],
+.system-admin-v107 #admin-content-start [class*="bg-slate"],
+.system-admin-v107 #admin-content-start [class*="bg-gray"] {
+  background: var(--sa-panel) !important;
+  background-image: none !important;
+  border-color: var(--sa-line) !important;
+  color: var(--sa-text) !important;
+  box-shadow: none !important;
+}
+.system-admin-v107 #admin-content-start [class*="rounded-3xl"],
+.system-admin-v107 #admin-content-start [class*="rounded-2xl"],
+.system-admin-v107 #admin-content-start [class*="rounded-xl"],
+.system-admin-v107 #admin-content-start [class*="rounded-lg"],
+.system-admin-v107 #admin-content-start [class*="rounded-"] {
+  border-radius: 0 !important;
+}
+.system-admin-v107 #admin-content-start [class*="shadow"] { box-shadow: none !important; }
+.system-admin-v107 #admin-content-start .grid { align-items: stretch; }
+.system-admin-v107 #admin-content-start [class*="p-8"] { padding: 16px !important; }
+.system-admin-v107 #admin-content-start [class*="p-6"] { padding: 14px !important; }
+.system-admin-v107 #admin-content-start [class*="p-5"] { padding: 12px !important; }
+.system-admin-v107 #admin-content-start [class*="p-4"] { padding: 10px !important; }
+.system-admin-v107 #admin-content-start [class*="gap-6"] { gap: 14px !important; }
+.system-admin-v107 #admin-content-start [class*="gap-4"] { gap: 10px !important; }
+.system-admin-v107 #admin-content-start .space-y-6 > :not([hidden]) ~ :not([hidden]),
+.system-admin-v107 #admin-content-start .space-y-5 > :not([hidden]) ~ :not([hidden]),
+.system-admin-v107 #admin-content-start .space-y-4 > :not([hidden]) ~ :not([hidden]) { margin-top: 12px !important; }
+
+/* Make every workflow start with a lean command surface instead of giant cards. */
+.system-admin-v107 #admin-content-start h1,
+.system-admin-v107 #admin-content-start h2,
+.system-admin-v107 #admin-content-start h3 {
+  color: var(--sa-text) !important;
+  letter-spacing: -.035em !important;
+  line-height: 1.05 !important;
+}
+.system-admin-v107 #admin-content-start h2 { font-size: clamp(20px, 1.9vw, 28px) !important; }
+.system-admin-v107 #admin-content-start h3 { font-size: clamp(15px, 1.25vw, 20px) !important; }
+.system-admin-v107 #admin-content-start p,
+.system-admin-v107 #admin-content-start li,
+.system-admin-v107 #admin-content-start small,
+.system-admin-v107 #admin-content-start span { color: var(--sa-muted) !important; }
+.system-admin-v107 #admin-content-start strong,
+.system-admin-v107 #admin-content-start [class*="text-white"] { color: var(--sa-text) !important; }
+.system-admin-v107 #admin-content-start [class*="text-[#D4A381]"],
+.system-admin-v107 #admin-content-start [class*="text-orange"],
+.system-admin-v107 #admin-content-start [class*="text-amber"] { color: var(--sa-copper) !important; }
+.system-admin-v107 #admin-content-start [class*="text-slate-500"],
+.system-admin-v107 #admin-content-start [class*="text-slate-600"] { color: var(--sa-faint) !important; }
+
+/* Inputs/buttons are app controls, not webpage chunks. */
+.system-admin-v107 #admin-content-start input,
+.system-admin-v107 #admin-content-start select,
+.system-admin-v107 #admin-content-start textarea {
+  min-height: 36px !important;
+  border-radius: 0 !important;
+  border: 1px solid var(--sa-line-2) !important;
+  background: #070b0f !important;
+  color: var(--sa-text) !important;
+  box-shadow: none !important;
+}
+.system-admin-v107 #admin-content-start input::placeholder,
+.system-admin-v107 #admin-content-start textarea::placeholder { color: #61727d !important; }
+.system-admin-v107 #admin-content-start button {
+  border-radius: 0 !important;
+  box-shadow: none !important;
+}
+.system-admin-v107 #admin-content-start button:not([disabled]):hover { filter: brightness(1.08); }
+
+/* Retention becomes a checklist console, not pale legal cards. */
+.system-admin-v107 .admin46-retention-hero,
+.system-admin-v107 .admin46-retention-action-card {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) auto !important;
+  align-items: center !important;
+  gap: 16px !important;
+  border-top: 1px solid var(--sa-line) !important;
+  border-bottom: 1px solid var(--sa-line) !important;
+  border-left: 0 !important;
+  border-right: 0 !important;
+}
+.system-admin-v107 .admin46-retention-badge,
+.system-admin-v107 .admin46-retention-main-button {
+  border-radius: 0 !important;
+  box-shadow: none !important;
+}
+.system-admin-v107 .admin46-retention-policy-list {
+  display: grid !important;
+  gap: 0 !important;
+  border: 1px solid var(--sa-line) !important;
+}
+.system-admin-v107 .admin46-retention-policy-list div {
+  display: grid !important;
+  grid-template-columns: minmax(190px, .34fr) minmax(0, 1fr) !important;
+  gap: 12px !important;
+  border: 0 !important;
+  border-bottom: 1px solid var(--sa-line) !important;
+  background: transparent !important;
+  min-height: 44px !important;
+}
+.system-admin-v107 .admin46-retention-policy-list div:last-child { border-bottom: 0 !important; }
+.system-admin-v107 .admin46-retention-function-grid div {
+  border-radius: 0 !important;
+}
+
+/* Tables and dense rows */
+.system-admin-v107 #admin-content-start table,
+.system-admin-v107 #admin-content-start tr,
+.system-admin-v107 #admin-content-start td,
+.system-admin-v107 #admin-content-start th {
+  border-color: var(--sa-line) !important;
+}
+.system-admin-v107 #admin-content-start th {
+  background: #0d151b !important;
+  color: var(--sa-copper) !important;
+}
+.system-admin-v107 #admin-content-start td {
+  background: #090e13 !important;
+  color: var(--sa-muted) !important;
+}
+
+@media (max-width: 1023px) {
+  .system-admin-v107 .admin46-topbar > div:first-child,
+  .system-admin-v107 .admin107-command-topline,
+  .system-admin-v107 .admin46-retention-hero,
+  .system-admin-v107 .admin46-retention-action-card {
+    grid-template-columns: 1fr !important;
+  }
+  .system-admin-v107 .admin107-quick-actions { justify-content: flex-start; }
+  .system-admin-v107 .admin107-category-strip button { min-width: 136px; }
+  .system-admin-v107 .admin107-tool-strip button { min-width: 156px; }
+  .system-admin-v107 .admin46-topbar h1 { font-size: 24px !important; }
+  .system-admin-v107 .admin46-retention-policy-list div { grid-template-columns: 1fr !important; }
+}

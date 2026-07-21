@@ -7620,7 +7620,7 @@ Type RESTORE to continue.`);
 
 
   return (
-    <div className="admin46-shell system-admin-v105 system-admin-v106 max-w-[1500px] mx-auto pb-24 px-2 sm:px-4 lg:px-5 animate-[slideIn_0.2s_ease-out]">
+    <div className="admin46-shell system-admin-v105 system-admin-v106 system-admin-v107 max-w-[1500px] mx-auto pb-24 px-2 sm:px-4 lg:px-5 animate-[slideIn_0.2s_ease-out]">
       <Modal isOpen={!!createdWorkspaceLogin} onClose={() => setCreatedWorkspaceLogin(null)} title="Workspace Login Created">
         {createdWorkspaceLogin && <div className="space-y-4">
           <div className="bg-emerald-900/10 border border-emerald-900/40 rounded-xl p-3 text-xs font-bold text-emerald-200">This owner login is shown one time only. Copy, print, email, or text it before closing.</div>
@@ -7675,7 +7675,40 @@ Type RESTORE to continue.`);
           </div>}
         </div>
 
-        <div className="admin46-mobile-controls lg:hidden mt-4">
+        <div className="admin107-command-board" aria-label="System Administrator command board">
+          <div className="admin107-command-topline">
+            <div className="min-w-0">
+              <span>Current workflow</span>
+              <strong>{activeAdminTab.label}</strong>
+              <small>{activeAdminTab.group} · {activeAdminTab.intent}</small>
+            </div>
+            <div className="admin107-quick-actions">
+              <button type="button" onClick={handleRunFullSystemDiagnostics} disabled={isDiagnosticsRunning}>{isDiagnosticsRunning ? 'Diagnostics running' : 'Run diagnostics'}</button>
+              <button type="button" onClick={handleRunBackupNow} disabled={isBackupRunning || backupRunning}>{isBackupRunning || backupRunning ? 'Backup running' : 'Backup now'}</button>
+              <button type="button" onClick={() => setAdminHelpModal({ title: activeAdminTab.label, body: activeAdminHelpText })}>Explain</button>
+            </div>
+          </div>
+          <div className="admin107-category-strip" role="tablist" aria-label="System Administrator categories">
+            {adminTabGroups.map(group => {
+              const firstTab = group.tabs[0]?.id || 'overview';
+              const active = group.title === activeAdminGroup.title;
+              return <button key={group.title} type="button" onClick={() => selectAdminTab(firstTab)} className={active ? 'is-active' : ''} role="tab" aria-selected={active}>
+                <span>{group.title}</span>
+                <small>{group.tabs.length}</small>
+              </button>;
+            })}
+          </div>
+          <div className="admin107-tool-strip" aria-label="Tools in current category">
+            {activeAdminGroup.tabs.map(tab => (
+              <button key={tab.id} type="button" onClick={() => selectAdminTab(tab.id)} className={subTab === tab.id ? 'is-active' : ''}>
+                <span>{tab.short || tab.label}</span>
+                <small>{tab.intent}</small>
+              </button>
+            ))}
+          </div>
+        </div>
+
+"        <div className="admin46-mobile-controls lg:hidden mt-4">
           <div className="admin46-mobile-current">
             <div className="min-w-0">
               <span>Current area</span>
