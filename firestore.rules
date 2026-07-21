@@ -392,7 +392,7 @@ service cloud.firestore {
     function canWriteBackOffice(restId) { return canReadBackOffice(restId); }
     function backOfficeRecordIsValid(data) {
       return data.restaurantId is string &&
-        data.type in ['deposit', 'document', 'approval', 'quickbooks', 'ownerReport'] &&
+        data.type in ['deposit', 'document', 'approval', 'quickbooks', 'quickbooks_mapping', 'quickbooks_bill_draft', 'quickbooks_vendor_match', 'quickbooks_vendor_credit_draft', 'quickbooks_sync_event', 'quickbooks_accountant_packet', 'quickbooks_owner_rollup', 'quickbooks_sync_health', 'ownerReport'] &&
         data.status is string &&
         data.createdAt != null &&
         data.updatedAt != null;

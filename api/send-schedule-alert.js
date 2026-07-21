@@ -47,6 +47,35 @@ async function enforceRouteRateLimit(db, req, res, decoded, routeName, limit = 3
 
 const norm = (value = '') => String(value || '').toLowerCase().trim();
 const cleanId = (value = '') => String(value || '').replace(/[^A-Za-z0-9_-]/g, '_').slice(0, 140);
+
+function hashForNotificationTag(value = '') {
+  let hash = 0;
+  const text = String(value || '');
+  for (let i = 0; i < text.length; i += 1) hash = ((hash << 5) - hash + text.charCodeAt(i)) | 0;
+  return Math.abs(hash).toString(36);
+}
+
+function notificationTag(prefix, ...parts) {
+  const clean = [prefix, ...parts]
+    .map(part => cleanId(String(part || '')))
+    .filter(Boolean)
+    .join(':')
+    .slice(0, 120);
+  return clean || `${prefix}:${hashForNotificationTag(parts.join('|'))}`;
+}
+
+function webPushOptions(tag, link = '/') {
+  return {
+    notification: {
+      tag,
+      renotify: false,
+      icon: '/app-icon.png',
+      badge: '/app-icon.png'
+    },
+    fcmOptions: { link }
+  };
+}
+
 const memberDocId = (uid, restaurantId) => `${cleanId(uid)}_${cleanId(restaurantId)}`.slice(0, 240);
 const masterEmails = () => [process.env.MASTER_ADMIN_EMAIL, process.env.MASTER_ADMIN_EMAILS]
   .filter(Boolean)
@@ -174,11 +203,13 @@ export default async function handler(req, res) {
     }
 
     // 3. Build the actual push notification payload
+    const title = 'New Schedule Published!';
+    const body = `${restaurantName || 'Your restaurant'} just posted a new schedule. Check your shifts now.`;
+    const tag = notificationTag('86chaos-schedule-published', restaurantId, new Date().toLocaleDateString('en-CA', { timeZone: 'America/Chicago' }));
     const message = {
-      notification: {
-        title: 'New Schedule Published!',
-        body: `${restaurantName || 'Your restaurant'} just posted a new schedule. Check your shifts now.`,
-      },
+      notification: { title, body },
+      data: { type: 'schedule', restaurantId: String(restaurantId), click_action: '/?tab=published', notificationTag: tag },
+      webpush: webPushOptions(tag, '/?tab=published'),
       tokens: tokens, // Send to everyone in the array at once
     };
 

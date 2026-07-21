@@ -47,6 +47,35 @@ async function enforceRouteRateLimit(db, req, res, decoded, routeName, limit = 3
 
 const norm = (value = '') => String(value || '').toLowerCase().trim();
 const cleanId = (value = '') => String(value || '').replace(/[^A-Za-z0-9_-]/g, '_').slice(0, 140);
+
+function hashForNotificationTag(value = '') {
+  let hash = 0;
+  const text = String(value || '');
+  for (let i = 0; i < text.length; i += 1) hash = ((hash << 5) - hash + text.charCodeAt(i)) | 0;
+  return Math.abs(hash).toString(36);
+}
+
+function notificationTag(prefix, ...parts) {
+  const clean = [prefix, ...parts]
+    .map(part => cleanId(String(part || '')))
+    .filter(Boolean)
+    .join(':')
+    .slice(0, 120);
+  return clean || `${prefix}:${hashForNotificationTag(parts.join('|'))}`;
+}
+
+function webPushOptions(tag, link = '/') {
+  return {
+    notification: {
+      tag,
+      renotify: false,
+      icon: '/app-icon.png',
+      badge: '/app-icon.png'
+    },
+    fcmOptions: { link }
+  };
+}
+
 const memberDocId = (uid, restaurantId) => `${cleanId(uid)}_${cleanId(restaurantId)}`.slice(0, 240);
 const masterEmails = () => [process.env.MASTER_ADMIN_EMAIL, process.env.MASTER_ADMIN_EMAILS]
   .filter(Boolean)
@@ -274,8 +303,18 @@ export default async function handler(req, res) {
     });
     if (tokenRecords.length === 0) return res.status(200).json({ success: false, sentCount: 0, failedCount: 0, missingTokens: true, message: 'No devices eligible to receive this alert.' });
 
+    const tag = notificationTag('86chaos-push', targetMode || type || 'workspace', restaurantIds.join('_'), hashForNotificationTag(`${title}|${body}`));
+    const link = type === 'schedule' ? '/?tab=published' : type === 'message' ? '/?tab=messages' : '/?tab=today';
     const messagePayload = {
       notification: { title, body },
+      data: {
+        type: String(type || 'push'),
+        restaurantId: String(restaurantIds[0] || restaurantId || ''),
+        restaurantIds: restaurantIds.join(','),
+        click_action: link,
+        notificationTag: tag
+      },
+      webpush: webPushOptions(tag, link),
       tokens: tokenRecords.map(t => t.token),
     };
 

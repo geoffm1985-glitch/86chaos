@@ -344,12 +344,13 @@ async function sendRestaurantOwnerAdminPush(app, db, restaurant, attentionItems,
   recipients.forEach(user => collectTokens(user).forEach(token => { if (!seen.has(token)) { seen.add(token); tokens.push(token); } }));
   if (!tokens.length) return { attempted: true, sentCount: 0, failedCount: 0, tokenCount: 0, missingTokens: true, eligibleRecipientCount: recipients.length };
   const top = attentionItems[0];
+  const title = `86 Chaos owner/admin alert: ${restaurant.name || restaurant.id}`.slice(0, 100);
+  const body = `${attentionItems.length} item(s) need owner/admin review. ${top.area || top.type || 'Review'}: ${top.title}`.slice(0, 240);
+  const tag = `86chaos-owner-admin-alert:${String(restaurant.id)}:${String(runId)}`.replace(/[^A-Za-z0-9_.:-]/g, '_').slice(0, 120);
   const payloadBase = {
-    notification: {
-      title: `86 Chaos owner/admin alert: ${restaurant.name || restaurant.id}`.slice(0, 100),
-      body: `${attentionItems.length} item(s) need owner/admin review. ${top.area || top.type || 'Review'}: ${top.title}`.slice(0, 240)
-    },
-    data: { type: 'python_owner_admin_alert', route: 'today', targetTab: 'today', runId: String(runId), restaurantId: String(restaurant.id), alertOnly: 'true', changesApplied: '0' }
+    notification: { title, body },
+    data: { type: 'python_owner_admin_alert', route: 'today', targetTab: 'today', runId: String(runId), restaurantId: String(restaurant.id), alertOnly: 'true', changesApplied: '0', click_action: '/?tab=today', notificationTag: tag },
+    webpush: { notification: { tag, renotify: false, icon: '/app-icon.png', badge: '/app-icon.png' }, fcmOptions: { link: '/?tab=today' } }
   };
   let sentCount = 0;
   let failedCount = 0;

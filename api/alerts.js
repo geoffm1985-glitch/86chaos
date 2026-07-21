@@ -19,11 +19,13 @@ export default async function handler(req, res) {
     const { token, title, body } = req.body || {};
     if (!token) throw new Error('Missing user device token in request body.');
 
+    const finalTitle = title || '86 Chaos';
+    const finalBody = body || 'Test alert triggered!';
+    const tag = `86chaos-alert:${String(finalTitle).slice(0, 40)}:${String(finalBody).slice(0, 60)}`.replace(/[^A-Za-z0-9_.:-]/g, '_').slice(0, 120);
     const response = await getMessaging(authContext.app).send({
-      notification: {
-        title: title || '86 Chaos',
-        body: body || 'Test alert triggered!'
-      },
+      notification: { title: finalTitle, body: finalBody },
+      data: { type: 'alert', click_action: '/?tab=today', notificationTag: tag },
+      webpush: { notification: { tag, renotify: false, icon: '/app-icon.png', badge: '/app-icon.png' }, fcmOptions: { link: '/?tab=today' } },
       token
     });
 
