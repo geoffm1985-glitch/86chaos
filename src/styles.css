@@ -3808,7 +3808,7 @@ select {
   flex-shrink: 0 !important;
 }
 
-/* 15.0.101 Premium App UI Polish
+/* 15.0.102 Desktop Shell Clipping + Header Chrome Cleanup
    Calmer restaurant-ops console styling without changing feature structure. */
 .premium-app-shell {
   --premium-bg: #0B0F13;
@@ -4179,4 +4179,125 @@ select {
   .premium-app-shell .premium-inventory .grid.grid-cols-1.md\:grid-cols-2 {
     gap: 8px !important;
   }
+}
+
+
+/* 15.0.102 Desktop Shell Clipping + Header Chrome Cleanup
+   Removes the webpage-style pill/square chrome from command actions and fixes desktop content clipping. */
+@media (min-width: 768px) {
+  .premium-app-shell .native-command-bar,
+  .premium-app-shell .app-header {
+    padding-right: 28px !important;
+    overflow: visible !important;
+  }
+
+  .premium-app-shell .app-content-shell {
+    width: calc(100vw - 80px) !important;
+    max-width: calc(100vw - 80px) !important;
+    margin-left: 80px !important;
+    margin-right: 0 !important;
+    padding-right: 34px !important;
+    box-sizing: border-box !important;
+    overflow-x: auto !important;
+  }
+
+  .premium-app-shell .app-content-shell > * {
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+  }
+
+  .premium-app-shell .premium-inventory.inventory-desktop {
+    width: 100% !important;
+    max-width: none !important;
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+    overflow-x: visible !important;
+  }
+
+  .premium-app-shell .premium-inventory .inventory-subtabs {
+    max-width: 100% !important;
+    overflow-x: auto !important;
+    flex-wrap: nowrap !important;
+    scrollbar-width: none;
+  }
+
+  .premium-app-shell .premium-inventory .inventory-subtabs::-webkit-scrollbar {
+    display: none;
+  }
+
+  .premium-app-shell .premium-inventory [class*="md:grid-cols-2"] {
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 430px), 1fr)) !important;
+    min-width: 0 !important;
+  }
+
+  .premium-app-shell .premium-inventory .inventory-count-row {
+    min-width: 0 !important;
+  }
+
+  .premium-app-shell .premium-inventory .inventory-count-row > div:first-child {
+    min-width: 0 !important;
+    overflow: hidden !important;
+  }
+}
+
+.premium-app-shell .native-version-pill,
+.premium-app-shell .native-icon-button,
+.premium-app-shell .native-queue-button,
+.premium-app-shell .native-workspace-chip {
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  background-image: none !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+  outline: 0 !important;
+}
+
+.premium-app-shell .native-icon-button {
+  width: 34px !important;
+  height: 34px !important;
+  min-height: 34px !important;
+  padding: 0 !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  color: #B7C1CA !important;
+}
+
+.premium-app-shell .native-menu-button {
+  color: var(--premium-copper) !important;
+}
+
+.premium-app-shell .native-icon-button:hover,
+.premium-app-shell .native-queue-button:hover,
+.premium-app-shell .native-workspace-chip:hover {
+  background: transparent !important;
+  border: 0 !important;
+  color: #FFFFFF !important;
+  transform: none !important;
+}
+
+.premium-app-shell .native-version-pill {
+  padding: 0 !important;
+  min-height: 0 !important;
+  color: #8996A3 !important;
+  letter-spacing: .10em !important;
+}
+
+.premium-app-shell .native-workspace-chip {
+  padding: 0 !important;
+  min-height: 0 !important;
+  max-width: min(30vw, 340px) !important;
+}
+
+.premium-app-shell .native-command-actions {
+  gap: 14px !important;
+}
+
+.premium-app-shell .native-alert-dot {
+  top: 3px !important;
+  right: 1px !important;
+  width: 7px !important;
+  height: 7px !important;
+  border-width: 1px !important;
 }

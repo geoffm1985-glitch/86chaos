@@ -1240,7 +1240,7 @@ What I clicked / expected:
         pushTokenPermission: permission,
         pushTokenHost: window.location.hostname,
         pushTokenCanonical: true,
-        pushTokenDedupeVersion: '15.0.101',
+        pushTokenDedupeVersion: '15.0.102',
         pushNeedsRepair: false,
         pushForceServiceWorkerRefresh: false,
         pushRepairStatus: 'connected',
@@ -1313,7 +1313,7 @@ What I clicked / expected:
           pushTokenPermission: permission,
           pushTokenHost: window.location.hostname,
           pushTokenCanonical: true,
-          pushTokenDedupeVersion: '15.0.101',
+          pushTokenDedupeVersion: '15.0.102',
           pushNeedsRepair: false,
           pushForceServiceWorkerRefresh: false,
           pushRepairStatus: 'connected',
@@ -1886,6 +1886,98 @@ return (
             padding-left: 18px !important;
             padding-right: 22px !important;
           }
+        }
+
+        /* 15.0.102 desktop shell correction: no webpage-style action boxes/chips and no clipped desktop content. */
+        @media (min-width: 768px) {
+          .native-app-shell .app-header,
+          .premium-app-shell .native-command-bar {
+            padding-right: 28px !important;
+            overflow: visible !important;
+          }
+          .native-app-shell .app-content-shell,
+          .premium-app-shell .app-content-shell {
+            width: calc(100vw - 80px) !important;
+            max-width: calc(100vw - 80px) !important;
+            margin-left: 80px !important;
+            margin-right: 0 !important;
+            padding-right: 34px !important;
+            box-sizing: border-box !important;
+            overflow-x: auto !important;
+          }
+          .native-app-shell .app-content-shell > *,
+          .premium-app-shell .app-content-shell > * {
+            max-width: 100% !important;
+            box-sizing: border-box !important;
+          }
+        }
+        .premium-app-shell .native-version-pill,
+        .premium-app-shell .native-icon-button,
+        .premium-app-shell .native-queue-button,
+        .premium-app-shell .native-workspace-chip,
+        .native-app-shell .native-version-pill,
+        .native-app-shell .native-icon-button,
+        .native-app-shell .native-queue-button,
+        .native-app-shell .native-workspace-chip {
+          border: 0 !important;
+          border-radius: 0 !important;
+          background: transparent !important;
+          background-image: none !important;
+          box-shadow: none !important;
+          backdrop-filter: none !important;
+          outline: 0 !important;
+        }
+        .premium-app-shell .native-icon-button,
+        .native-app-shell .native-icon-button {
+          width: 34px !important;
+          height: 34px !important;
+          min-height: 34px !important;
+          padding: 0 !important;
+          display: inline-flex !important;
+          align-items: center !important;
+          justify-content: center !important;
+          color: #B7C1CA !important;
+        }
+        .premium-app-shell .native-menu-button,
+        .native-app-shell .native-menu-button {
+          color: var(--chaos-accent, #D4A381) !important;
+        }
+        .premium-app-shell .native-icon-button:hover,
+        .premium-app-shell .native-queue-button:hover,
+        .premium-app-shell .native-workspace-chip:hover,
+        .native-app-shell .native-icon-button:hover,
+        .native-app-shell .native-queue-button:hover,
+        .native-app-shell .native-workspace-chip:hover {
+          background: transparent !important;
+          border: 0 !important;
+          color: #FFFFFF !important;
+          transform: none !important;
+        }
+        .premium-app-shell .native-version-pill,
+        .native-app-shell .native-version-pill {
+          padding: 0 !important;
+          min-height: 0 !important;
+          color: #8996A3 !important;
+          letter-spacing: .10em !important;
+        }
+        .premium-app-shell .native-workspace-chip,
+        .native-app-shell .native-workspace-chip {
+          padding: 0 !important;
+          min-height: 0 !important;
+          max-width: min(30vw, 340px) !important;
+          justify-content: center !important;
+        }
+        .premium-app-shell .native-command-actions,
+        .native-app-shell .native-command-actions {
+          gap: 14px !important;
+        }
+        .premium-app-shell .native-alert-dot,
+        .native-app-shell .native-alert-dot {
+          top: 3px !important;
+          right: 1px !important;
+          width: 7px !important;
+          height: 7px !important;
+          border-width: 1px !important;
         }
       `}</style>
 
