@@ -1,1 +1,7 @@
-{"version":"15.1.0","label":"Full reference UI rebuild","updatedAt":"2026-07-21T09:30:00.000Z"}
+{
+  "version": "15.1.1",
+  "name": "86 Chaos 15.1.1 Manager Brain Control Panel",
+  "label": "15.1.1 Manager Brain Control Panel",
+  "build": "15.1.1",
+  "updatedAt": "2026-07-21T00:00:00.000Z"
+}
