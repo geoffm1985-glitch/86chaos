@@ -1240,7 +1240,7 @@ What I clicked / expected:
         pushTokenPermission: permission,
         pushTokenHost: window.location.hostname,
         pushTokenCanonical: true,
-        pushTokenDedupeVersion: '15.0.103',
+        pushTokenDedupeVersion: '15.0.104',
         pushNeedsRepair: false,
         pushForceServiceWorkerRefresh: false,
         pushRepairStatus: 'connected',
@@ -1313,7 +1313,7 @@ What I clicked / expected:
           pushTokenPermission: permission,
           pushTokenHost: window.location.hostname,
           pushTokenCanonical: true,
-          pushTokenDedupeVersion: '15.0.103',
+          pushTokenDedupeVersion: '15.0.104',
           pushNeedsRepair: false,
           pushForceServiceWorkerRefresh: false,
           pushRepairStatus: 'connected',
@@ -1612,7 +1612,7 @@ What I clicked / expected:
   const appThemeStyle = { '--chaos-accent': appAccentColor };
 
 return (
-    <div style={appThemeStyle} onClickCapture={blockDemoMutation} onSubmitCapture={blockDemoMutation} className={`native-app-shell premium-app-shell desktop-pro-shell ui-v13-polished ui-v12-compact cockpit-shell ${activeTabState === 'godmode' ? '' : 'non-admin-controls-compact'} kitchen-simple-shell ui-density-${liveAppUser?.preferences?.uiDensity || displayClientData?.systemSettings?.uiDensity || 'compact'} recipe-density-${liveAppUser?.preferences?.recipeDensity || displayClientData?.systemSettings?.recipeCardDensity || 'tight'} motion-${liveAppUser?.preferences?.motionMode || displayClientData?.systemSettings?.cockpitLights || 'normal'} min-h-screen font-sans flex flex-col w-full max-w-[100vw] overflow-x-hidden ${T.bg}`}>
+    <div style={appThemeStyle} onClickCapture={blockDemoMutation} onSubmitCapture={blockDemoMutation} className={`native-app-shell premium-app-shell serious-app-system-v104 desktop-pro-shell ui-v13-polished ui-v12-compact cockpit-shell ${activeTabState === 'godmode' ? '' : 'non-admin-controls-compact'} kitchen-simple-shell ui-density-${liveAppUser?.preferences?.uiDensity || displayClientData?.systemSettings?.uiDensity || 'compact'} recipe-density-${liveAppUser?.preferences?.recipeDensity || displayClientData?.systemSettings?.recipeCardDensity || 'tight'} motion-${liveAppUser?.preferences?.motionMode || displayClientData?.systemSettings?.cockpitLights || 'normal'} min-h-screen font-sans flex flex-col w-full max-w-[100vw] overflow-x-hidden ${T.bg}`}>
       
       {/* GHOST / DEMO MODE BANNER */}
       {ghostTenant && (
@@ -2035,6 +2035,316 @@ return (
           box-shadow: none !important;
         }
 
+        /* 15.0.104 Serious App Design System Cleanup
+           A stricter operations-console layer: calmer surfaces, fewer decorative containers,
+           better desktop fit, and app-like navigation without webpage chrome. */
+        .serious-app-system-v104 {
+          --ops-bg: #0B0F13;
+          --ops-surface: #10161C;
+          --ops-panel: #141B22;
+          --ops-panel-2: #182129;
+          --ops-border: rgba(122,139,154,.20);
+          --ops-border-strong: rgba(122,139,154,.34);
+          --ops-text: #F3F7FA;
+          --ops-muted: #97A6B3;
+          --ops-copper: var(--chaos-accent, #D4A381);
+          background: var(--ops-bg) !important;
+        }
+        .serious-app-system-v104.native-app-shell,
+        .serious-app-system-v104.cockpit-shell {
+          background-image: none !important;
+          background-color: var(--ops-bg) !important;
+        }
+        .serious-app-system-v104 .app-header.native-command-bar {
+          height: 52px !important;
+          background: #0B0F13 !important;
+          border-bottom: 1px solid var(--ops-border) !important;
+          box-shadow: none !important;
+          backdrop-filter: none !important;
+        }
+        .serious-app-system-v104 .native-command-separator {
+          width: 1px;
+          height: 28px;
+          background: var(--ops-border) !important;
+        }
+        .serious-app-system-v104 .native-command-title > div:first-child {
+          color: #667582 !important;
+          letter-spacing: .18em !important;
+        }
+        .serious-app-system-v104 .native-command-title > div:last-child {
+          color: var(--ops-text) !important;
+          font-size: .92rem !important;
+        }
+        .serious-app-system-v104 .native-workspace-chip,
+        .serious-app-system-v104 .native-version-pill,
+        .serious-app-system-v104 .native-command-actions button,
+        .serious-app-system-v104 .native-icon-button,
+        .serious-app-system-v104 .native-queue-button {
+          background: transparent !important;
+          border: 0 !important;
+          border-radius: 0 !important;
+          box-shadow: none !important;
+          outline: 0 !important;
+          backdrop-filter: none !important;
+        }
+        .serious-app-system-v104 .native-workspace-name,
+        .serious-app-system-v104 .native-version-pill {
+          color: #8E9CA8 !important;
+          font-weight: 900 !important;
+        }
+        .serious-app-system-v104 .native-menu-button { color: var(--ops-copper) !important; }
+        .serious-app-system-v104 .native-command-actions { gap: 16px !important; }
+        .serious-app-system-v104 .native-desktop-rail {
+          left: 0 !important;
+          top: 52px !important;
+          bottom: 0 !important;
+          width: 72px !important;
+          padding: 14px 0 !important;
+          border: 0 !important;
+          border-right: 1px solid var(--ops-border) !important;
+          border-radius: 0 !important;
+          background: #0C1116 !important;
+          box-shadow: none !important;
+          backdrop-filter: none !important;
+          gap: 4px !important;
+        }
+        .serious-app-system-v104 .native-desktop-rail-divider {
+          width: 38px !important;
+          background: var(--ops-border) !important;
+          margin: 7px 0 !important;
+        }
+        .serious-app-system-v104 .native-nav-btn {
+          background: transparent !important;
+          border: 0 !important;
+          border-radius: 0 !important;
+          box-shadow: none !important;
+          color: #8996A3 !important;
+          transition: color .14s ease !important;
+        }
+        .serious-app-system-v104 .native-nav-desktop {
+          width: 72px !important;
+          height: 58px !important;
+          gap: 4px !important;
+          font-size: 9px !important;
+        }
+        .serious-app-system-v104 .native-nav-btn:hover,
+        .serious-app-system-v104 .native-nav-btn.is-active {
+          background: transparent !important;
+          border: 0 !important;
+          box-shadow: none !important;
+          color: #FFFFFF !important;
+        }
+        .serious-app-system-v104 .native-nav-btn.is-active::before {
+          content: '';
+          position: absolute;
+          left: 0 !important;
+          top: 12px !important;
+          bottom: 12px !important;
+          width: 3px !important;
+          border-radius: 0 !important;
+          background: var(--ops-copper) !important;
+        }
+        .serious-app-system-v104 .native-mobile-bottom-nav {
+          left: 0 !important;
+          right: 0 !important;
+          bottom: 0 !important;
+          min-height: 68px !important;
+          border: 0 !important;
+          border-top: 1px solid var(--ops-border) !important;
+          border-radius: 0 !important;
+          background: #0B0F13 !important;
+          box-shadow: none !important;
+          backdrop-filter: none !important;
+          padding: 6px max(8px, env(safe-area-inset-left)) max(8px, env(safe-area-inset-bottom)) max(8px, env(safe-area-inset-right)) !important;
+        }
+        .serious-app-system-v104 .native-mobile-bottom-nav .native-nav-mobile {
+          border-radius: 0 !important;
+          min-height: 50px !important;
+        }
+        .serious-app-system-v104 .native-mobile-bottom-nav .native-nav-mobile.is-active::before {
+          left: 24% !important;
+          right: 24% !important;
+          top: auto !important;
+          bottom: 0 !important;
+          height: 2px !important;
+          width: auto !important;
+        }
+        @media (min-width: 768px) {
+          .serious-app-system-v104 .app-content-shell {
+            width: calc(100vw - 72px) !important;
+            max-width: calc(100vw - 72px) !important;
+            margin-left: 72px !important;
+            padding: 16px 28px 22px 20px !important;
+            overflow-x: hidden !important;
+          }
+          .serious-app-system-v104 .app-content-shell > * {
+            max-width: 100% !important;
+          }
+        }
+        @media (max-width: 767px) {
+          .serious-app-system-v104 .app-content-shell {
+            padding-bottom: 84px !important;
+          }
+        }
+        .serious-app-system-v104 .app-footer {
+          background: transparent !important;
+          border: 0 !important;
+          box-shadow: none !important;
+          opacity: .68 !important;
+          padding: 4px 12px !important;
+        }
+        .serious-app-system-v104 .chaos-card,
+        .serious-app-system-v104 .cockpit-panel,
+        .serious-app-system-v104 .app-content-shell .bg-\[\#1A2126\],
+        .serious-app-system-v104 .app-content-shell .bg-\[\#12161A\],
+        .serious-app-system-v104 .app-content-shell .bg-\[\#0B0E11\] {
+          background: var(--ops-panel) !important;
+          background-image: none !important;
+          border-color: var(--ops-border) !important;
+          box-shadow: none !important;
+        }
+        .serious-app-system-v104 .app-content-shell .rounded-3xl,
+        .serious-app-system-v104 .app-content-shell .rounded-2xl,
+        .serious-app-system-v104 .chaos-card,
+        .serious-app-system-v104 .cockpit-panel {
+          border-radius: 10px !important;
+        }
+        .serious-app-system-v104 .app-content-shell .shadow-2xl,
+        .serious-app-system-v104 .app-content-shell .shadow-xl,
+        .serious-app-system-v104 .app-content-shell .shadow-lg,
+        .serious-app-system-v104 .app-content-shell .shadow-md {
+          box-shadow: none !important;
+        }
+        .serious-app-system-v104 .chaos-button-primary,
+        .serious-app-system-v104 .app-content-shell .from-\[\#C59373\].to-\[\#8F6040\] {
+          background: var(--ops-copper) !important;
+          background-image: none !important;
+          color: #0B0F13 !important;
+          border: 0 !important;
+          box-shadow: none !important;
+          border-radius: 8px !important;
+        }
+        .serious-app-system-v104 .chaos-button-secondary,
+        .serious-app-system-v104 .app-content-shell button.bg-\[\#12161A\] {
+          background: transparent !important;
+          border-color: var(--ops-border-strong) !important;
+          color: #D8E1E8 !important;
+          box-shadow: none !important;
+          border-radius: 8px !important;
+        }
+        .serious-app-system-v104 .chaos-input,
+        .serious-app-system-v104 .app-content-shell input,
+        .serious-app-system-v104 .app-content-shell select,
+        .serious-app-system-v104 .app-content-shell textarea {
+          background: #0E141A !important;
+          border-color: var(--ops-border-strong) !important;
+          border-radius: 8px !important;
+          box-shadow: none !important;
+          color: var(--ops-text) !important;
+        }
+        .serious-app-system-v104 .chaos-input:focus,
+        .serious-app-system-v104 .app-content-shell input:focus,
+        .serious-app-system-v104 .app-content-shell select:focus,
+        .serious-app-system-v104 .app-content-shell textarea:focus {
+          border-color: rgba(212,163,129,.60) !important;
+          outline: 1px solid rgba(212,163,129,.22) !important;
+          outline-offset: 1px !important;
+        }
+        .serious-app-system-v104 .text-slate-400,
+        .serious-app-system-v104 .text-slate-500 {
+          color: var(--ops-muted) !important;
+        }
+        .serious-app-system-v104 .native-route-loader {
+          background: var(--ops-panel) !important;
+          border-color: var(--ops-border) !important;
+          box-shadow: none !important;
+          border-radius: 10px !important;
+          backdrop-filter: none !important;
+        }
+        .serious-app-system-v104 .native-loader-bar {
+          background: rgba(212,163,129,.38) !important;
+        }
+        .serious-app-system-v104 .premium-inventory .inventory-subtabs {
+          background: #0E141A !important;
+          border: 1px solid var(--ops-border) !important;
+          border-radius: 8px !important;
+          box-shadow: none !important;
+        }
+        .serious-app-system-v104 .premium-inventory .inventory-count-row {
+          min-height: 58px !important;
+          border-radius: 8px !important;
+          background: #111820 !important;
+          border-color: var(--ops-border) !important;
+          box-shadow: none !important;
+        }
+        .serious-app-system-v104 .premium-inventory .inventory-count-row:hover {
+          background: #151E27 !important;
+          border-color: rgba(212,163,129,.32) !important;
+        }
+        .serious-app-system-v104 .premium-inventory .inventory-count-controls {
+          background: transparent !important;
+          border-color: var(--ops-border) !important;
+          border-radius: 8px !important;
+          box-shadow: none !important;
+        }
+        .serious-app-system-v104 .premium-inventory .inventory-stepper-btn,
+        .serious-app-system-v104 .premium-inventory .inventory-count-input {
+          background: #0E141A !important;
+          border-color: var(--ops-border) !important;
+          border-radius: 7px !important;
+          box-shadow: none !important;
+        }
+        .serious-app-system-v104 .app-drawer-v104 > aside {
+          background: #0B0F13 !important;
+          border-left: 1px solid var(--ops-border) !important;
+          box-shadow: none !important;
+        }
+        .serious-app-system-v104 .app-drawer-v104 .drawer-menu-row,
+        .serious-app-system-v104 .app-drawer-v104 .drawer-utility-row,
+        .serious-app-system-v104 .app-drawer-v104 .drawer-close-button {
+          background: transparent !important;
+          border: 0 !important;
+          border-radius: 0 !important;
+          box-shadow: none !important;
+        }
+        .serious-app-system-v104 .app-drawer-v104 .drawer-menu-row {
+          position: relative;
+          justify-content: flex-start !important;
+          border-left: 2px solid transparent !important;
+        }
+        .serious-app-system-v104 .app-drawer-v104 .drawer-menu-row.is-active {
+          border-left-color: var(--ops-copper) !important;
+          color: white !important;
+        }
+        .serious-app-system-v104 .app-drawer-v104 .drawer-menu-row:hover {
+          color: #FFFFFF !important;
+        }
+        .serious-app-system-v104 .app-drawer-v104 .drawer-active-bar {
+          display: none !important;
+        }
+        .serious-app-system-v104 .app-drawer-v104 [class*="bg-"] {
+          background-image: none !important;
+        }
+        .serious-app-system-v104 .app-drawer-v104 input {
+          background: #0E141A !important;
+          border: 1px solid var(--ops-border-strong) !important;
+          border-radius: 8px !important;
+        }
+
+        .serious-app-system-v104 .app-drawer-v104 .drawer-backdrop-v104 {
+          background: rgba(0,0,0,.55) !important;
+          backdrop-filter: blur(2px) !important;
+        }
+        .serious-app-system-v104 .app-drawer-v104 > aside > div:first-child,
+        .serious-app-system-v104 .app-drawer-v104 > aside > div:last-child {
+          background: #0B0F13 !important;
+          border-color: var(--ops-border) !important;
+        }
+        .serious-app-system-v104 .cockpit-grid {
+          background-image: none !important;
+        }
+
+
       `}</style>
 
       {/* UPDATE ALERT BANNER */}
@@ -2093,7 +2403,7 @@ return (
         )}
 
         <div className="native-command-actions flex items-center gap-2 flex-shrink-0">
-          <span className="native-version-pill hidden lg:inline-flex text-[9px] font-black uppercase tracking-widest text-slate-400">v{CURRENT_VERSION}</span>
+          <span className="native-version-pill hidden lg:inline-flex text-[9px] font-black uppercase tracking-widest text-slate-400">VERSION {CURRENT_VERSION}</span>
           <button type="button" onClick={() => openProblemReport({ title: 'Manual Problem Report', message: `Page: ${activeTabState}`, category: 'Bug / Error' })} className="native-icon-button hidden sm:flex" title="Report a problem"><Bug size={17}/></button>
           {offlineQueue.length > 0 && <button type="button" onClick={() => openProblemReport({ title: 'Offline Queue', message: `${offlineQueue.length} queued action(s) waiting to sync.`, category: 'Data Looks Wrong' })} className="native-queue-button hidden sm:flex" title="Offline queued actions">Queue {offlineQueue.length}</button>}
           <button onClick={() => setIsMenuOpen(true)} className="native-icon-button native-menu-button relative" title="Open menu">
