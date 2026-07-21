@@ -4301,3 +4301,119 @@ select {
   height: 7px !important;
   border-width: 1px !important;
 }
+
+/* 15.0.103 Chrome Purge
+   Remove navigation/header/drawer chip, pill, square, and badge-like backgrounds.
+   Real work content panels and form controls stay intact. */
+.premium-app-shell .native-version-pill,
+.premium-app-shell .native-workspace-chip,
+.premium-app-shell .native-icon-button,
+.premium-app-shell .native-queue-button,
+.premium-app-shell .native-command-actions button,
+.premium-app-shell .app-header button,
+.premium-app-shell .app-header span.native-version-pill {
+  background: transparent !important;
+  background-image: none !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  outline: 0 !important;
+  backdrop-filter: none !important;
+}
+
+.premium-app-shell .native-version-pill,
+.premium-app-shell .native-workspace-chip {
+  padding: 0 !important;
+  min-height: 0 !important;
+  height: auto !important;
+}
+
+.premium-app-shell .native-icon-button,
+.premium-app-shell .native-command-actions button {
+  width: auto !important;
+  min-width: 0 !important;
+  height: auto !important;
+  min-height: 0 !important;
+  padding: 0 !important;
+  color: #B7C1CA !important;
+}
+
+.premium-app-shell .native-menu-button {
+  color: var(--premium-copper, #D4A381) !important;
+}
+
+.premium-app-shell .native-icon-button:hover,
+.premium-app-shell .native-command-actions button:hover,
+.premium-app-shell .native-workspace-chip:hover {
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  color: #FFFFFF !important;
+  transform: none !important;
+}
+
+.premium-app-shell .native-desktop-rail .native-nav-btn,
+.premium-app-shell .native-mobile-bottom-nav .native-nav-btn {
+  background: transparent !important;
+  background-image: none !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+}
+
+.premium-app-shell .native-desktop-rail .native-nav-btn:hover,
+.premium-app-shell .native-mobile-bottom-nav .native-nav-btn:hover,
+.premium-app-shell .native-desktop-rail .native-nav-btn.is-active,
+.premium-app-shell .native-mobile-bottom-nav .native-nav-btn.is-active {
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  color: #FFFFFF !important;
+}
+
+.premium-app-shell .native-desktop-rail .native-nav-btn.is-active::before {
+  left: -10px !important;
+  width: 2px !important;
+  background: var(--premium-copper, #D4A381) !important;
+}
+
+.premium-app-shell .app-drawer-readable button,
+.premium-app-shell .app-drawer-readable .drawer-icon-button,
+.premium-app-shell .app-drawer-readable [class*="rounded"],
+.premium-app-shell .app-drawer-readable [class*="bg-"],
+.premium-app-shell .app-drawer-readable [class*="border"] {
+  background: transparent !important;
+  background-image: none !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+}
+
+.premium-app-shell .app-drawer-readable button,
+.premium-app-shell .app-drawer-readable .drawer-icon-button {
+  border-color: transparent !important;
+}
+
+.premium-app-shell .app-drawer-readable button:hover,
+.premium-app-shell .app-drawer-readable .drawer-icon-button:hover {
+  background: transparent !important;
+  background-image: none !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+}
+
+.premium-app-shell .app-drawer-readable input {
+  background: transparent !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+}
+
+.premium-app-shell .app-drawer-readable .drawer-section-label {
+  background: transparent !important;
+  border: 0 !important;
+}
+
+.premium-app-shell .native-alert-dot,
+.premium-app-shell .native-nav-badge,
+.premium-app-shell .app-drawer-readable [class*="animate-pulse"] {
+  box-shadow: none !important;
+}

@@ -1240,7 +1240,7 @@ What I clicked / expected:
         pushTokenPermission: permission,
         pushTokenHost: window.location.hostname,
         pushTokenCanonical: true,
-        pushTokenDedupeVersion: '15.0.102',
+        pushTokenDedupeVersion: '15.0.103',
         pushNeedsRepair: false,
         pushForceServiceWorkerRefresh: false,
         pushRepairStatus: 'connected',
@@ -1313,7 +1313,7 @@ What I clicked / expected:
           pushTokenPermission: permission,
           pushTokenHost: window.location.hostname,
           pushTokenCanonical: true,
-          pushTokenDedupeVersion: '15.0.102',
+          pushTokenDedupeVersion: '15.0.103',
           pushNeedsRepair: false,
           pushForceServiceWorkerRefresh: false,
           pushRepairStatus: 'connected',
@@ -1979,6 +1979,62 @@ return (
           height: 7px !important;
           border-width: 1px !important;
         }
+
+
+        /* 15.0.103 chrome purge: remove the remaining webpage-like chips, pills, and square icon backgrounds from navigation chrome. */
+        .premium-app-shell .native-version-pill,
+        .premium-app-shell .native-workspace-chip,
+        .premium-app-shell .native-icon-button,
+        .premium-app-shell .native-queue-button,
+        .premium-app-shell .native-command-actions button,
+        .premium-app-shell .app-header button,
+        .premium-app-shell .app-header span.native-version-pill,
+        .premium-app-shell .native-desktop-rail .native-nav-btn,
+        .premium-app-shell .native-mobile-bottom-nav .native-nav-btn {
+          background: transparent !important;
+          background-image: none !important;
+          border: 0 !important;
+          border-radius: 0 !important;
+          box-shadow: none !important;
+          outline: 0 !important;
+          backdrop-filter: none !important;
+        }
+        .premium-app-shell .native-icon-button,
+        .premium-app-shell .native-command-actions button {
+          width: auto !important;
+          min-width: 0 !important;
+          height: auto !important;
+          min-height: 0 !important;
+          padding: 0 !important;
+        }
+        .premium-app-shell .native-desktop-rail .native-nav-btn:hover,
+        .premium-app-shell .native-mobile-bottom-nav .native-nav-btn:hover,
+        .premium-app-shell .native-desktop-rail .native-nav-btn.is-active,
+        .premium-app-shell .native-mobile-bottom-nav .native-nav-btn.is-active {
+          background: transparent !important;
+          border: 0 !important;
+          box-shadow: none !important;
+        }
+        .premium-app-shell .app-drawer-readable button,
+        .premium-app-shell .app-drawer-readable .drawer-icon-button,
+        .premium-app-shell .app-drawer-readable [class*="rounded"],
+        .premium-app-shell .app-drawer-readable [class*="bg-"],
+        .premium-app-shell .app-drawer-readable [class*="border"] {
+          background: transparent !important;
+          background-image: none !important;
+          border-radius: 0 !important;
+          box-shadow: none !important;
+        }
+        .premium-app-shell .app-drawer-readable button,
+        .premium-app-shell .app-drawer-readable .drawer-icon-button {
+          border-color: transparent !important;
+        }
+        .premium-app-shell .app-drawer-readable input {
+          background: transparent !important;
+          border-radius: 0 !important;
+          box-shadow: none !important;
+        }
+
       `}</style>
 
       {/* UPDATE ALERT BANNER */}
@@ -2037,7 +2093,7 @@ return (
         )}
 
         <div className="native-command-actions flex items-center gap-2 flex-shrink-0">
-          <span className="native-version-pill hidden lg:inline-flex px-2.5 py-1 rounded-full text-[9px] font-black uppercase tracking-widest text-slate-400">v{CURRENT_VERSION}</span>
+          <span className="native-version-pill hidden lg:inline-flex text-[9px] font-black uppercase tracking-widest text-slate-400">v{CURRENT_VERSION}</span>
           <button type="button" onClick={() => openProblemReport({ title: 'Manual Problem Report', message: `Page: ${activeTabState}`, category: 'Bug / Error' })} className="native-icon-button hidden sm:flex" title="Report a problem"><Bug size={17}/></button>
           {offlineQueue.length > 0 && <button type="button" onClick={() => openProblemReport({ title: 'Offline Queue', message: `${offlineQueue.length} queued action(s) waiting to sync.`, category: 'Data Looks Wrong' })} className="native-queue-button hidden sm:flex" title="Offline queued actions">Queue {offlineQueue.length}</button>}
           <button onClick={() => setIsMenuOpen(true)} className="native-icon-button native-menu-button relative" title="Open menu">

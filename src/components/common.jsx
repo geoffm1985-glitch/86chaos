@@ -184,17 +184,16 @@ const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppU
           <div className="absolute inset-0 bg-[#12161A]/60 backdrop-blur-sm" onClick={onClose}></div>
           <div className={`app-drawer-readable w-72 bg-[#1A2126] border-l ${T.border} h-full shadow-2xl flex flex-col relative animate-[slideIn_0.3s_ease-out]`} role="dialog" aria-modal="true" aria-label="Main menu">
             <div className={`p-4 border-b ${T.border} bg-[#12161A] flex justify-between items-start`}>
-               <div className="flex items-center gap-3">
-                 <img src={getAvatar(appUser.name, appUser.photoURL)} alt="Profile" className={`w-10 h-10 rounded-full border ${T.border} object-cover`}/>
-                 <div>
-                   <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Signed in as</div>
-                   <div className="text-white font-black text-lg tracking-tight leading-none">{appUser.name}</div>
-                   <div className={`flex items-center gap-1 ${T.copper} text-[10px] font-bold uppercase tracking-wider mt-1 bg-[#1A2126] border ${T.border} w-max px-2 py-0.5 rounded-md`}>{appUser.isAdmin && <Shield size={10} />} {appUser.role}</div>
+               <div className="flex items-start gap-3 min-w-0">
+                 <div className="min-w-0">
+                   <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Signed in as</div>
+                   <div className="text-white font-black text-lg tracking-tight leading-none truncate">{appUser.name}</div>
+                   <div className={`inline-flex items-center gap-1 ${T.copper} text-[10px] font-bold uppercase tracking-wider mt-1`}>{appUser.isAdmin && <Shield size={10} />} {appUser.role}</div>
                    <button
                      type="button"
                      onClick={openWorkspaceSwitcherFromMenu}
                      disabled={!canSwitchWorkspace}
-                     className={`mt-2 max-w-[170px] flex items-center gap-1.5 rounded-lg border ${T.border} bg-[#0B0E11] px-2 py-1 text-left text-[10px] font-black uppercase tracking-wider ${canSwitchWorkspace ? 'text-[#D4A381] hover:border-[#D4A381] hover:text-white cursor-pointer' : 'text-slate-500 cursor-default'}`}
+                     className={`mt-2 max-w-[190px] flex items-center gap-1.5 text-left text-[10px] font-black uppercase tracking-wider ${canSwitchWorkspace ? 'text-[#D4A381] hover:text-white cursor-pointer' : 'text-slate-500 cursor-default'}`}
                      title={canSwitchWorkspace ? 'Change restaurant workspace' : 'Current restaurant workspace'}
                    >
                      <Globe size={11} className="flex-shrink-0" />
@@ -203,12 +202,12 @@ const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppU
                    </button>
                  </div>
                </div>
-               <button onClick={onClose} aria-label="Close menu" className="drawer-icon-button no-compact w-11 h-11 p-0 bg-[#1A2126] border border-[#2A353D] rounded-full text-slate-400 hover:text-white transition-colors flex items-center justify-center shrink-0"><X size={20}/></button>
+               <button onClick={onClose} aria-label="Close menu" className="drawer-icon-button no-compact w-10 h-10 p-0 text-slate-400 hover:text-white transition-colors flex items-center justify-center shrink-0"><X size={21}/></button>
             </div>
             <div className="p-2 border-b border-[#2A353D]">
               <div className="relative">
                 <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
-                <input value={menuSearch} onChange={e => setMenuSearch(e.target.value)} placeholder="Search menu, help, tools..." aria-label="Search menu, help, and tools" className="w-full bg-[#12161A] border border-[#2A353D] rounded-xl pl-9 pr-3 py-1.5 text-xs font-bold text-white outline-none focus:border-[#D4A381]" />
+                <input value={menuSearch} onChange={e => setMenuSearch(e.target.value)} placeholder="Search menu, help, tools..." aria-label="Search menu, help, and tools" className="w-full bg-transparent border-0 border-b border-[#2A353D] rounded-none pl-9 pr-3 py-2 text-xs font-bold text-white outline-none focus:border-[#D4A381]" />
               </div>
             </div>
             <div className="flex-1 overflow-y-auto px-3 py-2">
@@ -218,10 +217,10 @@ const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppU
                    <div className="drawer-section-label px-2 pt-1.5 pb-0.5 text-[9px] font-black uppercase tracking-[0.18em] text-slate-500">{section.label}</div>
                    <div className="space-y-0.5">
                      {section.tabs.map(tab => (
-                       <button key={tab.id} onClick={() => { setActiveTab(tab.id); onClose(); }} className={`w-full flex items-center justify-between px-3 py-1.5 rounded-lg font-bold text-[13px] transition-all duration-200 ${activeTab === tab.id ? `${T.grad} text-slate-900 shadow-md` : 'text-slate-400 hover:bg-[#12161A] hover:text-white'}`}>
+                       <button key={tab.id} onClick={() => { setActiveTab(tab.id); onClose(); }} className={`w-full flex items-center justify-between px-3 py-1.5 font-bold text-[13px] transition-colors ${activeTab === tab.id ? 'text-[#D4A381]' : 'text-slate-400 hover:text-white'}`}>
                          <div className="flex items-center gap-2.5">
                            <div className="relative flex items-center">
-                             <span className={activeTab === tab.id ? 'text-slate-900' : T.copper}>{tab.icon}</span>
+                             <span className={activeTab === tab.id ? T.copper : T.copper}>{tab.icon}</span>
                              {tab.dot && <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-red-500 rounded-full border border-[#1A2126] shadow-[0_0_8px_rgba(239,68,68,0.8)] animate-pulse"></span>}
                            </div>
                            {tab.label}
@@ -232,12 +231,12 @@ const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppU
                  </div>
                ))}
                {visibleActions.length > 0 && <div className="pt-2 mt-1 border-t border-[#2A353D]"><div className="text-[9px] uppercase tracking-widest font-black text-slate-500 px-2 mb-0.5">Suggested actions</div>{visibleActions.map(a => (
-                 <button key={a.id} onClick={() => { setActiveTab(a.tab); setMenuSearch(''); onClose(); }} className="w-full text-left px-3 py-1.5 rounded-lg font-bold text-xs text-slate-300 hover:bg-[#12161A] hover:text-[#D4A381] transition-colors flex items-center gap-2"><Search size={13}/> {a.label}</button>
+                 <button key={a.id} onClick={() => { setActiveTab(a.tab); setMenuSearch(''); onClose(); }} className="w-full text-left px-3 py-1.5 font-bold text-xs text-slate-300 hover:text-[#D4A381] transition-colors flex items-center gap-2"><Search size={13}/> {a.label}</button>
                ))}</div>}
             </div>
             <div className={`p-3 border-t ${T.border} bg-[#12161A] space-y-2`}>
-             <button onClick={() => { setActiveTab('help'); onClose(); window.setTimeout(() => window.dispatchEvent(new CustomEvent('chaosOpenProblemReport')), 150); }} className="w-full flex items-center justify-center gap-2 py-2.5 text-orange-400 text-sm font-bold rounded-xl hover:bg-orange-900/20 transition-colors border border-orange-900/30"><Bug size={16} /> Report Problem</button>
-             <button onClick={() => { setAppUser(null); localStorage.removeItem('86chaosUser'); onClose(); }} className="w-full flex items-center justify-center gap-2 py-2.5 text-red-400 text-sm font-bold rounded-xl hover:bg-red-900/20 transition-colors"><LogOut size={16} /> Log Out</button>
+             <button onClick={() => { setActiveTab('help'); onClose(); window.setTimeout(() => window.dispatchEvent(new CustomEvent('chaosOpenProblemReport')), 150); }} className="w-full flex items-center justify-center gap-2 py-2.5 text-orange-400 text-sm font-bold transition-colors hover:text-white"><Bug size={16} /> Report Problem</button>
+             <button onClick={() => { setAppUser(null); localStorage.removeItem('86chaosUser'); onClose(); }} className="w-full flex items-center justify-center gap-2 py-2.5 text-red-400 text-sm font-bold transition-colors hover:text-white"><LogOut size={16} /> Log Out</button>
             </div>
           </div>
         </div>

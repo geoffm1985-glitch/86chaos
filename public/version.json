@@ -1,7 +1,7 @@
 {
-  "version": "15.0.102",
-  "name": "86 Chaos 15.0.102 Desktop Shell Clipping + Header Chrome Cleanup",
+  "version": "15.0.103",
+  "name": "86 Chaos 15.0.103 Navigation Chrome Purge",
   "forceRefresh": false,
-  "label": "15.0.102 Desktop Shell Clipping + Header Chrome Cleanup",
-  "build": "15.0.102"
+  "label": "15.0.103 Navigation Chrome Purge",
+  "build": "15.0.103"
 }
