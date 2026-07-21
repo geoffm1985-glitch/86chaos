@@ -118,8 +118,20 @@ export const firebaseDiagnostics = {
 export const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app);
 export const storage = getStorage(app);
+const browserLooksMessagingCapable = () => {
+  try {
+    return typeof window !== "undefined"
+      && typeof navigator !== "undefined"
+      && 'serviceWorker' in navigator
+      && typeof window.PushManager !== "undefined"
+      && typeof window.Notification !== "undefined";
+  } catch (_) {
+    return false;
+  }
+};
+
 const safeGetMessaging = () => {
-  if (typeof window === "undefined") return null;
+  if (!browserLooksMessagingCapable()) return null;
   try { return getMessaging(app); }
   catch (err) {
     console.warn('Firebase Messaging is unavailable on this browser:', err?.message || err);
@@ -128,7 +140,7 @@ const safeGetMessaging = () => {
 };
 
 export const messaging = safeGetMessaging();
-export const messagingReady = typeof window !== "undefined"
+export const messagingReady = browserLooksMessagingCapable()
   ? isSupported().then((supported) => supported ? messaging : null).catch((err) => {
       console.warn('Firebase Messaging support check failed:', err?.message || err);
       return null;
@@ -231,7 +243,7 @@ export const MASTER_ADMIN_EMAIL = (process.env.REACT_APP_MASTER_ADMIN_EMAIL || '
 export const EVENT_TAGS = ['Standard Day', 'Packers Game', 'Brewers Game', 'Live Music', 'Severe Weather', 'Private Catering', 'Holiday'];
 
 // --- VERSION TRACKING ---
-export const CURRENT_VERSION = '15.1.2';
+export const CURRENT_VERSION = '15.1.3';
 
 // --- Helpers ---
 export const useLiveCollection = (coll, restId, options = {}) => {

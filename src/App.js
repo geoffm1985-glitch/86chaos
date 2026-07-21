@@ -34,6 +34,40 @@ const TabMenuIntelligence = lazyFeature(() => import('./features/intelligence'),
 const TabAITools = lazyFeature(() => import('./features/intelligence'), 'TabAITools');
 const TabHrTraining = lazyFeature(() => import('./features/hr'), 'TabHrTraining');
 
+
+class ChaosErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { error: null };
+  }
+  static getDerivedStateFromError(error) {
+    return { error };
+  }
+  componentDidCatch(error, info) {
+    try {
+      console.error('86 Chaos UI failed safely:', error, info);
+    } catch (_) {}
+  }
+  render() {
+    if (!this.state.error) return this.props.children;
+    const message = this.state.error?.message || 'The app hit a display error while opening this screen.';
+    return (
+      <div className="chaos-runtime-fallback max-w-2xl mx-auto rounded-2xl border border-red-500/30 bg-[#11181E] p-5 sm:p-6 text-center shadow-2xl">
+        <div className="mx-auto mb-3 h-11 w-11 rounded-xl border border-red-500/40 bg-red-950/20 flex items-center justify-center text-red-300">
+          <AlertTriangle size={22} />
+        </div>
+        <p className="text-[10px] font-black uppercase tracking-[0.22em] text-red-300">Screen failed safely</p>
+        <h2 className="mt-2 text-xl font-black text-white">This screen failed to load, but the app shell is still running.</h2>
+        <p className="mt-2 text-sm font-bold text-slate-400">{message}</p>
+        <div className="mt-4 flex flex-col sm:flex-row justify-center gap-2">
+          <button type="button" onClick={() => { window.location.href = '/?tab=today'; }} className={T.btn}>Go to Today</button>
+          <button type="button" onClick={() => { window.location.reload(); }} className={T.btnAlt}>Reload App</button>
+        </div>
+      </div>
+    );
+  }
+}
+
 const RouteLoading = ({ label = 'Loading section...' }) => (
   <div className="native-route-loader max-w-3xl mx-auto rounded-2xl border border-[#2A353D] bg-[#11181E]/92 p-4 sm:p-5 shadow-2xl">
     <div className="flex items-center gap-3">
@@ -2799,9 +2833,11 @@ return (
         >
           {globalManagerBriefMathText}
         </span>
-        <React.Suspense fallback={<RouteLoading />} >
-          {renderMainContent()}
-        </React.Suspense>
+        <ChaosErrorBoundary key={`${rId || 'no-workspace'}-${activeTabState}`}>
+          <React.Suspense fallback={<RouteLoading />} >
+            {renderMainContent()}
+          </React.Suspense>
+        </ChaosErrorBoundary>
       </main>
       
       <div className="fixed top-20 inset-x-0 mx-auto w-full max-w-md z-50 flex flex-col gap-2 px-4 pointer-events-none">
