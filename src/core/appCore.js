@@ -243,7 +243,7 @@ export const MASTER_ADMIN_EMAIL = (process.env.REACT_APP_MASTER_ADMIN_EMAIL || '
 export const EVENT_TAGS = ['Standard Day', 'Packers Game', 'Brewers Game', 'Live Music', 'Severe Weather', 'Private Catering', 'Holiday'];
 
 // --- VERSION TRACKING ---
-export const CURRENT_VERSION = '15.1.9';
+export const CURRENT_VERSION = '15.1.10';
 
 // --- Helpers ---
 export const useLiveCollection = (coll, restId, options = {}) => {
@@ -253,12 +253,13 @@ export const useLiveCollection = (coll, restId, options = {}) => {
     whereClauses = [],
     orderByField = null,
     orderDirection = 'asc',
-    fallbackLimitCount = 75
+    fallbackLimitCount = 75,
+    global = false
   } = options || {};
   const [data, setData] = useState([]);
 
   useEffect(() => {
-    if (!enabled || !restId) {
+    if (!enabled || (!restId && !global)) {
       setData([]);
       return;
     }
@@ -266,7 +267,7 @@ export const useLiveCollection = (coll, restId, options = {}) => {
     let fallbackUnsubscribe = null;
     const serializedWhere = JSON.stringify(whereClauses || []);
     const buildConstraints = (useWindow = true) => {
-      const constraints = [where("restaurantId", "==", restId)];
+      const constraints = global ? [] : [where("restaurantId", "==", restId)];
       if (useWindow) {
         (whereClauses || []).forEach(([field, op, value]) => {
           if (field && op && value !== undefined && value !== null && value !== '') constraints.push(where(field, op, value));
@@ -284,9 +285,9 @@ export const useLiveCollection = (coll, restId, options = {}) => {
         const message = err?.message || String(err || '');
         const isIndexProblem = err?.code === 'failed-precondition' || /index|requires an index|currently building/i.test(message);
         if (isIndexProblem) {
-          console.warn(`Firestore index pending for ${coll} / ${restId} (${label}). Waiting for the deployed index instead of showing a mismatched fallback query.`, message);
+          console.warn(`Firestore index pending for ${coll} / ${global ? 'global' : restId} (${label}). Waiting for the deployed index instead of showing a mismatched fallback query.`, message);
         } else {
-          console.error(`Live collection error for ${coll} / ${restId} (${label}):`, err);
+          console.error(`Live collection error for ${coll} / ${global ? 'global' : restId} (${label}):`, err);
         }
         setData([]);
       }
@@ -297,7 +298,7 @@ export const useLiveCollection = (coll, restId, options = {}) => {
       if (unsubscribe) unsubscribe();
       if (fallbackUnsubscribe) fallbackUnsubscribe();
     };
-  }, [coll, restId, enabled, limitCount, orderByField, orderDirection, fallbackLimitCount, JSON.stringify(whereClauses || [])]);
+  }, [coll, restId, enabled, limitCount, orderByField, orderDirection, fallbackLimitCount, global, JSON.stringify(whereClauses || [])]);
 
   return data;
 };
