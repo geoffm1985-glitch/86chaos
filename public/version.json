@@ -1,7 +1,7 @@
 {
-  "version": "15.1.10",
-  "name": "86 Chaos 15.1.10 Mobile Live Graph Lock",
-  "label": "15.1.10 Mobile Live Graph Lock",
-  "build": "15.1.10",
+  "version": "15.1.11",
+  "name": "86 Chaos 15.1.11 Credential Loader Guard",
+  "label": "15.1.11 Credential Loader Guard",
+  "build": "15.1.11",
   "updatedAt": "2026-07-22T00:00:00.000Z"
 }

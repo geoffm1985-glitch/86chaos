@@ -164,18 +164,75 @@ function normalizedCredential(credential = {}) {
   };
 }
 
+const GENERIC_SERVICE_ACCOUNT_ENV_NAMES = [
+  'FIREBASE_SERVICE_ACCOUNT_KEY',
+  'FIREBASE_ADMIN_CREDENTIALS',
+  'FIREBASE_SERVICE_ACCOUNT_JSON',
+  'FIREBASE_SERVICE_ACCOUNT',
+  'FIREBASE_ADMIN_SERVICE_ACCOUNT',
+  'FIREBASE_ADMIN_SERVICE_ACCOUNT_JSON',
+  'FIREBASE_ADMIN_SERVICE_ACCOUNT_KEY',
+  'SERVICE_ACCOUNT_KEY',
+  'SERVICE_ACCOUNT_JSON',
+  'GOOGLE_APPLICATION_CREDENTIALS_JSON',
+  'GOOGLE_FIREBASE_SERVICE_ACCOUNT_KEY',
+  'GOOGLE_SERVICE_ACCOUNT_KEY',
+  'GOOGLE_SERVICE_ACCOUNT_JSON',
+  'GCP_SERVICE_ACCOUNT_KEY',
+  'GCP_SERVICE_ACCOUNT_JSON'
+];
+
+function stringLooksLikeServiceAccountJson(value = '') {
+  const text = String(value || '').trim();
+  if (!text) return false;
+  if (text.includes('"type"') && text.includes('service_account') && text.includes('private_key') && text.includes('client_email')) return true;
+  try {
+    if (new RegExp('^[A-Za-z0-9+/=\\r\\n]+$').test(text) && text.length > 200 && !text.includes('{')) {
+      const decoded = Buffer.from(text, 'base64').toString('utf8');
+      return decoded.includes('service_account') && decoded.includes('private_key') && decoded.includes('client_email');
+    }
+  } catch (_) {}
+  return false;
+}
+
+function envNameLooksLikeServiceAccount(name = '') {
+  const upper = String(name || '').toUpperCase();
+  const firebaseService = upper.includes('FIREBASE') && (upper.includes('SERVICE') || upper.includes('ADMIN')) && (upper.includes('ACCOUNT') || upper.includes('CREDENTIAL') || upper.includes('KEY') || upper.includes('JSON'));
+  const googleCredential = upper.includes('GOOGLE') && (upper.includes('SERVICE') || upper.includes('CREDENTIAL')) && (upper.includes('ACCOUNT') || upper.includes('JSON') || upper.includes('KEY'));
+  const genericService = upper.includes('SERVICE') && upper.includes('ACCOUNT') && (upper.includes('JSON') || upper.includes('KEY'));
+  return firebaseService || googleCredential || genericService;
+}
+
+function discoveredCredentialEnvNames() {
+  const names = new Set(GENERIC_SERVICE_ACCOUNT_ENV_NAMES);
+  for (const name of Object.keys(process.env || {})) {
+    const value = process.env[name];
+    if (envNameLooksLikeServiceAccount(name) || stringLooksLikeServiceAccountJson(value)) names.add(name);
+  }
+  return [...names];
+}
+
 function readGenericCredential() {
-  const jsonNames = ['FIREBASE_SERVICE_ACCOUNT_KEY', 'FIREBASE_ADMIN_CREDENTIALS', 'FIREBASE_SERVICE_ACCOUNT_JSON', 'GOOGLE_APPLICATION_CREDENTIALS_JSON', 'GOOGLE_FIREBASE_SERVICE_ACCOUNT_KEY'];
-  for (const name of jsonNames) {
+  for (const name of discoveredCredentialEnvNames()) {
     const raw = process.env[name];
     if (!raw || !String(raw).trim()) continue;
-    const credential = parseJsonCredential(String(raw), name);
-    return { credential: normalizedCredential(credential), source: name };
+    const explicitlySupported = GENERIC_SERVICE_ACCOUNT_ENV_NAMES.includes(name);
+    if (!explicitlySupported && !stringLooksLikeServiceAccountJson(raw)) continue;
+    try {
+      const credential = parseJsonCredential(String(raw), name);
+      const normalized = normalizedCredential(credential);
+      if (!normalized.projectId || !normalized.clientEmail || !normalized.privateKey) {
+        throw new Error(`${name} does not contain project_id, client_email, and private_key.`);
+      }
+      return { credential: normalized, source: name };
+    } catch (error) {
+      if (explicitlySupported) throw error;
+    }
   }
 
-  const projectId = clean(process.env.FIREBASE_PROJECT_ID);
-  const clientEmail = clean(process.env.FIREBASE_CLIENT_EMAIL);
-  const privateKey = String(process.env.FIREBASE_PRIVATE_KEY || '').replace(/\\n/g, '\n').replace(/^"|"$/g, '');
+  const projectId = clean(process.env.FIREBASE_PROJECT_ID || process.env.GOOGLE_CLOUD_PROJECT || process.env.GCLOUD_PROJECT);
+  const clientEmail = clean(process.env.FIREBASE_CLIENT_EMAIL || process.env.GOOGLE_CLIENT_EMAIL);
+  const privateKey = String(process.env.FIREBASE_PRIVATE_KEY || process.env.GOOGLE_PRIVATE_KEY || '').replace(/\\n/g, '\n').replace(/^"|"$/g, '');
   if (projectId && clientEmail && privateKey) {
     return { credential: { projectId, clientEmail, privateKey }, source: 'FIREBASE_PROJECT_ID/FIREBASE_CLIENT_EMAIL/FIREBASE_PRIVATE_KEY' };
   }
@@ -340,13 +397,10 @@ function getAdminAppForProject(projectId, { requireCredentials = true } = {}) {
     const genericNote = generic?.projectId
       ? ` FIREBASE_SERVICE_ACCOUNT_KEY currently contains project_id ${generic.projectId}; this route requested ${wanted}.`
       : '';
-    const recommended = wanted === 'chaos-test-d1601' ? 'FIREBASE_TEST_SERVICE_ACCOUNT_KEY' : 'FIREBASE_PRODUCTION_SERVICE_ACCOUNT_KEY';
     throw new Error(
-      `No server credential is configured for Firebase project ${wanted}.` +
+      `No usable Firebase Admin service-account JSON was found for Firebase project ${wanted}.` +
       genericNote + ' ' +
-      `Use FIREBASE_SERVICE_ACCOUNT_KEY with the complete service-account JSON for the active deployment project. ` +
-      `Testing should use project_id chaos-test-d1601; production should use project_id cheers-34b8d. ` +
-      `Optional advanced aliases are ${recommended}, FIREBASE_ADMIN_CREDENTIALS, or split FIREBASE_PROJECT_ID/FIREBASE_CLIENT_EMAIL/FIREBASE_PRIVATE_KEY. Redeploy after changing Vercel env vars.`
+      `86 Chaos accepts the existing single FIREBASE_SERVICE_ACCOUNT_KEY value first, plus common service-account JSON aliases and split FIREBASE_PROJECT_ID/FIREBASE_CLIENT_EMAIL/FIREBASE_PRIVATE_KEY values.`
     );
   }
 
@@ -466,7 +520,7 @@ function projectCredentialStatus(projectId) {
     const found = readProjectCredential(projectId);
     return found
       ? { configured: true, projectId, source: found.source }
-      : { configured: false, projectId, source: '', recommendedEnv: projectId === 'chaos-test-d1601' ? 'FIREBASE_TEST_SERVICE_ACCOUNT_KEY' : 'FIREBASE_PRODUCTION_SERVICE_ACCOUNT_KEY' };
+      : { configured: false, projectId, source: '', recommendedEnv: 'FIREBASE_SERVICE_ACCOUNT_KEY' };
   } catch (error) {
     return { configured: false, projectId, error: error.message };
   }
@@ -484,6 +538,8 @@ module.exports = {
   verifyRequestToken,
   projectCredentialStatus,
   readProjectCredential,
+  discoveredCredentialEnvNames,
+  stringLooksLikeServiceAccountJson,
   getStorageBucketForProject,
   validateFirebaseDownloadUrl,
   downloadFirebaseStorageUrl

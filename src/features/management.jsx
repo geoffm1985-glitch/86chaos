@@ -1452,7 +1452,7 @@ const handleEnableNotifications = async () => {
     } catch (err) { addToast('Save Failed', err.message || 'Could not save branding settings.'); }
   };
 
-  const looksLikeProjectCredentialError = (message = '') => /No server credential is configured|FIREBASE_SERVICE_ACCOUNT_KEY currently contains project_id|route requested|active deployment project|Redeploy after changing Vercel env vars/i.test(String(message || ''));
+  const looksLikeProjectCredentialError = (message = '') => /No server credential is configured|FIREBASE_SERVICE_ACCOUNT_KEY currently contains project_id|route requested|active deployment project/i.test(String(message || ''));
   const memberDocIdFor = (uid = '', restaurantId = '') => `${String(uid || '').replace(/[^A-Za-z0-9_-]/g, '_')}_${String(restaurantId || '').replace(/[^A-Za-z0-9_-]/g, '_')}`.slice(0, 240);
   const saveSettingsPermissionDirect = async (user, nextPermissions) => {
     const restaurantId = appUser.restaurantId || appUser.activeRestaurantId || appUser.defaultRestaurantId;

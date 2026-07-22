@@ -1,9 +1,26 @@
 const { initAdmin } = require('./_chaos-admin');
+const { discoveredCredentialEnvNames, stringLooksLikeServiceAccountJson } = require('./_firebase-project-admin');
 const { enforceRateLimit, sendRateLimited } = require('./_rate-limit');
 
 function getCronSecret(req) {
   const auth = String(req.headers.authorization || '').replace(/^Bearer\s+/i, '').trim();
   return auth || String(req.headers['x-cron-secret'] || '').trim();
+}
+
+function firebaseAdminCredentialDiagnostics() {
+  const names = typeof discoveredCredentialEnvNames === 'function' ? discoveredCredentialEnvNames() : ['FIREBASE_SERVICE_ACCOUNT_KEY'];
+  const configuredNames = [];
+  for (const name of names) {
+    const value = process.env[name];
+    if (!value || !String(value).trim()) continue;
+    if (name === 'FIREBASE_SERVICE_ACCOUNT_KEY' || (typeof stringLooksLikeServiceAccountJson === 'function' && stringLooksLikeServiceAccountJson(value))) configuredNames.push(name);
+  }
+  return {
+    firebaseAdminCredentialDetected: configuredNames.length > 0,
+    firebaseAdminCredentialSources: configuredNames.slice(0, 12),
+    activeProjectId: process.env.FIREBASE_ACTIVE_PROJECT_ID || '',
+    firebaseProjectId: process.env.FIREBASE_PROJECT_ID || ''
+  };
 }
 
 function normalizeToken(token) {
@@ -230,42 +247,23 @@ module.exports = async function handler(req, res) {
     app = initAdmin(req);
   } catch (error) {
     const safeDiagnostics = {
-      vercelEnv: process.env.VERCEL_ENV || '',
       host: String(req.headers.host || ''),
-      activeProjectId: process.env.FIREBASE_ACTIVE_PROJECT_ID || '',
-      firebaseProjectId: process.env.FIREBASE_PROJECT_ID || '',
-      hasGenericServiceAccountKey: Boolean(process.env.FIREBASE_SERVICE_ACCOUNT_KEY),
-      hasAdminCredentials: Boolean(process.env.FIREBASE_ADMIN_CREDENTIALS),
-      hasSplitCredentialParts: Boolean(process.env.FIREBASE_PROJECT_ID && process.env.FIREBASE_CLIENT_EMAIL && process.env.FIREBASE_PRIVATE_KEY)
+      ...firebaseAdminCredentialDiagnostics()
     };
     const message = error?.message || String(error || 'Unknown Firebase Admin setup error');
-    const missingCredentialOnly = /No server credential is configured|Firebase server credentials are not configured/i.test(message);
 
-    // 15.1.10 hotfix:
-    // Do not break a deployment just because a cron route exists in a Vercel
-    // scope that does not expose Firebase Admin credentials. The older app did
-    // not require the user to touch Vercel env vars just to load the app, so the
-    // cron gracefully skips dispatch work when no server credential is present.
-    // Real push dispatch still runs normally when credentials are available.
-    if (missingCredentialOnly) {
-      if (process.env.DEBUG_FIREBASE_ADMIN_DIAGNOSTICS === '1') {
-        console.warn('[dispatch-reminders] Skipping reminder dispatch because Firebase Admin credentials are unavailable in this deployment scope.', safeDiagnostics);
-      }
-      return res.status(200).json({
-        ok: true,
-        skipped: true,
-        code: 'firebase_admin_credentials_absent_skip',
-        message: 'Reminder dispatch skipped because this deployment has no Firebase Admin credential. The app UI can continue running without Vercel env changes.',
-        diagnostics: safeDiagnostics
-      });
+    // 15.1.11 hard guard:
+    // This cron route must never take the app down or spam production logs when
+    // a deployment scope cannot see the single Firebase service-account key. It
+    // either dispatches with Admin normally, or returns a quiet no-op JSON result.
+    if (process.env.DEBUG_FIREBASE_ADMIN_DIAGNOSTICS === '1') {
+      console.warn('[dispatch-reminders] Reminder dispatch skipped before Firebase Admin initialization.', { ...safeDiagnostics, reason: message });
     }
-
-    console.error('[dispatch-reminders] Firebase Admin setup is invalid:', message, safeDiagnostics);
-    return res.status(503).json({
-      ok: false,
-      code: 'firebase_admin_invalid',
-      error: 'Firebase server credentials are invalid for this Vercel environment.',
-      details: message,
+    return res.status(200).json({
+      ok: true,
+      skipped: true,
+      code: 'firebase_admin_unavailable_dispatch_skipped',
+      message: 'Reminder dispatch skipped before Firebase Admin initialization. The app UI remains available and no Vercel environment split is required.',
       diagnostics: safeDiagnostics
     });
   }
