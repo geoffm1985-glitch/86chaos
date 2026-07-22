@@ -5703,3 +5703,159 @@ select {
   .exact-reference-ui-v108 .admin108-grid-main.compact,
   .exact-reference-ui-v108 .admin108-grid-work { grid-template-columns: 1fr; }
 }
+
+/* 15.1.8 exact mockup login/workspace picker pass */
+.chaos-login-screen {
+  min-height: 100vh !important;
+  align-items: stretch !important;
+  justify-content: center !important;
+  padding: 18px !important;
+  background: radial-gradient(circle at 30% 18%, rgba(135,84,48,.20), transparent 28%), linear-gradient(135deg, #061014 0%, #090d11 42%, #030709 100%) !important;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif !important;
+}
+.chaos-login-screen > .absolute { background: rgba(3,7,9,.54) !important; backdrop-filter: blur(2px) !important; }
+.chaos-login-card {
+  width: min(100%, 1880px) !important;
+  max-width: 1880px !important;
+  min-height: calc(100vh - 36px) !important;
+  display: grid !important;
+  grid-template-columns: minmax(360px, 670px) minmax(360px, 610px) minmax(340px, 520px) !important;
+  align-items: stretch !important;
+  gap: 0 !important;
+  padding: 0 !important;
+  border-radius: 14px !important;
+  border: 1px solid rgba(148,163,184,.18) !important;
+  background: linear-gradient(135deg, rgba(13,22,27,.95), rgba(5,10,13,.98)) !important;
+  overflow: hidden !important;
+  box-shadow: 0 28px 90px rgba(0,0,0,.52) !important;
+}
+.reference-login-auth,
+.reference-login-workspaces,
+.reference-login-benefits {
+  min-width: 0;
+  padding: clamp(34px, 5.6vh, 82px) clamp(34px, 4.4vw, 96px) !important;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  color: #f7f3ee;
+}
+.reference-login-auth {
+  border-right: 1px solid rgba(148,163,184,.15);
+  align-items: flex-start;
+}
+.reference-login-auth .chaos-login-logo {
+  height: auto !important;
+  width: min(100%, 500px) !important;
+  max-height: 165px !important;
+  margin: 0 0 34px 0 !important;
+  padding: 0 !important;
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  object-fit: contain !important;
+  object-position: left center !important;
+}
+.reference-login-auth form,
+.reference-login-auth > .w-full { max-width: 500px !important; width: 100% !important; }
+.reference-login-auth form::before {
+  content: "Welcome back";
+  display: block;
+  color: #fff;
+  font-size: 29px;
+  line-height: 1.1;
+  font-weight: 850;
+  margin-bottom: 8px;
+  letter-spacing: -.02em;
+  text-transform: none;
+}
+.reference-login-auth form::after {
+  content: "Sign in to your 86 Chaos account";
+  display: block;
+  color: rgba(208,217,223,.72);
+  font-size: 15px;
+  font-weight: 650;
+  margin-top: -394px;
+  margin-bottom: 128px;
+  pointer-events: none;
+}
+.reference-login-auth form input[type="text"],
+.reference-login-auth form input[type="password"] {
+  text-align: left !important;
+  min-height: 56px !important;
+  border-radius: 5px !important;
+  border-color: rgba(129,145,154,.28) !important;
+  background: rgba(3,9,12,.60) !important;
+  font-size: 15px !important;
+  font-weight: 650 !important;
+  padding-left: 18px !important;
+}
+.reference-login-auth form button[type="submit"] {
+  min-height: 54px !important;
+  border-radius: 5px !important;
+  background: linear-gradient(180deg, #b9794d, #6c3f28) !important;
+  color: #fff4e8 !important;
+  box-shadow: inset 0 1px rgba(255,255,255,.23), 0 10px 25px rgba(128,77,44,.24) !important;
+  text-transform: none !important;
+  letter-spacing: .01em !important;
+}
+.reference-login-auth label { justify-content: flex-start !important; margin: 14px 0 0 !important; }
+.reference-login-auth label span { font-size: 13px !important; letter-spacing: normal !important; text-transform: none !important; color: #d7dde1 !important; }
+.reference-login-auth .pt-3 { flex-direction: row !important; justify-content: space-between !important; align-items: center !important; }
+.reference-login-auth .pt-3 button:first-child { color: #c58350 !important; text-transform: none !important; letter-spacing: 0 !important; font-size: 13px !important; }
+.reference-login-auth .pt-3 button:last-child { position: fixed; left: 60px; bottom: 34px; color: rgba(230,235,238,.72) !important; font-size: 13px !important; }
+.reference-login-workspaces { border-right: 1px solid rgba(148,163,184,.15); }
+.reference-login-section-title h2 { margin: 0; color: #fff; font-size: 27px; font-weight: 800; letter-spacing: -.02em; }
+.reference-login-section-title p { margin: 12px 0 26px; color: rgba(208,217,223,.74); font-size: 16px; line-height: 1.55; font-weight: 550; }
+.reference-login-workspace,
+.reference-login-view-all {
+  width: 100%;
+  min-height: 92px;
+  display: grid;
+  grid-template-columns: 68px minmax(0,1fr) 28px;
+  align-items: center;
+  gap: 18px;
+  border: 1px solid rgba(129,145,154,.22);
+  background: rgba(7,15,19,.70);
+  padding: 15px 18px;
+  border-radius: 7px;
+  margin-bottom: 16px;
+  color: #eef3f5;
+}
+.reference-login-workspace.active { border-color: rgba(199,126,70,.80); box-shadow: inset 0 0 0 1px rgba(199,126,70,.20), 0 0 32px rgba(199,126,70,.06); }
+.reference-login-workspace .workspace-mark { width: 56px; height: 56px; border: 1px solid rgba(199,126,70,.65); border-radius: 50%; display: grid; place-items: center; color: #f2b77e; font-weight: 950; background: rgba(77,44,25,.24); }
+.reference-login-workspace b { display:block; font-size: 17px; font-weight: 850; color:#fff; margin-bottom:4px; }
+.reference-login-workspace small { display:block; color: rgba(210,219,224,.70); font-size: 13px; font-weight:650; }
+.reference-login-workspace em { display:block; margin-top:5px; color:#74cf47; font-size:13px; font-weight:800; font-style:normal; }
+.reference-login-workspace .workspace-check { color:#d48a52; font-size:24px; display:grid; place-items:center; }
+.reference-login-view-all { min-height: 64px; grid-template-columns: 22px minmax(0,1fr) 20px; text-align:left; color:#d7dde1; font-size:15px; }
+.reference-login-view-all::before { content: "☰"; color: #c58451; }
+.reference-login-view-all span { justify-self:end; color:#c58451; font-size:22px; }
+.reference-login-benefit { display:grid; grid-template-columns:64px minmax(0,1fr) auto; align-items:center; gap:18px; padding:21px 0; border-bottom:1px solid rgba(129,145,154,.16); }
+.reference-login-benefit .benefit-icon { width:54px; height:54px; border:1px solid rgba(199,126,70,.32); border-radius:8px; display:grid; place-items:center; color:#f2a76e; background: rgba(128,76,44,.14); font-size:22px; }
+.reference-login-benefit b { color:#fff; font-size:16px; font-weight:850; }
+.reference-login-benefit p { margin:7px 0 0; color:rgba(210,219,224,.72); font-size:14px; line-height:1.45; font-weight:560; }
+.reference-login-benefit em { color:#77cf4b; font-style:normal; font-size:12px; font-weight:900; white-space:nowrap; }
+.reference-login-benefit em::before { content:'● '; }
+.reference-system-health { margin-top:auto; border:1px solid rgba(129,145,154,.22); background:rgba(7,15,19,.72); border-radius:7px; padding:18px; display:grid; grid-template-columns:repeat(3, 1fr); gap:12px; }
+.reference-system-health b { grid-column:1/-1; font-size:16px; color:#fff; display:flex; justify-content:space-between; gap:12px; }
+.reference-system-health b span { color:#77cf4b; font-size:13px; }
+.reference-system-health small { display:block; color:rgba(210,219,224,.72); margin-bottom:7px; }
+.reference-system-health i { display:block; height:8px; border-radius:2px; background:repeating-linear-gradient(90deg, #69b13f 0 4px, transparent 4px 7px); }
+@media (max-width: 1180px) {
+  .chaos-login-card { grid-template-columns: 1fr !important; min-height: auto !important; }
+  .reference-login-auth,
+  .reference-login-workspaces,
+  .reference-login-benefits { padding: 28px !important; border-right: 0 !important; border-bottom: 1px solid rgba(148,163,184,.15); }
+  .reference-login-auth form::after { margin-top: 0; margin-bottom: 0; }
+  .reference-login-auth .pt-3 button:last-child { position: static; }
+}
+@media (max-width: 720px) {
+  .chaos-login-screen { padding: 10px !important; }
+  .reference-login-auth,
+  .reference-login-workspaces,
+  .reference-login-benefits { padding: 20px !important; }
+  .reference-login-auth .chaos-login-logo { width: 250px !important; }
+  .reference-login-workspace { grid-template-columns: 54px minmax(0,1fr) 20px; gap: 12px; }
+  .reference-login-workspace .workspace-mark { width:46px; height:46px; }
+  .reference-system-health { grid-template-columns:1fr; }
+}

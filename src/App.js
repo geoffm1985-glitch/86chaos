@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
-import { AlertTriangle, Bell, BookOpen, Bug, CalendarDays, ChevronLeft, ChevronRight, ClipboardList, Clock, DollarSign, HelpCircle, Home, Loader2, Menu, MessageSquare, Mic, Moon, MoreHorizontal, Package, Rocket, Search, Settings, Shield, Send, TrendingUp, Users, X } from 'lucide-react';
+import { AlertTriangle, Bell, BookOpen, Briefcase, Bug, CalendarDays, ChevronLeft, ChevronRight, ClipboardList, Clock, Database, DollarSign, HelpCircle, Home, Loader2, Lock, Menu, MessageSquare, Mic, Moon, MoreHorizontal, Package, Rocket, Search, Settings, Shield, Send, TrendingUp, Users, X } from 'lucide-react';
 import { addDoc, collection, doc, onSnapshot, updateDoc } from 'firebase/firestore';
 import { getToken, onMessage } from 'firebase/messaging';
 import 'leaflet/dist/leaflet.css';
@@ -13,21 +13,21 @@ import { FEATURE_KEYS } from './config/plans';
 import { LoginScreen } from './features/auth';
 
 const lazyFeature = (loader, exportName) => React.lazy(() => loader().then(module => ({ default: module[exportName] })));
-const TabMasterSchedule = lazyFeature(() => import('./features/schedule'), 'TabMasterSchedule');
-const TabSchedule = lazyFeature(() => import('./features/schedule'), 'TabSchedule');
-const TabOpsCenter = lazyFeature(() => import('./features/operations'), 'TabOpsCenter');
-const TabToday = lazyFeature(() => import('./features/operations'), 'TabToday');
-const TabPrep = lazyFeature(() => import('./features/operations'), 'TabPrep');
-const TabRecipes = lazyFeature(() => import('./features/operations'), 'TabRecipes');
+const TabMasterSchedule = lazyFeature(() => import('./features/reference'), 'ReferenceSchedule');
+const TabSchedule = lazyFeature(() => import('./features/reference'), 'ReferenceSchedule');
+const TabOpsCenter = lazyFeature(() => import('./features/reference'), 'ReferenceToday');
+const TabToday = lazyFeature(() => import('./features/reference'), 'ReferenceToday');
+const TabPrep = lazyFeature(() => import('./features/reference'), 'ReferencePrep');
+const TabRecipes = lazyFeature(() => import('./features/reference'), 'ReferenceRecipes');
 const TabMaintenance = lazyFeature(() => import('./features/operations'), 'TabMaintenance');
-const TabInventory = lazyFeature(() => import('./features/inventory'), 'TabInventory');
-const TabFinancials = lazyFeature(() => import('./features/management'), 'TabFinancials');
-const TabBackOffice = lazyFeature(() => import('./features/management'), 'TabBackOffice');
-const TabMessages = lazyFeature(() => import('./features/management'), 'TabMessages');
-const TabTeam = lazyFeature(() => import('./features/management'), 'TabTeam');
-const TabSettings = lazyFeature(() => import('./features/management'), 'TabSettings');
+const TabInventory = lazyFeature(() => import('./features/reference'), 'ReferenceInventory');
+const TabFinancials = lazyFeature(() => import('./features/reference'), 'ReferenceFinancials');
+const TabBackOffice = lazyFeature(() => import('./features/reference'), 'ReferenceFinancials');
+const TabMessages = lazyFeature(() => import('./features/reference'), 'ReferenceMessages');
+const TabTeam = lazyFeature(() => import('./features/reference'), 'ReferenceTeam');
+const TabSettings = lazyFeature(() => import('./features/reference'), 'ReferenceSettings');
 const TabHelpCenter = lazyFeature(() => import('./features/management'), 'TabHelpCenter');
-const TabGodMode = lazyFeature(() => import('./features/management'), 'TabGodMode');
+const TabGodMode = lazyFeature(() => import('./features/reference'), 'ReferenceSystemAdmin');
 const TabAuditLog = lazyFeature(() => import('./features/management'), 'TabAuditLog');
 const TabPersonalReminders = lazyFeature(() => import('./features/intelligence'), 'TabPersonalReminders');
 const TabMenuIntelligence = lazyFeature(() => import('./features/intelligence'), 'TabMenuIntelligence');
@@ -1483,36 +1483,50 @@ What I clicked / expected:
 
   const referenceNavItems = useMemo(() => ([
     { id: 'today', label: 'Today', Icon: Home, route: 'today', badge: needsEyesCount > 0 ? String(Math.min(needsEyesCount, 9)) : '' },
-    { id: 'ops', label: 'Manager Brain', Icon: Rocket, route: 'ops' },
-    { id: 'published', label: 'Schedule & Time Clock', Icon: Clock, route: 'published', badge: hasMyShiftAlert ? '!' : '' },
-    { id: 'schedule', label: 'Schedule Builder', Icon: CalendarDays, route: 'schedule', adminOrPerm: 'schedule' },
-    { id: 'prep', label: 'Prep & Tasks', Icon: ClipboardList, route: 'prep', feature: 'prep' },
-    { id: 'inventory', label: 'Inventory & 86', Icon: Package, route: 'inventory', feature: 'inventory' },
-    { id: 'recipes', label: 'Recipes', Icon: BookOpen, route: 'recipes', feature: 'recipes' },
-    { id: 'menu-intelligence', label: 'Menu Intelligence', Icon: AlertTriangle, route: 'menu-intelligence', feature: 'inventory' },
+    { id: 'published', label: 'Schedule', Icon: CalendarDays, route: 'published', badge: hasMyShiftAlert ? '!' : '' },
     { id: 'financials', label: 'Financials', Icon: DollarSign, route: 'financials', adminOrPerm: 'sales' },
-    { id: 'back-office', label: 'Back Office', Icon: ClipboardList, route: 'back-office', adminOrPerm: 'financials' },
-    { id: 'maintenance', label: 'Maintenance', Icon: AlertTriangle, route: 'maintenance' },
-    { id: 'reminders', label: 'Reminders', Icon: Bell, route: 'reminders' },
+    { id: 'inventory', label: 'Inventory', Icon: Package, route: 'inventory', feature: 'inventory' },
+    { id: 'recipes', label: 'Recipes', Icon: BookOpen, route: 'recipes', feature: 'recipes' },
+    { id: 'prep', label: 'Prep & Tasks', Icon: ClipboardList, route: 'prep', feature: 'prep' },
     { id: 'messages', label: 'Message Board', Icon: MessageSquare, route: 'messages', feature: 'messages', badge: hasUnreadMessages ? '!' : '' },
     { id: 'team', label: 'Staff Roster', Icon: Users, route: 'team' },
-    { id: 'ai-tools', label: '86Voice / AI Tools', Icon: Mic, route: 'ai-tools' },
-    { id: 'help', label: 'Help Center', Icon: HelpCircle, route: 'help' },
+    { id: 'ai-tools', label: 'Voice Command', Icon: Mic, route: 'ai-tools' },
+    { id: 'ops', label: 'Manager Brief', Icon: Rocket, route: 'ops' },
     { id: 'settings', label: 'Settings', Icon: Settings, route: 'settings' },
-    { id: 'audit', label: 'Audit Log', Icon: Shield, route: 'audit', adminOnly: true },
-    { id: 'godmode', label: 'System Administrator', Icon: Shield, route: 'godmode', superAdminOnly: true },
+    { id: 'help', label: 'Help Center', Icon: HelpCircle, route: 'help' },
+    { id: 'godmode', label: 'System Admin', Icon: Shield, route: 'godmode', superAdminOnly: true },
   ]).filter(item => {
     if (item.superAdminOnly) return liveAppUser?.isSuperAdmin || serverSaysSuperAdmin;
     if (item.adminOnly) return liveAppUser?.isAdmin || liveAppUser?.isSuperAdmin || serverSaysSuperAdmin;
     if (item.feature && displayClientFeatures?.[item.feature] === false) return false;
     if (item.adminOrPerm) return liveAppUser?.isAdmin || liveAppUser?.isSuperAdmin || Boolean(liveAppUser?.permissions?.[item.adminOrPerm]) || serverSaysSuperAdmin;
-    if (item.route === 'schedule') return liveAppUser?.isAdmin || Boolean(liveAppUser?.permissions?.schedule) || serverSaysSuperAdmin;
     return true;
   }), [displayClientFeatures, hasMyShiftAlert, hasUnreadMessages, liveAppUser, needsEyesCount, serverSaysSuperAdmin]);
 
+  const adminReferenceNavItems = useMemo(() => ([
+    { id: 'admin-overview', label: 'Overview', Icon: Home, route: 'godmode' },
+    { id: 'admin-workspaces', label: 'Workspaces', Icon: Briefcase, route: 'godmode' },
+    { id: 'admin-users', label: 'Global Users', Icon: Users, route: 'godmode' },
+    { id: 'admin-security', label: 'Security Center', Icon: Shield, route: 'godmode' },
+    { id: 'admin-backup', label: 'Backup Center', Icon: Database, route: 'godmode' },
+    { id: 'admin-push', label: 'Push Health', Icon: Send, route: 'godmode' },
+    { id: 'admin-forensics', label: 'Forensics', Icon: Bug, route: 'godmode' },
+    { id: 'admin-automation', label: 'Automation', Icon: Settings, route: 'godmode' },
+    { id: 'admin-support', label: 'Support', Icon: HelpCircle, route: 'godmode' },
+    { id: 'admin-retention', label: 'Retention', Icon: ClipboardList, route: 'godmode' },
+    { id: 'admin-access', label: 'Access Control', Icon: Lock, route: 'godmode' },
+    { id: 'admin-deployment', label: 'Deployment', Icon: Rocket, route: 'godmode' },
+    { id: 'admin-operations', label: 'Operations', Icon: Settings, route: 'godmode' },
+  ]), []);
+
+  const activeReferenceNavItems = activeTabState === 'godmode' ? adminReferenceNavItems : referenceNavItems;
+
   const ReferenceSidebarButton = ({ item }) => {
     const Icon = item.Icon;
-    const active = activeTabState === item.route || (item.route === 'published' && ['schedule','published','events','month'].includes(activeTabState)) || (item.route === 'schedule' && ['schedule','published','events','month'].includes(activeTabState));
+    const isAdminRail = activeTabState === 'godmode' && String(item.id || '').startsWith('admin-');
+    const active = isAdminRail
+      ? item.id === 'admin-overview'
+      : activeTabState === item.route || (item.route === 'published' && ['schedule','published','events','month'].includes(activeTabState)) || (item.route === 'schedule' && ['schedule','published','events','month'].includes(activeTabState));
     return (
       <button type="button" onClick={() => setActiveTab(item.route)} className={`reference-sidebar-link ${active ? 'active' : ''}`} title={item.label}>
         <Icon size={17} />
@@ -1609,9 +1623,9 @@ What I clicked / expected:
     if (activeTabState === 'back-office' && !isDemoMode) return <TabBackOffice key={`bo-${rId}`} currentDate={currentDate} users={displayUsers} sales={sales} timePunches={timePunches} restaurantAdminAlerts={restaurantAdminAlerts} appUser={liveAppUser} clientData={displayClientData} setActiveTab={setActiveTab} addToast={addToast} />;
     if ((activeTabState === 'financials' || activeTabState === 'sales' || activeTabState === 'labor') && (liveAppUser?.isSuperAdmin || liveAppUser?.isAdmin || liveAppUser?.permissions?.labor || liveAppUser?.permissions?.sales)) return <TabFinancials key={`fin-${rId}`} currentDate={currentDate} users={displayUsers} shifts={shifts} sales={sales} timePunches={timePunches} addToast={addToast} appUser={liveAppUser} clientData={displayClientData} setActiveTab={setActiveTab} initialSubTab={activeTabState === 'sales' ? 'ledger' : activeTabState === 'labor' ? 'labor' : 'overview'} />;
     if (activeTabState === 'messages' && displayClientFeatures?.messages !== false) return <TabMessages key={`msg-${rId}`} events={events} appUser={liveAppUser} users={displayUsers} addToast={addToast} setActiveTab={setActiveTab} />;
-    if (activeTabState === 'prep' && displayClientFeatures?.prep !== false) return <TabPrep key={`prp-${rId}`} currentDate={currentDate} appUser={liveAppUser} addToast={addToast} setLabelsToPrint={setLabelsToPrint} />;
-    if (activeTabState === 'recipes' && displayClientFeatures?.recipes !== false) return <TabRecipes key={`rec-${rId}`} appUser={liveAppUser} addToast={addToast} voiceRecipeTarget={voiceRecipeTarget} />;
-    if (activeTabState === 'inventory' && displayClientFeatures?.inventory !== false) return <TabInventory key={`inv-${rId}-${inventorySubTabTarget || 'default'}`} addToast={addToast} appUser={liveAppUser} clientData={displayClientData} initialSubTab={inventorySubTabTarget} onInitialSubTabConsumed={() => setInventorySubTabTarget(null)} />;
+    if (activeTabState === 'prep' && displayClientFeatures?.prep !== false) return <TabPrep key={`prp-${rId}`} currentDate={currentDate} appUser={liveAppUser} addToast={addToast} setLabelsToPrint={setLabelsToPrint} setActiveTab={setActiveTab} />;
+    if (activeTabState === 'recipes' && displayClientFeatures?.recipes !== false) return <TabRecipes key={`rec-${rId}`} appUser={liveAppUser} addToast={addToast} voiceRecipeTarget={voiceRecipeTarget} setActiveTab={setActiveTab} />;
+    if (activeTabState === 'inventory' && displayClientFeatures?.inventory !== false) return <TabInventory key={`inv-${rId}-${inventorySubTabTarget || 'default'}`} addToast={addToast} appUser={liveAppUser} clientData={displayClientData} initialSubTab={inventorySubTabTarget} onInitialSubTabConsumed={() => setInventorySubTabTarget(null)} setActiveTab={setActiveTab} />;
     if (activeTabState === 'ai-tools' && !isDemoMode && (liveAppUser?.isAdmin || liveAppUser?.permissions?.inventory || liveAppUser?.permissions?.prep || liveAppUser?.permissions?.team)) return <TabAITools key={`ai-${rId}`} appUser={liveAppUser} clientData={displayClientData} setActiveTab={setActiveTab} setInventorySubTabTarget={setInventorySubTabTarget} addToast={addToast} />;
     if (activeTabState === 'menu-intelligence' && !isDemoMode) return <TabMenuIntelligence key={`mi-${rId}`} appUser={liveAppUser} clientData={displayClientData} inventoryItems={inventoryItems} addToast={addToast} />;
     if (activeTabState === 'reminders' && !isDemoMode) return <TabPersonalReminders key={`rem-${rId}-${liveAppUser?.id}`} appUser={liveAppUser} addToast={addToast} />;
@@ -2671,6 +2685,322 @@ return (
         .reference-app-v151 .app-content-shell td { border-color: var(--ref151-line) !important; }
         .reference-app-v151 .app-footer { display:none !important; }
 
+
+
+        /* 15.1.8 exact mockup dashboard layer */
+        .reference-app-v151 .app-content-shell > .ref-screen {
+          background: transparent !important;
+          border: 0 !important;
+          box-shadow: none !important;
+          padding: 0 !important;
+        }
+        .reference-app-v151 .ref-screen,
+        .reference-app-v151 .ref-screen * { box-sizing: border-box; }
+        .reference-app-v151 .ref-screen {
+          --ref-panel-bg: linear-gradient(180deg, rgba(16,29,36,.94), rgba(8,16,21,.96));
+          --ref-panel-flat: #0e181e;
+          --ref-border: rgba(129,145,154,.22);
+          --ref-border-strong: rgba(196,124,63,.38);
+          --ref-text: #f3f7f9;
+          --ref-muted: #9aa8b1;
+          --ref-faint: #6f7d86;
+          --ref-copper: #c47c3f;
+          --ref-copper-dark: #77462b;
+          --ref-green: #75b84a;
+          --ref-yellow: #e0a33d;
+          --ref-red: #ec5347;
+          --ref-blue: #4ea6d8;
+          display: grid;
+          gap: 12px;
+          color: var(--ref-text);
+          width: 100%;
+          min-width: 0;
+        }
+        .reference-app-v151 .ref-page-title {
+          display:flex; justify-content:space-between; align-items:flex-end; gap:16px;
+          min-height: 44px; padding: 0 2px 2px;
+        }
+        .reference-app-v151 .ref-page-title h1 {
+          margin:0 !important; font-size: 19px !important; line-height: 1 !important; letter-spacing:.22em !important;
+          text-transform:uppercase; font-weight: 800 !important; color: var(--ref-text) !important;
+        }
+        .reference-app-v151 .ref-page-title p { margin:5px 0 0 !important; color:var(--ref-muted) !important; font-size:12px !important; font-weight:600 !important; }
+        .reference-app-v151 .ref-page-title > div > span { display:block; color:var(--ref-copper); text-transform:uppercase; letter-spacing:.18em; font-size:10px; font-weight:900; margin-bottom:5px; }
+        .reference-app-v151 .ref-page-actions, .reference-app-v151 .ref-actions { display:flex; align-items:center; justify-content:flex-end; gap:8px; flex-wrap:wrap; }
+        .reference-app-v151 .ref-top-date,
+        .reference-app-v151 .ref-actions button,
+        .reference-app-v151 .ref-wide-action,
+        .reference-app-v151 .ref-action-row,
+        .reference-app-v151 .ref-screen button.primary {
+          min-height:32px; border:1px solid var(--ref-border-strong) !important; border-radius:4px !important;
+          background: linear-gradient(180deg, rgba(109,64,39,.48), rgba(65,37,24,.42)) !important;
+          color:#f6c28c !important; padding:0 12px; font-size:11px; font-weight:800; display:inline-flex; align-items:center; justify-content:center; gap:7px;
+        }
+        .reference-app-v151 .ref-screen button.primary,
+        .reference-app-v151 .ref-actions button.primary { background: linear-gradient(180deg, #9b613c, #603724) !important; color:#ffd3a8 !important; }
+        .reference-app-v151 .ref-screen button.success { background: linear-gradient(180deg, rgba(76,132,54,.88), rgba(49,93,37,.88)) !important; color:white !important; border-color:rgba(117,184,74,.35) !important; }
+        .reference-app-v151 .ref-screen button.danger,
+        .reference-app-v151 .ref-wide-action.danger { background: rgba(112,35,31,.58) !important; color:#ff8a81 !important; border-color:rgba(236,83,71,.45) !important; }
+        .reference-app-v151 .ref-metric-grid { display:grid; grid-template-columns: repeat(6, minmax(150px, 1fr)); gap:8px; }
+        .reference-app-v151 .ref-metric {
+          min-height:86px; display:grid; grid-template-columns:40px minmax(0,1fr) 64px; align-items:center; gap:10px;
+          border:1px solid var(--ref-border) !important; background: var(--ref-panel-bg) !important; border-radius:5px !important; padding:12px; overflow:hidden;
+        }
+        .reference-app-v151 .ref-metric-icon { width:38px; height:38px; border:1px solid rgba(196,124,63,.55); border-radius:50%; display:grid; place-items:center; color:var(--ref-copper); }
+        .reference-app-v151 .ref-metric small { color:var(--ref-muted) !important; text-transform:uppercase; letter-spacing:.11em; font-size:9px !important; font-weight:800; display:block; }
+        .reference-app-v151 .ref-metric strong { display:block; color:white; font-size:22px; line-height:1.05; font-weight:650; margin-top:3px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+        .reference-app-v151 .ref-metric span.up { color:var(--ref-green); font-size:10px; font-weight:800; }
+        .reference-app-v151 .ref-metric span.down { color:var(--ref-red); font-size:10px; font-weight:800; }
+        .reference-app-v151 .ref-spark { display:flex; align-items:flex-end; gap:3px; height:44px; justify-content:flex-end; opacity:.68; }
+        .reference-app-v151 .ref-spark i { width:4px; min-height:5px; background:var(--ref-green); border-radius:1px; }
+        .reference-app-v151 .ref-spark.tone-copper i { background:var(--ref-copper); }
+        .reference-app-v151 .ref-spark.tone-red i { background:var(--ref-red); }
+        .reference-app-v151 .ref-spark.tone-yellow i { background:var(--ref-yellow); }
+        .reference-app-v151 .ref-panel {
+          background: var(--ref-panel-bg) !important; border:1px solid var(--ref-border) !important; border-radius:5px !important;
+          box-shadow: none !important; overflow:hidden; min-width:0;
+        }
+        .reference-app-v151 .ref-panel-head { min-height:36px; display:flex; align-items:center; justify-content:space-between; gap:10px; padding:0 12px; border-bottom:1px solid var(--ref-border); }
+        .reference-app-v151 .ref-panel-head > div { display:flex; align-items:center; gap:8px; min-width:0; color:var(--ref-copper); }
+        .reference-app-v151 .ref-panel-head h3 { margin:0 !important; color:var(--ref-text) !important; text-transform:uppercase; letter-spacing:.11em; font-size:11px !important; font-weight:850 !important; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+        .reference-app-v151 .ref-panel-action { min-height:24px !important; padding:0 !important; border:0 !important; background:transparent !important; color:var(--ref-copper) !important; font-size:10px !important; font-weight:800; display:flex; align-items:center; gap:3px; white-space:nowrap; }
+        .reference-app-v151 .ref-panel-body { padding:10px 12px; min-width:0; }
+        .reference-app-v151 .ref-kv, .reference-app-v151 .ref-row, .reference-app-v151 .ref-alert-row { min-height:28px; display:grid; grid-template-columns:minmax(0,1fr) auto auto; align-items:center; gap:10px; border-bottom:1px solid rgba(129,145,154,.13); color:var(--ref-muted); font-size:12px; }
+        .reference-app-v151 .ref-kv:last-child, .reference-app-v151 .ref-row:last-child, .reference-app-v151 .ref-alert-row:last-child { border-bottom:0; }
+        .reference-app-v151 .ref-kv b, .reference-app-v151 .ref-row b, .reference-app-v151 .ref-alert-row b { color:var(--ref-text); font-weight:800; }
+        .reference-app-v151 .ref-kv small, .reference-app-v151 .ref-row small { color:var(--ref-faint) !important; font-size:10px !important; }
+        .reference-app-v151 .good, .reference-app-v151 .tone-green { color:var(--ref-green) !important; }
+        .reference-app-v151 .warn, .reference-app-v151 .tone-yellow { color:var(--ref-yellow) !important; }
+        .reference-app-v151 .bad, .reference-app-v151 .tone-red { color:var(--ref-red) !important; }
+        .reference-app-v151 .tone-blue { color:var(--ref-blue) !important; }
+        .reference-app-v151 .ref-status { min-height:19px; padding:2px 7px; border:1px solid currentColor; border-radius:4px !important; background:rgba(255,255,255,.03); font-size:10px !important; font-weight:850; color:var(--ref-green); white-space:nowrap; }
+        .reference-app-v151 .ref-status.tone-yellow { color:var(--ref-yellow) !important; }
+        .reference-app-v151 .ref-status.tone-red { color:var(--ref-red) !important; }
+        .reference-app-v151 .ref-status.tone-blue { color:var(--ref-blue) !important; }
+        .reference-app-v151 .ref-status.tone-slate { color:var(--ref-faint) !important; }
+        .reference-app-v151 .ref-dot { width:9px; height:9px; border-radius:50%; background:var(--ref-green); display:inline-block; flex:0 0 auto; }
+        .reference-app-v151 .ref-dot.tone-yellow { background:var(--ref-yellow); }
+        .reference-app-v151 .ref-dot.tone-red { background:var(--ref-red); }
+        .reference-app-v151 .ref-dot.tone-blue { background:var(--ref-blue); }
+        .reference-app-v151 .ref-dot.tone-slate { background:var(--ref-faint); }
+        .reference-app-v151 .ref-progress { height:8px; background:rgba(255,255,255,.08); border-radius:999px; overflow:hidden; min-width:48px; }
+        .reference-app-v151 .ref-progress i { display:block; height:100%; background:var(--ref-green); }
+        .reference-app-v151 .ref-progress i.tone-yellow { background:var(--ref-yellow); }
+        .reference-app-v151 .ref-progress i.tone-red { background:var(--ref-red); }
+        .reference-app-v151 .ref-table { display:grid; gap:0; min-width:0; overflow:auto; }
+        .reference-app-v151 .ref-table .head, .reference-app-v151 .ref-table .tr { display:grid; align-items:center; gap:10px; min-height:31px; border-bottom:1px solid rgba(129,145,154,.14); padding:0 2px; font-size:11.5px; color:var(--ref-muted); }
+        .reference-app-v151 .ref-table .head { color:var(--ref-faint); text-transform:uppercase; letter-spacing:.08em; font-size:9px; font-weight:900; }
+        .reference-app-v151 .ref-table .tr > * { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+        .reference-app-v151 .ref-table.compact .head, .reference-app-v151 .ref-table.compact .tr { grid-template-columns: repeat(auto-fit, minmax(70px, 1fr)); }
+        .reference-app-v151 .ref-table.inventory .head, .reference-app-v151 .ref-table.inventory .tr { grid-template-columns:1.5fr 1fr .65fr .55fr .55fr .8fr .9fr .8fr .8fr; min-width:780px; }
+        .reference-app-v151 .ref-table.ledger .head, .reference-app-v151 .ref-table.ledger .tr { grid-template-columns:.75fr .75fr 1.35fr 1fr .75fr 1fr .8fr .8fr; min-width:760px; }
+        .reference-app-v151 .ref-table.timesheets .head, .reference-app-v151 .ref-table.timesheets .tr { grid-template-columns:1.25fr .95fr .55fr .75fr .75fr .55fr .6fr .55fr .65fr .75fr .65fr .8fr; min-width:930px; }
+        .reference-app-v151 .ref-table.roster .head, .reference-app-v151 .ref-table.roster .tr { grid-template-columns:1.4fr 1fr .8fr .9fr 1.4fr .8fr; }
+        .reference-app-v151 .ref-donut { --donut-color: var(--ref-green); width:112px; height:112px; border-radius:50%; background:conic-gradient(var(--donut-color) 0 var(--value), rgba(255,255,255,.15) var(--value) 100%); position:relative; display:grid; place-items:center; flex:0 0 auto; }
+        .reference-app-v151 .ref-donut::after { content:""; position:absolute; inset:22px; border-radius:50%; background:#0a151b; border:1px solid rgba(255,255,255,.04); }
+        .reference-app-v151 .ref-donut strong, .reference-app-v151 .ref-donut span { position:relative; z-index:1; display:block; text-align:center; }
+        .reference-app-v151 .ref-donut strong { align-self:end; font-size:24px; font-weight:650; color:white; }
+        .reference-app-v151 .ref-donut span { align-self:start; color:var(--ref-muted) !important; font-size:10px !important; }
+        .reference-app-v151 .ref-donut.tone-copper { --donut-color: var(--ref-copper); }
+        .reference-app-v151 .ref-donut.tone-yellow { --donut-color: var(--ref-yellow); }
+        .reference-app-v151 .ref-side-stat { display:grid; grid-template-columns:auto minmax(0,1fr); gap:14px; align-items:center; }
+        .reference-app-v151 .ref-list { display:grid; gap:6px; }
+        .reference-app-v151 .ref-list.tight { gap:0; }
+        .reference-app-v151 .ref-tabs { display:flex; align-items:center; gap:3px; border-bottom:1px solid var(--ref-border); overflow-x:auto; }
+        .reference-app-v151 .ref-tabs.top { margin-bottom:8px; }
+        .reference-app-v151 .ref-tabs button { min-height:34px; border:0 !important; border-radius:0 !important; background:transparent !important; color:var(--ref-muted) !important; padding:0 14px; font-size:12px; font-weight:800; white-space:nowrap; }
+        .reference-app-v151 .ref-tabs button.active { color:#f2b475 !important; box-shadow: inset 0 -2px 0 var(--ref-copper) !important; }
+        .reference-app-v151 .ref-tabs span { flex:1; }
+        .reference-app-v151 .ref-panel-toolbar { display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:10px; color:var(--ref-muted); font-size:11px; }
+        .reference-app-v151 .ref-panel-toolbar .search { min-width:220px; flex:1; display:flex; align-items:center; gap:8px; min-height:34px; border:1px solid var(--ref-border); background:#081218; border-radius:4px; padding:0 10px; }
+        .reference-app-v151 .ref-panel-toolbar input { border:0 !important; background:transparent !important; min-height:0 !important; padding:0 !important; width:100%; }
+        .reference-app-v151 .ref-screen select, .reference-app-v151 .ref-screen input, .reference-app-v151 .ref-screen textarea { min-height:32px !important; background:#081218 !important; border:1px solid var(--ref-border) !important; border-radius:4px !important; color:var(--ref-text) !important; padding:0 9px !important; font-size:12px !important; }
+        .reference-app-v151 .ref-screen textarea { min-height:120px !important; padding:10px !important; }
+
+        .reference-app-v151 .ref-today-grid { display:grid; grid-template-columns: 1.25fr 1.25fr .95fr; gap:10px; }
+        .reference-app-v151 .ref-chart-line, .reference-app-v151 .ref-bar-chart { min-height:170px; display:grid; grid-template-columns:minmax(0,1fr) auto; gap:10px; }
+        .reference-app-v151 .ref-chart-line svg, .reference-app-v151 .ref-bar-chart svg { width:100%; height:100%; min-height:150px; overflow:visible; }
+        .reference-app-v151 .ref-chart-line polyline, .reference-app-v151 .ref-bar-chart polyline { fill:none; stroke:var(--ref-copper); stroke-width:3; }
+        .reference-app-v151 .ref-chart-line .ghost, .reference-app-v151 .ref-bar-chart .green { stroke:var(--ref-green); opacity:.75; }
+        .reference-app-v151 .ref-coverage-chart { display:grid; gap:15px; }
+        .reference-app-v151 .ref-coverage-row { display:grid; grid-template-columns:45px 1fr 40px; align-items:center; gap:10px; color:var(--ref-muted); font-size:12px; }
+        .reference-app-v151 .ref-coverage-row div { height:32px; position:relative; background:repeating-linear-gradient(90deg, rgba(255,255,255,.055), rgba(255,255,255,.055) 1px, transparent 1px, transparent 48px), rgba(255,255,255,.04); }
+        .reference-app-v151 .ref-coverage-row i { display:block; height:100%; background:linear-gradient(90deg, rgba(117,184,74,.85), rgba(117,184,74,.55)); }
+        .reference-app-v151 .ref-coverage-row em { position:absolute; top:0; width:34px; height:100%; background:rgba(224,163,61,.85); }
+        .reference-app-v151 .ref-legend { display:flex; flex-wrap:wrap; gap:13px; color:var(--ref-muted); font-size:11px; }
+        .reference-app-v151 .ref-legend span { display:flex; align-items:center; gap:6px; }
+        .reference-app-v151 .ref-prep-mini { display:grid; grid-template-columns:1fr 90px auto; gap:8px; align-items:center; min-height:24px; font-size:12px; color:var(--ref-muted); }
+        .reference-app-v151 .ref-voice-quick div:last-child { display:flex; flex-wrap:wrap; gap:6px; }
+        .reference-app-v151 .ref-voice-quick button { min-height:28px; padding:0 8px; font-size:10px; color:#f4b878 !important; background:rgba(196,124,63,.12) !important; border:1px solid rgba(196,124,63,.35) !important; }
+        .reference-app-v151 .ref-mic-orb { width:78px; height:78px; margin:0 auto 8px; border-radius:50%; display:grid; place-items:center; color:#ffd1a3; background:radial-gradient(circle, rgba(196,124,63,.48), rgba(196,124,63,.08) 55%, transparent 56%); border:1px solid rgba(196,124,63,.55); }
+        .reference-app-v151 .ref-mic-orb.large { width:134px; height:134px; }
+        .reference-app-v151 .ref-message-preview, .reference-app-v151 .ref-note-card { border:1px solid rgba(196,124,63,.28); background:rgba(196,124,63,.08); padding:10px; border-radius:4px; margin-bottom:8px; }
+        .reference-app-v151 .ref-message-preview b, .reference-app-v151 .ref-note-card b { display:block; color:white; margin-bottom:4px; }
+        .reference-app-v151 .ref-message-preview p, .reference-app-v151 .ref-note-card p { margin:0 !important; color:var(--ref-muted) !important; font-size:12px !important; line-height:1.35; }
+
+        .reference-app-v151 .ref-schedule-layout, .reference-app-v151 .ref-inventory-layout, .reference-app-v151 .ref-finance-layout { display:grid; grid-template-columns:minmax(0,1fr) 320px; gap:12px; }
+        .reference-app-v151 .ref-schedule-main, .reference-app-v151 .ref-inventory-main, .reference-app-v151 .ref-finance-main { display:grid; gap:10px; min-width:0; }
+        .reference-app-v151 .ref-right-rail { display:grid; gap:10px; align-content:start; min-width:0; }
+        .reference-app-v151 .ref-filter-row { display:flex; align-items:center; gap:12px; flex-wrap:wrap; min-height:40px; color:var(--ref-muted); font-size:11px; }
+        .reference-app-v151 .ref-filter-row label { display:flex; align-items:center; gap:8px; }
+        .reference-app-v151 .ref-schedule-table { overflow:auto; border:1px solid var(--ref-border); background:#0a141a; }
+        .reference-app-v151 .schedule-head, .reference-app-v151 .schedule-row, .reference-app-v151 .schedule-foot { min-width:980px; display:grid; grid-template-columns:180px 70px repeat(7, minmax(92px,1fr)) 74px; gap:1px; align-items:stretch; border-bottom:1px solid rgba(129,145,154,.16); }
+        .reference-app-v151 .schedule-head > *, .reference-app-v151 .schedule-foot > * { padding:8px 8px; color:var(--ref-muted); font-size:11px; background:rgba(255,255,255,.025); }
+        .reference-app-v151 .schedule-head b, .reference-app-v151 .schedule-foot b { color:var(--ref-text); font-size:11px; text-align:center; }
+        .reference-app-v151 .schedule-head em, .reference-app-v151 .schedule-foot em { display:block; color:var(--ref-faint); font-style:normal; font-size:9px; margin-top:2px; }
+        .reference-app-v151 .schedule-row .person { padding:6px 8px; display:grid; grid-template-columns:28px 1fr; gap:8px; align-items:center; }
+        .reference-app-v151 .schedule-row .person i { grid-row:1/3; width:28px; height:28px; display:grid; place-items:center; background:rgba(255,255,255,.08); border:1px solid var(--ref-border); border-radius:50%; color:white; font-style:normal; }
+        .reference-app-v151 .schedule-row .person strong { color:white; font-size:12px; }
+        .reference-app-v151 .schedule-row .person small { color:var(--ref-muted); font-size:10px; }
+        .reference-app-v151 .schedule-row > small, .reference-app-v151 .schedule-row > b { display:grid; place-items:center; color:var(--ref-muted); font-size:11px; }
+        .reference-app-v151 .schedule-row button { margin:4px; min-height:31px; background:linear-gradient(180deg, rgba(83,139,61,.65), rgba(45,91,38,.70)) !important; border:1px solid rgba(117,184,74,.25) !important; color:white !important; font-size:12px; }
+        .reference-app-v151 .schedule-row button.off { background:repeating-linear-gradient(135deg, rgba(88,42,33,.42), rgba(88,42,33,.42) 4px, rgba(16,29,36,.75) 4px, rgba(16,29,36,.75) 8px) !important; color:var(--ref-muted) !important; border-color:rgba(236,83,71,.28) !important; }
+        .reference-app-v151 .schedule-row button.late { background:linear-gradient(180deg, rgba(196,124,63,.78), rgba(107,62,38,.80)) !important; }
+        .reference-app-v151 .schedule-row button.open { background:rgba(29,68,93,.45) !important; border-color:rgba(78,166,216,.45) !important; }
+        .reference-app-v151 .ref-schedule-bottom { display:grid; grid-template-columns:1fr 1fr 1fr 1fr; gap:10px; }
+        .reference-app-v151 .ref-next-shift { display:grid; gap:8px; }
+        .reference-app-v151 .ref-next-shift .avatar { width:48px; height:48px; border-radius:50%; display:grid; place-items:center; background:rgba(255,255,255,.1); border:1px solid var(--ref-border); }
+        .reference-app-v151 .ref-next-shift b, .reference-app-v151 .ref-next-shift strong { color:white; }
+        .reference-app-v151 .ref-next-shift span, .reference-app-v151 .ref-next-shift small { color:var(--ref-muted); }
+        .reference-app-v151 .ref-clock { display:grid; gap:9px; }
+        .reference-app-v151 .ref-clock strong { font-size:29px; color:white; font-weight:400; }
+
+        .reference-app-v151 .ref-prep-layout { display:grid; grid-template-columns:minmax(0,1fr) 290px 230px 190px; gap:10px; align-items:start; }
+        .reference-app-v151 .ref-prep-main { display:grid; gap:10px; min-width:0; }
+        .reference-app-v151 .ref-station-grid { display:grid; grid-template-columns:repeat(4,minmax(190px,1fr)); gap:8px; overflow:auto; }
+        .reference-app-v151 .ref-station-card { border:1px solid var(--ref-border); background:rgba(255,255,255,.025); border-radius:4px; padding:8px; min-width:190px; }
+        .reference-app-v151 .ref-station-card h4 { margin:0 0 8px !important; display:flex; justify-content:space-between; color:white !important; font-size:13px !important; }
+        .reference-app-v151 .ref-station-card h4 span { color:var(--ref-green); }
+        .reference-app-v151 .ref-station-card .head, .reference-app-v151 .prep-item { display:grid; grid-template-columns:minmax(0,1fr) 48px 58px 58px; gap:6px; min-height:25px; align-items:center; font-size:10px; color:var(--ref-muted); border-bottom:1px solid rgba(255,255,255,.05); }
+        .reference-app-v151 .prep-item span { display:flex; align-items:center; gap:5px; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+        .reference-app-v151 .ref-task-lanes { display:grid; grid-template-columns:repeat(4,1fr); gap:8px; }
+        .reference-app-v151 .ref-task-lane { border:1px solid var(--ref-border); background:rgba(255,255,255,.02); border-radius:4px; padding:8px; }
+        .reference-app-v151 .ref-task-lane h4 { margin:0 0 8px !important; display:flex; justify-content:space-between; text-transform:uppercase; letter-spacing:.08em; color:white !important; font-size:12px !important; }
+        .reference-app-v151 .task-card { min-height:54px; border:1px solid rgba(255,255,255,.08); background:rgba(255,255,255,.025); border-radius:4px; padding:7px; margin-bottom:6px; display:grid; gap:2px; font-size:12px; }
+        .reference-app-v151 .task-card span { color:white; }
+        .reference-app-v151 .task-card small { color:var(--ref-muted) !important; }
+        .reference-app-v151 .ref-three-cards { display:grid; grid-template-columns:1fr 1.25fr 1fr; gap:10px; }
+        .reference-app-v151 .ref-alert-stack { display:grid; gap:6px; }
+        .reference-app-v151 .ref-alert-card { min-height:57px; display:grid; grid-template-columns:24px minmax(0,1fr) auto; gap:8px; align-items:center; border:1px solid rgba(236,83,71,.22); background:rgba(255,255,255,.035); padding:8px; border-radius:4px; color:var(--ref-red); }
+        .reference-app-v151 .ref-alert-card.small { min-height:44px; }
+        .reference-app-v151 .ref-alert-card b { color:white; display:block; font-size:12px; }
+        .reference-app-v151 .ref-alert-card span { color:var(--ref-muted); display:block; font-size:11px; }
+        .reference-app-v151 .ref-alert-card em { color:var(--ref-faint); font-size:10px; font-style:normal; }
+        .reference-app-v151 .ref-big-voice { text-align:center; display:grid; gap:8px; }
+        .reference-app-v151 .ref-big-voice h4 { margin:10px 0 0 !important; color:white !important; text-align:left; text-transform:uppercase; letter-spacing:.08em; font-size:11px !important; }
+        .reference-app-v151 .ref-big-voice .ref-row { text-align:left; }
+        .reference-app-v151 .ref-big-voice button { width:100%; justify-content:flex-start; min-height:31px; background:rgba(255,255,255,.05) !important; color:var(--ref-muted) !important; border-color:rgba(255,255,255,.08) !important; margin-top:3px; }
+
+        .reference-app-v151 .ref-inventory-mid { display:grid; grid-template-columns:1.25fr .9fr .9fr 1fr; gap:10px; }
+        .reference-app-v151 .ref-upload-zone { min-height:92px; border:1px dashed rgba(129,145,154,.45); border-radius:4px; display:grid; place-items:center; align-content:center; gap:5px; color:var(--ref-muted); background:rgba(255,255,255,.02); text-align:center; padding:14px; }
+        .reference-app-v151 .ref-upload-zone.small { min-height:108px; }
+        .reference-app-v151 .ref-upload-zone b { color:white; }
+        .reference-app-v151 .ref-kpi-trip { display:grid; grid-template-columns:repeat(3,1fr); gap:0; border:1px solid var(--ref-border); }
+        .reference-app-v151 .ref-kpi-trip.big { grid-template-columns:repeat(4,1fr); }
+        .reference-app-v151 .ref-kpi-trip div { padding:12px; border-right:1px solid var(--ref-border); }
+        .reference-app-v151 .ref-kpi-trip div:last-child { border-right:0; }
+        .reference-app-v151 .ref-kpi-trip b { display:block; color:white; font-size:22px; }
+        .reference-app-v151 .ref-kpi-trip span, .reference-app-v151 .ref-kpi-trip small { display:block; color:var(--ref-muted); font-size:10px; text-transform:uppercase; letter-spacing:.08em; }
+        .reference-app-v151 .ref-ordering { display:grid; grid-template-columns:minmax(0,1fr) 260px; gap:10px; }
+        .reference-app-v151 .ref-order-total { border:1px solid var(--ref-border); background:rgba(255,255,255,.025); padding:14px; display:grid; gap:8px; align-content:center; }
+        .reference-app-v151 .ref-order-total b { color:white; font-size:24px; }
+
+        .reference-app-v151 .ref-recipes-layout { display:grid; grid-template-columns: 500px minmax(0,1fr) 360px; gap:10px; }
+        .reference-app-v151 .ref-recipe-list { display:grid; gap:6px; }
+        .reference-app-v151 .ref-recipe-list button { display:grid; grid-template-columns:54px minmax(0,1fr) 76px 62px 24px; gap:9px; align-items:center; min-height:66px; border:1px solid transparent !important; background:transparent !important; color:var(--ref-muted) !important; text-align:left; }
+        .reference-app-v151 .ref-recipe-list button.active { background:rgba(196,124,63,.08) !important; border-color:rgba(196,124,63,.32) !important; }
+        .reference-app-v151 .ref-recipe-list .thumb, .reference-app-v151 .ref-recipe-hero .photo { width:50px; height:50px; display:grid; place-items:center; border:1px solid var(--ref-border); background:rgba(255,255,255,.08); border-radius:5px; font-size:28px; }
+        .reference-app-v151 .ref-recipe-list b { color:white; display:block; }
+        .reference-app-v151 .ref-recipe-list small, .reference-app-v151 .ref-recipe-list em { color:var(--ref-muted); font-style:normal; font-size:11px; }
+        .reference-app-v151 .ref-recipe-list strong { justify-self:end; }
+        .reference-app-v151 .ref-recipe-detail { display:grid; gap:10px; min-width:0; }
+        .reference-app-v151 .ref-recipe-hero { display:grid; grid-template-columns:130px minmax(0,1fr) 210px; gap:14px; align-items:start; border:1px solid var(--ref-border) !important; background:var(--ref-panel-bg) !important; padding:12px; border-radius:5px !important; }
+        .reference-app-v151 .ref-recipe-hero .photo { width:130px; height:116px; font-size:64px; }
+        .reference-app-v151 .ref-recipe-hero h2 { margin:0 0 4px !important; color:white !important; font-size:22px !important; letter-spacing:0 !important; text-transform:none !important; }
+        .reference-app-v151 .ref-cost-strip { display:grid; grid-template-columns:repeat(3,1fr); gap:0; border-left:1px solid var(--ref-border); }
+        .reference-app-v151 .ref-cost-strip div { padding:0 10px; border-right:1px solid var(--ref-border); }
+        .reference-app-v151 .ref-dependency { display:grid; grid-template-columns:1fr 1.2fr 1fr; gap:8px; align-items:center; }
+        .reference-app-v151 .ref-dependency span { display:block; border:1px solid rgba(196,124,63,.35); color:var(--ref-muted); padding:5px 7px; margin:5px 0; border-radius:4px; font-size:10px; }
+        .reference-app-v151 .ref-dependency b { border:1px solid var(--ref-copper); color:white; padding:14px; border-radius:999px; text-align:center; font-size:12px; }
+        .reference-app-v151 .ref-dependency small { display:block; color:var(--ref-muted) !important; font-size:9px !important; }
+        .reference-app-v151 .ref-ai-card { border:1px solid rgba(255,255,255,.12); background:rgba(255,255,255,.035); padding:9px; border-radius:4px; margin-bottom:8px; display:grid; gap:4px; }
+        .reference-app-v151 .ref-ai-card b { color:white; }
+        .reference-app-v151 .ref-ai-card p { margin:0 !important; color:var(--ref-muted) !important; font-size:11px !important; }
+        .reference-app-v151 .ref-alert-strip { display:grid; grid-template-columns:repeat(4,1fr); gap:10px; }
+        .reference-app-v151 .ref-alert-strip > div { border:1px solid rgba(224,163,61,.55); background:rgba(224,163,61,.05); padding:12px; border-radius:4px; display:grid; gap:4px; color:var(--ref-yellow); }
+        .reference-app-v151 .ref-alert-strip > div.critical { border-color:rgba(236,83,71,.65); color:var(--ref-red); }
+        .reference-app-v151 .ref-alert-strip > div.info { border-color:rgba(78,166,216,.65); color:var(--ref-blue); }
+
+        .reference-app-v151 .ref-finance-top { display:grid; grid-template-columns:1.55fr 1fr .75fr; gap:10px; }
+        .reference-app-v151 .ref-sales-aside { display:grid; align-content:center; gap:2px; width:90px; }
+        .reference-app-v151 .ref-sales-aside b { color:white; }
+        .reference-app-v151 .ref-sales-aside span { color:var(--ref-muted); font-size:10px; }
+        .reference-app-v151 .ref-total-line { display:flex; justify-content:space-between; padding:12px 2px; color:white; font-weight:800; }
+        .reference-app-v151 .ref-hours-row { display:grid; grid-template-columns:1fr 110px 60px; align-items:center; gap:8px; min-height:27px; color:var(--ref-muted); font-size:12px; }
+        .reference-app-v151 .ref-action-row { width:100%; justify-content:space-between !important; margin-top:6px; }
+
+        .reference-app-v151 .ref-settings-layout { display:grid; grid-template-columns:270px minmax(0,1fr); gap:0; border:1px solid var(--ref-border); background:rgba(255,255,255,.015); }
+        .reference-app-v151 .ref-settings-menu { border-right:1px solid var(--ref-border); padding:20px; display:grid; align-content:start; gap:7px; }
+        .reference-app-v151 .ref-settings-menu button { display:grid; grid-template-columns:22px 1fr; gap:12px; align-items:center; min-height:46px; text-align:left; border:1px solid transparent !important; background:transparent !important; color:var(--ref-muted) !important; padding:0 12px; }
+        .reference-app-v151 .ref-settings-menu button svg { width:18px; color:var(--ref-copper); }
+        .reference-app-v151 .ref-settings-menu button.active { color:white !important; border-color:rgba(196,124,63,.55) !important; background:linear-gradient(90deg, rgba(114,66,41,.45), rgba(62,37,25,.24)) !important; }
+        .reference-app-v151 .ref-settings-main { padding:22px; display:grid; gap:8px; }
+        .reference-app-v151 .ref-setting-row { display:grid; grid-template-columns:210px minmax(0,1fr) 230px; gap:18px; align-items:center; min-height:70px; border:1px solid var(--ref-border) !important; background:var(--ref-panel-bg) !important; padding:12px 18px; border-radius:5px !important; }
+        .reference-app-v151 .ref-setting-row.tall { grid-template-columns:210px 320px 170px minmax(160px,1fr) minmax(160px,1fr); align-items:start; }
+        .reference-app-v151 .ref-setting-row h3 { margin:0 0 4px !important; color:white !important; text-transform:uppercase; letter-spacing:.14em; font-size:12px !important; }
+        .reference-app-v151 .ref-setting-row p { margin:0 !important; color:var(--ref-muted) !important; font-size:12px !important; line-height:1.35; }
+        .reference-app-v151 .ref-setting-content { display:flex; align-items:center; gap:18px; flex-wrap:wrap; color:var(--ref-muted); font-size:12px; }
+        .reference-app-v151 .ref-setting-row label { display:grid; gap:6px; color:var(--ref-muted); font-size:11px; }
+        .reference-app-v151 .ref-setting-row label input { width:100%; }
+        .reference-app-v151 .ref-setting-row > button { justify-self:end; min-width:170px; }
+
+        .reference-app-v151 .ref-admin-layout { display:grid; grid-template-columns:minmax(0,1fr) 285px; gap:10px; }
+        .reference-app-v151 .ref-admin-layout main { display:grid; gap:10px; min-width:0; }
+        .reference-app-v151 .ref-admin-top { display:grid; grid-template-columns:1.35fr 1fr 1fr; gap:10px; }
+        .reference-app-v151 .ref-admin-mid { display:grid; grid-template-columns:.95fr .95fr 1.35fr 1fr; gap:10px; }
+        .reference-app-v151 .ref-admin-bottom { display:grid; grid-template-columns:1.4fr 1fr .85fr; gap:10px; }
+        .reference-app-v151 .ref-timeline { display:grid; gap:0; }
+        .reference-app-v151 .ref-timeline div { min-height:31px; display:grid; grid-template-columns:12px minmax(0,1fr) auto; gap:8px; align-items:center; border-bottom:1px solid rgba(255,255,255,.06); font-size:11px; }
+        .reference-app-v151 .ref-timeline i { width:8px; height:8px; border-radius:50%; background:var(--ref-green); }
+        .reference-app-v151 .ref-timeline b { color:white; }
+        .reference-app-v151 .ref-timeline span { color:var(--ref-muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+        .reference-app-v151 .ref-timeline small { grid-column:2 / 4; color:var(--ref-faint) !important; margin-top:-8px; }
+
+        .reference-app-v151 .ref-message-layout { display:grid; grid-template-columns:1.3fr 1fr .9fr; gap:10px; }
+
+        @media (max-width: 1500px) {
+          .reference-app-v151 .ref-metric-grid { grid-template-columns: repeat(3, minmax(160px, 1fr)); }
+          .reference-app-v151 .ref-today-grid, .reference-app-v151 .ref-finance-top { grid-template-columns: 1fr 1fr; }
+          .reference-app-v151 .ref-prep-layout { grid-template-columns: minmax(0,1fr) 280px; }
+          .reference-app-v151 .ref-voice-panel, .reference-app-v151 .ref-manager-panel { grid-column:auto; }
+          .reference-app-v151 .ref-recipes-layout { grid-template-columns: 420px minmax(0,1fr); }
+          .reference-app-v151 .ref-right-rail.recipes { grid-column: 1 / -1; grid-template-columns: repeat(3,1fr); display:grid; }
+        }
+        @media (max-width: 1180px) {
+          .reference-app-v151 .ref-schedule-layout, .reference-app-v151 .ref-inventory-layout, .reference-app-v151 .ref-finance-layout, .reference-app-v151 .ref-admin-layout { grid-template-columns: 1fr; }
+          .reference-app-v151 .ref-right-rail, .reference-app-v151 .ref-right-rail.inventory, .reference-app-v151 .ref-right-rail.finance, .reference-app-v151 .ref-right-rail.admin { grid-template-columns: repeat(3, minmax(0,1fr)); display:grid; }
+          .reference-app-v151 .ref-inventory-mid, .reference-app-v151 .ref-schedule-bottom, .reference-app-v151 .ref-admin-mid { grid-template-columns:1fr 1fr; }
+          .reference-app-v151 .ref-recipes-layout { grid-template-columns:1fr; }
+          .reference-app-v151 .ref-right-rail.recipes { grid-template-columns:1fr; }
+          .reference-app-v151 .ref-settings-layout { grid-template-columns:1fr; }
+          .reference-app-v151 .ref-settings-menu { border-right:0; border-bottom:1px solid var(--ref-border); grid-template-columns:repeat(2,1fr); }
+        }
+        @media (max-width: 899px) {
+          .reference-app-v151 .ref-page-title { align-items:flex-start; flex-direction:column; }
+          .reference-app-v151 .ref-metric-grid, .reference-app-v151 .ref-today-grid, .reference-app-v151 .ref-schedule-bottom, .reference-app-v151 .ref-inventory-mid, .reference-app-v151 .ref-finance-top, .reference-app-v151 .ref-prep-layout, .reference-app-v151 .ref-three-cards, .reference-app-v151 .ref-task-lanes, .reference-app-v151 .ref-admin-top, .reference-app-v151 .ref-admin-mid, .reference-app-v151 .ref-admin-bottom, .reference-app-v151 .ref-message-layout, .reference-app-v151 .ref-right-rail, .reference-app-v151 .ref-right-rail.inventory, .reference-app-v151 .ref-right-rail.finance, .reference-app-v151 .ref-right-rail.admin { grid-template-columns:1fr !important; }
+          .reference-app-v151 .ref-metric { grid-template-columns:38px minmax(0,1fr); }
+          .reference-app-v151 .ref-metric .ref-spark { display:none; }
+          .reference-app-v151 .ref-panel-body { padding:9px; }
+          .reference-app-v151 .ref-page-title h1 { font-size:16px !important; }
+          .reference-app-v151 .ref-station-grid { grid-template-columns:1fr; overflow:visible; }
+          .reference-app-v151 .ref-setting-row, .reference-app-v151 .ref-setting-row.tall { grid-template-columns:1fr !important; }
+          .reference-app-v151 .ref-setting-row > button { justify-self:stretch; }
+          .reference-app-v151 .ref-settings-main { padding:12px; }
+          .reference-app-v151 .ref-settings-menu { grid-template-columns:1fr; padding:12px; }
+          .reference-app-v151 .ref-ordering, .reference-app-v151 .ref-side-stat, .reference-app-v151 .ref-recipe-hero, .reference-app-v151 .ref-kpi-trip, .reference-app-v151 .ref-kpi-trip.big, .reference-app-v151 .ref-alert-strip, .reference-app-v151 .ref-dependency { grid-template-columns:1fr !important; }
+          .reference-app-v151 .ref-screen { gap:10px; }
+        }
+
         /* Reference login/workspace picker reshape */
         .chaos-login-screen { background-image: none !important; background: #071014 !important; padding: 24px !important; display: grid !important; place-items: center !important; }
         .chaos-login-screen > .absolute { display:none !important; }
@@ -2683,17 +3013,92 @@ return (
         .chaos-login-card button[type="submit"] { height:56px !important; border-radius:5px !important; background: linear-gradient(180deg, #b8794c, #7c4629) !important; color:#fff !important; font-size:15px !important; letter-spacing:0 !important; text-transform:none !important; }
         @media (max-width: 980px) { .chaos-login-card { grid-template-columns: 1fr !important; padding: 34px 22px !important; } .chaos-login-logo { width: 260px !important; } }
 
+        /* 15.1.9 pixel-lock pass: tighter 1672px mockup proportions, admin rail swap, image-backed recipe cards. */
+        .reference-app-v151 { --ref151-sidebar-w: 188px; --ref151-header-h: 64px; --ref151-panel: #0d181e; --ref151-panel-2:#0b151a; --ref151-line: rgba(117,135,145,.24); --ref151-line-2: rgba(117,135,145,.34); --ref151-copper:#bd743d; --ref151-copper-hot:#e19858; --ref151-green:#74b84c; }
+        @media (min-width: 900px) {
+          .reference-app-v151 .reference-sidebar { width: var(--ref151-sidebar-w) !important; padding: 15px 12px !important; }
+          .reference-app-v151 .reference-sidebar-logo { height: 52px !important; margin-bottom: 8px !important; }
+          .reference-app-v151 .reference-sidebar-logo .brand-logo-stack img { max-height: 38px !important; max-width: 148px !important; }
+          .reference-app-v151 .reference-sidebar-link { min-height: 37px !important; padding: 0 9px !important; grid-template-columns: 20px minmax(0,1fr) auto !important; gap: 9px !important; font-size: 12.3px !important; }
+          .reference-app-v151 .app-header.native-command-bar { left: var(--ref151-sidebar-w) !important; margin-left: var(--ref151-sidebar-w) !important; width: calc(100vw - var(--ref151-sidebar-w)) !important; height: var(--ref151-header-h) !important; padding: 0 18px !important; }
+          .reference-app-v151 .app-content-shell { margin-left: var(--ref151-sidebar-w) !important; width: calc(100vw - var(--ref151-sidebar-w)) !important; padding: 14px 18px 18px !important; }
+          .reference-app-v151 .desktop-date-strip { margin-left: var(--ref151-sidebar-w) !important; width: calc(100vw - var(--ref151-sidebar-w)) !important; }
+        }
+        .reference-app-v151 .reference-sidebar-card { border-radius: 6px !important; background: rgba(9,17,22,.82) !important; padding: 11px !important; font-size: 11.5px !important; }
+        .reference-app-v151 .reference-sidebar-card.system-admin-foot small { display:block; color:var(--ref151-copper-hot) !important; text-transform:uppercase; letter-spacing:.08em; font-weight:900; margin-bottom:4px; }
+        .reference-app-v151 .reference-sidebar-card.system-admin-foot strong { font-size:12px !important; }
+        .reference-app-v151 .ref-screen { gap: 9px !important; }
+        .reference-app-v151 .ref-page-title { min-height: 40px !important; }
+        .reference-app-v151 .ref-page-title h1 { font-size: 18px !important; letter-spacing: .24em !important; }
+        .reference-app-v151 .ref-page-title p { font-size: 11.5px !important; margin-top: 4px !important; }
+        .reference-app-v151 .ref-metric-grid { grid-template-columns: repeat(6, minmax(132px, 1fr)) !important; gap: 8px !important; }
+        .reference-app-v151 .ref-metric { min-height: 78px !important; grid-template-columns: 38px minmax(0,1fr) 54px !important; padding: 10px !important; border-color: rgba(117,135,145,.26) !important; }
+        .reference-app-v151 .ref-metric-icon { width: 36px !important; height: 36px !important; border-radius: 50% !important; color: var(--ref151-copper-hot) !important; }
+        .reference-app-v151 .ref-metric strong { font-size: 19px !important; font-weight: 650 !important; }
+        .reference-app-v151 .ref-metric small { font-size: 8.5px !important; }
+        .reference-app-v151 .ref-spark { height: 36px !important; }
+        .reference-app-v151 .ref-panel { border-radius: 6px !important; background: linear-gradient(180deg, rgba(13,25,31,.97), rgba(8,16,21,.98)) !important; }
+        .reference-app-v151 .ref-panel-head { min-height: 34px !important; padding: 0 11px !important; }
+        .reference-app-v151 .ref-panel-head h3 { font-size: 10.5px !important; letter-spacing: .10em !important; }
+        .reference-app-v151 .ref-panel-body { padding: 9px 11px !important; }
+        .reference-app-v151 .ref-table .head, .reference-app-v151 .ref-table .tr { min-height: 29px !important; font-size: 11px !important; }
+        .reference-app-v151 .ref-today-grid { grid-template-columns: 1.22fr 1.18fr .92fr !important; gap: 9px !important; }
+        .reference-app-v151 .ref-schedule-layout, .reference-app-v151 .ref-inventory-layout, .reference-app-v151 .ref-finance-layout { grid-template-columns: minmax(0,1fr) 314px !important; gap: 10px !important; }
+        .reference-app-v151 .ref-prep-layout { grid-template-columns: minmax(0,1fr) 246px 212px 180px !important; gap: 9px !important; }
+        .reference-app-v151 .ref-admin-layout { grid-template-columns: minmax(0,1fr) 268px !important; gap: 9px !important; }
+        .reference-app-v151 .ref-admin-top { grid-template-columns: 1.55fr 1fr 1fr !important; gap: 9px !important; }
+        .reference-app-v151 .ref-admin-mid { grid-template-columns: .94fr .94fr 1.28fr 1fr !important; gap: 9px !important; }
+        .reference-app-v151 .ref-admin-bottom { grid-template-columns: 1.55fr 1.05fr .88fr !important; gap: 9px !important; }
+        .reference-app-v151 .ref-recipes-layout { grid-template-columns: 438px minmax(0,1fr) 356px !important; gap: 9px !important; }
+        .reference-app-v151 .ref-recipe-list button { min-height: 58px !important; grid-template-columns: 48px minmax(0,1fr) 68px 54px 20px !important; gap: 8px !important; }
+        .reference-app-v151 .ref-recipe-list .thumb { color: transparent !important; background-size: cover !important; background-position: center !important; box-shadow: inset 0 0 0 1px rgba(255,255,255,.08) !important; }
+        .reference-app-v151 .ref-recipe-list .thumb-0 { background-image: url('/ref-food-0.jpg') !important; }
+        .reference-app-v151 .ref-recipe-list .thumb-1 { background-image: url('/ref-food-1.jpg') !important; }
+        .reference-app-v151 .ref-recipe-list .thumb-2 { background-image: url('/ref-food-2.jpg') !important; }
+        .reference-app-v151 .ref-recipe-list .thumb-3 { background-image: url('/ref-food-3.jpg') !important; }
+        .reference-app-v151 .ref-recipe-list .thumb-4 { background-image: url('/ref-food-4.jpg') !important; }
+        .reference-app-v151 .ref-recipe-list .thumb-5 { background-image: url('/ref-food-5.jpg') !important; }
+        .reference-app-v151 .ref-recipe-list .thumb-6 { background-image: url('/ref-food-6.jpg') !important; }
+        .reference-app-v151 .ref-recipe-list .thumb-7 { background-image: url('/ref-food-7.jpg') !important; }
+        .reference-app-v151 .ref-recipe-hero .recipe-photo-hero { background-image: url('/ref-food-hero.jpg') !important; background-size: cover !important; background-position: center !important; color: transparent !important; }
+        .reference-app-v151 .ref-setting-row { min-height: 63px !important; padding: 10px 16px !important; }
+        .reference-app-v151 .ref-setting-row.tall { grid-template-columns: 210px 300px 160px minmax(150px,1fr) minmax(150px,1fr) !important; }
+        .reference-app-v151 .reference-tool-dropdown { min-width: 220px !important; }
+        .reference-app-v151 .reference-command-search { width: min(420px, 33vw) !important; }
+        @media (max-width: 1600px) {
+          .reference-app-v151 .ref-metric-grid { grid-template-columns: repeat(6, minmax(116px, 1fr)) !important; }
+          .reference-app-v151 .ref-metric { grid-template-columns: 34px minmax(0,1fr) 44px !important; padding: 9px !important; }
+          .reference-app-v151 .ref-metric-icon { width: 32px !important; height: 32px !important; }
+          .reference-app-v151 .ref-metric strong { font-size: 17px !important; }
+          .reference-app-v151 .ref-recipes-layout { grid-template-columns: 400px minmax(0,1fr) 320px !important; }
+        }
+        @media (max-width: 1280px) {
+          .reference-app-v151 .ref-metric-grid { grid-template-columns: repeat(3, minmax(160px, 1fr)) !important; }
+          .reference-app-v151 .ref-today-grid, .reference-app-v151 .ref-finance-top { grid-template-columns: 1fr 1fr !important; }
+          .reference-app-v151 .ref-schedule-layout, .reference-app-v151 .ref-inventory-layout, .reference-app-v151 .ref-finance-layout, .reference-app-v151 .ref-admin-layout { grid-template-columns: 1fr !important; }
+          .reference-app-v151 .ref-prep-layout, .reference-app-v151 .ref-recipes-layout { grid-template-columns: 1fr !important; }
+        }
+
       `}</style>
 
 
       <aside className="reference-sidebar" aria-label="86 Chaos primary navigation">
         <div className="reference-sidebar-logo"><CheersLogo clientData={displayClientData} /></div>
         <nav className="reference-sidebar-nav">
-          {referenceNavItems.map(item => <ReferenceSidebarButton key={item.id} item={item} />)}
+          {activeReferenceNavItems.map(item => <ReferenceSidebarButton key={item.id} item={item} />)}
         </nav>
         <div className="reference-sidebar-foot">
-          <div className="reference-sidebar-card"><strong>{liveAppUser?.restaurantName || displayClientData?.name || 'Restaurant'}</strong><div>{displayClientData?.address || '123 Main St.'}</div><div>{displayClientData?.city || 'Chilton'}, {displayClientData?.state || 'WI'} {displayClientData?.zip || '53014'}</div><div className="green">Open • {displayClientData?.openHours || '10:30 AM – 12:00 AM'}</div></div>
-          <div className="reference-sidebar-card reference-user-mini"><span>{(liveAppUser?.name || liveAppUser?.email || 'SA').slice(0,2).toUpperCase()}</span><div><strong>{liveAppUser?.name || 'User'}</strong><small>{liveAppUser?.role || (liveAppUser?.isSuperAdmin ? 'Super Administrator' : 'Staff')}</small></div></div>
+          {activeTabState === 'godmode' ? (
+            <>
+              <div className="reference-sidebar-card system-admin-foot"><small>System Time</small><strong>{new Date().toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}</strong><div>{new Date().toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}</div></div>
+              <div className="reference-sidebar-card system-admin-foot"><small>Environment</small><strong className="green">Production</strong></div>
+            </>
+          ) : (
+            <>
+              <div className="reference-sidebar-card"><strong>{liveAppUser?.restaurantName || displayClientData?.name || 'Restaurant'}</strong><div>{displayClientData?.address || '123 Main St.'}</div><div>{displayClientData?.city || 'Chilton'}, {displayClientData?.state || 'WI'} {displayClientData?.zip || '53014'}</div><div className="green">Open • {displayClientData?.openHours || '10:30 AM – 12:00 AM'}</div></div>
+              <div className="reference-sidebar-card reference-user-mini"><span>{(liveAppUser?.name || liveAppUser?.email || 'SA').slice(0,2).toUpperCase()}</span><div><strong>{liveAppUser?.name || 'User'}</strong><small>{liveAppUser?.role || (liveAppUser?.isSuperAdmin ? 'Super Administrator' : 'Staff')}</small></div></div>
+            </>
+          )}
         </div>
       </aside>
 
@@ -2731,8 +3136,8 @@ return (
 
       <header className="app-header native-command-bar sticky top-0 z-40 border-b flex items-center justify-between px-3 sm:px-4 bg-[#0F1318]/96 backdrop-blur-md border-[#202A31]">
         <div className="native-command-left min-w-0 flex items-center gap-3">
-          <button type="button" onClick={() => availableWorkspaces.length > 1 && !ghostTenant && !isDemoMode ? setIsWorkspaceSwitcherOpen(true) : null} className="reference-tool-dropdown" title="Active workspace">
-            <Package size={18}/><div><strong>{liveAppUser?.restaurantName || displayClientData?.name || '86 Chaos'}</strong><small>Workspace</small></div><ChevronRight size={14}/>
+          <button type="button" onClick={() => activeTabState !== 'godmode' && availableWorkspaces.length > 1 && !ghostTenant && !isDemoMode ? setIsWorkspaceSwitcherOpen(true) : null} className="reference-tool-dropdown" title={activeTabState === 'godmode' ? 'System Administrator' : 'Active workspace'}>
+            {activeTabState === 'godmode' ? <Shield size={18}/> : <Package size={18}/>}<div><strong>{activeTabState === 'godmode' ? 'System Administrator' : (liveAppUser?.restaurantName || displayClientData?.name || '86 Chaos')}</strong><small>{activeTabState === 'godmode' ? 'Super Administrator' : 'Workspace'}</small></div><ChevronRight size={14}/>
           </button>
           <button type="button" className="reference-command-search" onClick={() => setIsGlobalSearchOpen(true)}>
             <Search size={17}/><input readOnly value="" placeholder="Search or run command..."/>
@@ -2741,7 +3146,7 @@ return (
         <div className="native-command-actions flex items-center gap-2 flex-shrink-0">
           <button type="button" onClick={() => setActiveTab('ai-tools')} className="reference-top-action"><Mic size={17}/> <span className="hidden sm:inline">86Voice Command</span></button>
           <button type="button" onClick={() => setActiveTab('messages')} className="native-icon-button" title="Messages"><MessageSquare size={18}/>{hasUnreadMessages && <span className="native-alert-dot"></span>}</button>
-          <button type="button" onClick={() => openProblemReport({ title: 'Manual Problem Report', message: `Page: ${activeTabState}`, category: 'Bug / Error' })} className="native-icon-button" title="Report a problem"><Bug size={17}/></button>
+          <button type="button" onClick={() => setActiveTab('reminders')} className="native-icon-button" title="Notifications"><Bell size={18}/>{needsEyesCount > 0 && <span className="native-alert-dot"></span>}</button>
           <button type="button" onClick={() => setActiveTab('settings')} className="reference-profile-button" title="Profile / settings">
             <span className="avatar">{(liveAppUser?.name || liveAppUser?.email || 'SA').slice(0,2).toUpperCase()}</span>
             <div className="hidden lg:block text-left"><strong>{liveAppUser?.name || 'System Admin'}</strong><small>{liveAppUser?.role || (liveAppUser?.isSuperAdmin ? 'Super Administrator' : 'User')}</small></div>
