@@ -1447,12 +1447,12 @@ What I clicked / expected:
   const primaryAppNav = useMemo(() => {
     const items = [
       { id: 'today', label: 'Today', Icon: Home, badge: needsEyesCount > 0 ? String(Math.min(needsEyesCount, 9)) : '' },
-      { id: 'published', label: 'Schedule', Icon: CalendarDays, badge: hasMyShiftAlert ? '!' : '' },
+      { id: 'mobile-clock', label: 'Clock', Icon: Clock, route: 'published', badge: hasMyShiftAlert ? '!' : '' },
+      { id: 'mobile-schedule', label: 'Schedule', Icon: CalendarDays, route: 'schedule', badge: '' },
       { id: 'prep', label: 'Prep', Icon: ClipboardList, badge: '' },
-      { id: 'inventory', label: '86', Icon: AlertTriangle, badge: '' },
     ];
     return items.filter(item => {
-      if (item.id === 'published') return displayClientFeatures?.schedule !== false;
+      if (item.id === 'mobile-schedule' || item.id === 'mobile-clock') return displayClientFeatures?.schedule !== false;
       if (item.id === 'prep') return displayClientFeatures?.prep !== false;
       if (item.id === 'inventory') return displayClientFeatures?.inventory !== false;
       return true;
@@ -1461,11 +1461,16 @@ What I clicked / expected:
 
   const NativeNavButton = ({ item, mode = 'mobile' }) => {
     const Icon = item.Icon;
-    const active = activeTabState === item.id || (item.id === 'published' && ['schedule', 'events', 'month'].includes(activeTabState));
+    const targetTab = item.route || item.id;
+    const active = item.id === 'mobile-clock'
+      ? activeTabState === 'published'
+      : item.id === 'mobile-schedule'
+        ? ['schedule', 'events', 'month'].includes(activeTabState)
+        : activeTabState === targetTab || activeTabState === item.id;
     return (
       <button
         type="button"
-        onClick={() => setActiveTab(item.id)}
+        onClick={() => setActiveTab(targetTab)}
         className={`native-nav-btn native-nav-${mode} ${active ? 'is-active' : ''}`}
         aria-current={active ? 'page' : undefined}
         title={item.label}
@@ -1616,16 +1621,16 @@ What I clicked / expected:
     const routeIsInternalAdmin = activeTabState === 'godmode' || activeTabState === 'audit';
     if (!routeIsInternalAdmin && routeAccess && routeAccess.allowed === false) return <LockedFeatureScreen access={routeAccess} appUser={liveAppUser} setActiveTab={setActiveTab} />;
     if (activeTabState === 'today') return <TabToday key={`tdy-${rId}`} currentDate={currentDate} appUser={liveAppUser} users={displayUsers} shifts={shifts} shiftSwaps={shiftSwaps} timeOffRequests={timeOffRequests} events={events} sales={sales} timePunches={timePunches} inventoryItems={inventoryItems} maintenanceLogs={maintenanceLogs} prepItems={prepItems} tasks={tasks} recipes={recipes} menuDependencies={menuDependencies} restaurantAdminAlerts={restaurantAdminAlerts} clientData={displayClientData} setActiveTab={setActiveTab} addToast={addToast} registerUndo={registerUndo} />;
-    if (activeTabState === 'schedule' && (liveAppUser?.isAdmin || liveAppUser?.permissions?.schedule)) return <TabMasterSchedule key={`schpub-${rId}-${liveAppUser?.id}`} currentDate={currentDate} setCurrentDate={setCurrentDate} onSubTabChange={setActiveScheduleSubTab} appUser={liveAppUser} users={displayUsers} shifts={shifts} shiftSwaps={shiftSwaps} timeOffRequests={timeOffRequests} events={events} addToast={addToast} initialSubTab="schedule-builder" voiceScheduleSubTabTarget={voiceScheduleSubTabTarget} clientData={displayClientData} scheduleBuilderProps={{ currentDate, users: displayUsers, shifts, events, timeOffRequests, timePunches, addToast, appUser: liveAppUser, clientData: displayClientData }} />;
-    if (activeTabState === 'events' && displayClientFeatures?.events !== false && (liveAppUser?.isAdmin || liveAppUser?.permissions?.events || liveAppUser?.permissions?.schedule || liveAppUser?.permissions?.team)) return <TabSchedule key={`evt-${rId}`} currentDate={currentDate} users={displayUsers} shifts={shifts} events={events} timeOffRequests={timeOffRequests} timePunches={timePunches} addToast={addToast} appUser={liveAppUser} clientData={displayClientData} initialSubTab="events" hideSubTabs />;
-    if (activeTabState === 'published') return <TabMasterSchedule key={`pub-${rId}-${liveAppUser?.id}`} currentDate={currentDate} setCurrentDate={setCurrentDate} onSubTabChange={setActiveScheduleSubTab} appUser={liveAppUser} users={displayUsers} shifts={shifts} shiftSwaps={shiftSwaps} timeOffRequests={timeOffRequests} events={events} addToast={addToast} voiceScheduleSubTabTarget={voiceScheduleSubTabTarget} clientData={displayClientData} scheduleBuilderProps={{ currentDate, users: displayUsers, shifts, events, timeOffRequests, timePunches, addToast, appUser: liveAppUser, clientData: displayClientData }} />;
+    if (activeTabState === 'schedule' && (liveAppUser?.isAdmin || liveAppUser?.permissions?.schedule)) return <TabMasterSchedule key={`schpub-${rId}-${liveAppUser?.id}`} currentDate={currentDate} setCurrentDate={setCurrentDate} onSubTabChange={setActiveScheduleSubTab} appUser={liveAppUser} users={displayUsers} shifts={shifts} shiftSwaps={shiftSwaps} timeOffRequests={timeOffRequests} events={events} sales={sales} timePunches={timePunches} addToast={addToast} initialSubTab="schedule-builder" voiceScheduleSubTabTarget={voiceScheduleSubTabTarget} clientData={displayClientData} scheduleBuilderProps={{ currentDate, users: displayUsers, shifts, events, timeOffRequests, timePunches, addToast, appUser: liveAppUser, clientData: displayClientData }} />;
+    if (activeTabState === 'events' && displayClientFeatures?.events !== false && (liveAppUser?.isAdmin || liveAppUser?.permissions?.events || liveAppUser?.permissions?.schedule || liveAppUser?.permissions?.team)) return <TabSchedule key={`evt-${rId}`} currentDate={currentDate} users={displayUsers} shifts={shifts} events={events} sales={sales} timeOffRequests={timeOffRequests} timePunches={timePunches} addToast={addToast} appUser={liveAppUser} clientData={displayClientData} initialSubTab="events" hideSubTabs />;
+    if (activeTabState === 'published') return <TabMasterSchedule key={`pub-${rId}-${liveAppUser?.id}`} currentDate={currentDate} setCurrentDate={setCurrentDate} onSubTabChange={setActiveScheduleSubTab} appUser={liveAppUser} users={displayUsers} shifts={shifts} shiftSwaps={shiftSwaps} timeOffRequests={timeOffRequests} events={events} sales={sales} timePunches={timePunches} addToast={addToast} voiceScheduleSubTabTarget={voiceScheduleSubTabTarget} clientData={displayClientData} scheduleBuilderProps={{ currentDate, users: displayUsers, shifts, events, timeOffRequests, timePunches, addToast, appUser: liveAppUser, clientData: displayClientData }} />;
     if (activeTabState === 'ops' && displayClientFeatures?.ops !== false && (liveAppUser?.isSuperAdmin || liveAppUser?.isAdmin || liveAppUser?.permissions?.ops)) return <TabOpsCenter key={`ops-${rId}`} currentDate={currentDate} appUser={liveAppUser} users={displayUsers} shifts={shifts} events={events} sales={sales} timePunches={timePunches} addToast={addToast} setActiveTab={setActiveTab} clientData={displayClientData} />;
     if (activeTabState === 'back-office' && !isDemoMode) return <TabBackOffice key={`bo-${rId}`} currentDate={currentDate} users={displayUsers} sales={sales} timePunches={timePunches} restaurantAdminAlerts={restaurantAdminAlerts} appUser={liveAppUser} clientData={displayClientData} setActiveTab={setActiveTab} addToast={addToast} />;
     if ((activeTabState === 'financials' || activeTabState === 'sales' || activeTabState === 'labor') && (liveAppUser?.isSuperAdmin || liveAppUser?.isAdmin || liveAppUser?.permissions?.labor || liveAppUser?.permissions?.sales)) return <TabFinancials key={`fin-${rId}`} currentDate={currentDate} users={displayUsers} shifts={shifts} sales={sales} timePunches={timePunches} addToast={addToast} appUser={liveAppUser} clientData={displayClientData} setActiveTab={setActiveTab} initialSubTab={activeTabState === 'sales' ? 'ledger' : activeTabState === 'labor' ? 'labor' : 'overview'} />;
     if (activeTabState === 'messages' && displayClientFeatures?.messages !== false) return <TabMessages key={`msg-${rId}`} events={events} appUser={liveAppUser} users={displayUsers} addToast={addToast} setActiveTab={setActiveTab} />;
-    if (activeTabState === 'prep' && displayClientFeatures?.prep !== false) return <TabPrep key={`prp-${rId}`} currentDate={currentDate} appUser={liveAppUser} addToast={addToast} setLabelsToPrint={setLabelsToPrint} setActiveTab={setActiveTab} />;
+    if (activeTabState === 'prep' && displayClientFeatures?.prep !== false) return <TabPrep key={`prp-${rId}`} currentDate={currentDate} appUser={liveAppUser} prepItems={prepItems} tasks={tasks} inventoryItems={inventoryItems} addToast={addToast} setLabelsToPrint={setLabelsToPrint} setActiveTab={setActiveTab} />;
     if (activeTabState === 'recipes' && displayClientFeatures?.recipes !== false) return <TabRecipes key={`rec-${rId}`} appUser={liveAppUser} addToast={addToast} voiceRecipeTarget={voiceRecipeTarget} setActiveTab={setActiveTab} />;
-    if (activeTabState === 'inventory' && displayClientFeatures?.inventory !== false) return <TabInventory key={`inv-${rId}-${inventorySubTabTarget || 'default'}`} addToast={addToast} appUser={liveAppUser} clientData={displayClientData} initialSubTab={inventorySubTabTarget} onInitialSubTabConsumed={() => setInventorySubTabTarget(null)} setActiveTab={setActiveTab} />;
+    if (activeTabState === 'inventory' && displayClientFeatures?.inventory !== false) return <TabInventory key={`inv-${rId}-${inventorySubTabTarget || 'default'}`} inventoryItems={inventoryItems} addToast={addToast} appUser={liveAppUser} clientData={displayClientData} initialSubTab={inventorySubTabTarget} onInitialSubTabConsumed={() => setInventorySubTabTarget(null)} setActiveTab={setActiveTab} />;
     if (activeTabState === 'ai-tools' && !isDemoMode && (liveAppUser?.isAdmin || liveAppUser?.permissions?.inventory || liveAppUser?.permissions?.prep || liveAppUser?.permissions?.team)) return <TabAITools key={`ai-${rId}`} appUser={liveAppUser} clientData={displayClientData} setActiveTab={setActiveTab} setInventorySubTabTarget={setInventorySubTabTarget} addToast={addToast} />;
     if (activeTabState === 'menu-intelligence' && !isDemoMode) return <TabMenuIntelligence key={`mi-${rId}`} appUser={liveAppUser} clientData={displayClientData} inventoryItems={inventoryItems} addToast={addToast} />;
     if (activeTabState === 'reminders' && !isDemoMode) return <TabPersonalReminders key={`rem-${rId}-${liveAppUser?.id}`} appUser={liveAppUser} addToast={addToast} />;
@@ -3065,6 +3070,24 @@ return (
         .reference-app-v151 .ref-setting-row.tall { grid-template-columns: 210px 300px 160px minmax(150px,1fr) minmax(150px,1fr) !important; }
         .reference-app-v151 .reference-tool-dropdown { min-width: 220px !important; }
         .reference-app-v151 .reference-command-search { width: min(420px, 33vw) !important; }
+
+        /* 15.1.13 live graph primitives: charts use computed live arrays, not static art. */
+        .reference-app-v151 .ref-chart-line.live { min-height: 172px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; }
+        .reference-app-v151 .ref-chart-line.live svg { width: 100%; height: 152px; display: block; overflow: visible; }
+        .reference-app-v151 .ref-chart-legend { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; color: var(--ref151-muted); font-size: 10px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; }
+        .reference-app-v151 .ref-chart-legend span { display: inline-flex; align-items: center; gap: 5px; }
+        .reference-app-v151 .ref-chart-legend i { width: 18px; height: 3px; border-radius: 999px; display: inline-block; background: var(--ref151-copper-hot); }
+        .reference-app-v151 .ref-chart-legend i.secondary { background: var(--ref151-green); }
+        .reference-app-v151 .ref-empty-live { border: 1px dashed rgba(117,135,145,.32); background: rgba(255,255,255,.025); border-radius: 5px; min-height: 108px; display: grid; place-items: center; text-align: center; padding: 14px; color: var(--ref151-muted); font-size: 12px; font-weight: 700; }
+        .reference-app-v151 .ref-live-bars { min-height: 190px; display: flex; align-items: flex-end; gap: 6px; border-left: 1px solid rgba(117,135,145,.22); border-bottom: 1px solid rgba(117,135,145,.22); padding: 10px 8px 24px; position: relative; overflow: hidden; background: linear-gradient(180deg, rgba(255,255,255,.015), rgba(255,255,255,.005)); }
+        .reference-app-v151 .ref-live-bars::before { content: ''; position: absolute; inset: 10px 8px 24px; background: repeating-linear-gradient(to top, rgba(117,135,145,.12) 0 1px, transparent 1px 28px); pointer-events: none; }
+        .reference-app-v151 .ref-live-bars > div { flex: 1; min-width: 16px; display: flex; align-items: flex-end; justify-content: center; gap: 2px; height: 150px; position: relative; z-index: 1; }
+        .reference-app-v151 .ref-live-bars i { width: 42%; min-height: 2px; border-radius: 3px 3px 0 0; display: block; box-shadow: 0 -4px 14px rgba(0,0,0,.16); }
+        .reference-app-v151 .ref-live-bars i.sales { background: linear-gradient(180deg, var(--ref151-copper-hot), rgba(184,115,51,.72)); }
+        .reference-app-v151 .ref-live-bars i.labor { background: linear-gradient(180deg, var(--ref151-green), rgba(96,174,65,.70)); }
+        .reference-app-v151 .ref-live-bars small { position: absolute; bottom: -19px; left: 50%; transform: translateX(-50%); font-size: 8px; color: var(--ref151-faint); white-space: nowrap; }
+        .reference-app-v151 .mobile-clock-schedule-quick { display: none; }
+
         @media (max-width: 1600px) {
           .reference-app-v151 .ref-metric-grid { grid-template-columns: repeat(6, minmax(116px, 1fr)) !important; }
           .reference-app-v151 .ref-metric { grid-template-columns: 34px minmax(0,1fr) 44px !important; padding: 9px !important; }
@@ -3078,6 +3101,132 @@ return (
           .reference-app-v151 .ref-schedule-layout, .reference-app-v151 .ref-inventory-layout, .reference-app-v151 .ref-finance-layout, .reference-app-v151 .ref-admin-layout { grid-template-columns: 1fr !important; }
           .reference-app-v151 .ref-prep-layout, .reference-app-v151 .ref-recipes-layout { grid-template-columns: 1fr !important; }
         }
+
+        /* 15.1.13 mobile layout lock: one-column sleek panels, clipped page overflow, scroll only inside real data grids, and quick clock/schedule access. */
+        @media (max-width: 899px) {
+          .reference-app-v151,
+          .reference-app-v151 .app-content-shell,
+          .reference-app-v151 .ref-screen,
+          .reference-app-v151 .ref-screen * { max-width: 100% !important; box-sizing: border-box !important; }
+          .reference-app-v151 { overflow-x: clip !important; }
+          .reference-app-v151 .app-content-shell {
+            width: 100vw !important;
+            max-width: 100vw !important;
+            margin-left: 0 !important;
+            padding: 16px 12px calc(154px + env(safe-area-inset-bottom, 0px)) !important;
+            overflow-x: hidden !important;
+          }
+          .reference-app-v151 .ref-screen { width: 100% !important; max-width: 100% !important; overflow-x: hidden !important; gap: 12px !important; }
+          .reference-app-v151 .reference-sidebar { display: none !important; }
+          .reference-app-v151 .reference-topbar { left: 0 !important; right: 0 !important; width: 100vw !important; max-width: 100vw !important; padding: 10px 12px !important; grid-template-columns: minmax(0,1fr) auto auto auto !important; gap: 8px !important; overflow: hidden !important; }
+          .reference-app-v151 .reference-command-search { display: none !important; }
+          .reference-app-v151 .reference-workspace-switch { min-width: 0 !important; max-width: 222px !important; width: auto !important; }
+          .reference-app-v151 .reference-workspace-switch strong { overflow: hidden !important; text-overflow: ellipsis !important; white-space: nowrap !important; }
+          .reference-app-v151 .mobile-clock-schedule-quick {
+            position: fixed !important;
+            left: 10px !important;
+            right: 10px !important;
+            bottom: calc(70px + env(safe-area-inset-bottom, 0px)) !important;
+            z-index: 79 !important;
+            display: grid !important;
+            grid-template-columns: 1fr 1fr !important;
+            gap: 8px !important;
+            padding: 8px !important;
+            border: 1px solid rgba(196,124,63,.36) !important;
+            border-radius: 12px !important;
+            background: rgba(5, 12, 16, .96) !important;
+            backdrop-filter: blur(14px) !important;
+            box-shadow: 0 16px 42px rgba(0,0,0,.45) !important;
+          }
+          .reference-app-v151 .mobile-clock-schedule-quick button {
+            min-height: 42px !important;
+            border: 1px solid rgba(196,124,63,.40) !important;
+            border-radius: 8px !important;
+            background: linear-gradient(180deg, rgba(109,64,39,.64), rgba(65,37,24,.58)) !important;
+            color: #ffd0a0 !important;
+            font-size: 12px !important;
+            font-weight: 900 !important;
+            display: inline-flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            gap: 7px !important;
+          }
+          .reference-app-v151 .ref-page-title { display: grid !important; grid-template-columns: 1fr !important; gap: 10px !important; align-items: start !important; width: 100% !important; }
+          .reference-app-v151 .ref-page-title h1 { font-size: clamp(20px, 6.4vw, 27px) !important; line-height: 1.15 !important; letter-spacing: .13em !important; overflow-wrap: anywhere !important; }
+          .reference-app-v151 .ref-page-title p { font-size: 12px !important; line-height: 1.35 !important; }
+          .reference-app-v151 .ref-page-actions, .reference-app-v151 .ref-actions { display: grid !important; grid-template-columns: 1fr !important; justify-content: stretch !important; width: 100% !important; gap: 8px !important; }
+          .reference-app-v151 .ref-top-date, .reference-app-v151 .ref-actions button, .reference-app-v151 .ref-wide-action { width: 100% !important; min-width: 0 !important; justify-content: center !important; }
+          .reference-app-v151 .ref-metric-grid,
+          .reference-app-v151 .ref-today-grid,
+          .reference-app-v151 .ref-finance-top,
+          .reference-app-v151 .ref-schedule-layout,
+          .reference-app-v151 .ref-schedule-bottom,
+          .reference-app-v151 .ref-inventory-layout,
+          .reference-app-v151 .ref-inventory-mid,
+          .reference-app-v151 .ref-finance-layout,
+          .reference-app-v151 .ref-prep-layout,
+          .reference-app-v151 .ref-three-cards,
+          .reference-app-v151 .ref-task-lanes,
+          .reference-app-v151 .ref-admin-layout,
+          .reference-app-v151 .ref-admin-top,
+          .reference-app-v151 .ref-admin-mid,
+          .reference-app-v151 .ref-admin-bottom,
+          .reference-app-v151 .ref-recipes-layout,
+          .reference-app-v151 .ref-message-layout,
+          .reference-app-v151 .ref-right-rail,
+          .reference-app-v151 .ref-right-rail.inventory,
+          .reference-app-v151 .ref-right-rail.finance,
+          .reference-app-v151 .ref-right-rail.admin,
+          .reference-app-v151 .ref-right-rail.recipes,
+          .reference-app-v151 .ref-settings-layout,
+          .reference-app-v151 .ref-settings-menu,
+          .reference-app-v151 .ref-setting-row,
+          .reference-app-v151 .ref-setting-row.tall,
+          .reference-app-v151 .ref-ordering,
+          .reference-app-v151 .ref-side-stat,
+          .reference-app-v151 .ref-recipe-hero,
+          .reference-app-v151 .ref-kpi-trip,
+          .reference-app-v151 .ref-kpi-trip.big,
+          .reference-app-v151 .ref-alert-strip,
+          .reference-app-v151 .ref-dependency { display: grid !important; grid-template-columns: minmax(0, 1fr) !important; width: 100% !important; min-width: 0 !important; gap: 12px !important; }
+          .reference-app-v151 .ref-metric { grid-template-columns: 40px minmax(0, 1fr) !important; min-height: 96px !important; padding: 13px !important; width: 100% !important; min-width: 0 !important; }
+          .reference-app-v151 .ref-metric-icon { width: 40px !important; height: 40px !important; }
+          .reference-app-v151 .ref-metric .ref-spark { display: none !important; }
+          .reference-app-v151 .ref-metric strong { white-space: normal !important; overflow-wrap: anywhere !important; font-size: 23px !important; }
+          .reference-app-v151 .ref-metric small { white-space: normal !important; overflow-wrap: anywhere !important; font-size: 9.5px !important; }
+          .reference-app-v151 .ref-panel { width: 100% !important; max-width: 100% !important; min-width: 0 !important; overflow: hidden !important; }
+          .reference-app-v151 .ref-panel-head { min-width: 0 !important; gap: 8px !important; }
+          .reference-app-v151 .ref-panel-head h3 { max-width: min(72vw, 280px) !important; overflow: hidden !important; text-overflow: ellipsis !important; white-space: nowrap !important; }
+          .reference-app-v151 .ref-panel-body { min-width: 0 !important; overflow-x: hidden !important; }
+          .reference-app-v151 .ref-table { overflow-x: auto !important; -webkit-overflow-scrolling: touch !important; max-width: 100% !important; }
+          .reference-app-v151 .ref-table.compact .head,
+          .reference-app-v151 .ref-table.compact .tr { grid-template-columns: minmax(110px,1.25fr) minmax(74px,.9fr) minmax(74px,.9fr) minmax(84px,.95fr) !important; min-width: 0 !important; }
+          .reference-app-v151 .ref-table.inventory .head,
+          .reference-app-v151 .ref-table.inventory .tr,
+          .reference-app-v151 .ref-table.ledger .head,
+          .reference-app-v151 .ref-table.ledger .tr,
+          .reference-app-v151 .ref-table.timesheets .head,
+          .reference-app-v151 .ref-table.timesheets .tr { min-width: 760px !important; }
+          .reference-app-v151 .schedule-head,
+          .reference-app-v151 .schedule-row,
+          .reference-app-v151 .schedule-foot { min-width: 980px !important; }
+          .reference-app-v151 .ref-chart-line,
+          .reference-app-v151 .ref-chart-line.live,
+          .reference-app-v151 .ref-bar-chart { grid-template-columns: 1fr !important; min-height: 150px !important; overflow: hidden !important; }
+          .reference-app-v151 .ref-chart-line.live svg { height: 138px !important; }
+          .reference-app-v151 .ref-live-bars { min-height: 132px !important; overflow-x: auto !important; padding-bottom: 24px !important; }
+          .reference-app-v151 .ref-live-bars > div { min-width: 19px !important; height: 104px !important; }
+          .reference-app-v151 .ref-chart-legend { flex-wrap: wrap !important; }
+          .reference-app-v151 .ref-station-grid { grid-template-columns: 1fr !important; overflow: visible !important; }
+          .reference-app-v151 .ref-station-card { min-width: 0 !important; }
+          .reference-app-v151 .ref-panel-toolbar { display: grid !important; grid-template-columns: 1fr !important; gap: 8px !important; }
+          .reference-app-v151 .ref-panel-toolbar > *,
+          .reference-app-v151 .ref-panel-toolbar button,
+          .reference-app-v151 .ref-panel-toolbar select { width: 100% !important; min-width: 0 !important; }
+          .reference-app-v151 .native-mobile-bottom-nav { position: fixed !important; left: 0 !important; right: 0 !important; bottom: 0 !important; width: 100vw !important; z-index: 80 !important; grid-template-columns: repeat(5, minmax(0,1fr)) !important; }
+          .reference-app-v151 .native-mobile-bottom-nav .native-nav-label { font-size: 10px !important; }
+        }
+
 
       `}</style>
 
@@ -3166,6 +3315,11 @@ return (
       )}
 
       <DrawerMenu isOpen={isMenuOpen} onClose={() => setIsMenuOpen(false)} activeTab={activeTabState} setActiveTab={setActiveTab} appUser={liveAppUser} setAppUser={setAppUser} hasUnreadMessages={hasUnreadMessages} hasMyShiftAlert={hasMyShiftAlert} hasScheduleBuilderAlert={hasScheduleBuilderAlert} hasHelpUpdate={hasHelpUpdate} clientFeatures={displayClientFeatures} clientData={displayClientData} addToast={addToast} availableWorkspaces={availableWorkspaces} activeWorkspaceName={liveAppUser?.restaurantName || displayClientData?.name || ''} onOpenWorkspaceSwitcher={() => !ghostTenant && !isDemoMode && setIsWorkspaceSwitcherOpen(true)} />
+      <div className="mobile-clock-schedule-quick" aria-label="Quick time clock and schedule actions">
+        <button type="button" onClick={() => setActiveTab('published')}><Clock size={16}/> Time Clock</button>
+        <button type="button" onClick={() => setActiveTab('schedule')}><CalendarDays size={16}/> Schedule</button>
+      </div>
+
       <nav className="native-mobile-bottom-nav" aria-label="Primary app navigation">
         {primaryAppNav.map(item => <NativeNavButton key={item.id} item={item} mode="mobile" />)}
         <button type="button" onClick={() => setIsMenuOpen(true)} className="native-nav-btn native-nav-mobile" title="More tools">
