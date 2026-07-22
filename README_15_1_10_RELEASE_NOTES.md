@@ -33,3 +33,8 @@
 - Live browser/Firebase QA still needs to be run in the real preview/production environment with real credentials.
 - `npm run build` requires installed dependencies, including `react-scripts`.
 - Internal System Administrator global metrics depend on the signed-in account having permission to read those global collections.
+
+## 15.1.10 Hotfix: No-env cron guard
+- Restored the previous no-env behavior for deployments where `/api/dispatch-reminders` is hit by Vercel Cron but Firebase Admin credentials are not exposed in that deployment scope.
+- Missing Admin credentials now skip the cron dispatch safely instead of throwing a production error.
+- Real reminder/push dispatch still runs normally when server credentials are present.

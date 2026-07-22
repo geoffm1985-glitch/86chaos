@@ -238,12 +238,34 @@ module.exports = async function handler(req, res) {
       hasAdminCredentials: Boolean(process.env.FIREBASE_ADMIN_CREDENTIALS),
       hasSplitCredentialParts: Boolean(process.env.FIREBASE_PROJECT_ID && process.env.FIREBASE_CLIENT_EMAIL && process.env.FIREBASE_PRIVATE_KEY)
     };
-    console.error('[dispatch-reminders] Firebase Admin setup is missing or invalid:', error?.message || error, safeDiagnostics);
+    const message = error?.message || String(error || 'Unknown Firebase Admin setup error');
+    const missingCredentialOnly = /No server credential is configured|Firebase server credentials are not configured/i.test(message);
+
+    // 15.1.10 hotfix:
+    // Do not break a deployment just because a cron route exists in a Vercel
+    // scope that does not expose Firebase Admin credentials. The older app did
+    // not require the user to touch Vercel env vars just to load the app, so the
+    // cron gracefully skips dispatch work when no server credential is present.
+    // Real push dispatch still runs normally when credentials are available.
+    if (missingCredentialOnly) {
+      if (process.env.DEBUG_FIREBASE_ADMIN_DIAGNOSTICS === '1') {
+        console.warn('[dispatch-reminders] Skipping reminder dispatch because Firebase Admin credentials are unavailable in this deployment scope.', safeDiagnostics);
+      }
+      return res.status(200).json({
+        ok: true,
+        skipped: true,
+        code: 'firebase_admin_credentials_absent_skip',
+        message: 'Reminder dispatch skipped because this deployment has no Firebase Admin credential. The app UI can continue running without Vercel env changes.',
+        diagnostics: safeDiagnostics
+      });
+    }
+
+    console.error('[dispatch-reminders] Firebase Admin setup is invalid:', message, safeDiagnostics);
     return res.status(503).json({
       ok: false,
-      code: 'firebase_admin_not_configured',
-      error: 'Firebase server credentials are not configured for this Vercel environment.',
-      details: error?.message || String(error || 'Unknown Firebase Admin setup error'),
+      code: 'firebase_admin_invalid',
+      error: 'Firebase server credentials are invalid for this Vercel environment.',
+      details: message,
       diagnostics: safeDiagnostics
     });
   }

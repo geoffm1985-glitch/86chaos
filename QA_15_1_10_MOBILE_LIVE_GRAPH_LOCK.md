@@ -28,3 +28,8 @@
 - [ ] Confirm empty live states appear when a collection has no records.
 - [ ] Run full Playwright suite against the preview or production URL.
 - [ ] Run `npm run build` after dependencies are installed.
+
+## Hotfix QA
+- [x] `/api/dispatch-reminders` keeps unauthorized requests protected.
+- [x] Missing Firebase Admin credentials no longer throw the production error shown in Vercel logs.
+- [x] Configured Firebase Admin credentials still use the normal dispatch path.

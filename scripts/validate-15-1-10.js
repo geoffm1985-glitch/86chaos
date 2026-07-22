@@ -43,6 +43,8 @@ check('src/App.js', /grid-template-columns:\s*minmax\(0,\s*1fr\)\s*!important/, 
 check('src/App.js', /sales=\{sales\}[^>]*timePunches=\{timePunches\}[^>]*initialSubTab="schedule-builder"/s, 'schedule receives live sales and punches');
 check('src/App.js', /prepItems=\{prepItems\}[^>]*tasks=\{tasks\}[^>]*inventoryItems=\{inventoryItems\}/s, 'prep receives live prep/tasks/inventory');
 check('src/App.js', /TabInventory[^>]*inventoryItems=\{inventoryItems\}/s, 'inventory receives live inventory items');
+check('api/dispatch-reminders.js', /firebase_admin_credentials_absent_skip/, 'dispatch reminders skips missing admin credentials without env changes');
+check('api/dispatch-reminders.js', /DEBUG_FIREBASE_ADMIN_DIAGNOSTICS/, 'missing admin diagnostics are opt-in only');
 
 if (!exists('README_15_1_10_RELEASE_NOTES.md')) { console.error('FAIL release notes missing'); failed = true; } else console.log('OK   release notes created');
 if (!exists('QA_15_1_10_MOBILE_LIVE_GRAPH_LOCK.md')) { console.error('FAIL QA checklist missing'); failed = true; } else console.log('OK   QA checklist created');
