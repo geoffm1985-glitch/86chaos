@@ -3694,6 +3694,29 @@ return (
         }
         }
 
+        /* 15.1.13 deep-deep voice tap-target hotfix
+           Keep the top 86Voice control large enough for real desktop clicks and phone taps. */
+        .reference-app-v151 .native-command-actions > .reference-voice-action.reference-top-action,
+        .reference-app-v151 button.reference-voice-action {
+          display: inline-flex !important;
+          align-items: center !important;
+          justify-content: center !important;
+          box-sizing: border-box !important;
+          height: 48px !important;
+          min-height: 48px !important;
+          line-height: 1 !important;
+          border: 1px solid rgba(224,161,96,.78) !important;
+          background: linear-gradient(180deg, #c47c3f 0%, #8b512e 100%) !important;
+          color: #fff6ed !important;
+        }
+        .reference-app-v151 .native-command-actions > .reference-voice-action.reference-top-action svg,
+        .reference-app-v151 button.reference-voice-action svg {
+          width: 24px !important;
+          height: 24px !important;
+          flex: 0 0 auto !important;
+        }
+
+
 
       `}</style>
 

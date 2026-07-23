@@ -5,7 +5,7 @@ import {
   DollarSign, Download, Flame, HardDrive, LineChart, Lock, MessageSquare, Mic,
   Package, Percent, PieChart, Plus, RefreshCw, Rocket, Search, Send, Settings,
   Shield, ShieldCheck, ShoppingCart, Target, TrendingUp, Truck, Upload, Users,
-  UserCheck, Wallet, Wrench, Zap, Star
+  UserCheck, Wallet, Wrench, Zap, Star, Bug
 } from 'lucide-react';
 import { CURRENT_VERSION, formatDate, getToday, useLiveCollection } from '../core/appCore';
 

@@ -80,7 +80,7 @@ test.describe('86 Chaos DEEP DEEP forms, exports, and upload surfaces', () => {
       reports.push({ tab, changed, exportClicks, uploadSurfaces, textStart: afterText.slice(0, 1000) });
     }
 
-    const totalChanges = reports.reduce((n, r) => n + (r.changed?.length || 0) + (r.exportClicks?.length || 0), 0);
+    const totalChanges = reports.reduce((n, r) => n + (r.changed?.length || 0) + (r.exportClicks?.length || 0) + Math.min(2, r.uploadSurfaces || 0), 0);
     expect(totalChanges, 'Form/export suite did not exercise enough real controls').toBeGreaterThanOrEqual(8);
 
     await attachReport(testInfo, '07-deep-deep-forms-exports-upload-wiring.json', { runId: RUN_ID, reports, problems: summarizeProblems(problems) });

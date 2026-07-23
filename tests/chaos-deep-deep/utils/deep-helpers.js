@@ -58,7 +58,7 @@ const ROUTES = [
 const FATAL_TEXT_RE = /Application error|Unhandled Runtime Error|Failed to compile|Module not found|Cannot find module|Cannot read properties of undefined|Cannot read property|undefined is not an object|Minified React error|ReferenceError:|SyntaxError:|TypeError:|No test found/i;
 const FATAL_CONSOLE_RE = /Application error|Unhandled Runtime Error|Failed to compile|Module not found|Cannot find module|Cannot read properties of undefined|Cannot read property|undefined is not an object|Minified React error|ReferenceError|SyntaxError|TypeError/i;
 const PERMISSION_GATE_RE = /Plan & Permission Gate|permission|not authorized|access denied|does not include this tool|not include this tool|role does not include|not available for this workspace|locked feature|ask the account owner/i;
-const UNAVAILABLE_RE = /This page is not available|not available|coming soon|turned off for this workspace|old app link/i;
+const UNAVAILABLE_RE = /This page is not available|SCREEN FAILED SAFELY|Screen failed to load|old app link|turned off for this workspace/i;
 const PROTECTED_SECRET_RE = /private_key|firebase-adminsdk|CRON_SECRET|MASTER_ADMIN_EMAILS|refresh token|access token|service account key|FIREBASE_SERVICE_ACCOUNT_KEY/i;
 const INTERNAL_ADMIN_RE = /System Administrator|Backup Center|Security Center|Forensics|Global Users|Access Control|Deployment Readiness|Emergency Read-Only|Retention|Push Health/i;
 const MUTATING_RE = /\b(delete|trash|remove|reset|restore|emergency|deploy|broadcast|publish|approve all|approve timesheet|clock in|clock out|start break|end break|save|post message|send|add item|new recipe|create purchase|upload|import|scan|repair|grant|nuke|sync|disconnect|connect|optimize|mark done|complete|submit|archive|void|pause automation)\b/i;
@@ -168,8 +168,13 @@ function watchForProblems(page, problems) {
     const type = req.resourceType();
     const url = req.url();
     if (!['document', 'script', 'xhr', 'fetch'].includes(type)) return;
+    const failure = req.failure()?.errorText || '';
     if (/favicon|sockjs|hot-update|chrome-extension|google-analytics|firebaselogging|googleapis.*listen|firestore.*Listen/i.test(url)) return;
-    problems.push({ type: 'requestfailed', resourceType: type, url, failure: req.failure()?.errorText || '' });
+    // Benign aborts happen when Playwright navigates between routes or closes a page while
+    // Vercel auth probes / Firestore long-poll channels are still open. Treat real network
+    // errors as failures, but do not fail the app for expected teardown aborts.
+    if (/ERR_ABORTED/i.test(failure) && (/\.well-known\/vercel\/jwe/i.test(url) || /[?&]tab=/i.test(url) || /firestore\/Write\/channel/i.test(url))) return;
+    problems.push({ type: 'requestfailed', resourceType: type, url, failure });
   });
 }
 

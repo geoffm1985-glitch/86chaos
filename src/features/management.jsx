@@ -10677,11 +10677,47 @@ const TabHelpCenter = ({ appUser, activeTab, voiceHelpSearchTarget = null, addTo
     setIsSubmittingBug(false);
   };
   const isPlatformHelpUser = appUser?.isSuperAdmin === true || /system administrator|super admin/i.test(String(appUser?.role || ''));
-  const internalHelpTermRe = /System Administrator|Back Office Suite|QuickBooks Integration Hub|Python Automation|Backup Center|Security Center|Forensics|Pay Rates|service account|private_key|client_email|firebase-adminsdk|CRON_SECRET|FIREBASE_SERVICE_ACCOUNT_KEY|MASTER_ADMIN_EMAILS|refresh token|access token|Vercel env vars|Firebase Storage bucket/i;
+  const internalHelpTermRe = /System Administrator|Backup Center|Security Center|Forensics|Global Users|Access Control|Deployment Readiness|Emergency Read-Only|Retention|Push Health|Back Office Suite|QuickBooks Integration Hub|Python Automation|Pay Rates|service account|private_key|client_email|firebase-adminsdk|CRON_SECRET|FIREBASE_SERVICE_ACCOUNT_KEY|MASTER_ADMIN_EMAILS|refresh token|access token|Vercel env vars|Firebase Storage bucket/i;
+  const publicHelpReplacementMap = [
+    [/System Administrators?/gi, 'authorized support'],
+    [/Backup Center/gi, 'backup tools'],
+    [/Security Center/gi, 'security tools'],
+    [/Forensics/gi, 'audit tools'],
+    [/Global Users/gi, 'user tools'],
+    [/Access Control/gi, 'permission controls'],
+    [/Deployment Readiness/gi, 'release readiness'],
+    [/Emergency Read-Only/gi, 'emergency safety mode'],
+    [/Push Health/gi, 'notification health'],
+    [/Retention/gi, 'data policy'],
+    [/CRON_SECRET|FIREBASE_SERVICE_ACCOUNT_KEY|MASTER_ADMIN_EMAILS|private_key|client_email|firebase-adminsdk|refresh token|access token|service account|Vercel env vars|Firebase Storage bucket/gi, 'private setup detail'],
+  ];
+  const cleanPublicHelpText = (value = '') => publicHelpReplacementMap.reduce((text, [pattern, replacement]) => text.replace(pattern, replacement), String(value || ''));
+  const safeHelpArticle = (article) => ({
+    ...article,
+    title: cleanPublicHelpText(article?.title),
+    group: cleanPublicHelpText(article?.group),
+    keywords: cleanPublicHelpText(article?.keywords),
+    body: (article?.body || []).map(cleanPublicHelpText),
+  });
+  const safeTrainingChapter = (chapter) => ({
+    ...chapter,
+    title: cleanPublicHelpText(chapter?.title),
+    group: cleanPublicHelpText(chapter?.group),
+    tab: cleanPublicHelpText(chapter?.tab),
+    audience: cleanPublicHelpText(chapter?.audience),
+    summary: cleanPublicHelpText(chapter?.summary),
+    keywords: cleanPublicHelpText(chapter?.keywords),
+    notes: (chapter?.notes || []).map(cleanPublicHelpText),
+    sections: (chapter?.sections || []).map(section => ({ ...section, title: cleanPublicHelpText(section?.title), steps: (section?.steps || []).map(cleanPublicHelpText) })),
+  });
   const helpArticleText = (article) => `${article?.id || ''} ${article?.title || ''} ${article?.group || ''} ${article?.keywords || ''} ${(article?.body || []).join(' ')}`;
-  const trainingChapterText = (chapter) => `${chapter?.id || ''} ${chapter?.title || ''} ${chapter?.group || ''} ${chapter?.tab || ''} ${chapter?.audience || ''} ${chapter?.summary || ''} ${chapter?.keywords || ''} ${(chapter?.sections || []).map(section => `${section?.title || ''} ${(section?.steps || []).join(' ')}`).join(' ')}`;
-  const visibleHelpArticles = HELP_ARTICLES.filter(article => isPlatformHelpUser || !internalHelpTermRe.test(helpArticleText(article)));
-  const visibleTrainingChapters = SYSTEM_TRAINING_MANUAL_CHAPTERS.filter(chapter => isPlatformHelpUser || !internalHelpTermRe.test(trainingChapterText(chapter)));
+  const trainingChapterText = (chapter) => `${chapter?.id || ''} ${chapter?.title || ''} ${chapter?.group || ''} ${chapter?.tab || ''} ${chapter?.audience || ''} ${chapter?.summary || ''} ${chapter?.keywords || ''} ${(chapter?.notes || []).join(' ')} ${(chapter?.sections || []).map(section => `${section?.title || ''} ${(section?.steps || []).join(' ')}`).join(' ')}`;
+  const visibleHelpArticles = HELP_ARTICLES
+    .map(article => isPlatformHelpUser ? article : safeHelpArticle(article))
+    .filter(article => isPlatformHelpUser || !internalHelpTermRe.test(helpArticleText(article)));
+  const visibleTrainingChapters = SYSTEM_TRAINING_MANUAL_CHAPTERS
+    .map(chapter => isPlatformHelpUser ? chapter : safeTrainingChapter(chapter))
+    .filter(chapter => isPlatformHelpUser || !internalHelpTermRe.test(trainingChapterText(chapter)));
   const groups = ['All', ...Array.from(new Set(visibleHelpArticles.map(a => a.group)))];
   const activeGroup = groups.includes(group) ? group : 'All';
   const q = query.trim().toLowerCase();
