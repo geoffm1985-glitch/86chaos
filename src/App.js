@@ -3273,6 +3273,425 @@ return (
           .reference-app-v151 .native-mobile-bottom-nav .native-nav-label { font-size: 10px !important; }
           .reference-app-v151 .reference-voice-action { min-width: 54px !important; width: 54px !important; height: 48px !important; padding: 0 !important; border-radius: 999px !important; }
           .reference-app-v151 .reference-admin-exit-action { min-width: 42px !important; width: 42px !important; padding: 0 !important; }
+
+
+        /* 15.1.14 MOBILE POLISH LOCK
+           Fixes phone UI collisions: content no longer hides under quick actions/bottom nav,
+           the command bar is leaner, and wide grids/tables scroll inside their cards only. */
+        @media (max-width: 899px) {
+          html, body, #root {
+            width: 100% !important;
+            max-width: 100vw !important;
+            overflow-x: hidden !important;
+            background: #05090d !important;
+          }
+          .reference-app-v151,
+          .reference-app-v151 .native-app-shell {
+            width: 100% !important;
+            max-width: 100vw !important;
+            overflow-x: hidden !important;
+          }
+          .reference-app-v151 .app-header.native-command-bar {
+            position: sticky !important;
+            top: 0 !important;
+            height: 56px !important;
+            min-height: 56px !important;
+            padding: 0 8px !important;
+            grid-template-columns: minmax(0, 1fr) auto !important;
+            background: rgba(5, 10, 14, .985) !important;
+            border-bottom: 1px solid rgba(196,124,63,.20) !important;
+            box-shadow: 0 10px 28px rgba(0,0,0,.38) !important;
+            z-index: 92 !important;
+          }
+          .reference-app-v151 .native-command-left {
+            min-width: 0 !important;
+            overflow: hidden !important;
+            gap: 6px !important;
+          }
+          .reference-app-v151 .reference-tool-dropdown {
+            max-width: min(52vw, 210px) !important;
+            height: 38px !important;
+            min-height: 38px !important;
+            padding: 0 6px !important;
+            border-radius: 12px !important;
+            background: rgba(15, 25, 31, .74) !important;
+            border: 1px solid rgba(196,124,63,.16) !important;
+          }
+          .reference-app-v151 .reference-tool-dropdown svg:first-child {
+            width: 16px !important;
+            height: 16px !important;
+            color: var(--ref151-copper) !important;
+            flex: 0 0 auto !important;
+          }
+          .reference-app-v151 .reference-tool-dropdown strong {
+            max-width: 100% !important;
+            font-size: 11.5px !important;
+            line-height: 1.05 !important;
+          }
+          .reference-app-v151 .reference-tool-dropdown small {
+            font-size: 8.5px !important;
+            line-height: 1 !important;
+          }
+          .reference-app-v151 .reference-command-search {
+            width: 36px !important;
+            min-width: 36px !important;
+            height: 38px !important;
+            border-radius: 12px !important;
+            background: rgba(15, 25, 31, .56) !important;
+            border: 1px solid rgba(136,153,166,.16) !important;
+          }
+          .reference-app-v151 .native-command-actions {
+            gap: 4px !important;
+            flex: 0 0 auto !important;
+          }
+          .reference-app-v151 .native-command-actions .native-icon-button,
+          .reference-app-v151 .native-command-actions .reference-profile-button {
+            display: none !important;
+          }
+          .reference-app-v151 .reference-admin-exit-action {
+            display: inline-flex !important;
+            min-width: 38px !important;
+            width: 38px !important;
+            height: 38px !important;
+            border-radius: 12px !important;
+            border: 1px solid rgba(196,124,63,.28) !important;
+            background: rgba(196,124,63,.10) !important;
+            color: #f1bb88 !important;
+          }
+          .reference-app-v151 .reference-voice-action {
+            display: inline-flex !important;
+            width: 52px !important;
+            min-width: 52px !important;
+            height: 44px !important;
+            padding: 0 !important;
+            border-radius: 999px !important;
+            border: 1px solid rgba(224,161,96,.72) !important;
+            background: linear-gradient(180deg, #c47c3f 0%, #8b512e 100%) !important;
+            color: #fff6ed !important;
+            box-shadow: 0 10px 24px rgba(196,124,63,.24), inset 0 1px 0 rgba(255,255,255,.20) !important;
+          }
+          .reference-app-v151 .reference-voice-action svg {
+            width: 24px !important;
+            height: 24px !important;
+          }
+          .reference-app-v151 .reference-voice-action span,
+          .reference-app-v151 .reference-admin-exit-action span {
+            display: none !important;
+          }
+          .reference-app-v151 .app-content-shell {
+            width: 100% !important;
+            max-width: 100vw !important;
+            margin-left: 0 !important;
+            padding: 10px 10px calc(164px + env(safe-area-inset-bottom)) !important;
+            overflow-x: hidden !important;
+            box-sizing: border-box !important;
+          }
+          .reference-app-v151 .desktop-date-strip {
+            display: none !important;
+          }
+          .reference-app-v151 .ref-page,
+          .reference-app-v151 .ref-page > *,
+          .reference-app-v151 .ref-panel,
+          .reference-app-v151 .ref-panel-body,
+          .reference-app-v151 .ref-page-head,
+          .reference-app-v151 .ref-page-title,
+          .reference-app-v151 .ref-metric,
+          .reference-app-v151 .ref-setting-row,
+          .reference-app-v151 .ref-alert-card,
+          .reference-app-v151 .ref-row,
+          .reference-app-v151 .ref-action-row,
+          .reference-app-v151 .ref-wide-action {
+            max-width: 100% !important;
+            min-width: 0 !important;
+            box-sizing: border-box !important;
+          }
+          .reference-app-v151 .ref-page {
+            gap: 10px !important;
+          }
+          .reference-app-v151 .ref-page-head {
+            display: grid !important;
+            grid-template-columns: minmax(0,1fr) !important;
+            gap: 10px !important;
+            padding: 0 !important;
+          }
+          .reference-app-v151 .ref-page-title h1 {
+            font-size: clamp(20px, 6vw, 25px) !important;
+            line-height: 1.08 !important;
+            letter-spacing: .08em !important;
+          }
+          .reference-app-v151 .ref-page-title p {
+            font-size: 12px !important;
+            line-height: 1.35 !important;
+            color: #aab5bd !important;
+          }
+          .reference-app-v151 .ref-top-date,
+          .reference-app-v151 .ref-page-actions button,
+          .reference-app-v151 .ref-page-actions select,
+          .reference-app-v151 .ref-actions button,
+          .reference-app-v151 .ref-actions select,
+          .reference-app-v151 .ref-panel-head button,
+          .reference-app-v151 .ref-panel-head select {
+            min-height: 40px !important;
+            width: 100% !important;
+            max-width: 100% !important;
+            border-radius: 12px !important;
+          }
+          .reference-app-v151 .ref-panel {
+            border-radius: 18px !important;
+            background: linear-gradient(180deg, rgba(14,24,30,.98), rgba(9,16,21,.98)) !important;
+            border-color: rgba(136,153,166,.18) !important;
+            overflow: hidden !important;
+          }
+          .reference-app-v151 .ref-panel-head {
+            min-height: 48px !important;
+            padding: 10px 11px !important;
+            align-items: center !important;
+          }
+          .reference-app-v151 .ref-panel-head h3 {
+            max-width: 100% !important;
+            font-size: 12px !important;
+            white-space: normal !important;
+            line-height: 1.2 !important;
+          }
+          .reference-app-v151 .ref-panel-body {
+            padding: 11px !important;
+            overflow-x: hidden !important;
+          }
+          .reference-app-v151 .ref-metric-grid,
+          .reference-app-v151 .ref-today-grid,
+          .reference-app-v151 .ref-finance-top,
+          .reference-app-v151 .ref-schedule-layout,
+          .reference-app-v151 .ref-schedule-bottom,
+          .reference-app-v151 .ref-inventory-layout,
+          .reference-app-v151 .ref-inventory-mid,
+          .reference-app-v151 .ref-finance-layout,
+          .reference-app-v151 .ref-prep-layout,
+          .reference-app-v151 .ref-three-cards,
+          .reference-app-v151 .ref-task-lanes,
+          .reference-app-v151 .ref-admin-layout,
+          .reference-app-v151 .ref-admin-top,
+          .reference-app-v151 .ref-admin-mid,
+          .reference-app-v151 .ref-admin-bottom,
+          .reference-app-v151 .ref-recipes-layout,
+          .reference-app-v151 .ref-message-layout,
+          .reference-app-v151 .ref-settings-layout,
+          .reference-app-v151 .ref-settings-menu,
+          .reference-app-v151 .ref-setting-row,
+          .reference-app-v151 .ref-setting-row.tall,
+          .reference-app-v151 .ref-ordering,
+          .reference-app-v151 .ref-side-stat,
+          .reference-app-v151 .ref-recipe-hero,
+          .reference-app-v151 .ref-kpi-trip,
+          .reference-app-v151 .ref-kpi-trip.big,
+          .reference-app-v151 .ref-alert-strip,
+          .reference-app-v151 .ref-dependency,
+          .reference-app-v151 .ref-right-rail,
+          .reference-app-v151 .ref-right-rail.inventory,
+          .reference-app-v151 .ref-right-rail.finance,
+          .reference-app-v151 .ref-right-rail.admin,
+          .reference-app-v151 .ref-right-rail.recipes {
+            display: grid !important;
+            grid-template-columns: minmax(0,1fr) !important;
+            width: 100% !important;
+            gap: 10px !important;
+          }
+          .reference-app-v151 .ref-metric {
+            grid-template-columns: 38px minmax(0,1fr) !important;
+            min-height: 82px !important;
+            padding: 11px !important;
+            border-radius: 16px !important;
+          }
+          .reference-app-v151 .ref-metric-icon {
+            width: 38px !important;
+            height: 38px !important;
+            border-radius: 14px !important;
+          }
+          .reference-app-v151 .ref-metric strong {
+            font-size: 21px !important;
+            line-height: 1.05 !important;
+            white-space: normal !important;
+            overflow-wrap: anywhere !important;
+          }
+          .reference-app-v151 .ref-metric small,
+          .reference-app-v151 .ref-metric span {
+            white-space: normal !important;
+            overflow-wrap: anywhere !important;
+          }
+          .reference-app-v151 .ref-metric .ref-spark {
+            display: none !important;
+          }
+          .reference-app-v151 .ref-table,
+          .reference-app-v151 .ref-schedule-grid {
+            display: block !important;
+            width: 100% !important;
+            max-width: 100% !important;
+            overflow-x: auto !important;
+            overflow-y: hidden !important;
+            -webkit-overflow-scrolling: touch !important;
+            border-radius: 14px !important;
+            overscroll-behavior-x: contain !important;
+          }
+          .reference-app-v151 .ref-table::after,
+          .reference-app-v151 .ref-schedule-grid::after {
+            content: 'Swipe for more';
+            display: block;
+            padding: 6px 2px 0;
+            font-size: 9px;
+            font-weight: 900;
+            letter-spacing: .12em;
+            text-transform: uppercase;
+            color: rgba(224,161,96,.72);
+          }
+          .reference-app-v151 .ref-table .head,
+          .reference-app-v151 .ref-table .tr,
+          .reference-app-v151 .schedule-head,
+          .reference-app-v151 .schedule-row,
+          .reference-app-v151 .schedule-foot {
+            width: max-content !important;
+            min-width: 720px !important;
+          }
+          .reference-app-v151 .ref-table.compact .head,
+          .reference-app-v151 .ref-table.compact .tr {
+            min-width: 520px !important;
+          }
+          .reference-app-v151 .schedule-head,
+          .reference-app-v151 .schedule-row,
+          .reference-app-v151 .schedule-foot {
+            min-width: 860px !important;
+          }
+          .reference-app-v151 .ref-live-bars {
+            display: flex !important;
+            align-items: end !important;
+            gap: 8px !important;
+            min-height: 130px !important;
+            width: 100% !important;
+            max-width: 100% !important;
+            overflow-x: auto !important;
+            overflow-y: hidden !important;
+            padding: 8px 2px 24px !important;
+            -webkit-overflow-scrolling: touch !important;
+          }
+          .reference-app-v151 .ref-live-bars > div {
+            flex: 0 0 22px !important;
+            min-width: 22px !important;
+            height: 102px !important;
+          }
+          .reference-app-v151 .ref-chart-line,
+          .reference-app-v151 .ref-chart-line.live,
+          .reference-app-v151 .ref-bar-chart {
+            width: 100% !important;
+            max-width: 100% !important;
+            min-height: 140px !important;
+            overflow: hidden !important;
+          }
+          .reference-app-v151 .ref-chart-line svg,
+          .reference-app-v151 .ref-chart-line.live svg {
+            width: 100% !important;
+            height: 128px !important;
+          }
+          .reference-app-v151 .ref-chart-legend {
+            flex-wrap: wrap !important;
+            gap: 8px !important;
+            font-size: 10px !important;
+          }
+          .reference-app-v151 .ref-action-row,
+          .reference-app-v151 .ref-wide-action,
+          .reference-app-v151 .ref-setting-row > button,
+          .reference-app-v151 .ref-panel button {
+            min-height: 42px !important;
+            border-radius: 12px !important;
+            white-space: normal !important;
+            line-height: 1.15 !important;
+          }
+          .reference-app-v151 .mobile-clock-schedule-quick {
+            position: fixed !important;
+            left: max(10px, env(safe-area-inset-left)) !important;
+            right: max(10px, env(safe-area-inset-right)) !important;
+            bottom: calc(82px + env(safe-area-inset-bottom)) !important;
+            z-index: 89 !important;
+            display: grid !important;
+            grid-template-columns: repeat(2, minmax(0,1fr)) !important;
+            gap: 8px !important;
+            pointer-events: auto !important;
+          }
+          .reference-app-v151 .mobile-clock-schedule-quick button {
+            min-height: 44px !important;
+            display: inline-flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            gap: 8px !important;
+            border-radius: 16px !important;
+            border: 1px solid rgba(224,161,96,.42) !important;
+            background: linear-gradient(180deg, rgba(196,124,63,.96), rgba(139,81,46,.96)) !important;
+            color: #fff6ed !important;
+            font-size: 12px !important;
+            font-weight: 950 !important;
+            letter-spacing: .02em !important;
+            box-shadow: 0 12px 30px rgba(0,0,0,.42), inset 0 1px 0 rgba(255,255,255,.18) !important;
+          }
+          .reference-app-v151 .mobile-clock-schedule-quick button svg {
+            width: 17px !important;
+            height: 17px !important;
+          }
+          .reference-app-v151 .native-mobile-bottom-nav {
+            position: fixed !important;
+            left: max(10px, env(safe-area-inset-left)) !important;
+            right: max(10px, env(safe-area-inset-right)) !important;
+            bottom: max(8px, env(safe-area-inset-bottom)) !important;
+            width: auto !important;
+            min-height: 66px !important;
+            height: 66px !important;
+            display: grid !important;
+            grid-template-columns: repeat(5, minmax(0,1fr)) !important;
+            gap: 2px !important;
+            padding: 6px !important;
+            z-index: 88 !important;
+            border-radius: 20px !important;
+            background: rgba(6, 12, 16, .96) !important;
+            border: 1px solid rgba(196,124,63,.28) !important;
+            box-shadow: 0 18px 48px rgba(0,0,0,.52), inset 0 1px 0 rgba(255,255,255,.05) !important;
+          }
+          .reference-app-v151 .native-mobile-bottom-nav .native-nav-mobile {
+            min-height: 52px !important;
+            height: 52px !important;
+            border-radius: 15px !important;
+            gap: 2px !important;
+            padding: 4px 1px !important;
+          }
+          .reference-app-v151 .native-mobile-bottom-nav .native-nav-mobile.is-active {
+            background: rgba(196,124,63,.16) !important;
+            color: #fff !important;
+          }
+          .reference-app-v151 .native-mobile-bottom-nav .native-nav-label {
+            font-size: 9.5px !important;
+            line-height: 1 !important;
+            max-width: 100% !important;
+            overflow: hidden !important;
+            text-overflow: ellipsis !important;
+            white-space: nowrap !important;
+          }
+          .reference-app-v151 .native-mobile-bottom-nav svg {
+            width: 19px !important;
+            height: 19px !important;
+          }
+          .reference-app-v151 .app-drawer-v104,
+          .reference-app-v151 .app-drawer-readable {
+            z-index: 120 !important;
+          }
+          .reference-app-v151 .app-drawer-readable > aside,
+          .reference-app-v151 .app-drawer-v104 > aside {
+            width: min(90vw, 360px) !important;
+            max-width: 90vw !important;
+          }
+        }
+        @media (max-width: 420px) {
+          .reference-app-v151 .reference-tool-dropdown { max-width: 43vw !important; }
+          .reference-app-v151 .reference-command-search { display: none !important; }
+          .reference-app-v151 .app-header.native-command-bar { grid-template-columns: minmax(0, 1fr) auto !important; }
+          .reference-app-v151 .reference-voice-action { width: 50px !important; min-width: 50px !important; }
+          .reference-app-v151 .ref-page-title h1 { font-size: 20px !important; }
+          .reference-app-v151 .ref-panel-head { grid-template-columns: minmax(0,1fr) !important; }
+        }
         }
 
 
