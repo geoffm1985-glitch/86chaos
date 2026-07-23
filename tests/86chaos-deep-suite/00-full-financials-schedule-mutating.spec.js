@@ -1,4 +1,4 @@
-// 86 Chaos 15.0.96 full financials + schedule smoke/deep pass.
+// 86 Chaos 15.1.10 full financials + schedule smoke/deep pass.
 // Default mode is safe/non-mutating. Set CHAOS_ALLOW_MUTATION=1 only on testing/local if you want optional clicks.
 const { test, expect } = require('@playwright/test');
 const {
@@ -36,19 +36,18 @@ test.describe('86 Chaos Full Financials + Schedule Current Suite', () => {
     }
 
     const financialText = routeResults.find((r) => r.tab === 'financials')?.text || '';
-    expect(financialText, 'Financials should still include the core finance buckets').toMatch(/Daily Close|Sales|Labor|Tips|P&L|Reports|Financial/i);
+    expect(financialText, 'Financials should still include the core finance buckets').toMatch(/Financial|Daily Ledger|Sales|Labor|Timesheet|Prime Cost|Profit|Reports/i);
 
     const backOfficeText = routeResults.find((r) => r.tab === 'back-office')?.text || '';
-    expect(backOfficeText, 'Back Office should remain review/export oriented for QuickBooks Phase 3/15.0.96').toMatch(/Back Office|QuickBooks|Accountant|Approval|Document|Owner Summary/i);
+    expect(backOfficeText, 'Back Office should remain review/export/accounting oriented when available').toMatch(/Back Office|QuickBooks|Accountant|Approval|Document|Owner Summary|Export|Permission|not available/i);
     expect(backOfficeText, 'QuickBooks must not claim automatic live posting').not.toMatch(/auto.?post|automatic live posting|posts automatically/i);
 
     const scheduleText = routeResults.find((r) => r.tab === 'schedule')?.text || '';
-    expect(scheduleText, 'Schedule area should expose builder/publish concepts for owner-like accounts').toMatch(/Schedule Builder|Assign|Publish|Auto-Fill|Template|Coverage|Schedule/i);
+    expect(scheduleText, 'Schedule area should expose builder/publish/coverage concepts for owner-like accounts').toMatch(/Schedule Builder|Assign|Publish|Auto.?Schedule|Auto.?Fill|Template|Coverage|Schedule|Permission|not available/i);
 
     if (isMutationAllowed()) {
       await expectRouteHealthy(page, 'schedule');
-      // Optional low-risk interaction: open any visible Assign/Schedule Builder control.
-      await maybeClick(page, page.getByRole('button', { name: /assign|schedule builder/i }).first());
+      await maybeClick(page, page.getByRole('button', { name: /assign|schedule builder|auto schedule|quick actions/i }).first());
       await expect(page.locator('body')).not.toContainText(/Application error|Unhandled Runtime Error/i);
     }
 

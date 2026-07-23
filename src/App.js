@@ -542,6 +542,7 @@ const [currentDate, setCurrentDate] = useState(getToday());
 
   const isDemoMode = !!liveAppUser?.isDemo;
   const serverSaysSuperAdmin = Boolean(serverAdminCheck?.superAdmin === true);
+
   if (!isDemoMode && liveAppUser && serverSaysSuperAdmin && liveAppUser.isSuperAdmin !== true) {
     liveAppUser = {
       ...liveAppUser,
@@ -680,6 +681,13 @@ if (liveAppUser && clientData) {
   if (isDemoMode && liveAppUser?.demoRole === 'employee' && displayUsers?.[0]) {
     liveAppUser = { ...liveAppUser, id: displayUsers[0].id, name: 'Demo Employee', role: displayUsers[0].role || 'Demo Employee', isAdmin: false, isSuperAdmin: false, permissions: { help: true } };
   }
+
+  const canUseSystemAdmin = Boolean(
+    liveAppUser?.isSuperAdmin === true ||
+    serverSaysSuperAdmin ||
+    (MASTER_ADMIN_EMAIL && (liveAppUser?.email || '').toLowerCase() === MASTER_ADMIN_EMAIL.toLowerCase())
+  );
+
   const displayClientData = isDemoMode && clientData ? { ...clientData, ownerEmail: 'Hidden for demo', ownerPhone: 'Hidden for demo', address: 'Hidden for demo', businessAddress: 'Hidden for demo', systemSettings: { tips: true, ...(clientData.systemSettings || {}), address: 'Hidden for demo', geofenceAddress: 'Hidden for demo' } } : clientData;
   const planAccess = usePlanAccess(liveAppUser, displayClientData);
   const mfaEnvValue = String(process.env.REACT_APP_MFA_ENFORCE_ELEVATED_ROLES || '').toLowerCase().trim();
@@ -992,7 +1000,7 @@ useEffect(() => {
     };
     window.addEventListener('chaosOpenProblemReport', openFromMenu);
     return () => window.removeEventListener('chaosOpenProblemReport', openFromMenu);
-  }, [activeTabState]);
+  }, [activeTabState, canUseSystemAdmin]);
 
 
 // --- NOTIFICATION DOT LOGIC (WITH READ RECEIPTS) ---
@@ -1501,12 +1509,12 @@ What I clicked / expected:
     { id: 'help', label: 'Help Center', Icon: HelpCircle, route: 'help' },
     { id: 'godmode', label: 'System Admin', Icon: Shield, route: 'godmode', superAdminOnly: true },
   ]).filter(item => {
-    if (item.superAdminOnly) return liveAppUser?.isSuperAdmin || serverSaysSuperAdmin;
+    if (item.superAdminOnly) return canUseSystemAdmin;
     if (item.adminOnly) return liveAppUser?.isAdmin || liveAppUser?.isSuperAdmin || serverSaysSuperAdmin;
     if (item.feature && displayClientFeatures?.[item.feature] === false) return false;
     if (item.adminOrPerm) return liveAppUser?.isAdmin || liveAppUser?.isSuperAdmin || Boolean(liveAppUser?.permissions?.[item.adminOrPerm]) || serverSaysSuperAdmin;
     return true;
-  }), [displayClientFeatures, hasMyShiftAlert, hasUnreadMessages, liveAppUser, needsEyesCount, serverSaysSuperAdmin]);
+  }), [displayClientFeatures, hasMyShiftAlert, hasUnreadMessages, liveAppUser, needsEyesCount, serverSaysSuperAdmin, canUseSystemAdmin]);
 
   const adminReferenceNavItems = useMemo(() => ([
     { id: 'admin-overview', label: 'Overview', Icon: Home, route: 'godmode' },
@@ -1524,11 +1532,11 @@ What I clicked / expected:
     { id: 'admin-operations', label: 'Operations', Icon: Settings, route: 'godmode' },
   ]), []);
 
-  const activeReferenceNavItems = activeTabState === 'godmode' ? adminReferenceNavItems : referenceNavItems;
+  const activeReferenceNavItems = activeTabState === 'godmode' && canUseSystemAdmin ? adminReferenceNavItems : referenceNavItems;
 
   const ReferenceSidebarButton = ({ item }) => {
     const Icon = item.Icon;
-    const isAdminRail = activeTabState === 'godmode' && String(item.id || '').startsWith('admin-');
+    const isAdminRail = activeTabState === 'godmode' && canUseSystemAdmin && String(item.id || '').startsWith('admin-');
     const active = isAdminRail
       ? item.id === 'admin-overview'
       : activeTabState === item.route || (item.route === 'published' && ['schedule','published','events','month'].includes(activeTabState)) || (item.route === 'schedule' && ['schedule','published','events','month'].includes(activeTabState));
@@ -1567,8 +1575,9 @@ What I clicked / expected:
       audit: 'Audit Log',
       godmode: 'System Administrator'
     };
+    if (activeTabState === 'godmode' && !canUseSystemAdmin) return 'Access Required';
     return labels[activeTabState] || String(activeTabState || 'Today').replace(/[-_]/g, ' ');
-  }, [activeTabState]);
+  }, [activeTabState, canUseSystemAdmin]);
 
   const globalManagerBriefMathText = useMemo(() => {
     const today = getToday();
@@ -1639,14 +1648,14 @@ What I clicked / expected:
     if (activeTabState === 'maintenance' && displayClientFeatures?.maintenance !== false && (liveAppUser?.isAdmin || liveAppUser?.permissions?.team)) return <TabMaintenance key={`mtn-${rId}`} appUser={liveAppUser} addToast={addToast} />;
     if (activeTabState === 'settings' && !isDemoMode) return <TabSettings key={`set-${rId}`} addToast={addToast} appUser={liveAppUser} clientData={displayClientData} users={displayUsers} />;
     if (activeTabState === 'help') return <TabHelpCenter key={`help-${rId}`} appUser={liveAppUser} activeTab={activeTabState} voiceHelpSearchTarget={voiceHelpSearchTarget} addToast={addToast} />;
-    if (activeTabState === 'godmode' && (liveAppUser?.isSuperAdmin === true || serverSaysSuperAdmin || (MASTER_ADMIN_EMAIL && (liveAppUser?.email || '').toLowerCase() === MASTER_ADMIN_EMAIL.toLowerCase()))) return <TabGodMode key={`god-${rId}`} appUser={{ ...liveAppUser, isSuperAdmin: true, serverAdminCheck }} addToast={addToast} setGhostTenant={setGhostTenant} setActiveTab={setActiveTab} />;
+    if (activeTabState === 'godmode' && canUseSystemAdmin) return <TabGodMode key={`god-${rId}`} appUser={{ ...liveAppUser, isSuperAdmin: true, serverAdminCheck }} addToast={addToast} setGhostTenant={setGhostTenant} setActiveTab={setActiveTab} />;
     if (activeTabState === 'godmode') return (
       <div className={`${T.card} p-5 sm:p-8 max-w-2xl mx-auto text-center space-y-4 border-red-900/40`}>
         <div className="mx-auto w-12 h-12 rounded-2xl bg-red-900/20 border border-red-900/50 flex items-center justify-center text-red-300 text-2xl">🔐</div>
         <div>
           <p className="text-[10px] font-black uppercase tracking-[0.25em] text-red-300">Plan & Permission Gate</p>
           <h2 className="text-xl font-black text-white mt-2">Your role does not include this tool</h2>
-          <p className="text-sm font-bold text-slate-400 mt-2">System Administrator tools are internal-only. This account does not have the required permission for this area.</p>
+          <p className="text-sm font-bold text-slate-400 mt-2">This internal area is not available to this account. Ask the account owner if you believe you should have access.</p>
         </div>
         <div className="flex flex-col sm:flex-row gap-2 justify-center">
           <button onClick={() => setActiveTab('today')} className={T.btn}>Go to Today</button>
@@ -1677,11 +1686,7 @@ What I clicked / expected:
   // MAINTENANCE LOCK SCREEN
   // Global lockdown should affect every workspace, including the active workspace, but never lock out
   // the platform owner/super-admin account that needs to lift the lockdown.
-  const maintenanceBypass = Boolean(
-    liveAppUser?.isSuperAdmin === true ||
-    serverSaysSuperAdmin ||
-    (MASTER_ADMIN_EMAIL && (liveAppUser?.email || '').toLowerCase() === MASTER_ADMIN_EMAIL.toLowerCase())
-  );
+  const maintenanceBypass = canUseSystemAdmin;
   const maintenanceEndsMs = clientData?.maintenanceEndsAt ? new Date(clientData.maintenanceEndsAt).getTime() : 0;
   const maintenanceExpired = maintenanceEndsMs && Number.isFinite(maintenanceEndsMs) && maintenanceEndsMs <= Date.now();
   const maintenanceAudience = clientData?.maintenanceAudience || 'everyone_except_super_admin';
@@ -3237,7 +3242,7 @@ return (
           {activeReferenceNavItems.map(item => <ReferenceSidebarButton key={item.id} item={item} />)}
         </nav>
         <div className="reference-sidebar-foot">
-          {activeTabState === 'godmode' ? (
+          {activeTabState === 'godmode' && canUseSystemAdmin ? (
             <>
               <div className="reference-sidebar-card system-admin-foot"><small>System Time</small><strong>{new Date().toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}</strong><div>{new Date().toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}</div></div>
               <div className="reference-sidebar-card system-admin-foot"><small>Environment</small><strong className="green">Production</strong></div>
@@ -3285,8 +3290,8 @@ return (
 
       <header className="app-header native-command-bar sticky top-0 z-40 border-b flex items-center justify-between px-3 sm:px-4 bg-[#0F1318]/96 backdrop-blur-md border-[#202A31]">
         <div className="native-command-left min-w-0 flex items-center gap-3">
-          <button type="button" onClick={() => activeTabState !== 'godmode' && availableWorkspaces.length > 1 && !ghostTenant && !isDemoMode ? setIsWorkspaceSwitcherOpen(true) : null} className="reference-tool-dropdown" title={activeTabState === 'godmode' ? 'System Administrator' : 'Active workspace'}>
-            {activeTabState === 'godmode' ? <Shield size={18}/> : <Package size={18}/>}<div><strong>{activeTabState === 'godmode' ? 'System Administrator' : (liveAppUser?.restaurantName || displayClientData?.name || '86 Chaos')}</strong><small>{activeTabState === 'godmode' ? 'Super Administrator' : 'Workspace'}</small></div><ChevronRight size={14}/>
+          <button type="button" onClick={() => !(activeTabState === 'godmode' && canUseSystemAdmin) && availableWorkspaces.length > 1 && !ghostTenant && !isDemoMode ? setIsWorkspaceSwitcherOpen(true) : null} className="reference-tool-dropdown" title={activeTabState === 'godmode' && canUseSystemAdmin ? 'System Administrator' : 'Active workspace'}>
+            {activeTabState === 'godmode' && canUseSystemAdmin ? <Shield size={18}/> : <Package size={18}/>}<div><strong>{activeTabState === 'godmode' && canUseSystemAdmin ? 'System Administrator' : (liveAppUser?.restaurantName || displayClientData?.name || '86 Chaos')}</strong><small>{activeTabState === 'godmode' && canUseSystemAdmin ? 'Super Administrator' : 'Workspace'}</small></div><ChevronRight size={14}/>
           </button>
           <button type="button" className="reference-command-search" onClick={() => setIsGlobalSearchOpen(true)}>
             <Search size={17}/><input readOnly value="" placeholder="Search or run command..."/>

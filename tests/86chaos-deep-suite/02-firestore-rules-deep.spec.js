@@ -1,5 +1,5 @@
-// 86 Chaos 15.0.96 Firestore/security rules UI safety checks.
-// This does not replace Firebase emulator rule tests. It verifies that restricted UI surfaces do not expose protected data/actions.
+// 86 Chaos 15.1.10 Firestore/security rules UI safety checks.
+// This does not replace Firebase emulator rule tests. It verifies restricted UI surfaces do not expose protected data/actions.
 const { test, expect } = require('@playwright/test');
 const {
   RUN_ID,

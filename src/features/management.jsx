@@ -10677,7 +10677,7 @@ const TabHelpCenter = ({ appUser, activeTab, voiceHelpSearchTarget = null, addTo
     setIsSubmittingBug(false);
   };
   const isPlatformHelpUser = appUser?.isSuperAdmin === true || /system administrator|super admin/i.test(String(appUser?.role || ''));
-  const internalHelpTermRe = /System Administrator|Back Office Suite|QuickBooks Integration Hub|Python Automation|Backup Center|Security Center|Forensics|Pay Rates/i;
+  const internalHelpTermRe = /System Administrator|Back Office Suite|QuickBooks Integration Hub|Python Automation|Backup Center|Security Center|Forensics|Pay Rates|service account|private_key|client_email|firebase-adminsdk|CRON_SECRET|FIREBASE_SERVICE_ACCOUNT_KEY|MASTER_ADMIN_EMAILS|refresh token|access token|Vercel env vars|Firebase Storage bucket/i;
   const helpArticleText = (article) => `${article?.id || ''} ${article?.title || ''} ${article?.group || ''} ${article?.keywords || ''} ${(article?.body || []).join(' ')}`;
   const trainingChapterText = (chapter) => `${chapter?.id || ''} ${chapter?.title || ''} ${chapter?.group || ''} ${chapter?.tab || ''} ${chapter?.audience || ''} ${chapter?.summary || ''} ${chapter?.keywords || ''} ${(chapter?.sections || []).map(section => `${section?.title || ''} ${(section?.steps || []).join(' ')}`).join(' ')}`;
   const visibleHelpArticles = HELP_ARTICLES.filter(article => isPlatformHelpUser || !internalHelpTermRe.test(helpArticleText(article)));

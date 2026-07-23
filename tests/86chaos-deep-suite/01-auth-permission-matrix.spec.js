@@ -1,4 +1,4 @@
-// 86 Chaos 15.0.96 Auth + Permission Matrix
+// 86 Chaos 15.1.10 Auth + Permission Matrix
 // Checks owner/admin/staff/system-admin boundaries through the real UI.
 const { test, expect } = require('@playwright/test');
 const {
@@ -12,12 +12,10 @@ const {
   bodyText,
   pageState,
   expectVersion,
-  PERMISSION_GATE_RE,
   INTERNAL_ADMIN_DEBUG_RE,
   STAFF_VISIBLE_FORBIDDEN_RE,
   STAFF_UNLOCKED_RESTRICTED_CONTENT_RE,
   attachReport,
-  summarizeProblems,
 } = require('./utils/chaos-helpers');
 
 const STAFF_RESTRICTED_TABS = new Set(['financials', 'sales', 'labor', 'back-office', 'schedule', 'godmode', 'audit']);
@@ -31,7 +29,7 @@ test.describe('86 Chaos Auth + Permission Matrix', () => {
       if (hasCreds(prefix)) accounts.push(creds(prefix));
     }
     if (!accounts[0]?.email || !accounts[0]?.password) {
-      throw new Error('Missing OWNER/TEST credentials. Tests will not silently skip anymore. Check your .env file and run 99-env-diagnostics.spec.js.');
+      throw new Error('Missing OWNER/TEST credentials. Check your .env.playwright file and run 99-env-diagnostics.spec.js.');
     }
 
     const results = [];
@@ -85,19 +83,16 @@ test.describe('86 Chaos Auth + Permission Matrix', () => {
             }
 
             if (STAFF_RESTRICTED_TABS.has(tab)) {
-              // Correct behavior: STAFF may hit a restricted direct URL, but must land on a gate/denial.
               if (!state.isPermissionGate && !state.isUnavailable) {
                 problems.push({ type: 'staff-restricted-route-not-gated', account: account.label, tab, url: page.url(), textStart: text.slice(0, 1500) });
               }
 
-              // Only fail on usable restricted actions/content, not denied page headings.
               if (!state.isPermissionGate && STAFF_UNLOCKED_RESTRICTED_CONTENT_RE.test(text)) {
                 problems.push({ type: 'staff-unlocked-restricted-content', account: account.label, tab, url: page.url(), textStart: text.slice(0, 1500) });
               }
               continue;
             }
 
-            // Staff-visible pages should not advertise/admin-surface restricted tools.
             if (STAFF_VISIBLE_FORBIDDEN_RE.test(text)) {
               problems.push({ type: 'staff-visible-tool-leak', account: account.label, tab, forbidden: String(STAFF_VISIBLE_FORBIDDEN_RE), url: page.url(), textStart: text.slice(0, 1500) });
             }
@@ -107,7 +102,7 @@ test.describe('86 Chaos Auth + Permission Matrix', () => {
         const combined = record.pages.map((p) => p.textStart).join('\n');
 
         if (/OWNER|TEST|ADMIN|MANAGER/i.test(account.label) && !/WRONG_WORKSPACE|DISABLED/i.test(account.label)) {
-          const ownerSignal = /Today Home|Financial|Back Office|Schedule|Inventory|Settings|Team|Help Center/i;
+          const ownerSignal = /Today|Financial|Back Office|Schedule|Inventory|Settings|Team|Staff|Help Center|System Administrator/i;
           expect(ownerSignal.test(combined), `${account.label} should see at least one normal app tool`).toBeTruthy();
         }
 

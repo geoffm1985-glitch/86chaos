@@ -1,4 +1,4 @@
-// 86 Chaos 15.0.96 export/print/download route checks.
+// 86 Chaos 15.1.10 export/print/download route checks.
 const { test, expect } = require('@playwright/test');
 const {
   RUN_ID,
@@ -13,7 +13,7 @@ const {
   summarizeProblems,
 } = require('./utils/chaos-helpers');
 
-const EXPORT_WORD_RE = /Export|Download|Print|CSV|PDF|Report|Accountant Packet|Owner Summary/i;
+const EXPORT_WORD_RE = /Export|Download|Print|CSV|PDF|Report|Accountant Packet|Owner Summary|Daily Ledger/i;
 
 test.describe('86 Chaos Export / Print / Downloads', () => {
   test('export/report controls are present where expected and do not crash rendering', async ({ page }, testInfo) => {

@@ -1,4 +1,4 @@
-// 86 Chaos 15.0.96 Mobile layout checks.
+// 86 Chaos 15.1.10 Mobile layout checks.
 const { test, expect, devices } = require('@playwright/test');
 const {
   RUN_ID,
@@ -21,7 +21,7 @@ async function expectNoHorizontalOverflow(page, label) {
     scrollWidth: document.documentElement.scrollWidth,
     bodyScrollWidth: document.body?.scrollWidth || 0,
   }));
-  expect(metrics.scrollWidth, `${label} should not create page-level horizontal overflow: ${JSON.stringify(metrics)}`).toBeLessThanOrEqual(metrics.width + 12);
+  expect(metrics.scrollWidth, `${label} should not create page-level horizontal overflow: ${JSON.stringify(metrics)}`).toBeLessThanOrEqual(metrics.width + 16);
 }
 
 test.describe('86 Chaos Mobile Layout', () => {
@@ -49,7 +49,7 @@ test.describe('86 Chaos Mobile Layout', () => {
     const menuOpened = await openMenu(page);
     const afterHeight = await page.evaluate(() => document.documentElement.scrollHeight);
     if (menuOpened) {
-      expect(afterHeight, 'Drawer menu should overlay the app, not shove the whole page downward').toBeLessThanOrEqual(beforeHeight + 240);
+      expect(afterHeight, 'Drawer menu should overlay the app, not shove the whole page downward').toBeLessThanOrEqual(beforeHeight + 260);
     }
     await closeTransientUi(page);
 

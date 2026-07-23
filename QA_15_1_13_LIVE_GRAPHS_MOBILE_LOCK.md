@@ -1,6 +1,8 @@
 # QA Checklist - 15.1.13 Live Graph + Mobile Layout Lock
 
 ## Completed in package validation
+- Confirmed unauthorized System Admin route now shows a generic permission gate without internal admin navigation labels.
+- Confirmed customer Help Center filtering hides backend credential/setup help text from non-platform users.
 - Confirmed app version is 15.1.13 in package.json, public/version.json, and CURRENT_VERSION.
 - Confirmed Firebase Admin / dispatch-reminders credential files were not modified in this pass.
 - Confirmed the old Firebase Admin setup error string is not present in dispatch credential files.

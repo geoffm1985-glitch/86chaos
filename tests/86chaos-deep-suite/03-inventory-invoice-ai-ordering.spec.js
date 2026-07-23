@@ -1,4 +1,4 @@
-// 86 Chaos 15.0.96 Inventory, invoice scanner, menu intelligence, and AI ordering smoke/deep checks.
+// 86 Chaos 15.1.10 Inventory, invoice scanner, menu intelligence, and AI ordering smoke/deep checks.
 const { test, expect } = require('@playwright/test');
 const {
   RUN_ID,
@@ -32,7 +32,7 @@ test.describe('86 Chaos Inventory + Invoice + AI Ordering', () => {
     }
 
     const inventoryText = routeReports.find((r) => r.tab === 'inventory')?.textStart || (await bodyText(page));
-    expect(inventoryText, 'Inventory should still show inventory/vendor/invoice concepts').toMatch(/Inventory|Vendor|Invoice|Par|Burn|Waste|Order|COGS/i);
+    expect(inventoryText, 'Inventory should still show inventory/vendor/invoice concepts').toMatch(/Inventory|Vendor|Invoice|Par|Burn|Waste|Order|COGS|Low Stock/i);
 
     await expectRouteHealthy(page, 'inventory');
     await maybeClick(page, page.getByRole('button', { name: /invoice|scan|upload/i }).first());

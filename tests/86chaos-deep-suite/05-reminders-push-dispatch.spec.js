@@ -1,4 +1,4 @@
-// 86 Chaos 15.0.96 Reminders + push dispatch UI/API safety checks.
+// 86 Chaos 15.1.10 Reminders + push dispatch UI/API safety checks.
 const { test, expect } = require('@playwright/test');
 const {
   RUN_ID,
@@ -9,7 +9,6 @@ const {
   login,
   expectVersion,
   expectRouteHealthy,
-  bodyText,
   attachReport,
   summarizeProblems,
 } = require('./utils/chaos-helpers');
@@ -31,7 +30,6 @@ test.describe('86 Chaos Reminders + Push Dispatch', () => {
     const today = await expectRouteHealthy(page, 'today');
     expect(today.text, 'Today route should not show push/reminder fatal errors').not.toMatch(/dispatch failed|push token crash|undefined.*reminder/i);
 
-    // Protected API endpoints should not be openly successful without server auth/secret.
     const endpoints = ['/api/dispatch-reminders', '/api/send-push'];
     const apiReports = [];
     for (const endpoint of endpoints) {

@@ -1,4 +1,4 @@
-// 86 Chaos 15.0.96 performance/slow page route timing checks.
+// 86 Chaos 15.1.10 performance/slow page route timing checks.
 const { test, expect } = require('@playwright/test');
 const {
   RUN_ID,

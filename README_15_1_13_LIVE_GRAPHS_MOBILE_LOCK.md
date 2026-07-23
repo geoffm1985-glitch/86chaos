@@ -1,6 +1,8 @@
 # 86 Chaos 15.1.13 Live Graph + Mobile Layout Lock
 
 ## What changed
+- Added a targeted Playwright permission-gate fix: unauthorized direct visits to System Admin no longer render the internal admin rail, Backup Center labels, forensics labels, or admin-only shell text before the permission gate.
+- Tightened Help Center filtering so customer/owner/staff help pages do not surface backend credential/setup terms such as service account, CRON_SECRET, or Firebase service account key.
 - Rebased on the clean 15.1.12 Firebase-safe app base.
 - Did not change Firebase Admin, cron, service account, dispatch credential loading, Firestore rules, Storage rules, or Vercel environment handling.
 - Rewired the reference dashboard layer so graphs, KPI trends, donuts, bars, low-stock panels, recipe margin panels, financial trends, schedule totals, prep totals, and System Administrator health panels derive from live collections or passed live props where available.
