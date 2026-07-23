@@ -237,6 +237,7 @@ export default function App() {
       
   const rId = ghostTenant ? ghostTenant.id : appUser?.restaurantId;
   const [activeTabState, setActiveTabState] = useState(() => normalizeRouteTab(appUser?.preferences?.defaultTab || 'today'));
+  const [activeAdminSection, setActiveAdminSection] = useState('overview');
   const [clientData, setClientData] = useState(null);
   const [heartbeatDebug, setHeartbeatDebug] = useState(null);
   const clientFeatures = clientData?.features || {};
@@ -952,8 +953,34 @@ if (liveAppUser && clientData) {
         localStorage.setItem(key, JSON.stringify([tab, ...current].slice(0, 6)));
       } catch(e) {}
     }
+    if (tab !== 'godmode') setActiveAdminSection('overview');
     window.history.pushState({ tab }, '', `?tab=${tab}`); setActiveTabState(tab);
   };
+
+  useEffect(() => {
+    const handleAdminPanelAction = (event) => {
+      if (activeTabState !== 'godmode') return;
+      const detail = event?.detail || {};
+      const text = `${detail.title || ''} ${detail.action || ''}`.toLowerCase();
+      const nextSection = text.includes('workspace') || text.includes('client') ? 'workspaces'
+        : text.includes('user') ? 'users'
+        : text.includes('security') ? 'security'
+        : text.includes('backup') || text.includes('restore') ? 'backup'
+        : text.includes('push') ? 'push'
+        : text.includes('forensic') || text.includes('audit') ? 'forensics'
+        : text.includes('automation') || text.includes('ops intelligence') ? 'automation'
+        : text.includes('support') || text.includes('diagnostic') ? 'support'
+        : text.includes('retention') ? 'retention'
+        : text.includes('access') ? 'access'
+        : text.includes('deploy') || text.includes('readiness') || text.includes('feature flags') ? 'deployment'
+        : text.includes('operation') || text.includes('summary') ? 'operations'
+        : 'overview';
+      setActiveAdminSection(nextSection);
+      addToast?.('System Administrator', `Opened ${nextSection.replace(/-/g, ' ')}.`);
+    };
+    window.addEventListener('chaos-ref-panel-action', handleAdminPanelAction);
+    return () => window.removeEventListener('chaos-ref-panel-action', handleAdminPanelAction);
+  }, [activeTabState]);
 
 useEffect(() => {
     const shouldRemember = localStorage.getItem('chaosRememberMe') !== 'false';
@@ -1517,19 +1544,20 @@ What I clicked / expected:
   }), [displayClientFeatures, hasMyShiftAlert, hasUnreadMessages, liveAppUser, needsEyesCount, serverSaysSuperAdmin, canUseSystemAdmin]);
 
   const adminReferenceNavItems = useMemo(() => ([
-    { id: 'admin-overview', label: 'Overview', Icon: Home, route: 'godmode' },
-    { id: 'admin-workspaces', label: 'Workspaces', Icon: Briefcase, route: 'godmode' },
-    { id: 'admin-users', label: 'Global Users', Icon: Users, route: 'godmode' },
-    { id: 'admin-security', label: 'Security Center', Icon: Shield, route: 'godmode' },
-    { id: 'admin-backup', label: 'Backup Center', Icon: Database, route: 'godmode' },
-    { id: 'admin-push', label: 'Push Health', Icon: Send, route: 'godmode' },
-    { id: 'admin-forensics', label: 'Forensics', Icon: Bug, route: 'godmode' },
-    { id: 'admin-automation', label: 'Automation', Icon: Settings, route: 'godmode' },
-    { id: 'admin-support', label: 'Support', Icon: HelpCircle, route: 'godmode' },
-    { id: 'admin-retention', label: 'Retention', Icon: ClipboardList, route: 'godmode' },
-    { id: 'admin-access', label: 'Access Control', Icon: Lock, route: 'godmode' },
-    { id: 'admin-deployment', label: 'Deployment', Icon: Rocket, route: 'godmode' },
-    { id: 'admin-operations', label: 'Operations', Icon: Settings, route: 'godmode' },
+    { id: 'admin-exit', label: 'Exit to App', Icon: ChevronLeft, route: 'today', exitAdmin: true },
+    { id: 'admin-overview', label: 'Overview', Icon: Home, route: 'godmode', section: 'overview' },
+    { id: 'admin-workspaces', label: 'Workspaces', Icon: Briefcase, route: 'godmode', section: 'workspaces' },
+    { id: 'admin-users', label: 'Global Users', Icon: Users, route: 'godmode', section: 'users' },
+    { id: 'admin-security', label: 'Security Center', Icon: Shield, route: 'godmode', section: 'security' },
+    { id: 'admin-backup', label: 'Backup Center', Icon: Database, route: 'godmode', section: 'backup' },
+    { id: 'admin-push', label: 'Push Health', Icon: Send, route: 'godmode', section: 'push' },
+    { id: 'admin-forensics', label: 'Forensics', Icon: Bug, route: 'godmode', section: 'forensics' },
+    { id: 'admin-automation', label: 'Automation', Icon: Settings, route: 'godmode', section: 'automation' },
+    { id: 'admin-support', label: 'Support', Icon: HelpCircle, route: 'godmode', section: 'support' },
+    { id: 'admin-retention', label: 'Retention', Icon: ClipboardList, route: 'godmode', section: 'retention' },
+    { id: 'admin-access', label: 'Access Control', Icon: Lock, route: 'godmode', section: 'access' },
+    { id: 'admin-deployment', label: 'Deployment', Icon: Rocket, route: 'godmode', section: 'deployment' },
+    { id: 'admin-operations', label: 'Operations', Icon: Settings, route: 'godmode', section: 'operations' },
   ]), []);
 
   const activeReferenceNavItems = activeTabState === 'godmode' && canUseSystemAdmin ? adminReferenceNavItems : referenceNavItems;
@@ -1538,10 +1566,15 @@ What I clicked / expected:
     const Icon = item.Icon;
     const isAdminRail = activeTabState === 'godmode' && canUseSystemAdmin && String(item.id || '').startsWith('admin-');
     const active = isAdminRail
-      ? item.id === 'admin-overview'
+      ? (!item.exitAdmin && (item.section || 'overview') === activeAdminSection)
       : activeTabState === item.route || (item.route === 'published' && ['schedule','published','events','month'].includes(activeTabState)) || (item.route === 'schedule' && ['schedule','published','events','month'].includes(activeTabState));
+    const handleClick = () => {
+      if (isAdminRail && item.exitAdmin) { setActiveTab(item.route || 'today'); return; }
+      if (isAdminRail) setActiveAdminSection(item.section || 'overview');
+      setActiveTab(item.route);
+    };
     return (
-      <button type="button" onClick={() => setActiveTab(item.route)} className={`reference-sidebar-link ${active ? 'active' : ''}`} title={item.label}>
+      <button type="button" onClick={handleClick} className={`reference-sidebar-link ${item.exitAdmin ? 'exit-admin' : ''} ${active ? 'active' : ''}`} title={item.label}>
         <Icon size={17} />
         <span>{item.label}</span>
         {item.badge && <b>{item.badge}</b>}
@@ -1648,7 +1681,7 @@ What I clicked / expected:
     if (activeTabState === 'maintenance' && displayClientFeatures?.maintenance !== false && (liveAppUser?.isAdmin || liveAppUser?.permissions?.team)) return <TabMaintenance key={`mtn-${rId}`} appUser={liveAppUser} addToast={addToast} />;
     if (activeTabState === 'settings' && !isDemoMode) return <TabSettings key={`set-${rId}`} addToast={addToast} appUser={liveAppUser} clientData={displayClientData} users={displayUsers} />;
     if (activeTabState === 'help') return <TabHelpCenter key={`help-${rId}`} appUser={liveAppUser} activeTab={activeTabState} voiceHelpSearchTarget={voiceHelpSearchTarget} addToast={addToast} />;
-    if (activeTabState === 'godmode' && canUseSystemAdmin) return <TabGodMode key={`god-${rId}`} appUser={{ ...liveAppUser, isSuperAdmin: true, serverAdminCheck }} addToast={addToast} setGhostTenant={setGhostTenant} setActiveTab={setActiveTab} />;
+    if (activeTabState === 'godmode' && canUseSystemAdmin) return <TabGodMode key={`god-${rId}`} appUser={{ ...liveAppUser, isSuperAdmin: true, serverAdminCheck }} addToast={addToast} setGhostTenant={setGhostTenant} setActiveTab={setActiveTab} activeAdminSection={activeAdminSection} setActiveAdminSection={setActiveAdminSection} />;
     if (activeTabState === 'godmode') return (
       <div className={`${T.card} p-5 sm:p-8 max-w-2xl mx-auto text-center space-y-4 border-red-900/40`}>
         <div className="mx-auto w-12 h-12 rounded-2xl bg-red-900/20 border border-red-900/50 flex items-center justify-center text-red-300 text-2xl">🔐</div>
@@ -2613,6 +2646,7 @@ return (
         .reference-sidebar-link b { min-width: 20px; height: 20px; display: inline-flex; align-items: center; justify-content: center; border-radius: 999px; background: rgba(196,124,63,.78); color: #fff; font-size: 11px; }
         .reference-sidebar-link:hover { color: #fff; background: rgba(255,255,255,.035); }
         .reference-sidebar-link.active { color: #fff; background: linear-gradient(90deg, rgba(129,74,40,.62), rgba(81,48,32,.28)); border-color: rgba(196,124,63,.58); box-shadow: inset 3px 0 0 var(--ref151-copper); }
+        .reference-sidebar-link.exit-admin { color:#f6c99d !important; border-color:rgba(196,124,63,.30) !important; background:rgba(196,124,63,.08) !important; margin-bottom:6px !important; }
         .reference-sidebar-foot { margin-top: auto; display: grid; gap: 10px; padding-top: 12px; border-top: 1px solid var(--ref151-line); }
         .reference-sidebar-card { border: 1px solid var(--ref151-line); background: rgba(255,255,255,.025); padding: 12px; border-radius: 5px; color: var(--ref151-muted); font-size: 12px; line-height: 1.35; }
         .reference-sidebar-card strong { display:block; color:#fff; font-size:13px; margin-bottom:4px; }
@@ -2641,6 +2675,9 @@ return (
         .reference-command-search kbd { color: var(--ref151-faint); font-size: 11px; font-weight: 800; }
         .reference-app-v151 .native-command-actions { gap: 14px !important; }
         .reference-top-action { padding: 0 13px; display: inline-flex; align-items:center; gap:8px; color:#fff !important; font-weight:800; font-size:13px; }
+        .reference-voice-action { min-width: 178px !important; height: 48px !important; padding: 0 18px !important; border-radius: 8px !important; border-color: rgba(196,124,63,.72) !important; background: linear-gradient(180deg, rgba(196,124,63,.42), rgba(143,96,64,.34)) !important; color: #fff4e8 !important; box-shadow: 0 0 0 1px rgba(196,124,63,.18), 0 12px 30px rgba(0,0,0,.24), inset 0 1px 0 rgba(255,255,255,.08) !important; font-size: 14px !important; }
+        .reference-voice-action svg { width: 23px !important; height: 23px !important; color: #ffd1a3 !important; filter: drop-shadow(0 0 8px rgba(196,124,63,.55)); }
+        .reference-voice-action:hover { transform: translateY(-1px); border-color: rgba(255,186,124,.9) !important; background: linear-gradient(180deg, rgba(214,148,88,.55), rgba(143,96,64,.42)) !important; }
         .reference-profile-button { display:flex; align-items:center; gap:10px; padding:0 2px 0 10px; border-color: transparent !important; background: transparent !important; }
         .reference-profile-button .avatar { width:36px; height:36px; border-radius:50%; border:1px solid var(--ref151-copper); display:flex; align-items:center; justify-content:center; font-weight:900; color:#fff; }
         .reference-profile-button strong { font-size: 13px; color:#fff; display:block; }
@@ -2969,6 +3006,9 @@ return (
         .reference-app-v151 .ref-admin-top { display:grid; grid-template-columns:1.35fr 1fr 1fr; gap:10px; }
         .reference-app-v151 .ref-admin-mid { display:grid; grid-template-columns:.95fr .95fr 1.35fr 1fr; gap:10px; }
         .reference-app-v151 .ref-admin-bottom { display:grid; grid-template-columns:1.4fr 1fr .85fr; gap:10px; }
+        .reference-app-v151 .ref-admin-section-actions { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+        .reference-app-v151 .ref-admin-section-grid { display:grid; grid-template-columns:.75fr 1.25fr .85fr; gap:10px; }
+        .reference-app-v151 .reference-admin-exit-action { color:#f6c99d !important; border-color:rgba(196,124,63,.38) !important; background:rgba(196,124,63,.08) !important; }
         .reference-app-v151 .ref-timeline { display:grid; gap:0; }
         .reference-app-v151 .ref-timeline div { min-height:31px; display:grid; grid-template-columns:12px minmax(0,1fr) auto; gap:8px; align-items:center; border-bottom:1px solid rgba(255,255,255,.06); font-size:11px; }
         .reference-app-v151 .ref-timeline i { width:8px; height:8px; border-radius:50%; background:var(--ref-green); }
@@ -3220,6 +3260,7 @@ return (
           .reference-app-v151 .ref-bar-chart { grid-template-columns: 1fr !important; min-height: 150px !important; overflow: hidden !important; }
           .reference-app-v151 .ref-chart-line.live svg { height: 138px !important; }
           .reference-app-v151 .ref-live-bars { min-height: 132px !important; overflow-x: auto !important; padding-bottom: 24px !important; }
+          .reference-app-v151 .ref-admin-section-grid { grid-template-columns: 1fr !important; }
           .reference-app-v151 .ref-live-bars > div { min-width: 19px !important; height: 104px !important; }
           .reference-app-v151 .ref-chart-legend { flex-wrap: wrap !important; }
           .reference-app-v151 .ref-station-grid { grid-template-columns: 1fr !important; overflow: visible !important; }
@@ -3230,6 +3271,8 @@ return (
           .reference-app-v151 .ref-panel-toolbar select { width: 100% !important; min-width: 0 !important; }
           .reference-app-v151 .native-mobile-bottom-nav { position: fixed !important; left: 0 !important; right: 0 !important; bottom: 0 !important; width: 100vw !important; z-index: 80 !important; grid-template-columns: repeat(5, minmax(0,1fr)) !important; }
           .reference-app-v151 .native-mobile-bottom-nav .native-nav-label { font-size: 10px !important; }
+          .reference-app-v151 .reference-voice-action { min-width: 54px !important; width: 54px !important; height: 48px !important; padding: 0 !important; border-radius: 999px !important; }
+          .reference-app-v151 .reference-admin-exit-action { min-width: 42px !important; width: 42px !important; padding: 0 !important; }
         }
 
 
@@ -3298,7 +3341,8 @@ return (
           </button>
         </div>
         <div className="native-command-actions flex items-center gap-2 flex-shrink-0">
-          <button type="button" onClick={() => setActiveTab('ai-tools')} className="reference-top-action"><Mic size={17}/> <span className="hidden sm:inline">86Voice Command</span></button>
+          {activeTabState === 'godmode' && canUseSystemAdmin && <button type="button" onClick={() => setActiveTab('today')} className="reference-top-action reference-admin-exit-action"><ChevronLeft size={17}/> <span className="hidden sm:inline">Exit Admin</span></button>}
+          <button type="button" onClick={() => window.dispatchEvent(new Event('chaos-open-voice-dock'))} className="reference-top-action reference-voice-action"><Mic size={22}/> <span className="hidden sm:inline">86Voice Command</span></button>
           <button type="button" onClick={() => setActiveTab('messages')} className="native-icon-button" title="Messages"><MessageSquare size={18}/>{hasUnreadMessages && <span className="native-alert-dot"></span>}</button>
           <button type="button" onClick={() => setActiveTab('reminders')} className="native-icon-button" title="Notifications"><Bell size={18}/>{needsEyesCount > 0 && <span className="native-alert-dot"></span>}</button>
           <button type="button" onClick={() => setActiveTab('settings')} className="reference-profile-button" title="Profile / settings">
@@ -3335,6 +3379,7 @@ return (
       <GlobalSearchModal isOpen={isGlobalSearchOpen} onClose={() => setIsGlobalSearchOpen(false)} queryText={globalSearchQuery} setQueryText={setGlobalSearchQuery} users={displayUsers} events={events} shifts={shifts} recipes={recipes} inventoryItems={inventoryItems} maintenanceLogs={maintenanceLogs} setActiveTab={setActiveTab} />
       <KitchenTVMode isOpen={isKitchenTVOpen} onClose={() => setIsKitchenTVOpen(false)} shifts={shifts} events={events} prepItems={prepItems} maintenanceLogs={maintenanceLogs} inventoryItems={inventoryItems} />
       <UndoBar undoItem={undoItem} clearUndo={() => setUndoItem(null)} />
+      <VoiceCommandDock appUser={liveAppUser} inventoryItems={inventoryItems} recipes={recipes} users={displayUsers} prepItems={prepItems} tasks={tasks} events={events} maintenanceLogs={maintenanceLogs} menuDependencies={menuDependencies} clientFeatures={displayClientFeatures} clientData={displayClientData} setActiveTab={setActiveTab} setCurrentDate={setCurrentDate} setScheduleSubTabTarget={setVoiceScheduleSubTabTarget} setHelpSearchTarget={setVoiceHelpSearchTarget} setRecipeTarget={setVoiceRecipeTarget} addToast={addToast} />
 
       <Modal isOpen={problemModal.open} onClose={() => !isSubmittingProblem && setProblemModal({ open: false, title: '', message: '', category: 'Bug / Error' })} title="Report Problem" sizeClass="max-w-3xl">
         <form onSubmit={submitProblemReport} className="space-y-4">

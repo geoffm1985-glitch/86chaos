@@ -19,3 +19,13 @@
 - Verify Schedule tables scroll only inside their panel.
 - Verify graphs show real data where the workspace has records and live-empty states where it does not.
 - Verify invoice scan, menu scan, burn log, exports, schedule publishing, and time clock actions still use the existing flows.
+
+## 15.1.13 UI Action Hotfix QA
+- [x] System Administrator rail includes Exit to App.
+- [x] System Administrator section buttons update the active section state.
+- [x] System Administrator quick actions are no longer dead buttons.
+- [x] Top microphone button dispatches the real 86Voice dock open event.
+- [x] Real 86Voice dock is mounted in the shell.
+- [x] Copper 86Voice button styling is present and larger than the previous compact button.
+- [x] npm test validator passes.
+- [x] Firebase/backend/cron files untouched.

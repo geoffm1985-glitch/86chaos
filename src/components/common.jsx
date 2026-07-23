@@ -1482,6 +1482,12 @@ const VoiceCommandDock = ({ appUser, inventoryItems = [], recipes = [], users = 
     setTimeout(() => startListening(), 80);
   };
 
+  useEffect(() => {
+    const handleOpenVoiceDock = () => openDock();
+    window.addEventListener('chaos-open-voice-dock', handleOpenVoiceDock);
+    return () => window.removeEventListener('chaos-open-voice-dock', handleOpenVoiceDock);
+  }, []);
+
   const parseCommand = async (spokenText) => {
     const raw = String(spokenText || '').trim();
     const q = normalizeVoiceText(raw);

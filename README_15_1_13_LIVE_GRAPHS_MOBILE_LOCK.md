@@ -13,3 +13,12 @@
 
 ## Important safety note
 This release intentionally does not touch Firebase Admin credential logic or cron credential setup.
+
+## 15.1.13 UI Action Hotfix
+- Fixed System Administrator rail buttons so Overview, Workspaces, Global Users, Security Center, Backup Center, Push Health, Forensics, Automation, Support, Retention, Access Control, Deployment, and Operations each open a real section view.
+- Added System Administrator escape paths: Exit to App in the admin rail and Exit Admin in the top bar.
+- Wired System Administrator panel actions and quick actions to section views, audit log, or safe review toasts instead of dead buttons.
+- Mounted the real 86Voice dock in the app shell.
+- Changed the top microphone button so it opens the 86Voice dock directly instead of only navigating to AI Tools.
+- Enlarged the top 86Voice button and matched it to the app copper treatment.
+- Firebase/backend/cron files were not changed.
