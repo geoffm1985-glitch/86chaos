@@ -1,8 +1,14 @@
 {
-  "version": "15.0.100",
-  "name": "86 Chaos 15.0.100 Low-Cost Presence, My Schedule, and Global Logout Fix",
+  "version": "16.0.0",
+  "name": "86 Chaos 16 Low-Cost Presence + Request-Off Warning",
   "releasedAt": "2026-07-24T00:00:00.000Z",
-  "label": "15.0.100 Low-Cost Presence + Schedule Visibility + Global Logout",
-  "build": "15.0.100",
-  "notes": "Adds Realtime Database low-cost presence, fixes My Schedule roster/auth identity matching, and adds System Administrator global logout for non-admin users."
+  "label": "16.0.0 Low-Cost Presence + Request-Off Timestamps",
+  "build": "16.0.0",
+  "notes": [
+    "Bumped version to 16.0.0 for record keeping.",
+    "Added low-cost Realtime Database presence session handling and RTDB-backed System Admin presence snapshots.",
+    "Reduced presence writes by avoiding tab-change rewrites and avoiding constant Firestore heartbeat/listener usage.",
+    "Request-off submissions now store requestedAt/requestedAtMs/requestTimestamp metadata.",
+    "Request Off calendar now warns when a selected date has already been requested by other people and shows the prior request count."
+  ]
 }
