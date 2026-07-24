@@ -31,6 +31,7 @@ const TabGodMode = ({ appUser, addToast, setGhostTenant, db, auth, Modal, T, get
   const [retentionSaving, setRetentionSaving] = useState(false);
   const [lastRetentionSetup, setLastRetentionSetup] = useState(null);
   const [adminHelpTopic, setAdminHelpTopic] = useState(null);
+  const [globalLogoutBusy, setGlobalLogoutBusy] = useState(false);
 
   // Nuke Security States
   const [nukeTarget, setNukeTarget] = useState(null);
@@ -208,6 +209,48 @@ const TabGodMode = ({ appUser, addToast, setGhostTenant, db, auth, Modal, T, get
        try { await updateDoc(doc(db, "restaurants", r.id), { forceRefresh: stamp }); count++; } catch(e){}
     }
     addToast('Refresh Broadcast', `Hard reload signal sent to ${count} databases.`);
+  };
+
+  const isProtectedSystemAdminUser = (user = {}) => {
+    const email = String(user.email || '').toLowerCase().trim();
+    const role = String(user.role || user.accountRole || '').toLowerCase();
+    return Boolean(
+      user.id === appUser?.id ||
+      user.isSuperAdmin === true ||
+      user.systemAccess?.superAdmin === true ||
+      user.superAdmin === true ||
+      role.includes('system administrator') ||
+      role.includes('super admin') ||
+      superAdmins.some(admin => admin.id === user.id || String(admin.email || '').toLowerCase().trim() === email)
+    );
+  };
+
+  const handleGlobalLogoutNonAdmins = async () => {
+    const typed = window.prompt('This logs out every non-System Administrator account on next app check. Type LOG OUT USERS to continue.');
+    if (typed !== 'LOG OUT USERS') return addToast('Canceled', 'Global logout was not run.');
+    setGlobalLogoutBusy(true);
+    const stamp = new Date().toISOString();
+    const targets = allUsers.filter(u => u?.id && !isProtectedSystemAdminUser(u));
+    let updated = 0;
+    let failed = 0;
+    for (const user of targets) {
+      try {
+        await updateDoc(doc(db, 'users', user.id), {
+          forceLogout: true,
+          forceLogoutAt: stamp,
+          forceLogoutBy: appUser?.id || appUser?.email || 'system-admin',
+          forceLogoutByName: appUser?.name || appUser?.email || 'System Administrator',
+          forceLogoutReason: 'System Administrator global logout'
+        });
+        updated++;
+      } catch (err) {
+        console.error('Global logout failed for user', user.id, err);
+        failed++;
+      }
+    }
+    try { await logAudit?.(appUser, 'GLOBAL_LOGOUT_NON_ADMINS', 'users/*', `Forced logout for ${updated} non-System Administrator user(s); ${failed} failed.`); } catch (_) {}
+    setGlobalLogoutBusy(false);
+    addToast(failed ? 'Partial Logout' : 'Logout Sent', failed ? `Logged out ${updated}; ${failed} failed.` : `Logout flag sent to ${updated} non-admin account(s).`);
   };
 
   const handleGrantAccess = async (e) => { e.preventDefault(); const snap = await getDocs(query(collection(db, "users"), where("email", "==", adminEmail.toLowerCase().trim()))); if (snap.empty) return addToast('Not Found', 'User not found.'); await updateDoc(doc(db, "users", snap.docs[0].id), { isSuperAdmin: true }); setAdminEmail(''); addToast('Granted', 'Administrator access given.'); };
@@ -798,6 +841,11 @@ const TabGodMode = ({ appUser, addToast, setGhostTenant, db, auth, Modal, T, get
               <h3 className="font-black text-white mb-1">Global Force Refresh</h3>
               <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-4 leading-snug">Pushes a silent command to all active devices to instantly hard-reload the browser. Use after deploying new code.</p>
               <button onClick={handleForceRefresh} className="w-full bg-emerald-900/20 text-emerald-400 border border-emerald-900/50 font-black text-xs uppercase tracking-widest py-3 rounded-xl hover:bg-emerald-900/40 transition-colors">Execute Global Refresh</button>
+            </div>
+            <div className={`${T.card} p-5 border-red-900/30`}>
+              <h3 className="font-black text-white mb-1">Log Out Everyone Except System Admins</h3>
+              <p className="text-xs text-slate-400 font-bold mb-4 leading-5">Sets a logout flag on every non-System Administrator user account. Protected System Administrator accounts stay signed in.</p>
+              <button onClick={handleGlobalLogoutNonAdmins} disabled={globalLogoutBusy} className="w-full bg-red-900/20 text-red-300 border border-red-900/50 font-black text-xs uppercase tracking-widest py-3 rounded-xl hover:bg-red-900/40 transition-colors disabled:opacity-50">{globalLogoutBusy ? 'Sending Logout…' : 'Log Out Non-Admins'}</button>
             </div>
             <div className={`${T.card} p-5 border-blue-900/30`}>
               <h3 className="font-black text-white mb-1">Orphan Data Sweeper</h3>

@@ -3,7 +3,7 @@ import { Bell, Bug, ChevronLeft, ChevronRight, Loader2, Menu, Moon, Send, X } fr
 import { addDoc, collection, doc, onSnapshot, updateDoc } from 'firebase/firestore';
 import { getToken, onMessage } from 'firebase/messaging';
 import 'leaflet/dist/leaflet.css';
-import { T, db, auth, messaging, firebaseConfig, CURRENT_VERSION, MASTER_ADMIN_EMAIL, useLiveCollection, secureFetch, waitForAuthCurrentUser, getToday, getMonthStr, formatDate, formatDisplayFullDate, formatDisplayMonth, logAudit, setActiveTimeFormat, getOfflineQueue, replayOfflineQueue } from './core/appCore';
+import { T, db, auth, messaging, firebaseConfig, CURRENT_VERSION, MASTER_ADMIN_EMAIL, useLiveCollection, secureFetch, waitForAuthCurrentUser, getToday, getMonthStr, formatDate, formatDisplayFullDate, formatDisplayMonth, logAudit, setActiveTimeFormat, getOfflineQueue, replayOfflineQueue, startLowCostPresenceSession } from './core/appCore';
 import { buildAlertFingerprint, useRememberedAlert } from './core/alertMemory';
 import { CheersLogo, Modal, DrawerMenu, DayDotPrintScreen, GlobalSearchModal, KitchenTVMode, UndoBar, VoiceCommandDock } from './components/common';
 import { LockedFeatureScreen } from './components/PlanGate';
@@ -349,7 +349,8 @@ const [currentDate, setCurrentDate] = useState(getToday());
   const canReadSmartInventory = [FEATURE_KEYS.COGS_CENTER, FEATURE_KEYS.INVOICE_TOTALS, FEATURE_KEYS.VENDOR_SPEND, FEATURE_KEYS.INVOICE_SCANNING].some(roleAndPlanAllowFeature);
   const canReadMenuCollections = [FEATURE_KEYS.MENU_INTELLIGENCE, FEATURE_KEYS.DEPENDENCY_TOOLS, FEATURE_KEYS.SMART_86_ALERTS].some(roleAndPlanAllowFeature);
   const canReadMaintenance = roleAndPlanAllowFeature(FEATURE_KEYS.CLEANING_ROUTINES);
-  const wantsScheduleData = (wantsToday && canReadScheduleView) || (wantsScheduleScreen && (canReadScheduleView || canReadScheduleBuilder)) || (['labor', 'ops'].includes(activeTabState) && (canReadScheduleView || canReadOperationsLabor));
+  const wantsPublishedSchedule = activeTabState === 'published';
+  const wantsScheduleData = wantsPublishedSchedule || (wantsToday && canReadScheduleView) || (wantsScheduleScreen && (canReadScheduleView || canReadScheduleBuilder)) || (['labor', 'ops'].includes(activeTabState) && (canReadScheduleView || canReadOperationsLabor));
   const wantsLaborData = (['financials', 'labor', 'sales', 'ops'].includes(activeTabState) || (wantsToday && canReadOperationsLabor)) && canReadOperationsLabor;
   const wantsInventoryData = (((wantsToday || activeTabState === 'ops' || isGlobalSearchOpen) && (canReadBasicInventory || canReadSmartInventory)) || (activeTabState === 'menu-intelligence' && canReadMenuCollections));
   const wantsPrepData = wantsToday || ['prep', 'ops'].includes(activeTabState);
@@ -362,7 +363,9 @@ const [currentDate, setCurrentDate] = useState(getToday());
   const messageRangeStart = activeTabState === 'messages' ? addDays(getToday(), -60) : recentWindowStart;
   const prepDateWindow = Array.from(new Set([currentDate, getToday(), 'MASTER']));
   const canViewTeamScheduleData = Boolean(appUser?.isSuperAdmin || appUser?.isAdmin || appUser?.isOwner || appUser?.accountOwner || appUser?.workspaceOwner || appUser?.permissions?.schedule || appUser?.permissions?.team);
-  const timeOffRequestClauses = canViewTeamScheduleData ? [] : [['userId', '==', appUser?.id || '']];
+  // On schedule screens, load the workspace request-off set so legacy records that only have
+  // employeeId/email/name still appear. Outside schedule screens, keep the cheaper own-user query.
+  const timeOffRequestClauses = (canViewTeamScheduleData || wantsScheduleScreen) ? [] : [['userId', '==', appUser?.id || '']];
 
   const users = useLiveCollection('users', rId, { enabled: !!rId, limitCount: activeTabState === 'godmode' ? 400 : 160, fallbackLimitCount: 60 });
   const workspaceMembers = useLiveCollection('workspaceMembers', rId, { enabled: !!rId, limitCount: activeTabState === 'team' ? 400 : 180, fallbackLimitCount: 80 });
@@ -765,7 +768,7 @@ if (liveAppUser && clientData) {
 // 2. Low-frequency presence check-in (no live scanner, no interval)
     let cancelledPresenceCheck = false;
 
-    if (!ghostTenant && appUser?.id) {
+    if (false && !ghostTenant && appUser?.id) {
       const saveHeartbeatDebug = (next) => {
         const packed = { ...(next || {}), at: new Date().toISOString(), restaurantId: rId, userId: appUser.id };
         if (!cancelledPresenceCheck) setHeartbeatDebug(packed);
@@ -861,6 +864,18 @@ if (liveAppUser && clientData) {
       unsub();
     };
   }, [rId, ghostTenant, appUser?.id]);
+
+
+  // Low-cost presence: Realtime Database onDisconnect handles online/offline without Firestore heartbeats.
+  useEffect(() => {
+    if (!rId || ghostTenant || !appUser?.id) return undefined;
+    return startLowCostPresenceSession({
+      user: appUser,
+      restaurantId: rId,
+      activeTab: activeTabState,
+      onDebug: (next) => setHeartbeatDebug({ ...(next || {}), at: new Date().toISOString(), restaurantId: rId, userId: appUser.id })
+    });
+  }, [rId, ghostTenant, appUser?.id, appUser?.email, appUser?.name, appUser?.role, activeTabState]);
 
  
   useEffect(() => {
