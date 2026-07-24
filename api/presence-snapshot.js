@@ -45,6 +45,7 @@ function publicPresenceRow(data = {}) {
     role: clean(data.role || ''),
     photoURL: clean(data.photoURL || ''),
     onlineState,
+    online: data.online === true || onlineState === 'online',
     activeTab: clean(data.activeTab || ''),
     activeDevice: clean(data.activeDevice || data.device || ''),
     activeHost: clean(data.activeHost || data.host || ''),
@@ -112,7 +113,7 @@ module.exports = async (req, res) => {
 
     const limitedRows = rows.slice(0, limit);
     const online = limitedRows
-      .filter(row => row._presenceLastMs >= cutoffMs && row.onlineState !== 'offline')
+      .filter(row => row._presenceLastMs && (row.online === true || (row._presenceLastMs >= cutoffMs && row.onlineState !== 'offline')))
       .sort((a, b) => b._presenceLastMs - a._presenceLastMs);
     const recent = limitedRows
       .filter(row => row._presenceLastMs && row._presenceLastMs < cutoffMs && row._presenceLastMs >= Date.now() - 60 * 60 * 1000)

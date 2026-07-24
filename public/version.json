@@ -1,14 +1,14 @@
 {
-  "version": "16.0.0",
-  "name": "86 Chaos 16 Low-Cost Presence + Request-Off Warning",
+  "version": "16.0.2",
+  "name": "86 Chaos 16.0.2 Presence Visibility and Read Saver",
   "releasedAt": "2026-07-24T00:00:00.000Z",
-  "label": "16.0.0 Low-Cost Presence + Request-Off Timestamps",
-  "build": "16.0.0",
+  "label": "16.0.2 Low-Cost Online Presence Visibility",
+  "build": "16.0.2",
   "notes": [
-    "Bumped version to 16.0.0 for record keeping.",
-    "Added low-cost Realtime Database presence session handling and RTDB-backed System Admin presence snapshots.",
-    "Reduced presence writes by avoiding tab-change rewrites and avoiding constant Firestore heartbeat/listener usage.",
-    "Request-off submissions now store requestedAt/requestedAtMs/requestTimestamp metadata.",
-    "Request Off calendar now warns when a selected date has already been requested by other people and shows the prior request count."
+    "Shows low-cost Realtime Database online/last-online status in Staff Roster and the user Profile screen.",
+    "Keeps Message Board free of presence indicators to avoid extra live reads there.",
+    "System Administrator manual presence snapshot now treats RTDB online sessions as online even when the connection has been open longer than the snapshot window.",
+    "Adds a page-visibility read saver so Firestore live listeners pause while the app tab is hidden and resume when the tab returns.",
+    "Keeps the 16.0.1 My Schedule strict shift matching fix."
   ]
 }

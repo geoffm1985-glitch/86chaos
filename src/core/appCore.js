@@ -221,6 +221,36 @@ const rtdbServerTimestampToMs = (value) => {
   return 0;
 };
 
+const normalizeLowCostPresenceRow = (row = {}, userId = '', restaurantId = '') => {
+  const lastMs = Math.max(
+    rtdbServerTimestampToMs(row?.lastChanged),
+    rtdbServerTimestampToMs(row?.lastOnline),
+    rtdbServerTimestampToMs(row?.presenceUpdatedAt),
+    rtdbServerTimestampToMs(row?.lastActive),
+    rtdbServerTimestampToMs(row?.lastSeen)
+  );
+  const lastIso = lastMs ? new Date(lastMs).toISOString() : '';
+  const online = row?.online === true || row?.state === 'online';
+  return {
+    ...(row || {}),
+    id: row?.userId || userId,
+    userId: row?.userId || userId,
+    restaurantId: row?.restaurantId || restaurantId,
+    online,
+    state: row?.state || (online ? 'online' : 'offline'),
+    onlineState: row?.state || (online ? 'online' : 'offline'),
+    lastActive: lastIso,
+    lastSeen: lastIso,
+    presenceUpdatedAt: lastIso,
+    lastHeartbeatAt: lastIso,
+    activeDevice: row?.device || row?.activeDevice || '',
+    activeHost: row?.host || row?.activeHost || '',
+    activeTab: row?.activeTab || '',
+    activeSessionCount: Number(row?.activeSessionCount || (online ? 1 : 0)) || 0,
+    presenceSource: 'rtdb-statusSummary'
+  };
+};
+
 export function useLowCostPresenceSummaries(restaurantId = '', { enabled = false } = {}) {
   const [rows, setRows] = useState([]);
   useEffect(() => {
@@ -232,35 +262,29 @@ export function useLowCostPresenceSummaries(restaurantId = '', { enabled = false
     const summaryRef = rtdbRef(realtimeDb, `statusSummary/${workspaceKey}`);
     return onRtdbValue(summaryRef, (snap) => {
       const raw = snap.val() || {};
-      const next = Object.entries(raw).map(([userId, row]) => {
-        const lastMs = Math.max(
-          rtdbServerTimestampToMs(row?.lastChanged),
-          rtdbServerTimestampToMs(row?.lastOnline),
-          rtdbServerTimestampToMs(row?.presenceUpdatedAt),
-          rtdbServerTimestampToMs(row?.lastActive),
-          rtdbServerTimestampToMs(row?.lastSeen)
-        );
-        const lastIso = lastMs ? new Date(lastMs).toISOString() : '';
-        return {
-          ...(row || {}),
-          id: row?.userId || userId,
-          userId: row?.userId || userId,
-          restaurantId: row?.restaurantId || restaurantId,
-          onlineState: row?.state || (row?.online ? 'online' : 'offline'),
-          lastActive: lastIso,
-          lastSeen: lastIso,
-          presenceUpdatedAt: lastIso,
-          lastHeartbeatAt: lastIso,
-          activeDevice: row?.device || '',
-          activeHost: row?.host || '',
-          activeTab: row?.activeTab || '',
-          presenceSource: 'rtdb-statusSummary'
-        };
-      });
+      const next = Object.entries(raw).map(([userId, row]) => normalizeLowCostPresenceRow(row, userId, restaurantId));
       setRows(next);
     }, () => setRows([]));
   }, [enabled, restaurantId]);
   return rows;
+}
+
+export function useLowCostPresenceSummary(restaurantId = '', userId = '', { enabled = false } = {}) {
+  const [row, setRow] = useState(null);
+  useEffect(() => {
+    if (!enabled || !realtimeDb || !restaurantId || !userId) {
+      setRow(null);
+      return undefined;
+    }
+    const workspaceKey = presenceSafeKey(restaurantId);
+    const userKey = presenceSafeKey(userId);
+    const summaryRef = rtdbRef(realtimeDb, `statusSummary/${workspaceKey}/${userKey}`);
+    return onRtdbValue(summaryRef, (snap) => {
+      const raw = snap.val();
+      setRow(raw ? normalizeLowCostPresenceRow(raw, userId, restaurantId) : null);
+    }, () => setRow(null));
+  }, [enabled, restaurantId, userId]);
+  return row;
 }
 
 export const auth = getAuth(app);
@@ -356,9 +380,27 @@ export const MASTER_ADMIN_EMAIL = (process.env.REACT_APP_MASTER_ADMIN_EMAIL || '
 export const EVENT_TAGS = ['Standard Day', 'Packers Game', 'Brewers Game', 'Live Music', 'Severe Weather', 'Private Catering', 'Holiday'];
 
 // --- VERSION TRACKING ---
-export const CURRENT_VERSION = '16.0.0';
+export const CURRENT_VERSION = '16.0.2';
 
 // --- Helpers ---
+const usePageVisible = () => {
+  const [visible, setVisible] = useState(() => (typeof document === 'undefined' ? true : document.visibilityState !== 'hidden'));
+  useEffect(() => {
+    if (typeof document === 'undefined') return undefined;
+    const update = () => setVisible(document.visibilityState !== 'hidden');
+    document.addEventListener('visibilitychange', update);
+    window.addEventListener('focus', update);
+    window.addEventListener('blur', update);
+    update();
+    return () => {
+      document.removeEventListener('visibilitychange', update);
+      window.removeEventListener('focus', update);
+      window.removeEventListener('blur', update);
+    };
+  }, []);
+  return visible;
+};
+
 export const useLiveCollection = (coll, restId, options = {}) => {
   const {
     enabled = true,
@@ -366,13 +408,18 @@ export const useLiveCollection = (coll, restId, options = {}) => {
     whereClauses = [],
     orderByField = null,
     orderDirection = 'asc',
-    fallbackLimitCount = 75
+    fallbackLimitCount = 75,
+    pauseWhenHidden = true
   } = options || {};
   const [data, setData] = useState([]);
+  const pageVisible = usePageVisible();
 
   useEffect(() => {
     if (!enabled || !restId) {
       setData([]);
+      return;
+    }
+    if (pauseWhenHidden && !pageVisible) {
       return;
     }
 
@@ -410,7 +457,7 @@ export const useLiveCollection = (coll, restId, options = {}) => {
       if (unsubscribe) unsubscribe();
       if (fallbackUnsubscribe) fallbackUnsubscribe();
     };
-  }, [coll, restId, enabled, limitCount, orderByField, orderDirection, fallbackLimitCount, JSON.stringify(whereClauses || [])]);
+  }, [coll, restId, enabled, limitCount, orderByField, orderDirection, fallbackLimitCount, pauseWhenHidden, pageVisible, JSON.stringify(whereClauses || [])]);
 
   return data;
 };

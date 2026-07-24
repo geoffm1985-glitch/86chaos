@@ -83,7 +83,52 @@ const isActiveTimeOffRequest = (request = {}) => {
 };
 
 const timeOffMatchesPerson = (request = {}, person = {}) => recordMatchesPerson(request, person);
-const shiftMatchesPerson = (shift = {}, person = {}) => recordMatchesPerson(shift, person);
+
+const shiftMatchesPerson = (shift = {}, person = {}) => {
+  if (!shift || !person) return false;
+
+  // Scheduled shifts must match the assigned employee, not the user who created/imported the shift.
+  // Do NOT use createdBy/author fields here. Those belong to the scheduler and caused owners/admins
+  // to see every shift they imported under My Schedule.
+  const personIds = personIdentityKeys(person);
+  const personEmailKeys = [person.email, person.employeeEmail, person.userEmail, person.assignedEmail]
+    .map(normalizeScheduleIdentity).filter(Boolean);
+  const personNameKeys = [person.employeeName, person.name, person.displayName, person.fullName]
+    .map(normalizeScheduleName).filter(Boolean);
+  const personFirstKeys = [person.employeeName, person.name, person.displayName, person.fullName]
+    .map(firstNameKey).filter(Boolean);
+
+  const shiftEmailKeys = [shift.employeeEmail, shift.userEmail, shift.email, shift.assignedEmail]
+    .map(normalizeScheduleIdentity).filter(Boolean);
+  if (shiftEmailKeys.length) {
+    return shiftEmailKeys.some(v => personEmailKeys.includes(v));
+  }
+
+  const shiftNameKeys = [shift.employeeName, shift.userName, shift.name, shift.assignedName]
+    .map(normalizeScheduleName).filter(Boolean);
+  const shiftFirstKeys = [shift.employeeName, shift.userName, shift.name, shift.assignedName]
+    .map(firstNameKey).filter(Boolean);
+
+  const shiftIds = [shift.employeeId, shift.userId, shift.rosterUserId, shift.accountUserId, shift.assignedUserId, shift.uid, shift.authUid]
+    .map(normalizeScheduleIdentity).filter(Boolean);
+  if (shiftIds.length) {
+    const idMatch = shiftIds.some(v => personIds.has(v));
+    if (!idMatch) return false;
+    // If an imported/restored shift also has a human name, require that name not to contradict
+    // the logged-in person's roster name. This prevents bad legacy ids from pulling in others.
+    if (shiftNameKeys.length && personNameKeys.length && !shiftNameKeys.some(v => personNameKeys.includes(v)) && !shiftFirstKeys.some(v => personFirstKeys.includes(v))) {
+      return false;
+    }
+    return true;
+  }
+
+  if (shiftNameKeys.length && personNameKeys.length && shiftNameKeys.some(v => personNameKeys.includes(v))) return true;
+
+  // Legacy imported schedules may only have a first name. Use first-name matching only when the
+  // shift has no durable id/email, and only against the roster person's first name.
+  return !!(shiftFirstKeys.length && personFirstKeys.length && shiftFirstKeys.some(v => personFirstKeys.includes(v)));
+};
+
 const requestOffPersonKey = (request = {}) => {
   const durable = normalizeScheduleIdentity(request.userId || request.employeeId || request.rosterUserId || request.accountUserId || request.createdBy || request.authUid || request.userEmail || request.employeeEmail || request.email || '');
   if (durable) return durable;
@@ -696,7 +741,7 @@ Clock out anyway?`);
 
 // --- SHIFT LOGIC ---
   const myMonthShifts = shifts
-    .filter(s => shiftMatchesPerson(s, schedulePerson) && String(s.date || '').startsWith(monthStr) && s.isPublished)
+    .filter(s => shiftMatchesPerson(s, schedulePerson) && String(s.date || '').startsWith(monthStr) && s.isPublished && isShiftStillCurrentOrUpcoming(s, scheduleNow))
     .sort((a,b) => a.date === b.date ? (a.startTime || '').localeCompare(b.startTime || '') : a.date.localeCompare(b.date));
 
   const myNextShift = shifts

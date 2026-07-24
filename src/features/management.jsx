@@ -416,21 +416,21 @@ const handleDeactivate = async (u) => {
   );
   const formatLastActive = (u = {}) => {
     const lastMs = getLastActiveMs(u);
-    if (!lastMs) return { label: 'Never active', tone: 'text-slate-500', exact: 'No app activity recorded yet.' };
+    const online = u.online === true || u.onlineState === 'online' || u.state === 'online';
+    const exact = lastMs ? (() => { try { return formatClockDateTime(new Date(lastMs).toISOString(), appUser); } catch (err) { return new Date(lastMs).toLocaleString(); } })() : '';
+    if (online) return { label: 'Online now', tone: 'text-emerald-400', exact: exact || 'Currently connected', online: true };
+    if (!lastMs) return { label: 'Never active', tone: 'text-slate-500', exact: 'No app activity recorded yet.', online: false };
     const diff = Math.max(0, Date.now() - lastMs);
     const minutes = Math.floor(diff / 60000);
     const hours = Math.floor(minutes / 60);
     const days = Math.floor(hours / 24);
     let label = 'Just now';
     let tone = 'text-emerald-400';
-    if (diff < 3 * 60 * 1000 && u.onlineState !== 'offline') label = 'Online now';
-    else if (minutes < 60) label = `${minutes || 1}m ago`;
+    if (minutes < 60) label = `${minutes || 1}m ago`;
     else if (hours < 24) { label = `${hours}h ago`; tone = 'text-emerald-500'; }
     else if (days === 1) { label = 'Yesterday'; tone = 'text-amber-400'; }
     else { label = `${days}d ago`; tone = days > 7 ? 'text-red-400' : 'text-amber-400'; }
-    let exact = '';
-    try { exact = formatClockDateTime(new Date(lastMs).toISOString(), appUser); } catch (err) { exact = new Date(lastMs).toLocaleString(); }
-    return { label, tone, exact };
+    return { label, tone, exact, online: false };
   };
 
   const activeUsers = users.filter(u => u.isActive !== false).sort((a, b) => String(a.role || '').localeCompare(String(b.role || '')) || String(a.name || '').localeCompare(String(b.name || '')));
@@ -535,6 +535,11 @@ return (
                     <span className="text-[8px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded border bg-[#12161A] text-[#D4A381] border-[#2A353D]">{u.role || 'Unassigned'}</span>
                     {u.phone && <span className="text-[9px] font-bold text-slate-500 truncate">{u.phone}</span>}
                     {canViewWages && u.wage > 0 && <span className="text-[9px] font-black text-emerald-500 uppercase tracking-widest bg-emerald-900/10 border border-emerald-900/30 px-1.5 py-0.5 rounded ml-1">${Number(u.wage).toFixed(2)}/hr</span>}
+                  </div>
+                  <div className="flex flex-wrap items-center gap-1.5 mt-1 text-[9px] font-black uppercase tracking-widest" title={activity.exact}>
+                    <span className={`inline-flex items-center gap-1 ${activity.tone}`}><span className={`w-1.5 h-1.5 rounded-full ${activity.online ? 'bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.75)]' : 'bg-slate-600'}`}></span>{activity.label}</span>
+                    {u.activeDevice && <span className="text-slate-500 normal-case tracking-normal font-bold">• {u.activeDevice}</span>}
+                    {u.activeHost && <span className="text-slate-600 normal-case tracking-normal font-bold truncate max-w-[150px]">{u.activeHost}</span>}
                   </div>
                 </div>
               </div>
@@ -909,13 +914,43 @@ const prepareRestaurantLogoUpload = async (file) => {
   }
 };
 
-const TabSettings = ({ appUser, addToast, users = [], clientData = {} }) => {  const [subTab, setSubTab] = useState('profile');
+const TabSettings = ({ appUser, addToast, users = [], clientData = {}, presenceSelf = null }) => {  const [subTab, setSubTab] = useState('profile');
   const [newOwnerId, setNewOwnerId] = useState('');
 
   // --- Profile State ---
   const [name, setName] = useState(appUser?.name || '');
   const [phone, setPhone] = useState(appUser?.phone || '');
   const [photoURL, setPhotoURL] = useState(appUser?.photoURL || '');
+  const parseSettingsPresenceMs = (value) => {
+    if (!value) return 0;
+    if (typeof value === 'number') return value > 1000000000000 ? value : value * 1000;
+    if (typeof value === 'string') {
+      const parsed = new Date(value).getTime();
+      return Number.isFinite(parsed) ? parsed : 0;
+    }
+    if (typeof value?.toDate === 'function') {
+      const parsed = value.toDate().getTime();
+      return Number.isFinite(parsed) ? parsed : 0;
+    }
+    if (typeof value?.seconds === 'number') return value.seconds * 1000;
+    return 0;
+  };
+  const selfPresenceFromRoster = (users || []).find(u => u.id === appUser?.id || (u.email && appUser?.email && String(u.email).toLowerCase() === String(appUser.email).toLowerCase())) || null;
+  const selfPresence = presenceSelf || selfPresenceFromRoster || appUser || {};
+  const selfPresenceLastMs = Math.max(
+    parseSettingsPresenceMs(selfPresence.lastHeartbeatAt),
+    parseSettingsPresenceMs(selfPresence.presenceUpdatedAt),
+    parseSettingsPresenceMs(selfPresence.lastActive),
+    parseSettingsPresenceMs(selfPresence.lastSeen),
+    parseSettingsPresenceMs(selfPresence.lastOnline),
+    parseSettingsPresenceMs(selfPresence.lastChanged)
+  );
+  const selfPresenceOnline = selfPresence.online === true || selfPresence.onlineState === 'online' || selfPresence.state === 'online';
+  const selfPresenceLabel = selfPresenceOnline ? 'Online now' : selfPresenceLastMs ? `Last online ${formatClockDateTime(new Date(selfPresenceLastMs).toISOString(), appUser)}` : 'No online history yet';
+  const selfPresenceDetail = selfPresenceOnline
+    ? `Connected${selfPresence.activeDevice ? ` on ${selfPresence.activeDevice}` : ''}${selfPresence.activeHost ? ` • ${selfPresence.activeHost}` : ''}`
+    : (selfPresenceLastMs ? 'This timestamp comes from the low-cost Realtime Database presence summary.' : 'Open the app once after RTDB rules are deployed to create the first last-seen row.');
+
 
   // --- Account Security / MFA State ---
   const [mfaStatus, setMfaStatus] = useState(null);
@@ -1860,6 +1895,14 @@ const Toggle = ({ label, desc, checked, onChange, disabled = false }) => (
                   Tap photo to upload <input type="file" accept="image/*" onChange={handleImageUpload} className="hidden" />
                 </label>
               </div>
+            </div>
+
+            <div className="mb-4 bg-[#0B0E11] border border-[#2A353D] rounded-xl p-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+              <div>
+                <div className="text-[9px] font-black uppercase tracking-widest text-slate-500">Online Presence</div>
+                <div className={`text-sm font-black ${selfPresenceOnline ? 'text-emerald-400' : 'text-slate-300'} flex items-center gap-2 mt-1`}><span className={`w-2 h-2 rounded-full ${selfPresenceOnline ? 'bg-emerald-400 shadow-[0_0_10px_rgba(52,211,153,0.8)]' : 'bg-slate-600'}`}></span>{selfPresenceLabel}</div>
+              </div>
+              <div className="text-[10px] font-bold text-slate-500 sm:text-right max-w-sm">{selfPresenceDetail}</div>
             </div>
 
             <form onSubmit={handleSaveProfile} className="space-y-3">
@@ -5558,6 +5601,8 @@ const activeTrials = restaurants.filter(r => resolveSubscription(r, appUser).sta
     parsePresenceTimeMs(u.presenceUpdatedAt),
     parsePresenceTimeMs(u.lastActive),
     parsePresenceTimeMs(u.lastSeen),
+    parsePresenceTimeMs(u.lastOnline),
+    parsePresenceTimeMs(u.lastChanged),
     parsePresenceTimeMs(u.heartbeatEpochMs)
   );
   const enrichPresenceRow = (row = {}) => {
@@ -5575,7 +5620,9 @@ const activeTrials = restaurants.filter(r => resolveSubscription(r, appUser).sta
   };
   const isOnlineNow = (u) => {
     const last = getLastActiveMs(u);
-    return !!presenceSnapshotFetchedAtMs && !!last && (nowMs - last) < ONLINE_WINDOW_MS && u.onlineState !== 'offline';
+    const explicitlyOnline = u.online === true || u.onlineState === 'online' || u.state === 'online';
+    const explicitlyOffline = u.online === false || u.onlineState === 'offline' || u.state === 'offline';
+    return !!presenceSnapshotFetchedAtMs && !!last && (explicitlyOnline || (!explicitlyOffline && (nowMs - last) < ONLINE_WINDOW_MS));
   };
   const onlineUsers = (presenceSnapshot.users || []).map(enrichPresenceRow).filter(isOnlineNow).sort((a,b) => getLastActiveMs(b) - getLastActiveMs(a));
   const onlineRestaurantIds = [...new Set(onlineUsers.map(u => u.restaurantId).filter(Boolean))];
@@ -6264,7 +6311,7 @@ ${body}`;
     { title: 'Version 14.0.2 Robustness Suite', group: 'System Administrator', keywords: 'v14 14.0.2 robustness safe write storage doctor schema doctor restore preview backup picker permission simulator import bridge offline queue release guardrails menu dependency graph', body: ['Open System Administrator → 14.0 Robustness Suite for the platform hardening tools.', 'Safe Write Engine centralizes permission checks, restaurantId enforcement, demo-mode blocking, audit logging, redacted before/after details, and offline queue support. In 14.0.2 it is wired into major kitchen forms: inventory, waste, prep, line checks, recipes, maintenance, Kitchen Command smart actions, Manager Brief quick actions, and menu dependency mapping.', 'Upload & Storage Doctor tests Firebase Admin credentials, target bucket, workspace lookup, and a real write/read/delete cycle before uploads are trusted.', 'Schema Doctor scans tenant records for missing restaurantId values, invalid dates, stale punches, negative inventory, old branding fields, and demo privacy hazards. Repair Safe Items only fixes repairable issues.', 'Restore Preview can load backups from Firebase Storage into a picker, preview a selected snapshot, count documents by collection, flag sensitive fields, and selectively restore chosen collections after typing RESTORE.', 'Permission Simulator previews visible and blocked tabs plus wage/forensics/backup access for a selected user.', 'Import Bridge downloads CSV templates for POS sales, payroll time, vendor invoices, and inventory counts.', 'Release Guardrails confirm version, 86 Chaos brand lock, demo privacy, Help Center public boundary, and rules packaging before deployment.', 'Kitchen Command Center Dependency Graph maps recipes/menu items to inventory items so low-stock inventory, prep signals, and 86 alerts can surface affected menu items more reliably.'] },
     { title: 'Mandatory Tip Declaration reliability', group: 'Admin Tab Guide', keywords: 'tips mandatory declaration clock out payroll time clock settings schema doctor', body: ['Settings → Workspace → Labor & Payroll controls Mandatory Tip Declaration for the restaurant.', 'The setting is now a core time-clock control, not a legacy tier-specific feature. When enabled, every employee clock-out opens Declare Tips before the punch closes.', 'Employees can enter 0 cash and 0 credit tips when they did not receive tips. The punch stores cashTips, creditTips, totalDeclaredTips, tipDeclarationRequired, tipDeclarationCompleted, tipDeclaredAt, and tipDeclarationVersion for payroll review.', 'Older restaurant documents that are missing systemSettings.tips default to enabled at runtime so employees do not bypass declaration. Schema Doctor flags missing tips settings as repairable and can stamp tips: true explicitly.', 'If a manager reports that the modal is not appearing, verify the workspace setting, refresh the employee device, and run Schema Doctor dry run for that workspace.'] },
     { title: 'Workspace geofence map lookup', group: 'Admin Tab Guide', keywords: 'workspace settings global config geofence find gps map lookup coordinates latitude longitude map service failed', body: ['Settings → Workspace → Global Config uses the Find GPS button to translate an address into latitude and longitude for the time-clock geofence.', 'Version 13.1.33 routes address lookup through /api/geocode-address so browsers are not solely responsible for reaching the public map service.', 'If the map service is unavailable, keep the saved latitude/longitude, enter coordinates manually, or click the map to set the geofence center. Version 13.1.34 makes the pin-drop map more resilient on desktop and mobile by forcing Leaflet size recalculation after the panel renders, adding a Refresh Map button, and rotating tile providers when tiles fail. A grey/slow tile map does not stop saved coordinates from enforcing the geofence.', 'For preview deployments, confirm api/geocode-address.js is present in Vercel. No Firebase rules are required for this route.'] },
-    { title: 'Manual Presence Snapshot: how it works', group: 'Admin Tab Guide', keywords: 'manual presence snapshot live users online heartbeat reads writes super admin refresh', body: ['System Administrator → Live Activity no longer opens live Firestore listeners or runs a constant online scanner.', 'Regular staff and store managers do not see online status in Team. Only the Super Admin can press Refresh Snapshot in System Administrator.', 'Each user browser saves a low-frequency app-open presence check-in. The snapshot button reads livePresence once and shows check-ins from the recent window.', 'Because this favors low Firebase cost, it is an operational hint, not a perfect minute-by-minute surveillance tool.', 'If the snapshot fails, deploy the included API route and Firestore rules, then log out and back in so Super Admin claims refresh.'] },
+    { title: 'Manual Presence Snapshot: how it works', group: 'Admin Tab Guide', keywords: 'manual presence snapshot live users online heartbeat reads writes super admin refresh', body: ['System Administrator → Live Activity no longer opens live Firestore listeners or runs a constant online scanner.', 'Staff Roster shows simple Online now / Last online hints from Realtime Database summaries for managers with Team access. Super Admin Live Activity still uses a manual one-time snapshot for the deeper control-tower view.', 'Each user browser opens a Realtime Database presence session with onDisconnect cleanup. Firestore heartbeat writes stay disabled, and the snapshot button reads RTDB statusSummary instead of livePresence whenever RTDB is available.', 'Because this favors low Firebase cost, it is an operational hint, not a perfect minute-by-minute surveillance tool.', 'If the snapshot fails, deploy the included API route and Firestore rules, then log out and back in so Super Admin claims refresh.'] },
     { title: 'Admin Workspace home: what the numbers mean', group: 'Admin Tab Guide', keywords: 'admin workspace home priority list quick actions metrics backup mrr crashes people workspaces', body: ['The Admin Workspace home intentionally shows only a short priority list, six quick actions, and four core numbers.', 'The priority list is the shortest path to urgent problems. Click a row to open the correct section.', 'Active workspaces, People, Crashes today, and Estimated MRR are operating signals, not accounting records.', 'Backup and Security summaries live in the three small cards at the top. Open their full sections for details.', 'Manual Presence still counts recent app check-ins only after the Super Admin presses Refresh Snapshot; it does not run in the background.'] },
     { title: 'Workspaces: what to use it for', group: 'Admin Tab Guide', keywords: 'clients workspace restaurant tenant modules billing demo users possess owner restaurant id plan tabs', body: ['Use Workspaces to manage restaurant/customer environments, not individual shifts or menu work.', 'The workspace drawer shows users, admin counts, online counts, push token adoption, GPS permission snapshots, enabled modules, plan/status state, and ownership clues.', 'Demo Manager and Demo Employee let you show a customer only selected tabs/features without saving real changes or exposing sensitive owner/customer data.', 'Support Edit is for correcting routing, roles, status, force password flags, and account metadata when a restaurant cannot self-fix it.', 'Possess Workspace or Possess User is for troubleshooting only. Exit Ghost/Demo mode when finished.'] },
     { title: 'People: what to use it for', group: 'Admin Tab Guide', keywords: 'users global accounts employee account search routing restaurant id support edit force password push token gps status', body: ['Use Users when the problem follows a person instead of a restaurant.', 'Check restaurantId first. A wrong restaurantId makes tabs/data look missing even when permissions are correct.', 'Check status, role, admin flags, custom permissions, forcePasswordChange, push token, GPS permission, and last heartbeat.', 'Use Support Edit only to correct account routing or support fields. Do not use it as a substitute for normal Staff Roster management when the restaurant can manage the employee themselves.', 'Use Possess to verify the exact experience after editing.'] },
