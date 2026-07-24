@@ -3,7 +3,7 @@ import { Bell, Bug, ChevronLeft, ChevronRight, Loader2, Menu, Moon, Send, X } fr
 import { addDoc, collection, doc, onSnapshot, updateDoc } from 'firebase/firestore';
 import { getToken, onMessage } from 'firebase/messaging';
 import 'leaflet/dist/leaflet.css';
-import { T, db, auth, messaging, firebaseConfig, CURRENT_VERSION, MASTER_ADMIN_EMAIL, useLiveCollection, secureFetch, waitForAuthCurrentUser, getToday, getMonthStr, formatDate, formatDisplayFullDate, formatDisplayMonth, logAudit, setActiveTimeFormat, getOfflineQueue, replayOfflineQueue, startLowCostPresenceSession } from './core/appCore';
+import { T, db, auth, messaging, firebaseConfig, CURRENT_VERSION, MASTER_ADMIN_EMAIL, useLiveCollection, secureFetch, waitForAuthCurrentUser, getToday, getMonthStr, formatDate, formatDisplayFullDate, formatDisplayMonth, logAudit, setActiveTimeFormat, getOfflineQueue, replayOfflineQueue, startLowCostPresenceSession, useLowCostPresenceSummaries } from './core/appCore';
 import { buildAlertFingerprint, useRememberedAlert } from './core/alertMemory';
 import { CheersLogo, Modal, DrawerMenu, DayDotPrintScreen, GlobalSearchModal, KitchenTVMode, UndoBar, VoiceCommandDock } from './components/common';
 import { LockedFeatureScreen } from './components/PlanGate';
@@ -369,11 +369,11 @@ const [currentDate, setCurrentDate] = useState(getToday());
 
   const users = useLiveCollection('users', rId, { enabled: !!rId, limitCount: activeTabState === 'godmode' ? 400 : 160, fallbackLimitCount: 60 });
   const workspaceMembers = useLiveCollection('workspaceMembers', rId, { enabled: !!rId, limitCount: activeTabState === 'team' ? 400 : 180, fallbackLimitCount: 80 });
-  // Presence is intentionally not subscribed here. System Administrator now uses
-  // a Super Admin-only manual snapshot button so regular app sessions do not create
-  // constant livePresence reads.
-  const presenceSessions = [];
-  const livePresenceRecords = [];
+  // Low-cost presence: no Firestore live heartbeat/listener. When a manager/team screen needs
+  // last-seen hints, read tiny Realtime Database summaries instead of users/livePresence documents.
+  const wantsLowCostPresenceSummaries = Boolean(['team', 'godmode'].includes(activeTabState) && (canViewTeamScheduleData || appUser?.isSuperAdmin));
+  const livePresenceRecords = useLowCostPresenceSummaries(rId, { enabled: !!rId && !ghostTenant && wantsLowCostPresenceSummaries });
+  const presenceSessions = livePresenceRecords;
   const rawShifts = useLiveCollection('shifts', rId, { enabled: !!rId && wantsScheduleData, limitCount: wantsScheduleScreen ? 1500 : 180, fallbackLimitCount: wantsScheduleScreen ? 1500 : 120 });
   const shifts = useMemo(() => {
     const start = shiftRangeStart;
@@ -578,10 +578,12 @@ if (liveAppUser && clientData) {
         parsePresenceTimeMs(session.presenceUpdatedAt),
         parsePresenceTimeMs(session.lastActive),
         parsePresenceTimeMs(session.lastSeen),
-        parsePresenceTimeMs(session.heartbeatEpochMs)
+        parsePresenceTimeMs(session.heartbeatEpochMs),
+        parsePresenceTimeMs(session.lastChanged),
+        parsePresenceTimeMs(session.lastOnline)
       );
       if (!lastMs) return;
-      const enriched = { ...session, _presenceLastMs: lastMs, _presenceLive: (now - lastMs) < liveWindowMs && session.onlineState !== 'offline' };
+      const enriched = { ...session, _presenceLastMs: lastMs, _presenceLive: (now - lastMs) < liveWindowMs && session.onlineState !== 'offline' && session.state !== 'offline' && session.online !== false };
       if (!sessionsByUser[userId]) sessionsByUser[userId] = [];
       sessionsByUser[userId].push(enriched);
     });
@@ -627,14 +629,14 @@ if (liveAppUser && clientData) {
     const legacyUsers = (users || []).filter(u => !memberIds.has(u.id) && u.isActive !== false);
     const combinedUsers = memberUsers.length ? [...memberUsers, ...legacyUsers] : (users || []);
     const baseUsers = isDemoMode ? combinedUsers.map(maskDemoUser) : combinedUsers;
-    // Roster/user lists no longer merge online presence. Online status is hidden from
-    // regular staff and managers; System Administrator can run a manual presence snapshot.
-    let merged = baseUsers;
+    // Merge low-cost RTDB last-seen summaries only on screens that need it. This avoids
+    // constant Firestore presence reads/writes while still giving managers a useful hint.
+    let merged = mergePresenceIntoUsers(baseUsers, livePresenceRecords);
     if (!isDemoMode && !sessionCanViewWages) {
       merged = merged.map(u => ({ ...u, wage: 0, wageHidden: true }));
     }
     return merged;
-  }, [isDemoMode, users, workspaceMembers, sessionCanViewWages]);
+  }, [isDemoMode, users, workspaceMembers, sessionCanViewWages, livePresenceRecords]);
   if (isDemoMode && liveAppUser?.demoRole === 'employee' && displayUsers?.[0]) {
     liveAppUser = { ...liveAppUser, id: displayUsers[0].id, name: 'Demo Employee', role: displayUsers[0].role || 'Demo Employee', isAdmin: false, isSuperAdmin: false, permissions: { help: true } };
   }
@@ -837,7 +839,7 @@ if (liveAppUser && clientData) {
             body: JSON.stringify({
               restaurantId: rId,
               state: 'online',
-              activeTab: activeTabState,
+              activeTab: 'app',
               sessionId: safeSessionId,
               device,
               deviceDiagnostics,
@@ -872,10 +874,10 @@ if (liveAppUser && clientData) {
     return startLowCostPresenceSession({
       user: appUser,
       restaurantId: rId,
-      activeTab: activeTabState,
+      activeTab: 'app',
       onDebug: (next) => setHeartbeatDebug({ ...(next || {}), at: new Date().toISOString(), restaurantId: rId, userId: appUser.id })
     });
-  }, [rId, ghostTenant, appUser?.id, appUser?.email, appUser?.name, appUser?.role, activeTabState]);
+  }, [rId, ghostTenant, appUser?.id, appUser?.email, appUser?.name, appUser?.role]);
 
  
   useEffect(() => {

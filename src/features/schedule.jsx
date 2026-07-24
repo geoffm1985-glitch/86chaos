@@ -84,6 +84,15 @@ const isActiveTimeOffRequest = (request = {}) => {
 
 const timeOffMatchesPerson = (request = {}, person = {}) => recordMatchesPerson(request, person);
 const shiftMatchesPerson = (shift = {}, person = {}) => recordMatchesPerson(shift, person);
+const requestOffPersonKey = (request = {}) => {
+  const durable = normalizeScheduleIdentity(request.userId || request.employeeId || request.rosterUserId || request.accountUserId || request.createdBy || request.authUid || request.userEmail || request.employeeEmail || request.email || '');
+  if (durable) return durable;
+  return normalizeScheduleName(request.userName || request.employeeName || request.name || 'unknown');
+};
+const isRequestOffConflictCountable = (request = {}) => {
+  const status = String(request.status || 'pending').toLowerCase();
+  return request.archived !== true && !['cancelled', 'canceled', 'archived'].includes(status);
+};
 
 const getSchedulePersonForAppUser = (appUser = {}, users = []) => {
   if (!appUser) return {};
@@ -3025,11 +3034,38 @@ const TabTimeOff = ({ timeOffRequests, appUser, users, addToast, events = [], sh
     setSelectedRequestIds([]);
   };
 
+  const priorRequestInfoForDate = (dateKey = '') => {
+    const currentKeys = new Set([requestOffPersonKey({ userId: schedulePerson.id, employeeId: schedulePerson.employeeId, userEmail: schedulePerson.email, employeeName: schedulePerson.name }), requestOffPersonKey({ userId: appUser.id, userEmail: appUser.email, employeeName: appUser.name })].filter(Boolean));
+    const people = new Map();
+    (timeOffRequests || [])
+      .filter(r => r?.date === dateKey && isRequestOffConflictCountable(r))
+      .forEach(r => {
+        const key = requestOffPersonKey(r);
+        if (!key || currentKeys.has(key)) return;
+        if (!people.has(key)) people.set(key, r.userName || r.employeeName || r.name || r.userEmail || r.employeeEmail || 'Another employee');
+      });
+    return { count: people.size, names: Array.from(people.values()) };
+  };
+
   const handleToggleDate = (d) => {
     if (d < getToday()) return addToast('Locked', 'Cannot request past dates.');
     if (!postPublishedTimeOffAllowed && !appUser?.isAdmin && isDateInsidePublishedSchedule(d, shifts)) return addToast('Schedule Published', 'This workspace blocks employee time-off requests after that date has already been published. Ask a manager to adjust the schedule.');
     const existingReq = myRequests.find(r => r.date === d && isActiveTimeOffRequest(r));
     if (existingReq) { if (window.confirm(`Cancel your time-off request for ${formatDisplayDate(d)}?`)) cancelRequest(existingReq); return; }
+    const addingDate = !selectedDates.includes(d);
+    if (addingDate) {
+      const priorInfo = priorRequestInfoForDate(d);
+      if (priorInfo.count > 0) {
+        const peopleText = priorInfo.count === 1 ? '1 person has' : `${priorInfo.count} people have`;
+        const previewNames = priorInfo.names.slice(0, 4).join(', ');
+        const continueAnyway = window.confirm(`${formatDisplayDate(d)} has already been requested off.
+
+${peopleText} requested this day off before you${previewNames ? ` (${previewNames}${priorInfo.count > 4 ? ', ...' : ''})` : ''}.
+
+It might not be available. Do you still want to request it?`);
+        if (!continueAnyway) return;
+      }
+    }
     setSelectedDates(prev => prev.includes(d) ? prev.filter(x => x !== d) : [...prev, d]);
   };
 
@@ -3058,10 +3094,15 @@ const TabTimeOff = ({ timeOffRequests, appUser, users, addToast, events = [], sh
       status: 'pending',
       archived: false,
       processed: false,
+      requestedAt: nowIso,
+      requestedAtMs: Date.now(),
+      requestTimestamp: nowIso,
       submittedAt: nowIso,
       createdAt: nowIso,
       updatedAt: nowIso,
       createdBy: appUser.id || '',
+      requestedBy: appUser.id || '',
+      requestedByName: appUser.name || appUser.email || 'Employee',
       source: 'time_off_request'
     })));
     await logAudit(appUser, 'TIME_OFF_SUBMITTED', appUser.name || appUser.email || 'Request off', selectedDates.join(', '));
@@ -3077,6 +3118,7 @@ const TabTimeOff = ({ timeOffRequests, appUser, users, addToast, events = [], sh
       <div className="flex-1 min-w-0">
         <div className="font-black text-white text-sm">{r.userName || r.employeeName || 'Employee'}</div>
         <div className={`text-[10px] font-bold ${T.muted} flex flex-wrap gap-2 mt-0.5`}><span>{formatDisplayDate(r.date)}</span>{r.isPartial && <span className="text-[#D4A381]">{formatShortTime(r.startTime)} - {formatShortTime(r.endTime)}</span>}<span className="uppercase tracking-widest">{status}</span>{publishedFlag && <span className="text-amber-300">Unresolved on published schedule</span>}</div>
+        <div className="mt-1 text-[10px] font-bold text-slate-500">Requested {formatClockDateTime(r.requestedAt || r.submittedAt || r.createdAt || r.requestTimestamp)}{(r.requestedByName || r.userName || r.employeeName) ? ` by ${r.requestedByName || r.userName || r.employeeName}` : ''}</div>
         {isArchivedRequest(r) && <div className="mt-1 text-[10px] font-bold text-slate-500">{r.scheduleId ? `Schedule: ${r.scheduleId}` : 'History record'}{r.publishedAt ? ` • Published ${formatClockDateTime(r.publishedAt)} by ${r.publishedByName || r.publishedBy || 'manager'}` : ''}{r.approvedAt ? ` • Approved ${formatClockDateTime(r.approvedAt)} by ${r.approvedByName || r.approvedBy || ''}` : ''}{r.deniedAt ? ` • Denied ${formatClockDateTime(r.deniedAt)} by ${r.deniedByName || r.deniedBy || ''}` : ''}</div>}
       </div>
       <div className="flex flex-wrap justify-end gap-2">
@@ -3099,10 +3141,11 @@ const TabTimeOff = ({ timeOffRequests, appUser, users, addToast, events = [], sh
             {monthDays.map(d => {
               const isSelected = selectedDates.includes(d);
               const existingReq = myRequests.find(r => r.date === d && isActiveTimeOffRequest(r));
+              const priorCount = priorRequestInfoForDate(d).count;
               const isPast = d < getToday();
               const holiday = getHoliday(d);
               const dayEvents = monthEvents.filter(e => e.date === d);
-              return <div key={d} onClick={() => !isPast && handleToggleDate(d)} className={`p-1 border-b border-r ${T.border} min-h-[50px] flex flex-col items-center justify-start pt-1 transition-colors ${isPast ? 'bg-[#12161A]/50 opacity-50 cursor-not-allowed' : existingReq ? 'bg-red-900/10 cursor-pointer hover:bg-red-900/20 border border-red-900/30 shadow-inner' : isSelected ? 'bg-[#8F6040]/20 border border-[#C59373] cursor-pointer shadow-inner' : 'hover:bg-[#12161A] cursor-pointer'}`}><span className={`text-xs font-black ${isSelected ? T.copper : existingReq ? 'text-red-400' : 'text-slate-300'}`}>{parseInt(d.split('-')[2])}</span>{holiday && <span className="text-[6px] sm:text-[7px] text-amber-500 font-bold uppercase text-center leading-tight mt-0.5 px-0.5">{holiday}</span>}{dayEvents.map(ev => <span key={ev.id} className="text-[6px] sm:text-[7px] text-blue-400 font-bold uppercase text-center leading-tight mt-0.5 px-0.5 w-full truncate" title={ev.title}>{ev.title}</span>)}{existingReq && <span className={`text-[7px] font-black uppercase mt-auto mb-1 ${existingReq.status === 'pending' ? 'text-orange-400' : 'text-red-500'}`}>{existingReq.status === 'pending' ? 'Pend' : 'Off'}</span>}{isSelected && <Check size={10} className={`mt-auto mb-1 ${T.copper}`}/>}</div>;
+              return <div key={d} onClick={() => !isPast && handleToggleDate(d)} className={`p-1 border-b border-r ${T.border} min-h-[50px] flex flex-col items-center justify-start pt-1 transition-colors ${isPast ? 'bg-[#12161A]/50 opacity-50 cursor-not-allowed' : existingReq ? 'bg-red-900/10 cursor-pointer hover:bg-red-900/20 border border-red-900/30 shadow-inner' : isSelected ? 'bg-[#8F6040]/20 border border-[#C59373] cursor-pointer shadow-inner' : 'hover:bg-[#12161A] cursor-pointer'}`}><span className={`text-xs font-black ${isSelected ? T.copper : existingReq ? 'text-red-400' : 'text-slate-300'}`}>{parseInt(d.split('-')[2])}</span>{holiday && <span className="text-[6px] sm:text-[7px] text-amber-500 font-bold uppercase text-center leading-tight mt-0.5 px-0.5">{holiday}</span>}{dayEvents.map(ev => <span key={ev.id} className="text-[6px] sm:text-[7px] text-blue-400 font-bold uppercase text-center leading-tight mt-0.5 px-0.5 w-full truncate" title={ev.title}>{ev.title}</span>)}{priorCount > 0 && !existingReq && !isSelected && <span className="text-[7px] font-black uppercase mt-auto mb-0.5 text-amber-300">{priorCount} req</span>}{existingReq && <span className={`text-[7px] font-black uppercase mt-auto mb-1 ${existingReq.status === 'pending' ? 'text-orange-400' : 'text-red-500'}`}>{existingReq.status === 'pending' ? 'Pend' : 'Off'}</span>}{isSelected && <Check size={10} className={`mt-auto mb-1 ${T.copper}`}/>}</div>;
             })}
           </div>
         </div>

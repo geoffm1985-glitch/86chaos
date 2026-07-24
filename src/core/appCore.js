@@ -209,6 +209,60 @@ export function startLowCostPresenceSession({ user = {}, restaurantId = '', acti
   };
 }
 
+
+const rtdbServerTimestampToMs = (value) => {
+  if (!value) return 0;
+  if (typeof value === 'number') return value > 1000000000000 ? value : value * 1000;
+  if (typeof value === 'string') {
+    const parsed = new Date(value).getTime();
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+  if (typeof value?.seconds === 'number') return value.seconds * 1000;
+  return 0;
+};
+
+export function useLowCostPresenceSummaries(restaurantId = '', { enabled = false } = {}) {
+  const [rows, setRows] = useState([]);
+  useEffect(() => {
+    if (!enabled || !realtimeDb || !restaurantId) {
+      setRows([]);
+      return undefined;
+    }
+    const workspaceKey = presenceSafeKey(restaurantId);
+    const summaryRef = rtdbRef(realtimeDb, `statusSummary/${workspaceKey}`);
+    return onRtdbValue(summaryRef, (snap) => {
+      const raw = snap.val() || {};
+      const next = Object.entries(raw).map(([userId, row]) => {
+        const lastMs = Math.max(
+          rtdbServerTimestampToMs(row?.lastChanged),
+          rtdbServerTimestampToMs(row?.lastOnline),
+          rtdbServerTimestampToMs(row?.presenceUpdatedAt),
+          rtdbServerTimestampToMs(row?.lastActive),
+          rtdbServerTimestampToMs(row?.lastSeen)
+        );
+        const lastIso = lastMs ? new Date(lastMs).toISOString() : '';
+        return {
+          ...(row || {}),
+          id: row?.userId || userId,
+          userId: row?.userId || userId,
+          restaurantId: row?.restaurantId || restaurantId,
+          onlineState: row?.state || (row?.online ? 'online' : 'offline'),
+          lastActive: lastIso,
+          lastSeen: lastIso,
+          presenceUpdatedAt: lastIso,
+          lastHeartbeatAt: lastIso,
+          activeDevice: row?.device || '',
+          activeHost: row?.host || '',
+          activeTab: row?.activeTab || '',
+          presenceSource: 'rtdb-statusSummary'
+        };
+      });
+      setRows(next);
+    }, () => setRows([]));
+  }, [enabled, restaurantId]);
+  return rows;
+}
+
 export const auth = getAuth(app);
 
 // --- OPTIONAL APP CHECK + SECURE API KEYCHAIN ---
@@ -302,7 +356,7 @@ export const MASTER_ADMIN_EMAIL = (process.env.REACT_APP_MASTER_ADMIN_EMAIL || '
 export const EVENT_TAGS = ['Standard Day', 'Packers Game', 'Brewers Game', 'Live Music', 'Severe Weather', 'Private Catering', 'Holiday'];
 
 // --- VERSION TRACKING ---
-export const CURRENT_VERSION = '15.0.100';
+export const CURRENT_VERSION = '16.0.0';
 
 // --- Helpers ---
 export const useLiveCollection = (coll, restId, options = {}) => {
