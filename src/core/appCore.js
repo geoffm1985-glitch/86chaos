@@ -118,20 +118,8 @@ export const firebaseDiagnostics = {
 export const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app);
 export const storage = getStorage(app);
-const browserLooksMessagingCapable = () => {
-  try {
-    return typeof window !== "undefined"
-      && typeof navigator !== "undefined"
-      && 'serviceWorker' in navigator
-      && typeof window.PushManager !== "undefined"
-      && typeof window.Notification !== "undefined";
-  } catch (_) {
-    return false;
-  }
-};
-
 const safeGetMessaging = () => {
-  if (!browserLooksMessagingCapable()) return null;
+  if (typeof window === "undefined") return null;
   try { return getMessaging(app); }
   catch (err) {
     console.warn('Firebase Messaging is unavailable on this browser:', err?.message || err);
@@ -140,7 +128,7 @@ const safeGetMessaging = () => {
 };
 
 export const messaging = safeGetMessaging();
-export const messagingReady = browserLooksMessagingCapable()
+export const messagingReady = typeof window !== "undefined"
   ? isSupported().then((supported) => supported ? messaging : null).catch((err) => {
       console.warn('Firebase Messaging support check failed:', err?.message || err);
       return null;
@@ -243,7 +231,7 @@ export const MASTER_ADMIN_EMAIL = (process.env.REACT_APP_MASTER_ADMIN_EMAIL || '
 export const EVENT_TAGS = ['Standard Day', 'Packers Game', 'Brewers Game', 'Live Music', 'Severe Weather', 'Private Catering', 'Holiday'];
 
 // --- VERSION TRACKING ---
-export const CURRENT_VERSION = '15.1.13';
+export const CURRENT_VERSION = '15.0.99';
 
 // --- Helpers ---
 export const useLiveCollection = (coll, restId, options = {}) => {
@@ -539,7 +527,7 @@ export const logAudit = async (user, action, target, details) => {
 // templates, schema guardrails, and kitchen dependency analysis.
 // ============================================================================
 const V14_SENSITIVE_KEYS = ['password', 'temporaryPassword', 'ssn', 'address', 'phone', 'email', 'wage', 'hourlyRate', 'payRate', 'fcmToken', 'notesPrivate', 'confidentialSummary', 'nextSteps'];
-const V14_TENANT_COLLECTIONS = ['events','messages','shiftSwaps','tasks','timePunches','tempLogs','wasteLogs','maintenanceLogs','prepItems','prepCategories','lineCheckItems','recipes','inventoryItems','vendors','orders','invoices','shifts','timeOffRequests','roles','pmSchedules','sales','menuDependencies','kitchenSpecials','trainingManuals','hrOnboardingTasks','hrCertifications','hrPerformanceNotes','financialExpenses','financialTargets','offlineWriteReceipts','scheduleTemplates','scheduleCoverageTargets','opsInsights','managerBrief','inventoryHealth','laborHealth','menuImpact'];
+const V14_TENANT_COLLECTIONS = ['events','messages','shiftSwaps','tasks','timePunches','tempLogs','wasteLogs','maintenanceLogs','prepItems','prepCategories','lineCheckItems','recipes','inventoryItems','vendors','orders','invoices','shifts','timeOffRequests','roles','pmSchedules','sales','menuDependencies','kitchenSpecials','trainingManuals','hrOnboardingTasks','hrCertifications','hrPerformanceNotes','financialExpenses','financialTargets','offlineWriteReceipts','scheduleTemplates','scheduleCoverageTargets'];
 const V14_WRITE_PERMISSIONS = {
   shifts: ['schedule', 'team'], timeOffRequests: ['schedule', 'team'], scheduleTemplates: ['schedule', 'team'], scheduleCoverageTargets: ['schedule', 'team'],
   inventoryItems: ['inventory', 'inventoryEdit'], vendors: ['inventory', 'inventoryEdit'], orders: ['inventory', 'inventoryEdit'], invoices: ['inventory', 'invoiceScan', 'scans'],
@@ -547,8 +535,7 @@ const V14_WRITE_PERMISSIONS = {
   sales: ['sales', 'salesEdit', 'financialEdit'], timePunches: ['labor', 'laborEdit'], financialExpenses: ['sales', 'salesEdit', 'financialEdit'], financialTargets: ['sales', 'salesEdit', 'financialEdit'],
   pmSchedules: ['team'], maintenanceLogs: ['team'], tasks: ['prep', 'team'],
   trainingManuals: ['hr'], hrOnboardingTasks: ['hr'], hrCertifications: ['hr'], hrPerformanceNotes: ['hr'],
-  events: ['events', 'schedule', 'team'], messages: ['messages', 'team'], shiftSwaps: ['schedule', 'team'], tempLogs: ['prep', 'team'], wasteLogs: ['inventory', 'prep'],
-  opsInsights: ['ops', 'team'], managerBrief: ['ops', 'team'], inventoryHealth: ['inventory', 'inventoryEdit'], laborHealth: ['labor', 'laborEdit'], menuImpact: ['prep', 'inventory', 'menuIntelligence']
+  events: ['events', 'schedule', 'team'], messages: ['messages', 'team'], shiftSwaps: ['schedule', 'team'], tempLogs: ['prep', 'team'], wasteLogs: ['inventory', 'prep']
 };
 
 export const isSuperAdminUser = (user = {}) => Boolean(user?.isSuperAdmin === true || user?.systemAccess?.superAdmin === true || (MASTER_ADMIN_EMAIL && String(user?.email || '').toLowerCase() === MASTER_ADMIN_EMAIL.toLowerCase()));

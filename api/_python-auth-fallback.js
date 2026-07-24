@@ -6,7 +6,7 @@ function bearer(req) {
 
 function isCredentialSetupError(error) {
   const message = String(error?.message || error || '');
-  return /Firebase Admin credential unavailable|FIREBASE_SERVICE_ACCOUNT_KEY currently contains project_id|is not valid Firebase service-account JSON|contains project .* but .* was requested|Could not determine the Firebase project|project .* was requested/i.test(message);
+  return /No server credential is configured|FIREBASE_SERVICE_ACCOUNT_KEY currently contains project_id|is not valid Firebase service-account JSON|contains project .* but .* was requested|Could not determine the Firebase project|project .* was requested/i.test(message);
 }
 
 async function authorizePythonPayloadRoute(req, restaurantId, options = {}) {

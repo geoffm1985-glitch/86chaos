@@ -1,7 +1,13 @@
 {
-  "version": "15.1.13",
-  "name": "86 Chaos 15.1.13 Live Graph + Mobile Layout Lock",
-  "label": "15.1.13 Live Graph + Mobile Layout Lock",
-  "build": "15.1.13",
-  "updatedAt": "2026-07-21T00:00:00.000Z"
+  "version": "15.0.99",
+  "name": "86 Chaos 15.0.99 Request-Off and My Schedule Visibility Fix",
+  "releasedAt": "2026-07-24T00:00:00.000Z",
+  "label": "15.0.99 Request-Off and My Schedule Visibility Fix",
+  "build": "15.0.99",
+  "notes": [
+    "Based directly on 15.0.98 push duplicate browser token hotfix, not the later visual rebuilds.",
+    "Loads a much larger schedule request-off window so Schedule Builder and Request Off do not silently miss records after the old 70-item cap.",
+    "Makes My Schedule and Request Off match people by userId, employeeId, email, full name, and safe legacy name fallback for older imported schedule records.",
+    "Shows pending and approved active request-off records in Schedule Builder instead of hiding pending requests from the grid."
+  ]
 }

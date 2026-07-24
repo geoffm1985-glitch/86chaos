@@ -40,6 +40,52 @@ const getRoleFromScheduleStaffList = (role, scheduleRoleOptions = []) => {
 };
 
 
+const normalizeScheduleIdentity = (value = '') => String(value || '').toLowerCase().trim().replace(/[^a-z0-9@.]+/g, '');
+const normalizeScheduleName = (value = '') => String(value || '').toLowerCase().trim().replace(/[^a-z0-9]+/g, '');
+const firstNameKey = (value = '') => normalizeScheduleName(String(value || '').split(/\s+/)[0] || '');
+
+const personIdentityKeys = (person = {}) => {
+  const keys = new Set();
+  [person.id, person.uid, person.authUid, person.userId, person.employeeId, person.email, person.name, person.displayName, person.fullName, person.ghostTargetUserId].forEach(v => {
+    const id = normalizeScheduleIdentity(v);
+    const name = normalizeScheduleName(v);
+    if (id) keys.add(id);
+    if (name) keys.add(name);
+  });
+  return keys;
+};
+
+const recordMatchesPerson = (record = {}, person = {}) => {
+  if (!record || !person) return false;
+  const keys = personIdentityKeys(person);
+  const directValues = [
+    record.userId, record.employeeId, record.createdBy, record.createdById, record.uid, record.authUid,
+    record.userEmail, record.employeeEmail, record.email, record.assignedEmail,
+    record.userName, record.employeeName, record.name, record.displayName
+  ].map(v => [normalizeScheduleIdentity(v), normalizeScheduleName(v)]).flat().filter(Boolean);
+  if (directValues.some(v => keys.has(v))) return true;
+
+  // Legacy restored/imported records sometimes only carried a first name. Use this fallback only
+  // when the record has no durable id/email so we do not accidentally cross-match two employees.
+  const hasDurableRecordKey = !!(record.userId || record.employeeId || record.uid || record.authUid || record.userEmail || record.employeeEmail || record.email);
+  if (!hasDurableRecordKey) {
+    const recordFirst = firstNameKey(record.employeeName || record.userName || record.name || '');
+    const personFirst = firstNameKey(person.name || person.displayName || person.email || '');
+    if (recordFirst && personFirst && recordFirst === personFirst) return true;
+  }
+  return false;
+};
+
+const isActiveTimeOffRequest = (request = {}) => {
+  const status = String(request.status || 'pending').toLowerCase();
+  if (request.archived === true || request.processed === true) return false;
+  return !['cancelled', 'canceled', 'archived', 'processed', 'denied', 'rejected'].includes(status);
+};
+
+const timeOffMatchesPerson = (request = {}, person = {}) => recordMatchesPerson(request, person);
+const shiftMatchesPerson = (shift = {}, person = {}) => recordMatchesPerson(shift, person);
+
+
 const parseScheduleTimeParts = (value, fallback = { hours: 0, minutes: 0 }) => {
   const raw = String(value || '').trim().toUpperCase();
   if (!raw) return fallback;
@@ -425,7 +471,7 @@ const TabMasterSchedule = ({ currentDate, setCurrentDate = null, onSubTabChange 
 const handleClockIn = async () => {
     if (clockActionBusy || activePunch) return;
     // Check if scheduled today
-    const isScheduledToday = shifts.some(s => s.employeeId === appUser.id && s.date === getToday() && s.isPublished);
+    const isScheduledToday = shifts.some(s => shiftMatchesPerson(s, appUser) && s.date === getToday() && s.isPublished);
     
     let isUnscheduled = false;
     if (!isScheduledToday) {
@@ -607,11 +653,11 @@ Clock out anyway?`);
 
 // --- SHIFT LOGIC ---
   const myMonthShifts = shifts
-    .filter(s => s.employeeId === appUser.id && s.date.startsWith(monthStr) && s.isPublished)
+    .filter(s => shiftMatchesPerson(s, appUser) && String(s.date || '').startsWith(monthStr) && s.isPublished)
     .sort((a,b) => a.date === b.date ? (a.startTime || '').localeCompare(b.startTime || '') : a.date.localeCompare(b.date));
 
   const myNextShift = shifts
-    .filter(s => s.employeeId === appUser.id && s.isPublished && isShiftStillCurrentOrUpcoming(s, scheduleNow))
+    .filter(s => shiftMatchesPerson(s, appUser) && s.isPublished && isShiftStillCurrentOrUpcoming(s, scheduleNow))
     .sort(compareShiftsByStartDateTime)[0];
 
   const activeMonthShifts = shifts
@@ -2283,12 +2329,12 @@ const handleExportTimesheets = () => {
                         <tr key={u.id} className={selectedEmp===u.id?'bg-[#12161A]/50':''}>
                           <td onClick={()=>{setSelectedEmp(u.id);setAssignDates([]);}} className={`px-2 py-1 text-xs font-bold sticky left-0 z-10 border-r border-[#2A353D] cursor-pointer truncate shadow-sm ${selectedEmp===u.id?`${T.grad} text-slate-900`:'bg-[#1A2126] text-white'}`}>{u.name.split(' ')[0]}</td>
                           {schedulePeriodDays.map(d => {
-                            const shift = schedulePeriodShifts.find(s=>s.date===d&&s.employeeId===u.id); 
-                            const req = timeOffRequests.find(r=>r.date===d&&r.userId===u.id && r.status !== 'pending'); 
+                            const shift = schedulePeriodShifts.find(s => s.date === d && shiftMatchesPerson(s, u)); 
+                            const req = timeOffRequests.find(r => r.date === d && timeOffMatchesPerson(r, u) && isActiveTimeOffRequest(r)); 
                             const sel = assignDates.includes(d) && selectedEmp===u.id;
 
                             // Conflict Check: Alert if a shift overlaps with ANY time-off request (pending or approved)
-                            const allUserReqs = timeOffRequests.filter(r => r.date === d && r.userId === u.id);
+                            const allUserReqs = timeOffRequests.filter(r => r.date === d && timeOffMatchesPerson(r, u) && isActiveTimeOffRequest(r));
                             const hasConflict = shift && allUserReqs.some(r => {
                                if (!r.isPartial) return true; // Full day off conflict
                                return (shift.startTime < (r.endTime || '23:59')) && (shift.endTime > (r.startTime || '00:00'));
@@ -2893,8 +2939,8 @@ const TabTimeOff = ({ timeOffRequests, appUser, users, addToast, events = [], sh
   const monthEvents = events.filter(e => e.type === 'special_event' && e.date?.startsWith(calMonth));
   const isArchivedRequest = (r = {}) => r.archived === true || r.processed === true || ['archived','processed','cancelled','canceled'].includes(String(r.status || '').toLowerCase());
   const normalizeStatus = (r = {}) => String(r.status || 'pending').toLowerCase();
-  const visibleRequests = (timeOffRequests || []).filter(r => canManage || r.userId === myId || r.employeeId === myId || r.createdBy === myId);
-  const myRequests = visibleRequests.filter(r => r.userId === myId || r.employeeId === myId || r.createdBy === myId).sort((a,b) => new Date(a.date || 0) - new Date(b.date || 0));
+  const visibleRequests = (timeOffRequests || []).filter(r => canManage || timeOffMatchesPerson(r, appUser));
+  const myRequests = visibleRequests.filter(r => timeOffMatchesPerson(r, appUser)).sort((a,b) => new Date(a.date || 0) - new Date(b.date || 0));
 
   const getDateFilterRange = () => {
     const today = new Date(`${getToday()}T12:00:00`);
@@ -2938,7 +2984,7 @@ const TabTimeOff = ({ timeOffRequests, appUser, users, addToast, events = [], sh
   const handleToggleDate = (d) => {
     if (d < getToday()) return addToast('Locked', 'Cannot request past dates.');
     if (!postPublishedTimeOffAllowed && !appUser?.isAdmin && isDateInsidePublishedSchedule(d, shifts)) return addToast('Schedule Published', 'This workspace blocks employee time-off requests after that date has already been published. Ask a manager to adjust the schedule.');
-    const existingReq = myRequests.find(r => r.date === d && !isArchivedRequest(r));
+    const existingReq = myRequests.find(r => r.date === d && isActiveTimeOffRequest(r));
     if (existingReq) { if (window.confirm(`Cancel your time-off request for ${formatDisplayDate(d)}?`)) cancelRequest(existingReq); return; }
     setSelectedDates(prev => prev.includes(d) ? prev.filter(x => x !== d) : [...prev, d]);
   };
@@ -3004,7 +3050,7 @@ const TabTimeOff = ({ timeOffRequests, appUser, users, addToast, events = [], sh
             {Array.from({length: firstDayOffset}).map((_,i) => <div key={`empty-${i}`} className={`p-1 border-b border-r ${T.border} bg-[#1A2126] min-h-[45px]`} />)}
             {monthDays.map(d => {
               const isSelected = selectedDates.includes(d);
-              const existingReq = myRequests.find(r => r.date === d && !isArchivedRequest(r));
+              const existingReq = myRequests.find(r => r.date === d && isActiveTimeOffRequest(r));
               const isPast = d < getToday();
               const holiday = getHoliday(d);
               const dayEvents = monthEvents.filter(e => e.date === d);
@@ -3088,7 +3134,8 @@ const ScheduleCopilot = ({ currentDate, users = [], shifts = [], timeOffRequests
     const warnings = [];
     schedule.forEach(s => {
       const emp = allUsers.find(u => u.id === s.employeeId);
-      const off = requests.find(r => (r.userId === s.employeeId || r.employeeId === s.employeeId) && r.date === s.date && ['approved','accepted','approved_by_manager'].includes(String(r.status || '').toLowerCase()));
+      const empForMatch = emp || { id: s.employeeId, name: s.employeeName, email: s.employeeEmail };
+      const off = requests.find(r => timeOffMatchesPerson(r, empForMatch) && r.date === s.date && isActiveTimeOffRequest(r));
       if (off) warnings.push(`${emp?.name || 'Someone'} is scheduled on requested-off date ${formatDisplayDate(s.date)}.`);
     });
     allUsers.forEach(u => {
@@ -3136,7 +3183,7 @@ const ScheduleCopilot = ({ currentDate, users = [], shifts = [], timeOffRequests
     const scheduleRole = canonicalScheduleRole(role);
     const candidates = activeUsers.filter(u => !usedIds.includes(u.id)).filter(u => roleMatches(u.role, scheduleRole));
     const pool = candidates.length ? candidates : activeUsers.filter(u => !usedIds.includes(u.id));
-    return pool.find(u => !timeOffRequests.some(r => (r.userId === u.id || r.employeeId === u.id) && r.date === date && ['approved','accepted','approved_by_manager'].includes(String(r.status || '').toLowerCase()))) || pool[0];
+    return pool.find(u => !timeOffRequests.some(r => timeOffMatchesPerson(r, u) && r.date === date && isActiveTimeOffRequest(r))) || pool[0];
   };
 
   const createShiftDraft = async (row, date, usedIds = []) => {

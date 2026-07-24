@@ -12,7 +12,6 @@ import { buildEightySixAlertDetails, buildMenuImpactText, getMenuImpactForInvent
 import { prepareScannerUploadFile, isPdfFile } from '../core/fileCompression';
 import { createAiScanIdempotencyKey, resolveClientScanPageCount, normalizeAiUsage, aiPageLimitMessage } from '../core/aiScanUsage';
 import { buildAiOrderAssistant, formatAiOrderDraftText, summarizeAiOrderAssistant } from '../core/aiOrderAssistant';
-import { buildNeedsAttentionCards, buildManagerBriefSummary, buildKitchenCommandSummary, buildSetupQuality, buildOpsSummaryDocs, buildEightySixAlertEventPayload } from '../core/needsAttentionEngine';
 import { classifyInvoiceRow, inferInvoiceProductFields, invoiceProductKey, invoiceRowText, isPurchasedInvoiceLine, LEADING_PURCHASE_RE, normalizeInvoiceName as normalizeName, normalizeInvoiceSku as normalizeSku } from '../core/invoiceRowClassification';
 import { CheersLogo, Modal, DrawerMenu, DayDotPrintScreen, MapClickListener, SmartEmptyState, MiniProblemCard, getHomeProfile, calculatePunchHours, getWeekStart, getWeekDates, roleMatches, toLocalTimeInput, makeLocalIso, PunchTable, StatusTile, FriendlyEmpty, GlobalSearchModal, QuickActionDock, KitchenTVMode, ChangeLogModal, UndoBar } from '../components/common';
 import { usePlanAccess } from '../hooks/usePlanAccess';
@@ -1738,17 +1737,6 @@ const TabOpsCenter = ({ currentDate, appUser, users = [], shifts = [], events = 
   const openInventoryFocus = () => { sessionStorage.setItem('inventoryFocus', 'belowPar'); setActiveTab?.('inventory'); };
   const openAiOrdering = () => { sessionStorage.setItem('inventoryFocus', 'aiOrder'); setActiveTab?.('inventory'); };
   const openPrepPlan = () => { sessionStorage.setItem('prepFocus', 'plan'); setActiveTab?.('prep'); };
-  const kitchenAttentionInput = { appUser, clientData, restaurantId: appUser?.restaurantId, currentDate: today, users, shifts, events, sales, timePunches, inventoryItems, maintenanceLogs, prepItems: [], tasks, recipes, menuDependencies, vendors: [], invoices: [], restaurantAdminAlerts: [], aiOrderAssistant: {}, permissions: { inventory: canUseBasicInventory, menuIntelligence: canUseMenuIntelligence, aiOrdering: canUseBasicInventory, labor: true, schedule: true, maintenance: canUseCleaningRoutines, prep: canUseKitchenCommand, messages: true, adminAlerts: false } };
-  const kitchenCommandSummary = buildKitchenCommandSummary(kitchenAttentionInput);
-  const kitchenAttentionCards = kitchenCommandSummary.servicePriorities || [];
-  const openKitchenAttentionCard = (card = {}) => {
-    try {
-      if (card.tab === 'inventory' && card.focus) sessionStorage.setItem('inventoryFocus', card.focus);
-      if (card.tab === 'prep' && card.focus) sessionStorage.setItem('prepFocus', card.focus);
-      if ((card.tab === 'schedule' || card.tab === 'published') && card.focus) sessionStorage.setItem('scheduleFocus', card.focus);
-    } catch (e) {}
-    setActiveTab?.(card.tab || 'ops');
-  };
 
   const kpiCards = [
     { label: 'Shift Health', value: `${healthScore}/100`, detail: healthScore >= 85 ? 'Looking good' : healthScore >= 70 ? 'Check weak spots' : 'Needs manager attention' },
@@ -1792,20 +1780,14 @@ const TabOpsCenter = ({ currentDate, appUser, users = [], shifts = [], events = 
         ))}
       </div>
 
-      <div className={`${T.card} command-card p-4 kitchen-command-needs-attention`} data-testid="kitchen-command-needs-attention">
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 mb-3">
-          <div>
-            <h2 className="font-black text-white flex items-center gap-2"><Scale size={18} className={T.copper}/> Needs Attention</h2>
-            <p className="text-xs text-slate-400 font-bold mt-1">Same engine as Manager Brief, tuned for deeper kitchen operations.</p>
-          </div>
-          <div className="grid grid-cols-3 gap-2 min-w-[250px]">
-            <div className="bg-[#12161A] border border-[#2A353D] rounded-xl p-2 text-center"><div className="text-[9px] font-black uppercase tracking-widest text-slate-500">Health</div><div className="text-xl font-black text-[#D4A381]">{kitchenCommandSummary.healthScore}</div></div>
-            <div className="bg-[#12161A] border border-[#2A353D] rounded-xl p-2 text-center"><div className="text-[9px] font-black uppercase tracking-widest text-slate-500">Priorities</div><div className="text-xl font-black text-white">{kitchenAttentionCards.length}</div></div>
-            <div className="bg-[#12161A] border border-[#2A353D] rounded-xl p-2 text-center"><div className="text-[9px] font-black uppercase tracking-widest text-slate-500">86 Watch</div><div className={`text-xl font-black ${urgent86Items.length ? 'text-red-400' : 'text-emerald-400'}`}>{urgent86Items.length}</div></div>
-          </div>
+      <div className={`${T.card} command-card p-4 grid grid-cols-1 lg:grid-cols-3 gap-3`}>
+        <div className="lg:col-span-2">
+          <h2 className="font-black text-white flex items-center gap-2"><Scale size={18} className={T.copper}/> Do These First</h2>
+          <p className="text-xs text-slate-400 font-bold mt-1">The few actions managers need during service.</p>
         </div>
-        <div className="grid md:grid-cols-2 xl:grid-cols-4 gap-2">
-          {kitchenAttentionCards.length ? kitchenAttentionCards.slice(0, 8).map(card => <button key={card.id} type="button" onClick={() => openKitchenAttentionCard(card)} className={`rounded-xl border p-3 text-left transition-colors ${card.severity === 'critical' || card.severity === 'high' ? 'border-red-500/35 bg-red-950/10 hover:border-red-400/60' : card.severity === 'medium' ? 'border-amber-500/25 bg-amber-950/10 hover:border-amber-400/50' : 'border-[#2A353D] bg-[#12161A] hover:border-[#D4A381]/45'}`}><div className="text-[9px] font-black uppercase tracking-widest text-[#D4A381]">{card.area}</div><div className="text-sm font-black text-white mt-1 leading-snug">{card.title}</div><div className="text-xs font-bold text-slate-400 mt-1 leading-snug">{card.detail || card.reason}</div><div className="text-[10px] font-black uppercase tracking-widest text-[#D4A381] mt-2">{card.primaryActionLabel || 'Open'}</div></button>) : <SmartEmptyState icon={<Check size={22}/>} title="Command is clear" desc="No shared attention cards are firing right now." />}
+        <div className="grid grid-cols-2 gap-2">
+          <div className="bg-[#12161A] border border-[#2A353D] rounded-xl p-2"><div className="text-[9px] font-black uppercase tracking-widest text-slate-500">Suggested Prep</div><div className="text-xl font-black text-white">{suggestedPrepTasks.length}</div></div>
+          <div className="bg-[#12161A] border border-[#2A353D] rounded-xl p-2"><div className="text-[9px] font-black uppercase tracking-widest text-slate-500">86 Watch</div><div className={`text-xl font-black ${urgent86Items.length ? 'text-red-400' : 'text-emerald-400'}`}>{urgent86Items.length}</div></div>
         </div>
       </div>
 
@@ -2145,26 +2127,15 @@ const TabToday = ({ currentDate, appUser, users, shifts, shiftSwaps, timeOffRequ
     ...(briefOpsIntel?.backupChecks || []).map(row => ({ area: 'System Administrator', title: row.title || 'Backup check', detail: row.detail || row.recommendation || 'Review backup center.', tab: 'godmode', severity: row.status === 'attention' ? 'high' : 'low' }))
   ].slice(0, 18);
   const recentTabs = (() => { try { return JSON.parse(localStorage.getItem(`recentTabs_${appUser.id}`) || '[]'); } catch { return []; } })();
-  const attentionPermissions = {
-    inventory: canUseBasicInventory,
-    menuIntelligence: canUseMenuIntelligence,
-    aiOrdering: canUseAiOrdering,
-    labor: canUseLabor,
-    schedule: canUseScheduleBuilder,
-    maintenance: canUseCleaningRoutines,
-    prep: true,
-    messages: true,
-    adminAlerts: Boolean(appUser?.isOwner || appUser?.owner || appUser?.accountOwner || appUser?.workspaceOwner || appUser?.isAdmin || appUser?.permissions?.settings || appUser?.permissions?.team)
-  };
-  const setupQuality = buildSetupQuality({ clientData, users, shifts, sales, inventoryItems, vendors: briefVendors, invoices: briefInvoices, recipes, menuDependencies, events, currentDate: today });
-  const setupItems = setupQuality.items.filter(item => {
-    if (['inventory','menu-intelligence'].includes(item.tab)) return canUseBasicInventory || canUseMenuIntelligence;
-    if (item.tab === 'financials') return canUseLabor;
-    if (item.tab === 'schedule') return canUseScheduleBuilder;
-    if (item.tab === 'settings') return appUser?.isAdmin || appUser?.permissions?.settings;
-    if (item.tab === 'team') return appUser?.isAdmin || appUser?.permissions?.team;
-    return true;
-  });
+  const setupItems = [
+    { label: 'Restaurant profile', done: !!clientData?.name, tab: 'settings', allowed: appUser?.isAdmin || appUser?.permissions?.settings },
+    { label: 'Add team members', done: users.length > 1, tab: 'team', allowed: appUser?.isAdmin || appUser?.permissions?.team },
+    { label: 'Build this week schedule', done: shifts.some(s => s.date >= today), tab: 'schedule', allowed: canUseScheduleBuilder },
+    { label: 'Add recipes', done: recipes.length > 0, tab: 'recipes', allowed: true },
+    { label: 'Add inventory items', done: inventoryItems.length > 0, tab: 'inventory', allowed: canUseBasicInventory },
+    { label: 'Post first announcement', done: events.some(e => e.type === 'note'), tab: 'messages', allowed: true },
+    { label: 'Add maintenance log', done: maintenanceLogs.length > 0, tab: 'maintenance', allowed: canUseCleaningRoutines }
+  ].filter(item => item.allowed !== false);
   const setupDone = setupItems.filter(i => i.done).length;
   const setupTotal = Math.max(1, setupItems.length);
   const openInventoryFocus = () => { sessionStorage.setItem('inventoryFocus', 'belowPar'); setActiveTab('inventory'); };
@@ -2180,19 +2151,6 @@ const TabToday = ({ currentDate, appUser, users, shifts, shiftSwaps, timeOffRequ
       if (tab === 'published' && row.scheduleFocus) sessionStorage.setItem('scheduleFocus', row.scheduleFocus);
     } catch (e) {}
     setActiveTab(tab);
-  };
-  const needsAttentionInput = { appUser, clientData, restaurantId: appUser?.restaurantId, currentDate: today, users, shifts, shiftSwaps, timeOffRequests, events, sales, timePunches, inventoryItems, maintenanceLogs, prepItems, tasks, recipes, menuDependencies, vendors: briefVendors, invoices: briefInvoices, restaurantAdminAlerts, aiOrderAssistant: aiBrief, permissions: attentionPermissions, setupQuality };
-  const managerBriefSummary = buildManagerBriefSummary(needsAttentionInput);
-  const needsAttentionCards = managerBriefSummary.topCards || buildNeedsAttentionCards(needsAttentionInput).slice(0, 8);
-  const opsSummaryDocsPreview = buildOpsSummaryDocs(needsAttentionInput);
-  const openAttentionCard = (card = {}) => {
-    try {
-      if (card.tab === 'inventory' && card.focus) sessionStorage.setItem('inventoryFocus', card.focus);
-      if (card.tab === 'prep' && card.focus) sessionStorage.setItem('prepFocus', card.focus);
-      if ((card.tab === 'schedule' || card.tab === 'published') && card.focus) sessionStorage.setItem('scheduleFocus', card.focus);
-      if (card.focus === 'sales-import') sessionStorage.setItem('financialFocus', 'sales-import');
-    } catch (e) {}
-    setActiveTab(card.tab || 'today');
   };
   const runBriefPythonOps = async () => {
     if (!appUser?.restaurantId) return addToast?.('Missing Workspace', 'Choose a workspace before running Python Ops Scan.');
@@ -2276,15 +2234,14 @@ const TabToday = ({ currentDate, appUser, users, shifts, shiftSwaps, timeOffRequ
     }
   };
 
-  const problems = needsAttentionCards.map(card => ({
-    tone: card.severity === 'critical' || card.severity === 'high' ? 'red' : card.severity === 'medium' ? 'amber' : 'blue',
-    title: card.title,
-    detail: card.detail || card.reason,
-    tab: card.tab,
-    onClick: () => openAttentionCard(card),
-    action: card.primaryActionLabel || 'Open'
-  }));
-
+  const problems = [
+    canReviewRestaurantAdminAlerts && openRestaurantAdminAlerts.length ? { tone: 'amber', title: 'Owner/Admin alerts', detail: `${openRestaurantAdminAlerts.length} Python scan alert${openRestaurantAdminAlerts.length===1?'':'s'} need review.`, tab: 'today' } : null,
+    canUseBasicInventory && lowStock.length ? { tone: 'red', title: 'Inventory below par', detail: `${lowStock.length} item${lowStock.length===1?'':'s'} need attention.`, tab: 'inventory', onClick: openInventoryFocus } : null,
+    canUseCleaningRoutines && urgentMaintenance.length ? { tone: 'red', title: 'Maintenance urgent', detail: `${urgentMaintenance.length} high priority issue${urgentMaintenance.length===1?'':'s'} open.`, tab: 'maintenance' } : null,
+    canUseScheduleBuilder && pendingRequests.length ? { tone: 'amber', title: 'Time off pending', detail: `${pendingRequests.length} request${pendingRequests.length===1?'':'s'} waiting.`, tab: 'schedule' } : null,
+    canUseScheduleBuilder && openSwaps.length ? { tone: 'blue', title: 'Shift trade board', detail: `${openSwaps.length} shift${openSwaps.length===1?'':'s'} available.`, tab: 'published' } : null,
+    canUseScheduleBuilder && !todaysShifts.length ? { tone: 'amber', title: 'No published shifts today', detail: 'Check schedule coverage before service.', tab: 'schedule' } : null
+  ].filter(Boolean);
 
   const quickCreate = async (kind) => {
     try {
@@ -2300,15 +2257,10 @@ const TabToday = ({ currentDate, appUser, users, shifts, shiftSwaps, timeOffRequ
           ? `Inventory match: ${inventoryItem.name}${resolved?.method === 'menuIntelligence' ? ' (matched through Menu Intelligence)' : ''}.`
           : '';
         const notes = [matchText, impactText, resolved?.matchedMenuItemName ? `Menu phrase matched: ${resolved.matchedMenuItemName}.` : ''].filter(Boolean).join('\n');
-        const result = await safeTodayWrite({ action: 'add', collectionName: 'events', label: 'Manager Brief quick 86 alert', data: buildEightySixAlertEventPayload({
-          appUser,
-          requestedItemName: item,
-          inventoryItem,
-          menuImpactItems: impactItems,
-          menuImpact: impactText,
-          source: 'manager_brief_quick_86',
-          extra: { notes, matchMethod: resolved?.method || '', matchedMenuItemName: resolved?.matchedMenuItemName || '' }
-        }) });
+        const result = await safeTodayWrite({ action: 'add', collectionName: 'events', label: 'Manager Brief quick 86 alert', data: {
+          restaurantId: appUser.restaurantId, type: 'note', title: `86 ALERT: ${item}`, messageCategory: '86 Alert', author: appUser.name, isImportant: true, date: new Date().toISOString(), replies: [], readBy: [{ userId: appUser.id, name: appUser.name, at: new Date().toISOString() }],
+          notes, menuImpact: impactText, menuImpactItems: impactItems, inventoryItemId: inventoryItem?.id || '', inventoryItemName: inventoryItem?.name || '', requestedItemName: item, commandCenterAlert: true, managerBriefAlert: true, kitchenCommandCenterAlert: true, source: 'manager_brief_quick_86'
+        } });
         undoMeta = { collectionName: 'events', id: result.id, before: result.payload };
         addToast('86 Alert Posted', impactText ? `${item} posted with menu impact.` : item);
       }
@@ -2388,13 +2340,11 @@ const TabToday = ({ currentDate, appUser, users, shifts, shiftSwaps, timeOffRequ
       </div>
     </div>
 
-    <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-2 manager-brain-quick-actions">
-      {canUseManagerBrief && <button onClick={() => setActiveTab('ops')} className="brief-quick-action bg-[#1A2126] border border-[#2A353D] text-[#D4A381] rounded-xl p-3 font-black text-xs uppercase tracking-widest">Open Kitchen Command</button>}
-      <button onClick={() => quickCreate('86')} className="brief-quick-action bg-red-900/20 border border-red-500/40 text-red-300 rounded-xl p-3 font-black text-xs uppercase tracking-widest">Add 86 Alert</button>
-      {canUseAiOrdering && <button onClick={openAiOrdering} className="brief-quick-action bg-[#1A2126] border border-[#2A353D] text-[#D4A381] rounded-xl p-3 font-black text-xs uppercase tracking-widest">Review AI Order</button>}
-      {canUseLabor && <button onClick={() => setActiveTab('labor')} className="brief-quick-action bg-[#1A2126] border border-[#2A353D] text-slate-200 rounded-xl p-3 font-black text-xs uppercase tracking-widest">Open Schedule/Labor</button>}
+    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+      <button onClick={open86Center} className="brief-quick-action bg-red-900/20 border border-red-500/40 text-red-300 rounded-xl p-3 font-black text-xs uppercase tracking-widest">Open 86 Alerts</button>
+      <button onClick={openPrepPlan} className="brief-quick-action bg-[#1A2126] border border-[#2A353D] text-[#D4A381] rounded-xl p-3 font-black text-xs uppercase tracking-widest">Open Prep</button>
       <button onClick={openMessageBoard} className="brief-quick-action bg-[#1A2126] border border-[#2A353D] text-slate-200 rounded-xl p-3 font-black text-xs uppercase tracking-widest">Open Messages</button>
-      {canUsePythonIntelligence && <button onClick={runBriefPythonOps} disabled={briefOpsLoading} className="brief-quick-action bg-purple-900/20 border border-purple-500/40 text-purple-200 rounded-xl p-3 font-black text-xs uppercase tracking-widest disabled:opacity-60">{briefOpsLoading ? 'Scanning…' : 'Run Ops Scan'}</button>}
+      {canUseCleaningRoutines && <button onClick={openMaintenanceCenter} className="brief-quick-action bg-amber-900/20 border border-amber-500/40 text-amber-300 rounded-xl p-3 font-black text-xs uppercase tracking-widest">Open Fix It</button>}
     </div>
 
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
@@ -2421,28 +2371,11 @@ const TabToday = ({ currentDate, appUser, users, shifts, shiftSwaps, timeOffRequ
           </div>
         </div>}
 
-        <div className={`${T.card} brief-card p-4 manager-brain-needs-attention`} data-testid="manager-brief-needs-attention">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-            <div>
-              <h2 className="font-black text-white text-lg">Needs Attention</h2>
-              <p className="text-xs text-slate-400 font-bold mt-1">What matters today, why it matters, and the button that fixes it.</p>
-            </div>
-            <span className="text-[10px] font-black uppercase tracking-widest text-[#D4A381]">{needsAttentionCards.length} active</span>
-          </div>
-          <div className="grid sm:grid-cols-2 gap-2 mt-3">
-            {needsAttentionCards.length ? needsAttentionCards.map((card) => (
-              <button key={card.id} type="button" onClick={() => openAttentionCard(card)} className={`text-left rounded-xl border p-3 transition-colors ${card.severity === 'critical' || card.severity === 'high' ? 'border-red-500/35 bg-red-950/10 hover:border-red-400/60' : card.severity === 'medium' ? 'border-amber-500/25 bg-amber-950/10 hover:border-amber-400/50' : 'border-[#2A353D] bg-[#12161A] hover:border-[#D4A381]/45'}`}>
-                <div className="flex items-center justify-between gap-2">
-                  <span className={`text-[9px] font-black uppercase tracking-widest ${card.severity === 'critical' || card.severity === 'high' ? 'text-red-300' : card.severity === 'medium' ? 'text-amber-300' : 'text-slate-500'}`}>{card.area}</span>
-                  <span className="text-[9px] font-black uppercase tracking-widest text-[#D4A381]">{card.primaryActionLabel || 'Open'}</span>
-                </div>
-                <div className="font-black text-white text-sm mt-1 leading-snug">{card.title}</div>
-                <div className="text-xs text-slate-300 font-bold mt-1 leading-snug">{card.detail || card.reason}</div>
-                <div className="text-[11px] text-slate-500 font-bold mt-2 leading-snug">Why: {card.reason}</div>
-                <div className="text-[11px] text-[#D4A381] font-black mt-2 leading-snug">Next: {card.suggestedAction}</div>
-              </button>
-            )) : <SmartEmptyState icon={<Check size={24}/>} title="Nothing urgent right now" desc="Everything looks clear right now." />}
-          </div>
+        <div className={`${T.card} brief-card p-4`}>
+          <button className="w-full flex justify-between items-center" onClick={() => setExpanded(e => ({...e, problems: !e.problems}))}><h2 className="font-black text-white text-lg">Need Attention</h2><ChevronRight className={`transition-transform ${expanded.problems ? 'rotate-90' : ''}`} size={18}/></button>
+          {expanded.problems && <div className="grid sm:grid-cols-2 gap-2 mt-3">
+            {problems.length ? problems.map((p, idx) => <MiniProblemCard key={idx} {...p} action="Open" onClick={() => p.onClick ? p.onClick() : setActiveTab(p.tab)} />) : <SmartEmptyState icon={<Check size={24}/>} title="Nothing urgent right now" desc="Everything looks clear right now." />}
+          </div>}
         </div>
 
         {canUseAiOrdering && (aiBriefTop.length || aiBrief.eventNeeds?.length) && <div className={`${T.card} brief-card p-4 border-[#D4A381]/30`}>
@@ -2488,15 +2421,9 @@ const TabToday = ({ currentDate, appUser, users, shifts, shiftSwaps, timeOffRequ
       </div>
 
       <div className="space-y-3">
-        <div className={`${T.card} brief-card p-4 setup-quality-panel`} data-testid="setup-quality-panel">
-          <button className="w-full flex justify-between items-center" onClick={() => setExpanded(e => ({...e, setup: !e.setup}))}>
-            <div className="text-left"><h2 className="font-black text-white text-lg">Setup Quality</h2><p className="text-xs text-slate-400 font-bold mt-1">Why the app is smart, partial, or still guessing.</p></div>
-            <span className="text-[10px] font-black text-[#D4A381]">{setupDone}/{setupTotal}</span>
-          </button>
-          <div className="grid grid-cols-2 gap-2 mt-3">
-            {[['Menu Intelligence', `${setupQuality.menuIntelligencePct}% mapped`], ['Inventory Pars', `${setupQuality.inventoryParPct}% complete`], ['AI Ordering', setupQuality.aiOrdering], ['Labor Forecast', setupQuality.laborForecast], ['Sales Data', setupQuality.salesData], ['Push Readiness', setupQuality.pushReadiness]].map(([label, value]) => <div key={label} className="rounded-xl border border-[#2A353D] bg-[#0B0E11] p-2"><div className="text-[8px] font-black uppercase tracking-widest text-slate-500">{label}</div><div className="text-xs font-black text-white mt-1">{value}</div></div>)}
-          </div>
-          {expanded.setup && <div className="mt-3 space-y-2">{setupItems.map(item => <button key={item.label} onClick={() => openAttentionCard({ tab: item.tab, focus: item.focus, id: item.label })} className="w-full flex items-start justify-between gap-2 bg-[#0B0E11] border border-[#2A353D] rounded-xl px-3 py-2 text-left"><span><span className="block text-xs font-bold text-slate-200">{item.label}</span><span className="block text-[10px] text-slate-500 font-bold mt-1">{item.reason}</span></span><span className={`text-[9px] font-black uppercase tracking-widest ${item.done ? 'text-emerald-400' : 'text-amber-400'}`}>{item.done ? 'Done' : 'Open'}</span></button>)}<button onClick={seedDemoData} className="w-full mt-2 bg-[#D4A381] text-slate-900 rounded-xl px-3 py-2 text-[10px] font-black uppercase tracking-widest">Seed Demo Mode</button></div>}
+        <div className={`${T.card} brief-card p-4`}>
+          <button className="w-full flex justify-between items-center" onClick={() => setExpanded(e => ({...e, setup: !e.setup}))}><h2 className="font-black text-white text-lg">Setup Checklist</h2><span className="text-[10px] font-black text-[#D4A381]">{setupDone}/{setupTotal}</span></button>
+          {expanded.setup && <div className="mt-3 space-y-2">{setupItems.map(item => <button key={item.label} onClick={() => setActiveTab(item.tab)} className="w-full flex items-center justify-between gap-2 bg-[#0B0E11] border border-[#2A353D] rounded-xl px-3 py-2 text-left"><span className="text-xs font-bold text-slate-200">{item.label}</span><span className={`text-[9px] font-black uppercase tracking-widest ${item.done ? 'text-emerald-400' : 'text-amber-400'}`}>{item.done ? 'Done' : 'Open'}</span></button>)}<button onClick={seedDemoData} className="w-full mt-2 bg-[#D4A381] text-slate-900 rounded-xl px-3 py-2 text-[10px] font-black uppercase tracking-widest">Seed Demo Mode</button></div>}
         </div>
         <div className={`${T.card} brief-card p-4`}>
           <h2 className="font-black text-white text-lg mb-3">Recently Used</h2>

@@ -1,24 +1,32 @@
 const fs = require('fs');
+const path = require('path');
 
-const mustContain = (file, text, label) => {
-  const content = fs.readFileSync(file, 'utf8');
-  if (!content.includes(text)) {
-    throw new Error(`${label} missing from ${file}`);
+const root = path.resolve(__dirname, '..');
+const read = (p) => fs.readFileSync(path.join(root, p), 'utf8');
+const pkg = JSON.parse(read('package.json'));
+const version = JSON.parse(read('public/version.json'));
+const schedule = read('src/features/schedule.jsx');
+const app = read('src/App.js');
+const appCore = read('src/core/appCore.js');
+
+function assert(condition, message) {
+  if (!condition) {
+    console.error(`❌ ${message}`);
+    process.exitCode = 1;
+  } else {
+    console.log(`✅ ${message}`);
   }
-  console.log(`✓ ${label}`);
-};
+}
 
-mustContain('src/core/appCore.js', "CURRENT_VERSION = '15.0.99'", 'current version 15.0.99');
-mustContain('public/version.json', '15.0.99', 'public version 15.0.99');
-mustContain('src/App.js', 'native-app-shell', 'native app shell class');
-mustContain('src/App.js', 'native-mobile-bottom-nav', 'mobile bottom navigation');
-mustContain('src/App.js', 'native-desktop-rail', 'desktop shortcut rail');
-mustContain('src/App.js', 'native-route-loader', 'native route loading skeleton');
-mustContain('public/manifest.json', 'standalone', 'PWA standalone display retained');
-mustContain('public/manifest.json', '/?tab=today', 'app-first start URL');
-mustContain('api/dispatch-reminders.js', 'users.fcmToken as the current canonical device token', 'push duplicate canonical token guard retained');
-mustContain('public/firebase-messaging-sw.js', 'recentNotificationKeys', 'service-worker notification tag dedupe retained');
-mustContain('src/features/management.jsx', 'Review-first accounting drafts', 'QuickBooks review-first wording retained');
-mustContain('api/python-automation-run.js', 'systemAdminCanApply: false', 'System Admin/Python scan-and-alert guard retained');
+assert(pkg.version === '15.0.99', 'package.json version is 15.0.99');
+assert(version.version === '15.0.99' && version.build === '15.0.99', 'public/version.json is 15.0.99');
+assert(appCore.includes("CURRENT_VERSION = '15.0.99'"), 'CURRENT_VERSION is 15.0.99');
+assert(app.includes("limitCount: wantsScheduleScreen ? 1000 : 180"), 'timeOffRequests schedule load cap increased from 70 to 1000');
+assert(schedule.includes('recordMatchesPerson') && schedule.includes('shiftMatchesPerson') && schedule.includes('timeOffMatchesPerson'), 'shared schedule identity matching helpers exist');
+assert(schedule.includes('shiftMatchesPerson(s, appUser) && String(s.date || \'\').startsWith(monthStr)'), 'My Month Shifts uses durable shift/person matching');
+assert(schedule.includes('shiftMatchesPerson(s, appUser) && s.isPublished && isShiftStillCurrentOrUpcoming'), 'Next Shift uses durable shift/person matching');
+assert(schedule.includes('timeOffMatchesPerson(r, u) && isActiveTimeOffRequest(r)'), 'Schedule Builder shows active pending/approved request-off records');
+assert(schedule.includes('visibleRequests = (timeOffRequests || []).filter(r => canManage || timeOffMatchesPerson(r, appUser))'), 'Request Off calendar uses durable request/person matching');
 
-console.log('15.0.99 validation passed.');
+if (process.exitCode) process.exit(1);
+console.log('15.0.99 request-off/schedule visibility validator passed.');

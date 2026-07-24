@@ -1231,47 +1231,6 @@ service cloud.firestore {
     }
 
 
-
-    // 15.1.2 Manager Brain summary docs. Optional/cache-style operational summaries.
-    // Docs must carry restaurantId and stay behind tenant + manager/ops/financial permissions.
-    function canReadManagerBrain(restId) {
-      return isSuperAdmin() || isRestaurantOwner(restId) || isAdminFor(restId) || hasPermFor(restId, 'ops') || hasPermFor(restId, 'inventory') || hasPermFor(restId, 'schedule') || hasPermFor(restId, 'labor') || hasPermFor(restId, 'team');
-    }
-    function canWriteManagerBrain(restId) {
-      return isSuperAdmin() || isRestaurantOwner(restId) || isAdminFor(restId) || hasPermFor(restId, 'ops') || hasPermFor(restId, 'inventory') || hasPermFor(restId, 'schedule') || hasPermFor(restId, 'labor') || hasPermFor(restId, 'team');
-    }
-
-    match /opsInsights/{docId} {
-      allow read: if signedIn() && resource.data.restaurantId is string && isTenantMatch(resource.data.restaurantId) && canReadManagerBrain(resource.data.restaurantId);
-      allow create: if signedIn() && request.resource.data.restaurantId is string && isTenantMatch(request.resource.data.restaurantId) && canWriteManagerBrain(request.resource.data.restaurantId);
-      allow update: if signedIn() && resource.data.restaurantId is string && request.resource.data.restaurantId == resource.data.restaurantId && canWriteManagerBrain(resource.data.restaurantId);
-      allow delete: if false;
-    }
-    match /managerBrief/{docId} {
-      allow read: if signedIn() && resource.data.restaurantId is string && isTenantMatch(resource.data.restaurantId) && canReadManagerBrain(resource.data.restaurantId);
-      allow create: if signedIn() && request.resource.data.restaurantId is string && isTenantMatch(request.resource.data.restaurantId) && canWriteManagerBrain(request.resource.data.restaurantId);
-      allow update: if signedIn() && resource.data.restaurantId is string && request.resource.data.restaurantId == resource.data.restaurantId && canWriteManagerBrain(resource.data.restaurantId);
-      allow delete: if false;
-    }
-    match /inventoryHealth/{docId} {
-      allow read: if signedIn() && resource.data.restaurantId is string && isTenantMatch(resource.data.restaurantId) && (canReadManagerBrain(resource.data.restaurantId) || hasPermFor(resource.data.restaurantId, 'inventory'));
-      allow create: if signedIn() && request.resource.data.restaurantId is string && isTenantMatch(request.resource.data.restaurantId) && canWriteManagerBrain(request.resource.data.restaurantId);
-      allow update: if signedIn() && resource.data.restaurantId is string && request.resource.data.restaurantId == resource.data.restaurantId && canWriteManagerBrain(resource.data.restaurantId);
-      allow delete: if false;
-    }
-    match /laborHealth/{docId} {
-      allow read: if signedIn() && resource.data.restaurantId is string && isTenantMatch(resource.data.restaurantId) && (canReadManagerBrain(resource.data.restaurantId) || hasPermFor(resource.data.restaurantId, 'labor'));
-      allow create: if signedIn() && request.resource.data.restaurantId is string && isTenantMatch(request.resource.data.restaurantId) && canWriteManagerBrain(request.resource.data.restaurantId);
-      allow update: if signedIn() && resource.data.restaurantId is string && request.resource.data.restaurantId == resource.data.restaurantId && canWriteManagerBrain(resource.data.restaurantId);
-      allow delete: if false;
-    }
-    match /menuImpact/{docId} {
-      allow read: if signedIn() && resource.data.restaurantId is string && isTenantMatch(resource.data.restaurantId) && (canReadManagerBrain(resource.data.restaurantId) || hasPermFor(resource.data.restaurantId, 'menuIntelligence'));
-      allow create: if signedIn() && request.resource.data.restaurantId is string && isTenantMatch(request.resource.data.restaurantId) && canWriteManagerBrain(request.resource.data.restaurantId);
-      allow update: if signedIn() && resource.data.restaurantId is string && request.resource.data.restaurantId == resource.data.restaurantId && canWriteManagerBrain(resource.data.restaurantId);
-      allow delete: if false;
-    }
-
     function isStandardTenantCollection(collectionName) {
       return collectionName in [
         'events', 'messages', 'shiftSwaps', 'tasks', 'maintenanceLogs',

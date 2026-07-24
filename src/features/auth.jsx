@@ -500,7 +500,7 @@ const LoginScreen = ({ setAppUser }) => {
       <div className="absolute inset-0 bg-[#0B0E11]/75 backdrop-blur-[3px]"></div>
       
       <div className="chaos-login-card relative z-10 w-full max-w-sm p-8 bg-[#161D22]/95 border border-[#2A353D] rounded-3xl shadow-2xl flex flex-col items-center animate-[slideIn_0.3s_ease-out]">
-        <div className="reference-login-auth">
+        
         <img src="/6139.png" alt="86 Chaos OS Logo" className="chaos-login-logo h-24 w-auto rounded-xl shadow-lg border border-[#2A353D] mb-8 object-contain bg-[#12161A] p-2" />
         
         {workspaceLoading && (
@@ -622,59 +622,6 @@ const LoginScreen = ({ setAppUser }) => {
           </form>
         )}
         <div id="mfa-login-recaptcha-container" className="hidden"></div>
-        </div>
-
-        <section className="reference-login-workspaces" aria-label="Workspace picker preview">
-          <div className="reference-login-section-title">
-            <h2>Select a workspace</h2>
-            <p>Choose the restaurant or group you want to access.</p>
-          </div>
-          {[
-            ['Cheers - Chilton', 'Chilton, WI', 'Open · 10:30 AM - 12:00 AM', true],
-            ['Cheers - Brookfield', 'Brookfield, WI', 'Open · 11:00 AM - 11:00 PM', false],
-            ['Cheers - Madison', 'Madison, WI', 'Open · 10:00 AM - 12:00 AM', false],
-          ].map(([name, city, status, active]) => (
-            <div key={name} className={`reference-login-workspace ${active ? 'active' : ''}`}>
-              <span className="workspace-mark">86</span>
-              <div>
-                <b>{name}</b>
-                <small>{city}</small>
-                <em>{status}</em>
-              </div>
-              <span className="workspace-check">{active ? '✓' : '›'}</span>
-            </div>
-          ))}
-          <button type="button" className="reference-login-view-all">View all workspaces (5) <span>›</span></button>
-        </section>
-
-        <section className="reference-login-benefits" aria-label="86 Chaos benefits">
-          <div className="reference-login-section-title">
-            <h2>Why teams choose 86 Chaos</h2>
-            <p>Everything you need to run a smarter, more profitable kitchen.</p>
-          </div>
-          {[
-            ['Smart Scheduling', 'Build optimal schedules and stay covered with real-time insights.', 'On Track'],
-            ['Prep & Execution', 'Track prep progress, tasks, and kitchen execution in real time.', 'On Track'],
-            ['Inventory Control', 'Monitor levels, manage par, and reduce waste with accuracy.', 'On Track'],
-            ['Labor Intelligence', 'Optimize labor, track performance, and protect your margins.', 'On Track'],
-            ['Alerts & Notifications', 'Stay ahead with critical alerts and important updates.', '2 Active'],
-          ].map(([title, body, status]) => (
-            <div className="reference-login-benefit" key={title}>
-              <span className="benefit-icon">✦</span>
-              <div>
-                <b>{title}</b>
-                <p>{body}</p>
-              </div>
-              <em>{status}</em>
-            </div>
-          ))}
-          <div className="reference-system-health">
-            <b>System Health <span>● All Systems Operational</span></b>
-            <div><small>Services</small><i style={{width:'100%'}}></i></div>
-            <div><small>Integrations</small><i style={{width:'100%'}}></i></div>
-            <div><small>Data Sync</small><i style={{width:'100%'}}></i></div>
-          </div>
-        </section>
       </div>
 
       <Modal isOpen={isPrivacyModalOpen} onClose={() => setIsPrivacyModalOpen(false)} title="Privacy Policy">

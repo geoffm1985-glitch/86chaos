@@ -52,16 +52,6 @@ const lineItemText = (line = {}) => [line.itemName, line.name, line.description,
 
 const getItemVendor = (item = {}, vendors = []) => vendors.find(v => v.id === item.supplierId || v.id === item.vendorId || v.name === item.vendorName) || null;
 
-const getVendorCutoffWarning = (vendor = {}, currentDate = todayKey()) => {
-  if (!vendor) return '';
-  const cutoffTime = vendor.cutoffTime || vendor.orderCutoffTime || '';
-  const cutoffDays = Array.isArray(vendor.cutoffDays) ? vendor.cutoffDays : String(vendor.cutoffDays || vendor.orderDays || '').split(',').map(v => v.trim()).filter(Boolean);
-  const method = vendor.orderMethod || vendor.preferredOrderMethod || '';
-  if (!cutoffTime && !cutoffDays.length) return method ? `Order method: ${method}` : '';
-  const dayText = cutoffDays.length ? cutoffDays.join(', ') : 'order day';
-  return `Review by ${cutoffTime || 'cutoff'} on ${dayText}${method ? ` via ${method}` : ''}.`;
-};
-
 export const isLikelyInvoiceNoiseInventoryItem = (item = {}) => {
   const label = itemLabel(item).trim();
   if (!label) return true;
@@ -226,10 +216,6 @@ export const buildAiOrderAssistant = ({ inventoryItems = [], vendors = [], waste
       vendor: getItemVendor(item, vendors),
       vendorId: item.supplierId || item.vendorId || '',
       vendorName: getItemVendor(item, vendors)?.name || item.vendorName || 'No Vendor',
-      vendorCutoff: getItemVendor(item, vendors)?.cutoffTime || getItemVendor(item, vendors)?.orderCutoffTime || '',
-      cutoffWarning: getVendorCutoffWarning(getItemVendor(item, vendors), currentDate),
-      orderMethod: getItemVendor(item, vendors)?.orderMethod || getItemVendor(item, vendors)?.preferredOrderMethod || '',
-      currentStock: stock,
       stock,
       par,
       pending,
@@ -239,11 +225,8 @@ export const buildAiOrderAssistant = ({ inventoryItems = [], vendors = [], waste
       price: num(item.price, 0),
       estimatedCost: num(item.price, 0) * suggestedQty,
       priority,
-      confidence: priorityScore >= 75 ? 'high' : priorityScore >= 40 ? 'medium' : 'low',
       priorityScore,
       reasons,
-      reasonTags: reasons.map(r => r.split(':')[0]).slice(0, 5),
-      reviewFirst: true,
       eventMatches: eventMatches.slice(0, 3),
       menuImpactCount,
       prepDemand,
@@ -300,7 +283,7 @@ export const groupAiOrderByVendor = (recommendations = []) => {
 };
 
 export const formatAiOrderDraftText = (assistant = {}, { includeReasons = true } = {}) => {
-  const lines = ['86 Chaos AI Order Draft', `Generated: ${new Date(assistant.generatedAt || Date.now()).toLocaleString()}`, 'Review-first only. This draft does not send orders automatically.', ''];
+  const lines = ['86 Chaos AI Order Draft', `Generated: ${new Date(assistant.generatedAt || Date.now()).toLocaleString()}`, ''];
   (assistant.vendorDrafts || []).forEach(group => {
     lines.push(`${group.vendorName}`);
     group.items.forEach(row => {

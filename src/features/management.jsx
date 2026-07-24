@@ -556,7 +556,7 @@ return (
   );
 };
 
-const TabMessages = ({ events, appUser, users, addToast, setActiveTab }) => {
+const TabMessages = ({ events, appUser, users, addToast }) => {
   const [message, setMessage] = useState('');
   const [replyTexts, setReplyTexts] = useState({});
   const [imageFile, setImageFile] = useState(null);
@@ -692,37 +692,6 @@ const TabMessages = ({ events, appUser, users, addToast, setActiveTab }) => {
     }
   };
 
-  const canManage86Alerts = Boolean(appUser?.isSuperAdmin || appUser?.isAdmin || appUser?.isOwner || appUser?.accountOwner || appUser?.owner || appUser?.workspaceOwner || appUser?.permissions?.inventory || appUser?.permissions?.ops || appUser?.permissions?.team);
-  const is86AlertPost = (post = {}) => String(post.messageCategory || '').toLowerCase() === '86 alert' || /^86\s+alert/i.test(String(post.title || ''));
-  const update86AlertStatus = async (post, status) => {
-    if (!post?.id) return;
-    const stamp = new Date().toISOString();
-    const payload = { status, updatedAt: stamp };
-    if (status === 'acknowledged') {
-      const current = Array.isArray(post.acknowledgedBy) ? post.acknowledgedBy : [];
-      payload.acknowledgedBy = current.some(row => row.userId === appUser?.id) ? current : [...current, { userId: appUser?.id || '', name: appUser?.name || appUser?.email || 'Staff', at: stamp }];
-      payload.acknowledgedAt = post.acknowledgedAt || stamp;
-    }
-    if (status === 'resolved') {
-      if (!canManage86Alerts) return addToast?.('Manager Only', 'Only managers/admins can resolve an 86 alert.');
-      payload.resolvedBy = appUser?.id || appUser?.email || '';
-      payload.resolvedByName = appUser?.name || appUser?.email || 'Manager';
-      payload.resolvedAt = stamp;
-    }
-    if (status === 'open') {
-      if (!canManage86Alerts) return addToast?.('Manager Only', 'Only managers/admins can reopen an 86 alert.');
-      payload.resolvedBy = '';
-      payload.resolvedByName = '';
-      payload.resolvedAt = null;
-    }
-    try {
-      await updateDoc(doc(db, 'events', post.id), payload);
-      addToast?.('86 Alert Updated', status === 'open' ? 'Alert reopened.' : `Marked ${status}.`);
-    } catch (err) {
-      addToast?.('86 Alert Not Updated', err?.message || 'Check permission and try again.');
-    }
-  };
-
   const getTimeAgo = (dateString) => {
     const mins = Math.floor((new Date() - new Date(dateString)) / 60000);
     if (mins < 1) return 'now';
@@ -850,13 +819,6 @@ const TabMessages = ({ events, appUser, users, addToast, setActiveTab }) => {
                         >
                           <ThumbsUp size={13}/> {(n.likes || []).length ? `${(n.likes || []).length}` : 'Like'}
                         </button>
-                        {is86AlertPost(n) && <>
-                          <button type="button" onClick={() => update86AlertStatus(n, 'acknowledged')} className="flex items-center gap-1.5 px-2 py-1 rounded-lg border text-[10px] font-black uppercase tracking-widest bg-[#0B0E11] border-[#2A353D] text-emerald-300 hover:border-emerald-400/50"><Check size={13}/> Acknowledge</button>
-                          {canManage86Alerts && String(n.status || 'open').toLowerCase() !== 'resolved' && <button type="button" onClick={() => update86AlertStatus(n, 'resolved')} className="flex items-center gap-1.5 px-2 py-1 rounded-lg border text-[10px] font-black uppercase tracking-widest bg-[#0B0E11] border-[#2A353D] text-[#D4A381] hover:border-[#D4A381]/50">Mark Resolved</button>}
-                          {canManage86Alerts && String(n.status || 'open').toLowerCase() === 'resolved' && <button type="button" onClick={() => update86AlertStatus(n, 'open')} className="flex items-center gap-1.5 px-2 py-1 rounded-lg border text-[10px] font-black uppercase tracking-widest bg-[#0B0E11] border-[#2A353D] text-amber-300 hover:border-amber-400/50"><Repeat size={13}/> Reopen</button>}
-                          {n.inventoryItemId && <button type="button" onClick={() => { sessionStorage.setItem('inventoryFocus', 'belowPar'); setActiveTab?.('inventory'); }} className="flex items-center gap-1.5 px-2 py-1 rounded-lg border text-[10px] font-black uppercase tracking-widest bg-[#0B0E11] border-[#2A353D] text-slate-300 hover:border-[#D4A381]/50">Open Inventory Item</button>}
-                          {Array.isArray(n.menuImpactItems) && n.menuImpactItems.length > 0 && <button type="button" onClick={() => { sessionStorage.setItem('menuFocus', 'impact'); setActiveTab?.('menu-intelligence'); }} className="flex items-center gap-1.5 px-2 py-1 rounded-lg border text-[10px] font-black uppercase tracking-widest bg-[#0B0E11] border-[#2A353D] text-slate-300 hover:border-[#D4A381]/50">Open Menu Impact</button>}
-                        </>}
                       </div>
 
                       {replies.length > 0 && (
@@ -1452,7 +1414,7 @@ const handleEnableNotifications = async () => {
     } catch (err) { addToast('Save Failed', err.message || 'Could not save branding settings.'); }
   };
 
-  const looksLikeProjectCredentialError = (message = '') => /Firebase Admin credential unavailable|FIREBASE_SERVICE_ACCOUNT_KEY currently contains project_id|route requested|active deployment project/i.test(String(message || ''));
+  const looksLikeProjectCredentialError = (message = '') => /No server credential is configured|FIREBASE_SERVICE_ACCOUNT_KEY currently contains project_id|route requested|active deployment project|Redeploy after changing Vercel env vars/i.test(String(message || ''));
   const memberDocIdFor = (uid = '', restaurantId = '') => `${String(uid || '').replace(/[^A-Za-z0-9_-]/g, '_')}_${String(restaurantId || '').replace(/[^A-Za-z0-9_-]/g, '_')}`.slice(0, 240);
   const saveSettingsPermissionDirect = async (user, nextPermissions) => {
     const restaurantId = appUser.restaurantId || appUser.activeRestaurantId || appUser.defaultRestaurantId;
@@ -6314,7 +6276,7 @@ ${body}`;
     { title: 'Support triage: permission-denied or Ghost Mode blocked', group: 'Troubleshooting', keywords: 'permission denied firebase rules ghost possess blocked insufficient permissions', body: ['Open Support and check Permission Denied counts and crash reports.', 'Confirm your account is master admin or has superAdmin access under Grant Access.', 'If Ghost Mode loads the shell but data is blank, inspect Firestore rules and restaurantId routing.', 'Copy diagnostics before changing rules.'] },
     { title: 'Client user management from Workspaces', group: 'Clients', keywords: 'client users manage restaurant users support edit possess delete force logout notifications gps', body: ['Open System Administrator → Workspaces and click the workspace name or People button.', 'The workspace drawer shows all users, admins, online users, push tokens, GPS permission snapshots, modules, and status state.', 'Use Support Edit to move a user, update role/wage/status, or force password change.', 'Use Possess to verify exactly what that workspace or user sees.'] },
     { title: 'Using the calm Admin Workspace', group: 'System Administrator', keywords: 'admin workspace overview priority list quick actions sections search mobile navigation organized calm', body: ['System Administrator now opens as the Admin Workspace. The home page shows only the short priority list, six common actions, four core numbers, and the organized admin areas.', 'Use the left rail on desktop or the section selector on mobile. Each page has a plain title, purpose statement, and Back to admin home button.', 'Search at the top finds tools, actions, customers, and Administrator Manual articles without exposing unauthorized sections.', 'The old always-visible Command Deck and dense signal board were removed. Detailed information still lives inside Health, Security, Backups, People, Workspaces, Push, and Support.', 'Danger Zone remains separated at the bottom of Platform Tools and still requires confirmations.'] },
-    { title: 'Maintenance, data, and Danger Zone', group: 'System Administrator', keywords: 'maintenance mode custom message auto unlock data import export danger zone restore reset disable clear demo settings branding moved', body: ['Maintenance Mode can lock every workspace or one workspace while leaving Super Admin able to enter and fix the app.', 'Branding and display controls are intentionally not part of System Administrator anymore. Use the normal Settings area for workspace branding, display, logo, accent, date/time, and related owner-facing controls.', 'Import / Export Center exports staff, recipes, inventory, punches, schedules, and audit logs. Imports require preview-before-apply.', 'Danger Zone separates destructive tools such as backup restore, staff deletion, schedule reset, demo-data cleanup, workspace disablement, stale push cleanup, and restaurant config reset. Run Backup Now first.'] },
+    { title: 'Maintenance, branding, data, and Danger Zone', group: 'System Administrator', keywords: 'maintenance mode custom message auto unlock branding display logo data import export danger zone restore reset disable clear demo', body: ['Maintenance Mode can lock every workspace or one workspace while leaving Super Admin able to enter and fix the app.', 'Branding / Display settings keep the app name locked as 86 Chaos, store restaurant/group display name, customer logo URL/display preference, accent color, login message, Help Center contact, timezone, and date/time formats on the workspace record. Customer logo uploads use a secure server route first, with Firebase Storage rules as fallback protection. The customer logo can appear beside 86 Chaos, but cannot replace or hide it.', 'Import / Export Center exports staff, recipes, inventory, punches, schedules, and audit logs. Imports require preview-before-apply.', 'Danger Zone separates destructive tools such as backup restore, staff deletion, schedule reset, demo-data cleanup, workspace disablement, stale push cleanup, and restaurant config reset. Run Backup Now first.'] },
     { title: 'Backup status in Admin Workspace', group: 'Backups', keywords: 'database backup status last backup maintenance cron firestore export storage run now', body: ['The Backup summary at the top of Admin Workspace reads system/backupStatus, which is written by the automatic Firestore backup route.', 'Click the Backup summary, Run backup on Admin Home, or open Backup Center & Audit Trail to inspect status and run a manual backup.', 'A stale or missing backup status means the Vercel cron route, CRON_SECRET, Firebase service account, or Storage bucket should be checked.', 'Weekly maintenance is housekeeping; Firestore Backup is the JSON data export saved to Firebase Storage.'] },
     { title: 'Automatic database backups', group: 'Backups', keywords: 'automatic daily database backup firestore storage cron secret firebase storage bucket restore export', body: ['The scheduled route /api/firestore-backup runs from Vercel Cron every day and exports Firestore data to Firebase Storage.', 'It writes progress and results to system/backupStatus so the Command Deck can show the last backup.', 'Required Vercel variables: FIREBASE_SERVICE_ACCOUNT_KEY, CRON_SECRET, and optionally FIREBASE_STORAGE_BUCKET.', 'Use Run Backup Now from the Command Deck or Forensics after installing the route to verify everything works.'] },
     { title: 'Restoring a full Firestore backup', group: 'Backups', keywords: 'restore full backup firestore storage path json gzip deleted data recover database', body: ['Open System Administrator → Forensics & Backups.', 'Copy the backup storage path from Command Deck Last Backup or Firebase Storage, for example backups/firestore/manual/...json.gz.', 'Open Backup Center, choose the backup from the list, then type RESTORE when prompted.', 'The restore is merge-based: it recreates missing/deleted documents and overwrites damaged documents from the backup, but it does not delete newer documents that are not in the backup. For schedules, use Emergency Schedule Rescue after a full restore if a month needs a clean hard replacement.'] },
@@ -7405,29 +7367,30 @@ Type RESTORE to continue.`);
 
   const adminTabGroups = [
     {
-      title:'Overview',
-      summary:'Lean status, current risks, health snapshot, and next actions.',
-      helper:'Start here. This page gives the shortest useful read on whether the platform is healthy and what needs attention before you touch customers or deployments.',
+      title:'Start Here',
+      summary:'Daily command center, system health, deployment readiness, complete app training, and AI-assisted troubleshooting.',
+      helper:'Use this first when you are not sure where to go. It explains the current state, teaches every app tab, shows live health, and sends you to the right repair area.',
       tabs:[
-        {id:'overview', label:'Console Home', short:'Home', intent:'See priority issues, common actions, system numbers, and where to go next.'},
-        {id:'health', label:'Health Dashboard', short:'Health', intent:'Check API routes, Firebase connection, backup integrity, and runtime status.'}
+        {id:'overview', label:'Command Center', short:'Home', intent:'Start here for live status and suggested next actions.'},
+        {id:'health', label:'Health Dashboard', short:'Health', intent:'Check API routes, Firebase connection, backup integrity, and runtime status.'},
+        {id:'deployment', label:'Deployment Readiness', short:'Deploy', intent:'Confirm env vars, rules, versions, and production readiness before releases.'},
+        {id:'manual', label:'Training & Administrator Manuals', short:'Manuals', intent:'Search the complete non-AI app training guide or use the preserved Gemini troubleshooting desk.'}
       ]
     },
     {
-      title:'Workspaces & Users',
-      summary:'Restaurants, client accounts, people, setup, and active session snapshots.',
-      helper:'Use this to onboard a restaurant, fix account routing, support a staff profile, review user access, or take a low-cost live presence snapshot.',
+      title:'Backup & Recovery',
+      summary:'Backups, restore checks, forensic exports, import/export, and restore drill evidence.',
+      helper:'Use this for protecting data, proving backups work, downloading diagnostics, and moving data in or out safely.',
       tabs:[
-        {id:'tenants', label:'Workspaces / Clients', short:'Clients', intent:'Manage restaurant accounts, billing state, modules, and workspace configuration.'},
-        {id:'users', label:'People Directory', short:'People', intent:'Find users across workspaces, support-edit profiles, routing, password resets, and device clues.'},
-        {id:'setup', label:'Workspace Setup Wizard', short:'Setup', intent:'Create or review a new workspace with owner-login handoff checks.'},
-        {id:'live', label:'Active User Snapshot', short:'Presence', intent:'Take an on-demand low-cost live user/workspace snapshot.'}
+        {id:'forensics', label:'Backup Center & Audit Trail', short:'Backups', intent:'Run backups, verify backup files, review audits, export forensics, and record restore drills.'},
+        {id:'retention', label:'Legal Data Retention Setup', short:'Retention', intent:'One-button app-side retention setup plus production Firebase checklist for automatic client-data deletion/archive.'},
+        {id:'data', label:'Import / Export Center', short:'Data', intent:'Use controlled data import/export tools and migration bridges.'}
       ]
     },
     {
-      title:'Security & Permissions',
-      summary:'Super Admin access, MFA, App Check, rules, security warnings, and role permissions.',
-      helper:'Use this when someone is locked out, admin access changes, Firebase rules are being hardened, MFA is being enforced, or permissions feel wrong.',
+      title:'Security & Access',
+      summary:'Super Admin access, App Check, MFA, rules status, and role permission design.',
+      helper:'Use this when someone is locked out, rules are being hardened, MFA is being enforced, or permissions feel wrong.',
       tabs:[
         {id:'security', label:'Security Center', short:'Security', intent:'Review App Check, MFA, Firestore/Storage rules, risky users, and environment separation.'},
         {id:'admins', label:'Super Admin Access', short:'Access', intent:'Grant or revoke platform-level System Administrator access.'},
@@ -7435,43 +7398,36 @@ Type RESTORE to continue.`);
       ]
     },
     {
-      title:'Deployments & Releases',
-      summary:'Release readiness, maintenance controls, hardening checks, and version history.',
-      helper:'Use this before publishing changes or when you need to place the app into maintenance, verify build readiness, or review release history.',
+      title:'Workspaces & People',
+      summary:'Restaurants, clients, staff profiles, workspace setup, modules, and branding.',
+      helper:'Use this to onboard a restaurant, fix workspace routing, support a staff profile, or adjust visible customer branding.',
       tabs:[
-        {id:'deployment', label:'Deployment Readiness', short:'Deploy', intent:'Confirm env vars, rules, versions, and production readiness before releases.'},
-        {id:'maintenance', label:'Maintenance Mode', short:'Maint', intent:'Control workspace maintenance screens and platform messaging.'},
-        {id:'v14', label:'App Health Checks', short:'Checks', intent:'Run legacy storage, schema, permissions, backup, and client guardrail checks.'},
-        {id:'history', label:'Settings Version History', short:'History', intent:'Review settings/version history and release notes.'}
+        {id:'tenants', label:'Workspaces / Clients', short:'Clients', intent:'Manage restaurant accounts, billing state, modules, and workspace configuration.'},
+        {id:'users', label:'People Directory', short:'People', intent:'Find users across workspaces, support-edit profiles, routing, password resets, and device clues.'},
+        {id:'setup', label:'Workspace Setup Wizard', short:'Setup', intent:'Create or deploy a new workspace with owner login handoff.'},
+        {id:'branding', label:'Branding / Display', short:'Branding', intent:'Manage display/branding tools while keeping 86 Chaos branding locked on.'}
       ]
     },
     {
-      title:'Backups & Data Safety',
-      summary:'Backups, restore checks, forensic exports, retention policy, import/export, and restore drill evidence.',
-      helper:'Use this for protecting data, proving backups work, downloading diagnostics, and moving data in or out safely. Restore actions should always start with a backup.',
-      tabs:[
-        {id:'forensics', label:'Backup Center & Audit Trail', short:'Backups', intent:'Run backups, verify backup files, review audits, export forensics, and record restore drills.'},
-        {id:'retention', label:'Data Retention Setup', short:'Retention', intent:'One-button app-side retention setup plus production Firebase checklist for automatic client-data deletion/archive.'},
-        {id:'data', label:'Import / Export Center', short:'Data', intent:'Use controlled data import/export tools and migration bridges.'}
-      ]
-    },
-    {
-      title:'Push & Automation',
-      summary:'Push notifications, reminder dispatch clues, AI/scan limits, and alert-only automation controls.',
-      helper:'Use this when alerts are not arriving, devices are stale, scan limits need review, or system automation needs to be paused, resumed, or reviewed.',
-      tabs:[
-        {id:'push', label:'Push Control Center', short:'Push', intent:'Audit push tokens, stale devices, opt-in status, and test delivery.'},
-        {id:'automation', label:'Automation Center', short:'Automation', intent:'Control scheduled jobs, owner/admin alerts, read-only scans, and automation safety rails.'},
-        {id:'ai-usage', label:'AI & Scan Limits', short:'AI Limits', intent:'Review monthly invoice and menu AI pages, failures, blocked scans, bypass logs, and workspace limits.'}
-      ]
-    },
-    {
-      title:'Diagnostics & Support',
-      summary:'Crash reports, support diagnostics, manuals, troubleshooting playbooks, and AI-assisted support drafting.',
-      helper:'Use this when a customer says something broke or when you need the internal manual before changing customers, rules, backups, billing, or data.',
+      title:'Support & Monitoring',
+      summary:'Push notifications, presence snapshots, crash reports, runtime logs, and support diagnostics.',
+      helper:'Use this when a customer says something is broken, alerts are not arriving, or you need a safe view into current sessions.',
       tabs:[
         {id:'support', label:'Support Diagnostics', short:'Support', intent:'Review crashes, API clues, auth/runtime state, rule blocks, and support diagnostics.'},
-        {id:'manual', label:'Training & Administrator Manuals', short:'Manuals', intent:'Search the complete non-AI app training guide or use the preserved Gemini troubleshooting desk.'}
+        {id:'ai-usage', label:'AI Usage / Scan Limits', short:'AI Usage', intent:'Review monthly invoice and menu AI pages, failures, blocked scans, bypass logs, and workspace limits.'},
+        {id:'automation', label:'Python Automation Center', short:'Python', intent:'Control scheduled Python jobs, owner/admin alerts, read-only scans, and automation safety rails.'},
+        {id:'push', label:'Push Control Center', short:'Push', intent:'Audit push tokens, stale devices, opt-in status, and test delivery.'},
+        {id:'live', label:'Manual Presence Snapshot', short:'Presence', intent:'Take an on-demand low-cost live user/workspace snapshot.'}
+      ]
+    },
+    {
+      title:'Maintenance & Releases',
+      summary:'Maintenance mode, hardening suite, version history, and legacy release checks.',
+      helper:'Use this for release verification, customer-facing maintenance screens, and older hardening/diagnostic suites.',
+      tabs:[
+        {id:'maintenance', label:'Maintenance Mode', short:'Maint', intent:'Control workspace maintenance screens and platform messaging.'},
+        {id:'v14', label:'Robustness Suite', short:'Hardening', intent:'Run legacy storage, schema, permissions, backup, and client guardrail checks.'},
+        {id:'history', label:'Settings Version History', short:'History', intent:'Review settings/version history and release notes.'}
       ]
     },
     {
@@ -7495,7 +7451,7 @@ Type RESTORE to continue.`);
     { label:'Find or Repair a User', tab:'users', keywords:'people employee profile login routing reset password' },
     { label:'Test Push Notifications', tab:'push', keywords:'push token fcm alert device' },
     { label:'Review AI Scan Page Usage', tab:'ai-usage', keywords:'invoice menu ai pages limits scans failures blocked bypass model provider' },
-    { label:'Open Automation Center', tab:'automation', keywords:'automation python nightly ops scan manager brief owner admin alerts read only recommendations' },
+    { label:'Open Python Automation Center', tab:'automation', keywords:'python automation nightly ops scan manager brief owner admin alerts read only recommendations' },
     { label:'Review App Check and MFA', tab:'security', keywords:'security app check mfa rules environment' },
     { label:'Open Complete App Training Manual', tab:'manual', keywords:'non ai training whole app tab guide print pdf instructions manual' },
     { label:'Ask Gemini Administrator Manual', tab:'manual', keywords:'gemini help instructions troubleshooting repair manual' },
@@ -7638,27 +7594,9 @@ Type RESTORE to continue.`);
     </div>
   );
 
-  const activeAdminGroup = adminTabGroups.find(group => group.title === activeAdminTab.group) || adminTabGroups[0];
-  const AdminSectionMap = () => activeAdminGroup ? (
-    <section className="admin106-section-map" aria-label="System Administrator section map">
-      <div className="admin106-section-map-head">
-        <span>{activeAdminGroup.title}</span>
-        <strong>{activeAdminGroup.tabs.length} tool{activeAdminGroup.tabs.length === 1 ? '' : 's'}</strong>
-      </div>
-      <div className="admin106-section-map-grid">
-        {activeAdminGroup.tabs.map(tab => (
-          <button key={tab.id} type="button" onClick={() => selectAdminTab(tab.id)} className={subTab === tab.id ? 'is-active' : ''}>
-            <span>{tab.short || tab.label}</span>
-            <small>{tab.intent}</small>
-          </button>
-        ))}
-      </div>
-    </section>
-  ) : null;
-
 
   return (
-    <div className="admin46-shell system-admin-v105 system-admin-v106 system-admin-v107 max-w-[1500px] mx-auto pb-24 px-2 sm:px-4 lg:px-5 animate-[slideIn_0.2s_ease-out]">
+    <div className="admin46-shell max-w-[1500px] mx-auto pb-24 px-2 sm:px-4 lg:px-5 animate-[slideIn_0.2s_ease-out]">
       <Modal isOpen={!!createdWorkspaceLogin} onClose={() => setCreatedWorkspaceLogin(null)} title="Workspace Login Created">
         {createdWorkspaceLogin && <div className="space-y-4">
           <div className="bg-emerald-900/10 border border-emerald-900/40 rounded-xl p-3 text-xs font-bold text-emerald-200">This owner login is shown one time only. Copy, print, email, or text it before closing.</div>
@@ -7702,8 +7640,8 @@ Type RESTORE to continue.`);
         </div>
 
         <div className="relative mt-5" id="admin-tool-search">
-          <Search size={17} className="admin46-search-icon absolute left-4 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none" />
-          <input value={adminToolSearch} onChange={e => setAdminToolSearch(e.target.value)} className="admin46-command-search-input w-full min-h-[44px] rounded-xl border border-[#303B43] bg-[#0B0E11] pl-12 pr-12 text-sm font-bold text-white outline-none placeholder:text-slate-600 focus:border-[#D4A381]" placeholder="Search tools, users, workspaces, or manual..." aria-label="Search System Administrator" />
+          <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" />
+          <input value={adminToolSearch} onChange={e => setAdminToolSearch(e.target.value)} className="w-full min-h-[52px] rounded-2xl border border-[#303B43] bg-[#0B0E11] pl-12 pr-12 text-sm font-bold text-white outline-none placeholder:text-slate-600 focus:border-[#D4A381]" placeholder="Search tools, users, workspaces, or manual..." aria-label="Search System Administrator" />
           {adminToolSearch && <button type="button" onClick={() => setAdminToolSearch('')} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500 hover:text-white"><X size={17}/></button>}
           {normalizedAdminToolSearch && <div className="absolute z-50 left-0 right-0 mt-2 bg-[#0B0E11] border border-[#D4A381]/40 rounded-2xl p-2 shadow-2xl max-h-[52vh] overflow-y-auto custom-scrollbar">
             {adminSearchResults.length === 0 ? <div className="p-4 text-xs font-bold text-slate-500">No matching authorized result.</div> : adminSearchResults.map((result, idx) => <button key={`${result.type}-${result.label}-${idx}`} type="button" onClick={() => selectAdminSearchResult(result)} className="w-full text-left rounded-xl px-3 py-3 hover:bg-[#161C21] border border-transparent hover:border-[#2A353D] transition-colors">
@@ -7713,40 +7651,7 @@ Type RESTORE to continue.`);
           </div>}
         </div>
 
-        <div className="admin107-command-board" aria-label="System Administrator command board">
-          <div className="admin107-command-topline">
-            <div className="min-w-0">
-              <span>Current workflow</span>
-              <strong>{activeAdminTab.label}</strong>
-              <small>{activeAdminTab.group} · {activeAdminTab.intent}</small>
-            </div>
-            <div className="admin107-quick-actions">
-              <button type="button" onClick={handleRunFullSystemDiagnostics} disabled={isDiagnosticsRunning}>{isDiagnosticsRunning ? 'Diagnostics running' : 'Run diagnostics'}</button>
-              <button type="button" onClick={handleRunBackupNow} disabled={isBackupRunning || backupRunning}>{isBackupRunning || backupRunning ? 'Backup running' : 'Backup now'}</button>
-              <button type="button" onClick={() => setAdminHelpModal({ title: activeAdminTab.label, body: activeAdminHelpText })}>Explain</button>
-            </div>
-          </div>
-          <div className="admin107-category-strip" role="tablist" aria-label="System Administrator categories">
-            {adminTabGroups.map(group => {
-              const firstTab = group.tabs[0]?.id || 'overview';
-              const active = group.title === activeAdminGroup.title;
-              return <button key={group.title} type="button" onClick={() => selectAdminTab(firstTab)} className={active ? 'is-active' : ''} role="tab" aria-selected={active}>
-                <span>{group.title}</span>
-                <small>{group.tabs.length}</small>
-              </button>;
-            })}
-          </div>
-          <div className="admin107-tool-strip" aria-label="Tools in current category">
-            {activeAdminGroup.tabs.map(tab => (
-              <button key={tab.id} type="button" onClick={() => selectAdminTab(tab.id)} className={subTab === tab.id ? 'is-active' : ''}>
-                <span>{tab.short || tab.label}</span>
-                <small>{tab.intent}</small>
-              </button>
-            ))}
-          </div>
-        </div>
-
-"        <div className="admin46-mobile-controls lg:hidden mt-4">
+        <div className="admin46-mobile-controls lg:hidden mt-4">
           <div className="admin46-mobile-current">
             <div className="min-w-0">
               <span>Current area</span>
@@ -8212,20 +8117,17 @@ Type RESTORE to continue.`);
 
 {/* --- TAB: OVERVIEW --- */}
       {subTab !== 'overview' && (
-        <>
-          <div className="admin46-pagebar admin106-pagebar">
-            <div className="min-w-0">
-              <div className="admin46-eyebrow">{activeAdminTab.group}</div>
-              <h2>{activeAdminTab.label}</h2>
-              <p>{activeAdminTab.intent}</p>
-            </div>
-            <div className="admin46-pagebar-actions">
-              <AdminInfoButton title={activeAdminTab.label} body={activeAdminHelpText} />
-              <button type="button" onClick={() => selectAdminTab('overview')} className="admin46-back-button"><ChevronLeft size={14}/> Console home</button>
-            </div>
+        <div className="admin46-pagebar">
+          <div className="min-w-0">
+            <div className="admin46-eyebrow">{activeAdminTab.group}</div>
+            <h2>{activeAdminTab.label}</h2>
+            <p>{activeAdminTab.intent}</p>
           </div>
-          <AdminSectionMap />
-        </>
+          <div className="admin46-pagebar-actions">
+            <AdminInfoButton title={activeAdminTab.label} body={activeAdminHelpText} />
+            <button type="button" onClick={() => selectAdminTab('overview')} className="admin46-back-button"><ChevronLeft size={14}/> Console home</button>
+          </div>
+        </div>
       )}
 
       {subTab === 'overview' && (
@@ -8593,8 +8495,24 @@ Type RESTORE to continue.`);
         </div>
       )}
 
-      {/* Branding / Display was removed from System Administrator in 15.0.105 and remains in user/workspace Settings.
-          Workspace branding now lives in Settings where owners/admins expect it. */}
+      {subTab === 'branding' && (
+        <div className="space-y-4 animate-[slideIn_0.2s_ease-out]">
+          <div className={`${T.card} p-5`}>
+            <h2 className="text-xl font-black text-white">App Branding / Display Settings</h2>
+            <p className="text-xs text-slate-400 font-bold mt-1">86 Chaos is the locked app brand. Add a customer restaurant logo beside it when needed.</p>
+            <div className="grid sm:grid-cols-2 gap-3 mt-4">
+              <div><label className={T.label}>Workspace</label><select value={brandingWorkspaceId} onChange={e=>setBrandingWorkspaceId(e.target.value)} className={T.input}><option value="">Choose workspace...</option>{restaurants.map(r => <option key={r.id} value={r.id}>{r.name || r.id}</option>)}</select></div>
+              <div><label className={T.label}>Locked app name</label><input type="text" value="86 Chaos" disabled className={`${T.input} opacity-70 cursor-not-allowed`}/></div>
+              {Object.entries({ restaurantGroupName:'Restaurant group name', accentColor:'Accent color', restaurantLogoUrl:'Restaurant logo URL', loginMessage:'Login screen message', helpContact:'Help Center contact info', timezone:'Default timezone', dateFormat:'Date format', timeFormat:'Time format' }).map(([key,label]) => <div key={key}><label className={T.label}>{label}</label><input type={key === 'accentColor' ? 'color' : 'text'} value={brandingForm[key] || ''} onChange={e=>setBrandingForm(prev => ({...prev, [key]: e.target.value}))} className={T.input}/></div>)}
+              <label className="flex items-center gap-2 text-xs font-bold text-slate-300 bg-[#12161A] border border-[#2A353D] rounded-xl px-3 py-2">
+                <input type="checkbox" checked={brandingForm.showRestaurantLogo !== false} onChange={e=>setBrandingForm(prev => ({...prev, showRestaurantLogo: e.target.checked}))} className="w-4 h-4 accent-[#8F6040]" />
+                Show customer restaurant logo beside locked 86 Chaos branding
+              </label>
+            </div>
+            <button onClick={saveBrandingSettings} className={`${T.btn} w-full mt-4`}>Save Branding Settings</button>
+          </div>
+        </div>
+      )}
 
       {subTab === 'danger' && (
         <div className="space-y-4 animate-[slideIn_0.2s_ease-out]">
@@ -8716,8 +8634,8 @@ Type RESTORE to continue.`);
           <section className="admin46-retention-hero">
             <div className="min-w-0">
               <div className="admin46-eyebrow">Legal retention automation</div>
-              <h2>Retention Setup</h2>
-              <p>Compact setup for the legal retention record, production checklist, and expected scheduled jobs. The app-side button only writes policy metadata; it does not delete records by itself.</p>
+              <h2>Client Data Storage & Automatic Deletion Setup</h2>
+              <p>This is the safe app-side button for the legal retention system. It records the official policy in Firestore and gives the exact production Firebase steps. It does not delete anything until Firebase Functions are deployed.</p>
             </div>
             <div className={`admin46-retention-badge ${retentionConfigured ? 'is-ready' : 'is-needed'}`}>
               <span>{retentionConfigured ? 'Config saved' : 'Needs setup'}</span>
@@ -8739,7 +8657,7 @@ Type RESTORE to continue.`);
 
           <div className="grid lg:grid-cols-[1.05fr_.95fr] gap-4">
             <section className="admin46-retention-panel">
-              <div className="admin46-retention-panel-head"><span className="admin46-eyebrow">Legal schedule</span><h3>Legal schedule</h3></div>
+              <div className="admin46-retention-panel-head"><span className="admin46-eyebrow">Legal schedule</span><h3>Retention dates locked to legal packet</h3></div>
               <div className="admin46-retention-policy-list">
                 <div><strong>Active core data</strong><span>Recipes, inventory, approved parsed business records: while account is active.</span></div>
                 <div><strong>Transient data</strong><span>Prep lists and 86 alerts: 30 days.</span></div>
@@ -9691,7 +9609,7 @@ another@email.com"></textarea>
           <div className={`${T.card} p-5 border-purple-500/30 bg-purple-950/10`}>
             <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-4">
               <div>
-                <div className="text-[10px] font-black uppercase tracking-[0.22em] text-purple-300 flex items-center gap-2"><Sparkles size={15}/> Automation Center</div>
+                <div className="text-[10px] font-black uppercase tracking-[0.22em] text-purple-300 flex items-center gap-2"><Sparkles size={15}/> Python Automation Center</div>
                 <h2 className="text-xl font-black text-white mt-1">Scan workspaces, alert owners/admins, apply nothing.</h2>
                 <p className="text-xs text-slate-400 font-bold leading-6 mt-2 max-w-3xl">Python is fenced into analysis, reports, suggestions, drafts, and critical alerts. Vendor orders, money, schedules, payroll, permissions, deletion, and official data changes stay human-controlled.</p>
               </div>
@@ -10542,12 +10460,6 @@ const TabLabor = ({ currentDate, users = [], shifts = [], sales = [], timePunche
 };
 
 const HELP_ARTICLES = [
-  { id:'manager-brain-needs-attention', title:'Manager Brief / Needs Attention', group:'Manager Brief', keywords:'manager brief needs attention command brain today what matters action cards setup quality ops scan kitchen command', body:['Manager Brief is the practical command brain for the day. It summarizes what needs attention, why it matters, and which button opens the right tool to fix it.','Needs Attention cards can come from inventory, 86 alerts, menu impact, prep, labor, schedule, maintenance, setup readiness, AI ordering, and owner/admin alerts where the signed-in user has permission to see that area.','The cards are intentionally short. They should say what is wrong, why it matters during service, and what to open next. If setup data is missing, the app shows readiness gaps instead of pretending it has perfect forecasting.','Kitchen Command Center uses the same Needs Attention engine as Manager Brief, so the two screens should not disagree about top operational priorities.'] },
-  { id:'eighty-six-alerts-menu-impact-guide', title:'86 alerts and menu impact', group:'Inventory', keywords:'86 alerts menu impact below par zero stock acknowledge resolved reopen message board inventory menu dependencies recipes', body:['A clean 86 alert tells the team that an item is out, below par, or at risk, then shows affected menu items when Menu Intelligence dependencies are set up.','Creating an 86 alert does not change inventory counts. Inventory counts are changed from Inventory, while the alert keeps staff and managers aligned through Manager Brief, Kitchen Command Center, and Message Board.','Staff can acknowledge/read supported 86 alerts where allowed. Managers and permitted admins can mark them resolved or reopen them. If stock is later restored, the app should suggest clearing the alert instead of silently removing it.','Menu impact depends on approved menu dependency links. If those links are missing, the app will tell you setup is needed instead of guessing.'] },
-  { id:'ai-ordering-review-first-guide', title:'AI ordering review-first', group:'Inventory', keywords:'ai ordering review-first vendor cutoff order draft price jump invoice waste menu impact confidence not automatic', body:['AI ordering is review-first. 86 Chaos can suggest what to review, but it does not automatically send vendor orders.','A recommendation should explain the item, current stock, par, suggested order quantity, known vendor, cutoff warning, invoice price changes, waste risk, event or special reason, menu impact reason, and confidence tags when that data exists.','If invoice history or vendor setup is incomplete, the app should say what is missing instead of claiming exact precision. Use the recommendation as a manager review tool, not an autopilot.','Use copy, export, or draft-review actions to prepare an order, then send through the vendor method your restaurant actually uses.'] },
-  { id:'sales-csv-import-guide', title:'sales CSV import', group:'Financials', keywords:'sales csv import manual daily sales grossSales netSales tax tips discounts guestCount ticketCount source labor forecast prep ai ordering', body:['Sales Import is a bridge before live POS integration. Manual daily sales entry remains available, and CSV import lets owners/managers load sales history for smarter labor, prep, and ordering signals.','The simple CSV format is: date,grossSales,netSales,tax,tips,discounts,guestCount,ticketCount,source. Dates and numbers should be reviewed before saving.','The import preview shows row errors before saving. If a date already exists, choose whether to skip, merge, or replace instead of overwriting blindly.','Imported sales are marked with source csv_import and can help same-weekday averages, labor readiness, prep pressure, AI ordering, and Manager Brief attention cards. POS integrations are planned/future and are not added by this import tool.'] },
-  { id:'setup-quality-checklist-guide', title:'Setup quality checklist', group:'Getting Started', keywords:'setup quality checklist readiness menu intelligence inventory pars vendors roster roles sales labor forecast ai ordering push readiness', body:['Setup Quality explains why the app is or is not smart yet. It checks practical readiness areas such as restaurant profile, team members, roster roles, schedule, sales history, inventory, par levels, vendors, invoice history, recipes, menu mapping, 86 alert readiness, AI ordering readiness, push readiness, and permissions.','Percentages such as Menu Intelligence mapped, Inventory pars complete, AI Ordering readiness, Labor Forecast readiness, and Sales Data readiness help owners know which setup step unlocks better recommendations.','Each setup item should open the existing screen that fixes the gap. This keeps onboarding focused on useful restaurant data instead of creating a separate setup monster.','If a workspace is new or empty, seeing setup gaps is normal. Add real sales, inventory, vendor, roster, and menu data before expecting detailed forecasts.'] },
-  { id:'labor-forecast-limitations-guide', title:'Labor forecast limitations', group:'Labor', keywords:'labor forecast limitations schedule coverage overtime sales data roster roles missing punches open punch time off forecast not exact', body:['Labor warnings are decision support, not a payroll oracle. The app looks for practical signals like no published shifts today, thin coverage, projected overtime, too many scheduled days, missing clock-outs, scheduled-not-clocked-in, clocked-in-not-scheduled, and time-off conflicts.','Role logic should use the Roster Roles set in Preferences. Generic labels such as kitchen or cook are fallback labels only when a workspace has not created custom roles yet.','Forecast quality depends on available sales data, schedule data, role setup, wages/targets where permitted, and clean time punches. If sales history is missing, the app should show readiness gaps instead of overpromising exact labor predictions.','Use the explanation on each warning to understand why it appeared, such as only one line/prep role scheduled during a known dinner rush block.'] },
   { id:'voice-intelligent-commands', title:'Using 86Voice intelligent commands', group:'Voice Commands', keywords:'86 voice intelligent commands prep task mark done 86 alert menu impact reminder shared reminder open search undo confirmation', body:['86Voice accepts speech or typed commands from the floating microphone panel. It shows what it heard, the intent it detected, the item or task it matched, and whether confirmation is needed.', 'Prep examples: say Prep 2 pans onions, Add two containers ranch, or Chop 2 pans of onion. 86Voice searches the current prep list first and updates a confident matching row instead of creating a duplicate.', 'Mark-done examples: say Mark tomatoes done, Finish onions, Check off burgers, or Done with ranch bottles. If there are multiple possible matches, choose the correct row before anything is marked done.', 'Task examples: say Add clean wall behind fryers to tasks, Put check nacho cheese machine on daily tasks, Add deep clean ovens monthly, or Mark fryer wall done. Task creation and shared task updates still require the same permissions as the Prep & Tasks screen.', '86 alert examples: say 86 chicken breast, We are out of ribeye, No more brioche buns, or Kill ribeye for tonight. Voice-created 86 alerts do not edit inventory counts. When approved menu ingredient links exist, affected menu items are shown; otherwise the app explains that Menu Intelligence setup is needed.', 'Menu impact examples: ask What does chicken breast affect? or What menu items use ribeye? The answer is based only on approved Menu Intelligence dependency links.', 'Reminder examples: say Remind me tomorrow at 10 to call Performance or Remind Sarah to check hood filters Wednesday. Personal reminders stay private. Shared reminders require permission and use the real workspace staff list.', 'Navigation and search examples: say Open prep, Open daily close, Open inventory, Show beer cheese recipe, Search Help for invoice scanning, or What needs done? Voice follows the same plan and role gates as normal tapping.', 'Use Undo that or Cancel last command to roll back a recent safe voice-created or voice-updated prep, task, 86 basic alert, or reminder when rollback is available. High-risk approvals, payroll, financial signoffs, plan changes, admin/security settings, and integrations are not undone by voice.', 'When 86Voice asks for confirmation, read the preview carefully. Confirmation is required for ambiguous matches, shared reminders, 86 alerts, low-confidence matches, and anything that could affect other people.'] },
   { id:'complete-feature-map', title:'Complete 86 Chaos feature map', group:'Getting Started', keywords:'complete feature map all tabs dashboard manager brief kitchen command center prep inventory invoice scan menu intelligence alerts recipes reminders message board schedule time clock labor financials daily close tips cogs reports settings billing help training manual admin', body:['86 Chaos is organized around the work a restaurant does every day: prep, inventory, schedules, 86 alerts, recipes, reminders, labor, daily close, cost visibility, menu impact alerts, team communication, and owner-ready snapshots.','Use the menu search if you do not know where something lives. Important areas include Today Home or Manager Brief, Kitchen Command Center, Time Clock & Schedule, Prep & Tasks, Inventory & Orders, Recipe Book, Message Board, My Reminders, Staff Roster, Settings, Financial Center, HR & Training, Help Center, and System Audit where allowed.','Some screens are plan-gated and permission-gated. A feature appears only when the workspace plan includes it and the signed-in user role/permissions allow it.','If a panel is empty, check setup first: roster roles, staff records, schedule dates, inventory items, approved invoices, approved menu dependencies, Daily Close records, and selected workspace.'] },
   { id:'ip-whitelisting-guide', title:'IP whitelisting and access safety', group:'Security', keywords:'ip whitelist whitelisting whistling strict ip authorized ip address security center settings workspace wifi static ip dynamic ip lockout geofence mfa app check', body:['Strict IP Whitelisting limits app access to approved public IP addresses, usually the restaurant secure Wi-Fi. It is different from geofencing, which is about GPS review for time-clock behavior.','Only use IP whitelisting when the restaurant has a reliable public IP and a tested recovery path. Mobile data, home Wi-Fi, VPNs, and changing internet-provider addresses may be blocked if they are not listed.','Before turning it on, test with an owner/admin from the restaurant network and confirm a System Administrator or owner can reverse the setting if someone is locked out.','IP whitelisting is only one layer. Keep passwords, MFA for elevated users, role permissions, plan gates, App Check, Firebase rules, and audit logging in place.'] },
@@ -10677,47 +10589,11 @@ const TabHelpCenter = ({ appUser, activeTab, voiceHelpSearchTarget = null, addTo
     setIsSubmittingBug(false);
   };
   const isPlatformHelpUser = appUser?.isSuperAdmin === true || /system administrator|super admin/i.test(String(appUser?.role || ''));
-  const internalHelpTermRe = /System Administrator|Backup Center|Security Center|Forensics|Global Users|Access Control|Deployment Readiness|Emergency Read-Only|Retention|Push Health|Back Office Suite|QuickBooks Integration Hub|Python Automation|Pay Rates|service account|private_key|client_email|firebase-adminsdk|CRON_SECRET|FIREBASE_SERVICE_ACCOUNT_KEY|MASTER_ADMIN_EMAILS|refresh token|access token|Vercel env vars|Firebase Storage bucket/i;
-  const publicHelpReplacementMap = [
-    [/System Administrators?/gi, 'authorized support'],
-    [/Backup Center/gi, 'backup tools'],
-    [/Security Center/gi, 'security tools'],
-    [/Forensics/gi, 'audit tools'],
-    [/Global Users/gi, 'user tools'],
-    [/Access Control/gi, 'permission controls'],
-    [/Deployment Readiness/gi, 'release readiness'],
-    [/Emergency Read-Only/gi, 'emergency safety mode'],
-    [/Push Health/gi, 'notification health'],
-    [/Retention/gi, 'data policy'],
-    [/CRON_SECRET|FIREBASE_SERVICE_ACCOUNT_KEY|MASTER_ADMIN_EMAILS|private_key|client_email|firebase-adminsdk|refresh token|access token|service account|Vercel env vars|Firebase Storage bucket/gi, 'private setup detail'],
-  ];
-  const cleanPublicHelpText = (value = '') => publicHelpReplacementMap.reduce((text, [pattern, replacement]) => text.replace(pattern, replacement), String(value || ''));
-  const safeHelpArticle = (article) => ({
-    ...article,
-    title: cleanPublicHelpText(article?.title),
-    group: cleanPublicHelpText(article?.group),
-    keywords: cleanPublicHelpText(article?.keywords),
-    body: (article?.body || []).map(cleanPublicHelpText),
-  });
-  const safeTrainingChapter = (chapter) => ({
-    ...chapter,
-    title: cleanPublicHelpText(chapter?.title),
-    group: cleanPublicHelpText(chapter?.group),
-    tab: cleanPublicHelpText(chapter?.tab),
-    audience: cleanPublicHelpText(chapter?.audience),
-    summary: cleanPublicHelpText(chapter?.summary),
-    keywords: cleanPublicHelpText(chapter?.keywords),
-    notes: (chapter?.notes || []).map(cleanPublicHelpText),
-    sections: (chapter?.sections || []).map(section => ({ ...section, title: cleanPublicHelpText(section?.title), steps: (section?.steps || []).map(cleanPublicHelpText) })),
-  });
+  const internalHelpTermRe = /System Administrator|Back Office Suite|QuickBooks Integration Hub|Python Automation|Backup Center|Security Center|Forensics|Pay Rates/i;
   const helpArticleText = (article) => `${article?.id || ''} ${article?.title || ''} ${article?.group || ''} ${article?.keywords || ''} ${(article?.body || []).join(' ')}`;
-  const trainingChapterText = (chapter) => `${chapter?.id || ''} ${chapter?.title || ''} ${chapter?.group || ''} ${chapter?.tab || ''} ${chapter?.audience || ''} ${chapter?.summary || ''} ${chapter?.keywords || ''} ${(chapter?.notes || []).join(' ')} ${(chapter?.sections || []).map(section => `${section?.title || ''} ${(section?.steps || []).join(' ')}`).join(' ')}`;
-  const visibleHelpArticles = HELP_ARTICLES
-    .map(article => isPlatformHelpUser ? article : safeHelpArticle(article))
-    .filter(article => isPlatformHelpUser || !internalHelpTermRe.test(helpArticleText(article)));
-  const visibleTrainingChapters = SYSTEM_TRAINING_MANUAL_CHAPTERS
-    .map(chapter => isPlatformHelpUser ? chapter : safeTrainingChapter(chapter))
-    .filter(chapter => isPlatformHelpUser || !internalHelpTermRe.test(trainingChapterText(chapter)));
+  const trainingChapterText = (chapter) => `${chapter?.id || ''} ${chapter?.title || ''} ${chapter?.group || ''} ${chapter?.tab || ''} ${chapter?.audience || ''} ${chapter?.summary || ''} ${chapter?.keywords || ''} ${(chapter?.sections || []).map(section => `${section?.title || ''} ${(section?.steps || []).join(' ')}`).join(' ')}`;
+  const visibleHelpArticles = HELP_ARTICLES.filter(article => isPlatformHelpUser || !internalHelpTermRe.test(helpArticleText(article)));
+  const visibleTrainingChapters = SYSTEM_TRAINING_MANUAL_CHAPTERS.filter(chapter => isPlatformHelpUser || !internalHelpTermRe.test(trainingChapterText(chapter)));
   const groups = ['All', ...Array.from(new Set(visibleHelpArticles.map(a => a.group)))];
   const activeGroup = groups.includes(group) ? group : 'All';
   const q = query.trim().toLowerCase();
@@ -10792,9 +10668,6 @@ const TabFinancials = ({ currentDate, users = [], shifts = [], sales = [], timeP
   const [month, setMonth] = useState(getMonthStr(currentDate || getToday()));
   const [expenseForm, setExpenseForm] = useState({ date: getToday(), vendor: '', category: 'Other', amount: '', paymentMethod: 'Unpaid', dueDate: '', paid: false, notes: '' });
   const [targetsDraft, setTargetsDraft] = useState(DEFAULT_FINANCE_TARGETS);
-  const [salesCsvText, setSalesCsvText] = useState('');
-  const [salesCsvPreview, setSalesCsvPreview] = useState({ rows: [], errors: [], mode: 'skip' });
-  const [salesImportBusy, setSalesImportBusy] = useState(false);
 
   const canLaborCommand = planAccess.canUse(FEATURE_KEYS.LABOR_COMMAND).allowed || planAccess.canUse(FEATURE_KEYS.TIMESHEETS).allowed;
   const canSmartFinancials = planAccess.canUse(FEATURE_KEYS.FINANCIAL_OVERVIEW).allowed || planAccess.canUse(FEATURE_KEYS.COGS_CENTER).allowed;
@@ -10929,64 +10802,6 @@ const TabFinancials = ({ currentDate, users = [], shifts = [], sales = [], timeP
     } catch (err) { addToast('Error', err.message); }
   };
 
-
-  const parseSalesCsv = (text = '', mode = salesCsvPreview.mode || 'skip') => {
-    const required = ['date','grossSales','netSales','tax','tips','discounts','guestCount','ticketCount','source'];
-    const lines = String(text || '').split(/\r?\n/).map(line => line.trim()).filter(Boolean);
-    if (!lines.length) return { rows: [], errors: ['Paste or upload CSV rows first.'], mode };
-    const splitLine = (line) => line.match(/(?:"[^"]*(?:""[^"]*)*"|[^,])+/g)?.map(v => v.replace(/^"|"$/g, '').replace(/""/g, '"').trim()) || [];
-    const headers = splitLine(lines[0]).map(h => h.trim());
-    const missing = ['date','grossSales','netSales'].filter(h => !headers.includes(h));
-    const errors = missing.length ? [`Missing required column(s): ${missing.join(', ')}`] : [];
-    const existingByDate = new Map((sales || []).map(row => [safeFinanceDate(row), row]));
-    const rows = lines.slice(1).map((line, idx) => {
-      const values = splitLine(line);
-      const raw = Object.fromEntries(headers.map((h, i) => [h, values[i] ?? '']));
-      const rowNo = idx + 2;
-      const rowErrors = [];
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(raw.date || '')) rowErrors.push('date must be YYYY-MM-DD');
-      const numberFields = ['grossSales','netSales','tax','tips','discounts','guestCount','ticketCount'];
-      const normalized = { date: raw.date, source: raw.source || 'csv_import' };
-      numberFields.forEach(field => {
-        const value = raw[field] === '' || raw[field] == null ? 0 : Number(String(raw[field]).replace(/[^0-9.\-]/g, ''));
-        if (!Number.isFinite(value)) rowErrors.push(`${field} must be a number`);
-        normalized[field] = Number.isFinite(value) ? value : 0;
-      });
-      const existing = existingByDate.get(raw.date);
-      return { rowNo, raw, normalized, existingId: existing?.id || '', exists: !!existing, action: existing ? mode : 'insert', errors: rowErrors };
-    });
-    rows.forEach(row => row.errors.forEach(error => errors.push(`Row ${row.rowNo}: ${error}`)));
-    return { rows, errors, mode };
-  };
-
-  const previewSalesCsv = () => setSalesCsvPreview(parseSalesCsv(salesCsvText, salesCsvPreview.mode));
-  const downloadSalesCsvTemplate = () => downloadCsvRows(`${getRestaurantExportPrefix(appUser, '86chaos')}_sales_import_template.csv`, [['date','grossSales','netSales','tax','tips','discounts','guestCount','ticketCount','source'], [getToday(), '2500.00', '2300.00', '125.00', '350.00', '75.00', '115', '82', 'csv_import']]);
-  const saveSalesCsvImport = async () => {
-    const preview = parseSalesCsv(salesCsvText, salesCsvPreview.mode);
-    setSalesCsvPreview(preview);
-    if (preview.errors.length) return addToast('CSV Has Errors', 'Fix the highlighted rows before saving.');
-    const writable = preview.rows.filter(row => row.action !== 'skip');
-    if (!writable.length) return addToast('Nothing To Import', 'All existing dates are set to skip.');
-    if (!window.confirm(`Import ${writable.length} sales row(s)? Existing dates will use ${salesCsvPreview.mode}.`)) return;
-    setSalesImportBusy(true);
-    try {
-      for (const row of writable) {
-        const payload = { ...row.normalized, restaurantId: appUser.restaurantId, importSource: 'csv_import', source: row.normalized.source || 'csv_import', updatedAt: new Date().toISOString(), updatedBy: appUser.name || appUser.email || 'Manager' };
-        if (row.exists && row.action === 'replace' && row.existingId) await setDoc(doc(db, 'sales', row.existingId), payload, { merge: false });
-        else if (row.exists && row.action === 'merge' && row.existingId) await setDoc(doc(db, 'sales', row.existingId), payload, { merge: true });
-        else await addDoc(collection(db, 'sales'), { ...payload, createdAt: new Date().toISOString(), createdBy: appUser.name || appUser.email || 'CSV Import' });
-      }
-      await logAudit(appUser, 'SALES_CSV_IMPORTED', 'sales', `Imported ${writable.length} sales CSV row(s) using ${salesCsvPreview.mode}.`);
-      addToast('Sales Imported', `${writable.length} row(s) saved for labor, prep, and ordering signals.`);
-      setSalesCsvText('');
-      setSalesCsvPreview({ rows: [], errors: [], mode: salesCsvPreview.mode });
-    } catch (err) {
-      addToast('Sales Import Failed', err?.message || 'Check permissions and try again.');
-    } finally {
-      setSalesImportBusy(false);
-    }
-  };
-
   const reportPrefix = getRestaurantExportPrefix(appUser, '86chaos');
   const downloadFinanceReport = (type = 'overview') => {
     const rows = [
@@ -11103,17 +10918,9 @@ const TabFinancials = ({ currentDate, users = [], shifts = [], sales = [], timeP
       {selectedFinanceAccess?.allowed !== false && subTab === 'daily-close' && <TabSales sales={sales} timePunches={timePunches} users={users} addToast={addToast} appUser={appUser} />}
 
       {selectedFinanceAccess?.allowed !== false && subTab === 'sales' && (
-        <div className="space-y-4 sales-import-foundation" data-testid="sales-csv-import">
-          <div className="grid lg:grid-cols-2 gap-4">
-            <div className={`${T.card} p-4`}><h3 className="font-black text-white text-xl mb-3">Sales Mix</h3><div className="space-y-3">{salesMix.length === 0 && <FriendlyEmpty title="No sales mix yet" text="Enter category sales in Daily Close or import a CSV to unlock mix reporting."/>}{salesMix.map(row => <div key={row.label}><div className="flex justify-between text-sm font-black"><span className="text-white">{row.label}</span><span className="text-[#D4A381]">{moneyText(row.value, 2)}</span></div><div className="h-2 bg-[#0B0E11] border border-[#2A353D] rounded-full mt-1 overflow-hidden"><div className="h-full bg-[#D4A381]" style={{ width: `${Math.min(100, netSales > 0 ? (row.value / netSales) * 100 : 0)}%` }} /></div></div>)}</div></div>
-            <SimpleTable headers={['Date', 'Gross', 'Net', 'Tax', 'Tips', 'Source', 'Status']} rows={monthSales.sort((a,b) => safeFinanceDate(a).localeCompare(safeFinanceDate(b))).map(s => [formatDisplayDate(safeFinanceDate(s)), moneyText(getFinancialGrossSales(s), 2), moneyText(getFinancialNetSales(s), 2), moneyText(s.tax || s.salesTax, 2), moneyText(s.tips || s.tipsPaidOut, 2), s.source || s.importSource || 'manual', s.closeStatus || 'Open'])} />
-          </div>
-          <div className={`${T.card} p-4 space-y-3`}>
-            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3"><div><h3 className="font-black text-white text-xl">Sales CSV Import</h3><p className="text-sm text-slate-400 font-bold mt-1">Bridge POS history before live Toast/Square/Clover/SkyTab integration. Preview rows before saving.</p></div><button type="button" onClick={downloadSalesCsvTemplate} className={T.btnAlt}>Download CSV Template</button></div>
-            <div className="grid lg:grid-cols-[1fr_220px] gap-3"><textarea value={salesCsvText} onChange={e => setSalesCsvText(e.target.value)} rows={7} className={T.input} placeholder="date,grossSales,netSales,tax,tips,discounts,guestCount,ticketCount,source&#10;2026-07-21,2500,2300,125,350,75,115,82,csv_import"/><div className="space-y-2"><label><span className={T.label}>If date exists</span><select value={salesCsvPreview.mode} onChange={e => { const mode = e.target.value; setSalesCsvPreview(parseSalesCsv(salesCsvText, mode)); }} className={T.input}><option value="skip">Skip existing dates</option><option value="merge">Merge into existing dates</option><option value="replace">Replace existing dates</option></select></label><button type="button" onClick={previewSalesCsv} className={`${T.btnAlt} w-full`}>Preview Rows</button><button type="button" onClick={saveSalesCsvImport} disabled={salesImportBusy || !salesCsvText.trim()} className={`${T.btn} w-full`}>{salesImportBusy ? 'Saving…' : 'Save Previewed Sales'}</button></div></div>
-            {salesCsvPreview.errors.length > 0 && <div className="rounded-xl border border-red-500/30 bg-red-950/20 p-3 text-xs font-bold text-red-200 space-y-1">{salesCsvPreview.errors.slice(0, 8).map(err => <div key={err}>{err}</div>)}</div>}
-            {salesCsvPreview.rows.length > 0 && <div className="overflow-x-auto custom-scrollbar border border-[#2A353D] rounded-xl"><table className="w-full text-xs"><thead className="bg-[#0B0E11] text-slate-500 uppercase tracking-widest font-black"><tr>{['Row','Date','Gross','Net','Tips','Exists','Action'].map(h => <th key={h} className="p-2 text-left">{h}</th>)}</tr></thead><tbody>{salesCsvPreview.rows.slice(0, 20).map(row => <tr key={row.rowNo} className="border-t border-[#2A353D]"><td className="p-2 text-slate-400">{row.rowNo}</td><td className="p-2 text-white font-bold">{row.normalized.date}</td><td className="p-2 text-slate-300">{moneyText(row.normalized.grossSales,2)}</td><td className="p-2 text-slate-300">{moneyText(row.normalized.netSales,2)}</td><td className="p-2 text-slate-300">{moneyText(row.normalized.tips,2)}</td><td className="p-2 text-slate-400">{row.exists ? 'Yes' : 'No'}</td><td className="p-2 text-[#D4A381] font-black uppercase tracking-widest">{row.action}</td></tr>)}</tbody></table></div>}
-          </div>
+        <div className="grid lg:grid-cols-2 gap-4">
+          <div className={`${T.card} p-4`}><h3 className="font-black text-white text-xl mb-3">Sales Mix</h3><div className="space-y-3">{salesMix.length === 0 && <FriendlyEmpty title="No sales mix yet" text="Enter category sales in Daily Close to unlock mix reporting."/>}{salesMix.map(row => <div key={row.label}><div className="flex justify-between text-sm font-black"><span className="text-white">{row.label}</span><span className="text-[#D4A381]">{moneyText(row.value, 2)}</span></div><div className="h-2 bg-[#0B0E11] border border-[#2A353D] rounded-full mt-1 overflow-hidden"><div className="h-full bg-[#D4A381]" style={{ width: `${Math.min(100, netSales > 0 ? (row.value / netSales) * 100 : 0)}%` }} /></div></div>)}</div></div>
+          <SimpleTable headers={['Date', 'Gross', 'Net', 'Cash', 'Card', 'Deposit', 'Status']} rows={monthSales.sort((a,b) => safeFinanceDate(a).localeCompare(safeFinanceDate(b))).map(s => [formatDisplayDate(safeFinanceDate(s)), moneyText(getFinancialGrossSales(s), 2), moneyText(getFinancialNetSales(s), 2), moneyText(s.cashSales, 2), moneyText(s.cardSales, 2), moneyText(s.depositAmount, 2), s.closeStatus || 'Open'])} />
         </div>
       )}
 

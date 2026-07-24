@@ -106,21 +106,10 @@ function crossProjectMasterEmails() {
   return [...new Set([...configured, ...OWNER_BOOTSTRAP_MASTER_EMAILS])];
 }
 function loadServiceAccount() {
-  const names = [
-    'FIREBASE_SERVICE_ACCOUNT_KEY',
-    'FIREBASE_ADMIN_CREDENTIALS',
-    'FIREBASE_SERVICE_ACCOUNT_JSON',
-    'FIREBASE_SERVICE_ACCOUNT',
-    'FIREBASE_ADMIN_SERVICE_ACCOUNT_KEY',
-    'SERVICE_ACCOUNT_KEY',
-    'SERVICE_ACCOUNT_JSON',
-    'GOOGLE_APPLICATION_CREDENTIALS_JSON'
-  ];
-  for (const name of names) {
-    const raw = process.env[name];
-    if (!raw || !String(raw).trim()) continue;
-    try { return JSON.parse(String(raw).trim()); }
-    catch (_) { throw new Error(`${name} is not valid Firebase service-account JSON.`); }
+  const raw = process.env.FIREBASE_SERVICE_ACCOUNT_KEY || process.env.FIREBASE_ADMIN_CREDENTIALS;
+  if (raw) {
+    try { return JSON.parse(raw); }
+    catch (_) { throw new Error('FIREBASE_SERVICE_ACCOUNT_KEY is not valid JSON.'); }
   }
   return {
     projectId: process.env.FIREBASE_PROJECT_ID,
