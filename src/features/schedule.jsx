@@ -46,7 +46,7 @@ const firstNameKey = (value = '') => normalizeScheduleName(String(value || '').s
 
 const personIdentityKeys = (person = {}) => {
   const keys = new Set();
-  [person.id, person.uid, person.authUid, person.userId, person.employeeId, person.email, person.name, person.displayName, person.fullName, person.ghostTargetUserId].forEach(v => {
+  [person.id, person.uid, person.authUid, person.accountUserId, person.userId, person.employeeId, person.rosterUserId, person.email, person.employeeEmail, person.name, person.displayName, person.fullName, person.ghostTargetUserId].forEach(v => {
     const id = normalizeScheduleIdentity(v);
     const name = normalizeScheduleName(v);
     if (id) keys.add(id);
@@ -59,7 +59,7 @@ const recordMatchesPerson = (record = {}, person = {}) => {
   if (!record || !person) return false;
   const keys = personIdentityKeys(person);
   const directValues = [
-    record.userId, record.employeeId, record.createdBy, record.createdById, record.uid, record.authUid,
+    record.userId, record.employeeId, record.rosterUserId, record.accountUserId, record.createdBy, record.createdById, record.uid, record.authUid,
     record.userEmail, record.employeeEmail, record.email, record.assignedEmail,
     record.userName, record.employeeName, record.name, record.displayName
   ].map(v => [normalizeScheduleIdentity(v), normalizeScheduleName(v)]).flat().filter(Boolean);
@@ -84,6 +84,39 @@ const isActiveTimeOffRequest = (request = {}) => {
 
 const timeOffMatchesPerson = (request = {}, person = {}) => recordMatchesPerson(request, person);
 const shiftMatchesPerson = (shift = {}, person = {}) => recordMatchesPerson(shift, person);
+
+const getSchedulePersonForAppUser = (appUser = {}, users = []) => {
+  if (!appUser) return {};
+  const emailKey = normalizeScheduleIdentity(appUser.email || appUser.userEmail || appUser.employeeEmail || '');
+  const nameKey = normalizeScheduleName(appUser.name || appUser.displayName || appUser.fullName || '');
+  const idKey = normalizeScheduleIdentity(appUser.id || appUser.uid || appUser.userId || '');
+  const rosterUser = (users || []).find(u => {
+    if (!u) return false;
+    const uIds = [u.id, u.uid, u.userId, u.employeeId, u.authUid].map(normalizeScheduleIdentity).filter(Boolean);
+    if (idKey && uIds.includes(idKey)) return true;
+    const uEmail = normalizeScheduleIdentity(u.email || u.userEmail || u.employeeEmail || '');
+    if (emailKey && uEmail && emailKey === uEmail) return true;
+    const uName = normalizeScheduleName(u.name || u.displayName || u.fullName || '');
+    return !!(nameKey && uName && nameKey === uName);
+  });
+  if (!rosterUser) return appUser;
+  // Keep both identities: roster id for scheduled shifts and auth uid/email for account/session checks.
+  return {
+    ...rosterUser,
+    ...appUser,
+    id: rosterUser.id || appUser.id,
+    employeeId: rosterUser.id || rosterUser.employeeId || appUser.employeeId || appUser.id,
+    rosterUserId: rosterUser.id || '',
+    authUid: appUser.id || appUser.uid || appUser.authUid || '',
+    accountUserId: appUser.id || appUser.uid || '',
+    uid: appUser.uid || appUser.id || rosterUser.uid || '',
+    email: appUser.email || rosterUser.email || '',
+    employeeEmail: rosterUser.email || appUser.email || '',
+    name: appUser.name || rosterUser.name || appUser.email || rosterUser.email || '',
+    employeeName: rosterUser.name || appUser.name || appUser.email || ''
+  };
+};
+
 
 
 const parseScheduleTimeParts = (value, fallback = { hours: 0, minutes: 0 }) => {
@@ -288,6 +321,7 @@ const TabMasterSchedule = ({ currentDate, setCurrentDate = null, onSubTabChange 
   const [isFullSchedulePickerOpen, setIsFullSchedulePickerOpen] = useState(false);
   const [fullSchedulePickerMonth, setFullSchedulePickerMonth] = useState(getMonthStr(currentDate));
   const monthStr = getMonthStr(currentDate);
+  const schedulePerson = getSchedulePersonForAppUser(appUser, users);
   
   // --- TIME CLOCK LOGIC ---
   const [activePunch, setActivePunch] = useState(null);
@@ -653,11 +687,11 @@ Clock out anyway?`);
 
 // --- SHIFT LOGIC ---
   const myMonthShifts = shifts
-    .filter(s => shiftMatchesPerson(s, appUser) && String(s.date || '').startsWith(monthStr) && s.isPublished)
+    .filter(s => shiftMatchesPerson(s, schedulePerson) && String(s.date || '').startsWith(monthStr) && s.isPublished)
     .sort((a,b) => a.date === b.date ? (a.startTime || '').localeCompare(b.startTime || '') : a.date.localeCompare(b.date));
 
   const myNextShift = shifts
-    .filter(s => shiftMatchesPerson(s, appUser) && s.isPublished && isShiftStillCurrentOrUpcoming(s, scheduleNow))
+    .filter(s => shiftMatchesPerson(s, schedulePerson) && s.isPublished && isShiftStillCurrentOrUpcoming(s, scheduleNow))
     .sort(compareShiftsByStartDateTime)[0];
 
   const activeMonthShifts = shifts
@@ -681,7 +715,12 @@ Clock out anyway?`);
 
     try {
       await updateDoc(doc(db, "shifts", swap.shiftId), {
-        employeeId: appUser.id,
+        employeeId: schedulePerson.employeeId || schedulePerson.id || appUser.id,
+        rosterUserId: schedulePerson.rosterUserId || schedulePerson.id || '',
+        userId: appUser.id,
+        authUid: appUser.id,
+        employeeName: schedulePerson.employeeName || schedulePerson.name || appUser.name || appUser.email || '',
+        employeeEmail: schedulePerson.employeeEmail || schedulePerson.email || appUser.email || '',
         role: swap.role,
         updatedAt: new Date().toISOString(),
         claimedFromTradeBoard: true
@@ -708,7 +747,10 @@ const handleOfferSwap = async (shift) => {
       // 1. Add the swap to the database
       await addDoc(collection(db, "shiftSwaps"), {
         shiftId: shift.id,
-        originalEmployeeId: appUser.id,
+        originalEmployeeId: schedulePerson.employeeId || schedulePerson.id || appUser.id,
+        originalUserId: appUser.id,
+        originalEmployeeName: schedulePerson.employeeName || schedulePerson.name || appUser.name || appUser.email || '',
+        originalEmployeeEmail: schedulePerson.employeeEmail || schedulePerson.email || appUser.email || '',
         role: shift.role,
         date: shift.date,
         startTime: shift.startTime,
@@ -885,8 +927,8 @@ const handleOfferSwap = async (shift) => {
                 <div className={`p-8 text-center text-sm font-bold ${T.muted}`}>No shifts currently available.</div>
               ) : (
                 availableSwaps.map(swap => {
-                  const isMine = swap.originalEmployeeId === appUser.id;
-                  const originalEmp = users.find(u => u.id === swap.originalEmployeeId);
+                  const isMine = shiftMatchesPerson({ employeeId: swap.originalEmployeeId, userId: swap.originalUserId, employeeName: swap.originalEmployeeName, employeeEmail: swap.originalEmployeeEmail }, schedulePerson) || swap.originalEmployeeId === appUser.id;
+                  const originalEmp = users.find(u => u.id === swap.originalEmployeeId || normalizeScheduleIdentity(u.email) === normalizeScheduleIdentity(swap.originalEmployeeEmail));
                   
                   return (
                     <div key={swap.id} className={`${T.row} p-4 flex flex-col sm:flex-row justify-between sm:items-center gap-4`}>
@@ -1057,6 +1099,7 @@ const [eventDate, setEventDate] = useState(getToday());
   const monthStr = getMonthStr(currentDate); 
   const monthDays = Array.from({length: getDaysInMonth(monthStr)}).map((_, i) => `${monthStr}-${String(i+1).padStart(2, '0')}`);
   const schedulePublishingSettings = getSchedulePublishingSettings(appUser, clientData);
+  const schedulePerson = getSchedulePersonForAppUser(appUser, users);
   const schedulePeriodBounds = getSchedulePeriodBounds(currentDate, schedulePublishingSettings);
   const schedulePeriodDays = buildDateRange(schedulePeriodBounds.start, schedulePeriodBounds.end);
   const schedulePeriodLabel = getSchedulePeriodLabel(schedulePeriodBounds, schedulePublishingSettings);
@@ -2933,14 +2976,15 @@ const TabTimeOff = ({ timeOffRequests, appUser, users, addToast, events = [], sh
   const canManage = !!(appUser?.isSuperAdmin || appUser?.isAdmin || perms.schedule || perms.team);
   const myId = appUser?.id || '';
   const schedulePublishingSettings = getSchedulePublishingSettings(appUser, clientData);
+  const schedulePerson = getSchedulePersonForAppUser(appUser, users);
   const postPublishedTimeOffAllowed = schedulePublishingSettings.allowPostPublishedTimeOff;
   const monthDays = Array.from({length: getDaysInMonth(calMonth)}).map((_, i) => `${calMonth}-${String(i+1).padStart(2, '0')}`);
   const firstDayOffset = new Date(calMonth+'-01T12:00:00').getDay();
   const monthEvents = events.filter(e => e.type === 'special_event' && e.date?.startsWith(calMonth));
   const isArchivedRequest = (r = {}) => r.archived === true || r.processed === true || ['archived','processed','cancelled','canceled'].includes(String(r.status || '').toLowerCase());
   const normalizeStatus = (r = {}) => String(r.status || 'pending').toLowerCase();
-  const visibleRequests = (timeOffRequests || []).filter(r => canManage || timeOffMatchesPerson(r, appUser));
-  const myRequests = visibleRequests.filter(r => timeOffMatchesPerson(r, appUser)).sort((a,b) => new Date(a.date || 0) - new Date(b.date || 0));
+  const visibleRequests = (timeOffRequests || []).filter(r => canManage || timeOffMatchesPerson(r, schedulePerson) || timeOffMatchesPerson(r, appUser));
+  const myRequests = visibleRequests.filter(r => timeOffMatchesPerson(r, schedulePerson) || timeOffMatchesPerson(r, appUser)).sort((a,b) => new Date(a.date || 0) - new Date(b.date || 0));
 
   const getDateFilterRange = () => {
     const today = new Date(`${getToday()}T12:00:00`);
@@ -3001,8 +3045,12 @@ const TabTimeOff = ({ timeOffRequests, appUser, users, addToast, events = [], sh
       workspaceId: appUser.restaurantId,
       userId: appUser.id,
       employeeId: appUser.id,
+      rosterUserId: schedulePerson.rosterUserId || schedulePerson.id || '',
+      authUid: appUser.id,
+      userEmail: appUser.email || '',
+      employeeEmail: schedulePerson.employeeEmail || schedulePerson.email || appUser.email || '',
       userName: appUser.name || appUser.email || 'Employee',
-      employeeName: appUser.name || appUser.email || 'Employee',
+      employeeName: schedulePerson.employeeName || schedulePerson.name || appUser.name || appUser.email || 'Employee',
       date: d,
       isPartial,
       startTime: isPartial ? startTime : '',

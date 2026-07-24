@@ -4,6 +4,7 @@ import { getFirestore, collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot
 import { getAuth, onAuthStateChanged } from 'firebase/auth';
 import { getMessaging, isSupported } from 'firebase/messaging';
 import { getStorage } from 'firebase/storage';
+import { getDatabase, ref as rtdbRef, onValue as onRtdbValue, onDisconnect as rtdbOnDisconnect, set as rtdbSet, serverTimestamp as rtdbServerTimestamp } from 'firebase/database';
 import L from 'leaflet';
 
 
@@ -47,7 +48,8 @@ export const testConfig = {
   projectId: env('REACT_APP_TEST_FIREBASE_PROJECT_ID', 'chaos-test-d1601'),
   storageBucket: env('REACT_APP_TEST_FIREBASE_STORAGE_BUCKET', 'chaos-test-d1601.firebasestorage.app'),
   messagingSenderId: env('REACT_APP_TEST_FIREBASE_MESSAGING_SENDER_ID', '534993379994'),
-  appId: env('REACT_APP_TEST_FIREBASE_APP_ID', '1:534993379994:web:9fefb6e10309223afe7523')
+  appId: env('REACT_APP_TEST_FIREBASE_APP_ID', '1:534993379994:web:9fefb6e10309223afe7523'),
+  databaseURL: env('REACT_APP_TEST_FIREBASE_DATABASE_URL', 'https://chaos-test-d1601-default-rtdb.firebaseio.com')
 };
 
 // 2. MAIN PRODUCTION DATABASE CONFIG (Live Data)
@@ -58,7 +60,8 @@ export const prodConfig = {
   storageBucket: env('REACT_APP_PROD_FIREBASE_STORAGE_BUCKET', 'cheers-34b8d.firebasestorage.app'),
   messagingSenderId: env('REACT_APP_PROD_FIREBASE_MESSAGING_SENDER_ID', '762225019248'),
   appId: env('REACT_APP_PROD_FIREBASE_APP_ID', '1:762225019248:web:3e142c9563e58ca762a7b5'),
-  measurementId: env('REACT_APP_PROD_FIREBASE_MEASUREMENT_ID', 'G-JFZ6EZB0E3')
+  measurementId: env('REACT_APP_PROD_FIREBASE_MEASUREMENT_ID', 'G-JFZ6EZB0E3'),
+  databaseURL: env('REACT_APP_PROD_FIREBASE_DATABASE_URL', 'https://cheers-34b8d-default-rtdb.firebaseio.com')
 };
 
 export const PROD_FIREBASE_HOSTS = ['app.86chaos.com', '86chaos.com', 'www.86chaos.com'];
@@ -118,6 +121,14 @@ export const firebaseDiagnostics = {
 export const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app);
 export const storage = getStorage(app);
+const safeGetRealtimeDb = () => {
+  try { return getDatabase(app); }
+  catch (err) {
+    console.warn('Realtime Database presence is unavailable:', err?.message || err);
+    return null;
+  }
+};
+export const realtimeDb = safeGetRealtimeDb();
 const safeGetMessaging = () => {
   if (typeof window === "undefined") return null;
   try { return getMessaging(app); }
@@ -137,6 +148,66 @@ export const messagingReady = typeof window !== "undefined"
 
 // Kitchen Wi-Fi Armor: Keep app working in walk-in coolers
 enableIndexedDbPersistence(db).catch((err) => console.warn("Offline mode issue:", err.code));
+
+
+
+// Low-cost online presence: Realtime Database handles connect/disconnect without Firestore heartbeats.
+const presenceSafeKey = (value = '') => String(value || 'unknown').replace(/[^A-Za-z0-9_-]/g, '_').slice(0, 120) || 'unknown';
+const presenceDeviceType = () => {
+  if (typeof navigator === 'undefined') return 'server';
+  const ua = String(navigator.userAgent || '').toLowerCase();
+  if (/android|iphone|ipad|ipod|mobile/.test(ua)) return 'mobile';
+  return 'desktop';
+};
+
+export function startLowCostPresenceSession({ user = {}, restaurantId = '', activeTab = '', onDebug = null } = {}) {
+  if (typeof window === 'undefined' || !realtimeDb || !user?.id || !restaurantId) return () => {};
+  const workspaceKey = presenceSafeKey(restaurantId);
+  const userKey = presenceSafeKey(user.id);
+  const sessionStorageKey = `chaosRtdbPresenceSession_${workspaceKey}_${userKey}`;
+  let sessionId = '';
+  try { sessionId = sessionStorage.getItem(sessionStorageKey) || ''; } catch (_) {}
+  if (!sessionId) {
+    sessionId = `${Date.now()}_${Math.random().toString(36).slice(2)}`;
+    try { sessionStorage.setItem(sessionStorageKey, sessionId); } catch (_) {}
+  }
+  const sessionKey = presenceSafeKey(sessionId);
+  const connectedRef = rtdbRef(realtimeDb, '.info/connected');
+  const sessionRef = rtdbRef(realtimeDb, `status/${workspaceKey}/${userKey}/sessions/${sessionKey}`);
+  const summaryRef = rtdbRef(realtimeDb, `statusSummary/${workspaceKey}/${userKey}`);
+  const base = {
+    userId: String(user.id || ''),
+    restaurantId: String(restaurantId || ''),
+    name: String(user.name || user.displayName || user.email || ''),
+    email: String(user.email || ''),
+    role: String(user.role || ''),
+    device: presenceDeviceType(),
+    host: typeof window !== 'undefined' ? String(window.location.hostname || '') : '',
+    userAgent: typeof navigator !== 'undefined' ? String(navigator.userAgent || '').slice(0, 160) : '',
+    source: 'rtdb-low-cost-presence'
+  };
+  const unsubscribe = onRtdbValue(connectedRef, (snap) => {
+    if (snap.val() !== true) return;
+    const onlinePayload = { ...base, state: 'online', online: true, activeTab: String(activeTab || ''), lastChanged: rtdbServerTimestamp(), connectedAt: rtdbServerTimestamp() };
+    const offlinePayload = { ...base, state: 'offline', online: false, activeTab: String(activeTab || ''), lastChanged: rtdbServerTimestamp(), lastOnline: rtdbServerTimestamp(), disconnectedAt: rtdbServerTimestamp() };
+    Promise.all([
+      rtdbSet(sessionRef, onlinePayload),
+      rtdbSet(summaryRef, { ...onlinePayload, activeSessionCount: 1 }),
+      rtdbOnDisconnect(sessionRef).set(offlinePayload),
+      rtdbOnDisconnect(summaryRef).set({ ...offlinePayload, activeSessionCount: 0 })
+    ]).then(() => {
+      onDebug?.({ ok: true, channel: 'rtdb-presence', message: 'Realtime Database presence session active. No repeating Firestore heartbeat is running.' });
+    }).catch((err) => {
+      onDebug?.({ ok: false, channel: 'rtdb-presence', message: err?.message || String(err) });
+    });
+  }, (err) => {
+    onDebug?.({ ok: false, channel: 'rtdb-presence-connected', message: err?.message || String(err) });
+  });
+  return () => {
+    try { unsubscribe?.(); } catch (_) {}
+    try { rtdbSet(sessionRef, { ...base, state: 'offline', online: false, activeTab: String(activeTab || ''), lastChanged: rtdbServerTimestamp(), lastOnline: rtdbServerTimestamp(), disconnectedAt: rtdbServerTimestamp() }); } catch (_) {}
+  };
+}
 
 export const auth = getAuth(app);
 
@@ -231,7 +302,7 @@ export const MASTER_ADMIN_EMAIL = (process.env.REACT_APP_MASTER_ADMIN_EMAIL || '
 export const EVENT_TAGS = ['Standard Day', 'Packers Game', 'Brewers Game', 'Live Music', 'Severe Weather', 'Private Catering', 'Holiday'];
 
 // --- VERSION TRACKING ---
-export const CURRENT_VERSION = '15.0.99';
+export const CURRENT_VERSION = '15.0.100';
 
 // --- Helpers ---
 export const useLiveCollection = (coll, restId, options = {}) => {
