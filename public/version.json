@@ -1,12 +1,12 @@
 {
-  "version": "16.0.8",
-  "name": "86 Chaos 16.0.8 Desktop Schedule Time and Pay-Period Hours Fix",
+  "version": "16.0.10",
+  "name": "86 Chaos 16.0.10 Honest Presence Status Fix",
   "releasedAt": "2026-07-25T00:00:00.000Z",
-  "label": "16.0.8 Desktop Schedule Time and Pay-Period Hours Fix",
-  "build": "16.0.8",
+  "label": "16.0.10 Honest Presence Status Fix",
+  "build": "16.0.10",
   "notes": [
-    "Improves desktop Schedule Builder cell width and time-chip readability without changing the mobile layout rules.",
-    "Shows partial-day request-off time ranges more clearly on desktop schedule cells.",
-    "Calculates Scheduled Hours Tracker weeks as whole pay-period weeks, including prior-month days that belong to Week 1."
+    "Treats Online Now as a true fresh heartbeat within 90 seconds instead of anyone active during the 15-minute/active-today window.",
+    "Splits the System Administrator presence snapshot into Online Now, Recently Active, Active Today, and Last Seen counts.",
+    "Softens RTDB fallback warnings and keeps friendly Android/Windows/iPhone browser labels instead of raw user-agent strings."
   ]
 }

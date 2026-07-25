@@ -4098,7 +4098,7 @@ firebase deploy --only functions --project YOUR_PRODUCTION_PROJECT_ID
   const [adminHelpModal, setAdminHelpModal] = useState(null);
   const [userCounts, setUserCounts] = useState({});
   const [totalInstalls, setTotalInstalls] = useState(0);
-  const [presenceSnapshot, setPresenceSnapshot] = useState({ users: [], recentUsers: [], fetchedAt: '', windowMinutes: 15, livePresenceCount: 0, onlineCount: 0, recentCount: 0 });
+  const [presenceSnapshot, setPresenceSnapshot] = useState({ users: [], recentUsers: [], activeTodayUsers: [], lastSeenUsers: [], fetchedAt: '', windowMinutes: 15, onlineSeconds: 90, livePresenceCount: 0, onlineCount: 0, recentCount: 0, activeTodayCount: 0, lastSeenCount: 0 });
   const [isPresenceSnapshotLoading, setIsPresenceSnapshotLoading] = useState(false);
   const [presenceSnapshotError, setPresenceSnapshotError] = useState('');
   const [presenceSnapshotWarning, setPresenceSnapshotWarning] = useState('');
@@ -4538,23 +4538,28 @@ const unsubAudit = onSnapshot(collection(db, 'auditLogs'), snap => {
     setPresenceSnapshotError('');
     setPresenceSnapshotWarning('');
     try {
-      const response = await secureFetch('/api/presence-snapshot?windowMinutes=15&limit=500&timeoutMs=3200', { method: 'GET' });
+      const response = await secureFetch('/api/presence-snapshot?windowMinutes=15&onlineSeconds=90&limit=500&timeoutMs=3200', { method: 'GET' });
       const data = await response.json().catch(() => ({}));
       if (!response.ok || data?.ok === false) throw new Error(data?.error || `API ${response.status}`);
       setPresenceSnapshot({
         users: Array.isArray(data.users) ? data.users : [],
         recentUsers: Array.isArray(data.recentUsers) ? data.recentUsers : [],
+        activeTodayUsers: Array.isArray(data.activeTodayUsers) ? data.activeTodayUsers : [],
+        lastSeenUsers: Array.isArray(data.lastSeenUsers) ? data.lastSeenUsers : [],
         fetchedAt: data.fetchedAt || new Date().toISOString(),
         windowMinutes: data.windowMinutes || 15,
+        onlineSeconds: data.onlineSeconds || 90,
         livePresenceCount: data.livePresenceCount || 0,
         onlineCount: data.onlineCount || 0,
         recentCount: data.recentCount || 0,
+        activeTodayCount: data.activeTodayCount || 0,
+        lastSeenCount: data.lastSeenCount || 0,
         mode: data.mode || 'manual-snapshot',
         source: data.source || 'unknown',
         warning: data.warning || ''
       });
       if (data.warning) setPresenceSnapshotWarning(data.warning);
-      if (!silent) addToast('Presence Snapshot', `${data.onlineCount || 0} recent app check-in(s) found. No live listener was opened.`);
+      if (!silent) addToast('Presence Snapshot', `${data.onlineCount || 0} truly online, ${data.recentCount || 0} recently active. No live listener was opened.`);
     } catch (err) {
       const message = err?.message || 'Manual presence snapshot failed.';
       const fallbackRows = (allUsers || []).map(u => ({
@@ -4576,17 +4581,22 @@ const unsubAudit = onSnapshot(collection(db, 'auditLogs'), snap => {
       })).filter(u => u.userId || u.email);
       setPresenceSnapshot({
         users: [],
-        recentUsers: fallbackRows,
+        recentUsers: [],
+        activeTodayUsers: fallbackRows,
+        lastSeenUsers: [],
         fetchedAt: new Date().toISOString(),
         windowMinutes: 15,
+        onlineSeconds: 90,
         livePresenceCount: fallbackRows.length,
         onlineCount: 0,
-        recentCount: fallbackRows.length,
+        recentCount: 0,
+        activeTodayCount: fallbackRows.length,
+        lastSeenCount: 0,
         mode: 'client-fallback-after-api-error',
         source: 'client-roster-fallback',
         warning: message
       });
-      setPresenceSnapshotWarning(`Snapshot API unavailable, showing roster fallback: ${message}`);
+      setPresenceSnapshotWarning('Live presence source unavailable. Showing last-seen fallback.');
       setPresenceSnapshotError('');
       if (!silent) addToast('Snapshot Fallback', 'The API timed out, so the page is showing the safe roster/last-seen fallback instead of failing.');
     } finally {
@@ -5641,8 +5651,10 @@ const activeTrials = restaurants.filter(r => resolveSubscription(r, appUser).sta
   const crashes24h = crashLogs.filter(log => (Date.now() - new Date(log.time||0).getTime()) < 86400000).length;
   const pushOptInRate = allUsers.length > 0 ? ((allUsers.filter(u => u.fcmToken).length / allUsers.length) * 100).toFixed(0) : 0;
   const apiConnectedCount = restaurants.filter(r => r.integrations?.posProvider || r.integrations?.payrollProvider).length;
-  const ONLINE_WINDOW_MS = (Number(presenceSnapshot.windowMinutes || 15) || 15) * 60 * 1000;
+  const RECENT_ACTIVE_WINDOW_MS = (Number(presenceSnapshot.windowMinutes || 15) || 15) * 60 * 1000;
+  const TRUE_ONLINE_WINDOW_MS = Math.max(30000, Math.min(Number(presenceSnapshot.onlineSeconds || 90) * 1000, 180000));
   const nowMs = Date.now();
+  const todayStartMs = (() => { const d = new Date(nowMs); d.setHours(0, 0, 0, 0); return d.getTime(); })();
   const presenceSnapshotFetchedAtMs = parseAnyDate(presenceSnapshot.fetchedAt)?.getTime?.() || 0;
   const parsePresenceTimeMs = (value) => {
     if (!value) return 0;
@@ -5667,6 +5679,32 @@ const activeTrials = restaurants.filter(r => resolveSubscription(r, appUser).sta
     parsePresenceTimeMs(u.lastChanged),
     parsePresenceTimeMs(u.heartbeatEpochMs)
   );
+  const formatPresenceDeviceLabel = (value = '') => {
+    const raw = String(value || '').trim();
+    if (!raw) return 'Unknown device';
+    const lower = raw.toLowerCase();
+    const looksLikeUserAgent = /mozilla|applewebkit|khtml|like gecko|chrome|crios|safari|firefox|edg\/|samsungbrowser|android|iphone|ipad|windows nt|macintosh|mac os x|linux|wv\)|mobile|gecko/i.test(raw);
+    if (!looksLikeUserAgent && raw.length <= 48 && !raw.includes('/')) return raw;
+
+    let platform = 'Unknown device';
+    if (lower.includes('android')) platform = 'Android';
+    else if (lower.includes('iphone')) platform = 'iPhone';
+    else if (lower.includes('ipad')) platform = 'iPad';
+    else if (lower.includes('windows nt') || lower.includes('windows')) platform = 'Windows';
+    else if (lower.includes('macintosh') || lower.includes('mac os x')) platform = 'Mac';
+    else if (lower.includes('linux')) platform = 'Linux';
+
+    let browser = 'Browser';
+    if (lower.includes('samsungbrowser')) browser = 'Samsung Internet';
+    else if (/edg\//i.test(raw) || lower.includes('edge')) browser = 'Edge';
+    else if (lower.includes('firefox') || lower.includes('fxios')) browser = 'Firefox';
+    else if (lower.includes('crios')) browser = 'Chrome';
+    else if (lower.includes('chrome') || lower.includes('chromium')) browser = lower.includes('; wv)') || lower.includes(' wv ') ? 'Android WebView' : 'Chrome';
+    else if (lower.includes('safari') && platform === 'Android') browser = 'Android Browser';
+    else if (lower.includes('safari')) browser = 'Safari';
+
+    return platform === 'Unknown device' ? browser : `${platform} • ${browser}`;
+  };
   const enrichPresenceRow = (row = {}) => {
     const profile = allUsers.find(u => u.id === row.userId || u.id === row.uid || (u.email && row.email && String(u.email).toLowerCase() === String(row.email).toLowerCase())) || {};
     return {
@@ -5682,11 +5720,29 @@ const activeTrials = restaurants.filter(r => resolveSubscription(r, appUser).sta
   };
   const isOnlineNow = (u) => {
     const last = getLastActiveMs(u);
-    const explicitlyOnline = u.online === true || u.onlineState === 'online' || u.state === 'online';
     const explicitlyOffline = u.online === false || u.onlineState === 'offline' || u.state === 'offline';
-    return !!presenceSnapshotFetchedAtMs && !!last && (explicitlyOnline || (!explicitlyOffline && (nowMs - last) < ONLINE_WINDOW_MS));
+    return !!presenceSnapshotFetchedAtMs && !!last && !explicitlyOffline && (nowMs - last) <= TRUE_ONLINE_WINDOW_MS;
   };
-  const onlineUsers = (presenceSnapshot.users || []).map(enrichPresenceRow).filter(isOnlineNow).sort((a,b) => getLastActiveMs(b) - getLastActiveMs(a));
+  const isRecentlyActive = (u) => {
+    const last = getLastActiveMs(u);
+    return !!last && !isOnlineNow(u) && (nowMs - last) <= RECENT_ACTIVE_WINDOW_MS;
+  };
+  const isActiveToday = (u) => {
+    const last = getLastActiveMs(u);
+    return !!last && !isOnlineNow(u) && !isRecentlyActive(u) && last >= todayStartMs;
+  };
+  const uniquePresenceRows = (rows = []) => {
+    const map = new Map();
+    rows.map(enrichPresenceRow).forEach(row => {
+      const key = String(row.userId || row.uid || row.id || row.email || '').toLowerCase();
+      if (!key) return;
+      const existing = map.get(key);
+      if (!existing || getLastActiveMs(row) >= getLastActiveMs(existing)) map.set(key, row);
+    });
+    return [...map.values()];
+  };
+  const allSnapshotRows = uniquePresenceRows([...(presenceSnapshot.users || []), ...(presenceSnapshot.recentUsers || []), ...(presenceSnapshot.activeTodayUsers || []), ...(presenceSnapshot.lastSeenUsers || [])]);
+  const onlineUsers = allSnapshotRows.filter(isOnlineNow).sort((a,b) => getLastActiveMs(b) - getLastActiveMs(a));
   const onlineRestaurantIds = [...new Set(onlineUsers.map(u => u.restaurantId).filter(Boolean))];
   const onlineRestaurants = restaurants.filter(r => onlineRestaurantIds.includes(r.id));
   const onlineByRestaurant = onlineRestaurantIds.map(id => ({
@@ -5694,7 +5750,12 @@ const activeTrials = restaurants.filter(r => resolveSubscription(r, appUser).sta
     rest: restaurants.find(r => r.id === id),
     users: onlineUsers.filter(u => u.restaurantId === id)
   })).sort((a,b) => b.users.length - a.users.length);
-  const recentlyActiveUsers = (presenceSnapshot.recentUsers || []).map(enrichPresenceRow).sort((a,b) => getLastActiveMs(b) - getLastActiveMs(a));
+  const recentlyActiveUsers = allSnapshotRows.filter(isRecentlyActive).sort((a,b) => getLastActiveMs(b) - getLastActiveMs(a));
+  const activeTodayUsers = allSnapshotRows.filter(isActiveToday).sort((a,b) => getLastActiveMs(b) - getLastActiveMs(a));
+  const lastSeenUsers = allSnapshotRows.filter(u => {
+    const last = getLastActiveMs(u);
+    return !!last && !isOnlineNow(u) && !isRecentlyActive(u) && !isActiveToday(u);
+  }).sort((a,b) => getLastActiveMs(b) - getLastActiveMs(a));
   const formatPresenceExact = (ms) => {
     if (!ms) return 'No RTDB presence row yet';
     try { return formatClockDateTime(new Date(ms).toISOString(), appUser); } catch (_) { return new Date(ms).toLocaleString(); }
@@ -5711,7 +5772,7 @@ const activeTrials = restaurants.filter(r => resolveSubscription(r, appUser).sta
     if (days === 1) return 'Yesterday';
     return `${days}d ago`;
   };
-  const presenceDirectoryRows = [...(presenceSnapshot.users || []), ...(presenceSnapshot.recentUsers || [])].map(enrichPresenceRow);
+  const presenceDirectoryRows = allSnapshotRows;
   const presenceDirectoryByKey = new Map();
   const rememberPresenceDirectoryRow = (key, row) => {
     const cleanKey = String(key || '').toLowerCase().trim();
@@ -5729,15 +5790,19 @@ const activeTrials = restaurants.filter(r => resolveSubscription(r, appUser).sta
     const merged = matched ? { ...matched, id: user.id || matched.id, userId: user.id || matched.userId, name: user.name || matched.name, email: user.email || matched.email, role: user.role || matched.role, restaurantId: user.restaurantId || matched.restaurantId } : user;
     const lastMs = getLastActiveMs(merged);
     const online = !!matched && isOnlineNow(merged);
-    const statusLabel = online ? 'Online now' : lastMs ? `Last online ${formatPresenceRelative(lastMs)}` : 'No online history yet';
+    const recent = !!matched && isRecentlyActive(merged);
+    const activeToday = !!matched && isActiveToday(merged);
+    const statusLabel = online ? 'Online now' : recent ? `Recently active ${formatPresenceRelative(lastMs)}` : activeToday ? 'Active today' : lastMs ? `Last seen ${formatPresenceRelative(lastMs)}` : 'No online history yet';
     return {
       matched: !!matched,
       online,
+      recent,
+      activeToday,
       lastMs,
       statusLabel,
-      statusTone: online ? 'text-emerald-400' : lastMs ? 'text-amber-300' : 'text-slate-500',
+      statusTone: online ? 'text-emerald-400' : recent ? 'text-cyan-300' : activeToday ? 'text-amber-300' : lastMs ? 'text-slate-400' : 'text-slate-500',
       exactLabel: formatPresenceExact(lastMs),
-      deviceLabel: merged.activeDevice || merged.device || merged.deviceType || 'Unknown device',
+      deviceLabel: formatPresenceDeviceLabel(merged.activeDevice || merged.device || merged.deviceType || ''),
       activeTabLabel: merged.activeTab || 'Unknown tab',
       sourceLabel: merged.presenceSource || matched?.source || (lastMs ? 'user profile timestamp' : 'not found')
     };
@@ -7924,7 +7989,7 @@ Type RESTORE to continue.`);
               </div>
               <div className="grid sm:grid-cols-2 gap-2">
                 <div className="bg-[#0B0E11] border border-[#2A353D] rounded-lg p-2"><div className="text-[8px] font-black uppercase tracking-widest text-slate-500">Current Session</div><div className="text-[10px] font-bold text-slate-300 leading-snug">State: {editingGlobalUser.onlineState || 'unknown'} • Tab: {editingGlobalUser.activeTab || 'unknown'} • Host: {editingGlobalUser.activeHost || 'unknown'}</div></div>
-                <div className="bg-[#0B0E11] border border-[#2A353D] rounded-lg p-2"><div className="text-[8px] font-black uppercase tracking-widest text-slate-500">Device</div><div className="text-[10px] font-bold text-slate-300 leading-snug break-words">{editingGlobalUser.activeDevice || 'Unknown device'}</div></div>
+                <div className="bg-[#0B0E11] border border-[#2A353D] rounded-lg p-2"><div className="text-[8px] font-black uppercase tracking-widest text-slate-500">Device</div><div className="text-[10px] font-bold text-slate-300 leading-snug break-words">{formatPresenceDeviceLabel(editingGlobalUser.activeDevice || editingGlobalUser.device || editingGlobalUser.deviceType || '')}</div></div>
                 <div className="bg-[#0B0E11] border border-[#2A353D] rounded-lg p-2"><div className="text-[8px] font-black uppercase tracking-widest text-slate-500">Screen / Time Zone</div><div className="text-[10px] font-bold text-slate-300 leading-snug">{editingGlobalUser.deviceDiagnostics?.screen || 'Unknown'} • {editingGlobalUser.deviceDiagnostics?.timezone || 'Unknown'}</div></div>
                 <div className="bg-[#0B0E11] border border-[#2A353D] rounded-lg p-2"><div className="text-[8px] font-black uppercase tracking-widest text-slate-500">Device Services</div><div className="text-[10px] font-bold text-slate-300 leading-snug">Service Worker: {editingGlobalUser.deviceDiagnostics?.serviceWorker ? 'Yes' : 'Unknown/No'} • IndexedDB: {editingGlobalUser.deviceDiagnostics?.indexedDb ? 'Yes' : 'Unknown/No'}</div></div>
               </div>
@@ -8984,17 +9049,17 @@ Type RESTORE to continue.`);
           {presenceSnapshotError && <div className="bg-red-900/20 border border-red-900/50 text-red-100 rounded-2xl p-4 text-sm font-bold leading-snug">Online / last-seen snapshot failed: {presenceSnapshotError}</div>}
           {presenceSnapshotWarning && <div className="bg-amber-900/20 border border-amber-500/40 text-amber-100 rounded-2xl p-4 text-sm font-bold leading-snug">Online / last-seen snapshot note: {presenceSnapshotWarning}</div>}
           <div className="bg-[#0B0E11] border border-[#2A353D] rounded-2xl p-3 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3 text-[10px] font-black uppercase tracking-widest text-slate-400">
-            <div className="flex flex-wrap gap-2"><span className="text-emerald-400">Online / Last Seen Snapshot</span><span>Users: {allUsers.length}</span><span>Online now: {onlineUsers.length}</span><span>Window: {presenceSnapshot.windowMinutes || 15} min</span><span>{presenceSnapshot.source === 'client-roster-fallback' ? 'Roster fallback' : 'One-time bounded read'}</span>{presenceSnapshot.fetchedAt && <span>Fetched: {timeAgo(presenceSnapshot.fetchedAt)}</span>}</div>
+            <div className="flex flex-wrap gap-2"><span className="text-emerald-400">Online / Last Seen Snapshot</span><span>Users: {allUsers.length}</span><span>Online now: {onlineUsers.length}</span><span>Recently active: {recentlyActiveUsers.length}</span><span>Active today: {activeTodayUsers.length}</span><span>Online cutoff: {presenceSnapshot.onlineSeconds || 90}s</span><span>{presenceSnapshot.source === 'client-roster-fallback' ? 'Last-seen fallback' : 'One-time bounded read'}</span>{presenceSnapshot.fetchedAt && <span>Fetched: {timeAgo(presenceSnapshot.fetchedAt)}</span>}</div>
             <button type="button" onClick={() => loadPresenceSnapshot()} disabled={isPresenceSnapshotLoading} className="px-3 py-2 bg-emerald-900/20 border border-emerald-500/50 text-emerald-300 rounded-lg font-black uppercase tracking-widest hover:bg-emerald-900/40 disabled:opacity-50 flex items-center justify-center gap-2">{isPresenceSnapshotLoading ? <Loader2 size={14} className="animate-spin"/> : <Users size={14}/>} Refresh Online / Last Seen</button>
           </div>
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
             <div className="lg:col-span-2 cockpit-panel rounded-2xl overflow-hidden">
               <div className={`bg-[#12161A] p-3 border-b ${T.border} flex items-center justify-between gap-3`}>
                 <h3 className="font-black text-sm text-white flex items-center gap-2"><span className="cockpit-light bg-emerald-400 text-emerald-400 hot"></span> Online Now</h3>
-                <span className="text-[10px] font-black uppercase tracking-widest text-emerald-400">{onlineUsers.length} recent</span>
+                <span className="text-[10px] font-black uppercase tracking-widest text-emerald-400">{onlineUsers.length} live</span>
               </div>
               <div className={`divide-y ${T.border} max-h-[55vh] overflow-y-auto custom-scrollbar`}>
-                {onlineUsers.length === 0 && <div className="p-8 text-center text-slate-500 font-bold">No users are online in the latest snapshot yet. Press Refresh Online / Last Seen. This does a one-time Super Admin read instead of opening a live listener.</div>}
+                {onlineUsers.length === 0 && <div className="p-8 text-center text-slate-500 font-bold">No users have a fresh heartbeat in the latest snapshot. Recently active and last-seen rows stay below so stale sessions do not look online.</div>}
                 {onlineUsers.map(u => {
                   const restName = restaurants.find(r => r.id === u.restaurantId)?.name || 'Unknown Workspace';
                   return (
@@ -9004,7 +9069,7 @@ Type RESTORE to continue.`);
                         <div className="min-w-0">
                           <div className="text-sm font-black text-white truncate flex items-center gap-2">{u.name || 'Unnamed User'} <SignalPip tone="emerald" label="ONLINE" hot /></div>
                           <div className="text-[10px] text-slate-400 font-bold truncate">{restName} • {u.role || 'No role'} • {u.activeTab ? `Tab: ${u.activeTab}` : 'Tab: unknown'} • Seen {timeAgo(u.lastHeartbeatAt || u.presenceUpdatedAt || u.lastActive || u.lastSeen)}</div>
-                          <div className="text-[9px] text-slate-500 font-mono truncate">{u.email || 'No email'} • {u.activeDevice || 'Unknown device'}</div>
+                          <div className="text-[9px] text-slate-500 font-mono truncate">{u.email || 'No email'} • {formatPresenceDeviceLabel(u.activeDevice || u.device || u.deviceType || '')}</div>
                         </div>
                       </div>
                       <button onClick={() => { setGhostTenant({ id: u.restaurantId, name: restName, mode: 'user', impersonate: u }); setActiveTab('published'); }} className="px-3 py-1.5 bg-fuchsia-900/20 border border-fuchsia-500/50 text-fuchsia-400 font-bold text-[10px] uppercase tracking-widest rounded-lg hover:bg-fuchsia-900/40 transition-colors shadow-sm flex items-center justify-center gap-1"><Moon size={14} /> Possess</button>
@@ -9016,11 +9081,11 @@ Type RESTORE to continue.`);
 
             <div className="cockpit-panel rounded-2xl overflow-hidden">
               <div className={`bg-[#12161A] p-3 border-b ${T.border}`}>
-                <h3 className="font-black text-sm text-white">Active Workspaces</h3>
-                <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mt-1">Grouped by latest online / last-seen snapshot</p>
+                <h3 className="font-black text-sm text-white">Online Workspaces</h3>
+                <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mt-1">Grouped by users with a fresh online heartbeat only</p>
               </div>
               <div className={`divide-y ${T.border} max-h-[55vh] overflow-y-auto custom-scrollbar`}>
-                {onlineByRestaurant.length === 0 && <div className="p-6 text-center text-slate-500 font-bold text-sm">No workspaces in the latest snapshot.</div>}
+                {onlineByRestaurant.length === 0 && <div className="p-6 text-center text-slate-500 font-bold text-sm">No workspaces have a truly online user in the latest snapshot.</div>}
                 {onlineByRestaurant.map(group => (
                   <div key={group.id} className="p-3 hover:bg-[#12161A]/55 transition-colors">
                     <div className="flex items-center justify-between gap-2">
@@ -9038,15 +9103,16 @@ Type RESTORE to continue.`);
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             <div className="cockpit-panel rounded-2xl p-4">
               <div className="flex items-center justify-between mb-3">
-                <h3 className="font-black text-white text-sm">Recently Seen Buffer</h3>
-                <SignalPip tone="amber" label={`${recentlyActiveUsers.length} warm`} />
+                <h3 className="font-black text-white text-sm">Recently Active</h3>
+                <SignalPip tone="cyan" label={`${recentlyActiveUsers.length} recent • ${activeTodayUsers.length} today`} />
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                {recentlyActiveUsers.slice(0, 12).map(u => {
+                {[...recentlyActiveUsers.slice(0, 8), ...activeTodayUsers.slice(0, 8)].map(u => {
                   const restName = restaurants.find(r => r.id === u.restaurantId)?.name || 'Unknown';
-                  return <div key={u.id} className="bg-[#0B0E11] border border-[#2A353D] rounded-lg p-2"><div className="text-xs font-black text-white truncate">{u.name || u.email}</div><div className="text-[9px] font-bold text-slate-500 uppercase tracking-wider truncate">{restName} • {timeAgo(u.lastHeartbeatAt || u.presenceUpdatedAt || u.lastActive || u.lastSeen)}</div></div>
+                  const warmLabel = isActiveToday(u) ? 'Active today' : 'Recently active';
+                  return <div key={u.id} className="bg-[#0B0E11] border border-[#2A353D] rounded-lg p-2"><div className="text-xs font-black text-white truncate">{u.name || u.email}</div><div className="text-[9px] font-bold text-slate-500 uppercase tracking-wider truncate">{restName} • {warmLabel} • {timeAgo(u.lastHeartbeatAt || u.presenceUpdatedAt || u.lastActive || u.lastSeen)}</div></div>
                 })}
-                {recentlyActiveUsers.length === 0 && <div className="text-sm text-slate-500 font-bold">No recently seen users outside the live window.</div>}
+                {recentlyActiveUsers.length === 0 && activeTodayUsers.length === 0 && <div className="text-sm text-slate-500 font-bold">No users were recently active outside the online cutoff.</div>}
               </div>
             </div>
 
@@ -9062,7 +9128,7 @@ Type RESTORE to continue.`);
                   ['Backup Engine', 'blue', 'JSON export ready'],
                   ['Billing Locks', staleTenants.length ? 'amber' : 'emerald', `${staleTenants.length} stale`],
                   ['API Routes', 'blue', `${apiConnectedCount} integrations`],
-                  ['Online / Last Seen', onlineUsers.length ? 'emerald' : 'amber', presenceSnapshot.fetchedAt ? `${onlineUsers.length} online now` : 'not refreshed']
+                  ['Online / Last Seen', onlineUsers.length ? 'emerald' : (recentlyActiveUsers.length ? 'blue' : 'amber'), presenceSnapshot.fetchedAt ? `${onlineUsers.length} online • ${recentlyActiveUsers.length} recent • ${activeTodayUsers.length} active today` : 'not refreshed']
                 ].map(([name, tone, detail]) => (
                   <div key={name} className="bg-[#0B0E11] border border-[#2A353D] rounded-lg p-2.5 min-h-[70px]">
                     <SignalPip tone={tone} label={name} hot={tone === 'amber'} />
@@ -9287,7 +9353,7 @@ Type RESTORE to continue.`);
             <div className="mt-3 grid grid-cols-2 sm:grid-cols-4 gap-2 text-[10px] font-black uppercase tracking-widest text-slate-500">
               <div className="rounded-lg border border-[#2A353D] bg-[#0B0E11] p-2"><span className="block text-slate-500">Snapshot</span><strong className="block text-white mt-1">{presenceSnapshot.fetchedAt ? timeAgo(presenceSnapshot.fetchedAt) : 'Not refreshed'}</strong></div>
               <div className="rounded-lg border border-[#2A353D] bg-[#0B0E11] p-2"><span className="block text-slate-500">Online now</span><strong className="block text-emerald-300 mt-1">{onlineUsers.length}</strong></div>
-              <div className="rounded-lg border border-[#2A353D] bg-[#0B0E11] p-2"><span className="block text-slate-500">Recent buffer</span><strong className="block text-amber-300 mt-1">{recentlyActiveUsers.length}</strong></div>
+              <div className="rounded-lg border border-[#2A353D] bg-[#0B0E11] p-2"><span className="block text-slate-500">Recent / today</span><strong className="block text-amber-300 mt-1">{recentlyActiveUsers.length} / {activeTodayUsers.length}</strong></div>
               <div className="rounded-lg border border-[#2A353D] bg-[#0B0E11] p-2"><span className="block text-slate-500">Source</span><strong className="block text-white mt-1">{presenceSnapshot.source || 'bounded snapshot'}</strong></div>
             </div>
           </div>

@@ -40,7 +40,7 @@ function publicPresenceRow(data = {}) {
     parseTimeMs(data.disconnectedAt)
   );
   const lastIso = lastMs ? new Date(lastMs).toISOString() : '';
-  const onlineState = clean(data.onlineState || data.state || (data.online === true ? 'online' : data.online === false ? 'offline' : 'online'));
+  const onlineState = clean(data.onlineState || data.state || (data.online === true ? 'online' : data.online === false ? 'offline' : 'unknown'));
   return {
     id: clean(data.id || data.userId || data.uid || ''),
     userId: clean(data.userId || data.uid || data.id || ''),
@@ -118,20 +118,49 @@ async function readFirestorePresenceFallback(db, restaurantId, limit, timeoutMs)
   return snap.docs.map(publicPresenceRowFromFirestore).filter(row => row.userId && row.restaurantId);
 }
 
-function buildBuckets(rows, limit, windowMinutes) {
-  const cutoffMs = Date.now() - windowMinutes * 60 * 1000;
+function startOfLocalDayMs(now = new Date()) {
+  const d = new Date(now);
+  d.setHours(0, 0, 0, 0);
+  return d.getTime();
+}
+
+function markPresenceBucket(row, bucket) {
+  return { ...row, presenceBucket: bucket };
+}
+
+function buildBuckets(rows, limit, windowMinutes, onlineSeconds = 90) {
+  const now = Date.now();
+  const onlineCutoffMs = now - Math.max(30, Math.min(Number(onlineSeconds) || 90, 180)) * 1000;
+  const recentCutoffMs = now - Math.max(2, Math.min(Number(windowMinutes) || 15, 240)) * 60 * 1000;
+  const todayCutoffMs = startOfLocalDayMs(new Date(now));
   const limitedRows = rows
     .filter(row => row && row.userId && row.restaurantId)
     .sort((a, b) => (b._presenceLastMs || 0) - (a._presenceLastMs || 0))
     .slice(0, limit);
+
+  const isOffline = row => row.online === false || row.onlineState === 'offline' || row.state === 'offline';
+  const isFreshOnline = row => !!row._presenceLastMs && row._presenceLastMs >= onlineCutoffMs && !isOffline(row);
+
   const online = limitedRows
-    .filter(row => row._presenceLastMs && (row.online === true || (row._presenceLastMs >= cutoffMs && row.onlineState !== 'offline')))
+    .filter(isFreshOnline)
+    .map(row => markPresenceBucket(row, 'onlineNow'))
     .sort((a, b) => b._presenceLastMs - a._presenceLastMs);
   const recent = limitedRows
-    .filter(row => row._presenceLastMs && row._presenceLastMs < cutoffMs && row._presenceLastMs >= Date.now() - 60 * 60 * 1000)
+    .filter(row => row._presenceLastMs && !isFreshOnline(row) && row._presenceLastMs >= recentCutoffMs)
+    .map(row => markPresenceBucket(row, 'recentlyActive'))
     .sort((a, b) => b._presenceLastMs - a._presenceLastMs)
     .slice(0, 100);
-  return { limitedRows, online, recent };
+  const activeToday = limitedRows
+    .filter(row => row._presenceLastMs && !isFreshOnline(row) && row._presenceLastMs < recentCutoffMs && row._presenceLastMs >= todayCutoffMs)
+    .map(row => markPresenceBucket(row, 'activeToday'))
+    .sort((a, b) => b._presenceLastMs - a._presenceLastMs)
+    .slice(0, 150);
+  const lastSeen = limitedRows
+    .filter(row => row._presenceLastMs && !isFreshOnline(row) && row._presenceLastMs < todayCutoffMs)
+    .map(row => markPresenceBucket(row, 'lastSeen'))
+    .sort((a, b) => b._presenceLastMs - a._presenceLastMs)
+    .slice(0, 150);
+  return { limitedRows, online, recent, activeToday, lastSeen, onlineSeconds: Math.max(30, Math.min(Number(onlineSeconds) || 90, 180)) };
 }
 
 module.exports = async (req, res) => {
@@ -148,6 +177,7 @@ module.exports = async (req, res) => {
     const limit = Math.min(Math.max(parseInt(req.query?.limit || '500', 10) || 500, 1), 800);
     const windowMinutes = Math.min(Math.max(parseInt(req.query?.windowMinutes || '15', 10) || 15, 1), 240);
     const timeoutMs = Math.min(Math.max(parseInt(req.query?.timeoutMs || '3200', 10) || 3200, 1200), 6000);
+    const onlineSeconds = Math.min(Math.max(parseInt(req.query?.onlineSeconds || '90', 10) || 90, 30), 180);
     const forceFirestoreFallback = String(req.query?.source || '').toLowerCase() === 'firestore';
 
     let rows = [];
@@ -163,7 +193,7 @@ module.exports = async (req, res) => {
           : flattenRtdbStatusSummary(raw || {}, '');
       } catch (rtdbError) {
         source = 'firestore-livePresence-fallback';
-        warnings.push(`RTDB snapshot unavailable: ${rtdbError?.message || rtdbError}`);
+        warnings.push('Live presence source unavailable. Showing last-seen fallback.');
         console.warn('RTDB presence snapshot failed, using bounded fallback:', rtdbError?.message || rtdbError);
       }
     } else {
@@ -176,15 +206,15 @@ module.exports = async (req, res) => {
         if (source === 'rtdb-statusSummary-rest') source = 'firestore-livePresence-fallback-empty-rtdb';
       } catch (fallbackError) {
         source = 'empty-safe-fallback';
-        warnings.push(`Firestore fallback unavailable: ${fallbackError?.message || fallbackError}`);
+        warnings.push('Last-seen fallback unavailable. Showing an empty safe snapshot.');
         console.warn('Firestore presence fallback failed; returning empty safe snapshot:', fallbackError?.message || fallbackError);
         rows = [];
       }
     }
 
-    const { limitedRows, online, recent } = buildBuckets(rows, limit, windowMinutes);
+    const { limitedRows, online, recent, activeToday, lastSeen } = buildBuckets(rows, limit, windowMinutes, onlineSeconds);
 
-    writeAudit(db, ctx, 'MANUAL_PRESENCE_SNAPSHOT', restaurantId || 'all-workspaces', `Manual presence snapshot read ${limitedRows.length} ${source} row(s); ${online.length} in the ${windowMinutes}-minute window.`, restaurantId || 'system')
+    writeAudit(db, ctx, 'MANUAL_PRESENCE_SNAPSHOT', restaurantId || 'all-workspaces', `Manual presence snapshot read ${limitedRows.length} ${source} row(s); ${online.length} fresh within ${onlineSeconds} seconds.`, restaurantId || 'system')
       .catch(err => console.warn('Manual presence snapshot audit write skipped:', err?.message || err));
 
     return res.status(200).json({
@@ -195,12 +225,17 @@ module.exports = async (req, res) => {
       warning: warnings.join(' | '),
       restaurantId: restaurantId || 'all',
       windowMinutes,
+      onlineSeconds,
       timeoutMs,
       livePresenceCount: limitedRows.length,
       onlineCount: online.length,
       recentCount: recent.length,
+      activeTodayCount: activeToday.length,
+      lastSeenCount: lastSeen.length,
       users: online,
-      recentUsers: recent
+      recentUsers: recent,
+      activeTodayUsers: activeToday,
+      lastSeenUsers: lastSeen
     });
   } catch (err) {
     console.error('Manual presence snapshot authorization/bootstrap failed:', err);
