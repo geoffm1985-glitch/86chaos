@@ -1159,7 +1159,26 @@ const [eventDate, setEventDate] = useState(getToday());
   const schedulePeriodDays = buildDateRange(schedulePeriodBounds.start, schedulePeriodBounds.end);
   const schedulePeriodLabel = getSchedulePeriodLabel(schedulePeriodBounds, schedulePublishingSettings);
   const schedulePeriodShifts = shifts.filter(s => { const d = String(s.date || s.scheduleDateKey || ''); return d >= schedulePeriodBounds.start && d <= schedulePeriodBounds.end; });
-  const schedulePeriodEvents = events.filter(e => e.type === 'special_event' && e.date >= schedulePeriodBounds.start && e.date <= schedulePeriodBounds.end).sort((a,b) => (a.date || '').localeCompare(b.date || ''));
+  const schedulePeriodEvents = events.filter(e => e.type === 'special_event' && e.date >= schedulePeriodBounds.start && e.date <= schedulePeriodBounds.end).sort((a,b) => (a.date || '').localeCompare(b.date || '') || (a.time || '').localeCompare(b.time || '') || (a.title || '').localeCompare(b.title || ''));
+  const eventsByScheduleDay = schedulePeriodDays.reduce((acc, d) => {
+    acc[d] = schedulePeriodEvents.filter(e => e.date === d);
+    return acc;
+  }, {});
+  const formatScheduleBuilderEventLabel = (event = {}) => {
+    const title = String(event.title || 'Event').trim() || 'Event';
+    const shortTitle = title.length > 16 ? `${title.slice(0, 15)}…` : title;
+    return `${event.time ? `${formatShortTime(event.time)} ` : ''}${shortTitle}`;
+  };
+  const formatScheduleBuilderEventTitle = (event = {}) => {
+    const parts = [
+      event.title || 'Event',
+      event.date ? formatDisplayDate(event.date) : '',
+      event.time ? formatShortTime(event.time) : '',
+      event.notes ? `Notes: ${event.notes}` : '',
+      event.orderReminder?.enabled ? `Order reminder: ${(event.orderReminder.cutoffDays || []).join(', ') || 'enabled'}` : ''
+    ];
+    return parts.filter(Boolean).join(' • ');
+  };
   const monthShifts = shifts.filter(s => s.date.startsWith(monthStr));
   const monthEvents = events.filter(e => e.type === 'special_event' && e.date.startsWith(monthStr)).sort((a,b) => (a.date || '').localeCompare(b.date || ''));
 
@@ -2453,7 +2472,7 @@ const handleExportTimesheets = () => {
               <div className="text-sm font-black text-white">{schedulePeriodLabel}</div>
               <div className="text-[10px] font-bold text-slate-500 mt-0.5">Change this in Settings → Workspace → Schedule Publishing.</div>
             </div>
-            <div className="text-[10px] font-black uppercase tracking-widest text-slate-400 bg-[#12161A] border border-[#2A353D] rounded-xl px-3 py-2">{schedulePeriodShifts.filter(s => !s.isPublished).length} draft • {schedulePeriodShifts.filter(s => s.isPublished).length} live</div>
+            <div className="text-[10px] font-black uppercase tracking-widest text-slate-400 bg-[#12161A] border border-[#2A353D] rounded-xl px-3 py-2">{schedulePeriodShifts.filter(s => !s.isPublished).length} draft • {schedulePeriodShifts.filter(s => s.isPublished).length} live • {schedulePeriodEvents.length} event{schedulePeriodEvents.length === 1 ? '' : 's'} shown</div>
           </div>
 
           <div className={`${T.card} w-full overflow-hidden`}>
@@ -2490,6 +2509,37 @@ const handleExportTimesheets = () => {
                   </tr>
                 </thead>
               <tbody className="divide-y divide-[#2A353D]">
+                  {schedulePeriodEvents.length > 0 && (
+                    <tr className="schedule-builder-events-row bg-amber-950/10">
+                      <td className="schedule-builder-events-label px-2 py-1 text-[8px] font-black uppercase tracking-widest text-amber-200 sticky left-0 z-10 border-r border-[#2A353D] bg-[#141920] shadow-md">
+                        Events
+                        <span className="block text-[7px] text-amber-400/80 tracking-normal normal-case">staff up</span>
+                      </td>
+                      {schedulePeriodDays.map(d => {
+                        const dayEvents = eventsByScheduleDay[d] || [];
+                        return (
+                          <td key={`events-${d}`} className={`schedule-builder-events-cell p-0.5 border-r border-[#2A353D] align-top ${dayEvents.length ? 'bg-amber-900/10' : 'bg-[#0B0E11]/40'}`}>
+                            <div className="flex flex-col gap-[2px] min-h-[20px]">
+                              {dayEvents.slice(0, 2).map(ev => (
+                                <button
+                                  key={ev.id || `${d}-${ev.title}-${ev.time}`}
+                                  type="button"
+                                  onClick={(event) => { event.stopPropagation(); openEditEventModal(ev); }}
+                                  className="schedule-builder-event-chip w-full rounded border border-amber-500/45 bg-amber-500/18 text-amber-100 font-black text-[7px] sm:text-[8px] leading-tight px-1 py-0.5 text-left truncate hover:bg-amber-500/30"
+                                  title={formatScheduleBuilderEventTitle(ev)}
+                                >
+                                  {formatScheduleBuilderEventLabel(ev)}
+                                </button>
+                              ))}
+                              {dayEvents.length > 2 && (
+                                <div className="schedule-builder-event-more rounded bg-amber-900/40 text-amber-200 text-[7px] font-black text-center" title={dayEvents.map(formatScheduleBuilderEventTitle).join(' | ')}>+{dayEvents.length - 2} more</div>
+                              )}
+                            </div>
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  )}
                   {sortedRoles.map(role => (
                     <React.Fragment key={`role-group-${role}`}>
                       <tr className="bg-[#1A2126]">

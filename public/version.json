@@ -1,12 +1,12 @@
 {
-  "version": "16.0.11",
-  "name": "86 Chaos 16.0.11 Mobile Modal Keyboard Focus Fix",
+  "version": "16.0.12",
+  "name": "86 Chaos 16.0.12 Schedule Builder Events Visibility Fix",
   "releasedAt": "2026-07-25T00:00:00.000Z",
-  "label": "16.0.11 Mobile Modal Keyboard Focus Fix",
-  "build": "16.0.11",
+  "label": "16.0.12 Schedule Builder Events Visibility Fix",
+  "build": "16.0.12",
   "notes": [
-    "Treats Online Now as a true fresh heartbeat within 90 seconds instead of anyone active during the 15-minute/active-today window.",
-    "Splits the System Administrator presence snapshot into Online Now, Recently Active, Active Today, and Last Seen counts.",
-    "Softens RTDB fallback warnings and keeps friendly Android/Windows/iPhone browser labels instead of raw user-agent strings."
+    "Shows scheduled special events directly inside Schedule Builder by date so managers can staff heavier days without opening Event Calendar separately.",
+    "Adds a compact event/coverage row above staff rows with event time, title, and notes in the hover title.",
+    "Keeps the desktop schedule grid dense and preserves the recent mobile modal keyboard focus fix."
   ]
 }
