@@ -1,12 +1,12 @@
 {
-  "version": "16.0.12",
-  "name": "86 Chaos 16.0.12 Schedule Builder Events Visibility Fix",
+  "version": "16.0.13",
+  "name": "86 Chaos 16.0.13 Vercel Lockfile Deploy Fix",
   "releasedAt": "2026-07-25T00:00:00.000Z",
-  "label": "16.0.12 Schedule Builder Events Visibility Fix",
-  "build": "16.0.12",
+  "label": "16.0.13 Vercel Lockfile Deploy Fix",
+  "build": "16.0.13",
   "notes": [
-    "Shows scheduled special events directly inside Schedule Builder by date so managers can staff heavier days without opening Event Calendar separately.",
-    "Adds a compact event/coverage row above staff rows with event time, title, and notes in the hover title.",
-    "Keeps the desktop schedule grid dense and preserves the recent mobile modal keyboard focus fix."
+    "Fixes the Vercel npm ci 404 caused by a package-lock nested dependency being stamped with the app version.",
+    "Keeps @types/yargs locked to the valid registry package while only the app root version moves forward.",
+    "Preserves the Schedule Builder events row, mobile keyboard fix, honest presence status fix, and prior schedule readability fixes."
   ]
 }
