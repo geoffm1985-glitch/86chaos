@@ -3869,3 +3869,32 @@ select {
     letter-spacing: -0.045em;
   }
 }
+
+/* 16.0.12: Schedule Builder event visibility row. Keep it compact so shift cells stay dense. */
+.schedule-builder-event-chip,
+.schedule-builder-event-more {
+  min-height: 14px;
+  line-height: 1.05;
+  white-space: nowrap;
+}
+
+@media (min-width: 1024px) {
+  .schedule-builder-events-row > td {
+    border-top: 1px solid rgba(212, 163, 129, 0.36) !important;
+    border-bottom: 1px solid rgba(212, 163, 129, 0.26) !important;
+  }
+
+  .schedule-builder-events-cell {
+    height: 26px !important;
+    max-height: 34px !important;
+  }
+
+  .schedule-builder-event-chip,
+  .schedule-builder-event-more {
+    font-size: 8px !important;
+    padding: 2px 3px !important;
+    letter-spacing: -0.035em;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+  }
+}
