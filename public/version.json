@@ -1,12 +1,12 @@
 {
-  "version": "16.0.14",
-  "name": "86 Chaos 16.0.14 Schedule Builder Event Loader Fix",
+  "version": "16.0.15",
+  "name": "86 Chaos 16.0.15 Schedule Hours Math Fix",
   "releasedAt": "2026-07-25T00:00:00.000Z",
-  "label": "16.0.14 Schedule Builder Event Loader Fix",
-  "build": "16.0.14",
+  "label": "16.0.15 Schedule Hours Math Fix",
+  "build": "16.0.15",
   "notes": [
-    "Loads Event Calendar records while Schedule Builder is open so scheduled events appear in the builder grid.",
-    "Uses the same schedule publishing window for event reads so events from the visible pay/schedule period are available.",
-    "Preserves Vercel lockfile fixes, mobile keyboard fix, honest presence status, and desktop schedule readability work."
+    "Fixes Scheduled Hours Tracker math for legacy AM/PM shift strings such as 10a-9p and 10p-3p.",
+    "Deduplicates exact duplicate shift documents per employee/day/time so hidden duplicate writes do not inflate weekly totals.",
+    "Keeps Schedule Builder visible shift chips and labor projections aligned with the hours tracker."
   ]
 }
