@@ -1030,7 +1030,7 @@ const handleOfferSwap = async (shift) => {
                   <Calendar size={16} className={T.copper}/>
                   <div>
                     <h3 className={`text-xs font-black uppercase tracking-widest ${T.copper}`}>Active Roster</h3>
-                    <span className="text-[10px] text-slate-300 font-black uppercase tracking-wider">{rosterFilterDate ? formatDisplayDate(rosterFilterDate) : formatDisplayMonth(currentDate)}</span>
+                    <span className="text-[10px] text-slate-300 font-black uppercase tracking-wider">{rosterFilterDate ? formatDisplayDate(rosterFilterDate) : formatDisplayMonth(monthStr)}</span>
                   </div>
                 </button>
                 <div className="flex items-center gap-2">

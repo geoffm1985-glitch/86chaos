@@ -380,7 +380,7 @@ export const MASTER_ADMIN_EMAIL = (process.env.REACT_APP_MASTER_ADMIN_EMAIL || '
 export const EVENT_TAGS = ['Standard Day', 'Packers Game', 'Brewers Game', 'Live Music', 'Severe Weather', 'Private Catering', 'Holiday'];
 
 // --- VERSION TRACKING ---
-export const CURRENT_VERSION = '16.0.2';
+export const CURRENT_VERSION = '16.0.3';
 
 // --- Helpers ---
 const usePageVisible = () => {
@@ -463,11 +463,32 @@ export const useLiveCollection = (coll, restId, options = {}) => {
 };
 export const formatDate = (date) => new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().split('T')[0];
 export const getToday = () => formatDate(new Date());
-export const getMonthStr = (d) => (d || getToday()).substring(0, 7);
-export const formatDisplayDate = (d) => new Date(d + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
-export const formatDisplayFullDate = (d) => new Date(d + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
-export const formatDisplayMonth = (m) => new Date(m + '-01T12:00:00').toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
-export const getDaysInMonth = (m) => new Date(m.split('-')[0], m.split('-')[1], 0).getDate();
+export const getMonthStr = (d) => {
+  if (d instanceof Date) return formatDate(d).substring(0, 7);
+  const value = String(d || getToday());
+  return /^\d{4}-\d{2}/.test(value) ? value.substring(0, 7) : getToday().substring(0, 7);
+};
+export const formatDisplayDate = (d) => {
+  const key = String(d || '').substring(0, 10);
+  const date = new Date(`${key}T12:00:00`);
+  return Number.isFinite(date.getTime()) ? date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }) : 'Unknown Date';
+};
+export const formatDisplayFullDate = (d) => {
+  const key = String(d || '').substring(0, 10);
+  const date = new Date(`${key}T12:00:00`);
+  return Number.isFinite(date.getTime()) ? date.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' }) : 'Unknown Date';
+};
+export const formatDisplayMonth = (m) => {
+  const monthKey = getMonthStr(m);
+  const date = new Date(`${monthKey}-01T12:00:00`);
+  return Number.isFinite(date.getTime()) ? date.toLocaleDateString('en-US', { month: 'long', year: 'numeric' }) : 'Unknown Month';
+};
+export const getDaysInMonth = (m) => {
+  const monthKey = getMonthStr(m);
+  const [year, month] = monthKey.split('-').map(Number);
+  const date = new Date(year, month, 0);
+  return Number.isFinite(date.getTime()) ? date.getDate() : 31;
+};
 let ACTIVE_TIME_FORMAT = '12h';
 export const setActiveTimeFormat = (format) => { ACTIVE_TIME_FORMAT = format || '12h'; };
 export const getPreferredTimeFormat = (userOrFormat) => {

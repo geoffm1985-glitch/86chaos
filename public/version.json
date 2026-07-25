@@ -1,14 +1,13 @@
 {
-  "version": "16.0.2",
-  "name": "86 Chaos 16.0.2 Presence Visibility and Read Saver",
-  "releasedAt": "2026-07-24T00:00:00.000Z",
-  "label": "16.0.2 Low-Cost Online Presence Visibility",
-  "build": "16.0.2",
+  "version": "16.0.3",
+  "name": "86 Chaos 16.0.3 CSP RTDB and Schedule Date Display Fix",
+  "releasedAt": "2026-07-25T00:00:00.000Z",
+  "label": "16.0.3 RTDB CSP and Full Schedule Date Fix",
+  "build": "16.0.3",
   "notes": [
-    "Shows low-cost Realtime Database online/last-online status in Staff Roster and the user Profile screen.",
-    "Keeps Message Board free of presence indicators to avoid extra live reads there.",
-    "System Administrator manual presence snapshot now treats RTDB online sessions as online even when the connection has been open longer than the snapshot window.",
-    "Adds a page-visibility read saver so Firestore live listeners pause while the app tab is hidden and resume when the tab returns.",
-    "Keeps the 16.0.1 My Schedule strict shift matching fix."
+    "Allows Firebase Realtime Database long-poll script fallback through the Vercel Content Security Policy.",
+    "Keeps RTDB presence from creating repeated CSP console errors across routes.",
+    "Hardens shared date/month display helpers so full YYYY-MM-DD dates do not render as Invalid Date in month labels.",
+    "Fixes the Full Schedule Active Roster month label on mobile and desktop."
   ]
 }
