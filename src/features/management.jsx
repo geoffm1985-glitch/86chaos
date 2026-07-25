@@ -58,6 +58,30 @@ const getSafeMapCenter = (lat, lon) => {
 };
 
 
+const SimpleTable = ({ headers = [], rows = [], empty = 'No records found.' }) => {
+  const safeHeaders = Array.isArray(headers) ? headers : [];
+  const safeRows = Array.isArray(rows) ? rows : [];
+  return (
+    <div className={`${T.card} overflow-hidden`}>
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead className="bg-[#12161A] text-slate-300">
+            <tr>{safeHeaders.map((header, index) => <th key={`${String(header)}-${index}`} className="text-left p-3 font-black whitespace-nowrap">{header}</th>)}</tr>
+          </thead>
+          <tbody className="divide-y divide-[#2A353D]">
+            {safeRows.length === 0 && <tr><td colSpan={Math.max(safeHeaders.length, 1)} className="p-6 text-center text-slate-400 font-bold">{empty}</td></tr>}
+            {safeRows.map((row, rowIndex) => {
+              const cells = Array.isArray(row) ? row : [row];
+              return <tr key={rowIndex} className="hover:bg-[#12161A]/60">{cells.map((cell, cellIndex) => <td key={cellIndex} className="p-3 text-slate-200 align-top whitespace-nowrap">{cell}</td>)}</tr>;
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+};
+
+
 const sanitizeForFirestore = (value) => {
   if (value === undefined) return undefined;
   if (value === null) return null;
