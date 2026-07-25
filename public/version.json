@@ -1,13 +1,13 @@
 {
-  "version": "16.0.5",
-  "name": "86 Chaos 16.0.5 Admin Presence Retention Readability Fix",
+  "version": "16.0.6",
+  "name": "86 Chaos 16.0.6 Presence Snapshot and Schedule Builder Assignment Fix",
   "releasedAt": "2026-07-25T00:00:00.000Z",
-  "label": "16.0.5 Admin Presence and Retention Readability Fix",
-  "build": "16.0.5",
+  "label": "16.0.6 Presence Snapshot and Schedule Builder Assignment Fix",
+  "build": "16.0.6",
   "notes": [
-    "Allows Firebase Realtime Database long-poll script fallback through the Vercel Content Security Policy.",
-    "Keeps RTDB presence from creating repeated CSP console errors across routes.",
-    "Hardens shared date/month display helpers so full YYYY-MM-DD dates do not render as Invalid Date in month labels.",
-    "Fixes the Full Schedule Active Roster month label on mobile and desktop."
+    "Hardens the System Administrator Online / Last Seen snapshot so RTDB reads are capped, timeout-safe, and never hold the page hostage.",
+    "Falls back to a safe roster/profile presence snapshot when the backend presence source is slow or unavailable.",
+    "Fixes Schedule Builder manual assignment so selected dates are tied to one stable employee instead of carrying selections across rows.",
+    "Lets managers delete malformed or duplicate visible shift cells by matching the actual visible shift records instead of only exact employeeId fields."
   ]
 }

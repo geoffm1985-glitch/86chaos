@@ -4101,6 +4101,7 @@ firebase deploy --only functions --project YOUR_PRODUCTION_PROJECT_ID
   const [presenceSnapshot, setPresenceSnapshot] = useState({ users: [], recentUsers: [], fetchedAt: '', windowMinutes: 15, livePresenceCount: 0, onlineCount: 0, recentCount: 0 });
   const [isPresenceSnapshotLoading, setIsPresenceSnapshotLoading] = useState(false);
   const [presenceSnapshotError, setPresenceSnapshotError] = useState('');
+  const [presenceSnapshotWarning, setPresenceSnapshotWarning] = useState('');
   const [securityReport, setSecurityReport] = useState(null);
   const [isSecurityLoading, setIsSecurityLoading] = useState(false);
   const [securityError, setSecurityError] = useState(''); 
@@ -4535,8 +4536,9 @@ const unsubAudit = onSnapshot(collection(db, 'auditLogs'), snap => {
   const loadPresenceSnapshot = async ({ silent = false } = {}) => {
     setIsPresenceSnapshotLoading(true);
     setPresenceSnapshotError('');
+    setPresenceSnapshotWarning('');
     try {
-      const response = await secureFetch('/api/presence-snapshot?windowMinutes=15&limit=1200', { method: 'GET' });
+      const response = await secureFetch('/api/presence-snapshot?windowMinutes=15&limit=500&timeoutMs=3200', { method: 'GET' });
       const data = await response.json().catch(() => ({}));
       if (!response.ok || data?.ok === false) throw new Error(data?.error || `API ${response.status}`);
       setPresenceSnapshot({
@@ -4547,13 +4549,46 @@ const unsubAudit = onSnapshot(collection(db, 'auditLogs'), snap => {
         livePresenceCount: data.livePresenceCount || 0,
         onlineCount: data.onlineCount || 0,
         recentCount: data.recentCount || 0,
-        mode: data.mode || 'manual-snapshot'
+        mode: data.mode || 'manual-snapshot',
+        source: data.source || 'unknown',
+        warning: data.warning || ''
       });
+      if (data.warning) setPresenceSnapshotWarning(data.warning);
       if (!silent) addToast('Presence Snapshot', `${data.onlineCount || 0} recent app check-in(s) found. No live listener was opened.`);
     } catch (err) {
       const message = err?.message || 'Manual presence snapshot failed.';
-      setPresenceSnapshotError(message);
-      if (!silent) addToast('Snapshot Failed', message);
+      const fallbackRows = (allUsers || []).map(u => ({
+        userId: u.id,
+        uid: u.uid || u.id,
+        restaurantId: u.restaurantId || '',
+        userName: u.name || u.email || 'Unknown user',
+        name: u.name || u.email || 'Unknown user',
+        userEmail: u.email || '',
+        email: u.email || '',
+        role: u.role || '',
+        activeDevice: u.activeDevice || u.device || u.deviceType || '',
+        activeTab: u.activeTab || '',
+        presenceUpdatedAt: u.presenceUpdatedAt || u.lastOnline || u.lastActive || u.lastSeen || '',
+        lastSeen: u.lastOnline || u.lastActive || u.lastSeen || u.presenceUpdatedAt || '',
+        presenceSource: 'client-roster-fallback',
+        online: false,
+        onlineState: 'unknown'
+      })).filter(u => u.userId || u.email);
+      setPresenceSnapshot({
+        users: [],
+        recentUsers: fallbackRows,
+        fetchedAt: new Date().toISOString(),
+        windowMinutes: 15,
+        livePresenceCount: fallbackRows.length,
+        onlineCount: 0,
+        recentCount: fallbackRows.length,
+        mode: 'client-fallback-after-api-error',
+        source: 'client-roster-fallback',
+        warning: message
+      });
+      setPresenceSnapshotWarning(`Snapshot API unavailable, showing roster fallback: ${message}`);
+      setPresenceSnapshotError('');
+      if (!silent) addToast('Snapshot Fallback', 'The API timed out, so the page is showing the safe roster/last-seen fallback instead of failing.');
     } finally {
       setIsPresenceSnapshotLoading(false);
     }
@@ -8947,8 +8982,9 @@ Type RESTORE to continue.`);
         <div className="space-y-4 animate-[slideIn_0.2s_ease-out]">
           {adminDataErrors.users && <div className="bg-red-900/20 border border-red-900/50 text-red-100 rounded-2xl p-4 text-sm font-bold leading-snug">Live user data is blocked by Firestore rules or auth claims: {adminDataErrors.users}. Deploy the included firestore.rules file, then log out and back in so super-admin claims refresh.</div>}
           {presenceSnapshotError && <div className="bg-red-900/20 border border-red-900/50 text-red-100 rounded-2xl p-4 text-sm font-bold leading-snug">Online / last-seen snapshot failed: {presenceSnapshotError}</div>}
+          {presenceSnapshotWarning && <div className="bg-amber-900/20 border border-amber-500/40 text-amber-100 rounded-2xl p-4 text-sm font-bold leading-snug">Online / last-seen snapshot note: {presenceSnapshotWarning}</div>}
           <div className="bg-[#0B0E11] border border-[#2A353D] rounded-2xl p-3 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3 text-[10px] font-black uppercase tracking-widest text-slate-400">
-            <div className="flex flex-wrap gap-2"><span className="text-emerald-400">Online / Last Seen Snapshot</span><span>Users: {allUsers.length}</span><span>Online now: {onlineUsers.length}</span><span>Window: {presenceSnapshot.windowMinutes || 15} min</span><span>One-time RTDB read</span>{presenceSnapshot.fetchedAt && <span>Fetched: {timeAgo(presenceSnapshot.fetchedAt)}</span>}</div>
+            <div className="flex flex-wrap gap-2"><span className="text-emerald-400">Online / Last Seen Snapshot</span><span>Users: {allUsers.length}</span><span>Online now: {onlineUsers.length}</span><span>Window: {presenceSnapshot.windowMinutes || 15} min</span><span>{presenceSnapshot.source === 'client-roster-fallback' ? 'Roster fallback' : 'One-time bounded read'}</span>{presenceSnapshot.fetchedAt && <span>Fetched: {timeAgo(presenceSnapshot.fetchedAt)}</span>}</div>
             <button type="button" onClick={() => loadPresenceSnapshot()} disabled={isPresenceSnapshotLoading} className="px-3 py-2 bg-emerald-900/20 border border-emerald-500/50 text-emerald-300 rounded-lg font-black uppercase tracking-widest hover:bg-emerald-900/40 disabled:opacity-50 flex items-center justify-center gap-2">{isPresenceSnapshotLoading ? <Loader2 size={14} className="animate-spin"/> : <Users size={14}/>} Refresh Online / Last Seen</button>
           </div>
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
@@ -9252,7 +9288,7 @@ Type RESTORE to continue.`);
               <div className="rounded-lg border border-[#2A353D] bg-[#0B0E11] p-2"><span className="block text-slate-500">Snapshot</span><strong className="block text-white mt-1">{presenceSnapshot.fetchedAt ? timeAgo(presenceSnapshot.fetchedAt) : 'Not refreshed'}</strong></div>
               <div className="rounded-lg border border-[#2A353D] bg-[#0B0E11] p-2"><span className="block text-slate-500">Online now</span><strong className="block text-emerald-300 mt-1">{onlineUsers.length}</strong></div>
               <div className="rounded-lg border border-[#2A353D] bg-[#0B0E11] p-2"><span className="block text-slate-500">Recent buffer</span><strong className="block text-amber-300 mt-1">{recentlyActiveUsers.length}</strong></div>
-              <div className="rounded-lg border border-[#2A353D] bg-[#0B0E11] p-2"><span className="block text-slate-500">Source</span><strong className="block text-white mt-1">RTDB snapshot</strong></div>
+              <div className="rounded-lg border border-[#2A353D] bg-[#0B0E11] p-2"><span className="block text-slate-500">Source</span><strong className="block text-white mt-1">{presenceSnapshot.source || 'bounded snapshot'}</strong></div>
             </div>
           </div>
 
