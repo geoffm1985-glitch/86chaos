@@ -361,6 +361,15 @@ const [currentDate, setCurrentDate] = useState(getToday());
   const shiftRangeStart = wantsScheduleScreen ? scheduleWindowStart : getToday();
   const shiftRangeEnd = wantsScheduleScreen ? scheduleWindowEnd : todayOpsWindowEnd;
   const messageRangeStart = activeTabState === 'messages' ? addDays(getToday(), -60) : recentWindowStart;
+  const wantsEventData = wantsToday || wantsScheduleScreen || activeTabState === 'messages' || activeTabState === 'ops' || isGlobalSearchOpen;
+  // Schedule Builder needs the same scheduled events a manager sees in Event Calendar.
+  // Without loading events on schedule screens, the builder receives an empty/stale events prop
+  // and the staff-up row cannot show banquets, parties, holidays, or special events that affect coverage.
+  const eventRangeClauses = wantsScheduleScreen
+    ? [['date', '>=', scheduleWindowStart], ['date', '<=', scheduleWindowEnd]]
+    : [['date', '>=', messageRangeStart]];
+  const eventOrderDirection = wantsScheduleScreen ? 'asc' : 'desc';
+  const eventLimitCount = wantsScheduleScreen ? 500 : (activeTabState === 'messages' ? 90 : 35);
   const prepDateWindow = Array.from(new Set([currentDate, getToday(), 'MASTER']));
   const canViewTeamScheduleData = Boolean(appUser?.isSuperAdmin || appUser?.isAdmin || appUser?.isOwner || appUser?.accountOwner || appUser?.workspaceOwner || appUser?.permissions?.schedule || appUser?.permissions?.team);
   const canViewTeamPresenceData = Boolean(appUser?.isSuperAdmin || appUser?.isAdmin || appUser?.isOwner || appUser?.accountOwner || appUser?.workspaceOwner || appUser?.permissions?.team);
@@ -422,7 +431,7 @@ const [currentDate, setCurrentDate] = useState(getToday());
       .sort((a, b) => String(a.date || '').localeCompare(String(b.date || '')) || String(a.startTime || '').localeCompare(String(b.startTime || '')) || String(a.employeeName || '').localeCompare(String(b.employeeName || '')));
   }, [rawShifts, shiftRangeStart, shiftRangeEnd, clientData?.scheduleRescueEnforceProtected, clientData?.lastScheduleRescueAt, JSON.stringify(clientData?.scheduleRescueProtectedMonths || [])]);
   const shiftSwaps = useLiveCollection('shiftSwaps', rId, { enabled: !!rId && wantsScheduleData, whereClauses: [['date','>=', getToday()], ['date','<=', futureWindowEnd]], orderByField: 'date', orderDirection: 'asc', limitCount: 50, fallbackLimitCount: 25 });
-  const events = useLiveCollection('events', rId, { enabled: !!rId && (wantsToday || activeTabState === 'messages' || activeTabState === 'events' || activeTabState === 'ops' || isGlobalSearchOpen), whereClauses: [['date','>=', messageRangeStart]], orderByField: 'date', orderDirection: 'desc', limitCount: activeTabState === 'messages' ? 90 : 35, fallbackLimitCount: 25 });
+  const events = useLiveCollection('events', rId, { enabled: !!rId && wantsEventData, whereClauses: eventRangeClauses, orderByField: 'date', orderDirection: eventOrderDirection, limitCount: eventLimitCount, fallbackLimitCount: wantsScheduleScreen ? 400 : 25 });
   const sales = useLiveCollection('sales', rId, { enabled: !!rId && wantsSalesData, whereClauses: [['date','>=', monthBounds.start], ['date','<=', monthBounds.end]], orderByField: 'date', orderDirection: 'desc', limitCount: 45, fallbackLimitCount: 20 });
   const timeOffRequests = useLiveCollection('timeOffRequests', rId, { enabled: !!rId && wantsScheduleData, whereClauses: timeOffRequestClauses, limitCount: wantsScheduleScreen ? 1000 : 180, fallbackLimitCount: wantsScheduleScreen ? 1000 : 120 });
   const timePunches = useLiveCollection('timePunches', rId, { enabled: !!rId && wantsLaborData, whereClauses: [['date','>=', activeTabState === 'labor' ? laborPunchWindowStart : lightPunchWindowStart], ['date','<=', activeTabState === 'labor' ? laborPunchWindowEnd : lightPunchWindowEnd]], orderByField: 'date', orderDirection: 'desc', limitCount: activeTabState === 'labor' ? 180 : 35, fallbackLimitCount: 30 });

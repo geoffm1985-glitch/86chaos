@@ -1,12 +1,12 @@
 {
-  "version": "16.0.13",
-  "name": "86 Chaos 16.0.13 Vercel Lockfile Deploy Fix",
+  "version": "16.0.14",
+  "name": "86 Chaos 16.0.14 Schedule Builder Event Loader Fix",
   "releasedAt": "2026-07-25T00:00:00.000Z",
-  "label": "16.0.13 Vercel Lockfile Deploy Fix",
-  "build": "16.0.13",
+  "label": "16.0.14 Schedule Builder Event Loader Fix",
+  "build": "16.0.14",
   "notes": [
-    "Fixes the Vercel npm ci 404 caused by a package-lock nested dependency being stamped with the app version.",
-    "Keeps @types/yargs locked to the valid registry package while only the app root version moves forward.",
-    "Preserves the Schedule Builder events row, mobile keyboard fix, honest presence status fix, and prior schedule readability fixes."
+    "Loads Event Calendar records while Schedule Builder is open so scheduled events appear in the builder grid.",
+    "Uses the same schedule publishing window for event reads so events from the visible pay/schedule period are available.",
+    "Preserves Vercel lockfile fixes, mobile keyboard fix, honest presence status, and desktop schedule readability work."
   ]
 }
