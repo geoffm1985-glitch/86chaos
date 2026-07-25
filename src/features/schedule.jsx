@@ -1961,10 +1961,21 @@ const handleAddEvent = async (e) => {
 
   const parseScheduleClockMinutes = (value) => parseScheduleClockInfo(value)?.minutes ?? null;
 
-  const getScheduleShiftInterval = (shift = {}) => {
+  const getScheduleShiftTimeStatus = (shift = {}) => {
+    const hasStart = shift.startTime !== undefined && shift.startTime !== null && String(shift.startTime).trim() !== '';
+    const hasEnd = shift.endTime !== undefined && shift.endTime !== null && String(shift.endTime).trim() !== '';
     const startInfo = parseScheduleClockInfo(shift.startTime);
     const endInfo = parseScheduleClockInfo(shift.endTime);
-    if (!startInfo || !endInfo) return null;
+    const displayRange = `${formatShortTime(shift.startTime) || shift.startTime || '?'}-${formatShortTime(shift.endTime) || shift.endTime || '?'}`;
+
+    // 16.0.18: Bad schedule time ranges should be flagged for correction, not guessed or auto-repaired.
+    // Example: 10p-3p is invalid because the end is before the start without a true overnight AM end.
+    if (!hasStart || !hasEnd) {
+      return { valid: false, interval: null, reason: 'Missing start or end time', displayRange };
+    }
+    if (!startInfo || !endInfo) {
+      return { valid: false, interval: null, reason: 'Cannot read this time format', displayRange };
+    }
 
     let startMinutes = startInfo.minutes;
     let endMinutes = endInfo.minutes;
@@ -1975,14 +1986,21 @@ const handleAddEvent = async (e) => {
       if (explicitlyOvernight || meridiemOvernight || twentyFourHourOvernight) {
         endMinutes += 24 * 60;
       } else {
-        return null;
+        return { valid: false, interval: null, reason: 'Invalid time range: end time is before start time. Check AM/PM.', displayRange };
       }
     }
 
     const totalMinutes = endMinutes - startMinutes;
-    if (totalMinutes <= 0 || totalMinutes > MAX_REASONABLE_SCHEDULE_SHIFT_MINUTES) return null;
-    return { start: startMinutes, end: endMinutes, minutes: totalMinutes };
+    if (totalMinutes <= 0) {
+      return { valid: false, interval: null, reason: 'Invalid time range: shift has no hours.', displayRange };
+    }
+    if (totalMinutes > MAX_REASONABLE_SCHEDULE_SHIFT_MINUTES) {
+      return { valid: false, interval: null, reason: 'Invalid time range: shift is over 18 hours. Check AM/PM.', displayRange };
+    }
+    return { valid: true, interval: { start: startMinutes, end: endMinutes, minutes: totalMinutes }, reason: '', displayRange };
   };
+
+  const getScheduleShiftInterval = (shift = {}) => getScheduleShiftTimeStatus(shift).interval;
 
   const calculateShiftHours = (start, end, shiftData = null) => {
     const interval = getScheduleShiftInterval(shiftData ? { ...shiftData, startTime: start, endTime: end } : { startTime: start, endTime: end });
@@ -2226,20 +2244,36 @@ const handleExportTimesheets = () => {
     });
     hoursWeekStart = addScheduleDays(hoursWeekStart, 7);
   }
-  const scheduledHoursRangeStart = scheduledHoursWeekBlocks[0]?.start || schedulePeriodBounds.start;
-  const scheduledHoursRangeEnd = scheduledHoursWeekBlocks[scheduledHoursWeekBlocks.length - 1]?.end || schedulePeriodBounds.end;
-  const scheduledHoursPeriodShifts = shifts.filter(s => {
-    const d = String(s.date || s.scheduleDateKey || '');
-    return d >= scheduledHoursRangeStart && d <= scheduledHoursRangeEnd;
-  });
+  const getScheduledHoursDayAudit = (dateKey, person) => {
+    const rawShifts = getScheduleBuilderRawShiftsForPersonDate(dateKey, person);
+    const visibleShifts = dedupeScheduleShiftsForSamePerson(rawShifts);
+    const validShifts = visibleShifts.map(shift => ({ shift, status: getScheduleShiftTimeStatus(shift) })).filter(item => item.status.valid);
+    const invalidShifts = visibleShifts.map(shift => ({ shift, status: getScheduleShiftTimeStatus(shift) })).filter(item => !item.status.valid);
+    const hours = getUniqueScheduledHoursForShifts(visibleShifts);
+    return { date: dateKey, rawShifts, visibleShifts, validShifts, invalidShifts, hours };
+  };
+
+  const formatScheduledHoursDayAuditLine = (audit = {}) => {
+    const dayLabel = audit.date ? new Date(`${audit.date}T12:00:00`).toLocaleDateString('en-US', { weekday: 'short', month: 'numeric', day: 'numeric' }) : 'Unknown day';
+    const counted = audit.validShifts?.map(({ status }) => status.displayRange).join(', ') || 'none';
+    const invalid = audit.invalidShifts?.map(({ status }) => `${status.displayRange} INVALID`).join(', ');
+    return `${dayLabel}: ${audit.hours.toFixed(1)}h counted (${counted})${invalid ? ` | Not counted: ${invalid}` : ''}`;
+  };
+
+  const formatScheduledHoursWeekAudit = (person, week, totalHours = 0) => {
+    const dayAudits = (week?.days || []).map(d => getScheduledHoursDayAudit(d, person)).filter(audit => audit.visibleShifts.length || audit.invalidShifts.length);
+    const lines = [`${person?.name || 'Employee'} Week ${formatScheduledHoursWeekRange(week)} total: ${totalHours.toFixed(1)}h`];
+    if (!dayAudits.length) lines.push('No scheduled shift hours counted for this week.');
+    dayAudits.forEach(audit => lines.push(formatScheduledHoursDayAuditLine(audit)));
+    return lines.join('\n');
+  };
 
   const scheduledHours = displayUsers.map(u => {
-     const userShifts = scheduledHoursPeriodShifts.filter(s => shiftMatchesPerson(s, u));
      const weekly = scheduledHoursWeekBlocks.map(week => week.days.reduce((sum, d) => {
-       const dayRawShifts = userShifts.filter(s => getScheduleShiftDateKey(s) === d);
-       return sum + getUniqueScheduledHoursForShifts(dayRawShifts);
+       const audit = getScheduledHoursDayAudit(d, u);
+       return sum + audit.hours;
      }, 0));
-     return { id: u.id, name: u.name, weekly, total: weekly.reduce((a,b)=>a+b,0) };
+     return { id: u.id, name: u.name, person: u, weekly, total: weekly.reduce((a,b)=>a+b,0) };
   }).filter(u => u.total > 0);
 
   const pendingTimeOffAlertRequests = timeOffRequests.filter(r => r.status === 'pending' && r.date >= schedulePeriodBounds.start && r.date <= schedulePeriodBounds.end);
@@ -2658,15 +2692,15 @@ const handleExportTimesheets = () => {
                                   if (!r.isPartial) return true;
                                   return (shift.startTime < (r.endTime || '23:59')) && (shift.endTime > (r.startTime || '00:00'));
                                 });
-                                const shiftHours = calculateShiftHours(shift.startTime, shift.endTime, shift);
-                                const invalidTimeRange = !shiftHours && !!(shift.startTime && shift.endTime);
+                                const timeStatus = getScheduleShiftTimeStatus(shift);
+                                const invalidTimeRange = !timeStatus.valid;
                                 return (
                                   <div 
                                     key={shift.id || `${d}-${u.id}-${shift.startTime}-${shift.endTime}`}
-                                    className={`schedule-builder-time-chip w-full rounded font-bold text-[7px] sm:text-[8px] py-0.5 text-center truncate ${getRoleColors(shift.role, shift.isPublished)} ${shiftConflict ? 'border-2 border-red-500 animate-pulse shadow-[0_0_8px_rgba(239,68,68,0.8)]' : ''} ${invalidTimeRange ? 'border border-amber-400/80 shadow-[0_0_8px_rgba(245,158,11,0.35)]' : ''}`} 
-                                    title={`${formatShortTime(shift.startTime)} - ${formatShortTime(shift.endTime)} ${shiftConflict ? '(CONFLICT DETECTED)' : ''}${invalidTimeRange ? ' (CHECK TIME RANGE - NOT COUNTED)' : ''}`}
+                                    className={`schedule-builder-time-chip w-full rounded font-bold text-[7px] sm:text-[8px] py-0.5 text-center truncate ${invalidTimeRange ? 'bg-amber-950/70 text-amber-200 border border-amber-400/90 shadow-[0_0_8px_rgba(245,158,11,0.35)]' : getRoleColors(shift.role, shift.isPublished)} ${shiftConflict ? 'border-2 border-red-500 animate-pulse shadow-[0_0_8px_rgba(239,68,68,0.8)]' : ''}`} 
+                                    title={`${timeStatus.displayRange} ${shiftConflict ? '(CONFLICT DETECTED)' : ''}${invalidTimeRange ? ` (INVALID TIME RANGE - NOT COUNTED: ${timeStatus.reason})` : ''}`}
                                   >
-                                    {formatShortTime(shift.startTime)}-{formatShortTime(shift.endTime)}
+                                    {invalidTimeRange ? 'INVALID TIME' : `${formatShortTime(shift.startTime)}-${formatShortTime(shift.endTime)}`}
                                   </div>
                                 );
                               })}
@@ -2712,7 +2746,7 @@ const handleExportTimesheets = () => {
                     <tr key={u.id} className="hover:bg-[#12161A]/50 transition-colors">
                       <td className="p-3 font-bold text-white border-r border-[#2A353D] sticky left-0 bg-[#1A2126] z-10 truncate">{u.name.split(' ')[0]}</td>
                       {u.weekly.map((hrs, i) => (
-                        <td key={i} className={`p-3 text-center font-black border-r border-[#2A353D] ${hrs > parseFloat(appUser?.systemSettings?.overtime || 40) ? 'text-red-500 bg-red-900/10' : hrs > 0 ? 'text-emerald-400' : 'text-slate-600'}`}>
+                        <td key={i} title={formatScheduledHoursWeekAudit(u.person || u, scheduledHoursWeekBlocks[i], hrs)} className={`p-3 text-center font-black border-r border-[#2A353D] ${hrs > parseFloat(appUser?.systemSettings?.overtime || 40) ? 'text-red-500 bg-red-900/10' : hrs > 0 ? 'text-emerald-400' : 'text-slate-600'}`}>
                           {hrs > 0 ? hrs.toFixed(1) : '-'}
                         </td>
                       ))}
