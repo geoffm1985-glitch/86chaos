@@ -1930,24 +1930,28 @@ const handleAddEvent = async (e) => {
 
   // --- LABOR PROJECTION ENGINE ---
   const MAX_REASONABLE_SCHEDULE_SHIFT_MINUTES = 18 * 60;
+  const MAX_LEGACY_REPAIRED_SHIFT_MINUTES = 12 * 60;
   const parseScheduleClockInfo = (value) => {
     if (value === null || value === undefined) return null;
     const raw = String(value).trim().toLowerCase().replace(/\s+/g, '');
     if (!raw) return null;
     if (['close', 'cl', 'closing'].includes(raw)) {
-      return { minutes: (23 * 60) + 59, meridiem: '', raw, isClose: true, isOpen: false, hasMeridiem: false, is24Hour: true };
+      return { minutes: (23 * 60) + 59, rawHour: 23, rawMinute: 59, meridiem: '', raw, isClose: true, isOpen: false, hasMeridiem: false, is24Hour: true };
     }
     if (['open', 'opening'].includes(raw)) {
-      return { minutes: 0, meridiem: '', raw, isClose: false, isOpen: true, hasMeridiem: false, is24Hour: true };
+      return { minutes: 0, rawHour: 0, rawMinute: 0, meridiem: '', raw, isClose: false, isOpen: true, hasMeridiem: false, is24Hour: true };
     }
 
     // Accept saved 24-hour values like 15:00 plus legacy/display values like 3p, 10a, 10:30pm.
-    // The returned meridiem lets us reject impossible same-meridiem pairs like 10p-3p instead of adding 24 hours.
+    // The raw hour stays available so old bad PM labels such as 10p-3p can be repaired as 10a-3p
+    // instead of being silently dropped from the hours tracker.
     const match = raw.match(/^(\d{1,2})(?::?(\d{2}))?(a|am|p|pm)?$/);
     if (!match) return null;
 
-    let hour = parseInt(match[1], 10);
-    const minute = match[2] !== undefined ? parseInt(match[2], 10) : 0;
+    const rawHour = parseInt(match[1], 10);
+    const rawMinute = match[2] !== undefined ? parseInt(match[2], 10) : 0;
+    let hour = rawHour;
+    const minute = rawMinute;
     const meridiem = match[3]?.startsWith('a') ? 'a' : match[3]?.startsWith('p') ? 'p' : '';
     if (!Number.isFinite(hour) || !Number.isFinite(minute) || minute < 0 || minute > 59) return null;
 
@@ -1956,10 +1960,25 @@ const handleAddEvent = async (e) => {
     if (!meridiem && hour === 24) hour = 0;
     if (hour < 0 || hour > 23) return null;
 
-    return { minutes: (hour * 60) + minute, meridiem, raw, isClose: false, isOpen: false, hasMeridiem: !!meridiem, is24Hour: !meridiem };
+    return { minutes: (hour * 60) + minute, rawHour, rawMinute, meridiem, raw, isClose: false, isOpen: false, hasMeridiem: !!meridiem, is24Hour: !meridiem };
   };
 
   const parseScheduleClockMinutes = (value) => parseScheduleClockInfo(value)?.minutes ?? null;
+
+  const getLegacySameDayRepairInterval = (startInfo, endInfo) => {
+    // Some older schedule rows saved/displayed AM starts as PM starts, producing chips like 10p-3p.
+    // That is not an overnight shift. It is the legacy same-day 10a-3p shift and must still count as 5 hours.
+    if (!startInfo || !endInfo) return null;
+    if (startInfo.meridiem !== 'p' || endInfo.meridiem !== 'p') return null;
+    if (endInfo.minutes > startInfo.minutes) return null;
+    if (startInfo.rawHour < 7 || startInfo.rawHour > 11) return null;
+    if (endInfo.rawHour < 1 || endInfo.rawHour > 6) return null;
+    const repairedStart = (startInfo.rawHour * 60) + startInfo.rawMinute;
+    const repairedEnd = endInfo.minutes;
+    const repairedMinutes = repairedEnd - repairedStart;
+    if (repairedMinutes <= 0 || repairedMinutes > MAX_LEGACY_REPAIRED_SHIFT_MINUTES) return null;
+    return { start: repairedStart, end: repairedEnd, minutes: repairedMinutes, repairedLegacyMeridiem: true, repairedLabel: `${startInfo.rawHour}a-${endInfo.rawHour}p` };
+  };
 
   const getScheduleShiftInterval = (shift = {}) => {
     const startInfo = parseScheduleClockInfo(shift.startTime);
@@ -1969,6 +1988,9 @@ const handleAddEvent = async (e) => {
     let startMinutes = startInfo.minutes;
     let endMinutes = endInfo.minutes;
     if (endMinutes <= startMinutes) {
+      const repaired = getLegacySameDayRepairInterval(startInfo, endInfo);
+      if (repaired) return repaired;
+
       const explicitlyOvernight = shift.isOvernight === true || shift.overnight === true || shift.endsNextDay === true || shift.crossesMidnight === true;
       const meridiemOvernight = startInfo.meridiem === 'p' && endInfo.meridiem === 'a';
       const twentyFourHourOvernight = startInfo.is24Hour && endInfo.is24Hour && startMinutes >= (18 * 60) && endMinutes <= (10 * 60);
@@ -2658,13 +2680,15 @@ const handleExportTimesheets = () => {
                                   if (!r.isPartial) return true;
                                   return (shift.startTime < (r.endTime || '23:59')) && (shift.endTime > (r.startTime || '00:00'));
                                 });
-                                const shiftHours = calculateShiftHours(shift.startTime, shift.endTime, shift);
+                                const shiftInterval = getScheduleShiftInterval(shift);
+                                const shiftHours = shiftInterval ? shiftInterval.minutes / 60 : 0;
                                 const invalidTimeRange = !shiftHours && !!(shift.startTime && shift.endTime);
+                                const repairedLegacyRange = !!shiftInterval?.repairedLegacyMeridiem;
                                 return (
                                   <div 
                                     key={shift.id || `${d}-${u.id}-${shift.startTime}-${shift.endTime}`}
-                                    className={`schedule-builder-time-chip w-full rounded font-bold text-[7px] sm:text-[8px] py-0.5 text-center truncate ${getRoleColors(shift.role, shift.isPublished)} ${shiftConflict ? 'border-2 border-red-500 animate-pulse shadow-[0_0_8px_rgba(239,68,68,0.8)]' : ''} ${invalidTimeRange ? 'border border-amber-400/80 shadow-[0_0_8px_rgba(245,158,11,0.35)]' : ''}`} 
-                                    title={`${formatShortTime(shift.startTime)} - ${formatShortTime(shift.endTime)} ${shiftConflict ? '(CONFLICT DETECTED)' : ''}${invalidTimeRange ? ' (CHECK TIME RANGE - NOT COUNTED)' : ''}`}
+                                    className={`schedule-builder-time-chip w-full rounded font-bold text-[7px] sm:text-[8px] py-0.5 text-center truncate ${getRoleColors(shift.role, shift.isPublished)} ${shiftConflict ? 'border-2 border-red-500 animate-pulse shadow-[0_0_8px_rgba(239,68,68,0.8)]' : ''} ${invalidTimeRange || repairedLegacyRange ? 'border border-amber-400/80 shadow-[0_0_8px_rgba(245,158,11,0.35)]' : ''}`} 
+                                    title={`${formatShortTime(shift.startTime)} - ${formatShortTime(shift.endTime)} ${shiftConflict ? '(CONFLICT DETECTED)' : ''}${repairedLegacyRange ? ` (legacy time repaired for math as ${shiftInterval.repairedLabel})` : ''}${invalidTimeRange ? ' (CHECK TIME RANGE - NOT COUNTED)' : ''}`}
                                   >
                                     {formatShortTime(shift.startTime)}-{formatShortTime(shift.endTime)}
                                   </div>

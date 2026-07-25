@@ -1,9 +1,9 @@
 {
-  "version": "16.0.16",
-  "name": "86 Chaos 16.0.16 Schedule Hours Union Math Fix",
+  "version": "16.0.17",
+  "name": "86 Chaos 16.0.17",
   "releasedAt": "2026-07-25T00:00:00.000Z",
-  "label": "16.0.16 Schedule Hours Union Math Fix",
-  "build": "16.0.16",
+  "label": "16.0.17",
+  "build": "16.0.17",
   "notes": [
     "Recalculates Scheduled Hours Tracker from merged per-day time intervals instead of raw shift-document totals.",
     "Rejects impossible same-meridiem ranges such as 10p-3p instead of treating them as 17-hour overnight shifts.",
