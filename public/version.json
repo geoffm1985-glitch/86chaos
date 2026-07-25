@@ -1,12 +1,12 @@
 {
-  "version": "16.0.15",
-  "name": "86 Chaos 16.0.15 Schedule Hours Math Fix",
+  "version": "16.0.16",
+  "name": "86 Chaos 16.0.16 Schedule Hours Union Math Fix",
   "releasedAt": "2026-07-25T00:00:00.000Z",
-  "label": "16.0.15 Schedule Hours Math Fix",
-  "build": "16.0.15",
+  "label": "16.0.16 Schedule Hours Union Math Fix",
+  "build": "16.0.16",
   "notes": [
-    "Fixes Scheduled Hours Tracker math for legacy AM/PM shift strings such as 10a-9p and 10p-3p.",
-    "Deduplicates exact duplicate shift documents per employee/day/time so hidden duplicate writes do not inflate weekly totals.",
-    "Keeps Schedule Builder visible shift chips and labor projections aligned with the hours tracker."
+    "Recalculates Scheduled Hours Tracker from merged per-day time intervals instead of raw shift-document totals.",
+    "Rejects impossible same-meridiem ranges such as 10p-3p instead of treating them as 17-hour overnight shifts.",
+    "Normalizes duplicate shift times like 10a-9p and 10:00-21:00 so hidden duplicate docs cannot inflate weekly hours."
   ]
 }

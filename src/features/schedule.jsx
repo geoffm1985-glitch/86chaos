@@ -1348,12 +1348,15 @@ const [eventDate, setEventDate] = useState(getToday());
   const getScheduleBuilderPerson = (empId) => activeRoster.find(u => u.id === empId) || users.find(u => u.id === empId) || null;
   const normalizeShiftFingerprintValue = (value = '') => String(value || '').trim().toLowerCase().replace(/\s+/g, '');
   const getScheduleShiftDateKey = (shift = {}) => String(shift.date || shift.scheduleDateKey || '');
-  const getScheduleShiftDedupeKey = (shift = {}) => [
-    getScheduleShiftDateKey(shift),
-    normalizeShiftFingerprintValue(shift.startTime),
-    normalizeShiftFingerprintValue(shift.endTime),
-    normalizeScheduleName(shift.role || shift.position || 'shift')
-  ].join('|');
+  const getScheduleShiftDedupeKey = (shift = {}) => {
+    const startMinutes = parseScheduleClockMinutes(shift.startTime);
+    const endMinutes = parseScheduleClockMinutes(shift.endTime);
+    return [
+      getScheduleShiftDateKey(shift),
+      startMinutes === null ? normalizeShiftFingerprintValue(shift.startTime) : `s${startMinutes}`,
+      endMinutes === null ? normalizeShiftFingerprintValue(shift.endTime) : `e${endMinutes}`
+    ].join('|');
+  };
   const dedupeScheduleShiftsForSamePerson = (shiftList = []) => {
     const seen = new Set();
     return (shiftList || []).filter(shift => {
@@ -1926,57 +1929,100 @@ const handleAddEvent = async (e) => {
   };
 
   // --- LABOR PROJECTION ENGINE ---
-  const parseScheduleClockMinutes = (value) => {
+  const MAX_REASONABLE_SCHEDULE_SHIFT_MINUTES = 18 * 60;
+  const parseScheduleClockInfo = (value) => {
     if (value === null || value === undefined) return null;
     const raw = String(value).trim().toLowerCase().replace(/\s+/g, '');
     if (!raw) return null;
-    if (['close', 'cl', 'closing'].includes(raw)) return (23 * 60) + 59;
+    if (['close', 'cl', 'closing'].includes(raw)) {
+      return { minutes: (23 * 60) + 59, meridiem: '', raw, isClose: true, isOpen: false, hasMeridiem: false, is24Hour: true };
+    }
+    if (['open', 'opening'].includes(raw)) {
+      return { minutes: 0, meridiem: '', raw, isClose: false, isOpen: true, hasMeridiem: false, is24Hour: true };
+    }
 
-    // Accept both saved 24-hour values like 15:00 and legacy/display values like 3p, 10a, 10:30pm.
+    // Accept saved 24-hour values like 15:00 plus legacy/display values like 3p, 10a, 10:30pm.
+    // The returned meridiem lets us reject impossible same-meridiem pairs like 10p-3p instead of adding 24 hours.
     const match = raw.match(/^(\d{1,2})(?::?(\d{2}))?(a|am|p|pm)?$/);
     if (!match) return null;
 
     let hour = parseInt(match[1], 10);
     const minute = match[2] !== undefined ? parseInt(match[2], 10) : 0;
-    const meridiem = match[3] || '';
+    const meridiem = match[3]?.startsWith('a') ? 'a' : match[3]?.startsWith('p') ? 'p' : '';
     if (!Number.isFinite(hour) || !Number.isFinite(minute) || minute < 0 || minute > 59) return null;
 
-    if (meridiem.startsWith('p') && hour < 12) hour += 12;
-    if (meridiem.startsWith('a') && hour === 12) hour = 0;
+    if (meridiem === 'p' && hour < 12) hour += 12;
+    if (meridiem === 'a' && hour === 12) hour = 0;
     if (!meridiem && hour === 24) hour = 0;
     if (hour < 0 || hour > 23) return null;
 
-    return (hour * 60) + minute;
+    return { minutes: (hour * 60) + minute, meridiem, raw, isClose: false, isOpen: false, hasMeridiem: !!meridiem, is24Hour: !meridiem };
   };
 
-  const calculateShiftHours = (start, end) => {
-    const startMinutes = parseScheduleClockMinutes(start);
-    const endMinutes = parseScheduleClockMinutes(end);
-    if (startMinutes === null || endMinutes === null) return 0;
-    let totalMinutes = endMinutes - startMinutes;
-    if (totalMinutes < 0) totalMinutes += 24 * 60;
-    return totalMinutes / 60;
+  const parseScheduleClockMinutes = (value) => parseScheduleClockInfo(value)?.minutes ?? null;
+
+  const getScheduleShiftInterval = (shift = {}) => {
+    const startInfo = parseScheduleClockInfo(shift.startTime);
+    const endInfo = parseScheduleClockInfo(shift.endTime);
+    if (!startInfo || !endInfo) return null;
+
+    let startMinutes = startInfo.minutes;
+    let endMinutes = endInfo.minutes;
+    if (endMinutes <= startMinutes) {
+      const explicitlyOvernight = shift.isOvernight === true || shift.overnight === true || shift.endsNextDay === true || shift.crossesMidnight === true;
+      const meridiemOvernight = startInfo.meridiem === 'p' && endInfo.meridiem === 'a';
+      const twentyFourHourOvernight = startInfo.is24Hour && endInfo.is24Hour && startMinutes >= (18 * 60) && endMinutes <= (10 * 60);
+      if (explicitlyOvernight || meridiemOvernight || twentyFourHourOvernight) {
+        endMinutes += 24 * 60;
+      } else {
+        return null;
+      }
+    }
+
+    const totalMinutes = endMinutes - startMinutes;
+    if (totalMinutes <= 0 || totalMinutes > MAX_REASONABLE_SCHEDULE_SHIFT_MINUTES) return null;
+    return { start: startMinutes, end: endMinutes, minutes: totalMinutes };
   };
 
-  const schedulePeriodLaborShifts = schedulePeriodDays.flatMap(d =>
-    displayUsers.flatMap(u => getScheduleBuilderShiftsForPersonDate(d, u))
-  );
+  const calculateShiftHours = (start, end, shiftData = null) => {
+    const interval = getScheduleShiftInterval(shiftData ? { ...shiftData, startTime: start, endTime: end } : { startTime: start, endTime: end });
+    return interval ? interval.minutes / 60 : 0;
+  };
+
+  const getUniqueScheduledMinutesForShifts = (shiftList = []) => {
+    const intervals = (shiftList || [])
+      .map(getScheduleShiftInterval)
+      .filter(Boolean)
+      .sort((a, b) => a.start - b.start || a.end - b.end);
+    if (!intervals.length) return 0;
+
+    const merged = [];
+    intervals.forEach(interval => {
+      const last = merged[merged.length - 1];
+      if (last && interval.start <= last.end) {
+        last.end = Math.max(last.end, interval.end);
+      } else {
+        merged.push({ start: interval.start, end: interval.end });
+      }
+    });
+    return merged.reduce((sum, interval) => sum + (interval.end - interval.start), 0);
+  };
+
+  const getUniqueScheduledHoursForShifts = (shiftList = []) => getUniqueScheduledMinutesForShifts(shiftList) / 60;
 
   let projectedMonthLabor = 0;
   const projectedDailyLabor = {};
   schedulePeriodDays.forEach(d => projectedDailyLabor[d] = 0);
 
-  schedulePeriodLaborShifts.forEach(shift => {
-    const emp = users.find(u => u.id === shift.employeeId);
-    const wage = emp?.wage || 0; 
-    const hours = calculateShiftHours(shift.startTime, shift.endTime);
-    const cost = hours * wage;
-    
-    const shiftDateKey = getScheduleShiftDateKey(shift);
-    projectedMonthLabor += cost;
-    if (projectedDailyLabor[shiftDateKey] !== undefined) {
-      projectedDailyLabor[shiftDateKey] += cost;
-    }
+  schedulePeriodDays.forEach(d => {
+    displayUsers.forEach(emp => {
+      const dayHours = getUniqueScheduledHoursForShifts(getScheduleBuilderRawShiftsForPersonDate(d, emp));
+      if (!dayHours) return;
+      const wage = parseFloat(emp?.wage || 0) || 0;
+      const cost = dayHours * wage;
+      projectedMonthLabor += cost;
+      projectedDailyLabor[d] += cost;
+    });
   });
 
   const periodPunches = timePunches.filter(p => p.date >= periodStart && p.date <= periodEnd).sort((a,b) => new Date(a.clockInTime || 0) - new Date(b.clockInTime || 0));
@@ -2188,11 +2234,10 @@ const handleExportTimesheets = () => {
   });
 
   const scheduledHours = displayUsers.map(u => {
-     const userShifts = dedupeScheduleShiftsForSamePerson(scheduledHoursPeriodShifts.filter(s => shiftMatchesPerson(s, u)));
+     const userShifts = scheduledHoursPeriodShifts.filter(s => shiftMatchesPerson(s, u));
      const weekly = scheduledHoursWeekBlocks.map(week => week.days.reduce((sum, d) => {
-       return sum + userShifts
-         .filter(s => getScheduleShiftDateKey(s) === d)
-         .reduce((dayTotal, shift) => dayTotal + calculateShiftHours(shift.startTime, shift.endTime), 0);
+       const dayRawShifts = userShifts.filter(s => getScheduleShiftDateKey(s) === d);
+       return sum + getUniqueScheduledHoursForShifts(dayRawShifts);
      }, 0));
      return { id: u.id, name: u.name, weekly, total: weekly.reduce((a,b)=>a+b,0) };
   }).filter(u => u.total > 0);
@@ -2613,11 +2658,13 @@ const handleExportTimesheets = () => {
                                   if (!r.isPartial) return true;
                                   return (shift.startTime < (r.endTime || '23:59')) && (shift.endTime > (r.startTime || '00:00'));
                                 });
+                                const shiftHours = calculateShiftHours(shift.startTime, shift.endTime, shift);
+                                const invalidTimeRange = !shiftHours && !!(shift.startTime && shift.endTime);
                                 return (
                                   <div 
                                     key={shift.id || `${d}-${u.id}-${shift.startTime}-${shift.endTime}`}
-                                    className={`schedule-builder-time-chip w-full rounded font-bold text-[7px] sm:text-[8px] py-0.5 text-center truncate ${getRoleColors(shift.role, shift.isPublished)} ${shiftConflict ? 'border-2 border-red-500 animate-pulse shadow-[0_0_8px_rgba(239,68,68,0.8)]' : ''}`} 
-                                    title={`${formatShortTime(shift.startTime)} - ${formatShortTime(shift.endTime)} ${shiftConflict ? '(CONFLICT DETECTED)' : ''}`}
+                                    className={`schedule-builder-time-chip w-full rounded font-bold text-[7px] sm:text-[8px] py-0.5 text-center truncate ${getRoleColors(shift.role, shift.isPublished)} ${shiftConflict ? 'border-2 border-red-500 animate-pulse shadow-[0_0_8px_rgba(239,68,68,0.8)]' : ''} ${invalidTimeRange ? 'border border-amber-400/80 shadow-[0_0_8px_rgba(245,158,11,0.35)]' : ''}`} 
+                                    title={`${formatShortTime(shift.startTime)} - ${formatShortTime(shift.endTime)} ${shiftConflict ? '(CONFLICT DETECTED)' : ''}${invalidTimeRange ? ' (CHECK TIME RANGE - NOT COUNTED)' : ''}`}
                                   >
                                     {formatShortTime(shift.startTime)}-{formatShortTime(shift.endTime)}
                                   </div>
