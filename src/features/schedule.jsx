@@ -1346,14 +1346,32 @@ const [eventDate, setEventDate] = useState(getToday());
   const canEditScheduleDate = (d) => !(d < getToday()) || canEditRescueMonth(getMonthStr(d));
 
   const getScheduleBuilderPerson = (empId) => activeRoster.find(u => u.id === empId) || users.find(u => u.id === empId) || null;
-  const getScheduleBuilderShiftsForPersonDate = (dateKey, person) => schedulePeriodShifts.filter(s => (s.date || s.scheduleDateKey) === dateKey && shiftMatchesPerson(s, person));
+  const normalizeShiftFingerprintValue = (value = '') => String(value || '').trim().toLowerCase().replace(/\s+/g, '');
+  const getScheduleShiftDateKey = (shift = {}) => String(shift.date || shift.scheduleDateKey || '');
+  const getScheduleShiftDedupeKey = (shift = {}) => [
+    getScheduleShiftDateKey(shift),
+    normalizeShiftFingerprintValue(shift.startTime),
+    normalizeShiftFingerprintValue(shift.endTime),
+    normalizeScheduleName(shift.role || shift.position || 'shift')
+  ].join('|');
+  const dedupeScheduleShiftsForSamePerson = (shiftList = []) => {
+    const seen = new Set();
+    return (shiftList || []).filter(shift => {
+      const key = getScheduleShiftDedupeKey(shift);
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  };
+  const getScheduleBuilderRawShiftsForPersonDate = (dateKey, person) => schedulePeriodShifts.filter(s => getScheduleShiftDateKey(s) === dateKey && shiftMatchesPerson(s, person));
+  const getScheduleBuilderShiftsForPersonDate = (dateKey, person) => dedupeScheduleShiftsForSamePerson(getScheduleBuilderRawShiftsForPersonDate(dateKey, person));
 
   const handleCellClick = async (d, empId) => {
     if (isAssigningShift) return;
     if (!canEditScheduleDate(d)) return addToast("Locked", "Cannot edit past dates.");
     const emp = getScheduleBuilderPerson(empId);
     if (!emp) return addToast('Staff Missing', 'This row no longer matches an active staff profile. Refresh the page and try again.');
-    const existingShifts = getScheduleBuilderShiftsForPersonDate(d, emp);
+    const existingShifts = getScheduleBuilderRawShiftsForPersonDate(d, emp);
     if (existingShifts.length) {
       const label = existingShifts.length === 1 ? 'this shift' : `${existingShifts.length} visible shifts`;
       if (window.confirm(`Delete ${label} for ${emp.name || 'this employee'} on ${formatDisplayDate(d)}?`)) {
@@ -1908,28 +1926,56 @@ const handleAddEvent = async (e) => {
   };
 
   // --- LABOR PROJECTION ENGINE ---
-  const calculateShiftHours = (start, end) => {
-    if (!start || !end) return 0;
-    let sH = parseInt(start.split(':')[0]), sM = parseInt(start.split(':')[1]) / 60;
-    let eH = parseInt(end.split(':')[0]), eM = parseInt(end.split(':')[1]) / 60;
-    let total = (eH + eM) - (sH + sM);
-    if (total < 0) total += 24; 
-    return total;
+  const parseScheduleClockMinutes = (value) => {
+    if (value === null || value === undefined) return null;
+    const raw = String(value).trim().toLowerCase().replace(/\s+/g, '');
+    if (!raw) return null;
+    if (['close', 'cl', 'closing'].includes(raw)) return (23 * 60) + 59;
+
+    // Accept both saved 24-hour values like 15:00 and legacy/display values like 3p, 10a, 10:30pm.
+    const match = raw.match(/^(\d{1,2})(?::?(\d{2}))?(a|am|p|pm)?$/);
+    if (!match) return null;
+
+    let hour = parseInt(match[1], 10);
+    const minute = match[2] !== undefined ? parseInt(match[2], 10) : 0;
+    const meridiem = match[3] || '';
+    if (!Number.isFinite(hour) || !Number.isFinite(minute) || minute < 0 || minute > 59) return null;
+
+    if (meridiem.startsWith('p') && hour < 12) hour += 12;
+    if (meridiem.startsWith('a') && hour === 12) hour = 0;
+    if (!meridiem && hour === 24) hour = 0;
+    if (hour < 0 || hour > 23) return null;
+
+    return (hour * 60) + minute;
   };
+
+  const calculateShiftHours = (start, end) => {
+    const startMinutes = parseScheduleClockMinutes(start);
+    const endMinutes = parseScheduleClockMinutes(end);
+    if (startMinutes === null || endMinutes === null) return 0;
+    let totalMinutes = endMinutes - startMinutes;
+    if (totalMinutes < 0) totalMinutes += 24 * 60;
+    return totalMinutes / 60;
+  };
+
+  const schedulePeriodLaborShifts = schedulePeriodDays.flatMap(d =>
+    displayUsers.flatMap(u => getScheduleBuilderShiftsForPersonDate(d, u))
+  );
 
   let projectedMonthLabor = 0;
   const projectedDailyLabor = {};
   schedulePeriodDays.forEach(d => projectedDailyLabor[d] = 0);
 
-  schedulePeriodShifts.forEach(shift => {
+  schedulePeriodLaborShifts.forEach(shift => {
     const emp = users.find(u => u.id === shift.employeeId);
     const wage = emp?.wage || 0; 
     const hours = calculateShiftHours(shift.startTime, shift.endTime);
     const cost = hours * wage;
     
+    const shiftDateKey = getScheduleShiftDateKey(shift);
     projectedMonthLabor += cost;
-    if (projectedDailyLabor[shift.date] !== undefined) {
-      projectedDailyLabor[shift.date] += cost;
+    if (projectedDailyLabor[shiftDateKey] !== undefined) {
+      projectedDailyLabor[shiftDateKey] += cost;
     }
   });
 
@@ -2142,10 +2188,10 @@ const handleExportTimesheets = () => {
   });
 
   const scheduledHours = displayUsers.map(u => {
-     const userShifts = scheduledHoursPeriodShifts.filter(s => shiftMatchesPerson(s, u));
+     const userShifts = dedupeScheduleShiftsForSamePerson(scheduledHoursPeriodShifts.filter(s => shiftMatchesPerson(s, u)));
      const weekly = scheduledHoursWeekBlocks.map(week => week.days.reduce((sum, d) => {
        return sum + userShifts
-         .filter(s => (s.date || s.scheduleDateKey) === d)
+         .filter(s => getScheduleShiftDateKey(s) === d)
          .reduce((dayTotal, shift) => dayTotal + calculateShiftHours(shift.startTime, shift.endTime), 0);
      }, 0));
      return { id: u.id, name: u.name, weekly, total: weekly.reduce((a,b)=>a+b,0) };
@@ -2551,7 +2597,7 @@ const handleExportTimesheets = () => {
                         <tr key={u.id} className={selectedEmp===u.id?'bg-[#12161A]/50':''}>
                           <td onClick={()=>{setSelectedEmp(u.id);setAssignDates([]);}} className={`px-2 py-1 text-xs font-bold sticky left-0 z-10 border-r border-[#2A353D] cursor-pointer truncate shadow-sm ${selectedEmp===u.id?`${T.grad} text-slate-900`:'bg-[#1A2126] text-white'}`}>{u.name.split(' ')[0]}</td>
                           {schedulePeriodDays.map(d => {
-                            const dayShifts = schedulePeriodShifts.filter(s => (s.date || s.scheduleDateKey) === d && shiftMatchesPerson(s, u));
+                            const dayShifts = getScheduleBuilderShiftsForPersonDate(d, u);
                             const req = timeOffRequests.find(r => r.date === d && timeOffMatchesPerson(r, u) && isActiveTimeOffRequest(r)); 
                             const sel = assignDates.includes(d) && selectedEmp===u.id;
 
