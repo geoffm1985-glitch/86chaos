@@ -28,23 +28,22 @@ const presenceApi = read('api/presence-snapshot.js');
 const styles = read('src/styles.css');
 const vercel = read('vercel.json');
 
-assert(pkg.version === '16.0.17', 'package.json version is 16.0.17');
-assert(lock.version === '16.0.17' && lock.packages?.['']?.version === '16.0.17', 'package-lock.json version is 16.0.17');
+assert(pkg.version === '16.0.18', 'package.json version is 16.0.18');
+assert(lock.version === '16.0.18' && lock.packages?.['']?.version === '16.0.18', 'package-lock.json version is 16.0.18');
 
 const yargsTypes = lock.packages?.['node_modules/@types/yargs'];
 assert(yargsTypes?.version === '16.0.11', '@types/yargs remains locked to the valid npm package version 16.0.11');
 assert(yargsTypes?.resolved === 'https://registry.npmjs.org/@types/yargs/-/yargs-16.0.11.tgz', '@types/yargs resolved tarball is valid and not app-version stamped');
-assert(!lockText.includes('@types/yargs/-/yargs-16.0.17.tgz'), 'package-lock does not point to nonexistent @types/yargs 16.0.17 tarball');
+assert(!lockText.includes('@types/yargs/-/yargs-16.0.18.tgz'), 'package-lock does not point to nonexistent @types/yargs 16.0.18 tarball');
 assert(!lockText.includes('@types/yargs/-/yargs-16.0.12.tgz'), 'package-lock does not point to nonexistent @types/yargs 16.0.12 tarball');
-assert(!lockText.includes('@types/yargs/-/yargs-16.0.17.tgz'), 'package-lock does not point to nonexistent @types/yargs 16.0.17 tarball');
-assert(version.version === '16.0.17' && version.build === '16.0.17', 'public/version.json is 16.0.17');
-assert(appCore.includes("CURRENT_VERSION = '16.0.17'"), 'CURRENT_VERSION is 16.0.17');
-assert(pkg.scripts?.test === 'node scripts/validate-16-0-17.js', 'npm test runs 16.0.17 validator');
-assert(pkg.scripts?.['test:ci'] === 'node scripts/validate-16-0-17.js', 'npm test:ci runs 16.0.17 validator');
+assert(version.version === '16.0.18' && version.build === '16.0.18', 'public/version.json is 16.0.18');
+assert(appCore.includes("CURRENT_VERSION = '16.0.18'"), 'CURRENT_VERSION is 16.0.18');
+assert(pkg.scripts?.test === 'node scripts/validate-16-0-18.js', 'npm test runs 16.0.18 validator');
+assert(pkg.scripts?.['test:ci'] === 'node scripts/validate-16-0-18.js', 'npm test:ci runs 16.0.18 validator');
 
 
 
-// 16.0.17: Schedule hours math must understand AM/PM display strings and ignore exact duplicate shift docs.
+// 16.0.18: Schedule hours math must understand AM/PM display strings and ignore exact duplicate shift docs.
 assert(schedule.includes('const parseScheduleClockMinutes = (value) =>'), 'Schedule Builder has a parser for shift clock values');
 assert(schedule.includes('legacy/display values like 3p, 10a, 10:30pm'), 'shift hour parser documents AM/PM legacy/display inputs');
 assert(schedule.includes("['close', 'cl', 'closing'].includes(raw)"), 'shift hour parser handles CLOSE-style end times');
@@ -109,13 +108,15 @@ assert(presenceApi.includes("markPresenceBucket(row, 'recentlyActive')"), 'Prese
 assert(presenceApi.includes('Live presence source unavailable. Showing last-seen fallback.'), 'Presence API returns friendly RTDB fallback warning');
 
 
-// 16.0.17: Scheduled Hours Tracker must use merged per-day time intervals, not raw document sums.
+// 16.0.18: Scheduled Hours Tracker must use merged per-day time intervals, not raw document sums.
 assert(schedule.includes('MAX_REASONABLE_SCHEDULE_SHIFT_MINUTES = 18 * 60'), 'Schedule math has a max reasonable shift guard');
 assert(schedule.includes('const parseScheduleClockInfo = (value) =>'), 'Schedule math keeps full AM/PM parse metadata');
-assert(schedule.includes('old bad PM labels such as 10p-3p can be repaired as 10a-3p'), 'Schedule math documents repairing legacy same-day PM label errors');
+assert(schedule.includes('same-meridiem pairs like 10p-3p'), 'Schedule math documents rejecting impossible same-meridiem time ranges');
 assert(schedule.includes('const getScheduleShiftInterval = (shift = {}) =>'), 'Schedule math converts each shift into a validated interval');
 assert(schedule.includes("startInfo.meridiem === 'p' && endInfo.meridiem === 'a'"), 'Schedule math allows only real PM-to-AM overnight ranges from AM/PM strings');
-assert(schedule.includes('getLegacySameDayRepairInterval'), 'Schedule math has a legacy same-day repair path for bad PM labels');
+assert(schedule.includes('const getScheduleShiftTimeStatus = (shift = {}) =>'), 'Schedule math exposes a validation status helper for visible chips');
+assert(schedule.includes('Bad schedule time ranges should be flagged for correction, not guessed or auto-repaired.'), 'invalid time ranges are flagged instead of guessed');
+assert(schedule.includes('Invalid time range: end time is before start time. Check AM/PM.'), 'end-before-start shifts produce a clear correction message');
 assert(schedule.includes('const getUniqueScheduledMinutesForShifts = (shiftList = [])'), 'Schedule math merges overlapping or duplicate intervals per person/day');
 assert(schedule.includes('interval.start <= last.end'), 'Schedule math merges overlapping duplicate shift intervals');
 assert(schedule.includes('const getUniqueScheduledHoursForShifts = (shiftList = [])'), 'Schedule math exposes unique scheduled hours helper');
@@ -126,40 +127,27 @@ assert(!schedule.includes('reduce((dayTotal, shift) => dayTotal + calculateShift
 assert(schedule.includes('startMinutes === null ? normalizeShiftFingerprintValue(shift.startTime) : `s${startMinutes}`'), 'dedupe key normalizes equivalent start times such as 10a and 10:00');
 assert(schedule.includes('endMinutes === null ? normalizeShiftFingerprintValue(shift.endTime) : `e${endMinutes}`'), 'dedupe key normalizes equivalent end times such as 9p and 21:00');
 assert(schedule.includes('invalidTimeRange'), 'Schedule Builder flags invalid visible time ranges so bad data can be corrected');
-assert(schedule.includes('CHECK TIME RANGE - NOT COUNTED'), 'invalid schedule time ranges clearly say they are not counted in hours math');
-assert(schedule.includes('MAX_LEGACY_REPAIRED_SHIFT_MINUTES = 12 * 60'), 'legacy repaired same-day shifts are capped to normal shift length');
-assert(schedule.includes('repairedLegacyMeridiem'), 'repaired legacy time ranges are visibly flagged on the chip title');
+assert(schedule.includes('INVALID TIME RANGE - NOT COUNTED'), 'invalid schedule time ranges clearly say they are not counted in hours math');
+assert(schedule.includes("{invalidTimeRange ? 'INVALID TIME'"), 'bad visible schedule chips show INVALID TIME instead of pretending they are normal shifts');
+assert(common.includes('title="86 Voice Assistant"><Mic size={24}/></button>'), '86Voice mic button no longer shows a Preview badge');
+assert(!common.includes('>PREVIEW</span>'), '86Voice mic button preview label was removed');
 
 
-// Runtime examples for the exact math bug seen on Allen's week-3 row.
+// Runtime examples for schedule math and invalid-time handling. Invalid ranges are excluded and flagged for correction.
 const testParseClockInfo = (value) => {
   const raw = String(value ?? '').trim().toLowerCase().replace(/\s+/g, '');
   if (!raw) return null;
-  if (['close', 'cl', 'closing'].includes(raw)) return { minutes: 1439, rawHour: 23, rawMinute: 59, meridiem: '', is24Hour: true };
+  if (['close', 'cl', 'closing'].includes(raw)) return { minutes: 1439, meridiem: '', is24Hour: true };
   const match = raw.match(/^(\d{1,2})(?::?(\d{2}))?(a|am|p|pm)?$/);
   if (!match) return null;
-  const rawHour = parseInt(match[1], 10);
-  const rawMinute = match[2] !== undefined ? parseInt(match[2], 10) : 0;
-  let hour = rawHour;
-  const minute = rawMinute;
+  let hour = parseInt(match[1], 10);
+  const minute = match[2] !== undefined ? parseInt(match[2], 10) : 0;
   const meridiem = match[3]?.startsWith('a') ? 'a' : match[3]?.startsWith('p') ? 'p' : '';
   if (meridiem === 'p' && hour < 12) hour += 12;
   if (meridiem === 'a' && hour === 12) hour = 0;
   if (!meridiem && hour === 24) hour = 0;
   if (hour < 0 || hour > 23 || minute < 0 || minute > 59) return null;
-  return { minutes: hour * 60 + minute, rawHour, rawMinute, meridiem, is24Hour: !meridiem };
-};
-const testLegacyRepair = (startInfo, endInfo) => {
-  if (!startInfo || !endInfo) return null;
-  if (startInfo.meridiem !== 'p' || endInfo.meridiem !== 'p') return null;
-  if (endInfo.minutes > startInfo.minutes) return null;
-  if (startInfo.rawHour < 7 || startInfo.rawHour > 11) return null;
-  if (endInfo.rawHour < 1 || endInfo.rawHour > 6) return null;
-  const repairedStart = (startInfo.rawHour * 60) + startInfo.rawMinute;
-  const repairedEnd = endInfo.minutes;
-  const minutes = repairedEnd - repairedStart;
-  if (minutes <= 0 || minutes > 720) return null;
-  return { start: repairedStart, end: repairedEnd, minutes };
+  return { minutes: hour * 60 + minute, meridiem, is24Hour: !meridiem };
 };
 const testInterval = (shift) => {
   const startInfo = testParseClockInfo(shift.startTime);
@@ -168,8 +156,6 @@ const testInterval = (shift) => {
   let start = startInfo.minutes;
   let end = endInfo.minutes;
   if (end <= start) {
-    const repair = testLegacyRepair(startInfo, endInfo);
-    if (repair) return repair;
     const overnight = (shift.isOvernight === true || shift.endsNextDay === true) || (startInfo.meridiem === 'p' && endInfo.meridiem === 'a') || (startInfo.is24Hour && endInfo.is24Hour && start >= 1080 && end <= 600);
     if (!overnight) return null;
     end += 1440;
@@ -197,7 +183,7 @@ const testUniqueHours = (shifts) => {
   return Array.from(byDate.values()).reduce((sum, dayShifts) => sum + testUniqueHoursForOneDay(dayShifts), 0);
 };
 assert(testUniqueHours([{ startTime: '10a', endTime: '9p' }]) === 11, 'runtime math: 10a-9p is 11 hours, not 23');
-assert(testUniqueHours([{ startTime: '10p', endTime: '3p' }]) === 5, 'runtime math: legacy 10p-3p is repaired and counted as 10a-3p, 5 hours');
+assert(testUniqueHours([{ startTime: '10p', endTime: '3p' }]) === 0, 'runtime math: impossible 10p-3p is rejected, not counted as 17 hours');
 assert(testUniqueHours([{ startTime: '10p', endTime: '3a' }]) === 5, 'runtime math: real 10p-3a overnight is 5 hours');
 assert(testUniqueHours([{ startTime: '10a', endTime: '9p' }, { startTime: '10:00', endTime: '21:00' }]) === 11, 'runtime math: equivalent duplicate 10a-9p and 10:00-21:00 counts once');
 assert(testUniqueHours([{ startTime: '3p', endTime: '9p' }, { startTime: '4p', endTime: '10p' }]) === 7, 'runtime math: overlapping same-day shifts are merged before totals');
@@ -205,14 +191,9 @@ assert(testUniqueHours([
   { date: '2026-08-10', startTime: '3p', endTime: '9p' },
   { date: '2026-08-11', startTime: '10a', endTime: '9p' },
   { date: '2026-08-12', startTime: '3p', endTime: '9p' },
+  { date: '2026-08-14', startTime: '3p', endTime: '9p' },
   { date: '2026-08-14', startTime: '10p', endTime: '3p' }
-]) === 28, 'runtime math: Allen week-3 visible example totals 28 hours exactly');
-assert(testUniqueHours([
-  { date: '2026-08-10', startTime: '3p', endTime: '9p' },
-  { date: '2026-08-11', startTime: '10a', endTime: '9p' },
-  { date: '2026-08-14', startTime: '10p', endTime: '3p' },
-  { date: '2026-08-14', startTime: '3p', endTime: '9p' }
-]) === 28, 'runtime math: Allen week-3 example counts the Friday legacy 10a-3p plus 3p-9p as 11 hours');
+]) === 29, 'runtime math: Allen-style visible week cannot inflate to 52 from 10a-9p plus 10p-3p');
 
 // Firebase wiring/config/CSP should remain intact.
 assert(vercel.includes('https://www.gstatic.com'), 'CSP still allows Firebase static assets');
@@ -221,7 +202,7 @@ assert(vercel.includes('firebaseapp.com'), 'CSP still allows Firebase Auth ifram
 assert(vercel.includes('web.app'), 'CSP still allows Firebase web.app iframe domains');
 
 if (failures) {
-  console.error(`16.0.17 schedule hours math validator failed with ${failures} issue(s).`);
+  console.error(`16.0.18 schedule hours math validator failed with ${failures} issue(s).`);
   process.exit(1);
 }
-console.log('16.0.17 schedule hours math validator passed.');
+console.log('16.0.18 schedule hours math validator passed.');

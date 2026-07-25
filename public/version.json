@@ -1,12 +1,12 @@
 {
-  "version": "16.0.17",
-  "name": "86 Chaos 16.0.17",
+  "version": "16.0.19",
+  "name": "86 Chaos 16.0.19 Schedule Hours Clarity Fix",
   "releasedAt": "2026-07-25T00:00:00.000Z",
-  "label": "16.0.17",
-  "build": "16.0.17",
+  "label": "16.0.19 Schedule Hours Clarity Fix",
+  "build": "16.0.19",
   "notes": [
-    "Recalculates Scheduled Hours Tracker from merged per-day time intervals instead of raw shift-document totals.",
-    "Rejects impossible same-meridiem ranges such as 10p-3p instead of treating them as 17-hour overnight shifts.",
-    "Normalizes duplicate shift times like 10a-9p and 10:00-21:00 so hidden duplicate docs cannot inflate weekly hours."
+    "Scheduled Hours Tracker now explains exactly which shift chips are counted and which OFF/request-off chips are not counted.",
+    "Partial-day request-off/availability chips now display with an OFF label so they no longer look like scheduled shifts.",
+    "Weekly hour cells include day-by-day math details for counted shifts, invalid time ranges, merged duplicates, and request-off exclusions."
   ]
 }
