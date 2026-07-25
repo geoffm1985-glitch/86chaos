@@ -1,0 +1,42 @@
+{
+  "source_zip": "86chaos_16_0_6_reskinned_15_1_13_login_tour_first_login_fix_app_only.zip",
+  "output_goal": "Make the app look much closer to the supplied reference screenshots while preserving 16.0.6 functions, tools, menus, Firebase wiring, and login tour fix.",
+  "intentionally_changed_files": [
+    "src/App.js",
+    "src/features/auth.jsx",
+    "src/styles.css",
+    "src/features/referenceExact.jsx"
+  ],
+  "actual_changed_existing_files": [
+    "src/App.js",
+    "src/features/auth.jsx",
+    "src/styles.css"
+  ],
+  "new_files": [
+    "src/features/referenceExact.jsx"
+  ],
+  "removed_files": [],
+  "changed_sensitive_files": [],
+  "missing_sensitive_files": [],
+  "sensitive_files_checked": [
+    ".env",
+    "FIREBASE_PRESERVATION_CHECK.json",
+    "api/_firebase-project-admin.js",
+    "api/firestore-backup-watchdog.js",
+    "api/firestore-backup.js",
+    "database.rules.json",
+    "firebase.json",
+    "firestore.indexes.json",
+    "firestore.rules",
+    "functions/.env.example",
+    "public/firebase-messaging-sw.js",
+    "src/core/appCore.js",
+    "storage.rules",
+    "vercel.json"
+  ],
+  "validation": [
+    "npm test -- --watchAll=false passed in /mnt/data/pixel_work before packaging",
+    "TypeScript transpileModule parse check passed for src/App.js, src/features/auth.jsx, and src/features/referenceExact.jsx",
+    "validate-16-0-6.js passed through npm test"
+  ]
+}

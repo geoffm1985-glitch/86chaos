@@ -1,0 +1,24 @@
+{
+  "rules": {
+    "status": {
+      "$restaurantId": {
+        "$userId": {
+          ".read": "auth != null && auth.uid === $userId",
+          "sessions": {
+            "$sessionId": {
+              ".write": "auth != null && auth.uid === $userId"
+            }
+          }
+        }
+      }
+    },
+    "statusSummary": {
+      "$restaurantId": {
+        "$userId": {
+          ".read": "auth != null && auth.uid === $userId",
+          ".write": "auth != null && auth.uid === $userId"
+        }
+      }
+    }
+  }
+}

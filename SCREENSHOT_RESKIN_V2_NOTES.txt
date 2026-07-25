@@ -1,0 +1,29 @@
+86 Chaos 16.0.6 Screenshot-Reference Reskin v2
+
+Source of truth:
+- 86chaos_16_0_6_reskinned_15_1_13_login_tour_first_login_fix_app_only.zip
+
+Hard safety rule followed:
+- 16.0.6 owns behavior, tools, menus, permissions, Firebase wiring, APIs, and data flow.
+- The supplied screenshots only donated the visual target.
+
+What changed:
+- src/App.js: wraps major live 16.0.6 screens with a screenshot-style first-viewport surface, then keeps the full real 16.0.6 tools mounted underneath in an open preserved-tools section.
+- src/features/referenceExact.jsx: new visual surface components for Today, Schedule, Inventory, Prep, Recipes, Financials, Settings, System Admin, Team, and Messages.
+- src/features/auth.jsx: restored the closer 3-panel reference-style login/workspace screen while preserving login flow.
+- src/styles.css: added the high-fidelity dark/copper console styling layer.
+
+What was not changed:
+- Firebase credentials/config/rules/indexes/env files.
+- appCore/Firebase admin wiring.
+- package files.
+- API routes.
+- real feature modules for Schedule, Inventory, Financials, Recipes, Prep, Team, Messages, Settings, or System Admin.
+
+Validation performed:
+- npm test -- --watchAll=false passed.
+- validate-16-0-6.js passed.
+- JSX parse/transpile check passed for the edited/new JS/JSX files.
+
+Caveat:
+- Full production build was not run in this container. Please run your normal deep test/build before deployment.
