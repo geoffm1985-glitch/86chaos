@@ -2007,36 +2007,12 @@ const handleAddEvent = async (e) => {
     return interval ? interval.minutes / 60 : 0;
   };
 
-  const formatScheduleDuration = (minutes = 0) => {
-    const safeMinutes = Math.max(0, Math.round(Number(minutes) || 0));
-    const hours = Math.floor(safeMinutes / 60);
-    const mins = safeMinutes % 60;
-    if (mins === 0) return `${hours}h`;
-    if (hours === 0) return `${mins}m`;
-    return `${hours}h ${mins}m`;
-  };
-
-  const getUniqueScheduledHoursDetailsForShifts = (shiftList = []) => {
-    const valid = [];
-    const invalid = [];
-    (shiftList || []).forEach(shift => {
-      const status = getScheduleShiftTimeStatus(shift);
-      const detail = {
-        id: shift?.id || '',
-        label: status.displayRange,
-        reason: status.reason,
-        minutes: status.interval?.minutes || 0,
-        start: status.interval?.start ?? null,
-        end: status.interval?.end ?? null
-      };
-      if (status.valid && status.interval) valid.push(detail);
-      else invalid.push(detail);
-    });
-
-    const intervals = valid
-      .map(v => ({ start: v.start, end: v.end }))
-      .filter(v => Number.isFinite(v.start) && Number.isFinite(v.end))
+  const getUniqueScheduledMinutesForShifts = (shiftList = []) => {
+    const intervals = (shiftList || [])
+      .map(getScheduleShiftInterval)
+      .filter(Boolean)
       .sort((a, b) => a.start - b.start || a.end - b.end);
+    if (!intervals.length) return 0;
 
     const merged = [];
     intervals.forEach(interval => {
@@ -2047,19 +2023,9 @@ const handleAddEvent = async (e) => {
         merged.push({ start: interval.start, end: interval.end });
       }
     });
-
-    const minutes = merged.reduce((sum, interval) => sum + (interval.end - interval.start), 0);
-    return {
-      minutes,
-      hours: minutes / 60,
-      valid,
-      invalid,
-      merged,
-      hasOverlapOrDuplicate: valid.reduce((sum, v) => sum + v.minutes, 0) !== minutes
-    };
+    return merged.reduce((sum, interval) => sum + (interval.end - interval.start), 0);
   };
 
-  const getUniqueScheduledMinutesForShifts = (shiftList = []) => getUniqueScheduledHoursDetailsForShifts(shiftList).minutes;
   const getUniqueScheduledHoursForShifts = (shiftList = []) => getUniqueScheduledMinutesForShifts(shiftList) / 60;
 
   let projectedMonthLabor = 0;
@@ -2278,65 +2244,36 @@ const handleExportTimesheets = () => {
     });
     hoursWeekStart = addScheduleDays(hoursWeekStart, 7);
   }
-  const scheduledHoursRangeStart = scheduledHoursWeekBlocks[0]?.start || schedulePeriodBounds.start;
-  const scheduledHoursRangeEnd = scheduledHoursWeekBlocks[scheduledHoursWeekBlocks.length - 1]?.end || schedulePeriodBounds.end;
-  const scheduledHoursPeriodShifts = shifts.filter(s => {
-    const d = String(s.date || s.scheduleDateKey || '');
-    return d >= scheduledHoursRangeStart && d <= scheduledHoursRangeEnd;
-  });
-
-  const formatScheduleRequestOffLabel = (request = {}) => {
-    if (!request?.isPartial) return 'OFF all day';
-    const start = formatShortTime(request.startTime) || request.startTime || '?';
-    const end = formatShortTime(request.endTime) || request.endTime || '?';
-    return `OFF ${start}-${end}`;
+  const getScheduledHoursDayAudit = (dateKey, person) => {
+    const rawShifts = getScheduleBuilderRawShiftsForPersonDate(dateKey, person);
+    const visibleShifts = dedupeScheduleShiftsForSamePerson(rawShifts);
+    const validShifts = visibleShifts.map(shift => ({ shift, status: getScheduleShiftTimeStatus(shift) })).filter(item => item.status.valid);
+    const invalidShifts = visibleShifts.map(shift => ({ shift, status: getScheduleShiftTimeStatus(shift) })).filter(item => !item.status.valid);
+    const hours = getUniqueScheduledHoursForShifts(visibleShifts);
+    return { date: dateKey, rawShifts, visibleShifts, validShifts, invalidShifts, hours };
   };
 
-  const getScheduleHoursDayDetail = (dateKey, person, userShifts = []) => {
-    const dayRawShifts = userShifts.filter(s => getScheduleShiftDateKey(s) === dateKey);
-    const hoursInfo = getUniqueScheduledHoursDetailsForShifts(dayRawShifts);
-    const dayRequests = (timeOffRequests || []).filter(r => r.date === dateKey && timeOffMatchesPerson(r, person) && isActiveTimeOffRequest(r));
-    return {
-      date: dateKey,
-      hours: hoursInfo.hours,
-      minutes: hoursInfo.minutes,
-      valid: hoursInfo.valid,
-      invalid: hoursInfo.invalid,
-      hasOverlapOrDuplicate: hoursInfo.hasOverlapOrDuplicate,
-      requests: dayRequests
-    };
+  const formatScheduledHoursDayAuditLine = (audit = {}) => {
+    const dayLabel = audit.date ? new Date(`${audit.date}T12:00:00`).toLocaleDateString('en-US', { weekday: 'short', month: 'numeric', day: 'numeric' }) : 'Unknown day';
+    const counted = audit.validShifts?.map(({ status }) => status.displayRange).join(', ') || 'none';
+    const invalid = audit.invalidShifts?.map(({ status }) => `${status.displayRange} INVALID`).join(', ');
+    return `${dayLabel}: ${audit.hours.toFixed(1)}h counted (${counted})${invalid ? ` | Not counted: ${invalid}` : ''}`;
   };
 
-  const formatScheduledHoursDayLine = (dayDetail = {}) => {
-    const date = new Date(`${dayDetail.date}T12:00:00`);
-    const prefix = `${date.toLocaleDateString('en-US', { weekday: 'short', month: 'numeric', day: 'numeric' })}: ${dayDetail.hours.toFixed(1)}h counted`;
-    const counted = dayDetail.valid.length ? ` shifts ${dayDetail.valid.map(v => `${v.label} (${formatScheduleDuration(v.minutes)})`).join(', ')}` : ' no valid shifts';
-    const notCounted = [];
-    if (dayDetail.requests.length) notCounted.push(`not counted: ${dayDetail.requests.map(formatScheduleRequestOffLabel).join(', ')} request-off/availability`);
-    if (dayDetail.invalid.length) notCounted.push(`invalid: ${dayDetail.invalid.map(v => `${v.label} (${v.reason})`).join(', ')}`);
-    if (dayDetail.hasOverlapOrDuplicate) notCounted.push('overlapping/duplicate shift time was merged once');
-    return `${prefix};${counted}${notCounted.length ? `; ${notCounted.join('; ')}` : ''}`;
-  };
-
-  const formatScheduledHoursCellTitle = (personName, week = {}, weekDetails = []) => {
-    const total = (weekDetails || []).reduce((sum, detail) => sum + detail.hours, 0);
-    const range = week?.start && week?.end ? `${formatDisplayDate(week.start)} - ${formatDisplayDate(week.end)}` : 'this week';
-    const lines = [
-      `${personName || 'Employee'} scheduled hours for ${range}: ${total.toFixed(1)}h`,
-      'Counts scheduled shift chips only. Request-off / availability chips labeled OFF are not counted.'
-    ];
-    const activeDays = (weekDetails || []).filter(detail => detail.hours > 0 || detail.requests.length || detail.invalid.length);
-    if (!activeDays.length) lines.push('No scheduled shift hours counted for this week.');
-    else activeDays.forEach(detail => lines.push(formatScheduledHoursDayLine(detail)));
-    return lines.join('
-');
+  const formatScheduledHoursWeekAudit = (person, week, totalHours = 0) => {
+    const dayAudits = (week?.days || []).map(d => getScheduledHoursDayAudit(d, person)).filter(audit => audit.visibleShifts.length || audit.invalidShifts.length);
+    const lines = [`${person?.name || 'Employee'} Week ${formatScheduledHoursWeekRange(week)} total: ${totalHours.toFixed(1)}h`];
+    if (!dayAudits.length) lines.push('No scheduled shift hours counted for this week.');
+    dayAudits.forEach(audit => lines.push(formatScheduledHoursDayAuditLine(audit)));
+    return lines.join('\n');
   };
 
   const scheduledHours = displayUsers.map(u => {
-     const userShifts = scheduledHoursPeriodShifts.filter(s => shiftMatchesPerson(s, u));
-     const weeklyDetails = scheduledHoursWeekBlocks.map(week => week.days.map(d => getScheduleHoursDayDetail(d, u, userShifts)));
-     const weekly = weeklyDetails.map(dayDetails => dayDetails.reduce((sum, detail) => sum + detail.hours, 0));
-     return { id: u.id, name: u.name, weekly, weeklyDetails, total: weekly.reduce((a,b)=>a+b,0) };
+     const weekly = scheduledHoursWeekBlocks.map(week => week.days.reduce((sum, d) => {
+       const audit = getScheduledHoursDayAudit(d, u);
+       return sum + audit.hours;
+     }, 0));
+     return { id: u.id, name: u.name, person: u, weekly, total: weekly.reduce((a,b)=>a+b,0) };
   }).filter(u => u.total > 0);
 
   const pendingTimeOffAlertRequests = timeOffRequests.filter(r => r.status === 'pending' && r.date >= schedulePeriodBounds.start && r.date <= schedulePeriodBounds.end);
@@ -2749,7 +2686,7 @@ const handleExportTimesheets = () => {
                             <td key={d} onClick={()=>handleCellClick(d,u.id)} className={`p-0.5 border-r border-[#2A353D] cursor-pointer transition-all align-top h-7 sm:h-8 ${sel?'bg-[#8F6040] outline outline-2 outline-[#D4A381] shadow-inner z-0 relative':'hover:bg-[#12161A]'}`}>
                             <div className="flex flex-col gap-[1px] w-full justify-start overflow-hidden">
                               {req && !req.isPartial && <div className="schedule-builder-time-chip w-full rounded font-black text-[7px] sm:text-[8px] py-0.5 text-center text-red-400 bg-red-900/40 uppercase tracking-tighter" title="Requested Off">Off</div>}
-                              {req && req.isPartial && <div className="schedule-builder-time-chip schedule-builder-partial-off-chip w-full rounded font-black text-[7px] sm:text-[8px] py-0.5 text-center text-amber-300 bg-amber-950/70 border border-amber-400/70 uppercase tracking-tighter truncate" title={`Requested off / not counted as scheduled hours: ${formatShortTime(req.startTime)} - ${formatShortTime(req.endTime)}`}>{formatScheduleRequestOffLabel(req)}</div>}
+                              {req && req.isPartial && <div className="schedule-builder-time-chip schedule-builder-partial-off-chip w-full rounded font-black text-[7px] sm:text-[8px] py-0.5 text-center text-amber-400 bg-amber-900/40 uppercase tracking-tighter truncate" title={`Requested off: ${formatShortTime(req.startTime)} - ${formatShortTime(req.endTime)}`}>{formatShortTime(req.startTime)}-{formatShortTime(req.endTime)}</div>}
                               {dayShifts.map(shift => {
                                 const shiftConflict = allUserReqs.some(r => {
                                   if (!r.isPartial) return true;
@@ -2794,9 +2731,6 @@ const handleExportTimesheets = () => {
               <h3 className={`font-black text-sm flex items-center gap-2 ${T.copper}`}><Clock className={T.copper} size={16}/> Scheduled Hours Tracker</h3>
               <span className={`text-[9px] font-bold ${T.muted} uppercase tracking-widest`}>OT Threshold: {appUser?.systemSettings?.overtime || 40}h</span>
             </div>
-            <div className="px-4 py-2 border-b border-[#2A353D] bg-[#0B0E11]/70 text-[10px] sm:text-xs font-bold text-slate-400 leading-snug">
-              Counts scheduled shift chips only. <span className="text-amber-300">OFF / request-off / availability chips are not counted</span>. Hover or long-press a weekly total to see the exact day-by-day math.
-            </div>
             <div className="overflow-x-auto no-scrollbar">
               <table className="w-full text-left text-xs border-collapse min-w-[600px]">
                 <thead>
@@ -2812,7 +2746,7 @@ const handleExportTimesheets = () => {
                     <tr key={u.id} className="hover:bg-[#12161A]/50 transition-colors">
                       <td className="p-3 font-bold text-white border-r border-[#2A353D] sticky left-0 bg-[#1A2126] z-10 truncate">{u.name.split(' ')[0]}</td>
                       {u.weekly.map((hrs, i) => (
-                        <td key={i} title={formatScheduledHoursCellTitle(u.name, scheduledHoursWeekBlocks[i], u.weeklyDetails?.[i] || [])} className={`p-3 text-center font-black border-r border-[#2A353D] ${hrs > parseFloat(appUser?.systemSettings?.overtime || 40) ? 'text-red-500 bg-red-900/10' : hrs > 0 ? 'text-emerald-400' : 'text-slate-600'}`}>
+                        <td key={i} title={formatScheduledHoursWeekAudit(u.person || u, scheduledHoursWeekBlocks[i], hrs)} className={`p-3 text-center font-black border-r border-[#2A353D] ${hrs > parseFloat(appUser?.systemSettings?.overtime || 40) ? 'text-red-500 bg-red-900/10' : hrs > 0 ? 'text-emerald-400' : 'text-slate-600'}`}>
                           {hrs > 0 ? hrs.toFixed(1) : '-'}
                         </td>
                       ))}

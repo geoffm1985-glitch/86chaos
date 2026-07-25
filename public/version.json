@@ -1,12 +1,12 @@
 {
   "version": "16.0.19",
-  "name": "86 Chaos 16.0.19 Schedule Hours Clarity Fix",
+  "name": "86 Chaos 16.0.19 Schedule Hours Source Of Truth Fix",
   "releasedAt": "2026-07-25T00:00:00.000Z",
-  "label": "16.0.19 Schedule Hours Clarity Fix",
+  "label": "16.0.19 Schedule Hours Source Of Truth Fix",
   "build": "16.0.19",
   "notes": [
-    "Scheduled Hours Tracker now explains exactly which shift chips are counted and which OFF/request-off chips are not counted.",
-    "Partial-day request-off/availability chips now display with an OFF label so they no longer look like scheduled shifts.",
-    "Weekly hour cells include day-by-day math details for counted shifts, invalid time ranges, merged duplicates, and request-off exclusions."
+    "Scheduled Hours Tracker now totals the same deduped visible shift chips used by the Schedule Builder grid.",
+    "Adds per-week hover audit details showing each counted day and invalid uncounted ranges.",
+    "Keeps impossible ranges such as 10p-3p invalid instead of guessing or counting them."
   ]
 }
