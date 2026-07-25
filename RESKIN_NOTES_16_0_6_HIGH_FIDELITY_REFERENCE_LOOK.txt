@@ -1,0 +1,33 @@
+86 Chaos 16.0.6 high-fidelity reference reskin notes
+
+Source of truth:
+- 86chaos_16_0_6_reskinned_15_1_13_login_tour_first_login_fix_app_only.zip
+
+Visual target:
+- July 21 reference screenshots supplied by the user: full left console sidebar, dense dark panels, copper active states, compact command bar, three-column login/workspace picker treatment.
+
+Hard preservation rules honored:
+- 16.0.6 feature imports/routes remain wired to the real modules.
+- The reference.jsx mock/reference screens were NOT wired in as replacements.
+- No tools, menus, source-of-truth functions, route logic, Schedule Builder fixes, presence snapshot/read-saver work, or login-tour behavior were intentionally removed.
+- Firebase credential/config/rules/admin files were not touched.
+
+Files intentionally changed:
+- src/App.js
+  - Added a visual-only reference-app-v152 class to activate the new high-fidelity CSS layer.
+- src/features/auth.jsx
+  - Wrapped the existing login logic in the reference-style auth panel.
+  - Added the visual workspace/benefits side panels around the existing login logic.
+- src/styles.css
+  - Added a high-fidelity v152 visual override layer for the sidebar, command bar, panels, tables, controls, density, footer, and mobile shell.
+
+Validation performed:
+- npm test -- --watchAll=false
+- validate-16-0-6.js passed.
+- Sensitive Firebase file hash comparison result: changed_sensitive_files: []
+
+Recommended next checks:
+- Run your normal deep test suite.
+- Click through owner/manager/staff.
+- Smoke test Today, Schedule, Time Clock, Inventory, Recipes, Prep, Financials, Settings, Help, System Admin.
+- Confirm Firebase project shown by your app diagnostics remains the same as before.

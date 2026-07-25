@@ -5872,3 +5872,386 @@ select {
   .reference-login-workspace .workspace-mark { width:46px; height:46px; }
   .reference-system-health { grid-template-columns:1fr; }
 }
+
+/* 16.0.6 high-fidelity visual pass toward the July 21 reference boards.
+   Visual-only: this layer tightens shell, panels, tables, controls, and login chrome without replacing live feature modules. */
+.native-app-shell.reference-app-v151.reference-app-v152 {
+  --ref152-bg: #050b0f;
+  --ref152-bg-2: #071116;
+  --ref152-side: #071015;
+  --ref152-panel: rgba(12, 23, 29, .94);
+  --ref152-panel-2: rgba(16, 29, 36, .92);
+  --ref152-line: rgba(134, 151, 163, .20);
+  --ref152-line-strong: rgba(148, 163, 184, .32);
+  --ref152-copper: var(--chaos-accent, #c47c3f);
+  --ref152-copper-deep: #6e3f27;
+  --ref152-text: #f4f7f8;
+  --ref152-muted: #9aa8b2;
+  --ref152-faint: #667683;
+  --ref152-green: #76b84b;
+  --ref152-red: #ea5148;
+  --ref152-yellow: #e2a540;
+  --ref152-blue: #4aa7d8;
+  background:
+    radial-gradient(circle at 86% -18%, rgba(48, 101, 118, .15), transparent 42rem),
+    linear-gradient(180deg, var(--ref152-bg-2) 0%, var(--ref152-bg) 100%) !important;
+  color: var(--ref152-text) !important;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+.native-app-shell.reference-app-v151.reference-app-v152 .reference-sidebar {
+  width: 236px !important;
+  background: linear-gradient(180deg, #081217 0%, #060b0f 100%) !important;
+  border-right: 1px solid rgba(141, 157, 170, .18) !important;
+  box-shadow: inset -1px 0 0 rgba(255,255,255,.015) !important;
+}
+.native-app-shell.reference-app-v151.reference-app-v152 .reference-sidebar-logo {
+  height: 82px !important;
+  padding: 17px 18px 14px !important;
+  border-bottom: 1px solid rgba(141,157,170,.16) !important;
+  align-items: center !important;
+}
+.native-app-shell.reference-app-v151.reference-app-v152 .reference-sidebar-logo img,
+.native-app-shell.reference-app-v151.reference-app-v152 .reference-sidebar-logo svg {
+  max-width: 176px !important;
+  max-height: 48px !important;
+  object-fit: contain !important;
+  object-position: left center !important;
+}
+.native-app-shell.reference-app-v151.reference-app-v152 .reference-sidebar-nav {
+  padding: 12px 12px !important;
+  gap: 4px !important;
+}
+.native-app-shell.reference-app-v151.reference-app-v152 .reference-sidebar-link {
+  min-height: 42px !important;
+  padding: 0 13px !important;
+  border-radius: 4px !important;
+  border: 1px solid transparent !important;
+  color: rgba(224,231,236,.82) !important;
+  font-size: 13px !important;
+  font-weight: 730 !important;
+  letter-spacing: .005em !important;
+}
+.native-app-shell.reference-app-v151.reference-app-v152 .reference-sidebar-link svg {
+  width: 18px !important;
+  height: 18px !important;
+  color: rgba(225,235,240,.78) !important;
+  stroke-width: 1.85 !important;
+}
+.native-app-shell.reference-app-v151.reference-app-v152 .reference-sidebar-link:hover,
+.native-app-shell.reference-app-v151.reference-app-v152 .reference-sidebar-link.active {
+  color: #fff !important;
+  background: linear-gradient(90deg, rgba(111,62,38,.86), rgba(84,48,31,.56)) !important;
+  border-color: rgba(200,126,70,.58) !important;
+  box-shadow: inset 3px 0 0 var(--ref152-copper), inset 0 1px 0 rgba(255,255,255,.04) !important;
+}
+.native-app-shell.reference-app-v151.reference-app-v152 .reference-sidebar-link:hover svg,
+.native-app-shell.reference-app-v151.reference-app-v152 .reference-sidebar-link.active svg { color: #f0aa71 !important; }
+.native-app-shell.reference-app-v151.reference-app-v152 .reference-sidebar-link b {
+  min-width: 21px !important;
+  height: 21px !important;
+  border-radius: 50% !important;
+  background: linear-gradient(180deg, #c56f45, #8e4833) !important;
+  color: #fff !important;
+  display: inline-grid !important;
+  place-items: center !important;
+  font-size: 10px !important;
+}
+.native-app-shell.reference-app-v151.reference-app-v152 .reference-sidebar-foot {
+  padding: 12px 16px 22px !important;
+  gap: 12px !important;
+}
+.native-app-shell.reference-app-v151.reference-app-v152 .reference-sidebar-card {
+  background: rgba(10,20,25,.82) !important;
+  border: 1px solid rgba(134,151,163,.25) !important;
+  border-radius: 7px !important;
+  padding: 13px 15px !important;
+  color: rgba(224,232,236,.88) !important;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.03) !important;
+}
+.native-app-shell.reference-app-v151.reference-app-v152 .reference-sidebar-card .green,
+.native-app-shell.reference-app-v151.reference-app-v152 .reference-sidebar-card.green,
+.native-app-shell.reference-app-v151.reference-app-v152 .reference-sidebar-card .text-green-400 { color: var(--ref152-green) !important; }
+
+@media (min-width: 900px) {
+  .native-app-shell.reference-app-v151.reference-app-v152 .app-header.native-command-bar {
+    margin-left: 236px !important;
+    width: calc(100vw - 236px) !important;
+    height: 72px !important;
+    padding: 0 20px !important;
+    background: rgba(5, 11, 15, .98) !important;
+    border-bottom: 1px solid rgba(134,151,163,.18) !important;
+    backdrop-filter: none !important;
+  }
+  .native-app-shell.reference-app-v151.reference-app-v152 .app-content-shell,
+  .native-app-shell.reference-app-v151.reference-app-v152 main.app-content-shell {
+    margin-left: 236px !important;
+    width: calc(100vw - 236px) !important;
+    max-width: none !important;
+    padding: 18px 20px 22px !important;
+    overflow-x: hidden !important;
+  }
+  .native-app-shell.reference-app-v151.reference-app-v152 .desktop-date-strip {
+    margin-left: 236px !important;
+    width: calc(100vw - 236px) !important;
+    min-height: 48px !important;
+    padding: 8px 20px !important;
+    background: rgba(6,13,17,.98) !important;
+    border-color: rgba(134,151,163,.18) !important;
+    box-shadow: none !important;
+  }
+}
+.native-app-shell.reference-app-v151.reference-app-v152 .reference-tool-dropdown,
+.native-app-shell.reference-app-v151.reference-app-v152 .reference-command-search,
+.native-app-shell.reference-app-v151.reference-app-v152 .reference-top-action,
+.native-app-shell.reference-app-v151.reference-app-v152 .reference-profile-button,
+.native-app-shell.reference-app-v151.reference-app-v152 .native-icon-button,
+.native-app-shell.reference-app-v151.reference-app-v152 .native-queue-button {
+  min-height: 40px !important;
+  border-radius: 5px !important;
+  border: 1px solid rgba(134,151,163,.22) !important;
+  background: rgba(8,16,21,.76) !important;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.03) !important;
+  color: rgba(231,237,241,.90) !important;
+}
+.native-app-shell.reference-app-v151.reference-app-v152 .reference-tool-dropdown {
+  min-width: 244px !important;
+  padding: 0 13px !important;
+}
+.native-app-shell.reference-app-v151.reference-app-v152 .reference-tool-dropdown svg,
+.native-app-shell.reference-app-v151.reference-app-v152 .reference-top-action svg { color: var(--ref152-copper) !important; }
+.native-app-shell.reference-app-v151.reference-app-v152 .reference-tool-dropdown strong,
+.native-app-shell.reference-app-v151.reference-app-v152 .reference-profile-button strong {
+  color: #fff !important;
+  font-size: 13px !important;
+  font-weight: 820 !important;
+}
+.native-app-shell.reference-app-v151.reference-app-v152 .reference-tool-dropdown small,
+.native-app-shell.reference-app-v151.reference-app-v152 .reference-profile-button small {
+  color: rgba(163,175,183,.76) !important;
+  font-size: 10px !important;
+  font-weight: 650 !important;
+}
+.native-app-shell.reference-app-v151.reference-app-v152 .reference-command-search {
+  width: min(460px, 34vw) !important;
+  padding: 0 13px !important;
+  justify-content: flex-start !important;
+}
+.native-app-shell.reference-app-v151.reference-app-v152 .reference-command-search input {
+  color: rgba(236,242,245,.78) !important;
+  font-weight: 650 !important;
+}
+.native-app-shell.reference-app-v151.reference-app-v152 .reference-command-search kbd {
+  color: rgba(204,216,224,.58) !important;
+  border: 0 !important;
+  background: transparent !important;
+}
+.native-app-shell.reference-app-v151.reference-app-v152 .reference-top-action {
+  min-width: 142px !important;
+  padding: 0 14px !important;
+  color: #fff !important;
+  font-size: 12px !important;
+  font-weight: 820 !important;
+}
+.native-app-shell.reference-app-v151.reference-app-v152 .reference-profile-button .avatar {
+  width: 38px !important;
+  height: 38px !important;
+  border-radius: 50% !important;
+  color: #f2c096 !important;
+  border: 1px solid rgba(196,124,63,.84) !important;
+  background: rgba(9,18,23,.86) !important;
+}
+.native-app-shell.reference-app-v151.reference-app-v152 .native-alert-dot {
+  width: 20px !important;
+  height: 20px !important;
+  top: -8px !important;
+  right: -8px !important;
+  border-radius: 50% !important;
+  background: linear-gradient(180deg, #e15d51, #a63d35) !important;
+  border: 1px solid rgba(255,255,255,.20) !important;
+  box-shadow: 0 0 0 2px #050b0f !important;
+}
+
+.native-app-shell.reference-app-v151.reference-app-v152 .app-content-shell h1,
+.native-app-shell.reference-app-v151.reference-app-v152 .app-content-shell .text-4xl,
+.native-app-shell.reference-app-v151.reference-app-v152 .app-content-shell .text-3xl {
+  color: #fff !important;
+  letter-spacing: .20em !important;
+  text-transform: uppercase !important;
+  font-weight: 820 !important;
+}
+.native-app-shell.reference-app-v151.reference-app-v152 .app-content-shell h2,
+.native-app-shell.reference-app-v151.reference-app-v152 .app-content-shell h3 {
+  color: #f8fbfc !important;
+}
+.native-app-shell.reference-app-v151.reference-app-v152 .app-content-shell .chaos-card,
+.native-app-shell.reference-app-v151.reference-app-v152 .app-content-shell .cockpit-panel,
+.native-app-shell.reference-app-v151.reference-app-v152 .app-content-shell .message-card-pro,
+.native-app-shell.reference-app-v151.reference-app-v152 .app-content-shell [class*="bg-[#1A2126]"],
+.native-app-shell.reference-app-v151.reference-app-v152 .app-content-shell [class*="bg-[#161D22]"],
+.native-app-shell.reference-app-v151.reference-app-v152 .app-content-shell [class*="bg-[#12161A]"],
+.native-app-shell.reference-app-v151.reference-app-v152 .desktop-date-strip,
+.native-app-shell.reference-app-v151.reference-app-v152 .native-route-loader {
+  background: linear-gradient(180deg, rgba(15,28,35,.92), rgba(9,18,23,.92)) !important;
+  border-color: rgba(134,151,163,.22) !important;
+  border-radius: 6px !important;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.025) !important;
+}
+.native-app-shell.reference-app-v151.reference-app-v152 .app-content-shell [class*="rounded-3xl"],
+.native-app-shell.reference-app-v151.reference-app-v152 .app-content-shell [class*="rounded-2xl"],
+.native-app-shell.reference-app-v151.reference-app-v152 .app-content-shell [class*="rounded-xl"] {
+  border-radius: 6px !important;
+}
+.native-app-shell.reference-app-v151.reference-app-v152 .app-content-shell .shadow-2xl,
+.native-app-shell.reference-app-v151.reference-app-v152 .app-content-shell .shadow-xl,
+.native-app-shell.reference-app-v151.reference-app-v152 .app-content-shell .shadow-lg,
+.native-app-shell.reference-app-v151.reference-app-v152 .app-content-shell .shadow-md {
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.025) !important;
+}
+.native-app-shell.reference-app-v151.reference-app-v152 .app-content-shell .border,
+.native-app-shell.reference-app-v151.reference-app-v152 .desktop-date-strip.border,
+.native-app-shell.reference-app-v151.reference-app-v152 .modal-card.border {
+  border-color: rgba(134,151,163,.22) !important;
+}
+.native-app-shell.reference-app-v151.reference-app-v152 .app-content-shell .grid {
+  gap: 10px !important;
+}
+.native-app-shell.reference-app-v151.reference-app-v152 .app-content-shell .p-8 { padding: 18px !important; }
+.native-app-shell.reference-app-v151.reference-app-v152 .app-content-shell .p-6 { padding: 15px !important; }
+.native-app-shell.reference-app-v151.reference-app-v152 .app-content-shell .p-5 { padding: 13px !important; }
+.native-app-shell.reference-app-v151.reference-app-v152 .app-content-shell .p-4 { padding: 11px !important; }
+.native-app-shell.reference-app-v151.reference-app-v152 .app-content-shell .p-3 { padding: 9px !important; }
+.native-app-shell.reference-app-v151.reference-app-v152 .app-content-shell .gap-6 { gap: 12px !important; }
+.native-app-shell.reference-app-v151.reference-app-v152 .app-content-shell .gap-5 { gap: 11px !important; }
+.native-app-shell.reference-app-v151.reference-app-v152 .app-content-shell .gap-4 { gap: 10px !important; }
+.native-app-shell.reference-app-v151.reference-app-v152 .app-content-shell .space-y-6 > :not([hidden]) ~ :not([hidden]) { margin-top: 12px !important; }
+.native-app-shell.reference-app-v151.reference-app-v152 .app-content-shell .space-y-5 > :not([hidden]) ~ :not([hidden]) { margin-top: 11px !important; }
+.native-app-shell.reference-app-v151.reference-app-v152 .app-content-shell .space-y-4 > :not([hidden]) ~ :not([hidden]) { margin-top: 10px !important; }
+.native-app-shell.reference-app-v151.reference-app-v152 .app-content-shell table,
+.native-app-shell.reference-app-v151.reference-app-v152 .app-content-shell .chaos-table-row,
+.native-app-shell.reference-app-v151.reference-app-v152 .app-content-shell .chaos-table-heading {
+  border-color: rgba(129,145,154,.16) !important;
+}
+.native-app-shell.reference-app-v151.reference-app-v152 .app-content-shell .chaos-table-heading,
+.native-app-shell.reference-app-v151.reference-app-v152 .app-content-shell th {
+  color: rgba(162,175,184,.78) !important;
+  background: rgba(6,13,17,.76) !important;
+  text-transform: uppercase !important;
+  letter-spacing: .11em !important;
+  font-size: 10px !important;
+  font-weight: 900 !important;
+}
+.native-app-shell.reference-app-v151.reference-app-v152 .app-content-shell td,
+.native-app-shell.reference-app-v151.reference-app-v152 .app-content-shell .chaos-table-row,
+.native-app-shell.reference-app-v151.reference-app-v152 .app-content-shell .text-sm {
+  font-size: 12px !important;
+}
+.native-app-shell.reference-app-v151.reference-app-v152 .app-content-shell .text-xs {
+  font-size: 11px !important;
+}
+.native-app-shell.reference-app-v151.reference-app-v152 .app-content-shell .text-[10px] {
+  font-size: 10px !important;
+}
+.native-app-shell.reference-app-v151.reference-app-v152 .app-content-shell .text-slate-400,
+.native-app-shell.reference-app-v151.reference-app-v152 .app-content-shell .text-slate-500,
+.native-app-shell.reference-app-v151.reference-app-v152 .app-content-shell .text-slate-300 {
+  color: var(--ref152-muted) !important;
+}
+.native-app-shell.reference-app-v151.reference-app-v152 .app-content-shell .text-green-400,
+.native-app-shell.reference-app-v151.reference-app-v152 .app-content-shell .text-emerald-400 { color: var(--ref152-green) !important; }
+.native-app-shell.reference-app-v151.reference-app-v152 .app-content-shell .text-red-400,
+.native-app-shell.reference-app-v151.reference-app-v152 .app-content-shell .text-rose-400 { color: var(--ref152-red) !important; }
+.native-app-shell.reference-app-v151.reference-app-v152 .app-content-shell .text-yellow-400,
+.native-app-shell.reference-app-v151.reference-app-v152 .app-content-shell .text-amber-400 { color: var(--ref152-yellow) !important; }
+.native-app-shell.reference-app-v151.reference-app-v152 .app-content-shell .text-blue-400,
+.native-app-shell.reference-app-v151.reference-app-v152 .app-content-shell .text-cyan-400 { color: var(--ref152-blue) !important; }
+.native-app-shell.reference-app-v151.reference-app-v152 .app-content-shell .text-[#D4A381],
+.native-app-shell.reference-app-v151.reference-app-v152 .app-content-shell .text-orange-300,
+.native-app-shell.reference-app-v151.reference-app-v152 .app-content-shell .text-orange-400 {
+  color: #f0a66c !important;
+}
+.native-app-shell.reference-app-v151.reference-app-v152 .chaos-button-primary,
+.native-app-shell.reference-app-v151.reference-app-v152 .app-content-shell button[class*="from-[#C59373]"],
+.native-app-shell.reference-app-v151.reference-app-v152 .app-content-shell .bg-gradient-to-r.from-\[\#C59373\] {
+  background: linear-gradient(180deg, #9c603a, #5f3925) !important;
+  color: #fff2e5 !important;
+  border: 1px solid rgba(196,124,63,.60) !important;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.12) !important;
+  border-radius: 5px !important;
+}
+.native-app-shell.reference-app-v151.reference-app-v152 .chaos-button-secondary,
+.native-app-shell.reference-app-v151.reference-app-v152 .app-content-shell button,
+.native-app-shell.reference-app-v151.reference-app-v152 .app-content-shell select,
+.native-app-shell.reference-app-v151.reference-app-v152 .app-content-shell input,
+.native-app-shell.reference-app-v151.reference-app-v152 .app-content-shell textarea {
+  border-radius: 5px !important;
+  border-color: rgba(134,151,163,.28) !important;
+  background-color: rgba(6,13,17,.68) !important;
+  box-shadow: none !important;
+}
+.native-app-shell.reference-app-v151.reference-app-v152 .app-content-shell button {
+  min-height: 34px !important;
+  font-weight: 800 !important;
+}
+.native-app-shell.reference-app-v151.reference-app-v152 .app-content-shell input,
+.native-app-shell.reference-app-v151.reference-app-v152 .app-content-shell select,
+.native-app-shell.reference-app-v151.reference-app-v152 .app-content-shell textarea {
+  color: var(--ref152-text) !important;
+}
+.native-app-shell.reference-app-v151.reference-app-v152 .app-content-shell input:focus,
+.native-app-shell.reference-app-v151.reference-app-v152 .app-content-shell select:focus,
+.native-app-shell.reference-app-v151.reference-app-v152 .app-content-shell textarea:focus {
+  border-color: rgba(196,124,63,.72) !important;
+  outline: 1px solid rgba(196,124,63,.20) !important;
+}
+.native-app-shell.reference-app-v151.reference-app-v152 .desktop-date-strip button {
+  border-radius: 5px !important;
+  background: rgba(8,16,21,.82) !important;
+  border-color: rgba(134,151,163,.24) !important;
+}
+.native-app-shell.reference-app-v151.reference-app-v152 .modal-card,
+.native-app-shell.reference-app-v151.reference-app-v152 [role="dialog"] [class*="bg-[#1A2126]"],
+.native-app-shell.reference-app-v151.reference-app-v152 [role="dialog"] [class*="bg-[#161D22]"] {
+  background: linear-gradient(180deg, rgba(14,26,33,.98), rgba(7,14,18,.98)) !important;
+  border-color: rgba(134,151,163,.28) !important;
+  border-radius: 8px !important;
+}
+.native-app-shell.reference-app-v151.reference-app-v152 .app-footer {
+  margin-left: 236px !important;
+  width: calc(100vw - 236px) !important;
+  background: rgba(5,11,15,.98) !important;
+  border-color: rgba(134,151,163,.16) !important;
+  min-height: 42px !important;
+  padding: 0 20px !important;
+  flex-direction: row !important;
+}
+.native-app-shell.reference-app-v151.reference-app-v152 .app-footer img { display: none !important; }
+
+@media (max-width: 899px) {
+  .native-app-shell.reference-app-v151.reference-app-v152 .app-header.native-command-bar {
+    background: rgba(5,11,15,.98) !important;
+    border-bottom: 1px solid rgba(134,151,163,.18) !important;
+  }
+  .native-app-shell.reference-app-v151.reference-app-v152 .reference-tool-dropdown { min-width: 0 !important; }
+  .native-app-shell.reference-app-v151.reference-app-v152 .reference-command-search,
+  .native-app-shell.reference-app-v151.reference-app-v152 .reference-top-action,
+  .native-app-shell.reference-app-v151.reference-app-v152 .native-icon-button,
+  .native-app-shell.reference-app-v151.reference-app-v152 .reference-profile-button {
+    border: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+  }
+  .native-app-shell.reference-app-v151.reference-app-v152 .native-mobile-bottom-nav {
+    background: rgba(5,11,15,.98) !important;
+    border-top: 1px solid rgba(134,151,163,.20) !important;
+  }
+  .native-app-shell.reference-app-v151.reference-app-v152 .app-content-shell,
+  .native-app-shell.reference-app-v151.reference-app-v152 main.app-content-shell {
+    padding: 12px 10px 98px !important;
+  }
+  .native-app-shell.reference-app-v151.reference-app-v152 .app-footer {
+    margin-left: 0 !important;
+    width: 100vw !important;
+    padding-bottom: 82px !important;
+  }
+}
