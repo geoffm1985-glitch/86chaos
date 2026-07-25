@@ -1,4 +1,4 @@
-// 86 Chaos failed-only regression helpers for 16.0.3+
+// 86 Chaos failed-only regression helpers for 16.0.4+
 // These helpers are intentionally narrower than the full production suite.
 const { expect } = require('@playwright/test');
 const fs = require('fs');
@@ -86,7 +86,7 @@ const DEFAULT_BASE_URL = 'https://cheers-portal-4oxv-git-testing-cheers-portal-s
 const BASE_URL = (
   envValue('CHAOS_BASE_URL', 'APP_URL', 'PLAYWRIGHT_BASE_URL', 'BASE_URL') || DEFAULT_BASE_URL
 ).replace(/\/$/, '');
-const EXPECTED_VERSION = envValue('CHAOS_EXPECTED_VERSION') || '16.0.3';
+const EXPECTED_VERSION = envValue('CHAOS_EXPECTED_VERSION') || '16.0.4';
 
 const FATAL_UI_RE = /Application error|Unhandled Runtime Error|Cannot read properties of undefined|Minified React error|Something went wrong/i;
 const BROKEN_VISIBLE_VALUE_RE = /\b(?:NaN|Infinity|Invalid Date|undefined undefined|null null)\b/i;

@@ -1,9 +1,9 @@
 {
-  "version": "16.0.4",
-  "name": "86 Chaos 16.0.4 CSP Firebase Frame and Back Office Table Fix",
+  "version": "16.0.5",
+  "name": "86 Chaos 16.0.5 Admin Presence Retention Readability Fix",
   "releasedAt": "2026-07-25T00:00:00.000Z",
-  "label": "16.0.4 Firebase Frame CSP and Back Office Table Fix",
-  "build": "16.0.4",
+  "label": "16.0.5 Admin Presence and Retention Readability Fix",
+  "build": "16.0.5",
   "notes": [
     "Allows Firebase Realtime Database long-poll script fallback through the Vercel Content Security Policy.",
     "Keeps RTDB presence from creating repeated CSP console errors across routes.",
