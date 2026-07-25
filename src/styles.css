@@ -3821,24 +3821,51 @@ select {
   flex-shrink: 0 !important;
 }
 
-/* 16.0.8: desktop-only Schedule Builder readability. Keep mobile cell density unchanged. */
+/* 16.0.10: desktop-only Schedule Builder density/readability. Keep mobile cell density unchanged. */
 @media (min-width: 1024px) {
   .schedule-builder-desktop-table {
-    min-width: max(100%, var(--schedule-builder-min-width, 1200px)) !important;
+    min-width: max(100%, var(--schedule-builder-min-width, 980px)) !important;
+    border-collapse: separate !important;
+    border-spacing: 0 !important;
+  }
+
+  .schedule-builder-desktop-table th:first-child,
+  .schedule-builder-desktop-table td:first-child {
+    width: 92px !important;
+    min-width: 92px !important;
+    max-width: 92px !important;
   }
 
   .schedule-builder-desktop-table th:not(:first-child),
   .schedule-builder-desktop-table td:not(:first-child) {
-    min-width: 86px;
+    min-width: 62px !important;
+    width: 62px !important;
+    max-width: 62px !important;
+    border-right: 1px solid rgba(125, 151, 166, 0.42) !important;
+  }
+
+  .schedule-builder-desktop-table tbody tr:not(:has(td[colspan])) > td {
+    border-top: 1px solid rgba(125, 151, 166, 0.32) !important;
+    border-bottom: 1px solid rgba(8, 12, 16, 0.72) !important;
+  }
+
+  .schedule-builder-desktop-table thead th {
+    border-bottom: 1px solid rgba(212, 163, 129, 0.38) !important;
   }
 
   .schedule-builder-time-chip {
-    font-size: 10px !important;
-    line-height: 1.1 !important;
-    padding: 4px 5px !important;
+    font-size: 9px !important;
+    line-height: 1.05 !important;
+    padding: 3px 3px !important;
     white-space: nowrap !important;
     overflow: visible !important;
     text-overflow: clip !important;
-    letter-spacing: -0.01em;
+    letter-spacing: -0.035em;
+    min-width: 0 !important;
+  }
+
+  .schedule-builder-partial-off-chip {
+    font-size: 8.5px !important;
+    letter-spacing: -0.045em;
   }
 }
