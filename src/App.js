@@ -3,7 +3,7 @@ import { Bell, Bug, ChevronLeft, ChevronRight, Loader2, Menu, Moon, Send, X } fr
 import { addDoc, collection, doc, onSnapshot, updateDoc } from 'firebase/firestore';
 import { getToken, onMessage } from 'firebase/messaging';
 import 'leaflet/dist/leaflet.css';
-import { T, db, auth, messaging, firebaseConfig, CURRENT_VERSION, MASTER_ADMIN_EMAIL, useLiveCollection, secureFetch, waitForAuthCurrentUser, getToday, getMonthStr, formatDate, formatDisplayFullDate, formatDisplayMonth, logAudit, setActiveTimeFormat, getOfflineQueue, replayOfflineQueue, startLowCostPresenceSession, useLowCostPresenceSummaries } from './core/appCore';
+import { T, db, auth, messaging, firebaseConfig, CURRENT_VERSION, MASTER_ADMIN_EMAIL, useLiveCollection, secureFetch, waitForAuthCurrentUser, getToday, getMonthStr, formatDate, formatDisplayFullDate, formatDisplayMonth, logAudit, setActiveTimeFormat, getOfflineQueue, replayOfflineQueue, startLowCostPresenceSession, useLowCostPresenceSummary } from './core/appCore';
 import { buildAlertFingerprint, useRememberedAlert } from './core/alertMemory';
 import { CheersLogo, Modal, DrawerMenu, DayDotPrintScreen, GlobalSearchModal, KitchenTVMode, UndoBar, VoiceCommandDock } from './components/common';
 import { LockedFeatureScreen } from './components/PlanGate';
@@ -363,6 +363,7 @@ const [currentDate, setCurrentDate] = useState(getToday());
   const messageRangeStart = activeTabState === 'messages' ? addDays(getToday(), -60) : recentWindowStart;
   const prepDateWindow = Array.from(new Set([currentDate, getToday(), 'MASTER']));
   const canViewTeamScheduleData = Boolean(appUser?.isSuperAdmin || appUser?.isAdmin || appUser?.isOwner || appUser?.accountOwner || appUser?.workspaceOwner || appUser?.permissions?.schedule || appUser?.permissions?.team);
+  const canViewTeamPresenceData = Boolean(appUser?.isSuperAdmin || appUser?.isAdmin || appUser?.isOwner || appUser?.accountOwner || appUser?.workspaceOwner || appUser?.permissions?.team);
   // On schedule screens, load the workspace request-off set so legacy records that only have
   // employeeId/email/name still appear. Outside schedule screens, keep the cheaper own-user query.
   const timeOffRequestClauses = (canViewTeamScheduleData || wantsScheduleScreen) ? [] : [['userId', '==', appUser?.id || '']];
@@ -371,8 +372,30 @@ const [currentDate, setCurrentDate] = useState(getToday());
   const workspaceMembers = useLiveCollection('workspaceMembers', rId, { enabled: !!rId, limitCount: activeTabState === 'team' ? 400 : 180, fallbackLimitCount: 80 });
   // Low-cost presence: no Firestore live heartbeat/listener. When a manager/team screen needs
   // last-seen hints, read tiny Realtime Database summaries instead of users/livePresence documents.
-  const wantsLowCostPresenceSummaries = Boolean(['team', 'godmode'].includes(activeTabState) && (canViewTeamScheduleData || appUser?.isSuperAdmin));
-  const livePresenceRecords = useLowCostPresenceSummaries(rId, { enabled: !!rId && !ghostTenant && wantsLowCostPresenceSummaries });
+  const wantsWorkspacePresenceSnapshot = Boolean(activeTabState === 'team' && canViewTeamPresenceData);
+  const [workspacePresenceRecords, setWorkspacePresenceRecords] = useState([]);
+  useEffect(() => {
+    if (!rId || ghostTenant || !wantsWorkspacePresenceSnapshot) {
+      setWorkspacePresenceRecords([]);
+      return undefined;
+    }
+    let alive = true;
+    secureFetch(`/api/presence-workspace-summary?restaurantId=${encodeURIComponent(rId)}&limit=500`, { method: 'GET' })
+      .then(response => response.json().then(data => ({ response, data })).catch(() => ({ response, data: {} })))
+      .then(({ response, data }) => {
+        if (!alive) return;
+        if (!response.ok || data?.ok === false) throw new Error(data?.error || `API ${response.status}`);
+        setWorkspacePresenceRecords(Array.isArray(data?.users) ? data.users : []);
+      })
+      .catch(err => {
+        if (!alive) return;
+        console.warn('Workspace presence summary unavailable:', err?.message || err);
+        setWorkspacePresenceRecords([]);
+      });
+    return () => { alive = false; };
+  }, [rId, ghostTenant, wantsWorkspacePresenceSnapshot]);
+  const livePresenceRecords = workspacePresenceRecords;
+  const selfPresenceRecord = useLowCostPresenceSummary(rId, appUser?.id || '', { enabled: !!rId && !ghostTenant && activeTabState === 'settings' && !!appUser?.id });
   const presenceSessions = livePresenceRecords;
   const rawShifts = useLiveCollection('shifts', rId, { enabled: !!rId && wantsScheduleData, limitCount: wantsScheduleScreen ? 1500 : 180, fallbackLimitCount: wantsScheduleScreen ? 1500 : 120 });
   const shifts = useMemo(() => {
@@ -583,7 +606,9 @@ if (liveAppUser && clientData) {
         parsePresenceTimeMs(session.lastOnline)
       );
       if (!lastMs) return;
-      const enriched = { ...session, _presenceLastMs: lastMs, _presenceLive: (now - lastMs) < liveWindowMs && session.onlineState !== 'offline' && session.state !== 'offline' && session.online !== false };
+      const explicitlyOnline = session.online === true || session.onlineState === 'online' || session.state === 'online';
+      const explicitlyOffline = session.online === false || session.onlineState === 'offline' || session.state === 'offline';
+      const enriched = { ...session, _presenceLastMs: lastMs, _presenceLive: explicitlyOnline || (!explicitlyOffline && (now - lastMs) < liveWindowMs) };
       if (!sessionsByUser[userId]) sessionsByUser[userId] = [];
       sessionsByUser[userId].push(enriched);
     });
@@ -1476,7 +1501,7 @@ What I clicked / expected:
     if (activeTabState === 'team' && displayClientFeatures?.team !== false) return <TabTeam key={`tea-${rId}`} appUser={liveAppUser} users={displayUsers} clientData={displayClientData} addToast={addToast} />;
     if (activeTabState === 'hr-training' && !isDemoMode && displayClientFeatures?.hr !== false) return <TabHrTraining key={`hrt-${rId}-${liveAppUser?.id}`} appUser={liveAppUser} users={displayUsers} addToast={addToast} />;
     if (activeTabState === 'maintenance' && displayClientFeatures?.maintenance !== false && (liveAppUser?.isAdmin || liveAppUser?.permissions?.team)) return <TabMaintenance key={`mtn-${rId}`} appUser={liveAppUser} addToast={addToast} />;
-    if (activeTabState === 'settings' && !isDemoMode) return <TabSettings key={`set-${rId}`} addToast={addToast} appUser={liveAppUser} clientData={displayClientData} users={displayUsers} />;
+    if (activeTabState === 'settings' && !isDemoMode) return <TabSettings key={`set-${rId}`} addToast={addToast} appUser={liveAppUser} clientData={displayClientData} users={displayUsers} presenceSelf={selfPresenceRecord} />;
     if (activeTabState === 'help') return <TabHelpCenter key={`help-${rId}`} appUser={liveAppUser} activeTab={activeTabState} voiceHelpSearchTarget={voiceHelpSearchTarget} addToast={addToast} />;
     if (activeTabState === 'godmode' && (liveAppUser?.isSuperAdmin === true || serverSaysSuperAdmin || (MASTER_ADMIN_EMAIL && (liveAppUser?.email || '').toLowerCase() === MASTER_ADMIN_EMAIL.toLowerCase()))) return <TabGodMode key={`god-${rId}`} appUser={{ ...liveAppUser, isSuperAdmin: true, serverAdminCheck }} addToast={addToast} setGhostTenant={setGhostTenant} setActiveTab={setActiveTab} />;
     if (activeTabState === 'godmode') return (

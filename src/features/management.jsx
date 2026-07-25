@@ -58,6 +58,30 @@ const getSafeMapCenter = (lat, lon) => {
 };
 
 
+const SimpleTable = ({ headers = [], rows = [], empty = 'No records found.' }) => {
+  const safeHeaders = Array.isArray(headers) ? headers : [];
+  const safeRows = Array.isArray(rows) ? rows : [];
+  return (
+    <div className={`${T.card} overflow-hidden`}>
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead className="bg-[#12161A] text-slate-300">
+            <tr>{safeHeaders.map((header, index) => <th key={`${String(header)}-${index}`} className="text-left p-3 font-black whitespace-nowrap">{header}</th>)}</tr>
+          </thead>
+          <tbody className="divide-y divide-[#2A353D]">
+            {safeRows.length === 0 && <tr><td colSpan={Math.max(safeHeaders.length, 1)} className="p-6 text-center text-slate-400 font-bold">{empty}</td></tr>}
+            {safeRows.map((row, rowIndex) => {
+              const cells = Array.isArray(row) ? row : [row];
+              return <tr key={rowIndex} className="hover:bg-[#12161A]/60">{cells.map((cell, cellIndex) => <td key={cellIndex} className="p-3 text-slate-200 align-top whitespace-nowrap">{cell}</td>)}</tr>;
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+};
+
+
 const sanitizeForFirestore = (value) => {
   if (value === undefined) return undefined;
   if (value === null) return null;
@@ -416,21 +440,21 @@ const handleDeactivate = async (u) => {
   );
   const formatLastActive = (u = {}) => {
     const lastMs = getLastActiveMs(u);
-    if (!lastMs) return { label: 'Never active', tone: 'text-slate-500', exact: 'No app activity recorded yet.' };
+    const online = u.online === true || u.onlineState === 'online' || u.state === 'online';
+    const exact = lastMs ? (() => { try { return formatClockDateTime(new Date(lastMs).toISOString(), appUser); } catch (err) { return new Date(lastMs).toLocaleString(); } })() : '';
+    if (online) return { label: 'Online now', tone: 'text-emerald-400', exact: exact || 'Currently connected', online: true };
+    if (!lastMs) return { label: 'Never active', tone: 'text-slate-500', exact: 'No app activity recorded yet.', online: false };
     const diff = Math.max(0, Date.now() - lastMs);
     const minutes = Math.floor(diff / 60000);
     const hours = Math.floor(minutes / 60);
     const days = Math.floor(hours / 24);
     let label = 'Just now';
     let tone = 'text-emerald-400';
-    if (diff < 3 * 60 * 1000 && u.onlineState !== 'offline') label = 'Online now';
-    else if (minutes < 60) label = `${minutes || 1}m ago`;
+    if (minutes < 60) label = `${minutes || 1}m ago`;
     else if (hours < 24) { label = `${hours}h ago`; tone = 'text-emerald-500'; }
     else if (days === 1) { label = 'Yesterday'; tone = 'text-amber-400'; }
     else { label = `${days}d ago`; tone = days > 7 ? 'text-red-400' : 'text-amber-400'; }
-    let exact = '';
-    try { exact = formatClockDateTime(new Date(lastMs).toISOString(), appUser); } catch (err) { exact = new Date(lastMs).toLocaleString(); }
-    return { label, tone, exact };
+    return { label, tone, exact, online: false };
   };
 
   const activeUsers = users.filter(u => u.isActive !== false).sort((a, b) => String(a.role || '').localeCompare(String(b.role || '')) || String(a.name || '').localeCompare(String(b.name || '')));
@@ -535,6 +559,11 @@ return (
                     <span className="text-[8px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded border bg-[#12161A] text-[#D4A381] border-[#2A353D]">{u.role || 'Unassigned'}</span>
                     {u.phone && <span className="text-[9px] font-bold text-slate-500 truncate">{u.phone}</span>}
                     {canViewWages && u.wage > 0 && <span className="text-[9px] font-black text-emerald-500 uppercase tracking-widest bg-emerald-900/10 border border-emerald-900/30 px-1.5 py-0.5 rounded ml-1">${Number(u.wage).toFixed(2)}/hr</span>}
+                  </div>
+                  <div className="flex flex-wrap items-center gap-1.5 mt-1 text-[9px] font-black uppercase tracking-widest" title={activity.exact}>
+                    <span className={`inline-flex items-center gap-1 ${activity.tone}`}><span className={`w-1.5 h-1.5 rounded-full ${activity.online ? 'bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.75)]' : 'bg-slate-600'}`}></span>{activity.label}</span>
+                    {u.activeDevice && <span className="text-slate-500 normal-case tracking-normal font-bold">• {u.activeDevice}</span>}
+                    {u.activeHost && <span className="text-slate-600 normal-case tracking-normal font-bold truncate max-w-[150px]">{u.activeHost}</span>}
                   </div>
                 </div>
               </div>
@@ -909,13 +938,43 @@ const prepareRestaurantLogoUpload = async (file) => {
   }
 };
 
-const TabSettings = ({ appUser, addToast, users = [], clientData = {} }) => {  const [subTab, setSubTab] = useState('profile');
+const TabSettings = ({ appUser, addToast, users = [], clientData = {}, presenceSelf = null }) => {  const [subTab, setSubTab] = useState('profile');
   const [newOwnerId, setNewOwnerId] = useState('');
 
   // --- Profile State ---
   const [name, setName] = useState(appUser?.name || '');
   const [phone, setPhone] = useState(appUser?.phone || '');
   const [photoURL, setPhotoURL] = useState(appUser?.photoURL || '');
+  const parseSettingsPresenceMs = (value) => {
+    if (!value) return 0;
+    if (typeof value === 'number') return value > 1000000000000 ? value : value * 1000;
+    if (typeof value === 'string') {
+      const parsed = new Date(value).getTime();
+      return Number.isFinite(parsed) ? parsed : 0;
+    }
+    if (typeof value?.toDate === 'function') {
+      const parsed = value.toDate().getTime();
+      return Number.isFinite(parsed) ? parsed : 0;
+    }
+    if (typeof value?.seconds === 'number') return value.seconds * 1000;
+    return 0;
+  };
+  const selfPresenceFromRoster = (users || []).find(u => u.id === appUser?.id || (u.email && appUser?.email && String(u.email).toLowerCase() === String(appUser.email).toLowerCase())) || null;
+  const selfPresence = presenceSelf || selfPresenceFromRoster || appUser || {};
+  const selfPresenceLastMs = Math.max(
+    parseSettingsPresenceMs(selfPresence.lastHeartbeatAt),
+    parseSettingsPresenceMs(selfPresence.presenceUpdatedAt),
+    parseSettingsPresenceMs(selfPresence.lastActive),
+    parseSettingsPresenceMs(selfPresence.lastSeen),
+    parseSettingsPresenceMs(selfPresence.lastOnline),
+    parseSettingsPresenceMs(selfPresence.lastChanged)
+  );
+  const selfPresenceOnline = selfPresence.online === true || selfPresence.onlineState === 'online' || selfPresence.state === 'online';
+  const selfPresenceLabel = selfPresenceOnline ? 'Online now' : selfPresenceLastMs ? `Last online ${formatClockDateTime(new Date(selfPresenceLastMs).toISOString(), appUser)}` : 'No online history yet';
+  const selfPresenceDetail = selfPresenceOnline
+    ? `Connected${selfPresence.activeDevice ? ` on ${selfPresence.activeDevice}` : ''}${selfPresence.activeHost ? ` • ${selfPresence.activeHost}` : ''}`
+    : (selfPresenceLastMs ? 'This timestamp comes from the low-cost Realtime Database presence summary.' : 'Open the app once after RTDB rules are deployed to create the first last-seen row.');
+
 
   // --- Account Security / MFA State ---
   const [mfaStatus, setMfaStatus] = useState(null);
@@ -1860,6 +1919,14 @@ const Toggle = ({ label, desc, checked, onChange, disabled = false }) => (
                   Tap photo to upload <input type="file" accept="image/*" onChange={handleImageUpload} className="hidden" />
                 </label>
               </div>
+            </div>
+
+            <div className="mb-4 bg-[#0B0E11] border border-[#2A353D] rounded-xl p-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+              <div>
+                <div className="text-[9px] font-black uppercase tracking-widest text-slate-500">Online Presence</div>
+                <div className={`text-sm font-black ${selfPresenceOnline ? 'text-emerald-400' : 'text-slate-300'} flex items-center gap-2 mt-1`}><span className={`w-2 h-2 rounded-full ${selfPresenceOnline ? 'bg-emerald-400 shadow-[0_0_10px_rgba(52,211,153,0.8)]' : 'bg-slate-600'}`}></span>{selfPresenceLabel}</div>
+              </div>
+              <div className="text-[10px] font-bold text-slate-500 sm:text-right max-w-sm">{selfPresenceDetail}</div>
             </div>
 
             <form onSubmit={handleSaveProfile} className="space-y-3">
@@ -4034,6 +4101,7 @@ firebase deploy --only functions --project YOUR_PRODUCTION_PROJECT_ID
   const [presenceSnapshot, setPresenceSnapshot] = useState({ users: [], recentUsers: [], fetchedAt: '', windowMinutes: 15, livePresenceCount: 0, onlineCount: 0, recentCount: 0 });
   const [isPresenceSnapshotLoading, setIsPresenceSnapshotLoading] = useState(false);
   const [presenceSnapshotError, setPresenceSnapshotError] = useState('');
+  const [presenceSnapshotWarning, setPresenceSnapshotWarning] = useState('');
   const [securityReport, setSecurityReport] = useState(null);
   const [isSecurityLoading, setIsSecurityLoading] = useState(false);
   const [securityError, setSecurityError] = useState(''); 
@@ -4468,8 +4536,9 @@ const unsubAudit = onSnapshot(collection(db, 'auditLogs'), snap => {
   const loadPresenceSnapshot = async ({ silent = false } = {}) => {
     setIsPresenceSnapshotLoading(true);
     setPresenceSnapshotError('');
+    setPresenceSnapshotWarning('');
     try {
-      const response = await secureFetch('/api/presence-snapshot?windowMinutes=15&limit=1200', { method: 'GET' });
+      const response = await secureFetch('/api/presence-snapshot?windowMinutes=15&limit=500&timeoutMs=3200', { method: 'GET' });
       const data = await response.json().catch(() => ({}));
       if (!response.ok || data?.ok === false) throw new Error(data?.error || `API ${response.status}`);
       setPresenceSnapshot({
@@ -4480,13 +4549,46 @@ const unsubAudit = onSnapshot(collection(db, 'auditLogs'), snap => {
         livePresenceCount: data.livePresenceCount || 0,
         onlineCount: data.onlineCount || 0,
         recentCount: data.recentCount || 0,
-        mode: data.mode || 'manual-snapshot'
+        mode: data.mode || 'manual-snapshot',
+        source: data.source || 'unknown',
+        warning: data.warning || ''
       });
+      if (data.warning) setPresenceSnapshotWarning(data.warning);
       if (!silent) addToast('Presence Snapshot', `${data.onlineCount || 0} recent app check-in(s) found. No live listener was opened.`);
     } catch (err) {
       const message = err?.message || 'Manual presence snapshot failed.';
-      setPresenceSnapshotError(message);
-      if (!silent) addToast('Snapshot Failed', message);
+      const fallbackRows = (allUsers || []).map(u => ({
+        userId: u.id,
+        uid: u.uid || u.id,
+        restaurantId: u.restaurantId || '',
+        userName: u.name || u.email || 'Unknown user',
+        name: u.name || u.email || 'Unknown user',
+        userEmail: u.email || '',
+        email: u.email || '',
+        role: u.role || '',
+        activeDevice: u.activeDevice || u.device || u.deviceType || '',
+        activeTab: u.activeTab || '',
+        presenceUpdatedAt: u.presenceUpdatedAt || u.lastOnline || u.lastActive || u.lastSeen || '',
+        lastSeen: u.lastOnline || u.lastActive || u.lastSeen || u.presenceUpdatedAt || '',
+        presenceSource: 'client-roster-fallback',
+        online: false,
+        onlineState: 'unknown'
+      })).filter(u => u.userId || u.email);
+      setPresenceSnapshot({
+        users: [],
+        recentUsers: fallbackRows,
+        fetchedAt: new Date().toISOString(),
+        windowMinutes: 15,
+        livePresenceCount: fallbackRows.length,
+        onlineCount: 0,
+        recentCount: fallbackRows.length,
+        mode: 'client-fallback-after-api-error',
+        source: 'client-roster-fallback',
+        warning: message
+      });
+      setPresenceSnapshotWarning(`Snapshot API unavailable, showing roster fallback: ${message}`);
+      setPresenceSnapshotError('');
+      if (!silent) addToast('Snapshot Fallback', 'The API timed out, so the page is showing the safe roster/last-seen fallback instead of failing.');
     } finally {
       setIsPresenceSnapshotLoading(false);
     }
@@ -4498,6 +4600,9 @@ const unsubAudit = onSnapshot(collection(db, 'auditLogs'), snap => {
     }
     if (subTab === 'health' && !healthSnapshot && !isHealthLoading) {
       refreshHealthDashboard({ silent: true });
+    }
+    if ((subTab === 'live' || subTab === 'users') && !presenceSnapshot.fetchedAt && !isPresenceSnapshotLoading) {
+      loadPresenceSnapshot({ silent: true });
     }
   }, [subTab]);
 
@@ -5558,6 +5663,8 @@ const activeTrials = restaurants.filter(r => resolveSubscription(r, appUser).sta
     parsePresenceTimeMs(u.presenceUpdatedAt),
     parsePresenceTimeMs(u.lastActive),
     parsePresenceTimeMs(u.lastSeen),
+    parsePresenceTimeMs(u.lastOnline),
+    parsePresenceTimeMs(u.lastChanged),
     parsePresenceTimeMs(u.heartbeatEpochMs)
   );
   const enrichPresenceRow = (row = {}) => {
@@ -5575,7 +5682,9 @@ const activeTrials = restaurants.filter(r => resolveSubscription(r, appUser).sta
   };
   const isOnlineNow = (u) => {
     const last = getLastActiveMs(u);
-    return !!presenceSnapshotFetchedAtMs && !!last && (nowMs - last) < ONLINE_WINDOW_MS && u.onlineState !== 'offline';
+    const explicitlyOnline = u.online === true || u.onlineState === 'online' || u.state === 'online';
+    const explicitlyOffline = u.online === false || u.onlineState === 'offline' || u.state === 'offline';
+    return !!presenceSnapshotFetchedAtMs && !!last && (explicitlyOnline || (!explicitlyOffline && (nowMs - last) < ONLINE_WINDOW_MS));
   };
   const onlineUsers = (presenceSnapshot.users || []).map(enrichPresenceRow).filter(isOnlineNow).sort((a,b) => getLastActiveMs(b) - getLastActiveMs(a));
   const onlineRestaurantIds = [...new Set(onlineUsers.map(u => u.restaurantId).filter(Boolean))];
@@ -5586,6 +5695,53 @@ const activeTrials = restaurants.filter(r => resolveSubscription(r, appUser).sta
     users: onlineUsers.filter(u => u.restaurantId === id)
   })).sort((a,b) => b.users.length - a.users.length);
   const recentlyActiveUsers = (presenceSnapshot.recentUsers || []).map(enrichPresenceRow).sort((a,b) => getLastActiveMs(b) - getLastActiveMs(a));
+  const formatPresenceExact = (ms) => {
+    if (!ms) return 'No RTDB presence row yet';
+    try { return formatClockDateTime(new Date(ms).toISOString(), appUser); } catch (_) { return new Date(ms).toLocaleString(); }
+  };
+  const formatPresenceRelative = (ms) => {
+    if (!ms) return 'No online history yet';
+    const diff = Math.max(0, nowMs - ms);
+    const minutes = Math.floor(diff / 60000);
+    const hours = Math.floor(minutes / 60);
+    const days = Math.floor(hours / 24);
+    if (minutes < 2) return 'Just now';
+    if (minutes < 60) return `${minutes}m ago`;
+    if (hours < 24) return `${hours}h ago`;
+    if (days === 1) return 'Yesterday';
+    return `${days}d ago`;
+  };
+  const presenceDirectoryRows = [...(presenceSnapshot.users || []), ...(presenceSnapshot.recentUsers || [])].map(enrichPresenceRow);
+  const presenceDirectoryByKey = new Map();
+  const rememberPresenceDirectoryRow = (key, row) => {
+    const cleanKey = String(key || '').toLowerCase().trim();
+    if (!cleanKey || cleanKey === 'undefined' || cleanKey === 'null') return;
+    const existing = presenceDirectoryByKey.get(cleanKey);
+    if (!existing || getLastActiveMs(row) >= getLastActiveMs(existing)) presenceDirectoryByKey.set(cleanKey, row);
+  };
+  presenceDirectoryRows.forEach(row => {
+    [row.id, row.userId, row.uid, row.email, row.userEmail].forEach(key => rememberPresenceDirectoryRow(key, row));
+  });
+  const getUserPresenceSummary = (user = {}) => {
+    const matched = presenceDirectoryByKey.get(String(user.id || '').toLowerCase().trim())
+      || presenceDirectoryByKey.get(String(user.email || '').toLowerCase().trim())
+      || null;
+    const merged = matched ? { ...matched, id: user.id || matched.id, userId: user.id || matched.userId, name: user.name || matched.name, email: user.email || matched.email, role: user.role || matched.role, restaurantId: user.restaurantId || matched.restaurantId } : user;
+    const lastMs = getLastActiveMs(merged);
+    const online = !!matched && isOnlineNow(merged);
+    const statusLabel = online ? 'Online now' : lastMs ? `Last online ${formatPresenceRelative(lastMs)}` : 'No online history yet';
+    return {
+      matched: !!matched,
+      online,
+      lastMs,
+      statusLabel,
+      statusTone: online ? 'text-emerald-400' : lastMs ? 'text-amber-300' : 'text-slate-500',
+      exactLabel: formatPresenceExact(lastMs),
+      deviceLabel: merged.activeDevice || merged.device || merged.deviceType || 'Unknown device',
+      activeTabLabel: merged.activeTab || 'Unknown tab',
+      sourceLabel: merged.presenceSource || matched?.source || (lastMs ? 'user profile timestamp' : 'not found')
+    };
+  };
 
   const selectedClientUsers = selectedClient ? allUsers
     .filter(u => u.restaurantId === selectedClient.id)
@@ -5635,7 +5791,7 @@ const activeTrials = restaurants.filter(r => resolveSubscription(r, appUser).sta
   const platformSnapshot = [
     `86 Chaos Platform Snapshot`,
     `Version: ${CURRENT_VERSION}`,
-    `Manual presence snapshot: ${presenceSnapshot.fetchedAt ? `${onlineUsers.length} recent` : 'not refreshed'}`,
+    `Online / last seen: ${presenceSnapshot.fetchedAt ? `${onlineUsers.length} online now` : 'not refreshed'}`,
     `Active workspaces: ${restaurants.filter(r=>r.isActive).length}`,
     `Paid workspaces: ${paidWorkspaces}`,
     `Trials: ${trialWorkspaces.length}`,
@@ -5742,7 +5898,7 @@ const activeTrials = restaurants.filter(r => resolveSubscription(r, appUser).sta
 
   const commandWidgets = [
     { title: 'System Status', value: platformStatus, detail: `${adminRiskQueue.length} action item(s)`, jump: 'overview', tone: platformStatus === 'Clean' ? 'emerald' : platformStatus === 'Monitoring' ? 'amber' : 'red' },
-    { title: 'Manual Presence', value: presenceSnapshot.fetchedAt ? onlineUsers.length : '—', detail: presenceSnapshot.fetchedAt ? `${onlineUsers.length} recent check-in(s) • fetched ${timeAgo(presenceSnapshot.fetchedAt)}` : 'Press Refresh Snapshot in Live', jump: 'live', tone: presenceSnapshot.fetchedAt ? (onlineUsers.length ? 'emerald' : 'amber') : 'blue' },
+    { title: 'Online / Last Seen', value: presenceSnapshot.fetchedAt ? onlineUsers.length : '—', detail: presenceSnapshot.fetchedAt ? `${onlineUsers.length} online now • fetched ${timeAgo(presenceSnapshot.fetchedAt)}` : 'Open Online / Last Seen and press Refresh Snapshot', jump: 'live', tone: presenceSnapshot.fetchedAt ? (onlineUsers.length ? 'emerald' : 'amber') : 'blue' },
     { title: 'Backup Status', value: backupStatusLabel, detail: `${backupStatus?.lastIntegrityStatus || backupStatus?.backupIntegrity?.status || 'integrity not checked'} • Next ${nextBackupCountdown}`, jump: 'health', tone: backupIsStale ? 'amber' : 'emerald' },
     { title: 'Restore Drill', value: restoreDrillLabel, detail: restoreDrillStatus?.status || 'Monthly safe-restore proof', jump: 'forensics', tone: restoreDrillStale ? 'amber' : 'emerald' },
     { title: 'Push Health', value: `${pushEnabledUsers.length}/${allUsers.length}`, detail: `${stalePushUsers.length} stale • last result ${backupStatus?.lastPushResult || 'not logged'}`, jump: 'push', tone: stalePushUsers.length ? 'amber' : 'emerald' },
@@ -6264,7 +6420,7 @@ ${body}`;
     { title: 'Version 14.0.2 Robustness Suite', group: 'System Administrator', keywords: 'v14 14.0.2 robustness safe write storage doctor schema doctor restore preview backup picker permission simulator import bridge offline queue release guardrails menu dependency graph', body: ['Open System Administrator → 14.0 Robustness Suite for the platform hardening tools.', 'Safe Write Engine centralizes permission checks, restaurantId enforcement, demo-mode blocking, audit logging, redacted before/after details, and offline queue support. In 14.0.2 it is wired into major kitchen forms: inventory, waste, prep, line checks, recipes, maintenance, Kitchen Command smart actions, Manager Brief quick actions, and menu dependency mapping.', 'Upload & Storage Doctor tests Firebase Admin credentials, target bucket, workspace lookup, and a real write/read/delete cycle before uploads are trusted.', 'Schema Doctor scans tenant records for missing restaurantId values, invalid dates, stale punches, negative inventory, old branding fields, and demo privacy hazards. Repair Safe Items only fixes repairable issues.', 'Restore Preview can load backups from Firebase Storage into a picker, preview a selected snapshot, count documents by collection, flag sensitive fields, and selectively restore chosen collections after typing RESTORE.', 'Permission Simulator previews visible and blocked tabs plus wage/forensics/backup access for a selected user.', 'Import Bridge downloads CSV templates for POS sales, payroll time, vendor invoices, and inventory counts.', 'Release Guardrails confirm version, 86 Chaos brand lock, demo privacy, Help Center public boundary, and rules packaging before deployment.', 'Kitchen Command Center Dependency Graph maps recipes/menu items to inventory items so low-stock inventory, prep signals, and 86 alerts can surface affected menu items more reliably.'] },
     { title: 'Mandatory Tip Declaration reliability', group: 'Admin Tab Guide', keywords: 'tips mandatory declaration clock out payroll time clock settings schema doctor', body: ['Settings → Workspace → Labor & Payroll controls Mandatory Tip Declaration for the restaurant.', 'The setting is now a core time-clock control, not a legacy tier-specific feature. When enabled, every employee clock-out opens Declare Tips before the punch closes.', 'Employees can enter 0 cash and 0 credit tips when they did not receive tips. The punch stores cashTips, creditTips, totalDeclaredTips, tipDeclarationRequired, tipDeclarationCompleted, tipDeclaredAt, and tipDeclarationVersion for payroll review.', 'Older restaurant documents that are missing systemSettings.tips default to enabled at runtime so employees do not bypass declaration. Schema Doctor flags missing tips settings as repairable and can stamp tips: true explicitly.', 'If a manager reports that the modal is not appearing, verify the workspace setting, refresh the employee device, and run Schema Doctor dry run for that workspace.'] },
     { title: 'Workspace geofence map lookup', group: 'Admin Tab Guide', keywords: 'workspace settings global config geofence find gps map lookup coordinates latitude longitude map service failed', body: ['Settings → Workspace → Global Config uses the Find GPS button to translate an address into latitude and longitude for the time-clock geofence.', 'Version 13.1.33 routes address lookup through /api/geocode-address so browsers are not solely responsible for reaching the public map service.', 'If the map service is unavailable, keep the saved latitude/longitude, enter coordinates manually, or click the map to set the geofence center. Version 13.1.34 makes the pin-drop map more resilient on desktop and mobile by forcing Leaflet size recalculation after the panel renders, adding a Refresh Map button, and rotating tile providers when tiles fail. A grey/slow tile map does not stop saved coordinates from enforcing the geofence.', 'For preview deployments, confirm api/geocode-address.js is present in Vercel. No Firebase rules are required for this route.'] },
-    { title: 'Manual Presence Snapshot: how it works', group: 'Admin Tab Guide', keywords: 'manual presence snapshot live users online heartbeat reads writes super admin refresh', body: ['System Administrator → Live Activity no longer opens live Firestore listeners or runs a constant online scanner.', 'Regular staff and store managers do not see online status in Team. Only the Super Admin can press Refresh Snapshot in System Administrator.', 'Each user browser saves a low-frequency app-open presence check-in. The snapshot button reads livePresence once and shows check-ins from the recent window.', 'Because this favors low Firebase cost, it is an operational hint, not a perfect minute-by-minute surveillance tool.', 'If the snapshot fails, deploy the included API route and Firestore rules, then log out and back in so Super Admin claims refresh.'] },
+    { title: 'Manual Presence Snapshot: how it works', group: 'Admin Tab Guide', keywords: 'manual presence snapshot live users online heartbeat reads writes super admin refresh', body: ['System Administrator → Live Activity no longer opens live Firestore listeners or runs a constant online scanner.', 'Staff Roster shows simple Online now / Last online hints from Realtime Database summaries for managers with Team access. Super Admin Live Activity still uses a manual one-time snapshot for the deeper control-tower view.', 'Each user browser opens a Realtime Database presence session with onDisconnect cleanup. Firestore heartbeat writes stay disabled, and the snapshot button reads RTDB statusSummary instead of livePresence whenever RTDB is available.', 'Because this favors low Firebase cost, it is an operational hint, not a perfect minute-by-minute surveillance tool.', 'If the snapshot fails, deploy the included API route and Firestore rules, then log out and back in so Super Admin claims refresh.'] },
     { title: 'Admin Workspace home: what the numbers mean', group: 'Admin Tab Guide', keywords: 'admin workspace home priority list quick actions metrics backup mrr crashes people workspaces', body: ['The Admin Workspace home intentionally shows only a short priority list, six quick actions, and four core numbers.', 'The priority list is the shortest path to urgent problems. Click a row to open the correct section.', 'Active workspaces, People, Crashes today, and Estimated MRR are operating signals, not accounting records.', 'Backup and Security summaries live in the three small cards at the top. Open their full sections for details.', 'Manual Presence still counts recent app check-ins only after the Super Admin presses Refresh Snapshot; it does not run in the background.'] },
     { title: 'Workspaces: what to use it for', group: 'Admin Tab Guide', keywords: 'clients workspace restaurant tenant modules billing demo users possess owner restaurant id plan tabs', body: ['Use Workspaces to manage restaurant/customer environments, not individual shifts or menu work.', 'The workspace drawer shows users, admin counts, online counts, push token adoption, GPS permission snapshots, enabled modules, plan/status state, and ownership clues.', 'Demo Manager and Demo Employee let you show a customer only selected tabs/features without saving real changes or exposing sensitive owner/customer data.', 'Support Edit is for correcting routing, roles, status, force password flags, and account metadata when a restaurant cannot self-fix it.', 'Possess Workspace or Possess User is for troubleshooting only. Exit Ghost/Demo mode when finished.'] },
     { title: 'People: what to use it for', group: 'Admin Tab Guide', keywords: 'users global accounts employee account search routing restaurant id support edit force password push token gps status', body: ['Use Users when the problem follows a person instead of a restaurant.', 'Check restaurantId first. A wrong restaurantId makes tabs/data look missing even when permissions are correct.', 'Check status, role, admin flags, custom permissions, forcePasswordChange, push token, GPS permission, and last heartbeat.', 'Use Support Edit only to correct account routing or support fields. Do not use it as a substitute for normal Staff Roster management when the restaurant can manage the employee themselves.', 'Use Possess to verify the exact experience after editing.'] },
@@ -7399,13 +7555,12 @@ Type RESTORE to continue.`);
     },
     {
       title:'Workspaces & People',
-      summary:'Restaurants, clients, staff profiles, workspace setup, modules, and branding.',
-      helper:'Use this to onboard a restaurant, fix workspace routing, support a staff profile, or adjust visible customer branding.',
+      summary:'Restaurants, clients, staff profiles, workspace setup, modules, and account routing.',
+      helper:'Use this to onboard a restaurant, fix workspace routing, support a staff profile, or review workspace setup without customer branding controls.',
       tabs:[
         {id:'tenants', label:'Workspaces / Clients', short:'Clients', intent:'Manage restaurant accounts, billing state, modules, and workspace configuration.'},
-        {id:'users', label:'People Directory', short:'People', intent:'Find users across workspaces, support-edit profiles, routing, password resets, and device clues.'},
-        {id:'setup', label:'Workspace Setup Wizard', short:'Setup', intent:'Create or deploy a new workspace with owner login handoff.'},
-        {id:'branding', label:'Branding / Display', short:'Branding', intent:'Manage display/branding tools while keeping 86 Chaos branding locked on.'}
+        {id:'users', label:'People Directory', short:'People', intent:'Find users across workspaces, support-edit profiles, routing, password resets, device clues, online now, and last online times.'},
+        {id:'setup', label:'Workspace Setup Wizard', short:'Setup', intent:'Create or deploy a new workspace with owner login handoff.'}
       ]
     },
     {
@@ -7417,7 +7572,7 @@ Type RESTORE to continue.`);
         {id:'ai-usage', label:'AI Usage / Scan Limits', short:'AI Usage', intent:'Review monthly invoice and menu AI pages, failures, blocked scans, bypass logs, and workspace limits.'},
         {id:'automation', label:'Python Automation Center', short:'Python', intent:'Control scheduled Python jobs, owner/admin alerts, read-only scans, and automation safety rails.'},
         {id:'push', label:'Push Control Center', short:'Push', intent:'Audit push tokens, stale devices, opt-in status, and test delivery.'},
-        {id:'live', label:'Manual Presence Snapshot', short:'Presence', intent:'Take an on-demand low-cost live user/workspace snapshot.'}
+        {id:'live', label:'Online / Last Seen', short:'Online', intent:'View who is online now, the last time each user was online, device clues, workspace grouping, and a one-time low-cost presence snapshot.'}
       ]
     },
     {
@@ -7448,7 +7603,8 @@ Type RESTORE to continue.`);
     { label:'Run Backup Now', tab:'forensics', keywords:'backup manual storage restore watchdog' },
     { label:'Set Up Legal Data Retention', tab:'retention', keywords:'data retention automatic deletion storage archive legal policy firebase functions cloud scheduler production' },
     { label:'Check Backup Watchdog', tab:'forensics', keywords:'stale scheduled backup cron preview production' },
-    { label:'Find or Repair a User', tab:'users', keywords:'people employee profile login routing reset password' },
+    { label:'Find or Repair a User', tab:'users', keywords:'people employee profile login routing reset password last online last seen' },
+    { label:'Open Online / Last Seen Snapshot', tab:'live', keywords:'online last online last seen presence device sessions active users current users' },
     { label:'Test Push Notifications', tab:'push', keywords:'push token fcm alert device' },
     { label:'Review AI Scan Page Usage', tab:'ai-usage', keywords:'invoice menu ai pages limits scans failures blocked bypass model provider' },
     { label:'Open Python Automation Center', tab:'automation', keywords:'python automation nightly ops scan manager brief owner admin alerts read only recommendations' },
@@ -8630,7 +8786,7 @@ Type RESTORE to continue.`);
 
 
       {subTab === 'retention' && (
-        <div className="space-y-4 animate-[slideIn_0.2s_ease-out]">
+        <div className="admin46-retention-page space-y-4 animate-[slideIn_0.2s_ease-out]">
           <section className="admin46-retention-hero">
             <div className="min-w-0">
               <div className="admin46-eyebrow">Legal retention automation</div>
@@ -8825,19 +8981,20 @@ Type RESTORE to continue.`);
       {subTab === 'live' && (
         <div className="space-y-4 animate-[slideIn_0.2s_ease-out]">
           {adminDataErrors.users && <div className="bg-red-900/20 border border-red-900/50 text-red-100 rounded-2xl p-4 text-sm font-bold leading-snug">Live user data is blocked by Firestore rules or auth claims: {adminDataErrors.users}. Deploy the included firestore.rules file, then log out and back in so super-admin claims refresh.</div>}
-          {presenceSnapshotError && <div className="bg-red-900/20 border border-red-900/50 text-red-100 rounded-2xl p-4 text-sm font-bold leading-snug">Manual presence snapshot failed: {presenceSnapshotError}</div>}
+          {presenceSnapshotError && <div className="bg-red-900/20 border border-red-900/50 text-red-100 rounded-2xl p-4 text-sm font-bold leading-snug">Online / last-seen snapshot failed: {presenceSnapshotError}</div>}
+          {presenceSnapshotWarning && <div className="bg-amber-900/20 border border-amber-500/40 text-amber-100 rounded-2xl p-4 text-sm font-bold leading-snug">Online / last-seen snapshot note: {presenceSnapshotWarning}</div>}
           <div className="bg-[#0B0E11] border border-[#2A353D] rounded-2xl p-3 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3 text-[10px] font-black uppercase tracking-widest text-slate-400">
-            <div className="flex flex-wrap gap-2"><span className="text-emerald-400">Manual Presence Snapshot</span><span>Users: {allUsers.length}</span><span>Recent: {onlineUsers.length}</span><span>Window: {presenceSnapshot.windowMinutes || 15} min</span><span>Reads only when refreshed</span>{presenceSnapshot.fetchedAt && <span>Fetched: {timeAgo(presenceSnapshot.fetchedAt)}</span>}</div>
-            <button type="button" onClick={() => loadPresenceSnapshot()} disabled={isPresenceSnapshotLoading} className="px-3 py-2 bg-emerald-900/20 border border-emerald-500/50 text-emerald-300 rounded-lg font-black uppercase tracking-widest hover:bg-emerald-900/40 disabled:opacity-50 flex items-center justify-center gap-2">{isPresenceSnapshotLoading ? <Loader2 size={14} className="animate-spin"/> : <Users size={14}/>} Refresh Snapshot</button>
+            <div className="flex flex-wrap gap-2"><span className="text-emerald-400">Online / Last Seen Snapshot</span><span>Users: {allUsers.length}</span><span>Online now: {onlineUsers.length}</span><span>Window: {presenceSnapshot.windowMinutes || 15} min</span><span>{presenceSnapshot.source === 'client-roster-fallback' ? 'Roster fallback' : 'One-time bounded read'}</span>{presenceSnapshot.fetchedAt && <span>Fetched: {timeAgo(presenceSnapshot.fetchedAt)}</span>}</div>
+            <button type="button" onClick={() => loadPresenceSnapshot()} disabled={isPresenceSnapshotLoading} className="px-3 py-2 bg-emerald-900/20 border border-emerald-500/50 text-emerald-300 rounded-lg font-black uppercase tracking-widest hover:bg-emerald-900/40 disabled:opacity-50 flex items-center justify-center gap-2">{isPresenceSnapshotLoading ? <Loader2 size={14} className="animate-spin"/> : <Users size={14}/>} Refresh Online / Last Seen</button>
           </div>
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
             <div className="lg:col-span-2 cockpit-panel rounded-2xl overflow-hidden">
               <div className={`bg-[#12161A] p-3 border-b ${T.border} flex items-center justify-between gap-3`}>
-                <h3 className="font-black text-sm text-white flex items-center gap-2"><span className="cockpit-light bg-emerald-400 text-emerald-400 hot"></span> Manual Presence Snapshot</h3>
+                <h3 className="font-black text-sm text-white flex items-center gap-2"><span className="cockpit-light bg-emerald-400 text-emerald-400 hot"></span> Online Now</h3>
                 <span className="text-[10px] font-black uppercase tracking-widest text-emerald-400">{onlineUsers.length} recent</span>
               </div>
               <div className={`divide-y ${T.border} max-h-[55vh] overflow-y-auto custom-scrollbar`}>
-                {onlineUsers.length === 0 && <div className="p-8 text-center text-slate-500 font-bold">No manual snapshot has recent app check-ins yet. Press Refresh Snapshot. This does a one-time Super Admin read instead of opening a live listener.</div>}
+                {onlineUsers.length === 0 && <div className="p-8 text-center text-slate-500 font-bold">No users are online in the latest snapshot yet. Press Refresh Online / Last Seen. This does a one-time Super Admin read instead of opening a live listener.</div>}
                 {onlineUsers.map(u => {
                   const restName = restaurants.find(r => r.id === u.restaurantId)?.name || 'Unknown Workspace';
                   return (
@@ -8860,7 +9017,7 @@ Type RESTORE to continue.`);
             <div className="cockpit-panel rounded-2xl overflow-hidden">
               <div className={`bg-[#12161A] p-3 border-b ${T.border}`}>
                 <h3 className="font-black text-sm text-white">Active Workspaces</h3>
-                <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mt-1">Grouped by manual snapshot</p>
+                <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mt-1">Grouped by latest online / last-seen snapshot</p>
               </div>
               <div className={`divide-y ${T.border} max-h-[55vh] overflow-y-auto custom-scrollbar`}>
                 {onlineByRestaurant.length === 0 && <div className="p-6 text-center text-slate-500 font-bold text-sm">No workspaces in the latest snapshot.</div>}
@@ -8881,7 +9038,7 @@ Type RESTORE to continue.`);
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             <div className="cockpit-panel rounded-2xl p-4">
               <div className="flex items-center justify-between mb-3">
-                <h3 className="font-black text-white text-sm">Recent Check-In Buffer</h3>
+                <h3 className="font-black text-white text-sm">Recently Seen Buffer</h3>
                 <SignalPip tone="amber" label={`${recentlyActiveUsers.length} warm`} />
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -8889,7 +9046,7 @@ Type RESTORE to continue.`);
                   const restName = restaurants.find(r => r.id === u.restaurantId)?.name || 'Unknown';
                   return <div key={u.id} className="bg-[#0B0E11] border border-[#2A353D] rounded-lg p-2"><div className="text-xs font-black text-white truncate">{u.name || u.email}</div><div className="text-[9px] font-bold text-slate-500 uppercase tracking-wider truncate">{restName} • {timeAgo(u.lastHeartbeatAt || u.presenceUpdatedAt || u.lastActive || u.lastSeen)}</div></div>
                 })}
-                {recentlyActiveUsers.length === 0 && <div className="text-sm text-slate-500 font-bold">No recently active users outside the live window.</div>}
+                {recentlyActiveUsers.length === 0 && <div className="text-sm text-slate-500 font-bold">No recently seen users outside the live window.</div>}
               </div>
             </div>
 
@@ -8905,7 +9062,7 @@ Type RESTORE to continue.`);
                   ['Backup Engine', 'blue', 'JSON export ready'],
                   ['Billing Locks', staleTenants.length ? 'amber' : 'emerald', `${staleTenants.length} stale`],
                   ['API Routes', 'blue', `${apiConnectedCount} integrations`],
-                  ['Manual Presence', onlineUsers.length ? 'emerald' : 'amber', presenceSnapshot.fetchedAt ? `${onlineUsers.length} recent` : 'not refreshed']
+                  ['Online / Last Seen', onlineUsers.length ? 'emerald' : 'amber', presenceSnapshot.fetchedAt ? `${onlineUsers.length} online now` : 'not refreshed']
                 ].map(([name, tone, detail]) => (
                   <div key={name} className="bg-[#0B0E11] border border-[#2A353D] rounded-lg p-2.5 min-h-[70px]">
                     <SignalPip tone={tone} label={name} hot={tone === 'amber'} />
@@ -9091,7 +9248,7 @@ Type RESTORE to continue.`);
                       )}
                     </div>
 
-                    <div className="text-[9px] text-slate-500 font-medium mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1">ID: {r.id}<span>•</span><span className="text-white font-bold">{userCounts[r.id] || 0} Seats</span><span>•</span><span className="text-emerald-400 font-black flex items-center gap-1"><span className="cockpit-light bg-emerald-400 text-emerald-400"></span>{presenceSnapshot.fetchedAt ? `${onlineUsers.filter(u => u.restaurantId === r.id).length} snapshot` : 'snapshot not run'}</span><span>•</span><span className={timeAgo(r.lastActive).includes('Inactive') ? 'text-red-400' : 'text-emerald-500'}>Ping: {timeAgo(r.lastActive)}</span></div>
+                    <div className="text-[9px] text-slate-500 font-medium mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1">ID: {r.id}<span>•</span><span className="text-white font-bold">{userCounts[r.id] || 0} Seats</span><span>•</span><span className="text-emerald-400 font-black flex items-center gap-1"><span className="cockpit-light bg-emerald-400 text-emerald-400"></span>{presenceSnapshot.fetchedAt ? `${onlineUsers.filter(u => u.restaurantId === r.id).length} online now` : 'online snapshot not run'}</span><span>•</span><span className={timeAgo(r.lastActive).includes('Inactive') ? 'text-red-400' : 'text-emerald-500'}>Ping: {timeAgo(r.lastActive)}</span></div>
                     {r.deletionScheduledFor && <div className="mt-1.5 text-[9px] font-black uppercase tracking-widest text-amber-300">Permanent deletion after {r.deletionScheduledFor?.toDate ? r.deletionScheduledFor.toDate().toLocaleString() : new Date(r.deletionScheduledFor).toLocaleString()}</div>}
                   </div>
                   <div className="flex flex-wrap gap-2 flex-shrink-0">
@@ -9112,7 +9269,27 @@ Type RESTORE to continue.`);
         <div className="space-y-6 animate-[slideIn_0.2s_ease-out]">
           <div className={`${T.card} p-4 flex gap-3 items-center`}>
             <Search className={T.copper} size={20}/>
-            <input type="text" placeholder="Search any user by name, email, role, or ID..." value={userSearch} onChange={e=>setUserSearch(e.target.value)} className={T.input}/>
+            <input type="text" placeholder="Search users by name, email, role, ID, workspace, online, or last seen..." value={userSearch} onChange={e=>setUserSearch(e.target.value)} className={T.input}/>
+          </div>
+
+          <div className={`${T.card} p-4 border-emerald-900/40 bg-emerald-950/10`}>
+            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+              <div>
+                <div className="text-[10px] font-black uppercase tracking-[0.22em] text-emerald-300 flex items-center gap-2"><Clock size={14}/> Online / Last Seen</div>
+                <h3 className="text-lg font-black text-white mt-1">Last online is shown right here in People Directory.</h3>
+                <p className="text-xs text-slate-400 font-bold leading-5 mt-1 max-w-3xl">Press Refresh to take a one-time Realtime Database presence snapshot. Rows below show Online now, Last online, exact timestamp, device, active tab, and workspace without opening a constant listener.</p>
+              </div>
+              <div className="flex flex-col sm:flex-row gap-2">
+                <button type="button" onClick={() => loadPresenceSnapshot()} disabled={isPresenceSnapshotLoading} className="px-3 py-2 bg-emerald-900/20 border border-emerald-500/50 text-emerald-300 rounded-lg font-black uppercase tracking-widest hover:bg-emerald-900/40 disabled:opacity-50 flex items-center justify-center gap-2">{isPresenceSnapshotLoading ? <Loader2 size={14} className="animate-spin"/> : <Users size={14}/>} Refresh Online / Last Seen</button>
+                <button type="button" onClick={() => selectAdminTab('live')} className="px-3 py-2 bg-[#12161A] border border-[#2A353D] text-[#D4A381] rounded-lg font-black uppercase tracking-widest hover:bg-[#1A2126]">Open Snapshot Board</button>
+              </div>
+            </div>
+            <div className="mt-3 grid grid-cols-2 sm:grid-cols-4 gap-2 text-[10px] font-black uppercase tracking-widest text-slate-500">
+              <div className="rounded-lg border border-[#2A353D] bg-[#0B0E11] p-2"><span className="block text-slate-500">Snapshot</span><strong className="block text-white mt-1">{presenceSnapshot.fetchedAt ? timeAgo(presenceSnapshot.fetchedAt) : 'Not refreshed'}</strong></div>
+              <div className="rounded-lg border border-[#2A353D] bg-[#0B0E11] p-2"><span className="block text-slate-500">Online now</span><strong className="block text-emerald-300 mt-1">{onlineUsers.length}</strong></div>
+              <div className="rounded-lg border border-[#2A353D] bg-[#0B0E11] p-2"><span className="block text-slate-500">Recent buffer</span><strong className="block text-amber-300 mt-1">{recentlyActiveUsers.length}</strong></div>
+              <div className="rounded-lg border border-[#2A353D] bg-[#0B0E11] p-2"><span className="block text-slate-500">Source</span><strong className="block text-white mt-1">{presenceSnapshot.source || 'bounded snapshot'}</strong></div>
+            </div>
           </div>
 
           <form onSubmit={handleBulkDeleteUsersByEmail} className={`${T.card} p-4 border-red-900/40 bg-red-950/10`}>
@@ -9189,12 +9366,15 @@ another@email.com"></textarea>
               return (u.name + u.email + u.role + u.id + restName).toLowerCase().includes(userSearch.toLowerCase());
             }).slice(0, 50).map(u => {              
               const restName = restaurants.find(r => r.id === u.restaurantId)?.name || 'Unknown Location';
+              const presenceInfo = getUserPresenceSummary(u);
               return (
                 <div key={u.id} className={`${T.row} flex flex-col md:flex-row justify-between md:items-center gap-3`}>
                   <div>
-                    <div className="font-bold text-white text-sm">{u.name} {u.isAdmin && <span className="bg-red-500 text-white text-[8px] px-1.5 py-0.5 rounded uppercase ml-1">Admin</span>}</div>
+                    <div className="font-bold text-white text-sm flex items-center gap-2 flex-wrap">{u.name} {u.isAdmin && <span className="bg-red-500 text-white text-[8px] px-1.5 py-0.5 rounded uppercase ml-1">Admin</span>} {presenceInfo.online && <SignalPip tone="emerald" label="ONLINE" hot />}</div>
                     <div className="text-[10px] text-slate-400 font-medium">{u.email} <span className="mx-1"> </span> <span className={T.copper}>{u.role}</span></div>
-                    <div className="text-[9px] text-slate-500 mt-0.5 tracking-widest uppercase flex flex-wrap items-center gap-x-2 gap-y-1">{restName}<span>|</span><span>Presence is manual snapshot only</span></div>
+                    <div className="text-[9px] text-slate-500 mt-0.5 tracking-widest uppercase flex flex-wrap items-center gap-x-2 gap-y-1">
+                      <span>{restName}</span><span>|</span><span className={presenceInfo.statusTone}>{presenceInfo.statusLabel}</span><span>|</span><span>{presenceInfo.exactLabel}</span><span>|</span><span>{presenceInfo.deviceLabel}</span><span>|</span><span>{presenceInfo.activeTabLabel}</span>
+                    </div>
                   </div>
                   <div className="flex items-center gap-2 flex-wrap">
                     <button onClick={() => openSupportUserEditor(u)} className="px-3 py-1.5 bg-blue-900/20 border border-blue-500/50 text-blue-300 font-bold text-[10px] uppercase tracking-widest rounded-lg hover:bg-blue-900/40 transition-colors shadow-sm flex items-center gap-1"><Edit size={14} /> Support Edit</button>

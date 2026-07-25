@@ -221,6 +221,36 @@ const rtdbServerTimestampToMs = (value) => {
   return 0;
 };
 
+const normalizeLowCostPresenceRow = (row = {}, userId = '', restaurantId = '') => {
+  const lastMs = Math.max(
+    rtdbServerTimestampToMs(row?.lastChanged),
+    rtdbServerTimestampToMs(row?.lastOnline),
+    rtdbServerTimestampToMs(row?.presenceUpdatedAt),
+    rtdbServerTimestampToMs(row?.lastActive),
+    rtdbServerTimestampToMs(row?.lastSeen)
+  );
+  const lastIso = lastMs ? new Date(lastMs).toISOString() : '';
+  const online = row?.online === true || row?.state === 'online';
+  return {
+    ...(row || {}),
+    id: row?.userId || userId,
+    userId: row?.userId || userId,
+    restaurantId: row?.restaurantId || restaurantId,
+    online,
+    state: row?.state || (online ? 'online' : 'offline'),
+    onlineState: row?.state || (online ? 'online' : 'offline'),
+    lastActive: lastIso,
+    lastSeen: lastIso,
+    presenceUpdatedAt: lastIso,
+    lastHeartbeatAt: lastIso,
+    activeDevice: row?.device || row?.activeDevice || '',
+    activeHost: row?.host || row?.activeHost || '',
+    activeTab: row?.activeTab || '',
+    activeSessionCount: Number(row?.activeSessionCount || (online ? 1 : 0)) || 0,
+    presenceSource: 'rtdb-statusSummary'
+  };
+};
+
 export function useLowCostPresenceSummaries(restaurantId = '', { enabled = false } = {}) {
   const [rows, setRows] = useState([]);
   useEffect(() => {
@@ -232,35 +262,29 @@ export function useLowCostPresenceSummaries(restaurantId = '', { enabled = false
     const summaryRef = rtdbRef(realtimeDb, `statusSummary/${workspaceKey}`);
     return onRtdbValue(summaryRef, (snap) => {
       const raw = snap.val() || {};
-      const next = Object.entries(raw).map(([userId, row]) => {
-        const lastMs = Math.max(
-          rtdbServerTimestampToMs(row?.lastChanged),
-          rtdbServerTimestampToMs(row?.lastOnline),
-          rtdbServerTimestampToMs(row?.presenceUpdatedAt),
-          rtdbServerTimestampToMs(row?.lastActive),
-          rtdbServerTimestampToMs(row?.lastSeen)
-        );
-        const lastIso = lastMs ? new Date(lastMs).toISOString() : '';
-        return {
-          ...(row || {}),
-          id: row?.userId || userId,
-          userId: row?.userId || userId,
-          restaurantId: row?.restaurantId || restaurantId,
-          onlineState: row?.state || (row?.online ? 'online' : 'offline'),
-          lastActive: lastIso,
-          lastSeen: lastIso,
-          presenceUpdatedAt: lastIso,
-          lastHeartbeatAt: lastIso,
-          activeDevice: row?.device || '',
-          activeHost: row?.host || '',
-          activeTab: row?.activeTab || '',
-          presenceSource: 'rtdb-statusSummary'
-        };
-      });
+      const next = Object.entries(raw).map(([userId, row]) => normalizeLowCostPresenceRow(row, userId, restaurantId));
       setRows(next);
     }, () => setRows([]));
   }, [enabled, restaurantId]);
   return rows;
+}
+
+export function useLowCostPresenceSummary(restaurantId = '', userId = '', { enabled = false } = {}) {
+  const [row, setRow] = useState(null);
+  useEffect(() => {
+    if (!enabled || !realtimeDb || !restaurantId || !userId) {
+      setRow(null);
+      return undefined;
+    }
+    const workspaceKey = presenceSafeKey(restaurantId);
+    const userKey = presenceSafeKey(userId);
+    const summaryRef = rtdbRef(realtimeDb, `statusSummary/${workspaceKey}/${userKey}`);
+    return onRtdbValue(summaryRef, (snap) => {
+      const raw = snap.val();
+      setRow(raw ? normalizeLowCostPresenceRow(raw, userId, restaurantId) : null);
+    }, () => setRow(null));
+  }, [enabled, restaurantId, userId]);
+  return row;
 }
 
 export const auth = getAuth(app);
@@ -356,9 +380,27 @@ export const MASTER_ADMIN_EMAIL = (process.env.REACT_APP_MASTER_ADMIN_EMAIL || '
 export const EVENT_TAGS = ['Standard Day', 'Packers Game', 'Brewers Game', 'Live Music', 'Severe Weather', 'Private Catering', 'Holiday'];
 
 // --- VERSION TRACKING ---
-export const CURRENT_VERSION = '16.0.0';
+export const CURRENT_VERSION = '16.0.6';
 
 // --- Helpers ---
+const usePageVisible = () => {
+  const [visible, setVisible] = useState(() => (typeof document === 'undefined' ? true : document.visibilityState !== 'hidden'));
+  useEffect(() => {
+    if (typeof document === 'undefined') return undefined;
+    const update = () => setVisible(document.visibilityState !== 'hidden');
+    document.addEventListener('visibilitychange', update);
+    window.addEventListener('focus', update);
+    window.addEventListener('blur', update);
+    update();
+    return () => {
+      document.removeEventListener('visibilitychange', update);
+      window.removeEventListener('focus', update);
+      window.removeEventListener('blur', update);
+    };
+  }, []);
+  return visible;
+};
+
 export const useLiveCollection = (coll, restId, options = {}) => {
   const {
     enabled = true,
@@ -366,13 +408,18 @@ export const useLiveCollection = (coll, restId, options = {}) => {
     whereClauses = [],
     orderByField = null,
     orderDirection = 'asc',
-    fallbackLimitCount = 75
+    fallbackLimitCount = 75,
+    pauseWhenHidden = true
   } = options || {};
   const [data, setData] = useState([]);
+  const pageVisible = usePageVisible();
 
   useEffect(() => {
     if (!enabled || !restId) {
       setData([]);
+      return;
+    }
+    if (pauseWhenHidden && !pageVisible) {
       return;
     }
 
@@ -410,17 +457,38 @@ export const useLiveCollection = (coll, restId, options = {}) => {
       if (unsubscribe) unsubscribe();
       if (fallbackUnsubscribe) fallbackUnsubscribe();
     };
-  }, [coll, restId, enabled, limitCount, orderByField, orderDirection, fallbackLimitCount, JSON.stringify(whereClauses || [])]);
+  }, [coll, restId, enabled, limitCount, orderByField, orderDirection, fallbackLimitCount, pauseWhenHidden, pageVisible, JSON.stringify(whereClauses || [])]);
 
   return data;
 };
 export const formatDate = (date) => new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().split('T')[0];
 export const getToday = () => formatDate(new Date());
-export const getMonthStr = (d) => (d || getToday()).substring(0, 7);
-export const formatDisplayDate = (d) => new Date(d + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
-export const formatDisplayFullDate = (d) => new Date(d + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
-export const formatDisplayMonth = (m) => new Date(m + '-01T12:00:00').toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
-export const getDaysInMonth = (m) => new Date(m.split('-')[0], m.split('-')[1], 0).getDate();
+export const getMonthStr = (d) => {
+  if (d instanceof Date) return formatDate(d).substring(0, 7);
+  const value = String(d || getToday());
+  return /^\d{4}-\d{2}/.test(value) ? value.substring(0, 7) : getToday().substring(0, 7);
+};
+export const formatDisplayDate = (d) => {
+  const key = String(d || '').substring(0, 10);
+  const date = new Date(`${key}T12:00:00`);
+  return Number.isFinite(date.getTime()) ? date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }) : 'Unknown Date';
+};
+export const formatDisplayFullDate = (d) => {
+  const key = String(d || '').substring(0, 10);
+  const date = new Date(`${key}T12:00:00`);
+  return Number.isFinite(date.getTime()) ? date.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' }) : 'Unknown Date';
+};
+export const formatDisplayMonth = (m) => {
+  const monthKey = getMonthStr(m);
+  const date = new Date(`${monthKey}-01T12:00:00`);
+  return Number.isFinite(date.getTime()) ? date.toLocaleDateString('en-US', { month: 'long', year: 'numeric' }) : 'Unknown Month';
+};
+export const getDaysInMonth = (m) => {
+  const monthKey = getMonthStr(m);
+  const [year, month] = monthKey.split('-').map(Number);
+  const date = new Date(year, month, 0);
+  return Number.isFinite(date.getTime()) ? date.getDate() : 31;
+};
 let ACTIVE_TIME_FORMAT = '12h';
 export const setActiveTimeFormat = (format) => { ACTIVE_TIME_FORMAT = format || '12h'; };
 export const getPreferredTimeFormat = (userOrFormat) => {

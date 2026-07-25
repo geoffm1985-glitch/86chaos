@@ -83,7 +83,52 @@ const isActiveTimeOffRequest = (request = {}) => {
 };
 
 const timeOffMatchesPerson = (request = {}, person = {}) => recordMatchesPerson(request, person);
-const shiftMatchesPerson = (shift = {}, person = {}) => recordMatchesPerson(shift, person);
+
+const shiftMatchesPerson = (shift = {}, person = {}) => {
+  if (!shift || !person) return false;
+
+  // Scheduled shifts must match the assigned employee, not the user who created/imported the shift.
+  // Do NOT use createdBy/author fields here. Those belong to the scheduler and caused owners/admins
+  // to see every shift they imported under My Schedule.
+  const personIds = personIdentityKeys(person);
+  const personEmailKeys = [person.email, person.employeeEmail, person.userEmail, person.assignedEmail]
+    .map(normalizeScheduleIdentity).filter(Boolean);
+  const personNameKeys = [person.employeeName, person.name, person.displayName, person.fullName]
+    .map(normalizeScheduleName).filter(Boolean);
+  const personFirstKeys = [person.employeeName, person.name, person.displayName, person.fullName]
+    .map(firstNameKey).filter(Boolean);
+
+  const shiftEmailKeys = [shift.employeeEmail, shift.userEmail, shift.email, shift.assignedEmail]
+    .map(normalizeScheduleIdentity).filter(Boolean);
+  if (shiftEmailKeys.length) {
+    return shiftEmailKeys.some(v => personEmailKeys.includes(v));
+  }
+
+  const shiftNameKeys = [shift.employeeName, shift.userName, shift.name, shift.assignedName]
+    .map(normalizeScheduleName).filter(Boolean);
+  const shiftFirstKeys = [shift.employeeName, shift.userName, shift.name, shift.assignedName]
+    .map(firstNameKey).filter(Boolean);
+
+  const shiftIds = [shift.employeeId, shift.userId, shift.rosterUserId, shift.accountUserId, shift.assignedUserId, shift.uid, shift.authUid]
+    .map(normalizeScheduleIdentity).filter(Boolean);
+  if (shiftIds.length) {
+    const idMatch = shiftIds.some(v => personIds.has(v));
+    if (!idMatch) return false;
+    // If an imported/restored shift also has a human name, require that name not to contradict
+    // the logged-in person's roster name. This prevents bad legacy ids from pulling in others.
+    if (shiftNameKeys.length && personNameKeys.length && !shiftNameKeys.some(v => personNameKeys.includes(v)) && !shiftFirstKeys.some(v => personFirstKeys.includes(v))) {
+      return false;
+    }
+    return true;
+  }
+
+  if (shiftNameKeys.length && personNameKeys.length && shiftNameKeys.some(v => personNameKeys.includes(v))) return true;
+
+  // Legacy imported schedules may only have a first name. Use first-name matching only when the
+  // shift has no durable id/email, and only against the roster person's first name.
+  return !!(shiftFirstKeys.length && personFirstKeys.length && shiftFirstKeys.some(v => personFirstKeys.includes(v)));
+};
+
 const requestOffPersonKey = (request = {}) => {
   const durable = normalizeScheduleIdentity(request.userId || request.employeeId || request.rosterUserId || request.accountUserId || request.createdBy || request.authUid || request.userEmail || request.employeeEmail || request.email || '');
   if (durable) return durable;
@@ -696,7 +741,7 @@ Clock out anyway?`);
 
 // --- SHIFT LOGIC ---
   const myMonthShifts = shifts
-    .filter(s => shiftMatchesPerson(s, schedulePerson) && String(s.date || '').startsWith(monthStr) && s.isPublished)
+    .filter(s => shiftMatchesPerson(s, schedulePerson) && String(s.date || '').startsWith(monthStr) && s.isPublished && isShiftStillCurrentOrUpcoming(s, scheduleNow))
     .sort((a,b) => a.date === b.date ? (a.startTime || '').localeCompare(b.startTime || '') : a.date.localeCompare(b.date));
 
   const myNextShift = shifts
@@ -985,7 +1030,7 @@ const handleOfferSwap = async (shift) => {
                   <Calendar size={16} className={T.copper}/>
                   <div>
                     <h3 className={`text-xs font-black uppercase tracking-widest ${T.copper}`}>Active Roster</h3>
-                    <span className="text-[10px] text-slate-300 font-black uppercase tracking-wider">{rosterFilterDate ? formatDisplayDate(rosterFilterDate) : formatDisplayMonth(currentDate)}</span>
+                    <span className="text-[10px] text-slate-300 font-black uppercase tracking-wider">{rosterFilterDate ? formatDisplayDate(rosterFilterDate) : formatDisplayMonth(monthStr)}</span>
                   </div>
                 </button>
                 <div className="flex items-center gap-2">
@@ -1061,6 +1106,7 @@ const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, time
   const [subTab, setSubTab] = useState(initialSubTab); 
   const [selectedEmp, setSelectedEmp] = useState(''); 
   const [assignDates, setAssignDates] = useState([]); 
+  const [isAssigningShift, setIsAssigningShift] = useState(false); 
   const [presetShift, setPresetShift] = useState('Custom'); 
   const [startTime, setStartTime] = useState('16:00'); 
   const [endTime, setEndTime] = useState('21:00');
@@ -1280,80 +1326,116 @@ const [eventDate, setEventDate] = useState(getToday());
   const canEditRescueMonth = (month = currentScheduleMonth) => isRescueEditableMonth(month) && !!(appUser?.isSuperAdmin || appUser?.isAdmin || appUser?.permissions?.schedule || appUser?.permissions?.team);
   const canEditScheduleDate = (d) => !(d < getToday()) || canEditRescueMonth(getMonthStr(d));
 
-  const handleCellClick = (d, empId) => {
+  const getScheduleBuilderPerson = (empId) => activeRoster.find(u => u.id === empId) || users.find(u => u.id === empId) || null;
+  const getScheduleBuilderShiftsForPersonDate = (dateKey, person) => schedulePeriodShifts.filter(s => (s.date || s.scheduleDateKey) === dateKey && shiftMatchesPerson(s, person));
+
+  const handleCellClick = async (d, empId) => {
+    if (isAssigningShift) return;
     if (!canEditScheduleDate(d)) return addToast("Locked", "Cannot edit past dates.");
-    const existing = shifts.find(s => s.date === d && s.employeeId === empId);
-    if (existing) { if(window.confirm("Delete shift?")) deleteDoc(doc(db,"shifts",existing.id)); return; }
-    setSelectedEmp(empId); if (assignDates.includes(d)) setAssignDates(assignDates.filter(x => x!==d)); else setAssignDates([...assignDates, d]);
+    const emp = getScheduleBuilderPerson(empId);
+    if (!emp) return addToast('Staff Missing', 'This row no longer matches an active staff profile. Refresh the page and try again.');
+    const existingShifts = getScheduleBuilderShiftsForPersonDate(d, emp);
+    if (existingShifts.length) {
+      const label = existingShifts.length === 1 ? 'this shift' : `${existingShifts.length} visible shifts`;
+      if (window.confirm(`Delete ${label} for ${emp.name || 'this employee'} on ${formatDisplayDate(d)}?`)) {
+        try {
+          await Promise.all(existingShifts.filter(s => s.id).map(s => deleteDoc(doc(db, 'shifts', s.id))));
+          setAssignDates(prev => prev.filter(x => x !== d));
+          addToast('Shift Deleted', existingShifts.length === 1 ? 'The visible shift was removed.' : `${existingShifts.length} duplicate/visible shifts were removed.`);
+        } catch (err) { addToast('Delete Failed', err.message); }
+      }
+      return;
+    }
+    setSelectedEmp(empId);
+    setAssignDates(prev => {
+      const base = selectedEmp && selectedEmp !== empId ? [] : prev;
+      return base.includes(d) ? base.filter(x => x !== d) : [...base, d];
+    });
   };
 
   const handleAssign = async () => {
-    if (!selectedEmp || assignDates.length === 0) return; const emp = users.find(u => u.id === selectedEmp);
-    const validDates = [];
-    const availabilityOverrides = {};
-    for (const d of assignDates) { 
-      const existingShift = shifts.find(s => s.date === d && s.employeeId === emp.id);
-      if (existingShift) { addToast('Blocked', `${(emp.name||'Unknown').split(' ')[0]} is already scheduled on ${formatDisplayDate(d)}.`); return; }
-      
-      const req = timeOffRequests.find(r => r.date === d && (r.userId === emp.id || r.employeeId === emp.id) && !['pending','cancelled','canceled','archived','processed'].includes(String(r.status || '').toLowerCase()));
-      if (req) {
-        if (!req.isPartial) { addToast('Blocked', `${(emp.name||'Unknown').split(' ')[0]} requested ${formatDisplayDate(d)} off.`); return; } 
-        else { const reqEnd = req.endTime || '23:59'; if ((startTime < reqEnd) && (endTime > req.startTime)) { addToast('Blocked', `${(emp.name||'Unknown').split(' ')[0]} is unavailable from ${formatShortTime(req.startTime)} to ${formatShortTime(req.endTime)} on ${formatDisplayDate(d)}.`); return; } }
-      }
-      const availabilityRecord = getActiveAvailabilityForDate(emp.id, d, availabilityRecords);
-      const availabilityCheck = getAvailabilityConflict(availabilityRecord, d, startTime, endTime);
-      if (availabilityCheck && ['unavailable', 'outside'].includes(availabilityCheck.level)) {
-        const reason = window.prompt(`${emp.name || 'Employee'} is outside approved availability on ${formatDisplayDate(d)}. Enter an override reason to continue, or cancel.`);
-        if (!reason) {
-          addToast('Availability Warning', 'Assignment cancelled until an override reason is entered.');
-          return;
+    if (isAssigningShift) return;
+    if (!selectedEmp || assignDates.length === 0) return;
+    const emp = getScheduleBuilderPerson(selectedEmp);
+    if (!emp?.id) return addToast('Staff Missing', 'Select one active staff member before assigning shifts.');
+    const uniqueAssignDates = [...new Set(assignDates)].filter(Boolean);
+    setIsAssigningShift(true);
+    try {
+      const validDates = [];
+      const availabilityOverrides = {};
+      for (const d of uniqueAssignDates) { 
+        const existingShift = shifts.find(s => (s.date || s.scheduleDateKey) === d && shiftMatchesPerson(s, emp));
+        if (existingShift) { addToast('Blocked', `${(emp.name||'Unknown').split(' ')[0]} is already scheduled on ${formatDisplayDate(d)}.`); return; }
+        
+        const req = timeOffRequests.find(r => r.date === d && timeOffMatchesPerson(r, emp) && !['cancelled','canceled','archived','processed','denied','rejected'].includes(String(r.status || '').toLowerCase()));
+        if (req) {
+          if (!req.isPartial) { addToast('Blocked', `${(emp.name||'Unknown').split(' ')[0]} requested ${formatDisplayDate(d)} off.`); return; } 
+          else { const reqEnd = req.endTime || '23:59'; if ((startTime < reqEnd) && (endTime > req.startTime)) { addToast('Blocked', `${(emp.name||'Unknown').split(' ')[0]} is unavailable from ${formatShortTime(req.startTime)} to ${formatShortTime(req.endTime)} on ${formatDisplayDate(d)}.`); return; } }
         }
-        availabilityOverrides[d] = { reason, warning: availabilityCheck.message, availabilityId: availabilityRecord?.id || '' };
-        await logAudit(appUser, 'AVAILABILITY_OVERRIDE_SCHEDULE', emp.name || emp.id, `${d} ${startTime}-${endTime}: ${reason}`);
+        const availabilityRecord = getActiveAvailabilityForDate(emp.id, d, availabilityRecords);
+        const availabilityCheck = getAvailabilityConflict(availabilityRecord, d, startTime, endTime);
+        if (availabilityCheck && ['unavailable', 'outside'].includes(availabilityCheck.level)) {
+          const reason = window.prompt(`${emp.name || 'Employee'} is outside approved availability on ${formatDisplayDate(d)}. Enter an override reason to continue, or cancel.`);
+          if (!reason) {
+            addToast('Availability Warning', 'Assignment cancelled until an override reason is entered.');
+            return;
+          }
+          availabilityOverrides[d] = { reason, warning: availabilityCheck.message, availabilityId: availabilityRecord?.id || '' };
+          await logAudit(appUser, 'AVAILABILITY_OVERRIDE_SCHEDULE', emp.name || emp.id, `${d} ${startTime}-${endTime}: ${reason}`);
+        }
+        validDates.push(d);
       }
-      validDates.push(d);
+      for (const d of validDates) {
+        const nowIso = new Date().toISOString();
+        const shiftMonth = getMonthStr(d);
+        const rescueEdit = canEditRescueMonth(shiftMonth);
+        const shiftData = {
+          date: d,
+          scheduleDateKey: d,
+          scheduleMonth: shiftMonth,
+          employeeId: emp.id,
+          userId: emp.id,
+          rosterUserId: emp.id,
+          assignedUserId: emp.id,
+          employeeEmail: emp.email || emp.employeeEmail || '',
+          assignedEmail: emp.email || emp.employeeEmail || '',
+          employeeName: emp.name || emp.displayName || emp.email || 'Unknown',
+          assignedName: emp.name || emp.displayName || emp.email || 'Unknown',
+          role: emp.role || 'Unassigned',
+          startTime: startTime,
+          endTime: endTime,
+          isPublished: false,
+          publishState: 'draft',
+          scheduleBuilderDraft: true,
+          readyToPublish: true,
+          restaurantId: appUser.restaurantId,
+          createdAt: nowIso,
+          updatedAt: nowIso,
+          createdBy: appUser?.id || appUser?.email || 'schedule-builder',
+          updatedBy: appUser?.id || appUser?.email || 'schedule-builder',
+          assignmentSource: 'schedule-builder-stable-row'
+        };
+        if (availabilityOverrides[d]) {
+          shiftData.availabilityOverrideReason = availabilityOverrides[d].reason;
+          shiftData.availabilityWarning = availabilityOverrides[d].warning;
+          shiftData.availabilityRecordId = availabilityOverrides[d].availabilityId;
+          shiftData.scheduledOutsideAvailability = true;
+        }
+        if (rescueEdit) {
+          shiftData.rescueProtected = true;
+          shiftData.rescueEditable = true;
+          shiftData.rescueMode = 'schedule_builder_manual_edit';
+          shiftData.rescueMonth = shiftMonth;
+          shiftData.restoreSourceKey = `manual-after-rescue-${shiftMonth}`;
+          shiftData.sourceKey = `manual-schedule-builder-edit-${shiftMonth}`;
+          shiftData.source = 'Schedule Builder manual edit after emergency rescue';
+        }
+        await addDoc(collection(db, "shifts"), shiftData);
+      }
+      setAssignDates([]); addToast('Assigned', `Added ${validDates.length} shift${validDates.length === 1 ? '' : 's'} for ${emp.name || 'selected staff'}.`);
+    } finally {
+      setIsAssigningShift(false);
     }
-    for (const d of validDates) {
-      const nowIso = new Date().toISOString();
-      const shiftMonth = getMonthStr(d);
-      const rescueEdit = canEditRescueMonth(shiftMonth);
-      const shiftData = {
-        date: d,
-        scheduleDateKey: d,
-        scheduleMonth: shiftMonth,
-        employeeId: emp.id,
-        employeeName: emp.name || emp.displayName || 'Unknown',
-        role: emp.role || 'Unassigned',
-        startTime: startTime,
-        endTime: endTime,
-        isPublished: false,
-        publishState: 'draft',
-        scheduleBuilderDraft: true,
-        readyToPublish: true,
-        restaurantId: appUser.restaurantId,
-        createdAt: nowIso,
-        updatedAt: nowIso,
-        createdBy: appUser?.id || appUser?.email || 'schedule-builder',
-        updatedBy: appUser?.id || appUser?.email || 'schedule-builder'
-      };
-      if (availabilityOverrides[d]) {
-        shiftData.availabilityOverrideReason = availabilityOverrides[d].reason;
-        shiftData.availabilityWarning = availabilityOverrides[d].warning;
-        shiftData.availabilityRecordId = availabilityOverrides[d].availabilityId;
-        shiftData.scheduledOutsideAvailability = true;
-      }
-      if (rescueEdit) {
-        shiftData.rescueProtected = true;
-        shiftData.rescueEditable = true;
-        shiftData.rescueMode = 'schedule_builder_manual_edit';
-        shiftData.rescueMonth = shiftMonth;
-        shiftData.restoreSourceKey = `manual-after-rescue-${shiftMonth}`;
-        shiftData.sourceKey = `manual-schedule-builder-edit-${shiftMonth}`;
-        shiftData.source = 'Schedule Builder manual edit after emergency rescue';
-      }
-      await addDoc(collection(db, "shifts"), shiftData);
-    }
-    setAssignDates([]); addToast('Assigned', `Added ${validDates.length} shifts.`);
   };
 
 const handlePublish = async () => { 
@@ -2310,7 +2392,7 @@ const handleExportTimesheets = () => {
               </div>
 
               {/* Assign Button */}
-              <button onClick={handleAssign} disabled={!selectedEmp||assignDates.length===0} className={`w-full xl:w-auto ${T.btn} py-2.5 px-6 text-sm h-12 disabled:opacity-50 flex items-center justify-center shadow-lg shrink-0 whitespace-nowrap`}>Assign ({assignDates.length})</button>
+              <button onClick={handleAssign} disabled={isAssigningShift||!selectedEmp||assignDates.length===0} className={`w-full xl:w-auto ${T.btn} py-2.5 px-6 text-sm h-12 disabled:opacity-50 flex items-center justify-center shadow-lg shrink-0 whitespace-nowrap`}>{isAssigningShift ? 'Assigning…' : `Assign (${assignDates.length})`}</button>
 
             </div>
             
@@ -2381,30 +2463,32 @@ const handleExportTimesheets = () => {
                         <tr key={u.id} className={selectedEmp===u.id?'bg-[#12161A]/50':''}>
                           <td onClick={()=>{setSelectedEmp(u.id);setAssignDates([]);}} className={`px-2 py-1 text-xs font-bold sticky left-0 z-10 border-r border-[#2A353D] cursor-pointer truncate shadow-sm ${selectedEmp===u.id?`${T.grad} text-slate-900`:'bg-[#1A2126] text-white'}`}>{u.name.split(' ')[0]}</td>
                           {schedulePeriodDays.map(d => {
-                            const shift = schedulePeriodShifts.find(s => s.date === d && shiftMatchesPerson(s, u)); 
+                            const dayShifts = schedulePeriodShifts.filter(s => (s.date || s.scheduleDateKey) === d && shiftMatchesPerson(s, u));
                             const req = timeOffRequests.find(r => r.date === d && timeOffMatchesPerson(r, u) && isActiveTimeOffRequest(r)); 
                             const sel = assignDates.includes(d) && selectedEmp===u.id;
 
                             // Conflict Check: Alert if a shift overlaps with ANY time-off request (pending or approved)
                             const allUserReqs = timeOffRequests.filter(r => r.date === d && timeOffMatchesPerson(r, u) && isActiveTimeOffRequest(r));
-                            const hasConflict = shift && allUserReqs.some(r => {
-                               if (!r.isPartial) return true; // Full day off conflict
-                               return (shift.startTime < (r.endTime || '23:59')) && (shift.endTime > (r.startTime || '00:00'));
-                            });
-
                             return (
                             <td key={d} onClick={()=>handleCellClick(d,u.id)} className={`p-0.5 border-r border-[#2A353D] cursor-pointer transition-all align-top h-7 sm:h-8 ${sel?'bg-[#8F6040] outline outline-2 outline-[#D4A381] shadow-inner z-0 relative':'hover:bg-[#12161A]'}`}>
                             <div className="flex flex-col gap-[1px] w-full justify-start overflow-hidden">
                               {req && !req.isPartial && <div className="w-full rounded font-black text-[7px] sm:text-[8px] py-0.5 text-center text-red-400 bg-red-900/40 uppercase tracking-tighter" title="Requested Off">Off</div>}
                               {req && req.isPartial && <div className="w-full rounded font-black text-[7px] sm:text-[8px] py-0.5 text-center text-amber-400 bg-amber-900/40 uppercase tracking-tighter truncate" title={`Off: ${formatShortTime(req.startTime)}-${formatShortTime(req.endTime)}`}>{formatShortTime(req.startTime)}-{formatShortTime(req.endTime)}</div>}
-                              {shift && (
-                                <div 
-                                  className={`w-full rounded font-bold text-[7px] sm:text-[8px] py-0.5 text-center truncate ${getRoleColors(shift.role, shift.isPublished)} ${hasConflict ? 'border-2 border-red-500 animate-pulse shadow-[0_0_8px_rgba(239,68,68,0.8)]' : ''}`} 
-                                  title={`${formatShortTime(shift.startTime)} - ${formatShortTime(shift.endTime)} ${hasConflict ? '(CONFLICT DETECTED)' : ''}`}
-                                >
-                                  {formatShortTime(shift.startTime)}-{formatShortTime(shift.endTime)}
-                                </div>
-                              )}
+                              {dayShifts.map(shift => {
+                                const shiftConflict = allUserReqs.some(r => {
+                                  if (!r.isPartial) return true;
+                                  return (shift.startTime < (r.endTime || '23:59')) && (shift.endTime > (r.startTime || '00:00'));
+                                });
+                                return (
+                                  <div 
+                                    key={shift.id || `${d}-${u.id}-${shift.startTime}-${shift.endTime}`}
+                                    className={`w-full rounded font-bold text-[7px] sm:text-[8px] py-0.5 text-center truncate ${getRoleColors(shift.role, shift.isPublished)} ${shiftConflict ? 'border-2 border-red-500 animate-pulse shadow-[0_0_8px_rgba(239,68,68,0.8)]' : ''}`} 
+                                    title={`${formatShortTime(shift.startTime)} - ${formatShortTime(shift.endTime)} ${shiftConflict ? '(CONFLICT DETECTED)' : ''}`}
+                                  >
+                                    {formatShortTime(shift.startTime)}-{formatShortTime(shift.endTime)}
+                                  </div>
+                                );
+                              })}
                             </div>
                           </td>)
                           })}
