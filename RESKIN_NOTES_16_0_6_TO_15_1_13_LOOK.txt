@@ -1,0 +1,21 @@
+86 Chaos 16.0.6 reskin notes
+
+Source of truth: 86chaos_16_0_6_presence_snapshot_schedule_builder_fix_app_only(1).zip
+Visual reference: 86chaos_15_1_13_permission_gate_help_filter_fix_app_only(1).zip
+
+What changed:
+- src/App.js: applied the 15.1.13/native visual shell wrapper and navigation chrome while keeping the 16.0.x live feature modules/routes.
+- src/components/common.jsx: added the shell event listener so the top 86Voice button opens the real VoiceCommandDock.
+- src/styles.css: preserved 16.0.6 CSS first, then appended the 15.1.13 visual skin layer. This keeps newer 16.0.6 Schedule Builder / presence / admin styling fixes from being downgraded.
+
+What was intentionally not changed:
+- Firebase config/credential files and credential wiring.
+- src/core/appCore.js, including Firebase project/API key/auth/storage config.
+- api Firebase Admin credential selection files.
+- Firestore/Realtime Database/Firebase JSON/rules/indexes.
+- Schedule Builder fix files from 16.0.6.
+- Presence snapshot/read saver API files from 16.0.6.
+- package version, package-lock version, public/version.json.
+
+Safety rule followed:
+16.0.6 owns behavior. 15.1.13 only donates appearance.

@@ -1418,6 +1418,13 @@ const VoiceCommandDock = ({ appUser, inventoryItems = [], recipes = [], users = 
   const [pending, setPending] = useState(null);
   const [lastUndo, setLastUndo] = useState(null);
   const [voiceResult, setVoiceResult] = useState(null);
+
+  useEffect(() => {
+    const openFromShell = () => setOpen(true);
+    window.addEventListener('chaosOpenVoiceCommandDock', openFromShell);
+    return () => window.removeEventListener('chaosOpenVoiceCommandDock', openFromShell);
+  }, []);
+
   const SpeechRecognition = typeof window !== 'undefined' ? (window.SpeechRecognition || window.webkitSpeechRecognition) : null;
   const canUseSpeech = Boolean(SpeechRecognition);
   const eightySixContextRef = useRef({ restaurantId: '', loadedAt: 0, inventoryItems: [], menuDependencies: [] });
