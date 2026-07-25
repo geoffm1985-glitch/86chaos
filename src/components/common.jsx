@@ -38,17 +38,27 @@ const CheersLogo = ({ clientData }) => {
 const Modal = ({ isOpen, onClose, title, children, sizeClass = 'max-w-md' }) => {
   const panelRef = useRef(null);
   const previousFocusRef = useRef(null);
+  const onCloseRef = useRef(onClose);
   const titleIdRef = useRef(`chaos-modal-title-${Math.random().toString(36).slice(2)}`);
+
+  // Keep the latest close handler without remounting modal focus behavior on every keystroke.
+  // Mobile keyboards were blurring after one character because parent inline onClose callbacks
+  // changed on each render, which re-ran the focus/cleanup effect and stole focus from inputs.
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  }, [onClose]);
 
   useEffect(() => {
     if (!isOpen) return undefined;
     previousFocusRef.current = typeof document !== 'undefined' ? document.activeElement : null;
     const focusTimer = window.setTimeout(() => {
+      const activeElement = typeof document !== 'undefined' ? document.activeElement : null;
+      if (activeElement && panelRef.current?.contains(activeElement)) return;
       const firstFocusable = panelRef.current?.querySelector('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])');
       (firstFocusable || panelRef.current)?.focus?.();
     }, 0);
     const handleKeyDown = (event) => {
-      if (event.key === 'Escape') onClose?.();
+      if (event.key === 'Escape') onCloseRef.current?.();
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => {
@@ -56,7 +66,7 @@ const Modal = ({ isOpen, onClose, title, children, sizeClass = 'max-w-md' }) => 
       window.removeEventListener('keydown', handleKeyDown);
       previousFocusRef.current?.focus?.();
     };
-  }, [isOpen, onClose]);
+  }, [isOpen]);
 
   if (!isOpen) return null;
   return (
@@ -64,7 +74,7 @@ const Modal = ({ isOpen, onClose, title, children, sizeClass = 'max-w-md' }) => 
       <div ref={panelRef} role="dialog" aria-modal="true" aria-labelledby={titleIdRef.current} tabIndex={-1} className={`chaos-modal-panel ${T.card} ${sizeClass} w-full max-h-[90vh] overflow-y-auto outline-none`}>
         <div className={`chaos-modal-header flex justify-between items-center p-4 border-b ${T.border}`}>
           <h3 id={titleIdRef.current} className="font-bold text-lg text-white">{title}</h3>
-          <button type="button" aria-label={`Close ${title || 'dialog'}`} onClick={onClose} className="p-1.5 hover:bg-[#12161A] rounded-full text-slate-400 hover:text-white transition-colors focus:outline-none focus:ring-2 focus:ring-[#D4A381]"><X size={20}/></button>
+          <button type="button" aria-label={`Close ${title || 'dialog'}`} onClick={() => onCloseRef.current?.()} className="p-1.5 hover:bg-[#12161A] rounded-full text-slate-400 hover:text-white transition-colors focus:outline-none focus:ring-2 focus:ring-[#D4A381]"><X size={20}/></button>
         </div>
         <div className="chaos-modal-body p-4">{children}</div>
       </div>

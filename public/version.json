@@ -1,9 +1,9 @@
 {
-  "version": "16.0.10",
-  "name": "86 Chaos 16.0.10 Honest Presence Status Fix",
+  "version": "16.0.11",
+  "name": "86 Chaos 16.0.11 Mobile Modal Keyboard Focus Fix",
   "releasedAt": "2026-07-25T00:00:00.000Z",
-  "label": "16.0.10 Honest Presence Status Fix",
-  "build": "16.0.10",
+  "label": "16.0.11 Mobile Modal Keyboard Focus Fix",
+  "build": "16.0.11",
   "notes": [
     "Treats Online Now as a true fresh heartbeat within 90 seconds instead of anyone active during the 15-minute/active-today window.",
     "Splits the System Administrator presence snapshot into Online Now, Recently Active, Active Today, and Last Seen counts.",
