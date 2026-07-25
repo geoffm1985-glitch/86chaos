@@ -3820,3 +3820,25 @@ select {
   margin: 0 !important;
   flex-shrink: 0 !important;
 }
+
+/* 16.0.8: desktop-only Schedule Builder readability. Keep mobile cell density unchanged. */
+@media (min-width: 1024px) {
+  .schedule-builder-desktop-table {
+    min-width: max(100%, var(--schedule-builder-min-width, 1200px)) !important;
+  }
+
+  .schedule-builder-desktop-table th:not(:first-child),
+  .schedule-builder-desktop-table td:not(:first-child) {
+    min-width: 86px;
+  }
+
+  .schedule-builder-time-chip {
+    font-size: 10px !important;
+    line-height: 1.1 !important;
+    padding: 4px 5px !important;
+    white-space: nowrap !important;
+    overflow: visible !important;
+    text-overflow: clip !important;
+    letter-spacing: -0.01em;
+  }
+}

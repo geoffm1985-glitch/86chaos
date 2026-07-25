@@ -716,11 +716,41 @@ if (liveAppUser && clientData) {
     { title:'Backups and help', body:'Backup Center lives under System Administrator → Forensics. Help Center has Quick Start Guides and restart buttons.' }
   ];
   const activeTourSteps = tourMode === 'manager' ? managerTourSteps : employeeTourSteps;
-  const getTourSessionKey = (mode = tourMode) => `tourSeenThisSession_${liveAppUser?.id || 'guest'}_${mode || 'tour'}_${CURRENT_VERSION}`;
+  const getTourUserKeyPart = () => String(liveAppUser?.id || liveAppUser?.uid || liveAppUser?.email || 'guest').replace(/[^a-zA-Z0-9_-]/g, '_');
+  const getTourSessionKey = (mode = tourMode) => `tourSeenThisSession_${getTourUserKeyPart()}_${mode || 'tour'}`;
   const getTourCompleteKey = (mode = tourMode) => mode === 'manager' ? `managerTourComplete_${rId || 'workspace'}` : `employeeTourComplete_${liveAppUser?.id || 'employee'}`;
+  const getTourSeenOnceKey = (mode = tourMode) => mode === 'manager'
+    ? `managerTourSeenOnce_${rId || 'workspace'}_${getTourUserKeyPart()}`
+    : `employeeTourSeenOnce_${getTourUserKeyPart()}`;
+  const markTourSeenOnce = async (mode = tourMode, skipped = true) => {
+    if (!liveAppUser || isDemoMode) return;
+    const now = new Date().toISOString();
+    try {
+      sessionStorage.setItem(getTourSessionKey(mode), 'true');
+      localStorage.setItem(getTourSeenOnceKey(mode), 'true');
+      if (mode === 'employee') localStorage.setItem(getTourCompleteKey(mode), 'true');
+      if (mode === 'manager') localStorage.setItem(getTourSeenOnceKey(mode), 'true');
+    } catch (_) {}
+    try {
+      if (mode === 'employee' && liveAppUser?.id) {
+        await updateDoc(doc(db, 'users', liveAppUser.id), {
+          onboardingTourSeen: true,
+          onboardingTourSeenAt: liveAppUser.onboardingTourSeenAt || now,
+          ...(skipped ? { onboardingSkipped: true, onboardingSkippedAt: now } : {})
+        });
+      }
+      if (mode === 'manager' && liveAppUser?.id) {
+        await updateDoc(doc(db, 'users', liveAppUser.id), {
+          managerOnboardingSeen: true,
+          managerOnboardingSeenAt: liveAppUser.managerOnboardingSeenAt || now,
+          ...(skipped ? { managerOnboardingSkipped: true, managerOnboardingSkippedAt: now } : {})
+        });
+      }
+    } catch(e) { console.warn('Tour seen-once save failed', e); }
+  };
   const dismissTourForNow = () => {
     const mode = tourMode;
-    if (liveAppUser?.id) sessionStorage.setItem(getTourSessionKey(mode), 'true');
+    markTourSeenOnce(mode, true);
     setTourMode(null);
     setTourStep(0);
   };
@@ -730,9 +760,10 @@ if (liveAppUser && clientData) {
     setTourStep(0);
     if (!liveAppUser || isDemoMode) return;
     try {
+      await markTourSeenOnce(mode, false);
       localStorage.setItem(getTourCompleteKey(mode), 'true');
       if (mode === 'manager' && rId) await updateDoc(doc(db, 'restaurants', rId), { workspaceOnboardingComplete: true, workspaceOnboardingCompletedAt: new Date().toISOString(), workspaceOnboardingSkipped: false });
-      if (mode === 'employee' && liveAppUser?.id) await updateDoc(doc(db, 'users', liveAppUser.id), { onboardingComplete: true, onboardingCompletedAt: new Date().toISOString(), onboardingSkipped: false });
+      if (mode === 'employee' && liveAppUser?.id) await updateDoc(doc(db, 'users', liveAppUser.id), { onboardingComplete: true, onboardingCompletedAt: new Date().toISOString(), onboardingSkipped: false, onboardingTourSeen: true });
     } catch(e) { console.warn('Tour completion save failed', e); }
   };
 
@@ -749,20 +780,24 @@ if (liveAppUser && clientData) {
     if (!liveAppUser || isDemoMode || tourMode) return;
     const managerCompleteLocal = rId ? localStorage.getItem(`managerTourComplete_${rId}`) === 'true' : false;
     const employeeCompleteLocal = liveAppUser?.id ? localStorage.getItem(`employeeTourComplete_${liveAppUser.id}`) === 'true' : false;
-    if ((liveAppUser.isAdmin || liveAppUser.permissions?.team) && displayClientData && !displayClientData.workspaceOnboardingComplete && !managerCompleteLocal) {
-      const key = `tourSeenThisSession_${liveAppUser.id}_manager_${CURRENT_VERSION}`;
+    const managerSeenOnceLocal = localStorage.getItem(getTourSeenOnceKey('manager')) === 'true';
+    const employeeSeenOnceLocal = localStorage.getItem(getTourSeenOnceKey('employee')) === 'true';
+    const managerSeenServer = liveAppUser.managerOnboardingSeen === true || liveAppUser.managerOnboardingSkipped === true;
+    const employeeSeenServer = liveAppUser.onboardingTourSeen === true || liveAppUser.onboardingSkipped === true;
+    if ((liveAppUser.isAdmin || liveAppUser.permissions?.team) && displayClientData && !displayClientData.workspaceOnboardingComplete && !managerCompleteLocal && !managerSeenOnceLocal && !managerSeenServer) {
+      const key = getTourSessionKey('manager');
       if (sessionStorage.getItem(key) === 'true') return;
       sessionStorage.setItem(key, 'true');
       setTourMode('manager');
       setTourStep(0);
-    } else if (!liveAppUser.onboardingComplete && !employeeCompleteLocal) {
-      const key = `tourSeenThisSession_${liveAppUser.id}_employee_${CURRENT_VERSION}`;
+    } else if (!liveAppUser.onboardingComplete && !employeeCompleteLocal && !employeeSeenOnceLocal && !employeeSeenServer) {
+      const key = getTourSessionKey('employee');
       if (sessionStorage.getItem(key) === 'true') return;
       sessionStorage.setItem(key, 'true');
       setTourMode('employee');
       setTourStep(0);
     }
-  }, [liveAppUser?.id, liveAppUser?.onboardingComplete, liveAppUser?.isAdmin, displayClientData?.workspaceOnboardingComplete, rId, isDemoMode, tourMode]);
+  }, [liveAppUser?.id, liveAppUser?.onboardingComplete, liveAppUser?.onboardingTourSeen, liveAppUser?.onboardingSkipped, liveAppUser?.managerOnboardingSeen, liveAppUser?.managerOnboardingSkipped, liveAppUser?.isAdmin, displayClientData?.workspaceOnboardingComplete, rId, isDemoMode, tourMode]);
 
   useEffect(() => {
     const restart = (e) => { setTourMode(e.detail?.mode || (liveAppUser?.isAdmin ? 'manager' : 'employee')); setTourStep(0); };
@@ -1833,7 +1868,7 @@ return (
             <button type="button" onClick={() => setTourStep(Math.max(0, tourStep - 1))} className={T.btnAlt} disabled={tourStep === 0}>Back</button>
             {tourStep < activeTourSteps.length - 1 ? <button type="button" onClick={() => setTourStep(tourStep + 1)} className={`${T.btn} flex-1`}>Next</button> : <button type="button" onClick={finishTour} className={`${T.btn} flex-1`}>Finish</button>}
           </div>
-          <button type="button" onClick={dismissTourForNow} className="w-full text-[10px] font-black uppercase tracking-widest text-slate-500 hover:text-white">Skip for now</button>
+          <button type="button" onClick={dismissTourForNow} className="w-full text-[10px] font-black uppercase tracking-widest text-slate-500 hover:text-white">Skip and don't show again</button>
         </div>}
       </Modal>
 

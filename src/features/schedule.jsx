@@ -2084,13 +2084,51 @@ const handleExportTimesheets = () => {
   const startDayInt = daysMap[appUser?.preferences?.payPeriodStart || 'Monday'];
   const endDayInt = startDayInt === 0 ? 6 : startDayInt - 1;
 
-  const weeksInMonth = []; let currentWeek = [];
-  schedulePeriodDays.forEach(d => { currentWeek.push(d); if (new Date(d+'T12:00').getDay() === endDayInt) { weeksInMonth.push(currentWeek); currentWeek = []; } });
-  if (currentWeek.length > 0) weeksInMonth.push(currentWeek);
+  const addScheduleDays = (dateKey, offset) => {
+    const date = new Date(`${dateKey}T12:00:00`);
+    date.setDate(date.getDate() + offset);
+    return formatDate(date);
+  };
+  const getScheduledHoursWeekStart = (dateKey) => {
+    const date = new Date(`${dateKey}T12:00:00`);
+    while (date.getDay() !== startDayInt) date.setDate(date.getDate() - 1);
+    return formatDate(date);
+  };
+  const formatScheduledHoursWeekRange = (week) => {
+    if (!week?.start || !week?.end) return '';
+    const start = new Date(`${week.start}T12:00:00`);
+    const end = new Date(`${week.end}T12:00:00`);
+    const sameMonth = week.start.substring(0, 7) === week.end.substring(0, 7);
+    if (sameMonth) return `${start.getDate()}-${end.getDate()}`;
+    return `${start.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}-${end.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`;
+  };
+
+  const scheduledHoursWeekBlocks = [];
+  let hoursWeekStart = getScheduledHoursWeekStart(schedulePeriodBounds.start);
+  const lastHoursWeekStart = getScheduledHoursWeekStart(schedulePeriodBounds.end);
+  while (hoursWeekStart <= lastHoursWeekStart && scheduledHoursWeekBlocks.length < 12) {
+    const hoursWeekEnd = addScheduleDays(hoursWeekStart, 6);
+    scheduledHoursWeekBlocks.push({
+      start: hoursWeekStart,
+      end: hoursWeekEnd,
+      days: buildDateRange(hoursWeekStart, hoursWeekEnd)
+    });
+    hoursWeekStart = addScheduleDays(hoursWeekStart, 7);
+  }
+  const scheduledHoursRangeStart = scheduledHoursWeekBlocks[0]?.start || schedulePeriodBounds.start;
+  const scheduledHoursRangeEnd = scheduledHoursWeekBlocks[scheduledHoursWeekBlocks.length - 1]?.end || schedulePeriodBounds.end;
+  const scheduledHoursPeriodShifts = shifts.filter(s => {
+    const d = String(s.date || s.scheduleDateKey || '');
+    return d >= scheduledHoursRangeStart && d <= scheduledHoursRangeEnd;
+  });
 
   const scheduledHours = displayUsers.map(u => {
-     const userShifts = schedulePeriodShifts.filter(s => s.employeeId === u.id);
-     const weekly = weeksInMonth.map(weekDaysArr => { return weekDaysArr.reduce((sum, d) => { const shift = userShifts.find(s => s.date === d); return sum + (shift ? calculateShiftHours(shift.startTime, shift.endTime) : 0); }, 0); });
+     const userShifts = scheduledHoursPeriodShifts.filter(s => shiftMatchesPerson(s, u));
+     const weekly = scheduledHoursWeekBlocks.map(week => week.days.reduce((sum, d) => {
+       return sum + userShifts
+         .filter(s => (s.date || s.scheduleDateKey) === d)
+         .reduce((dayTotal, shift) => dayTotal + calculateShiftHours(shift.startTime, shift.endTime), 0);
+     }, 0));
      return { id: u.id, name: u.name, weekly, total: weekly.reduce((a,b)=>a+b,0) };
   }).filter(u => u.total > 0);
 
@@ -2420,7 +2458,7 @@ const handleExportTimesheets = () => {
 
           <div className={`${T.card} w-full overflow-hidden`}>
             <div className="overflow-x-auto w-full no-scrollbar">
-              <table className="w-full text-left text-[10px] border-collapse table-fixed min-w-[1200px] xl:min-w-full">
+              <table className="schedule-builder-desktop-table w-full text-left text-[10px] border-collapse table-fixed min-w-[1200px] xl:min-w-full" style={{ '--schedule-builder-min-width': `${180 + (schedulePeriodDays.length * 86)}px` }}>
                 <thead>
                   <tr className="bg-[#12161A] border-b border-[#2A353D]">
                     <th className={`p-1 sm:p-2 font-bold bg-[#12161A] sticky left-0 z-20 w-16 sm:w-24 border-r border-[#2A353D] ${T.copper} truncate`}>Staff</th>
@@ -2472,8 +2510,8 @@ const handleExportTimesheets = () => {
                             return (
                             <td key={d} onClick={()=>handleCellClick(d,u.id)} className={`p-0.5 border-r border-[#2A353D] cursor-pointer transition-all align-top h-7 sm:h-8 ${sel?'bg-[#8F6040] outline outline-2 outline-[#D4A381] shadow-inner z-0 relative':'hover:bg-[#12161A]'}`}>
                             <div className="flex flex-col gap-[1px] w-full justify-start overflow-hidden">
-                              {req && !req.isPartial && <div className="w-full rounded font-black text-[7px] sm:text-[8px] py-0.5 text-center text-red-400 bg-red-900/40 uppercase tracking-tighter" title="Requested Off">Off</div>}
-                              {req && req.isPartial && <div className="w-full rounded font-black text-[7px] sm:text-[8px] py-0.5 text-center text-amber-400 bg-amber-900/40 uppercase tracking-tighter truncate" title={`Off: ${formatShortTime(req.startTime)}-${formatShortTime(req.endTime)}`}>{formatShortTime(req.startTime)}-{formatShortTime(req.endTime)}</div>}
+                              {req && !req.isPartial && <div className="schedule-builder-time-chip w-full rounded font-black text-[7px] sm:text-[8px] py-0.5 text-center text-red-400 bg-red-900/40 uppercase tracking-tighter" title="Requested Off">Off</div>}
+                              {req && req.isPartial && <div className="schedule-builder-time-chip schedule-builder-partial-off-chip w-full rounded font-black text-[7px] sm:text-[8px] py-0.5 text-center text-amber-400 bg-amber-900/40 uppercase tracking-tighter truncate" title={`Requested off: ${formatShortTime(req.startTime)} - ${formatShortTime(req.endTime)}`}>{formatShortTime(req.startTime)}-{formatShortTime(req.endTime)}</div>}
                               {dayShifts.map(shift => {
                                 const shiftConflict = allUserReqs.some(r => {
                                   if (!r.isPartial) return true;
@@ -2482,7 +2520,7 @@ const handleExportTimesheets = () => {
                                 return (
                                   <div 
                                     key={shift.id || `${d}-${u.id}-${shift.startTime}-${shift.endTime}`}
-                                    className={`w-full rounded font-bold text-[7px] sm:text-[8px] py-0.5 text-center truncate ${getRoleColors(shift.role, shift.isPublished)} ${shiftConflict ? 'border-2 border-red-500 animate-pulse shadow-[0_0_8px_rgba(239,68,68,0.8)]' : ''}`} 
+                                    className={`schedule-builder-time-chip w-full rounded font-bold text-[7px] sm:text-[8px] py-0.5 text-center truncate ${getRoleColors(shift.role, shift.isPublished)} ${shiftConflict ? 'border-2 border-red-500 animate-pulse shadow-[0_0_8px_rgba(239,68,68,0.8)]' : ''}`} 
                                     title={`${formatShortTime(shift.startTime)} - ${formatShortTime(shift.endTime)} ${shiftConflict ? '(CONFLICT DETECTED)' : ''}`}
                                   >
                                     {formatShortTime(shift.startTime)}-{formatShortTime(shift.endTime)}
@@ -2521,12 +2559,12 @@ const handleExportTimesheets = () => {
                 <thead>
                   <tr className="bg-[#1A2126] border-b border-[#2A353D] text-[9px] font-black uppercase tracking-widest text-slate-400">
                     <th className="p-3 border-r border-[#2A353D] sticky left-0 bg-[#1A2126] z-10 w-24">Employee</th>
-                    {weeksInMonth.map((w, i) => <th key={i} className="p-3 text-center border-r border-[#2A353D]">Wk {i+1}<div className="text-[7px] text-slate-600 mt-0.5">{parseInt(w[0].split('-')[2])}-{parseInt(w[w.length-1].split('-')[2])}</div></th>)}
+                    {scheduledHoursWeekBlocks.map((w, i) => <th key={i} className="p-3 text-center border-r border-[#2A353D]" title={`Whole pay-period week: ${formatDisplayDate(w.start)} - ${formatDisplayDate(w.end)}`}>Wk {i+1}<div className="text-[7px] text-slate-600 mt-0.5">{formatScheduledHoursWeekRange(w)}</div></th>)}
                     <th className="p-3 text-center text-[#D4A381]">Month Total</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-[#2A353D]">
-                  {scheduledHours.length === 0 && <tr><td colSpan={weeksInMonth.length + 2} className="p-6 text-center text-slate-500 font-bold">No hours scheduled yet.</td></tr>}
+                  {scheduledHours.length === 0 && <tr><td colSpan={scheduledHoursWeekBlocks.length + 2} className="p-6 text-center text-slate-500 font-bold">No hours scheduled yet.</td></tr>}
                   {scheduledHours.map(u => (
                     <tr key={u.id} className="hover:bg-[#12161A]/50 transition-colors">
                       <td className="p-3 font-bold text-white border-r border-[#2A353D] sticky left-0 bg-[#1A2126] z-10 truncate">{u.name.split(' ')[0]}</td>
