@@ -36,13 +36,13 @@ const apiVersion = read('api/_version.js');
 const vercel = read('vercel.json');
 const styles = read('src/styles.css');
 
-assert(pkg.version === '16.0.23', 'package.json version is 16.0.23');
-assert(lock.version === '16.0.23' && lock.packages?.['']?.version === '16.0.23', 'package-lock.json version is 16.0.23');
-assert(version.version === '16.0.23' && version.build === '16.0.23', 'public/version.json is 16.0.23');
-assert(appCore.includes("CURRENT_VERSION = '16.0.23'"), 'CURRENT_VERSION is 16.0.23');
-assert(apiVersion.includes("APP_VERSION = '16.0.23'") && apiVersion.includes("SECURITY_SCHEMA_VERSION = '16.0.23'"), 'API version constants are centralized at 16.0.23');
-assert(pkg.scripts?.['test:source'] === 'node scripts/validate-16-0-23.js', 'package scripts point at the 16.0.23 source validator');
-assert(!exists('scripts/validate-16-0-21.js'), 'old 16.0.21 validator was renamed');
+assert(pkg.version === '16.0.24', 'package.json version is 16.0.24');
+assert(lock.version === '16.0.24' && lock.packages?.['']?.version === '16.0.24', 'package-lock.json version is 16.0.24');
+assert(version.version === '16.0.24' && version.build === '16.0.24', 'public/version.json is 16.0.24');
+assert(appCore.includes("CURRENT_VERSION = '16.0.24'"), 'CURRENT_VERSION is 16.0.24');
+assert(apiVersion.includes("APP_VERSION = '16.0.24'") && apiVersion.includes("SECURITY_SCHEMA_VERSION = '16.0.24'"), 'API version constants are centralized at 16.0.24');
+assert(pkg.scripts?.['test:source'] === 'node scripts/validate-16-0-24.js', 'package scripts point at the 16.0.24 source validator');
+assert(!exists('scripts/validate-16-0-21.js') && !exists('scripts/validate-16-0-22.js') && !exists('scripts/validate-16-0-23.js'), 'old source validators were renamed');
 
 const activeRecipesImport = /const\s+TabRecipes\s*=\s*lazyFeature\(\s*\(\)\s*=>\s*import\('\.\/features\/operations'\)\s*,\s*'TabRecipes'\s*\)/.test(appJs);
 assert(activeRecipesImport, 'App.js mounts Recipes from src/features/operations.jsx');
@@ -79,6 +79,11 @@ assert(appCore.includes('liveCollectionRegistry') && appCore.includes('listenerR
 assert(appJs.includes('recoverFromChunkFailureOnce') && appJs.includes('AppSurfaceErrorBoundary'), 'lazy chunk failures have one-shot recovery and an error boundary');
 assert(vercel.includes('version.json') && vercel.includes('firebase-messaging-sw.js') && vercel.includes('no-store'), 'deployment metadata and service worker cache headers are revalidated');
 
+const vercelConfig = JSON.parse(vercel);
+const functionKeys = Object.keys(vercelConfig.functions || {});
+assert(functionKeys.includes('api/**/*.js') && functionKeys.includes('api/**/*.py'), 'Vercel function config uses API wildcards instead of brittle single-file patterns');
+assert(!functionKeys.includes('api/scan-invoice.js') && !functionKeys.includes('api/scan-menu.js'), 'Vercel function config no longer uses explicit scanner file patterns that can fail unmatched-function validation');
+
 assert(schedule.includes('export const normalizeShiftTimeForFingerprint') && schedule.includes('export const buildShiftFingerprint') && schedule.includes('writeBatch(db)'), 'Schedule auto-fill has fingerprint helpers and batched writes');
 assert(schedule.includes('resolveAmbiguousNameOnlyShiftIdentity') || schedule.includes('ambiguous'), 'Schedule auto-fill rejects ambiguous name-only identity');
 assert(schedule.includes('successfulBatchCount') || schedule.includes('committedCount'), 'Schedule auto-fill reports partial batch success honestly');
@@ -96,7 +101,7 @@ assert(exists('playwright.config.js'), 'Playwright configuration exists');
 assert(exists('scripts/run-rules-tests.js'), 'Firebase emulator rule test runner exists');
 assert(exists('tests/e2e/app-health.spec.cjs'), 'E2E browser test folder is not empty');
 
-assert(styles.includes('/* 16.0.23 compact professional operations-console refinement */'), '16.0.23 compact UI refinement block exists');
+assert(styles.includes('/* 16.0.24 compact professional operations-console refinement */'), '16.0.24 compact UI refinement block exists');
 assert(styles.includes('--chaos-compact-page-x') && styles.includes('--chaos-compact-input-h') && styles.includes('--chaos-mobile-tap-h'), 'shared compact UI density tokens exist');
 assert(styles.includes('.desktop-pro-shell .app-header') && styles.includes('height: var(--chaos-compact-topbar-h)'), 'desktop app shell/header uses compact top-bar rules');
 assert(styles.includes('.schedule-builder-control-deck') && styles.includes('order: 2'), 'Schedule Builder control deck remains directly above the calendar grid');
@@ -107,7 +112,7 @@ assert(styles.includes('.godmode') || styles.includes('System Administrator') ||
 assert(exists('tests/e2e/compact-ui-layout.spec.cjs'), 'compact UI Playwright layout test exists');
 
 if (failures) {
-  console.error(`16.0.23 source validator failed with ${failures} issue(s).`);
+  console.error(`16.0.24 source validator failed with ${failures} issue(s).`);
   process.exit(1);
 }
-console.log('16.0.23 source validator passed. This is a source guard only. It does not replace unit, emulator, build, browser, or staging notification tests.');
+console.log('16.0.24 source validator passed. This is a source guard only. It does not replace unit, emulator, build, browser, or staging notification tests.');

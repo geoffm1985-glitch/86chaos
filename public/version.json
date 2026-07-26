@@ -1,23 +1,19 @@
 {
-  "version": "16.0.23",
-  "name": "86 Chaos 16.0.23 Compact Professional UI Refinement",
+  "version": "16.0.24",
+  "name": "86 Chaos 16.0.24 Vercel Function Configuration Fix",
   "releasedAt": "2026-07-25T00:00:00.000Z",
-  "label": "86 Chaos 16.0.23 Compact Professional UI Refinement",
-  "build": "16.0.23",
+  "label": "86 Chaos 16.0.24 Vercel Function Configuration Fix",
+  "build": "16.0.24",
   "notes": [
-    "Refines the existing dark 86 Chaos interface into a tighter, more professional operations-console layout.",
-    "Adds shared compact UI tokens for page spacing, cards, controls, tables, modals, and mobile containment.",
-    "Tightens the app shell, page headers, toolbars, dashboards, forms, tables, and System Administrator panels without changing workflows.",
-    "Keeps the Schedule Builder assignment controls directly above the calendar grid while reducing wasted desktop space.",
-    "Adds mobile containment rules for long IDs, tables, drawers, modals, filenames, and action rows to prevent body-level horizontal overflow."
+    "Keeps the 16.0.23 compact professional UI refinement intact.",
+    "Replaces fragile per-file Vercel function patterns with wildcard function configuration that matches the API directory consistently.",
+    "Preserves existing API routes, scanner routes, cron routes, cache headers, security headers, Firebase wiring, and app behavior.",
+    "No Firebase credentials, rules, project IDs, environment values, or service-account wiring were changed."
   ],
   "releaseNotes": [
-    "Desktop spacing, card padding, toolbar gaps, form controls, table rows, and modal spacing now use compact shared density tokens.",
-    "Schedule Builder controls remain directly above the calendar grid and are tightened for faster assignment workflows.",
-    "System Administrator cards, logs, destructive-action panels, badges, and technical identifiers are constrained for a denser console feel.",
-    "Mobile layouts add min-width, wrapping, containment, and internal-scroll safeguards for tables, IDs, URLs, files, and button rows without hiding overflow as the only fix.",
-    "86Voice and mobile tap targets remain usable while desktop controls become smaller and more refined.",
-    "No Firebase wiring, credentials, data structures, rules, permissions, calculations, exports, or operational workflows were changed.",
-    "Version diagnostics centralized at 16.0.23."
+    "Fixes Vercel deployment failure where an explicit functions pattern for api/scan-invoice.js could be rejected as unmatched.",
+    "Uses broad api/**/*.js and api/**/*.py function configuration so existing serverless functions remain covered without depending on one brittle filename match.",
+    "Keeps invoice/menu scanners and long-running cron/API routes within the configured duration and memory envelope.",
+    "No UI, feature workflow, Firebase configuration, data model, or permission behavior was changed."
   ]
 }
