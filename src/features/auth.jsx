@@ -83,6 +83,20 @@ const LoginScreen = ({ setAppUser }) => {
   const mfaRecaptchaRef = useRef(null);
 
 
+  const secureFetchWithTimeout = async (url, options = {}, timeoutMs = 4500) => {
+    if (typeof AbortController === 'undefined') return secureFetch(url, options);
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      return await secureFetch(url, { ...options, signal: controller.signal });
+    } catch (err) {
+      if (err?.name === 'AbortError') throw new Error(`${url} did not answer within ${Math.round(timeoutMs / 1000)} seconds.`);
+      throw err;
+    } finally {
+      clearTimeout(timeoutId);
+    }
+  };
+
   const loadWorkspaceChoices = async (baseUser, firebaseUser) => {
     const options = new Map();
     const uid = firebaseUser?.uid || baseUser.id;
@@ -113,11 +127,11 @@ const LoginScreen = ({ setAppUser }) => {
     };
 
     try {
-      const apiRes = await secureFetch('/api/workspace-memberships', {
+      const apiRes = await secureFetchWithTimeout('/api/workspace-memberships', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: emailKey, userId: uid })
-      });
+      }, 4500);
       const apiData = await apiRes.json().catch(() => ({}));
       if (apiRes.ok && Array.isArray(apiData.workspaces)) {
         for (const workspace of apiData.workspaces) await addOption({ ...workspace, membershipSource: workspace.membershipSource || 'workspace-memberships-api' });
