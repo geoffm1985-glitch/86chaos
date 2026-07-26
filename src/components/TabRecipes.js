@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { collection, addDoc, updateDoc, deleteDoc, doc } from 'firebase/firestore';
 import { BookOpen, Search, Plus, Edit, Trash2, Camera, Loader2, Package, ChefHat, Clock, Scale } from 'lucide-react';
+import { secureFetch } from '../core/appCore';
 
 const TabRecipes = ({ recipes, appUser, addToast, db, Modal, T, MASTER_ADMIN_EMAIL }) => {
   const [searchTerm, setSearchTerm] = useState(''); 
@@ -12,20 +13,36 @@ const TabRecipes = ({ recipes, appUser, addToast, db, Modal, T, MASTER_ADMIN_EMA
   const [isScanning, setIsScanning] = useState(false);
 
   const handleScanRecipe = async (e) => {
-    const file = e.target.files[0];
+    const input = e.target;
+    const file = input?.files?.[0];
+    const resetInput = () => { if (input) input.value = ''; };
+    const failScan = (title, message) => {
+      setIsScanning(false);
+      resetInput();
+      addToast(title, message);
+    };
     if (!file) return;
+    const maxRecipeImageBytes = 3 * 1024 * 1024;
+    if (!String(file.type || '').startsWith('image/')) {
+      failScan('Invalid File', 'Recipe scans must be an image file.');
+      return;
+    }
+    if (file.size > maxRecipeImageBytes) {
+      failScan('Image Too Large', 'Recipe scans are limited to 3MB. Compress the photo and try again.');
+      return;
+    }
 
     setIsScanning(true);
     addToast('Scanning', 'Optimizing and reading recipe...');
 
     const reader = new FileReader();
-    reader.readAsDataURL(file);
+    reader.onerror = () => failScan('Scan Error', 'Could not read that recipe image. Try a different photo.');
     reader.onload = (event) => {
       const img = new Image();
-      img.src = event.target.result;
+      img.onerror = () => failScan('Scan Error', 'That image could not be decoded. Try a clearer photo.');
       img.onload = async () => {
         const canvas = document.createElement('canvas');
-        const MAX_WIDTH = 1200; 
+        const MAX_WIDTH = 1200;
         let scaleSize = 1;
         if (img.width > MAX_WIDTH) {
            scaleSize = MAX_WIDTH / img.width;
@@ -33,43 +50,70 @@ const TabRecipes = ({ recipes, appUser, addToast, db, Modal, T, MASTER_ADMIN_EMA
         canvas.width = img.width * scaleSize;
         canvas.height = img.height * scaleSize;
         const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          failScan('Scan Error', 'Your browser could not prepare the recipe image for scanning.');
+          return;
+        }
         ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
         
         const base64Compressed = canvas.toDataURL('image/jpeg', 0.8);
 
         try {
-          const response = await fetch('/api/scan', {
+          const response = await secureFetch('/api/scan', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ imageBase64: base64Compressed })
+            body: JSON.stringify({ imageBase64: base64Compressed, restaurantId: appUser?.restaurantId || '' })
           });
 
           if (!response.ok) {
-            const errData = await response.json();
+            const errData = await response.json().catch(() => ({}));
             throw new Error(errData.error || 'Failed to scan. Check API key or Vercel logs.');
           }
 
           const data = await response.json();
           
-          setTitle(data.title || '');
-          setPrepTime(data.prepTime || '--');
-          setYieldAmt(data.yieldAmt || '--');
-          setIngredients(data.ingredients || '');
-          setInstructions(data.instructions || '');
+          setTitle(String(data.title || ''));
+          setPrepTime(String(data.prepTime || '--'));
+          setYieldAmt(String(data.yieldAmt || '--'));
+          setIngredients(String(data.ingredients || ''));
+          setInstructions(String(data.instructions || ''));
           
           setIsFormOpen(true);
           addToast('Success', 'Recipe extracted! Please review.');
         } catch (err) {
-          addToast('Error', err.message);
+          addToast('Error', err.message || 'Recipe scanning failed.');
         } finally {
           setIsScanning(false);
+          resetInput();
         }
       };
+      img.src = event?.target?.result || '';
     };
-    e.target.value = ''; 
+    reader.readAsDataURL(file);
   };
 
-  const parseAndMultiply = (text, mult) => { if (mult === 1) return text; const match = text.trim().match(/^(\d+\s+\d+\/\d+|\d+\/\d+|\d*\.?\d+)\s+(.*)/); if (!match) return text; let numStr = match[1], rest = match[2], val = 0; if (numStr.includes('/')) { const parts = numStr.split(' '); if (parts.length === 2) { const [n, d] = parts[1].split('/'); val = parseFloat(parts[0]) + (parseFloat(n) / parseFloat(d)); } else { const [n, d] = numStr.split('/'); val = parseFloat(n) / parseFloat(d); } } else { val = parseFloat(numStr); } let finalVal = val * mult; let cleanVal = Number.isInteger(finalVal) ? finalVal.toString() : finalVal.toFixed(2); if (cleanVal.endsWith('.50')) cleanVal = cleanVal.replace('.50', ' 1/2').trim(); else if (cleanVal.endsWith('.25')) cleanVal = cleanVal.replace('.25', ' 1/4').trim(); else if (cleanVal.endsWith('.75')) cleanVal = cleanVal.replace('.75', ' 3/4').trim(); else if (cleanVal.endsWith('.33')) cleanVal = cleanVal.replace('.33', ' 1/3').trim(); else if (cleanVal.endsWith('.67')) cleanVal = cleanVal.replace('.67', ' 2/3').trim(); if (cleanVal.startsWith('0 ')) cleanVal = cleanVal.substring(2); return `${cleanVal} ${rest}`; };
+  const parseAndMultiply = (text, mult) => {
+    const normalizedText = String(text || '');
+    if (mult === 1) return normalizedText;
+    const match = normalizedText.trim().match(/^(\d+\s+\d+\/\d+|\d+\/\d+|\d*\.?\d+)\s+(.*)/);
+    if (!match) return normalizedText;
+    let numStr = match[1], rest = match[2], val = 0;
+    if (numStr.includes('/')) {
+      const parts = numStr.split(' ');
+      if (parts.length === 2) { const [n, d] = parts[1].split('/'); val = parseFloat(parts[0]) + (parseFloat(n) / parseFloat(d)); }
+      else { const [n, d] = numStr.split('/'); val = parseFloat(n) / parseFloat(d); }
+    } else { val = parseFloat(numStr); }
+    if (!Number.isFinite(val)) return normalizedText;
+    let finalVal = val * mult;
+    let cleanVal = Number.isInteger(finalVal) ? finalVal.toString() : finalVal.toFixed(2);
+    if (cleanVal.endsWith('.50')) cleanVal = cleanVal.replace('.50', ' 1/2').trim();
+    else if (cleanVal.endsWith('.25')) cleanVal = cleanVal.replace('.25', ' 1/4').trim();
+    else if (cleanVal.endsWith('.75')) cleanVal = cleanVal.replace('.75', ' 3/4').trim();
+    else if (cleanVal.endsWith('.33')) cleanVal = cleanVal.replace('.33', ' 1/3').trim();
+    else if (cleanVal.endsWith('.67')) cleanVal = cleanVal.replace('.67', ' 2/3').trim();
+    if (cleanVal.startsWith('0 ')) cleanVal = cleanVal.substring(2);
+    return `${cleanVal} ${rest}`;
+  };
   
   const [title, setTitle] = useState(''); 
   const [category, setCategory] = useState('Sauce/Dressing'); 
@@ -85,13 +129,14 @@ const TabRecipes = ({ recipes, appUser, addToast, db, Modal, T, MASTER_ADMIN_EMA
   };
 
   const handleEdit = () => {
-    setTitle(activeRecipe.title);
-    setCategory(activeRecipe.category || 'Sauce/Dressing');
-    setPrepTime(activeRecipe.prepTime === '--' ? '' : activeRecipe.prepTime);
-    setYieldAmt(activeRecipe.yieldAmt === '--' ? '' : activeRecipe.yieldAmt);
-    setIngredients(activeRecipe.ingredients);
-    setInstructions(activeRecipe.instructions);
-    setEditingRecipeId(activeRecipe.id);
+    if (!activeRecipe) return;
+    setTitle(String(activeRecipe?.title || ''));
+    setCategory(String(activeRecipe?.category || 'Sauce/Dressing'));
+    setPrepTime(activeRecipe?.prepTime === '--' ? '' : String(activeRecipe?.prepTime || ''));
+    setYieldAmt(activeRecipe?.yieldAmt === '--' ? '' : String(activeRecipe?.yieldAmt || ''));
+    setIngredients(String(activeRecipe?.ingredients || ''));
+    setInstructions(String(activeRecipe?.instructions || ''));
+    setEditingRecipeId(activeRecipe?.id || null);
     setActiveRecipe(null);
     setIsFormOpen(true);
   };
@@ -129,7 +174,7 @@ const TabRecipes = ({ recipes, appUser, addToast, db, Modal, T, MASTER_ADMIN_EMA
 
     let count = 0;
     for (const recipe of legacyData) {
-      if (!recipes.find(r => r.title === recipe.title)) {
+      if (!(Array.isArray(recipes) ? recipes : []).find(r => r?.title === recipe.title)) {
         await addDoc(collection(db, "recipes"), { ...recipe, authorName: "System", authorId: "system", lastUpdated: new Date().toISOString(), restaurantId: appUser.restaurantId });
         count++;
       }
@@ -137,7 +182,16 @@ const TabRecipes = ({ recipes, appUser, addToast, db, Modal, T, MASTER_ADMIN_EMA
     addToast('Import Complete', `Injected ${count} legacy recipes.`);
   };
 
-  const filteredRecipes = recipes.filter(r => { const matchesSearch = r.title.toLowerCase().includes(searchTerm.toLowerCase()) || r.ingredients.toLowerCase().includes(searchTerm.toLowerCase()); const matchesCat = filterCat === 'All' || r.category === filterCat; return matchesSearch && matchesCat; }).sort((a,b) => a.title.localeCompare(b.title));
+  const filteredRecipes = [...(Array.isArray(recipes) ? recipes : [])]
+    .filter(r => {
+      const safeTitle = String(r?.title || '');
+      const safeIngredients = String(r?.ingredients || '');
+      const query = String(searchTerm || '').toLowerCase();
+      const matchesSearch = safeTitle.toLowerCase().includes(query) || safeIngredients.toLowerCase().includes(query);
+      const matchesCat = filterCat === 'All' || r?.category === filterCat;
+      return matchesSearch && matchesCat;
+    })
+    .sort((a,b) => String(a?.title || '').localeCompare(String(b?.title || '')));
 
   const canManageRecipes = appUser?.isAdmin || appUser?.permissions?.team || appUser?.permissions?.prep || appUser?.isSuperAdmin || (MASTER_ADMIN_EMAIL && appUser?.email?.toLowerCase() === MASTER_ADMIN_EMAIL.toLowerCase());
   const canModifyRecipe = activeRecipe && (canManageRecipes || appUser?.id === activeRecipe.authorId);
@@ -191,9 +245,9 @@ const TabRecipes = ({ recipes, appUser, addToast, db, Modal, T, MASTER_ADMIN_EMA
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {filteredRecipes.map(r => (
             <div key={r.id} onClick={() => { setActiveRecipe(r); setYieldMult(1); }} className={`${T.card} p-5 hover:border-[#D4A381] transition-all cursor-pointer group flex flex-col h-full`}>
-              <div className="flex justify-between items-start mb-3"><span className={`text-[10px] font-black uppercase tracking-wider bg-[#12161A] border ${T.border} ${T.copper} px-2 py-1 rounded-md`}>{r.category}</span><span className={`text-[10px] font-bold ${T.muted} group-hover:text-[#D4A381]`}>View Spec →</span></div>
-              <h3 className="text-xl font-black text-white mb-auto leading-tight">{r.title}</h3>
-              <div className={`flex items-center gap-4 mt-5 pt-4 border-t ${T.border}`}><div className={`flex items-center gap-1.5 text-xs font-bold ${T.muted}`}><Clock size={14}/> {r.prepTime}</div><div className={`flex items-center gap-1.5 text-xs font-bold ${T.muted}`}><Scale size={14}/> Yield: {r.yieldAmt}</div></div>
+              <div className="flex justify-between items-start mb-3"><span className={`text-[10px] font-black uppercase tracking-wider bg-[#12161A] border ${T.border} ${T.copper} px-2 py-1 rounded-md`}>{String(r?.category || 'Uncategorized')}</span><span className={`text-[10px] font-bold ${T.muted} group-hover:text-[#D4A381]`}>View Spec →</span></div>
+              <h3 className="text-xl font-black text-white mb-auto leading-tight">{String(r?.title || 'Untitled recipe')}</h3>
+              <div className={`flex items-center gap-4 mt-5 pt-4 border-t ${T.border}`}><div className={`flex items-center gap-1.5 text-xs font-bold ${T.muted}`}><Clock size={14}/> {String(r?.prepTime || '--')}</div><div className={`flex items-center gap-1.5 text-xs font-bold ${T.muted}`}><Scale size={14}/> Yield: {String(r?.yieldAmt || '--')}</div></div>
             </div>
           ))}
         </div>
@@ -202,18 +256,18 @@ const TabRecipes = ({ recipes, appUser, addToast, db, Modal, T, MASTER_ADMIN_EMA
       <Modal isOpen={!!activeRecipe} onClose={() => setActiveRecipe(null)} title="Spec Sheet">
         {activeRecipe && (
           <div className="space-y-6">
-            <div className={`border-b ${T.border} pb-4`}><h2 className="text-2xl font-black text-white leading-tight mb-2">{activeRecipe.title}</h2><div className={`flex flex-wrap gap-2 text-xs font-bold ${T.muted}`}><span className={`bg-[#12161A] border ${T.border} px-2 py-1 rounded-md`}>{activeRecipe.category}</span><span className={`bg-[#12161A]
-border ${T.border} px-2 py-1 rounded-md flex items-center gap-1`}><Clock size={12}/> {activeRecipe.prepTime}</span><span className={`bg-[#12161A] border ${T.border} px-2 py-1 rounded-md flex items-center gap-1 ${yieldMult !== 1 ? T.copper : ''}`}><Scale size={12}/> Yield: {parseAndMultiply(activeRecipe.yieldAmt, yieldMult)}</span></div></div>
+            <div className={`border-b ${T.border} pb-4`}><h2 className="text-2xl font-black text-white leading-tight mb-2">{String(activeRecipe?.title || 'Untitled recipe')}</h2><div className={`flex flex-wrap gap-2 text-xs font-bold ${T.muted}`}><span className={`bg-[#12161A] border ${T.border} px-2 py-1 rounded-md`}>{String(activeRecipe?.category || 'Uncategorized')}</span><span className={`bg-[#12161A]
+border ${T.border} px-2 py-1 rounded-md flex items-center gap-1`}><Clock size={12}/> {String(activeRecipe?.prepTime || '--')}</span><span className={`bg-[#12161A] border ${T.border} px-2 py-1 rounded-md flex items-center gap-1 ${yieldMult !== 1 ? T.copper : ''}`}><Scale size={12}/> Yield: {parseAndMultiply(activeRecipe?.yieldAmt, yieldMult)}</span></div></div>
             <div className={`flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-[#12161A] p-3 rounded-xl border ${T.border} mb-6`}><span className={`text-[10px] font-black uppercase ${T.muted} tracking-widest`}>Yield Multiplier</span><div className={`flex bg-[#1A2126] rounded-lg p-1 border ${T.border}`}>{[0.5, 1, 2, 4].map(m => (<button key={m} onClick={() => setYieldMult(m)} className={`px-4 py-1.5 text-xs font-black rounded-md transition-all ${yieldMult === m ? `${T.grad} text-slate-900` : `text-slate-500 hover:text-white`}`}>{m}x</button>))}</div></div>
             <div className="grid grid-cols-1 md:grid-cols-5 gap-6">
-              <div className="md:col-span-2 space-y-3"><h4 className={`text-[10px] font-black ${T.muted} uppercase tracking-widest border-b ${T.border} pb-1`}>Ingredients <span className={`lowercase ml-1 ${yieldMult !== 1 ? T.copper : ''}`}>({yieldMult}x)</span></h4><ul className="space-y-2 text-sm font-bold text-slate-300">{activeRecipe.ingredients.split('\n').map((ing, i) => ing.trim() && <li key={i} className="flex items-start gap-2"><div className={`w-1.5 h-1.5 rounded-full mt-1.5 flex-shrink-0 ${yieldMult !== 1 ? 'bg-[#D4A381]' : 'bg-slate-500'}`}/><span>{parseAndMultiply(ing, yieldMult)}</span></li>)}</ul></div>
-              <div className="md:col-span-3 space-y-3"><h4 className={`text-[10px] font-black ${T.muted} uppercase tracking-widest border-b ${T.border} pb-1`}>Method</h4><div className="space-y-3 text-sm font-medium text-slate-300">{activeRecipe.instructions.split('\n').map((step, i) => step.trim() && <p key={i} className="leading-relaxed"><strong className="text-white mr-1">{i+1}.</strong>{step}</p>)}</div></div>
+              <div className="md:col-span-2 space-y-3"><h4 className={`text-[10px] font-black ${T.muted} uppercase tracking-widest border-b ${T.border} pb-1`}>Ingredients <span className={`lowercase ml-1 ${yieldMult !== 1 ? T.copper : ''}`}>({yieldMult}x)</span></h4><ul className="space-y-2 text-sm font-bold text-slate-300">{String(activeRecipe?.ingredients || '').split('\n').filter(ing => ing.trim()).length ? String(activeRecipe?.ingredients || '').split('\n').map((ing, i) => ing.trim() && <li key={i} className="flex items-start gap-2"><div className={`w-1.5 h-1.5 rounded-full mt-1.5 flex-shrink-0 ${yieldMult !== 1 ? 'bg-[#D4A381]' : 'bg-slate-500'}`}/><span>{parseAndMultiply(ing, yieldMult)}</span></li>) : <li className="text-slate-500 italic">No ingredients have been entered.</li>}</ul></div>
+              <div className="md:col-span-3 space-y-3"><h4 className={`text-[10px] font-black ${T.muted} uppercase tracking-widest border-b ${T.border} pb-1`}>Method</h4><div className="space-y-3 text-sm font-medium text-slate-300">{String(activeRecipe?.instructions || '').split('\n').filter(step => step.trim()).length ? String(activeRecipe?.instructions || '').split('\n').map((step, i) => step.trim() && <p key={i} className="leading-relaxed"><strong className="text-white mr-1">{i+1}.</strong>{step}</p>) : <p className="text-slate-500 italic">No instructions have been entered.</p>}</div></div>
             </div>
             
             <div className={`flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 pt-6 border-t ${T.border} mt-6`}>
               <div className={`text-[10px] font-bold ${T.muted}`}>
-                Added by {activeRecipe.authorName} <br/> 
-                {activeRecipe.lastUpdated && <span className="opacity-70">Updated: {new Date(activeRecipe.lastUpdated).toLocaleDateString()}</span>}
+                Added by {String(activeRecipe?.authorName || 'Unknown')} <br/> 
+                {activeRecipe?.lastUpdated && <span className="opacity-70">Updated: {new Date(activeRecipe?.lastUpdated).toLocaleDateString()}</span>}
               </div>
               
               {canModifyRecipe && (

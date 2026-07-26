@@ -242,9 +242,10 @@ service firebase.storage {
         );
     }
 
-    function isAllowedInvoiceScan() {
+    function isAllowedInvoiceScan(restaurantId) {
       return request.resource != null &&
         uploadPurposeIs('invoice-scan') &&
+        request.resource.metadata.restaurantId == restaurantId &&
         request.resource.size <= 20 * 1024 * 1024 &&
         (
           request.resource.contentType.matches('image/.*') ||
@@ -252,9 +253,10 @@ service firebase.storage {
         );
     }
 
-    function isAllowedMenuUpload() {
+    function isAllowedMenuUpload(restaurantId) {
       return request.resource != null &&
         uploadPurposeIs('menu-scan') &&
+        request.resource.metadata.restaurantId == restaurantId &&
         request.resource.size <= 20 * 1024 * 1024 &&
         (
           request.resource.contentType.matches('image/.*') ||
@@ -265,7 +267,8 @@ service firebase.storage {
     // Restaurant-scoped profile photos. Users may manage only their own photo unless they manage staff.
     match /{restaurantId}/profilePhotos/{uid}/{fileName} {
       allow read: if isSuperAdmin() || isTenantMatch(restaurantId);
-      allow write: if canManageProfilePhoto(restaurantId, uid) && isAllowedImage();
+      allow create, update: if canManageProfilePhoto(restaurantId, uid) && isAllowedImage();
+      allow delete: if canManageProfilePhoto(restaurantId, uid);
     }
 
     match /{restaurantId}/profilePhotos/{allPaths=**} {
@@ -277,7 +280,8 @@ service firebase.storage {
     // 86 Chaos branding is locked in the app. This path is only for customer restaurant logos.
     match /{restaurantId}/brandAssets/{allPaths=**} {
       allow read: if isSuperAdmin() || isTenantMatch(restaurantId);
-      allow write: if canManageBrandAssets(restaurantId) && isAllowedImage();
+      allow create, update: if canManageBrandAssets(restaurantId) && isAllowedImage();
+      allow delete: if canManageBrandAssets(restaurantId);
     }
 
     // Legacy Cheers branding path from older Settings builds. Current builds use
@@ -285,31 +289,36 @@ service firebase.storage {
     // hitting storage/unauthorized while the update rolls out.
     match /cheers-restaurant-assets/{allPaths=**} {
       allow read: if isSuperAdmin() || isTenantMatch('cheers_chilton_01');
-      allow write: if canManageBrandAssets('cheers_chilton_01') && isAllowedImage();
+      allow create, update: if canManageBrandAssets('cheers_chilton_01') && isAllowedImage();
+      allow delete: if canManageBrandAssets('cheers_chilton_01');
     }
 
     // Restaurant-scoped message attachments.
     match /{restaurantId}/messageAttachments/{allPaths=**} {
       allow read: if isSuperAdmin() || isTenantMatch(restaurantId);
-      allow write: if (isSuperAdmin() || isTenantMatch(restaurantId)) && isAllowedDocument();
+      allow create, update: if (isSuperAdmin() || isTenantMatch(restaurantId)) && isAllowedDocument();
+      allow delete: if isSuperAdmin() || isTenantMatch(restaurantId);
     }
 
     // Restaurant-scoped maintenance photos.
     match /{restaurantId}/maintenancePhotos/{allPaths=**} {
       allow read: if isSuperAdmin() || isTenantMatch(restaurantId);
-      allow write: if (isSuperAdmin() || isTenantMatch(restaurantId)) && isAllowedImage();
+      allow create, update: if (isSuperAdmin() || isTenantMatch(restaurantId)) && isAllowedImage();
+      allow delete: if isSuperAdmin() || isTenantMatch(restaurantId);
     }
 
     // Restaurant-scoped invoice scans. Invoice files are limited to inventory/scan/financial-authorized users.
     match /{restaurantId}/invoices/{allPaths=**} {
       allow read: if canUseInvoiceScans(restaurantId);
-      allow write: if canUseInvoiceScans(restaurantId) && isAllowedInvoiceScan();
+      allow create, update: if canUseInvoiceScans(restaurantId) && isAllowedInvoiceScan(restaurantId);
+      allow delete: if canUseInvoiceScans(restaurantId);
     }
 
     // Restaurant-scoped menu uploads for Menu Intelligence review.
     match /{restaurantId}/menuUploads/{allPaths=**} {
       allow read: if canUseMenuIntelligence(restaurantId);
-      allow write: if canUseMenuIntelligence(restaurantId) && isAllowedMenuUpload();
+      allow create, update: if canUseMenuIntelligence(restaurantId) && isAllowedMenuUpload(restaurantId);
+      allow delete: if canUseMenuIntelligence(restaurantId);
     }
 
     // Versioned HR training manuals. Employees may fetch only files whose

@@ -143,6 +143,11 @@ const TabPersonalReminders = ({ appUser, addToast }) => {
   const applyParsedText = (value) => {
     const parsed = parseReminderCommand(value);
     if (parsed) {
+      if (parsed.validationError) {
+        addToast('Reminder Date Blocked', parsed.validationError);
+        setTitle(parsed.title || value);
+        return;
+      }
       setTitle(parsed.title);
       if (parsed.dateInput) setDateInput(parsed.dateInput);
       if (parsed.timeInput) setTimeInput(parsed.timeInput);
@@ -653,7 +658,8 @@ const TabMenuIntelligence = ({ appUser, clientData, inventoryItems = [], addToas
           uploadedBytes: String(uploadFile.size || 0),
           compressionMethod: prepared.compression?.method || 'none',
           compressed: prepared.wasCompressed ? 'true' : 'false',
-          purpose: 'menu-scan'
+          purpose: 'menu-scan',
+          restaurantId: appUser.restaurantId
         }
       });
       await new Promise((resolve, reject) => {

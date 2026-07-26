@@ -3,6 +3,7 @@ import aiUsage from './_ai-usage.js';
 import rateLimit from './_rate-limit.js';
 import chaosAdmin from './_chaos-admin.js';
 import aiPolicy from './_ai-policy.js';
+import versionInfo from './_version.js';
 
 const { verifyRequestToken } = projectAdmin;
 const { authorizeAiScanWorkspace, getIdempotencyKey } = aiUsage;
@@ -20,7 +21,8 @@ const {
   completeAiRequestLock
 } = aiPolicy;
 
-const RECIPE_SCANNER_VERSION = '15.0.55';
+const { APP_VERSION } = versionInfo;
+const RECIPE_SCANNER_ENGINE_VERSION = 'recipe-scanner-1.0.0';
 
 export const config = {
   regions: ['iad1'],
@@ -140,7 +142,8 @@ export default async function handler(req, res) {
     return res.status(200).json({
       ...recipeData,
       scanModel: selectedModel,
-      scannerVersion: RECIPE_SCANNER_VERSION
+      scannerVersion: RECIPE_SCANNER_ENGINE_VERSION,
+      appVersion: APP_VERSION
     });
   } catch (error) {
     await completeAiRequestLock(requestLock, 'failed', {
@@ -154,7 +157,8 @@ export default async function handler(req, res) {
     return res.status(status).json({
       error: isTimeout ? 'Recipe scanning timed out before the hard request deadline. Try a clearer image.' : (error.message || 'Failed to process recipe.'),
       code: error?.code || undefined,
-      scannerVersion: RECIPE_SCANNER_VERSION
+      scannerVersion: RECIPE_SCANNER_ENGINE_VERSION,
+      appVersion: APP_VERSION
     });
   }
 }

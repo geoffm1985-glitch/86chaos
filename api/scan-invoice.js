@@ -1,4 +1,5 @@
 const { enforceRateLimit, sendRateLimited } = require('./_rate-limit');
+const { APP_VERSION } = require('./_version');
 const {
   inferInvoiceProductFields,
   classifyInvoiceRow,
@@ -10,7 +11,7 @@ const {
 // Extracts ALL visible invoice information from PDF or image files.
 // 13.1.10: Large-document scanner keeps non-product rows out of Stock Matcher/inventory updates.
 
-const INVOICE_SCANNER_VERSION = '15.0.55';
+const INVOICE_SCANNER_ENGINE_VERSION = 'invoice-scanner-1.0.0';
 
 function cleanJsonText(text = '') {
   return String(text || '')
@@ -277,7 +278,8 @@ function normalizeInvoicePayload(parsed) {
     extractionNotes: data.extractionNotes || [],
     extractionWarnings: data.extractionWarnings || [],
     confidence: data.confidence || 'review',
-    scannerVersion: INVOICE_SCANNER_VERSION
+    scannerVersion: INVOICE_SCANNER_ENGINE_VERSION,
+    appVersion: APP_VERSION
   };
 }
 
@@ -885,7 +887,8 @@ async function handler(req, res) {
     normalized.scanCompression = scanSource?.compression || null;
     normalized.geminiFileName = geminiFile?.name || '';
     normalized.processedAt = new Date().toISOString();
-    normalized.scannerVersion = INVOICE_SCANNER_VERSION;
+    normalized.scannerVersion = INVOICE_SCANNER_ENGINE_VERSION;
+    normalized.appVersion = APP_VERSION;
     normalized.scanModel = usedModel || model;
     normalized.scanAttempt = usedAttempt || 'full-json';
     normalized.scanFinishReason = finishReason || '';
@@ -955,7 +958,8 @@ async function handler(req, res) {
         ? 'Upload the invoice through Firebase Storage mode instead of sending it through Vercel.'
         : undefined,
       scanSource: scanSource?.source || 'unknown',
-      scannerVersion: INVOICE_SCANNER_VERSION
+      scannerVersion: INVOICE_SCANNER_ENGINE_VERSION,
+    appVersion: APP_VERSION
     });
   }
 }

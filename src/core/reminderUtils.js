@@ -28,6 +28,18 @@ const parseAmount = (value = '') => {
   return NaN;
 };
 
+export const createStrictLocalDate = (year, monthIndex, day) => {
+  const date = new Date(year, monthIndex, day, 12, 0, 0, 0);
+  if (
+    date.getFullYear() !== year ||
+    date.getMonth() !== monthIndex ||
+    date.getDate() !== day
+  ) {
+    return null;
+  }
+  return date;
+};
+
 const nextWeekdayDate = (weekday, now = new Date()) => {
   const idx = WEEKDAYS.indexOf(weekday);
   if (idx < 0) return null;
@@ -38,33 +50,52 @@ const nextWeekdayDate = (weekday, now = new Date()) => {
   return d;
 };
 
+const emptyDateParse = () => ({ date: null, wasExplicit: false, explicitToday: false, validationError: '' });
+
 const parseDatePart = (text = '', now = new Date()) => {
   const q = normalize(text);
   const base = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 12, 0, 0, 0);
-  if (/\btoday\b/.test(q)) return base;
-  if (/\btonight\b/.test(q)) return base;
+  if (/\btoday\b/.test(q)) return { date: base, wasExplicit: true, explicitToday: true, validationError: '' };
+  if (/\btonight\b/.test(q)) return { date: base, wasExplicit: true, explicitToday: true, validationError: '' };
   if (/\btomorrow\b/.test(q)) {
     base.setDate(base.getDate() + 1);
-    return base;
+    return { date: base, wasExplicit: true, explicitToday: false, validationError: '' };
   }
   const slash = q.match(/\b(\d{1,2})\/(\d{1,2})(?:\/(\d{2,4}))?\b/);
   if (slash) {
     const year = slash[3] ? Number(slash[3].length === 2 ? `20${slash[3]}` : slash[3]) : now.getFullYear();
-    return new Date(year, Number(slash[1]) - 1, Number(slash[2]), 12, 0, 0, 0);
+    const date = createStrictLocalDate(year, Number(slash[1]) - 1, Number(slash[2]));
+    if (!date) return { ...emptyDateParse(), wasExplicit: true, validationError: 'That calendar date is not valid.' };
+    return { date, wasExplicit: true, explicitToday: toDateInputValue(date) === toDateInputValue(now), validationError: '' };
   }
   const monthName = q.match(new RegExp(`\\b(${Object.keys(MONTHS).join('|')})\\s+(\\d{1,2})(?:st|nd|rd|th)?\\b`));
   if (monthName) {
-    const d = new Date(now.getFullYear(), MONTHS[monthName[1]], Number(monthName[2]), 12, 0, 0, 0);
-    if (d.getTime() < now.getTime() - 86400000) d.setFullYear(d.getFullYear() + 1);
-    return d;
+    let d = createStrictLocalDate(now.getFullYear(), MONTHS[monthName[1]], Number(monthName[2]));
+    if (!d) return { ...emptyDateParse(), wasExplicit: true, validationError: 'That calendar date is not valid.' };
+    if (d.getTime() < now.getTime() - 86400000) {
+      const nextYear = createStrictLocalDate(now.getFullYear() + 1, MONTHS[monthName[1]], Number(monthName[2]));
+      if (!nextYear) return { ...emptyDateParse(), wasExplicit: true, validationError: 'That calendar date is not valid.' };
+      d = nextYear;
+    }
+    return { date: d, wasExplicit: true, explicitToday: toDateInputValue(d) === toDateInputValue(now), validationError: '' };
   }
   const weekday = WEEKDAYS.find(day => new RegExp(`\\b(next\\s+)?${day}\\b`).test(q));
-  if (weekday) return nextWeekdayDate(weekday, now);
-  return null;
+  if (weekday) return { date: nextWeekdayDate(weekday, now), wasExplicit: true, explicitToday: false, validationError: '' };
+  return emptyDateParse();
 };
 
 const parseRelativePart = (text = '', now = new Date()) => {
   const q = normalize(text);
+  const phraseMinutes = [
+    { re: /\b(?:in|after)\s+(?:a\s+)?half(?:\s+an?)?\s+hour\b/, minutes: 30 },
+    { re: /\b(?:in|after)\s+(?:a\s+)?quarter(?:\s+of)?(?:\s+an?)?\s+hour\b/, minutes: 15 }
+  ].find(item => item.re.test(q));
+  if (phraseMinutes) {
+    const d = new Date(now.getTime());
+    d.setMinutes(d.getMinutes() + phraseMinutes.minutes);
+    d.setSeconds(0, 0);
+    return d;
+  }
   const match = q.match(/\b(?:in|after)\s+(an?|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fourty|fifty|sixty|half|quarter|\d+(?:\.\d+)?)\s*(minutes?|mins?|min|hours?|hrs?|hr|days?|weeks?)\b/);
   if (!match) return null;
   let amount = /^an?$/.test(match[1]) ? 1 : parseAmount(match[1]);
@@ -103,6 +134,8 @@ const parseTimePart = (text = '') => {
 };
 
 const removeKnownDateTimePhrases = (text = '') => String(text || '')
+  .replace(/\b(?:in|after)\s+(?:a\s+)?half(?:\s+an?)?\s+hour\b/ig, ' ')
+  .replace(/\b(?:in|after)\s+(?:a\s+)?quarter(?:\s+of)?(?:\s+an?)?\s+hour\b/ig, ' ')
   .replace(/\b(?:in|after)\s+(?:an?|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fourty|fifty|sixty|half|quarter|\d+(?:\.\d+)?)\s*(?:minutes?|mins?|min|hours?|hrs?|hr|days?|weeks?)\b/ig, ' ')
   .replace(/\b(today|tomorrow|tonight|next\s+sunday|next\s+monday|next\s+tuesday|next\s+wednesday|next\s+thursday|next\s+friday|next\s+saturday|sunday|monday|tuesday|wednesday|thursday|friday|saturday)\b/ig, ' ')
   .replace(/\b(?:at|by|around|about)\s+\d{1,2}(?::\d{2})?\s*(?:am|pm|a m|p m)?\b/ig, ' ')
@@ -138,13 +171,37 @@ export const parseReminderCommand = (input = '', now = new Date()) => {
   const isReminder = /\b(remind me|personal reminder|my reminder|reminder)\b/.test(q);
   if (!isReminder) return null;
 
-  const relative = parseRelativePart(raw, now);
-  const date = parseDatePart(q, now);
-  const time = parseTimePart(q);
-  const dateWasExplicit = Boolean(date);
-  const scheduled = relative || buildScheduledFromDateAndTime(date, time, now, dateWasExplicit);
-  const dateOnly = !scheduled && date ? date : null;
   const title = cleanReminderTitle(raw) || 'Reminder';
+  const relative = parseRelativePart(raw, now);
+  const dateInfo = parseDatePart(q, now);
+  if (dateInfo.validationError) {
+    return {
+      title,
+      dateInput: '',
+      timeInput: '',
+      scheduledAt: '',
+      needsManualTime: true,
+      sourceText: raw,
+      relativeReminder: false,
+      validationError: dateInfo.validationError
+    };
+  }
+  const time = parseTimePart(q);
+  const scheduledFromTime = buildScheduledFromDateAndTime(dateInfo.date, time, now, dateInfo.wasExplicit);
+  if (!relative && time && dateInfo.explicitToday && scheduledFromTime?.getTime() <= now.getTime() + 30 * 1000) {
+    return {
+      title,
+      dateInput: toDateInputValue(dateInfo.date),
+      timeInput: '',
+      scheduledAt: '',
+      needsManualTime: true,
+      sourceText: raw,
+      relativeReminder: false,
+      validationError: 'That time has already passed today.'
+    };
+  }
+  const scheduled = relative || scheduledFromTime;
+  const dateOnly = !scheduled && dateInfo.date ? dateInfo.date : null;
 
   return {
     title,
@@ -153,7 +210,8 @@ export const parseReminderCommand = (input = '', now = new Date()) => {
     scheduledAt: scheduled ? scheduled.toISOString() : '',
     needsManualTime: !scheduled,
     sourceText: raw,
-    relativeReminder: Boolean(relative)
+    relativeReminder: Boolean(relative),
+    validationError: ''
   };
 };
 

@@ -927,6 +927,7 @@ const parseVoiceRecurringReminderPayload = (text = '') => {
   if (!/\b(reminder|remind me)\b/.test(q) || !/\b(daily|weekly|monthly|every day|every week|every month)\b/.test(q)) return null;
   const frequency = /\b(monthly|every month)\b/.test(q) ? 'monthly' : /\b(weekly|every week)\b/.test(q) ? 'weekly' : 'daily';
   const parsed = parseReminderCommand(raw);
+  if (parsed?.validationError) return { validationError: parsed.validationError, title: parsed.title || 'Recurring reminder', scheduledAt: '', recurrence: frequency, recurrenceLabel: frequency, needsManualTime: true };
   const dateInfo = parsePrepTargetDate(raw);
   let title = String(parsed?.title || raw)
     .replace(/\b(create|add|set|make|a|an|the|reminder|remind me|to|daily|weekly|monthly|every day|every week|every month|recurring|repeat|repeating)\b/ig, ' ')
@@ -959,6 +960,16 @@ const parseVoiceSharedReminderPayload = (text = '') => {
   if (!assigneePhrase || !reminderText) return null;
 
   const parsed = parseReminderCommand(`remind me to ${reminderText}`);
+  if (parsed?.validationError) {
+    return {
+      assigneePhrase,
+      title: cleanVoiceItemName(parsed?.title || reminderText) || reminderText,
+      scheduledAt: '',
+      needsManualTime: true,
+      validationError: parsed.validationError,
+      rawReminderText: reminderText
+    };
+  }
   let scheduledAt = parsed?.scheduledAt || '';
   if (!scheduledAt) {
     const dateOnly = parsePrepTargetDate(reminderText).date;
@@ -1570,6 +1581,9 @@ const VoiceCommandDock = ({ appUser, inventoryItems = [], recipes = [], users = 
 
     const parsedRecurringReminder = parseVoiceRecurringReminderPayload(raw);
     if (parsedRecurringReminder) {
+      if (parsedRecurringReminder.validationError) {
+        return { intent:'blocked', label:'Reminder date blocked', summary:parsedRecurringReminder.validationError, blocked:true, needsConfirmation:false, safe:true };
+      }
       return {
         intent:'create_personal_reminder',
         label:`Create ${parsedRecurringReminder.recurrenceLabel} reminder`,
@@ -1584,6 +1598,9 @@ const VoiceCommandDock = ({ appUser, inventoryItems = [], recipes = [], users = 
 
     const parsedSharedReminder = parseVoiceSharedReminderPayload(raw);
     if (parsedSharedReminder) {
+      if (parsedSharedReminder.validationError) {
+        return { intent:'blocked', label:'Reminder date blocked', summary:parsedSharedReminder.validationError, blocked:true, needsConfirmation:false, safe:true };
+      }
       const resolvedUser = resolveVoiceUserMatch(users, parsedSharedReminder.assigneePhrase);
       if (!canVoiceShareReminder(appUser, clientData)) {
         return { intent:'blocked', label:'Shared reminder blocked', summary:'You do not have permission to assign shared reminders by voice.', blocked:true, needsConfirmation:false, safe:true };
@@ -1619,6 +1636,9 @@ const VoiceCommandDock = ({ appUser, inventoryItems = [], recipes = [], users = 
 
     const parsedReminder = parseReminderCommand(raw);
     if (parsedReminder) {
+      if (parsedReminder.validationError) {
+        return { intent:'blocked', label:'Reminder date blocked', summary:parsedReminder.validationError, blocked:true, needsConfirmation:false, safe:true };
+      }
       if (parsedReminder.needsManualTime) {
         return { intent:'navigate', label:'Open My Reminders', tab:'reminders', summary:'Open My Reminders so you can choose the exact date and time.', safe:true };
       }
@@ -2441,6 +2461,7 @@ const VoiceCommandDock = ({ appUser, inventoryItems = [], recipes = [], users = 
         return;
       }
       if (actionToRun.intent === 'create_shared_reminder') {
+        if (actionToRun.validationError) { addToast('Reminder Date Blocked', actionToRun.validationError); return; }
         if (!confirmedByUser) {
           addToast('Shared Reminder Needs Confirmation', 'Confirm before sending a shared reminder to a teammate.');
           return;
@@ -2521,6 +2542,7 @@ const VoiceCommandDock = ({ appUser, inventoryItems = [], recipes = [], users = 
         setActiveTab('reminders'); setPending(null); setListening(false); if (isVoiceReminder) voiceSessionRef.current = { id: '', startedAt: 0, commits: 0, finalFingerprint: '' }; if (closeWhenDone) setOpen(false); return;
       }
       if (actionToRun.intent === 'create_personal_reminder') {
+        if (actionToRun.validationError) { addToast('Reminder Date Blocked', actionToRun.validationError); return; }
         const title = String(actionToRun.title || 'Personal reminder').trim();
         if (!actionToRun.scheduledAt || !title || title.length < 3) {
           setPending({ ...actionToRun, needsConfirmation: true, summary: 'I need a clearer reminder title and time before saving this voice reminder.' });

@@ -1,9 +1,9 @@
 {
-  "version": "16.0.20",
-  "name": "86 Chaos 16.0.20 QA Cleanup and Desktop Density Fix",
+  "version": "16.0.21",
+  "name": "86 Chaos 16.0.21 Security, QA Cleanup, and Runtime Test Fix",
   "releasedAt": "2026-07-25T00:00:00.000Z",
-  "label": "16.0.20 QA Cleanup and Desktop Density Fix",
-  "build": "16.0.20",
+  "label": "16.0.21 Security, QA Cleanup, and Runtime Test Fix",
+  "build": "16.0.21",
   "notes": [
     "Adds a System Administrator Platform Operations cleanup button for leftover Full Audit QA Restaurants.",
     "Moves the Schedule Builder control deck directly above the calendar grid and tightens desktop controls.",

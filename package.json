@@ -1,6 +1,6 @@
 {
   "name": "86chaos",
-  "version": "16.0.20",
+  "version": "16.0.21",
   "private": true,
   "dependencies": {
     "firebase": "^10.8.1",
@@ -19,13 +19,19 @@
     "start": "react-scripts start",
     "build": "react-scripts build",
     "retention:setup": "node scripts/setup-production-retention.js",
-    "test": "node scripts/validate-16-0-20.js",
-    "test:ci": "node scripts/validate-16-0-20.js",
+    "test": "npm run test:source && npm run test:unit",
+    "test:ci": "npm run lint && npm run syntax:api && npm run test:source && npm run test:unit && npm run test:rules && npm run build",
     "validate:auth-hotfix": "node scripts/validate-auth-hotfix.js",
     "vercel:install": "npm ci --omit=optional --no-audit --no-fund --progress=false",
-    "deploy:check": "npm ci --omit=optional --no-audit --no-fund --progress=false && npm test && NODE_OPTIONS=--max-old-space-size=4096 GENERATE_SOURCEMAP=false DISABLE_ESLINT_PLUGIN=true npm run build",
+    "deploy:check": "npm run test:ci && NODE_OPTIONS=--max-old-space-size=4096 GENERATE_SOURCEMAP=false npm run build",
     "validate:audit-repair": "node scripts/validate-repair.js",
-    "rules:check": "node scripts/validate-rules.js"
+    "rules:check": "node scripts/validate-rules.js",
+    "test:source": "node scripts/validate-16-0-21.js",
+    "syntax:api": "node scripts/check-api-syntax.js",
+    "test:unit": "react-scripts test --watchAll=false",
+    "test:rules": "firebase emulators:exec --only firestore,storage \"node scripts/run-rules-tests.js\"",
+    "test:e2e": "playwright test",
+    "lint": "eslint \"src/**/*.{js,jsx}\" \"api/**/*.js\""
   },
   "browserslist": {
     "production": [

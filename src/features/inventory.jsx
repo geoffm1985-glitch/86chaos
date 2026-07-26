@@ -1984,7 +1984,7 @@ const groupedItems = orderableInventoryItems
               {invoices.length === 0 ? (
                 <div className="p-8 text-center text-slate-500 font-bold">No invoices logged yet.</div>
               ) : (
-                invoices.sort((a,b) => new Date(b.processedAt || 0) - new Date(a.processedAt || 0)).map(inv => (
+                [...(Array.isArray(invoices) ? invoices : [])].sort((a,b) => new Date(b?.processedAt || 0) - new Date(a?.processedAt || 0)).map(inv => (
                   <div key={inv.id} className={`${T.row} flex justify-between items-center p-4`}>
                     <div>
                       <div className="font-black text-white text-base">{inv.vendorName}</div>

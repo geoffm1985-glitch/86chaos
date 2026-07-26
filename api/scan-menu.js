@@ -1,4 +1,5 @@
 const { readBody, writeAudit, norm, masterEmails, readWorkspaceMember, userHasWorkspace, profileForWorkspace, requireAppCheckIfEnforced } = require('./_chaos-admin');
+const { APP_VERSION } = require('./_version');
 const { verifyRequestToken, downloadFirebaseStorageUrl } = require('./_firebase-project-admin');
 const { enforceRateLimit, sendRateLimited } = require('./_rate-limit');
 const {
@@ -13,7 +14,7 @@ const {
 } = require('./_ai-usage');
 
 
-const MENU_SCANNER_VERSION = '15.0.55';
+const MENU_SCANNER_ENGINE_VERSION = 'menu-scanner-1.0.0';
 const {
   getAllowedGeminiModels,
   getHardOutputTokenLimit,
@@ -395,7 +396,8 @@ module.exports = async function handler(req, res) {
         bypassReason: usageReservation.bypassReason,
         wouldHaveExceededLimit: usageReservation.wouldHaveExceededLimit
       },
-      scannerVersion: MENU_SCANNER_VERSION,
+      scannerVersion: MENU_SCANNER_ENGINE_VERSION,
+      appVersion: APP_VERSION,
       compression: body.compression || null,
       uploadedFileName: body.uploadedFileName || '',
       firebaseProject: projectId,
@@ -425,6 +427,6 @@ module.exports = async function handler(req, res) {
       }
     }
     const status = err?.statusCode || (err?.code === 'AI_PDF_PAGE_COUNT_REQUIRED' ? 400 : (/authorization|token|permission|login/i.test(err.message || '') ? 401 : 500));
-    return res.status(status).json({ ok: false, code: err?.code || undefined, error: err.message || 'Menu scan failed.', scannerVersion: MENU_SCANNER_VERSION });
+    return res.status(status).json({ ok: false, code: err?.code || undefined, error: err.message || 'Menu scan failed.', scannerVersion: MENU_SCANNER_ENGINE_VERSION, appVersion: APP_VERSION });
   }
 };
