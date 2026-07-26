@@ -63,9 +63,16 @@ const parseDatePart = (text = '', now = new Date()) => {
   }
   const slash = q.match(/\b(\d{1,2})\/(\d{1,2})(?:\/(\d{2,4}))?\b/);
   if (slash) {
-    const year = slash[3] ? Number(slash[3].length === 2 ? `20${slash[3]}` : slash[3]) : now.getFullYear();
-    const date = createStrictLocalDate(year, Number(slash[1]) - 1, Number(slash[2]));
+    const hasYear = Boolean(slash[3]);
+    const year = hasYear ? Number(slash[3].length === 2 ? `20${slash[3]}` : slash[3]) : now.getFullYear();
+    let date = createStrictLocalDate(year, Number(slash[1]) - 1, Number(slash[2]));
     if (!date) return { ...emptyDateParse(), wasExplicit: true, validationError: 'That calendar date is not valid.' };
+    const todayNoon = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 12, 0, 0, 0);
+    if (hasYear && date.getTime() < todayNoon.getTime()) return { ...emptyDateParse(), wasExplicit: true, validationError: 'That date has already passed.' };
+    if (!hasYear && date.getTime() < todayNoon.getTime()) {
+      date = createStrictLocalDate(now.getFullYear() + 1, Number(slash[1]) - 1, Number(slash[2]));
+      if (!date) return { ...emptyDateParse(), wasExplicit: true, validationError: 'That calendar date is not valid.' };
+    }
     return { date, wasExplicit: true, explicitToday: toDateInputValue(date) === toDateInputValue(now), validationError: '' };
   }
   const monthName = q.match(new RegExp(`\\b(${Object.keys(MONTHS).join('|')})\\s+(\\d{1,2})(?:st|nd|rd|th)?\\b`));
@@ -217,6 +224,18 @@ export const parseReminderCommand = (input = '', now = new Date()) => {
 
 export const makeReminderDate = (dateInput = '', timeInput = '') => {
   if (!dateInput || !timeInput) return null;
-  const d = new Date(`${dateInput}T${timeInput}:00`);
-  return Number.isFinite(d.getTime()) ? d : null;
+  const dateMatch = String(dateInput).match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  const timeMatch = String(timeInput).match(/^(\d{2}):(\d{2})$/);
+  if (!dateMatch || !timeMatch) return null;
+  const year = Number(dateMatch[1]);
+  const monthIndex = Number(dateMatch[2]) - 1;
+  const day = Number(dateMatch[3]);
+  const hour = Number(timeMatch[1]);
+  const minute = Number(timeMatch[2]);
+  if (hour < 0 || hour > 23 || minute < 0 || minute > 59) return null;
+  const base = createStrictLocalDate(year, monthIndex, day);
+  if (!base) return null;
+  const d = new Date(year, monthIndex, day, hour, minute, 0, 0);
+  if (d.getFullYear() !== year || d.getMonth() !== monthIndex || d.getDate() !== day || d.getHours() !== hour || d.getMinutes() !== minute) return null;
+  return d;
 };

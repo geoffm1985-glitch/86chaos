@@ -12,7 +12,67 @@ import { resolveFeatureAccess } from './lib/featureAccess';
 import { FEATURE_KEYS } from './config/plans';
 import { LoginScreen } from './features/auth';
 
-const lazyFeature = (loader, exportName) => React.lazy(() => loader().then(module => ({ default: module[exportName] })));
+const CHUNK_LOAD_ERROR_RE = /(ChunkLoadError|Loading chunk|failed to fetch dynamically imported module|import\(\)|Failed to load module script|\.chunk\.(js|css)|\/static\/(js|css)\/[^\s'"]+)/i;
+const isChunkLoadFailure = (error) => CHUNK_LOAD_ERROR_RE.test(String(error?.name || '') + ' ' + String(error?.message || '') + ' ' + String(error?.stack || ''));
+const extractChunkUrl = (error) => {
+  const text = String(error?.message || '') + ' ' + String(error?.stack || '');
+  const match = text.match(/https?:\/\/[^\s)'"]+\.(?:js|css)|\/static\/(?:js|css)\/[^\s)'"]+\.(?:js|css)/i);
+  return match ? match[0] : '';
+};
+const reportRuntimeChunkFailure = async (error, extra = {}) => {
+  try {
+    const fingerprint = ['chunk-failure', extractChunkUrl(error), CURRENT_VERSION, window.location.pathname, window.location.search].join('|');
+    const last = sessionStorage.getItem('86chaos:lastChunkReport');
+    if (last === fingerprint) return '';
+    sessionStorage.setItem('86chaos:lastChunkReport', fingerprint);
+    if (!auth.currentUser) return '';
+    const response = await secureFetch('/api/report-bug', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        category: 'Crash / Error',
+        source: extra.source || 'lazy_chunk_failure',
+        message: String(error?.message || error || 'Chunk load failed').slice(0, 2000),
+        errorName: String(error?.name || 'ChunkLoadError'),
+        rawStack: String(error?.stack || '').slice(0, 5000),
+        chunkUrl: extractChunkUrl(error),
+        appVersion: CURRENT_VERSION,
+        route: window.location.pathname + window.location.search,
+        activeTab: new URLSearchParams(window.location.search).get('tab') || '',
+        userAgent: navigator.userAgent,
+        screenSize: `${window.innerWidth}x${window.innerHeight}`,
+        url: window.location.href,
+        online: navigator.onLine,
+        serviceWorkerState: navigator.serviceWorker?.controller?.state || '',
+        diagnostics: extra
+      })
+    });
+    const data = await response.json().catch(() => null);
+    return data?.reportId || '';
+  } catch (_) { return ''; }
+};
+const recoverFromChunkFailureOnce = async (error, exportName = 'section') => {
+  if (!isChunkLoadFailure(error) || typeof window === 'undefined') throw error;
+  const chunkUrl = extractChunkUrl(error) || exportName;
+  const recoveryKey = `86chaos:chunkRecovery:${CURRENT_VERSION}:${chunkUrl}`;
+  await reportRuntimeChunkFailure(error, { source: 'lazy_feature_import', exportName });
+  if (!sessionStorage.getItem(recoveryKey)) {
+    sessionStorage.setItem(recoveryKey, new Date().toISOString());
+    try {
+      const registration = await navigator.serviceWorker?.getRegistration?.();
+      await registration?.update?.();
+    } catch (_) {}
+    try { await fetch(`/version.json?ts=${Date.now()}`, { cache: 'no-store' }); } catch (_) {}
+    const url = new URL(window.location.href);
+    url.searchParams.set('chaosReloadVersion', CURRENT_VERSION);
+    url.searchParams.set('chaosReloadAt', String(Date.now()));
+    window.location.replace(url.toString());
+  }
+  throw error;
+};
+const lazyFeature = (loader, exportName) => React.lazy(() => loader()
+  .then(module => ({ default: module[exportName] }))
+  .catch(error => recoverFromChunkFailureOnce(error, exportName)));
 const TabMasterSchedule = lazyFeature(() => import('./features/schedule'), 'TabMasterSchedule');
 const TabSchedule = lazyFeature(() => import('./features/schedule'), 'TabSchedule');
 const TabOpsCenter = lazyFeature(() => import('./features/operations'), 'TabOpsCenter');
@@ -33,6 +93,35 @@ const TabPersonalReminders = lazyFeature(() => import('./features/intelligence')
 const TabMenuIntelligence = lazyFeature(() => import('./features/intelligence'), 'TabMenuIntelligence');
 const TabAITools = lazyFeature(() => import('./features/intelligence'), 'TabAITools');
 const TabHrTraining = lazyFeature(() => import('./features/hr'), 'TabHrTraining');
+
+class AppSurfaceErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { error: null, reportId: '' };
+  }
+  static getDerivedStateFromError(error) { return { error }; }
+  componentDidCatch(error, info) {
+    reportRuntimeChunkFailure(error, { source: 'react_error_boundary', componentStack: info?.componentStack || '' }).then(reportId => {
+      if (reportId) this.setState({ reportId });
+    });
+  }
+  render() {
+    const error = this.state.error;
+    if (!error) return this.props.children;
+    const chunkProblem = isChunkLoadFailure(error);
+    return (
+      <div className={`${T.card} max-w-2xl mx-auto p-6 sm:p-8 text-center space-y-4`} role="alert">
+        <div className="text-[10px] font-black uppercase tracking-[0.25em] text-[#D4A381]">86 Chaos Runtime Recovery</div>
+        <h2 className="text-2xl font-black text-white">{chunkProblem ? 'App update required' : 'This section hit a snag'}</h2>
+        <p className="text-sm font-bold text-slate-300 leading-relaxed">
+          {chunkProblem ? 'A stale app file failed to load. Refreshing pulls the newest 86 Chaos files without clearing your login or restaurant data.' : 'The app caught the error instead of going blank. Refresh this section and check the Bug Ledger if it repeats.'}
+        </p>
+        {this.state.reportId && <p className="text-xs font-mono text-slate-400">Report ID: {this.state.reportId}</p>}
+        <button type="button" onClick={() => window.location.assign(`${window.location.pathname}${window.location.search}${window.location.search ? '&' : '?'}manualRefresh=${Date.now()}`)} className={T.btn}>Refresh App</button>
+      </div>
+    );
+  }
+}
 
 const RouteLoading = ({ label = 'Loading section...' }) => (
   <div className={`${T.card} p-6 sm:p-8 max-w-xl mx-auto text-center space-y-3`}>
@@ -1249,11 +1338,23 @@ What I clicked / expected:
       });
     } catch (_) {}
     if (nextUser.id && nextUser.id !== 'dev-backdoor') {
-      updateDoc(doc(db, 'users', nextUser.id), {
-        activeRestaurantId: workspace.restaurantId,
-        lastWorkspaceId: workspace.restaurantId,
-        lastWorkspaceSwitchedAt: new Date().toISOString()
-      }).catch(() => {});
+      const alreadyActiveWorkspace = appUser?.activeRestaurantId === workspace.restaurantId && appUser?.lastWorkspaceId === workspace.restaurantId;
+      if (alreadyActiveWorkspace) {
+        try {
+          window.__chaosFirestoreDiagnostics = window.__chaosFirestoreDiagnostics || {};
+          window.__chaosFirestoreDiagnostics.skippedNoOpWrites = (window.__chaosFirestoreDiagnostics.skippedNoOpWrites || 0) + 1;
+        } catch (_) {}
+      } else {
+        try {
+          window.__chaosFirestoreDiagnostics = window.__chaosFirestoreDiagnostics || {};
+          window.__chaosFirestoreDiagnostics.writesInitiated = (window.__chaosFirestoreDiagnostics.writesInitiated || 0) + 1;
+        } catch (_) {}
+        updateDoc(doc(db, 'users', nextUser.id), {
+          activeRestaurantId: workspace.restaurantId,
+          lastWorkspaceId: workspace.restaurantId,
+          lastWorkspaceSwitchedAt: new Date().toISOString()
+        }).catch(() => {});
+      }
     }
     setGhostTenant(null);
     setClientData(null);
@@ -1269,6 +1370,56 @@ What I clicked / expected:
   const getActiveVapidKey = () => firebaseConfig?.projectId === 'cheers-34b8d'
     ? 'BJzM9xVnkPwLB6aq588ZHhekjqI_Z-xpInDquX_nknrDhew8ytFZbCA22uFN4iSKP_YvGV0sPH9M6aBzGCA9AcU'
     : 'BO6mdu87G4ICBRZjY5e6mpsvCXdpV32TEyyJzJeQHZ4QXolGNsa6ncvgVAzRxIKihx83AxHS36aCtr--XzE45bc';
+
+
+  const getPushDeviceId = () => {
+    try {
+      const key = '86chaosPushDeviceId';
+      let id = localStorage.getItem(key);
+      if (!id) {
+        id = `web_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
+        localStorage.setItem(key, id);
+      }
+      return String(id).replace(/[^A-Za-z0-9_-]/g, '_').slice(0, 80);
+    } catch (_) {
+      return 'web_ephemeral_device';
+    }
+  };
+
+  const getBrowserSummary = () => {
+    const ua = typeof navigator !== 'undefined' ? navigator.userAgent || '' : '';
+    if (/Edg\//.test(ua)) return 'Edge';
+    if (/Chrome\//.test(ua)) return 'Chrome';
+    if (/Firefox\//.test(ua)) return 'Firefox';
+    if (/Safari\//.test(ua)) return 'Safari';
+    return 'Browser';
+  };
+
+  const buildPushDevicePatch = (currentToken, permission, stamp) => {
+    const deviceId = getPushDeviceId();
+    return {
+      deviceId,
+      field: `pushDevices.${deviceId}`,
+      data: {
+        token: currentToken,
+        platform: navigator.platform || 'web',
+        browser: getBrowserSummary(),
+        host: window.location.hostname,
+        permission,
+        active: true,
+        createdAt: liveAppUser?.pushDevices?.[deviceId]?.createdAt || stamp,
+        lastVerifiedAt: stamp,
+        updatedAt: stamp
+      }
+    };
+  };
+
+  const shouldWritePushDevice = (deviceId, currentToken, permission) => {
+    const existing = liveAppUser?.pushDevices?.[deviceId] || {};
+    const lastVerified = existing.lastVerifiedAt ? new Date(existing.lastVerifiedAt).getTime() : 0;
+    const refreshMs = 3 * 24 * 60 * 60 * 1000;
+    return existing.token !== currentToken || existing.permission !== permission || existing.host !== window.location.hostname || !lastVerified || Date.now() - lastVerified > refreshMs || liveAppUser?.pushNeedsRepair === true || liveAppUser?.pushForceServiceWorkerRefresh === true;
+  };
 
   const repairPushOnThisDevice = async (source = 'manual') => {
     if (!liveAppUser?.id || ghostTenant || isDemoMode || typeof window === 'undefined' || !('Notification' in window) || !messaging) {
@@ -1307,7 +1458,9 @@ What I clicked / expected:
       if (!currentToken) throw new Error('Firebase returned no push token for this browser.');
 
       const stamp = new Date().toISOString();
+      const device = buildPushDevicePatch(currentToken, permission, stamp);
       await updateDoc(doc(db, 'users', liveAppUser.id), {
+        [device.field]: device.data,
         fcmToken: currentToken,
         fcmTokenUpdatedAt: stamp,
         lastPushTokenSyncAt: stamp,
@@ -1315,7 +1468,7 @@ What I clicked / expected:
         pushTokenPermission: permission,
         pushTokenHost: window.location.hostname,
         pushTokenCanonical: true,
-        pushTokenDedupeVersion: '15.0.98',
+        pushTokenDedupeVersion: '16.0.22',
         pushNeedsRepair: false,
         pushForceServiceWorkerRefresh: false,
         pushRepairStatus: 'connected',
@@ -1380,7 +1533,10 @@ What I clicked / expected:
         const currentToken = await getToken(messaging, tokenOptions);
         if (!currentToken || canceled) return;
         const stamp = new Date().toISOString();
+        const device = buildPushDevicePatch(currentToken, permission, stamp);
+        if (!shouldWritePushDevice(device.deviceId, currentToken, permission)) return;
         await updateDoc(doc(db, 'users', liveAppUser.id), {
+          [device.field]: device.data,
           fcmToken: currentToken,
           fcmTokenUpdatedAt: stamp,
           lastPushTokenSyncAt: stamp,
@@ -1388,7 +1544,7 @@ What I clicked / expected:
           pushTokenPermission: permission,
           pushTokenHost: window.location.hostname,
           pushTokenCanonical: true,
-          pushTokenDedupeVersion: '15.0.98',
+          pushTokenDedupeVersion: '16.0.22',
           pushNeedsRepair: false,
           pushForceServiceWorkerRefresh: false,
           pushRepairStatus: 'connected',
@@ -1889,9 +2045,11 @@ return (
         >
           {globalManagerBriefMathText}
         </span>
-        <React.Suspense fallback={<RouteLoading />} >
-          {renderMainContent()}
-        </React.Suspense>
+        <AppSurfaceErrorBoundary key={`${activeTabState}-${liveAppUser?.restaurantId || 'no-restaurant'}`}>
+          <React.Suspense fallback={<RouteLoading />} >
+            {renderMainContent()}
+          </React.Suspense>
+        </AppSurfaceErrorBoundary>
       </main>
       
       <div className="fixed top-20 inset-x-0 mx-auto w-full max-w-md z-50 flex flex-col gap-2 px-4 pointer-events-none">

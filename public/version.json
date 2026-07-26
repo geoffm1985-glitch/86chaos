@@ -1,12 +1,24 @@
 {
-  "version": "16.0.21",
-  "name": "86 Chaos 16.0.21 Security, QA Cleanup, and Runtime Test Fix",
+  "version": "16.0.22",
+  "name": "86 Chaos 16.0.22 Active Recipes, Crash Alerts, and Runtime Safety Fix",
   "releasedAt": "2026-07-25T00:00:00.000Z",
-  "label": "16.0.21 Security, QA Cleanup, and Runtime Test Fix",
-  "build": "16.0.21",
+  "label": "86 Chaos 16.0.22 Active Recipes, Crash Alerts, and Runtime Safety Fix",
+  "build": "16.0.22",
   "notes": [
-    "Adds a System Administrator Platform Operations cleanup button for leftover Full Audit QA Restaurants.",
-    "Moves the Schedule Builder control deck directly above the calendar grid and tightens desktop controls.",
-    "Adds a stronger desktop density pass across existing real tabs without replacing screens or adding fake modules."
+    "Fixes the active mounted Recipes screen rather than the old compatibility component.",
+    "Adds ChunkLoadError reporting and one-shot recovery for stale hashed chunks.",
+    "Adds server-only crash email notification support and clearer push notification status.",
+    "Tightens QA cleanup safety and Schedule Auto-Fill identity/partial-batch handling.",
+    "Adds shared live-query subscription reuse and no-op write counters for Firebase cost reduction work."
+  ],
+  "releaseNotes": [
+    "Active Recipes scanner, modal, edit, filter, and parse helpers are null-safe in the mounted operations screen.",
+    "Runtime crash reporting now preserves sanitized ChunkLoadError diagnostics and uses a non-blank recovery boundary.",
+    "Crash reports can email configured support recipients through server-only BUG_REPORT_EMAIL_* variables.",
+    "Push notification status distinguishes FCM acceptance from confirmed device delivery/open events.",
+    "Full Audit QA cleanup fails closed on query/user safety errors and protects custom-claim administrators.",
+    "Schedule Auto-Fill rejects ambiguous name-only identities and reports partial batch commits honestly.",
+    "Shared useLiveCollection listeners reuse identical Firestore queries and avoid quick visibility churn; no-op push/workspace writes are counted/skipped where implemented.",
+    "Version diagnostics centralized at 16.0.22."
   ]
 }

@@ -650,6 +650,19 @@ service cloud.firestore {
       );
     }
 
+    function messageCreateIdentityIsSafe(data) {
+      return signedIn() &&
+        (data.keys().hasAny(['authorId']) ? data.authorId == request.auth.uid : true) &&
+        (data.keys().hasAny(['userId']) ? data.userId == request.auth.uid : true) &&
+        (data.keys().hasAny(['createdBy']) ? data.createdBy == request.auth.uid : true) &&
+        (data.keys().hasAny(['senderId']) ? data.senderId == request.auth.uid : true) &&
+        messageAuthorMatches(data) &&
+        data.get('isSystemAlert', false) == false &&
+        data.get('systemAlert', false) == false &&
+        data.get('systemGenerated', false) == false &&
+        !data.keys().hasAny(['moderatedBy', 'moderatedAt', 'roleOverride', 'adminOnly', 'ownerOnly']);
+    }
+
     function messageAuthorFieldsStable() {
       return request.resource.data.get('authorId', '') == resource.data.get('authorId', '') &&
         request.resource.data.get('userId', '') == resource.data.get('userId', '') &&
@@ -675,6 +688,23 @@ service cloud.firestore {
       );
     }
 
+    function shiftSwapRequesterMatches(data) {
+      return signedIn() && (
+        data.get('requesterId', '') == request.auth.uid ||
+        data.get('createdBy', '') == request.auth.uid ||
+        data.get('userId', '') == request.auth.uid ||
+        data.get('employeeId', '') == request.auth.uid
+      );
+    }
+
+    function shiftSwapCreateIsSafe(data) {
+      return shiftSwapRequesterMatches(data) &&
+        data.get('acceptedBy', '') == '' &&
+        data.get('approvedBy', '') == '' &&
+        data.get('managerApprovedBy', '') == '' &&
+        (data.get('status', 'requested') == 'requested' || data.get('status', 'requested') == 'pending' || data.get('status', 'requested') == 'open');
+    }
+
     function shiftSwapParticipantUpdateIsSafe() {
       return request.resource.data.restaurantId == resource.data.restaurantId &&
         request.resource.data.get('requesterId', '') == resource.data.get('requesterId', '') &&
@@ -693,6 +723,17 @@ service cloud.firestore {
         data.get('createdBy', '') == request.auth.uid ||
         data.get('userId', '') == request.auth.uid
       );
+    }
+
+    function maintenanceCreateIdentityIsSafe(data) {
+      return maintenanceReporterMatches(data) &&
+        (data.keys().hasAny(['reportedById']) ? data.reportedById == request.auth.uid : true) &&
+        (data.keys().hasAny(['reportedByUid']) ? data.reportedByUid == request.auth.uid : true) &&
+        (data.keys().hasAny(['createdBy']) ? data.createdBy == request.auth.uid : true) &&
+        (data.keys().hasAny(['userId']) ? data.userId == request.auth.uid : true) &&
+        data.get('assignedTo', '') == '' &&
+        data.get('resolvedBy', '') == '' &&
+        data.get('systemCreated', false) == false;
     }
 
     function canManageMaintenanceData(restId) {
@@ -888,7 +929,7 @@ service cloud.firestore {
     match /tasks/{docId} {
       allow read: if signedIn() && (isSuperAdmin() || (resource.data.restaurantId is string && isTenantMatch(resource.data.restaurantId)));
       allow create: if signedIn() && (isSuperAdmin() || (request.resource.data.restaurantId is string && isTenantMatch(request.resource.data.restaurantId) && canManageTasks(request.resource.data.restaurantId)));
-      allow update: if signedIn() && (isSuperAdmin() || (resource.data.restaurantId is string && isTenantMatch(resource.data.restaurantId) && (canManageTasks(resource.data.restaurantId) || taskCompletionUpdateIsSafe())));
+      allow update: if signedIn() && (isSuperAdmin() || (resource.data.restaurantId is string && request.resource.data.restaurantId == resource.data.restaurantId && isTenantMatch(resource.data.restaurantId) && (canManageTasks(resource.data.restaurantId) || taskCompletionUpdateIsSafe())));
       allow delete: if signedIn() && (isSuperAdmin() || (resource.data.restaurantId is string && isTenantMatch(resource.data.restaurantId) && canManageTasks(resource.data.restaurantId)));
     }
 
@@ -948,43 +989,50 @@ service cloud.firestore {
     match /inventoryItems/{docId} {
       allow read: if signedIn() && resource.data.restaurantId is string && canReadBasicInventory(resource.data.restaurantId);
       allow create: if signedIn() && request.resource.data.restaurantId is string && canWriteBasicInventory(request.resource.data.restaurantId);
-      allow update, delete: if signedIn() && resource.data.restaurantId is string && request.resource.data.restaurantId == resource.data.restaurantId && canWriteBasicInventory(resource.data.restaurantId);
+      allow update: if signedIn() && resource.data.restaurantId is string && request.resource.data.restaurantId == resource.data.restaurantId && canWriteBasicInventory(resource.data.restaurantId);
+      allow delete: if signedIn() && resource.data.restaurantId is string && canWriteBasicInventory(resource.data.restaurantId);
     }
 
     match /vendors/{docId} {
       allow read: if signedIn() && resource.data.restaurantId is string && canReadBasicInventory(resource.data.restaurantId);
       allow create: if signedIn() && request.resource.data.restaurantId is string && canWriteBasicInventory(request.resource.data.restaurantId);
-      allow update, delete: if signedIn() && resource.data.restaurantId is string && request.resource.data.restaurantId == resource.data.restaurantId && canWriteBasicInventory(resource.data.restaurantId);
+      allow update: if signedIn() && resource.data.restaurantId is string && request.resource.data.restaurantId == resource.data.restaurantId && canWriteBasicInventory(resource.data.restaurantId);
+      allow delete: if signedIn() && resource.data.restaurantId is string && canWriteBasicInventory(resource.data.restaurantId);
     }
 
     match /orders/{docId} {
       allow read: if signedIn() && resource.data.restaurantId is string && canReadBasicInventory(resource.data.restaurantId);
       allow create: if signedIn() && request.resource.data.restaurantId is string && canWriteBasicInventory(request.resource.data.restaurantId);
-      allow update, delete: if signedIn() && resource.data.restaurantId is string && request.resource.data.restaurantId == resource.data.restaurantId && canWriteBasicInventory(resource.data.restaurantId);
+      allow update: if signedIn() && resource.data.restaurantId is string && request.resource.data.restaurantId == resource.data.restaurantId && canWriteBasicInventory(resource.data.restaurantId);
+      allow delete: if signedIn() && resource.data.restaurantId is string && canWriteBasicInventory(resource.data.restaurantId);
     }
 
     match /wasteLogs/{docId} {
       allow read: if signedIn() && resource.data.restaurantId is string && canReadBasicInventory(resource.data.restaurantId);
       allow create: if signedIn() && request.resource.data.restaurantId is string && canWriteBasicInventory(request.resource.data.restaurantId);
-      allow update, delete: if signedIn() && resource.data.restaurantId is string && request.resource.data.restaurantId == resource.data.restaurantId && canWriteBasicInventory(resource.data.restaurantId);
+      allow update: if signedIn() && resource.data.restaurantId is string && request.resource.data.restaurantId == resource.data.restaurantId && canWriteBasicInventory(resource.data.restaurantId);
+      allow delete: if signedIn() && resource.data.restaurantId is string && canWriteBasicInventory(resource.data.restaurantId);
     }
 
     match /invoices/{docId} {
       allow read: if signedIn() && resource.data.restaurantId is string && canReadSmartInventory(resource.data.restaurantId);
       allow create: if signedIn() && request.resource.data.restaurantId is string && canWriteSmartInventory(request.resource.data.restaurantId);
-      allow update, delete: if signedIn() && resource.data.restaurantId is string && request.resource.data.restaurantId == resource.data.restaurantId && canWriteSmartInventory(resource.data.restaurantId);
+      allow update: if signedIn() && resource.data.restaurantId is string && request.resource.data.restaurantId == resource.data.restaurantId && canWriteSmartInventory(resource.data.restaurantId);
+      allow delete: if signedIn() && resource.data.restaurantId is string && canWriteSmartInventory(resource.data.restaurantId);
     }
 
     match /reports/{docId} {
       allow read: if signedIn() && resource.data.restaurantId is string && canReadSmartFinancials(resource.data.restaurantId);
       allow create: if signedIn() && request.resource.data.restaurantId is string && canWriteSmartFinancials(request.resource.data.restaurantId);
-      allow update, delete: if signedIn() && resource.data.restaurantId is string && request.resource.data.restaurantId == resource.data.restaurantId && canWriteSmartFinancials(resource.data.restaurantId);
+      allow update: if signedIn() && resource.data.restaurantId is string && request.resource.data.restaurantId == resource.data.restaurantId && canWriteSmartFinancials(resource.data.restaurantId);
+      allow delete: if signedIn() && resource.data.restaurantId is string && canWriteSmartFinancials(resource.data.restaurantId);
     }
 
     match /exports/{docId} {
       allow read: if signedIn() && resource.data.restaurantId is string && canReadSmartFinancials(resource.data.restaurantId);
       allow create: if signedIn() && request.resource.data.restaurantId is string && canWriteSmartFinancials(request.resource.data.restaurantId);
-      allow update, delete: if signedIn() && resource.data.restaurantId is string && request.resource.data.restaurantId == resource.data.restaurantId && canWriteSmartFinancials(resource.data.restaurantId);
+      allow update: if signedIn() && resource.data.restaurantId is string && request.resource.data.restaurantId == resource.data.restaurantId && canWriteSmartFinancials(resource.data.restaurantId);
+      allow delete: if signedIn() && resource.data.restaurantId is string && canWriteSmartFinancials(resource.data.restaurantId);
     }
 
     // ============================================================
@@ -993,13 +1041,15 @@ service cloud.firestore {
     match /menuIntelligenceScans/{docId} {
       allow read: if signedIn() && resource.data.restaurantId is string && canUseMenuIntelligence(resource.data.restaurantId);
       allow create: if signedIn() && request.resource.data.restaurantId is string && canUseMenuIntelligence(request.resource.data.restaurantId);
-      allow update, delete: if signedIn() && resource.data.restaurantId is string && canUseMenuIntelligence(resource.data.restaurantId);
+      allow update: if signedIn() && resource.data.restaurantId is string && request.resource.data.restaurantId == resource.data.restaurantId && canUseMenuIntelligence(resource.data.restaurantId);
+      allow delete: if signedIn() && resource.data.restaurantId is string && canUseMenuIntelligence(resource.data.restaurantId);
     }
 
     match /menuDependencies/{docId} {
       allow read: if signedIn() && resource.data.restaurantId is string && canUseMenuIntelligence(resource.data.restaurantId);
       allow create: if signedIn() && request.resource.data.restaurantId is string && canUseMenuIntelligence(request.resource.data.restaurantId);
-      allow update, delete: if signedIn() && resource.data.restaurantId is string && canUseMenuIntelligence(resource.data.restaurantId);
+      allow update: if signedIn() && resource.data.restaurantId is string && request.resource.data.restaurantId == resource.data.restaurantId && canUseMenuIntelligence(resource.data.restaurantId);
+      allow delete: if signedIn() && resource.data.restaurantId is string && canUseMenuIntelligence(resource.data.restaurantId);
     }
 
     // ============================================================
@@ -1312,21 +1362,21 @@ service cloud.firestore {
 
     match /messages/{messageId} {
       allow read: if signedIn() && (isSuperAdmin() || (resource.data.restaurantId is string && isTenantMatch(resource.data.restaurantId)));
-      allow create: if signedIn() && request.resource.data.restaurantId is string && isTenantMatch(request.resource.data.restaurantId) && (canModerateMessages(request.resource.data.restaurantId) || messageAuthorMatches(request.resource.data));
+      allow create: if signedIn() && request.resource.data.restaurantId is string && isTenantMatch(request.resource.data.restaurantId) && (canModerateMessages(request.resource.data.restaurantId) || messageCreateIdentityIsSafe(request.resource.data));
       allow update: if signedIn() && resource.data.restaurantId is string && request.resource.data.restaurantId == resource.data.restaurantId && (canModerateMessages(resource.data.restaurantId) || (messageAuthorMatches(resource.data) && messageSafeAuthorUpdate()));
       allow delete: if signedIn() && resource.data.restaurantId is string && (canModerateMessages(resource.data.restaurantId) || messageAuthorMatches(resource.data));
     }
 
     match /shiftSwaps/{swapId} {
       allow read: if signedIn() && (isSuperAdmin() || (resource.data.restaurantId is string && isTenantMatch(resource.data.restaurantId)));
-      allow create: if signedIn() && request.resource.data.restaurantId is string && isTenantMatch(request.resource.data.restaurantId) && (canManageScheduleData(request.resource.data.restaurantId) || shiftSwapParticipant(request.resource.data));
+      allow create: if signedIn() && request.resource.data.restaurantId is string && isTenantMatch(request.resource.data.restaurantId) && (canManageScheduleData(request.resource.data.restaurantId) || shiftSwapCreateIsSafe(request.resource.data));
       allow update: if signedIn() && resource.data.restaurantId is string && request.resource.data.restaurantId == resource.data.restaurantId && (canManageScheduleData(resource.data.restaurantId) || (shiftSwapParticipant(resource.data) && shiftSwapParticipantUpdateIsSafe()));
       allow delete: if signedIn() && resource.data.restaurantId is string && canManageScheduleData(resource.data.restaurantId);
     }
 
     match /maintenanceLogs/{logId} {
       allow read: if signedIn() && (isSuperAdmin() || (resource.data.restaurantId is string && isTenantMatch(resource.data.restaurantId)));
-      allow create: if signedIn() && request.resource.data.restaurantId is string && isTenantMatch(request.resource.data.restaurantId) && (canManageMaintenanceData(request.resource.data.restaurantId) || maintenanceReporterMatches(request.resource.data));
+      allow create: if signedIn() && request.resource.data.restaurantId is string && isTenantMatch(request.resource.data.restaurantId) && (canManageMaintenanceData(request.resource.data.restaurantId) || maintenanceCreateIdentityIsSafe(request.resource.data));
       allow update: if signedIn() && resource.data.restaurantId is string && request.resource.data.restaurantId == resource.data.restaurantId && (canManageMaintenanceData(resource.data.restaurantId) || (maintenanceReporterMatches(resource.data) && maintenanceReporterUpdateIsSafe()));
       allow delete: if signedIn() && resource.data.restaurantId is string && canManageMaintenanceData(resource.data.restaurantId);
     }
@@ -1334,7 +1384,6 @@ service cloud.firestore {
 
     function isStandardTenantCollection(collectionName) {
       return collectionName in [
-        'tasks',
         'prepItems', 'prepCategories', 'lineCheckItems', 'recipes', 'roles',
         'pmSchedules', 'shifts', 'scheduleTemplates', 'scheduleCoverageTargets',
         'kitchenSpecials', 'tempLogs'

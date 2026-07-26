@@ -1,6 +1,7 @@
 const { initAdmin, requireAppCheckIfEnforced, readBody, norm, masterEmails } = require('./_chaos-admin');
 const { getBearerToken } = require('./_firebase-project-admin');
 const { enforceRateLimit, sendRateLimited } = require('./_rate-limit');
+const { sendBugReportEmail } = require('./_support-email');
 
 function cleanText(value = '', max = 2000) {
   return String(value || '').replace(/\s+/g, ' ').trim().slice(0, max);
@@ -9,6 +10,7 @@ function cleanText(value = '', max = 2000) {
 function cleanCategory(value = '') {
   const allowed = new Set([
     'Bug / Error',
+    'Crash / Error',
     'Feature Request',
     'Login Problem',
     'Permission Problem',
@@ -17,6 +19,48 @@ function cleanCategory(value = '') {
   ]);
   const raw = String(value || '').trim();
   return allowed.has(raw) ? raw : 'Bug / Error';
+}
+
+
+function cleanList(value = [], maxItems = 25, maxText = 500) {
+  if (!Array.isArray(value)) return [];
+  return value.slice(0, maxItems).map(item => {
+    if (typeof item === 'string') return cleanText(item, maxText);
+    try { return JSON.parse(JSON.stringify(item)); } catch (_) { return cleanText(item, maxText); }
+  });
+}
+
+function sanitizedCrashDiagnostics(body = {}, req = {}) {
+  const diagnostics = body.diagnostics && typeof body.diagnostics === 'object' ? body.diagnostics : {};
+  return {
+    reportSource: cleanText(body.source || body.reportSource || '', 80),
+    rawStack: cleanText(body.rawStack || body.stack || '', 5000),
+    componentStack: cleanText(body.componentStack || '', 5000),
+    breadcrumbs: cleanList(body.breadcrumbs, 25, 500),
+    diagnostics: JSON.parse(JSON.stringify({
+      route: body.route || body.activeTab || diagnostics.route || '',
+      tab: body.tab || body.activeTab || diagnostics.tab || '',
+      chunkUrl: body.chunkUrl || body.failedChunkUrl || diagnostics.chunkUrl || '',
+      appVersion: body.appVersion || body.clientVersion || diagnostics.appVersion || '',
+      deploymentId: body.deploymentId || body.vercelDeploymentId || diagnostics.deploymentId || '',
+      online: typeof body.online === 'boolean' ? body.online : diagnostics.online,
+      serviceWorkerState: body.serviceWorkerState || diagnostics.serviceWorkerState || '',
+      errorName: body.errorName || diagnostics.errorName || '',
+      errorMessage: body.errorMessage || body.message || diagnostics.errorMessage || '',
+      url: body.url || diagnostics.url || '',
+      userAgent: body.userAgent || req.headers?.['user-agent'] || '',
+      viewport: body.viewport || body.screenSize || diagnostics.viewport || ''
+    })),
+    route: cleanText(body.route || body.activeTab || diagnostics.route || '', 120),
+    tab: cleanText(body.tab || body.activeTab || diagnostics.tab || '', 120),
+    chunkUrl: cleanText(body.chunkUrl || body.failedChunkUrl || diagnostics.chunkUrl || '', 1000),
+    appVersion: cleanText(body.appVersion || body.clientVersion || diagnostics.appVersion || '', 80),
+    deploymentId: cleanText(body.deploymentId || body.vercelDeploymentId || diagnostics.deploymentId || '', 180),
+    online: typeof body.online === 'boolean' ? body.online : null,
+    serviceWorkerState: cleanText(body.serviceWorkerState || diagnostics.serviceWorkerState || '', 120),
+    errorName: cleanText(body.errorName || diagnostics.errorName || '', 120),
+    errorMessage: cleanText(body.errorMessage || diagnostics.errorMessage || body.message || '', 2000)
+  };
 }
 
 function collectTokens(user = {}) {
@@ -85,7 +129,7 @@ async function sendSuperAdminPush(app, db, report, reporter) {
   });
 
   if (!tokenRecords.length) {
-    return { attempted: true, sentCount: 0, failedCount: 0, eligibleAdminCount: admins.length, missingTokens: true, staleTokensCleaned: 0, failures: [] };
+    return { attempted: true, fcmAcceptedCount: 0, fcmRejectedCount: 0, eligibleAdminCount: admins.length, missingTokens: true, staleTokensCleaned: 0, failures: [], tokenCount: 0, deliveryConfirmedCount: 0, openedCount: 0 };
   }
 
   const category = cleanCategory(report.category);
@@ -125,23 +169,39 @@ async function sendSuperAdminPush(app, db, report, reporter) {
     const code = result.error?.code || 'unknown';
     failures.push({ userId: record?.userId || '', email: record?.email || '', code, message: result.error?.message || '' });
     if (record?.userId && staleCodes.has(code)) {
-      cleanup.push(db.collection('users').doc(record.userId).set({
-        fcmToken: null,
-        pushNeedsRepair: true,
-        pushRepairFlaggedAt: new Date().toISOString(),
-        lastPushFailureCode: code
-      }, { merge: true }));
+      cleanup.push((async () => {
+        const userRef = db.collection('users').doc(record.userId);
+        const snap = await userRef.get();
+        const data = snap.exists ? (snap.data() || {}) : {};
+        const pushDevices = data.pushDevices && typeof data.pushDevices === 'object' ? { ...data.pushDevices } : {};
+        Object.keys(pushDevices).forEach(deviceId => {
+          const deviceToken = typeof pushDevices[deviceId] === 'string' ? pushDevices[deviceId] : (pushDevices[deviceId]?.token || pushDevices[deviceId]?.fcmToken || '');
+          if (deviceToken === record.token) delete pushDevices[deviceId];
+        });
+        const patch = {
+          pushDevices,
+          pushNeedsRepair: true,
+          pushRepairFlaggedAt: new Date().toISOString(),
+          lastPushFailureCode: code
+        };
+        if (data.fcmToken === record.token) patch.fcmToken = null;
+        await userRef.set(patch, { merge: true });
+      })());
     }
   });
   await Promise.allSettled(cleanup);
   return {
     attempted: true,
+    fcmAcceptedCount: response.successCount,
+    fcmRejectedCount: response.failureCount,
     sentCount: response.successCount,
     failedCount: response.failureCount,
     eligibleAdminCount: admins.length,
     tokenCount: tokenRecords.length,
     missingTokens: false,
     staleTokensCleaned: cleanup.length,
+    deliveryConfirmedCount: 0,
+    openedCount: 0,
     failures: failures.slice(0, 25)
   };
 }
@@ -174,55 +234,94 @@ module.exports = async function handler(req, res) {
     const caller = await getCaller(db, decoded);
     const nowIso = new Date().toISOString();
     const restaurantId = cleanText(body.restaurantId || caller.restaurantId || caller.activeRestaurantId || 'Unknown', 120);
+    const crashFields = sanitizedCrashDiagnostics(body, req);
+    const isAutomaticCrash = cleanCategory(body.category) === 'Crash / Error' || /crash|window_onerror|unhandledrejection|chunk/i.test(String(body.source || body.reportSource || ''));
     const report = {
-      type: 'user_reported_bug',
+      type: isAutomaticCrash ? 'automatic_crash_report' : 'user_reported_bug',
       category: cleanCategory(body.category),
-      message: `USER REPORT: ${rawMessage}`,
+      message: `${isAutomaticCrash ? 'AUTO CRASH REPORT' : 'USER REPORT'}: ${rawMessage}`,
       rawMessage,
       user: cleanText(caller.name || body.user || decoded.name || decoded.email || 'Unknown', 120),
       userId: caller.id || decoded.uid || '',
       userEmail: cleanText(caller.email || decoded.email || body.userEmail || '', 160),
       restaurantId,
       restaurantName: cleanText(body.restaurantName || caller.restaurantName || caller.restaurant || '', 160),
-      activeTab: cleanText(body.activeTab || 'help', 80),
+      activeTab: cleanText(body.activeTab || crashFields.tab || crashFields.route || 'help', 80),
+      route: crashFields.route,
       userAgent: cleanText(body.userAgent || req.headers['user-agent'] || '', 500),
-      screenSize: cleanText(body.screenSize || '', 80),
-      url: cleanText(body.url || '', 600),
+      screenSize: cleanText(body.screenSize || crashFields.viewport || '', 80),
+      url: cleanText(body.url || crashFields.diagnostics?.url || '', 600),
       time: nowIso,
       createdAt: nowIso,
       status: 'new',
-      source: 'help_center_report_problem',
+      source: isAutomaticCrash ? (crashFields.reportSource || 'automatic_crash_report') : 'help_center_report_problem',
+      severity: isAutomaticCrash ? 'high' : 'standard',
+      rawStack: crashFields.rawStack,
+      componentStack: crashFields.componentStack,
+      breadcrumbs: crashFields.breadcrumbs,
+      diagnostics: crashFields.diagnostics,
+      chunkUrl: crashFields.chunkUrl,
+      appVersion: crashFields.appVersion,
+      deploymentId: crashFields.deploymentId,
+      online: crashFields.online,
+      serviceWorkerState: crashFields.serviceWorkerState,
+      errorName: crashFields.errorName,
+      errorMessage: crashFields.errorMessage,
       supportPushRequested: true,
-      supportPushAttemptedAt: nowIso
+      supportPushAttemptedAt: nowIso,
+      supportEmailRequested: isAutomaticCrash,
+      supportEmailAttemptedAt: isAutomaticCrash ? nowIso : ''
     };
 
     const reportRef = await db.collection('crashReports').add(report);
     const pushResult = await sendSuperAdminPush(app, db, { ...report, reportId: reportRef.id }, caller).catch(error => ({
       attempted: true,
+      fcmAcceptedCount: 0,
+      fcmRejectedCount: 1,
       sentCount: 0,
       failedCount: 1,
       error: error.message || String(error),
       failures: [{ code: 'send_failed', message: error.message || String(error) }]
     }));
 
+    const emailResult = report.supportEmailRequested ? await sendBugReportEmail({ report: { ...report, reportId: reportRef.id }, reporter: caller, reportId: reportRef.id }).catch(error => ({
+      attempted: true,
+      providerAccepted: false,
+      provider: 'resend',
+      failureCategory: 'send_failed',
+      failureMessage: error?.message || String(error),
+      attemptedAt: new Date().toISOString()
+    })) : { attempted: false, providerAccepted: false };
+
     await reportRef.set({
       supportPushReportId: reportRef.id,
-      supportPushSentCount: Number(pushResult.sentCount || 0),
-      supportPushFailedCount: Number(pushResult.failedCount || 0),
+      supportPushFcmAcceptedCount: Number(pushResult.fcmAcceptedCount ?? pushResult.sentCount ?? 0),
+      supportPushFcmRejectedCount: Number(pushResult.fcmRejectedCount ?? pushResult.failedCount ?? 0),
+      supportPushSentCount: Number(pushResult.fcmAcceptedCount ?? pushResult.sentCount ?? 0),
+      supportPushFailedCount: Number(pushResult.fcmRejectedCount ?? pushResult.failedCount ?? 0),
+      supportPushDeliveryConfirmedCount: Number(pushResult.deliveryConfirmedCount || 0),
+      supportPushOpenedCount: Number(pushResult.openedCount || 0),
       supportPushEligibleAdminCount: Number(pushResult.eligibleAdminCount || 0),
       supportPushTokenCount: Number(pushResult.tokenCount || 0),
       supportPushMissingTokens: pushResult.missingTokens === true,
       supportPushStaleTokensCleaned: Number(pushResult.staleTokensCleaned || 0),
       supportPushFailures: Array.isArray(pushResult.failures) ? pushResult.failures.slice(0, 10) : [],
       supportPushError: pushResult.error || '',
-      supportPushCompletedAt: new Date().toISOString()
+      supportPushCompletedAt: new Date().toISOString(),
+      supportEmailAttempted: emailResult.attempted === true,
+      supportEmailProviderAccepted: emailResult.providerAccepted === true,
+      supportEmailProvider: emailResult.provider || '',
+      supportEmailProviderMessageId: emailResult.providerMessageId || '',
+      supportEmailFailureCategory: emailResult.failureCategory || '',
+      supportEmailFailureMessage: cleanText(emailResult.failureMessage || '', 500),
+      supportEmailAttemptedAt: emailResult.attemptedAt || new Date().toISOString()
     }, { merge: true });
 
     await db.collection('auditLogs').add({
       restaurantId: restaurantId || 'Unknown',
       action: 'BUG_REPORT_SUBMITTED',
       target: `crashReports/${reportRef.id}`,
-      details: `${report.category} submitted from ${report.activeTab}. Super admin push sent: ${pushResult.sentCount || 0}.`,
+      details: `${report.category} submitted from ${report.activeTab}. Super admin push accepted by FCM: ${pushResult.fcmAcceptedCount ?? pushResult.sentCount ?? 0}. Email accepted: ${emailResult.providerAccepted === true}.`,
       userId: caller.id || decoded.uid || '',
       userName: caller.name || decoded.email || 'Unknown user',
       userEmail: caller.email || decoded.email || '',
@@ -230,8 +329,8 @@ module.exports = async function handler(req, res) {
       metadata: {
         category: report.category,
         activeTab: report.activeTab,
-        supportPushSentCount: pushResult.sentCount || 0,
-        supportPushFailedCount: pushResult.failedCount || 0,
+        supportPushFcmAcceptedCount: pushResult.fcmAcceptedCount ?? pushResult.sentCount ?? 0,
+        supportPushFcmRejectedCount: pushResult.fcmRejectedCount ?? pushResult.failedCount ?? 0,
         supportPushEligibleAdminCount: pushResult.eligibleAdminCount || 0,
         supportPushMissingTokens: pushResult.missingTokens === true
       }
@@ -240,10 +339,12 @@ module.exports = async function handler(req, res) {
     return res.status(200).json({
       ok: true,
       reportId: reportRef.id,
-      supportPushSentCount: pushResult.sentCount || 0,
-      supportPushFailedCount: pushResult.failedCount || 0,
+      supportPushFcmAcceptedCount: pushResult.fcmAcceptedCount ?? pushResult.sentCount ?? 0,
+      supportPushFcmRejectedCount: pushResult.fcmRejectedCount ?? pushResult.failedCount ?? 0,
       supportPushEligibleAdminCount: pushResult.eligibleAdminCount || 0,
-      supportPushMissingTokens: pushResult.missingTokens === true
+      supportPushMissingTokens: pushResult.missingTokens === true,
+      supportEmailProviderAccepted: emailResult.providerAccepted === true,
+      supportEmailAttempted: emailResult.attempted === true
     });
   } catch (error) {
     console.error('[report-bug] failed:', error);

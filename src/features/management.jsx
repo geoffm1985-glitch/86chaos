@@ -9647,7 +9647,7 @@ another@email.com"></textarea>
                     <div className="text-[9px] mt-1 flex flex-wrap gap-1.5">
                       {log.restaurantId && <span className="bg-[#0B0E11] border border-[#2A353D] px-2 py-0.5 rounded text-slate-400 font-bold">restaurantId: {log.restaurantId}</span>}
                       {log.user && <span className="bg-[#0B0E11] border border-[#2A353D] px-2 py-0.5 rounded text-slate-400 font-bold">user: {log.user}</span>}
-                      {log.supportPushRequested && <span className={`bg-[#0B0E11] border px-2 py-0.5 rounded font-bold ${Number(log.supportPushSentCount || 0) > 0 ? 'border-emerald-900/60 text-emerald-300' : 'border-orange-900/60 text-orange-300'}`}>super admin push: {Number(log.supportPushSentCount || 0)} sent{log.supportPushMissingTokens ? ' • no eligible tokens' : ''}</span>}
+                      {log.supportPushRequested && <span className={`bg-[#0B0E11] border px-2 py-0.5 rounded font-bold ${Number(log.supportPushFcmAcceptedCount ?? log.supportPushSentCount ?? 0) > 0 ? 'border-emerald-900/60 text-emerald-300' : 'border-orange-900/60 text-orange-300'}`}>super admin push: {Number(log.supportPushFcmAcceptedCount ?? log.supportPushSentCount ?? 0)} accepted by FCM, delivery unconfirmed{log.supportPushDeliveryConfirmedCount ? ` • ${Number(log.supportPushDeliveryConfirmedCount)} received` : ''}{log.supportPushMissingTokens ? ' • no eligible tokens' : ''}</span>}
                     </div>
                   )}
                   {(log.screenSize || log.userAgent) && (
@@ -10923,8 +10923,8 @@ const TabHelpCenter = ({ appUser, activeTab, voiceHelpSearchTarget = null, addTo
       if (response?.ok) {
         const result = await response.json().catch(() => ({}));
         setBugText('');
-        const sentCount = Number(result.supportPushSentCount || 0);
-        addToast?.('Report Sent', sentCount > 0 ? `Support report sent. ${sentCount} super admin device${sentCount === 1 ? '' : 's'} notified.` : 'Support report saved. No super admin push devices were eligible.');
+        const acceptedCount = Number(result.supportPushFcmAcceptedCount ?? result.supportPushSentCount ?? 0);
+        addToast?.('Report Saved', acceptedCount > 0 ? `Support report saved. ${acceptedCount} super admin device${acceptedCount === 1 ? '' : 's'} accepted by FCM, delivery unconfirmed.` : 'Support report saved. No super admin push devices were eligible.');
       } else {
         const details = response ? await response.json().catch(() => ({})) : {};
         throw new Error(details.error || 'Server report route unavailable. The browser is no longer allowed to write crash reports directly.');

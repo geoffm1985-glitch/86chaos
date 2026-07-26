@@ -205,6 +205,49 @@ export const getStableShiftEmployeeKey = (shift = {}) => {
   return name ? `name:${name}` : '';
 };
 
+export const resolveAmbiguousNameOnlyShiftIdentity = (shift = {}, roster = []) => {
+  const durable = [shift.employeeId, shift.userId, shift.rosterUserId, shift.accountUserId, shift.assignedUserId, shift.uid, shift.authUid]
+    .map(normalizeScheduleIdentity)
+    .find(Boolean);
+  const email = [shift.employeeEmail, shift.userEmail, shift.email, shift.assignedEmail]
+    .map(normalizeScheduleIdentity)
+    .find(Boolean);
+  if (durable || email) return { ok: true, shift, reason: '' };
+
+  const nameKey = [shift.employeeName, shift.userName, shift.name, shift.displayName, shift.assignedName]
+    .map(normalizeScheduleName)
+    .find(Boolean);
+  if (!nameKey) return { ok: false, shift, reason: 'missing-employee-identity' };
+
+  const matches = (Array.isArray(roster) ? roster : []).filter(person => {
+    if (!person || person.isActive === false) return false;
+    const candidateNames = [person.name, person.displayName, person.fullName, person.employeeName]
+      .map(normalizeScheduleName)
+      .filter(Boolean);
+    return candidateNames.includes(nameKey);
+  });
+
+  if (matches.length !== 1) {
+    return { ok: false, shift, reason: matches.length > 1 ? 'ambiguous-name-only-identity' : 'unmatched-name-only-identity' };
+  }
+
+  const match = matches[0];
+  const resolvedId = match.id || match.uid || match.authUid || match.accountUserId || '';
+  return {
+    ok: Boolean(resolvedId || match.email),
+    reason: '',
+    shift: {
+      ...shift,
+      employeeId: shift.employeeId || resolvedId || '',
+      userId: shift.userId || match.userId || resolvedId || '',
+      rosterUserId: shift.rosterUserId || resolvedId || '',
+      employeeName: shift.employeeName || match.name || match.displayName || match.fullName || shift.name || '',
+      employeeEmail: shift.employeeEmail || match.email || shift.email || shift.assignedEmail || '',
+      assignedEmail: shift.assignedEmail || match.email || shift.employeeEmail || ''
+    }
+  };
+};
+
 export const buildShiftFingerprint = (shift = {}) => {
   const date = String(shift.date || '').trim();
   const employeeKey = getStableShiftEmployeeKey(shift);
@@ -1976,19 +2019,27 @@ const handleAddEvent = async (e) => {
     let duplicateCount = 0;
     let invalidCount = 0;
     let outsideTargetMonthCount = 0;
+    let committedCount = 0;
+    let successfulBatchCount = 0;
 
     const queueShift = (payload) => {
       const ref = doc(collection(db, 'shifts'));
       batch.set(ref, payload);
       batchSize += 1;
       if (batchSize >= 450) {
-        batches.push(batch);
+        batches.push({ batch, count: batchSize });
         batch = writeBatch(db);
         batchSize = 0;
       }
     };
 
-    for (const sourceShift of sourceShifts) {
+    for (const rawSourceShift of sourceShifts) {
+      const identityResolution = resolveAmbiguousNameOnlyShiftIdentity(rawSourceShift, users);
+      if (!identityResolution.ok) {
+        invalidCount += 1;
+        continue;
+      }
+      const sourceShift = identityResolution.shift;
       const sourceFingerprint = buildShiftFingerprint(sourceShift);
       if (!sourceFingerprint || !/^\d{4}-\d{2}-\d{2}$/.test(String(sourceShift.date || '')) || !getStableShiftEmployeeKey(sourceShift) || !normalizeShiftTimeForFingerprint(sourceShift.startTime) || !normalizeShiftTimeForFingerprint(sourceShift.endTime) || !String(sourceShift.role || '').trim()) {
         invalidCount += 1;
@@ -2028,19 +2079,27 @@ const handleAddEvent = async (e) => {
       addedCount += 1;
     }
 
-    if (batchSize > 0) batches.push(batch);
+    if (batchSize > 0) batches.push({ batch, count: batchSize });
     try {
       for (const pendingBatch of batches) {
-        await pendingBatch.commit();
+        await pendingBatch.batch.commit();
+        successfulBatchCount += 1;
+        committedCount += pendingBatch.count;
       }
     } catch (err) {
-      addToast('Auto-Fill Failed', err?.message || 'Could not commit the copied schedule batch.');
+      const detail = err?.message || 'Could not commit the copied schedule batch.';
+      addToast(
+        committedCount > 0 ? 'Auto-Fill Partially Saved' : 'Auto-Fill Failed',
+        committedCount > 0
+          ? `${committedCount} shift(s) were saved before a later batch failed. Refresh the schedule before retrying so duplicate protection can include the committed batch. Error: ${detail}`
+          : detail
+      );
       return;
     }
 
     setIsAutoPopulateModalOpen(false);
     setAutoPopSourceMonth('');
-    addToast('Populated', `Drafted ${addedCount} shifts. ${duplicateCount} duplicate(s), ${invalidCount} invalid, ${outsideTargetMonthCount} outside target month skipped.`);
+    addToast('Populated', `Drafted ${committedCount} shifts across ${successfulBatchCount} batch(es). ${duplicateCount} duplicate(s), ${invalidCount} invalid, ${outsideTargetMonthCount} outside target month skipped.`);
   };
 
   // --- LABOR PROJECTION ENGINE ---

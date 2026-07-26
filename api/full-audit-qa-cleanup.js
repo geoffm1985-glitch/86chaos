@@ -111,7 +111,7 @@ function summarizeCandidate(id, data, matchedBy) {
 async function loadVerifiedCandidates(db) {
   const candidates = [];
   const restaurants = db.collection('restaurants');
-  let query = restaurants.orderBy(admin.firestore.FieldPath.documentId()).limit(PAGE_SIZE);
+  let query = restaurants.where('qaOwned', '==', true).orderBy(admin.firestore.FieldPath.documentId()).limit(PAGE_SIZE);
   let last = null;
   for (;;) {
     const snap = await query.get();
@@ -122,9 +122,23 @@ async function loadVerifiedCandidates(db) {
     }
     if (snap.size < PAGE_SIZE) break;
     last = snap.docs[snap.docs.length - 1];
-    query = restaurants.orderBy(admin.firestore.FieldPath.documentId()).startAfter(last).limit(PAGE_SIZE);
+    query = restaurants.where('qaOwned', '==', true).orderBy(admin.firestore.FieldPath.documentId()).startAfter(last).limit(PAGE_SIZE);
   }
   return candidates;
+}
+
+async function queryAllByField(db, collectionName, field, value, op = '==') {
+  const docs = [];
+  let last = null;
+  for (;;) {
+    let q = db.collection(collectionName).where(field, op, value).orderBy(admin.firestore.FieldPath.documentId()).limit(PAGE_SIZE);
+    if (last) q = q.startAfter(last);
+    const snap = await q.get();
+    docs.push(...snap.docs);
+    if (snap.size < PAGE_SIZE) break;
+    last = snap.docs[snap.docs.length - 1];
+  }
+  return docs;
 }
 
 async function deleteQueryResults(db, bulkWriter, collectionName, field, restaurantId, seen, row, totals) {
@@ -138,12 +152,14 @@ async function deleteQueryResults(db, bulkWriter, collectionName, field, restaur
       if (seen.has(key)) continue;
       seen.add(key);
       const ref = docSnap.ref;
-      bulkWriter.delete(ref).catch((err) => {
+      const writePromise = bulkWriter.delete(ref).then(() => {
+        row.collections[collectionName] = (row.collections[collectionName] || 0) + 1;
+        totals.documentsDeleted += 1;
+        totals.byCollection[collectionName] = (totals.byCollection[collectionName] || 0) + 1;
+      }).catch((err) => {
         row.errors.push(`${collectionName}/${docSnap.id}: ${err?.message || err}`);
       });
-      row.collections[collectionName] = (row.collections[collectionName] || 0) + 1;
-      totals.documentsDeleted += 1;
-      totals.byCollection[collectionName] = (totals.byCollection[collectionName] || 0) + 1;
+      row.writePromises.push(writePromise);
     }
     if (snap.size < PAGE_SIZE) break;
     last = snap.docs[snap.docs.length - 1];
@@ -153,7 +169,8 @@ async function deleteQueryResults(db, bulkWriter, collectionName, field, restaur
 function userQaOwned(data = {}) {
   const source = normalize(data.source || data.createdBy || data.createdByTool || data.qaSource || '');
   const email = normalize(data.email || data.userEmail || '');
-  return data.qaOwned === true || APPROVED_QA_SOURCES.has(source) || email.endsWith('@86chaos-full-audit.local') || email.includes('+86chaos-full-audit');
+  const controlledQaEmail = email.endsWith('@86chaos-full-audit.local') || email.includes('+86chaos-full-audit');
+  return data.qaOwned === true || APPROVED_QA_SOURCES.has(source) || (controlledQaEmail && (data.qaSeeded === true || APPROVED_QA_SOURCES.has(source)));
 }
 
 function hasNonQaWorkspace(data = {}, qaRestaurantId = '') {
@@ -165,67 +182,102 @@ function hasNonQaWorkspace(data = {}, qaRestaurantId = '') {
   return refs.some(id => id !== qaRestaurantId);
 }
 
-function protectedUser(data = {}, uid = '', ctx = {}, protectedEmails = new Set()) {
-  const email = normalize(data.email || data.userEmail || '');
+function hasProtectedClaims(claims = {}) {
+  return Boolean(
+    claims.superAdmin === true ||
+    claims.isSuperAdmin === true ||
+    claims.systemAdministrator === true ||
+    claims.systemAdmin === true ||
+    claims.masterAdmin === true ||
+    claims.protectedInternalAdmin === true ||
+    claims.role === 'super-admin' ||
+    claims.role === 'system-admin' ||
+    claims.role === 'master-admin'
+  );
+}
+
+function protectedUser(data = {}, uid = '', ctx = {}, protectedEmails = new Set(), authRecord = null) {
+  const email = normalize(data.email || data.userEmail || authRecord?.email || '');
   return Boolean(
     uid === ctx.uid ||
     data.isSuperAdmin === true ||
     data.systemAccess?.superAdmin === true ||
     data.superAdmin === true ||
-    protectedEmails.has(email)
+    protectedEmails.has(email) ||
+    hasProtectedClaims(authRecord?.customClaims || {})
   );
 }
 
-async function collectAffectedUsers(db, restaurantId) {
+async function collectWorkspaceMembers(db, restaurantId) {
   const refs = new Map();
-  const addSnap = (snap) => snap.docs.forEach(d => refs.set(d.id, d));
-  await Promise.all([
-    db.collection('users').where('restaurantId', '==', restaurantId).limit(1000).get().then(addSnap).catch(() => null),
-    db.collection('users').where('activeRestaurantId', '==', restaurantId).limit(1000).get().then(addSnap).catch(() => null),
-    db.collection('users').where('defaultRestaurantId', '==', restaurantId).limit(1000).get().then(addSnap).catch(() => null),
-    db.collection('users').where('workspaceIds', 'array-contains', restaurantId).limit(1000).get().then(addSnap).catch(() => null)
-  ]);
+  for (const field of ['restaurantId', 'workspaceId']) {
+    const docs = await queryAllByField(db, 'workspaceMembers', field, restaurantId);
+    docs.forEach(d => refs.set(d.ref.path, d));
+  }
   return [...refs.values()];
 }
 
-async function cleanupUsersForRestaurant(app, db, bulkWriter, restaurantId, ctx, row, totals) {
+async function collectAffectedUsers(db, restaurantId, workspaceMemberDocs = []) {
+  const refs = new Map();
+  const addDocs = (docs) => docs.forEach(d => refs.set(d.id, d));
+  addDocs(await queryAllByField(db, 'users', 'restaurantId', restaurantId));
+  addDocs(await queryAllByField(db, 'users', 'activeRestaurantId', restaurantId));
+  addDocs(await queryAllByField(db, 'users', 'defaultRestaurantId', restaurantId));
+  addDocs(await queryAllByField(db, 'users', 'workspaceIds', restaurantId, 'array-contains'));
+  for (const memberSnap of workspaceMemberDocs) {
+    const member = memberSnap.data() || {};
+    const uid = clean(member.userId || member.uid || member.memberId || member.userUid || '');
+    if (!uid || refs.has(uid)) continue;
+    const userSnap = await db.collection('users').doc(uid).get();
+    if (userSnap.exists) refs.set(userSnap.id, userSnap);
+  }
+  return [...refs.values()];
+}
+
+async function cleanupUsersForRestaurant(app, db, bulkWriter, restaurantId, ctx, row, totals, workspaceMemberDocs = []) {
   const protectedEmails = new Set(masterEmails().map(normalize));
-  const users = await collectAffectedUsers(db, restaurantId);
+  const users = await collectAffectedUsers(db, restaurantId, workspaceMemberDocs);
   for (const userSnap of users) {
     const data = userSnap.data() || {};
     const uid = userSnap.id;
+    let authRecord = null;
+    try { authRecord = await app.auth().getUser(uid); } catch (err) { if (err?.code !== 'auth/user-not-found') throw err; }
     const nonQaWorkspace = hasNonQaWorkspace(data, restaurantId);
-    const isProtected = protectedUser(data, uid, ctx, protectedEmails);
+    const isProtected = protectedUser(data, uid, ctx, protectedEmails, authRecord);
     if (nonQaWorkspace || isProtected || !userQaOwned(data)) {
       const remainingWorkspaceIds = Array.isArray(data.workspaceIds) ? data.workspaceIds.filter(id => id && id !== restaurantId) : [];
       const remainingMemberships = { ...(data.memberships || {}) };
       delete remainingMemberships[restaurantId];
       const replacement = remainingWorkspaceIds[0] || Object.keys(remainingMemberships)[0] || '';
-      const patch = {
-        workspaceIds: remainingWorkspaceIds,
-        memberships: remainingMemberships,
-        updatedAt: safeIso(),
-        qaCleanupLastUpdatedAt: safeIso()
-      };
+      const patch = { workspaceIds: remainingWorkspaceIds, memberships: remainingMemberships, updatedAt: safeIso(), qaCleanupLastUpdatedAt: safeIso() };
       if (data.restaurantId === restaurantId) patch.restaurantId = replacement || admin.firestore.FieldValue.delete();
       if (data.activeRestaurantId === restaurantId) patch.activeRestaurantId = replacement || admin.firestore.FieldValue.delete();
       if (data.defaultRestaurantId === restaurantId) patch.defaultRestaurantId = replacement || admin.firestore.FieldValue.delete();
-      bulkWriter.set(userSnap.ref, patch, { merge: true }).catch((err) => row.errors.push(`users/${uid}: ${err?.message || err}`));
-      row.usersUpdated += 1;
-      totals.usersUpdated += 1;
+      const promise = bulkWriter.set(userSnap.ref, patch, { merge: true }).then(() => {
+        row.usersUpdated += 1;
+        totals.usersUpdated += 1;
+      }).catch((err) => row.errors.push(`users/${uid}: ${err?.message || err}`));
+      row.writePromises.push(promise);
       continue;
     }
 
-    bulkWriter.delete(userSnap.ref).catch((err) => row.errors.push(`users/${uid}: ${err?.message || err}`));
-    row.usersUpdated += 1;
-    totals.usersUpdated += 1;
-    try {
-      await app.auth().deleteUser(uid);
-      row.authUsersDeleted += 1;
-      totals.authUsersDeleted += 1;
-    } catch (err) {
-      if (err?.code !== 'auth/user-not-found') row.errors.push(`auth/${uid}: ${err?.message || err}`);
-    }
+    const promise = bulkWriter.delete(userSnap.ref).then(() => {
+      row.usersUpdated += 1;
+      totals.usersUpdated += 1;
+      row.authDeleteQueue.push(uid);
+    }).catch((err) => row.errors.push(`users/${uid}: ${err?.message || err}`));
+    row.writePromises.push(promise);
+  }
+}
+
+async function deleteWorkspaceMembers(bulkWriter, workspaceMemberDocs = [], row, totals) {
+  for (const memberSnap of workspaceMemberDocs) {
+    const promise = bulkWriter.delete(memberSnap.ref).then(() => {
+      row.collections.workspaceMembers = (row.collections.workspaceMembers || 0) + 1;
+      totals.documentsDeleted += 1;
+      totals.byCollection.workspaceMembers = (totals.byCollection.workspaceMembers || 0) + 1;
+    }).catch((err) => row.errors.push(`${memberSnap.ref.path}: ${err?.message || err}`));
+    row.writePromises.push(promise);
   }
 }
 
@@ -272,7 +324,7 @@ async function executeCleanup(app, db, ctx, candidateIds = []) {
   const restaurants = [];
   for (const restaurantId of approvedIds) {
     const candidate = verifiedById.get(restaurantId);
-    const row = { id: restaurantId, name: candidate.name, matchedBy: candidate.matchedBy, collections: {}, storageObjectsDeleted: 0, usersUpdated: 0, authUsersDeleted: 0, deletedRestaurant: false, errors: [] };
+    const row = { id: restaurantId, name: candidate.name, matchedBy: candidate.matchedBy, collections: {}, storageObjectsDeleted: 0, usersUpdated: 0, authUsersDeleted: 0, deletedRestaurant: false, errors: [], writePromises: [], authDeleteQueue: [] };
     const seenDocs = new Set();
     const bulkWriter = db.bulkWriter();
     bulkWriter.onWriteError((error) => {
@@ -280,15 +332,29 @@ async function executeCleanup(app, db, ctx, candidateIds = []) {
       return false;
     });
     try {
+      const workspaceMemberDocs = await collectWorkspaceMembers(db, restaurantId);
+      await cleanupUsersForRestaurant(app, db, bulkWriter, restaurantId, ctx, row, totals, workspaceMemberDocs);
+      await deleteWorkspaceMembers(bulkWriter, workspaceMemberDocs, row, totals);
       for (const [collectionName, fields] of Object.entries(COLLECTION_CLEANUP_RULES)) {
-        if (collectionName === 'users') continue;
+        if (collectionName === 'users' || collectionName === 'workspaceMembers') continue;
         for (const field of fields) {
           await deleteQueryResults(db, bulkWriter, collectionName, field, restaurantId, seenDocs, row, totals);
         }
       }
-      await cleanupUsersForRestaurant(app, db, bulkWriter, restaurantId, ctx, row, totals);
       await bulkWriter.close();
-      await cleanupStorageForRestaurant(app, restaurantId, row, totals);
+      await Promise.allSettled(row.writePromises);
+      if (!row.errors.length) {
+        for (const uid of row.authDeleteQueue) {
+          try {
+            await app.auth().deleteUser(uid);
+            row.authUsersDeleted += 1;
+            totals.authUsersDeleted += 1;
+          } catch (err) {
+            if (err?.code !== 'auth/user-not-found') row.errors.push(`auth/${uid}: ${err?.message || err}`);
+          }
+        }
+      }
+      if (!row.errors.length) await cleanupStorageForRestaurant(app, restaurantId, row, totals);
       if (!row.errors.length) {
         await db.collection('restaurants').doc(restaurantId).delete();
         row.deletedRestaurant = true;
@@ -301,6 +367,8 @@ async function executeCleanup(app, db, ctx, candidateIds = []) {
       totals.incompleteRestaurants += 1;
       try { await bulkWriter.close(); } catch (_) {}
     }
+    delete row.writePromises;
+    delete row.authDeleteQueue;
     restaurants.push(row);
   }
   return { totals, restaurants, rejectedIds };
