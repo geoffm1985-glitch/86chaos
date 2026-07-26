@@ -1881,7 +1881,7 @@ return (
         </div>}
       </Modal>
 
-      <main className="app-content-shell flex-1 max-w-[1480px] mx-auto w-full p-3 sm:p-5 lg:p-4 xl:p-5 pb-24">
+      <main className="app-content-shell flex-1 max-w-[1560px] mx-auto w-full p-2 sm:p-3 lg:p-2 xl:p-3 pb-20">
         <span
           data-testid="manager-brief-math-summary-global"
           aria-label={globalManagerBriefMathText}
