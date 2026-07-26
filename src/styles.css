@@ -3898,3 +3898,314 @@ select {
     text-overflow: ellipsis !important;
   }
 }
+
+/* 16.0.19+: app-wide tightening pass. Keep the same 86 Chaos look, just waste less screen. */
+@media (min-width: 1024px) {
+  .ui-v12-compact .app-content-shell {
+    max-width: min(1560px, calc(100vw - 24px)) !important;
+    padding: 10px 12px 76px !important;
+  }
+
+  .ui-v12-compact .chaos-card,
+  .ui-v12-compact .cockpit-panel,
+  .ui-v12-compact .admin46-content,
+  .ui-v12-compact .admin46-topbar {
+    border-radius: 14px !important;
+  }
+
+  .ui-v12-compact .chaos-card[class*="p-6"] { padding: 1rem !important; }
+  .ui-v12-compact .chaos-card[class*="p-5"] { padding: .85rem !important; }
+  .ui-v12-compact .chaos-card[class*="p-4"] { padding: .72rem !important; }
+  .ui-v12-compact .chaos-card[class*="p-3"] { padding: .58rem !important; }
+
+  .ui-v12-compact .gap-6 { gap: 1rem !important; }
+  .ui-v12-compact .gap-5 { gap: .85rem !important; }
+  .ui-v12-compact .gap-4 { gap: .68rem !important; }
+  .ui-v12-compact .gap-3 { gap: .55rem !important; }
+  .ui-v12-compact .space-y-6 > :not([hidden]) ~ :not([hidden]) { margin-top: 1rem !important; }
+  .ui-v12-compact .space-y-5 > :not([hidden]) ~ :not([hidden]) { margin-top: .85rem !important; }
+  .ui-v12-compact .space-y-4 > :not([hidden]) ~ :not([hidden]) { margin-top: .68rem !important; }
+  .ui-v12-compact .space-y-3 > :not([hidden]) ~ :not([hidden]) { margin-top: .52rem !important; }
+
+  .ui-v12-compact .chaos-input,
+  .ui-v12-compact input:not([type="checkbox"]):not([type="radio"]):not([type="file"]),
+  .ui-v12-compact select {
+    min-height: 34px !important;
+    padding-top: .42rem !important;
+    padding-bottom: .42rem !important;
+    font-size: .8rem !important;
+    border-radius: 10px !important;
+  }
+
+  .ui-v12-compact textarea.chaos-input,
+  .ui-v12-compact textarea {
+    min-height: 54px !important;
+    padding-top: .48rem !important;
+    padding-bottom: .48rem !important;
+    font-size: .8rem !important;
+  }
+
+  .ui-v12-compact .chaos-label {
+    margin-bottom: .2rem !important;
+    font-size: .58rem !important;
+    letter-spacing: .09em !important;
+  }
+
+  .ui-v12-compact .chaos-button:not(.no-compact),
+  .ui-v12-compact button:not(.no-compact):not(.drawer-icon-button):not(.voice-fab):not(.voice-command-fab) {
+    min-height: 34px !important;
+    padding-top: .42rem !important;
+    padding-bottom: .42rem !important;
+    border-radius: 10px !important;
+    line-height: 1.05 !important;
+  }
+
+  .ui-v12-compact table th,
+  .ui-v12-compact table td {
+    padding-top: .42rem !important;
+    padding-bottom: .42rem !important;
+  }
+}
+
+/* 16.0.19+: Schedule Builder controls stay tight and close to the grid on desktop. */
+@media (min-width: 1024px) {
+  .schedule-builder-workbench {
+    gap: .45rem !important;
+  }
+
+  .schedule-builder-control-deck {
+    position: sticky !important;
+    top: 64px !important;
+    z-index: 36 !important;
+    margin-bottom: .3rem !important;
+    box-shadow: 0 10px 34px rgba(0,0,0,.24), inset 0 1px 0 rgba(255,255,255,.035) !important;
+  }
+
+  .schedule-builder-assignment-row,
+  .schedule-builder-action-row {
+    gap: .45rem !important;
+  }
+
+  .schedule-builder-compact-control,
+  .schedule-builder-icon-control,
+  .schedule-builder-assign-button,
+  .schedule-builder-action-button {
+    height: 36px !important;
+    min-height: 36px !important;
+    border-radius: 10px !important;
+  }
+
+  .schedule-builder-assignment-row > select:first-child {
+    width: 12rem !important;
+    flex: 0 0 12rem !important;
+  }
+
+  .schedule-builder-assignment-row > div:nth-of-type(1) {
+    flex: 0 1 17rem !important;
+    min-width: 13rem !important;
+  }
+
+  .schedule-builder-assignment-row > div:nth-of-type(2) {
+    flex: 0 0 14.5rem !important;
+  }
+
+  .schedule-builder-assignment-row > div:nth-of-type(2) > div {
+    width: 7rem !important;
+  }
+
+  .schedule-builder-labor-pill {
+    min-width: 7rem !important;
+    padding: .28rem .65rem !important;
+  }
+
+  .schedule-builder-labor-pill span:last-child {
+    font-size: .88rem !important;
+    line-height: 1rem !important;
+  }
+
+  .schedule-builder-publish-strip {
+    padding: .5rem .65rem !important;
+    border-radius: 12px !important;
+    margin-bottom: .1rem !important;
+  }
+
+  .schedule-builder-publish-strip > div:first-child {
+    display: flex !important;
+    flex-wrap: wrap !important;
+    align-items: baseline !important;
+    gap: .25rem .65rem !important;
+  }
+
+  .schedule-builder-publish-strip > div:first-child > div:nth-child(3) {
+    font-size: .58rem !important;
+  }
+
+  .schedule-builder-grid-card {
+    margin-top: 0 !important;
+  }
+}
+
+@media (max-width: 1023px) {
+  .schedule-builder-control-deck {
+    position: sticky !important;
+    top: 58px !important;
+    z-index: 36 !important;
+  }
+}
+
+/* 16.0.20: stronger desktop tightening, no reskin. Uses existing classes so every real tab keeps its current tools but wastes less screen. */
+@media (min-width: 1024px) {
+  .desktop-pro-shell .app-content-shell {
+    max-width: min(1660px, calc(100vw - 14px)) !important;
+    padding: 8px 8px 56px !important;
+  }
+
+  .desktop-pro-shell .app-content-shell .chaos-card,
+  .desktop-pro-shell .app-content-shell .cockpit-panel,
+  .desktop-pro-shell .app-content-shell .rounded-2xl,
+  .desktop-pro-shell .app-content-shell .rounded-xl {
+    border-radius: 10px !important;
+  }
+
+  .desktop-pro-shell .app-content-shell .p-8 { padding: .9rem !important; }
+  .desktop-pro-shell .app-content-shell .p-7 { padding: .85rem !important; }
+  .desktop-pro-shell .app-content-shell .p-6 { padding: .78rem !important; }
+  .desktop-pro-shell .app-content-shell .p-5 { padding: .68rem !important; }
+  .desktop-pro-shell .app-content-shell .p-4 { padding: .56rem !important; }
+  .desktop-pro-shell .app-content-shell .p-3 { padding: .46rem !important; }
+  .desktop-pro-shell .app-content-shell .p-2 { padding: .34rem !important; }
+
+  .desktop-pro-shell .app-content-shell .px-5 { padding-left: .68rem !important; padding-right: .68rem !important; }
+  .desktop-pro-shell .app-content-shell .px-4 { padding-left: .56rem !important; padding-right: .56rem !important; }
+  .desktop-pro-shell .app-content-shell .px-3 { padding-left: .46rem !important; padding-right: .46rem !important; }
+  .desktop-pro-shell .app-content-shell .py-4 { padding-top: .56rem !important; padding-bottom: .56rem !important; }
+  .desktop-pro-shell .app-content-shell .py-3 { padding-top: .44rem !important; padding-bottom: .44rem !important; }
+  .desktop-pro-shell .app-content-shell .py-2 { padding-top: .34rem !important; padding-bottom: .34rem !important; }
+
+  .desktop-pro-shell .app-content-shell .gap-6 { gap: .74rem !important; }
+  .desktop-pro-shell .app-content-shell .gap-5 { gap: .62rem !important; }
+  .desktop-pro-shell .app-content-shell .gap-4 { gap: .5rem !important; }
+  .desktop-pro-shell .app-content-shell .gap-3 { gap: .42rem !important; }
+  .desktop-pro-shell .app-content-shell .gap-2 { gap: .32rem !important; }
+  .desktop-pro-shell .app-content-shell .space-y-6 > :not([hidden]) ~ :not([hidden]) { margin-top: .74rem !important; }
+  .desktop-pro-shell .app-content-shell .space-y-5 > :not([hidden]) ~ :not([hidden]) { margin-top: .62rem !important; }
+  .desktop-pro-shell .app-content-shell .space-y-4 > :not([hidden]) ~ :not([hidden]) { margin-top: .5rem !important; }
+  .desktop-pro-shell .app-content-shell .space-y-3 > :not([hidden]) ~ :not([hidden]) { margin-top: .4rem !important; }
+  .desktop-pro-shell .app-content-shell .space-y-2 > :not([hidden]) ~ :not([hidden]) { margin-top: .3rem !important; }
+
+  .desktop-pro-shell .app-content-shell button:not(.no-compact):not(.drawer-icon-button),
+  .desktop-pro-shell .app-content-shell .chaos-button {
+    min-height: 30px !important;
+    padding: .34rem .56rem !important;
+    font-size: .68rem !important;
+    border-radius: 8px !important;
+  }
+
+  .desktop-pro-shell .app-content-shell input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=color]):not([type=file]),
+  .desktop-pro-shell .app-content-shell select,
+  .desktop-pro-shell .app-content-shell .chaos-input {
+    min-height: 30px !important;
+    padding: .34rem .52rem !important;
+    font-size: .76rem !important;
+    border-radius: 8px !important;
+  }
+
+  .desktop-pro-shell .app-content-shell textarea {
+    min-height: 52px !important;
+    padding: .4rem .55rem !important;
+    font-size: .76rem !important;
+  }
+
+  .desktop-pro-shell .app-content-shell table th,
+  .desktop-pro-shell .app-content-shell table td,
+  .desktop-pro-shell .app-content-shell .chaos-table-row,
+  .desktop-pro-shell .app-content-shell .chaos-table-heading {
+    padding: .32rem .44rem !important;
+  }
+
+  .desktop-pro-shell .app-content-shell .text-3xl { font-size: 1.28rem !important; line-height: 1.55rem !important; }
+  .desktop-pro-shell .app-content-shell .text-2xl { font-size: 1.12rem !important; line-height: 1.36rem !important; }
+  .desktop-pro-shell .app-content-shell .text-xl { font-size: 1rem !important; line-height: 1.25rem !important; }
+  .desktop-pro-shell .app-content-shell .text-lg { font-size: .92rem !important; line-height: 1.18rem !important; }
+
+  .schedule-builder-workbench {
+    gap: .25rem !important;
+  }
+
+  .schedule-builder-publish-strip {
+    order: 1;
+    margin-bottom: .18rem !important;
+  }
+
+  .schedule-builder-control-deck {
+    order: 2;
+    top: 54px !important;
+    padding: .4rem !important;
+    margin-bottom: .18rem !important;
+  }
+
+  .schedule-builder-grid-card {
+    order: 3;
+  }
+
+  .schedule-builder-assignment-row,
+  .schedule-builder-action-row {
+    gap: .32rem !important;
+  }
+
+  .schedule-builder-compact-control,
+  .schedule-builder-icon-control,
+  .schedule-builder-assign-button,
+  .schedule-builder-action-button {
+    height: 30px !important;
+    min-height: 30px !important;
+    padding-top: .24rem !important;
+    padding-bottom: .24rem !important;
+    border-radius: 8px !important;
+  }
+
+  .schedule-builder-assignment-row > select:first-child {
+    width: 10.5rem !important;
+    flex-basis: 10.5rem !important;
+  }
+
+  .schedule-builder-assignment-row > div:nth-of-type(1) {
+    flex-basis: 14rem !important;
+    min-width: 11.5rem !important;
+  }
+
+  .schedule-builder-assignment-row > div:nth-of-type(2) {
+    flex-basis: 12.2rem !important;
+  }
+
+  .schedule-builder-assignment-row > div:nth-of-type(2) > div {
+    width: 5.9rem !important;
+  }
+
+  .schedule-builder-labor-pill {
+    padding: .16rem .45rem !important;
+    min-width: 6.25rem !important;
+  }
+
+  .schedule-builder-labor-pill span:first-child { font-size: .46rem !important; }
+  .schedule-builder-labor-pill span:last-child { font-size: .76rem !important; line-height: .85rem !important; }
+
+  .schedule-builder-desktop-table th:first-child,
+  .schedule-builder-desktop-table td:first-child {
+    width: 82px !important;
+    min-width: 82px !important;
+    max-width: 82px !important;
+  }
+
+  .schedule-builder-desktop-table th:not(:first-child),
+  .schedule-builder-desktop-table td:not(:first-child) {
+    min-width: 56px !important;
+    width: 56px !important;
+    max-width: 56px !important;
+  }
+
+  .schedule-builder-time-chip {
+    font-size: 8px !important;
+    padding: 2px 2px !important;
+  }
+}
