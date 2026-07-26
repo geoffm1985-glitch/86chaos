@@ -74,6 +74,16 @@ async function getUserProfile(db, decoded) {
 function pickWorkspaceName(rest = {}, raw = {}) {
   return clean(raw.restaurantName || raw.name || rest.name || rest.businessName || rest.restaurantName || rest.displayName || raw.restaurantId || rest.id || '86 Chaos Workspace');
 }
+function normalizeWorkspaceName(rest = {}, raw = {}) {
+  return pickWorkspaceName(rest, raw).toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+}
+function isFullAuditQaWorkspace(rest = {}, raw = {}) {
+  const name = normalizeWorkspaceName(rest, raw);
+  return name === '86 chaos full audit qa restaurant' || name.startsWith('86 chaos full audit qa restaurant ');
+}
+function isDeletedOrHiddenRestaurant(rest = {}, raw = {}) {
+  return rest.__exists === false || rest.__lookupError === true || rest.isActive === false || rest.archived === true || rest.deleted === true || rest.deletedAt || rest.deleted_at || rest.deletionScheduledFor || rest.hardDeleted === true || raw.qaOwned === true || rest.qaOwned === true || isFullAuditQaWorkspace(rest, raw);
+}
 function cleanPerms(perms = {}) {
   if (!perms || typeof perms !== 'object') return {};
   return Object.fromEntries(Object.entries(perms).filter(([key, value]) => /^[A-Za-z0-9_-]{1,40}$/.test(key) && typeof value === 'boolean'));
@@ -82,7 +92,7 @@ function safeMembership(raw = {}, rest = {}, decoded = {}, source = '') {
   const uid = clean(decoded.uid);
   const email = norm(decoded.email);
   const restaurantId = clean(raw.restaurantId || raw.id);
-  if (!restaurantId) return null;
+  if (!restaurantId || isDeletedOrHiddenRestaurant(rest, raw)) return null;
   return {
     id: clean(raw.membershipId || raw.id || memberDocId(uid, restaurantId)),
     membershipId: clean(raw.membershipId || raw.id || memberDocId(uid, restaurantId)),
@@ -111,9 +121,9 @@ async function getRestaurantMap(db, restaurantIds = []) {
   for (const restaurantId of Array.from(new Set(restaurantIds.filter(Boolean)))) {
     try {
       const snap = await db.collection('restaurants').doc(restaurantId).get();
-      out.set(restaurantId, snap.exists ? { id: snap.id, ...snap.data() } : { id: restaurantId });
+      out.set(restaurantId, snap.exists ? { id: snap.id, __exists: true, ...snap.data() } : { id: restaurantId, __exists: false });
     } catch (_) {
-      out.set(restaurantId, { id: restaurantId });
+      out.set(restaurantId, { id: restaurantId, __lookupError: true });
     }
   }
   return out;

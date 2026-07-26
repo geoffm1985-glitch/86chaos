@@ -19,6 +19,8 @@ const pkg = json('package.json');
 const lock = json('package-lock.json');
 const version = json('public/version.json');
 const appJs = read('src/App.js');
+const authScreen = read('src/features/auth.jsx');
+const loginBootstrapApi = read('api/login-bootstrap.js');
 const appCore = read('src/core/appCore.js');
 const operations = read('src/features/operations.jsx');
 const recipesShim = read('src/components/TabRecipes.js');
@@ -36,13 +38,13 @@ const apiVersion = read('api/_version.js');
 const vercel = read('vercel.json');
 const styles = read('src/styles.css');
 
-assert(pkg.version === '16.0.25', 'package.json version is 16.0.25');
-assert(lock.version === '16.0.25' && lock.packages?.['']?.version === '16.0.25', 'package-lock.json version is 16.0.25');
-assert(version.version === '16.0.25' && version.build === '16.0.25', 'public/version.json is 16.0.25');
-assert(appCore.includes("CURRENT_VERSION = '16.0.25'"), 'CURRENT_VERSION is 16.0.25');
-assert(apiVersion.includes("APP_VERSION = '16.0.25'") && apiVersion.includes("SECURITY_SCHEMA_VERSION = '16.0.25'"), 'API version constants are centralized at 16.0.25');
-assert(pkg.scripts?.['test:source'] === 'node scripts/validate-16-0-25.js', 'package scripts point at the 16.0.25 source validator');
-assert(!exists('scripts/validate-16-0-21.js') && !exists('scripts/validate-16-0-22.js') && !exists('scripts/validate-16-0-23.js') && !exists('scripts/validate-16-0-24.js'), 'old source validators were renamed');
+assert(pkg.version === '16.0.26', 'package.json version is 16.0.26');
+assert(lock.version === '16.0.26' && lock.packages?.['']?.version === '16.0.26', 'package-lock.json version is 16.0.26');
+assert(version.version === '16.0.26' && version.build === '16.0.26', 'public/version.json is 16.0.26');
+assert(appCore.includes("CURRENT_VERSION = '16.0.26'"), 'CURRENT_VERSION is 16.0.26');
+assert(apiVersion.includes("APP_VERSION = '16.0.26'") && apiVersion.includes("SECURITY_SCHEMA_VERSION = '16.0.26'"), 'API version constants are centralized at 16.0.26');
+assert(pkg.scripts?.['test:source'] === 'node scripts/validate-16-0-26.js', 'package scripts point at the 16.0.26 source validator');
+assert(!exists('scripts/validate-16-0-21.js') && !exists('scripts/validate-16-0-22.js') && !exists('scripts/validate-16-0-23.js') && !exists('scripts/validate-16-0-24.js') && !exists('scripts/validate-16-0-25.js'), 'old source validators were renamed');
 
 const activeRecipesImport = /const\s+TabRecipes\s*=\s*lazyFeature\(\s*\(\)\s*=>\s*import\('\.\/features\/operations'\)\s*,\s*'TabRecipes'\s*\)/.test(appJs);
 assert(activeRecipesImport, 'App.js mounts Recipes from src/features/operations.jsx');
@@ -112,13 +114,15 @@ assert(styles.includes('.godmode') || styles.includes('System Administrator') ||
 assert(exists('tests/e2e/compact-ui-layout.spec.cjs'), 'compact UI Playwright layout test exists');
 
 
-assert(appJs.includes('isSelectableWorkspace') && appJs.includes('chaos:workspace-memberships-changed'), 'workspace selector filters deleted/stale QA workspaces and responds to cleanup events');
-assert(read('api/workspace-memberships.js').includes('__exists: false') && read('api/workspace-memberships.js').includes('isDeletedRestaurant') && read('api/workspace-memberships.js').includes('isFullAuditQaRestaurantName'), 'workspace-memberships API filters missing/deleted Full Audit QA restaurants');
+assert(appJs.includes('isSelectableWorkspace') && appJs.includes('chaos:workspace-memberships-changed') && appJs.includes('isFullAuditQaWorkspaceName(workspace)'), 'in-app workspace selector filters deleted/stale QA workspaces and responds to cleanup events');
+assert(authScreen.includes('filterSelectableWorkspaceChoices') && authScreen.includes('isFullAuditQaWorkspace') && authScreen.includes('restaurantExists === false') && authScreen.includes('finishLoginWithPreloadedWorkspaces'), 'login-time Choose Workspace screen filters deleted and Full Audit QA workspace leftovers before showing choices');
+assert(read('api/workspace-memberships.js').includes('__exists: false') && read('api/workspace-memberships.js').includes('isDeletedRestaurant') && read('api/workspace-memberships.js').includes('isFullAuditQaRestaurantName(rest, raw) || raw.qaOwned === true'), 'workspace-memberships API filters missing/deleted Full Audit QA restaurants');
+assert(loginBootstrapApi.includes('__exists: false') && loginBootstrapApi.includes('isDeletedOrHiddenRestaurant') && loginBootstrapApi.includes('isFullAuditQaWorkspace'), 'login-bootstrap API filters missing/deleted Full Audit QA restaurants before preloading login choices');
 assert(management.includes('chaos:workspace-memberships-changed') && management.includes('deletedRestaurantIds'), 'QA cleanup tells the app to refresh workspace membership choices after deletion');
-assert(styles.includes('16.0.25 workspace selector + mobile tab/button correction') && styles.includes('writing-mode: horizontal-tb') && styles.includes('financial-center-desktop > .flex.overflow-x-auto > button'), 'mobile scroll-tab buttons stay horizontal instead of stacking one letter per line');
+assert(styles.includes('16.0.26 workspace selector + mobile tab/button correction') && styles.includes('writing-mode: horizontal-tb') && styles.includes('financial-center-desktop > .flex.overflow-x-auto > button'), 'mobile scroll-tab buttons stay horizontal instead of stacking one letter per line');
 
 if (failures) {
-  console.error(`16.0.25 source validator failed with ${failures} issue(s).`);
+  console.error(`16.0.26 source validator failed with ${failures} issue(s).`);
   process.exit(1);
 }
-console.log('16.0.25 source validator passed. This is a source guard only. It does not replace unit, emulator, build, browser, or staging notification tests.');
+console.log('16.0.26 source validator passed. This is a source guard only. It does not replace unit, emulator, build, browser, or staging notification tests.');

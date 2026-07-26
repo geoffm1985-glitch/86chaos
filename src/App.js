@@ -148,7 +148,8 @@ const isDeletedOrHiddenWorkspace = (workspace = {}) => Boolean(
   workspace.deleted_at ||
   workspace.deletionScheduledFor ||
   workspace.hardDeleted === true ||
-  (workspace.qaOwned === true && isFullAuditQaWorkspaceName(workspace)) ||
+  workspace.qaOwned === true ||
+  isFullAuditQaWorkspaceName(workspace) ||
   (workspace.membershipSource === 'stale-missing-restaurant')
 );
 const isSelectableWorkspace = (workspace = {}) => Boolean((workspace.restaurantId || workspace.id) && !isDeletedOrHiddenWorkspace(workspace));

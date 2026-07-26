@@ -1,19 +1,19 @@
 {
-  "version": "16.0.25",
-  "name": "86 Chaos 16.0.25 Workspace Cleanup and Mobile Tab Fix",
+  "version": "16.0.26",
+  "name": "86 Chaos 16.0.26 Login Workspace QA Cleanup Fix",
   "releasedAt": "2026-07-25T00:00:00.000Z",
-  "label": "86 Chaos 16.0.25 Workspace Cleanup and Mobile Tab Fix",
-  "build": "16.0.25",
+  "label": "86 Chaos 16.0.26 Login Workspace QA Cleanup Fix",
+  "build": "16.0.26",
   "notes": [
-    "Prevents deleted Full Audit QA restaurants from lingering in the workspace selector after cleanup.",
-    "Filters missing, deleted, archived, and strict Full Audit QA workspace entries out of selectable workspaces without changing permission logic or Firebase configuration.",
-    "Fixes mobile tab/action buttons so labels stay horizontal and usable instead of stacking one letter per line.",
-    "Preserves the compact professional UI refinement, app workflows, Firebase wiring, rules, environment values, and Vercel function configuration."
+    "Filters deleted and Full Audit QA workspaces from the login-time Choose Workspace screen, not just the in-app switcher.",
+    "Skips stale workspace memberships whose restaurant document has already been hard-deleted so users land directly in their remaining real workspace.",
+    "Keeps the protected workspace-memberships and login-bootstrap API responses from returning Full Audit QA workspace leftovers.",
+    "Preserves Firebase credentials, config, rules, data structures, permissions, and the compact professional UI refinement."
   ],
   "releaseNotes": [
-    "Workspace selector now filters stale QA audit workspace memberships that can remain in local cached account data after the QA cleanup endpoint removes restaurants.",
-    "The workspace memberships API no longer returns phantom workspaces for restaurant documents that no longer exist or are marked deleted/archived/inactive.",
-    "Mobile financial and other scrollable tab bars keep horizontal button labels inside an internal scroller instead of compressing labels into vertical columns.",
-    "No Firebase credentials, rules, project IDs, environment values, data models, permissions, or restaurant workflows were changed."
+    "The pre-app login workspace picker now uses the same strict filtering as the in-app switcher.",
+    "Full Audit QA restaurants are hidden by exact QA name/source markers even when stale membership maps still contain old labels.",
+    "Missing restaurant documents from stale membership records are no longer shown as selectable workspaces.",
+    "No Firebase credentials, rules, project IDs, environment values, or restaurant workflows were changed."
   ]
 }

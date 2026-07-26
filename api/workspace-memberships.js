@@ -26,7 +26,7 @@ function cleanPerms(perms = {}) {
 }
 function safeMembership(raw = {}, rest = {}, uid = '', email = '') {
   const restaurantId = clean(raw.restaurantId || raw.id);
-  if (!restaurantId || isDeletedRestaurant(rest) || (rest.qaOwned === true && isFullAuditQaRestaurantName(rest, raw))) return null;
+  if (!restaurantId || isDeletedRestaurant(rest) || isFullAuditQaRestaurantName(rest, raw) || raw.qaOwned === true || rest.qaOwned === true) return null;
   const membershipId = clean(raw.membershipId || raw.id || memberDocId(uid, restaurantId));
   return {
     id: membershipId,

@@ -4744,7 +4744,7 @@ select {
 }
 
 
-/* 16.0.25 workspace selector + mobile tab/button correction */
+/* 16.0.26 workspace selector + mobile tab/button correction */
 @media (max-width: 767px) {
   .desktop-pro-shell .app-content-shell button,
   .desktop-pro-shell .app-content-shell [role="tab"],
