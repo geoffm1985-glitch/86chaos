@@ -38,12 +38,12 @@ const apiVersion = read('api/_version.js');
 const vercel = read('vercel.json');
 const styles = read('src/styles.css');
 
-assert(pkg.version === '16.0.26', 'package.json version is 16.0.26');
-assert(lock.version === '16.0.26' && lock.packages?.['']?.version === '16.0.26', 'package-lock.json version is 16.0.26');
-assert(version.version === '16.0.26' && version.build === '16.0.26', 'public/version.json is 16.0.26');
-assert(appCore.includes("CURRENT_VERSION = '16.0.26'"), 'CURRENT_VERSION is 16.0.26');
-assert(apiVersion.includes("APP_VERSION = '16.0.26'") && apiVersion.includes("SECURITY_SCHEMA_VERSION = '16.0.26'"), 'API version constants are centralized at 16.0.26');
-assert(pkg.scripts?.['test:source'] === 'node scripts/validate-16-0-26.js', 'package scripts point at the 16.0.26 source validator');
+assert(pkg.version === '16.0.27', 'package.json version is 16.0.27');
+assert(lock.version === '16.0.27' && lock.packages?.['']?.version === '16.0.27', 'package-lock.json version is 16.0.27');
+assert(version.version === '16.0.27' && version.build === '16.0.27', 'public/version.json is 16.0.27');
+assert(appCore.includes("CURRENT_VERSION = '16.0.27'"), 'CURRENT_VERSION is 16.0.27');
+assert(apiVersion.includes("APP_VERSION = '16.0.27'") && apiVersion.includes("SECURITY_SCHEMA_VERSION = '16.0.27'"), 'API version constants are centralized at 16.0.27');
+assert(pkg.scripts?.['test:source'] === 'node scripts/validate-16-0-27.js', 'package scripts point at the 16.0.27 source validator');
 assert(!exists('scripts/validate-16-0-21.js') && !exists('scripts/validate-16-0-22.js') && !exists('scripts/validate-16-0-23.js') && !exists('scripts/validate-16-0-24.js') && !exists('scripts/validate-16-0-25.js'), 'old source validators were renamed');
 
 const activeRecipesImport = /const\s+TabRecipes\s*=\s*lazyFeature\(\s*\(\)\s*=>\s*import\('\.\/features\/operations'\)\s*,\s*'TabRecipes'\s*\)/.test(appJs);
@@ -121,8 +121,31 @@ assert(loginBootstrapApi.includes('__exists: false') && loginBootstrapApi.includ
 assert(management.includes('chaos:workspace-memberships-changed') && management.includes('deletedRestaurantIds'), 'QA cleanup tells the app to refresh workspace membership choices after deletion');
 assert(styles.includes('16.0.26 workspace selector + mobile tab/button correction') && styles.includes('writing-mode: horizontal-tb') && styles.includes('financial-center-desktop > .flex.overflow-x-auto > button'), 'mobile scroll-tab buttons stay horizontal instead of stacking one letter per line');
 
+
+const dispatchApi = read('api/dispatch-reminders.js');
+const pythonAutomation = read('api/python-automation-run.js');
+const weeklyMaintenance = read('api/weekly-maintenance.js');
+const watchdog = read('api/firestore-backup-watchdog.js');
+const indexes = read('firestore.indexes.json');
+assert(dispatchApi.includes("where('dispatchEligible', '==', true)") && dispatchApi.includes("where('nextDispatchAt', '<=', nowIso)") && dispatchApi.includes("orderBy('nextDispatchAt', 'asc')"), 'reminder dispatcher queries the canonical eligible due queue');
+assert(!dispatchApi.includes('checkRateLimit') && dispatchApi.includes('rateLimitWritesSkipped'), 'reminder cron no longer creates Firestore-backed rate-limit writes');
+assert(dispatchApi.includes('dispatchLeaseUntil') && dispatchApi.includes('runTransaction(async (tx)') && dispatchApi.includes('tx.update(ref'), 'reminder dispatcher uses a dispatch lease for idempotent claiming');
+assert(weeklyMaintenance.includes("db.collection('system').doc('weeklyMaintenance')") && !weeklyMaintenance.includes("collection('restaurants').get()"), 'weekly maintenance writes one system-level state instead of rewriting every restaurant');
+assert(watchdog.includes('nativeBackup') && !watchdog.includes("/api/firestore-backup") && !watchdog.includes('fetch('), 'backup watchdog inspects native backup status instead of triggering custom full backup');
+assert(!vercel.includes('"/api/firestore-backup"') && vercel.includes('"/api/firestore-backup-watchdog"'), 'automatic custom full backup cron was removed while watchdog remains');
+assert(exists('scripts/setup-native-firestore-backup.js'), 'native Firestore backup setup helper exists');
+assert(pythonAutomation.includes('COLLECTION_QUERY_PLANS') && pythonAutomation.includes('sourceQueryStats') && pythonAutomation.includes('contentHash'), 'Python automation uses bounded query plans and content hashing');
+assert(pythonAutomation.includes("doc(`${restaurant.id}_current`)"), 'Python automation stores one stable current intelligence report per restaurant');
+assert(appCore.includes('LIVE_COLLECTION_RELEASE_GRACE_MS = 6 * 60 * 1000') && appCore.includes('useLiveDocument') && appCore.includes('downloadFirebaseUsageDiagnostics'), 'shared listener registry keeps cached snapshots longer and exposes diagnostics');
+assert(appJs.includes('wantsFullRosterData') && appJs.includes('wantsWorkspaceMembershipList') && appJs.includes('const wantsRecipesData = isGlobalSearchOpen'), 'App avoids always-on full roster/membership reads and does not load App-owned Recipes listener on the Recipes tab');
+assert(operations.includes('today:current-ops-intelligence') && operations.includes('briefOpsIntel'), 'Today uses the stable current operations intelligence document instead of historical listeners');
+assert(management.includes('section-scoped, bounded listeners') && management.includes('firestoreLimit') && management.includes("orderBy('time'") && management.includes("orderBy('timestamp'"), 'System Administrator global data loading is section-scoped and bounded');
+assert(read('src/features/intelligence.jsx').includes('participantUserIds') && read('src/features/intelligence.jsx').includes("'array-contains'"), 'Personal Reminders uses one participant visibility query');
+assert(indexes.includes('dispatchEligible') && indexes.includes('nextDispatchAt') && indexes.includes('participantUserIds') && indexes.includes('timePunches'), 'Firestore indexes include reminder queues, participant visibility, and schedule query plans');
+assert(exists('scripts/migrate-reminder-dispatch-queue.js') && exists('scripts/migrate-schedule-query-fields.js') && exists('scripts/migrate-reminder-participants.js'), 'dry-run migration scripts exist for reminder queue, schedule dates, and reminder participants');
+
 if (failures) {
-  console.error(`16.0.26 source validator failed with ${failures} issue(s).`);
+  console.error(`16.0.27 source validator failed with ${failures} issue(s).`);
   process.exit(1);
 }
-console.log('16.0.26 source validator passed. This is a source guard only. It does not replace unit, emulator, build, browser, or staging notification tests.');
+console.log('16.0.27 source validator passed. This is a source guard only. It does not replace unit, emulator, build, browser, or staging notification tests.');

@@ -1,9 +1,9 @@
 {
-  "version": "16.0.26",
-  "name": "86 Chaos 16.0.26 Login Workspace QA Cleanup Fix",
+  "version": "16.0.27",
+  "name": "86 Chaos 16.0.27 Login Workspace QA Cleanup Fix",
   "releasedAt": "2026-07-25T00:00:00.000Z",
-  "label": "86 Chaos 16.0.26 Login Workspace QA Cleanup Fix",
-  "build": "16.0.26",
+  "label": "86 Chaos 16.0.27 Login Workspace QA Cleanup Fix",
+  "build": "16.0.27",
   "notes": [
     "Filters deleted and Full Audit QA workspaces from the login-time Choose Workspace screen, not just the in-app switcher.",
     "Skips stale workspace memberships whose restaurant document has already been hard-deleted so users land directly in their remaining real workspace.",

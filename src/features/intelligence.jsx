@@ -79,20 +79,12 @@ const WorkProgressBar = ({ label, detail, percent = 0, elapsedSeconds = 0 }) => 
 
 const TabPersonalReminders = ({ appUser, addToast }) => {
   const initial = getInitialReminderDate();
-  const ownReminders = useLiveCollection('personalReminders', appUser?.restaurantId, {
-    whereClauses: [['userId', '==', appUser?.id || '']],
-    limitCount: 200,
-    fallbackLimitCount: 100
-  });
-  const createdReminders = useLiveCollection('personalReminders', appUser?.restaurantId, {
-    whereClauses: [['createdBy', '==', appUser?.id || '']],
-    limitCount: 200,
-    fallbackLimitCount: 100
-  });
-  const assignedReminders = useLiveCollection('personalReminders', appUser?.restaurantId, {
-    whereClauses: [['assignedToUserId', '==', appUser?.id || '']],
-    limitCount: 200,
-    fallbackLimitCount: 100
+  const visibleReminders = useLiveCollection('personalReminders', appUser?.restaurantId, {
+    enabled: !!appUser?.restaurantId && !!appUser?.id,
+    whereClauses: [['participantUserIds', 'array-contains', appUser?.id || '']],
+    limitCount: 120,
+    fallbackLimitCount: 60,
+    debugLabel: 'personal-reminders:participant-visibility'
   });
   const [teamMembers, setTeamMembers] = useState([]);
   const [teamLoadError, setTeamLoadError] = useState('');
@@ -105,7 +97,7 @@ const TabPersonalReminders = ({ appUser, addToast }) => {
   const [editing, setEditing] = useState(null);
   const [listening, setListening] = useState(false);
   const reminderMap = new Map();
-  [...ownReminders, ...createdReminders, ...assignedReminders].forEach(reminder => reminder?.id && reminderMap.set(reminder.id, reminder));
+  [...visibleReminders].forEach(reminder => reminder?.id && reminderMap.set(reminder.id, reminder));
   const sortedReminders = [...reminderMap.values()].sort((a, b) => String(a.scheduledAt || '').localeCompare(String(b.scheduledAt || '')));
   const pendingReminders = sortedReminders.filter(r => r.status !== 'done' && r.status !== 'cancelled');
   const dueReminderCount = pendingReminders.filter(reminderNeedsAttention).length;
@@ -114,7 +106,7 @@ const TabPersonalReminders = ({ appUser, addToast }) => {
 
   useEffect(() => {
     let cancelled = false;
-    if (!appUser?.restaurantId) {
+    if (!appUser?.restaurantId || shareMode !== 'team') {
       setTeamMembers([]);
       return undefined;
     }
@@ -138,7 +130,7 @@ const TabPersonalReminders = ({ appUser, addToast }) => {
     };
     loadTeam();
     return () => { cancelled = true; };
-  }, [appUser?.restaurantId, appUser?.id]);
+  }, [appUser?.restaurantId, appUser?.id, shareMode]);
 
   const applyParsedText = (value) => {
     const parsed = parseReminderCommand(value);
@@ -205,6 +197,11 @@ const TabPersonalReminders = ({ appUser, addToast }) => {
       assignedToUserId: targetUserId,
       assignedToName: targetUser.name || targetUser.email || (isShared ? 'Team member' : appUser.name || 'Me'),
       assignedToEmail: targetUser.email || '',
+      participantUserIds: Array.from(new Set([targetUserId, appUser.id, editing?.createdBy].filter(Boolean))),
+      dispatchEligible: true,
+      nextDispatchAt: scheduledDate.toISOString(),
+      dispatchAttemptAt: null,
+      dispatchLeaseUntil: null,
       createdBy: editing?.createdBy || appUser.id || '',
       createdByName: editing?.createdByName || appUser.name || appUser.email || '',
       createdByEmail: editing?.createdByEmail || appUser.email || '',
@@ -246,7 +243,7 @@ const TabPersonalReminders = ({ appUser, addToast }) => {
   };
 
   const markDone = async (reminder) => {
-    await updateDoc(doc(db, 'personalReminders', reminder.id), { status: 'done', completedAt: new Date().toISOString(), updatedAt: new Date().toISOString() });
+    await updateDoc(doc(db, 'personalReminders', reminder.id), { status: 'done', dispatchEligible: false, nextDispatchAt: null, completedAt: new Date().toISOString(), updatedAt: new Date().toISOString() });
     addToast('Reminder Done', reminder.title || 'Reminder');
   };
 
@@ -259,6 +256,8 @@ const TabPersonalReminders = ({ appUser, addToast }) => {
       reopenedAt: now,
       reopenedBy: appUser?.id || '',
       nextReminderAt: wakeAt,
+      dispatchEligible: true,
+      nextDispatchAt: wakeAt,
       dispatchedAt: null,
       dispatchKey: '',
       updatedAt: now
@@ -279,6 +278,8 @@ const TabPersonalReminders = ({ appUser, addToast }) => {
       snoozedAt: now,
       snoozedBy: appUser?.id || '',
       status: 'scheduled',
+      dispatchEligible: true,
+      nextDispatchAt: snoozedUntil,
       dispatchedAt: null,
       dispatchKey: '',
       updatedAt: now

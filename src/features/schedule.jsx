@@ -1798,7 +1798,7 @@ const cancelFutureEventReminders = async (eventId) => {
   await Promise.all(snap.docs.map(d => {
     const data = d.data();
     if (['sent','completed','dismissed'].includes(String(data.status || '').toLowerCase())) return Promise.resolve();
-    return updateDoc(doc(db, 'eventReminders', d.id), { status:'cancelled', cancelledAt: nowIso, cancelledBy: appUser?.id || '' });
+    return updateDoc(doc(db, 'eventReminders', d.id), { status:'cancelled', dispatchEligible: false, nextDispatchAt: null, cancelledAt: nowIso, cancelledBy: appUser?.id || '' });
   }));
 };
 const saveEventReminderDocs = async (eventId, eventData) => {
@@ -1859,6 +1859,10 @@ const saveEventReminderDocs = async (eventId, eventData) => {
     recipientPushTokens,
     tokenSnapshotCount: recipientPushTokens.length,
     status: 'scheduled',
+    dispatchEligible: true,
+    nextDispatchAt: rem.scheduledAt,
+    dispatchAttemptAt: null,
+    dispatchLeaseUntil: null,
     dispatchAttemptCount: 0,
     createdAt: nowIso,
     updatedAt: nowIso,

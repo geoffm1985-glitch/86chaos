@@ -1,5 +1,4 @@
 const { initAdmin } = require('./_chaos-admin');
-const { enforceRateLimit, sendRateLimited } = require('./_rate-limit');
 
 function getCronSecret(req) {
   const auth = String(req.headers.authorization || '').replace(/^Bearer\s+/i, '').trim();
@@ -248,20 +247,20 @@ module.exports = async function handler(req, res) {
     });
   }
   const db = app.firestore();
-  const cronRate = await enforceRateLimit({ db, req, routeName: 'dispatch-reminders', limit: Number(process.env.REMINDER_ROUTE_RATE_LIMIT || 12), windowMs: 60 * 1000 });
-  if (!cronRate.ok) return sendRateLimited(res, cronRate);
   const messaging = app.messaging();
   const nowIso = new Date().toISOString();
-  const stats = { scanned: 0, claimed: 0, sent: 0, skipped: 0, failed: 0, noToken: 0, eventScanned: 0, eventSent: 0, eventSkipped: 0 };
+  const stats = { queried: 0, scanned: 0, claimed: 0, sent: 0, skipped: 0, failed: 0, noToken: 0, eventQueried: 0, eventScanned: 0, eventSent: 0, eventSkipped: 0, transactionReads: 0, documentsWritten: 0, rateLimitWritesSkipped: 1, startedAt: nowIso };
   const limit = safeInt(process.env.REMINDER_DISPATCH_QUERY_LIMIT, 200, 1, 500);
   const concurrency = safeInt(process.env.REMINDER_DISPATCH_CONCURRENCY, 12, 1, 25);
 
   try {
     const snap = await db.collection('personalReminders')
-      .where('scheduledAt', '<=', nowIso)
-      .orderBy('scheduledAt', 'asc')
+      .where('dispatchEligible', '==', true)
+      .where('nextDispatchAt', '<=', nowIso)
+      .orderBy('nextDispatchAt', 'asc')
       .limit(limit)
       .get();
+    stats.queried = snap.size;
 
     const processReminder = async (docSnap) => {
       stats.scanned += 1;
@@ -270,11 +269,12 @@ module.exports = async function handler(req, res) {
         const claim = await db.runTransaction(async (tx) => {
           const fresh = await tx.get(ref);
           if (!fresh.exists) return { claimed: false, reason: 'missing' };
+          stats.transactionReads += 1;
           const reminder = fresh.data() || {};
           if (!isRetryablePersonalReminderStatus(reminder.status)) return { claimed: false, reason: 'not_retryable' };
           if (String(reminder.status || '').toLowerCase() === 'dispatching' && minutesSinceIso(reminder.dispatchAttemptAt) < 5) return { claimed: false, reason: 'already_dispatching' };
           if (['no_push_token', 'delivery_problem'].includes(String(reminder.status || '').toLowerCase()) && minutesSinceIso(reminder.dispatchAttemptAt || reminder.dispatchedAt) < 10) return { claimed: false, reason: 'retry_window' };
-          const effectiveDueAt = reminder.snoozedUntil || reminder.nextReminderAt || reminder.scheduledAt || '';
+          const effectiveDueAt = reminder.snoozedUntil || reminder.nextReminderAt || reminder.nextDispatchAt || reminder.scheduledAt || '';
           if (effectiveDueAt && String(effectiveDueAt) > nowIso) return { claimed: false, reason: 'snoozed_or_not_due' };
           const dispatchKey = `${docSnap.id}:${effectiveDueAt || reminder.scheduledAt || ''}`;
           if ((String(reminder.status || '').toLowerCase() === 'sent' || Number(reminder.pushSuccessCount || 0) > 0) && (reminder.dispatchKey === dispatchKey || reminder.dispatchedAt)) return { claimed: false, reason: 'already_dispatched' };
@@ -284,8 +284,10 @@ module.exports = async function handler(req, res) {
             dispatchKey,
             effectiveDueAt,
             dispatchAttemptCount: Number(reminder.dispatchAttemptCount || 0) + 1,
+            dispatchLeaseUntil: retryAt(5),
             updatedAt: nowIso
           });
+          stats.documentsWritten += 1;
           return { claimed: true, reminder, dispatchKey, effectiveDueAt };
         });
 
@@ -309,6 +311,7 @@ module.exports = async function handler(req, res) {
           await ref.update({
             status: nextScheduledAt ? 'scheduled' : 'no_push_token',
             scheduledAt: nextScheduledAt || reminder.scheduledAt || null,
+            dispatchEligible: true,
             nextDispatchAt: nextRetryAt,
             dispatchAttemptAt: nowIso,
             dispatchedAt: null,
@@ -345,6 +348,7 @@ module.exports = async function handler(req, res) {
             await ref.update({
               status: 'scheduled',
               scheduledAt: nextScheduledAt,
+              dispatchEligible: true,
               nextDispatchAt: nextScheduledAt,
               lastDispatchedAt: nowIso,
               dispatchedAt: null,
@@ -358,6 +362,7 @@ module.exports = async function handler(req, res) {
             await ref.update({
               status: 'sent',
               dispatchedAt: nowIso,
+              dispatchEligible: false,
               nextDispatchAt: null,
               dispatchKey,
               pushSuccessCount: result.successCount,
@@ -369,6 +374,7 @@ module.exports = async function handler(req, res) {
           await ref.update({
             status: 'delivery_problem',
             dispatchAttemptAt: nowIso,
+            dispatchEligible: true,
             nextDispatchAt: retryAt(10),
             dispatchedAt: nowIso,
             dispatchKey,
@@ -382,6 +388,7 @@ module.exports = async function handler(req, res) {
         await ref.update({
           status: 'delivery_problem',
           dispatchAttemptAt: nowIso,
+          dispatchEligible: true,
           nextDispatchAt: retryAt(10),
           dispatchedAt: nowIso,
           dispatchError: err.message || 'Dispatch failed.',
@@ -393,10 +400,12 @@ module.exports = async function handler(req, res) {
     await runWithConcurrency(snap.docs, concurrency, processReminder);
 
     const eventSnap = await db.collection('eventReminders')
-      .where('scheduledAt', '<=', nowIso)
-      .orderBy('scheduledAt', 'asc')
+      .where('dispatchEligible', '==', true)
+      .where('nextDispatchAt', '<=', nowIso)
+      .orderBy('nextDispatchAt', 'asc')
       .limit(limit)
       .get();
+    stats.eventQueried = eventSnap.size;
 
     const processEventReminder = async (docSnap) => {
       stats.eventScanned += 1;
@@ -405,11 +414,12 @@ module.exports = async function handler(req, res) {
         const claim = await db.runTransaction(async (tx) => {
           const fresh = await tx.get(ref);
           if (!fresh.exists) return { claimed: false, reason: 'missing' };
+          stats.transactionReads += 1;
           const reminder = fresh.data() || {};
           if (!isRetryableEventReminderStatus(reminder.status)) return { claimed: false, reason: 'not_retryable' };
           if (String(reminder.status || '').toLowerCase() === 'dispatching' && minutesSinceIso(reminder.dispatchAttemptAt) < 5) return { claimed: false, reason: 'already_dispatching' };
           if (['no_push_token', 'delivery_problem'].includes(String(reminder.status || '').toLowerCase()) && minutesSinceIso(reminder.dispatchAttemptAt || reminder.dispatchedAt) < 10) return { claimed: false, reason: 'retry_window' };
-          const effectiveDueAt = reminder.snoozedUntil || reminder.nextReminderAt || reminder.scheduledAt || '';
+          const effectiveDueAt = reminder.snoozedUntil || reminder.nextReminderAt || reminder.nextDispatchAt || reminder.scheduledAt || '';
           if (effectiveDueAt && String(effectiveDueAt) > nowIso) return { claimed: false, reason: 'snoozed_or_not_due' };
           const dispatchKey = `${docSnap.id}:${effectiveDueAt || reminder.scheduledAt || ''}`;
           if ((reminder.status === 'sent' || Number(reminder.pushSuccessCount || 0) > 0) && (reminder.dispatchKey === dispatchKey || reminder.dispatchedAt)) return { claimed: false, reason: 'already_sent' };
@@ -419,8 +429,10 @@ module.exports = async function handler(req, res) {
             dispatchKey,
             effectiveDueAt,
             dispatchAttemptCount: Number(reminder.dispatchAttemptCount || 0) + 1,
+            dispatchLeaseUntil: retryAt(5),
             updatedAt: nowIso
           });
+          stats.documentsWritten += 1;
           return { claimed: true, reminder, dispatchKey, effectiveDueAt };
         });
 
@@ -437,6 +449,7 @@ module.exports = async function handler(req, res) {
           await ref.update({
             status: 'no_push_token',
             dispatchAttemptAt: nowIso,
+            dispatchEligible: true,
             nextDispatchAt: retryAt(10),
             lastNoTokenAt: nowIso,
             dispatchKey: claim.dispatchKey,
@@ -474,6 +487,8 @@ module.exports = async function handler(req, res) {
             status: 'sent',
             dispatchedAt: nowIso,
             lastSuccessfulDispatchAt: nowIso,
+            dispatchEligible: false,
+            nextDispatchAt: null,
             dispatchKey: claim.dispatchKey,
             pushSuccessCount: result.successCount,
             pushFailureCount: result.failureCount || 0,
@@ -486,6 +501,7 @@ module.exports = async function handler(req, res) {
           await ref.update({
             status: 'delivery_problem',
             dispatchAttemptAt: nowIso,
+            dispatchEligible: true,
             nextDispatchAt: retryAt(10),
             dispatchKey: claim.dispatchKey,
             pushFailureCount: result.failureCount || tokens.length,
@@ -500,6 +516,7 @@ module.exports = async function handler(req, res) {
         await ref.update({
           status: 'delivery_problem',
           dispatchAttemptAt: nowIso,
+          dispatchEligible: true,
           nextDispatchAt: retryAt(10),
           dispatchError: err.message || 'Event reminder dispatch failed.',
           updatedAt: nowIso

@@ -1,25 +1,12 @@
 const { initAdmin, authorize, requireAppCheckIfEnforced, writeAudit } = require('./_chaos-admin');
-
 const { APP_VERSION } = require('./_version');
-const DEFAULT_STALE_HOURS = 23;
+
+const DEFAULT_STALE_HOURS = 26;
 
 function parseDate(value) {
   if (!value) return null;
   const d = new Date(value);
   return Number.isNaN(d.getTime()) ? null : d;
-}
-
-function getLastSuccessfulBackup(data = {}) {
-  return parseDate(data.lastSuccessfulBackupAt || data.lastBackupAt || data.lastExportAt || data.runFinishedAt || data.lastRunAt);
-}
-
-function getBaseUrl(req) {
-  const explicit = String(process.env.BACKUP_BASE_URL || process.env.APP_BASE_URL || '').trim().replace(/\/+$/, '');
-  if (explicit) return explicit;
-  const host = String(req.headers['x-forwarded-host'] || req.headers.host || process.env.VERCEL_URL || '').trim();
-  if (!host) throw new Error('Could not determine app host for backup watchdog. Set BACKUP_BASE_URL in Vercel.');
-  const proto = String(req.headers['x-forwarded-proto'] || 'https').split(',')[0].trim() || 'https';
-  return `${proto}://${host.replace(/^https?:\/\//, '')}`.replace(/\/+$/, '');
 }
 
 async function authorizeWatchdog(req, app) {
@@ -37,6 +24,22 @@ async function authorizeWatchdog(req, app) {
   return { ...ctx, source: 'manual-watchdog', actor: ctx.email || ctx.uid || 'System Administrator' };
 }
 
+function nativeBackupMetadataFromEnv() {
+  return {
+    nativeBackupExpected: String(process.env.FIRESTORE_NATIVE_BACKUP_ENABLED || '').toLowerCase() === 'true',
+    nativeBackupScheduleId: process.env.FIRESTORE_NATIVE_BACKUP_SCHEDULE_ID || '',
+    nativeBackupRetentionDays: process.env.FIRESTORE_NATIVE_BACKUP_RETENTION_DAYS || '',
+    nativeBackupLocation: process.env.FIRESTORE_NATIVE_BACKUP_LOCATION || '',
+    nativeBackupConfiguredAt: process.env.FIRESTORE_NATIVE_BACKUP_CONFIGURED_AT || ''
+  };
+}
+
+function shouldWriteStatus(previous = {}, next = {}, manual = false) {
+  if (manual) return true;
+  return ['status', 'lastStatus', 'nativeBackupExpected', 'nativeBackupScheduleId', 'nativeBackupRetentionDays', 'backupWatchdogStale', 'lastError']
+    .some(key => String(previous[key] ?? '') !== String(next[key] ?? ''));
+}
+
 module.exports = async function handler(req, res) {
   if (!['GET', 'POST'].includes(req.method)) return res.status(405).json({ ok: false, error: 'Use GET for cron or POST for manual watchdog check.' });
   const app = initAdmin(req);
@@ -48,46 +51,34 @@ module.exports = async function handler(req, res) {
 
     const statusRef = db.collection('system').doc('backupStatus');
     const snap = await statusRef.get();
-    const status = snap.exists ? snap.data() || {} : {};
+    const previous = snap.exists ? snap.data() || {} : {};
+    const native = nativeBackupMetadataFromEnv();
     const staleHours = Math.max(1, Number(process.env.BACKUP_WATCHDOG_STALE_HOURS || DEFAULT_STALE_HOURS));
-    const lastSuccess = getLastSuccessfulBackup(status);
-    const ageHours = lastSuccess ? (startedAt.getTime() - lastSuccess.getTime()) / 36e5 : Infinity;
-    const due = !Number.isFinite(ageHours) || ageHours >= staleHours;
-
-    const watchdogMeta = {
-      lastWatchdogCheckAt: startedAt.toISOString(),
-      lastWatchdogSource: ctx.source,
-      lastWatchdogScheduleHeader: ctx.scheduleHeader || '',
-      lastWatchdogUserAgent: ctx.userAgent || '',
-      lastWatchdogVersion: APP_VERSION,
+    const lastNative = parseDate(previous.nativeBackupLastSuccessfulAt || previous.lastNativeBackupAt || previous.lastSuccessfulBackupAt);
+    const ageHours = lastNative ? (startedAt.getTime() - lastNative.getTime()) / 36e5 : Infinity;
+    const stale = !native.nativeBackupExpected || !native.nativeBackupScheduleId || !Number.isFinite(ageHours) || ageHours >= staleHours;
+    const nextStatus = {
+      ...native,
+      status: stale ? 'attention' : 'ok',
+      lastStatus: stale ? 'attention' : 'ok',
+      backupMode: 'native-scheduled-plus-manual-json',
+      backupWatchdogStale: stale,
       backupWatchdogStaleHours: staleHours,
       backupAgeHours: Number.isFinite(ageHours) ? Math.round(ageHours * 10) / 10 : null,
-      backupWatchdogDue: due
+      lastWatchdogCheckAt: startedAt.toISOString(),
+      lastWatchdogSource: ctx.source,
+      lastWatchdogVersion: APP_VERSION,
+      manualJsonBackupEndpointPreserved: true,
+      automaticCustomJsonBackupDisabled: true,
+      lastWatchdogResult: stale ? 'native-backup-needs-attention' : 'native-backup-healthy'
     };
 
-    if (!due) {
-      await statusRef.set({ ...watchdogMeta, lastWatchdogResult: 'fresh-no-backup-needed' }, { merge: true });
-      return res.status(200).json({ ok: true, version: APP_VERSION, ranBackup: false, reason: 'fresh', ...watchdogMeta });
+    if (shouldWriteStatus(previous, nextStatus, ctx.source === 'manual-watchdog')) {
+      await statusRef.set(nextStatus, { merge: true });
+      if (stale) await writeAudit(db, ctx, 'BACKUP_WATCHDOG_NATIVE_ATTENTION', 'system/backupStatus', 'Native backup schedule is missing, stale, or not verified. Manual JSON backup endpoint remains available.', 'platform').catch(() => null);
     }
 
-    if (!process.env.CRON_SECRET) {
-      await statusRef.set({ ...watchdogMeta, lastWatchdogResult: 'missing-cron-secret' }, { merge: true });
-      return res.status(500).json({ ok: false, version: APP_VERSION, ranBackup: false, error: 'CRON_SECRET is required for the watchdog to trigger /api/firestore-backup.' });
-    }
-
-    const backupUrl = `${getBaseUrl(req)}/api/firestore-backup?mode=watchdog`;
-    await statusRef.set({ ...watchdogMeta, status: 'watchdog-triggering', lastWatchdogResult: 'triggering-backup', lastWatchdogBackupUrlHost: new URL(backupUrl).host }, { merge: true });
-    const backupRes = await fetch(backupUrl, { method: 'GET', headers: { Authorization: `Bearer ${process.env.CRON_SECRET}`, 'x-86chaos-watchdog': APP_VERSION } });
-    const backupData = await backupRes.json().catch(() => ({}));
-    if (!backupRes.ok || backupData.ok === false) {
-      const message = backupData.error || `Backup route returned HTTP ${backupRes.status}`;
-      await statusRef.set({ ...watchdogMeta, status: 'error', lastStatus: 'error', lastWatchdogResult: 'backup-failed', lastWatchdogError: message, lastError: message, lastErrorAt: new Date().toISOString() }, { merge: true });
-      return res.status(backupRes.status || 500).json({ ok: false, version: APP_VERSION, ranBackup: true, error: message, backup: backupData, ...watchdogMeta });
-    }
-
-    await statusRef.set({ ...watchdogMeta, lastWatchdogResult: 'backup-ran', lastWatchdogBackupRunId: backupData.runId || '', lastWatchdogBackupAt: new Date().toISOString() }, { merge: true });
-    await writeAudit(db, ctx, 'BACKUP_WATCHDOG_RAN_BACKUP', 'system/backupStatus', `Backup watchdog ran a catch-up backup after ${Number.isFinite(ageHours) ? Math.round(ageHours) : 'unknown'}h without a successful backup.`, 'platform');
-    return res.status(200).json({ ok: true, version: APP_VERSION, ranBackup: true, reason: 'stale', backup: backupData, ...watchdogMeta });
+    return res.status(200).json({ ok: true, version: APP_VERSION, ranCustomBackup: false, mode: 'native-scheduled-watchdog', ...nextStatus });
   } catch (err) {
     const failedAt = new Date().toISOString();
     await db.collection('system').doc('backupStatus').set({ status: 'error', lastStatus: 'error', lastWatchdogResult: 'error', lastWatchdogError: err.message, lastError: err.message, lastErrorAt: failedAt, version: APP_VERSION }, { merge: true }).catch(() => null);
@@ -95,4 +86,4 @@ module.exports = async function handler(req, res) {
   }
 };
 
-module.exports.config = { maxDuration: 120 };
+module.exports.config = { maxDuration: 60 };

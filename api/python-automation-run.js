@@ -6,25 +6,24 @@ const { resolveWorkspaceSubscription, planIsAtLeast, PLAN_IDS } = require('./_pl
 const { APP_VERSION } = require('./_version');
 const PYTHON_TIMEOUT_MS = 35000;
 const MAX_PAYLOAD_BYTES = 1500000;
-const COLLECTION_LIMITS = {
-  inventoryItems: 900,
-  vendors: 250,
-  wasteLogs: 700,
-  invoices: 260,
-  events: 260,
-  prepItems: 600,
-  menuDependencies: 1300,
-  recipes: 300,
-  users: 320,
-  shifts: 1400,
-  timePunches: 800,
-  timeOffRequests: 500,
-  availabilityRecords: 500,
-  reminders: 700,
-  tasks: 700,
-  maintenanceLogs: 450,
-  auditLogs: 550,
-  backups: 150
+const COLLECTION_QUERY_PLANS = {
+  inventoryItems: { limit: 350, where: [], orderBy: ['name', 'asc'] },
+  vendors: { limit: 120, where: [], orderBy: ['name', 'asc'] },
+  wasteLogs: { limit: 120, dateField: 'date', pastDays: 45, orderBy: ['date', 'desc'] },
+  invoices: { limit: 120, dateField: 'processedAt', pastDays: 90, orderBy: ['processedAt', 'desc'] },
+  events: { limit: 120, dateField: 'date', pastDays: 14, futureDays: 45, orderBy: ['date', 'asc'] },
+  prepItems: { limit: 160, dateField: 'date', pastDays: 2, futureDays: 14, includeMaster: true, orderBy: ['date', 'asc'] },
+  menuDependencies: { limit: 500, where: [], orderBy: ['updatedAt', 'desc'] },
+  recipes: { limit: 220, where: [], orderBy: ['title', 'asc'] },
+  users: { limit: 180, where: [], orderBy: ['name', 'asc'] },
+  shifts: { limit: 320, dateField: 'date', pastDays: 14, futureDays: 45, orderBy: ['date', 'asc'] },
+  timePunches: { limit: 180, dateField: 'date', pastDays: 21, futureDays: 2, orderBy: ['date', 'desc'] },
+  timeOffRequests: { limit: 160, dateField: 'date', pastDays: 7, futureDays: 90, orderBy: ['date', 'asc'] },
+  availabilityRecords: { limit: 180, where: [], orderBy: ['updatedAt', 'desc'] },
+  reminders: { limit: 120, where: [['dispatchEligible', '==', true]], orderBy: ['nextDispatchAt', 'asc'] },
+  tasks: { limit: 160, where: [['isCompleted', '==', false]], orderBy: ['date', 'asc'] },
+  maintenanceLogs: { limit: 120, orderBy: ['updatedAt', 'desc'] },
+  auditLogs: { limit: 80, orderBy: ['timestamp', 'desc'] }
 };
 
 const DEFAULT_JOBS = {
@@ -78,6 +77,10 @@ function hashId(parts) {
   return crypto.createHash('sha1').update(parts.filter(Boolean).join('|')).digest('hex').slice(0, 32);
 }
 
+function contentHash(value) {
+  return crypto.createHash('sha1').update(JSON.stringify(value || {})).digest('hex');
+}
+
 function dateKey(value) {
   if (!value) return '';
   const d = new Date(value);
@@ -125,72 +128,82 @@ async function runPythonOpsEngine(req, payload) {
   });
 }
 
-async function getCollectionRows(db, collectionName, restaurantId, limit = 200) {
-  try {
-    const snap = await db.collection(collectionName).where('restaurantId', '==', restaurantId).limit(limit).get();
-    return snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-  } catch (err) {
-    try {
-      const snap = await db.collection(collectionName).where('workspaceId', '==', restaurantId).limit(limit).get();
-      return snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-    } catch (_) {
-      return [];
+function isoDateDaysFromNow(days) {
+  const d = new Date();
+  d.setUTCDate(d.getUTCDate() + Number(days || 0));
+  return d.toISOString().slice(0, 10);
+}
+
+async function getCollectionRows(db, collectionName, restaurantId, plan = {}) {
+  let ref = db.collection(collectionName).where('restaurantId', '==', restaurantId);
+  const queryStats = { collection: collectionName, limit: plan.limit || 100, filters: 1, rows: 0 };
+  (plan.where || []).forEach(([field, op, value]) => {
+    if (field && op && value !== undefined) {
+      ref = ref.where(field, op, value);
+      queryStats.filters += 1;
     }
+  });
+  if (plan.dateField) {
+    const start = isoDateDaysFromNow(-(plan.pastDays || 0));
+    const end = isoDateDaysFromNow(plan.futureDays || 0);
+    ref = ref.where(plan.dateField, '>=', start).where(plan.dateField, '<=', end);
+    queryStats.filters += 2;
   }
+  if (plan.orderBy) ref = ref.orderBy(plan.orderBy[0], plan.orderBy[1] || 'asc');
+  ref = ref.limit(plan.limit || 100);
+  const snap = await ref.get();
+  let rows = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+  if (plan.includeMaster) {
+    const masterSnap = await db.collection(collectionName)
+      .where('restaurantId', '==', restaurantId)
+      .where('date', '==', 'MASTER')
+      .limit(60)
+      .get();
+    rows = [...rows, ...masterSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }))];
+  }
+  queryStats.rows = rows.length;
+  return { rows, queryStats };
 }
 
 async function loadPayloadForRestaurant(db, restaurant) {
   const restaurantId = restaurant.id;
-  const [inventoryItems, vendors, wasteLogs, invoices, events, prepItems, menuDependencies, recipes, users, shifts, timePunches, timeOffRequests, availabilityRecords, reminders, tasks, maintenanceLogs, auditLogs, backups] = await Promise.all([
-    getCollectionRows(db, 'inventoryItems', restaurantId, COLLECTION_LIMITS.inventoryItems),
-    getCollectionRows(db, 'vendors', restaurantId, COLLECTION_LIMITS.vendors),
-    getCollectionRows(db, 'wasteLogs', restaurantId, COLLECTION_LIMITS.wasteLogs),
-    getCollectionRows(db, 'invoices', restaurantId, COLLECTION_LIMITS.invoices),
-    getCollectionRows(db, 'events', restaurantId, COLLECTION_LIMITS.events),
-    getCollectionRows(db, 'prepItems', restaurantId, COLLECTION_LIMITS.prepItems),
-    getCollectionRows(db, 'menuDependencies', restaurantId, COLLECTION_LIMITS.menuDependencies),
-    getCollectionRows(db, 'recipes', restaurantId, COLLECTION_LIMITS.recipes),
-    getCollectionRows(db, 'users', restaurantId, COLLECTION_LIMITS.users),
-    getCollectionRows(db, 'shifts', restaurantId, COLLECTION_LIMITS.shifts),
-    getCollectionRows(db, 'timePunches', restaurantId, COLLECTION_LIMITS.timePunches),
-    getCollectionRows(db, 'timeOffRequests', restaurantId, COLLECTION_LIMITS.timeOffRequests),
-    getCollectionRows(db, 'availabilityRecords', restaurantId, COLLECTION_LIMITS.availabilityRecords),
-    getCollectionRows(db, 'reminders', restaurantId, COLLECTION_LIMITS.reminders),
-    getCollectionRows(db, 'tasks', restaurantId, COLLECTION_LIMITS.tasks),
-    getCollectionRows(db, 'maintenanceLogs', restaurantId, COLLECTION_LIMITS.maintenanceLogs),
-    getCollectionRows(db, 'auditLogs', restaurantId, COLLECTION_LIMITS.auditLogs),
-    getCollectionRows(db, 'backups', restaurantId, COLLECTION_LIMITS.backups)
-  ]);
+  const entries = await Promise.all(Object.entries(COLLECTION_QUERY_PLANS).map(async ([collectionName, plan]) => {
+    const result = await getCollectionRows(db, collectionName, restaurantId, plan);
+    return [collectionName, result];
+  }));
+  const byCollection = Object.fromEntries(entries);
   let backupStatus = {};
   try {
     const status = await db.collection('system').doc('backupStatus').get();
     backupStatus = status.exists ? status.data() : {};
   } catch (_) {}
-  return {
+  const payload = {
     restaurantId,
     currentDate: todayKey(),
     daysAhead: 14,
-    inventoryItems,
-    vendors,
-    wasteLogs,
-    invoices,
-    events,
-    prepItems,
-    menuDependencies,
-    recipes,
-    users,
-    shifts,
-    timePunches,
-    timeOffRequests,
-    availabilityRecords,
-    reminders,
-    tasks,
-    maintenanceLogs,
-    auditLogs,
-    backups,
+    inventoryItems: byCollection.inventoryItems.rows,
+    vendors: byCollection.vendors.rows,
+    wasteLogs: byCollection.wasteLogs.rows,
+    invoices: byCollection.invoices.rows,
+    events: byCollection.events.rows,
+    prepItems: byCollection.prepItems.rows,
+    menuDependencies: byCollection.menuDependencies.rows,
+    recipes: byCollection.recipes.rows,
+    users: byCollection.users.rows,
+    shifts: byCollection.shifts.rows,
+    timePunches: byCollection.timePunches.rows,
+    timeOffRequests: byCollection.timeOffRequests.rows,
+    availabilityRecords: byCollection.availabilityRecords.rows,
+    reminders: byCollection.reminders.rows,
+    tasks: byCollection.tasks.rows,
+    maintenanceLogs: byCollection.maintenanceLogs.rows,
+    auditLogs: byCollection.auditLogs.rows,
+    backups: [],
     backupStatus,
+    sourceQueryStats: Object.fromEntries(Object.entries(byCollection).map(([name, result]) => [name, result.queryStats])),
     restaurantSnapshot: { id: restaurant.id, name: restaurant.name || restaurant.restaurantName || '', planId: restaurant.planId || restaurant.subscription?.planId || '' }
   };
+  return payload;
 }
 
 function criticalFindingsFrom(result = {}) {
@@ -285,18 +298,28 @@ function makeRecommendations(restaurant, result = {}, runId, source) {
 async function writeRestaurantAdminAlerts(db, restaurant, result, runId, source) {
   const rows = makeRecommendations(restaurant, result, runId, source);
   let written = 0;
+  let skippedUnchanged = 0;
   const alertRows = [];
   for (const row of rows) {
-    const id = hashId([row.restaurantId, row.type, row.title, dateKey(row.createdAt)]);
+    const rowHash = contentHash({ type: row.type, title: row.title, detail: row.detail, severity: row.severity, payload: row.payload });
+    const id = hashId([row.restaurantId, row.type, row.title, row.detail || 'stable']);
     const ref = db.collection('restaurantAdminAlerts').doc(id);
     const snap = await ref.get().catch(() => null);
-    if (snap?.exists && ['acknowledged', 'dismissed', 'completed', 'resolved'].includes(String(snap.data()?.status || '').toLowerCase())) continue;
-    const doc = { ...row, id, lastSeenAt: new Date().toISOString(), seenCount: (Number(snap?.data()?.seenCount || 0) + 1) };
+    if (snap?.exists) {
+      const existing = snap.data() || {};
+      if (['acknowledged', 'dismissed', 'completed', 'resolved'].includes(String(existing.status || '').toLowerCase())) continue;
+      if (existing.contentHash === rowHash) {
+        skippedUnchanged += 1;
+        alertRows.push({ id, ...existing, unchanged: true });
+        continue;
+      }
+    }
+    const doc = { ...row, id, contentHash: rowHash, lastMaterialChangeAt: new Date().toISOString() };
     await ref.set(doc, { merge: true });
     alertRows.push(doc);
     written += 1;
   }
-  return { written, considered: rows.length, alerts: alertRows };
+  return { written, considered: rows.length, skippedUnchanged, alerts: alertRows };
 }
 
 async function loadAlertRecipients(db, restaurantId, restaurant = {}) {
@@ -411,13 +434,18 @@ async function processRestaurant({ req, app, db, restaurant, source, requestedMo
     const payload = await loadPayloadForRestaurant(db, restaurant);
     const result = await runPythonOpsEngine(req, payload);
     const criticalFindings = criticalFindingsFrom(result);
-    const reportRef = db.collection('opsIntelligenceReports').doc(runId);
-    const alertStats = gate.config.jobs?.approvalQueue === false ? { written: 0, considered: 0, disabled: true, alerts: [] } : await writeRestaurantAdminAlerts(db, restaurant, result, runId, source);
-    const pushItems = [...criticalFindings, ...(alertStats.alerts || [])].slice(0, 30);
-    const pushResult = gate.config.jobs?.criticalPushAlerts === false ? { attempted: false, disabled: true, sentCount: 0, failedCount: 0 } : await sendRestaurantOwnerAdminPush(app, db, restaurant, pushItems, runId).catch(error => ({ attempted: true, sentCount: 0, failedCount: 1, error: error.message || String(error) }));
+    const compactResult = compactResultForStorage(result);
+    const meaningfulHash = contentHash({ result: compactResult, criticalFindings });
+    const currentReportRef = db.collection('opsIntelligenceReports').doc(`${restaurant.id}_current`);
+    const currentSnap = await currentReportRef.get().catch(() => null);
+    const unchanged = currentSnap?.exists && currentSnap.data()?.contentHash === meaningfulHash;
+    const alertStats = (unchanged || gate.config.jobs?.approvalQueue === false) ? { written: 0, considered: 0, skippedUnchanged: unchanged ? 1 : 0, disabled: gate.config.jobs?.approvalQueue === false, alerts: [] } : await writeRestaurantAdminAlerts(db, restaurant, result, runId, source);
+    const pushItems = unchanged ? [] : [...criticalFindings, ...(alertStats.alerts || [])].slice(0, 30);
+    const pushResult = (unchanged || gate.config.jobs?.criticalPushAlerts === false) ? { attempted: false, disabled: gate.config.jobs?.criticalPushAlerts === false, skippedUnchanged: unchanged, sentCount: 0, failedCount: 0 } : await sendRestaurantOwnerAdminPush(app, db, restaurant, pushItems, runId).catch(error => ({ attempted: true, sentCount: 0, failedCount: 1, error: error.message || String(error) }));
     const finishedAt = new Date().toISOString();
     const summary = result.summary || {};
-    await reportRef.set({
+    const reportRef = unchanged ? null : db.collection('opsIntelligenceReports').doc(runId);
+    const reportPayload = {
       id: runId,
       runId,
       restaurantId: restaurant.id,
@@ -437,22 +465,32 @@ async function processRestaurant({ req, app, db, restaurant, source, requestedMo
       safetyPolicy: SAFE_POLICY,
       changesApplied: 0,
       systemAdminCanApply: false,
-      appVersion: APP_VERSION
-    }, { merge: true });
-    await runRef.set({ status: 'completed', finishedAt, summary, reportId: reportRef.id, criticalFindingCount: criticalFindings.length, alertStats, queueStats: { written: 0, considered: 0, disabled: true, redirectedTo: 'restaurantAdminAlerts' }, pushResult, changesApplied: 0, systemAdminCanApply: false }, { merge: true });
-    await db.collection('pythonAutomationConfigs').doc(restaurant.id).set({
-      restaurantId: restaurant.id,
-      workspaceId: restaurant.id,
-      restaurantName: restaurant.name || restaurant.restaurantName || '',
-      jobs: gate.config.jobs,
-      paused: gate.config.paused === true,
-      lastRunAt: finishedAt,
-      lastRunId: runId,
-      lastStatus: criticalFindings.length ? 'attention' : 'ok',
-      nextRunHint: source === 'manual' ? 'Next scheduled nightly run' : 'Tomorrow morning',
-      updatedAt: finishedAt
-    }, { merge: true });
-    await db.collection('auditLogs').add({ restaurantId: restaurant.id, action: 'PYTHON_AUTOMATION_ALERT_ONLY_RUN', target: `opsIntelligenceReports/${runId}`, details: `Python Automation completed with ${criticalFindings.length} critical/attention finding(s), ${alertStats.written || 0} owner/admin alert(s), and 0 restaurant changes applied.`, userId: source, userName: source === 'cron' ? 'Vercel Cron' : 'System Administrator', timestamp: finishedAt, source: 'python_automation_center', changesApplied: 0, systemAdminCanApply: false }).catch(() => null);
+      appVersion: APP_VERSION,
+      contentHash: meaningfulHash,
+      sourceQueryStats: payload.sourceQueryStats || {}
+    };
+    if (!unchanged && reportRef) {
+      await reportRef.set(reportPayload, { merge: true });
+      await currentReportRef.set({ ...reportPayload, id: currentReportRef.id, runId, latestHistoryRunId: runId, isCurrent: true }, { merge: true });
+    }
+    await runRef.set({ status: 'completed', finishedAt, summary, reportId: unchanged ? currentReportRef.id : reportRef.id, currentReportId: currentReportRef.id, unchanged, contentHash: meaningfulHash, sourceQueryStats: payload.sourceQueryStats || {}, criticalFindingCount: criticalFindings.length, alertStats, queueStats: { written: 0, considered: 0, disabled: true, redirectedTo: 'restaurantAdminAlerts' }, pushResult, changesApplied: 0, systemAdminCanApply: false }, { merge: true });
+    const nextConfigStatus = criticalFindings.length ? 'attention' : 'ok';
+    const configChanged = gate.config.lastStatus !== nextConfigStatus || gate.config.lastRunId !== runId || source === 'manual';
+    if (configChanged) {
+      await db.collection('pythonAutomationConfigs').doc(restaurant.id).set({
+        restaurantId: restaurant.id,
+        workspaceId: restaurant.id,
+        restaurantName: restaurant.name || restaurant.restaurantName || '',
+        jobs: gate.config.jobs,
+        paused: gate.config.paused === true,
+        lastRunAt: finishedAt,
+        lastRunId: runId,
+        lastStatus: nextConfigStatus,
+        nextRunHint: source === 'manual' ? 'Next scheduled nightly run' : 'Tomorrow morning',
+        updatedAt: finishedAt
+      }, { merge: true });
+    }
+    if (!unchanged) await db.collection('auditLogs').add({ restaurantId: restaurant.id, action: 'PYTHON_AUTOMATION_ALERT_ONLY_RUN', target: `opsIntelligenceReports/${runId}`, details: `Python Automation completed with ${criticalFindings.length} critical/attention finding(s), ${alertStats.written || 0} owner/admin alert(s), and 0 restaurant changes applied.`, userId: source, userName: source === 'cron' ? 'Vercel Cron' : 'System Administrator', timestamp: finishedAt, source: 'python_automation_center', changesApplied: 0, systemAdminCanApply: false }).catch(() => null);
     return { restaurantId: restaurant.id, restaurantName: restaurant.name || '', ok: true, runId, status: criticalFindings.length ? 'attention' : 'ok', summary, criticalFindingCount: criticalFindings.length, ownerAdminAlertsWritten: alertStats.written || 0, queueItemsWritten: 0, pushSentCount: pushResult.sentCount || 0, eligibleOwnerAdminRecipients: pushResult.eligibleRecipientCount || 0, changesApplied: 0, systemAdminCanApply: false };
   } catch (error) {
     const finishedAt = new Date().toISOString();

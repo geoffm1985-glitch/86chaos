@@ -462,10 +462,10 @@ const [currentDate, setCurrentDate] = useState(getToday());
   const wantsScheduleData = wantsPublishedSchedule || (wantsToday && canReadScheduleView) || (wantsScheduleScreen && (canReadScheduleView || canReadScheduleBuilder)) || (['labor', 'ops'].includes(activeTabState) && (canReadScheduleView || canReadOperationsLabor));
   const wantsLaborData = (['financials', 'labor', 'sales', 'ops'].includes(activeTabState) || (wantsToday && canReadOperationsLabor)) && canReadOperationsLabor;
   const wantsInventoryData = (((wantsToday || activeTabState === 'ops' || isGlobalSearchOpen) && (canReadBasicInventory || canReadSmartInventory)) || (activeTabState === 'menu-intelligence' && canReadMenuCollections));
-  const wantsPrepData = wantsToday || ['prep', 'ops'].includes(activeTabState);
+  const wantsPrepData = wantsToday; // Prep screen owns its live prep/task listeners; App keeps only Today summaries.
   const wantsMenuData = (activeTabState === 'menu-intelligence' || wantsToday) && canReadMenuCollections;
-  const wantsRecipesData = activeTabState === 'recipes' || activeTabState === 'today' || activeTabState === 'ops' || isGlobalSearchOpen; // Load recipe data only where it is displayed, searched, or used by active dashboards.
-  const wantsMaintenanceData = (wantsToday || ['maintenance', 'ops'].includes(activeTabState)) && canReadMaintenance;
+  const wantsRecipesData = isGlobalSearchOpen; // Recipes screen owns its live query; App keeps only global-search demand.
+  const wantsMaintenanceData = wantsToday && canReadMaintenance; // Maintenance screen owns its full listener; App keeps only Today alert context.
   const wantsSalesData = ['financials', 'sales', 'ops', 'labor'].includes(activeTabState) && canReadSalesCollections;
   const shiftRangeStart = wantsScheduleScreen ? scheduleWindowStart : getToday();
   const shiftRangeEnd = wantsScheduleScreen ? scheduleWindowEnd : todayOpsWindowEnd;
@@ -485,9 +485,13 @@ const [currentDate, setCurrentDate] = useState(getToday());
   // On schedule screens, load the workspace request-off set so legacy records that only have
   // employeeId/email/name still appear. Outside schedule screens, keep the cheaper own-user query.
   const timeOffRequestClauses = (canViewTeamScheduleData || wantsScheduleScreen) ? [] : [['userId', '==', appUser?.id || '']];
+  const wantsFullRosterData = Boolean(rId && !ghostTenant && (
+    wantsToday || ['schedule', 'published', 'events', 'team', 'labor', 'financials', 'messages', 'hr', 'prep'].includes(activeTabState) || isGlobalSearchOpen
+  ));
+  const wantsWorkspaceMembershipList = Boolean(rId && !ghostTenant && ['schedule', 'published', 'events', 'team'].includes(activeTabState));
 
-  const users = useLiveCollection('users', rId, { enabled: !!rId, limitCount: activeTabState === 'godmode' ? 400 : 160, fallbackLimitCount: 60 });
-  const workspaceMembers = useLiveCollection('workspaceMembers', rId, { enabled: !!rId, limitCount: activeTabState === 'team' ? 400 : 180, fallbackLimitCount: 80 });
+  const users = useLiveCollection('users', rId, { enabled: wantsFullRosterData, limitCount: activeTabState === 'team' ? 220 : 90, fallbackLimitCount: 40, debugLabel: `app:${activeTabState}:roster` });
+  const workspaceMembers = useLiveCollection('workspaceMembers', rId, { enabled: wantsWorkspaceMembershipList, limitCount: activeTabState === 'team' ? 220 : 60, fallbackLimitCount: 30, debugLabel: `app:${activeTabState}:workspace-members` });
   // Low-cost presence: no Firestore live heartbeat/listener. When a manager/team screen needs
   // last-seen hints, read tiny Realtime Database summaries instead of users/livePresence documents.
   const wantsWorkspacePresenceSnapshot = Boolean(activeTabState === 'team' && canViewTeamPresenceData);
@@ -515,7 +519,7 @@ const [currentDate, setCurrentDate] = useState(getToday());
   const livePresenceRecords = workspacePresenceRecords;
   const selfPresenceRecord = useLowCostPresenceSummary(rId, appUser?.id || '', { enabled: !!rId && !ghostTenant && activeTabState === 'settings' && !!appUser?.id });
   const presenceSessions = livePresenceRecords;
-  const rawShifts = useLiveCollection('shifts', rId, { enabled: !!rId && wantsScheduleData, limitCount: wantsScheduleScreen ? 1500 : 180, fallbackLimitCount: wantsScheduleScreen ? 1500 : 120 });
+  const rawShifts = useLiveCollection('shifts', rId, { enabled: !!rId && wantsScheduleData, whereClauses: [['date','>=', shiftRangeStart], ['date','<=', shiftRangeEnd]], orderByField: 'date', orderDirection: 'asc', limitCount: wantsScheduleScreen ? 420 : 80, fallbackLimitCount: wantsScheduleScreen ? 120 : 30, debugLabel: `app:${activeTabState}:${activeScheduleSubTab}:shifts-range` });
   const shifts = useMemo(() => {
     const start = shiftRangeStart;
     const end = shiftRangeEnd;
@@ -542,14 +546,14 @@ const [currentDate, setCurrentDate] = useState(getToday());
   const shiftSwaps = useLiveCollection('shiftSwaps', rId, { enabled: !!rId && wantsScheduleData, whereClauses: [['date','>=', getToday()], ['date','<=', futureWindowEnd]], orderByField: 'date', orderDirection: 'asc', limitCount: 50, fallbackLimitCount: 25 });
   const events = useLiveCollection('events', rId, { enabled: !!rId && wantsEventData, whereClauses: eventRangeClauses, orderByField: 'date', orderDirection: eventOrderDirection, limitCount: eventLimitCount, fallbackLimitCount: wantsScheduleScreen ? 400 : 25 });
   const sales = useLiveCollection('sales', rId, { enabled: !!rId && wantsSalesData, whereClauses: [['date','>=', monthBounds.start], ['date','<=', monthBounds.end]], orderByField: 'date', orderDirection: 'desc', limitCount: 45, fallbackLimitCount: 20 });
-  const timeOffRequests = useLiveCollection('timeOffRequests', rId, { enabled: !!rId && wantsScheduleData, whereClauses: timeOffRequestClauses, limitCount: wantsScheduleScreen ? 1000 : 180, fallbackLimitCount: wantsScheduleScreen ? 1000 : 120 });
+  const timeOffRequests = useLiveCollection('timeOffRequests', rId, { enabled: !!rId && wantsScheduleData, whereClauses: (wantsScheduleScreen ? [['date','>=', shiftRangeStart], ['date','<=', shiftRangeEnd]] : timeOffRequestClauses), orderByField: wantsScheduleScreen ? 'date' : null, orderDirection: 'asc', limitCount: wantsScheduleScreen ? 180 : 60, fallbackLimitCount: wantsScheduleScreen ? 80 : 30, debugLabel: `app:${activeTabState}:${activeScheduleSubTab}:timeoff` });
   const timePunches = useLiveCollection('timePunches', rId, { enabled: !!rId && wantsLaborData, whereClauses: [['date','>=', activeTabState === 'labor' ? laborPunchWindowStart : lightPunchWindowStart], ['date','<=', activeTabState === 'labor' ? laborPunchWindowEnd : lightPunchWindowEnd]], orderByField: 'date', orderDirection: 'desc', limitCount: activeTabState === 'labor' ? 180 : 35, fallbackLimitCount: 30 });
-  const inventoryItems = useLiveCollection('inventoryItems', rId, { enabled: !!rId && wantsInventoryData, limitCount: activeTabState === 'inventory' ? 240 : 75, fallbackLimitCount: 55 });
+  const inventoryItems = useLiveCollection('inventoryItems', rId, { enabled: !!rId && wantsInventoryData, limitCount: activeTabState === 'inventory' ? 180 : 55, fallbackLimitCount: 35, debugLabel: `app:${activeTabState}:inventory` });
   const menuDependencies = useLiveCollection('menuDependencies', rId, { enabled: !!rId && wantsMenuData, limitCount: activeTabState === 'menu-intelligence' ? 500 : 120, fallbackLimitCount: 80 });
-  const maintenanceLogs = useLiveCollection('maintenanceLogs', rId, { enabled: !!rId && wantsMaintenanceData, limitCount: activeTabState === 'maintenance' ? 110 : 30, fallbackLimitCount: 25 });
+  const maintenanceLogs = useLiveCollection('maintenanceLogs', rId, { enabled: !!rId && wantsMaintenanceData, whereClauses: [], limitCount: activeTabState === 'maintenance' ? 80 : 20, fallbackLimitCount: 20, debugLabel: `app:${activeTabState}:maintenance` });
   const prepItems = useLiveCollection('prepItems', rId, { enabled: !!rId && wantsPrepData, whereClauses: [['date','in', prepDateWindow]], limitCount: 80, fallbackLimitCount: 35 });
   const tasks = useLiveCollection('tasks', rId, { enabled: !!rId && wantsPrepData, limitCount: 75, fallbackLimitCount: 35 });
-  const recipes = useLiveCollection('recipes', rId, { enabled: !!rId && wantsRecipesData, limitCount: 500, fallbackLimitCount: 120 });
+  const recipes = useLiveCollection('recipes', rId, { enabled: !!rId && wantsRecipesData, limitCount: 350, fallbackLimitCount: 80, debugLabel: `app:${activeTabState}:recipes` });
   
 // --- LIVE APP USER LOGIC ---
   const fullGhostPermissions = { schedule: true, events: true, ops: true, inventory: true, prep: true, sales: true, team: true, labor: true, help: true };
@@ -1465,6 +1469,20 @@ What I clicked / expected:
     return existing.token !== currentToken || existing.permission !== permission || existing.host !== window.location.hostname || !lastVerified || Date.now() - lastVerified > refreshMs || liveAppUser?.pushNeedsRepair === true || liveAppUser?.pushForceServiceWorkerRefresh === true;
   };
 
+  const shouldWritePushPermissionState = (permission, errorMessage = '') => {
+    const existingPermission = liveAppUser?.notificationPermission || liveAppUser?.pushTokenPermission || '';
+    const existingStatus = liveAppUser?.pushRepairStatus || '';
+    const existingError = liveAppUser?.lastPushRepairError || '';
+    const lastSync = liveAppUser?.lastPushTokenSyncAt ? new Date(liveAppUser.lastPushTokenSyncAt).getTime() : 0;
+    const refreshMs = 7 * 24 * 60 * 60 * 1000;
+    if (existingPermission !== permission) return true;
+    if (permission === 'granted') return false;
+    const nextStatus = permission === 'denied' ? 'blocked-by-browser' : 'permission-not-granted';
+    if (existingStatus !== nextStatus) return true;
+    if (errorMessage && existingError !== errorMessage) return true;
+    return !lastSync || Date.now() - lastSync > refreshMs || liveAppUser?.pushNeedsRepair === true || liveAppUser?.pushForceServiceWorkerRefresh === true;
+  };
+
   const repairPushOnThisDevice = async (source = 'manual') => {
     if (!liveAppUser?.id || ghostTenant || isDemoMode || typeof window === 'undefined' || !('Notification' in window) || !messaging) {
       addToast('Push Repair Blocked', 'Push repair is only available from the real logged-in device.');
@@ -1551,13 +1569,18 @@ What I clicked / expected:
 
     const syncPushToken = async (permission, showToast = false) => {
       if (canceled || permission !== 'granted') {
-        if (!canceled && liveAppUser?.id) {
+        if (!canceled && liveAppUser?.id && shouldWritePushPermissionState(permission)) {
           updateDoc(doc(db, 'users', liveAppUser.id), {
             notificationPermission: permission,
             pushTokenPermission: permission,
             pushRepairStatus: permission === 'denied' ? 'blocked-by-browser' : 'permission-not-granted',
             lastPushTokenSyncAt: new Date().toISOString()
           }).catch(() => {});
+        } else if (!canceled) {
+          try {
+            window.__chaosFirestoreDiagnostics = window.__chaosFirestoreDiagnostics || {};
+            window.__chaosFirestoreDiagnostics.skippedNoOpWrites = (window.__chaosFirestoreDiagnostics.skippedNoOpWrites || 0) + 1;
+          } catch (_) {}
         }
         return;
       }
@@ -1600,13 +1623,16 @@ What I clicked / expected:
         if (showToast) addToast('Push Ready', 'Push notifications are enabled for this device.');
       } catch (err) {
         console.warn('86 Chaos push token sync failed:', err?.message || err);
-        updateDoc(doc(db, 'users', liveAppUser.id), {
-          notificationPermission: permission,
-          pushTokenPermission: permission,
-          pushRepairStatus: 'sync-failed',
-          lastPushRepairError: err?.message || String(err),
-          lastPushTokenSyncAt: new Date().toISOString()
-        }).catch(() => {});
+        const pushErrorMessage = err?.message || String(err);
+        if (shouldWritePushPermissionState(permission, pushErrorMessage)) {
+          updateDoc(doc(db, 'users', liveAppUser.id), {
+            notificationPermission: permission,
+            pushTokenPermission: permission,
+            pushRepairStatus: 'sync-failed',
+            lastPushRepairError: pushErrorMessage,
+            lastPushTokenSyncAt: new Date().toISOString()
+          }).catch(() => {});
+        }
       }
     };
 

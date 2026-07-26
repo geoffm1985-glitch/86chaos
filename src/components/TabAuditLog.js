@@ -2,8 +2,8 @@ import React from 'react';
 import { Shield } from 'lucide-react';
 
 const TabAuditLog = ({ appUser, useLiveCollection, T }) => {
-  const logs = useLiveCollection('auditLogs', appUser?.restaurantId);
-  const sortedLogs = [...logs].sort((a,b) => new Date(b.timestamp) - new Date(a.timestamp));
+  const logs = useLiveCollection('auditLogs', appUser?.restaurantId, { orderByField: 'timestamp', orderDirection: 'desc', limitCount: 100, fallbackLimitCount: 50, debugLabel: 'audit-log:latest' });
+  const sortedLogs = [...logs];
 
   return (
     <div className="max-w-4xl mx-auto space-y-4 pb-24 animate-[slideIn_0.2s_ease-out]">

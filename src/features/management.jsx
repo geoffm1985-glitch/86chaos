@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Bell, Check, Camera, ChevronLeft, ChevronRight, MessageSquare, Plus, Trash2, Users, Calendar, Clock, X, Loader2, Package, ClipboardList, Menu, Settings, LogOut, Shield, Send, Repeat, Edit, Moon, Sun, TrendingUp, BookOpen, Search, ChefHat, Scale, Coffee, Star, Bug, Wrench, Globe, ThumbsUp, HelpCircle, Sparkles } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
-import { getFirestore, collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, where, getDoc, setDoc, getDocs, Timestamp, deleteField } from 'firebase/firestore';
+import { getFirestore, collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, where, getDoc, setDoc, getDocs, Timestamp, deleteField, orderBy, limit as firestoreLimit } from 'firebase/firestore';
 import { getAuth, signInWithEmailAndPassword, sendPasswordResetEmail, createUserWithEmailAndPassword, updatePassword, EmailAuthProvider, reauthenticateWithCredential, sendEmailVerification, multiFactor, PhoneAuthProvider, PhoneMultiFactorGenerator, RecaptchaVerifier } from 'firebase/auth';
 import { getToken, onMessage } from 'firebase/messaging';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
@@ -4465,8 +4465,9 @@ const LEGACY_JULY_2026_SCHEDULE = [
     } catch(err) { addToast('Error', err.message); }
   };
 
-  // Fetch Global Intelligence
+  // Fetch Global Intelligence with section-scoped, bounded listeners.
   useEffect(() => {
+    const unsubs = [];
     const noteLoadError = (key, err) => {
       console.warn(`System Administrator data load failed: ${key}`, err?.message || err);
       setAdminDataErrors(prev => ({ ...prev, [key]: err?.message || 'Permission denied or network blocked.' }));
@@ -4477,65 +4478,80 @@ const LEGACY_JULY_2026_SCHEDULE = [
       delete next[key];
       return next;
     });
-    const unsubRests = onSnapshot(collection(db, 'restaurants'), snap => { clearLoadError('restaurants'); setRestaurants(snap.docs.map(d => ({ id: d.id, ...d.data() }))); }, err => noteLoadError('restaurants', err));
-    const unsubAdmins = onSnapshot(query(collection(db, 'users'), where('isSuperAdmin', '==', true)), snap => { clearLoadError('superAdmins'); setSuperAdmins(snap.docs.map(d => ({ id: d.id, ...d.data() }))); }, err => noteLoadError('superAdmins', err));
-    let rawUserList = [];
-    const publishUsers = () => {
-      setAllUsers(rawUserList);
-      const counts = {};
-      rawUserList.forEach(u => { if (u.restaurantId) counts[u.restaurantId] = (counts[u.restaurantId] || 0) + 1; });
-      setUserCounts(counts);
+    const listen = (key, q, setter, mapper = (snap) => snap.docs.map(d => ({ id: d.id, ...d.data() }))) => {
+      const unsub = onSnapshot(q, snap => { clearLoadError(key); setter(mapper(snap)); }, err => noteLoadError(key, err));
+      unsubs.push(unsub);
     };
-    const unsubUsers = onSnapshot(collection(db, 'users'), snap => {
-      clearLoadError('users');
-      rawUserList = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-      publishUsers();
-    }, err => noteLoadError('users', err));
-    const unsubCrashes = onSnapshot(collection(db, 'crashReports'), snap => { clearLoadError('crashReports'); setCrashLogs(snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a,b) => new Date(b.time||0) - new Date(a.time||0)).slice(0, 50)); }, err => noteLoadError('crashReports', err));
-const unsubAudit = onSnapshot(collection(db, 'auditLogs'), snap => {
-       clearLoadError('auditLogs');
-       const rawLogs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-       setAuditLogs(rawLogs.sort((a,b) => new Date(b.timestamp) - new Date(a.timestamp)).slice(0, 100));
-       setTotalInstalls(rawLogs.filter(log => log.action === 'APP_INSTALLED').length);
-    }, err => noteLoadError('auditLogs', err));
-    const unsubAutomationReports = onSnapshot(collection(db, 'opsIntelligenceReports'), snap => {
-       clearLoadError('opsIntelligenceReports');
-       setAutomationReports(snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a,b) => new Date(b.createdAt || b.generatedAt || 0) - new Date(a.createdAt || a.generatedAt || 0)).slice(0, 80));
-    }, err => { setAutomationReports([]); noteLoadError('opsIntelligenceReports', err); });
-    const unsubAutomationRuns = onSnapshot(collection(db, 'pythonAutomationRuns'), snap => {
-       clearLoadError('pythonAutomationRuns');
-       setAutomationRuns(snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a,b) => new Date(b.startedAt || 0) - new Date(a.startedAt || 0)).slice(0, 80));
-    }, err => { setAutomationRuns([]); noteLoadError('pythonAutomationRuns', err); });
-    const unsubAutomationQueue = onSnapshot(collection(db, 'restaurantAdminAlerts'), snap => {
-       clearLoadError('restaurantAdminAlerts');
-       setAutomationQueue(snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a,b) => new Date(b.updatedAt || b.createdAt || 0) - new Date(a.updatedAt || a.createdAt || 0)).slice(0, 120));
-    }, err => { setAutomationQueue([]); noteLoadError('restaurantAdminAlerts', err); });
-    const unsubAutomationConfigs = onSnapshot(collection(db, 'pythonAutomationConfigs'), snap => {
-       clearLoadError('pythonAutomationConfigs');
-       setAutomationConfigs(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-    }, err => { setAutomationConfigs([]); noteLoadError('pythonAutomationConfigs', err); });
-    const unsubPricing = onSnapshot(doc(db, 'system', 'pricing'), docSnap => {
-       clearLoadError('pricing');
-       if (docSnap.exists()) setTierPrices(docSnap.data());
-    }, err => noteLoadError('pricing', err));
-    const unsubBackup = onSnapshot(doc(db, 'system', 'backupStatus'), docSnap => {
-       clearLoadError('backupStatus');
-       setBackupStatus(docSnap.exists() ? { id: docSnap.id, ...docSnap.data() } : null);
-    }, err => { setBackupStatus(null); noteLoadError('backupStatus', err); });
-    const unsubRestoreDrill = onSnapshot(doc(db, 'system', 'restoreDrillStatus'), docSnap => {
-       clearLoadError('restoreDrillStatus');
-       setRestoreDrillStatus(docSnap.exists() ? { id: docSnap.id, ...docSnap.data() } : null);
-    }, err => { setRestoreDrillStatus(null); noteLoadError('restoreDrillStatus', err); });
-    const unsubDeletionRequests = onSnapshot(collection(db, 'accountDeletionRequests'), snap => {
-       clearLoadError('accountDeletionRequests');
-       setAccountDeletionRequests(snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a,b) => new Date(b.updatedAt || b.requestedAt || 0) - new Date(a.updatedAt || a.requestedAt || 0)).slice(0, 100));
-    }, err => { setAccountDeletionRequests([]); noteLoadError('accountDeletionRequests', err); });
-    const unsubOpsReview = onSnapshot(doc(db, 'system', 'operationsReview'), docSnap => {
-       clearLoadError('operationsReview');
-       setOperationsReview(docSnap.exists() ? { id: docSnap.id, ...docSnap.data() } : null);
-    }, err => { setOperationsReview(null); noteLoadError('operationsReview', err); });
-    return () => { unsubRests(); unsubAdmins(); unsubUsers(); unsubCrashes(); unsubAudit(); unsubAutomationReports(); unsubAutomationRuns(); unsubAutomationQueue(); unsubAutomationConfigs(); unsubPricing(); unsubBackup(); unsubRestoreDrill(); unsubDeletionRequests(); unsubOpsReview(); };
-  }, []);
+    const listenDoc = (key, refObj, setter) => {
+      const unsub = onSnapshot(refObj, docSnap => { clearLoadError(key); setter(docSnap.exists() ? { id: docSnap.id, ...docSnap.data() } : null); }, err => { setter(null); noteLoadError(key, err); });
+      unsubs.push(unsub);
+    };
+
+    listen('superAdmins', query(collection(db, 'users'), where('isSuperAdmin', '==', true), firestoreLimit(25)), setSuperAdmins);
+    listenDoc('pricing', doc(db, 'system', 'pricing'), setTierPrices);
+    listenDoc('backupStatus', doc(db, 'system', 'backupStatus'), setBackupStatus);
+    listenDoc('restoreDrillStatus', doc(db, 'system', 'restoreDrillStatus'), setRestoreDrillStatus);
+    listenDoc('operationsReview', doc(db, 'system', 'operationsReview'), setOperationsReview);
+
+    if (['overview', 'tenants', 'ops'].includes(subTab)) {
+      listen('restaurants', query(collection(db, 'restaurants'), orderBy('name', 'asc'), firestoreLimit(subTab === 'tenants' ? 120 : 40)), setRestaurants);
+    } else {
+      setRestaurants(prev => prev.slice(0, 40));
+    }
+
+    if (subTab === 'users') {
+      listen('users', query(collection(db, 'users'), orderBy('name', 'asc'), firestoreLimit(120)), rows => {
+        setAllUsers(rows);
+        const counts = {};
+        rows.forEach(u => { if (u.restaurantId) counts[u.restaurantId] = (counts[u.restaurantId] || 0) + 1; });
+        setUserCounts(counts);
+      });
+    } else {
+      setAllUsers([]);
+      setUserCounts({});
+    }
+
+    if (['overview', 'push', 'forensics'].includes(subTab)) {
+      listen('crashReports', query(collection(db, 'crashReports'), orderBy('time', 'desc'), firestoreLimit(subTab === 'push' ? 50 : 15)), setCrashLogs);
+    } else {
+      setCrashLogs([]);
+    }
+
+    if (subTab === 'forensics') {
+      listen('auditLogs', query(collection(db, 'auditLogs'), orderBy('timestamp', 'desc'), firestoreLimit(100)), rows => {
+        setAuditLogs(rows);
+        setTotalInstalls(rows.filter(log => log.action === 'APP_INSTALLED').length);
+      });
+    } else {
+      setAuditLogs([]);
+      setTotalInstalls(0);
+    }
+
+    if (['overview', 'ops'].includes(subTab)) {
+      listen('restaurantAdminAlerts', query(collection(db, 'restaurantAdminAlerts'), where('status', '==', 'open'), orderBy('updatedAt', 'desc'), firestoreLimit(40)), setAutomationQueue);
+    } else {
+      setAutomationQueue([]);
+    }
+
+    if (subTab === 'ops') {
+      listen('opsIntelligenceReports', query(collection(db, 'opsIntelligenceReports'), orderBy('createdAt', 'desc'), firestoreLimit(50)), setAutomationReports);
+      listen('pythonAutomationRuns', query(collection(db, 'pythonAutomationRuns'), orderBy('startedAt', 'desc'), firestoreLimit(50)), setAutomationRuns);
+      listen('pythonAutomationConfigs', query(collection(db, 'pythonAutomationConfigs'), firestoreLimit(120)), setAutomationConfigs);
+    } else {
+      setAutomationReports([]);
+      setAutomationRuns([]);
+      setAutomationConfigs([]);
+    }
+
+    if (['security', 'users'].includes(subTab)) {
+      listen('accountDeletionRequests', query(collection(db, 'accountDeletionRequests'), orderBy('updatedAt', 'desc'), firestoreLimit(50)), setAccountDeletionRequests);
+    } else {
+      setAccountDeletionRequests([]);
+    }
+
+    return () => { unsubs.forEach(unsub => { try { unsub(); } catch (_) {} }); };
+  }, [subTab]);
+
 
 
   const loadPresenceSnapshot = async ({ silent = false } = {}) => {

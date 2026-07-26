@@ -40,6 +40,28 @@ const filterSelectableWorkspaceChoices = (workspaces = []) => Array.from(
   }, new Map()).values()
 );
 const membershipDocId = (uid, restaurantId) => `${String(uid || '').replace(/[^A-Za-z0-9_-]/g, '_')}_${String(restaurantId || '').replace(/[^A-Za-z0-9_-]/g, '_')}`.slice(0, 240);
+const updateWorkspaceSelectionIfChanged = (profileDocId, baseUser = {}, restaurantId = '') => {
+  if (!profileDocId || !restaurantId) return;
+  const alreadyActive = baseUser?.activeRestaurantId === restaurantId && baseUser?.lastWorkspaceId === restaurantId;
+  try {
+    window.__chaosFirestoreDiagnostics = window.__chaosFirestoreDiagnostics || {};
+    if (alreadyActive) {
+      window.__chaosFirestoreDiagnostics.skippedNoOpWrites = (window.__chaosFirestoreDiagnostics.skippedNoOpWrites || 0) + 1;
+      return;
+    }
+    window.__chaosFirestoreDiagnostics.writesInitiated = (window.__chaosFirestoreDiagnostics.writesInitiated || 0) + 1;
+  } catch (_) {}
+  updateDoc(doc(db, 'users', profileDocId), {
+    activeRestaurantId: restaurantId,
+    lastWorkspaceId: restaurantId,
+    lastWorkspaceSwitchedAt: new Date().toISOString()
+  }).then(() => {
+    try {
+      window.__chaosFirestoreDiagnostics = window.__chaosFirestoreDiagnostics || {};
+      window.__chaosFirestoreDiagnostics.writesCompleted = (window.__chaosFirestoreDiagnostics.writesCompleted || 0) + 1;
+    } catch (_) {}
+  }).catch(() => {});
+};
 const buildActiveUserForWorkspace = (baseUser = {}, workspace = {}) => {
   const safeBase = { ...baseUser };
   delete safeBase.password;
@@ -227,11 +249,7 @@ const LoginScreen = ({ setAppUser }) => {
       }
       localStorage.setItem('chaosRememberMe', rememberMe);
       localStorage.setItem(`chaosActiveRestaurantId_${baseUser.id}`, preferred.restaurantId);
-      updateDoc(doc(db, 'users', baseUser.profileDocId || baseUser.id), {
-        activeRestaurantId: preferred.restaurantId,
-        lastWorkspaceId: preferred.restaurantId,
-        lastWorkspaceSwitchedAt: new Date().toISOString()
-      }).catch(() => {});
+      updateWorkspaceSelectionIfChanged(baseUser.profileDocId || baseUser.id, baseUser, preferred.restaurantId);
       setAppUser({ ...buildActiveUserForWorkspace(baseUser, preferred), availableWorkspaces: choices });
     } finally {
       setWorkspaceLoading(false);
@@ -243,11 +261,7 @@ const LoginScreen = ({ setAppUser }) => {
     localStorage.setItem('chaosRememberMe', rememberMe);
     localStorage.setItem(`chaosActiveRestaurantId_${workspaceUser.id}`, workspace.restaurantId);
     try { sessionStorage.setItem(`chaosWorkspacePickerSeen_${workspaceUser.id}`, 'true'); } catch (_) {}
-    updateDoc(doc(db, 'users', workspaceUser.profileDocId || workspaceUser.id), {
-      activeRestaurantId: workspace.restaurantId,
-      lastWorkspaceId: workspace.restaurantId,
-      lastWorkspaceSwitchedAt: new Date().toISOString()
-    }).catch(() => {});
+    updateWorkspaceSelectionIfChanged(workspaceUser.profileDocId || workspaceUser.id, workspaceUser, workspace.restaurantId);
     setAppUser({ ...buildActiveUserForWorkspace(workspaceUser, workspace), availableWorkspaces: filterSelectableWorkspaceChoices(workspaceChoices) });
     setWorkspaceChoices([]);
     setWorkspaceUser(null);
@@ -306,11 +320,7 @@ const LoginScreen = ({ setAppUser }) => {
         localStorage.setItem('chaosRememberMe', rememberMe);
         localStorage.setItem(`chaosActiveRestaurantId_${baseUser.id}`, preferred.restaurantId);
         const profileDocId = baseUser.profileDocId || baseUser.id;
-        updateDoc(doc(db, 'users', profileDocId), {
-          activeRestaurantId: preferred.restaurantId,
-          lastWorkspaceId: preferred.restaurantId,
-          lastWorkspaceSwitchedAt: new Date().toISOString()
-        }).catch(() => {});
+        updateWorkspaceSelectionIfChanged(profileDocId, baseUser, preferred.restaurantId);
         setAppUser({ ...buildActiveUserForWorkspace(baseUser, preferred), availableWorkspaces: choices });
       } finally {
         setWorkspaceLoading(false);

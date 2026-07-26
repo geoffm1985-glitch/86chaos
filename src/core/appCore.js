@@ -380,7 +380,7 @@ export const MASTER_ADMIN_EMAIL = (process.env.REACT_APP_MASTER_ADMIN_EMAIL || '
 export const EVENT_TAGS = ['Standard Day', 'Packers Game', 'Brewers Game', 'Live Music', 'Severe Weather', 'Private Catering', 'Holiday'];
 
 // --- VERSION TRACKING ---
-export const CURRENT_VERSION = '16.0.26';
+export const CURRENT_VERSION = '16.0.27';
 
 // --- Helpers ---
 const usePageVisible = () => {
@@ -401,47 +401,137 @@ const usePageVisible = () => {
   return visible;
 };
 
-const LIVE_COLLECTION_RELEASE_GRACE_MS = 30_000;
+const LIVE_COLLECTION_RELEASE_GRACE_MS = 6 * 60 * 1000;
 const liveCollectionRegistry = new Map();
+const liveDocumentRegistry = new Map();
+
+const stableJson = (value) => {
+  try { return JSON.stringify(value, Object.keys(value || {}).sort()); } catch (_) { return String(value || ''); }
+};
 
 const getFirestoreDiagnostics = () => {
   if (typeof window === 'undefined') return null;
   window.__chaosFirestoreDiagnostics = window.__chaosFirestoreDiagnostics || {
     activeListeners: 0,
+    activeDocuments: 0,
     listenerReuseCount: 0,
+    listenerReleaseCount: 0,
+    listeners: {},
+    documents: {},
     documentsReceivedByQuery: {},
+    writes: {},
+    writesInitiated: 0,
+    writesCompleted: 0,
     skippedNoOpWrites: 0,
-    writesInitiated: 0
+    auditWritesCreated: 0,
+    lastResetAt: new Date().toISOString()
   };
   return window.__chaosFirestoreDiagnostics;
 };
 
-const makeLiveCollectionKey = ({ coll, restId, whereClauses, orderByField, orderDirection, limitCount }) => JSON.stringify({
+export const getFirebaseUsageDiagnostics = () => getFirestoreDiagnostics();
+export const resetFirebaseUsageDiagnostics = () => {
+  if (typeof window === 'undefined') return null;
+  window.__chaosFirestoreDiagnostics = null;
+  return getFirestoreDiagnostics();
+};
+export const downloadFirebaseUsageDiagnostics = (filename = '86chaos-firebase-usage-diagnostics.json') => {
+  if (typeof window === 'undefined') return null;
+  const report = getFirestoreDiagnostics() || {};
+  const blob = new Blob([JSON.stringify(report, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 5000);
+  return report;
+};
+export const clearTenantListenerCache = () => {
+  liveCollectionRegistry.forEach(entry => { try { entry.unsubscribe?.(); } catch (_) {} });
+  liveDocumentRegistry.forEach(entry => { try { entry.unsubscribe?.(); } catch (_) {} });
+  liveCollectionRegistry.clear();
+  liveDocumentRegistry.clear();
+  const diag = getFirestoreDiagnostics();
+  if (diag) {
+    diag.activeListeners = 0;
+    diag.activeDocuments = 0;
+    diag.listenerReleaseCount = (diag.listenerReleaseCount || 0) + 1;
+  }
+};
+
+const makeLiveCollectionKey = ({ coll, restId, whereClauses, orderByField, orderDirection, limitCount, debugLabel }) => JSON.stringify({
   projectId: firebaseConfig?.projectId || 'default',
   coll,
   restId,
   whereClauses: whereClauses || [],
   orderByField: orderByField || '',
   orderDirection: orderDirection || 'asc',
-  limitCount: Number(limitCount || 0) || null
+  limitCount: Number(limitCount || 0) || null,
+  debugLabel: debugLabel || ''
 });
 
-const acquireSharedLiveCollection = ({ coll, restId, constraints, key, setData }) => {
+const annotateListenerDiagnostics = (key, patch = {}) => {
+  const diagnostics = getFirestoreDiagnostics();
+  if (!diagnostics) return;
+  diagnostics.listeners[key] = { ...(diagnostics.listeners[key] || {}), ...patch, updatedAt: new Date().toISOString() };
+};
+
+const acquireSharedLiveCollection = ({ coll, restId, constraints, key, setData, debugLabel = '' }) => {
   let entry = liveCollectionRegistry.get(key);
   const diagnostics = getFirestoreDiagnostics();
   if (!entry) {
     entry = {
       key,
+      coll,
+      restId,
+      debugLabel,
       data: [],
+      hasCachedSnapshot: false,
+      initialSnapshotSeen: false,
       subscribers: new Set(),
       releaseTimer: null,
-      unsubscribe: null
+      unsubscribe: null,
+      attachedAt: new Date().toISOString(),
+      listenerCreationCount: 1,
+      listenerReuseCount: 0,
+      listenerReleaseCount: 0
     };
+    annotateListenerDiagnostics(key, {
+      queryKey: key,
+      collection: coll,
+      restaurantId: restId,
+      debugLabel,
+      subscriberCount: 0,
+      listenerCreationCount: 1,
+      listenerReuseCount: 0,
+      listenerReleaseCount: 0,
+      documentsReceivedInitial: 0,
+      documentsReceivedChanges: 0,
+      attachedAt: entry.attachedAt,
+      releasedAt: '',
+      releaseReason: '',
+      hadPriorCachedSnapshot: false
+    });
     entry.unsubscribe = onSnapshot(
       query(collection(db, coll), ...constraints),
       snap => {
-        entry.data = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-        if (diagnostics) diagnostics.documentsReceivedByQuery[key] = (diagnostics.documentsReceivedByQuery[key] || 0) + snap.docs.length;
+        const docs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        const isInitial = !entry.initialSnapshotSeen;
+        entry.initialSnapshotSeen = true;
+        entry.hasCachedSnapshot = true;
+        entry.data = docs;
+        if (diagnostics) {
+          diagnostics.documentsReceivedByQuery[key] = (diagnostics.documentsReceivedByQuery[key] || 0) + snap.docs.length;
+          const row = diagnostics.listeners[key] || {};
+          diagnostics.listeners[key] = {
+            ...row,
+            documentsReceivedInitial: (row.documentsReceivedInitial || 0) + (isInitial ? snap.docs.length : 0),
+            documentsReceivedChanges: (row.documentsReceivedChanges || 0) + (isInitial ? 0 : snap.docChanges().length),
+            lastSnapshotAt: new Date().toISOString(),
+            cached: false
+          };
+        }
         entry.subscribers.forEach(fn => fn(entry.data));
       },
       err => {
@@ -449,6 +539,7 @@ const acquireSharedLiveCollection = ({ coll, restId, constraints, key, setData }
         const isIndexProblem = err?.code === 'failed-precondition' || /index|requires an index|currently building/i.test(message);
         if (isIndexProblem) console.warn(`Firestore index pending for ${coll} / ${restId}. Waiting for the deployed index instead of showing a mismatched fallback query.`, message);
         else console.error(`Live collection error for ${coll} / ${restId}:`, err);
+        annotateListenerDiagnostics(key, { lastError: message, lastErrorAt: new Date().toISOString() });
         entry.data = [];
         entry.subscribers.forEach(fn => fn([]));
       }
@@ -456,28 +547,48 @@ const acquireSharedLiveCollection = ({ coll, restId, constraints, key, setData }
     liveCollectionRegistry.set(key, entry);
     if (diagnostics) diagnostics.activeListeners = liveCollectionRegistry.size;
   } else if (diagnostics) {
+    entry.listenerReuseCount += 1;
     diagnostics.listenerReuseCount += 1;
+    annotateListenerDiagnostics(key, {
+      listenerReuseCount: entry.listenerReuseCount,
+      hadPriorCachedSnapshot: entry.hasCachedSnapshot === true
+    });
   }
 
   if (entry.releaseTimer) {
     clearTimeout(entry.releaseTimer);
     entry.releaseTimer = null;
+    annotateListenerDiagnostics(key, { releaseReason: 'release-cancelled-visible-again' });
   }
   entry.subscribers.add(setData);
   setData(entry.data || []);
+  annotateListenerDiagnostics(key, { subscriberCount: entry.subscribers.size, cached: entry.hasCachedSnapshot && !entry.initialSnapshotSeen });
 
   return () => {
     const current = liveCollectionRegistry.get(key);
     if (!current) return;
     current.subscribers.delete(setData);
+    annotateListenerDiagnostics(key, { subscriberCount: current.subscribers.size });
     if (current.subscribers.size === 0 && !current.releaseTimer) {
       current.releaseTimer = setTimeout(() => {
         const latest = liveCollectionRegistry.get(key);
         if (!latest || latest.subscribers.size > 0) return;
         try { latest.unsubscribe?.(); } catch (err) { console.warn('Failed to release shared Firestore listener', err); }
+        latest.unsubscribe = null;
+        latest.listenerReleaseCount += 1;
         liveCollectionRegistry.delete(key);
         const diag = getFirestoreDiagnostics();
-        if (diag) diag.activeListeners = liveCollectionRegistry.size;
+        if (diag) {
+          diag.activeListeners = liveCollectionRegistry.size;
+          diag.listenerReleaseCount = (diag.listenerReleaseCount || 0) + 1;
+        }
+        annotateListenerDiagnostics(key, {
+          releasedAt: new Date().toISOString(),
+          releaseReason: 'no-subscribers-background-grace-expired',
+          listenerReleaseCount: latest.listenerReleaseCount,
+          subscriberCount: 0,
+          cached: true
+        });
       }, LIVE_COLLECTION_RELEASE_GRACE_MS);
     }
   };
@@ -491,7 +602,8 @@ export const useLiveCollection = (coll, restId, options = {}) => {
     orderByField = null,
     orderDirection = 'asc',
     fallbackLimitCount = 75,
-    pauseWhenHidden = true
+    pauseWhenHidden = true,
+    debugLabel = ''
   } = options || {};
   const [data, setData] = useState([]);
   const pageVisible = usePageVisible();
@@ -512,10 +624,68 @@ export const useLiveCollection = (coll, restId, options = {}) => {
     if (orderByField) constraints.push(orderBy(orderByField, orderDirection || 'asc'));
     if (limitCount && Number(limitCount) > 0) constraints.push(firestoreLimit(Number(limitCount)));
 
-    const key = makeLiveCollectionKey({ coll, restId, whereClauses, orderByField, orderDirection, limitCount });
-    return acquireSharedLiveCollection({ coll, restId, constraints, key, setData });
-  }, [coll, restId, enabled, limitCount, orderByField, orderDirection, fallbackLimitCount, pauseWhenHidden, pageVisible, JSON.stringify(whereClauses || [])]);
+    const key = makeLiveCollectionKey({ coll, restId, whereClauses, orderByField, orderDirection, limitCount, debugLabel });
+    return acquireSharedLiveCollection({ coll, restId, constraints, key, setData, debugLabel });
+  }, [coll, restId, enabled, limitCount, orderByField, orderDirection, fallbackLimitCount, pauseWhenHidden, pageVisible, debugLabel, JSON.stringify(whereClauses || [])]);
 
+  return data;
+};
+
+const makeLiveDocumentKey = ({ coll, docId, debugLabel }) => JSON.stringify({
+  projectId: firebaseConfig?.projectId || 'default',
+  coll,
+  docId: docId || '',
+  debugLabel: debugLabel || ''
+});
+
+export const useLiveDocument = (coll, docId, options = {}) => {
+  const { enabled = true, debugLabel = '' } = options || {};
+  const [data, setData] = useState(null);
+  useEffect(() => {
+    if (!enabled || !coll || !docId) {
+      setData(null);
+      return undefined;
+    }
+    const key = makeLiveDocumentKey({ coll, docId, debugLabel });
+    let entry = liveDocumentRegistry.get(key);
+    const diagnostics = getFirestoreDiagnostics();
+    if (!entry) {
+      entry = { key, subscribers: new Set(), data: null, releaseTimer: null, unsubscribe: null, attachedAt: new Date().toISOString() };
+      entry.unsubscribe = onSnapshot(doc(db, coll, docId), snap => {
+        entry.data = snap.exists() ? { id: snap.id, ...snap.data() } : null;
+        entry.subscribers.forEach(fn => fn(entry.data));
+        if (diagnostics) diagnostics.documents[key] = { collection: coll, docId, debugLabel, lastSnapshotAt: new Date().toISOString(), exists: snap.exists() };
+      }, err => {
+        console.error(`Live document error for ${coll}/${docId}:`, err);
+        if (diagnostics) diagnostics.documents[key] = { collection: coll, docId, debugLabel, lastError: err?.message || String(err), lastErrorAt: new Date().toISOString() };
+      });
+      liveDocumentRegistry.set(key, entry);
+      if (diagnostics) diagnostics.activeDocuments = liveDocumentRegistry.size;
+    } else if (diagnostics) {
+      diagnostics.listenerReuseCount += 1;
+    }
+    if (entry.releaseTimer) {
+      clearTimeout(entry.releaseTimer);
+      entry.releaseTimer = null;
+    }
+    entry.subscribers.add(setData);
+    setData(entry.data);
+    return () => {
+      const current = liveDocumentRegistry.get(key);
+      if (!current) return;
+      current.subscribers.delete(setData);
+      if (current.subscribers.size === 0 && !current.releaseTimer) {
+        current.releaseTimer = setTimeout(() => {
+          const latest = liveDocumentRegistry.get(key);
+          if (!latest || latest.subscribers.size > 0) return;
+          try { latest.unsubscribe?.(); } catch (_) {}
+          liveDocumentRegistry.delete(key);
+          const diag = getFirestoreDiagnostics();
+          if (diag) diag.activeDocuments = liveDocumentRegistry.size;
+        }, LIVE_COLLECTION_RELEASE_GRACE_MS);
+      }
+    };
+  }, [coll, docId, enabled, debugLabel]);
   return data;
 };
 export const formatDate = (date) => new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().split('T')[0];
@@ -845,7 +1015,42 @@ export const canUserWriteCollection = (user = {}, collectionName = '') => {
   return hasAnyPermission(user, needed);
 };
 
-export const safeWrite = async ({ user, action = 'set', collectionName, docId = '', data = {}, merge = true, label = '', before = null, addToast = null }) => {
+
+const CHAOS_NOOP_META_FIELDS = new Set(['updatedAt', 'updatedBy', 'lastUpdatedAt', 'lastUpdatedBy']);
+const normalizeForNoOpCompare = (value) => {
+  if (value === undefined) return undefined;
+  if (value === null) return null;
+  if (Array.isArray(value)) return value.map(normalizeForNoOpCompare);
+  if (value && typeof value === 'object') {
+    if (typeof value.toDate === 'function') return value.toDate().toISOString();
+    const out = {};
+    Object.keys(value).sort().forEach(key => {
+      if (!CHAOS_NOOP_META_FIELDS.has(key)) out[key] = normalizeForNoOpCompare(value[key]);
+    });
+    return out;
+  }
+  return value;
+};
+const meaningfulPayloadChanged = (before = null, incoming = {}) => {
+  if (!before || typeof before !== 'object') return true;
+  return Object.entries(incoming || {}).some(([key, value]) => {
+    if (CHAOS_NOOP_META_FIELDS.has(key)) return false;
+    return JSON.stringify(normalizeForNoOpCompare(before[key])) !== JSON.stringify(normalizeForNoOpCompare(value));
+  });
+};
+export const recordFirestoreWriteDiagnostic = ({ collectionName = '', action = '', label = '', attempted = false, completed = false, skipped = false, audit = false, sourceScreen = '' } = {}) => {
+  const diag = getFirestoreDiagnostics();
+  if (!diag) return;
+  const key = `${collectionName || 'unknown'}:${action || 'write'}:${label || sourceScreen || 'general'}`;
+  diag.writes[key] = diag.writes[key] || { collection: collectionName, action, debugLabel: label, sourceScreen, attempted: 0, completed: 0, skippedNoOp: 0, auditWrites: 0 };
+  if (attempted) { diag.writesInitiated = (diag.writesInitiated || 0) + 1; diag.writes[key].attempted += 1; }
+  if (completed) { diag.writesCompleted = (diag.writesCompleted || 0) + 1; diag.writes[key].completed += 1; }
+  if (skipped) { diag.skippedNoOpWrites = (diag.skippedNoOpWrites || 0) + 1; diag.writes[key].skippedNoOp += 1; }
+  if (audit) { diag.auditWritesCreated = (diag.auditWritesCreated || 0) + 1; diag.writes[key].auditWrites += 1; }
+  diag.writes[key].lastAt = new Date().toISOString();
+};
+
+export const safeWrite = async ({ user, action = 'set', collectionName, docId = '', data = {}, merge = true, label = '', before = null, addToast = null, sourceScreen = '' }) => {
   if (!user?.restaurantId && !isSuperAdminUser(user)) throw new Error('Safe Write blocked: missing restaurant workspace.');
   if (user?.demoMode || user?.isDemo) throw new Error('Safe Write blocked: demo mode cannot change live data.');
   if (!canUserWriteCollection(user, collectionName)) throw new Error(`Safe Write blocked: missing permission for ${collectionName}.`);
@@ -853,11 +1058,19 @@ export const safeWrite = async ({ user, action = 'set', collectionName, docId = 
     const incomingRest = data?.restaurantId || before?.restaurantId || user.restaurantId;
     if (incomingRest && incomingRest !== user.restaurantId) throw new Error('Safe Write blocked: restaurant mismatch.');
   }
+
+  if ((action === 'update' || action === 'set') && before && !meaningfulPayloadChanged(before, data)) {
+    recordFirestoreWriteDiagnostic({ collectionName, action, label, skipped: true, sourceScreen });
+    if (addToast) addToast('No Changes', label || `${collectionName} is already up to date.`);
+    return { id: docId, path: `${collectionName}/${docId}`, skipped: true, noChange: true };
+  }
+
   const now = new Date().toISOString();
   const payload = V14_TENANT_COLLECTIONS.includes(collectionName)
     ? { ...data, restaurantId: data?.restaurantId || user.restaurantId, updatedAt: now, updatedBy: user?.name || user?.email || '86 Chaos' }
     : { ...data, updatedAt: now, updatedBy: user?.name || user?.email || '86 Chaos' };
   let refObj;
+  recordFirestoreWriteDiagnostic({ collectionName, action, label, attempted: true, sourceScreen });
   if (action === 'add') {
     refObj = await addDoc(collection(db, collectionName), payload);
   } else if (action === 'update') {
@@ -873,7 +1086,9 @@ export const safeWrite = async ({ user, action = 'set', collectionName, docId = 
     refObj = doc(db, collectionName, docId);
     await setDoc(refObj, payload, { merge });
   }
+  recordFirestoreWriteDiagnostic({ collectionName, action, label, completed: true, sourceScreen });
   await logAudit(user, `SAFE_WRITE_${String(action).toUpperCase()}`, `${collectionName}/${docId || refObj?.id || ''}`, JSON.stringify({ label, after: scrubForAudit(payload), before: scrubForAudit(before) }).slice(0, 2500));
+  recordFirestoreWriteDiagnostic({ collectionName, action: 'audit', label, audit: true, sourceScreen });
   if (addToast) addToast('Saved', label || `${collectionName} updated safely.`);
   return { id: refObj?.id || docId, path: `${collectionName}/${refObj?.id || docId}`, payload };
 };

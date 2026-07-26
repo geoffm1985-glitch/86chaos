@@ -6,7 +6,7 @@ import { getAuth, signInWithEmailAndPassword, sendPasswordResetEmail, createUser
 import { getToken, onMessage } from 'firebase/messaging';
 import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 import { MapContainer, TileLayer, Marker, Circle, useMapEvents } from 'react-leaflet';
-import { T, db, storage, auth, messaging, firebaseConfig, secureFetch, MASTER_ADMIN_EMAIL, EVENT_TAGS, CURRENT_VERSION, useLiveCollection, formatDate, getToday, getMonthStr, formatDisplayDate, formatDisplayFullDate, formatDisplayMonth, getDaysInMonth, formatShortTime, formatClockTime, formatClockDateTime, getAvatar, generateTempPass, getExpDate, getHoliday, logAudit, customMapIcon, getRestaurantExportPrefix, safeFilenamePart, downloadCsvRows, openPrintableReport, buildMenuDependencyReport, safeWriteWithQueue, replayOfflineQueue } from '../core/appCore';
+import { T, db, storage, auth, messaging, firebaseConfig, secureFetch, MASTER_ADMIN_EMAIL, EVENT_TAGS, CURRENT_VERSION, useLiveCollection, useLiveDocument, formatDate, getToday, getMonthStr, formatDisplayDate, formatDisplayFullDate, formatDisplayMonth, getDaysInMonth, formatShortTime, formatClockTime, formatClockDateTime, getAvatar, generateTempPass, getExpDate, getHoliday, logAudit, customMapIcon, getRestaurantExportPrefix, safeFilenamePart, downloadCsvRows, openPrintableReport, buildMenuDependencyReport, safeWriteWithQueue, replayOfflineQueue } from '../core/appCore';
 import { buildPrepCreatePayload, buildPrepQuantityUpdate, findPrepMatch, formatPrepAmount, parsePrepCommandItems, summarizePrepResults } from '../core/smartPrep';
 import { buildEightySixAlertDetails, buildMenuImpactText, getMenuImpactForInventoryItem, getZeroStockMenuImpacts, resolveEightySixInventoryMatch } from '../core/menuIntelligence';
 import { prepareScannerUploadFile, isPdfFile } from '../core/fileCompression';
@@ -2153,13 +2153,17 @@ const TabToday = ({ currentDate, appUser, users, shifts, shiftSwaps, timeOffRequ
   const openPrep = prepItems.filter(p => (p.date === today || p.date === 'MASTER') && !p.isCompleted).slice(0, 8);
   const pendingRequests = canUseScheduleBuilder ? timeOffRequests.filter(r => r.status === 'pending').slice(0, 5) : [];
   const openSwaps = canUseScheduleBuilder ? shiftSwaps.filter(s => s.status === 'available' && s.date >= today).slice(0, 5) : [];
-  const briefVendors = useLiveCollection('vendors', appUser?.restaurantId, { enabled: !!appUser?.restaurantId && canUseAiOrdering, limitCount: 80, fallbackLimitCount: 35 });
-  const briefWasteLogs = useLiveCollection('wasteLogs', appUser?.restaurantId, { enabled: !!appUser?.restaurantId && canUseAiOrdering, limitCount: 120, fallbackLimitCount: 35 });
-  const briefInvoices = useLiveCollection('invoices', appUser?.restaurantId, { enabled: !!appUser?.restaurantId && canUseAiOrdering, limitCount: 80, fallbackLimitCount: 30 });
-  const briefAvailabilityRecords = useLiveCollection('availabilityRecords', appUser?.restaurantId, { enabled: !!appUser?.restaurantId && canUsePythonIntelligence, limitCount: 160, fallbackLimitCount: 45 });
-  const briefReminders = useLiveCollection('personalReminders', appUser?.restaurantId, { enabled: !!appUser?.restaurantId && canUsePythonIntelligence, limitCount: 160, fallbackLimitCount: 45 });
-  const briefAuditLogs = useLiveCollection('auditLogs', appUser?.restaurantId, { enabled: !!appUser?.restaurantId && canUsePythonIntelligence, limitCount: 160, fallbackLimitCount: 45 });
-  const aiBrief = canUseAiOrdering ? buildAiOrderAssistant({ inventoryItems, vendors: briefVendors, wasteLogs: briefWasteLogs, invoices: briefInvoices, events, prepItems, menuDependencies, currentDate: today, daysAhead: 7, eventDaysAhead: 14 }) : { managerBrief: [], recommendations: [], eventNeeds: [], priceWarnings: [] };
+  const currentOpsIntel = useLiveDocument('opsIntelligenceReports', appUser?.restaurantId ? `${appUser.restaurantId}_current` : '', { enabled: !!appUser?.restaurantId && canUsePythonIntelligence, debugLabel: 'today:current-ops-intelligence' });
+  useEffect(() => {
+    if (currentOpsIntel && !briefOpsLoading) setBriefOpsIntel(currentOpsIntel);
+  }, [currentOpsIntel?.id, currentOpsIntel?.generatedAt, briefOpsLoading]);
+  const briefVendors = [];
+  const briefWasteLogs = [];
+  const briefInvoices = [];
+  const briefAvailabilityRecords = [];
+  const briefReminders = [];
+  const briefAuditLogs = [];
+  const aiBrief = canUseAiOrdering ? buildAiOrderAssistant({ inventoryItems, vendors: [], wasteLogs: [], invoices: [], events, prepItems, menuDependencies, currentDate: today, daysAhead: 7, eventDaysAhead: 14 }) : { managerBrief: [], recommendations: [], eventNeeds: [], priceWarnings: [] };
   const aiBriefTop = aiBrief.recommendations?.filter(row => row.suggestedQty > 0).slice(0, 3) || [];
   const briefOpsSummary = briefOpsIntel?.summary || {};
   const briefOpsFindings = [
@@ -2214,9 +2218,9 @@ const TabToday = ({ currentDate, appUser, users, shifts, shiftSwaps, timeOffRequ
           currentDate: today,
           daysAhead: 7,
           inventoryItems,
-          vendors: briefVendors,
-          wasteLogs: briefWasteLogs,
-          invoices: briefInvoices,
+          vendors: [],
+          wasteLogs: [],
+          invoices: [],
           events,
           prepItems,
           menuDependencies,
@@ -2225,11 +2229,11 @@ const TabToday = ({ currentDate, appUser, users, shifts, shiftSwaps, timeOffRequ
           shifts,
           timePunches,
           timeOffRequests,
-          availabilityRecords: briefAvailabilityRecords,
-          reminders: briefReminders,
+          availabilityRecords: [],
+          reminders: [],
           tasks,
           maintenanceLogs,
-          auditLogs: briefAuditLogs,
+          auditLogs: [],
           backupStatus: {}
         })
       });
