@@ -1,4 +1,5 @@
 const { admin, initAdmin, norm, clean, parseMasterEmailEnv } = require('./_chaos-admin');
+const { APP_VERSION } = require('./_version');
 
 function getAuthClient(app) {
   if (app && typeof app.auth === 'function') return app.auth();
@@ -59,7 +60,7 @@ module.exports = async function handler(req, res) {
 
     res.status(200).json({
       ok: true,
-      version: '15.0.55',
+      version: APP_VERSION,
       runtime: {
         firebaseProjectId: getRuntimeProjectId(app),
         firebaseStorageBucket: clean(app?.options?.storageBucket || process.env.FIREBASE_STORAGE_BUCKET || ''),
@@ -80,5 +81,5 @@ module.exports = async function handler(req, res) {
       firestoreRestaurantId: firestoreProfile?.restaurantId || '',
       claims: decoded
     });
-  } catch (err) { res.status(401).json({ ok: false, version: '15.0.55', error: err.message }); }
+  } catch (err) { res.status(401).json({ ok: false, version: APP_VERSION, error: err.message }); }
 };

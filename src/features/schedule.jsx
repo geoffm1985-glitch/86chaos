@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Bell, Check, Camera, ChevronLeft, ChevronRight, MessageSquare, Plus, Trash2, Users, Calendar, Clock, X, Loader2, Package, ClipboardList, Menu, Settings, LogOut, Shield, Send, Repeat, Edit, Moon, Sun, TrendingUp, BookOpen, Search, ChefHat, Scale, Coffee, Star, Bug, Wrench, Globe } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
-import { getFirestore, collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, where, getDoc, setDoc, getDocs } from 'firebase/firestore';
+import { getFirestore, collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, where, getDoc, setDoc, getDocs, writeBatch } from 'firebase/firestore';
 import { getAuth, signInWithEmailAndPassword, sendPasswordResetEmail, createUserWithEmailAndPassword, updatePassword } from 'firebase/auth';
 import { getToken, onMessage } from 'firebase/messaging';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
@@ -172,6 +172,113 @@ const getSchedulePersonForAppUser = (appUser = {}, users = []) => {
 };
 
 
+
+
+export const normalizeShiftTimeForFingerprint = (value) => {
+  const raw = String(value ?? '').trim().toLowerCase().replace(/\s+/g, '');
+  if (!raw) return '';
+  if (['close', 'cl', 'closing'].includes(raw)) return 'close';
+  if (['open', 'opening'].includes(raw)) return 'open';
+  const match = raw.match(/^(\d{1,2})(?::?(\d{2}))?(a|am|p|pm)?$/);
+  if (!match) return raw;
+  let hours = Number(match[1]);
+  const minutes = Number(match[2] || 0);
+  const meridiem = match[3] || '';
+  if (!Number.isFinite(hours) || !Number.isFinite(minutes) || hours < 0 || hours > 23 || minutes < 0 || minutes > 59) return '';
+  if ((meridiem === 'p' || meridiem === 'pm') && hours < 12) hours += 12;
+  if ((meridiem === 'a' || meridiem === 'am') && hours === 12) hours = 0;
+  return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
+};
+
+export const getStableShiftEmployeeKey = (shift = {}) => {
+  const durable = [shift.employeeId, shift.userId, shift.rosterUserId, shift.accountUserId, shift.assignedUserId, shift.uid, shift.authUid]
+    .map(normalizeScheduleIdentity)
+    .find(Boolean);
+  if (durable) return `id:${durable}`;
+  const email = [shift.employeeEmail, shift.userEmail, shift.email, shift.assignedEmail]
+    .map(normalizeScheduleIdentity)
+    .find(Boolean);
+  if (email) return `email:${email}`;
+  const name = [shift.employeeName, shift.userName, shift.name, shift.displayName, shift.assignedName]
+    .map(normalizeScheduleName)
+    .find(Boolean);
+  return name ? `name:${name}` : '';
+};
+
+export const resolveAmbiguousNameOnlyShiftIdentity = (shift = {}, roster = []) => {
+  const durable = [shift.employeeId, shift.userId, shift.rosterUserId, shift.accountUserId, shift.assignedUserId, shift.uid, shift.authUid]
+    .map(normalizeScheduleIdentity)
+    .find(Boolean);
+  const email = [shift.employeeEmail, shift.userEmail, shift.email, shift.assignedEmail]
+    .map(normalizeScheduleIdentity)
+    .find(Boolean);
+  if (durable || email) return { ok: true, shift, reason: '' };
+
+  const nameKey = [shift.employeeName, shift.userName, shift.name, shift.displayName, shift.assignedName]
+    .map(normalizeScheduleName)
+    .find(Boolean);
+  if (!nameKey) return { ok: false, shift, reason: 'missing-employee-identity' };
+
+  const matches = (Array.isArray(roster) ? roster : []).filter(person => {
+    if (!person || person.isActive === false) return false;
+    const candidateNames = [person.name, person.displayName, person.fullName, person.employeeName]
+      .map(normalizeScheduleName)
+      .filter(Boolean);
+    return candidateNames.includes(nameKey);
+  });
+
+  if (matches.length !== 1) {
+    return { ok: false, shift, reason: matches.length > 1 ? 'ambiguous-name-only-identity' : 'unmatched-name-only-identity' };
+  }
+
+  const match = matches[0];
+  const resolvedId = match.id || match.uid || match.authUid || match.accountUserId || '';
+  return {
+    ok: Boolean(resolvedId || match.email),
+    reason: '',
+    shift: {
+      ...shift,
+      employeeId: shift.employeeId || resolvedId || '',
+      userId: shift.userId || match.userId || resolvedId || '',
+      rosterUserId: shift.rosterUserId || resolvedId || '',
+      employeeName: shift.employeeName || match.name || match.displayName || match.fullName || shift.name || '',
+      employeeEmail: shift.employeeEmail || match.email || shift.email || shift.assignedEmail || '',
+      assignedEmail: shift.assignedEmail || match.email || shift.employeeEmail || ''
+    }
+  };
+};
+
+export const buildShiftFingerprint = (shift = {}) => {
+  const date = String(shift.date || '').trim();
+  const employeeKey = getStableShiftEmployeeKey(shift);
+  const role = cleanScheduleRoleName(shift.role || 'Unassigned').toLowerCase();
+  const start = normalizeShiftTimeForFingerprint(shift.startTime);
+  const end = normalizeShiftTimeForFingerprint(shift.endTime);
+  if (!date || !employeeKey || !start || !end) return '';
+  return [date, employeeKey, role, start, end].join('|');
+};
+
+export const buildAutoPopulateShift = (sourceShift = {}, newDate = '', restaurantId = '', actor = {}, copiedFromMonth = '') => ({
+  date: newDate,
+  employeeId: sourceShift.employeeId || sourceShift.rosterUserId || sourceShift.userId || '',
+  employeeName: sourceShift.employeeName || sourceShift.userName || sourceShift.name || sourceShift.displayName || '',
+  employeeEmail: sourceShift.employeeEmail || sourceShift.userEmail || sourceShift.email || sourceShift.assignedEmail || '',
+  userId: sourceShift.userId || sourceShift.uid || sourceShift.authUid || '',
+  rosterUserId: sourceShift.rosterUserId || sourceShift.employeeId || '',
+  assignedEmail: sourceShift.assignedEmail || sourceShift.employeeEmail || sourceShift.userEmail || sourceShift.email || '',
+  role: sourceShift.role || 'Unassigned',
+  startTime: sourceShift.startTime || '',
+  endTime: sourceShift.endTime || '',
+  isPublished: false,
+  restaurantId,
+  workspaceId: restaurantId,
+  createdAt: new Date().toISOString(),
+  createdBy: actor?.id || actor?.uid || actor?.email || 'auto-populate',
+  createdByName: actor?.name || actor?.email || 'Schedule Auto-Fill',
+  source: 'schedule_auto_fill',
+  copiedFromShiftId: sourceShift.id || '',
+  copiedFromMonth
+});
 
 const parseScheduleTimeParts = (value, fallback = { hours: 0, minutes: 0 }) => {
   const raw = String(value || '').trim().toUpperCase();
@@ -1884,13 +1991,12 @@ const handleAddEvent = async (e) => {
   // --- AUTO-POPULATE SCHEDULE ENGINE ---
   const handleAutoPopulate = async () => {
     if (!autoPopSourceMonth) return addToast('Error', 'Please select a source month.');
-    const sourceShifts = shifts.filter(s => s.date.startsWith(autoPopSourceMonth));
+    const sourceShifts = shifts.filter(s => String(s?.date || '').startsWith(autoPopSourceMonth));
     if (sourceShifts.length === 0) return addToast('Empty', 'No shifts found in the selected month.');
 
     const targetMonth = getMonthStr(currentDate);
     if (autoPopSourceMonth === targetMonth) return addToast('Error', 'Cannot copy to the exact same month.');
 
-    // Calculate Day Offset to cleanly align days of the week (Monday to Monday)
     let sMon = new Date(autoPopSourceMonth + '-01T12:00:00');
     while(sMon.getDay() !== 1) sMon.setDate(sMon.getDate() + 1);
 
@@ -1899,33 +2005,101 @@ const handleAddEvent = async (e) => {
 
     const dayOffset = Math.round((tMon - sMon) / (1000 * 60 * 60 * 24));
 
+    const existingFingerprints = new Set(
+      shifts
+        .filter(shift => String(shift?.date || '').startsWith(targetMonth))
+        .map(buildShiftFingerprint)
+        .filter(Boolean)
+    );
+    const sourceFingerprints = new Set();
+    const batches = [];
+    let batch = writeBatch(db);
+    let batchSize = 0;
     let addedCount = 0;
-    for (const s of sourceShifts) {
-      const sDate = new Date(s.date + 'T12:00:00');
+    let duplicateCount = 0;
+    let invalidCount = 0;
+    let outsideTargetMonthCount = 0;
+    let committedCount = 0;
+    let successfulBatchCount = 0;
+
+    const queueShift = (payload) => {
+      const ref = doc(collection(db, 'shifts'));
+      batch.set(ref, payload);
+      batchSize += 1;
+      if (batchSize >= 450) {
+        batches.push({ batch, count: batchSize });
+        batch = writeBatch(db);
+        batchSize = 0;
+      }
+    };
+
+    for (const rawSourceShift of sourceShifts) {
+      const identityResolution = resolveAmbiguousNameOnlyShiftIdentity(rawSourceShift, users);
+      if (!identityResolution.ok) {
+        invalidCount += 1;
+        continue;
+      }
+      const sourceShift = identityResolution.shift;
+      const sourceFingerprint = buildShiftFingerprint(sourceShift);
+      if (!sourceFingerprint || !/^\d{4}-\d{2}-\d{2}$/.test(String(sourceShift.date || '')) || !getStableShiftEmployeeKey(sourceShift) || !normalizeShiftTimeForFingerprint(sourceShift.startTime) || !normalizeShiftTimeForFingerprint(sourceShift.endTime) || !String(sourceShift.role || '').trim()) {
+        invalidCount += 1;
+        continue;
+      }
+      if (sourceFingerprints.has(sourceFingerprint)) {
+        duplicateCount += 1;
+        continue;
+      }
+      sourceFingerprints.add(sourceFingerprint);
+
+      const sDate = new Date(sourceShift.date + 'T12:00:00');
+      if (!Number.isFinite(sDate.getTime())) {
+        invalidCount += 1;
+        continue;
+      }
       sDate.setDate(sDate.getDate() + dayOffset);
       const newDateStr = sDate.toISOString().split('T')[0];
 
-      if (newDateStr.startsWith(targetMonth)) {
-        // Prevent exact duplicates 
-        const exists = shifts.find(existing => existing.date === newDateStr && existing.employeeId === s.employeeId && existing.role === s.role && existing.startTime === s.startTime && existing.endTime === s.endTime);
-        
-        if (!exists) {
-          await addDoc(collection(db, "shifts"), { 
-            date: newDateStr, 
-            employeeId: s.employeeId, 
-            role: s.role, 
-            startTime: s.startTime, 
-            endTime: s.endTime, 
-            isPublished: false, 
-            restaurantId: appUser.restaurantId 
-          });
-          addedCount++;
-        }
+      if (!newDateStr.startsWith(targetMonth)) {
+        outsideTargetMonthCount += 1;
+        continue;
       }
+
+      const payload = buildAutoPopulateShift(sourceShift, newDateStr, appUser.restaurantId, appUser, autoPopSourceMonth);
+      const newFingerprint = buildShiftFingerprint(payload);
+      if (!newFingerprint) {
+        invalidCount += 1;
+        continue;
+      }
+      if (existingFingerprints.has(newFingerprint)) {
+        duplicateCount += 1;
+        continue;
+      }
+      existingFingerprints.add(newFingerprint);
+      queueShift(payload);
+      addedCount += 1;
     }
+
+    if (batchSize > 0) batches.push({ batch, count: batchSize });
+    try {
+      for (const pendingBatch of batches) {
+        await pendingBatch.batch.commit();
+        successfulBatchCount += 1;
+        committedCount += pendingBatch.count;
+      }
+    } catch (err) {
+      const detail = err?.message || 'Could not commit the copied schedule batch.';
+      addToast(
+        committedCount > 0 ? 'Auto-Fill Partially Saved' : 'Auto-Fill Failed',
+        committedCount > 0
+          ? `${committedCount} shift(s) were saved before a later batch failed. Refresh the schedule before retrying so duplicate protection can include the committed batch. Error: ${detail}`
+          : detail
+      );
+      return;
+    }
+
     setIsAutoPopulateModalOpen(false);
     setAutoPopSourceMonth('');
-    addToast('Populated', `Drafted ${addedCount} shifts. Conflicts are highlighted in red.`);
+    addToast('Populated', `Drafted ${committedCount} shifts across ${successfulBatchCount} batch(es). ${duplicateCount} duplicate(s), ${invalidCount} invalid, ${outsideTargetMonthCount} outside target month skipped.`);
   };
 
   // --- LABOR PROJECTION ENGINE ---

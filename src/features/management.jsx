@@ -58,28 +58,6 @@ const getSafeMapCenter = (lat, lon) => {
 };
 
 
-const FULL_AUDIT_QA_COLLECTIONS = [
-  'restaurantAdminAlerts', 'eventReminders', 'personalReminders', 'scheduleCoverageTargets',
-  'scheduleTemplates', 'availabilityRecords', 'shiftSwaps', 'timePunches', 'timeOffRequests',
-  'shifts', 'events', 'financialExpenses', 'sales', 'maintenanceLogs', 'pmSchedules', 'tasks',
-  'prepItems', 'menuDependencies', 'recipes', 'inventoryItems', 'vendors', 'users'
-];
-
-const isFullAuditQaRestaurant = (restaurant = {}) => {
-  const name = String(restaurant.name || restaurant.restaurantName || '').toLowerCase().trim();
-  const createdBy = String(restaurant.createdBy || restaurant.createdByTool || restaurant.source || '').toLowerCase().trim();
-  const qaRunId = String(restaurant.qaRunId || '').trim();
-  return Boolean(
-    restaurant.qaOwned === true ||
-    qaRunId ||
-    createdBy === '86chaos-full-audit' ||
-    createdBy === '86chaos-full-audit-seed' ||
-    name === '86 chaos full audit qa restaurant' ||
-    name.includes('full audit qa restaurant')
-  );
-};
-
-
 const SimpleTable = ({ headers = [], rows = [], empty = 'No records found.' }) => {
   const safeHeaders = Array.isArray(headers) ? headers : [];
   const safeRows = Array.isArray(rows) ? rows : [];
@@ -4132,6 +4110,9 @@ firebase deploy --only functions --project YOUR_PRODUCTION_PROJECT_ID
   const [accountDeletionRequests, setAccountDeletionRequests] = useState([]);
   const [isAccountDeletionAdminBusy, setIsAccountDeletionAdminBusy] = useState(false);
   const [isAuditQaCleanupRunning, setIsAuditQaCleanupRunning] = useState(false);
+  const [isAuditQaCleanupScanning, setIsAuditQaCleanupScanning] = useState(false);
+  const [auditQaDryRun, setAuditQaDryRun] = useState(null);
+  const [auditQaCleanupError, setAuditQaCleanupError] = useState('');
   const [lastAuditQaCleanup, setLastAuditQaCleanup] = useState(null);
   const [isMasterAdminRepairing, setIsMasterAdminRepairing] = useState(false);
   const [masterAdminRepairResult, setMasterAdminRepairResult] = useState(null);
@@ -5445,62 +5426,75 @@ Type DELETE to continue.`) || '').trim().toUpperCase();
 
   // --- SYSTEM OPERATIONS ---
 
-  const auditQaRestaurants = restaurants.filter(isFullAuditQaRestaurant);
-  const auditQaRestaurantCount = auditQaRestaurants.length;
+  const auditQaCandidates = Array.isArray(auditQaDryRun?.candidates) ? auditQaDryRun.candidates : [];
+  const auditQaRestaurantCount = Number.isFinite(auditQaDryRun?.candidateCount) ? auditQaDryRun.candidateCount : auditQaCandidates.length;
+  const auditQaDryRunReady = auditQaDryRun?.ok === true && auditQaDryRun?.mode === 'dry-run';
 
-  const deleteDocsForRestaurant = async (collectionName, restaurantId) => {
-    const snap = await getDocs(query(collection(db, collectionName), where('restaurantId', '==', restaurantId)));
-    let count = 0;
-    for (const documentSnap of snap.docs) {
-      await deleteDoc(doc(db, collectionName, documentSnap.id));
-      count += 1;
+  const scanFullAuditQaRestaurants = async ({ silent = false } = {}) => {
+    if (isAuditQaCleanupScanning || isAuditQaCleanupRunning) return auditQaDryRun;
+    setIsAuditQaCleanupScanning(true);
+    setAuditQaCleanupError('');
+    try {
+      const response = await secureFetch('/api/full-audit-qa-cleanup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode: 'dry-run' })
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok || result?.ok !== true) throw new Error(result?.error || 'QA cleanup dry-run failed.');
+      setAuditQaDryRun(result);
+      if (!silent) addToast('QA Scan Complete', `${result.candidateCount || 0} server-verified QA restaurant${result.candidateCount === 1 ? '' : 's'} found.`);
+      return result;
+    } catch (err) {
+      const message = err?.message || 'QA cleanup scan failed.';
+      setAuditQaCleanupError(message);
+      if (!silent) addToast('QA Scan Failed', message);
+      return null;
+    } finally {
+      setIsAuditQaCleanupScanning(false);
     }
-    return count;
   };
+
+  useEffect(() => {
+    if (subTab === 'ops' && !auditQaDryRun && !isAuditQaCleanupScanning) {
+      scanFullAuditQaRestaurants({ silent: true });
+    }
+  }, [subTab, auditQaDryRun, isAuditQaCleanupScanning]);
 
   const handleFullAuditQaCleanup = async () => {
     if (isAuditQaCleanupRunning) return;
-    const candidates = restaurants.filter(isFullAuditQaRestaurant);
+    const dryRun = auditQaDryRunReady ? auditQaDryRun : await scanFullAuditQaRestaurants({ silent: false });
+    const candidates = Array.isArray(dryRun?.candidates) ? dryRun.candidates : [];
     if (!candidates.length) {
-      addToast('No QA Restaurants', 'No 86 Chaos Full Audit QA Restaurants were found.');
-      setLastAuditQaCleanup({ deletedRestaurants: 0, deletedDocs: 0, generatedAt: new Date().toISOString(), errors: [] });
+      addToast('No QA Restaurants', 'No server-verified 86 Chaos Full Audit QA Restaurants were found.');
+      setLastAuditQaCleanup({ restaurantsDeleted: 0, documentsDeleted: 0, storageObjectsDeleted: 0, usersUpdated: 0, authUsersDeleted: 0, generatedAt: new Date().toISOString(), errors: [] });
       return;
     }
     const preview = candidates.slice(0, 8).map(r => `• ${r.name || r.id} (${r.id})`).join('\n');
     const extra = candidates.length > 8 ? `\n• +${candidates.length - 8} more` : '';
-    const typed = window.prompt(`Hard delete ${candidates.length} Full Audit QA restaurant${candidates.length === 1 ? '' : 's'} and their QA workspace data?\n\n${preview}${extra}\n\nThis bypasses the 30-day deleted-workspace holding period and only targets restaurants marked as qaOwned/86chaos-full-audit or named Full Audit QA Restaurant.\n\nType DELETE QA AUDIT RESTAURANTS to continue.`);
+    const typed = window.prompt(`Hard delete ${candidates.length} server-verified Full Audit QA restaurant${candidates.length === 1 ? '' : 's'} and their QA workspace data?\n\n${preview}${extra}\n\nThis runs only through the protected server endpoint and will send exact IDs from the dry-run.\n\nType DELETE QA AUDIT RESTAURANTS to continue.`);
     if (typed !== 'DELETE QA AUDIT RESTAURANTS') return;
     setIsAuditQaCleanupRunning(true);
-    addToast('QA Cleanup Started', `Hard deleting ${candidates.length} audit QA restaurant${candidates.length === 1 ? '' : 's'}...`);
-    const report = { generatedAt: new Date().toISOString(), deletedRestaurants: 0, deletedDocs: 0, errors: [], restaurants: [] };
+    setAuditQaCleanupError('');
+    addToast('QA Cleanup Started', `Hard deleting ${candidates.length} audit QA restaurant${candidates.length === 1 ? '' : 's'} through the server endpoint...`);
     try {
-      for (const restaurant of candidates) {
-        const row = { id: restaurant.id, name: restaurant.name || restaurant.id, deletedDocs: 0, collections: [], deletedRestaurant: false, errors: [] };
-        for (const collectionName of FULL_AUDIT_QA_COLLECTIONS) {
-          try {
-            const count = await deleteDocsForRestaurant(collectionName, restaurant.id);
-            if (count) row.collections.push({ collection: collectionName, count });
-            row.deletedDocs += count;
-            report.deletedDocs += count;
-          } catch (error) {
-            row.errors.push(`${collectionName}: ${error?.message || error}`);
-            report.errors.push(`${restaurant.name || restaurant.id} / ${collectionName}: ${error?.message || error}`);
-          }
-        }
-        try {
-          await deleteDoc(doc(db, 'restaurants', restaurant.id));
-          row.deletedRestaurant = true;
-          report.deletedRestaurants += 1;
-        } catch (error) {
-          row.errors.push(`restaurants: ${error?.message || error}`);
-          report.errors.push(`${restaurant.name || restaurant.id} / restaurants: ${error?.message || error}`);
-        }
-        report.restaurants.push(row);
-      }
-      setLastAuditQaCleanup(report);
-      if (report.errors.length) addToast('QA Cleanup Finished with Warnings', `${report.deletedRestaurants} restaurants and ${report.deletedDocs} docs deleted. ${report.errors.length} warning(s).`);
-      else addToast('QA Cleanup Complete', `${report.deletedRestaurants} audit QA restaurant${report.deletedRestaurants === 1 ? '' : 's'} and ${report.deletedDocs} related docs hard deleted.`);
-      try { await logAudit(appUser, 'FULL_AUDIT_QA_HARD_DELETE', `${report.deletedRestaurants} restaurants`, JSON.stringify({ deletedRestaurants: report.deletedRestaurants, deletedDocs: report.deletedDocs, errors: report.errors.slice(0, 12) }).slice(0, 900)); } catch (_) {}
+      const response = await secureFetch('/api/full-audit-qa-cleanup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode: 'execute', confirmation: 'DELETE QA AUDIT RESTAURANTS', candidateIds: candidates.map(candidate => candidate.id) })
+      });
+      const report = await response.json().catch(() => ({}));
+      if (!response.ok || report?.ok !== true) throw new Error(report?.error || 'QA cleanup failed.');
+      setLastAuditQaCleanup({ ...report, generatedAt: new Date().toISOString() });
+      const docCount = report.documentsDeleted || 0;
+      const warningCount = Array.isArray(report.errors) ? report.errors.length : 0;
+      if (warningCount || report.incompleteRestaurants) addToast('QA Cleanup Finished with Warnings', `${report.restaurantsDeleted || 0} restaurant(s), ${docCount} doc(s), ${report.storageObjectsDeleted || 0} Storage object(s). ${warningCount} warning(s).`);
+      else addToast('QA Cleanup Complete', `${report.restaurantsDeleted || 0} audit QA restaurant${report.restaurantsDeleted === 1 ? '' : 's'}, ${docCount} doc(s), and ${report.storageObjectsDeleted || 0} Storage object(s) deleted.`);
+      await scanFullAuditQaRestaurants({ silent: true });
+    } catch (err) {
+      const message = err?.message || 'QA cleanup failed.';
+      setAuditQaCleanupError(message);
+      addToast('QA Cleanup Failed', message);
     } finally {
       setIsAuditQaCleanupRunning(false);
     }
@@ -9653,7 +9647,7 @@ another@email.com"></textarea>
                     <div className="text-[9px] mt-1 flex flex-wrap gap-1.5">
                       {log.restaurantId && <span className="bg-[#0B0E11] border border-[#2A353D] px-2 py-0.5 rounded text-slate-400 font-bold">restaurantId: {log.restaurantId}</span>}
                       {log.user && <span className="bg-[#0B0E11] border border-[#2A353D] px-2 py-0.5 rounded text-slate-400 font-bold">user: {log.user}</span>}
-                      {log.supportPushRequested && <span className={`bg-[#0B0E11] border px-2 py-0.5 rounded font-bold ${Number(log.supportPushSentCount || 0) > 0 ? 'border-emerald-900/60 text-emerald-300' : 'border-orange-900/60 text-orange-300'}`}>super admin push: {Number(log.supportPushSentCount || 0)} sent{log.supportPushMissingTokens ? ' • no eligible tokens' : ''}</span>}
+                      {log.supportPushRequested && <span className={`bg-[#0B0E11] border px-2 py-0.5 rounded font-bold ${Number(log.supportPushFcmAcceptedCount ?? log.supportPushSentCount ?? 0) > 0 ? 'border-emerald-900/60 text-emerald-300' : 'border-orange-900/60 text-orange-300'}`}>super admin push: {Number(log.supportPushFcmAcceptedCount ?? log.supportPushSentCount ?? 0)} accepted by FCM, delivery unconfirmed{log.supportPushDeliveryConfirmedCount ? ` • ${Number(log.supportPushDeliveryConfirmedCount)} received` : ''}{log.supportPushMissingTokens ? ' • no eligible tokens' : ''}</span>}
                     </div>
                   )}
                   {(log.screenSize || log.userAgent) && (
@@ -10108,11 +10102,22 @@ another@email.com"></textarea>
             <div className={`${T.card} p-5 border-red-900/40`}>
               <div className="flex items-start justify-between gap-3 mb-1">
                 <h3 className="font-black text-white">Full Audit QA Cleanup</h3>
-                <span className="rounded-full border border-red-900/50 bg-red-950/35 px-2 py-1 text-[9px] font-black uppercase tracking-widest text-red-300">{auditQaRestaurantCount} found</span>
+                <span className="rounded-full border border-red-900/50 bg-red-950/35 px-2 py-1 text-[9px] font-black uppercase tracking-widest text-red-300">{isAuditQaCleanupScanning ? 'Scanning' : `${auditQaRestaurantCount} found`}</span>
               </div>
-              <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-4 leading-snug">Hard-deletes leftover 86 Chaos Full Audit QA Restaurants and their test workspace data so they do not sit in the 30-day recovery window.</p>
-              <button type="button" onClick={handleFullAuditQaCleanup} disabled={isAuditQaCleanupRunning || auditQaRestaurantCount === 0} className="w-full bg-red-900/20 text-red-300 border border-red-900/60 font-black text-xs uppercase tracking-widest py-3 rounded-xl hover:bg-red-900/40 transition-colors disabled:opacity-45 disabled:cursor-not-allowed flex items-center justify-center gap-2"><Trash2 size={16}/>{isAuditQaCleanupRunning ? 'Cleaning...' : 'Hard Delete QA Restaurants'}</button>
-              {lastAuditQaCleanup && <div className="mt-3 rounded-xl border border-[#2A353D] bg-[#12161A]/70 p-2 text-[10px] font-bold text-slate-400 leading-snug">Last cleanup: {lastAuditQaCleanup.deletedRestaurants} restaurant(s), {lastAuditQaCleanup.deletedDocs} related doc(s){lastAuditQaCleanup.errors?.length ? ` • ${lastAuditQaCleanup.errors.length} warning(s)` : ''}.</div>}
+              <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-4 leading-snug">Server-verified hard delete for leftover 86 Chaos Full Audit QA Restaurants. The browser reviews candidates only; deletion runs through the protected admin endpoint.</p>
+              <div className="grid grid-cols-1 gap-2">
+                <button type="button" onClick={() => scanFullAuditQaRestaurants({ silent: false })} disabled={isAuditQaCleanupScanning || isAuditQaCleanupRunning} className="w-full bg-[#12161A] text-slate-300 border border-[#2A353D] font-black text-xs uppercase tracking-widest py-3 rounded-xl hover:text-[#D4A381] transition-colors disabled:opacity-45 disabled:cursor-not-allowed flex items-center justify-center gap-2"><Search size={16}/>{isAuditQaCleanupScanning ? 'Scanning...' : 'Scan for QA Restaurants'}</button>
+                <button type="button" onClick={handleFullAuditQaCleanup} disabled={isAuditQaCleanupRunning || !auditQaDryRunReady || auditQaRestaurantCount === 0} className="w-full bg-red-900/20 text-red-300 border border-red-900/60 font-black text-xs uppercase tracking-widest py-3 rounded-xl hover:bg-red-900/40 transition-colors disabled:opacity-45 disabled:cursor-not-allowed flex items-center justify-center gap-2"><Trash2 size={16}/>{isAuditQaCleanupRunning ? 'Cleaning...' : 'Hard Delete QA Restaurants'}</button>
+              </div>
+              {auditQaCleanupError && <div className="mt-3 rounded-xl border border-red-900/50 bg-red-950/25 p-2 text-[10px] font-bold text-red-200 leading-snug">{auditQaCleanupError}</div>}
+              {auditQaDryRunReady && (
+                <div className="mt-3 rounded-xl border border-[#2A353D] bg-[#12161A]/70 p-2 text-[10px] font-bold text-slate-400 leading-snug space-y-2">
+                  <div className="text-red-200 font-black uppercase tracking-widest">Server dry-run found {auditQaRestaurantCount} verified candidate{auditQaRestaurantCount === 1 ? '' : 's'}.</div>
+                  {auditQaCandidates.length > 0 ? <div className="max-h-28 overflow-auto space-y-1 pr-1">{auditQaCandidates.slice(0, 20).map(candidate => <div key={candidate.id} className="break-words"><span className="text-white">{candidate.name || candidate.id}</span> <span className="text-slate-500">({candidate.id})</span>{candidate.qaRunId ? <span className="text-slate-500"> • run {candidate.qaRunId}</span> : null}</div>)}</div> : <div>No server-verified candidates are waiting.</div>}
+                  {auditQaCandidates.length > 20 && <div className="text-slate-500">+{auditQaCandidates.length - 20} more candidates not shown.</div>}
+                </div>
+              )}
+              {lastAuditQaCleanup && <div className="mt-3 rounded-xl border border-[#2A353D] bg-[#12161A]/70 p-2 text-[10px] font-bold text-slate-400 leading-snug">Last cleanup: {lastAuditQaCleanup.restaurantsDeleted || 0} restaurant(s), {lastAuditQaCleanup.documentsDeleted || lastAuditQaCleanup.deletedDocs || 0} related doc(s), {lastAuditQaCleanup.storageObjectsDeleted || 0} Storage object(s), {lastAuditQaCleanup.usersUpdated || 0} user profile(s) updated, {lastAuditQaCleanup.authUsersDeleted || 0} Auth user(s) deleted{lastAuditQaCleanup.errors?.length ? ` • ${lastAuditQaCleanup.errors.length} warning(s)` : ''}.</div>}
             </div>
 
             <div className={`${T.card} p-5 border-purple-900/30`}>
@@ -10918,8 +10923,8 @@ const TabHelpCenter = ({ appUser, activeTab, voiceHelpSearchTarget = null, addTo
       if (response?.ok) {
         const result = await response.json().catch(() => ({}));
         setBugText('');
-        const sentCount = Number(result.supportPushSentCount || 0);
-        addToast?.('Report Sent', sentCount > 0 ? `Support report sent. ${sentCount} super admin device${sentCount === 1 ? '' : 's'} notified.` : 'Support report saved. No super admin push devices were eligible.');
+        const acceptedCount = Number(result.supportPushFcmAcceptedCount ?? result.supportPushSentCount ?? 0);
+        addToast?.('Report Saved', acceptedCount > 0 ? `Support report saved. ${acceptedCount} super admin device${acceptedCount === 1 ? '' : 's'} accepted by FCM, delivery unconfirmed.` : 'Support report saved. No super admin push devices were eligible.');
       } else {
         const details = response ? await response.json().catch(() => ({})) : {};
         throw new Error(details.error || 'Server report route unavailable. The browser is no longer allowed to write crash reports directly.');

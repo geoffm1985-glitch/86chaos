@@ -380,7 +380,7 @@ export const MASTER_ADMIN_EMAIL = (process.env.REACT_APP_MASTER_ADMIN_EMAIL || '
 export const EVENT_TAGS = ['Standard Day', 'Packers Game', 'Brewers Game', 'Live Music', 'Severe Weather', 'Private Catering', 'Holiday'];
 
 // --- VERSION TRACKING ---
-export const CURRENT_VERSION = '16.0.20';
+export const CURRENT_VERSION = '16.0.22';
 
 // --- Helpers ---
 const usePageVisible = () => {
@@ -401,6 +401,88 @@ const usePageVisible = () => {
   return visible;
 };
 
+const LIVE_COLLECTION_RELEASE_GRACE_MS = 30_000;
+const liveCollectionRegistry = new Map();
+
+const getFirestoreDiagnostics = () => {
+  if (typeof window === 'undefined') return null;
+  window.__chaosFirestoreDiagnostics = window.__chaosFirestoreDiagnostics || {
+    activeListeners: 0,
+    listenerReuseCount: 0,
+    documentsReceivedByQuery: {},
+    skippedNoOpWrites: 0,
+    writesInitiated: 0
+  };
+  return window.__chaosFirestoreDiagnostics;
+};
+
+const makeLiveCollectionKey = ({ coll, restId, whereClauses, orderByField, orderDirection, limitCount }) => JSON.stringify({
+  projectId: firebaseConfig?.projectId || 'default',
+  coll,
+  restId,
+  whereClauses: whereClauses || [],
+  orderByField: orderByField || '',
+  orderDirection: orderDirection || 'asc',
+  limitCount: Number(limitCount || 0) || null
+});
+
+const acquireSharedLiveCollection = ({ coll, restId, constraints, key, setData }) => {
+  let entry = liveCollectionRegistry.get(key);
+  const diagnostics = getFirestoreDiagnostics();
+  if (!entry) {
+    entry = {
+      key,
+      data: [],
+      subscribers: new Set(),
+      releaseTimer: null,
+      unsubscribe: null
+    };
+    entry.unsubscribe = onSnapshot(
+      query(collection(db, coll), ...constraints),
+      snap => {
+        entry.data = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        if (diagnostics) diagnostics.documentsReceivedByQuery[key] = (diagnostics.documentsReceivedByQuery[key] || 0) + snap.docs.length;
+        entry.subscribers.forEach(fn => fn(entry.data));
+      },
+      err => {
+        const message = err?.message || String(err || '');
+        const isIndexProblem = err?.code === 'failed-precondition' || /index|requires an index|currently building/i.test(message);
+        if (isIndexProblem) console.warn(`Firestore index pending for ${coll} / ${restId}. Waiting for the deployed index instead of showing a mismatched fallback query.`, message);
+        else console.error(`Live collection error for ${coll} / ${restId}:`, err);
+        entry.data = [];
+        entry.subscribers.forEach(fn => fn([]));
+      }
+    );
+    liveCollectionRegistry.set(key, entry);
+    if (diagnostics) diagnostics.activeListeners = liveCollectionRegistry.size;
+  } else if (diagnostics) {
+    diagnostics.listenerReuseCount += 1;
+  }
+
+  if (entry.releaseTimer) {
+    clearTimeout(entry.releaseTimer);
+    entry.releaseTimer = null;
+  }
+  entry.subscribers.add(setData);
+  setData(entry.data || []);
+
+  return () => {
+    const current = liveCollectionRegistry.get(key);
+    if (!current) return;
+    current.subscribers.delete(setData);
+    if (current.subscribers.size === 0 && !current.releaseTimer) {
+      current.releaseTimer = setTimeout(() => {
+        const latest = liveCollectionRegistry.get(key);
+        if (!latest || latest.subscribers.size > 0) return;
+        try { latest.unsubscribe?.(); } catch (err) { console.warn('Failed to release shared Firestore listener', err); }
+        liveCollectionRegistry.delete(key);
+        const diag = getFirestoreDiagnostics();
+        if (diag) diag.activeListeners = liveCollectionRegistry.size;
+      }, LIVE_COLLECTION_RELEASE_GRACE_MS);
+    }
+  };
+};
+
 export const useLiveCollection = (coll, restId, options = {}) => {
   const {
     enabled = true,
@@ -417,46 +499,21 @@ export const useLiveCollection = (coll, restId, options = {}) => {
   useEffect(() => {
     if (!enabled || !restId) {
       setData([]);
-      return;
+      return undefined;
     }
     if (pauseWhenHidden && !pageVisible) {
-      return;
+      return undefined;
     }
 
-    let fallbackUnsubscribe = null;
-    const serializedWhere = JSON.stringify(whereClauses || []);
-    const buildConstraints = (useWindow = true) => {
-      const constraints = [where("restaurantId", "==", restId)];
-      if (useWindow) {
-        (whereClauses || []).forEach(([field, op, value]) => {
-          if (field && op && value !== undefined && value !== null && value !== '') constraints.push(where(field, op, value));
-        });
-        if (orderByField) constraints.push(orderBy(orderByField, orderDirection || 'asc'));
-      }
-      if (limitCount && Number(limitCount) > 0) constraints.push(firestoreLimit(Number(limitCount)));
-      return constraints;
-    };
+    const constraints = [where("restaurantId", "==", restId)];
+    (whereClauses || []).forEach(([field, op, value]) => {
+      if (field && op && value !== undefined && value !== null && value !== '') constraints.push(where(field, op, value));
+    });
+    if (orderByField) constraints.push(orderBy(orderByField, orderDirection || 'asc'));
+    if (limitCount && Number(limitCount) > 0) constraints.push(firestoreLimit(Number(limitCount)));
 
-    const subscribe = (constraints, label) => onSnapshot(
-      query(collection(db, coll), ...constraints),
-      snap => setData(snap.docs.map(d => ({ id: d.id, ...d.data() }))),
-      err => {
-        const message = err?.message || String(err || '');
-        const isIndexProblem = err?.code === 'failed-precondition' || /index|requires an index|currently building/i.test(message);
-        if (isIndexProblem) {
-          console.warn(`Firestore index pending for ${coll} / ${restId} (${label}). Waiting for the deployed index instead of showing a mismatched fallback query.`, message);
-        } else {
-          console.error(`Live collection error for ${coll} / ${restId} (${label}):`, err);
-        }
-        setData([]);
-      }
-    );
-
-    const unsubscribe = subscribe(buildConstraints(true), 'primary');
-    return () => {
-      if (unsubscribe) unsubscribe();
-      if (fallbackUnsubscribe) fallbackUnsubscribe();
-    };
+    const key = makeLiveCollectionKey({ coll, restId, whereClauses, orderByField, orderDirection, limitCount });
+    return acquireSharedLiveCollection({ coll, restId, constraints, key, setData });
   }, [coll, restId, enabled, limitCount, orderByField, orderDirection, fallbackLimitCount, pauseWhenHidden, pageVisible, JSON.stringify(whereClauses || [])]);
 
   return data;
@@ -639,27 +696,57 @@ if (typeof window !== 'undefined' && !window.crashCatcherAttached) {
     }
   }, true);
 
-  window.onerror = (msg, url, lineNo, columnNo, error) => {
+  const chunkFailurePattern = /(ChunkLoadError|Loading chunk|failed to fetch dynamically imported module|Failed to load module script|\.chunk\.(js|css)|\/static\/(js|css)\/)/i;
+  const extractFailedAssetUrl = (value = '') => {
+    const text = String(value || '');
+    const match = text.match(/https?:\/\/[^\s)'"]+\.(?:js|css)|\/static\/(?:js|css)\/[^\s)'"]+\.(?:js|css)/i);
+    return match ? match[0] : '';
+  };
+  const reportGlobalRuntimeError = (payload = {}) => {
     try {
+      const message = String(payload.message || payload.reason?.message || payload.reason || 'Browser error').slice(0, 2000);
+      const stack = String(payload.rawStack || payload.reason?.stack || payload.error?.stack || '').slice(0, 5000);
+      const chunkUrl = payload.chunkUrl || extractFailedAssetUrl(`${message} ${stack}`);
+      const fingerprint = [payload.source || 'runtime', chunkFailurePattern.test(`${message} ${stack}`) ? 'chunk' : 'error', chunkUrl, CURRENT_VERSION, window.location.pathname, window.location.search].join('|');
+      if (window.__chaosCrashFingerprints?.has(fingerprint)) return;
+      window.__chaosCrashFingerprints = window.__chaosCrashFingerprints || new Set();
+      window.__chaosCrashFingerprints.add(fingerprint);
+      if (window.__chaosCrashFingerprints.size > 30) window.__chaosCrashFingerprints.clear();
       if (auth.currentUser) {
         secureFetch('/api/report-bug', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             category: 'Crash / Error',
-            message: String(msg || 'Browser error').slice(0, 2000),
-            rawStack: String(error?.stack || '').slice(0, 2500),
+            message,
+            errorName: String(payload.error?.name || payload.reason?.name || (chunkUrl ? 'ChunkLoadError' : 'RuntimeError')),
+            rawStack: stack,
             breadcrumbs: window.breadcrumbs || [],
             userAgent: navigator.userAgent,
             screenSize: `${window.innerWidth}x${window.innerHeight}`,
             url: window.location.href,
-            source: 'window_onerror'
+            route: window.location.pathname + window.location.search,
+            chunkUrl,
+            appVersion: CURRENT_VERSION,
+            online: navigator.onLine,
+            serviceWorkerState: navigator.serviceWorker?.controller?.state || '',
+            source: payload.source || 'runtime_error'
           })
         }).catch(()=>{});
       }
     } catch (_) {}
+  };
+
+  window.onerror = (msg, url, lineNo, columnNo, error) => {
+    reportGlobalRuntimeError({ source: 'window_onerror', message: msg, url, lineNo, columnNo, error });
     return false;
-  }; 
+  };
+
+  window.addEventListener('unhandledrejection', (event) => {
+    const reason = event?.reason;
+    const message = String(reason?.message || reason || 'Unhandled promise rejection');
+    reportGlobalRuntimeError({ source: 'unhandledrejection', message, reason, rawStack: reason?.stack || '' });
+  }); 
 }
 
 // --- HOLIDAY & TIME ENGINE ---
