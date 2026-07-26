@@ -1,6 +1,6 @@
 {
   "name": "86chaos",
-  "version": "16.0.24",
+  "version": "16.0.25",
   "private": true,
   "dependencies": {
     "firebase": "^10.8.1",
@@ -26,7 +26,7 @@
     "deploy:check": "npm run test:ci && NODE_OPTIONS=--max-old-space-size=4096 GENERATE_SOURCEMAP=false npm run build",
     "validate:audit-repair": "node scripts/validate-repair.js",
     "rules:check": "node scripts/validate-rules.js",
-    "test:source": "node scripts/validate-16-0-24.js",
+    "test:source": "node scripts/validate-16-0-25.js",
     "syntax:api": "node scripts/check-api-syntax.js",
     "test:unit": "react-scripts test --watchAll=false",
     "test:rules": "firebase emulators:exec --only firestore,storage \"node scripts/run-rules-tests.js\"",

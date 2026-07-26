@@ -36,13 +36,13 @@ const apiVersion = read('api/_version.js');
 const vercel = read('vercel.json');
 const styles = read('src/styles.css');
 
-assert(pkg.version === '16.0.24', 'package.json version is 16.0.24');
-assert(lock.version === '16.0.24' && lock.packages?.['']?.version === '16.0.24', 'package-lock.json version is 16.0.24');
-assert(version.version === '16.0.24' && version.build === '16.0.24', 'public/version.json is 16.0.24');
-assert(appCore.includes("CURRENT_VERSION = '16.0.24'"), 'CURRENT_VERSION is 16.0.24');
-assert(apiVersion.includes("APP_VERSION = '16.0.24'") && apiVersion.includes("SECURITY_SCHEMA_VERSION = '16.0.24'"), 'API version constants are centralized at 16.0.24');
-assert(pkg.scripts?.['test:source'] === 'node scripts/validate-16-0-24.js', 'package scripts point at the 16.0.24 source validator');
-assert(!exists('scripts/validate-16-0-21.js') && !exists('scripts/validate-16-0-22.js') && !exists('scripts/validate-16-0-23.js'), 'old source validators were renamed');
+assert(pkg.version === '16.0.25', 'package.json version is 16.0.25');
+assert(lock.version === '16.0.25' && lock.packages?.['']?.version === '16.0.25', 'package-lock.json version is 16.0.25');
+assert(version.version === '16.0.25' && version.build === '16.0.25', 'public/version.json is 16.0.25');
+assert(appCore.includes("CURRENT_VERSION = '16.0.25'"), 'CURRENT_VERSION is 16.0.25');
+assert(apiVersion.includes("APP_VERSION = '16.0.25'") && apiVersion.includes("SECURITY_SCHEMA_VERSION = '16.0.25'"), 'API version constants are centralized at 16.0.25');
+assert(pkg.scripts?.['test:source'] === 'node scripts/validate-16-0-25.js', 'package scripts point at the 16.0.25 source validator');
+assert(!exists('scripts/validate-16-0-21.js') && !exists('scripts/validate-16-0-22.js') && !exists('scripts/validate-16-0-23.js') && !exists('scripts/validate-16-0-24.js'), 'old source validators were renamed');
 
 const activeRecipesImport = /const\s+TabRecipes\s*=\s*lazyFeature\(\s*\(\)\s*=>\s*import\('\.\/features\/operations'\)\s*,\s*'TabRecipes'\s*\)/.test(appJs);
 assert(activeRecipesImport, 'App.js mounts Recipes from src/features/operations.jsx');
@@ -101,7 +101,7 @@ assert(exists('playwright.config.js'), 'Playwright configuration exists');
 assert(exists('scripts/run-rules-tests.js'), 'Firebase emulator rule test runner exists');
 assert(exists('tests/e2e/app-health.spec.cjs'), 'E2E browser test folder is not empty');
 
-assert(styles.includes('/* 16.0.24 compact professional operations-console refinement */'), '16.0.24 compact UI refinement block exists');
+assert(styles.includes('/* 16.0.24 compact professional operations-console refinement */'), 'compact UI refinement block is still present');
 assert(styles.includes('--chaos-compact-page-x') && styles.includes('--chaos-compact-input-h') && styles.includes('--chaos-mobile-tap-h'), 'shared compact UI density tokens exist');
 assert(styles.includes('.desktop-pro-shell .app-header') && styles.includes('height: var(--chaos-compact-topbar-h)'), 'desktop app shell/header uses compact top-bar rules');
 assert(styles.includes('.schedule-builder-control-deck') && styles.includes('order: 2'), 'Schedule Builder control deck remains directly above the calendar grid');
@@ -111,8 +111,14 @@ assert(styles.includes('.chaos-modal-panel') && styles.includes('.app-drawer-rea
 assert(styles.includes('.godmode') || styles.includes('System Administrator') || styles.includes('godmode'), 'System Administrator density hooks are present');
 assert(exists('tests/e2e/compact-ui-layout.spec.cjs'), 'compact UI Playwright layout test exists');
 
+
+assert(appJs.includes('isSelectableWorkspace') && appJs.includes('chaos:workspace-memberships-changed'), 'workspace selector filters deleted/stale QA workspaces and responds to cleanup events');
+assert(read('api/workspace-memberships.js').includes('__exists: false') && read('api/workspace-memberships.js').includes('isDeletedRestaurant') && read('api/workspace-memberships.js').includes('isFullAuditQaRestaurantName'), 'workspace-memberships API filters missing/deleted Full Audit QA restaurants');
+assert(management.includes('chaos:workspace-memberships-changed') && management.includes('deletedRestaurantIds'), 'QA cleanup tells the app to refresh workspace membership choices after deletion');
+assert(styles.includes('16.0.25 workspace selector + mobile tab/button correction') && styles.includes('writing-mode: horizontal-tb') && styles.includes('financial-center-desktop > .flex.overflow-x-auto > button'), 'mobile scroll-tab buttons stay horizontal instead of stacking one letter per line');
+
 if (failures) {
-  console.error(`16.0.24 source validator failed with ${failures} issue(s).`);
+  console.error(`16.0.25 source validator failed with ${failures} issue(s).`);
   process.exit(1);
 }
-console.log('16.0.24 source validator passed. This is a source guard only. It does not replace unit, emulator, build, browser, or staging notification tests.');
+console.log('16.0.25 source validator passed. This is a source guard only. It does not replace unit, emulator, build, browser, or staging notification tests.');

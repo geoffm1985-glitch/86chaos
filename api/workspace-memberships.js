@@ -7,6 +7,13 @@ function initAdmin(req) {
 function norm(v) { return String(v || '').toLowerCase().trim(); }
 function clean(v, fallback = '') { return String(v == null ? fallback : v).trim(); }
 function safeBool(v) { return v === true; }
+function isDeletedRestaurant(rest = {}) {
+  return rest.__exists === false || rest.__lookupError === true || rest.isActive === false || rest.archived === true || rest.deleted === true || rest.deletedAt || rest.deleted_at || rest.deletionScheduledFor || rest.hardDeleted === true;
+}
+function isFullAuditQaRestaurantName(rest = {}, raw = {}) {
+  const name = String(raw.restaurantName || raw.name || rest.name || rest.businessName || rest.restaurantName || rest.displayName || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+  return name === '86 chaos full audit qa restaurant' || name.startsWith('86 chaos full audit qa restaurant ');
+}
 function memberDocId(uid, restaurantId) {
   return `${clean(uid).replace(/[^A-Za-z0-9_-]/g, '_')}_${clean(restaurantId).replace(/[^A-Za-z0-9_-]/g, '_')}`.slice(0, 240);
 }
@@ -19,7 +26,7 @@ function cleanPerms(perms = {}) {
 }
 function safeMembership(raw = {}, rest = {}, uid = '', email = '') {
   const restaurantId = clean(raw.restaurantId || raw.id);
-  if (!restaurantId) return null;
+  if (!restaurantId || isDeletedRestaurant(rest) || (rest.qaOwned === true && isFullAuditQaRestaurantName(rest, raw))) return null;
   const membershipId = clean(raw.membershipId || raw.id || memberDocId(uid, restaurantId));
   return {
     id: membershipId,
@@ -60,9 +67,9 @@ async function getRestaurantMap(db, restaurantIds) {
   for (const restaurantId of ids) {
     try {
       const snap = await db.collection('restaurants').doc(restaurantId).get();
-      out.set(restaurantId, snap.exists ? { id: snap.id, ...snap.data() } : { id: restaurantId });
+      out.set(restaurantId, snap.exists ? { id: snap.id, __exists: true, ...snap.data() } : { id: restaurantId, __exists: false });
     } catch (_) {
-      out.set(restaurantId, { id: restaurantId });
+      out.set(restaurantId, { id: restaurantId, __lookupError: true });
     }
   }
   return out;

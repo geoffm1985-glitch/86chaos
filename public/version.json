@@ -1,19 +1,19 @@
 {
-  "version": "16.0.24",
-  "name": "86 Chaos 16.0.24 Vercel Function Configuration Fix",
+  "version": "16.0.25",
+  "name": "86 Chaos 16.0.25 Workspace Cleanup and Mobile Tab Fix",
   "releasedAt": "2026-07-25T00:00:00.000Z",
-  "label": "86 Chaos 16.0.24 Vercel Function Configuration Fix",
-  "build": "16.0.24",
+  "label": "86 Chaos 16.0.25 Workspace Cleanup and Mobile Tab Fix",
+  "build": "16.0.25",
   "notes": [
-    "Keeps the 16.0.23 compact professional UI refinement intact.",
-    "Replaces fragile per-file Vercel function patterns with wildcard function configuration that matches the API directory consistently.",
-    "Preserves existing API routes, scanner routes, cron routes, cache headers, security headers, Firebase wiring, and app behavior.",
-    "No Firebase credentials, rules, project IDs, environment values, or service-account wiring were changed."
+    "Prevents deleted Full Audit QA restaurants from lingering in the workspace selector after cleanup.",
+    "Filters missing, deleted, archived, and strict Full Audit QA workspace entries out of selectable workspaces without changing permission logic or Firebase configuration.",
+    "Fixes mobile tab/action buttons so labels stay horizontal and usable instead of stacking one letter per line.",
+    "Preserves the compact professional UI refinement, app workflows, Firebase wiring, rules, environment values, and Vercel function configuration."
   ],
   "releaseNotes": [
-    "Fixes Vercel deployment failure where an explicit functions pattern for api/scan-invoice.js could be rejected as unmatched.",
-    "Uses broad api/**/*.js and api/**/*.py function configuration so existing serverless functions remain covered without depending on one brittle filename match.",
-    "Keeps invoice/menu scanners and long-running cron/API routes within the configured duration and memory envelope.",
-    "No UI, feature workflow, Firebase configuration, data model, or permission behavior was changed."
+    "Workspace selector now filters stale QA audit workspace memberships that can remain in local cached account data after the QA cleanup endpoint removes restaurants.",
+    "The workspace memberships API no longer returns phantom workspaces for restaurant documents that no longer exist or are marked deleted/archived/inactive.",
+    "Mobile financial and other scrollable tab bars keep horizontal button labels inside an internal scroller instead of compressing labels into vertical columns.",
+    "No Firebase credentials, rules, project IDs, environment values, data models, permissions, or restaurant workflows were changed."
   ]
 }

@@ -134,6 +134,25 @@ const RouteLoading = ({ label = 'Loading section...' }) => (
 const normalizeEmail = (value) => String(value || '').toLowerCase().trim();
 const safeWorkspaceName = (workspace = {}) => workspace.restaurantName || workspace.name || workspace.businessName || workspace.restaurantId || '86 Chaos Workspace';
 
+const normalizeWorkspaceName = (workspace = {}) => String(safeWorkspaceName(workspace)).toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+const isFullAuditQaWorkspaceName = (workspace = {}) => {
+  const name = normalizeWorkspaceName(workspace);
+  return name === '86 chaos full audit qa restaurant' || name.startsWith('86 chaos full audit qa restaurant ');
+};
+const isDeletedOrHiddenWorkspace = (workspace = {}) => Boolean(
+  !workspace ||
+  workspace.isActive === false ||
+  workspace.archived === true ||
+  workspace.deleted === true ||
+  workspace.deletedAt ||
+  workspace.deleted_at ||
+  workspace.deletionScheduledFor ||
+  workspace.hardDeleted === true ||
+  (workspace.qaOwned === true && isFullAuditQaWorkspaceName(workspace)) ||
+  (workspace.membershipSource === 'stale-missing-restaurant')
+);
+const isSelectableWorkspace = (workspace = {}) => Boolean((workspace.restaurantId || workspace.id) && !isDeletedOrHiddenWorkspace(workspace));
+
 const LEGACY_TAB_ALIASES = {
   'manager-brief': 'today',
   'today-home': 'today',
@@ -291,7 +310,7 @@ export default function App() {
   const [voiceRecipeTarget, setVoiceRecipeTarget] = useState(null);
   const [inventorySubTabTarget, setInventorySubTabTarget] = useState(null);
   const [isWorkspaceSwitcherOpen, setIsWorkspaceSwitcherOpen] = useState(false);
-  const [workspaceMembershipRefreshKey] = useState(0);
+  const [workspaceMembershipRefreshKey, setWorkspaceMembershipRefreshKey] = useState(0);
   const [isPushRepairing, setIsPushRepairing] = useState(false);
   const [pushRepairDismissed, setPushRepairDismissed] = useState(false);
   const [serverAdminCheck, setServerAdminCheck] = useState(null);
@@ -1264,6 +1283,7 @@ What I clicked / expected:
     const addWorkspace = (w = {}) => {
       const restaurantId = w.restaurantId || w.id;
       if (!restaurantId) return;
+      if (!isSelectableWorkspace({ ...w, restaurantId })) return;
       byId.set(restaurantId, {
         ...w,
         restaurantId,
@@ -1280,8 +1300,31 @@ What I clicked / expected:
       Object.entries(appUser.memberships).forEach(([restaurantId, membership]) => addWorkspace({ ...(membership || {}), restaurantId }));
     }
     if (appUser?.restaurantId) addWorkspace({ ...appUser, restaurantId: appUser.restaurantId, restaurantName: appUser.restaurantName || clientData?.name || appUser.restaurantName });
-    return Array.from(byId.values()).filter(w => w.isActive !== false);
+    return Array.from(byId.values()).filter(isSelectableWorkspace);
   }, [appUser, clientData?.name]);
+
+
+  useEffect(() => {
+    const handleWorkspaceMembershipsChanged = (event = {}) => {
+      const removedIds = new Set((event.detail?.removedRestaurantIds || event.detail?.deletedRestaurantIds || []).filter(Boolean));
+      setAppUser(prev => {
+        if (!prev) return prev;
+        const nextAvailable = (prev.availableWorkspaces || []).filter(workspace => isSelectableWorkspace(workspace) && !removedIds.has(workspace.restaurantId || workspace.id));
+        const nextMemberships = prev.memberships && typeof prev.memberships === 'object'
+          ? Object.fromEntries(Object.entries(prev.memberships).filter(([restaurantId, membership]) => isSelectableWorkspace({ ...(membership || {}), restaurantId }) && !removedIds.has(restaurantId)))
+          : prev.memberships;
+        const activeRemoved = removedIds.has(prev.restaurantId) || removedIds.has(prev.activeRestaurantId) || !isSelectableWorkspace(prev);
+        if (!activeRemoved) return { ...prev, availableWorkspaces: nextAvailable, memberships: nextMemberships };
+        const fallback = nextAvailable[0];
+        if (!fallback) return { ...prev, availableWorkspaces: nextAvailable, memberships: nextMemberships, workspaceSwitcherReady: true };
+        return buildWorkspaceUser({ ...prev, availableWorkspaces: nextAvailable, memberships: nextMemberships }, fallback);
+      });
+      setWorkspaceMembershipRefreshKey(key => key + 1);
+      try { sessionStorage.removeItem(`chaosWorkspacePickerSeen_${appUser?.id || ''}`); } catch (_) {}
+    };
+    window.addEventListener('chaos:workspace-memberships-changed', handleWorkspaceMembershipsChanged);
+    return () => window.removeEventListener('chaos:workspace-memberships-changed', handleWorkspaceMembershipsChanged);
+  }, [appUser?.id]);
 
   useEffect(() => {
     if (!appUser?.id || appUser.id === 'dev-backdoor' || ghostTenant || isDemoMode) return;
@@ -1295,7 +1338,7 @@ What I clicked / expected:
         });
         const data = await res.json().catch(() => ({}));
         if (!res.ok || !Array.isArray(data.workspaces) || canceled) return;
-        const nextWorkspaces = data.workspaces.filter(w => w?.restaurantId && w.isActive !== false);
+        const nextWorkspaces = data.workspaces.filter(isSelectableWorkspace);
         if (!nextWorkspaces.length) return;
         const active = nextWorkspaces.find(w => w.restaurantId === appUser.restaurantId) || nextWorkspaces.find(w => w.restaurantId === data.activeRestaurantId) || nextWorkspaces[0];
         setAppUser(prev => {

@@ -5486,6 +5486,10 @@ Type DELETE to continue.`) || '').trim().toUpperCase();
       const report = await response.json().catch(() => ({}));
       if (!response.ok || report?.ok !== true) throw new Error(report?.error || 'QA cleanup failed.');
       setLastAuditQaCleanup({ ...report, generatedAt: new Date().toISOString() });
+      try {
+        const deletedRestaurantIds = (report.restaurants || []).filter(row => row?.deletedRestaurant === true).map(row => row.id).filter(Boolean);
+        window.dispatchEvent(new CustomEvent('chaos:workspace-memberships-changed', { detail: { deletedRestaurantIds, source: 'full-audit-qa-cleanup' } }));
+      } catch (_) {}
       const docCount = report.documentsDeleted || 0;
       const warningCount = Array.isArray(report.errors) ? report.errors.length : 0;
       if (warningCount || report.incompleteRestaurants) addToast('QA Cleanup Finished with Warnings', `${report.restaurantsDeleted || 0} restaurant(s), ${docCount} doc(s), ${report.storageObjectsDeleted || 0} Storage object(s). ${warningCount} warning(s).`);

@@ -4742,3 +4742,55 @@ select {
   min-width: 0;
   white-space: normal;
 }
+
+
+/* 16.0.25 workspace selector + mobile tab/button correction */
+@media (max-width: 767px) {
+  .desktop-pro-shell .app-content-shell button,
+  .desktop-pro-shell .app-content-shell [role="tab"],
+  .desktop-pro-shell .app-content-shell .custom-scrollbar > *,
+  .desktop-pro-shell .app-content-shell .overflow-x-auto > * {
+    writing-mode: horizontal-tb !important;
+    text-orientation: mixed !important;
+    word-break: normal !important;
+    overflow-wrap: normal !important;
+  }
+
+  .desktop-pro-shell .app-content-shell :is(.custom-scrollbar, .overflow-x-auto).flex {
+    flex-wrap: nowrap !important;
+    justify-content: flex-start !important;
+    overflow-x: auto !important;
+    overflow-y: hidden !important;
+    max-width: 100% !important;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .desktop-pro-shell .app-content-shell :is(.custom-scrollbar, .overflow-x-auto).flex > button,
+  .desktop-pro-shell .app-content-shell .custom-scrollbar > button,
+  .desktop-pro-shell .app-content-shell button.whitespace-nowrap,
+  .desktop-pro-shell .app-content-shell [role="tab"].whitespace-nowrap {
+    flex: 0 0 auto !important;
+    width: auto !important;
+    max-width: min(76vw, 240px) !important;
+    min-width: auto !important;
+    white-space: nowrap !important;
+    text-align: center !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    line-height: 1.1 !important;
+  }
+
+  .desktop-pro-shell .app-content-shell .financial-center-desktop > .flex.overflow-x-auto {
+    display: flex !important;
+    flex-wrap: nowrap !important;
+    gap: 8px !important;
+    padding-bottom: 8px !important;
+  }
+
+  .desktop-pro-shell .app-content-shell .financial-center-desktop > .flex.overflow-x-auto > button {
+    min-height: var(--chaos-mobile-tap-h) !important;
+    padding: 8px 12px !important;
+    letter-spacing: 0.08em !important;
+    white-space: nowrap !important;
+  }
+}
