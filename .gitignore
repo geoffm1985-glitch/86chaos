@@ -1,12 +1,9 @@
 
-# Playwright
+# Local test/build artifacts
+test-results/
+playwright-report/
 node_modules/
-/test-results/
-/playwright-report/
-/blob-report/
-/playwright/.cache/
-/playwright/.auth/
-.env
-test-results
-playwright-report
-playwright/.auth
+build/
+*.zip
+.env.local
+.env.test.local

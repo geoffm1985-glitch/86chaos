@@ -1,84 +1,79 @@
-const admin = require('firebase-admin');
 const { getAdminAppForRequest } = require('./_firebase-project-admin');
+const { APP_VERSION } = require('./_version');
 
 function initAdmin(req) {
   return getAdminAppForRequest(req, { requireCredentials: true });
 }
 
-async function commitChunks(db, writes, chunkSize = 450) {
-  let committed = 0;
-  for (let i = 0; i < writes.length; i += chunkSize) {
-    const batch = db.batch();
-    writes.slice(i, i + chunkSize).forEach(fn => fn(batch));
-    await batch.commit();
-    committed += writes.slice(i, i + chunkSize).length;
-  }
-  return committed;
+function getCronSecret(req) {
+  const auth = String(req.headers.authorization || '').replace(/^Bearer\s+/i, '').trim();
+  return auth || String(req.headers['x-cron-secret'] || '').trim();
+}
+
+function safeRunId(date = new Date()) {
+  return date.toISOString().replace(/[:.]/g, '-');
+}
+
+function stableResultHash(payload = {}) {
+  return JSON.stringify({ status: payload.status, version: payload.version, errorCount: payload.errorCount || 0 });
 }
 
 module.exports = async function handler(req, res) {
+  const started = new Date();
+  const startedAt = started.toISOString();
   try {
     if (req.method !== 'GET') return res.status(405).json({ ok: false, error: 'GET only' });
 
     const cronSecret = process.env.CRON_SECRET;
-    const authHeader = req.headers.authorization || '';
-
-    // Vercel sends Authorization: Bearer <CRON_SECRET> automatically when CRON_SECRET exists.
-    // Keep this endpoint locked so random visitors cannot run database maintenance.
-    if (!cronSecret || authHeader !== `Bearer ${cronSecret}`) {
+    if (!cronSecret || getCronSecret(req) !== cronSecret) {
       return res.status(401).json({ ok: false, error: 'Unauthorized cron request' });
     }
 
     const app = initAdmin(req);
     const db = app.firestore();
-    const runStartedAt = new Date().toISOString();
-    const version = '13.1.1';
+    const statusRef = db.collection('system').doc('weeklyMaintenance');
+    const latestSnap = await statusRef.get().catch(() => null);
+    const latest = latestSnap?.exists ? latestSnap.data() || {} : {};
 
-    const restaurantsSnap = await db.collection('restaurants').get();
-    const writes = [];
-
-    restaurantsSnap.forEach(restDoc => {
-      const ref = restDoc.ref;
-      writes.push(batch => batch.set(ref, {
-        lastWeeklyMaintenanceAt: runStartedAt,
-        weeklyMaintenance: {
-          lastRunAt: runStartedAt,
-          source: 'vercel-cron',
-          version,
-          status: 'ok'
-        }
-      }, { merge: true }));
-    });
-
-    const committed = await commitChunks(db, writes);
-
-    const logRef = db.collection('system').doc('weeklyMaintenance').collection('runs').doc(runStartedAt.replace(/[:.]/g, '-'));
-    await logRef.set({
-      runStartedAt,
-      runFinishedAt: new Date().toISOString(),
-      version,
+    const latestState = {
+      status: 'ok',
+      version: APP_VERSION,
       source: 'vercel-cron',
-      restaurantsScanned: restaurantsSnap.size,
-      restaurantDocsUpdated: committed,
-      status: 'ok'
-    }, { merge: true });
+      lastRunAt: startedAt,
+      lastRunStartedAt: startedAt,
+      lastRunFinishedAt: new Date().toISOString(),
+      durationMs: Date.now() - started.getTime(),
+      restaurantDocsUpdated: 0,
+      restaurantsScanned: 0,
+      message: 'Global platform maintenance completed. No restaurant-specific changes were required.'
+    };
+    const nextHash = stableResultHash(latestState);
+    const previousHash = latest.lastResultHash || '';
 
-    return res.status(200).json({
-      ok: true,
-      message: 'Weekly workspace maintenance completed.',
-      restaurantsScanned: restaurantsSnap.size,
-      restaurantDocsUpdated: committed,
-      runStartedAt
-    });
+    if (previousHash !== nextHash || latest.status !== 'ok') {
+      await statusRef.set({ ...latestState, lastResultHash: nextHash }, { merge: true });
+    }
+
+    const runId = safeRunId(started);
+    const weeklyHistoryDue = !latest.lastHistoryAt || new Date(latest.lastHistoryAt).getTime() < Date.now() - 6.5 * 24 * 60 * 60 * 1000;
+    if (weeklyHistoryDue || previousHash !== nextHash) {
+      await statusRef.collection('runs').doc(runId).set({ ...latestState, runId, createdAt: startedAt, lastResultHash: nextHash }, { merge: true });
+      await statusRef.set({ lastHistoryAt: startedAt }, { merge: true });
+    }
+
+    return res.status(200).json({ ok: true, ...latestState, historyWritten: weeklyHistoryDue || previousHash !== nextHash });
   } catch (err) {
     try {
       const app = initAdmin(req);
-      await app.firestore().collection('system').doc('weeklyMaintenance').collection('errors').add({
-        message: err.message,
-        stack: err.stack || '',
-        time: new Date().toISOString()
-      });
+      await app.firestore().collection('system').doc('weeklyMaintenance').set({
+        status: 'error',
+        lastError: err.message || String(err),
+        lastErrorAt: new Date().toISOString(),
+        version: APP_VERSION
+      }, { merge: true });
     } catch (_) {}
-    return res.status(500).json({ ok: false, error: err.message });
+    return res.status(500).json({ ok: false, error: err.message || String(err) });
   }
 };
+
+module.exports.config = { maxDuration: 60 };

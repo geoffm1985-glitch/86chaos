@@ -1,24 +1,19 @@
 {
-  "version": "16.0.22",
-  "name": "86 Chaos 16.0.22 Active Recipes, Crash Alerts, and Runtime Safety Fix",
+  "version": "16.0.27",
+  "name": "86 Chaos 16.0.27 Login Workspace QA Cleanup Fix",
   "releasedAt": "2026-07-25T00:00:00.000Z",
-  "label": "86 Chaos 16.0.22 Active Recipes, Crash Alerts, and Runtime Safety Fix",
-  "build": "16.0.22",
+  "label": "86 Chaos 16.0.27 Login Workspace QA Cleanup Fix",
+  "build": "16.0.27",
   "notes": [
-    "Fixes the active mounted Recipes screen rather than the old compatibility component.",
-    "Adds ChunkLoadError reporting and one-shot recovery for stale hashed chunks.",
-    "Adds server-only crash email notification support and clearer push notification status.",
-    "Tightens QA cleanup safety and Schedule Auto-Fill identity/partial-batch handling.",
-    "Adds shared live-query subscription reuse and no-op write counters for Firebase cost reduction work."
+    "Filters deleted and Full Audit QA workspaces from the login-time Choose Workspace screen, not just the in-app switcher.",
+    "Skips stale workspace memberships whose restaurant document has already been hard-deleted so users land directly in their remaining real workspace.",
+    "Keeps the protected workspace-memberships and login-bootstrap API responses from returning Full Audit QA workspace leftovers.",
+    "Preserves Firebase credentials, config, rules, data structures, permissions, and the compact professional UI refinement."
   ],
   "releaseNotes": [
-    "Active Recipes scanner, modal, edit, filter, and parse helpers are null-safe in the mounted operations screen.",
-    "Runtime crash reporting now preserves sanitized ChunkLoadError diagnostics and uses a non-blank recovery boundary.",
-    "Crash reports can email configured support recipients through server-only BUG_REPORT_EMAIL_* variables.",
-    "Push notification status distinguishes FCM acceptance from confirmed device delivery/open events.",
-    "Full Audit QA cleanup fails closed on query/user safety errors and protects custom-claim administrators.",
-    "Schedule Auto-Fill rejects ambiguous name-only identities and reports partial batch commits honestly.",
-    "Shared useLiveCollection listeners reuse identical Firestore queries and avoid quick visibility churn; no-op push/workspace writes are counted/skipped where implemented.",
-    "Version diagnostics centralized at 16.0.22."
+    "The pre-app login workspace picker now uses the same strict filtering as the in-app switcher.",
+    "Full Audit QA restaurants are hidden by exact QA name/source markers even when stale membership maps still contain old labels.",
+    "Missing restaurant documents from stale membership records are no longer shown as selectable workspaces.",
+    "No Firebase credentials, rules, project IDs, environment values, or restaurant workflows were changed."
   ]
 }

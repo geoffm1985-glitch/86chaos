@@ -2,7 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const { expect } = require('@playwright/test');
 
-const ENV_FILE_NAMES = ['.env', '.env.local', '.env.test'];
+const ENV_FILE_NAMES = ['.env.test.local', '.env.test', '.env.local', '.env'];
 const ENV_SEARCH_ROOTS = [process.cwd(), path.resolve(__dirname, '..', '..', '..')];
 const RAW_ENV = {};
 const ENV_LOAD_REPORT = [];
@@ -63,8 +63,7 @@ function maskedEnvValue(name) {
 }
 
 const RUN_ID = envValue('CHAOS_FULL_AUDIT_RUN_ID') || `${Date.now()}-${Math.random().toString(16).slice(2, 8)}`;
-const DEFAULT_BASE_URL = 'https://cheers-portal-4oxv-git-testing-cheers-portal-s-projects.vercel.app';
-const BASE_URL = (envValue('APP_URL', 'CHAOS_BASE_URL', 'PLAYWRIGHT_BASE_URL', 'BASE_URL') || DEFAULT_BASE_URL).replace(/\/$/, '');
+const BASE_URL = envValue('APP_URL', 'CHAOS_BASE_URL', 'PLAYWRIGHT_BASE_URL', 'BASE_URL').replace(/\/$/, '');
 const EXPECTED_VERSION = envValue('CHAOS_EXPECTED_VERSION') || readVersionFromDisk() || '16.0.19';
 const SAFE_TESTING_URL_RE = /localhost|127\.0\.0\.1|vercel\.app|testing|test|preview/i;
 const PRODUCTION_URL_RE = /(^|\.)app\.86chaos\.com|(^|\.)86chaos\.com/i;

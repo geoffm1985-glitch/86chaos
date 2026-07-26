@@ -11,7 +11,57 @@ import { CheersLogo, Modal, DrawerMenu, DayDotPrintScreen, MapClickListener, Sma
 
 const normEmail = (value) => String(value || '').toLowerCase().trim();
 const safeWsName = (w = {}) => w.restaurantName || w.name || w.businessName || w.restaurantId || '86 Chaos Workspace';
+const normalizeWsNameForQaFilter = (workspace = {}) => String(safeWsName(workspace)).toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+const isFullAuditQaWorkspace = (workspace = {}) => {
+  const name = normalizeWsNameForQaFilter(workspace);
+  return name === '86 chaos full audit qa restaurant' || name.startsWith('86 chaos full audit qa restaurant ');
+};
+const isHiddenOrDeletedWorkspace = (workspace = {}, { restaurantLookupAttempted = false, restaurantExists = true } = {}) => Boolean(
+  !workspace ||
+  !workspace.restaurantId ||
+  workspace.isActive === false ||
+  workspace.archived === true ||
+  workspace.deleted === true ||
+  workspace.deletedAt ||
+  workspace.deleted_at ||
+  workspace.deletionScheduledFor ||
+  workspace.hardDeleted === true ||
+  workspace.membershipSource === 'stale-missing-restaurant' ||
+  isFullAuditQaWorkspace(workspace) ||
+  (restaurantLookupAttempted && restaurantExists === false)
+);
+const filterSelectableWorkspaceChoices = (workspaces = []) => Array.from(
+  (workspaces || []).reduce((map, raw) => {
+    const restaurantId = raw?.restaurantId || raw?.id;
+    if (!restaurantId) return map;
+    const normalized = { ...raw, restaurantId, restaurantName: safeWsName({ ...raw, restaurantId }) };
+    if (!isHiddenOrDeletedWorkspace(normalized)) map.set(restaurantId, normalized);
+    return map;
+  }, new Map()).values()
+);
 const membershipDocId = (uid, restaurantId) => `${String(uid || '').replace(/[^A-Za-z0-9_-]/g, '_')}_${String(restaurantId || '').replace(/[^A-Za-z0-9_-]/g, '_')}`.slice(0, 240);
+const updateWorkspaceSelectionIfChanged = (profileDocId, baseUser = {}, restaurantId = '') => {
+  if (!profileDocId || !restaurantId) return;
+  const alreadyActive = baseUser?.activeRestaurantId === restaurantId && baseUser?.lastWorkspaceId === restaurantId;
+  try {
+    window.__chaosFirestoreDiagnostics = window.__chaosFirestoreDiagnostics || {};
+    if (alreadyActive) {
+      window.__chaosFirestoreDiagnostics.skippedNoOpWrites = (window.__chaosFirestoreDiagnostics.skippedNoOpWrites || 0) + 1;
+      return;
+    }
+    window.__chaosFirestoreDiagnostics.writesInitiated = (window.__chaosFirestoreDiagnostics.writesInitiated || 0) + 1;
+  } catch (_) {}
+  updateDoc(doc(db, 'users', profileDocId), {
+    activeRestaurantId: restaurantId,
+    lastWorkspaceId: restaurantId,
+    lastWorkspaceSwitchedAt: new Date().toISOString()
+  }).then(() => {
+    try {
+      window.__chaosFirestoreDiagnostics = window.__chaosFirestoreDiagnostics || {};
+      window.__chaosFirestoreDiagnostics.writesCompleted = (window.__chaosFirestoreDiagnostics.writesCompleted || 0) + 1;
+    } catch (_) {}
+  }).catch(() => {});
+};
 const buildActiveUserForWorkspace = (baseUser = {}, workspace = {}) => {
   const safeBase = { ...baseUser };
   delete safeBase.password;
@@ -105,10 +155,25 @@ const LoginScreen = ({ setAppUser }) => {
       const restaurantId = raw.restaurantId || raw.id;
       if (!restaurantId || raw.isActive === false) return;
       let rest = {};
+      let restaurantLookupAttempted = false;
+      let restaurantExists = true;
       try {
         const restSnap = await getDoc(doc(db, 'restaurants', restaurantId));
-        if (restSnap.exists()) rest = { id: restSnap.id, ...restSnap.data() };
-      } catch (_) {}
+        restaurantLookupAttempted = true;
+        restaurantExists = restSnap.exists();
+        if (restaurantExists) rest = { id: restSnap.id, ...restSnap.data() };
+      } catch (_) {
+        restaurantLookupAttempted = false;
+        restaurantExists = true;
+      }
+      const candidate = {
+        ...raw,
+        ...rest,
+        restaurantId,
+        restaurantName: raw.restaurantName || rest.name || rest.businessName || rest.restaurantName || baseUser.restaurantName || restaurantId,
+        isActive: raw.isActive !== false && rest.isActive !== false
+      };
+      if (isHiddenOrDeletedWorkspace(candidate, { restaurantLookupAttempted, restaurantExists })) return;
       options.set(restaurantId, {
         ...raw,
         userId: raw.userId || uid,
@@ -116,13 +181,14 @@ const LoginScreen = ({ setAppUser }) => {
         email: normEmail(raw.email || emailKey),
         name: raw.name || baseUser.name || firebaseUser?.displayName || 'Staff',
         restaurantId,
-        restaurantName: raw.restaurantName || rest.name || rest.businessName || rest.restaurantName || baseUser.restaurantName || restaurantId,
+        restaurantName: candidate.restaurantName,
         planId: rest.subscription?.planId || rest.planId || raw.planId || baseUser.planId || 'smart_kitchen',
         subscriptionStatus: rest.subscription?.status || rest.subscriptionStatus || 'beta',
         membershipId: raw.membershipId || raw.id || membershipDocId(uid, restaurantId),
         permissions: { ...(baseUser.restaurantId === restaurantId ? (baseUser.permissions || {}) : {}), ...(raw.permissions || {}) },
         isAdmin: raw.isAdmin === true || (baseUser.restaurantId === restaurantId && baseUser.isAdmin === true),
-        isOwner: raw.isOwner === true || raw.accountOwner === true || raw.workspaceOwner === true || (baseUser.restaurantId === restaurantId && (baseUser.isOwner === true || baseUser.accountOwner === true || baseUser.workspaceOwner === true))
+        isOwner: raw.isOwner === true || raw.accountOwner === true || raw.workspaceOwner === true || (baseUser.restaurantId === restaurantId && (baseUser.isOwner === true || baseUser.accountOwner === true || baseUser.workspaceOwner === true)),
+        isActive: true
       });
     };
 
@@ -166,7 +232,7 @@ const LoginScreen = ({ setAppUser }) => {
       }
     }
 
-    return Array.from(options.values()).filter(w => w.isActive !== false);
+    return filterSelectableWorkspaceChoices(Array.from(options.values()));
   };
 
   const finishLoginWithWorkspace = async (baseUser, firebaseUser, { forcePicker = false } = {}) => {
@@ -183,11 +249,7 @@ const LoginScreen = ({ setAppUser }) => {
       }
       localStorage.setItem('chaosRememberMe', rememberMe);
       localStorage.setItem(`chaosActiveRestaurantId_${baseUser.id}`, preferred.restaurantId);
-      updateDoc(doc(db, 'users', baseUser.profileDocId || baseUser.id), {
-        activeRestaurantId: preferred.restaurantId,
-        lastWorkspaceId: preferred.restaurantId,
-        lastWorkspaceSwitchedAt: new Date().toISOString()
-      }).catch(() => {});
+      updateWorkspaceSelectionIfChanged(baseUser.profileDocId || baseUser.id, baseUser, preferred.restaurantId);
       setAppUser({ ...buildActiveUserForWorkspace(baseUser, preferred), availableWorkspaces: choices });
     } finally {
       setWorkspaceLoading(false);
@@ -199,12 +261,8 @@ const LoginScreen = ({ setAppUser }) => {
     localStorage.setItem('chaosRememberMe', rememberMe);
     localStorage.setItem(`chaosActiveRestaurantId_${workspaceUser.id}`, workspace.restaurantId);
     try { sessionStorage.setItem(`chaosWorkspacePickerSeen_${workspaceUser.id}`, 'true'); } catch (_) {}
-    updateDoc(doc(db, 'users', workspaceUser.profileDocId || workspaceUser.id), {
-      activeRestaurantId: workspace.restaurantId,
-      lastWorkspaceId: workspace.restaurantId,
-      lastWorkspaceSwitchedAt: new Date().toISOString()
-    }).catch(() => {});
-    setAppUser({ ...buildActiveUserForWorkspace(workspaceUser, workspace), availableWorkspaces: workspaceChoices });
+    updateWorkspaceSelectionIfChanged(workspaceUser.profileDocId || workspaceUser.id, workspaceUser, workspace.restaurantId);
+    setAppUser({ ...buildActiveUserForWorkspace(workspaceUser, workspace), availableWorkspaces: filterSelectableWorkspaceChoices(workspaceChoices) });
     setWorkspaceChoices([]);
     setWorkspaceUser(null);
   };
@@ -250,7 +308,7 @@ const LoginScreen = ({ setAppUser }) => {
     if (Array.isArray(preloadedWorkspaces) && preloadedWorkspaces.length) {
       setWorkspaceLoading(true);
       try {
-        const choices = preloadedWorkspaces.filter(w => w && w.isActive !== false);
+        const choices = filterSelectableWorkspaceChoices(preloadedWorkspaces);
         if (!choices.length) throw new Error('This login is not attached to an active restaurant workspace.');
         const savedRestaurantId = localStorage.getItem(`chaosActiveRestaurantId_${baseUser.id}`);
         const preferred = choices.find(w => w.restaurantId === savedRestaurantId) || choices.find(w => w.restaurantId === baseUser.activeRestaurantId) || choices.find(w => w.restaurantId === baseUser.defaultRestaurantId) || choices.find(w => w.restaurantId === baseUser.restaurantId) || choices[0];
@@ -262,11 +320,7 @@ const LoginScreen = ({ setAppUser }) => {
         localStorage.setItem('chaosRememberMe', rememberMe);
         localStorage.setItem(`chaosActiveRestaurantId_${baseUser.id}`, preferred.restaurantId);
         const profileDocId = baseUser.profileDocId || baseUser.id;
-        updateDoc(doc(db, 'users', profileDocId), {
-          activeRestaurantId: preferred.restaurantId,
-          lastWorkspaceId: preferred.restaurantId,
-          lastWorkspaceSwitchedAt: new Date().toISOString()
-        }).catch(() => {});
+        updateWorkspaceSelectionIfChanged(profileDocId, baseUser, preferred.restaurantId);
         setAppUser({ ...buildActiveUserForWorkspace(baseUser, preferred), availableWorkspaces: choices });
       } finally {
         setWorkspaceLoading(false);
