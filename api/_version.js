@@ -1,7 +1,0 @@
-const APP_VERSION = '16.0.22';
-const SECURITY_SCHEMA_VERSION = '16.0.22';
-
-module.exports = {
-  APP_VERSION,
-  SECURITY_SCHEMA_VERSION
-};
