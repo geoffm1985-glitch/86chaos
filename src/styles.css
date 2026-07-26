@@ -3898,3 +3898,157 @@ select {
     text-overflow: ellipsis !important;
   }
 }
+
+/* 16.0.19+: app-wide tightening pass. Keep the same 86 Chaos look, just waste less screen. */
+@media (min-width: 1024px) {
+  .ui-v12-compact .app-content-shell {
+    max-width: min(1560px, calc(100vw - 24px)) !important;
+    padding: 10px 12px 76px !important;
+  }
+
+  .ui-v12-compact .chaos-card,
+  .ui-v12-compact .cockpit-panel,
+  .ui-v12-compact .admin46-content,
+  .ui-v12-compact .admin46-topbar {
+    border-radius: 14px !important;
+  }
+
+  .ui-v12-compact .chaos-card[class*="p-6"] { padding: 1rem !important; }
+  .ui-v12-compact .chaos-card[class*="p-5"] { padding: .85rem !important; }
+  .ui-v12-compact .chaos-card[class*="p-4"] { padding: .72rem !important; }
+  .ui-v12-compact .chaos-card[class*="p-3"] { padding: .58rem !important; }
+
+  .ui-v12-compact .gap-6 { gap: 1rem !important; }
+  .ui-v12-compact .gap-5 { gap: .85rem !important; }
+  .ui-v12-compact .gap-4 { gap: .68rem !important; }
+  .ui-v12-compact .gap-3 { gap: .55rem !important; }
+  .ui-v12-compact .space-y-6 > :not([hidden]) ~ :not([hidden]) { margin-top: 1rem !important; }
+  .ui-v12-compact .space-y-5 > :not([hidden]) ~ :not([hidden]) { margin-top: .85rem !important; }
+  .ui-v12-compact .space-y-4 > :not([hidden]) ~ :not([hidden]) { margin-top: .68rem !important; }
+  .ui-v12-compact .space-y-3 > :not([hidden]) ~ :not([hidden]) { margin-top: .52rem !important; }
+
+  .ui-v12-compact .chaos-input,
+  .ui-v12-compact input:not([type="checkbox"]):not([type="radio"]):not([type="file"]),
+  .ui-v12-compact select {
+    min-height: 34px !important;
+    padding-top: .42rem !important;
+    padding-bottom: .42rem !important;
+    font-size: .8rem !important;
+    border-radius: 10px !important;
+  }
+
+  .ui-v12-compact textarea.chaos-input,
+  .ui-v12-compact textarea {
+    min-height: 54px !important;
+    padding-top: .48rem !important;
+    padding-bottom: .48rem !important;
+    font-size: .8rem !important;
+  }
+
+  .ui-v12-compact .chaos-label {
+    margin-bottom: .2rem !important;
+    font-size: .58rem !important;
+    letter-spacing: .09em !important;
+  }
+
+  .ui-v12-compact .chaos-button:not(.no-compact),
+  .ui-v12-compact button:not(.no-compact):not(.drawer-icon-button):not(.voice-fab):not(.voice-command-fab) {
+    min-height: 34px !important;
+    padding-top: .42rem !important;
+    padding-bottom: .42rem !important;
+    border-radius: 10px !important;
+    line-height: 1.05 !important;
+  }
+
+  .ui-v12-compact table th,
+  .ui-v12-compact table td {
+    padding-top: .42rem !important;
+    padding-bottom: .42rem !important;
+  }
+}
+
+/* 16.0.19+: Schedule Builder controls stay tight and close to the grid on desktop. */
+@media (min-width: 1024px) {
+  .schedule-builder-workbench {
+    gap: .45rem !important;
+  }
+
+  .schedule-builder-control-deck {
+    position: sticky !important;
+    top: 64px !important;
+    z-index: 36 !important;
+    margin-bottom: .3rem !important;
+    box-shadow: 0 10px 34px rgba(0,0,0,.24), inset 0 1px 0 rgba(255,255,255,.035) !important;
+  }
+
+  .schedule-builder-assignment-row,
+  .schedule-builder-action-row {
+    gap: .45rem !important;
+  }
+
+  .schedule-builder-compact-control,
+  .schedule-builder-icon-control,
+  .schedule-builder-assign-button,
+  .schedule-builder-action-button {
+    height: 36px !important;
+    min-height: 36px !important;
+    border-radius: 10px !important;
+  }
+
+  .schedule-builder-assignment-row > select:first-child {
+    width: 12rem !important;
+    flex: 0 0 12rem !important;
+  }
+
+  .schedule-builder-assignment-row > div:nth-of-type(1) {
+    flex: 0 1 17rem !important;
+    min-width: 13rem !important;
+  }
+
+  .schedule-builder-assignment-row > div:nth-of-type(2) {
+    flex: 0 0 14.5rem !important;
+  }
+
+  .schedule-builder-assignment-row > div:nth-of-type(2) > div {
+    width: 7rem !important;
+  }
+
+  .schedule-builder-labor-pill {
+    min-width: 7rem !important;
+    padding: .28rem .65rem !important;
+  }
+
+  .schedule-builder-labor-pill span:last-child {
+    font-size: .88rem !important;
+    line-height: 1rem !important;
+  }
+
+  .schedule-builder-publish-strip {
+    padding: .5rem .65rem !important;
+    border-radius: 12px !important;
+    margin-bottom: .1rem !important;
+  }
+
+  .schedule-builder-publish-strip > div:first-child {
+    display: flex !important;
+    flex-wrap: wrap !important;
+    align-items: baseline !important;
+    gap: .25rem .65rem !important;
+  }
+
+  .schedule-builder-publish-strip > div:first-child > div:nth-child(3) {
+    font-size: .58rem !important;
+  }
+
+  .schedule-builder-grid-card {
+    margin-top: 0 !important;
+  }
+}
+
+@media (max-width: 1023px) {
+  .schedule-builder-control-deck {
+    position: sticky !important;
+    top: 58px !important;
+    z-index: 36 !important;
+  }
+}

@@ -126,22 +126,10 @@ const LoginScreen = ({ setAppUser }) => {
       });
     };
 
-    try {
-      const apiRes = await secureFetchWithTimeout('/api/workspace-memberships', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: emailKey, userId: uid })
-      }, 4500);
-      const apiData = await apiRes.json().catch(() => ({}));
-      if (apiRes.ok && Array.isArray(apiData.workspaces)) {
-        for (const workspace of apiData.workspaces) await addOption({ ...workspace, membershipSource: workspace.membershipSource || 'workspace-memberships-api' });
-      } else if (!apiRes.ok) {
-        console.warn('Workspace membership API failed:', apiData?.error || apiRes.statusText);
-      }
-    } catch (err) {
-      console.warn('Workspace membership API unavailable, falling back to browser queries:', err?.message || err);
-    }
-
+    // Fast local/browser path first: the app should never stay frozen on login
+    // waiting for the server membership helper when the existing profile or
+    // workspaceMembers collection already identifies a real workspace.
+    if (baseUser.restaurantId) await addOption({ ...baseUser, restaurantId: baseUser.restaurantId, restaurantName: baseUser.restaurantName });
     if (baseUser.memberships && typeof baseUser.memberships === 'object') {
       for (const [restaurantId, membership] of Object.entries(baseUser.memberships)) await addOption({ ...(membership || {}), restaurantId });
     }
@@ -159,7 +147,25 @@ const LoginScreen = ({ setAppUser }) => {
         console.warn('Workspace membership lookup by email failed:', err?.message || err);
       }
     }
-    if (baseUser.restaurantId) await addOption({ ...baseUser, restaurantId: baseUser.restaurantId, restaurantName: baseUser.restaurantName });
+
+    if (!options.size) {
+      try {
+        const apiRes = await secureFetchWithTimeout('/api/workspace-memberships', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: emailKey, userId: uid })
+        }, 2500);
+        const apiData = await apiRes.json().catch(() => ({}));
+        if (apiRes.ok && Array.isArray(apiData.workspaces)) {
+          for (const workspace of apiData.workspaces) await addOption({ ...workspace, membershipSource: workspace.membershipSource || 'workspace-memberships-api' });
+        } else if (!apiRes.ok) {
+          console.warn('Workspace membership API failed:', apiData?.error || apiRes.statusText);
+        }
+      } catch (err) {
+        console.warn('Workspace membership API unavailable after local workspace checks:', err?.message || err);
+      }
+    }
+
     return Array.from(options.values()).filter(w => w.isActive !== false);
   };
 

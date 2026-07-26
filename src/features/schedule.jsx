@@ -2540,23 +2540,23 @@ const handleExportTimesheets = () => {
       )}
 
       {subTab === 'schedule' && (
-        <div className="space-y-6 animate-[slideIn_0.2s_ease-out]">
+        <div className="schedule-builder-workbench space-y-3 animate-[slideIn_0.2s_ease-out]">
           
-          <div className={`${T.card} p-3 sm:p-4 flex flex-col 2xl:flex-row gap-3 items-center justify-between`}>
-            <div className="flex flex-wrap xl:flex-nowrap gap-3 w-full 2xl:w-auto items-center">
+          <div className={`schedule-builder-control-deck ${T.card} p-2 sm:p-3 flex flex-col 2xl:flex-row gap-2 items-stretch 2xl:items-center justify-between`}>
+            <div className="schedule-builder-assignment-row flex flex-wrap xl:flex-nowrap gap-2 w-full 2xl:w-auto items-center">
               
               {/* Staff Selector */}
-              <select value={selectedEmp} onChange={e=>{setSelectedEmp(e.target.value); setAssignDates([]);}} className={`${T.input} w-full sm:w-auto sm:flex-1 xl:w-40 py-2.5 px-3 text-sm font-bold h-12 shadow-inner shrink-0`}>
+              <select value={selectedEmp} onChange={e=>{setSelectedEmp(e.target.value); setAssignDates([]);}} className={`${T.input} schedule-builder-compact-control w-full sm:w-auto sm:flex-1 xl:w-36 py-1.5 px-2 text-xs font-bold h-10 shadow-inner shrink-0`}>
                 <option value="">-- Select Staff --</option>
                 {displayUsers.map(u=><option key={u.id} value={u.id}>{u.name}</option>)}
               </select>
               
               {/* Preset Selector & Edit Button */}
               <div className="flex gap-2 items-center w-full sm:w-auto sm:flex-1 xl:w-auto shrink-0">
-                <select value={presetShift} onChange={handlePresetChange} className={`${T.input} w-full py-2.5 px-3 text-sm font-bold h-12 shadow-inner`}>
+                <select value={presetShift} onChange={handlePresetChange} className={`${T.input} schedule-builder-compact-control w-full py-1.5 px-2 text-xs font-bold h-10 shadow-inner`}>
                   {SHIFT_PRESETS.map(p=><option key={p.label} value={p.label}>{p.label}</option>)}
                 </select>
-                <button onClick={() => setIsPresetModalOpen(true)} className="px-4 bg-[#12161A] text-slate-400 hover:text-[#D4A381] border border-[#2A353D] rounded-xl transition-colors h-12 flex items-center justify-center shrink-0 shadow-sm" title="Edit Presets">
+                <button onClick={() => setIsPresetModalOpen(true)} className="schedule-builder-icon-control px-3 bg-[#12161A] text-slate-400 hover:text-[#D4A381] border border-[#2A353D] rounded-xl transition-colors h-10 flex items-center justify-center shrink-0 shadow-sm" title="Edit Presets">
                   <Edit size={18} />
                 </button>
               </div>
@@ -2565,33 +2565,33 @@ const handleExportTimesheets = () => {
               <div className="flex gap-2 w-full sm:w-auto sm:flex-1 xl:w-auto shrink-0">
                 <div className="relative flex-1 xl:w-32">
                     <span className="absolute -top-2.5 left-2 bg-[#1A2126] px-1 text-[9px] font-black text-slate-400 uppercase tracking-widest">In</span>
-                    <input type="time" value={startTime} onChange={e=>{setStartTime(e.target.value);setPresetShift('Custom');}} className={`${T.input} w-full py-2.5 px-2 text-sm font-bold h-12 shadow-inner`}/>
+                    <input type="time" value={startTime} onChange={e=>{setStartTime(e.target.value);setPresetShift('Custom');}} className={`${T.input} schedule-builder-compact-control w-full py-1.5 px-2 text-xs font-bold h-10 shadow-inner`}/>
                 </div>
                 <div className="relative flex-1 xl:w-32">
                     <span className="absolute -top-2.5 left-2 bg-[#1A2126] px-1 text-[9px] font-black text-slate-400 uppercase tracking-widest">Out</span>
-                    <input type="time" value={endTime} onChange={e=>{setEndTime(e.target.value);setPresetShift('Custom');}} className={`${T.input} w-full py-2.5 px-2 text-sm font-bold h-12 shadow-inner`}/>
+                    <input type="time" value={endTime} onChange={e=>{setEndTime(e.target.value);setPresetShift('Custom');}} className={`${T.input} schedule-builder-compact-control w-full py-1.5 px-2 text-xs font-bold h-10 shadow-inner`}/>
                 </div>
               </div>
 
               {/* Assign Button */}
-              <button onClick={handleAssign} disabled={isAssigningShift||!selectedEmp||assignDates.length===0} className={`w-full xl:w-auto ${T.btn} py-2.5 px-6 text-sm h-12 disabled:opacity-50 flex items-center justify-center shadow-lg shrink-0 whitespace-nowrap`}>{isAssigningShift ? 'Assigning…' : `Assign (${assignDates.length})`}</button>
+              <button onClick={handleAssign} disabled={isAssigningShift||!selectedEmp||assignDates.length===0} className={`schedule-builder-assign-button w-full xl:w-auto ${T.btn} py-1.5 px-4 text-xs h-10 disabled:opacity-50 flex items-center justify-center shadow-lg shrink-0 whitespace-nowrap`}>{isAssigningShift ? 'Assigning…' : `Assign (${assignDates.length})`}</button>
 
             </div>
             
             {/* Action Row */}
-            <div className="flex w-full 2xl:w-auto gap-2 items-center pt-3 2xl:pt-0 border-t 2xl:border-t-0 border-[#2A353D]">
-              <div className="hidden sm:flex flex-col items-end mr-3 bg-[#12161A] border border-[#2A353D] px-4 py-1.5 rounded-xl">
+            <div className="schedule-builder-action-row flex w-full 2xl:w-auto gap-2 items-center pt-2 2xl:pt-0 border-t 2xl:border-t-0 border-[#2A353D]">
+              <div className="schedule-builder-labor-pill hidden sm:flex flex-col items-end mr-2 bg-[#12161A] border border-[#2A353D] px-3 py-1 rounded-xl">
                 <span className="text-[9px] font-black uppercase tracking-widest text-slate-500">Proj. Period Labor</span>
                 <span className="text-emerald-400 font-black text-base">${projectedMonthLabor.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
               </div>
-<button onClick={() => setIsAutoPopulateModalOpen(true)} className={`flex-1 2xl:flex-none ${T.btnAlt} py-2.5 h-12 flex items-center justify-center font-black border-blue-900/50 text-blue-400`}>
+<button onClick={() => setIsAutoPopulateModalOpen(true)} className={`schedule-builder-action-button flex-1 2xl:flex-none ${T.btnAlt} py-1.5 h-10 flex items-center justify-center font-black border-blue-900/50 text-blue-400`}>
                 <Repeat size={16} className="mr-1"/> Auto-Fill
-              </button>              <button onClick={handlePublish} className={`flex-1 2xl:flex-none ${T.btnAlt} py-2.5 h-12 flex items-center justify-center font-black`}>Publish</button>
-              <button onClick={openNewEventModal} className={`flex-1 2xl:flex-none ${T.btnAlt} border-[#D4A381] text-[#D4A381] py-2.5 h-12 flex items-center justify-center font-black`}><Plus size={16} className="mr-1"/> Event</button>
+              </button>              <button onClick={handlePublish} className={`schedule-builder-action-button flex-1 2xl:flex-none ${T.btnAlt} py-1.5 h-10 flex items-center justify-center font-black`}>Publish</button>
+              <button onClick={openNewEventModal} className={`schedule-builder-action-button flex-1 2xl:flex-none ${T.btnAlt} border-[#D4A381] text-[#D4A381] py-1.5 h-10 flex items-center justify-center font-black`}><Plus size={16} className="mr-1"/> Event</button>
             </div>
           </div>
 
-          <div className={`${T.card} p-3 border-[#D4A381]/30 flex flex-col sm:flex-row sm:items-center justify-between gap-2`}>
+          <div className={`schedule-builder-publish-strip ${T.card} p-2 border-[#D4A381]/30 flex flex-col sm:flex-row sm:items-center justify-between gap-2`}>
             <div>
               <div className="text-[9px] font-black uppercase tracking-widest text-[#D4A381]">Schedule Publishing Window</div>
               <div className="text-sm font-black text-white">{schedulePeriodLabel}</div>
@@ -2600,7 +2600,7 @@ const handleExportTimesheets = () => {
             <div className="text-[10px] font-black uppercase tracking-widest text-slate-400 bg-[#12161A] border border-[#2A353D] rounded-xl px-3 py-2">{schedulePeriodShifts.filter(s => !s.isPublished).length} draft • {schedulePeriodShifts.filter(s => s.isPublished).length} live • {schedulePeriodEvents.length} event{schedulePeriodEvents.length === 1 ? '' : 's'} shown</div>
           </div>
 
-          <div className={`${T.card} w-full overflow-hidden`}>
+          <div className={`schedule-builder-grid-card ${T.card} w-full overflow-hidden`}>
             <div className="overflow-x-auto w-full no-scrollbar">
               <table className="schedule-builder-desktop-table w-full text-left text-[10px] border-collapse table-fixed min-w-[1200px] xl:min-w-full" style={{ '--schedule-builder-min-width': `${92 + (schedulePeriodDays.length * 62)}px` }}>
                 <thead>
