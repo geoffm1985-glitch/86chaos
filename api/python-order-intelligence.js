@@ -1,3 +1,4 @@
+// Authorization: authorizePythonPayloadRoute verifies Firebase authentication and workspace access.
 const { readBody } = require('./_chaos-admin');
 const { authorizePythonPayloadRoute } = require('./_python-auth-fallback');
 const { callPythonFunction } = require('./_python-function-client');

@@ -1,7 +1,6 @@
 const { test, expect } = require('@playwright/test');
-const { hasFeature, ownerLikeCreds, creds, requireCreds, login, gotoTab, bodyText, attachJson, watchForProblems, summarizeProblems } = require('./utils/audit-helpers.cjs');
+const { ownerLikeCreds, creds, requireCreds, login, gotoTab, bodyText, attachJson, watchForProblems, summarizeProblems } = require('./utils/audit-helpers.cjs');
 
-test.skip(!hasFeature('godmode'), 'Feature godmode is not present in this app version.');
 test.describe('10 presence / Online Last Seen / System Administrator', () => {
   test('Online / Last Seen uses honest labels and never raw AppleWebKit/Mozilla soup or negative inactivity', async ({ page }, testInfo) => {
     const account = creds('SYSTEM_ADMIN').email ? creds('SYSTEM_ADMIN') : ownerLikeCreds();

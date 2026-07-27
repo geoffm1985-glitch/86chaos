@@ -11,10 +11,14 @@ const getMonthBounds = (dateStr) => {
   const endDate = new Date(year, month, 0);
   return { start, end: formatDate(endDate) };
 };
-export const getCanonicalScheduleUserId = (user = {}) => user.scheduleUserId || user.userId || user.rosterUserId || user.authUid || user.uid || user.employeeId || user.id || ''; // email is migration evidence only, not a durable query ID
+export const getCanonicalScheduleUserId = (user = {}) => {
+  const safeUser = user && typeof user === 'object' ? user : {};
+  return safeUser.scheduleUserId || safeUser.userId || safeUser.rosterUserId || safeUser.authUid || safeUser.uid || safeUser.employeeId || safeUser.id || '';
+}; // email is migration evidence only, not a durable query ID
 export const canManageScheduleForPlanner = (user = {}) => Boolean(user?.isSuperAdmin || user?.isAdmin || user?.isOwner || user?.accountOwner || user?.workspaceOwner || user?.permissions?.schedule || user?.permissions?.team);
 
 export function buildScheduleQueryPlan({ activeTabState = '', activeScheduleSubTab = 'my-schedule', appUser = {}, currentDate = getToday(), selectedMonth = '', visibleRange = null, wantsToday = false, messageRangeStart = '' } = {}) {
+  const safeAppUser = appUser && typeof appUser === 'object' ? appUser : {};
   const today = getToday();
   const monthBounds = getMonthBounds(selectedMonth || currentDate);
   const scheduleWindowStart = visibleRange?.start || addDays(monthBounds.start, -14);
@@ -23,9 +27,9 @@ export function buildScheduleQueryPlan({ activeTabState = '', activeScheduleSubT
   const futureWindowEnd = addDays(today, 14);
   const todayOpsWindowEnd = addDays(today, 7);
   const isScheduleRoute = ['schedule', 'published', 'events'].includes(activeTabState);
-  const scheduleUserId = getCanonicalScheduleUserId(appUser);
-  const authUserId = appUser.authUid || appUser.uid || appUser.userId || appUser.id || '';
-  const canManageSchedule = canManageScheduleForPlanner(appUser);
+  const scheduleUserId = getCanonicalScheduleUserId(safeAppUser);
+  const authUserId = safeAppUser.authUid || safeAppUser.uid || safeAppUser.userId || safeAppUser.id || '';
+  const canManageSchedule = canManageScheduleForPlanner(safeAppUser);
   const ownUserClause = scheduleUserId ? [['scheduleUserId', '==', scheduleUserId]] : [['scheduleUserId', '==', '__none__']];
   const plan = {
     shiftClauses: [['date','>=', today], ['date','<=', todayOpsWindowEnd]],

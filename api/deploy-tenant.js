@@ -2,7 +2,7 @@ import projectAdmin from './_firebase-project-admin.js';
 
 const { verifyRequestToken } = projectAdmin;
 
-export default async function handler(req, res) {
+// Authorization: verifyRequestToken validates the Firebase bearer token before any deployment action.\nexport default async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed. Use POST.' });
   }
@@ -22,7 +22,7 @@ export default async function handler(req, res) {
     const mfaGate = requireMfaIfEnforced ? requireMfaIfEnforced(decoded, requester, true) : { ok: true };
     if (!mfaGate.ok) return res.status(mfaGate.status || 403).json({ error: mfaGate.error });
 
-    const { rName, oName, oEmail, oPhone, rAddress, tPass } = req.body;
+    const body = req.body && typeof req.body === 'object' ? req.body : {};\n    const { rName, oName, oEmail, oPhone, rAddress, tPass } = body;\n    if (![rName, oName, oEmail, oPhone, rAddress, tPass].every(value => String(value || '').trim())) return res.status(400).json({ error: 'All workspace deployment fields are required.' });
 
     // 1. Create User in Authentication Vault
     const userRecord = await app.auth().createUser({

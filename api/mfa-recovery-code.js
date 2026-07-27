@@ -1,3 +1,4 @@
+// Authorization: recovery is verified with the one-time recovery code, email identity, rate limit, and reservation transaction.
 const admin = require('firebase-admin');
 const { getAdminAppForRequest } = require('./_firebase-project-admin');
 const crypto = require('crypto');

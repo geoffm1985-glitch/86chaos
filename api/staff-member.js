@@ -258,6 +258,9 @@ async function upsertAccountAndMembership(db, uid, accountBase, membershipPayloa
 
 module.exports = async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+  if (!String(req.headers.authorization || '').replace('Bearer ', '').trim()) {
+    return res.status(401).json({ error: 'Missing Firebase ID token. Log out and back in, then try again.' });
+  }
   try {
     const app = initAdmin(req);
     const db = app.firestore();
@@ -404,7 +407,11 @@ module.exports = async function handler(req, res) {
     return res.status(400).json({ error: 'Unsupported staff action.' });
   } catch (err) {
     console.error('staff-member API error:', err);
-    const status = /permission|owner|admin|forbidden|member|workspace|already active/i.test(err?.message || '') ? 403 : 500;
-    return res.status(status).json({ error: err?.message || 'Staff save failed.' });
+    const message = String(err?.message || 'Staff save failed.');
+    const status = /missing firebase id token|missing.*token|unauthorized/i.test(message) ? 401
+      : /invalid.*token|permission|owner|admin|forbidden|member|workspace|already active/i.test(message) ? 403
+      : /required|unsupported|invalid json|too large/i.test(message) ? 400
+      : 500;
+    return res.status(status).json({ error: status >= 500 ? 'Staff save failed.' : message });
   }
 };

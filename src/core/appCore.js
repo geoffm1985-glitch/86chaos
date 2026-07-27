@@ -380,7 +380,7 @@ export const MASTER_ADMIN_EMAIL = (process.env.REACT_APP_MASTER_ADMIN_EMAIL || '
 export const EVENT_TAGS = ['Standard Day', 'Packers Game', 'Brewers Game', 'Live Music', 'Severe Weather', 'Private Catering', 'Holiday'];
 
 // --- VERSION TRACKING ---
-export const CURRENT_VERSION = '16.0.35';
+export const CURRENT_VERSION = '16.0.36';
 
 // --- Helpers ---
 const usePageVisible = () => {
@@ -1148,33 +1148,32 @@ if (typeof window !== 'undefined' && !window.crashCatcherAttached) {
       const message = String(payload.message || payload.reason?.message || payload.reason || 'Browser error').slice(0, 2000);
       const stack = String(payload.rawStack || payload.reason?.stack || payload.error?.stack || '').slice(0, 5000);
       const chunkUrl = payload.chunkUrl || extractFailedAssetUrl(`${message} ${stack}`);
-      const fingerprint = [payload.source || 'runtime', chunkFailurePattern.test(`${message} ${stack}`) ? 'chunk' : 'error', chunkUrl, CURRENT_VERSION, window.location.pathname, window.location.search].join('|');
+      const messageFingerprint = `${String(payload.error?.name || payload.reason?.name || '')}:${message}`.slice(0, 500);
+      const fingerprint = [payload.source || 'runtime', chunkFailurePattern.test(`${message} ${stack}`) ? 'chunk' : 'error', chunkUrl, messageFingerprint, CURRENT_VERSION, window.location.pathname, window.location.search].join('|');
       if (window.__chaosCrashFingerprints?.has(fingerprint)) return;
       window.__chaosCrashFingerprints = window.__chaosCrashFingerprints || new Set();
       window.__chaosCrashFingerprints.add(fingerprint);
       if (window.__chaosCrashFingerprints.size > 30) window.__chaosCrashFingerprints.clear();
-      if (auth.currentUser) {
-        secureFetch('/api/report-bug', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            category: 'Crash / Error',
-            message,
-            errorName: String(payload.error?.name || payload.reason?.name || (chunkUrl ? 'ChunkLoadError' : 'RuntimeError')),
-            rawStack: stack,
-            breadcrumbs: window.breadcrumbs || [],
-            userAgent: navigator.userAgent,
-            screenSize: `${window.innerWidth}x${window.innerHeight}`,
-            url: window.location.href,
-            route: window.location.pathname + window.location.search,
-            chunkUrl,
-            appVersion: CURRENT_VERSION,
-            online: navigator.onLine,
-            serviceWorkerState: navigator.serviceWorker?.controller?.state || '',
-            source: payload.source || 'runtime_error'
-          })
-        }).catch(()=>{});
-      }
+      secureFetch('/api/report-bug', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          category: 'Crash / Error',
+          message,
+          errorName: String(payload.error?.name || payload.reason?.name || (chunkUrl ? 'ChunkLoadError' : 'RuntimeError')),
+          rawStack: stack,
+          breadcrumbs: window.breadcrumbs || [],
+          userAgent: navigator.userAgent,
+          screenSize: `${window.innerWidth}x${window.innerHeight}`,
+          url: window.location.href,
+          route: window.location.pathname + window.location.search,
+          chunkUrl,
+          appVersion: CURRENT_VERSION,
+          online: navigator.onLine,
+          serviceWorkerState: navigator.serviceWorker?.controller?.state || '',
+          source: payload.source || 'runtime_error'
+        })
+      }).catch(()=>{});
     } catch (_) {}
   };
 
@@ -1187,7 +1186,41 @@ if (typeof window !== 'undefined' && !window.crashCatcherAttached) {
     const reason = event?.reason;
     const message = String(reason?.message || reason || 'Unhandled promise rejection');
     reportGlobalRuntimeError({ source: 'unhandledrejection', message, reason, rawStack: reason?.stack || '' });
-  }); 
+  });
+
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.addEventListener('message', (event) => {
+      const receipt = event?.data;
+      if (receipt?.type !== '86CHAOS_NOTIFICATION_RECEIPT' || !receipt?.reportId) return;
+      secureFetch('/api/notification-receipt', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(receipt)
+      }).catch(() => {});
+    });
+
+    try {
+      const receiptUrl = new URL(window.location.href);
+      const reportId = receiptUrl.searchParams.get('notificationReceiptReportId') || '';
+      const action = receiptUrl.searchParams.get('notificationReceipt') || '';
+      if (reportId && action === 'opened') {
+        secureFetch('/api/notification-receipt', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            type: '86CHAOS_NOTIFICATION_RECEIPT',
+            action: 'opened',
+            reportId,
+            openedAt: new Date().toISOString()
+          })
+        }).finally(() => {
+          receiptUrl.searchParams.delete('notificationReceipt');
+          receiptUrl.searchParams.delete('notificationReceiptReportId');
+          window.history.replaceState({}, '', `${receiptUrl.pathname}${receiptUrl.search}${receiptUrl.hash}`);
+        }).catch(() => {});
+      }
+    } catch (_) {}
+  }
 }
 
 // --- HOLIDAY & TIME ENGINE ---

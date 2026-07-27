@@ -134,7 +134,17 @@ async function hardReplaceScheduleMonth(db, { restaurantId, monthStart, monthEnd
   return { deletedCount, importedCount, backup };
 }
 
-module.exports = {
+async function handler(req, res) {
+  // Authorization: this module is an internal utility and is never a public data endpoint.
+  try {
+    if (!['GET', 'POST'].includes(req.method || '')) return res.status(405).json({ ok: false, error: 'Method Not Allowed' });
+    return res.status(404).json({ ok: false, error: 'This internal schedule utility is not a public API endpoint.' });
+  } catch (_) {
+    return res.status(400).json({ ok: false, error: 'Invalid schedule utility request.' });
+  }
+}
+
+Object.assign(handler, {
   normalizeScheduleDate,
   getShiftDate,
   isDateInRange,
@@ -143,4 +153,6 @@ module.exports = {
   commitInChunks,
   getRestaurantMonthShiftDocs,
   hardReplaceScheduleMonth
-};
+});
+
+module.exports = handler;

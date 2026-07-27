@@ -69,10 +69,27 @@ function safeUrl(rawUrl = '/') {
   }
 }
 
+async function emitNotificationReceipt(action, payload = {}) {
+  const data = payload.data || payload.notification?.data || {};
+  const reportId = firstText(data.reportId, data.crashReportId);
+  if (!reportId) return;
+  const receipt = {
+    type: '86CHAOS_NOTIFICATION_RECEIPT',
+    action,
+    reportId,
+    notificationTag: firstText(data.notificationTag, data.tag),
+    receivedAt: action === 'received' ? new Date().toISOString() : '',
+    openedAt: action === 'opened' ? new Date().toISOString() : ''
+  };
+  const allClients = await clients.matchAll({ type: 'window', includeUncontrolled: true });
+  await Promise.allSettled(allClients.map(client => client.postMessage(receipt)));
+}
+
 messaging.onBackgroundMessage((payload) => {
   console.log('[firebase-messaging-sw.js] Received background message ', payload);
 
   const data = payload.data || {};
+  emitNotificationReceipt('received', payload).catch(() => {});
 
   // If Firebase already received a notification payload, the browser/FCM layer displays it.
   // Showing it again here creates the duplicate Android notifications shown in testing.
@@ -95,7 +112,8 @@ messaging.onBackgroundMessage((payload) => {
     renotify: false,
     data: {
       url: safeUrl(firstText(data.click_action, data.url, data.link, '/?tab=today')),
-      notificationTag: tag || ''
+      notificationTag: tag || '',
+      reportId: firstText(data.reportId, data.crashReportId)
     }
   };
 
@@ -104,8 +122,28 @@ messaging.onBackgroundMessage((payload) => {
 
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
-  const targetUrl = safeUrl(event.notification?.data?.url || '/');
+  let targetUrl = safeUrl(event.notification?.data?.url || '/');
+  const reportId = firstText(event.notification?.data?.reportId);
+  if (reportId) {
+    try {
+      const receiptUrl = new URL(targetUrl, self.location.origin);
+      receiptUrl.searchParams.set('notificationReceipt', 'opened');
+      receiptUrl.searchParams.set('notificationReceiptReportId', reportId);
+      targetUrl = `${receiptUrl.pathname}${receiptUrl.search}${receiptUrl.hash}`;
+    } catch (_) {}
+  }
   event.waitUntil((async () => {
+    if (reportId) {
+      const allClients = await clients.matchAll({ type: 'window', includeUncontrolled: true });
+      await Promise.allSettled(allClients.map(client => client.postMessage({
+        type: '86CHAOS_NOTIFICATION_RECEIPT',
+        action: 'opened',
+        reportId,
+        notificationTag: firstText(event.notification?.data?.notificationTag),
+        receivedAt: '',
+        openedAt: new Date().toISOString()
+      })));
+    }
     const allClients = await clients.matchAll({ type: 'window', includeUncontrolled: true });
     for (const client of allClients) {
       try {

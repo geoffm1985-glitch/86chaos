@@ -339,6 +339,20 @@ module.exports = async function handler(req, res) {
     return res.status(200).json({
       ok: true,
       reportId: reportRef.id,
+      push: {
+        attempted: pushResult.attempted !== false,
+        fcmAcceptedCount: pushResult.fcmAcceptedCount ?? pushResult.sentCount ?? 0,
+        fcmRejectedCount: pushResult.fcmRejectedCount ?? pushResult.failedCount ?? 0,
+        deliveryConfirmedCount: Number(pushResult.deliveryConfirmedCount || 0),
+        openedCount: Number(pushResult.openedCount || 0),
+        status: (pushResult.fcmAcceptedCount ?? pushResult.sentCount ?? 0) > 0 ? 'accepted_by_fcm_delivery_unconfirmed' : 'not_accepted'
+      },
+      email: {
+        attempted: emailResult.attempted === true,
+        providerAccepted: emailResult.providerAccepted === true,
+        provider: emailResult.provider || '',
+        providerMessageId: emailResult.providerMessageId || ''
+      },
       supportPushFcmAcceptedCount: pushResult.fcmAcceptedCount ?? pushResult.sentCount ?? 0,
       supportPushFcmRejectedCount: pushResult.fcmRejectedCount ?? pushResult.failedCount ?? 0,
       supportPushEligibleAdminCount: pushResult.eligibleAdminCount || 0,

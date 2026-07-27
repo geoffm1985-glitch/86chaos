@@ -1,7 +1,6 @@
 const { test, expect } = require('@playwright/test');
-const { hasFeature, ownerLikeCreds, requireCreds, login, gotoTab, bodyText, attachJson } = require('./utils/audit-helpers.cjs');
+const { ownerLikeCreds, requireCreds, login, gotoTab, bodyText, attachJson } = require('./utils/audit-helpers.cjs');
 
-test.skip(!hasFeature('schedule'), 'Feature schedule is not present in this app version.');
 test.describe('14 exports/imports and permanent regression graveyard', () => {
   test('export/import surfaces are reachable and exported-total screens do not show broken values', async ({ page }, testInfo) => {
     const account = ownerLikeCreds();

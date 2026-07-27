@@ -1,14 +1,10 @@
 {
-  "version": "16.0.35",
-  "name": "86 Chaos 16.0.35 Firestore Index Coverage Fix",
+  "version": "16.0.36",
+  "name": "86 Chaos 16.0.36 Release Gate Error Fix",
   "releasedAt": "2026-07-27T00:00:00.000Z",
-  "label": "86 Chaos 16.0.35 Firestore Index Coverage Fix",
-  "build": "16.0.35",
-  "notes": [
-    "Adds missing composite Firestore indexes needed by the optimized Python Automation and Operations inventory queries.",
-    "Adds review-first restaurant AI assistants for 86Voice, Manager Brief explanations, invoice line cleanup, price jump detection, prep prediction, schedule risk, menu intelligence, maintenance patterns, and semantic Help Center search.",
-    "Preserves existing UI structure, Firebase wiring, rules, indexes, credentials, permissions, routes, tabs, scanner review flows, and operational workflows."
-  ],
+  "label": "86 Chaos 16.0.36 Release Gate Error Fix",
+  "build": "16.0.36",
+  "notes": "Fixes the confirmed schedule identity crash, controlled unauthenticated API responses, automatic crash reporting, service-worker activation, and push receipt evidence without visual changes.",
   "releaseNotes": [
     "86Voice can answer higher-level readiness, labor/schedule, prep, maintenance, price-jump, weather, and food/allergen lookup questions using real loaded app data and protected public-data routes.",
     "Manager Brief Need Attention cards now include an Explain action with what triggered the card, why it matters, and the safest next action.",

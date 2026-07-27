@@ -22,7 +22,11 @@ const readBody = (req) => {
 
 const verifyUser = async (req) => {
   const token = (req.headers.authorization || '').replace('Bearer ', '').trim();
-  if (!token) throw new Error('Missing Firebase Auth token');
+  if (!token) {
+    const error = new Error('Missing Firebase Auth token');
+    error.statusCode = 401;
+    throw error;
+  }
   const app = initAdmin(req);
   const authClient = app && typeof app.auth === 'function' ? app.auth() : admin.auth(app);
   const decoded = await authClient.verifyIdToken(token);
@@ -134,6 +138,8 @@ module.exports = async function handler(req, res) {
       message: draft.validationIssues.length ? 'Bill draft created, but mapping needs review.' : 'Bill draft created for owner/admin review. Nothing was sent to QuickBooks.'
     });
   } catch (error) {
-    return json(res, 500, { ok: false, message: error?.message || 'QuickBooks bill draft failed safely.' });
+    const message = String(error?.message || 'Request failed safely.');
+    const status = Number(error?.statusCode || (/missing firebase auth token|missing.*token|unauthorized/i.test(message) ? 401 : /invalid.*token|permission|forbidden/i.test(message) ? 403 : /invalid json/i.test(message) ? 400 : /too large/i.test(message) ? 413 : 500));
+    return json(res, status, { ok: false, status: 'failed_safe', message: status >= 500 ? 'Request failed safely.' : message });
   }
 };

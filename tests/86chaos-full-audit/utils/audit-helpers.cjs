@@ -2,9 +2,8 @@ const fs = require('fs');
 const path = require('path');
 const { expect } = require('@playwright/test');
 
-const APP_ROOT = process.env.CHAOS_APP_ROOT || process.cwd();
 const ENV_FILE_NAMES = ['.env.test.local', '.env.test', '.env.local', '.env'];
-const ENV_SEARCH_ROOTS = [APP_ROOT, process.cwd(), path.resolve(__dirname, '..', '..', '..')];
+const ENV_SEARCH_ROOTS = [process.cwd(), path.resolve(__dirname, '..', '..', '..')];
 const RAW_ENV = {};
 const ENV_LOAD_REPORT = [];
 
@@ -65,7 +64,7 @@ function maskedEnvValue(name) {
 
 const RUN_ID = envValue('CHAOS_FULL_AUDIT_RUN_ID') || `${Date.now()}-${Math.random().toString(16).slice(2, 8)}`;
 const BASE_URL = envValue('APP_URL', 'CHAOS_BASE_URL', 'PLAYWRIGHT_BASE_URL', 'BASE_URL').replace(/\/$/, '');
-const EXPECTED_VERSION = envValue('CHAOS_EXPECTED_VERSION') || readVersionFromDisk() || '';
+const EXPECTED_VERSION = envValue('CHAOS_EXPECTED_VERSION') || readVersionFromDisk() || '16.0.32';
 const QA_WORKSPACE_NAME = '86 Chaos Full Audit QA Restaurant';
 const SAFE_TESTING_URL_RE = /localhost|127\.0\.0\.1|vercel\.app|testing|test|preview/i;
 const PRODUCTION_URL_RE = /(^|\.)app\.86chaos\.com|(^|\.)86chaos\.com/i;
@@ -73,7 +72,7 @@ const ALLOW_MUTATION = boolEnv('CHAOS_ALLOW_MUTATION') && SAFE_TESTING_URL_RE.te
 
 function readVersionFromDisk() {
   try {
-    const versionPath = path.join(APP_ROOT, 'public', 'version.json');
+    const versionPath = path.join(process.cwd(), 'public', 'version.json');
     if (!fs.existsSync(versionPath)) return '';
     return JSON.parse(fs.readFileSync(versionPath, 'utf8')).version || '';
   } catch (_) {
@@ -87,29 +86,7 @@ function appUrl(tab = 'today') {
   return url.toString();
 }
 
-function readCapabilityManifest() {
-  const candidates = [
-    path.join(APP_ROOT, 'test-results', '86chaos-play-store-release-gate', 'app-capabilities.json'),
-    path.join(APP_ROOT, 'public', 'version.json'),
-  ];
-  for (const file of candidates) {
-    try { if (fs.existsSync(file)) return JSON.parse(fs.readFileSync(file, 'utf8')); } catch (_) {}
-  }
-  return { version: EXPECTED_VERSION, features: {} };
-}
-const CAPABILITIES = readCapabilityManifest();
-function hasFeature(name) {
-  if (!name) return true;
-  const map = CAPABILITIES.features || {};
-  if (Object.prototype.hasOwnProperty.call(map, name)) return Boolean(map[name]);
-  const aliases = { 'menu-intelligence':'menuIntelligence', 'ai-tools':'voice', 'hr-training':'team', audit:'godmode', sales:'financials', 'back-office':'financials' };
-  if (aliases[name] && Object.prototype.hasOwnProperty.call(map, aliases[name])) return Boolean(map[aliases[name]]);
-  return true;
-}
-function skipUnlessFeature(testApi, name, reason='') {
-  if (!hasFeature(name)) testApi.skip(true, reason || `Feature ${name} does not exist in detected app version ${CAPABILITIES.version || EXPECTED_VERSION || 'unknown'}.`);
-}
-const BASE_ROUTE_SPECS = [
+const ROUTE_SPECS = [
   { tab: 'today', label: 'Today / Manager Brief', expect: /Today|Manager Brief|Need Attention|Role Home|Kitchen/i },
   { tab: 'kitchen', label: 'Kitchen Command Center', expect: /Kitchen Command|Command Center|Kitchen/i, optional: true },
   { tab: 'schedule', label: 'Schedule Builder', expect: /Schedule Builder|Auto-Fill|Assign|Publish|Coverage|Schedule/i },
@@ -133,7 +110,6 @@ const BASE_ROUTE_SPECS = [
   { tab: 'audit', label: 'Audit', expect: /Audit|Log|Timeline|History/i, optional: true },
   { tab: 'godmode', label: 'System Administrator', expect: /System Administrator|People Directory|Online|Backup|Security|Permission/i, optional: true },
 ];
-const ROUTE_SPECS = BASE_ROUTE_SPECS.filter(route => hasFeature(route.tab) || route.optional || ['today','schedule','published','inventory','prep','recipes','messages','team','maintenance','settings','help'].includes(route.tab));
 
 const FATAL_TEXT_RE = /Application error|Unhandled Runtime Error|Minified React error|Cannot read properties of undefined|Cannot read property|undefined is not a function|ReferenceError|TypeError:|Something went wrong|White screen/i;
 const BAD_VALUE_RE = /Invalid Date|NaN|Infinity|undefined undefined|null null|Inactive -\d+ days|\$NaN|NaN%/i;
@@ -168,7 +144,7 @@ function requireCreds(account, label = 'account') {
 
 function envDebugSummary() {
   const keys = ['APP_URL', 'CHAOS_EXPECTED_VERSION', 'CHAOS_ALLOW_MUTATION', 'CHAOS_QA_RESTAURANT_ID', 'CHAOS_QA_CREATE_RESTAURANT', 'OWNER_EMAIL', 'MANAGER_EMAIL', 'STAFF_EMAIL', 'SYSTEM_ADMIN_EMAIL'];
-  return { cwd: process.cwd(), appRoot: APP_ROOT, baseUrl: BASE_URL, expectedVersion: EXPECTED_VERSION, envFiles: ENV_LOAD_REPORT, values: Object.fromEntries(keys.map(k => [k, maskedEnvValue(k)])) };
+  return { cwd: process.cwd(), baseUrl: BASE_URL, expectedVersion: EXPECTED_VERSION, envFiles: ENV_LOAD_REPORT, values: Object.fromEntries(keys.map(k => [k, maskedEnvValue(k)])) };
 }
 
 async function bodyText(page, max = 30000) {
@@ -364,7 +340,7 @@ async function collectTextNear(page, needle, radius = 1200) {
 }
 
 function seedReportPath() {
-  return path.join(APP_ROOT, 'test-results', '86chaos-full-audit-seed-report.json');
+  return path.join(process.cwd(), 'test-results', '86chaos-full-audit-seed-report.json');
 }
 
 function readSeedReport() {
@@ -378,10 +354,6 @@ function mutationSkipMessage() {
 }
 
 module.exports = {
-  APP_ROOT,
-  CAPABILITIES,
-  hasFeature,
-  skipUnlessFeature,
   RUN_ID,
   BASE_URL,
   EXPECTED_VERSION,

@@ -1,8 +1,7 @@
 const { test, expect } = require('@playwright/test');
 const { durationForShift, buildAuditScheduleFixture, expectedHoursFor, summarizeSchedule } = require('./utils/math-oracle.cjs');
-const { hasFeature, attachJson, ownerLikeCreds, requireCreds, login, gotoTab, collectTextNear, readSeedReport, bodyText } = require('./utils/audit-helpers.cjs');
+const { attachJson, ownerLikeCreds, requireCreds, login, gotoTab, collectTextNear, readSeedReport, bodyText } = require('./utils/audit-helpers.cjs');
 
-test.skip(!hasFeature('schedule'), 'Feature schedule is not present in this app version.');
 test.describe('04 schedule hours math truth oracle', () => {
   test('independent shift duration oracle catches valid, overnight, invalid, duplicate, and overlap cases', async ({}, testInfo) => {
     const cases = [

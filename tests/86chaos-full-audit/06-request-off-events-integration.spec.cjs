@@ -1,7 +1,6 @@
 const { test, expect } = require('@playwright/test');
-const { hasFeature, ownerLikeCreds, requireCreds, login, gotoTab, bodyText, attachJson, ALLOW_MUTATION, readSeedReport, mutationSkipMessage, collectTextNear } = require('./utils/audit-helpers.cjs');
+const { ownerLikeCreds, requireCreds, login, gotoTab, bodyText, attachJson, ALLOW_MUTATION, readSeedReport, mutationSkipMessage, collectTextNear } = require('./utils/audit-helpers.cjs');
 
-test.skip(!hasFeature('events'), 'Feature events is not present in this app version.');
 test.describe('06 request-off, availability, and scheduled events integration', () => {
   test('event calendar and Schedule Builder both show scheduled events without truncating time/title', async ({ page }, testInfo) => {
     const account = ownerLikeCreds();

@@ -1,7 +1,6 @@
 const { test, expect } = require('@playwright/test');
-const { hasFeature, ownerLikeCreds, requireCreds, login, gotoTab, bodyText, attachJson, ALLOW_MUTATION, readSeedReport, mutationSkipMessage } = require('./utils/audit-helpers.cjs');
+const { ownerLikeCreds, requireCreds, login, gotoTab, bodyText, attachJson, ALLOW_MUTATION, readSeedReport, mutationSkipMessage } = require('./utils/audit-helpers.cjs');
 
-test.skip(!hasFeature('inventory'), 'Feature inventory is not present in this app version.');
 test.describe('08 inventory, recipes, menu intelligence, and 86 alerts', () => {
   test('inventory route renders par/stock/vendor/order surfaces without broken unit or money math', async ({ page }, testInfo) => {
     const account = ownerLikeCreds();

@@ -1,13 +1,10 @@
 {
-  "version": "16.0.32",
-  "name": "86 Chaos 16.0.32 Reminder Recurrence, Firebase Isolation, and Release Gate Fix",
+  "version": "16.0.36",
+  "name": "86 Chaos 16.0.36 Release Gate Error Fix",
   "releasedAt": "2026-07-26T00:00:00.000Z",
-  "label": "86 Chaos 16.0.32 Reminder Recurrence, Firebase Isolation, and Release Gate Fix",
-  "build": "16.0.32",
-  "notes": [
-    "Corrects v16.0.30 release-blocking QA, listener, reminder, backup, admin safety, and cost-test reliability issues without removing features.",
-    "Keeps native backup/manual backup flows, operational intelligence, schedules, reminders, notifications, permissions, and Firebase credential wiring intact."
-  ],
+  "label": "86 Chaos 16.0.36 Release Gate Error Fix",
+  "build": "16.0.36",
+  "notes": "Fixes the confirmed schedule identity crash, controlled unauthenticated API responses, automatic crash reporting, service-worker activation, and push receipt evidence without visual changes.",
   "releaseNotes": [
     "Recurring reminders now retain one occurrence through retries and advance to a fresh occurrence only after successful delivery.",
     "Personal reminder edits, sharing, and participant actions are validated by authenticated server endpoints and same-workspace membership checks.",

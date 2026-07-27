@@ -1,7 +1,6 @@
 const { test, expect } = require('@playwright/test');
-const { hasFeature, ownerLikeCreds, requireCreds, login, gotoTab, bodyText, attachJson, ALLOW_MUTATION, readSeedReport, mutationSkipMessage } = require('./utils/audit-helpers.cjs');
+const { ownerLikeCreds, requireCreds, login, gotoTab, bodyText, attachJson, ALLOW_MUTATION, readSeedReport, mutationSkipMessage } = require('./utils/audit-helpers.cjs');
 
-test.skip(!hasFeature('today'), 'Feature today is not present in this app version.');
 test.describe('12 cross-module impact and full restaurant day', () => {
   test('core cross-module surfaces are all visible without broken math: Manager Brief, Kitchen, Schedule, Inventory, Messages, Financials', async ({ page }, testInfo) => {
     test.setTimeout(10 * 60 * 1000);

@@ -175,24 +175,26 @@ const getSchedulePersonForAppUser = (appUser = {}, users = []) => {
 
 
 export const buildScheduleIdentityFields = (person = {}, account = {}) => {
-  const scheduleUserId = person.scheduleUserId || person.employeeId || person.rosterUserId || person.userId || person.authUid || person.uid || person.id || account.scheduleUserId || account.employeeId || account.rosterUserId || account.userId || account.authUid || account.uid || account.id || '';
-  const authUid = person.authUid || person.uid || person.userId || account.authUid || account.uid || account.userId || account.id || '';
-  const userId = person.userId || authUid || account.userId || account.id || '';
-  const rosterUserId = person.rosterUserId || person.employeeId || person.id || account.rosterUserId || account.employeeId || '';
-  const employeeId = person.employeeId || rosterUserId || person.id || account.employeeId || scheduleUserId || '';
-  const email = person.employeeEmail || person.email || person.assignedEmail || account.employeeEmail || account.email || '';
-  const name = person.employeeName || person.name || person.displayName || person.assignedName || account.employeeName || account.name || account.displayName || email || 'Unknown';
+  const safePerson = person && typeof person === 'object' ? person : {};
+  const safeAccount = account && typeof account === 'object' ? account : {};
+  const scheduleUserId = safePerson.scheduleUserId || safePerson.employeeId || safePerson.rosterUserId || safePerson.userId || safePerson.authUid || safePerson.uid || safePerson.id || safeAccount.scheduleUserId || safeAccount.employeeId || safeAccount.rosterUserId || safeAccount.userId || safeAccount.authUid || safeAccount.uid || safeAccount.id || '';
+  const authUid = safePerson.authUid || safePerson.uid || safePerson.userId || safeAccount.authUid || safeAccount.uid || safeAccount.userId || safeAccount.id || '';
+  const userId = safePerson.userId || authUid || safeAccount.userId || safeAccount.id || '';
+  const rosterUserId = safePerson.rosterUserId || safePerson.employeeId || safePerson.id || safeAccount.rosterUserId || safeAccount.employeeId || '';
+  const employeeId = safePerson.employeeId || rosterUserId || safePerson.id || safeAccount.employeeId || scheduleUserId || '';
+  const email = safePerson.employeeEmail || safePerson.email || safePerson.assignedEmail || safeAccount.employeeEmail || safeAccount.email || '';
+  const name = safePerson.employeeName || safePerson.name || safePerson.displayName || safePerson.assignedName || safeAccount.employeeName || safeAccount.name || safeAccount.displayName || email || 'Unknown';
   return {
     scheduleUserId,
     employeeId,
     userId,
     rosterUserId,
     authUid,
-    assignedUserId: person.assignedUserId || userId || scheduleUserId,
+    assignedUserId: safePerson.assignedUserId || userId || scheduleUserId,
     employeeEmail: email,
-    assignedEmail: person.assignedEmail || email,
+    assignedEmail: safePerson.assignedEmail || email,
     employeeName: name,
-    assignedName: person.assignedName || name
+    assignedName: safePerson.assignedName || name
   };
 };
 

@@ -1,7 +1,6 @@
 const { test, expect } = require('@playwright/test');
-const { hasFeature, ownerLikeCreds, requireCreds, login, gotoTab, attachJson, ALLOW_MUTATION, readSeedReport, mutationSkipMessage } = require('./utils/audit-helpers.cjs');
+const { ownerLikeCreds, requireCreds, login, gotoTab, attachJson, ALLOW_MUTATION, readSeedReport, mutationSkipMessage } = require('./utils/audit-helpers.cjs');
 
-test.skip(!hasFeature('prep'), 'Feature prep is not present in this app version.');
 test.describe('09 prep/tasks, maintenance, messages, and reminders', () => {
   test('prep/tasks/checklists route loads and shows no broken completion math', async ({ page }, testInfo) => {
     const account = ownerLikeCreds();
