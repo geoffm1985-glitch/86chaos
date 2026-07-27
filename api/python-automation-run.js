@@ -295,7 +295,7 @@ function mergeRecipient(base = {}, overlay = {}, restaurantId = '') {
 }
 
 async function addUserById(db, users, userId, membership = {}, restaurantId = '') {
-  const cleanId = clean(userId || '', '');
+  const cleanId = cleanText(userId || '', 160);
   if (!cleanId) return;
   const snap = await db.collection('users').doc(cleanId).get().catch(() => null);
   if (snap?.exists) users.set(snap.id, mergeRecipient({ id: snap.id, ...snap.data() }, membership, restaurantId));

@@ -42,7 +42,8 @@ describe('release-gate reminder properties', () => {
         const suffix = hour >= 12 ? 'pm' : 'am';
         const h12 = hour % 12 || 12;
         const parsed = parseReminderCommand(`Remind me to check line at ${h12}:${String(minute).padStart(2, '0')} ${suffix}`, now);
-        if (parsed.scheduledAt) expect(new Date(parsed.scheduledAt).getTime()).toBeGreaterThan(now.getTime());
+        const scheduledTime = parsed.scheduledAt ? new Date(parsed.scheduledAt).getTime() : Number.POSITIVE_INFINITY;
+        expect(scheduledTime).toBeGreaterThan(now.getTime());
       }
     ), { numRuns: 300 });
   });
