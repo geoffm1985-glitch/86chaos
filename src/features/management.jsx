@@ -4413,35 +4413,40 @@ const LEGACY_JULY_2026_SCHEDULE = [
   const [pushBroadcastCritical, setPushBroadcastCritical] = useState(true);
   const [isPushBroadcasting, setIsPushBroadcasting] = useState(false);
 
+  const runAdminGlobalOperation = async (payload = {}) => {
+    const normalizedPayload = {
+      ...payload,
+      idempotencyKey: payload.idempotencyKey || `${payload.action || 'operation'}_${payload.target || 'single'}_${Date.now()}_${Math.random().toString(36).slice(2,7)}`,
+      ...(payload.target === 'ALL' ? { confirmation: `CONFIRM ${payload.action} ALL` } : {})
+    };
+    const response = await secureFetch('/api/admin-global-operation', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(normalizedPayload)
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok && !result.ok) throw new Error(result.error || 'Global operation failed.');
+    return result;
+  };
+
   const handlePushBanner = async (e) => {
     e.preventDefault();
     if (!bannerText.trim()) return addToast('Error', 'Banner text required.');
     if (!window.confirm("Pin this banner to the top of the app?")) return;
-    
-    addToast('Deploying', 'Pushing banner to selected workspace(s)...');
+    addToast('Deploying', bannerTarget === 'ALL' ? 'Server is paging all workspaces for banner deployment...' : 'Pushing banner to selected workspace...');
     try {
-      if (bannerTarget === 'ALL') {
-        const promises = restaurants.map(r => updateDoc(doc(db, "restaurants", r.id), { systemBanner: bannerText.trim(), systemBannerUpdatedAt: new Date().toISOString() }));
-        await Promise.all(promises);
-      } else {
-        await updateDoc(doc(db, "restaurants", bannerTarget), { systemBanner: bannerText.trim(), systemBannerUpdatedAt: new Date().toISOString() });
-      }
-      addToast('Success', 'Banner deployed successfully.');
+      const result = await runAdminGlobalOperation({ action: 'setBanner', target: bannerTarget, text: bannerText.trim() });
+      addToast('Success', bannerTarget === 'ALL' ? `Banner deployed to ${result.affected || 0} workspace(s).` : 'Banner deployed successfully.');
       setBannerText('');
     } catch(err) { addToast('Error', err.message); }
   };
 
   const handleClearBanner = async () => {
     if (!window.confirm("Clear active banners for the selected target?")) return;
-    addToast('Clearing', 'Removing banners...');
+    addToast('Clearing', bannerTarget === 'ALL' ? 'Server is paging every workspace to clear banners...' : 'Removing banner...');
     try {
-      if (bannerTarget === 'ALL') {
-        const promises = restaurants.map(r => updateDoc(doc(db, "restaurants", r.id), { systemBanner: null, systemBannerUpdatedAt: null }));
-        await Promise.all(promises);
-      } else {
-        await updateDoc(doc(db, "restaurants", bannerTarget), { systemBanner: null, systemBannerUpdatedAt: null });
-      }
-      addToast('Success', 'Banner(s) cleared.');
+      const result = await runAdminGlobalOperation({ action: 'clearBanner', target: bannerTarget });
+      addToast('Success', bannerTarget === 'ALL' ? `Cleared banners for ${result.affected || 0} workspace(s).` : 'Banner cleared.');
     } catch(err) { addToast('Error', err.message); }
   };
   
@@ -4465,7 +4470,7 @@ const LEGACY_JULY_2026_SCHEDULE = [
     } catch(err) { addToast('Error', err.message); }
   };
 
-  // Fetch Global Intelligence with section-scoped, bounded listeners.
+  // Fetch Global Intelligence with section-scoped, bounded listeners; 16.0.28 admin pagination uses bounded server-side pages.
   useEffect(() => {
     const unsubs = [];
     const noteLoadError = (key, err) => {
@@ -5328,22 +5333,22 @@ Type DELETE to continue.`) || '').trim().toUpperCase();
       const shiftPromises = [];
       next7Days.forEach(date => {
         // Morning Crew
-        shiftPromises.push(addDoc(collection(db, "shifts"), { restaurantId: rId, employeeId: userIds[1].id, role: 'Manager', date, startTime: '08:00', endTime: '16:00', isPublished: true }));
-        shiftPromises.push(addDoc(collection(db, "shifts"), { restaurantId: rId, employeeId: userIds[14].id, role: 'Prep Cook', date, startTime: '07:00', endTime: '14:00', isPublished: true }));
-        shiftPromises.push(addDoc(collection(db, "shifts"), { restaurantId: rId, employeeId: userIds[10].id, role: 'Line Cook', date, startTime: '09:00', endTime: '16:00', isPublished: true }));
-        shiftPromises.push(addDoc(collection(db, "shifts"), { restaurantId: rId, employeeId: userIds[6].id, role: 'Server', date, startTime: '10:30', endTime: '16:00', isPublished: true }));
-        shiftPromises.push(addDoc(collection(db, "shifts"), { restaurantId: rId, employeeId: userIds[4].id, role: 'Bartender', date, startTime: '10:30', endTime: '17:00', isPublished: true }));
-        shiftPromises.push(addDoc(collection(db, "shifts"), { restaurantId: rId, employeeId: userIds[18].id, role: 'Dishwasher', date, startTime: '11:00', endTime: '16:00', isPublished: true }));
+        shiftPromises.push(addDoc(collection(db, "shifts"), { restaurantId: rId, employeeId: userIds[1].id, scheduleUserId: userIds[1].id, userId: userIds[1].id, rosterUserId: userIds[1].id, role: 'Manager', date, startTime: '08:00', endTime: '16:00', isPublished: true }));
+        shiftPromises.push(addDoc(collection(db, "shifts"), { restaurantId: rId, employeeId: userIds[14].id, scheduleUserId: userIds[14].id, userId: userIds[14].id, rosterUserId: userIds[14].id, role: 'Prep Cook', date, startTime: '07:00', endTime: '14:00', isPublished: true }));
+        shiftPromises.push(addDoc(collection(db, "shifts"), { restaurantId: rId, employeeId: userIds[10].id, scheduleUserId: userIds[10].id, userId: userIds[10].id, rosterUserId: userIds[10].id, role: 'Line Cook', date, startTime: '09:00', endTime: '16:00', isPublished: true }));
+        shiftPromises.push(addDoc(collection(db, "shifts"), { restaurantId: rId, employeeId: userIds[6].id, scheduleUserId: userIds[6].id, userId: userIds[6].id, rosterUserId: userIds[6].id, role: 'Server', date, startTime: '10:30', endTime: '16:00', isPublished: true }));
+        shiftPromises.push(addDoc(collection(db, "shifts"), { restaurantId: rId, employeeId: userIds[4].id, scheduleUserId: userIds[4].id, userId: userIds[4].id, rosterUserId: userIds[4].id, role: 'Bartender', date, startTime: '10:30', endTime: '17:00', isPublished: true }));
+        shiftPromises.push(addDoc(collection(db, "shifts"), { restaurantId: rId, employeeId: userIds[18].id, scheduleUserId: userIds[18].id, userId: userIds[18].id, rosterUserId: userIds[18].id, role: 'Dishwasher', date, startTime: '11:00', endTime: '16:00', isPublished: true }));
         
         // Night Crew
-        shiftPromises.push(addDoc(collection(db, "shifts"), { restaurantId: rId, employeeId: userIds[3].id, role: 'Sous Chef', date, startTime: '14:00', endTime: '22:00', isPublished: true }));
-        shiftPromises.push(addDoc(collection(db, "shifts"), { restaurantId: rId, employeeId: userIds[11].id, role: 'Line Cook', date, startTime: '15:00', endTime: '22:30', isPublished: true }));
-        shiftPromises.push(addDoc(collection(db, "shifts"), { restaurantId: rId, employeeId: userIds[12].id, role: 'Line Cook', date, startTime: '16:00', endTime: '23:00', isPublished: true }));
-        shiftPromises.push(addDoc(collection(db, "shifts"), { restaurantId: rId, employeeId: userIds[7].id, role: 'Server', date, startTime: '16:00', endTime: '23:00', isPublished: true }));
-        shiftPromises.push(addDoc(collection(db, "shifts"), { restaurantId: rId, employeeId: userIds[8].id, role: 'Server', date, startTime: '17:00', endTime: '23:00', isPublished: true }));
-        shiftPromises.push(addDoc(collection(db, "shifts"), { restaurantId: rId, employeeId: userIds[5].id, role: 'Bartender', date, startTime: '16:30', endTime: '23:30', isPublished: true }));
-        shiftPromises.push(addDoc(collection(db, "shifts"), { restaurantId: rId, employeeId: userIds[16].id, role: 'Host', date, startTime: '16:30', endTime: '21:00', isPublished: true }));
-        shiftPromises.push(addDoc(collection(db, "shifts"), { restaurantId: rId, employeeId: userIds[19].id, role: 'Dishwasher', date, startTime: '16:00', endTime: '23:30', isPublished: true }));
+        shiftPromises.push(addDoc(collection(db, "shifts"), { restaurantId: rId, employeeId: userIds[3].id, scheduleUserId: userIds[3].id, userId: userIds[3].id, rosterUserId: userIds[3].id, role: 'Sous Chef', date, startTime: '14:00', endTime: '22:00', isPublished: true }));
+        shiftPromises.push(addDoc(collection(db, "shifts"), { restaurantId: rId, employeeId: userIds[11].id, scheduleUserId: userIds[11].id, userId: userIds[11].id, rosterUserId: userIds[11].id, role: 'Line Cook', date, startTime: '15:00', endTime: '22:30', isPublished: true }));
+        shiftPromises.push(addDoc(collection(db, "shifts"), { restaurantId: rId, employeeId: userIds[12].id, scheduleUserId: userIds[12].id, userId: userIds[12].id, rosterUserId: userIds[12].id, role: 'Line Cook', date, startTime: '16:00', endTime: '23:00', isPublished: true }));
+        shiftPromises.push(addDoc(collection(db, "shifts"), { restaurantId: rId, employeeId: userIds[7].id, scheduleUserId: userIds[7].id, userId: userIds[7].id, rosterUserId: userIds[7].id, role: 'Server', date, startTime: '16:00', endTime: '23:00', isPublished: true }));
+        shiftPromises.push(addDoc(collection(db, "shifts"), { restaurantId: rId, employeeId: userIds[8].id, scheduleUserId: userIds[8].id, userId: userIds[8].id, rosterUserId: userIds[8].id, role: 'Server', date, startTime: '17:00', endTime: '23:00', isPublished: true }));
+        shiftPromises.push(addDoc(collection(db, "shifts"), { restaurantId: rId, employeeId: userIds[5].id, scheduleUserId: userIds[5].id, userId: userIds[5].id, rosterUserId: userIds[5].id, role: 'Bartender', date, startTime: '16:30', endTime: '23:30', isPublished: true }));
+        shiftPromises.push(addDoc(collection(db, "shifts"), { restaurantId: rId, employeeId: userIds[16].id, scheduleUserId: userIds[16].id, userId: userIds[16].id, rosterUserId: userIds[16].id, role: 'Host', date, startTime: '16:30', endTime: '21:00', isPublished: true }));
+        shiftPromises.push(addDoc(collection(db, "shifts"), { restaurantId: rId, employeeId: userIds[19].id, scheduleUserId: userIds[19].id, userId: userIds[19].id, rosterUserId: userIds[19].id, role: 'Dishwasher', date, startTime: '16:00', endTime: '23:30', isPublished: true }));
       });
       await Promise.all(shiftPromises);
       await addDoc(collection(db, "scheduleTemplates"), { restaurantId: rId, name: 'Normal Week', description: 'Demo reusable weekly staffing template.', rows: [
@@ -5359,15 +5364,15 @@ Type DELETE to continue.`) || '').trim().toUpperCase();
       ]);
 
       // Add a Shift Trade
-      const targetShift = await addDoc(collection(db, "shifts"), { restaurantId: rId, employeeId: userIds[9].id, role: 'Server', date: getOffsetDate(2), startTime: '16:00', endTime: '23:00', isPublished: true });
-      await addDoc(collection(db, "shiftSwaps"), { restaurantId: rId, shiftId: targetShift.id, originalEmployeeId: userIds[9].id, role: 'Server', date: getOffsetDate(2), startTime: '16:00', endTime: '23:00', status: 'available', listedAt: new Date().toISOString() });
+      const targetShift = await addDoc(collection(db, "shifts"), { restaurantId: rId, employeeId: userIds[9].id, scheduleUserId: userIds[9].id, userId: userIds[9].id, rosterUserId: userIds[9].id, role: 'Server', date: getOffsetDate(2), startTime: '16:00', endTime: '23:00', isPublished: true });
+      await addDoc(collection(db, "shiftSwaps"), { restaurantId: rId, shiftId: targetShift.id, requesterUserId: userIds[9].id, sourceEmployeeId: userIds[9].id, targetUserId: '', originalEmployeeId: userIds[9].id, role: 'Server', shiftDate: getOffsetDate(2), date: getOffsetDate(2), startTime: '16:00', endTime: '23:00', status: 'available', listedAt: new Date().toISOString() });
 
       // 4. Time Off & Punches
       await addDoc(collection(db, "timeOffRequests"), { restaurantId: rId, userId: userIds[6].id, userName: 'Eve Server', date: getOffsetDate(3), status: 'pending', submittedAt: new Date().toISOString(), isPartial: false });
       await addDoc(collection(db, "timeOffRequests"), { restaurantId: rId, userId: userIds[10].id, userName: 'Larry Line', date: getOffsetDate(5), status: 'approved', submittedAt: new Date().toISOString(), isPartial: false });
-      await addDoc(collection(db, "timePunches"), { restaurantId: rId, employeeId: userIds[1].id, employeeName: 'Sarah Supervisor', date: todayStr, clockInTime: new Date(today.setHours(7, 55, 0)).toISOString(), status: 'clocked_in' });
-      await addDoc(collection(db, "timePunches"), { restaurantId: rId, employeeId: userIds[14].id, employeeName: 'Paul Prep', date: todayStr, clockInTime: new Date(today.setHours(6, 50, 0)).toISOString(), status: 'clocked_in' });
-      await addDoc(collection(db, "timePunches"), { restaurantId: rId, employeeId: userIds[10].id, employeeName: 'Larry Line', date: todayStr, clockInTime: new Date(today.setHours(8, 58, 0)).toISOString(), status: 'clocked_in' });
+      await addDoc(collection(db, "timePunches"), { restaurantId: rId, employeeId: userIds[1].id, scheduleUserId: userIds[1].id, userId: userIds[1].id, rosterUserId: userIds[1].id, employeeName: 'Sarah Supervisor', date: todayStr, clockInTime: new Date(today.setHours(7, 55, 0)).toISOString(), status: 'clocked_in' });
+      await addDoc(collection(db, "timePunches"), { restaurantId: rId, employeeId: userIds[14].id, scheduleUserId: userIds[14].id, userId: userIds[14].id, rosterUserId: userIds[14].id, employeeName: 'Paul Prep', date: todayStr, clockInTime: new Date(today.setHours(6, 50, 0)).toISOString(), status: 'clocked_in' });
+      await addDoc(collection(db, "timePunches"), { restaurantId: rId, employeeId: userIds[10].id, scheduleUserId: userIds[10].id, userId: userIds[10].id, rosterUserId: userIds[10].id, employeeName: 'Larry Line', date: todayStr, clockInTime: new Date(today.setHours(8, 58, 0)).toISOString(), status: 'clocked_in' });
 
       // 5. Messages / Events
       await addDoc(collection(db, "events"), { restaurantId: rId, type: 'note', title: 'Welcome to the Demo Workspace! Feel free to click around and explore the features.', author: 'Alice Admin', date: new Date().toISOString(), isImportant: true, replies: [] });
@@ -5525,21 +5530,13 @@ Type DELETE to continue.`) || '').trim().toUpperCase();
     if(!broadcastMsg.trim()) return; 
     if(!window.confirm("Blast this to EVERY restaurant?")) return;
     
-    addToast('Broadcasting', 'Pushing message to all shards...');
-    let success = 0; let failed = 0;
-    
-    for (const r of restaurants) {
-      try {
-        await addDoc(collection(db, "events"), { 
-          date: new Date().toISOString(), title: broadcastMsg.trim(), type: 'note', author: 'System Alert', isImportant: true, restaurantId: r.id, replies: [] 
-        });
-        success++;
-      } catch (err) { failed++; }
-    }
-    
-    if (failed > 0) addToast('Partial Alert', `Sent to ${success}, but Firebase blocked ${failed}. Check console.`);
-    else addToast('Megaphone', `Message blasted successfully to ${success} locations.`);
-    setBroadcastMsg('');
+    addToast('Broadcasting', 'Server is paging every workspace and creating one deduplicated broadcast event per workspace...');
+    try {
+      const result = await runAdminGlobalOperation({ action: 'megaphone', target: 'ALL', title: '86 Chaos Alert', message: broadcastMsg.trim() });
+      if (result.errors?.length) addToast('Partial Alert', `Sent to ${result.affected || 0}, with ${result.errors.length} failed batch(es).`);
+      else addToast('Megaphone', `Message blasted successfully to ${result.affected || 0} locations.`);
+      setBroadcastMsg('');
+    } catch (err) { addToast('Broadcast Error', err.message || 'Global broadcast failed.'); }
   };
 
 
@@ -5569,37 +5566,43 @@ Type DELETE to continue.`) || '').trim().toUpperCase();
   };   
 
   const handleOrphanSweep = async () => {
-    if(!window.confirm("Scan platform for dead shifts (shifts attached to deleted users)?")) return;
-    addToast('Scanning', 'Running orphan sweep...');
-    const sSnap = await getDocs(collection(db, 'shifts')); let deadCount = 0;
-    sSnap.forEach(d => { const s = d.data(); if (!allUsers.find(u => u.id === s.employeeId)) { deleteDoc(doc(db, "shifts", d.id)); deadCount++; } });
-    addToast('Sweep Complete', `Purged ${deadCount} orphaned database documents.`);
+    if(!window.confirm("Run a protected dry-run for orphaned shifts? Nothing will be deleted until you review and confirm.")) return;
+    try {
+      addToast('Scanning', 'Protected server dry-run is paging shifts and validating user memberships...');
+      const dryRes = await secureFetch('/api/admin-orphan-shift-sweeper', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mode: 'dry-run' }) });
+      const dry = await dryRes.json().catch(() => ({}));
+      if (!dryRes.ok || !dry.ok) throw new Error(dry.error || 'Orphan sweep dry-run failed.');
+      if (!dry.candidateCount) return addToast('Sweep Complete', `Scanned ${dry.scanned || 0} shift(s). No verified orphan candidates found.`);
+      const phrase = 'DELETE VERIFIED ORPHAN SHIFTS';
+      if (prompt(`Dry-run found ${dry.candidateCount} verified orphan candidate(s) and ${dry.ambiguous?.length || 0} ambiguous record(s). Type "${phrase}" to delete only verified candidates.`) !== phrase) return addToast('Cancelled', 'No orphan shifts were deleted.');
+      const execRes = await secureFetch('/api/admin-orphan-shift-sweeper', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mode: 'execute', confirmation: phrase, runId: dry.runId }) });
+      const result = await execRes.json().catch(() => ({}));
+      if (!execRes.ok && !result.ok) throw new Error(result.error || 'Orphan sweep execute failed.');
+      addToast('Sweep Complete', `Deleted ${result.deleted || 0} verified orphan shift(s). ${result.preserved?.length || 0} preserved after revalidation.`);
+    } catch (err) { addToast('Sweep Error', err.message || 'Protected orphan sweep failed.'); }
   };
 
   const handleForceRefresh = async () => {
     if (!window.confirm("🚨 CRITICAL: This will send a hard-refresh command to EVERY active browser connected to 86 Chaos globally. Proceed?")) return;
-    addToast('Executing', 'Sending refresh signal...');
-    const stamp = new Date().toISOString(); let count = 0;
-    for (const r of restaurants) {
-       try { await updateDoc(doc(db, "restaurants", r.id), { forceRefresh: stamp }); count++; } catch(e){}
-    }
-    addToast('Refresh Broadcast', `Hard reload signal sent to ${count} databases.`);
+    addToast('Executing', 'Server is paging all workspaces for global refresh...');
+    try {
+      const result = await runAdminGlobalOperation({ action: 'forceRefresh', target: 'ALL', reason: 'system-admin-global-refresh' });
+      addToast('Refresh Broadcast', `Hard reload signal written to ${result.affected || 0} workspace(s).`);
+    } catch (err) { addToast('Refresh Error', err.message || 'Global refresh failed.'); }
   };
 
   const handleGlobalLockdown = async (lock) => {
     if (lock) {
-        if (prompt('CRITICAL: This will instantly put EVERY workspace into maintenance mode, including your restaurant group. Your Super Admin account will remain able to enter and lift it. Type "LOCKDOWN" to proceed.') !== 'LOCKDOWN') return;
-        addToast('Executing', 'Initiating global lockdown for all workspaces except your Super Admin access...');
+        if (prompt('CRITICAL: This will put EVERY workspace into platform maintenance mode without changing billing status. Type "LOCKDOWN" to proceed.') !== 'LOCKDOWN') return;
+        addToast('Executing', 'Server is applying platform maintenance lock to all workspaces...');
     } else {
-        if (!window.confirm('Restore access to all suspended workspaces?')) return;
-        addToast('Executing', 'Lifting lockdown...');
+        if (!window.confirm('Restore access by removing platform maintenance lock from all workspaces?')) return;
+        addToast('Executing', 'Server is lifting platform maintenance lock...');
     }
-    
-    let count = 0;
-    for (const r of restaurants) {
-      try { await updateDoc(doc(db, "restaurants", r.id), { billingStatus: lock ? 'Past Due' : 'Paid' }); count++; } catch(e){}
-    }
-    addToast(lock ? 'Lockdown Complete' : 'Unlocked', `${count} workspaces have been ${lock ? 'placed into maintenance mode' : 'restored'}.`);
+    try {
+      const result = await runAdminGlobalOperation({ action: lock ? 'lockdown' : 'unlock', target: 'ALL', confirmation: lock ? 'LOCKDOWN' : '' });
+      addToast(lock ? 'Lockdown Complete' : 'Unlocked', `${result.affected || 0} workspace(s) ${lock ? 'placed into platform maintenance mode' : 'restored'}. Billing status was not changed.`);
+    } catch (err) { addToast(lock ? 'Lockdown Error' : 'Unlock Error', err.message || 'Global maintenance operation failed.'); }
   };
 
 const handleGrantAccess = async (e) => {
@@ -7440,10 +7443,10 @@ Type RESTORE to continue.`);
   };
 
   const handleClearAllBanners = async () => {
-    if (!window.confirm('Clear system banners from every workspace?')) return;
+    if (!window.confirm('Clear system banners from every workspace through the protected server endpoint?')) return;
     try {
-      await Promise.all(restaurants.map(r => updateDoc(doc(db, 'restaurants', r.id), { systemBanner: null, systemBannerUpdatedAt: null })));
-      addToast('Banners Cleared', 'All workspace banners were removed.');
+      const result = await runAdminGlobalOperation({ action: 'clearBanner', target: 'ALL' });
+      addToast('Banners Cleared', `Banners removed from ${result.affected || 0} workspace(s).`);
     } catch (err) { addToast('Error', err.message); }
   };
 
@@ -9590,7 +9593,7 @@ another@email.com"></textarea>
               </div>
               <div className="flex gap-2">
                 <button onClick={handleCopyDiagnostics} className="text-[9px] font-black uppercase tracking-widest text-[#D4A381] hover:text-white border border-[#2A353D] px-2 py-1 rounded transition-colors">Copy Diagnostics</button>
-                <button onClick={() => { if(window.confirm("Clear all crash logs?")) { crashLogs.forEach(log => deleteDoc(doc(db, "crashReports", log.id))); } }} className="text-[9px] font-black uppercase tracking-widest text-slate-500 hover:text-red-500 border border-[#2A353D] px-2 py-1 rounded transition-colors">Clear Logs</button>
+                <button onClick={() => { if(window.confirm("Clear loaded crash-report page?")) { crashLogs.forEach(log => deleteDoc(doc(db, "crashReports", log.id))); } }} className="text-[9px] font-black uppercase tracking-widest text-slate-500 hover:text-red-500 border border-[#2A353D] px-2 py-1 rounded transition-colors">Clear Logs</button>
               </div>
             </div>
 
@@ -10087,7 +10090,7 @@ another@email.com"></textarea>
                       </div>
                       <button type="button" onClick={async () => {
                         if(!window.confirm(`Clear banner for ${r.name}?`)) return;
-                        await updateDoc(doc(db, "restaurants", r.id), { systemBanner: null, systemBannerUpdatedAt: null });
+                        await runAdminGlobalOperation({ action: 'clearBanner', target: r.id });
                         addToast('Cleared', `Banner removed from ${r.name}.`);
                       }} className="text-slate-400 hover:text-red-500 p-2 flex-shrink-0 transition-colors bg-[#1A2126] rounded-lg border border-[#2A353D]"><Trash2 size={14}/></button>
                     </div>
@@ -10115,7 +10118,7 @@ another@email.com"></textarea>
             </div>
             <div className={`${T.card} p-5 border-blue-900/30`}>
               <h3 className="font-black text-white mb-1">Orphan Data Sweeper</h3>
-              <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-4 leading-snug">Scans all global databases for shifts assigned to employees that have been fully deleted. Reclaims server space.</p>
+              <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-4 leading-snug">Runs a protected server dry-run first, then deletes only revalidated orphan shift candidates after exact confirmation. Ambiguous records are preserved.</p>
               <button onClick={handleOrphanSweep} className="w-full bg-blue-900/20 text-blue-400 border border-blue-900/50 font-black text-xs uppercase tracking-widest py-3 rounded-xl hover:bg-blue-900/40 transition-colors">Run DB Sweep</button>
             </div>
 
@@ -10163,7 +10166,7 @@ another@email.com"></textarea>
 
             <div className={`${T.card} p-5 border-red-900/30 sm:col-span-2`}>
               <h3 className="font-black text-white mb-1">Global Lockdown</h3>
-              <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-4 leading-snug">Instantly puts every workspace behind the maintenance screen, including your restaurant group. Your Super Admin account bypasses the lock so you can still enter and lift it.</p>
+              <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-4 leading-snug">Uses a dedicated platform maintenance lock across every workspace without touching billing status. Your Super Admin account bypasses the lock so you can lift it.</p>
               <div className="grid grid-cols-2 gap-3">
                 <button onClick={() => handleGlobalLockdown(true)} className="w-full bg-red-900/20 text-red-500 border border-red-900/50 font-black text-xs uppercase tracking-widest py-3 rounded-xl hover:bg-red-900/40 transition-colors flex items-center justify-center gap-2"><Shield size={16}/> Lock All</button>
                 <button onClick={() => handleGlobalLockdown(false)} className="w-full bg-[#12161A] text-slate-300 border border-[#2A353D] font-black text-xs uppercase tracking-widest py-3 rounded-xl hover:text-white transition-colors flex items-center justify-center gap-2">Unlock All</button>

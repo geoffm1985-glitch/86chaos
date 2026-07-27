@@ -33,13 +33,15 @@ function normalizeStatus(status) {
 
 function computeDispatchPatch(reminder = {}) {
   const status = normalizeStatus(reminder.status);
-  const cancelled = status === 'cancelled' || status === 'canceled' || status === 'done' || status === 'completed' || status === 'dismissed' || reminder.cancelledAt || reminder.completedAt;
-  if (cancelled) {
+  const terminalStatuses = new Set(['sent', 'done', 'completed', 'dismissed', 'archived', 'cancelled', 'canceled']);
+  const terminal = terminalStatuses.has(status) || reminder.cancelledAt || reminder.completedAt || reminder.dispatchedAt || reminder.archivedAt;
+  if (terminal) {
     return {
       dispatchEligible: false,
       nextDispatchAt: null,
       dispatchAttemptAt: reminder.dispatchAttemptAt || null,
       dispatchLeaseUntil: null,
+      terminalAt: reminder.terminalAt || reminder.completedAt || reminder.cancelledAt || reminder.dispatchedAt || reminder.archivedAt || null,
       dispatchKey: reminder.dispatchKey || `${reminder.restaurantId || 'global'}:${reminder.userId || reminder.createdBy || 'unknown'}:${reminder.scheduledAt || reminder.id || ''}`
     };
   }

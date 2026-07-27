@@ -38,13 +38,16 @@ const apiVersion = read('api/_version.js');
 const vercel = read('vercel.json');
 const styles = read('src/styles.css');
 
-assert(pkg.version === '16.0.27', 'package.json version is 16.0.27');
-assert(lock.version === '16.0.27' && lock.packages?.['']?.version === '16.0.27', 'package-lock.json version is 16.0.27');
-assert(version.version === '16.0.27' && version.build === '16.0.27', 'public/version.json is 16.0.27');
-assert(appCore.includes("CURRENT_VERSION = '16.0.27'"), 'CURRENT_VERSION is 16.0.27');
-assert(apiVersion.includes("APP_VERSION = '16.0.27'") && apiVersion.includes("SECURITY_SCHEMA_VERSION = '16.0.27'"), 'API version constants are centralized at 16.0.27');
-assert(pkg.scripts?.['test:source'] === 'node scripts/validate-16-0-27.js', 'package scripts point at the 16.0.27 source validator');
-assert(!exists('scripts/validate-16-0-21.js') && !exists('scripts/validate-16-0-22.js') && !exists('scripts/validate-16-0-23.js') && !exists('scripts/validate-16-0-24.js') && !exists('scripts/validate-16-0-25.js'), 'old source validators were renamed');
+assert(pkg.version === '16.0.32', 'package.json version is 16.0.32');
+assert(lock.version === '16.0.32' && lock.packages?.['']?.version === '16.0.32', 'package-lock.json version is 16.0.32');
+assert(version.version === '16.0.32' && version.build === '16.0.32', 'public/version.json is 16.0.32');
+assert(appCore.includes("CURRENT_VERSION = '16.0.32'"), 'CURRENT_VERSION is 16.0.32');
+assert(apiVersion.includes("APP_VERSION = '16.0.32'") && apiVersion.includes("SECURITY_SCHEMA_VERSION = '16.0.32'"), 'API version constants are centralized at 16.0.32');
+assert(pkg.scripts?.['test:source'] === 'node scripts/validate-16-0-32.js', 'package scripts point at the 16.0.32 source validator');
+assert(!exists('scripts/validate-16-0-31.js'), '16.0.32 source validator was renamed from 16.0.28');
+assert(exists('scripts/check-node-version.js'), 'Node 24 preflight script exists');
+assert(exists('scripts/check-lock-integrity.js'), 'lock integrity validator exists');
+assert(exists('scripts/run-cost-regression-tests.js'), 'real cost-regression harness entrypoint exists');
 
 const activeRecipesImport = /const\s+TabRecipes\s*=\s*lazyFeature\(\s*\(\)\s*=>\s*import\('\.\/features\/operations'\)\s*,\s*'TabRecipes'\s*\)/.test(appJs);
 assert(activeRecipesImport, 'App.js mounts Recipes from src/features/operations.jsx');
@@ -131,9 +134,10 @@ assert(dispatchApi.includes("where('dispatchEligible', '==', true)") && dispatch
 assert(!dispatchApi.includes('checkRateLimit') && dispatchApi.includes('rateLimitWritesSkipped'), 'reminder cron no longer creates Firestore-backed rate-limit writes');
 assert(dispatchApi.includes('dispatchLeaseUntil') && dispatchApi.includes('runTransaction(async (tx)') && dispatchApi.includes('tx.update(ref'), 'reminder dispatcher uses a dispatch lease for idempotent claiming');
 assert(weeklyMaintenance.includes("db.collection('system').doc('weeklyMaintenance')") && !weeklyMaintenance.includes("collection('restaurants').get()"), 'weekly maintenance writes one system-level state instead of rewriting every restaurant');
-assert(watchdog.includes('nativeBackup') && !watchdog.includes("/api/firestore-backup") && !watchdog.includes('fetch('), 'backup watchdog inspects native backup status instead of triggering custom full backup');
+assert(watchdog.includes('backupSchedules') && watchdog.includes('locations/-/backups') && watchdog.includes('googleapis.com') && !watchdog.includes("/api/firestore-backup"), 'backup watchdog inspects native backup status instead of triggering custom full backup');
 assert(!vercel.includes('"/api/firestore-backup"') && vercel.includes('"/api/firestore-backup-watchdog"'), 'automatic custom full backup cron was removed while watchdog remains');
 assert(exists('scripts/setup-native-firestore-backup.js'), 'native Firestore backup setup helper exists');
+assert(!/[\x00-\x08\x0B\x0C\x0E-\x1F]/.test(pythonAutomation), 'Python automation source has no invalid control characters');
 assert(pythonAutomation.includes('COLLECTION_QUERY_PLANS') && pythonAutomation.includes('sourceQueryStats') && pythonAutomation.includes('contentHash'), 'Python automation uses bounded query plans and content hashing');
 assert(pythonAutomation.includes("doc(`${restaurant.id}_current`)"), 'Python automation stores one stable current intelligence report per restaurant');
 assert(appCore.includes('LIVE_COLLECTION_RELEASE_GRACE_MS = 6 * 60 * 1000') && appCore.includes('useLiveDocument') && appCore.includes('downloadFirebaseUsageDiagnostics'), 'shared listener registry keeps cached snapshots longer and exposes diagnostics');
@@ -145,7 +149,7 @@ assert(indexes.includes('dispatchEligible') && indexes.includes('nextDispatchAt'
 assert(exists('scripts/migrate-reminder-dispatch-queue.js') && exists('scripts/migrate-schedule-query-fields.js') && exists('scripts/migrate-reminder-participants.js'), 'dry-run migration scripts exist for reminder queue, schedule dates, and reminder participants');
 
 if (failures) {
-  console.error(`16.0.27 source validator failed with ${failures} issue(s).`);
+  console.error(`16.0.32 source validator failed with ${failures} issue(s).`);
   process.exit(1);
 }
-console.log('16.0.27 source validator passed. This is a source guard only. It does not replace unit, emulator, build, browser, or staging notification tests.');
+console.log('16.0.32 source validator passed. This is a source guard only. It does not replace unit, emulator, build, browser, or staging notification tests.');

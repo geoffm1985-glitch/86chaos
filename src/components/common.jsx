@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Bell, Check, Camera, ChevronLeft, ChevronRight, MessageSquare, Plus, Trash2, Users, Calendar, Clock, X, Loader2, Package, ClipboardList, Menu, Settings, LogOut, Shield, Send, Repeat, Edit, Moon, Sun, TrendingUp, BookOpen, Search, ChefHat, Scale, Coffee, Star, Bug, Wrench, Globe, Mic, MicOff, Sparkles, Network } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
-import { getFirestore, collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, where, getDoc, setDoc, getDocs } from 'firebase/firestore';
+import { getFirestore, collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, where, orderBy, limit, getDoc, setDoc, getDocs } from 'firebase/firestore';
 import { getAuth, signInWithEmailAndPassword, sendPasswordResetEmail, createUserWithEmailAndPassword, updatePassword } from 'firebase/auth';
 import { getToken, onMessage } from 'firebase/messaging';
 import { MapContainer, TileLayer, Marker, Circle, useMapEvents } from 'react-leaflet';
@@ -13,6 +13,15 @@ import { getVoiceMatchScore, resolveVoiceMatch } from '../core/voiceIntelligence
 import { buildAiOrderAssistant, parseAiOrderingVoiceIntent, summarizeAiOrderAssistant } from '../core/aiOrderAssistant';
 import { resolveFeatureAccess, featureForRoute, isMasterAdminUser } from '../lib/featureAccess';
 import { FEATURE_KEYS } from '../config/plans';
+
+const buildReminderQueueFields = (scheduledAt, status = 'scheduled') => ({
+  dispatchEligible: Boolean(scheduledAt && !['sent','done','completed','cancelled','canceled','dismissed','archived'].includes(String(status).toLowerCase())),
+  nextDispatchAt: scheduledAt || null,
+  dispatchAttemptAt: null,
+  dispatchLeaseUntil: null,
+  status: status || 'scheduled',
+  dispatchKey: scheduledAt ? `event:${scheduledAt}` : ''
+});
 
 const CheersLogo = ({ clientData }) => {
   const settings = clientData?.systemSettings || {};
@@ -1456,10 +1465,13 @@ const VoiceCommandDock = ({ appUser, inventoryItems = [], recipes = [], users = 
     const titleNormalized = normalizeVoiceReminderTitle(title);
     const since = Date.now() - 30000;
     try {
+      const creatorUid = auth?.currentUser?.uid || appUser.id || '';
       const snap = await getDocs(query(
         collection(db, 'personalReminders'),
         where('restaurantId', '==', appUser.restaurantId),
-        where('createdBy', '==', appUser.id || '')
+        where('createdBy', '==', creatorUid),
+        orderBy('createdAt', 'desc'),
+        limit(25)
       ));
       let found = null;
       snap.forEach(docSnap => {
@@ -2088,6 +2100,7 @@ const VoiceCommandDock = ({ appUser, inventoryItems = [], recipes = [], users = 
           type:'eventReminder',
           label:actionToRun.reminderLabel || 'Voice event reminder',
           scheduledAt:actionToRun.scheduledAt,
+          ...buildReminderQueueFields(actionToRun.scheduledAt, 'scheduled'),
           scheduledLocalDate:String(actionToRun.scheduledAt || '').slice(0, 10),
           scheduledLocalTime:String(actionToRun.scheduledAt || '').slice(11, 16),
           minutesBefore:actionToRun.minutesBefore ?? null,
@@ -2474,6 +2487,7 @@ const VoiceCommandDock = ({ appUser, inventoryItems = [], recipes = [], users = 
         const assignee = actionToRun.assignee || {};
         if (!assignee.id && !assignee.email) throw new Error('No teammate was selected.');
         const title = String(actionToRun.title || 'Shared reminder').trim();
+        const reminderCreatorUid = auth?.currentUser?.uid || appUser.id || '';
         if (!actionToRun.scheduledAt) {
           setActiveTab('reminders');
           addToast('Reminder Needs Time', 'Open My Reminders and choose the date and time.');
@@ -2503,9 +2517,12 @@ const VoiceCommandDock = ({ appUser, inventoryItems = [], recipes = [], users = 
           if (closeWhenDone) setOpen(false);
           return;
         }
-        const reminderRef = await addDoc(collection(db, 'personalReminders'), {
+        const reminderRef = doc(collection(db, 'personalReminders'));
+        const reminderOccurrenceKey = `${reminderRef.id}:${actionToRun.scheduledAt}`;
+        const reminderTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+        await setDoc(reminderRef, {
           restaurantId: appUser.restaurantId,
-          userId: appUser.id || '',
+          userId: assignee.id || reminderCreatorUid,
           userEmail: appUser.email || '',
           assignedToUserId: assignee.id || '',
           assignedToName: assignee.name || assignee.displayName || assignee.email || 'Teammate',
@@ -2519,7 +2536,12 @@ const VoiceCommandDock = ({ appUser, inventoryItems = [], recipes = [], users = 
           notes: '',
           scheduledAt: actionToRun.scheduledAt,
           dueAt: actionToRun.scheduledAt,
-          participantUserIds: Array.from(new Set([appUser.id, assignee.id].filter(Boolean))),
+          participantUserIds: Array.from(new Set([reminderCreatorUid, assignee.id].filter(Boolean))).slice(0, 2),
+          participantSchemaVersion: 1,
+          occurrenceScheduledAt: actionToRun.scheduledAt,
+          recurrenceAnchorAt: actionToRun.scheduledAt,
+          currentOccurrenceKey: reminderOccurrenceKey,
+          timezone: reminderTimezone,
           dispatchEligible: true,
           nextDispatchAt: actionToRun.scheduledAt,
           dispatchAttemptAt: null,
@@ -2528,7 +2550,7 @@ const VoiceCommandDock = ({ appUser, inventoryItems = [], recipes = [], users = 
           recurrenceSource: actionToRun.recurrence ? '86_voice_recurring_reminder' : '',
           status: 'scheduled',
           createdAt: new Date().toISOString(),
-          createdBy: appUser.id || '',
+          createdBy: reminderCreatorUid,
           source: '86_voice_shared_reminder',
           voiceCommand: sourceText,
           voiceSessionId,
@@ -2537,7 +2559,9 @@ const VoiceCommandDock = ({ appUser, inventoryItems = [], recipes = [], users = 
           voiceFinalTranscript: !!actionToRun.createdFromFinalTranscript,
           voiceMatchConfidence: Number(actionToRun.matchConfidence || 0),
           dispatchedAt: null,
-          dispatchKey: ''
+          dispatchKey: reminderOccurrenceKey,
+          lastSuccessfulOccurrenceKey: null,
+          terminalAt: null
         });
         processedVoiceCommandRef.current.add(clientCommandId);
         if (isVoiceReminder) voiceSessionRef.current.commits += 1;
@@ -2549,6 +2573,7 @@ const VoiceCommandDock = ({ appUser, inventoryItems = [], recipes = [], users = 
       if (actionToRun.intent === 'create_personal_reminder') {
         if (actionToRun.validationError) { addToast('Reminder Date Blocked', actionToRun.validationError); return; }
         const title = String(actionToRun.title || 'Personal reminder').trim();
+        const reminderCreatorUid = auth?.currentUser?.uid || appUser.id || '';
         if (!actionToRun.scheduledAt || !title || title.length < 3) {
           setPending({ ...actionToRun, needsConfirmation: true, summary: 'I need a clearer reminder title and time before saving this voice reminder.' });
           setActiveTab('reminders');
@@ -2571,7 +2596,7 @@ const VoiceCommandDock = ({ appUser, inventoryItems = [], recipes = [], users = 
           if (closeWhenDone) setOpen(false);
           return;
         }
-        const existingDuplicate = await findRecentReminderDuplicate({ title, scheduledAt: actionToRun.scheduledAt, visibility: 'private_reminder', assignedToUserId: appUser.id || '', clientCommandId });
+        const existingDuplicate = await findRecentReminderDuplicate({ title, scheduledAt: actionToRun.scheduledAt, visibility: 'private_reminder', assignedToUserId: reminderCreatorUid, clientCommandId });
         if (existingDuplicate) {
           await logAudit(appUser, 'VOICE_REMINDER_DUPLICATE_BLOCKED', title, `${sourceText} | matched ${existingDuplicate.id}`);
           addToast('Duplicate Blocked', 'That reminder was already saved once.');
@@ -2579,11 +2604,14 @@ const VoiceCommandDock = ({ appUser, inventoryItems = [], recipes = [], users = 
           if (closeWhenDone) setOpen(false);
           return;
         }
-        const reminderRef = await addDoc(collection(db, 'personalReminders'), {
+        const reminderRef = doc(collection(db, 'personalReminders'));
+        const reminderOccurrenceKey = `${reminderRef.id}:${actionToRun.scheduledAt}`;
+        const reminderTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+        await setDoc(reminderRef, {
           restaurantId: appUser.restaurantId,
-          userId: appUser.id || '',
+          userId: reminderCreatorUid,
           userEmail: appUser.email || '',
-          assignedToUserId: appUser.id || '',
+          assignedToUserId: reminderCreatorUid,
           assignedToName: appUser.name || appUser.email || 'Me',
           assignedToEmail: appUser.email || '',
           createdByName: appUser.name || appUser.email || '',
@@ -2595,7 +2623,12 @@ const VoiceCommandDock = ({ appUser, inventoryItems = [], recipes = [], users = 
           notes: '',
           scheduledAt: actionToRun.scheduledAt,
           dueAt: actionToRun.scheduledAt,
-          participantUserIds: Array.from(new Set([appUser.id].filter(Boolean))),
+          participantUserIds: [reminderCreatorUid],
+          participantSchemaVersion: 1,
+          occurrenceScheduledAt: actionToRun.scheduledAt,
+          recurrenceAnchorAt: actionToRun.scheduledAt,
+          currentOccurrenceKey: reminderOccurrenceKey,
+          timezone: reminderTimezone,
           dispatchEligible: true,
           nextDispatchAt: actionToRun.scheduledAt,
           dispatchAttemptAt: null,
@@ -2604,7 +2637,7 @@ const VoiceCommandDock = ({ appUser, inventoryItems = [], recipes = [], users = 
           recurrenceSource: actionToRun.recurrence ? '86_voice_recurring_reminder' : '',
           status: 'scheduled',
           createdAt: new Date().toISOString(),
-          createdBy: appUser.id || '',
+          createdBy: reminderCreatorUid,
           source: actionToRun.recurrence ? '86_voice_recurring_reminder' : '86_voice_personal_reminder',
           voiceCommand: sourceText,
           voiceSessionId,
@@ -2612,7 +2645,9 @@ const VoiceCommandDock = ({ appUser, inventoryItems = [], recipes = [], users = 
           createdFromFinalTranscript: !!actionToRun.createdFromFinalTranscript,
           voiceFinalTranscript: !!actionToRun.createdFromFinalTranscript,
           dispatchedAt: null,
-          dispatchKey: ''
+          dispatchKey: reminderOccurrenceKey,
+          lastSuccessfulOccurrenceKey: null,
+          terminalAt: null
         });
         processedVoiceCommandRef.current.add(clientCommandId);
         if (isVoiceReminder) voiceSessionRef.current.commits += 1;

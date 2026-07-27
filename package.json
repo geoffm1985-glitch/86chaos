@@ -1,6 +1,6 @@
 {
   "name": "86chaos",
-  "version": "16.0.27",
+  "version": "16.0.32",
   "private": true,
   "dependencies": {
     "firebase": "^10.8.1",
@@ -19,19 +19,37 @@
     "start": "react-scripts start",
     "build": "react-scripts build",
     "retention:setup": "node scripts/setup-production-retention.js",
-    "test": "npm run test:source && npm run test:unit",
-    "test:ci": "npm run lint && npm run syntax:api && npm run test:source && npm run test:unit && npm run test:rules && npm run build",
+    "test": "npm run node:check && npm run lock:integrity && npm run test:source && npm run performance:split && npm run test:unit",
+    "test:ci": "npm run node:check && npm run lock:integrity && npm run lint && npm run syntax && npm run test:source && npm run performance:split && npm run test:unit -- --runInBand && npm run test:rules && npm run build && npm run test:e2e && npm run test:cost",
     "validate:auth-hotfix": "node scripts/validate-auth-hotfix.js",
     "vercel:install": "npm ci --omit=optional --no-audit --no-fund --progress=false",
     "deploy:check": "npm run test:ci && NODE_OPTIONS=--max-old-space-size=4096 GENERATE_SOURCEMAP=false npm run build",
     "validate:audit-repair": "node scripts/validate-repair.js",
     "rules:check": "node scripts/validate-rules.js",
-    "test:source": "node scripts/validate-16-0-27.js",
+    "test:source": "node scripts/validate-16-0-32.js",
     "syntax:api": "node scripts/check-api-syntax.js",
-    "test:unit": "react-scripts test --watchAll=false",
+    "test:unit": "npm run test:client && npm run test:server",
     "test:rules": "firebase emulators:exec --only firestore,storage \"node scripts/run-rules-tests.js\"",
-    "test:e2e": "npx playwright test",
-    "lint": "eslint \"src/**/*.{js,jsx}\" \"api/**/*.js\""
+    "test:e2e": "playwright test",
+    "lint": "eslint \"src/**/*.{js,jsx}\" \"api/**/*.js\"",
+    "syntax:py": "python3 -m py_compile scripts/python/ops_intelligence.py",
+    "test:cost": "node scripts/run-cost-regression-tests.js",
+    "backup:setup:dry-run": "node scripts/setup-native-firestore-backup.js --dry-run",
+    "migrate:reminders:dry-run": "node scripts/migrate-reminder-dispatch-queue.js --dry-run",
+    "migrate:schedule:dry-run": "node scripts/migrate-schedule-query-fields.js --dry-run",
+    "migrate:participants:dry-run": "node scripts/migrate-reminder-participants.js --dry-run",
+    "backup:setup:native": "node scripts/setup-native-firestore-backup.js",
+    "migrate:reminders": "node scripts/migrate-reminder-dispatch-queue.js",
+    "migrate:schedule-fields": "node scripts/migrate-schedule-query-fields.js",
+    "migrate:reminder-participants": "node scripts/migrate-reminder-participants.js",
+    "node:check": "node scripts/check-node-version.js",
+    "lock:integrity": "node scripts/check-lock-integrity.js",
+    "syntax": "npm run syntax:api && npm run syntax:py",
+    "performance:split": "node scripts/validate-performance-split.js",
+    "test:client": "react-scripts test --watchAll=false --coverage",
+    "test:server": "node --test api/*.test.cjs",
+    "migrate:workspace-memberships:dry-run": "node scripts/migrate-workspace-memberships.js",
+    "migrate:workspace-memberships": "node scripts/migrate-workspace-memberships.js --execute"
   },
   "browserslist": {
     "production": [
@@ -49,5 +67,36 @@
   "engines": {
     "node": "24.x",
     "npm": ">=10"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.49.1",
+    "@firebase/rules-unit-testing": "^3.0.3",
+    "firebase-tools": "^13.35.1",
+    "@testing-library/react": "^13.4.0",
+    "@testing-library/jest-dom": "^6.6.3",
+    "@testing-library/user-event": "^14.6.1",
+    "eslint": "^8.57.1"
+  },
+  "jest": {
+    "collectCoverageFrom": [
+      "src/**/*.{js,jsx}",
+      "!src/index.js",
+      "!src/**/*.test.{js,jsx}",
+      "!src/**/__mocks__/**"
+    ],
+    "coverageThreshold": {
+      "global": {
+        "statements": 90,
+        "lines": 90,
+        "functions": 85,
+        "branches": 80
+      },
+      "./src/core/": {
+        "statements": 90,
+        "lines": 90,
+        "functions": 85,
+        "branches": 80
+      }
+    }
   }
 }

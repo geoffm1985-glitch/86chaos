@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Bell, Check, Camera, ChevronLeft, ChevronRight, MessageSquare, Plus, Trash2, Users, Calendar, Clock, X, Loader2, Package, ClipboardList, Menu, Settings, LogOut, Shield, Send, Repeat, Edit, Moon, Sun, TrendingUp, BookOpen, Search, ChefHat, Scale, Coffee, Star, Bug, Wrench, Globe } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
-import { getFirestore, collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, where, getDoc, setDoc, getDocs, writeBatch } from 'firebase/firestore';
+import { getFirestore, collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, where, getDoc, setDoc, getDocs, writeBatch, orderBy, limit as firestoreLimit } from 'firebase/firestore';
 import { getAuth, signInWithEmailAndPassword, sendPasswordResetEmail, createUserWithEmailAndPassword, updatePassword } from 'firebase/auth';
 import { getToken, onMessage } from 'firebase/messaging';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
@@ -174,6 +174,28 @@ const getSchedulePersonForAppUser = (appUser = {}, users = []) => {
 
 
 
+export const buildScheduleIdentityFields = (person = {}, account = {}) => {
+  const scheduleUserId = person.scheduleUserId || person.employeeId || person.rosterUserId || person.userId || person.authUid || person.uid || person.id || account.scheduleUserId || account.employeeId || account.rosterUserId || account.userId || account.authUid || account.uid || account.id || '';
+  const authUid = person.authUid || person.uid || person.userId || account.authUid || account.uid || account.userId || account.id || '';
+  const userId = person.userId || authUid || account.userId || account.id || '';
+  const rosterUserId = person.rosterUserId || person.employeeId || person.id || account.rosterUserId || account.employeeId || '';
+  const employeeId = person.employeeId || rosterUserId || person.id || account.employeeId || scheduleUserId || '';
+  const email = person.employeeEmail || person.email || person.assignedEmail || account.employeeEmail || account.email || '';
+  const name = person.employeeName || person.name || person.displayName || person.assignedName || account.employeeName || account.name || account.displayName || email || 'Unknown';
+  return {
+    scheduleUserId,
+    employeeId,
+    userId,
+    rosterUserId,
+    authUid,
+    assignedUserId: person.assignedUserId || userId || scheduleUserId,
+    employeeEmail: email,
+    assignedEmail: person.assignedEmail || email,
+    employeeName: name,
+    assignedName: person.assignedName || name
+  };
+};
+
 export const normalizeShiftTimeForFingerprint = (value) => {
   const raw = String(value ?? '').trim().toLowerCase().replace(/\s+/g, '');
   if (!raw) return '';
@@ -234,7 +256,7 @@ export const resolveAmbiguousNameOnlyShiftIdentity = (shift = {}, roster = []) =
   const match = matches[0];
   const resolvedId = match.id || match.uid || match.authUid || match.accountUserId || '';
   return {
-    ok: Boolean(resolvedId || match.email),
+    ok: Boolean(resolvedId),
     reason: '',
     shift: {
       ...shift,
@@ -260,12 +282,7 @@ export const buildShiftFingerprint = (shift = {}) => {
 
 export const buildAutoPopulateShift = (sourceShift = {}, newDate = '', restaurantId = '', actor = {}, copiedFromMonth = '') => ({
   date: newDate,
-  employeeId: sourceShift.employeeId || sourceShift.rosterUserId || sourceShift.userId || '',
-  employeeName: sourceShift.employeeName || sourceShift.userName || sourceShift.name || sourceShift.displayName || '',
-  employeeEmail: sourceShift.employeeEmail || sourceShift.userEmail || sourceShift.email || sourceShift.assignedEmail || '',
-  userId: sourceShift.userId || sourceShift.uid || sourceShift.authUid || '',
-  rosterUserId: sourceShift.rosterUserId || sourceShift.employeeId || '',
-  assignedEmail: sourceShift.assignedEmail || sourceShift.employeeEmail || sourceShift.userEmail || sourceShift.email || '',
+  ...buildScheduleIdentityFields(sourceShift),
   role: sourceShift.role || 'Unassigned',
   startTime: sourceShift.startTime || '',
   endTime: sourceShift.endTime || '',
@@ -505,8 +522,9 @@ const TabMasterSchedule = ({ currentDate, setCurrentDate = null, onSubTabChange 
   const [tipCredit, setTipCredit] = useState('');
   const [subTab, setSubTab] = useState(initialSubTab);
   const canViewTeamAvailability = Boolean(appUser?.isSuperAdmin || appUser?.isAdmin || appUser?.isOwner || appUser?.accountOwner || appUser?.workspaceOwner || appUser?.permissions?.schedule || appUser?.permissions?.team);
-  const availabilityWhereClauses = canViewTeamAvailability ? [] : [['employeeId', '==', appUser?.id || '']];
-  const availabilityRecords = useLiveCollection('availabilityRecords', appUser?.restaurantId, { enabled: !!appUser?.restaurantId, whereClauses: availabilityWhereClauses, limitCount: 500, fallbackLimitCount: 120 });
+  const scheduleIdentity = buildScheduleIdentityFields(getSchedulePersonForAppUser(appUser, users), appUser);
+  const availabilityWhereClauses = canViewTeamAvailability ? [] : [['scheduleUserId', '==', scheduleIdentity.scheduleUserId || '__none__']];
+  const availabilityRecords = useLiveCollection('availabilityRecords', appUser?.restaurantId, { enabled: !!appUser?.restaurantId && (subTab === 'availability' || subTab === 'schedule-builder'), whereClauses: availabilityWhereClauses, orderByField: canViewTeamAvailability ? 'employeeName' : null, orderDirection: 'asc', limitCount: canViewTeamAvailability ? 220 : 25, fallbackLimitCount: canViewTeamAvailability ? 80 : 25, debugLabel: `schedule:${subTab}:availability` });
 
   useEffect(() => { onSubTabChange?.(subTab); }, [subTab, onSubTabChange]);
 
@@ -557,20 +575,17 @@ const TabMasterSchedule = ({ currentDate, setCurrentDate = null, onSubTabChange 
       return;
     }
 
-    // Keep this listener intentionally simple: restaurant + employee only.
-    // Filtering status in the browser avoids a Firestore composite-index trap that made
-    // regular employees wait for a full refresh before the button flipped state.
+    // Server-filtered active punch listener: one current punch, no completed history scan.
     const q = query(
       collection(db, 'timePunches'),
       where('restaurantId', '==', appUser.restaurantId),
-      where('employeeId', '==', appUser.id)
+      where('scheduleUserId', '==', appUser.scheduleUserId || appUser.employeeId || appUser.userId || appUser.rosterUserId || appUser.id),
+      where('status', 'in', ['clocked_in', 'on_break']),
+      orderBy('clockInTime', 'desc'),
+      firestoreLimit(1)
     );
     const unsub = onSnapshot(q, snap => {
-      const activeStatuses = ['clocked_in', 'on_break'];
-      const punches = snap.docs
-        .map(d => ({ id: d.id, ...d.data() }))
-        .filter(p => activeStatuses.includes(p.status));
-      const newest = punches.sort((a,b) => new Date(b.clockInTime || 0) - new Date(a.clockInTime || 0))[0] || null;
+      const newest = snap.docs.map(d => ({ id: d.id, ...d.data() }))[0] || null;
 
       setActivePunch(prev => {
         if (newest?.id) {
@@ -586,10 +601,10 @@ const TabMasterSchedule = ({ currentDate, setCurrentDate = null, onSubTabChange 
       });
     }, err => {
       console.error('Active punch listener failed:', err);
-      addToast('Clock Sync Warning', 'Clock-in saved, but the live clock button could not refresh automatically. Check Firestore rules/indexes if this repeats.');
+      addToast('Clock Sync Warning', 'Active punch query needs the deployed timePunches restaurantId + scheduleUserId + status + clockInTime index.');
     });
     return () => unsub();
-  }, [appUser?.id, appUser?.restaurantId]);
+  }, [appUser?.id, appUser?.restaurantId, appUser?.scheduleUserId, appUser?.employeeId, appUser?.userId, appUser?.rosterUserId]);
 
 
 
@@ -680,8 +695,14 @@ const handleClockIn = async () => {
       setClockActionBusy(true);
       try {
         const clockInStamp = new Date().toISOString();
+        const clockAuthUid = auth?.currentUser?.uid || appUser.authUid || appUser.uid || appUser.id || '';
         const punchData = {
-          employeeId: appUser.id,
+          employeeId: appUser.employeeId || appUser.rosterUserId || appUser.id,
+          scheduleUserId: appUser.scheduleUserId || appUser.employeeId || appUser.rosterUserId || appUser.userId || clockAuthUid,
+          userId: clockAuthUid,
+          rosterUserId: appUser.rosterUserId || appUser.employeeId || '',
+          authUid: clockAuthUid,
+          createdBy: clockAuthUid,
           employeeName: appUser.name,
           clockInTime: clockInStamp,
           status: 'clocked_in',
@@ -817,7 +838,11 @@ Clock out anyway?`);
           author: 'System Alert',
           isImportant: true,
           restaurantId: appUser.restaurantId,
-          employeeId: appUser.id,
+          employeeId: appUser.employeeId || appUser.id,
+          scheduleUserId: appUser.scheduleUserId || appUser.employeeId || appUser.userId || appUser.rosterUserId || appUser.id,
+          userId: appUser.id,
+          rosterUserId: appUser.rosterUserId || '',
+          authUid: appUser.uid || appUser.authUid || appUser.id,
           employeeName: appUser.name,
           punchId: punchToClose.id,
           replies: [],
@@ -861,8 +886,8 @@ Clock out anyway?`);
 
   // --- TRADE BOARD LOGIC ---
   const availableSwaps = shiftSwaps
-    .filter(s => s.status === 'available' && s.date >= getToday())
-    .sort((a,b) => a.date.localeCompare(b.date));
+    .filter(s => ['available','open'].includes(String(s.status || '').toLowerCase()) && String(s.shiftDate || s.date || '') >= getToday())
+    .sort((a,b) => String(a.shiftDate || a.date || '').localeCompare(String(b.shiftDate || b.date || '')));
 
   const handleCancelSwap = async (swapId) => {
     if (!window.confirm("Remove this shift from the Trade Board?")) return;
@@ -872,16 +897,19 @@ Clock out anyway?`);
 
   const handleClaimShift = async (swap) => {
     if (!swap?.shiftId) return addToast('Error', 'This trade-board listing is missing its linked shift ID.');
-    if (!window.confirm(`Claim this ${swap.role} shift on ${formatDisplayDate(swap.date)}?`)) return;
+    if (!window.confirm(`Claim this ${swap.role} shift on ${formatDisplayDate(swap.shiftDate || swap.date)}?`)) return;
 
     try {
+      const claimantAuthUid = auth?.currentUser?.uid || appUser.authUid || appUser.uid || appUser.id || '';
+      const claimantIdentity = buildScheduleIdentityFields(schedulePerson, appUser);
       await updateDoc(doc(db, "shifts", swap.shiftId), {
-        employeeId: schedulePerson.employeeId || schedulePerson.id || appUser.id,
-        rosterUserId: schedulePerson.rosterUserId || schedulePerson.id || '',
-        userId: appUser.id,
-        authUid: appUser.id,
-        employeeName: schedulePerson.employeeName || schedulePerson.name || appUser.name || appUser.email || '',
-        employeeEmail: schedulePerson.employeeEmail || schedulePerson.email || appUser.email || '',
+        ...claimantIdentity,
+        userId: claimantAuthUid,
+        authUid: claimantAuthUid,
+        assignedUserId: claimantAuthUid,
+        employeeName: claimantIdentity.employeeName || appUser.name || appUser.email || '',
+        employeeEmail: claimantIdentity.employeeEmail || appUser.email || '',
+        assignedEmail: claimantIdentity.assignedEmail || appUser.email || '',
         role: swap.role,
         updatedAt: new Date().toISOString(),
         claimedFromTradeBoard: true
@@ -889,7 +917,7 @@ Clock out anyway?`);
 
       await updateDoc(doc(db, "shiftSwaps", swap.id), {
         status: 'claimed',
-        claimedBy: appUser.id,
+        claimedBy: claimantAuthUid,
         claimedByName: appUser.name,
         claimedAt: new Date().toISOString()
       });
@@ -909,11 +937,14 @@ const handleOfferSwap = async (shift) => {
       await addDoc(collection(db, "shiftSwaps"), {
         shiftId: shift.id,
         originalEmployeeId: schedulePerson.employeeId || schedulePerson.id || appUser.id,
+        sourceEmployeeId: schedulePerson.employeeId || schedulePerson.id || appUser.id,
+        requesterUserId: appUser.id,
         originalUserId: appUser.id,
         originalEmployeeName: schedulePerson.employeeName || schedulePerson.name || appUser.name || appUser.email || '',
         originalEmployeeEmail: schedulePerson.employeeEmail || schedulePerson.email || appUser.email || '',
         role: shift.role,
         date: shift.date,
+        shiftDate: shift.date,
         startTime: shift.startTime,
         endTime: shift.endTime,
         status: 'available',
@@ -1094,7 +1125,7 @@ const handleOfferSwap = async (shift) => {
                   return (
                     <div key={swap.id} className={`${T.row} p-4 flex flex-col sm:flex-row justify-between sm:items-center gap-4`}>
                       <div>
-                        <div className="font-bold text-white text-base">{formatDisplayDate(swap.date)}</div>
+                        <div className="font-bold text-white text-base">{formatDisplayDate(swap.shiftDate || swap.date)}</div>
                         <div className="text-[10px] font-black uppercase tracking-widest text-[#D4A381] mt-0.5">
                           {swap.role}   {formatShortTime(swap.startTime)} - {formatShortTime(swap.endTime)}
                         </div>
@@ -1540,14 +1571,7 @@ const [eventDate, setEventDate] = useState(getToday());
           date: d,
           scheduleDateKey: d,
           scheduleMonth: shiftMonth,
-          employeeId: emp.id,
-          userId: emp.id,
-          rosterUserId: emp.id,
-          assignedUserId: emp.id,
-          employeeEmail: emp.email || emp.employeeEmail || '',
-          assignedEmail: emp.email || emp.employeeEmail || '',
-          employeeName: emp.name || emp.displayName || emp.email || 'Unknown',
-          assignedName: emp.name || emp.displayName || emp.email || 'Unknown',
+          ...buildScheduleIdentityFields(emp),
           role: emp.role || 'Unassigned',
           startTime: startTime,
           endTime: endTime,
@@ -3301,7 +3325,7 @@ const TabMonth = ({ currentDate, users, shifts, appUser }) => {
 {Array.from({length:days}).map((_,i)=>{
           const date = `${monthStr}-${String(i+1).padStart(2,'0')}`; 
           const dayShifts = shifts
-            .filter(s => s.date === date && s.isPublished && (roleFilter === 'All' || (roleFilter === 'ME' ? s.employeeId === appUser?.id : s.role === roleFilter)))
+            .filter(s => s.date === date && s.isPublished && (roleFilter === 'All' || (roleFilter === 'ME' ? shiftMatchesPerson(s, getSchedulePersonForAppUser(appUser, users)) : s.role === roleFilter)))
             .sort((a, b) => {
               if (a.role !== b.role) return (a.role || '').localeCompare(b.role || '');
               return (a.startTime || '').localeCompare(b.startTime || '');
@@ -3338,7 +3362,9 @@ const TabAvailability = ({ availabilityRecords = [], appUser, users = [], addToa
   const canManage = !!(appUser?.isSuperAdmin || appUser?.isAdmin || perms.schedule || perms.team);
   const settings = mergeWorkspaceSettings(appUser, clientData);
   const approvalRequired = settings.requireAvailabilityApproval !== false;
-  const myRecords = (availabilityRecords || []).filter(r => String(r.employeeId || r.userId || '') === String(appUser?.id || '')).sort((a,b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+  const availabilityAuthUid = auth?.currentUser?.uid || appUser?.authUid || appUser?.uid || appUser?.id || '';
+  const myScheduleIdentity = { ...buildScheduleIdentityFields(getSchedulePersonForAppUser(appUser, users), appUser), authUid: availabilityAuthUid, userId: availabilityAuthUid };
+  const myRecords = (availabilityRecords || []).filter(r => String(r.scheduleUserId || r.employeeId || r.userId || '') === String(myScheduleIdentity.scheduleUserId || '')).sort((a,b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
   const visibleTeamRecords = canManage ? [...(availabilityRecords || [])].sort((a,b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0)) : myRecords;
   const pendingRecords = visibleTeamRecords.filter(r => normalizeAvailabilityStatus(r.status) === 'pending' && r.archived !== true);
   const historyRecords = visibleTeamRecords.filter(r => ['approved','denied','archived'].includes(normalizeAvailabilityStatus(r.status)) || r.archived === true);
@@ -3354,9 +3380,7 @@ const TabAvailability = ({ availabilityRecords = [], appUser, users = [], addToa
     const payload = {
       restaurantId: appUser.restaurantId,
       workspaceId: appUser.restaurantId,
-      employeeId: appUser.id || '',
-      employeeName: appUser.name || appUser.email || 'Employee',
-      employeeEmail: appUser.email || '',
+      ...myScheduleIdentity,
       weeklyAvailability,
       unavailableWindows: SCHEDULE_WEEKDAYS.filter(day => weeklyAvailability?.[day]?.available === false).map(day => ({ day, start: '00:00', end: '23:59', type: 'unavailable' })),
       preferredWindows: SCHEDULE_WEEKDAYS.filter(day => weeklyAvailability?.[day]?.preferred === true).map(day => ({ day, start: weeklyAvailability[day].start || '09:00', end: weeklyAvailability[day].end || '17:00', type: 'preferred' })),
@@ -3370,7 +3394,7 @@ const TabAvailability = ({ availabilityRecords = [], appUser, users = [], addToa
       notes: notes.trim(),
       createdAt: nowIso,
       updatedAt: nowIso,
-      createdBy: appUser.id || '',
+      createdBy: availabilityAuthUid,
       createdByName: appUser.name || appUser.email || ''
     };
     await addDoc(collection(db, 'availabilityRecords'), payload);
@@ -3460,7 +3484,8 @@ const TabTimeOff = ({ timeOffRequests, appUser, users, addToast, events = [], sh
 
   const perms = appUser?.permissions || {};
   const canManage = !!(appUser?.isSuperAdmin || appUser?.isAdmin || perms.schedule || perms.team);
-  const myId = appUser?.id || '';
+  const authUserId = auth?.currentUser?.uid || appUser?.authUid || appUser?.uid || appUser?.id || '';
+  const myId = authUserId;
   const schedulePublishingSettings = getSchedulePublishingSettings(appUser, clientData);
   const schedulePerson = getSchedulePersonForAppUser(appUser, users);
   const postPublishedTimeOffAllowed = schedulePublishingSettings.allowPostPublishedTimeOff;
@@ -3512,7 +3537,7 @@ const TabTimeOff = ({ timeOffRequests, appUser, users, addToast, events = [], sh
   };
 
   const priorRequestInfoForDate = (dateKey = '') => {
-    const currentKeys = new Set([requestOffPersonKey({ userId: schedulePerson.id, employeeId: schedulePerson.employeeId, userEmail: schedulePerson.email, employeeName: schedulePerson.name }), requestOffPersonKey({ userId: appUser.id, userEmail: appUser.email, employeeName: appUser.name })].filter(Boolean));
+    const currentKeys = new Set([requestOffPersonKey({ userId: authUserId, authUid: authUserId, employeeId: authUserId, rosterUserId: schedulePerson.rosterUserId || schedulePerson.id, userEmail: schedulePerson.email, employeeName: schedulePerson.name }), requestOffPersonKey({ userId: authUserId, authUid: authUserId, userEmail: appUser.email, employeeName: appUser.name })].filter(Boolean));
     const people = new Map();
     (timeOffRequests || [])
       .filter(r => r?.date === dateKey && isRequestOffConflictCountable(r))
@@ -3556,10 +3581,11 @@ It might not be available. Do you still want to request it?`);
     await Promise.all(selectedDates.map(d => addDoc(collection(db, 'timeOffRequests'), {
       restaurantId: appUser.restaurantId,
       workspaceId: appUser.restaurantId,
-      userId: appUser.id,
-      employeeId: appUser.id,
+      userId: authUserId,
+      employeeId: authUserId,
       rosterUserId: schedulePerson.rosterUserId || schedulePerson.id || '',
-      authUid: appUser.id,
+      scheduleUserId: getCanonicalScheduleUserId(schedulePerson || appUser),
+      authUid: authUserId,
       userEmail: appUser.email || '',
       employeeEmail: schedulePerson.employeeEmail || schedulePerson.email || appUser.email || '',
       userName: appUser.name || appUser.email || 'Employee',
@@ -3577,8 +3603,8 @@ It might not be available. Do you still want to request it?`);
       submittedAt: nowIso,
       createdAt: nowIso,
       updatedAt: nowIso,
-      createdBy: appUser.id || '',
-      requestedBy: appUser.id || '',
+      createdBy: authUserId,
+      requestedBy: authUserId,
       requestedByName: appUser.name || appUser.email || 'Employee',
       source: 'time_off_request'
     })));
@@ -3652,9 +3678,9 @@ const TabScheduleWorkbench = ({ currentDate, users, shifts, events, timeOffReque
 );
 
 const ScheduleCopilot = ({ currentDate, users = [], shifts = [], timeOffRequests = [], addToast, appUser }) => {
-  const templates = useLiveCollection('scheduleTemplates', appUser?.restaurantId, { limitCount: 120 });
-  const coverageTargets = useLiveCollection('scheduleCoverageTargets', appUser?.restaurantId, { limitCount: 200 });
-  const dbRoles = useLiveCollection('roles', appUser?.restaurantId, { limitCount: 120 });
+  const templates = useLiveCollection('scheduleTemplates', appUser?.restaurantId, { enabled: !!appUser?.restaurantId, limitCount: 120 });
+  const coverageTargets = useLiveCollection('scheduleCoverageTargets', appUser?.restaurantId, { enabled: !!appUser?.restaurantId, limitCount: 200 });
+  const dbRoles = useLiveCollection('roles', appUser?.restaurantId, { enabled: !!appUser?.restaurantId, limitCount: 120 });
   const weekDates = getWeekDates(currentDate);
   const weekStart = weekDates[0];
   const weekEnd = weekDates[6];
@@ -3758,7 +3784,7 @@ const ScheduleCopilot = ({ currentDate, users = [], shifts = [], timeOffRequests
     const scheduleRole = canonicalScheduleRole(row.role);
     const employee = pickUserForShift(scheduleRole, date, usedIds);
     const finalRole = employee?.role ? canonicalScheduleRole(employee.role) : scheduleRole;
-    await addDoc(collection(db, 'shifts'), { restaurantId: appUser.restaurantId, employeeId: employee?.id || '', employeeName: employee?.name || 'Unassigned', role: finalRole, targetRole: scheduleRole, date, startTime: row.startTime || '09:00', endTime: row.endTime || '17:00', isPublished: false, createdAt: new Date().toISOString(), createdBy: appUser.id || 'schedule-copilot', source: 'schedule_copilot' });
+    await addDoc(collection(db, 'shifts'), { restaurantId: appUser.restaurantId, ...buildScheduleIdentityFields(employee || {}), role: finalRole, targetRole: scheduleRole, date, startTime: row.startTime || '09:00', endTime: row.endTime || '17:00', isPublished: false, createdAt: new Date().toISOString(), createdBy: appUser.id || 'schedule-copilot', source: 'schedule_copilot' });
     return employee?.id;
   };
 
@@ -3787,7 +3813,7 @@ const ScheduleCopilot = ({ currentDate, users = [], shifts = [], timeOffRequests
         const oldIndex = prevDates.indexOf(s.date);
         const date = weekDates[oldIndex];
         if (weekShifts.some(x => x.date === date && x.employeeId === s.employeeId && x.startTime === s.startTime)) continue;
-        await addDoc(collection(db, 'shifts'), { restaurantId: appUser.restaurantId, employeeId: s.employeeId, employeeName: s.employeeName || users.find(u => u.id === s.employeeId)?.name || 'Unknown', role: canonicalScheduleRole(s.role || users.find(u => u.id === s.employeeId)?.role || 'Staff'), date, startTime: s.startTime, endTime: s.endTime, isPublished: false, copiedFrom: s.id, createdAt: new Date().toISOString(), createdBy: appUser.id || 'copy-week' });
+        await addDoc(collection(db, 'shifts'), { restaurantId: appUser.restaurantId, ...buildScheduleIdentityFields(users.find(u => shiftMatchesPerson(s, u)) || s), role: canonicalScheduleRole(s.role || users.find(u => u.id === s.employeeId)?.role || 'Staff'), date, startTime: s.startTime, endTime: s.endTime, isPublished: false, copiedFrom: s.id, createdAt: new Date().toISOString(), createdBy: appUser.id || 'copy-week' });
         made++;
       }
       addToast('Copied', `${made} draft shifts copied from previous week.`);
@@ -3838,9 +3864,10 @@ const ScheduleCopilot = ({ currentDate, users = [], shifts = [], timeOffRequests
   const quickUpdateShift = async (shift, patch) => {
     try {
       const next = { ...patch, updatedAt: new Date().toISOString(), updatedBy: appUser.id || 'schedule-quick-edit' };
-      if (patch.employeeId) {
+      if (Object.prototype.hasOwnProperty.call(patch, 'employeeId')) {
         const emp = users.find(u => u.id === patch.employeeId);
-        next.employeeName = emp?.name || shift.employeeName || 'Unknown';
+        if (emp) Object.assign(next, buildScheduleIdentityFields(emp));
+        else Object.assign(next, { scheduleUserId: '', employeeId: '', userId: '', rosterUserId: '', authUid: '', assignedUserId: '', employeeEmail: '', assignedEmail: '', employeeName: 'Unassigned', assignedName: 'Unassigned' });
         next.role = emp?.role || shift.role || 'Staff';
       }
       await updateDoc(doc(db, 'shifts', shift.id), next);

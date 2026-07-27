@@ -27,10 +27,13 @@ const checks = [
     }
   },
   {
-    name: 'App shell does not duplicate inventory/menu listeners while Inventory route is active',
+    name: 'App shell keeps Operations Center inventory child-owned and avoids duplicate shell listeners',
     pass: () => {
       const app = read('src/App.js');
-      return app.includes("wantsToday || activeTabState === 'ops' || isGlobalSearchOpen") && !app.includes("['inventory', 'ops'].includes(activeTabState)") && !app.includes("activeTabState === 'inventory' || wantsToday");
+      const ops = read('src/features/operations.jsx');
+      const wantsLine = app.match(/const\s+wantsInventoryData\s*=\s*([^;]+);/);
+      const expr = wantsLine ? wantsLine[1] : '';
+      return expr.includes('wantsToday') && expr.includes('isGlobalSearchOpen') && expr.includes("activeTabState === 'menu-intelligence'") && !expr.includes("activeTabState === 'ops'") && !expr.includes("activeTabState === 'inventory'") && /useLiveCollection\('inventoryItems'[^\n]+debugLabel:\s*['`][^'`]*ops-center:inventory/.test(ops);
     }
   },
   {
@@ -41,7 +44,7 @@ const checks = [
     }
   },
   {
-    name: 'Vercel Node engine is updated for upcoming platform requirement',
+    name: 'Vercel Node engine is set to release Node 24.x',
     pass: () => JSON.parse(read('package.json')).engines?.node === '24.x'
   }
 ];

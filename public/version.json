@@ -1,19 +1,21 @@
 {
-  "version": "16.0.27",
-  "name": "86 Chaos 16.0.27 Login Workspace QA Cleanup Fix",
-  "releasedAt": "2026-07-25T00:00:00.000Z",
-  "label": "86 Chaos 16.0.27 Login Workspace QA Cleanup Fix",
-  "build": "16.0.27",
+  "version": "16.0.32",
+  "name": "86 Chaos 16.0.32 Reminder Recurrence, Firebase Isolation, and Release Gate Fix",
+  "releasedAt": "2026-07-26T00:00:00.000Z",
+  "label": "86 Chaos 16.0.32 Reminder Recurrence, Firebase Isolation, and Release Gate Fix",
+  "build": "16.0.32",
   "notes": [
-    "Filters deleted and Full Audit QA workspaces from the login-time Choose Workspace screen, not just the in-app switcher.",
-    "Skips stale workspace memberships whose restaurant document has already been hard-deleted so users land directly in their remaining real workspace.",
-    "Keeps the protected workspace-memberships and login-bootstrap API responses from returning Full Audit QA workspace leftovers.",
-    "Preserves Firebase credentials, config, rules, data structures, permissions, and the compact professional UI refinement."
+    "Corrects v16.0.30 release-blocking QA, listener, reminder, backup, admin safety, and cost-test reliability issues without removing features.",
+    "Keeps native backup/manual backup flows, operational intelligence, schedules, reminders, notifications, permissions, and Firebase credential wiring intact."
   ],
   "releaseNotes": [
-    "The pre-app login workspace picker now uses the same strict filtering as the in-app switcher.",
-    "Full Audit QA restaurants are hidden by exact QA name/source markers even when stale membership maps still contain old labels.",
-    "Missing restaurant documents from stale membership records are no longer shown as selectable workspaces.",
-    "No Firebase credentials, rules, project IDs, environment values, or restaurant workflows were changed."
+    "Recurring reminders now retain one occurrence through retries and advance to a fresh occurrence only after successful delivery.",
+    "Personal reminder edits, sharing, and participant actions are validated by authenticated server endpoints and same-workspace membership checks.",
+    "Shared Firestore listener caching is isolated by Firebase project, workspace, and authenticated viewer, with targeted cache cleanup.",
+    "Schedule, availability, time-off, and trade-board queries use separate canonical identities and deployed query indexes.",
+    "System Administrator orphan-shift cleanup now uses protected server-side dry-run records, revalidation, bounded deletion, and partial-result reporting.",
+    "Native backup verification uses exact database resources, paginated Admin API results, explicit READY state, normalized retention, and sanitized errors.",
+    "Server tests use Node test runner behavior assertions for reminder recurrence, push-device eligibility, Python hash stability, and backup parsing.",
+    "Visual design, layouts, spacing, colors, and styles are unchanged."
   ]
 }

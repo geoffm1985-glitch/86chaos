@@ -4,6 +4,13 @@ const { callPythonFunction } = require('./_python-function-client');
 const { resolveWorkspaceSubscription, planIsAtLeast, PLAN_IDS } = require('./_plan-access');
 
 const { APP_VERSION } = require('./_version');
+const {
+  contentHash,
+  stripVolatileAutomationFields,
+  stableMeaningfulAutomationHash,
+  collectEligibleAutomationTokens,
+  stableAlertIdentity
+} = require('./_python-automation-logic');
 const PYTHON_TIMEOUT_MS = 35000;
 const MAX_PAYLOAD_BYTES = 1500000;
 const COLLECTION_QUERY_PLANS = {
@@ -20,9 +27,9 @@ const COLLECTION_QUERY_PLANS = {
   timePunches: { limit: 180, dateField: 'date', pastDays: 21, futureDays: 2, orderBy: ['date', 'desc'] },
   timeOffRequests: { limit: 160, dateField: 'date', pastDays: 7, futureDays: 90, orderBy: ['date', 'asc'] },
   availabilityRecords: { limit: 180, where: [], orderBy: ['updatedAt', 'desc'] },
-  reminders: { limit: 120, where: [['dispatchEligible', '==', true]], orderBy: ['nextDispatchAt', 'asc'] },
-  tasks: { limit: 160, where: [['isCompleted', '==', false]], orderBy: ['date', 'asc'] },
-  maintenanceLogs: { limit: 120, orderBy: ['updatedAt', 'desc'] },
+  reminders: { collection: 'personalReminders', limit: 120, where: [['dispatchEligible', '==', true]], orderBy: ['nextDispatchAt', 'asc'] },
+  tasks: { limit: 160, where: [['isCompleted', '==', false]], orderBy: ['date', 'asc'], includeLegacyIncomplete: true },
+  maintenanceLogs: { limit: 160, orderBy: ['updatedAt', 'desc'], includeAllUnresolved: true },
   auditLogs: { limit: 80, orderBy: ['timestamp', 'desc'] }
 };
 
@@ -77,10 +84,6 @@ function hashId(parts) {
   return crypto.createHash('sha1').update(parts.filter(Boolean).join('|')).digest('hex').slice(0, 32);
 }
 
-function contentHash(value) {
-  return crypto.createHash('sha1').update(JSON.stringify(value || {})).digest('hex');
-}
-
 function dateKey(value) {
   if (!value) return '';
   const d = new Date(value);
@@ -101,23 +104,17 @@ function addDays(days) {
 function cleanText(value, max = 400) {
   return String(value || '').replace(/\s+/g, ' ').trim().slice(0, max);
 }
-
-function collectTokens(user = {}) {
-  const tokens = new Set();
-  if (typeof user.fcmToken === 'string' && user.fcmToken.trim()) tokens.add(user.fcmToken.trim());
-  if (Array.isArray(user.fcmTokens)) user.fcmTokens.forEach(t => { if (typeof t === 'string' && t.trim()) tokens.add(t.trim()); });
-  if (Array.isArray(user.pushTokens)) user.pushTokens.forEach(t => {
-    const token = typeof t === 'string' ? t : (t?.token || t?.fcmToken || '');
-    if (token) tokens.add(String(token).trim());
-  });
-  if (user.pushDevices && typeof user.pushDevices === 'object') {
-    Object.values(user.pushDevices).forEach(device => {
-      const token = typeof device === 'string' ? device : (device?.token || device?.fcmToken || '');
-      if (token) tokens.add(String(token).trim());
-    });
-  }
-  return [...tokens].filter(Boolean);
+function safeAutomationError(value, fallback = 'Python automation failed.') {
+  const raw = String(value?.message || value || fallback);
+  return raw
+    .replace(/Bearer\s+[A-Za-z0-9._-]+/gi, 'Bearer [redacted]')
+    .replace(/(token|secret|private[_ -]?key|authorization|client[_ -]?email)[=:]\s*[^\s,;}]+/gi, '$1=[redacted]')
+    .slice(0, 300) || fallback;
 }
+
+
+function collectTokens(user = {}) { return collectEligibleAutomationTokens(user); }
+
 
 async function runPythonOpsEngine(req, payload) {
   return callPythonFunction(req, '/api/python-ops-engine', payload, {
@@ -134,9 +131,54 @@ function isoDateDaysFromNow(days) {
   return d.toISOString().slice(0, 10);
 }
 
+async function getPagedQueryRows(queryRef, { pageSize = 200, maxRows = 1000 } = {}) {
+  const rows = [];
+  let cursor = null;
+  let pageCount = 0;
+  let truncated = false;
+  while (rows.length < maxRows) {
+    let pageQuery = queryRef.limit(Math.min(pageSize, maxRows - rows.length));
+    if (cursor && typeof pageQuery.startAfter === 'function') pageQuery = pageQuery.startAfter(cursor);
+    const snap = await pageQuery.get();
+    pageCount += 1;
+    if (!snap || snap.empty) break;
+    snap.docs.forEach(doc => rows.push({ id: doc.id, ...doc.data() }));
+    cursor = snap.docs[snap.docs.length - 1];
+    if (snap.size < Math.min(pageSize, maxRows - (rows.length - snap.size))) break;
+  }
+  if (rows.length >= maxRows) truncated = true;
+  return { rows, pageCount, truncated };
+}
+
 async function getCollectionRows(db, collectionName, restaurantId, plan = {}) {
-  let ref = db.collection(collectionName).where('restaurantId', '==', restaurantId);
-  const queryStats = { collection: collectionName, limit: plan.limit || 100, filters: 1, rows: 0 };
+  const firestoreCollection = plan.collection || collectionName;
+  const dedupeRows = (rows = []) => { const seen = new Set(); return rows.filter(row => { const key = row.id || JSON.stringify(row).slice(0,120); if (seen.has(key)) return false; seen.add(key); return true; }); };
+  if (collectionName === 'maintenanceLogs') {
+    const openStatuses = ['open','pending','in_progress','urgent','overdue'];
+    const openQuery = db.collection(firestoreCollection).where('restaurantId','==',restaurantId).where('status','in',openStatuses).orderBy('updatedAt','desc');
+    const openResult = await getPagedQueryRows(openQuery, { pageSize: 150, maxRows: Number(process.env.PYTHON_OPEN_MAINTENANCE_CAP || 1000) });
+    const recentSnap = await db.collection(firestoreCollection).where('restaurantId','==',restaurantId).orderBy('updatedAt','desc').limit(Math.min(plan.limit || 160, 80)).get();
+    const recentRows = recentSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    const rows = dedupeRows([...openResult.rows, ...recentRows]);
+    return { rows, queryStats: { collection: firestoreCollection, payloadKey: collectionName, limit: plan.limit || 160, filters: 2, rows: rows.length, pageCount: openResult.pageCount + 1, truncated: openResult.truncated, strategy: 'all-unresolved-plus-recent-history' } };
+  }
+  if (collectionName === 'timePunches') {
+    const activeQuery = db.collection(firestoreCollection).where('restaurantId','==',restaurantId).where('status','in',['clocked_in','on_break']).orderBy('clockInTime','desc');
+    const activeResult = await getPagedQueryRows(activeQuery, { pageSize: 100, maxRows: Number(process.env.PYTHON_ACTIVE_PUNCH_CAP || 500) });
+    const recentSnap = await db.collection(firestoreCollection).where('restaurantId','==',restaurantId).where('date','>=',isoDateDaysFromNow(-21)).orderBy('date','desc').limit(plan.limit || 180).get();
+    const rows = dedupeRows([...activeResult.rows, ...recentSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }))]);
+    return { rows, queryStats: { collection: firestoreCollection, payloadKey: collectionName, limit: plan.limit || 180, filters: 3, rows: rows.length, pageCount: activeResult.pageCount + 1, truncated: activeResult.truncated, strategy: 'all-open-punches-plus-recent-history' } };
+  }
+  if (collectionName === 'tasks') {
+    const activeQuery = db.collection(firestoreCollection).where('restaurantId','==',restaurantId).where('isCompleted','==',false).orderBy('date','asc');
+    const activeResult = await getPagedQueryRows(activeQuery, { pageSize: 150, maxRows: Number(process.env.PYTHON_OPEN_TASK_CAP || 1000) });
+    const recentSnap = await db.collection(firestoreCollection).where('restaurantId','==',restaurantId).orderBy('updatedAt','desc').limit(Math.min(Number(process.env.PYTHON_LEGACY_TASK_SCAN_LIMIT || 400), 1000)).get();
+    const terminal = new Set(['done','completed','cancelled','canceled','archived']);
+    const rows = dedupeRows([...activeResult.rows, ...recentSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }))]).filter(row => row.isCompleted === false || (row.isCompleted === undefined && !terminal.has(String(row.status || '').toLowerCase())));
+    return { rows, queryStats: { collection: firestoreCollection, payloadKey: collectionName, limit: plan.limit || 160, filters: 2, rows: rows.length, pageCount: activeResult.pageCount + 1, truncated: activeResult.truncated, legacyScanLimit: Math.min(Number(process.env.PYTHON_LEGACY_TASK_SCAN_LIMIT || 400), 1000), strategy: 'all-canonical-incomplete-plus-bounded-legacy-scan' } };
+  }
+  let ref = db.collection(firestoreCollection).where('restaurantId', '==', restaurantId);
+  const queryStats = { collection: firestoreCollection, payloadKey: collectionName, limit: plan.limit || 100, filters: 1, rows: 0, truncated: false };
   (plan.where || []).forEach(([field, op, value]) => {
     if (field && op && value !== undefined) {
       ref = ref.where(field, op, value);
@@ -154,7 +196,7 @@ async function getCollectionRows(db, collectionName, restaurantId, plan = {}) {
   const snap = await ref.get();
   let rows = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
   if (plan.includeMaster) {
-    const masterSnap = await db.collection(collectionName)
+    const masterSnap = await db.collection(firestoreCollection)
       .where('restaurantId', '==', restaurantId)
       .where('date', '==', 'MASTER')
       .limit(60)
@@ -162,6 +204,7 @@ async function getCollectionRows(db, collectionName, restaurantId, plan = {}) {
     rows = [...rows, ...masterSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }))];
   }
   queryStats.rows = rows.length;
+  queryStats.truncated = snap.size >= (plan.limit || 100);
   return { rows, queryStats };
 }
 
@@ -302,10 +345,10 @@ async function writeRestaurantAdminAlerts(db, restaurant, result, runId, source)
   const alertRows = [];
   for (const row of rows) {
     const rowHash = contentHash({ type: row.type, title: row.title, detail: row.detail, severity: row.severity, payload: row.payload });
-    const id = hashId([row.restaurantId, row.type, row.title, row.detail || 'stable']);
+    const id = stableAlertIdentity({ restaurantId: row.restaurantId, source: 'python_automation', type: row.type, payload: row.payload || {}, entityId: row.payload?.itemId || row.payload?.recipeId || row.payload?.vendorId || row.payload?.shiftId || row.payload?.findingId || '' });
     const ref = db.collection('restaurantAdminAlerts').doc(id);
-    const snap = await ref.get().catch(() => null);
-    if (snap?.exists) {
+    const snap = await ref.get();
+    if (snap.exists) {
       const existing = snap.data() || {};
       if (['acknowledged', 'dismissed', 'completed', 'resolved'].includes(String(existing.status || '').toLowerCase())) continue;
       if (existing.contentHash === rowHash) {
@@ -322,14 +365,18 @@ async function writeRestaurantAdminAlerts(db, restaurant, result, runId, source)
   return { written, considered: rows.length, skippedUnchanged, alerts: alertRows };
 }
 
-async function loadAlertRecipients(db, restaurantId, restaurant = {}) {
+async function loadAlertRecipients(db, restaurantId, restaurant = {}, preloadedUsers = []) {
   const users = new Map();
+  (Array.isArray(preloadedUsers) ? preloadedUsers : []).forEach(user => {
+    if (!user?.id) return;
+    users.set(user.id, mergeRecipient(user, user?.memberships?.[restaurantId] || {}, restaurantId));
+  });
   const memberships = new Map();
   const addUser = (docSnap, membership = {}) => {
     if (!docSnap?.exists) return;
     users.set(docSnap.id, mergeRecipient({ id: docSnap.id, ...docSnap.data() }, membership, restaurantId));
   };
-  await Promise.allSettled([
+  if (!users.size) await Promise.allSettled([
     db.collection('users').where('restaurantId', '==', restaurantId).limit(250).get().then(snap => snap.forEach(addUser)),
     db.collection('users').where('workspaceIds', 'array-contains', restaurantId).limit(250).get().then(snap => snap.forEach(addUser)),
     db.collection('workspaceMembers').where('restaurantId', '==', restaurantId).limit(300).get().then(snap => snap.forEach(docSnap => {
@@ -359,9 +406,9 @@ async function loadAlertRecipients(db, restaurantId, restaurant = {}) {
   });
 }
 
-async function sendRestaurantOwnerAdminPush(app, db, restaurant, attentionItems, runId) {
+async function sendRestaurantOwnerAdminPush(app, db, restaurant, attentionItems, runId, preloadedUsers = []) {
   if (!attentionItems.length) return { attempted: false, sentCount: 0, failedCount: 0, tokenCount: 0, eligibleRecipientCount: 0 };
-  const recipients = await loadAlertRecipients(db, restaurant.id, restaurant);
+  const recipients = await loadAlertRecipients(db, restaurant.id, restaurant, preloadedUsers);
   const tokens = [];
   const seen = new Set();
   recipients.forEach(user => collectTokens(user).forEach(token => { if (!seen.has(token)) { seen.add(token); tokens.push(token); } }));
@@ -387,8 +434,8 @@ async function sendRestaurantOwnerAdminPush(app, db, restaurant, attentionItems,
 
 async function shouldRunRestaurant(db, restaurant, requestedMode) {
   const ref = db.collection('pythonAutomationConfigs').doc(restaurant.id);
-  const snap = await ref.get().catch(() => null);
-  const config = snap?.exists ? snap.data() : {};
+  const snap = await ref.get();
+  const config = snap.exists ? snap.data() : {};
   const jobs = { ...DEFAULT_JOBS, ...(config.jobs || {}) };
   const paused = config.paused === true || jobs.nightlyOpsScan === false;
   if (requestedMode === 'manual') return { run: true, config: { ...config, jobs, paused } };
@@ -424,24 +471,23 @@ function compactResultForStorage(result = {}) {
 async function processRestaurant({ req, app, db, restaurant, source, requestedMode }) {
   const runId = `pyauto_${restaurant.id}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
   const startedAt = new Date().toISOString();
-  const gate = await shouldRunRestaurant(db, restaurant, requestedMode);
-  if (!gate.run) {
-    return { restaurantId: restaurant.id, restaurantName: restaurant.name || '', skipped: true, reason: gate.reason || 'not_due' };
-  }
   const runRef = db.collection('pythonAutomationRuns').doc(runId);
-  await runRef.set({ id: runId, restaurantId: restaurant.id, workspaceId: restaurant.id, restaurantName: restaurant.name || '', source, requestedMode, status: 'running', startedAt, appVersion: APP_VERSION, jobs: gate.config.jobs, safetyPolicy: SAFE_POLICY }, { merge: true });
   try {
+    const gate = await shouldRunRestaurant(db, restaurant, requestedMode);
+    if (!gate.run) {
+      return { restaurantId: restaurant.id, restaurantName: restaurant.name || '', skipped: true, reason: gate.reason || 'not_due' };
+    }
     const payload = await loadPayloadForRestaurant(db, restaurant);
     const result = await runPythonOpsEngine(req, payload);
     const criticalFindings = criticalFindingsFrom(result);
     const compactResult = compactResultForStorage(result);
-    const meaningfulHash = contentHash({ result: compactResult, criticalFindings });
+    const meaningfulHash = stableMeaningfulAutomationHash({ result: compactResult, criticalFindings, summary: result.summary || {}, managerBrief: result.managerBrief || [] });
     const currentReportRef = db.collection('opsIntelligenceReports').doc(`${restaurant.id}_current`);
-    const currentSnap = await currentReportRef.get().catch(() => null);
-    const unchanged = currentSnap?.exists && currentSnap.data()?.contentHash === meaningfulHash;
+    const currentSnap = await currentReportRef.get();
+    const unchanged = currentSnap.exists && currentSnap.data()?.contentHash === meaningfulHash;
     const alertStats = (unchanged || gate.config.jobs?.approvalQueue === false) ? { written: 0, considered: 0, skippedUnchanged: unchanged ? 1 : 0, disabled: gate.config.jobs?.approvalQueue === false, alerts: [] } : await writeRestaurantAdminAlerts(db, restaurant, result, runId, source);
     const pushItems = unchanged ? [] : [...criticalFindings, ...(alertStats.alerts || [])].slice(0, 30);
-    const pushResult = (unchanged || gate.config.jobs?.criticalPushAlerts === false) ? { attempted: false, disabled: gate.config.jobs?.criticalPushAlerts === false, skippedUnchanged: unchanged, sentCount: 0, failedCount: 0 } : await sendRestaurantOwnerAdminPush(app, db, restaurant, pushItems, runId).catch(error => ({ attempted: true, sentCount: 0, failedCount: 1, error: error.message || String(error) }));
+    const pushResult = (unchanged || gate.config.jobs?.criticalPushAlerts === false) ? { attempted: false, disabled: gate.config.jobs?.criticalPushAlerts === false, skippedUnchanged: unchanged, sentCount: 0, failedCount: 0 } : await sendRestaurantOwnerAdminPush(app, db, restaurant, pushItems, runId, payload.users || []).catch(error => ({ attempted: true, sentCount: 0, failedCount: 1, error: safeAutomationError(error, 'Owner/admin push failed.') }));
     const finishedAt = new Date().toISOString();
     const summary = result.summary || {};
     const reportRef = unchanged ? null : db.collection('opsIntelligenceReports').doc(runId);
@@ -473,9 +519,36 @@ async function processRestaurant({ req, app, db, restaurant, source, requestedMo
       await reportRef.set(reportPayload, { merge: true });
       await currentReportRef.set({ ...reportPayload, id: currentReportRef.id, runId, latestHistoryRunId: runId, isCurrent: true }, { merge: true });
     }
-    await runRef.set({ status: 'completed', finishedAt, summary, reportId: unchanged ? currentReportRef.id : reportRef.id, currentReportId: currentReportRef.id, unchanged, contentHash: meaningfulHash, sourceQueryStats: payload.sourceQueryStats || {}, criticalFindingCount: criticalFindings.length, alertStats, queueStats: { written: 0, considered: 0, disabled: true, redirectedTo: 'restaurantAdminAlerts' }, pushResult, changesApplied: 0, systemAdminCanApply: false }, { merge: true });
+    if (!unchanged) {
+      await runRef.set({
+        id: runId,
+        restaurantId: restaurant.id,
+        workspaceId: restaurant.id,
+        restaurantName: restaurant.name || '',
+        source,
+        requestedMode,
+        status: 'completed',
+        startedAt,
+        finishedAt,
+        summary,
+        reportId: reportRef.id,
+        currentReportId: currentReportRef.id,
+        unchanged: false,
+        contentHash: meaningfulHash,
+        sourceQueryStats: payload.sourceQueryStats || {},
+        criticalFindingCount: criticalFindings.length,
+        alertStats,
+        queueStats: { written: 0, considered: 0, disabled: true, redirectedTo: 'restaurantAdminAlerts' },
+        pushResult,
+        safetyPolicy: SAFE_POLICY,
+        appVersion: APP_VERSION,
+        changesApplied: 0,
+        systemAdminCanApply: false
+      }, { merge: true });
+    }
     const nextConfigStatus = criticalFindings.length ? 'attention' : 'ok';
-    const configChanged = gate.config.lastStatus !== nextConfigStatus || gate.config.lastRunId !== runId || source === 'manual';
+    const configChanged = gate.config.lastStatus !== nextConfigStatus || source === 'manual-config-change';
+    await db.collection('pythonAutomationRunStatus').doc(restaurant.id).set({ restaurantId: restaurant.id, workspaceId: restaurant.id, lastAttemptedRunAt: finishedAt, lastSuccessfulRunAt: finishedAt, lastRunId: runId, durationMs: new Date(finishedAt).getTime() - new Date(startedAt).getTime(), status: nextConfigStatus, unchanged, appVersion: APP_VERSION }, { merge: true });
     if (configChanged) {
       await db.collection('pythonAutomationConfigs').doc(restaurant.id).set({
         restaurantId: restaurant.id,
@@ -494,9 +567,9 @@ async function processRestaurant({ req, app, db, restaurant, source, requestedMo
     return { restaurantId: restaurant.id, restaurantName: restaurant.name || '', ok: true, runId, status: criticalFindings.length ? 'attention' : 'ok', summary, criticalFindingCount: criticalFindings.length, ownerAdminAlertsWritten: alertStats.written || 0, queueItemsWritten: 0, pushSentCount: pushResult.sentCount || 0, eligibleOwnerAdminRecipients: pushResult.eligibleRecipientCount || 0, changesApplied: 0, systemAdminCanApply: false };
   } catch (error) {
     const finishedAt = new Date().toISOString();
-    await runRef.set({ status: 'failed', finishedAt, error: error.message || String(error) }, { merge: true });
-    await db.collection('opsIntelligenceReports').doc(runId).set({ id: runId, runId, restaurantId: restaurant.id, workspaceId: restaurant.id, restaurantName: restaurant.name || '', source, createdAt: finishedAt, generatedAt: finishedAt, status: 'failed', error: error.message || String(error), summary: {}, managerBrief: [`Python automation failed: ${error.message || error}`], criticalFindings: [{ severity: 'critical', area: 'Python Automation', title: 'Automation failed', detail: error.message || String(error) }], appVersion: APP_VERSION, changesApplied: 0, systemAdminCanApply: false }, { merge: true });
-    return { restaurantId: restaurant.id, restaurantName: restaurant.name || '', ok: false, runId, error: error.message || String(error), changesApplied: 0, systemAdminCanApply: false };
+    await runRef.set({ id: runId, restaurantId: restaurant.id, workspaceId: restaurant.id, restaurantName: restaurant.name || '', source, requestedMode, status: 'failed', startedAt, finishedAt, error: safeAutomationError(error), appVersion: APP_VERSION, safetyPolicy: SAFE_POLICY }, { merge: true });
+    await db.collection('opsIntelligenceReports').doc(runId).set({ id: runId, runId, restaurantId: restaurant.id, workspaceId: restaurant.id, restaurantName: restaurant.name || '', source, createdAt: finishedAt, generatedAt: finishedAt, status: 'failed', error: safeAutomationError(error), summary: {}, managerBrief: [`Python automation failed: ${safeAutomationError(error)}`], criticalFindings: [{ severity: 'critical', area: 'Python Automation', title: 'Automation failed', detail: safeAutomationError(error) }], appVersion: APP_VERSION, changesApplied: 0, systemAdminCanApply: false }, { merge: true });
+    return { restaurantId: restaurant.id, restaurantName: restaurant.name || '', ok: false, runId, error: safeAutomationError(error), changesApplied: 0, systemAdminCanApply: false };
   }
 }
 
@@ -504,7 +577,7 @@ module.exports = async function handler(req, res) {
   if (!['GET', 'POST'].includes(req.method)) return res.status(405).json({ ok: false, error: 'Method Not Allowed' });
   let app;
   try { app = initAdmin(req); }
-  catch (error) { return res.status(503).json({ ok: false, error: `Firebase Admin unavailable: ${error.message}` }); }
+  catch (error) { return res.status(503).json({ ok: false, error: safeAutomationError(error, 'Firebase Admin unavailable.') }); }
   const db = app.firestore();
 
   let source = 'manual';
@@ -551,3 +624,4 @@ module.exports = async function handler(req, res) {
 };
 
 module.exports.config = { maxDuration: 300 };
+module.exports._test = { stripVolatileAutomationFields, stableMeaningfulAutomationHash, stableAlertIdentity, getCollectionRows, COLLECTION_QUERY_PLANS, collectTokens };
