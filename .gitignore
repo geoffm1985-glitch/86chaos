@@ -5,3 +5,7 @@ release-gate-tools/node_modules/
 playwright-report/
 test-results/
 coverage/
+
+.env.test.local
+
+.env.test.local
