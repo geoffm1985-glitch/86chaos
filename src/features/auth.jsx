@@ -27,7 +27,6 @@ const isHiddenOrDeletedWorkspace = (workspace = {}, { restaurantLookupAttempted 
   workspace.deletionScheduledFor ||
   workspace.hardDeleted === true ||
   workspace.membershipSource === 'stale-missing-restaurant' ||
-  isFullAuditQaWorkspace(workspace) ||
   (restaurantLookupAttempted && restaurantExists === false)
 );
 const filterSelectableWorkspaceChoices = (workspaces = []) => Array.from(
@@ -146,6 +145,26 @@ const LoginScreen = ({ setAppUser }) => {
       clearTimeout(timeoutId);
     }
   };
+
+  const withOperationTimeout = (promise, timeoutMs = 2500, label = 'Operation') => new Promise((resolve, reject) => {
+    let settled = false;
+    const timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      reject(new Error(`${label} did not answer within ${Math.round(timeoutMs / 1000)} seconds.`));
+    }, timeoutMs);
+    Promise.resolve(promise).then((value) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve(value);
+    }).catch((error) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      reject(error);
+    });
+  });
 
   const loadWorkspaceChoices = async (baseUser, firebaseUser) => {
     const options = new Map();
@@ -290,11 +309,11 @@ const LoginScreen = ({ setAppUser }) => {
   };
 
   const loadLoginBootstrapFromServer = async (firebaseUser) => {
-    const res = await secureFetch('/api/login-bootstrap', {
+    const res = await secureFetchWithTimeout('/api/login-bootstrap', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email: normEmail(firebaseUser?.email) })
-    });
+    }, 12000);
     const data = await res.json().catch(() => ({}));
     if (!res.ok || data?.ok === false) {
       const detail = data?.error || res.statusText || 'Login bootstrap failed.';
@@ -342,7 +361,11 @@ const LoginScreen = ({ setAppUser }) => {
 
     try {
       const userDocRef = doc(db, 'users', firebaseUser.uid);
-      const userDocSnap = await getDoc(userDocRef);
+      const userDocSnap = await withOperationTimeout(
+        getDoc(userDocRef),
+        2500,
+        'Browser account profile lookup'
+      );
       if (userDocSnap.exists()) {
         userData = { id: firebaseUser.uid, profileDocId: firebaseUser.uid, ...userDocSnap.data() };
       }

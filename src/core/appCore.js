@@ -380,7 +380,7 @@ export const MASTER_ADMIN_EMAIL = (process.env.REACT_APP_MASTER_ADMIN_EMAIL || '
 export const EVENT_TAGS = ['Standard Day', 'Packers Game', 'Brewers Game', 'Live Music', 'Severe Weather', 'Private Catering', 'Holiday'];
 
 // --- VERSION TRACKING ---
-export const CURRENT_VERSION = '16.0.36';
+export const CURRENT_VERSION = '16.0.37';
 
 // --- Helpers ---
 const usePageVisible = () => {
@@ -1149,11 +1149,18 @@ if (typeof window !== 'undefined' && !window.crashCatcherAttached) {
       const stack = String(payload.rawStack || payload.reason?.stack || payload.error?.stack || '').slice(0, 5000);
       const chunkUrl = payload.chunkUrl || extractFailedAssetUrl(`${message} ${stack}`);
       const messageFingerprint = `${String(payload.error?.name || payload.reason?.name || '')}:${message}`.slice(0, 500);
-      const fingerprint = [payload.source || 'runtime', chunkFailurePattern.test(`${message} ${stack}`) ? 'chunk' : 'error', chunkUrl, messageFingerprint, CURRENT_VERSION, window.location.pathname, window.location.search].join('|');
-      if (window.__chaosCrashFingerprints?.has(fingerprint)) return;
-      window.__chaosCrashFingerprints = window.__chaosCrashFingerprints || new Set();
-      window.__chaosCrashFingerprints.add(fingerprint);
-      if (window.__chaosCrashFingerprints.size > 30) window.__chaosCrashFingerprints.clear();
+      const fingerprint = [chunkFailurePattern.test(`${message} ${stack}`) ? 'chunk' : 'error', chunkUrl, messageFingerprint, CURRENT_VERSION, window.location.pathname, window.location.search].join('|');
+      const now = Date.now();
+      window.__chaosCrashFingerprints = window.__chaosCrashFingerprints instanceof Map ? window.__chaosCrashFingerprints : new Map();
+      for (const [key, seenAt] of window.__chaosCrashFingerprints.entries()) {
+        if (now - Number(seenAt || 0) > 30000) window.__chaosCrashFingerprints.delete(key);
+      }
+      if (window.__chaosCrashFingerprints.has(fingerprint)) return;
+      window.__chaosCrashFingerprints.set(fingerprint, now);
+      if (window.__chaosCrashFingerprints.size > 60) {
+        const oldest = window.__chaosCrashFingerprints.keys().next().value;
+        if (oldest) window.__chaosCrashFingerprints.delete(oldest);
+      }
       secureFetch('/api/report-bug', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
