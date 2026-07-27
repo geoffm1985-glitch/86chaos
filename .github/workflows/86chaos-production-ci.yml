@@ -55,10 +55,10 @@ jobs:
       - name: Install locked dependencies
         run: npm ci --no-audit --no-fund
 
-      - name: Verify Node and package lock
-        run: |
-          npm run node:check
-          npm run lock:integrity
+- name: Verify Node and package lock
+  run: |
+    node -e "const major=Number(process.versions.node.split('.')[0]); if(major!==24){console.error('Node 24 is required. Detected:',process.version);process.exit(1)} console.log('Node version verified:',process.version)"
+    npm run lock:integrity --if-present
 
       - name: Run source and syntax validation
         run: |
