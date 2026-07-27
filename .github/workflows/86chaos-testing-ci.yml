@@ -1,0 +1,136 @@
+name: 86 Chaos Testing CI
+
+on:
+  push:
+    branches:
+      - testing
+
+  pull_request:
+    branches:
+      - testing
+
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: 86chaos-testing-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify-testing:
+    name: Testing Release Validation
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    env:
+      CI: true
+      CHAOS_RELEASE_GATE: true
+      CHAOS_EXPECTED_FIREBASE_PROJECT: chaos-test-d1601
+
+      APP_URL: ${{ secrets.TEST_APP_URL }}
+      CHAOS_BASE_URL: ${{ secrets.TEST_APP_URL }}
+
+      SYSTEM_ADMIN_EMAIL: ${{ secrets.TEST_SYSTEM_ADMIN_EMAIL }}
+      SYSTEM_ADMIN_PASSWORD: ${{ secrets.TEST_SYSTEM_ADMIN_PASSWORD }}
+
+      OWNER_EMAIL: ${{ secrets.TEST_OWNER_EMAIL }}
+      OWNER_PASSWORD: ${{ secrets.TEST_OWNER_PASSWORD }}
+
+      MANAGER_EMAIL: ${{ secrets.TEST_MANAGER_EMAIL }}
+      MANAGER_PASSWORD: ${{ secrets.TEST_MANAGER_PASSWORD }}
+
+      STAFF_EMAIL: ${{ secrets.TEST_STAFF_EMAIL }}
+      STAFF_PASSWORD: ${{ secrets.TEST_STAFF_PASSWORD }}
+
+      CHAOS_EXPECTED_BUG_EMAIL_TO: ${{ secrets.TEST_NOTIFICATION_EMAIL }}
+      CHAOS_EXPECTED_PUSH_RECIPIENT_EMAIL: ${{ secrets.TEST_NOTIFICATION_EMAIL }}
+
+      DISABLE_ESLINT_PLUGIN: true
+      GENERATE_SOURCEMAP: false
+      NODE_OPTIONS: --max-old-space-size=4096
+
+    steps:
+      - name: Check out testing branch
+        uses: actions/checkout@v6
+
+      - name: Set up Node 24
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Set up Java for Firebase emulators
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Display tool versions
+        run: |
+          node --version
+          npm --version
+          java --version
+
+      - name: Install locked dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Verify project and lockfile
+        run: |
+          npm run node:check
+          npm run lock:integrity
+
+      - name: Run source validation
+        run: |
+          npm run lint
+          npm run syntax
+          npm run test:source
+          npm run performance:split
+
+      - name: Run client tests
+        run: npm run test:client -- --runInBand
+
+      - name: Run server and API tests
+        run: npm run test:server
+
+      - name: Run Firebase rules tests
+        run: npm run test:rules
+
+      - name: Create production-style build
+        run: npm run build
+
+      - name: Install Playwright browsers
+        run: npx --no-install playwright install --with-deps chromium firefox webkit
+
+      - name: Verify testing URL safety
+        shell: bash
+        run: |
+          if [ -z "$APP_URL" ]; then
+            echo "TEST_APP_URL is missing."
+            exit 1
+          fi
+
+          if [[ "$APP_URL" == *"app.86chaos.com"* ]]; then
+            echo "Refusing to run mutating Playwright tests against production."
+            exit 1
+          fi
+
+          echo "Testing preview: $APP_URL"
+          echo "Expected Firebase project: $CHAOS_EXPECTED_FIREBASE_PROJECT"
+
+      - name: Run production-grade Playwright gate
+        run: npx --no-install playwright test --reporter=list,html
+
+      - name: Upload test reports
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: 86chaos-testing-results-${{ github.run_number }}
+          path: |
+            build
+            coverage
+            playwright-report
+            test-results
+          if-no-files-found: ignore
+          retention-days: 14
