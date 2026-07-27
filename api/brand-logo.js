@@ -146,6 +146,9 @@ async function writeAudit(db, ctx, targetRestaurantId, storagePath) {
 
 module.exports = async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+  if (!String(req.headers.authorization || '').replace('Bearer ', '').trim()) {
+    return res.status(401).json({ error: 'Missing Firebase ID token. Log out and back in, then try again.' });
+  }
 
   try {
     const app = initAdmin(req);
@@ -211,7 +214,12 @@ module.exports = async function handler(req, res) {
     return res.status(200).json({ ok: true, url: downloadUrl, storagePath, bucket: bucket.name });
   } catch (err) {
     console.error('brand-logo upload failed', err);
-    return res.status(500).json({ error: err.message || 'Restaurant logo upload failed.' });
+    const message = String(err?.message || 'Restaurant logo upload failed.');
+    const status = /missing firebase id token|missing.*token|unauthorized/i.test(message) ? 401
+      : /invalid.*token|permission|forbidden|workspace|owner|admin/i.test(message) ? 403
+      : /invalid json|payload|image|too large|required|missing restaurant/i.test(message) ? 400
+      : 500;
+    return res.status(status).json({ error: status >= 500 ? 'Restaurant logo upload failed.' : message });
   }
 };
 

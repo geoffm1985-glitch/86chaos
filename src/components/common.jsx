@@ -1,7 +1,7 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useDeferredValue, useCallback } from 'react';
 import { Bell, Check, Camera, ChevronLeft, ChevronRight, MessageSquare, Plus, Trash2, Users, Calendar, Clock, X, Loader2, Package, ClipboardList, Menu, Settings, LogOut, Shield, Send, Repeat, Edit, Moon, Sun, TrendingUp, BookOpen, Search, ChefHat, Scale, Coffee, Star, Bug, Wrench, Globe, Mic, MicOff, Sparkles, Network } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
-import { getFirestore, collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, where, getDoc, setDoc, getDocs } from 'firebase/firestore';
+import { getFirestore, collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, where, orderBy, limit, getDoc, setDoc, getDocs } from 'firebase/firestore';
 import { getAuth, signInWithEmailAndPassword, sendPasswordResetEmail, createUserWithEmailAndPassword, updatePassword } from 'firebase/auth';
 import { getToken, onMessage } from 'firebase/messaging';
 import { MapContainer, TileLayer, Marker, Circle, useMapEvents } from 'react-leaflet';
@@ -11,8 +11,52 @@ import { buildEightySixAlertDetails, canUseMenuIntelligence, resolveStrictEighty
 import { parseReminderCommand } from '../core/reminderUtils';
 import { getVoiceMatchScore, resolveVoiceMatch } from '../core/voiceIntelligence';
 import { buildAiOrderAssistant, parseAiOrderingVoiceIntent, summarizeAiOrderAssistant } from '../core/aiOrderAssistant';
+import { buildRestaurantAiInsightBundle, summarizeInsightBundleForVoice, extractRestaurantGeofenceLocation } from '../core/restaurantAiInsights';
 import { resolveFeatureAccess, featureForRoute, isMasterAdminUser } from '../lib/featureAccess';
 import { FEATURE_KEYS } from '../config/plans';
+
+
+const perfArraySignature = (rows = []) => {
+  if (!Array.isArray(rows) || rows.length === 0) return '0';
+  const first = rows[0] || {};
+  const last = rows[rows.length - 1] || {};
+  return [
+    rows.length,
+    first.id || first.uid || first.email || first.date || '',
+    first.updatedAt || first.createdAt || first.time || '',
+    last.id || last.uid || last.email || last.date || '',
+    last.updatedAt || last.createdAt || last.time || ''
+  ].join('|');
+};
+
+const shallowObjectSignature = (value = {}) => {
+  if (!value || typeof value !== 'object') return String(value || '');
+  try {
+    return Object.keys(value).sort().map(key => `${key}:${typeof value[key] === 'object' ? JSON.stringify(value[key]) : String(value[key])}`).join('|');
+  } catch (_) {
+    return Object.keys(value || {}).sort().join('|');
+  }
+};
+
+const voiceDockPropsAreEqual = (prev = {}, next = {}) => {
+  const prevUser = prev.appUser || {};
+  const nextUser = next.appUser || {};
+  const stableUser = ['id','uid','email','restaurantId','role','isAdmin','isSuperAdmin'].every(key => String(prevUser?.[key] ?? '') === String(nextUser?.[key] ?? ''));
+  if (!stableUser) return false;
+  const arrayProps = ['inventoryItems','recipes','users','prepItems','tasks','events','maintenanceLogs','menuDependencies','shifts','timePunches','timeOffRequests','sales','invoices','wasteLogs'];
+  if (arrayProps.some(key => perfArraySignature(prev[key]) !== perfArraySignature(next[key]))) return false;
+  return shallowObjectSignature(prev.clientFeatures || {}) === shallowObjectSignature(next.clientFeatures || {})
+    && shallowObjectSignature(prev.clientData?.systemSettings || prev.clientData || {}) === shallowObjectSignature(next.clientData?.systemSettings || next.clientData || {});
+};
+
+const buildReminderQueueFields = (scheduledAt, status = 'scheduled') => ({
+  dispatchEligible: Boolean(scheduledAt && !['sent','done','completed','cancelled','canceled','dismissed','archived'].includes(String(status).toLowerCase())),
+  nextDispatchAt: scheduledAt || null,
+  dispatchAttemptAt: null,
+  dispatchLeaseUntil: null,
+  status: status || 'scheduled',
+  dispatchKey: scheduledAt ? `event:${scheduledAt}` : ''
+});
 
 const CheersLogo = ({ clientData }) => {
   const settings = clientData?.systemSettings || {};
@@ -443,29 +487,33 @@ const StatusTile = ({ label, value }) => <div className="bg-[#12161A] border bor
 
 const FriendlyEmpty = ({ title, text }) => <div className="border border-dashed border-[#2A353D] rounded-xl p-5 text-center"><div className="font-black text-white text-sm">{title}</div><p className="text-xs text-slate-400 font-bold mt-1">{text}</p></div>;
 
-const GlobalSearchModal = ({ isOpen, onClose, queryText, setQueryText, users, events, shifts, recipes, inventoryItems, maintenanceLogs, setActiveTab }) => {
+const GlobalSearchModal = React.memo(({ isOpen, onClose, queryText, setQueryText, users, events, shifts, recipes, inventoryItems, maintenanceLogs, setActiveTab }) => {
+  const deferredQueryText = useDeferredValue(queryText || '');
+  const q = useMemo(() => String(deferredQueryText || '').trim().toLowerCase(), [deferredQueryText]);
+  const results = useMemo(() => {
+    if (!isOpen || !q) return [];
+    return [
+      ...(users || []).filter(u => `${u.name} ${u.email} ${u.role}`.toLowerCase().includes(q)).slice(0, 5).map(x => ({ kind: 'User', title: x.name, detail: x.email || x.role, tab: 'team' })),
+      ...(recipes || []).filter(r => `${r.title} ${r.ingredients}`.toLowerCase().includes(q)).slice(0, 5).map(x => ({ kind: 'Recipe', title: x.title, detail: x.category, tab: 'recipes' })),
+      ...(inventoryItems || []).filter(i => `${i.name} ${i.category}`.toLowerCase().includes(q)).slice(0, 5).map(x => ({ kind: 'Inventory', title: x.name, detail: `Stock ${x.currentStock || 0} / Par ${x.parLevel || 0}`, tab: 'inventory' })),
+      ...(events || []).filter(e => `${e.title} ${e.author} ${e.notes}`.toLowerCase().includes(q)).slice(0, 6).map(x => ({ kind: x.type === 'special_event' ? 'Event' : 'Message', title: x.title, detail: x.date || x.author, tab: x.type === 'special_event' ? 'events' : 'messages' })),
+      ...(maintenanceLogs || []).filter(m => `${m.equipment} ${m.issue}`.toLowerCase().includes(q)).slice(0, 5).map(x => ({ kind: 'Maintenance', title: x.equipment, detail: x.issue, tab: 'maintenance' })),
+      ...(shifts || []).filter(s => `${s.role} ${s.date}`.toLowerCase().includes(q)).slice(0, 5).map(x => ({ kind: 'Shift', title: `${x.role} ${x.date}`, detail: `${formatShortTime(x.startTime)}-${formatShortTime(x.endTime)}`, tab: 'schedule' }))
+    ].slice(0, 18);
+  }, [isOpen, q, users, recipes, inventoryItems, events, maintenanceLogs, shifts]);
   if (!isOpen) return null;
-  const q = queryText.trim().toLowerCase();
-  const results = q ? [
-    ...users.filter(u => `${u.name} ${u.email} ${u.role}`.toLowerCase().includes(q)).slice(0, 5).map(x => ({ kind: 'User', title: x.name, detail: x.email || x.role, tab: 'team' })),
-    ...recipes.filter(r => `${r.title} ${r.ingredients}`.toLowerCase().includes(q)).slice(0, 5).map(x => ({ kind: 'Recipe', title: x.title, detail: x.category, tab: 'recipes' })),
-    ...inventoryItems.filter(i => `${i.name} ${i.category}`.toLowerCase().includes(q)).slice(0, 5).map(x => ({ kind: 'Inventory', title: x.name, detail: `Stock ${x.currentStock || 0} / Par ${x.parLevel || 0}`, tab: 'inventory' })),
-    ...events.filter(e => `${e.title} ${e.author} ${e.notes}`.toLowerCase().includes(q)).slice(0, 6).map(x => ({ kind: x.type === 'special_event' ? 'Event' : 'Message', title: x.title, detail: x.date || x.author, tab: x.type === 'special_event' ? 'events' : 'messages' })),
-    ...maintenanceLogs.filter(m => `${m.equipment} ${m.issue}`.toLowerCase().includes(q)).slice(0, 5).map(x => ({ kind: 'Maintenance', title: x.equipment, detail: x.issue, tab: 'maintenance' })),
-    ...shifts.filter(s => `${s.role} ${s.date}`.toLowerCase().includes(q)).slice(0, 5).map(x => ({ kind: 'Shift', title: `${x.role} ${x.date}`, detail: `${formatShortTime(x.startTime)}-${formatShortTime(x.endTime)}`, tab: 'schedule' }))
-  ].slice(0, 18) : [];
-  return <div className="fixed inset-0 z-[100000] bg-[#0B0E11]/90 backdrop-blur-md p-4 flex items-start justify-center pt-10">
+  return <div className="chaos-perf-overlay fixed inset-0 z-[100000] bg-[#0B0E11]/90 backdrop-blur-md p-4 flex items-start justify-center pt-10">
     <div className="w-full max-w-2xl cockpit-panel rounded-2xl overflow-hidden">
       <div className="p-3 border-b border-[#2A353D] flex items-center gap-2"><Search size={18} className="text-[#D4A381]"/><input autoFocus value={queryText} onChange={e=>setQueryText(e.target.value)} placeholder="Search people, recipes, messages, inventory, events..." className="flex-1 bg-transparent outline-none text-white font-bold"/><button onClick={onClose} className="p-2 rounded-lg hover:bg-[#12161A]"><X size={18}/></button></div>
       <div className="max-h-[70vh] overflow-y-auto custom-scrollbar p-2 space-y-1">{q && results.length === 0 && <SmartEmptyState title="Nothing found" desc="Try a recipe name, employee, inventory item, or event." />}{results.map((r, idx) => <button key={idx} onClick={() => { setActiveTab(r.tab); onClose(); }} className="w-full text-left p-3 rounded-xl border border-[#2A353D] bg-[#12161A] hover:border-[#D4A381]/40"><div className="text-[9px] uppercase tracking-widest font-black text-[#D4A381]">{r.kind}</div><div className="font-black text-white text-sm mt-1">{r.title}</div><div className="text-xs text-slate-500 font-bold mt-0.5 truncate">{r.detail}</div></button>)}</div>
     </div>
   </div>;
-};
+});
 
-const QuickActionDock = ({ appUser, setActiveTab, openSearch, openTV, addToast }) => {
+const QuickActionDock = React.memo(({ appUser, setActiveTab, openSearch, openTV, addToast }) => {
   const [open, setOpen] = useState(false);
   const profile = getHomeProfile(appUser);
-  const actions = [
+  const actions = useMemo(() => [
     { label: 'Manager Brief', tab: 'today' },
     { label: 'Search', fn: openSearch },
     { label: 'Kitchen TV', fn: openTV },
@@ -475,12 +523,17 @@ const QuickActionDock = ({ appUser, setActiveTab, openSearch, openTV, addToast }
     ['manager','system'].includes(profile) ? { label: 'Schedule', tab: 'schedule' } : null,
     { label: 'Message Board', tab: 'messages' },
     { label: 'My Shift', tab: 'published' }
-  ].filter(Boolean);
-  return <div className="fixed bottom-5 right-4 z-50 flex flex-col items-end gap-2">
-    {open && <div className="cockpit-panel rounded-2xl p-2 w-52 space-y-1 shadow-2xl">{actions.map(a => <button key={a.label} onClick={() => { setOpen(false); a.fn ? a.fn() : setActiveTab(a.tab); }} className="w-full text-left px-3 py-2 rounded-xl bg-[#0B0E11] hover:bg-[#12161A] border border-[#2A353D] text-xs font-black uppercase tracking-widest text-slate-300 hover:text-[#D4A381]">{a.label}</button>)}</div>}
-    <button onClick={() => setOpen(!open)} className="no-compact w-14 h-14 rounded-full bg-[#0B0E11] border border-[#D4A381]/50 text-[#D4A381] shadow-2xl flex items-center justify-center"><Menu size={24}/></button>
+  ].filter(Boolean), [profile, openSearch, openTV]);
+  const toggleOpen = useCallback(() => setOpen(value => !value), []);
+  const runAction = useCallback((action) => {
+    setOpen(false);
+    action.fn ? action.fn() : setActiveTab(action.tab);
+  }, [setActiveTab]);
+  return <div className="quick-action-dock fixed bottom-5 right-4 z-50 flex flex-col items-end gap-2">
+    {open && <div className="cockpit-panel rounded-2xl p-2 w-52 space-y-1 shadow-2xl">{actions.map(a => <button key={a.label} onClick={() => runAction(a)} className="w-full text-left px-3 py-2 rounded-xl bg-[#0B0E11] hover:bg-[#12161A] border border-[#2A353D] text-xs font-black uppercase tracking-widest text-slate-300 hover:text-[#D4A381]">{a.label}</button>)}</div>}
+    <button onClick={toggleOpen} className="no-compact w-14 h-14 rounded-full bg-[#0B0E11] border border-[#D4A381]/50 text-[#D4A381] shadow-2xl flex items-center justify-center"><Menu size={24}/></button>
   </div>;
-};
+});
 
 
 
@@ -1321,6 +1374,32 @@ const buildVoiceEventsSummaryAction = (text = '', events = []) => {
   return { intent:'event_summary', label, tab:'events', date:start, eventRows:rows, summary: rows.length ? `${label}: ${rows.map(r => r.menuItemName).join('; ')}.` : `${label}: no events found.`, safe:true, needsConfirmation:false };
 };
 
+
+const buildVoiceOpsInsightAction = ({ raw = '', appUser = {}, clientData = {}, inventoryItems = [], recipes = [], users = [], prepItems = [], tasks = [], events = [], maintenanceLogs = [], menuDependencies = [], shifts = [], timePunches = [], timeOffRequests = [], sales = [], invoices = [], wasteLogs = [] } = {}) => {
+  const q = normalizeVoiceText(raw);
+  if (!q) return null;
+  const wantsReadiness = /\b(ready|readiness|service|tonight|today|what will hurt us|what needs attention|manager brief|service check)\b/.test(q) && /\b(are we|how are we|check|what|ready|hurt)\b/.test(q);
+  const wantsLabor = /\b(labor|schedule risk|coverage|overtime|ot|closer|staffing|thin)\b/.test(q);
+  const wantsMaintenance = /\b(maintenance|equipment|broken|repair|ice machine|fryer|oven|pattern)\b/.test(q) && /\b(check|pattern|risk|problem|what|any)\b/.test(q);
+  const wantsPrep = /\b(prep predictor|prep prediction|what should we prep|prep for tomorrow|prep forecast)\b/.test(q);
+  const wantsPrices = /\b(price jump|price jumps|invoice price|prices up|cost increase|expensive)\b/.test(q);
+  const wantsWeather = /\b(weather|rain|snow|storm|patio|forecast)\b/.test(q);
+  const wantsFood = /\b(allergen|nutrition|barcode|food lookup|ingredient info)\b/.test(q);
+  if (!wantsReadiness && !wantsLabor && !wantsMaintenance && !wantsPrep && !wantsPrices && !wantsWeather && !wantsFood) return null;
+  if (wantsWeather) {
+    const location = extractRestaurantGeofenceLocation(clientData, appUser);
+    return { intent:'ai_insight_summary', label:'Weather-aware service check', tab:'today', summary: location?.lat ? `Using the restaurant geofence (${location.lat.toFixed(4)}, ${location.lng.toFixed(4)}) for weather-aware planning. Open Manager Brief to review service, prep, and labor impact.` : 'Weather checks need the restaurant geofence or address saved first. Set the time-clock work area/geofence in Settings, then try again.', rows: [], safe:true, needsConfirmation:false };
+  }
+  if (wantsFood) {
+    const phrase = raw.replace(/\b(allergen|allergens|nutrition|barcode|food lookup|ingredient info|look up|lookup|for|about)\b/ig, ' ').replace(/\s+/g, ' ').trim();
+    return { intent:'food_lookup_request', label:'Food/allergen lookup', tab:'inventory', foodQuery: phrase, summary: phrase ? `Look up public food/allergen information for “${phrase}.” Review results before using them on a menu.` : 'Open Inventory/Menu Intelligence and enter an ingredient or product to look up public food/allergen information.', safe:true, needsConfirmation:false };
+  }
+  const bundle = buildRestaurantAiInsightBundle({ currentDate:getToday(), appUser, clientData, inventoryItems, recipes, users, prepItems, tasks, events, maintenanceLogs, menuDependencies, shifts, timePunches, timeOffRequests, sales, invoices, wasteLogs });
+  const topic = wantsLabor ? 'labor' : wantsMaintenance ? 'maintenance' : wantsPrep ? 'prep' : wantsPrices ? 'prices' : 'readiness';
+  const result = summarizeInsightBundleForVoice(bundle, topic);
+  return { intent:'ai_insight_summary', label: topic === 'labor' ? 'Schedule Risk Assistant' : topic === 'maintenance' ? 'Maintenance Pattern Detector' : topic === 'prep' ? 'Prep Predictor' : topic === 'prices' ? 'Price Jump Detective' : 'Manager Readiness Check', tab: topic === 'labor' ? 'published' : topic === 'maintenance' ? 'maintenance' : topic === 'prices' ? 'inventory' : 'today', summary: result.summary, rows: result.rows, safe:true, needsConfirmation:false };
+};
+
 const buildVoiceAiOrderingAction = ({ raw = '', inventoryItems = [], events = [], prepItems = [], menuDependencies = [], appUser = {}, clientFeatures = {}, clientData = {} } = {}) => {
   const parsed = parseAiOrderingVoiceIntent(raw);
   if (!parsed) return null;
@@ -1431,7 +1510,7 @@ const parseVoiceAvailabilityPayload = (text = '') => {
   return { intent:'submit_availability_change', label:'Submit availability change', weeklyAvailability, maxHoursPerWeek:maxHours ? Number(maxHours) : null, maxShiftsPerWeek:maxShifts ? Number(maxShifts) : null, effectiveStartDate: effective.date && effective.date >= getToday() ? effective.date : getToday(), effectiveEndDate:'', notes:`Created by 86Voice from: ${text}`, summary:`Submit availability change${uniqueDays.length ? ` for ${uniqueDays.join(', ')}` : ''}${range && !unavailable ? ` ${formatShortTime(range.start)}-${formatShortTime(range.end)}` : ''}${unavailable ? ' as unavailable' : ''}${preferred ? ' as preferred' : ''}. Manager approval may be required.`, needsConfirmation:true, safe:true };
 };
 
-const VoiceCommandDock = ({ appUser, inventoryItems = [], recipes = [], users = [], prepItems = [], tasks = [], events = [], maintenanceLogs = [], menuDependencies = [], clientFeatures = {}, clientData = {}, setActiveTab, setCurrentDate, setScheduleSubTabTarget, setHelpSearchTarget, setRecipeTarget, addToast }) => {
+const VoiceCommandDockBase = ({ appUser, inventoryItems = [], recipes = [], users = [], prepItems = [], tasks = [], events = [], maintenanceLogs = [], menuDependencies = [], shifts = [], timePunches = [], timeOffRequests = [], sales = [], invoices = [], wasteLogs = [], clientFeatures = {}, clientData = {}, setActiveTab, setCurrentDate, setScheduleSubTabTarget, setHelpSearchTarget, setRecipeTarget, addToast }) => {
   const [open, setOpen] = useState(false);
   const [listening, setListening] = useState(false);
   const [heardText, setHeardText] = useState('');
@@ -1456,10 +1535,13 @@ const VoiceCommandDock = ({ appUser, inventoryItems = [], recipes = [], users = 
     const titleNormalized = normalizeVoiceReminderTitle(title);
     const since = Date.now() - 30000;
     try {
+      const creatorUid = auth?.currentUser?.uid || appUser.id || '';
       const snap = await getDocs(query(
         collection(db, 'personalReminders'),
         where('restaurantId', '==', appUser.restaurantId),
-        where('createdBy', '==', appUser.id || '')
+        where('createdBy', '==', creatorUid),
+        orderBy('createdAt', 'desc'),
+        limit(25)
       ));
       let found = null;
       snap.forEach(docSnap => {
@@ -1515,6 +1597,23 @@ const VoiceCommandDock = ({ appUser, inventoryItems = [], recipes = [], users = 
 
     const aiOrderingAction = buildVoiceAiOrderingAction({ raw, inventoryItems, events, prepItems, menuDependencies, appUser, clientFeatures, clientData });
     if (aiOrderingAction) return aiOrderingAction;
+
+    if (/\b(weather|rain|snow|storm|patio|forecast)\b/.test(q)) {
+      const location = extractRestaurantGeofenceLocation(clientData, appUser);
+      if (location?.lat && location?.lng) {
+        try {
+          const response = await secureFetch('/api/free-ai-services', { method:'POST', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify({ kind:'weather', lat: location.lat, lng: location.lng }) });
+          const payload = await response.json().catch(() => ({}));
+          const summary = payload?.payload?.summary || 'Weather forecast lookup finished. Review Manager Brief for prep/labor impact.';
+          return { intent:'ai_insight_summary', label:'Weather-aware service check', tab:'today', summary, rows:(payload?.payload?.periods || []).slice(0, 4).map(row => ({ menuItemName: row.name, severity: `${row.shortForecast || ''}${row.temperature ? ` • ${row.temperature}°${row.temperatureUnit || 'F'}` : ''}` })), safe:true, needsConfirmation:false };
+        } catch (e) {
+          return { intent:'ai_insight_summary', label:'Weather lookup unavailable', tab:'today', summary:'The restaurant geofence exists, but the public weather lookup did not finish. Manager Brief can still use schedule, prep, inventory, and maintenance data.', rows:[], safe:true, needsConfirmation:false };
+        }
+      }
+    }
+
+    const opsInsightAction = buildVoiceOpsInsightAction({ raw, appUser, clientData, inventoryItems, recipes, users, prepItems, tasks, events, maintenanceLogs, menuDependencies, shifts, timePunches, timeOffRequests, sales, invoices, wasteLogs });
+    if (opsInsightAction) return opsInsightAction;
 
     if (isVoiceWorkStatusQuestion(raw)) {
       return {
@@ -1910,7 +2009,7 @@ const VoiceCommandDock = ({ appUser, inventoryItems = [], recipes = [], users = 
     if (!action) return addToast('Voice Command', 'I did not hear a command. Try again or type it.');
     const actionWithVoiceMeta = sourceMeta.fromVoice ? { ...action, voiceSessionId: sourceMeta.voiceSessionId, createdFromFinalTranscript: true } : action;
     setPending(actionWithVoiceMeta);
-    const instantIntents = ['navigate', 'navigate_schedule', 'help_search', 'open_recipe', 'smart_prep', 'complete_list_item', 'create_personal_reminder', 'upsert_task', 'status_summary', 'out_of_stock_summary', 'menu_impact_answer', 'event_summary', 'ai_order_summary', 'undo_last_voice', 'blocked'];
+    const instantIntents = ['navigate', 'navigate_schedule', 'help_search', 'open_recipe', 'smart_prep', 'complete_list_item', 'create_personal_reminder', 'upsert_task', 'status_summary', 'out_of_stock_summary', 'menu_impact_answer', 'event_summary', 'ai_order_summary', 'ai_insight_summary', 'food_lookup_request', 'undo_last_voice', 'blocked'];
     if (!actionWithVoiceMeta.needsConfirmation && instantIntents.includes(actionWithVoiceMeta.intent)) {
       await executeAction(actionWithVoiceMeta, text, true, false);
     }
@@ -2013,8 +2112,8 @@ const VoiceCommandDock = ({ appUser, inventoryItems = [], recipes = [], users = 
         await runVoiceUndo(sourceText);
         return;
       }
-      if (['status_summary', 'out_of_stock_summary', 'menu_impact_answer', 'event_summary', 'ai_order_summary'].includes(actionToRun.intent)) {
-        setVoiceResult({ label: actionToRun.label || 'Voice Result', summary: actionToRun.summary || '', rows: actionToRun.impactRows || actionToRun.eventRows || [], itemName: actionToRun.itemName || '', matchConfidence: actionToRun.matchConfidence || 0 });
+      if (['status_summary', 'out_of_stock_summary', 'menu_impact_answer', 'event_summary', 'ai_order_summary', 'ai_insight_summary'].includes(actionToRun.intent)) {
+        setVoiceResult({ label: actionToRun.label || 'Voice Result', summary: actionToRun.summary || '', rows: actionToRun.impactRows || actionToRun.eventRows || actionToRun.rows || [], itemName: actionToRun.itemName || '', matchConfidence: actionToRun.matchConfidence || 0 });
         if (actionToRun.intent === 'event_summary') {
           if (actionToRun.date && setCurrentDate) setCurrentDate(actionToRun.date);
           setActiveTab('events');
@@ -2023,7 +2122,19 @@ const VoiceCommandDock = ({ appUser, inventoryItems = [], recipes = [], users = 
           try { sessionStorage.setItem('inventoryFocus', 'aiOrder'); } catch (e) {}
           setActiveTab('inventory');
         }
+        if (actionToRun.intent === 'ai_insight_summary') {
+          setActiveTab(actionToRun.tab || 'today');
+        }
         addToast(actionToRun.label || '86 Voice', actionToRun.summary || 'Done.');
+        return;
+      }
+      if (actionToRun.intent === 'food_lookup_request') {
+        if (actionToRun.foodQuery) {
+          try { sessionStorage.setItem('inventoryFoodLookup', actionToRun.foodQuery); } catch (e) {}
+        }
+        setVoiceResult({ label: actionToRun.label || 'Food lookup', summary: actionToRun.summary || '', rows: [] });
+        setActiveTab('inventory');
+        addToast(actionToRun.label || 'Food lookup', actionToRun.summary || 'Open Inventory to review.');
         return;
       }
       if (actionToRun.intent === 'blocked') {
@@ -2088,6 +2199,7 @@ const VoiceCommandDock = ({ appUser, inventoryItems = [], recipes = [], users = 
           type:'eventReminder',
           label:actionToRun.reminderLabel || 'Voice event reminder',
           scheduledAt:actionToRun.scheduledAt,
+          ...buildReminderQueueFields(actionToRun.scheduledAt, 'scheduled'),
           scheduledLocalDate:String(actionToRun.scheduledAt || '').slice(0, 10),
           scheduledLocalTime:String(actionToRun.scheduledAt || '').slice(11, 16),
           minutesBefore:actionToRun.minutesBefore ?? null,
@@ -2474,6 +2586,7 @@ const VoiceCommandDock = ({ appUser, inventoryItems = [], recipes = [], users = 
         const assignee = actionToRun.assignee || {};
         if (!assignee.id && !assignee.email) throw new Error('No teammate was selected.');
         const title = String(actionToRun.title || 'Shared reminder').trim();
+        const reminderCreatorUid = auth?.currentUser?.uid || appUser.id || '';
         if (!actionToRun.scheduledAt) {
           setActiveTab('reminders');
           addToast('Reminder Needs Time', 'Open My Reminders and choose the date and time.');
@@ -2503,9 +2616,12 @@ const VoiceCommandDock = ({ appUser, inventoryItems = [], recipes = [], users = 
           if (closeWhenDone) setOpen(false);
           return;
         }
-        const reminderRef = await addDoc(collection(db, 'personalReminders'), {
+        const reminderRef = doc(collection(db, 'personalReminders'));
+        const reminderOccurrenceKey = `${reminderRef.id}:${actionToRun.scheduledAt}`;
+        const reminderTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+        await setDoc(reminderRef, {
           restaurantId: appUser.restaurantId,
-          userId: appUser.id || '',
+          userId: assignee.id || reminderCreatorUid,
           userEmail: appUser.email || '',
           assignedToUserId: assignee.id || '',
           assignedToName: assignee.name || assignee.displayName || assignee.email || 'Teammate',
@@ -2519,7 +2635,12 @@ const VoiceCommandDock = ({ appUser, inventoryItems = [], recipes = [], users = 
           notes: '',
           scheduledAt: actionToRun.scheduledAt,
           dueAt: actionToRun.scheduledAt,
-          participantUserIds: Array.from(new Set([appUser.id, assignee.id].filter(Boolean))),
+          participantUserIds: Array.from(new Set([reminderCreatorUid, assignee.id].filter(Boolean))).slice(0, 2),
+          participantSchemaVersion: 1,
+          occurrenceScheduledAt: actionToRun.scheduledAt,
+          recurrenceAnchorAt: actionToRun.scheduledAt,
+          currentOccurrenceKey: reminderOccurrenceKey,
+          timezone: reminderTimezone,
           dispatchEligible: true,
           nextDispatchAt: actionToRun.scheduledAt,
           dispatchAttemptAt: null,
@@ -2528,7 +2649,7 @@ const VoiceCommandDock = ({ appUser, inventoryItems = [], recipes = [], users = 
           recurrenceSource: actionToRun.recurrence ? '86_voice_recurring_reminder' : '',
           status: 'scheduled',
           createdAt: new Date().toISOString(),
-          createdBy: appUser.id || '',
+          createdBy: reminderCreatorUid,
           source: '86_voice_shared_reminder',
           voiceCommand: sourceText,
           voiceSessionId,
@@ -2537,7 +2658,9 @@ const VoiceCommandDock = ({ appUser, inventoryItems = [], recipes = [], users = 
           voiceFinalTranscript: !!actionToRun.createdFromFinalTranscript,
           voiceMatchConfidence: Number(actionToRun.matchConfidence || 0),
           dispatchedAt: null,
-          dispatchKey: ''
+          dispatchKey: reminderOccurrenceKey,
+          lastSuccessfulOccurrenceKey: null,
+          terminalAt: null
         });
         processedVoiceCommandRef.current.add(clientCommandId);
         if (isVoiceReminder) voiceSessionRef.current.commits += 1;
@@ -2549,6 +2672,7 @@ const VoiceCommandDock = ({ appUser, inventoryItems = [], recipes = [], users = 
       if (actionToRun.intent === 'create_personal_reminder') {
         if (actionToRun.validationError) { addToast('Reminder Date Blocked', actionToRun.validationError); return; }
         const title = String(actionToRun.title || 'Personal reminder').trim();
+        const reminderCreatorUid = auth?.currentUser?.uid || appUser.id || '';
         if (!actionToRun.scheduledAt || !title || title.length < 3) {
           setPending({ ...actionToRun, needsConfirmation: true, summary: 'I need a clearer reminder title and time before saving this voice reminder.' });
           setActiveTab('reminders');
@@ -2571,7 +2695,7 @@ const VoiceCommandDock = ({ appUser, inventoryItems = [], recipes = [], users = 
           if (closeWhenDone) setOpen(false);
           return;
         }
-        const existingDuplicate = await findRecentReminderDuplicate({ title, scheduledAt: actionToRun.scheduledAt, visibility: 'private_reminder', assignedToUserId: appUser.id || '', clientCommandId });
+        const existingDuplicate = await findRecentReminderDuplicate({ title, scheduledAt: actionToRun.scheduledAt, visibility: 'private_reminder', assignedToUserId: reminderCreatorUid, clientCommandId });
         if (existingDuplicate) {
           await logAudit(appUser, 'VOICE_REMINDER_DUPLICATE_BLOCKED', title, `${sourceText} | matched ${existingDuplicate.id}`);
           addToast('Duplicate Blocked', 'That reminder was already saved once.');
@@ -2579,11 +2703,14 @@ const VoiceCommandDock = ({ appUser, inventoryItems = [], recipes = [], users = 
           if (closeWhenDone) setOpen(false);
           return;
         }
-        const reminderRef = await addDoc(collection(db, 'personalReminders'), {
+        const reminderRef = doc(collection(db, 'personalReminders'));
+        const reminderOccurrenceKey = `${reminderRef.id}:${actionToRun.scheduledAt}`;
+        const reminderTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+        await setDoc(reminderRef, {
           restaurantId: appUser.restaurantId,
-          userId: appUser.id || '',
+          userId: reminderCreatorUid,
           userEmail: appUser.email || '',
-          assignedToUserId: appUser.id || '',
+          assignedToUserId: reminderCreatorUid,
           assignedToName: appUser.name || appUser.email || 'Me',
           assignedToEmail: appUser.email || '',
           createdByName: appUser.name || appUser.email || '',
@@ -2595,7 +2722,12 @@ const VoiceCommandDock = ({ appUser, inventoryItems = [], recipes = [], users = 
           notes: '',
           scheduledAt: actionToRun.scheduledAt,
           dueAt: actionToRun.scheduledAt,
-          participantUserIds: Array.from(new Set([appUser.id].filter(Boolean))),
+          participantUserIds: [reminderCreatorUid],
+          participantSchemaVersion: 1,
+          occurrenceScheduledAt: actionToRun.scheduledAt,
+          recurrenceAnchorAt: actionToRun.scheduledAt,
+          currentOccurrenceKey: reminderOccurrenceKey,
+          timezone: reminderTimezone,
           dispatchEligible: true,
           nextDispatchAt: actionToRun.scheduledAt,
           dispatchAttemptAt: null,
@@ -2604,7 +2736,7 @@ const VoiceCommandDock = ({ appUser, inventoryItems = [], recipes = [], users = 
           recurrenceSource: actionToRun.recurrence ? '86_voice_recurring_reminder' : '',
           status: 'scheduled',
           createdAt: new Date().toISOString(),
-          createdBy: appUser.id || '',
+          createdBy: reminderCreatorUid,
           source: actionToRun.recurrence ? '86_voice_recurring_reminder' : '86_voice_personal_reminder',
           voiceCommand: sourceText,
           voiceSessionId,
@@ -2612,7 +2744,9 @@ const VoiceCommandDock = ({ appUser, inventoryItems = [], recipes = [], users = 
           createdFromFinalTranscript: !!actionToRun.createdFromFinalTranscript,
           voiceFinalTranscript: !!actionToRun.createdFromFinalTranscript,
           dispatchedAt: null,
-          dispatchKey: ''
+          dispatchKey: reminderOccurrenceKey,
+          lastSuccessfulOccurrenceKey: null,
+          terminalAt: null
         });
         processedVoiceCommandRef.current.add(clientCommandId);
         if (isVoiceReminder) voiceSessionRef.current.commits += 1;
@@ -2796,7 +2930,7 @@ const VoiceCommandDock = ({ appUser, inventoryItems = [], recipes = [], users = 
 
   const executePending = () => executeAction(pending, heardText, true, true);
 
-  return <div className="fixed bottom-5 left-4 z-50 flex flex-col items-start gap-2">
+  return <div className="voice-command-dock fixed bottom-5 left-4 z-50 flex flex-col items-start gap-2">
     {open && <div className="cockpit-panel rounded-2xl p-3 w-[min(92vw,360px)] shadow-2xl border border-[#2A353D] bg-[#1A2126]">
       <div className="flex items-center justify-between gap-2 border-b border-[#2A353D] pb-2 mb-3">
         <div><div className="text-[10px] font-black uppercase tracking-widest text-[#D4A381] flex items-center gap-1"><Sparkles size={13}/> 86 Voice</div><div className="text-[10px] text-slate-500 font-bold">Tap once, speak, and safe commands run. Destructive commands still ask first.</div></div>
@@ -2865,15 +2999,17 @@ const VoiceCommandDock = ({ appUser, inventoryItems = [], recipes = [], users = 
   </div>;
 };
 
-const KitchenTVMode = ({ isOpen, onClose, shifts, events, prepItems, maintenanceLogs, inventoryItems }) => {
-  if (!isOpen) return null;
+const VoiceCommandDock = React.memo(VoiceCommandDockBase, voiceDockPropsAreEqual);
+
+const KitchenTVMode = React.memo(({ isOpen, onClose, shifts, events, prepItems, maintenanceLogs, inventoryItems }) => {
   const today = getToday();
-  const todaysShifts = shifts.filter(s => s.date === today && s.isPublished).sort((a,b)=>(a.startTime||'').localeCompare(b.startTime||''));
-  const prep = prepItems.filter(p => (p.date === today || p.date === 'MASTER') && !p.isCompleted).slice(0, 10);
-  const alerts = events.filter(e => e.type === 'note' && e.isImportant).slice(0, 5);
-  const todayEvents = events.filter(e => e.type === 'special_event' && e.date === today);
-  const maint = maintenanceLogs.filter(m => !['Completed','Closed','Resolved'].includes(m.status)).slice(0, 5);
-  const low = inventoryItems.filter(i => Number(i.parLevel||0) > 0 && Number(i.currentStock||0) < Number(i.parLevel||0)).slice(0, 6);
+  const todaysShifts = useMemo(() => (shifts || []).filter(s => s.date === today && s.isPublished).sort((a,b)=>(a.startTime||'').localeCompare(b.startTime||'')), [shifts, today]);
+  const prep = useMemo(() => (prepItems || []).filter(p => (p.date === today || p.date === 'MASTER') && !p.isCompleted).slice(0, 10), [prepItems, today]);
+  const alerts = useMemo(() => (events || []).filter(e => e.type === 'note' && e.isImportant).slice(0, 5), [events]);
+  const todayEvents = useMemo(() => (events || []).filter(e => e.type === 'special_event' && e.date === today), [events, today]);
+  const maint = useMemo(() => (maintenanceLogs || []).filter(m => !['Completed','Closed','Resolved'].includes(m.status)).slice(0, 5), [maintenanceLogs]);
+  const low = useMemo(() => (inventoryItems || []).filter(i => Number(i.parLevel||0) > 0 && Number(i.currentStock||0) < Number(i.parLevel||0)).slice(0, 6), [inventoryItems]);
+  if (!isOpen) return null;
   return <div className="fixed inset-0 z-[100000] bg-[#0B0E11] text-white p-5 sm:p-8 overflow-y-auto">
     <div className="flex justify-between items-start mb-6"><div><div className="text-[#D4A381] text-sm font-black uppercase tracking-widest">86 Chaos Kitchen TV</div><h1 className="text-4xl sm:text-6xl font-black">{formatDisplayFullDate(today)}</h1></div><button onClick={onClose} className="bg-white text-slate-900 rounded-xl px-4 py-2 font-black uppercase text-xs">Exit</button></div>
     <div className="grid md:grid-cols-3 gap-4">
@@ -2882,7 +3018,7 @@ const KitchenTVMode = ({ isOpen, onClose, shifts, events, prepItems, maintenance
       <div className="cockpit-panel rounded-2xl p-5"><h2 className="text-2xl font-black mb-3">Today</h2>{todayEvents.map(e => <div key={e.id} className="text-xl font-bold border-b border-[#2A353D] py-2">{e.time || ''} {e.title}</div>)}{todaysShifts.slice(0,8).map(s => <div key={s.id} className="text-xl font-bold border-b border-[#2A353D] py-2">{formatShortTime(s.startTime)} {s.role}</div>)}{maint.map(m => <div key={m.id} className="text-xl font-bold border-b border-amber-500/30 py-2 text-amber-300">Fix: {m.equipment}</div>)}</div>
     </div>
   </div>;
-};
+});
 
 const ChangeLogModal = ({ isOpen, onClose }) => isOpen ? <Modal isOpen={isOpen} onClose={onClose} title={`What's New in ${CURRENT_VERSION}`}>
   <div className="space-y-3 text-sm text-slate-300 font-bold leading-snug">

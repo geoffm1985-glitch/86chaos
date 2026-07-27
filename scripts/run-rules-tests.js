@@ -71,6 +71,29 @@ async function runFirestoreTests(env) {
   await assertSucceeds(updateDoc(doc(managerA, 'maintenanceLogs', 'maint_a'), { status: 'in_progress', restaurantId: tenantA }));
   await assertFails(setDoc(doc(staffA, 'shiftSwaps', 'bad_swap'), { restaurantId: tenantA, requesterId: 'staffB', targetEmployeeId: 'staffA', acceptedBy: 'staffA', shiftId: 'shift_a', status: 'requested' }));
 
+  const pushDevice = {
+    token: 'test-token',
+    platform: 'web',
+    browser: 'Chrome',
+    host: 'localhost',
+    permission: 'granted',
+    active: true,
+    createdAt: '2026-07-26T00:00:00.000Z',
+    lastVerifiedAt: '2026-07-26T00:00:00.000Z',
+    updatedAt: '2026-07-26T00:00:00.000Z'
+  };
+  await assertSucceeds(updateDoc(doc(staffA, 'users', 'staffA'), {
+    'pushDevices.web_test': pushDevice,
+    pushTokenCanonical: true,
+    pushTokenDedupeVersion: '16.0.32',
+    fcmToken: 'test-token',
+    notificationPermission: 'granted'
+  }));
+  await assertFails(updateDoc(doc(staffA, 'users', 'staffA'), {
+    isSuperAdmin: true,
+    'pushDevices.web_test': pushDevice
+  }));
+
   for (const collectionName of ['inventoryItems', 'vendors', 'orders', 'wasteLogs', 'invoices', 'reports', 'exports']) {
     await assertSucceeds(deleteDoc(doc(managerA, collectionName, `${collectionName}_a`)));
     await seedDoc(env, collectionName, `${collectionName}_a2`, { restaurantId: tenantA, createdBy: 'managerA', name: collectionName });

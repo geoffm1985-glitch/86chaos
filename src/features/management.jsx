@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Bell, Check, Camera, ChevronLeft, ChevronRight, MessageSquare, Plus, Trash2, Users, Calendar, Clock, X, Loader2, Package, ClipboardList, Menu, Settings, LogOut, Shield, Send, Repeat, Edit, Moon, Sun, TrendingUp, BookOpen, Search, ChefHat, Scale, Coffee, Star, Bug, Wrench, Globe, ThumbsUp, HelpCircle, Sparkles } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
 import { getFirestore, collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, where, getDoc, setDoc, getDocs, Timestamp, deleteField, orderBy, limit as firestoreLimit } from 'firebase/firestore';
@@ -13,6 +13,7 @@ import { usePlanAccess } from '../hooks/usePlanAccess';
 import { LockedFeatureScreen } from '../components/PlanGate';
 import { PLAN_DEFINITIONS, CUSTOMER_PLAN_ORDER, FEATURE_KEYS } from '../config/plans';
 import { resolveSubscription, resolveFeatureAccess, getPlanDefinition, formatMoney, normalizePlanId, addDaysIso, addMonthsIso } from '../lib/featureAccess';
+import { searchHelpContentSemantically } from '../core/restaurantAiInsights';
 
 
 
@@ -4413,35 +4414,40 @@ const LEGACY_JULY_2026_SCHEDULE = [
   const [pushBroadcastCritical, setPushBroadcastCritical] = useState(true);
   const [isPushBroadcasting, setIsPushBroadcasting] = useState(false);
 
+  const runAdminGlobalOperation = async (payload = {}) => {
+    const normalizedPayload = {
+      ...payload,
+      idempotencyKey: payload.idempotencyKey || `${payload.action || 'operation'}_${payload.target || 'single'}_${Date.now()}_${Math.random().toString(36).slice(2,7)}`,
+      ...(payload.target === 'ALL' ? { confirmation: `CONFIRM ${payload.action} ALL` } : {})
+    };
+    const response = await secureFetch('/api/admin-global-operation', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(normalizedPayload)
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok && !result.ok) throw new Error(result.error || 'Global operation failed.');
+    return result;
+  };
+
   const handlePushBanner = async (e) => {
     e.preventDefault();
     if (!bannerText.trim()) return addToast('Error', 'Banner text required.');
     if (!window.confirm("Pin this banner to the top of the app?")) return;
-    
-    addToast('Deploying', 'Pushing banner to selected workspace(s)...');
+    addToast('Deploying', bannerTarget === 'ALL' ? 'Server is paging all workspaces for banner deployment...' : 'Pushing banner to selected workspace...');
     try {
-      if (bannerTarget === 'ALL') {
-        const promises = restaurants.map(r => updateDoc(doc(db, "restaurants", r.id), { systemBanner: bannerText.trim(), systemBannerUpdatedAt: new Date().toISOString() }));
-        await Promise.all(promises);
-      } else {
-        await updateDoc(doc(db, "restaurants", bannerTarget), { systemBanner: bannerText.trim(), systemBannerUpdatedAt: new Date().toISOString() });
-      }
-      addToast('Success', 'Banner deployed successfully.');
+      const result = await runAdminGlobalOperation({ action: 'setBanner', target: bannerTarget, text: bannerText.trim() });
+      addToast('Success', bannerTarget === 'ALL' ? `Banner deployed to ${result.affected || 0} workspace(s).` : 'Banner deployed successfully.');
       setBannerText('');
     } catch(err) { addToast('Error', err.message); }
   };
 
   const handleClearBanner = async () => {
     if (!window.confirm("Clear active banners for the selected target?")) return;
-    addToast('Clearing', 'Removing banners...');
+    addToast('Clearing', bannerTarget === 'ALL' ? 'Server is paging every workspace to clear banners...' : 'Removing banner...');
     try {
-      if (bannerTarget === 'ALL') {
-        const promises = restaurants.map(r => updateDoc(doc(db, "restaurants", r.id), { systemBanner: null, systemBannerUpdatedAt: null }));
-        await Promise.all(promises);
-      } else {
-        await updateDoc(doc(db, "restaurants", bannerTarget), { systemBanner: null, systemBannerUpdatedAt: null });
-      }
-      addToast('Success', 'Banner(s) cleared.');
+      const result = await runAdminGlobalOperation({ action: 'clearBanner', target: bannerTarget });
+      addToast('Success', bannerTarget === 'ALL' ? `Cleared banners for ${result.affected || 0} workspace(s).` : 'Banner cleared.');
     } catch(err) { addToast('Error', err.message); }
   };
   
@@ -4465,7 +4471,7 @@ const LEGACY_JULY_2026_SCHEDULE = [
     } catch(err) { addToast('Error', err.message); }
   };
 
-  // Fetch Global Intelligence with section-scoped, bounded listeners.
+  // Fetch Global Intelligence with section-scoped, bounded listeners; 16.0.28 admin pagination uses bounded server-side pages.
   useEffect(() => {
     const unsubs = [];
     const noteLoadError = (key, err) => {
@@ -5328,22 +5334,22 @@ Type DELETE to continue.`) || '').trim().toUpperCase();
       const shiftPromises = [];
       next7Days.forEach(date => {
         // Morning Crew
-        shiftPromises.push(addDoc(collection(db, "shifts"), { restaurantId: rId, employeeId: userIds[1].id, role: 'Manager', date, startTime: '08:00', endTime: '16:00', isPublished: true }));
-        shiftPromises.push(addDoc(collection(db, "shifts"), { restaurantId: rId, employeeId: userIds[14].id, role: 'Prep Cook', date, startTime: '07:00', endTime: '14:00', isPublished: true }));
-        shiftPromises.push(addDoc(collection(db, "shifts"), { restaurantId: rId, employeeId: userIds[10].id, role: 'Line Cook', date, startTime: '09:00', endTime: '16:00', isPublished: true }));
-        shiftPromises.push(addDoc(collection(db, "shifts"), { restaurantId: rId, employeeId: userIds[6].id, role: 'Server', date, startTime: '10:30', endTime: '16:00', isPublished: true }));
-        shiftPromises.push(addDoc(collection(db, "shifts"), { restaurantId: rId, employeeId: userIds[4].id, role: 'Bartender', date, startTime: '10:30', endTime: '17:00', isPublished: true }));
-        shiftPromises.push(addDoc(collection(db, "shifts"), { restaurantId: rId, employeeId: userIds[18].id, role: 'Dishwasher', date, startTime: '11:00', endTime: '16:00', isPublished: true }));
+        shiftPromises.push(addDoc(collection(db, "shifts"), { restaurantId: rId, employeeId: userIds[1].id, scheduleUserId: userIds[1].id, userId: userIds[1].id, rosterUserId: userIds[1].id, role: 'Manager', date, startTime: '08:00', endTime: '16:00', isPublished: true }));
+        shiftPromises.push(addDoc(collection(db, "shifts"), { restaurantId: rId, employeeId: userIds[14].id, scheduleUserId: userIds[14].id, userId: userIds[14].id, rosterUserId: userIds[14].id, role: 'Prep Cook', date, startTime: '07:00', endTime: '14:00', isPublished: true }));
+        shiftPromises.push(addDoc(collection(db, "shifts"), { restaurantId: rId, employeeId: userIds[10].id, scheduleUserId: userIds[10].id, userId: userIds[10].id, rosterUserId: userIds[10].id, role: 'Line Cook', date, startTime: '09:00', endTime: '16:00', isPublished: true }));
+        shiftPromises.push(addDoc(collection(db, "shifts"), { restaurantId: rId, employeeId: userIds[6].id, scheduleUserId: userIds[6].id, userId: userIds[6].id, rosterUserId: userIds[6].id, role: 'Server', date, startTime: '10:30', endTime: '16:00', isPublished: true }));
+        shiftPromises.push(addDoc(collection(db, "shifts"), { restaurantId: rId, employeeId: userIds[4].id, scheduleUserId: userIds[4].id, userId: userIds[4].id, rosterUserId: userIds[4].id, role: 'Bartender', date, startTime: '10:30', endTime: '17:00', isPublished: true }));
+        shiftPromises.push(addDoc(collection(db, "shifts"), { restaurantId: rId, employeeId: userIds[18].id, scheduleUserId: userIds[18].id, userId: userIds[18].id, rosterUserId: userIds[18].id, role: 'Dishwasher', date, startTime: '11:00', endTime: '16:00', isPublished: true }));
         
         // Night Crew
-        shiftPromises.push(addDoc(collection(db, "shifts"), { restaurantId: rId, employeeId: userIds[3].id, role: 'Sous Chef', date, startTime: '14:00', endTime: '22:00', isPublished: true }));
-        shiftPromises.push(addDoc(collection(db, "shifts"), { restaurantId: rId, employeeId: userIds[11].id, role: 'Line Cook', date, startTime: '15:00', endTime: '22:30', isPublished: true }));
-        shiftPromises.push(addDoc(collection(db, "shifts"), { restaurantId: rId, employeeId: userIds[12].id, role: 'Line Cook', date, startTime: '16:00', endTime: '23:00', isPublished: true }));
-        shiftPromises.push(addDoc(collection(db, "shifts"), { restaurantId: rId, employeeId: userIds[7].id, role: 'Server', date, startTime: '16:00', endTime: '23:00', isPublished: true }));
-        shiftPromises.push(addDoc(collection(db, "shifts"), { restaurantId: rId, employeeId: userIds[8].id, role: 'Server', date, startTime: '17:00', endTime: '23:00', isPublished: true }));
-        shiftPromises.push(addDoc(collection(db, "shifts"), { restaurantId: rId, employeeId: userIds[5].id, role: 'Bartender', date, startTime: '16:30', endTime: '23:30', isPublished: true }));
-        shiftPromises.push(addDoc(collection(db, "shifts"), { restaurantId: rId, employeeId: userIds[16].id, role: 'Host', date, startTime: '16:30', endTime: '21:00', isPublished: true }));
-        shiftPromises.push(addDoc(collection(db, "shifts"), { restaurantId: rId, employeeId: userIds[19].id, role: 'Dishwasher', date, startTime: '16:00', endTime: '23:30', isPublished: true }));
+        shiftPromises.push(addDoc(collection(db, "shifts"), { restaurantId: rId, employeeId: userIds[3].id, scheduleUserId: userIds[3].id, userId: userIds[3].id, rosterUserId: userIds[3].id, role: 'Sous Chef', date, startTime: '14:00', endTime: '22:00', isPublished: true }));
+        shiftPromises.push(addDoc(collection(db, "shifts"), { restaurantId: rId, employeeId: userIds[11].id, scheduleUserId: userIds[11].id, userId: userIds[11].id, rosterUserId: userIds[11].id, role: 'Line Cook', date, startTime: '15:00', endTime: '22:30', isPublished: true }));
+        shiftPromises.push(addDoc(collection(db, "shifts"), { restaurantId: rId, employeeId: userIds[12].id, scheduleUserId: userIds[12].id, userId: userIds[12].id, rosterUserId: userIds[12].id, role: 'Line Cook', date, startTime: '16:00', endTime: '23:00', isPublished: true }));
+        shiftPromises.push(addDoc(collection(db, "shifts"), { restaurantId: rId, employeeId: userIds[7].id, scheduleUserId: userIds[7].id, userId: userIds[7].id, rosterUserId: userIds[7].id, role: 'Server', date, startTime: '16:00', endTime: '23:00', isPublished: true }));
+        shiftPromises.push(addDoc(collection(db, "shifts"), { restaurantId: rId, employeeId: userIds[8].id, scheduleUserId: userIds[8].id, userId: userIds[8].id, rosterUserId: userIds[8].id, role: 'Server', date, startTime: '17:00', endTime: '23:00', isPublished: true }));
+        shiftPromises.push(addDoc(collection(db, "shifts"), { restaurantId: rId, employeeId: userIds[5].id, scheduleUserId: userIds[5].id, userId: userIds[5].id, rosterUserId: userIds[5].id, role: 'Bartender', date, startTime: '16:30', endTime: '23:30', isPublished: true }));
+        shiftPromises.push(addDoc(collection(db, "shifts"), { restaurantId: rId, employeeId: userIds[16].id, scheduleUserId: userIds[16].id, userId: userIds[16].id, rosterUserId: userIds[16].id, role: 'Host', date, startTime: '16:30', endTime: '21:00', isPublished: true }));
+        shiftPromises.push(addDoc(collection(db, "shifts"), { restaurantId: rId, employeeId: userIds[19].id, scheduleUserId: userIds[19].id, userId: userIds[19].id, rosterUserId: userIds[19].id, role: 'Dishwasher', date, startTime: '16:00', endTime: '23:30', isPublished: true }));
       });
       await Promise.all(shiftPromises);
       await addDoc(collection(db, "scheduleTemplates"), { restaurantId: rId, name: 'Normal Week', description: 'Demo reusable weekly staffing template.', rows: [
@@ -5359,15 +5365,15 @@ Type DELETE to continue.`) || '').trim().toUpperCase();
       ]);
 
       // Add a Shift Trade
-      const targetShift = await addDoc(collection(db, "shifts"), { restaurantId: rId, employeeId: userIds[9].id, role: 'Server', date: getOffsetDate(2), startTime: '16:00', endTime: '23:00', isPublished: true });
-      await addDoc(collection(db, "shiftSwaps"), { restaurantId: rId, shiftId: targetShift.id, originalEmployeeId: userIds[9].id, role: 'Server', date: getOffsetDate(2), startTime: '16:00', endTime: '23:00', status: 'available', listedAt: new Date().toISOString() });
+      const targetShift = await addDoc(collection(db, "shifts"), { restaurantId: rId, employeeId: userIds[9].id, scheduleUserId: userIds[9].id, userId: userIds[9].id, rosterUserId: userIds[9].id, role: 'Server', date: getOffsetDate(2), startTime: '16:00', endTime: '23:00', isPublished: true });
+      await addDoc(collection(db, "shiftSwaps"), { restaurantId: rId, shiftId: targetShift.id, requesterUserId: userIds[9].id, sourceEmployeeId: userIds[9].id, targetUserId: '', originalEmployeeId: userIds[9].id, role: 'Server', shiftDate: getOffsetDate(2), date: getOffsetDate(2), startTime: '16:00', endTime: '23:00', status: 'available', listedAt: new Date().toISOString() });
 
       // 4. Time Off & Punches
       await addDoc(collection(db, "timeOffRequests"), { restaurantId: rId, userId: userIds[6].id, userName: 'Eve Server', date: getOffsetDate(3), status: 'pending', submittedAt: new Date().toISOString(), isPartial: false });
       await addDoc(collection(db, "timeOffRequests"), { restaurantId: rId, userId: userIds[10].id, userName: 'Larry Line', date: getOffsetDate(5), status: 'approved', submittedAt: new Date().toISOString(), isPartial: false });
-      await addDoc(collection(db, "timePunches"), { restaurantId: rId, employeeId: userIds[1].id, employeeName: 'Sarah Supervisor', date: todayStr, clockInTime: new Date(today.setHours(7, 55, 0)).toISOString(), status: 'clocked_in' });
-      await addDoc(collection(db, "timePunches"), { restaurantId: rId, employeeId: userIds[14].id, employeeName: 'Paul Prep', date: todayStr, clockInTime: new Date(today.setHours(6, 50, 0)).toISOString(), status: 'clocked_in' });
-      await addDoc(collection(db, "timePunches"), { restaurantId: rId, employeeId: userIds[10].id, employeeName: 'Larry Line', date: todayStr, clockInTime: new Date(today.setHours(8, 58, 0)).toISOString(), status: 'clocked_in' });
+      await addDoc(collection(db, "timePunches"), { restaurantId: rId, employeeId: userIds[1].id, scheduleUserId: userIds[1].id, userId: userIds[1].id, rosterUserId: userIds[1].id, employeeName: 'Sarah Supervisor', date: todayStr, clockInTime: new Date(today.setHours(7, 55, 0)).toISOString(), status: 'clocked_in' });
+      await addDoc(collection(db, "timePunches"), { restaurantId: rId, employeeId: userIds[14].id, scheduleUserId: userIds[14].id, userId: userIds[14].id, rosterUserId: userIds[14].id, employeeName: 'Paul Prep', date: todayStr, clockInTime: new Date(today.setHours(6, 50, 0)).toISOString(), status: 'clocked_in' });
+      await addDoc(collection(db, "timePunches"), { restaurantId: rId, employeeId: userIds[10].id, scheduleUserId: userIds[10].id, userId: userIds[10].id, rosterUserId: userIds[10].id, employeeName: 'Larry Line', date: todayStr, clockInTime: new Date(today.setHours(8, 58, 0)).toISOString(), status: 'clocked_in' });
 
       // 5. Messages / Events
       await addDoc(collection(db, "events"), { restaurantId: rId, type: 'note', title: 'Welcome to the Demo Workspace! Feel free to click around and explore the features.', author: 'Alice Admin', date: new Date().toISOString(), isImportant: true, replies: [] });
@@ -5525,21 +5531,13 @@ Type DELETE to continue.`) || '').trim().toUpperCase();
     if(!broadcastMsg.trim()) return; 
     if(!window.confirm("Blast this to EVERY restaurant?")) return;
     
-    addToast('Broadcasting', 'Pushing message to all shards...');
-    let success = 0; let failed = 0;
-    
-    for (const r of restaurants) {
-      try {
-        await addDoc(collection(db, "events"), { 
-          date: new Date().toISOString(), title: broadcastMsg.trim(), type: 'note', author: 'System Alert', isImportant: true, restaurantId: r.id, replies: [] 
-        });
-        success++;
-      } catch (err) { failed++; }
-    }
-    
-    if (failed > 0) addToast('Partial Alert', `Sent to ${success}, but Firebase blocked ${failed}. Check console.`);
-    else addToast('Megaphone', `Message blasted successfully to ${success} locations.`);
-    setBroadcastMsg('');
+    addToast('Broadcasting', 'Server is paging every workspace and creating one deduplicated broadcast event per workspace...');
+    try {
+      const result = await runAdminGlobalOperation({ action: 'megaphone', target: 'ALL', title: '86 Chaos Alert', message: broadcastMsg.trim() });
+      if (result.errors?.length) addToast('Partial Alert', `Sent to ${result.affected || 0}, with ${result.errors.length} failed batch(es).`);
+      else addToast('Megaphone', `Message blasted successfully to ${result.affected || 0} locations.`);
+      setBroadcastMsg('');
+    } catch (err) { addToast('Broadcast Error', err.message || 'Global broadcast failed.'); }
   };
 
 
@@ -5569,37 +5567,43 @@ Type DELETE to continue.`) || '').trim().toUpperCase();
   };   
 
   const handleOrphanSweep = async () => {
-    if(!window.confirm("Scan platform for dead shifts (shifts attached to deleted users)?")) return;
-    addToast('Scanning', 'Running orphan sweep...');
-    const sSnap = await getDocs(collection(db, 'shifts')); let deadCount = 0;
-    sSnap.forEach(d => { const s = d.data(); if (!allUsers.find(u => u.id === s.employeeId)) { deleteDoc(doc(db, "shifts", d.id)); deadCount++; } });
-    addToast('Sweep Complete', `Purged ${deadCount} orphaned database documents.`);
+    if(!window.confirm("Run a protected dry-run for orphaned shifts? Nothing will be deleted until you review and confirm.")) return;
+    try {
+      addToast('Scanning', 'Protected server dry-run is paging shifts and validating user memberships...');
+      const dryRes = await secureFetch('/api/admin-orphan-shift-sweeper', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mode: 'dry-run' }) });
+      const dry = await dryRes.json().catch(() => ({}));
+      if (!dryRes.ok || !dry.ok) throw new Error(dry.error || 'Orphan sweep dry-run failed.');
+      if (!dry.candidateCount) return addToast('Sweep Complete', `Scanned ${dry.scanned || 0} shift(s). No verified orphan candidates found.`);
+      const phrase = 'DELETE VERIFIED ORPHAN SHIFTS';
+      if (prompt(`Dry-run found ${dry.candidateCount} verified orphan candidate(s) and ${dry.ambiguous?.length || 0} ambiguous record(s). Type "${phrase}" to delete only verified candidates.`) !== phrase) return addToast('Cancelled', 'No orphan shifts were deleted.');
+      const execRes = await secureFetch('/api/admin-orphan-shift-sweeper', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mode: 'execute', confirmation: phrase, runId: dry.runId }) });
+      const result = await execRes.json().catch(() => ({}));
+      if (!execRes.ok && !result.ok) throw new Error(result.error || 'Orphan sweep execute failed.');
+      addToast('Sweep Complete', `Deleted ${result.deleted || 0} verified orphan shift(s). ${result.preserved?.length || 0} preserved after revalidation.`);
+    } catch (err) { addToast('Sweep Error', err.message || 'Protected orphan sweep failed.'); }
   };
 
   const handleForceRefresh = async () => {
     if (!window.confirm("🚨 CRITICAL: This will send a hard-refresh command to EVERY active browser connected to 86 Chaos globally. Proceed?")) return;
-    addToast('Executing', 'Sending refresh signal...');
-    const stamp = new Date().toISOString(); let count = 0;
-    for (const r of restaurants) {
-       try { await updateDoc(doc(db, "restaurants", r.id), { forceRefresh: stamp }); count++; } catch(e){}
-    }
-    addToast('Refresh Broadcast', `Hard reload signal sent to ${count} databases.`);
+    addToast('Executing', 'Server is paging all workspaces for global refresh...');
+    try {
+      const result = await runAdminGlobalOperation({ action: 'forceRefresh', target: 'ALL', reason: 'system-admin-global-refresh' });
+      addToast('Refresh Broadcast', `Hard reload signal written to ${result.affected || 0} workspace(s).`);
+    } catch (err) { addToast('Refresh Error', err.message || 'Global refresh failed.'); }
   };
 
   const handleGlobalLockdown = async (lock) => {
     if (lock) {
-        if (prompt('CRITICAL: This will instantly put EVERY workspace into maintenance mode, including your restaurant group. Your Super Admin account will remain able to enter and lift it. Type "LOCKDOWN" to proceed.') !== 'LOCKDOWN') return;
-        addToast('Executing', 'Initiating global lockdown for all workspaces except your Super Admin access...');
+        if (prompt('CRITICAL: This will put EVERY workspace into platform maintenance mode without changing billing status. Type "LOCKDOWN" to proceed.') !== 'LOCKDOWN') return;
+        addToast('Executing', 'Server is applying platform maintenance lock to all workspaces...');
     } else {
-        if (!window.confirm('Restore access to all suspended workspaces?')) return;
-        addToast('Executing', 'Lifting lockdown...');
+        if (!window.confirm('Restore access by removing platform maintenance lock from all workspaces?')) return;
+        addToast('Executing', 'Server is lifting platform maintenance lock...');
     }
-    
-    let count = 0;
-    for (const r of restaurants) {
-      try { await updateDoc(doc(db, "restaurants", r.id), { billingStatus: lock ? 'Past Due' : 'Paid' }); count++; } catch(e){}
-    }
-    addToast(lock ? 'Lockdown Complete' : 'Unlocked', `${count} workspaces have been ${lock ? 'placed into maintenance mode' : 'restored'}.`);
+    try {
+      const result = await runAdminGlobalOperation({ action: lock ? 'lockdown' : 'unlock', target: 'ALL', confirmation: lock ? 'LOCKDOWN' : '' });
+      addToast(lock ? 'Lockdown Complete' : 'Unlocked', `${result.affected || 0} workspace(s) ${lock ? 'placed into platform maintenance mode' : 'restored'}. Billing status was not changed.`);
+    } catch (err) { addToast(lock ? 'Lockdown Error' : 'Unlock Error', err.message || 'Global maintenance operation failed.'); }
   };
 
 const handleGrantAccess = async (e) => {
@@ -7440,10 +7444,10 @@ Type RESTORE to continue.`);
   };
 
   const handleClearAllBanners = async () => {
-    if (!window.confirm('Clear system banners from every workspace?')) return;
+    if (!window.confirm('Clear system banners from every workspace through the protected server endpoint?')) return;
     try {
-      await Promise.all(restaurants.map(r => updateDoc(doc(db, 'restaurants', r.id), { systemBanner: null, systemBannerUpdatedAt: null })));
-      addToast('Banners Cleared', 'All workspace banners were removed.');
+      const result = await runAdminGlobalOperation({ action: 'clearBanner', target: 'ALL' });
+      addToast('Banners Cleared', `Banners removed from ${result.affected || 0} workspace(s).`);
     } catch (err) { addToast('Error', err.message); }
   };
 
@@ -9590,7 +9594,7 @@ another@email.com"></textarea>
               </div>
               <div className="flex gap-2">
                 <button onClick={handleCopyDiagnostics} className="text-[9px] font-black uppercase tracking-widest text-[#D4A381] hover:text-white border border-[#2A353D] px-2 py-1 rounded transition-colors">Copy Diagnostics</button>
-                <button onClick={() => { if(window.confirm("Clear all crash logs?")) { crashLogs.forEach(log => deleteDoc(doc(db, "crashReports", log.id))); } }} className="text-[9px] font-black uppercase tracking-widest text-slate-500 hover:text-red-500 border border-[#2A353D] px-2 py-1 rounded transition-colors">Clear Logs</button>
+                <button onClick={() => { if(window.confirm("Clear loaded crash-report page?")) { crashLogs.forEach(log => deleteDoc(doc(db, "crashReports", log.id))); } }} className="text-[9px] font-black uppercase tracking-widest text-slate-500 hover:text-red-500 border border-[#2A353D] px-2 py-1 rounded transition-colors">Clear Logs</button>
               </div>
             </div>
 
@@ -10087,7 +10091,7 @@ another@email.com"></textarea>
                       </div>
                       <button type="button" onClick={async () => {
                         if(!window.confirm(`Clear banner for ${r.name}?`)) return;
-                        await updateDoc(doc(db, "restaurants", r.id), { systemBanner: null, systemBannerUpdatedAt: null });
+                        await runAdminGlobalOperation({ action: 'clearBanner', target: r.id });
                         addToast('Cleared', `Banner removed from ${r.name}.`);
                       }} className="text-slate-400 hover:text-red-500 p-2 flex-shrink-0 transition-colors bg-[#1A2126] rounded-lg border border-[#2A353D]"><Trash2 size={14}/></button>
                     </div>
@@ -10115,7 +10119,7 @@ another@email.com"></textarea>
             </div>
             <div className={`${T.card} p-5 border-blue-900/30`}>
               <h3 className="font-black text-white mb-1">Orphan Data Sweeper</h3>
-              <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-4 leading-snug">Scans all global databases for shifts assigned to employees that have been fully deleted. Reclaims server space.</p>
+              <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-4 leading-snug">Runs a protected server dry-run first, then deletes only revalidated orphan shift candidates after exact confirmation. Ambiguous records are preserved.</p>
               <button onClick={handleOrphanSweep} className="w-full bg-blue-900/20 text-blue-400 border border-blue-900/50 font-black text-xs uppercase tracking-widest py-3 rounded-xl hover:bg-blue-900/40 transition-colors">Run DB Sweep</button>
             </div>
 
@@ -10163,7 +10167,7 @@ another@email.com"></textarea>
 
             <div className={`${T.card} p-5 border-red-900/30 sm:col-span-2`}>
               <h3 className="font-black text-white mb-1">Global Lockdown</h3>
-              <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-4 leading-snug">Instantly puts every workspace behind the maintenance screen, including your restaurant group. Your Super Admin account bypasses the lock so you can still enter and lift it.</p>
+              <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-4 leading-snug">Uses a dedicated platform maintenance lock across every workspace without touching billing status. Your Super Admin account bypasses the lock so you can lift it.</p>
               <div className="grid grid-cols-2 gap-3">
                 <button onClick={() => handleGlobalLockdown(true)} className="w-full bg-red-900/20 text-red-500 border border-red-900/50 font-black text-xs uppercase tracking-widest py-3 rounded-xl hover:bg-red-900/40 transition-colors flex items-center justify-center gap-2"><Shield size={16}/> Lock All</button>
                 <button onClick={() => handleGlobalLockdown(false)} className="w-full bg-[#12161A] text-slate-300 border border-[#2A353D] font-black text-xs uppercase tracking-widest py-3 rounded-xl hover:text-white transition-colors flex items-center justify-center gap-2">Unlock All</button>
@@ -10826,6 +10830,7 @@ const TabLabor = ({ currentDate, users = [], shifts = [], sales = [], timePunche
 };
 
 const HELP_ARTICLES = [
+  { id:'ai-ops-assistants', title:'AI restaurant assistants in 86 Chaos', group:'Voice Commands', keywords:'ai voice readiness manager brief explain prep predictor price jump schedule risk order draft maintenance pattern semantic help invoice cleaner menu intelligence', body:['86Voice can answer higher-level operational questions using data already loaded in the app, such as prep, inventory, schedules, maintenance, events, reminders, and Menu Intelligence. It still follows the same permissions as tapping through the app.', 'Manager Brief explains Need Attention cards with what triggered the card, why it matters, and the safest next action. These explanations are generated from the visible app record, not from fake sample data.', 'Smart invoice cleanup normalizes scanned invoice names, units, pack sizes, quantities, and prices before approval. A manager must still review uncertain rows before stock or vendor history is updated.', 'Price-jump detection compares recent invoice line prices and flags meaningful changes for manager review. It does not change vendor prices or submit orders automatically.', 'Prep, order, schedule, menu, and maintenance assistants are review-first. They can suggest prep checks, order drafts, coverage risks, missing menu dependencies, allergen flags, and recurring maintenance patterns, but managers remain in control of saves, orders, payroll, and alerts.', 'Help Center search uses semantic matching so plain-language questions like why are reminders not sending or how do I fix schedule hours can find the closest real article or training-manual chapter.'] },
   { id:'voice-intelligent-commands', title:'Using 86Voice intelligent commands', group:'Voice Commands', keywords:'86 voice intelligent commands prep task mark done 86 alert menu impact reminder shared reminder open search undo confirmation', body:['86Voice accepts speech or typed commands from the floating microphone panel. It shows what it heard, the intent it detected, the item or task it matched, and whether confirmation is needed.', 'Prep examples: say Prep 2 pans onions, Add two containers ranch, or Chop 2 pans of onion. 86Voice searches the current prep list first and updates a confident matching row instead of creating a duplicate.', 'Mark-done examples: say Mark tomatoes done, Finish onions, Check off burgers, or Done with ranch bottles. If there are multiple possible matches, choose the correct row before anything is marked done.', 'Task examples: say Add clean wall behind fryers to tasks, Put check nacho cheese machine on daily tasks, Add deep clean ovens monthly, or Mark fryer wall done. Task creation and shared task updates still require the same permissions as the Prep & Tasks screen.', '86 alert examples: say 86 chicken breast, We are out of ribeye, No more brioche buns, or Kill ribeye for tonight. Voice-created 86 alerts do not edit inventory counts. When approved menu ingredient links exist, affected menu items are shown; otherwise the app explains that Menu Intelligence setup is needed.', 'Menu impact examples: ask What does chicken breast affect? or What menu items use ribeye? The answer is based only on approved Menu Intelligence dependency links.', 'Reminder examples: say Remind me tomorrow at 10 to call Performance or Remind Sarah to check hood filters Wednesday. Personal reminders stay private. Shared reminders require permission and use the real workspace staff list.', 'Navigation and search examples: say Open prep, Open daily close, Open inventory, Show beer cheese recipe, Search Help for invoice scanning, or What needs done? Voice follows the same plan and role gates as normal tapping.', 'Use Undo that or Cancel last command to roll back a recent safe voice-created or voice-updated prep, task, 86 basic alert, or reminder when rollback is available. High-risk approvals, payroll, financial signoffs, plan changes, admin/security settings, and integrations are not undone by voice.', 'When 86Voice asks for confirmation, read the preview carefully. Confirmation is required for ambiguous matches, shared reminders, 86 alerts, low-confidence matches, and anything that could affect other people.'] },
   { id:'complete-feature-map', title:'Complete 86 Chaos feature map', group:'Getting Started', keywords:'complete feature map all tabs dashboard manager brief kitchen command center prep inventory invoice scan menu intelligence alerts recipes reminders message board schedule time clock labor financials daily close tips cogs reports settings billing help training manual admin', body:['86 Chaos is organized around the work a restaurant does every day: prep, inventory, schedules, 86 alerts, recipes, reminders, labor, daily close, cost visibility, menu impact alerts, team communication, and owner-ready snapshots.','Use the menu search if you do not know where something lives. Important areas include Today Home or Manager Brief, Kitchen Command Center, Time Clock & Schedule, Prep & Tasks, Inventory & Orders, Recipe Book, Message Board, My Reminders, Staff Roster, Settings, Financial Center, HR & Training, Help Center, and System Audit where allowed.','Some screens are plan-gated and permission-gated. A feature appears only when the workspace plan includes it and the signed-in user role/permissions allow it.','If a panel is empty, check setup first: roster roles, staff records, schedule dates, inventory items, approved invoices, approved menu dependencies, Daily Close records, and selected workspace.'] },
   { id:'ip-whitelisting-guide', title:'IP whitelisting and access safety', group:'Security', keywords:'ip whitelist whitelisting whistling strict ip authorized ip address security center settings workspace wifi static ip dynamic ip lockout geofence mfa app check', body:['Strict IP Whitelisting limits app access to approved public IP addresses, usually the restaurant secure Wi-Fi. It is different from geofencing, which is about GPS review for time-clock behavior.','Only use IP whitelisting when the restaurant has a reliable public IP and a tested recovery path. Mobile data, home Wi-Fi, VPNs, and changing internet-provider addresses may be blocked if they are not listed.','Before turning it on, test with an owner/admin from the restaurant network and confirm a System Administrator or owner can reverse the setting if someone is locked out.','IP whitelisting is only one layer. Keep passwords, MFA for elevated users, role permissions, plan gates, App Check, Firebase rules, and audit logging in place.'] },
@@ -10958,14 +10963,22 @@ const TabHelpCenter = ({ appUser, activeTab, voiceHelpSearchTarget = null, addTo
   const internalHelpTermRe = /System Administrator|Back Office Suite|QuickBooks Integration Hub|Python Automation|Backup Center|Security Center|Forensics|Pay Rates/i;
   const helpArticleText = (article) => `${article?.id || ''} ${article?.title || ''} ${article?.group || ''} ${article?.keywords || ''} ${(article?.body || []).join(' ')}`;
   const trainingChapterText = (chapter) => `${chapter?.id || ''} ${chapter?.title || ''} ${chapter?.group || ''} ${chapter?.tab || ''} ${chapter?.audience || ''} ${chapter?.summary || ''} ${chapter?.keywords || ''} ${(chapter?.sections || []).map(section => `${section?.title || ''} ${(section?.steps || []).join(' ')}`).join(' ')}`;
-  const visibleHelpArticles = HELP_ARTICLES.filter(article => isPlatformHelpUser || !internalHelpTermRe.test(helpArticleText(article)));
-  const visibleTrainingChapters = SYSTEM_TRAINING_MANUAL_CHAPTERS.filter(chapter => isPlatformHelpUser || !internalHelpTermRe.test(trainingChapterText(chapter)));
-  const groups = ['All', ...Array.from(new Set(visibleHelpArticles.map(a => a.group)))];
+  const visibleHelpArticles = useMemo(() => HELP_ARTICLES.filter(article => isPlatformHelpUser || !internalHelpTermRe.test(helpArticleText(article))), [isPlatformHelpUser]);
+  const visibleTrainingChapters = useMemo(() => SYSTEM_TRAINING_MANUAL_CHAPTERS.filter(chapter => isPlatformHelpUser || !internalHelpTermRe.test(trainingChapterText(chapter))), [isPlatformHelpUser]);
+  const groups = useMemo(() => ['All', ...Array.from(new Set(visibleHelpArticles.map(a => a.group)))], [visibleHelpArticles]);
   const activeGroup = groups.includes(group) ? group : 'All';
   const q = query.trim().toLowerCase();
-  const articles = visibleHelpArticles.filter(a => activeGroup === 'All' || a.group === activeGroup).filter(a => !q || `${a.title} ${a.group} ${a.keywords} ${a.body.join(' ')}`.toLowerCase().includes(q));
-  const selected = visibleHelpArticles.find(a => a.id === selectedId) || articles[0] || visibleHelpArticles[0] || HELP_ARTICLES[0];
-  const related = visibleHelpArticles.filter(a => a.keywords.includes(activeTab || '') || a.group.toLowerCase().includes(activeTab || '')).slice(0,3);
+  const scopedHelpArticles = useMemo(() => visibleHelpArticles.filter(a => activeGroup === 'All' || a.group === activeGroup), [visibleHelpArticles, activeGroup]);
+  const semanticMatches = useMemo(() => q ? searchHelpContentSemantically(query, scopedHelpArticles, visibleTrainingChapters) : [], [q, query, scopedHelpArticles, visibleTrainingChapters]);
+  const semanticArticleIds = useMemo(() => new Set(semanticMatches.filter(row => row.type === 'article').map(row => row.id)), [semanticMatches]);
+  const articles = useMemo(() => q
+    ? scopedHelpArticles
+        .map(a => ({ ...a, semanticScore: semanticMatches.find(row => row.id === a.id && row.type === 'article')?.score || 0 }))
+        .filter(a => semanticArticleIds.has(a.id) || `${a.title} ${a.group} ${a.keywords} ${a.body.join(' ')}`.toLowerCase().includes(q))
+        .sort((a, b) => (b.semanticScore || 0) - (a.semanticScore || 0) || a.title.localeCompare(b.title))
+    : scopedHelpArticles, [q, scopedHelpArticles, semanticMatches, semanticArticleIds]);
+  const selected = useMemo(() => visibleHelpArticles.find(a => a.id === selectedId) || articles[0] || visibleHelpArticles[0] || HELP_ARTICLES[0], [visibleHelpArticles, selectedId, articles]);
+  const related = useMemo(() => visibleHelpArticles.filter(a => a.keywords.includes(activeTab || '') || a.group.toLowerCase().includes(activeTab || '')).slice(0,3), [visibleHelpArticles, activeTab]);
   return (
     <div className="desktop-management-page max-w-7xl mx-auto space-y-4 pb-24">
       <div className={`${T.card} p-5 cockpit-grid flex flex-col lg:flex-row lg:items-end justify-between gap-3`}><div><div className="text-[10px] uppercase tracking-widest font-black text-[#D4A381]">{isPlatformHelpUser || appUser?.isAdmin || appUser?.permissions?.team ? 'Built-in owner manual' : 'Built-in team manual'}</div><h2 className="text-2xl font-black text-white">Help Center</h2><p className="text-sm text-slate-400 font-bold mt-1 max-w-3xl">Search plain words before contacting support. This manual is updated whenever new features are added to the app.</p></div><div className="flex flex-wrap gap-2"><button type="button" onClick={() => window.dispatchEvent(new CustomEvent('chaosRestartTour', { detail: { mode: 'employee' } }))} className={T.btnAlt}>Restart Employee Tour</button>{(appUser?.isAdmin || appUser?.permissions?.team) && <button type="button" onClick={() => window.dispatchEvent(new CustomEvent('chaosRestartTour', { detail: { mode: 'manager' } }))} className={T.btn}>Restart Manager Tour</button>}</div></div>
@@ -10976,6 +10989,7 @@ const TabHelpCenter = ({ appUser, activeTab, voiceHelpSearchTarget = null, addTo
         </div>
         <div className="lg:col-span-2 space-y-4">
           <div className={`${T.card} p-5`}><div className="text-[10px] uppercase tracking-widest font-black text-[#D4A381] mb-1">{selected.group}</div><h3 className="text-2xl font-black text-white mb-4">{selected.title}</h3><div className="space-y-3">{selected.body.map((line, i) => <div key={i} className="flex gap-3 bg-[#12161A] border border-[#2A353D] rounded-xl p-3"><div className="w-6 h-6 rounded-full bg-[#D4A381] text-slate-900 flex items-center justify-center text-xs font-black flex-shrink-0">{i+1}</div><p className="text-sm font-bold text-slate-200 leading-relaxed">{line}</p></div>)}</div><div className="mt-4 flex flex-wrap gap-2"><button onClick={() => { navigator.clipboard?.writeText(`${selected.title}\n\n${selected.body.map((b,i)=>`${i+1}. ${b}`).join('\n')}`); addToast?.('Copied', 'Help article copied.'); }} className={T.btnAlt}>Copy Instructions</button><button onClick={() => window.print()} className={T.btnAlt}>Print</button></div></div>
+          {q && semanticMatches.length > 0 && <div className={`${T.card} p-4 border-[#D4A381]/20`}><h4 className="font-black text-white mb-2 flex items-center gap-2"><Sparkles size={16} className="text-[#D4A381]"/> Smart Search Matches</h4><p className="text-xs text-slate-400 font-bold mb-3">Plain-language matches from real Help Center articles and training-manual chapters.</p><div className="grid sm:grid-cols-2 gap-2">{semanticMatches.slice(0, 6).map(row => <button key={`${row.type}-${row.id}`} type="button" onClick={() => { if (row.type === 'article') setSelectedId(row.id); else { setSelectedId('app-training-manual'); setQuery(row.title); } }} className="bg-[#12161A] border border-[#2A353D] rounded-xl p-3 text-left hover:border-[#D4A381]/50"><div className="text-[9px] uppercase tracking-widest font-black text-[#D4A381]">{row.group} • {Math.round(row.score)}%</div><div className="font-black text-white text-sm mt-1">{row.title}</div></button>)}</div></div>}
           <div className={`${T.card} p-4`}><h4 className="font-black text-white mb-2">Page-aware help</h4><p className="text-xs text-slate-400 font-bold mb-3">You are signed in as {appUser?.role || 'Staff'}. Start with these common articles:</p><div className="grid sm:grid-cols-3 gap-2">{(related.length ? related : visibleHelpArticles.slice(0,3)).map(a => <button key={a.id} onClick={()=>setSelectedId(a.id)} className="bg-[#12161A] border border-[#2A353D] rounded-xl p-3 text-left hover:border-[#D4A381]/50"><div className="font-black text-white text-sm">{a.title}</div><div className="text-[10px] text-slate-500 font-black uppercase tracking-widest mt-1">{a.group}</div></button>)}</div></div>
           <div className={`${T.card} p-4`}>
             <div className="flex items-center justify-between gap-3 mb-3">

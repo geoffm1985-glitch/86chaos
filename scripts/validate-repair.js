@@ -18,6 +18,7 @@ const aiUsage = read('api/_ai-usage.js');
 const adminShared = read('api/_chaos-admin.js');
 const adminProject = read('api/_firebase-project-admin.js');
 const reminders = read('api/dispatch-reminders.js');
+const reminderLogic = read('api/_reminder-dispatch-logic.js');
 
 check('BETA_DAYS_90', /FOUNDER_BETA_DAYS\s*=\s*90/.test(plans), 'Founder Beta default is 90 days.');
 check('DEPLOY_TENANT_90', /betaEnds\.setDate\(betaEnds\.getDate\(\) \+ 90\)/.test(deployTenant), 'Tenant creation uses 90-day beta window.');
@@ -31,7 +32,7 @@ check('STORAGE_INVOICE_SCANS_LIMITED', /function canUseInvoiceScans/.test(storag
 check('PROFILE_PHOTOS_SCOPED', /profilePhotos\/\{uid\}\/\{fileName\}/.test(storageRules) && /canManageProfilePhoto/.test(storageRules), 'Profile photo writes are scoped to the user or staff managers.');
 check('AI_SCAN_NO_ROLE_LABEL_ADMIN', !/workspaceUser\?\.role\s*===\s*['"]Admin['"]/.test(aiUsage) && !/workspaceUser\?\.role\s*===\s*['"]Owner['"]/.test(aiUsage), 'AI scan server permission does not trust custom role labels named Admin/Owner.');
 check('MFA_NOT_ROLE_NAME_ONLY', !/\['owner', 'manager', 'admin'/.test(adminShared), 'Elevated MFA no longer relies on hardcoded role-name strings.');
-check('REMINDER_RETRYABLE_PERSONAL', /isRetryablePersonalReminderStatus/.test(reminders) && /addUtcMonthsClamped/.test(reminders), 'Reminder dispatcher retries personal reminders and clamps monthly recurrence dates.');
+check('REMINDER_RETRYABLE_PERSONAL', /buildRetryUpdate/.test(reminders) && /daysInMonth/.test(reminderLogic) && /mode === 'monthly'/.test(reminderLogic) && /buildRecurringSuccessUpdate/.test(reminders), 'Reminder dispatcher retries the same occurrence and clamps monthly recurrence dates.');
 check('MESSAGING_SUPPORT_GUARD', /isSupported/.test(appCore) && /safeGetMessaging/.test(appCore), 'Firebase Messaging startup is guarded for unsupported browsers.');
 check('GEOCODE_AUTHED', /authorize\(req, app/.test(read('api/geocode-address.js')) && /restaurantId=/.test(read('src/features/management.jsx')), 'Geocode lookup is routed through authenticated API authorization.');
 check('STANDARD_TENANT_ALLOWLIST', /function isStandardTenantCollection/.test(fireRules), 'Catch-all tenant access is restricted to an explicit allowlist.');

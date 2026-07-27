@@ -151,6 +151,9 @@ module.exports = async function handler(req, res) {
         return batch => batch.set(ref, {
           restaurantId: RESTAURANT_ID,
           employeeId: user.id,
+          scheduleUserId: user.scheduleUserId || user.id || user.userId || user.rosterUserId || user.authUid || '',
+          userId: user.userId || user.id || '',
+          rosterUserId: user.rosterUserId || user.id || '',
           employeeName: user.name || employeeName,
           role: user.role || 'Unassigned',
           date,

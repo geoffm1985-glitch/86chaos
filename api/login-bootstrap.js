@@ -82,7 +82,7 @@ function isFullAuditQaWorkspace(rest = {}, raw = {}) {
   return name === '86 chaos full audit qa restaurant' || name.startsWith('86 chaos full audit qa restaurant ');
 }
 function isDeletedOrHiddenRestaurant(rest = {}, raw = {}) {
-  return rest.__exists === false || rest.__lookupError === true || rest.isActive === false || rest.archived === true || rest.deleted === true || rest.deletedAt || rest.deleted_at || rest.deletionScheduledFor || rest.hardDeleted === true || raw.qaOwned === true || rest.qaOwned === true || isFullAuditQaWorkspace(rest, raw);
+  return rest.__exists === false || rest.__lookupError === true || rest.isActive === false || rest.archived === true || rest.deleted === true || rest.deletedAt || rest.deleted_at || rest.deletionScheduledFor || rest.hardDeleted === true;
 }
 function cleanPerms(perms = {}) {
   if (!perms || typeof perms !== 'object') return {};

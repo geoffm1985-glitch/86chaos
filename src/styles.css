@@ -4794,3 +4794,28 @@ select {
     white-space: nowrap !important;
   }
 }
+
+/* 16.0.34 targeted render/performance pass */
+.chaos-perf-overlay,
+.chaos-modal-backdrop,
+.chaos-modal-panel,
+.app-drawer-readable,
+.voice-command-dock,
+.global-search-modal {
+  contain: layout paint;
+  transform: translateZ(0);
+}
+
+.chaos-card,
+.cockpit-panel {
+  content-visibility: auto;
+  contain-intrinsic-size: 1px 240px;
+}
+
+@media (max-width: 767px) {
+  .chaos-perf-overlay,
+  .chaos-modal-backdrop {
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+  }
+}

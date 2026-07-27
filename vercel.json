@@ -100,7 +100,7 @@
     }
   },
   "framework": "create-react-app",
-  "installCommand": "npm ci --omit=optional --no-audit --no-fund --progress=false",
+  "installCommand": "npm ci --omit=dev --omit=optional --no-audit --no-fund --progress=false",
   "buildCommand": "NODE_OPTIONS=--max-old-space-size=4096 GENERATE_SOURCEMAP=false npm run build",
   "outputDirectory": "build"
 }

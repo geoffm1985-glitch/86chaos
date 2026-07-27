@@ -12,3 +12,12 @@ root.render(
     <App />
   </StrictMode>
 );
+
+if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/firebase-messaging-sw.js', { updateViaCache: 'none' })
+      .then((registration) => registration.update?.().catch(() => null))
+      .catch((error) => console.warn('86 Chaos service worker registration failed:', error?.message || error));
+  }, { once: true });
+}
+

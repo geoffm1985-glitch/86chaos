@@ -227,6 +227,8 @@ export const buildAiOrderAssistant = ({ inventoryItems = [], vendors = [], waste
       priority,
       priorityScore,
       reasons,
+      confidence: priorityScore >= 75 && reasons.length >= 2 ? 'high' : priorityScore >= 35 ? 'medium' : 'setup-needed',
+      confidenceTags: [deficit > 0 ? 'par' : '', eventMatches.length ? 'event' : '', prepDemand > 0 ? 'prep' : '', menuImpactCount > 0 ? 'menu impact' : '', recentWaste > 0 ? 'waste' : ''].filter(Boolean),
       eventMatches: eventMatches.slice(0, 3),
       menuImpactCount,
       prepDemand,

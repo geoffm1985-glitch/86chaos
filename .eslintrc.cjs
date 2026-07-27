@@ -1,9 +1,7 @@
 module.exports = {
   root: true,
 
-  extends: [
-    "react-app"
-  ],
+  extends: ["react-app"],
 
   ignorePatterns: [
     "build/**",
@@ -16,10 +14,7 @@ module.exports = {
 
   overrides: [
     {
-      files: [
-        "api/**/*.js",
-        "scripts/**/*.js"
-      ],
+      files: ["api/**/*.js", "scripts/**/*.js"],
       env: {
         node: true,
         es2022: true
@@ -34,9 +29,7 @@ module.exports = {
         "src/**/__tests__/**/*.js",
         "src/**/__tests__/**/*.jsx"
       ],
-      extends: [
-        "react-app/jest"
-      ]
+      extends: ["react-app/jest"]
     }
   ]
 };

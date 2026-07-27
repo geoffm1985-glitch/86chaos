@@ -1,0 +1,29 @@
+import { buildScheduleQueryPlan, getCanonicalScheduleUserId } from './scheduleQueryPlanner';
+
+describe('schedule query planner', () => {
+  const staff = { id: 'u1', scheduleUserId: 'sched_u1', role: 'staff', permissions: {} };
+  const manager = { id: 'm1', isAdmin: true, permissions: { schedule: true } };
+  test('staff My Schedule scopes shifts to one canonical user', () => {
+    const plan = buildScheduleQueryPlan({ activeTabState: 'schedule', activeScheduleSubTab: 'my-schedule', appUser: staff, currentDate: '2026-07-15' });
+    expect(plan.shiftClauses).toContainEqual(['scheduleUserId', '==', 'sched_u1']);
+    expect(plan.needsRoster).toBe(false);
+  });
+  test('manager Schedule Builder loads team planning data', () => {
+    const plan = buildScheduleQueryPlan({ activeTabState: 'schedule', activeScheduleSubTab: 'schedule-builder', appUser: manager, currentDate: '2026-07-15' });
+    expect(plan.needsRoster).toBe(true);
+    expect(plan.needsAvailability).toBe(true);
+    expect(plan.needsTemplates).toBe(true);
+    expect(plan.shiftLimit).toBeGreaterThan(100);
+  });
+  test('staff time off is user scoped', () => {
+    const plan = buildScheduleQueryPlan({ activeTabState: 'schedule', activeScheduleSubTab: 'time-off', appUser: staff, currentDate: '2026-07-15' });
+    expect(plan.timeOffClauses).toContainEqual(['userId', '==', 'sched_u1']);
+  });
+  test('trade board uses created available/open statuses', () => {
+    const plan = buildScheduleQueryPlan({ activeTabState: 'schedule', activeScheduleSubTab: 'trade-board', appUser: manager, currentDate: '2026-07-15' });
+    expect(plan.swapClauses).toContainEqual(['status', 'in', ['available', 'open']]);
+  });
+  test('identity chooses canonical scheduleUserId first', () => {
+    expect(getCanonicalScheduleUserId({ scheduleUserId: 's', employeeId: 'e', id: 'i' })).toBe('s');
+  });
+});

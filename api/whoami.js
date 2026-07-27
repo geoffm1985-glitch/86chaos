@@ -23,6 +23,7 @@ function getRuntimeProjectId(app) {
 }
 
 module.exports = async function handler(req, res) {
+  if (req.method !== 'GET') return res.status(405).json({ ok: false, error: 'Method Not Allowed' });
   try {
     const token = (req.headers.authorization || '').replace('Bearer ', '').trim();
     if (!token) return res.status(401).json({ ok: false, error: 'Missing token' });

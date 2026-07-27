@@ -460,11 +460,60 @@ service cloud.firestore {
       return canManageWorkspaceSettings(restId) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['systemSettings', 'settingsHistory', 'updatedAt']);
     }
 
+    function otherUserPath(userId) {
+      return /databases/$(database)/documents/users/$(userId);
+    }
+
+    function canonicalWorkspaceMemberPath(userId, restId) {
+      return /databases/$(database)/documents/workspaceMembers/$(userId + '_' + restId);
+    }
+
+    function userIsActiveTenantMember(userId, restId) {
+      return userId is string && userId.size() > 0 && restId is string && (
+        (
+          exists(canonicalWorkspaceMemberPath(userId, restId)) &&
+          get(canonicalWorkspaceMemberPath(userId, restId)).data.get('restaurantId', '') == restId &&
+          get(canonicalWorkspaceMemberPath(userId, restId)).data.get('isActive', true) != false &&
+          get(canonicalWorkspaceMemberPath(userId, restId)).data.get('status', 'active') != 'inactive'
+        ) ||
+        (
+          exists(otherUserPath(userId)) &&
+          get(otherUserPath(userId)).data.get('disabled', false) != true &&
+          get(otherUserPath(userId)).data.get('isActive', true) != false && (
+            get(otherUserPath(userId)).data.get('restaurantId', '') == restId ||
+            (get(otherUserPath(userId)).data.get('workspaceIds', []) is list && get(otherUserPath(userId)).data.get('workspaceIds', []).hasAny([restId])) ||
+            (get(otherUserPath(userId)).data.get('memberships', {}) is map &&
+              get(otherUserPath(userId)).data.get('memberships', {})[restId] is map &&
+              get(otherUserPath(userId)).data.get('memberships', {})[restId].get('isActive', false) == true)
+          )
+        )
+      );
+    }
+
+    function reminderUsesCanonicalParticipants(data) {
+      return data.get('participantSchemaVersion', 0) == 1;
+    }
+
+    function reminderParticipantsAreValid(data) {
+      return reminderUsesCanonicalParticipants(data) &&
+        data.participantUserIds is list &&
+        data.participantUserIds.size() >= 1 &&
+        data.participantUserIds.size() <= 2 &&
+        request.auth.uid in data.participantUserIds &&
+        data.assignedToUserId is string &&
+        data.assignedToUserId in data.participantUserIds &&
+        data.participantUserIds.hasOnly([request.auth.uid, data.assignedToUserId]) &&
+        userIsActiveTenantMember(data.assignedToUserId, data.restaurantId);
+    }
+
     function reminderParticipant(data) {
       return signedIn() && (
-        data.userId == request.auth.uid ||
-        data.assignedToUserId == request.auth.uid ||
-        data.createdBy == request.auth.uid
+        (reminderUsesCanonicalParticipants(data) && data.participantUserIds is list && request.auth.uid in data.participantUserIds) ||
+        (!reminderUsesCanonicalParticipants(data) && (
+          data.get('userId', '') == request.auth.uid ||
+          data.get('assignedToUserId', '') == request.auth.uid ||
+          data.get('createdBy', '') == request.auth.uid
+        ))
       );
     }
 
@@ -472,16 +521,35 @@ service cloud.firestore {
       return data.restaurantId is string && isTenantMatch(data.restaurantId);
     }
 
-    function reminderIdentityStable() {
-      return request.resource.data.restaurantId == resource.data.restaurantId &&
-        request.resource.data.createdBy == resource.data.createdBy;
+    function reminderCreateIsValid(data) {
+      return reminderTenant(data) &&
+        data.createdBy == request.auth.uid &&
+        reminderParticipantsAreValid(data) &&
+        (!(('systemGenerated') in data) || data.systemGenerated == false);
     }
 
-    function reminderRecipientStatusUpdate() {
+    function reminderIdentityStable() {
+      return request.resource.data.restaurantId == resource.data.restaurantId &&
+        request.resource.data.createdBy == resource.data.createdBy &&
+        request.resource.data.get('participantSchemaVersion', 0) == resource.data.get('participantSchemaVersion', 0);
+    }
+
+    function reminderCreatorEditAllowed() {
       return request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-        'status', 'completedAt', 'cancelledAt', 'updatedAt',
-        'snoozedUntil', 'nextReminderAt', 'snoozeMinutes', 'snoozedAt', 'snoozedBy', 'reopenedAt', 'reopenedBy', 'dispatchedAt', 'dispatchKey'
-      ]);
+        'title', 'notes', 'scheduledAt', 'occurrenceScheduledAt', 'recurrenceAnchorAt', 'recurrenceAnchorDay', 'nextDispatchAt', 'dispatchEligible', 'dispatchAttemptAt', 'dispatchLeaseUntil',
+        'status', 'participantUserIds', 'assignedToUserId', 'assignedToName', 'assignedToEmail', 'shared', 'visibility', 'updatedAt', 'terminalAt', 'completedAt', 'cancelledAt', 'dismissedAt', 'snoozedUntil', 'reopenedAt',
+        'currentOccurrenceKey', 'lastSuccessfulOccurrenceKey', 'dispatchKey', 'dispatchedAt', 'dispatchError', 'deliveryProblemAt', 'nextReminderAt', 'source'
+      ]) &&
+      request.resource.data.restaurantId == resource.data.restaurantId &&
+      request.resource.data.createdBy == resource.data.createdBy &&
+      reminderParticipantsAreValid(request.resource.data);
+    }
+
+    // Participant status actions are performed through the authenticated
+    // personal-reminder-action server endpoint. Client rules deliberately
+    // reject direct recipient writes to delivery/lease metadata.
+    function reminderRecipientStatusUpdate() {
+      return false;
     }
 
     function canManageScheduleData(restId) {
@@ -507,15 +575,18 @@ service cloud.firestore {
 
     function availabilityParticipant(data) {
       return signedIn() && (
-        data.employeeId == request.auth.uid ||
-        data.createdBy == request.auth.uid
+        data.get('authUid', '') == request.auth.uid ||
+        data.get('userId', '') == request.auth.uid ||
+        data.get('createdBy', '') == request.auth.uid
       );
     }
 
     function ownAvailabilityPendingUpdate() {
       return resource.data.status == 'pending' &&
         request.resource.data.restaurantId == resource.data.restaurantId &&
-        request.resource.data.employeeId == resource.data.employeeId &&
+        request.resource.data.get('scheduleUserId', '') == resource.data.get('scheduleUserId', '') &&
+        request.resource.data.get('authUid', '') == resource.data.get('authUid', '') &&
+        request.resource.data.get('userId', '') == resource.data.get('userId', '') &&
         request.resource.data.createdBy == resource.data.createdBy;
     }
 
@@ -536,16 +607,27 @@ service cloud.firestore {
       ];
     }
 
+    function pushDevicesSelfUpdateIsSafe() {
+      return !request.resource.data.diff(resource.data).affectedKeys().hasAny(['pushDevices']) ||
+        (
+          request.resource.data.get('pushDevices', {}) is map &&
+          request.resource.data.get('pushDevices', {}).keys().size() <= 8
+        );
+    }
+
     function userSafeSelfUpdate() {
       return request.resource.data.diff(resource.data).affectedKeys().hasOnly([
         'name', 'phone', 'photoURL',
         'notificationPermission',
         'fcmToken', 'fcmTokenUpdatedAt', 'lastPushTokenSyncAt', 'pushTokenHost', 'pushTokenPermission',
+        'pushTokenCanonical', 'pushTokenDedupeVersion', 'pushDevices',
         'pushNeedsRepair', 'pushForceServiceWorkerRefresh', 'pushRepairStatus', 'pushRepairCompletedAt',
         'pushRepairCompletedHost', 'lastPushRepairError', 'lastPushFailureCode',
         'device', 'host', 'theme', 'settings', 'preferences', 'notificationPrefs', 'activeRestaurantId', 'lastWorkspaceId',
         'forcePasswordChange', 'passwordPurgedAt', 'passwordStored', 'lastWorkspaceSwitchedAt'
-      ]) && !request.resource.data.diff(resource.data).affectedKeys().hasAny(protectedUserKeys());
+      ]) &&
+        !request.resource.data.diff(resource.data).affectedKeys().hasAny(protectedUserKeys()) &&
+        pushDevicesSelfUpdateIsSafe();
     }
 
     function presenceSessionKeys() {
@@ -939,12 +1021,12 @@ service cloud.firestore {
     // Creators can edit/delete shared reminders; assigned teammates can mark done/cancelled only.
     // ============================================================
     match /personalReminders/{docId} {
-      allow read: if signedIn() && reminderTenant(resource.data) && reminderParticipant(resource.data);
-      allow create: if signedIn() && reminderTenant(request.resource.data) && request.resource.data.createdBy == request.auth.uid;
-      allow update: if signedIn() && reminderTenant(resource.data) && reminderParticipant(resource.data) && reminderIdentityStable() && (
-        resource.data.createdBy == request.auth.uid || reminderRecipientStatusUpdate()
-      );
-      allow delete: if signedIn() && reminderTenant(resource.data) && (resource.data.createdBy == request.auth.uid || resource.data.userId == request.auth.uid);
+      allow read: if signedIn() && (isSuperAdmin() || (reminderTenant(resource.data) && reminderParticipant(resource.data)));
+      allow create: if signedIn() && reminderCreateIsValid(request.resource.data);
+      // Reminder edits and participant workflow actions are validated by authenticated
+      // server endpoints. Direct client updates cannot write delivery or lease metadata.
+      allow update: if signedIn() && isSuperAdmin();
+      allow delete: if signedIn() && (isSuperAdmin() || (reminderTenant(resource.data) && resource.data.createdBy == request.auth.uid));
     }
 
     match /timeOffRequests/{docId} {
@@ -964,7 +1046,7 @@ service cloud.firestore {
       allow read: if signedIn() && resource.data.restaurantId is string && isTenantMatch(resource.data.restaurantId) && (canManageScheduleData(resource.data.restaurantId) || availabilityParticipant(resource.data));
       allow create: if signedIn() && request.resource.data.restaurantId is string && isTenantMatch(request.resource.data.restaurantId) && (
         canManageScheduleData(request.resource.data.restaurantId) ||
-        (request.resource.data.employeeId == request.auth.uid && request.resource.data.createdBy == request.auth.uid)
+        (request.resource.data.get('authUid', '') == request.auth.uid && request.resource.data.get('userId', '') == request.auth.uid && request.resource.data.get('scheduleUserId', '') is string && request.resource.data.get('scheduleUserId', '').size() > 0 && request.resource.data.createdBy == request.auth.uid)
       );
       allow update: if signedIn() && resource.data.restaurantId is string && request.resource.data.restaurantId == resource.data.restaurantId && isTenantMatch(resource.data.restaurantId) && (
         canManageScheduleData(resource.data.restaurantId) ||

@@ -380,7 +380,7 @@ export const MASTER_ADMIN_EMAIL = (process.env.REACT_APP_MASTER_ADMIN_EMAIL || '
 export const EVENT_TAGS = ['Standard Day', 'Packers Game', 'Brewers Game', 'Live Music', 'Severe Weather', 'Private Catering', 'Holiday'];
 
 // --- VERSION TRACKING ---
-export const CURRENT_VERSION = '16.0.27';
+export const CURRENT_VERSION = '16.0.38';
 
 // --- Helpers ---
 const usePageVisible = () => {
@@ -404,10 +404,30 @@ const usePageVisible = () => {
 const LIVE_COLLECTION_RELEASE_GRACE_MS = 6 * 60 * 1000;
 const liveCollectionRegistry = new Map();
 const liveDocumentRegistry = new Map();
+const LIVE_QUERY_CACHE_MAX_ENTRIES = 60;
+const LIVE_QUERY_CACHE_MAX_AGE_MS = 15 * 60 * 1000;
+const liveCollectionSessionCache = new Map();
+const liveDocumentSessionCache = new Map();
+const currentViewerUid = () => String(auth?.currentUser?.uid || 'anonymous');
 
-const stableJson = (value) => {
-  try { return JSON.stringify(value, Object.keys(value || {}).sort()); } catch (_) { return String(value || ''); }
+const canonicalizeForKey = (value) => {
+  if (Array.isArray(value)) return value.map(canonicalizeForKey);
+  if (value && typeof value === 'object') {
+    return Object.keys(value).sort().reduce((acc, key) => {
+      acc[key] = canonicalizeForKey(value[key]);
+      return acc;
+    }, {});
+  }
+  return value;
 };
+const stableJson = (value) => {
+  try { return JSON.stringify(canonicalizeForKey(value)); } catch (_) { return String(value || ''); }
+};
+
+const normalizeWhereClausesForKey = (clauses = []) => (Array.isArray(clauses) ? clauses : [])
+  .map(row => Array.isArray(row) ? [String(row[0] || ''), String(row[1] || ''), canonicalizeForKey(row[2])] : row)
+  .filter(row => Array.isArray(row) && row[0] && row[1])
+  .sort((a, b) => stableJson(a).localeCompare(stableJson(b)));
 
 const getFirestoreDiagnostics = () => {
   if (typeof window === 'undefined') return null;
@@ -447,28 +467,98 @@ export const downloadFirebaseUsageDiagnostics = (filename = '86chaos-firebase-us
   setTimeout(() => URL.revokeObjectURL(url), 5000);
   return report;
 };
-export const clearTenantListenerCache = () => {
-  liveCollectionRegistry.forEach(entry => { try { entry.unsubscribe?.(); } catch (_) {} });
-  liveDocumentRegistry.forEach(entry => { try { entry.unsubscribe?.(); } catch (_) {} });
-  liveCollectionRegistry.clear();
-  liveDocumentRegistry.clear();
+export const clearTenantListenerCache = (boundary = {}) => {
+  const clearAll = boundary.all === true;
+  const projectId = boundary.projectId || null;
+  const restaurantId = boundary.restaurantId || boundary.restId || null;
+  const viewerUid = boundary.viewerUid || boundary.userId || null;
+  const userSensitiveOnly = boundary.userSensitiveOnly === true;
+  const matches = (row = {}) => {
+    if (clearAll) return true;
+    if (userSensitiveOnly && row.userSensitive !== true) return false;
+    if (projectId && String(row.projectId || '') !== String(projectId)) return false;
+    if (restaurantId && String(row.restaurantId || row.restId || '') !== String(restaurantId)) return false;
+    if (viewerUid && String(row.viewerUid || '') !== String(viewerUid)) return false;
+    return Boolean(projectId || restaurantId || viewerUid || userSensitiveOnly);
+  };
+  let releasedCollections = 0;
+  let releasedDocuments = 0;
+  for (const [key, entry] of liveCollectionRegistry.entries()) {
+    if (!matches(entry)) continue;
+    try { entry.unsubscribe?.(); } catch (_) {}
+    if (entry.releaseTimer) clearTimeout(entry.releaseTimer);
+    liveCollectionRegistry.delete(key);
+    releasedCollections += 1;
+  }
+  for (const [key, entry] of liveDocumentRegistry.entries()) {
+    if (!matches(entry)) continue;
+    try { entry.unsubscribe?.(); } catch (_) {}
+    if (entry.releaseTimer) clearTimeout(entry.releaseTimer);
+    liveDocumentRegistry.delete(key);
+    releasedDocuments += 1;
+  }
+  for (const [key, row] of liveCollectionSessionCache.entries()) if (matches(row)) liveCollectionSessionCache.delete(key);
+  for (const [key, row] of liveDocumentSessionCache.entries()) if (matches(row)) liveDocumentSessionCache.delete(key);
   const diag = getFirestoreDiagnostics();
   if (diag) {
-    diag.activeListeners = 0;
-    diag.activeDocuments = 0;
-    diag.listenerReleaseCount = (diag.listenerReleaseCount || 0) + 1;
+    diag.activeListeners = liveCollectionRegistry.size;
+    diag.activeDocuments = liveDocumentRegistry.size;
+    diag.listenerReleaseCount = (diag.listenerReleaseCount || 0) + releasedCollections + releasedDocuments;
+    diag.lastCacheClear = { projectId, restaurantId, viewerUid, clearAll, releasedCollections, releasedDocuments, at: new Date().toISOString() };
   }
+  return { releasedCollections, releasedDocuments };
 };
 
-const makeLiveCollectionKey = ({ coll, restId, whereClauses, orderByField, orderDirection, limitCount, debugLabel }) => JSON.stringify({
+
+const touchLiveCacheEntry = (map, key) => {
+  const row = map.get(key);
+  if (!row) return null;
+  row.lastAccessedAt = Date.now();
+  map.delete(key);
+  map.set(key, row);
+  return row;
+};
+const setLiveCacheEntry = (map, key, value = {}) => {
+  const projectId = value.projectId || firebaseConfig?.projectId || 'default';
+  const row = {
+    ...value,
+    projectId,
+    restaurantId: value.restaurantId || value.restId || '',
+    viewerUid: value.viewerUid || currentViewerUid(),
+    userSensitive: value.userSensitive !== false,
+    cachedAt: Date.now(),
+    lastAccessedAt: Date.now()
+  };
+  map.delete(key);
+  map.set(key, row);
+  const now = Date.now();
+  for (const [cacheKey, cached] of map.entries()) {
+    if (now - Number(cached.cachedAt || 0) > LIVE_QUERY_CACHE_MAX_AGE_MS) map.delete(cacheKey);
+  }
+  while (map.size > LIVE_QUERY_CACHE_MAX_ENTRIES) {
+    let oldestKey = null;
+    let oldestAt = Infinity;
+    for (const [cacheKey, cached] of map.entries()) {
+      const at = Number(cached.lastAccessedAt || cached.cachedAt || 0);
+      if (at < oldestAt) { oldestAt = at; oldestKey = cacheKey; }
+    }
+    if (!oldestKey) break;
+    map.delete(oldestKey);
+  }
+};
+const makeSubscriberRecord = (fn, label = '') => ({ fn, label: label || '', id: `${Date.now()}_${Math.random().toString(36).slice(2)}` });
+const entryConsumerLabels = (entry) => Array.from(entry.subscribers || []).map(row => row.label).filter(Boolean);
+
+export const makeLiveCollectionKey = ({ coll, restId, whereClauses, orderByField, orderDirection, limitCount, cursor = null, viewerUid = currentViewerUid() }) => stableJson({
   projectId: firebaseConfig?.projectId || 'default',
+  viewerUid: viewerUid || 'anonymous',
   coll,
   restId,
-  whereClauses: whereClauses || [],
+  whereClauses: normalizeWhereClausesForKey(whereClauses || []),
   orderByField: orderByField || '',
   orderDirection: orderDirection || 'asc',
   limitCount: Number(limitCount || 0) || null,
-  debugLabel: debugLabel || ''
+  cursor: cursor || null
 });
 
 const annotateListenerDiagnostics = (key, patch = {}) => {
@@ -477,17 +567,24 @@ const annotateListenerDiagnostics = (key, patch = {}) => {
   diagnostics.listeners[key] = { ...(diagnostics.listeners[key] || {}), ...patch, updatedAt: new Date().toISOString() };
 };
 
-const acquireSharedLiveCollection = ({ coll, restId, constraints, key, setData, debugLabel = '' }) => {
+
+const acquireSharedLiveCollection = ({ coll, restId, constraints, key, setData, debugLabel = '', viewerUid = currentViewerUid() }) => {
   let entry = liveCollectionRegistry.get(key);
   const diagnostics = getFirestoreDiagnostics();
   if (!entry) {
+    const cached = touchLiveCacheEntry(liveCollectionSessionCache, key);
     entry = {
       key,
       coll,
       restId,
-      debugLabel,
-      data: [],
-      hasCachedSnapshot: false,
+      restaurantId: restId,
+      projectId: firebaseConfig?.projectId || 'default',
+      viewerUid,
+      userSensitive: true,
+      data: Array.isArray(cached?.data) ? cached.data : [],
+      lastError: null,
+      stale: !!cached,
+      hasCachedSnapshot: !!cached,
       initialSnapshotSeen: false,
       subscribers: new Set(),
       releaseTimer: null,
@@ -495,23 +592,30 @@ const acquireSharedLiveCollection = ({ coll, restId, constraints, key, setData, 
       attachedAt: new Date().toISOString(),
       listenerCreationCount: 1,
       listenerReuseCount: 0,
-      listenerReleaseCount: 0
+      listenerReleaseCount: 0,
+      reconnectCount: cached ? 1 : 0
     };
     annotateListenerDiagnostics(key, {
       queryKey: key,
       collection: coll,
       restaurantId: restId,
-      debugLabel,
+      consumerLabels: [],
       subscriberCount: 0,
       listenerCreationCount: 1,
       listenerReuseCount: 0,
       listenerReleaseCount: 0,
+      reconnectCount: entry.reconnectCount,
       documentsReceivedInitial: 0,
       documentsReceivedChanges: 0,
+      addedChanges: 0,
+      modifiedChanges: 0,
+      removedChanges: 0,
       attachedAt: entry.attachedAt,
       releasedAt: '',
       releaseReason: '',
-      hadPriorCachedSnapshot: false
+      hadPriorCachedSnapshot: !!cached,
+      cached: !!cached,
+      stale: !!cached
     });
     entry.unsubscribe = onSnapshot(
       query(collection(db, coll), ...constraints),
@@ -520,55 +624,70 @@ const acquireSharedLiveCollection = ({ coll, restId, constraints, key, setData, 
         const isInitial = !entry.initialSnapshotSeen;
         entry.initialSnapshotSeen = true;
         entry.hasCachedSnapshot = true;
+        entry.stale = false;
+        entry.lastError = null;
         entry.data = docs;
+        const changes = snap.docChanges ? snap.docChanges() : [];
+        setLiveCacheEntry(liveCollectionSessionCache, key, { data: docs, coll, restId, restaurantId: restId, viewerUid, userSensitive: true });
         if (diagnostics) {
-          diagnostics.documentsReceivedByQuery[key] = (diagnostics.documentsReceivedByQuery[key] || 0) + snap.docs.length;
+          diagnostics.documentsReceivedByQuery[key] = (diagnostics.documentsReceivedByQuery[key] || 0) + (isInitial ? snap.docs.length : changes.length);
           const row = diagnostics.listeners[key] || {};
           diagnostics.listeners[key] = {
             ...row,
             documentsReceivedInitial: (row.documentsReceivedInitial || 0) + (isInitial ? snap.docs.length : 0),
-            documentsReceivedChanges: (row.documentsReceivedChanges || 0) + (isInitial ? 0 : snap.docChanges().length),
+            documentsReceivedChanges: (row.documentsReceivedChanges || 0) + (isInitial ? 0 : changes.length),
+            addedChanges: (row.addedChanges || 0) + (isInitial ? 0 : changes.filter(c => c.type === 'added').length),
+            modifiedChanges: (row.modifiedChanges || 0) + (isInitial ? 0 : changes.filter(c => c.type === 'modified').length),
+            removedChanges: (row.removedChanges || 0) + (isInitial ? 0 : changes.filter(c => c.type === 'removed').length),
             lastSnapshotAt: new Date().toISOString(),
-            cached: false
+            cached: false,
+            stale: false,
+            lastError: ''
           };
         }
-        entry.subscribers.forEach(fn => fn(entry.data));
+        entry.subscribers.forEach(row => row.fn(entry.data, { resolved: true, stale: false, error: null, fromServer: true }));
       },
       err => {
         const message = err?.message || String(err || '');
         const isIndexProblem = err?.code === 'failed-precondition' || /index|requires an index|currently building/i.test(message);
         if (isIndexProblem) console.warn(`Firestore index pending for ${coll} / ${restId}. Waiting for the deployed index instead of showing a mismatched fallback query.`, message);
         else console.error(`Live collection error for ${coll} / ${restId}:`, err);
-        annotateListenerDiagnostics(key, { lastError: message, lastErrorAt: new Date().toISOString() });
-        entry.data = [];
-        entry.subscribers.forEach(fn => fn([]));
+        entry.lastError = message;
+        entry.stale = true;
+        annotateListenerDiagnostics(key, { lastError: message, lastErrorAt: new Date().toISOString(), stale: true, cached: entry.hasCachedSnapshot === true });
+        // Preserve last valid data. Do not push an empty array for transient errors.
+        entry.subscribers.forEach(row => row.fn(entry.data || [], { resolved: true, stale: true, error: message, fromServer: false }));
       }
     );
     liveCollectionRegistry.set(key, entry);
     if (diagnostics) diagnostics.activeListeners = liveCollectionRegistry.size;
-  } else if (diagnostics) {
+  } else {
     entry.listenerReuseCount += 1;
-    diagnostics.listenerReuseCount += 1;
-    annotateListenerDiagnostics(key, {
-      listenerReuseCount: entry.listenerReuseCount,
-      hadPriorCachedSnapshot: entry.hasCachedSnapshot === true
-    });
+    if (diagnostics) {
+      diagnostics.listenerReuseCount += 1;
+      annotateListenerDiagnostics(key, {
+        listenerReuseCount: entry.listenerReuseCount,
+        consumerLabels: entryConsumerLabels(entry),
+        hadPriorCachedSnapshot: entry.hasCachedSnapshot === true
+      });
+    }
   }
 
   if (entry.releaseTimer) {
     clearTimeout(entry.releaseTimer);
     entry.releaseTimer = null;
-    annotateListenerDiagnostics(key, { releaseReason: 'release-cancelled-visible-again' });
+    annotateListenerDiagnostics(key, { releaseReason: 'release-cancelled-resubscribed-during-grace' });
   }
-  entry.subscribers.add(setData);
-  setData(entry.data || []);
-  annotateListenerDiagnostics(key, { subscriberCount: entry.subscribers.size, cached: entry.hasCachedSnapshot && !entry.initialSnapshotSeen });
+  const subscriber = makeSubscriberRecord(setData, debugLabel);
+  entry.subscribers.add(subscriber);
+  setData(entry.data || [], { resolved: entry.initialSnapshotSeen === true, stale: entry.stale === true, error: entry.lastError || null, cached: entry.hasCachedSnapshot === true });
+  annotateListenerDiagnostics(key, { subscriberCount: entry.subscribers.size, consumerLabels: entryConsumerLabels(entry), cached: entry.hasCachedSnapshot && !entry.initialSnapshotSeen, stale: entry.stale === true });
 
   return () => {
     const current = liveCollectionRegistry.get(key);
     if (!current) return;
-    current.subscribers.delete(setData);
-    annotateListenerDiagnostics(key, { subscriberCount: current.subscribers.size });
+    current.subscribers.delete(subscriber);
+    annotateListenerDiagnostics(key, { subscriberCount: current.subscribers.size, consumerLabels: entryConsumerLabels(current) });
     if (current.subscribers.size === 0 && !current.releaseTimer) {
       current.releaseTimer = setTimeout(() => {
         const latest = liveCollectionRegistry.get(key);
@@ -576,6 +695,7 @@ const acquireSharedLiveCollection = ({ coll, restId, constraints, key, setData, 
         try { latest.unsubscribe?.(); } catch (err) { console.warn('Failed to release shared Firestore listener', err); }
         latest.unsubscribe = null;
         latest.listenerReleaseCount += 1;
+        setLiveCacheEntry(liveCollectionSessionCache, key, { data: latest.data || [], coll, restId, restaurantId: restId, viewerUid: latest.viewerUid || viewerUid, userSensitive: true });
         liveCollectionRegistry.delete(key);
         const diag = getFirestoreDiagnostics();
         if (diag) {
@@ -587,6 +707,7 @@ const acquireSharedLiveCollection = ({ coll, restId, constraints, key, setData, 
           releaseReason: 'no-subscribers-background-grace-expired',
           listenerReleaseCount: latest.listenerReleaseCount,
           subscriberCount: 0,
+          consumerLabels: [],
           cached: true
         });
       }, LIVE_COLLECTION_RELEASE_GRACE_MS);
@@ -607,6 +728,9 @@ export const useLiveCollection = (coll, restId, options = {}) => {
   } = options || {};
   const [data, setData] = useState([]);
   const pageVisible = usePageVisible();
+  const debugLabelRef = React.useRef(debugLabel || '');
+  useEffect(() => { debugLabelRef.current = debugLabel || ''; }, [debugLabel]);
+  const viewerUid = currentViewerUid();
 
   useEffect(() => {
     if (!enabled || !restId) {
@@ -624,70 +748,217 @@ export const useLiveCollection = (coll, restId, options = {}) => {
     if (orderByField) constraints.push(orderBy(orderByField, orderDirection || 'asc'));
     if (limitCount && Number(limitCount) > 0) constraints.push(firestoreLimit(Number(limitCount)));
 
-    const key = makeLiveCollectionKey({ coll, restId, whereClauses, orderByField, orderDirection, limitCount, debugLabel });
-    return acquireSharedLiveCollection({ coll, restId, constraints, key, setData, debugLabel });
-  }, [coll, restId, enabled, limitCount, orderByField, orderDirection, fallbackLimitCount, pauseWhenHidden, pageVisible, debugLabel, JSON.stringify(whereClauses || [])]);
+    const key = makeLiveCollectionKey({ coll, restId, whereClauses, orderByField, orderDirection, limitCount, viewerUid });
+    return acquireSharedLiveCollection({ coll, restId, constraints, key, setData, debugLabel: debugLabelRef.current, viewerUid });
+  }, [coll, restId, enabled, limitCount, orderByField, orderDirection, pauseWhenHidden, pageVisible, viewerUid, stableJson(normalizeWhereClausesForKey(whereClauses || []))]);
 
   return data;
 };
 
-const makeLiveDocumentKey = ({ coll, docId, debugLabel }) => JSON.stringify({
-  projectId: firebaseConfig?.projectId || 'default',
-  coll,
-  docId: docId || '',
-  debugLabel: debugLabel || ''
-});
 
-export const useLiveDocument = (coll, docId, options = {}) => {
-  const { enabled = true, debugLabel = '' } = options || {};
-  const [data, setData] = useState(null);
+export const useLiveCollectionState = (coll, restId, options = {}) => {
+  const [state, setState] = useState({ data: [], loading: Boolean(options?.enabled !== false && restId), resolved: false, error: null, stale: false, cached: false });
+  const setter = React.useCallback((rows = [], meta = {}) => {
+    setState({
+      data: Array.isArray(rows) ? rows : [],
+      loading: meta.resolved !== true && !meta.error,
+      resolved: meta.resolved === true,
+      error: meta.error || null,
+      stale: meta.stale === true,
+      cached: meta.cached === true
+    });
+  }, []);
+  const {
+    enabled = true,
+    limitCount = null,
+    whereClauses = [],
+    orderByField = null,
+    orderDirection = 'asc',
+    fallbackLimitCount = 75,
+    pauseWhenHidden = true,
+    debugLabel = ''
+  } = options || {};
+  const pageVisible = usePageVisible();
+  const debugLabelRef = React.useRef(debugLabel || '');
+  useEffect(() => { debugLabelRef.current = debugLabel || ''; }, [debugLabel]);
+  const viewerUid = currentViewerUid();
   useEffect(() => {
-    if (!enabled || !coll || !docId) {
-      setData(null);
+    if (!enabled || !restId) {
+      setState({ data: [], loading: false, resolved: false, error: null, stale: false, cached: false });
       return undefined;
     }
-    const key = makeLiveDocumentKey({ coll, docId, debugLabel });
-    let entry = liveDocumentRegistry.get(key);
-    const diagnostics = getFirestoreDiagnostics();
-    if (!entry) {
-      entry = { key, subscribers: new Set(), data: null, releaseTimer: null, unsubscribe: null, attachedAt: new Date().toISOString() };
-      entry.unsubscribe = onSnapshot(doc(db, coll, docId), snap => {
-        entry.data = snap.exists() ? { id: snap.id, ...snap.data() } : null;
-        entry.subscribers.forEach(fn => fn(entry.data));
-        if (diagnostics) diagnostics.documents[key] = { collection: coll, docId, debugLabel, lastSnapshotAt: new Date().toISOString(), exists: snap.exists() };
-      }, err => {
-        console.error(`Live document error for ${coll}/${docId}:`, err);
-        if (diagnostics) diagnostics.documents[key] = { collection: coll, docId, debugLabel, lastError: err?.message || String(err), lastErrorAt: new Date().toISOString() };
-      });
-      liveDocumentRegistry.set(key, entry);
-      if (diagnostics) diagnostics.activeDocuments = liveDocumentRegistry.size;
-    } else if (diagnostics) {
-      diagnostics.listenerReuseCount += 1;
-    }
-    if (entry.releaseTimer) {
-      clearTimeout(entry.releaseTimer);
-      entry.releaseTimer = null;
-    }
-    entry.subscribers.add(setData);
-    setData(entry.data);
-    return () => {
-      const current = liveDocumentRegistry.get(key);
-      if (!current) return;
-      current.subscribers.delete(setData);
-      if (current.subscribers.size === 0 && !current.releaseTimer) {
-        current.releaseTimer = setTimeout(() => {
-          const latest = liveDocumentRegistry.get(key);
-          if (!latest || latest.subscribers.size > 0) return;
-          try { latest.unsubscribe?.(); } catch (_) {}
-          liveDocumentRegistry.delete(key);
-          const diag = getFirestoreDiagnostics();
-          if (diag) diag.activeDocuments = liveDocumentRegistry.size;
-        }, LIVE_COLLECTION_RELEASE_GRACE_MS);
-      }
-    };
-  }, [coll, docId, enabled, debugLabel]);
-  return data;
+    if (pauseWhenHidden && !pageVisible) return undefined;
+    setState(prev => ({ ...prev, loading: !prev.resolved }));
+    const constraints = [where("restaurantId", "==", restId)];
+    (whereClauses || []).forEach(([field, op, value]) => {
+      if (field && op && value !== undefined && value !== null && value !== '') constraints.push(where(field, op, value));
+    });
+    if (orderByField) constraints.push(orderBy(orderByField, orderDirection || 'asc'));
+    if (limitCount && Number(limitCount) > 0) constraints.push(firestoreLimit(Number(limitCount)));
+    const key = makeLiveCollectionKey({ coll, restId, whereClauses, orderByField, orderDirection, limitCount, viewerUid });
+    return acquireSharedLiveCollection({ coll, restId, constraints, key, setData: setter, debugLabel: debugLabelRef.current, viewerUid });
+  }, [coll, restId, enabled, limitCount, orderByField, orderDirection, pauseWhenHidden, pageVisible, viewerUid, stableJson(normalizeWhereClausesForKey(whereClauses || []))]);
+  return state;
 };
+
+export const makeLiveDocumentKey = ({ coll, docId, viewerUid = currentViewerUid() }) => stableJson({
+  projectId: firebaseConfig?.projectId || 'default',
+  viewerUid: viewerUid || 'anonymous',
+  coll,
+  docId: docId || ''
+});
+
+const acquireSharedLiveDocument = ({ coll, docId, key, setValue, debugLabel = '', restaurantId = '', viewerUid = currentViewerUid() }) => {
+  let entry = liveDocumentRegistry.get(key);
+  const diagnostics = getFirestoreDiagnostics();
+  if (!entry) {
+    const cached = touchLiveCacheEntry(liveDocumentSessionCache, key);
+    entry = {
+      key,
+      coll,
+      docId,
+      projectId: firebaseConfig?.projectId || 'default',
+      restaurantId: restaurantId || '',
+      viewerUid,
+      userSensitive: true,
+      subscribers: new Set(),
+      data: cached?.data ?? null,
+      hasCachedSnapshot: !!cached,
+      initialSnapshotSeen: false,
+      stale: !!cached,
+      lastError: null,
+      releaseTimer: null,
+      unsubscribe: null,
+      attachedAt: new Date().toISOString(),
+      listenerReuseCount: 0,
+      listenerReleaseCount: 0
+    };
+    entry.unsubscribe = onSnapshot(doc(db, coll, docId), snap => {
+      entry.data = snap.exists() ? { id: snap.id, ...snap.data() } : null;
+      entry.initialSnapshotSeen = true;
+      entry.hasCachedSnapshot = true;
+      entry.stale = false;
+      entry.lastError = null;
+      setLiveCacheEntry(liveDocumentSessionCache, key, { data: entry.data, coll, docId, restaurantId: entry.restaurantId, viewerUid, userSensitive: true });
+      entry.subscribers.forEach(row => row.fn(entry.data, { resolved: true, stale: false, error: null, fromServer: true, cached: false }));
+      if (diagnostics) diagnostics.documents[key] = {
+        ...(diagnostics.documents[key] || {}),
+        collection: coll,
+        docId,
+        restaurantId: entry.restaurantId,
+        viewerUid,
+        consumerLabels: entryConsumerLabels(entry),
+        subscriberCount: entry.subscribers.size,
+        lastSnapshotAt: new Date().toISOString(),
+        exists: snap.exists(),
+        stale: false,
+        cached: false,
+        lastError: ''
+      };
+    }, err => {
+      const message = err?.message || String(err || '');
+      console.error(`Live document error for ${coll}/${docId}:`, err);
+      entry.initialSnapshotSeen = true;
+      entry.lastError = message;
+      entry.stale = true;
+      if (diagnostics) diagnostics.documents[key] = {
+        ...(diagnostics.documents[key] || {}),
+        collection: coll,
+        docId,
+        restaurantId: entry.restaurantId,
+        viewerUid,
+        consumerLabels: entryConsumerLabels(entry),
+        lastError: message,
+        lastErrorAt: new Date().toISOString(),
+        stale: true,
+        cached: entry.hasCachedSnapshot === true
+      };
+      // Keep the last valid cached value during transient failures.
+      entry.subscribers.forEach(row => row.fn(entry.data, { resolved: true, stale: true, error: message, fromServer: false, cached: entry.hasCachedSnapshot === true }));
+    });
+    liveDocumentRegistry.set(key, entry);
+    if (diagnostics) diagnostics.activeDocuments = liveDocumentRegistry.size;
+  } else {
+    entry.listenerReuseCount += 1;
+    if (diagnostics) diagnostics.listenerReuseCount = (diagnostics.listenerReuseCount || 0) + 1;
+  }
+  if (entry.releaseTimer) {
+    clearTimeout(entry.releaseTimer);
+    entry.releaseTimer = null;
+  }
+  const subscriber = makeSubscriberRecord(setValue, debugLabel);
+  entry.subscribers.add(subscriber);
+  setValue(entry.data, {
+    resolved: entry.initialSnapshotSeen === true,
+    stale: entry.stale === true,
+    error: entry.lastError || null,
+    cached: entry.hasCachedSnapshot === true && !entry.initialSnapshotSeen
+  });
+  if (diagnostics) diagnostics.documents[key] = {
+    ...(diagnostics.documents[key] || {}),
+    collection: coll,
+    docId,
+    restaurantId: entry.restaurantId,
+    viewerUid,
+    consumerLabels: entryConsumerLabels(entry),
+    subscriberCount: entry.subscribers.size,
+    cached: entry.hasCachedSnapshot === true && !entry.initialSnapshotSeen,
+    stale: entry.stale === true
+  };
+  return () => {
+    const current = liveDocumentRegistry.get(key);
+    if (!current) return;
+    current.subscribers.delete(subscriber);
+    if (diagnostics) diagnostics.documents[key] = { ...(diagnostics.documents[key] || {}), consumerLabels: entryConsumerLabels(current), subscriberCount: current.subscribers.size };
+    if (current.subscribers.size === 0 && !current.releaseTimer) {
+      current.releaseTimer = setTimeout(() => {
+        const latest = liveDocumentRegistry.get(key);
+        if (!latest || latest.subscribers.size > 0) return;
+        try { latest.unsubscribe?.(); } catch (_) {}
+        latest.unsubscribe = null;
+        latest.listenerReleaseCount += 1;
+        setLiveCacheEntry(liveDocumentSessionCache, key, { data: latest.data, coll, docId, restaurantId: latest.restaurantId || '', viewerUid: latest.viewerUid || viewerUid, userSensitive: true });
+        liveDocumentRegistry.delete(key);
+        const diag = getFirestoreDiagnostics();
+        if (diag) {
+          diag.activeDocuments = liveDocumentRegistry.size;
+          diag.listenerReleaseCount = (diag.listenerReleaseCount || 0) + 1;
+        }
+      }, LIVE_COLLECTION_RELEASE_GRACE_MS);
+    }
+  };
+};
+
+export const useLiveDocumentState = (coll, docId, options = {}) => {
+  const { enabled = true, debugLabel = '', restaurantId = '' } = options || {};
+  const [state, setState] = useState({ data: null, loading: Boolean(enabled && coll && docId), resolved: false, error: null, stale: false, cached: false });
+  const labelRef = React.useRef(debugLabel || '');
+  useEffect(() => { labelRef.current = debugLabel || ''; }, [debugLabel]);
+  const viewerUid = currentViewerUid();
+  const setter = React.useCallback((value, meta = {}) => {
+    setState({
+      data: value ?? null,
+      loading: meta.resolved !== true && !meta.error,
+      resolved: meta.resolved === true,
+      error: meta.error || null,
+      stale: meta.stale === true,
+      cached: meta.cached === true
+    });
+  }, []);
+  useEffect(() => {
+    if (!enabled || !coll || !docId) {
+      setState({ data: null, loading: false, resolved: false, error: null, stale: false, cached: false });
+      return undefined;
+    }
+    setState(prev => ({ ...prev, loading: !prev.resolved }));
+    const key = makeLiveDocumentKey({ coll, docId, viewerUid });
+    return acquireSharedLiveDocument({ coll, docId, key, setValue: setter, debugLabel: labelRef.current, restaurantId, viewerUid });
+  }, [coll, docId, enabled, restaurantId, setter, viewerUid]);
+  return state;
+};
+
+export const useLiveDocument = (coll, docId, options = {}) => useLiveDocumentState(coll, docId, options).data;
+
 export const formatDate = (date) => new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().split('T')[0];
 export const getToday = () => formatDate(new Date());
 export const getMonthStr = (d) => {
@@ -877,33 +1148,39 @@ if (typeof window !== 'undefined' && !window.crashCatcherAttached) {
       const message = String(payload.message || payload.reason?.message || payload.reason || 'Browser error').slice(0, 2000);
       const stack = String(payload.rawStack || payload.reason?.stack || payload.error?.stack || '').slice(0, 5000);
       const chunkUrl = payload.chunkUrl || extractFailedAssetUrl(`${message} ${stack}`);
-      const fingerprint = [payload.source || 'runtime', chunkFailurePattern.test(`${message} ${stack}`) ? 'chunk' : 'error', chunkUrl, CURRENT_VERSION, window.location.pathname, window.location.search].join('|');
-      if (window.__chaosCrashFingerprints?.has(fingerprint)) return;
-      window.__chaosCrashFingerprints = window.__chaosCrashFingerprints || new Set();
-      window.__chaosCrashFingerprints.add(fingerprint);
-      if (window.__chaosCrashFingerprints.size > 30) window.__chaosCrashFingerprints.clear();
-      if (auth.currentUser) {
-        secureFetch('/api/report-bug', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            category: 'Crash / Error',
-            message,
-            errorName: String(payload.error?.name || payload.reason?.name || (chunkUrl ? 'ChunkLoadError' : 'RuntimeError')),
-            rawStack: stack,
-            breadcrumbs: window.breadcrumbs || [],
-            userAgent: navigator.userAgent,
-            screenSize: `${window.innerWidth}x${window.innerHeight}`,
-            url: window.location.href,
-            route: window.location.pathname + window.location.search,
-            chunkUrl,
-            appVersion: CURRENT_VERSION,
-            online: navigator.onLine,
-            serviceWorkerState: navigator.serviceWorker?.controller?.state || '',
-            source: payload.source || 'runtime_error'
-          })
-        }).catch(()=>{});
+      const messageFingerprint = `${String(payload.error?.name || payload.reason?.name || '')}:${message}`.slice(0, 500);
+      const fingerprint = [chunkFailurePattern.test(`${message} ${stack}`) ? 'chunk' : 'error', chunkUrl, messageFingerprint, CURRENT_VERSION, window.location.pathname, window.location.search].join('|');
+      const now = Date.now();
+      window.__chaosCrashFingerprints = window.__chaosCrashFingerprints instanceof Map ? window.__chaosCrashFingerprints : new Map();
+      for (const [key, seenAt] of window.__chaosCrashFingerprints.entries()) {
+        if (now - Number(seenAt || 0) > 30000) window.__chaosCrashFingerprints.delete(key);
       }
+      if (window.__chaosCrashFingerprints.has(fingerprint)) return;
+      window.__chaosCrashFingerprints.set(fingerprint, now);
+      if (window.__chaosCrashFingerprints.size > 60) {
+        const oldest = window.__chaosCrashFingerprints.keys().next().value;
+        if (oldest) window.__chaosCrashFingerprints.delete(oldest);
+      }
+      secureFetch('/api/report-bug', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          category: 'Crash / Error',
+          message,
+          errorName: String(payload.error?.name || payload.reason?.name || (chunkUrl ? 'ChunkLoadError' : 'RuntimeError')),
+          rawStack: stack,
+          breadcrumbs: window.breadcrumbs || [],
+          userAgent: navigator.userAgent,
+          screenSize: `${window.innerWidth}x${window.innerHeight}`,
+          url: window.location.href,
+          route: window.location.pathname + window.location.search,
+          chunkUrl,
+          appVersion: CURRENT_VERSION,
+          online: navigator.onLine,
+          serviceWorkerState: navigator.serviceWorker?.controller?.state || '',
+          source: payload.source || 'runtime_error'
+        })
+      }).catch(()=>{});
     } catch (_) {}
   };
 
@@ -916,7 +1193,41 @@ if (typeof window !== 'undefined' && !window.crashCatcherAttached) {
     const reason = event?.reason;
     const message = String(reason?.message || reason || 'Unhandled promise rejection');
     reportGlobalRuntimeError({ source: 'unhandledrejection', message, reason, rawStack: reason?.stack || '' });
-  }); 
+  });
+
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.addEventListener('message', (event) => {
+      const receipt = event?.data;
+      if (receipt?.type !== '86CHAOS_NOTIFICATION_RECEIPT' || !receipt?.reportId) return;
+      secureFetch('/api/notification-receipt', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(receipt)
+      }).catch(() => {});
+    });
+
+    try {
+      const receiptUrl = new URL(window.location.href);
+      const reportId = receiptUrl.searchParams.get('notificationReceiptReportId') || '';
+      const action = receiptUrl.searchParams.get('notificationReceipt') || '';
+      if (reportId && action === 'opened') {
+        secureFetch('/api/notification-receipt', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            type: '86CHAOS_NOTIFICATION_RECEIPT',
+            action: 'opened',
+            reportId,
+            openedAt: new Date().toISOString()
+          })
+        }).finally(() => {
+          receiptUrl.searchParams.delete('notificationReceipt');
+          receiptUrl.searchParams.delete('notificationReceiptReportId');
+          window.history.replaceState({}, '', `${receiptUrl.pathname}${receiptUrl.search}${receiptUrl.hash}`);
+        }).catch(() => {});
+      }
+    } catch (_) {}
+  }
 }
 
 // --- HOLIDAY & TIME ENGINE ---
@@ -1031,7 +1342,7 @@ const normalizeForNoOpCompare = (value) => {
   }
   return value;
 };
-const meaningfulPayloadChanged = (before = null, incoming = {}) => {
+export const meaningfulPayloadChanged = (before = null, incoming = {}) => {
   if (!before || typeof before !== 'object') return true;
   return Object.entries(incoming || {}).some(([key, value]) => {
     if (CHAOS_NOOP_META_FIELDS.has(key)) return false;
@@ -1050,6 +1361,26 @@ export const recordFirestoreWriteDiagnostic = ({ collectionName = '', action = '
   diag.writes[key].lastAt = new Date().toISOString();
 };
 
+
+const looksLikeFirestoreSentinel = (value) => {
+  if (!value || typeof value !== 'object') return false;
+  const text = Object.prototype.toString.call(value) + ' ' + String(value?._methodName || value?.constructor?.name || '');
+  return /FieldValue|serverTimestamp|arrayUnion|arrayRemove|increment|deleteField/i.test(text);
+};
+export const payloadContainsFirestoreSentinel = (value) => {
+  if (looksLikeFirestoreSentinel(value)) return true;
+  if (Array.isArray(value)) return value.some(payloadContainsFirestoreSentinel);
+  if (value && typeof value === 'object') return Object.values(value).some(payloadContainsFirestoreSentinel);
+  return false;
+};
+
+export const shouldSkipSafeWrite = ({ action = 'set', merge = true, before = null, data = {} } = {}) => Boolean(
+  (action === 'update' || (action === 'set' && merge !== false)) &&
+  before &&
+  !payloadContainsFirestoreSentinel(data) &&
+  !meaningfulPayloadChanged(before, data)
+);
+
 export const safeWrite = async ({ user, action = 'set', collectionName, docId = '', data = {}, merge = true, label = '', before = null, addToast = null, sourceScreen = '' }) => {
   if (!user?.restaurantId && !isSuperAdminUser(user)) throw new Error('Safe Write blocked: missing restaurant workspace.');
   if (user?.demoMode || user?.isDemo) throw new Error('Safe Write blocked: demo mode cannot change live data.');
@@ -1059,7 +1390,7 @@ export const safeWrite = async ({ user, action = 'set', collectionName, docId = 
     if (incomingRest && incomingRest !== user.restaurantId) throw new Error('Safe Write blocked: restaurant mismatch.');
   }
 
-  if ((action === 'update' || action === 'set') && before && !meaningfulPayloadChanged(before, data)) {
+  if (shouldSkipSafeWrite({ action, merge, before, data })) {
     recordFirestoreWriteDiagnostic({ collectionName, action, label, skipped: true, sourceScreen });
     if (addToast) addToast('No Changes', label || `${collectionName} is already up to date.`);
     return { id: docId, path: `${collectionName}/${docId}`, skipped: true, noChange: true };
@@ -1087,10 +1418,16 @@ export const safeWrite = async ({ user, action = 'set', collectionName, docId = 
     await setDoc(refObj, payload, { merge });
   }
   recordFirestoreWriteDiagnostic({ collectionName, action, label, completed: true, sourceScreen });
-  await logAudit(user, `SAFE_WRITE_${String(action).toUpperCase()}`, `${collectionName}/${docId || refObj?.id || ''}`, JSON.stringify({ label, after: scrubForAudit(payload), before: scrubForAudit(before) }).slice(0, 2500));
-  recordFirestoreWriteDiagnostic({ collectionName, action: 'audit', label, audit: true, sourceScreen });
+  let auditWarning = '';
+  try {
+    await logAudit(user, `SAFE_WRITE_${String(action).toUpperCase()}`, `${collectionName}/${docId || refObj?.id || ''}`, JSON.stringify({ label, after: scrubForAudit(payload), before: scrubForAudit(before) }).slice(0, 2500));
+    recordFirestoreWriteDiagnostic({ collectionName, action: 'audit', label, audit: true, sourceScreen });
+  } catch (auditErr) {
+    auditWarning = auditErr?.message || 'Audit write failed after the business write succeeded.';
+    console.warn('Safe write audit warning:', auditWarning);
+  }
   if (addToast) addToast('Saved', label || `${collectionName} updated safely.`);
-  return { id: refObj?.id || docId, path: `${collectionName}/${refObj?.id || docId}`, payload };
+  return { id: refObj?.id || docId, path: `${collectionName}/${refObj?.id || docId}`, payload, auditWarning };
 };
 
 export const getOfflineQueueKey = (restaurantId, userId) => `chaosOfflineWriteQueue_${restaurantId || 'unknown'}_${userId || 'unknown'}`;
@@ -1377,3 +1714,5 @@ export const buildV14ClientGuardrailReport = ({ currentVersion = CURRENT_VERSION
 // ============================================================================
 // BRANDING & LOGOS
 // ============================================================================
+
+export const __listenerRegistryTestHooks = { makeLiveCollectionKey, clearTenantListenerCache, resetFirebaseUsageDiagnostics };
