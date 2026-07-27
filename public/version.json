@@ -1,16 +1,14 @@
 {
-  "version": "16.0.40",
-  "name": "86 Chaos 16.0.40 Client Test Runtime Fix",
+  "version": "16.0.41",
+  "name": "86 Chaos 16.0.41 My Schedule Legacy Shift Visibility Fix",
   "releasedAt": "2026-07-27T00:00:00.000Z",
-  "label": "86 Chaos 16.0.40 Client Test Runtime Fix",
-  "build": "16.0.40",
-  "notes": "Fixes release-gate login bootstrap stalls, fast workspace entry, Event Calendar owner access, and invalid overnight schedule detection without changing Firebase credentials or app screens.",
+  "label": "86 Chaos 16.0.41 My Schedule Legacy Shift Visibility Fix",
+  "build": "16.0.41",
+  "notes": "Fixes My Schedule visibility for existing, restored, and imported shifts that use legacy employee identity fields while preserving the current schedule UI and Firebase configuration.",
   "releaseNotes": [
-    "86Voice can answer higher-level readiness, labor/schedule, prep, maintenance, price-jump, weather, and food/allergen lookup questions using real loaded app data and protected public-data routes.",
-    "Manager Brief Need Attention cards now include an Explain action with what triggered the card, why it matters, and the safest next action.",
-    "Invoice review now runs a smart line-item cleaner after OCR/AI extraction to normalize product names, SKUs, quantities, pack sizes, and prices before manager approval.",
-    "Inventory/AI Order surfaces price-jump warnings, prep prediction, event supply checks, and review-first order drafts with reasons and confidence signals.",
-    "Help Center search now includes semantic matching across real customer-safe articles and the training manual."
+    "My Schedule now loads the selected month before filtering to the signed-in employee so legacy shifts without scheduleUserId are not hidden.",
+    "Shift matching now recognizes scheduleUserId and other canonical assignment fields before falling back to legacy email/name matching.",
+    "The schedule tab loads roster identity data when My Schedule needs it to map existing shifts safely to the current employee."
   ],
-  "releaseTitle": "86 Chaos 16.0.40 Client Test Runtime Fix"
+  "releaseTitle": "86 Chaos 16.0.41 My Schedule Legacy Shift Visibility Fix"
 }

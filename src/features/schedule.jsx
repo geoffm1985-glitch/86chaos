@@ -47,7 +47,7 @@ const firstNameKey = (value = '') => normalizeScheduleName(String(value || '').s
 
 const personIdentityKeys = (person = {}) => {
   const keys = new Set();
-  [person.id, person.uid, person.authUid, person.accountUserId, person.userId, person.employeeId, person.rosterUserId, person.email, person.employeeEmail, person.name, person.displayName, person.fullName, person.ghostTargetUserId].forEach(v => {
+  [person.id, person.uid, person.authUid, person.accountUserId, person.userId, person.employeeId, person.rosterUserId, person.scheduleUserId, person.assignedUserId, person.email, person.employeeEmail, person.name, person.displayName, person.fullName, person.ghostTargetUserId].forEach(v => {
     const id = normalizeScheduleIdentity(v);
     const name = normalizeScheduleName(v);
     if (id) keys.add(id);
@@ -101,27 +101,26 @@ const shiftMatchesPerson = (shift = {}, person = {}) => {
 
   const shiftEmailKeys = [shift.employeeEmail, shift.userEmail, shift.email, shift.assignedEmail]
     .map(normalizeScheduleIdentity).filter(Boolean);
-  if (shiftEmailKeys.length) {
-    return shiftEmailKeys.some(v => personEmailKeys.includes(v));
-  }
 
   const shiftNameKeys = [shift.employeeName, shift.userName, shift.name, shift.assignedName]
     .map(normalizeScheduleName).filter(Boolean);
   const shiftFirstKeys = [shift.employeeName, shift.userName, shift.name, shift.assignedName]
     .map(firstNameKey).filter(Boolean);
 
-  const shiftIds = [shift.employeeId, shift.userId, shift.rosterUserId, shift.accountUserId, shift.assignedUserId, shift.uid, shift.authUid]
+  const shiftIds = [shift.scheduleUserId, shift.employeeId, shift.userId, shift.rosterUserId, shift.accountUserId, shift.assignedUserId, shift.uid, shift.authUid]
     .map(normalizeScheduleIdentity).filter(Boolean);
   if (shiftIds.length) {
     const idMatch = shiftIds.some(v => personIds.has(v));
-    if (!idMatch) return false;
-    // If an imported/restored shift also has a human name, require that name not to contradict
-    // the logged-in person's roster name. This prevents bad legacy ids from pulling in others.
-    if (shiftNameKeys.length && personNameKeys.length && !shiftNameKeys.some(v => personNameKeys.includes(v)) && !shiftFirstKeys.some(v => personFirstKeys.includes(v))) {
-      return false;
-    }
-    return true;
+    if (idMatch) return true;
+    // Some restored/imported schedules carried a stale id but the correct employee email/name.
+    // Allow exact email or full-name evidence, but never a loose first-name-only fallback when
+    // a durable id exists and points elsewhere.
+    if (shiftEmailKeys.length && shiftEmailKeys.some(v => personEmailKeys.includes(v))) return true;
+    if (shiftNameKeys.length && personNameKeys.length && shiftNameKeys.some(v => personNameKeys.includes(v))) return true;
+    return false;
   }
+
+  if (shiftEmailKeys.length) return shiftEmailKeys.some(v => personEmailKeys.includes(v));
 
   if (shiftNameKeys.length && personNameKeys.length && shiftNameKeys.some(v => personNameKeys.includes(v))) return true;
 
