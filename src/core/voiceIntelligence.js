@@ -10,6 +10,8 @@ const KITCHEN_SYNONYMS = {
   fryers: ['fryer', 'fryer wall', 'behind fryer', 'fryer floor'],
   hood: ['hood filters', 'hood oil pan', 'oil pan'],
   chicken: ['chicken breast', 'chicken breasts'],
+  egg: ['eggs', 'shell eggs', 'liquid egg', 'liquid eggs'],
+  eggs: ['egg', 'shell egg', 'shell eggs', 'liquid egg', 'liquid eggs'],
   ribeye: ['rib eye', 'ribeyes'],
   brioche: ['brioche bun', 'brioche buns']
 };

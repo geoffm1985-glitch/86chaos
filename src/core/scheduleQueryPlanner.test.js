@@ -29,5 +29,3 @@ describe('schedule query planner', () => {
     expect(getCanonicalScheduleUserId({ scheduleUserId: 's', employeeId: 'e', id: 'i' })).toBe('s');
   });
 });
-
-

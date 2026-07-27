@@ -1,3 +1,5 @@
+import { getVoiceMatchScore } from './voiceIntelligence';
+
 const NUMBER_WORDS = {
   one: 1, two: 2, three: 3, four: 4, five: 5, six: 6,
   seven: 7, eight: 8, nine: 9, ten: 10, eleven: 11, twelve: 12,
@@ -258,24 +260,40 @@ export const findPrepMatch = (prepItems = [], parsedItem = {}, prepDate = '') =>
   const itemKey = singularize(normalizePrepText(parsedItem.itemText || ''));
   if (!itemKey) return null;
   const itemTokens = itemKey.split(' ').filter(w => w.length > 1);
+  const parsedAliases = [parsedItem.itemText, parsedItem.sourceSegment, parsedItem.station].filter(Boolean);
   const scored = (prepItems || [])
     .filter(item => item && (item.isMaster || item.date === 'MASTER' || item.date === prepDate))
     .map(item => {
-      const candidateKey = singularize(normalizePrepText(item.text || item.title || item.name || ''));
+      const rawName = item.text || item.title || item.name || '';
+      const candidateKey = singularize(normalizePrepText(rawName));
       const candidateTokens = candidateKey.split(' ').filter(w => w.length > 1);
       if (!candidateKey) return { item, score: 0, priority: 0 };
       let score = 0;
-      if (candidateKey === itemKey) score = 100;
-      else if (candidateKey.includes(itemKey) || itemKey.includes(candidateKey)) score = 88;
+      if (candidateKey === itemKey) score = 140;
+      else if (candidateKey.includes(itemKey) || itemKey.includes(candidateKey)) score = 108;
       else {
         const hits = itemTokens.filter(token => candidateTokens.includes(token) || candidateKey.includes(token));
-        score = hits.length ? Math.round((hits.length / Math.max(itemTokens.length, candidateTokens.length, 1)) * 78) : 0;
-        if (hits.length === itemTokens.length && itemTokens.length > 1) score += 12;
+        score = hits.length ? Math.round((hits.length / Math.max(itemTokens.length, candidateTokens.length, 1)) * 88) : 0;
+        if (hits.length === itemTokens.length && itemTokens.length > 1) score += 18;
       }
+      const voiceScore = getVoiceMatchScore(parsedItem.itemText || '', rawName, [
+        item.station,
+        item.category,
+        item.sourceSegment,
+        ...(Array.isArray(item.aliases) ? item.aliases : []),
+        ...(Array.isArray(item.keywords) ? item.keywords : [])
+      ].filter(Boolean));
+      const aliasScore = Math.max(0, ...parsedAliases.map(alias => getVoiceMatchScore(alias, rawName)));
+      score = Math.max(score, voiceScore, aliasScore);
       return { item, score, priority: getPrepMatchPriority(item, prepDate) };
     })
     .sort((a, b) => (b.score - a.score) || (b.priority - a.priority));
-  return scored[0]?.score >= 70 ? scored[0].item : null;
+  const top = scored[0] || null;
+  const second = scored[1] || null;
+  if (!top || top.score < 62) return null;
+  if (top.score >= 92) return top.item;
+  if (!second || top.score - second.score >= 18) return top.item;
+  return null;
 };
 
 export const buildPrepQuantityUpdate = ({ existingItem, parsedItem, actorName = '', prepDate = '', source = 'smart_prep' }) => {

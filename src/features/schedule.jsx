@@ -238,18 +238,29 @@ export const resolveAmbiguousNameOnlyShiftIdentity = (shift = {}, roster = []) =
     .find(Boolean);
   if (durable || email) return { ok: true, shift, reason: '' };
 
-  const nameKey = [shift.employeeName, shift.userName, shift.name, shift.displayName, shift.assignedName]
+  const rawNameValues = [shift.employeeName, shift.userName, shift.name, shift.displayName, shift.assignedName];
+  const nameKey = rawNameValues
     .map(normalizeScheduleName)
+    .find(Boolean);
+  const firstKey = rawNameValues
+    .map(firstNameKey)
     .find(Boolean);
   if (!nameKey) return { ok: false, shift, reason: 'missing-employee-identity' };
 
-  const matches = (Array.isArray(roster) ? roster : []).filter(person => {
-    if (!person || person.isActive === false) return false;
+  const activeRoster = (Array.isArray(roster) ? roster : []).filter(person => person && person.isActive !== false);
+  const exactMatches = activeRoster.filter(person => {
     const candidateNames = [person.name, person.displayName, person.fullName, person.employeeName]
       .map(normalizeScheduleName)
       .filter(Boolean);
     return candidateNames.includes(nameKey);
   });
+  const firstNameMatches = exactMatches.length === 0 && firstKey ? activeRoster.filter(person => {
+    const candidateFirstNames = [person.name, person.displayName, person.fullName, person.employeeName]
+      .map(firstNameKey)
+      .filter(Boolean);
+    return candidateFirstNames.includes(firstKey);
+  }) : [];
+  const matches = exactMatches.length ? exactMatches : firstNameMatches;
 
   if (matches.length !== 1) {
     return { ok: false, shift, reason: matches.length > 1 ? 'ambiguous-name-only-identity' : 'unmatched-name-only-identity' };
@@ -328,6 +339,14 @@ const mergeVisibleScheduleShifts = (...shiftGroups) => {
     merged.push(shift);
   });
   return merged;
+};
+
+const getScheduleMonthBoundsForKey = (monthKey = '') => {
+  const cleanMonth = String(monthKey || '').slice(0, 7);
+  if (!/^\d{4}-\d{2}$/.test(cleanMonth)) return { start: '', end: '' };
+  const [year, month] = cleanMonth.split('-').map(Number);
+  const lastDay = new Date(year, month, 0).getDate();
+  return { start: `${cleanMonth}-01`, end: `${cleanMonth}-${String(lastDay).padStart(2, '0')}` };
 };
 
 export const buildShiftFingerprint = (shift = {}) => {
@@ -947,8 +966,8 @@ Clock out anyway?`);
 
 // --- SHIFT LOGIC ---
   const myMonthShifts = shifts
-    .filter(s => shiftMatchesPerson(s, schedulePerson) && String(s.date || '').startsWith(monthStr) && s.isPublished)
-    .sort((a,b) => a.date === b.date ? (a.startTime || '').localeCompare(b.startTime || '') : a.date.localeCompare(b.date));
+    .filter(s => shiftMatchesPerson(s, schedulePerson) && String(s.date || '').startsWith(monthStr) && s.isPublished && isShiftStillCurrentOrUpcoming(s, scheduleNow))
+    .sort(compareShiftsByStartDateTime);
 
   const myNextShift = shifts
     .filter(s => shiftMatchesPerson(s, schedulePerson) && s.isPublished && isShiftStillCurrentOrUpcoming(s, scheduleNow))
@@ -2098,7 +2117,25 @@ const handleAddEvent = async (e) => {
   // --- AUTO-POPULATE SCHEDULE ENGINE ---
   const handleAutoPopulate = async () => {
     if (!autoPopSourceMonth) return addToast('Error', 'Please select a source month.');
-    const sourceShifts = shifts.filter(s => String(s?.date || '').startsWith(autoPopSourceMonth));
+    const sourceBounds = getScheduleMonthBoundsForKey(autoPopSourceMonth);
+    if (!sourceBounds.start || !sourceBounds.end) return addToast('Error', 'Please select a valid source month.');
+    let sourceShifts = [];
+    try {
+      const sourceSnapshot = await getDocs(query(
+        collection(db, 'shifts'),
+        where('restaurantId', '==', appUser.restaurantId),
+        where('date', '>=', sourceBounds.start),
+        where('date', '<=', sourceBounds.end),
+        orderBy('date', 'asc'),
+        firestoreLimit(900)
+      ));
+      const fetchedSourceShifts = sourceSnapshot.docs.map(sourceDoc => ({ id: sourceDoc.id, ...sourceDoc.data() }));
+      const alreadyLoadedSourceShifts = shifts.filter(s => String(s?.date || '').startsWith(autoPopSourceMonth));
+      sourceShifts = mergeVisibleScheduleShifts(fetchedSourceShifts, alreadyLoadedSourceShifts);
+    } catch (err) {
+      console.warn('Auto-Fill source month load failed, falling back to currently loaded shifts:', err?.code || err?.message || err);
+      sourceShifts = shifts.filter(s => String(s?.date || '').startsWith(autoPopSourceMonth));
+    }
     if (sourceShifts.length === 0) return addToast('Empty', 'No shifts found in the selected month.');
 
     const targetMonth = getMonthStr(currentDate);
@@ -2149,11 +2186,9 @@ const handleAddEvent = async (e) => {
         continue;
       }
       const rosterIdentity = findAutoFillRosterPersonForShift(legacyIdentityResolution.shift, users);
-      if (!rosterIdentity.ok) {
-        invalidCount += 1;
-        continue;
-      }
-      const sourceShift = { ...legacyIdentityResolution.shift, ...buildScheduleIdentityFields(rosterIdentity.person) };
+      const sourceShift = rosterIdentity.ok
+        ? { ...legacyIdentityResolution.shift, ...buildScheduleIdentityFields(rosterIdentity.person) }
+        : legacyIdentityResolution.shift;
       const sourceFingerprint = buildShiftFingerprint(sourceShift);
       if (!sourceFingerprint || !/^\d{4}-\d{2}-\d{2}$/.test(String(sourceShift.date || '')) || !getStableShiftEmployeeKey(sourceShift) || !normalizeShiftTimeForFingerprint(sourceShift.startTime) || !normalizeShiftTimeForFingerprint(sourceShift.endTime) || !String(sourceShift.role || '').trim()) {
         invalidCount += 1;
@@ -2178,7 +2213,7 @@ const handleAddEvent = async (e) => {
         continue;
       }
 
-      const payload = buildAutoPopulateShift(sourceShift, newDateStr, appUser.restaurantId, appUser, autoPopSourceMonth, rosterIdentity.person);
+      const payload = buildAutoPopulateShift(sourceShift, newDateStr, appUser.restaurantId, appUser, autoPopSourceMonth, rosterIdentity.ok ? rosterIdentity.person : null);
       const newFingerprint = buildShiftFingerprint(payload);
       if (!newFingerprint) {
         invalidCount += 1;
@@ -2224,8 +2259,8 @@ const handleAddEvent = async (e) => {
     addToast(
       visibleCommittedCount > 0 ? 'Populated' : 'Auto-Fill Saved Outside View',
       visibleCommittedCount > 0
-        ? `Drafted ${committedCount} shifts across ${successfulBatchCount} batch(es). ${visibleCommittedCount} are visible in this schedule window. ${duplicateCount} duplicate(s), ${invalidCount} invalid, ${outsideTargetMonthCount} outside target month skipped.`
-        : `Drafted ${committedCount} shifts, but none land in the currently visible schedule window (${formatDisplayDate(schedulePeriodBounds.start)} - ${formatDisplayDate(schedulePeriodBounds.end)}). Change the schedule date/window to view them. ${duplicateCount} duplicate(s), ${invalidCount} invalid.`
+        ? `Drafted ${committedCount} shifts across ${successfulBatchCount} batch(es). ${visibleCommittedCount} are visible in this schedule window. Checked ${sourceShifts.length} source shift(s). ${duplicateCount} duplicate(s), ${invalidCount} invalid, ${outsideTargetMonthCount} outside target month skipped.`
+        : `Drafted ${committedCount} shifts, but none land in the currently visible schedule window (${formatDisplayDate(schedulePeriodBounds.start)} - ${formatDisplayDate(schedulePeriodBounds.end)}). Change the schedule date/window to view them. Checked ${sourceShifts.length} source shift(s). ${duplicateCount} duplicate(s), ${invalidCount} invalid.`
     );
   };
 

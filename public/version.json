@@ -1,15 +1,19 @@
 {
-  "version": "16.0.42",
-  "name": "86 Chaos 16.0.42 Auto-Fill Visibility Fix",
+  "version": "16.0.44",
+  "name": "86 Chaos 16.0.44 86Voice Product Matching Fix",
   "releasedAt": "2026-07-27T00:00:00.000Z",
-  "label": "86 Chaos 16.0.42 Auto-Fill Visibility Fix",
-  "build": "16.0.42",
-  "notes": "Fixes Schedule Builder Auto-Fill so committed shifts use current roster identity, appear immediately after save, and do not report a false visible success when drafts land outside the active schedule window.",
+  "label": "86 Chaos 16.0.44 86Voice Product Matching Fix",
+  "build": "16.0.44",
+  "notes": "86Voice now resolves spoken inventory products such as \u201c86 eggs\u201d against live inventory aliases and updates matching prep rows instead of creating duplicates when the spoken phrase is not exact.",
   "releaseNotes": [
-    "Auto-Fill now resolves copied shifts to the active roster before creating the target draft shifts.",
-    "Drafted Auto-Fill shifts include canonical schedule identity, schedule date keys, month keys, and draft/publish metadata used by the Schedule Builder grid.",
-    "After a successful batch commit, newly drafted shifts are kept visible in the current Schedule Builder session while the Firestore listener catches up.",
-    "The Auto-Fill toast now distinguishes visible drafts from shifts saved outside the current schedule window."
+    "86Voice 86/out-of-stock commands now resolve unique live inventory products from short spoken phrases while still asking for review when multiple products match.",
+    "86Voice prep updates now use fuzzy existing-row matching, so \u201cprep ranch\u201d can update an existing \u201cFill Ranch Bottles\u201d row instead of creating a duplicate.",
+    "Menu impact and AI ordering voice paths now use richer inventory aliases including category, vendor, SKU/code, pack size, alternate names, and keywords.",
+    "My Schedule now shows only current and upcoming shifts for the selected month instead of dimming old ended shifts in the employee list.",
+    "Schedule Builder Auto-Fill now fetches the full selected source month before copying shifts, so weeks outside the current visible planning window are not silently skipped.",
+    "Auto-Fill still skips true duplicates but can now fill missing target dates on a retry after a partial copy.",
+    "Auto-Fill falls back to the original source-shift identity when a roster match is unavailable, reducing false invalid skips for legacy imported schedules that were already visible in the source month.",
+    "Client Jest setup now includes the web API and Firebase Messaging mocks needed for the local client smoke tests."
   ],
-  "releaseTitle": "86 Chaos 16.0.42 Auto-Fill Visibility Fix"
+  "releaseTitle": "86 Chaos 16.0.44 86Voice Product Matching Fix"
 }
