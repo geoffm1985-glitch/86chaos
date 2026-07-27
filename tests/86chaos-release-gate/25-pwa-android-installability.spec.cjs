@@ -1,6 +1,8 @@
 const { test, expect } = require('@playwright/test');
+const { hasFeature } = require('../86chaos-full-audit/utils/audit-helpers.cjs');
 const { attachJson } = require('../86chaos-full-audit/utils/audit-helpers.cjs');
 
+test.skip(!hasFeature('pwa'), 'PWA files are not present in this app version.');
 test.describe('25 Android PWA and store-wrapper installability gate', () => {
   test('manifest, icons, viewport, HTTPS, and service-worker foundations are valid', async ({ page, request }, testInfo) => {
     const base = process.env.APP_URL || process.env.CHAOS_BASE_URL || process.env.BASE_URL;

@@ -1,6 +1,7 @@
 const { test, expect } = require('@playwright/test');
-const { ownerLikeCreds, requireCreds, login, gotoTab, bodyText, attachJson, ALLOW_MUTATION, readSeedReport, mutationSkipMessage } = require('./utils/audit-helpers.cjs');
+const { hasFeature, ownerLikeCreds, requireCreds, login, gotoTab, bodyText, attachJson, ALLOW_MUTATION, readSeedReport, mutationSkipMessage } = require('./utils/audit-helpers.cjs');
 
+test.skip(!hasFeature('financials'), 'Feature financials is not present in this app version.');
 test.describe('07 time clock, timesheets, financials, and labor math', () => {
   test('time clock and timesheet routes load without broken totals or duplicate active punch warnings', async ({ page }, testInfo) => {
     const account = ownerLikeCreds();

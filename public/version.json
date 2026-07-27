@@ -1,10 +1,11 @@
 {
-  "version": "16.0.34",
-  "name": "86 Chaos 16.0.34 Restaurant AI Assistants and Free Data Layer",
+  "version": "16.0.35",
+  "name": "86 Chaos 16.0.35 Firestore Index Coverage Fix",
   "releasedAt": "2026-07-27T00:00:00.000Z",
-  "label": "86 Chaos 16.0.34 Restaurant AI Assistants and Free Data Layer",
-  "build": "16.0.34",
+  "label": "86 Chaos 16.0.35 Firestore Index Coverage Fix",
+  "build": "16.0.35",
   "notes": [
+    "Adds missing composite Firestore indexes needed by the optimized Python Automation and Operations inventory queries.",
     "Adds review-first restaurant AI assistants for 86Voice, Manager Brief explanations, invoice line cleanup, price jump detection, prep prediction, schedule risk, menu intelligence, maintenance patterns, and semantic Help Center search.",
     "Preserves existing UI structure, Firebase wiring, rules, indexes, credentials, permissions, routes, tabs, scanner review flows, and operational workflows."
   ],

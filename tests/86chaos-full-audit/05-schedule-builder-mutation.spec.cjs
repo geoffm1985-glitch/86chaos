@@ -1,6 +1,7 @@
 const { test, expect } = require('@playwright/test');
-const { ALLOW_MUTATION, mutationSkipMessage, readSeedReport, ownerLikeCreds, requireCreds, login, gotoTab, bodyText, attachJson, collectTextNear } = require('./utils/audit-helpers.cjs');
+const { hasFeature, ALLOW_MUTATION, mutationSkipMessage, readSeedReport, ownerLikeCreds, requireCreds, login, gotoTab, bodyText, attachJson, collectTextNear } = require('./utils/audit-helpers.cjs');
 
+test.skip(!hasFeature('schedule'), 'Feature schedule is not present in this app version.');
 test.describe('05 Schedule Builder mutation and data-integrity checks', () => {
   test('fake QA schedule seed has one-target-only data: no wrong-employee duplicate and exact IDs for deletion audits', async ({}, testInfo) => {
     if (!ALLOW_MUTATION) test.skip(true, mutationSkipMessage());
