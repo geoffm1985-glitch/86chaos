@@ -32,7 +32,7 @@
     "test:rules": "firebase emulators:exec --only firestore,storage \"node scripts/run-rules-tests.js\"",
     "test:e2e": "playwright test",
     "lint": "eslint \"src/**/*.{js,jsx}\" \"api/**/*.js\"",
-    "syntax:py": "python3 -m py_compile scripts/python/ops_intelligence.py",
+    "syntax:py": "py -m py_compile scripts/python/ops_intelligence.py",
     "test:cost": "node scripts/run-cost-regression-tests.js",
     "backup:setup:dry-run": "node scripts/setup-native-firestore-backup.js --dry-run",
     "migrate:reminders:dry-run": "node scripts/migrate-reminder-dispatch-queue.js --dry-run",
