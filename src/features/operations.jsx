@@ -12,6 +12,7 @@ import { buildEightySixAlertDetails, buildMenuImpactText, getMenuImpactForInvent
 import { prepareScannerUploadFile, isPdfFile } from '../core/fileCompression';
 import { createAiScanIdempotencyKey, resolveClientScanPageCount, normalizeAiUsage, aiPageLimitMessage } from '../core/aiScanUsage';
 import { buildAiOrderAssistant, formatAiOrderDraftText, summarizeAiOrderAssistant } from '../core/aiOrderAssistant';
+import { buildRestaurantAiInsightBundle, buildNeedAttentionExplanation } from '../core/restaurantAiInsights';
 import { classifyInvoiceRow, inferInvoiceProductFields, invoiceProductKey, invoiceRowText, isPurchasedInvoiceLine, LEADING_PURCHASE_RE, normalizeInvoiceName as normalizeName, normalizeInvoiceSku as normalizeSku } from '../core/invoiceRowClassification';
 import { CheersLogo, Modal, DrawerMenu, DayDotPrintScreen, MapClickListener, SmartEmptyState, MiniProblemCard, getHomeProfile, calculatePunchHours, getWeekStart, getWeekDates, roleMatches, toLocalTimeInput, makeLocalIso, PunchTable, StatusTile, FriendlyEmpty, GlobalSearchModal, QuickActionDock, KitchenTVMode, ChangeLogModal, UndoBar } from '../components/common';
 import { usePlanAccess } from '../hooks/usePlanAccess';
@@ -2136,6 +2137,7 @@ const TabToday = ({ currentDate, appUser, users, shifts, shiftSwaps, timeOffRequ
   const [briefOpsLoading, setBriefOpsLoading] = useState(false);
   const [briefOpsError, setBriefOpsError] = useState('');
   const [briefOpsCopied, setBriefOpsCopied] = useState(false);
+  const [attentionExplain, setAttentionExplain] = useState(null);
   const today = getToday();
   const profile = getHomeProfile(appUser);
   const safeTodayWrite = (args) => safeWriteWithQueue({ user: appUser, addToast, ...args });
@@ -2165,6 +2167,26 @@ const TabToday = ({ currentDate, appUser, users, shifts, shiftSwaps, timeOffRequ
   const briefAuditLogs = [];
   const aiBrief = canUseAiOrdering ? buildAiOrderAssistant({ inventoryItems, vendors: [], wasteLogs: [], invoices: [], events, prepItems, menuDependencies, currentDate: today, daysAhead: 7, eventDaysAhead: 14 }) : { managerBrief: [], recommendations: [], eventNeeds: [], priceWarnings: [] };
   const aiBriefTop = aiBrief.recommendations?.filter(row => row.suggestedQty > 0).slice(0, 3) || [];
+  const localAiBundle = buildRestaurantAiInsightBundle({
+    currentDate: today,
+    appUser,
+    clientData,
+    sales,
+    events,
+    specials: events.filter(e => /special/i.test(String(e.type || e.category || e.messageCategory || ''))),
+    wasteLogs: briefWasteLogs,
+    prepItems,
+    tasks,
+    shifts,
+    timePunches,
+    timeOffRequests,
+    users,
+    inventoryItems,
+    invoices: briefInvoices,
+    recipes,
+    menuDependencies,
+    maintenanceLogs
+  });
   const briefOpsSummary = briefOpsIntel?.summary || {};
   const briefOpsFindings = [
     ...(briefOpsIntel?.priceWatch || []).map(row => ({ area: 'Inventory', title: row.itemName || 'Price watch', detail: row.summary || row.detail || 'Review invoice pricing.', tab: 'inventory', focus: 'invoices', severity: row.severity || 'medium' })),
@@ -2293,6 +2315,12 @@ const TabToday = ({ currentDate, appUser, users, shifts, shiftSwaps, timeOffRequ
     canUseScheduleBuilder && openSwaps.length ? { tone: 'blue', title: 'Shift trade board', detail: `${openSwaps.length} shift${openSwaps.length===1?'':'s'} available.`, tab: 'published' } : null,
     canUseScheduleBuilder && !todaysShifts.length ? { tone: 'amber', title: 'No published shifts today', detail: 'Check schedule coverage before service.', tab: 'schedule' } : null
   ].filter(Boolean);
+  const aiAttentionProblems = [
+    ...(localAiBundle.scheduleRisks || []).slice(0, 2).map(row => ({ tone: row.severity === 'high' ? 'red' : 'amber', title: row.title, detail: row.detail, tab: row.tab || 'published', aiGenerated: true })),
+    ...(localAiBundle.maintenancePatterns || []).slice(0, 1).map(row => ({ tone: row.severity === 'high' ? 'red' : 'amber', title: row.title, detail: row.detail, tab: 'maintenance', aiGenerated: true })),
+    ...(localAiBundle.recipeMenuInsights || []).slice(0, 1).map(row => ({ tone: row.severity === 'medium' ? 'amber' : 'blue', title: `Menu intelligence: ${row.title}`, detail: row.detail, tab: 'menu-intelligence', aiGenerated: true }))
+  ];
+  const attentionProblems = [...problems, ...aiAttentionProblems].slice(0, 10);
 
   const quickCreate = async (kind) => {
     try {
@@ -2370,10 +2398,18 @@ const TabToday = ({ currentDate, appUser, users, shifts, shiftSwaps, timeOffRequ
   };
 
   const heroTitle = canUseManagerBrief ? (profile === 'manager' || profile === 'system' ? 'Manager Brief' : profile === 'kitchen' ? 'Kitchen Brief' : profile === 'bar' ? 'Bar Brief' : profile === 'service' ? 'Service Brief' : 'Today Brief') : 'Today Home';
-  const topPriority = problems[0]?.detail || (myShift ? `You work ${formatShortTime(myShift.startTime)}-${formatShortTime(myShift.endTime)} as ${myShift.role}.` : 'No urgent problems detected.');
-  const managerBriefMathText = `${todaysShifts.length} On Schedule ${activePunches.length} Clocked In ${problems.length} Needs Eyes`;
+  const topPriority = attentionProblems[0]?.detail || (myShift ? `You work ${formatShortTime(myShift.startTime)}-${formatShortTime(myShift.endTime)} as ${myShift.role}.` : 'No urgent problems detected.');
+  const managerBriefMathText = `${todaysShifts.length} On Schedule ${activePunches.length} Clocked In ${attentionProblems.length} Needs Eyes`;
 
   return <div className="manager-brief-compact desktop-ops-page max-w-7xl mx-auto space-y-3 pb-24 animate-[slideIn_0.2s_ease-out]">
+    <Modal isOpen={!!attentionExplain} onClose={() => setAttentionExplain(null)} title={attentionExplain?.title || 'Why this matters'}>
+      {attentionExplain && <div className="space-y-3">
+        <div className="rounded-xl border border-[#2A353D] bg-[#12161A] p-3"><div className="text-[9px] uppercase tracking-widest font-black text-[#D4A381]">What triggered it</div><p className="text-sm font-bold text-white mt-1">{attentionExplain.detail}</p></div>
+        <div className="rounded-xl border border-[#2A353D] bg-[#12161A] p-3"><div className="text-[9px] uppercase tracking-widest font-black text-[#D4A381]">Why it matters</div><p className="text-sm font-bold text-slate-200 mt-1 leading-relaxed">{attentionExplain.why}</p></div>
+        <div className="rounded-xl border border-[#2A353D] bg-[#12161A] p-3"><div className="text-[9px] uppercase tracking-widest font-black text-[#D4A381]">What to do</div><p className="text-sm font-bold text-slate-200 mt-1 leading-relaxed">{attentionExplain.what}</p></div>
+        <button type="button" onClick={() => { const tab = attentionExplain.tab || 'today'; setAttentionExplain(null); setActiveTab(tab); }} className={T.btn}>Open Fix Area</button>
+      </div>}
+    </Modal>
     <div className="brief-hero cockpit-panel rounded-2xl p-4 sm:p-5 cockpit-grid overflow-hidden relative">
       <div className="absolute -right-8 -top-8 text-[9rem] font-black text-white/5 leading-none">86</div>
       <div className="relative z-10 flex flex-col sm:flex-row sm:items-start justify-between gap-3">
@@ -2386,7 +2422,7 @@ const TabToday = ({ currentDate, appUser, users, shifts, shiftSwaps, timeOffRequ
         <div className="grid grid-cols-3 gap-2 min-w-[230px]">
           <div className="bg-[#0B0E11] border border-[#2A353D] rounded-xl p-2 text-center"><div className="text-lg font-black text-white">{todaysShifts.length}</div><div className="text-[8px] uppercase tracking-widest font-black text-slate-500">On Schedule</div></div>
           <div className="bg-[#0B0E11] border border-[#2A353D] rounded-xl p-2 text-center"><div className="text-lg font-black text-emerald-400">{activePunches.length}</div><div className="text-[8px] uppercase tracking-widest font-black text-slate-500">Clocked In</div></div>
-          <div className="bg-[#0B0E11] border border-[#2A353D] rounded-xl p-2 text-center"><div className="text-lg font-black text-red-300">{problems.length}</div><div className="text-[8px] uppercase tracking-widest font-black text-slate-500">Needs Eyes</div></div>
+          <div className="bg-[#0B0E11] border border-[#2A353D] rounded-xl p-2 text-center"><div className="text-lg font-black text-red-300">{attentionProblems.length}</div><div className="text-[8px] uppercase tracking-widest font-black text-slate-500">Needs Eyes</div></div>
         </div>
       </div>
     </div>
@@ -2425,9 +2461,16 @@ const TabToday = ({ currentDate, appUser, users, shifts, shiftSwaps, timeOffRequ
         <div className={`${T.card} brief-card p-4`}>
           <button className="w-full flex justify-between items-center" onClick={() => setExpanded(e => ({...e, problems: !e.problems}))}><h2 className="font-black text-white text-lg">Need Attention</h2><ChevronRight className={`transition-transform ${expanded.problems ? 'rotate-90' : ''}`} size={18}/></button>
           {expanded.problems && <div className="grid sm:grid-cols-2 gap-2 mt-3">
-            {problems.length ? problems.map((p, idx) => <MiniProblemCard key={idx} {...p} action="Open" onClick={() => p.onClick ? p.onClick() : setActiveTab(p.tab)} />) : <SmartEmptyState icon={<Check size={24}/>} title="Nothing urgent right now" desc="Everything looks clear right now." />}
+            {attentionProblems.length ? attentionProblems.map((p, idx) => <div key={`${p.title}-${idx}`} className="relative"><MiniProblemCard {...p} action="Open" onClick={() => p.onClick ? p.onClick() : setActiveTab(p.tab)} /><button type="button" onClick={() => setAttentionExplain(buildNeedAttentionExplanation(p))} className="mt-1 text-[10px] font-black uppercase tracking-widest text-[#D4A381] hover:text-white">Explain</button></div>) : <SmartEmptyState icon={<Check size={24}/>} title="Nothing urgent right now" desc="Everything looks clear right now." />}
           </div>}
         </div>
+
+        {(localAiBundle.prepPredictions?.length || localAiBundle.scheduleRisks?.length || localAiBundle.maintenancePatterns?.length || localAiBundle.recipeMenuInsights?.length || localAiBundle.priceJumps?.length) ? <div className={`${T.card} brief-card p-4 border-[#D4A381]/20`}>
+          <div className="flex items-center justify-between gap-2"><h2 className="font-black text-white text-lg flex items-center gap-2"><Sparkles size={18} className="text-[#D4A381]"/> AI Service Assistants</h2><span className="text-[9px] uppercase tracking-widest font-black text-slate-500">uses current app data</span></div>
+          <div className="grid md:grid-cols-2 gap-2 mt-3">
+            {[...(localAiBundle.prepPredictions || []).slice(0, 2), ...(localAiBundle.scheduleRisks || []).slice(0, 2), ...(localAiBundle.maintenancePatterns || []).slice(0, 1), ...(localAiBundle.recipeMenuInsights || []).slice(0, 1), ...(localAiBundle.priceJumps || []).slice(0, 1).map(row => ({ title: row.itemName || 'Price jump', detail: row.summary, tab: 'inventory', severity: row.severity }))].slice(0, 6).map((row, idx) => <button key={`${row.title}-${idx}`} type="button" onClick={() => setActiveTab(row.tab || 'today')} className="rounded-xl border border-[#2A353D] bg-[#12161A] p-3 text-left hover:border-[#D4A381]/50 transition-colors"><div className="text-[9px] font-black uppercase tracking-widest text-[#D4A381]">{row.severity || 'signal'}</div><div className="font-black text-white text-sm mt-1">{row.title}</div><div className="text-xs text-slate-400 font-bold mt-1 leading-snug">{row.detail}</div></button>)}
+          </div>
+        </div> : null}
 
         {canUseAiOrdering && (aiBriefTop.length || aiBrief.eventNeeds?.length) && <div className={`${T.card} brief-card p-4 border-[#D4A381]/30`}>
           <div className="flex justify-between items-center gap-2"><h2 className="font-black text-white text-lg flex items-center gap-2"><Sparkles size={18} className="text-[#D4A381]"/> AI Ordering Attention</h2><button onClick={() => { sessionStorage.setItem('inventoryFocus', 'aiOrder'); setActiveTab('inventory'); }} className="text-[10px] font-black uppercase tracking-widest text-[#D4A381]">Open AI Ordering</button></div>

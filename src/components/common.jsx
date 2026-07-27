@@ -11,6 +11,7 @@ import { buildEightySixAlertDetails, canUseMenuIntelligence, resolveStrictEighty
 import { parseReminderCommand } from '../core/reminderUtils';
 import { getVoiceMatchScore, resolveVoiceMatch } from '../core/voiceIntelligence';
 import { buildAiOrderAssistant, parseAiOrderingVoiceIntent, summarizeAiOrderAssistant } from '../core/aiOrderAssistant';
+import { buildRestaurantAiInsightBundle, summarizeInsightBundleForVoice, extractRestaurantGeofenceLocation } from '../core/restaurantAiInsights';
 import { resolveFeatureAccess, featureForRoute, isMasterAdminUser } from '../lib/featureAccess';
 import { FEATURE_KEYS } from '../config/plans';
 
@@ -1330,6 +1331,32 @@ const buildVoiceEventsSummaryAction = (text = '', events = []) => {
   return { intent:'event_summary', label, tab:'events', date:start, eventRows:rows, summary: rows.length ? `${label}: ${rows.map(r => r.menuItemName).join('; ')}.` : `${label}: no events found.`, safe:true, needsConfirmation:false };
 };
 
+
+const buildVoiceOpsInsightAction = ({ raw = '', appUser = {}, clientData = {}, inventoryItems = [], recipes = [], users = [], prepItems = [], tasks = [], events = [], maintenanceLogs = [], menuDependencies = [], shifts = [], timePunches = [], timeOffRequests = [], sales = [], invoices = [], wasteLogs = [] } = {}) => {
+  const q = normalizeVoiceText(raw);
+  if (!q) return null;
+  const wantsReadiness = /\b(ready|readiness|service|tonight|today|what will hurt us|what needs attention|manager brief|service check)\b/.test(q) && /\b(are we|how are we|check|what|ready|hurt)\b/.test(q);
+  const wantsLabor = /\b(labor|schedule risk|coverage|overtime|ot|closer|staffing|thin)\b/.test(q);
+  const wantsMaintenance = /\b(maintenance|equipment|broken|repair|ice machine|fryer|oven|pattern)\b/.test(q) && /\b(check|pattern|risk|problem|what|any)\b/.test(q);
+  const wantsPrep = /\b(prep predictor|prep prediction|what should we prep|prep for tomorrow|prep forecast)\b/.test(q);
+  const wantsPrices = /\b(price jump|price jumps|invoice price|prices up|cost increase|expensive)\b/.test(q);
+  const wantsWeather = /\b(weather|rain|snow|storm|patio|forecast)\b/.test(q);
+  const wantsFood = /\b(allergen|nutrition|barcode|food lookup|ingredient info)\b/.test(q);
+  if (!wantsReadiness && !wantsLabor && !wantsMaintenance && !wantsPrep && !wantsPrices && !wantsWeather && !wantsFood) return null;
+  if (wantsWeather) {
+    const location = extractRestaurantGeofenceLocation(clientData, appUser);
+    return { intent:'ai_insight_summary', label:'Weather-aware service check', tab:'today', summary: location?.lat ? `Using the restaurant geofence (${location.lat.toFixed(4)}, ${location.lng.toFixed(4)}) for weather-aware planning. Open Manager Brief to review service, prep, and labor impact.` : 'Weather checks need the restaurant geofence or address saved first. Set the time-clock work area/geofence in Settings, then try again.', rows: [], safe:true, needsConfirmation:false };
+  }
+  if (wantsFood) {
+    const phrase = raw.replace(/\b(allergen|allergens|nutrition|barcode|food lookup|ingredient info|look up|lookup|for|about)\b/ig, ' ').replace(/\s+/g, ' ').trim();
+    return { intent:'food_lookup_request', label:'Food/allergen lookup', tab:'inventory', foodQuery: phrase, summary: phrase ? `Look up public food/allergen information for “${phrase}.” Review results before using them on a menu.` : 'Open Inventory/Menu Intelligence and enter an ingredient or product to look up public food/allergen information.', safe:true, needsConfirmation:false };
+  }
+  const bundle = buildRestaurantAiInsightBundle({ currentDate:getToday(), appUser, clientData, inventoryItems, recipes, users, prepItems, tasks, events, maintenanceLogs, menuDependencies, shifts, timePunches, timeOffRequests, sales, invoices, wasteLogs });
+  const topic = wantsLabor ? 'labor' : wantsMaintenance ? 'maintenance' : wantsPrep ? 'prep' : wantsPrices ? 'prices' : 'readiness';
+  const result = summarizeInsightBundleForVoice(bundle, topic);
+  return { intent:'ai_insight_summary', label: topic === 'labor' ? 'Schedule Risk Assistant' : topic === 'maintenance' ? 'Maintenance Pattern Detector' : topic === 'prep' ? 'Prep Predictor' : topic === 'prices' ? 'Price Jump Detective' : 'Manager Readiness Check', tab: topic === 'labor' ? 'published' : topic === 'maintenance' ? 'maintenance' : topic === 'prices' ? 'inventory' : 'today', summary: result.summary, rows: result.rows, safe:true, needsConfirmation:false };
+};
+
 const buildVoiceAiOrderingAction = ({ raw = '', inventoryItems = [], events = [], prepItems = [], menuDependencies = [], appUser = {}, clientFeatures = {}, clientData = {} } = {}) => {
   const parsed = parseAiOrderingVoiceIntent(raw);
   if (!parsed) return null;
@@ -1440,7 +1467,7 @@ const parseVoiceAvailabilityPayload = (text = '') => {
   return { intent:'submit_availability_change', label:'Submit availability change', weeklyAvailability, maxHoursPerWeek:maxHours ? Number(maxHours) : null, maxShiftsPerWeek:maxShifts ? Number(maxShifts) : null, effectiveStartDate: effective.date && effective.date >= getToday() ? effective.date : getToday(), effectiveEndDate:'', notes:`Created by 86Voice from: ${text}`, summary:`Submit availability change${uniqueDays.length ? ` for ${uniqueDays.join(', ')}` : ''}${range && !unavailable ? ` ${formatShortTime(range.start)}-${formatShortTime(range.end)}` : ''}${unavailable ? ' as unavailable' : ''}${preferred ? ' as preferred' : ''}. Manager approval may be required.`, needsConfirmation:true, safe:true };
 };
 
-const VoiceCommandDock = ({ appUser, inventoryItems = [], recipes = [], users = [], prepItems = [], tasks = [], events = [], maintenanceLogs = [], menuDependencies = [], clientFeatures = {}, clientData = {}, setActiveTab, setCurrentDate, setScheduleSubTabTarget, setHelpSearchTarget, setRecipeTarget, addToast }) => {
+const VoiceCommandDock = ({ appUser, inventoryItems = [], recipes = [], users = [], prepItems = [], tasks = [], events = [], maintenanceLogs = [], menuDependencies = [], shifts = [], timePunches = [], timeOffRequests = [], sales = [], invoices = [], wasteLogs = [], clientFeatures = {}, clientData = {}, setActiveTab, setCurrentDate, setScheduleSubTabTarget, setHelpSearchTarget, setRecipeTarget, addToast }) => {
   const [open, setOpen] = useState(false);
   const [listening, setListening] = useState(false);
   const [heardText, setHeardText] = useState('');
@@ -1527,6 +1554,23 @@ const VoiceCommandDock = ({ appUser, inventoryItems = [], recipes = [], users = 
 
     const aiOrderingAction = buildVoiceAiOrderingAction({ raw, inventoryItems, events, prepItems, menuDependencies, appUser, clientFeatures, clientData });
     if (aiOrderingAction) return aiOrderingAction;
+
+    if (/\b(weather|rain|snow|storm|patio|forecast)\b/.test(q)) {
+      const location = extractRestaurantGeofenceLocation(clientData, appUser);
+      if (location?.lat && location?.lng) {
+        try {
+          const response = await secureFetch('/api/free-ai-services', { method:'POST', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify({ kind:'weather', lat: location.lat, lng: location.lng }) });
+          const payload = await response.json().catch(() => ({}));
+          const summary = payload?.payload?.summary || 'Weather forecast lookup finished. Review Manager Brief for prep/labor impact.';
+          return { intent:'ai_insight_summary', label:'Weather-aware service check', tab:'today', summary, rows:(payload?.payload?.periods || []).slice(0, 4).map(row => ({ menuItemName: row.name, severity: `${row.shortForecast || ''}${row.temperature ? ` • ${row.temperature}°${row.temperatureUnit || 'F'}` : ''}` })), safe:true, needsConfirmation:false };
+        } catch (e) {
+          return { intent:'ai_insight_summary', label:'Weather lookup unavailable', tab:'today', summary:'The restaurant geofence exists, but the public weather lookup did not finish. Manager Brief can still use schedule, prep, inventory, and maintenance data.', rows:[], safe:true, needsConfirmation:false };
+        }
+      }
+    }
+
+    const opsInsightAction = buildVoiceOpsInsightAction({ raw, appUser, clientData, inventoryItems, recipes, users, prepItems, tasks, events, maintenanceLogs, menuDependencies, shifts, timePunches, timeOffRequests, sales, invoices, wasteLogs });
+    if (opsInsightAction) return opsInsightAction;
 
     if (isVoiceWorkStatusQuestion(raw)) {
       return {
@@ -1922,7 +1966,7 @@ const VoiceCommandDock = ({ appUser, inventoryItems = [], recipes = [], users = 
     if (!action) return addToast('Voice Command', 'I did not hear a command. Try again or type it.');
     const actionWithVoiceMeta = sourceMeta.fromVoice ? { ...action, voiceSessionId: sourceMeta.voiceSessionId, createdFromFinalTranscript: true } : action;
     setPending(actionWithVoiceMeta);
-    const instantIntents = ['navigate', 'navigate_schedule', 'help_search', 'open_recipe', 'smart_prep', 'complete_list_item', 'create_personal_reminder', 'upsert_task', 'status_summary', 'out_of_stock_summary', 'menu_impact_answer', 'event_summary', 'ai_order_summary', 'undo_last_voice', 'blocked'];
+    const instantIntents = ['navigate', 'navigate_schedule', 'help_search', 'open_recipe', 'smart_prep', 'complete_list_item', 'create_personal_reminder', 'upsert_task', 'status_summary', 'out_of_stock_summary', 'menu_impact_answer', 'event_summary', 'ai_order_summary', 'ai_insight_summary', 'food_lookup_request', 'undo_last_voice', 'blocked'];
     if (!actionWithVoiceMeta.needsConfirmation && instantIntents.includes(actionWithVoiceMeta.intent)) {
       await executeAction(actionWithVoiceMeta, text, true, false);
     }
@@ -2025,8 +2069,8 @@ const VoiceCommandDock = ({ appUser, inventoryItems = [], recipes = [], users = 
         await runVoiceUndo(sourceText);
         return;
       }
-      if (['status_summary', 'out_of_stock_summary', 'menu_impact_answer', 'event_summary', 'ai_order_summary'].includes(actionToRun.intent)) {
-        setVoiceResult({ label: actionToRun.label || 'Voice Result', summary: actionToRun.summary || '', rows: actionToRun.impactRows || actionToRun.eventRows || [], itemName: actionToRun.itemName || '', matchConfidence: actionToRun.matchConfidence || 0 });
+      if (['status_summary', 'out_of_stock_summary', 'menu_impact_answer', 'event_summary', 'ai_order_summary', 'ai_insight_summary'].includes(actionToRun.intent)) {
+        setVoiceResult({ label: actionToRun.label || 'Voice Result', summary: actionToRun.summary || '', rows: actionToRun.impactRows || actionToRun.eventRows || actionToRun.rows || [], itemName: actionToRun.itemName || '', matchConfidence: actionToRun.matchConfidence || 0 });
         if (actionToRun.intent === 'event_summary') {
           if (actionToRun.date && setCurrentDate) setCurrentDate(actionToRun.date);
           setActiveTab('events');
@@ -2035,7 +2079,19 @@ const VoiceCommandDock = ({ appUser, inventoryItems = [], recipes = [], users = 
           try { sessionStorage.setItem('inventoryFocus', 'aiOrder'); } catch (e) {}
           setActiveTab('inventory');
         }
+        if (actionToRun.intent === 'ai_insight_summary') {
+          setActiveTab(actionToRun.tab || 'today');
+        }
         addToast(actionToRun.label || '86 Voice', actionToRun.summary || 'Done.');
+        return;
+      }
+      if (actionToRun.intent === 'food_lookup_request') {
+        if (actionToRun.foodQuery) {
+          try { sessionStorage.setItem('inventoryFoodLookup', actionToRun.foodQuery); } catch (e) {}
+        }
+        setVoiceResult({ label: actionToRun.label || 'Food lookup', summary: actionToRun.summary || '', rows: [] });
+        setActiveTab('inventory');
+        addToast(actionToRun.label || 'Food lookup', actionToRun.summary || 'Open Inventory to review.');
         return;
       }
       if (actionToRun.intent === 'blocked') {

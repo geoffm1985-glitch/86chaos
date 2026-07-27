@@ -12,6 +12,7 @@ import { buildEightySixAlertDetails, buildMenuImpactText, getMenuImpactForInvent
 import { prepareScannerUploadFile, isPdfFile } from '../core/fileCompression';
 import { createAiScanIdempotencyKey, resolveClientScanPageCount, normalizeAiUsage, aiPageLimitMessage } from '../core/aiScanUsage';
 import { buildAiOrderAssistant, formatAiOrderDraftText, summarizeAiOrderAssistant, isLikelyInvoiceNoiseInventoryItem, cleanInventoryItemDisplayName } from '../core/aiOrderAssistant';
+import { cleanInvoiceLineItems, buildPriceJumpWarnings } from '../core/restaurantAiInsights';
 import { classifyInvoiceRow, inferInvoiceProductFields, invoiceProductKey, invoiceRowText, isPurchasedInvoiceLine, LEADING_PURCHASE_RE, normalizeInvoiceName as normalizeName, normalizeInvoiceSku as normalizeSku } from '../core/invoiceRowClassification';
 import { CheersLogo, Modal, DrawerMenu, DayDotPrintScreen, MapClickListener, SmartEmptyState, MiniProblemCard, getHomeProfile, calculatePunchHours, getWeekStart, getWeekDates, roleMatches, toLocalTimeInput, makeLocalIso, PunchTable, StatusTile, FriendlyEmpty, GlobalSearchModal, QuickActionDock, KitchenTVMode, ChangeLogModal, UndoBar } from '../components/common';
 import { usePlanAccess } from '../hooks/usePlanAccess';
@@ -141,6 +142,36 @@ const TabInventory = ({ addToast, appUser, clientData = {}, initialSubTab, onIni
   const [invoiceAiUsageLoading, setInvoiceAiUsageLoading] = useState(false);
   const [invoiceAiExempt, setInvoiceAiExempt] = useState(false);
   const invoiceScanBusyRef = useRef(false);
+  const [foodLookupQuery, setFoodLookupQuery] = useState('');
+  const [foodLookupResult, setFoodLookupResult] = useState(null);
+  const [foodLookupLoading, setFoodLookupLoading] = useState(false);
+
+  const runFoodLookup = async (queryText = foodLookupQuery) => {
+    const q = String(queryText || '').trim();
+    if (!q) return addToast?.('Food Lookup', 'Enter an ingredient, product, or barcode.');
+    setFoodLookupLoading(true);
+    try {
+      const response = await secureFetch('/api/free-ai-services', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ kind: 'food', query: q }) });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok || payload?.ok === false) throw new Error(payload?.error || 'Food lookup failed.');
+      setFoodLookupResult(payload.payload || null);
+      addToast?.('Food Lookup Ready', `Found ${(payload.payload?.products || []).length} public product match${(payload.payload?.products || []).length === 1 ? '' : 'es'}. Review before using.`);
+    } catch (err) {
+      setFoodLookupResult({ error: err?.message || 'Food lookup failed.' });
+      addToast?.('Food Lookup Unavailable', err?.message || 'Could not reach public food lookup.');
+    } finally {
+      setFoodLookupLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    const pending = sessionStorage.getItem('inventoryFoodLookup');
+    if (!pending) return;
+    sessionStorage.removeItem('inventoryFoodLookup');
+    setInvTab('count');
+    setFoodLookupQuery(pending);
+    window.setTimeout(() => runFoodLookup(pending), 100);
+  }, []);
 
   const loadInvoiceAiUsage = async () => {
     if (!appUser?.restaurantId || !canUseSmartInventory) return;
@@ -475,6 +506,7 @@ const handleLogWaste = async (e) => {
   const vendorsWithDeficits = vendors.filter(v => itemsToOrder.some(i => i.supplierId === v.id));
   const pendingVendors = vendors.filter(v => inventoryItems.some(i => i.supplierId === v.id && (i.pendingQty || 0) > 0));
   const aiOrderAssistant = (isAiOrderTab && canUseAiOrdering) ? buildAiOrderAssistant({ inventoryItems: orderableInventoryItems, vendors, wasteLogs, invoices, events: futureEvents, prepItems: prepItemsForOrdering, menuDependencies, currentDate: getToday(), daysAhead: aiOrderDaysAhead, eventDaysAhead: aiEventDaysAhead }) : EMPTY_AI_ORDER_ASSISTANT;
+  const localPriceJumpWarnings = buildPriceJumpWarnings({ invoices, inventoryItems: orderableInventoryItems, thresholdPct: 12 });
   const aiOrderSummaryText = summarizeAiOrderAssistant(aiOrderAssistant);
   const aiOrderRecommendations = aiOrderAssistant.recommendations || [];
   const aiSuggestedRows = aiOrderRecommendations.filter(row => Number(row.suggestedQty || 0) > 0 && (row.itemId || row.itemName));
@@ -1047,7 +1079,7 @@ const executeOrder = async (method) => {
         const previous = lineItemMap.get(key) || {};
         lineItemMap.set(key, { ...previous, ...row, isInventoryLine: true, rowType: row.scannerClassification === 'non_food' ? 'non_food_supply' : 'product' });
       });
-      const normalizedLineItems = Array.from(lineItemMap.values());
+      const normalizedLineItems = cleanInvoiceLineItems(Array.from(lineItemMap.values()), inventoryItems);
       const productKeys = new Set(normalizedLineItems.map(invoiceProductKey));
       const normalizedFullRows = (fullRows.length ? fullRows : sourceRows).map(prepareReviewRow);
 
@@ -1069,7 +1101,9 @@ const executeOrder = async (method) => {
         allExtractedRows: normalizedFullRows,
         sourceFile: file.name,
         scanCompression: payload.compression || null,
-        scanUploadedFileName: payload.uploadedFileName || ''
+        scanUploadedFileName: payload.uploadedFileName || '',
+        lineItemCleanerVersion: '86chaos-smart-line-cleaner-1',
+        lineItemCleanerSummary: `${normalizedLineItems.filter(row => row.cleanerConfidence === 'high').length} high-confidence cleaned lines; ${normalizedLineItems.filter(row => row.cleanerConfidence === 'review').length} need review`
       });
       const recoveredCount = normalizedLineItems.filter(row => /recovered from distributor/i.test(row.classificationReason || '')).length;
       const reviewText = skippedRows.length ? `${skippedRows.length} uncertain purchase row${skippedRows.length === 1 ? '' : 's'} need review.` : 'No uncertain rows need review.';
@@ -1337,7 +1371,7 @@ const groupedItems = orderableInventoryItems
             <div className="flex justify-between items-center bg-[#12161A] p-3 rounded-xl border border-[#2A353D]">
               <div>
                 <div className="font-black text-white text-lg">{scannedInvoice.vendorName || 'Unknown Vendor'}</div>
-                <div className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">{scannedInvoice.invoiceDate || 'No date found'} {scannedInvoice.invoiceNumber ? ` • Inv #${scannedInvoice.invoiceNumber}` : ''}</div>
+                <div className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">{scannedInvoice.invoiceDate || 'No date found'} {scannedInvoice.invoiceNumber ? ` • Inv #${scannedInvoice.invoiceNumber}` : ''}</div>{scannedInvoice.lineItemCleanerSummary && <div className="text-[9px] text-[#D4A381] font-black uppercase tracking-widest mt-1">{scannedInvoice.lineItemCleanerSummary}</div>}
                 {scannedInvoice.scanFileName && <div className="text-[9px] text-slate-500 font-bold uppercase tracking-widest mt-1">File: {scannedInvoice.scanFileName}</div>}
               </div>
 <div className="text-xl font-black text-emerald-400">${Number(scannedInvoice.invoiceTotal || scannedInvoice.grandTotal || 0).toFixed(2)}</div>
@@ -1706,7 +1740,7 @@ const groupedItems = orderableInventoryItems
                         </label>
                         <span className="font-black text-white">{row.itemName}</span>
                         <span className={`text-[8px] px-2 py-0.5 rounded-full border uppercase tracking-widest font-black ${row.priority === 'critical' ? 'text-red-300 border-red-500/50 bg-red-900/20' : row.priority === 'high' ? 'text-amber-300 border-amber-500/50 bg-amber-900/20' : 'text-slate-300 border-[#2A353D] bg-[#0B0E11]'}`}>{row.priority}</span>
-                        <span className="text-[10px] text-[#D4A381] font-black">{row.vendorName}</span>
+                        <span className="text-[10px] text-[#D4A381] font-black">{row.vendorName}</span><span className="text-[8px] px-2 py-0.5 rounded-full border border-blue-500/30 bg-blue-950/10 text-blue-200 uppercase tracking-widest font-black">{row.confidence || 'review'}</span>
                       </div>
                       <div className="mt-2 grid grid-cols-2 sm:grid-cols-4 gap-2">
                         <div className="rounded-lg border border-emerald-500/30 bg-emerald-950/10 p-2"><div className="text-[8px] uppercase tracking-widest font-black text-emerald-300">Suggested</div><div className="text-xl font-black text-emerald-200">{suggestedLabel}</div></div>
@@ -1714,7 +1748,7 @@ const groupedItems = orderableInventoryItems
                         <div className="rounded-lg border border-[#2A353D] bg-[#0B0E11] p-2"><div className="text-[8px] uppercase tracking-widest font-black text-slate-500">Stock</div><div className="font-black text-white">{row.stock}</div></div>
                         <div className="rounded-lg border border-[#2A353D] bg-[#0B0E11] p-2"><div className="text-[8px] uppercase tracking-widest font-black text-slate-500">Pending</div><div className="font-black text-white">{row.pending}</div></div>
                       </div>
-                      <div className="text-[11px] text-slate-300 mt-2 leading-snug">{row.reasons.slice(0, 4).join(' • ') || 'Review item setup, par, and usage history.'}</div>
+                      <div className="text-[11px] text-slate-300 mt-2 leading-snug">{row.reasons.slice(0, 4).join(' • ') || 'Review item setup, par, and usage history.'}</div>{row.confidenceTags?.length > 0 && <div className="mt-1 text-[9px] font-black uppercase tracking-widest text-slate-500">Confidence signals: {row.confidenceTags.join(', ')}</div>}
                       {row.priceWarning && <div className="mt-1 text-[10px] font-black text-red-300">⚠ {row.priceWarning.summary}</div>}
                     </div>
                     <div className="flex flex-wrap items-center gap-2 shrink-0">
@@ -1742,7 +1776,7 @@ const groupedItems = orderableInventoryItems
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
             <div className={`${T.card} p-4`}><h3 className="font-black text-white text-lg mb-3">Event Supply Planning</h3><div className="space-y-2 max-h-72 overflow-y-auto custom-scrollbar">{aiOrderAssistant.eventNeeds.length ? aiOrderAssistant.eventNeeds.map((row, idx) => <div key={idx} className="rounded-xl border border-[#2A353D] bg-[#12161A] p-3"><div className="text-[10px] font-black uppercase tracking-widest text-[#D4A381]">{row.date}</div><div className="font-black text-white">{row.event.title || 'Event'}</div><div className="text-[11px] text-slate-400 font-bold mt-1">{[...row.items.map(i => i.itemName), ...row.mentionedItems.map(m => m.item.name)].slice(0, 8).join(', ') || 'Review notes/menu.'}</div></div>) : <p className="text-xs text-slate-500 font-bold">No event supply signals in this window.</p>}</div></div>
             <div className={`${T.card} p-4`}><h3 className="font-black text-white text-lg mb-3">Prep Prediction</h3><div className="space-y-2 max-h-72 overflow-y-auto custom-scrollbar">{aiOrderAssistant.prepSuggestions.length ? aiOrderAssistant.prepSuggestions.map((row, idx) => <div key={idx} className="rounded-xl border border-[#2A353D] bg-[#12161A] p-3"><div className="font-black text-white">{row.text}</div><div className="text-[11px] text-slate-400 font-bold mt-1">{row.reason}</div></div>) : <p className="text-xs text-slate-500 font-bold">Prep suggestions appear when prep, events, or low-stock items line up.</p>}</div></div>
-            <div className={`${T.card} p-4`}><h3 className="font-black text-white text-lg mb-3">Warnings</h3><div className="space-y-2 max-h-72 overflow-y-auto custom-scrollbar">{[...aiOrderAssistant.priceWarnings.map(w => w.summary), ...aiOrderAssistant.wasteWarnings.map(w => w.summary)].length ? [...aiOrderAssistant.priceWarnings.map(w => w.summary), ...aiOrderAssistant.wasteWarnings.map(w => w.summary)].slice(0, 10).map((line, idx) => <div key={idx} className="rounded-xl border border-red-500/30 bg-red-950/10 p-3 text-xs font-bold text-red-100 leading-snug">{line}</div>) : <p className="text-xs text-slate-500 font-bold">No invoice price or waste warnings detected.</p>}</div></div>
+            <div className={`${T.card} p-4`}><h3 className="font-black text-white text-lg mb-3">Warnings</h3><div className="space-y-2 max-h-72 overflow-y-auto custom-scrollbar">{[...aiOrderAssistant.priceWarnings.map(w => w.summary), ...localPriceJumpWarnings.map(w => w.summary), ...aiOrderAssistant.wasteWarnings.map(w => w.summary)].length ? [...aiOrderAssistant.priceWarnings.map(w => w.summary), ...localPriceJumpWarnings.map(w => w.summary), ...aiOrderAssistant.wasteWarnings.map(w => w.summary)].slice(0, 10).map((line, idx) => <div key={idx} className="rounded-xl border border-red-500/30 bg-red-950/10 p-3 text-xs font-bold text-red-100 leading-snug">{line}</div>) : <p className="text-xs text-slate-500 font-bold">No invoice price or waste warnings detected.</p>}</div></div>
           </div>
         </div>
       )}
@@ -1947,6 +1981,21 @@ const groupedItems = orderableInventoryItems
               <button type="submit" className={`w-full sm:w-auto ${T.btn} py-2 px-6`}><Plus size={18} className="inline mr-2"/> Add to Master List</button>
             </div>
           </form>
+
+          <div className={`${T.card} p-4 space-y-3 border-[#D4A381]/20`}>
+            <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-3">
+              <div>
+                <div className="text-[10px] font-black uppercase tracking-widest text-[#D4A381]">Food / Allergen Lookup</div>
+                <p className="text-xs text-slate-400 font-bold mt-1">Uses public product data for review only. Always verify labels and supplier specs before menu/allergen decisions.</p>
+              </div>
+              <div className="flex gap-2 w-full sm:w-auto">
+                <input value={foodLookupQuery} onChange={e => setFoodLookupQuery(e.target.value)} placeholder="ingredient, product, or barcode" className={`${T.input} flex-1 sm:w-64`} />
+                <button type="button" onClick={() => runFoodLookup()} disabled={foodLookupLoading} className={T.btnAlt}>{foodLookupLoading ? 'Looking…' : 'Lookup'}</button>
+              </div>
+            </div>
+            {foodLookupResult?.error && <div className="rounded-xl border border-amber-500/30 bg-amber-950/20 p-3 text-xs font-bold text-amber-100">{foodLookupResult.error}</div>}
+            {(foodLookupResult?.products || []).length > 0 && <div className="grid md:grid-cols-2 gap-2">{foodLookupResult.products.slice(0, 4).map((product, idx) => <div key={`${product.code || product.name}-${idx}`} className="rounded-xl border border-[#2A353D] bg-[#12161A] p-3"><div className="font-black text-white text-sm">{product.name}</div><div className="text-[10px] uppercase tracking-widest font-black text-slate-500 mt-1">{product.brands || product.categories || product.code || 'Public data'}</div><div className="text-xs text-slate-300 font-bold mt-2 line-clamp-3">Allergens: {Array.isArray(product.allergens) ? product.allergens.join(', ') : (product.allergens || 'none listed')}</div></div>)}</div>}
+          </div>
 
           {/* SEARCH BAR */}
           <div className="relative w-full">

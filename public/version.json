@@ -1,21 +1,18 @@
 {
-  "version": "16.0.32",
-  "name": "86 Chaos 16.0.32 Reminder Recurrence, Firebase Isolation, and Release Gate Fix",
-  "releasedAt": "2026-07-26T00:00:00.000Z",
-  "label": "86 Chaos 16.0.32 Reminder Recurrence, Firebase Isolation, and Release Gate Fix",
-  "build": "16.0.32",
+  "version": "16.0.33",
+  "name": "86 Chaos 16.0.33 Restaurant AI Assistants and Free Data Layer",
+  "releasedAt": "2026-07-27T00:00:00.000Z",
+  "label": "86 Chaos 16.0.33 Restaurant AI Assistants and Free Data Layer",
+  "build": "16.0.33",
   "notes": [
-    "Corrects v16.0.30 release-blocking QA, listener, reminder, backup, admin safety, and cost-test reliability issues without removing features.",
-    "Keeps native backup/manual backup flows, operational intelligence, schedules, reminders, notifications, permissions, and Firebase credential wiring intact."
+    "Adds review-first restaurant AI assistants for 86Voice, Manager Brief explanations, invoice line cleanup, price jump detection, prep prediction, schedule risk, menu intelligence, maintenance patterns, and semantic Help Center search.",
+    "Preserves existing UI structure, Firebase wiring, rules, indexes, credentials, permissions, routes, tabs, scanner review flows, and operational workflows."
   ],
   "releaseNotes": [
-    "Recurring reminders now retain one occurrence through retries and advance to a fresh occurrence only after successful delivery.",
-    "Personal reminder edits, sharing, and participant actions are validated by authenticated server endpoints and same-workspace membership checks.",
-    "Shared Firestore listener caching is isolated by Firebase project, workspace, and authenticated viewer, with targeted cache cleanup.",
-    "Schedule, availability, time-off, and trade-board queries use separate canonical identities and deployed query indexes.",
-    "System Administrator orphan-shift cleanup now uses protected server-side dry-run records, revalidation, bounded deletion, and partial-result reporting.",
-    "Native backup verification uses exact database resources, paginated Admin API results, explicit READY state, normalized retention, and sanitized errors.",
-    "Server tests use Node test runner behavior assertions for reminder recurrence, push-device eligibility, Python hash stability, and backup parsing.",
-    "Visual design, layouts, spacing, colors, and styles are unchanged."
+    "86Voice can answer higher-level readiness, labor/schedule, prep, maintenance, price-jump, weather, and food/allergen lookup questions using real loaded app data and protected public-data routes.",
+    "Manager Brief Need Attention cards now include an Explain action with what triggered the card, why it matters, and the safest next action.",
+    "Invoice review now runs a smart line-item cleaner after OCR/AI extraction to normalize product names, SKUs, quantities, pack sizes, and prices before manager approval.",
+    "Inventory/AI Order surfaces price-jump warnings, prep prediction, event supply checks, and review-first order drafts with reasons and confidence signals.",
+    "Help Center search now includes semantic matching across real customer-safe articles and the training manual."
   ]
 }
