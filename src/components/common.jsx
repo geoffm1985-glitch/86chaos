@@ -11,7 +11,6 @@ import { buildEightySixAlertDetails, canUseMenuIntelligence, resolveStrictEighty
 import { parseReminderCommand } from '../core/reminderUtils';
 import { getVoiceMatchScore, resolveVoiceMatch } from '../core/voiceIntelligence';
 import { buildAiOrderAssistant, parseAiOrderingVoiceIntent, summarizeAiOrderAssistant } from '../core/aiOrderAssistant';
-import { buildVoiceCapabilityAction, buildWeatherLocationFromRestaurant, summarizeFoodDataResults, summarizeWeatherInsights } from '../core/localAiCapabilities';
 import { resolveFeatureAccess, featureForRoute, isMasterAdminUser } from '../lib/featureAccess';
 import { FEATURE_KEYS } from '../config/plans';
 
@@ -1441,7 +1440,7 @@ const parseVoiceAvailabilityPayload = (text = '') => {
   return { intent:'submit_availability_change', label:'Submit availability change', weeklyAvailability, maxHoursPerWeek:maxHours ? Number(maxHours) : null, maxShiftsPerWeek:maxShifts ? Number(maxShifts) : null, effectiveStartDate: effective.date && effective.date >= getToday() ? effective.date : getToday(), effectiveEndDate:'', notes:`Created by 86Voice from: ${text}`, summary:`Submit availability change${uniqueDays.length ? ` for ${uniqueDays.join(', ')}` : ''}${range && !unavailable ? ` ${formatShortTime(range.start)}-${formatShortTime(range.end)}` : ''}${unavailable ? ' as unavailable' : ''}${preferred ? ' as preferred' : ''}. Manager approval may be required.`, needsConfirmation:true, safe:true };
 };
 
-const VoiceCommandDock = ({ appUser, inventoryItems = [], recipes = [], users = [], prepItems = [], tasks = [], events = [], maintenanceLogs = [], menuDependencies = [], shifts = [], timePunches = [], timeOffRequests = [], clientFeatures = {}, clientData = {}, setActiveTab, setCurrentDate, setScheduleSubTabTarget, setHelpSearchTarget, setRecipeTarget, addToast }) => {
+const VoiceCommandDock = ({ appUser, inventoryItems = [], recipes = [], users = [], prepItems = [], tasks = [], events = [], maintenanceLogs = [], menuDependencies = [], clientFeatures = {}, clientData = {}, setActiveTab, setCurrentDate, setScheduleSubTabTarget, setHelpSearchTarget, setRecipeTarget, addToast }) => {
   const [open, setOpen] = useState(false);
   const [listening, setListening] = useState(false);
   const [heardText, setHeardText] = useState('');
@@ -1550,24 +1549,6 @@ const VoiceCommandDock = ({ appUser, inventoryItems = [], recipes = [], users = 
         needsConfirmation:false
       };
     }
-
-    const localAiCapability = buildVoiceCapabilityAction({
-      raw,
-      inventoryItems,
-      recipes,
-      users,
-      prepItems,
-      tasks,
-      events,
-      maintenanceLogs,
-      shifts,
-      timePunches,
-      timeOffRequests,
-      currentDate:getToday(),
-      appUser,
-      clientData
-    });
-    if (localAiCapability) return localAiCapability;
 
     const eventSummary = buildVoiceEventsSummaryAction(raw, events);
     if (eventSummary) return eventSummary;
@@ -1941,7 +1922,7 @@ const VoiceCommandDock = ({ appUser, inventoryItems = [], recipes = [], users = 
     if (!action) return addToast('Voice Command', 'I did not hear a command. Try again or type it.');
     const actionWithVoiceMeta = sourceMeta.fromVoice ? { ...action, voiceSessionId: sourceMeta.voiceSessionId, createdFromFinalTranscript: true } : action;
     setPending(actionWithVoiceMeta);
-    const instantIntents = ['navigate', 'navigate_schedule', 'help_search', 'open_recipe', 'smart_prep', 'complete_list_item', 'create_personal_reminder', 'upsert_task', 'status_summary', 'out_of_stock_summary', 'menu_impact_answer', 'event_summary', 'ai_order_summary', 'operational_ai_summary', 'weather_insight', 'food_data_lookup', 'undo_last_voice', 'blocked'];
+    const instantIntents = ['navigate', 'navigate_schedule', 'help_search', 'open_recipe', 'smart_prep', 'complete_list_item', 'create_personal_reminder', 'upsert_task', 'status_summary', 'out_of_stock_summary', 'menu_impact_answer', 'event_summary', 'ai_order_summary', 'undo_last_voice', 'blocked'];
     if (!actionWithVoiceMeta.needsConfirmation && instantIntents.includes(actionWithVoiceMeta.intent)) {
       await executeAction(actionWithVoiceMeta, text, true, false);
     }
@@ -2044,8 +2025,8 @@ const VoiceCommandDock = ({ appUser, inventoryItems = [], recipes = [], users = 
         await runVoiceUndo(sourceText);
         return;
       }
-      if (['status_summary', 'out_of_stock_summary', 'menu_impact_answer', 'event_summary', 'ai_order_summary', 'operational_ai_summary'].includes(actionToRun.intent)) {
-        setVoiceResult({ label: actionToRun.label || 'Voice Result', summary: actionToRun.summary || '', rows: actionToRun.impactRows || actionToRun.eventRows || actionToRun.rows || [], itemName: actionToRun.itemName || '', matchConfidence: actionToRun.matchConfidence || 0 });
+      if (['status_summary', 'out_of_stock_summary', 'menu_impact_answer', 'event_summary', 'ai_order_summary'].includes(actionToRun.intent)) {
+        setVoiceResult({ label: actionToRun.label || 'Voice Result', summary: actionToRun.summary || '', rows: actionToRun.impactRows || actionToRun.eventRows || [], itemName: actionToRun.itemName || '', matchConfidence: actionToRun.matchConfidence || 0 });
         if (actionToRun.intent === 'event_summary') {
           if (actionToRun.date && setCurrentDate) setCurrentDate(actionToRun.date);
           setActiveTab('events');
@@ -2054,41 +2035,7 @@ const VoiceCommandDock = ({ appUser, inventoryItems = [], recipes = [], users = 
           try { sessionStorage.setItem('inventoryFocus', 'aiOrder'); } catch (e) {}
           setActiveTab('inventory');
         }
-        if (actionToRun.intent === 'operational_ai_summary' && actionToRun.tab && canVoiceOpenTab(appUser, clientFeatures, actionToRun.tab, clientData)) {
-          setActiveTab(actionToRun.tab);
-        }
         addToast(actionToRun.label || '86 Voice', actionToRun.summary || 'Done.');
-        return;
-      }
-      if (actionToRun.intent === 'weather_insight') {
-        const location = buildWeatherLocationFromRestaurant(clientData, appUser);
-        if (!location) {
-          const summary = 'Weather-aware checks need restaurant latitude/longitude saved in the restaurant profile or settings. Nothing was written.';
-          setVoiceResult({ label:'Weather check unavailable', summary, rows:[] });
-          addToast('Weather Check', summary);
-          return;
-        }
-        const res = await secureFetch('/api/free-ai-services', {
-          method:'POST',
-          headers:{ 'Content-Type':'application/json' },
-          body: JSON.stringify({ service:'weather', latitude:location.latitude, longitude:location.longitude })
-        });
-        const payload = await res.json().catch(() => ({}));
-        const summary = summarizeWeatherInsights(payload);
-        setVoiceResult({ label:'Weather-aware operations check', summary, rows:(payload.periods || []).slice(0, 5).map(p => ({ label:`${p.name || 'Forecast'}: ${p.shortForecast || ''}`, severity:`${p.temperature || ''}${p.temperatureUnit || ''} ${p.windSpeed || ''}`.trim() })) });
-        addToast('Weather Check', summary);
-        return;
-      }
-      if (actionToRun.intent === 'food_data_lookup') {
-        const res = await secureFetch('/api/free-ai-services', {
-          method:'POST',
-          headers:{ 'Content-Type':'application/json' },
-          body: JSON.stringify({ service:'food', queryText: actionToRun.queryText || sourceText })
-        });
-        const payload = await res.json().catch(() => ({}));
-        const summary = summarizeFoodDataResults(payload, actionToRun.queryText || sourceText);
-        setVoiceResult({ label:'Food data lookup', summary, rows:(payload.products || []).slice(0, 5).map(p => ({ label:p.productName || p.brands || 'Product', severity:[p.brands, p.allergens?.length ? `allergens: ${p.allergens.join(', ')}` : '', p.nutritionGrade ? `grade ${p.nutritionGrade}` : ''].filter(Boolean).join(' • ') })) });
-        addToast('Food Data', summary);
         return;
       }
       if (actionToRun.intent === 'blocked') {

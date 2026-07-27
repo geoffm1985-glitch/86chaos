@@ -1,0 +1,28 @@
+86 CHAOS v16.0.32 PRODUCTION-GRADE PLAY STORE / APP STORE RELEASE GATE
+
+Application appearance:
+- No CSS, SCSS, SASS, LESS, layout component, color, spacing, typography, card, navigation, or visual runtime file was changed.
+- App runtime version remains 16.0.32.
+
+Disposable QA restaurant:
+- Exact name: 86 Chaos Full Audit QA Restaurant
+- qaOwned: true
+- createdBy: 86chaos-full-audit
+- unique qaRunId per test run
+- Compatible with System Administrator > Platform Operations > Full Audit QA Cleanup
+- Cleanup confirmation: DELETE QA AUDIT RESTAURANTS
+
+One-line command:
+powershell -NoProfile -ExecutionPolicy Bypass -File .\RUN_86CHAOS_PLAY_STORE_RELEASE_GATE.ps1
+
+Coverage added:
+- 28 Playwright spec files
+- Owner, manager, staff, and System Administrator journeys
+- Chromium desktop/tablet/mobile, Firefox, and WebKit
+- Accessibility, PWA/installability, crash/chunk/offline recovery, security headers, input fuzzing, API contracts, Firebase cost/idempotency, permissions, mobile overflow, tap targets, and operational workflows
+- Firestore and Storage emulator rules gate
+- Automatic QA seed, report collection, and cleanup
+
+Operational install adjustment:
+- Vercel installs production dependencies only, avoiding test-only Firebase CLI/Playwright engine conflicts.
+- Test tooling installs in the isolated release-gate-tools directory and is not bundled into the deployed app.

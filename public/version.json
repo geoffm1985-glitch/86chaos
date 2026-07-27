@@ -1,18 +1,21 @@
 {
-  "version": "16.0.33",
-  "name": "86 Chaos 16.0.33 Free AI Capability Layer",
+  "version": "16.0.32",
+  "name": "86 Chaos 16.0.32 Reminder Recurrence, Firebase Isolation, and Release Gate Fix",
   "releasedAt": "2026-07-26T00:00:00.000Z",
-  "label": "86 Chaos 16.0.33 Free AI Capability Layer",
-  "build": "16.0.33",
+  "label": "86 Chaos 16.0.32 Reminder Recurrence, Firebase Isolation, and Release Gate Fix",
+  "build": "16.0.32",
   "notes": [
-    "Adds a protected free/public-data AI capability layer for 86Voice without changing the app shell, Firebase credentials, rules, or data structures.",
-    "Extends 86Voice with local operational readiness, labor, maintenance, weather-impact, and food-data lookup actions while preserving existing command grammar."
+    "Corrects v16.0.30 release-blocking QA, listener, reminder, backup, admin safety, and cost-test reliability issues without removing features.",
+    "Keeps native backup/manual backup flows, operational intelligence, schedules, reminders, notifications, permissions, and Firebase credential wiring intact."
   ],
   "releaseNotes": [
-    "86Voice can now answer higher-level readiness, labor-risk, and maintenance-risk questions from currently loaded real app data.",
-    "Weather-impact checks use a protected public-data service when restaurant latitude/longitude already exists in app data.",
-    "Food-data lookups use public Open Food Facts data for allergen/nutrition hints and clearly require verification before guest-facing use.",
-    "A local AI capability registry documents free/browser/public-data options for voice, semantic search, OCR gateway, and public-data checks.",
-    "Visual design, Firebase credentials/config/rules/indexes, real screens, routes, and existing workflows are unchanged."
+    "Recurring reminders now retain one occurrence through retries and advance to a fresh occurrence only after successful delivery.",
+    "Personal reminder edits, sharing, and participant actions are validated by authenticated server endpoints and same-workspace membership checks.",
+    "Shared Firestore listener caching is isolated by Firebase project, workspace, and authenticated viewer, with targeted cache cleanup.",
+    "Schedule, availability, time-off, and trade-board queries use separate canonical identities and deployed query indexes.",
+    "System Administrator orphan-shift cleanup now uses protected server-side dry-run records, revalidation, bounded deletion, and partial-result reporting.",
+    "Native backup verification uses exact database resources, paginated Admin API results, explicit READY state, normalized retention, and sanitized errors.",
+    "Server tests use Node test runner behavior assertions for reminder recurrence, push-device eligibility, Python hash stability, and backup parsing.",
+    "Visual design, layouts, spacing, colors, and styles are unchanged."
   ]
 }

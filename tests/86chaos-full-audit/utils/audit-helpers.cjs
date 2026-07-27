@@ -64,7 +64,8 @@ function maskedEnvValue(name) {
 
 const RUN_ID = envValue('CHAOS_FULL_AUDIT_RUN_ID') || `${Date.now()}-${Math.random().toString(16).slice(2, 8)}`;
 const BASE_URL = envValue('APP_URL', 'CHAOS_BASE_URL', 'PLAYWRIGHT_BASE_URL', 'BASE_URL').replace(/\/$/, '');
-const EXPECTED_VERSION = envValue('CHAOS_EXPECTED_VERSION') || readVersionFromDisk() || '16.0.19';
+const EXPECTED_VERSION = envValue('CHAOS_EXPECTED_VERSION') || readVersionFromDisk() || '16.0.32';
+const QA_WORKSPACE_NAME = '86 Chaos Full Audit QA Restaurant';
 const SAFE_TESTING_URL_RE = /localhost|127\.0\.0\.1|vercel\.app|testing|test|preview/i;
 const PRODUCTION_URL_RE = /(^|\.)app\.86chaos\.com|(^|\.)86chaos\.com/i;
 const ALLOW_MUTATION = boolEnv('CHAOS_ALLOW_MUTATION') && SAFE_TESTING_URL_RE.test(BASE_URL) && !PRODUCTION_URL_RE.test(BASE_URL);
@@ -182,6 +183,24 @@ function summarizeProblems(problems) {
   return problems.slice(0, 50).map(p => ({ ...p, message: p.message ? String(p.message).slice(0, 1000) : undefined }));
 }
 
+async function chooseQaWorkspace(page) {
+  const chooserText = await bodyText(page, 12000);
+  if (!/choose workspace|select workspace|select restaurant|choose restaurant/i.test(chooserText)) return false;
+  const preferred = envValue('CHAOS_QA_WORKSPACE_NAME', 'CHAOS_QA_WORKSPACE') || QA_WORKSPACE_NAME;
+  const exact = page.getByText(preferred, { exact: true }).first();
+  const partial = page.getByText(preferred, { exact: false }).first();
+  let target = null;
+  if (await exact.isVisible({ timeout: 5000 }).catch(() => false)) target = exact;
+  else if (await partial.isVisible({ timeout: 3000 }).catch(() => false)) target = partial;
+  if (!target) throw new Error(`The disposable QA workspace "${preferred}" was not available in the workspace chooser.`);
+  const button = target.locator('xpath=ancestor-or-self::button[1]');
+  if (await button.count()) await button.click();
+  else await target.click();
+  await page.waitForLoadState('domcontentloaded').catch(() => {});
+  await page.waitForTimeout(1200);
+  return true;
+}
+
 async function dismissNoise(page) {
   const closeNames = [/skip and don't show again/i, /skip/i, /got it/i, /close/i, /not now/i, /maybe later/i, /×/i];
   for (const name of closeNames) {
@@ -210,6 +229,7 @@ async function login(page, email, password, options = {}) {
   await loginButton.click();
   await page.waitForLoadState('domcontentloaded').catch(() => {});
   await page.waitForTimeout(2500);
+  await chooseQaWorkspace(page);
   await dismissNoise(page);
   text = await bodyText(page, 16000);
   if (LOGIN_RE.test(text) && /invalid|wrong|error|failed|not attached/i.test(text)) {
@@ -229,6 +249,7 @@ async function gotoTab(page, tab, options = {}) {
   await page.goto(appUrl(tab), { waitUntil: 'domcontentloaded', timeout: options.timeout || 45000 }).catch(() => {});
   await page.waitForLoadState('domcontentloaded').catch(() => {});
   await page.waitForTimeout(options.settleMs || 900);
+  await chooseQaWorkspace(page);
   await dismissNoise(page);
   return bodyText(page, options.maxText || 30000);
 }
@@ -365,4 +386,6 @@ module.exports = {
   readSeedReport,
   seedReportPath,
   mutationSkipMessage,
+  chooseQaWorkspace,
+  QA_WORKSPACE_NAME,
 };
