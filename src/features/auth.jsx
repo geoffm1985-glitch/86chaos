@@ -177,11 +177,17 @@ const LoginScreen = ({ setAppUser }) => {
       let restaurantLookupAttempted = false;
       let restaurantExists = true;
       try {
-        const restSnap = await getDoc(doc(db, 'restaurants', restaurantId));
+        const restSnap = await withOperationTimeout(
+          getDoc(doc(db, 'restaurants', restaurantId)),
+          900,
+          `Restaurant workspace lookup ${restaurantId}`
+        );
         restaurantLookupAttempted = true;
         restaurantExists = restSnap.exists();
         if (restaurantExists) rest = { id: restSnap.id, ...restSnap.data() };
       } catch (_) {
+        // Login must not freeze just because the restaurant profile read is slow.
+        // Keep the raw membership as a selectable workspace and let the app refresh details after entry.
         restaurantLookupAttempted = false;
         restaurantExists = true;
       }
@@ -219,14 +225,22 @@ const LoginScreen = ({ setAppUser }) => {
       for (const [restaurantId, membership] of Object.entries(baseUser.memberships)) await addOption({ ...(membership || {}), restaurantId });
     }
     try {
-      const byUid = await getDocs(query(collection(db, 'workspaceMembers'), where('userId', '==', uid)));
+      const byUid = await withOperationTimeout(
+        getDocs(query(collection(db, 'workspaceMembers'), where('userId', '==', uid))),
+        1100,
+        'Workspace membership lookup by user'
+      );
       for (const d of byUid.docs) await addOption({ id: d.id, ...d.data() });
     } catch (err) {
       console.warn('Workspace membership lookup by user failed:', err?.message || err);
     }
     if (emailKey) {
       try {
-        const byEmail = await getDocs(query(collection(db, 'workspaceMembers'), where('email', '==', emailKey)));
+        const byEmail = await withOperationTimeout(
+          getDocs(query(collection(db, 'workspaceMembers'), where('email', '==', emailKey))),
+          1100,
+          'Workspace membership lookup by email'
+        );
         for (const d of byEmail.docs) await addOption({ id: d.id, ...d.data() });
       } catch (err) {
         console.warn('Workspace membership lookup by email failed:', err?.message || err);
@@ -302,7 +316,7 @@ const LoginScreen = ({ setAppUser }) => {
 
   const syncAccountSecurity = async () => {
     try {
-      await secureFetch('/api/account-security', { method: 'POST' });
+      await secureFetchWithTimeout('/api/account-security', { method: 'POST' }, 1500);
     } catch (err) {
       console.warn('Account security sync failed:', err?.message || err);
     }
@@ -324,10 +338,20 @@ const LoginScreen = ({ setAppUser }) => {
   };
 
   const finishLoginWithPreloadedWorkspaces = async (baseUser, firebaseUser, preloadedWorkspaces = [], { forcePicker = false } = {}) => {
-    if (Array.isArray(preloadedWorkspaces) && preloadedWorkspaces.length) {
+    const immediateWorkspaces = Array.isArray(preloadedWorkspaces) ? [...preloadedWorkspaces] : [];
+    const fallbackRestaurantId = baseUser.activeRestaurantId || baseUser.defaultRestaurantId || baseUser.restaurantId;
+    if (!immediateWorkspaces.length && fallbackRestaurantId) {
+      immediateWorkspaces.push({
+        ...baseUser,
+        restaurantId: fallbackRestaurantId,
+        restaurantName: baseUser.restaurantName || baseUser.workspaceName || baseUser.businessName || fallbackRestaurantId,
+        membershipSource: 'login-profile-fast-path'
+      });
+    }
+    if (immediateWorkspaces.length) {
       setWorkspaceLoading(true);
       try {
-        const choices = filterSelectableWorkspaceChoices(preloadedWorkspaces);
+        const choices = filterSelectableWorkspaceChoices(immediateWorkspaces);
         if (!choices.length) throw new Error('This login is not attached to an active restaurant workspace.');
         const savedRestaurantId = localStorage.getItem(`chaosActiveRestaurantId_${baseUser.id}`);
         const preferred = choices.find(w => w.restaurantId === savedRestaurantId) || choices.find(w => w.restaurantId === baseUser.activeRestaurantId) || choices.find(w => w.restaurantId === baseUser.defaultRestaurantId) || choices.find(w => w.restaurantId === baseUser.restaurantId) || choices[0];
@@ -353,36 +377,60 @@ const LoginScreen = ({ setAppUser }) => {
     const firebaseUser = userCredential.user;
     setLoginStep('Firebase accepted password. Loading account profile...');
     setLoginDiagnostics(null);
-    await syncAccountSecurity();
+    // Account-security sync is helpful but not required to enter the app. Run it in the background
+    // so release-gate and real users never sit on this login step when the API is slow.
+    syncAccountSecurity().catch(() => {});
 
     let userData = null;
     let preloadedWorkspaces = null;
     let bootstrapDiag = null;
 
-    try {
-      const userDocRef = doc(db, 'users', firebaseUser.uid);
-      const userDocSnap = await withOperationTimeout(
-        getDoc(userDocRef),
-        2500,
-        'Browser account profile lookup'
-      );
-      if (userDocSnap.exists()) {
-        userData = { id: firebaseUser.uid, profileDocId: firebaseUser.uid, ...userDocSnap.data() };
+    const profilePromise = (async () => {
+      try {
+        const userDocRef = doc(db, 'users', firebaseUser.uid);
+        const userDocSnap = await withOperationTimeout(
+          getDoc(userDocRef),
+          900,
+          'Browser account profile lookup'
+        );
+        if (userDocSnap.exists()) {
+          return { user: { id: firebaseUser.uid, profileDocId: firebaseUser.uid, ...userDocSnap.data() }, diagnostics: null };
+        }
+        return { user: null, diagnostics: { browserProfileMissing: true } };
+      } catch (profileErr) {
+        return { user: null, diagnostics: { browserProfileReadError: profileErr?.message || String(profileErr) } };
       }
-    } catch (profileErr) {
-      bootstrapDiag = { browserProfileReadError: profileErr?.message || String(profileErr) };
-      console.warn('Browser profile lookup failed, trying server login bootstrap:', profileErr?.message || profileErr);
-    }
+    })();
 
-    if (!userData) {
-      setLoginStep('Checking account and workspace access on the server...');
-      const bootstrap = await loadLoginBootstrapFromServer(firebaseUser);
-      bootstrapDiag = { ...(bootstrapDiag || {}), ...(bootstrap.diagnostics || {}) };
-      setLoginDiagnostics(bootstrapDiag);
-      if (bootstrap?.user) {
-        userData = { id: firebaseUser.uid, ...bootstrap.user, id: firebaseUser.uid, uid: firebaseUser.uid, profileDocId: bootstrap.user.profileDocId || bootstrap.user.id || firebaseUser.uid };
-        preloadedWorkspaces = Array.isArray(bootstrap.workspaces) ? bootstrap.workspaces : [];
+    const bootstrapPromise = (async () => {
+      try {
+        setLoginStep('Checking account and workspace access on the server...');
+        const bootstrap = await withOperationTimeout(
+          loadLoginBootstrapFromServer(firebaseUser),
+          1800,
+          'Server login bootstrap'
+        );
+        return { bootstrap, diagnostics: bootstrap?.diagnostics || null };
+      } catch (bootstrapErr) {
+        return { bootstrap: null, diagnostics: { serverBootstrapError: bootstrapErr?.message || String(bootstrapErr) } };
       }
+    })();
+
+    const [profileResult, bootstrapResult] = await Promise.all([profilePromise, bootstrapPromise]);
+    bootstrapDiag = { ...(profileResult?.diagnostics || {}), ...(bootstrapResult?.diagnostics || {}) };
+    setLoginDiagnostics(bootstrapDiag);
+
+    if (bootstrapResult?.bootstrap?.user) {
+      userData = {
+        id: firebaseUser.uid,
+        ...bootstrapResult.bootstrap.user,
+        id: firebaseUser.uid,
+        uid: firebaseUser.uid,
+        profileDocId: bootstrapResult.bootstrap.user.profileDocId || bootstrapResult.bootstrap.user.id || firebaseUser.uid
+      };
+      preloadedWorkspaces = Array.isArray(bootstrapResult.bootstrap.workspaces) ? bootstrapResult.bootstrap.workspaces : [];
+    } else if (profileResult?.user) {
+      userData = profileResult.user;
     }
 
     if (!userData) {

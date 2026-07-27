@@ -2185,7 +2185,7 @@ const handleAddEvent = async (e) => {
     let endMinutes = endInfo.minutes;
     if (endMinutes <= startMinutes) {
       const explicitlyOvernight = shift.isOvernight === true || shift.overnight === true || shift.endsNextDay === true || shift.crossesMidnight === true;
-      const meridiemOvernight = startInfo.meridiem === 'p' && endInfo.meridiem === 'a';
+      const meridiemOvernight = startInfo.meridiem === 'p' && endInfo.meridiem === 'a' && (startMinutes >= (18 * 60) || endMinutes <= (6 * 60));
       const twentyFourHourOvernight = startInfo.is24Hour && endInfo.is24Hour && startMinutes >= (18 * 60) && endMinutes <= (10 * 60);
       if (explicitlyOvernight || meridiemOvernight || twentyFourHourOvernight) {
         endMinutes += 24 * 60;
