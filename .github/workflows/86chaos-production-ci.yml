@@ -1,0 +1,92 @@
+name: 86 Chaos Production CI
+
+on:
+  push:
+    branches:
+      - main
+
+  pull_request:
+    branches:
+      - main
+
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: 86chaos-production-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify-production:
+    name: Production Release Validation
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    env:
+      CI: true
+      DISABLE_ESLINT_PLUGIN: true
+      GENERATE_SOURCEMAP: false
+      NODE_OPTIONS: --max-old-space-size=4096
+
+    steps:
+      - name: Check out main branch
+        uses: actions/checkout@v6
+
+      - name: Set up Node 24
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Set up Java for Firebase emulators
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Display installed versions
+        run: |
+          node --version
+          npm --version
+          java --version
+
+      - name: Install locked dependencies
+        run: npm ci --no-audit --no-fund
+
+- name: Verify Node and package lock
+  run: |
+    node -e "const major=Number(process.versions.node.split('.')[0]); if(major!==24){console.error('Node 24 is required. Detected:',process.version);process.exit(1)} console.log('Node version verified:',process.version)"
+    npm run lock:integrity --if-present
+
+      - name: Run source and syntax validation
+        run: |
+          npm run lint
+          npm run syntax
+          npm run test:source
+          npm run performance:split
+
+      - name: Run client tests
+        run: npm run test:client -- --runInBand
+
+      - name: Run server and API tests
+        run: npm run test:server
+
+      - name: Run Firestore and Storage rules tests
+        run: npm run test:rules
+
+      - name: Build production application
+        run: npm run build
+
+      - name: Upload build and test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: 86chaos-production-ci-${{ github.run_number }}
+          path: |
+            build
+            coverage
+            test-results
+          if-no-files-found: ignore
+          retention-days: 14
