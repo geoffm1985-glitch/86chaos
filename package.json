@@ -1,19 +1,19 @@
 {
   "name": "86chaos",
-  "version": "16.0.32",
+  "version": "16.0.33",
   "private": true,
   "dependencies": {
-    "ajv": "^8.20.0",
-    "ajv-keywords": "^5.1.0",
     "firebase": "^10.8.1",
     "firebase-admin": "^12.1.1",
     "leaflet": "^1.9.4",
     "lucide-react": "^0.344.0",
-    "pdf-lib": "^1.17.1",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-leaflet": "^4.2.1",
-    "react-scripts": "5.0.1"
+    "react-scripts": "5.0.1",
+    "pdf-lib": "^1.17.1",
+    "ajv": "^8.20.0",
+    "ajv-keywords": "^5.1.0"
   },
   "scripts": {
     "start": "react-scripts start",
@@ -22,11 +22,11 @@
     "test": "npm run node:check && npm run lock:integrity && npm run test:source && npm run performance:split && npm run test:unit",
     "test:ci": "npm run node:check && npm run lock:integrity && npm run lint && npm run syntax && npm run test:source && npm run performance:split && npm run test:unit -- --runInBand && npm run test:rules && npm run build && npm run test:e2e && npm run test:cost",
     "validate:auth-hotfix": "node scripts/validate-auth-hotfix.js",
-    "vercel:install": "npm ci --omit=dev --omit=optional --no-audit --no-fund --progress=false",
+    "vercel:install": "npm ci --omit=optional --no-audit --no-fund --progress=false",
     "deploy:check": "npm run test:ci && NODE_OPTIONS=--max-old-space-size=4096 GENERATE_SOURCEMAP=false npm run build",
     "validate:audit-repair": "node scripts/validate-repair.js",
     "rules:check": "node scripts/validate-rules.js",
-    "test:source": "node scripts/validate-16-0-32.js",
+    "test:source": "node scripts/validate-16-0-33.js",
     "syntax:api": "node scripts/check-api-syntax.js",
     "test:unit": "npm run test:client && npm run test:server",
     "test:rules": "firebase emulators:exec --only firestore,storage \"node scripts/run-rules-tests.js\"",
@@ -69,13 +69,13 @@
     "npm": ">=10"
   },
   "devDependencies": {
-    "@firebase/rules-unit-testing": "^3.0.3",
     "@playwright/test": "^1.49.1",
-    "@testing-library/jest-dom": "^6.6.3",
+    "@firebase/rules-unit-testing": "^3.0.3",
+    "firebase-tools": "^13.35.1",
     "@testing-library/react": "^13.4.0",
+    "@testing-library/jest-dom": "^6.6.3",
     "@testing-library/user-event": "^14.6.1",
-    "eslint": "^8.57.1",
-    "firebase-tools": "15.24.0"
+    "eslint": "^8.57.1"
   },
   "jest": {
     "collectCoverageFrom": [
