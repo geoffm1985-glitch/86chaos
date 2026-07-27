@@ -1122,20 +1122,26 @@ if (liveAppUser && clientData) {
   }, [rId, ghostTenant, appUser?.id, appUser?.email, appUser?.name, appUser?.role]);
 
  
+  const transitionActiveTabState = useCallback((nextTab) => {
+    const commit = () => setActiveTabState(nextTab);
+    if (typeof React.startTransition === 'function') React.startTransition(commit);
+    else commit();
+  }, []);
+
   useEffect(() => {
     const handlePopState = (e) => {
       const params = new URLSearchParams(window.location.search);
       const nextTab = normalizeRouteTab(e?.state?.tab || params.get('tab') || 'published');
-      setActiveTabState(nextTab);
+      transitionActiveTabState(nextTab);
     };
     window.addEventListener('popstate', handlePopState);
     const params = new URLSearchParams(window.location.search);
     const preferredTab = normalizeRouteTab(appUser?.preferences?.defaultTab || 'today');
     const rawTab = params.get('tab') || preferredTab;
     const tab = normalizeRouteTab(rawTab);
-    setActiveTabState(tab); window.history.replaceState({ tab }, '', `?tab=${tab}`);
+    transitionActiveTabState(tab); window.history.replaceState({ tab }, '', `?tab=${tab}`);
     return () => window.removeEventListener('popstate', handlePopState);
-  }, [appUser]);
+  }, [appUser, transitionActiveTabState]);
 
   const setActiveTab = (tab) => {
     tab = normalizeRouteTab(tab);
@@ -1158,8 +1164,12 @@ if (liveAppUser && clientData) {
         localStorage.setItem(key, JSON.stringify([tab, ...current].slice(0, 6)));
       } catch(e) {}
     }
-    window.history.pushState({ tab }, '', `?tab=${tab}`); setActiveTabState(tab);
+    window.history.pushState({ tab }, '', `?tab=${tab}`); transitionActiveTabState(tab);
   };
+
+  const setActiveTabRef = useRef(setActiveTab);
+  useEffect(() => { setActiveTabRef.current = setActiveTab; });
+  const stableSetActiveTab = useCallback((tab) => setActiveTabRef.current?.(tab), []);
 
 useEffect(() => {
     const shouldRemember = localStorage.getItem('chaosRememberMe') !== 'false';
@@ -1342,6 +1352,14 @@ What I clicked / expected:
   }, []);
 
   const offlineQueue = liveAppUser ? getOfflineQueue(liveAppUser.restaurantId, liveAppUser.id) : [];
+  const openMenu = useCallback(() => setIsMenuOpen(true), []);
+  const closeMenu = useCallback(() => setIsMenuOpen(false), []);
+  const closeGlobalSearch = useCallback(() => setIsGlobalSearchOpen(false), []);
+  const closeKitchenTV = useCallback(() => setIsKitchenTVOpen(false), []);
+  const clearUndoItem = useCallback(() => setUndoItem(null), []);
+  const openWorkspaceSwitcherFromDrawer = useCallback(() => {
+    if (!ghostTenant && !isDemoMode) setIsWorkspaceSwitcherOpen(true);
+  }, [ghostTenant, isDemoMode]);
 
   const availableWorkspaces = useMemo(() => {
     const byId = new Map();
@@ -1813,7 +1831,7 @@ What I clicked / expected:
     }
     const routeAccess = planAccess.canRoute(activeTabState);
     const routeIsInternalAdmin = activeTabState === 'godmode' || activeTabState === 'audit';
-    if (!routeIsInternalAdmin && routeAccess && routeAccess.allowed === false) return <LockedFeatureScreen access={routeAccess} appUser={liveAppUser} setActiveTab={setActiveTab} />;
+    if (!routeIsInternalAdmin && routeAccess && routeAccess.allowed === false) return <LockedFeatureScreen access={routeAccess} appUser={liveAppUser} setActiveTab={stableSetActiveTab} />;
     if (activeTabState === 'today') return <TabToday key={`tdy-${rId}`} currentDate={currentDate} appUser={liveAppUser} users={displayUsers} shifts={shifts} shiftSwaps={shiftSwaps} timeOffRequests={timeOffRequests} events={events} sales={sales} timePunches={timePunches} inventoryItems={inventoryItems} maintenanceLogs={maintenanceLogs} prepItems={prepItems} tasks={tasks} recipes={recipes} menuDependencies={menuDependencies} restaurantAdminAlerts={restaurantAdminAlerts} clientData={displayClientData} setActiveTab={setActiveTab} addToast={addToast} registerUndo={registerUndo} />;
     if (activeTabState === 'schedule' && (liveAppUser?.isAdmin || liveAppUser?.permissions?.schedule)) return <TabMasterSchedule key={`schpub-${rId}-${liveAppUser?.id}`} currentDate={currentDate} setCurrentDate={setCurrentDate} onSubTabChange={setActiveScheduleSubTab} appUser={liveAppUser} users={displayUsers} shifts={shifts} shiftSwaps={shiftSwaps} timeOffRequests={timeOffRequests} events={events} addToast={addToast} initialSubTab="schedule-builder" voiceScheduleSubTabTarget={voiceScheduleSubTabTarget} clientData={displayClientData} scheduleBuilderProps={{ currentDate, users: displayUsers, shifts, events, timeOffRequests, timePunches, addToast, appUser: liveAppUser, clientData: displayClientData }} />;
     if (activeTabState === 'events' && displayClientFeatures?.events !== false && (liveAppUser?.isAdmin || liveAppUser?.permissions?.events || liveAppUser?.permissions?.schedule || liveAppUser?.permissions?.team)) return <TabSchedule key={`evt-${rId}`} currentDate={currentDate} users={displayUsers} shifts={shifts} events={events} timeOffRequests={timeOffRequests} timePunches={timePunches} addToast={addToast} appUser={liveAppUser} clientData={displayClientData} initialSubTab="events" hideSubTabs />;
@@ -1833,7 +1851,7 @@ What I clicked / expected:
     if (activeTabState === 'maintenance' && displayClientFeatures?.maintenance !== false && (liveAppUser?.isAdmin || liveAppUser?.permissions?.team)) return <TabMaintenance key={`mtn-${rId}`} appUser={liveAppUser} addToast={addToast} />;
     if (activeTabState === 'settings' && !isDemoMode) return <TabSettings key={`set-${rId}`} addToast={addToast} appUser={liveAppUser} clientData={displayClientData} users={displayUsers} presenceSelf={selfPresenceRecord} />;
     if (activeTabState === 'help') return <TabHelpCenter key={`help-${rId}`} appUser={liveAppUser} activeTab={activeTabState} voiceHelpSearchTarget={voiceHelpSearchTarget} addToast={addToast} />;
-    if (activeTabState === 'godmode' && (liveAppUser?.isSuperAdmin === true || serverSaysSuperAdmin || (MASTER_ADMIN_EMAIL && (liveAppUser?.email || '').toLowerCase() === MASTER_ADMIN_EMAIL.toLowerCase()))) return <TabGodMode key={`god-${rId}`} appUser={{ ...liveAppUser, isSuperAdmin: true, serverAdminCheck }} addToast={addToast} setGhostTenant={setGhostTenant} setActiveTab={setActiveTab} />;
+    if (activeTabState === 'godmode' && (liveAppUser?.isSuperAdmin === true || serverSaysSuperAdmin || (MASTER_ADMIN_EMAIL && (liveAppUser?.email || '').toLowerCase() === MASTER_ADMIN_EMAIL.toLowerCase()))) return <TabGodMode key={`god-${rId}`} appUser={{ ...liveAppUser, isSuperAdmin: true, serverAdminCheck }} addToast={addToast} setGhostTenant={setGhostTenant} setActiveTab={stableSetActiveTab} />;
     if (activeTabState === 'godmode') return (
       <div className={`${T.card} p-5 sm:p-8 max-w-2xl mx-auto text-center space-y-4 border-red-900/40`}>
         <div className="mx-auto w-12 h-12 rounded-2xl bg-red-900/20 border border-red-900/50 flex items-center justify-center text-red-300 text-2xl">🔐</div>
@@ -2032,7 +2050,7 @@ return (
         <div className="flex items-center gap-2 flex-shrink-0">
           <button type="button" onClick={() => openProblemReport({ title: 'Manual Problem Report', message: `Page: ${activeTabState}`, category: 'Bug / Error' })} className="hidden sm:flex p-2 border rounded-xl shadow-sm bg-[#1A2126] border-[#2A353D] text-orange-300 hover:text-white" title="Report a problem"><Bug size={18}/></button>
           {offlineQueue.length > 0 && <button type="button" onClick={() => openProblemReport({ title: 'Offline Queue', message: `${offlineQueue.length} queued action(s) waiting to sync.`, category: 'Data Looks Wrong' })} className="hidden sm:flex px-2.5 py-2 border rounded-xl shadow-sm bg-amber-900/20 border-amber-500/40 text-amber-200 text-[10px] font-black uppercase tracking-widest" title="Offline queued actions">Queue {offlineQueue.length}</button>}
-        <button onClick={() => setIsMenuOpen(true)} className={`relative p-2 border rounded-xl shadow-sm transition-all outline-none bg-[#1A2126] border-[#2A353D] ${T.copper} hover:text-white flex-shrink-0`}>
+        <button onClick={openMenu} className={`relative p-2 border rounded-xl shadow-sm transition-all outline-none bg-[#1A2126] border-[#2A353D] ${T.copper} hover:text-white flex-shrink-0`}>
           <Menu size={20} />
           {hasAnyMenuAlert && <span className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full border-2 border-[#12161A] shadow-[0_0_8px_rgba(239,68,68,0.8)] animate-pulse"></span>}
         </button>
@@ -2050,11 +2068,11 @@ return (
         </div>
       )}
 
-      <DrawerMenu isOpen={isMenuOpen} onClose={() => setIsMenuOpen(false)} activeTab={activeTabState} setActiveTab={setActiveTab} appUser={liveAppUser} setAppUser={setAppUser} hasUnreadMessages={hasUnreadMessages} hasMyShiftAlert={hasMyShiftAlert} hasScheduleBuilderAlert={hasScheduleBuilderAlert} hasHelpUpdate={hasHelpUpdate} clientFeatures={displayClientFeatures} clientData={displayClientData} addToast={addToast} availableWorkspaces={availableWorkspaces} activeWorkspaceName={liveAppUser?.restaurantName || displayClientData?.name || ''} onOpenWorkspaceSwitcher={() => !ghostTenant && !isDemoMode && setIsWorkspaceSwitcherOpen(true)} />
-      <GlobalSearchModal isOpen={isGlobalSearchOpen} onClose={() => setIsGlobalSearchOpen(false)} queryText={globalSearchQuery} setQueryText={setGlobalSearchQuery} users={displayUsers} events={events} shifts={shifts} recipes={recipes} inventoryItems={inventoryItems} maintenanceLogs={maintenanceLogs} setActiveTab={setActiveTab} />
-      <KitchenTVMode isOpen={isKitchenTVOpen} onClose={() => setIsKitchenTVOpen(false)} shifts={shifts} events={events} prepItems={prepItems} maintenanceLogs={maintenanceLogs} inventoryItems={inventoryItems} />
-      <UndoBar undoItem={undoItem} clearUndo={() => setUndoItem(null)} />
-      <VoiceCommandDock appUser={liveAppUser} inventoryItems={inventoryItems} recipes={recipes} users={displayUsers} prepItems={prepItems} tasks={tasks} events={events} maintenanceLogs={maintenanceLogs} menuDependencies={menuDependencies} shifts={shifts} timePunches={timePunches} timeOffRequests={timeOffRequests} sales={sales} clientFeatures={displayClientFeatures} clientData={displayClientData} setActiveTab={setActiveTab} setCurrentDate={setCurrentDate} setScheduleSubTabTarget={setVoiceScheduleSubTabTarget} setHelpSearchTarget={setVoiceHelpSearchTarget} setRecipeTarget={setVoiceRecipeTarget} addToast={addToast} />
+      <DrawerMenu isOpen={isMenuOpen} onClose={closeMenu} activeTab={activeTabState} setActiveTab={stableSetActiveTab} appUser={liveAppUser} setAppUser={setAppUser} hasUnreadMessages={hasUnreadMessages} hasMyShiftAlert={hasMyShiftAlert} hasScheduleBuilderAlert={hasScheduleBuilderAlert} hasHelpUpdate={hasHelpUpdate} clientFeatures={displayClientFeatures} clientData={displayClientData} addToast={addToast} availableWorkspaces={availableWorkspaces} activeWorkspaceName={liveAppUser?.restaurantName || displayClientData?.name || ''} onOpenWorkspaceSwitcher={openWorkspaceSwitcherFromDrawer} />
+      <GlobalSearchModal isOpen={isGlobalSearchOpen} onClose={closeGlobalSearch} queryText={globalSearchQuery} setQueryText={setGlobalSearchQuery} users={displayUsers} events={events} shifts={shifts} recipes={recipes} inventoryItems={inventoryItems} maintenanceLogs={maintenanceLogs} setActiveTab={stableSetActiveTab} />
+      <KitchenTVMode isOpen={isKitchenTVOpen} onClose={closeKitchenTV} shifts={shifts} events={events} prepItems={prepItems} maintenanceLogs={maintenanceLogs} inventoryItems={inventoryItems} />
+      <UndoBar undoItem={undoItem} clearUndo={clearUndoItem} />
+      <VoiceCommandDock appUser={liveAppUser} inventoryItems={inventoryItems} recipes={recipes} users={displayUsers} prepItems={prepItems} tasks={tasks} events={events} maintenanceLogs={maintenanceLogs} menuDependencies={menuDependencies} shifts={shifts} timePunches={timePunches} timeOffRequests={timeOffRequests} sales={sales} clientFeatures={displayClientFeatures} clientData={displayClientData} setActiveTab={stableSetActiveTab} setCurrentDate={setCurrentDate} setScheduleSubTabTarget={setVoiceScheduleSubTabTarget} setHelpSearchTarget={setVoiceHelpSearchTarget} setRecipeTarget={setVoiceRecipeTarget} addToast={addToast} />
 
       <Modal isOpen={problemModal.open} onClose={() => !isSubmittingProblem && setProblemModal({ open: false, title: '', message: '', category: 'Bug / Error' })} title="Report Problem" sizeClass="max-w-3xl">
         <form onSubmit={submitProblemReport} className="space-y-4">

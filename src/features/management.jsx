@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Bell, Check, Camera, ChevronLeft, ChevronRight, MessageSquare, Plus, Trash2, Users, Calendar, Clock, X, Loader2, Package, ClipboardList, Menu, Settings, LogOut, Shield, Send, Repeat, Edit, Moon, Sun, TrendingUp, BookOpen, Search, ChefHat, Scale, Coffee, Star, Bug, Wrench, Globe, ThumbsUp, HelpCircle, Sparkles } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
 import { getFirestore, collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, where, getDoc, setDoc, getDocs, Timestamp, deleteField, orderBy, limit as firestoreLimit } from 'firebase/firestore';
@@ -10963,22 +10963,22 @@ const TabHelpCenter = ({ appUser, activeTab, voiceHelpSearchTarget = null, addTo
   const internalHelpTermRe = /System Administrator|Back Office Suite|QuickBooks Integration Hub|Python Automation|Backup Center|Security Center|Forensics|Pay Rates/i;
   const helpArticleText = (article) => `${article?.id || ''} ${article?.title || ''} ${article?.group || ''} ${article?.keywords || ''} ${(article?.body || []).join(' ')}`;
   const trainingChapterText = (chapter) => `${chapter?.id || ''} ${chapter?.title || ''} ${chapter?.group || ''} ${chapter?.tab || ''} ${chapter?.audience || ''} ${chapter?.summary || ''} ${chapter?.keywords || ''} ${(chapter?.sections || []).map(section => `${section?.title || ''} ${(section?.steps || []).join(' ')}`).join(' ')}`;
-  const visibleHelpArticles = HELP_ARTICLES.filter(article => isPlatformHelpUser || !internalHelpTermRe.test(helpArticleText(article)));
-  const visibleTrainingChapters = SYSTEM_TRAINING_MANUAL_CHAPTERS.filter(chapter => isPlatformHelpUser || !internalHelpTermRe.test(trainingChapterText(chapter)));
-  const groups = ['All', ...Array.from(new Set(visibleHelpArticles.map(a => a.group)))];
+  const visibleHelpArticles = useMemo(() => HELP_ARTICLES.filter(article => isPlatformHelpUser || !internalHelpTermRe.test(helpArticleText(article))), [isPlatformHelpUser]);
+  const visibleTrainingChapters = useMemo(() => SYSTEM_TRAINING_MANUAL_CHAPTERS.filter(chapter => isPlatformHelpUser || !internalHelpTermRe.test(trainingChapterText(chapter))), [isPlatformHelpUser]);
+  const groups = useMemo(() => ['All', ...Array.from(new Set(visibleHelpArticles.map(a => a.group)))], [visibleHelpArticles]);
   const activeGroup = groups.includes(group) ? group : 'All';
   const q = query.trim().toLowerCase();
-  const scopedHelpArticles = visibleHelpArticles.filter(a => activeGroup === 'All' || a.group === activeGroup);
-  const semanticMatches = q ? searchHelpContentSemantically(query, scopedHelpArticles, visibleTrainingChapters) : [];
-  const semanticArticleIds = new Set(semanticMatches.filter(row => row.type === 'article').map(row => row.id));
-  const articles = q
+  const scopedHelpArticles = useMemo(() => visibleHelpArticles.filter(a => activeGroup === 'All' || a.group === activeGroup), [visibleHelpArticles, activeGroup]);
+  const semanticMatches = useMemo(() => q ? searchHelpContentSemantically(query, scopedHelpArticles, visibleTrainingChapters) : [], [q, query, scopedHelpArticles, visibleTrainingChapters]);
+  const semanticArticleIds = useMemo(() => new Set(semanticMatches.filter(row => row.type === 'article').map(row => row.id)), [semanticMatches]);
+  const articles = useMemo(() => q
     ? scopedHelpArticles
         .map(a => ({ ...a, semanticScore: semanticMatches.find(row => row.id === a.id && row.type === 'article')?.score || 0 }))
         .filter(a => semanticArticleIds.has(a.id) || `${a.title} ${a.group} ${a.keywords} ${a.body.join(' ')}`.toLowerCase().includes(q))
         .sort((a, b) => (b.semanticScore || 0) - (a.semanticScore || 0) || a.title.localeCompare(b.title))
-    : scopedHelpArticles;
-  const selected = visibleHelpArticles.find(a => a.id === selectedId) || articles[0] || visibleHelpArticles[0] || HELP_ARTICLES[0];
-  const related = visibleHelpArticles.filter(a => a.keywords.includes(activeTab || '') || a.group.toLowerCase().includes(activeTab || '')).slice(0,3);
+    : scopedHelpArticles, [q, scopedHelpArticles, semanticMatches, semanticArticleIds]);
+  const selected = useMemo(() => visibleHelpArticles.find(a => a.id === selectedId) || articles[0] || visibleHelpArticles[0] || HELP_ARTICLES[0], [visibleHelpArticles, selectedId, articles]);
+  const related = useMemo(() => visibleHelpArticles.filter(a => a.keywords.includes(activeTab || '') || a.group.toLowerCase().includes(activeTab || '')).slice(0,3), [visibleHelpArticles, activeTab]);
   return (
     <div className="desktop-management-page max-w-7xl mx-auto space-y-4 pb-24">
       <div className={`${T.card} p-5 cockpit-grid flex flex-col lg:flex-row lg:items-end justify-between gap-3`}><div><div className="text-[10px] uppercase tracking-widest font-black text-[#D4A381]">{isPlatformHelpUser || appUser?.isAdmin || appUser?.permissions?.team ? 'Built-in owner manual' : 'Built-in team manual'}</div><h2 className="text-2xl font-black text-white">Help Center</h2><p className="text-sm text-slate-400 font-bold mt-1 max-w-3xl">Search plain words before contacting support. This manual is updated whenever new features are added to the app.</p></div><div className="flex flex-wrap gap-2"><button type="button" onClick={() => window.dispatchEvent(new CustomEvent('chaosRestartTour', { detail: { mode: 'employee' } }))} className={T.btnAlt}>Restart Employee Tour</button>{(appUser?.isAdmin || appUser?.permissions?.team) && <button type="button" onClick={() => window.dispatchEvent(new CustomEvent('chaosRestartTour', { detail: { mode: 'manager' } }))} className={T.btn}>Restart Manager Tour</button>}</div></div>

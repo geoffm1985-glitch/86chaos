@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useDeferredValue, useCallback } from 'react';
 import { Bell, Check, Camera, ChevronLeft, ChevronRight, MessageSquare, Plus, Trash2, Users, Calendar, Clock, X, Loader2, Package, ClipboardList, Menu, Settings, LogOut, Shield, Send, Repeat, Edit, Moon, Sun, TrendingUp, BookOpen, Search, ChefHat, Scale, Coffee, Star, Bug, Wrench, Globe, Mic, MicOff, Sparkles, Network } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
 import { getFirestore, collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, where, orderBy, limit, getDoc, setDoc, getDocs } from 'firebase/firestore';
@@ -14,6 +14,40 @@ import { buildAiOrderAssistant, parseAiOrderingVoiceIntent, summarizeAiOrderAssi
 import { buildRestaurantAiInsightBundle, summarizeInsightBundleForVoice, extractRestaurantGeofenceLocation } from '../core/restaurantAiInsights';
 import { resolveFeatureAccess, featureForRoute, isMasterAdminUser } from '../lib/featureAccess';
 import { FEATURE_KEYS } from '../config/plans';
+
+
+const perfArraySignature = (rows = []) => {
+  if (!Array.isArray(rows) || rows.length === 0) return '0';
+  const first = rows[0] || {};
+  const last = rows[rows.length - 1] || {};
+  return [
+    rows.length,
+    first.id || first.uid || first.email || first.date || '',
+    first.updatedAt || first.createdAt || first.time || '',
+    last.id || last.uid || last.email || last.date || '',
+    last.updatedAt || last.createdAt || last.time || ''
+  ].join('|');
+};
+
+const shallowObjectSignature = (value = {}) => {
+  if (!value || typeof value !== 'object') return String(value || '');
+  try {
+    return Object.keys(value).sort().map(key => `${key}:${typeof value[key] === 'object' ? JSON.stringify(value[key]) : String(value[key])}`).join('|');
+  } catch (_) {
+    return Object.keys(value || {}).sort().join('|');
+  }
+};
+
+const voiceDockPropsAreEqual = (prev = {}, next = {}) => {
+  const prevUser = prev.appUser || {};
+  const nextUser = next.appUser || {};
+  const stableUser = ['id','uid','email','restaurantId','role','isAdmin','isSuperAdmin'].every(key => String(prevUser?.[key] ?? '') === String(nextUser?.[key] ?? ''));
+  if (!stableUser) return false;
+  const arrayProps = ['inventoryItems','recipes','users','prepItems','tasks','events','maintenanceLogs','menuDependencies','shifts','timePunches','timeOffRequests','sales','invoices','wasteLogs'];
+  if (arrayProps.some(key => perfArraySignature(prev[key]) !== perfArraySignature(next[key]))) return false;
+  return shallowObjectSignature(prev.clientFeatures || {}) === shallowObjectSignature(next.clientFeatures || {})
+    && shallowObjectSignature(prev.clientData?.systemSettings || prev.clientData || {}) === shallowObjectSignature(next.clientData?.systemSettings || next.clientData || {});
+};
 
 const buildReminderQueueFields = (scheduledAt, status = 'scheduled') => ({
   dispatchEligible: Boolean(scheduledAt && !['sent','done','completed','cancelled','canceled','dismissed','archived'].includes(String(status).toLowerCase())),
@@ -453,29 +487,33 @@ const StatusTile = ({ label, value }) => <div className="bg-[#12161A] border bor
 
 const FriendlyEmpty = ({ title, text }) => <div className="border border-dashed border-[#2A353D] rounded-xl p-5 text-center"><div className="font-black text-white text-sm">{title}</div><p className="text-xs text-slate-400 font-bold mt-1">{text}</p></div>;
 
-const GlobalSearchModal = ({ isOpen, onClose, queryText, setQueryText, users, events, shifts, recipes, inventoryItems, maintenanceLogs, setActiveTab }) => {
+const GlobalSearchModal = React.memo(({ isOpen, onClose, queryText, setQueryText, users, events, shifts, recipes, inventoryItems, maintenanceLogs, setActiveTab }) => {
+  const deferredQueryText = useDeferredValue(queryText || '');
+  const q = useMemo(() => String(deferredQueryText || '').trim().toLowerCase(), [deferredQueryText]);
+  const results = useMemo(() => {
+    if (!isOpen || !q) return [];
+    return [
+      ...(users || []).filter(u => `${u.name} ${u.email} ${u.role}`.toLowerCase().includes(q)).slice(0, 5).map(x => ({ kind: 'User', title: x.name, detail: x.email || x.role, tab: 'team' })),
+      ...(recipes || []).filter(r => `${r.title} ${r.ingredients}`.toLowerCase().includes(q)).slice(0, 5).map(x => ({ kind: 'Recipe', title: x.title, detail: x.category, tab: 'recipes' })),
+      ...(inventoryItems || []).filter(i => `${i.name} ${i.category}`.toLowerCase().includes(q)).slice(0, 5).map(x => ({ kind: 'Inventory', title: x.name, detail: `Stock ${x.currentStock || 0} / Par ${x.parLevel || 0}`, tab: 'inventory' })),
+      ...(events || []).filter(e => `${e.title} ${e.author} ${e.notes}`.toLowerCase().includes(q)).slice(0, 6).map(x => ({ kind: x.type === 'special_event' ? 'Event' : 'Message', title: x.title, detail: x.date || x.author, tab: x.type === 'special_event' ? 'events' : 'messages' })),
+      ...(maintenanceLogs || []).filter(m => `${m.equipment} ${m.issue}`.toLowerCase().includes(q)).slice(0, 5).map(x => ({ kind: 'Maintenance', title: x.equipment, detail: x.issue, tab: 'maintenance' })),
+      ...(shifts || []).filter(s => `${s.role} ${s.date}`.toLowerCase().includes(q)).slice(0, 5).map(x => ({ kind: 'Shift', title: `${x.role} ${x.date}`, detail: `${formatShortTime(x.startTime)}-${formatShortTime(x.endTime)}`, tab: 'schedule' }))
+    ].slice(0, 18);
+  }, [isOpen, q, users, recipes, inventoryItems, events, maintenanceLogs, shifts]);
   if (!isOpen) return null;
-  const q = queryText.trim().toLowerCase();
-  const results = q ? [
-    ...users.filter(u => `${u.name} ${u.email} ${u.role}`.toLowerCase().includes(q)).slice(0, 5).map(x => ({ kind: 'User', title: x.name, detail: x.email || x.role, tab: 'team' })),
-    ...recipes.filter(r => `${r.title} ${r.ingredients}`.toLowerCase().includes(q)).slice(0, 5).map(x => ({ kind: 'Recipe', title: x.title, detail: x.category, tab: 'recipes' })),
-    ...inventoryItems.filter(i => `${i.name} ${i.category}`.toLowerCase().includes(q)).slice(0, 5).map(x => ({ kind: 'Inventory', title: x.name, detail: `Stock ${x.currentStock || 0} / Par ${x.parLevel || 0}`, tab: 'inventory' })),
-    ...events.filter(e => `${e.title} ${e.author} ${e.notes}`.toLowerCase().includes(q)).slice(0, 6).map(x => ({ kind: x.type === 'special_event' ? 'Event' : 'Message', title: x.title, detail: x.date || x.author, tab: x.type === 'special_event' ? 'events' : 'messages' })),
-    ...maintenanceLogs.filter(m => `${m.equipment} ${m.issue}`.toLowerCase().includes(q)).slice(0, 5).map(x => ({ kind: 'Maintenance', title: x.equipment, detail: x.issue, tab: 'maintenance' })),
-    ...shifts.filter(s => `${s.role} ${s.date}`.toLowerCase().includes(q)).slice(0, 5).map(x => ({ kind: 'Shift', title: `${x.role} ${x.date}`, detail: `${formatShortTime(x.startTime)}-${formatShortTime(x.endTime)}`, tab: 'schedule' }))
-  ].slice(0, 18) : [];
-  return <div className="fixed inset-0 z-[100000] bg-[#0B0E11]/90 backdrop-blur-md p-4 flex items-start justify-center pt-10">
+  return <div className="chaos-perf-overlay fixed inset-0 z-[100000] bg-[#0B0E11]/90 backdrop-blur-md p-4 flex items-start justify-center pt-10">
     <div className="w-full max-w-2xl cockpit-panel rounded-2xl overflow-hidden">
       <div className="p-3 border-b border-[#2A353D] flex items-center gap-2"><Search size={18} className="text-[#D4A381]"/><input autoFocus value={queryText} onChange={e=>setQueryText(e.target.value)} placeholder="Search people, recipes, messages, inventory, events..." className="flex-1 bg-transparent outline-none text-white font-bold"/><button onClick={onClose} className="p-2 rounded-lg hover:bg-[#12161A]"><X size={18}/></button></div>
       <div className="max-h-[70vh] overflow-y-auto custom-scrollbar p-2 space-y-1">{q && results.length === 0 && <SmartEmptyState title="Nothing found" desc="Try a recipe name, employee, inventory item, or event." />}{results.map((r, idx) => <button key={idx} onClick={() => { setActiveTab(r.tab); onClose(); }} className="w-full text-left p-3 rounded-xl border border-[#2A353D] bg-[#12161A] hover:border-[#D4A381]/40"><div className="text-[9px] uppercase tracking-widest font-black text-[#D4A381]">{r.kind}</div><div className="font-black text-white text-sm mt-1">{r.title}</div><div className="text-xs text-slate-500 font-bold mt-0.5 truncate">{r.detail}</div></button>)}</div>
     </div>
   </div>;
-};
+});
 
-const QuickActionDock = ({ appUser, setActiveTab, openSearch, openTV, addToast }) => {
+const QuickActionDock = React.memo(({ appUser, setActiveTab, openSearch, openTV, addToast }) => {
   const [open, setOpen] = useState(false);
   const profile = getHomeProfile(appUser);
-  const actions = [
+  const actions = useMemo(() => [
     { label: 'Manager Brief', tab: 'today' },
     { label: 'Search', fn: openSearch },
     { label: 'Kitchen TV', fn: openTV },
@@ -485,12 +523,17 @@ const QuickActionDock = ({ appUser, setActiveTab, openSearch, openTV, addToast }
     ['manager','system'].includes(profile) ? { label: 'Schedule', tab: 'schedule' } : null,
     { label: 'Message Board', tab: 'messages' },
     { label: 'My Shift', tab: 'published' }
-  ].filter(Boolean);
-  return <div className="fixed bottom-5 right-4 z-50 flex flex-col items-end gap-2">
-    {open && <div className="cockpit-panel rounded-2xl p-2 w-52 space-y-1 shadow-2xl">{actions.map(a => <button key={a.label} onClick={() => { setOpen(false); a.fn ? a.fn() : setActiveTab(a.tab); }} className="w-full text-left px-3 py-2 rounded-xl bg-[#0B0E11] hover:bg-[#12161A] border border-[#2A353D] text-xs font-black uppercase tracking-widest text-slate-300 hover:text-[#D4A381]">{a.label}</button>)}</div>}
-    <button onClick={() => setOpen(!open)} className="no-compact w-14 h-14 rounded-full bg-[#0B0E11] border border-[#D4A381]/50 text-[#D4A381] shadow-2xl flex items-center justify-center"><Menu size={24}/></button>
+  ].filter(Boolean), [profile, openSearch, openTV]);
+  const toggleOpen = useCallback(() => setOpen(value => !value), []);
+  const runAction = useCallback((action) => {
+    setOpen(false);
+    action.fn ? action.fn() : setActiveTab(action.tab);
+  }, [setActiveTab]);
+  return <div className="quick-action-dock fixed bottom-5 right-4 z-50 flex flex-col items-end gap-2">
+    {open && <div className="cockpit-panel rounded-2xl p-2 w-52 space-y-1 shadow-2xl">{actions.map(a => <button key={a.label} onClick={() => runAction(a)} className="w-full text-left px-3 py-2 rounded-xl bg-[#0B0E11] hover:bg-[#12161A] border border-[#2A353D] text-xs font-black uppercase tracking-widest text-slate-300 hover:text-[#D4A381]">{a.label}</button>)}</div>}
+    <button onClick={toggleOpen} className="no-compact w-14 h-14 rounded-full bg-[#0B0E11] border border-[#D4A381]/50 text-[#D4A381] shadow-2xl flex items-center justify-center"><Menu size={24}/></button>
   </div>;
-};
+});
 
 
 
@@ -1467,7 +1510,7 @@ const parseVoiceAvailabilityPayload = (text = '') => {
   return { intent:'submit_availability_change', label:'Submit availability change', weeklyAvailability, maxHoursPerWeek:maxHours ? Number(maxHours) : null, maxShiftsPerWeek:maxShifts ? Number(maxShifts) : null, effectiveStartDate: effective.date && effective.date >= getToday() ? effective.date : getToday(), effectiveEndDate:'', notes:`Created by 86Voice from: ${text}`, summary:`Submit availability change${uniqueDays.length ? ` for ${uniqueDays.join(', ')}` : ''}${range && !unavailable ? ` ${formatShortTime(range.start)}-${formatShortTime(range.end)}` : ''}${unavailable ? ' as unavailable' : ''}${preferred ? ' as preferred' : ''}. Manager approval may be required.`, needsConfirmation:true, safe:true };
 };
 
-const VoiceCommandDock = ({ appUser, inventoryItems = [], recipes = [], users = [], prepItems = [], tasks = [], events = [], maintenanceLogs = [], menuDependencies = [], shifts = [], timePunches = [], timeOffRequests = [], sales = [], invoices = [], wasteLogs = [], clientFeatures = {}, clientData = {}, setActiveTab, setCurrentDate, setScheduleSubTabTarget, setHelpSearchTarget, setRecipeTarget, addToast }) => {
+const VoiceCommandDockBase = ({ appUser, inventoryItems = [], recipes = [], users = [], prepItems = [], tasks = [], events = [], maintenanceLogs = [], menuDependencies = [], shifts = [], timePunches = [], timeOffRequests = [], sales = [], invoices = [], wasteLogs = [], clientFeatures = {}, clientData = {}, setActiveTab, setCurrentDate, setScheduleSubTabTarget, setHelpSearchTarget, setRecipeTarget, addToast }) => {
   const [open, setOpen] = useState(false);
   const [listening, setListening] = useState(false);
   const [heardText, setHeardText] = useState('');
@@ -2887,7 +2930,7 @@ const VoiceCommandDock = ({ appUser, inventoryItems = [], recipes = [], users = 
 
   const executePending = () => executeAction(pending, heardText, true, true);
 
-  return <div className="fixed bottom-5 left-4 z-50 flex flex-col items-start gap-2">
+  return <div className="voice-command-dock fixed bottom-5 left-4 z-50 flex flex-col items-start gap-2">
     {open && <div className="cockpit-panel rounded-2xl p-3 w-[min(92vw,360px)] shadow-2xl border border-[#2A353D] bg-[#1A2126]">
       <div className="flex items-center justify-between gap-2 border-b border-[#2A353D] pb-2 mb-3">
         <div><div className="text-[10px] font-black uppercase tracking-widest text-[#D4A381] flex items-center gap-1"><Sparkles size={13}/> 86 Voice</div><div className="text-[10px] text-slate-500 font-bold">Tap once, speak, and safe commands run. Destructive commands still ask first.</div></div>
@@ -2956,15 +2999,17 @@ const VoiceCommandDock = ({ appUser, inventoryItems = [], recipes = [], users = 
   </div>;
 };
 
-const KitchenTVMode = ({ isOpen, onClose, shifts, events, prepItems, maintenanceLogs, inventoryItems }) => {
-  if (!isOpen) return null;
+const VoiceCommandDock = React.memo(VoiceCommandDockBase, voiceDockPropsAreEqual);
+
+const KitchenTVMode = React.memo(({ isOpen, onClose, shifts, events, prepItems, maintenanceLogs, inventoryItems }) => {
   const today = getToday();
-  const todaysShifts = shifts.filter(s => s.date === today && s.isPublished).sort((a,b)=>(a.startTime||'').localeCompare(b.startTime||''));
-  const prep = prepItems.filter(p => (p.date === today || p.date === 'MASTER') && !p.isCompleted).slice(0, 10);
-  const alerts = events.filter(e => e.type === 'note' && e.isImportant).slice(0, 5);
-  const todayEvents = events.filter(e => e.type === 'special_event' && e.date === today);
-  const maint = maintenanceLogs.filter(m => !['Completed','Closed','Resolved'].includes(m.status)).slice(0, 5);
-  const low = inventoryItems.filter(i => Number(i.parLevel||0) > 0 && Number(i.currentStock||0) < Number(i.parLevel||0)).slice(0, 6);
+  const todaysShifts = useMemo(() => (shifts || []).filter(s => s.date === today && s.isPublished).sort((a,b)=>(a.startTime||'').localeCompare(b.startTime||'')), [shifts, today]);
+  const prep = useMemo(() => (prepItems || []).filter(p => (p.date === today || p.date === 'MASTER') && !p.isCompleted).slice(0, 10), [prepItems, today]);
+  const alerts = useMemo(() => (events || []).filter(e => e.type === 'note' && e.isImportant).slice(0, 5), [events]);
+  const todayEvents = useMemo(() => (events || []).filter(e => e.type === 'special_event' && e.date === today), [events, today]);
+  const maint = useMemo(() => (maintenanceLogs || []).filter(m => !['Completed','Closed','Resolved'].includes(m.status)).slice(0, 5), [maintenanceLogs]);
+  const low = useMemo(() => (inventoryItems || []).filter(i => Number(i.parLevel||0) > 0 && Number(i.currentStock||0) < Number(i.parLevel||0)).slice(0, 6), [inventoryItems]);
+  if (!isOpen) return null;
   return <div className="fixed inset-0 z-[100000] bg-[#0B0E11] text-white p-5 sm:p-8 overflow-y-auto">
     <div className="flex justify-between items-start mb-6"><div><div className="text-[#D4A381] text-sm font-black uppercase tracking-widest">86 Chaos Kitchen TV</div><h1 className="text-4xl sm:text-6xl font-black">{formatDisplayFullDate(today)}</h1></div><button onClick={onClose} className="bg-white text-slate-900 rounded-xl px-4 py-2 font-black uppercase text-xs">Exit</button></div>
     <div className="grid md:grid-cols-3 gap-4">
@@ -2973,7 +3018,7 @@ const KitchenTVMode = ({ isOpen, onClose, shifts, events, prepItems, maintenance
       <div className="cockpit-panel rounded-2xl p-5"><h2 className="text-2xl font-black mb-3">Today</h2>{todayEvents.map(e => <div key={e.id} className="text-xl font-bold border-b border-[#2A353D] py-2">{e.time || ''} {e.title}</div>)}{todaysShifts.slice(0,8).map(s => <div key={s.id} className="text-xl font-bold border-b border-[#2A353D] py-2">{formatShortTime(s.startTime)} {s.role}</div>)}{maint.map(m => <div key={m.id} className="text-xl font-bold border-b border-amber-500/30 py-2 text-amber-300">Fix: {m.equipment}</div>)}</div>
     </div>
   </div>;
-};
+});
 
 const ChangeLogModal = ({ isOpen, onClose }) => isOpen ? <Modal isOpen={isOpen} onClose={onClose} title={`What's New in ${CURRENT_VERSION}`}>
   <div className="space-y-3 text-sm text-slate-300 font-bold leading-snug">

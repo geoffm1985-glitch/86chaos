@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Archive, Bell, Check, Camera, ChevronLeft, ChevronRight, MessageSquare, Plus, Trash2, Users, Calendar, Clock, X, Loader2, Package, ClipboardList, Menu, Settings, LogOut, Shield, Send, Repeat, Edit, Moon, Sun, TrendingUp, BookOpen, Search, ChefHat, Scale, Coffee, Star, Bug, Wrench, Globe, Sparkles } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
 import { getFirestore, collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, where, getDoc, setDoc, getDocs } from 'firebase/firestore';
@@ -2141,20 +2141,20 @@ const TabToday = ({ currentDate, appUser, users, shifts, shiftSwaps, timeOffRequ
   const today = getToday();
   const profile = getHomeProfile(appUser);
   const safeTodayWrite = (args) => safeWriteWithQueue({ user: appUser, addToast, ...args });
-  const activeUserIds = new Set(users.filter(u => u?.isActive !== false).flatMap(u => [u.id, u.uid, u.authUid, u.userId].filter(Boolean)));
-  const todaysShifts = shifts
+  const activeUserIds = useMemo(() => new Set((users || []).filter(u => u?.isActive !== false).flatMap(u => [u.id, u.uid, u.authUid, u.userId].filter(Boolean))), [users]);
+  const todaysShifts = useMemo(() => (shifts || [])
     .filter(s => s.date === today && s.isPublished && s.isDeleted !== true && s.cancelled !== true && !s.deletedAt)
     .filter(s => !s.employeeId || activeUserIds.has(s.employeeId))
-    .sort((a,b) => (a.startTime || '').localeCompare(b.startTime || ''));
-  const myShift = todaysShifts.find(s => [appUser.id, appUser.uid, appUser.authUid].filter(Boolean).includes(s.employeeId));
-  const activePunches = canUseLabor ? timePunches.filter(p => ['clocked_in','on_break'].includes(p.status)) : [];
-  const importantNotes = events.filter(e => e.type === 'note' && e.isImportant).sort((a,b) => new Date(b.date) - new Date(a.date)).slice(0, 3);
-  const todayEvents = events.filter(e => e.type === 'special_event' && e.date === today).sort((a,b) => (a.time || '').localeCompare(b.time || ''));
-  const lowStock = canUseBasicInventory ? inventoryItems.filter(i => Number(i.parLevel || 0) > 0 && Number(i.currentStock || 0) < Number(i.parLevel || 0)).sort((a,b) => (Number(a.currentStock||0) - Number(a.parLevel||0)) - (Number(b.currentStock||0) - Number(b.parLevel||0))).slice(0, 8) : [];
-  const urgentMaintenance = canUseCleaningRoutines ? maintenanceLogs.filter(m => !['Completed','Closed','Resolved'].includes(m.status) && ['High','Critical'].includes(m.urgency)).slice(0, 5) : [];
-  const openPrep = prepItems.filter(p => (p.date === today || p.date === 'MASTER') && !p.isCompleted).slice(0, 8);
-  const pendingRequests = canUseScheduleBuilder ? timeOffRequests.filter(r => r.status === 'pending').slice(0, 5) : [];
-  const openSwaps = canUseScheduleBuilder ? shiftSwaps.filter(s => s.status === 'available' && s.date >= today).slice(0, 5) : [];
+    .sort((a,b) => (a.startTime || '').localeCompare(b.startTime || '')), [shifts, today, activeUserIds]);
+  const myShift = useMemo(() => todaysShifts.find(s => [appUser.id, appUser.uid, appUser.authUid].filter(Boolean).includes(s.employeeId)), [todaysShifts, appUser.id, appUser.uid, appUser.authUid]);
+  const activePunches = useMemo(() => canUseLabor ? (timePunches || []).filter(p => ['clocked_in','on_break'].includes(p.status)) : [], [canUseLabor, timePunches]);
+  const importantNotes = useMemo(() => (events || []).filter(e => e.type === 'note' && e.isImportant).sort((a,b) => new Date(b.date) - new Date(a.date)).slice(0, 3), [events]);
+  const todayEvents = useMemo(() => (events || []).filter(e => e.type === 'special_event' && e.date === today).sort((a,b) => (a.time || '').localeCompare(b.time || '')), [events, today]);
+  const lowStock = useMemo(() => canUseBasicInventory ? (inventoryItems || []).filter(i => Number(i.parLevel || 0) > 0 && Number(i.currentStock || 0) < Number(i.parLevel || 0)).sort((a,b) => (Number(a.currentStock||0) - Number(a.parLevel||0)) - (Number(b.currentStock||0) - Number(b.parLevel||0))).slice(0, 8) : [], [canUseBasicInventory, inventoryItems]);
+  const urgentMaintenance = useMemo(() => canUseCleaningRoutines ? (maintenanceLogs || []).filter(m => !['Completed','Closed','Resolved'].includes(m.status) && ['High','Critical'].includes(m.urgency)).slice(0, 5) : [], [canUseCleaningRoutines, maintenanceLogs]);
+  const openPrep = useMemo(() => (prepItems || []).filter(p => (p.date === today || p.date === 'MASTER') && !p.isCompleted).slice(0, 8), [prepItems, today]);
+  const pendingRequests = useMemo(() => canUseScheduleBuilder ? (timeOffRequests || []).filter(r => r.status === 'pending').slice(0, 5) : [], [canUseScheduleBuilder, timeOffRequests]);
+  const openSwaps = useMemo(() => canUseScheduleBuilder ? (shiftSwaps || []).filter(s => s.status === 'available' && s.date >= today).slice(0, 5) : [], [canUseScheduleBuilder, shiftSwaps, today]);
   const currentOpsIntel = useLiveDocument('opsIntelligenceReports', appUser?.restaurantId ? `${appUser.restaurantId}_current` : '', { enabled: !!appUser?.restaurantId && canUsePythonIntelligence, debugLabel: 'today:current-ops-intelligence' });
   useEffect(() => {
     if (currentOpsIntel && !briefOpsLoading) setBriefOpsIntel(currentOpsIntel);
@@ -2165,15 +2165,15 @@ const TabToday = ({ currentDate, appUser, users, shifts, shiftSwaps, timeOffRequ
   const briefAvailabilityRecords = [];
   const briefReminders = [];
   const briefAuditLogs = [];
-  const aiBrief = canUseAiOrdering ? buildAiOrderAssistant({ inventoryItems, vendors: [], wasteLogs: [], invoices: [], events, prepItems, menuDependencies, currentDate: today, daysAhead: 7, eventDaysAhead: 14 }) : { managerBrief: [], recommendations: [], eventNeeds: [], priceWarnings: [] };
-  const aiBriefTop = aiBrief.recommendations?.filter(row => row.suggestedQty > 0).slice(0, 3) || [];
-  const localAiBundle = buildRestaurantAiInsightBundle({
+  const aiBrief = useMemo(() => canUseAiOrdering ? buildAiOrderAssistant({ inventoryItems, vendors: [], wasteLogs: [], invoices: [], events, prepItems, menuDependencies, currentDate: today, daysAhead: 7, eventDaysAhead: 14 }) : { managerBrief: [], recommendations: [], eventNeeds: [], priceWarnings: [] }, [canUseAiOrdering, inventoryItems, events, prepItems, menuDependencies, today]);
+  const aiBriefTop = useMemo(() => aiBrief.recommendations?.filter(row => row.suggestedQty > 0).slice(0, 3) || [], [aiBrief]);
+  const localAiBundle = useMemo(() => buildRestaurantAiInsightBundle({
     currentDate: today,
     appUser,
     clientData,
     sales,
     events,
-    specials: events.filter(e => /special/i.test(String(e.type || e.category || e.messageCategory || ''))),
+    specials: (events || []).filter(e => /special/i.test(String(e.type || e.category || e.messageCategory || ''))),
     wasteLogs: briefWasteLogs,
     prepItems,
     tasks,
@@ -2186,7 +2186,7 @@ const TabToday = ({ currentDate, appUser, users, shifts, shiftSwaps, timeOffRequ
     recipes,
     menuDependencies,
     maintenanceLogs
-  });
+  }), [today, appUser, clientData, sales, events, prepItems, tasks, shifts, timePunches, timeOffRequests, users, inventoryItems, recipes, menuDependencies, maintenanceLogs]);
   const briefOpsSummary = briefOpsIntel?.summary || {};
   const briefOpsFindings = [
     ...(briefOpsIntel?.priceWatch || []).map(row => ({ area: 'Inventory', title: row.itemName || 'Price watch', detail: row.summary || row.detail || 'Review invoice pricing.', tab: 'inventory', focus: 'invoices', severity: row.severity || 'medium' })),
