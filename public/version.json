@@ -1,14 +1,15 @@
 {
-  "version": "16.0.41",
-  "name": "86 Chaos 16.0.41 My Schedule Legacy Shift Visibility Fix",
+  "version": "16.0.42",
+  "name": "86 Chaos 16.0.42 Auto-Fill Visibility Fix",
   "releasedAt": "2026-07-27T00:00:00.000Z",
-  "label": "86 Chaos 16.0.41 My Schedule Legacy Shift Visibility Fix",
-  "build": "16.0.41",
-  "notes": "Fixes My Schedule visibility for existing, restored, and imported shifts that use legacy employee identity fields while preserving the current schedule UI and Firebase configuration.",
+  "label": "86 Chaos 16.0.42 Auto-Fill Visibility Fix",
+  "build": "16.0.42",
+  "notes": "Fixes Schedule Builder Auto-Fill so committed shifts use current roster identity, appear immediately after save, and do not report a false visible success when drafts land outside the active schedule window.",
   "releaseNotes": [
-    "My Schedule now loads the selected month before filtering to the signed-in employee so legacy shifts without scheduleUserId are not hidden.",
-    "Shift matching now recognizes scheduleUserId and other canonical assignment fields before falling back to legacy email/name matching.",
-    "The schedule tab loads roster identity data when My Schedule needs it to map existing shifts safely to the current employee."
+    "Auto-Fill now resolves copied shifts to the active roster before creating the target draft shifts.",
+    "Drafted Auto-Fill shifts include canonical schedule identity, schedule date keys, month keys, and draft/publish metadata used by the Schedule Builder grid.",
+    "After a successful batch commit, newly drafted shifts are kept visible in the current Schedule Builder session while the Firestore listener catches up.",
+    "The Auto-Fill toast now distinguishes visible drafts from shifts saved outside the current schedule window."
   ],
-  "releaseTitle": "86 Chaos 16.0.41 My Schedule Legacy Shift Visibility Fix"
+  "releaseTitle": "86 Chaos 16.0.42 Auto-Fill Visibility Fix"
 }

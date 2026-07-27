@@ -272,6 +272,64 @@ export const resolveAmbiguousNameOnlyShiftIdentity = (shift = {}, roster = []) =
   };
 };
 
+
+const findAutoFillRosterPersonForShift = (shift = {}, roster = []) => {
+  const activeRoster = (Array.isArray(roster) ? roster : []).filter(person => person && person.isActive !== false);
+  const durableKeys = [shift.scheduleUserId, shift.employeeId, shift.userId, shift.rosterUserId, shift.accountUserId, shift.assignedUserId, shift.uid, shift.authUid]
+    .map(normalizeScheduleIdentity)
+    .filter(Boolean);
+  const emailKeys = [shift.employeeEmail, shift.userEmail, shift.email, shift.assignedEmail]
+    .map(normalizeScheduleIdentity)
+    .filter(Boolean);
+  const fullNameKeys = [shift.employeeName, shift.userName, shift.name, shift.displayName, shift.assignedName]
+    .map(normalizeScheduleName)
+    .filter(Boolean);
+  const firstKeys = [shift.employeeName, shift.userName, shift.name, shift.displayName, shift.assignedName]
+    .map(firstNameKey)
+    .filter(Boolean);
+
+  const personDurableKeys = (person = {}) => [person.scheduleUserId, person.employeeId, person.rosterUserId, person.userId, person.accountUserId, person.authUid, person.uid, person.id]
+    .map(normalizeScheduleIdentity)
+    .filter(Boolean);
+  const personEmailKeys = (person = {}) => [person.employeeEmail, person.userEmail, person.email, person.assignedEmail]
+    .map(normalizeScheduleIdentity)
+    .filter(Boolean);
+  const personFullNameKeys = (person = {}) => [person.employeeName, person.name, person.displayName, person.fullName, person.assignedName]
+    .map(normalizeScheduleName)
+    .filter(Boolean);
+  const personFirstKeys = (person = {}) => [person.employeeName, person.name, person.displayName, person.fullName, person.assignedName]
+    .map(firstNameKey)
+    .filter(Boolean);
+
+  const exactDurable = activeRoster.filter(person => durableKeys.some(key => personDurableKeys(person).includes(key)));
+  if (exactDurable.length === 1) return { ok: true, person: exactDurable[0], reason: 'durable' };
+
+  const exactEmail = activeRoster.filter(person => emailKeys.some(key => personEmailKeys(person).includes(key)));
+  if (exactEmail.length === 1) return { ok: true, person: exactEmail[0], reason: 'email' };
+
+  const exactName = activeRoster.filter(person => fullNameKeys.some(key => personFullNameKeys(person).includes(key)));
+  if (exactName.length === 1) return { ok: true, person: exactName[0], reason: 'name' };
+
+  // Old imported/copied schedules sometimes had a stale employeeId but only a short first-name label.
+  // Use first-name matching only when it uniquely identifies one active roster record.
+  const firstNameMatches = activeRoster.filter(person => firstKeys.some(key => personFirstKeys(person).includes(key)));
+  if (firstNameMatches.length === 1) return { ok: true, person: firstNameMatches[0], reason: 'first-name' };
+
+  return { ok: false, person: null, reason: exactDurable.length > 1 || exactEmail.length > 1 || exactName.length > 1 || firstNameMatches.length > 1 ? 'ambiguous-roster-match' : 'no-roster-match' };
+};
+
+const mergeVisibleScheduleShifts = (...shiftGroups) => {
+  const seen = new Set();
+  const merged = [];
+  shiftGroups.flat().filter(Boolean).forEach(shift => {
+    const key = shift.id ? `id:${shift.id}` : buildShiftFingerprint(shift) || `${shift.date || ''}|${shift.employeeName || ''}|${shift.startTime || ''}|${shift.endTime || ''}`;
+    if (!key || seen.has(key)) return;
+    seen.add(key);
+    merged.push(shift);
+  });
+  return merged;
+};
+
 export const buildShiftFingerprint = (shift = {}) => {
   const date = String(shift.date || '').trim();
   const employeeKey = getStableShiftEmployeeKey(shift);
@@ -282,22 +340,36 @@ export const buildShiftFingerprint = (shift = {}) => {
   return [date, employeeKey, role, start, end].join('|');
 };
 
-export const buildAutoPopulateShift = (sourceShift = {}, newDate = '', restaurantId = '', actor = {}, copiedFromMonth = '') => ({
-  date: newDate,
-  ...buildScheduleIdentityFields(sourceShift),
-  role: sourceShift.role || 'Unassigned',
-  startTime: sourceShift.startTime || '',
-  endTime: sourceShift.endTime || '',
-  isPublished: false,
-  restaurantId,
-  workspaceId: restaurantId,
-  createdAt: new Date().toISOString(),
-  createdBy: actor?.id || actor?.uid || actor?.email || 'auto-populate',
-  createdByName: actor?.name || actor?.email || 'Schedule Auto-Fill',
-  source: 'schedule_auto_fill',
-  copiedFromShiftId: sourceShift.id || '',
-  copiedFromMonth
-});
+export const buildAutoPopulateShift = (sourceShift = {}, newDate = '', restaurantId = '', actor = {}, copiedFromMonth = '', resolvedPerson = null) => {
+  const nowIso = new Date().toISOString();
+  const month = getMonthStr(newDate || getToday());
+  const identitySource = resolvedPerson || sourceShift;
+  return {
+    date: newDate,
+    scheduleDateKey: newDate,
+    scheduleMonth: month,
+    ...buildScheduleIdentityFields(identitySource),
+    role: sourceShift.role || resolvedPerson?.role || 'Unassigned',
+    startTime: sourceShift.startTime || '',
+    endTime: sourceShift.endTime || '',
+    isPublished: false,
+    publishState: 'draft',
+    scheduleBuilderDraft: true,
+    readyToPublish: true,
+    restaurantId,
+    workspaceId: restaurantId,
+    createdAt: nowIso,
+    updatedAt: nowIso,
+    createdBy: actor?.id || actor?.uid || actor?.email || 'auto-populate',
+    updatedBy: actor?.id || actor?.uid || actor?.email || 'auto-populate',
+    createdByName: actor?.name || actor?.email || 'Schedule Auto-Fill',
+    source: 'schedule_auto_fill',
+    assignmentSource: 'schedule_auto_fill',
+    copiedFromShiftId: sourceShift.id || '',
+    copiedFromMonth,
+    autoFillTargetMonth: month
+  };
+};
 
 const parseScheduleTimeParts = (value, fallback = { hours: 0, minutes: 0 }) => {
   const raw = String(value || '').trim().toUpperCase();
@@ -1290,15 +1362,20 @@ const [eventDate, setEventDate] = useState(getToday());
   // --- AUTO-POPULATE STATE ---
   const [isAutoPopulateModalOpen, setIsAutoPopulateModalOpen] = useState(false);
   const [autoPopSourceMonth, setAutoPopSourceMonth] = useState('');
+  const [autoFillVisibleShifts, setAutoFillVisibleShifts] = useState([]);
   
   const monthStr = getMonthStr(currentDate); 
   const monthDays = Array.from({length: getDaysInMonth(monthStr)}).map((_, i) => `${monthStr}-${String(i+1).padStart(2, '0')}`);
   const schedulePublishingSettings = getSchedulePublishingSettings(appUser, clientData);
   const schedulePerson = getSchedulePersonForAppUser(appUser, users);
+  const visibleShifts = mergeVisibleScheduleShifts(
+    shifts,
+    autoFillVisibleShifts.filter(shift => shift?.restaurantId === appUser?.restaurantId && String(shift?.date || '').startsWith(monthStr))
+  );
   const schedulePeriodBounds = getSchedulePeriodBounds(currentDate, schedulePublishingSettings);
   const schedulePeriodDays = buildDateRange(schedulePeriodBounds.start, schedulePeriodBounds.end);
   const schedulePeriodLabel = getSchedulePeriodLabel(schedulePeriodBounds, schedulePublishingSettings);
-  const schedulePeriodShifts = shifts.filter(s => { const d = String(s.date || s.scheduleDateKey || ''); return d >= schedulePeriodBounds.start && d <= schedulePeriodBounds.end; });
+  const schedulePeriodShifts = visibleShifts.filter(s => { const d = String(s.date || s.scheduleDateKey || ''); return d >= schedulePeriodBounds.start && d <= schedulePeriodBounds.end; });
   const schedulePeriodEvents = events.filter(e => e.type === 'special_event' && e.date >= schedulePeriodBounds.start && e.date <= schedulePeriodBounds.end).sort((a,b) => (a.date || '').localeCompare(b.date || '') || (a.time || '').localeCompare(b.time || '') || (a.title || '').localeCompare(b.title || ''));
   const eventsByScheduleDay = schedulePeriodDays.reduce((acc, d) => {
     acc[d] = schedulePeriodEvents.filter(e => e.date === d);
@@ -1319,7 +1396,7 @@ const [eventDate, setEventDate] = useState(getToday());
     ];
     return parts.filter(Boolean).join(' • ');
   };
-  const monthShifts = shifts.filter(s => s.date.startsWith(monthStr));
+  const monthShifts = visibleShifts.filter(s => String(s.date || '').startsWith(monthStr));
   const monthEvents = events.filter(e => e.type === 'special_event' && e.date.startsWith(monthStr)).sort((a,b) => (a.date || '').localeCompare(b.date || ''));
 
   // --- CUSTOM DROPDOWN TIME GENERATOR ---
@@ -2036,7 +2113,7 @@ const handleAddEvent = async (e) => {
     const dayOffset = Math.round((tMon - sMon) / (1000 * 60 * 60 * 24));
 
     const existingFingerprints = new Set(
-      shifts
+      visibleShifts
         .filter(shift => String(shift?.date || '').startsWith(targetMonth))
         .map(buildShiftFingerprint)
         .filter(Boolean)
@@ -2051,10 +2128,12 @@ const handleAddEvent = async (e) => {
     let outsideTargetMonthCount = 0;
     let committedCount = 0;
     let successfulBatchCount = 0;
+    const queuedVisibleShifts = [];
 
     const queueShift = (payload) => {
       const ref = doc(collection(db, 'shifts'));
       batch.set(ref, payload);
+      queuedVisibleShifts.push({ id: ref.id, ...payload });
       batchSize += 1;
       if (batchSize >= 450) {
         batches.push({ batch, count: batchSize });
@@ -2064,12 +2143,17 @@ const handleAddEvent = async (e) => {
     };
 
     for (const rawSourceShift of sourceShifts) {
-      const identityResolution = resolveAmbiguousNameOnlyShiftIdentity(rawSourceShift, users);
-      if (!identityResolution.ok) {
+      const legacyIdentityResolution = resolveAmbiguousNameOnlyShiftIdentity(rawSourceShift, users);
+      if (!legacyIdentityResolution.ok) {
         invalidCount += 1;
         continue;
       }
-      const sourceShift = identityResolution.shift;
+      const rosterIdentity = findAutoFillRosterPersonForShift(legacyIdentityResolution.shift, users);
+      if (!rosterIdentity.ok) {
+        invalidCount += 1;
+        continue;
+      }
+      const sourceShift = { ...legacyIdentityResolution.shift, ...buildScheduleIdentityFields(rosterIdentity.person) };
       const sourceFingerprint = buildShiftFingerprint(sourceShift);
       if (!sourceFingerprint || !/^\d{4}-\d{2}-\d{2}$/.test(String(sourceShift.date || '')) || !getStableShiftEmployeeKey(sourceShift) || !normalizeShiftTimeForFingerprint(sourceShift.startTime) || !normalizeShiftTimeForFingerprint(sourceShift.endTime) || !String(sourceShift.role || '').trim()) {
         invalidCount += 1;
@@ -2094,7 +2178,7 @@ const handleAddEvent = async (e) => {
         continue;
       }
 
-      const payload = buildAutoPopulateShift(sourceShift, newDateStr, appUser.restaurantId, appUser, autoPopSourceMonth);
+      const payload = buildAutoPopulateShift(sourceShift, newDateStr, appUser.restaurantId, appUser, autoPopSourceMonth, rosterIdentity.person);
       const newFingerprint = buildShiftFingerprint(payload);
       if (!newFingerprint) {
         invalidCount += 1;
@@ -2127,9 +2211,22 @@ const handleAddEvent = async (e) => {
       return;
     }
 
+    const committedVisibleShifts = queuedVisibleShifts.slice(0, committedCount);
+    const visibleCommittedCount = committedVisibleShifts.filter(shift => {
+      const d = String(shift.date || shift.scheduleDateKey || '');
+      return d >= schedulePeriodBounds.start && d <= schedulePeriodBounds.end && users.some(user => shiftMatchesPerson(shift, user));
+    }).length;
+    if (committedVisibleShifts.length) {
+      setAutoFillVisibleShifts(prev => mergeVisibleScheduleShifts(prev, committedVisibleShifts));
+    }
     setIsAutoPopulateModalOpen(false);
     setAutoPopSourceMonth('');
-    addToast('Populated', `Drafted ${committedCount} shifts across ${successfulBatchCount} batch(es). ${duplicateCount} duplicate(s), ${invalidCount} invalid, ${outsideTargetMonthCount} outside target month skipped.`);
+    addToast(
+      visibleCommittedCount > 0 ? 'Populated' : 'Auto-Fill Saved Outside View',
+      visibleCommittedCount > 0
+        ? `Drafted ${committedCount} shifts across ${successfulBatchCount} batch(es). ${visibleCommittedCount} are visible in this schedule window. ${duplicateCount} duplicate(s), ${invalidCount} invalid, ${outsideTargetMonthCount} outside target month skipped.`
+        : `Drafted ${committedCount} shifts, but none land in the currently visible schedule window (${formatDisplayDate(schedulePeriodBounds.start)} - ${formatDisplayDate(schedulePeriodBounds.end)}). Change the schedule date/window to view them. ${duplicateCount} duplicate(s), ${invalidCount} invalid.`
+    );
   };
 
   // --- LABOR PROJECTION ENGINE ---
