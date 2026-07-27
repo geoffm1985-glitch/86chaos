@@ -876,7 +876,7 @@ Clock out anyway?`);
 
 // --- SHIFT LOGIC ---
   const myMonthShifts = shifts
-    .filter(s => shiftMatchesPerson(s, schedulePerson) && String(s.date || '').startsWith(monthStr) && s.isPublished && isShiftStillCurrentOrUpcoming(s, scheduleNow))
+    .filter(s => shiftMatchesPerson(s, schedulePerson) && String(s.date || '').startsWith(monthStr) && s.isPublished)
     .sort((a,b) => a.date === b.date ? (a.startTime || '').localeCompare(b.startTime || '') : a.date.localeCompare(b.date));
 
   const myNextShift = shifts

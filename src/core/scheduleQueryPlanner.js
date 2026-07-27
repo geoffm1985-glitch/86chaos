@@ -13,7 +13,7 @@ const getMonthBounds = (dateStr) => {
 };
 export const getCanonicalScheduleUserId = (user = {}) => {
   const safeUser = user && typeof user === 'object' ? user : {};
-  return safeUser.scheduleUserId || safeUser.userId || safeUser.rosterUserId || safeUser.authUid || safeUser.uid || safeUser.employeeId || safeUser.id || '';
+  return safeUser.scheduleUserId || safeUser.employeeId || safeUser.rosterUserId || safeUser.userId || safeUser.authUid || safeUser.uid || safeUser.id || '';
 }; // email is migration evidence only, not a durable query ID
 export const canManageScheduleForPlanner = (user = {}) => Boolean(user?.isSuperAdmin || user?.isAdmin || user?.isOwner || user?.accountOwner || user?.workspaceOwner || user?.permissions?.schedule || user?.permissions?.team);
 
@@ -98,5 +98,5 @@ export function buildScheduleQueryPlan({ activeTabState = '', activeScheduleSubT
   if (activeScheduleSubTab === 'trade-board') {
     return { ...plan, shiftClauses: canManageSchedule ? [['date','>=', today], ['date','<=', futureWindowEnd]] : [...ownUserClause, ['date','>=', today], ['date','<=', scheduleWindowEnd]], shiftLimit: canManageSchedule ? 180 : 60, timeOffClauses: authUserId ? [['userId','==',authUserId], ['date','>=', recentWindowStart], ['date','<=', futureWindowEnd]] : [['userId','==','__none__']], timeOffLimit: 30, swapsEnabled: true, swapClauses: canManageSchedule ? [['status','in',['available','open']], ['shiftDate','>=', today]] : [['requesterUserId','==', authUserId || '__none__'], ['shiftDate','>=', today]], swapLimit: 80, eventEnabled: false, needsRoster: true };
   }
-  return { ...plan, shiftClauses: scheduleUserId ? [...ownUserClause, ['date','>=', recentWindowStart], ['date','<=', scheduleWindowEnd]] : [['date','>=', recentWindowStart], ['date','<=', scheduleWindowEnd]], shiftLimit: 80, timeOffClauses: authUserId ? [['userId','==', authUserId], ['date','>=', recentWindowStart], ['date','<=', scheduleWindowEnd]] : [['userId','==','__none__']], timeOffLimit: 40, swapsEnabled: true, swapClauses: authUserId ? [['requesterUserId','==', authUserId], ['shiftDate','>=', today]] : [['status','in',['available','open']]], swapLimit: 40, eventEnabled: false };
+  return { ...plan, shiftClauses: scheduleUserId ? [...ownUserClause, ['date','>=', monthBounds.start], ['date','<=', monthBounds.end]] : [['date','>=', monthBounds.start], ['date','<=', monthBounds.end]], shiftLimit: 140, timeOffClauses: authUserId ? [['userId','==', authUserId], ['date','>=', monthBounds.start], ['date','<=', monthBounds.end]] : [['userId','==','__none__']], timeOffLimit: 60, swapsEnabled: true, swapClauses: authUserId ? [['requesterUserId','==', authUserId], ['shiftDate','>=', today]] : [['status','in',['available','open']]], swapLimit: 40, eventEnabled: false };
 }
