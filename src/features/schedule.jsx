@@ -1402,8 +1402,20 @@ const [eventDate, setEventDate] = useState(getToday());
   }, {});
   const formatScheduleBuilderEventLabel = (event = {}) => {
     const title = String(event.title || 'Event').trim() || 'Event';
-    const shortTitle = title.length > 16 ? `${title.slice(0, 15)}…` : title;
-    return `${event.time ? `${formatShortTime(event.time)} ` : ''}${shortTitle}`;
+    return `${event.time ? `${formatShortTime(event.time) || event.time} ` : ''}${title}`;
+  };
+  const formatScheduleBuilderRequestTime = (value = '') => {
+    const raw = String(value || '').trim();
+    if (!raw) return '';
+    const formatted = formatShortTime(raw);
+    return formatted && !/invalid/i.test(formatted) ? formatted : raw;
+  };
+  const formatScheduleBuilderRequestRange = (request = {}) => {
+    const start = formatScheduleBuilderRequestTime(request.startTime);
+    const end = formatScheduleBuilderRequestTime(request.endTime);
+    if (start && end) return `${start} - ${end}`;
+    if (start || end) return start || end;
+    return 'Partial day time missing';
   };
   const formatScheduleBuilderEventTitle = (event = {}) => {
     const parts = [
@@ -2330,8 +2342,8 @@ const handleAddEvent = async (e) => {
     if (totalMinutes <= 0) {
       return { valid: false, interval: null, reason: 'Invalid time range: shift has no hours.', displayRange };
     }
-    if (totalMinutes > MAX_REASONABLE_SCHEDULE_SHIFT_MINUTES) {
-      return { valid: false, interval: null, reason: 'Invalid time range: shift is over 18 hours. Check AM/PM.', displayRange };
+    if (totalMinutes >= MAX_REASONABLE_SCHEDULE_SHIFT_MINUTES) {
+      return { valid: false, interval: null, reason: 'Invalid time range: shift is 18 hours or longer. Check AM/PM.', displayRange };
     }
     return { valid: true, interval: { start: startMinutes, end: endMinutes, minutes: totalMinutes }, reason: '', displayRange };
   };
@@ -3010,7 +3022,7 @@ const handleExportTimesheets = () => {
                       </tr>
                       {groupedUsers[role].sort((a,b) => (a.name||'').localeCompare(b.name||'')).map(u => (
                         <tr key={u.id} className={selectedEmp===u.id?'bg-[#12161A]/50':''}>
-                          <td onClick={()=>{setSelectedEmp(u.id);setAssignDates([]);}} className={`px-2 py-1 text-xs font-bold sticky left-0 z-10 border-r border-[#2A353D] cursor-pointer truncate shadow-sm ${selectedEmp===u.id?`${T.grad} text-slate-900`:'bg-[#1A2126] text-white'}`}>{u.name.split(' ')[0]}</td>
+                          <td onClick={()=>{setSelectedEmp(u.id);setAssignDates([]);}} className={`px-2 py-1 text-xs font-bold sticky left-0 z-10 border-r border-[#2A353D] cursor-pointer truncate shadow-sm ${selectedEmp===u.id?`${T.grad} text-slate-900`:'bg-[#1A2126] text-white'}`}>{u.name || 'Unnamed'}</td>
                           {schedulePeriodDays.map(d => {
                             const dayShifts = getScheduleBuilderShiftsForPersonDate(d, u);
                             const req = timeOffRequests.find(r => r.date === d && timeOffMatchesPerson(r, u) && isActiveTimeOffRequest(r)); 
@@ -3022,7 +3034,7 @@ const handleExportTimesheets = () => {
                             <td key={d} onClick={()=>handleCellClick(d,u.id)} className={`p-0.5 border-r border-[#2A353D] cursor-pointer transition-all align-top h-7 sm:h-8 ${sel?'bg-[#8F6040] outline outline-2 outline-[#D4A381] shadow-inner z-0 relative':'hover:bg-[#12161A]'}`}>
                             <div className="flex flex-col gap-[1px] w-full justify-start overflow-hidden">
                               {req && !req.isPartial && <div className="schedule-builder-time-chip w-full rounded font-black text-[7px] sm:text-[8px] py-0.5 text-center text-red-400 bg-red-900/40 uppercase tracking-tighter" title="Requested Off">Off</div>}
-                              {req && req.isPartial && <div className="schedule-builder-time-chip schedule-builder-partial-off-chip w-full rounded font-black text-[7px] sm:text-[8px] py-0.5 text-center text-amber-400 bg-amber-900/40 uppercase tracking-tighter truncate" title={`Requested off: ${formatShortTime(req.startTime)} - ${formatShortTime(req.endTime)}`}>{formatShortTime(req.startTime)}-{formatShortTime(req.endTime)}</div>}
+                              {req && req.isPartial && <div className="schedule-builder-time-chip schedule-builder-partial-off-chip w-full rounded font-black text-[7px] sm:text-[8px] py-0.5 text-center text-amber-400 bg-amber-900/40 uppercase tracking-tighter truncate" title={`Requested off: ${formatScheduleBuilderRequestRange(req)}`}>{formatScheduleBuilderRequestRange(req)}</div>}
                               {dayShifts.map(shift => {
                                 const shiftConflict = allUserReqs.some(r => {
                                   if (!r.isPartial) return true;
@@ -3080,7 +3092,7 @@ const handleExportTimesheets = () => {
                   {scheduledHours.length === 0 && <tr><td colSpan={scheduledHoursWeekBlocks.length + 2} className="p-6 text-center text-slate-500 font-bold">No hours scheduled yet.</td></tr>}
                   {scheduledHours.map(u => (
                     <tr key={u.id} className="hover:bg-[#12161A]/50 transition-colors">
-                      <td className="p-3 font-bold text-white border-r border-[#2A353D] sticky left-0 bg-[#1A2126] z-10 truncate">{u.name.split(' ')[0]}</td>
+                      <td className="p-3 font-bold text-white border-r border-[#2A353D] sticky left-0 bg-[#1A2126] z-10 truncate">{u.name || 'Unnamed'}</td>
                       {u.weekly.map((hrs, i) => (
                         <td key={i} title={formatScheduledHoursWeekAudit(u.person || u, scheduledHoursWeekBlocks[i], hrs)} className={`p-3 text-center font-black border-r border-[#2A353D] ${hrs > parseFloat(appUser?.systemSettings?.overtime || 40) ? 'text-red-500 bg-red-900/10' : hrs > 0 ? 'text-emerald-400' : 'text-slate-600'}`}>
                           {hrs > 0 ? hrs.toFixed(1) : '-'}
@@ -3747,6 +3759,27 @@ It might not be available. Do you still want to request it?`);
     addToast('Submitted', 'Your request-off dates were sent for review.');
   };
 
+  const formatRequestDateLabel = (value = '') => {
+    const raw = String(value || '').trim();
+    if (!raw) return 'Date missing';
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
+    const formatted = formatDisplayDate(raw);
+    return formatted && !/invalid/i.test(formatted) ? formatted : raw;
+  };
+  const formatRequestTimeLabel = (value = '') => {
+    const raw = String(value || '').trim();
+    if (!raw) return '';
+    const formatted = formatShortTime(raw);
+    return formatted && !/invalid/i.test(formatted) ? formatted : raw;
+  };
+  const formatRequestPartialRange = (r = {}) => {
+    const start = formatRequestTimeLabel(r.startTime);
+    const end = formatRequestTimeLabel(r.endTime);
+    if (start && end) return `${start} - ${end}`;
+    if (start || end) return start || end;
+    return 'Partial day time missing';
+  };
+
   const RequestCard = ({ r }) => {
     const status = normalizeStatus(r);
     const publishedFlag = r.unresolvedPublishedOverlap || r.overlapsPublishedSchedule;
@@ -3754,8 +3787,8 @@ It might not be available. Do you still want to request it?`);
       {canManage && <input type="checkbox" checked={selectedRequestIds.includes(r.id)} onChange={e => setSelectedRequestIds(prev => e.target.checked ? [...prev, r.id] : prev.filter(id => id !== r.id))} className="mt-1 accent-[#8F6040]" />}
       <div className="flex-1 min-w-0">
         <div className="font-black text-white text-sm">{r.userName || r.employeeName || 'Employee'}</div>
-        <div className={`text-[10px] font-bold ${T.muted} flex flex-wrap gap-2 mt-0.5`}><span>{formatDisplayDate(r.date)}</span>{r.isPartial && <span className="text-[#D4A381]">{formatShortTime(r.startTime)} - {formatShortTime(r.endTime)}</span>}<span className="uppercase tracking-widest">{status}</span>{publishedFlag && <span className="text-amber-300">Unresolved on published schedule</span>}</div>
-        <div className="mt-1 text-[10px] font-bold text-slate-500">Requested {formatClockDateTime(r.requestedAt || r.submittedAt || r.createdAt || r.requestTimestamp)}{(r.requestedByName || r.userName || r.employeeName) ? ` by ${r.requestedByName || r.userName || r.employeeName}` : ''}</div>
+        <div className={`text-[10px] font-bold ${T.muted} flex flex-wrap gap-2 mt-0.5`}><span>{formatRequestDateLabel(r.date)}</span>{r.isPartial && <span className="text-[#D4A381]">{formatRequestPartialRange(r)}</span>}<span className="uppercase tracking-widest">{status}</span>{publishedFlag && <span className="text-amber-300">Unresolved on published schedule</span>}</div>
+        <div className="mt-1 text-[10px] font-bold text-slate-500">Requested {formatClockDateTime(r.requestedAt || r.submittedAt || r.createdAt || r.requestTimestamp) || 'time not recorded'}{(r.requestedByName || r.userName || r.employeeName) ? ` by ${r.requestedByName || r.userName || r.employeeName}` : ''}</div>
         {isArchivedRequest(r) && <div className="mt-1 text-[10px] font-bold text-slate-500">{r.scheduleId ? `Schedule: ${r.scheduleId}` : 'History record'}{r.publishedAt ? ` • Published ${formatClockDateTime(r.publishedAt)} by ${r.publishedByName || r.publishedBy || 'manager'}` : ''}{r.approvedAt ? ` • Approved ${formatClockDateTime(r.approvedAt)} by ${r.approvedByName || r.approvedBy || ''}` : ''}{r.deniedAt ? ` • Denied ${formatClockDateTime(r.deniedAt)} by ${r.deniedByName || r.deniedBy || ''}` : ''}</div>}
       </div>
       <div className="flex flex-wrap justify-end gap-2">
