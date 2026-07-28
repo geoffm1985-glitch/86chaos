@@ -1,4 +1,4 @@
-import { getFirestore } from 'firebase-admin/firestore';
+import { FieldValue, getFirestore } from 'firebase-admin/firestore';
 import { getMessaging } from 'firebase-admin/messaging';
 import projectAdmin from './_firebase-project-admin.js';
 
@@ -170,6 +170,37 @@ function normalizeRestaurantIds(body = {}) {
   const raw = Array.isArray(body.restaurantIds) ? body.restaurantIds : [body.restaurantId];
   return [...new Set(raw.map(id => cleanId(id)).filter(Boolean))].slice(0, 250);
 }
+function normalizePushToken(value = '') {
+  return String(value || '').trim();
+}
+
+function collectUserPushTokenRecords(user = {}) {
+  const records = [];
+  const seen = new Set();
+  const remember = (token, source, deviceId = '') => {
+    const clean = normalizePushToken(token);
+    if (!clean || seen.has(clean)) return;
+    seen.add(clean);
+    records.push({
+      userId: user.id,
+      restaurantId: user.restaurantId,
+      token: clean,
+      source,
+      deviceId: cleanId(deviceId || source || 'device')
+    });
+  };
+  remember(user.fcmToken, 'primary', 'primary');
+  (Array.isArray(user.fcmTokens) ? user.fcmTokens : []).forEach((token, index) => remember(token, `fcmTokens.${index}`, `saved_${index}`));
+  (Array.isArray(user.pushTokens) ? user.pushTokens : []).forEach((entry, index) => remember(typeof entry === 'string' ? entry : entry?.token || entry?.fcmToken, `pushTokens.${index}`, entry?.deviceId || entry?.id || `push_${index}`));
+  if (user.pushDevices && typeof user.pushDevices === 'object') {
+    Object.entries(user.pushDevices).forEach(([deviceId, device]) => {
+      if (device && typeof device === 'object' && device.active === false) return;
+      remember(typeof device === 'string' ? device : device?.token || device?.fcmToken, `pushDevices.${deviceId}`, deviceId);
+    });
+  }
+  return records;
+}
+
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method Not Allowed' });
@@ -245,7 +276,8 @@ export default async function handler(req, res) {
 
     allPushUsers.forEach(u => {
       if (targetSet.size && !targetSet.has(u.id)) return;
-      if (!u.fcmToken) return;
+      const userTokenRecords = collectUserPushTokenRecords(u);
+      if (!userTokenRecords.length) return;
 
       const prefs = u.preferences || {};
       
@@ -299,7 +331,9 @@ export default async function handler(req, res) {
          if (inDnd) return;
       }
 
-      if (!tokenRecords.some(record => record.token === u.fcmToken)) tokenRecords.push({ userId: u.id, restaurantId: u.restaurantId, token: u.fcmToken });
+      userTokenRecords.forEach(record => {
+        if (!tokenRecords.some(existing => existing.token === record.token)) tokenRecords.push(record);
+      });
     });
     if (tokenRecords.length === 0) return res.status(200).json({ success: false, sentCount: 0, failedCount: 0, missingTokens: true, message: 'No devices eligible to receive this alert.' });
 
@@ -332,7 +366,10 @@ export default async function handler(req, res) {
       const code = r.error?.code || 'unknown';
       failures.push({ userId: record?.userId, code, message: r.error?.message || '' });
       if (record?.userId && staleCodes.has(code)) {
-        cleanup.push(db.collection('users').doc(record.userId).set({ fcmToken: null, pushNeedsRepair: true, pushRepairFlaggedAt: new Date().toISOString(), lastPushFailureCode: code }, { merge: true }));
+        const patch = { pushNeedsRepair: true, pushRepairFlaggedAt: new Date().toISOString(), lastPushFailureCode: code };
+        if (record.source === 'primary') patch.fcmToken = null;
+        if (record.deviceId && record.source.startsWith('pushDevices.')) patch[`pushDevices.${record.deviceId}`] = FieldValue.delete();
+        cleanup.push(db.collection('users').doc(record.userId).set(patch, { merge: true }));
       }
     });
     await Promise.allSettled(cleanup);

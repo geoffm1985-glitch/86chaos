@@ -1,11 +1,17 @@
 {
-  "version": "16.0.48",
-  "name": "86 Chaos 16.0.48 App Load and Notification Badge Fix",
+  "version": "16.0.49",
+  "name": "86 Chaos 16.0.49 Push Token Dashboard and Slim Report Capture Fix",
   "releasedAt": "2026-07-27T00:00:00.000Z",
-  "label": "86 Chaos 16.0.48 App Load and Notification Badge Fix",
-  "build": "16.0.48",
-  "notes": "Fixes an app-shell startup crash caused by an accessibility observer dependency order issue, and changes push notification badges to a dedicated transparent badge so Android status-bar notifications do not show square app-logo blocks.",
+  "label": "86 Chaos 16.0.49 Push Token Dashboard and Slim Report Capture Fix",
+  "build": "16.0.49",
+  "notes": "Fixes Push Control Center token counting/sending across primary tokens, token arrays, and pushDevices, and makes the release-gate runner always capture useful slim logs/report files instead of creating an empty upload ZIP.",
   "releaseNotes": [
+    "Push Control Center now counts usable tokens from fcmToken, fcmTokens, pushTokens, and pushDevices instead of only the legacy primary fcmToken field.",
+    "Connected devices by user now lists users with saved pushDevices/token arrays and enables Send Push when the selected target has any usable device token.",
+    "Push token sync now rewrites the canonical fcmToken and fcmTokens array when a pushDevices record already exists but the legacy primary token is missing.",
+    "The send-push API now sends to all saved token sources for a user, dedupes tokens, and cleans stale pushDevices when Firebase rejects them.",
+    "The Play Store release-gate runner now writes runner logs and a runner summary directly into the slim report source folder, so a failed or early-aborted test still produces a useful 86chaos-release-gate-SLIM-UPLOAD-ME.zip.",
+    "Added the missing play-store release Playwright config so npm run test:play-store targets the full-audit and release-gate test suites and writes playwright-report.json into the expected slim-report folder.",
     "Fixed an app-shell startup crash where an accessibility label observer referenced menu state before the menu state hook was initialized.",
     "The label observer now uses a safer body mutation watch and no longer watches the aria-label attribute it writes itself.",
     "Push notification payloads now use /notification-badge.png as the small badge instead of the full square app icon, reducing square status-bar notification icons on Android.",
@@ -41,5 +47,5 @@
     "My Schedule now shows only current and upcoming shifts for the selected month instead of dimming old ended shifts in the employee list.",
     "Schedule Builder Auto-Fill now fetches the full selected source month before copying shifts, so weeks outside the current visible planning window are not silently skipped."
   ],
-  "releaseTitle": "86 Chaos 16.0.48 App Load and Notification Badge Fix"
+  "releaseTitle": "86 Chaos 16.0.49 Push Token Dashboard and Slim Report Capture Fix"
 }

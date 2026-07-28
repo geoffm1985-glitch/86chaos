@@ -5751,7 +5751,39 @@ const activeTrials = restaurants.filter(r => resolveSubscription(r, appUser).sta
   const arpa = paidWorkspaces > 0 ? (mrr / paidWorkspaces).toFixed(2) : 0;
   const trialPipelineValue = activeTrials * (tierPrices.smart_kitchen || PLAN_DEFINITIONS.smart_kitchen.monthlyPrice || 179); 
   const crashes24h = crashLogs.filter(log => (Date.now() - new Date(log.time||0).getTime()) < 86400000).length;
-  const pushOptInRate = allUsers.length > 0 ? ((allUsers.filter(u => u.fcmToken).length / allUsers.length) * 100).toFixed(0) : 0;
+  const normalizePushToken = (value = '') => String(value || '').trim();
+  const collectUserPushDevices = (user = {}) => {
+    const rows = [];
+    const seen = new Set();
+    const remember = (token, source, data = {}) => {
+      const clean = normalizePushToken(token);
+      if (!clean || seen.has(clean)) return;
+      seen.add(clean);
+      rows.push({
+        token: clean,
+        source,
+        deviceId: data.deviceId || data.id || source,
+        active: data.active !== false,
+        permission: data.permission || user.notificationPermission || user.pushTokenPermission || '',
+        host: data.host || user.pushTokenHost || user.activeHost || '',
+        browser: data.browser || data.platform || '',
+        updatedAt: data.lastVerifiedAt || data.updatedAt || data.fcmTokenUpdatedAt || data.createdAt || user.fcmTokenUpdatedAt || user.lastPushTokenSyncAt || null
+      });
+    };
+    remember(user.fcmToken, 'primary', { deviceId: 'primary' });
+    (Array.isArray(user.fcmTokens) ? user.fcmTokens : []).forEach((token, index) => remember(token, `fcmTokens.${index}`, { deviceId: `saved-${index}` }));
+    (Array.isArray(user.pushTokens) ? user.pushTokens : []).forEach((entry, index) => remember(typeof entry === 'string' ? entry : entry?.token || entry?.fcmToken, `pushTokens.${index}`, { ...(typeof entry === 'object' && entry ? entry : {}), deviceId: entry?.deviceId || entry?.id || `push-${index}` }));
+    if (user.pushDevices && typeof user.pushDevices === 'object') {
+      Object.entries(user.pushDevices).forEach(([deviceId, device]) => remember(typeof device === 'string' ? device : device?.token || device?.fcmToken, `pushDevices.${deviceId}`, { ...(typeof device === 'object' && device ? device : {}), deviceId }));
+    }
+    return rows.filter(row => row.active !== false);
+  };
+  const getUserPushDeviceCount = (user = {}) => collectUserPushDevices(user).length;
+  const getLatestPushSyncMs = (user = {}) => {
+    const values = [user.fcmTokenUpdatedAt, user.lastPushTokenSyncAt, ...collectUserPushDevices(user).map(device => device.updatedAt)].map(parsePresenceTimeMs).filter(Boolean);
+    return values.length ? Math.max(...values) : 0;
+  };
+  const pushOptInRate = allUsers.length > 0 ? ((allUsers.filter(u => getUserPushDeviceCount(u) > 0).length / allUsers.length) * 100).toFixed(0) : 0;
   const apiConnectedCount = restaurants.filter(r => r.integrations?.posProvider || r.integrations?.payrollProvider).length;
   const RECENT_ACTIVE_WINDOW_MS = (Number(presenceSnapshot.windowMinutes || 15) || 15) * 60 * 1000;
   const TRUE_ONLINE_WINDOW_MS = Math.max(30000, Math.min(Number(presenceSnapshot.onlineSeconds || 90) * 1000, 180000));
@@ -5915,7 +5947,7 @@ const activeTrials = restaurants.filter(r => resolveSubscription(r, appUser).sta
     .sort((a,b) => (b.isAdmin === true) - (a.isAdmin === true) || (a.name || a.email || '').localeCompare(b.name || b.email || '')) : [];
   const selectedClientAdmins = selectedClientUsers.filter(u => u.isAdmin || u.isSuperAdmin);
   const selectedClientOnline = selectedClient ? onlineUsers.filter(u => u.restaurantId === selectedClient.id) : [];
-  const selectedClientPushEnabled = selectedClientUsers.filter(u => !!u.fcmToken).length;
+  const selectedClientPushEnabled = selectedClientUsers.filter(u => getUserPushDeviceCount(u) > 0).length;
   const selectedClientGpsKnown = selectedClientUsers.filter(u => u.gpsPermission || u.deviceDiagnostics?.gpsPermission).length;
 
   const pastDueWorkspaces = restaurants.filter(r => resolveSubscription(r, appUser).status === 'past_due' || r.maintenanceMode === true);
@@ -5935,7 +5967,7 @@ const activeTrials = restaurants.filter(r => resolveSubscription(r, appUser).sta
     if (emailKey) acc[emailKey] = [...(acc[emailKey] || []), u];
     return acc;
   }, {})).filter(([, group]) => group.length > 1);
-  const usersMissingPush = allUsers.filter(u => !u.fcmToken);
+  const usersMissingPush = allUsers.filter(u => getUserPushDeviceCount(u) === 0);
   const permissionDeniedLogs = crashLogs.filter(log => `${log.message || ''} ${log.stack || ''}`.toLowerCase().includes('permission-denied'));
   const endpointList = ['admin-access', 'master-admin-repair', 'whoami', 'security-diagnostics', 'firestore-backup', 'list-backups', 'weekly-maintenance', 'dispatch-reminders', 'deploy-tenant', 'delete-user', 'delete-users-bulk', 'brand-logo', 'storage-doctor', 'schema-doctor', 'backup-preview', 'safe-write', 'scan-invoice', 'scan-menu', 'quickbooks-connect', 'quickbooks-bill-draft', 'quickbooks-webhook-status', 'quickbooks-webhook', 'ai-usage', 'python-order-intelligence', 'python-ops-intelligence', 'python-automation-run', 'send-push', 'send-schedule-alert', 'presence-heartbeat', 'presence-snapshot', 'push-token-repair', 'staff-member', 'voice-command', 'alerts', 'health-checks', 'account-deletion-request', 'restore-drill', 'mfa-recovery-code'];
 
@@ -5997,15 +6029,26 @@ const activeTrials = restaurants.filter(r => resolveSubscription(r, appUser).sta
   const platformStatus = adminRiskQueue.some(r => r.tone === 'red') ? 'Needs Attention' : adminRiskQueue.length ? 'Monitoring' : 'Clean';
 
   const getExactTime = (value) => { const d = parseAnyDate(value); return d ? d.toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', second: '2-digit' }) : 'Never'; };
-  const pushEnabledUsers = allUsers.filter(u => !!u.fcmToken);
-  const stalePushUsers = pushEnabledUsers.filter(u => { const d = parseAnyDate(u.fcmTokenUpdatedAt || u.lastPushTokenSyncAt); return !d || (Date.now() - d.getTime()) > 30 * 86400000; });
-  const pushRows = allUsers.map(u => ({
-    ...u,
-    deviceCount: u.pushDevices ? Object.keys(u.pushDevices).length : (u.fcmToken ? 1 : 0),
-    tokenFresh: !!u.fcmToken && !stalePushUsers.some(s => s.id === u.id),
-    lastTokenSyncMs: parsePresenceTimeMs(u.fcmTokenUpdatedAt || u.lastPushTokenSyncAt),
-    pushStatus: !u.fcmToken ? 'missing token' : stalePushUsers.some(s => s.id === u.id) ? 'stale token' : (u.notificationPermission || u.pushTokenPermission || 'saved')
-  })).sort((a,b) => (b.lastTokenSyncMs || 0) - (a.lastTokenSyncMs || 0));
+  const pushEnabledUsers = allUsers.filter(u => getUserPushDeviceCount(u) > 0);
+  const totalPushDeviceCount = pushEnabledUsers.reduce((sum, u) => sum + getUserPushDeviceCount(u), 0);
+  const stalePushUsers = pushEnabledUsers.filter(u => {
+    const lastMs = getLatestPushSyncMs(u);
+    return !lastMs || (Date.now() - lastMs) > 30 * 86400000;
+  });
+  const pushRows = allUsers.map(u => {
+    const devices = collectUserPushDevices(u);
+    const lastTokenSyncMs = getLatestPushSyncMs(u);
+    const stale = devices.length > 0 && (!lastTokenSyncMs || (Date.now() - lastTokenSyncMs) > 30 * 86400000);
+    return {
+      ...u,
+      pushDeviceRows: devices,
+      hasPushToken: devices.length > 0,
+      deviceCount: devices.length,
+      tokenFresh: devices.length > 0 && !stale,
+      lastTokenSyncMs,
+      pushStatus: devices.length === 0 ? 'missing token' : stale ? 'stale token' : (u.notificationPermission || u.pushTokenPermission || 'saved')
+    };
+  }).sort((a,b) => (b.lastTokenSyncMs || 0) - (a.lastTokenSyncMs || 0));
 
   const restaurantGroups = (() => {
     const groups = new Map();
@@ -6024,7 +6067,7 @@ const activeTrials = restaurants.filter(r => resolveSubscription(r, appUser).sta
         restaurantIds: [...new Set(group.restaurantIds.filter(Boolean))],
         restaurantNames: [...new Set(group.restaurantNames.filter(Boolean))].sort((a,b) => a.localeCompare(b)),
         userCount: usersInGroup.length,
-        tokenCount: usersInGroup.filter(u => !!u.fcmToken).length
+        tokenCount: usersInGroup.reduce((sum, u) => sum + getUserPushDeviceCount(u), 0)
       };
     });
     return rows.sort((a,b) => a.label.localeCompare(b.label));
@@ -6040,7 +6083,8 @@ const activeTrials = restaurants.filter(r => resolveSubscription(r, appUser).sta
     return activePushWorkspaceId ? [activePushWorkspaceId] : [];
   })();
   const selectedPushRecipients = allUsers.filter(u => selectedPushRestaurantIds.includes(u.restaurantId));
-  const selectedPushTokenRecipients = selectedPushRecipients.filter(u => !!u.fcmToken);
+  const selectedPushTokenRecipients = selectedPushRecipients.filter(u => getUserPushDeviceCount(u) > 0);
+  const selectedPushDeviceCount = selectedPushTokenRecipients.reduce((sum, u) => sum + getUserPushDeviceCount(u), 0);
   const selectedPushGroup = restaurantGroups.find(g => g.key === activePushGroupKey) || restaurantGroups[0] || null;
   const selectedPushWorkspace = restaurants.find(r => r.id === activePushWorkspaceId) || null;
   const selectedPushTargetLabel = pushBroadcastTargetMode === 'all'
@@ -6054,7 +6098,7 @@ const activeTrials = restaurants.filter(r => resolveSubscription(r, appUser).sta
     { label: 'Firestore rules published', ok: !adminDataErrors.users, detail: adminDataErrors.users || 'No read-rule errors detected in this session' },
     { label: 'Storage rules reachable', ok: !backupListError, detail: backupListError || `${backupList.length} backup object(s) listed` },
     { label: 'API routes responding', ok: !healthSnapshot || (healthSnapshot.apiChecks || []).every(c => c.ok), detail: healthSnapshot ? `${(healthSnapshot.apiChecks || []).filter(c => c.ok).length}/${(healthSnapshot.apiChecks || []).length} health routes OK` : 'Run Health Dashboard to test routes' },
-    { label: 'Push env vars working', ok: pushEnabledUsers.length > 0, detail: `${pushEnabledUsers.length} user(s) have push token(s); ${stalePushUsers.length} stale` },
+    { label: 'Push env vars working', ok: pushEnabledUsers.length > 0, detail: `${pushEnabledUsers.length} user(s) / ${totalPushDeviceCount} device token(s); ${stalePushUsers.length} stale` },
     { label: 'Backup restore readable', ok: !backupIsStale && !['failed', 'error'].includes(String(backupStatus?.lastIntegrityStatus || backupStatus?.backupIntegrity?.status || '').toLowerCase()), detail: `${backupStatusLabel} • ${backupStatus?.lastIntegrityStatus || backupStatus?.backupIntegrity?.status || 'integrity not checked'}` },
     { label: 'Active domain authorized', ok: !String(envReport.host || '').includes('localhost'), detail: envReport.host || 'Unknown host' },
     { label: 'API key referrer allowed', ok: !Object.values(adminDataErrors).some(Boolean), detail: Object.values(adminDataErrors)[0] || 'No Firebase referrer/auth load errors detected' },
@@ -6226,10 +6270,10 @@ const activeTrials = restaurants.filter(r => resolveSubscription(r, appUser).sta
     if (!title) return addToast('Title Required', 'Add a short title for the push notification.');
     if (!body) return addToast('Message Required', 'Add the message people should see on their device.');
     if (!restaurantIds.length) return addToast('No Target', 'Choose a workspace or restaurant group first.');
-    if (!selectedPushTokenRecipients.length) return addToast('No Push Tokens', 'No users in that target currently have a connected push token.');
+    if (!selectedPushDeviceCount) return addToast('No Push Tokens', 'No users in that target currently have a connected push token.');
     const confirmation = `Send this push to ${selectedPushTargetLabel}?
 
-Connected devices: ${selectedPushTokenRecipients.length}
+Connected devices: ${selectedPushDeviceCount}
 Users in target: ${selectedPushRecipients.length}
 
 ${title}
@@ -6266,7 +6310,7 @@ ${body}`;
   };
 
   const exportPushDiagnostics = () => {
-    const report = { generatedAt: new Date().toISOString(), version: CURRENT_VERSION, pushOptInRate, totals: { users: allUsers.length, tokens: pushEnabledUsers.length, stale: stalePushUsers.length, missing: usersMissingPush.length }, rows: pushRows.map(u => ({ id: u.id, name: u.name, email: u.email, restaurantId: u.restaurantId, notificationPermission: u.notificationPermission || u.pushTokenPermission || '', hasToken: !!u.fcmToken, deviceCount: u.deviceCount, tokenHost: u.pushTokenHost || '', lastTokenSync: u.fcmTokenUpdatedAt || u.lastPushTokenSyncAt || null, pushStatus: u.pushStatus })) };
+    const report = { generatedAt: new Date().toISOString(), version: CURRENT_VERSION, pushOptInRate, totals: { users: allUsers.length, usersWithTokens: pushEnabledUsers.length, tokens: totalPushDeviceCount, stale: stalePushUsers.length, missing: usersMissingPush.length }, rows: pushRows.map(u => ({ id: u.id, name: u.name, email: u.email, restaurantId: u.restaurantId, notificationPermission: u.notificationPermission || u.pushTokenPermission || '', hasToken: u.hasPushToken, deviceCount: u.deviceCount, tokenHost: u.pushTokenHost || '', lastTokenSync: u.fcmTokenUpdatedAt || u.lastPushTokenSyncAt || null, pushStatus: u.pushStatus })) };
     downloadTextFile(`86chaos-push-diagnostics-${getToday()}.json`, JSON.stringify(report, null, 2), 'application/json;charset=utf-8;');
     addToast('Push Report', 'Push diagnostic report downloaded.');
   };
@@ -8658,7 +8702,7 @@ Type RESTORE to continue.`);
       {subTab === 'push' && (
         <div className="space-y-4 animate-[slideIn_0.2s_ease-out]">
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-            <CockpitMetric label="Connected Devices" value={pushEnabledUsers.length} detail={`${allUsers.length - pushEnabledUsers.length} missing tokens`} tone={pushEnabledUsers.length ? 'emerald' : 'amber'} />
+            <CockpitMetric label="Connected Devices" value={totalPushDeviceCount} detail={`${pushEnabledUsers.length} user(s), ${allUsers.length - pushEnabledUsers.length} missing`} tone={pushEnabledUsers.length ? 'emerald' : 'amber'} />
             <CockpitMetric label="Stale Tokens" value={stalePushUsers.length} detail="30+ days since sync" tone={stalePushUsers.length ? 'amber' : 'emerald'} hot={stalePushUsers.length > 0} />
             <CockpitMetric label="Browser Permission" value={envReport.notifications} detail={`This admin device • ${envReport.host}`} tone={envReport.notifications === 'granted' ? 'emerald' : 'amber'} />
             <CockpitMetric label="Last Push Result" value={backupStatus?.lastPushResult || 'Not logged'} detail="Server route returns exact sent/failed counts when supported" tone="blue" />
@@ -8672,7 +8716,7 @@ Type RESTORE to continue.`);
               <div className="grid grid-cols-3 gap-2 text-center text-[10px] font-black uppercase tracking-widest">
                 <div className="bg-[#0B0E11] border border-[#2A353D] rounded-xl p-2"><div className="text-slate-500">Workspaces</div><div className="text-white text-sm">{selectedPushRestaurantIds.length}</div></div>
                 <div className="bg-[#0B0E11] border border-[#2A353D] rounded-xl p-2"><div className="text-slate-500">Users</div><div className="text-white text-sm">{selectedPushRecipients.length}</div></div>
-                <div className="bg-[#0B0E11] border border-[#2A353D] rounded-xl p-2"><div className="text-slate-500">Tokens</div><div className="text-emerald-300 text-sm">{selectedPushTokenRecipients.length}</div></div>
+                <div className="bg-[#0B0E11] border border-[#2A353D] rounded-xl p-2"><div className="text-slate-500">Tokens</div><div className="text-emerald-300 text-sm">{selectedPushDeviceCount}</div></div>
               </div>
             </div>
             <div className="grid lg:grid-cols-[220px_minmax(0,1fr)] gap-3">
@@ -8688,7 +8732,7 @@ Type RESTORE to continue.`);
                 <div>
                   <label className="text-[9px] font-black uppercase tracking-widest text-slate-500 block mb-1">Workspace</label>
                   <select value={pushBroadcastWorkspaceId || restaurants[0]?.id || ''} onChange={e => setPushBroadcastWorkspaceId(e.target.value)} className={T.input}>
-                    {restaurants.map(r => <option key={r.id} value={r.id}>{r.name || r.id} • {allUsers.filter(u => u.restaurantId === r.id && u.fcmToken).length} token(s)</option>)}
+                    {restaurants.map(r => <option key={r.id} value={r.id}>{r.name || r.id} • {allUsers.filter(u => u.restaurantId === r.id).reduce((sum, u) => sum + getUserPushDeviceCount(u), 0)} token(s)</option>)}
                   </select>
                 </div>
               )}
@@ -8727,7 +8771,7 @@ Type RESTORE to continue.`);
                 <input type="checkbox" checked={pushBroadcastCritical} onChange={e => setPushBroadcastCritical(e.target.checked)} className="accent-[#D4A381]" />
                 Critical alert, bypass quiet hours when possible
               </label>
-              <button type="submit" disabled={isPushBroadcasting || !selectedPushRestaurantIds.length || !selectedPushTokenRecipients.length} className="px-5 py-3 bg-blue-900/30 text-blue-200 border border-blue-700/60 rounded-xl text-xs font-black uppercase tracking-widest hover:bg-blue-900/50 disabled:opacity-40 flex items-center justify-center gap-2">
+              <button type="submit" disabled={isPushBroadcasting || !selectedPushRestaurantIds.length || !selectedPushDeviceCount} className="px-5 py-3 bg-blue-900/30 text-blue-200 border border-blue-700/60 rounded-xl text-xs font-black uppercase tracking-widest hover:bg-blue-900/50 disabled:opacity-40 flex items-center justify-center gap-2">
                 {isPushBroadcasting ? <Loader2 size={15} className="animate-spin"/> : <Send size={15}/>} Send Push to Selected Target
               </button>
             </div>
@@ -8766,12 +8810,12 @@ Type RESTORE to continue.`);
                         <div className="bg-[#0B0E11] border border-[#2A353D] rounded-lg p-2"><div className="text-slate-500 uppercase tracking-widest text-[8px]">Permission</div><div className="text-white">{u.notificationPermission || u.pushTokenPermission || 'unknown'}</div></div>
                         <div className="bg-[#0B0E11] border border-[#2A353D] rounded-lg p-2"><div className="text-slate-500 uppercase tracking-widest text-[8px]">Last Sync</div><div className="text-white">{getExactTime(u.fcmTokenUpdatedAt || u.lastPushTokenSyncAt)}</div></div>
                         <div className="bg-[#0B0E11] border border-[#2A353D] rounded-lg p-2"><div className="text-slate-500 uppercase tracking-widest text-[8px]">Host</div><div className="text-white truncate">{u.pushTokenHost || u.activeHost || 'unknown'}</div></div>
-                        <div className="bg-[#0B0E11] border border-[#2A353D] rounded-lg p-2"><div className="text-slate-500 uppercase tracking-widest text-[8px]">Result</div><div className={u.fcmToken ? (u.tokenFresh ? 'text-emerald-300' : 'text-amber-300') : 'text-red-300'}>{u.pushStatus}</div></div>
+                        <div className="bg-[#0B0E11] border border-[#2A353D] rounded-lg p-2"><div className="text-slate-500 uppercase tracking-widest text-[8px]">Result</div><div className={u.hasPushToken ? (u.tokenFresh ? 'text-emerald-300' : 'text-amber-300') : 'text-red-300'}>{u.pushStatus}</div></div>
                       </div>
                       {(u.lastPushRepairError || u.lastPushFailureCode || u.pushRepairStatus) && <div className="mt-2 text-[10px] font-bold text-slate-400 bg-[#0B0E11] border border-[#2A353D] rounded-lg p-2">Repair status: <span className="text-slate-200">{u.pushRepairStatus || 'not queued'}</span>{u.lastPushFailureCode ? ` • failure ${u.lastPushFailureCode}` : ''}{u.lastPushRepairError ? ` • ${u.lastPushRepairError}` : ''}</div>}
                     </div>
                     <div className="grid grid-cols-2 xl:grid-cols-1 gap-2 min-w-[190px]">
-                      <button onClick={() => sendPushTestToUser(u)} disabled={!u.fcmToken} className="px-3 py-2 bg-blue-900/20 border border-blue-900/50 text-blue-300 rounded-xl text-[10px] font-black uppercase tracking-widest disabled:opacity-40">Send Test</button>
+                      <button onClick={() => sendPushTestToUser(u)} disabled={!u.hasPushToken} className="px-3 py-2 bg-blue-900/20 border border-blue-900/50 text-blue-300 rounded-xl text-[10px] font-black uppercase tracking-widest disabled:opacity-40">Send Test</button>
                       <button onClick={() => requestPushRepairForUser(u)} className="px-3 py-2 bg-amber-900/20 border border-amber-900/50 text-amber-300 rounded-xl text-[10px] font-black uppercase tracking-widest">Request Reconnect</button>
                       <button onClick={() => forceRefreshPushForUser(u)} className="px-3 py-2 bg-orange-900/20 border border-orange-900/50 text-orange-300 rounded-xl text-[10px] font-black uppercase tracking-widest">Force Refresh</button>
                       <button onClick={() => copyPushRepairLinkForUser(u)} className="px-3 py-2 bg-cyan-900/20 border border-cyan-900/50 text-cyan-300 rounded-xl text-[10px] font-black uppercase tracking-widest">Copy Link</button>
