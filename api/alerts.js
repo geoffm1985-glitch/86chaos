@@ -25,7 +25,7 @@ export default async function handler(req, res) {
     const response = await getMessaging(authContext.app).send({
       notification: { title: finalTitle, body: finalBody },
       data: { type: 'alert', click_action: '/?tab=today', notificationTag: tag },
-      webpush: { notification: { tag, renotify: false, icon: '/app-icon.png', badge: '/app-icon.png' }, fcmOptions: { link: '/?tab=today' } },
+      webpush: { notification: { tag, renotify: false, icon: '/app-icon.png', badge: '/notification-badge.png' }, fcmOptions: { link: '/?tab=today' } },
       token
     });
 

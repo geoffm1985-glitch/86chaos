@@ -210,7 +210,7 @@ async function bestEffortPush(app, targetUser = {}, title = '86 Chaos Security A
       token,
       notification: { title, body },
       data: { type: 'account_security', click_action: '/?tab=settings', notificationTag: tag },
-      webpush: { notification: { tag, renotify: false, icon: '/app-icon.png', badge: '/app-icon.png' }, fcmOptions: { link: '/?tab=settings' } }
+      webpush: { notification: { tag, renotify: false, icon: '/app-icon.png', badge: '/notification-badge.png' }, fcmOptions: { link: '/?tab=settings' } }
     });
     return true;
   } catch (_) { return false; }

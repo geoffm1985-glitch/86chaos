@@ -107,7 +107,7 @@ messaging.onBackgroundMessage((payload) => {
   const notificationOptions = {
     body,
     icon: firstText(data.icon, '/app-icon.png'),
-    badge: firstText(data.badge, '/app-icon.png'),
+    badge: firstText(data.badge, '/notification-badge.png'),
     tag: tag || undefined,
     renotify: false,
     data: {

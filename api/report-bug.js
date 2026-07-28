@@ -198,7 +198,7 @@ async function sendSuperAdminPush(app, db, report, reporter) {
       click_action: '/?tab=godmode',
       notificationTag: tag
     },
-    webpush: { notification: { tag, renotify: false, icon: '/app-icon.png', badge: '/app-icon.png' }, fcmOptions: { link: '/?tab=godmode' } },
+    webpush: { notification: { tag, renotify: false, icon: '/app-icon.png', badge: '/notification-badge.png' }, fcmOptions: { link: '/?tab=godmode' } },
     tokens: tokenRecords.map(record => record.token)
   };
 

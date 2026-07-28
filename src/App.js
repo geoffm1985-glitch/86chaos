@@ -1206,10 +1206,19 @@ if (liveAppUser && clientData) {
     };
     applyLabels();
     const scheduleApplyLabels = typeof window.requestAnimationFrame === 'function' ? window.requestAnimationFrame.bind(window) : (fn) => setTimeout(fn, 0);
-    const observer = new MutationObserver(() => scheduleApplyLabels(applyLabels));
-    observer.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['title', 'aria-label', 'placeholder', 'class', 'style'] });
+    if (typeof MutationObserver === 'undefined' || !document.body) return undefined;
+    let labelRunQueued = false;
+    const observer = new MutationObserver(() => {
+      if (labelRunQueued) return;
+      labelRunQueued = true;
+      scheduleApplyLabels(() => {
+        labelRunQueued = false;
+        applyLabels();
+      });
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
     return () => observer.disconnect();
-  }, [activeTabState, isMenuOpen, isWorkspaceSwitcherOpen]);
+  }, [activeTabState]);
 
 useEffect(() => {
     const shouldRemember = localStorage.getItem('chaosRememberMe') !== 'false';
