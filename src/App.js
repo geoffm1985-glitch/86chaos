@@ -463,7 +463,7 @@ const [currentDate, setCurrentDate] = useState(getToday());
   // That avoids the missing Firestore composite-index fallback that could briefly show restored shifts
   // and then replace them with a tiny, stale capped snapshot. Other tabs still use tighter windows.
   const wantsScheduleScreen = ['schedule', 'events', 'published'].includes(activeTabState);
-  const subscriptionProbeUser = { ...(appUser || {}), isSuperAdmin: appUser?.isSuperAdmin === true || serverAdminCheck?.superAdmin === true };
+  const subscriptionProbeUser = { ...(appUser || {}), isSuperAdmin: appUser?.isSuperAdmin === true && /system\s*administrator|super\s*admin|master\s*admin/i.test(String(appUser?.role || appUser?.roleName || appUser?.accountRole || '')) };
   const featureAccessForShell = (featureKey) => {
     if (!featureKey) return null;
     return resolveFeatureAccess({ workspace: clientData || {}, user: subscriptionProbeUser, featureKey });
@@ -704,20 +704,31 @@ const [currentDate, setCurrentDate] = useState(getToday());
 
 
   const isDemoMode = !!liveAppUser?.isDemo;
+  const systemAdminRoleText = String(liveAppUser?.role || liveAppUser?.roleName || liveAppUser?.accountRole || '').trim();
+  const roleLooksSystemAdmin = /system\s*administrator|super\s*admin|master\s*admin/i.test(systemAdminRoleText);
+  const sessionEmailForAdmin = String(liveAppUser?.email || appUser?.email || auth.currentUser?.email || '').toLowerCase();
+  const serverRoleLooksSystemAdmin = /system\s*administrator|super\s*admin|master\s*admin/i.test(String(serverAdminCheck?.firestoreProfileRole || serverAdminCheck?.role || serverAdminCheck?.roleName || ''));
+  const serverSaysSuperAdmin = Boolean(
+    serverAdminCheck?.superAdmin === true && (
+      serverAdminCheck?.serverMasterAdminMatched === true ||
+      serverAdminCheck?.customClaimSuperAdmin === true ||
+      (serverAdminCheck?.firestoreSuperAdmin === true && serverRoleLooksSystemAdmin)
+    )
+  );
   const hasLocalSystemAdminMarker = Boolean(
-    liveAppUser?.isSuperAdmin === true ||
     liveAppUser?.systemAccess?.superAdmin === true ||
     liveAppUser?.permissions?.systemAdmin === true ||
     liveAppUser?.permissions?.godmode === true ||
-    /system\s*administrator|super\s*admin/i.test(String(liveAppUser?.role || liveAppUser?.roleName || ''))
+    roleLooksSystemAdmin ||
+    serverSaysSuperAdmin ||
+    (MASTER_ADMIN_EMAIL && sessionEmailForAdmin === MASTER_ADMIN_EMAIL.toLowerCase())
   );
-  const serverSaysSuperAdmin = Boolean(serverAdminCheck?.superAdmin === true || hasLocalSystemAdminMarker);
-  if (!isDemoMode && liveAppUser && serverSaysSuperAdmin && liveAppUser.isSuperAdmin !== true) {
+  if (!isDemoMode && liveAppUser && (serverSaysSuperAdmin || hasLocalSystemAdminMarker) && liveAppUser.isSuperAdmin !== true) {
     liveAppUser = {
       ...liveAppUser,
       isSuperAdmin: true,
       systemAccess: { ...(liveAppUser.systemAccess || {}), superAdmin: true },
-      superAdminAccessSource: serverAdminCheck.serverMasterAdminMatched ? 'server-master-admin-env' : serverAdminCheck.customClaimSuperAdmin ? 'firebase-custom-claim' : serverAdminCheck.firestoreSuperAdmin ? 'firestore-profile-flag' : 'api-whoami'
+      superAdminAccessSource: serverAdminCheck?.serverMasterAdminMatched ? 'server-master-admin-env' : serverAdminCheck?.customClaimSuperAdmin ? 'firebase-custom-claim' : serverAdminCheck?.firestoreSuperAdmin ? 'firestore-profile-flag' : 'local-system-admin-marker'
     };
   }
 
@@ -1175,6 +1186,30 @@ if (liveAppUser && clientData) {
   const setActiveTabRef = useRef(setActiveTab);
   useEffect(() => { setActiveTabRef.current = setActiveTab; });
   const stableSetActiveTab = useCallback((tab) => setActiveTabRef.current?.(tab), []);
+
+  useEffect(() => {
+    if (typeof document === 'undefined') return undefined;
+    const describeControl = (el, index) => {
+      const explicit = el.getAttribute('aria-label') || el.getAttribute('aria-labelledby') || el.getAttribute('title');
+      if (explicit) return;
+      const labelText = String(el.textContent || el.value || el.getAttribute('placeholder') || el.getAttribute('name') || '').replace(/\s+/g, ' ').trim();
+      if (labelText) return;
+      const type = (el.getAttribute('type') || el.tagName || '').toLowerCase();
+      if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT') {
+        el.setAttribute('aria-label', el.getAttribute('placeholder') || el.getAttribute('name') || `${type || 'form'} field ${index + 1}`);
+        return;
+      }
+      el.setAttribute('aria-label', `86 Chaos control ${index + 1}`);
+    };
+    const applyLabels = () => {
+      document.querySelectorAll('button, a, [role="button"], [role="tab"], [role="menuitem"], input, select, textarea').forEach(describeControl);
+    };
+    applyLabels();
+    const scheduleApplyLabels = typeof window.requestAnimationFrame === 'function' ? window.requestAnimationFrame.bind(window) : (fn) => setTimeout(fn, 0);
+    const observer = new MutationObserver(() => scheduleApplyLabels(applyLabels));
+    observer.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['title', 'aria-label', 'placeholder', 'class', 'style'] });
+    return () => observer.disconnect();
+  }, [activeTabState, isMenuOpen, isWorkspaceSwitcherOpen]);
 
 useEffect(() => {
     const shouldRemember = localStorage.getItem('chaosRememberMe') !== 'false';
@@ -1903,9 +1938,9 @@ What I clicked / expected:
       <div className={`${T.card} p-5 sm:p-8 max-w-2xl mx-auto text-center space-y-4 border-red-900/40`}>
         <div className="mx-auto w-12 h-12 rounded-2xl bg-red-900/20 border border-red-900/50 flex items-center justify-center text-red-300 text-2xl">🔐</div>
         <div>
-          <p className="text-[10px] font-black uppercase tracking-[0.25em] text-red-300">Plan & Permission Gate</p>
-          <h2 className="text-xl font-black text-white mt-2">Your role does not include this tool</h2>
-          <p className="text-sm font-bold text-slate-400 mt-2">System Administrator tools are internal-only. This account does not have the required permission for this area.</p>
+          <p className="text-[10px] font-black uppercase tracking-[0.25em] text-red-300">Restricted Platform Tools</p>
+          <h2 className="text-xl font-black text-white mt-2">Your role does not include this area</h2>
+          <p className="text-sm font-bold text-slate-400 mt-2">These internal platform controls are hidden for this account.</p>
         </div>
         <div className="flex flex-col sm:flex-row gap-2 justify-center">
           <button onClick={() => setActiveTab('today')} className={T.btn}>Go to Today</button>
@@ -2030,7 +2065,7 @@ return (
 
         @media (max-width: 640px) {
           .ui-v12-compact main { padding: .75rem !important; }
-          .ui-v12-compact button:not(.no-compact) { min-height: 32px !important; padding-top: .42rem !important; padding-bottom: .42rem !important; }
+          .ui-v12-compact button:not(.no-compact) { min-height: 44px !important; padding-top: .42rem !important; padding-bottom: .42rem !important; }
           .ui-v12-compact textarea { min-height: 42px !important; font-size: 14px !important; }
           .ui-v12-compact .rounded-3xl { border-radius: 1rem !important; }
           .ui-v12-compact .rounded-2xl { border-radius: .85rem !important; }
@@ -2086,8 +2121,9 @@ return (
             <button
               type="button"
               onClick={() => availableWorkspaces.length > 1 && !ghostTenant && !isDemoMode ? setIsWorkspaceSwitcherOpen(true) : null}
-              className={`max-w-full truncate text-[10px] sm:text-[11px] font-black uppercase tracking-widest ${availableWorkspaces.length > 1 && !ghostTenant && !isDemoMode ? 'text-[#D4A381] hover:text-white cursor-pointer' : 'text-slate-500 cursor-default'}`}
+              className={`max-w-full truncate min-h-[44px] px-3 py-2 rounded-xl text-[10px] sm:text-[11px] font-black uppercase tracking-widest ${availableWorkspaces.length > 1 && !ghostTenant && !isDemoMode ? 'text-[#D4A381] hover:text-white cursor-pointer' : 'text-slate-400 cursor-default'}`}
               title={availableWorkspaces.length > 1 ? 'Switch workspace' : 'Active workspace'}
+              aria-label={availableWorkspaces.length > 1 ? `Active workspace ${liveAppUser.restaurantName || 'Restaurant'}. Switch workspace.` : `Active workspace ${liveAppUser.restaurantName || 'Restaurant'}`}
             >
               {liveAppUser.restaurantName || "Restaurant"}{availableWorkspaces.length > 1 && !ghostTenant && !isDemoMode ? ' • Switch' : ''}
             </button>
@@ -2095,9 +2131,9 @@ return (
         )}
 
         <div className="flex items-center gap-2 flex-shrink-0">
-          <button type="button" onClick={() => openProblemReport({ title: 'Manual Problem Report', message: `Page: ${activeTabState}`, category: 'Bug / Error' })} className="hidden sm:flex p-2 border rounded-xl shadow-sm bg-[#1A2126] border-[#2A353D] text-orange-300 hover:text-white" title="Report a problem"><Bug size={18}/></button>
-          {offlineQueue.length > 0 && <button type="button" onClick={() => openProblemReport({ title: 'Offline Queue', message: `${offlineQueue.length} queued action(s) waiting to sync.`, category: 'Data Looks Wrong' })} className="hidden sm:flex px-2.5 py-2 border rounded-xl shadow-sm bg-amber-900/20 border-amber-500/40 text-amber-200 text-[10px] font-black uppercase tracking-widest" title="Offline queued actions">Queue {offlineQueue.length}</button>}
-        <button onClick={openMenu} className={`relative p-2 border rounded-xl shadow-sm transition-all outline-none bg-[#1A2126] border-[#2A353D] ${T.copper} hover:text-white flex-shrink-0`}>
+          <button type="button" aria-label="Report a problem" onClick={() => openProblemReport({ title: 'Manual Problem Report', message: `Page: ${activeTabState}`, category: 'Bug / Error' })} className="hidden sm:flex p-2 border rounded-xl shadow-sm bg-[#1A2126] border-[#2A353D] text-orange-300 hover:text-white" title="Report a problem"><Bug size={18}/></button>
+          {offlineQueue.length > 0 && <button type="button" aria-label="Report a problem" onClick={() => openProblemReport({ title: 'Offline Queue', message: `${offlineQueue.length} queued action(s) waiting to sync.`, category: 'Data Looks Wrong' })} className="hidden sm:flex px-2.5 py-2 border rounded-xl shadow-sm bg-amber-900/20 border-amber-500/40 text-amber-200 text-[10px] font-black uppercase tracking-widest" title="Offline queued actions">Queue {offlineQueue.length}</button>}
+        <button type="button" aria-label="Open navigation menu" title="Open navigation menu" onClick={openMenu} className={`relative p-2 border rounded-xl shadow-sm transition-all outline-none bg-[#1A2126] border-[#2A353D] ${T.copper} hover:text-white flex-shrink-0`}>
           <Menu size={20} />
           {hasAnyMenuAlert && <span className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full border-2 border-[#12161A] shadow-[0_0_8px_rgba(239,68,68,0.8)] animate-pulse"></span>}
         </button>
@@ -2251,7 +2287,7 @@ return (
         {toasts.map(t => (
           <div key={t.id} className="bg-[#1A2126] text-white p-3 rounded-xl shadow-2xl pointer-events-auto flex items-start gap-3 border border-[#2A353D] animate-toast">
             <div className="bg-[#12161A] p-1.5 rounded-full text-[#D4A381] mt-0.5 border border-[#2A353D]"><Bell size={16} /></div>
-            <div className="flex-1"><h4 className="font-bold text-sm leading-tight">{t.title}</h4><p className="text-xs text-slate-300 font-medium mt-0.5">{t.message}</p>{t.reportable && <button type="button" onClick={() => openProblemReport({ title: t.title, message: t.message, category: 'Bug / Error' })} className="mt-2 text-[9px] font-black uppercase tracking-widest text-orange-300 hover:text-white">Report Problem</button>}</div>
+            <div className="flex-1"><h4 className="font-bold text-sm leading-tight">{t.title}</h4><p className="text-xs text-slate-300 font-medium mt-0.5">{t.message}</p>{t.reportable && <button type="button" aria-label="Report a problem" onClick={() => openProblemReport({ title: t.title, message: t.message, category: 'Bug / Error' })} className="mt-2 text-[9px] font-black uppercase tracking-widest text-orange-300 hover:text-white">Report Problem</button>}</div>
             <button onClick={() => setToasts(prev => prev.filter(toast => toast.id !== t.id))} className="text-slate-400 hover:text-white"><X size={16}/></button>
           </div>
         ))}

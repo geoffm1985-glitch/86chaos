@@ -9,7 +9,7 @@ test.describe('09 prep/tasks, maintenance, messages, and reminders', () => {
     const text = await gotoTab(page, 'prep', { settleMs: 1600, maxText: 60000 });
     await attachJson(testInfo, '09-prep-route.json', { sample: text.slice(0, 7000) });
     expect(text).toMatch(/Prep|Task|Checklist|Label|Done|Open/i);
-    expect(text).not.toMatch(/Invalid Date|NaN|Infinity|undefined undefined|null null/i);
+    expect(text).not.toMatch(/Invalid Date|Infinity|undefined undefined|null null|\$NaN|NaN%|(?:^|[^A-Za-z])NaN(?:[^A-Za-z]|$)/i);
   });
 
   test('maintenance route loads urgent, recurring, resolved/history vocabulary without broken dates', async ({ page }, testInfo) => {
@@ -19,7 +19,7 @@ test.describe('09 prep/tasks, maintenance, messages, and reminders', () => {
     const text = await gotoTab(page, 'maintenance', { settleMs: 1600, maxText: 60000 });
     await attachJson(testInfo, '09-maintenance-route.json', { sample: text.slice(0, 7000) });
     expect(text).toMatch(/Maintenance|Equipment|Issue|Preventive|Urgent|Repair|Resolved|PM/i);
-    expect(text).not.toMatch(/Invalid Date|NaN|Inactive -\d+ days|undefined undefined|null null/i);
+    expect(text).not.toMatch(/Invalid Date|Infinity|undefined undefined|null null|Inactive -\d+ days|\$NaN|NaN%|(?:^|[^A-Za-z])NaN(?:[^A-Za-z]|$)/i);
   });
 
   test('reminders route loads recurring/shared/personal surfaces and does not duplicate obvious push labels', async ({ page }, testInfo) => {
@@ -29,7 +29,7 @@ test.describe('09 prep/tasks, maintenance, messages, and reminders', () => {
     const text = await gotoTab(page, 'reminders', { settleMs: 1600, maxText: 50000 });
     await attachJson(testInfo, '09-reminders-route.json', { sample: text.slice(0, 6000) });
     expect(text).toMatch(/Reminder|Personal|Shared|Daily|Weekly|Monthly|Due/i);
-    expect(text).not.toMatch(/Invalid Date|NaN|undefined undefined|null null/i);
+    expect(text).not.toMatch(/Invalid Date|Infinity|undefined undefined|null null|\$NaN|NaN%|(?:^|[^A-Za-z])NaN(?:[^A-Za-z]|$)/i);
   });
 
   test('fake restaurant seed includes prep, tasks, maintenance, reminders, and message/alert records', async ({}, testInfo) => {

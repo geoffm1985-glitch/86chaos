@@ -4819,3 +4819,36 @@ select {
     -webkit-backdrop-filter: blur(4px);
   }
 }
+
+/* 16.0.47 release-gate accessibility + mobile tap target polish */
+.desktop-pro-shell [class*="text-slate-500"],
+.desktop-pro-shell [class*="text-slate-600"],
+.ui-v12-compact [class*="text-slate-500"],
+.ui-v12-compact [class*="text-slate-600"] {
+  color: #cbd5e1 !important;
+}
+
+.desktop-pro-shell [class*="text-slate-400"],
+.ui-v12-compact [class*="text-slate-400"] {
+  color: #e2e8f0 !important;
+}
+
+.desktop-pro-shell button:not(:disabled),
+.desktop-pro-shell [role="button"]:not(:disabled),
+.desktop-pro-shell a[href],
+.ui-v12-compact button:not(:disabled),
+.ui-v12-compact [role="button"]:not(:disabled),
+.ui-v12-compact a[href] {
+  min-height: 42px;
+}
+
+@media (max-width: 767px) {
+  .desktop-pro-shell button:not(:disabled),
+  .desktop-pro-shell [role="button"]:not(:disabled),
+  .desktop-pro-shell a[href],
+  .ui-v12-compact button:not(:disabled),
+  .ui-v12-compact [role="button"]:not(:disabled),
+  .ui-v12-compact a[href] {
+    min-height: 44px !important;
+  }
+}

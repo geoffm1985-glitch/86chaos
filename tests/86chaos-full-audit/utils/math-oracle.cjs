@@ -46,7 +46,7 @@ function durationForShift(startRaw, endRaw, options = {}) {
     else return { ok: false, hours: 0, minutes: 0, reason: 'invalid-range', start, end };
   }
   const minutes = endMinutes - start.minutes;
-  if (minutes <= 0 || minutes > 18 * 60) return { ok: false, hours: 0, minutes: 0, reason: 'impossible-duration', start, end };
+  if (minutes <= 0 || minutes >= 18 * 60) return { ok: false, hours: 0, minutes: 0, reason: 'impossible-duration', start, end };
   return { ok: true, hours: minutes / 60, minutes, start, end, interval: [start.minutes, endMinutes] };
 }
 

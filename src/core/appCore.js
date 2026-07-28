@@ -404,7 +404,7 @@ export const MASTER_ADMIN_EMAIL = (process.env.REACT_APP_MASTER_ADMIN_EMAIL || '
 export const EVENT_TAGS = ['Standard Day', 'Packers Game', 'Brewers Game', 'Live Music', 'Severe Weather', 'Private Catering', 'Holiday'];
 
 // --- VERSION TRACKING ---
-export const CURRENT_VERSION = '16.0.46';
+export const CURRENT_VERSION = '16.0.47';
 
 // --- Helpers ---
 const usePageVisible = () => {
@@ -1136,7 +1136,15 @@ export const openPrintableReport = ({ title, subtitle = '', rows = [], filename 
   return true;
 };
 
-export const getAvatar = (name, url) => url || `https://ui-avatars.com/api/?name=${encodeURIComponent(name||'Staff')}&background=random&color=fff&bold=true`;
+export const getAvatar = (name, url) => {
+  if (url) return url;
+  const safeName = String(name || 'Staff').replace(/[^A-Za-z0-9\s._-]/g, ' ').trim().slice(0, 80) || 'Staff';
+  const initials = safeName.split(/\s+/).filter(Boolean).slice(0, 2).map(part => part[0]?.toUpperCase() || '').join('') || '86';
+  const seed = safeName.split('').reduce((sum, ch) => sum + ch.charCodeAt(0), 86);
+  const ring = seed % 2 === 0 ? '#D4A381' : '#8F6040';
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 96 96"><rect width="96" height="96" rx="24" fill="#12161A"/><circle cx="48" cy="48" r="39" fill="#1A2126" stroke="${ring}" stroke-width="4"/><text x="48" y="57" text-anchor="middle" font-family="Arial, sans-serif" font-size="26" font-weight="800" fill="#F4D0B5">${initials}</text></svg>`;
+  return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
+};
 export const generateTempPass = () => Math.random().toString(36).slice(-6).toUpperCase();
 
 export const sanitizeCachedUser = () => {

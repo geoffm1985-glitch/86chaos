@@ -9,7 +9,7 @@ test.describe('08 inventory, recipes, menu intelligence, and 86 alerts', () => {
     const text = await gotoTab(page, 'inventory', { settleMs: 2200, maxText: 70000 });
     await attachJson(testInfo, '08-inventory-route.json', { sample: text.slice(0, 8000) });
     expect(text).toMatch(/Inventory|Vendor|Par|Invoice|Burn|Order|Stock/i);
-    expect(text).not.toMatch(/Invalid Date|NaN|Infinity|undefined undefined|null null|\$NaN/i);
+    expect(text).not.toMatch(/Invalid Date|Infinity|undefined undefined|null null|\$NaN|NaN%|(?:^|[^A-Za-z])NaN(?:[^A-Za-z]|$)/i);
   });
 
   test('recipes/menu intelligence render cost and dependency surfaces without broken values', async ({ page }, testInfo) => {
@@ -20,7 +20,7 @@ test.describe('08 inventory, recipes, menu intelligence, and 86 alerts', () => {
     const menuText = await gotoTab(page, 'menu-intelligence', { settleMs: 1600, maxText: 55000 });
     await attachJson(testInfo, '08-recipes-menu-route.json', { recipesSample: recipesText.slice(0, 5000), menuSample: menuText.slice(0, 5000) });
     expect(recipesText).toMatch(/Recipe|Ingredient|Instructions|Yield|Cost|Prep/i);
-    expect(`${recipesText}\n${menuText}`).not.toMatch(/Invalid Date|NaN|Infinity|undefined undefined|null null|\$NaN/i);
+    expect(`${recipesText}\n${menuText}`).not.toMatch(/Invalid Date|Infinity|undefined undefined|null null|\$NaN|NaN%|(?:^|[^A-Za-z])NaN(?:[^A-Za-z]|$)/i);
   });
 
   test('fake restaurant seed links zero stock inventory to 86 alert and menu dependency data', async ({}, testInfo) => {
@@ -43,6 +43,6 @@ test.describe('08 inventory, recipes, menu intelligence, and 86 alerts', () => {
     const text = await gotoTab(page, 'messages', { settleMs: 1800, maxText: 60000 });
     await attachJson(testInfo, '08-message-alert-route.json', { sample: text.slice(0, 7000) });
     expect(text).toMatch(/Message|86|Alert|Acknowledge|Resolve|Post|Board/i);
-    expect(text).not.toMatch(/Invalid Date|NaN|undefined undefined|null null/i);
+    expect(text).not.toMatch(/Invalid Date|Infinity|undefined undefined|null null|\$NaN|NaN%|(?:^|[^A-Za-z])NaN(?:[^A-Za-z]|$)/i);
   });
 });

@@ -112,7 +112,7 @@ const ROUTE_SPECS = [
 ];
 
 const FATAL_TEXT_RE = /Application error|Unhandled Runtime Error|Minified React error|Cannot read properties of undefined|Cannot read property|undefined is not a function|ReferenceError|TypeError:|Something went wrong|White screen/i;
-const BAD_VALUE_RE = /Invalid Date|NaN|Infinity|undefined undefined|null null|Inactive -\d+ days|\$NaN|NaN%/i;
+const BAD_VALUE_RE = /Invalid Date|Infinity|undefined undefined|null null|Inactive -\d+ days|\$NaN|NaN%|(?:^|[^A-Za-z])NaN(?:[^A-Za-z]|$)/i;
 const PERMISSION_GATE_RE = /permission gate|not authorized|not available|Your role does not include|internal-only|access denied/i;
 const LOGIN_RE = /Email Address\s*Password|Unlock System|Sign In|Log In|Forgot Password/i;
 const STAFF_FORBIDDEN_RE = /System Administrator|Backup Center|Security Center|Forensics|QuickBooks Integration Hub|Python Automation|Pay Rate|Hourly Rate|Owner Pro/i;
@@ -184,9 +184,28 @@ function summarizeProblems(problems) {
 }
 
 async function chooseQaWorkspace(page) {
-  const chooserText = await bodyText(page, 12000);
-  if (!/choose workspace|select workspace|select restaurant|choose restaurant/i.test(chooserText)) return false;
   const preferred = envValue('CHAOS_QA_WORKSPACE_NAME', 'CHAOS_QA_WORKSPACE') || QA_WORKSPACE_NAME;
+  const openChooser = async () => {
+    const chooserText = await bodyText(page, 12000);
+    if (/choose workspace|select workspace|select restaurant|choose restaurant/i.test(chooserText)) return true;
+    const switchers = [
+      page.getByTitle(/switch workspace/i).first(),
+      page.getByRole('button', { name: /switch workspace|switch restaurant|switch$/i }).first(),
+      page.getByText(/Switch/i).first()
+    ];
+    for (const candidate of switchers) {
+      if (await candidate.isVisible({ timeout: 1200 }).catch(() => false)) {
+        await candidate.click({ timeout: 2500 }).catch(() => {});
+        await page.waitForTimeout(900);
+        const nextText = await bodyText(page, 12000);
+        if (/choose workspace|select workspace|select restaurant|choose restaurant/i.test(nextText) || nextText.includes(preferred)) return true;
+      }
+    }
+    return false;
+  };
+
+  const chooserOpen = await openChooser();
+  if (!chooserOpen) return false;
   const exact = page.getByText(preferred, { exact: true }).first();
   const partial = page.getByText(preferred, { exact: false }).first();
   let target = null;
