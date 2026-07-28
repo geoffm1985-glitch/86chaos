@@ -129,21 +129,45 @@ const safeGetRealtimeDb = () => {
   }
 };
 export const realtimeDb = safeGetRealtimeDb();
-const safeGetMessaging = () => {
-  if (typeof window === "undefined") return null;
+export const isFirebaseMessagingUnsupportedError = (error = {}) => {
+  const text = [
+    error?.code,
+    error?.name,
+    error?.message,
+    error?.toString?.()
+  ].filter(Boolean).join(' ').toLowerCase();
+  return text.includes('messaging/unsupported-browser')
+    || text.includes('unsupported-browser')
+    || text.includes("this browser doesn't support the api")
+    || text.includes('firebase messaging is not supported');
+};
+
+export const hasFirebaseMessagingBrowserApis = () => {
+  if (typeof window === "undefined" || typeof navigator === "undefined") return false;
+  if (window.isSecureContext === false) return false;
+  return 'Notification' in window && 'serviceWorker' in navigator && 'PushManager' in window;
+};
+
+const quietlyHandleMessagingStartupError = (err, context = 'Firebase Messaging') => {
+  if (!isFirebaseMessagingUnsupportedError(err)) {
+    console.warn(`${context} is unavailable on this browser:`, err?.message || err);
+  }
+  return null;
+};
+
+export const getSafeMessaging = () => {
+  if (!hasFirebaseMessagingBrowserApis()) return null;
   try { return getMessaging(app); }
   catch (err) {
-    console.warn('Firebase Messaging is unavailable on this browser:', err?.message || err);
-    return null;
+    return quietlyHandleMessagingStartupError(err, 'Firebase Messaging');
   }
 };
 
-export const messaging = safeGetMessaging();
-export const messagingReady = typeof window !== "undefined"
-  ? isSupported().then((supported) => supported ? messaging : null).catch((err) => {
-      console.warn('Firebase Messaging support check failed:', err?.message || err);
-      return null;
-    })
+export const messaging = getSafeMessaging();
+export const messagingReady = typeof window !== "undefined" && hasFirebaseMessagingBrowserApis()
+  ? isSupported()
+      .then((supported) => supported ? getSafeMessaging() : null)
+      .catch((err) => quietlyHandleMessagingStartupError(err, 'Firebase Messaging support check'))
   : Promise.resolve(null);
 
 // Kitchen Wi-Fi Armor: Keep app working in walk-in coolers
@@ -380,7 +404,7 @@ export const MASTER_ADMIN_EMAIL = (process.env.REACT_APP_MASTER_ADMIN_EMAIL || '
 export const EVENT_TAGS = ['Standard Day', 'Packers Game', 'Brewers Game', 'Live Music', 'Severe Weather', 'Private Catering', 'Holiday'];
 
 // --- VERSION TRACKING ---
-export const CURRENT_VERSION = '16.0.44';
+export const CURRENT_VERSION = '16.0.45';
 
 // --- Helpers ---
 const usePageVisible = () => {
@@ -1143,11 +1167,28 @@ if (typeof window !== 'undefined' && !window.crashCatcherAttached) {
     const match = text.match(/https?:\/\/[^\s)'"]+\.(?:js|css)|\/static\/(?:js|css)\/[^\s)'"]+\.(?:js|css)/i);
     return match ? match[0] : '';
   };
+  const isKnownNonFatalRuntimeError = (message = '', stack = '', payload = {}) => {
+    const reason = payload.reason || payload.error || {};
+    return isFirebaseMessagingUnsupportedError(reason)
+      || isFirebaseMessagingUnsupportedError({ message: `${message} ${stack}` });
+  };
   const reportGlobalRuntimeError = (payload = {}) => {
     try {
       const message = String(payload.message || payload.reason?.message || payload.reason || 'Browser error').slice(0, 2000);
       const stack = String(payload.rawStack || payload.reason?.stack || payload.error?.stack || '').slice(0, 5000);
       const chunkUrl = payload.chunkUrl || extractFailedAssetUrl(`${message} ${stack}`);
+      if (isKnownNonFatalRuntimeError(message, stack, payload)) {
+        try {
+          window.__chaosLastNonFatalRuntimeError = {
+            source: payload.source || 'runtime_error',
+            code: payload.reason?.code || payload.error?.code || 'messaging/unsupported-browser',
+            message: message.slice(0, 500),
+            at: new Date().toISOString(),
+            category: 'non_fatal_firebase_messaging'
+          };
+        } catch (_) {}
+        return;
+      }
       const messageFingerprint = `${String(payload.error?.name || payload.reason?.name || '')}:${message}`.slice(0, 500);
       const fingerprint = [chunkFailurePattern.test(`${message} ${stack}`) ? 'chunk' : 'error', chunkUrl, messageFingerprint, CURRENT_VERSION, window.location.pathname, window.location.search].join('|');
       const now = Date.now();

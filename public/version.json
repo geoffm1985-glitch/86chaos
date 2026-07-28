@@ -1,11 +1,16 @@
 {
-  "version": "16.0.44",
-  "name": "86 Chaos 16.0.44 86Voice Product Matching Fix",
+  "version": "16.0.45",
+  "name": "86 Chaos 16.0.45 Push Messaging Guard Fix",
   "releasedAt": "2026-07-27T00:00:00.000Z",
-  "label": "86 Chaos 16.0.44 86Voice Product Matching Fix",
-  "build": "16.0.44",
-  "notes": "86Voice now resolves spoken inventory products such as \u201c86 eggs\u201d against live inventory aliases and updates matching prep rows instead of creating duplicates when the spoken phrase is not exact.",
+  "label": "86 Chaos 16.0.45 Push Messaging Guard Fix",
+  "build": "16.0.45",
+  "notes": "Firebase Messaging unsupported-browser startup errors are now treated as non-fatal push-availability issues instead of crash reports.",
   "releaseNotes": [
+    "Firebase Messaging now checks browser support before push token sync or foreground message listeners run.",
+    "Known messaging/unsupported-browser errors are no longer reported as Crash / Error bug notifications.",
+    "Unsupported push sessions now save a quiet push status of unsupported-browser instead of breaking the app or spamming admins.",
+    "Manual push repair now shows Push Unavailable when the browser cannot support Firebase Messaging.",
+    "The real app still uses Firebase Messaging on supported browsers and devices.",
     "86Voice 86/out-of-stock commands now resolve unique live inventory products from short spoken phrases while still asking for review when multiple products match.",
     "86Voice prep updates now use fuzzy existing-row matching, so \u201cprep ranch\u201d can update an existing \u201cFill Ranch Bottles\u201d row instead of creating a duplicate.",
     "Menu impact and AI ordering voice paths now use richer inventory aliases including category, vendor, SKU/code, pack size, alternate names, and keywords.",
@@ -15,5 +20,5 @@
     "Auto-Fill falls back to the original source-shift identity when a roster match is unavailable, reducing false invalid skips for legacy imported schedules that were already visible in the source month.",
     "Client Jest setup now includes the web API and Firebase Messaging mocks needed for the local client smoke tests."
   ],
-  "releaseTitle": "86 Chaos 16.0.44 86Voice Product Matching Fix"
+  "releaseTitle": "86 Chaos 16.0.45 Push Messaging Guard Fix"
 }
