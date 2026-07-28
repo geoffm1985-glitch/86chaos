@@ -3458,7 +3458,7 @@ const ADMIN_TROUBLESHOOTING_ARTICLES = [
     "body": [
       "Push Control Center can target one workspace, a restaurant group, or all workspaces. Group and all-workspace sends are internal-only operations and should be audited.",
       "Restaurant group matching uses workspace fields such as restaurantGroupName, groupName, restaurantGroupId, branding/system setting labels, or owner email fallback.",
-      "Preview workspace, user, and token counts before sending. Prefer selected group over All Workspaces unless the message is truly platform-wide.",
+      "Review workspace, user, and token counts before sending. Prefer selected group over All Workspaces unless the message is truly platform-wide.",
       "If delivery is questioned, check notification permission, token age, stale/missing token warnings, quiet hours, last send result, audit log, and whether the device/browser suppressed the notification."
     ]
   },
@@ -3915,7 +3915,7 @@ const ADMIN_TROUBLESHOOTING_ARTICLES = [
       "Check whether the module is enabled for the workspace and whether the user role/permissions allow it.",
       "If the tab appears but data is blank, check restaurantId/workspace membership and Firestore rules.",
       "Financials should be tightly restricted. Inventory, recipes, and schedule editing should follow role settings and owner selections.",
-      "Use Full Permissions Preview before changing a real customer's access."
+      "Use Full Permissions Review before changing a real customer's access."
     ]
   },
   {
@@ -4499,14 +4499,14 @@ const LEGACY_JULY_2026_SCHEDULE = [
     listenDoc('restoreDrillStatus', doc(db, 'system', 'restoreDrillStatus'), setRestoreDrillStatus);
     listenDoc('operationsReview', doc(db, 'system', 'operationsReview'), setOperationsReview);
 
-    if (['overview', 'tenants', 'ops'].includes(subTab)) {
-      listen('restaurants', query(collection(db, 'restaurants'), orderBy('name', 'asc'), firestoreLimit(subTab === 'tenants' ? 120 : 40)), setRestaurants);
+    if (['overview', 'tenants', 'ops', 'push'].includes(subTab)) {
+      listen('restaurants', query(collection(db, 'restaurants'), orderBy('name', 'asc'), firestoreLimit(subTab === 'tenants' || subTab === 'push' ? 160 : 40)), setRestaurants);
     } else {
       setRestaurants(prev => prev.slice(0, 40));
     }
 
-    if (subTab === 'users') {
-      listen('users', query(collection(db, 'users'), orderBy('name', 'asc'), firestoreLimit(120)), rows => {
+    if (subTab === 'users' || subTab === 'push' || subTab === 'live') {
+      listen('users', query(collection(db, 'users'), orderBy('name', 'asc'), firestoreLimit(subTab === 'push' ? 240 : 120)), rows => {
         setAllUsers(rows);
         const counts = {};
         rows.forEach(u => { if (u.restaurantId) counts[u.restaurantId] = (counts[u.restaurantId] || 0) + 1; });
@@ -5751,7 +5751,39 @@ const activeTrials = restaurants.filter(r => resolveSubscription(r, appUser).sta
   const arpa = paidWorkspaces > 0 ? (mrr / paidWorkspaces).toFixed(2) : 0;
   const trialPipelineValue = activeTrials * (tierPrices.smart_kitchen || PLAN_DEFINITIONS.smart_kitchen.monthlyPrice || 179); 
   const crashes24h = crashLogs.filter(log => (Date.now() - new Date(log.time||0).getTime()) < 86400000).length;
-  const pushOptInRate = allUsers.length > 0 ? ((allUsers.filter(u => u.fcmToken).length / allUsers.length) * 100).toFixed(0) : 0;
+  const normalizePushToken = (value = '') => String(value || '').trim();
+  const collectUserPushDevices = (user = {}) => {
+    const rows = [];
+    const seen = new Set();
+    const remember = (token, source, data = {}) => {
+      const clean = normalizePushToken(token);
+      if (!clean || seen.has(clean)) return;
+      seen.add(clean);
+      rows.push({
+        token: clean,
+        source,
+        deviceId: data.deviceId || data.id || source,
+        active: data.active !== false,
+        permission: data.permission || user.notificationPermission || user.pushTokenPermission || '',
+        host: data.host || user.pushTokenHost || user.activeHost || '',
+        browser: data.browser || data.platform || '',
+        updatedAt: data.lastVerifiedAt || data.updatedAt || data.fcmTokenUpdatedAt || data.createdAt || user.fcmTokenUpdatedAt || user.lastPushTokenSyncAt || null
+      });
+    };
+    remember(user.fcmToken, 'primary', { deviceId: 'primary' });
+    (Array.isArray(user.fcmTokens) ? user.fcmTokens : []).forEach((token, index) => remember(token, `fcmTokens.${index}`, { deviceId: `saved-${index}` }));
+    (Array.isArray(user.pushTokens) ? user.pushTokens : []).forEach((entry, index) => remember(typeof entry === 'string' ? entry : entry?.token || entry?.fcmToken, `pushTokens.${index}`, { ...(typeof entry === 'object' && entry ? entry : {}), deviceId: entry?.deviceId || entry?.id || `push-${index}` }));
+    if (user.pushDevices && typeof user.pushDevices === 'object') {
+      Object.entries(user.pushDevices).forEach(([deviceId, device]) => remember(typeof device === 'string' ? device : device?.token || device?.fcmToken, `pushDevices.${deviceId}`, { ...(typeof device === 'object' && device ? device : {}), deviceId }));
+    }
+    return rows.filter(row => row.active !== false);
+  };
+  const getUserPushDeviceCount = (user = {}) => collectUserPushDevices(user).length;
+  const getLatestPushSyncMs = (user = {}) => {
+    const values = [user.fcmTokenUpdatedAt, user.lastPushTokenSyncAt, ...collectUserPushDevices(user).map(device => device.updatedAt)].map(parsePresenceTimeMs).filter(Boolean);
+    return values.length ? Math.max(...values) : 0;
+  };
+  const pushOptInRate = allUsers.length > 0 ? ((allUsers.filter(u => getUserPushDeviceCount(u) > 0).length / allUsers.length) * 100).toFixed(0) : 0;
   const apiConnectedCount = restaurants.filter(r => r.integrations?.posProvider || r.integrations?.payrollProvider).length;
   const RECENT_ACTIVE_WINDOW_MS = (Number(presenceSnapshot.windowMinutes || 15) || 15) * 60 * 1000;
   const TRUE_ONLINE_WINDOW_MS = Math.max(30000, Math.min(Number(presenceSnapshot.onlineSeconds || 90) * 1000, 180000));
@@ -5915,7 +5947,7 @@ const activeTrials = restaurants.filter(r => resolveSubscription(r, appUser).sta
     .sort((a,b) => (b.isAdmin === true) - (a.isAdmin === true) || (a.name || a.email || '').localeCompare(b.name || b.email || '')) : [];
   const selectedClientAdmins = selectedClientUsers.filter(u => u.isAdmin || u.isSuperAdmin);
   const selectedClientOnline = selectedClient ? onlineUsers.filter(u => u.restaurantId === selectedClient.id) : [];
-  const selectedClientPushEnabled = selectedClientUsers.filter(u => !!u.fcmToken).length;
+  const selectedClientPushEnabled = selectedClientUsers.filter(u => getUserPushDeviceCount(u) > 0).length;
   const selectedClientGpsKnown = selectedClientUsers.filter(u => u.gpsPermission || u.deviceDiagnostics?.gpsPermission).length;
 
   const pastDueWorkspaces = restaurants.filter(r => resolveSubscription(r, appUser).status === 'past_due' || r.maintenanceMode === true);
@@ -5935,7 +5967,7 @@ const activeTrials = restaurants.filter(r => resolveSubscription(r, appUser).sta
     if (emailKey) acc[emailKey] = [...(acc[emailKey] || []), u];
     return acc;
   }, {})).filter(([, group]) => group.length > 1);
-  const usersMissingPush = allUsers.filter(u => !u.fcmToken);
+  const usersMissingPush = allUsers.filter(u => getUserPushDeviceCount(u) === 0);
   const permissionDeniedLogs = crashLogs.filter(log => `${log.message || ''} ${log.stack || ''}`.toLowerCase().includes('permission-denied'));
   const endpointList = ['admin-access', 'master-admin-repair', 'whoami', 'security-diagnostics', 'firestore-backup', 'list-backups', 'weekly-maintenance', 'dispatch-reminders', 'deploy-tenant', 'delete-user', 'delete-users-bulk', 'brand-logo', 'storage-doctor', 'schema-doctor', 'backup-preview', 'safe-write', 'scan-invoice', 'scan-menu', 'quickbooks-connect', 'quickbooks-bill-draft', 'quickbooks-webhook-status', 'quickbooks-webhook', 'ai-usage', 'python-order-intelligence', 'python-ops-intelligence', 'python-automation-run', 'send-push', 'send-schedule-alert', 'presence-heartbeat', 'presence-snapshot', 'push-token-repair', 'staff-member', 'voice-command', 'alerts', 'health-checks', 'account-deletion-request', 'restore-drill', 'mfa-recovery-code'];
 
@@ -5997,15 +6029,26 @@ const activeTrials = restaurants.filter(r => resolveSubscription(r, appUser).sta
   const platformStatus = adminRiskQueue.some(r => r.tone === 'red') ? 'Needs Attention' : adminRiskQueue.length ? 'Monitoring' : 'Clean';
 
   const getExactTime = (value) => { const d = parseAnyDate(value); return d ? d.toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', second: '2-digit' }) : 'Never'; };
-  const pushEnabledUsers = allUsers.filter(u => !!u.fcmToken);
-  const stalePushUsers = pushEnabledUsers.filter(u => { const d = parseAnyDate(u.fcmTokenUpdatedAt || u.lastPushTokenSyncAt); return !d || (Date.now() - d.getTime()) > 30 * 86400000; });
-  const pushRows = allUsers.map(u => ({
-    ...u,
-    deviceCount: u.pushDevices ? Object.keys(u.pushDevices).length : (u.fcmToken ? 1 : 0),
-    tokenFresh: !!u.fcmToken && !stalePushUsers.some(s => s.id === u.id),
-    lastTokenSyncMs: parsePresenceTimeMs(u.fcmTokenUpdatedAt || u.lastPushTokenSyncAt),
-    pushStatus: !u.fcmToken ? 'missing token' : stalePushUsers.some(s => s.id === u.id) ? 'stale token' : (u.notificationPermission || u.pushTokenPermission || 'saved')
-  })).sort((a,b) => (b.lastTokenSyncMs || 0) - (a.lastTokenSyncMs || 0));
+  const pushEnabledUsers = allUsers.filter(u => getUserPushDeviceCount(u) > 0);
+  const totalPushDeviceCount = pushEnabledUsers.reduce((sum, u) => sum + getUserPushDeviceCount(u), 0);
+  const stalePushUsers = pushEnabledUsers.filter(u => {
+    const lastMs = getLatestPushSyncMs(u);
+    return !lastMs || (Date.now() - lastMs) > 30 * 86400000;
+  });
+  const pushRows = allUsers.map(u => {
+    const devices = collectUserPushDevices(u);
+    const lastTokenSyncMs = getLatestPushSyncMs(u);
+    const stale = devices.length > 0 && (!lastTokenSyncMs || (Date.now() - lastTokenSyncMs) > 30 * 86400000);
+    return {
+      ...u,
+      pushDeviceRows: devices,
+      hasPushToken: devices.length > 0,
+      deviceCount: devices.length,
+      tokenFresh: devices.length > 0 && !stale,
+      lastTokenSyncMs,
+      pushStatus: devices.length === 0 ? 'missing token' : stale ? 'stale token' : (u.notificationPermission || u.pushTokenPermission || 'saved')
+    };
+  }).sort((a,b) => (b.lastTokenSyncMs || 0) - (a.lastTokenSyncMs || 0));
 
   const restaurantGroups = (() => {
     const groups = new Map();
@@ -6024,7 +6067,7 @@ const activeTrials = restaurants.filter(r => resolveSubscription(r, appUser).sta
         restaurantIds: [...new Set(group.restaurantIds.filter(Boolean))],
         restaurantNames: [...new Set(group.restaurantNames.filter(Boolean))].sort((a,b) => a.localeCompare(b)),
         userCount: usersInGroup.length,
-        tokenCount: usersInGroup.filter(u => !!u.fcmToken).length
+        tokenCount: usersInGroup.reduce((sum, u) => sum + getUserPushDeviceCount(u), 0)
       };
     });
     return rows.sort((a,b) => a.label.localeCompare(b.label));
@@ -6040,7 +6083,8 @@ const activeTrials = restaurants.filter(r => resolveSubscription(r, appUser).sta
     return activePushWorkspaceId ? [activePushWorkspaceId] : [];
   })();
   const selectedPushRecipients = allUsers.filter(u => selectedPushRestaurantIds.includes(u.restaurantId));
-  const selectedPushTokenRecipients = selectedPushRecipients.filter(u => !!u.fcmToken);
+  const selectedPushTokenRecipients = selectedPushRecipients.filter(u => getUserPushDeviceCount(u) > 0);
+  const selectedPushDeviceCount = selectedPushTokenRecipients.reduce((sum, u) => sum + getUserPushDeviceCount(u), 0);
   const selectedPushGroup = restaurantGroups.find(g => g.key === activePushGroupKey) || restaurantGroups[0] || null;
   const selectedPushWorkspace = restaurants.find(r => r.id === activePushWorkspaceId) || null;
   const selectedPushTargetLabel = pushBroadcastTargetMode === 'all'
@@ -6054,7 +6098,7 @@ const activeTrials = restaurants.filter(r => resolveSubscription(r, appUser).sta
     { label: 'Firestore rules published', ok: !adminDataErrors.users, detail: adminDataErrors.users || 'No read-rule errors detected in this session' },
     { label: 'Storage rules reachable', ok: !backupListError, detail: backupListError || `${backupList.length} backup object(s) listed` },
     { label: 'API routes responding', ok: !healthSnapshot || (healthSnapshot.apiChecks || []).every(c => c.ok), detail: healthSnapshot ? `${(healthSnapshot.apiChecks || []).filter(c => c.ok).length}/${(healthSnapshot.apiChecks || []).length} health routes OK` : 'Run Health Dashboard to test routes' },
-    { label: 'Push env vars working', ok: pushEnabledUsers.length > 0, detail: `${pushEnabledUsers.length} user(s) have push token(s); ${stalePushUsers.length} stale` },
+    { label: 'Push env vars working', ok: pushEnabledUsers.length > 0, detail: `${pushEnabledUsers.length} user(s) / ${totalPushDeviceCount} device token(s); ${stalePushUsers.length} stale` },
     { label: 'Backup restore readable', ok: !backupIsStale && !['failed', 'error'].includes(String(backupStatus?.lastIntegrityStatus || backupStatus?.backupIntegrity?.status || '').toLowerCase()), detail: `${backupStatusLabel} • ${backupStatus?.lastIntegrityStatus || backupStatus?.backupIntegrity?.status || 'integrity not checked'}` },
     { label: 'Active domain authorized', ok: !String(envReport.host || '').includes('localhost'), detail: envReport.host || 'Unknown host' },
     { label: 'API key referrer allowed', ok: !Object.values(adminDataErrors).some(Boolean), detail: Object.values(adminDataErrors)[0] || 'No Firebase referrer/auth load errors detected' },
@@ -6132,7 +6176,7 @@ const activeTrials = restaurants.filter(r => resolveSubscription(r, appUser).sta
   const previewImportRows = () => {
     const rows = parseCsvText(importCsvText).slice(0, 200);
     setImportPreviewRows(rows);
-    addToast('Preview Built', `${rows.length} row(s) parsed. Review before importing.`);
+    addToast('Review Built', `${rows.length} row(s) parsed. Review before importing.`);
   };
 
   const applyImportRows = async () => {
@@ -6226,10 +6270,10 @@ const activeTrials = restaurants.filter(r => resolveSubscription(r, appUser).sta
     if (!title) return addToast('Title Required', 'Add a short title for the push notification.');
     if (!body) return addToast('Message Required', 'Add the message people should see on their device.');
     if (!restaurantIds.length) return addToast('No Target', 'Choose a workspace or restaurant group first.');
-    if (!selectedPushTokenRecipients.length) return addToast('No Push Tokens', 'No users in that target currently have a connected push token.');
+    if (!selectedPushDeviceCount) return addToast('No Push Tokens', 'No users in that target currently have a connected push token.');
     const confirmation = `Send this push to ${selectedPushTargetLabel}?
 
-Connected devices: ${selectedPushTokenRecipients.length}
+Connected devices: ${selectedPushDeviceCount}
 Users in target: ${selectedPushRecipients.length}
 
 ${title}
@@ -6266,7 +6310,7 @@ ${body}`;
   };
 
   const exportPushDiagnostics = () => {
-    const report = { generatedAt: new Date().toISOString(), version: CURRENT_VERSION, pushOptInRate, totals: { users: allUsers.length, tokens: pushEnabledUsers.length, stale: stalePushUsers.length, missing: usersMissingPush.length }, rows: pushRows.map(u => ({ id: u.id, name: u.name, email: u.email, restaurantId: u.restaurantId, notificationPermission: u.notificationPermission || u.pushTokenPermission || '', hasToken: !!u.fcmToken, deviceCount: u.deviceCount, tokenHost: u.pushTokenHost || '', lastTokenSync: u.fcmTokenUpdatedAt || u.lastPushTokenSyncAt || null, pushStatus: u.pushStatus })) };
+    const report = { generatedAt: new Date().toISOString(), version: CURRENT_VERSION, pushOptInRate, totals: { users: allUsers.length, usersWithTokens: pushEnabledUsers.length, tokens: totalPushDeviceCount, stale: stalePushUsers.length, missing: usersMissingPush.length }, rows: pushRows.map(u => ({ id: u.id, name: u.name, email: u.email, restaurantId: u.restaurantId, notificationPermission: u.notificationPermission || u.pushTokenPermission || '', hasToken: u.hasPushToken, deviceCount: u.deviceCount, tokenHost: u.pushTokenHost || '', lastTokenSync: u.fcmTokenUpdatedAt || u.lastPushTokenSyncAt || null, pushStatus: u.pushStatus })) };
     downloadTextFile(`86chaos-push-diagnostics-${getToday()}.json`, JSON.stringify(report, null, 2), 'application/json;charset=utf-8;');
     addToast('Push Report', 'Push diagnostic report downloaded.');
   };
@@ -6527,7 +6571,7 @@ ${body}`;
     { title: 'Version 15.0.22 Email Verification for MFA', group: 'System Administrator', keywords: 'v15 15.0.22 account security email verification mfa two step login sms', body: ['15.0.22 adds Send Verification Email and Refresh Email Status actions to Account Security because Firebase requires verified email before SMS MFA enrollment.', 'This update changes /api/account-security so the app can show emailVerified alongside MFA factor status.'] },
     { title: 'Version 15.0.21 Account Security Tab Fix', group: 'System Administrator', keywords: 'v15 15.0.21 account security settings mfa two step login tab visible mobile', body: ['15.0.21 makes Account Security a visible Settings tab and adds an Open Account Security button inside Profile so MFA setup is easy to find on mobile.', 'This is a UI routing fix only. It does not change Firebase rules, Storage rules, API routes, or Vercel environment variables.'] },
     { title: 'Version 15.0.20 MFA & Permissions Enforcement', group: 'System Administrator', keywords: 'v15 15.0.20 mfa two step login account security sms elevated roles permissions preview enforcement', body: ['15.0.20 adds Account Security two-step login enrollment under Settings, MFA-aware login prompts, a server-side account-security sync route, and an elevated-role enforcement switch for protected admin API routes.', 'Keep MFA enforcement off until Firebase SMS MFA is enabled and at least one owner or System Administrator has successfully enrolled and completed a fresh MFA login.'] },
-    { title: '15.0.20 deployment checklist', group: 'System Administrator', keywords: '15.0.20 deploy qa firebase authentication identity platform sms mfa vercel env enforce permissions preview', body: ['Enable SMS MFA in Firebase Authentication / Identity Platform for the matching Firebase project.', 'Deploy through Vercel and confirm version.json reports 15.0.20.', 'Keep MFA_ENFORCE_ELEVATED_ROLES=false while enrolling and testing elevated accounts. Turn it true only after successful MFA login, then redeploy.', 'Open System Administrator → Permission & Role Manager and verify Full Permissions Preview shows allowed, blocked, and sensitive areas.'] },
+    { title: '15.0.20 deployment checklist', group: 'System Administrator', keywords: '15.0.20 deploy qa firebase authentication identity platform sms mfa vercel env enforce permissions preview', body: ['Enable SMS MFA in Firebase Authentication / Identity Platform for the matching Firebase project.', 'Deploy through Vercel and confirm version.json reports 15.0.20.', 'Keep MFA_ENFORCE_ELEVATED_ROLES=false while enrolling and testing elevated accounts. Turn it true only after successful MFA login, then redeploy.', 'Open System Administrator → Permission & Role Manager and verify Full Permissions Review shows allowed, blocked, and sensitive areas.'] },
     { title: 'Version 15.0.19 AI Invoice Scanner Shortcut Fix', group: 'System Administrator', keywords: 'v15 15.0.19 ai tools invoice scanner inventory shortcut navigation invoices subtab', body: ['15.0.19 fixes the AI Tools Invoice Scanner shortcut so it opens Inventory directly on the Invoices scanner panel instead of the default Inventory view.', 'The shortcut action now reads Open Invoice Scanner, and the Inventory sub-tab target is consumed once so normal Inventory drawer navigation stays unchanged.'] },
     { title: '15.0.19 deployment checklist', group: 'System Administrator', keywords: '15.0.19 deploy qa vercel checklist ai tools invoice scanner inventory invoices', body: ['Deploy the updated app through Vercel and confirm public/version.json reports 15.0.19.', 'Open AI Tools and click Open Invoice Scanner. Confirm Inventory opens on the Invoices tab and the Scan Invoice PDF/Photo upload control is visible.', 'Firestore rules, Storage rules, API routes, and Vercel environment variables are unchanged for this fix.'] },
     { title: 'Version 15.0.18 Mobile & Paperwork Polish', group: 'System Administrator', keywords: 'v15 15.0.18 administrator manual release update setup owner onboarding prep voice recurring templates invoice raw scan inventory import mobile print export paperwork', body: ['15.0.18 adds mobile-first polish for tighter touch targets, safer horizontal scrolling, steadier modal heights, and less cramped kitchen-device layouts.', 'Invoice History and Invoice Detail now include print/PDF report actions using the 86 Chaos paperwork format.', 'Print CSS was hardened so generated paperwork is cleaner, with fewer floating app controls leaking onto paper.'] },
@@ -6572,7 +6616,7 @@ ${body}`;
     { title: '15.0.2 deployment checklist', group: 'System Administrator', keywords: '15.0.2 deploy firestore rules storage rules vercel dispatch reminders heartbeat invoice menu scan 20MB', body: ['Deploy the updated app through Vercel, then confirm public/version.json reports 15.0.2.', 'Publish firestore.rules and storage.rules to the matching Firebase project before testing heartbeat, reminders, invoice scans, or menu scans.', 'Confirm /api/presence-heartbeat writes livePresence and presenceSessions only. It should not report users or restaurants in the written list.', 'Confirm /api/dispatch-reminders returns limit, concurrency, scanned, claimed, sent, skipped, failed, and noToken counts.', 'Test an invoice under 20MB and one over 20MB. The smaller file should scan; the larger file should be blocked with a clear message.', 'Test a Menu Intelligence upload under 20MB and one over 20MB with the same expected behavior.'] },
     { title: 'Version 15.0.1 Invoice Scanner Recovery', group: 'System Administrator', keywords: 'v15 15.0.1 invoice scanner gemini invalid json timeout compact retry repair scan invoice api', body: ['15.0.1 fixes the invoice scanner case where the progress bar reached 100% but Gemini returned malformed or cut-off JSON.', 'The scanner now tries stronger local JSON cleanup first, then compact retry mode when the first response is too large or incomplete, then an AI JSON repair pass before failing.', 'The default invoice scan timeout remains under the Vercel 300-second function cap. Raising the browser timeout alone will not fix invalid JSON; for very large PDFs, split pages or tune INVOICE_SCAN_TIMEOUT_MS only within the Vercel plan limit.', 'The route accepts GEMINI_API_KEY, GOOGLE_GENERATIVE_AI_API_KEY, or GOOGLE_API_KEY. Optional tuning variables are INVOICE_SCAN_MAX_OUTPUT_TOKENS, INVOICE_SCAN_COMPACT_MAX_OUTPUT_TOKENS, INVOICE_REPAIR_TIMEOUT_MS, and INVOICE_SCAN_GEMINI_MODEL.', 'No Firestore rules, Storage rules, Vercel config, or new route publish is required beyond deploying the updated app code.'] },
     { title: '15.0.1 deployment checklist', group: 'System Administrator', keywords: '15.0.1 deploy invoice scanner gemini invalid json vercel api scan invoice', body: ['Deploy the updated app through Vercel, then confirm public/version.json reports 15.0.1.', 'Confirm /api/scan-invoice is live from System Administrator Health Dashboard after deploy.', 'Re-scan the same invoice that failed with Gemini returned invalid JSON and confirm Reconcile Invoice opens.', 'Confirm Vercel has GEMINI_API_KEY, GOOGLE_GENERATIVE_AI_API_KEY, or GOOGLE_API_KEY plus existing Firebase Admin credentials.', 'Firestore rules and Storage rules are unchanged from 15.0.0 for this fix; re-publish them only if that target Firebase project has not already received the 15.0.0 rules.'] },
-    { title: 'System Administrator tab map: what every section means', group: 'Admin Tab Guide', keywords: 'administrator instructions admin manual tab map dashboard live users clients users grant access support forensics operations manual meaning', body: ['Dashboard is the command overview: health metrics, action queue, backup countdown, stability, billing/adoption signals, and quick jumps to problem areas.', 'Live Activity is now a manual Super Admin presence snapshot. It does not run a live scanner; press Refresh Snapshot when you want a one-time view of recent app check-ins and possession shortcuts.', 'Health Dashboard shows Firestore latency, backup Storage usage, API response times, backup integrity, and the last successful sync. Run Full System Diagnostics here before deployments.', '14.0 Robustness Suite is the hardening bay for Safe Write Engine status, Storage Doctor, Schema Doctor, Backup Preview, Permission Simulator, Import Bridge, and Release Guardrails.', 'Workspaces is the customer control room for restaurants, module access, billing state, demo mode, owner info, and client user drawer actions.', 'People is the global account list for searching accounts across restaurants, checking routing, push/GPS status, force password flags, support edit, and possession.', 'Access Control manages platform administrator access. Use it sparingly because it grants system-wide control.', 'Support Desk is for crash reports, permission-denied clues, raw document inspection, broadcast messages, and urgent troubleshooting.', 'Forensics & Backups is for audit logs, session timelines, backup center, restore tools, diagnostic bundles, and evidence trails after risky changes.', 'Platform Operations contains platform-wide tools like demo workspace creation, push tests, global refresh, orphan sweeps, cache cleanup, exports, ops review stamps, and lockdown controls.', 'Admin Manual is this internal instruction database. Search it before changing customers, rules, backups, billing, or data.'] },
+    { title: 'System Administrator tab map: what every section means', group: 'Admin Tab Guide', keywords: 'administrator instructions admin manual tab map dashboard live users clients users grant access support forensics operations manual meaning', body: ['Dashboard is the command overview: health metrics, action queue, backup countdown, stability, billing/adoption signals, and quick jumps to problem areas.', 'Live Activity is now a manual Super Admin presence snapshot. It does not run a live scanner; press Refresh Snapshot when you want a one-time view of recent app check-ins and possession shortcuts.', 'Health Dashboard shows Firestore latency, backup Storage usage, API response times, backup integrity, and the last successful sync. Run Full System Diagnostics here before deployments.', '14.0 Robustness Suite is the hardening bay for Safe Write Engine status, Storage Doctor, Schema Doctor, Backup Review, Permission Simulator, Import Bridge, and Release Guardrails.', 'Workspaces is the customer control room for restaurants, module access, billing state, demo mode, owner info, and client user drawer actions.', 'People is the global account list for searching accounts across restaurants, checking routing, push/GPS status, force password flags, support edit, and possession.', 'Access Control manages platform administrator access. Use it sparingly because it grants system-wide control.', 'Support Desk is for crash reports, permission-denied clues, raw document inspection, broadcast messages, and urgent troubleshooting.', 'Forensics & Backups is for audit logs, session timelines, backup center, restore tools, diagnostic bundles, and evidence trails after risky changes.', 'Platform Operations contains platform-wide tools like demo workspace creation, push tests, global refresh, orphan sweeps, cache cleanup, exports, ops review stamps, and lockdown controls.', 'Admin Manual is this internal instruction database. Search it before changing customers, rules, backups, billing, or data.'] },
     { title: 'Version 15.0.0 Kitchen Intelligence Release', group: 'System Administrator', keywords: 'v15 15.0.0 smart prep menu intelligence personal reminders cron firebase rules storage schedule past shifts invoice scanner invalid json gemini model fallback slice dice chop voice tomorrow friday', body: ['Smart prep matching now updates confident existing prep rows from typed or voice commands instead of creating duplicate prep tasks.', '86 Voice now recognizes kitchen prep phrasing such as slice tomato, dice onions, chop lettuce, thaw shrimp, portion ranch, and quantity/unit commands like 3 pans tomatoes.', 'Prep commands are day-aware: phrases like prep tomatoes for Friday, slice three tomato tomorrow, or prep ranch on 7/10 save to that target prep day and open Prep there.', 'Menu Intelligence adds owner-controlled menu scanning, reviewed inventory dependency links, zero-stock menu impact panels, and menu-impact text on 86 alerts.', 'My Reminders adds private user reminders with typed or voice creation and a protected /api/dispatch-reminders cron route.', 'My Schedule and Full Schedule now dim past shifts and completed day sections based on real shift end time, so old shifts no longer look active.', 'Menu Intelligence no longer depends on the retired gemini-1.5-flash default; it tries newer Gemini Flash models and tolerates common JSON formatting problems.', 'Invoice scanning now tolerates common Gemini JSON formatting problems like code fences, leading text, and trailing commas before failing the scan. Publish the included Firestore and Storage rules before production testing.'] },
     { title: '15.0.0 deployment checklist', group: 'System Administrator', keywords: '15.0.0 deploy firebase rules storage rules vercel env cron gemini reminders menu intelligence', body: ['Deploy the updated app through Vercel, then confirm public/version.json reports 15.0.0.', 'Publish the included firestore.rules in Firebase Firestore Rules and the included storage.rules in Firebase Storage Rules for the same Firebase project that the deployed app uses.', 'Confirm Vercel environment variables include the existing Firebase Admin credentials plus CRON_SECRET and GEMINI_API_KEY or GOOGLE_GENERATIVE_AI_API_KEY.', 'Confirm /api/scan-menu and /api/dispatch-reminders are live from System Administrator Health Dashboard after deploy.', 'Vercel Cron only runs on production deployments. The reminder dispatcher is scheduled every five minutes, which requires a Vercel plan that supports that cadence and the total number of cron jobs in vercel.json.'] },
     { title: 'Menu Intelligence operations', group: 'System Administrator', keywords: 'menu intelligence scan menu upload pdf image permissions owner menuDependencies menuIntelligenceScans storage rules', body: ['Menu Intelligence is visible to Super Admin, the account owner, and users granted Menu Intelligence access. Grant access from Settings → Branding → Settings Access.', 'The menu upload path is restaurant-scoped in Storage under {restaurantId}/menuUploads. If upload says unauthorized, publish storage.rules to the matching Firebase project.', 'The AI scanner returns review data only. Nothing becomes a live dependency until a permitted user reviews and approves the inventory matches.', 'Approved links save to menuDependencies and scan summaries save to menuIntelligenceScans. These records power zero-stock menu impact panels and 86 alert impact text. Recent scans can be edited or deleted by permitted Menu Intelligence users; deleting a scan removes its approved dependency links but leaves the original upload in secure Storage.', 'If scans fail, check GEMINI_API_KEY or GOOGLE_GENERATIVE_AI_API_KEY in Vercel and confirm /api/scan-menu can read Firebase Storage with the Admin service account.'] },
@@ -6584,7 +6628,7 @@ ${body}`;
     { title: 'Version 14.0.9 Push Token Repair Center', group: 'System Administrator', keywords: 'v14 14.0.9 push token repair stale missing notifications reconnect service worker admin', body: ['System Administrator → Push now includes the Push Token Repair Center with Request Reconnect, Force Refresh, Copy Link, Clear Flag, Send Test, and Prune + Repair Stale actions.', 'Missing tokens cannot be created from the server. The admin tool queues the repair and the employee device creates the Firebase Messaging token when they open the app or reconnect link.', 'Force Refresh clears stale tokens, refreshes the service worker on the employee device at next open, and records repair status/failure details for easier troubleshooting.'] },
     { title: 'Version 14.0.8 Menu Workspace Switcher', group: 'System Administrator', keywords: 'v14 14.0.8 multi workspace drawer menu switch restaurant current workspace two jobs', body: ['The side menu now shows the active restaurant directly under the signed-in user name and role so employees can confirm which job they are in before clocking in or posting changes.', 'If the account has more than one active workspace, that restaurant line becomes a Change control that opens the workspace switcher without digging through the header.'] },
     { title: 'Version 14.0.4 Multi-Workspace Switcher', group: 'System Administrator', keywords: 'v14 14.0.4 multi workspace switcher multiple jobs tenant memberships staff roster presence heartbeat one login', body: ['86 Chaos now supports one Firebase login belonging to multiple restaurant workspaces through workspaceMembers membership records.', 'After login, employees with more than one active workspace choose which restaurant they are entering. The header also includes a Switch control when multiple workspaces are available.', 'Staff Roster can link an existing email to the current workspace instead of forcing duplicate accounts or resetting that person\'s password.', 'Removing a staff member removes only the current workspace membership. The Firebase Auth login stays active when the person still belongs to another restaurant.', 'Live Users and presence heartbeats are stored per workspace/user pair so activity from one job does not overwrite another job. Publish Firestore rules with this build.'] },
-    { title: 'Version 14.0.2 Robustness Suite', group: 'System Administrator', keywords: 'v14 14.0.2 robustness safe write storage doctor schema doctor restore preview backup picker permission simulator import bridge offline queue release guardrails menu dependency graph', body: ['Open System Administrator → 14.0 Robustness Suite for the platform hardening tools.', 'Safe Write Engine centralizes permission checks, restaurantId enforcement, demo-mode blocking, audit logging, redacted before/after details, and offline queue support. In 14.0.2 it is wired into major kitchen forms: inventory, waste, prep, line checks, recipes, maintenance, Kitchen Command smart actions, Manager Brief quick actions, and menu dependency mapping.', 'Upload & Storage Doctor tests Firebase Admin credentials, target bucket, workspace lookup, and a real write/read/delete cycle before uploads are trusted.', 'Schema Doctor scans tenant records for missing restaurantId values, invalid dates, stale punches, negative inventory, old branding fields, and demo privacy hazards. Repair Safe Items only fixes repairable issues.', 'Restore Preview can load backups from Firebase Storage into a picker, preview a selected snapshot, count documents by collection, flag sensitive fields, and selectively restore chosen collections after typing RESTORE.', 'Permission Simulator previews visible and blocked tabs plus wage/forensics/backup access for a selected user.', 'Import Bridge downloads CSV templates for POS sales, payroll time, vendor invoices, and inventory counts.', 'Release Guardrails confirm version, 86 Chaos brand lock, demo privacy, Help Center public boundary, and rules packaging before deployment.', 'Kitchen Command Center Dependency Graph maps recipes/menu items to inventory items so low-stock inventory, prep signals, and 86 alerts can surface affected menu items more reliably.'] },
+    { title: 'Version 14.0.2 Robustness Suite', group: 'System Administrator', keywords: 'v14 14.0.2 robustness safe write storage doctor schema doctor restore preview backup picker permission simulator import bridge offline queue release guardrails menu dependency graph', body: ['Open System Administrator → 14.0 Robustness Suite for the platform hardening tools.', 'Safe Write Engine centralizes permission checks, restaurantId enforcement, demo-mode blocking, audit logging, redacted before/after details, and offline queue support. In 14.0.2 it is wired into major kitchen forms: inventory, waste, prep, line checks, recipes, maintenance, Kitchen Command smart actions, Manager Brief quick actions, and menu dependency mapping.', 'Upload & Storage Doctor tests Firebase Admin credentials, target bucket, workspace lookup, and a real write/read/delete cycle before uploads are trusted.', 'Schema Doctor scans tenant records for missing restaurantId values, invalid dates, stale punches, negative inventory, old branding fields, and demo privacy hazards. Repair Safe Items only fixes repairable issues.', 'Restore Preview can load backups from Firebase Storage into a picker, preview a selected snapshot, count documents by collection, flag sensitive fields, and selectively restore chosen collections after typing RESTORE.', 'Permission Simulator reviews visible and blocked tabs plus wage/forensics/backup access for a selected user.', 'Import Bridge downloads CSV templates for POS sales, payroll time, vendor invoices, and inventory counts.', 'Release Guardrails confirm version, 86 Chaos brand lock, demo privacy, Help Center public boundary, and rules packaging before deployment.', 'Kitchen Command Center Dependency Graph maps recipes/menu items to inventory items so low-stock inventory, prep signals, and 86 alerts can surface affected menu items more reliably.'] },
     { title: 'Mandatory Tip Declaration reliability', group: 'Admin Tab Guide', keywords: 'tips mandatory declaration clock out payroll time clock settings schema doctor', body: ['Settings → Workspace → Labor & Payroll controls Mandatory Tip Declaration for the restaurant.', 'The setting is now a core time-clock control, not a legacy tier-specific feature. When enabled, every employee clock-out opens Declare Tips before the punch closes.', 'Employees can enter 0 cash and 0 credit tips when they did not receive tips. The punch stores cashTips, creditTips, totalDeclaredTips, tipDeclarationRequired, tipDeclarationCompleted, tipDeclaredAt, and tipDeclarationVersion for payroll review.', 'Older restaurant documents that are missing systemSettings.tips default to enabled at runtime so employees do not bypass declaration. Schema Doctor flags missing tips settings as repairable and can stamp tips: true explicitly.', 'If a manager reports that the modal is not appearing, verify the workspace setting, refresh the employee device, and run Schema Doctor dry run for that workspace.'] },
     { title: 'Workspace geofence map lookup', group: 'Admin Tab Guide', keywords: 'workspace settings global config geofence find gps map lookup coordinates latitude longitude map service failed', body: ['Settings → Workspace → Global Config uses the Find GPS button to translate an address into latitude and longitude for the time-clock geofence.', 'Version 13.1.33 routes address lookup through /api/geocode-address so browsers are not solely responsible for reaching the public map service.', 'If the map service is unavailable, keep the saved latitude/longitude, enter coordinates manually, or click the map to set the geofence center. Version 13.1.34 makes the pin-drop map more resilient on desktop and mobile by forcing Leaflet size recalculation after the panel renders, adding a Refresh Map button, and rotating tile providers when tiles fail. A grey/slow tile map does not stop saved coordinates from enforcing the geofence.', 'For preview deployments, confirm api/geocode-address.js is present in Vercel. No Firebase rules are required for this route.'] },
     { title: 'Manual Presence Snapshot: how it works', group: 'Admin Tab Guide', keywords: 'manual presence snapshot live users online heartbeat reads writes super admin refresh', body: ['System Administrator → Live Activity no longer opens live Firestore listeners or runs a constant online scanner.', 'Staff Roster shows simple Online now / Last online hints from Realtime Database summaries for managers with Team access. Super Admin Live Activity still uses a manual one-time snapshot for the deeper control-tower view.', 'Each user browser opens a Realtime Database presence session with onDisconnect cleanup. Firestore heartbeat writes stay disabled, and the snapshot button reads RTDB statusSummary instead of livePresence whenever RTDB is available.', 'Because this favors low Firebase cost, it is an operational hint, not a perfect minute-by-minute surveillance tool.', 'If the snapshot fails, deploy the included API route and Firestore rules, then log out and back in so Super Admin claims refresh.'] },
@@ -7892,7 +7936,7 @@ Type RESTORE to continue.`);
       if (!response.ok) throw new Error(data.error || 'Backup preview failed.');
       setV14BackupPreview(data);
       if (!restore && data.rows?.length && v14SelectedCollections.length === 0) setV14SelectedCollections(data.rows.slice(0, 6).map(r => r.collectionName));
-      addToast(restore ? 'Selective Restore Complete' : 'Backup Preview Ready', restore ? `${data.restored?.restoredDocuments || 0} document(s) restored.` : `${data.totalDocs || 0} document(s) inspected.`);
+      addToast(restore ? 'Selective Restore Complete' : 'Backup Review Ready', restore ? `${data.restored?.restoredDocuments || 0} document(s) restored.` : `${data.totalDocs || 0} document(s) inspected.`);
     } catch (err) { addToast('Backup Tool Error', err.message); }
     finally { setV14BusyTool(''); }
   };
@@ -8558,7 +8602,7 @@ Type RESTORE to continue.`);
           <div className={`${T.card} p-4 sm:p-5 space-y-4 border-cyan-900/40 bg-cyan-950/10`}>
             <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-3">
               <div>
-                <h2 className="text-xl font-black text-white">Full Permissions Preview</h2>
+                <h2 className="text-xl font-black text-white">Full Permissions Review</h2>
                 <p className="text-xs text-slate-400 font-bold mt-1">Pick a user and see the screens, sensitive tools, and blocked areas they should experience before you hand them the keys.</p>
               </div>
               <select value={v14PermissionUserId} onChange={e => setV14PermissionUserId(e.target.value)} className={`${T.input} lg:max-w-sm`}>
@@ -8658,7 +8702,7 @@ Type RESTORE to continue.`);
       {subTab === 'push' && (
         <div className="space-y-4 animate-[slideIn_0.2s_ease-out]">
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-            <CockpitMetric label="Connected Devices" value={pushEnabledUsers.length} detail={`${allUsers.length - pushEnabledUsers.length} missing tokens`} tone={pushEnabledUsers.length ? 'emerald' : 'amber'} />
+            <CockpitMetric label="Connected Devices" value={totalPushDeviceCount} detail={`${pushEnabledUsers.length} user(s), ${allUsers.length - pushEnabledUsers.length} missing`} tone={pushEnabledUsers.length ? 'emerald' : 'amber'} />
             <CockpitMetric label="Stale Tokens" value={stalePushUsers.length} detail="30+ days since sync" tone={stalePushUsers.length ? 'amber' : 'emerald'} hot={stalePushUsers.length > 0} />
             <CockpitMetric label="Browser Permission" value={envReport.notifications} detail={`This admin device • ${envReport.host}`} tone={envReport.notifications === 'granted' ? 'emerald' : 'amber'} />
             <CockpitMetric label="Last Push Result" value={backupStatus?.lastPushResult || 'Not logged'} detail="Server route returns exact sent/failed counts when supported" tone="blue" />
@@ -8672,7 +8716,7 @@ Type RESTORE to continue.`);
               <div className="grid grid-cols-3 gap-2 text-center text-[10px] font-black uppercase tracking-widest">
                 <div className="bg-[#0B0E11] border border-[#2A353D] rounded-xl p-2"><div className="text-slate-500">Workspaces</div><div className="text-white text-sm">{selectedPushRestaurantIds.length}</div></div>
                 <div className="bg-[#0B0E11] border border-[#2A353D] rounded-xl p-2"><div className="text-slate-500">Users</div><div className="text-white text-sm">{selectedPushRecipients.length}</div></div>
-                <div className="bg-[#0B0E11] border border-[#2A353D] rounded-xl p-2"><div className="text-slate-500">Tokens</div><div className="text-emerald-300 text-sm">{selectedPushTokenRecipients.length}</div></div>
+                <div className="bg-[#0B0E11] border border-[#2A353D] rounded-xl p-2"><div className="text-slate-500">Tokens</div><div className="text-emerald-300 text-sm">{selectedPushDeviceCount}</div></div>
               </div>
             </div>
             <div className="grid lg:grid-cols-[220px_minmax(0,1fr)] gap-3">
@@ -8688,7 +8732,7 @@ Type RESTORE to continue.`);
                 <div>
                   <label className="text-[9px] font-black uppercase tracking-widest text-slate-500 block mb-1">Workspace</label>
                   <select value={pushBroadcastWorkspaceId || restaurants[0]?.id || ''} onChange={e => setPushBroadcastWorkspaceId(e.target.value)} className={T.input}>
-                    {restaurants.map(r => <option key={r.id} value={r.id}>{r.name || r.id} • {allUsers.filter(u => u.restaurantId === r.id && u.fcmToken).length} token(s)</option>)}
+                    {restaurants.map(r => <option key={r.id} value={r.id}>{r.name || r.id} • {allUsers.filter(u => u.restaurantId === r.id).reduce((sum, u) => sum + getUserPushDeviceCount(u), 0)} token(s)</option>)}
                   </select>
                 </div>
               )}
@@ -8727,7 +8771,7 @@ Type RESTORE to continue.`);
                 <input type="checkbox" checked={pushBroadcastCritical} onChange={e => setPushBroadcastCritical(e.target.checked)} className="accent-[#D4A381]" />
                 Critical alert, bypass quiet hours when possible
               </label>
-              <button type="submit" disabled={isPushBroadcasting || !selectedPushRestaurantIds.length || !selectedPushTokenRecipients.length} className="px-5 py-3 bg-blue-900/30 text-blue-200 border border-blue-700/60 rounded-xl text-xs font-black uppercase tracking-widest hover:bg-blue-900/50 disabled:opacity-40 flex items-center justify-center gap-2">
+              <button type="submit" disabled={isPushBroadcasting || !selectedPushRestaurantIds.length || !selectedPushDeviceCount} className="px-5 py-3 bg-blue-900/30 text-blue-200 border border-blue-700/60 rounded-xl text-xs font-black uppercase tracking-widest hover:bg-blue-900/50 disabled:opacity-40 flex items-center justify-center gap-2">
                 {isPushBroadcasting ? <Loader2 size={15} className="animate-spin"/> : <Send size={15}/>} Send Push to Selected Target
               </button>
             </div>
@@ -8766,12 +8810,12 @@ Type RESTORE to continue.`);
                         <div className="bg-[#0B0E11] border border-[#2A353D] rounded-lg p-2"><div className="text-slate-500 uppercase tracking-widest text-[8px]">Permission</div><div className="text-white">{u.notificationPermission || u.pushTokenPermission || 'unknown'}</div></div>
                         <div className="bg-[#0B0E11] border border-[#2A353D] rounded-lg p-2"><div className="text-slate-500 uppercase tracking-widest text-[8px]">Last Sync</div><div className="text-white">{getExactTime(u.fcmTokenUpdatedAt || u.lastPushTokenSyncAt)}</div></div>
                         <div className="bg-[#0B0E11] border border-[#2A353D] rounded-lg p-2"><div className="text-slate-500 uppercase tracking-widest text-[8px]">Host</div><div className="text-white truncate">{u.pushTokenHost || u.activeHost || 'unknown'}</div></div>
-                        <div className="bg-[#0B0E11] border border-[#2A353D] rounded-lg p-2"><div className="text-slate-500 uppercase tracking-widest text-[8px]">Result</div><div className={u.fcmToken ? (u.tokenFresh ? 'text-emerald-300' : 'text-amber-300') : 'text-red-300'}>{u.pushStatus}</div></div>
+                        <div className="bg-[#0B0E11] border border-[#2A353D] rounded-lg p-2"><div className="text-slate-500 uppercase tracking-widest text-[8px]">Result</div><div className={u.hasPushToken ? (u.tokenFresh ? 'text-emerald-300' : 'text-amber-300') : 'text-red-300'}>{u.pushStatus}</div></div>
                       </div>
                       {(u.lastPushRepairError || u.lastPushFailureCode || u.pushRepairStatus) && <div className="mt-2 text-[10px] font-bold text-slate-400 bg-[#0B0E11] border border-[#2A353D] rounded-lg p-2">Repair status: <span className="text-slate-200">{u.pushRepairStatus || 'not queued'}</span>{u.lastPushFailureCode ? ` • failure ${u.lastPushFailureCode}` : ''}{u.lastPushRepairError ? ` • ${u.lastPushRepairError}` : ''}</div>}
                     </div>
                     <div className="grid grid-cols-2 xl:grid-cols-1 gap-2 min-w-[190px]">
-                      <button onClick={() => sendPushTestToUser(u)} disabled={!u.fcmToken} className="px-3 py-2 bg-blue-900/20 border border-blue-900/50 text-blue-300 rounded-xl text-[10px] font-black uppercase tracking-widest disabled:opacity-40">Send Test</button>
+                      <button onClick={() => sendPushTestToUser(u)} disabled={!u.hasPushToken} className="px-3 py-2 bg-blue-900/20 border border-blue-900/50 text-blue-300 rounded-xl text-[10px] font-black uppercase tracking-widest disabled:opacity-40">Send Test</button>
                       <button onClick={() => requestPushRepairForUser(u)} className="px-3 py-2 bg-amber-900/20 border border-amber-900/50 text-amber-300 rounded-xl text-[10px] font-black uppercase tracking-widest">Request Reconnect</button>
                       <button onClick={() => forceRefreshPushForUser(u)} className="px-3 py-2 bg-orange-900/20 border border-orange-900/50 text-orange-300 rounded-xl text-[10px] font-black uppercase tracking-widest">Force Refresh</button>
                       <button onClick={() => copyPushRepairLinkForUser(u)} className="px-3 py-2 bg-cyan-900/20 border border-cyan-900/50 text-cyan-300 rounded-xl text-[10px] font-black uppercase tracking-widest">Copy Link</button>
@@ -9337,7 +9381,7 @@ Type RESTORE to continue.`);
           <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
             <V14JsonPanel title="Storage Doctor Report" data={v14StorageReport} />
             <V14JsonPanel title="Schema Doctor Report" data={v14SchemaReport} />
-            <V14JsonPanel title="Backup Preview / Guardrails" data={v14BackupPreview || v14GuardrailReport} />
+            <V14JsonPanel title="Backup Review / Guardrails" data={v14BackupPreview || v14GuardrailReport} />
           </div>
         </div>
       )}

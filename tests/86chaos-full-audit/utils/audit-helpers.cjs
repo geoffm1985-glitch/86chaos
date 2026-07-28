@@ -62,6 +62,29 @@ function maskedEnvValue(name) {
   return value;
 }
 
+
+function readCapabilitiesFromDisk() {
+  const candidates = [
+    path.join(process.cwd(), 'test-results', '86chaos-play-store-release-gate', 'app-capabilities.json'),
+    path.join(process.cwd(), 'test-results', '86chaos-release-gate-SLIM-UPLOAD-ME', '86chaos-play-store-release-gate', 'app-capabilities.json'),
+    path.join(process.cwd(), 'app-capabilities.json')
+  ];
+  for (const filePath of candidates) {
+    try {
+      if (!fs.existsSync(filePath)) continue;
+      const parsed = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+      return parsed && typeof parsed === 'object' ? parsed : {};
+    } catch (_) {}
+  }
+  return {};
+}
+
+const CAPABILITIES = readCapabilitiesFromDisk();
+function hasFeature(featureKey) {
+  const features = CAPABILITIES.features || {};
+  return Boolean(features && features[featureKey] === true);
+}
+
 const RUN_ID = envValue('CHAOS_FULL_AUDIT_RUN_ID') || `${Date.now()}-${Math.random().toString(16).slice(2, 8)}`;
 const BASE_URL = envValue('APP_URL', 'CHAOS_BASE_URL', 'PLAYWRIGHT_BASE_URL', 'BASE_URL').replace(/\/$/, '');
 const EXPECTED_VERSION = envValue('CHAOS_EXPECTED_VERSION') || readVersionFromDisk() || '16.0.32';
@@ -377,6 +400,8 @@ module.exports = {
   BASE_URL,
   EXPECTED_VERSION,
   ALLOW_MUTATION,
+  CAPABILITIES,
+  hasFeature,
   ROUTE_SPECS,
   FATAL_TEXT_RE,
   BAD_VALUE_RE,

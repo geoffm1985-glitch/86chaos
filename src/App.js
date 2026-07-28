@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { Bell, Bug, ChevronLeft, ChevronRight, Loader2, Menu, Moon, Send, X } from 'lucide-react';
-import { addDoc, collection, doc, onSnapshot, updateDoc } from 'firebase/firestore';
+import { addDoc, arrayUnion, collection, doc, onSnapshot, updateDoc } from 'firebase/firestore';
 import { getToken, onMessage } from 'firebase/messaging';
 import { signOut } from 'firebase/auth';
 import 'leaflet/dist/leaflet.css';
@@ -715,11 +715,14 @@ const [currentDate, setCurrentDate] = useState(getToday());
       (serverAdminCheck?.firestoreSuperAdmin === true && serverRoleLooksSystemAdmin)
     )
   );
-  const hasLocalSystemAdminMarker = Boolean(
+  const localProfileClaimsSuperAdmin = liveAppUser?.isSuperAdmin === true && (
     liveAppUser?.systemAccess?.superAdmin === true ||
     liveAppUser?.permissions?.systemAdmin === true ||
     liveAppUser?.permissions?.godmode === true ||
-    roleLooksSystemAdmin ||
+    roleLooksSystemAdmin
+  );
+  const hasLocalSystemAdminMarker = Boolean(
+    localProfileClaimsSuperAdmin ||
     serverSaysSuperAdmin ||
     (MASTER_ADMIN_EMAIL && sessionEmailForAdmin === MASTER_ADMIN_EMAIL.toLowerCase())
   );
@@ -1593,7 +1596,10 @@ What I clicked / expected:
     const existing = liveAppUser?.pushDevices?.[deviceId] || {};
     const lastVerified = existing.lastVerifiedAt ? new Date(existing.lastVerifiedAt).getTime() : 0;
     const refreshMs = 3 * 24 * 60 * 60 * 1000;
-    return existing.token !== currentToken || existing.permission !== permission || existing.host !== window.location.hostname || !lastVerified || Date.now() - lastVerified > refreshMs || liveAppUser?.pushNeedsRepair === true || liveAppUser?.pushForceServiceWorkerRefresh === true;
+    const savedTokenList = Array.isArray(liveAppUser?.fcmTokens) ? liveAppUser.fcmTokens : [];
+    const primaryTokenMissing = liveAppUser?.fcmToken !== currentToken;
+    const tokenArrayMissing = !savedTokenList.includes(currentToken);
+    return primaryTokenMissing || tokenArrayMissing || existing.token !== currentToken || existing.permission !== permission || existing.host !== window.location.hostname || !lastVerified || Date.now() - lastVerified > refreshMs || liveAppUser?.pushNeedsRepair === true || liveAppUser?.pushForceServiceWorkerRefresh === true;
   };
 
   const shouldWritePushPermissionState = (permission, errorMessage = '') => {
@@ -1665,13 +1671,14 @@ What I clicked / expected:
       await updateDoc(doc(db, 'users', liveAppUser.id), {
         [device.field]: device.data,
         fcmToken: currentToken,
+        fcmTokens: arrayUnion(currentToken),
         fcmTokenUpdatedAt: stamp,
         lastPushTokenSyncAt: stamp,
         notificationPermission: permission,
         pushTokenPermission: permission,
         pushTokenHost: window.location.hostname,
         pushTokenCanonical: true,
-        pushTokenDedupeVersion: '16.0.22',
+        pushTokenDedupeVersion: '16.0.50',
         pushNeedsRepair: false,
         pushForceServiceWorkerRefresh: false,
         pushRepairStatus: 'connected',
@@ -1680,7 +1687,7 @@ What I clicked / expected:
         lastPushRepairError: null,
         lastPushFailureCode: null
       });
-      setAppUser(prev => prev?.id === liveAppUser.id ? { ...prev, fcmToken: currentToken, pushNeedsRepair: false, pushForceServiceWorkerRefresh: false, notificationPermission: permission, pushTokenPermission: permission, pushTokenHost: window.location.hostname } : prev);
+      setAppUser(prev => prev?.id === liveAppUser.id ? { ...prev, fcmToken: currentToken, fcmTokens: Array.from(new Set([...(Array.isArray(prev?.fcmTokens) ? prev.fcmTokens : []), currentToken])), pushNeedsRepair: false, pushForceServiceWorkerRefresh: false, notificationPermission: permission, pushTokenPermission: permission, pushTokenHost: window.location.hostname } : prev);
       setPushRepairDismissed(true);
       addToast(source === 'auto' ? 'Push Reconnected' : 'Notifications Fixed', 'This device is connected for 86 Chaos push notifications.');
       return true;
@@ -1762,13 +1769,14 @@ What I clicked / expected:
         await updateDoc(doc(db, 'users', liveAppUser.id), {
           [device.field]: device.data,
           fcmToken: currentToken,
+          fcmTokens: arrayUnion(currentToken),
           fcmTokenUpdatedAt: stamp,
           lastPushTokenSyncAt: stamp,
           notificationPermission: permission,
           pushTokenPermission: permission,
           pushTokenHost: window.location.hostname,
           pushTokenCanonical: true,
-          pushTokenDedupeVersion: '16.0.22',
+          pushTokenDedupeVersion: '16.0.50',
           pushNeedsRepair: false,
           pushForceServiceWorkerRefresh: false,
           pushRepairStatus: 'connected',

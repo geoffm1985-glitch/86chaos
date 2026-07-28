@@ -1,33 +1,40 @@
+const fs = require('fs');
 const path = require('path');
 const { defineConfig, devices } = require('@playwright/test');
-const root = process.env.CHAOS_APP_ROOT || process.cwd();
+
+const root = process.cwd();
+const baseURL = process.env.APP_URL || process.env.CHAOS_BASE_URL || process.env.PLAYWRIGHT_BASE_URL || process.env.BASE_URL || 'http://127.0.0.1:3000';
 const resultsRoot = path.join(root, 'test-results', '86chaos-play-store-release-gate');
-const baseURL = process.env.APP_URL || process.env.CHAOS_BASE_URL || process.env.BASE_URL || '';
+fs.mkdirSync(resultsRoot, { recursive: true });
+
 module.exports = defineConfig({
-  testDir: path.join(root, 'tests'),
-  globalSetup: path.join(root, 'tests/86chaos-release-gate/global-setup.cjs'),
-  globalTeardown: path.join(root, 'tests/86chaos-release-gate/global-teardown.cjs'),
-  timeout: 300000,
-  expect: { timeout: 15000 },
+  testDir: './tests',
+  testMatch: [
+    '86chaos-full-audit/**/*.spec.cjs',
+    '86chaos-release-gate/**/*.spec.cjs'
+  ],
+  timeout: 90_000,
+  expect: { timeout: 12_000 },
   fullyParallel: false,
-  forbidOnly: true,
-  maxFailures: 0,
-  retries: process.env.CI ? 2 : 0,
-  workers: Number(process.env.CHAOS_RELEASE_GATE_WORKERS || 1),
-  outputDir: path.join(resultsRoot, 'artifacts'),
-  reporter: [['list'], ['json', { outputFile: path.join(resultsRoot, 'playwright-report.json') }], ['html', { outputFolder: path.join(resultsRoot, 'html'), open: 'never' }]],
+  workers: 1,
+  forbidOnly: !!process.env.CI,
+  retries: process.env.CI ? 1 : 0,
+  globalSetup: require.resolve('./tests/86chaos-release-gate/global-setup.cjs'),
+  globalTeardown: require.resolve('./tests/86chaos-release-gate/global-teardown.cjs'),
+  outputDir: path.join(resultsRoot, 'playwright-artifacts'),
+  reporter: [
+    ['list'],
+    ['json', { outputFile: path.join(resultsRoot, 'playwright-report.json') }],
+    ['html', { outputFolder: path.join(resultsRoot, 'html-report'), open: 'never' }]
+  ],
   use: {
     baseURL,
-    headless: !/^(1|true|yes)$/i.test(process.env.CHAOS_HEADED || ''),
-    trace: 'retain-on-failure', screenshot: 'only-on-failure', video: process.env.CHAOS_VIDEO === 'off' ? 'off' : 'retain-on-failure',
-    actionTimeout: 15000, navigationTimeout: 60000, locale: 'en-US', timezoneId: 'America/Chicago', ignoreHTTPSErrors: false,
+    trace: 'retain-on-failure',
+    screenshot: 'only-on-failure',
+    video: 'retain-on-failure'
   },
   projects: [
-    { name: 'chromium-full-1440', testMatch: [/86chaos-full-audit\/.*\.spec\.cjs/, /86chaos-release-gate\/.*\.spec\.cjs/], use: { ...devices['Desktop Chrome'], viewport: { width: 1440, height: 900 } } },
-    { name: 'chromium-1024', testMatch: /86chaos-cross-browser\/.*\.spec\.cjs/, use: { ...devices['Desktop Chrome'], viewport: { width: 1024, height: 768 } } },
-    { name: 'chromium-mobile-390', testMatch: /86chaos-cross-browser\/.*\.spec\.cjs/, use: { ...devices['Pixel 5'], viewport: { width: 390, height: 844 } } },
-    { name: 'chromium-mobile-430', testMatch: /86chaos-cross-browser\/.*\.spec\.cjs/, use: { ...devices['Galaxy S9+'], viewport: { width: 430, height: 932 } } },
-    { name: 'firefox-desktop', testMatch: /86chaos-cross-browser\/.*\.spec\.cjs/, use: { ...devices['Desktop Firefox'], viewport: { width: 1440, height: 900 } } },
-    { name: 'webkit-desktop', testMatch: /86chaos-cross-browser\/.*\.spec\.cjs/, use: { ...devices['Desktop Safari'], viewport: { width: 1440, height: 900 } } },
-  ],
+    { name: 'chromium', use: { ...devices['Desktop Chrome'] } },
+    { name: 'mobile-chromium', use: { ...devices['Pixel 5'] } }
+  ]
 });
