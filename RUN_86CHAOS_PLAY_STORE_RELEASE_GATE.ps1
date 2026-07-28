@@ -64,6 +64,36 @@ function Run-Step {
   }
 }
 
+
+function Run-LiveStep {
+  param(
+    [string]$Name,
+    [string]$Command
+  )
+
+  Write-Host ""
+  Write-Host "=== $Name ===" -ForegroundColor Yellow
+  Write-Host "Live Playwright list output enabled. The slim JSON/log report is still written quietly for upload." -ForegroundColor Cyan
+  $safeName = ($Name -replace '[^A-Za-z0-9_-]', '_').Trim('_')
+  if ([string]::IsNullOrWhiteSpace($safeName)) { $safeName = "step" }
+  $LogPath = Join-Path $RunnerLogDir ("{0}-{1}.log" -f $RunId, $safeName)
+  "=== $Name ===`nCommand: $Command`nStarted: $(Get-Date -Format o)`nLive console output was not tee-piped so Playwright can keep the readable pass/fail list reporter. See playwright-report.json and the runner summary for details.`n" | Set-Content $LogPath
+
+  powershell -NoProfile -ExecutionPolicy Bypass -Command $Command
+  $exitCode = if ($null -eq $LASTEXITCODE) { 0 } else { [int]$LASTEXITCODE }
+  "`nFinished: $(Get-Date -Format o)`nExitCode: $exitCode" | Add-Content $LogPath
+
+  Add-StepResult -Name $Name -ExitCode $exitCode -LogPath $LogPath
+  if ($exitCode -ne 0) {
+    Write-Host "FAILED: $Name" -ForegroundColor Red
+    $count = 0
+    [int]::TryParse($env:CHAOS_RELEASE_GATE_STEP_FAILURES, [ref]$count) | Out-Null
+    $env:CHAOS_RELEASE_GATE_STEP_FAILURES = [string]($count + 1)
+  } else {
+    Write-Host "PASSED: $Name" -ForegroundColor Green
+  }
+}
+
 function Write-RunnerSummary {
   $summaryPath = Join-Path $ResultsDir ("86chaos-release-gate-runner-summary-$RunId.txt")
   $jsonPath = Join-Path $ResultsDir ("86chaos-release-gate-runner-summary-$RunId.json")
@@ -115,8 +145,7 @@ function New-Slim-ReleaseGateReport {
   $allowed = @('.txt', '.log', '.json', '.md', '.html', '.xml', '.csv')
   $sourceRoots = @(
     $SourceDir,
-    (Join-Path $Root 'playwright-report'),
-    (Join-Path $Root 'test-results')
+    (Join-Path $Root 'playwright-report')
   ) | Where-Object { Test-Path $_ } | Select-Object -Unique
 
   foreach ($sourceRootItem in $sourceRoots) {
@@ -125,7 +154,7 @@ function New-Slim-ReleaseGateReport {
       Where-Object {
         $ext = $_.Extension.ToLowerInvariant()
         $allowed -contains $ext -and
-        $_.FullName -notmatch 'node_modules|\.png$|\.jpg$|\.jpeg$|\.webm$|\.mp4$|trace\.zip|\.zip$|\\coverage\\|\\build\\|\\.git\\|playwright-artifacts' -and
+        $_.FullName -notmatch 'node_modules|\.png$|\.jpg$|\.jpeg$|\.webm$|\.mp4$|trace\.zip|\.zip$|\\coverage\\|\\build\\|\\.git\\|playwright-artifacts|html-report\\trace|html\\trace|\\86chaos-release-gate-SLIM-UPLOAD-ME\\' -and
         $_.Length -lt 5MB
       } |
       ForEach-Object {
@@ -165,7 +194,7 @@ if (Test-Path ".\scripts\86chaos-release-gate\source-inventory.cjs") {
 
 $PlaywrightConfig = ".\playwright.play-store-release.config.cjs"
 if (!(Test-Path $PlaywrightConfig)) { $PlaywrightConfig = ".\playwright.config.js" }
-Run-Step "Playwright release gate" "npx playwright test --config $PlaywrightConfig"
+Run-LiveStep "Playwright release gate" "npx playwright test --config $PlaywrightConfig"
 
 if (Test-Path ".\scripts\86chaos-release-gate\collect-release-gate-report.cjs") {
   Run-Step "Collect report" "node scripts/86chaos-release-gate/collect-release-gate-report.cjs"

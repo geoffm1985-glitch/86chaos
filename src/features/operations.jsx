@@ -891,7 +891,7 @@ const TabRecipes = ({ appUser, addToast, voiceRecipeTarget = null }) => {
             )}
           </div>
 
-          {/* Right Side Actions (AI Scan & New Spec) */}
+          {/* Right Side Actions (AI Scan & New Recipe / Spec) */}
           {canManageRecipes && (
             <div className="flex flex-wrap sm:flex-nowrap items-center gap-3 w-full sm:w-auto">
               
@@ -910,7 +910,7 @@ const TabRecipes = ({ appUser, addToast, voiceRecipeTarget = null }) => {
 
               {/* Primary CTA */}
               <button onClick={() => { resetForm(); setIsFormOpen(true); }} className={`w-full sm:w-auto bg-gradient-to-r from-[#C59373] to-[#8F6040] hover:from-[#D4A381] hover:to-[#A37050] text-slate-900 shadow-lg px-6 py-2.5 rounded-xl text-[11px] font-black uppercase tracking-widest flex items-center justify-center gap-2 transition-all`}>
-                <Plus size={16}/> New Spec
+                <Plus size={16}/> New Recipe / Spec
               </button>
             </div>
           )}
@@ -923,8 +923,8 @@ const TabRecipes = ({ appUser, addToast, voiceRecipeTarget = null }) => {
           <div className="bg-[#12161A] w-20 h-20 mx-auto rounded-full flex items-center justify-center border border-[#2A353D] mb-4 shadow-inner">
             <ChefHat className={T.copper} size={32}/>
           </div>
-          <h3 className="text-lg font-black text-white">No specs found.</h3>
-          <p className="text-sm font-medium text-slate-500 mt-2">Try adjusting your search or category filter.</p>
+          <h3 className="text-lg font-black text-white">No recipes or specs found.</h3>
+          <p className="text-sm font-medium text-slate-500 mt-2">Try adjusting your recipe search or category filter.</p>
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
@@ -994,7 +994,7 @@ const TabRecipes = ({ appUser, addToast, voiceRecipeTarget = null }) => {
         )}
       </Modal>
       
-      <Modal isOpen={isFormOpen} onClose={() => setIsFormOpen(false)} title={editingRecipeId ? "Edit Spec" : "Add New Spec"}>
+      <Modal isOpen={isFormOpen} onClose={() => setIsFormOpen(false)} title={editingRecipeId ? "Edit Recipe / Spec" : "Add New Recipe / Spec"}>
         <form onSubmit={handleSave} className="space-y-4">
           <div><label className={T.label}>Recipe Title</label><input type="text" value={title} onChange={(e)=>setTitle(e.target.value)} className={T.input} required placeholder="e.g. House Ranch"/></div>
           <div className="grid grid-cols-3 gap-3"><div><label className={T.label}>Category</label><select value={category} onChange={(e)=>setCategory(e.target.value)} className={T.input}>{categories.slice(1).map(c=><option key={c} value={c}>{c}</option>)}</select></div><div><label className={T.label}>Prep Time</label><input type="text" value={prepTime} onChange={(e)=>setPrepTime(e.target.value)} className={T.input} placeholder="e.g. 15 mins"/></div><div><label className={T.label}>Yield</label><input type="text" value={yieldAmt} onChange={(e)=>setYieldAmt(e.target.value)} className={T.input} placeholder="e.g. 4 Quarts"/></div></div>

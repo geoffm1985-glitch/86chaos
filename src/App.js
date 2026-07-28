@@ -715,11 +715,14 @@ const [currentDate, setCurrentDate] = useState(getToday());
       (serverAdminCheck?.firestoreSuperAdmin === true && serverRoleLooksSystemAdmin)
     )
   );
-  const hasLocalSystemAdminMarker = Boolean(
+  const localProfileClaimsSuperAdmin = liveAppUser?.isSuperAdmin === true && (
     liveAppUser?.systemAccess?.superAdmin === true ||
     liveAppUser?.permissions?.systemAdmin === true ||
     liveAppUser?.permissions?.godmode === true ||
-    roleLooksSystemAdmin ||
+    roleLooksSystemAdmin
+  );
+  const hasLocalSystemAdminMarker = Boolean(
+    localProfileClaimsSuperAdmin ||
     serverSaysSuperAdmin ||
     (MASTER_ADMIN_EMAIL && sessionEmailForAdmin === MASTER_ADMIN_EMAIL.toLowerCase())
   );
@@ -1675,7 +1678,7 @@ What I clicked / expected:
         pushTokenPermission: permission,
         pushTokenHost: window.location.hostname,
         pushTokenCanonical: true,
-        pushTokenDedupeVersion: '16.0.49',
+        pushTokenDedupeVersion: '16.0.50',
         pushNeedsRepair: false,
         pushForceServiceWorkerRefresh: false,
         pushRepairStatus: 'connected',
@@ -1773,7 +1776,7 @@ What I clicked / expected:
           pushTokenPermission: permission,
           pushTokenHost: window.location.hostname,
           pushTokenCanonical: true,
-          pushTokenDedupeVersion: '16.0.49',
+          pushTokenDedupeVersion: '16.0.50',
           pushNeedsRepair: false,
           pushForceServiceWorkerRefresh: false,
           pushRepairStatus: 'connected',

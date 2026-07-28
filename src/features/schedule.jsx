@@ -1313,7 +1313,7 @@ const handleOfferSwap = async (shift) => {
                      )}
                      <div className={`${T.row} transition-colors ${isPastShift ? 'bg-[#0B0E11]/70 opacity-50 grayscale' : 'hover:bg-[#12161A]'}`}>
                        <div className="flex items-center justify-between">
-                         <div className="flex items-center gap-3"><img src={getAvatar(emp?.name, emp?.photoURL)} className={`w-8 h-8 rounded-full border object-cover ${isPastShift ? 'border-[#1F2933] opacity-60' : T.border}`} alt="avatar"/><div><div className={`text-sm font-bold ${isPastShift ? 'text-slate-500' : 'text-white'}`}>{emp?.name ? emp.name.split(' ')[0] : 'Unknown'}</div><div className={`text-[9px] font-bold uppercase ${isPastShift ? 'text-slate-600' : T.muted}`}>{shift.role}</div></div></div>
+                         <div className="flex items-center gap-3"><img src={getAvatar(emp?.name, emp?.photoURL)} className={`w-8 h-8 rounded-full border object-cover ${isPastShift ? 'border-[#1F2933] opacity-60' : T.border}`} alt="avatar"/><div><div className={`text-sm font-bold ${isPastShift ? 'text-slate-500' : 'text-white'}`}>{emp?.name || emp?.displayName || emp?.fullName || 'Unknown'}</div><div className={`text-[9px] font-bold uppercase ${isPastShift ? 'text-slate-600' : T.muted}`}>{shift.role}</div></div></div>
                          <div className={`text-xs font-mono font-bold px-2 py-1 rounded-md border ${isPastShift ? 'bg-[#0B0E11] text-slate-500 border-[#1F2933]' : `bg-[#12161A] ${T.copper} ${T.border}`}`}>{formatShortTime(shift.startTime)} - {formatShortTime(shift.endTime)}</div>
                        </div>
                      </div>
@@ -3482,7 +3482,7 @@ const TabMonth = ({ currentDate, users, shifts, appUser }) => {
               <div className="space-y-0.5 overflow-y-auto no-scrollbar flex-1">
                 {dayShifts.map(s=>(
                   <div key={s.id} className={`text-[8px] font-bold px-0.5 rounded leading-tight truncate bg-[#12161A] border ${T.border} text-[#D4A381] print-shift`}>
-                    {users.find(u=>u.id===s.employeeId)?.name.split(' ')[0]} {formatShortTime(s.startTime)}-{formatShortTime(s.endTime)}
+                    {users.find(u=>u.id===s.employeeId)?.name || users.find(u=>u.id===s.employeeId)?.displayName || 'Unknown'} {formatShortTime(s.startTime)}-{formatShortTime(s.endTime)}
                   </div>
                 ))}
               </div>
