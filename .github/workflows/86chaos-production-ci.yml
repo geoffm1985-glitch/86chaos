@@ -1,0 +1,59 @@
+name: 86 Chaos Production CI
+
+on:
+  pull_request:
+    branches:
+      - main
+      - production
+      - testing
+  push:
+    branches:
+      - main
+      - production
+      - testing
+  workflow_dispatch:
+
+jobs:
+  validate:
+    name: Validate 86 Chaos
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund --progress=false
+
+      - name: Check Node version
+        run: npm run node:check --if-present
+
+      - name: Check lockfile integrity
+        run: npm run lock:integrity --if-present
+
+      - name: Source validation
+        run: npm run test:source --if-present
+
+      - name: API syntax
+        run: npm run syntax:api --if-present
+
+      - name: Python syntax
+        run: npm run syntax:py --if-present
+
+      - name: Performance split validation
+        run: npm run performance:split --if-present
+
+      - name: Client tests
+        run: npm run test:client -- --runInBand
+
+      - name: Server tests
+        run: npm run test:server --if-present
+
+      - name: Production build
+        run: NODE_OPTIONS=--max-old-space-size=4096 GENERATE_SOURCEMAP=false npm run build
