@@ -1,15 +1,19 @@
 {
-  "version": "16.0.39",
-  "name": "86 Chaos 16.0.39 Release Gate Login and Schedule Fix",
+  "version": "16.0.44",
+  "name": "86 Chaos 16.0.44 86Voice Product Matching Fix",
   "releasedAt": "2026-07-27T00:00:00.000Z",
-  "label": "86 Chaos 16.0.39 Release Gate Login and Schedule Fix",
-  "build": "16.0.39",
-  "notes": "Fixes release-gate login bootstrap stalls, fast workspace entry, Event Calendar owner access, and invalid overnight schedule detection without changing Firebase credentials or app screens.",
+  "label": "86 Chaos 16.0.44 86Voice Product Matching Fix",
+  "build": "16.0.44",
+  "notes": "86Voice now resolves spoken inventory products such as \u201c86 eggs\u201d against live inventory aliases and updates matching prep rows instead of creating duplicates when the spoken phrase is not exact.",
   "releaseNotes": [
-    "86Voice can answer higher-level readiness, labor/schedule, prep, maintenance, price-jump, weather, and food/allergen lookup questions using real loaded app data and protected public-data routes.",
-    "Manager Brief Need Attention cards now include an Explain action with what triggered the card, why it matters, and the safest next action.",
-    "Invoice review now runs a smart line-item cleaner after OCR/AI extraction to normalize product names, SKUs, quantities, pack sizes, and prices before manager approval.",
-    "Inventory/AI Order surfaces price-jump warnings, prep prediction, event supply checks, and review-first order drafts with reasons and confidence signals.",
-    "Help Center search now includes semantic matching across real customer-safe articles and the training manual."
-  ]
+    "86Voice 86/out-of-stock commands now resolve unique live inventory products from short spoken phrases while still asking for review when multiple products match.",
+    "86Voice prep updates now use fuzzy existing-row matching, so \u201cprep ranch\u201d can update an existing \u201cFill Ranch Bottles\u201d row instead of creating a duplicate.",
+    "Menu impact and AI ordering voice paths now use richer inventory aliases including category, vendor, SKU/code, pack size, alternate names, and keywords.",
+    "My Schedule now shows only current and upcoming shifts for the selected month instead of dimming old ended shifts in the employee list.",
+    "Schedule Builder Auto-Fill now fetches the full selected source month before copying shifts, so weeks outside the current visible planning window are not silently skipped.",
+    "Auto-Fill still skips true duplicates but can now fill missing target dates on a retry after a partial copy.",
+    "Auto-Fill falls back to the original source-shift identity when a roster match is unavailable, reducing false invalid skips for legacy imported schedules that were already visible in the source month.",
+    "Client Jest setup now includes the web API and Firebase Messaging mocks needed for the local client smoke tests."
+  ],
+  "releaseTitle": "86 Chaos 16.0.44 86Voice Product Matching Fix"
 }

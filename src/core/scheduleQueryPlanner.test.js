@@ -5,8 +5,10 @@ describe('schedule query planner', () => {
   const manager = { id: 'm1', isAdmin: true, permissions: { schedule: true } };
   test('staff My Schedule scopes shifts to one canonical user', () => {
     const plan = buildScheduleQueryPlan({ activeTabState: 'schedule', activeScheduleSubTab: 'my-schedule', appUser: staff, currentDate: '2026-07-15' });
-    expect(plan.shiftClauses).toContainEqual(['scheduleUserId', '==', 'sched_u1']);
-    expect(plan.needsRoster).toBe(false);
+    expect(plan.shiftClauses).toContainEqual(['date', '>=', '2026-07-01']);
+    expect(plan.shiftClauses).toContainEqual(['date', '<=', '2026-07-31']);
+    expect(plan.shiftClauses).not.toContainEqual(['scheduleUserId', '==', 'sched_u1']);
+    expect(plan.needsRoster).toBe(true);
   });
   test('manager Schedule Builder loads team planning data', () => {
     const plan = buildScheduleQueryPlan({ activeTabState: 'schedule', activeScheduleSubTab: 'schedule-builder', appUser: manager, currentDate: '2026-07-15' });
@@ -17,7 +19,7 @@ describe('schedule query planner', () => {
   });
   test('staff time off is user scoped', () => {
     const plan = buildScheduleQueryPlan({ activeTabState: 'schedule', activeScheduleSubTab: 'time-off', appUser: staff, currentDate: '2026-07-15' });
-    expect(plan.timeOffClauses).toContainEqual(['userId', '==', 'sched_u1']);
+    expect(plan.timeOffClauses).toContainEqual(['userId', '==', 'u1']);
   });
   test('trade board uses created available/open statuses', () => {
     const plan = buildScheduleQueryPlan({ activeTabState: 'schedule', activeScheduleSubTab: 'trade-board', appUser: manager, currentDate: '2026-07-15' });

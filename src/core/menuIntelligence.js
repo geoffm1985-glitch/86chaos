@@ -25,29 +25,86 @@ const EIGHTY_SIX_MENU_ALIASES = {
   olive: ['olive', 'olives'],
 };
 
-const aliasTokensFor = (spoken = '') => {
-  const q = normalize(spoken);
-  const direct = EIGHTY_SIX_MENU_ALIASES[q.replace(/\s+/g, '')] || EIGHTY_SIX_MENU_ALIASES[q] || [];
-  const fromWords = tokenize(q).flatMap(word => EIGHTY_SIX_MENU_ALIASES[word] || []);
-  return Array.from(new Set([...direct, ...fromWords].map(normalize).filter(Boolean)));
+const singularizeKitchenToken = (value = '') => String(value || '')
+  .replace(/\b([a-z]{4,})ies\b/g, '$1y')
+  .replace(/\b([a-z]{4,})es\b/g, '$1')
+  .replace(/\b([a-z]{4,})s\b/g, '$1')
+  .trim();
+
+const expandProductAliases = (value = '') => {
+  const base = normalize(value);
+  if (!base) return [];
+  const out = new Set([base, singularizeKitchenToken(base)]);
+  const directAliases = EIGHTY_SIX_MENU_ALIASES[base.replace(/\s+/g, '')] || EIGHTY_SIX_MENU_ALIASES[base] || [];
+  directAliases.forEach(alias => {
+    const key = normalize(alias);
+    if (key) { out.add(key); out.add(singularizeKitchenToken(key)); }
+  });
+  tokenize(base).forEach(word => {
+    const singular = singularizeKitchenToken(word);
+    if (singular) out.add(singular);
+    (EIGHTY_SIX_MENU_ALIASES[word] || EIGHTY_SIX_MENU_ALIASES[singular] || []).forEach(alias => {
+      const key = normalize(alias);
+      if (key) { out.add(key); out.add(singularizeKitchenToken(key)); }
+    });
+  });
+  return Array.from(out).filter(Boolean);
 };
+
+const aliasTokensFor = (spoken = '') => expandProductAliases(spoken);
 
 const scoreTextMatch = (candidateText = '', spoken = '') => {
   const candidate = normalize(candidateText);
   const q = normalize(spoken);
   if (!candidate || !q) return 0;
   let score = 0;
-  if (candidate === q) score += 100;
-  if (candidate.includes(q) || q.includes(candidate)) score += 55;
-  const qWords = tokenize(q).filter(w => w.length > 1);
-  const cWords = tokenize(candidate).filter(w => w.length > 1);
-  score += qWords.filter(w => cWords.some(c => c === w || c.includes(w) || w.includes(c))).length * 15;
-  const aliasTokens = aliasTokensFor(q).flatMap(alias => tokenize(alias));
-  const aliasHits = aliasTokens.filter(w => w.length > 1 && cWords.some(c => c === w || c.includes(w) || w.includes(c))).length;
-  score += aliasHits * 9;
-  if (qWords.length && qWords.every(w => cWords.some(c => c === w || c.includes(w) || w.includes(c)))) score += 20;
-  return score;
+  const qOptions = expandProductAliases(q);
+  const candidateOptions = expandProductAliases(candidate);
+  const qWords = Array.from(new Set(qOptions.flatMap(option => tokenize(option).map(singularizeKitchenToken)).filter(w => w.length > 1)));
+  const cWords = Array.from(new Set(candidateOptions.flatMap(option => tokenize(option).map(singularizeKitchenToken)).filter(w => w.length > 1)));
+  qOptions.forEach(qOption => {
+    candidateOptions.forEach(candidateOption => {
+      if (!qOption || !candidateOption) return;
+      if (candidateOption === qOption) score = Math.max(score, 140);
+      if (candidateOption.includes(qOption) || qOption.includes(candidateOption)) score = Math.max(score, 88);
+    });
+  });
+  const exactHits = qWords.filter(w => cWords.includes(w)).length;
+  const partialHits = qWords.filter(w => !cWords.includes(w) && cWords.some(c => c.includes(w) || w.includes(c))).length;
+  score += exactHits * 22;
+  score += partialHits * 12;
+  if (qWords.length && exactHits === qWords.length) score += 42;
+  if (cWords.length && exactHits === cWords.length) score += 14;
+  return Math.round(score);
 };
+
+const getInventoryVoiceAliases = (item = {}) => [
+  item.name,
+  item.title,
+  item.itemName,
+  item.productName,
+  item.displayName,
+  item.category,
+  item.subcategory,
+  item.supplierName,
+  item.vendorName,
+  item.brand,
+  item.manufacturer,
+  item.packSize,
+  item.size,
+  item.pfgCode,
+  item.vendorItemNumber,
+  item.vendorCode,
+  item.code,
+  item.sku,
+  item.upc,
+  item.gtin,
+  item.barcode,
+  item.notes,
+  ...(Array.isArray(item.aliases) ? item.aliases : []),
+  ...(Array.isArray(item.alternateNames) ? item.alternateNames : []),
+  ...(Array.isArray(item.keywords) ? item.keywords : [])
+].filter(Boolean);
 
 const findInventoryByDependency = (dep = {}, inventoryItems = []) => {
   if (dep.inventoryItemId) {
@@ -126,18 +183,7 @@ export const buildMenuImpactText = (item = {}, menuDependencies = []) => {
 
 const scoreInventoryItemForSpoken = (item = {}, spoken = '') => {
   const q = normalize(spoken);
-  const name = item.name || item.title || '';
-  const searchBlob = [
-    name,
-    item.category,
-    item.supplierName,
-    item.vendorName,
-    item.packSize,
-    item.pfgCode,
-    item.code,
-    item.sku,
-    item.notes
-  ].filter(Boolean).join(' ');
+  const searchBlob = getInventoryVoiceAliases(item).join(' ');
   let score = scoreTextMatch(searchBlob, q);
   const itemKey = normalize(searchBlob);
   aliasTokensFor(q).forEach(alias => {
@@ -189,12 +235,17 @@ export const resolveStrictEightySixMatch = (spoken = '', inventoryItems = [], me
     if (!current || Number(row.score || 0) > Number(current.score || 0)) rankedByItem.set(key, row);
   };
 
+  const qAliases = expandProductAliases(q);
   const inventoryEvidence = (inventoryItems || []).map(item => {
-    const itemName = normalize(item.name || item.title || '');
+    const aliases = getInventoryVoiceAliases(item).flatMap(expandProductAliases);
+    const aliasBlob = aliases.join(' ');
+    const aliasWords = new Set(tokenize(aliasBlob).map(singularizeKitchenToken).filter(w => w.length > 1));
     let score = scoreInventoryItemForSpoken(item, q);
-    if (itemName === q) score += 260;
-    else if (itemName && (itemName.startsWith(q) || q.startsWith(itemName))) score += 45;
-    return { item, score, method: 'inventory', exact: itemName === q };
+    const exactAlias = aliases.some(alias => qAliases.includes(alias));
+    const tokenExact = qAliases.some(alias => tokenize(alias).map(singularizeKitchenToken).filter(Boolean).every(word => aliasWords.has(word)));
+    if (exactAlias) score += 260;
+    else if (tokenExact) score += 86;
+    return { item, score, method: 'inventory', exact: exactAlias, tokenExact };
   });
   inventoryEvidence.forEach(keepBest);
 
@@ -236,10 +287,13 @@ export const resolveStrictEightySixMatch = (spoken = '', inventoryItems = [], me
   const uniquelyExact = exactRows.length === 1 && exactRows[0]?.item?.id === best?.item?.id;
   const bestDirectScore = Math.max(0, ...inventoryEvidence.map(row => Number(row.score || 0)));
   const plausibleDirectMatches = inventoryEvidence.filter(row => Number(row.score || 0) >= 70 && Number(row.score || 0) >= bestDirectScore - 30);
+  const exactOrTokenRows = inventoryEvidence.filter(row => row.exact === true || row.tokenExact === true);
   const hasExactInventoryName = inventoryEvidence.some(row => row.exact === true);
-  const broadInventoryAmbiguity = !hasExactInventoryName && plausibleDirectMatches.length > 1;
+  const broadInventoryAmbiguity = !hasExactInventoryName && plausibleDirectMatches.length > 1 && !(exactOrTokenRows.length === 1 && exactOrTokenRows[0]?.item?.id === best?.item?.id);
   const veryStrong = Number(best?.score || 0) >= 185 && (ranked.length === 1 || margin >= 35);
-  const strong = Boolean(best?.item && !broadInventoryAmbiguity && (uniquelyExact || veryStrong));
+  const uniqueInventoryProduct = best?.method === 'inventory' && Number(best?.score || 0) >= 84 && (!second || margin >= 24) && plausibleDirectMatches.length <= 1;
+  const uniqueInventoryToken = best?.method === 'inventory' && exactOrTokenRows.length === 1 && exactOrTokenRows[0]?.item?.id === best?.item?.id && (!second || margin >= 12);
+  const strong = Boolean(best?.item && !broadInventoryAmbiguity && (uniquelyExact || veryStrong || uniqueInventoryProduct || uniqueInventoryToken));
   const candidates = ranked
     .filter(row => Number(row.score || 0) >= 38)
     .slice(0, 5)

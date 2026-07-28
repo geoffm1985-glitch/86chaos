@@ -1424,7 +1424,7 @@ const buildVoiceAiOrderingAction = ({ raw = '', inventoryItems = [], events = []
     return { intent:'ai_order_summary', label: row ? `Why ${row.itemName}?` : 'AI Order Explanation', tab:'inventory', summary: row ? `${row.itemName}: ${row.reasons?.join(' • ') || 'Review stock, par, events, menu impact, prep, and waste.'}` : 'I could not match that item to an AI order suggestion. Opening AI Order Assistant.', rows: row ? [{ menuItemName:`Suggest ${row.suggestedQty} ${row.itemName}`, severity: row.reasons?.join(' • ') || row.priority }] : topRows, safe:true, needsConfirmation:false };
   }
   if (parsed.intent === 'ai_order_add_item') {
-    const match = resolveVoiceMatch(inventoryItems || [], parsed.itemPhrase || raw, { getLabel: item => item.name || item.itemName || '', getAliases: item => [item.category, item.pfgCode, item.packSize].filter(Boolean), minScore: 35, highThreshold: 70, margin: 10 });
+    const match = resolveVoiceMatch(inventoryItems || [], parsed.itemPhrase || raw, { getLabel: item => item.name || item.itemName || item.productName || item.title || '', getAliases: item => [item.category, item.subcategory, item.vendorName, item.supplierName, item.brand, item.pfgCode, item.sku, item.code, item.upc, item.gtin, item.packSize, ...(Array.isArray(item.aliases) ? item.aliases : []), ...(Array.isArray(item.alternateNames) ? item.alternateNames : []), ...(Array.isArray(item.keywords) ? item.keywords : [])].filter(Boolean), minScore: 35, highThreshold: 70, margin: 10 });
     return { intent:'ai_order_summary', label: match?.top?.item ? `Review ${match.top.item.name}` : 'Open AI Order Draft', tab:'inventory', summary: match?.top?.item ? `Opening AI Order Assistant. Review ${match.top.item.name} and add it to the draft before dispatching.` : 'Opening AI Order Assistant so you can add the item to the draft before dispatching.', rows: topRows, safe:true, needsConfirmation:false };
   }
   return { intent:'ai_order_summary', label:'AI Order Assistant', tab:'inventory', summary: summarizeAiOrderAssistant(assistant), rows: topRows, safe:true, needsConfirmation:false };
@@ -1660,16 +1660,21 @@ const VoiceCommandDockBase = ({ appUser, inventoryItems = [], recipes = [], user
       const liveContext = await getVoiceEightySixContext();
       const voiceInventoryItems = liveContext.inventoryItems || inventoryItems || [];
       const voiceMenuDependencies = liveContext.menuDependencies || menuDependencies || [];
-      const match = resolveVoiceMatch(voiceInventoryItems, impactQuestion, { getLabel: item => item.name || item.title || '', getAliases: item => [item.category, item.vendor, ...(Array.isArray(item.aliases) ? item.aliases : [])].filter(Boolean), minScore: 40, highThreshold: 90, margin: 14 });
-      const subject = match.top?.item || impactQuestion;
+      const strictProductMatch = resolveStrictEightySixMatch(impactQuestion, voiceInventoryItems, voiceMenuDependencies);
+      const match = resolveVoiceMatch(voiceInventoryItems, impactQuestion, {
+        getLabel: item => item.name || item.title || item.itemName || item.productName || '',
+        getAliases: item => [item.category, item.subcategory, item.vendor, item.vendorName, item.supplierName, item.brand, item.packSize, item.pfgCode, item.sku, item.code, item.upc, item.gtin, ...(Array.isArray(item.aliases) ? item.aliases : []), ...(Array.isArray(item.alternateNames) ? item.alternateNames : []), ...(Array.isArray(item.keywords) ? item.keywords : [])].filter(Boolean),
+        minScore: 40, highThreshold: 90, margin: 14
+      });
+      const subject = strictProductMatch.item || match.top?.item || impactQuestion;
       const impactRows = getVoiceMenuImpactRows(subject, voiceInventoryItems, voiceMenuDependencies);
-      const displayName = match.top?.item?.name || impactQuestion;
+      const displayName = strictProductMatch.item?.name || match.top?.item?.name || impactQuestion;
       return {
         intent:'menu_impact_answer',
         label:`Menu impact: ${displayName}`,
         itemName: displayName,
         impactRows,
-        matchConfidence: match.confidence,
+        matchConfidence: Math.max(Number(strictProductMatch.confidence || 0), Number(match.confidence || 0)),
         summary: impactRows.length
           ? `${displayName} affects: ${impactRows.slice(0, 8).map(row => `${row.menuItemName}${row.severity ? ` (${row.severity})` : ''}`).join(', ')}.`
           : 'Menu impact needs approved menu ingredient links first. Scan or enter the menu, review the ingredient links, and approve them before 86Voice can answer impact questions.',
