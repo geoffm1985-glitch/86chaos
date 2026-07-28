@@ -763,6 +763,7 @@ const LoginScreen = ({ setAppUser }) => {
               <button type="button" onClick={() => setIsPrivacyModalOpen(true)} className="text-[10px] font-bold text-slate-600 hover:text-slate-400 transition-colors mt-4">
                 Privacy Policy & Terms of Service
               </button>
+              <div data-chaos-app-version="true" className="text-[9px] font-black uppercase tracking-widest text-slate-700">Version {CURRENT_VERSION}</div>
             </div>
           </form>
         )}

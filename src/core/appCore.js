@@ -404,7 +404,7 @@ export const MASTER_ADMIN_EMAIL = (process.env.REACT_APP_MASTER_ADMIN_EMAIL || '
 export const EVENT_TAGS = ['Standard Day', 'Packers Game', 'Brewers Game', 'Live Music', 'Severe Weather', 'Private Catering', 'Holiday'];
 
 // --- VERSION TRACKING ---
-export const CURRENT_VERSION = '16.0.45';
+export const CURRENT_VERSION = '16.0.46';
 
 // --- Helpers ---
 const usePageVisible = () => {
@@ -453,23 +453,43 @@ const normalizeWhereClausesForKey = (clauses = []) => (Array.isArray(clauses) ? 
   .filter(row => Array.isArray(row) && row[0] && row[1])
   .sort((a, b) => stableJson(a).localeCompare(stableJson(b)));
 
+const createFirestoreDiagnosticsDefaults = () => ({
+  activeListeners: 0,
+  activeDocuments: 0,
+  listenerReuseCount: 0,
+  listenerReleaseCount: 0,
+  listeners: {},
+  documents: {},
+  documentsReceivedByQuery: {},
+  writes: {},
+  writesInitiated: 0,
+  writesCompleted: 0,
+  skippedNoOpWrites: 0,
+  auditWritesCreated: 0,
+  lastResetAt: new Date().toISOString()
+});
+
+const ensureFirestoreDiagnosticsShape = (diagnostics = {}) => {
+  const defaults = createFirestoreDiagnosticsDefaults();
+  const target = diagnostics && typeof diagnostics === 'object' && !Array.isArray(diagnostics)
+    ? diagnostics
+    : {};
+  Object.entries(defaults).forEach(([key, value]) => {
+    if (target[key] === undefined || target[key] === null) target[key] = value;
+  });
+  ['listeners', 'documents', 'documentsReceivedByQuery', 'writes'].forEach((key) => {
+    if (!target[key] || typeof target[key] !== 'object' || Array.isArray(target[key])) target[key] = {};
+  });
+  ['activeListeners', 'activeDocuments', 'listenerReuseCount', 'listenerReleaseCount', 'writesInitiated', 'writesCompleted', 'skippedNoOpWrites', 'auditWritesCreated'].forEach((key) => {
+    target[key] = Number(target[key] || 0);
+  });
+  if (!target.lastResetAt) target.lastResetAt = defaults.lastResetAt;
+  return target;
+};
+
 const getFirestoreDiagnostics = () => {
   if (typeof window === 'undefined') return null;
-  window.__chaosFirestoreDiagnostics = window.__chaosFirestoreDiagnostics || {
-    activeListeners: 0,
-    activeDocuments: 0,
-    listenerReuseCount: 0,
-    listenerReleaseCount: 0,
-    listeners: {},
-    documents: {},
-    documentsReceivedByQuery: {},
-    writes: {},
-    writesInitiated: 0,
-    writesCompleted: 0,
-    skippedNoOpWrites: 0,
-    auditWritesCreated: 0,
-    lastResetAt: new Date().toISOString()
-  };
+  window.__chaosFirestoreDiagnostics = ensureFirestoreDiagnosticsShape(window.__chaosFirestoreDiagnostics);
   return window.__chaosFirestoreDiagnostics;
 };
 
@@ -588,6 +608,7 @@ export const makeLiveCollectionKey = ({ coll, restId, whereClauses, orderByField
 const annotateListenerDiagnostics = (key, patch = {}) => {
   const diagnostics = getFirestoreDiagnostics();
   if (!diagnostics) return;
+  diagnostics.listeners = diagnostics.listeners && typeof diagnostics.listeners === 'object' && !Array.isArray(diagnostics.listeners) ? diagnostics.listeners : {};
   diagnostics.listeners[key] = { ...(diagnostics.listeners[key] || {}), ...patch, updatedAt: new Date().toISOString() };
 };
 
@@ -654,6 +675,8 @@ const acquireSharedLiveCollection = ({ coll, restId, constraints, key, setData, 
         const changes = snap.docChanges ? snap.docChanges() : [];
         setLiveCacheEntry(liveCollectionSessionCache, key, { data: docs, coll, restId, restaurantId: restId, viewerUid, userSensitive: true });
         if (diagnostics) {
+          diagnostics.documentsReceivedByQuery = diagnostics.documentsReceivedByQuery && typeof diagnostics.documentsReceivedByQuery === 'object' && !Array.isArray(diagnostics.documentsReceivedByQuery) ? diagnostics.documentsReceivedByQuery : {};
+          diagnostics.listeners = diagnostics.listeners && typeof diagnostics.listeners === 'object' && !Array.isArray(diagnostics.listeners) ? diagnostics.listeners : {};
           diagnostics.documentsReceivedByQuery[key] = (diagnostics.documentsReceivedByQuery[key] || 0) + (isInitial ? snap.docs.length : changes.length);
           const row = diagnostics.listeners[key] || {};
           diagnostics.listeners[key] = {

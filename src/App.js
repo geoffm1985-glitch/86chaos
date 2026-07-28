@@ -704,7 +704,14 @@ const [currentDate, setCurrentDate] = useState(getToday());
 
 
   const isDemoMode = !!liveAppUser?.isDemo;
-  const serverSaysSuperAdmin = Boolean(serverAdminCheck?.superAdmin === true);
+  const hasLocalSystemAdminMarker = Boolean(
+    liveAppUser?.isSuperAdmin === true ||
+    liveAppUser?.systemAccess?.superAdmin === true ||
+    liveAppUser?.permissions?.systemAdmin === true ||
+    liveAppUser?.permissions?.godmode === true ||
+    /system\s*administrator|super\s*admin/i.test(String(liveAppUser?.role || liveAppUser?.roleName || ''))
+  );
+  const serverSaysSuperAdmin = Boolean(serverAdminCheck?.superAdmin === true || hasLocalSystemAdminMarker);
   if (!isDemoMode && liveAppUser && serverSaysSuperAdmin && liveAppUser.isSuperAdmin !== true) {
     liveAppUser = {
       ...liveAppUser,
@@ -1891,7 +1898,7 @@ What I clicked / expected:
     if (activeTabState === 'maintenance' && displayClientFeatures?.maintenance !== false && (liveAppUser?.isAdmin || liveAppUser?.permissions?.team)) return <TabMaintenance key={`mtn-${rId}`} appUser={liveAppUser} addToast={addToast} />;
     if (activeTabState === 'settings' && !isDemoMode) return <TabSettings key={`set-${rId}`} addToast={addToast} appUser={liveAppUser} clientData={displayClientData} users={displayUsers} presenceSelf={selfPresenceRecord} />;
     if (activeTabState === 'help') return <TabHelpCenter key={`help-${rId}`} appUser={liveAppUser} activeTab={activeTabState} voiceHelpSearchTarget={voiceHelpSearchTarget} addToast={addToast} />;
-    if (activeTabState === 'godmode' && (liveAppUser?.isSuperAdmin === true || serverSaysSuperAdmin || (MASTER_ADMIN_EMAIL && (liveAppUser?.email || '').toLowerCase() === MASTER_ADMIN_EMAIL.toLowerCase()))) return <TabGodMode key={`god-${rId}`} appUser={{ ...liveAppUser, isSuperAdmin: true, serverAdminCheck }} addToast={addToast} setGhostTenant={setGhostTenant} setActiveTab={stableSetActiveTab} />;
+    if (activeTabState === 'godmode' && (hasLocalSystemAdminMarker || serverSaysSuperAdmin || (MASTER_ADMIN_EMAIL && (liveAppUser?.email || '').toLowerCase() === MASTER_ADMIN_EMAIL.toLowerCase()))) return <TabGodMode key={`god-${rId}`} appUser={{ ...liveAppUser, isSuperAdmin: true, serverAdminCheck }} addToast={addToast} setGhostTenant={setGhostTenant} setActiveTab={stableSetActiveTab} />;
     if (activeTabState === 'godmode') return (
       <div className={`${T.card} p-5 sm:p-8 max-w-2xl mx-auto text-center space-y-4 border-red-900/40`}>
         <div className="mx-auto w-12 h-12 rounded-2xl bg-red-900/20 border border-red-900/50 flex items-center justify-center text-red-300 text-2xl">🔐</div>

@@ -2,6 +2,7 @@ const { initAdmin, requireAppCheckIfEnforced, readBody, norm, masterEmails } = r
 const { getBearerToken } = require('./_firebase-project-admin');
 const { enforceRateLimit, sendRateLimited } = require('./_rate-limit');
 const { sendBugReportEmail } = require('./_support-email');
+const crypto = require('crypto');
 
 function cleanText(value = '', max = 2000) {
   return String(value || '').replace(/\s+/g, ' ').trim().slice(0, max);
@@ -19,6 +20,52 @@ function cleanCategory(value = '') {
   ]);
   const raw = String(value || '').trim();
   return allowed.has(raw) ? raw : 'Bug / Error';
+}
+
+function isKnownNonFatalCrashMessage(...parts) {
+  const text = parts.flatMap(part => {
+    if (!part) return [];
+    if (typeof part === 'string') return [part];
+    if (typeof part === 'object') {
+      try { return [JSON.stringify(part)]; } catch (_) { return [String(part)]; }
+    }
+    return [String(part)];
+  }).join(' ').toLowerCase();
+  return text.includes('messaging/unsupported-browser')
+    || text.includes('unsupported-browser')
+    || text.includes("this browser doesn't support the api")
+    || text.includes('firebase messaging is not supported')
+    || text.includes('firebase messaging unsupported');
+}
+
+function buildCrashDedupeHash(report = {}, crashFields = {}) {
+  const fingerprintSource = [
+    report.type,
+    report.category,
+    report.restaurantId,
+    report.userId,
+    report.appVersion,
+    report.activeTab,
+    report.route,
+    report.source,
+    crashFields.errorName || report.errorName,
+    crashFields.errorMessage || report.errorMessage || report.rawMessage,
+    crashFields.chunkUrl || report.chunkUrl
+  ].map(value => cleanText(value || '', 500).toLowerCase()).join('|');
+  return crypto.createHash('sha256').update(fingerprintSource).digest('hex');
+}
+
+async function findRecentCrashDedupe(db, hash, nowMs = Date.now(), windowMs = 90 * 1000) {
+  if (!hash) return null;
+  const ref = db.collection('crashReportDedupe').doc(hash);
+  const snap = await ref.get().catch(() => null);
+  if (!snap?.exists) return { ref, existing: null };
+  const data = snap.data() || {};
+  const createdMs = Date.parse(data.createdAt || data.time || 0);
+  if (data.reportId && Number.isFinite(createdMs) && nowMs - createdMs >= 0 && nowMs - createdMs <= windowMs) {
+    return { ref, existing: data };
+  }
+  return { ref, existing: null };
 }
 
 
@@ -273,7 +320,55 @@ module.exports = async function handler(req, res) {
       supportEmailAttemptedAt: isAutomaticCrash ? nowIso : ''
     };
 
-    const reportRef = await db.collection('crashReports').add(report);
+    if (isAutomaticCrash && isKnownNonFatalCrashMessage(rawMessage, crashFields, report)) {
+      return res.status(200).json({
+        ok: true,
+        ignored: true,
+        nonFatal: true,
+        deduped: true,
+        reportId: '',
+        reason: 'known_non_fatal_firebase_messaging_unsupported_browser',
+        push: { attempted: false, fcmAcceptedCount: 0, fcmRejectedCount: 0, deliveryConfirmedCount: 0, openedCount: 0, status: 'suppressed_non_fatal' },
+        email: { attempted: false, providerAccepted: false, provider: '', providerMessageId: '' }
+      });
+    }
+
+    const crashDedupeHash = isAutomaticCrash ? buildCrashDedupeHash(report, crashFields) : '';
+    const crashDedupe = crashDedupeHash ? await findRecentCrashDedupe(db, crashDedupeHash, Date.now()) : null;
+    if (crashDedupe?.existing?.reportId) {
+      return res.status(200).json({
+        ok: true,
+        deduped: true,
+        reportId: crashDedupe.existing.reportId,
+        push: { attempted: false, fcmAcceptedCount: 0, fcmRejectedCount: 0, deliveryConfirmedCount: 0, openedCount: 0, status: 'deduped_recent_crash' },
+        email: { attempted: false, providerAccepted: false, provider: '', providerMessageId: '' },
+        supportPushFcmAcceptedCount: 0,
+        supportPushFcmRejectedCount: 0,
+        supportPushEligibleAdminCount: 0,
+        supportPushMissingTokens: false,
+        supportEmailProviderAccepted: false,
+        supportEmailAttempted: false
+      });
+    }
+
+    const reportRef = await db.collection('crashReports').add({
+      ...report,
+      crashDedupeHash
+    });
+    if (crashDedupeHash && crashDedupe?.ref) {
+      await crashDedupe.ref.set({
+        hash: crashDedupeHash,
+        reportId: reportRef.id,
+        userId: report.userId || '',
+        restaurantId: report.restaurantId || '',
+        appVersion: report.appVersion || '',
+        category: report.category || '',
+        errorName: report.errorName || '',
+        errorMessage: cleanText(report.errorMessage || report.rawMessage || '', 500),
+        createdAt: nowIso,
+        expiresAt: new Date(Date.now() + (5 * 60 * 1000)).toISOString()
+      }, { merge: true }).catch(() => {});
+    }
     const pushResult = await sendSuperAdminPush(app, db, { ...report, reportId: reportRef.id }, caller).catch(error => ({
       attempted: true,
       fcmAcceptedCount: 0,

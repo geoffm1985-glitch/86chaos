@@ -1,5 +1,7 @@
 const { test, expect } = require('@playwright/test');
-const AxeBuilder = require('@axe-core/playwright').default;
+let AxeBuilder = null;
+let axeCore = null;
+try { AxeBuilder = require('@axe-core/playwright').default; } catch (_) { axeCore = require('axe-core'); }
 const {
   ROUTE_SPECS,
   ownerLikeCreds,
@@ -9,6 +11,15 @@ const {
   attachJson,
   PERMISSION_GATE_RE,
 } = require('../86chaos-full-audit/utils/audit-helpers.cjs');
+
+const WCAG_TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'];
+
+async function runAxe(page) {
+  if (AxeBuilder) return new AxeBuilder({ page }).withTags(WCAG_TAGS).analyze();
+  if (!axeCore?.source) throw new Error('Accessibility release gate requires either @axe-core/playwright or axe-core.');
+  await page.addScriptTag({ content: axeCore.source });
+  return page.evaluate(async (tags) => window.axe.run(document, { runOnly: { type: 'tag', values: tags } }), WCAG_TAGS);
+}
 
 function simplifyViolation(v) {
   return {
@@ -32,9 +43,7 @@ test.describe('16 WCAG accessibility release gate', () => {
     for (const route of ROUTE_SPECS) {
       const text = await gotoTab(page, route.tab, { settleMs: 900 });
       if (PERMISSION_GATE_RE.test(text)) continue;
-      const result = await new AxeBuilder({ page })
-        .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'])
-        .analyze();
+      const result = await runAxe(page);
       const blocking = result.violations.filter(v => v.impact === 'serious' || v.impact === 'critical').map(simplifyViolation);
       const moderate = result.violations.filter(v => v.impact === 'moderate').map(simplifyViolation);
       findings.push({ route: route.tab, blocking, moderate });
