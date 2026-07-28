@@ -420,7 +420,7 @@ async function sendRestaurantOwnerAdminPush(app, db, restaurant, attentionItems,
   const payloadBase = {
     notification: { title, body },
     data: { type: 'python_owner_admin_alert', route: 'today', targetTab: 'today', runId: String(runId), restaurantId: String(restaurant.id), alertOnly: 'true', changesApplied: '0', click_action: '/?tab=today', notificationTag: tag },
-    webpush: { notification: { tag, renotify: false, icon: '/app-icon.png', badge: '/app-icon.png' }, fcmOptions: { link: '/?tab=today' } }
+    webpush: { notification: { tag, renotify: false, icon: '/app-icon.png', badge: '/notification-badge.png' }, fcmOptions: { link: '/?tab=today' } }
   };
   let sentCount = 0;
   let failedCount = 0;

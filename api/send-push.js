@@ -70,7 +70,7 @@ function webPushOptions(tag, link = '/') {
       tag,
       renotify: false,
       icon: '/app-icon.png',
-      badge: '/app-icon.png'
+      badge: '/notification-badge.png'
     },
     fcmOptions: { link }
   };

@@ -1,11 +1,14 @@
 {
-  "version": "16.0.47",
-  "name": "86 Chaos 16.0.47 Release Gate Slim Report and Stability Fix",
+  "version": "16.0.48",
+  "name": "86 Chaos 16.0.48 App Load and Notification Badge Fix",
   "releasedAt": "2026-07-27T00:00:00.000Z",
-  "label": "86 Chaos 16.0.47 Release Gate Slim Report and Stability Fix",
-  "build": "16.0.47",
-  "notes": "Release-gate runner now exports the slim upload ZIP by default and several release-gate blockers were fixed in the app and test harness.",
+  "label": "86 Chaos 16.0.48 App Load and Notification Badge Fix",
+  "build": "16.0.48",
+  "notes": "Fixes an app-shell startup crash caused by an accessibility observer dependency order issue, and changes push notification badges to a dedicated transparent badge so Android status-bar notifications do not show square app-logo blocks.",
   "releaseNotes": [
+    "Fixed an app-shell startup crash where an accessibility label observer referenced menu state before the menu state hook was initialized.",
+    "The label observer now uses a safer body mutation watch and no longer watches the aria-label attribute it writes itself.",
+    "Push notification payloads now use /notification-badge.png as the small badge instead of the full square app icon, reducing square status-bar notification icons on Android.",
     "Play Store release-gate runner now creates 86chaos-release-gate-SLIM-UPLOAD-ME.zip by default instead of the giant full artifact ZIP.",
     "The full release-gate ZIP is only created when CHAOS_RELEASE_GATE_FULL_ZIP=true is explicitly set.",
     "Release-gate broken-value checks no longer treat normal words like Financials or Maintenance as NaN failures.",
@@ -38,5 +41,5 @@
     "My Schedule now shows only current and upcoming shifts for the selected month instead of dimming old ended shifts in the employee list.",
     "Schedule Builder Auto-Fill now fetches the full selected source month before copying shifts, so weeks outside the current visible planning window are not silently skipped."
   ],
-  "releaseTitle": "86 Chaos 16.0.47 Release Gate Slim Report and Stability Fix"
+  "releaseTitle": "86 Chaos 16.0.48 App Load and Notification Badge Fix"
 }
