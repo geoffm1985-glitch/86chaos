@@ -23,7 +23,7 @@ test.describe('06 request-off, availability, and scheduled events integration', 
     const text = await gotoTab(page, 'schedule', { settleMs: 1600, maxText: 60000 });
     const allenNear = await collectTextNear(page, 'Allen QA', 1600);
     await attachJson(testInfo, '06-partial-request-off-readability.json', { allenNear, sample: text.slice(0, 7000) });
-    expect(text, 'Schedule/request-off pages should never show Invalid Date').not.toMatch(/Invalid Date|NaN|undefined undefined|null null/i);
+    expect(text, 'Schedule/request-off pages should never show Invalid Date').not.toMatch(/Invalid Date|Infinity|undefined undefined|null null|\$NaN|NaN%|(?:^|[^A-Za-z])NaN(?:[^A-Za-z]|$)/i);
     if (ALLOW_MUTATION && readSeedReport()?.ok) expect(text, 'Seeded partial request-off should show readable partial day/time text').toMatch(/12p|12:00|4p|4:00|partial|request/i);
   });
 

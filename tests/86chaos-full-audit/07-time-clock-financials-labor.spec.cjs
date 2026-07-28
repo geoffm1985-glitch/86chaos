@@ -9,7 +9,7 @@ test.describe('07 time clock, timesheets, financials, and labor math', () => {
     const text = await gotoTab(page, 'published', { settleMs: 1600, maxText: 50000 });
     await attachJson(testInfo, '07-time-clock-route.json', { sample: text.slice(0, 6000) });
     expect(text).toMatch(/Time Clock|Clock|Schedule|Punch|Timesheet|My Schedule/i);
-    expect(text).not.toMatch(/Invalid Date|NaN|Infinity|undefined undefined|null null/i);
+    expect(text).not.toMatch(/Invalid Date|Infinity|undefined undefined|null null|\$NaN|NaN%|(?:^|[^A-Za-z])NaN(?:[^A-Za-z]|$)/i);
   });
 
   test('financials and labor screens do not show broken money, hours, tips, tax, discount, or labor-percent math', async ({ page }, testInfo) => {

@@ -9,7 +9,7 @@ test.describe('01 auth and every-route health', () => {
     watchForProblems(page, problems);
     const loginText = await login(page, account.email, account.password);
     await expectVersion(page);
-    expect(loginText).not.toMatch(/Application error|Unhandled Runtime Error|Invalid Date|NaN/i);
+    expect(loginText).not.toMatch(/Application error|Unhandled Runtime Error|Invalid Date|(?:^|[^A-Za-z])NaN(?:[^A-Za-z]|$)/i);
     const results = [];
     for (const route of ROUTE_SPECS) {
       const text = await gotoTab(page, route.tab, { settleMs: 1200 });
@@ -31,7 +31,7 @@ test.describe('01 auth and every-route health', () => {
     for (const route of ROUTE_SPECS) {
       await gotoTab(page, route.tab);
       const text = await bodyText(page, 35000);
-      const bad = [...text.matchAll(/Invalid Date|NaN|Infinity|undefined undefined|null null|\$NaN|NaN%|Inactive -\d+ days/g)].map(m => m[0]);
+      const bad = [...text.matchAll(/Invalid Date|Infinity|undefined undefined|null null|\$NaN|NaN%|Inactive -\d+ days|(?:^|[^A-Za-z])NaN(?:[^A-Za-z]|$)/g)].map(m => m[0]);
       if (bad.length) findings.push({ route: route.tab, bad: [...new Set(bad)], sample: text.slice(0, 2500) });
     }
     await attachJson(testInfo, '01-placeholder-findings.json', { findings });

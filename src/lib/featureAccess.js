@@ -228,6 +228,9 @@ export const resolveFeatureAccess = ({ workspace = {}, user = {}, featureKey }) 
   };
 };
 
+
+export const hasFeature = (workspace = {}, user = {}, featureKey = '') => resolveFeatureAccess({ workspace, user, featureKey }).allowed;
+
 export const featureForRoute = (route) => ROUTE_FEATURES[route] || null;
 export const featureForFinancialSubtab = (subTab) => FINANCIAL_SUBTAB_FEATURES[subTab] || null;
 export const isPlanAtLeast = (planId, minimumPlanId) => PLAN_ORDER.indexOf(normalizePlanId(planId)) >= PLAN_ORDER.indexOf(normalizePlanId(minimumPlanId));

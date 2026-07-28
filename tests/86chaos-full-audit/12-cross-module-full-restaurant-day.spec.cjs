@@ -13,7 +13,7 @@ test.describe('12 cross-module impact and full restaurant day', () => {
     const joined = Object.values(samples).join('\n');
     await attachJson(testInfo, '12-cross-module-samples.json', { samples });
     expect(joined).toMatch(/Need Attention|Manager Brief|Kitchen|Schedule|Inventory|Message|Financial|Labor|86/i);
-    expect(joined).not.toMatch(/Invalid Date|NaN|Infinity|undefined undefined|null null|Inactive -\d+ days/i);
+    expect(joined).not.toMatch(/Invalid Date|Infinity|undefined undefined|null null|Inactive -\d+ days|\$NaN|NaN%|(?:^|[^A-Za-z])NaN(?:[^A-Za-z]|$)/i);
   });
 
   test('fake restaurant seed has all cross-module trigger data required for full restaurant-day audit', async ({}, testInfo) => {

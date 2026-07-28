@@ -82,6 +82,6 @@ test.describe('11 mobile, desktop, 86Voice, and upload/scan UI', () => {
     const menu = await gotoTab(page, 'menu-intelligence', { settleMs: 1200, maxText: 40000 });
     await attachJson(testInfo, '11-upload-scan-surfaces.json', { inventorySample: inventory.slice(0, 6000), menuSample: menu.slice(0, 4000) });
     expect(`${inventory}\n${menu}`).toMatch(/upload|scan|invoice|menu|PDF|image|progress|timeout|compress/i);
-    expect(`${inventory}\n${menu}`).not.toMatch(/Invalid Date|NaN|undefined undefined|null null/i);
+    expect(`${inventory}\n${menu}`).not.toMatch(/Invalid Date|Infinity|undefined undefined|null null|\$NaN|NaN%|(?:^|[^A-Za-z])NaN(?:[^A-Za-z]|$)/i);
   });
 });

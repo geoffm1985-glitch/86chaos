@@ -328,6 +328,8 @@ module.exports = async function handler(req, res) {
         deduped: true,
         reportId: '',
         reason: 'known_non_fatal_firebase_messaging_unsupported_browser',
+        rawMessage,
+        marker: rawMessage,
         push: { attempted: false, fcmAcceptedCount: 0, fcmRejectedCount: 0, deliveryConfirmedCount: 0, openedCount: 0, status: 'suppressed_non_fatal' },
         email: { attempted: false, providerAccepted: false, provider: '', providerMessageId: '' }
       });
@@ -340,6 +342,8 @@ module.exports = async function handler(req, res) {
         ok: true,
         deduped: true,
         reportId: crashDedupe.existing.reportId,
+        rawMessage,
+        marker: rawMessage,
         push: { attempted: false, fcmAcceptedCount: 0, fcmRejectedCount: 0, deliveryConfirmedCount: 0, openedCount: 0, status: 'deduped_recent_crash' },
         email: { attempted: false, providerAccepted: false, provider: '', providerMessageId: '' },
         supportPushFcmAcceptedCount: 0,
@@ -434,6 +438,10 @@ module.exports = async function handler(req, res) {
     return res.status(200).json({
       ok: true,
       reportId: reportRef.id,
+      rawMessage: report.rawMessage,
+      marker: report.rawMessage,
+      message: report.message,
+      errorMessage: report.errorMessage,
       push: {
         attempted: pushResult.attempted !== false,
         fcmAcceptedCount: pushResult.fcmAcceptedCount ?? pushResult.sentCount ?? 0,
