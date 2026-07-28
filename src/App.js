@@ -4,7 +4,7 @@ import { addDoc, collection, doc, onSnapshot, updateDoc } from 'firebase/firesto
 import { getToken, onMessage } from 'firebase/messaging';
 import { signOut } from 'firebase/auth';
 import 'leaflet/dist/leaflet.css';
-import { T, db, auth, messaging, firebaseConfig, CURRENT_VERSION, MASTER_ADMIN_EMAIL, useLiveCollection, useLiveCollectionState, useLiveDocument, useLiveDocumentState, secureFetch, waitForAuthCurrentUser, getToday, getMonthStr, formatDate, formatDisplayFullDate, formatDisplayMonth, logAudit, setActiveTimeFormat, getOfflineQueue, replayOfflineQueue, startLowCostPresenceSession, useLowCostPresenceSummary, clearTenantListenerCache } from './core/appCore';
+import { T, db, auth, messagingReady, isFirebaseMessagingUnsupportedError, firebaseConfig, CURRENT_VERSION, MASTER_ADMIN_EMAIL, useLiveCollection, useLiveCollectionState, useLiveDocument, useLiveDocumentState, secureFetch, waitForAuthCurrentUser, getToday, getMonthStr, formatDate, formatDisplayFullDate, formatDisplayMonth, logAudit, setActiveTimeFormat, getOfflineQueue, replayOfflineQueue, startLowCostPresenceSession, useLowCostPresenceSummary, clearTenantListenerCache } from './core/appCore';
 import { buildAlertFingerprint, useRememberedAlert } from './core/alertMemory';
 import { CheersLogo, Modal, DrawerMenu, DayDotPrintScreen, GlobalSearchModal, KitchenTVMode, UndoBar, VoiceCommandDock } from './components/common';
 import { LockedFeatureScreen } from './components/PlanGate';
@@ -1560,7 +1560,7 @@ What I clicked / expected:
   };
 
   const repairPushOnThisDevice = async (source = 'manual') => {
-    if (!liveAppUser?.id || ghostTenant || isDemoMode || typeof window === 'undefined' || !('Notification' in window) || !messaging) {
+    if (!liveAppUser?.id || ghostTenant || isDemoMode || typeof window === 'undefined' || !('Notification' in window)) {
       addToast('Push Repair Blocked', 'Push repair is only available from the real logged-in device.');
       return false;
     }
@@ -1580,6 +1580,20 @@ What I clicked / expected:
         return false;
       }
 
+      const supportedMessaging = await messagingReady.catch(() => null);
+      if (!supportedMessaging) {
+        await updateDoc(doc(db, 'users', liveAppUser.id), {
+          notificationPermission: permission,
+          pushTokenPermission: permission,
+          pushRepairStatus: 'unsupported-browser',
+          lastPushRepairError: 'Firebase Messaging is not supported on this browser/session.',
+          lastPushFailureCode: 'messaging/unsupported-browser',
+          lastPushTokenSyncAt: new Date().toISOString()
+        }).catch(() => {});
+        addToast('Push Unavailable', 'This browser cannot run Firebase push notifications. You can still use 86 Chaos normally.');
+        return false;
+      }
+
       let registration = null;
       if ('serviceWorker' in navigator) {
         if (liveAppUser?.pushForceServiceWorkerRefresh) {
@@ -1592,7 +1606,7 @@ What I clicked / expected:
 
       const tokenOptions = { vapidKey: getActiveVapidKey() };
       if (registration) tokenOptions.serviceWorkerRegistration = registration;
-      const currentToken = await getToken(messaging, tokenOptions);
+      const currentToken = await getToken(supportedMessaging, tokenOptions);
       if (!currentToken) throw new Error('Firebase returned no push token for this browser.');
 
       const stamp = new Date().toISOString();
@@ -1621,14 +1635,16 @@ What I clicked / expected:
       return true;
     } catch (err) {
       console.warn('86 Chaos push repair failed:', err?.message || err);
+      const unsupportedMessaging = isFirebaseMessagingUnsupportedError(err);
       await updateDoc(doc(db, 'users', liveAppUser.id), {
         notificationPermission: Notification.permission,
         pushTokenPermission: Notification.permission,
-        pushRepairStatus: 'repair-failed',
+        pushRepairStatus: unsupportedMessaging ? 'unsupported-browser' : 'repair-failed',
         lastPushRepairError: err?.message || String(err),
+        lastPushFailureCode: err?.code || (unsupportedMessaging ? 'messaging/unsupported-browser' : null),
         lastPushTokenSyncAt: new Date().toISOString()
       }).catch(() => {});
-      addToast('Push Repair Failed', err?.message || 'Could not reconnect push notifications on this device.');
+      addToast(unsupportedMessaging ? 'Push Unavailable' : 'Push Repair Failed', unsupportedMessaging ? 'This browser cannot run Firebase push notifications. You can still use 86 Chaos normally.' : (err?.message || 'Could not reconnect push notifications on this device.'));
       return false;
     } finally {
       setIsPushRepairing(false);
@@ -1639,7 +1655,7 @@ What I clicked / expected:
   const pushRepairRequested = Boolean(!ghostTenant && !isDemoMode && liveAppUser?.id && (pushRepairRequestedByLink || liveAppUser?.pushNeedsRepair === true || liveAppUser?.pushForceServiceWorkerRefresh === true));
 
   useEffect(() => {
-    if (!liveAppUser?.id || ghostTenant || isDemoMode || typeof window === 'undefined' || !('Notification' in window) || !messaging) return;
+    if (!liveAppUser?.id || ghostTenant || isDemoMode || typeof window === 'undefined' || !('Notification' in window)) return;
 
     let canceled = false;
 
@@ -1662,6 +1678,20 @@ What I clicked / expected:
       }
 
       try {
+        const supportedMessaging = await messagingReady.catch(() => null);
+        if (!supportedMessaging) {
+          if (shouldWritePushPermissionState(permission, 'messaging/unsupported-browser')) {
+            updateDoc(doc(db, 'users', liveAppUser.id), {
+              notificationPermission: permission,
+              pushTokenPermission: permission,
+              pushRepairStatus: 'unsupported-browser',
+              lastPushRepairError: 'Firebase Messaging is not supported on this browser/session.',
+              lastPushFailureCode: 'messaging/unsupported-browser',
+              lastPushTokenSyncAt: new Date().toISOString()
+            }).catch(() => {});
+          }
+          return;
+        }
         let registration = null;
         if ('serviceWorker' in navigator) {
           if (liveAppUser?.pushForceServiceWorkerRefresh) {
@@ -1673,7 +1703,7 @@ What I clicked / expected:
         }
         const tokenOptions = { vapidKey: getActiveVapidKey() };
         if (registration) tokenOptions.serviceWorkerRegistration = registration;
-        const currentToken = await getToken(messaging, tokenOptions);
+        const currentToken = await getToken(supportedMessaging, tokenOptions);
         if (!currentToken || canceled) return;
         const stamp = new Date().toISOString();
         const device = buildPushDevicePatch(currentToken, permission, stamp);
@@ -1699,13 +1729,15 @@ What I clicked / expected:
         if (showToast) addToast('Push Ready', 'Push notifications are enabled for this device.');
       } catch (err) {
         console.warn('86 Chaos push token sync failed:', err?.message || err);
+        const unsupportedMessaging = isFirebaseMessagingUnsupportedError(err);
         const pushErrorMessage = err?.message || String(err);
         if (shouldWritePushPermissionState(permission, pushErrorMessage)) {
           updateDoc(doc(db, 'users', liveAppUser.id), {
             notificationPermission: permission,
             pushTokenPermission: permission,
-            pushRepairStatus: 'sync-failed',
+            pushRepairStatus: unsupportedMessaging ? 'unsupported-browser' : 'sync-failed',
             lastPushRepairError: pushErrorMessage,
+            lastPushFailureCode: err?.code || (unsupportedMessaging ? 'messaging/unsupported-browser' : null),
             lastPushTokenSyncAt: new Date().toISOString()
           }).catch(() => {});
         }
@@ -1731,16 +1763,26 @@ What I clicked / expected:
   }, [liveAppUser?.id, liveAppUser?.pushNeedsRepair, liveAppUser?.pushForceServiceWorkerRefresh, ghostTenant, isDemoMode]);                      
   // --- FOREGROUND NOTIFICATION CATCHER ---
   useEffect(() => {
-    if (!messaging) return;
-    const unsub = onMessage(messaging, (payload) => {
-      console.log("Foreground message caught:", payload);
-      addToast(
-        payload.notification?.title || 'System Alert', 
-        payload.notification?.body || 'You have a new notification.'
-      );
+    let active = true;
+    let unsubscribe = () => {};
+    messagingReady.then((supportedMessaging) => {
+      if (!active || !supportedMessaging) return;
+      try {
+        unsubscribe = onMessage(supportedMessaging, (payload) => {
+          console.log("Foreground message caught:", payload);
+          addToast(
+            payload.notification?.title || 'System Alert', 
+            payload.notification?.body || 'You have a new notification.'
+          );
+        });
+      } catch (err) {
+        if (!isFirebaseMessagingUnsupportedError(err)) console.warn('86 Chaos foreground messaging failed:', err?.message || err);
+      }
+    }).catch((err) => {
+      if (!isFirebaseMessagingUnsupportedError(err)) console.warn('86 Chaos foreground messaging unavailable:', err?.message || err);
     });
-    return () => unsub();
-  }, [addToast, messaging]);
+    return () => { active = false; try { unsubscribe(); } catch (_) {} };
+  }, [addToast]);
 
   useEffect(() => {
     const handleKey = (e) => {
