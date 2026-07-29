@@ -240,6 +240,113 @@ async function queryQaOwned(page, rest, colName, restaurantId) {
   return (rows || []).map(r => r.document).filter(Boolean);
 }
 
+
+
+async function getDocByName(page, rest, docName) {
+  if (!docName) return null;
+  try {
+    return await pageFetchJson(page, { url: `https://firestore.googleapis.com/v1/${docName}`, method: 'GET', headers: rest.headers });
+  } catch (error) {
+    if (/HTTP 404\b/.test(error.message || '')) return null;
+    throw error;
+  }
+}
+
+function fromFirestoreValue(value) {
+  if (!value || typeof value !== 'object') return undefined;
+  if ('stringValue' in value) return value.stringValue;
+  if ('booleanValue' in value) return value.booleanValue;
+  if ('integerValue' in value) return Number(value.integerValue);
+  if ('doubleValue' in value) return Number(value.doubleValue);
+  if ('timestampValue' in value) return value.timestampValue;
+  if ('nullValue' in value) return null;
+  if ('arrayValue' in value) return (value.arrayValue.values || []).map(fromFirestoreValue);
+  if ('mapValue' in value) return fromFirestoreFields(value.mapValue.fields || {});
+  return undefined;
+}
+
+function fromFirestoreFields(fields = {}) {
+  return Object.fromEntries(Object.entries(fields).map(([key, value]) => [key, fromFirestoreValue(value)]));
+}
+
+const EXPECTED_MINIMUM_COUNTS = {
+  users: 7,
+  workspaceMembers: 4,
+  vendors: 2,
+  inventoryItems: 4,
+  recipes: 2,
+  menuDependencies: 2,
+  shifts: 15,
+  timeOffRequests: 2,
+  events: 3,
+  timePunches: 2,
+  prepItems: 2,
+  tasks: 2,
+  maintenanceLogs: 2,
+  pmSchedules: 2,
+  sales: 14,
+  financialExpenses: 2,
+  restaurantAdminAlerts: 2,
+  personalReminders: 2,
+  availabilityRecords: 3,
+  scheduleTemplates: 1,
+  scheduleCoverageTargets: 2,
+};
+
+function summarizeCreatedDocuments(createdByCollection = {}, memberships = [], restaurantRef = null, restaurantId = '') {
+  const rows = [];
+  if (restaurantRef) rows.push({ collection: 'restaurants', id: restaurantRef.id || restaurantId, docName: restaurantRef.docName, restaurantId, qaRunId: RUN_ID, expectedQaOwned: true });
+  for (const [collection, docs] of Object.entries(createdByCollection || {})) {
+    for (const doc of docs || []) rows.push({ collection, id: doc.id, docName: doc.docName, name: doc.name || '', restaurantId, qaRunId: RUN_ID, expectedQaOwned: true });
+  }
+  for (const doc of memberships || []) rows.push({ collection: 'workspaceMembers', id: doc.id, docName: doc.docName, restaurantId, qaRunId: RUN_ID, expectedQaOwned: true, roleKey: doc.key });
+  return rows;
+}
+
+async function verifySeedDocuments(page, rest, seededDocuments, expectedCounts, restaurantId) {
+  const verifiedCounts = {};
+  const missing = [];
+  const bad = [];
+  const verifiedDocuments = [];
+  for (const row of seededDocuments) {
+    if (!row.docName) {
+      missing.push({ ...row, reason: 'missing document resource name in seed report' });
+      continue;
+    }
+    const remote = await getDocByName(page, rest, row.docName);
+    if (!remote) {
+      missing.push({ ...row, reason: 'document was not readable after creation' });
+      continue;
+    }
+    const data = fromFirestoreFields(remote.fields || {});
+    const problems = [];
+    if (row.collection !== 'restaurants' && data.restaurantId !== restaurantId) problems.push(`restaurantId=${data.restaurantId || '(missing)'}`);
+    if (data.qaOwned !== true) problems.push(`qaOwned=${String(data.qaOwned)}`);
+    if (data.qaRunId !== RUN_ID) problems.push(`qaRunId=${data.qaRunId || '(missing)'}`);
+    if (problems.length) bad.push({ collection: row.collection, id: row.id, docName: row.docName, problems });
+    verifiedCounts[row.collection] = (verifiedCounts[row.collection] || 0) + 1;
+    verifiedDocuments.push({ collection: row.collection, id: row.id, docName: row.docName, restaurantId: data.restaurantId || restaurantId, qaRunId: data.qaRunId || '', qaOwned: data.qaOwned === true });
+  }
+  const countFailures = [];
+  for (const [collection, minimum] of Object.entries(expectedCounts)) {
+    const actual = verifiedCounts[collection] || 0;
+    if (actual < minimum) countFailures.push({ collection, expectedMinimum: minimum, actual });
+  }
+  const workspaceMemberIds = seededDocuments.filter(row => row.collection === 'workspaceMembers').map(row => row.id).filter(Boolean);
+  if (new Set(workspaceMemberIds).size !== workspaceMemberIds.length) {
+    countFailures.push({ collection: 'workspaceMembers', expected: 'unique ids', actual: workspaceMemberIds });
+  }
+  return {
+    ok: missing.length === 0 && bad.length === 0 && countFailures.length === 0,
+    expectedCounts,
+    verifiedCounts,
+    verifiedDocuments,
+    missing,
+    bad,
+    countFailures,
+  };
+}
+
 async function deleteQaOwned(page, rest, restaurantId) {
   const deleted = [];
   for (const colName of COLLECTION_ORDER) {
@@ -329,6 +436,7 @@ async function main() {
     const rest = firestoreRest(config, writer.idToken);
 
     let restaurantId = env('CHAOS_QA_RESTAURANT_ID');
+    let restaurantRef = null;
     if (!restaurantId && boolEnv('CHAOS_QA_CREATE_RESTAURANT')) {
       const restRef = await createDoc(page, rest, 'restaurants', {
         name: QA_RESTAURANT_NAME,
@@ -347,6 +455,7 @@ async function main() {
         systemSettings: { overtime: 40, enableTargets: true, targetLaborPct: 23 },
         features: { schedule: true, events: true, ops: true, messages: true, prep: true, recipes: true, inventory: true, sales: true, team: true, maintenance: true, timesheets: true, labor: true },
       });
+      restaurantRef = restRef;
       restaurantId = restRef.id;
       report.createdRestaurant = true;
     }
@@ -380,7 +489,7 @@ async function main() {
         updatedAt: new Date().toISOString(),
       };
       const ref = await patchDoc(page, rest, 'workspaceMembers', `${account.uid}_${restaurantId}`, membership);
-      report.memberships.push({ key: account.key, uid: account.uid, email: account.email, id: ref.id, role: account.role });
+      report.memberships.push({ key: account.key, uid: account.uid, email: account.email, id: ref.id, docName: ref.docName, role: account.role });
     }
     const memberIds = report.memberships.map(m => m.id);
     if (new Set(memberIds).size !== report.memberships.length) throw new Error(`Role membership documents were not unique: ${memberIds.join(', ')}`);
@@ -422,10 +531,17 @@ async function main() {
       created[colName] = await addCollection(page, rest, colName, profile.collections[colName] || []);
     }
 
-    report.ok = true;
-    report.profile = { restaurantId, restaurantName: QA_RESTAURANT_NAME, users: created.users, createdCounts: Object.fromEntries(Object.entries(created).map(([k, v]) => [k, v.length])), ids, expectations: profile.expectations, scheduleTruth: summarizeSchedule(profile.collections.shifts) };
+    report.seededDocuments = summarizeCreatedDocuments(created, report.memberships, restaurantRef, restaurantId);
+    report.expectedCounts = EXPECTED_MINIMUM_COUNTS;
+    report.createdCounts = Object.fromEntries(Object.entries(created).map(([k, v]) => [k, v.length]));
+    report.createdCounts.workspaceMembers = report.memberships.length;
+    report.createdCounts.restaurants = restaurantRef ? 1 : 0;
+    report.verification = await verifySeedDocuments(page, rest, report.seededDocuments, EXPECTED_MINIMUM_COUNTS, restaurantId);
+    report.ok = report.verification.ok === true;
+    report.profile = { restaurantId, restaurantName: QA_RESTAURANT_NAME, users: created.users, createdCounts: report.createdCounts, ids, expectations: profile.expectations, scheduleTruth: summarizeSchedule(profile.collections.shifts) };
+    if (!report.ok) throw new Error(`Seed verification failed. Missing=${report.verification.missing.length}; bad=${report.verification.bad.length}; countFailures=${report.verification.countFailures.length}.`);
     await writeReport(report);
-    console.log(`Seeded fake QA restaurant data for ${restaurantId}. Report: ${REPORT_PATH}`);
+    console.log(`Seeded and verified fake QA restaurant data for ${restaurantId}. Report: ${REPORT_PATH}`);
   } catch (error) {
     report.ok = false;
     report.error = error.stack || error.message;
@@ -437,4 +553,12 @@ async function main() {
   }
 }
 
-main();
+if (require.main === module) main();
+
+module.exports = {
+  EXPECTED_MINIMUM_COUNTS,
+  verifySeedDocuments,
+  summarizeCreatedDocuments,
+  fromFirestoreFields,
+  fromFirestoreValue,
+};

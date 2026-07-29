@@ -66,21 +66,16 @@ function maskedEnvValue(name) {
 
 
 function readCapabilitiesFromDisk() {
-  const runDir = runContext?.getRunDir?.(process.env.CHAOS_RELEASE_GATE_RUN_ID || process.env.CHAOS_FULL_AUDIT_RUN_ID || '') || '';
-  const candidates = [
-    runDir ? path.join(runDir, 'app-capabilities.json') : '',
-    path.join(process.cwd(), 'test-results', '86chaos-play-store-release-gate', 'app-capabilities.json'),
-    path.join(process.cwd(), 'test-results', '86chaos-release-gate-SLIM-UPLOAD-ME', '86chaos-play-store-release-gate', 'app-capabilities.json'),
-    path.join(process.cwd(), 'app-capabilities.json')
-  ];
-  for (const filePath of candidates) {
-    try {
-      if (!filePath || !fs.existsSync(filePath)) continue;
-      const parsed = JSON.parse(fs.readFileSync(filePath, 'utf8'));
-      return parsed && typeof parsed === 'object' ? parsed : {};
-    } catch (_) {}
+  const runId = process.env.CHAOS_RELEASE_GATE_RUN_ID || process.env.CHAOS_FULL_AUDIT_RUN_ID || '';
+  const runDir = runContext?.getRunDir?.(runId) || '';
+  const filePath = runDir ? path.join(runDir, 'app-capabilities.json') : '';
+  try {
+    if (!filePath || !fs.existsSync(filePath)) return {};
+    const parsed = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch (_) {
+    return {};
   }
-  return {};
 }
 
 const CAPABILITIES = readCapabilitiesFromDisk();
@@ -471,9 +466,7 @@ async function collectTextNear(page, needle, radius = 1200) {
 
 function seedReportPath() {
   const runId = process.env.CHAOS_RELEASE_GATE_RUN_ID || process.env.CHAOS_FULL_AUDIT_RUN_ID || RUN_ID;
-  const current = runContext?.getSeedReportPath?.(runId);
-  if (current && fs.existsSync(current)) return current;
-  return path.join(process.cwd(), 'test-results', '86chaos-full-audit-seed-report.json');
+  return runContext?.getSeedReportPath?.(runId) || path.join(process.cwd(), 'test-results', '86chaos-play-store-release-gate', runId, '86chaos-full-audit-seed-report.json');
 }
 
 function readSeedReport() {

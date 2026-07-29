@@ -51,7 +51,7 @@
     "migrate:workspace-memberships:dry-run": "node scripts/migrate-workspace-memberships.js",
     "migrate:workspace-memberships": "node scripts/migrate-workspace-memberships.js --execute",
     "test:play-store": "powershell -NoProfile -ExecutionPolicy Bypass -File .\\RUN_86CHAOS_PLAY_STORE_RELEASE_GATE.ps1",
-    "test:play-store:failed": "playwright test --config ./playwright.failed-release.config.cjs"
+    "test:play-store:failed": "powershell -NoProfile -ExecutionPolicy Bypass -File .\\RUN_86CHAOS_FAILED_ONLY_RELEASE_GATE.ps1"
   },
   "browserslist": {
     "production": [
