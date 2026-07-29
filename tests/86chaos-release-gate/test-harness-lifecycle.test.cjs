@@ -8,6 +8,8 @@ const cleanupPath = path.resolve(__dirname, '../../scripts/86chaos-full-audit/cl
 const seedPath = path.resolve(__dirname, '../../scripts/86chaos-full-audit/seed-fake-restaurant.cjs');
 const runContextPath = path.resolve(__dirname, '../../scripts/86chaos-release-gate/run-context.cjs');
 const failedManifestPath = path.resolve(__dirname, './failed-only-manifest.cjs');
+const dependencyPreflightPath = path.resolve(__dirname, '../../scripts/86chaos-release-gate/dependency-preflight.cjs');
+const sourceInventoryPath = path.resolve(__dirname, '../../scripts/86chaos-release-gate/source-inventory.cjs');
 
 function freshRequire(file) {
   delete require.cache[require.resolve(file)];
@@ -178,6 +180,12 @@ test('collector reports duplicate role preflight as environment blocker without 
     firebaseProjectId: 'chaos-test-d1601',
     errors: ['OWNER_EMAIL and SYSTEM_ADMIN_EMAIL must be different accounts so role isolation can be tested.'],
   }));
+  fs.writeFileSync(path.join(runDir, 'runner-state.json'), JSON.stringify({
+    runId: 'preflight-block-unit',
+    playwrightStarted: false,
+    blockingReason: 'Release gate blocked before dependency installation because environment/deployment preflight failed.',
+    steps: [{ name: 'Environment preflight', exitCode: 1, passed: false }],
+  }, null, 2));
   const oldExit = process.exitCode;
   process.exitCode = 0;
   const collectorPath = path.resolve(__dirname, '../../scripts/86chaos-release-gate/collect-release-gate-report.cjs');
@@ -204,3 +212,116 @@ test('PowerShell runners keep step command output out of assigned exit-code vari
   }
 });
 
+
+
+test('dependency preflight reports missing local modules and never points to remote npx installation', () => withTempCwd((dir) => {
+  fs.writeFileSync(path.join(dir, 'package.json'), JSON.stringify({ name: '86chaos', version: '16.0.53' }, null, 2));
+  fs.writeFileSync(path.join(dir, 'package-lock.json'), JSON.stringify({ name: '86chaos', version: '16.0.53', lockfileVersion: 3, packages: { '': { name: '86chaos', version: '16.0.53' } } }, null, 2));
+  const { buildDependencyPreflight } = freshRequire(dependencyPreflightPath);
+  const report = buildDependencyPreflight({ root: dir, runId: 'dep-unit', runDir: path.join(dir, 'test-results', '86chaos-play-store-release-gate', 'dep-unit') });
+  assert.equal(report.ok, false);
+  assert.equal(report.packageLockPresent, true);
+  assert.ok(report.requiredModules.some(item => item.name === '@playwright/test' && item.ok === false));
+  assert.ok(report.requiredModules.some(item => item.name === '@babel/parser' && item.ok === false));
+  assert.match(report.localPlaywrightExecutablePath, /node_modules/);
+  assert.doesNotMatch(JSON.stringify(report), /Ok to proceed\? \(y\)|Need to install|npx playwright/);
+}));
+
+test('source inventory stops cleanly when Babel dependencies are missing and does not invent unreachable files', () => withTempCwd((dir) => {
+  for (const file of ['src/App.js', 'src/index.js', 'firestore.rules', 'storage.rules', 'vercel.json']) {
+    fs.mkdirSync(path.dirname(path.join(dir, file)), { recursive: true });
+    fs.writeFileSync(path.join(dir, file), file.endsWith('.js') ? 'export default function App(){ return null; }\n' : '{}\n');
+  }
+  fs.writeFileSync(path.join(dir, 'package.json'), JSON.stringify({ name: '86chaos', version: '16.0.53' }, null, 2));
+  fs.writeFileSync(path.join(dir, 'package-lock.json'), JSON.stringify({ name: '86chaos', version: '16.0.53', lockfileVersion: 3, packages: { '': { name: '86chaos', version: '16.0.53' } } }, null, 2));
+  process.env.CHAOS_RELEASE_GATE_RUN_ID = 'inventory-missing-babel-unit';
+  process.env.CHAOS_FULL_AUDIT_RUN_ID = 'inventory-missing-babel-unit';
+  delete process.env.CHAOS_RELEASE_GATE_RUN_DIR;
+  delete process.env.CHAOS_RELEASE_GATE_RUN_DIR;
+  const oldExit = process.exitCode;
+  process.exitCode = 0;
+  delete require.cache[require.resolve(runContextPath)];
+  freshRequire(sourceInventoryPath);
+  const reportPath = path.join(dir, 'test-results', '86chaos-play-store-release-gate', 'inventory-missing-babel-unit', 'source-inventory.json');
+  const report = JSON.parse(fs.readFileSync(reportPath, 'utf8'));
+  assert.equal(report.ok, false);
+  assert.equal(report.importGraphSkipped, true);
+  assert.deepEqual(report.unreachableSourceFiles, []);
+  assert.ok(report.errors.some(error => /Babel parser\/traverse unavailable/.test(error)));
+  process.exitCode = oldExit;
+}));
+
+test('collector classifies dependency installation block as pre-Playwright, not seed or cleanup failure', () => withTempCwd((dir) => {
+  process.env.CHAOS_RELEASE_GATE_RUN_ID = 'dependency-block-unit';
+  process.env.CHAOS_FULL_AUDIT_RUN_ID = 'dependency-block-unit';
+  delete process.env.CHAOS_RELEASE_GATE_RUN_DIR;
+  process.env.CHAOS_RELEASE_GATE_STEP_FAILURES = '1';
+  const { ensureRunDir } = freshRequire(runContextPath);
+  const { runDir } = ensureRunDir();
+  fs.writeFileSync(path.join(runDir, 'runner-state.json'), JSON.stringify({
+    runId: 'dependency-block-unit',
+    dependencyInstallAttempted: true,
+    dependencyInstallPassed: false,
+    dependencyPreflightPassed: false,
+    sourceInventoryPassed: false,
+    browserInstallPassed: false,
+    playwrightStarted: false,
+    cleanupAttempted: false,
+    blockingReason: 'Release gate blocked before Playwright because locked development dependencies were not installed.',
+    steps: [{ name: 'Install locked test dependencies', exitCode: 1, passed: false }],
+  }, null, 2));
+  fs.writeFileSync(path.join(runDir, 'environment-preflight.json'), JSON.stringify({
+    ok: true,
+    runId: 'dependency-block-unit',
+    appUrl: 'https://preview.example.test/',
+    expectedVersion: '16.0.53',
+    sourceVersion: '16.0.53',
+    deployedVersion: '16.0.53',
+    visibleVersion: '16.0.53',
+    firebaseProjectId: 'chaos-test-d1601',
+  }, null, 2));
+  const oldExit = process.exitCode;
+  process.exitCode = 0;
+  const collectorPath = path.resolve(__dirname, '../../scripts/86chaos-release-gate/collect-release-gate-report.cjs');
+  freshRequire(collectorPath);
+  const summaryFile = fs.readdirSync(runDir).find(name => name.startsWith('86chaos-play-store-release-gate-summary-') && name.endsWith('.json'));
+  const summary = JSON.parse(fs.readFileSync(path.join(runDir, summaryFile), 'utf8'));
+  assert.equal(summary.ok, false);
+  assert.match(summary.primaryBlockingFailure, /locked development dependencies/);
+  assert.equal(summary.playwright.status, 'No tests executed');
+  assert.equal(summary.setupFailures.length, 0);
+  assert.equal(summary.cleanupFailures.length, 0);
+  assert.ok(summary.artifactsSkippedByRunnerBlock.some(item => item.artifact === '86chaos-full-audit-cleanup-report.json'));
+  assert.equal(summary.failureGroups.some(group => group.group === 'dependency-preflight'), true);
+  process.exitCode = oldExit;
+}));
+
+test('PowerShell runners install locked dev dependencies before inventory or Playwright and never use npx downloads', () => {
+  for (const file of ['RUN_86CHAOS_FAILED_ONLY_RELEASE_GATE.ps1', 'RUN_86CHAOS_PLAY_STORE_RELEASE_GATE.ps1']) {
+    const source = fs.readFileSync(path.resolve(__dirname, '../..', file), 'utf8');
+    assert.match(source, /Install locked test dependencies/);
+    assert.match(source, /npm ci --include=dev --no-audit --no-fund/);
+    assert.match(source, /Dependency preflight/);
+    assert.match(source, /dependency-preflight\.cjs/);
+    assert.match(source, /Install Chromium browser/);
+    assert.match(source, /node_modules\\\.bin\\playwright\.cmd/);
+    assert.match(source, /& '\$PlaywrightExe' test --config/);
+    assert.doesNotMatch(source, /npx\s+playwright|npx\s+--no-install\s+playwright|Ok to proceed\? \(y\)|Need to install/);
+    assert.ok(source.indexOf('Install locked test dependencies') < source.indexOf('Source inventory'));
+    assert.ok(source.indexOf('Dependency preflight') < source.indexOf('Source inventory'));
+    assert.ok(source.indexOf('Source inventory') < source.indexOf('Install Chromium browser'));
+    assert.ok(source.indexOf('Install Chromium browser') < source.indexOf('$RunnerState.playwrightStarted = $true'));
+  }
+});
+
+test('PowerShell runners stop before Playwright for npm, dependency, source inventory, or browser failures', () => {
+  for (const file of ['RUN_86CHAOS_FAILED_ONLY_RELEASE_GATE.ps1', 'RUN_86CHAOS_PLAY_STORE_RELEASE_GATE.ps1']) {
+    const source = fs.readFileSync(path.resolve(__dirname, '../..', file), 'utf8');
+    assert.match(source, /locked development dependencies were not installed/);
+    assert.match(source, /required local test modules or the local Playwright executable were missing/);
+    assert.match(source, /source inventory failed/);
+    assert.match(source, /Chromium browser installation failed/);
+    assert.match(source, /\$RunnerState\.playwrightStarted = \$true/);
+    assert.ok(source.indexOf('$RunnerState.playwrightStarted = $true') > source.indexOf('Install Chromium browser'));
+  }
+});
