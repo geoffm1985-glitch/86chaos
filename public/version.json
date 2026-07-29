@@ -1,9 +1,9 @@
 {
-  "version": "16.0.52",
-  "name": "86 Chaos 16.0.52 Failed-Only Release Gate Repairs",
+  "version": "16.0.53",
+  "name": "86 Chaos 16.0.53 Verified Release Gate and Test Accuracy Fix",
   "releasedAt": "2026-07-28T00:00:00.000Z",
-  "label": "86 Chaos 16.0.52 Failed-Only Release Gate Repairs",
-  "build": "16.0.52",
+  "label": "86 Chaos 16.0.53 Verified Release Gate and Test Accuracy Fix",
+  "build": "16.0.53",
   "notes": "Fixes the remaining failed-only release gate issues: server-verified System Administrator access, schedule staff/event visibility, chunk recovery reload loops, control accessibility labels, contrast, safe test harness noise, and a focused failed-only Playwright runner.",
   "releaseNotes": [
     "Push reconnect now saves the current device through the user-safe fcmToken and pushDevices fields instead of writing the disallowed legacy fcmTokens array from the browser.",
@@ -16,5 +16,5 @@
     "Visible form controls receive generated accessible names when the real markup did not provide one.",
     "The stale chunk recovery banner stays visible after the automatic recovery reload so users have a clear Refresh App action."
   ],
-  "releaseTitle": "86 Chaos 16.0.52 Failed-Only Release Gate Repairs"
+  "releaseTitle": "86 Chaos 16.0.53 Verified Release Gate and Test Accuracy Fix"
 }

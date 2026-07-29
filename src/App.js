@@ -1007,18 +1007,24 @@ if (liveAppUser && clientData) {
     } catch (_) {}
     try {
       if (mode === 'employee' && liveAppUser?.id) {
-        await updateDoc(doc(db, 'users', liveAppUser.id), {
-          onboardingTourSeen: true,
-          onboardingTourSeenAt: liveAppUser.onboardingTourSeenAt || now,
-          ...(skipped ? { onboardingSkipped: true, onboardingSkippedAt: now } : {})
-        });
+        const needsWrite = liveAppUser.onboardingTourSeen !== true || (skipped && liveAppUser.onboardingSkipped !== true);
+        if (needsWrite) {
+          await updateDoc(doc(db, 'users', liveAppUser.id), {
+            onboardingTourSeen: true,
+            onboardingTourSeenAt: liveAppUser.onboardingTourSeenAt || now,
+            ...(skipped ? { onboardingSkipped: true, onboardingSkippedAt: now } : {})
+          });
+        } else rememberSkippedFirestoreWrite();
       }
       if (mode === 'manager' && liveAppUser?.id) {
-        await updateDoc(doc(db, 'users', liveAppUser.id), {
-          managerOnboardingSeen: true,
-          managerOnboardingSeenAt: liveAppUser.managerOnboardingSeenAt || now,
-          ...(skipped ? { managerOnboardingSkipped: true, managerOnboardingSkippedAt: now } : {})
-        });
+        const needsWrite = liveAppUser.managerOnboardingSeen !== true || (skipped && liveAppUser.managerOnboardingSkipped !== true);
+        if (needsWrite) {
+          await updateDoc(doc(db, 'users', liveAppUser.id), {
+            managerOnboardingSeen: true,
+            managerOnboardingSeenAt: liveAppUser.managerOnboardingSeenAt || now,
+            ...(skipped ? { managerOnboardingSkipped: true, managerOnboardingSkippedAt: now } : {})
+          });
+        } else rememberSkippedFirestoreWrite();
       }
     } catch(e) { console.warn('Tour seen-once save failed', e); }
   };
@@ -1036,8 +1042,14 @@ if (liveAppUser && clientData) {
     try {
       await markTourSeenOnce(mode, false);
       localStorage.setItem(getTourCompleteKey(mode), 'true');
-      if (mode === 'manager' && rId) await updateDoc(doc(db, 'restaurants', rId), { workspaceOnboardingComplete: true, workspaceOnboardingCompletedAt: new Date().toISOString(), workspaceOnboardingSkipped: false });
-      if (mode === 'employee' && liveAppUser?.id) await updateDoc(doc(db, 'users', liveAppUser.id), { onboardingComplete: true, onboardingCompletedAt: new Date().toISOString(), onboardingSkipped: false, onboardingTourSeen: true });
+      if (mode === 'manager' && rId) {
+        if (clientData?.workspaceOnboardingComplete === true && clientData?.workspaceOnboardingSkipped === false) rememberSkippedFirestoreWrite();
+        else await updateDoc(doc(db, 'restaurants', rId), { workspaceOnboardingComplete: true, workspaceOnboardingCompletedAt: new Date().toISOString(), workspaceOnboardingSkipped: false });
+      }
+      if (mode === 'employee' && liveAppUser?.id) {
+        if (liveAppUser.onboardingComplete === true && liveAppUser.onboardingSkipped === false && liveAppUser.onboardingTourSeen === true) rememberSkippedFirestoreWrite();
+        else await updateDoc(doc(db, 'users', liveAppUser.id), { onboardingComplete: true, onboardingCompletedAt: new Date().toISOString(), onboardingSkipped: false, onboardingTourSeen: true });
+      }
     } catch(e) { console.warn('Tour completion save failed', e); }
   };
 
@@ -1703,10 +1715,36 @@ What I clicked / expected:
     return profileId ? doc(db, 'users', profileId) : null;
   };
 
+  const pushPatchValueMatchesCurrentUser = (field, nextValue) => {
+    if (!liveAppUser || !field) return false;
+    if (field.startsWith('pushDevices.')) {
+      const deviceId = field.split('.').slice(1).join('.');
+      const existing = liveAppUser?.pushDevices?.[deviceId];
+      try { return JSON.stringify(existing || null) === JSON.stringify(nextValue || null); } catch (_) { return false; }
+    }
+    const existing = liveAppUser?.[field];
+    if (nextValue === null && (existing === null || existing === undefined || existing === '')) return true;
+    return existing === nextValue;
+  };
+
   const writePushProfilePatch = async (patch = {}) => {
     const profileRef = getPushProfileRef();
     if (!profileRef) throw new Error('No signed-in profile was available for this device.');
-    return updateDoc(profileRef, patch);
+    const meaningfulPatch = Object.fromEntries(Object.entries(patch || {}).filter(([field, value]) => !pushPatchValueMatchesCurrentUser(field, value)));
+    if (Object.keys(meaningfulPatch).length === 0) {
+      rememberSkippedFirestoreWrite();
+      return null;
+    }
+    try {
+      window.__chaosFirestoreDiagnostics = window.__chaosFirestoreDiagnostics || {};
+      window.__chaosFirestoreDiagnostics.writesInitiated = (window.__chaosFirestoreDiagnostics.writesInitiated || 0) + 1;
+    } catch (_) {}
+    const result = await updateDoc(profileRef, meaningfulPatch);
+    try {
+      window.__chaosFirestoreDiagnostics = window.__chaosFirestoreDiagnostics || {};
+      window.__chaosFirestoreDiagnostics.writesCompleted = (window.__chaosFirestoreDiagnostics.writesCompleted || 0) + 1;
+    } catch (_) {}
+    return result;
   };
 
   const rememberSkippedFirestoreWrite = () => {
@@ -1850,7 +1888,7 @@ What I clicked / expected:
         pushTokenPermission: permission,
         pushTokenHost: window.location.hostname,
         pushTokenCanonical: true,
-        pushTokenDedupeVersion: '16.0.52',
+        pushTokenDedupeVersion: '16.0.53',
         pushNeedsRepair: false,
         pushForceServiceWorkerRefresh: false,
         pushRepairStatus: 'connected',
@@ -1886,6 +1924,15 @@ What I clicked / expected:
 
   useEffect(() => {
     if (!liveAppUser?.id || ghostTenant || isDemoMode || typeof window === 'undefined' || !('Notification' in window)) return;
+
+    const lastSyncAt = liveAppUser?.lastPushTokenSyncAt ? new Date(liveAppUser.lastPushTokenSyncAt).getTime() : 0;
+    const autoSyncFreshMs = 6 * 60 * 60 * 1000;
+    const permissionState = Notification.permission;
+    const autoPushSyncStillFresh = Boolean(!pushRepairRequested && permissionState === 'granted' && lastSyncAt && Date.now() - lastSyncAt < autoSyncFreshMs && !liveAppUser?.pushNeedsRepair && !liveAppUser?.pushForceServiceWorkerRefresh);
+    if (autoPushSyncStillFresh) {
+      rememberSkippedFirestoreWrite();
+      return;
+    }
 
     let canceled = false;
 
@@ -1947,7 +1994,7 @@ What I clicked / expected:
           pushTokenPermission: permission,
           pushTokenHost: window.location.hostname,
           pushTokenCanonical: true,
-          pushTokenDedupeVersion: '16.0.52',
+          pushTokenDedupeVersion: '16.0.53',
           pushNeedsRepair: false,
           pushForceServiceWorkerRefresh: false,
           pushRepairStatus: 'connected',

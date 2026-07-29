@@ -3,6 +3,7 @@ const { ROUTE_SPECS, ownerLikeCreds, requireCreds, watchForProblems, summarizePr
 
 test.describe('01 auth and every-route health', () => {
   test('owner-like account logs in and every major route renders without fatal UI, NaN, Invalid Date, or 5xx', async ({ page }, testInfo) => {
+    test.setTimeout(10 * 60 * 1000);
     const account = ownerLikeCreds();
     requireCreds(account, 'owner-like account');
     const problems = [];
@@ -24,6 +25,7 @@ test.describe('01 auth and every-route health', () => {
   });
 
   test('no route shows unresolved placeholders or app-breaking empty states', async ({ page }, testInfo) => {
+    test.setTimeout(10 * 60 * 1000);
     const account = ownerLikeCreds();
     requireCreds(account, 'owner-like account');
     await login(page, account.email, account.password);

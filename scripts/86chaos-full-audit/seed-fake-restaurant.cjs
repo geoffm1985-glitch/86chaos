@@ -2,14 +2,19 @@
 const fs = require('fs');
 const path = require('path');
 
+const { ensureRunDir, getSeedReportPath } = require('../86chaos-release-gate/run-context.cjs');
+const { runId: RUN_ID, runDir: RELEASE_RUN_DIR } = ensureRunDir();
 const OUT_DIR = path.join(process.cwd(), 'test-results');
 fs.mkdirSync(OUT_DIR, { recursive: true });
-const RUN_ID = process.env.CHAOS_FULL_AUDIT_RUN_ID || process.env.CHAOS_RELEASE_GATE_RUN_ID || new Date().toISOString().replace(/[:.]/g, '-');
+fs.mkdirSync(RELEASE_RUN_DIR, { recursive: true });
 const QA_RESTAURANT_NAME = '86 Chaos Full Audit QA Restaurant';
-const REPORT_PATH = path.join(OUT_DIR, '86chaos-full-audit-seed-report.json');
+const REPORT_PATH = getSeedReportPath(RUN_ID);
+const LEGACY_REPORT_PATH = path.join(OUT_DIR, '86chaos-full-audit-seed-report.json');
 
 function writeReportSync(report) {
-  fs.writeFileSync(REPORT_PATH, JSON.stringify({ runId: RUN_ID, generatedAt: new Date().toISOString(), mode: 'seed', ...report }, null, 2));
+  const payload = JSON.stringify({ runId: RUN_ID, generatedAt: new Date().toISOString(), mode: 'seed', ...report }, null, 2);
+  fs.writeFileSync(REPORT_PATH, payload);
+  fs.writeFileSync(LEGACY_REPORT_PATH, payload);
 }
 
 process.on('uncaughtException', (error) => {
@@ -85,6 +90,54 @@ async function signInAccount(page, config, account) {
   if (!signed.idToken || !signed.localId) throw new Error(`Firebase Auth did not return an ID token and UID for ${account.key}.`);
   return { ...account, email: String(account.email).trim().toLowerCase(), uid: signed.localId, idToken: signed.idToken };
 }
+
+async function verifyRoleIdentity(page, roleAccounts) {
+  const errors = [];
+  const emails = new Map();
+  const uids = new Map();
+  for (const account of roleAccounts) {
+    if (emails.has(account.email)) errors.push(`${emails.get(account.email)} and ${account.key} resolve to the same email ${account.email}.`);
+    else emails.set(account.email, account.key);
+    if (uids.has(account.uid)) errors.push(`${uids.get(account.uid)} and ${account.key} resolve to the same Firebase UID ${account.uid}.`);
+    else uids.set(account.uid, account.key);
+  }
+  const whoamiRows = [];
+  for (const account of roleAccounts) {
+    const whoami = await pageFetchJson(page, {
+      url: appUrl('/api/whoami'),
+      method: 'GET',
+      headers: { Authorization: `Bearer ${account.idToken}` },
+    });
+    whoamiRows.push({
+      key: account.key,
+      email: account.email,
+      uid: account.uid,
+      whoamiUid: whoami.uid || '',
+      whoamiEmail: String(whoami.email || '').toLowerCase(),
+      superAdmin: whoami.superAdmin === true,
+      customClaimSuperAdmin: whoami.customClaimSuperAdmin === true,
+      serverMasterAdminMatched: whoami.serverMasterAdminMatched === true,
+      firestoreSuperAdmin: whoami.firestoreSuperAdmin === true,
+      firestoreSystemAdministrator: whoami.firestoreSystemAdministrator === true,
+      firestoreProfileRole: whoami.firestoreProfileRole || '',
+      runtimeProjectId: whoami.runtime?.firebaseProjectId || '',
+    });
+  }
+  const rowFor = (key) => whoamiRows.find(row => row.key === key) || {};
+  for (const key of ['staff', 'manager', 'owner']) {
+    if (rowFor(key).superAdmin === true) errors.push(`${key} account is server-verified as System Administrator. Use a non-system-admin ${key.toUpperCase()} account for release-gate role tests.`);
+  }
+  if (rowFor('systemAdmin').superAdmin !== true) errors.push('SYSTEM_ADMIN account is not server-verified as System Administrator. Configure the test System Administrator account before QA seeding.');
+  if (errors.length) {
+    const safe = { ok: false, runId: RUN_ID, errors, accounts: whoamiRows };
+    fs.writeFileSync(path.join(RELEASE_RUN_DIR, 'role-identity-verification.json'), JSON.stringify(safe, null, 2));
+    throw new Error(`Role identity preflight failed before QA data writes:\n${errors.join('\n')}`);
+  }
+  const safe = { ok: true, runId: RUN_ID, accounts: whoamiRows };
+  fs.writeFileSync(path.join(RELEASE_RUN_DIR, 'role-identity-verification.json'), JSON.stringify(safe, null, 2));
+  return safe;
+}
+
 
 function asFirestoreValue(value) {
   if (value === undefined) return undefined;
@@ -267,6 +320,7 @@ async function main() {
 
     const roleAccounts = [];
     for (const role of getRoleCredentials()) roleAccounts.push(await signInAccount(page, config, role));
+    report.roleIdentityVerification = await verifyRoleIdentity(page, roleAccounts);
     const writer = roleAccounts.find(account => account.key === 'systemAdmin') || roleAccounts.find(account => account.key === 'owner');
     if (!writer) throw new Error('No System Administrator test account was available for QA setup.');
     report.signedInAs = writer.email;
@@ -314,7 +368,8 @@ async function main() {
         restaurantName: QA_RESTAURANT_NAME,
         isAdmin: account.isAdmin === true,
         isOwner: account.isOwner === true,
-        isSuperAdmin: account.isSuperAdmin === true,
+        isSuperAdmin: false,
+        systemAdministratorVerifiedByWhoami: account.key === 'systemAdmin',
         accountOwner: account.isOwner === true,
         workspaceOwner: account.isOwner === true,
         permissions: account.permissions || {},
@@ -327,7 +382,13 @@ async function main() {
       const ref = await patchDoc(page, rest, 'workspaceMembers', `${account.uid}_${restaurantId}`, membership);
       report.memberships.push({ key: account.key, uid: account.uid, email: account.email, id: ref.id, role: account.role });
     }
-    const profile = buildFakeRestaurantProfile({ restaurantId, runId: RUN_ID, anchorDate: new Date() });
+    const memberIds = report.memberships.map(m => m.id);
+    if (new Set(memberIds).size !== report.memberships.length) throw new Error(`Role membership documents were not unique: ${memberIds.join(', ')}`);
+    report.membershipVerification = { ok: true, count: report.memberships.length, ids: memberIds };
+
+    const seedAnchorDate = new Date();
+    report.seedAnchorDate = seedAnchorDate.toISOString();
+    const profile = buildFakeRestaurantProfile({ restaurantId, runId: RUN_ID, anchorDate: seedAnchorDate });
     const today = new Date().toISOString().slice(0, 10);
     const roleByKey = Object.fromEntries(roleAccounts.map(account => [account.key, account]));
     for (const key of ['manager', 'staff']) {

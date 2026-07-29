@@ -25,7 +25,7 @@ function sumRanges(ranges) { return ranges.reduce((sum, [a, b]) => sum + Math.ma
 
 test.describe('21 Chromium runtime execution coverage', () => {
   test('route and safe-interaction crawl executes the required share of shipped application JavaScript', async ({ page }, testInfo) => {
-    test.skip(!testInfo.project.name.startsWith('chromium-full'), 'V8 coverage is collected only in the full Chromium project.');
+    test.skip(testInfo.project.name !== 'chromium', 'V8 coverage is collected on the desktop chromium project only.');
     test.setTimeout(30 * 60 * 1000);
     const account = ownerLikeCreds();
     requireCreds(account, 'owner-like account');

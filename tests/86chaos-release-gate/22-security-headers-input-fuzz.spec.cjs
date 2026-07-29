@@ -63,7 +63,7 @@ test.describe('22 security headers, query abuse, and input robustness', () => {
     const account = ownerLikeCreds();
     requireCreds(account, 'owner-like account');
     const problems = [];
-    watchForProblems(page, problems);
+    const problemWatch = watchForProblems(page, problems, { recordNonfatal4xx: true });
     await login(page, account.email, account.password);
     const results = [];
 
@@ -90,7 +90,7 @@ test.describe('22 security headers, query abuse, and input robustness', () => {
       }
     }
 
-    await attachJson(testInfo, '22-input-fuzz.json', { results, problems: summarizeProblems(problems) });
+    await attachJson(testInfo, '22-input-fuzz.json', { results, problems: summarizeProblems(problems), nonfatal4xx: problemWatch.nonfatal4xx || [] });
     expect(problems, 'Typing hostile or unusual text must not crash the UI or generate unhandled 5xx responses').toEqual([]);
   });
 });

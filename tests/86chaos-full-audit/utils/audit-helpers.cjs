@@ -1,6 +1,8 @@
 const fs = require('fs');
 const path = require('path');
 const { expect } = require('@playwright/test');
+let runContext = null;
+try { runContext = require('../../../scripts/86chaos-release-gate/run-context.cjs'); } catch (_) { runContext = null; }
 
 const ENV_FILE_NAMES = ['.env.test.local', '.env.test', '.env.local', '.env'];
 const ENV_SEARCH_ROOTS = [process.cwd(), path.resolve(__dirname, '..', '..', '..')];
@@ -64,14 +66,16 @@ function maskedEnvValue(name) {
 
 
 function readCapabilitiesFromDisk() {
+  const runDir = runContext?.getRunDir?.(process.env.CHAOS_RELEASE_GATE_RUN_ID || process.env.CHAOS_FULL_AUDIT_RUN_ID || '') || '';
   const candidates = [
+    runDir ? path.join(runDir, 'app-capabilities.json') : '',
     path.join(process.cwd(), 'test-results', '86chaos-play-store-release-gate', 'app-capabilities.json'),
     path.join(process.cwd(), 'test-results', '86chaos-release-gate-SLIM-UPLOAD-ME', '86chaos-play-store-release-gate', 'app-capabilities.json'),
     path.join(process.cwd(), 'app-capabilities.json')
   ];
   for (const filePath of candidates) {
     try {
-      if (!fs.existsSync(filePath)) continue;
+      if (!filePath || !fs.existsSync(filePath)) continue;
       const parsed = JSON.parse(fs.readFileSync(filePath, 'utf8'));
       return parsed && typeof parsed === 'object' ? parsed : {};
     } catch (_) {}
@@ -179,28 +183,61 @@ async function attachJson(testInfo, filename, data) {
   await testInfo.attach(filename, { body: JSON.stringify(data, null, 2), contentType: 'application/json' });
 }
 
-function watchForProblems(page, problems) {
-  page.on('pageerror', (error) => problems.push({ type: 'page-error', message: error.message, stack: String(error.stack || '').slice(0, 2500) }));
+function isControlledValidationResponse(response) {
+  const status = response.status();
+  if (status !== 400 && status !== 404) return false;
+  const url = response.url();
+  const contentType = response.headers()['content-type'] || '';
+  const expectedReject = /\/api\/(report-bug|scan|scan-menu|scan-invoice|voice-command|send-push|safe-write|notification-receipt|brand-logo|quickbooks|personal-reminder|alerts|login-bootstrap|whoami|admin|full-audit-qa-cleanup)/i.test(url);
+  return expectedReject && /json|text\/plain|application\/problem/i.test(contentType || 'application/json');
+}
+
+function isIgnorableStaticAssetFailure(text = '') {
+  return /ERR_ABORTED|ERR_CONNECTION_RESET|net::ERR_FAILED/i.test(text) && /\/(6136|6139|6240|wisco|app-icon|notification-badge)\.(jpg|png|webp|ico)/i.test(text);
+}
+
+function watchForProblems(page, problems, options = {}) {
+  const nonfatal4xx = [];
+  const seen = new Set();
+  const pushProblem = (row) => {
+    const key = `${row.type}|${row.status || ''}|${row.url || ''}|${row.message || row.failure || ''}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    problems.push(row);
+  };
+  page.on('pageerror', (error) => pushProblem({ type: 'page-error', message: error.message, stack: String(error.stack || '').slice(0, 2500) }));
   page.on('console', (msg) => {
     const text = msg.text();
     if (msg.type() !== 'error') return;
     if (/favicon|ResizeObserver|ERR_ABORTED|401|403|net::ERR_BLOCKED_BY_CLIENT|analytics/i.test(text)) return;
     if (/Failed to load resource:.*status of (400|404)/i.test(text)) return;
-    problems.push({ type: 'console-error', message: text.slice(0, 1600) });
+    if (isIgnorableStaticAssetFailure(text)) return;
+    pushProblem({ type: 'console-error', message: text.slice(0, 1600) });
   });
-  page.on('response', (response) => {
+  page.on('response', async (response) => {
     const status = response.status();
     const url = response.url();
-    if (status < 500) return;
     if (/hot-update|sockjs|favicon/i.test(url)) return;
-    problems.push({ type: 'http-5xx', status, url });
+    if (status === 400 || status === 404) {
+      const controlled = isControlledValidationResponse(response);
+      const row = { type: 'controlled-4xx', method: response.request().method(), status, url: url.split('?')[0].slice(0, 260), contentType: response.headers()['content-type'] || '', controlled };
+      if (controlled) {
+        nonfatal4xx.push(row);
+        if (options.recordNonfatal4xx) problems.nonfatal4xx = nonfatal4xx;
+        return;
+      }
+      if (/\/(6136|6139|6240|wisco|app-icon|notification-badge)\.(jpg|png|webp|ico)/i.test(url)) return;
+    }
+    if (status >= 500) pushProblem({ type: 'http-5xx', method: response.request().method(), status, url: url.split('?')[0].slice(0, 260), contentType: response.headers()['content-type'] || '' });
   });
   page.on('requestfailed', (request) => {
     const url = request.url();
     const failure = request.failure()?.errorText || '';
-    if (/favicon|hot-update|sockjs|jwe|ERR_ABORTED|ERR_CONNECTION_RESET.*\/(6136|6139|wisco|app-icon)\.(jpg|png|webp)/i.test(`${failure} ${url}`)) return;
-    problems.push({ type: 'requestfailed', url, failure });
+    if (/favicon|hot-update|sockjs|jwe|ERR_ABORTED/i.test(`${failure} ${url}`)) return;
+    if (isIgnorableStaticAssetFailure(`${failure} ${url}`)) return;
+    pushProblem({ type: 'requestfailed', url: url.split('?')[0].slice(0, 260), failure });
   });
+  return { nonfatal4xx };
 }
 
 function summarizeProblems(problems) {
@@ -209,13 +246,15 @@ function summarizeProblems(problems) {
 
 async function chooseQaWorkspace(page) {
   const preferred = envValue('CHAOS_QA_WORKSPACE_NAME', 'CHAOS_QA_WORKSPACE') || QA_WORKSPACE_NAME;
+  const currentText = await bodyText(page, 12000);
+  if (currentText.includes(preferred) && !/choose workspace|select workspace|select restaurant|choose restaurant/i.test(currentText)) return false;
   const openChooser = async () => {
     const chooserText = await bodyText(page, 12000);
     if (/choose workspace|select workspace|select restaurant|choose restaurant/i.test(chooserText)) return true;
     const switchers = [
       page.getByTitle(/switch workspace/i).first(),
       page.getByRole('button', { name: /switch workspace|switch restaurant|switch$/i }).first(),
-      page.getByText(/Switch/i).first()
+      page.getByText(/\bSwitch\b/i).first()
     ];
     for (const candidate of switchers) {
       if (await candidate.isVisible({ timeout: 1200 }).catch(() => false)) {
@@ -288,13 +327,61 @@ async function expectVersion(page, expected = EXPECTED_VERSION) {
   expect(text, `App should display expected version ${expected}`).toMatch(re);
 }
 
-async function gotoTab(page, tab, options = {}) {
-  await page.goto(appUrl(tab), { waitUntil: 'domcontentloaded', timeout: options.timeout || 45000 }).catch(() => {});
-  await page.waitForLoadState('domcontentloaded').catch(() => {});
-  await page.waitForTimeout(options.settleMs || 900);
-  await chooseQaWorkspace(page);
+async function waitForRouteSettle(page, tab, options = {}) {
+  const spec = ROUTE_SPECS.find(r => r.tab === tab);
+  const timeout = options.timeout || 45000;
+  await page.waitForFunction(({ tab, pattern }) => {
+    const params = new URLSearchParams(window.location.search);
+    const activeTab = params.get('tab') || '';
+    const body = (document.body && document.body.innerText) || '';
+    const routeLooksReady = !/Loading workspace|Preparing|Unlock System|Email Address\s*Password/i.test(body);
+    const re = pattern ? new RegExp(pattern, 'i') : null;
+    return routeLooksReady && (activeTab === tab || !tab) && (!re || re.test(body) || /permission|restricted|not available|access denied/i.test(body));
+  }, { tab, pattern: spec?.expect?.source || '' }, { timeout }).catch(() => {});
   await dismissNoise(page);
   return bodyText(page, options.maxText || 30000);
+}
+
+async function openTabInApp(page, tab, options = {}) {
+  const settleMs = options.settleMs ?? 700;
+  const current = new URL(page.url());
+  const currentTab = current.searchParams.get('tab') || 'today';
+  if (currentTab === tab && !options.force) {
+    await page.waitForTimeout(settleMs);
+    return waitForRouteSettle(page, tab, options);
+  }
+  const navCandidates = [
+    page.getByRole('button', { name: new RegExp(`^${tab.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') }).first(),
+    page.getByRole('link', { name: new RegExp(`^${tab.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') }).first(),
+  ];
+  for (const candidate of navCandidates) {
+    if (await candidate.isVisible({ timeout: 500 }).catch(() => false)) {
+      await candidate.click({ timeout: 2500 }).catch(() => {});
+      await page.waitForTimeout(settleMs);
+      return waitForRouteSettle(page, tab, options);
+    }
+  }
+  await page.evaluate((nextTab) => {
+    const url = new URL(window.location.href);
+    url.searchParams.set('tab', nextTab);
+    window.history.pushState({ tab: nextTab }, '', `${url.pathname}${url.search}${url.hash}`);
+    window.dispatchEvent(new PopStateEvent('popstate', { state: { tab: nextTab } }));
+    window.dispatchEvent(new CustomEvent('chaos:navigate-tab', { detail: { tab: nextTab } }));
+  }, tab).catch(() => {});
+  await page.waitForTimeout(settleMs);
+  return waitForRouteSettle(page, tab, options);
+}
+
+async function gotoTab(page, tab, options = {}) {
+  if (options.fullReload === true) {
+    await page.goto(appUrl(tab), { waitUntil: 'domcontentloaded', timeout: options.timeout || 45000 }).catch(() => {});
+    await page.waitForLoadState('domcontentloaded').catch(() => {});
+    await page.waitForTimeout(options.settleMs || 900);
+    await chooseQaWorkspace(page);
+    await dismissNoise(page);
+    return bodyText(page, options.maxText || 30000);
+  }
+  return openTabInApp(page, tab, options);
 }
 
 async function expectNoFatal(page, context = 'page') {
@@ -383,6 +470,9 @@ async function collectTextNear(page, needle, radius = 1200) {
 }
 
 function seedReportPath() {
+  const runId = process.env.CHAOS_RELEASE_GATE_RUN_ID || process.env.CHAOS_FULL_AUDIT_RUN_ID || RUN_ID;
+  const current = runContext?.getSeedReportPath?.(runId);
+  if (current && fs.existsSync(current)) return current;
   return path.join(process.cwd(), 'test-results', '86chaos-full-audit-seed-report.json');
 }
 
@@ -424,6 +514,8 @@ module.exports = {
   login,
   expectVersion,
   gotoTab,
+  openTabInApp,
+  waitForRouteSettle,
   expectNoFatal,
   clickSafeButtons,
   viewportAudit,

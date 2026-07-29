@@ -3,11 +3,13 @@ const path = require('path');
 const { defineConfig, devices } = require('@playwright/test');
 
 const root = process.cwd();
+const { ensureRunDir } = require('./scripts/86chaos-release-gate/run-context.cjs');
+const { runDir, runId } = ensureRunDir();
 const baseURL = process.env.APP_URL || process.env.CHAOS_BASE_URL || process.env.PLAYWRIGHT_BASE_URL || process.env.BASE_URL || 'http://127.0.0.1:3000';
-const resultsRoot = path.join(root, 'test-results', '86chaos-play-store-failed-only');
+const resultsRoot = path.join(root, 'test-results', '86chaos-play-store-failed-only', runId);
 fs.mkdirSync(resultsRoot, { recursive: true });
 
-// 16.0.52 failed-only release gate.
+// 16.0.53 failed-only release gate.
 // This intentionally re-runs only the spec files and test titles that failed in
 // 86chaos-release-gate-SLIM-UPLOAD-ME(6).zip. Use the full release gate before
 // calling a build release-ready.
@@ -25,9 +27,10 @@ module.exports = defineConfig({
     '86chaos-release-gate/16-accessibility-release-gate.spec.cjs',
     '86chaos-release-gate/17-resilience-chunk-offline.spec.cjs',
     '86chaos-release-gate/20-firebase-cost-idempotency.spec.cjs',
+    '86chaos-release-gate/21-runtime-code-coverage.spec.cjs',
     '86chaos-release-gate/22-security-headers-input-fuzz.spec.cjs'
   ],
-  grep: /owner-like account logs in|no route shows unresolved placeholders|manager account does not see system admin|safe visible buttons|visible Schedule Builder text must expose seeded staff\/events|Schedule Builder shows seeded employees|known bug graveyard stays dead|System Administrator exposes the matching Platform Operations cleanup tool|every visible control has an accessible name and every mutating|every major route has zero serious or critical axe violations|forms expose labels|one failed lazy chunk|opening and reopening unchanged routes|visible non-password text fields tolerate/i,
+  grep: /owner-like account logs in|no route shows unresolved placeholders|manager account does not see system admin|safe visible buttons|visible Schedule Builder text must expose seeded staff\/events|Schedule Builder shows seeded employees|known bug graveyard stays dead|System Administrator exposes the matching Platform Operations cleanup tool|every visible control has an accessible name and every mutating|every major route has zero serious or critical axe violations|forms expose labels|one failed lazy chunk|opening and reopening unchanged routes|route and safe-interaction crawl executes|visible non-password text fields tolerate/i,
   timeout: 90_000,
   expect: { timeout: 12_000 },
   fullyParallel: false,

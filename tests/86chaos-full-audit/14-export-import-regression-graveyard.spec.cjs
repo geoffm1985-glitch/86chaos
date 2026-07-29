@@ -28,7 +28,7 @@ test.describe('14 exports/imports and permanent regression graveyard', () => {
       ['raw AppleWebKit user agent', /Mozilla\/5\.0|AppleWebKit|KHTML, like Gecko/],
       ['presence all-online stale label', /Seen Active Today[\s\S]{0,80}\bONLINE\b/i],
       ['negative inactive days', /Inactive -\d+ days/i],
-      ['mic preview label', /\bPREVIEW\b/i],
+      ['mic preview label', /(?:microphone|\bmic\b|86\s*voice|voice assistant|86voice)[\s\S]{0,120}\bPREVIEW\b|\bPREVIEW\b[\s\S]{0,120}(?:microphone|\bmic\b|86\s*voice|voice assistant|86voice)/i],
       ['System Admin Branding / Display', /Branding\s*\/\s*Display/i],
       ['bad values', /Invalid Date|Infinity|undefined undefined|null null|\$NaN|NaN%|(?:^|[^A-Za-z])NaN(?:[^A-Za-z]|$)/i],
       ['bad package tarball visible', /@types\/yargs-16\.0\.12\.tgz/i],

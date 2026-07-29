@@ -2,12 +2,13 @@ const fs = require('fs');
 const path = require('path');
 
 const root = process.cwd();
-const outDir = path.join(root, 'test-results', '86chaos-play-store-release-gate');
-fs.mkdirSync(outDir, { recursive: true });
+const { ensureRunDir } = require('./run-context.cjs');
+const { runDir: outDir, runId } = ensureRunDir();
 
 const result = {
   ok: true,
   generatedAt: new Date().toISOString(),
+  runId,
   node: process.version,
   root,
   errors: [],
