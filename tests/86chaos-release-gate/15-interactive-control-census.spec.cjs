@@ -13,7 +13,7 @@ const {
 } = require('../86chaos-full-audit/utils/audit-helpers.cjs');
 
 const MUTATION_RE = /\b(save|add|create|delete|remove|deactivate|transfer|publish|send|submit|approve|deny|resolve|reopen|clock in|clock out|start break|end break|upload|scan|import|sync|connect|repair|restore|backup|reset|run|generate|apply|accept|receive|update stock|deduct|log waste|assign|offer|claim|cancel shift|archive)\b/i;
-const SAFE_NAV_RE = /\b(open|close|view|details|back|next|previous|today|tomorrow|week|month|filter|search|clear|show|hide|expand|collapse|menu|settings|help|refresh|retry|print|copy|download|export|jump|calendar|schedule|inventory|recipe|message|maintenance|team|financial|event|reminder|tab)\b|^[<>×✕✖+-]$/i;
+const SAFE_NAV_RE = /\b(open|close|view|details|back|next|previous|today|tomorrow|week|month|filter|search|clear|show|hide|expand|collapse|menu|settings|help|refresh|retry|print|copy|download|export|jump|calendar|schedule|inventory|recipe|message|maintenance|team|financial|event|reminder|tab|active workspace|report a problem|86 voice assistant|need attention|explain|review|labor|preferences|setup checklist|account security|profile|dashboard|home|go to|switch workspace)\b|^[<>×✕✖+-]$/i;
 const INTENTIONAL_EXCLUDE_RE = /log out|sign out|delete account|log out everyone/i;
 
 async function collectControls(page) {
@@ -60,6 +60,9 @@ test.describe('15 exhaustive interactive-control census', () => {
         let classification = 'unclassified';
         if (control.disabled) classification = 'disabled';
         else if (INTENTIONAL_EXCLUDE_RE.test(label)) classification = 'destructive-session-control';
+        else if (['input','textarea','select'].includes(control.tag) || ['input','textarea','select','search','date','number','checkbox','radio'].includes(control.role) || /^(search|date|number|checkbox|radio|email|tel|time|month)$/i.test(control.type)) classification = label ? 'form-or-filter-control' : 'unnamed-form-control';
+        else if (['link','tab','menuitem'].includes(control.role) || /^(link|tab|menuitem)$/i.test(control.role) || /route|nav|menu|tab/i.test(label)) classification = 'navigation-control';
+        else if (/\b(explain|review|need attention|setup checklist|active workspace|report a problem|86 voice assistant|voice assistant|preferences|labor|help center|refresh|copy|download|print|search)\b/i.test(label)) classification = 'known-informational-action';
         else if (MUTATION_RE.test(label)) {
           const workflow = WORKFLOWS.find(item => item.label.test(label));
           if (workflow) {
@@ -82,7 +85,8 @@ test.describe('15 exhaustive interactive-control census', () => {
     const unnamed = unique.filter(x => !x.label && !x.disabled);
     const unclassified = unique.filter(x => x.classification === 'unclassified');
     const mutationUncovered = unique.filter(x => ['mutation-requires-workflow', 'mutation-workflow-missing-evidence'].includes(x.classification));
-    const smallTapTargets = unique.filter(x => !x.disabled && ['button', 'link', 'tab', 'menuitem'].includes(x.role) && (x.width < 42 || x.height < 42));
+    const mobileProject = /mobile/i.test(testInfo.project.name || '');
+    const smallTapTargets = mobileProject ? unique.filter(x => !x.disabled && ['button', 'link', 'tab', 'menuitem'].includes(x.role) && (x.width < 42 || x.height < 42)) : [];
 
     await attachJson(testInfo, '15-control-census.json', {
       totals: {

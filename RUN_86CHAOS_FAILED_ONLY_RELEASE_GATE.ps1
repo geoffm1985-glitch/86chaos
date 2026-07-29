@@ -35,7 +35,7 @@ $RunId = Get-Date -Format "yyyy-MM-ddTHH-mm-ss"
 $env:CHAOS_RELEASE_GATE_RUN_ID = $RunId
 $env:CHAOS_FULL_AUDIT_RUN_ID = $RunId
 $env:CHAOS_RELEASE_GATE_STEP_FAILURES = "0"
-[Environment]::SetEnvironmentVariable('CHAOS_FAILED_ONLY_RELEASE_GATE', $null, 'Process')
+$env:CHAOS_FAILED_ONLY_RELEASE_GATE = "true"
 $env:CHAOS_QA_WORKSPACE_NAME = "86 Chaos Full Audit QA Restaurant"
 $env:CHAOS_QA_WORKSPACE = "86 Chaos Full Audit QA Restaurant"
 
@@ -50,7 +50,7 @@ New-Item -ItemType Directory -Force $RunDir | Out-Null
 New-Item -ItemType Directory -Force $RunnerLogDir | Out-Null
 
 Get-ChildItem $ResultsRoot -File -ErrorAction SilentlyContinue | Where-Object { $_.Name -ne '.last-run.json' } | Remove-Item -Force -ErrorAction SilentlyContinue
-@{ runId = $RunId; runDir = $RunDir; mode = 'full'; updatedAt = (Get-Date -Format o) } | ConvertTo-Json | Set-Content (Join-Path $ResultsRoot '.last-run.json')
+@{ runId = $RunId; runDir = $RunDir; mode = 'failed-only'; updatedAt = (Get-Date -Format o) } | ConvertTo-Json | Set-Content (Join-Path $ResultsRoot '.last-run.json')
 
 $StepResults = @()
 $RunnerState = [ordered]@{
@@ -91,8 +91,8 @@ function Set-BlockingReason {
 }
 Save-RunnerState
 
-Write-Host "86 Chaos Play Store Release Gate" -ForegroundColor Cyan
-Write-Host "Slim upload report only by default." -ForegroundColor Cyan
+Write-Host "86 Chaos failed-only release gate" -ForegroundColor Cyan
+Write-Host "This only reruns the current failed/fixed harness areas. It does NOT replace the full release gate." -ForegroundColor Yellow
 Write-Host "Run ID: $RunId" -ForegroundColor Cyan
 Write-Host "Current-run directory: $RunDir" -ForegroundColor Cyan
 
@@ -225,7 +225,7 @@ function Write-RunnerSummary {
     }
   }
   $lines | Set-Content $summaryPath
-  @{ runId = $RunId; runDir = $RunDir; mode = 'full'; blockingReason = $RunnerState.blockingReason; steps = $StepResults; generatedAt = (Get-Date -Format o) } | ConvertTo-Json -Depth 12 | Set-Content $jsonPath
+  @{ runId = $RunId; runDir = $RunDir; mode = 'failed-only'; blockingReason = $RunnerState.blockingReason; steps = $StepResults; generatedAt = (Get-Date -Format o) } | ConvertTo-Json -Depth 12 | Set-Content $jsonPath
 }
 
 function Stop-BeforePlaywright {
@@ -281,10 +281,10 @@ if ($PreflightExit -ne 0) {
               Stop-BeforePlaywright "Release gate blocked before Playwright because Chromium browser installation failed."
             } else {
               Set-RunnerPhase 'playwright'
-              $PlaywrightConfig = ".\playwright.play-store-release.config.cjs"
+              $PlaywrightConfig = ".\playwright.failed-release.config.cjs"
               $RunnerState.playwrightStarted = $true
               Save-RunnerState
-              Run-LiveStep "Playwright release gate" "& '$PlaywrightExe' test --config '$PlaywrightConfig'"
+              Run-LiveStep "Failed-only Playwright gate" "& '$PlaywrightExe' test --config '$PlaywrightConfig'"
             }
           }
         }
@@ -312,17 +312,9 @@ if ((Test-Path $SetupStatePath) -and -not (Test-Path $CleanupPath)) {
 }
 
 Set-RunnerPhase 'report-collection'
-Run-CollectorStep "Collect report" "node scripts/86chaos-release-gate/collect-release-gate-report.cjs"
+Run-CollectorStep "Collect failed-only report" "node scripts/86chaos-release-gate/collect-release-gate-report.cjs"
 Write-RunnerSummary
 New-Slim-ReleaseGateReport -SourceDir $RunDir -DestinationDir $SlimDir -ZipPath $SlimZipPath
-
-if ($env:CHAOS_RELEASE_GATE_FULL_ZIP -eq 'true' -and (Test-Path $RunDir)) {
-  $FullZipPath = Join-Path $Root ("86chaos-universal-release-gate-UPLOAD-ME-$RunId.zip")
-  Compress-Archive -Path "$RunDir\*" -DestinationPath $FullZipPath -Force
-  Write-Host ""
-  Write-Host "Full release-gate ZIP created because CHAOS_RELEASE_GATE_FULL_ZIP=true:" -ForegroundColor Yellow
-  Write-Host $FullZipPath -ForegroundColor Yellow
-}
 
 Save-RunnerState
 

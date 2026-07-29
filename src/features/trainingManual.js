@@ -20,7 +20,7 @@ export const SYSTEM_TRAINING_MANUAL_CHAPTERS = [
         "The date or month control near the top changes the working period for schedule, prep, events, and financial screens. Check it before entering data.",
         "Red dots and warning cards mean something needs review, such as a message, schedule change, low-stock item, overdue task, or request.",
         "Global Search finds live records across the areas you can access. Search results still follow your normal permissions.",
-        "The microphone is marked Preview. It can navigate, search Help, create supported reminders or prep entries, and stage important commands. High-risk actions require confirmation."
+        "The microphone opens 86Voice. It can navigate, search Help, create supported reminders or prep entries, and stage important commands. High-risk actions require confirmation."
       ]},
       { title: "Phone and safety basics", steps: [
         "On Android, open the app in Chrome and choose Install App or Add to Home screen. On iPhone, open it in Safari, tap Share, then Add to Home Screen.",
@@ -32,16 +32,16 @@ export const SYSTEM_TRAINING_MANUAL_CHAPTERS = [
     notes: ["When in doubt, open Help Center first. System Administrators can use this full manual for deeper tab-by-tab instructions."]
   },
   {
-    id: "voice-assistant-preview",
+    id: "voice-assistant",
     group: "Getting Started",
-    title: "86 Voice Assistant (Preview)",
+    title: "86 Voice Assistant",
     tab: "Microphone button / typed command panel",
     audience: "Everyone; actions still follow each user's permissions",
     summary: "Use speech or a typed command to navigate, search, find recipes, update prep, create reminders, and stage other supported work with safety checks.",
-    keywords: "86 voice assistant preview microphone typed command local parser optional ai navigation help recipe prep reminder schedule 86 alert ambiguous confirmation permission troubleshooting",
+    keywords: "86 voice assistant microphone typed command local parser optional ai navigation help recipe prep reminder schedule 86 alert ambiguous confirmation permission troubleshooting",
     sections: [
       { title: "Start with speech or typing", steps: [
-        "Tap the floating microphone marked Preview. Allow microphone access when the browser asks, speak one short command, and wait for the app to show what it heard.",
+        "Tap the floating 86Voice microphone. Allow microphone access when the browser asks, speak one short command, and wait for the app to show what it heard.",
         "If microphone access is denied, unsupported, inaccurate, or uncomfortable to use in a loud kitchen, open the same panel and type the command. Typed commands use the same parser, permissions, previews, and confirmations.",
         "Read the proposed action before continuing. Safe navigation may happen immediately; messages, maintenance reports, 86 alerts, and other data-changing actions show a preview or confirmation.",
         "The assistant never bypasses a hidden tab. Workspace modules, role permissions, demo-mode read-only rules, and current restaurant scope are checked again before an action runs."
@@ -109,7 +109,7 @@ export const SYSTEM_TRAINING_MANUAL_CHAPTERS = [
         "If an 86 item is not found, correct or clarify the Inventory name and approved Menu Intelligence links. Do not choose a close-looking item merely to clear the warning."
       ]}
     ],
-    notes: ["Preview means the feature is still being refined. Treat every spoken result as a draft until the screen confirms exactly what will happen."]
+    notes: ["Treat every spoken result as a draft until the screen confirms exactly what will happen."]
   },
   {
     id: "manager-brief",
@@ -397,8 +397,8 @@ export const SYSTEM_TRAINING_MANUAL_CHAPTERS = [
         "Review each vendor group before sending or exporting. The app prepares order information; confirm the actual vendor submission succeeded.",
         "When receiving, compare delivered quantities and prices with the order and invoice before updating stock. Record shortages or substitutions."
       ]},
-      { title: "Burn Log Preview", steps: [
-        "Use Burn Log Preview for spoilage, mistakes, waste, breakage, or another approved loss reason.",
+      { title: "Burn Log Review", steps: [
+        "Use Burn Log Review for spoilage, mistakes, waste, breakage, or another approved loss reason.",
         "Enter the real amount and unit, cost basis, reason, and note. Confirm the deduction preview before saving.",
         "Burn may reduce stock and record cost lost. Do not use it to correct an ordinary count error; perform a count adjustment with an explanation instead.",
         "Review burn history for patterns, but investigate context before drawing conclusions about an employee or shift."
@@ -741,7 +741,7 @@ export const SYSTEM_TRAINING_MANUAL_CHAPTERS = [
       { title: "Backup Center", steps: [
         "Check the last successful backup, age, document count, storage path, integrity result, and watchdog status.",
         "Run Backup Now before risky migrations, repairs, broad settings changes, or restore work. Confirm the new file appears and passes integrity checks.",
-        "Preview or download the selected backup before restore. Confirm its date, environment, workspace scope, and expected collections.",
+        "Review or download the selected backup before restore. Confirm its date, environment, workspace scope, and expected collections.",
         "Type the required confirmation exactly. Restore is merge-based unless the tool explicitly says otherwise. Record a restore drill after a verified test."
       ]},
       { title: "Forensics and data movement", steps: [
@@ -775,7 +775,7 @@ export const SYSTEM_TRAINING_MANUAL_CHAPTERS = [
       ]},
       { title: "Role Manager", steps: [
         "Start from least privilege. Separate staff editing, schedule editing, financials, inventory, recipes, admin tools, wage visibility, and forensics.",
-        "Preview a role against real tabs and actions before saving.",
+        "Review a role against real tabs and actions before saving.",
         "Review high-risk roles after staffing changes, support engagements, and releases."
       ]}
     ],
@@ -803,7 +803,7 @@ export const SYSTEM_TRAINING_MANUAL_CHAPTERS = [
         "Platform administrator access is never granted from the workspace user editor."
       ]},
       { title: "Branding", steps: [
-        "Preview logo, colors, help contact, timezone, date and time formats, and landing behavior for the selected workspace.",
+        "Review logo, colors, help contact, timezone, date and time formats, and landing behavior for the selected workspace.",
         "Keep the permanent 86 Chaos brand lock. A client logo complements it rather than replacing it."
       ]}
     ],
@@ -846,7 +846,7 @@ export const SYSTEM_TRAINING_MANUAL_CHAPTERS = [
     keywords: "system administrator maintenance mode release history robustness suite platform operations broadcast danger zone delete reset force logout",
     sections: [
       { title: "Maintenance and releases", steps: [
-        "Choose global or workspace scope, audience, message, start, and end time. Preview the wording before enabling Maintenance Mode.",
+        "Choose global or workspace scope, audience, message, start, and end time. Review the wording before enabling Maintenance Mode.",
         "Keep System Administrator access available during maintenance so recovery is possible.",
         "Use Robustness Suite for storage, schema, permission, backup-preview, import, offline-queue, and release-guardrail checks.",
         "Use Version History to connect a visible behavior with the release that introduced or changed it."
@@ -893,7 +893,7 @@ export const SYSTEM_TRAINING_MANUAL_CHAPTERS = [
         "Invoice scanning is AI-assisted and review-first. Scanned rows do not affect inventory, vendor spend, reports, or Cost Center until a manager reviews and approves the result.",
         "Menu Intelligence is AI-assisted and review-first. Menu scan results and inferred dependencies should be reviewed before they power menu impact alerts.",
         "86 alerts can show affected menu items when approved dependencies exist. When dependencies are missing, the app should guide managers to complete menu/inventory setup.",
-        "Voice Assistant Preview can navigate, search Help, find recipes, create prep/reminders, and stage 86 alerts without bypassing plan gates or permissions."
+        "86Voice can navigate, search Help, find recipes, create prep/reminders, and stage 86 alerts without bypassing plan gates or permissions."
       ]},
       { title: "Account, admin, and support areas", steps: [
         "Staff Roster manages employees, custom Roster Roles, permissions, wages where allowed, generated logins, active status, and staff records.",

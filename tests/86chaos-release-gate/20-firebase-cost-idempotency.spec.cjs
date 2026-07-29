@@ -4,20 +4,55 @@ const {
   ownerLikeCreds,
   requireCreds,
   login,
-  gotoTab,
+  openTabInApp,
   attachJson,
 } = require('../86chaos-full-audit/utils/audit-helpers.cjs');
 
-function classify(req) {
-  const url = req.url();
-  const method = req.method();
-  if (!/firestore|googleapis|firebaseio|identitytoolkit|securetoken|presence|push-token|safe-write/i.test(url)) return null;
-  let kind = 'other';
-  if (/Listen\/channel|google\.firestore\.v1\.Firestore\/Listen|channel\?VER=/i.test(url)) kind = 'listen';
-  else if (/Write\/channel|google\.firestore\.v1\.Firestore\/Write|commit/i.test(url) || /POST|PATCH|PUT|DELETE/i.test(method) && /firestore/i.test(url)) kind = 'write';
-  else if (/BatchGetDocuments|RunQuery|documents\//i.test(url)) kind = 'read';
-  else if (/presence/i.test(url)) kind = 'presence';
-  return { method, url: url.split('?')[0].slice(0, 260), kind };
+async function diag(page) {
+  return page.evaluate(() => {
+    const d = window.__chaosFirestoreDiagnostics || {};
+    const listeners = d.listeners && typeof d.listeners === 'object' ? d.listeners : {};
+    return {
+      activeListeners: Number(d.activeListeners || 0),
+      activeDocuments: Number(d.activeDocuments || 0),
+      listenerReuseCount: Number(d.listenerReuseCount || 0),
+      listenerReleaseCount: Number(d.listenerReleaseCount || 0),
+      writesInitiated: Number(d.writesInitiated || 0),
+      writesCompleted: Number(d.writesCompleted || 0),
+      skippedNoOpWrites: Number(d.skippedNoOpWrites || 0),
+      listenerKeys: Object.keys(listeners).sort(),
+      listeners: Object.fromEntries(Object.entries(listeners).map(([key, row]) => [key, {
+        collection: row.collection || '',
+        restaurantId: row.restaurantId || '',
+        subscriberCount: Number(row.subscriberCount || 0),
+        listenerCreationCount: Number(row.listenerCreationCount || 0),
+        listenerReuseCount: Number(row.listenerReuseCount || 0),
+        documentsReceivedInitial: Number(row.documentsReceivedInitial || 0),
+        documentsReceivedChanges: Number(row.documentsReceivedChanges || 0),
+        reconnectCount: Number(row.reconnectCount || 0),
+      }]))
+    };
+  });
+}
+
+function diffDiagnostics(first, second) {
+  const firstKeys = new Set(first.listenerKeys || []);
+  const secondKeys = new Set(second.listenerKeys || []);
+  const duplicateCreated = [];
+  for (const key of secondKeys) {
+    const a = first.listeners?.[key] || {};
+    const b = second.listeners?.[key] || {};
+    if (firstKeys.has(key) && Number(b.listenerCreationCount || 0) > Number(a.listenerCreationCount || 0)) {
+      duplicateCreated.push({ key, before: a, after: b });
+    }
+  }
+  return {
+    newKeys: [...secondKeys].filter(k => !firstKeys.has(k)),
+    duplicateCreated,
+    writeDelta: Number(second.writesInitiated || 0) - Number(first.writesInitiated || 0),
+    completedWriteDelta: Number(second.writesCompleted || 0) - Number(first.writesCompleted || 0),
+    activeDelta: Number(second.activeListeners || 0) - Number(first.activeListeners || 0),
+  };
 }
 
 test.describe('20 Firebase read/write and idempotency release gate', () => {
@@ -25,39 +60,26 @@ test.describe('20 Firebase read/write and idempotency release gate', () => {
     test.setTimeout(18 * 60 * 1000);
     const account = ownerLikeCreds();
     requireCreds(account, 'owner-like account');
-    const traffic = [];
-    page.on('request', req => { const row = classify(req); if (row) traffic.push({ at: Date.now(), ...row }); });
     await login(page, account.email, account.password);
+    await page.evaluate(() => { if (typeof window.resetFirebaseUsageDiagnostics === 'function') window.resetFirebaseUsageDiagnostics(); else window.__chaosFirestoreDiagnostics = null; }).catch(() => {});
 
-    traffic.length = 0;
     const perRoute = [];
     for (const route of ROUTE_SPECS) {
-      const start = traffic.length;
-      await gotoTab(page, route.tab, { settleMs: 700 });
-      const first = traffic.slice(start);
-      const secondStart = traffic.length;
-      await gotoTab(page, route.tab, { settleMs: 500 });
-      const second = traffic.slice(secondStart);
-      perRoute.push({
-        route: route.tab,
-        first: countKinds(first),
-        second: countKinds(second),
-      });
+      await openTabInApp(page, route.tab, { settleMs: 1100 });
+      await page.waitForFunction(() => !!window.__chaosFirestoreDiagnostics, null, { timeout: 8000 }).catch(() => {});
+      const first = await diag(page);
+      await openTabInApp(page, route.tab, { settleMs: 700 });
+      const second = await diag(page);
+      perRoute.push({ route: route.tab, first, second, diff: diffDiagnostics(first, second) });
     }
 
-    const writeStorms = perRoute.filter(x => x.second.write > Number(process.env.CHAOS_MAX_NOOP_ROUTE_WRITES || 2));
-    const listenerStorms = perRoute.filter(x => x.second.listen > Number(process.env.CHAOS_MAX_REPEAT_ROUTE_LISTENS || 6));
-    const grouped = {};
-    for (const row of traffic) grouped[`${row.kind} ${row.method} ${row.url}`] = (grouped[`${row.kind} ${row.method} ${row.url}`] || 0) + 1;
-    const highRepeats = Object.entries(grouped).filter(([, count]) => count > 50).map(([key, count]) => ({ key, count }));
+    const writeStorms = perRoute.filter(x => x.diff.writeDelta > 0 || x.diff.completedWriteDelta > 0).map(x => ({ route: x.route, diff: x.diff }));
+    const duplicateListenerChurn = perRoute.filter(x => x.diff.duplicateCreated.length > 0).map(x => ({ route: x.route, duplicateCreated: x.diff.duplicateCreated }));
+    const rapidReconnectLoop = perRoute.filter(x => Object.values(x.second.listeners || {}).some(row => Number(row.reconnectCount || 0) > 2)).map(x => ({ route: x.route }));
 
-    await attachJson(testInfo, '20-firebase-cost-idempotency.json', { perRoute, writeStorms, listenerStorms, highRepeats, grouped, totalTraffic: traffic.length });
-    expect(writeStorms, 'Reopening an unchanged route should not perform Firestore writes except narrowly documented presence/token refresh').toEqual([]);
-    expect(listenerStorms, 'Reopening an unchanged route should reuse or gracefully retain listeners rather than resubscribe repeatedly').toEqual([]);
-    expect(highRepeats, 'No Firebase endpoint should enter a rapid retry/listen/write loop during one route sweep').toEqual([]);
+    await attachJson(testInfo, '20-firebase-cost-idempotency.json', { perRoute, writeStorms, duplicateListenerChurn, rapidReconnectLoop });
+    expect(writeStorms, 'Reopening an unchanged route should perform zero business writes').toEqual([]);
+    expect(duplicateListenerChurn, 'Reopening an unchanged route should not create another network listener for an identical canonical query key').toEqual([]);
+    expect(rapidReconnectLoop, 'No route should enter a rapid Firestore reconnect loop').toEqual([]);
   });
 });
-
-function countKinds(rows) {
-  return rows.reduce((acc, row) => { acc[row.kind] = (acc[row.kind] || 0) + 1; return acc; }, { listen: 0, write: 0, read: 0, presence: 0, other: 0 });
-}

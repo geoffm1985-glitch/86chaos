@@ -1,10 +1,9 @@
 const fs = require('fs');
 const path = require('path');
+const { ensureRunDir, readJsonIfExists } = require('./run-context.cjs');
 
-const root = process.cwd();
-const resultsRoot = path.join(root, 'test-results', '86chaos-play-store-release-gate');
-fs.mkdirSync(resultsRoot, { recursive: true });
-const runId = process.env.CHAOS_RELEASE_GATE_RUN_ID || new Date().toISOString().replace(/[:.]/g, '-');
+const { root, resultsRoot, runId, runDir } = ensureRunDir();
+fs.mkdirSync(runDir, { recursive: true });
 
 function walk(dir, acc = []) {
   if (!fs.existsSync(dir)) return acc;
@@ -14,65 +13,284 @@ function walk(dir, acc = []) {
   }
   return acc;
 }
+function readJson(p) { try { return JSON.parse(fs.readFileSync(p, 'utf8')); } catch (_) { return null; } }
+function rel(p) { return path.relative(root, p).replace(/\\/g, '/'); }
+function hasOwn(data, key) { return Object.prototype.hasOwnProperty.call(data || {}, key); }
 
-function readJson(p) {
-  try { return JSON.parse(fs.readFileSync(p, 'utf8')); } catch (_) { return null; }
+const requiredArtifacts = [
+  'runner-state.json',
+  'environment-preflight.json',
+  'dependency-preflight.json',
+  'source-inventory.json',
+  'role-identity-verification.json',
+  'qa-setup-state.json',
+  '86chaos-full-audit-seed-report.json',
+  'playwright-report.json',
+  '86chaos-full-audit-cleanup-report.json',
+];
+const artifact = Object.fromEntries(requiredArtifacts.map(name => [name, path.join(runDir, name)]));
+let missingArtifacts = requiredArtifacts.filter(name => !fs.existsSync(artifact[name]));
+
+const runnerState = readJsonIfExists(artifact['runner-state.json']) || {};
+const preflight = readJsonIfExists(artifact['environment-preflight.json']) || {};
+const dependencyPreflight = readJsonIfExists(artifact['dependency-preflight.json']) || {};
+const sourceInventory = readJsonIfExists(artifact['source-inventory.json']) || {};
+const roleVerification = readJsonIfExists(artifact['role-identity-verification.json']) || {};
+const setupState = readJsonIfExists(artifact['qa-setup-state.json']) || {};
+const seedReport = readJsonIfExists(artifact['86chaos-full-audit-seed-report.json']) || {};
+const cleanupReport = readJsonIfExists(artifact['86chaos-full-audit-cleanup-report.json']) || {};
+const failedOnlyManifest = readJsonIfExists(path.join(runDir, 'failed-only-test-manifest.json')) || null;
+
+const preflightRan = preflight && Object.keys(preflight).length > 0;
+const preflightFailedBeforeMutation = preflightRan && preflight.ok === false;
+const preflightFailures = preflightFailedBeforeMutation
+  ? (Array.isArray(preflight.errors) && preflight.errors.length ? [...preflight.errors] : ['Environment preflight failed before QA seeding.'])
+  : [];
+
+const runnerBlockingReason = String(runnerState.blockingReason || '').trim();
+const playwrightStarted = runnerState.playwrightStarted === true;
+const blockedBeforePlaywright = Boolean(runnerBlockingReason && !playwrightStarted);
+
+function skippedByRunnerBlock(name) {
+  if (name === 'runner-state.json' || name === 'environment-preflight.json') return false;
+  if (preflightFailedBeforeMutation) return true;
+  if (!blockedBeforePlaywright) return false;
+  if (runnerState.dependencyInstallPassed !== true) {
+    return ['dependency-preflight.json', 'source-inventory.json', 'role-identity-verification.json', 'qa-setup-state.json', '86chaos-full-audit-seed-report.json', 'playwright-report.json', '86chaos-full-audit-cleanup-report.json'].includes(name);
+  }
+  if (runnerState.dependencyPreflightPassed !== true) {
+    return ['source-inventory.json', 'role-identity-verification.json', 'qa-setup-state.json', '86chaos-full-audit-seed-report.json', 'playwright-report.json', '86chaos-full-audit-cleanup-report.json'].includes(name);
+  }
+  if (runnerState.sourceInventoryPassed !== true) {
+    return ['role-identity-verification.json', 'qa-setup-state.json', '86chaos-full-audit-seed-report.json', 'playwright-report.json', '86chaos-full-audit-cleanup-report.json'].includes(name);
+  }
+  if (runnerState.browserInstallPassed !== true || playwrightStarted !== true) {
+    return ['role-identity-verification.json', 'qa-setup-state.json', '86chaos-full-audit-seed-report.json', 'playwright-report.json', '86chaos-full-audit-cleanup-report.json'].includes(name);
+  }
+  return false;
 }
 
-const files = walk(resultsRoot);
+const artifactsSkippedByPreflight = preflightFailedBeforeMutation
+  ? missingArtifacts.filter(name => skippedByRunnerBlock(name))
+  : [];
+const artifactsSkippedByRunnerBlock = blockedBeforePlaywright
+  ? missingArtifacts.filter(name => skippedByRunnerBlock(name)).map(name => ({ artifact: name, reason: `Not created because test execution was blocked before Playwright global setup: ${runnerBlockingReason}` }))
+  : [];
+missingArtifacts = missingArtifacts.filter(name => !skippedByRunnerBlock(name));
+
+const files = walk(runDir);
 const jsonFiles = files.filter(p => p.endsWith('.json'));
-const summaries = jsonFiles.map(p => ({ file: path.relative(root, p).replace(/\\/g, '/'), data: readJson(p) })).filter(x => x.data);
-const playwright = summaries.find(x => x.file.endsWith('playwright-report.json'))?.data;
+const summaries = jsonFiles.map(p => ({ file: rel(p), data: readJson(p) })).filter(x => x.data);
+const playwright = readJson(artifact['playwright-report.json']);
 const tests = [];
-function collectSuites(suites = []) {
+function collectSuites(suites = [], parents = []) {
   for (const suite of suites) {
+    const nextParents = suite.title ? [...parents, suite.title] : parents;
     for (const spec of suite.specs || []) {
       for (const t of spec.tests || []) {
-        for (const r of t.results || []) tests.push({ title: [...(suite.title ? [suite.title] : []), spec.title, t.title].filter(Boolean).join(' > '), status: r.status, error: r.error?.message || '' });
+        for (const r of t.results || []) {
+          tests.push({
+            title: [...nextParents, spec.title, t.title].filter(Boolean).join(' > '),
+            status: r.status,
+            error: r.error?.message || '',
+            duration: r.duration || 0,
+            projectName: t.projectName || '',
+            file: spec.file || '',
+          });
+        }
       }
     }
-    collectSuites(suite.suites || []);
+    collectSuites(suite.suites || [], nextParents);
   }
 }
 if (playwright) collectSuites(playwright.suites || []);
 const failedTests = tests.filter(t => !['passed', 'skipped'].includes(t.status));
 const skippedTests = tests.filter(t => t.status === 'skipped');
+const timedOutTests = tests.filter(t => t.status === 'timedOut' || /timeout/i.test(t.error || ''));
+
+const appUrl = process.env.APP_URL || process.env.CHAOS_BASE_URL || preflight.appUrl || '';
+const expectedVersion = process.env.CHAOS_EXPECTED_VERSION || preflight.expectedVersion || '';
+const testedVersion = preflight.deployedVersion || preflight.visibleVersion || expectedVersion || '';
+const stepFailures = Number(process.env.CHAOS_RELEASE_GATE_STEP_FAILURES || 0);
+const versionMismatch = Boolean(expectedVersion && testedVersion && expectedVersion !== testedVersion);
+if (versionMismatch) missingArtifacts.push(`version-mismatch expected=${expectedVersion} tested=${testedVersion}`);
+
+const runMismatchFailures = [];
+for (const [name, data] of Object.entries({ runnerState, preflight, dependencyPreflight, sourceInventory, roleVerification, setupState, seedReport, cleanupReport })) {
+  if (data && data.runId && data.runId !== runId) runMismatchFailures.push(`${name} runId=${data.runId} expected=${runId}`);
+}
+if (runMismatchFailures.length) missingArtifacts.push(...runMismatchFailures.map(x => `run-mismatch ${x}`));
+
+const dependencyFailures = [];
+if (hasOwn(dependencyPreflight, 'ok') && dependencyPreflight.ok !== true) {
+  dependencyFailures.push(...(Array.isArray(dependencyPreflight.errors) && dependencyPreflight.errors.length ? dependencyPreflight.errors : ['Dependency preflight failed.']));
+}
+if (blockedBeforePlaywright && /dependenc/i.test(runnerBlockingReason) && !dependencyFailures.length) dependencyFailures.push(runnerBlockingReason);
+
+const setupFailures = [];
+if (setupState && setupState.errors?.length) setupFailures.push(...setupState.errors);
+if (setupState && setupState.attempted && setupState.verified !== true) setupFailures.push('QA setup was attempted but not verified.');
+if (fs.existsSync(artifact['86chaos-full-audit-seed-report.json']) && seedReport && seedReport.ok !== true) setupFailures.push(`Seed report not ok:true: ${seedReport.error || 'unknown seed failure'}`);
+if (seedReport && seedReport.verification && seedReport.verification.ok !== true) setupFailures.push('Seed verification failed.');
+
+const cleanupFailures = [];
+const cleanupRequired = setupState && setupState.attempted === true && setupState.seeded === true && setupState.verified === true;
+if (fs.existsSync(artifact['86chaos-full-audit-cleanup-report.json']) && cleanupReport && cleanupReport.ok !== true) cleanupFailures.push(`Cleanup report not ok:true: ${cleanupReport.error || 'unknown cleanup failure'}`);
+if (cleanupRequired && !fs.existsSync(artifact['86chaos-full-audit-cleanup-report.json'])) cleanupFailures.push('Cleanup report is missing after verified QA seed.');
+if (cleanupReport && cleanupReport.runId && cleanupReport.runId !== runId) cleanupFailures.push(`Cleanup used runId ${cleanupReport.runId} instead of ${runId}.`);
+if (cleanupReport && cleanupReport.restaurantRemaining) cleanupFailures.push('Current-run restaurant still remains after cleanup.');
+if (cleanupReport && cleanupReport.remaining && Object.keys(cleanupReport.remaining).length) cleanupFailures.push(`Current-run child records remain: ${JSON.stringify(cleanupReport.remaining)}`);
+if (cleanupReport && cleanupReport.accountedFailures?.length) cleanupFailures.push(`Cleanup did not account for seeded records: ${JSON.stringify(cleanupReport.accountedFailures)}`);
+
+const noTestsExecuted = tests.length === 0;
+const executionBlockedMessage = blockedBeforePlaywright
+  ? `Not created because test execution was blocked before Playwright global setup: ${runnerBlockingReason}`
+  : '';
+const primaryBlockingFailure = runnerBlockingReason
+  || preflightFailures[0]
+  || dependencyFailures[0]
+  || setupFailures[0]
+  || cleanupFailures[0]
+  || (failedTests[0] ? `${failedTests[0].title}: ${failedTests[0].error}` : '')
+  || (missingArtifacts[0] ? `Missing artifact: ${missingArtifacts[0]}` : '');
+
+const failureGroups = [];
+function addGroup(group, example) {
+  if (!failureGroups.some(x => x.group === group)) failureGroups.push({ group, examples: [] });
+  const row = failureGroups.find(x => x.group === group);
+  if (example && row.examples.length < 5) row.examples.push(example);
+}
+if (runnerBlockingReason) addGroup(/dependenc|npm ci|module|Playwright executable|Chromium/i.test(runnerBlockingReason) ? 'dependency-preflight' : 'runner-blocker', runnerBlockingReason);
+for (const text of preflightFailures) addGroup('environment-preflight', text);
+for (const text of dependencyFailures) addGroup('dependency-preflight', text);
+const groupRe = [
+  [/setup|seed|cleanup|stale|runId|artifact/i, 'harness-seed-cleanup'],
+  [/timeout/i, 'timeout'],
+  [/System Administrator|Restricted Platform Tools|superAdmin|manager/i, 'role-permission'],
+  [/Schedule Builder|Allen QA|Chuck QA|Lani QA/i, 'schedule-seed-visibility'],
+  [/axe|WCAG|contrast|keyboard|focus/i, 'accessibility'],
+  [/listener|Firestore|write storm|Listen/i, 'firebase-idempotency'],
+  [/chunk|reload loop/i, 'chunk-recovery'],
+  [/400|5xx|requestfailed|connection reset/i, 'network-classification'],
+  [/coverage|JavaScript/i, 'runtime-coverage'],
+  [/control|mutating/i, 'control-census'],
+];
+for (const t of failedTests) {
+  const text = `${t.title}\n${t.error}`;
+  addGroup(groupRe.find(([re]) => re.test(text))?.[1] || 'other', t.title);
+}
+for (const text of [...setupFailures, ...cleanupFailures, ...missingArtifacts]) {
+  const group = /seed|cleanup|setup|artifact|run/i.test(text) ? 'harness-seed-cleanup' : 'reporting';
+  addGroup(group, text);
+}
+
+const ok = failedTests.length === 0
+  && timedOutTests.length === 0
+  && skippedTests.length === 0
+  && stepFailures === 0
+  && missingArtifacts.length === 0
+  && !versionMismatch
+  && setupFailures.length === 0
+  && cleanupFailures.length === 0
+  && preflightFailures.length === 0
+  && dependencyFailures.length === 0
+  && !blockedBeforePlaywright
+  && !(playwrightStarted && noTestsExecuted);
 
 const summary = {
-  ok: failedTests.length === 0 && skippedTests.length === 0 && Number(process.env.CHAOS_RELEASE_GATE_STEP_FAILURES || 0) === 0,
+  ok,
   generatedAt: new Date().toISOString(),
   runId,
-  appUrl: process.env.APP_URL || process.env.CHAOS_BASE_URL || '',
-  expectedVersion: process.env.CHAOS_EXPECTED_VERSION || '',
+  runDir,
+  appUrl,
+  expectedVersion,
+  sourceVersion: preflight.sourceVersion || sourceInventory.version || sourceInventory.packageVersion || '',
+  deployedVersion: preflight.deployedVersion || '',
+  visibleVersion: preflight.visibleVersion || '',
+  testedVersion,
+  firebaseProjectId: preflight.firebaseProjectId || sourceInventory.firebaseProjectId || '',
   node: process.version,
-  stepFailures: Number(process.env.CHAOS_RELEASE_GATE_STEP_FAILURES || 0),
-  playwright: { totalResults: tests.length, failed: failedTests.length, skipped: skippedTests.length, failedTests: failedTests.slice(0, 200), skippedTests: skippedTests.slice(0, 200) },
-  artifacts: summaries.map(x => x.file),
+  stepFailures,
+  primaryBlockingFailure,
+  runnerState,
+  dependencyPreflight: dependencyPreflight && hasOwn(dependencyPreflight, 'ok') ? dependencyPreflight : null,
+  dependencyFailures,
+  playwright: { totalResults: tests.length, status: noTestsExecuted ? 'No tests executed' : 'Tests executed', failed: failedTests.length, timedOut: timedOutTests.length, skipped: skippedTests.length, failedTests: failedTests.slice(0, 200), skippedTests: skippedTests.slice(0, 200) },
+  seed: seedReport && seedReport.ok !== undefined ? { ok: seedReport.ok, runId: seedReport.runId || '', restaurantId: seedReport.restaurantId || seedReport.profile?.restaurantId || '', restaurantName: seedReport.restaurantName || seedReport.profile?.restaurantName || '', expectedCounts: seedReport.expectedCounts || {}, verifiedCounts: seedReport.verification?.verifiedCounts || {}, verificationOk: seedReport.verification?.ok === true } : null,
+  cleanup: cleanupReport && cleanupReport.ok !== undefined ? { ok: cleanupReport.ok, runId: cleanupReport.runId || '', expected: cleanupReport.expected || {}, deleted: cleanupReport.deleted || {}, alreadyAbsent: cleanupReport.alreadyAbsent || {}, remaining: cleanupReport.remaining || {}, additionalRunRecords: cleanupReport.additionalRunRecords || {}, restaurantDeleted: cleanupReport.restaurantDeleted || 0, failures: cleanupReport.failed || [], accountedFailures: cleanupReport.accountedFailures || [] } : null,
+  setupState,
+  roleIdentityVerification: roleVerification && roleVerification.ok !== undefined ? roleVerification : null,
+  failedOnlyManifest,
+  failureGroups,
+  missingArtifacts,
+  setupFailures,
+  cleanupFailures,
+  preflightFailures,
+  artifactsSkippedByPreflight,
+  artifactsSkippedByRunnerBlock,
+  artifacts: summaries.map(x => x.file).filter(f => f.includes(`/86chaos-play-store-release-gate/${runId}/`)),
   truth: [
-    'This report does not claim the software is flawless.',
-    'A release is blocked by any failed test, any skipped test, any uncovered mutating control, or any missing coverage report.',
-    'End-to-end runtime byte coverage is evidence of execution, not proof of correctness for every possible input.',
+    'This report reads only the current run directory.',
+    'Root-level legacy seed and cleanup reports are not authoritative.',
+    'No tests executed is a blocked release gate, not a passing test suite.',
+    'When Playwright never starts, missing role verification, setup, seed, Playwright, and cleanup artifacts are not seed or cleanup defects.',
+    'Cleanup is required after any verified QA seed, and not required when no QA setup or seed was attempted.',
   ],
 };
 
-const jsonPath = path.join(resultsRoot, `86chaos-play-store-release-gate-summary-${runId}.json`);
-const textPath = path.join(resultsRoot, `86chaos-play-store-release-gate-UPLOAD-ME-${runId}.txt`);
+const jsonPath = path.join(runDir, `86chaos-play-store-release-gate-summary-${testedVersion || 'unknown'}-${runId}.json`);
+const textPath = path.join(runDir, `86chaos-play-store-release-gate-UPLOAD-ME-${testedVersion || 'unknown'}-${runId}.txt`);
 fs.writeFileSync(jsonPath, JSON.stringify(summary, null, 2));
 const lines = [
   '86 CHAOS PLAY STORE RELEASE GATE',
   `Generated: ${summary.generatedAt}`,
   `Run ID: ${runId}`,
+  `Run directory: ${runDir}`,
   `App URL: ${summary.appUrl}`,
   `Expected Version: ${summary.expectedVersion}`,
+  `Source Version: ${summary.sourceVersion}`,
+  `Deployed Version: ${summary.deployedVersion}`,
+  `Visible Version: ${summary.visibleVersion}`,
+  `Testing Firebase project: ${summary.firebaseProjectId}`,
   `Node: ${summary.node}`,
   `Overall: ${summary.ok ? 'PASS' : 'FAIL'}`,
+  `Primary blocking failure: ${summary.primaryBlockingFailure || 'None'}`,
   `Runner step failures: ${summary.stepFailures}`,
   `Playwright results: ${tests.length}`,
+  noTestsExecuted ? 'Playwright status: No tests executed' : 'Playwright status: Tests executed',
   `Playwright failed: ${failedTests.length}`,
+  `Playwright timed out: ${timedOutTests.length}`,
   `Playwright skipped: ${skippedTests.length}`,
+  '',
+  'DEPENDENCY PREFLIGHT',
+  JSON.stringify(summary.dependencyPreflight || {}, null, 2),
+  '',
+  'RUNNER STATE',
+  JSON.stringify(summary.runnerState || {}, null, 2),
+  '',
+  'ENVIRONMENT PREFLIGHT FAILURES',
+  ...(preflightFailures.length ? preflightFailures.map(f => `- ${f}`) : ['- None']),
+  '',
+  'DEPENDENCY FAILURES',
+  ...(dependencyFailures.length ? dependencyFailures.map(f => `- ${f}`) : ['- None']),
+  '',
+  'ARTIFACTS SKIPPED BECAUSE PREFLIGHT STOPPED BEFORE MUTATION',
+  ...(artifactsSkippedByPreflight.length ? artifactsSkippedByPreflight.map(f => `- ${f}`) : ['- None']),
+  '',
+  'ARTIFACTS SKIPPED BECAUSE RUNNER BLOCKED BEFORE PLAYWRIGHT GLOBAL SETUP',
+  ...(artifactsSkippedByRunnerBlock.length ? artifactsSkippedByRunnerBlock.map(f => `- ${f.artifact}: ${f.reason}`) : ['- None']),
+  '',
+  'SEED VERIFICATION',
+  JSON.stringify(summary.seed || {}, null, 2),
+  '',
+  'CLEANUP VERIFICATION',
+  JSON.stringify(summary.cleanup || {}, null, 2),
   '',
   'IMPORTANT',
   ...summary.truth,
+  '',
+  'FAILURE GROUPS',
+  ...(failureGroups.length ? failureGroups.map(g => `- ${g.group}: ${g.examples.join(' | ')}`) : ['- None']),
   '',
   'FAILED TESTS',
   ...(failedTests.length ? failedTests.map(t => `- ${t.title}: ${t.error}`) : ['- None']),
@@ -80,8 +298,18 @@ const lines = [
   'SKIPPED TESTS',
   ...(skippedTests.length ? skippedTests.map(t => `- ${t.title}`) : ['- None']),
   '',
+  'MISSING ARTIFACTS',
+  ...(missingArtifacts.length ? missingArtifacts.map(f => `- ${f}`) : ['- None']),
+  '',
+  'SETUP FAILURES',
+  ...(setupFailures.length ? setupFailures.map(f => `- ${f}`) : ['- None']),
+  '',
+  'CLEANUP FAILURES',
+  ...(cleanupFailures.length ? cleanupFailures.map(f => `- ${f}`) : ['- None']),
+  '',
   'JSON ARTIFACTS',
   ...summary.artifacts.map(f => `- ${f}`),
 ];
 fs.writeFileSync(textPath, lines.join('\n'));
-console.log(JSON.stringify({ summary, jsonPath, textPath }, null, 2));
+console.log(JSON.stringify({ summary, jsonPath, textPath, resultsRoot, runDir }, null, 2));
+if (!summary.ok) process.exitCode = 1;

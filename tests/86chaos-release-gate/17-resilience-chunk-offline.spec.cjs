@@ -20,6 +20,16 @@ test.describe('17 stale chunk, offline, refresh, and service-worker resilience',
     requireCreds(account, 'owner-like account');
     const problems = [];
     watchForProblems(page, problems);
+    await page.addInitScript(() => {
+      window.__chaosRecoveryEvents = [];
+      const record = (type, detail = {}) => { try { window.__chaosRecoveryEvents.push({ type, at: Date.now(), url: location.href, ...detail }); } catch (_) {} };
+      const originalReplace = window.location.replace.bind(window.location);
+      window.location.replace = (url) => { record('location.replace', { target: String(url || '') }); return originalReplace(url); };
+      const originalReload = window.location.reload.bind(window.location);
+      window.location.reload = () => { record('location.reload'); return originalReload(); };
+      const originalSetItem = window.sessionStorage.setItem.bind(window.sessionStorage);
+      window.sessionStorage.setItem = (key, value) => { if (/chaosReloadAt|chunk|recovery|autoReload/i.test(String(key))) record('sessionStorage.setItem', { key: String(key), value: String(value).slice(0, 120) }); return originalSetItem(key, value); };
+    });
     await login(page, account.email, account.password, { tab: 'today' });
 
     let abortedUrl = '';
@@ -36,7 +46,7 @@ test.describe('17 stale chunk, offline, refresh, and service-worker resilience',
     });
 
     const reloads = [];
-    page.on('framenavigated', frame => { if (frame === page.mainFrame()) reloads.push({ at: Date.now(), url: frame.url() }); });
+    page.on('framenavigated', frame => { if (frame === page.mainFrame()) reloads.push({ at: Date.now(), url: frame.url(), note: 'supporting-evidence-only' }); });
     await page.goto(appUrl('recipes'), { waitUntil: 'domcontentloaded', timeout: 60000 }).catch(() => {});
     await page.waitForTimeout(5000);
     const firstText = await bodyText(page, 30000);
@@ -45,7 +55,8 @@ test.describe('17 stale chunk, offline, refresh, and service-worker resilience',
     await page.waitForTimeout(3000);
     const finalText = await bodyText(page, 30000);
     const finalUrl = page.url();
-    const navsInWindow = reloads.filter(x => x.at >= Date.now() - 10000).length;
+    const recoveryEvents = await page.evaluate(() => window.__chaosRecoveryEvents || []).catch(() => []);
+    const automaticRecoveryAttempts = recoveryEvents.filter(x => /location\.(replace|reload)|chaosReloadAt|autoReload/i.test(`${x.type} ${x.key || ''}`)).length;
 
     await attachJson(testInfo, '17-chunk-failure-recovery.json', {
       aborted,
@@ -55,13 +66,15 @@ test.describe('17 stale chunk, offline, refresh, and service-worker resilience',
       firstText: firstText.slice(0, 5000),
       finalText: finalText.slice(0, 5000),
       reloads,
+      recoveryEvents,
+      automaticRecoveryAttempts,
       problems: summarizeProblems(problems),
     });
 
     expect(aborted, 'The test must actually intercept one lazy JavaScript chunk').toBe(true);
     expect(firstText, 'Chunk failure must not produce a blank or fatal-only screen').not.toMatch(FATAL_BLANK_RE);
     expect(finalText, 'Repeated chunk failure must provide a usable update/recovery action').toMatch(RECOVERY_RE);
-    expect(navsInWindow, 'Chunk recovery must not enter an infinite reload loop').toBeLessThanOrEqual(2);
+    expect(automaticRecoveryAttempts, 'Chunk recovery must not enter an infinite reload loop').toBeLessThanOrEqual(1);
   });
 
   test('brief offline period recovers without logout or permanent broken state', async ({ page, context }, testInfo) => {

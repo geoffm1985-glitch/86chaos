@@ -22,8 +22,8 @@ function cleanCategory(value = '') {
   return allowed.has(raw) ? raw : 'Bug / Error';
 }
 
-function isKnownNonFatalCrashMessage(...parts) {
-  const text = parts.flatMap(part => {
+function bugTextFromParts(...parts) {
+  return parts.flatMap(part => {
     if (!part) return [];
     if (typeof part === 'string') return [part];
     if (typeof part === 'object') {
@@ -31,11 +31,43 @@ function isKnownNonFatalCrashMessage(...parts) {
     }
     return [String(part)];
   }).join(' ').toLowerCase();
+}
+
+function isClipboardPermissionMessage(...parts) {
+  const text = bugTextFromParts(...parts);
+  return (text.includes('clipboard') || text.includes('writetext'))
+    && (text.includes('permission denied') || text.includes('not allowed') || text.includes('denied') || text.includes('not granted'));
+}
+
+function isSyntheticReleaseGateCrash(...parts) {
+  const text = bugTextFromParts(...parts);
+  return text.includes('release_gate_synthetic_crash');
+}
+
+function isKnownNonFatalCrashMessage(...parts) {
+  const text = bugTextFromParts(...parts);
   return text.includes('messaging/unsupported-browser')
     || text.includes('unsupported-browser')
     || text.includes("this browser doesn't support the api")
     || text.includes('firebase messaging is not supported')
-    || text.includes('firebase messaging unsupported');
+    || text.includes('firebase messaging unsupported')
+    || isClipboardPermissionMessage(...parts);
+}
+
+function plainEnglishBugMessage(message = '', report = {}) {
+  const raw = cleanText(message || report.rawMessage || report.errorMessage || '', 300);
+  if (isSyntheticReleaseGateCrash(raw, report)) return 'Release gate test crash received. No action is needed unless this happened during normal app use.';
+  if (isClipboardPermissionMessage(raw, report)) return 'The app could not copy to the clipboard. Tap the copy button again or copy the text manually.';
+  if (/chunkloaderror|loading chunk|failed to fetch dynamically imported module|failed to load module script/i.test(raw)) return 'A stale app file failed to load. Refresh the app to get the newest version.';
+  if (isKnownNonFatalCrashMessage(raw, report)) return 'Push notifications are not supported in this browser. The app can still be used normally.';
+  return raw || 'Open System Administrator → Support to review this report.';
+}
+
+function plainEnglishBugTitle(category = '', message = '', report = {}) {
+  if (isSyntheticReleaseGateCrash(message, report)) return '86 Chaos test report received';
+  if (isClipboardPermissionMessage(message, report)) return '86 Chaos could not copy text';
+  if (/chunkloaderror|loading chunk|failed to fetch dynamically imported module|failed to load module script/i.test(String(message || ''))) return '86 Chaos needs a refresh';
+  return `86 Chaos bug report: ${cleanCategory(category)}`;
 }
 
 function buildCrashDedupeHash(report = {}, crashFields = {}) {
@@ -182,9 +214,10 @@ async function sendSuperAdminPush(app, db, report, reporter) {
   const category = cleanCategory(report.category);
   const restaurant = cleanText(report.restaurantName || report.restaurantId || 'Unknown workspace', 120);
   const reporterName = cleanText(reporter?.name || report.user || report.userEmail || 'A user', 80);
-  const snippet = cleanText(report.rawMessage || report.message || '', 160);
-  const title = `86 Chaos bug report: ${category}`;
-  const body = `${reporterName} • ${restaurant}: ${snippet || 'Open System Administrator → Support to review.'}`.slice(0, 240);
+  const rawSnippet = cleanText(report.rawMessage || report.message || '', 220);
+  const snippet = plainEnglishBugMessage(rawSnippet, report);
+  const title = plainEnglishBugTitle(category, rawSnippet, report);
+  const body = `${reporterName} • ${restaurant}: ${snippet}`.slice(0, 240);
   const tag = `86chaos-bug-report:${String(report.reportId || category || Date.now())}`.replace(/[^A-Za-z0-9_.:-]/g, '_').slice(0, 120);
   const payload = {
     notification: { title, body },
@@ -288,6 +321,7 @@ module.exports = async function handler(req, res) {
       category: cleanCategory(body.category),
       message: `${isAutomaticCrash ? 'AUTO CRASH REPORT' : 'USER REPORT'}: ${rawMessage}`,
       rawMessage,
+      userFacingMessage: plainEnglishBugMessage(rawMessage, { category: cleanCategory(body.category), errorName: body.errorName || '' }),
       user: cleanText(caller.name || body.user || decoded.name || decoded.email || 'Unknown', 120),
       userId: caller.id || decoded.uid || '',
       userEmail: cleanText(caller.email || decoded.email || body.userEmail || '', 160),
@@ -442,6 +476,7 @@ module.exports = async function handler(req, res) {
       marker: report.rawMessage,
       message: report.message,
       errorMessage: report.errorMessage,
+      userFacingMessage: report.userFacingMessage,
       push: {
         attempted: pushResult.attempted !== false,
         fcmAcceptedCount: pushResult.fcmAcceptedCount ?? pushResult.sentCount ?? 0,

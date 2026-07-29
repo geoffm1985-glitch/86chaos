@@ -517,7 +517,7 @@ const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, time
                             const sel = assignDates.includes(d) && selectedEmp===u.id;
                             return (
                             <td key={d} onClick={()=>handleCellClick(d,u.id)} className={`p-0.5 border-r border-[#2A353D] cursor-pointer transition-all align-top h-7 sm:h-8 ${sel?'bg-[#8F6040] outline outline-2 outline-[#D4A381] shadow-inner z-0 relative':'hover:bg-[#12161A]'}`}>
-                            <div className="flex flex-col gap-[1px] w-full justify-start overflow-hidden">
+                            <div className="flex flex-col gap-[1px] w-full justify-start overflow-visible">
                               {req && !req.isPartial && <div className="w-full rounded font-black text-[7px] sm:text-[8px] py-0.5 text-center text-red-400 bg-red-900/40 uppercase tracking-tighter" title="Requested Off">Off</div>}
                               {req && req.isPartial && <div className="w-full rounded font-black text-[7px] sm:text-[8px] py-0.5 text-center text-amber-400 bg-amber-900/40 uppercase tracking-tighter truncate" title={`Off: ${formatShortTime(req.startTime)}-${formatShortTime(req.endTime)}`}>{formatShortTime(req.startTime)}-{formatShortTime(req.endTime)}</div>}
                               {shift && <div className={`w-full rounded font-bold text-[7px] sm:text-[8px] py-0.5 text-center truncate ${getRoleColors(shift.role, shift.isPublished)}`} title={`${formatShortTime(shift.startTime)} - ${formatShortTime(shift.endTime)}`}>{formatShortTime(shift.startTime)}-{formatShortTime(shift.endTime)}</div>}
@@ -549,7 +549,7 @@ const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, time
               <span className={`text-[9px] font-bold ${T.muted} uppercase tracking-widest`}>OT Threshold: {appUser?.systemSettings?.overtime || 40}h</span>
             </div>
             <div className="overflow-x-auto no-scrollbar">
-              <table className="w-full text-left text-xs border-collapse min-w-[600px]">
+              <table className="scheduled-hours-tracker-table w-full text-left text-xs border-collapse min-w-[760px]">
                 <thead>
                   <tr className="bg-[#1A2126] border-b border-[#2A353D] text-[9px] font-black uppercase tracking-widest text-slate-400">
                     <th className="p-3 border-r border-[#2A353D] sticky left-0 bg-[#1A2126] z-10 w-24">Employee</th>

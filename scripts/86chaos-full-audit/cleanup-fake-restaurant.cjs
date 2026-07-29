@@ -4,14 +4,13 @@ const path = require('path');
 
 const { loadEnv, env, boolEnv } = require('./env-loader.cjs');
 const { readFirebaseConfig } = require('./firebase-client.cjs');
+const { ensureRunDir, getSeedReportPath, getCleanupReportPath, readJsonIfExists, writeJson } = require('../86chaos-release-gate/run-context.cjs');
 
 loadEnv(process.cwd());
 
-const OUT_DIR = path.join(process.cwd(), 'test-results');
-fs.mkdirSync(OUT_DIR, { recursive: true });
-const REPORT_PATH = path.join(OUT_DIR, '86chaos-full-audit-cleanup-report.json');
-const RUN_ID = process.env.CHAOS_FULL_AUDIT_RUN_ID || new Date().toISOString().replace(/[:.]/g, '-');
-
+const { runId: RUN_ID, runDir: RELEASE_RUN_DIR } = ensureRunDir();
+const REPORT_PATH = getCleanupReportPath(RUN_ID);
+const QA_RESTAURANT_NAME = '86 Chaos Full Audit QA Restaurant';
 const COLLECTIONS = [
   'restaurantAdminAlerts', 'eventReminders', 'personalReminders', 'scheduleCoverageTargets',
   'scheduleTemplates', 'availabilityRecords', 'shiftSwaps', 'timePunches', 'timeOffRequests',
@@ -20,12 +19,13 @@ const COLLECTIONS = [
 ];
 
 function writeReport(report) {
-  fs.writeFileSync(REPORT_PATH, JSON.stringify({
+  writeJson(REPORT_PATH, {
     generatedAt: new Date().toISOString(),
     runId: RUN_ID,
-    cleanupMethod: 'browser-origin-rest',
+    runDir: RELEASE_RUN_DIR,
+    cleanupMethod: 'current-run-exact-id-browser-origin-rest',
     ...report,
-  }, null, 2));
+  });
 }
 
 function appUrl(pathOrTab = '') {
@@ -65,10 +65,45 @@ function firestoreRest(config, idToken) {
   const encodedProject = encodeURIComponent(config.projectId);
   const base = `https://firestore.googleapis.com/v1/projects/${encodedProject}/databases/(default)/documents`;
   const headers = { Authorization: `Bearer ${idToken}`, 'Content-Type': 'application/json' };
-  return { base, headers };
+  return { base, headers, projectId: config.projectId };
 }
 
-async function queryQaOwned(page, rest, colName, restaurantId) {
+function fromFirestoreValue(value) {
+  if (!value || typeof value !== 'object') return undefined;
+  if ('stringValue' in value) return value.stringValue;
+  if ('booleanValue' in value) return value.booleanValue;
+  if ('integerValue' in value) return Number(value.integerValue);
+  if ('doubleValue' in value) return Number(value.doubleValue);
+  if ('timestampValue' in value) return value.timestampValue;
+  if ('nullValue' in value) return null;
+  if ('arrayValue' in value) return (value.arrayValue.values || []).map(fromFirestoreValue);
+  if ('mapValue' in value) return Object.fromEntries(Object.entries(value.mapValue.fields || {}).map(([k, v]) => [k, fromFirestoreValue(v)]));
+  return undefined;
+}
+function firestoreDocData(doc) { return Object.fromEntries(Object.entries(doc?.fields || {}).map(([k, v]) => [k, fromFirestoreValue(v)])); }
+
+async function getDocByName(page, rest, docName) {
+  if (!docName) return null;
+  try { return await pageFetchJson(page, { url: `https://firestore.googleapis.com/v1/${docName}`, method: 'GET', headers: rest.headers }); }
+  catch (error) { if (/HTTP 404\b/.test(error.message || '')) return null; throw error; }
+}
+
+async function deleteDocName(page, rest, docName) {
+  if (!docName) return { ok: false, reason: 'missing docName' };
+  try {
+    await pageFetchJson(page, { url: `https://firestore.googleapis.com/v1/${docName}`, method: 'DELETE', headers: rest.headers });
+    return { ok: true };
+  } catch (error) {
+    if (/HTTP 404\b/.test(error.message || '')) return { ok: true, alreadyAbsent: true };
+    return { ok: false, error: error.message };
+  }
+}
+
+function makeFieldFilter(fieldPath, op, value) { return { fieldFilter: { field: { fieldPath }, op, value } }; }
+function strValue(value) { return { stringValue: String(value) }; }
+function boolValue(value) { return { booleanValue: value === true }; }
+
+async function queryCurrentRunDocs(page, rest, colName, restaurantId, limit = 500) {
   const body = {
     structuredQuery: {
       from: [{ collectionId: colName }],
@@ -76,35 +111,106 @@ async function queryQaOwned(page, rest, colName, restaurantId) {
         compositeFilter: {
           op: 'AND',
           filters: [
-            { fieldFilter: { field: { fieldPath: 'qaOwned' }, op: 'EQUAL', value: { booleanValue: true } } },
-            { fieldFilter: { field: { fieldPath: 'restaurantId' }, op: 'EQUAL', value: { stringValue: restaurantId } } },
+            makeFieldFilter('qaOwned', 'EQUAL', boolValue(true)),
+            makeFieldFilter('restaurantId', 'EQUAL', strValue(restaurantId)),
+            makeFieldFilter('qaRunId', 'EQUAL', strValue(RUN_ID)),
           ],
         },
       },
-      limit: 500,
+      limit,
     },
   };
   const rows = await pageFetchJson(page, { url: `${rest.base}:runQuery`, method: 'POST', headers: rest.headers, body });
   return (rows || []).map(r => r.document).filter(Boolean);
 }
 
-async function deleteDocName(page, rest, docName) {
-  if (!docName) return;
-  const url = `https://firestore.googleapis.com/v1/${docName}`;
-  await pageFetchJson(page, { url, method: 'DELETE', headers: rest.headers });
+function buildExpectedByCollection(seed) {
+  const expected = {};
+  for (const row of seed.seededDocuments || []) {
+    if (row.collection === 'restaurants') continue;
+    expected[row.collection] = (expected[row.collection] || 0) + 1;
+  }
+  for (const [collection, count] of Object.entries(seed.expectedCounts || {})) {
+    expected[collection] = Math.max(expected[collection] || 0, Number(count) || 0);
+  }
+  return expected;
+}
+
+function validateSeedForCleanup(seed, currentRunId) {
+  const errors = [];
+  if (!seed) errors.push('Current-run seed report is missing.');
+  if (seed && seed.ok !== true) errors.push('Current-run seed report is not ok:true.');
+  if (seed && seed.runId !== currentRunId) errors.push(`Seed report runId ${seed.runId || '(missing)'} does not match current run ${currentRunId}.`);
+  const restaurantId = seed?.restaurantId || seed?.profile?.restaurantId || '';
+  if (!restaurantId) errors.push('Seed report does not contain restaurantId.');
+  if (seed && seed.createdRestaurant !== true) errors.push('Seed report did not create the disposable restaurant for this run.');
+  if (seed && seed.verification?.ok !== true) errors.push('Seed report does not contain successful verification.');
+  if (seed && Array.isArray(seed.seededDocuments) && seed.seededDocuments.length === 0) errors.push('Seed report contains zero exact seeded document IDs.');
+  return { ok: errors.length === 0, errors, restaurantId };
+}
+
+async function cleanupCurrentRun({ page, rest, seed, restaurantId }) {
+  const expected = buildExpectedByCollection(seed);
+  const deleted = {};
+  const alreadyAbsent = {};
+  const failed = [];
+  const additionalRunRecords = {};
+  const remaining = {};
+  const seededRows = (seed.seededDocuments || []).filter(row => row.collection !== 'restaurants');
+
+  for (const row of seededRows) {
+    const before = await getDocByName(page, rest, row.docName);
+    if (!before) {
+      alreadyAbsent[row.collection] = (alreadyAbsent[row.collection] || 0) + 1;
+      continue;
+    }
+    const result = await deleteDocName(page, rest, row.docName);
+    if (result.ok && result.alreadyAbsent) alreadyAbsent[row.collection] = (alreadyAbsent[row.collection] || 0) + 1;
+    else if (result.ok) deleted[row.collection] = (deleted[row.collection] || 0) + 1;
+    else failed.push({ collection: row.collection, id: row.id, docName: row.docName, error: result.error || result.reason || 'delete failed' });
+  }
+
+  for (const colName of COLLECTIONS) {
+    let extraDeleted = 0;
+    for (let guard = 0; guard < 40; guard += 1) {
+      const docs = await queryCurrentRunDocs(page, rest, colName, restaurantId, 500);
+      if (!docs.length) break;
+      for (const doc of docs) {
+        const result = await deleteDocName(page, rest, doc.name);
+        if (result.ok) extraDeleted += 1;
+        else failed.push({ collection: colName, docName: doc.name, error: result.error || result.reason || 'delete failed' });
+      }
+      if (docs.length < 500) break;
+    }
+    if (extraDeleted) additionalRunRecords[colName] = extraDeleted;
+  }
+
+  for (const colName of COLLECTIONS) {
+    try {
+      const docs = await queryCurrentRunDocs(page, rest, colName, restaurantId, 500);
+      if (docs.length) remaining[colName] = docs.length;
+    } catch (error) {
+      failed.push({ collection: colName, error: `remaining verification failed: ${error.message}` });
+    }
+  }
+
+  return { expected, deleted, alreadyAbsent, failed, additionalRunRecords, remaining };
 }
 
 async function main() {
-  const report = { ok: false, deleted: [], warnings: [] };
+  const report = { ok: false, expected: {}, deleted: {}, alreadyAbsent: {}, failed: [], remaining: {}, additionalRunRecords: {}, warnings: [] };
   let browser;
   try {
     if (!boolEnv('CHAOS_ALLOW_MUTATION')) throw new Error('CHAOS_ALLOW_MUTATION=true required for cleanup.');
     if (!env('APP_URL', 'CHAOS_BASE_URL', 'PLAYWRIGHT_BASE_URL', 'BASE_URL')) throw new Error('APP_URL / CHAOS_BASE_URL required for browser-origin cleanup.');
 
-    const seedPath = path.join(OUT_DIR, '86chaos-full-audit-seed-report.json');
-    const seed = fs.existsSync(seedPath) ? JSON.parse(fs.readFileSync(seedPath, 'utf8')) : null;
-    const restaurantId = env('CHAOS_QA_RESTAURANT_ID') || seed?.restaurantId || seed?.profile?.restaurantId || '';
-    if (!restaurantId) throw new Error('No restaurantId found for cleanup. Seed report missing or did not include restaurantId.');
+    const seedPath = getSeedReportPath(RUN_ID);
+    const seed = readJsonIfExists(seedPath);
+    report.seedReportPath = seedPath;
+    const validation = validateSeedForCleanup(seed, RUN_ID);
+    report.seedValidation = validation;
+    if (!validation.ok) throw new Error(`Cleanup refused before deleting anything:\n${validation.errors.join('\n')}`);
+    const restaurantId = validation.restaurantId;
 
     const config = readFirebaseConfig();
     const { email, password } = getCredentials();
@@ -125,36 +231,41 @@ async function main() {
     if (!signed.idToken) throw new Error('Browser-origin Firebase Auth cleanup sign-in did not return idToken.');
     report.signedInAs = email;
     report.restaurantId = restaurantId;
-    report.restaurantName = seed?.restaurantName || '86 Chaos Full Audit QA Restaurant';
+    report.restaurantName = seed.restaurantName || seed.profile?.restaurantName || QA_RESTAURANT_NAME;
 
     const rest = firestoreRest(config, signed.idToken);
+    const restaurantDocName = `projects/${config.projectId}/databases/(default)/documents/restaurants/${restaurantId}`;
+    const restaurantDoc = await getDocByName(page, rest, restaurantDocName);
+    if (!restaurantDoc) throw new Error(`Current-run restaurant document does not exist before cleanup: ${restaurantId}`);
+    const restaurantData = firestoreDocData(restaurantDoc);
+    const restaurantErrors = [];
+    const restaurantName = restaurantData.name || restaurantData.restaurantName || restaurantData.qaCleanupName || '';
+    if (restaurantName !== QA_RESTAURANT_NAME) restaurantErrors.push(`restaurant name was ${restaurantName || '(missing)'}`);
+    if (restaurantData.qaOwned !== true) restaurantErrors.push(`qaOwned was ${String(restaurantData.qaOwned)}`);
+    if (restaurantData.qaRunId !== RUN_ID) restaurantErrors.push(`qaRunId was ${restaurantData.qaRunId || '(missing)'}`);
+    if (restaurantData.createdBy !== '86chaos-full-audit') restaurantErrors.push(`createdBy was ${restaurantData.createdBy || '(missing)'}`);
+    if (restaurantErrors.length) throw new Error(`Cleanup refused non-current/non-QA restaurant: ${restaurantErrors.join('; ')}`);
 
-    for (const colName of COLLECTIONS) {
-      let count = 0;
-      try {
-        const docs = await queryQaOwned(page, rest, colName, restaurantId);
-        for (const doc of docs) {
-          await deleteDocName(page, rest, doc.name);
-          count += 1;
-        }
-        report.deleted.push({ collection: colName, count });
-      } catch (error) {
-        report.deleted.push({ collection: colName, count, error: error.message });
-        report.warnings.push(`Cleanup warning in ${colName}: ${error.message}`);
-      }
+    const cleanup = await cleanupCurrentRun({ page, rest, seed, restaurantId });
+    Object.assign(report, cleanup);
+
+    const restaurantDelete = await deleteDocName(page, rest, restaurantDocName);
+    report.restaurantDeleted = restaurantDelete.ok && !restaurantDelete.alreadyAbsent ? 1 : 0;
+    if (!restaurantDelete.ok) report.failed.push({ collection: 'restaurants', id: restaurantId, docName: restaurantDocName, error: restaurantDelete.error || restaurantDelete.reason || 'delete failed' });
+    const restaurantAfter = await getDocByName(page, rest, restaurantDocName);
+    report.restaurantRemaining = Boolean(restaurantAfter);
+
+    const accountedFailures = [];
+    for (const [collection, expectedCount] of Object.entries(report.expected)) {
+      const accounted = (report.deleted[collection] || 0) + (report.alreadyAbsent[collection] || 0);
+      if (accounted < expectedCount) accountedFailures.push({ collection, expected: expectedCount, accounted });
     }
-
-    if (seed?.createdRestaurant) {
-      try {
-        await deleteDocName(page, rest, `projects/${encodeURIComponent(config.projectId)}/databases/(default)/documents/restaurants/${encodeURIComponent(restaurantId)}`);
-        report.deleted.push({ collection: 'restaurants', count: 1, id: restaurantId });
-      } catch (error) {
-        report.deleted.push({ collection: 'restaurants', count: 0, id: restaurantId, error: error.message });
-        report.warnings.push(`Cleanup warning in restaurants: ${error.message}`);
-      }
+    if (Object.keys(report.expected).length && Object.values(report.expected).every(v => Number(v) === 0)) {
+      accountedFailures.push({ collection: '*', expected: 'nonzero seed counts', accounted: 0, reason: 'seed report had zero expected records' });
     }
-
-    report.ok = true;
+    report.accountedFailures = accountedFailures;
+    report.ok = report.seedValidation.ok === true && report.failed.length === 0 && accountedFailures.length === 0 && Object.keys(report.remaining).length === 0 && report.restaurantDeleted === 1 && report.restaurantRemaining === false;
+    if (!report.ok) process.exitCode = 1;
   } catch (error) {
     report.ok = false;
     report.error = error.stack || error.message;
@@ -167,4 +278,13 @@ async function main() {
   }
 }
 
-main();
+if (require.main === module) main();
+
+module.exports = {
+  validateSeedForCleanup,
+  buildExpectedByCollection,
+  cleanupCurrentRun,
+  firestoreDocData,
+  COLLECTIONS,
+  QA_RESTAURANT_NAME,
+};

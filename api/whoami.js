@@ -52,12 +52,27 @@ module.exports = async function handler(req, res) {
       firestoreProfile = { profileReadError: profileErr?.message || 'Could not read profile.' };
     }
 
-    const firestoreSuperAdmin = Boolean(
+    const firestoreProfileRoleText = [
+      firestoreProfile?.role,
+      firestoreProfile?.roleName,
+      firestoreProfile?.accountRole,
+      firestoreProfile?.title,
+      firestoreProfile?.systemRole
+    ].filter(Boolean).join(' ');
+    const firestoreRoleLooksSystemAdmin = /system\s*administrator|super\s*admin|master\s*admin/i.test(firestoreProfileRoleText);
+    const firestoreProfileDisabled = firestoreProfile?.isActive === false || /disabled|inactive|locked/i.test(String(firestoreProfile?.status || ''));
+    const firestoreSuperAdminFlag = Boolean(
       firestoreProfile?.isSuperAdmin === true ||
-      firestoreProfile?.systemAccess?.superAdmin === true
+      firestoreProfile?.systemAccess?.superAdmin === true ||
+      firestoreProfile?.permissions?.systemAdmin === true ||
+      firestoreProfile?.permissions?.godmode === true
     );
+    // Firestore profile flags are not enough by themselves. They must agree with a
+    // System Administrator style role so stale manager/owner session flags cannot open platform tools.
+    const firestoreSuperAdmin = Boolean(!firestoreProfileDisabled && firestoreSuperAdminFlag && firestoreRoleLooksSystemAdmin);
+    const firestoreSystemAdministrator = Boolean(!firestoreProfileDisabled && firestoreRoleLooksSystemAdmin);
     const customClaimSuperAdmin = decoded.superAdmin === true;
-    const superAdmin = Boolean(customClaimSuperAdmin || serverMasterAdminMatched || firestoreSuperAdmin);
+    const superAdmin = Boolean(customClaimSuperAdmin || serverMasterAdminMatched || firestoreSuperAdmin || firestoreSystemAdministrator);
 
     res.status(200).json({
       ok: true,
@@ -73,6 +88,9 @@ module.exports = async function handler(req, res) {
       customClaimSuperAdmin,
       serverMasterAdminMatched,
       firestoreSuperAdmin,
+      firestoreSystemAdministrator,
+      firestoreSuperAdminFlag,
+      firestoreRoleLooksSystemAdmin,
       masterAdminEnvConfigured: masterEmails.length > 0,
       masterAdminEmailCount: masterEmails.length,
       skippedMasterAdminEmails: masterEmailConfig.skipped,

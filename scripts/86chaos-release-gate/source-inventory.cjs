@@ -2,12 +2,13 @@ const fs = require('fs');
 const path = require('path');
 
 const root = process.cwd();
-const outDir = path.join(root, 'test-results', '86chaos-play-store-release-gate');
-fs.mkdirSync(outDir, { recursive: true });
+const { ensureRunDir } = require('./run-context.cjs');
+const { runDir: outDir, runId } = ensureRunDir();
 
 const result = {
   ok: true,
   generatedAt: new Date().toISOString(),
+  runId,
   node: process.version,
   root,
   errors: [],
@@ -42,11 +43,14 @@ for (const required of ['package.json', 'package-lock.json', 'src/App.js', 'src/
 
 let parser;
 let traverse;
+let importGraphAvailable = true;
 try {
   parser = require('@babel/parser');
   traverse = require('@babel/traverse').default;
 } catch (error) {
-  result.errors.push(`Babel parser/traverse unavailable: ${error.message}`);
+  importGraphAvailable = false;
+  result.errors.push(`Babel parser/traverse unavailable: ${error.message}. Run npm ci --include=dev --no-audit --no-fund before source inventory.`);
+  result.warnings.push('Import graph and unreachable-source analysis were skipped because the Babel parser dependencies were unavailable. No source files were marked unreachable from this incomplete analysis.');
 }
 
 const sourceFiles = walk(path.join(root, 'src'), p => /\.(js|jsx|ts|tsx)$/.test(p) && !/\.(test|spec)\./.test(p));
@@ -128,18 +132,22 @@ function resolveLocalImport(fromRel, specifier) {
 }
 
 const reachable = new Set();
-const queue = ['src/index.js', 'src/App.js'].filter(f => fs.existsSync(path.join(root, f)));
-while (queue.length) {
-  const file = queue.shift();
-  if (reachable.has(file)) continue;
-  reachable.add(file);
-  for (const specifier of importsByFile.get(file) || []) {
-    const resolved = resolveLocalImport(file, specifier);
-    if (resolved && !reachable.has(resolved)) queue.push(resolved);
+if (importGraphAvailable) {
+  const queue = ['src/index.js', 'src/App.js'].filter(f => fs.existsSync(path.join(root, f)));
+  while (queue.length) {
+    const file = queue.shift();
+    if (reachable.has(file)) continue;
+    reachable.add(file);
+    for (const specifier of importsByFile.get(file) || []) {
+      const resolved = resolveLocalImport(file, specifier);
+      if (resolved && !reachable.has(resolved)) queue.push(resolved);
+    }
   }
+  result.unreachableSourceFiles = sourceFiles.map(rel).filter(f => !reachable.has(f)).sort();
+} else {
+  result.importGraphSkipped = true;
+  result.unreachableSourceFiles = [];
 }
-
-result.unreachableSourceFiles = sourceFiles.map(rel).filter(f => !reachable.has(f)).sort();
 result.largestFiles = [...result.files].sort((a, b) => b.lines - a.lines).slice(0, 30);
 result.endpointFiles = apiFiles.map(rel).sort();
 result.totals = {

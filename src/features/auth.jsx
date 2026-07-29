@@ -166,6 +166,33 @@ const LoginScreen = ({ setAppUser }) => {
     });
   });
 
+  const persistLoginSessionForReload = (activeUser = {}) => {
+    if (typeof window === 'undefined' || !activeUser?.id) return;
+    const cache = {
+      ...activeUser,
+      id: activeUser.id || activeUser.userId || '',
+      userId: activeUser.userId || activeUser.id || '',
+      profileDocId: activeUser.profileDocId || activeUser.accountProfile?.id || activeUser.id || '',
+      restaurantId: activeUser.restaurantId || activeUser.activeRestaurantId || activeUser.defaultRestaurantId || '',
+      activeRestaurantId: activeUser.activeRestaurantId || activeUser.restaurantId || '',
+      defaultRestaurantId: activeUser.defaultRestaurantId || activeUser.restaurantId || '',
+      restaurantName: activeUser.restaurantName || activeUser.businessName || 'Restaurant',
+      sessionCached: true,
+      workspaceSwitcherReady: true
+    };
+    delete cache.password;
+    try {
+      const serialized = JSON.stringify(cache);
+      if (rememberMe) {
+        localStorage.setItem('86chaosUser', serialized);
+        sessionStorage.removeItem('86chaosUser');
+      } else {
+        sessionStorage.setItem('86chaosUser', serialized);
+        localStorage.removeItem('86chaosUser');
+      }
+    } catch (_) {}
+  };
+
   const loadWorkspaceChoices = async (baseUser, firebaseUser) => {
     const options = new Map();
     const uid = firebaseUser?.uid || baseUser.id;
@@ -283,7 +310,9 @@ const LoginScreen = ({ setAppUser }) => {
       localStorage.setItem('chaosRememberMe', rememberMe);
       localStorage.setItem(`chaosActiveRestaurantId_${baseUser.id}`, preferred.restaurantId);
       updateWorkspaceSelectionIfChanged(baseUser.profileDocId || baseUser.id, baseUser, preferred.restaurantId);
-      setAppUser({ ...buildActiveUserForWorkspace(baseUser, preferred), availableWorkspaces: choices });
+      const activeUser = { ...buildActiveUserForWorkspace(baseUser, preferred), availableWorkspaces: choices };
+      persistLoginSessionForReload(activeUser);
+      setAppUser(activeUser);
     } finally {
       setWorkspaceLoading(false);
     }
@@ -295,7 +324,9 @@ const LoginScreen = ({ setAppUser }) => {
     localStorage.setItem(`chaosActiveRestaurantId_${workspaceUser.id}`, workspace.restaurantId);
     try { sessionStorage.setItem(`chaosWorkspacePickerSeen_${workspaceUser.id}`, 'true'); } catch (_) {}
     updateWorkspaceSelectionIfChanged(workspaceUser.profileDocId || workspaceUser.id, workspaceUser, workspace.restaurantId);
-    setAppUser({ ...buildActiveUserForWorkspace(workspaceUser, workspace), availableWorkspaces: filterSelectableWorkspaceChoices(workspaceChoices) });
+    const activeUser = { ...buildActiveUserForWorkspace(workspaceUser, workspace), availableWorkspaces: filterSelectableWorkspaceChoices(workspaceChoices) };
+    persistLoginSessionForReload(activeUser);
+    setAppUser(activeUser);
     setWorkspaceChoices([]);
     setWorkspaceUser(null);
   };
@@ -364,7 +395,9 @@ const LoginScreen = ({ setAppUser }) => {
         localStorage.setItem(`chaosActiveRestaurantId_${baseUser.id}`, preferred.restaurantId);
         const profileDocId = baseUser.profileDocId || baseUser.id;
         updateWorkspaceSelectionIfChanged(profileDocId, baseUser, preferred.restaurantId);
-        setAppUser({ ...buildActiveUserForWorkspace(baseUser, preferred), availableWorkspaces: choices });
+        const activeUser = { ...buildActiveUserForWorkspace(baseUser, preferred), availableWorkspaces: choices };
+        persistLoginSessionForReload(activeUser);
+        setAppUser(activeUser);
       } finally {
         setWorkspaceLoading(false);
       }

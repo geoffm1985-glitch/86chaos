@@ -3,8 +3,10 @@ const path = require('path');
 const { defineConfig, devices } = require('@playwright/test');
 
 const root = process.cwd();
+const { ensureRunDir } = require('./scripts/86chaos-release-gate/run-context.cjs');
+const { runDir, runId } = ensureRunDir();
 const baseURL = process.env.APP_URL || process.env.CHAOS_BASE_URL || process.env.PLAYWRIGHT_BASE_URL || process.env.BASE_URL || 'http://127.0.0.1:3000';
-const resultsRoot = path.join(root, 'test-results', '86chaos-play-store-release-gate');
+const resultsRoot = runDir;
 fs.mkdirSync(resultsRoot, { recursive: true });
 
 module.exports = defineConfig({

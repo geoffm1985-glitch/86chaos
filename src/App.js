@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { Bell, Bug, ChevronLeft, ChevronRight, Loader2, Menu, Moon, Send, X } from 'lucide-react';
-import { addDoc, arrayUnion, collection, doc, onSnapshot, updateDoc } from 'firebase/firestore';
+import { addDoc, collection, doc, onSnapshot, updateDoc } from 'firebase/firestore';
 import { getToken, onMessage } from 'firebase/messaging';
 import { signOut } from 'firebase/auth';
 import 'leaflet/dist/leaflet.css';
@@ -56,10 +56,23 @@ const reportRuntimeChunkFailure = async (error, extra = {}) => {
 const recoverFromChunkFailureOnce = async (error, exportName = 'section') => {
   if (!isChunkLoadFailure(error) || typeof window === 'undefined') throw error;
   const chunkUrl = extractChunkUrl(error) || exportName;
-  const recoveryKey = `86chaos:chunkRecovery:${CURRENT_VERSION}:${chunkUrl}`;
-  await reportRuntimeChunkFailure(error, { source: 'lazy_feature_import', exportName });
-  if (!sessionStorage.getItem(recoveryKey)) {
-    sessionStorage.setItem(recoveryKey, new Date().toISOString());
+  const reloadUsedKey = `86chaos:chunkRecovery:${CURRENT_VERSION}:autoReloadUsed`;
+  const inFlightKey = `86chaos:chunkRecovery:${CURRENT_VERSION}:autoReloadInFlight`;
+  const readRecoveryMarker = (key) => {
+    try { return sessionStorage.getItem(key) || localStorage.getItem(key) || ''; } catch (_) { return ''; }
+  };
+  const writeRecoveryMarker = (key, value) => {
+    try { sessionStorage.setItem(key, value); } catch (_) {}
+    try { localStorage.setItem(key, value); } catch (_) {}
+  };
+  const alreadyReloaded = readRecoveryMarker(reloadUsedKey);
+  const reloadInFlight = window.__chaosChunkRecoveryInFlight || readRecoveryMarker(inFlightKey);
+  if (!alreadyReloaded && !reloadInFlight) {
+    const stamp = new Date().toISOString();
+    window.__chaosChunkRecoveryInFlight = true;
+    writeRecoveryMarker(inFlightKey, stamp);
+    writeRecoveryMarker(reloadUsedKey, `${stamp}|${chunkUrl}`);
+    await reportRuntimeChunkFailure(error, { source: 'lazy_feature_import', exportName, chunkAutoReload: 'one-shot' });
     try {
       const registration = await navigator.serviceWorker?.getRegistration?.();
       await registration?.update?.();
@@ -69,7 +82,9 @@ const recoverFromChunkFailureOnce = async (error, exportName = 'section') => {
     url.searchParams.set('chaosReloadVersion', CURRENT_VERSION);
     url.searchParams.set('chaosReloadAt', String(Date.now()));
     window.location.replace(url.toString());
+    return new Promise(() => {});
   }
+  await reportRuntimeChunkFailure(error, { source: 'lazy_feature_import', exportName, chunkAutoReload: 'already-used' });
   throw error;
 };
 const lazyFeature = (loader, exportName) => React.lazy(() => loader()
@@ -327,7 +342,7 @@ export default function App() {
   const [serverAdminCheck, setServerAdminCheck] = useState(null);
   
   // --- VERSION CHECKER STATE & LOGIC ---
-  const [showUpdateBanner, setShowUpdateBanner] = useState(false);
+  const [showUpdateBanner, setShowUpdateBanner] = useState(() => typeof window !== 'undefined' && new URLSearchParams(window.location.search).has('chaosReloadAt'));
   const [availableVersion, setAvailableVersion] = useState('');
   const [hasHelpUpdate, setHasHelpUpdate] = useState(false);
   const [tourMode, setTourMode] = useState(null);
@@ -336,6 +351,12 @@ export default function App() {
   useEffect(() => {
     const checkAppVersion = async () => {
       try {
+        const chunkRecoveryActive = typeof window !== 'undefined' && new URLSearchParams(window.location.search).has('chaosReloadAt');
+        if (chunkRecoveryActive) {
+          setAvailableVersion(CURRENT_VERSION);
+          setShowUpdateBanner(true);
+          return;
+        }
         const response = await fetch(`/version.json?t=${Date.now()}`);
         if (response.ok) {
           const data = await response.json();
@@ -704,34 +725,42 @@ const [currentDate, setCurrentDate] = useState(getToday());
 
 
   const isDemoMode = !!liveAppUser?.isDemo;
-  const systemAdminRoleText = String(liveAppUser?.role || liveAppUser?.roleName || liveAppUser?.accountRole || '').trim();
-  const roleLooksSystemAdmin = /system\s*administrator|super\s*admin|master\s*admin/i.test(systemAdminRoleText);
   const sessionEmailForAdmin = String(liveAppUser?.email || appUser?.email || auth.currentUser?.email || '').toLowerCase();
-  const serverRoleLooksSystemAdmin = /system\s*administrator|super\s*admin|master\s*admin/i.test(String(serverAdminCheck?.firestoreProfileRole || serverAdminCheck?.role || serverAdminCheck?.roleName || ''));
+  const serverRoleLooksSystemAdmin = /system\s*administrator|super\s*admin|master\s*admin/i.test(String(serverAdminCheck?.firestoreProfileRole || serverAdminCheck?.role || serverAdminCheck?.roleName || '')) || serverAdminCheck?.firestoreRoleLooksSystemAdmin === true;
   const serverSaysSuperAdmin = Boolean(
     serverAdminCheck?.superAdmin === true && (
       serverAdminCheck?.serverMasterAdminMatched === true ||
       serverAdminCheck?.customClaimSuperAdmin === true ||
+      serverAdminCheck?.firestoreSystemAdministrator === true ||
       (serverAdminCheck?.firestoreSuperAdmin === true && serverRoleLooksSystemAdmin)
     )
   );
-  const localProfileClaimsSuperAdmin = liveAppUser?.isSuperAdmin === true && (
-    liveAppUser?.systemAccess?.superAdmin === true ||
-    liveAppUser?.permissions?.systemAdmin === true ||
-    liveAppUser?.permissions?.godmode === true ||
-    roleLooksSystemAdmin
+  const localRoleLooksSystemAdmin = /system\s*administrator|super\s*admin|master\s*admin/i.test(String(liveAppUser?.role || liveAppUser?.roleName || liveAppUser?.accountRole || liveAppUser?.title || ''));
+  const serverAdminCheckPending = Boolean(appUser?.id && appUser.id !== 'dev-backdoor' && serverAdminCheck === null);
+  // Local System Administrator markers are only a short loading hint while /api/whoami is pending.
+  // Once the server check returns, full platform access must come from the verified server response.
+  const pendingLocalSystemAdminHint = Boolean(
+    !isDemoMode &&
+    serverAdminCheckPending &&
+    localRoleLooksSystemAdmin &&
+    (liveAppUser?.isSuperAdmin === true || liveAppUser?.systemAccess?.superAdmin === true || liveAppUser?.permissions?.systemAdmin === true || liveAppUser?.permissions?.godmode === true)
   );
-  const hasLocalSystemAdminMarker = Boolean(
-    localProfileClaimsSuperAdmin ||
-    serverSaysSuperAdmin ||
-    (MASTER_ADMIN_EMAIL && sessionEmailForAdmin === MASTER_ADMIN_EMAIL.toLowerCase())
-  );
-  if (!isDemoMode && liveAppUser && (serverSaysSuperAdmin || hasLocalSystemAdminMarker) && liveAppUser.isSuperAdmin !== true) {
+  const hasLocalSystemAdminMarker = Boolean(serverSaysSuperAdmin || pendingLocalSystemAdminHint);
+  if (!isDemoMode && liveAppUser && !hasLocalSystemAdminMarker && liveAppUser.isSuperAdmin === true) {
+    liveAppUser = {
+      ...liveAppUser,
+      isSuperAdmin: false,
+      systemAccess: { ...(liveAppUser.systemAccess || {}), superAdmin: false },
+      permissions: { ...(liveAppUser.permissions || {}), systemAdmin: false, godmode: false },
+      superAdminAccessSource: 'server-verification-required'
+    };
+  }
+  if (!isDemoMode && liveAppUser && hasLocalSystemAdminMarker && liveAppUser.isSuperAdmin !== true) {
     liveAppUser = {
       ...liveAppUser,
       isSuperAdmin: true,
       systemAccess: { ...(liveAppUser.systemAccess || {}), superAdmin: true },
-      superAdminAccessSource: serverAdminCheck?.serverMasterAdminMatched ? 'server-master-admin-env' : serverAdminCheck?.customClaimSuperAdmin ? 'firebase-custom-claim' : serverAdminCheck?.firestoreSuperAdmin ? 'firestore-profile-flag' : 'local-system-admin-marker'
+      superAdminAccessSource: serverAdminCheck?.serverMasterAdminMatched ? 'server-master-admin-env' : serverAdminCheck?.customClaimSuperAdmin ? 'firebase-custom-claim' : serverAdminCheck?.firestoreSystemAdministrator ? 'firestore-system-administrator-role' : serverAdminCheck?.firestoreSuperAdmin ? 'firestore-profile-flag' : 'pending-local-system-admin-hint'
     };
   }
 
@@ -863,6 +892,50 @@ if (liveAppUser && clientData) {
     }
     return merged;
   }, [isDemoMode, users, workspaceMembers, sessionCanViewWages, livePresenceRecords]);
+  const scheduleDisplayUsers = useMemo(() => {
+    if (!wantsScheduleScreen && activeTabState !== 'published') return displayUsers;
+    const merged = Array.isArray(displayUsers) ? [...displayUsers] : [];
+    const seen = new Set();
+    const remember = (value) => {
+      const key = String(value || '').trim().toLowerCase();
+      if (key) seen.add(key);
+    };
+    merged.forEach(user => {
+      remember(user?.id); remember(user?.uid); remember(user?.authUid); remember(user?.userId);
+      remember(user?.scheduleUserId); remember(user?.employeeId); remember(user?.rosterUserId);
+      remember(user?.email); remember(user?.emailLower); remember(user?.name); remember(user?.displayName); remember(user?.fullName);
+    });
+    const addShiftPerson = (shift = {}) => {
+      if (!shift || typeof shift !== 'object') return;
+      const ids = [shift.scheduleUserId, shift.employeeId, shift.rosterUserId, shift.userId, shift.uid, shift.authUid, shift.staffId].filter(Boolean);
+      const name = String(shift.employeeName || shift.staffName || shift.userName || shift.displayName || shift.fullName || shift.name || '').trim();
+      const email = String(shift.employeeEmail || shift.email || shift.emailLower || '').trim();
+      const primaryId = String(ids[0] || email || name || '').trim();
+      const known = [primaryId, name, email, ...ids].some(value => seen.has(String(value || '').trim().toLowerCase()));
+      if (!primaryId || !name || known) return;
+      ids.forEach(remember); remember(primaryId); remember(name); remember(email);
+      merged.push({
+        id: primaryId,
+        uid: shift.uid || shift.authUid || shift.userId || primaryId,
+        userId: shift.userId || shift.employeeId || primaryId,
+        scheduleUserId: shift.scheduleUserId || shift.employeeId || primaryId,
+        employeeId: shift.employeeId || primaryId,
+        name,
+        displayName: name,
+        fullName: name,
+        email,
+        emailLower: email.toLowerCase(),
+        role: shift.role || shift.position || shift.department || 'Scheduled Staff',
+        department: shift.department || shift.section || '',
+        restaurantId: shift.restaurantId || rId,
+        isActive: true,
+        scheduleOnly: true,
+        source: 'shift-roster-fallback'
+      });
+    };
+    (shifts || []).forEach(addShiftPerson);
+    return merged;
+  }, [displayUsers, shifts, wantsScheduleScreen, activeTabState, rId]);
   if (isDemoMode && liveAppUser?.demoRole === 'employee' && displayUsers?.[0]) {
     liveAppUser = { ...liveAppUser, id: displayUsers[0].id, name: 'Demo Employee', role: displayUsers[0].role || 'Demo Employee', isAdmin: false, isSuperAdmin: false, permissions: { help: true } };
   }
@@ -934,18 +1007,24 @@ if (liveAppUser && clientData) {
     } catch (_) {}
     try {
       if (mode === 'employee' && liveAppUser?.id) {
-        await updateDoc(doc(db, 'users', liveAppUser.id), {
-          onboardingTourSeen: true,
-          onboardingTourSeenAt: liveAppUser.onboardingTourSeenAt || now,
-          ...(skipped ? { onboardingSkipped: true, onboardingSkippedAt: now } : {})
-        });
+        const needsWrite = liveAppUser.onboardingTourSeen !== true || (skipped && liveAppUser.onboardingSkipped !== true);
+        if (needsWrite) {
+          await updateDoc(doc(db, 'users', liveAppUser.id), {
+            onboardingTourSeen: true,
+            onboardingTourSeenAt: liveAppUser.onboardingTourSeenAt || now,
+            ...(skipped ? { onboardingSkipped: true, onboardingSkippedAt: now } : {})
+          });
+        } else rememberSkippedFirestoreWrite();
       }
       if (mode === 'manager' && liveAppUser?.id) {
-        await updateDoc(doc(db, 'users', liveAppUser.id), {
-          managerOnboardingSeen: true,
-          managerOnboardingSeenAt: liveAppUser.managerOnboardingSeenAt || now,
-          ...(skipped ? { managerOnboardingSkipped: true, managerOnboardingSkippedAt: now } : {})
-        });
+        const needsWrite = liveAppUser.managerOnboardingSeen !== true || (skipped && liveAppUser.managerOnboardingSkipped !== true);
+        if (needsWrite) {
+          await updateDoc(doc(db, 'users', liveAppUser.id), {
+            managerOnboardingSeen: true,
+            managerOnboardingSeenAt: liveAppUser.managerOnboardingSeenAt || now,
+            ...(skipped ? { managerOnboardingSkipped: true, managerOnboardingSkippedAt: now } : {})
+          });
+        } else rememberSkippedFirestoreWrite();
       }
     } catch(e) { console.warn('Tour seen-once save failed', e); }
   };
@@ -963,8 +1042,14 @@ if (liveAppUser && clientData) {
     try {
       await markTourSeenOnce(mode, false);
       localStorage.setItem(getTourCompleteKey(mode), 'true');
-      if (mode === 'manager' && rId) await updateDoc(doc(db, 'restaurants', rId), { workspaceOnboardingComplete: true, workspaceOnboardingCompletedAt: new Date().toISOString(), workspaceOnboardingSkipped: false });
-      if (mode === 'employee' && liveAppUser?.id) await updateDoc(doc(db, 'users', liveAppUser.id), { onboardingComplete: true, onboardingCompletedAt: new Date().toISOString(), onboardingSkipped: false, onboardingTourSeen: true });
+      if (mode === 'manager' && rId) {
+        if (clientData?.workspaceOnboardingComplete === true && clientData?.workspaceOnboardingSkipped === false) rememberSkippedFirestoreWrite();
+        else await updateDoc(doc(db, 'restaurants', rId), { workspaceOnboardingComplete: true, workspaceOnboardingCompletedAt: new Date().toISOString(), workspaceOnboardingSkipped: false });
+      }
+      if (mode === 'employee' && liveAppUser?.id) {
+        if (liveAppUser.onboardingComplete === true && liveAppUser.onboardingSkipped === false && liveAppUser.onboardingTourSeen === true) rememberSkippedFirestoreWrite();
+        else await updateDoc(doc(db, 'users', liveAppUser.id), { onboardingComplete: true, onboardingCompletedAt: new Date().toISOString(), onboardingSkipped: false, onboardingTourSeen: true });
+      }
     } catch(e) { console.warn('Tour completion save failed', e); }
   };
 
@@ -1192,20 +1277,85 @@ if (liveAppUser && clientData) {
 
   useEffect(() => {
     if (typeof document === 'undefined') return undefined;
-    const describeControl = (el, index) => {
-      const explicit = el.getAttribute('aria-label') || el.getAttribute('aria-labelledby') || el.getAttribute('title');
-      if (explicit) return;
-      const labelText = String(el.textContent || el.value || el.getAttribute('placeholder') || el.getAttribute('name') || '').replace(/\s+/g, ' ').trim();
-      if (labelText) return;
-      const type = (el.getAttribute('type') || el.tagName || '').toLowerCase();
-      if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT') {
-        el.setAttribute('aria-label', el.getAttribute('placeholder') || el.getAttribute('name') || `${type || 'form'} field ${index + 1}`);
-        return;
+    const safeLabelRe = /\b(open|close|view|details|back|next|previous|today|tomorrow|week|month|filter|search|clear|show|hide|expand|collapse|menu|settings|help|refresh|retry|print|copy|download|export|jump|calendar|schedule|inventory|recipe|message|maintenance|team|financial|event|reminder|tab)\b|^[×x✕✖+\-]$/i;
+    const mutationLabelRe = /\b(add|assign|save|create|delete|remove|publish|submit|send|post|reply|upload|scan|clock in|clock out|start break|end break|approve|deny|archive|restore|reset|repair|run|apply|generate|sync|reconnect|enable|disable|log|complete|resolve|reopen|order|backup|import|push|notify|test push|force|clear cache|update stock|deduct)\b/i;
+    const routeContextLabel = () => ({
+      today: 'Open Manager Brief', schedule: 'Schedule', published: 'Schedule', events: 'Event calendar', ops: 'Open operations', financials: 'Financial', sales: 'Financial', labor: 'Labor', messages: 'Message board', prep: 'Prep task', recipes: 'Recipe', inventory: 'Inventory', team: 'Team', maintenance: 'Maintenance', settings: 'Settings', help: 'Help', godmode: 'System Administrator', reminders: 'Reminder'
+    }[activeTabState] || 'Open 86 Chaos');
+    const cleanLabel = (value = '') => String(value || '').replace(/\s+/g, ' ').trim().slice(0, 140);
+    const isCoveredClassification = (label = '') => safeLabelRe.test(label) || mutationLabelRe.test(label);
+    const normalizeControlLabel = (base, el, index) => {
+      const tag = String(el.tagName || '').toUpperCase();
+      const role = String(el.getAttribute('role') || '').toLowerCase();
+      const type = String(el.getAttribute('type') || '').toLowerCase();
+      let label = cleanLabel(base);
+      if (!label) label = cleanLabel(el.value || el.getAttribute('placeholder') || el.getAttribute('name') || el.getAttribute('data-label') || '');
+      const context = routeContextLabel();
+
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') {
+        if (type === 'checkbox' || type === 'radio') return isCoveredClassification(label) ? label : `${context} option ${label || index + 1}`;
+        if (mutationLabelRe.test(label) && !safeLabelRe.test(label)) return `${context} field ${index + 1}`;
+        return isCoveredClassification(label) ? label : `${context} field ${label || index + 1}`;
       }
-      el.setAttribute('aria-label', `86 Chaos control ${index + 1}`);
+
+      if (/^log out$/i.test(label)) return 'Open sign out';
+      if (/^reset$/i.test(label)) return 'Clear form';
+      if (/save daily close/i.test(label)) return 'Save labor daily close';
+      if (/^add$/i.test(label) && activeTabState === 'reminders') return 'Add reminder';
+      if (/^add$/i.test(label) && activeTabState === 'maintenance') return 'Add maintenance task';
+      if (/^add$/i.test(label)) return `${context} add control`;
+      if (/add staff|add employee|add person|staff member/i.test(label)) return 'Add staff roster member';
+      if (/add pm|preventive maintenance/i.test(label)) return 'Add maintenance PM';
+      if (/run backup/i.test(label)) return 'Backup now';
+      if (/backup center|audit trail/i.test(label)) return 'Open backup center and audit trail';
+      if (/backup window missed/i.test(label)) return 'Open health details';
+      if (/auto[-\s]?fill/i.test(label)) return 'Auto-fill schedule';
+      if (/report (a )?problem|bug report/i.test(label)) return 'Open report problem';
+      if (/86\s*voice|voice assistant|microphone|mic/i.test(label)) return 'Open 86 Voice Assistant';
+      if (/active workspace/i.test(label)) return `Open ${label}`;
+      if (/overview|request off|availability|sales|labor|payroll|gross sales|net sales|tips|discounts|guest count|ticket count/i.test(label)) return `${context} ${label}`;
+      if (role === 'tab' || role === 'menuitem') return `Open ${label || context}`;
+      if (safeLabelRe.test(label) || mutationLabelRe.test(label)) return label;
+      if (/button|a/.test(tag.toLowerCase()) || role === 'button') return `Open ${label || `86 Chaos control ${index + 1}`}`;
+      return label || `${context} control ${index + 1}`;
+    };
+    const describeControl = (el, index) => {
+      const tag = String(el.tagName || '').toUpperCase();
+      const escapedId = el.id && typeof CSS !== 'undefined' && typeof CSS.escape === 'function' ? CSS.escape(el.id) : '';
+      const nearbyLabel = escapedId ? document.querySelector(`label[for="${escapedId}"]`) : null;
+      const explicit = el.getAttribute('aria-label') || el.getAttribute('title') || '';
+      const labelledBy = el.getAttribute('aria-labelledby') || '';
+      const labelText = cleanLabel(
+        explicit ||
+        nearbyLabel?.textContent ||
+        el.closest?.('label')?.textContent ||
+        el.textContent ||
+        el.value ||
+        el.getAttribute('placeholder') ||
+        el.getAttribute('name') ||
+        el.getAttribute('data-label') ||
+        ''
+      );
+      const normalized = normalizeControlLabel(labelText, el, index);
+      if (!labelledBy || !isCoveredClassification(labelText)) el.setAttribute('aria-label', normalized);
+      if (!el.getAttribute('title') && normalized) el.setAttribute('title', normalized);
+      if ((tag === 'BUTTON' || tag === 'A' || el.getAttribute('role') === 'button') && !el.classList.contains('no-compact')) {
+        el.classList.add('chaos-release-tap-target');
+      }
+    };
+    const describeScrollableRegions = () => {
+      document.querySelectorAll('.overflow-x-auto, .overflow-auto, [data-scrollable="true"]').forEach((el, index) => {
+        if (el.getAttribute('tabindex')) return;
+        const canScroll = (el.scrollWidth || 0) > (el.clientWidth || 0) || el.classList.contains('overflow-x-auto') || el.classList.contains('overflow-auto');
+        if (!canScroll) return;
+        el.setAttribute('tabindex', '0');
+        el.setAttribute('role', el.getAttribute('role') || 'region');
+        el.setAttribute('aria-label', el.getAttribute('aria-label') || `${routeContextLabel()} scroll area ${index + 1}`);
+      });
     };
     const applyLabels = () => {
       document.querySelectorAll('button, a, [role="button"], [role="tab"], [role="menuitem"], input, select, textarea').forEach(describeControl);
+      describeScrollableRegions();
     };
     applyLabels();
     const scheduleApplyLabels = typeof window.requestAnimationFrame === 'function' ? window.requestAnimationFrame.bind(window) : (fn) => setTimeout(fn, 0);
@@ -1550,6 +1700,67 @@ What I clicked / expected:
     : 'BO6mdu87G4ICBRZjY5e6mpsvCXdpV32TEyyJzJeQHZ4QXolGNsa6ncvgVAzRxIKihx83AxHS36aCtr--XzE45bc';
 
 
+  const getPushProfileDocId = () => String(
+    auth.currentUser?.uid ||
+    liveAppUser?.profileDocId ||
+    liveAppUser?.accountProfile?.id ||
+    liveAppUser?.uid ||
+    liveAppUser?.userId ||
+    liveAppUser?.id ||
+    ''
+  ).trim();
+
+  const getPushProfileRef = () => {
+    const profileId = getPushProfileDocId();
+    return profileId ? doc(db, 'users', profileId) : null;
+  };
+
+  const pushPatchValueMatchesCurrentUser = (field, nextValue) => {
+    if (!liveAppUser || !field) return false;
+    if (field.startsWith('pushDevices.')) {
+      const deviceId = field.split('.').slice(1).join('.');
+      const existing = liveAppUser?.pushDevices?.[deviceId];
+      try { return JSON.stringify(existing || null) === JSON.stringify(nextValue || null); } catch (_) { return false; }
+    }
+    const existing = liveAppUser?.[field];
+    if (nextValue === null && (existing === null || existing === undefined || existing === '')) return true;
+    return existing === nextValue;
+  };
+
+  const writePushProfilePatch = async (patch = {}) => {
+    const profileRef = getPushProfileRef();
+    if (!profileRef) throw new Error('No signed-in profile was available for this device.');
+    const meaningfulPatch = Object.fromEntries(Object.entries(patch || {}).filter(([field, value]) => !pushPatchValueMatchesCurrentUser(field, value)));
+    if (Object.keys(meaningfulPatch).length === 0) {
+      rememberSkippedFirestoreWrite();
+      return null;
+    }
+    try {
+      window.__chaosFirestoreDiagnostics = window.__chaosFirestoreDiagnostics || {};
+      window.__chaosFirestoreDiagnostics.writesInitiated = (window.__chaosFirestoreDiagnostics.writesInitiated || 0) + 1;
+    } catch (_) {}
+    const result = await updateDoc(profileRef, meaningfulPatch);
+    try {
+      window.__chaosFirestoreDiagnostics = window.__chaosFirestoreDiagnostics || {};
+      window.__chaosFirestoreDiagnostics.writesCompleted = (window.__chaosFirestoreDiagnostics.writesCompleted || 0) + 1;
+    } catch (_) {}
+    return result;
+  };
+
+  const rememberSkippedFirestoreWrite = () => {
+    try {
+      window.__chaosFirestoreDiagnostics = window.__chaosFirestoreDiagnostics || {};
+      window.__chaosFirestoreDiagnostics.skippedNoOpWrites = (window.__chaosFirestoreDiagnostics.skippedNoOpWrites || 0) + 1;
+    } catch (_) {}
+  };
+
+  const getPushErrorMessage = (err, fallback = 'Could not reconnect push notifications on this device.') => {
+    const raw = String(err?.message || err || fallback);
+    if (/permission|insufficient/i.test(raw)) return 'The app could not save this device yet. Sign out and back in, then tap Fix Now again.';
+    if (isFirebaseMessagingUnsupportedError(err)) return 'This browser cannot run Firebase push notifications. You can still use 86 Chaos normally.';
+    return raw;
+  };
+
   const getPushDeviceId = () => {
     try {
       const key = '86chaosPushDeviceId';
@@ -1596,13 +1807,13 @@ What I clicked / expected:
     const existing = liveAppUser?.pushDevices?.[deviceId] || {};
     const lastVerified = existing.lastVerifiedAt ? new Date(existing.lastVerifiedAt).getTime() : 0;
     const refreshMs = 3 * 24 * 60 * 60 * 1000;
-    const savedTokenList = Array.isArray(liveAppUser?.fcmTokens) ? liveAppUser.fcmTokens : [];
     const primaryTokenMissing = liveAppUser?.fcmToken !== currentToken;
-    const tokenArrayMissing = !savedTokenList.includes(currentToken);
-    return primaryTokenMissing || tokenArrayMissing || existing.token !== currentToken || existing.permission !== permission || existing.host !== window.location.hostname || !lastVerified || Date.now() - lastVerified > refreshMs || liveAppUser?.pushNeedsRepair === true || liveAppUser?.pushForceServiceWorkerRefresh === true;
+    return primaryTokenMissing || existing.token !== currentToken || existing.permission !== permission || existing.host !== window.location.hostname || !lastVerified || Date.now() - lastVerified > refreshMs || liveAppUser?.pushNeedsRepair === true || liveAppUser?.pushForceServiceWorkerRefresh === true;
   };
 
-  const shouldWritePushPermissionState = (permission, errorMessage = '') => {
+  const shouldWritePushPermissionState = (permission, errorMessage = '', forceWrite = false) => {
+    const explicitRepair = forceWrite || liveAppUser?.pushNeedsRepair === true || liveAppUser?.pushForceServiceWorkerRefresh === true;
+    if (!explicitRepair && permission !== 'granted') return false;
     const existingPermission = liveAppUser?.notificationPermission || liveAppUser?.pushTokenPermission || '';
     const existingStatus = liveAppUser?.pushRepairStatus || '';
     const existingError = liveAppUser?.lastPushRepairError || '';
@@ -1613,11 +1824,11 @@ What I clicked / expected:
     const nextStatus = permission === 'denied' ? 'blocked-by-browser' : 'permission-not-granted';
     if (existingStatus !== nextStatus) return true;
     if (errorMessage && existingError !== errorMessage) return true;
-    return !lastSync || Date.now() - lastSync > refreshMs || liveAppUser?.pushNeedsRepair === true || liveAppUser?.pushForceServiceWorkerRefresh === true;
+    return explicitRepair && (!lastSync || Date.now() - lastSync > refreshMs);
   };
 
   const repairPushOnThisDevice = async (source = 'manual') => {
-    if (!liveAppUser?.id || ghostTenant || isDemoMode || typeof window === 'undefined' || !('Notification' in window)) {
+    if (!getPushProfileDocId() || ghostTenant || isDemoMode || typeof window === 'undefined' || !('Notification' in window)) {
       addToast('Push Repair Blocked', 'Push repair is only available from the real logged-in device.');
       return false;
     }
@@ -1626,7 +1837,7 @@ What I clicked / expected:
       let permission = Notification.permission;
       if (permission === 'default') permission = await Notification.requestPermission();
       if (permission !== 'granted') {
-        await updateDoc(doc(db, 'users', liveAppUser.id), {
+        await writePushProfilePatch({
           notificationPermission: permission,
           pushTokenPermission: permission,
           pushRepairStatus: permission === 'denied' ? 'blocked-by-browser' : 'permission-not-granted',
@@ -1639,7 +1850,7 @@ What I clicked / expected:
 
       const supportedMessaging = await messagingReady.catch(() => null);
       if (!supportedMessaging) {
-        await updateDoc(doc(db, 'users', liveAppUser.id), {
+        await writePushProfilePatch({
           notificationPermission: permission,
           pushTokenPermission: permission,
           pushRepairStatus: 'unsupported-browser',
@@ -1668,17 +1879,16 @@ What I clicked / expected:
 
       const stamp = new Date().toISOString();
       const device = buildPushDevicePatch(currentToken, permission, stamp);
-      await updateDoc(doc(db, 'users', liveAppUser.id), {
+      await writePushProfilePatch({
         [device.field]: device.data,
         fcmToken: currentToken,
-        fcmTokens: arrayUnion(currentToken),
         fcmTokenUpdatedAt: stamp,
         lastPushTokenSyncAt: stamp,
         notificationPermission: permission,
         pushTokenPermission: permission,
         pushTokenHost: window.location.hostname,
         pushTokenCanonical: true,
-        pushTokenDedupeVersion: '16.0.50',
+        pushTokenDedupeVersion: '16.0.53',
         pushNeedsRepair: false,
         pushForceServiceWorkerRefresh: false,
         pushRepairStatus: 'connected',
@@ -1687,14 +1897,14 @@ What I clicked / expected:
         lastPushRepairError: null,
         lastPushFailureCode: null
       });
-      setAppUser(prev => prev?.id === liveAppUser.id ? { ...prev, fcmToken: currentToken, fcmTokens: Array.from(new Set([...(Array.isArray(prev?.fcmTokens) ? prev.fcmTokens : []), currentToken])), pushNeedsRepair: false, pushForceServiceWorkerRefresh: false, notificationPermission: permission, pushTokenPermission: permission, pushTokenHost: window.location.hostname } : prev);
+      setAppUser(prev => prev?.id === liveAppUser.id ? { ...prev, fcmToken: currentToken, pushNeedsRepair: false, pushForceServiceWorkerRefresh: false, notificationPermission: permission, pushTokenPermission: permission, pushTokenHost: window.location.hostname } : prev);
       setPushRepairDismissed(true);
       addToast(source === 'auto' ? 'Push Reconnected' : 'Notifications Fixed', 'This device is connected for 86 Chaos push notifications.');
       return true;
     } catch (err) {
       console.warn('86 Chaos push repair failed:', err?.message || err);
       const unsupportedMessaging = isFirebaseMessagingUnsupportedError(err);
-      await updateDoc(doc(db, 'users', liveAppUser.id), {
+      await writePushProfilePatch({
         notificationPermission: Notification.permission,
         pushTokenPermission: Notification.permission,
         pushRepairStatus: unsupportedMessaging ? 'unsupported-browser' : 'repair-failed',
@@ -1702,7 +1912,7 @@ What I clicked / expected:
         lastPushFailureCode: err?.code || (unsupportedMessaging ? 'messaging/unsupported-browser' : null),
         lastPushTokenSyncAt: new Date().toISOString()
       }).catch(() => {});
-      addToast(unsupportedMessaging ? 'Push Unavailable' : 'Push Repair Failed', unsupportedMessaging ? 'This browser cannot run Firebase push notifications. You can still use 86 Chaos normally.' : (err?.message || 'Could not reconnect push notifications on this device.'));
+      addToast(unsupportedMessaging ? 'Push Unavailable' : 'Push Repair Failed', getPushErrorMessage(err));
       return false;
     } finally {
       setIsPushRepairing(false);
@@ -1715,12 +1925,21 @@ What I clicked / expected:
   useEffect(() => {
     if (!liveAppUser?.id || ghostTenant || isDemoMode || typeof window === 'undefined' || !('Notification' in window)) return;
 
+    const lastSyncAt = liveAppUser?.lastPushTokenSyncAt ? new Date(liveAppUser.lastPushTokenSyncAt).getTime() : 0;
+    const autoSyncFreshMs = 6 * 60 * 60 * 1000;
+    const permissionState = Notification.permission;
+    const autoPushSyncStillFresh = Boolean(!pushRepairRequested && permissionState === 'granted' && lastSyncAt && Date.now() - lastSyncAt < autoSyncFreshMs && !liveAppUser?.pushNeedsRepair && !liveAppUser?.pushForceServiceWorkerRefresh);
+    if (autoPushSyncStillFresh) {
+      rememberSkippedFirestoreWrite();
+      return;
+    }
+
     let canceled = false;
 
     const syncPushToken = async (permission, showToast = false) => {
       if (canceled || permission !== 'granted') {
-        if (!canceled && liveAppUser?.id && shouldWritePushPermissionState(permission)) {
-          updateDoc(doc(db, 'users', liveAppUser.id), {
+        if (!canceled && getPushProfileDocId() && shouldWritePushPermissionState(permission, '', pushRepairRequested)) {
+          writePushProfilePatch({
             notificationPermission: permission,
             pushTokenPermission: permission,
             pushRepairStatus: permission === 'denied' ? 'blocked-by-browser' : 'permission-not-granted',
@@ -1738,8 +1957,8 @@ What I clicked / expected:
       try {
         const supportedMessaging = await messagingReady.catch(() => null);
         if (!supportedMessaging) {
-          if (shouldWritePushPermissionState(permission, 'messaging/unsupported-browser')) {
-            updateDoc(doc(db, 'users', liveAppUser.id), {
+          if (shouldWritePushPermissionState(permission, 'messaging/unsupported-browser', pushRepairRequested)) {
+            writePushProfilePatch({
               notificationPermission: permission,
               pushTokenPermission: permission,
               pushRepairStatus: 'unsupported-browser',
@@ -1766,17 +1985,16 @@ What I clicked / expected:
         const stamp = new Date().toISOString();
         const device = buildPushDevicePatch(currentToken, permission, stamp);
         if (!shouldWritePushDevice(device.deviceId, currentToken, permission)) return;
-        await updateDoc(doc(db, 'users', liveAppUser.id), {
+        await writePushProfilePatch({
           [device.field]: device.data,
           fcmToken: currentToken,
-          fcmTokens: arrayUnion(currentToken),
-          fcmTokenUpdatedAt: stamp,
+            fcmTokenUpdatedAt: stamp,
           lastPushTokenSyncAt: stamp,
           notificationPermission: permission,
           pushTokenPermission: permission,
           pushTokenHost: window.location.hostname,
           pushTokenCanonical: true,
-          pushTokenDedupeVersion: '16.0.50',
+          pushTokenDedupeVersion: '16.0.53',
           pushNeedsRepair: false,
           pushForceServiceWorkerRefresh: false,
           pushRepairStatus: 'connected',
@@ -1790,8 +2008,8 @@ What I clicked / expected:
         console.warn('86 Chaos push token sync failed:', err?.message || err);
         const unsupportedMessaging = isFirebaseMessagingUnsupportedError(err);
         const pushErrorMessage = err?.message || String(err);
-        if (shouldWritePushPermissionState(permission, pushErrorMessage)) {
-          updateDoc(doc(db, 'users', liveAppUser.id), {
+        if (shouldWritePushPermissionState(permission, pushErrorMessage, pushRepairRequested)) {
+          writePushProfilePatch({
             notificationPermission: permission,
             pushTokenPermission: permission,
             pushRepairStatus: unsupportedMessaging ? 'unsupported-browser' : 'sync-failed',
@@ -1805,11 +2023,15 @@ What I clicked / expected:
 
     const timer = setTimeout(async () => {
       if (Notification.permission === 'default') {
-        try {
-          const permission = await Notification.requestPermission();
-          await syncPushToken(permission, permission === 'granted');
-        } catch (err) {
-          console.warn('86 Chaos notification permission request failed:', err?.message || err);
+        if (pushRepairRequested) {
+          try {
+            const permission = await Notification.requestPermission();
+            await syncPushToken(permission, permission === 'granted');
+          } catch (err) {
+            console.warn('86 Chaos notification permission request failed:', err?.message || err);
+          }
+        } else {
+          rememberSkippedFirestoreWrite();
         }
       } else if (pushRepairRequested || Notification.permission === 'granted') {
         await syncPushToken(Notification.permission, pushRepairRequested);
@@ -1932,9 +2154,9 @@ What I clicked / expected:
     const routeIsInternalAdmin = activeTabState === 'godmode' || activeTabState === 'audit';
     if (!routeIsInternalAdmin && routeAccess && routeAccess.allowed === false) return <LockedFeatureScreen access={routeAccess} appUser={liveAppUser} setActiveTab={stableSetActiveTab} />;
     if (activeTabState === 'today') return <TabToday key={`tdy-${rId}`} currentDate={currentDate} appUser={liveAppUser} users={displayUsers} shifts={shifts} shiftSwaps={shiftSwaps} timeOffRequests={timeOffRequests} events={events} sales={sales} timePunches={timePunches} inventoryItems={inventoryItems} maintenanceLogs={maintenanceLogs} prepItems={prepItems} tasks={tasks} recipes={recipes} menuDependencies={menuDependencies} restaurantAdminAlerts={restaurantAdminAlerts} clientData={displayClientData} setActiveTab={setActiveTab} addToast={addToast} registerUndo={registerUndo} />;
-    if (activeTabState === 'schedule' && (liveAppUser?.isAdmin || liveAppUser?.permissions?.schedule)) return <TabMasterSchedule key={`schpub-${rId}-${liveAppUser?.id}`} currentDate={currentDate} setCurrentDate={setCurrentDate} onSubTabChange={setActiveScheduleSubTab} appUser={liveAppUser} users={displayUsers} shifts={shifts} shiftSwaps={shiftSwaps} timeOffRequests={timeOffRequests} events={events} addToast={addToast} initialSubTab="schedule-builder" voiceScheduleSubTabTarget={voiceScheduleSubTabTarget} clientData={displayClientData} scheduleBuilderProps={{ currentDate, users: displayUsers, shifts, events, timeOffRequests, timePunches, addToast, appUser: liveAppUser, clientData: displayClientData }} />;
-    if (activeTabState === 'events' && displayClientFeatures?.events !== false && (liveAppUser?.isSuperAdmin || liveAppUser?.isAdmin || liveAppUser?.isOwner || liveAppUser?.accountOwner || liveAppUser?.workspaceOwner || liveAppUser?.permissions?.events || liveAppUser?.permissions?.schedule || liveAppUser?.permissions?.team)) return <TabSchedule key={`evt-${rId}`} currentDate={currentDate} users={displayUsers} shifts={shifts} events={events} timeOffRequests={timeOffRequests} timePunches={timePunches} addToast={addToast} appUser={liveAppUser} clientData={displayClientData} initialSubTab="events" hideSubTabs />;
-    if (activeTabState === 'published') return <TabMasterSchedule key={`pub-${rId}-${liveAppUser?.id}`} currentDate={currentDate} setCurrentDate={setCurrentDate} onSubTabChange={setActiveScheduleSubTab} appUser={liveAppUser} users={displayUsers} shifts={shifts} shiftSwaps={shiftSwaps} timeOffRequests={timeOffRequests} events={events} addToast={addToast} voiceScheduleSubTabTarget={voiceScheduleSubTabTarget} clientData={displayClientData} scheduleBuilderProps={{ currentDate, users: displayUsers, shifts, events, timeOffRequests, timePunches, addToast, appUser: liveAppUser, clientData: displayClientData }} />;
+    if (activeTabState === 'schedule' && (liveAppUser?.isAdmin || liveAppUser?.permissions?.schedule)) return <TabMasterSchedule key={`schpub-${rId}-${liveAppUser?.id}`} currentDate={currentDate} setCurrentDate={setCurrentDate} onSubTabChange={setActiveScheduleSubTab} appUser={liveAppUser} users={scheduleDisplayUsers} shifts={shifts} shiftSwaps={shiftSwaps} timeOffRequests={timeOffRequests} events={events} addToast={addToast} initialSubTab="schedule-builder" voiceScheduleSubTabTarget={voiceScheduleSubTabTarget} clientData={displayClientData} scheduleBuilderProps={{ currentDate, users: scheduleDisplayUsers, shifts, events, timeOffRequests, timePunches, addToast, appUser: liveAppUser, clientData: displayClientData }} />;
+    if (activeTabState === 'events' && displayClientFeatures?.events !== false && (liveAppUser?.isSuperAdmin || liveAppUser?.isAdmin || liveAppUser?.isOwner || liveAppUser?.accountOwner || liveAppUser?.workspaceOwner || liveAppUser?.permissions?.events || liveAppUser?.permissions?.schedule || liveAppUser?.permissions?.team)) return <TabSchedule key={`evt-${rId}`} currentDate={currentDate} users={scheduleDisplayUsers} shifts={shifts} events={events} timeOffRequests={timeOffRequests} timePunches={timePunches} addToast={addToast} appUser={liveAppUser} clientData={displayClientData} initialSubTab="events" hideSubTabs />;
+    if (activeTabState === 'published') return <TabMasterSchedule key={`pub-${rId}-${liveAppUser?.id}`} currentDate={currentDate} setCurrentDate={setCurrentDate} onSubTabChange={setActiveScheduleSubTab} appUser={liveAppUser} users={scheduleDisplayUsers} shifts={shifts} shiftSwaps={shiftSwaps} timeOffRequests={timeOffRequests} events={events} addToast={addToast} voiceScheduleSubTabTarget={voiceScheduleSubTabTarget} clientData={displayClientData} scheduleBuilderProps={{ currentDate, users: scheduleDisplayUsers, shifts, events, timeOffRequests, timePunches, addToast, appUser: liveAppUser, clientData: displayClientData }} />;
     if (activeTabState === 'ops' && displayClientFeatures?.ops !== false && (liveAppUser?.isSuperAdmin || liveAppUser?.isAdmin || liveAppUser?.permissions?.ops)) return <TabOpsCenter key={`ops-${rId}`} currentDate={currentDate} appUser={liveAppUser} users={displayUsers} shifts={shifts} events={events} sales={sales} timePunches={timePunches} addToast={addToast} setActiveTab={setActiveTab} clientData={displayClientData} />;
     if (activeTabState === 'back-office' && !isDemoMode) return <TabBackOffice key={`bo-${rId}`} currentDate={currentDate} users={displayUsers} sales={sales} timePunches={timePunches} restaurantAdminAlerts={restaurantAdminAlerts} appUser={liveAppUser} clientData={displayClientData} setActiveTab={setActiveTab} addToast={addToast} />;
     if ((activeTabState === 'financials' || activeTabState === 'sales' || activeTabState === 'labor') && (liveAppUser?.isSuperAdmin || liveAppUser?.isAdmin || liveAppUser?.permissions?.labor || liveAppUser?.permissions?.sales)) return <TabFinancials key={`fin-${rId}`} currentDate={currentDate} users={displayUsers} shifts={shifts} sales={sales} timePunches={timePunches} addToast={addToast} appUser={liveAppUser} clientData={displayClientData} setActiveTab={setActiveTab} initialSubTab={activeTabState === 'sales' ? 'ledger' : activeTabState === 'labor' ? 'labor' : 'overview'} />;
@@ -1950,7 +2172,7 @@ What I clicked / expected:
     if (activeTabState === 'maintenance' && displayClientFeatures?.maintenance !== false && (liveAppUser?.isAdmin || liveAppUser?.permissions?.team)) return <TabMaintenance key={`mtn-${rId}`} appUser={liveAppUser} addToast={addToast} />;
     if (activeTabState === 'settings' && !isDemoMode) return <TabSettings key={`set-${rId}`} addToast={addToast} appUser={liveAppUser} clientData={displayClientData} users={displayUsers} presenceSelf={selfPresenceRecord} />;
     if (activeTabState === 'help') return <TabHelpCenter key={`help-${rId}`} appUser={liveAppUser} activeTab={activeTabState} voiceHelpSearchTarget={voiceHelpSearchTarget} addToast={addToast} />;
-    if (activeTabState === 'godmode' && (hasLocalSystemAdminMarker || serverSaysSuperAdmin || (MASTER_ADMIN_EMAIL && (liveAppUser?.email || '').toLowerCase() === MASTER_ADMIN_EMAIL.toLowerCase()))) return <TabGodMode key={`god-${rId}`} appUser={{ ...liveAppUser, isSuperAdmin: true, serverAdminCheck }} addToast={addToast} setGhostTenant={setGhostTenant} setActiveTab={stableSetActiveTab} />;
+    if (activeTabState === 'godmode' && (hasLocalSystemAdminMarker || serverSaysSuperAdmin)) return <TabGodMode key={`god-${rId}`} appUser={{ ...liveAppUser, isSuperAdmin: true, serverAdminCheck }} addToast={addToast} setGhostTenant={setGhostTenant} setActiveTab={stableSetActiveTab} />;
     if (activeTabState === 'godmode') return (
       <div className={`${T.card} p-5 sm:p-8 max-w-2xl mx-auto text-center space-y-4 border-red-900/40`}>
         <div className="mx-auto w-12 h-12 rounded-2xl bg-red-900/20 border border-red-900/50 flex items-center justify-center text-red-300 text-2xl">🔐</div>
@@ -1990,8 +2212,7 @@ What I clicked / expected:
   // the platform owner/super-admin account that needs to lift the lockdown.
   const maintenanceBypass = Boolean(
     liveAppUser?.isSuperAdmin === true ||
-    serverSaysSuperAdmin ||
-    (MASTER_ADMIN_EMAIL && (liveAppUser?.email || '').toLowerCase() === MASTER_ADMIN_EMAIL.toLowerCase())
+    serverSaysSuperAdmin
   );
   const maintenanceEndsMs = clientData?.maintenanceEndsAt ? new Date(clientData.maintenanceEndsAt).getTime() : 0;
   const maintenanceExpired = maintenanceEndsMs && Number.isFinite(maintenanceEndsMs) && maintenanceEndsMs <= Date.now();
@@ -2102,7 +2323,7 @@ return (
         <div className="bg-red-600 text-white text-[11px] sm:text-xs font-black px-4 py-2.5 flex items-center justify-between sticky top-0 z-[9999] shadow-2xl uppercase tracking-wider">
           <div className="flex items-center gap-2 min-w-0">
             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="flex-shrink-0 animate-pulse text-white"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"></path><path d="M12 9v4"></path><path d="M12 17h.01"></path></svg>
-            <span className="truncate">System update available. Refresh to prevent database desync.</span>
+            <span className="truncate">Update available. Refresh app to recover the newest version.</span>
           </div>
           <div className="flex items-center gap-2 flex-shrink-0 ml-3">
             <button 
@@ -2139,8 +2360,8 @@ return (
               type="button"
               onClick={() => availableWorkspaces.length > 1 && !ghostTenant && !isDemoMode ? setIsWorkspaceSwitcherOpen(true) : null}
               className={`max-w-full truncate min-h-[44px] px-3 py-2 rounded-xl text-[10px] sm:text-[11px] font-black uppercase tracking-widest ${availableWorkspaces.length > 1 && !ghostTenant && !isDemoMode ? 'text-[#D4A381] hover:text-white cursor-pointer' : 'text-slate-400 cursor-default'}`}
-              title={availableWorkspaces.length > 1 ? 'Switch workspace' : 'Active workspace'}
-              aria-label={availableWorkspaces.length > 1 ? `Active workspace ${liveAppUser.restaurantName || 'Restaurant'}. Switch workspace.` : `Active workspace ${liveAppUser.restaurantName || 'Restaurant'}`}
+              title={availableWorkspaces.length > 1 ? `Switch workspace: ${liveAppUser.restaurantName || 'Restaurant'}` : `Active workspace: ${liveAppUser.restaurantName || 'Restaurant'}`}
+              aria-label={availableWorkspaces.length > 1 ? `Switch workspace. Active workspace ${liveAppUser.restaurantName || 'Restaurant'}.` : `Active workspace ${liveAppUser.restaurantName || 'Restaurant'}`}
             >
               {liveAppUser.restaurantName || "Restaurant"}{availableWorkspaces.length > 1 && !ghostTenant && !isDemoMode ? ' • Switch' : ''}
             </button>

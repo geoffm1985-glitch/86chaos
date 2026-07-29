@@ -2,14 +2,19 @@
 const fs = require('fs');
 const path = require('path');
 
+const { ensureRunDir, getSeedReportPath } = require('../86chaos-release-gate/run-context.cjs');
+const { runId: RUN_ID, runDir: RELEASE_RUN_DIR } = ensureRunDir();
 const OUT_DIR = path.join(process.cwd(), 'test-results');
 fs.mkdirSync(OUT_DIR, { recursive: true });
-const RUN_ID = process.env.CHAOS_FULL_AUDIT_RUN_ID || process.env.CHAOS_RELEASE_GATE_RUN_ID || new Date().toISOString().replace(/[:.]/g, '-');
+fs.mkdirSync(RELEASE_RUN_DIR, { recursive: true });
 const QA_RESTAURANT_NAME = '86 Chaos Full Audit QA Restaurant';
-const REPORT_PATH = path.join(OUT_DIR, '86chaos-full-audit-seed-report.json');
+const REPORT_PATH = getSeedReportPath(RUN_ID);
+const LEGACY_REPORT_PATH = path.join(OUT_DIR, '86chaos-full-audit-seed-report.json');
 
 function writeReportSync(report) {
-  fs.writeFileSync(REPORT_PATH, JSON.stringify({ runId: RUN_ID, generatedAt: new Date().toISOString(), mode: 'seed', ...report }, null, 2));
+  const payload = JSON.stringify({ runId: RUN_ID, generatedAt: new Date().toISOString(), mode: 'seed', ...report }, null, 2);
+  fs.writeFileSync(REPORT_PATH, payload);
+  fs.writeFileSync(LEGACY_REPORT_PATH, payload);
 }
 
 process.on('uncaughtException', (error) => {
@@ -85,6 +90,54 @@ async function signInAccount(page, config, account) {
   if (!signed.idToken || !signed.localId) throw new Error(`Firebase Auth did not return an ID token and UID for ${account.key}.`);
   return { ...account, email: String(account.email).trim().toLowerCase(), uid: signed.localId, idToken: signed.idToken };
 }
+
+async function verifyRoleIdentity(page, roleAccounts) {
+  const errors = [];
+  const emails = new Map();
+  const uids = new Map();
+  for (const account of roleAccounts) {
+    if (emails.has(account.email)) errors.push(`${emails.get(account.email)} and ${account.key} resolve to the same email ${account.email}.`);
+    else emails.set(account.email, account.key);
+    if (uids.has(account.uid)) errors.push(`${uids.get(account.uid)} and ${account.key} resolve to the same Firebase UID ${account.uid}.`);
+    else uids.set(account.uid, account.key);
+  }
+  const whoamiRows = [];
+  for (const account of roleAccounts) {
+    const whoami = await pageFetchJson(page, {
+      url: appUrl('/api/whoami'),
+      method: 'GET',
+      headers: { Authorization: `Bearer ${account.idToken}` },
+    });
+    whoamiRows.push({
+      key: account.key,
+      email: account.email,
+      uid: account.uid,
+      whoamiUid: whoami.uid || '',
+      whoamiEmail: String(whoami.email || '').toLowerCase(),
+      superAdmin: whoami.superAdmin === true,
+      customClaimSuperAdmin: whoami.customClaimSuperAdmin === true,
+      serverMasterAdminMatched: whoami.serverMasterAdminMatched === true,
+      firestoreSuperAdmin: whoami.firestoreSuperAdmin === true,
+      firestoreSystemAdministrator: whoami.firestoreSystemAdministrator === true,
+      firestoreProfileRole: whoami.firestoreProfileRole || '',
+      runtimeProjectId: whoami.runtime?.firebaseProjectId || '',
+    });
+  }
+  const rowFor = (key) => whoamiRows.find(row => row.key === key) || {};
+  for (const key of ['staff', 'manager', 'owner']) {
+    if (rowFor(key).superAdmin === true) errors.push(`${key} account is server-verified as System Administrator. Use a non-system-admin ${key.toUpperCase()} account for release-gate role tests.`);
+  }
+  if (rowFor('systemAdmin').superAdmin !== true) errors.push('SYSTEM_ADMIN account is not server-verified as System Administrator. Configure the test System Administrator account before QA seeding.');
+  if (errors.length) {
+    const safe = { ok: false, runId: RUN_ID, errors, accounts: whoamiRows };
+    fs.writeFileSync(path.join(RELEASE_RUN_DIR, 'role-identity-verification.json'), JSON.stringify(safe, null, 2));
+    throw new Error(`Role identity preflight failed before QA data writes:\n${errors.join('\n')}`);
+  }
+  const safe = { ok: true, runId: RUN_ID, accounts: whoamiRows };
+  fs.writeFileSync(path.join(RELEASE_RUN_DIR, 'role-identity-verification.json'), JSON.stringify(safe, null, 2));
+  return safe;
+}
+
 
 function asFirestoreValue(value) {
   if (value === undefined) return undefined;
@@ -187,6 +240,113 @@ async function queryQaOwned(page, rest, colName, restaurantId) {
   return (rows || []).map(r => r.document).filter(Boolean);
 }
 
+
+
+async function getDocByName(page, rest, docName) {
+  if (!docName) return null;
+  try {
+    return await pageFetchJson(page, { url: `https://firestore.googleapis.com/v1/${docName}`, method: 'GET', headers: rest.headers });
+  } catch (error) {
+    if (/HTTP 404\b/.test(error.message || '')) return null;
+    throw error;
+  }
+}
+
+function fromFirestoreValue(value) {
+  if (!value || typeof value !== 'object') return undefined;
+  if ('stringValue' in value) return value.stringValue;
+  if ('booleanValue' in value) return value.booleanValue;
+  if ('integerValue' in value) return Number(value.integerValue);
+  if ('doubleValue' in value) return Number(value.doubleValue);
+  if ('timestampValue' in value) return value.timestampValue;
+  if ('nullValue' in value) return null;
+  if ('arrayValue' in value) return (value.arrayValue.values || []).map(fromFirestoreValue);
+  if ('mapValue' in value) return fromFirestoreFields(value.mapValue.fields || {});
+  return undefined;
+}
+
+function fromFirestoreFields(fields = {}) {
+  return Object.fromEntries(Object.entries(fields).map(([key, value]) => [key, fromFirestoreValue(value)]));
+}
+
+const EXPECTED_MINIMUM_COUNTS = {
+  users: 7,
+  workspaceMembers: 4,
+  vendors: 2,
+  inventoryItems: 4,
+  recipes: 2,
+  menuDependencies: 2,
+  shifts: 15,
+  timeOffRequests: 2,
+  events: 3,
+  timePunches: 2,
+  prepItems: 2,
+  tasks: 2,
+  maintenanceLogs: 2,
+  pmSchedules: 2,
+  sales: 14,
+  financialExpenses: 2,
+  restaurantAdminAlerts: 2,
+  personalReminders: 2,
+  availabilityRecords: 3,
+  scheduleTemplates: 1,
+  scheduleCoverageTargets: 2,
+};
+
+function summarizeCreatedDocuments(createdByCollection = {}, memberships = [], restaurantRef = null, restaurantId = '') {
+  const rows = [];
+  if (restaurantRef) rows.push({ collection: 'restaurants', id: restaurantRef.id || restaurantId, docName: restaurantRef.docName, restaurantId, qaRunId: RUN_ID, expectedQaOwned: true });
+  for (const [collection, docs] of Object.entries(createdByCollection || {})) {
+    for (const doc of docs || []) rows.push({ collection, id: doc.id, docName: doc.docName, name: doc.name || '', restaurantId, qaRunId: RUN_ID, expectedQaOwned: true });
+  }
+  for (const doc of memberships || []) rows.push({ collection: 'workspaceMembers', id: doc.id, docName: doc.docName, restaurantId, qaRunId: RUN_ID, expectedQaOwned: true, roleKey: doc.key });
+  return rows;
+}
+
+async function verifySeedDocuments(page, rest, seededDocuments, expectedCounts, restaurantId) {
+  const verifiedCounts = {};
+  const missing = [];
+  const bad = [];
+  const verifiedDocuments = [];
+  for (const row of seededDocuments) {
+    if (!row.docName) {
+      missing.push({ ...row, reason: 'missing document resource name in seed report' });
+      continue;
+    }
+    const remote = await getDocByName(page, rest, row.docName);
+    if (!remote) {
+      missing.push({ ...row, reason: 'document was not readable after creation' });
+      continue;
+    }
+    const data = fromFirestoreFields(remote.fields || {});
+    const problems = [];
+    if (row.collection !== 'restaurants' && data.restaurantId !== restaurantId) problems.push(`restaurantId=${data.restaurantId || '(missing)'}`);
+    if (data.qaOwned !== true) problems.push(`qaOwned=${String(data.qaOwned)}`);
+    if (data.qaRunId !== RUN_ID) problems.push(`qaRunId=${data.qaRunId || '(missing)'}`);
+    if (problems.length) bad.push({ collection: row.collection, id: row.id, docName: row.docName, problems });
+    verifiedCounts[row.collection] = (verifiedCounts[row.collection] || 0) + 1;
+    verifiedDocuments.push({ collection: row.collection, id: row.id, docName: row.docName, restaurantId: data.restaurantId || restaurantId, qaRunId: data.qaRunId || '', qaOwned: data.qaOwned === true });
+  }
+  const countFailures = [];
+  for (const [collection, minimum] of Object.entries(expectedCounts)) {
+    const actual = verifiedCounts[collection] || 0;
+    if (actual < minimum) countFailures.push({ collection, expectedMinimum: minimum, actual });
+  }
+  const workspaceMemberIds = seededDocuments.filter(row => row.collection === 'workspaceMembers').map(row => row.id).filter(Boolean);
+  if (new Set(workspaceMemberIds).size !== workspaceMemberIds.length) {
+    countFailures.push({ collection: 'workspaceMembers', expected: 'unique ids', actual: workspaceMemberIds });
+  }
+  return {
+    ok: missing.length === 0 && bad.length === 0 && countFailures.length === 0,
+    expectedCounts,
+    verifiedCounts,
+    verifiedDocuments,
+    missing,
+    bad,
+    countFailures,
+  };
+}
+
 async function deleteQaOwned(page, rest, restaurantId) {
   const deleted = [];
   for (const colName of COLLECTION_ORDER) {
@@ -267,6 +427,7 @@ async function main() {
 
     const roleAccounts = [];
     for (const role of getRoleCredentials()) roleAccounts.push(await signInAccount(page, config, role));
+    report.roleIdentityVerification = await verifyRoleIdentity(page, roleAccounts);
     const writer = roleAccounts.find(account => account.key === 'systemAdmin') || roleAccounts.find(account => account.key === 'owner');
     if (!writer) throw new Error('No System Administrator test account was available for QA setup.');
     report.signedInAs = writer.email;
@@ -275,6 +436,7 @@ async function main() {
     const rest = firestoreRest(config, writer.idToken);
 
     let restaurantId = env('CHAOS_QA_RESTAURANT_ID');
+    let restaurantRef = null;
     if (!restaurantId && boolEnv('CHAOS_QA_CREATE_RESTAURANT')) {
       const restRef = await createDoc(page, rest, 'restaurants', {
         name: QA_RESTAURANT_NAME,
@@ -293,6 +455,7 @@ async function main() {
         systemSettings: { overtime: 40, enableTargets: true, targetLaborPct: 23 },
         features: { schedule: true, events: true, ops: true, messages: true, prep: true, recipes: true, inventory: true, sales: true, team: true, maintenance: true, timesheets: true, labor: true },
       });
+      restaurantRef = restRef;
       restaurantId = restRef.id;
       report.createdRestaurant = true;
     }
@@ -314,7 +477,8 @@ async function main() {
         restaurantName: QA_RESTAURANT_NAME,
         isAdmin: account.isAdmin === true,
         isOwner: account.isOwner === true,
-        isSuperAdmin: account.isSuperAdmin === true,
+        isSuperAdmin: false,
+        systemAdministratorVerifiedByWhoami: account.key === 'systemAdmin',
         accountOwner: account.isOwner === true,
         workspaceOwner: account.isOwner === true,
         permissions: account.permissions || {},
@@ -325,9 +489,15 @@ async function main() {
         updatedAt: new Date().toISOString(),
       };
       const ref = await patchDoc(page, rest, 'workspaceMembers', `${account.uid}_${restaurantId}`, membership);
-      report.memberships.push({ key: account.key, uid: account.uid, email: account.email, id: ref.id, role: account.role });
+      report.memberships.push({ key: account.key, uid: account.uid, email: account.email, id: ref.id, docName: ref.docName, role: account.role });
     }
-    const profile = buildFakeRestaurantProfile({ restaurantId, runId: RUN_ID, anchorDate: new Date() });
+    const memberIds = report.memberships.map(m => m.id);
+    if (new Set(memberIds).size !== report.memberships.length) throw new Error(`Role membership documents were not unique: ${memberIds.join(', ')}`);
+    report.membershipVerification = { ok: true, count: report.memberships.length, ids: memberIds };
+
+    const seedAnchorDate = new Date();
+    report.seedAnchorDate = seedAnchorDate.toISOString();
+    const profile = buildFakeRestaurantProfile({ restaurantId, runId: RUN_ID, anchorDate: seedAnchorDate });
     const today = new Date().toISOString().slice(0, 10);
     const roleByKey = Object.fromEntries(roleAccounts.map(account => [account.key, account]));
     for (const key of ['manager', 'staff']) {
@@ -361,10 +531,17 @@ async function main() {
       created[colName] = await addCollection(page, rest, colName, profile.collections[colName] || []);
     }
 
-    report.ok = true;
-    report.profile = { restaurantId, restaurantName: QA_RESTAURANT_NAME, users: created.users, createdCounts: Object.fromEntries(Object.entries(created).map(([k, v]) => [k, v.length])), ids, expectations: profile.expectations, scheduleTruth: summarizeSchedule(profile.collections.shifts) };
+    report.seededDocuments = summarizeCreatedDocuments(created, report.memberships, restaurantRef, restaurantId);
+    report.expectedCounts = EXPECTED_MINIMUM_COUNTS;
+    report.createdCounts = Object.fromEntries(Object.entries(created).map(([k, v]) => [k, v.length]));
+    report.createdCounts.workspaceMembers = report.memberships.length;
+    report.createdCounts.restaurants = restaurantRef ? 1 : 0;
+    report.verification = await verifySeedDocuments(page, rest, report.seededDocuments, EXPECTED_MINIMUM_COUNTS, restaurantId);
+    report.ok = report.verification.ok === true;
+    report.profile = { restaurantId, restaurantName: QA_RESTAURANT_NAME, users: created.users, createdCounts: report.createdCounts, ids, expectations: profile.expectations, scheduleTruth: summarizeSchedule(profile.collections.shifts) };
+    if (!report.ok) throw new Error(`Seed verification failed. Missing=${report.verification.missing.length}; bad=${report.verification.bad.length}; countFailures=${report.verification.countFailures.length}.`);
     await writeReport(report);
-    console.log(`Seeded fake QA restaurant data for ${restaurantId}. Report: ${REPORT_PATH}`);
+    console.log(`Seeded and verified fake QA restaurant data for ${restaurantId}. Report: ${REPORT_PATH}`);
   } catch (error) {
     report.ok = false;
     report.error = error.stack || error.message;
@@ -376,4 +553,12 @@ async function main() {
   }
 }
 
-main();
+if (require.main === module) main();
+
+module.exports = {
+  EXPECTED_MINIMUM_COUNTS,
+  verifySeedDocuments,
+  summarizeCreatedDocuments,
+  fromFirestoreFields,
+  fromFirestoreValue,
+};
