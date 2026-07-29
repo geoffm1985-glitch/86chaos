@@ -26,7 +26,7 @@ const requiredArtifacts = [
   '86chaos-full-audit-cleanup-report.json',
 ];
 const artifact = Object.fromEntries(requiredArtifacts.map(name => [name, path.join(runDir, name)]));
-const missingArtifacts = requiredArtifacts.filter(name => !fs.existsSync(artifact[name]));
+let missingArtifacts = requiredArtifacts.filter(name => !fs.existsSync(artifact[name]));
 
 const preflight = readJsonIfExists(artifact['environment-preflight.json']) || {};
 const sourceInventory = readJsonIfExists(artifact['source-inventory.json']) || {};
@@ -35,6 +35,18 @@ const setupState = readJsonIfExists(artifact['qa-setup-state.json']) || {};
 const seedReport = readJsonIfExists(artifact['86chaos-full-audit-seed-report.json']) || {};
 const cleanupReport = readJsonIfExists(artifact['86chaos-full-audit-cleanup-report.json']) || {};
 const failedOnlyManifest = readJsonIfExists(path.join(runDir, 'failed-only-test-manifest.json')) || null;
+const preflightRan = preflight && Object.keys(preflight).length > 0;
+const preflightPassed = preflightRan && preflight.ok === true;
+const preflightFailedBeforeMutation = preflightRan && preflight.ok === false;
+const preflightFailures = preflightFailedBeforeMutation
+  ? (Array.isArray(preflight.errors) && preflight.errors.length ? [...preflight.errors] : ['Environment preflight failed before QA seeding.'])
+  : [];
+const artifactsSkippedByPreflight = preflightFailedBeforeMutation
+  ? missingArtifacts.filter(name => name !== 'environment-preflight.json')
+  : [];
+if (preflightFailedBeforeMutation) {
+  missingArtifacts = missingArtifacts.filter(name => name === 'environment-preflight.json');
+}
 
 const files = walk(runDir);
 const jsonFiles = files.filter(p => p.endsWith('.json'));
@@ -82,11 +94,11 @@ if (runMismatchFailures.length) missingArtifacts.push(...runMismatchFailures.map
 const setupFailures = [];
 if (setupState && setupState.errors?.length) setupFailures.push(...setupState.errors);
 if (setupState && setupState.attempted && setupState.verified !== true) setupFailures.push('QA setup was attempted but not verified.');
-if (seedReport && seedReport.ok !== true) setupFailures.push(`Seed report not ok:true: ${seedReport.error || 'unknown seed failure'}`);
-if (seedReport && seedReport.verification && seedReport.verification.ok !== true) setupFailures.push('Seed verification failed.');
+if (!preflightFailedBeforeMutation && seedReport && seedReport.ok !== true) setupFailures.push(`Seed report not ok:true: ${seedReport.error || 'unknown seed failure'}`);
+if (!preflightFailedBeforeMutation && seedReport && seedReport.verification && seedReport.verification.ok !== true) setupFailures.push('Seed verification failed.');
 
 const cleanupFailures = [];
-if (cleanupReport && cleanupReport.ok !== true) cleanupFailures.push(`Cleanup report not ok:true: ${cleanupReport.error || 'unknown cleanup failure'}`);
+if (!preflightFailedBeforeMutation && cleanupReport && cleanupReport.ok !== true) cleanupFailures.push(`Cleanup report not ok:true: ${cleanupReport.error || 'unknown cleanup failure'}`);
 if (cleanupReport && cleanupReport.runId && cleanupReport.runId !== runId) cleanupFailures.push(`Cleanup used runId ${cleanupReport.runId} instead of ${runId}.`);
 if (cleanupReport && cleanupReport.restaurantRemaining) cleanupFailures.push('Current-run restaurant still remains after cleanup.');
 if (cleanupReport && cleanupReport.remaining && Object.keys(cleanupReport.remaining).length) cleanupFailures.push(`Current-run child records remain: ${JSON.stringify(cleanupReport.remaining)}`);
@@ -112,6 +124,11 @@ for (const t of failedTests) {
   const row = failureGroups.find(x => x.group === group);
   if (row.examples.length < 5) row.examples.push(t.title);
 }
+for (const text of preflightFailures) {
+  if (!failureGroups.some(x => x.group === 'environment-preflight')) failureGroups.push({ group: 'environment-preflight', examples: [] });
+  const row = failureGroups.find(x => x.group === 'environment-preflight');
+  if (row.examples.length < 5) row.examples.push(text);
+}
 for (const text of [...setupFailures, ...cleanupFailures, ...missingArtifacts]) {
   const group = /seed|cleanup|setup|artifact|run/i.test(text) ? 'harness-seed-cleanup' : 'reporting';
   if (!failureGroups.some(x => x.group === group)) failureGroups.push({ group, examples: [] });
@@ -119,7 +136,7 @@ for (const text of [...setupFailures, ...cleanupFailures, ...missingArtifacts]) 
   if (row.examples.length < 5) row.examples.push(text);
 }
 
-const ok = failedTests.length === 0 && timedOutTests.length === 0 && skippedTests.length === 0 && stepFailures === 0 && missingArtifacts.length === 0 && !versionMismatch && setupFailures.length === 0 && cleanupFailures.length === 0;
+const ok = failedTests.length === 0 && timedOutTests.length === 0 && skippedTests.length === 0 && stepFailures === 0 && missingArtifacts.length === 0 && !versionMismatch && setupFailures.length === 0 && cleanupFailures.length === 0 && preflightFailures.length === 0;
 const summary = {
   ok,
   generatedAt: new Date().toISOString(),
@@ -144,11 +161,14 @@ const summary = {
   missingArtifacts,
   setupFailures,
   cleanupFailures,
+  preflightFailures,
+  artifactsSkippedByPreflight,
   artifacts: summaries.map(x => x.file).filter(f => f.includes(`/86chaos-play-store-release-gate/${runId}/`)),
   truth: [
     'This report reads only the current run directory.',
     'Root-level legacy seed and cleanup reports are not authoritative.',
-    'A release is blocked by failed tests, timed-out tests, unexpected skipped tests, missing artifacts, stale deployment, setup failure, cleanup failure, or current-run QA records remaining.',
+    'A release is blocked by failed tests, timed-out tests, unexpected skipped tests, missing artifacts, stale deployment, preflight failure, setup failure, cleanup failure, or current-run QA records remaining.',
+    'When environment preflight fails before mutation, seed, Playwright, and cleanup artifacts are intentionally not created.',
   ],
 };
 
@@ -174,6 +194,12 @@ const lines = [
   `Playwright timed out: ${timedOutTests.length}`,
   `Playwright skipped: ${skippedTests.length}`,
   '',
+  'ENVIRONMENT PREFLIGHT FAILURES',
+  ...(preflightFailures.length ? preflightFailures.map(f => `- ${f}`) : ['- None']),
+  '',
+  'ARTIFACTS SKIPPED BECAUSE PREFLIGHT STOPPED BEFORE MUTATION',
+  ...(artifactsSkippedByPreflight.length ? artifactsSkippedByPreflight.map(f => `- ${f}`) : ['- None']),
+  '',
   'SEED VERIFICATION',
   JSON.stringify(summary.seed || {}, null, 2),
   '',
@@ -194,6 +220,9 @@ const lines = [
   '',
   'MISSING ARTIFACTS',
   ...(missingArtifacts.length ? missingArtifacts.map(f => `- ${f}`) : ['- None']),
+  '',
+  'PREFLIGHT FAILURES',
+  ...(preflightFailures.length ? preflightFailures.map(f => `- ${f}`) : ['- None']),
   '',
   'SETUP FAILURES',
   ...(setupFailures.length ? setupFailures.map(f => `- ${f}`) : ['- None']),

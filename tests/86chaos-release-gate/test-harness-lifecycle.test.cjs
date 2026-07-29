@@ -160,3 +160,37 @@ test('failed-only manifest has exact titles and refuses a zero-test diagnostic g
   assert.equal(grep.test('01 auth and every-route health > owner-like account logs in and every major route renders without fatal UI, NaN, Invalid Date, or 5xx'), true);
   assert.equal(grepFromManifest([]).test('anything'), false);
 });
+
+test('collector reports duplicate role preflight as environment blocker without pretending seed or cleanup failed', () => withTempCwd((dir) => {
+  process.env.CHAOS_RELEASE_GATE_RUN_ID = 'preflight-block-unit';
+  process.env.CHAOS_FULL_AUDIT_RUN_ID = 'preflight-block-unit';
+  delete process.env.CHAOS_RELEASE_GATE_RUN_DIR;
+  const { ensureRunDir } = freshRequire(runContextPath);
+  const { runDir } = ensureRunDir();
+  fs.mkdirSync(runDir, { recursive: true });
+  fs.writeFileSync(path.join(runDir, 'environment-preflight.json'), JSON.stringify({
+    ok: false,
+    runId: 'preflight-block-unit',
+    appUrl: 'https://example.test/',
+    expectedVersion: '16.0.53',
+    sourceVersion: '16.0.53',
+    deployedVersion: '16.0.53',
+    firebaseProjectId: 'chaos-test-d1601',
+    errors: ['OWNER_EMAIL and SYSTEM_ADMIN_EMAIL must be different accounts so role isolation can be tested.'],
+  }));
+  const oldExit = process.exitCode;
+  process.exitCode = 0;
+  const collectorPath = path.resolve(__dirname, '../../scripts/86chaos-release-gate/collect-release-gate-report.cjs');
+  freshRequire(collectorPath);
+  const summaryFile = fs.readdirSync(runDir).find(name => name.startsWith('86chaos-play-store-release-gate-summary-') && name.endsWith('.json'));
+  assert.ok(summaryFile);
+  const summary = JSON.parse(fs.readFileSync(path.join(runDir, summaryFile), 'utf8'));
+  assert.equal(summary.ok, false);
+  assert.deepEqual(summary.preflightFailures, ['OWNER_EMAIL and SYSTEM_ADMIN_EMAIL must be different accounts so role isolation can be tested.']);
+  assert.equal(summary.setupFailures.length, 0);
+  assert.equal(summary.cleanupFailures.length, 0);
+  assert.ok(summary.artifactsSkippedByPreflight.includes('86chaos-full-audit-seed-report.json'));
+  assert.equal(summary.failureGroups.some(group => group.group === 'environment-preflight'), true);
+  assert.equal(summary.failureGroups.some(group => group.group === 'harness-seed-cleanup'), false);
+  process.exitCode = oldExit;
+}));
