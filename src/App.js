@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { Bell, Bug, ChevronLeft, ChevronRight, Loader2, Menu, Moon, Send, X } from 'lucide-react';
-import { addDoc, arrayUnion, collection, doc, onSnapshot, updateDoc } from 'firebase/firestore';
+import { addDoc, collection, doc, onSnapshot, updateDoc } from 'firebase/firestore';
 import { getToken, onMessage } from 'firebase/messaging';
 import { signOut } from 'firebase/auth';
 import 'leaflet/dist/leaflet.css';
@@ -327,7 +327,7 @@ export default function App() {
   const [serverAdminCheck, setServerAdminCheck] = useState(null);
   
   // --- VERSION CHECKER STATE & LOGIC ---
-  const [showUpdateBanner, setShowUpdateBanner] = useState(false);
+  const [showUpdateBanner, setShowUpdateBanner] = useState(() => typeof window !== 'undefined' && new URLSearchParams(window.location.search).has('chaosReloadAt'));
   const [availableVersion, setAvailableVersion] = useState('');
   const [hasHelpUpdate, setHasHelpUpdate] = useState(false);
   const [tourMode, setTourMode] = useState(null);
@@ -336,6 +336,12 @@ export default function App() {
   useEffect(() => {
     const checkAppVersion = async () => {
       try {
+        const chunkRecoveryActive = typeof window !== 'undefined' && new URLSearchParams(window.location.search).has('chaosReloadAt');
+        if (chunkRecoveryActive) {
+          setAvailableVersion(CURRENT_VERSION);
+          setShowUpdateBanner(true);
+          return;
+        }
         const response = await fetch(`/version.json?t=${Date.now()}`);
         if (response.ok) {
           const data = await response.json();
@@ -704,8 +710,6 @@ const [currentDate, setCurrentDate] = useState(getToday());
 
 
   const isDemoMode = !!liveAppUser?.isDemo;
-  const systemAdminRoleText = String(liveAppUser?.role || liveAppUser?.roleName || liveAppUser?.accountRole || '').trim();
-  const roleLooksSystemAdmin = /system\s*administrator|super\s*admin|master\s*admin/i.test(systemAdminRoleText);
   const sessionEmailForAdmin = String(liveAppUser?.email || appUser?.email || auth.currentUser?.email || '').toLowerCase();
   const serverRoleLooksSystemAdmin = /system\s*administrator|super\s*admin|master\s*admin/i.test(String(serverAdminCheck?.firestoreProfileRole || serverAdminCheck?.role || serverAdminCheck?.roleName || ''));
   const serverSaysSuperAdmin = Boolean(
@@ -715,23 +719,27 @@ const [currentDate, setCurrentDate] = useState(getToday());
       (serverAdminCheck?.firestoreSuperAdmin === true && serverRoleLooksSystemAdmin)
     )
   );
-  const localProfileClaimsSuperAdmin = liveAppUser?.isSuperAdmin === true && (
-    liveAppUser?.systemAccess?.superAdmin === true ||
-    liveAppUser?.permissions?.systemAdmin === true ||
-    liveAppUser?.permissions?.godmode === true ||
-    roleLooksSystemAdmin
-  );
+  // A local profile/permission marker is only treated as a hint. Full System Administrator
+  // access must be confirmed by the server check or the configured master-admin email.
   const hasLocalSystemAdminMarker = Boolean(
-    localProfileClaimsSuperAdmin ||
     serverSaysSuperAdmin ||
     (MASTER_ADMIN_EMAIL && sessionEmailForAdmin === MASTER_ADMIN_EMAIL.toLowerCase())
   );
-  if (!isDemoMode && liveAppUser && (serverSaysSuperAdmin || hasLocalSystemAdminMarker) && liveAppUser.isSuperAdmin !== true) {
+  if (!isDemoMode && liveAppUser && !hasLocalSystemAdminMarker && liveAppUser.isSuperAdmin === true) {
+    liveAppUser = {
+      ...liveAppUser,
+      isSuperAdmin: false,
+      systemAccess: { ...(liveAppUser.systemAccess || {}), superAdmin: false },
+      permissions: { ...(liveAppUser.permissions || {}), systemAdmin: false, godmode: false },
+      superAdminAccessSource: 'server-verification-required'
+    };
+  }
+  if (!isDemoMode && liveAppUser && hasLocalSystemAdminMarker && liveAppUser.isSuperAdmin !== true) {
     liveAppUser = {
       ...liveAppUser,
       isSuperAdmin: true,
       systemAccess: { ...(liveAppUser.systemAccess || {}), superAdmin: true },
-      superAdminAccessSource: serverAdminCheck?.serverMasterAdminMatched ? 'server-master-admin-env' : serverAdminCheck?.customClaimSuperAdmin ? 'firebase-custom-claim' : serverAdminCheck?.firestoreSuperAdmin ? 'firestore-profile-flag' : 'local-system-admin-marker'
+      superAdminAccessSource: serverAdminCheck?.serverMasterAdminMatched ? 'server-master-admin-env' : serverAdminCheck?.customClaimSuperAdmin ? 'firebase-custom-claim' : serverAdminCheck?.firestoreSuperAdmin ? 'firestore-profile-flag' : 'master-admin-email'
     };
   }
 
@@ -1195,11 +1203,25 @@ if (liveAppUser && clientData) {
     const describeControl = (el, index) => {
       const explicit = el.getAttribute('aria-label') || el.getAttribute('aria-labelledby') || el.getAttribute('title');
       if (explicit) return;
-      const labelText = String(el.textContent || el.value || el.getAttribute('placeholder') || el.getAttribute('name') || '').replace(/\s+/g, ' ').trim();
-      if (labelText) return;
-      const type = (el.getAttribute('type') || el.tagName || '').toLowerCase();
-      if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT') {
-        el.setAttribute('aria-label', el.getAttribute('placeholder') || el.getAttribute('name') || `${type || 'form'} field ${index + 1}`);
+      const tag = String(el.tagName || '').toUpperCase();
+      const escapedId = el.id && typeof CSS !== 'undefined' && typeof CSS.escape === 'function' ? CSS.escape(el.id) : '';
+      const nearbyLabel = escapedId ? document.querySelector(`label[for="${escapedId}"]`) : null;
+      const labelText = String(
+        nearbyLabel?.textContent ||
+        el.closest?.('label')?.textContent ||
+        el.getAttribute('placeholder') ||
+        el.getAttribute('name') ||
+        el.getAttribute('data-label') ||
+        ''
+      ).replace(/\s+/g, ' ').trim();
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') {
+        const type = (el.getAttribute('type') || tag || 'form').toLowerCase();
+        el.setAttribute('aria-label', labelText || `${type} field ${index + 1}`);
+        return;
+      }
+      const controlText = String(el.textContent || el.value || labelText || '').replace(/\s+/g, ' ').trim();
+      if (controlText) {
+        el.setAttribute('aria-label', controlText.slice(0, 120));
         return;
       }
       el.setAttribute('aria-label', `86 Chaos control ${index + 1}`);
@@ -1550,6 +1572,41 @@ What I clicked / expected:
     : 'BO6mdu87G4ICBRZjY5e6mpsvCXdpV32TEyyJzJeQHZ4QXolGNsa6ncvgVAzRxIKihx83AxHS36aCtr--XzE45bc';
 
 
+  const getPushProfileDocId = () => String(
+    auth.currentUser?.uid ||
+    liveAppUser?.profileDocId ||
+    liveAppUser?.accountProfile?.id ||
+    liveAppUser?.uid ||
+    liveAppUser?.userId ||
+    liveAppUser?.id ||
+    ''
+  ).trim();
+
+  const getPushProfileRef = () => {
+    const profileId = getPushProfileDocId();
+    return profileId ? doc(db, 'users', profileId) : null;
+  };
+
+  const writePushProfilePatch = async (patch = {}) => {
+    const profileRef = getPushProfileRef();
+    if (!profileRef) throw new Error('No signed-in profile was available for this device.');
+    return updateDoc(profileRef, patch);
+  };
+
+  const rememberSkippedFirestoreWrite = () => {
+    try {
+      window.__chaosFirestoreDiagnostics = window.__chaosFirestoreDiagnostics || {};
+      window.__chaosFirestoreDiagnostics.skippedNoOpWrites = (window.__chaosFirestoreDiagnostics.skippedNoOpWrites || 0) + 1;
+    } catch (_) {}
+  };
+
+  const getPushErrorMessage = (err, fallback = 'Could not reconnect push notifications on this device.') => {
+    const raw = String(err?.message || err || fallback);
+    if (/permission|insufficient/i.test(raw)) return 'The app could not save this device yet. Sign out and back in, then tap Fix Now again.';
+    if (isFirebaseMessagingUnsupportedError(err)) return 'This browser cannot run Firebase push notifications. You can still use 86 Chaos normally.';
+    return raw;
+  };
+
   const getPushDeviceId = () => {
     try {
       const key = '86chaosPushDeviceId';
@@ -1596,13 +1653,13 @@ What I clicked / expected:
     const existing = liveAppUser?.pushDevices?.[deviceId] || {};
     const lastVerified = existing.lastVerifiedAt ? new Date(existing.lastVerifiedAt).getTime() : 0;
     const refreshMs = 3 * 24 * 60 * 60 * 1000;
-    const savedTokenList = Array.isArray(liveAppUser?.fcmTokens) ? liveAppUser.fcmTokens : [];
     const primaryTokenMissing = liveAppUser?.fcmToken !== currentToken;
-    const tokenArrayMissing = !savedTokenList.includes(currentToken);
-    return primaryTokenMissing || tokenArrayMissing || existing.token !== currentToken || existing.permission !== permission || existing.host !== window.location.hostname || !lastVerified || Date.now() - lastVerified > refreshMs || liveAppUser?.pushNeedsRepair === true || liveAppUser?.pushForceServiceWorkerRefresh === true;
+    return primaryTokenMissing || existing.token !== currentToken || existing.permission !== permission || existing.host !== window.location.hostname || !lastVerified || Date.now() - lastVerified > refreshMs || liveAppUser?.pushNeedsRepair === true || liveAppUser?.pushForceServiceWorkerRefresh === true;
   };
 
-  const shouldWritePushPermissionState = (permission, errorMessage = '') => {
+  const shouldWritePushPermissionState = (permission, errorMessage = '', forceWrite = false) => {
+    const explicitRepair = forceWrite || liveAppUser?.pushNeedsRepair === true || liveAppUser?.pushForceServiceWorkerRefresh === true;
+    if (!explicitRepair && permission !== 'granted') return false;
     const existingPermission = liveAppUser?.notificationPermission || liveAppUser?.pushTokenPermission || '';
     const existingStatus = liveAppUser?.pushRepairStatus || '';
     const existingError = liveAppUser?.lastPushRepairError || '';
@@ -1613,11 +1670,11 @@ What I clicked / expected:
     const nextStatus = permission === 'denied' ? 'blocked-by-browser' : 'permission-not-granted';
     if (existingStatus !== nextStatus) return true;
     if (errorMessage && existingError !== errorMessage) return true;
-    return !lastSync || Date.now() - lastSync > refreshMs || liveAppUser?.pushNeedsRepair === true || liveAppUser?.pushForceServiceWorkerRefresh === true;
+    return explicitRepair && (!lastSync || Date.now() - lastSync > refreshMs);
   };
 
   const repairPushOnThisDevice = async (source = 'manual') => {
-    if (!liveAppUser?.id || ghostTenant || isDemoMode || typeof window === 'undefined' || !('Notification' in window)) {
+    if (!getPushProfileDocId() || ghostTenant || isDemoMode || typeof window === 'undefined' || !('Notification' in window)) {
       addToast('Push Repair Blocked', 'Push repair is only available from the real logged-in device.');
       return false;
     }
@@ -1626,7 +1683,7 @@ What I clicked / expected:
       let permission = Notification.permission;
       if (permission === 'default') permission = await Notification.requestPermission();
       if (permission !== 'granted') {
-        await updateDoc(doc(db, 'users', liveAppUser.id), {
+        await writePushProfilePatch({
           notificationPermission: permission,
           pushTokenPermission: permission,
           pushRepairStatus: permission === 'denied' ? 'blocked-by-browser' : 'permission-not-granted',
@@ -1639,7 +1696,7 @@ What I clicked / expected:
 
       const supportedMessaging = await messagingReady.catch(() => null);
       if (!supportedMessaging) {
-        await updateDoc(doc(db, 'users', liveAppUser.id), {
+        await writePushProfilePatch({
           notificationPermission: permission,
           pushTokenPermission: permission,
           pushRepairStatus: 'unsupported-browser',
@@ -1668,17 +1725,16 @@ What I clicked / expected:
 
       const stamp = new Date().toISOString();
       const device = buildPushDevicePatch(currentToken, permission, stamp);
-      await updateDoc(doc(db, 'users', liveAppUser.id), {
+      await writePushProfilePatch({
         [device.field]: device.data,
         fcmToken: currentToken,
-        fcmTokens: arrayUnion(currentToken),
         fcmTokenUpdatedAt: stamp,
         lastPushTokenSyncAt: stamp,
         notificationPermission: permission,
         pushTokenPermission: permission,
         pushTokenHost: window.location.hostname,
         pushTokenCanonical: true,
-        pushTokenDedupeVersion: '16.0.50',
+        pushTokenDedupeVersion: '16.0.51',
         pushNeedsRepair: false,
         pushForceServiceWorkerRefresh: false,
         pushRepairStatus: 'connected',
@@ -1687,14 +1743,14 @@ What I clicked / expected:
         lastPushRepairError: null,
         lastPushFailureCode: null
       });
-      setAppUser(prev => prev?.id === liveAppUser.id ? { ...prev, fcmToken: currentToken, fcmTokens: Array.from(new Set([...(Array.isArray(prev?.fcmTokens) ? prev.fcmTokens : []), currentToken])), pushNeedsRepair: false, pushForceServiceWorkerRefresh: false, notificationPermission: permission, pushTokenPermission: permission, pushTokenHost: window.location.hostname } : prev);
+      setAppUser(prev => prev?.id === liveAppUser.id ? { ...prev, fcmToken: currentToken, pushNeedsRepair: false, pushForceServiceWorkerRefresh: false, notificationPermission: permission, pushTokenPermission: permission, pushTokenHost: window.location.hostname } : prev);
       setPushRepairDismissed(true);
       addToast(source === 'auto' ? 'Push Reconnected' : 'Notifications Fixed', 'This device is connected for 86 Chaos push notifications.');
       return true;
     } catch (err) {
       console.warn('86 Chaos push repair failed:', err?.message || err);
       const unsupportedMessaging = isFirebaseMessagingUnsupportedError(err);
-      await updateDoc(doc(db, 'users', liveAppUser.id), {
+      await writePushProfilePatch({
         notificationPermission: Notification.permission,
         pushTokenPermission: Notification.permission,
         pushRepairStatus: unsupportedMessaging ? 'unsupported-browser' : 'repair-failed',
@@ -1702,7 +1758,7 @@ What I clicked / expected:
         lastPushFailureCode: err?.code || (unsupportedMessaging ? 'messaging/unsupported-browser' : null),
         lastPushTokenSyncAt: new Date().toISOString()
       }).catch(() => {});
-      addToast(unsupportedMessaging ? 'Push Unavailable' : 'Push Repair Failed', unsupportedMessaging ? 'This browser cannot run Firebase push notifications. You can still use 86 Chaos normally.' : (err?.message || 'Could not reconnect push notifications on this device.'));
+      addToast(unsupportedMessaging ? 'Push Unavailable' : 'Push Repair Failed', getPushErrorMessage(err));
       return false;
     } finally {
       setIsPushRepairing(false);
@@ -1719,8 +1775,8 @@ What I clicked / expected:
 
     const syncPushToken = async (permission, showToast = false) => {
       if (canceled || permission !== 'granted') {
-        if (!canceled && liveAppUser?.id && shouldWritePushPermissionState(permission)) {
-          updateDoc(doc(db, 'users', liveAppUser.id), {
+        if (!canceled && getPushProfileDocId() && shouldWritePushPermissionState(permission, '', pushRepairRequested)) {
+          writePushProfilePatch({
             notificationPermission: permission,
             pushTokenPermission: permission,
             pushRepairStatus: permission === 'denied' ? 'blocked-by-browser' : 'permission-not-granted',
@@ -1738,8 +1794,8 @@ What I clicked / expected:
       try {
         const supportedMessaging = await messagingReady.catch(() => null);
         if (!supportedMessaging) {
-          if (shouldWritePushPermissionState(permission, 'messaging/unsupported-browser')) {
-            updateDoc(doc(db, 'users', liveAppUser.id), {
+          if (shouldWritePushPermissionState(permission, 'messaging/unsupported-browser', pushRepairRequested)) {
+            writePushProfilePatch({
               notificationPermission: permission,
               pushTokenPermission: permission,
               pushRepairStatus: 'unsupported-browser',
@@ -1766,17 +1822,16 @@ What I clicked / expected:
         const stamp = new Date().toISOString();
         const device = buildPushDevicePatch(currentToken, permission, stamp);
         if (!shouldWritePushDevice(device.deviceId, currentToken, permission)) return;
-        await updateDoc(doc(db, 'users', liveAppUser.id), {
+        await writePushProfilePatch({
           [device.field]: device.data,
           fcmToken: currentToken,
-          fcmTokens: arrayUnion(currentToken),
-          fcmTokenUpdatedAt: stamp,
+            fcmTokenUpdatedAt: stamp,
           lastPushTokenSyncAt: stamp,
           notificationPermission: permission,
           pushTokenPermission: permission,
           pushTokenHost: window.location.hostname,
           pushTokenCanonical: true,
-          pushTokenDedupeVersion: '16.0.50',
+          pushTokenDedupeVersion: '16.0.51',
           pushNeedsRepair: false,
           pushForceServiceWorkerRefresh: false,
           pushRepairStatus: 'connected',
@@ -1790,8 +1845,8 @@ What I clicked / expected:
         console.warn('86 Chaos push token sync failed:', err?.message || err);
         const unsupportedMessaging = isFirebaseMessagingUnsupportedError(err);
         const pushErrorMessage = err?.message || String(err);
-        if (shouldWritePushPermissionState(permission, pushErrorMessage)) {
-          updateDoc(doc(db, 'users', liveAppUser.id), {
+        if (shouldWritePushPermissionState(permission, pushErrorMessage, pushRepairRequested)) {
+          writePushProfilePatch({
             notificationPermission: permission,
             pushTokenPermission: permission,
             pushRepairStatus: unsupportedMessaging ? 'unsupported-browser' : 'sync-failed',
@@ -1805,11 +1860,15 @@ What I clicked / expected:
 
     const timer = setTimeout(async () => {
       if (Notification.permission === 'default') {
-        try {
-          const permission = await Notification.requestPermission();
-          await syncPushToken(permission, permission === 'granted');
-        } catch (err) {
-          console.warn('86 Chaos notification permission request failed:', err?.message || err);
+        if (pushRepairRequested) {
+          try {
+            const permission = await Notification.requestPermission();
+            await syncPushToken(permission, permission === 'granted');
+          } catch (err) {
+            console.warn('86 Chaos notification permission request failed:', err?.message || err);
+          }
+        } else {
+          rememberSkippedFirestoreWrite();
         }
       } else if (pushRepairRequested || Notification.permission === 'granted') {
         await syncPushToken(Notification.permission, pushRepairRequested);
@@ -2102,7 +2161,7 @@ return (
         <div className="bg-red-600 text-white text-[11px] sm:text-xs font-black px-4 py-2.5 flex items-center justify-between sticky top-0 z-[9999] shadow-2xl uppercase tracking-wider">
           <div className="flex items-center gap-2 min-w-0">
             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="flex-shrink-0 animate-pulse text-white"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"></path><path d="M12 9v4"></path><path d="M12 17h.01"></path></svg>
-            <span className="truncate">System update available. Refresh to prevent database desync.</span>
+            <span className="truncate">Update available. Refresh app to recover the newest version.</span>
           </div>
           <div className="flex items-center gap-2 flex-shrink-0 ml-3">
             <button 
@@ -2139,8 +2198,8 @@ return (
               type="button"
               onClick={() => availableWorkspaces.length > 1 && !ghostTenant && !isDemoMode ? setIsWorkspaceSwitcherOpen(true) : null}
               className={`max-w-full truncate min-h-[44px] px-3 py-2 rounded-xl text-[10px] sm:text-[11px] font-black uppercase tracking-widest ${availableWorkspaces.length > 1 && !ghostTenant && !isDemoMode ? 'text-[#D4A381] hover:text-white cursor-pointer' : 'text-slate-400 cursor-default'}`}
-              title={availableWorkspaces.length > 1 ? 'Switch workspace' : 'Active workspace'}
-              aria-label={availableWorkspaces.length > 1 ? `Active workspace ${liveAppUser.restaurantName || 'Restaurant'}. Switch workspace.` : `Active workspace ${liveAppUser.restaurantName || 'Restaurant'}`}
+              title={availableWorkspaces.length > 1 ? `Switch workspace: ${liveAppUser.restaurantName || 'Restaurant'}` : `Active workspace: ${liveAppUser.restaurantName || 'Restaurant'}`}
+              aria-label={availableWorkspaces.length > 1 ? `Switch workspace. Active workspace ${liveAppUser.restaurantName || 'Restaurant'}.` : `Active workspace ${liveAppUser.restaurantName || 'Restaurant'}`}
             >
               {liveAppUser.restaurantName || "Restaurant"}{availableWorkspaces.length > 1 && !ghostTenant && !isDemoMode ? ' • Switch' : ''}
             </button>

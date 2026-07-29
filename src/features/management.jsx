@@ -7990,6 +7990,7 @@ Type RESTORE to continue.`);
             <div className="text-[10px] font-black uppercase tracking-[0.28em] text-[#D4A381]">System Administration</div>
             <h1 className="text-2xl sm:text-3xl font-black text-white mt-1">Operations Console</h1>
             <p className="text-xs sm:text-sm text-slate-400 font-semibold mt-2 max-w-2xl leading-relaxed">A compact workspace for platform health, access, customers, recovery, and support.</p>
+            <button type="button" onClick={() => selectAdminTab('ops')} className="mt-3 inline-flex items-center justify-center rounded-xl border border-red-900/50 bg-red-950/20 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-red-200 hover:bg-red-900/30">Clean Full Audit QA Restaurants</button>
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 w-full xl:w-auto xl:min-w-[560px]">
             <button type="button" onClick={() => selectAdminTab('overview')} className="admin46-status-chip text-left">

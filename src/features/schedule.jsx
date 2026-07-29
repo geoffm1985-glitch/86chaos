@@ -2895,6 +2895,7 @@ const handleExportTimesheets = () => {
               <div className="text-[9px] font-black uppercase tracking-widest text-[#D4A381]">Schedule Publishing Window</div>
               <div className="text-xs font-black text-white">{schedulePeriodLabel}</div>
               <div className="text-[10px] font-bold text-slate-500 mt-0.5">Change this in Settings → Workspace → Schedule Publishing.</div>
+              <div className="text-[10px] font-bold text-slate-400 mt-0.5">Publish downloads a schedule backup. Time Clock / Labor exports CSV for payroll review.</div>
             </div>
             <div className="text-[10px] font-black uppercase tracking-widest text-slate-400 bg-[#12161A] border border-[#2A353D] rounded-xl px-2 py-1.5">{schedulePeriodShifts.filter(s => !s.isPublished).length} draft • {schedulePeriodShifts.filter(s => s.isPublished).length} live • {schedulePeriodEvents.length} event{schedulePeriodEvents.length === 1 ? '' : 's'} shown</div>
           </div>
@@ -3032,9 +3033,9 @@ const handleExportTimesheets = () => {
                             const allUserReqs = timeOffRequests.filter(r => r.date === d && timeOffMatchesPerson(r, u) && isActiveTimeOffRequest(r));
                             return (
                             <td key={d} onClick={()=>handleCellClick(d,u.id)} className={`p-0.5 border-r border-[#2A353D] cursor-pointer transition-all align-top h-7 sm:h-8 ${sel?'bg-[#8F6040] outline outline-2 outline-[#D4A381] shadow-inner z-0 relative':'hover:bg-[#12161A]'}`}>
-                            <div className="flex flex-col gap-[1px] w-full justify-start overflow-hidden">
+                            <div className="flex flex-col gap-[1px] w-full justify-start overflow-visible">
                               {req && !req.isPartial && <div className="schedule-builder-time-chip w-full rounded font-black text-[7px] sm:text-[8px] py-0.5 text-center text-red-400 bg-red-900/40 uppercase tracking-tighter" title="Requested Off">Off</div>}
-                              {req && req.isPartial && <div className="schedule-builder-time-chip schedule-builder-partial-off-chip w-full rounded font-black text-[7px] sm:text-[8px] py-0.5 text-center text-amber-400 bg-amber-900/40 uppercase tracking-tighter truncate" title={`Requested off: ${formatScheduleBuilderRequestRange(req)}`}>{formatScheduleBuilderRequestRange(req)}</div>}
+                              {req && req.isPartial && <div className="schedule-builder-time-chip schedule-builder-partial-off-chip w-full rounded font-black text-[7px] sm:text-[8px] py-0.5 text-center text-amber-400 bg-amber-900/40 uppercase tracking-tighter" title={`Requested off: ${formatScheduleBuilderRequestRange(req)}`}>{formatScheduleBuilderRequestRange(req)}</div>}
                               {dayShifts.map(shift => {
                                 const shiftConflict = allUserReqs.some(r => {
                                   if (!r.isPartial) return true;
@@ -3045,7 +3046,7 @@ const handleExportTimesheets = () => {
                                 return (
                                   <div 
                                     key={shift.id || `${d}-${u.id}-${shift.startTime}-${shift.endTime}`}
-                                    className={`schedule-builder-time-chip w-full rounded font-bold text-[7px] sm:text-[8px] py-0.5 text-center truncate ${invalidTimeRange ? 'bg-amber-950/70 text-amber-200 border border-amber-400/90 shadow-[0_0_8px_rgba(245,158,11,0.35)]' : getRoleColors(shift.role, shift.isPublished)} ${shiftConflict ? 'border-2 border-red-500 animate-pulse shadow-[0_0_8px_rgba(239,68,68,0.8)]' : ''}`} 
+                                    className={`schedule-builder-time-chip w-full rounded font-bold text-[7px] sm:text-[8px] py-0.5 text-center ${invalidTimeRange ? 'bg-amber-950/70 text-amber-200 border border-amber-400/90 shadow-[0_0_8px_rgba(245,158,11,0.35)]' : getRoleColors(shift.role, shift.isPublished)} ${shiftConflict ? 'border-2 border-red-500 animate-pulse shadow-[0_0_8px_rgba(239,68,68,0.8)]' : ''}`} 
                                     title={`${timeStatus.displayRange} ${shiftConflict ? '(CONFLICT DETECTED)' : ''}${invalidTimeRange ? ` (INVALID TIME RANGE - NOT COUNTED: ${timeStatus.reason})` : ''}`}
                                   >
                                     {invalidTimeRange ? 'INVALID TIME' : `${formatShortTime(shift.startTime)}-${formatShortTime(shift.endTime)}`}
@@ -3080,7 +3081,7 @@ const handleExportTimesheets = () => {
               <span className={`text-[9px] font-bold ${T.muted} uppercase tracking-widest`}>OT Threshold: {appUser?.systemSettings?.overtime || 40}h</span>
             </div>
             <div className="overflow-x-auto no-scrollbar">
-              <table className="w-full text-left text-xs border-collapse min-w-[600px]">
+              <table className="scheduled-hours-tracker-table w-full text-left text-xs border-collapse min-w-[760px]">
                 <thead>
                   <tr className="bg-[#1A2126] border-b border-[#2A353D] text-[9px] font-black uppercase tracking-widest text-slate-400">
                     <th className="p-3 border-r border-[#2A353D] sticky left-0 bg-[#1A2126] z-10 w-24">Employee</th>

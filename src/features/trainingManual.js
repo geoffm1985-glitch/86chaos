@@ -20,7 +20,7 @@ export const SYSTEM_TRAINING_MANUAL_CHAPTERS = [
         "The date or month control near the top changes the working period for schedule, prep, events, and financial screens. Check it before entering data.",
         "Red dots and warning cards mean something needs review, such as a message, schedule change, low-stock item, overdue task, or request.",
         "Global Search finds live records across the areas you can access. Search results still follow your normal permissions.",
-        "The microphone is marked Preview. It can navigate, search Help, create supported reminders or prep entries, and stage important commands. High-risk actions require confirmation."
+        "The microphone opens 86Voice. It can navigate, search Help, create supported reminders or prep entries, and stage important commands. High-risk actions require confirmation."
       ]},
       { title: "Phone and safety basics", steps: [
         "On Android, open the app in Chrome and choose Install App or Add to Home screen. On iPhone, open it in Safari, tap Share, then Add to Home Screen.",
@@ -32,16 +32,16 @@ export const SYSTEM_TRAINING_MANUAL_CHAPTERS = [
     notes: ["When in doubt, open Help Center first. System Administrators can use this full manual for deeper tab-by-tab instructions."]
   },
   {
-    id: "voice-assistant-preview",
+    id: "voice-assistant",
     group: "Getting Started",
-    title: "86 Voice Assistant (Preview)",
+    title: "86 Voice Assistant",
     tab: "Microphone button / typed command panel",
     audience: "Everyone; actions still follow each user's permissions",
     summary: "Use speech or a typed command to navigate, search, find recipes, update prep, create reminders, and stage other supported work with safety checks.",
-    keywords: "86 voice assistant preview microphone typed command local parser optional ai navigation help recipe prep reminder schedule 86 alert ambiguous confirmation permission troubleshooting",
+    keywords: "86 voice assistant microphone typed command local parser optional ai navigation help recipe prep reminder schedule 86 alert ambiguous confirmation permission troubleshooting",
     sections: [
       { title: "Start with speech or typing", steps: [
-        "Tap the floating microphone marked Preview. Allow microphone access when the browser asks, speak one short command, and wait for the app to show what it heard.",
+        "Tap the floating 86Voice microphone. Allow microphone access when the browser asks, speak one short command, and wait for the app to show what it heard.",
         "If microphone access is denied, unsupported, inaccurate, or uncomfortable to use in a loud kitchen, open the same panel and type the command. Typed commands use the same parser, permissions, previews, and confirmations.",
         "Read the proposed action before continuing. Safe navigation may happen immediately; messages, maintenance reports, 86 alerts, and other data-changing actions show a preview or confirmation.",
         "The assistant never bypasses a hidden tab. Workspace modules, role permissions, demo-mode read-only rules, and current restaurant scope are checked again before an action runs."
@@ -109,7 +109,7 @@ export const SYSTEM_TRAINING_MANUAL_CHAPTERS = [
         "If an 86 item is not found, correct or clarify the Inventory name and approved Menu Intelligence links. Do not choose a close-looking item merely to clear the warning."
       ]}
     ],
-    notes: ["Preview means the feature is still being refined. Treat every spoken result as a draft until the screen confirms exactly what will happen."]
+    notes: ["Treat every spoken result as a draft until the screen confirms exactly what will happen."]
   },
   {
     id: "manager-brief",
@@ -893,7 +893,7 @@ export const SYSTEM_TRAINING_MANUAL_CHAPTERS = [
         "Invoice scanning is AI-assisted and review-first. Scanned rows do not affect inventory, vendor spend, reports, or Cost Center until a manager reviews and approves the result.",
         "Menu Intelligence is AI-assisted and review-first. Menu scan results and inferred dependencies should be reviewed before they power menu impact alerts.",
         "86 alerts can show affected menu items when approved dependencies exist. When dependencies are missing, the app should guide managers to complete menu/inventory setup.",
-        "Voice Assistant Preview can navigate, search Help, find recipes, create prep/reminders, and stage 86 alerts without bypassing plan gates or permissions."
+        "86Voice can navigate, search Help, find recipes, create prep/reminders, and stage 86 alerts without bypassing plan gates or permissions."
       ]},
       { title: "Account, admin, and support areas", steps: [
         "Staff Roster manages employees, custom Roster Roles, permissions, wages where allowed, generated logins, active status, and staff records.",

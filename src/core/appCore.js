@@ -404,7 +404,7 @@ export const MASTER_ADMIN_EMAIL = (process.env.REACT_APP_MASTER_ADMIN_EMAIL || '
 export const EVENT_TAGS = ['Standard Day', 'Packers Game', 'Brewers Game', 'Live Music', 'Severe Weather', 'Private Catering', 'Holiday'];
 
 // --- VERSION TRACKING ---
-export const CURRENT_VERSION = '16.0.50';
+export const CURRENT_VERSION = '16.0.51';
 
 // --- Helpers ---
 const usePageVisible = () => {
@@ -1198,10 +1198,17 @@ if (typeof window !== 'undefined' && !window.crashCatcherAttached) {
     const match = text.match(/https?:\/\/[^\s)'"]+\.(?:js|css)|\/static\/(?:js|css)\/[^\s)'"]+\.(?:js|css)/i);
     return match ? match[0] : '';
   };
+  const isClipboardPermissionRuntimeNoise = (message = '', stack = '') => {
+    const text = `${message} ${stack}`.toLowerCase();
+    return (text.includes('clipboard') || text.includes('writetext'))
+      && (text.includes('permission denied') || text.includes('not allowed') || text.includes('denied') || text.includes('not granted'));
+  };
+
   const isKnownNonFatalRuntimeError = (message = '', stack = '', payload = {}) => {
     const reason = payload.reason || payload.error || {};
     return isFirebaseMessagingUnsupportedError(reason)
-      || isFirebaseMessagingUnsupportedError({ message: `${message} ${stack}` });
+      || isFirebaseMessagingUnsupportedError({ message: `${message} ${stack}` })
+      || isClipboardPermissionRuntimeNoise(message, stack);
   };
   const reportGlobalRuntimeError = (payload = {}) => {
     try {
@@ -1210,12 +1217,13 @@ if (typeof window !== 'undefined' && !window.crashCatcherAttached) {
       const chunkUrl = payload.chunkUrl || extractFailedAssetUrl(`${message} ${stack}`);
       if (isKnownNonFatalRuntimeError(message, stack, payload)) {
         try {
+          const clipboardNoise = isClipboardPermissionRuntimeNoise(message, stack);
           window.__chaosLastNonFatalRuntimeError = {
             source: payload.source || 'runtime_error',
-            code: payload.reason?.code || payload.error?.code || 'messaging/unsupported-browser',
+            code: payload.reason?.code || payload.error?.code || (clipboardNoise ? 'clipboard/permission-denied' : 'messaging/unsupported-browser'),
             message: message.slice(0, 500),
             at: new Date().toISOString(),
-            category: 'non_fatal_firebase_messaging'
+            category: clipboardNoise ? 'non_fatal_clipboard_permission' : 'non_fatal_firebase_messaging'
           };
         } catch (_) {}
         return;
@@ -1264,7 +1272,13 @@ if (typeof window !== 'undefined' && !window.crashCatcherAttached) {
   window.addEventListener('unhandledrejection', (event) => {
     const reason = event?.reason;
     const message = String(reason?.message || reason || 'Unhandled promise rejection');
-    reportGlobalRuntimeError({ source: 'unhandledrejection', message, reason, rawStack: reason?.stack || '' });
+    const rawStack = reason?.stack || '';
+    if (isKnownNonFatalRuntimeError(message, rawStack, { source: 'unhandledrejection', reason })) {
+      try { event.preventDefault?.(); } catch (_) {}
+      reportGlobalRuntimeError({ source: 'unhandledrejection', message, reason, rawStack });
+      return;
+    }
+    reportGlobalRuntimeError({ source: 'unhandledrejection', message, reason, rawStack });
   });
 
   if ('serviceWorker' in navigator) {

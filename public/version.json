@@ -1,21 +1,20 @@
 {
-  "version": "16.0.50",
-  "name": "86 Chaos 16.0.50 Push Token Loading and Release Gate Display Fix",
+  "version": "16.0.51",
+  "name": "86 Chaos 16.0.51 Push Reconnect, Mobile Schedule, and Plain Error Fix",
   "releasedAt": "2026-07-27T00:00:00.000Z",
-  "label": "86 Chaos 16.0.50 Push Token Loading and Release Gate Display Fix",
-  "build": "16.0.50",
-  "notes": "Loads users/restaurants on the Push Control Center so connected devices and token counts show up, restores live Playwright pass/fail list output while keeping slim-only uploads, tightens system-admin routing, and improves the small Android notification badge glyph.",
+  "label": "86 Chaos 16.0.51 Push Reconnect, Mobile Schedule, and Plain Error Fix",
+  "build": "16.0.51",
+  "notes": "Fixes real push notification reconnect writes, makes mobile schedule times readable without vertical stacked labels, hardens admin access, and converts crash/error push notifications to plain English.",
   "releaseNotes": [
-    "Push Control Center now loads bounded users and restaurants on the Push tab instead of clearing allUsers, so token counts and Connected Devices by User can populate.",
-    "Send Push stays disabled only when the selected target truly has zero loaded usable tokens.",
-    "Release-gate runner restores live Playwright list output in the console while still writing JSON/log files for the slim upload ZIP.",
-    "Slim report packaging avoids nesting previous slim reports inside itself and excludes trace/html trace folders by default.",
-    "System Administrator route access now requires server-verified/admin-marked super-admin access instead of promoting normal managers from loose local permission markers.",
-    "The release-gate helper exports CAPABILITIES and hasFeature so Restaurant AI capability tests can run instead of crashing.",
-    "Schedule Builder staff rows use full names instead of first names where the planning grid renders employee labels.",
-    "Recipes empty states include recipe wording so route-health tests can recognize the real Recipes surface even when no specs exist.",
-    "The small notification badge image is replaced with a larger, cleaner transparent 86 glyph so Android status-bar badges read better.",
-    "Visible preview wording in tested admin surfaces was reduced where it caused the old mic preview regression guard to false-positive."
+    "Push reconnect now saves the current device through the user-safe fcmToken and pushDevices fields instead of writing the disallowed legacy fcmTokens array from the browser.",
+    "Automatic push sync no longer asks for notification permission or writes blocked/default permission status during normal route opens; the Fix Now flow performs the explicit repair.",
+    "Mobile Schedule Builder shift chips and the Scheduled Hours Tracker keep time labels horizontal and readable instead of truncating or stacking one letter per line.",
+    "System Administrator access now requires server-verified super-admin access or the configured master-admin email rather than loose local permission markers.",
+    "Bug/crash push notifications translate synthetic test crashes, clipboard permission blocks, chunk-load failures, and messaging problems into plain English.",
+    "Clipboard write permission denials are handled as non-fatal browser behavior so they do not poison the safe button crawl or spam crash notifications.",
+    "The active workspace switcher has clearer Switch Workspace labeling for accessibility and release-gate workspace selection.",
+    "Visible form controls receive generated accessible names when the real markup did not provide one.",
+    "The stale chunk recovery banner stays visible after the automatic recovery reload so users have a clear Refresh App action."
   ],
-  "releaseTitle": "86 Chaos 16.0.50 Push Token Loading and Release Gate Display Fix"
+  "releaseTitle": "86 Chaos 16.0.51 Push Reconnect, Mobile Schedule, and Plain Error Fix"
 }
