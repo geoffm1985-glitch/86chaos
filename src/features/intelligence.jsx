@@ -5,6 +5,7 @@ import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 import { T, db, storage, auth, secureFetch, useLiveCollection, formatClockDateTime, getToday, logAudit } from '../core/appCore';
 import { Modal, SmartEmptyState } from '../components/common';
 import { canUseMenuIntelligence, getZeroStockMenuImpacts } from '../core/menuIntelligence';
+import { buildMenuCostBreakdowns, summarizeMenuCostBreakdowns } from '../core/menuCosting';
 import { prepareScannerUploadFile, formatScannerBytes } from '../core/fileCompression';
 import { createAiScanIdempotencyKey, resolveClientScanPageCount, normalizeAiUsage, aiPageLimitMessage } from '../core/aiScanUsage';
 import { makeReminderDate, parseReminderCommand, toDateInputValue, toTimeInputValue } from '../core/reminderUtils';
@@ -344,6 +345,8 @@ const TabMenuIntelligence = ({ appUser, clientData, inventoryItems = [], addToas
   const editSavingRef = useRef(false);
   const deleteBusyRef = useRef(false);
   const impacts = getZeroStockMenuImpacts(inventoryItems, menuDependencies);
+  const approvedMenuCostRows = buildMenuCostBreakdowns({ menuDependencies, inventoryItems });
+  const approvedMenuCostSummary = summarizeMenuCostBreakdowns(approvedMenuCostRows);
 
   const loadMenuAiUsage = async () => {
     if (!appUser?.restaurantId || !allowed) return;
@@ -368,8 +371,13 @@ const TabMenuIntelligence = ({ appUser, clientData, inventoryItems = [], addToas
     ...result,
     menuItems: (result.menuItems || []).map(item => ({
       ...item,
+      price: item.price ?? item.menuPrice ?? '',
+      priceText: item.priceText || item.priceLabel || '',
       ingredients: (item.ingredients || []).map(ingredient => ({
         ...ingredient,
+        estimatedQuantity: ingredient.estimatedQuantity ?? ingredient.quantity ?? ingredient.portionQuantity ?? '',
+        estimatedUnit: ingredient.estimatedUnit || ingredient.unit || ingredient.portionUnit || '',
+        portionConfidence: ingredient.portionConfidence || ingredient.confidence || 'review',
         reviewStatus: ingredient.reviewStatus || (ingredient.matchedInventoryItemId ? 'approved' : 'needs-match')
       }))
     }))
@@ -428,6 +436,8 @@ const TabMenuIntelligence = ({ appUser, clientData, inventoryItems = [], addToas
           name: dep.menuItemName || 'Menu item',
           category: dep.menuCategory || '',
           description: dep.menuDescription || '',
+          price: dep.menuItemPrice ?? dep.menuPrice ?? '',
+          priceText: dep.menuItemPriceText || dep.menuPriceText || '',
           ingredients: []
         });
       }
@@ -436,6 +446,9 @@ const TabMenuIntelligence = ({ appUser, clientData, inventoryItems = [], addToas
         name: dep.ingredientName || dep.inventoryItemName || '',
         matchedInventoryItemId: dep.inventoryItemId || '',
         matchedInventoryItemName: dep.inventoryItemName || '',
+        estimatedQuantity: dep.estimatedQuantity ?? dep.portionQuantity ?? '',
+        estimatedUnit: dep.estimatedUnit || dep.portionUnit || '',
+        portionConfidence: dep.portionConfidence || dep.confidence || 'manual',
         confidence: dep.confidence || 'manual',
         reviewStatus: dep.status === 'rejected' ? 'rejected' : 'approved'
       });
@@ -508,13 +521,13 @@ const TabMenuIntelligence = ({ appUser, clientData, inventoryItems = [], addToas
   const addIngredientToItem = (itemIdx, mode = 'scan') => {
     const source = mode === 'edit' ? editResult : scanResult;
     const item = (source?.menuItems || [])[itemIdx] || {};
-    updateMenuItem(itemIdx, { ingredients: [...(item.ingredients || []), { name: '', matchedInventoryItemId: '', confidence: 'manual', reviewStatus: 'needs-match' }] }, mode);
+    updateMenuItem(itemIdx, { ingredients: [...(item.ingredients || []), { name: '', matchedInventoryItemId: '', estimatedQuantity: '', estimatedUnit: '', portionConfidence: 'manual', confidence: 'manual', reviewStatus: 'needs-match' }] }, mode);
   };
 
   const addMenuItemToEdit = () => {
     setEditResult({
       ...(editResult || {}),
-      menuItems: [...(editResult?.menuItems || []), { name: '', category: '', description: '', ingredients: [{ name: '', matchedInventoryItemId: '', confidence: 'manual', reviewStatus: 'needs-match' }] }]
+      menuItems: [...(editResult?.menuItems || []), { name: '', category: '', description: '', price: '', priceText: '', ingredients: [{ name: '', matchedInventoryItemId: '', estimatedQuantity: '', estimatedUnit: '', portionConfidence: 'manual', confidence: 'manual', reviewStatus: 'needs-match' }] }]
     });
   };
 
@@ -618,7 +631,7 @@ const TabMenuIntelligence = ({ appUser, clientData, inventoryItems = [], addToas
           storagePath: path,
           downloadUrl,
           compression: prepared.compression,
-          inventoryItems: inventoryItems.map(i => ({ id: i.id, name: i.name, category: i.category })),
+          inventoryItems: inventoryItems.map(i => ({ id: i.id, name: i.name, category: i.category, packSize: i.packSize, yieldQty: i.yieldQty, price: i.price, supplierName: i.supplierName, pfgCode: i.pfgCode, sku: i.sku })),
           idempotencyKey
         })
       });
@@ -670,9 +683,14 @@ const TabMenuIntelligence = ({ appUser, clientData, inventoryItems = [], addToas
             menuItemName: item.name || 'Menu item',
             menuCategory: item.category || '',
             menuDescription: item.description || '',
+            menuItemPrice: Number.parseFloat(item.price ?? item.menuPrice ?? 0) || 0,
+            menuItemPriceText: item.priceText || '',
             ingredientName: ingredient.name || inventoryItem?.name || '',
             inventoryItemId: ingredient.matchedInventoryItemId,
             inventoryItemName: inventoryItem?.name || ingredient.matchedInventoryItemName || ingredient.name || '',
+            estimatedQuantity: Number.parseFloat(ingredient.estimatedQuantity ?? ingredient.quantity ?? 0) || 0,
+            estimatedUnit: ingredient.estimatedUnit || ingredient.unit || '',
+            portionConfidence: ingredient.portionConfidence || ingredient.confidence || item.confidence || 'reviewed',
             confidence: ingredient.confidence || item.confidence || 'reviewed',
             source: 'menu_intelligence_ai_review',
             status: 'approved',
@@ -696,6 +714,8 @@ const TabMenuIntelligence = ({ appUser, clientData, inventoryItems = [], addToas
         compression: scanResult.compression || null,
         menuItemCount: menuItems.length,
         dependencyCount: saved,
+        menuItemsWithPrices: menuItems.filter(item => Number.parseFloat(item.price ?? item.menuPrice ?? 0) > 0).length,
+        menuCostingEnabled: true,
         status: 'approved',
         createdAt: new Date().toISOString(),
         approvedAt: new Date().toISOString(),
@@ -736,9 +756,14 @@ const TabMenuIntelligence = ({ appUser, clientData, inventoryItems = [], addToas
             menuItemName: item.name || 'Menu item',
             menuCategory: item.category || '',
             menuDescription: item.description || '',
+            menuItemPrice: Number.parseFloat(item.price ?? item.menuPrice ?? 0) || 0,
+            menuItemPriceText: item.priceText || '',
             ingredientName: ingredient.name || inventoryItem?.name || '',
             inventoryItemId: ingredient.matchedInventoryItemId,
             inventoryItemName: inventoryItem?.name || ingredient.matchedInventoryItemName || ingredient.name || '',
+            estimatedQuantity: Number.parseFloat(ingredient.estimatedQuantity ?? ingredient.quantity ?? 0) || 0,
+            estimatedUnit: ingredient.estimatedUnit || ingredient.unit || '',
+            portionConfidence: ingredient.portionConfidence || ingredient.confidence || 'manual_review',
             confidence: ingredient.confidence || 'manual_review',
             source: ingredient.dependencyId ? 'menu_intelligence_manual_update' : 'menu_intelligence_manual_add',
             status: 'approved',
@@ -768,6 +793,8 @@ const TabMenuIntelligence = ({ appUser, clientData, inventoryItems = [], addToas
         fileName: editResult?.fileName || editingScan.fileName || '',
         menuItemCount: (editResult?.menuItems || []).length,
         dependencyCount: savedLinks,
+        menuItemsWithPrices: (editResult?.menuItems || []).filter(item => Number.parseFloat(item.price ?? item.menuPrice ?? 0) > 0).length,
+        menuCostingEnabled: true,
         updatedAt: new Date().toISOString(),
         updatedBy: appUser.id || ''
       });
@@ -854,24 +881,37 @@ const TabMenuIntelligence = ({ appUser, clientData, inventoryItems = [], addToas
     }
   };
 
-  const renderMenuEditor = (source, mode = 'scan') => (
+  const renderMenuEditor = (source, mode = 'scan') => {
+    const costingRows = buildMenuCostBreakdowns({ menuItems: source?.menuItems || [], inventoryItems });
+    return (
     <div className="space-y-4">
-      {(source?.menuItems || []).length === 0 ? <SmartEmptyState title="Nothing found" desc="Add menu items and ingredient links before saving." /> : (source.menuItems || []).map((item, itemIdx) => (
+      {(source?.menuItems || []).length === 0 ? <SmartEmptyState title="Nothing found" desc="Add menu items and ingredient links before saving." /> : (source.menuItems || []).map((item, itemIdx) => {
+        const costRow = costingRows.find(row => row.menuItemName === (item.name || item.menuItemName || 'Menu item'));
+        return (
         <div key={itemIdx} className="bg-[#12161A] border border-[#2A353D] rounded-xl p-3 space-y-3">
-          <div className={`grid ${mode === 'edit' ? 'sm:grid-cols-[1fr_.45fr_auto]' : 'sm:grid-cols-[1fr_.45fr]'} gap-2 items-center`}>
+          <div className={`grid ${mode === 'edit' ? 'sm:grid-cols-[1fr_.45fr_.28fr_auto]' : 'sm:grid-cols-[1fr_.45fr_.28fr]'} gap-2 items-center`}>
             <input value={item.name || ''} onChange={e => updateMenuItem(itemIdx, { name: e.target.value }, mode)} className={T.input} placeholder="Menu item name" />
             <input value={item.category || ''} onChange={e => updateMenuItem(itemIdx, { category: e.target.value }, mode)} className={T.input} placeholder="Category" />
+            <input value={item.price ?? item.menuPrice ?? ''} onChange={e => updateMenuItem(itemIdx, { price: e.target.value }, mode)} className={T.input} placeholder="Menu price" inputMode="decimal" />
             {mode === 'edit' && <button type="button" onClick={() => removeEditMenuItem(itemIdx)} disabled={editSaving} className="p-3 rounded-xl border border-red-900/50 text-red-300 bg-red-900/10 disabled:opacity-50"><Trash2 size={16}/></button>}
           </div>
           <textarea value={item.description || ''} onChange={e => updateMenuItem(itemIdx, { description: e.target.value }, mode)} className={T.input} rows={2} placeholder="Description" />
+          {costRow && <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 rounded-xl border border-[#2A353D] bg-[#0B0E11] p-2 text-center">
+            <div><div className="text-[8px] uppercase tracking-widest text-slate-500 font-black">Item Cost</div><div className="font-black text-white">${Number(costRow.totalCost || 0).toFixed(2)}</div></div>
+            <div><div className="text-[8px] uppercase tracking-widest text-slate-500 font-black">Food Cost</div><div className={costRow.foodCostPct > 38 ? 'font-black text-red-300' : 'font-black text-emerald-300'}>{costRow.foodCostPct ? `${costRow.foodCostPct.toFixed(1)}%` : 'Need price'}</div></div>
+            <div><div className="text-[8px] uppercase tracking-widest text-slate-500 font-black">Profit</div><div className="font-black text-[#D4A381]">${Number(costRow.grossProfit || 0).toFixed(2)}</div></div>
+            <div><div className="text-[8px] uppercase tracking-widest text-slate-500 font-black">Confidence</div><div className="font-black text-white">{costRow.confidenceLabel}</div></div>
+          </div>}
           <div className="space-y-2">
             {(item.ingredients || []).map((ingredient, ingIdx) => (
-              <div key={`${ingredient.dependencyId || 'new'}-${ingIdx}`} className={`grid sm:grid-cols-[1fr_1fr_.85fr_auto] gap-2 items-center ${!isIngredientApproved(ingredient) ? 'opacity-60' : ''}`}>
+              <div key={`${ingredient.dependencyId || 'new'}-${ingIdx}`} className={`grid sm:grid-cols-[1fr_1fr_.34fr_.32fr_.85fr_auto] gap-2 items-center ${!isIngredientApproved(ingredient) ? 'opacity-60' : ''}`}>
                 <input value={ingredient.name || ''} onChange={e => updateIngredient(itemIdx, ingIdx, { name: e.target.value }, mode)} className={T.input} placeholder="Ingredient" />
                 <select value={ingredient.matchedInventoryItemId || ''} onChange={e => updateIngredient(itemIdx, ingIdx, { matchedInventoryItemId: e.target.value, reviewStatus: e.target.value ? 'approved' : 'needs-match' }, mode)} className={T.input}>
                   <option value="">No inventory match</option>
                   {inventoryItems.map(inv => <option key={inv.id} value={inv.id}>{inv.name}</option>)}
                 </select>
+                <input value={ingredient.estimatedQuantity ?? ''} onChange={e => updateIngredient(itemIdx, ingIdx, { estimatedQuantity: e.target.value }, mode)} className={T.input} placeholder="Qty" inputMode="decimal" />
+                <input value={ingredient.estimatedUnit || ''} onChange={e => updateIngredient(itemIdx, ingIdx, { estimatedUnit: e.target.value }, mode)} className={T.input} placeholder="Unit" />
                 <div className="flex items-center gap-2">
                   <span className={`flex-1 text-center px-2 py-2 rounded-xl border text-[9px] font-black uppercase tracking-widest ${confidenceClass(ingredient.confidence || item.confidence)}`}>Conf {confidenceLabel(ingredient.confidence || item.confidence)}</span>
                   <button type="button" onClick={() => updateIngredient(itemIdx, ingIdx, { reviewStatus: isIngredientApproved(ingredient) ? 'rejected' : (ingredient.matchedInventoryItemId ? 'approved' : 'needs-match'), approved: !isIngredientApproved(ingredient) }, mode)} disabled={approving || editSaving} className={`px-3 py-2 rounded-xl border text-[9px] font-black uppercase tracking-widest disabled:opacity-50 ${isIngredientApproved(ingredient) ? 'border-emerald-900/50 text-emerald-300 bg-emerald-900/20' : 'border-red-900/50 text-red-300 bg-red-900/20'}`}>{isIngredientApproved(ingredient) ? 'Approve' : 'Skip'}</button>
@@ -882,9 +922,10 @@ const TabMenuIntelligence = ({ appUser, clientData, inventoryItems = [], addToas
             <button type="button" onClick={() => addIngredientToItem(itemIdx, mode)} disabled={approving || editSaving} className={`${T.btnAlt} disabled:opacity-50`}>Add Ingredient</button>
           </div>
         </div>
-      ))}
+      );})}
     </div>
-  );
+    );
+  };
 
   const menuUsageSummary = normalizeAiUsage(menuAiUsage, 'menu');
   const menuUsageWarning = aiPageLimitMessage('menu', menuAiUsage);
@@ -931,6 +972,35 @@ const TabMenuIntelligence = ({ appUser, clientData, inventoryItems = [], addToas
             </div>
           ))}
         </div>
+      </div>
+
+      <div className={`${T.card} overflow-hidden`}>
+        <div className={`${T.th} flex items-center justify-between gap-3`}><span>Menu Cost Breakdown</span><span className="text-[9px] font-black uppercase tracking-widest text-[#D4A381]">{approvedMenuCostSummary.pricedCount} priced</span></div>
+        {approvedMenuCostRows.length === 0 ? <div className="p-6 text-center text-xs text-slate-500 font-bold">Upload a menu, approve AI inventory matches, and add/confirm portions to see cost by menu item.</div> : (
+          <div className="p-3 space-y-3">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+              <div className="rounded-xl border border-[#2A353D] bg-[#12161A] p-3 text-center"><div className="text-[8px] uppercase tracking-widest text-slate-500 font-black">Items</div><div className="font-black text-white">{approvedMenuCostSummary.menuItemCount}</div></div>
+              <div className="rounded-xl border border-[#2A353D] bg-[#12161A] p-3 text-center"><div className="text-[8px] uppercase tracking-widest text-slate-500 font-black">Avg Food Cost</div><div className="font-black text-[#D4A381]">{approvedMenuCostSummary.averageFoodCostPct ? `${approvedMenuCostSummary.averageFoodCostPct.toFixed(1)}%` : 'Need prices'}</div></div>
+              <div className="rounded-xl border border-[#2A353D] bg-[#12161A] p-3 text-center"><div className="text-[8px] uppercase tracking-widest text-slate-500 font-black">Needs Review</div><div className="font-black text-amber-300">{approvedMenuCostSummary.needsReviewCount}</div></div>
+              <div className="rounded-xl border border-[#2A353D] bg-[#12161A] p-3 text-center"><div className="text-[8px] uppercase tracking-widest text-slate-500 font-black">Missing Costs</div><div className="font-black text-red-300">{approvedMenuCostSummary.missingCostCount}</div></div>
+            </div>
+            <div className="space-y-2 max-h-80 overflow-y-auto custom-scrollbar">
+              {approvedMenuCostRows.slice(0, 14).map(row => (
+                <div key={`${row.menuItemName}-${row.category}`} className="rounded-xl border border-[#2A353D] bg-[#12161A] p-3">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                    <div className="min-w-0"><div className="font-black text-white truncate">{row.menuItemName}</div><div className="text-[10px] text-slate-500 font-bold mt-1">{row.ingredients.length} linked ingredient{row.ingredients.length === 1 ? '' : 's'} • confidence {row.confidenceLabel}</div></div>
+                    <div className="grid grid-cols-3 gap-2 text-center shrink-0">
+                      <div><div className="text-[8px] uppercase tracking-widest text-slate-500 font-black">Cost</div><div className="font-black text-white">${Number(row.totalCost || 0).toFixed(2)}</div></div>
+                      <div><div className="text-[8px] uppercase tracking-widest text-slate-500 font-black">Price</div><div className="font-black text-[#D4A381]">{row.menuPrice ? `$${row.menuPrice.toFixed(2)}` : 'Missing'}</div></div>
+                      <div><div className="text-[8px] uppercase tracking-widest text-slate-500 font-black">Food</div><div className={row.foodCostPct > 38 ? 'font-black text-red-300' : 'font-black text-emerald-300'}>{row.foodCostPct ? `${row.foodCostPct.toFixed(1)}%` : '—'}</div></div>
+                    </div>
+                  </div>
+                  {(row.missingIngredients.length > 0 || row.estimatedIngredients.length > 0) && <div className="mt-2 text-[10px] font-bold text-amber-200">Review: {row.missingIngredients.length ? `${row.missingIngredients.length} missing inventory/cost match` : ''}{row.missingIngredients.length && row.estimatedIngredients.length ? ' • ' : ''}{row.estimatedIngredients.length ? `${row.estimatedIngredients.length} estimated portion${row.estimatedIngredients.length === 1 ? '' : 's'}` : ''}</div>}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
       <div className={`${T.card} overflow-hidden`}>

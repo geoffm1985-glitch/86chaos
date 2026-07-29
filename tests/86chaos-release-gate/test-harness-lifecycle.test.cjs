@@ -444,6 +444,7 @@ test('collector classifies failed role preflight as test-account configuration w
   fs.writeFileSync(path.join(runDir, 'environment-preflight.json'), JSON.stringify({ ok: true, runId: 'role-block-unit', appUrl: 'https://preview.example.test/', expectedVersion: '16.0.53', sourceVersion: '16.0.53', deployedVersion: '16.0.53', visibleVersion: '16.0.53', firebaseProjectId: 'chaos-test-d1601' }, null, 2));
   fs.writeFileSync(path.join(runDir, 'dependency-preflight.json'), JSON.stringify({ ok: true, runId: 'role-block-unit' }, null, 2));
   fs.writeFileSync(path.join(runDir, 'source-inventory.json'), JSON.stringify({ ok: true, runId: 'role-block-unit', packageVersion: '16.0.53' }, null, 2));
+  fs.writeFileSync(path.join(runDir, 'test-account-provisioning.json'), JSON.stringify({ ok: true, skipped: true, runId: 'role-block-unit' }, null, 2));
   fs.writeFileSync(path.join(runDir, 'role-identity-verification.json'), JSON.stringify({ ok: false, runId: 'role-block-unit', firebaseProjectId: 'chaos-test-d1601', errors: ['MANAGER_EMAIL resolves to a System Administrator account. Configure MANAGER_EMAIL with a dedicated non-System-Administrator manager testing account.'], accounts: roleRows({ manager: { superAdmin: true, customClaimSuperAdmin: true } }) }, null, 2));
   const oldExit = process.exitCode;
   process.exitCode = 0;
@@ -473,3 +474,164 @@ test('PowerShell runners verify role accounts after Chromium and before Playwrig
     assert.ok(source.indexOf('Verify release-gate role accounts') < source.indexOf('$RunnerState.playwrightStarted = $true'));
   }
 });
+
+const provisionAccountsPath = path.resolve(__dirname, '../../scripts/86chaos-release-gate/provision-test-accounts.cjs');
+
+function withQaAccountEnv(fn) {
+  const keys = ['SYSTEM_ADMIN_EMAIL','SYSTEM_ADMIN_PASSWORD','OWNER_EMAIL','OWNER_PASSWORD','MANAGER_EMAIL','MANAGER_PASSWORD','STAFF_EMAIL','STAFF_PASSWORD','CHAOS_QA_AUTO_PROVISION_TEST_USERS','CHAOS_QA_ALLOW_MUTATING_ROLE_ACCOUNTS','MASTER_ADMIN_EMAIL','REACT_APP_FIREBASE_PROJECT_ID','REACT_APP_TEST_FIREBASE_PROJECT_ID'];
+  const old = Object.fromEntries(keys.map(k => [k, process.env[k]]));
+  process.env.SYSTEM_ADMIN_EMAIL = '86chaos.qa.system.unit@example.test';
+  process.env.SYSTEM_ADMIN_PASSWORD = 'UnitPass!111111111';
+  process.env.OWNER_EMAIL = '86chaos.qa.owner.unit@example.test';
+  process.env.OWNER_PASSWORD = 'UnitPass!222222222';
+  process.env.MANAGER_EMAIL = '86chaos.qa.manager.unit@example.test';
+  process.env.MANAGER_PASSWORD = 'UnitPass!333333333';
+  process.env.STAFF_EMAIL = '86chaos.qa.staff.unit@example.test';
+  process.env.STAFF_PASSWORD = 'UnitPass!444444444';
+  process.env.CHAOS_QA_AUTO_PROVISION_TEST_USERS = 'true';
+  process.env.CHAOS_QA_ALLOW_MUTATING_ROLE_ACCOUNTS = 'true';
+  try { return fn(); }
+  finally {
+    for (const [k, v] of Object.entries(old)) {
+      if (v === undefined) delete process.env[k]; else process.env[k] = v;
+    }
+  }
+}
+
+function makeFakeAdminApp() {
+  const usersByEmail = new Map();
+  const claimsByUid = new Map();
+  const profiles = new Map();
+  const auth = {
+    async getUserByEmail(email) {
+      const row = usersByEmail.get(String(email).toLowerCase());
+      if (!row) {
+        const error = new Error('user-not-found');
+        error.code = 'auth/user-not-found';
+        throw error;
+      }
+      return row;
+    },
+    async createUser(input) {
+      const uid = `uid-${usersByEmail.size + 1}`;
+      const row = { uid, email: String(input.email).toLowerCase(), displayName: input.displayName, disabled: false };
+      usersByEmail.set(row.email, row);
+      return row;
+    },
+    async updateUser(uid, patch) {
+      const row = [...usersByEmail.values()].find(user => user.uid === uid);
+      Object.assign(row, patch);
+      return row;
+    },
+    async setCustomUserClaims(uid, claims) {
+      claimsByUid.set(uid, claims);
+    },
+  };
+  const firestore = () => ({
+    collection(collectionName) {
+      return {
+        doc(id) {
+          return {
+            async set(data) {
+              profiles.set(`${collectionName}/${id}`, data);
+            },
+          };
+        },
+      };
+    },
+  });
+  return { auth: () => auth, firestore, usersByEmail, claimsByUid, profiles };
+}
+
+test('temporary account provisioning refuses the protected root administrator email', () => {
+  const { validateProvisionSafety } = freshRequire(provisionAccountsPath);
+  const errors = validateProvisionSafety([
+    { key: 'systemAdmin', emailEnv: 'SYSTEM_ADMIN_EMAIL', passwordEnv: 'SYSTEM_ADMIN_PASSWORD', label: 'System Administrator', email: 'geoffm1985@gmail.com', password: 'x', emailPresent: true, passwordPresent: true },
+    { key: 'owner', emailEnv: 'OWNER_EMAIL', passwordEnv: 'OWNER_PASSWORD', label: 'Owner', email: '86chaos.qa.owner@example.test', password: 'x', emailPresent: true, passwordPresent: true },
+    { key: 'manager', emailEnv: 'MANAGER_EMAIL', passwordEnv: 'MANAGER_PASSWORD', label: 'Manager', email: '86chaos.qa.manager@example.test', password: 'x', emailPresent: true, passwordPresent: true },
+    { key: 'staff', emailEnv: 'STAFF_EMAIL', passwordEnv: 'STAFF_PASSWORD', label: 'Staff', email: '86chaos.qa.staff@example.test', password: 'x', emailPresent: true, passwordPresent: true },
+  ]);
+  assert.ok(errors.some(error => /protected root administrator email/.test(error)));
+});
+
+test('temporary account provisioning writes System Administrator claim only for the system account', () => {
+  const { safeClaimPatchForAccount } = freshRequire(provisionAccountsPath);
+  const sys = safeClaimPatchForAccount({ key: 'systemAdmin' });
+  const manager = safeClaimPatchForAccount({ key: 'manager' });
+  assert.equal(sys.superAdmin, true);
+  assert.equal(sys.systemAdministrator, true);
+  assert.equal(manager.superAdmin, false);
+  assert.equal(manager.systemAdministrator, false);
+});
+
+test('temporary account provisioning can create four distinct mocked Firebase Auth users without writing secrets to the report', async () => withTempCwd(async () => {
+  await withQaAccountEnv(async () => {
+    process.env.CHAOS_RELEASE_GATE_RUN_ID = 'provision-unit';
+    process.env.CHAOS_FULL_AUDIT_RUN_ID = 'provision-unit';
+    delete process.env.CHAOS_RELEASE_GATE_RUN_DIR;
+    const fake = makeFakeAdminApp();
+    const { provisionTestAccounts } = freshRequire(provisionAccountsPath);
+    const report = await provisionTestAccounts({ loadEnvironment: false, enabled: true, adminApp: fake });
+    assert.equal(report.ok, true);
+    assert.equal(report.accounts.length, 4);
+    assert.equal(new Set(report.accounts.map(a => a.uid)).size, 4);
+    assert.equal([...fake.claimsByUid.values()].filter(c => c.superAdmin === true).length, 1);
+    const serialized = JSON.stringify(report);
+    assert.doesNotMatch(serialized, /UnitPass|idToken|refreshToken|private_key/i);
+    assert.ok(fake.profiles.size >= 4);
+  });
+}));
+
+test('PowerShell runners provision temporary accounts before role preflight and before Playwright', () => {
+  for (const file of ['RUN_86CHAOS_FAILED_ONLY_RELEASE_GATE.ps1', 'RUN_86CHAOS_PLAY_STORE_RELEASE_GATE.ps1']) {
+    const source = fs.readFileSync(path.resolve(__dirname, '../..', file), 'utf8');
+    assert.match(source, /Provision temporary release-gate test accounts/);
+    assert.match(source, /provision-test-accounts\.cjs/);
+    assert.match(source, /testAccountProvisionAttempted/);
+    assert.match(source, /testAccountProvisionPassed/);
+    assert.ok(source.indexOf('Install Chromium browser') < source.indexOf('Provision temporary release-gate test accounts'));
+    assert.ok(source.indexOf('Provision temporary release-gate test accounts') < source.indexOf('Verify release-gate role accounts'));
+    assert.ok(source.indexOf('Verify release-gate role accounts') < source.indexOf('$RunnerState.playwrightStarted = $true'));
+  }
+});
+
+test('collector reports account provisioning failure before Playwright without seed or cleanup blame', () => withTempCwd((dir) => {
+  process.env.CHAOS_RELEASE_GATE_RUN_ID = 'provision-block-unit';
+  process.env.CHAOS_FULL_AUDIT_RUN_ID = 'provision-block-unit';
+  delete process.env.CHAOS_RELEASE_GATE_RUN_DIR;
+  process.env.CHAOS_RELEASE_GATE_STEP_FAILURES = '1';
+  const { ensureRunDir } = freshRequire(runContextPath);
+  const { runDir } = ensureRunDir();
+  fs.writeFileSync(path.join(runDir, 'runner-state.json'), JSON.stringify({
+    runId: 'provision-block-unit',
+    dependencyInstallPassed: true,
+    dependencyPreflightPassed: true,
+    sourceInventoryPassed: true,
+    browserInstallPassed: true,
+    testAccountProvisionAttempted: true,
+    testAccountProvisionPassed: false,
+    rolePreflightStarted: false,
+    playwrightStarted: false,
+    qaDataWritesStarted: false,
+    cleanupAttempted: false,
+    blockingReason: 'Release gate blocked before tests because temporary release-gate test accounts could not be provisioned.',
+    steps: [{ name: 'Provision temporary release-gate test accounts', exitCode: 1, passed: false }],
+  }, null, 2));
+  fs.writeFileSync(path.join(runDir, 'environment-preflight.json'), JSON.stringify({ ok: true, runId: 'provision-block-unit', appUrl: 'https://preview.example.test/', expectedVersion: '16.0.55', sourceVersion: '16.0.55', deployedVersion: '16.0.55', visibleVersion: '16.0.55', firebaseProjectId: 'chaos-test-d1601' }, null, 2));
+  fs.writeFileSync(path.join(runDir, 'dependency-preflight.json'), JSON.stringify({ ok: true, runId: 'provision-block-unit' }, null, 2));
+  fs.writeFileSync(path.join(runDir, 'source-inventory.json'), JSON.stringify({ ok: true, runId: 'provision-block-unit', packageVersion: '16.0.55' }, null, 2));
+  fs.writeFileSync(path.join(runDir, 'test-account-provisioning.json'), JSON.stringify({ ok: false, runId: 'provision-block-unit', errors: ['Testing Firebase Admin credentials are required to auto-provision release-gate users.'] }, null, 2));
+  const oldExit = process.exitCode;
+  process.exitCode = 0;
+  const collectorPath = path.resolve(__dirname, '../../scripts/86chaos-release-gate/collect-release-gate-report.cjs');
+  freshRequire(collectorPath);
+  const summaryFile = fs.readdirSync(runDir).find(name => name.startsWith('86chaos-play-store-release-gate-summary-') && name.endsWith('.json'));
+  const summary = JSON.parse(fs.readFileSync(path.join(runDir, summaryFile), 'utf8'));
+  assert.equal(summary.ok, false);
+  assert.equal(summary.playwright.status, 'No tests executed');
+  assert.ok(summary.accountProvisionFailures.some(error => /Admin credentials/.test(error)));
+  assert.equal(summary.setupFailures.length, 0);
+  assert.equal(summary.cleanupFailures.length, 0);
+  assert.equal(summary.failureGroups.some(group => group.group === 'test-account-provisioning'), true);
+  process.exitCode = oldExit;
+}));

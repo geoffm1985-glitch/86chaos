@@ -2,6 +2,7 @@ const admin = require('firebase-admin');
 const zlib = require('zlib');
 const crypto = require('crypto');
 const { getAdminAppForRequest, getAdminAppForProject, getRequestedProjectId, verifyTrustedFirebaseIdToken: verifyTrustedFirebaseTokenShared } = require('./_firebase-project-admin');
+const { mergeProtectedRootAdminEmails } = require('./_protected-root-admin');
 
 function norm(v) { return String(v || '').toLowerCase().trim(); }
 function clean(v, fallback = '') { return String(v == null ? fallback : v).trim(); }
@@ -83,7 +84,7 @@ function parseMasterEmailEnv() {
   return { valid, skipped, rawCount: rawValues.filter(v => String(v || '').trim()).length };
 }
 function masterEmails() {
-  return parseMasterEmailEnv().valid;
+  return mergeProtectedRootAdminEmails(parseMasterEmailEnv().valid);
 }
 
 // Narrow owner bootstrap used only after a Firebase token has passed full

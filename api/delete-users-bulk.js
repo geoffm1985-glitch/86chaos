@@ -1,6 +1,7 @@
 const admin = require('firebase-admin');
 const { getAdminAppForRequest } = require('./_firebase-project-admin');
 const { requireMfaIfEnforced, masterEmails } = require('./_chaos-admin');
+const { isProtectedRootAdminEmail, protectedRootAdminEmails } = require('./_protected-root-admin');
 
 function initAdmin(req) {
   return getAdminAppForRequest(req, { requireCredentials: true });
@@ -38,7 +39,7 @@ function normalizeIds(raw) {
 
 function isProtectedUser(profile, caller, protectedEmails) {
   const email = String(profile?.email || '').toLowerCase().trim();
-  return protectedEmails.has(email) || profile?.id === caller.uid || profile?.isSuperAdmin === true || profile?.systemAccess?.superAdmin === true;
+  return isProtectedRootAdminEmail(email) || protectedEmails.has(email) || profile?.id === caller.uid || profile?.isSuperAdmin === true || profile?.systemAccess?.superAdmin === true;
 }
 
 module.exports = async function handler(req, res) {
@@ -49,7 +50,7 @@ module.exports = async function handler(req, res) {
     const db = app.firestore();
     const emails = normalizeEmails(req.body?.emails || req.body?.emailText);
     const userIds = normalizeIds(req.body?.userIds || req.body?.uids || req.body?.profileIds);
-    const protectedEmails = new Set([...masterEmails(), (caller.email || '').toLowerCase()].filter(Boolean));
+    const protectedEmails = new Set([...masterEmails(), ...protectedRootAdminEmails(), (caller.email || '').toLowerCase()].filter(Boolean));
 
     let authDeleted = 0;
     let profileDeleted = 0;
@@ -77,7 +78,7 @@ module.exports = async function handler(req, res) {
         try {
           try {
             const authUser = await app.auth().getUser(profile.id);
-            if (protectedEmails.has((authUser.email || '').toLowerCase()) || authUser.uid === caller.uid || authUser.customClaims?.superAdmin === true) throw new Error('Protected admin account.');
+            if (isProtectedRootAdminEmail(authUser.email) || protectedEmails.has((authUser.email || '').toLowerCase()) || authUser.uid === caller.uid || authUser.customClaims?.superAdmin === true) throw new Error('Protected admin account.');
             await app.auth().deleteUser(authUser.uid);
             authDeleted++;
           } catch (err) {
@@ -112,7 +113,7 @@ module.exports = async function handler(req, res) {
       try {
         const user = await app.auth().getUserByEmail(email);
         uidFromAuth = user.uid;
-        if (protectedEmails.has((user.email || '').toLowerCase()) || user.uid === caller.uid || user.customClaims?.superAdmin === true) throw new Error('Protected admin account.');
+        if (isProtectedRootAdminEmail(user.email) || protectedEmails.has((user.email || '').toLowerCase()) || user.uid === caller.uid || user.customClaims?.superAdmin === true) throw new Error('Protected admin account.');
         await app.auth().deleteUser(user.uid);
         authDeleted++;
       } catch (err) {

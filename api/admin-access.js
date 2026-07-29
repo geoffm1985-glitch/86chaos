@@ -1,6 +1,7 @@
 const admin = require('firebase-admin');
 const { getAdminAppForRequest } = require('./_firebase-project-admin');
 const { requireMfaIfEnforced } = require('./_chaos-admin');
+const { isProtectedRootAdminEmail, mergeProtectedRootAdminEmails, protectedRootAdminError } = require('./_protected-root-admin');
 
 function initAdmin(req) {
   return getAdminAppForRequest(req, { requireCredentials: true });
@@ -12,7 +13,7 @@ async function verifySuperAdmin(req) {
   const app = initAdmin(req);
   const decoded = await app.auth().verifyIdToken(token);
   const normalizeEmail = (value) => String(value || '').toLowerCase().trim();
-  const masterEmails = Array.from(new Set([process.env.MASTER_ADMIN_EMAIL, ...(process.env.MASTER_ADMIN_EMAILS || '').split(',')].map(normalizeEmail).filter(Boolean)));
+  const masterEmails = mergeProtectedRootAdminEmails(Array.from(new Set([process.env.MASTER_ADMIN_EMAIL, ...(process.env.MASTER_ADMIN_EMAILS || '').split(',')].map(normalizeEmail).filter(Boolean))));
   const callerEmail = normalizeEmail(decoded.email);
   const callerSnap = await app.firestore().collection('users').doc(decoded.uid).get();
   const caller = callerSnap.exists ? (callerSnap.data() || {}) : {};
@@ -33,6 +34,7 @@ module.exports = async function handler(req, res) {
     const targetEmail = (email || '').toLowerCase().trim();
     if (!['grant', 'revoke'].includes(action)) return res.status(400).json({ error: 'Use action grant or revoke.' });
     if (!targetEmail) return res.status(400).json({ error: 'Email is required.' });
+    if (action === 'revoke' && isProtectedRootAdminEmail(targetEmail)) throw protectedRootAdminError();
 
     const target = await app.auth().getUserByEmail(targetEmail);
     const currentClaims = target.customClaims || {};

@@ -22,6 +22,7 @@ const requiredArtifacts = [
   'environment-preflight.json',
   'dependency-preflight.json',
   'source-inventory.json',
+  'test-account-provisioning.json',
   'role-identity-verification.json',
   'qa-setup-state.json',
   '86chaos-full-audit-seed-report.json',
@@ -35,6 +36,7 @@ const runnerState = readJsonIfExists(artifact['runner-state.json']) || {};
 const preflight = readJsonIfExists(artifact['environment-preflight.json']) || {};
 const dependencyPreflight = readJsonIfExists(artifact['dependency-preflight.json']) || {};
 const sourceInventory = readJsonIfExists(artifact['source-inventory.json']) || {};
+const testAccountProvisioning = readJsonIfExists(artifact['test-account-provisioning.json']) || {};
 const roleVerification = readJsonIfExists(artifact['role-identity-verification.json']) || {};
 const setupState = readJsonIfExists(artifact['qa-setup-state.json']) || {};
 const seedReport = readJsonIfExists(artifact['86chaos-full-audit-seed-report.json']) || {};
@@ -64,9 +66,12 @@ function skippedByRunnerBlock(name) {
     return ['source-inventory.json', 'role-identity-verification.json', 'qa-setup-state.json', '86chaos-full-audit-seed-report.json', 'playwright-report.json', '86chaos-full-audit-cleanup-report.json'].includes(name);
   }
   if (runnerState.sourceInventoryPassed !== true) {
-    return ['role-identity-verification.json', 'qa-setup-state.json', '86chaos-full-audit-seed-report.json', 'playwright-report.json', '86chaos-full-audit-cleanup-report.json'].includes(name);
+    return ['test-account-provisioning.json', 'role-identity-verification.json', 'qa-setup-state.json', '86chaos-full-audit-seed-report.json', 'playwright-report.json', '86chaos-full-audit-cleanup-report.json'].includes(name);
   }
   if (runnerState.browserInstallPassed !== true) {
+    return ['test-account-provisioning.json', 'role-identity-verification.json', 'qa-setup-state.json', '86chaos-full-audit-seed-report.json', 'playwright-report.json', '86chaos-full-audit-cleanup-report.json'].includes(name);
+  }
+  if (runnerState.testAccountProvisionAttempted === true && runnerState.testAccountProvisionPassed !== true) {
     return ['role-identity-verification.json', 'qa-setup-state.json', '86chaos-full-audit-seed-report.json', 'playwright-report.json', '86chaos-full-audit-cleanup-report.json'].includes(name);
   }
   if (runnerState.rolePreflightStarted === true && runnerState.rolePreflightPassed !== true) {
@@ -124,7 +129,7 @@ const versionMismatch = Boolean(expectedVersion && testedVersion && expectedVers
 if (versionMismatch) missingArtifacts.push(`version-mismatch expected=${expectedVersion} tested=${testedVersion}`);
 
 const runMismatchFailures = [];
-for (const [name, data] of Object.entries({ runnerState, preflight, dependencyPreflight, sourceInventory, roleVerification, setupState, seedReport, cleanupReport })) {
+for (const [name, data] of Object.entries({ runnerState, preflight, dependencyPreflight, sourceInventory, testAccountProvisioning, roleVerification, setupState, seedReport, cleanupReport })) {
   if (data && data.runId && data.runId !== runId) runMismatchFailures.push(`${name} runId=${data.runId} expected=${runId}`);
 }
 if (runMismatchFailures.length) missingArtifacts.push(...runMismatchFailures.map(x => `run-mismatch ${x}`));
@@ -134,6 +139,12 @@ if (hasOwn(dependencyPreflight, 'ok') && dependencyPreflight.ok !== true) {
   dependencyFailures.push(...(Array.isArray(dependencyPreflight.errors) && dependencyPreflight.errors.length ? dependencyPreflight.errors : ['Dependency preflight failed.']));
 }
 if (blockedBeforePlaywright && /dependenc/i.test(runnerBlockingReason) && !dependencyFailures.length) dependencyFailures.push(runnerBlockingReason);
+
+const accountProvisionFailures = [];
+if (hasOwn(testAccountProvisioning, 'ok') && testAccountProvisioning.ok !== true) {
+  accountProvisionFailures.push(...(Array.isArray(testAccountProvisioning.errors) && testAccountProvisioning.errors.length ? testAccountProvisioning.errors : ['Temporary release-gate test account provisioning failed.']));
+}
+if (blockedBeforePlaywright && /provision|temporary release-gate test accounts/i.test(runnerBlockingReason) && !accountProvisionFailures.length) accountProvisionFailures.push(runnerBlockingReason);
 
 const roleFailures = [];
 if (hasOwn(roleVerification, 'ok') && roleVerification.ok !== true) {
@@ -165,6 +176,7 @@ const executionBlockedMessage = blockedBeforePlaywright
 const primaryBlockingFailure = runnerBlockingReason
   || preflightFailures[0]
   || dependencyFailures[0]
+  || accountProvisionFailures[0]
   || setupFailures[0]
   || cleanupFailures[0]
   || (failedTests[0] ? `${failedTests[0].title}: ${failedTests[0].error}` : '')
@@ -184,6 +196,7 @@ if (runnerBlockingReason) {
 }
 for (const text of preflightFailures) addGroup('environment-preflight', text);
 for (const text of dependencyFailures) addGroup('dependency-preflight', text);
+for (const text of accountProvisionFailures) addGroup('test-account-provisioning', text);
 for (const text of roleFailures) addGroup('test-account-configuration', text);
 const groupRe = [
   [/setup|seed|cleanup|stale|runId|artifact/i, 'harness-seed-cleanup'],
@@ -216,6 +229,7 @@ const ok = failedTests.length === 0
   && cleanupFailures.length === 0
   && preflightFailures.length === 0
   && dependencyFailures.length === 0
+  && accountProvisionFailures.length === 0
   && roleFailures.length === 0
   && !blockedBeforePlaywright
   && !(playwrightStarted && noTestsExecuted);
@@ -238,6 +252,8 @@ const summary = {
   runnerState,
   dependencyPreflight: dependencyPreflight && hasOwn(dependencyPreflight, 'ok') ? dependencyPreflight : null,
   dependencyFailures,
+  accountProvisionFailures,
+  testAccountProvisioning: testAccountProvisioning && hasOwn(testAccountProvisioning, 'ok') ? testAccountProvisioning : null,
   roleFailures,
   testAccountConfigurationFailure: roleFailures.length > 0,
   playwright: { totalResults: tests.length, status: noTestsExecuted ? 'No tests executed' : 'Tests executed', failed: failedTests.length, timedOut: timedOutTests.length, skipped: skippedTests.length, failedTests: failedTests.slice(0, 200), skippedTests: skippedTests.slice(0, 200) },
@@ -258,6 +274,7 @@ const summary = {
     'This report reads only the current run directory.',
     'Root-level legacy seed and cleanup reports are not authoritative.',
     'No tests executed is a blocked release gate, not a passing test suite.',
+    'Temporary test-account provisioning reports are current-run diagnostics and never include passwords or tokens.',
     'When Playwright never starts, missing role verification, setup, seed, Playwright, and cleanup artifacts are not seed or cleanup defects.',
     'Cleanup is required after any verified QA seed, and not required when no QA setup or seed was attempted.',
     'Role-account configuration failures are test harness/account setup blockers, not app failures, seed defects, cleanup defects, or Playwright test failures.',

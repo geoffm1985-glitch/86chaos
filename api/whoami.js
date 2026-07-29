@@ -1,4 +1,4 @@
-const { admin, initAdmin, norm, clean, parseMasterEmailEnv } = require('./_chaos-admin');
+const { admin, initAdmin, norm, clean, parseMasterEmailEnv, masterEmails: getMasterEmails } = require('./_chaos-admin');
 const { APP_VERSION } = require('./_version');
 
 function getAuthClient(app) {
@@ -32,7 +32,7 @@ module.exports = async function handler(req, res) {
     const decoded = await authClient.verifyIdToken(token);
     const callerEmail = norm(decoded.email);
     const masterEmailConfig = parseMasterEmailEnv();
-    const masterEmails = masterEmailConfig.valid;
+    const masterEmails = getMasterEmails();
     const serverMasterAdminMatched = !!callerEmail && masterEmails.includes(callerEmail);
 
     let firestoreProfile = null;

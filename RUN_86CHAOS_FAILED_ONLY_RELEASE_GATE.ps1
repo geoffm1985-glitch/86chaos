@@ -63,6 +63,8 @@ $RunnerState = [ordered]@{
   dependencyPreflightPassed = $false
   sourceInventoryPassed = $false
   browserInstallPassed = $false
+  testAccountProvisionAttempted = $false
+  testAccountProvisionPassed = $false
   rolePreflightStarted = $false
   rolePreflightPassed = $false
   playwrightStarted = $false
@@ -285,28 +287,38 @@ if ($PreflightExit -ne 0) {
             if ($BrowserExit -ne 0) {
               Stop-BeforePlaywright "Release gate blocked before Playwright because Chromium browser installation failed."
             } else {
-              Set-RunnerPhase 'role-preflight'
-              $RunnerState.rolePreflightStarted = $true
+              Set-RunnerPhase 'test-account-provisioning'
+              $RunnerState.testAccountProvisionAttempted = $true
               Save-RunnerState
-              $RoleExit = Run-Step "Verify release-gate role accounts" "node scripts/86chaos-release-gate/verify-role-accounts.cjs"
-              $RunnerState.rolePreflightPassed = ($RoleExit -eq 0)
+              $ProvisionExit = Run-Step "Provision temporary release-gate test accounts" "node scripts/86chaos-release-gate/provision-test-accounts.cjs"
+              $RunnerState.testAccountProvisionPassed = ($ProvisionExit -eq 0)
               Save-RunnerState
-              if ($RoleExit -ne 0) {
-                $RoleReason = "Release gate blocked before tests because role-account preflight failed. Configure a dedicated non-System-Administrator manager test account in .env.test.local."
-                $RoleReportPath = Join-Path $RunDir 'role-identity-verification.json'
-                if (Test-Path $RoleReportPath) {
-                  try {
-                    $RoleReport = Get-Content $RoleReportPath -Raw | ConvertFrom-Json
-                    if ($RoleReport.errors -and $RoleReport.errors.Count -gt 0) { $RoleReason = "Release gate blocked before tests because $($RoleReport.errors[0])" }
-                  } catch {}
-                }
-                Stop-BeforePlaywright $RoleReason
+              if ($ProvisionExit -ne 0) {
+                Stop-BeforePlaywright "Release gate blocked before tests because temporary release-gate test accounts could not be provisioned. Check test-account-provisioning.json in the current run directory."
               } else {
-                Set-RunnerPhase 'playwright'
-                $PlaywrightConfig = ".\playwright.failed-release.config.cjs"
-                $RunnerState.playwrightStarted = $true
+                Set-RunnerPhase 'role-preflight'
+                $RunnerState.rolePreflightStarted = $true
                 Save-RunnerState
-                Run-LiveStep "Failed-only Playwright gate" "& '$PlaywrightExe' test --config '$PlaywrightConfig'"
+                $RoleExit = Run-Step "Verify release-gate role accounts" "node scripts/86chaos-release-gate/verify-role-accounts.cjs"
+                $RunnerState.rolePreflightPassed = ($RoleExit -eq 0)
+                Save-RunnerState
+                if ($RoleExit -ne 0) {
+                  $RoleReason = "Release gate blocked before tests because role-account preflight failed. Configure a dedicated non-System-Administrator manager test account in .env.test.local."
+                  $RoleReportPath = Join-Path $RunDir 'role-identity-verification.json'
+                  if (Test-Path $RoleReportPath) {
+                    try {
+                      $RoleReport = Get-Content $RoleReportPath -Raw | ConvertFrom-Json
+                      if ($RoleReport.errors -and $RoleReport.errors.Count -gt 0) { $RoleReason = "Release gate blocked before tests because $($RoleReport.errors[0])" }
+                    } catch {}
+                  }
+                  Stop-BeforePlaywright $RoleReason
+                } else {
+                  Set-RunnerPhase 'playwright'
+                  $PlaywrightConfig = ".\playwright.failed-release.config.cjs"
+                  $RunnerState.playwrightStarted = $true
+                  Save-RunnerState
+                  Run-LiveStep "Failed-only Playwright gate" "& '$PlaywrightExe' test --config '$PlaywrightConfig'"
+                }
               }
             }
           }
