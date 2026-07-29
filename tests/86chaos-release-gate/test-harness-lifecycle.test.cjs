@@ -194,3 +194,13 @@ test('collector reports duplicate role preflight as environment blocker without 
   assert.equal(summary.failureGroups.some(group => group.group === 'harness-seed-cleanup'), false);
   process.exitCode = oldExit;
 }));
+
+test('PowerShell runners keep step command output out of assigned exit-code variables', () => {
+  for (const file of ['RUN_86CHAOS_FAILED_ONLY_RELEASE_GATE.ps1', 'RUN_86CHAOS_PLAY_STORE_RELEASE_GATE.ps1']) {
+    const source = fs.readFileSync(path.resolve(__dirname, '../..', file), 'utf8');
+    assert.match(source, /Tee-Object -FilePath \$LogPath -Append \| Out-Host/, `${file} Run-Step must send command output to host, not the function success stream`);
+    assert.match(source, /ForEach-Object \{ Add-Content -Path \$LogPath -Value \$_; Write-Host \$_ \}/, `${file} Run-LiveStep must log live output without returning it as function output`);
+    assert.doesNotMatch(source, /powershell -NoProfile -ExecutionPolicy Bypass -Command \$Command 2>&1 \| Tee-Object -FilePath \$LogPath -Append\r?\n/, `${file} must not let Tee-Object output pollute assigned step results`);
+  }
+});
+

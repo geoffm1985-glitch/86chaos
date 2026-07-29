@@ -73,7 +73,7 @@ function Run-Step {
   if ([string]::IsNullOrWhiteSpace($safeName)) { $safeName = "step" }
   $LogPath = Join-Path $RunnerLogDir ("{0}-{1}.log" -f $RunId, $safeName)
   "=== $Name ===`nCommand: $Command`nStarted: $(Get-Date -Format o)`n" | Set-Content $LogPath
-  powershell -NoProfile -ExecutionPolicy Bypass -Command $Command 2>&1 | Tee-Object -FilePath $LogPath -Append
+  powershell -NoProfile -ExecutionPolicy Bypass -Command $Command 2>&1 | Tee-Object -FilePath $LogPath -Append | Out-Host
   $exitCode = if ($null -eq $LASTEXITCODE) { 0 } else { [int]$LASTEXITCODE }
   "`nFinished: $(Get-Date -Format o)`nExitCode: $exitCode" | Add-Content $LogPath
   Add-StepResult -Name $Name -ExitCode $exitCode -LogPath $LogPath
@@ -89,7 +89,7 @@ function Run-LiveStep {
   if ([string]::IsNullOrWhiteSpace($safeName)) { $safeName = "step" }
   $LogPath = Join-Path $RunnerLogDir ("{0}-{1}.log" -f $RunId, $safeName)
   "=== $Name ===`nCommand: $Command`nStarted: $(Get-Date -Format o)`nLive Playwright output printed to the terminal.`n" | Set-Content $LogPath
-  powershell -NoProfile -ExecutionPolicy Bypass -Command $Command
+  powershell -NoProfile -ExecutionPolicy Bypass -Command $Command 2>&1 | ForEach-Object { Add-Content -Path $LogPath -Value $_; Write-Host $_ }
   $exitCode = if ($null -eq $LASTEXITCODE) { 0 } else { [int]$LASTEXITCODE }
   "`nFinished: $(Get-Date -Format o)`nExitCode: $exitCode" | Add-Content $LogPath
   Add-StepResult -Name $Name -ExitCode $exitCode -LogPath $LogPath
