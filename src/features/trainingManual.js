@@ -397,8 +397,8 @@ export const SYSTEM_TRAINING_MANUAL_CHAPTERS = [
         "Review each vendor group before sending or exporting. The app prepares order information; confirm the actual vendor submission succeeded.",
         "When receiving, compare delivered quantities and prices with the order and invoice before updating stock. Record shortages or substitutions."
       ]},
-      { title: "Burn Log Preview", steps: [
-        "Use Burn Log Preview for spoilage, mistakes, waste, breakage, or another approved loss reason.",
+      { title: "Burn Log Review", steps: [
+        "Use Burn Log Review for spoilage, mistakes, waste, breakage, or another approved loss reason.",
         "Enter the real amount and unit, cost basis, reason, and note. Confirm the deduction preview before saving.",
         "Burn may reduce stock and record cost lost. Do not use it to correct an ordinary count error; perform a count adjustment with an explanation instead.",
         "Review burn history for patterns, but investigate context before drawing conclusions about an employee or shift."
@@ -741,7 +741,7 @@ export const SYSTEM_TRAINING_MANUAL_CHAPTERS = [
       { title: "Backup Center", steps: [
         "Check the last successful backup, age, document count, storage path, integrity result, and watchdog status.",
         "Run Backup Now before risky migrations, repairs, broad settings changes, or restore work. Confirm the new file appears and passes integrity checks.",
-        "Preview or download the selected backup before restore. Confirm its date, environment, workspace scope, and expected collections.",
+        "Review or download the selected backup before restore. Confirm its date, environment, workspace scope, and expected collections.",
         "Type the required confirmation exactly. Restore is merge-based unless the tool explicitly says otherwise. Record a restore drill after a verified test."
       ]},
       { title: "Forensics and data movement", steps: [
@@ -775,7 +775,7 @@ export const SYSTEM_TRAINING_MANUAL_CHAPTERS = [
       ]},
       { title: "Role Manager", steps: [
         "Start from least privilege. Separate staff editing, schedule editing, financials, inventory, recipes, admin tools, wage visibility, and forensics.",
-        "Preview a role against real tabs and actions before saving.",
+        "Review a role against real tabs and actions before saving.",
         "Review high-risk roles after staffing changes, support engagements, and releases."
       ]}
     ],
@@ -803,7 +803,7 @@ export const SYSTEM_TRAINING_MANUAL_CHAPTERS = [
         "Platform administrator access is never granted from the workspace user editor."
       ]},
       { title: "Branding", steps: [
-        "Preview logo, colors, help contact, timezone, date and time formats, and landing behavior for the selected workspace.",
+        "Review logo, colors, help contact, timezone, date and time formats, and landing behavior for the selected workspace.",
         "Keep the permanent 86 Chaos brand lock. A client logo complements it rather than replacing it."
       ]}
     ],
@@ -846,7 +846,7 @@ export const SYSTEM_TRAINING_MANUAL_CHAPTERS = [
     keywords: "system administrator maintenance mode release history robustness suite platform operations broadcast danger zone delete reset force logout",
     sections: [
       { title: "Maintenance and releases", steps: [
-        "Choose global or workspace scope, audience, message, start, and end time. Preview the wording before enabling Maintenance Mode.",
+        "Choose global or workspace scope, audience, message, start, and end time. Review the wording before enabling Maintenance Mode.",
         "Keep System Administrator access available during maintenance so recovery is possible.",
         "Use Robustness Suite for storage, schema, permission, backup-preview, import, offline-queue, and release-guardrail checks.",
         "Use Version History to connect a visible behavior with the release that introduced or changed it."

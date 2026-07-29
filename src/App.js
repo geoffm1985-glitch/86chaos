@@ -56,10 +56,23 @@ const reportRuntimeChunkFailure = async (error, extra = {}) => {
 const recoverFromChunkFailureOnce = async (error, exportName = 'section') => {
   if (!isChunkLoadFailure(error) || typeof window === 'undefined') throw error;
   const chunkUrl = extractChunkUrl(error) || exportName;
-  const recoveryKey = `86chaos:chunkRecovery:${CURRENT_VERSION}:${chunkUrl}`;
-  await reportRuntimeChunkFailure(error, { source: 'lazy_feature_import', exportName });
-  if (!sessionStorage.getItem(recoveryKey)) {
-    sessionStorage.setItem(recoveryKey, new Date().toISOString());
+  const reloadUsedKey = `86chaos:chunkRecovery:${CURRENT_VERSION}:autoReloadUsed`;
+  const inFlightKey = `86chaos:chunkRecovery:${CURRENT_VERSION}:autoReloadInFlight`;
+  const readRecoveryMarker = (key) => {
+    try { return sessionStorage.getItem(key) || localStorage.getItem(key) || ''; } catch (_) { return ''; }
+  };
+  const writeRecoveryMarker = (key, value) => {
+    try { sessionStorage.setItem(key, value); } catch (_) {}
+    try { localStorage.setItem(key, value); } catch (_) {}
+  };
+  const alreadyReloaded = readRecoveryMarker(reloadUsedKey);
+  const reloadInFlight = window.__chaosChunkRecoveryInFlight || readRecoveryMarker(inFlightKey);
+  if (!alreadyReloaded && !reloadInFlight) {
+    const stamp = new Date().toISOString();
+    window.__chaosChunkRecoveryInFlight = true;
+    writeRecoveryMarker(inFlightKey, stamp);
+    writeRecoveryMarker(reloadUsedKey, `${stamp}|${chunkUrl}`);
+    await reportRuntimeChunkFailure(error, { source: 'lazy_feature_import', exportName, chunkAutoReload: 'one-shot' });
     try {
       const registration = await navigator.serviceWorker?.getRegistration?.();
       await registration?.update?.();
@@ -69,7 +82,9 @@ const recoverFromChunkFailureOnce = async (error, exportName = 'section') => {
     url.searchParams.set('chaosReloadVersion', CURRENT_VERSION);
     url.searchParams.set('chaosReloadAt', String(Date.now()));
     window.location.replace(url.toString());
+    return new Promise(() => {});
   }
+  await reportRuntimeChunkFailure(error, { source: 'lazy_feature_import', exportName, chunkAutoReload: 'already-used' });
   throw error;
 };
 const lazyFeature = (loader, exportName) => React.lazy(() => loader()
@@ -711,20 +726,26 @@ const [currentDate, setCurrentDate] = useState(getToday());
 
   const isDemoMode = !!liveAppUser?.isDemo;
   const sessionEmailForAdmin = String(liveAppUser?.email || appUser?.email || auth.currentUser?.email || '').toLowerCase();
-  const serverRoleLooksSystemAdmin = /system\s*administrator|super\s*admin|master\s*admin/i.test(String(serverAdminCheck?.firestoreProfileRole || serverAdminCheck?.role || serverAdminCheck?.roleName || ''));
+  const serverRoleLooksSystemAdmin = /system\s*administrator|super\s*admin|master\s*admin/i.test(String(serverAdminCheck?.firestoreProfileRole || serverAdminCheck?.role || serverAdminCheck?.roleName || '')) || serverAdminCheck?.firestoreRoleLooksSystemAdmin === true;
   const serverSaysSuperAdmin = Boolean(
     serverAdminCheck?.superAdmin === true && (
       serverAdminCheck?.serverMasterAdminMatched === true ||
       serverAdminCheck?.customClaimSuperAdmin === true ||
+      serverAdminCheck?.firestoreSystemAdministrator === true ||
       (serverAdminCheck?.firestoreSuperAdmin === true && serverRoleLooksSystemAdmin)
     )
   );
-  // A local profile/permission marker is only treated as a hint. Full System Administrator
-  // access must be confirmed by the server check or the configured master-admin email.
-  const hasLocalSystemAdminMarker = Boolean(
-    serverSaysSuperAdmin ||
-    (MASTER_ADMIN_EMAIL && sessionEmailForAdmin === MASTER_ADMIN_EMAIL.toLowerCase())
+  const localRoleLooksSystemAdmin = /system\s*administrator|super\s*admin|master\s*admin/i.test(String(liveAppUser?.role || liveAppUser?.roleName || liveAppUser?.accountRole || liveAppUser?.title || ''));
+  const serverAdminCheckPending = Boolean(appUser?.id && appUser.id !== 'dev-backdoor' && serverAdminCheck === null);
+  // Local System Administrator markers are only a short loading hint while /api/whoami is pending.
+  // Once the server check returns, full platform access must come from the verified server response.
+  const pendingLocalSystemAdminHint = Boolean(
+    !isDemoMode &&
+    serverAdminCheckPending &&
+    localRoleLooksSystemAdmin &&
+    (liveAppUser?.isSuperAdmin === true || liveAppUser?.systemAccess?.superAdmin === true || liveAppUser?.permissions?.systemAdmin === true || liveAppUser?.permissions?.godmode === true)
   );
+  const hasLocalSystemAdminMarker = Boolean(serverSaysSuperAdmin || pendingLocalSystemAdminHint);
   if (!isDemoMode && liveAppUser && !hasLocalSystemAdminMarker && liveAppUser.isSuperAdmin === true) {
     liveAppUser = {
       ...liveAppUser,
@@ -739,7 +760,7 @@ const [currentDate, setCurrentDate] = useState(getToday());
       ...liveAppUser,
       isSuperAdmin: true,
       systemAccess: { ...(liveAppUser.systemAccess || {}), superAdmin: true },
-      superAdminAccessSource: serverAdminCheck?.serverMasterAdminMatched ? 'server-master-admin-env' : serverAdminCheck?.customClaimSuperAdmin ? 'firebase-custom-claim' : serverAdminCheck?.firestoreSuperAdmin ? 'firestore-profile-flag' : 'master-admin-email'
+      superAdminAccessSource: serverAdminCheck?.serverMasterAdminMatched ? 'server-master-admin-env' : serverAdminCheck?.customClaimSuperAdmin ? 'firebase-custom-claim' : serverAdminCheck?.firestoreSystemAdministrator ? 'firestore-system-administrator-role' : serverAdminCheck?.firestoreSuperAdmin ? 'firestore-profile-flag' : 'pending-local-system-admin-hint'
     };
   }
 
@@ -871,6 +892,50 @@ if (liveAppUser && clientData) {
     }
     return merged;
   }, [isDemoMode, users, workspaceMembers, sessionCanViewWages, livePresenceRecords]);
+  const scheduleDisplayUsers = useMemo(() => {
+    if (!wantsScheduleScreen && activeTabState !== 'published') return displayUsers;
+    const merged = Array.isArray(displayUsers) ? [...displayUsers] : [];
+    const seen = new Set();
+    const remember = (value) => {
+      const key = String(value || '').trim().toLowerCase();
+      if (key) seen.add(key);
+    };
+    merged.forEach(user => {
+      remember(user?.id); remember(user?.uid); remember(user?.authUid); remember(user?.userId);
+      remember(user?.scheduleUserId); remember(user?.employeeId); remember(user?.rosterUserId);
+      remember(user?.email); remember(user?.emailLower); remember(user?.name); remember(user?.displayName); remember(user?.fullName);
+    });
+    const addShiftPerson = (shift = {}) => {
+      if (!shift || typeof shift !== 'object') return;
+      const ids = [shift.scheduleUserId, shift.employeeId, shift.rosterUserId, shift.userId, shift.uid, shift.authUid, shift.staffId].filter(Boolean);
+      const name = String(shift.employeeName || shift.staffName || shift.userName || shift.displayName || shift.fullName || shift.name || '').trim();
+      const email = String(shift.employeeEmail || shift.email || shift.emailLower || '').trim();
+      const primaryId = String(ids[0] || email || name || '').trim();
+      const known = [primaryId, name, email, ...ids].some(value => seen.has(String(value || '').trim().toLowerCase()));
+      if (!primaryId || !name || known) return;
+      ids.forEach(remember); remember(primaryId); remember(name); remember(email);
+      merged.push({
+        id: primaryId,
+        uid: shift.uid || shift.authUid || shift.userId || primaryId,
+        userId: shift.userId || shift.employeeId || primaryId,
+        scheduleUserId: shift.scheduleUserId || shift.employeeId || primaryId,
+        employeeId: shift.employeeId || primaryId,
+        name,
+        displayName: name,
+        fullName: name,
+        email,
+        emailLower: email.toLowerCase(),
+        role: shift.role || shift.position || shift.department || 'Scheduled Staff',
+        department: shift.department || shift.section || '',
+        restaurantId: shift.restaurantId || rId,
+        isActive: true,
+        scheduleOnly: true,
+        source: 'shift-roster-fallback'
+      });
+    };
+    (shifts || []).forEach(addShiftPerson);
+    return merged;
+  }, [displayUsers, shifts, wantsScheduleScreen, activeTabState, rId]);
   if (isDemoMode && liveAppUser?.demoRole === 'employee' && displayUsers?.[0]) {
     liveAppUser = { ...liveAppUser, id: displayUsers[0].id, name: 'Demo Employee', role: displayUsers[0].role || 'Demo Employee', isAdmin: false, isSuperAdmin: false, permissions: { help: true } };
   }
@@ -1200,34 +1265,85 @@ if (liveAppUser && clientData) {
 
   useEffect(() => {
     if (typeof document === 'undefined') return undefined;
+    const safeLabelRe = /\b(open|close|view|details|back|next|previous|today|tomorrow|week|month|filter|search|clear|show|hide|expand|collapse|menu|settings|help|refresh|retry|print|copy|download|export|jump|calendar|schedule|inventory|recipe|message|maintenance|team|financial|event|reminder|tab)\b|^[×x✕✖+\-]$/i;
+    const mutationLabelRe = /\b(add|assign|save|create|delete|remove|publish|submit|send|post|reply|upload|scan|clock in|clock out|start break|end break|approve|deny|archive|restore|reset|repair|run|apply|generate|sync|reconnect|enable|disable|log|complete|resolve|reopen|order|backup|import|push|notify|test push|force|clear cache|update stock|deduct)\b/i;
+    const routeContextLabel = () => ({
+      today: 'Open Manager Brief', schedule: 'Schedule', published: 'Schedule', events: 'Event calendar', ops: 'Open operations', financials: 'Financial', sales: 'Financial', labor: 'Labor', messages: 'Message board', prep: 'Prep task', recipes: 'Recipe', inventory: 'Inventory', team: 'Team', maintenance: 'Maintenance', settings: 'Settings', help: 'Help', godmode: 'System Administrator', reminders: 'Reminder'
+    }[activeTabState] || 'Open 86 Chaos');
+    const cleanLabel = (value = '') => String(value || '').replace(/\s+/g, ' ').trim().slice(0, 140);
+    const isCoveredClassification = (label = '') => safeLabelRe.test(label) || mutationLabelRe.test(label);
+    const normalizeControlLabel = (base, el, index) => {
+      const tag = String(el.tagName || '').toUpperCase();
+      const role = String(el.getAttribute('role') || '').toLowerCase();
+      const type = String(el.getAttribute('type') || '').toLowerCase();
+      let label = cleanLabel(base);
+      if (!label) label = cleanLabel(el.value || el.getAttribute('placeholder') || el.getAttribute('name') || el.getAttribute('data-label') || '');
+      const context = routeContextLabel();
+
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') {
+        if (type === 'checkbox' || type === 'radio') return isCoveredClassification(label) ? label : `${context} option ${label || index + 1}`;
+        if (mutationLabelRe.test(label) && !safeLabelRe.test(label)) return `${context} field ${index + 1}`;
+        return isCoveredClassification(label) ? label : `${context} field ${label || index + 1}`;
+      }
+
+      if (/^log out$/i.test(label)) return 'Open sign out';
+      if (/^reset$/i.test(label)) return 'Clear form';
+      if (/save daily close/i.test(label)) return 'Save labor daily close';
+      if (/^add$/i.test(label) && activeTabState === 'reminders') return 'Add reminder';
+      if (/^add$/i.test(label) && activeTabState === 'maintenance') return 'Add maintenance task';
+      if (/^add$/i.test(label)) return `${context} add control`;
+      if (/add staff|add employee|add person|staff member/i.test(label)) return 'Add staff roster member';
+      if (/add pm|preventive maintenance/i.test(label)) return 'Add maintenance PM';
+      if (/run backup/i.test(label)) return 'Backup now';
+      if (/backup center|audit trail/i.test(label)) return 'Open backup center and audit trail';
+      if (/backup window missed/i.test(label)) return 'Open health details';
+      if (/auto[-\s]?fill/i.test(label)) return 'Auto-fill schedule';
+      if (/report (a )?problem|bug report/i.test(label)) return 'Open report problem';
+      if (/86\s*voice|voice assistant|microphone|mic/i.test(label)) return 'Open 86 Voice Assistant';
+      if (/active workspace/i.test(label)) return `Open ${label}`;
+      if (/overview|request off|availability|sales|labor|payroll|gross sales|net sales|tips|discounts|guest count|ticket count/i.test(label)) return `${context} ${label}`;
+      if (role === 'tab' || role === 'menuitem') return `Open ${label || context}`;
+      if (safeLabelRe.test(label) || mutationLabelRe.test(label)) return label;
+      if (/button|a/.test(tag.toLowerCase()) || role === 'button') return `Open ${label || `86 Chaos control ${index + 1}`}`;
+      return label || `${context} control ${index + 1}`;
+    };
     const describeControl = (el, index) => {
-      const explicit = el.getAttribute('aria-label') || el.getAttribute('aria-labelledby') || el.getAttribute('title');
-      if (explicit) return;
       const tag = String(el.tagName || '').toUpperCase();
       const escapedId = el.id && typeof CSS !== 'undefined' && typeof CSS.escape === 'function' ? CSS.escape(el.id) : '';
       const nearbyLabel = escapedId ? document.querySelector(`label[for="${escapedId}"]`) : null;
-      const labelText = String(
+      const explicit = el.getAttribute('aria-label') || el.getAttribute('title') || '';
+      const labelledBy = el.getAttribute('aria-labelledby') || '';
+      const labelText = cleanLabel(
+        explicit ||
         nearbyLabel?.textContent ||
         el.closest?.('label')?.textContent ||
+        el.textContent ||
+        el.value ||
         el.getAttribute('placeholder') ||
         el.getAttribute('name') ||
         el.getAttribute('data-label') ||
         ''
-      ).replace(/\s+/g, ' ').trim();
-      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') {
-        const type = (el.getAttribute('type') || tag || 'form').toLowerCase();
-        el.setAttribute('aria-label', labelText || `${type} field ${index + 1}`);
-        return;
+      );
+      const normalized = normalizeControlLabel(labelText, el, index);
+      if (!labelledBy || !isCoveredClassification(labelText)) el.setAttribute('aria-label', normalized);
+      if (!el.getAttribute('title') && normalized) el.setAttribute('title', normalized);
+      if ((tag === 'BUTTON' || tag === 'A' || el.getAttribute('role') === 'button') && !el.classList.contains('no-compact')) {
+        el.classList.add('chaos-release-tap-target');
       }
-      const controlText = String(el.textContent || el.value || labelText || '').replace(/\s+/g, ' ').trim();
-      if (controlText) {
-        el.setAttribute('aria-label', controlText.slice(0, 120));
-        return;
-      }
-      el.setAttribute('aria-label', `86 Chaos control ${index + 1}`);
+    };
+    const describeScrollableRegions = () => {
+      document.querySelectorAll('.overflow-x-auto, .overflow-auto, [data-scrollable="true"]').forEach((el, index) => {
+        if (el.getAttribute('tabindex')) return;
+        const canScroll = (el.scrollWidth || 0) > (el.clientWidth || 0) || el.classList.contains('overflow-x-auto') || el.classList.contains('overflow-auto');
+        if (!canScroll) return;
+        el.setAttribute('tabindex', '0');
+        el.setAttribute('role', el.getAttribute('role') || 'region');
+        el.setAttribute('aria-label', el.getAttribute('aria-label') || `${routeContextLabel()} scroll area ${index + 1}`);
+      });
     };
     const applyLabels = () => {
       document.querySelectorAll('button, a, [role="button"], [role="tab"], [role="menuitem"], input, select, textarea').forEach(describeControl);
+      describeScrollableRegions();
     };
     applyLabels();
     const scheduleApplyLabels = typeof window.requestAnimationFrame === 'function' ? window.requestAnimationFrame.bind(window) : (fn) => setTimeout(fn, 0);
@@ -1734,7 +1850,7 @@ What I clicked / expected:
         pushTokenPermission: permission,
         pushTokenHost: window.location.hostname,
         pushTokenCanonical: true,
-        pushTokenDedupeVersion: '16.0.51',
+        pushTokenDedupeVersion: '16.0.52',
         pushNeedsRepair: false,
         pushForceServiceWorkerRefresh: false,
         pushRepairStatus: 'connected',
@@ -1831,7 +1947,7 @@ What I clicked / expected:
           pushTokenPermission: permission,
           pushTokenHost: window.location.hostname,
           pushTokenCanonical: true,
-          pushTokenDedupeVersion: '16.0.51',
+          pushTokenDedupeVersion: '16.0.52',
           pushNeedsRepair: false,
           pushForceServiceWorkerRefresh: false,
           pushRepairStatus: 'connected',
@@ -1991,9 +2107,9 @@ What I clicked / expected:
     const routeIsInternalAdmin = activeTabState === 'godmode' || activeTabState === 'audit';
     if (!routeIsInternalAdmin && routeAccess && routeAccess.allowed === false) return <LockedFeatureScreen access={routeAccess} appUser={liveAppUser} setActiveTab={stableSetActiveTab} />;
     if (activeTabState === 'today') return <TabToday key={`tdy-${rId}`} currentDate={currentDate} appUser={liveAppUser} users={displayUsers} shifts={shifts} shiftSwaps={shiftSwaps} timeOffRequests={timeOffRequests} events={events} sales={sales} timePunches={timePunches} inventoryItems={inventoryItems} maintenanceLogs={maintenanceLogs} prepItems={prepItems} tasks={tasks} recipes={recipes} menuDependencies={menuDependencies} restaurantAdminAlerts={restaurantAdminAlerts} clientData={displayClientData} setActiveTab={setActiveTab} addToast={addToast} registerUndo={registerUndo} />;
-    if (activeTabState === 'schedule' && (liveAppUser?.isAdmin || liveAppUser?.permissions?.schedule)) return <TabMasterSchedule key={`schpub-${rId}-${liveAppUser?.id}`} currentDate={currentDate} setCurrentDate={setCurrentDate} onSubTabChange={setActiveScheduleSubTab} appUser={liveAppUser} users={displayUsers} shifts={shifts} shiftSwaps={shiftSwaps} timeOffRequests={timeOffRequests} events={events} addToast={addToast} initialSubTab="schedule-builder" voiceScheduleSubTabTarget={voiceScheduleSubTabTarget} clientData={displayClientData} scheduleBuilderProps={{ currentDate, users: displayUsers, shifts, events, timeOffRequests, timePunches, addToast, appUser: liveAppUser, clientData: displayClientData }} />;
-    if (activeTabState === 'events' && displayClientFeatures?.events !== false && (liveAppUser?.isSuperAdmin || liveAppUser?.isAdmin || liveAppUser?.isOwner || liveAppUser?.accountOwner || liveAppUser?.workspaceOwner || liveAppUser?.permissions?.events || liveAppUser?.permissions?.schedule || liveAppUser?.permissions?.team)) return <TabSchedule key={`evt-${rId}`} currentDate={currentDate} users={displayUsers} shifts={shifts} events={events} timeOffRequests={timeOffRequests} timePunches={timePunches} addToast={addToast} appUser={liveAppUser} clientData={displayClientData} initialSubTab="events" hideSubTabs />;
-    if (activeTabState === 'published') return <TabMasterSchedule key={`pub-${rId}-${liveAppUser?.id}`} currentDate={currentDate} setCurrentDate={setCurrentDate} onSubTabChange={setActiveScheduleSubTab} appUser={liveAppUser} users={displayUsers} shifts={shifts} shiftSwaps={shiftSwaps} timeOffRequests={timeOffRequests} events={events} addToast={addToast} voiceScheduleSubTabTarget={voiceScheduleSubTabTarget} clientData={displayClientData} scheduleBuilderProps={{ currentDate, users: displayUsers, shifts, events, timeOffRequests, timePunches, addToast, appUser: liveAppUser, clientData: displayClientData }} />;
+    if (activeTabState === 'schedule' && (liveAppUser?.isAdmin || liveAppUser?.permissions?.schedule)) return <TabMasterSchedule key={`schpub-${rId}-${liveAppUser?.id}`} currentDate={currentDate} setCurrentDate={setCurrentDate} onSubTabChange={setActiveScheduleSubTab} appUser={liveAppUser} users={scheduleDisplayUsers} shifts={shifts} shiftSwaps={shiftSwaps} timeOffRequests={timeOffRequests} events={events} addToast={addToast} initialSubTab="schedule-builder" voiceScheduleSubTabTarget={voiceScheduleSubTabTarget} clientData={displayClientData} scheduleBuilderProps={{ currentDate, users: scheduleDisplayUsers, shifts, events, timeOffRequests, timePunches, addToast, appUser: liveAppUser, clientData: displayClientData }} />;
+    if (activeTabState === 'events' && displayClientFeatures?.events !== false && (liveAppUser?.isSuperAdmin || liveAppUser?.isAdmin || liveAppUser?.isOwner || liveAppUser?.accountOwner || liveAppUser?.workspaceOwner || liveAppUser?.permissions?.events || liveAppUser?.permissions?.schedule || liveAppUser?.permissions?.team)) return <TabSchedule key={`evt-${rId}`} currentDate={currentDate} users={scheduleDisplayUsers} shifts={shifts} events={events} timeOffRequests={timeOffRequests} timePunches={timePunches} addToast={addToast} appUser={liveAppUser} clientData={displayClientData} initialSubTab="events" hideSubTabs />;
+    if (activeTabState === 'published') return <TabMasterSchedule key={`pub-${rId}-${liveAppUser?.id}`} currentDate={currentDate} setCurrentDate={setCurrentDate} onSubTabChange={setActiveScheduleSubTab} appUser={liveAppUser} users={scheduleDisplayUsers} shifts={shifts} shiftSwaps={shiftSwaps} timeOffRequests={timeOffRequests} events={events} addToast={addToast} voiceScheduleSubTabTarget={voiceScheduleSubTabTarget} clientData={displayClientData} scheduleBuilderProps={{ currentDate, users: scheduleDisplayUsers, shifts, events, timeOffRequests, timePunches, addToast, appUser: liveAppUser, clientData: displayClientData }} />;
     if (activeTabState === 'ops' && displayClientFeatures?.ops !== false && (liveAppUser?.isSuperAdmin || liveAppUser?.isAdmin || liveAppUser?.permissions?.ops)) return <TabOpsCenter key={`ops-${rId}`} currentDate={currentDate} appUser={liveAppUser} users={displayUsers} shifts={shifts} events={events} sales={sales} timePunches={timePunches} addToast={addToast} setActiveTab={setActiveTab} clientData={displayClientData} />;
     if (activeTabState === 'back-office' && !isDemoMode) return <TabBackOffice key={`bo-${rId}`} currentDate={currentDate} users={displayUsers} sales={sales} timePunches={timePunches} restaurantAdminAlerts={restaurantAdminAlerts} appUser={liveAppUser} clientData={displayClientData} setActiveTab={setActiveTab} addToast={addToast} />;
     if ((activeTabState === 'financials' || activeTabState === 'sales' || activeTabState === 'labor') && (liveAppUser?.isSuperAdmin || liveAppUser?.isAdmin || liveAppUser?.permissions?.labor || liveAppUser?.permissions?.sales)) return <TabFinancials key={`fin-${rId}`} currentDate={currentDate} users={displayUsers} shifts={shifts} sales={sales} timePunches={timePunches} addToast={addToast} appUser={liveAppUser} clientData={displayClientData} setActiveTab={setActiveTab} initialSubTab={activeTabState === 'sales' ? 'ledger' : activeTabState === 'labor' ? 'labor' : 'overview'} />;
@@ -2009,7 +2125,7 @@ What I clicked / expected:
     if (activeTabState === 'maintenance' && displayClientFeatures?.maintenance !== false && (liveAppUser?.isAdmin || liveAppUser?.permissions?.team)) return <TabMaintenance key={`mtn-${rId}`} appUser={liveAppUser} addToast={addToast} />;
     if (activeTabState === 'settings' && !isDemoMode) return <TabSettings key={`set-${rId}`} addToast={addToast} appUser={liveAppUser} clientData={displayClientData} users={displayUsers} presenceSelf={selfPresenceRecord} />;
     if (activeTabState === 'help') return <TabHelpCenter key={`help-${rId}`} appUser={liveAppUser} activeTab={activeTabState} voiceHelpSearchTarget={voiceHelpSearchTarget} addToast={addToast} />;
-    if (activeTabState === 'godmode' && (hasLocalSystemAdminMarker || serverSaysSuperAdmin || (MASTER_ADMIN_EMAIL && (liveAppUser?.email || '').toLowerCase() === MASTER_ADMIN_EMAIL.toLowerCase()))) return <TabGodMode key={`god-${rId}`} appUser={{ ...liveAppUser, isSuperAdmin: true, serverAdminCheck }} addToast={addToast} setGhostTenant={setGhostTenant} setActiveTab={stableSetActiveTab} />;
+    if (activeTabState === 'godmode' && (hasLocalSystemAdminMarker || serverSaysSuperAdmin)) return <TabGodMode key={`god-${rId}`} appUser={{ ...liveAppUser, isSuperAdmin: true, serverAdminCheck }} addToast={addToast} setGhostTenant={setGhostTenant} setActiveTab={stableSetActiveTab} />;
     if (activeTabState === 'godmode') return (
       <div className={`${T.card} p-5 sm:p-8 max-w-2xl mx-auto text-center space-y-4 border-red-900/40`}>
         <div className="mx-auto w-12 h-12 rounded-2xl bg-red-900/20 border border-red-900/50 flex items-center justify-center text-red-300 text-2xl">🔐</div>
@@ -2049,8 +2165,7 @@ What I clicked / expected:
   // the platform owner/super-admin account that needs to lift the lockdown.
   const maintenanceBypass = Boolean(
     liveAppUser?.isSuperAdmin === true ||
-    serverSaysSuperAdmin ||
-    (MASTER_ADMIN_EMAIL && (liveAppUser?.email || '').toLowerCase() === MASTER_ADMIN_EMAIL.toLowerCase())
+    serverSaysSuperAdmin
   );
   const maintenanceEndsMs = clientData?.maintenanceEndsAt ? new Date(clientData.maintenanceEndsAt).getTime() : 0;
   const maintenanceExpired = maintenanceEndsMs && Number.isFinite(maintenanceEndsMs) && maintenanceEndsMs <= Date.now();

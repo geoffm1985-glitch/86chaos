@@ -1401,7 +1401,7 @@ const [eventDate, setEventDate] = useState(getToday());
     return acc;
   }, {});
   const formatScheduleBuilderEventLabel = (event = {}) => {
-    const title = String(event.title || 'Event').trim() || 'Event';
+    const title = String(event.title || event.eventName || event.name || event.label || event.summary || 'Event').trim() || 'Event';
     return `${event.time ? `${formatShortTime(event.time) || event.time} ` : ''}${title}`;
   };
   const formatScheduleBuilderRequestTime = (value = '') => {
@@ -1419,7 +1419,7 @@ const [eventDate, setEventDate] = useState(getToday());
   };
   const formatScheduleBuilderEventTitle = (event = {}) => {
     const parts = [
-      event.title || 'Event',
+      event.title || event.eventName || event.name || event.label || event.summary || 'Event',
       event.date ? formatDisplayDate(event.date) : '',
       event.time ? formatShortTime(event.time) : '',
       event.notes ? `Notes: ${event.notes}` : '',
@@ -4059,7 +4059,7 @@ const ScheduleCopilot = ({ currentDate, users = [], shifts = [], timeOffRequests
       <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-2 border-b border-[#2A353D] pb-2">
         <div className="min-w-0">
           <div className="text-[9px] uppercase tracking-widest font-black text-[#D4A381]">Schedule Copilot</div>
-          <h3 className="text-sm sm:text-base font-black text-white leading-tight">Templates, Coverage, Smart Fill & Publish Preview</h3>
+          <h3 className="text-sm sm:text-base font-black text-white leading-tight">Templates, Coverage, Smart Fill & Publish Review</h3>
           <p className="text-[10px] text-slate-400 font-bold leading-snug mt-0.5">{formatDisplayDate(weekStart)} through {formatDisplayDate(weekEnd)} • shared Schedule Builder staff roles</p>
         </div>
         <div className="flex flex-wrap gap-1.5 flex-shrink-0"><button onClick={copyPreviousWeek} className={T.btnAlt}>Copy Week</button><button onClick={smartFill} className={T.btnAlt}>Smart Fill</button><button onClick={publishWeek} className={T.btn}>Publish</button><button onClick={() => setOpen(false)} className={T.btnAlt}>Hide</button></div>

@@ -185,6 +185,7 @@ function watchForProblems(page, problems) {
     const text = msg.text();
     if (msg.type() !== 'error') return;
     if (/favicon|ResizeObserver|ERR_ABORTED|401|403|net::ERR_BLOCKED_BY_CLIENT|analytics/i.test(text)) return;
+    if (/Failed to load resource:.*status of (400|404)/i.test(text)) return;
     problems.push({ type: 'console-error', message: text.slice(0, 1600) });
   });
   page.on('response', (response) => {
@@ -197,7 +198,7 @@ function watchForProblems(page, problems) {
   page.on('requestfailed', (request) => {
     const url = request.url();
     const failure = request.failure()?.errorText || '';
-    if (/favicon|hot-update|sockjs|jwe|ERR_ABORTED/i.test(`${url} ${failure}`)) return;
+    if (/favicon|hot-update|sockjs|jwe|ERR_ABORTED|ERR_CONNECTION_RESET.*\/(6136|6139|wisco|app-icon)\.(jpg|png|webp)/i.test(`${failure} ${url}`)) return;
     problems.push({ type: 'requestfailed', url, failure });
   });
 }

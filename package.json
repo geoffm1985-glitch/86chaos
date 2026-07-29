@@ -1,6 +1,6 @@
 {
   "name": "86chaos",
-  "version": "16.0.51",
+  "version": "16.0.52",
   "private": true,
   "dependencies": {
     "ajv": "^8.20.0",
@@ -26,7 +26,7 @@
     "deploy:check": "npm run test:ci && NODE_OPTIONS=--max-old-space-size=4096 GENERATE_SOURCEMAP=false npm run build",
     "validate:audit-repair": "node scripts/validate-repair.js",
     "rules:check": "node scripts/validate-rules.js",
-    "test:source": "node scripts/validate-16-0-51.js",
+    "test:source": "node scripts/validate-16-0-52.js",
     "syntax:api": "node scripts/check-api-syntax.js",
     "test:unit": "npm run test:client && npm run test:server",
     "test:rules": "firebase emulators:exec --only firestore,storage \"node scripts/run-rules-tests.js\"",
@@ -50,7 +50,8 @@
     "test:server": "node --test api/*.test.cjs",
     "migrate:workspace-memberships:dry-run": "node scripts/migrate-workspace-memberships.js",
     "migrate:workspace-memberships": "node scripts/migrate-workspace-memberships.js --execute",
-    "test:play-store": "powershell -NoProfile -ExecutionPolicy Bypass -File .\\RUN_86CHAOS_PLAY_STORE_RELEASE_GATE.ps1"
+    "test:play-store": "powershell -NoProfile -ExecutionPolicy Bypass -File .\\RUN_86CHAOS_PLAY_STORE_RELEASE_GATE.ps1",
+    "test:play-store:failed": "playwright test --config ./playwright.failed-release.config.cjs"
   },
   "browserslist": {
     "production": [

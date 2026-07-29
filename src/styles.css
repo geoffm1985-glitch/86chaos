@@ -4921,3 +4921,56 @@ select {
     min-width: 44px !important;
   }
 }
+
+/* 16.0.52 failed-only release-gate repairs: readable controls, contrast, and focusable scroll areas. */
+.chaos-release-tap-target:not(:disabled) {
+  min-height: 42px !important;
+  min-width: 42px !important;
+}
+
+.bg-red-500.text-white,
+span.bg-red-500.text-white,
+.badge.bg-red-500.text-white {
+  background-color: #991b1b !important;
+  color: #ffffff !important;
+}
+
+.admin45-status-card span,
+.admin45-number-card span,
+.admin45-status-card small,
+.admin45-number-card small,
+.admin45-task-row,
+.admin45-task-row small {
+  color: #cbd5e1 !important;
+}
+
+.admin46-mobile-current span,
+.admin46-mobile-current small,
+.admin46-status-chip span,
+.admin46-status-chip small {
+  color: #405265 !important;
+}
+
+.admin46-shell #admin-content-start [class*="text-slate-500"],
+.admin46-shell #admin-content-start [class*="text-slate-600"],
+.admin46-shell #admin-content-start .text-slate-500,
+.admin46-shell #admin-content-start .text-slate-600 {
+  color: #526477 !important;
+}
+
+.admin46-shell #admin-content-start button:not(:disabled),
+.admin46-shell #admin-content-start [role="button"]:not(:disabled),
+.admin46-nav-button,
+.admin46-mini-action,
+.admin46-primary,
+.admin46-secondary,
+.admin46-back-button {
+  min-height: 42px !important;
+}
+
+.overflow-x-auto:focus,
+.overflow-auto:focus,
+[data-scrollable="true"]:focus {
+  outline: 2px solid rgba(212, 163, 129, .75);
+  outline-offset: 2px;
+}

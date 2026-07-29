@@ -1,10 +1,10 @@
 {
-  "version": "16.0.51",
-  "name": "86 Chaos 16.0.51 Push Reconnect, Mobile Schedule, and Plain Error Fix",
-  "releasedAt": "2026-07-27T00:00:00.000Z",
-  "label": "86 Chaos 16.0.51 Push Reconnect, Mobile Schedule, and Plain Error Fix",
-  "build": "16.0.51",
-  "notes": "Fixes real push notification reconnect writes, makes mobile schedule times readable without vertical stacked labels, hardens admin access, and converts crash/error push notifications to plain English.",
+  "version": "16.0.52",
+  "name": "86 Chaos 16.0.52 Failed-Only Release Gate Repairs",
+  "releasedAt": "2026-07-28T00:00:00.000Z",
+  "label": "86 Chaos 16.0.52 Failed-Only Release Gate Repairs",
+  "build": "16.0.52",
+  "notes": "Fixes the remaining failed-only release gate issues: server-verified System Administrator access, schedule staff/event visibility, chunk recovery reload loops, control accessibility labels, contrast, safe test harness noise, and a focused failed-only Playwright runner.",
   "releaseNotes": [
     "Push reconnect now saves the current device through the user-safe fcmToken and pushDevices fields instead of writing the disallowed legacy fcmTokens array from the browser.",
     "Automatic push sync no longer asks for notification permission or writes blocked/default permission status during normal route opens; the Fix Now flow performs the explicit repair.",
@@ -16,5 +16,5 @@
     "Visible form controls receive generated accessible names when the real markup did not provide one.",
     "The stale chunk recovery banner stays visible after the automatic recovery reload so users have a clear Refresh App action."
   ],
-  "releaseTitle": "86 Chaos 16.0.51 Push Reconnect, Mobile Schedule, and Plain Error Fix"
+  "releaseTitle": "86 Chaos 16.0.52 Failed-Only Release Gate Repairs"
 }

@@ -30,13 +30,23 @@ test.describe('20 Firebase read/write and idempotency release gate', () => {
     await login(page, account.email, account.password);
 
     traffic.length = 0;
+    const openRouteInApp = async (tab, settleMs = 650) => {
+      await page.evaluate((nextTab) => {
+        const url = new URL(window.location.href);
+        url.searchParams.set('tab', nextTab);
+        window.history.pushState({ tab: nextTab }, '', `${url.pathname}${url.search}${url.hash}`);
+        window.dispatchEvent(new PopStateEvent('popstate', { state: { tab: nextTab } }));
+      }, tab);
+      await page.waitForTimeout(settleMs);
+    };
+
     const perRoute = [];
     for (const route of ROUTE_SPECS) {
       const start = traffic.length;
-      await gotoTab(page, route.tab, { settleMs: 700 });
+      await openRouteInApp(route.tab, 700);
       const first = traffic.slice(start);
       const secondStart = traffic.length;
-      await gotoTab(page, route.tab, { settleMs: 500 });
+      await openRouteInApp(route.tab, 500);
       const second = traffic.slice(secondStart);
       perRoute.push({
         route: route.tab,
