@@ -325,3 +325,151 @@ test('PowerShell runners stop before Playwright for npm, dependency, source inve
     assert.ok(source.indexOf('$RunnerState.playwrightStarted = $true') > source.indexOf('Install Chromium browser'));
   }
 });
+
+const rolePreflightPath = path.resolve(__dirname, '../../scripts/86chaos-release-gate/verify-role-accounts.cjs');
+
+function roleRows(overrides = {}) {
+  const base = [
+    { key: 'systemAdmin', emailEnv: 'SYSTEM_ADMIN_EMAIL', email: 'sysadmin@example.test', uid: 'uid-sys', superAdmin: true, customClaimSuperAdmin: true, serverMasterAdminMatched: true, firestoreSuperAdmin: false, firestoreSystemAdministrator: false, firebaseProjectId: 'chaos-test-d1601', runtimeProjectId: 'chaos-test-d1601' },
+    { key: 'owner', emailEnv: 'OWNER_EMAIL', email: 'owner@example.test', uid: 'uid-owner', superAdmin: false, customClaimSuperAdmin: false, serverMasterAdminMatched: false, firestoreSuperAdmin: false, firestoreSystemAdministrator: false, firebaseProjectId: 'chaos-test-d1601', runtimeProjectId: 'chaos-test-d1601' },
+    { key: 'manager', emailEnv: 'MANAGER_EMAIL', email: 'manager@example.test', uid: 'uid-manager', superAdmin: false, customClaimSuperAdmin: false, serverMasterAdminMatched: false, firestoreSuperAdmin: false, firestoreSystemAdministrator: false, firebaseProjectId: 'chaos-test-d1601', runtimeProjectId: 'chaos-test-d1601' },
+    { key: 'staff', emailEnv: 'STAFF_EMAIL', email: 'staff@example.test', uid: 'uid-staff', superAdmin: false, customClaimSuperAdmin: false, serverMasterAdminMatched: false, firestoreSuperAdmin: false, firestoreSystemAdministrator: false, firebaseProjectId: 'chaos-test-d1601', runtimeProjectId: 'chaos-test-d1601' },
+  ];
+  return base.map(row => ({ ...row, ...(overrides[row.key] || {}) }));
+}
+
+test('role preflight passes only when System Administrator is true and manager/owner/staff are false', () => {
+  const { analyzeRoleRows } = freshRequire(rolePreflightPath);
+  assert.deepEqual(analyzeRoleRows(roleRows()), []);
+});
+
+test('role preflight fails when MANAGER_EMAIL has a System Administrator custom claim', () => {
+  const { analyzeRoleRows } = freshRequire(rolePreflightPath);
+  const errors = analyzeRoleRows(roleRows({ manager: { superAdmin: true, customClaimSuperAdmin: true } }));
+  assert.ok(errors.some(error => /MANAGER_EMAIL resolves to a System Administrator account/.test(error)));
+  assert.ok(errors.some(error => /customClaimSuperAdmin=true/.test(error)));
+});
+
+test('role preflight fails when MANAGER_EMAIL matches MASTER_ADMIN_EMAIL', () => {
+  const { validateLocalRoleEnv } = freshRequire(rolePreflightPath);
+  const oldMaster = process.env.MASTER_ADMIN_EMAIL;
+  process.env.MASTER_ADMIN_EMAIL = 'manager@example.test';
+  try {
+    const errors = validateLocalRoleEnv([
+      { key: 'systemAdmin', emailEnv: 'SYSTEM_ADMIN_EMAIL', passwordEnv: 'SYSTEM_ADMIN_PASSWORD', label: 'System Administrator', email: 'sysadmin@example.test', password: 'x', emailPresent: true, passwordPresent: true },
+      { key: 'owner', emailEnv: 'OWNER_EMAIL', passwordEnv: 'OWNER_PASSWORD', label: 'Owner', email: 'owner@example.test', password: 'x', emailPresent: true, passwordPresent: true },
+      { key: 'manager', emailEnv: 'MANAGER_EMAIL', passwordEnv: 'MANAGER_PASSWORD', label: 'Manager', email: 'manager@example.test', password: 'x', emailPresent: true, passwordPresent: true },
+      { key: 'staff', emailEnv: 'STAFF_EMAIL', passwordEnv: 'STAFF_PASSWORD', label: 'Staff', email: 'staff@example.test', password: 'x', emailPresent: true, passwordPresent: true },
+    ]);
+    assert.ok(errors.some(error => /MANAGER_EMAIL resolves to a configured master-admin email/.test(error)));
+  } finally {
+    if (oldMaster === undefined) delete process.env.MASTER_ADMIN_EMAIL; else process.env.MASTER_ADMIN_EMAIL = oldMaster;
+  }
+});
+
+test('manager with master-email match and custom claim reports clear configuration errors without token/password details', () => {
+  const { analyzeRoleRows, validateLocalRoleEnv } = freshRequire(rolePreflightPath);
+  const oldMaster = process.env.MASTER_ADMIN_EMAIL;
+  process.env.MASTER_ADMIN_EMAIL = 'manager@example.test';
+  try {
+    const localErrors = validateLocalRoleEnv([
+      { key: 'systemAdmin', emailEnv: 'SYSTEM_ADMIN_EMAIL', passwordEnv: 'SYSTEM_ADMIN_PASSWORD', label: 'System Administrator', email: 'sysadmin@example.test', password: 'x', emailPresent: true, passwordPresent: true },
+      { key: 'owner', emailEnv: 'OWNER_EMAIL', passwordEnv: 'OWNER_PASSWORD', label: 'Owner', email: 'owner@example.test', password: 'x', emailPresent: true, passwordPresent: true },
+      { key: 'manager', emailEnv: 'MANAGER_EMAIL', passwordEnv: 'MANAGER_PASSWORD', label: 'Manager', email: 'manager@example.test', password: 'x', emailPresent: true, passwordPresent: true },
+      { key: 'staff', emailEnv: 'STAFF_EMAIL', passwordEnv: 'STAFF_PASSWORD', label: 'Staff', email: 'staff@example.test', password: 'x', emailPresent: true, passwordPresent: true },
+    ]);
+    const roleErrors = analyzeRoleRows(roleRows({ manager: { superAdmin: true, customClaimSuperAdmin: true, serverMasterAdminMatched: true } }));
+    const text = [...new Set([...localErrors, ...roleErrors])].join('\n');
+    assert.match(text, /MANAGER_EMAIL/);
+    assert.match(text, /dedicated non-System-Administrator/);
+    assert.doesNotMatch(text, /password|idToken|refreshToken|apiKey/i);
+  } finally {
+    if (oldMaster === undefined) delete process.env.MASTER_ADMIN_EMAIL; else process.env.MASTER_ADMIN_EMAIL = oldMaster;
+  }
+});
+
+test('role preflight fails when System Administrator is not superAdmin', () => {
+  const { analyzeRoleRows } = freshRequire(rolePreflightPath);
+  const errors = analyzeRoleRows(roleRows({ systemAdmin: { superAdmin: false, customClaimSuperAdmin: false, serverMasterAdminMatched: false } }));
+  assert.ok(errors.some(error => /SYSTEM_ADMIN_EMAIL is not server-verified/.test(error)));
+});
+
+test('role preflight fails when two role emails are the same', () => {
+  const { validateLocalRoleEnv } = freshRequire(rolePreflightPath);
+  const errors = validateLocalRoleEnv([
+    { key: 'systemAdmin', emailEnv: 'SYSTEM_ADMIN_EMAIL', passwordEnv: 'SYSTEM_ADMIN_PASSWORD', label: 'System Administrator', email: 'same@example.test', password: 'x', emailPresent: true, passwordPresent: true },
+    { key: 'owner', emailEnv: 'OWNER_EMAIL', passwordEnv: 'OWNER_PASSWORD', label: 'Owner', email: 'same@example.test', password: 'x', emailPresent: true, passwordPresent: true },
+    { key: 'manager', emailEnv: 'MANAGER_EMAIL', passwordEnv: 'MANAGER_PASSWORD', label: 'Manager', email: 'manager@example.test', password: 'x', emailPresent: true, passwordPresent: true },
+    { key: 'staff', emailEnv: 'STAFF_EMAIL', passwordEnv: 'STAFF_PASSWORD', label: 'Staff', email: 'staff@example.test', password: 'x', emailPresent: true, passwordPresent: true },
+  ]);
+  assert.ok(errors.some(error => /must be different accounts/.test(error)));
+});
+
+test('role preflight fails when two accounts resolve to the same Firebase UID', () => {
+  const { analyzeRoleRows } = freshRequire(rolePreflightPath);
+  const errors = analyzeRoleRows(roleRows({ manager: { uid: 'uid-owner' } }));
+  assert.ok(errors.some(error => /resolve to the same Firebase UID/.test(error)));
+});
+
+test('role preflight fails when an account points to the wrong Firebase project', () => {
+  const { analyzeRoleRows } = freshRequire(rolePreflightPath);
+  const errors = analyzeRoleRows(roleRows({ manager: { firebaseProjectId: 'cheers-34b8d', runtimeProjectId: 'cheers-34b8d' } }));
+  assert.ok(errors.some(error => /expected chaos-test-d1601/.test(error)));
+});
+
+test('collector classifies failed role preflight as test-account configuration with no tests executed and safe cleanup skip', () => withTempCwd((dir) => {
+  process.env.CHAOS_RELEASE_GATE_RUN_ID = 'role-block-unit';
+  process.env.CHAOS_FULL_AUDIT_RUN_ID = 'role-block-unit';
+  delete process.env.CHAOS_RELEASE_GATE_RUN_DIR;
+  process.env.CHAOS_RELEASE_GATE_STEP_FAILURES = '1';
+  const { ensureRunDir } = freshRequire(runContextPath);
+  const { runDir } = ensureRunDir();
+  fs.writeFileSync(path.join(runDir, 'runner-state.json'), JSON.stringify({
+    runId: 'role-block-unit',
+    dependencyInstallPassed: true,
+    dependencyPreflightPassed: true,
+    sourceInventoryPassed: true,
+    browserInstallPassed: true,
+    rolePreflightStarted: true,
+    rolePreflightPassed: false,
+    playwrightStarted: false,
+    globalSetupStarted: false,
+    qaSeedProcessStarted: false,
+    qaDataWritesStarted: false,
+    qaRestaurantCreated: false,
+    cleanupAttempted: false,
+    blockingReason: 'Release gate blocked before tests because MANAGER_EMAIL resolves to a System Administrator account. Configure MANAGER_EMAIL with a dedicated non-System-Administrator manager testing account.',
+    steps: [{ name: 'Verify release-gate role accounts', exitCode: 1, passed: false }],
+  }, null, 2));
+  fs.writeFileSync(path.join(runDir, 'environment-preflight.json'), JSON.stringify({ ok: true, runId: 'role-block-unit', appUrl: 'https://preview.example.test/', expectedVersion: '16.0.53', sourceVersion: '16.0.53', deployedVersion: '16.0.53', visibleVersion: '16.0.53', firebaseProjectId: 'chaos-test-d1601' }, null, 2));
+  fs.writeFileSync(path.join(runDir, 'dependency-preflight.json'), JSON.stringify({ ok: true, runId: 'role-block-unit' }, null, 2));
+  fs.writeFileSync(path.join(runDir, 'source-inventory.json'), JSON.stringify({ ok: true, runId: 'role-block-unit', packageVersion: '16.0.53' }, null, 2));
+  fs.writeFileSync(path.join(runDir, 'role-identity-verification.json'), JSON.stringify({ ok: false, runId: 'role-block-unit', firebaseProjectId: 'chaos-test-d1601', errors: ['MANAGER_EMAIL resolves to a System Administrator account. Configure MANAGER_EMAIL with a dedicated non-System-Administrator manager testing account.'], accounts: roleRows({ manager: { superAdmin: true, customClaimSuperAdmin: true } }) }, null, 2));
+  const oldExit = process.exitCode;
+  process.exitCode = 0;
+  const collectorPath = path.resolve(__dirname, '../../scripts/86chaos-release-gate/collect-release-gate-report.cjs');
+  freshRequire(collectorPath);
+  const summaryFile = fs.readdirSync(runDir).find(name => name.startsWith('86chaos-play-store-release-gate-summary-') && name.endsWith('.json'));
+  const summary = JSON.parse(fs.readFileSync(path.join(runDir, summaryFile), 'utf8'));
+  assert.equal(summary.ok, false);
+  assert.equal(summary.playwright.status, 'No tests executed');
+  assert.equal(summary.testAccountConfigurationFailure, true);
+  assert.ok(summary.roleFailures.some(error => /MANAGER_EMAIL resolves/.test(error)));
+  assert.equal(summary.setupFailures.length, 0);
+  assert.equal(summary.cleanupFailures.length, 0);
+  assert.ok(summary.artifactsSkippedByRunnerBlock.some(item => item.artifact === '86chaos-full-audit-cleanup-report.json'));
+  assert.equal(summary.failureGroups.some(group => group.group === 'test-account-configuration'), true);
+  process.exitCode = oldExit;
+}));
+
+test('PowerShell runners verify role accounts after Chromium and before Playwright', () => {
+  for (const file of ['RUN_86CHAOS_FAILED_ONLY_RELEASE_GATE.ps1', 'RUN_86CHAOS_PLAY_STORE_RELEASE_GATE.ps1']) {
+    const source = fs.readFileSync(path.resolve(__dirname, '../..', file), 'utf8');
+    assert.match(source, /Verify release-gate role accounts/);
+    assert.match(source, /verify-role-accounts\.cjs/);
+    assert.match(source, /rolePreflightStarted/);
+    assert.match(source, /rolePreflightPassed/);
+    assert.ok(source.indexOf('Install Chromium browser') < source.indexOf('Verify release-gate role accounts'));
+    assert.ok(source.indexOf('Verify release-gate role accounts') < source.indexOf('$RunnerState.playwrightStarted = $true'));
+  }
+});

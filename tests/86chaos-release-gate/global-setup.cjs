@@ -1,7 +1,8 @@
 const fs = require('fs');
 const { spawnSync } = require('child_process');
 const path = require('path');
-const { ensureRunDir, getSetupStatePath, getSeedReportPath, readJsonIfExists, writeJson } = require('../../scripts/86chaos-release-gate/run-context.cjs');
+const { ensureRunDir, getSetupStatePath, getSeedReportPath, getRoleReportPath, readJsonIfExists, writeJson, getRunFile } = require('../../scripts/86chaos-release-gate/run-context.cjs');
+const { validateRoleReportForSeed } = require('../../scripts/86chaos-release-gate/verify-role-accounts.cjs');
 
 function bool(value) { return /^(1|true|yes)$/i.test(String(value || '')); }
 function isSafeTestingUrl(value = '') {
@@ -13,22 +14,33 @@ function isSafeTestingUrl(value = '') {
   } catch (_) { return false; }
 }
 
+function updateRunnerState(runId, patch) {
+  const statePath = getRunFile('runner-state.json', runId);
+  const existing = readJsonIfExists(statePath) || { runId, steps: [] };
+  writeJson(statePath, { ...existing, ...patch, updatedAt: new Date().toISOString() });
+}
+
 module.exports = async () => {
   const root = process.cwd();
   const { runId, runDir } = ensureRunDir();
   const setupStatePath = getSetupStatePath(runId);
   const seedReportPath = getSeedReportPath(runId);
+  const roleReportPath = getRoleReportPath(runId);
   const appUrl = process.env.APP_URL || process.env.CHAOS_BASE_URL || process.env.PLAYWRIGHT_BASE_URL || process.env.BASE_URL || '';
   const state = {
     runId,
     runDir,
     generatedAt: new Date().toISOString(),
+    globalSetupStarted: true,
     attempted: false,
+    qaSeedProcessStarted: false,
+    qaDataWritesStarted: false,
     seeded: false,
     verified: false,
     restaurantId: '',
     createdRestaurant: false,
     seedReportPath,
+    roleReportPath,
     cleanupAllowed: false,
     skipped: false,
     errors: [],
@@ -41,12 +53,27 @@ module.exports = async () => {
   process.env.CHAOS_RELEASE_GATE_RUN_DIR = runDir;
 
   writeState();
+  updateRunnerState(runId, { globalSetupStarted: true });
+
+  const roleReport = readJsonIfExists(roleReportPath);
+  const roleValidation = validateRoleReportForSeed(roleReport, runId);
+  if (!roleValidation.ok) {
+    const message = roleValidation.errors[0] || 'Release-gate role account preflight is invalid.';
+    state.errors.push(message);
+    state.skipped = true;
+    state.skipReason = 'Role account preflight failed before QA setup.';
+    writeState();
+    updateRunnerState(runId, { blockingReason: `Release gate blocked in global setup because ${message}`, qaSeedProcessStarted: false, qaDataWritesStarted: false, qaRestaurantCreated: false });
+    throw new Error(message);
+  }
+
   const mutation = bool(process.env.CHAOS_ALLOW_MUTATION);
   const createRestaurant = bool(process.env.CHAOS_QA_CREATE_RESTAURANT);
   if (!mutation && !createRestaurant) {
     state.skipped = true;
     state.skipReason = 'Mutation mode and QA restaurant creation were not requested.';
     writeState();
+    updateRunnerState(runId, { qaSeedProcessStarted: false, qaDataWritesStarted: false, qaRestaurantCreated: false });
     return;
   }
   if (!mutation || !createRestaurant) {
@@ -61,7 +88,9 @@ module.exports = async () => {
   }
 
   state.attempted = true;
+  state.qaSeedProcessStarted = true;
   writeState();
+  updateRunnerState(runId, { qaSeedProcessStarted: true });
   const result = spawnSync(process.execPath, [path.join(root, 'scripts/86chaos-full-audit/seed-fake-restaurant.cjs')], {
     cwd: root,
     env: process.env,
@@ -77,9 +106,12 @@ module.exports = async () => {
   state.verified = seed?.ok === true && seed?.verification?.ok === true;
   state.restaurantId = seed?.restaurantId || seed?.profile?.restaurantId || '';
   state.createdRestaurant = seed?.createdRestaurant === true;
+  state.qaDataWritesStarted = state.seeded || state.createdRestaurant || Boolean(seed?.seededDocuments?.length);
   state.cleanupAllowed = state.attempted && state.seeded && state.verified && Boolean(state.restaurantId);
+  updateRunnerState(runId, { qaDataWritesStarted: state.qaDataWritesStarted, qaRestaurantCreated: state.createdRestaurant, qaSeedVerified: state.verified });
   if (result.status !== 0 || !state.cleanupAllowed) {
-    state.errors.push(`Disposable QA restaurant setup failed or did not verify. Exit=${result.status}. Seed ok=${seed?.ok}. Verification ok=${seed?.verification?.ok}.`);
+    const seedError = seed?.error || (Array.isArray(seed?.verification?.missing) && seed.verification.missing.length ? `Seed verification missing ${seed.verification.missing.length} expected records.` : 'Seed report was not ok:true.');
+    state.errors.push(`Disposable QA restaurant setup failed or did not verify. Exit=${result.status}. ${seedError}`);
     writeState();
     throw new Error(state.errors.join('\n'));
   }

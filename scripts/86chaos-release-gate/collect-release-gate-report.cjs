@@ -50,6 +50,8 @@ const preflightFailures = preflightFailedBeforeMutation
 const runnerBlockingReason = String(runnerState.blockingReason || '').trim();
 const playwrightStarted = runnerState.playwrightStarted === true;
 const blockedBeforePlaywright = Boolean(runnerBlockingReason && !playwrightStarted);
+const rolePreflightFailed = runnerState.rolePreflightStarted === true && runnerState.rolePreflightPassed !== true;
+const rolePreflightPassed = runnerState.rolePreflightPassed === true;
 
 function skippedByRunnerBlock(name) {
   if (name === 'runner-state.json' || name === 'environment-preflight.json') return false;
@@ -64,8 +66,14 @@ function skippedByRunnerBlock(name) {
   if (runnerState.sourceInventoryPassed !== true) {
     return ['role-identity-verification.json', 'qa-setup-state.json', '86chaos-full-audit-seed-report.json', 'playwright-report.json', '86chaos-full-audit-cleanup-report.json'].includes(name);
   }
-  if (runnerState.browserInstallPassed !== true || playwrightStarted !== true) {
+  if (runnerState.browserInstallPassed !== true) {
     return ['role-identity-verification.json', 'qa-setup-state.json', '86chaos-full-audit-seed-report.json', 'playwright-report.json', '86chaos-full-audit-cleanup-report.json'].includes(name);
+  }
+  if (runnerState.rolePreflightStarted === true && runnerState.rolePreflightPassed !== true) {
+    return ['qa-setup-state.json', '86chaos-full-audit-seed-report.json', 'playwright-report.json', '86chaos-full-audit-cleanup-report.json'].includes(name);
+  }
+  if (playwrightStarted !== true) {
+    return ['qa-setup-state.json', '86chaos-full-audit-seed-report.json', 'playwright-report.json', '86chaos-full-audit-cleanup-report.json'].includes(name);
   }
   return false;
 }
@@ -127,6 +135,14 @@ if (hasOwn(dependencyPreflight, 'ok') && dependencyPreflight.ok !== true) {
 }
 if (blockedBeforePlaywright && /dependenc/i.test(runnerBlockingReason) && !dependencyFailures.length) dependencyFailures.push(runnerBlockingReason);
 
+const roleFailures = [];
+if (hasOwn(roleVerification, 'ok') && roleVerification.ok !== true) {
+  roleFailures.push(...(Array.isArray(roleVerification.errors) && roleVerification.errors.length ? roleVerification.errors : ['Release-gate role account preflight failed.']));
+}
+if (blockedBeforePlaywright && /role|account|MANAGER_EMAIL|OWNER_EMAIL|STAFF_EMAIL|SYSTEM_ADMIN_EMAIL|System Administrator|superAdmin/i.test(runnerBlockingReason) && !roleFailures.length) {
+  roleFailures.push(runnerBlockingReason);
+}
+
 const setupFailures = [];
 if (setupState && setupState.errors?.length) setupFailures.push(...setupState.errors);
 if (setupState && setupState.attempted && setupState.verified !== true) setupFailures.push('QA setup was attempted but not verified.');
@@ -160,9 +176,15 @@ function addGroup(group, example) {
   const row = failureGroups.find(x => x.group === group);
   if (example && row.examples.length < 5) row.examples.push(example);
 }
-if (runnerBlockingReason) addGroup(/dependenc|npm ci|module|Playwright executable|Chromium/i.test(runnerBlockingReason) ? 'dependency-preflight' : 'runner-blocker', runnerBlockingReason);
+if (runnerBlockingReason) {
+  const group = /role|account|MANAGER_EMAIL|OWNER_EMAIL|STAFF_EMAIL|SYSTEM_ADMIN_EMAIL|System Administrator|superAdmin/i.test(runnerBlockingReason)
+    ? 'test-account-configuration'
+    : (/dependenc|npm ci|module|Playwright executable|Chromium/i.test(runnerBlockingReason) ? 'dependency-preflight' : 'runner-blocker');
+  addGroup(group, runnerBlockingReason);
+}
 for (const text of preflightFailures) addGroup('environment-preflight', text);
 for (const text of dependencyFailures) addGroup('dependency-preflight', text);
+for (const text of roleFailures) addGroup('test-account-configuration', text);
 const groupRe = [
   [/setup|seed|cleanup|stale|runId|artifact/i, 'harness-seed-cleanup'],
   [/timeout/i, 'timeout'],
@@ -194,6 +216,7 @@ const ok = failedTests.length === 0
   && cleanupFailures.length === 0
   && preflightFailures.length === 0
   && dependencyFailures.length === 0
+  && roleFailures.length === 0
   && !blockedBeforePlaywright
   && !(playwrightStarted && noTestsExecuted);
 
@@ -215,6 +238,8 @@ const summary = {
   runnerState,
   dependencyPreflight: dependencyPreflight && hasOwn(dependencyPreflight, 'ok') ? dependencyPreflight : null,
   dependencyFailures,
+  roleFailures,
+  testAccountConfigurationFailure: roleFailures.length > 0,
   playwright: { totalResults: tests.length, status: noTestsExecuted ? 'No tests executed' : 'Tests executed', failed: failedTests.length, timedOut: timedOutTests.length, skipped: skippedTests.length, failedTests: failedTests.slice(0, 200), skippedTests: skippedTests.slice(0, 200) },
   seed: seedReport && seedReport.ok !== undefined ? { ok: seedReport.ok, runId: seedReport.runId || '', restaurantId: seedReport.restaurantId || seedReport.profile?.restaurantId || '', restaurantName: seedReport.restaurantName || seedReport.profile?.restaurantName || '', expectedCounts: seedReport.expectedCounts || {}, verifiedCounts: seedReport.verification?.verifiedCounts || {}, verificationOk: seedReport.verification?.ok === true } : null,
   cleanup: cleanupReport && cleanupReport.ok !== undefined ? { ok: cleanupReport.ok, runId: cleanupReport.runId || '', expected: cleanupReport.expected || {}, deleted: cleanupReport.deleted || {}, alreadyAbsent: cleanupReport.alreadyAbsent || {}, remaining: cleanupReport.remaining || {}, additionalRunRecords: cleanupReport.additionalRunRecords || {}, restaurantDeleted: cleanupReport.restaurantDeleted || 0, failures: cleanupReport.failed || [], accountedFailures: cleanupReport.accountedFailures || [] } : null,
@@ -235,6 +260,7 @@ const summary = {
     'No tests executed is a blocked release gate, not a passing test suite.',
     'When Playwright never starts, missing role verification, setup, seed, Playwright, and cleanup artifacts are not seed or cleanup defects.',
     'Cleanup is required after any verified QA seed, and not required when no QA setup or seed was attempted.',
+    'Role-account configuration failures are test harness/account setup blockers, not app failures, seed defects, cleanup defects, or Playwright test failures.',
   ],
 };
 
@@ -273,6 +299,9 @@ const lines = [
   '',
   'DEPENDENCY FAILURES',
   ...(dependencyFailures.length ? dependencyFailures.map(f => `- ${f}`) : ['- None']),
+  '',
+  'ROLE ACCOUNT FAILURES',
+  ...(roleFailures.length ? roleFailures.map(f => `- ${f}`) : ['- None']),
   '',
   'ARTIFACTS SKIPPED BECAUSE PREFLIGHT STOPPED BEFORE MUTATION',
   ...(artifactsSkippedByPreflight.length ? artifactsSkippedByPreflight.map(f => `- ${f}`) : ['- None']),
