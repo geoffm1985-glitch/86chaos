@@ -63,8 +63,15 @@ $RunnerState = [ordered]@{
   dependencyPreflightPassed = $false
   sourceInventoryPassed = $false
   browserInstallPassed = $false
+  testAccountProvisionAttempted = $false
+  testAccountProvisionPassed = $false
+  rolePreflightStarted = $false
+  rolePreflightPassed = $false
   playwrightStarted = $false
   globalSetupStarted = $false
+  qaSeedProcessStarted = $false
+  qaDataWritesStarted = $false
+  qaRestaurantCreated = $false
   qaSeedAttempted = $false
   qaSeedVerified = $false
   cleanupAttempted = $false
@@ -280,11 +287,39 @@ if ($PreflightExit -ne 0) {
             if ($BrowserExit -ne 0) {
               Stop-BeforePlaywright "Release gate blocked before Playwright because Chromium browser installation failed."
             } else {
-              Set-RunnerPhase 'playwright'
-              $PlaywrightConfig = ".\playwright.failed-release.config.cjs"
-              $RunnerState.playwrightStarted = $true
+              Set-RunnerPhase 'test-account-provisioning'
+              $RunnerState.testAccountProvisionAttempted = $true
               Save-RunnerState
-              Run-LiveStep "Failed-only Playwright gate" "& '$PlaywrightExe' test --config '$PlaywrightConfig'"
+              $ProvisionExit = Run-Step "Provision temporary release-gate test accounts" "node scripts/86chaos-release-gate/provision-test-accounts.cjs"
+              $RunnerState.testAccountProvisionPassed = ($ProvisionExit -eq 0)
+              Save-RunnerState
+              if ($ProvisionExit -ne 0) {
+                Stop-BeforePlaywright "Release gate blocked before tests because temporary release-gate test accounts could not be provisioned. Check test-account-provisioning.json in the current run directory."
+              } else {
+                Set-RunnerPhase 'role-preflight'
+                $RunnerState.rolePreflightStarted = $true
+                Save-RunnerState
+                $RoleExit = Run-Step "Verify release-gate role accounts" "node scripts/86chaos-release-gate/verify-role-accounts.cjs"
+                $RunnerState.rolePreflightPassed = ($RoleExit -eq 0)
+                Save-RunnerState
+                if ($RoleExit -ne 0) {
+                  $RoleReason = "Release gate blocked before tests because role-account preflight failed. Configure a dedicated non-System-Administrator manager test account in .env.test.local."
+                  $RoleReportPath = Join-Path $RunDir 'role-identity-verification.json'
+                  if (Test-Path $RoleReportPath) {
+                    try {
+                      $RoleReport = Get-Content $RoleReportPath -Raw | ConvertFrom-Json
+                      if ($RoleReport.errors -and $RoleReport.errors.Count -gt 0) { $RoleReason = "Release gate blocked before tests because $($RoleReport.errors[0])" }
+                    } catch {}
+                  }
+                  Stop-BeforePlaywright $RoleReason
+                } else {
+                  Set-RunnerPhase 'playwright'
+                  $PlaywrightConfig = ".\playwright.failed-release.config.cjs"
+                  $RunnerState.playwrightStarted = $true
+                  Save-RunnerState
+                  Run-LiveStep "Failed-only Playwright gate" "& '$PlaywrightExe' test --config '$PlaywrightConfig'"
+                }
+              }
             }
           }
         }
@@ -297,7 +332,10 @@ $SetupStatePath = Join-Path $RunDir 'qa-setup-state.json'
 $CleanupPath = Join-Path $RunDir '86chaos-full-audit-cleanup-report.json'
 if ((Test-Path $SetupStatePath) -and -not (Test-Path $CleanupPath)) {
   $setup = Get-Content $SetupStatePath -Raw | ConvertFrom-Json
-  $RunnerState.globalSetupStarted = [bool]$setup.attempted
+  $RunnerState.globalSetupStarted = [bool]($setup.globalSetupStarted -or $setup.attempted)
+  $RunnerState.qaSeedProcessStarted = [bool]$setup.qaSeedProcessStarted
+  $RunnerState.qaDataWritesStarted = [bool]$setup.qaDataWritesStarted
+  $RunnerState.qaRestaurantCreated = [bool]$setup.createdRestaurant
   $RunnerState.qaSeedAttempted = [bool]$setup.seeded
   $RunnerState.qaSeedVerified = [bool]$setup.verified
   Save-RunnerState

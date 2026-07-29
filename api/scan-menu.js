@@ -146,13 +146,18 @@ function normalizeMenuPayload(parsed = {}, inventoryItems = []) {
       name: row.name || row.menuItemName || `Menu item ${index + 1}`,
       category: row.category || row.menuCategory || '',
       description: row.description || '',
+      price: Number.parseFloat(row.price ?? row.menuPrice ?? 0) || 0,
+      priceText: row.priceText || row.priceLabel || (row.price ? String(row.price) : ''),
       confidence: row.confidence || parsed.confidence || 'review',
       ingredients: ingredients.map((ingredient) => {
         const ingredientName = typeof ingredient === 'string' ? ingredient : (ingredient.name || ingredient.ingredientName || ingredient.itemName || '');
         const match = findInventoryMatch(ingredientName, inventoryItems);
         return {
           name: ingredientName,
-          confidence: ingredient.confidence || row.confidence || 'review',
+          estimatedQuantity: typeof ingredient === 'string' ? 0 : (Number.parseFloat(ingredient.estimatedQuantity ?? ingredient.quantity ?? ingredient.portionQuantity ?? 0) || 0),
+          estimatedUnit: typeof ingredient === 'string' ? '' : (ingredient.estimatedUnit || ingredient.unit || ingredient.portionUnit || ''),
+          portionConfidence: typeof ingredient === 'string' ? 'needs-review' : (ingredient.portionConfidence || ingredient.confidence || 'review'),
+          confidence: typeof ingredient === 'string' ? row.confidence || 'review' : (ingredient.confidence || row.confidence || 'review'),
           matchedInventoryItemId: match?.id || '',
           matchedInventoryItemName: match?.name || ''
         };
@@ -336,8 +341,8 @@ module.exports = async function handler(req, res) {
     const prompt = [
       'You are helping a restaurant build menu-to-inventory dependency records.',
       'Read the uploaded menu image or PDF and return JSON only.',
-      'Schema: {"menuItems":[{"name":"","category":"","description":"","confidence":"high|medium|low","ingredients":[{"name":"","confidence":"high|medium|low"}]}],"confidence":"high|medium|low","notes":[]}.',
-      'Only include menu items and likely ingredients. Do not include prices as ingredients.',
+      'Schema: {"menuItems":[{"name":"","category":"","description":"","price":0,"priceText":"","confidence":"high|medium|low","ingredients":[{"name":"","estimatedQuantity":0,"estimatedUnit":"oz|lb|each|slice|cup|tbsp|tsp|gal|qt","portionConfidence":"high|medium|low|estimated","confidence":"high|medium|low"}]}],"confidence":"high|medium|low","notes":[]}.',
+      'Extract visible menu prices when present. Estimate common kitchen portions to reduce manager data entry, but mark portionConfidence as estimated/low when uncertain.',
       `Known inventory names for matching context: ${inventoryItems.map(i => i.name).filter(Boolean).slice(0, 350).join(', ')}`
     ].join('\n');
 

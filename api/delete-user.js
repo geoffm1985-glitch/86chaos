@@ -1,6 +1,7 @@
 const admin = require('firebase-admin');
 const { getAdminAppForRequest } = require('./_firebase-project-admin');
 const { requireMfaIfEnforced, masterEmails } = require('./_chaos-admin');
+const { isProtectedRootAdminEmail, protectedRootAdminError } = require('./_protected-root-admin');
 
 function initAdmin(req) {
   return getAdminAppForRequest(req, { requireCredentials: true });
@@ -43,7 +44,8 @@ module.exports = async function handler(req, res) {
       targetEmail = (target.email || '').toLowerCase();
       const profileSnap = await app.firestore().collection('users').doc(targetUid).get();
       targetProfile = profileSnap.exists ? profileSnap.data() : null;
-      const targetIsProtectedAdmin = protectedEmails.has(targetEmail) || target.customClaims?.superAdmin === true || targetProfile?.isSuperAdmin === true || targetProfile?.systemAccess?.superAdmin === true;
+      const targetIsProtectedAdmin = isProtectedRootAdminEmail(targetEmail) || protectedEmails.has(targetEmail) || target.customClaims?.superAdmin === true || targetProfile?.isSuperAdmin === true || targetProfile?.systemAccess?.superAdmin === true;
+      if (isProtectedRootAdminEmail(targetEmail)) throw protectedRootAdminError();
       if (targetIsProtectedAdmin) return res.status(400).json({ error: 'Refusing to delete a protected administrator. Revoke administrator access first, then review again.' });
       await app.auth().deleteUser(targetUid);
     } catch (authErr) {

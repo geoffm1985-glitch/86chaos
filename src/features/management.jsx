@@ -282,7 +282,11 @@ const TabTeam = ({ users, appUser, clientData, addToast }) => {
   const [wage, setWage] = useState(''); 
   const [photoURL, setPhotoURL] = useState(''); 
   const [isAdmin, setIsAdmin] = useState(false);
-  const DEFAULT_PERMISSIONS = { schedule: false, events: false, ops: false, inventory: false, prep: false, sales: false, team: false, labor: false, settings: false, branding: false, integrations: false, menuIntelligence: false, hr: false, wageView: false, wageEdit: false };
+  
+const PROTECTED_ROOT_ADMIN_EMAIL = 'geoffm1985@gmail.com';
+const isProtectedRootAdminEmail = (email = '') => String(email || '').toLowerCase().trim() === PROTECTED_ROOT_ADMIN_EMAIL;
+
+const DEFAULT_PERMISSIONS = { schedule: false, events: false, ops: false, inventory: false, prep: false, sales: false, team: false, labor: false, settings: false, branding: false, integrations: false, menuIntelligence: false, hr: false, wageView: false, wageEdit: false };
   const PERMISSION_PRESETS = {
     'Read Only': { schedule: false, events: false, ops: false, inventory: false, prep: false, sales: false, team: false, labor: false },
     'Kitchen Manager': { schedule: false, events: true, ops: true, inventory: true, prep: true, sales: false, team: false, labor: false },
@@ -380,6 +384,7 @@ const TabTeam = ({ users, appUser, clientData, addToast }) => {
 
 const handleDeactivate = async (u) => { 
     if (!canManageTeam) return addToast('Read Only', 'Only managers/admins/account owners can remove staff accounts.');
+    if (isProtectedRootAdminEmail(u?.email)) return addToast('Protected', 'This is the protected root administrator account and cannot be removed from inside 86 Chaos.');
     if (u.id === appUser?.id) return addToast('Blocked', 'You cannot remove your own staff account from here. Use another owner/Super Admin account for ownership changes.');
     const superDelete = isSuperAdminUser;
     if (!window.confirm(superDelete ? `Terminate ${u.name}? This will permanently delete their global account from the entire system.` : `Remove ${u.name} from the active roster? Historical schedule and payroll records will stay intact.`)) return; 
@@ -387,11 +392,13 @@ const handleDeactivate = async (u) => {
     addToast(superDelete ? 'Terminating' : 'Removing', `${superDelete ? 'Erasing' : 'Removing'} ${u.name} from the active roster...`);
     try {
       if (superDelete) {
-        await secureFetch('/api/delete-user', {
+        const deleteResponse = await secureFetch('/api/delete-user', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ targetUid: u.id })
         });
+        const deleteResult = await deleteResponse.json().catch(() => ({}));
+        if (!deleteResponse.ok || deleteResult?.ok === false) throw new Error(deleteResult?.error || 'User deletion failed.');
         await deleteDoc(doc(db, "users", u.id)); 
         addToast('Terminated', `${u.name}'s account has been completely erased.`); 
       } else {
@@ -4986,6 +4993,7 @@ Old clients cannot reveal their original creation time, so they will be marked a
   };
 
 const handleDeleteGlobalUser = async (u) => {
+    if (isProtectedRootAdminEmail(u?.email)) return addToast('Protected', 'This is the protected root administrator account and cannot be deleted from inside 86 Chaos.');
     if (prompt(`CRITICAL: Type "DELETE" to permanently erase ${u.name} and all their access.`) !== 'DELETE') {
       return addToast('Aborted', 'User deletion canceled.');
     }
@@ -4993,11 +5001,13 @@ const handleDeleteGlobalUser = async (u) => {
     addToast('Terminating', 'Nuking user from all systems...');
     try {
       // 1. Nuke the Authentication Login via Vercel
-      await secureFetch('/api/delete-user', {
+      const deleteResponse = await secureFetch('/api/delete-user', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ targetUid: u.id })
       });
+      const deleteResult = await deleteResponse.json().catch(() => ({}));
+      if (!deleteResponse.ok || deleteResult?.ok === false) throw new Error(deleteResult?.error || 'User deletion failed.');
       
       // 2. Nuke the Database Profile
       await deleteDoc(doc(db, "users", u.id));
@@ -5042,7 +5052,7 @@ const handleDeleteGlobalUser = async (u) => {
     const emails = parseBulkEmailList(bulkDeleteEmails);
     if (emails.length === 0) return addToast('Nothing to Delete', 'Paste one or more email addresses first.');
 
-    const protectedEmails = new Set([MASTER_ADMIN_EMAIL.toLowerCase(), (appUser?.email || '').toLowerCase()].filter(Boolean));
+    const protectedEmails = new Set([MASTER_ADMIN_EMAIL.toLowerCase(), PROTECTED_ROOT_ADMIN_EMAIL, (appUser?.email || '').toLowerCase()].filter(Boolean));
     const previewUsers = getBulkDeletePreviewUsers();
     const validSelectedIds = selectedBulkDeleteUserIds.filter(id => previewUsers.some(u => u.id === id));
     const skippedProtected = emails.filter(email => protectedEmails.has(email));
@@ -5182,10 +5192,16 @@ Type DELETE to continue.`) || '').trim().toUpperCase();
     const selectedRestaurant = restaurants.find(r => r.id === supportUserForm.restaurantId);
     if (!selectedRestaurant) return addToast('Invalid Restaurant', 'That workspace could not be found.');
 
-    const protectedEmail = Boolean(MASTER_ADMIN_EMAIL && (editingGlobalUser.email || '').toLowerCase() === MASTER_ADMIN_EMAIL.toLowerCase());
+    const protectedEmail = Boolean((MASTER_ADMIN_EMAIL && (editingGlobalUser.email || '').toLowerCase() === MASTER_ADMIN_EMAIL.toLowerCase()) || isProtectedRootAdminEmail(editingGlobalUser.email));
     const movingSelf = editingGlobalUser.id === appUser?.id && supportUserForm.restaurantId !== editingGlobalUser.restaurantId;
     if (protectedEmail && supportUserForm.restaurantId !== editingGlobalUser.restaurantId) {
-      return addToast('Protected', 'The master admin account cannot be moved from this support editor.');
+      return addToast('Protected', 'The protected root administrator account cannot be moved from this support editor.');
+    }
+    if (protectedEmail && supportUserForm.email && supportUserForm.email.toLowerCase().trim() !== PROTECTED_ROOT_ADMIN_EMAIL) {
+      return addToast('Protected', 'The protected root administrator email cannot be changed from inside 86 Chaos.');
+    }
+    if (protectedEmail && supportUserForm.isActive === false) {
+      return addToast('Protected', 'The protected root administrator account cannot be disabled from inside 86 Chaos.');
     }
     if (movingSelf && !window.confirm('You are changing your own workspace routing. Continue?')) return;
 
@@ -5242,6 +5258,7 @@ Type DELETE to continue.`) || '').trim().toUpperCase();
         
         snap.forEach(d => {
            if (c === 'users' && d.id === appUser.id) return;
+           if (c === 'users' && isProtectedRootAdminEmail(d.data()?.email)) return;
            deletePromises.push(deleteDoc(doc(db, c, d.id)));
         });
         
@@ -5626,6 +5643,7 @@ const handleGrantAccess = async (e) => {
 };
 
 const handleRevokeAccess = async (user) => {
+  if (isProtectedRootAdminEmail(user?.email)) return addToast('Protected', 'This is the protected root administrator account and cannot be revoked from inside 86 Chaos.');
   if (!window.confirm(`Revoke Admin from ${user.name}?`)) return;
   try {
     const response = await secureFetch('/api/admin-access', {
@@ -9519,7 +9537,7 @@ duplicate@email.com
 another@email.com"></textarea>
             {getBulkDeletePreviewUsers().length > 0 && (() => {
               const previewUsers = getBulkDeletePreviewUsers();
-              const protectedEmails = new Set([MASTER_ADMIN_EMAIL.toLowerCase(), (appUser?.email || '').toLowerCase()].filter(Boolean));
+              const protectedEmails = new Set([MASTER_ADMIN_EMAIL.toLowerCase(), PROTECTED_ROOT_ADMIN_EMAIL, (appUser?.email || '').toLowerCase()].filter(Boolean));
               const deletableIds = previewUsers.filter(u => !protectedEmails.has((u.email || '').toLowerCase().trim())).map(u => u.id);
               const groupedPreview = previewUsers.reduce((acc, u) => {
                 const key = (u.email || 'No email').toLowerCase().trim();
@@ -10230,7 +10248,7 @@ another@email.com"></textarea>
             <div className="mb-4 pb-2 border-b border-[#2A353D]"><h2 className="text-lg font-black text-white">Grant Administrator Access</h2><p className="text-[10px] text-slate-400 uppercase tracking-widest font-bold mt-1">Add a user's exact email address to grant full system control.</p></div>
             <div className="flex flex-col sm:flex-row gap-3"><input type="email" placeholder="User's exact email..." value={adminEmail} onChange={e=>setAdminEmail(e.target.value)} className={T.input} required /><button type="submit" className={`${T.btn} px-8`}>Grant Access</button></div>
           </form>
-          <div className={`${T.card} overflow-hidden`}><div className={`bg-[#12161A] p-4 border-b ${T.border}`}><h3 className="font-black text-sm text-white">Platform Administrators</h3></div><div className={`divide-y ${T.border}`}>{superAdmins.map(admin => (<div key={admin.id} className={`${T.row} flex justify-between items-center`}><div><div className="font-black text-white">{admin.name}</div><div className="text-[10px] font-bold text-slate-400">{admin.email}</div></div><button onClick={() => handleRevokeAccess(admin)} className="px-3 py-1.5 bg-[#12161A] border border-[#2A353D] text-red-500 font-bold text-[10px] uppercase tracking-widest rounded-lg hover:bg-[#1A2126] transition-colors">Revoke</button></div>))}</div></div>
+          <div className={`${T.card} overflow-hidden`}><div className={`bg-[#12161A] p-4 border-b ${T.border}`}><h3 className="font-black text-sm text-white">Platform Administrators</h3></div><div className={`divide-y ${T.border}`}>{superAdmins.map(admin => { const protectedRoot = isProtectedRootAdminEmail(admin.email); return (<div key={admin.id} className={`${T.row} flex justify-between items-center`}><div><div className="font-black text-white flex items-center gap-2">{admin.name}{protectedRoot && <span className="px-2 py-0.5 rounded-full border border-amber-900/50 bg-amber-900/20 text-amber-200 text-[9px] uppercase tracking-widest">Protected Root</span>}</div><div className="text-[10px] font-bold text-slate-400">{admin.email}</div></div><button onClick={() => handleRevokeAccess(admin)} disabled={protectedRoot} className={`px-3 py-1.5 bg-[#12161A] border border-[#2A353D] ${protectedRoot ? 'text-amber-300 opacity-70 cursor-not-allowed' : 'text-red-500 hover:bg-[#1A2126]'} font-bold text-[10px] uppercase tracking-widest rounded-lg transition-colors`}>{protectedRoot ? 'Protected' : 'Revoke'}</button></div>);})}</div></div>
         </div>
       )}
 

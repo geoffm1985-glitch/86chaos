@@ -2,7 +2,7 @@
 const fs = require('fs');
 const path = require('path');
 
-const { ensureRunDir, getSeedReportPath } = require('../86chaos-release-gate/run-context.cjs');
+const { ensureRunDir, getSeedReportPath, getRoleReportPath, readJsonIfExists } = require('../86chaos-release-gate/run-context.cjs');
 const { runId: RUN_ID, runDir: RELEASE_RUN_DIR } = ensureRunDir();
 const OUT_DIR = path.join(process.cwd(), 'test-results');
 fs.mkdirSync(OUT_DIR, { recursive: true });
@@ -35,6 +35,7 @@ let buildFakeRestaurantProfile, summarizeSchedule;
 try {
   ({ loadEnv, env, boolEnv } = require('./env-loader.cjs'));
   ({ readFirebaseConfig } = require('./firebase-client.cjs'));
+  ({ verifyRoleAccounts, validateRoleReportForSeed } = require('../86chaos-release-gate/verify-role-accounts.cjs'));
   ({ buildFakeRestaurantProfile } = require('../../tests/86chaos-full-audit/utils/fake-restaurant-profile.cjs'));
   ({ summarizeSchedule } = require('../../tests/86chaos-full-audit/utils/math-oracle.cjs'));
 } catch (error) {
@@ -61,83 +62,6 @@ function appUrl(pathOrTab = '') {
   if (String(pathOrTab).startsWith('/')) return `${base}${pathOrTab}`;
   return `${base}/?tab=${encodeURIComponent(pathOrTab)}`;
 }
-
-function getSeedCredentials() {
-  const email = env('SYSTEM_ADMIN_EMAIL', 'CHAOS_SYSTEM_ADMIN_EMAIL', 'OWNER_EMAIL');
-  const password = env('SYSTEM_ADMIN_PASSWORD', 'CHAOS_SYSTEM_ADMIN_PASSWORD', 'OWNER_PASSWORD');
-  if (!email || !password) throw new Error('Missing SYSTEM_ADMIN_EMAIL/SYSTEM_ADMIN_PASSWORD for QA restaurant creation.');
-  return { email: String(email).trim(), password };
-}
-
-function getRoleCredentials() {
-  return [
-    { key: 'systemAdmin', email: env('SYSTEM_ADMIN_EMAIL', 'CHAOS_SYSTEM_ADMIN_EMAIL'), password: env('SYSTEM_ADMIN_PASSWORD', 'CHAOS_SYSTEM_ADMIN_PASSWORD'), name: 'QA System Administrator', role: 'Owner', isAdmin: true, isOwner: true, isSuperAdmin: true, permissions: { schedule: true, inventory: true, financials: true, team: true, events: true, settings: true, ops: true, maintenance: true } },
-    { key: 'owner', email: env('OWNER_EMAIL', 'CHAOS_OWNER_EMAIL'), password: env('OWNER_PASSWORD', 'CHAOS_OWNER_PASSWORD'), name: 'QA Owner Login', role: 'Owner', isAdmin: true, isOwner: true, permissions: { schedule: true, inventory: true, financials: true, team: true, events: true, settings: true, ops: true, maintenance: true } },
-    { key: 'manager', email: env('MANAGER_EMAIL', 'CHAOS_MANAGER_EMAIL'), password: env('MANAGER_PASSWORD', 'CHAOS_MANAGER_PASSWORD'), name: 'QA Manager Login', role: 'Manager', isAdmin: true, isOwner: false, permissions: { schedule: true, inventory: true, financials: true, team: true, events: true, ops: true, maintenance: true } },
-    { key: 'staff', email: env('STAFF_EMAIL', 'CHAOS_STAFF_EMAIL'), password: env('STAFF_PASSWORD', 'CHAOS_STAFF_PASSWORD'), name: 'QA Staff Login', role: 'Line Cook', isAdmin: false, isOwner: false, permissions: { help: true } },
-  ];
-}
-
-async function signInAccount(page, config, account) {
-  if (!account.email || !account.password) throw new Error(`Missing ${account.key} credentials.`);
-  const url = `https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${encodeURIComponent(config.apiKey)}`;
-  const signed = await pageFetchJson(page, {
-    url,
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: { email: account.email, password: account.password, returnSecureToken: true },
-  });
-  if (!signed.idToken || !signed.localId) throw new Error(`Firebase Auth did not return an ID token and UID for ${account.key}.`);
-  return { ...account, email: String(account.email).trim().toLowerCase(), uid: signed.localId, idToken: signed.idToken };
-}
-
-async function verifyRoleIdentity(page, roleAccounts) {
-  const errors = [];
-  const emails = new Map();
-  const uids = new Map();
-  for (const account of roleAccounts) {
-    if (emails.has(account.email)) errors.push(`${emails.get(account.email)} and ${account.key} resolve to the same email ${account.email}.`);
-    else emails.set(account.email, account.key);
-    if (uids.has(account.uid)) errors.push(`${uids.get(account.uid)} and ${account.key} resolve to the same Firebase UID ${account.uid}.`);
-    else uids.set(account.uid, account.key);
-  }
-  const whoamiRows = [];
-  for (const account of roleAccounts) {
-    const whoami = await pageFetchJson(page, {
-      url: appUrl('/api/whoami'),
-      method: 'GET',
-      headers: { Authorization: `Bearer ${account.idToken}` },
-    });
-    whoamiRows.push({
-      key: account.key,
-      email: account.email,
-      uid: account.uid,
-      whoamiUid: whoami.uid || '',
-      whoamiEmail: String(whoami.email || '').toLowerCase(),
-      superAdmin: whoami.superAdmin === true,
-      customClaimSuperAdmin: whoami.customClaimSuperAdmin === true,
-      serverMasterAdminMatched: whoami.serverMasterAdminMatched === true,
-      firestoreSuperAdmin: whoami.firestoreSuperAdmin === true,
-      firestoreSystemAdministrator: whoami.firestoreSystemAdministrator === true,
-      firestoreProfileRole: whoami.firestoreProfileRole || '',
-      runtimeProjectId: whoami.runtime?.firebaseProjectId || '',
-    });
-  }
-  const rowFor = (key) => whoamiRows.find(row => row.key === key) || {};
-  for (const key of ['staff', 'manager', 'owner']) {
-    if (rowFor(key).superAdmin === true) errors.push(`${key} account is server-verified as System Administrator. Use a non-system-admin ${key.toUpperCase()} account for release-gate role tests.`);
-  }
-  if (rowFor('systemAdmin').superAdmin !== true) errors.push('SYSTEM_ADMIN account is not server-verified as System Administrator. Configure the test System Administrator account before QA seeding.');
-  if (errors.length) {
-    const safe = { ok: false, runId: RUN_ID, errors, accounts: whoamiRows };
-    fs.writeFileSync(path.join(RELEASE_RUN_DIR, 'role-identity-verification.json'), JSON.stringify(safe, null, 2));
-    throw new Error(`Role identity preflight failed before QA data writes:\n${errors.join('\n')}`);
-  }
-  const safe = { ok: true, runId: RUN_ID, accounts: whoamiRows };
-  fs.writeFileSync(path.join(RELEASE_RUN_DIR, 'role-identity-verification.json'), JSON.stringify(safe, null, 2));
-  return safe;
-}
-
 
 function asFirestoreValue(value) {
   if (value === undefined) return undefined;
@@ -425,9 +349,15 @@ async function main() {
     const page = await context.newPage();
     await page.goto(appUrl('today'), { waitUntil: 'domcontentloaded', timeout: 60000 });
 
-    const roleAccounts = [];
-    for (const role of getRoleCredentials()) roleAccounts.push(await signInAccount(page, config, role));
-    report.roleIdentityVerification = await verifyRoleIdentity(page, roleAccounts);
+    const roleReportPath = getRoleReportPath(RUN_ID);
+    const existingRoleReport = readJsonIfExists(roleReportPath);
+    const roleReportValidation = validateRoleReportForSeed(existingRoleReport, RUN_ID);
+    if (!roleReportValidation.ok) {
+      throw new Error(`Role identity preflight failed before QA data writes:\n${roleReportValidation.errors.join('\n')}`);
+    }
+    const verifiedRoles = await verifyRoleAccounts({ writeReport: true, throwOnFailure: true, phase: 'seed-role-verification' });
+    report.roleIdentityVerification = verifiedRoles.report;
+    const roleAccounts = verifiedRoles.accounts;
     const writer = roleAccounts.find(account => account.key === 'systemAdmin') || roleAccounts.find(account => account.key === 'owner');
     if (!writer) throw new Error('No System Administrator test account was available for QA setup.');
     report.signedInAs = writer.email;

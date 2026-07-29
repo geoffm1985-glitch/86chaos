@@ -1,5 +1,6 @@
 const admin = require('firebase-admin');
 const { getAdminAppForRequest } = require('./_firebase-project-admin');
+const { isProtectedRootAdminEmail, mergeProtectedRootAdminEmails, protectedRootAdminError } = require('./_protected-root-admin');
 
 function initAdmin(req) {
   return getAdminAppForRequest(req, { requireCredentials: true });
@@ -19,10 +20,10 @@ function cleanPerms(perms = {}) {
   }, {});
 }
 function masterEmails() {
-  return [
+  return mergeProtectedRootAdminEmails([
     process.env.MASTER_ADMIN_EMAIL,
     process.env.MASTER_ADMIN_EMAILS
-  ].filter(Boolean).flatMap(v => String(v).split(',')).map(norm).filter(Boolean);
+  ].filter(Boolean).flatMap(v => String(v).split(',')).map(norm).filter(Boolean));
 }
 function memberDocId(uid, restaurantId) {
   return `${cleanString(uid).replace(/[^A-Za-z0-9_-]/g, '_')}_${cleanString(restaurantId).replace(/[^A-Za-z0-9_-]/g, '_')}`.slice(0, 240);
@@ -333,6 +334,7 @@ module.exports = async function handler(req, res) {
       if (!targetSnap.exists) return res.status(404).json({ error: 'Staff account was not found.' });
       const targetUser = targetSnap.data() || {};
       const targetEmail = norm(targetUser.email);
+      if (isProtectedRootAdminEmail(targetEmail)) throw protectedRootAdminError();
       const memberId = memberDocId(targetUid, ctx.restaurantId);
       const memberSnap = await db.collection('workspaceMembers').doc(memberId).get();
       const current = memberSnap.exists ? memberSnap.data() || {} : (targetUser.restaurantId === ctx.restaurantId ? targetUser : null);

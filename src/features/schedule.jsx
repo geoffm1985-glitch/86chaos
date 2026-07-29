@@ -1382,14 +1382,22 @@ const [eventDate, setEventDate] = useState(getToday());
   const [isAutoPopulateModalOpen, setIsAutoPopulateModalOpen] = useState(false);
   const [autoPopSourceMonth, setAutoPopSourceMonth] = useState('');
   const [autoFillVisibleShifts, setAutoFillVisibleShifts] = useState([]);
+  const [localBuilderShiftEchoes, setLocalBuilderShiftEchoes] = useState([]);
   
   const monthStr = getMonthStr(currentDate); 
   const monthDays = Array.from({length: getDaysInMonth(monthStr)}).map((_, i) => `${monthStr}-${String(i+1).padStart(2, '0')}`);
   const schedulePublishingSettings = getSchedulePublishingSettings(appUser, clientData);
   const schedulePerson = getSchedulePersonForAppUser(appUser, users);
+  useEffect(() => {
+    if (!localBuilderShiftEchoes.length) return;
+    const liveIds = new Set((shifts || []).map(shift => shift?.id).filter(Boolean));
+    setLocalBuilderShiftEchoes(prev => prev.filter(shift => shift?.id && !liveIds.has(shift.id)));
+  }, [shifts, localBuilderShiftEchoes.length]);
+
   const visibleShifts = mergeVisibleScheduleShifts(
     shifts,
-    autoFillVisibleShifts.filter(shift => shift?.restaurantId === appUser?.restaurantId && String(shift?.date || '').startsWith(monthStr))
+    autoFillVisibleShifts.filter(shift => shift?.restaurantId === appUser?.restaurantId && String(shift?.date || '').startsWith(monthStr)),
+    localBuilderShiftEchoes.filter(shift => shift?.restaurantId === appUser?.restaurantId && String(shift?.date || '').startsWith(monthStr))
   );
   const schedulePeriodBounds = getSchedulePeriodBounds(currentDate, schedulePublishingSettings);
   const schedulePeriodDays = buildDateRange(schedulePeriodBounds.start, schedulePeriodBounds.end);
@@ -1652,7 +1660,7 @@ const [eventDate, setEventDate] = useState(getToday());
       const validDates = [];
       const availabilityOverrides = {};
       for (const d of uniqueAssignDates) { 
-        const existingShift = shifts.find(s => (s.date || s.scheduleDateKey) === d && shiftMatchesPerson(s, emp));
+        const existingShift = visibleShifts.find(s => (s.date || s.scheduleDateKey) === d && shiftMatchesPerson(s, emp));
         if (existingShift) { addToast('Blocked', `${(emp.name||'Unknown').split(' ')[0]} is already scheduled on ${formatDisplayDate(d)}.`); return; }
         
         const req = timeOffRequests.find(r => r.date === d && timeOffMatchesPerson(r, emp) && !['cancelled','canceled','archived','processed','denied','rejected'].includes(String(r.status || '').toLowerCase()));
@@ -1673,6 +1681,7 @@ const [eventDate, setEventDate] = useState(getToday());
         }
         validDates.push(d);
       }
+      const savedShiftEchoes = [];
       for (const d of validDates) {
         const nowIso = new Date().toISOString();
         const shiftMonth = getMonthStr(d);
@@ -1711,7 +1720,11 @@ const [eventDate, setEventDate] = useState(getToday());
           shiftData.sourceKey = `manual-schedule-builder-edit-${shiftMonth}`;
           shiftData.source = 'Schedule Builder manual edit after emergency rescue';
         }
-        await addDoc(collection(db, "shifts"), shiftData);
+        const savedRef = await addDoc(collection(db, "shifts"), shiftData);
+        savedShiftEchoes.push({ ...shiftData, id: savedRef.id, localEcho: true });
+      }
+      if (savedShiftEchoes.length) {
+        setLocalBuilderShiftEchoes(prev => mergeVisibleScheduleShifts(prev, savedShiftEchoes));
       }
       setAssignDates([]); addToast('Assigned', `Added ${validDates.length} shift${validDates.length === 1 ? '' : 's'} for ${emp.name || 'selected staff'}.`);
     } finally {
