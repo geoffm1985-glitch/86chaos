@@ -1725,6 +1725,7 @@ const [eventDate, setEventDate] = useState(getToday());
   };
   const getScheduleBuilderRawShiftsForPersonDate = (dateKey, person) => schedulePeriodShifts.filter(s => getScheduleShiftDateKey(s) === dateKey && shiftMatchesPerson(s, person));
   const getScheduleBuilderShiftsForPersonDate = (dateKey, person) => dedupeScheduleShiftsForSamePerson(getScheduleBuilderRawShiftsForPersonDate(dateKey, person));
+  const getScheduledHoursTrackerRawShiftsForPersonDate = (dateKey, person) => visibleShifts.filter(s => getScheduleShiftDateKey(s) === dateKey && shiftMatchesPerson(s, person));
 
   const handleCellClick = async (d, empId) => {
     if (isAssigningShift) return;
@@ -2716,6 +2717,12 @@ const handleExportTimesheets = () => {
     if (sameMonth) return `${start.getDate()}-${end.getDate()}`;
     return `${start.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}-${end.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`;
   };
+  const formatScheduledHoursWeekRangeCompact = (week) => {
+    if (!week?.start || !week?.end) return '';
+    const start = new Date(`${week.start}T12:00:00`);
+    const end = new Date(`${week.end}T12:00:00`);
+    return `${start.getMonth() + 1}/${start.getDate()}-${end.getMonth() + 1}/${end.getDate()}`;
+  };
 
   const maxDateKey = (a = '', b = '') => String(a || '') >= String(b || '') ? String(a || '') : String(b || '');
   const minDateKey = (a = '', b = '') => String(a || '') <= String(b || '') ? String(a || '') : String(b || '');
@@ -2744,7 +2751,7 @@ const handleExportTimesheets = () => {
     hoursWeekStart = addScheduleDays(hoursWeekStart, 7);
   }
   const getScheduledHoursDayAudit = (dateKey, person) => {
-    const rawShifts = getScheduleBuilderRawShiftsForPersonDate(dateKey, person);
+    const rawShifts = getScheduledHoursTrackerRawShiftsForPersonDate(dateKey, person);
     const visibleShifts = dedupeScheduleShiftsForSamePerson(rawShifts);
     const validShifts = visibleShifts.map(shift => ({ shift, status: getScheduleShiftTimeStatus(shift) })).filter(item => item.status.valid);
     const invalidShifts = visibleShifts.map(shift => ({ shift, status: getScheduleShiftTimeStatus(shift) })).filter(item => !item.status.valid);
@@ -3279,8 +3286,11 @@ const handleExportTimesheets = () => {
                 <thead>
                   <tr className="bg-[#1A2126] border-b border-[#2A353D] text-[9px] font-black uppercase tracking-widest text-slate-400">
                     <th className="p-3 border-r border-[#2A353D] sticky left-0 bg-[#1A2126] z-10 w-28 min-w-[112px] whitespace-nowrap">Employee</th>
-                    {scheduledHoursWeekBlocks.map((w, i) => <th key={i} className="p-3 text-center border-r border-[#2A353D] min-w-[86px] whitespace-nowrap" title={`Pay-period week counted: ${formatDisplayDate(w.start)} - ${formatDisplayDate(w.end)}`}>Wk {i+1}<div className="text-[7px] text-slate-600 mt-0.5 whitespace-nowrap">{formatScheduledHoursWeekRange(w)}</div></th>)}
-                    <th className="p-3 text-center text-[#D4A381] min-w-[86px] whitespace-nowrap">Month Total</th>
+                    {scheduledHoursWeekBlocks.map((w, i) => <th key={i} className="scheduled-hours-week-head p-3 text-center border-r border-[#2A353D] min-w-[108px] whitespace-nowrap" title={`Pay-period week counted: ${formatDisplayDate(w.start)} - ${formatDisplayDate(w.end)}`}>
+                      <span className="scheduled-hours-week-kicker">WK {i+1}</span>
+                      <span className="scheduled-hours-week-range">{formatScheduledHoursWeekRangeCompact(w)}</span>
+                    </th>)}
+                    <th className="scheduled-hours-total-head p-3 text-center text-[#D4A381] min-w-[112px] whitespace-nowrap">Period Total</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-[#2A353D]">
