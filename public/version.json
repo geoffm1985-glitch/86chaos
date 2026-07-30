@@ -1,13 +1,13 @@
 {
-  "version": "16.0.64",
-  "name": "86 Chaos 16.0.64 Schedule Duplicate Delete Hardening Fix",
-  "build": "16.0.64",
-  "label": "86 Chaos 16.0.64 Schedule Duplicate Delete Hardening Fix",
-  "releasedAt": "2026-07-29T21:56:00-05:00",
-  "releaseTitle": "86 Chaos 16.0.64 Schedule Duplicate Delete Hardening Fix",
+  "version": "16.0.65",
+  "name": "86 Chaos 16.0.65 Mobile No-Zoom Guard Fix",
+  "build": "16.0.65",
+  "label": "86 Chaos 16.0.65 Mobile No-Zoom Guard Fix",
+  "releasedAt": "2026-07-30T01:36:00-05:00",
+  "releaseTitle": "86 Chaos 16.0.65 Mobile No-Zoom Guard Fix",
   "notes": [
-    "Scheduled Hours Tracker now calculates each week from the full pay-period week, including previous-month days that belong to Week 1.",
-    "The full local test suite runner now checks the required Node version before npm ci and gives clearer dependency-install diagnostics.",
-    "Partial publishing and delete/reassign schedule fixes from 16.0.59 are preserved."
+    "Mobile browsers are now locked to the app viewport with maximum-scale/user-scalable settings.",
+    "The existing mobile no-zoom guard is installed at app startup to block pinch and double-tap zoom gestures on phones.",
+    "Inputs keep 16px mobile font sizing so focusing fields does not trigger browser zoom."
   ]
 }

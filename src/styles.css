@@ -19,9 +19,17 @@ body {
 
 html,
 body {
-  touch-action: pan-x pan-y pinch-zoom;
+  touch-action: pan-x pan-y;
   -webkit-text-size-adjust: 100%;
   text-size-adjust: 100%;
+}
+
+@media (pointer: coarse) {
+  html,
+  body,
+  #root {
+    touch-action: pan-x pan-y;
+  }
 }
 
 @media (pointer: coarse) {
