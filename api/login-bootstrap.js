@@ -15,7 +15,7 @@ function memberDocId(uid, restaurantId) {
 function safeObject(value) {
   return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
 }
-function publicUserFromDoc(docId, data, decoded) {
+function publicUserFromDoc(docId, data, decoded, matchedBy = '') {
   const raw = safeObject(data);
   const out = { ...raw };
   delete out.password;
@@ -29,7 +29,7 @@ function publicUserFromDoc(docId, data, decoded) {
   out.profileDocId = docId;
   out.email = norm(decoded.email || out.email);
   out.authEmail = norm(decoded.email || '');
-  out.profileDocMatchedBy = docId === decoded.uid ? 'uid' : 'email';
+  out.profileDocMatchedBy = matchedBy || (docId === decoded.uid ? 'uid' : 'email');
   return out;
 }
 async function getUserProfile(db, decoded) {
@@ -39,33 +39,54 @@ async function getUserProfile(db, decoded) {
   const diagnostics = {
     authUid: uid,
     authEmail: email,
+    rawAuthEmailProvided: Boolean(rawEmail && rawEmail !== email),
     profileDocId: '',
     profileMatchedBy: '',
     uidDocExists: false,
     emailDocExists: false,
+    emailDocIdExists: false,
+    emailFieldMatched: '',
     uidMismatch: false
+  };
+
+  const finish = (doc, matchedBy, extra = {}) => {
+    diagnostics.profileDocId = doc.id;
+    diagnostics.profileMatchedBy = matchedBy;
+    Object.assign(diagnostics, extra);
+    return { user: publicUserFromDoc(doc.id, doc.data(), decoded, matchedBy), diagnostics };
   };
 
   if (uid) {
     const snap = await db.collection('users').doc(uid).get();
     diagnostics.uidDocExists = snap.exists;
+    if (snap.exists) return finish(snap, 'uid');
+  }
+
+  // Firebase Auth accepts email case-insensitively, but Firestore document IDs and
+  // equality filters are case-sensitive. Try normalized email document IDs before
+  // field queries so legacy production profiles like users/geoff@example.com still work.
+  const docIdCandidates = Array.from(new Set([email, rawEmail].filter(Boolean)));
+  for (const candidate of docIdCandidates) {
+    const snap = await db.collection('users').doc(candidate).get();
     if (snap.exists) {
-      diagnostics.profileDocId = snap.id;
-      diagnostics.profileMatchedBy = 'uid';
-      return { user: publicUserFromDoc(snap.id, snap.data(), decoded), diagnostics };
+      diagnostics.emailDocIdExists = true;
+      diagnostics.uidMismatch = uid ? snap.id !== uid : false;
+      return finish(snap, 'email-doc-id', { emailDocExists: true });
     }
   }
 
-  const candidates = Array.from(new Set([email, rawEmail].filter(Boolean)));
-  for (const candidate of candidates) {
-    const snap = await db.collection('users').where('email', '==', candidate).limit(2).get();
-    if (!snap.empty) {
-      const doc = snap.docs[0];
-      diagnostics.emailDocExists = true;
-      diagnostics.profileDocId = doc.id;
-      diagnostics.profileMatchedBy = 'email';
-      diagnostics.uidMismatch = doc.id !== uid;
-      return { user: publicUserFromDoc(doc.id, doc.data(), decoded), diagnostics };
+  const valueCandidates = Array.from(new Set([email, rawEmail].filter(Boolean)));
+  const fields = ['emailLowercase', 'normalizedEmail', 'authEmail', 'email'];
+  for (const field of fields) {
+    for (const candidate of valueCandidates) {
+      const snap = await db.collection('users').where(field, '==', candidate).limit(2).get();
+      if (!snap.empty) {
+        const doc = snap.docs[0];
+        diagnostics.emailDocExists = true;
+        diagnostics.emailFieldMatched = field;
+        diagnostics.uidMismatch = uid ? doc.id !== uid : false;
+        return finish(doc, `email-field:${field}`);
+      }
     }
   }
 
