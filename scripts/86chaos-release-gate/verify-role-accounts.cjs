@@ -45,12 +45,29 @@ function buildFirebaseAuthRequestHeaders() {
       const url = new URL(base);
       const origin = url.origin;
       headers.Origin = origin;
+      headers.origin = origin;
       headers.Referer = `${origin}/`;
+      headers.referer = `${origin}/`;
     } catch (_) {
       headers.Referer = String(base);
     }
   }
   return headers;
+}
+
+function buildFirebaseAuthFetchOptions(init = {}) {
+  const base = authRequestBaseUrl();
+  const options = { ...init, headers: { ...buildFirebaseAuthRequestHeaders(), ...(init.headers || {}) } };
+  if (base) {
+    try {
+      const origin = new URL(base).origin;
+      options.referrer = `${origin}/`;
+      options.referrerPolicy = 'origin-when-cross-origin';
+    } catch (_) {
+      options.referrer = String(base);
+    }
+  }
+  return options;
 }
 
 function safeAccountDefinition(def) {
@@ -129,11 +146,10 @@ async function fetchJson(url, options = {}, fetchImpl = global.fetch) {
 
 async function signInAccount(account, config, fetchImpl = global.fetch) {
   const url = `https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${encodeURIComponent(config.apiKey)}`;
-  const signed = await fetchJson(url, {
+  const signed = await fetchJson(url, buildFirebaseAuthFetchOptions({
     method: 'POST',
-    headers: buildFirebaseAuthRequestHeaders(),
     body: JSON.stringify({ email: account.email, password: account.password, returnSecureToken: true }),
-  }, fetchImpl);
+  }), fetchImpl);
   if (!signed.idToken || !signed.localId) throw new Error(`${account.emailEnv} could not sign into Firebase Auth or did not return a Firebase UID.`);
   return { ...account, uid: signed.localId, idToken: signed.idToken, firebaseProjectId: config.projectId };
 }
@@ -141,7 +157,7 @@ async function signInAccount(account, config, fetchImpl = global.fetch) {
 async function fetchWhoami(account, fetchImpl = global.fetch) {
   const url = appUrl('/api/whoami');
   if (!url) throw new Error('APP_URL or CHAOS_BASE_URL is missing, so /api/whoami cannot be verified.');
-  const whoami = await fetchJson(url, { method: 'GET', headers: { ...buildFirebaseAuthRequestHeaders(), Authorization: `Bearer ${account.idToken}` } }, fetchImpl);
+  const whoami = await fetchJson(url, buildFirebaseAuthFetchOptions({ method: 'GET', headers: { Authorization: `Bearer ${account.idToken}` } }), fetchImpl);
   return {
     key: account.key,
     label: account.label,
@@ -333,4 +349,5 @@ module.exports = {
   verifyRoleAccounts,
   validateRoleReportForSeed,
   buildFirebaseAuthRequestHeaders,
+  buildFirebaseAuthFetchOptions,
 };

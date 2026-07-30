@@ -280,12 +280,24 @@ const buildWorkspaceUser = (currentUser = {}, workspace = {}) => {
 };
 const userFromWorkspaceMember = (member = {}, accountUser = {}) => {
   const memberOwner = Boolean(member.isOwner === true || member.accountOwner === true || member.workspaceOwner === true);
+  const membershipId = member.membershipId || member.id || '';
+  const accountUid = member.authUid || member.uid || member.userId || accountUser.authUid || accountUser.uid || accountUser.userId || accountUser.id || '';
+  const rosterId = member.scheduleUserId || member.rosterUserId || member.employeeId || membershipId || accountUser.scheduleUserId || accountUser.employeeId || accountUser.rosterUserId || '';
+  const stableUserId = member.userId || member.uid || accountUser.id || membershipId;
   return {
     ...accountUser,
     ...Object.fromEntries(Object.entries(member).filter(([key]) => key !== 'id')),
-    id: member.userId || member.uid || accountUser.id || member.id,
-    userId: member.userId || member.uid || accountUser.id || member.id,
-    membershipId: member.membershipId || member.id || '',
+    id: stableUserId,
+    userId: stableUserId,
+    accountUserId: accountUid || stableUserId,
+    authUid: member.authUid || accountUser.authUid || member.uid || accountUser.uid || member.userId || accountUser.userId || '',
+    uid: member.uid || accountUser.uid || accountUid || stableUserId,
+    membershipId,
+    workspaceMemberId: membershipId,
+    scheduleUserId: member.scheduleUserId || rosterId || stableUserId,
+    employeeId: member.employeeId || rosterId || stableUserId,
+    rosterUserId: member.rosterUserId || membershipId || member.employeeId || '',
+    employeeEmail: member.employeeEmail || member.email || accountUser.employeeEmail || accountUser.email || '',
     restaurantId: member.restaurantId || accountUser.restaurantId,
     restaurantName: safeWorkspaceName(member),
     permissions: { ...(member.permissions || {}) },

@@ -25,7 +25,7 @@ const getOuterScheduleWeekBounds = (bounds, appUser = {}) => {
 };
 export const getCanonicalScheduleUserId = (user = {}) => {
   const safeUser = user && typeof user === 'object' ? user : {};
-  return safeUser.scheduleUserId || safeUser.employeeId || safeUser.rosterUserId || safeUser.userId || safeUser.authUid || safeUser.uid || safeUser.id || '';
+  return safeUser.scheduleUserId || safeUser.employeeId || safeUser.rosterUserId || safeUser.membershipId || safeUser.workspaceMemberId || safeUser.userId || safeUser.authUid || safeUser.uid || safeUser.id || '';
 }; // email is migration evidence only, not a durable query ID
 export const canManageScheduleForPlanner = (user = {}) => Boolean(user?.isSuperAdmin || user?.isAdmin || user?.isOwner || user?.accountOwner || user?.workspaceOwner || user?.permissions?.schedule || user?.permissions?.team);
 

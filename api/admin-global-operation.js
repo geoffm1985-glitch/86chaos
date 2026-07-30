@@ -1,4 +1,5 @@
 const { getAdminAppForRequest, authorize, readBody, requireAppCheckIfEnforced, writeAudit } = require('./_chaos-admin');
+const { isProtectedRootAdminEmail } = require('./_protected-root-admin');
 
 const PAGE_SIZE = 450;
 function cleanText(value = '', max = 1000) { return String(value || '').replace(/[\u0000-\u001F\u007F]/g, ' ').trim().slice(0, max); }
@@ -52,7 +53,7 @@ module.exports = async function handler(req, res) {
   const target = cleanText(body.target || 'ALL', 120);
   const now = new Date().toISOString();
   const idempotencyKey = cleanText(body.idempotencyKey || `${action}_${target}_${now.slice(0,16)}`, 160);
-  const destructiveAll = target === 'ALL' && ['setBanner','clearBanner','forceRefresh','lockdown','unlock','megaphone'].includes(action);
+  const destructiveAll = target === 'ALL' && ['setBanner','clearBanner','forceRefresh','lockdown','unlock','megaphone','logoutNonAdmins'].includes(action);
   if (destructiveAll && body.confirmation !== `CONFIRM ${action} ALL`) return res.status(400).json({ ok: false, error: `CONFIRM ${action} ALL confirmation required.` });
   try {
     let result;
@@ -67,6 +68,41 @@ module.exports = async function handler(req, res) {
     } else if (action === 'forceRefresh') {
       if (target !== 'ALL') return res.status(400).json({ ok: false, error: 'Global refresh endpoint only accepts target ALL.' });
       result = await pageRestaurants(auth.db, () => ({ forceRefresh: now, forceRefreshReason: cleanText(body.reason || 'system-admin', 160) }));
+    } else if (action === 'logoutNonAdmins') {
+      if (target !== 'ALL') return res.status(400).json({ ok: false, error: 'Global logout endpoint only accepts target ALL.' });
+      let last = null;
+      let scanned = 0;
+      let affected = 0;
+      let protectedSkipped = 0;
+      let adminSkipped = 0;
+      const errors = [];
+      for (;;) {
+        let q = auth.db.collection('users').orderBy('__name__').limit(PAGE_SIZE);
+        if (last) q = q.startAfter(last);
+        const snap = await q.get();
+        if (snap.empty) break;
+        scanned += snap.size;
+        const batch = auth.db.batch();
+        let batchCount = 0;
+        for (const userSnap of snap.docs) {
+          const data = userSnap.data() || {};
+          const email = cleanText(data.email || '', 180).toLowerCase();
+          const roleText = `${data.role || ''} ${data.accountRole || ''} ${data.roleName || ''}`.toLowerCase();
+          const isProtected = isProtectedRootAdminEmail(email);
+          const isAdmin = data.isSuperAdmin === true || data.systemAccess?.superAdmin === true || /system\s*administrator|super\s*admin|master\s*admin/.test(roleText);
+          if (isProtected) { protectedSkipped += 1; continue; }
+          if (isAdmin) { adminSkipped += 1; continue; }
+          batch.set(userSnap.ref, { forceLogout: true, forceLogoutAt: now, forceLogoutBy: auth.ctx.uid || auth.ctx.email || 'system-admin', forceLogoutByName: auth.ctx.email || 'System Administrator', forceLogoutReason: cleanText(body.reason || 'system-admin-global-logout', 160) }, { merge: true });
+          batchCount += 1;
+        }
+        if (batchCount) {
+          try { await batch.commit(); affected += batchCount; }
+          catch (err) { errors.push({ after: last?.id || '', count: batchCount, error: cleanText(err?.message || err, 180) }); }
+        }
+        last = snap.docs[snap.docs.length - 1];
+        if (snap.size < PAGE_SIZE) break;
+      }
+      result = { scanned, affected, loggedOut: affected, protectedSkipped, adminSkipped, errors };
     } else if (action === 'lockdown' || action === 'unlock') {
       if (target !== 'ALL') return res.status(400).json({ ok: false, error: 'Global maintenance endpoint only accepts target ALL.' });
       result = await pageRestaurants(auth.db, () => ({ platformMaintenanceLock: action === 'lockdown', platformMaintenanceUpdatedAt: now, platformMaintenanceUpdatedBy: auth.ctx.uid || auth.ctx.email || 'system-admin' }));
