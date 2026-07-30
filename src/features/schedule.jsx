@@ -2730,11 +2730,15 @@ const handleExportTimesheets = () => {
     const visibleWeekEnd = minDateKey(fullWeekEnd, schedulePeriodBounds.end);
     if (visibleWeekStart <= visibleWeekEnd) {
       scheduledHoursWeekBlocks.push({
-        start: visibleWeekStart,
-        end: visibleWeekEnd,
+        // Scheduled Hours Tracker follows pay-period weeks, not just visible month days.
+        // Example: August Week 1 may need to count Jul 27-Jul 31 plus Aug 1-Aug 2.
+        start: fullWeekStart,
+        end: fullWeekEnd,
+        visibleStart: visibleWeekStart,
+        visibleEnd: visibleWeekEnd,
         fullStart: fullWeekStart,
         fullEnd: fullWeekEnd,
-        days: buildDateRange(visibleWeekStart, visibleWeekEnd)
+        days: buildDateRange(fullWeekStart, fullWeekEnd)
       });
     }
     hoursWeekStart = addScheduleDays(hoursWeekStart, 7);
@@ -2757,7 +2761,7 @@ const handleExportTimesheets = () => {
 
   const formatScheduledHoursWeekAudit = (person, week, totalHours = 0) => {
     const dayAudits = (week?.days || []).map(d => getScheduledHoursDayAudit(d, person)).filter(audit => audit.visibleShifts.length || audit.invalidShifts.length);
-    const lines = [`${person?.name || 'Employee'} Week ${formatScheduledHoursWeekRange(week)} total: ${totalHours.toFixed(1)}h`];
+    const lines = [`${person?.name || 'Employee'} Pay-period week ${formatScheduledHoursWeekRange(week)} total: ${totalHours.toFixed(1)}h`];
     if (!dayAudits.length) lines.push('No scheduled shift hours counted for this week.');
     dayAudits.forEach(audit => lines.push(formatScheduledHoursDayAuditLine(audit)));
     return lines.join('\n');
@@ -3275,7 +3279,7 @@ const handleExportTimesheets = () => {
                 <thead>
                   <tr className="bg-[#1A2126] border-b border-[#2A353D] text-[9px] font-black uppercase tracking-widest text-slate-400">
                     <th className="p-3 border-r border-[#2A353D] sticky left-0 bg-[#1A2126] z-10 w-28 min-w-[112px] whitespace-nowrap">Employee</th>
-                    {scheduledHoursWeekBlocks.map((w, i) => <th key={i} className="p-3 text-center border-r border-[#2A353D] min-w-[86px] whitespace-nowrap" title={`Visible schedule days in this week: ${formatDisplayDate(w.start)} - ${formatDisplayDate(w.end)}`}>Wk {i+1}<div className="text-[7px] text-slate-600 mt-0.5 whitespace-nowrap">{formatScheduledHoursWeekRange(w)}</div></th>)}
+                    {scheduledHoursWeekBlocks.map((w, i) => <th key={i} className="p-3 text-center border-r border-[#2A353D] min-w-[86px] whitespace-nowrap" title={`Pay-period week counted: ${formatDisplayDate(w.start)} - ${formatDisplayDate(w.end)}`}>Wk {i+1}<div className="text-[7px] text-slate-600 mt-0.5 whitespace-nowrap">{formatScheduledHoursWeekRange(w)}</div></th>)}
                     <th className="p-3 text-center text-[#D4A381] min-w-[86px] whitespace-nowrap">Month Total</th>
                   </tr>
                 </thead>
