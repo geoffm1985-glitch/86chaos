@@ -4059,6 +4059,7 @@ firebase deploy --only functions --project YOUR_PRODUCTION_PROJECT_ID
   const [restaurants, setRestaurants] = useState([]);
   const [superAdmins, setSuperAdmins] = useState([]);
   const [allUsers, setAllUsers] = useState([]);
+  const [globalLogoutBusy, setGlobalLogoutBusy] = useState(false);
   const [crashLogs, setCrashLogs] = useState([]);
   const [auditLogs, setAuditLogs] = useState([]);
   const [automationReports, setAutomationReports] = useState([]);
@@ -5609,6 +5610,21 @@ Type DELETE to continue.`) || '').trim().toUpperCase();
       const result = await runAdminGlobalOperation({ action: 'forceRefresh', target: 'ALL', reason: 'system-admin-global-refresh' });
       addToast('Refresh Broadcast', `Hard reload signal written to ${result.affected || 0} workspace(s).`);
     } catch (err) { addToast('Refresh Error', err.message || 'Global refresh failed.'); }
+  };
+
+  const handleGlobalLogoutNonAdmins = async () => {
+    const phrase = 'LOG OUT NON ADMINS';
+    if (prompt(`This will force every non-System Administrator account to log out and clear stale session cache. Protected System Administrator accounts, including ${PROTECTED_ROOT_ADMIN_EMAIL}, stay signed in. Type "${phrase}" to continue.`) !== phrase) return;
+    setGlobalLogoutBusy(true);
+    addToast('Executing', 'Server is paging users for global non-admin logout...');
+    try {
+      const result = await runAdminGlobalOperation({ action: 'logoutNonAdmins', target: 'ALL', reason: 'system-admin-global-logout' });
+      addToast('Global Logout Sent', `${result.affected || result.loggedOut || 0} non-admin user(s) flagged. ${result.protectedSkipped || 0} protected/admin account(s) skipped.`);
+    } catch (err) {
+      addToast('Logout Error', err.message || 'Global logout failed.');
+    } finally {
+      setGlobalLogoutBusy(false);
+    }
   };
 
   const handleGlobalLockdown = async (lock) => {
@@ -7844,7 +7860,8 @@ Type RESTORE to continue.`);
     { label:'Ask Gemini Administrator Manual', tab:'manual', keywords:'gemini help instructions troubleshooting repair manual' },
     { label:'Check Deployment Readiness', tab:'deployment', keywords:'deploy vercel firebase publish production readiness' },
     { label:'Create a Workspace', tab:'setup', keywords:'client restaurant owner onboarding setup' },
-    { label:'Clean Full Audit QA Restaurants', tab:'ops', keywords:'qa full audit fake restaurant cleanup hard delete testing leftovers' }
+    { label:'Clean Full Audit QA Restaurants', tab:'ops', keywords:'qa full audit fake restaurant cleanup hard delete testing leftovers' },
+    { label:'Log Out Non-Admins Globally', tab:'ops', keywords:'global logout force logout all users non admins protected system administrators sessions cache' }
   ];
   const normalizedAdminToolSearch = adminToolSearch.trim().toLowerCase();
   const scoreAdminSearchText = (text = '') => {
@@ -8010,7 +8027,7 @@ Type RESTORE to continue.`);
             <div className="text-[10px] font-black uppercase tracking-[0.28em] text-[#D4A381]">System Administration</div>
             <h1 className="text-2xl sm:text-3xl font-black text-white mt-1">Operations Console</h1>
             <p className="text-xs sm:text-sm text-slate-400 font-semibold mt-2 max-w-2xl leading-relaxed">A compact workspace for platform health, access, customers, recovery, and support.</p>
-            <button type="button" onClick={() => selectAdminTab('ops')} className="mt-3 inline-flex items-center justify-center rounded-xl border border-red-900/50 bg-red-950/20 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-red-200 hover:bg-red-900/30">Clean Full Audit QA Restaurants</button>
+            <div className="mt-3 flex flex-wrap gap-2"><button type="button" onClick={() => selectAdminTab('ops')} className="inline-flex items-center justify-center rounded-xl border border-red-900/50 bg-red-950/20 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-red-200 hover:bg-red-900/30">Clean Full Audit QA Restaurants</button><button type="button" onClick={handleGlobalLogoutNonAdmins} disabled={globalLogoutBusy} className="inline-flex items-center justify-center rounded-xl border border-orange-900/50 bg-orange-950/20 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-orange-200 hover:bg-orange-900/30 disabled:opacity-50">{globalLogoutBusy ? 'Sending Global Logout…' : 'Global Logout Non-Admins'}</button></div>
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 w-full xl:w-auto xl:min-w-[560px]">
             <button type="button" onClick={() => selectAdminTab('overview')} className="admin46-status-chip text-left">
@@ -8907,7 +8924,7 @@ Type RESTORE to continue.`);
         <div className="space-y-4 animate-[slideIn_0.2s_ease-out]">
           <div className="bg-red-950/30 border border-red-900/60 rounded-2xl p-5"><h2 className="text-2xl font-black text-red-200">Danger Zone</h2><p className="text-xs text-red-100/70 font-bold mt-1">Destructive tools live here on purpose. They require confirmation and should not be mixed with normal admin work.</p></div>
           <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-3">
-            {[['Restore backup','Use Backup Center to restore a selected backup.','forensics'],['Delete staff','Use People Directory or the workspace user drawer.','users'],['Reset schedule','Use Emergency Schedule Rescue from Platform Operations.','ops'],['Clear demo data','Use demo workspace tools and guarded delete options.','ops'],['Force logout all users','Use People Directory/workspace drawer per user until a bulk logout route exists.','users'],['Disable workspace','Open Workspaces and set Maintenance Lock.','tenants'],['Clear stale push tokens','Use Push Control Center repair/flag action.','push'],['Reset restaurant config','Open Workspaces, review current settings, then save intentionally.','tenants']].map(([title, desc, target]) => <button key={title} onClick={() => setSubTab(target)} className="text-left bg-[#12161A] border border-red-900/40 rounded-2xl p-4 hover:bg-red-900/10"><div className="font-black text-red-200 text-sm">{title}</div><div className="text-[10px] text-slate-400 font-bold mt-2 leading-snug">{desc}</div><div className="mt-3 text-[9px] font-black uppercase tracking-widest text-red-300">Open guarded tool</div></button>)}
+            {[['Restore backup','Use Backup Center to restore a selected backup.','forensics'],['Delete staff','Use People Directory or the workspace user drawer.','users'],['Reset schedule','Use Emergency Schedule Rescue from Platform Operations.','ops'],['Clear demo data','Use demo workspace tools and guarded delete options.','ops'],['Force logout non-admins','Use Platform Operations → Global Logout Non-Admins. Protected System Administrators stay signed in.','ops'],['Disable workspace','Open Workspaces and set Maintenance Lock.','tenants'],['Clear stale push tokens','Use Push Control Center repair/flag action.','push'],['Reset restaurant config','Open Workspaces, review current settings, then save intentionally.','tenants']].map(([title, desc, target]) => <button key={title} onClick={() => setSubTab(target)} className="text-left bg-[#12161A] border border-red-900/40 rounded-2xl p-4 hover:bg-red-900/10"><div className="font-black text-red-200 text-sm">{title}</div><div className="text-[10px] text-slate-400 font-bold mt-2 leading-snug">{desc}</div><div className="mt-3 text-[9px] font-black uppercase tracking-widest text-red-300">Open guarded tool</div></button>)}
           </div>
           <div className={`${T.card} p-4 border-red-900/50`}><h3 className="font-black text-red-300">Backup First Rule</h3><p className="text-xs text-slate-400 font-bold mt-1">Run a full backup before restoring, deleting, disabling, or resetting anything. The app should never throw data into the fryer without a safety copy.</p><button onClick={handleRunBackupNow} disabled={isBackupRunning} className={`${T.btn} mt-3`}>{isBackupRunning ? 'Backup Running...' : 'Run Backup Now'}</button></div>
         </div>
@@ -10181,6 +10198,11 @@ another@email.com"></textarea>
               <h3 className="font-black text-white mb-1">Global Force Refresh</h3>
               <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-4 leading-snug">Pushes a silent command to all active devices to instantly hard-reload the browser. Use after deploying new code.</p>
               <button onClick={handleForceRefresh} className="w-full bg-emerald-900/20 text-emerald-400 border border-emerald-900/50 font-black text-xs uppercase tracking-widest py-3 rounded-xl hover:bg-emerald-900/40 transition-colors">Execute Global Refresh</button>
+            </div>
+            <div className={`${T.card} p-5 border-orange-900/30`}>
+              <h3 className="font-black text-white mb-1">Global Logout Non-Admins</h3>
+              <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-4 leading-snug">Forces every non-System Administrator to log out and clear stale cache. Protected root and System Administrator accounts are skipped.</p>
+              <button onClick={handleGlobalLogoutNonAdmins} disabled={globalLogoutBusy} className="w-full bg-orange-900/20 text-orange-300 border border-orange-900/50 font-black text-xs uppercase tracking-widest py-3 rounded-xl hover:bg-orange-900/40 transition-colors disabled:opacity-50">{globalLogoutBusy ? 'Sending Logout…' : 'Log Out Non-Admins'}</button>
             </div>
             <div className={`${T.card} p-5 border-blue-900/30`}>
               <h3 className="font-black text-white mb-1">Orphan Data Sweeper</h3>

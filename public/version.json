@@ -1,10 +1,10 @@
 {
-  "version": "16.0.67",
-  "name": "86 Chaos 16.0.67 Ultimate Test Gate Repair",
-  "build": "16.0.67",
-  "label": "86 Chaos 16.0.67 Ultimate Test Gate Repair",
+  "version": "16.0.68",
+  "name": "86 Chaos 16.0.68 Ultimate Test Gate Repair",
+  "build": "16.0.68",
+  "label": "86 Chaos 16.0.68 Ultimate Test Gate Repair",
   "releasedAt": "2026-07-30T08:32:00-05:00",
-  "releaseTitle": "86 Chaos 16.0.67 Ultimate Test Gate Repair",
+  "releaseTitle": "86 Chaos 16.0.68 Ultimate Test Gate Repair",
   "notes": [
     "Fixes lint blockers for protected root admin and Schedule Builder delete markers.",
     "Adds truthful PWA icon metadata and iOS install icon links.",

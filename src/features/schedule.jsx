@@ -47,7 +47,7 @@ const firstNameKey = (value = '') => normalizeScheduleName(String(value || '').s
 
 const personIdentityKeys = (person = {}) => {
   const keys = new Set();
-  [person.id, person.uid, person.authUid, person.accountUserId, person.userId, person.employeeId, person.rosterUserId, person.scheduleUserId, person.assignedUserId, person.email, person.employeeEmail, person.name, person.displayName, person.fullName, person.ghostTargetUserId].forEach(v => {
+  [person.id, person.uid, person.authUid, person.accountUserId, person.userId, person.employeeId, person.rosterUserId, person.scheduleUserId, person.assignedUserId, person.membershipId, person.workspaceMemberId, person.accountProfile?.id, person.accountProfile?.uid, person.accountProfile?.authUid, person.email, person.employeeEmail, person.name, person.displayName, person.fullName, person.ghostTargetUserId].forEach(v => {
     const id = normalizeScheduleIdentity(v);
     const name = normalizeScheduleName(v);
     if (id) keys.add(id);
@@ -644,9 +644,14 @@ const getSchedulePeriodLabel = (bounds, scheduleSettings = {}) => {
   return `${modeLabel} Schedule: ${formatDisplayDate(bounds.start)} - ${formatDisplayDate(bounds.end)}`;
 };
 
+const isScheduleShiftPublished = (shift = {}) => {
+  const status = String(shift?.status || shift?.publishStatus || '').toLowerCase().trim();
+  return shift?.isPublished === true || shift?.published === true || status === 'published' || Boolean(shift?.publishedAt || shift?.scheduleId);
+};
+
 const isDateInsidePublishedSchedule = (dateKey, shifts = []) => {
   if (!dateKey) return false;
-  return (shifts || []).some(s => String(s?.date || s?.scheduleDateKey || '') === String(dateKey) && s?.isPublished === true);
+  return (shifts || []).some(s => String(s?.date || s?.scheduleDateKey || '') === String(dateKey) && isScheduleShiftPublished(s));
 };
 
 const isTipDeclarationEnabled = (appUser = {}, clientData = {}) => {
@@ -1089,15 +1094,15 @@ Clock out anyway?`);
 
 // --- SHIFT LOGIC ---
   const myMonthShifts = shifts
-    .filter(s => shiftMatchesPerson(s, schedulePerson) && getShiftDateKey(s).startsWith(monthStr) && s.isPublished && isShiftStillCurrentOrUpcoming(s, scheduleNow))
+    .filter(s => shiftMatchesPerson(s, schedulePerson) && getShiftDateKey(s).startsWith(monthStr) && isScheduleShiftPublished(s) && isShiftStillCurrentOrUpcoming(s, scheduleNow))
     .sort(compareShiftsByStartDateTime);
 
   const myNextShift = shifts
-    .filter(s => shiftMatchesPerson(s, schedulePerson) && s.isPublished && isShiftStillCurrentOrUpcoming(s, scheduleNow))
+    .filter(s => shiftMatchesPerson(s, schedulePerson) && isScheduleShiftPublished(s) && isShiftStillCurrentOrUpcoming(s, scheduleNow))
     .sort(compareShiftsByStartDateTime)[0];
 
   const activeMonthShifts = shifts
-    .filter(s => getShiftDateKey(s).startsWith(monthStr) && s.isPublished)
+    .filter(s => getShiftDateKey(s).startsWith(monthStr) && isScheduleShiftPublished(s))
     .sort((a,b) => a.date === b.date ? (a.startTime || '').localeCompare(b.startTime || '') : a.date.localeCompare(b.date));
 
   // --- TRADE BOARD LOGIC ---
@@ -1375,7 +1380,7 @@ const handleOfferSwap = async (shift) => {
         const pickerMonth = fullSchedulePickerMonth || monthStr;
         const pickerDays = Array.from({ length: getDaysInMonth(pickerMonth) }).map((_, i) => `${pickerMonth}-${String(i + 1).padStart(2, '0')}`);
         const pickerFirstDayOffset = new Date(pickerMonth + '-01T12:00:00').getDay();
-        const publishedShiftDays = new Set(shifts.filter(s => s?.isPublished && String(s.date || '').startsWith(pickerMonth)).map(s => s.date));
+        const publishedShiftDays = new Set(shifts.filter(s => isScheduleShiftPublished(s) && String(s.date || s.scheduleDateKey || '').startsWith(pickerMonth)).map(s => getShiftDateKey(s))); 
         return (
           <div className={`${T.card} overflow-hidden animate-[slideIn_0.2s_ease-out]`}>
             <div className="bg-[#12161A] p-3 border-b border-[#2A353D] flex flex-col gap-3">
@@ -1594,8 +1599,8 @@ const [eventDate, setEventDate] = useState(getToday());
     const days = publicationWeekDays.slice(index, index + 7);
     if (!days.length) continue;
     const daySet = new Set(days);
-    const drafts = publicationPeriodShifts.filter(shift => shift?.id && !shift.isPublished && daySet.has(getShiftDateKey(shift)));
-    const live = publicationPeriodShifts.filter(shift => shift.isPublished && daySet.has(getShiftDateKey(shift)));
+    const drafts = publicationPeriodShifts.filter(shift => shift?.id && !isScheduleShiftPublished(shift) && daySet.has(getShiftDateKey(shift)));
+    const live = publicationPeriodShifts.filter(shift => isScheduleShiftPublished(shift) && daySet.has(getShiftDateKey(shift)));
     const touchesVisiblePeriod = days.some(day => day >= schedulePeriodBounds.start && day <= schedulePeriodBounds.end);
     if (!touchesVisiblePeriod) continue;
     publishWeekOptions.push({
@@ -1612,8 +1617,8 @@ const [eventDate, setEventDate] = useState(getToday());
   const selectedPublishWeeks = publishWeekOptions.filter(option => selectedPublishWeekSet.has(option.key));
   const selectedPublishDays = selectedPublishWeeks.flatMap(option => option.days);
   const selectedPublishDaySet = new Set(selectedPublishDays);
-  const selectedPublishDrafts = publicationPeriodShifts.filter(shift => shift?.id && !shift.isPublished && selectedPublishDaySet.has(getShiftDateKey(shift)));
-  const fullPublishDrafts = publicationPeriodShifts.filter(shift => shift?.id && !shift.isPublished);
+  const selectedPublishDrafts = publicationPeriodShifts.filter(shift => shift?.id && !isScheduleShiftPublished(shift) && selectedPublishDaySet.has(getShiftDateKey(shift)));
+  const fullPublishDrafts = publicationPeriodShifts.filter(shift => shift?.id && !isScheduleShiftPublished(shift));
   const publishDateLabel = (start, end) => start === end ? formatDisplayDate(start) : `${formatDisplayDate(start)} to ${formatDisplayDate(end)}`;
   const selectedPublishLabel = selectedPublishWeeks.length
     ? selectedPublishWeeks.map(option => `${option.label}: ${publishDateLabel(option.start, option.end)}`).join(', ')
@@ -3263,7 +3268,7 @@ const handleExportTimesheets = () => {
               <div className="text-[10px] font-bold text-slate-500 mt-0.5">Change this in Settings → Workspace → Schedule Publishing.</div>
               <div className="text-[10px] font-bold text-slate-400 mt-0.5">Publish downloads a schedule backup. Time Clock / Labor exports CSV for payroll review.</div>
             </div>
-            <div className="text-[10px] font-black uppercase tracking-widest text-slate-400 bg-[#12161A] border border-[#2A353D] rounded-xl px-2 py-1.5">{schedulePeriodShifts.filter(s => !s.isPublished).length} draft • {schedulePeriodShifts.filter(s => s.isPublished).length} live • {schedulePeriodEvents.length} event{schedulePeriodEvents.length === 1 ? '' : 's'} shown</div>
+            <div className="text-[10px] font-black uppercase tracking-widest text-slate-400 bg-[#12161A] border border-[#2A353D] rounded-xl px-2 py-1.5">{schedulePeriodShifts.filter(s => !isScheduleShiftPublished(s)).length} draft • {schedulePeriodShifts.filter(s => isScheduleShiftPublished(s)).length} live • {schedulePeriodEvents.length} event{schedulePeriodEvents.length === 1 ? '' : 's'} shown</div>
           </div>
 
           <div className={`schedule-builder-control-deck ${T.card} p-1.5 sm:p-2 flex flex-col lg:flex-row gap-1.5 items-stretch lg:items-center justify-between`}>
@@ -3841,7 +3846,7 @@ const TabMonth = ({ currentDate, users, shifts, appUser }) => {
 {Array.from({length:days}).map((_,i)=>{
           const date = `${monthStr}-${String(i+1).padStart(2,'0')}`; 
           const dayShifts = shifts
-            .filter(s => s.date === date && s.isPublished && (roleFilter === 'All' || (roleFilter === 'ME' ? shiftMatchesPerson(s, getSchedulePersonForAppUser(appUser, users)) : s.role === roleFilter)))
+            .filter(s => getShiftDateKey(s) === date && isScheduleShiftPublished(s) && (roleFilter === 'All' || (roleFilter === 'ME' ? shiftMatchesPerson(s, getSchedulePersonForAppUser(appUser, users)) : s.role === roleFilter)))
             .sort((a, b) => {
               if (a.role !== b.role) return (a.role || '').localeCompare(b.role || '');
               return (a.startTime || '').localeCompare(b.startTime || '');
