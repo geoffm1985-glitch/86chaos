@@ -359,6 +359,48 @@ export const buildShiftFingerprint = (shift = {}) => {
   return [date, employeeKey, role, start, end].join('|');
 };
 
+const SHIFT_LOCAL_DELETE_MARKER_GRACE_MS = 5000;
+const SHIFT_LOCAL_DELETE_MARKER_TTL_MS = 120000;
+
+const getScheduleShiftLocalDeleteKeys = (shift = {}) => {
+  const keys = [];
+  const id = String(shift?.id || '').trim();
+  if (id) keys.push(`id:${id}`);
+  const fingerprint = buildShiftFingerprint(shift);
+  if (fingerprint) keys.push(`fp:${fingerprint}`);
+  const fallback = [
+    String(shift?.restaurantId || ''),
+    String(shift?.date || shift?.scheduleDateKey || ''),
+    getStableShiftEmployeeKey(shift),
+    normalizeShiftTimeForFingerprint(shift?.startTime),
+    normalizeShiftTimeForFingerprint(shift?.endTime)
+  ].filter(Boolean).join('|');
+  if (fallback) keys.push(`fallback:${fallback}`);
+  return [...new Set(keys)];
+};
+
+const buildLocalShiftDeletionMarkers = (shiftList = [], now = Date.now()) => {
+  const expiresAt = now + SHIFT_LOCAL_DELETE_MARKER_TTL_MS;
+  return (shiftList || []).flatMap(shift => getScheduleShiftLocalDeleteKeys(shift).map(key => ({ key, createdAt: now, expiresAt })));
+};
+
+const mergeLocalShiftDeletionMarkers = (existing = [], incoming = []) => {
+  const byKey = new Map();
+  [...(existing || []), ...(incoming || [])].forEach(marker => {
+    if (!marker?.key) return;
+    const prev = byKey.get(marker.key);
+    if (!prev || Number(marker.expiresAt || 0) > Number(prev.expiresAt || 0)) byKey.set(marker.key, marker);
+  });
+  return Array.from(byKey.values());
+};
+
+const scheduleShiftHasLocalDeleteKey = (shift = {}, key = '') => getScheduleShiftLocalDeleteKeys(shift).includes(key);
+
+const shiftMatchesLocalDeleteMarkers = (shift = {}, markerKeySet = new Set()) => {
+  if (!markerKeySet || markerKeySet.size === 0) return false;
+  return getScheduleShiftLocalDeleteKeys(shift).some(key => markerKeySet.has(key));
+};
+
 export const buildAutoPopulateShift = (sourceShift = {}, newDate = '', restaurantId = '', actor = {}, copiedFromMonth = '', resolvedPerson = null) => {
   const nowIso = new Date().toISOString();
   const month = getMonthStr(newDate || getToday());
@@ -1383,6 +1425,7 @@ const [eventDate, setEventDate] = useState(getToday());
   const [autoPopSourceMonth, setAutoPopSourceMonth] = useState('');
   const [autoFillVisibleShifts, setAutoFillVisibleShifts] = useState([]);
   const [localBuilderShiftEchoes, setLocalBuilderShiftEchoes] = useState([]);
+  const [localBuilderDeletedShiftMarkers, setLocalBuilderDeletedShiftMarkers] = useState([]);
   
   const monthStr = getMonthStr(currentDate); 
   const monthDays = Array.from({length: getDaysInMonth(monthStr)}).map((_, i) => `${monthStr}-${String(i+1).padStart(2, '0')}`);
@@ -1394,11 +1437,25 @@ const [eventDate, setEventDate] = useState(getToday());
     setLocalBuilderShiftEchoes(prev => prev.filter(shift => shift?.id && !liveIds.has(shift.id)));
   }, [shifts, localBuilderShiftEchoes.length]);
 
-  const visibleShifts = mergeVisibleScheduleShifts(
+  useEffect(() => {
+    if (!localBuilderDeletedShiftMarkers.length) return;
+    const now = Date.now();
+    setLocalBuilderDeletedShiftMarkers(prev => prev.filter(marker => {
+      if (!marker?.key || Number(marker.expiresAt || 0) <= now) return false;
+      const stillVisibleInLiveSnapshot = (shifts || []).some(shift => scheduleShiftHasLocalDeleteKey(shift, marker.key));
+      const stillInsideGraceWindow = now - Number(marker.createdAt || now) < SHIFT_LOCAL_DELETE_MARKER_GRACE_MS;
+      return stillVisibleInLiveSnapshot || stillInsideGraceWindow;
+    }));
+  }, [shifts, localBuilderDeletedShiftMarkers.length]);
+
+  const activeLocalDeleteMarkers = localBuilderDeletedShiftMarkers.filter(marker => Number(marker?.expiresAt || 0) > Date.now());
+  const activeLocalDeleteKeySet = new Set(activeLocalDeleteMarkers.map(marker => marker.key).filter(Boolean));
+  const visibleSourceShifts = mergeVisibleScheduleShifts(
     shifts,
     autoFillVisibleShifts.filter(shift => shift?.restaurantId === appUser?.restaurantId && String(shift?.date || '').startsWith(monthStr)),
     localBuilderShiftEchoes.filter(shift => shift?.restaurantId === appUser?.restaurantId && String(shift?.date || '').startsWith(monthStr))
   );
+  const visibleShifts = visibleSourceShifts.filter(shift => !shiftMatchesLocalDeleteMarkers(shift, activeLocalDeleteKeySet));
   const schedulePeriodBounds = getSchedulePeriodBounds(currentDate, schedulePublishingSettings);
   const schedulePeriodDays = buildDateRange(schedulePeriodBounds.start, schedulePeriodBounds.end);
   const schedulePeriodLabel = getSchedulePeriodLabel(schedulePeriodBounds, schedulePublishingSettings);
@@ -1635,7 +1692,15 @@ const [eventDate, setEventDate] = useState(getToday());
       const label = existingShifts.length === 1 ? 'this shift' : `${existingShifts.length} visible shifts`;
       if (window.confirm(`Delete ${label} for ${emp.name || 'this employee'} on ${formatDisplayDate(d)}?`)) {
         try {
-          await Promise.all(existingShifts.filter(s => s.id).map(s => deleteDoc(doc(db, 'shifts', s.id))));
+          const deleteTargets = existingShifts.filter(s => s.id);
+          await Promise.all(deleteTargets.map(s => deleteDoc(doc(db, 'shifts', s.id))));
+          const deletedMarkers = buildLocalShiftDeletionMarkers(existingShifts);
+          const deletedKeySet = new Set(deletedMarkers.map(marker => marker.key).filter(Boolean));
+          if (deletedMarkers.length) {
+            setLocalBuilderDeletedShiftMarkers(prev => mergeLocalShiftDeletionMarkers(prev, deletedMarkers));
+            setLocalBuilderShiftEchoes(prev => prev.filter(shift => !shiftMatchesLocalDeleteMarkers(shift, deletedKeySet)));
+            setAutoFillVisibleShifts(prev => prev.filter(shift => !shiftMatchesLocalDeleteMarkers(shift, deletedKeySet)));
+          }
           setAssignDates(prev => prev.filter(x => x !== d));
           addToast('Shift Deleted', existingShifts.length === 1 ? 'The visible shift was removed.' : `${existingShifts.length} duplicate/visible shifts were removed.`);
         } catch (err) { addToast('Delete Failed', err.message); }

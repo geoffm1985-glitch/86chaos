@@ -1,16 +1,14 @@
 {
-  "version": "16.0.55",
-  "name": "86 Chaos 16.0.55 Temporary Release-Gate Test Accounts Fix",
+  "version": "16.0.56",
+  "name": "86 Chaos 16.0.56 Schedule Delete Visibility Fix",
   "releasedAt": "2026-07-29T00:00:00.000Z",
-  "label": "86 Chaos 16.0.55 Temporary Release-Gate Test Accounts Fix",
-  "build": "16.0.55",
-  "notes": "Adds testing-only release-gate temporary account provisioning so the harness can create distinct System Administrator, owner, manager, and staff QA accounts without committing credentials to source.",
+  "label": "86 Chaos 16.0.56 Schedule Delete Visibility Fix",
+  "build": "16.0.56",
+  "notes": "Fixes Schedule Builder so deleted shifts are removed from the visible grid immediately while the Firestore listener catches up.",
   "releaseNotes": [
-    "Release-gate runners can now provision dedicated testing-only Firebase Auth accounts before role verification when CHAOS_QA_AUTO_PROVISION_TEST_USERS=true.",
-    "The provisioner creates or refreshes four distinct QA accounts, sets the System Administrator claim only on the system account, clears admin claims from owner/manager/staff test accounts, and writes safe Firestore test profiles.",
-    "Provisioning refuses to use geoffm1985@gmail.com or any non-QA-looking email unless an explicit testing-only override is set.",
-    "The generated reports never include passwords, ID tokens, refresh tokens, API keys, or service-account values.",
-    "No runtime app behavior, design, Firebase rules, Firebase indexes, or production data is changed by this testing-harness fix."
+    "Schedule Builder now hides successfully deleted shifts immediately, including optimistic shift echoes and pending auto-fill preview records.",
+    "Local delete markers prevent a just-deleted shift from flashing back onto the grid while Firestore snapshots settle.",
+    "The fix is scoped to schedule visibility and does not change Firebase rules, indexes, credentials, pricing, or app design."
   ],
-  "releaseTitle": "86 Chaos 16.0.55 Temporary Release-Gate Test Accounts Fix"
+  "releaseTitle": "86 Chaos 16.0.56 Schedule Delete Visibility Fix"
 }
