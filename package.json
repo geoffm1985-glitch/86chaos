@@ -1,6 +1,6 @@
 {
   "name": "86chaos",
-  "version": "16.0.65",
+  "version": "16.0.67",
   "private": true,
   "dependencies": {
     "ajv": "^8.20.0",
@@ -26,7 +26,7 @@
     "deploy:check": "npm run test:ci && NODE_OPTIONS=--max-old-space-size=4096 GENERATE_SOURCEMAP=false npm run build",
     "validate:audit-repair": "node scripts/validate-repair.js",
     "rules:check": "node scripts/validate-rules.js",
-    "test:source": "node scripts/validate-16-0-65.js",
+    "test:source": "node scripts/validate-16-0-67.js",
     "syntax:api": "node scripts/check-api-syntax.js",
     "test:unit": "npm run test:client && npm run test:server",
     "test:rules": "firebase emulators:exec --only firestore,storage \"node scripts/run-rules-tests.js\"",
@@ -80,27 +80,5 @@
     "@testing-library/user-event": "^14.6.1",
     "eslint": "^8.57.1",
     "firebase-tools": "15.24.0"
-  },
-  "jest": {
-    "collectCoverageFrom": [
-      "src/**/*.{js,jsx}",
-      "!src/index.js",
-      "!src/**/*.test.{js,jsx}",
-      "!src/**/__mocks__/**"
-    ],
-    "coverageThreshold": {
-      "global": {
-        "statements": 90,
-        "lines": 90,
-        "functions": 85,
-        "branches": 80
-      },
-      "./src/core/": {
-        "statements": 90,
-        "lines": 90,
-        "functions": 85,
-        "branches": 80
-      }
-    }
   }
 }

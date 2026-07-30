@@ -527,24 +527,27 @@ const buildScheduleDateTime = (dateKey, timeValue, fallback) => {
   return new Date(year, month - 1, day, parts.hours, parts.minutes, parts.seconds || 0, 0);
 };
 
-const getShiftStartDateTime = (shift) => buildScheduleDateTime(shift?.date, shift?.startTime, { hours: 0, minutes: 0, seconds: 0 });
+const getShiftDateKey = (shift = {}) => String(shift?.date || shift?.scheduleDateKey || '').trim();
+
+const getShiftStartDateTime = (shift) => buildScheduleDateTime(getShiftDateKey(shift), shift?.startTime, { hours: 0, minutes: 0, seconds: 0 });
 
 const getShiftEndDateTime = (shift) => {
   const startAt = getShiftStartDateTime(shift);
-  const endAt = buildScheduleDateTime(shift?.date, shift?.endTime, { hours: 23, minutes: 59, seconds: 59 });
+  const endAt = buildScheduleDateTime(getShiftDateKey(shift), shift?.endTime, { hours: 23, minutes: 59, seconds: 59 });
   if (!endAt) return null;
   if (startAt && endAt.getTime() <= startAt.getTime()) endAt.setDate(endAt.getDate() + 1);
   return endAt;
 };
 
 const isShiftStillCurrentOrUpcoming = (shift, now = new Date()) => {
-  if (!shift?.date) return false;
+  const dateKey = getShiftDateKey(shift);
+  if (!dateKey) return false;
   const endAt = getShiftEndDateTime(shift);
-  if (!endAt) return String(shift.date) >= formatDate(now);
+  if (!endAt) return dateKey >= formatDate(now);
   return endAt.getTime() > now.getTime();
 };
 
-const isShiftInPast = (shift, now = new Date()) => shift?.date ? !isShiftStillCurrentOrUpcoming(shift, now) : false;
+const isShiftInPast = (shift, now = new Date()) => getShiftDateKey(shift) ? !isShiftStillCurrentOrUpcoming(shift, now) : false;
 
 const isScheduleDateComplete = (dateKey, shiftsForDate = [], now = new Date()) => {
   if (!dateKey) return false;
@@ -593,7 +596,7 @@ const getSchedulePublishingSettings = (appUser = {}, clientData = {}) => {
   const mode = allowedModes.includes(rawMode) ? rawMode : 'monthly';
   const customWeeks = Math.min(8, Math.max(1, parseInt(settings.scheduleCustomWeeks || settings.schedulePeriodWeeks || (mode === 'biweekly' ? 2 : 1), 10) || 1));
   const weeks = mode === 'weekly' ? 1 : mode === 'biweekly' ? 2 : mode === 'custom' ? customWeeks : null;
-  const weekStartsOn = normalizeScheduleWeekStart(settings.scheduleWeekStartsOn || settings.weekStartsOn || 'Monday');
+  const weekStartsOn = normalizeScheduleWeekStart(settings.scheduleWeekStartsOn || settings.weekStartsOn || appUser?.preferences?.payPeriodStart || 'Monday');
   const allowPostPublishedTimeOff = settings.allowPostPublishedTimeOff !== false;
   return { mode, weeks, customWeeks, weekStartsOn, allowPostPublishedTimeOff };
 };
@@ -609,6 +612,17 @@ const getSchedulePeriodBounds = (dateKey, scheduleSettings = {}) => {
   while (start.getDay() !== weekStart) start.setDate(start.getDate() - 1);
   const end = new Date(start);
   end.setDate(start.getDate() + (Number(scheduleSettings.weeks || 1) * 7) - 1);
+  return { start: formatDate(start), end: formatDate(end) };
+};
+
+const getScheduleOuterWeekBounds = (bounds = {}, scheduleSettings = {}) => {
+  const startKey = bounds?.start || getToday();
+  const endKey = bounds?.end || startKey;
+  const weekStart = WEEKDAY_INDEX[normalizeScheduleWeekStart(scheduleSettings.weekStartsOn)] ?? 1;
+  const start = new Date(`${startKey}T12:00:00`);
+  while (start.getDay() !== weekStart) start.setDate(start.getDate() - 1);
+  const end = new Date(`${endKey}T12:00:00`);
+  while (end.getDay() !== ((weekStart + 6) % 7)) end.setDate(end.getDate() + 1);
   return { start: formatDate(start), end: formatDate(end) };
 };
 
@@ -1075,7 +1089,7 @@ Clock out anyway?`);
 
 // --- SHIFT LOGIC ---
   const myMonthShifts = shifts
-    .filter(s => shiftMatchesPerson(s, schedulePerson) && String(s.date || '').startsWith(monthStr) && s.isPublished && isShiftStillCurrentOrUpcoming(s, scheduleNow))
+    .filter(s => shiftMatchesPerson(s, schedulePerson) && getShiftDateKey(s).startsWith(monthStr) && s.isPublished && isShiftStillCurrentOrUpcoming(s, scheduleNow))
     .sort(compareShiftsByStartDateTime);
 
   const myNextShift = shifts
@@ -1083,7 +1097,7 @@ Clock out anyway?`);
     .sort(compareShiftsByStartDateTime)[0];
 
   const activeMonthShifts = shifts
-    .filter(s => s.date.startsWith(monthStr) && s.isPublished)
+    .filter(s => getShiftDateKey(s).startsWith(monthStr) && s.isPublished)
     .sort((a,b) => a.date === b.date ? (a.startTime || '').localeCompare(b.startTime || '') : a.date.localeCompare(b.date));
 
   // --- TRADE BOARD LOGIC ---
@@ -1229,7 +1243,7 @@ const handleOfferSwap = async (shift) => {
             <div className="absolute -top-4 -right-4 text-8xl font-black text-slate-900/10">86</div>
             <h3 className="text-sm font-black uppercase tracking-widest text-slate-900/60 mb-1">My Schedule</h3>
             {myNextShift ? (
-              <div className="mb-6"><div className="text-2xl font-black text-slate-900 tracking-tight leading-none mb-1">Next: {myNextShift.role}</div><div className="text-sm font-bold text-slate-900/80 flex items-center gap-1.5">{formatDisplayDate(myNextShift.date)}   {formatShortTime(myNextShift.startTime)} - {formatShortTime(myNextShift.endTime)} {myNextShift.endTime === 'CLOSE' && <span className="bg-slate-900 text-[#D4A381] text-[9px] px-1.5 py-0.5 rounded ml-1 uppercase tracking-wider">Close</span>}</div></div>
+              <div className="mb-6"><div className="text-2xl font-black text-slate-900 tracking-tight leading-none mb-1">Next: {myNextShift.role}</div><div className="text-sm font-bold text-slate-900/80 flex items-center gap-1.5">{formatDisplayDate(getShiftDateKey(myNextShift))}   {formatShortTime(myNextShift.startTime)} - {formatShortTime(myNextShift.endTime)} {myNextShift.endTime === 'CLOSE' && <span className="bg-slate-900 text-[#D4A381] text-[9px] px-1.5 py-0.5 rounded ml-1 uppercase tracking-wider">Close</span>}</div></div>
             ) : (<div className="mb-6 text-slate-900 font-bold">No upcoming shifts scheduled.</div>)}
             
             {effectiveActivePunch ? (
@@ -1559,22 +1573,31 @@ const [eventDate, setEventDate] = useState(getToday());
   const activeLocalDeleteKeySet = new Set(activeLocalDeleteMarkers.map(marker => marker.key).filter(Boolean));
   const visibleSourceShifts = mergeVisibleScheduleShifts(
     shifts,
-    autoFillVisibleShifts.filter(shift => shift?.restaurantId === appUser?.restaurantId && String(shift?.date || '').startsWith(monthStr)),
-    localBuilderShiftEchoes.filter(shift => shift?.restaurantId === appUser?.restaurantId && String(shift?.date || '').startsWith(monthStr))
+    autoFillVisibleShifts.filter(shift => shift?.restaurantId === appUser?.restaurantId && getShiftDateKey(shift).startsWith(monthStr)),
+    localBuilderShiftEchoes.filter(shift => shift?.restaurantId === appUser?.restaurantId && getShiftDateKey(shift).startsWith(monthStr))
   );
   const visibleShifts = visibleSourceShifts.filter(shift => !shiftMatchesLocalDeleteMarkers(shift, activeLocalDeleteKeySet));
   const schedulePeriodBounds = getSchedulePeriodBounds(currentDate, schedulePublishingSettings);
   const schedulePeriodDays = buildDateRange(schedulePeriodBounds.start, schedulePeriodBounds.end);
   const schedulePeriodLabel = getSchedulePeriodLabel(schedulePeriodBounds, schedulePublishingSettings);
-  const schedulePeriodShifts = visibleShifts.filter(s => { const d = String(s.date || s.scheduleDateKey || ''); return d >= schedulePeriodBounds.start && d <= schedulePeriodBounds.end; });
+  const publicationWeekBounds = getScheduleOuterWeekBounds(schedulePeriodBounds, schedulePublishingSettings);
+  const publicationWeekDays = buildDateRange(publicationWeekBounds.start, publicationWeekBounds.end);
+  const schedulePeriodShifts = visibleShifts.filter(s => { const d = getShiftDateKey(s); return d >= schedulePeriodBounds.start && d <= schedulePeriodBounds.end; });
+  const publicationSourceShifts = mergeVisibleScheduleShifts(
+    shifts,
+    localBuilderShiftEchoes.filter(shift => shift?.restaurantId === appUser?.restaurantId && getShiftDateKey(shift) >= publicationWeekBounds.start && getShiftDateKey(shift) <= publicationWeekBounds.end)
+  ).filter(shift => !shiftMatchesLocalDeleteMarkers(shift, activeLocalDeleteKeySet));
+  const publicationPeriodShifts = publicationSourceShifts.filter(s => { const d = getShiftDateKey(s); return d >= publicationWeekBounds.start && d <= publicationWeekBounds.end; });
   const schedulePeriodEvents = events.filter(e => e.type === 'special_event' && e.date >= schedulePeriodBounds.start && e.date <= schedulePeriodBounds.end).sort((a,b) => (a.date || '').localeCompare(b.date || '') || (a.time || '').localeCompare(b.time || '') || (a.title || '').localeCompare(b.title || ''));
   const publishWeekOptions = [];
-  for (let index = 0; index < schedulePeriodDays.length; index += 7) {
-    const days = schedulePeriodDays.slice(index, index + 7);
+  for (let index = 0; index < publicationWeekDays.length; index += 7) {
+    const days = publicationWeekDays.slice(index, index + 7);
     if (!days.length) continue;
     const daySet = new Set(days);
-    const drafts = schedulePeriodShifts.filter(shift => !shift.isPublished && daySet.has(String(shift.date || shift.scheduleDateKey || '')));
-    const live = schedulePeriodShifts.filter(shift => shift.isPublished && daySet.has(String(shift.date || shift.scheduleDateKey || '')));
+    const drafts = publicationPeriodShifts.filter(shift => shift?.id && !shift.isPublished && daySet.has(getShiftDateKey(shift)));
+    const live = publicationPeriodShifts.filter(shift => shift.isPublished && daySet.has(getShiftDateKey(shift)));
+    const touchesVisiblePeriod = days.some(day => day >= schedulePeriodBounds.start && day <= schedulePeriodBounds.end);
+    if (!touchesVisiblePeriod) continue;
     publishWeekOptions.push({
       key: `${days[0]}_${days[days.length - 1]}`,
       label: `Week ${publishWeekOptions.length + 1}`,
@@ -1589,8 +1612,8 @@ const [eventDate, setEventDate] = useState(getToday());
   const selectedPublishWeeks = publishWeekOptions.filter(option => selectedPublishWeekSet.has(option.key));
   const selectedPublishDays = selectedPublishWeeks.flatMap(option => option.days);
   const selectedPublishDaySet = new Set(selectedPublishDays);
-  const selectedPublishDrafts = schedulePeriodShifts.filter(shift => !shift.isPublished && selectedPublishDaySet.has(String(shift.date || shift.scheduleDateKey || '')));
-  const fullPublishDrafts = schedulePeriodShifts.filter(shift => !shift.isPublished);
+  const selectedPublishDrafts = publicationPeriodShifts.filter(shift => shift?.id && !shift.isPublished && selectedPublishDaySet.has(getShiftDateKey(shift)));
+  const fullPublishDrafts = publicationPeriodShifts.filter(shift => shift?.id && !shift.isPublished);
   const publishDateLabel = (start, end) => start === end ? formatDisplayDate(start) : `${formatDisplayDate(start)} to ${formatDisplayDate(end)}`;
   const selectedPublishLabel = selectedPublishWeeks.length
     ? selectedPublishWeeks.map(option => `${option.label}: ${publishDateLabel(option.start, option.end)}`).join(', ')
@@ -1827,7 +1850,8 @@ const [eventDate, setEventDate] = useState(getToday());
   };
   const getScheduleBuilderRawShiftsForPersonDate = (dateKey, person) => schedulePeriodShifts.filter(s => getScheduleShiftDateKey(s) === dateKey && shiftMatchesPerson(s, person));
   const getScheduleBuilderShiftsForPersonDate = (dateKey, person) => dedupeScheduleShiftsForSamePerson(getScheduleBuilderRawShiftsForPersonDate(dateKey, person));
-  const getScheduledHoursTrackerRawShiftsForPersonDate = (dateKey, person) => visibleShifts.filter(s => getScheduleShiftDateKey(s) === dateKey && shiftMatchesPerson(s, person));
+  const scheduledHoursTrackerSourceShifts = mergeVisibleScheduleShifts(shifts, localBuilderShiftEchoes).filter(shift => !shiftMatchesLocalDeleteMarkers(shift, activeLocalDeleteKeySet));
+  const getScheduledHoursTrackerRawShiftsForPersonDate = (dateKey, person) => scheduledHoursTrackerSourceShifts.filter(s => getScheduleShiftDateKey(s) === dateKey && shiftMatchesPerson(s, person));
 
   const fetchSavedScheduleBuilderDeleteTargetsForPersonDate = async (dateKey, person, visibleCandidates = []) => {
     const byId = new Map();
@@ -1985,11 +2009,11 @@ const [eventDate, setEventDate] = useState(getToday());
 const handlePublish = async (scope = 'selected-weeks') => { 
     const publishAll = scope === 'full-period';
     const selectedWeeksForPublish = publishAll ? publishWeekOptions : selectedPublishWeeks;
-    const publishDays = publishAll ? schedulePeriodDays : selectedPublishDays;
+    const publishDays = publishAll ? publicationWeekDays : selectedPublishDays;
     const publishDaySet = new Set(publishDays);
     const unpub = publishAll ? fullPublishDrafts : selectedPublishDrafts;
-    const publishPeriodStart = publishAll ? schedulePeriodBounds.start : (publishDays[0] || schedulePeriodBounds.start);
-    const publishPeriodEnd = publishAll ? schedulePeriodBounds.end : (publishDays[publishDays.length - 1] || schedulePeriodBounds.end);
+    const publishPeriodStart = publishAll ? publicationWeekBounds.start : (publishDays[0] || schedulePeriodBounds.start);
+    const publishPeriodEnd = publishAll ? publicationWeekBounds.end : (publishDays[publishDays.length - 1] || schedulePeriodBounds.end);
     const publishPeriodLabel = publishAll
       ? schedulePeriodLabel
       : (selectedWeeksForPublish.length ? selectedWeeksForPublish.map(option => option.label).join(', ') : 'selected weeks');
@@ -2018,9 +2042,10 @@ const handlePublish = async (scope = 'selected-weeks') => {
         publishPeriodEnd,
         publishPeriodLabel,
         unpublishedShiftCount: unpub.length,
-        allPeriodShiftCount: schedulePeriodShifts.length,
+        allPeriodShiftCount: publicationPeriodShifts.length,
+        unpublishedShiftIds: unpub.map(s => s.id).filter(Boolean),
         unpublishedShifts: unpub.map(s => ({ ...s })),
-        periodShifts: schedulePeriodShifts.map(s => ({ ...s }))
+        periodShifts: publicationPeriodShifts.map(s => ({ ...s }))
       };
       const stamp = now.toISOString().replace(/[:.]/g, '-');
       downloadTextFile(`${restaurantPrefix}-Schedule-Publish-Backup-${publishPeriodStart}-to-${publishPeriodEnd}-${stamp}.json`, JSON.stringify(backupPayload, null, 2), 'application/json;charset=utf-8;');
@@ -3979,20 +4004,6 @@ const TabTimeOff = ({ timeOffRequests, appUser, users, addToast, events = [], sh
   const myId = authUserId;
   const schedulePublishingSettings = getSchedulePublishingSettings(appUser, clientData);
   const schedulePerson = getSchedulePersonForAppUser(appUser, users);
-  const scheduleRestaurantId = appUser?.restaurantId || '';
-
-  useEffect(() => {
-    if (!scheduleRestaurantId) return;
-    const storedMarkers = readScheduleDeletedShiftMarkersFromStorage(scheduleRestaurantId);
-    if (storedMarkers.length) {
-      setLocalBuilderDeletedShiftMarkers(prev => mergeLocalShiftDeletionMarkers(prev, storedMarkers));
-    }
-  }, [scheduleRestaurantId]);
-
-  useEffect(() => {
-    if (!scheduleRestaurantId) return;
-    writeScheduleDeletedShiftMarkersToStorage(scheduleRestaurantId, localBuilderDeletedShiftMarkers);
-  }, [scheduleRestaurantId, localBuilderDeletedShiftMarkers]);
   const postPublishedTimeOffAllowed = schedulePublishingSettings.allowPostPublishedTimeOff;
   const monthDays = Array.from({length: getDaysInMonth(calMonth)}).map((_, i) => `${calMonth}-${String(i+1).padStart(2, '0')}`);
   const firstDayOffset = new Date(calMonth+'-01T12:00:00').getDay();

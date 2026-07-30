@@ -45,8 +45,8 @@ let parser;
 let traverse;
 let importGraphAvailable = true;
 try {
-  parser = require('@babel/parser');
-  traverse = require('@babel/traverse').default;
+  parser = require(require.resolve('@babel/parser', { paths: [root] }));
+  traverse = require(require.resolve('@babel/traverse', { paths: [root] })).default;
 } catch (error) {
   importGraphAvailable = false;
   result.errors.push(`Babel parser/traverse unavailable: ${error.message}. Run npm ci --include=dev --no-audit --no-fund before source inventory.`);

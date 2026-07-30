@@ -11,6 +11,18 @@ const getMonthBounds = (dateStr) => {
   const endDate = new Date(year, month, 0);
   return { start, end: formatDate(endDate) };
 };
+const WEEKDAY_INDEX = { Sunday: 0, Monday: 1, Tuesday: 2, Wednesday: 3, Thursday: 4, Friday: 5, Saturday: 6 };
+const normalizeWeekStart = (value = 'Monday') => Object.prototype.hasOwnProperty.call(WEEKDAY_INDEX, String(value || 'Monday')) ? String(value || 'Monday') : 'Monday';
+const getOuterScheduleWeekBounds = (bounds, appUser = {}) => {
+  const startKey = bounds?.start || getToday();
+  const endKey = bounds?.end || startKey;
+  const weekStartIndex = WEEKDAY_INDEX[normalizeWeekStart(appUser?.systemSettings?.scheduleWeekStartsOn || appUser?.systemSettings?.weekStartsOn || appUser?.preferences?.payPeriodStart || 'Monday')] ?? 1;
+  const start = new Date(`${startKey}T12:00:00`);
+  while (start.getDay() !== weekStartIndex) start.setDate(start.getDate() - 1);
+  const end = new Date(`${endKey}T12:00:00`);
+  while (end.getDay() !== ((weekStartIndex + 6) % 7)) end.setDate(end.getDate() + 1);
+  return { start: formatDate(start), end: formatDate(end) };
+};
 export const getCanonicalScheduleUserId = (user = {}) => {
   const safeUser = user && typeof user === 'object' ? user : {};
   return safeUser.scheduleUserId || safeUser.employeeId || safeUser.rosterUserId || safeUser.userId || safeUser.authUid || safeUser.uid || safeUser.id || '';
@@ -100,6 +112,9 @@ export function buildScheduleQueryPlan({ activeTabState = '', activeScheduleSubT
   }
   // My Schedule must not hide restored/imported legacy shifts that have employeeId,
   // rosterUserId, email, or name but do not yet have scheduleUserId. Load the
-  // selected month safely, then TabSchedule filters to the current person.
-  return { ...plan, shiftClauses: [['date','>=', monthBounds.start], ['date','<=', monthBounds.end]], shiftLimit: 320, timeOffClauses: authUserId ? [['userId','==', authUserId], ['date','>=', monthBounds.start], ['date','<=', monthBounds.end]] : [['userId','==','__none__']], timeOffLimit: 60, swapsEnabled: true, swapClauses: authUserId ? [['requesterUserId','==', authUserId], ['shiftDate','>=', today]] : [['status','in',['available','open']]], swapLimit: 40, eventEnabled: false, needsRoster: true };
+  // selected schedule month plus the full outer pay-period weeks. That way a
+  // published August Week 1 can include late-July shifts and still resolve the
+  // employee-facing schedule correctly after partial publishing.
+  const myScheduleBounds = getOuterScheduleWeekBounds(monthBounds, safeAppUser);
+  return { ...plan, shiftClauses: [['date','>=', myScheduleBounds.start], ['date','<=', myScheduleBounds.end]], shiftLimit: 420, timeOffClauses: authUserId ? [['userId','==', authUserId], ['date','>=', myScheduleBounds.start], ['date','<=', myScheduleBounds.end]] : [['userId','==','__none__']], timeOffLimit: 80, swapsEnabled: true, swapClauses: authUserId ? [['requesterUserId','==', authUserId], ['shiftDate','>=', today]] : [['status','in',['available','open']]], swapLimit: 40, eventEnabled: false, needsRoster: true };
 }
