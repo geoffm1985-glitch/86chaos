@@ -111,6 +111,58 @@ const TabMenuIntelligence = lazyFeature(() => import('./features/intelligence'),
 const TabAITools = lazyFeature(() => import('./features/intelligence'), 'TabAITools');
 const TabHrTraining = lazyFeature(() => import('./features/hr'), 'TabHrTraining');
 
+
+const parseForceLogoutTimeMs = (value) => {
+  if (!value) return 0;
+  if (typeof value === 'number') return value > 1000000000000 ? value : value * 1000;
+  if (typeof value === 'string') {
+    const parsed = new Date(value).getTime();
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+  if (typeof value?.toDate === 'function') {
+    const parsed = value.toDate().getTime();
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+  if (typeof value?.seconds === 'number') return value.seconds * 1000;
+  return 0;
+};
+
+const getAuthLastSignInTimeMs = () => {
+  try {
+    const parsed = new Date(auth?.currentUser?.metadata?.lastSignInTime || '').getTime();
+    return Number.isFinite(parsed) ? parsed : 0;
+  } catch (_) {
+    return 0;
+  }
+};
+
+const getForceLogoutEventKey = (user = {}) => {
+  const userId = String(user?.id || auth?.currentUser?.uid || user?.email || 'unknown').toLowerCase();
+  const stamp = parseForceLogoutTimeMs(user?.forceLogoutAt || user?.forceLogoutTime || user?.forcedLogoutAt || user?.logoutBefore || user?.sessionRevokedAt);
+  const reason = String(user?.forceLogoutReason || 'force-logout').slice(0, 80);
+  return `86chaos:forceLogoutHandled:${userId}:${stamp || 'legacy'}:${reason}`;
+};
+
+const hasCurrentLoginAlreadyHonoredForceLogout = (user = {}) => {
+  const forceAtMs = parseForceLogoutTimeMs(user?.forceLogoutAt || user?.forceLogoutTime || user?.forcedLogoutAt || user?.logoutBefore || user?.sessionRevokedAt);
+  const signInMs = getAuthLastSignInTimeMs();
+  if (forceAtMs && signInMs && signInMs > forceAtMs + 1000) return true;
+  const key = getForceLogoutEventKey(user);
+  try {
+    const handledAt = Number(localStorage.getItem(key) || sessionStorage.getItem(key) || '0');
+    if (!forceAtMs && handledAt > 0) return true;
+    if (forceAtMs && handledAt >= forceAtMs) return true;
+  } catch (_) {}
+  return false;
+};
+
+const markForceLogoutHandledLocally = (user = {}) => {
+  const key = getForceLogoutEventKey(user);
+  const forceAtMs = parseForceLogoutTimeMs(user?.forceLogoutAt || user?.forceLogoutTime || user?.forcedLogoutAt || user?.logoutBefore || user?.sessionRevokedAt) || Date.now();
+  try { localStorage.setItem(key, String(forceAtMs)); } catch (_) {}
+  try { sessionStorage.setItem(key, String(forceAtMs)); } catch (_) {}
+};
+
 class AppSurfaceErrorBoundary extends React.Component {
   constructor(props) {
     super(props);
@@ -778,12 +830,31 @@ const [currentDate, setCurrentDate] = useState(getToday());
 
   // --- REMOTE SESSION KILL SWITCH ---
   useEffect(() => {
-    if (liveAppUser?.forceLogout) {
-      updateDoc(doc(db, "users", liveAppUser.id), { forceLogout: false }).catch(()=>{});
-      clearSessionAndLogout();
-      alert("Session terminated by System Administrator to clear a cache error. Please log in again.");
+    if (!liveAppUser?.forceLogout || !liveAppUser?.id) return;
+
+    // forceLogout is a one-shot session invalidation. Staff accounts may not be allowed
+    // to clear their own server flag, so never trap a fresh login in a permanent logout loop.
+    // If the current Firebase sign-in happened after forceLogoutAt, or this legacy event
+    // was already honored locally, let the user in and quietly try to clear the stale flag.
+    const alreadyHonored = hasCurrentLoginAlreadyHonoredForceLogout(liveAppUser);
+    if (alreadyHonored) {
+      updateDoc(doc(db, "users", liveAppUser.id), {
+        forceLogout: false,
+        forceLogoutClearedAt: new Date().toISOString(),
+        forceLogoutClearMode: 'client-stale-session-guard'
+      }).catch(() => {});
+      return;
     }
-  }, [liveAppUser?.forceLogout, clearSessionAndLogout]);
+
+    markForceLogoutHandledLocally(liveAppUser);
+    updateDoc(doc(db, "users", liveAppUser.id), {
+      forceLogout: false,
+      forceLogoutClearedAt: new Date().toISOString(),
+      forceLogoutClearMode: 'client-before-signout'
+    }).catch(() => {});
+    clearSessionAndLogout();
+    alert("Your session was signed out by a System Administrator. Please log in again.");
+  }, [liveAppUser?.forceLogout, liveAppUser?.forceLogoutAt, liveAppUser?.id, clearSessionAndLogout]);
 
 
 

@@ -8290,7 +8290,7 @@ Type RESTORE to continue.`);
                     <div className="grid grid-cols-2 sm:flex sm:flex-wrap lg:justify-end gap-2 lg:min-w-[360px]">
                       <button onClick={() => openSupportUserEditor(u)} className="px-2.5 py-2 bg-blue-900/20 border border-blue-500/50 text-blue-300 font-bold text-[9px] uppercase tracking-widest rounded-lg hover:bg-blue-900/40">Support Edit</button>
                       <button onClick={() => { setGhostTenant({ id: selectedClient.id, name: selectedClient.name, mode: 'user', impersonate: u }); setSelectedClient(null); setActiveTab('published'); }} className="px-2.5 py-2 bg-fuchsia-900/20 border border-fuchsia-500/50 text-fuchsia-300 font-bold text-[9px] uppercase tracking-widest rounded-lg hover:bg-fuchsia-900/40">Possess</button>
-                      <button onClick={async () => { if(!window.confirm(`Force ${u.name || u.email} to log out and clear their device cache?`)) return; await updateDoc(doc(db, 'users', u.id), { forceLogout: true }); addToast('Executed', 'Kill signal sent to user device.'); }} className="px-2.5 py-2 bg-orange-900/20 border border-orange-900/50 text-orange-300 font-bold text-[9px] uppercase tracking-widest rounded-lg hover:bg-orange-900/40">Force Logout</button>
+                      <button onClick={async () => { if(!window.confirm(`Force ${u.name || u.email} to log out and clear their device cache?`)) return; await updateDoc(doc(db, 'users', u.id), { forceLogout: true, forceLogoutAt: new Date().toISOString(), forceLogoutReason: 'system-admin-user-cache-clear' }); addToast('Executed', 'Kill signal sent to user device.'); }} className="px-2.5 py-2 bg-orange-900/20 border border-orange-900/50 text-orange-300 font-bold text-[9px] uppercase tracking-widest rounded-lg hover:bg-orange-900/40">Force Logout</button>
                       <button onClick={() => handleDeleteGlobalUser(u)} className="px-2.5 py-2 bg-red-900/20 border border-red-900/50 text-red-300 font-bold text-[9px] uppercase tracking-widest rounded-lg hover:bg-red-900/40">Delete</button>
                     </div>
                   </div>
@@ -9639,7 +9639,7 @@ another@email.com"></textarea>
                     </label>
               <button onClick={async () => {
                       if(!window.confirm(`Force ${u.name} to log out and clear their device cache?`)) return;
-                      await updateDoc(doc(db, "users", u.id), { forceLogout: true });
+                      await updateDoc(doc(db, "users", u.id), { forceLogout: true, forceLogoutAt: new Date().toISOString(), forceLogoutReason: 'system-admin-user-cache-clear' });
                       addToast('Executed', 'Kill signal sent to user device.');
                     }} className="p-1.5 bg-orange-900/20 border border-orange-900/50 text-orange-500 hover:bg-orange-900/40 rounded-lg transition-colors shadow-sm" title="Force Logout & Cache Clear">
                       🔌
