@@ -4,7 +4,7 @@ const path = require('path');
 
 const { loadEnv, env, boolEnv } = require('./env-loader.cjs');
 const { readFirebaseConfig } = require('./firebase-client.cjs');
-const { ensureRunDir, getSeedReportPath, getCleanupReportPath, readJsonIfExists, writeJson } = require('../86chaos-release-gate/run-context.cjs');
+const { ensureRunDir, getSeedReportPath, getCleanupReportPath, getSetupStatePath, readJsonIfExists, writeJson } = require('../86chaos-release-gate/run-context.cjs');
 
 loadEnv(process.cwd());
 
@@ -209,7 +209,23 @@ async function main() {
     report.seedReportPath = seedPath;
     const validation = validateSeedForCleanup(seed, RUN_ID);
     report.seedValidation = validation;
-    if (!validation.ok) throw new Error(`Cleanup refused before deleting anything:\n${validation.errors.join('\n')}`);
+    if (!validation.ok) {
+      const setupState = readJsonIfExists(getSetupStatePath(RUN_ID));
+      const seededRows = Array.isArray(seed?.seededDocuments) ? seed.seededDocuments : [];
+      const noCurrentRunQaData = !validation.restaurantId && seed?.createdRestaurant !== true && seededRows.length === 0 && setupState?.seeded !== true;
+      if (noCurrentRunQaData) {
+        writeReport({
+          ...report,
+          ok: true,
+          skipped: true,
+          reason: 'Cleanup safely skipped because QA setup did not create a current-run restaurant or seeded child records.',
+          setupState: setupState || null,
+        });
+        return;
+      }
+      throw new Error(`Cleanup refused before deleting anything:
+${validation.errors.join('\n')}`);
+    }
     const restaurantId = validation.restaurantId;
 
     const config = readFirebaseConfig();

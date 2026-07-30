@@ -363,9 +363,9 @@ const SHIFT_LOCAL_DELETE_MARKER_GRACE_MS = 5000;
 const SHIFT_LOCAL_DELETE_MARKER_TTL_MS = 120000;
 
 const getScheduleShiftLocalDeleteKeys = (shift = {}) => {
-  const keys = [];
   const id = String(shift?.id || '').trim();
-  if (id) keys.push(`id:${id}`);
+  if (id) return [`id:${id}`];
+  const keys = [];
   const fingerprint = buildShiftFingerprint(shift);
   if (fingerprint) keys.push(`fp:${fingerprint}`);
   const fallback = [
@@ -398,6 +398,8 @@ const scheduleShiftHasLocalDeleteKey = (shift = {}, key = '') => getScheduleShif
 
 const shiftMatchesLocalDeleteMarkers = (shift = {}, markerKeySet = new Set()) => {
   if (!markerKeySet || markerKeySet.size === 0) return false;
+  const id = String(shift?.id || '').trim();
+  if (id) return markerKeySet.has(`id:${id}`);
   return getScheduleShiftLocalDeleteKeys(shift).some(key => markerKeySet.has(key));
 };
 
@@ -1426,6 +1428,8 @@ const [eventDate, setEventDate] = useState(getToday());
   const [autoFillVisibleShifts, setAutoFillVisibleShifts] = useState([]);
   const [localBuilderShiftEchoes, setLocalBuilderShiftEchoes] = useState([]);
   const [localBuilderDeletedShiftMarkers, setLocalBuilderDeletedShiftMarkers] = useState([]);
+  const [isPublishPickerOpen, setIsPublishPickerOpen] = useState(false);
+  const [selectedPublishWeekKeys, setSelectedPublishWeekKeys] = useState([]);
   
   const monthStr = getMonthStr(currentDate); 
   const monthDays = Array.from({length: getDaysInMonth(monthStr)}).map((_, i) => `${monthStr}-${String(i+1).padStart(2, '0')}`);
@@ -1442,6 +1446,7 @@ const [eventDate, setEventDate] = useState(getToday());
     const now = Date.now();
     setLocalBuilderDeletedShiftMarkers(prev => prev.filter(marker => {
       if (!marker?.key || Number(marker.expiresAt || 0) <= now) return false;
+      if (String(marker.key).startsWith('id:')) return true;
       const stillVisibleInLiveSnapshot = (shifts || []).some(shift => scheduleShiftHasLocalDeleteKey(shift, marker.key));
       const stillInsideGraceWindow = now - Number(marker.createdAt || now) < SHIFT_LOCAL_DELETE_MARKER_GRACE_MS;
       return stillVisibleInLiveSnapshot || stillInsideGraceWindow;
@@ -1461,6 +1466,45 @@ const [eventDate, setEventDate] = useState(getToday());
   const schedulePeriodLabel = getSchedulePeriodLabel(schedulePeriodBounds, schedulePublishingSettings);
   const schedulePeriodShifts = visibleShifts.filter(s => { const d = String(s.date || s.scheduleDateKey || ''); return d >= schedulePeriodBounds.start && d <= schedulePeriodBounds.end; });
   const schedulePeriodEvents = events.filter(e => e.type === 'special_event' && e.date >= schedulePeriodBounds.start && e.date <= schedulePeriodBounds.end).sort((a,b) => (a.date || '').localeCompare(b.date || '') || (a.time || '').localeCompare(b.time || '') || (a.title || '').localeCompare(b.title || ''));
+  const publishWeekOptions = [];
+  for (let index = 0; index < schedulePeriodDays.length; index += 7) {
+    const days = schedulePeriodDays.slice(index, index + 7);
+    if (!days.length) continue;
+    const daySet = new Set(days);
+    const drafts = schedulePeriodShifts.filter(shift => !shift.isPublished && daySet.has(String(shift.date || shift.scheduleDateKey || '')));
+    const live = schedulePeriodShifts.filter(shift => shift.isPublished && daySet.has(String(shift.date || shift.scheduleDateKey || '')));
+    publishWeekOptions.push({
+      key: `${days[0]}_${days[days.length - 1]}`,
+      label: `Week ${publishWeekOptions.length + 1}`,
+      start: days[0],
+      end: days[days.length - 1],
+      days,
+      draftCount: drafts.length,
+      liveCount: live.length
+    });
+  }
+  const selectedPublishWeekSet = new Set(selectedPublishWeekKeys);
+  const selectedPublishWeeks = publishWeekOptions.filter(option => selectedPublishWeekSet.has(option.key));
+  const selectedPublishDays = selectedPublishWeeks.flatMap(option => option.days);
+  const selectedPublishDaySet = new Set(selectedPublishDays);
+  const selectedPublishDrafts = schedulePeriodShifts.filter(shift => !shift.isPublished && selectedPublishDaySet.has(String(shift.date || shift.scheduleDateKey || '')));
+  const fullPublishDrafts = schedulePeriodShifts.filter(shift => !shift.isPublished);
+  const publishDateLabel = (start, end) => start === end ? formatDisplayDate(start) : `${formatDisplayDate(start)} to ${formatDisplayDate(end)}`;
+  const selectedPublishLabel = selectedPublishWeeks.length
+    ? selectedPublishWeeks.map(option => `${option.label}: ${publishDateLabel(option.start, option.end)}`).join(', ')
+    : 'No weeks selected';
+  const openPublishPicker = () => {
+    if (fullPublishDrafts.length === 0) {
+      addToast('Notice', 'No unpublished shifts found.');
+      return;
+    }
+    const draftWeekKeys = publishWeekOptions.filter(option => option.draftCount > 0).map(option => option.key);
+    setSelectedPublishWeekKeys(draftWeekKeys.length ? draftWeekKeys : publishWeekOptions.map(option => option.key));
+    setIsPublishPickerOpen(true);
+  };
+  const togglePublishWeek = (key) => {
+    setSelectedPublishWeekKeys(prev => prev.includes(key) ? prev.filter(item => item !== key) : [...prev, key]);
+  };
   const eventsByScheduleDay = schedulePeriodDays.reduce((acc, d) => {
     acc[d] = schedulePeriodEvents.filter(e => e.date === d);
     return acc;
@@ -1797,18 +1841,24 @@ const [eventDate, setEventDate] = useState(getToday());
     }
   };
 
-const handlePublish = async () => { 
-    if(!window.confirm("Publish schedule? Notifications will be sent. A backup file will download first.")) return; 
-    
-    const unpub = schedulePeriodShifts.filter(s => !s.isPublished); 
-    const publishPeriodStart = schedulePeriodBounds.start;
-    const publishPeriodEnd = schedulePeriodBounds.end;
-    const publishPeriodLabel = schedulePeriodLabel;
+const handlePublish = async (scope = 'selected-weeks') => { 
+    const publishAll = scope === 'full-period';
+    const selectedWeeksForPublish = publishAll ? publishWeekOptions : selectedPublishWeeks;
+    const publishDays = publishAll ? schedulePeriodDays : selectedPublishDays;
+    const publishDaySet = new Set(publishDays);
+    const unpub = publishAll ? fullPublishDrafts : selectedPublishDrafts;
+    const publishPeriodStart = publishAll ? schedulePeriodBounds.start : (publishDays[0] || schedulePeriodBounds.start);
+    const publishPeriodEnd = publishAll ? schedulePeriodBounds.end : (publishDays[publishDays.length - 1] || schedulePeriodBounds.end);
+    const publishPeriodLabel = publishAll
+      ? schedulePeriodLabel
+      : (selectedWeeksForPublish.length ? selectedWeeksForPublish.map(option => option.label).join(', ') : 'selected weeks');
+    const publishSelectionLabel = publishAll ? schedulePeriodLabel : selectedPublishLabel;
     
     if (unpub.length === 0) {
-      addToast('Notice', 'No unpublished shifts found.');
+      addToast('Notice', publishAll ? 'No unpublished shifts found.' : 'No unpublished shifts found in the selected weeks.');
       return;
     }
+    if(!window.confirm(`Publish ${unpub.length} draft shift${unpub.length === 1 ? '' : 's'} for ${publishSelectionLabel}? Weeks not selected will stay as drafts.`)) return; 
 
     try {
       const restaurantPrefix = getRestaurantExportPrefix(appUser, appUser?.restaurantId || '86chaos');
@@ -1820,6 +1870,9 @@ const handlePublish = async () => {
         generatedAt: now.toISOString(),
         restaurantId: appUser?.restaurantId || null,
         restaurantName: appUser?.restaurantName || appUser?.systemSettings?.restaurantName || null,
+        publishScope: publishAll ? 'full-period' : 'selected-weeks',
+        publishWeekKeys: selectedWeeksForPublish.map(option => option.key),
+        publishWeeks: selectedWeeksForPublish.map(option => ({ label: option.label, start: option.start, end: option.end, draftCount: option.draftCount, liveCount: option.liveCount })),
         publishPeriodStart,
         publishPeriodEnd,
         publishPeriodLabel,
@@ -1840,8 +1893,8 @@ const handlePublish = async () => {
     try {
       const publishedAtIso = new Date().toISOString();
       const scheduleId = `schedule_${appUser.restaurantId}_${publishPeriodStart}_${publishPeriodEnd}_${Date.now()}`;
-      await Promise.all(unpub.map(s => updateDoc(doc(db, "shifts", s.id), { isPublished: true, publishedAt: publishedAtIso, publishedBy: appUser?.id || appUser?.email || 'unknown', scheduleId, schedulePeriodStart: publishPeriodStart, schedulePeriodEnd: publishPeriodEnd })));
-      const inRangeRequests = (timeOffRequests || []).filter(r => r?.date >= publishPeriodStart && r?.date <= publishPeriodEnd && String(r.restaurantId || r.workspaceId || appUser.restaurantId) === String(appUser.restaurantId));
+      await Promise.all(unpub.map(s => updateDoc(doc(db, "shifts", s.id), { isPublished: true, publishedAt: publishedAtIso, publishedBy: appUser?.id || appUser?.email || 'unknown', scheduleId, schedulePeriodStart: publishPeriodStart, schedulePeriodEnd: publishPeriodEnd, publishScope: publishAll ? 'full-period' : 'selected-weeks', publishWeekKeys: selectedWeeksForPublish.map(option => option.key) })));
+      const inRangeRequests = (timeOffRequests || []).filter(r => publishDaySet.has(String(r?.date || '')) && String(r.restaurantId || r.workspaceId || appUser.restaurantId) === String(appUser.restaurantId));
       const processedRequests = inRangeRequests.filter(r => ['approved', 'denied'].includes(String(r.status || '').toLowerCase()) && r.archived !== true && r.processed !== true);
       const pendingPublishedOverlap = inRangeRequests.filter(r => String(r.status || '').toLowerCase() === 'pending');
       await Promise.all(processedRequests.map(r => updateDoc(doc(db, 'timeOffRequests', r.id), {
@@ -1869,9 +1922,10 @@ const handlePublish = async () => {
       })));
       if (processedRequests.length) await logAudit(appUser, 'TIME_OFF_AUTO_ARCHIVED_ON_PUBLISH', `${processedRequests.length} request-offs`, scheduleId);
       if (pendingPublishedOverlap.length) await logAudit(appUser, 'TIME_OFF_PENDING_OVERLAPS_PUBLISHED_SCHEDULE', `${pendingPublishedOverlap.length} pending request-offs`, scheduleId);
-      
-      addToast("Published", `Schedule is live, backup downloaded, and ${processedRequests.length} request-off records were archived to history.`); 
-      logAudit(appUser, 'PUBLISH_SCHEDULE', 'Master Roster', `Pushed ${unpub.length} shifts live for ${publishPeriodLabel}. Local backup JSON downloaded before publish.`); 
+      setIsPublishPickerOpen(false);
+      setSelectedPublishWeekKeys([]);
+      addToast("Published", `${unpub.length} shift${unpub.length === 1 ? '' : 's'} published for ${publishPeriodLabel}. Weeks not selected stayed as drafts.`); 
+      logAudit(appUser, 'PUBLISH_SCHEDULE', 'Master Roster', `Pushed ${unpub.length} shifts live for ${publishSelectionLabel}. Local backup JSON downloaded before publish.`); 
 
 // --- NEW: TRIGGER PUSH NOTIFICATIONS ---
       try {
@@ -1881,7 +1935,12 @@ const handlePublish = async () => {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ 
             restaurantId: appUser.restaurantId,
-            restaurantName: appUser.restaurantName || 'Your restaurant'
+            restaurantName: appUser.restaurantName || 'Your restaurant',
+            scheduleId,
+            publishScope: publishAll ? 'full-period' : 'selected-weeks',
+            publishPeriodStart,
+            publishPeriodEnd,
+            publishWeekKeys: selectedWeeksForPublish.map(option => option.key)
           })
         });
         
@@ -2658,16 +2717,26 @@ const handleExportTimesheets = () => {
     return `${start.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}-${end.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`;
   };
 
+  const maxDateKey = (a = '', b = '') => String(a || '') >= String(b || '') ? String(a || '') : String(b || '');
+  const minDateKey = (a = '', b = '') => String(a || '') <= String(b || '') ? String(a || '') : String(b || '');
+
   const scheduledHoursWeekBlocks = [];
   let hoursWeekStart = getScheduledHoursWeekStart(schedulePeriodBounds.start);
   const lastHoursWeekStart = getScheduledHoursWeekStart(schedulePeriodBounds.end);
   while (hoursWeekStart <= lastHoursWeekStart && scheduledHoursWeekBlocks.length < 12) {
-    const hoursWeekEnd = addScheduleDays(hoursWeekStart, 6);
-    scheduledHoursWeekBlocks.push({
-      start: hoursWeekStart,
-      end: hoursWeekEnd,
-      days: buildDateRange(hoursWeekStart, hoursWeekEnd)
-    });
+    const fullWeekStart = hoursWeekStart;
+    const fullWeekEnd = addScheduleDays(hoursWeekStart, 6);
+    const visibleWeekStart = maxDateKey(fullWeekStart, schedulePeriodBounds.start);
+    const visibleWeekEnd = minDateKey(fullWeekEnd, schedulePeriodBounds.end);
+    if (visibleWeekStart <= visibleWeekEnd) {
+      scheduledHoursWeekBlocks.push({
+        start: visibleWeekStart,
+        end: visibleWeekEnd,
+        fullStart: fullWeekStart,
+        fullEnd: fullWeekEnd,
+        days: buildDateRange(visibleWeekStart, visibleWeekEnd)
+      });
+    }
     hoursWeekStart = addScheduleDays(hoursWeekStart, 7);
   }
   const getScheduledHoursDayAudit = (dateKey, person) => {
@@ -2957,6 +3026,49 @@ const handleExportTimesheets = () => {
         </div>
       </Modal>
 
+      <Modal isOpen={isPublishPickerOpen} onClose={() => setIsPublishPickerOpen(false)} title="Choose What to Publish" sizeClass="max-w-2xl">
+        <div className="space-y-4">
+          <div className="rounded-xl border border-[#2A353D] bg-[#12161A] p-3">
+            <div className="text-[10px] font-black uppercase tracking-widest text-[#D4A381]">Publish safely</div>
+            <p className="mt-1 text-xs font-bold text-slate-300 leading-snug">Choose the weeks you want to publish. Any week you leave unchecked stays as a draft.</p>
+            <div className="mt-2 text-[11px] font-black text-white">{fullPublishDrafts.length} draft shift{fullPublishDrafts.length === 1 ? '' : 's'} in {schedulePeriodLabel}</div>
+          </div>
+
+          <div className="space-y-2">
+            {publishWeekOptions.map(option => {
+              const checked = selectedPublishWeekKeys.includes(option.key);
+              const disabled = option.draftCount === 0;
+              return (
+                <label key={option.key} className={`flex items-center gap-3 rounded-xl border p-3 transition ${checked ? 'border-[#D4A381] bg-[#D4A381]/10' : 'border-[#2A353D] bg-[#12161A]'} ${disabled ? 'opacity-55' : 'cursor-pointer hover:border-[#D4A381]/70'}`}>
+                  <input
+                    type="checkbox"
+                    checked={checked}
+                    disabled={disabled}
+                    onChange={() => togglePublishWeek(option.key)}
+                    className="h-5 w-5 accent-[#D4A381]"
+                  />
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-sm font-black text-white">{option.label}: {publishDateLabel(option.start, option.end)}</span>
+                    <span className="block text-[11px] font-bold text-slate-400">{option.draftCount} draft • {option.liveCount} live</span>
+                  </span>
+                </label>
+              );
+            })}
+          </div>
+
+          <div className="rounded-xl border border-[#2A353D] bg-[#0B0E11] p-3 text-xs font-bold text-slate-300">
+            Selected: <span className="text-white">{selectedPublishDrafts.length}</span> draft shift{selectedPublishDrafts.length === 1 ? '' : 's'}
+            {selectedPublishWeeks.length > 0 && <span className="block mt-1 text-[11px] text-slate-400">{selectedPublishLabel}</span>}
+          </div>
+
+          <div className="flex flex-col sm:flex-row gap-2">
+            <button type="button" onClick={() => handlePublish('selected-weeks')} disabled={selectedPublishDrafts.length === 0} className={`${T.btn} flex-1 py-3 disabled:opacity-50`}>Publish Selected Weeks</button>
+            <button type="button" onClick={() => handlePublish('full-period')} disabled={fullPublishDrafts.length === 0} className={`${T.btnAlt} flex-1 py-3`}>Publish Full Schedule</button>
+            <button type="button" onClick={() => setIsPublishPickerOpen(false)} className={`${T.btnAlt} flex-1 py-3`}>Cancel</button>
+          </div>
+        </div>
+      </Modal>
+
 {/* TOP NAVIGATION TOGGLE */}
       {!hideSubTabs && (
         <div className="flex flex-wrap gap-1.5 border-b border-[#2A353D] pb-2 mb-2">
@@ -3022,7 +3134,7 @@ const handleExportTimesheets = () => {
               </div>
 <button onClick={() => setIsAutoPopulateModalOpen(true)} className={`schedule-builder-action-button flex-1 lg:flex-none ${T.btnAlt} py-1.5 h-9 flex items-center justify-center font-black border-blue-900/50 text-blue-400`}>
                 <Repeat size={16} className="mr-1"/> Auto-Fill
-              </button>              <button onClick={handlePublish} className={`schedule-builder-action-button flex-1 lg:flex-none ${T.btnAlt} py-1.5 h-9 flex items-center justify-center font-black`}>Publish</button>
+              </button>              <button onClick={openPublishPicker} className={`schedule-builder-action-button flex-1 lg:flex-none ${T.btnAlt} py-1.5 h-9 flex items-center justify-center font-black`}>Publish</button>
               <button onClick={openNewEventModal} className={`schedule-builder-action-button flex-1 lg:flex-none ${T.btnAlt} border-[#D4A381] text-[#D4A381] py-1.5 h-9 flex items-center justify-center font-black`}><Plus size={16} className="mr-1"/> Event</button>
             </div>
           </div>
@@ -3139,7 +3251,7 @@ const handleExportTimesheets = () => {
                     </React.Fragment>
                   ))}
                   <tr className="bg-[#0B0E11] border-t-2 border-[#D4A381]/30">
-                    <td className={`px-2 py-2 text-[8px] font-black uppercase tracking-widest text-[#D4A381] sticky left-0 z-10 border-r border-[#2A353D] text-right shadow-md`}>
+                    <td className={`px-2 py-2 text-[8px] font-black uppercase tracking-widest text-[#D4A381] sticky left-0 z-10 border-r border-[#2A353D] text-right shadow-md whitespace-nowrap min-w-[96px]`}>
                       Proj. Cost
                     </td>
                     {schedulePeriodDays.map(d => (
@@ -3162,22 +3274,22 @@ const handleExportTimesheets = () => {
               <table className="scheduled-hours-tracker-table w-full text-left text-xs border-collapse min-w-[760px]">
                 <thead>
                   <tr className="bg-[#1A2126] border-b border-[#2A353D] text-[9px] font-black uppercase tracking-widest text-slate-400">
-                    <th className="p-3 border-r border-[#2A353D] sticky left-0 bg-[#1A2126] z-10 w-24">Employee</th>
-                    {scheduledHoursWeekBlocks.map((w, i) => <th key={i} className="p-3 text-center border-r border-[#2A353D]" title={`Whole pay-period week: ${formatDisplayDate(w.start)} - ${formatDisplayDate(w.end)}`}>Wk {i+1}<div className="text-[7px] text-slate-600 mt-0.5">{formatScheduledHoursWeekRange(w)}</div></th>)}
-                    <th className="p-3 text-center text-[#D4A381]">Month Total</th>
+                    <th className="p-3 border-r border-[#2A353D] sticky left-0 bg-[#1A2126] z-10 w-28 min-w-[112px] whitespace-nowrap">Employee</th>
+                    {scheduledHoursWeekBlocks.map((w, i) => <th key={i} className="p-3 text-center border-r border-[#2A353D] min-w-[86px] whitespace-nowrap" title={`Visible schedule days in this week: ${formatDisplayDate(w.start)} - ${formatDisplayDate(w.end)}`}>Wk {i+1}<div className="text-[7px] text-slate-600 mt-0.5 whitespace-nowrap">{formatScheduledHoursWeekRange(w)}</div></th>)}
+                    <th className="p-3 text-center text-[#D4A381] min-w-[86px] whitespace-nowrap">Month Total</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-[#2A353D]">
                   {scheduledHours.length === 0 && <tr><td colSpan={scheduledHoursWeekBlocks.length + 2} className="p-6 text-center text-slate-500 font-bold">No hours scheduled yet.</td></tr>}
                   {scheduledHours.map(u => (
                     <tr key={u.id} className="hover:bg-[#12161A]/50 transition-colors">
-                      <td className="p-3 font-bold text-white border-r border-[#2A353D] sticky left-0 bg-[#1A2126] z-10 truncate">{u.name || 'Unnamed'}</td>
+                      <td className="p-3 font-bold text-white border-r border-[#2A353D] sticky left-0 bg-[#1A2126] z-10 truncate min-w-[112px]">{u.name || 'Unnamed'}</td>
                       {u.weekly.map((hrs, i) => (
-                        <td key={i} title={formatScheduledHoursWeekAudit(u.person || u, scheduledHoursWeekBlocks[i], hrs)} className={`p-3 text-center font-black border-r border-[#2A353D] ${hrs > parseFloat(appUser?.systemSettings?.overtime || 40) ? 'text-red-500 bg-red-900/10' : hrs > 0 ? 'text-emerald-400' : 'text-slate-600'}`}>
+                        <td key={i} title={formatScheduledHoursWeekAudit(u.person || u, scheduledHoursWeekBlocks[i], hrs)} className={`p-3 text-center font-black border-r border-[#2A353D] min-w-[86px] whitespace-nowrap ${hrs > parseFloat(appUser?.systemSettings?.overtime || 40) ? 'text-red-500 bg-red-900/10' : hrs > 0 ? 'text-emerald-400' : 'text-slate-600'}`}>
                           {hrs > 0 ? hrs.toFixed(1) : '-'}
                         </td>
                       ))}
-                      <td className="p-3 text-center font-black text-[#D4A381] bg-[#12161A]/30">{u.total.toFixed(1)}</td>
+                      <td className="p-3 text-center font-black text-[#D4A381] bg-[#12161A]/30 min-w-[86px] whitespace-nowrap">{u.total.toFixed(1)}</td>
                     </tr>
                   ))}
                 </tbody>

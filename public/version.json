@@ -1,14 +1,13 @@
 {
-  "version": "16.0.56",
-  "name": "86 Chaos 16.0.56 Schedule Delete Visibility Fix",
-  "releasedAt": "2026-07-29T00:00:00.000Z",
-  "label": "86 Chaos 16.0.56 Schedule Delete Visibility Fix",
-  "build": "16.0.56",
-  "notes": "Fixes Schedule Builder so deleted shifts are removed from the visible grid immediately while the Firestore listener catches up.",
-  "releaseNotes": [
-    "Schedule Builder now hides successfully deleted shifts immediately, including optimistic shift echoes and pending auto-fill preview records.",
-    "Local delete markers prevent a just-deleted shift from flashing back onto the grid while Firestore snapshots settle.",
-    "The fix is scoped to schedule visibility and does not change Firebase rules, indexes, credentials, pricing, or app design."
-  ],
-  "releaseTitle": "86 Chaos 16.0.56 Schedule Delete Visibility Fix"
+  "version": "16.0.59",
+  "name": "86 Chaos 16.0.59 Partial Publish and Schedule Reassign Guard Fix",
+  "build": "16.0.59",
+  "label": "86 Chaos 16.0.59 Partial Publish and Schedule Reassign Guard Fix",
+  "releasedAt": "2026-07-29T20:59:00-05:00",
+  "releaseTitle": "86 Chaos 16.0.59 Partial Publish and Schedule Reassign Guard Fix",
+  "notes": [
+    "Schedule Builder Publish now opens a week-selection dialog so managers can publish selected weeks or the full schedule.",
+    "Deleted shift markers now track real Firestore document IDs only for saved shifts, preventing a deleted shift from being restored when a new overlapping shift is added for the same employee and day.",
+    "Schedule delete/reassign, menu costing, protected root admin, and release-gate fixes from earlier versions are preserved."
+  ]
 }
