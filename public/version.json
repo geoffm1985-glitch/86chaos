@@ -1,13 +1,13 @@
 {
-  "version": "16.0.59",
-  "name": "86 Chaos 16.0.59 Partial Publish and Schedule Reassign Guard Fix",
-  "build": "16.0.59",
-  "label": "86 Chaos 16.0.59 Partial Publish and Schedule Reassign Guard Fix",
-  "releasedAt": "2026-07-29T20:59:00-05:00",
-  "releaseTitle": "86 Chaos 16.0.59 Partial Publish and Schedule Reassign Guard Fix",
+  "version": "16.0.60",
+  "name": "86 Chaos 16.0.60 Pay-Period Hours and Test Runner Install Fix",
+  "build": "16.0.60",
+  "label": "86 Chaos 16.0.60 Pay-Period Hours and Test Runner Install Fix",
+  "releasedAt": "2026-07-29T21:56:00-05:00",
+  "releaseTitle": "86 Chaos 16.0.60 Pay-Period Hours and Test Runner Install Fix",
   "notes": [
-    "Schedule Builder Publish now opens a week-selection dialog so managers can publish selected weeks or the full schedule.",
-    "Deleted shift markers now track real Firestore document IDs only for saved shifts, preventing a deleted shift from being restored when a new overlapping shift is added for the same employee and day.",
-    "Schedule delete/reassign, menu costing, protected root admin, and release-gate fixes from earlier versions are preserved."
+    "Scheduled Hours Tracker now calculates each week from the full pay-period week, including previous-month days that belong to Week 1.",
+    "The full local test suite runner now checks the required Node version before npm ci and gives clearer dependency-install diagnostics.",
+    "Partial publishing and delete/reassign schedule fixes from 16.0.59 are preserved."
   ]
 }
