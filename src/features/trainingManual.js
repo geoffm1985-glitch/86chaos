@@ -151,7 +151,8 @@ export const SYSTEM_TRAINING_MANUAL_CHAPTERS = [
         "If you forgot a punch or the wrong time was saved, tell a manager. Managers correct the official punch in Financials and record a reason."
       ]},
       { title: "Schedule views", steps: [
-        "My Schedule shows your upcoming shifts and the fastest links to trades and time-off requests.",
+        "My Schedule shows your upcoming published shifts and the fastest links to trades and time-off requests.",
+        "If a manager publishes only one week, your shifts for that selected week should appear here as soon as the publish finishes and the app refreshes the live schedule.",
         "Full Schedule shows the published restaurant schedule you are allowed to see. Month View is useful for planning farther ahead.",
         "Past shifts are dimmed after their real end time so they are not mistaken for active work.",
         "Only a published schedule is official. Drafts in Schedule Builder are manager work in progress."
@@ -182,9 +183,18 @@ export const SYSTEM_TRAINING_MANUAL_CHAPTERS = [
       ]},
       { title: "Publish safely", steps: [
         "Resolve important warnings and confirm events before publishing.",
-        "Publishing makes the schedule visible to staff and may trigger notifications. Confirm the week and restaurant one final time.",
+        "Click Publish, then choose the exact week or weeks to make live. The picker uses full schedule weeks, so Week 1 can include previous-month dates such as Jul 27-Aug 2 when those dates belong to the same pay-period week.",
+        "Publish Selected Weeks makes only the selected week dates visible to staff. Weeks not selected stay as drafts so managers can keep building them.",
+        "Publish Full Schedule publishes the whole schedule window shown in the picker. Confirm the week range, draft count, and restaurant one final time before approving.",
+        "Publishing makes the schedule visible to staff and may trigger notifications. After publishing, check My Schedule or Full Schedule with an affected employee to confirm the live shifts appear.",
         "If you edit a published shift, explain the change and confirm the affected employee receives the update.",
         "Use emergency schedule repair tools only when the normal builder cannot correct corrupted or duplicate records, and make a backup first."
+      ]},
+      { title: "Scheduled Hours Tracker and pay-period weeks", steps: [
+        "Scheduled Hours Tracker follows pay-period weeks, not just the dates visible in the month grid.",
+        "For an August schedule, Week 1 can count late-July shifts when the pay-period week runs Jul 27-Aug 2.",
+        "Week labels use compact horizontal date ranges. If text appears stacked vertically, widen the schedule area or report the exact screen size so support can correct the layout.",
+        "Projected hours merge overlapping shifts for the same employee and ignore invalid time ranges so accidental 4p-10a entries do not inflate totals."
       ]}
     ],
     notes: ["Accepted and approved trade states should be reviewed before the original shift is changed. Keep a manager note for unusual corrections."]
@@ -462,20 +472,29 @@ export const SYSTEM_TRAINING_MANUAL_CHAPTERS = [
     title: "Menu Intelligence",
     tab: "Menu Intelligence",
     audience: "Account owner and specifically permitted users",
-    summary: "Scan a menu, review ingredient-to-inventory links, and show which menu items are affected by unavailable products.",
-    keywords: "menu intelligence scan menu pdf image menu item ingredient inventory dependency approve edit delete recent scans 86 impact",
+    summary: "Scan a menu, review ingredient-to-inventory links, estimate portions, calculate menu-item cost, and show which menu items are affected by unavailable products.",
+    keywords: "menu intelligence scan menu pdf image menu item ingredient inventory dependency approve edit delete recent scans 86 impact food cost menu costing portion recipe price gross profit confidence needs review",
     sections: [
       { title: "Scan and review", steps: [
         "Upload a clear menu PDF or image within the displayed page and file limits.",
-        "Review every detected menu item and ingredient. Rename unclear items and remove document noise.",
+        "Review every detected menu item, category, description, price, included side, modifier, and likely ingredient. Rename unclear items and remove document noise.",
         "Match ingredients to the real Inventory rows the kitchen uses. Common staff words such as burger may need a link to a product named beef patty.",
-        "Approve Reviewed Menu Links only after the matches are correct. The scanner produces suggestions; approval creates the live dependency records."
+        "The app can suggest portions such as 6 oz chicken, 2 slices bacon, 2 oz ranch, or 6 oz fries, but those amounts are estimates until a human confirms them.",
+        "Approve Reviewed Menu Links only after the matches and portions are correct. The scanner produces suggestions; approval creates the live dependency records and reliable costing inputs."
+      ]},
+      { title: "Menu item costing", steps: [
+        "Cost breakdowns use Menu Item → Ingredient/portion → Inventory item → latest invoice or item cost → portion cost.",
+        "For each menu item, review total ingredient cost, food cost percent, gross profit, confidence level, missing inventory matches, and estimated portions that still need approval.",
+        "If a cost looks wrong, check the matched inventory item, pack size, unit cost, yield, and portion amount before changing the menu price.",
+        "Batch recipes such as ranch, soup, sauce, chili, or prep proteins should be costed as their own recipe/yield when available, then used as ingredients on menu items.",
+        "AI suggestions reduce data entry, but official recipe quantities, menu prices, and inventory links stay review-first."
       ]},
       { title: "Maintain live menu impact", steps: [
         "Use Current Menu Impacts to see menu items affected by zero or unavailable ingredients.",
         "Use Recent Menu Scans to edit a wrong match or delete an outdated scan. Deleting a scan removes its linked dependencies but may retain the original secure source file according to retention policy.",
         "Test an 86 alert after approving important links. The Message Board, Manager Brief, and Kitchen Command can then show affected menu items.",
-        "Rescan when the menu changes significantly, and remove old links so discontinued dishes do not appear."
+        "Rescan when the menu changes significantly, and remove old links so discontinued dishes do not appear.",
+        "Review invoice price jumps because a changed inventory cost can affect every linked menu item's food cost and margin."
       ]}
     ],
     notes: ["Menu Intelligence access is owner-controlled. It should not be granted broadly because it can change the dependency map used by 86 alerts."]
@@ -770,6 +789,7 @@ export const SYSTEM_TRAINING_MANUAL_CHAPTERS = [
       { title: "Platform access and recovery", steps: [
         "Grant System Administrator access only through Access Control, using the exact verified email. Ask the person to sign out and in so claims refresh.",
         "Revoke access immediately when it is no longer required and review the audit trail.",
+        "The protected root administrator account geoffm1985@gmail.com cannot be demoted, disabled, deleted, or revoked from inside 86 Chaos. If a tool appears to allow it, stop and report the screen.",
         "Master Admin MFA Recovery is restricted to the configured Master Admin, bound to the current verified account, requires a reason, and must be audited.",
         "Never move a user to another restaurant or elevate their role from untrusted form input during account repair."
       ]},

@@ -33,6 +33,26 @@ function appUrl(pathOrTab = '') {
   return `${base}/?tab=${encodeURIComponent(pathOrTab)}`;
 }
 
+function authRequestBaseUrl() {
+  return appUrl() || process.env.CHAOS_BASE_URL || process.env.PLAYWRIGHT_BASE_URL || '';
+}
+
+function buildFirebaseAuthRequestHeaders() {
+  const headers = { 'Content-Type': 'application/json' };
+  const base = authRequestBaseUrl();
+  if (base) {
+    try {
+      const url = new URL(base);
+      const origin = url.origin;
+      headers.Origin = origin;
+      headers.Referer = `${origin}/`;
+    } catch (_) {
+      headers.Referer = String(base);
+    }
+  }
+  return headers;
+}
+
 function safeAccountDefinition(def) {
   return {
     key: def.key,
@@ -111,7 +131,7 @@ async function signInAccount(account, config, fetchImpl = global.fetch) {
   const url = `https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${encodeURIComponent(config.apiKey)}`;
   const signed = await fetchJson(url, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: buildFirebaseAuthRequestHeaders(),
     body: JSON.stringify({ email: account.email, password: account.password, returnSecureToken: true }),
   }, fetchImpl);
   if (!signed.idToken || !signed.localId) throw new Error(`${account.emailEnv} could not sign into Firebase Auth or did not return a Firebase UID.`);
@@ -121,7 +141,7 @@ async function signInAccount(account, config, fetchImpl = global.fetch) {
 async function fetchWhoami(account, fetchImpl = global.fetch) {
   const url = appUrl('/api/whoami');
   if (!url) throw new Error('APP_URL or CHAOS_BASE_URL is missing, so /api/whoami cannot be verified.');
-  const whoami = await fetchJson(url, { method: 'GET', headers: { Authorization: `Bearer ${account.idToken}` } }, fetchImpl);
+  const whoami = await fetchJson(url, { method: 'GET', headers: { ...buildFirebaseAuthRequestHeaders(), Authorization: `Bearer ${account.idToken}` } }, fetchImpl);
   return {
     key: account.key,
     label: account.label,
@@ -312,4 +332,5 @@ module.exports = {
   analyzeRoleRows,
   verifyRoleAccounts,
   validateRoleReportForSeed,
+  buildFirebaseAuthRequestHeaders,
 };

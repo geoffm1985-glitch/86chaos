@@ -18,6 +18,21 @@ const COLLECTIONS = [
   'prepItems', 'menuDependencies', 'recipes', 'inventoryItems', 'vendors', 'users', 'workspaceMembers'
 ];
 
+function buildFirebaseAuthRequestHeaders() {
+  const headers = { 'Content-Type': 'application/json' };
+  const base = process.env.APP_URL || process.env.CHAOS_BASE_URL || process.env.PLAYWRIGHT_BASE_URL || process.env.BASE_URL || '';
+  if (base) {
+    try {
+      const origin = new URL(base).origin;
+      headers.Origin = origin;
+      headers.Referer = `${origin}/`;
+    } catch (_) {
+      headers.Referer = String(base);
+    }
+  }
+  return headers;
+}
+
 function writeReport(report) {
   writeJson(REPORT_PATH, {
     generatedAt: new Date().toISOString(),
@@ -241,7 +256,7 @@ ${validation.errors.join('\n')}`);
     const signed = await pageFetchJson(page, {
       url: signInUrl,
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: buildFirebaseAuthRequestHeaders(),
       body: { email, password, returnSecureToken: true },
     });
     if (!signed.idToken) throw new Error('Browser-origin Firebase Auth cleanup sign-in did not return idToken.');

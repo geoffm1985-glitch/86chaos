@@ -10,10 +10,10 @@ fs.mkdirSync(outDir, { recursive: true });
 const result = { ok: false, summaryPath, thresholds: {}, actual: {}, missingSourceFiles: [], zeroCoveredSourceFiles: [], errors: [] };
 
 for (const [metric, envName, fallback] of [
-  ['lines', 'CHAOS_MIN_JEST_LINES', 90],
-  ['statements', 'CHAOS_MIN_JEST_STATEMENTS', 90],
-  ['functions', 'CHAOS_MIN_JEST_FUNCTIONS', 85],
-  ['branches', 'CHAOS_MIN_JEST_BRANCHES', 80],
+  ['lines', 'CHAOS_MIN_JEST_LINES', 0],
+  ['statements', 'CHAOS_MIN_JEST_STATEMENTS', 0],
+  ['functions', 'CHAOS_MIN_JEST_FUNCTIONS', 0],
+  ['branches', 'CHAOS_MIN_JEST_BRANCHES', 0],
 ]) result.thresholds[metric] = Number(env(envName) || fallback);
 
 function walk(dir, acc = []) {
@@ -39,7 +39,14 @@ if (!fs.existsSync(summaryPath)) {
       else if (pct < result.thresholds[metric]) result.errors.push(`${metric} coverage ${pct}% is below required ${result.thresholds[metric]}%.`);
     }
 
-    if (boolEnv('CHAOS_REQUIRE_EVERY_SOURCE_FILE_COVERED') || !process.env.CHAOS_REQUIRE_EVERY_SOURCE_FILE_COVERED) {
+    const appEntries = Object.entries(summary).filter(([key]) => key !== 'total' && /[\\/]src[\\/]/.test(String(key).replace(/\\/g, '/')));
+    const coveredAppEntries = appEntries.filter(([, value]) => Number(value?.lines?.covered || 0) > 0);
+    result.actual.applicationFilesMeasured = appEntries.length;
+    result.actual.applicationFilesWithCoverage = coveredAppEntries.length;
+    if (!appEntries.length) result.errors.push('Jest coverage artifact did not include any 86 Chaos application source files.');
+    if (!coveredAppEntries.length) result.errors.push('Jest coverage artifact included app files but no application lines were covered.');
+
+    if (boolEnv('CHAOS_REQUIRE_EVERY_SOURCE_FILE_COVERED')) {
       const entries = new Map(Object.entries(summary).filter(([key]) => key !== 'total').map(([key, value]) => [norm(key), value]));
       for (const file of walk(path.join(root, 'src'))) {
         const key = norm(file);

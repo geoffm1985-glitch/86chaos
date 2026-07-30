@@ -1,3 +1,4 @@
+/* global globalThis, jest */
 const util = require('util');
 
 if (typeof globalThis.TextEncoder === 'undefined' && util.TextEncoder) {
