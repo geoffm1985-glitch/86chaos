@@ -122,7 +122,19 @@ test('release-gate runners provision temporary accounts before role preflight an
   }
 });
 
-test('generated temporary-user env file is intentionally not inside committed source ZIP root', () => {
-  assert.equal(fs.existsSync(path.join(root, '.env.test.local')), false);
-  assert.equal(fs.existsSync(path.join(root, 'release-gate-temp-users.env.test.local')), false);
+test('generated temporary-user env template is not committed to the source ZIP root', () => {
+  // A developer's real local .env.test.local is allowed and required for release-gate runs.
+  // This test only guards against accidentally packaging the generated temporary-user handoff file
+  // into the committed/source ZIP root.
+  const generatedRootFiles = [
+    'release-gate-temp-users.env.test.local',
+    '86chaos_16_0_55_release_gate_temp_users.env.test.local',
+  ];
+
+  for (const fileName of generatedRootFiles) {
+    assert.equal(fs.existsSync(path.join(root, fileName)), false, `${fileName} must be delivered separately, not committed in the source ZIP root`);
+  }
+
+  const gitignore = fs.readFileSync(path.join(root, '.gitignore'), 'utf8');
+  assert.match(gitignore, /^\.env\.test\.local$/m, '.env.test.local must stay ignored so local test credentials are not committed');
 });
