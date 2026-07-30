@@ -1,10 +1,10 @@
 {
-  "version": "16.0.71",
-  "name": "86 Chaos 16.0.71 Case-Insensitive Login Profile Fix",
-  "build": "16.0.71",
-  "label": "86 Chaos 16.0.71 Case-Insensitive Login Profile Fix",
+  "version": "16.0.72",
+  "name": "86 Chaos 16.0.72 Case-Insensitive Login Profile Fix",
+  "build": "16.0.72",
+  "label": "86 Chaos 16.0.72 Case-Insensitive Login Profile Fix",
   "releasedAt": "2026-07-30T16:39:00-05:00",
-  "releaseTitle": "86 Chaos 16.0.71 Case-Insensitive Login Profile Fix",
+  "releaseTitle": "86 Chaos 16.0.72 Case-Insensitive Login Profile Fix",
   "notes": [
     "Global refresh now writes both workspace and user refresh signals so active clients reload reliably.",
     "Employees are protected from stale force-logout flags causing repeated login loops.",
