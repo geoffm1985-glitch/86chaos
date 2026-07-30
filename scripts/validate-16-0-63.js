@@ -43,12 +43,12 @@ const notificationReceiptApi = read('api/notification-receipt.js');
 const setupTests = read('src/setupTests.js');
 const releaseGateReminderTest = read('src/core/reminderUtils.release-gate.test.js');
 
-assert(pkg.version === '16.0.62', 'package.json version is 16.0.62');
-assert(lock.version === '16.0.62' && lock.packages?.['']?.version === '16.0.62', 'package-lock.json version is 16.0.62');
-assert(version.version === '16.0.62' && version.build === '16.0.62', 'public/version.json is 16.0.62');
-assert(appCore.includes("CURRENT_VERSION = '16.0.62'"), 'CURRENT_VERSION is 16.0.62');
-assert(apiVersion.includes("APP_VERSION = '16.0.62'") && apiVersion.includes("SECURITY_SCHEMA_VERSION = '16.0.62'"), 'API version constants are centralized at 16.0.62');
-assert(pkg.scripts?.['test:source'] === 'node scripts/validate-16-0-62.js', 'package scripts point at the 16.0.62 source validator');
+assert(pkg.version === '16.0.63', 'package.json version is 16.0.63');
+assert(lock.version === '16.0.63' && lock.packages?.['']?.version === '16.0.63', 'package-lock.json version is 16.0.63');
+assert(version.version === '16.0.63' && version.build === '16.0.63', 'public/version.json is 16.0.63');
+assert(appCore.includes("CURRENT_VERSION = '16.0.63'"), 'CURRENT_VERSION is 16.0.63');
+assert(apiVersion.includes("APP_VERSION = '16.0.63'") && apiVersion.includes("SECURITY_SCHEMA_VERSION = '16.0.63'"), 'API version constants are centralized at 16.0.63');
+assert(pkg.scripts?.['test:source'] === 'node scripts/validate-16-0-63.js', 'package scripts point at the 16.0.63 source validator');
 assert(pkg.scripts?.['test:client'] === 'react-scripts test --watchAll=false', 'client test script no longer forces impossible whole-app coverage during release smoke tests');
 assert(pkg.scripts?.['syntax:py'] === 'node scripts/check-python-syntax.js' && exists('scripts/check-python-syntax.js'), 'Python syntax check is cross-platform for Windows and CI');
 assert(setupTests.includes('TextEncoder') && setupTests.includes('TextDecoder'), 'Jest setup polyfills TextEncoder/TextDecoder before Firebase Auth loads');
@@ -195,7 +195,7 @@ assert(operations.includes('useMemo(() => canUseAiOrdering ? buildAiOrderAssista
 assert(management.includes('useMemo(() => HELP_ARTICLES.filter') && management.includes('useMemo(() => q ? searchHelpContentSemantically'), 'Help Center semantic search results are memoized');
 assert(styles.includes('16.0.34 targeted render/performance pass') && styles.includes('content-visibility: auto') && styles.includes('chaos-perf-overlay'), 'targeted CSS containment/performance hooks are present');
 
-assert(styles.includes('16.0.62 schedule builder event chip containment'), '16.0.62 event chip containment CSS marker is present');
+assert(styles.includes('16.0.62 schedule builder event chip containment'), '16.0.63 event chip containment CSS marker is present');
 assert(styles.includes('.schedule-builder-events-cell .schedule-builder-event-chip') && styles.includes('text-overflow: ellipsis !important'), 'Schedule Builder event chips are clipped inside their own day cell instead of bleeding into neighboring days');
 assert(styles.includes('.schedule-builder-events-cell > div') && styles.includes('overflow: hidden !important'), 'Schedule Builder event chip stack is constrained by the day cell');
 
@@ -221,9 +221,9 @@ assert(read('src/lib/featureAccess.js').includes('export const hasFeature'), 'fe
 assert(reportBugApi.includes('marker: report.rawMessage') && reportBugApi.includes('rawMessage: report.rawMessage'), 'bug-report API response preserves raw crash markers for live pipeline proof');
 assert(appJs.includes('Restricted Platform Tools') && !appJs.includes('System Administrator tools are internal-only'), 'staff restricted gate avoids privileged System Administrator terminology');
 assert(management.includes('Clean Full Audit QA Restaurants') && !management.includes('microphone button is marked PREVIEW'), 'System Admin cleanup wording and 86Voice Help label match release-gate expectations');
-assert((styles.includes('16.0.47 release-gate accessibility') || styles.includes('16.0.48 release-gate accessibility') || styles.includes('16.0.50 release-gate accessibility') || (styles.includes('16.0.51 mobile Schedule Builder readability') || styles.includes('16.0.62 failed-only release-gate repairs'))) && appJs.includes('describeControl'), 'accessibility/tap-target hardening is present');
+assert((styles.includes('16.0.47 release-gate accessibility') || styles.includes('16.0.48 release-gate accessibility') || styles.includes('16.0.50 release-gate accessibility') || (styles.includes('16.0.51 mobile Schedule Builder readability') || styles.includes('16.0.63 failed-only release-gate repairs'))) && appJs.includes('describeControl'), 'accessibility/tap-target hardening is present');
 assert(appJs.includes('Switch workspace. Active workspace') && authScreen.includes('persistLoginSessionForReload'), 'workspace switching and login session cache are discoverable and reload-safe');
-assert((styles.includes('16.0.51 mobile Schedule Builder readability') || styles.includes('16.0.62 failed-only release-gate repairs')) && styles.includes('scheduled-hours-tracker-table'), 'mobile schedule times and hours tracker labels stay readable and horizontal');
+assert((styles.includes('16.0.51 mobile Schedule Builder readability') || styles.includes('16.0.63 failed-only release-gate repairs')) && styles.includes('scheduled-hours-tracker-table'), 'mobile schedule times and hours tracker labels stay readable and horizontal');
 assert(reportBugApi.includes('plainEnglishBugMessage') && reportBugApi.includes('Release gate test crash received') && reportBugApi.includes('The app could not copy to the clipboard'), 'bug report push notifications use plain-English summaries');
 assert(appCore.includes('non_fatal_clipboard_permission') && appCore.includes('event.preventDefault?.()'), 'clipboard permission denials are treated as non-fatal browser behavior');
 
@@ -232,7 +232,7 @@ assert(read('RUN_86CHAOS_PLAY_STORE_RELEASE_GATE.ps1').includes('Write-RunnerSum
 assert(exists('playwright.play-store-release.config.cjs') && read('playwright.play-store-release.config.cjs').includes('playwright-report.json') && read('playwright.play-store-release.config.cjs').includes('86chaos-full-audit') && read('playwright.play-store-release.config.cjs').includes('86chaos-release-gate'), 'play-store Playwright config writes JSON report to slim-report results folder');
 assert(management.includes('collectUserPushDevices') && management.includes('selectedPushDeviceCount') && management.includes('totalPushDeviceCount') && management.includes('pushDevices.${deviceId}'), 'Push Control Center counts primary, array, and pushDevices tokens by user');
 assert(read('api/send-push.js').includes('collectUserPushTokenRecords') && read('api/send-push.js').includes('pushDevices.${record.deviceId}') && read('api/send-push.js').includes('FieldValue.delete'), 'send-push API sends to all saved token sources and cleans stale pushDevices');
-assert(!appJs.includes('fcmTokens: arrayUnion(currentToken)') && appJs.includes('primaryTokenMissing') && appJs.includes("pushTokenDedupeVersion: '16.0.62'") && appJs.includes('writePushProfilePatch'), 'push token sync repairs the primary token and pushDevices without writing the disallowed browser fcmTokens array');
+assert(!appJs.includes('fcmTokens: arrayUnion(currentToken)') && appJs.includes('primaryTokenMissing') && appJs.includes("pushTokenDedupeVersion: '16.0.63'") && appJs.includes('writePushProfilePatch'), 'push token sync repairs the primary token and pushDevices without writing the disallowed browser fcmTokens array');
 assert(appJs.includes('scheduleDisplayUsers') && appJs.includes('shift-roster-fallback'), 'Schedule Builder keeps shift-assigned staff visible when imported/restored roster records are sparse');
 assert(appJs.includes('autoReloadUsed') && appJs.includes('autoReloadInFlight'), 'chunk recovery is capped to one automatic reload per version');
 assert(read('api/whoami.js').includes('firestoreRoleLooksSystemAdmin') && !appJs.includes("MASTER_ADMIN_EMAIL && (liveAppUser?.email || '').toLowerCase()"), 'System Administrator route is server verified instead of unlocked by loose local email markers');
@@ -245,16 +245,16 @@ assert(schedule.includes('localBuilderShiftEchoes') && schedule.includes('savedS
 assert(exists('api/_protected-root-admin.js') && read('api/_protected-root-admin.js').includes('geoffm1985@gmail.com'), 'protected root administrator email is centralized server-side');
 assert(read('api/admin-access.js').includes('protectedRootAdminError') && read('api/delete-user.js').includes('protectedRootAdminError') && read('api/staff-member.js').includes('protectedRootAdminError'), 'protected root administrator cannot be revoked, deleted, disabled, or downgraded through admin APIs');
 assert(management.includes('Protected Root') && management.includes('This is the protected root administrator account'), 'System Administrator UI blocks protected root admin revoke/delete actions with plain-English messaging');
-assert(exists('scripts/test-16-0-58-targeted.cjs'), 'targeted 16.0.62 fix test exists');
+assert(exists('scripts/test-16-0-58-targeted.cjs'), 'targeted 16.0.63 fix test exists');
 
-// 16.0.62 temporary release-gate account provisioning guardrails
+// 16.0.63 temporary release-gate account provisioning guardrails
 try {
   const failedRunner = read('RUN_86CHAOS_FAILED_ONLY_RELEASE_GATE.ps1');
   const fullRunner = read('RUN_86CHAOS_PLAY_STORE_RELEASE_GATE.ps1');
   const provisioner = read('scripts/86chaos-release-gate/provision-test-accounts.cjs');
   const collector = read('scripts/86chaos-release-gate/collect-release-gate-report.cjs');
   const harnessTests = read('tests/86chaos-release-gate/test-harness-lifecycle.test.cjs');
-  assert(pkg.scripts?.['test:source'] === 'node scripts/validate-16-0-62.js', 'package scripts point at the 16.0.62 source validator');
+  assert(pkg.scripts?.['test:source'] === 'node scripts/validate-16-0-63.js', 'package scripts point at the 16.0.63 source validator');
   assert(exists('scripts/86chaos-release-gate/provision-test-accounts.cjs'), 'temporary release-gate account provisioner exists');
   assert(failedRunner.includes('Provision temporary release-gate test accounts') && fullRunner.includes('Provision temporary release-gate test accounts'), 'both release-gate runners provision temporary test accounts before role preflight');
   assert(failedRunner.indexOf('Provision temporary release-gate test accounts') < failedRunner.indexOf('Verify release-gate role accounts'), 'failed-only runner provisions before role verification');
@@ -266,17 +266,17 @@ try {
   assert(harnessTests.includes('temporary account provisioning can create four distinct mocked Firebase Auth users') && harnessTests.includes('PowerShell runners provision temporary accounts before role preflight'), 'harness-only tests cover temporary account provisioning');
 } catch (error) {
   failures += 1;
-  console.error('16.0.62 temporary-account guard failed:', error.message);
+  console.error('16.0.63 temporary-account guard failed:', error.message);
 }
 
 
 if (failures) {
-  console.error(`16.0.62 source validator failed with ${failures} issue(s).`);
+  console.error(`16.0.63 source validator failed with ${failures} issue(s).`);
   process.exit(1);
 }
 
 
-// 16.0.62 Schedule Builder delete visibility guardrails
+// 16.0.63 Schedule Builder delete visibility guardrails
 try {
   const schedule = read('src/features/schedule.jsx');
   assert(schedule.includes('localBuilderDeletedShiftMarkers'), 'Schedule Builder tracks local delete markers for recently removed shifts');
@@ -286,40 +286,40 @@ try {
   assert(schedule.includes('const visibleShifts = visibleSourceShifts.filter(shift => !shiftMatchesLocalDeleteMarkers(shift, activeLocalDeleteKeySet))'), 'Schedule Builder hides deleted live shifts while Firestore snapshots catch up');
 } catch (error) {
   failures += 1;
-  console.error('16.0.62 schedule delete guard failed:', error.message);
+  console.error('16.0.63 schedule delete guard failed:', error.message);
 }
 
 
-// 16.0.62 delete-and-reassign guardrails
+// 16.0.63 delete-and-reassign guardrails
 try {
   assert(schedule.includes('if (id) return markerKeySet.has(`id:${id}`);'), 'Schedule Builder delete markers must not hide a newly re-added shift that has a different Firestore id.');
   assert(schedule.includes('savedShiftEchoes.push({ ...shiftData, id: savedRef.id, localEcho: true });'), 'Schedule Builder re-adds saved shifts as visible local echoes with their new document id.');
 } catch (error) {
   failures += 1;
-  console.error('16.0.62 schedule delete-and-reassign guard failed:', error.message);
+  console.error('16.0.63 schedule delete-and-reassign guard failed:', error.message);
 }
 
-console.log('16.0.62 source validator passed. This is a source guard only. It does not replace unit, emulator, build, browser, or staging notification tests.');
+console.log('16.0.63 source validator passed. This is a source guard only. It does not replace unit, emulator, build, browser, or staging notification tests.');
 
-// 16.0.62 specific guardrails
+// 16.0.63 specific guardrails
 try {
   const app = require('fs').readFileSync('src/App.js', 'utf8');
   if (/\[activeTabState,\s*isMenuOpen,\s*isWorkspaceSwitcherOpen\]/.test(app)) {
-    console.error('16.0.62 guard failed: accessibility observer must not reference menu state before hook initialization.');
+    console.error('16.0.63 guard failed: accessibility observer must not reference menu state before hook initialization.');
     process.exitCode = 1;
   }
   const sw = require('fs').readFileSync('public/firebase-messaging-sw.js', 'utf8');
   if (!sw.includes('/notification-badge.png')) {
-    console.error('16.0.62 guard failed: notification badge fallback missing.');
+    console.error('16.0.63 guard failed: notification badge fallback missing.');
     process.exitCode = 1;
   }
 } catch (error) {
-  console.error('16.0.62 guard failed:', error.message);
+  console.error('16.0.63 guard failed:', error.message);
   process.exitCode = 1;
 }
 
 
-// 16.0.62 Schedule Hours / global-setup seed-auth guardrails
+// 16.0.63 Schedule Hours / global-setup seed-auth guardrails
 try {
   const schedule = read('src/features/schedule.jsx');
   const globalSetup = read('tests/86chaos-release-gate/global-setup.cjs');
@@ -329,12 +329,12 @@ try {
   assert(globalSetup.includes('provisionTestAccounts') && globalSetup.includes('global-setup-role-preflight') && globalSetup.includes('CHAOS_QA_AUTO_PROVISION_TEST_USERS'), 'Playwright global setup can provision and verify QA test accounts before seeding when direct Playwright is used.');
   assert(cleanup.includes('Cleanup safely skipped because QA setup did not create a current-run restaurant or seeded child records') && cleanup.includes('getSetupStatePath'), 'QA cleanup safely skips when setup never created current-run QA data.');
 } catch (error) {
-  console.error('16.0.62 guard failed:', error.message);
+  console.error('16.0.63 guard failed:', error.message);
   process.exit(1);
 }
 
 
-// 16.0.62 partial publish and durable delete marker guardrails
+// 16.0.63 partial publish and durable delete marker guardrails
 try {
   const schedule59 = read('src/features/schedule.jsx');
   assert(schedule59.includes('const [isPublishPickerOpen, setIsPublishPickerOpen] = useState(false)'), 'Schedule Builder has a publish selection dialog state.');
@@ -342,8 +342,8 @@ try {
   assert(schedule59.includes("publishScope: publishAll ? 'full-period' : 'selected-weeks'"), 'Published shifts record the selected publish scope.');
   assert(schedule59.includes('if (id) return [`id:${id}`];'), 'Saved deleted shifts create exact document-id delete markers only.');
   assert(schedule59.includes("if (String(marker.key).startsWith('id:')) return true;"), 'Exact deleted shift IDs stay suppressed for the marker TTL even after listener churn.');
-  assert(exists('scripts/test-16-0-61-targeted.cjs'), 'targeted 16.0.62 fix test exists');
+  assert(exists('scripts/test-16-0-61-targeted.cjs'), 'targeted 16.0.63 fix test exists');
 } catch (error) {
-  console.error('16.0.62 guard failed:', error.message);
+  console.error('16.0.63 guard failed:', error.message);
   process.exit(1);
 }

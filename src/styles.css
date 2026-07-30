@@ -3855,7 +3855,6 @@ select {
 
   .schedule-builder-time-chip {
     font-size: 9px !important;
-    line-height: 1.05 !important;
     padding: 3px 3px !important;
     white-space: nowrap !important;
     overflow: visible !important;
@@ -3957,7 +3956,6 @@ select {
     padding-top: .42rem !important;
     padding-bottom: .42rem !important;
     border-radius: 10px !important;
-    line-height: 1.05 !important;
   }
 
   .ui-v12-compact table th,
@@ -4485,7 +4483,6 @@ select {
 
   .desktop-pro-shell .app-content-shell :is(.text-5xl, .text-6xl) {
     font-size: 2rem !important;
-    line-height: 1.05 !important;
   }
 }
 
@@ -4555,7 +4552,6 @@ select {
   .schedule-builder-time-chip,
   .schedule-builder-event-chip {
     font-size: 7px !important;
-    line-height: 1.05 !important;
     padding: 2px 3px !important;
   }
 
@@ -5059,4 +5055,20 @@ span.bg-red-500.text-white,
 
 .schedule-builder-events-cell .schedule-builder-event-more {
   text-align: center !important;
+}
+
+/* 16.0.63: desktop Schedule Builder number readability. Make only the text inside schedule cells larger; keep existing column/cell/chip dimensions unchanged. */
+@media (min-width: 1024px) {
+  .schedule-builder-desktop-table .schedule-builder-time-chip:not(.schedule-builder-event-chip):not(.schedule-builder-event-more) {
+    font-size: 10px !important;
+    letter-spacing: -0.045em;
+  }
+
+  .schedule-builder-desktop-table .schedule-builder-partial-off-chip {
+    font-size: 9.5px !important;
+  }
+
+  .schedule-builder-desktop-table thead th > div:nth-child(2) {
+    font-size: 15px !important;
+  }
 }
