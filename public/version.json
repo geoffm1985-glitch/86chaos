@@ -1,13 +1,13 @@
 {
-  "version": "16.0.72",
-  "name": "86 Chaos 16.0.72 Case-Insensitive Login Profile Fix",
-  "build": "16.0.72",
-  "label": "86 Chaos 16.0.72 Case-Insensitive Login Profile Fix",
-  "releasedAt": "2026-07-30T16:39:00-05:00",
-  "releaseTitle": "86 Chaos 16.0.72 Case-Insensitive Login Profile Fix",
+  "version": "16.0.73",
+  "name": "86 Chaos 16.0.73 Schedule Publish and Deleted Shift Integrity Fix",
+  "build": "16.0.73",
+  "label": "86 Chaos 16.0.73 Schedule Publish and Deleted Shift Integrity Fix",
+  "releasedAt": "2026-07-30T18:43:00-05:00",
+  "releaseTitle": "86 Chaos 16.0.73 Schedule Publish and Deleted Shift Integrity Fix",
   "notes": [
-    "Global refresh now writes both workspace and user refresh signals so active clients reload reliably.",
-    "Employees are protected from stale force-logout flags causing repeated login loops.",
-    "User session listeners now handle refresh/logout signals without requiring users to clear browser data."
+    "Published employee schedules now list the selected calendar month instead of pulling boundary days from another month.",
+    "Partial schedule publish now refreshes selected-day candidates from Firestore before publishing so visible draft shifts are not missed.",
+    "Deleted duplicate schedule shifts now keep fingerprint tombstones long enough to stop stale local or cached records from coming back, without hiding newly re-added shifts."
   ]
 }
