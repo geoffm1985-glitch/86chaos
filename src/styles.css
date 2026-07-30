@@ -4855,9 +4855,14 @@ select {
 
 
 /* 16.0.51 mobile Schedule Builder readability + no vertical stacked-letter labels. */
-.schedule-builder-desktop-table,
-.scheduled-hours-tracker-table {
+.schedule-builder-desktop-table {
   table-layout: fixed;
+}
+
+.scheduled-hours-tracker-table {
+  table-layout: auto !important;
+  width: max-content !important;
+  min-width: 100% !important;
 }
 
 .schedule-builder-time-chip,
@@ -4882,9 +4887,32 @@ select {
 }
 
 .scheduled-hours-tracker-table th {
-  min-width: 74px !important;
-  white-space: normal !important;
+  min-width: 108px !important;
+  white-space: nowrap !important;
   line-height: 1.15 !important;
+}
+
+.scheduled-hours-week-head,
+.scheduled-hours-total-head {
+  white-space: nowrap !important;
+  word-break: keep-all !important;
+  overflow-wrap: normal !important;
+}
+
+.scheduled-hours-week-kicker,
+.scheduled-hours-week-range {
+  display: block;
+  white-space: nowrap !important;
+  word-break: keep-all !important;
+  overflow-wrap: normal !important;
+  line-height: 1.05 !important;
+}
+
+.scheduled-hours-week-range {
+  margin-top: 2px;
+  font-size: 9px;
+  color: #cbd5e1;
+  letter-spacing: 0.03em;
 }
 
 .scheduled-hours-tracker-table th:first-child,
@@ -4894,7 +4922,34 @@ select {
 
 .scheduled-hours-tracker-table th:last-child,
 .scheduled-hours-tracker-table td:last-child {
-  min-width: 92px !important;
+  min-width: 112px !important;
+}
+
+
+@media (max-width: 767px) {
+  .scheduled-hours-tracker-table {
+    min-width: max-content !important;
+  }
+
+  .scheduled-hours-tracker-table th,
+  .scheduled-hours-tracker-table td {
+    min-width: 108px !important;
+    width: auto !important;
+    max-width: none !important;
+    white-space: nowrap !important;
+    word-break: keep-all !important;
+    overflow-wrap: normal !important;
+  }
+
+  .scheduled-hours-tracker-table th:first-child,
+  .scheduled-hours-tracker-table td:first-child {
+    min-width: 122px !important;
+  }
+
+  .scheduled-hours-tracker-table th:last-child,
+  .scheduled-hours-tracker-table td:last-child {
+    min-width: 118px !important;
+  }
 }
 
 @media (max-width: 767px) {
@@ -4973,4 +5028,35 @@ span.bg-red-500.text-white,
 [data-scrollable="true"]:focus {
   outline: 2px solid rgba(212, 163, 129, .75);
   outline-offset: 2px;
+}
+
+/* 16.0.62 schedule builder event chip containment.
+   Keep event labels inside their own date cell so long names like "23 people" do not bleed into neighboring days. */
+.schedule-builder-events-cell {
+  overflow: hidden !important;
+  contain: paint !important;
+}
+
+.schedule-builder-events-cell > div {
+  min-width: 0 !important;
+  max-width: 100% !important;
+  overflow: hidden !important;
+}
+
+.schedule-builder-events-cell .schedule-builder-event-chip,
+.schedule-builder-events-cell .schedule-builder-event-more {
+  box-sizing: border-box !important;
+  display: block !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  min-width: 0 !important;
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  word-break: normal !important;
+  overflow-wrap: normal !important;
+}
+
+.schedule-builder-events-cell .schedule-builder-event-more {
+  text-align: center !important;
 }

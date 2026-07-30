@@ -1,10 +1,10 @@
 {
-  "version": "16.0.60",
-  "name": "86 Chaos 16.0.60 Pay-Period Hours and Test Runner Install Fix",
-  "build": "16.0.60",
-  "label": "86 Chaos 16.0.60 Pay-Period Hours and Test Runner Install Fix",
+  "version": "16.0.62",
+  "name": "86 Chaos 16.0.62 Schedule Event Chip Containment Fix",
+  "build": "16.0.62",
+  "label": "86 Chaos 16.0.62 Schedule Event Chip Containment Fix",
   "releasedAt": "2026-07-29T21:56:00-05:00",
-  "releaseTitle": "86 Chaos 16.0.60 Pay-Period Hours and Test Runner Install Fix",
+  "releaseTitle": "86 Chaos 16.0.62 Schedule Event Chip Containment Fix",
   "notes": [
     "Scheduled Hours Tracker now calculates each week from the full pay-period week, including previous-month days that belong to Week 1.",
     "The full local test suite runner now checks the required Node version before npm ci and gives clearer dependency-install diagnostics.",
