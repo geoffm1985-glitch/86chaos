@@ -2,7 +2,9 @@ const fs = require('fs');
 const { spawnSync } = require('child_process');
 const path = require('path');
 const { ensureRunDir, getSetupStatePath, getSeedReportPath, getRoleReportPath, readJsonIfExists, writeJson, getRunFile } = require('../../scripts/86chaos-release-gate/run-context.cjs');
-const { validateRoleReportForSeed } = require('../../scripts/86chaos-release-gate/verify-role-accounts.cjs');
+const { validateRoleReportForSeed, verifyRoleAccounts } = require('../../scripts/86chaos-release-gate/verify-role-accounts.cjs');
+const { provisionTestAccounts } = require('../../scripts/86chaos-release-gate/provision-test-accounts.cjs');
+const { loadEnv } = require('../../scripts/86chaos-full-audit/env-loader.cjs');
 
 function bool(value) { return /^(1|true|yes)$/i.test(String(value || '')); }
 function isSafeTestingUrl(value = '') {
@@ -22,6 +24,7 @@ function updateRunnerState(runId, patch) {
 
 module.exports = async () => {
   const root = process.cwd();
+  loadEnv(root);
   const { runId, runDir } = ensureRunDir();
   const setupStatePath = getSetupStatePath(runId);
   const seedReportPath = getSeedReportPath(runId);
@@ -55,8 +58,29 @@ module.exports = async () => {
   writeState();
   updateRunnerState(runId, { globalSetupStarted: true });
 
-  const roleReport = readJsonIfExists(roleReportPath);
-  const roleValidation = validateRoleReportForSeed(roleReport, runId);
+  let roleReport = readJsonIfExists(roleReportPath);
+  let roleValidation = validateRoleReportForSeed(roleReport, runId);
+  if (!roleValidation.ok) {
+    updateRunnerState(runId, { rolePreflightStarted: true });
+    if (bool(process.env.CHAOS_QA_AUTO_PROVISION_TEST_USERS)) {
+      updateRunnerState(runId, { testAccountProvisionAttempted: true });
+      const provision = await provisionTestAccounts({ root, loadEnvironment: false });
+      updateRunnerState(runId, { testAccountProvisionPassed: provision?.ok === true });
+      if (provision?.ok !== true) {
+        const message = (Array.isArray(provision?.errors) && provision.errors[0]) || 'Temporary release-gate test account provisioning failed.';
+        state.errors.push(message);
+        state.skipped = true;
+        state.skipReason = 'Temporary test-account provisioning failed before QA setup.';
+        writeState();
+        updateRunnerState(runId, { blockingReason: `Release gate blocked in global setup because ${message}`, rolePreflightPassed: false, qaSeedProcessStarted: false, qaDataWritesStarted: false, qaRestaurantCreated: false });
+        throw new Error(message);
+      }
+    }
+    const verified = await verifyRoleAccounts({ root, loadEnvironment: false, writeReport: true, throwOnFailure: false, phase: 'global-setup-role-preflight' });
+    roleReport = verified.report;
+    roleValidation = validateRoleReportForSeed(roleReport, runId);
+    updateRunnerState(runId, { rolePreflightPassed: roleValidation.ok === true });
+  }
   if (!roleValidation.ok) {
     const message = roleValidation.errors[0] || 'Release-gate role account preflight is invalid.';
     state.errors.push(message);
