@@ -1,10 +1,10 @@
 {
-  "version": "16.0.62",
-  "name": "86 Chaos 16.0.62 Schedule Event Chip Containment Fix",
-  "build": "16.0.62",
-  "label": "86 Chaos 16.0.62 Schedule Event Chip Containment Fix",
+  "version": "16.0.63",
+  "name": "86 Chaos 16.0.63 Desktop Schedule Number Readability Fix",
+  "build": "16.0.63",
+  "label": "86 Chaos 16.0.63 Desktop Schedule Number Readability Fix",
   "releasedAt": "2026-07-29T21:56:00-05:00",
-  "releaseTitle": "86 Chaos 16.0.62 Schedule Event Chip Containment Fix",
+  "releaseTitle": "86 Chaos 16.0.63 Desktop Schedule Number Readability Fix",
   "notes": [
     "Scheduled Hours Tracker now calculates each week from the full pay-period week, including previous-month days that belong to Week 1.",
     "The full local test suite runner now checks the required Node version before npm ci and gives clearer dependency-install diagnostics.",
