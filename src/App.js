@@ -136,24 +136,62 @@ const getAuthLastSignInTimeMs = () => {
   }
 };
 
+const FORCE_LOGOUT_LEGACY_BLOCK_MS = 2 * 60 * 1000;
+const REMOTE_REFRESH_RECENT_SIGNAL_MS = 15 * 60 * 1000;
+
+const getCurrentAuthSessionStartedMs = () => {
+  try {
+    const uid = String(auth?.currentUser?.uid || 'anonymous');
+    const key = `86chaos:authSessionStarted:${uid}`;
+    const existing = Number(sessionStorage.getItem(key) || '0');
+    if (existing > 0) return existing;
+    const signInMs = getAuthLastSignInTimeMs();
+    const started = signInMs || Date.now();
+    sessionStorage.setItem(key, String(started));
+    return started;
+  } catch (_) {
+    return getAuthLastSignInTimeMs() || Date.now();
+  }
+};
+
 const getForceLogoutEventKey = (user = {}) => {
   const userId = String(user?.id || auth?.currentUser?.uid || user?.email || 'unknown').toLowerCase();
   const stamp = parseForceLogoutTimeMs(user?.forceLogoutAt || user?.forceLogoutTime || user?.forcedLogoutAt || user?.logoutBefore || user?.sessionRevokedAt);
+  const nonce = String(user?.forceLogoutNonce || user?.sessionRevokeNonce || '').slice(0, 80);
   const reason = String(user?.forceLogoutReason || 'force-logout').slice(0, 80);
-  return `86chaos:forceLogoutHandled:${userId}:${stamp || 'legacy'}:${reason}`;
+  return `86chaos:forceLogoutHandled:${userId}:${stamp || 'legacy'}:${nonce || reason}`;
 };
 
 const hasCurrentLoginAlreadyHonoredForceLogout = (user = {}) => {
   const forceAtMs = parseForceLogoutTimeMs(user?.forceLogoutAt || user?.forceLogoutTime || user?.forcedLogoutAt || user?.logoutBefore || user?.sessionRevokedAt);
-  const signInMs = getAuthLastSignInTimeMs();
+  const signInMs = Math.max(getAuthLastSignInTimeMs(), getCurrentAuthSessionStartedMs());
   if (forceAtMs && signInMs && signInMs > forceAtMs + 1000) return true;
+  // Old global-cache flags without a timestamp are not reliable enough to keep blocking logins.
+  // Honor them only briefly on the active browser, then let the employee back in.
+  if (!forceAtMs) {
+    const legacySeenKey = getForceLogoutEventKey(user);
+    try {
+      const handledAt = Number(localStorage.getItem(legacySeenKey) || sessionStorage.getItem(legacySeenKey) || '0');
+      if (handledAt > 0) return true;
+    } catch (_) {}
+    return false;
+  }
   const key = getForceLogoutEventKey(user);
   try {
     const handledAt = Number(localStorage.getItem(key) || sessionStorage.getItem(key) || '0');
-    if (!forceAtMs && handledAt > 0) return true;
-    if (forceAtMs && handledAt >= forceAtMs) return true;
+    if (handledAt >= forceAtMs) return true;
   } catch (_) {}
   return false;
+};
+
+const shouldHonorForceLogoutNow = (user = {}) => {
+  const forceAtMs = parseForceLogoutTimeMs(user?.forceLogoutAt || user?.forceLogoutTime || user?.forcedLogoutAt || user?.logoutBefore || user?.sessionRevokedAt);
+  if (hasCurrentLoginAlreadyHonoredForceLogout(user)) return false;
+  if (!forceAtMs) {
+    // Legacy flags can clear one stale browser session, but never lock a user out indefinitely.
+    return Date.now() - getCurrentAuthSessionStartedMs() <= FORCE_LOGOUT_LEGACY_BLOCK_MS;
+  }
+  return true;
 };
 
 const markForceLogoutHandledLocally = (user = {}) => {
@@ -161,6 +199,35 @@ const markForceLogoutHandledLocally = (user = {}) => {
   const forceAtMs = parseForceLogoutTimeMs(user?.forceLogoutAt || user?.forceLogoutTime || user?.forcedLogoutAt || user?.logoutBefore || user?.sessionRevokedAt) || Date.now();
   try { localStorage.setItem(key, String(forceAtMs)); } catch (_) {}
   try { sessionStorage.setItem(key, String(forceAtMs)); } catch (_) {}
+};
+
+const getRemoteRefreshSignalValue = (...values) => {
+  for (const value of values) {
+    if (value === null || value === undefined || value === '') continue;
+    if (typeof value?.toDate === 'function') return value.toDate().toISOString();
+    if (typeof value?.seconds === 'number') return new Date(value.seconds * 1000).toISOString();
+    return String(value);
+  }
+  return '';
+};
+
+const maybeApplyRemoteRefreshSignal = (scope = 'global', signal = '', reason = '') => {
+  const normalized = getRemoteRefreshSignalValue(signal);
+  if (!normalized || typeof window === 'undefined') return false;
+  const key = `86chaos:lastRemoteRefreshSignal:${scope}`;
+  let previous = '';
+  try { previous = localStorage.getItem(key) || sessionStorage.getItem(key) || ''; } catch (_) {}
+  if (previous === normalized) return false;
+  try { localStorage.setItem(key, normalized); } catch (_) {}
+  try { sessionStorage.setItem(key, normalized); } catch (_) {}
+  const signalMs = parseForceLogoutTimeMs(normalized);
+  const recentSignal = signalMs > 0 && Date.now() - signalMs <= REMOTE_REFRESH_RECENT_SIGNAL_MS;
+  if (previous || recentSignal) {
+    try { sessionStorage.setItem('86chaosLastRemoteRefreshReason', String(reason || 'system-admin-refresh').slice(0, 160)); } catch (_) {}
+    setTimeout(() => window.location.reload(), 75);
+    return true;
+  }
+  return false;
 };
 
 class AppSurfaceErrorBoundary extends React.Component {
@@ -404,6 +471,11 @@ export default function App() {
   const [isPushRepairing, setIsPushRepairing] = useState(false);
   const [pushRepairDismissed, setPushRepairDismissed] = useState(false);
   const [serverAdminCheck, setServerAdminCheck] = useState(null);
+
+  useEffect(() => {
+    if (!auth?.currentUser?.uid && !appUser?.id) return;
+    getCurrentAuthSessionStartedMs();
+  }, [appUser?.id, auth?.currentUser?.uid]);
   
   // --- VERSION CHECKER STATE & LOGIC ---
   const [showUpdateBanner, setShowUpdateBanner] = useState(() => typeof window !== 'undefined' && new URLSearchParams(window.location.search).has('chaosReloadAt'));
@@ -833,11 +905,8 @@ const [currentDate, setCurrentDate] = useState(getToday());
     if (!liveAppUser?.forceLogout || !liveAppUser?.id) return;
 
     // forceLogout is a one-shot session invalidation. Staff accounts may not be allowed
-    // to clear their own server flag, so never trap a fresh login in a permanent logout loop.
-    // If the current Firebase sign-in happened after forceLogoutAt, or this legacy event
-    // was already honored locally, let the user in and quietly try to clear the stale flag.
-    const alreadyHonored = hasCurrentLoginAlreadyHonoredForceLogout(liveAppUser);
-    if (alreadyHonored) {
+    // to clear their own server flag, so the client must never turn a stale flag into a login loop.
+    if (!shouldHonorForceLogoutNow(liveAppUser)) {
       updateDoc(doc(db, "users", liveAppUser.id), {
         forceLogout: false,
         forceLogoutClearedAt: new Date().toISOString(),
@@ -854,7 +923,58 @@ const [currentDate, setCurrentDate] = useState(getToday());
     }).catch(() => {});
     clearSessionAndLogout();
     alert("Your session was signed out by a System Administrator. Please log in again.");
-  }, [liveAppUser?.forceLogout, liveAppUser?.forceLogoutAt, liveAppUser?.id, clearSessionAndLogout]);
+  }, [liveAppUser?.forceLogout, liveAppUser?.forceLogoutAt, liveAppUser?.forceLogoutNonce, liveAppUser?.id, clearSessionAndLogout]);
+
+  useEffect(() => {
+    if (!liveAppUser?.id || ghostTenant || isDemoMode) return undefined;
+    const ids = Array.from(new Set([
+      liveAppUser.profileDocId,
+      liveAppUser.accountProfile?.id,
+      liveAppUser.userId,
+      liveAppUser.id,
+      auth?.currentUser?.uid
+    ].filter(Boolean).map(String)));
+    if (!ids.length) return undefined;
+    let cancelled = false;
+    const unsubs = ids.map((id) => onSnapshot(doc(db, 'users', id), (snap) => {
+      if (cancelled || !snap.exists()) return;
+      const data = snap.data() || {};
+      const refreshSignal = getRemoteRefreshSignalValue(
+        data.forceRefreshAt,
+        data.clientRefreshAt,
+        data.globalRefreshAt,
+        data.forceRefresh,
+        data.refreshAt
+      );
+      if (refreshSignal) maybeApplyRemoteRefreshSignal(`user:${id}`, refreshSignal, data.forceRefreshReason || data.clientRefreshReason || 'system-admin-user-refresh');
+      const nextSessionFields = {
+        forceLogout: data.forceLogout === true,
+        forceLogoutAt: data.forceLogoutAt || data.forceLogoutTime || data.forcedLogoutAt || data.logoutBefore || data.sessionRevokedAt || '',
+        forceLogoutNonce: data.forceLogoutNonce || data.sessionRevokeNonce || '',
+        forceLogoutReason: data.forceLogoutReason || ''
+      };
+      setAppUser(prev => {
+        if (!prev?.id || !ids.includes(String(prev.id))) return prev;
+        const same = prev.forceLogout === nextSessionFields.forceLogout &&
+          String(prev.forceLogoutAt || '') === String(nextSessionFields.forceLogoutAt || '') &&
+          String(prev.forceLogoutNonce || '') === String(nextSessionFields.forceLogoutNonce || '') &&
+          String(prev.forceLogoutReason || '') === String(nextSessionFields.forceLogoutReason || '');
+        return same ? prev : { ...prev, ...nextSessionFields };
+      });
+    }, (err) => console.warn('User session signal listener failed:', err?.message || err)));
+    return () => { cancelled = true; unsubs.forEach(unsub => { try { unsub(); } catch (_) {} }); };
+  }, [liveAppUser?.id, liveAppUser?.profileDocId, liveAppUser?.userId, ghostTenant, isDemoMode]);
+
+  useEffect(() => {
+    const signal = getRemoteRefreshSignalValue(
+      liveAppUser?.forceRefreshAt,
+      liveAppUser?.clientRefreshAt,
+      liveAppUser?.globalRefreshAt,
+      liveAppUser?.forceRefresh,
+      liveAppUser?.refreshAt
+    );
+    if (signal && liveAppUser?.id) maybeApplyRemoteRefreshSignal(`session:${liveAppUser.id}`, signal, liveAppUser?.forceRefreshReason || liveAppUser?.clientRefreshReason || 'system-admin-refresh');
+  }, [liveAppUser?.id, liveAppUser?.forceRefreshAt, liveAppUser?.clientRefreshAt, liveAppUser?.globalRefreshAt, liveAppUser?.forceRefresh, liveAppUser?.refreshAt]);
 
 
 
@@ -1185,14 +1305,11 @@ if (liveAppUser && clientData) {
          setClientData(data);
          
          // FORCE REFRESH LISTENER
-         const localRefresh = sessionStorage.getItem('lastRefreshSignal');
-         if (data.forceRefresh && data.forceRefresh !== localRefresh) {
-            sessionStorage.setItem('lastRefreshSignal', data.forceRefresh);
-            if (localRefresh) {
-                // Instantly triggers a hard reload and pulls fresh cache from Vercel
-                window.location.reload(true);
-            }
-         }
+         maybeApplyRemoteRefreshSignal(
+           `restaurant:${rId}`,
+           getRemoteRefreshSignalValue(data.forceRefreshAt, data.forceRefresh, data.clientRefreshAt, data.refreshAt),
+           data.forceRefreshReason || 'system-admin-global-refresh'
+         );
       }
     });
 

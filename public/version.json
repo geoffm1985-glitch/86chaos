@@ -1,14 +1,13 @@
 {
-  "version": "16.0.69",
-  "name": "86 Chaos 16.0.69 Force Logout One-Shot Session Fix",
-  "build": "16.0.69",
-  "label": "86 Chaos 16.0.69 Force Logout One-Shot Session Fix",
-  "releasedAt": "2026-07-30T08:32:00-05:00",
-  "releaseTitle": "86 Chaos 16.0.69 Force Logout One-Shot Session Fix",
+  "version": "16.0.70",
+  "name": "86 Chaos 16.0.70 Global Refresh and Login Loop Fix",
+  "build": "16.0.70",
+  "label": "86 Chaos 16.0.70 Global Refresh and Login Loop Fix",
+  "releasedAt": "2026-07-30T16:39:00-05:00",
+  "releaseTitle": "86 Chaos 16.0.70 Global Refresh and Login Loop Fix",
   "notes": [
-    "Fixes lint blockers for protected root admin and Schedule Builder delete markers.",
-    "Adds truthful PWA icon metadata and iOS install icon links.",
-    "Hardens release-gate role verification against restricted Firebase Auth API key referrer checks.",
-    "Makes source inventory dependency checks root-local so missing Babel dependencies are reported honestly."
+    "Global refresh now writes both workspace and user refresh signals so active clients reload reliably.",
+    "Employees are protected from stale force-logout flags causing repeated login loops.",
+    "User session listeners now handle refresh/logout signals without requiring users to clear browser data."
   ]
 }

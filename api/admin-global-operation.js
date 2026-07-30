@@ -11,13 +11,13 @@ async function requireSystemAdmin(req) {
   if (!ctx.ok || !ctx.isSuperAdmin) return { app, ok: false, status: ctx.status || 403, error: ctx.error || 'System Administrator access is required.' };
   return { app, db: ctx.db || app.firestore(), ctx, ok: true };
 }
-async function pageRestaurants(db, worker) {
+async function pageCollection(db, collectionName, worker) {
   let last = null;
   let scanned = 0;
   let affected = 0;
   const errors = [];
   for (;;) {
-    let q = db.collection('restaurants').orderBy('__name__').limit(PAGE_SIZE);
+    let q = db.collection(collectionName).orderBy('__name__').limit(PAGE_SIZE);
     if (last) q = q.startAfter(last);
     const snap = await q.get();
     if (snap.empty) break;
@@ -44,6 +44,8 @@ async function pageRestaurants(db, worker) {
   }
   return { scanned, affected, errors };
 }
+async function pageRestaurants(db, worker) { return pageCollection(db, 'restaurants', worker); }
+async function pageUsers(db, worker) { return pageCollection(db, 'users', worker); }
 module.exports = async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ ok: false, error: 'Method Not Allowed' });
   const auth = await requireSystemAdmin(req);
@@ -67,7 +69,18 @@ module.exports = async function handler(req, res) {
       else { const targetRef = auth.db.collection('restaurants').doc(target); const targetSnap = await targetRef.get(); if (!targetSnap.exists) return res.status(404).json({ ok:false, error:'Target restaurant does not exist.' }); await targetRef.set({ systemBanner: null, systemBannerUpdatedAt: null }, { merge: true }); result = { scanned: 1, affected: 1, errors: [] }; }
     } else if (action === 'forceRefresh') {
       if (target !== 'ALL') return res.status(400).json({ ok: false, error: 'Global refresh endpoint only accepts target ALL.' });
-      result = await pageRestaurants(auth.db, () => ({ forceRefresh: now, forceRefreshReason: cleanText(body.reason || 'system-admin', 160) }));
+      const reason = cleanText(body.reason || 'system-admin-global-refresh', 160);
+      const restaurantResult = await pageRestaurants(auth.db, () => ({ forceRefresh: now, forceRefreshAt: now, forceRefreshReason: reason }));
+      const userResult = await pageUsers(auth.db, () => ({ forceRefreshAt: now, clientRefreshAt: now, forceRefreshReason: reason, forceRefreshBy: auth.ctx.uid || auth.ctx.email || 'system-admin' }));
+      result = {
+        scanned: (restaurantResult.scanned || 0) + (userResult.scanned || 0),
+        affected: (restaurantResult.affected || 0) + (userResult.affected || 0),
+        restaurantsScanned: restaurantResult.scanned || 0,
+        restaurantsAffected: restaurantResult.affected || 0,
+        usersScanned: userResult.scanned || 0,
+        usersAffected: userResult.affected || 0,
+        errors: [...(restaurantResult.errors || []), ...(userResult.errors || [])]
+      };
     } else if (action === 'logoutNonAdmins') {
       if (target !== 'ALL') return res.status(400).json({ ok: false, error: 'Global logout endpoint only accepts target ALL.' });
       let last = null;
@@ -92,7 +105,7 @@ module.exports = async function handler(req, res) {
           const isAdmin = data.isSuperAdmin === true || data.systemAccess?.superAdmin === true || /system\s*administrator|super\s*admin|master\s*admin/.test(roleText);
           if (isProtected) { protectedSkipped += 1; continue; }
           if (isAdmin) { adminSkipped += 1; continue; }
-          batch.set(userSnap.ref, { forceLogout: true, forceLogoutAt: now, forceLogoutBy: auth.ctx.uid || auth.ctx.email || 'system-admin', forceLogoutByName: auth.ctx.email || 'System Administrator', forceLogoutReason: cleanText(body.reason || 'system-admin-global-logout', 160) }, { merge: true });
+          batch.set(userSnap.ref, { forceLogout: true, forceLogoutAt: now, forceLogoutNonce: idempotencyKey, forceLogoutBy: auth.ctx.uid || auth.ctx.email || 'system-admin', forceLogoutByName: auth.ctx.email || 'System Administrator', forceLogoutReason: cleanText(body.reason || 'system-admin-global-logout', 160) }, { merge: true });
           batchCount += 1;
         }
         if (batchCount) {
