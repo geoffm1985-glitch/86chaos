@@ -429,7 +429,41 @@ const LoginScreen = ({ setAppUser }) => {
         if (userDocSnap.exists()) {
           return { user: { id: firebaseUser.uid, profileDocId: firebaseUser.uid, ...userDocSnap.data() }, diagnostics: null };
         }
-        return { user: null, diagnostics: { browserProfileMissing: true } };
+
+        // Firebase Auth accepts email case-insensitively. Firestore document IDs and
+        // equality filters do not, so use lower-case profile fallbacks for legacy
+        // production users whose profile is stored by email instead of Auth UID.
+        const profileEmail = normEmail(firebaseUser?.email || email);
+        const typedEmail = normEmail(email);
+        const docIdCandidates = Array.from(new Set([profileEmail, typedEmail].filter(Boolean)));
+        for (const candidate of docIdCandidates) {
+          const emailDocSnap = await withOperationTimeout(
+            getDoc(doc(db, 'users', candidate)),
+            900,
+            'Browser email profile lookup'
+          );
+          if (emailDocSnap.exists()) {
+            return {
+              user: { id: firebaseUser.uid, uid: firebaseUser.uid, profileDocId: emailDocSnap.id, ...emailDocSnap.data(), email: profileEmail || typedEmail },
+              diagnostics: { browserProfileMatchedBy: 'email-doc-id' }
+            };
+          }
+        }
+        for (const candidate of docIdCandidates) {
+          const emailFieldSnap = await withOperationTimeout(
+            getDocs(query(collection(db, 'users'), where('email', '==', candidate))),
+            1200,
+            'Browser email field profile lookup'
+          );
+          if (!emailFieldSnap.empty) {
+            const matched = emailFieldSnap.docs[0];
+            return {
+              user: { id: firebaseUser.uid, uid: firebaseUser.uid, profileDocId: matched.id, ...matched.data(), email: profileEmail || typedEmail },
+              diagnostics: { browserProfileMatchedBy: 'email-field' }
+            };
+          }
+        }
+        return { user: null, diagnostics: { browserProfileMissing: true, browserProfileEmailTried: profileEmail || typedEmail } };
       } catch (profileErr) {
         return { user: null, diagnostics: { browserProfileReadError: profileErr?.message || String(profileErr) } };
       }
@@ -467,7 +501,7 @@ const LoginScreen = ({ setAppUser }) => {
     }
 
     if (!userData) {
-      throw new Error(`Firebase Auth accepted this login, but no matching Firestore profile could be loaded. ${authDiagnosticSuffix()}`);
+      throw new Error('Firebase Auth accepted the login, but 86 Chaos could not load the matching account profile. Try typing the email in lowercase once. If this keeps happening, ask a System Administrator to verify the user profile email is saved in lowercase or by Firebase UID.');
     }
 
     delete userData.password;
@@ -501,6 +535,9 @@ const LoginScreen = ({ setAppUser }) => {
     }
     if (code === 'auth/too-many-requests') {
       return 'Too many login attempts. Wait a few minutes before trying again.';
+    }
+    if (/no matching Firestore profile|could not load the matching account profile|No Firestore user profile/i.test(message)) {
+      return 'Your password was accepted, but 86 Chaos could not load your account profile. Try the email in all lowercase once. If it still happens, ask a System Administrator to check that your profile email is lowercase and linked to your Firebase user.';
     }
     return message;
   };
