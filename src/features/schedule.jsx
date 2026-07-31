@@ -481,7 +481,7 @@ const shiftMatchesLocalDeleteMarkers = (shift = {}, markerKeySet = new Set(), ma
     const markerTime = Number(marker.createdAt || marker.sourceRecordTime || 0);
     // Fingerprint tombstones hide old deleted copies but should not hide a brand-new shift
     // re-added after the deletion was confirmed.
-    return !shiftTime || !markerTime || shiftTime <= markerTime + 1000;
+    return !shiftTime || !markerTime || shiftTime <= markerTime;
   });
 };
 
@@ -1985,15 +1985,49 @@ const [eventDate, setEventDate] = useState(getToday());
   const scheduledHoursTrackerSourceShifts = mergeVisibleScheduleShifts((shifts || []).filter(shift => !isDeletedScheduleShift(shift)), localBuilderShiftEchoes.filter(shift => !isDeletedScheduleShift(shift))).filter(shift => !isDeletedScheduleShift(shift) && !shiftMatchesLocalDeleteMarkers(shift, activeLocalDeleteKeySet, activeLocalDeleteMarkerMap));
   const getScheduledHoursTrackerRawShiftsForPersonDate = (dateKey, person) => scheduledHoursTrackerSourceShifts.filter(s => getScheduleShiftDateKey(s) === dateKey && shiftMatchesPerson(s, person, users));
 
+  const getScheduleShiftLogicalDeleteIdentity = (sourceShift = {}, sourcePerson = null, fallbackDateKey = '') => {
+    const date = String(fallbackDateKey || getScheduleShiftDateKey(sourceShift) || '').trim();
+    const restaurantId = String(sourceShift?.restaurantId || sourceShift?.workspaceId || appUser?.restaurantId || '').trim();
+    const startMinutes = parseScheduleClockMinutes(sourceShift?.startTime);
+    const endMinutes = parseScheduleClockMinutes(sourceShift?.endTime);
+    const start = startMinutes === null ? normalizeShiftFingerprintValue(sourceShift?.startTime) : `m${startMinutes}`;
+    const end = endMinutes === null ? normalizeShiftFingerprintValue(sourceShift?.endTime) : `m${endMinutes}`;
+    if (!restaurantId || !date || !start || !end || !sourcePerson) return null;
+    return { restaurantId, date, start, end, person: sourcePerson };
+  };
+
+  const scheduleShiftMatchesLogicalDeleteIdentity = (candidate = {}, identity = null) => {
+    if (!candidate || !identity || isDeletedScheduleShift(candidate)) return false;
+    const candidateRestaurantId = String(candidate?.restaurantId || candidate?.workspaceId || appUser?.restaurantId || '').trim();
+    if (!candidateRestaurantId || candidateRestaurantId !== identity.restaurantId) return false;
+    if (getScheduleShiftDateKey(candidate) !== identity.date) return false;
+    const candidateStartMinutes = parseScheduleClockMinutes(candidate?.startTime);
+    const candidateEndMinutes = parseScheduleClockMinutes(candidate?.endTime);
+    const candidateStart = candidateStartMinutes === null ? normalizeShiftFingerprintValue(candidate?.startTime) : `m${candidateStartMinutes}`;
+    const candidateEnd = candidateEndMinutes === null ? normalizeShiftFingerprintValue(candidate?.endTime) : `m${candidateEndMinutes}`;
+    if (candidateStart !== identity.start || candidateEnd !== identity.end) return false;
+    return shiftMatchesPerson(candidate, identity.person, users);
+  };
+
   const fetchSavedScheduleBuilderDeleteTargetsForPersonDate = async (dateKey, person, visibleCandidates = []) => {
     const byId = new Map();
+    const logicalIdentities = (visibleCandidates || [])
+      .map(shift => getScheduleShiftLogicalDeleteIdentity(shift, person, dateKey))
+      .filter(Boolean);
+    const matchesDeleteScope = (candidate = {}) => {
+      if (logicalIdentities.length) return logicalIdentities.some(identity => scheduleShiftMatchesLogicalDeleteIdentity(candidate, identity));
+      return !isDeletedScheduleShift(candidate) && getScheduleShiftDateKey(candidate) === dateKey && shiftMatchesPerson(candidate, person, users);
+    };
     (visibleCandidates || []).forEach(shift => {
-      if (shift?.id) byId.set(String(shift.id), shift);
+      if (!isDeletedScheduleShift(shift) && matchesDeleteScope(shift)) {
+        const id = getShiftWritableDocId(shift);
+        if (id) byId.set(String(id), { ...shift, id });
+      }
     });
     const collectSnapshotMatches = (snap) => {
       snap.forEach(docSnap => {
         const shift = { id: docSnap.id, ...docSnap.data() };
-        if (!isDeletedScheduleShift(shift) && shiftMatchesPerson(shift, person, users)) byId.set(String(docSnap.id), shift);
+        if (matchesDeleteScope(shift)) byId.set(String(docSnap.id), shift);
       });
     };
     const baseCollection = collection(db, 'shifts');
@@ -2007,7 +2041,7 @@ const [eventDate, setEventDate] = useState(getToday());
     } catch (err) {
       console.warn('Schedule delete target lookup fell back to visible shifts only', err);
     }
-    return Array.from(byId.values()).filter(shift => !isDeletedScheduleShift(shift));
+    return Array.from(byId.values()).filter(shift => !isDeletedScheduleShift(shift) && matchesDeleteScope(shift));
   };
 
   const tombstoneAndDeleteScheduleBuilderShiftTargets = async (targets = [], deleteScope = {}) => {
@@ -2055,29 +2089,34 @@ const [eventDate, setEventDate] = useState(getToday());
     const label = `${formatShortTime(shift?.startTime)}-${formatShortTime(shift?.endTime)}`;
     if (!window.confirm(`Delete only ${label} for ${person?.name || 'this employee'} on ${formatDisplayDate(dateKey)}?`)) return;
     try {
+      const deleteIdentity = getScheduleShiftLogicalDeleteIdentity(shift, person, dateKey);
       const allTargets = await fetchSavedScheduleBuilderDeleteTargetsForPersonDate(dateKey, person, [shift]);
-      const targetId = getShiftWritableDocId(shift);
-      const targetFingerprint = buildShiftFingerprint(shift);
-      const exactTargets = allTargets.filter(candidate => {
-        const candidateId = getShiftWritableDocId(candidate);
-        if (targetId && candidateId === targetId) return true;
-        return !!(targetFingerprint && buildShiftFingerprint(candidate) === targetFingerprint);
-      });
-      const result = await tombstoneAndDeleteScheduleBuilderShiftTargets(exactTargets.length ? exactTargets : [shift], { scope: 'single-shift' });
-      const markerSource = mergeVisibleScheduleShifts(exactTargets.length ? exactTargets : [shift], result.targetList);
+      const exactTargets = deleteIdentity
+        ? allTargets.filter(candidate => scheduleShiftMatchesLogicalDeleteIdentity(candidate, deleteIdentity))
+        : [];
+      if (!exactTargets.length) throw new Error('No saved matching shift records were found. Refresh the schedule and try again.');
+      const result = await tombstoneAndDeleteScheduleBuilderShiftTargets(exactTargets, { scope: 'single-shift-logical-group' });
+      const remainingTargets = await fetchSavedScheduleBuilderDeleteTargetsForPersonDate(dateKey, person, [shift]);
+      const remainingActiveMatches = deleteIdentity
+        ? remainingTargets.filter(candidate => scheduleShiftMatchesLogicalDeleteIdentity(candidate, deleteIdentity))
+        : [];
+      if (remainingActiveMatches.length) {
+        throw new Error(`${result.deletedCount || 0} matching record(s) were removed, but ${remainingActiveMatches.length} active duplicate still exists. Refresh and try again before publishing.`);
+      }
+      const markerSource = mergeVisibleScheduleShifts(exactTargets, result.targetList, [shift]);
       const deletedMarkers = buildLocalShiftDeletionMarkers(markerSource);
       const deletedKeySet = new Set(deletedMarkers.map(marker => marker.key).filter(Boolean));
       const localPruneKeySet = new Set(markerSource.flatMap(getScheduleShiftLocalPruneKeys).filter(Boolean));
+      const shouldPruneDeletedLogicalShift = (item = {}) => {
+        if (deleteIdentity && scheduleShiftMatchesLogicalDeleteIdentity(item, deleteIdentity)) return true;
+        if (localPruneKeySet.size && shiftMatchesLocalDeletePruneKeys(item, localPruneKeySet)) return true;
+        if (deletedKeySet.size && shiftMatchesLocalDeleteMarkers(item, deletedKeySet)) return true;
+        return false;
+      };
       if (deletedMarkers.length) setLocalBuilderDeletedShiftMarkers(prev => mergeLocalShiftDeletionMarkers(prev, deletedMarkers));
-      if (localPruneKeySet.size) {
-        setLocalBuilderShiftEchoes(prev => prev.filter(item => !shiftMatchesLocalDeletePruneKeys(item, localPruneKeySet)));
-        setAutoFillVisibleShifts(prev => prev.filter(item => !shiftMatchesLocalDeletePruneKeys(item, localPruneKeySet)));
-      }
-      if (deletedKeySet.size) {
-        setLocalBuilderShiftEchoes(prev => prev.filter(item => !shiftMatchesLocalDeleteMarkers(item, deletedKeySet)));
-        setAutoFillVisibleShifts(prev => prev.filter(item => !shiftMatchesLocalDeleteMarkers(item, deletedKeySet)));
-      }
-      addToast('Shift Deleted', result.deletedCount === 1 ? 'That shift was removed.' : `${result.deletedCount} matching duplicate shift records were removed.`);
+      setLocalBuilderShiftEchoes(prev => prev.filter(item => !shouldPruneDeletedLogicalShift(item)));
+      setAutoFillVisibleShifts(prev => prev.filter(item => !shouldPruneDeletedLogicalShift(item)));
+      addToast('Shift Deleted', result.deletedCount === 1 ? 'That shift was removed.' : `${result.deletedCount} hidden duplicate shift records were removed from that one chip.`);
     } catch (err) {
       addToast('Delete Failed', err?.message || 'Could not remove that shift.');
     }

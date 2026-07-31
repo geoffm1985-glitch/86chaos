@@ -1,14 +1,14 @@
 {
-  "version": "16.0.83",
-  "name": "86 Chaos 16.0.83 Admin Employee Delete Permission Fix",
-  "build": "16.0.83",
-  "label": "86 Chaos 16.0.83 Admin Employee Delete Permission Fix",
-  "releasedAt": "2026-07-31T14:47:00-05:00",
-  "releaseTitle": "86 Chaos 16.0.83 Admin Employee Delete Permission Fix",
+  "version": "16.0.84",
+  "name": "86 Chaos 16.0.84 Deletion Permanence Fix",
+  "build": "16.0.84",
+  "label": "86 Chaos 16.0.84 Deletion Permanence Fix",
+  "releasedAt": "2026-07-31T15:38:00-05:00",
+  "releaseTitle": "86 Chaos 16.0.84 Deletion Permanence Fix",
   "notes": [
-    "Release-gate Firebase Auth verification now sends one canonical Origin header and one canonical Referer header so restricted API-key origin metadata is preserved without duplicate header values.",
-    "Role-verification reports now identify duplicate Origin/Referer request formatting as a release-gate test-harness problem instead of telling the user to replace QA accounts.",
-    "Schedule Builder time chips keep full unavailable/request-off ranges visible and make actual shift times bolder and easier to read without changing schedule data, publishing, or permissions.",
-    "Firestore rules, Storage rules, Firebase config, API keys, Auth domains, project IDs, storage buckets, service account wiring, employee schedule visibility behavior, and session restoration were not changed."
+    "Schedule Builder now deletes/tombstones every active Firestore shift document represented by one visible shift chip using the same employee/date/time identity used for display deduplication.",
+    "Deleted shift chips are verified after deletion and stale local echoes, Auto-Fill state, publish candidates, labor totals, exports, and listener snapshots are prevented from resurrecting confirmed deletes.",
+    "System Administrator global employee deletion now removes/deactivates every active workspaceMembers record for the target account before returning success so deleted users cannot reappear in Staff Roster.",
+    "Historical schedules, time punches, payroll records, audit logs, Firebase config, Firestore rules, indexes, credentials, employee schedule visibility, and the 16.0.83 admin delete permission fix were preserved."
   ]
 }
