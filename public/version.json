@@ -1,14 +1,14 @@
 {
-  "version": "16.0.80",
-  "name": "86 Chaos 16.0.80 Refresh Access and Release Gate Fixes",
-  "build": "16.0.80",
-  "label": "86 Chaos 16.0.80 Refresh Access and Release Gate Fixes",
-  "releasedAt": "2026-07-31T00:03:00-05:00",
-  "releaseTitle": "86 Chaos 16.0.80 Refresh Access and Release Gate Fixes",
+  "version": "16.0.81",
+  "name": "86 Chaos 16.0.81 Employee Schedule Visibility Fixes",
+  "build": "16.0.81",
+  "label": "86 Chaos 16.0.81 Employee Schedule Visibility Fixes",
+  "releasedAt": "2026-07-31T13:35:00-05:00",
+  "releaseTitle": "86 Chaos 16.0.81 Employee Schedule Visibility Fixes",
   "notes": [
-    "Hard-refresh session bootstrap now waits for Firebase Auth, account profile, workspace membership, and server whoami verification before showing role-gated controls.",
-    "Transient /api/whoami failures no longer demote a previously verified System Administrator or hide legitimate owner/admin/permission controls.",
-    "Ultimate test runner restores V9 preservation/catalog/inventory stages and fixes Windows command quoting, QA preflight status, and report cascade handling.",
-    "Schedule Builder chip styling, Firestore rules, Firebase config, credentials, and project wiring were not changed."
+    "Employee schedule screens now load published shifts by both date and scheduleDateKey so restored/imported schedule records cannot disappear from My Schedule or Full Schedule.",
+    "Loaded shifts are normalized in memory so employee-facing schedule filters use the same date key even when older records are missing one of the modern date fields.",
+    "My Schedule keeps roster-aware identity matching and Full Schedule keeps published-shift filtering without changing permissions, branding, or Firebase credentials.",
+    "Firestore rules, Storage rules, Firebase config, API keys, Auth domains, project IDs, storage buckets, and service account wiring were not changed."
   ]
 }

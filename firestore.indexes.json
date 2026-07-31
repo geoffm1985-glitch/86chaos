@@ -177,6 +177,24 @@
           "order": "ASCENDING"
         },
         {
+          "fieldPath": "scheduleDateKey",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "shifts",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "restaurantId",
+          "order": "ASCENDING"
+        },
+        {
           "fieldPath": "employeeId",
           "order": "ASCENDING"
         },

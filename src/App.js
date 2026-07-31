@@ -10,7 +10,7 @@ import { CheersLogo, Modal, DrawerMenu, DayDotPrintScreen, GlobalSearchModal, Ki
 import { LockedFeatureScreen } from './components/PlanGate';
 import { usePlanAccess } from './hooks/usePlanAccess';
 import { resolveFeatureAccess } from './lib/featureAccess';
-import { buildScheduleQueryPlan } from './core/scheduleQueryPlanner';
+import { buildScheduleQueryPlan, buildScheduleDateKeyRangeClauses, mergeLoadedScheduleShifts } from './core/scheduleQueryPlanner';
 import { WHOAMI_STATES, classifyWhoamiResponse, mergeVerifiedAccess, shouldHoldAccessHydration } from './core/sessionAccess';
 import { FEATURE_KEYS } from './config/plans';
 import { LoginScreen } from './features/auth';
@@ -772,6 +772,7 @@ const [currentDate, setCurrentDate] = useState(getToday());
   const wantsSalesData = ['financials', 'sales', 'ops', 'labor'].includes(activeTabState) && canReadSalesCollections;
   const shiftRangeStart = schedulePlan.shiftClauses.find(c => c[0] === 'date' && c[1] === '>=')?.[2] || (wantsScheduleScreen ? scheduleWindowStart : getToday());
   const shiftRangeEnd = schedulePlan.shiftClauses.find(c => c[0] === 'date' && c[1] === '<=')?.[2] || (wantsScheduleScreen ? scheduleWindowEnd : todayOpsWindowEnd);
+  const scheduleDateKeyShiftClauses = useMemo(() => buildScheduleDateKeyRangeClauses(schedulePlan.shiftClauses), [schedulePlan.shiftClauses]);
   const wantsEventData = wantsToday || wantsScheduleScreen || activeTabState === 'messages' || activeTabState === 'ops' || isGlobalSearchOpen;
   // Schedule Builder needs the same scheduled events a manager sees in Event Calendar.
   // Without loading events on schedule screens, the builder receives an empty/stale events prop
@@ -816,7 +817,9 @@ const [currentDate, setCurrentDate] = useState(getToday());
   const livePresenceRecords = workspacePresenceRecords;
   const selfPresenceRecord = useLowCostPresenceSummary(rId, appUser?.id || '', { enabled: !!rId && !ghostTenant && activeTabState === 'settings' && !!appUser?.id });
   const presenceSessions = livePresenceRecords;
-  const rawShifts = useLiveCollection('shifts', rId, { enabled: !!rId && wantsShiftData, whereClauses: schedulePlan.shiftClauses, orderByField: 'date', orderDirection: 'asc', limitCount: schedulePlan.shiftLimit, fallbackLimitCount: Math.min(schedulePlan.shiftLimit || 80, 80), debugLabel: `app:${activeTabState}:${activeScheduleSubTab}:shifts-plan` });
+  const rawDateShifts = useLiveCollection('shifts', rId, { enabled: !!rId && wantsShiftData, whereClauses: schedulePlan.shiftClauses, orderByField: 'date', orderDirection: 'asc', limitCount: schedulePlan.shiftLimit, fallbackLimitCount: Math.min(schedulePlan.shiftLimit || 80, 80), debugLabel: `app:${activeTabState}:${activeScheduleSubTab}:shifts-date-plan` });
+  const rawScheduleDateKeyShifts = useLiveCollection('shifts', rId, { enabled: !!rId && wantsShiftData && wantsScheduleScreen, whereClauses: scheduleDateKeyShiftClauses, orderByField: 'scheduleDateKey', orderDirection: 'asc', limitCount: schedulePlan.shiftLimit, fallbackLimitCount: Math.min(schedulePlan.shiftLimit || 80, 80), debugLabel: `app:${activeTabState}:${activeScheduleSubTab}:shifts-scheduleDateKey-rescue` });
+  const rawShifts = useMemo(() => mergeLoadedScheduleShifts(rawDateShifts, rawScheduleDateKeyShifts), [rawDateShifts, rawScheduleDateKeyShifts]);
   const shifts = useMemo(() => {
     const start = shiftRangeStart;
     const end = shiftRangeEnd;
