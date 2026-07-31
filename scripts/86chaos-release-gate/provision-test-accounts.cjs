@@ -4,7 +4,7 @@ const path = require('path');
 
 const { ensureRunDir, getRunFile, writeJson } = require('./run-context.cjs');
 const { loadEnv } = require('../86chaos-full-audit/env-loader.cjs');
-const { EXPECTED_FIREBASE_PROJECT, ROLE_DEFINITIONS, readConfiguredAccounts, validateLocalRoleEnv, analyzeRoleRows } = require('./verify-role-accounts.cjs');
+const { EXPECTED_FIREBASE_PROJECT, ROLE_DEFINITIONS, readConfiguredAccounts, validateLocalRoleEnv, analyzeRoleRows, verifyRoleAccounts } = require('./verify-role-accounts.cjs');
 
 const PROTECTED_ROOT_EMAILS = new Set(['geoffm1985@gmail.com']);
 const SAFE_TEMP_EMAIL_RE = /(^86chaos[.+_-]?qa|[.+_-]86chaos[.+_-]?qa|release[.+_-]?gate|qa[.+_-]?release)/i;
@@ -153,7 +153,42 @@ async function provisionTestAccounts(options = {}) {
     notes: [],
   };
   if (!enabled) {
-    report.notes.push('CHAOS_QA_AUTO_PROVISION_TEST_USERS is not enabled; using existing release-gate role accounts from .env.test.local.');
+    const accounts = readConfiguredAccounts();
+    const envErrors = validateLocalRoleEnv(accounts, EXPECTED_FIREBASE_PROJECT);
+    report.skipped = true;
+    report.status = 'verifying-existing-accounts';
+    report.notes.push('CHAOS_QA_AUTO_PROVISION_TEST_USERS is not enabled; verifying existing release-gate role accounts from .env.test.local before allowing Playwright.');
+    if (envErrors.length) {
+      report.ok = false;
+      report.blocked = true;
+      report.status = 'blocked';
+      report.errors = [...new Set(envErrors)];
+      report.manualConfigurationRequired = [
+        'Provide four valid, unique, dedicated testing accounts in .env.test.local, or explicitly enable temporary provisioning for chaos-test-d1601.',
+        'Required names: SYSTEM_ADMIN_EMAIL/PASSWORD, OWNER_EMAIL/PASSWORD, MANAGER_EMAIL/PASSWORD, STAFF_EMAIL/PASSWORD.',
+        'Do not reuse the protected founding administrator or a System Administrator account for owner, manager, or staff.'
+      ];
+      writeJson(out, report);
+      return report;
+    }
+    try {
+      const verified = await verifyRoleAccounts({ throwOnFailure: false });
+      report.verifiedExistingAccounts = true;
+      report.roleVerificationOutput = verified.out;
+      report.accounts = (verified.report.accounts || []).map(row => ({ key: row.key, label: row.label, emailEnv: row.emailEnv, email: row.email, uid: row.uid, superAdmin: row.superAdmin }));
+      if (verified.report.ok !== true) {
+        report.ok = false;
+        report.blocked = true;
+        report.status = 'blocked';
+        report.errors = [...new Set(verified.report.errors || ['Existing release-gate role accounts could not be verified.'])];
+        report.manualConfigurationRequired = verified.report.manualConfigurationRequired || [];
+      }
+    } catch (error) {
+      report.ok = false;
+      report.blocked = true;
+      report.status = 'blocked';
+      report.errors = [error.message || String(error)];
+    }
     writeJson(out, report);
     return report;
   }

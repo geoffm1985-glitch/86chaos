@@ -20,10 +20,10 @@ function addDir(relative, predicate) {
     else if (predicate(full)) files.push(full);
   }
 }
-function countStaticTests(file) {
-  const text = fs.readFileSync(file, 'utf8');
-  return [...text.matchAll(/\b(?:test|it)\s*\(\s*(["'`])([\s\S]*?)\1/g)]
-    .filter(match => !match[2].includes('${')).length;
+
+function writeJson(file, data) {
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, JSON.stringify(data, null, 2));
 }
 
 addDir('api', file => file.endsWith('.test.cjs'));
@@ -31,60 +31,51 @@ addDir('tests/86chaos-release-gate', file => file.endsWith('.test.cjs'));
 addDir('tests/86chaos-ultimate-store/unit', file => file.endsWith('.test.cjs'));
 files.sort();
 
+const runDir = process.env.CHAOS_RELEASE_GATE_RUN_DIR || path.join(root, 'test-results', '86chaos-ultimate-store-tests', 'node-local');
+const cliFiles = files.map(file => path.relative(root, file));
+const summaryPath = path.join(runDir, 'node-test-live-summary.json');
+
 if (!files.length) {
+  writeJson(summaryPath, { ok: false, discoveredFiles: 0, executed: 0, passed: 0, failed: 0, skipped: 0, cancelled: 0, errors: ['No Node test files were discovered.'] });
   console.error('No Node test files were discovered.');
   process.exit(1);
 }
+
 if (!fs.existsSync(reporterPath)) {
+  writeJson(summaryPath, { ok: false, discoveredFiles: files.length, executed: 0, passed: 0, failed: 0, skipped: 0, cancelled: 0, errors: [`Node test reporter is missing: ${reporterPath}`] });
   console.error(`Node test reporter is missing: ${reporterPath}`);
   process.exit(1);
 }
 
-const cliFiles = files.map(file => path.relative(root, file));
-const staticCount = files.reduce((sum, file) => sum + countStaticTests(file), 0);
-let dynamicEstimate = 0;
-try {
-  const parser = require(require.resolve('@babel/parser', { paths: [root] }));
-  const traverse = require(require.resolve('@babel/traverse', { paths: [root] })).default;
-  const sourceFiles = [];
-  const collect = dir => {
-    if (!fs.existsSync(dir)) return;
-    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-      const full = path.join(dir, entry.name);
-      if (entry.isDirectory()) collect(full);
-      else if (/\.(?:js|jsx)$/.test(entry.name) && !/\.(?:test|spec)\./.test(entry.name)) sourceFiles.push(full);
-    }
-  };
-  collect(path.join(root, 'src'));
-  collect(path.join(root, 'api'));
-  for (const file of sourceFiles) {
-    const ast = parser.parse(fs.readFileSync(file, 'utf8'), { sourceType: 'unambiguous', plugins: ['jsx', 'classProperties', 'optionalChaining', 'nullishCoalescingOperator', 'dynamicImport', 'topLevelAwait'] });
-    traverse(ast, {
-      FunctionDeclaration() { dynamicEstimate += 1; },
-      FunctionExpression() { dynamicEstimate += 1; },
-      ArrowFunctionExpression() { dynamicEstimate += 1; },
-      ClassMethod() { dynamicEstimate += 1; },
-      ObjectMethod() { dynamicEstimate += 1; },
-    });
-  }
-  // The function inventory has one static summary test plus one generated test per function.
-  // Other dynamic inventory files add collection and plan cases; leave a conservative allowance.
-  dynamicEstimate += 80;
-} catch (_) {}
-const estimatedTotal = staticCount + dynamicEstimate;
 console.log(`Running ${cliFiles.length} Node test files with individual live timers.`);
-console.log(`Static test title count: ${staticCount}. Estimated generated cases: ${dynamicEstimate}. Estimated total: ${estimatedTotal}.`);
 for (const file of cliFiles) console.log(`- ${file}`);
 
-const result = spawnSync(process.execPath, ['--test', '--test-reporter', reporterSpecifier, ...cliFiles], {
+const reporter = process.env.CHAOS_NODE_TEST_REPORTER === 'spec' ? 'spec' : reporterSpecifier;
+const result = spawnSync(process.execPath, ['--test', '--test-reporter', reporter, ...cliFiles], {
   cwd: root,
-  env: { ...process.env, CHAOS_NODE_TEST_TOTAL: String(estimatedTotal || staticCount) },
+  env: { ...process.env, CHAOS_NODE_TEST_SUMMARY_PATH: summaryPath },
   stdio: 'inherit',
   windowsHide: false,
 });
 
 if (result.error) {
+  writeJson(summaryPath, { ok: false, discoveredFiles: files.length, executed: 0, passed: 0, failed: 1, skipped: 0, cancelled: 0, errors: [result.error.message] });
   console.error(result.error.stack || result.error.message);
   process.exit(1);
 }
+
+if (!fs.existsSync(summaryPath)) {
+  writeJson(summaryPath, {
+    ok: result.status === 0,
+    discoveredFiles: files.length,
+    executed: null,
+    passed: null,
+    failed: result.status === 0 ? 0 : null,
+    skipped: null,
+    cancelled: null,
+    reporter,
+    note: 'The reporter did not write an event summary. Re-run with CHAOS_NODE_TEST_REPORTER=spec for built-in detailed output.',
+  });
+}
+
 process.exit(result.status == null ? 1 : result.status);
