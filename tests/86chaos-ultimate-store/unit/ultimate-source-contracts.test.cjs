@@ -272,3 +272,47 @@ test('test coverage inventory includes every major route and every public API th
   assert.match(apiContract, /readdirSync|apiFiles|API_FILES|public API/i);
   assert.match(apiContract, /malformed unauthenticated calls/i);
 });
+
+test('V9 preservation manifest files and known test titles remain present', () => {
+  const manifestLines = read('SUITE_FILE_MANIFEST.txt').split(/\r?\n/).map(line => line.trim()).filter(Boolean);
+  const missingFiles = manifestLines.filter(file => !exists(file));
+  assert.deepEqual(missingFiles, []);
+  for (const required of [
+    'INSTALL_AND_RUN_86CHAOS_ULTIMATE_TESTS.cmd',
+    'INSTALL_AND_RUN_86CHAOS_ULTIMATE_TESTS.ps1',
+    'RUN_86CHAOS_ULTIMATE_APP_STORE_TESTS.cmd',
+    'RUN_86CHAOS_ULTIMATE_APP_STORE_TESTS.ps1',
+    'test-tools/run-node-tests.cjs',
+    'test-tools/reporters/node-live-timer.mjs',
+    'tests/86chaos-ultimate-store/32-schedule-publish-my-schedule-regression.spec.cjs'
+  ]) assert.ok(exists(required), `${required} must remain present from the V9 baseline`);
+
+  const discoveredTitles = [];
+  for (const file of manifestLines.filter(name => /\.(?:test|spec)\.cjs$/.test(name) && exists(name))) {
+    const text = read(file);
+    for (const match of text.matchAll(/\b(?:test|it)\s*\(\s*(["'`])([\s\S]*?)\1/g)) {
+      const title = match[2].replace(/\s+/g, ' ').trim();
+      if (title && !title.includes('${')) discoveredTitles.push(title);
+    }
+  }
+  for (const title of [
+    'schedule partial publishing is complete, legacy-compatible, and verifies selected-week shifts',
+    'employee My Schedule loads outer weeks but displays the selected month list safely',
+    'package lock pins the direct test toolchain required by the one-command gate',
+    'test coverage inventory includes every major route and every public API through dynamic contract tests'
+  ]) assert.ok(discoveredTitles.includes(title), `Missing preserved V9 test title: ${title}`);
+});
+
+test('refresh access bootstrap is stateful and cannot demote on transient whoami failures', () => {
+  const app = read('src/App.js');
+  const helper = read('src/core/sessionAccess.js');
+  assert.match(app, /shouldHoldAccessHydration\(\{/);
+  assert.match(app, /Restoring session/);
+  assert.match(app, /res\.status === 401/);
+  assert.match(app, /forceTokenRefresh/);
+  assert.match(app, /TRANSIENT_FAILURE/);
+  assert.match(helper, /mergeVerifiedAccess/);
+  assert.match(helper, /server-verified-not-system-admin/);
+  assert.match(read('src/core/sessionAccess.test.js'), /transient whoami failures keep the current verified administrator state/);
+});
+

@@ -62,6 +62,64 @@ export const collectScheduleIdentityAliases = (...records) => uniqueNonEmpty([
   ...collectScheduleEmailAliases(...records)
 ]);
 
+
+export const getScheduleShiftDateKeyValue = (shift = {}) => String(
+  shift?.date || shift?.scheduleDateKey || shift?.shiftDate || shift?.day || ''
+).trim();
+
+export const buildScheduleDateKeyRangeClauses = (clauses = []) => (Array.isArray(clauses) ? clauses : []).map(clause => {
+  if (!Array.isArray(clause)) return clause;
+  const [field, op, value] = clause;
+  return field === 'date' ? ['scheduleDateKey', op, value] : clause;
+});
+
+const loadedScheduleShiftMergeKey = (shift = {}) => {
+  const id = String(shift?.id || '').trim();
+  if (id) return `id:${id}`;
+  const values = [
+    shift?.restaurantId || shift?.workspaceId || '',
+    getScheduleShiftDateKeyValue(shift),
+    shift?.scheduleUserId || shift?.employeeId || shift?.rosterUserId || shift?.userId || shift?.authUid || shift?.uid || '',
+    shift?.employeeEmail || shift?.assignedEmail || shift?.email || '',
+    normalizeScheduleNameValue(shift?.employeeName || shift?.assignedName || shift?.name || ''),
+    shift?.role || shift?.targetRole || '',
+    shift?.startTime || '',
+    shift?.endTime || ''
+  ].map(value => String(value || '').trim().toLowerCase());
+  return values.some(Boolean) ? values.join('|') : '';
+};
+
+export const normalizeLoadedScheduleShift = (shift = {}) => {
+  const safeShift = shift && typeof shift === 'object' ? shift : {};
+  const dateKey = getScheduleShiftDateKeyValue(safeShift);
+  if (!dateKey) return safeShift;
+  return {
+    ...safeShift,
+    date: safeShift.date || dateKey,
+    scheduleDateKey: safeShift.scheduleDateKey || dateKey,
+    scheduleMonth: safeShift.scheduleMonth || dateKey.slice(0, 7)
+  };
+};
+
+export const mergeLoadedScheduleShifts = (...sources) => {
+  const byKey = new Map();
+  sources.flat().filter(Boolean).forEach(rawShift => {
+    const shift = normalizeLoadedScheduleShift(rawShift);
+    const key = loadedScheduleShiftMergeKey(shift);
+    if (!key) return;
+    const previous = byKey.get(key) || {};
+    byKey.set(key, normalizeLoadedScheduleShift({
+      ...previous,
+      ...shift,
+      id: previous.id || shift.id,
+      date: previous.date || shift.date,
+      scheduleDateKey: previous.scheduleDateKey || shift.scheduleDateKey,
+      scheduleMonth: previous.scheduleMonth || shift.scheduleMonth
+    }));
+  });
+  return Array.from(byKey.values());
+};
+
 const activeScheduleRoster = (roster = []) => (Array.isArray(roster) ? roster : []).filter(person => person && person.isActive !== false);
 const uniqueMatch = (matches = [], reason = 'match') => matches.length === 1
   ? { ok: true, person: matches[0], reason }
