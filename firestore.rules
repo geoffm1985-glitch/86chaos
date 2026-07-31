@@ -13,6 +13,23 @@ service cloud.firestore {
     function hasUserDoc() { return signedIn() && exists(userPath()); }
     function userData() { return get(userPath()).data; }
 
+    function protectedFoundingAdminEmail() { return 'geoffm1985@gmail.com'; }
+    function isProtectedFoundingAdminUser(data) {
+      return data.email == protectedFoundingAdminEmail() ||
+        data.emailLower == protectedFoundingAdminEmail() ||
+        data.emailLowercase == protectedFoundingAdminEmail() ||
+        data.normalizedEmail == protectedFoundingAdminEmail() ||
+        data.authEmail == protectedFoundingAdminEmail();
+    }
+    function protectedFoundingAdminKeys() {
+      return ['isSuperAdmin', 'superAdmin', 'systemAccess', 'platformAccess', 'isAdmin', 'isActive', 'disabled', 'isDisabled', 'deactivated', 'archived', 'deleted', 'role', 'accountRole', 'permissions'];
+    }
+    function protectedFoundingAdminUserUpdateIsSafe() {
+      return !isProtectedFoundingAdminUser(resource.data) ||
+        !request.resource.data.diff(resource.data).affectedKeys().hasAny(protectedFoundingAdminKeys());
+    }
+
+
     function isSuperAdmin() {
       return signedIn() && (
         request.auth.token.superAdmin == true ||
@@ -879,8 +896,12 @@ service cloud.firestore {
         (collectionName in ['invoices'] && (isAdminFor(restId) || hasPermFor(restId, 'inventory') || hasPermFor(restId, 'inventoryEdit') || hasPermFor(restId, 'invoiceScan') || hasPermFor(restId, 'scans')));
     }
 
+    function scheduleCollection(collectionName) {
+      return collectionName in ['shifts', 'timeOffRequests', 'scheduleTemplates', 'scheduleCoverageTargets'];
+    }
+
     function scheduleWriteAllowed(collectionName, restId) {
-      return collectionName in ['shifts', 'timeOffRequests', 'scheduleTemplates', 'scheduleCoverageTargets'] && (isAdminFor(restId) || hasPermFor(restId, 'schedule') || hasPermFor(restId, 'team'));
+      return scheduleCollection(collectionName) && (isSuperAdmin() || isRestaurantOwner(restId) || isAdminFor(restId) || hasPermFor(restId, 'schedule') || hasPermFor(restId, 'team'));
     }
 
     function managerWriteAllowed(collectionName, restId) {
@@ -889,7 +910,7 @@ service cloud.firestore {
     }
 
     function canTenantWriteCollection(collectionName, restId) {
-      return isTenantMatch(restId) && (
+      return (isTenantMatch(restId) || (scheduleCollection(collectionName) && isRestaurantOwner(restId))) && (
         commonTenantWriteAllowed(collectionName) ||
         kitchenWriteAllowed(collectionName, restId) ||
         inventoryWriteAllowed(collectionName, restId) ||
@@ -916,13 +937,13 @@ service cloud.firestore {
         workspaceMemberHrCreateIsSafe(request.resource.data.restaurantId)
       ));
 
-      allow update: if signedIn() && (
+      allow update: if signedIn() && protectedFoundingAdminUserUpdateIsSafe() && (
         isSuperAdmin() ||
         (request.auth.uid == userId && userSafeSelfUpdate()) ||
         (resource.data.restaurantId is string && canManageStaff(resource.data.restaurantId) && tenantAdminUserUpdateIsSafe())
       );
 
-      allow delete: if signedIn() && (isSuperAdmin() || (resource.data.restaurantId is string && canManageStaff(resource.data.restaurantId)));
+      allow delete: if signedIn() && !isProtectedFoundingAdminUser(resource.data) && (isSuperAdmin() || (resource.data.restaurantId is string && canManageStaff(resource.data.restaurantId)));
     }
 
     match /workspaceMembers/{memberId} {

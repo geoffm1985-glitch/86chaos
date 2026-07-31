@@ -5080,3 +5080,89 @@ span.bg-red-500.text-white,
     font-size: 15px !important;
   }
 }
+
+/* 16.0.77: Schedule Builder mobile density guard.
+   Keep mobile shift chips compact and horizontal. Do not enlarge cells/columns just to prevent vertical text. */
+@media (max-width: 767px) {
+  .schedule-builder-desktop-table .schedule-builder-time-chip:not(.schedule-builder-event-chip):not(.schedule-builder-event-more),
+  .schedule-builder-desktop-table .schedule-builder-partial-off-chip {
+    display: block !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    min-height: 0 !important;
+    height: auto !important;
+    padding: 2px 2px !important;
+    font-size: 9px !important;
+    line-height: 1.05 !important;
+    letter-spacing: -0.045em !important;
+    white-space: nowrap !important;
+    word-break: normal !important;
+    overflow-wrap: normal !important;
+    overflow: hidden !important;
+    text-overflow: clip !important;
+  }
+
+  .schedule-builder-desktop-table tbody td > div {
+    gap: 2px !important;
+  }
+
+  .schedule-builder-desktop-table tbody td:not(:first-child) {
+    height: 28px !important;
+    min-height: 28px !important;
+    vertical-align: top !important;
+  }
+}
+
+/* 16.0.77 Schedule Builder shift chips: compact visual size, one horizontal line, no unrelated button/layout changes. */
+.schedule-builder-desktop-table .schedule-builder-time-chip:not(.schedule-builder-event-chip):not(.schedule-builder-event-more),
+.schedule-builder-desktop-table button.schedule-builder-time-chip:not(.schedule-builder-event-chip):not(.schedule-builder-event-more),
+.schedule-builder-desktop-table .schedule-builder-partial-off-chip {
+  box-sizing: border-box !important;
+  display: block !important;
+  width: calc(100% - 8px) !important;
+  max-width: calc(100% - 8px) !important;
+  min-width: 0 !important;
+  min-height: 16px !important;
+  height: auto !important;
+  margin: 1px auto !important;
+  padding: 2px 3px !important;
+  border-radius: 6px !important;
+  font-size: 9px !important;
+  line-height: 1.05 !important;
+  letter-spacing: -0.035em !important;
+  white-space: nowrap !important;
+  writing-mode: horizontal-tb !important;
+  text-orientation: mixed !important;
+  word-break: keep-all !important;
+  overflow-wrap: normal !important;
+  text-wrap: nowrap !important;
+  overflow: visible !important;
+  text-overflow: clip !important;
+}
+
+.schedule-builder-desktop-table button.schedule-builder-time-chip:not(.schedule-builder-event-chip):not(.schedule-builder-event-more):not(:disabled),
+.ui-v12-compact .schedule-builder-desktop-table button.schedule-builder-time-chip:not(.schedule-builder-event-chip):not(.schedule-builder-event-more):not(:disabled),
+.desktop-pro-shell .schedule-builder-desktop-table button.schedule-builder-time-chip:not(.schedule-builder-event-chip):not(.schedule-builder-event-more):not(:disabled) {
+  min-height: 16px !important;
+  min-width: 0 !important;
+}
+
+@media (min-width: 1024px) {
+  .schedule-builder-desktop-table .schedule-builder-time-chip:not(.schedule-builder-event-chip):not(.schedule-builder-event-more),
+  .schedule-builder-desktop-table button.schedule-builder-time-chip:not(.schedule-builder-event-chip):not(.schedule-builder-event-more) {
+    font-size: 10px !important;
+    padding-top: 1px !important;
+    padding-bottom: 1px !important;
+  }
+}
+
+@media (max-width: 420px) {
+  .schedule-builder-desktop-table .schedule-builder-time-chip:not(.schedule-builder-event-chip):not(.schedule-builder-event-more),
+  .schedule-builder-desktop-table button.schedule-builder-time-chip:not(.schedule-builder-event-chip):not(.schedule-builder-event-more) {
+    font-size: 8.5px !important;
+    letter-spacing: -0.055em !important;
+    padding-left: 2px !important;
+    padding-right: 2px !important;
+  }
+}
