@@ -3,12 +3,15 @@ import { buildScheduleQueryPlan, getCanonicalScheduleUserId } from './scheduleQu
 describe('schedule query planner', () => {
   const staff = { id: 'u1', scheduleUserId: 'sched_u1', role: 'staff', permissions: {} };
   const manager = { id: 'm1', isAdmin: true, permissions: { schedule: true } };
-  test('staff My Schedule scopes shifts to one canonical user', () => {
+  test('staff My Schedule loads selected month plus outer schedule weeks for canonical-user filtering', () => {
     const plan = buildScheduleQueryPlan({ activeTabState: 'schedule', activeScheduleSubTab: 'my-schedule', appUser: staff, currentDate: '2026-07-15' });
-    expect(plan.shiftClauses).toContainEqual(['date', '>=', '2026-07-01']);
-    expect(plan.shiftClauses).toContainEqual(['date', '<=', '2026-07-31']);
+    expect(plan.shiftClauses).toContainEqual(['date', '>=', '2026-06-29']);
+    expect(plan.shiftClauses).toContainEqual(['date', '<=', '2026-08-02']);
     expect(plan.shiftClauses).not.toContainEqual(['scheduleUserId', '==', 'sched_u1']);
+    expect(plan.shiftClauses).not.toContainEqual(['employeeId', '==', 'sched_u1']);
+    expect(plan.shiftClauses).not.toContainEqual(['rosterUserId', '==', 'sched_u1']);
     expect(plan.needsRoster).toBe(true);
+    expect(plan.shiftLimit).toBeGreaterThanOrEqual(420);
   });
   test('manager Schedule Builder loads team planning data', () => {
     const plan = buildScheduleQueryPlan({ activeTabState: 'schedule', activeScheduleSubTab: 'schedule-builder', appUser: manager, currentDate: '2026-07-15' });

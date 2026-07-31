@@ -24,6 +24,8 @@ const requiredArtifacts = [
   'source-inventory.json',
   'test-account-provisioning.json',
   'role-identity-verification.json',
+  'java-prerequisite.json',
+  'node-test-live-summary.json',
   'qa-setup-state.json',
   '86chaos-full-audit-seed-report.json',
   'playwright-report.json',
@@ -38,6 +40,8 @@ const dependencyPreflight = readJsonIfExists(artifact['dependency-preflight.json
 const sourceInventory = readJsonIfExists(artifact['source-inventory.json']) || {};
 const testAccountProvisioning = readJsonIfExists(artifact['test-account-provisioning.json']) || {};
 const roleVerification = readJsonIfExists(artifact['role-identity-verification.json']) || {};
+const javaPrerequisite = readJsonIfExists(artifact['java-prerequisite.json']) || {};
+const nodeTestSummary = readJsonIfExists(artifact['node-test-live-summary.json']) || {};
 const setupState = readJsonIfExists(artifact['qa-setup-state.json']) || {};
 const seedReport = readJsonIfExists(artifact['86chaos-full-audit-seed-report.json']) || {};
 const cleanupReport = readJsonIfExists(artifact['86chaos-full-audit-cleanup-report.json']) || {};
@@ -71,6 +75,7 @@ function skippedByRunnerBlock(name) {
   if (runnerState.browserInstallPassed !== true) {
     return ['test-account-provisioning.json', 'role-identity-verification.json', 'qa-setup-state.json', '86chaos-full-audit-seed-report.json', 'playwright-report.json', '86chaos-full-audit-cleanup-report.json'].includes(name);
   }
+  if (name === 'java-prerequisite.json' && (runnerState.currentPhase || '').toLowerCase().indexOf('rules') < 0) return true;
   if (runnerState.testAccountProvisionAttempted === true && runnerState.testAccountProvisionPassed !== true) {
     return ['role-identity-verification.json', 'qa-setup-state.json', '86chaos-full-audit-seed-report.json', 'playwright-report.json', '86chaos-full-audit-cleanup-report.json'].includes(name);
   }
@@ -129,7 +134,7 @@ const versionMismatch = Boolean(expectedVersion && testedVersion && expectedVers
 if (versionMismatch) missingArtifacts.push(`version-mismatch expected=${expectedVersion} tested=${testedVersion}`);
 
 const runMismatchFailures = [];
-for (const [name, data] of Object.entries({ runnerState, preflight, dependencyPreflight, sourceInventory, testAccountProvisioning, roleVerification, setupState, seedReport, cleanupReport })) {
+for (const [name, data] of Object.entries({ runnerState, preflight, dependencyPreflight, sourceInventory, testAccountProvisioning, roleVerification, javaPrerequisite, nodeTestSummary, setupState, seedReport, cleanupReport })) {
   if (data && data.runId && data.runId !== runId) runMismatchFailures.push(`${name} runId=${data.runId} expected=${runId}`);
 }
 if (runMismatchFailures.length) missingArtifacts.push(...runMismatchFailures.map(x => `run-mismatch ${x}`));
@@ -219,6 +224,21 @@ for (const text of [...setupFailures, ...cleanupFailures, ...missingArtifacts]) 
   addGroup(group, text);
 }
 
+
+const javaFailures = [];
+if (hasOwn(javaPrerequisite, 'ok') && javaPrerequisite.ok !== true) {
+  javaFailures.push(javaPrerequisite.message || 'Java prerequisite missing; Firestore and Storage emulator rules tests were blocked.');
+}
+const nodeFailures = [];
+if (hasOwn(nodeTestSummary, 'ok') && nodeTestSummary.ok !== true) {
+  for (const t of nodeTestSummary.tests || []) {
+    if (['failed', 'cancelled'].includes(t.status)) nodeFailures.push(`${t.title}: ${t.error || t.status}`);
+  }
+  if (!nodeFailures.length) nodeFailures.push('Node test live summary reported failure without individual details.');
+}
+for (const text of javaFailures) addGroup('missing-java-prerequisite', text);
+for (const text of nodeFailures) addGroup('node-test-failure', text);
+
 const ok = failedTests.length === 0
   && timedOutTests.length === 0
   && skippedTests.length === 0
@@ -231,6 +251,8 @@ const ok = failedTests.length === 0
   && dependencyFailures.length === 0
   && accountProvisionFailures.length === 0
   && roleFailures.length === 0
+  && javaFailures.length === 0
+  && nodeFailures.length === 0
   && !blockedBeforePlaywright
   && !(playwrightStarted && noTestsExecuted);
 
@@ -255,6 +277,8 @@ const summary = {
   accountProvisionFailures,
   testAccountProvisioning: testAccountProvisioning && hasOwn(testAccountProvisioning, 'ok') ? testAccountProvisioning : null,
   roleFailures,
+  javaFailures,
+  nodeFailures,
   testAccountConfigurationFailure: roleFailures.length > 0,
   playwright: { totalResults: tests.length, status: noTestsExecuted ? 'No tests executed' : 'Tests executed', failed: failedTests.length, timedOut: timedOutTests.length, skipped: skippedTests.length, failedTests: failedTests.slice(0, 200), skippedTests: skippedTests.slice(0, 200) },
   seed: seedReport && seedReport.ok !== undefined ? { ok: seedReport.ok, runId: seedReport.runId || '', restaurantId: seedReport.restaurantId || seedReport.profile?.restaurantId || '', restaurantName: seedReport.restaurantName || seedReport.profile?.restaurantName || '', expectedCounts: seedReport.expectedCounts || {}, verifiedCounts: seedReport.verification?.verifiedCounts || {}, verificationOk: seedReport.verification?.ok === true } : null,

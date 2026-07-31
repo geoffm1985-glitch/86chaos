@@ -1,10 +1,10 @@
 {
-  "version": "16.0.78",
-  "name": "86 Chaos 16.0.78 Schedule Builder Shift Box Surface Fix",
-  "build": "16.0.78",
-  "label": "86 Chaos 16.0.78 Schedule Builder Shift Box Surface Fix",
+  "version": "16.0.79",
+  "name": "86 Chaos 16.0.79 Release Gate Test Harness Fixes",
+  "build": "16.0.79",
+  "label": "86 Chaos 16.0.79 Release Gate Test Harness Fixes",
   "releasedAt": "2026-07-30T21:20:00-05:00",
-  "releaseTitle": "86 Chaos 16.0.78 Schedule Builder Shift Box Surface Fix",
+  "releaseTitle": "86 Chaos 16.0.79 Release Gate Test Harness Fixes",
   "notes": [
     "Schedule Builder shift boxes are visually shorter while keeping the current shift text size, font weight, and letter spacing.",
     "Shift times remain on one horizontal line on mobile and desktop.",
