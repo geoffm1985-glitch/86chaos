@@ -2,18 +2,17 @@
 
 const fs = require('fs');
 const path = require('path');
-const { appendTranscript, writeLine } = require('./transcript-writer.cjs');
 
 function pad(value) { return String(value).padStart(2, '0'); }
 function fmt(ms) {
-  const total = Math.max(0, Math.floor(Number(ms || 0) / 1000));
+  const total = Math.max(0, Math.floor(ms / 1000));
   const h = Math.floor(total / 3600);
   const m = Math.floor((total % 3600) / 60);
   const s = total % 60;
-  return `${pad(h)}:${pad(m)}:${pad(s)}`;
+  return h ? `${pad(h)}:${pad(m)}:${pad(s)}` : `${pad(m)}:${pad(s)}`;
 }
-function clean(value = '') { return String(value).replace(/\u001b\[[0-9;]*m/g, '').replace(/\s+/g, ' ').trim(); }
-function crop(value, max = 230) { const text = clean(value); return text.length > max ? `${text.slice(0, max - 1)}…` : text; }
+function clean(value = '') { return String(value).replace(/\s+/g, ' ').trim(); }
+function crop(value, max = 180) { const text = clean(value); return text.length > max ? `${text.slice(0, max - 1)}…` : text; }
 function color(code, text) { return process.stdout.isTTY ? `\u001b[${code}m${text}\u001b[0m` : text; }
 function statusText(status) {
   if (status === 'passed') return color('32;1', '✓ PASS');
@@ -25,38 +24,33 @@ function statusText(status) {
 
 class LiveTimerReporter {
   constructor(options = {}) {
-    this.tickMs = Math.max(250, Number(options.tickMs || process.env.CHAOS_TEST_TIMER_TICK_MS || 1000));
+    this.tickMs = Number(options.tickMs || process.env.CHAOS_TEST_TIMER_TICK_MS || 1000);
     this.active = new Map();
     this.finished = [];
-    this.startedAt = 0;
     this.interval = null;
-    this.lastTtyLength = 0;
+    this.startedAt = 0;
+    this.lastLineLength = 0;
+    this.runDir = process.env.CHAOS_RELEASE_GATE_RUN_DIR || '';
     this.total = 0;
     this.startedCount = 0;
-    this.completedCount = 0;
-    this.ordinalByTestId = new Map();
-    this.runDir = process.env.CHAOS_RELEASE_GATE_RUN_DIR || '';
+    this.finishedCount = 0;
   }
-
-  _key(test, result) { return `${test.id || test.title}|${result.workerIndex ?? 0}|${result.retry ?? 0}`; }
+  _key(test, result) { return `${test.id || test.title}|${result.workerIndex || 0}|${result.retry || 0}`; }
   _project(test) {
-    try {
-      const project = typeof test.parent?.project === 'function' ? test.parent.project() : test.parent?.project;
-      return project?.name || test.projectName || '';
-    } catch (_) { return ''; }
+    try { return test.parent?.project?.()?.name || test.parent?.project?.name || ''; } catch (_) { return ''; }
   }
   _label(test) {
     const parts = typeof test.titlePath === 'function' ? test.titlePath() : [test.title];
-    return crop((parts || []).filter(Boolean).join(' > ') || test.title || 'Unnamed Playwright test');
+    return crop(parts.filter(Boolean).slice(-4).join(' > ') || test.title || 'Unnamed Playwright test', 190);
   }
-  _clearTtyLine() {
-    if (!process.stdout.isTTY || !this.lastTtyLength) return;
-    process.stdout.write(`\r${' '.repeat(this.lastTtyLength)}\r`);
-    this.lastTtyLength = 0;
+  _clearActiveLine() {
+    if (!process.stdout.isTTY || !this.lastLineLength) return;
+    process.stdout.write(`\r${' '.repeat(this.lastLineLength)}\r`);
+    this.lastLineLength = 0;
   }
-  _ordinal(row) { return `${row.ordinal || this.completedCount + 1}/${this.total || '?'}`; }
-  _runningPlain(row, now = Date.now()) {
-    return `[RUNNING ${fmt(now - row.startedAt)}] [${this._ordinal(row)}] [PLAYWRIGHT] [${row.project || 'project'}] ${row.label}${row.retry ? ` (retry ${row.retry})` : ''}`;
+  _runningMessage(row, now = Date.now()) {
+    const count = row.ordinal && this.total ? `${row.ordinal}/${this.total}` : `${this.finishedCount + 1}/${this.total || '?'}`;
+    return `[RUNNING ${fmt(now - row.startedAt)}] [${count}] [${row.project || 'project'}] ${row.label}`;
   }
   _renderTick() {
     if (!this.active.size) return;
@@ -65,14 +59,14 @@ class LiveTimerReporter {
     for (const row of rows) {
       if (now - row.lastLoggedAt < this.tickMs) continue;
       row.lastLoggedAt = now;
-      const plain = this._runningPlain(row, now);
-      appendTranscript(plain);
+      const message = this._runningMessage(row, now);
       if (process.stdout.isTTY && rows.length === 1) {
-        const rendered = color('36;1', plain);
-        process.stdout.write(`\r${rendered}${' '.repeat(Math.max(0, this.lastTtyLength - plain.length))}`);
-        this.lastTtyLength = plain.length;
+        const line = color('36;1', message);
+        const plainLen = message.length;
+        process.stdout.write(`\r${line}${' '.repeat(Math.max(0, this.lastLineLength - plainLen))}`);
+        this.lastLineLength = plainLen;
       } else {
-        process.stdout.write(`${color('36;1', plain)}\n`);
+        process.stdout.write(`${color('36;1', message)}\n`);
       }
     }
   }
@@ -87,109 +81,78 @@ class LiveTimerReporter {
     this.interval = null;
   }
 
-  onBegin(_config, suite) {
+  onBegin(config, suite) {
     this.startedAt = Date.now();
     this.total = suite.allTests().length;
-    writeLine('');
-    writeLine(color('36;1', '86 CHAOS LIVE PLAYWRIGHT TEST TIMER'));
-    writeLine(`Discovered ${this.total} Playwright test${this.total === 1 ? '' : 's'}.`);
-    writeLine('Every individual test prints START, a one-second live timer, and a final PASS/FAIL/TIMEOUT/SKIP duration.');
-    writeLine('');
+    process.stdout.write(`\n${color('36;1', '86 CHAOS LIVE PLAYWRIGHT TEST TIMER')}\n`);
+    process.stdout.write(`Discovered ${this.total} Playwright test${this.total === 1 ? '' : 's'}.\n`);
+    process.stdout.write('Each test prints START, a live elapsed timer while it runs, then PASS/FAIL/SKIP.\n\n');
   }
 
   onTestBegin(test, result) {
-    this._clearTtyLine();
-    const testId = test.id || `${this._project(test)}|${this._label(test)}`;
-    let ordinal = this.ordinalByTestId.get(testId);
-    if (!ordinal) {
-      this.startedCount += 1;
-      ordinal = this.startedCount;
-      this.ordinalByTestId.set(testId, ordinal);
-    }
+    this._clearActiveLine();
+    this.startedCount += 1;
+    const key = this._key(test, result);
     const row = {
-      key: this._key(test, result),
-      id: testId,
+      key,
+      testId: test.id || '',
+      title: test.title || '',
       label: this._label(test),
       project: this._project(test),
-      retry: Number(result.retry || 0),
-      ordinal,
+      retry: result.retry || 0,
+      ordinal: this.startedCount,
       startedAt: Date.now(),
       lastLoggedAt: 0,
     };
-    this.active.set(row.key, row);
-    writeLine(`${color('36', 'START')} [${this._ordinal(row)}] [PLAYWRIGHT] [${row.project || 'project'}] ${row.label}${row.retry ? ` (retry ${row.retry})` : ''}`);
+    this.active.set(key, row);
+    const count = this.total ? `${row.ordinal}/${this.total}` : `${row.ordinal}`;
+    process.stdout.write(`${color('36', 'START')} [${count}] [${row.project || 'project'}] ${row.label}${row.retry ? ` (retry ${row.retry})` : ''}\n`);
     this._ensureTimer();
     this._renderTick();
   }
 
   onTestEnd(test, result) {
-    this._clearTtyLine();
+    this._clearActiveLine();
     const key = this._key(test, result);
+    const fallbackStarted = Date.now() - (result.duration || 0);
     const row = this.active.get(key) || {
-      key,
-      label: this._label(test),
-      project: this._project(test),
-      retry: Number(result.retry || 0),
-      ordinal: ++this.startedCount,
-      startedAt: Date.now() - Number(result.duration || 0),
+      label: this._label(test), project: this._project(test), startedAt: fallbackStarted, retry: result.retry || 0, ordinal: this.finishedCount + 1,
     };
     this.active.delete(key);
-    this.completedCount += 1;
-    const durationMs = Number(result.duration || (Date.now() - row.startedAt));
+    this.finishedCount += 1;
+    const duration = Number(result.duration || (Date.now() - row.startedAt));
     const status = result.status || 'failed';
     const errors = (result.errors || []).map(error => clean(error.message || error.value || '')).filter(Boolean);
-    const artifacts = (result.attachments || []).map(item => item.path).filter(Boolean);
-    const plain = `${status === 'passed' ? '✓ PASS' : status === 'skipped' ? '○ SKIP' : status === 'timedOut' ? '⏱ TIMEOUT' : status === 'interrupted' ? '■ INTERRUPTED' : '✗ FAIL'} ${fmt(durationMs)} [${this._ordinal(row)}] [PLAYWRIGHT] [${row.project || 'project'}] ${row.label}${row.retry ? ` (retry ${row.retry})` : ''}`;
-    writeLine(`${statusText(status)} ${fmt(durationMs)} [${this._ordinal(row)}] [PLAYWRIGHT] [${row.project || 'project'}] ${row.label}${row.retry ? ` (retry ${row.retry})` : ''}`);
-    if (!['passed', 'skipped'].includes(status) && errors.length) writeLine(color('31', `  ${crop(errors[0], 320)}`));
-    if (!['passed', 'skipped'].includes(status) && artifacts.length) writeLine(color('33', `  Artifacts: ${artifacts.join(', ')}`));
-    this.finished.push({
-      title: row.label,
-      project: row.project,
-      retry: row.retry,
-      status,
-      durationMs,
-      duration: fmt(durationMs),
-      errors,
-      artifacts,
-      outputLine: plain,
-    });
+    this.finished.push({ title: row.label, project: row.project, retry: row.retry, status, durationMs: duration, errors });
+    const count = this.total ? `${this.finishedCount}/${this.total}` : `${this.finishedCount}`;
+    process.stdout.write(`${statusText(status)} ${fmt(duration)} [${count}] [${row.project || 'project'}] ${row.label}${row.retry ? ` (retry ${row.retry})` : ''}\n`);
+    if (status !== 'passed' && status !== 'skipped' && errors.length) {
+      process.stdout.write(`${color('31', `  ${crop(errors[0], 240)}`)}\n`);
+    }
     this._stopTimerIfIdle();
   }
 
   onError(error) {
-    this._clearTtyLine();
-    writeLine(`${color('31;1', 'GLOBAL ERROR')} ${crop(error?.message || error, 320)}`);
+    this._clearActiveLine();
+    process.stdout.write(`${color('31;1', 'GLOBAL ERROR')} ${crop(error?.message || error, 240)}\n`);
   }
 
   async onEnd(result) {
-    this._clearTtyLine();
+    this._clearActiveLine();
     if (this.interval) clearInterval(this.interval);
     this.interval = null;
-    const elapsed = Date.now() - this.startedAt;
     const counts = this.finished.reduce((acc, row) => {
       acc[row.status] = (acc[row.status] || 0) + 1;
-      if (row.retry) acc.retries = (acc.retries || 0) + 1;
       return acc;
     }, {});
-    const slowest = [...this.finished].sort((a, b) => b.durationMs - a.durationMs).slice(0, 25);
-    const failures = this.finished.filter(row => !['passed', 'skipped'].includes(row.status));
-    writeLine('');
-    writeLine(color(result.status === 'passed' ? '32;1' : '31;1', `PLAYWRIGHT ${String(result.status || '').toUpperCase()} in ${fmt(elapsed)}`));
-    writeLine(`Total: ${this.finished.length}/${this.total} | Passed: ${counts.passed || 0} | Failed: ${counts.failed || 0} | Timed out: ${counts.timedOut || 0} | Skipped: ${counts.skipped || 0} | Interrupted: ${counts.interrupted || 0} | Retries: ${counts.retries || 0}`);
-    if (slowest.length) {
-      writeLine('Slowest 25 Playwright tests:');
-      slowest.forEach((row, index) => writeLine(`  ${index + 1}. ${row.duration} [${row.project}] ${row.title}`));
-    }
-    if (failures.length) {
-      writeLine('Failed Playwright tests:');
-      failures.forEach(row => writeLine(`  ${row.status.toUpperCase()} ${row.duration} [${row.project}] ${row.title}${row.artifacts.length ? ` | ${row.artifacts.join(', ')}` : ''}`));
-    }
+    const elapsed = Date.now() - this.startedAt;
+    process.stdout.write(`\n${color(result.status === 'passed' ? '32;1' : '31;1', `PLAYWRIGHT ${String(result.status || '').toUpperCase()}`)} in ${fmt(elapsed)}\n`);
+    process.stdout.write(`Passed: ${counts.passed || 0} | Failed: ${counts.failed || 0} | Timed out: ${counts.timedOut || 0} | Skipped: ${counts.skipped || 0}\n`);
     if (this.runDir) {
       try {
         const out = path.join(this.runDir, 'playwright-live-timer-summary.json');
         fs.mkdirSync(path.dirname(out), { recursive: true });
-        fs.writeFileSync(out, JSON.stringify({ generatedAt: new Date().toISOString(), status: result.status, durationMs: elapsed, duration: fmt(elapsed), counts, totalDiscovered: this.total, tests: this.finished, slowest, failures }, null, 2));
+        fs.writeFileSync(out, JSON.stringify({ generatedAt: new Date().toISOString(), status: result.status, durationMs: elapsed, counts, tests: this.finished }, null, 2));
       } catch (_) {}
     }
   }

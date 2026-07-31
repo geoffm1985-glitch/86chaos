@@ -168,19 +168,28 @@ const LoginScreen = ({ setAppUser }) => {
 
   const persistLoginSessionForReload = (activeUser = {}) => {
     if (typeof window === 'undefined' || !activeUser?.id) return;
+    const profileDocId = activeUser.profileDocId || activeUser.accountProfile?.id || activeUser.id || activeUser.uid || activeUser.authUid || '';
+    const restaurantId = activeUser.restaurantId || activeUser.activeRestaurantId || activeUser.defaultRestaurantId || '';
     const cache = {
-      ...activeUser,
-      id: activeUser.id || activeUser.userId || '',
-      userId: activeUser.userId || activeUser.id || '',
-      profileDocId: activeUser.profileDocId || activeUser.accountProfile?.id || activeUser.id || '',
-      restaurantId: activeUser.restaurantId || activeUser.activeRestaurantId || activeUser.defaultRestaurantId || '',
-      activeRestaurantId: activeUser.activeRestaurantId || activeUser.restaurantId || '',
-      defaultRestaurantId: activeUser.defaultRestaurantId || activeUser.restaurantId || '',
+      id: activeUser.id || activeUser.userId || activeUser.uid || activeUser.authUid || '',
+      userId: activeUser.userId || activeUser.id || activeUser.uid || activeUser.authUid || '',
+      uid: activeUser.uid || activeUser.authUid || activeUser.userId || activeUser.id || '',
+      authUid: activeUser.authUid || activeUser.uid || activeUser.userId || activeUser.id || '',
+      profileDocId,
+      name: activeUser.name || activeUser.displayName || '',
+      email: normEmail(activeUser.email || activeUser.accountProfile?.email || ''),
+      photoURL: activeUser.photoURL || '',
+      restaurantId,
+      activeRestaurantId: activeUser.activeRestaurantId || restaurantId,
+      defaultRestaurantId: activeUser.defaultRestaurantId || restaurantId,
       restaurantName: activeUser.restaurantName || activeUser.businessName || 'Restaurant',
+      membershipId: activeUser.membershipId || activeUser.workspaceMemberId || '',
+      workspaceMemberId: activeUser.workspaceMemberId || activeUser.membershipId || '',
+      lastWorkspaceId: activeUser.lastWorkspaceId || activeUser.activeRestaurantId || restaurantId,
       sessionCached: true,
+      accessHydrationRequired: true,
       workspaceSwitcherReady: true
     };
-    delete cache.password;
     try {
       const serialized = JSON.stringify(cache);
       if (rememberMe) {

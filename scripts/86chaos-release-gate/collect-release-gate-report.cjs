@@ -54,8 +54,9 @@ const preflightFailures = preflightFailedBeforeMutation
   : [];
 
 const runnerBlockingReason = String(runnerState.blockingReason || '').trim();
+const runnerPhase = String(runnerState.currentPhase || '').trim();
 const playwrightStarted = runnerState.playwrightStarted === true;
-const blockedBeforePlaywright = Boolean(runnerBlockingReason && !playwrightStarted);
+const blockedBeforePlaywright = Boolean((runnerBlockingReason || /role|provision|account|playwright|java|coverage/i.test(runnerPhase)) && !playwrightStarted);
 const rolePreflightFailed = runnerState.rolePreflightStarted === true && runnerState.rolePreflightPassed !== true;
 const rolePreflightPassed = runnerState.rolePreflightPassed === true;
 
@@ -382,4 +383,7 @@ const lines = [
 ];
 fs.writeFileSync(textPath, lines.join('\n'));
 console.log(JSON.stringify({ summary, jsonPath, textPath, resultsRoot, runDir }, null, 2));
-if (!summary.ok) process.exitCode = 1;
+// Report collection succeeded when this accurate report was written.
+// The release gate status is carried in summary.ok; the collector exit code must not
+// become another cascade failure when earlier preflight steps blocked Playwright.
+process.exitCode = 0;

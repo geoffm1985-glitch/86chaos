@@ -1,14 +1,14 @@
 {
-  "version": "16.0.79",
-  "name": "86 Chaos 16.0.79 Release Gate Test Harness Fixes",
-  "build": "16.0.79",
-  "label": "86 Chaos 16.0.79 Release Gate Test Harness Fixes",
-  "releasedAt": "2026-07-30T21:20:00-05:00",
-  "releaseTitle": "86 Chaos 16.0.79 Release Gate Test Harness Fixes",
+  "version": "16.0.80",
+  "name": "86 Chaos 16.0.80 Refresh Access and Release Gate Fixes",
+  "build": "16.0.80",
+  "label": "86 Chaos 16.0.80 Refresh Access and Release Gate Fixes",
+  "releasedAt": "2026-07-31T00:03:00-05:00",
+  "releaseTitle": "86 Chaos 16.0.80 Refresh Access and Release Gate Fixes",
   "notes": [
-    "Schedule Builder shift boxes are visually shorter while keeping the current shift text size, font weight, and letter spacing.",
-    "Shift times remain on one horizontal line on mobile and desktop.",
-    "The complete role-colored chip surface now contains every character of the shift time without a partial nested highlight.",
-    "No schedule publishing, My Schedule, Firestore, identity, or protected administrator behavior changed."
+    "Hard-refresh session bootstrap now waits for Firebase Auth, account profile, workspace membership, and server whoami verification before showing role-gated controls.",
+    "Transient /api/whoami failures no longer demote a previously verified System Administrator or hide legitimate owner/admin/permission controls.",
+    "Ultimate test runner restores V9 preservation/catalog/inventory stages and fixes Windows command quoting, QA preflight status, and report cascade handling.",
+    "Schedule Builder chip styling, Firestore rules, Firebase config, credentials, and project wiring were not changed."
   ]
 }

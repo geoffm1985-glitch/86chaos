@@ -2,15 +2,16 @@ import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { Bell, Bug, ChevronLeft, ChevronRight, Loader2, Menu, Moon, Send, X } from 'lucide-react';
 import { addDoc, collection, doc, onSnapshot, updateDoc } from 'firebase/firestore';
 import { getToken, onMessage } from 'firebase/messaging';
-import { signOut } from 'firebase/auth';
+import { onAuthStateChanged, signOut } from 'firebase/auth';
 import 'leaflet/dist/leaflet.css';
-import { T, db, auth, messagingReady, isFirebaseMessagingUnsupportedError, firebaseConfig, CURRENT_VERSION, MASTER_ADMIN_EMAIL, useLiveCollection, useLiveCollectionState, useLiveDocument, useLiveDocumentState, secureFetch, waitForAuthCurrentUser, getToday, getMonthStr, formatDate, formatDisplayFullDate, formatDisplayMonth, logAudit, setActiveTimeFormat, getOfflineQueue, replayOfflineQueue, startLowCostPresenceSession, useLowCostPresenceSummary, clearTenantListenerCache } from './core/appCore';
+import { T, db, auth, messagingReady, isFirebaseMessagingUnsupportedError, firebaseConfig, CURRENT_VERSION, MASTER_ADMIN_EMAIL, useLiveCollection, useLiveCollectionState, useLiveDocumentState, secureFetch, waitForAuthCurrentUser, getToday, getMonthStr, formatDate, formatDisplayFullDate, formatDisplayMonth, logAudit, setActiveTimeFormat, getOfflineQueue, replayOfflineQueue, startLowCostPresenceSession, useLowCostPresenceSummary, clearTenantListenerCache } from './core/appCore';
 import { buildAlertFingerprint, useRememberedAlert } from './core/alertMemory';
 import { CheersLogo, Modal, DrawerMenu, DayDotPrintScreen, GlobalSearchModal, KitchenTVMode, UndoBar, VoiceCommandDock } from './components/common';
 import { LockedFeatureScreen } from './components/PlanGate';
 import { usePlanAccess } from './hooks/usePlanAccess';
 import { resolveFeatureAccess } from './lib/featureAccess';
 import { buildScheduleQueryPlan } from './core/scheduleQueryPlanner';
+import { WHOAMI_STATES, classifyWhoamiResponse, mergeVerifiedAccess, shouldHoldAccessHydration } from './core/sessionAccess';
 import { FEATURE_KEYS } from './config/plans';
 import { LoginScreen } from './features/auth';
 
@@ -352,15 +353,22 @@ const normalizeRouteTab = (tab = 'today') => LEGACY_TAB_ALIASES[String(tab || ''
 const buildSafeSessionCache = (user = {}) => user ? {
   id: user.id || user.userId || '',
   userId: user.userId || user.id || '',
+  uid: user.uid || user.authUid || user.userId || user.id || '',
+  authUid: user.authUid || user.uid || user.userId || user.id || '',
+  profileDocId: user.profileDocId || user.accountProfile?.id || user.id || user.userId || '',
   name: user.name || 'Staff',
+  email: normalizeEmail(user.email || user.employeeEmail || user.accountProfile?.email || ''),
   photoURL: user.photoURL || '',
   restaurantId: user.restaurantId || '',
   activeRestaurantId: user.activeRestaurantId || user.restaurantId || '',
   defaultRestaurantId: user.defaultRestaurantId || user.restaurantId || '',
   restaurantName: user.restaurantName || '',
   membershipId: user.membershipId || '',
+  workspaceMemberId: user.workspaceMemberId || user.membershipId || '',
+  lastWorkspaceId: user.lastWorkspaceId || user.activeRestaurantId || user.restaurantId || '',
   workspaceSwitcherReady: user.workspaceSwitcherReady === true,
-  sessionCached: true
+  sessionCached: true,
+  accessHydrationRequired: true
 } : null;
 const parseCachedSessionUser = (raw = '') => {
   try { return buildSafeSessionCache(JSON.parse(raw)); }
@@ -511,12 +519,47 @@ export default function App() {
   }, []);
   const [isPushRepairing, setIsPushRepairing] = useState(false);
   const [pushRepairDismissed, setPushRepairDismissed] = useState(false);
-  const [serverAdminCheck, setServerAdminCheck] = useState(null);
+  const [serverAdminCheck, setServerAdminCheck] = useState({ status: WHOAMI_STATES.IDLE });
+  const [authRestoreState, setAuthRestoreState] = useState(() => ({ status: appUser?.sessionCached ? WHOAMI_STATES.PENDING : 'ready', uid: auth?.currentUser?.uid || '' }));
 
   useEffect(() => {
     if (!auth?.currentUser?.uid && !appUser?.id) return;
     getCurrentAuthSessionStartedMs();
   }, [appUser?.id, auth?.currentUser?.uid]);
+
+  useEffect(() => {
+    let mounted = true;
+    let unsubscribe = () => {};
+    const setAuthState = (nextUser) => {
+      if (!mounted) return;
+      setAuthRestoreState({
+        status: nextUser ? 'ready' : WHOAMI_STATES.SIGNED_OUT,
+        uid: nextUser?.uid || '',
+        email: normalizeEmail(nextUser?.email || '')
+      });
+      if (!nextUser && appUser?.sessionCached) setAppUser(null);
+    };
+    try {
+      setAuthRestoreState(prev => ({ ...prev, status: auth?.currentUser ? 'ready' : WHOAMI_STATES.PENDING }));
+      unsubscribe = onAuthStateChanged(auth, setAuthState);
+    } catch (_) {
+      setAuthState(auth?.currentUser || null);
+    }
+    return () => { mounted = false; try { unsubscribe(); } catch (_) {} };
+  }, [appUser?.sessionCached]);
+
+  useEffect(() => {
+    if (!appUser?.sessionCached || !authRestoreState.uid) return;
+    if (appUser.id === authRestoreState.uid && appUser.authUid === authRestoreState.uid && appUser.uid === authRestoreState.uid) return;
+    setAppUser(prev => prev?.sessionCached ? {
+      ...prev,
+      id: prev.id || authRestoreState.uid,
+      userId: prev.userId || authRestoreState.uid,
+      uid: authRestoreState.uid,
+      authUid: authRestoreState.uid,
+      email: normalizeEmail(prev.email || authRestoreState.email || '')
+    } : prev);
+  }, [appUser?.sessionCached, appUser?.id, appUser?.authUid, appUser?.uid, authRestoreState.uid, authRestoreState.email]);
   
   // --- VERSION CHECKER STATE & LOGIC ---
   const [showUpdateBanner, setShowUpdateBanner] = useState(() => typeof window !== 'undefined' && new URLSearchParams(window.location.search).has('chaosReloadAt'));
@@ -572,39 +615,76 @@ export default function App() {
 
   useEffect(() => {
     if (!appUser?.id || appUser.id === 'dev-backdoor') {
-      setServerAdminCheck(null);
-      return;
+      setServerAdminCheck({ status: WHOAMI_STATES.IDLE });
+      return undefined;
     }
+    if (authRestoreState.status === WHOAMI_STATES.PENDING) {
+      setServerAdminCheck(prev => prev?.status === WHOAMI_STATES.VERIFIED ? prev : { status: WHOAMI_STATES.PENDING, ok: false, reason: 'waiting-for-firebase-auth-restore' });
+      return undefined;
+    }
+    if (authRestoreState.status === WHOAMI_STATES.SIGNED_OUT) {
+      setServerAdminCheck({ status: WHOAMI_STATES.SIGNED_OUT, ok: false, definitive: true });
+      return undefined;
+    }
+
     let canceled = false;
-    const checkServerAdminAccess = async () => {
-      try {
-        const res = await secureFetch('/api/whoami');
-        const data = await res.json().catch(() => ({}));
-        if (canceled) return;
-        setServerAdminCheck({ ok: res.ok, ...data });
-        if (res.ok && data.superAdmin === true) {
-          setAppUser(prev => {
-            if (!prev?.id || prev.id !== appUser.id || prev.isSuperAdmin === true) return prev;
-            const next = {
-              ...prev,
-              isSuperAdmin: true,
-              systemAccess: { ...(prev.systemAccess || {}), superAdmin: true },
-              superAdminAccessSource: data.serverMasterAdminMatched ? 'server-master-admin-env' : data.customClaimSuperAdmin ? 'firebase-custom-claim' : data.firestoreSuperAdmin ? 'firestore-profile-flag' : 'api-whoami'
-            };
-            try {
-              const storage = localStorage.getItem('86chaosUser') ? localStorage : sessionStorage;
-              storage.setItem('86chaosUser', JSON.stringify(buildSafeSessionCache(next)));
-            } catch (_) {}
-            return next;
-          });
+    let retryTimer = null;
+    const fetchWhoami = async (forceTokenRefresh = false) => {
+      const res = await secureFetch('/api/whoami', { forceTokenRefresh, authWaitMs: 10000 });
+      const data = await res.json().catch(() => ({}));
+      return { res, data };
+    };
+    const applyVerification = (verification) => {
+      if (canceled) return;
+      setServerAdminCheck(prev => {
+        if (verification.status === WHOAMI_STATES.TRANSIENT_FAILURE && prev?.status === WHOAMI_STATES.VERIFIED && prev?.superAdmin === true) {
+          return { ...prev, lastTransientFailure: verification.error || 'Temporary verification failure', transientFailureAt: new Date().toISOString() };
         }
+        return verification;
+      });
+      if (verification.status === WHOAMI_STATES.VERIFIED || verification.status === WHOAMI_STATES.DENIED) {
+        setAppUser(prev => {
+          if (!prev?.id || (appUser.id && prev.id !== appUser.id)) return prev;
+          const next = mergeVerifiedAccess(prev, verification);
+          try {
+            const storage = localStorage.getItem('86chaosUser') ? localStorage : sessionStorage;
+            storage.setItem('86chaosUser', JSON.stringify(buildSafeSessionCache(next)));
+          } catch (_) {}
+          return next;
+        });
+      }
+    };
+    const checkServerAdminAccess = async (attempt = 0, forceTokenRefresh = false) => {
+      if (canceled) return;
+      setServerAdminCheck(prev => {
+        if (prev?.status === WHOAMI_STATES.VERIFIED && prev?.superAdmin === true && attempt === 0) return { ...prev, status: WHOAMI_STATES.RETRYING, refreshing: true };
+        return { ...(prev || {}), status: attempt > 0 ? WHOAMI_STATES.RETRYING : WHOAMI_STATES.PENDING, ok: false, attempt };
+      });
+      try {
+        let { res, data } = await fetchWhoami(forceTokenRefresh);
+        if (res.status === 401 && !forceTokenRefresh) {
+          ({ res, data } = await fetchWhoami(true));
+        }
+        const verification = classifyWhoamiResponse({ ok: res.ok, status: res.status, data, error: data?.error || res.statusText });
+        if (verification.status === WHOAMI_STATES.TRANSIENT_FAILURE && attempt < 2) {
+          applyVerification({ ...verification, attempt, nextRetryInMs: attempt === 0 ? 1200 : 2500 });
+          retryTimer = setTimeout(() => checkServerAdminAccess(attempt + 1, false), attempt === 0 ? 1200 : 2500);
+          return;
+        }
+        applyVerification(verification);
       } catch (err) {
-        if (!canceled) setServerAdminCheck({ ok: false, error: err?.message || 'Could not check server admin config.' });
+        const verification = classifyWhoamiResponse({ ok: false, status: 0, data: {}, error: err?.message || 'Could not check server admin config.' });
+        if (attempt < 2) {
+          applyVerification({ ...verification, attempt, nextRetryInMs: attempt === 0 ? 1200 : 2500 });
+          retryTimer = setTimeout(() => checkServerAdminAccess(attempt + 1, false), attempt === 0 ? 1200 : 2500);
+          return;
+        }
+        applyVerification({ ...verification, attempt });
       }
     };
     checkServerAdminAccess();
-    return () => { canceled = true; };
-  }, [appUser?.id, appUser?.email]);
+    return () => { canceled = true; if (retryTimer) clearTimeout(retryTimer); };
+  }, [appUser?.id, appUser?.email, authRestoreState.status, authRestoreState.uid]);
 
 const [currentDate, setCurrentDate] = useState(getToday());
   const [activeScheduleSubTab, setActiveScheduleSubTab] = useState('my-schedule');
@@ -798,7 +878,9 @@ const [currentDate, setCurrentDate] = useState(getToday());
     }
   }, [firebaseConfig?.projectId, rId, authenticatedUid, ghostTenant?.id]);
 
-  const directAccountUser = useLiveDocument('users', authenticatedUid, { enabled: Boolean(authenticatedUid && appUser?.id !== 'dev-backdoor'), debugLabel: 'app:current-user-security' });
+  const accountProfileDocId = appUser?.profileDocId || authenticatedUid;
+  const directAccountUserState = useLiveDocumentState('users', accountProfileDocId, { enabled: Boolean(accountProfileDocId && appUser?.id !== 'dev-backdoor'), debugLabel: 'app:current-user-security' });
+  const directAccountUser = directAccountUserState.data;
   const canonicalMembershipId = rId && authenticatedUid ? workspaceMemberDocId(authenticatedUid, rId) : '';
   const currentMembershipDocument = useLiveDocumentState('workspaceMembers', canonicalMembershipId, { enabled: Boolean(canonicalMembershipId && appUser.id !== 'dev-backdoor' && !ghostTenant), restaurantId: rId || '', debugLabel: 'app:current-workspace-member-document' });
   // Legacy lookups run strictly one at a time and only after the canonical document is confirmed missing.
@@ -913,9 +995,11 @@ const [currentDate, setCurrentDate] = useState(getToday());
     )
   );
   const localRoleLooksSystemAdmin = /system\s*administrator|super\s*admin|master\s*admin/i.test(String(liveAppUser?.role || liveAppUser?.roleName || liveAppUser?.accountRole || liveAppUser?.title || ''));
-  const serverAdminCheckPending = Boolean(appUser?.id && appUser.id !== 'dev-backdoor' && serverAdminCheck === null);
-  // Local System Administrator markers are only a short loading hint while /api/whoami is pending.
-  // Once the server check returns, full platform access must come from the verified server response.
+  const whoamiStatus = serverAdminCheck?.status || WHOAMI_STATES.IDLE;
+  const serverAdminCheckPending = Boolean(appUser?.id && appUser.id !== 'dev-backdoor' && [WHOAMI_STATES.PENDING, WHOAMI_STATES.RETRYING].includes(whoamiStatus));
+  const serverDefinitivelyDeniedSuperAdmin = Boolean(whoamiStatus === WHOAMI_STATES.DENIED && serverAdminCheck?.definitive === true);
+  // Local profile markers may only hold a secure restoring state while /api/whoami is pending.
+  // They are never treated as final System Administrator authorization.
   const pendingLocalSystemAdminHint = Boolean(
     !isDemoMode &&
     serverAdminCheckPending &&
@@ -923,13 +1007,13 @@ const [currentDate, setCurrentDate] = useState(getToday());
     (liveAppUser?.isSuperAdmin === true || liveAppUser?.systemAccess?.superAdmin === true || liveAppUser?.permissions?.systemAdmin === true || liveAppUser?.permissions?.godmode === true)
   );
   const hasLocalSystemAdminMarker = Boolean(serverSaysSuperAdmin || pendingLocalSystemAdminHint);
-  if (!isDemoMode && liveAppUser && !hasLocalSystemAdminMarker && liveAppUser.isSuperAdmin === true) {
+  if (!isDemoMode && liveAppUser && serverDefinitivelyDeniedSuperAdmin && liveAppUser.isSuperAdmin === true) {
     liveAppUser = {
       ...liveAppUser,
       isSuperAdmin: false,
       systemAccess: { ...(liveAppUser.systemAccess || {}), superAdmin: false },
       permissions: { ...(liveAppUser.permissions || {}), systemAdmin: false, godmode: false },
-      superAdminAccessSource: 'server-verification-required'
+      superAdminAccessSource: 'server-verified-not-system-admin'
     };
   }
   if (!isDemoMode && liveAppUser && hasLocalSystemAdminMarker && liveAppUser.isSuperAdmin !== true) {
@@ -937,7 +1021,7 @@ const [currentDate, setCurrentDate] = useState(getToday());
       ...liveAppUser,
       isSuperAdmin: true,
       systemAccess: { ...(liveAppUser.systemAccess || {}), superAdmin: true },
-      superAdminAccessSource: serverAdminCheck?.serverMasterAdminMatched ? 'server-master-admin-env' : serverAdminCheck?.customClaimSuperAdmin ? 'firebase-custom-claim' : serverAdminCheck?.firestoreSystemAdministrator ? 'firestore-system-administrator-role' : serverAdminCheck?.firestoreSuperAdmin ? 'firestore-profile-flag' : 'pending-local-system-admin-hint'
+      superAdminAccessSource: serverAdminCheck?.serverMasterAdminMatched ? 'server-master-admin-env' : serverAdminCheck?.customClaimSuperAdmin ? 'firebase-custom-claim' : serverAdminCheck?.firestoreSystemAdministrator ? 'firestore-system-administrator-role' : serverAdminCheck?.firestoreSuperAdmin ? 'firestore-profile-flag' : 'pending-server-verification'
     };
   }
 
@@ -2368,7 +2452,37 @@ What I clicked / expected:
     return `${scheduled} On Schedule ${clockedIn} Clocked In ${needsEyes} Needs Eyes`;
   }, [displayUsers, shifts, timePunches, inventoryItems, maintenanceLogs, timeOffRequests, shiftSwaps]);
 
+  const cachedSessionAccessHydrating = shouldHoldAccessHydration({
+    hasCachedSession: appUser?.sessionCached === true,
+    signedOut: authRestoreState.status === WHOAMI_STATES.SIGNED_OUT,
+    authPending: authRestoreState.status === WHOAMI_STATES.PENDING,
+    profileLoading: Boolean(appUser?.sessionCached && directAccountUserState.loading),
+    membershipLoading: Boolean(appUser?.sessionCached && rId && !ghostTenant && (
+      currentMembershipDocument.loading ||
+      currentMembershipCanonical.loading ||
+      currentMembershipUid.loading ||
+      currentMembershipAuthUid.loading ||
+      currentMembershipEmail.loading
+    )),
+    whoamiStatus,
+    localUserLooksSystemAdmin: Boolean(localRoleLooksSystemAdmin || liveAppUser?.isSuperAdmin === true || liveAppUser?.systemAccess?.superAdmin === true),
+    roleControlsHydrating: Boolean(appUser?.sessionCached && appUser?.accessHydrationRequired && !directAccountUserState.resolved && !directAccountUserState.error)
+  });
+
   if (labelsToPrint) return <div className="non-admin-controls-compact"><DayDotPrintScreen labelsToPrint={labelsToPrint.items} prepDate={labelsToPrint.prepDate} appUser={liveAppUser} onClose={() => setLabelsToPrint(null)} /></div>;
+
+  if (cachedSessionAccessHydrating) {
+    return (
+      <div className="non-admin-controls-compact min-h-screen bg-[#0B0E11] text-white flex items-center justify-center p-6">
+        <div className="max-w-sm w-full rounded-3xl border border-[#2A353D] bg-[#161D22]/95 p-6 text-center shadow-2xl">
+          <Loader2 className="w-8 h-8 mx-auto mb-4 animate-spin text-[#D4A381]" />
+          <p className="text-[10px] font-black uppercase tracking-[0.25em] text-[#D4A381]">Restoring session</p>
+          <h2 className="text-xl font-black mt-2">Checking your access</h2>
+          <p className="text-xs font-bold text-slate-400 mt-3 leading-relaxed">86 Chaos is restoring your Firebase login, workspace membership, and verified permissions before showing role-based controls.</p>
+        </div>
+      </div>
+    );
+  }
 
   if (!liveAppUser) return <div className="non-admin-controls-compact"><LoginScreen users={displayUsers} setAppUser={setAppUser} addToast={addToast} /></div>;
 
