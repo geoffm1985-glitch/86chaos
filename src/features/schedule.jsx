@@ -1158,28 +1158,7 @@ Clock out anyway?`);
     }
   };
 
-// --- SHIFT LOGIC ---
-  const myMonthBounds = getScheduleMonthBoundsForKey(monthStr);
-  const isMyPublishedShift = (shift) => !isDeletedScheduleShift(shift) && !shiftMatchesLocalDeleteMarkers(shift, activeLocalDeleteKeySet, activeLocalDeleteMarkerMap) && shiftMatchesPerson(shift, schedulePerson) && isScheduleShiftPublished(shift);
-  const isMyPublishedUpcomingShift = (shift) => isMyPublishedShift(shift) && isShiftStillCurrentOrUpcoming(shift, scheduleNow);
-  const myMonthShifts = dedupeScheduleShiftsByDatePersonTime(shifts
-    .filter(s => {
-      const d = getShiftDateKey(s);
-      // The list follows the selected calendar month. Pay-period boundary days are shown
-      // in Scheduled Hours Tracker, not in My Published Schedule for another month.
-      return isMyPublishedShift(s) && d >= myMonthBounds.start && d <= myMonthBounds.end;
-    }))
-    .sort(compareShiftsByStartDateTime);
-
-  const myNextShift = shifts
-    .filter(isMyPublishedUpcomingShift)
-    .sort(compareShiftsByStartDateTime)[0];
-
-  const activeMonthShifts = shifts
-    .filter(s => !isDeletedScheduleShift(s) && getShiftDateKey(s).startsWith(monthStr) && isScheduleShiftPublished(s))
-    .sort((a,b) => a.date === b.date ? (a.startTime || '').localeCompare(b.startTime || '') : a.date.localeCompare(b.date));
-
-  // --- TRADE BOARD LOGIC ---
+// --- TRADE BOARD LOGIC ---
   const availableSwaps = shiftSwaps
     .filter(s => ['available','open'].includes(String(s.status || '').toLowerCase()) && String(s.shiftDate || s.date || '') >= getToday())
     .sort((a,b) => String(a.shiftDate || a.date || '').localeCompare(String(b.shiftDate || b.date || '')));
@@ -1674,6 +1653,31 @@ const [eventDate, setEventDate] = useState(getToday());
   ).filter(shift => !isDeletedScheduleShift(shift) && !shiftMatchesLocalDeleteMarkers(shift, activeLocalDeleteKeySet, activeLocalDeleteMarkerMap));
   const publicationPeriodShifts = publicationSourceShifts.filter(s => { const d = getShiftDateKey(s); return d >= publicationWeekBounds.start && d <= publicationWeekBounds.end; });
   const schedulePeriodEvents = events.filter(e => e.type === 'special_event' && e.date >= schedulePeriodBounds.start && e.date <= schedulePeriodBounds.end).sort((a,b) => (a.date || '').localeCompare(b.date || '') || (a.time || '').localeCompare(b.time || '') || (a.title || '').localeCompare(b.title || ''));
+  // --- SHIFT LOGIC ---
+  // Keep this below the local delete-marker setup. My Schedule can render for
+  // employees even when the Schedule Builder is not open, and referencing
+  // delete-marker state before it is initialized can throw a runtime recovery
+  // error on mobile after a schedule delete/publish refresh.
+  const myMonthBounds = getScheduleMonthBoundsForKey(monthStr);
+  const isMyPublishedShift = (shift) => !isDeletedScheduleShift(shift) && !shiftMatchesLocalDeleteMarkers(shift, activeLocalDeleteKeySet, activeLocalDeleteMarkerMap) && shiftMatchesPerson(shift, schedulePerson) && isScheduleShiftPublished(shift);
+  const isMyPublishedUpcomingShift = (shift) => isMyPublishedShift(shift) && isShiftStillCurrentOrUpcoming(shift, scheduleNow);
+  const myMonthShifts = dedupeScheduleShiftsByDatePersonTime((shifts || [])
+    .filter(s => {
+      const d = getShiftDateKey(s);
+      // The list follows the selected calendar month. Pay-period boundary days are shown
+      // in Scheduled Hours Tracker, not in My Published Schedule for another month.
+      return isMyPublishedShift(s) && d >= myMonthBounds.start && d <= myMonthBounds.end;
+    }))
+    .sort(compareShiftsByStartDateTime);
+
+  const myNextShift = (shifts || [])
+    .filter(isMyPublishedUpcomingShift)
+    .sort(compareShiftsByStartDateTime)[0];
+
+  const activeMonthShifts = (shifts || [])
+    .filter(s => !isDeletedScheduleShift(s) && getShiftDateKey(s).startsWith(monthStr) && isScheduleShiftPublished(s))
+    .sort((a,b) => getShiftDateKey(a) === getShiftDateKey(b) ? (a.startTime || '').localeCompare(b.startTime || '') : getShiftDateKey(a).localeCompare(getShiftDateKey(b)));
+
   const publishWeekOptions = [];
   for (let index = 0; index < publicationWeekDays.length; index += 7) {
     const days = publicationWeekDays.slice(index, index + 7);
