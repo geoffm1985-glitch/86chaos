@@ -13,6 +13,150 @@ const getMonthBounds = (dateStr) => {
 };
 const WEEKDAY_INDEX = { Sunday: 0, Monday: 1, Tuesday: 2, Wednesday: 3, Thursday: 4, Friday: 5, Saturday: 6 };
 const normalizeWeekStart = (value = 'Monday') => Object.prototype.hasOwnProperty.call(WEEKDAY_INDEX, String(value || 'Monday')) ? String(value || 'Monday') : 'Monday';
+
+const normalizeScheduleAliasValue = (value = '') => String(value ?? '').trim().toLowerCase();
+const normalizeScheduleEmailValue = (value = '') => normalizeScheduleAliasValue(value).replace(/^mailto:/, '');
+const normalizeScheduleNameValue = (value = '') => normalizeScheduleAliasValue(value).replace(/[^a-z0-9]+/g, ' ').replace(/\s+/g, ' ').trim();
+const uniqueNonEmpty = (values = []) => Array.from(new Set(values.map(v => String(v || '').trim()).filter(Boolean)));
+
+const DURABLE_SCHEDULE_ID_FIELDS = [
+  'scheduleUserId', 'employeeId', 'rosterUserId', 'userId', 'authUid', 'uid', 'id',
+  'accountUserId', 'assignedUserId', 'membershipId', 'workspaceMemberId',
+  'accountProfile.id', 'accountProfile.uid', 'accountProfile.authUid'
+];
+const SCHEDULE_EMAIL_FIELDS = ['email', 'emailLower', 'employeeEmail', 'userEmail', 'assignedEmail', 'authEmail'];
+const SCHEDULE_NAME_FIELDS = ['employeeName', 'assignedName', 'userName', 'name', 'displayName', 'fullName'];
+
+const getPathValue = (record = {}, path = '') => String(path || '').split('.').reduce((acc, key) => (acc && typeof acc === 'object' ? acc[key] : undefined), record);
+
+export const collectScheduleDurableIdentityAliases = (...records) => {
+  const values = [];
+  records.filter(Boolean).forEach(record => {
+    DURABLE_SCHEDULE_ID_FIELDS.forEach(field => values.push(normalizeScheduleAliasValue(getPathValue(record, field))));
+  });
+  return uniqueNonEmpty(values);
+};
+
+export const collectScheduleEmailAliases = (...records) => {
+  const values = [];
+  records.filter(Boolean).forEach(record => {
+    SCHEDULE_EMAIL_FIELDS.forEach(field => values.push(normalizeScheduleEmailValue(getPathValue(record, field))));
+  });
+  return uniqueNonEmpty(values).filter(v => v.includes('@'));
+};
+
+export const collectScheduleFullNameAliases = (...records) => {
+  const values = [];
+  records.filter(Boolean).forEach(record => {
+    SCHEDULE_NAME_FIELDS.forEach(field => values.push(normalizeScheduleNameValue(getPathValue(record, field))));
+  });
+  return uniqueNonEmpty(values);
+};
+
+export const collectScheduleFirstNameAliases = (...records) => uniqueNonEmpty(
+  collectScheduleFullNameAliases(...records).map(name => String(name || '').split(/\s+/)[0] || '')
+);
+
+export const collectScheduleIdentityAliases = (...records) => uniqueNonEmpty([
+  ...collectScheduleDurableIdentityAliases(...records),
+  ...collectScheduleEmailAliases(...records)
+]);
+
+const activeScheduleRoster = (roster = []) => (Array.isArray(roster) ? roster : []).filter(person => person && person.isActive !== false);
+const uniqueMatch = (matches = [], reason = 'match') => matches.length === 1
+  ? { ok: true, person: matches[0], reason }
+  : { ok: false, person: null, reason: matches.length > 1 ? `ambiguous-${reason}` : `no-${reason}` };
+const rosterWithDurableAlias = (roster, aliases) => activeScheduleRoster(roster).filter(person => collectScheduleDurableIdentityAliases(person).some(alias => aliases.includes(alias)));
+const rosterWithEmailAlias = (roster, aliases) => activeScheduleRoster(roster).filter(person => collectScheduleEmailAliases(person).some(alias => aliases.includes(alias)));
+const rosterWithFullNameAlias = (roster, aliases) => activeScheduleRoster(roster).filter(person => collectScheduleFullNameAliases(person).some(alias => aliases.includes(alias)));
+const rosterWithFirstNameAlias = (roster, aliases) => activeScheduleRoster(roster).filter(person => collectScheduleFirstNameAliases(person).some(alias => aliases.includes(alias)));
+
+export const resolveSchedulePersonForAccount = (account = {}, roster = []) => {
+  const durableAliases = collectScheduleDurableIdentityAliases(account, account?.accountProfile || {});
+  const emailAliases = collectScheduleEmailAliases(account, account?.accountProfile || {});
+  const fullNameAliases = collectScheduleFullNameAliases(account, account?.accountProfile || {});
+  const firstNameAliases = collectScheduleFirstNameAliases(account, account?.accountProfile || {});
+
+  if (durableAliases.length) {
+    const result = uniqueMatch(rosterWithDurableAlias(roster, durableAliases), 'durable-id');
+    if (result.ok) return result;
+  }
+  if (emailAliases.length) {
+    const result = uniqueMatch(rosterWithEmailAlias(roster, emailAliases), 'email');
+    if (result.ok) return result;
+  }
+  if (fullNameAliases.length) {
+    const result = uniqueMatch(rosterWithFullNameAlias(roster, fullNameAliases), 'full-name');
+    if (result.ok) return result;
+  }
+  if (!durableAliases.length && !emailAliases.length && firstNameAliases.length) {
+    const result = uniqueMatch(rosterWithFirstNameAlias(roster, firstNameAliases), 'first-name');
+    if (result.ok) return result;
+  }
+  return { ok: false, person: null, reason: 'unresolved-account-schedule-person' };
+};
+
+export const resolveSchedulePersonForShift = (shift = {}, roster = []) => {
+  const durableAliases = collectScheduleDurableIdentityAliases(shift);
+  const emailAliases = collectScheduleEmailAliases(shift);
+  const fullNameAliases = collectScheduleFullNameAliases(shift);
+  const firstNameAliases = collectScheduleFirstNameAliases(shift);
+
+  if (durableAliases.length) {
+    const result = uniqueMatch(rosterWithDurableAlias(roster, durableAliases), 'durable-id');
+    if (result.ok) return result;
+    // If a restored/imported record kept a stale durable id, exact email or full-name evidence may repair it.
+    if (emailAliases.length) {
+      const emailResult = uniqueMatch(rosterWithEmailAlias(roster, emailAliases), 'email');
+      if (emailResult.ok) return emailResult;
+    }
+    if (fullNameAliases.length) {
+      const nameResult = uniqueMatch(rosterWithFullNameAlias(roster, fullNameAliases), 'full-name');
+      if (nameResult.ok) return nameResult;
+    }
+    return result;
+  }
+  if (emailAliases.length) return uniqueMatch(rosterWithEmailAlias(roster, emailAliases), 'email');
+  if (fullNameAliases.length) {
+    const result = uniqueMatch(rosterWithFullNameAlias(roster, fullNameAliases), 'full-name');
+    if (result.ok) return result;
+  }
+  if (firstNameAliases.length) return uniqueMatch(rosterWithFirstNameAlias(roster, firstNameAliases), 'first-name');
+  return { ok: false, person: null, reason: 'missing-employee-identity' };
+};
+
+export const buildCanonicalScheduleIdentityBlock = (person = {}, evidence = {}) => {
+  const safePerson = person && typeof person === 'object' ? person : {};
+  const safeEvidence = evidence && typeof evidence === 'object' ? evidence : {};
+  const scheduleUserId = safePerson.scheduleUserId || safePerson.employeeId || safePerson.rosterUserId || safePerson.id || safePerson.membershipId || safePerson.workspaceMemberId || safeEvidence.scheduleUserId || safeEvidence.employeeId || safeEvidence.rosterUserId || '';
+  const employeeId = safePerson.employeeId || safePerson.id || safePerson.scheduleUserId || safePerson.rosterUserId || scheduleUserId || safeEvidence.employeeId || '';
+  const rosterUserId = safePerson.rosterUserId || safePerson.id || safePerson.scheduleUserId || safePerson.employeeId || scheduleUserId || safeEvidence.rosterUserId || '';
+  const accountUserId = safePerson.accountUserId || safePerson.userId || safePerson.authUid || safePerson.uid || safeEvidence.accountUserId || safeEvidence.userId || '';
+  const authUid = safePerson.authUid || safePerson.uid || safeEvidence.authUid || safeEvidence.uid || accountUserId || '';
+  const userId = safePerson.userId || accountUserId || authUid || safeEvidence.userId || scheduleUserId || '';
+  const assignedUserId = safePerson.assignedUserId || scheduleUserId || employeeId || rosterUserId || userId || '';
+  const email = safePerson.employeeEmail || safePerson.email || safePerson.userEmail || safeEvidence.employeeEmail || safeEvidence.assignedEmail || safeEvidence.email || '';
+  const name = safePerson.employeeName || safePerson.name || safePerson.displayName || safePerson.fullName || safeEvidence.employeeName || safeEvidence.assignedName || safeEvidence.name || email || 'Unknown';
+  return { scheduleUserId, employeeId, rosterUserId, userId, authUid, accountUserId, assignedUserId, employeeName: name, assignedName: name, employeeEmail: email, assignedEmail: email };
+};
+
+export const scheduleIdentityBlockMatchesPerson = (shift = {}, person = {}) => {
+  const desired = buildCanonicalScheduleIdentityBlock(person, shift);
+  const idFields = ['scheduleUserId', 'employeeId', 'rosterUserId', 'userId', 'authUid', 'assignedUserId'];
+  const missingRequired = ['scheduleUserId', 'employeeId', 'rosterUserId', 'employeeName', 'assignedName'].some(field => !String(shift?.[field] || '').trim());
+  if (missingRequired) return false;
+  const mismatchedIds = idFields.some(field => {
+    const wanted = normalizeScheduleAliasValue(desired[field]);
+    const actual = normalizeScheduleAliasValue(shift?.[field]);
+    return wanted && actual && wanted !== actual;
+  });
+  if (mismatchedIds) return false;
+  const desiredEmail = normalizeScheduleEmailValue(desired.employeeEmail || desired.assignedEmail || '');
+  const actualEmail = normalizeScheduleEmailValue(shift?.employeeEmail || shift?.assignedEmail || shift?.email || '');
+  if (desiredEmail && actualEmail && desiredEmail !== actualEmail) return false;
+  return true;
+};
+
 const getOuterScheduleWeekBounds = (bounds, appUser = {}) => {
   const startKey = bounds?.start || getToday();
   const endKey = bounds?.end || startKey;

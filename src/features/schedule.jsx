@@ -8,7 +8,7 @@ import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { MapContainer, TileLayer, Marker, Circle, useMapEvents } from 'react-leaflet';
 import { T, db, storage, auth, messaging, firebaseConfig, secureFetch, MASTER_ADMIN_EMAIL, EVENT_TAGS, CURRENT_VERSION, useLiveCollection, formatDate, getToday, getMonthStr, formatDisplayDate, formatDisplayFullDate, formatDisplayMonth, getDaysInMonth, formatShortTime, formatClockTime, formatClockDateTime, getAvatar, generateTempPass, getExpDate, getHoliday, logAudit, customMapIcon, getRestaurantExportPrefix, safeFilenamePart, downloadCsvRows, downloadTextFile, openPrintableReport } from '../core/appCore';
 import { buildAlertFingerprint, useRememberedAlert } from '../core/alertMemory';
-import { getCanonicalScheduleUserId } from '../core/scheduleQueryPlanner';
+import { getCanonicalScheduleUserId, collectScheduleDurableIdentityAliases, collectScheduleEmailAliases, collectScheduleFullNameAliases, collectScheduleFirstNameAliases, collectScheduleIdentityAliases, resolveSchedulePersonForAccount, resolveSchedulePersonForShift, buildCanonicalScheduleIdentityBlock, scheduleIdentityBlockMatchesPerson } from '../core/scheduleQueryPlanner';
 import { CheersLogo, Modal, DrawerMenu, DayDotPrintScreen, MapClickListener, SmartEmptyState, MiniProblemCard, getHomeProfile, calculatePunchHours, getWeekStart, getWeekDates, roleMatches, toLocalTimeInput, makeLocalIso, PunchTable, FriendlyEmpty, GlobalSearchModal, QuickActionDock, KitchenTVMode, ChangeLogModal, UndoBar } from '../components/common';
 
 
@@ -85,48 +85,38 @@ const isActiveTimeOffRequest = (request = {}) => {
 
 const timeOffMatchesPerson = (request = {}, person = {}) => recordMatchesPerson(request, person);
 
-const shiftMatchesPerson = (shift = {}, person = {}) => {
+const shiftMatchesPerson = (shift = {}, person = {}, roster = []) => {
   if (!shift || !person) return false;
 
-  // Scheduled shifts must match the assigned employee, not the user who created/imported the shift.
-  // Do NOT use createdBy/author fields here. Those belong to the scheduler and caused owners/admins
-  // to see every shift they imported under My Schedule.
-  const personIds = personIdentityKeys(person);
-  const personEmailKeys = [person.email, person.employeeEmail, person.userEmail, person.assignedEmail]
-    .map(normalizeScheduleIdentity).filter(Boolean);
-  const personNameKeys = [person.employeeName, person.name, person.displayName, person.fullName]
-    .map(normalizeScheduleName).filter(Boolean);
-  const personFirstKeys = [person.employeeName, person.name, person.displayName, person.fullName]
-    .map(firstNameKey).filter(Boolean);
+  const personDurable = collectScheduleDurableIdentityAliases(person, person.accountProfile || {});
+  const personEmails = collectScheduleEmailAliases(person, person.accountProfile || {});
+  const personNames = collectScheduleFullNameAliases(person, person.accountProfile || {});
+  const personFirstNames = collectScheduleFirstNameAliases(person, person.accountProfile || {});
 
-  const shiftEmailKeys = [shift.employeeEmail, shift.userEmail, shift.email, shift.assignedEmail]
-    .map(normalizeScheduleIdentity).filter(Boolean);
+  const shiftDurable = collectScheduleDurableIdentityAliases(shift);
+  const shiftEmails = collectScheduleEmailAliases(shift);
+  const shiftNames = collectScheduleFullNameAliases(shift);
+  const shiftFirstNames = collectScheduleFirstNameAliases(shift);
 
-  const shiftNameKeys = [shift.employeeName, shift.userName, shift.name, shift.assignedName]
-    .map(normalizeScheduleName).filter(Boolean);
-  const shiftFirstKeys = [shift.employeeName, shift.userName, shift.name, shift.assignedName]
-    .map(firstNameKey).filter(Boolean);
-
-  const shiftIds = [shift.scheduleUserId, shift.employeeId, shift.userId, shift.rosterUserId, shift.accountUserId, shift.assignedUserId, shift.uid, shift.authUid]
-    .map(normalizeScheduleIdentity).filter(Boolean);
-  if (shiftIds.length) {
-    const idMatch = shiftIds.some(v => personIds.has(v));
-    if (idMatch) return true;
-    // Some restored/imported schedules carried a stale id but the correct employee email/name.
-    // Allow exact email or full-name evidence, but never a loose first-name-only fallback when
-    // a durable id exists and points elsewhere.
-    if (shiftEmailKeys.length && shiftEmailKeys.some(v => personEmailKeys.includes(v))) return true;
-    if (shiftNameKeys.length && personNameKeys.length && shiftNameKeys.some(v => personNameKeys.includes(v))) return true;
+  if (shiftDurable.length) {
+    if (shiftDurable.some(alias => personDurable.includes(alias))) return true;
+    // Allow exact email or full-name legacy repair evidence when durable shift IDs are stale.
+    if (shiftEmails.length && shiftEmails.some(alias => personEmails.includes(alias))) return true;
+    if (shiftNames.length && shiftNames.some(alias => personNames.includes(alias))) return true;
     return false;
   }
 
-  if (shiftEmailKeys.length) return shiftEmailKeys.some(v => personEmailKeys.includes(v));
+  if (shiftEmails.length) return shiftEmails.some(alias => personEmails.includes(alias));
+  if (shiftNames.length && shiftNames.some(alias => personNames.includes(alias))) return true;
 
-  if (shiftNameKeys.length && personNameKeys.length && shiftNameKeys.some(v => personNameKeys.includes(v))) return true;
-
-  // Legacy imported schedules may only have a first name. Use first-name matching only when the
-  // shift has no durable id/email, and only against the roster person's first name.
-  return !!(shiftFirstKeys.length && personFirstKeys.length && shiftFirstKeys.some(v => personFirstKeys.includes(v)));
+  // First-name-only is migration evidence only and must be unique in the active roster.
+  if (shiftFirstNames.length && personFirstNames.length && shiftFirstNames.some(alias => personFirstNames.includes(alias))) {
+    const activeRoster = (Array.isArray(roster) ? roster : []).filter(u => u && u.isActive !== false);
+    if (!activeRoster.length) return true;
+    const matchingRoster = activeRoster.filter(candidate => collectScheduleFirstNameAliases(candidate).some(alias => shiftFirstNames.includes(alias)));
+    return matchingRoster.length === 1 && collectScheduleIdentityAliases(matchingRoster[0]).some(alias => collectScheduleIdentityAliases(person).includes(alias));
+  }
+  return false;
 };
 
 const requestOffPersonKey = (request = {}) => {
@@ -141,62 +131,32 @@ const isRequestOffConflictCountable = (request = {}) => {
 
 const getSchedulePersonForAppUser = (appUser = {}, users = []) => {
   if (!appUser) return {};
-  const emailKey = normalizeScheduleIdentity(appUser.email || appUser.userEmail || appUser.employeeEmail || '');
-  const nameKey = normalizeScheduleName(appUser.name || appUser.displayName || appUser.fullName || '');
-  const idKey = normalizeScheduleIdentity(appUser.id || appUser.uid || appUser.userId || '');
-  const rosterUser = (users || []).find(u => {
-    if (!u) return false;
-    const uIds = [u.id, u.uid, u.userId, u.employeeId, u.authUid].map(normalizeScheduleIdentity).filter(Boolean);
-    if (idKey && uIds.includes(idKey)) return true;
-    const uEmail = normalizeScheduleIdentity(u.email || u.userEmail || u.employeeEmail || '');
-    if (emailKey && uEmail && emailKey === uEmail) return true;
-    const uName = normalizeScheduleName(u.name || u.displayName || u.fullName || '');
-    return !!(nameKey && uName && nameKey === uName);
-  });
+  const resolved = resolveSchedulePersonForAccount(appUser, users);
+  const rosterUser = resolved.ok ? resolved.person : null;
   if (!rosterUser) return appUser;
-  // Keep both identities: roster id for scheduled shifts and auth uid/email for account/session checks.
+  const canonical = buildCanonicalScheduleIdentityBlock(rosterUser, appUser);
+  // Preserve account/session identity and roster/schedule identity separately.
+  // Canonical fields are assigned after spreads so auth UID cannot overwrite the roster scheduleUserId.
   return {
-    ...rosterUser,
     ...appUser,
-    id: rosterUser.id || appUser.id,
-    employeeId: rosterUser.id || rosterUser.employeeId || appUser.employeeId || appUser.id,
-    rosterUserId: rosterUser.id || '',
-    authUid: appUser.id || appUser.uid || appUser.authUid || '',
-    accountUserId: appUser.id || appUser.uid || '',
-    uid: appUser.uid || appUser.id || rosterUser.uid || '',
-    email: appUser.email || rosterUser.email || '',
-    employeeEmail: rosterUser.email || appUser.email || '',
-    name: appUser.name || rosterUser.name || appUser.email || rosterUser.email || '',
-    employeeName: rosterUser.name || appUser.name || appUser.email || ''
+    ...rosterUser,
+    ...canonical,
+    id: rosterUser.id || rosterUser.scheduleUserId || rosterUser.employeeId || appUser.id || appUser.uid || '',
+    uid: appUser.uid || appUser.authUid || rosterUser.uid || '',
+    authUid: canonical.authUid || appUser.uid || appUser.authUid || '',
+    accountUserId: canonical.accountUserId || appUser.id || appUser.uid || '',
+    loginEmail: appUser.email || appUser.userEmail || '',
+    email: appUser.email || rosterUser.email || canonical.employeeEmail || '',
+    employeeEmail: canonical.employeeEmail || rosterUser.email || appUser.email || '',
+    employeeName: canonical.employeeName || rosterUser.name || appUser.name || '',
+    name: appUser.name || rosterUser.name || appUser.email || ''
   };
 };
 
 
 
 
-export const buildScheduleIdentityFields = (person = {}, account = {}) => {
-  const safePerson = person && typeof person === 'object' ? person : {};
-  const safeAccount = account && typeof account === 'object' ? account : {};
-  const scheduleUserId = safePerson.scheduleUserId || safePerson.employeeId || safePerson.rosterUserId || safePerson.userId || safePerson.authUid || safePerson.uid || safePerson.id || safeAccount.scheduleUserId || safeAccount.employeeId || safeAccount.rosterUserId || safeAccount.userId || safeAccount.authUid || safeAccount.uid || safeAccount.id || '';
-  const authUid = safePerson.authUid || safePerson.uid || safePerson.userId || safeAccount.authUid || safeAccount.uid || safeAccount.userId || safeAccount.id || '';
-  const userId = safePerson.userId || authUid || safeAccount.userId || safeAccount.id || '';
-  const rosterUserId = safePerson.rosterUserId || safePerson.employeeId || safePerson.id || safeAccount.rosterUserId || safeAccount.employeeId || '';
-  const employeeId = safePerson.employeeId || rosterUserId || safePerson.id || safeAccount.employeeId || scheduleUserId || '';
-  const email = safePerson.employeeEmail || safePerson.email || safePerson.assignedEmail || safeAccount.employeeEmail || safeAccount.email || '';
-  const name = safePerson.employeeName || safePerson.name || safePerson.displayName || safePerson.assignedName || safeAccount.employeeName || safeAccount.name || safeAccount.displayName || email || 'Unknown';
-  return {
-    scheduleUserId,
-    employeeId,
-    userId,
-    rosterUserId,
-    authUid,
-    assignedUserId: safePerson.assignedUserId || userId || scheduleUserId,
-    employeeEmail: email,
-    assignedEmail: safePerson.assignedEmail || email,
-    employeeName: name,
-    assignedName: safePerson.assignedName || name
-  };
-};
+export const buildScheduleIdentityFields = (person = {}, account = {}) => buildCanonicalScheduleIdentityBlock(person, account);
 
 export const normalizeShiftTimeForFingerprint = (value) => {
   const raw = String(value ?? '').trim().toLowerCase().replace(/\s+/g, '');
@@ -377,7 +337,11 @@ const mergeSchedulePublishCandidates = (...shiftGroups) => {
     const key = getShiftPublishIdentity(shift);
     if (!key) return;
     const previous = byKey.get(key) || {};
-    byKey.set(key, { ...previous, ...shift, id: getShiftWritableDocId(shift) || previous.id || shift.id });
+    const previousTime = getShiftRecordTimeMs(previous);
+    const nextTime = getShiftRecordTimeMs(shift);
+    const authoritative = !previousTime || (nextTime && nextTime >= previousTime) ? shift : previous;
+    const merged = { ...previous, ...shift, ...authoritative };
+    byKey.set(key, { ...merged, id: getShiftWritableDocId(shift) || getShiftWritableDocId(previous) || shift.id || previous.id });
   });
   return Array.from(byKey.values());
 };
@@ -711,8 +675,20 @@ export const isDeletedScheduleShift = (shift = {}) => {
 
 const isScheduleShiftPublished = (shift = {}) => {
   if (isDeletedScheduleShift(shift)) return false;
-  const status = String(shift?.status || shift?.publishStatus || '').toLowerCase().trim();
-  return shift?.isPublished === true || shift?.published === true || status === 'published' || Boolean(shift?.publishedAt || shift?.scheduleId);
+  const statusBlob = [
+    shift?.status,
+    shift?.publishStatus,
+    shift?.publishState,
+    shift?.schedulePublishStatus,
+    shift?.visibility
+  ].map(v => String(v || '').toLowerCase().trim()).join('|');
+  return shift?.isPublished === true
+    || shift?.published === true
+    || shift?.isLive === true
+    || shift?.schedulePublished === true
+    || statusBlob.split('|').includes('published')
+    || statusBlob.split('|').includes('live')
+    || Boolean(shift?.publishedAt || shift?.scheduleId);
 };
 
 const isDateInsidePublishedSchedule = (dateKey, shifts = []) => {
@@ -973,7 +949,7 @@ const TabMasterSchedule = ({ currentDate, setCurrentDate = null, onSubTabChange 
 const handleClockIn = async () => {
     if (clockActionBusy || activePunch) return;
     // Check if scheduled today
-    const isScheduledToday = shifts.some(s => shiftMatchesPerson(s, appUser) && s.date === getToday() && s.isPublished);
+    const isScheduledToday = shifts.some(s => shiftMatchesPerson(s, appUser, users) && s.date === getToday() && s.isPublished);
     
     let isUnscheduled = false;
     if (!isScheduledToday) {
@@ -1258,7 +1234,11 @@ const handleOfferSwap = async (shift) => {
   };
 
   const masterMonthBounds = getScheduleMonthBoundsForKey(monthStr);
-  const isMyMasterPublishedShift = (shift = {}) => !isDeletedScheduleShift(shift) && shiftMatchesPerson(shift, schedulePerson) && isScheduleShiftPublished(shift);
+  const scheduleRosterPerson = getSchedulePersonForAppUser(appUser, users);
+  const isMyMasterPublishedShift = (shift = {}) => {
+    if (isDeletedScheduleShift(shift) || !isScheduleShiftPublished(shift)) return false;
+    return shiftMatchesPerson(shift, schedulePerson, users) || shiftMatchesPerson(shift, scheduleRosterPerson, users);
+  };
   const isMyMasterUpcomingShift = (shift = {}) => isMyMasterPublishedShift(shift) && isShiftStillCurrentOrUpcoming(shift, scheduleNow);
   const myMonthShifts = dedupeScheduleShiftsByDatePersonTime((shifts || [])
     .filter(shift => {
@@ -1414,7 +1394,7 @@ const handleOfferSwap = async (shift) => {
                 <div className={`p-8 text-center text-sm font-bold ${T.muted}`}>No shifts currently available.</div>
               ) : (
                 availableSwaps.map(swap => {
-                  const isMine = shiftMatchesPerson({ employeeId: swap.originalEmployeeId, userId: swap.originalUserId, employeeName: swap.originalEmployeeName, employeeEmail: swap.originalEmployeeEmail }, schedulePerson) || swap.originalEmployeeId === appUser.id;
+                  const isMine = shiftMatchesPerson({ employeeId: swap.originalEmployeeId, userId: swap.originalUserId, employeeName: swap.originalEmployeeName, employeeEmail: swap.originalEmployeeEmail }, schedulePerson, users) || swap.originalEmployeeId === appUser.id;
                   const originalEmp = users.find(u => u.id === swap.originalEmployeeId || normalizeScheduleIdentity(u.email) === normalizeScheduleIdentity(swap.originalEmployeeEmail));
                   
                   return (
@@ -1666,6 +1646,13 @@ const [eventDate, setEventDate] = useState(getToday());
   const publicationWeekBounds = getScheduleOuterWeekBounds(schedulePeriodBounds, schedulePublishingSettings);
   const publicationWeekDays = buildDateRange(publicationWeekBounds.start, publicationWeekBounds.end);
   const schedulePeriodShifts = visibleShifts.filter(s => { const d = getShiftDateKey(s); return d >= schedulePeriodBounds.start && d <= schedulePeriodBounds.end; });
+  const scheduleBuilderActiveRosterForPublish = users.filter(u => u?.isActive !== false);
+  const getScheduleBuilderRenderedShiftsForDaySet = (daySet = new Set()) => {
+    if (!daySet || !daySet.size) return [];
+    return mergeSchedulePublishCandidates(...scheduleBuilderActiveRosterForPublish.flatMap(person =>
+      Array.from(daySet).map(day => schedulePeriodShifts.filter(s => getShiftDateKey(s) === day && shiftMatchesPerson(s, person, users)))
+    ));
+  };
   const publicationSourceShifts = mergeSchedulePublishCandidates(
     (shifts || []).filter(shift => !isDeletedScheduleShift(shift)),
     visibleSourceShifts,
@@ -1673,14 +1660,16 @@ const [eventDate, setEventDate] = useState(getToday());
     localBuilderShiftEchoes.filter(shift => shift?.restaurantId === appUser?.restaurantId && !isDeletedScheduleShift(shift))
   ).filter(shift => !isDeletedScheduleShift(shift) && !shiftMatchesLocalDeleteMarkers(shift, activeLocalDeleteKeySet, activeLocalDeleteMarkerMap));
   const publicationPeriodShifts = publicationSourceShifts.filter(s => { const d = getShiftDateKey(s); return d >= publicationWeekBounds.start && d <= publicationWeekBounds.end; });
+  const renderedPublicationPeriodShifts = mergeSchedulePublishCandidates(publicationPeriodShifts, getScheduleBuilderRenderedShiftsForDaySet(new Set(publicationWeekDays)))
+    .filter(shift => !isDeletedScheduleShift(shift) && !shiftMatchesLocalDeleteMarkers(shift, activeLocalDeleteKeySet, activeLocalDeleteMarkerMap));
   const schedulePeriodEvents = events.filter(e => e.type === 'special_event' && e.date >= schedulePeriodBounds.start && e.date <= schedulePeriodBounds.end).sort((a,b) => (a.date || '').localeCompare(b.date || '') || (a.time || '').localeCompare(b.time || '') || (a.title || '').localeCompare(b.title || ''));
   const publishWeekOptions = [];
   for (let index = 0; index < publicationWeekDays.length; index += 7) {
     const days = publicationWeekDays.slice(index, index + 7);
     if (!days.length) continue;
     const daySet = new Set(days);
-    const drafts = publicationPeriodShifts.filter(shift => getShiftWritableDocId(shift) && !isBuilderShiftPublished(shift) && daySet.has(getShiftDateKey(shift)));
-    const live = publicationPeriodShifts.filter(shift => isBuilderShiftPublished(shift) && daySet.has(getShiftDateKey(shift)));
+    const drafts = renderedPublicationPeriodShifts.filter(shift => getShiftWritableDocId(shift) && !isBuilderShiftPublished(shift) && daySet.has(getShiftDateKey(shift)));
+    const live = renderedPublicationPeriodShifts.filter(shift => isBuilderShiftPublished(shift) && daySet.has(getShiftDateKey(shift)));
     const touchesVisiblePeriod = days.some(day => day >= schedulePeriodBounds.start && day <= schedulePeriodBounds.end);
     if (!touchesVisiblePeriod) continue;
     publishWeekOptions.push({
@@ -1697,15 +1686,17 @@ const [eventDate, setEventDate] = useState(getToday());
   const selectedPublishWeeks = publishWeekOptions.filter(option => selectedPublishWeekSet.has(option.key));
   const selectedPublishDays = Array.from(new Set(selectedPublishWeeks.flatMap(option => option.days))).sort();
   const selectedPublishDaySet = new Set(selectedPublishDays);
-  const selectedPublishDrafts = publicationPeriodShifts.filter(shift => getShiftWritableDocId(shift) && !isBuilderShiftPublished(shift) && selectedPublishDaySet.has(getShiftDateKey(shift)));
-  const fullPublishDrafts = publicationPeriodShifts.filter(shift => getShiftWritableDocId(shift) && !isBuilderShiftPublished(shift));
+  const selectedPublishDrafts = renderedPublicationPeriodShifts.filter(shift => getShiftWritableDocId(shift) && !isBuilderShiftPublished(shift) && selectedPublishDaySet.has(getShiftDateKey(shift)));
+  const fullPublishDrafts = renderedPublicationPeriodShifts.filter(shift => getShiftWritableDocId(shift) && !isBuilderShiftPublished(shift));
+  const selectedPublishCandidateCount = renderedPublicationPeriodShifts.filter(shift => getShiftWritableDocId(shift) && selectedPublishDaySet.has(getShiftDateKey(shift))).length;
+  const fullPublishCandidateCount = renderedPublicationPeriodShifts.filter(shift => getShiftWritableDocId(shift)).length;
   const publishDateLabel = (start, end) => start === end ? formatDisplayDate(start) : `${formatDisplayDate(start)} to ${formatDisplayDate(end)}`;
   const selectedPublishLabel = selectedPublishWeeks.length
     ? selectedPublishWeeks.map(option => `${option.label}: ${publishDateLabel(option.start, option.end)}`).join(', ')
     : 'No weeks selected';
   const openPublishPicker = () => {
-    if (fullPublishDrafts.length === 0) {
-      addToast('Notice', 'No unpublished shifts found.');
+    if (fullPublishCandidateCount === 0) {
+      addToast('Notice', 'No schedule shifts found in this publishing window.');
       return;
     }
     const draftWeekKeys = publishWeekOptions.filter(option => option.draftCount > 0).map(option => option.key);
@@ -1754,6 +1745,18 @@ const [eventDate, setEventDate] = useState(getToday());
         scheduleDateSnap.forEach(docSnap => addCandidate({ id: docSnap.id, ...docSnap.data() }));
       } catch (err) {
         console.warn('[86chaos] Publish scheduleDateKey lookup failed; using loaded schedule candidates for date', day, err?.message || err);
+      }
+      try {
+        const workspaceDateSnap = await getDocs(query(collection(db, 'shifts'), where('workspaceId', '==', appUser.restaurantId), where('date', '==', day)));
+        workspaceDateSnap.forEach(docSnap => addCandidate({ id: docSnap.id, ...docSnap.data() }));
+      } catch (err) {
+        console.warn('[86chaos] Publish workspace/date lookup failed; using loaded schedule candidates for date', day, err?.message || err);
+      }
+      try {
+        const workspaceScheduleDateSnap = await getDocs(query(collection(db, 'shifts'), where('workspaceId', '==', appUser.restaurantId), where('scheduleDateKey', '==', day)));
+        workspaceScheduleDateSnap.forEach(docSnap => addCandidate({ id: docSnap.id, ...docSnap.data() }));
+      } catch (err) {
+        console.warn('[86chaos] Publish workspace/scheduleDateKey lookup failed; using loaded schedule candidates for date', day, err?.message || err);
       }
     }
 
@@ -1977,10 +1980,10 @@ const [eventDate, setEventDate] = useState(getToday());
       return true;
     });
   };
-  const getScheduleBuilderRawShiftsForPersonDate = (dateKey, person) => schedulePeriodShifts.filter(s => getScheduleShiftDateKey(s) === dateKey && shiftMatchesPerson(s, person));
+  const getScheduleBuilderRawShiftsForPersonDate = (dateKey, person) => schedulePeriodShifts.filter(s => getScheduleShiftDateKey(s) === dateKey && shiftMatchesPerson(s, person, users));
   const getScheduleBuilderShiftsForPersonDate = (dateKey, person) => dedupeScheduleShiftsForSamePerson(getScheduleBuilderRawShiftsForPersonDate(dateKey, person));
   const scheduledHoursTrackerSourceShifts = mergeVisibleScheduleShifts((shifts || []).filter(shift => !isDeletedScheduleShift(shift)), localBuilderShiftEchoes.filter(shift => !isDeletedScheduleShift(shift))).filter(shift => !isDeletedScheduleShift(shift) && !shiftMatchesLocalDeleteMarkers(shift, activeLocalDeleteKeySet, activeLocalDeleteMarkerMap));
-  const getScheduledHoursTrackerRawShiftsForPersonDate = (dateKey, person) => scheduledHoursTrackerSourceShifts.filter(s => getScheduleShiftDateKey(s) === dateKey && shiftMatchesPerson(s, person));
+  const getScheduledHoursTrackerRawShiftsForPersonDate = (dateKey, person) => scheduledHoursTrackerSourceShifts.filter(s => getScheduleShiftDateKey(s) === dateKey && shiftMatchesPerson(s, person, users));
 
   const fetchSavedScheduleBuilderDeleteTargetsForPersonDate = async (dateKey, person, visibleCandidates = []) => {
     const byId = new Map();
@@ -1990,7 +1993,7 @@ const [eventDate, setEventDate] = useState(getToday());
     const collectSnapshotMatches = (snap) => {
       snap.forEach(docSnap => {
         const shift = { id: docSnap.id, ...docSnap.data() };
-        if (!isDeletedScheduleShift(shift) && shiftMatchesPerson(shift, person)) byId.set(String(docSnap.id), shift);
+        if (!isDeletedScheduleShift(shift) && shiftMatchesPerson(shift, person, users)) byId.set(String(docSnap.id), shift);
       });
     };
     const baseCollection = collection(db, 'shifts');
@@ -2086,43 +2089,14 @@ const [eventDate, setEventDate] = useState(getToday());
     const emp = getScheduleBuilderPerson(empId);
     if (!emp) return addToast('Staff Missing', 'This row no longer matches an active staff profile. Refresh the page and try again.');
     const existingShifts = getScheduleBuilderRawShiftsForPersonDate(d, emp);
-    if (existingShifts.length) {
-      const label = existingShifts.length === 1 ? 'this shift' : `${existingShifts.length} visible shifts`;
-      if (window.confirm(`Delete ${label} for ${emp.name || 'this employee'} on ${formatDisplayDate(d)}?`)) {
-        try {
-          const deleteTargets = await fetchSavedScheduleBuilderDeleteTargetsForPersonDate(d, emp, existingShifts);
-          const deleteTargetsById = new Map();
-          deleteTargets.forEach(shift => {
-            if (shift?.id) deleteTargetsById.set(String(shift.id), shift);
-          });
-          const deleteResult = await tombstoneAndDeleteScheduleBuilderShiftTargets(Array.from(deleteTargetsById.values()), { scope: 'cell-day' });
-          const markerSource = mergeVisibleScheduleShifts(existingShifts, deleteResult.targetList);
-          const deletedMarkers = buildLocalShiftDeletionMarkers(markerSource);
-          const deletedKeySet = new Set(deletedMarkers.map(marker => marker.key).filter(Boolean));
-          const localPruneKeySet = new Set(markerSource.flatMap(getScheduleShiftLocalPruneKeys).filter(Boolean));
-          if (deletedMarkers.length) {
-            setLocalBuilderDeletedShiftMarkers(prev => mergeLocalShiftDeletionMarkers(prev, deletedMarkers));
-          }
-          if (localPruneKeySet.size) {
-            setLocalBuilderShiftEchoes(prev => prev.filter(shift => !shiftMatchesLocalDeletePruneKeys(shift, localPruneKeySet)));
-            setAutoFillVisibleShifts(prev => prev.filter(shift => !shiftMatchesLocalDeletePruneKeys(shift, localPruneKeySet)));
-          }
-          if (deletedKeySet.size) {
-            setLocalBuilderShiftEchoes(prev => prev.filter(shift => !shiftMatchesLocalDeleteMarkers(shift, deletedKeySet)));
-            setAutoFillVisibleShifts(prev => prev.filter(shift => !shiftMatchesLocalDeleteMarkers(shift, deletedKeySet)));
-          }
-          setAssignDates(prev => prev.filter(x => x !== d));
-          const deletedCount = Math.max(deleteResult.deletedCount, deleteTargetsById.size, existingShifts.length);
-          addToast('Shift Deleted', deletedCount === 1 ? 'The visible shift was removed.' : `${deletedCount} duplicate/visible shifts were removed.`);
-        } catch (err) { addToast('Delete Failed', err.message); }
-      }
-      return;
-    }
     setSelectedEmp(empId);
     setAssignDates(prev => {
       const base = selectedEmp && selectedEmp !== empId ? [] : prev;
       return base.includes(d) ? base.filter(x => x !== d) : [...base, d];
     });
+    if (existingShifts.length) {
+      addToast('Date Selected', 'Tap an individual shift chip to delete only that shift. This date is selected for adding another shift.');
+    }
   };
 
   const handleAssign = async () => {
@@ -2136,7 +2110,7 @@ const [eventDate, setEventDate] = useState(getToday());
       const validDates = [];
       const availabilityOverrides = {};
       for (const d of uniqueAssignDates) { 
-        const existingShift = visibleShifts.find(s => (s.date || s.scheduleDateKey) === d && shiftMatchesPerson(s, emp));
+        const existingShift = visibleShifts.find(s => (s.date || s.scheduleDateKey) === d && shiftMatchesPerson(s, emp, users));
         if (existingShift) { addToast('Blocked', `${(emp.name||'Unknown').split(' ')[0]} is already scheduled on ${formatDisplayDate(d)}.`); return; }
         
         const req = timeOffRequests.find(r => r.date === d && timeOffMatchesPerson(r, emp) && !['cancelled','canceled','archived','processed','denied','rejected'].includes(String(r.status || '').toLowerCase()));
@@ -2175,6 +2149,7 @@ const [eventDate, setEventDate] = useState(getToday());
           scheduleBuilderDraft: true,
           readyToPublish: true,
           restaurantId: appUser.restaurantId,
+          workspaceId: appUser.restaurantId,
           createdAt: nowIso,
           updatedAt: nowIso,
           createdBy: appUser?.id || appUser?.email || 'schedule-builder',
@@ -2213,27 +2188,110 @@ const handlePublish = async (scope = 'selected-weeks') => {
     const selectedWeeksForPublish = publishAll ? publishWeekOptions : selectedPublishWeeks;
     const publishDays = publishAll ? publicationWeekDays : selectedPublishDays;
     const publishDaySet = new Set(publishDays);
-    const localPublishCandidateSources = mergeSchedulePublishCandidates(publicationPeriodShifts, visibleSourceShifts, autoFillVisibleShifts, localBuilderShiftEchoes)
+    const localPublishCandidateSources = mergeSchedulePublishCandidates(renderedPublicationPeriodShifts, publicationPeriodShifts, visibleSourceShifts, autoFillVisibleShifts, localBuilderShiftEchoes, getScheduleBuilderRenderedShiftsForDaySet(publishDaySet))
       .filter(shift => !isDeletedScheduleShift(shift) && !shiftMatchesLocalDeleteMarkers(shift, activeLocalDeleteKeySet, activeLocalDeleteMarkerMap));
     const publishCandidates = await fetchSchedulePublishCandidatesForDaySet(publishDaySet, localPublishCandidateSources);
-    const unpub = publishCandidates.filter(shift => getShiftWritableDocId(shift) && !isDeletedScheduleShift(shift) && !isBuilderShiftPublished(shift) && (publishAll || shiftIsInsideDaySet(shift, publishDaySet)));
+    const selectedCandidates = publishCandidates
+      .filter(shift => getShiftWritableDocId(shift) && !isDeletedScheduleShift(shift) && (publishAll || shiftIsInsideDaySet(shift, publishDaySet)))
+      .filter(shift => publishDaySet.has(getShiftDateKey(shift)));
     const publishPeriodStart = publishAll ? publicationWeekBounds.start : (publishDays[0] || schedulePeriodBounds.start);
     const publishPeriodEnd = publishAll ? publicationWeekBounds.end : (publishDays[publishDays.length - 1] || schedulePeriodBounds.end);
     const publishPeriodLabel = publishAll
       ? schedulePeriodLabel
       : (selectedWeeksForPublish.length ? selectedWeeksForPublish.map(option => option.label).join(', ') : 'selected weeks');
     const publishSelectionLabel = publishAll ? schedulePeriodLabel : selectedPublishLabel;
-    
-    if (unpub.length === 0) {
-      addToast('Notice', publishAll ? 'No unpublished shifts found.' : 'No unpublished shifts found in the selected weeks.');
+    const publishedAtIso = new Date().toISOString();
+    const scheduleId = `schedule_${appUser.restaurantId}_${publishPeriodStart}_${publishPeriodEnd}_${Date.now()}`;
+    const publishWeekKeys = selectedWeeksForPublish.map(option => option.key);
+
+    if (selectedCandidates.length === 0) {
+      addToast('Notice', publishAll ? 'No shifts found in this publishing window.' : 'No shifts found in the selected weeks.');
       return;
     }
-    if(!window.confirm(`Publish ${unpub.length} draft shift${unpub.length === 1 ? '' : 's'} for ${publishSelectionLabel}? Weeks not selected will stay as drafts.`)) return; 
+
+    const unresolved = [];
+    const updatePlan = [];
+    const alreadyValid = [];
+    let draftCount = 0;
+    let repairCount = 0;
+
+    selectedCandidates.forEach(shift => {
+      const shiftDocId = getShiftWritableDocId(shift);
+      const dateKey = getShiftDateKey(shift);
+      const resolved = resolveSchedulePersonForShift(shift, users);
+      if (!shiftDocId || !dateKey || !resolved.ok || !resolved.person) {
+        unresolved.push({ shift, reason: !dateKey ? 'missing date' : (resolved.reason || 'employee not matched') });
+        return;
+      }
+      const canonical = buildCanonicalScheduleIdentityBlock(resolved.person, shift);
+      const isLive = isBuilderShiftPublished(shift);
+      const publishedFieldsOk = shift.isPublished === true && shift.published === true && String(shift.status || '').toLowerCase() === 'published' && String(shift.publishStatus || '').toLowerCase() === 'published';
+      const identityOk = scheduleIdentityBlockMatchesPerson(shift, resolved.person);
+      const dateOk = String(shift.date || shift.scheduleDateKey || '') === dateKey && String(shift.scheduleDateKey || shift.date || '') === dateKey;
+      const needsWrite = !isLive || !publishedFieldsOk || !identityOk || !dateOk || !shift.scheduleId;
+      if (!needsWrite) {
+        alreadyValid.push(shiftDocId);
+        return;
+      }
+      if (!isLive) draftCount += 1;
+      else repairCount += 1;
+      updatePlan.push({
+        id: shiftDocId,
+        shift,
+        person: resolved.person,
+        dateKey,
+        wasPublished: isLive,
+        update: {
+          restaurantId: shift.restaurantId || appUser.restaurantId,
+          workspaceId: shift.workspaceId || shift.restaurantId || appUser.restaurantId,
+          date: dateKey,
+          scheduleDateKey: dateKey,
+          isPublished: true,
+          published: true,
+          status: 'published',
+          publishStatus: 'published',
+          publishState: 'published',
+          schedulePublishStatus: 'published',
+          visibility: 'published',
+          scheduleBuilderDraft: false,
+          readyToPublish: false,
+          draft: false,
+          isDraft: false,
+          publishedAt: isLive && shift.publishedAt ? shift.publishedAt : publishedAtIso,
+          publishedBy: shift.publishedBy || appUser?.id || appUser?.email || 'unknown',
+          publishedByName: shift.publishedByName || appUser?.name || appUser?.email || 'Unknown',
+          scheduleId: isLive && shift.scheduleId ? shift.scheduleId : scheduleId,
+          schedulePeriodStart: shift.schedulePeriodStart || publishPeriodStart,
+          schedulePeriodEnd: shift.schedulePeriodEnd || publishPeriodEnd,
+          publishScope: publishAll ? 'full-period' : 'selected-weeks',
+          publishWeekKeys,
+          identityVerifiedAt: publishedAtIso,
+          identityVerifiedBy: appUser?.id || appUser?.email || 'unknown',
+          updatedAt: publishedAtIso,
+          ...canonical
+        }
+      });
+    });
+
+    const unresolvedNames = Array.from(new Set(unresolved.map(item => item.shift?.employeeName || item.shift?.assignedName || item.shift?.name || item.shift?.role || 'unknown staff'))).slice(0, 8);
+    if (updatePlan.length === 0) {
+      if (unresolved.length) {
+        addToast('Employee Match Needed', `${unresolved.length} shift${unresolved.length === 1 ? '' : 's'} were not published because their employee accounts could not be matched. Review employee links for ${unresolvedNames.join(', ')}.`);
+        return;
+      }
+      addToast('Already Published', 'Schedule is already published and employee visibility is verified.');
+      setIsPublishPickerOpen(false);
+      return;
+    }
+
+    const confirmMessage = unresolved.length
+      ? `Publish/repair ${updatePlan.length} shift${updatePlan.length === 1 ? '' : 's'} for ${publishSelectionLabel}? ${unresolved.length} shift${unresolved.length === 1 ? '' : 's'} will stay draft because employee accounts could not be matched: ${unresolvedNames.join(', ')}.`
+      : `Publish/repair ${updatePlan.length} shift${updatePlan.length === 1 ? '' : 's'} for ${publishSelectionLabel}? Weeks not selected will stay as drafts.`;
+    if (!window.confirm(confirmMessage)) return;
 
     try {
       const restaurantPrefix = getRestaurantExportPrefix(appUser, appUser?.restaurantId || '86chaos');
       const now = new Date();
-      const publishWeekKeys = selectedWeeksForPublish.map(option => option.key);
       const backupPayload = {
         app: '86chaos',
         type: 'schedule-publish-backup',
@@ -2247,11 +2305,13 @@ const handlePublish = async (scope = 'selected-weeks') => {
         publishPeriodStart,
         publishPeriodEnd,
         publishPeriodLabel,
-        unpublishedShiftCount: unpub.length,
-        allPeriodShiftCount: publicationPeriodShifts.length,
-        unpublishedShiftIds: unpub.map(s => getShiftWritableDocId(s)).filter(Boolean),
-        unpublishedShifts: unpub.map(s => ({ ...s })),
-        periodShifts: publicationPeriodShifts.map(s => ({ ...s }))
+        selectedShiftCount: selectedCandidates.length,
+        updateCount: updatePlan.length,
+        draftCount,
+        repairCount,
+        unresolvedCount: unresolved.length,
+        updateShiftIds: updatePlan.map(item => item.id),
+        selectedShifts: selectedCandidates.map(s => ({ ...s }))
       };
       const stamp = now.toISOString().replace(/[:.]/g, '-');
       downloadTextFile(`${restaurantPrefix}-Schedule-Publish-Backup-${publishPeriodStart}-to-${publishPeriodEnd}-${stamp}.json`, JSON.stringify(backupPayload, null, 2), 'application/json;charset=utf-8;');
@@ -2259,109 +2319,90 @@ const handlePublish = async (scope = 'selected-weeks') => {
       console.warn('Schedule publish backup download failed:', backupErr);
       if (!window.confirm('The local backup download failed. Continue publishing anyway?')) return;
     }
-    
-    addToast('Publishing...', `Pushing ${unpub.length} ${publishPeriodLabel} draft shift(s) live. Please wait.`);
-    
+
+    addToast('Publishing...', `Verifying and publishing ${updatePlan.length} ${publishPeriodLabel} shift(s). Please wait.`);
+
     try {
-      const publishedAtIso = new Date().toISOString();
-      const scheduleId = `schedule_${appUser.restaurantId}_${publishPeriodStart}_${publishPeriodEnd}_${Date.now()}`;
-      const publishResults = await Promise.allSettled(unpub.map(s => {
-        const shiftDocId = getShiftWritableDocId(s);
-        const dateKey = getShiftDateKey(s);
-        return updateDoc(doc(db, "shifts", shiftDocId), {
-          isPublished: true,
-          published: true,
-          status: 'published',
-          publishStatus: 'published',
-          publishedAt: publishedAtIso,
-          publishedBy: appUser?.id || appUser?.email || 'unknown',
-          date: dateKey || s.date || '',
-          scheduleDateKey: dateKey || s.scheduleDateKey || s.date || '',
-          scheduleId,
-          schedulePeriodStart: publishPeriodStart,
-          schedulePeriodEnd: publishPeriodEnd,
-          publishScope: publishAll ? 'full-period' : 'selected-weeks',
-          publishWeekKeys
-        });
-      }));
-      const failedPublishCount = publishResults.filter(result => result.status === 'rejected').length;
-      const publishedShiftIds = unpub.filter((_, index) => publishResults[index]?.status === 'fulfilled').map(getShiftWritableDocId).filter(Boolean);
+      for (let i = 0; i < updatePlan.length; i += 450) {
+        const batch = writeBatch(db);
+        updatePlan.slice(i, i + 450).forEach(item => batch.update(doc(db, 'shifts', item.id), item.update));
+        await batch.commit();
+      }
+
+      const verificationFailures = [];
+      for (const item of updatePlan) {
+        const snap = await getDoc(doc(db, 'shifts', item.id));
+        if (!snap.exists()) {
+          verificationFailures.push({ id: item.id, reason: 'missing after publish' });
+          continue;
+        }
+        const data = { id: snap.id, ...snap.data() };
+        const expectedRestaurantId = String(item.update.restaurantId || appUser.restaurantId || '');
+        const actualRestaurantId = String(data.restaurantId || data.workspaceId || '');
+        const statusOk = data.isPublished === true && data.published === true && String(data.status || '').toLowerCase() === 'published' && String(data.publishStatus || '').toLowerCase() === 'published';
+        const dateOk = getShiftDateKey(data) === item.dateKey;
+        const personOk = shiftMatchesPerson(data, item.person, users) && scheduleIdentityBlockMatchesPerson(data, item.person);
+        const scheduleIdOk = item.wasPublished || Boolean(data.scheduleId);
+        if (actualRestaurantId !== expectedRestaurantId || !statusOk || !dateOk || !personOk || !scheduleIdOk) {
+          verificationFailures.push({ id: item.id, reason: 'published read-back did not match expected fields' });
+        }
+      }
+
+      if (verificationFailures.length) {
+        console.warn('[86chaos] Schedule publish verification failed', verificationFailures);
+        addToast('Publish Needs Attention', `${verificationFailures.length} shift${verificationFailures.length === 1 ? '' : 's'} did not verify after saving. The publish window stayed open so you can retry.`);
+        return;
+      }
+
+      const publishedShiftIds = updatePlan.map(item => item.id).filter(Boolean);
       if (publishedShiftIds.length) {
         setLocalBuilderPublishedShiftIds(prev => Array.from(new Set([...(prev || []), ...publishedShiftIds])).slice(-1000));
       }
-      if (failedPublishCount) {
-        console.warn('[86chaos] Some selected schedule shifts failed to publish', publishResults.filter(result => result.status === 'rejected').map(result => result.reason?.message || result.reason));
-      }
-      if (!publishedShiftIds.length) throw new Error('No selected schedule shifts could be published.');
+
       const inRangeRequests = (timeOffRequests || []).filter(r => publishDaySet.has(String(r?.date || '')) && String(r.restaurantId || r.workspaceId || appUser.restaurantId) === String(appUser.restaurantId));
       const processedRequests = inRangeRequests.filter(r => ['approved', 'denied'].includes(String(r.status || '').toLowerCase()) && r.archived !== true && r.processed !== true);
       const pendingPublishedOverlap = inRangeRequests.filter(r => String(r.status || '').toLowerCase() === 'pending');
       await Promise.all(processedRequests.map(r => updateDoc(doc(db, 'timeOffRequests', r.id), {
-        previousStatus: r.status || '',
-        status: 'processed',
-        processed: true,
-        archived: true,
-        processedAt: publishedAtIso,
-        processedBy: appUser?.id || appUser?.email || '',
-        processedByName: appUser?.name || appUser?.email || '',
-        scheduleId,
-        schedulePeriodStart: publishPeriodStart,
-        schedulePeriodEnd: publishPeriodEnd,
-        publishedAt: publishedAtIso,
-        publishedBy: appUser?.id || appUser?.email || '',
-        publishedByName: appUser?.name || appUser?.email || ''
+        previousStatus: r.status || '', status: 'processed', processed: true, archived: true,
+        processedAt: publishedAtIso, processedBy: appUser?.id || appUser?.email || '', processedByName: appUser?.name || appUser?.email || '',
+        scheduleId, schedulePeriodStart: publishPeriodStart, schedulePeriodEnd: publishPeriodEnd,
+        publishedAt: publishedAtIso, publishedBy: appUser?.id || appUser?.email || '', publishedByName: appUser?.name || appUser?.email || ''
       })));
       await Promise.all(pendingPublishedOverlap.map(r => updateDoc(doc(db, 'timeOffRequests', r.id), {
-        overlapsPublishedSchedule: true,
-        unresolvedPublishedOverlap: true,
-        scheduleId,
-        schedulePeriodStart: publishPeriodStart,
-        schedulePeriodEnd: publishPeriodEnd,
-        updatedAt: publishedAtIso
+        overlapsPublishedSchedule: true, unresolvedPublishedOverlap: true, scheduleId,
+        schedulePeriodStart: publishPeriodStart, schedulePeriodEnd: publishPeriodEnd, updatedAt: publishedAtIso
       })));
       if (processedRequests.length) await logAudit(appUser, 'TIME_OFF_AUTO_ARCHIVED_ON_PUBLISH', `${processedRequests.length} request-offs`, scheduleId);
       if (pendingPublishedOverlap.length) await logAudit(appUser, 'TIME_OFF_PENDING_OVERLAPS_PUBLISHED_SCHEDULE', `${pendingPublishedOverlap.length} pending request-offs`, scheduleId);
+
       setIsPublishPickerOpen(false);
       setSelectedPublishWeekKeys([]);
-      addToast(failedPublishCount ? 'Partially Published' : 'Published', `${publishedShiftIds.length} shift${publishedShiftIds.length === 1 ? '' : 's'} published for ${publishPeriodLabel}.${failedPublishCount ? ` ${failedPublishCount} shift${failedPublishCount === 1 ? '' : 's'} could not be updated.` : ''} Weeks not selected stayed as drafts.`); 
-      logAudit(appUser, 'PUBLISH_SCHEDULE', 'Master Roster', `Pushed ${publishedShiftIds.length}/${unpub.length} shifts live for ${publishSelectionLabel}. Local backup JSON downloaded before publish.`); 
+      const title = unresolved.length ? 'Published with Employee Review Needed' : (repairCount ? 'Published and Visibility Repaired' : 'Published');
+      const detailParts = [`${publishedShiftIds.length} shift${publishedShiftIds.length === 1 ? '' : 's'} verified for ${publishPeriodLabel}`];
+      if (draftCount) detailParts.push(`${draftCount} new`);
+      if (repairCount) detailParts.push(`${repairCount} employee visibility repaired`);
+      if (unresolved.length) detailParts.push(`${unresolved.length} still need employee links`);
+      addToast(title, `${detailParts.join('. ')}. Weeks not selected stayed as drafts.`);
+      logAudit(appUser, 'PUBLISH_SCHEDULE', 'Master Roster', `Verified ${publishedShiftIds.length}/${selectedCandidates.length} shifts for ${publishSelectionLabel}.`);
 
-// --- NEW: TRIGGER PUSH NOTIFICATIONS ---
       try {
-        addToast('Pinging Server', 'Sending alert request to Vercel...');
+        addToast('Pinging Server', 'Sending schedule update notifications...');
         const pushRes = await secureFetch('/api/send-schedule-alert', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ 
-            restaurantId: appUser.restaurantId,
-            restaurantName: appUser.restaurantName || 'Your restaurant',
-            scheduleId,
-            publishScope: publishAll ? 'full-period' : 'selected-weeks',
-            publishPeriodStart,
-            publishPeriodEnd,
-            publishWeekKeys
-          })
+          body: JSON.stringify({ restaurantId: appUser.restaurantId, restaurantName: appUser.restaurantName || 'Your restaurant', scheduleId, publishScope: publishAll ? 'full-period' : 'selected-weeks', publishPeriodStart, publishPeriodEnd, publishWeekKeys })
         });
-        
         const pushData = await pushRes.json();
-        console.log("VERCEL RESPONSE:", pushData);
-        
-        if (pushData.message) {
-          // This catches the "No devices registered" silent exit
-          addToast('Server Reply', pushData.message); 
-        } else if (pushData.success) {
-          addToast('Alerts Sent!', `Successfully pushed to ${pushData.sentCount} devices.`);
-        } else {
-          addToast('API Error', pushData.error || 'Unknown server error');
-        }
-
+        if (pushData.message) addToast('Server Reply', pushData.message);
+        else if (pushData.success) addToast('Alerts Sent!', `Schedule saved. Notifications sent to ${pushData.sentCount} device${pushData.sentCount === 1 ? '' : 's'}.`);
+        else addToast('Notifications Not Sent', pushData.error || 'Schedule published, but notification delivery needs attention.');
       } catch (pushErr) {
-        console.error("Failed to send push notifications:", pushErr);
-        addToast('Network Error', 'Failed to reach Vercel API.');
+        console.error('Failed to send schedule push notifications:', pushErr);
+        addToast('Notifications Not Sent', 'Schedule published, but notifications could not be sent.');
       }
-
     } catch (err) {
-      addToast("Error", "Some shifts failed to publish. Check connection and try again.");
+      console.error('[86chaos] Schedule publish failed', err);
+      addToast('Publishing Failed', err?.message || 'Schedule publishing failed before every selected shift could be verified.');
     }
   };
   
@@ -2797,7 +2838,7 @@ const handleAddEvent = async (e) => {
     const committedVisibleShifts = queuedVisibleShifts.slice(0, committedCount);
     const visibleCommittedCount = committedVisibleShifts.filter(shift => {
       const d = String(shift.date || shift.scheduleDateKey || '');
-      return d >= schedulePeriodBounds.start && d <= schedulePeriodBounds.end && users.some(user => shiftMatchesPerson(shift, user));
+      return d >= schedulePeriodBounds.start && d <= schedulePeriodBounds.end && users.some(user => shiftMatchesPerson(shift, user, users));
     }).length;
     if (committedVisibleShifts.length) {
       setAutoFillVisibleShifts(prev => mergeVisibleScheduleShifts(prev, committedVisibleShifts));
@@ -3466,13 +3507,13 @@ const handleExportTimesheets = () => {
           </div>
 
           <div className="rounded-xl border border-[#2A353D] bg-[#0B0E11] p-3 text-xs font-bold text-slate-300">
-            Selected: <span className="text-white">{selectedPublishDrafts.length}</span> draft shift{selectedPublishDrafts.length === 1 ? '' : 's'}
+            Selected: <span className="text-white">{selectedPublishCandidateCount}</span> shift{selectedPublishCandidateCount === 1 ? '' : 's'} to verify/publish
             {selectedPublishWeeks.length > 0 && <span className="block mt-1 text-[11px] text-slate-400">{selectedPublishLabel}</span>}
           </div>
 
           <div className="flex flex-col sm:flex-row gap-2">
-            <button type="button" onClick={() => handlePublish('selected-weeks')} disabled={selectedPublishDrafts.length === 0} className={`${T.btn} flex-1 py-3 disabled:opacity-50`}>Publish Selected Weeks</button>
-            <button type="button" onClick={() => handlePublish('full-period')} disabled={fullPublishDrafts.length === 0} className={`${T.btnAlt} flex-1 py-3`}>Publish Full Schedule</button>
+            <button type="button" onClick={() => handlePublish('selected-weeks')} disabled={selectedPublishCandidateCount === 0} className={`${T.btn} flex-1 py-3 disabled:opacity-50`}>Publish Selected Weeks</button>
+            <button type="button" onClick={() => handlePublish('full-period')} disabled={fullPublishCandidateCount === 0} className={`${T.btnAlt} flex-1 py-3`}>Publish Full Schedule</button>
             <button type="button" onClick={() => setIsPublishPickerOpen(false)} className={`${T.btnAlt} flex-1 py-3`}>Cancel</button>
           </div>
         </div>
@@ -4076,7 +4117,7 @@ const TabMonth = ({ currentDate, users, shifts, appUser }) => {
 {Array.from({length:days}).map((_,i)=>{
           const date = `${monthStr}-${String(i+1).padStart(2,'0')}`; 
           const dayShifts = shifts
-            .filter(s => getShiftDateKey(s) === date && isScheduleShiftPublished(s) && (roleFilter === 'All' || (roleFilter === 'ME' ? shiftMatchesPerson(s, getSchedulePersonForAppUser(appUser, users)) : s.role === roleFilter)))
+            .filter(s => getShiftDateKey(s) === date && isScheduleShiftPublished(s) && (roleFilter === 'All' || (roleFilter === 'ME' ? shiftMatchesPerson(s, getSchedulePersonForAppUser(appUser, users), users) : s.role === roleFilter)))
             .sort((a, b) => {
               if (a.role !== b.role) return (a.role || '').localeCompare(b.role || '');
               return (a.startTime || '').localeCompare(b.startTime || '');
@@ -4585,7 +4626,7 @@ const ScheduleCopilot = ({ currentDate, users = [], shifts = [], timeOffRequests
         const oldIndex = prevDates.indexOf(s.date);
         const date = weekDates[oldIndex];
         if (weekShifts.some(x => x.date === date && x.employeeId === s.employeeId && x.startTime === s.startTime)) continue;
-        await addDoc(collection(db, 'shifts'), { restaurantId: appUser.restaurantId, ...buildScheduleIdentityFields(users.find(u => shiftMatchesPerson(s, u)) || s), role: canonicalScheduleRole(s.role || users.find(u => u.id === s.employeeId)?.role || 'Staff'), date, startTime: s.startTime, endTime: s.endTime, isPublished: false, copiedFrom: s.id, createdAt: new Date().toISOString(), createdBy: appUser.id || 'copy-week' });
+        await addDoc(collection(db, 'shifts'), { restaurantId: appUser.restaurantId, ...buildScheduleIdentityFields(users.find(u => shiftMatchesPerson(s, u, users)) || s), role: canonicalScheduleRole(s.role || users.find(u => u.id === s.employeeId)?.role || 'Staff'), date, startTime: s.startTime, endTime: s.endTime, isPublished: false, copiedFrom: s.id, createdAt: new Date().toISOString(), createdBy: appUser.id || 'copy-week' });
         made++;
       }
       addToast('Copied', `${made} draft shifts copied from previous week.`);

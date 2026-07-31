@@ -1,13 +1,14 @@
 {
-  "version": "16.0.76",
-  "name": "86 Chaos 16.0.76 Schedule Tab Runtime Guard Fix",
-  "build": "16.0.76",
-  "label": "86 Chaos 16.0.76 Schedule Tab Runtime Guard Fix",
-  "releasedAt": "2026-07-30T19:50:00-05:00",
-  "releaseTitle": "86 Chaos 16.0.76 Schedule Tab Runtime Guard Fix",
+  "version": "16.0.79",
+  "name": "86 Chaos 16.0.79 Release Gate Test Harness Fixes",
+  "build": "16.0.79",
+  "label": "86 Chaos 16.0.79 Release Gate Test Harness Fixes",
+  "releasedAt": "2026-07-30T21:20:00-05:00",
+  "releaseTitle": "86 Chaos 16.0.79 Release Gate Test Harness Fixes",
   "notes": [
-    "Time Clock & Schedule no longer crashes from an undefined myNextShift reference on Schedule/My Schedule render.",
-    "Active clock punch sync now uses an index-light listener and a plain-English warning instead of locking the Schedule tab behind runtime recovery.",
-    "The targeted source test now checks the Schedule tab render order so this class of ReferenceError is caught before deploy."
+    "Schedule Builder shift boxes are visually shorter while keeping the current shift text size, font weight, and letter spacing.",
+    "Shift times remain on one horizontal line on mobile and desktop.",
+    "The complete role-colored chip surface now contains every character of the shift time without a partial nested highlight.",
+    "No schedule publishing, My Schedule, Firestore, identity, or protected administrator behavior changed."
   ]
 }

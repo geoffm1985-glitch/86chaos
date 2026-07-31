@@ -4971,6 +4971,8 @@ select {
   .schedule-builder-time-chip {
     font-size: 8px !important;
     min-height: 18px !important;
+    font-size: 8.5px !important;
+    letter-spacing: -0.055em !important;
     padding-left: 2px !important;
     padding-right: 2px !important;
   }
@@ -5078,5 +5080,129 @@ span.bg-red-500.text-white,
 
   .schedule-builder-desktop-table thead th > div:nth-child(2) {
     font-size: 15px !important;
+  }
+}
+
+/* 16.0.77: Schedule Builder mobile density guard.
+   Keep mobile shift chips compact and horizontal. Do not enlarge cells/columns just to prevent vertical text. */
+@media (max-width: 767px) {
+  .schedule-builder-desktop-table .schedule-builder-time-chip:not(.schedule-builder-event-chip):not(.schedule-builder-event-more),
+  .schedule-builder-desktop-table .schedule-builder-partial-off-chip {
+    display: block !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    min-height: 0 !important;
+    height: auto !important;
+    padding: 2px 2px !important;
+    font-size: 9px !important;
+    line-height: 1.05 !important;
+    letter-spacing: -0.045em !important;
+    white-space: nowrap !important;
+    word-break: normal !important;
+    overflow-wrap: normal !important;
+    overflow: hidden !important;
+    text-overflow: clip !important;
+  }
+
+  .schedule-builder-desktop-table tbody td > div {
+    gap: 2px !important;
+  }
+
+  .schedule-builder-desktop-table tbody td:not(:first-child) {
+    height: 28px !important;
+    min-height: 28px !important;
+    vertical-align: top !important;
+  }
+}
+
+/* 16.0.78 Schedule Builder shift chip surface correction.
+   Scope only to individual shift/request-off chips inside the Schedule Builder grid.
+   The final visual surface is the chip itself: compact, centered, one-line, and fully role-colored. */
+.schedule-builder-desktop-table tbody td > div:has(.schedule-builder-time-chip:not(.schedule-builder-event-chip):not(.schedule-builder-event-more)) {
+  align-items: center !important;
+  gap: 3px !important;
+}
+
+.schedule-builder-desktop-table .schedule-builder-time-chip:not(.schedule-builder-event-chip):not(.schedule-builder-event-more),
+.schedule-builder-desktop-table button.schedule-builder-time-chip:not(.schedule-builder-event-chip):not(.schedule-builder-event-more),
+.schedule-builder-desktop-table .schedule-builder-partial-off-chip,
+.desktop-pro-shell .app-content-shell .schedule-builder-desktop-table button.schedule-builder-time-chip:not(.schedule-builder-event-chip):not(.schedule-builder-event-more),
+.ui-v12-compact .schedule-builder-desktop-table button.schedule-builder-time-chip:not(.schedule-builder-event-chip):not(.schedule-builder-event-more) {
+  appearance: none !important;
+  box-sizing: border-box !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  align-self: center !important;
+  flex: 0 0 auto !important;
+  width: fit-content !important;
+  max-width: calc(100% - 4px) !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
+  height: auto !important;
+  margin: 1px auto !important;
+  padding: 1px 3px !important;
+  border-radius: 5px !important;
+  font-size: 9px !important;
+  line-height: 1.05 !important;
+  letter-spacing: -0.035em !important;
+  white-space: nowrap !important;
+  writing-mode: horizontal-tb !important;
+  text-orientation: mixed !important;
+  word-break: normal !important;
+  overflow-wrap: normal !important;
+  text-wrap: nowrap !important;
+  flex-wrap: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: clip !important;
+  background-clip: padding-box !important;
+  contain: paint !important;
+}
+
+.schedule-builder-desktop-table button.schedule-builder-time-chip:not(.schedule-builder-event-chip):not(.schedule-builder-event-more):not(:disabled),
+.ui-v12-compact .schedule-builder-desktop-table button.schedule-builder-time-chip:not(.schedule-builder-event-chip):not(.schedule-builder-event-more):not(:disabled),
+.desktop-pro-shell .schedule-builder-desktop-table button.schedule-builder-time-chip:not(.schedule-builder-event-chip):not(.schedule-builder-event-more):not(:disabled) {
+  min-height: 0 !important;
+  min-width: 0 !important;
+  width: fit-content !important;
+  max-width: calc(100% - 4px) !important;
+}
+
+.schedule-builder-desktop-table .schedule-builder-time-chip:not(.schedule-builder-event-chip):not(.schedule-builder-event-more) > *,
+.schedule-builder-desktop-table button.schedule-builder-time-chip:not(.schedule-builder-event-chip):not(.schedule-builder-event-more) > * {
+  background: transparent !important;
+  border: 0 !important;
+  color: inherit !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  min-width: 0 !important;
+  max-width: 100% !important;
+  white-space: nowrap !important;
+  writing-mode: horizontal-tb !important;
+  word-break: normal !important;
+  overflow-wrap: normal !important;
+  text-wrap: nowrap !important;
+}
+
+@media (min-width: 1024px) {
+  .schedule-builder-desktop-table .schedule-builder-time-chip:not(.schedule-builder-event-chip):not(.schedule-builder-event-more),
+  .schedule-builder-desktop-table button.schedule-builder-time-chip:not(.schedule-builder-event-chip):not(.schedule-builder-event-more),
+  .desktop-pro-shell .app-content-shell .schedule-builder-desktop-table button.schedule-builder-time-chip:not(.schedule-builder-event-chip):not(.schedule-builder-event-more),
+  .ui-v12-compact .schedule-builder-desktop-table button.schedule-builder-time-chip:not(.schedule-builder-event-chip):not(.schedule-builder-event-more) {
+    font-size: 12px !important;
+    padding: 1px 2px !important;
+  }
+}
+
+@media (max-width: 420px) {
+  .schedule-builder-desktop-table .schedule-builder-time-chip:not(.schedule-builder-event-chip):not(.schedule-builder-event-more),
+  .schedule-builder-desktop-table button.schedule-builder-time-chip:not(.schedule-builder-event-chip):not(.schedule-builder-event-more),
+  .desktop-pro-shell .app-content-shell .schedule-builder-desktop-table button.schedule-builder-time-chip:not(.schedule-builder-event-chip):not(.schedule-builder-event-more),
+  .ui-v12-compact .schedule-builder-desktop-table button.schedule-builder-time-chip:not(.schedule-builder-event-chip):not(.schedule-builder-event-more) {
+    font-size: 8.5px !important;
+    letter-spacing: -0.055em !important;
+    padding-left: 2px !important;
+    padding-right: 2px !important;
   }
 }
