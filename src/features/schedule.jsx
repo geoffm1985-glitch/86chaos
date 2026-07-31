@@ -862,17 +862,22 @@ const TabMasterSchedule = ({ currentDate, setCurrentDate = null, onSubTabChange 
       return;
     }
 
-    // Server-filtered active punch listener: one current punch, no completed history scan.
+    const scheduleUserId = appUser.scheduleUserId || appUser.employeeId || appUser.userId || appUser.rosterUserId || appUser.id;
+    // Keep the active-punch listener index-light. The old status + clockInTime
+    // server sort was brittle in production and could lock the entire Schedule tab
+    // behind a chunk-recovery screen if Firestore rejected the composite query.
+    // Pull the small employee punch window and sort/filter client-side instead.
     const q = query(
       collection(db, 'timePunches'),
       where('restaurantId', '==', appUser.restaurantId),
-      where('scheduleUserId', '==', appUser.scheduleUserId || appUser.employeeId || appUser.userId || appUser.rosterUserId || appUser.id),
-      where('status', 'in', ['clocked_in', 'on_break']),
-      orderBy('clockInTime', 'desc'),
-      firestoreLimit(1)
+      where('scheduleUserId', '==', scheduleUserId),
+      firestoreLimit(25)
     );
     const unsub = onSnapshot(q, snap => {
-      const newest = snap.docs.map(d => ({ id: d.id, ...d.data() }))[0] || null;
+      const newest = snap.docs
+        .map(d => ({ id: d.id, ...d.data() }))
+        .filter(punch => ['clocked_in', 'on_break'].includes(String(punch.status || '').toLowerCase()))
+        .sort((a, b) => String(b.clockInTime || '').localeCompare(String(a.clockInTime || '')))[0] || null;
 
       setActivePunch(prev => {
         if (newest?.id) {
@@ -887,8 +892,8 @@ const TabMasterSchedule = ({ currentDate, setCurrentDate = null, onSubTabChange 
         return null;
       });
     }, err => {
-      console.error('Active punch listener failed:', err);
-      addToast('Clock Sync Warning', 'Active punch query needs the deployed timePunches restaurantId + scheduleUserId + status + clockInTime index.');
+      console.warn('Active punch listener fell back safely:', err?.message || err);
+      addToast('Clock Sync Warning', 'Clock-in status could not sync yet. Your schedule is still available. Try again in a minute or tell a manager.');
     });
     return () => unsub();
   }, [appUser?.id, appUser?.restaurantId, appUser?.scheduleUserId, appUser?.employeeId, appUser?.userId, appUser?.rosterUserId]);
@@ -1251,6 +1256,22 @@ const handleOfferSwap = async (shift) => {
       addToast('Error', e.message);
     }
   };
+
+  const masterMonthBounds = getScheduleMonthBoundsForKey(monthStr);
+  const isMyMasterPublishedShift = (shift = {}) => !isDeletedScheduleShift(shift) && shiftMatchesPerson(shift, schedulePerson) && isScheduleShiftPublished(shift);
+  const isMyMasterUpcomingShift = (shift = {}) => isMyMasterPublishedShift(shift) && isShiftStillCurrentOrUpcoming(shift, scheduleNow);
+  const myMonthShifts = dedupeScheduleShiftsByDatePersonTime((shifts || [])
+    .filter(shift => {
+      const d = getShiftDateKey(shift);
+      return isMyMasterPublishedShift(shift) && d >= masterMonthBounds.start && d <= masterMonthBounds.end;
+    }))
+    .sort(compareShiftsByStartDateTime);
+  const myNextShift = (shifts || [])
+    .filter(isMyMasterUpcomingShift)
+    .sort(compareShiftsByStartDateTime)[0] || null;
+  const activeMonthShifts = (shifts || [])
+    .filter(s => !isDeletedScheduleShift(s) && getShiftDateKey(s).startsWith(monthStr) && isScheduleShiftPublished(s))
+    .sort((a,b) => getShiftDateKey(a) === getShiftDateKey(b) ? (a.startTime || '').localeCompare(b.startTime || '') : getShiftDateKey(a).localeCompare(getShiftDateKey(b)));
 
   const effectiveActivePunch = clockActionBusy && clockActionType === 'out' ? (clockActionPunch || activePunch) : (activePunch && !(clockActionBusy && clockActionType === 'in') ? activePunch : null);
 
@@ -1653,31 +1674,6 @@ const [eventDate, setEventDate] = useState(getToday());
   ).filter(shift => !isDeletedScheduleShift(shift) && !shiftMatchesLocalDeleteMarkers(shift, activeLocalDeleteKeySet, activeLocalDeleteMarkerMap));
   const publicationPeriodShifts = publicationSourceShifts.filter(s => { const d = getShiftDateKey(s); return d >= publicationWeekBounds.start && d <= publicationWeekBounds.end; });
   const schedulePeriodEvents = events.filter(e => e.type === 'special_event' && e.date >= schedulePeriodBounds.start && e.date <= schedulePeriodBounds.end).sort((a,b) => (a.date || '').localeCompare(b.date || '') || (a.time || '').localeCompare(b.time || '') || (a.title || '').localeCompare(b.title || ''));
-  // --- SHIFT LOGIC ---
-  // Keep this below the local delete-marker setup. My Schedule can render for
-  // employees even when the Schedule Builder is not open, and referencing
-  // delete-marker state before it is initialized can throw a runtime recovery
-  // error on mobile after a schedule delete/publish refresh.
-  const myMonthBounds = getScheduleMonthBoundsForKey(monthStr);
-  const isMyPublishedShift = (shift) => !isDeletedScheduleShift(shift) && !shiftMatchesLocalDeleteMarkers(shift, activeLocalDeleteKeySet, activeLocalDeleteMarkerMap) && shiftMatchesPerson(shift, schedulePerson) && isScheduleShiftPublished(shift);
-  const isMyPublishedUpcomingShift = (shift) => isMyPublishedShift(shift) && isShiftStillCurrentOrUpcoming(shift, scheduleNow);
-  const myMonthShifts = dedupeScheduleShiftsByDatePersonTime((shifts || [])
-    .filter(s => {
-      const d = getShiftDateKey(s);
-      // The list follows the selected calendar month. Pay-period boundary days are shown
-      // in Scheduled Hours Tracker, not in My Published Schedule for another month.
-      return isMyPublishedShift(s) && d >= myMonthBounds.start && d <= myMonthBounds.end;
-    }))
-    .sort(compareShiftsByStartDateTime);
-
-  const myNextShift = (shifts || [])
-    .filter(isMyPublishedUpcomingShift)
-    .sort(compareShiftsByStartDateTime)[0];
-
-  const activeMonthShifts = (shifts || [])
-    .filter(s => !isDeletedScheduleShift(s) && getShiftDateKey(s).startsWith(monthStr) && isScheduleShiftPublished(s))
-    .sort((a,b) => getShiftDateKey(a) === getShiftDateKey(b) ? (a.startTime || '').localeCompare(b.startTime || '') : getShiftDateKey(a).localeCompare(getShiftDateKey(b)));
-
   const publishWeekOptions = [];
   for (let index = 0; index < publicationWeekDays.length; index += 7) {
     const days = publicationWeekDays.slice(index, index + 7);
