@@ -446,6 +446,11 @@ const buildWorkspaceUser = (currentUser = {}, workspace = {}) => {
     workspaceSwitcherReady: true
   };
 };
+const workspaceMemberIsActive = (member = {}) => {
+  const status = String(member.status || member.recordStatus || member.membershipStatus || '').toLowerCase().trim();
+  return member.isActive !== false && member.deleted !== true && member.isDeleted !== true && member.removed !== true && !['deleted', 'removed', 'inactive', 'disabled', 'deactivated'].includes(status);
+};
+
 const userFromWorkspaceMember = (member = {}, accountUser = {}) => {
   const memberOwner = Boolean(member.isOwner === true || member.accountOwner === true || member.workspaceOwner === true);
   const membershipId = member.membershipId || member.id || '';
@@ -475,7 +480,7 @@ const userFromWorkspaceMember = (member = {}, accountUser = {}) => {
     accountOwner: member.accountOwner === true,
     workspaceOwner: member.workspaceOwner === true,
     accountRole: memberOwner ? 'owner' : String(member.accountRole || ''),
-    isActive: member.isActive !== false && accountUser.isActive !== false
+    isActive: workspaceMemberIsActive(member) && accountUser.isActive !== false
   };
 };
 
@@ -1209,7 +1214,7 @@ if (liveAppUser && clientData) {
   const displayUsers = useMemo(() => {
     const accountById = new Map((users || []).map(u => [u.id, u]));
     const memberUsers = (workspaceMembers || [])
-      .filter(m => m.isActive !== false)
+      .filter(m => workspaceMemberIsActive(m))
       .map(m => userFromWorkspaceMember(m, accountById.get(m.userId || m.uid) || {}));
     const memberIds = new Set(memberUsers.map(u => u.id).filter(Boolean));
     const legacyUsers = (users || []).filter(u => !memberIds.has(u.id) && u.isActive !== false);

@@ -20,6 +20,9 @@ import { searchHelpContentSemantically } from '../core/restaurantAiInsights';
 
 const PROTECTED_ROOT_ADMIN_EMAIL = 'geoffm1985@gmail.com';
 const isProtectedRootAdminEmail = (email = '') => String(email || '').toLowerCase().trim() === PROTECTED_ROOT_ADMIN_EMAIL;
+const getStaffIdentityKeys = (u = {}) => [u.id, u.userId, u.uid, u.authUid, u.accountUserId, u.membershipId, u.workspaceMemberId, u.employeeId, u.rosterUserId, u.email, u.employeeEmail]
+  .map(value => String(value || '').toLowerCase().trim())
+  .filter(Boolean);
 
 const PUSH_GROUP_UNASSIGNED_KEY = '__ungrouped__';
 const normalizePushGroupKey = (value = '') => String(value || 'Unassigned Group').toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 80) || PUSH_GROUP_UNASSIGNED_KEY;
@@ -301,6 +304,13 @@ const DEFAULT_PERMISSIONS = { schedule: false, events: false, ops: false, invent
   const [perms, setPerms] = useState(DEFAULT_PERMISSIONS);
   const [editingUserId, setEditingUserId] = useState(null);
   const [createdLogin, setCreatedLogin] = useState(null);
+  const [locallyRemovedStaffKeys, setLocallyRemovedStaffKeys] = useState([]);
+
+  const markStaffLocallyRemoved = (u = {}) => setLocallyRemovedStaffKeys(prev => Array.from(new Set([...(prev || []), ...getStaffIdentityKeys(u)])));
+  const staffIsLocallyRemoved = (u = {}) => {
+    const removed = new Set(locallyRemovedStaffKeys || []);
+    return getStaffIdentityKeys(u).some(key => removed.has(key));
+  };
 
   const dbRoles = useLiveCollection('roles', appUser?.restaurantId, { limitCount: 100 });
   const DEFAULT_ROLES = ['General Manager', 'Manager', 'Chef', 'Sous Chef', 'Line Cook', 'Prep Cook', 'Bartender', 'Server', 'Host', 'Dishwasher'];
@@ -401,10 +411,12 @@ const handleDeactivate = async (u) => {
         });
         const deleteResult = await deleteResponse.json().catch(() => ({}));
         if (!deleteResponse.ok || deleteResult?.ok === false) throw new Error(deleteResult?.error || 'User deletion failed.');
-        // /api/delete-user uses the Firebase Admin SDK to remove both the Auth
-        // login and Firestore profile. Do not issue a second client-side delete
-        // here; Firestore rules correctly block that write for normal app clients.
-        addToast('Terminated', `${u.name}'s account has been completely erased.`); 
+        if (Number(deleteResult?.membershipsActiveRemaining || 0) > 0) throw new Error('The account was not fully removed from every active roster. Refresh and try again.');
+        // /api/delete-user uses the Firebase Admin SDK to remove Auth, Firestore
+        // profile, and every active workspace membership. Do not issue forbidden
+        // client-side deletes after the verified server cleanup succeeds.
+        markStaffLocallyRemoved(u);
+        addToast('Terminated', `${u.name}'s account and active roster memberships have been completely erased.`); 
       } else {
         const response = await secureFetch('/api/staff-member', {
           method: 'POST',
@@ -413,6 +425,7 @@ const handleDeactivate = async (u) => {
         });
         const result = await response.json().catch(() => ({}));
         if (!response.ok || result?.ok === false) throw new Error(result?.error || 'Staff removal failed.');
+        markStaffLocallyRemoved(u);
         addToast('Removed', `${u.name} was removed from the active roster.`);
       }
     } catch (err) {
@@ -469,7 +482,7 @@ const handleDeactivate = async (u) => {
     return { label, tone, exact, online: false };
   };
 
-  const activeUsers = users.filter(u => u.isActive !== false).sort((a, b) => String(a.role || '').localeCompare(String(b.role || '')) || String(a.name || '').localeCompare(String(b.name || '')));
+  const activeUsers = users.filter(u => u.isActive !== false && !staffIsLocallyRemoved(u)).sort((a, b) => String(a.role || '').localeCompare(String(b.role || '')) || String(a.name || '').localeCompare(String(b.name || '')));
 
 return (
     <div className="max-w-4xl mx-auto space-y-6 pb-24">
@@ -5014,10 +5027,12 @@ const handleDeleteGlobalUser = async (u) => {
       const deleteResult = await deleteResponse.json().catch(() => ({}));
       if (!deleteResponse.ok || deleteResult?.ok === false) throw new Error(deleteResult?.error || 'User deletion failed.');
       
-      // /api/delete-user already deletes the Database Profile with the Admin SDK.
-      // A second client-side users delete is forbidden by Firestore rules and
-      // would show a false permission error after the server delete succeeded.
-      addToast('Terminated', `User ${u.name} has been erased.`);
+      if (Number(deleteResult?.membershipsActiveRemaining || 0) > 0) throw new Error('The user was not fully removed from every active roster.');
+      // /api/delete-user already deletes the Database Profile and all active
+      // workspace memberships with the Admin SDK. A second client-side users
+      // delete is forbidden by Firestore rules and would show a false error.
+      setAllUsers(prev => (prev || []).filter(row => !getStaffIdentityKeys(u).some(key => getStaffIdentityKeys(row).includes(key))));
+      addToast('Terminated', `User ${u.name} has been erased from active rosters.`);
     } catch (err) {
       addToast('Error', 'Could not delete user. ' + err.message);
     }
@@ -5134,6 +5149,8 @@ Type DELETE to continue.`) || '').trim().toUpperCase();
           });
           const result = await response.json().catch(() => ({}));
           if (!response.ok || result?.ok === false) throw new Error(result?.error || 'User deletion failed.');
+          if (Number(result?.membershipsActiveRemaining || 0) > 0) throw new Error('Active workspace membership cleanup was incomplete.');
+          setAllUsers(prev => (prev || []).filter(row => !getStaffIdentityKeys(u).some(key => getStaffIdentityKeys(row).includes(key))));
           authDeleted++;
           profileDeleted++;
         } catch (deleteErr) {
