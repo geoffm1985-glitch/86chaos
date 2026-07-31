@@ -1,13 +1,13 @@
 {
-  "version": "16.0.75",
-  "name": "86 Chaos 16.0.75 Schedule Cache Recovery and Backup Cron Fix",
-  "build": "16.0.75",
-  "label": "86 Chaos 16.0.75 Schedule Cache Recovery and Backup Cron Fix",
-  "releasedAt": "2026-07-30T19:26:00-05:00",
-  "releaseTitle": "86 Chaos 16.0.75 Schedule Cache Recovery and Backup Cron Fix",
+  "version": "16.0.76",
+  "name": "86 Chaos 16.0.76 Schedule Tab Runtime Guard Fix",
+  "build": "16.0.76",
+  "label": "86 Chaos 16.0.76 Schedule Tab Runtime Guard Fix",
+  "releasedAt": "2026-07-30T19:50:00-05:00",
+  "releaseTitle": "86 Chaos 16.0.76 Schedule Tab Runtime Guard Fix",
   "notes": [
-    "Time Clock & Schedule runtime recovery now clears stale browser caches and service-worker registrations before reloading the current app version.",
-    "Production Vercel cron now includes the daily /api/firestore-backup job that the System Administrator backup status expects.",
-    "System Administrator API health checks now label HTTP 200 diagnostics with attention items as ATTENTION instead of ERR 200."
+    "Time Clock & Schedule no longer crashes from an undefined myNextShift reference on Schedule/My Schedule render.",
+    "Active clock punch sync now uses an index-light listener and a plain-English warning instead of locking the Schedule tab behind runtime recovery.",
+    "The targeted source test now checks the Schedule tab render order so this class of ReferenceError is caught before deploy."
   ]
 }
