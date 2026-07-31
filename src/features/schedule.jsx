@@ -1779,7 +1779,7 @@ const [eventDate, setEventDate] = useState(getToday());
   const formatScheduleBuilderRequestRange = (request = {}) => {
     const start = formatScheduleBuilderRequestTime(request.startTime);
     const end = formatScheduleBuilderRequestTime(request.endTime);
-    if (start && end) return `${start} - ${end}`;
+    if (start && end) return `${start}-${end}`;
     if (start || end) return start || end;
     return 'Partial day time missing';
   };

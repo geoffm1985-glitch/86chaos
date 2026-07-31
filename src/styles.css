@@ -5206,3 +5206,53 @@ span.bg-red-500.text-white,
     padding-right: 2px !important;
   }
 }
+
+/* 16.0.82: Schedule Builder time chip readability.
+   Keep the grid compact, but do not let unavailable/request-off ranges clip their time text. */
+.schedule-builder-desktop-table .schedule-builder-time-chip:not(.schedule-builder-event-chip):not(.schedule-builder-event-more),
+.schedule-builder-desktop-table button.schedule-builder-time-chip:not(.schedule-builder-event-chip):not(.schedule-builder-event-more),
+.desktop-pro-shell .app-content-shell .schedule-builder-desktop-table button.schedule-builder-time-chip:not(.schedule-builder-event-chip):not(.schedule-builder-event-more),
+.ui-v12-compact .schedule-builder-desktop-table button.schedule-builder-time-chip:not(.schedule-builder-event-chip):not(.schedule-builder-event-more) {
+  font-weight: 900 !important;
+  min-width: max-content !important;
+  max-width: calc(100% - 2px) !important;
+  padding-left: 3px !important;
+  padding-right: 3px !important;
+  overflow: visible !important;
+  text-overflow: clip !important;
+  contain: none !important;
+  text-shadow: 0 1px 1px rgba(0, 0, 0, .5) !important;
+}
+
+.schedule-builder-desktop-table .schedule-builder-partial-off-chip {
+  font-weight: 950 !important;
+  min-width: max-content !important;
+  max-width: calc(100% - 2px) !important;
+  padding-left: 3px !important;
+  padding-right: 3px !important;
+  overflow: visible !important;
+  text-overflow: clip !important;
+  letter-spacing: -0.05em !important;
+}
+
+@media (min-width: 1024px) {
+  .schedule-builder-desktop-table .schedule-builder-time-chip:not(.schedule-builder-event-chip):not(.schedule-builder-event-more),
+  .schedule-builder-desktop-table button.schedule-builder-time-chip:not(.schedule-builder-event-chip):not(.schedule-builder-event-more),
+  .desktop-pro-shell .app-content-shell .schedule-builder-desktop-table button.schedule-builder-time-chip:not(.schedule-builder-event-chip):not(.schedule-builder-event-more),
+  .ui-v12-compact .schedule-builder-desktop-table button.schedule-builder-time-chip:not(.schedule-builder-event-chip):not(.schedule-builder-event-more) {
+    font-size: 11.5px !important;
+    line-height: 1.08 !important;
+  }
+}
+
+@media (max-width: 767px) {
+  .schedule-builder-desktop-table .schedule-builder-time-chip:not(.schedule-builder-event-chip):not(.schedule-builder-event-more),
+  .schedule-builder-desktop-table button.schedule-builder-time-chip:not(.schedule-builder-event-chip):not(.schedule-builder-event-more),
+  .desktop-pro-shell .app-content-shell .schedule-builder-desktop-table button.schedule-builder-time-chip:not(.schedule-builder-event-chip):not(.schedule-builder-event-more),
+  .ui-v12-compact .schedule-builder-desktop-table button.schedule-builder-time-chip:not(.schedule-builder-event-chip):not(.schedule-builder-event-more) {
+    font-size: 9px !important;
+    line-height: 1.08 !important;
+    overflow: visible !important;
+  }
+}
+
