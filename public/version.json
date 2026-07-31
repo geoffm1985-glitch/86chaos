@@ -1,13 +1,13 @@
 {
-  "version": "16.0.74",
-  "name": "86 Chaos 16.0.74 Schedule Runtime Recovery and Delete Marker Order Fix",
-  "build": "16.0.74",
-  "label": "86 Chaos 16.0.74 Schedule Runtime Recovery and Delete Marker Order Fix",
-  "releasedAt": "2026-07-30T18:43:00-05:00",
-  "releaseTitle": "86 Chaos 16.0.74 Schedule Runtime Recovery and Delete Marker Order Fix",
+  "version": "16.0.75",
+  "name": "86 Chaos 16.0.75 Schedule Cache Recovery and Backup Cron Fix",
+  "build": "16.0.75",
+  "label": "86 Chaos 16.0.75 Schedule Cache Recovery and Backup Cron Fix",
+  "releasedAt": "2026-07-30T19:26:00-05:00",
+  "releaseTitle": "86 Chaos 16.0.75 Schedule Cache Recovery and Backup Cron Fix",
   "notes": [
-    "Published employee schedules now list the selected calendar month instead of pulling boundary days from another month.",
-    "Partial schedule publish now refreshes selected-day candidates from Firestore before publishing so visible draft shifts are not missed.",
-    "Deleted duplicate schedule shifts now keep fingerprint tombstones long enough to stop stale local or cached records from coming back, without hiding newly re-added shifts."
+    "Time Clock & Schedule runtime recovery now clears stale browser caches and service-worker registrations before reloading the current app version.",
+    "Production Vercel cron now includes the daily /api/firestore-backup job that the System Administrator backup status expects.",
+    "System Administrator API health checks now label HTTP 200 diagnostics with attention items as ATTENTION instead of ERR 200."
   ]
 }
