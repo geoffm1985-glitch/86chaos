@@ -1,14 +1,14 @@
 {
-  "version": "16.0.77",
-  "name": "86 Chaos 16.0.77 Schedule Publish Visibility and Compact Chip Fix",
-  "build": "16.0.77",
-  "label": "86 Chaos 16.0.77 Schedule Publish Visibility and Compact Chip Fix",
-  "releasedAt": "2026-07-30T20:20:00-05:00",
-  "releaseTitle": "86 Chaos 16.0.77 Schedule Publish Visibility and Compact Chip Fix",
+  "version": "16.0.78",
+  "name": "86 Chaos 16.0.78 Schedule Builder Shift Box Surface Fix",
+  "build": "16.0.78",
+  "label": "86 Chaos 16.0.78 Schedule Builder Shift Box Surface Fix",
+  "releasedAt": "2026-07-30T21:20:00-05:00",
+  "releaseTitle": "86 Chaos 16.0.78 Schedule Builder Shift Box Surface Fix",
   "notes": [
-    "Schedule publishing now validates and repairs employee identity fields, then reads every updated shift back before claiming success.",
-    "Employee My Schedule uses canonical roster/account/email identity matching so published shifts show for the selected month without exposing other employees shifts.",
-    "Schedule Builder shift chips are compact and keep supported time ranges on one horizontal line on mobile and desktop.",
-    "Protected founding System Administrator safeguards are reinforced in app-controlled Firestore user updates/deletes."
+    "Schedule Builder shift boxes are visually shorter while keeping the current shift text size, font weight, and letter spacing.",
+    "Shift times remain on one horizontal line on mobile and desktop.",
+    "The complete role-colored chip surface now contains every character of the shift time without a partial nested highlight.",
+    "No schedule publishing, My Schedule, Firestore, identity, or protected administrator behavior changed."
   ]
 }
