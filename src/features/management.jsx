@@ -401,7 +401,9 @@ const handleDeactivate = async (u) => {
         });
         const deleteResult = await deleteResponse.json().catch(() => ({}));
         if (!deleteResponse.ok || deleteResult?.ok === false) throw new Error(deleteResult?.error || 'User deletion failed.');
-        await deleteDoc(doc(db, "users", u.id)); 
+        // /api/delete-user uses the Firebase Admin SDK to remove both the Auth
+        // login and Firestore profile. Do not issue a second client-side delete
+        // here; Firestore rules correctly block that write for normal app clients.
         addToast('Terminated', `${u.name}'s account has been completely erased.`); 
       } else {
         const response = await secureFetch('/api/staff-member', {
@@ -5012,8 +5014,9 @@ const handleDeleteGlobalUser = async (u) => {
       const deleteResult = await deleteResponse.json().catch(() => ({}));
       if (!deleteResponse.ok || deleteResult?.ok === false) throw new Error(deleteResult?.error || 'User deletion failed.');
       
-      // 2. Nuke the Database Profile
-      await deleteDoc(doc(db, "users", u.id));
+      // /api/delete-user already deletes the Database Profile with the Admin SDK.
+      // A second client-side users delete is forbidden by Firestore rules and
+      // would show a false permission error after the server delete succeeded.
       addToast('Terminated', `User ${u.name} has been erased.`);
     } catch (err) {
       addToast('Error', 'Could not delete user. ' + err.message);
@@ -5119,23 +5122,22 @@ Type DELETE to continue.`) || '').trim().toUpperCase();
         console.warn('Bulk delete API unavailable, falling back to individual user deletion:', bulkApiErr);
       }
 
-      // Fallback path: try the existing single delete-user endpoint for each selected UID, then delete the profile doc.
+      // Fallback path: use the existing single delete-user endpoint for each selected UID.
+      // The endpoint deletes Auth and Firestore profiles with the Admin SDK; the
+      // app client must not issue forbidden users deletes after the server succeeds.
       for (const u of targets) {
         try {
-          try {
-            const response = await secureFetch('/api/delete-user', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ targetUid: u.id })
-            });
-            if (response.ok) authDeleted++;
-          } catch (authErr) {
-            errors.push(`Auth delete failed for ${u.email}: ${authErr.message}`);
-          }
-          await deleteDoc(doc(db, 'users', u.id));
+          const response = await secureFetch('/api/delete-user', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ targetUid: u.id })
+          });
+          const result = await response.json().catch(() => ({}));
+          if (!response.ok || result?.ok === false) throw new Error(result?.error || 'User deletion failed.');
+          authDeleted++;
           profileDeleted++;
-        } catch (profileErr) {
-          errors.push(`Profile delete failed for ${u.email}: ${profileErr.message}`);
+        } catch (deleteErr) {
+          errors.push(`Delete failed for ${u.email}: ${deleteErr.message}`);
         }
       }
 

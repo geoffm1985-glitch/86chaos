@@ -37,37 +37,49 @@ function authRequestBaseUrl() {
   return appUrl() || process.env.CHAOS_BASE_URL || process.env.PLAYWRIGHT_BASE_URL || '';
 }
 
-function buildFirebaseAuthRequestHeaders() {
-  const headers = { 'Content-Type': 'application/json' };
-  const base = authRequestBaseUrl();
-  if (base) {
-    try {
-      const url = new URL(base);
-      const origin = url.origin;
-      headers.Origin = origin;
-      headers.origin = origin;
-      headers.Referer = `${origin}/`;
-      headers.referer = `${origin}/`;
-    } catch (_) {
-      headers.Referer = String(base);
-    }
+function appendCanonicalFirebaseAuthHeaders(headers, base = authRequestBaseUrl()) {
+  if (!base) return headers;
+  try {
+    const origin = new URL(base).origin;
+    headers.Origin = origin;
+    headers.Referer = `${origin}/`;
+  } catch (_) {
+    headers.Referer = String(base);
   }
   return headers;
 }
 
-function buildFirebaseAuthFetchOptions(init = {}) {
-  const base = authRequestBaseUrl();
-  const options = { ...init, headers: { ...buildFirebaseAuthRequestHeaders(), ...(init.headers || {}) } };
-  if (base) {
-    try {
-      const origin = new URL(base).origin;
-      options.referrer = `${origin}/`;
-      options.referrerPolicy = 'origin-when-cross-origin';
-    } catch (_) {
-      options.referrer = String(base);
-    }
+function stripFirebaseAuthOriginHeaderDuplicates(headers = {}) {
+  const safeHeaders = {};
+  for (const [name, value] of Object.entries(headers || {})) {
+    const lower = String(name || '').toLowerCase();
+    if (lower === 'origin' || lower === 'referer' || lower === 'referrer') continue;
+    safeHeaders[name] = value;
   }
-  return options;
+  return safeHeaders;
+}
+
+function getFirebaseAuthOriginHeaderCounts(headers = {}) {
+  return Object.keys(headers || {}).reduce((counts, name) => {
+    const lower = String(name || '').toLowerCase();
+    if (lower === 'origin') counts.origin += 1;
+    if (lower === 'referer' || lower === 'referrer') counts.referer += 1;
+    return counts;
+  }, { origin: 0, referer: 0 });
+}
+
+function buildFirebaseAuthRequestHeaders(extraHeaders = {}) {
+  const headers = { 'Content-Type': 'application/json', ...stripFirebaseAuthOriginHeaderDuplicates(extraHeaders) };
+  return appendCanonicalFirebaseAuthHeaders(headers);
+}
+
+function buildFirebaseAuthFetchOptions(init = {}) {
+  const { headers: initHeaders, referrer: _referrer, referrerPolicy: _referrerPolicy, ...rest } = init || {};
+  return { ...rest, headers: buildFirebaseAuthRequestHeaders(initHeaders) };
+}
+
+function isFirebaseAuthRequestFormatFailure(message = '') {
+  return /multiple values in (Origin|Referer|Referrer) header|multiple header values|duplicate (Origin|Referer|Referrer)/i.test(String(message || ''));
 }
 
 function safeAccountDefinition(def) {
@@ -254,14 +266,25 @@ function buildReport({ runId, runDir, expectedProject, appUrlValue, config, rows
     allEmailsUnique: new Set(safeRows.map(row => row.email).filter(Boolean)).size === safeRows.filter(row => row.email).length,
     allUidsUnique: new Set(safeRows.map(row => row.uid).filter(Boolean)).size === safeRows.filter(row => row.uid).length,
     accounts: safeRows,
-    manualConfigurationRequired: errors.length ? [
-      'A dedicated non-System-Administrator manager account must be configured in .env.test.local before the release gate can run.',
-      'MANAGER_EMAIL=<dedicated testing manager email>',
-      'MANAGER_PASSWORD=<dedicated testing manager password>',
-      'Do not reuse SYSTEM_ADMIN_EMAIL, OWNER_EMAIL, or STAFF_EMAIL.',
-    ] : [],
+    manualConfigurationRequired: buildManualConfigurationRequired(errors),
     errors,
   };
+}
+
+function buildManualConfigurationRequired(errors = []) {
+  if (!errors.length) return [];
+  if (errors.some(isFirebaseAuthRequestFormatFailure)) {
+    return [
+      'Release-gate Firebase Auth request headers are malformed. Fix the test-harness request format before replacing QA accounts.',
+      'Do not replace SYSTEM_ADMIN_EMAIL, OWNER_EMAIL, MANAGER_EMAIL, or STAFF_EMAIL unless authentication still fails after the corrected request reaches Firebase.',
+    ];
+  }
+  return [
+    'A dedicated non-System-Administrator manager account must be configured in .env.test.local before the release gate can run.',
+    'MANAGER_EMAIL=<dedicated testing manager email>',
+    'MANAGER_PASSWORD=<dedicated testing manager password>',
+    'Do not reuse SYSTEM_ADMIN_EMAIL, OWNER_EMAIL, or STAFF_EMAIL.',
+  ];
 }
 
 async function verifyRoleAccounts(options = {}) {
@@ -291,8 +314,13 @@ async function verifyRoleAccounts(options = {}) {
         accounts.push(signed);
         rows.push(await fetchWhoami(signed, fetchImpl));
       } catch (error) {
-        rows.push({ ...account, uid: '', firebaseProjectId: config.projectId, runtimeProjectId: '', superAdmin: false, customClaimSuperAdmin: false, serverMasterAdminMatched: false, firestoreSuperAdmin: false, firestoreSystemAdministrator: false, error: error.message });
-        errors.push(`${account.emailEnv} role verification failed: ${error.message}`);
+        const message = error.message || String(error);
+        rows.push({ ...account, uid: '', firebaseProjectId: config.projectId, runtimeProjectId: '', superAdmin: false, customClaimSuperAdmin: false, serverMasterAdminMatched: false, firestoreSuperAdmin: false, firestoreSystemAdministrator: false, error: message });
+        if (isFirebaseAuthRequestFormatFailure(message)) {
+          errors.push(`${account.emailEnv} release-gate test-harness Firebase Auth request failed before credentials could be verified: ${message}`);
+        } else {
+          errors.push(`${account.emailEnv} role verification failed: ${message}`);
+        }
       }
     }
   } else {
@@ -350,4 +378,7 @@ module.exports = {
   validateRoleReportForSeed,
   buildFirebaseAuthRequestHeaders,
   buildFirebaseAuthFetchOptions,
+  getFirebaseAuthOriginHeaderCounts,
+  stripFirebaseAuthOriginHeaderDuplicates,
+  isFirebaseAuthRequestFormatFailure,
 };
