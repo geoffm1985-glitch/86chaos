@@ -21,6 +21,46 @@ const extractChunkUrl = (error) => {
   const match = text.match(/https?:\/\/[^\s)'"]+\.(?:js|css)|\/static\/(?:js|css)\/[^\s)'"]+\.(?:js|css)/i);
   return match ? match[0] : '';
 };
+
+const clearRuntimeRecoveryCaches = async (reason = 'manual') => {
+  if (typeof window === 'undefined') return { ok: false, reason: 'no-window' };
+  const result = { ok: true, reason, cacheNames: [], serviceWorkers: 0, errors: [] };
+  try {
+    const keys = Object.keys(window.localStorage || {}).filter(key => /^86chaos:chunkRecovery:/i.test(key || ''));
+    keys.forEach(key => { try { window.localStorage.removeItem(key); } catch (_) {} });
+  } catch (err) { result.errors.push(`localStorage:${err?.message || err}`); }
+  try {
+    const keys = Object.keys(window.sessionStorage || {}).filter(key => /^86chaos:chunkRecovery:/i.test(key || ''));
+    keys.forEach(key => { try { window.sessionStorage.removeItem(key); } catch (_) {} });
+  } catch (err) { result.errors.push(`sessionStorage:${err?.message || err}`); }
+  try {
+    if (window.caches?.keys) {
+      const names = await window.caches.keys();
+      result.cacheNames = names;
+      await Promise.allSettled(names.map(name => window.caches.delete(name)));
+    }
+  } catch (err) { result.errors.push(`caches:${err?.message || err}`); }
+  try {
+    const regs = await navigator.serviceWorker?.getRegistrations?.();
+    if (Array.isArray(regs) && regs.length) {
+      result.serviceWorkers = regs.length;
+      await Promise.allSettled(regs.map(reg => reg.unregister?.()));
+    }
+  } catch (err) { result.errors.push(`serviceWorker:${err?.message || err}`); }
+  try { await fetch(`/asset-manifest.json?recovery=${Date.now()}`, { cache: 'no-store' }); } catch (_) {}
+  try { await fetch(`/version.json?recovery=${Date.now()}`, { cache: 'no-store' }); } catch (_) {}
+  return result;
+};
+
+const hardRecoverRuntimeSection = async (reason = 'manual') => {
+  try { sessionStorage.setItem('86chaosRuntimeRecoveryReason', String(reason || 'manual').slice(0, 160)); } catch (_) {}
+  await clearRuntimeRecoveryCaches(reason);
+  const url = new URL(window.location.href);
+  url.searchParams.set('chaosHardRefresh', String(Date.now()));
+  url.searchParams.set('chaosVersion', CURRENT_VERSION);
+  window.location.replace(url.toString());
+};
+
 const reportRuntimeChunkFailure = async (error, extra = {}) => {
   try {
     const fingerprint = ['chunk-failure', extractChunkUrl(error), CURRENT_VERSION, window.location.pathname, window.location.search].join('|');
@@ -73,6 +113,7 @@ const recoverFromChunkFailureOnce = async (error, exportName = 'section') => {
     writeRecoveryMarker(inFlightKey, stamp);
     writeRecoveryMarker(reloadUsedKey, `${stamp}|${chunkUrl}`);
     await reportRuntimeChunkFailure(error, { source: 'lazy_feature_import', exportName, chunkAutoReload: 'one-shot' });
+    await clearRuntimeRecoveryCaches('auto-chunk-recovery');
     try {
       const registration = await navigator.serviceWorker?.getRegistration?.();
       await registration?.update?.();
@@ -253,7 +294,7 @@ class AppSurfaceErrorBoundary extends React.Component {
           {chunkProblem ? 'A stale app file failed to load. Refreshing pulls the newest 86 Chaos files without clearing your login or restaurant data.' : 'The app caught the error instead of going blank. Refresh this section and check the Bug Ledger if it repeats.'}
         </p>
         {this.state.reportId && <p className="text-xs font-mono text-slate-400">Report ID: {this.state.reportId}</p>}
-        <button type="button" onClick={() => window.location.assign(`${window.location.pathname}${window.location.search}${window.location.search ? '&' : '?'}manualRefresh=${Date.now()}`)} className={T.btn}>Refresh App</button>
+        <button type="button" onClick={() => hardRecoverRuntimeSection(chunkProblem ? 'stale-schedule-chunk' : 'section-runtime-error')} className={T.btn}>Clear App Cache & Reload</button>
       </div>
     );
   }

@@ -5771,8 +5771,8 @@ const handleRevokeAccess = async (user) => {
   } : { host: 'server', online: false, serviceWorker: false, indexedDb: false, notifications: 'unknown', storageUser: false, userAgent: 'unknown' };
   const isPreviewLikeHost = /-git-|localhost|127\.0\.0\.1|testing|preview/i.test(String(envReport.host || ''));
   const autoBackupEnvironmentNote = isPreviewLikeHost
-    ? 'Testing deployments do not receive Vercel Cron invocations. Use Run Backup Now in testing; verify automatic scheduled backups on production. 15.0.48 keeps the retention system, project-aware Firebase routing, the readable dark Admin Console, and adds invoice product-row recovery.'
-    : 'Production cron should call /api/firestore-backup daily at 9:00 UTC / 4:00 AM Central when the production deployment is live.';
+    ? 'Testing deployments do not receive Vercel Cron invocations. Use Run Backup Now in testing; verify automatic scheduled backups on production.'
+    : 'Production cron should call /api/firestore-backup daily at 9:00 UTC / 4:00 AM Central, with /api/firestore-backup-watchdog as the evening safety check.';
   const backupTroubleshootingSummary = backupMissedDailyWindow
     ? `${autoBackupEnvironmentNote} Check Vercel Cron logs, CRON_SECRET, Firebase Admin credentials, and Storage bucket if production is stale.`
     : autoBackupEnvironmentNote;
@@ -7269,7 +7269,8 @@ ${body}`;
     try {
       const response = await secureFetch(url, options);
       const result = await response.json().catch(() => ({}));
-      return { label, url, ok: response.ok && result.ok !== false, status: response.status, ms: Math.round(performance.now() - started), result: redactDiagnosticSecrets(result) };
+      const apiOk = response.ok && result.ok !== false;
+      return { label, url, ok: apiOk, attention: response.ok && result.ok === false, status: response.status, ms: Math.round(performance.now() - started), result: redactDiagnosticSecrets(result) };
     } catch (err) {
       return { label, url, ok: false, status: 0, ms: Math.round(performance.now() - started), error: err.message || 'Request failed' };
     }
@@ -8977,7 +8978,7 @@ Type RESTORE to continue.`);
                       <div className="text-[9px] font-mono text-slate-500 break-all">{check.url}</div>
                     </div>
                     <div className="flex items-center gap-2">
-                      <span className={`text-[9px] font-black uppercase tracking-widest px-2 py-1 rounded border ${check.ok ? 'bg-emerald-900/20 text-emerald-300 border-emerald-900/50' : 'bg-red-900/20 text-red-300 border-red-900/50'}`}>{check.ok ? 'OK' : `ERR ${check.status || ''}`}</span>
+                      <span className={`text-[9px] font-black uppercase tracking-widest px-2 py-1 rounded border ${check.ok ? 'bg-emerald-900/20 text-emerald-300 border-emerald-900/50' : check.attention ? 'bg-amber-900/20 text-amber-300 border-amber-900/50' : 'bg-red-900/20 text-red-300 border-red-900/50'}`}>{check.ok ? 'OK' : check.attention ? 'ATTENTION' : `ERR ${check.status || ''}`}</span>
                       <span className="text-sm font-black text-white min-w-[70px] text-right">{check.ms}ms</span>
                     </div>
                     {check.error && <div className="sm:col-span-2 text-[10px] font-bold text-red-300">{check.error}</div>}

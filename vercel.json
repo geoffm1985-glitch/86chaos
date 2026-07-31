@@ -73,6 +73,10 @@
   ],
   "crons": [
     {
+      "path": "/api/firestore-backup",
+      "schedule": "0 9 * * *"
+    },
+    {
       "path": "/api/firestore-backup-watchdog",
       "schedule": "0 21 * * *"
     },
