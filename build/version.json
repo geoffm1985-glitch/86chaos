@@ -1,14 +1,14 @@
 {
-  "version": "16.0.83",
-  "name": "86 Chaos 16.0.83 Admin Employee Delete Permission Fix",
-  "build": "16.0.83",
-  "label": "86 Chaos 16.0.83 Admin Employee Delete Permission Fix",
-  "releasedAt": "2026-07-31T14:47:00-05:00",
-  "releaseTitle": "86 Chaos 16.0.83 Admin Employee Delete Permission Fix",
+  "version": "16.0.87",
+  "name": "86 Chaos 16.0.87 Release Gate Windows Spawn Fix",
+  "build": "16.0.87",
+  "label": "86 Chaos 16.0.87 Release Gate Windows Spawn Fix",
+  "releasedAt": "2026-07-31T22:11:00-05:00",
+  "releaseTitle": "86 Chaos 16.0.87 Release Gate Windows Spawn Fix",
   "notes": [
-    "Release-gate Firebase Auth verification now sends one canonical Origin header and one canonical Referer header so restricted API-key origin metadata is preserved without duplicate header values.",
-    "Role-verification reports now identify duplicate Origin/Referer request formatting as a release-gate test-harness problem instead of telling the user to replace QA accounts.",
-    "Schedule Builder time chips keep full unavailable/request-off ranges visible and make actual shift times bolder and easier to read without changing schedule data, publishing, or permissions.",
-    "Firestore rules, Storage rules, Firebase config, API keys, Auth domains, project IDs, storage buckets, service account wiring, employee schedule visibility behavior, and session restoration were not changed."
+    "System Administrator runtime errors are no longer mislabeled as stale lazy-chunk failures merely because the stack contains /static/js/.",
+    "Push repair dismissal is keyed to a stable repair request nonce or legacy fallback instead of changing failure/status fields.",
+    "The secured push self-repair API verifies the caller profile after update before returning success.",
+    "The release-gate dependency-install step now has live observable output, heartbeat, timeout handling, overlap protection, and blocked-before-test reporting."
   ]
 }

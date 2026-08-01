@@ -15,8 +15,21 @@ import { WHOAMI_STATES, classifyWhoamiResponse, mergeVerifiedAccess, shouldHoldA
 import { FEATURE_KEYS } from './config/plans';
 import { LoginScreen } from './features/auth';
 
-const CHUNK_LOAD_ERROR_RE = /(ChunkLoadError|Loading chunk|failed to fetch dynamically imported module|import\(\)|Failed to load module script|\.chunk\.(js|css)|\/static\/(js|css)\/[^\s'"]+)/i;
-const isChunkLoadFailure = (error) => CHUNK_LOAD_ERROR_RE.test(String(error?.name || '') + ' ' + String(error?.message || '') + ' ' + String(error?.stack || ''));
+const CHUNK_LOAD_ERROR_NAME_RE = /^(ChunkLoadError|CSS_CHUNK_LOAD_FAILED)$/i;
+const CHUNK_LOAD_ERROR_MESSAGE_RE = /(Loading chunk [^\s]+ failed|ChunkLoadError|Failed to fetch dynamically imported module|Failed to load module script|Importing a module script failed|error loading dynamically imported module|Loading CSS chunk [^\s]+ failed)/i;
+const getChunkFailureSignalText = (error) => [
+  error?.name,
+  error?.message,
+  error?.reason?.name,
+  error?.reason?.message,
+  error?.cause?.name,
+  error?.cause?.message
+].map(value => String(value || '')).filter(Boolean).join(' ');
+const isChunkLoadFailure = (error) => {
+  const name = String(error?.name || error?.reason?.name || error?.cause?.name || '');
+  if (CHUNK_LOAD_ERROR_NAME_RE.test(name)) return true;
+  return CHUNK_LOAD_ERROR_MESSAGE_RE.test(getChunkFailureSignalText(error));
+};
 const extractChunkUrl = (error) => {
   const text = String(error?.message || '') + ' ' + String(error?.stack || '');
   const match = text.match(/https?:\/\/[^\s)'"]+\.(?:js|css)|\/static\/(?:js|css)\/[^\s)'"]+\.(?:js|css)/i);
@@ -84,6 +97,40 @@ const hardRecoverRuntimeSection = async (reason = 'manual') => {
   window.location.replace(url.toString());
 };
 
+
+const reportRuntimeSectionError = async (error, extra = {}) => {
+  try {
+    const fingerprint = ['section-runtime-error', String(error?.name || 'Error'), String(error?.message || error || '').slice(0, 400), CURRENT_VERSION, window.location.pathname, window.location.search].join('|');
+    const last = sessionStorage.getItem('86chaos:lastSectionRuntimeReport');
+    if (last === fingerprint) return '';
+    sessionStorage.setItem('86chaos:lastSectionRuntimeReport', fingerprint);
+    if (!auth.currentUser) return '';
+    const response = await secureFetch('/api/report-bug', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        category: 'Crash / Error',
+        source: extra.source || 'react_section_runtime_error',
+        message: String(error?.message || error || 'Section runtime error').slice(0, 2000),
+        errorName: String(error?.name || 'Error'),
+        rawStack: String(error?.stack || '').slice(0, 5000),
+        componentStack: String(extra.componentStack || '').slice(0, 5000),
+        chunkUrl: extractChunkUrl(error),
+        appVersion: CURRENT_VERSION,
+        route: window.location.pathname + window.location.search,
+        activeTab: new URLSearchParams(window.location.search).get('tab') || '',
+        userAgent: navigator.userAgent,
+        screenSize: `${window.innerWidth}x${window.innerHeight}`,
+        url: window.location.href,
+        online: navigator.onLine,
+        serviceWorkerState: navigator.serviceWorker?.controller?.state || '',
+        diagnostics: { ...extra, chunkClassified: false }
+      })
+    });
+    const data = await response.json().catch(() => null);
+    return data?.reportId || '';
+  } catch (_) { return ''; }
+};
 const reportRuntimeChunkFailure = async (error, extra = {}) => {
   try {
     const fingerprint = ['chunk-failure', extractChunkUrl(error), CURRENT_VERSION, window.location.pathname, window.location.search].join('|');
@@ -301,7 +348,8 @@ class AppSurfaceErrorBoundary extends React.Component {
   }
   static getDerivedStateFromError(error) { return { error }; }
   componentDidCatch(error, info) {
-    reportRuntimeChunkFailure(error, { source: 'react_error_boundary', componentStack: info?.componentStack || '' }).then(reportId => {
+    const reporter = isChunkLoadFailure(error) ? reportRuntimeChunkFailure : reportRuntimeSectionError;
+    reporter(error, { source: isChunkLoadFailure(error) ? 'react_error_boundary_chunk' : 'react_error_boundary', componentStack: info?.componentStack || '' }).then(reportId => {
       if (reportId) this.setState({ reportId });
     });
   }
@@ -317,7 +365,11 @@ class AppSurfaceErrorBoundary extends React.Component {
           {chunkProblem ? 'A stale app file failed to load. Refreshing pulls the newest 86 Chaos files without clearing your login or restaurant data.' : 'The app caught the error instead of going blank. Refresh this section and check the Bug Ledger if it repeats.'}
         </p>
         {this.state.reportId && <p className="text-xs font-mono text-slate-400">Report ID: {this.state.reportId}</p>}
-        <button type="button" onClick={() => hardRecoverRuntimeSection(chunkProblem ? 'stale-schedule-chunk' : 'section-runtime-error')} className={T.btn}>Clear App Cache & Reload</button>
+        {chunkProblem ? (
+          <button type="button" onClick={() => hardRecoverRuntimeSection('stale-section-chunk')} className={T.btn}>Clear App Cache & Reload</button>
+        ) : (
+          <button type="button" onClick={() => this.setState({ error: null, reportId: '' })} className={T.btn}>Retry This Section</button>
+        )}
       </div>
     );
   }
@@ -2082,14 +2134,15 @@ What I clicked / expected:
     ''
   ).trim();
 
-  const getPushRepairRequestId = () => String(
-    liveAppUser?.pushTokenRepairNonce ||
-    liveAppUser?.pushRepairRequestId ||
-    liveAppUser?.pushRepairRequestedAt ||
-    liveAppUser?.pushRepairFlaggedAt ||
-    liveAppUser?.lastPushFailureCode ||
-    `${liveAppUser?.pushNeedsRepair ? 'needs-repair' : 'ok'}:${liveAppUser?.pushForceServiceWorkerRefresh ? 'force-sw' : 'normal'}:${typeof window !== 'undefined' ? window.location.hostname : ''}`
-  ).trim();
+  const getPushRepairRequestId = (user = liveAppUser) => {
+    const stableServerId = String(user?.pushTokenRepairNonce || user?.pushRepairRequestId || '').trim();
+    if (stableServerId) return stableServerId;
+    const profileId = String(getPushProfileDocId() || user?.profileDocId || user?.id || user?.uid || user?.email || 'user').trim();
+    const deviceId = typeof window !== 'undefined' ? getPushDeviceId() : 'server';
+    const host = typeof window !== 'undefined' ? window.location.hostname : 'server';
+    return `legacy-active:${profileId}:${rId || user?.restaurantId || 'workspace'}:${deviceId}:${host}`;
+  };
+  const getPushRepairDismissalKey = (requestId = getPushRepairRequestId()) => `86chaos:pushRepairDismissed:${liveAppUser?.id || 'user'}:${rId || 'workspace'}:${requestId}`;
 
   const getPushProfileRef = () => {
     const profileId = getPushProfileDocId();
@@ -2108,7 +2161,7 @@ What I clicked / expected:
     return existing === nextValue;
   };
 
-  const writePushProfilePatch = async (patch = {}) => {
+  const writePushProfilePatch = async (patch = {}, options = {}) => {
     const profileRef = getPushProfileRef();
     if (!profileRef) throw new Error('No signed-in profile was available for this device.');
     const meaningfulPatch = Object.fromEntries(Object.entries(patch || {}).filter(([field, value]) => !pushPatchValueMatchesCurrentUser(field, value)));
@@ -2116,10 +2169,36 @@ What I clicked / expected:
       rememberSkippedFirestoreWrite();
       return null;
     }
+    const writeThroughSecureSelfRepair = async (reason = 'direct-write-fallback') => {
+      const response = await secureFetch('/api/push-token-repair', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'self-repair',
+          profileDocId: getPushProfileDocId(),
+          restaurantId: rId || liveAppUser?.restaurantId || '',
+          repairRequestId: options.repairRequestId || getPushRepairRequestId(),
+          reason,
+          patch: meaningfulPatch
+        })
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || data?.ok !== true) throw new Error(data?.error || 'The secured push repair action could not update this device.');
+      return data;
+    };
     try {
       window.__chaosFirestoreDiagnostics = window.__chaosFirestoreDiagnostics || {};
       window.__chaosFirestoreDiagnostics.writesInitiated = (window.__chaosFirestoreDiagnostics.writesInitiated || 0) + 1;
     } catch (_) {}
+    if (options.forceServerRepair === true) {
+      const data = await writeThroughSecureSelfRepair('authoritative-self-repair');
+      try {
+        window.__chaosFirestoreDiagnostics = window.__chaosFirestoreDiagnostics || {};
+        window.__chaosFirestoreDiagnostics.writesCompleted = (window.__chaosFirestoreDiagnostics.writesCompleted || 0) + 1;
+        window.__chaosFirestoreDiagnostics.pushRepairApiFallbacks = (window.__chaosFirestoreDiagnostics.pushRepairApiFallbacks || 0) + 1;
+      } catch (_) {}
+      return data;
+    }
     try {
       const result = await updateDoc(profileRef, meaningfulPatch);
       try {
@@ -2130,20 +2209,9 @@ What I clicked / expected:
     } catch (err) {
       const message = String(err?.message || err || '');
       const code = String(err?.code || '');
-      const shouldUseServerRepair = /permission|insufficient|not-found|no document|missing|denied/i.test(`${code} ${message}`);
+      const shouldUseServerRepair = /permission|insufficient|not-found|no document|missing|denied|failed-precondition|precondition|unavailable|deadline|legacy|profile|mismatch/i.test(`${code} ${message}`);
       if (!shouldUseServerRepair) throw err;
-      const response = await secureFetch('/api/push-token-repair', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'self-repair',
-          profileDocId: getPushProfileDocId(),
-          restaurantId: rId || liveAppUser?.restaurantId || '',
-          patch: meaningfulPatch
-        })
-      });
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok || data?.ok !== true) throw new Error(data?.error || 'The secured push repair action could not update this device.');
+      const data = await writeThroughSecureSelfRepair(`direct-write-failed:${code || 'unknown'}`);
       try {
         window.__chaosFirestoreDiagnostics = window.__chaosFirestoreDiagnostics || {};
         window.__chaosFirestoreDiagnostics.writesCompleted = (window.__chaosFirestoreDiagnostics.writesCompleted || 0) + 1;
@@ -2239,6 +2307,7 @@ What I clicked / expected:
       return false;
     }
     setIsPushRepairing(true);
+    const originalRepairRequestId = getPushRepairRequestId();
     try {
       let permission = Notification.permission;
       if (permission === 'default') permission = await Notification.requestPermission();
@@ -2302,10 +2371,10 @@ What I clicked / expected:
         pushRepairCompletedHost: window.location.hostname,
         lastPushRepairError: null,
         lastPushFailureCode: null
-      });
-      setAppUser(prev => prev?.id === liveAppUser.id ? { ...prev, fcmToken: currentToken, pushNeedsRepair: false, pushForceServiceWorkerRefresh: false, notificationPermission: permission, pushTokenPermission: permission, pushTokenHost: window.location.hostname } : prev);
+      }, { forceServerRepair: true, repairRequestId: originalRepairRequestId });
+      setAppUser(prev => prev?.id === liveAppUser.id ? { ...prev, fcmToken: currentToken, pushNeedsRepair: false, pushForceServiceWorkerRefresh: false, notificationPermission: permission, pushTokenPermission: permission, pushTokenHost: window.location.hostname, pushRepairStatus: 'connected', lastPushRepairError: null, lastPushFailureCode: null } : prev);
       setPushRepairDismissed(true);
-      try { localStorage.removeItem(`86chaos:pushRepairDismissed:${liveAppUser?.id || 'user'}:${rId || 'workspace'}:${getPushRepairRequestId()}`); } catch (_) {}
+      try { localStorage.removeItem(getPushRepairDismissalKey(originalRepairRequestId)); } catch (_) {}
       addToast(source === 'auto' ? 'Push Reconnected' : 'Notifications Fixed', 'This device is connected for 86 Chaos push notifications.');
       return true;
     } catch (err) {
@@ -2342,7 +2411,7 @@ What I clicked / expected:
     }
     if (pushRepairRequested && !pushRepairRequestedByLink) {
       try {
-        const dismissalKey = `86chaos:pushRepairDismissed:${liveAppUser?.id || 'user'}:${rId || 'workspace'}:${getPushRepairRequestId()}`;
+        const dismissalKey = getPushRepairDismissalKey();
         if (localStorage.getItem(dismissalKey) === '1') {
           rememberSkippedFirestoreWrite();
           return;
@@ -2418,7 +2487,8 @@ What I clicked / expected:
           pushRepairCompletedHost: window.location.hostname,
           lastPushRepairError: null,
           lastPushFailureCode: null
-        });
+        }, { forceServerRepair: pushRepairRequested, repairRequestId: getPushRepairRequestId() });
+        setAppUser(prev => prev?.id === liveAppUser.id ? { ...prev, fcmToken: currentToken, pushNeedsRepair: false, pushForceServiceWorkerRefresh: false, notificationPermission: permission, pushTokenPermission: permission, pushTokenHost: window.location.hostname, pushRepairStatus: 'connected', lastPushRepairError: null, lastPushFailureCode: null } : prev);
         if (showToast) addToast('Push Ready', 'Push notifications are enabled for this device.');
       } catch (err) {
         console.warn('86 Chaos push token sync failed:', err?.message || err);
@@ -2788,7 +2858,7 @@ return (
           </div>
           <div className="flex gap-2 flex-shrink-0">
             <button onClick={() => repairPushOnThisDevice('manual')} disabled={isPushRepairing} className="bg-slate-950 text-amber-200 px-3 py-1.5 rounded-lg font-black text-[10px] shadow-md disabled:opacity-60">{isPushRepairing ? 'FIXING...' : 'FIX NOW'}</button>
-            <button onClick={() => { try { localStorage.setItem(`86chaos:pushRepairDismissed:${liveAppUser?.id || 'user'}:${rId || 'workspace'}:${getPushRepairRequestId()}`, '1'); } catch (_) {} setPushRepairDismissed(true); pushRepairAlertMemory.dismiss(); }} className="bg-amber-200/60 text-slate-950 px-3 py-1.5 rounded-lg font-black text-[10px]">DON'T SHOW AGAIN</button>
+            <button onClick={() => { try { localStorage.setItem(getPushRepairDismissalKey(), '1'); } catch (_) {} setPushRepairDismissed(true); pushRepairAlertMemory.dismiss(); }} className="bg-amber-200/60 text-slate-950 px-3 py-1.5 rounded-lg font-black text-[10px]">DON'T SHOW AGAIN</button>
           </div>
         </div>
       )}

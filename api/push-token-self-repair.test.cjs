@@ -28,3 +28,19 @@ test('self push repair allows only push token and device fields', () => {
   assert.equal(bad.ok, false);
   assert.deepEqual(bad.rejected.sort(), ['permissions.godmode', 'pushDevices.bad id', 'role'].sort());
 });
+
+
+test('legacy push repair request identity is stable when failure details change', () => {
+  const base = { id: 'legacy@example.com', email: 'legacy@example.com', pushNeedsRepair: true, lastPushFailureCode: 'messaging/old', pushRepairStatus: 'repair-failed' };
+  const context = { profileDocId: 'legacy@example.com', restaurantId: 'cheers', deviceId: 'web_phone', host: 'app.86chaos.com' };
+  const first = helpers.buildStablePushRepairRequestId(base, context);
+  const changed = helpers.buildStablePushRepairRequestId({ ...base, lastPushFailureCode: 'permission-denied', lastPushRepairError: 'new text', pushRepairStatus: 'sync-failed', lastPushTokenSyncAt: new Date().toISOString() }, context);
+  assert.equal(first, changed);
+});
+
+test('new push repair nonce creates a new dismissal identity', () => {
+  const context = { profileDocId: 'user-1', restaurantId: 'cheers', deviceId: 'web_phone', host: 'app.86chaos.com' };
+  const first = helpers.buildStablePushRepairRequestId({ id: 'user-1', pushTokenRepairNonce: 'nonce-a' }, context);
+  const second = helpers.buildStablePushRepairRequestId({ id: 'user-1', pushTokenRepairNonce: 'nonce-b' }, context);
+  assert.notEqual(first, second);
+});

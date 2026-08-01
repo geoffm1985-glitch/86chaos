@@ -77,6 +77,13 @@ $RunnerState = [ordered]@{
   cleanupAttempted = $false
   cleanupCompleted = $false
   blockingReason = ''
+  status = 'running'
+  startedAt = (Get-Date -Format o)
+  finishedAt = ''
+  lastCompletedStep = ''
+  anyTestsRan = $false
+  blockedBeforeTestExecution = $false
+  finalExitCode = $null
   steps = @()
 }
 
@@ -108,6 +115,8 @@ function Add-StepResult {
   $step = [pscustomobject]@{ name = $Name; exitCode = $ExitCode; passed = ($ExitCode -eq 0); logPath = $LogPath; countsAsFailure = $CountsAsFailure; finishedAt = (Get-Date -Format o) }
   $script:StepResults += $step
   $script:RunnerState.steps += $step
+  $script:RunnerState.lastCompletedStep = $Name
+  if ($Name -match 'Playwright') { $script:RunnerState.anyTestsRan = ($ExitCode -ne 124) }
   Save-RunnerState
   if ($ExitCode -ne 0 -and $CountsAsFailure) {
     $count = 0
@@ -241,6 +250,24 @@ function Stop-BeforePlaywright {
   Write-Host $Reason -ForegroundColor Red
 }
 
+$RunLockPath = Join-Path $ResultsRoot '.current-run.lock'
+$AnotherReleaseGateRunActive = $false
+if (Test-Path $RunLockPath) {
+  try {
+    $ExistingRun = Get-Content $RunLockPath -Raw | ConvertFrom-Json
+    if ($ExistingRun.pid -and (Get-Process -Id ([int]$ExistingRun.pid) -ErrorAction SilentlyContinue)) {
+      $AnotherReleaseGateRunActive = $true
+      Set-RunnerPhase 'blocked-overlapping-run'
+      $RunnerState.blockedBeforeTestExecution = $true
+      Stop-BeforePlaywright "Release gate BLOCKED BEFORE TEST EXECUTION because another release-gate run is already active. Existing runId=$($ExistingRun.runId) pid=$($ExistingRun.pid)."
+    }
+  } catch {}
+}
+if (-not $AnotherReleaseGateRunActive) {
+  @{ runId = $RunId; pid = $PID; startedAt = (Get-Date -Format o); runDir = $RunDir } | ConvertTo-Json | Set-Content $RunLockPath
+}
+
+if (-not $AnotherReleaseGateRunActive) {
 Set-RunnerPhase 'environment-preflight'
 $PreflightExit = Run-Step "Environment preflight" "node scripts/86chaos-release-gate/preflight-env.cjs"
 if ($PreflightExit -ne 0) {
@@ -259,11 +286,17 @@ if ($PreflightExit -ne 0) {
       Set-RunnerPhase 'install-locked-test-dependencies'
       $RunnerState.dependencyInstallAttempted = $true
       Save-RunnerState
-      $InstallExit = Run-Step "Install locked test dependencies" "npm ci --include=dev --no-audit --no-fund"
+      $InstallExit = Run-Step "Install locked test dependencies" "node scripts/86chaos-release-gate/run-observable-command.cjs --label 'Install locked test dependencies' --heartbeat 20 --timeout 1800 -- npm ci --include=dev --no-audit --no-fund"
       $RunnerState.dependencyInstallPassed = ($InstallExit -eq 0)
       Save-RunnerState
       if ($InstallExit -ne 0) {
-        Stop-BeforePlaywright "Release gate blocked before Playwright because locked development dependencies were not installed."
+        if ($InstallExit -eq 124) {
+          $RunnerState.blockedBeforeTestExecution = $true
+          Stop-BeforePlaywright "Release gate BLOCKED BEFORE TEST EXECUTION because locked dependency installation timed out after 30 minutes. Upload the slim report; this is a runner/install blocker, not an app-test result."
+        } else {
+          $RunnerState.blockedBeforeTestExecution = $true
+          Stop-BeforePlaywright "Release gate blocked before Playwright because locked development dependencies were not installed."
+        }
       } else {
         Set-RunnerPhase 'dependency-preflight'
         $DependencyExit = Run-Step "Dependency preflight" "node scripts/86chaos-release-gate/dependency-preflight.cjs"
@@ -328,6 +361,8 @@ if ($PreflightExit -ne 0) {
   }
 }
 
+}
+
 $SetupStatePath = Join-Path $RunDir 'qa-setup-state.json'
 $CleanupPath = Join-Path $RunDir '86chaos-full-audit-cleanup-report.json'
 if ((Test-Path $SetupStatePath) -and -not (Test-Path $CleanupPath)) {
@@ -350,7 +385,10 @@ if ((Test-Path $SetupStatePath) -and -not (Test-Path $CleanupPath)) {
 }
 
 Set-RunnerPhase 'report-collection'
+if ($RunnerState.blockingReason -and $RunnerState.playwrightStarted -ne $true) { $RunnerState.blockedBeforeTestExecution = $true }
 Run-CollectorStep "Collect report" "node scripts/86chaos-release-gate/collect-release-gate-report.cjs"
+$RunnerState.finishedAt = (Get-Date -Format o)
+if ($RunnerState.blockingReason) { $RunnerState.status = 'blocked' } elseif ([int]$env:CHAOS_RELEASE_GATE_STEP_FAILURES -gt 0) { $RunnerState.status = 'failed' } else { $RunnerState.status = 'passed' }
 Write-RunnerSummary
 New-Slim-ReleaseGateReport -SourceDir $RunDir -DestinationDir $SlimDir -ZipPath $SlimZipPath
 
@@ -362,9 +400,15 @@ if ($env:CHAOS_RELEASE_GATE_FULL_ZIP -eq 'true' -and (Test-Path $RunDir)) {
   Write-Host $FullZipPath -ForegroundColor Yellow
 }
 
+try {
+  if ((Test-Path $RunLockPath) -and -not $AnotherReleaseGateRunActive) {
+    $OwnedRun = Get-Content $RunLockPath -Raw | ConvertFrom-Json
+    if ($OwnedRun.runId -eq $RunId) { Remove-Item $RunLockPath -Force -ErrorAction SilentlyContinue }
+  }
+} catch {}
 Save-RunnerState
 
-if ([int]$env:CHAOS_RELEASE_GATE_STEP_FAILURES -gt 0) {
+if ([int]$env:CHAOS_RELEASE_GATE_STEP_FAILURES -gt 0 -or $RunnerState.blockingReason) {
   Write-Host ""
   Write-Host "Release gate finished with failures. Upload 86chaos-release-gate-SLIM-UPLOAD-ME.zip." -ForegroundColor Red
   exit 1

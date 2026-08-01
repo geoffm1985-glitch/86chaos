@@ -33,7 +33,7 @@ check('PROFILE_PHOTOS_SCOPED', /profilePhotos\/\{uid\}\/\{fileName\}/.test(stora
 check('AI_SCAN_NO_ROLE_LABEL_ADMIN', !/workspaceUser\?\.role\s*===\s*['"]Admin['"]/.test(aiUsage) && !/workspaceUser\?\.role\s*===\s*['"]Owner['"]/.test(aiUsage), 'AI scan server permission does not trust custom role labels named Admin/Owner.');
 check('MFA_NOT_ROLE_NAME_ONLY', !/\['owner', 'manager', 'admin'/.test(adminShared), 'Elevated MFA no longer relies on hardcoded role-name strings.');
 check('REMINDER_RETRYABLE_PERSONAL', /buildRetryUpdate/.test(reminders) && /daysInMonth/.test(reminderLogic) && /mode === 'monthly'/.test(reminderLogic) && /buildRecurringSuccessUpdate/.test(reminders), 'Reminder dispatcher retries the same occurrence and clamps monthly recurrence dates.');
-check('MESSAGING_SUPPORT_GUARD', /isSupported/.test(appCore) && /safeGetMessaging/.test(appCore), 'Firebase Messaging startup is guarded for unsupported browsers.');
+check('MESSAGING_SUPPORT_GUARD', /isSupported/.test(appCore) && /getSafeMessaging/.test(appCore), 'Firebase Messaging startup is guarded for unsupported browsers with getSafeMessaging.');
 check('GEOCODE_AUTHED', /authorize\(req, app/.test(read('api/geocode-address.js')) && /restaurantId=/.test(read('src/features/management.jsx')), 'Geocode lookup is routed through authenticated API authorization.');
 check('STANDARD_TENANT_ALLOWLIST', /function isStandardTenantCollection/.test(fireRules), 'Catch-all tenant access is restricted to an explicit allowlist.');
 
