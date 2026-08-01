@@ -353,6 +353,15 @@ class AppSurfaceErrorBoundary extends React.Component {
       if (reportId) this.setState({ reportId });
     });
   }
+  componentDidUpdate(prevProps) {
+    if (prevProps.resetKey !== this.props.resetKey && this.state.error) {
+      this.setState({ error: null, reportId: '' });
+    }
+  }
+  retrySection = () => {
+    this.setState({ error: null, reportId: '' });
+    if (typeof this.props.onRetry === 'function') this.props.onRetry();
+  };
   render() {
     const error = this.state.error;
     if (!error) return this.props.children;
@@ -368,7 +377,7 @@ class AppSurfaceErrorBoundary extends React.Component {
         {chunkProblem ? (
           <button type="button" onClick={() => hardRecoverRuntimeSection('stale-section-chunk')} className={T.btn}>Clear App Cache & Reload</button>
         ) : (
-          <button type="button" onClick={() => this.setState({ error: null, reportId: '' })} className={T.btn}>Retry This Section</button>
+          <button type="button" onClick={this.retrySection} className={T.btn}>Retry This Section</button>
         )}
       </div>
     );
@@ -598,6 +607,8 @@ export default function App() {
   }, []);
   const [isPushRepairing, setIsPushRepairing] = useState(false);
   const [pushRepairDismissed, setPushRepairDismissed] = useState(false);
+  const [pushRepairLinkRequest, setPushRepairLinkRequest] = useState({ requested: false, nonce: '' });
+  const [surfaceRetryKey, setSurfaceRetryKey] = useState(0);
   const [serverAdminCheck, setServerAdminCheck] = useState({ status: WHOAMI_STATES.IDLE });
   const [authRestoreState, setAuthRestoreState] = useState(() => ({ status: appUser?.sessionCached ? WHOAMI_STATES.PENDING : 'ready', uid: auth?.currentUser?.uid || '' }));
 
@@ -2134,15 +2145,17 @@ What I clicked / expected:
     ''
   ).trim();
 
+  const getAuthenticatedPushUserId = (user = liveAppUser) => String(auth?.currentUser?.uid || user?.authUid || user?.uid || user?.userId || user?.accountUserId || user?.id || 'user').trim();
   const getPushRepairRequestId = (user = liveAppUser) => {
-    const stableServerId = String(user?.pushTokenRepairNonce || user?.pushRepairRequestId || '').trim();
-    if (stableServerId) return stableServerId;
-    const profileId = String(getPushProfileDocId() || user?.profileDocId || user?.id || user?.uid || user?.email || 'user').trim();
+    const stableServerId = String(user?.pushTokenRepairNonce || user?.pushRepairRequestId || pushRepairLinkRequest.nonce || '').trim();
+    if (stableServerId && stableServerId !== '1') return stableServerId;
+    const authUserId = getAuthenticatedPushUserId(user);
     const deviceId = typeof window !== 'undefined' ? getPushDeviceId() : 'server';
     const host = typeof window !== 'undefined' ? window.location.hostname : 'server';
-    return `legacy-active:${profileId}:${rId || user?.restaurantId || 'workspace'}:${deviceId}:${host}`;
+    return `legacy-active:${authUserId}:${rId || user?.restaurantId || 'workspace'}:${deviceId}:${host}`;
   };
-  const getPushRepairDismissalKey = (requestId = getPushRepairRequestId()) => `86chaos:pushRepairDismissed:${liveAppUser?.id || 'user'}:${rId || 'workspace'}:${requestId}`;
+  const getPushRepairDismissalKey = (requestId = getPushRepairRequestId()) => `86chaos:pushRepairDismissed:${getAuthenticatedPushUserId(liveAppUser)}:${rId || 'workspace'}:${getPushDeviceId()}:${requestId}`;
+  const getPushRepairAutoAttemptKey = (requestId = getPushRepairRequestId()) => `86chaos:pushRepairAutoAttempted:${getAuthenticatedPushUserId(liveAppUser)}:${rId || 'workspace'}:${getPushDeviceId()}:${requestId}`;
 
   const getPushProfileRef = () => {
     const profileId = getPushProfileDocId();
@@ -2388,15 +2401,37 @@ What I clicked / expected:
         lastPushFailureCode: err?.code || (unsupportedMessaging ? 'messaging/unsupported-browser' : null),
         lastPushTokenSyncAt: new Date().toISOString()
       }).catch(() => {});
-      addToast(unsupportedMessaging ? 'Push Unavailable' : 'Push Repair Failed', getPushErrorMessage(err));
+      if (source !== 'auto' && !pushRepairDismissed) addToast(unsupportedMessaging ? 'Push Unavailable' : 'Push Repair Failed', getPushErrorMessage(err));
       return false;
     } finally {
       setIsPushRepairing(false);
     }
   };
 
-  const pushRepairRequestedByLink = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('pushRepair') === '1';
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search || '');
+    const hadRepairParam = params.has('pushRepair') || params.has('pushRepairNonce') || params.has('repairNonce');
+    if (!hadRepairParam) return;
+    const rawNonce = String(params.get('pushRepairNonce') || params.get('repairNonce') || params.get('pushRepair') || '').trim();
+    const nonce = rawNonce && rawNonce !== '1' ? rawNonce.slice(0, 140) : '';
+    setPushRepairLinkRequest({ requested: true, nonce });
+    ['pushRepair', 'pushRepairNonce', 'repairNonce'].forEach(key => params.delete(key));
+    const cleanSearch = params.toString();
+    const nextUrl = `${window.location.pathname}${cleanSearch ? `?${cleanSearch}` : ''}${window.location.hash || ''}`;
+    try { window.history.replaceState({ ...(window.history.state || {}), pushRepairConsumed: true }, '', nextUrl); } catch (_) {}
+  }, []);
+
+  const pushRepairRequestedByLink = Boolean(pushRepairLinkRequest.requested);
   const pushRepairRequested = Boolean(!ghostTenant && !isDemoMode && liveAppUser?.id && (pushRepairRequestedByLink || liveAppUser?.pushNeedsRepair === true || liveAppUser?.pushForceServiceWorkerRefresh === true));
+  useEffect(() => {
+    if (!pushRepairRequested || typeof window === 'undefined') {
+      setPushRepairDismissed(false);
+      return;
+    }
+    try { setPushRepairDismissed(localStorage.getItem(getPushRepairDismissalKey()) === '1'); } catch (_) { setPushRepairDismissed(false); }
+  }, [pushRepairRequested, liveAppUser?.pushTokenRepairNonce, pushRepairLinkRequest.nonce, liveAppUser?.id, liveAppUser?.uid, liveAppUser?.authUid, rId]);
+
 
   useEffect(() => {
     if (!liveAppUser?.id || ghostTenant || isDemoMode || typeof window === 'undefined' || !('Notification' in window)) return;
@@ -2409,13 +2444,21 @@ What I clicked / expected:
       rememberSkippedFirestoreWrite();
       return;
     }
-    if (pushRepairRequested && !pushRepairRequestedByLink) {
+    if (pushRepairRequested) {
       try {
-        const dismissalKey = getPushRepairDismissalKey();
+        const requestId = getPushRepairRequestId();
+        const dismissalKey = getPushRepairDismissalKey(requestId);
+        const autoAttemptKey = getPushRepairAutoAttemptKey(requestId);
         if (localStorage.getItem(dismissalKey) === '1') {
+          setPushRepairDismissed(true);
           rememberSkippedFirestoreWrite();
           return;
         }
+        if (sessionStorage.getItem(autoAttemptKey) === '1') {
+          rememberSkippedFirestoreWrite();
+          return;
+        }
+        sessionStorage.setItem(autoAttemptKey, '1');
       } catch (_) {}
     }
 
@@ -2527,7 +2570,7 @@ What I clicked / expected:
     }, pushRepairRequested ? 600 : 2500);
 
     return () => { canceled = true; clearTimeout(timer); };
-  }, [liveAppUser?.id, liveAppUser?.pushNeedsRepair, liveAppUser?.pushForceServiceWorkerRefresh, ghostTenant, isDemoMode]);                      
+  }, [liveAppUser?.id, liveAppUser?.pushNeedsRepair, liveAppUser?.pushForceServiceWorkerRefresh, pushRepairLinkRequest.requested, pushRepairLinkRequest.nonce, pushRepairDismissed, ghostTenant, isDemoMode]);                      
   // --- FOREGROUND NOTIFICATION CATCHER ---
   useEffect(() => {
     let active = true;
@@ -3027,9 +3070,15 @@ return (
         >
           {globalManagerBriefMathText}
         </span>
-        <AppSurfaceErrorBoundary key={`${activeTabState}-${liveAppUser?.restaurantId || 'no-restaurant'}`}>
+        <AppSurfaceErrorBoundary
+          key={`${activeTabState}-${liveAppUser?.restaurantId || 'no-restaurant'}`}
+          resetKey={`${activeTabState}-${liveAppUser?.restaurantId || 'no-restaurant'}-${CURRENT_VERSION}-${surfaceRetryKey}`}
+          onRetry={() => setSurfaceRetryKey(value => value + 1)}
+        >
           <React.Suspense fallback={<RouteLoading />} >
-            {renderMainContent()}
+            <React.Fragment key={`${activeTabState}-${liveAppUser?.restaurantId || 'no-restaurant'}-${surfaceRetryKey}`}>
+              {renderMainContent()}
+            </React.Fragment>
           </React.Suspense>
         </AppSurfaceErrorBoundary>
       </main>

@@ -6,7 +6,7 @@ const read = (file) => fs.readFileSync(path.join(root, file), 'utf8');
 const json = (file) => JSON.parse(read(file));
 const assert = (condition, message) => {
   if (!condition) {
-    console.error(`16.0.87 source validation failed: ${message}`);
+    console.error(`16.0.89 source validation failed: ${message}`);
     process.exitCode = 1;
   }
 };
@@ -31,12 +31,12 @@ const runnerPs1 = read('RUN_86CHAOS_PLAY_STORE_RELEASE_GATE.ps1');
 const collector = read('scripts/86chaos-release-gate/collect-release-gate-report.cjs');
 const releaseGateRunnerTest = read('api/release-gate-runner-observability.test.cjs');
 
-assert(pkg.version === '16.0.87', 'package.json version is 16.0.87');
-assert(lock.version === '16.0.87' && lock.packages?.['']?.version === '16.0.87', 'package-lock root version is 16.0.87');
-assert(pkg.scripts?.['test:source'] === 'node scripts/validate-16-0-87.js', 'test:source points at 16.0.87 validator');
-assert(version.version === '16.0.87' && version.build === '16.0.87', 'public version/build is 16.0.87');
-assert(appCore.includes("CURRENT_VERSION = '16.0.87'"), 'appCore CURRENT_VERSION is 16.0.87');
-assert(apiVersion.includes("APP_VERSION = '16.0.87'") && apiVersion.includes("SECURITY_SCHEMA_VERSION = '16.0.87'"), 'API version constants are 16.0.87');
+assert(pkg.version === '16.0.89', 'package.json version is 16.0.89');
+assert(lock.version === '16.0.89' && lock.packages?.['']?.version === '16.0.89', 'package-lock root version is 16.0.89');
+assert(pkg.scripts?.['test:source'] === 'node scripts/validate-16-0-89.js', 'test:source points at 16.0.89 validator');
+assert(version.version === '16.0.89' && version.build === '16.0.89', 'public version/build is 16.0.89');
+assert(appCore.includes("CURRENT_VERSION = '16.0.89'"), 'appCore CURRENT_VERSION is 16.0.89');
+assert(apiVersion.includes("APP_VERSION = '16.0.89'") && apiVersion.includes("SECURITY_SCHEMA_VERSION = '16.0.89'"), 'API version constants are 16.0.89');
 
 // Schedule Builder deleted-shift permanence checks.
 assert(schedule.includes('getScheduleShiftLogicalDeleteIdentity'), 'Schedule Builder defines a logical delete identity helper');
@@ -105,17 +105,35 @@ assert(pushRepairTest.includes('rejects another user profile') && pushRepairTest
 assert(!app.includes('liveAppUser?.lastPushFailureCode ||\n'), 'push repair request identity no longer uses changing failure code fields');
 assert(!app.includes('liveAppUser?.pushRepairRequestedAt ||\n') && !app.includes('liveAppUser?.pushRepairFlaggedAt ||\n'), 'push repair request identity no longer uses changing repair timestamps');
 assert(pushRepairTest.includes('legacy push repair request identity is stable when failure details change'), 'push repair tests prove failure/status changes do not create a new dismissal identity');
-assert(pushRepairApi.includes('verifiedProfileDocId') && pushRepairApi.includes('did not clear'), 'secured self-repair verifies profile update and cleared repair flags before returning success');
+assert(pushRepairApi.includes('verifiedProfileDocId') && pushRepairApi.includes('verifySelfRepairReadback'), 'secured self-repair verifies profile update and repaired readback before returning success');
 assert(pushRepairApi.includes('existingNonce') && pushRepairApi.includes('existingTarget.pushTokenRepairNonce'), 'admin repair request payload preserves the active request nonce while the same repair remains open');
 
 // Release-gate runner observability checks.
 assert(runnerObservable.includes('STILL RUNNING') && runnerObservable.includes('TIMED OUT') && runnerObservable.includes('FINISHED'), 'observable dependency installer prints heartbeat, timeout, and completion lines');
 assert(runnerObservable.includes('normalizeSpawnCommand') && runnerObservable.includes('shell: false'), 'observable dependency installer spawns without shell:true so Windows paths with spaces are preserved');
 assert(!runnerObservable.includes("shell: process.platform === 'win32'"), 'observable dependency installer does not use Windows shell mode that splits C:\Program Files paths');
-assert(runnerObservable.includes('cmdShims') && runnerObservable.includes('`${command}.cmd`'), 'observable dependency installer uses Windows .cmd shims for npm-style commands when needed');
+assert(runnerObservable.includes('resolveNpmCli') && runnerObservable.includes('process.execPath') && runnerObservable.includes("process.env.ComSpec || 'cmd.exe'"), 'observable dependency installer runs npm through npm CLI and reserves cmd.exe for non-npm .cmd/.bat files');
 assert(runnerPs1.includes('run-observable-command.cjs') && runnerPs1.includes('--timeout 1800'), 'release gate uses observable 30-minute dependency install wrapper');
 assert(runnerPs1.includes('.current-run.lock') && runnerPs1.includes('another release-gate run is already active'), 'release gate prevents overlapping runs with a current-run lock');
 assert(collector.includes('BLOCKED BEFORE TEST EXECUTION') && collector.includes('dependencyInstallIncomplete'), 'collector labels zero-test incomplete installs as blocked before test execution');
 assert(releaseGateRunnerTest.includes('observable command times out') && releaseGateRunnerTest.includes('PowerShell runner uses observable dependency install'), 'release gate observability tests cover success, timeout, and runner wiring');
 
-if (!process.exitCode) console.log('16.0.87 source validator passed.');
+
+// 16.0.89 System Administrator / push / Windows release-gate repairs.
+const adminSafety = read('src/core/systemAdminDataSafety.cjs');
+assert(adminSafety.includes('normalizeTierPriceMap') && adminSafety.includes('adminSafeText'), 'System Administrator data boundary normalizes malformed live data and safe text');
+assert(management.includes('normalizeTierPriceMap(raw, defaultTierPrices)'), 'System Administrator pricing doc listener keeps defaults for missing/malformed pricing');
+assert(management.includes('normalizeCrashReport') && management.includes('normalizeAuditLog') && management.includes('normalizeRestaurantRecord'), 'System Administrator live collections normalize crash/audit/restaurant records before rendering');
+assert(management.includes('React.isValidElement(cell) ? cell : adminSafeText(cell'), 'System Administrator tables do not render raw Firestore objects as React children');
+assert(app.includes('componentDidUpdate(prevProps)') && app.includes('resetKey') && app.includes('retrySection'), 'section error boundary resets and remounts route sections on retry/reset keys');
+assert(app.includes('pushRepairLinkRequest') && app.includes('window.history.replaceState') && app.includes("['pushRepair', 'pushRepairNonce', 'repairNonce']"), 'push repair link params are consumed once and removed from the URL');
+assert(app.includes('getAuthenticatedPushUserId') && app.includes('getPushRepairAutoAttemptKey'), 'push repair dismissal and auto attempts use stable auth/device/request identity');
+assert(!app.includes('pushRepairRequested && !pushRepairRequestedByLink'), 'repair links cannot bypass dismissal for the same request');
+assert(pushRepairLogic.includes('context.authUid') && !pushRepairLogic.includes('const profileId = String(context.profileDocId'), 'legacy push repair request identity no longer depends on hydration-sensitive profileDocId');
+assert(pushRepairLogic.includes('verifySelfRepairReadback'), 'secure self-repair verifies saved push state with server readback');
+assert(pushRepairApi.includes('completedRepairRequestId') && pushRepairApi.includes('verifySelfRepairReadback'), 'push repair API returns completed repair identity and verifies readback before success');
+assert(runnerObservable.includes('resolveNpmCli') && runnerObservable.includes('process.execPath') && runnerObservable.includes('NPM_VERSION'), 'observable command launches npm via npm CLI through node and logs npm metadata');
+assert(runnerPs1.includes('Verify npm wrapper') && runnerPs1.includes('[Console]::OutputEncoding'), 'PowerShell release gate verifies npm wrapper and forces UTF-8 output');
+assert(releaseGateRunnerTest.includes('npm --version') && releaseGateRunnerTest.includes('path with spaces'), 'release gate tests cover npm wrapper and Windows .cmd paths with spaces');
+
+if (!process.exitCode) console.log('16.0.89 source validator passed.');

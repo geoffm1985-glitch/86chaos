@@ -214,7 +214,7 @@ export default async function handler(req, res) {
 
   try {
     const caller = await getCaller(db, decoded);
-    const { action = 'request-repair', restaurantId = '', targetUserId = '', targetUserIds = [], maxAgeDays = 30, repairLink = '', profileDocId = '', patch = {} } = req.body || {};
+    const { action = 'request-repair', restaurantId = '', targetUserId = '', targetUserIds = [], maxAgeDays = 30, repairLink = '', profileDocId = '', repairRequestId = '', patch = {} } = req.body || {};
     const requestedBy = caller.email || decoded.email || caller.name || 'System Administrator';
     const ids = [...new Set([targetUserId, ...(Array.isArray(targetUserIds) ? targetUserIds : [])].filter(Boolean))];
 
@@ -246,13 +246,9 @@ export default async function handler(req, res) {
       if (!verified || !selfRepair.profileMatchesDecoded(verified, target.id, decoded)) {
         return res.status(409).json({ error: 'Push self-repair could not verify the updated profile.' });
       }
-      const expectedFalseFields = ['pushNeedsRepair', 'pushForceServiceWorkerRefresh'].filter(field => Object.prototype.hasOwnProperty.call(sanitized.patch, field) && sanitized.patch[field] === false);
-      const uncleared = expectedFalseFields.filter(field => verified[field] !== false);
-      if (uncleared.length) {
-        return res.status(409).json({ error: `Push self-repair did not clear: ${uncleared.join(', ')}` });
-      }
-      if (sanitized.patch.pushRepairStatus && verified.pushRepairStatus !== sanitized.patch.pushRepairStatus) {
-        return res.status(409).json({ error: 'Push self-repair status could not be verified.' });
+      const readback = selfRepair.verifySelfRepairReadback(verified, sanitized.patch);
+      if (!readback.ok) {
+        return res.status(409).json({ error: `Push self-repair readback failed: ${readback.errors.join(', ')}` });
       }
       return res.status(200).json({
         ok: true,
@@ -263,6 +259,7 @@ export default async function handler(req, res) {
         pushNeedsRepair: verified.pushNeedsRepair === true,
         pushForceServiceWorkerRefresh: verified.pushForceServiceWorkerRefresh === true,
         pushRepairStatus: verified.pushRepairStatus || '',
+        completedRepairRequestId: String(repairRequestId || target.pushTokenRepairNonce || target.pushRepairRequestId || '').trim(),
         selfRepair: true
       });
     }
@@ -283,10 +280,11 @@ export default async function handler(req, res) {
       }
       const mode = action === 'force-refresh' ? 'force-refresh' : 'repair';
       const clearToken = action === 'clear-token' || action === 'force-refresh';
-      const writes = targets.map(target => db.collection('users').doc(target.id).set(repairPayload({ mode, clearToken, requestedBy, repairLink, existingTarget: target }), { merge: true }));
+      const payloads = targets.map(target => ({ target, payload: repairPayload({ mode, clearToken, requestedBy, repairLink, existingTarget: target }) }));
+      const writes = payloads.map(({ target, payload }) => db.collection('users').doc(target.id).set(payload, { merge: true }));
       await Promise.all(writes);
       await writeAudit(db, { caller, action: `PUSH_${action.replace(/-/g, '_').toUpperCase()}`, target: ids.join(','), restaurantId: restaurantId || targets[0]?.restaurantId || 'platform', details: `${targets.length} user(s) marked for push repair. clearToken=${clearToken}` });
-      return res.status(200).json({ ok: true, action, updated: targets.length, users: targets.map(t => ({ id: t.id, email: t.email || '', restaurantId: t.restaurantId || '' })) });
+      return res.status(200).json({ ok: true, action, updated: targets.length, users: payloads.map(({ target, payload }) => ({ id: target.id, email: target.email || '', restaurantId: target.restaurantId || '', pushTokenRepairNonce: payload.pushTokenRepairNonce, repairLink: payload.repairLink || '' })) });
     }
 
     if (action === 'prune-stale') {

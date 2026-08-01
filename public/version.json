@@ -1,10 +1,10 @@
 {
-  "version": "16.0.87",
-  "name": "86 Chaos 16.0.87 Release Gate Windows Spawn Fix",
-  "build": "16.0.87",
-  "label": "86 Chaos 16.0.87 Release Gate Windows Spawn Fix",
+  "version": "16.0.89",
+  "name": "86 Chaos 16.0.89 Admin Push Release Gate Fix",
+  "build": "16.0.89",
+  "label": "86 Chaos 16.0.89 Admin Push Release Gate Fix",
   "releasedAt": "2026-07-31T22:11:00-05:00",
-  "releaseTitle": "86 Chaos 16.0.87 Release Gate Windows Spawn Fix",
+  "releaseTitle": "86 Chaos 16.0.89 Admin Push Release Gate Fix",
   "notes": [
     "System Administrator runtime errors are no longer mislabeled as stale lazy-chunk failures merely because the stack contains /static/js/.",
     "Push repair dismissal is keyed to a stable repair request nonce or legacy fallback instead of changing failure/status fields.",

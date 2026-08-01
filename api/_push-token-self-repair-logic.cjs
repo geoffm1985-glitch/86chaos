@@ -25,11 +25,11 @@ const EXACT_ALLOWED_PUSH_FIELDS = new Set([
 function buildStablePushRepairRequestId(user = {}, context = {}) {
   const stableServerId = String(user.pushTokenRepairNonce || user.pushRepairRequestId || '').trim();
   if (stableServerId) return stableServerId;
-  const profileId = String(context.profileDocId || user.profileDocId || user.id || user.uid || user.userId || user.email || 'user').trim();
+  const authUserId = String(context.authUid || context.uid || user.authUid || user.uid || user.userId || user.accountUserId || user.id || user.email || 'user').trim();
   const workspaceId = String(context.restaurantId || user.restaurantId || 'workspace').trim();
   const deviceId = cleanId(context.deviceId || 'device');
   const host = String(context.host || 'host').toLowerCase().trim();
-  return `legacy-active:${profileId}:${workspaceId}:${deviceId}:${host}`;
+  return `legacy-active:${authUserId}:${workspaceId}:${deviceId}:${host}`;
 }
 
 function decodedIdentity(decoded = {}) {
@@ -85,6 +85,30 @@ function sanitizeSelfRepairPatch(patch = {}) {
   return { ok: Object.keys(clean).length > 0 && rejected.length === 0, patch: clean, rejected };
 }
 
+function readPath(source = {}, dottedPath = '') {
+  return String(dottedPath || '').split('.').filter(Boolean).reduce((current, part) => (current && typeof current === 'object' ? current[part] : undefined), source);
+}
+
+function verifySelfRepairReadback(verified = {}, patch = {}) {
+  const errors = [];
+  if (Object.prototype.hasOwnProperty.call(patch, 'fcmToken') && verified.fcmToken !== patch.fcmToken) errors.push('fcmToken');
+  if (Object.prototype.hasOwnProperty.call(patch, 'notificationPermission') && verified.notificationPermission !== patch.notificationPermission) errors.push('notificationPermission');
+  if (Object.prototype.hasOwnProperty.call(patch, 'pushNeedsRepair') && verified.pushNeedsRepair !== patch.pushNeedsRepair) errors.push('pushNeedsRepair');
+  if (Object.prototype.hasOwnProperty.call(patch, 'pushForceServiceWorkerRefresh') && verified.pushForceServiceWorkerRefresh !== patch.pushForceServiceWorkerRefresh) errors.push('pushForceServiceWorkerRefresh');
+  if (Object.prototype.hasOwnProperty.call(patch, 'pushRepairStatus') && verified.pushRepairStatus !== patch.pushRepairStatus) errors.push('pushRepairStatus');
+  Object.entries(patch || {}).forEach(([field, value]) => {
+    if (!isSafePushDeviceField(field)) return;
+    const saved = readPath(verified, field);
+    if (!saved || typeof saved !== 'object') {
+      errors.push(field);
+      return;
+    }
+    if (value?.token && saved.token !== value.token) errors.push(`${field}.token`);
+    if (value?.permission && saved.permission !== value.permission) errors.push(`${field}.permission`);
+  });
+  return { ok: errors.length === 0, errors };
+}
+
 module.exports = {
   EXACT_ALLOWED_PUSH_FIELDS,
   buildStablePushRepairRequestId,
@@ -94,5 +118,7 @@ module.exports = {
   isSafePushDeviceField,
   norm,
   profileMatchesDecoded,
-  sanitizeSelfRepairPatch
+  readPath,
+  sanitizeSelfRepairPatch,
+  verifySelfRepairReadback
 };

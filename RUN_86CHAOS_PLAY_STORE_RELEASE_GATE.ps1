@@ -1,4 +1,10 @@
 $ErrorActionPreference = 'Continue'
+[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)
+$OutputEncoding = [System.Text.UTF8Encoding]::new($false)
+$PSDefaultParameterValues['Out-File:Encoding'] = 'utf8'
+$PSDefaultParameterValues['Set-Content:Encoding'] = 'utf8'
+$PSDefaultParameterValues['Add-Content:Encoding'] = 'utf8'
+$env:PYTHONUTF8 = '1'
 
 $Root = Split-Path -Parent $MyInvocation.MyCommand.Path
 Set-Location $Root
@@ -283,6 +289,12 @@ if ($PreflightExit -ne 0) {
     if ($LockExit -ne 0) {
       Stop-BeforePlaywright "Release gate blocked before Playwright because lockfile integrity failed."
     } else {
+      Set-RunnerPhase 'verify-windows-npm-wrapper'
+      $NpmWrapperExit = Run-Step "Verify npm wrapper" "node scripts/86chaos-release-gate/run-observable-command.cjs --label 'Verify npm wrapper' --heartbeat 20 --timeout 60 -- npm --version"
+      if ($NpmWrapperExit -ne 0) {
+        $RunnerState.blockedBeforeTestExecution = $true
+        Stop-BeforePlaywright "Release gate BLOCKED BEFORE TEST EXECUTION because the observable npm wrapper could not launch npm --version."
+      } else {
       Set-RunnerPhase 'install-locked-test-dependencies'
       $RunnerState.dependencyInstallAttempted = $true
       Save-RunnerState
@@ -362,6 +374,7 @@ if ($PreflightExit -ne 0) {
 }
 
 }
+}
 
 $SetupStatePath = Join-Path $RunDir 'qa-setup-state.json'
 $CleanupPath = Join-Path $RunDir '86chaos-full-audit-cleanup-report.json'
@@ -386,9 +399,13 @@ if ((Test-Path $SetupStatePath) -and -not (Test-Path $CleanupPath)) {
 
 Set-RunnerPhase 'report-collection'
 if ($RunnerState.blockingReason -and $RunnerState.playwrightStarted -ne $true) { $RunnerState.blockedBeforeTestExecution = $true }
-Run-CollectorStep "Collect report" "node scripts/86chaos-release-gate/collect-release-gate-report.cjs"
 $RunnerState.finishedAt = (Get-Date -Format o)
 if ($RunnerState.blockingReason) { $RunnerState.status = 'blocked' } elseif ([int]$env:CHAOS_RELEASE_GATE_STEP_FAILURES -gt 0) { $RunnerState.status = 'failed' } else { $RunnerState.status = 'passed' }
+if ([int]$env:CHAOS_RELEASE_GATE_STEP_FAILURES -gt 0 -or $RunnerState.blockingReason) { $RunnerState.finalExitCode = 1 } else { $RunnerState.finalExitCode = 0 }
+Save-RunnerState
+Run-CollectorStep "Collect report" "node scripts/86chaos-release-gate/collect-release-gate-report.cjs"
+$RunnerState.updatedAt = (Get-Date -Format o)
+Save-RunnerState
 Write-RunnerSummary
 New-Slim-ReleaseGateReport -SourceDir $RunDir -DestinationDir $SlimDir -ZipPath $SlimZipPath
 

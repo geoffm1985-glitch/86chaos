@@ -14,8 +14,10 @@ import { LockedFeatureScreen } from '../components/PlanGate';
 import { PLAN_DEFINITIONS, CUSTOMER_PLAN_ORDER, FEATURE_KEYS } from '../config/plans';
 import { resolveSubscription, resolveFeatureAccess, getPlanDefinition, formatMoney, normalizePlanId, addDaysIso, addMonthsIso } from '../lib/featureAccess';
 import { searchHelpContentSemantically } from '../core/restaurantAiInsights';
+import adminSafety from '../core/systemAdminDataSafety.cjs';
 
 
+const { adminSafeText, finiteNumber: adminFiniteNumber, normalizeAuditLog, normalizeCrashReport, normalizeRestaurantRecord, normalizeTierPriceMap, safeDiagnostic } = adminSafety;
 
 
 const PROTECTED_ROOT_ADMIN_EMAIL = 'geoffm1985@gmail.com';
@@ -80,7 +82,7 @@ const SimpleTable = ({ headers = [], rows = [], empty = 'No records found.' }) =
             {safeRows.length === 0 && <tr><td colSpan={Math.max(safeHeaders.length, 1)} className="p-6 text-center text-slate-400 font-bold">{empty}</td></tr>}
             {safeRows.map((row, rowIndex) => {
               const cells = Array.isArray(row) ? row : [row];
-              return <tr key={rowIndex} className="hover:bg-[#12161A]/60">{cells.map((cell, cellIndex) => <td key={cellIndex} className="p-3 text-slate-200 align-top whitespace-nowrap">{cell}</td>)}</tr>;
+              return <tr key={rowIndex} className="hover:bg-[#12161A]/60">{cells.map((cell, cellIndex) => <td key={cellIndex} className="p-3 text-slate-200 align-top whitespace-nowrap">{React.isValidElement(cell) ? cell : adminSafeText(cell, '')}</td>)}</tr>;
             })}
           </tbody>
         </table>
@@ -3169,10 +3171,10 @@ const TabAuditLog = ({ appUser }) => {
               <div>
                 <div className="flex items-center gap-2 mb-1">
                   <span className="font-bold text-white text-sm">{log.userName}</span>
-                  <span className={`text-[9px] uppercase font-black tracking-widest bg-[#12161A] border ${T.border} text-red-400 px-2 py-0.5 rounded`}>{log.action}</span>
+                  <span className={`text-[9px] uppercase font-black tracking-widest bg-[#12161A] border ${T.border} text-red-400 px-2 py-0.5 rounded`}>{adminSafeText(log.action, '')}</span>
                 </div>
                 <div className="text-xs text-slate-300 font-medium">
-                  {log.details} <span className="text-slate-500 ml-1">Target: [{log.target}]</span>
+                  {adminSafeText(log.details, '')} <span className="text-slate-500 ml-1">Target: [{adminSafeText(log.target, '')}]</span>
                 </div>
               </div>
               <div className={`text-[10px] font-bold ${T.muted} whitespace-nowrap`}>
@@ -4425,7 +4427,12 @@ const LEGACY_JULY_2026_SCHEDULE = [
   ];
 
 // Pricing & MRR States
-  const [tierPrices, setTierPrices] = useState(Object.fromEntries(CUSTOMER_PLAN_ORDER.map(id => [id, PLAN_DEFINITIONS[id].monthlyPrice])));
+  const defaultTierPrices = useMemo(() => Object.fromEntries(CUSTOMER_PLAN_ORDER.map(id => [id, PLAN_DEFINITIONS[id].monthlyPrice])), []);
+  const [tierPrices, setTierPrices] = useState(defaultTierPrices);
+  const noteMalformedAdminData = (collection, id, field, reason) => {
+    const diagnostic = safeDiagnostic(collection, id, field, reason);
+    setAdminDataErrors(prev => ({ ...prev, [`malformed:${diagnostic.collection}:${diagnostic.id}:${diagnostic.field}`]: diagnostic.reason }));
+  };
   const [isEditingPrices, setIsEditingPrices] = useState(false);
   
   // Live Banner States
@@ -4509,23 +4516,49 @@ const LEGACY_JULY_2026_SCHEDULE = [
       delete next[key];
       return next;
     });
-    const listen = (key, q, setter, mapper = (snap) => snap.docs.map(d => ({ id: d.id, ...d.data() }))) => {
-      const unsub = onSnapshot(q, snap => { clearLoadError(key); setter(mapper(snap)); }, err => noteLoadError(key, err));
+    const mapDocs = (collectionName, normalizer = null) => (snap) => {
+      const diagnostics = [];
+      const rows = snap.docs.map(d => {
+        try {
+          const data = d.data();
+          return normalizer ? normalizer(d.id, data, diagnostics) : { id: d.id, ...data };
+        } catch (err) {
+          diagnostics.push(safeDiagnostic(collectionName, d.id, '*', err?.message || 'Malformed live document skipped.'));
+          return null;
+        }
+      }).filter(Boolean);
+      diagnostics.forEach(item => noteMalformedAdminData(item.collection, item.id, item.field, item.reason));
+      return rows;
+    };
+    const listen = (key, q, setter, mapper = mapDocs(key)) => {
+      const unsub = onSnapshot(q, snap => {
+        clearLoadError(key);
+        try { setter(mapper(snap)); } catch (err) { setter([]); noteLoadError(key, err); }
+      }, err => noteLoadError(key, err));
       unsubs.push(unsub);
     };
-    const listenDoc = (key, refObj, setter) => {
-      const unsub = onSnapshot(refObj, docSnap => { clearLoadError(key); setter(docSnap.exists() ? { id: docSnap.id, ...docSnap.data() } : null); }, err => { setter(null); noteLoadError(key, err); });
+    const listenDoc = (key, refObj, setter, normalizer = null, fallback = null) => {
+      const unsub = onSnapshot(refObj, docSnap => {
+        clearLoadError(key);
+        try {
+          const raw = docSnap.exists() ? { id: docSnap.id, ...docSnap.data() } : fallback;
+          setter(normalizer ? normalizer(raw, fallback) : raw);
+        } catch (err) {
+          setter(fallback);
+          noteLoadError(key, err);
+        }
+      }, err => { setter(fallback); noteLoadError(key, err); });
       unsubs.push(unsub);
     };
 
     listen('superAdmins', query(collection(db, 'users'), where('isSuperAdmin', '==', true), firestoreLimit(25)), setSuperAdmins);
-    listenDoc('pricing', doc(db, 'system', 'pricing'), setTierPrices);
+    listenDoc('pricing', doc(db, 'system', 'pricing'), setTierPrices, (raw) => normalizeTierPriceMap(raw, defaultTierPrices), defaultTierPrices);
     listenDoc('backupStatus', doc(db, 'system', 'backupStatus'), setBackupStatus);
     listenDoc('restoreDrillStatus', doc(db, 'system', 'restoreDrillStatus'), setRestoreDrillStatus);
     listenDoc('operationsReview', doc(db, 'system', 'operationsReview'), setOperationsReview);
 
     if (['overview', 'tenants', 'ops', 'push'].includes(subTab)) {
-      listen('restaurants', query(collection(db, 'restaurants'), orderBy('name', 'asc'), firestoreLimit(subTab === 'tenants' || subTab === 'push' ? 160 : 40)), setRestaurants);
+      listen('restaurants', query(collection(db, 'restaurants'), orderBy('name', 'asc'), firestoreLimit(subTab === 'tenants' || subTab === 'push' ? 160 : 40)), setRestaurants, mapDocs('restaurants', normalizeRestaurantRecord));
     } else {
       setRestaurants(prev => prev.slice(0, 40));
     }
@@ -4543,7 +4576,7 @@ const LEGACY_JULY_2026_SCHEDULE = [
     }
 
     if (['overview', 'push', 'forensics'].includes(subTab)) {
-      listen('crashReports', query(collection(db, 'crashReports'), orderBy('time', 'desc'), firestoreLimit(subTab === 'push' ? 50 : 15)), setCrashLogs);
+      listen('crashReports', query(collection(db, 'crashReports'), orderBy('time', 'desc'), firestoreLimit(subTab === 'push' ? 50 : 15)), setCrashLogs, mapDocs('crashReports', normalizeCrashReport));
     } else {
       setCrashLogs([]);
     }
@@ -4552,7 +4585,7 @@ const LEGACY_JULY_2026_SCHEDULE = [
       listen('auditLogs', query(collection(db, 'auditLogs'), orderBy('timestamp', 'desc'), firestoreLimit(100)), rows => {
         setAuditLogs(rows);
         setTotalInstalls(rows.filter(log => log.action === 'APP_INSTALLED').length);
-      });
+      }, mapDocs('auditLogs', normalizeAuditLog));
     } else {
       setAuditLogs([]);
       setTotalInstalls(0);
@@ -5697,13 +5730,26 @@ const handleRevokeAccess = async (user) => {
 };
 
 // --- CALCULATIONS ---
+  const parseAnyDate = (value) => {
+    if (!value) return null;
+    if (typeof value?.toDate === 'function') {
+      const date = value.toDate();
+      return date instanceof Date && Number.isFinite(date.getTime()) ? date : null;
+    }
+    if (typeof value === 'object' && typeof value.seconds === 'number') {
+      const date = new Date(value.seconds * 1000);
+      return Number.isFinite(date.getTime()) ? date : null;
+    }
+    const d = new Date(adminSafeText(value, ''));
+    return Number.isNaN(d.getTime()) ? null : d;
+  };
   const mrr = restaurants.reduce((acc, r) => {
     if (r.customPrice !== undefined && r.customPrice !== '') return acc + parseFloat(r.customPrice);
     const resolved = resolveSubscription(r, appUser);
     const def = getPlanDefinition(resolved.planId);
     return acc + (resolved.status === 'active' ? (def.monthlyPrice || 0) : 0);
   }, 0);
-  const timeAgo = (dateStr) => { if (!dateStr) return 'Never'; const days = Math.floor((Date.now() - new Date(dateStr).getTime()) / (1000 * 60 * 60 * 24)); if (days === 0) return 'Active Today'; if (days === 1) return 'Active Yesterday'; return `Inactive ${days} days`; };
+  const timeAgo = (dateStr) => { const d = parseAnyDate(dateStr); if (!d) return 'Never'; const days = Math.floor((Date.now() - d.getTime()) / (1000 * 60 * 60 * 24)); if (!Number.isFinite(days)) return 'Never'; if (days === 0) return 'Active Today'; if (days === 1) return 'Active Yesterday'; return `Inactive ${Math.max(0, days)} days`; };
 
   const parseClientDate = (value) => {
     if (!value) return null;
@@ -5726,15 +5772,8 @@ const handleRevokeAccess = async (user) => {
     if (!d) return 'Unknown';
     return d.toLocaleDateString([], { year: 'numeric', month: 'short', day: 'numeric' });
   };
-  const staleTenants = restaurants.filter(r => r.isActive && Math.floor((Date.now() - new Date(r.lastActive||0).getTime()) / 86400000) > 21);
+  const staleTenants = restaurants.filter(r => { const last = parseAnyDate(r.lastActive); return r.isActive && last && Math.floor((Date.now() - last.getTime()) / 86400000) > 21; });
 
-  const parseAnyDate = (value) => {
-    if (!value) return null;
-    if (typeof value?.toDate === 'function') return value.toDate();
-    if (typeof value === 'object' && value.seconds) return new Date(value.seconds * 1000);
-    const d = new Date(value);
-    return Number.isNaN(d.getTime()) ? null : d;
-  };
   const latestWorkspaceMaintenance = restaurants
     .map(r => parseAnyDate(r.lastWeeklyMaintenanceAt || r.weeklyMaintenance?.lastRunAt || r.weeklyMaintenance?.lastSuccessfulRunAt))
     .filter(Boolean)
@@ -5747,7 +5786,7 @@ const handleRevokeAccess = async (user) => {
   const backupStatusLabel = backupRunning ? 'Running...' : (lastActualBackupDate ? `${Math.max(0, actualBackupAgeHours)}h ago` : (lastBackupDate ? `${Math.max(0, backupAgeHours)}h ago` : 'Not Reported'));
   const backupMissedDailyWindow = !backupRunning && (!lastActualBackupDate || actualBackupAgeHours > 30);
   const backupIsStale = backupMissedDailyWindow;
-  const backupDetail = backupStatus?.status === 'ok' && backupStatus?.documentCount ? `${backupStatus.documentCount} docs • ${backupStatus.collectionCount || 0} collections` : (backupStatus?.status || backupStatus?.lastStatus || (latestWorkspaceMaintenance ? 'weekly maintenance stamp only' : 'No backup status doc'));
+  const backupDetail = backupStatus?.status === 'ok' && backupStatus?.documentCount ? `${adminFiniteNumber(backupStatus.documentCount, 0)} docs • ${adminFiniteNumber(backupStatus.collectionCount, 0)} collections` : adminSafeText(backupStatus?.status || backupStatus?.lastStatus || (latestWorkspaceMaintenance ? 'weekly maintenance stamp only' : 'No backup status doc'), 'No backup status doc');
   const restoreDrillDate = parseAnyDate(restoreDrillStatus?.lastDrillAt || restoreDrillStatus?.updatedAt);
   const restoreDrillAgeDays = restoreDrillDate ? Math.floor((Date.now() - restoreDrillDate.getTime()) / 86400000) : null;
   const restoreDrillStale = !restoreDrillDate || restoreDrillAgeDays > 35 || ['failed', 'needs_followup'].includes(String(restoreDrillStatus?.status || '').toLowerCase());
@@ -5804,8 +5843,9 @@ const activeTrials = restaurants.filter(r => resolveSubscription(r, appUser).sta
 
   // --- NEW INFRASTRUCTURE & FINANCIAL METRICS ---
   const arpa = paidWorkspaces > 0 ? (mrr / paidWorkspaces).toFixed(2) : 0;
-  const trialPipelineValue = activeTrials * (tierPrices.smart_kitchen || PLAN_DEFINITIONS.smart_kitchen.monthlyPrice || 179); 
-  const crashes24h = crashLogs.filter(log => (Date.now() - new Date(log.time||0).getTime()) < 86400000).length;
+  const safeTierPrices = normalizeTierPriceMap(tierPrices, defaultTierPrices);
+  const trialPipelineValue = activeTrials * (safeTierPrices.smart_kitchen || PLAN_DEFINITIONS.smart_kitchen.monthlyPrice || 179); 
+  const crashes24h = crashLogs.filter(log => { const d = parseAnyDate(log.time || log.createdAt || log.timestamp); return d && (Date.now() - d.getTime()) < 86400000; }).length;
   const normalizePushToken = (value = '') => String(value || '').trim();
   const collectUserPushDevices = (user = {}) => {
     const rows = [];
@@ -7624,8 +7664,8 @@ Type RESTORE to continue.`);
           <SignalPip tone={tone} label={hot ? 'HOT' : 'SYNC'} hot={hot} />
         </div>
       </div>
-      <div className="text-2xl font-black text-white leading-none mt-2">{value}</div>
-      <div className="text-[10px] text-slate-400 font-bold mt-2 truncate">{detail}</div>
+      <div className="text-2xl font-black text-white leading-none mt-2">{adminSafeText(value, '—')}</div>
+      <div className="text-[10px] text-slate-400 font-bold mt-2 truncate">{adminSafeText(detail, '')}</div>
     </div>
     );
   };
@@ -9011,11 +9051,11 @@ Type RESTORE to continue.`);
               <div className={`${T.card} p-4`}>
                 <h3 className="font-black text-white text-sm flex items-center gap-2"><Shield size={16} className="text-emerald-300"/> Backup Integrity Detail</h3>
                 <div className="mt-3 space-y-2 text-xs font-bold text-slate-300">
-                  <div className="flex justify-between gap-2"><span className="text-slate-500 uppercase tracking-widest text-[9px]">Status</span><span className="text-white">{healthSnapshot?.backupIntegrity?.status || backupStatus?.lastIntegrityStatus || backupStatus?.backupIntegrity?.status || 'not checked'}</span></div>
+                  <div className="flex justify-between gap-2"><span className="text-slate-500 uppercase tracking-widest text-[9px]">Status</span><span className="text-white">{adminSafeText(healthSnapshot?.backupIntegrity?.status || backupStatus?.lastIntegrityStatus || backupStatus?.backupIntegrity?.status, 'not checked')}</span></div>
                   <div className="flex justify-between gap-2"><span className="text-slate-500 uppercase tracking-widest text-[9px]">Verified</span><span className="text-white text-right">{healthSnapshot?.backupIntegrity?.verifiedAt ? formatBackupTimestamp(healthSnapshot.backupIntegrity.verifiedAt) : (backupStatus?.lastIntegrityVerifiedAt ? formatBackupTimestamp(backupStatus.lastIntegrityVerifiedAt) : 'Not yet')}</span></div>
-                  <div className="flex justify-between gap-2"><span className="text-slate-500 uppercase tracking-widest text-[9px]">Documents</span><span className="text-white">{healthSnapshot?.backupIntegrity?.documentCount || backupStatus?.backupIntegrity?.documentCount || backupStatus?.documentCount || 0}</span></div>
-                  <div className="flex justify-between gap-2"><span className="text-slate-500 uppercase tracking-widest text-[9px]">Collections</span><span className="text-white">{healthSnapshot?.backupIntegrity?.collectionCount || backupStatus?.backupIntegrity?.collectionCount || backupStatus?.collectionCount || 0}</span></div>
-                  <div className="pt-2 border-t border-[#2A353D]"><div className="text-[9px] uppercase tracking-widest text-slate-500 mb-1">SHA-256</div><div className="text-[9px] font-mono text-slate-500 break-all">{healthSnapshot?.backupIntegrity?.sha256 || backupStatus?.backupSha256 || backupStatus?.backupIntegrity?.sha256 || 'not stamped yet'}</div></div>
+                  <div className="flex justify-between gap-2"><span className="text-slate-500 uppercase tracking-widest text-[9px]">Documents</span><span className="text-white">{adminFiniteNumber(healthSnapshot?.backupIntegrity?.documentCount || backupStatus?.backupIntegrity?.documentCount || backupStatus?.documentCount, 0)}</span></div>
+                  <div className="flex justify-between gap-2"><span className="text-slate-500 uppercase tracking-widest text-[9px]">Collections</span><span className="text-white">{adminFiniteNumber(healthSnapshot?.backupIntegrity?.collectionCount || backupStatus?.backupIntegrity?.collectionCount || backupStatus?.collectionCount, 0)}</span></div>
+                  <div className="pt-2 border-t border-[#2A353D]"><div className="text-[9px] uppercase tracking-widest text-slate-500 mb-1">SHA-256</div><div className="text-[9px] font-mono text-slate-500 break-all">{adminSafeText(healthSnapshot?.backupIntegrity?.sha256 || backupStatus?.backupSha256 || backupStatus?.backupIntegrity?.sha256, 'not stamped yet')}</div></div>
                   {((healthSnapshot?.backupIntegrity?.errors || backupStatus?.backupIntegrity?.errors || []).length > 0) && <div className="bg-red-900/20 border border-red-900/50 rounded-lg p-2 text-[10px] text-red-200">{(healthSnapshot?.backupIntegrity?.errors || backupStatus?.backupIntegrity?.errors || []).join(' | ')}</div>}
                 </div>
               </div>
@@ -9766,7 +9806,7 @@ another@email.com"></textarea>
               {crashLogs.map(log => (
                 <div key={log.id} className={`${T.row} flex flex-col gap-2 ${(`${log.message || ''} ${log.stack || ''}`.toLowerCase().includes('permission-denied')) ? 'bg-red-950/20' : ''}`}>
                   <div className="flex justify-between items-start">
-                    <span className="text-xs font-black text-orange-400 bg-orange-900/20 px-2 py-0.5 rounded border border-orange-900/50 break-all leading-tight">{log.message}</span>
+                    <span className="text-xs font-black text-orange-400 bg-orange-900/20 px-2 py-0.5 rounded border border-orange-900/50 break-all leading-tight">{adminSafeText(log.message, '')}</span>
                     <span className={`text-[9px] font-bold ${T.muted} whitespace-nowrap ml-2`}>{formatClockDateTime(log.time)}</span>
                   </div>
                   {(log.restaurantId || log.user || log.supportPushRequested) && (
@@ -9866,8 +9906,8 @@ another@email.com"></textarea>
                   <div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-2">
                     {group.logs.slice(0, 6).map(log => (
                       <div key={log.id} className="bg-[#0B0E11] border border-[#2A353D] rounded-lg p-2">
-                        <div className="flex items-center justify-between gap-2"><span className="text-[9px] font-black uppercase tracking-widest text-blue-300 truncate">{log.action || 'UNKNOWN'}</span><span className="text-[8px] text-slate-600 font-bold whitespace-nowrap">{formatBackupTimestamp(log.timestamp || log.time || log.createdAt)}</span></div>
-                        <div className="text-[10px] font-bold text-slate-400 mt-1 line-clamp-2">{log.details || log.target || 'No details'}</div>
+                        <div className="flex items-center justify-between gap-2"><span className="text-[9px] font-black uppercase tracking-widest text-blue-300 truncate">{adminSafeText(log.action, 'UNKNOWN')}</span><span className="text-[8px] text-slate-600 font-bold whitespace-nowrap">{formatBackupTimestamp(log.timestamp || log.time || log.createdAt)}</span></div>
+                        <div className="text-[10px] font-bold text-slate-400 mt-1 line-clamp-2">{adminSafeText(log.details || log.target, 'No details')}</div>
                       </div>
                     ))}
                   </div>
@@ -9891,13 +9931,13 @@ another@email.com"></textarea>
                 {operationsReview ? (
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-[10px] font-bold">
                     <div><div className="text-slate-500 uppercase tracking-widest text-[8px] font-black">Reviewed</div><div className="text-white">{formatClockDateTime(operationsReview.lastReviewedAt)}</div></div>
-                    <div><div className="text-slate-500 uppercase tracking-widest text-[8px] font-black">By</div><div className="text-white truncate">{operationsReview.lastReviewedBy || 'Unknown'}</div></div>
-                    <div><div className="text-slate-500 uppercase tracking-widest text-[8px] font-black">Status</div><div className="text-white">{operationsReview.platformStatus || 'Unknown'}</div></div>
-                    <div><div className="text-slate-500 uppercase tracking-widest text-[8px] font-black">Action Items</div><div className="text-[#D4A381] font-black">{operationsReview.actionItemCount ?? 0}</div></div>
-                    <div><div className="text-slate-500 uppercase tracking-widest text-[8px] font-black">Crashes 24h</div><div className="text-white">{operationsReview.crashes24h ?? 0}</div></div>
-                    <div><div className="text-slate-500 uppercase tracking-widest text-[8px] font-black">Rule Blocks</div><div className="text-white">{operationsReview.permissionDeniedCount ?? 0}</div></div>
-                    <div><div className="text-slate-500 uppercase tracking-widest text-[8px] font-black">Backup</div><div className="text-white">{operationsReview.backupStatus || 'unknown'}</div></div>
-                    <div><div className="text-slate-500 uppercase tracking-widest text-[8px] font-black">Version</div><div className="text-white">{operationsReview.version || 'unknown'}</div></div>
+                    <div><div className="text-slate-500 uppercase tracking-widest text-[8px] font-black">By</div><div className="text-white truncate">{adminSafeText(operationsReview.lastReviewedBy, 'Unknown')}</div></div>
+                    <div><div className="text-slate-500 uppercase tracking-widest text-[8px] font-black">Status</div><div className="text-white">{adminSafeText(operationsReview.platformStatus, 'Unknown')}</div></div>
+                    <div><div className="text-slate-500 uppercase tracking-widest text-[8px] font-black">Action Items</div><div className="text-[#D4A381] font-black">{adminFiniteNumber(operationsReview.actionItemCount, 0)}</div></div>
+                    <div><div className="text-slate-500 uppercase tracking-widest text-[8px] font-black">Crashes 24h</div><div className="text-white">{adminFiniteNumber(operationsReview.crashes24h, 0)}</div></div>
+                    <div><div className="text-slate-500 uppercase tracking-widest text-[8px] font-black">Rule Blocks</div><div className="text-white">{adminFiniteNumber(operationsReview.permissionDeniedCount, 0)}</div></div>
+                    <div><div className="text-slate-500 uppercase tracking-widest text-[8px] font-black">Backup</div><div className="text-white">{adminSafeText(operationsReview.backupStatus, 'unknown')}</div></div>
+                    <div><div className="text-slate-500 uppercase tracking-widest text-[8px] font-black">Version</div><div className="text-white">{adminSafeText(operationsReview.version, 'unknown')}</div></div>
                     <div><div className="text-slate-500 uppercase tracking-widest text-[8px] font-black">Next Backup</div><div className="text-white">{operationsReview.nextAutomaticBackupAt ? formatClockDateTime(operationsReview.nextAutomaticBackupAt) : 'Not stamped'}</div></div>
                   </div>
                 ) : <div className="text-xs font-bold text-slate-500">No review stamp saved yet. Create one from Platform Operations or the button above.</div>}
@@ -9906,7 +9946,7 @@ another@email.com"></textarea>
                 <div className="text-[8px] font-black uppercase tracking-widest text-slate-500 mb-2">Recent Stamp Audit</div>
                 <div className="space-y-2 max-h-44 overflow-y-auto custom-scrollbar pr-1">
                   {reviewStampLogs.length === 0 && <div className="text-xs font-bold text-slate-500">No review stamp audit records yet.</div>}
-                  {reviewStampLogs.slice(0, 6).map(log => <div key={log.id} className="bg-[#12161A] border border-[#2A353D] rounded-lg p-2"><div className="flex justify-between gap-2"><span className="text-xs font-black text-white truncate">{log.userName || 'System Admin'}</span><span className="text-[9px] text-slate-500 font-bold whitespace-nowrap">{formatClockDateTime(log.timestamp)}</span></div><div className="text-[10px] text-slate-400 font-bold mt-1 line-clamp-2">{log.details || 'Review stamped.'}</div></div>)}
+                  {reviewStampLogs.slice(0, 6).map(log => <div key={log.id} className="bg-[#12161A] border border-[#2A353D] rounded-lg p-2"><div className="flex justify-between gap-2"><span className="text-xs font-black text-white truncate">{adminSafeText(log.userName, 'System Admin')}</span><span className="text-[9px] text-slate-500 font-bold whitespace-nowrap">{formatClockDateTime(log.timestamp)}</span></div><div className="text-[10px] text-slate-400 font-bold mt-1 line-clamp-2">{adminSafeText(log.details, 'Review stamped.')}</div></div>)}
                 </div>
               </div>
             </div>
@@ -10038,12 +10078,12 @@ another@email.com"></textarea>
                       <span className="font-bold text-white text-sm">{log.userName || 'Unknown'}</span>
                       {log.isGhost && <span className="bg-purple-900/20 text-purple-400 border border-purple-500/50 text-[8px] px-1.5 py-0.5 rounded uppercase font-black tracking-widest flex items-center gap-1">👻 Ghost Action</span>}
                       {/(delete|nuke|lock|revoke|bulk|sweep)/i.test(`${log.action || ''} ${log.details || ''}`) && <span className="bg-red-900/20 text-red-400 border border-red-900/50 text-[8px] px-1.5 py-0.5 rounded uppercase font-black tracking-widest">Destructive</span>}
-                      <span className={`text-[9px] uppercase font-black tracking-widest bg-[#12161A] border ${T.border} text-blue-400 px-2 py-0.5 rounded`}>{log.action || 'UNKNOWN'}</span>
+                      <span className={`text-[9px] uppercase font-black tracking-widest bg-[#12161A] border ${T.border} text-blue-400 px-2 py-0.5 rounded`}>{adminSafeText(log.action, 'UNKNOWN')}</span>
                     </div>
                     <span className={`text-[9px] font-bold ${T.muted} whitespace-nowrap ml-2`}>{formatClockDateTime(log.timestamp)}</span>
                   </div>
                   <div className="text-xs text-slate-300 font-medium mt-1 break-words whitespace-pre-wrap">
-                    {log.details || 'No details'} <span className="text-slate-500 ml-1">Target: [{log.target || 'none'}]</span> <span className="text-[#D4A381] ml-1">Tenant ID: {log.restaurantId || 'unknown'}</span>
+                    {adminSafeText(log.details, 'No details')} <span className="text-slate-500 ml-1">Target: [{adminSafeText(log.target, 'none')}]</span> <span className="text-[#D4A381] ml-1">Tenant ID: {adminSafeText(log.restaurantId, 'unknown')}</span>
                     {/(delete|nuke|restore|lock|revoke|permission|role|admin|backup|bulk|reset)/i.test(`${log.action || ''} ${log.details || ''}`) && <div className="mt-2 bg-red-900/10 border border-red-900/40 rounded-lg p-2 text-[10px] text-red-200 font-bold">Why this matters: this action can affect access, data safety, backups, permissions, or customer trust. Review the session timeline before making another risky change.</div>}
                   </div>
                 </div>

@@ -44,3 +44,26 @@ test('new push repair nonce creates a new dismissal identity', () => {
   const second = helpers.buildStablePushRepairRequestId({ id: 'user-1', pushTokenRepairNonce: 'nonce-b' }, context);
   assert.notEqual(first, second);
 });
+
+test('legacy push repair identity does not change when profile hydration changes', () => {
+  const user = { id: 'legacy@example.com', email: 'legacy@example.com', pushNeedsRepair: true };
+  const fromAuthUid = helpers.buildStablePushRepairRequestId(user, { authUid: 'auth-123', profileDocId: 'auth-123', restaurantId: 'cheers', deviceId: 'web_phone', host: 'app.86chaos.com' });
+  const hydratedLegacy = helpers.buildStablePushRepairRequestId(user, { authUid: 'auth-123', profileDocId: 'legacy@example.com', restaurantId: 'cheers', deviceId: 'web_phone', host: 'app.86chaos.com' });
+  assert.equal(fromAuthUid, hydratedLegacy);
+});
+
+test('self repair readback verifies token, device, flags, and status before success', () => {
+  const patch = {
+    fcmToken: 'token-1',
+    notificationPermission: 'granted',
+    pushNeedsRepair: false,
+    pushForceServiceWorkerRefresh: false,
+    pushRepairStatus: 'connected',
+    'pushDevices.web_phone': { token: 'token-1', permission: 'granted', active: true }
+  };
+  const ok = helpers.verifySelfRepairReadback({ ...patch, pushDevices: { web_phone: { token: 'token-1', permission: 'granted', active: true } } }, patch);
+  assert.equal(ok.ok, true);
+  const bad = helpers.verifySelfRepairReadback({ ...patch, fcmToken: 'other', pushDevices: { web_phone: { token: 'other', permission: 'granted' } } }, patch);
+  assert.equal(bad.ok, false);
+  assert.ok(bad.errors.includes('fcmToken'));
+});
