@@ -353,6 +353,15 @@ class AppSurfaceErrorBoundary extends React.Component {
       if (reportId) this.setState({ reportId });
     });
   }
+  componentDidUpdate(prevProps) {
+    if (prevProps.resetKey !== this.props.resetKey && this.state.error) {
+      this.setState({ error: null, reportId: '' });
+    }
+  }
+  retrySection = () => {
+    this.setState({ error: null, reportId: '' });
+    if (typeof this.props.onRetry === 'function') this.props.onRetry();
+  };
   render() {
     const error = this.state.error;
     if (!error) return this.props.children;
@@ -368,7 +377,7 @@ class AppSurfaceErrorBoundary extends React.Component {
         {chunkProblem ? (
           <button type="button" onClick={() => hardRecoverRuntimeSection('stale-section-chunk')} className={T.btn}>Clear App Cache & Reload</button>
         ) : (
-          <button type="button" onClick={() => this.setState({ error: null, reportId: '' })} className={T.btn}>Retry This Section</button>
+          <button type="button" onClick={this.retrySection} className={T.btn}>Retry This Section</button>
         )}
       </div>
     );
@@ -598,6 +607,8 @@ export default function App() {
   }, []);
   const [isPushRepairing, setIsPushRepairing] = useState(false);
   const [pushRepairDismissed, setPushRepairDismissed] = useState(false);
+  const [pushRepairLinkRequest, setPushRepairLinkRequest] = useState({ requested: false, nonce: '' });
+  const [surfaceRetryKey, setSurfaceRetryKey] = useState(0);
   const [serverAdminCheck, setServerAdminCheck] = useState({ status: WHOAMI_STATES.IDLE });
   const [authRestoreState, setAuthRestoreState] = useState(() => ({ status: appUser?.sessionCached ? WHOAMI_STATES.PENDING : 'ready', uid: auth?.currentUser?.uid || '' }));
 
@@ -820,7 +831,7 @@ const [currentDate, setCurrentDate] = useState(getToday());
   // That avoids the missing Firestore composite-index fallback that could briefly show restored shifts
   // and then replace them with a tiny, stale capped snapshot. Other tabs still use tighter windows.
   const wantsScheduleScreen = ['schedule', 'events', 'published'].includes(activeTabState);
-  const subscriptionProbeUser = { ...(appUser || {}), isSuperAdmin: appUser?.isSuperAdmin === true && /system\s*administrator|super\s*admin|master\s*admin/i.test(String(appUser?.role || appUser?.roleName || appUser?.accountRole || '')) };
+  const subscriptionProbeUser = { ...(appUser || {}), isSuperAdmin: appUser?.isSuperAdmin === true };
   const featureAccessForShell = (featureKey) => {
     if (!featureKey) return null;
     return resolveFeatureAccess({ workspace: clientData || {}, user: subscriptionProbeUser, featureKey });
@@ -1067,16 +1078,20 @@ const [currentDate, setCurrentDate] = useState(getToday());
 
   const isDemoMode = !!liveAppUser?.isDemo;
   const sessionEmailForAdmin = String(liveAppUser?.email || appUser?.email || auth.currentUser?.email || '').toLowerCase();
-  const serverRoleLooksSystemAdmin = /system\s*administrator|super\s*admin|master\s*admin/i.test(String(serverAdminCheck?.firestoreProfileRole || serverAdminCheck?.role || serverAdminCheck?.roleName || '')) || serverAdminCheck?.firestoreRoleLooksSystemAdmin === true;
   const serverSaysSuperAdmin = Boolean(
     serverAdminCheck?.superAdmin === true && (
+      serverAdminCheck?.platformAuthority?.superAdmin === true ||
       serverAdminCheck?.serverMasterAdminMatched === true ||
+      serverAdminCheck?.protectedRootAdminMatched === true ||
       serverAdminCheck?.customClaimSuperAdmin === true ||
-      serverAdminCheck?.firestoreSystemAdministrator === true ||
-      (serverAdminCheck?.firestoreSuperAdmin === true && serverRoleLooksSystemAdmin)
+      serverAdminCheck?.firestoreSuperAdmin === true ||
+      serverAdminCheck?.firestoreSystemAdministrator === true
     )
   );
-  const localRoleLooksSystemAdmin = /system\s*administrator|super\s*admin|master\s*admin/i.test(String(liveAppUser?.role || liveAppUser?.roleName || liveAppUser?.accountRole || liveAppUser?.title || ''));
+  const localProfileHasSystemAdminMarker = Boolean(
+    liveAppUser?.isSuperAdmin === true ||
+    liveAppUser?.systemAccess?.superAdmin === true
+  );
   const whoamiStatus = serverAdminCheck?.status || WHOAMI_STATES.IDLE;
   const serverAdminCheckPending = Boolean(appUser?.id && appUser.id !== 'dev-backdoor' && [WHOAMI_STATES.PENDING, WHOAMI_STATES.RETRYING].includes(whoamiStatus));
   const serverDefinitivelyDeniedSuperAdmin = Boolean(whoamiStatus === WHOAMI_STATES.DENIED && serverAdminCheck?.definitive === true);
@@ -1085,8 +1100,7 @@ const [currentDate, setCurrentDate] = useState(getToday());
   const pendingLocalSystemAdminHint = Boolean(
     !isDemoMode &&
     serverAdminCheckPending &&
-    localRoleLooksSystemAdmin &&
-    (liveAppUser?.isSuperAdmin === true || liveAppUser?.systemAccess?.superAdmin === true || liveAppUser?.permissions?.systemAdmin === true || liveAppUser?.permissions?.godmode === true)
+    localProfileHasSystemAdminMarker
   );
   const hasLocalSystemAdminMarker = Boolean(serverSaysSuperAdmin || pendingLocalSystemAdminHint);
   if (!isDemoMode && liveAppUser && serverDefinitivelyDeniedSuperAdmin && liveAppUser.isSuperAdmin === true) {
@@ -1103,7 +1117,7 @@ const [currentDate, setCurrentDate] = useState(getToday());
       ...liveAppUser,
       isSuperAdmin: true,
       systemAccess: { ...(liveAppUser.systemAccess || {}), superAdmin: true },
-      superAdminAccessSource: serverAdminCheck?.serverMasterAdminMatched ? 'server-master-admin-env' : serverAdminCheck?.customClaimSuperAdmin ? 'firebase-custom-claim' : serverAdminCheck?.firestoreSystemAdministrator ? 'firestore-system-administrator-role' : serverAdminCheck?.firestoreSuperAdmin ? 'firestore-profile-flag' : 'pending-server-verification'
+      superAdminAccessSource: serverAdminCheck?.platformAuthority?.source || (serverAdminCheck?.protectedRootAdminMatched ? 'protected-root-admin' : serverAdminCheck?.serverMasterAdminMatched ? 'server-master-admin-env' : serverAdminCheck?.customClaimSuperAdmin ? 'firebase-custom-claim' : serverAdminCheck?.firestoreSuperAdmin ? 'firestore-profile-flag' : 'pending-server-verification')
     };
   }
 
@@ -2134,15 +2148,24 @@ What I clicked / expected:
     ''
   ).trim();
 
+  const getAuthenticatedPushUserId = (user = liveAppUser) => String(auth?.currentUser?.uid || user?.authUid || user?.uid || user?.userId || user?.accountUserId || user?.id || 'user').trim();
   const getPushRepairRequestId = (user = liveAppUser) => {
-    const stableServerId = String(user?.pushTokenRepairNonce || user?.pushRepairRequestId || '').trim();
-    if (stableServerId) return stableServerId;
-    const profileId = String(getPushProfileDocId() || user?.profileDocId || user?.id || user?.uid || user?.email || 'user').trim();
+    const capturedLinkNonce = String(pushRepairLinkRequest?.nonce || '').trim();
+    const stableServerId = String((capturedLinkNonce && pushRepairLinkRequest?.requested) ? capturedLinkNonce : (user?.pushTokenRepairNonce || user?.pushRepairRequestId || capturedLinkNonce || '')).trim();
+    if (stableServerId && stableServerId !== '1') return stableServerId;
+    const authUserId = getAuthenticatedPushUserId(user);
     const deviceId = typeof window !== 'undefined' ? getPushDeviceId() : 'server';
     const host = typeof window !== 'undefined' ? window.location.hostname : 'server';
-    return `legacy-active:${profileId}:${rId || user?.restaurantId || 'workspace'}:${deviceId}:${host}`;
+    return `legacy-active:${authUserId}:${rId || user?.restaurantId || 'workspace'}:${deviceId}:${host}`;
   };
-  const getPushRepairDismissalKey = (requestId = getPushRepairRequestId()) => `86chaos:pushRepairDismissed:${liveAppUser?.id || 'user'}:${rId || 'workspace'}:${requestId}`;
+  const getPushRepairDismissalKey = (requestId = getPushRepairRequestId()) => `86chaos:pushRepairDismissed:${getAuthenticatedPushUserId(liveAppUser)}:${rId || 'workspace'}:${getPushDeviceId()}:${requestId}`;
+  const getPushRepairAutoAttemptKey = (requestId = getPushRepairRequestId()) => `86chaos:pushRepairAutoAttempted:${getAuthenticatedPushUserId(liveAppUser)}:${rId || 'workspace'}:${getPushDeviceId()}:${requestId}`;
+  const clearPushRepairLinkRequest = (reason = 'terminal') => {
+    setPushRepairLinkRequest(prev => {
+      if (!prev?.requested && prev?.consumed) return prev;
+      return { ...(prev || {}), requested: false, consumed: true, terminalReason: reason, terminalAt: new Date().toISOString() };
+    });
+  };
 
   const getPushProfileRef = () => {
     const profileId = getPushProfileDocId();
@@ -2320,6 +2343,7 @@ What I clicked / expected:
           lastPushTokenSyncAt: new Date().toISOString()
         }).catch(() => {});
         addToast('Notifications Blocked', 'This device needs browser notification permission before 86 Chaos can save a push token.');
+        clearPushRepairLinkRequest('permission-not-granted');
         return false;
       }
 
@@ -2334,6 +2358,7 @@ What I clicked / expected:
           lastPushTokenSyncAt: new Date().toISOString()
         }).catch(() => {});
         addToast('Push Unavailable', 'This browser cannot run Firebase push notifications. You can still use 86 Chaos normally.');
+        clearPushRepairLinkRequest('unsupported-browser');
         return false;
       }
 
@@ -2376,6 +2401,7 @@ What I clicked / expected:
       setPushRepairDismissed(true);
       try { localStorage.removeItem(getPushRepairDismissalKey(originalRepairRequestId)); } catch (_) {}
       addToast(source === 'auto' ? 'Push Reconnected' : 'Notifications Fixed', 'This device is connected for 86 Chaos push notifications.');
+      clearPushRepairLinkRequest('repair-success');
       return true;
     } catch (err) {
       console.warn('86 Chaos push repair failed:', err?.message || err);
@@ -2388,15 +2414,38 @@ What I clicked / expected:
         lastPushFailureCode: err?.code || (unsupportedMessaging ? 'messaging/unsupported-browser' : null),
         lastPushTokenSyncAt: new Date().toISOString()
       }).catch(() => {});
-      addToast(unsupportedMessaging ? 'Push Unavailable' : 'Push Repair Failed', getPushErrorMessage(err));
+      if (source !== 'auto' && !pushRepairDismissed) addToast(unsupportedMessaging ? 'Push Unavailable' : 'Push Repair Failed', getPushErrorMessage(err));
+      clearPushRepairLinkRequest(unsupportedMessaging ? 'unsupported-browser' : 'repair-failed');
       return false;
     } finally {
       setIsPushRepairing(false);
     }
   };
 
-  const pushRepairRequestedByLink = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('pushRepair') === '1';
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search || '');
+    const hadRepairParam = params.has('pushRepair') || params.has('pushRepairNonce') || params.has('repairNonce');
+    if (!hadRepairParam) return;
+    const rawNonce = String(params.get('pushRepairNonce') || params.get('repairNonce') || params.get('pushRepair') || '').trim();
+    const nonce = rawNonce && rawNonce !== '1' ? rawNonce.slice(0, 140) : '';
+    setPushRepairLinkRequest({ requested: true, consumed: true, nonce, capturedNonce: nonce, capturedAt: new Date().toISOString() });
+    ['pushRepair', 'pushRepairNonce', 'repairNonce'].forEach(key => params.delete(key));
+    const cleanSearch = params.toString();
+    const nextUrl = `${window.location.pathname}${cleanSearch ? `?${cleanSearch}` : ''}${window.location.hash || ''}`;
+    try { window.history.replaceState({ ...(window.history.state || {}), pushRepairConsumed: true }, '', nextUrl); } catch (_) {}
+  }, []);
+
+  const pushRepairRequestedByLink = Boolean(pushRepairLinkRequest.requested);
   const pushRepairRequested = Boolean(!ghostTenant && !isDemoMode && liveAppUser?.id && (pushRepairRequestedByLink || liveAppUser?.pushNeedsRepair === true || liveAppUser?.pushForceServiceWorkerRefresh === true));
+  useEffect(() => {
+    if (!pushRepairRequested || typeof window === 'undefined') {
+      setPushRepairDismissed(false);
+      return;
+    }
+    try { setPushRepairDismissed(localStorage.getItem(getPushRepairDismissalKey()) === '1'); } catch (_) { setPushRepairDismissed(false); }
+  }, [pushRepairRequested, liveAppUser?.pushTokenRepairNonce, pushRepairLinkRequest.nonce, liveAppUser?.id, liveAppUser?.uid, liveAppUser?.authUid, rId]);
+
 
   useEffect(() => {
     if (!liveAppUser?.id || ghostTenant || isDemoMode || typeof window === 'undefined' || !('Notification' in window)) return;
@@ -2409,13 +2458,21 @@ What I clicked / expected:
       rememberSkippedFirestoreWrite();
       return;
     }
-    if (pushRepairRequested && !pushRepairRequestedByLink) {
+    if (pushRepairRequested) {
       try {
-        const dismissalKey = getPushRepairDismissalKey();
+        const requestId = getPushRepairRequestId();
+        const dismissalKey = getPushRepairDismissalKey(requestId);
+        const autoAttemptKey = getPushRepairAutoAttemptKey(requestId);
         if (localStorage.getItem(dismissalKey) === '1') {
+          setPushRepairDismissed(true);
           rememberSkippedFirestoreWrite();
           return;
         }
+        if (sessionStorage.getItem(autoAttemptKey) === '1') {
+          rememberSkippedFirestoreWrite();
+          return;
+        }
+        sessionStorage.setItem(autoAttemptKey, '1');
       } catch (_) {}
     }
 
@@ -2436,6 +2493,7 @@ What I clicked / expected:
             window.__chaosFirestoreDiagnostics.skippedNoOpWrites = (window.__chaosFirestoreDiagnostics.skippedNoOpWrites || 0) + 1;
           } catch (_) {}
         }
+        if (pushRepairRequested) clearPushRepairLinkRequest(permission === 'denied' ? 'permission-denied' : 'permission-not-granted');
         return;
       }
 
@@ -2452,6 +2510,7 @@ What I clicked / expected:
               lastPushTokenSyncAt: new Date().toISOString()
             }).catch(() => {});
           }
+          if (pushRepairRequested) clearPushRepairLinkRequest('unsupported-browser');
           return;
         }
         let registration = null;
@@ -2490,6 +2549,7 @@ What I clicked / expected:
         }, { forceServerRepair: pushRepairRequested, repairRequestId: getPushRepairRequestId() });
         setAppUser(prev => prev?.id === liveAppUser.id ? { ...prev, fcmToken: currentToken, pushNeedsRepair: false, pushForceServiceWorkerRefresh: false, notificationPermission: permission, pushTokenPermission: permission, pushTokenHost: window.location.hostname, pushRepairStatus: 'connected', lastPushRepairError: null, lastPushFailureCode: null } : prev);
         if (showToast) addToast('Push Ready', 'Push notifications are enabled for this device.');
+        if (pushRepairRequested) clearPushRepairLinkRequest('auto-sync-success');
       } catch (err) {
         console.warn('86 Chaos push token sync failed:', err?.message || err);
         const unsupportedMessaging = isFirebaseMessagingUnsupportedError(err);
@@ -2504,6 +2564,7 @@ What I clicked / expected:
             lastPushTokenSyncAt: new Date().toISOString()
           }).catch(() => {});
         }
+        if (pushRepairRequested) clearPushRepairLinkRequest(unsupportedMessaging ? 'unsupported-browser' : 'sync-failed');
       }
     };
 
@@ -2527,7 +2588,7 @@ What I clicked / expected:
     }, pushRepairRequested ? 600 : 2500);
 
     return () => { canceled = true; clearTimeout(timer); };
-  }, [liveAppUser?.id, liveAppUser?.pushNeedsRepair, liveAppUser?.pushForceServiceWorkerRefresh, ghostTenant, isDemoMode]);                      
+  }, [liveAppUser?.id, liveAppUser?.pushNeedsRepair, liveAppUser?.pushForceServiceWorkerRefresh, pushRepairLinkRequest.requested, pushRepairLinkRequest.nonce, pushRepairDismissed, ghostTenant, isDemoMode]);                      
   // --- FOREGROUND NOTIFICATION CATCHER ---
   useEffect(() => {
     let active = true;
@@ -2623,7 +2684,7 @@ What I clicked / expected:
       currentMembershipEmail.loading
     )),
     whoamiStatus,
-    localUserLooksSystemAdmin: Boolean(localRoleLooksSystemAdmin || liveAppUser?.isSuperAdmin === true || liveAppUser?.systemAccess?.superAdmin === true),
+    localUserLooksSystemAdmin: Boolean(serverSaysSuperAdmin || localProfileHasSystemAdminMarker),
     roleControlsHydrating: Boolean(appUser?.sessionCached && appUser?.accessHydrationRequired && !directAccountUserState.resolved && !directAccountUserState.error)
   });
 
@@ -2858,7 +2919,7 @@ return (
           </div>
           <div className="flex gap-2 flex-shrink-0">
             <button onClick={() => repairPushOnThisDevice('manual')} disabled={isPushRepairing} className="bg-slate-950 text-amber-200 px-3 py-1.5 rounded-lg font-black text-[10px] shadow-md disabled:opacity-60">{isPushRepairing ? 'FIXING...' : 'FIX NOW'}</button>
-            <button onClick={() => { try { localStorage.setItem(getPushRepairDismissalKey(), '1'); } catch (_) {} setPushRepairDismissed(true); pushRepairAlertMemory.dismiss(); }} className="bg-amber-200/60 text-slate-950 px-3 py-1.5 rounded-lg font-black text-[10px]">DON'T SHOW AGAIN</button>
+            <button onClick={() => { try { localStorage.setItem(getPushRepairDismissalKey(), '1'); } catch (_) {} setPushRepairDismissed(true); clearPushRepairLinkRequest('dismissed'); pushRepairAlertMemory.dismiss(); }} className="bg-amber-200/60 text-slate-950 px-3 py-1.5 rounded-lg font-black text-[10px]">DON'T SHOW AGAIN</button>
           </div>
         </div>
       )}
@@ -3027,9 +3088,15 @@ return (
         >
           {globalManagerBriefMathText}
         </span>
-        <AppSurfaceErrorBoundary key={`${activeTabState}-${liveAppUser?.restaurantId || 'no-restaurant'}`}>
+        <AppSurfaceErrorBoundary
+          key={`${activeTabState}-${liveAppUser?.restaurantId || 'no-restaurant'}`}
+          resetKey={`${activeTabState}-${liveAppUser?.restaurantId || 'no-restaurant'}-${CURRENT_VERSION}-${surfaceRetryKey}`}
+          onRetry={() => setSurfaceRetryKey(value => value + 1)}
+        >
           <React.Suspense fallback={<RouteLoading />} >
-            {renderMainContent()}
+            <React.Fragment key={`${activeTabState}-${liveAppUser?.restaurantId || 'no-restaurant'}-${surfaceRetryKey}`}>
+              {renderMainContent()}
+            </React.Fragment>
           </React.Suspense>
         </AppSurfaceErrorBoundary>
       </main>

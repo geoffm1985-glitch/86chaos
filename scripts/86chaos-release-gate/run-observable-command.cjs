@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 'use strict';
-const { spawn } = require('child_process');
+const { spawn, spawnSync } = require('child_process');
+const fs = require('fs');
+const path = require('path');
 
 const raw = process.argv.slice(2);
 const splitAt = raw.indexOf('--');
@@ -18,17 +20,71 @@ if (!commandArgs.length) {
   process.exit(2);
 }
 
+function quoteCmdArg(value) {
+  const s = String(value ?? '');
+  if (!s.length) return '""';
+  if (!/[\s&()^%!<>|"']/u.test(s)) return s;
+  return `"${s.replace(/"/g, '""')}"`;
+}
+
+function firstExisting(candidates = []) {
+  return candidates.find(candidate => candidate && fs.existsSync(candidate)) || '';
+}
+
+function resolveNpmCli(command) {
+  const base = path.basename(String(command || '')).toLowerCase().replace(/\.cmd$/i, '').replace(/\.bat$/i, '');
+  const cli = base === 'npx' ? 'npx-cli.js' : 'npm-cli.js';
+  const execDir = path.dirname(process.execPath || '');
+  const envCli = process.env.npm_execpath && path.basename(process.env.npm_execpath).toLowerCase() === cli ? process.env.npm_execpath : '';
+  return firstExisting([
+    envCli,
+    path.join(execDir, 'node_modules', 'npm', 'bin', cli),
+    path.join(path.dirname(execDir), 'lib', 'node_modules', 'npm', 'bin', cli),
+    path.join(process.cwd(), 'node_modules', 'npm', 'bin', cli)
+  ]);
+}
+
+function pathPreview() {
+  return String(process.env.PATH || process.env.Path || '')
+    .split(path.delimiter)
+    .filter(Boolean)
+    .filter(entry => /node|npm|program files/i.test(entry))
+    .slice(0, 12)
+    .join(path.delimiter);
+}
+
 function normalizeSpawnCommand(command, args) {
-  // Never use shell:true here. Windows splits executable paths such as
-  // C:\Program Files\nodejs\node.exe into C:\Program when shell:true is used
-  // with argument arrays. That made the release-gate dependency wrapper fail
-  // before tests could run.
+  const rawCommand = String(command || '');
   if (process.platform === 'win32') {
-    const lower = String(command || '').toLowerCase();
-    const cmdShims = new Set(['npm', 'npx', 'yarn', 'pnpm']);
-    if (cmdShims.has(lower)) return { command: `${command}.cmd`, args };
+    const lowerBase = path.basename(rawCommand).toLowerCase();
+    const npmLike = new Set(['npm', 'npm.cmd', 'npx', 'npx.cmd']);
+    if (npmLike.has(lowerBase)) {
+      const cliPath = resolveNpmCli(rawCommand);
+      if (cliPath) {
+        return {
+          command: process.execPath,
+          args: [cliPath, ...args],
+          spawnDisplay: [process.execPath, cliPath, ...args].map(quoteCmdArg).join(' '),
+          npmCliPath: cliPath
+        };
+      }
+    }
+    if (/\.(cmd|bat)$/i.test(rawCommand)) {
+      // Do not spawn .cmd/.bat files directly on Windows Node 24, but also do
+      // not pre-quote the script path as a single /c command string. Passing
+      // `call`, the script path, and arguments separately lets libuv apply
+      // Windows argument quoting at the final cmd.exe boundary. This preserves
+      // paths with spaces without producing literal quote characters such as
+      // '\"C:\\Program Files...\"' inside cmd.
+      const comspec = process.env.ComSpec || 'cmd.exe';
+      return {
+        command: comspec,
+        args: ['/d', '/c', 'call', rawCommand, ...args],
+        spawnDisplay: [comspec, '/d', '/c', 'call', rawCommand, ...args].map(quoteCmdArg).join(' ')
+      };
+    }
   }
-  return { command, args };
+  return { command: rawCommand, args, spawnDisplay: [rawCommand, ...args].map(quoteCmdArg).join(' ') };
 }
 
 const requestedCommand = commandArgs[0];
@@ -40,37 +96,59 @@ const start = Date.now();
 let finished = false;
 let timedOut = false;
 let interrupted = false;
+let heartbeat = null;
+let timeout = null;
 
 const stamp = () => new Date().toISOString();
 const elapsed = () => Math.round((Date.now() - start) / 1000);
-const commandLineForLog = [requestedCommand, ...requestedArgs].join(' ');
+const commandLineForLog = [requestedCommand, ...requestedArgs].map(quoteCmdArg).join(' ');
 console.log(`[${stamp()}] START ${label}`);
 console.log(`[${stamp()}] COMMAND ${commandLineForLog}`);
-if (command !== requestedCommand) console.log(`[${stamp()}] SPAWN ${[command, ...args].join(' ')}`);
+console.log(`[${stamp()}] SPAWN ${normalized.spawnDisplay || [command, ...args].map(quoteCmdArg).join(' ')}`);
+console.log(`[${stamp()}] NODE_EXECUTABLE ${process.execPath}`);
+console.log(`[${stamp()}] NODE_VERSION ${process.version}`);
+console.log(`[${stamp()}] CWD ${process.cwd()}`);
+if (process.platform === 'win32') console.log(`[${stamp()}] COMSPEC ${process.env.ComSpec || 'cmd.exe'}`);
+if (normalized.npmCliPath) {
+  const npmVersion = spawnSync(process.execPath, [normalized.npmCliPath, '--version'], { encoding: 'utf8', timeout: 10000, shell: false });
+  console.log(`[${stamp()}] NPM_CLI ${normalized.npmCliPath}`);
+  console.log(`[${stamp()}] NPM_VERSION ${(npmVersion.stdout || npmVersion.stderr || '').trim() || `unavailable:${npmVersion.status}`}`);
+}
+console.log(`[${stamp()}] PATH_PREVIEW ${pathPreview()}`);
 console.log(`[${stamp()}] TIMEOUT ${timeoutSeconds}s HEARTBEAT ${heartbeatSeconds}s`);
 
-const child = spawn(command, args, {
-  cwd: process.cwd(),
-  env: process.env,
-  shell: false,
-  stdio: ['ignore', 'pipe', 'pipe'],
-  detached: process.platform !== 'win32'
-});
+let child;
+try {
+  child = spawn(command, args, {
+    cwd: process.cwd(),
+    env: { ...process.env, PYTHONUTF8: process.env.PYTHONUTF8 || '1', npm_config_color: process.env.npm_config_color || 'false' },
+    shell: false,
+    stdio: ['ignore', 'pipe', 'pipe'],
+    detached: process.platform !== 'win32'
+  });
+} catch (err) {
+  finished = true;
+  console.error(`[${stamp()}] PROCESS_ERROR ${err && err.message ? err.message : String(err)}`);
+  console.error(`[${stamp()}] PROCESS_ERROR_META code=${err?.code || ''} errno=${err?.errno || ''} syscall=${err?.syscall || ''} executable=${command} args=${JSON.stringify(args)} cwd=${process.cwd()} elapsed=${elapsed()}s`);
+  console.log(`[${stamp()}] FINISHED ${label} elapsed=${elapsed()}s exitCode=1 signal= processError=true timedOut=${timedOut}`);
+  process.exit(1);
+}
 
 child.stdout.on('data', chunk => process.stdout.write(chunk));
 child.stderr.on('data', chunk => process.stderr.write(chunk));
 child.on('error', err => {
   if (finished) return;
   finished = true;
-  clearInterval(heartbeat);
-  clearTimeout(timeout);
-  console.error(`[${stamp()}] PROCESS_ERROR ${err.message}`);
+  if (heartbeat) clearInterval(heartbeat);
+  if (timeout) clearTimeout(timeout);
+  console.error(`[${stamp()}] PROCESS_ERROR ${err && err.message ? err.message : String(err)}`);
+  console.error(`[${stamp()}] PROCESS_ERROR_META code=${err?.code || ''} errno=${err?.errno || ''} syscall=${err?.syscall || ''} executable=${command} args=${JSON.stringify(args)} cwd=${process.cwd()} elapsed=${elapsed()}s`);
   console.log(`[${stamp()}] FINISHED ${label} elapsed=${elapsed()}s exitCode=1 signal= processError=true timedOut=${timedOut}`);
   process.exit(1);
 });
 
 function killTree() {
-  if (finished) return;
+  if (finished || !child?.pid) return;
   if (process.platform === 'win32') {
     spawn('taskkill.exe', ['/PID', String(child.pid), '/T', '/F'], { stdio: 'ignore', shell: false });
   } else {
@@ -79,11 +157,11 @@ function killTree() {
   }
 }
 
-const heartbeat = setInterval(() => {
+heartbeat = setInterval(() => {
   if (!finished) console.log(`[${stamp()}] STILL RUNNING ${label} elapsed=${elapsed()}s pid=${child.pid}`);
 }, heartbeatSeconds * 1000);
 
-const timeout = setTimeout(() => {
+timeout = setTimeout(() => {
   if (finished) return;
   timedOut = true;
   console.error(`[${stamp()}] TIMED OUT ${label} elapsed=${elapsed()}s timeout=${timeoutSeconds}s`);

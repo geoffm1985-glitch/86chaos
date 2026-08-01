@@ -50,11 +50,11 @@ export const mergeVerifiedAccess = (user = {}, verification = {}) => {
       isSuperAdmin: true,
       systemAccess: { ...(user.systemAccess || {}), superAdmin: true },
       permissions: { ...(user.permissions || {}) },
-      superAdminAccessSource: verification.serverMasterAdminMatched ? 'server-master-admin-env'
-        : verification.customClaimSuperAdmin ? 'firebase-custom-claim'
-          : verification.firestoreSystemAdministrator ? 'firestore-system-administrator-role'
+      superAdminAccessSource: verification.platformAuthority?.source || (verification.protectedRootAdminMatched ? 'protected-root-admin'
+        : verification.serverMasterAdminMatched ? 'server-master-admin-env'
+          : verification.customClaimSuperAdmin ? 'firebase-custom-claim'
             : verification.firestoreSuperAdmin ? 'firestore-profile-flag'
-              : 'api-whoami'
+              : 'api-whoami')
     };
   }
   if ((state === WHOAMI_STATES.DENIED || (successful && verification?.superAdmin !== true)) && verification?.definitive === true) {

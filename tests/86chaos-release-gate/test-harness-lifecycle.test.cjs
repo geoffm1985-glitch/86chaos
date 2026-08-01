@@ -288,7 +288,9 @@ test('collector classifies dependency installation block as pre-Playwright, not 
   const summary = JSON.parse(fs.readFileSync(path.join(runDir, summaryFile), 'utf8'));
   assert.equal(summary.ok, false);
   assert.match(summary.primaryBlockingFailure, /locked development dependencies/);
-  assert.equal(summary.playwright.status, 'No tests executed');
+  assert.equal(summary.playwright.status, 'BLOCKED BEFORE TEST EXECUTION');
+  assert.equal(summary.playwright.totalResults, 0);
+  assert.deepEqual(summary.playwright.failedTests || [], []);
   assert.equal(summary.setupFailures.length, 0);
   assert.equal(summary.cleanupFailures.length, 0);
   assert.ok(summary.artifactsSkippedByRunnerBlock.some(item => item.artifact === '86chaos-full-audit-cleanup-report.json'));
@@ -453,7 +455,9 @@ test('collector classifies failed role preflight as test-account configuration w
   const summaryFile = fs.readdirSync(runDir).find(name => name.startsWith('86chaos-play-store-release-gate-summary-') && name.endsWith('.json'));
   const summary = JSON.parse(fs.readFileSync(path.join(runDir, summaryFile), 'utf8'));
   assert.equal(summary.ok, false);
-  assert.equal(summary.playwright.status, 'No tests executed');
+  assert.equal(summary.playwright.status, 'BLOCKED BEFORE TEST EXECUTION');
+  assert.equal(summary.playwright.totalResults, 0);
+  assert.deepEqual(summary.playwright.failedTests || [], []);
   assert.equal(summary.testAccountConfigurationFailure, true);
   assert.ok(summary.roleFailures.some(error => /MANAGER_EMAIL resolves/.test(error)));
   assert.equal(summary.setupFailures.length, 0);
@@ -628,7 +632,9 @@ test('collector reports account provisioning failure before Playwright without s
   const summaryFile = fs.readdirSync(runDir).find(name => name.startsWith('86chaos-play-store-release-gate-summary-') && name.endsWith('.json'));
   const summary = JSON.parse(fs.readFileSync(path.join(runDir, summaryFile), 'utf8'));
   assert.equal(summary.ok, false);
-  assert.equal(summary.playwright.status, 'No tests executed');
+  assert.equal(summary.playwright.status, 'BLOCKED BEFORE TEST EXECUTION');
+  assert.equal(summary.playwright.totalResults, 0);
+  assert.deepEqual(summary.playwright.failedTests || [], []);
   assert.ok(summary.accountProvisionFailures.some(error => /Admin credentials/.test(error)));
   assert.equal(summary.setupFailures.length, 0);
   assert.equal(summary.cleanupFailures.length, 0);

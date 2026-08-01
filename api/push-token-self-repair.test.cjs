@@ -44,3 +44,48 @@ test('new push repair nonce creates a new dismissal identity', () => {
   const second = helpers.buildStablePushRepairRequestId({ id: 'user-1', pushTokenRepairNonce: 'nonce-b' }, context);
   assert.notEqual(first, second);
 });
+
+test('legacy push repair identity does not change when profile hydration changes', () => {
+  const user = { id: 'legacy@example.com', email: 'legacy@example.com', pushNeedsRepair: true };
+  const fromAuthUid = helpers.buildStablePushRepairRequestId(user, { authUid: 'auth-123', profileDocId: 'auth-123', restaurantId: 'cheers', deviceId: 'web_phone', host: 'app.86chaos.com' });
+  const hydratedLegacy = helpers.buildStablePushRepairRequestId(user, { authUid: 'auth-123', profileDocId: 'legacy@example.com', restaurantId: 'cheers', deviceId: 'web_phone', host: 'app.86chaos.com' });
+  assert.equal(fromAuthUid, hydratedLegacy);
+});
+
+test('self repair readback verifies token, device, flags, and status before success', () => {
+  const patch = {
+    fcmToken: 'token-1',
+    notificationPermission: 'granted',
+    pushNeedsRepair: false,
+    pushForceServiceWorkerRefresh: false,
+    pushRepairStatus: 'connected',
+    'pushDevices.web_phone': { token: 'token-1', permission: 'granted', active: true }
+  };
+  const ok = helpers.verifySelfRepairReadback({ ...patch, pushDevices: { web_phone: { token: 'token-1', permission: 'granted', active: true } } }, patch);
+  assert.equal(ok.ok, true);
+  const bad = helpers.verifySelfRepairReadback({ ...patch, fcmToken: 'other', pushDevices: { web_phone: { token: 'other', permission: 'granted' } } }, patch);
+  assert.equal(bad.ok, false);
+  assert.ok(bad.errors.includes('fcmToken'));
+});
+
+test('push repair link captures one-time intent and clears after terminal outcomes', () => {
+  const fs = require('fs');
+  const path = require('path');
+  const app = fs.readFileSync(path.join(__dirname, '..', 'src', 'App.js'), 'utf8');
+  assert.match(app, /setPushRepairLinkRequest\(\{ requested: true, consumed: true, nonce, capturedNonce: nonce/);
+  assert.match(app, /history\.replaceState\(\{[\s\S]*pushRepairConsumed: true/);
+  assert.match(app, /const pushRepairRequestedByLink = Boolean\(pushRepairLinkRequest\.requested\)/);
+  assert.match(app, /clearPushRepairLinkRequest\('repair-success'\)/);
+  assert.match(app, /clearPushRepairLinkRequest\('dismissed'\)/);
+});
+
+test('copied repair links include a stable server nonce instead of only pushRepair=1', () => {
+  const fs = require('fs');
+  const path = require('path');
+  const management = fs.readFileSync(path.join(__dirname, '..', 'src', 'features', 'management.jsx'), 'utf8');
+  const api = fs.readFileSync(path.join(__dirname, 'push-token-repair.js'), 'utf8');
+  assert.match(management, /pushRepairNonce/);
+  assert.match(management, /repairUser\?\.pushTokenRepairNonce/);
+  assert.match(api, /withRepairNonceInLink/);
+  assert.match(api, /url\.searchParams\.set\('pushRepairNonce'/);
+});
