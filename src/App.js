@@ -14,9 +14,27 @@ import { buildScheduleQueryPlan, buildScheduleDateKeyRangeClauses, mergeLoadedSc
 import { WHOAMI_STATES, classifyWhoamiResponse, mergeVerifiedAccess, shouldHoldAccessHydration } from './core/sessionAccess';
 import { FEATURE_KEYS } from './config/plans';
 import { LoginScreen } from './features/auth';
-import runtimeReportState from './core/runtimeReportState.cjs';
+import * as runtimeReportStateModule from './core/runtimeReportState.cjs';
 
-const { createFallbackReportId, buildRuntimeReportFingerprint, beginReportSubmission, completeReportSubmission, failReportSubmission, createRuntimeDiagnostic, rememberLocalRuntimeDiagnostic, normalizeReportId, DEFAULT_REPORT_REQUEST_TIMEOUT_MS } = runtimeReportState;
+const resolveCommonJsModule = (moduleValue) => {
+  const candidate = moduleValue?.default && typeof moduleValue.default === 'object' ? moduleValue.default : moduleValue;
+  return candidate && typeof candidate === 'object' ? candidate : {};
+};
+const runtimeReportState = resolveCommonJsModule(runtimeReportStateModule);
+const fallbackRuntimeString = (value, max = 2000) => String(value == null ? '' : value).slice(0, max);
+const fallbackReportIdFactory = (prefix = 'local') => `${String(prefix || 'local').replace(/[^A-Za-z0-9_-]/g, '_')}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`.slice(0, 80);
+const createFallbackReportId = typeof runtimeReportState.createFallbackReportId === 'function' ? runtimeReportState.createFallbackReportId : fallbackReportIdFactory;
+const normalizeReportId = typeof runtimeReportState.normalizeReportId === 'function' ? runtimeReportState.normalizeReportId : (value) => {
+  const raw = fallbackRuntimeString(value, 120).trim();
+  return /^[A-Za-z0-9][A-Za-z0-9_.:-]{5,119}$/.test(raw) ? raw : '';
+};
+const buildRuntimeReportFingerprint = typeof runtimeReportState.buildRuntimeReportFingerprint === 'function' ? runtimeReportState.buildRuntimeReportFingerprint : (kind, error = {}, context = {}) => [kind || 'runtime', fallbackRuntimeString(error?.name || 'Error', 120), fallbackRuntimeString(error?.message || error || '', 500), fallbackRuntimeString(context.appVersion || '', 80), fallbackRuntimeString(context.route || '', 300), fallbackRuntimeString(context.activeTab || '', 80), fallbackRuntimeString(context.chunkUrl || '', 500)].join('|');
+const beginReportSubmission = typeof runtimeReportState.beginReportSubmission === 'function' ? runtimeReportState.beginReportSubmission : (() => ({ ok: true, state: 'started' }));
+const completeReportSubmission = typeof runtimeReportState.completeReportSubmission === 'function' ? runtimeReportState.completeReportSubmission : ((storage, fingerprint, reportId) => ({ ok: Boolean(normalizeReportId(reportId)), reportId: normalizeReportId(reportId), reason: normalizeReportId(reportId) ? '' : 'malformed response' }));
+const failReportSubmission = typeof runtimeReportState.failReportSubmission === 'function' ? runtimeReportState.failReportSubmission : (() => ({ ok: false }));
+const createRuntimeDiagnostic = typeof runtimeReportState.createRuntimeDiagnostic === 'function' ? runtimeReportState.createRuntimeDiagnostic : ({ fallbackReportId = '', serverReportId = '', status = 'caught', error = {}, componentStack = '', route = '', activeTab = '', appVersion = '', deployedVersion = '', uid = '', workspaceId = '', browser = '', viewport = '', category = 'runtime' } = {}) => ({ fallbackReportId: fallbackRuntimeString(fallbackReportId, 100), serverReportId: fallbackRuntimeString(serverReportId, 120), status: fallbackRuntimeString(status, 80), category: fallbackRuntimeString(category, 80), errorName: fallbackRuntimeString(error?.name || 'Error', 140), errorMessage: fallbackRuntimeString(error?.message || error || '', 2000), rawStack: fallbackRuntimeString(error?.stack || '', 6000), componentStack: fallbackRuntimeString(componentStack || '', 6000), route: fallbackRuntimeString(route, 300), activeTab: fallbackRuntimeString(activeTab, 80), appVersion: fallbackRuntimeString(appVersion, 80), deployedVersion: fallbackRuntimeString(deployedVersion, 80), uid: fallbackRuntimeString(uid, 140), workspaceId: fallbackRuntimeString(workspaceId, 160), browser: fallbackRuntimeString(browser, 400), viewport: fallbackRuntimeString(viewport, 80), timestamp: new Date().toISOString() });
+const rememberLocalRuntimeDiagnostic = typeof runtimeReportState.rememberLocalRuntimeDiagnostic === 'function' ? runtimeReportState.rememberLocalRuntimeDiagnostic : (() => {});
+const DEFAULT_REPORT_REQUEST_TIMEOUT_MS = Number(runtimeReportState.DEFAULT_REPORT_REQUEST_TIMEOUT_MS || 12000) || 12000;
 
 const CHUNK_LOAD_ERROR_NAME_RE = /^(ChunkLoadError|CSS_CHUNK_LOAD_FAILED)$/i;
 const CHUNK_LOAD_ERROR_MESSAGE_RE = /(Loading chunk [^\s]+ failed|ChunkLoadError|Failed to fetch dynamically imported module|Failed to load module script|Importing a module script failed|error loading dynamically imported module|Loading CSS chunk [^\s]+ failed)/i;

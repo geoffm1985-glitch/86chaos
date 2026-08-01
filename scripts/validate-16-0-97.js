@@ -6,7 +6,7 @@ const read = (file) => fs.readFileSync(path.join(root, file), 'utf8');
 const json = (file) => JSON.parse(read(file));
 const assert = (condition, message) => {
   if (!condition) {
-    console.error(`16.0.96 source validation failed: ${message}`);
+    console.error(`16.0.97 source validation failed: ${message}`);
     process.exitCode = 1;
   }
 };
@@ -31,13 +31,13 @@ const provision = read('scripts/86chaos-release-gate/provision-test-accounts.cjs
 const collector = read('scripts/86chaos-release-gate/collect-release-gate-report.cjs');
 const auditHelpers = read('tests/86chaos-full-audit/utils/audit-helpers.cjs');
 
-assert(pkg.version === '16.0.96', 'package.json version is 16.0.96');
-assert(lock.version === '16.0.96' && lock.packages?.['']?.version === '16.0.96', 'package-lock root version is 16.0.96');
-assert(pkg.scripts?.['test:source'] === 'node scripts/validate-16-0-96.js', 'test:source points at 16.0.96 validator');
-assert(version.version === '16.0.96' && version.build === '16.0.96', 'public version/build is 16.0.96');
+assert(pkg.version === '16.0.97', 'package.json version is 16.0.97');
+assert(lock.version === '16.0.97' && lock.packages?.['']?.version === '16.0.97', 'package-lock root version is 16.0.97');
+assert(pkg.scripts?.['test:source'] === 'node scripts/validate-16-0-97.js', 'test:source points at 16.0.97 validator');
+assert(version.version === '16.0.97' && version.build === '16.0.97', 'public version/build is 16.0.97');
 assert(!/16\.0\.89 Admin Push Release Gate Fix/.test(JSON.stringify(version)), 'public version metadata does not restore stale 16.0.89 labels');
-assert(appCore.includes("CURRENT_VERSION = '16.0.96'"), 'appCore CURRENT_VERSION is 16.0.96');
-assert(apiVersion.includes("APP_VERSION = '16.0.96'") && apiVersion.includes("SECURITY_SCHEMA_VERSION = '16.0.96'"), 'API version constants are 16.0.96');
+assert(appCore.includes("CURRENT_VERSION = '16.0.97'"), 'appCore CURRENT_VERSION is 16.0.97');
+assert(apiVersion.includes("APP_VERSION = '16.0.97'") && apiVersion.includes("SECURITY_SCHEMA_VERSION = '16.0.97'"), 'API version constants are 16.0.97');
 
 assert(workspaceHelper.includes('QA_WORKSPACE_PREFIX') && workspaceHelper.includes('86 Chaos Release Gate QA '), 'QA workspace helper defines the unique run-name prefix');
 assert(preflight.includes('validateQaWorkspaceName') && !preflight.includes('must be exactly "86 Chaos Full Audit QA Restaurant"'), 'preflight validates current-run QA workspace names instead of obsolete fixed name');
@@ -62,4 +62,12 @@ assert(featureAccess.includes('isVerifiedPlatformAdminUser') && !featureAccess.i
 assert(!authFeature.includes('id: firebaseUser.uid,\n        ...bootstrapResult.bootstrap.user,\n        id: firebaseUser.uid'), 'auth bootstrap no longer declares duplicate id property around server bootstrap user');
 assert(auditHelpers.includes("{ tab: 'ops'") && !auditHelpers.includes("{ tab: 'kitchen'"), 'route registry uses real ops route instead of stale kitchen route');
 
-console.log('All 16.0.96 source validations passed.');
+
+const appSource = read('src/App.js');
+const managementSource = read('src/features/management.jsx');
+assert(appSource.includes("import * as runtimeReportStateModule from './core/runtimeReportState.cjs';"), 'App imports runtimeReportState with namespace interop');
+assert(appSource.includes('fallbackReportIdFactory'), 'App has fallback report ID factory for runtime boundary safety');
+assert(managementSource.includes("import * as adminSafetyModule from '../core/systemAdminDataSafety.cjs';"), 'System Administrator imports data safety with namespace interop');
+assert(managementSource.includes('fallbackAdminSafeText'), 'System Administrator has local fallback text sanitizer');
+
+console.log('All 16.0.97 source validations passed.');

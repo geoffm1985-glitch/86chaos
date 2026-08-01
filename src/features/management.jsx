@@ -14,10 +14,62 @@ import { LockedFeatureScreen } from '../components/PlanGate';
 import { PLAN_DEFINITIONS, CUSTOMER_PLAN_ORDER, FEATURE_KEYS } from '../config/plans';
 import { resolveSubscription, resolveFeatureAccess, getPlanDefinition, formatMoney, normalizePlanId, addDaysIso, addMonthsIso } from '../lib/featureAccess';
 import { searchHelpContentSemantically } from '../core/restaurantAiInsights';
-import adminSafety from '../core/systemAdminDataSafety.cjs';
+import * as adminSafetyModule from '../core/systemAdminDataSafety.cjs';
 
 
-const { adminSafeText, finiteNumber: adminFiniteNumber, normalizeAuditLog, normalizeCrashReport, normalizeRestaurantRecord, normalizeTierPriceMap, safeDiagnostic } = adminSafety;
+const resolveAdminSafetyModule = (moduleValue) => {
+  const candidate = moduleValue?.default && typeof moduleValue.default === 'object' ? moduleValue.default : moduleValue;
+  return candidate && typeof candidate === 'object' ? candidate : {};
+};
+const adminSafety = resolveAdminSafetyModule(adminSafetyModule);
+const fallbackTimestampToIso = (value) => {
+  if (!value) return '';
+  try {
+    if (value instanceof Date) return Number.isFinite(value.getTime()) ? value.toISOString() : '';
+    if (typeof value.toDate === 'function') {
+      const date = value.toDate();
+      return date instanceof Date && Number.isFinite(date.getTime()) ? date.toISOString() : '';
+    }
+    if (typeof value.seconds === 'number') {
+      const date = new Date((value.seconds * 1000) + Math.floor((Number(value.nanoseconds || 0) || 0) / 1000000));
+      return Number.isFinite(date.getTime()) ? date.toISOString() : '';
+    }
+  } catch (_) {}
+  return '';
+};
+const fallbackAdminSafeText = (value, fallback = '') => {
+  if (value == null) return fallback;
+  if (typeof value === 'string') return value;
+  if (typeof value === 'number') return Number.isFinite(value) ? String(value) : fallback;
+  if (typeof value === 'boolean') return value ? 'true' : 'false';
+  const iso = fallbackTimestampToIso(value);
+  if (iso) return iso;
+  if (Array.isArray(value)) return value.map(item => fallbackAdminSafeText(item, '')).filter(Boolean).join(', ') || fallback;
+  if (value && typeof value === 'object') {
+    const preferred = value.message || value.errorMessage || value.error || value.status || value.label || value.title || value.name || value.id || value.code;
+    if (preferred && preferred !== value) return fallbackAdminSafeText(preferred, fallback);
+    try { return JSON.stringify(value).slice(0, 700); } catch (_) { return '[object]'; }
+  }
+  try { return String(value); } catch (_) { return fallback; }
+};
+const adminSafeText = typeof adminSafety.adminSafeText === 'function' ? adminSafety.adminSafeText : fallbackAdminSafeText;
+const adminFiniteNumber = typeof adminSafety.finiteNumber === 'function' ? adminSafety.finiteNumber : ((value, fallback = 0) => { const num = Number(value); return Number.isFinite(num) ? num : fallback; });
+const fallbackNormalizeRecord = (collectionName) => (id = '', data = {}, diagnostics = []) => {
+  const source = data && typeof data === 'object' && !Array.isArray(data) ? data : {};
+  if (source !== data && Array.isArray(diagnostics)) diagnostics.push({ collection: collectionName, id, field: '*', reason: 'record was not an object' });
+  const normalized = { id, ...source };
+  Object.entries(normalized).forEach(([field, value]) => {
+    if (field === 'id') return;
+    const iso = fallbackTimestampToIso(value);
+    if (iso) normalized[field] = iso;
+  });
+  return normalized;
+};
+const normalizeAuditLog = typeof adminSafety.normalizeAuditLog === 'function' ? adminSafety.normalizeAuditLog : fallbackNormalizeRecord('auditLogs');
+const normalizeCrashReport = typeof adminSafety.normalizeCrashReport === 'function' ? adminSafety.normalizeCrashReport : fallbackNormalizeRecord('crashReports');
+const normalizeRestaurantRecord = typeof adminSafety.normalizeRestaurantRecord === 'function' ? adminSafety.normalizeRestaurantRecord : fallbackNormalizeRecord('restaurants');
+const normalizeTierPriceMap = typeof adminSafety.normalizeTierPriceMap === 'function' ? adminSafety.normalizeTierPriceMap : ((value = {}, fallback = { shift: 49, operations: 99, smart_kitchen: 179, owner_pro: 299 }) => Object.fromEntries(Object.entries(fallback).map(([key, defaultValue]) => [key, adminFiniteNumber(value?.[key], defaultValue)])));
+const safeDiagnostic = typeof adminSafety.safeDiagnostic === 'function' ? adminSafety.safeDiagnostic : ((collection, id, field, reason) => ({ collection: adminSafeText(collection, 'unknown').slice(0, 80), id: adminSafeText(id, 'unknown').slice(0, 160), field: adminSafeText(field, '*').slice(0, 120), reason: adminSafeText(reason, 'Malformed live data skipped.').slice(0, 240) }));
 
 
 const PROTECTED_ROOT_ADMIN_EMAIL = 'geoffm1985@gmail.com';

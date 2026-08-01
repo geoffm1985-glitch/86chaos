@@ -1,14 +1,14 @@
 {
-  "version": "16.0.96",
-  "name": "86 Chaos 16.0.96 Release Gate Workspace Voice Access Verification Fix",
-  "build": "16.0.96",
-  "label": "86 Chaos 16.0.96 Release Gate Workspace Voice Access Verification Fix",
-  "releasedAt": "2026-08-01T13:37:00-05:00",
-  "releaseTitle": "86 Chaos 16.0.96 Release Gate Workspace Voice Access Verification Fix",
+  "version": "16.0.97",
+  "name": "86 Chaos 16.0.97 System Admin Runtime Interop Fix",
+  "build": "16.0.97",
+  "label": "86 Chaos 16.0.97 System Admin Runtime Interop Fix",
+  "releasedAt": "2026-08-01T15:24:00-05:00",
+  "releaseTitle": "86 Chaos 16.0.97 System Admin Runtime Interop Fix",
   "notes": [
-    "Release-gate preflight now accepts the unique current-run QA workspace name and rejects stale or production names.",
-    "QA cleanup now uses current-run IDs, QA ownership markers, and recorded document IDs instead of the obsolete shared workspace name.",
-    "Runtime crash reports now expire abandoned in-flight markers so a later crash can still be reported.",
-    "86Voice and Speak Reminder microphone lifecycles now prevent duplicate recognition sessions and cancel delayed starts on close or unmount."
+    "System Administrator runtime imports now safely resolve CommonJS helper modules in the browser bundle.",
+    "The section error boundary now keeps a fallback report ID even if runtime-report helper interop fails.",
+    "System Administrator live-data safety helpers now fall back safely instead of crashing the console when module interop changes.",
+    "Firebase-sensitive configuration, Schedule Builder, employee deletion, shift deletion, and push-repair behavior were not changed."
   ]
 }
