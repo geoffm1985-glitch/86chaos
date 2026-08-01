@@ -6,6 +6,7 @@ const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppU
   const tabs = [];
   const perms = appUser?.permissions || {};
   const isGod = Boolean((MASTER_ADMIN_EMAIL && appUser?.email?.toLowerCase() === MASTER_ADMIN_EMAIL.toLowerCase()) || appUser?.isSuperAdmin);
+  const canShowSystemAdministrator = Boolean(isGod || appUser?.pendingSystemAdminVerification === true);
   const knownRosterRoles = Array.isArray(appUser?.rosterRoles) ? appUser.rosterRoles : Array.isArray(appUser?.customRosterRoles) ? appUser.customRosterRoles : [];
   const hasCustomRosterRoles = knownRosterRoles.length > 0;
   const roleText = String(appUser?.role || '').toLowerCase();
@@ -37,7 +38,7 @@ const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppU
   tabs.push({ id: 'team', label: 'Team', icon: <Users size={18}/> });
   if (isEnabled('sales') && (appUser?.isAdmin || perms.sales)) tabs.push({ id: 'sales', label: 'Sales & Trends', icon: <TrendingUp size={18}/> });
   
-  if (isGod) tabs.push({ id: 'godmode', label: 'System Administrator', icon: <Shield size={18}/> });
+  if (canShowSystemAdministrator) tabs.push({ id: 'godmode', label: 'System Administrator', icon: <Shield size={18}/> });
   if (appUser?.isAdmin || isGod) tabs.push({ id: 'audit', label: 'Audit Logs', icon: <Shield size={18}/> });  
   tabs.push({ id: 'settings', label: 'Settings', icon: <Settings size={18}/> });
 

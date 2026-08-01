@@ -498,7 +498,6 @@ const LoginScreen = ({ setAppUser }) => {
 
     if (bootstrapResult?.bootstrap?.user) {
       userData = {
-        id: firebaseUser.uid,
         ...bootstrapResult.bootstrap.user,
         id: firebaseUser.uid,
         uid: firebaseUser.uid,

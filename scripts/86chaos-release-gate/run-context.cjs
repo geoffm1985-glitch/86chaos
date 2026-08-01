@@ -1,5 +1,6 @@
 const fs = require('fs');
 const path = require('path');
+const { readJsonIfExists } = require('./json-utils.cjs');
 
 const root = process.cwd();
 const MAIN_RESULTS_DIR = '86chaos-play-store-release-gate';
@@ -39,10 +40,6 @@ function ensureRunDir(runId = getRunId()) {
   return { root, resultsRoot, runId, runDir };
 }
 
-function readJsonIfExists(filePath) {
-  try { return fs.existsSync(filePath) ? JSON.parse(fs.readFileSync(filePath, 'utf8')) : null; }
-  catch (_) { return null; }
-}
 
 function writeJson(filePath, data) {
   fs.mkdirSync(path.dirname(filePath), { recursive: true });

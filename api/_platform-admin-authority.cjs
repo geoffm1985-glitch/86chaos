@@ -7,12 +7,21 @@ const SYSTEM_ADMIN_SOURCE_LABELS = Object.freeze({
   PROTECTED_ROOT: 'protected-root-admin'
 });
 
+// Canonical profile fields that the server resolver treats as platform authority.
+// Firestore rules and tests must protect exactly these client-writable user-doc fields.
+const AUTHORITATIVE_PROFILE_AUTHORITY_FIELDS = Object.freeze(['isSuperAdmin', 'systemAccess']);
+const AUTHORITATIVE_SYSTEM_ACCESS_FIELDS = Object.freeze(['superAdmin']);
+
 function norm(value = '') {
   return String(value || '').toLowerCase().trim();
 }
 
 function truthy(value) {
   return value === true || value === 'true' || value === 1 || value === '1';
+}
+
+function strictAuthorityTrue(value) {
+  return value === true;
 }
 
 function profileDisabled(profile = {}) {
@@ -23,11 +32,11 @@ function profileDisabled(profile = {}) {
 function hasFirestorePlatformAdminFlag(profile = {}) {
   if (!profile || typeof profile !== 'object') return false;
   // Platform authority must come only from fields treated as server-owned by the
-  // existing rules/model. Tenant-editable restaurant permissions and workspace
+  // Firestore rules/model. Tenant-editable restaurant permissions and workspace
   // role metadata are display-only and must never grant System Administrator.
   return Boolean(
-    truthy(profile.isSuperAdmin) ||
-    truthy(profile.systemAccess?.superAdmin)
+    strictAuthorityTrue(profile.isSuperAdmin) ||
+    strictAuthorityTrue(profile.systemAccess?.superAdmin)
   );
 }
 
@@ -48,7 +57,7 @@ function decidePlatformAdminAuthority({ decoded = {}, profile = null, masterEmai
   const normalizedProtectedEmails = new Set((protectedRootEmails || []).map(norm).filter(Boolean));
   const disabled = profileDisabled(profile || {});
   const firestoreSuperAdminFlag = !disabled && hasFirestorePlatformAdminFlag(profile || {});
-  const customClaimSuperAdmin = truthy(decoded.superAdmin) || truthy(decoded.systemAccess?.superAdmin);
+  const customClaimSuperAdmin = strictAuthorityTrue(decoded.superAdmin) || strictAuthorityTrue(decoded.systemAccess?.superAdmin);
   const protectedRootAdminMatched = Boolean(email && normalizedProtectedEmails.has(email));
   const serverMasterAdminMatched = Boolean(email && normalizedMasterEmails.has(email));
   const superAdmin = Boolean(customClaimSuperAdmin || protectedRootAdminMatched || serverMasterAdminMatched || firestoreSuperAdminFlag);
@@ -69,16 +78,21 @@ function decidePlatformAdminAuthority({ decoded = {}, profile = null, masterEmai
     firestoreSuperAdminFlag,
     firestoreProfileDisabled: disabled,
     firestoreRoleText: roleTextForDisplay(profile || {}),
-    workspaceRole: String(profile?.role || profile?.workspaceRole || '').trim()
+    workspaceRole: String(profile?.role || profile?.workspaceRole || '').trim(),
+    authoritativeProfileAuthorityFields: [...AUTHORITATIVE_PROFILE_AUTHORITY_FIELDS],
+    authoritativeSystemAccessFields: [...AUTHORITATIVE_SYSTEM_ACCESS_FIELDS]
   };
 }
 
 module.exports = {
   SYSTEM_ADMIN_SOURCE_LABELS,
+  AUTHORITATIVE_PROFILE_AUTHORITY_FIELDS,
+  AUTHORITATIVE_SYSTEM_ACCESS_FIELDS,
   decidePlatformAdminAuthority,
   hasFirestorePlatformAdminFlag,
   profileDisabled,
   roleTextForDisplay,
   norm,
-  truthy
+  truthy,
+  strictAuthorityTrue
 };

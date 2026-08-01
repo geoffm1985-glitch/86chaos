@@ -5,12 +5,14 @@ const path = require('path');
 const { loadEnv, env, boolEnv } = require('./env-loader.cjs');
 const { readFirebaseConfig } = require('./firebase-client.cjs');
 const { ensureRunDir, getSeedReportPath, getCleanupReportPath, getSetupStatePath, readJsonIfExists, writeJson } = require('../86chaos-release-gate/run-context.cjs');
+const { resolveQaWorkspaceName, validateQaWorkspaceName } = require('../86chaos-release-gate/qa-workspace.cjs');
+const { assertMutationSafety } = require('../86chaos-release-gate/mutation-safety.cjs');
 
 loadEnv(process.cwd());
 
 const { runId: RUN_ID, runDir: RELEASE_RUN_DIR } = ensureRunDir();
 const REPORT_PATH = getCleanupReportPath(RUN_ID);
-const QA_RESTAURANT_NAME = '86 Chaos Full Audit QA Restaurant';
+const QA_RESTAURANT_NAME = resolveQaWorkspaceName(process.env, RUN_ID);
 const COLLECTIONS = [
   'restaurantAdminAlerts', 'eventReminders', 'personalReminders', 'scheduleCoverageTargets',
   'scheduleTemplates', 'availabilityRecords', 'shiftSwaps', 'timePunches', 'timeOffRequests',
@@ -151,17 +153,21 @@ function buildExpectedByCollection(seed) {
   return expected;
 }
 
-function validateSeedForCleanup(seed, currentRunId) {
+function validateSeedForCleanup(seed, currentRunId, setupState = {}) {
   const errors = [];
-  if (!seed) errors.push('Current-run seed report is missing.');
-  if (seed && seed.ok !== true) errors.push('Current-run seed report is not ok:true.');
-  if (seed && seed.runId !== currentRunId) errors.push(`Seed report runId ${seed.runId || '(missing)'} does not match current run ${currentRunId}.`);
-  const restaurantId = seed?.restaurantId || seed?.profile?.restaurantId || '';
-  if (!restaurantId) errors.push('Seed report does not contain restaurantId.');
-  if (seed && seed.createdRestaurant !== true) errors.push('Seed report did not create the disposable restaurant for this run.');
-  if (seed && seed.verification?.ok !== true) errors.push('Seed report does not contain successful verification.');
-  if (seed && Array.isArray(seed.seededDocuments) && seed.seededDocuments.length === 0) errors.push('Seed report contains zero exact seeded document IDs.');
-  return { ok: errors.length === 0, errors, restaurantId };
+  const warnings = [];
+  const setupHasEvidence = Boolean(setupState && Object.keys(setupState).length);
+  const seededRows = Array.isArray(seed?.seededDocuments) ? seed.seededDocuments : [];
+  const writesStarted = setupState?.writesStarted === true || setupState?.qaDataWritesStarted === true || seed?.createdRestaurant === true || seededRows.length > 0;
+  if (!seed && !setupHasEvidence) errors.push('Current-run seed report and setup state are missing.');
+  if (seed && seed.runId && seed.runId !== currentRunId) errors.push(`Seed report runId ${seed.runId || '(missing)'} does not match current run ${currentRunId}.`);
+  if (setupState && setupState.runId && setupState.runId !== currentRunId) errors.push(`Setup state runId ${setupState.runId || '(missing)'} does not match current run ${currentRunId}.`);
+  const restaurantId = seed?.restaurantId || seed?.profile?.restaurantId || setupState?.restaurantId || setupState?.temporaryRestaurantId || '';
+  if (!restaurantId && writesStarted) errors.push('Current-run writes started but no restaurantId is recorded.');
+  if (!writesStarted) errors.push('No current-run writes were recorded.');
+  if (seed && seed.ok !== true) warnings.push('Seed report is not ok:true; cleanup will proceed only for exact current-run QA records.');
+  if (seed && seed.verification?.ok !== true) warnings.push('Seed verification did not complete; cleanup will still remove exact current-run QA records.');
+  return { ok: errors.length === 0, errors, warnings, restaurantId, writesStarted };
 }
 
 async function cleanupCurrentRun({ page, rest, seed, restaurantId }) {
@@ -222,12 +228,12 @@ async function main() {
     const seedPath = getSeedReportPath(RUN_ID);
     const seed = readJsonIfExists(seedPath);
     report.seedReportPath = seedPath;
-    const validation = validateSeedForCleanup(seed, RUN_ID);
+    const setupState = readJsonIfExists(getSetupStatePath(RUN_ID));
+    const validation = validateSeedForCleanup(seed, RUN_ID, setupState || {});
     report.seedValidation = validation;
     if (!validation.ok) {
-      const setupState = readJsonIfExists(getSetupStatePath(RUN_ID));
       const seededRows = Array.isArray(seed?.seededDocuments) ? seed.seededDocuments : [];
-      const noCurrentRunQaData = !validation.restaurantId && seed?.createdRestaurant !== true && seededRows.length === 0 && setupState?.seeded !== true;
+      const noCurrentRunQaData = !validation.writesStarted && !validation.restaurantId && seed?.createdRestaurant !== true && seededRows.length === 0 && setupState?.seeded !== true;
       if (noCurrentRunQaData) {
         writeReport({
           ...report,
@@ -242,8 +248,14 @@ async function main() {
 ${validation.errors.join('\n')}`);
     }
     const restaurantId = validation.restaurantId;
+    const qaNameCheck = validateQaWorkspaceName(QA_RESTAURANT_NAME, RUN_ID);
+    if (!qaNameCheck.ok) throw new Error(`QA cleanup workspace name failed safety validation: ${qaNameCheck.errors.join('; ')}`);
+    report.qaWorkspaceName = QA_RESTAURANT_NAME;
 
     const config = readFirebaseConfig();
+    const mutationSafety = assertMutationSafety({ env: process.env, runId: RUN_ID, projectId: config.projectId, requireAdminCredentials: false });
+    if (!mutationSafety.ok) throw new Error(`QA cleanup mutation safety failed: ${mutationSafety.errors.join('; ')}`);
+    report.mutationSafety = mutationSafety;
     const { email, password } = getCredentials();
 
     const { chromium } = require('playwright');
@@ -271,7 +283,7 @@ ${validation.errors.join('\n')}`);
     const restaurantData = firestoreDocData(restaurantDoc);
     const restaurantErrors = [];
     const restaurantName = restaurantData.name || restaurantData.restaurantName || restaurantData.qaCleanupName || '';
-    if (restaurantName !== QA_RESTAURANT_NAME) restaurantErrors.push(`restaurant name was ${restaurantName || '(missing)'}`);
+    if (restaurantName !== QA_RESTAURANT_NAME) restaurantErrors.push(`restaurant name was ${restaurantName || '(missing)'}, expected ${QA_RESTAURANT_NAME}`);
     if (restaurantData.qaOwned !== true) restaurantErrors.push(`qaOwned was ${String(restaurantData.qaOwned)}`);
     if (restaurantData.qaRunId !== RUN_ID) restaurantErrors.push(`qaRunId was ${restaurantData.qaRunId || '(missing)'}`);
     if (restaurantData.createdBy !== '86chaos-full-audit') restaurantErrors.push(`createdBy was ${restaurantData.createdBy || '(missing)'}`);

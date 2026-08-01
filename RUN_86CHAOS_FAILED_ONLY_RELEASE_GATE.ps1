@@ -36,8 +36,13 @@ $env:CHAOS_RELEASE_GATE_RUN_ID = $RunId
 $env:CHAOS_FULL_AUDIT_RUN_ID = $RunId
 $env:CHAOS_RELEASE_GATE_STEP_FAILURES = "0"
 $env:CHAOS_FAILED_ONLY_RELEASE_GATE = "true"
-$env:CHAOS_QA_WORKSPACE_NAME = "86 Chaos Full Audit QA Restaurant"
-$env:CHAOS_QA_WORKSPACE = "86 Chaos Full Audit QA Restaurant"
+if (-not $env:CHAOS_QA_DISABLE_AUTO_PROVISION_TEST_USERS) { $env:CHAOS_QA_AUTO_PROVISION_TEST_USERS = "true" }
+if (-not $env:CHAOS_RELEASE_GATE_NO_MUTATION) {
+  $env:CHAOS_ALLOW_MUTATION = "true"
+  $env:CHAOS_QA_CREATE_RESTAURANT = "true"
+}
+$env:CHAOS_QA_WORKSPACE_NAME = "86 Chaos Release Gate QA $RunId"
+$env:CHAOS_QA_WORKSPACE = $env:CHAOS_QA_WORKSPACE_NAME
 
 $ResultsRoot = Join-Path $Root "test-results\86chaos-play-store-release-gate"
 $RunDir = Join-Path $ResultsRoot $RunId

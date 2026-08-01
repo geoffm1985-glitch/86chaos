@@ -5,13 +5,14 @@ const { ensureRunDir, getSetupStatePath, getSeedReportPath, getRoleReportPath, r
 const { validateRoleReportForSeed, verifyRoleAccounts } = require('../../scripts/86chaos-release-gate/verify-role-accounts.cjs');
 const { provisionTestAccounts } = require('../../scripts/86chaos-release-gate/provision-test-accounts.cjs');
 const { loadEnv } = require('../../scripts/86chaos-full-audit/env-loader.cjs');
+const { applyQaWorkspaceEnv, validateQaWorkspaceName } = require('../../scripts/86chaos-release-gate/qa-workspace.cjs');
+const { assertMutationSafety, isProductionHost, parseHost } = require('../../scripts/86chaos-release-gate/mutation-safety.cjs');
 
 function bool(value) { return /^(1|true|yes)$/i.test(String(value || '')); }
 function isSafeTestingUrl(value = '') {
   try {
     const url = new URL(value);
-    if (/^(app\.)?86chaos\.com$/i.test(url.hostname)) return false;
-    if (/86chaos\.com$/i.test(url.hostname) && !/vercel\.app$/i.test(url.hostname)) return false;
+    if (isProductionHost(url.hostname)) return false;
     return /^https?:$/i.test(url.protocol);
   } catch (_) { return false; }
 }
@@ -45,12 +46,18 @@ module.exports = async () => {
     seedReportPath,
     roleReportPath,
     cleanupAllowed: false,
+    qaWorkspaceName: process.env.CHAOS_QA_WORKSPACE_NAME || '',
     skipped: false,
     errors: [],
   };
   const writeState = () => writeJson(setupStatePath, state);
-  process.env.CHAOS_QA_WORKSPACE_NAME = '86 Chaos Full Audit QA Restaurant';
-  process.env.CHAOS_QA_WORKSPACE = '86 Chaos Full Audit QA Restaurant';
+  const qaWorkspaceName = applyQaWorkspaceEnv(process.env, runId);
+  const qaWorkspaceValidation = validateQaWorkspaceName(qaWorkspaceName, runId);
+  if (!qaWorkspaceValidation.ok) {
+    state.errors.push(...qaWorkspaceValidation.errors);
+    writeState();
+    throw new Error(state.errors.join('\n'));
+  }
   process.env.CHAOS_RELEASE_GATE_RUN_ID = runId;
   process.env.CHAOS_FULL_AUDIT_RUN_ID = runId;
   process.env.CHAOS_RELEASE_GATE_RUN_DIR = runDir;
@@ -62,7 +69,7 @@ module.exports = async () => {
   let roleValidation = validateRoleReportForSeed(roleReport, runId);
   if (!roleValidation.ok) {
     updateRunnerState(runId, { rolePreflightStarted: true });
-    if (bool(process.env.CHAOS_QA_AUTO_PROVISION_TEST_USERS)) {
+    if (!bool(process.env.CHAOS_QA_DISABLE_AUTO_PROVISION_TEST_USERS)) {
       updateRunnerState(runId, { testAccountProvisionAttempted: true });
       const provision = await provisionTestAccounts({ root, loadEnvironment: false });
       updateRunnerState(runId, { testAccountProvisionPassed: provision?.ok === true });
@@ -91,6 +98,10 @@ module.exports = async () => {
     throw new Error(message);
   }
 
+  if (!process.env.CHAOS_RELEASE_GATE_NO_MUTATION) {
+    process.env.CHAOS_ALLOW_MUTATION = process.env.CHAOS_ALLOW_MUTATION || 'true';
+    process.env.CHAOS_QA_CREATE_RESTAURANT = process.env.CHAOS_QA_CREATE_RESTAURANT || 'true';
+  }
   const mutation = bool(process.env.CHAOS_ALLOW_MUTATION);
   const createRestaurant = bool(process.env.CHAOS_QA_CREATE_RESTAURANT);
   if (!mutation && !createRestaurant) {
@@ -102,6 +113,13 @@ module.exports = async () => {
   }
   if (!mutation || !createRestaurant) {
     state.errors.push('Disposable QA restaurant tests require CHAOS_ALLOW_MUTATION=true and CHAOS_QA_CREATE_RESTAURANT=true.');
+    writeState();
+    throw new Error(state.errors.join('\n'));
+  }
+  const mutationSafety = assertMutationSafety({ env: process.env, appUrl, runId, requireAdminCredentials: false });
+  state.mutationSafety = mutationSafety;
+  if (!mutationSafety.ok) {
+    state.errors.push(...mutationSafety.errors);
     writeState();
     throw new Error(state.errors.join('\n'));
   }

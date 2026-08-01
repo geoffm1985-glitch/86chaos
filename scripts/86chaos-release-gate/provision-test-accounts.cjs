@@ -4,6 +4,7 @@ const path = require('path');
 
 const { ensureRunDir, getRunFile, writeJson } = require('./run-context.cjs');
 const { loadEnv } = require('../86chaos-full-audit/env-loader.cjs');
+const { assertMutationSafety } = require('./mutation-safety.cjs');
 const { EXPECTED_FIREBASE_PROJECT, ROLE_DEFINITIONS, readConfiguredAccounts, validateLocalRoleEnv, analyzeRoleRows, verifyRoleAccounts } = require('./verify-role-accounts.cjs');
 
 const PROTECTED_ROOT_EMAILS = new Set(['geoffm1985@gmail.com']);
@@ -22,7 +23,7 @@ function nowIso() {
 }
 
 function roleForKey(key) {
-  if (key === 'systemAdmin') return { role: 'System Administrator', superAdmin: true, systemAdministrator: true, isAdmin: true, isOwner: true };
+  if (key === 'systemAdmin') return { role: 'Kitchen', superAdmin: true, systemAdministrator: true, isAdmin: false, isOwner: false };
   if (key === 'owner') return { role: 'Owner', superAdmin: false, systemAdministrator: false, isAdmin: true, isOwner: true };
   if (key === 'manager') return { role: 'General Manager', superAdmin: false, systemAdministrator: false, isAdmin: true, isOwner: false };
   return { role: 'Line Cook', superAdmin: false, systemAdministrator: false, isAdmin: false, isOwner: false };
@@ -37,8 +38,12 @@ function profileForAccount(account, uid, runId) {
     displayName: account.name || account.label,
     name: account.name || account.label,
     role: role.role,
+    restaurantRole: role.role,
     isAdmin: role.isAdmin,
     isOwner: role.isOwner,
+    isSuperAdmin: role.superAdmin === true,
+    systemAccess: { superAdmin: role.superAdmin === true, protectedReleaseGateAdmin: account.key === 'systemAdmin' },
+    protectedRootAdmin: account.key === 'systemAdmin',
     superAdmin: role.superAdmin,
     systemAdministrator: role.systemAdministrator,
     firestoreSuperAdmin: role.superAdmin,
@@ -85,6 +90,15 @@ function validateProvisionSafety(accounts) {
       errors.push(`${account.emailEnv} (${email}) does not look like a dedicated 86 Chaos QA account. Use generated QA emails or set CHAOS_QA_ALLOW_MUTATING_ROLE_ACCOUNTS=true only for testing-only accounts.`);
     }
   }
+  const run = ensureRunDir();
+  const safety = assertMutationSafety({
+    env: process.env,
+    projectId: EXPECTED_FIREBASE_PROJECT,
+    runId: run.runId,
+    requireAdminCredentials: false,
+    qaEmails: accounts.map(a => normalizeEmail(a.email)).filter(Boolean),
+  });
+  if (!safety.ok) errors.push(...safety.errors);
   return [...new Set(errors)];
 }
 
@@ -141,13 +155,14 @@ async function provisionTestAccounts(options = {}) {
   if (options.loadEnvironment !== false) loadEnv(root);
   const { runId, runDir } = ensureRunDir();
   const out = options.reportPath || getRunFile('test-account-provisioning.json', runId);
-  const enabled = options.enabled !== undefined ? options.enabled : bool(process.env.CHAOS_QA_AUTO_PROVISION_TEST_USERS);
+  const enabled = options.enabled !== undefined ? options.enabled : !bool(process.env.CHAOS_QA_DISABLE_AUTO_PROVISION_TEST_USERS);
   const report = {
     ok: true,
     skipped: !enabled,
     runId,
     generatedAt: nowIso(),
     firebaseProjectId: EXPECTED_FIREBASE_PROJECT,
+    mutationSafety: null,
     accounts: [],
     errors: [],
     notes: [],
@@ -157,14 +172,14 @@ async function provisionTestAccounts(options = {}) {
     const envErrors = validateLocalRoleEnv(accounts, EXPECTED_FIREBASE_PROJECT);
     report.skipped = true;
     report.status = 'verifying-existing-accounts';
-    report.notes.push('CHAOS_QA_AUTO_PROVISION_TEST_USERS is not enabled; verifying existing release-gate role accounts from .env.test.local before allowing Playwright.');
+    report.notes.push('CHAOS_QA_DISABLE_AUTO_PROVISION_TEST_USERS is enabled; verifying existing release-gate role accounts from .env.test.local before allowing Playwright.');
     if (envErrors.length) {
       report.ok = false;
       report.blocked = true;
       report.status = 'blocked';
       report.errors = [...new Set(envErrors)];
       report.manualConfigurationRequired = [
-        'Provide four valid, unique, dedicated testing accounts in .env.test.local, or explicitly enable temporary provisioning for chaos-test-d1601.',
+        'Provide four valid, unique, dedicated testing accounts in .env.test.local, or unset CHAOS_QA_DISABLE_AUTO_PROVISION_TEST_USERS so the release gate can provision them for chaos-test-d1601.',
         'Required names: SYSTEM_ADMIN_EMAIL/PASSWORD, OWNER_EMAIL/PASSWORD, MANAGER_EMAIL/PASSWORD, STAFF_EMAIL/PASSWORD.',
         'Do not reuse the protected founding administrator or a System Administrator account for owner, manager, or staff.'
       ];
@@ -195,6 +210,7 @@ async function provisionTestAccounts(options = {}) {
 
   const accounts = readConfiguredAccounts();
   const safetyErrors = validateProvisionSafety(accounts);
+  report.mutationSafety = assertMutationSafety({ env: process.env, projectId: EXPECTED_FIREBASE_PROJECT, runId, requireAdminCredentials: false, qaEmails: accounts.map(a => normalizeEmail(a.email)).filter(Boolean) });
   if (safetyErrors.length) {
     report.ok = false;
     report.errors = safetyErrors;
@@ -245,6 +261,7 @@ async function provisionTestAccounts(options = {}) {
     email: row.email,
     uid: row.uid || '',
     firebaseProjectId: EXPECTED_FIREBASE_PROJECT,
+    mutationSafety: null,
     runtimeProjectId: EXPECTED_FIREBASE_PROJECT,
     superAdmin: row.key === 'systemAdmin',
     customClaimSuperAdmin: row.key === 'systemAdmin',

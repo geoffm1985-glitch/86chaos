@@ -7,6 +7,7 @@ function buildFakeRestaurantProfile({ restaurantId = '', runId = '', anchorDate 
   const weekStart = startOfWeekMonday(today);
   const fixture = buildAuditScheduleFixture(today);
   const tag = { qaOwned: true, qaRunId: runId, createdBy: '86chaos-full-audit', createdAt: new Date().toISOString() };
+  const QA_WORKSPACE_NAME = process.env.CHAOS_QA_WORKSPACE_NAME || `86 Chaos Release Gate QA ${runId}`;
 
   const users = [
     { idKey: 'owner', name: 'Quincy Owner QA', email: `owner.qa.${runId}@86chaos.test`, role: 'Owner', isAdmin: true, isOwner: true, wage: 35, permissions: { schedule: true, inventory: true, financials: true, team: true, events: true } },
@@ -135,7 +136,7 @@ function buildFakeRestaurantProfile({ restaurantId = '', runId = '', anchorDate 
   ];
 
   return {
-    restaurant: { restaurantId, name: '86 Chaos Full Audit QA Restaurant', timezone: 'America/Chicago', type: 'Bar & Grill', scheduleStyle: 'biweekly', payrollWeekStart: 'Monday', systemSettings: { overtime: 40, enableTargets: true, targetLaborPct: 23 }, ...tag },
+    restaurant: { restaurantId, name: QA_WORKSPACE_NAME, timezone: 'America/Chicago', type: 'Bar & Grill', scheduleStyle: 'biweekly', payrollWeekStart: 'Monday', systemSettings: { overtime: 40, enableTargets: true, targetLaborPct: 23 }, ...tag },
     collections: {
       users, vendors, inventoryItems, recipes, menuDependencies, shifts, timeOffRequests, events, timePunches, prepItems, tasks, maintenanceLogs, pmSchedules, sales, financialExpenses, restaurantAdminAlerts, personalReminders: reminders, availabilityRecords, scheduleTemplates, scheduleCoverageTargets,
     },

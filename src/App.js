@@ -14,6 +14,27 @@ import { buildScheduleQueryPlan, buildScheduleDateKeyRangeClauses, mergeLoadedSc
 import { WHOAMI_STATES, classifyWhoamiResponse, mergeVerifiedAccess, shouldHoldAccessHydration } from './core/sessionAccess';
 import { FEATURE_KEYS } from './config/plans';
 import { LoginScreen } from './features/auth';
+import * as runtimeReportStateModule from './core/runtimeReportState.cjs';
+
+const resolveCommonJsModule = (moduleValue) => {
+  const candidate = moduleValue?.default && typeof moduleValue.default === 'object' ? moduleValue.default : moduleValue;
+  return candidate && typeof candidate === 'object' ? candidate : {};
+};
+const runtimeReportState = resolveCommonJsModule(runtimeReportStateModule);
+const fallbackRuntimeString = (value, max = 2000) => String(value == null ? '' : value).slice(0, max);
+const fallbackReportIdFactory = (prefix = 'local') => `${String(prefix || 'local').replace(/[^A-Za-z0-9_-]/g, '_')}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`.slice(0, 80);
+const createFallbackReportId = typeof runtimeReportState.createFallbackReportId === 'function' ? runtimeReportState.createFallbackReportId : fallbackReportIdFactory;
+const normalizeReportId = typeof runtimeReportState.normalizeReportId === 'function' ? runtimeReportState.normalizeReportId : (value) => {
+  const raw = fallbackRuntimeString(value, 120).trim();
+  return /^[A-Za-z0-9][A-Za-z0-9_.:-]{5,119}$/.test(raw) ? raw : '';
+};
+const buildRuntimeReportFingerprint = typeof runtimeReportState.buildRuntimeReportFingerprint === 'function' ? runtimeReportState.buildRuntimeReportFingerprint : (kind, error = {}, context = {}) => [kind || 'runtime', fallbackRuntimeString(error?.name || 'Error', 120), fallbackRuntimeString(error?.message || error || '', 500), fallbackRuntimeString(context.appVersion || '', 80), fallbackRuntimeString(context.route || '', 300), fallbackRuntimeString(context.activeTab || '', 80), fallbackRuntimeString(context.chunkUrl || '', 500)].join('|');
+const beginReportSubmission = typeof runtimeReportState.beginReportSubmission === 'function' ? runtimeReportState.beginReportSubmission : (() => ({ ok: true, state: 'started' }));
+const completeReportSubmission = typeof runtimeReportState.completeReportSubmission === 'function' ? runtimeReportState.completeReportSubmission : ((storage, fingerprint, reportId) => ({ ok: Boolean(normalizeReportId(reportId)), reportId: normalizeReportId(reportId), reason: normalizeReportId(reportId) ? '' : 'malformed response' }));
+const failReportSubmission = typeof runtimeReportState.failReportSubmission === 'function' ? runtimeReportState.failReportSubmission : (() => ({ ok: false }));
+const createRuntimeDiagnostic = typeof runtimeReportState.createRuntimeDiagnostic === 'function' ? runtimeReportState.createRuntimeDiagnostic : ({ fallbackReportId = '', serverReportId = '', status = 'caught', error = {}, componentStack = '', route = '', activeTab = '', appVersion = '', deployedVersion = '', uid = '', workspaceId = '', browser = '', viewport = '', category = 'runtime' } = {}) => ({ fallbackReportId: fallbackRuntimeString(fallbackReportId, 100), serverReportId: fallbackRuntimeString(serverReportId, 120), status: fallbackRuntimeString(status, 80), category: fallbackRuntimeString(category, 80), errorName: fallbackRuntimeString(error?.name || 'Error', 140), errorMessage: fallbackRuntimeString(error?.message || error || '', 2000), rawStack: fallbackRuntimeString(error?.stack || '', 6000), componentStack: fallbackRuntimeString(componentStack || '', 6000), route: fallbackRuntimeString(route, 300), activeTab: fallbackRuntimeString(activeTab, 80), appVersion: fallbackRuntimeString(appVersion, 80), deployedVersion: fallbackRuntimeString(deployedVersion, 80), uid: fallbackRuntimeString(uid, 140), workspaceId: fallbackRuntimeString(workspaceId, 160), browser: fallbackRuntimeString(browser, 400), viewport: fallbackRuntimeString(viewport, 80), timestamp: new Date().toISOString() });
+const rememberLocalRuntimeDiagnostic = typeof runtimeReportState.rememberLocalRuntimeDiagnostic === 'function' ? runtimeReportState.rememberLocalRuntimeDiagnostic : (() => {});
+const DEFAULT_REPORT_REQUEST_TIMEOUT_MS = Number(runtimeReportState.DEFAULT_REPORT_REQUEST_TIMEOUT_MS || 12000) || 12000;
 
 const CHUNK_LOAD_ERROR_NAME_RE = /^(ChunkLoadError|CSS_CHUNK_LOAD_FAILED)$/i;
 const CHUNK_LOAD_ERROR_MESSAGE_RE = /(Loading chunk [^\s]+ failed|ChunkLoadError|Failed to fetch dynamically imported module|Failed to load module script|Importing a module script failed|error loading dynamically imported module|Loading CSS chunk [^\s]+ failed)/i;
@@ -98,71 +119,100 @@ const hardRecoverRuntimeSection = async (reason = 'manual') => {
 };
 
 
-const reportRuntimeSectionError = async (error, extra = {}) => {
+const getRuntimeReportContext = (error, extra = {}, kind = 'section-runtime-error') => {
+  const route = typeof window !== 'undefined' ? `${window.location.pathname}${window.location.search}` : '';
+  const activeTab = typeof window !== 'undefined' ? (new URLSearchParams(window.location.search).get('tab') || '') : '';
+  const viewport = typeof window !== 'undefined' ? `${window.innerWidth}x${window.innerHeight}` : '';
+  const deployedVersion = typeof window !== 'undefined' ? (window.__CHAOS_VISIBLE_VERSION || window.__CHAOS_DEPLOYED_VERSION || '') : '';
+  return {
+    kind,
+    route,
+    activeTab,
+    appVersion: CURRENT_VERSION,
+    deployedVersion,
+    chunkUrl: extractChunkUrl(error),
+    userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : '',
+    viewport,
+    uid: auth?.currentUser?.uid || '',
+    workspaceId: extra.workspaceId || '',
+  };
+};
+
+const reportRuntimeErrorWithDeliveryRules = async (kind, error, extra = {}) => {
+  const storage = typeof window !== 'undefined' ? window.sessionStorage : null;
+  const context = getRuntimeReportContext(error, extra, kind);
+  const fingerprint = buildRuntimeReportFingerprint(kind, error, context);
+  const fallbackReportId = normalizeReportId(extra.fallbackReportId) || createFallbackReportId(kind === 'chunk-failure' ? 'chunk' : 'section');
+  const diagnosticBase = createRuntimeDiagnostic({
+    fallbackReportId,
+    status: 'caught',
+    category: kind,
+    error,
+    componentStack: extra.componentStack || '',
+    route: context.route,
+    activeTab: context.activeTab,
+    appVersion: context.appVersion,
+    deployedVersion: context.deployedVersion,
+    uid: context.uid,
+    workspaceId: context.workspaceId,
+    browser: context.userAgent,
+    viewport: context.viewport,
+  });
+  rememberLocalRuntimeDiagnostic(storage, diagnosticBase);
+  const attempt = beginReportSubmission(storage, fingerprint, { fallbackReportId });
+  if (!attempt.ok) return attempt.reportId || '';
+  const fail = (reason) => {
+    failReportSubmission(storage, fingerprint, reason, fallbackReportId);
+    rememberLocalRuntimeDiagnostic(storage, { ...diagnosticBase, status: 'delivery failed', reportSubmissionStatus: reason, timestamp: new Date().toISOString() });
+    return '';
+  };
+  let timer = null;
   try {
-    const fingerprint = ['section-runtime-error', String(error?.name || 'Error'), String(error?.message || error || '').slice(0, 400), CURRENT_VERSION, window.location.pathname, window.location.search].join('|');
-    const last = sessionStorage.getItem('86chaos:lastSectionRuntimeReport');
-    if (last === fingerprint) return '';
-    sessionStorage.setItem('86chaos:lastSectionRuntimeReport', fingerprint);
-    if (!auth.currentUser) return '';
+    if (!auth.currentUser) return fail('authentication not ready');
+    const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+    timer = controller ? setTimeout(() => controller.abort(), DEFAULT_REPORT_REQUEST_TIMEOUT_MS || 12000) : null;
     const response = await secureFetch('/api/report-bug', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
+      signal: controller?.signal,
       body: JSON.stringify({
         category: 'Crash / Error',
-        source: extra.source || 'react_section_runtime_error',
-        message: String(error?.message || error || 'Section runtime error').slice(0, 2000),
-        errorName: String(error?.name || 'Error'),
+        source: extra.source || (kind === 'chunk-failure' ? 'lazy_chunk_failure' : 'react_section_runtime_error'),
+        fallbackReportId,
+        message: String(error?.message || error || (kind === 'chunk-failure' ? 'Chunk load failed' : 'Section runtime error')).slice(0, 2000),
+        errorName: String(error?.name || (kind === 'chunk-failure' ? 'ChunkLoadError' : 'Error')),
         rawStack: String(error?.stack || '').slice(0, 5000),
         componentStack: String(extra.componentStack || '').slice(0, 5000),
-        chunkUrl: extractChunkUrl(error),
+        chunkUrl: context.chunkUrl,
         appVersion: CURRENT_VERSION,
-        route: window.location.pathname + window.location.search,
-        activeTab: new URLSearchParams(window.location.search).get('tab') || '',
-        userAgent: navigator.userAgent,
-        screenSize: `${window.innerWidth}x${window.innerHeight}`,
-        url: window.location.href,
-        online: navigator.onLine,
-        serviceWorkerState: navigator.serviceWorker?.controller?.state || '',
-        diagnostics: { ...extra, chunkClassified: false }
+        deployedVersion: context.deployedVersion,
+        route: context.route,
+        activeTab: context.activeTab,
+        userAgent: context.userAgent,
+        screenSize: context.viewport,
+        url: typeof window !== 'undefined' ? window.location.href : '',
+        online: typeof navigator !== 'undefined' ? navigator.onLine : true,
+        serviceWorkerState: typeof navigator !== 'undefined' ? (navigator.serviceWorker?.controller?.state || '') : '',
+        diagnostics: { ...extra, fallbackReportId, chunkClassified: kind === 'chunk-failure' }
       })
     });
+    if (!response?.ok) return fail(`endpoint rejected ${response?.status || ''}`.trim());
     const data = await response.json().catch(() => null);
-    return data?.reportId || '';
-  } catch (_) { return ''; }
+    const serverReportId = normalizeReportId(data?.reportId);
+    const finished = completeReportSubmission(storage, fingerprint, serverReportId, fallbackReportId);
+    if (!finished.ok) return fail(finished.reason || 'malformed response');
+    rememberLocalRuntimeDiagnostic(storage, { ...diagnosticBase, status: 'delivered', serverReportId, reportSubmissionStatus: 'delivered', timestamp: new Date().toISOString() });
+    return serverReportId;
+  } catch (err) {
+    return fail(err?.name === 'AbortError' ? 'request timed out' : (err?.message || 'request failed'));
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
 };
-const reportRuntimeChunkFailure = async (error, extra = {}) => {
-  try {
-    const fingerprint = ['chunk-failure', extractChunkUrl(error), CURRENT_VERSION, window.location.pathname, window.location.search].join('|');
-    const last = sessionStorage.getItem('86chaos:lastChunkReport');
-    if (last === fingerprint) return '';
-    sessionStorage.setItem('86chaos:lastChunkReport', fingerprint);
-    if (!auth.currentUser) return '';
-    const response = await secureFetch('/api/report-bug', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        category: 'Crash / Error',
-        source: extra.source || 'lazy_chunk_failure',
-        message: String(error?.message || error || 'Chunk load failed').slice(0, 2000),
-        errorName: String(error?.name || 'ChunkLoadError'),
-        rawStack: String(error?.stack || '').slice(0, 5000),
-        chunkUrl: extractChunkUrl(error),
-        appVersion: CURRENT_VERSION,
-        route: window.location.pathname + window.location.search,
-        activeTab: new URLSearchParams(window.location.search).get('tab') || '',
-        userAgent: navigator.userAgent,
-        screenSize: `${window.innerWidth}x${window.innerHeight}`,
-        url: window.location.href,
-        online: navigator.onLine,
-        serviceWorkerState: navigator.serviceWorker?.controller?.state || '',
-        diagnostics: extra
-      })
-    });
-    const data = await response.json().catch(() => null);
-    return data?.reportId || '';
-  } catch (_) { return ''; }
-};
+
+const reportRuntimeSectionError = (error, extra = {}) => reportRuntimeErrorWithDeliveryRules('section-runtime-error', error, extra);
+
+const reportRuntimeChunkFailure = (error, extra = {}) => reportRuntimeErrorWithDeliveryRules('chunk-failure', error, extra);
 const recoverFromChunkFailureOnce = async (error, exportName = 'section') => {
   if (!isChunkLoadFailure(error) || typeof window === 'undefined') throw error;
   const chunkUrl = extractChunkUrl(error) || exportName;
@@ -344,22 +394,25 @@ const maybeApplyRemoteRefreshSignal = (scope = 'global', signal = '', reason = '
 class AppSurfaceErrorBoundary extends React.Component {
   constructor(props) {
     super(props);
-    this.state = { error: null, reportId: '' };
+    this.state = { error: null, reportId: '', fallbackReportId: '' };
   }
   static getDerivedStateFromError(error) { return { error }; }
   componentDidCatch(error, info) {
-    const reporter = isChunkLoadFailure(error) ? reportRuntimeChunkFailure : reportRuntimeSectionError;
-    reporter(error, { source: isChunkLoadFailure(error) ? 'react_error_boundary_chunk' : 'react_error_boundary', componentStack: info?.componentStack || '' }).then(reportId => {
+    const chunkProblem = isChunkLoadFailure(error);
+    const fallbackReportId = createFallbackReportId(chunkProblem ? 'chunk' : 'section');
+    this.setState({ fallbackReportId, reportId: fallbackReportId });
+    const reporter = chunkProblem ? reportRuntimeChunkFailure : reportRuntimeSectionError;
+    reporter(error, { source: chunkProblem ? 'react_error_boundary_chunk' : 'react_error_boundary', componentStack: info?.componentStack || '', fallbackReportId }).then(reportId => {
       if (reportId) this.setState({ reportId });
     });
   }
   componentDidUpdate(prevProps) {
     if (prevProps.resetKey !== this.props.resetKey && this.state.error) {
-      this.setState({ error: null, reportId: '' });
+      this.setState({ error: null, reportId: '', fallbackReportId: '' });
     }
   }
   retrySection = () => {
-    this.setState({ error: null, reportId: '' });
+    this.setState({ error: null, reportId: '', fallbackReportId: '' });
     if (typeof this.props.onRetry === 'function') this.props.onRetry();
   };
   render() {
@@ -610,6 +663,7 @@ export default function App() {
   const [pushRepairLinkRequest, setPushRepairLinkRequest] = useState({ requested: false, nonce: '' });
   const [surfaceRetryKey, setSurfaceRetryKey] = useState(0);
   const [serverAdminCheck, setServerAdminCheck] = useState({ status: WHOAMI_STATES.IDLE });
+  const [serverAdminRetryKey, setServerAdminRetryKey] = useState(0);
   const [authRestoreState, setAuthRestoreState] = useState(() => ({ status: appUser?.sessionCached ? WHOAMI_STATES.PENDING : 'ready', uid: auth?.currentUser?.uid || '' }));
 
   useEffect(() => {
@@ -774,7 +828,7 @@ export default function App() {
     };
     checkServerAdminAccess();
     return () => { canceled = true; if (retryTimer) clearTimeout(retryTimer); };
-  }, [appUser?.id, appUser?.email, authRestoreState.status, authRestoreState.uid]);
+  }, [appUser?.id, appUser?.email, authRestoreState.status, authRestoreState.uid, serverAdminRetryKey]);
 
 const [currentDate, setCurrentDate] = useState(getToday());
   const [activeScheduleSubTab, setActiveScheduleSubTab] = useState('my-schedule');
@@ -1094,12 +1148,13 @@ const [currentDate, setCurrentDate] = useState(getToday());
   );
   const whoamiStatus = serverAdminCheck?.status || WHOAMI_STATES.IDLE;
   const serverAdminCheckPending = Boolean(appUser?.id && appUser.id !== 'dev-backdoor' && [WHOAMI_STATES.PENDING, WHOAMI_STATES.RETRYING].includes(whoamiStatus));
+  const serverAdminCheckTemporarilyUnavailable = Boolean(appUser?.id && appUser.id !== 'dev-backdoor' && whoamiStatus === WHOAMI_STATES.TRANSIENT_FAILURE);
   const serverDefinitivelyDeniedSuperAdmin = Boolean(whoamiStatus === WHOAMI_STATES.DENIED && serverAdminCheck?.definitive === true);
   // Local profile markers may only hold a secure restoring state while /api/whoami is pending.
   // They are never treated as final System Administrator authorization.
   const pendingLocalSystemAdminHint = Boolean(
     !isDemoMode &&
-    serverAdminCheckPending &&
+    (serverAdminCheckPending || serverAdminCheckTemporarilyUnavailable) &&
     localProfileHasSystemAdminMarker
   );
   const hasLocalSystemAdminMarker = Boolean(serverSaysSuperAdmin || pendingLocalSystemAdminHint);
@@ -1112,12 +1167,22 @@ const [currentDate, setCurrentDate] = useState(getToday());
       superAdminAccessSource: 'server-verified-not-system-admin'
     };
   }
-  if (!isDemoMode && liveAppUser && hasLocalSystemAdminMarker && liveAppUser.isSuperAdmin !== true) {
+  if (!isDemoMode && liveAppUser && pendingLocalSystemAdminHint && !serverSaysSuperAdmin) {
+    liveAppUser = {
+      ...liveAppUser,
+      isSuperAdmin: false,
+      systemAccess: { ...(liveAppUser.systemAccess || {}), superAdmin: false },
+      pendingSystemAdminVerification: true,
+      superAdminAccessSource: 'pending-server-verification'
+    };
+  }
+  if (!isDemoMode && liveAppUser && serverSaysSuperAdmin && liveAppUser.isSuperAdmin !== true) {
     liveAppUser = {
       ...liveAppUser,
       isSuperAdmin: true,
+      pendingSystemAdminVerification: false,
       systemAccess: { ...(liveAppUser.systemAccess || {}), superAdmin: true },
-      superAdminAccessSource: serverAdminCheck?.platformAuthority?.source || (serverAdminCheck?.protectedRootAdminMatched ? 'protected-root-admin' : serverAdminCheck?.serverMasterAdminMatched ? 'server-master-admin-env' : serverAdminCheck?.customClaimSuperAdmin ? 'firebase-custom-claim' : serverAdminCheck?.firestoreSuperAdmin ? 'firestore-profile-flag' : 'pending-server-verification')
+      superAdminAccessSource: serverAdminCheck?.platformAuthority?.source || (serverAdminCheck?.protectedRootAdminMatched ? 'protected-root-admin' : serverAdminCheck?.serverMasterAdminMatched ? 'server-master-admin-env' : serverAdminCheck?.customClaimSuperAdmin ? 'firebase-custom-claim' : serverAdminCheck?.firestoreSuperAdmin ? 'firestore-profile-flag' : 'api-whoami')
     };
   }
 
@@ -2738,7 +2803,7 @@ What I clicked / expected:
     if (activeTabState === 'prep' && displayClientFeatures?.prep !== false) return <TabPrep key={`prp-${rId}`} currentDate={currentDate} appUser={liveAppUser} addToast={addToast} setLabelsToPrint={setLabelsToPrint} />;
     if (activeTabState === 'recipes' && displayClientFeatures?.recipes !== false) return <TabRecipes key={`rec-${rId}`} appUser={liveAppUser} addToast={addToast} voiceRecipeTarget={voiceRecipeTarget} />;
     if (activeTabState === 'inventory' && displayClientFeatures?.inventory !== false) return <TabInventory key={`inv-${rId}-${inventorySubTabTarget || 'default'}`} addToast={addToast} appUser={liveAppUser} clientData={displayClientData} initialSubTab={inventorySubTabTarget} onInitialSubTabConsumed={() => setInventorySubTabTarget(null)} />;
-    if (activeTabState === 'ai-tools' && !isDemoMode && (liveAppUser?.isAdmin || liveAppUser?.permissions?.inventory || liveAppUser?.permissions?.prep || liveAppUser?.permissions?.team)) return <TabAITools key={`ai-${rId}`} appUser={liveAppUser} clientData={displayClientData} setActiveTab={setActiveTab} setInventorySubTabTarget={setInventorySubTabTarget} addToast={addToast} />;
+    if (activeTabState === 'ai-tools' && !isDemoMode && (serverSaysSuperAdmin || liveAppUser?.isAdmin || liveAppUser?.permissions?.inventory || liveAppUser?.permissions?.prep || liveAppUser?.permissions?.team)) return <TabAITools key={`ai-${rId}`} appUser={liveAppUser} clientData={displayClientData} setActiveTab={setActiveTab} setInventorySubTabTarget={setInventorySubTabTarget} addToast={addToast} />;
     if (activeTabState === 'menu-intelligence' && !isDemoMode) return <TabMenuIntelligence key={`mi-${rId}`} appUser={liveAppUser} clientData={displayClientData} inventoryItems={inventoryItems} addToast={addToast} />;
     if (activeTabState === 'reminders' && !isDemoMode) return <TabPersonalReminders key={`rem-${rId}-${liveAppUser?.id}`} appUser={liveAppUser} addToast={addToast} />;
     if (activeTabState === 'team' && displayClientFeatures?.team !== false) return <TabTeam key={`tea-${rId}`} appUser={liveAppUser} users={displayUsers} clientData={displayClientData} addToast={addToast} />;
@@ -2746,7 +2811,23 @@ What I clicked / expected:
     if (activeTabState === 'maintenance' && displayClientFeatures?.maintenance !== false && (liveAppUser?.isAdmin || liveAppUser?.permissions?.team)) return <TabMaintenance key={`mtn-${rId}`} appUser={liveAppUser} addToast={addToast} />;
     if (activeTabState === 'settings' && !isDemoMode) return <TabSettings key={`set-${rId}`} addToast={addToast} appUser={liveAppUser} clientData={displayClientData} users={displayUsers} presenceSelf={selfPresenceRecord} />;
     if (activeTabState === 'help') return <TabHelpCenter key={`help-${rId}`} appUser={liveAppUser} activeTab={activeTabState} voiceHelpSearchTarget={voiceHelpSearchTarget} addToast={addToast} />;
-    if (activeTabState === 'godmode' && (hasLocalSystemAdminMarker || serverSaysSuperAdmin)) return <TabGodMode key={`god-${rId}`} appUser={{ ...liveAppUser, isSuperAdmin: true, serverAdminCheck }} addToast={addToast} setGhostTenant={setGhostTenant} setActiveTab={stableSetActiveTab} />;
+    if (activeTabState === 'godmode' && serverSaysSuperAdmin) return <TabGodMode key={`god-${rId}-${serverAdminRetryKey}`} appUser={{ ...liveAppUser, isSuperAdmin: true, serverAdminCheck }} addToast={addToast} setGhostTenant={setGhostTenant} setActiveTab={stableSetActiveTab} />;
+    if (activeTabState === 'godmode' && (serverAdminCheckPending || serverAdminCheckTemporarilyUnavailable) && localProfileHasSystemAdminMarker) return (
+      <div className={`${T.card} p-5 sm:p-8 max-w-2xl mx-auto text-center space-y-4 border-amber-500/40`}>
+        <div className="mx-auto w-12 h-12 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-300 text-2xl">🔐</div>
+        <div>
+          <p className="text-[10px] font-black uppercase tracking-[0.25em] text-amber-300">Verifying secure access</p>
+          <h2 className="text-xl font-black text-white mt-2">System Administrator check is temporarily unavailable</h2>
+          <p className="text-sm font-bold text-slate-400 mt-2">Your normal 86 Chaos tools are still available. Protected platform controls will open after the server verifies this account.</p>
+          {serverAdminCheck?.error && <p className="text-xs font-bold text-amber-200/80 mt-3">Last check: {String(serverAdminCheck.error).slice(0, 180)}</p>}
+        </div>
+        <div className="flex flex-col sm:flex-row gap-2 justify-center">
+          <button onClick={() => setServerAdminRetryKey(k => k + 1)} className={T.btn}>Retry Verification</button>
+          <button onClick={() => setActiveTab('today')} className={T.btnAlt}>Use Normal App</button>
+          <button onClick={() => setActiveTab('help')} className={T.btnAlt}>Open Help Center</button>
+        </div>
+      </div>
+    );
     if (activeTabState === 'godmode') return (
       <div className={`${T.card} p-5 sm:p-8 max-w-2xl mx-auto text-center space-y-4 border-red-900/40`}>
         <div className="mx-auto w-12 h-12 rounded-2xl bg-red-900/20 border border-red-900/50 flex items-center justify-center text-red-300 text-2xl">🔐</div>

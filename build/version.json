@@ -1,15 +1,14 @@
 {
-  "version": "16.0.92",
-  "name": "86 Chaos 16.0.92 System Admin Authority and Push Repair State Fix",
-  "build": "16.0.92",
-  "label": "86 Chaos 16.0.92 System Admin Authority and Push Repair State Fix",
-  "releasedAt": "2026-08-01T02:14:00-05:00",
-  "releaseTitle": "86 Chaos 16.0.92 System Admin Authority and Push Repair State Fix",
+  "version": "16.0.97",
+  "name": "86 Chaos 16.0.97 System Admin Runtime Interop Fix",
+  "build": "16.0.97",
+  "label": "86 Chaos 16.0.97 System Admin Runtime Interop Fix",
+  "releasedAt": "2026-08-01T15:24:00-05:00",
+  "releaseTitle": "86 Chaos 16.0.97 System Admin Runtime Interop Fix",
   "notes": [
-    "System Administrator platform authority is separated from restaurant and workspace role text.",
-    "The protected founding System Administrator can remain Kitchen in the restaurant while retaining platform System Administrator access.",
-    "Unsafe tenant-editable profile fields no longer grant platform System Administrator authority.",
-    "Push repair links preserve the repair nonce long enough to activate once, then clear temporary link state after terminal outcomes.",
-    "Push repair dismissal uses stable authenticated user, workspace, device, and nonce identity instead of changing failure or status fields."
+    "System Administrator runtime imports now safely resolve CommonJS helper modules in the browser bundle.",
+    "The section error boundary now keeps a fallback report ID even if runtime-report helper interop fails.",
+    "System Administrator live-data safety helpers now fall back safely instead of crashing the console when module interop changes.",
+    "Firebase-sensitive configuration, Schedule Builder, employee deletion, shift deletion, and push-repair behavior were not changed."
   ]
 }
