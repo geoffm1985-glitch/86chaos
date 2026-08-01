@@ -56,7 +56,8 @@ const preflightFailures = preflightFailedBeforeMutation
 const runnerBlockingReason = String(runnerState.blockingReason || '').trim();
 const runnerPhase = String(runnerState.currentPhase || '').trim();
 const playwrightStarted = runnerState.playwrightStarted === true;
-const blockedBeforePlaywright = Boolean((runnerBlockingReason || /role|provision|account|playwright|java|coverage/i.test(runnerPhase)) && !playwrightStarted);
+const dependencyInstallIncomplete = runnerState.dependencyInstallAttempted === true && runnerState.dependencyInstallPassed !== true;
+const blockedBeforePlaywright = Boolean((runnerBlockingReason || dependencyInstallIncomplete || /install-locked-test-dependencies|role|provision|account|playwright|java|coverage/i.test(runnerPhase)) && !playwrightStarted);
 const rolePreflightFailed = runnerState.rolePreflightStarted === true && runnerState.rolePreflightPassed !== true;
 const rolePreflightPassed = runnerState.rolePreflightPassed === true;
 
@@ -65,7 +66,7 @@ function skippedByRunnerBlock(name) {
   if (preflightFailedBeforeMutation) return true;
   if (!blockedBeforePlaywright) return false;
   if (runnerState.dependencyInstallPassed !== true) {
-    return ['dependency-preflight.json', 'source-inventory.json', 'role-identity-verification.json', 'qa-setup-state.json', '86chaos-full-audit-seed-report.json', 'playwright-report.json', '86chaos-full-audit-cleanup-report.json'].includes(name);
+    return ['dependency-preflight.json', 'source-inventory.json', 'test-account-provisioning.json', 'role-identity-verification.json', 'java-prerequisite.json', 'node-test-live-summary.json', 'qa-setup-state.json', '86chaos-full-audit-seed-report.json', 'playwright-report.json', '86chaos-full-audit-cleanup-report.json'].includes(name);
   }
   if (runnerState.dependencyPreflightPassed !== true) {
     return ['source-inventory.json', 'role-identity-verification.json', 'qa-setup-state.json', '86chaos-full-audit-seed-report.json', 'playwright-report.json', '86chaos-full-audit-cleanup-report.json'].includes(name);
@@ -145,6 +146,7 @@ if (hasOwn(dependencyPreflight, 'ok') && dependencyPreflight.ok !== true) {
   dependencyFailures.push(...(Array.isArray(dependencyPreflight.errors) && dependencyPreflight.errors.length ? dependencyPreflight.errors : ['Dependency preflight failed.']));
 }
 if (blockedBeforePlaywright && /dependenc/i.test(runnerBlockingReason) && !dependencyFailures.length) dependencyFailures.push(runnerBlockingReason);
+if (dependencyInstallIncomplete && !dependencyFailures.length) dependencyFailures.push(runnerBlockingReason || 'Dependency installation started but did not record completion, exit code, timeout, or failure details.');
 
 const accountProvisionFailures = [];
 if (hasOwn(testAccountProvisioning, 'ok') && testAccountProvisioning.ok !== true) {
@@ -176,6 +178,8 @@ if (cleanupReport && cleanupReport.remaining && Object.keys(cleanupReport.remain
 if (cleanupReport && cleanupReport.accountedFailures?.length) cleanupFailures.push(`Cleanup did not account for seeded records: ${JSON.stringify(cleanupReport.accountedFailures)}`);
 
 const noTestsExecuted = tests.length === 0;
+const blockedBeforeTestExecution = Boolean(noTestsExecuted && (blockedBeforePlaywright || runnerState.blockedBeforeTestExecution === true || !playwrightStarted));
+const releaseGateStatus = ok => ok ? 'PASS' : (blockedBeforeTestExecution ? 'BLOCKED BEFORE TEST EXECUTION' : 'FAIL');
 const executionBlockedMessage = blockedBeforePlaywright
   ? `Not created because test execution was blocked before Playwright global setup: ${runnerBlockingReason}`
   : '';
@@ -271,6 +275,8 @@ const summary = {
   firebaseProjectId: preflight.firebaseProjectId || sourceInventory.firebaseProjectId || '',
   node: process.version,
   stepFailures,
+  outcome: releaseGateStatus(ok),
+  blockedBeforeTestExecution,
   primaryBlockingFailure,
   runnerState,
   dependencyPreflight: dependencyPreflight && hasOwn(dependencyPreflight, 'ok') ? dependencyPreflight : null,
@@ -281,7 +287,7 @@ const summary = {
   javaFailures,
   nodeFailures,
   testAccountConfigurationFailure: roleFailures.length > 0,
-  playwright: { totalResults: tests.length, status: noTestsExecuted ? 'No tests executed' : 'Tests executed', failed: failedTests.length, timedOut: timedOutTests.length, skipped: skippedTests.length, failedTests: failedTests.slice(0, 200), skippedTests: skippedTests.slice(0, 200) },
+  playwright: { totalResults: tests.length, status: blockedBeforeTestExecution ? 'BLOCKED BEFORE TEST EXECUTION' : (noTestsExecuted ? 'No tests executed' : 'Tests executed'), failed: failedTests.length, timedOut: timedOutTests.length, skipped: skippedTests.length, failedTests: blockedBeforeTestExecution ? [] : failedTests.slice(0, 200), skippedTests: skippedTests.slice(0, 200) },
   seed: seedReport && seedReport.ok !== undefined ? { ok: seedReport.ok, runId: seedReport.runId || '', restaurantId: seedReport.restaurantId || seedReport.profile?.restaurantId || '', restaurantName: seedReport.restaurantName || seedReport.profile?.restaurantName || '', expectedCounts: seedReport.expectedCounts || {}, verifiedCounts: seedReport.verification?.verifiedCounts || {}, verificationOk: seedReport.verification?.ok === true } : null,
   cleanup: cleanupReport && cleanupReport.ok !== undefined ? { ok: cleanupReport.ok, runId: cleanupReport.runId || '', expected: cleanupReport.expected || {}, deleted: cleanupReport.deleted || {}, alreadyAbsent: cleanupReport.alreadyAbsent || {}, remaining: cleanupReport.remaining || {}, additionalRunRecords: cleanupReport.additionalRunRecords || {}, restaurantDeleted: cleanupReport.restaurantDeleted || 0, failures: cleanupReport.failed || [], accountedFailures: cleanupReport.accountedFailures || [] } : null,
   setupState,
@@ -298,7 +304,7 @@ const summary = {
   truth: [
     'This report reads only the current run directory.',
     'Root-level legacy seed and cleanup reports are not authoritative.',
-    'No tests executed is a blocked release gate, not a passing test suite.',
+    'No tests executed is a blocked release gate, not a passing test suite, and not an app-test failure.',
     'Temporary test-account provisioning reports are current-run diagnostics and never include passwords or tokens.',
     'When Playwright never starts, missing role verification, setup, seed, Playwright, and cleanup artifacts are not seed or cleanup defects.',
     'Cleanup is required after any verified QA seed, and not required when no QA setup or seed was attempted.',
@@ -321,11 +327,11 @@ const lines = [
   `Visible Version: ${summary.visibleVersion}`,
   `Testing Firebase project: ${summary.firebaseProjectId}`,
   `Node: ${summary.node}`,
-  `Overall: ${summary.ok ? 'PASS' : 'FAIL'}`,
+  `Overall: ${summary.outcome}`,
   `Primary blocking failure: ${summary.primaryBlockingFailure || 'None'}`,
   `Runner step failures: ${summary.stepFailures}`,
   `Playwright results: ${tests.length}`,
-  noTestsExecuted ? 'Playwright status: No tests executed' : 'Playwright status: Tests executed',
+  `Playwright status: ${summary.playwright.status}`,
   `Playwright failed: ${failedTests.length}`,
   `Playwright timed out: ${timedOutTests.length}`,
   `Playwright skipped: ${skippedTests.length}`,

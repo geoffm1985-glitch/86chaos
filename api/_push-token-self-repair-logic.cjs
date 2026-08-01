@@ -21,6 +21,17 @@ const EXACT_ALLOWED_PUSH_FIELDS = new Set([
   'lastPushFailureCode'
 ]);
 
+
+function buildStablePushRepairRequestId(user = {}, context = {}) {
+  const stableServerId = String(user.pushTokenRepairNonce || user.pushRepairRequestId || '').trim();
+  if (stableServerId) return stableServerId;
+  const profileId = String(context.profileDocId || user.profileDocId || user.id || user.uid || user.userId || user.email || 'user').trim();
+  const workspaceId = String(context.restaurantId || user.restaurantId || 'workspace').trim();
+  const deviceId = cleanId(context.deviceId || 'device');
+  const host = String(context.host || 'host').toLowerCase().trim();
+  return `legacy-active:${profileId}:${workspaceId}:${deviceId}:${host}`;
+}
+
 function decodedIdentity(decoded = {}) {
   return {
     uid: String(decoded.uid || '').trim(),
@@ -76,6 +87,7 @@ function sanitizeSelfRepairPatch(patch = {}) {
 
 module.exports = {
   EXACT_ALLOWED_PUSH_FIELDS,
+  buildStablePushRepairRequestId,
   cleanId,
   collectOwnProfileCandidateIds,
   decodedIdentity,

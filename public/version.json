@@ -1,14 +1,14 @@
 {
-  "version": "16.0.85",
-  "name": "86 Chaos 16.0.84 Deletion Permanence Fix",
-  "build": "16.0.85",
-  "label": "86 Chaos 16.0.84 Deletion Permanence Fix",
-  "releasedAt": "2026-07-31T15:38:00-05:00",
-  "releaseTitle": "86 Chaos 16.0.84 Deletion Permanence Fix",
+  "version": "16.0.87",
+  "name": "86 Chaos 16.0.87 Release Gate Windows Spawn Fix",
+  "build": "16.0.87",
+  "label": "86 Chaos 16.0.87 Release Gate Windows Spawn Fix",
+  "releasedAt": "2026-07-31T22:11:00-05:00",
+  "releaseTitle": "86 Chaos 16.0.87 Release Gate Windows Spawn Fix",
   "notes": [
-    "Schedule Builder now deletes/tombstones every active Firestore shift document represented by one visible shift chip using the same employee/date/time identity used for display deduplication.",
-    "Deleted shift chips are verified after deletion and stale local echoes, Auto-Fill state, publish candidates, labor totals, exports, and listener snapshots are prevented from resurrecting confirmed deletes.",
-    "System Administrator global employee deletion now removes/deactivates every active workspaceMembers record for the target account before returning success so deleted users cannot reappear in Staff Roster.",
-    "Historical schedules, time punches, payroll records, audit logs, Firebase config, Firestore rules, indexes, credentials, employee schedule visibility, and the 16.0.83 admin delete permission fix were preserved."
+    "System Administrator runtime errors are no longer mislabeled as stale lazy-chunk failures merely because the stack contains /static/js/.",
+    "Push repair dismissal is keyed to a stable repair request nonce or legacy fallback instead of changing failure/status fields.",
+    "The secured push self-repair API verifies the caller profile after update before returning success.",
+    "The release-gate dependency-install step now has live observable output, heartbeat, timeout handling, overlap protection, and blocked-before-test reporting."
   ]
 }
