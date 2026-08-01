@@ -6410,10 +6410,12 @@ ${body}`;
     addToast('Push Report', 'Push diagnostic report downloaded.');
   };
 
-  const buildPushRepairLink = (user) => {
-    if (typeof window === 'undefined') return 'https://app.86chaos.com/?pushRepair=1';
+  const buildPushRepairLink = (user, repairNonce = '') => {
+    const nonce = String(repairNonce || user?.pushTokenRepairNonce || user?.pushRepairRequestId || '').trim();
+    if (typeof window === 'undefined') return nonce ? `https://app.86chaos.com/?pushRepairNonce=${encodeURIComponent(nonce)}` : 'https://app.86chaos.com/?pushRepair=1';
     const url = new URL(window.location.origin || 'https://app.86chaos.com');
-    url.searchParams.set('pushRepair', '1');
+    if (nonce) url.searchParams.set('pushRepairNonce', nonce);
+    else url.searchParams.set('pushRepair', '1');
     if (user?.restaurantId) url.searchParams.set('restaurantId', user.restaurantId);
     return url.toString();
   };
@@ -6463,13 +6465,14 @@ ${body}`;
   };
 
   const copyPushRepairLinkForUser = async (user) => {
-    const link = buildPushRepairLink(user);
     try {
+      const result = await callPushRepairAction('request-repair', user);
+      const repairUser = Array.isArray(result?.users) ? result.users.find(row => row.id === user?.id) || result.users[0] : null;
+      const link = repairUser?.repairLink || buildPushRepairLink(user, repairUser?.pushTokenRepairNonce || user?.pushTokenRepairNonce || '');
       await navigator.clipboard.writeText(link);
-      await callPushRepairAction('request-repair', user);
       addToast('Reconnect Link Copied', 'Send this link to the employee. Their device still has to open it and reconnect.');
     } catch (err) {
-      addToast('Copy Link Failed', link);
+      addToast('Copy Link Failed', buildPushRepairLink(user));
     }
   };
 

@@ -163,6 +163,7 @@ function repairPayload({ mode = 'repair', clearToken = false, requestedBy = '', 
   const existingNonce = existingTarget?.pushNeedsRepair === true && existingTarget?.pushTokenRepairNonce && !clearToken
     ? String(existingTarget.pushTokenRepairNonce)
     : '';
+  const nonce = existingNonce || `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
   const payload = {
     pushNeedsRepair: true,
     pushRepairMode: mode,
@@ -170,8 +171,8 @@ function repairPayload({ mode = 'repair', clearToken = false, requestedBy = '', 
     pushRepairRequestedAt: existingNonce ? (existingTarget.pushRepairRequestedAt || stamp) : stamp,
     pushRepairFlaggedAt: existingNonce ? (existingTarget.pushRepairFlaggedAt || stamp) : stamp,
     pushRepairRequestedBy: requestedBy,
-    pushRepairLink: repairLink || '',
-    pushTokenRepairNonce: existingNonce || `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+    pushRepairLink: withRepairNonceInLink(repairLink, nonce),
+    pushTokenRepairNonce: nonce,
     lastPushRepairError: null
   };
   if (mode === 'force-refresh') payload.pushForceServiceWorkerRefresh = true;
@@ -182,6 +183,22 @@ function repairPayload({ mode = 'repair', clearToken = false, requestedBy = '', 
     payload.lastPushFailureCode = null;
   }
   return payload;
+}
+
+
+function withRepairNonceInLink(repairLink = '', nonce = '') {
+  const cleanNonce = String(nonce || '').trim();
+  if (!repairLink || !cleanNonce) return repairLink || '';
+  try {
+    const url = new URL(repairLink);
+    url.searchParams.set('pushRepairNonce', cleanNonce);
+    url.searchParams.delete('repairNonce');
+    url.searchParams.delete('pushRepair');
+    return url.toString();
+  } catch (_) {
+    const joiner = repairLink.includes('?') ? '&' : '?';
+    return `${repairLink}${joiner}pushRepairNonce=${encodeURIComponent(cleanNonce)}`;
+  }
 }
 
 async function writeAudit(db, { caller, action, target, restaurantId, details }) {
@@ -284,7 +301,7 @@ export default async function handler(req, res) {
       const writes = payloads.map(({ target, payload }) => db.collection('users').doc(target.id).set(payload, { merge: true }));
       await Promise.all(writes);
       await writeAudit(db, { caller, action: `PUSH_${action.replace(/-/g, '_').toUpperCase()}`, target: ids.join(','), restaurantId: restaurantId || targets[0]?.restaurantId || 'platform', details: `${targets.length} user(s) marked for push repair. clearToken=${clearToken}` });
-      return res.status(200).json({ ok: true, action, updated: targets.length, users: payloads.map(({ target, payload }) => ({ id: target.id, email: target.email || '', restaurantId: target.restaurantId || '', pushTokenRepairNonce: payload.pushTokenRepairNonce, repairLink: payload.repairLink || '' })) });
+      return res.status(200).json({ ok: true, action, updated: targets.length, users: payloads.map(({ target, payload }) => ({ id: target.id, email: target.email || '', restaurantId: target.restaurantId || '', pushTokenRepairNonce: payload.pushTokenRepairNonce, repairLink: payload.pushRepairLink || '' })) });
     }
 
     if (action === 'prune-stale') {

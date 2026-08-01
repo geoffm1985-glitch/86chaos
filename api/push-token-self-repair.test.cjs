@@ -67,3 +67,25 @@ test('self repair readback verifies token, device, flags, and status before succ
   assert.equal(bad.ok, false);
   assert.ok(bad.errors.includes('fcmToken'));
 });
+
+test('push repair link captures one-time intent and clears after terminal outcomes', () => {
+  const fs = require('fs');
+  const path = require('path');
+  const app = fs.readFileSync(path.join(__dirname, '..', 'src', 'App.js'), 'utf8');
+  assert.match(app, /setPushRepairLinkRequest\(\{ requested: true, consumed: true, nonce, capturedNonce: nonce/);
+  assert.match(app, /history\.replaceState\(\{[\s\S]*pushRepairConsumed: true/);
+  assert.match(app, /const pushRepairRequestedByLink = Boolean\(pushRepairLinkRequest\.requested\)/);
+  assert.match(app, /clearPushRepairLinkRequest\('repair-success'\)/);
+  assert.match(app, /clearPushRepairLinkRequest\('dismissed'\)/);
+});
+
+test('copied repair links include a stable server nonce instead of only pushRepair=1', () => {
+  const fs = require('fs');
+  const path = require('path');
+  const management = fs.readFileSync(path.join(__dirname, '..', 'src', 'features', 'management.jsx'), 'utf8');
+  const api = fs.readFileSync(path.join(__dirname, 'push-token-repair.js'), 'utf8');
+  assert.match(management, /pushRepairNonce/);
+  assert.match(management, /repairUser\?\.pushTokenRepairNonce/);
+  assert.match(api, /withRepairNonceInLink/);
+  assert.match(api, /url\.searchParams\.set\('pushRepairNonce'/);
+});

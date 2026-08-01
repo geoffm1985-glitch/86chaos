@@ -1,14 +1,15 @@
 {
-  "version": "16.0.89",
-  "name": "86 Chaos 16.0.89 Admin Push Release Gate Fix",
-  "build": "16.0.89",
-  "label": "86 Chaos 16.0.89 Admin Push Release Gate Fix",
-  "releasedAt": "2026-07-31T22:11:00-05:00",
-  "releaseTitle": "86 Chaos 16.0.89 Admin Push Release Gate Fix",
+  "version": "16.0.92",
+  "name": "86 Chaos 16.0.92 System Admin Authority and Push Repair State Fix",
+  "build": "16.0.92",
+  "label": "86 Chaos 16.0.92 System Admin Authority and Push Repair State Fix",
+  "releasedAt": "2026-08-01T02:14:00-05:00",
+  "releaseTitle": "86 Chaos 16.0.92 System Admin Authority and Push Repair State Fix",
   "notes": [
-    "System Administrator runtime errors are no longer mislabeled as stale lazy-chunk failures merely because the stack contains /static/js/.",
-    "Push repair dismissal is keyed to a stable repair request nonce or legacy fallback instead of changing failure/status fields.",
-    "The secured push self-repair API verifies the caller profile after update before returning success.",
-    "The release-gate dependency-install step now has live observable output, heartbeat, timeout handling, overlap protection, and blocked-before-test reporting."
+    "System Administrator platform authority is separated from restaurant and workspace role text.",
+    "The protected founding System Administrator can remain Kitchen in the restaurant while retaining platform System Administrator access.",
+    "Unsafe tenant-editable profile fields no longer grant platform System Administrator authority.",
+    "Push repair links preserve the repair nonce long enough to activate once, then clear temporary link state after terminal outcomes.",
+    "Push repair dismissal uses stable authenticated user, workspace, device, and nonce identity instead of changing failure or status fields."
   ]
 }

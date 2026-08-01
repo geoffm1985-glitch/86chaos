@@ -70,12 +70,17 @@ function normalizeSpawnCommand(command, args) {
       }
     }
     if (/\.(cmd|bat)$/i.test(rawCommand)) {
-      const commandLine = [rawCommand, ...args].map(quoteCmdArg).join(' ');
+      // Do not spawn .cmd/.bat files directly on Windows Node 24, but also do
+      // not pre-quote the script path as a single /c command string. Passing
+      // `call`, the script path, and arguments separately lets libuv apply
+      // Windows argument quoting at the final cmd.exe boundary. This preserves
+      // paths with spaces without producing literal quote characters such as
+      // '\"C:\\Program Files...\"' inside cmd.
       const comspec = process.env.ComSpec || 'cmd.exe';
       return {
         command: comspec,
-        args: ['/d', '/s', '/c', commandLine],
-        spawnDisplay: [comspec, '/d', '/s', '/c', commandLine].map(quoteCmdArg).join(' ')
+        args: ['/d', '/c', 'call', rawCommand, ...args],
+        spawnDisplay: [comspec, '/d', '/c', 'call', rawCommand, ...args].map(quoteCmdArg).join(' ')
       };
     }
   }

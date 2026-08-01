@@ -1,4 +1,6 @@
 const { admin, initAdmin, norm, clean, parseMasterEmailEnv, masterEmails: getMasterEmails } = require('./_chaos-admin');
+const { protectedRootAdminEmails } = require('./_protected-root-admin');
+const { decidePlatformAdminAuthority } = require('./_platform-admin-authority.cjs');
 const { APP_VERSION } = require('./_version');
 
 function getAuthClient(app) {
@@ -52,27 +54,24 @@ module.exports = async function handler(req, res) {
       firestoreProfile = { profileReadError: profileErr?.message || 'Could not read profile.' };
     }
 
-    const firestoreProfileRoleText = [
-      firestoreProfile?.role,
-      firestoreProfile?.roleName,
-      firestoreProfile?.accountRole,
-      firestoreProfile?.title,
-      firestoreProfile?.systemRole
-    ].filter(Boolean).join(' ');
+    const platformAuthority = decidePlatformAdminAuthority({
+      decoded,
+      profile: firestoreProfile && !firestoreProfile.profileReadError ? firestoreProfile : null,
+      masterEmails,
+      protectedRootEmails: protectedRootAdminEmails()
+    });
+    const firestoreProfileRoleText = platformAuthority.firestoreRoleText || '';
     const firestoreRoleLooksSystemAdmin = /system\s*administrator|super\s*admin|master\s*admin/i.test(firestoreProfileRoleText);
-    const firestoreProfileDisabled = firestoreProfile?.isActive === false || /disabled|inactive|locked/i.test(String(firestoreProfile?.status || ''));
-    const firestoreSuperAdminFlag = Boolean(
-      firestoreProfile?.isSuperAdmin === true ||
-      firestoreProfile?.systemAccess?.superAdmin === true ||
-      firestoreProfile?.permissions?.systemAdmin === true ||
-      firestoreProfile?.permissions?.godmode === true
-    );
-    // Firestore profile flags are not enough by themselves. They must agree with a
-    // System Administrator style role so stale manager/owner session flags cannot open platform tools.
-    const firestoreSuperAdmin = Boolean(!firestoreProfileDisabled && firestoreSuperAdminFlag && firestoreRoleLooksSystemAdmin);
-    const firestoreSystemAdministrator = Boolean(!firestoreProfileDisabled && firestoreRoleLooksSystemAdmin);
-    const customClaimSuperAdmin = decoded.superAdmin === true;
-    const superAdmin = Boolean(customClaimSuperAdmin || serverMasterAdminMatched || firestoreSuperAdmin || firestoreSystemAdministrator);
+    const firestoreProfileDisabled = platformAuthority.firestoreProfileDisabled === true;
+    const firestoreSuperAdminFlag = platformAuthority.firestoreSuperAdminFlag === true;
+    const firestoreSuperAdmin = platformAuthority.firestoreSuperAdmin === true;
+    // Role text is display/diagnostic only. Platform System Administrator authority
+    // comes from protected-root, server master email, custom claim, or explicit
+    // server-owned profile flags, never from the restaurant/workspace role string.
+    const firestoreSystemAdministrator = firestoreSuperAdmin;
+    const customClaimSuperAdmin = platformAuthority.customClaimSuperAdmin === true;
+    const protectedRootAdminMatched = platformAuthority.protectedRootAdminMatched === true;
+    const superAdmin = platformAuthority.superAdmin === true;
 
     res.status(200).json({
       ok: true,
@@ -85,7 +84,20 @@ module.exports = async function handler(req, res) {
       uid: decoded.uid,
       email: decoded.email,
       superAdmin,
+      platformSuperAdmin: superAdmin,
+      platformAuthority: {
+        superAdmin,
+        protected: platformAuthority.protected === true,
+        authoritative: platformAuthority.authoritative === true,
+        temporarilyUnavailable: false,
+        source: platformAuthority.source || '',
+        workspaceRole: platformAuthority.workspaceRole || '',
+        restaurantRole: firestoreProfile?.role || ''
+      },
+      platformAuthorityProtected: platformAuthority.protected === true,
+      platformAuthorityAuthoritative: platformAuthority.authoritative === true,
       customClaimSuperAdmin,
+      protectedRootAdminMatched,
       serverMasterAdminMatched,
       firestoreSuperAdmin,
       firestoreSystemAdministrator,
