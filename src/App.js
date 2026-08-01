@@ -23,17 +23,37 @@ const extractChunkUrl = (error) => {
   return match ? match[0] : '';
 };
 
-const clearRuntimeRecoveryCaches = async (reason = 'manual') => {
-  if (typeof window === 'undefined') return { ok: false, reason: 'no-window' };
-  const result = { ok: true, reason, cacheNames: [], serviceWorkers: 0, errors: [] };
+const isFirebaseMessagingServiceWorkerRegistration = (registration = {}) => {
+  const scriptUrl = String(registration?.active?.scriptURL || registration?.installing?.scriptURL || registration?.waiting?.scriptURL || '');
+  return /\/firebase-messaging-sw\.js(?:$|[?#])/i.test(scriptUrl) || scriptUrl.includes('firebase-messaging-sw.js');
+};
+
+const clearChunkRecoveryMarkers = () => {
+  if (typeof window === 'undefined') return;
   try {
     const keys = Object.keys(window.localStorage || {}).filter(key => /^86chaos:chunkRecovery:/i.test(key || ''));
     keys.forEach(key => { try { window.localStorage.removeItem(key); } catch (_) {} });
-  } catch (err) { result.errors.push(`localStorage:${err?.message || err}`); }
+  } catch (_) {}
   try {
     const keys = Object.keys(window.sessionStorage || {}).filter(key => /^86chaos:chunkRecovery:/i.test(key || ''));
     keys.forEach(key => { try { window.sessionStorage.removeItem(key); } catch (_) {} });
-  } catch (err) { result.errors.push(`sessionStorage:${err?.message || err}`); }
+  } catch (_) {}
+};
+
+const removeRuntimeRecoveryQueryParams = () => {
+  if (typeof window === 'undefined') return;
+  try {
+    const url = new URL(window.location.href);
+    ['chaosReloadAt', 'chaosReloadVersion', 'chaosHardRefresh', 'chaosVersion'].forEach(key => url.searchParams.delete(key));
+    window.history.replaceState(window.history.state || {}, '', `${url.pathname}${url.search}${url.hash}`);
+  } catch (_) {}
+};
+
+const clearRuntimeRecoveryCaches = async (reason = 'manual', options = {}) => {
+  if (typeof window === 'undefined') return { ok: false, reason: 'no-window' };
+  const preserveRecoveryMarkers = options.preserveRecoveryMarkers === true;
+  const result = { ok: true, reason, cacheNames: [], serviceWorkers: 0, preservedServiceWorkers: 0, errors: [] };
+  if (!preserveRecoveryMarkers) clearChunkRecoveryMarkers();
   try {
     if (window.caches?.keys) {
       const names = await window.caches.keys();
@@ -44,8 +64,10 @@ const clearRuntimeRecoveryCaches = async (reason = 'manual') => {
   try {
     const regs = await navigator.serviceWorker?.getRegistrations?.();
     if (Array.isArray(regs) && regs.length) {
-      result.serviceWorkers = regs.length;
-      await Promise.allSettled(regs.map(reg => reg.unregister?.()));
+      const removable = regs.filter(reg => !isFirebaseMessagingServiceWorkerRegistration(reg));
+      result.serviceWorkers = removable.length;
+      result.preservedServiceWorkers = regs.length - removable.length;
+      await Promise.allSettled(removable.map(reg => reg.unregister?.()));
     }
   } catch (err) { result.errors.push(`serviceWorker:${err?.message || err}`); }
   try { await fetch(`/asset-manifest.json?recovery=${Date.now()}`, { cache: 'no-store' }); } catch (_) {}
@@ -114,7 +136,7 @@ const recoverFromChunkFailureOnce = async (error, exportName = 'section') => {
     writeRecoveryMarker(inFlightKey, stamp);
     writeRecoveryMarker(reloadUsedKey, `${stamp}|${chunkUrl}`);
     await reportRuntimeChunkFailure(error, { source: 'lazy_feature_import', exportName, chunkAutoReload: 'one-shot' });
-    await clearRuntimeRecoveryCaches('auto-chunk-recovery');
+    await clearRuntimeRecoveryCaches('auto-chunk-recovery', { preserveRecoveryMarkers: true });
     try {
       const registration = await navigator.serviceWorker?.getRegistration?.();
       await registration?.update?.();
@@ -1032,6 +1054,20 @@ const [currentDate, setCurrentDate] = useState(getToday());
       superAdminAccessSource: serverAdminCheck?.serverMasterAdminMatched ? 'server-master-admin-env' : serverAdminCheck?.customClaimSuperAdmin ? 'firebase-custom-claim' : serverAdminCheck?.firestoreSystemAdministrator ? 'firestore-system-administrator-role' : serverAdminCheck?.firestoreSuperAdmin ? 'firestore-profile-flag' : 'pending-server-verification'
     };
   }
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const url = new URL(window.location.href);
+    const hadRecoveryParams = ['chaosReloadAt', 'chaosReloadVersion', 'chaosHardRefresh', 'chaosVersion'].some(key => url.searchParams.has(key));
+    if (!hadRecoveryParams) return;
+    const requestedTab = normalizeRouteTab(url.searchParams.get('tab') || activeTabState || 'today');
+    if (requestedTab !== activeTabState) return;
+    if (requestedTab === 'godmode' && !serverSaysSuperAdmin && !hasLocalSystemAdminMarker) return;
+    if (requestedTab === 'godmode' && [WHOAMI_STATES.PENDING, WHOAMI_STATES.RETRYING].includes(whoamiStatus)) return;
+    clearChunkRecoveryMarkers();
+    removeRuntimeRecoveryQueryParams();
+    setShowUpdateBanner(false);
+  }, [activeTabState, serverSaysSuperAdmin, hasLocalSystemAdminMarker, whoamiStatus]);
 
   // --- REMOTE SESSION KILL SWITCH ---
   useEffect(() => {
@@ -2034,13 +2070,25 @@ What I clicked / expected:
 
 
   const getPushProfileDocId = () => String(
-    auth.currentUser?.uid ||
+    directAccountUser?.id ||
+    accountProfileDocId ||
     liveAppUser?.profileDocId ||
     liveAppUser?.accountProfile?.id ||
-    liveAppUser?.uid ||
     liveAppUser?.userId ||
+    liveAppUser?.uid ||
+    liveAppUser?.authUid ||
     liveAppUser?.id ||
+    auth.currentUser?.uid ||
     ''
+  ).trim();
+
+  const getPushRepairRequestId = () => String(
+    liveAppUser?.pushTokenRepairNonce ||
+    liveAppUser?.pushRepairRequestId ||
+    liveAppUser?.pushRepairRequestedAt ||
+    liveAppUser?.pushRepairFlaggedAt ||
+    liveAppUser?.lastPushFailureCode ||
+    `${liveAppUser?.pushNeedsRepair ? 'needs-repair' : 'ok'}:${liveAppUser?.pushForceServiceWorkerRefresh ? 'force-sw' : 'normal'}:${typeof window !== 'undefined' ? window.location.hostname : ''}`
   ).trim();
 
   const getPushProfileRef = () => {
@@ -2072,12 +2120,37 @@ What I clicked / expected:
       window.__chaosFirestoreDiagnostics = window.__chaosFirestoreDiagnostics || {};
       window.__chaosFirestoreDiagnostics.writesInitiated = (window.__chaosFirestoreDiagnostics.writesInitiated || 0) + 1;
     } catch (_) {}
-    const result = await updateDoc(profileRef, meaningfulPatch);
     try {
-      window.__chaosFirestoreDiagnostics = window.__chaosFirestoreDiagnostics || {};
-      window.__chaosFirestoreDiagnostics.writesCompleted = (window.__chaosFirestoreDiagnostics.writesCompleted || 0) + 1;
-    } catch (_) {}
-    return result;
+      const result = await updateDoc(profileRef, meaningfulPatch);
+      try {
+        window.__chaosFirestoreDiagnostics = window.__chaosFirestoreDiagnostics || {};
+        window.__chaosFirestoreDiagnostics.writesCompleted = (window.__chaosFirestoreDiagnostics.writesCompleted || 0) + 1;
+      } catch (_) {}
+      return result;
+    } catch (err) {
+      const message = String(err?.message || err || '');
+      const code = String(err?.code || '');
+      const shouldUseServerRepair = /permission|insufficient|not-found|no document|missing|denied/i.test(`${code} ${message}`);
+      if (!shouldUseServerRepair) throw err;
+      const response = await secureFetch('/api/push-token-repair', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'self-repair',
+          profileDocId: getPushProfileDocId(),
+          restaurantId: rId || liveAppUser?.restaurantId || '',
+          patch: meaningfulPatch
+        })
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || data?.ok !== true) throw new Error(data?.error || 'The secured push repair action could not update this device.');
+      try {
+        window.__chaosFirestoreDiagnostics = window.__chaosFirestoreDiagnostics || {};
+        window.__chaosFirestoreDiagnostics.writesCompleted = (window.__chaosFirestoreDiagnostics.writesCompleted || 0) + 1;
+        window.__chaosFirestoreDiagnostics.pushRepairApiFallbacks = (window.__chaosFirestoreDiagnostics.pushRepairApiFallbacks || 0) + 1;
+      } catch (_) {}
+      return data;
+    }
   };
 
   const rememberSkippedFirestoreWrite = () => {
@@ -2089,7 +2162,7 @@ What I clicked / expected:
 
   const getPushErrorMessage = (err, fallback = 'Could not reconnect push notifications on this device.') => {
     const raw = String(err?.message || err || fallback);
-    if (/permission|insufficient/i.test(raw)) return 'The app could not save this device yet. Sign out and back in, then tap Fix Now again.';
+    if (/permission|insufficient|not-found|missing/i.test(raw)) return '86 Chaos could not save this device yet. The app will try the secure repair path automatically.';
     if (isFirebaseMessagingUnsupportedError(err)) return 'This browser cannot run Firebase push notifications. You can still use 86 Chaos normally.';
     return raw;
   };
@@ -2199,7 +2272,7 @@ What I clicked / expected:
       if ('serviceWorker' in navigator) {
         if (liveAppUser?.pushForceServiceWorkerRefresh) {
           const regs = await navigator.serviceWorker.getRegistrations().catch(() => []);
-          await Promise.all((regs || []).filter(reg => (reg.active?.scriptURL || reg.installing?.scriptURL || reg.waiting?.scriptURL || '').includes('firebase-messaging-sw')).map(reg => reg.unregister().catch(() => false)));
+          await Promise.all((regs || []).filter(isFirebaseMessagingServiceWorkerRegistration).map(reg => reg.update?.().catch(() => null)));
         }
         registration = await navigator.serviceWorker.register('/firebase-messaging-sw.js', { updateViaCache: 'none' }).catch(() => null);
         if (registration?.update) await registration.update().catch(() => null);
@@ -2232,6 +2305,7 @@ What I clicked / expected:
       });
       setAppUser(prev => prev?.id === liveAppUser.id ? { ...prev, fcmToken: currentToken, pushNeedsRepair: false, pushForceServiceWorkerRefresh: false, notificationPermission: permission, pushTokenPermission: permission, pushTokenHost: window.location.hostname } : prev);
       setPushRepairDismissed(true);
+      try { localStorage.removeItem(`86chaos:pushRepairDismissed:${liveAppUser?.id || 'user'}:${rId || 'workspace'}:${getPushRepairRequestId()}`); } catch (_) {}
       addToast(source === 'auto' ? 'Push Reconnected' : 'Notifications Fixed', 'This device is connected for 86 Chaos push notifications.');
       return true;
     } catch (err) {
@@ -2265,6 +2339,15 @@ What I clicked / expected:
     if (autoPushSyncStillFresh) {
       rememberSkippedFirestoreWrite();
       return;
+    }
+    if (pushRepairRequested && !pushRepairRequestedByLink) {
+      try {
+        const dismissalKey = `86chaos:pushRepairDismissed:${liveAppUser?.id || 'user'}:${rId || 'workspace'}:${getPushRepairRequestId()}`;
+        if (localStorage.getItem(dismissalKey) === '1') {
+          rememberSkippedFirestoreWrite();
+          return;
+        }
+      } catch (_) {}
     }
 
     let canceled = false;
@@ -2306,7 +2389,7 @@ What I clicked / expected:
         if ('serviceWorker' in navigator) {
           if (liveAppUser?.pushForceServiceWorkerRefresh) {
             const regs = await navigator.serviceWorker.getRegistrations().catch(() => []);
-            await Promise.all((regs || []).filter(reg => (reg.active?.scriptURL || reg.installing?.scriptURL || reg.waiting?.scriptURL || '').includes('firebase-messaging-sw')).map(reg => reg.unregister().catch(() => false)));
+            await Promise.all((regs || []).filter(isFirebaseMessagingServiceWorkerRegistration).map(reg => reg.update?.().catch(() => null)));
           }
           registration = await navigator.serviceWorker.register('/firebase-messaging-sw.js', { updateViaCache: 'none' }).catch(() => null);
           if (registration?.update) await registration.update().catch(() => null);
@@ -2423,10 +2506,7 @@ What I clicked / expected:
     workspaceId: rId,
     alertId: 'push-repair-needed',
     fingerprint: buildAlertFingerprint(
-      liveAppUser?.pushNeedsRepair === true,
-      liveAppUser?.pushForceServiceWorkerRefresh === true,
-      liveAppUser?.lastPushFailureCode || '',
-      liveAppUser?.pushRepairStatus || '',
+      getPushRepairRequestId(),
       typeof window !== 'undefined' ? window.location.hostname : ''
     )
   });
@@ -2708,7 +2788,7 @@ return (
           </div>
           <div className="flex gap-2 flex-shrink-0">
             <button onClick={() => repairPushOnThisDevice('manual')} disabled={isPushRepairing} className="bg-slate-950 text-amber-200 px-3 py-1.5 rounded-lg font-black text-[10px] shadow-md disabled:opacity-60">{isPushRepairing ? 'FIXING...' : 'FIX NOW'}</button>
-            <button onClick={() => { setPushRepairDismissed(true); pushRepairAlertMemory.dismiss(); }} className="bg-amber-200/60 text-slate-950 px-3 py-1.5 rounded-lg font-black text-[10px]">DON'T SHOW AGAIN</button>
+            <button onClick={() => { try { localStorage.setItem(`86chaos:pushRepairDismissed:${liveAppUser?.id || 'user'}:${rId || 'workspace'}:${getPushRepairRequestId()}`, '1'); } catch (_) {} setPushRepairDismissed(true); pushRepairAlertMemory.dismiss(); }} className="bg-amber-200/60 text-slate-950 px-3 py-1.5 rounded-lg font-black text-[10px]">DON'T SHOW AGAIN</button>
           </div>
         </div>
       )}

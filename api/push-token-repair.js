@@ -1,5 +1,9 @@
 import { getFirestore } from 'firebase-admin/firestore';
+import { createRequire } from 'module';
 import projectAdmin from './_firebase-project-admin.js';
+
+const require = createRequire(import.meta.url);
+const selfRepair = require('./_push-token-self-repair-logic.cjs');
 
 const { verifyRequestToken } = projectAdmin;
 
@@ -207,9 +211,35 @@ export default async function handler(req, res) {
 
   try {
     const caller = await getCaller(db, decoded);
-    const { action = 'request-repair', restaurantId = '', targetUserId = '', targetUserIds = [], maxAgeDays = 30, repairLink = '' } = req.body || {};
+    const { action = 'request-repair', restaurantId = '', targetUserId = '', targetUserIds = [], maxAgeDays = 30, repairLink = '', profileDocId = '', patch = {} } = req.body || {};
     const requestedBy = caller.email || decoded.email || caller.name || 'System Administrator';
     const ids = [...new Set([targetUserId, ...(Array.isArray(targetUserIds) ? targetUserIds : [])].filter(Boolean))];
+
+    if (action === 'self-repair') {
+      const sanitized = selfRepair.sanitizeSelfRepairPatch(patch);
+      if (!sanitized.ok) return res.status(400).json({ error: sanitized.rejected.length ? `Unsupported push repair fields: ${sanitized.rejected.join(', ')}` : 'No allowed push repair fields were supplied.' });
+      const candidates = selfRepair.collectOwnProfileCandidateIds(decoded, profileDocId, caller);
+      let target = null;
+      for (const id of candidates) {
+        const snap = await db.collection('users').doc(id).get().catch(() => null);
+        if (snap?.exists && selfRepair.profileMatchesDecoded({ id: snap.id, ...snap.data() }, snap.id, decoded)) {
+          target = { id: snap.id, ...snap.data() };
+          break;
+        }
+      }
+      if (!target && decoded.email) {
+        const byEmail = await db.collection('users').where('email', '==', selfRepair.norm(decoded.email)).limit(1).get();
+        byEmail.forEach(doc => {
+          if (!target && selfRepair.profileMatchesDecoded({ id: doc.id, ...doc.data() }, doc.id, decoded)) target = { id: doc.id, ...doc.data() };
+        });
+      }
+      if (!target) return res.status(404).json({ error: 'Your push profile could not be found for secure self-repair.' });
+      if (profileDocId && String(profileDocId).trim() !== target.id && !selfRepair.profileMatchesDecoded(target, String(profileDocId).trim(), decoded)) {
+        return res.status(403).json({ error: 'Push self-repair can only update your own profile.' });
+      }
+      await db.collection('users').doc(target.id).update(sanitized.patch);
+      return res.status(200).json({ ok: true, action, updated: 1, profileDocId: target.id, selfRepair: true });
+    }
 
     if (['request-repair', 'force-refresh', 'clear-token'].includes(action)) {
       if (!ids.length) return res.status(400).json({ error: 'Missing target user.' });

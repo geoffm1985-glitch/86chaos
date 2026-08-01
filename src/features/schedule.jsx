@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Bell, Check, Camera, ChevronLeft, ChevronRight, MessageSquare, Plus, Trash2, Users, Calendar, Clock, X, Loader2, Package, ClipboardList, Menu, Settings, LogOut, Shield, Send, Repeat, Edit, Moon, Sun, TrendingUp, BookOpen, Search, ChefHat, Scale, Coffee, Star, Bug, Wrench, Globe } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
-import { getFirestore, collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, where, getDoc, setDoc, getDocs, writeBatch, orderBy, limit as firestoreLimit } from 'firebase/firestore';
+import { getFirestore, collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, where, getDoc, setDoc, getDocs, getDocsFromServer, writeBatch, orderBy, limit as firestoreLimit } from 'firebase/firestore';
 import { getAuth, signInWithEmailAndPassword, sendPasswordResetEmail, createUserWithEmailAndPassword, updatePassword } from 'firebase/auth';
 import { getToken, onMessage } from 'firebase/messaging';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
@@ -2009,21 +2009,24 @@ const [eventDate, setEventDate] = useState(getToday());
     return shiftMatchesPerson(candidate, identity.person, users);
   };
 
-  const fetchSavedScheduleBuilderDeleteTargetsForPersonDate = async (dateKey, person, visibleCandidates = []) => {
+  const fetchSavedScheduleBuilderDeleteTargetsForPersonDate = async (dateKey, person, visibleCandidates = [], options = {}) => {
     const byId = new Map();
-    const logicalIdentities = (visibleCandidates || [])
-      .map(shift => getScheduleShiftLogicalDeleteIdentity(shift, person, dateKey))
+    const seedVisibleCandidates = options.seedVisibleCandidates !== false;
+    const serverOnly = options.serverOnly === true;
+    const logicalIdentities = (options.logicalIdentities || (visibleCandidates || []).map(shift => getScheduleShiftLogicalDeleteIdentity(shift, person, dateKey)))
       .filter(Boolean);
     const matchesDeleteScope = (candidate = {}) => {
       if (logicalIdentities.length) return logicalIdentities.some(identity => scheduleShiftMatchesLogicalDeleteIdentity(candidate, identity));
       return !isDeletedScheduleShift(candidate) && getScheduleShiftDateKey(candidate) === dateKey && shiftMatchesPerson(candidate, person, users);
     };
-    (visibleCandidates || []).forEach(shift => {
-      if (!isDeletedScheduleShift(shift) && matchesDeleteScope(shift)) {
-        const id = getShiftWritableDocId(shift);
-        if (id) byId.set(String(id), { ...shift, id });
-      }
-    });
+    if (seedVisibleCandidates) {
+      (visibleCandidates || []).forEach(shift => {
+        if (!isDeletedScheduleShift(shift) && matchesDeleteScope(shift)) {
+          const id = getShiftWritableDocId(shift);
+          if (id) byId.set(String(id), { ...shift, id });
+        }
+      });
+    }
     const collectSnapshotMatches = (snap) => {
       snap.forEach(docSnap => {
         const shift = { id: docSnap.id, ...docSnap.data() };
@@ -2033,15 +2036,26 @@ const [eventDate, setEventDate] = useState(getToday());
     const baseCollection = collection(db, 'shifts');
     const restaurantId = appUser?.restaurantId;
     if (!restaurantId || !dateKey || !person) return Array.from(byId.values()).filter(shift => !isDeletedScheduleShift(shift));
+    const runQuery = serverOnly ? getDocsFromServer : getDocs;
     try {
-      const dateSnap = await getDocs(query(baseCollection, where('restaurantId', '==', restaurantId), where('date', '==', dateKey)));
+      const dateSnap = await runQuery(query(baseCollection, where('restaurantId', '==', restaurantId), where('date', '==', dateKey)));
       collectSnapshotMatches(dateSnap);
-      const scheduleDateSnap = await getDocs(query(baseCollection, where('restaurantId', '==', restaurantId), where('scheduleDateKey', '==', dateKey)));
+      const scheduleDateSnap = await runQuery(query(baseCollection, where('restaurantId', '==', restaurantId), where('scheduleDateKey', '==', dateKey)));
       collectSnapshotMatches(scheduleDateSnap);
     } catch (err) {
+      if (serverOnly) throw err;
       console.warn('Schedule delete target lookup fell back to visible shifts only', err);
     }
     return Array.from(byId.values()).filter(shift => !isDeletedScheduleShift(shift) && matchesDeleteScope(shift));
+  };
+
+  const verifySavedScheduleBuilderDeleteScopeCleared = async (dateKey, person, deleteIdentity) => {
+    if (!deleteIdentity) return [];
+    return fetchSavedScheduleBuilderDeleteTargetsForPersonDate(dateKey, person, [], {
+      seedVisibleCandidates: false,
+      serverOnly: true,
+      logicalIdentities: [deleteIdentity]
+    });
   };
 
   const tombstoneAndDeleteScheduleBuilderShiftTargets = async (targets = [], deleteScope = {}) => {
@@ -2096,10 +2110,14 @@ const [eventDate, setEventDate] = useState(getToday());
         : [];
       if (!exactTargets.length) throw new Error('No saved matching shift records were found. Refresh the schedule and try again.');
       const result = await tombstoneAndDeleteScheduleBuilderShiftTargets(exactTargets, { scope: 'single-shift-logical-group' });
-      const remainingTargets = await fetchSavedScheduleBuilderDeleteTargetsForPersonDate(dateKey, person, [shift]);
-      const remainingActiveMatches = deleteIdentity
-        ? remainingTargets.filter(candidate => scheduleShiftMatchesLogicalDeleteIdentity(candidate, deleteIdentity))
-        : [];
+      let remainingActiveMatches = deleteIdentity ? await verifySavedScheduleBuilderDeleteScopeCleared(dateKey, person, deleteIdentity) : [];
+      if (remainingActiveMatches.length) {
+        const cleanupResult = await tombstoneAndDeleteScheduleBuilderShiftTargets(remainingActiveMatches, { scope: 'single-shift-post-delete-duplicate-cleanup' });
+        remainingActiveMatches = await verifySavedScheduleBuilderDeleteScopeCleared(dateKey, person, deleteIdentity);
+        result.deletedCount = (result.deletedCount || 0) + (cleanupResult.deletedCount || 0);
+        result.failedCount = (result.failedCount || 0) + (cleanupResult.failedCount || 0);
+        result.targetList = mergeVisibleScheduleShifts(result.targetList, cleanupResult.targetList);
+      }
       if (remainingActiveMatches.length) {
         throw new Error(`${result.deletedCount || 0} matching record(s) were removed, but ${remainingActiveMatches.length} active duplicate still exists. Refresh and try again before publishing.`);
       }
