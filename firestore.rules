@@ -21,8 +21,44 @@ service cloud.firestore {
         data.normalizedEmail == protectedFoundingAdminEmail() ||
         data.authEmail == protectedFoundingAdminEmail();
     }
+
+    function authoritativePlatformUserFields() {
+      return ['isSuperAdmin', 'systemAccess'];
+    }
+
+    function privilegedSystemAccessKeys() {
+      return ['superAdmin', 'platformAdmin', 'systemAdministrator', 'rootAdmin', 'protectedRootAdmin', 'foundingAdministrator', 'allAccess'];
+    }
+
+    function authorityFlagCreateIsSafe(value) {
+      return value == null || (value is bool && value == false);
+    }
+
+    function systemAccessCreateIsSafe(data) {
+      return !(('systemAccess') in data) ||
+        data.systemAccess == null ||
+        (data.systemAccess is map &&
+          data.systemAccess.keys().hasOnly(privilegedSystemAccessKeys()) &&
+          authorityFlagCreateIsSafe(data.systemAccess.get('superAdmin', false)) &&
+          authorityFlagCreateIsSafe(data.systemAccess.get('platformAdmin', false)) &&
+          authorityFlagCreateIsSafe(data.systemAccess.get('systemAdministrator', false)) &&
+          authorityFlagCreateIsSafe(data.systemAccess.get('rootAdmin', false)) &&
+          authorityFlagCreateIsSafe(data.systemAccess.get('protectedRootAdmin', false)) &&
+          authorityFlagCreateIsSafe(data.systemAccess.get('foundingAdministrator', false)) &&
+          authorityFlagCreateIsSafe(data.systemAccess.get('allAccess', false)));
+    }
+
+    function platformAuthorityCreateIsSafe(data) {
+      return authorityFlagCreateIsSafe(data.get('isSuperAdmin', false)) &&
+        authorityFlagCreateIsSafe(data.get('protectedRootAdmin', false)) &&
+        authorityFlagCreateIsSafe(data.get('protectedFoundingAdmin', false)) &&
+        authorityFlagCreateIsSafe(data.get('foundingAdministrator', false)) &&
+        authorityFlagCreateIsSafe(data.get('rootAdmin', false)) &&
+        systemAccessCreateIsSafe(data);
+    }
+
     function protectedFoundingAdminKeys() {
-      return ['isSuperAdmin', 'superAdmin', 'systemAccess', 'platformAccess', 'isAdmin', 'isActive', 'disabled', 'isDisabled', 'deactivated', 'archived', 'deleted', 'role', 'accountRole', 'permissions'];
+      return ['isSuperAdmin', 'superAdmin', 'systemAccess', 'platformAccess', 'protectedRootAdmin', 'protectedFoundingAdmin', 'foundingAdministrator', 'rootAdmin', 'isAdmin', 'isActive', 'disabled', 'isDisabled', 'deactivated', 'archived', 'deleted', 'role', 'accountRole', 'permissions'];
     }
     function protectedFoundingAdminUserUpdateIsSafe() {
       return !isProtectedFoundingAdminUser(resource.data) ||
@@ -620,7 +656,7 @@ service cloud.firestore {
       return [
         'restaurantId', 'workspaceIds', 'memberships', 'defaultRestaurantId',
         'isSuperAdmin', 'isOwner', 'accountOwner', 'owner', 'workspaceOwner', 'accountRole',
-        'superAdminClaimUpdatedAt', 'superAdminClaimUpdatedBy', 'systemAccess', 'billingStatus', 'planType'
+        'superAdminClaimUpdatedAt', 'superAdminClaimUpdatedBy', 'systemAccess', 'protectedRootAdmin', 'protectedFoundingAdmin', 'foundingAdministrator', 'rootAdmin', 'billingStatus', 'planType'
       ];
     }
 
@@ -723,7 +759,7 @@ service cloud.firestore {
     function tenantAdminUserUpdateIsSafe() {
       return request.resource.data.restaurantId == resource.data.restaurantId &&
         request.resource.data.isSuperAdmin == resource.data.isSuperAdmin &&
-        !request.resource.data.diff(resource.data).affectedKeys().hasAny(['isSuperAdmin', 'superAdminClaimUpdatedAt', 'superAdminClaimUpdatedBy', 'systemAccess']) &&
+        !request.resource.data.diff(resource.data).affectedKeys().hasAny(['isSuperAdmin', 'superAdminClaimUpdatedAt', 'superAdminClaimUpdatedBy', 'systemAccess', 'protectedRootAdmin', 'protectedFoundingAdmin', 'foundingAdministrator', 'rootAdmin']) &&
         (!wageValueChanged() || canEditWages(resource.data.restaurantId)) &&
         (!wagePermissionChanged() || canChooseWageAccess(resource.data.restaurantId)) &&
         (!settingsPermissionChanged() || canChooseWageAccess(resource.data.restaurantId)) &&
@@ -934,7 +970,8 @@ service cloud.firestore {
       allow create: if signedIn() && (isSuperAdmin() || (
         request.resource.data.restaurantId is string &&
         canManageStaff(request.resource.data.restaurantId) &&
-        workspaceMemberHrCreateIsSafe(request.resource.data.restaurantId)
+        workspaceMemberHrCreateIsSafe(request.resource.data.restaurantId) &&
+        platformAuthorityCreateIsSafe(request.resource.data)
       ));
 
       allow update: if signedIn() && protectedFoundingAdminUserUpdateIsSafe() && (

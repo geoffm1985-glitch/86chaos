@@ -2,7 +2,7 @@
 const fs = require('fs');
 const path = require('path');
 const cp = require('child_process');
-const { ensureRunDir, writeJson } = require('./run-context.cjs');
+const { ensureRunDir, writeJson, readJsonIfExists } = require('./run-context.cjs');
 
 const REQUIRED_MODULES = [
   '@playwright/test',
@@ -11,11 +11,6 @@ const REQUIRED_MODULES = [
   'react-scripts',
   'eslint',
 ];
-
-function readJsonIfExists(filePath) {
-  try { return fs.existsSync(filePath) ? JSON.parse(fs.readFileSync(filePath, 'utf8')) : null; }
-  catch (_) { return null; }
-}
 
 function npmVersion(cwd) {
   try {

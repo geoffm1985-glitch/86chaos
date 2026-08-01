@@ -83,6 +83,8 @@ export const shouldHoldAccessHydration = ({
   if (!hasCachedSession) return false;
   if (authPending || profileLoading || membershipLoading || roleControlsHydrating) return true;
   if (whoamiStatus === WHOAMI_STATES.PENDING || whoamiStatus === WHOAMI_STATES.RETRYING) return true;
-  if (localUserLooksSystemAdmin && whoamiStatus === WHOAMI_STATES.TRANSIENT_FAILURE) return true;
+  // A completed retry budget that ends in a temporary System Administrator verification failure
+  // must not freeze the whole authenticated app. The godmode route shows a scoped
+  // verification screen instead, while normal restaurant tabs remain usable.
   return false;
 };

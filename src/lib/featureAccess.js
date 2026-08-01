@@ -4,14 +4,17 @@ const clean = (value = '') => String(value == null ? '' : value).trim();
 const lower = (value = '') => clean(value).toLowerCase();
 const nowMs = () => Date.now();
 
-export const isMasterAdminUser = (user = {}) => Boolean(
-  user?.isSuperAdmin === true ||
-  user?.systemAccess?.superAdmin === true ||
-  user?.masterAdmin === true ||
-  lower(user?.accountRole) === 'master_admin' ||
-  lower(user?.role) === 'master admin' ||
-  lower(user?.role) === 'system administrator'
-);
+export const isVerifiedPlatformAdminUser = (user = {}) => {
+  const serverCheck = user?.serverAdminCheck || user?.platformAdminVerification || {};
+  const trustedSource = clean(user?.superAdminAccessSource || serverCheck?.platformAuthority?.source || '');
+  return Boolean(
+    serverCheck?.superAdmin === true ||
+    serverCheck?.platformAuthority?.superAdmin === true ||
+    (user?.isSuperAdmin === true && trustedSource && trustedSource !== 'local-profile-hint')
+  );
+};
+
+export const isMasterAdminUser = (user = {}) => isVerifiedPlatformAdminUser(user);
 
 export const normalizePlanId = (value = '') => {
   const key = lower(value).replace(/\s+/g, '_').replace(/-/g, '_');

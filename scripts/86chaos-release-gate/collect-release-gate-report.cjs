@@ -1,6 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const { ensureRunDir, readJsonIfExists } = require('./run-context.cjs');
+const releaseGateJsonDiagnostics = [];
 
 const { root, resultsRoot, runId, runDir } = ensureRunDir();
 fs.mkdirSync(runDir, { recursive: true });
@@ -13,7 +14,7 @@ function walk(dir, acc = []) {
   }
   return acc;
 }
-function readJson(p) { try { return JSON.parse(fs.readFileSync(p, 'utf8')); } catch (_) { return null; } }
+function readJson(p) { return readJsonIfExists(p, releaseGateJsonDiagnostics); }
 function rel(p) { return path.relative(root, p).replace(/\\/g, '/'); }
 function hasOwn(data, key) { return Object.prototype.hasOwnProperty.call(data || {}, key); }
 
@@ -34,18 +35,18 @@ const requiredArtifacts = [
 const artifact = Object.fromEntries(requiredArtifacts.map(name => [name, path.join(runDir, name)]));
 let missingArtifacts = requiredArtifacts.filter(name => !fs.existsSync(artifact[name]));
 
-const runnerState = readJsonIfExists(artifact['runner-state.json']) || {};
-const preflight = readJsonIfExists(artifact['environment-preflight.json']) || {};
-const dependencyPreflight = readJsonIfExists(artifact['dependency-preflight.json']) || {};
-const sourceInventory = readJsonIfExists(artifact['source-inventory.json']) || {};
-const testAccountProvisioning = readJsonIfExists(artifact['test-account-provisioning.json']) || {};
-const roleVerification = readJsonIfExists(artifact['role-identity-verification.json']) || {};
-const javaPrerequisite = readJsonIfExists(artifact['java-prerequisite.json']) || {};
-const nodeTestSummary = readJsonIfExists(artifact['node-test-live-summary.json']) || {};
-const setupState = readJsonIfExists(artifact['qa-setup-state.json']) || {};
-const seedReport = readJsonIfExists(artifact['86chaos-full-audit-seed-report.json']) || {};
-const cleanupReport = readJsonIfExists(artifact['86chaos-full-audit-cleanup-report.json']) || {};
-const failedOnlyManifest = readJsonIfExists(path.join(runDir, 'failed-only-test-manifest.json')) || null;
+const runnerState = readJsonIfExists(artifact['runner-state.json'], releaseGateJsonDiagnostics) || {};
+const preflight = readJsonIfExists(artifact['environment-preflight.json'], releaseGateJsonDiagnostics) || {};
+const dependencyPreflight = readJsonIfExists(artifact['dependency-preflight.json'], releaseGateJsonDiagnostics) || {};
+const sourceInventory = readJsonIfExists(artifact['source-inventory.json'], releaseGateJsonDiagnostics) || {};
+const testAccountProvisioning = readJsonIfExists(artifact['test-account-provisioning.json'], releaseGateJsonDiagnostics) || {};
+const roleVerification = readJsonIfExists(artifact['role-identity-verification.json'], releaseGateJsonDiagnostics) || {};
+const javaPrerequisite = readJsonIfExists(artifact['java-prerequisite.json'], releaseGateJsonDiagnostics) || {};
+const nodeTestSummary = readJsonIfExists(artifact['node-test-live-summary.json'], releaseGateJsonDiagnostics) || {};
+const setupState = readJsonIfExists(artifact['qa-setup-state.json'], releaseGateJsonDiagnostics) || {};
+const seedReport = readJsonIfExists(artifact['86chaos-full-audit-seed-report.json'], releaseGateJsonDiagnostics) || {};
+const cleanupReport = readJsonIfExists(artifact['86chaos-full-audit-cleanup-report.json'], releaseGateJsonDiagnostics) || {};
+const failedOnlyManifest = readJsonIfExists(path.join(runDir, 'failed-only-test-manifest.json'), releaseGateJsonDiagnostics) || null;
 
 const preflightRan = preflight && Object.keys(preflight).length > 0;
 const preflightFailedBeforeMutation = preflightRan && preflight.ok === false;
@@ -79,7 +80,7 @@ function skippedByRunnerBlock(name) {
   }
   if (name === 'java-prerequisite.json' && (runnerState.currentPhase || '').toLowerCase().indexOf('rules') < 0) return true;
   if (runnerState.testAccountProvisionAttempted === true && runnerState.testAccountProvisionPassed !== true) {
-    return ['role-identity-verification.json', 'qa-setup-state.json', '86chaos-full-audit-seed-report.json', 'playwright-report.json', '86chaos-full-audit-cleanup-report.json'].includes(name);
+    return ['role-identity-verification.json', 'java-prerequisite.json', 'node-test-live-summary.json', 'qa-setup-state.json', '86chaos-full-audit-seed-report.json', 'playwright-report.json', '86chaos-full-audit-cleanup-report.json'].includes(name);
   }
   if (runnerState.rolePreflightStarted === true && runnerState.rolePreflightPassed !== true) {
     return ['qa-setup-state.json', '86chaos-full-audit-seed-report.json', 'playwright-report.json', '86chaos-full-audit-cleanup-report.json'].includes(name);
@@ -154,22 +155,23 @@ if (hasOwn(testAccountProvisioning, 'ok') && testAccountProvisioning.ok !== true
 }
 if (blockedBeforePlaywright && /provision|temporary release-gate test accounts/i.test(runnerBlockingReason) && !accountProvisionFailures.length) accountProvisionFailures.push(runnerBlockingReason);
 
+const provisioningBlockedBeforeRole = Boolean(runnerState.testAccountProvisionAttempted === true && runnerState.testAccountProvisionPassed !== true);
 const roleFailures = [];
-if (hasOwn(roleVerification, 'ok') && roleVerification.ok !== true) {
+if (!accountProvisionFailures.length && !provisioningBlockedBeforeRole && hasOwn(roleVerification, 'ok') && roleVerification.ok !== true) {
   roleFailures.push(...(Array.isArray(roleVerification.errors) && roleVerification.errors.length ? roleVerification.errors : ['Release-gate role account preflight failed.']));
 }
-if (blockedBeforePlaywright && /role|account|MANAGER_EMAIL|OWNER_EMAIL|STAFF_EMAIL|SYSTEM_ADMIN_EMAIL|System Administrator|superAdmin/i.test(runnerBlockingReason) && !roleFailures.length) {
+if (!accountProvisionFailures.length && !provisioningBlockedBeforeRole && blockedBeforePlaywright && /role|account|MANAGER_EMAIL|OWNER_EMAIL|STAFF_EMAIL|SYSTEM_ADMIN_EMAIL|System Administrator|superAdmin/i.test(runnerBlockingReason) && !roleFailures.length) {
   roleFailures.push(runnerBlockingReason);
 }
 
 const setupFailures = [];
 if (setupState && setupState.errors?.length) setupFailures.push(...setupState.errors);
-if (setupState && setupState.attempted && setupState.verified !== true) setupFailures.push('QA setup was attempted but not verified.');
+if (!accountProvisionFailures.length && setupState && setupState.attempted && setupState.verified !== true) setupFailures.push('QA setup was attempted but not verified.');
 if (fs.existsSync(artifact['86chaos-full-audit-seed-report.json']) && seedReport && seedReport.ok !== true) setupFailures.push(`Seed report not ok:true: ${seedReport.error || 'unknown seed failure'}`);
 if (seedReport && seedReport.verification && seedReport.verification.ok !== true) setupFailures.push('Seed verification failed.');
 
 const cleanupFailures = [];
-const cleanupRequired = setupState && setupState.attempted === true && setupState.seeded === true && setupState.verified === true;
+const cleanupRequired = setupState && (setupState.writesStarted === true || setupState.qaDataWritesStarted === true || (setupState.attempted === true && setupState.seeded === true));
 if (fs.existsSync(artifact['86chaos-full-audit-cleanup-report.json']) && cleanupReport && cleanupReport.ok !== true) cleanupFailures.push(`Cleanup report not ok:true: ${cleanupReport.error || 'unknown cleanup failure'}`);
 if (cleanupRequired && !fs.existsSync(artifact['86chaos-full-audit-cleanup-report.json'])) cleanupFailures.push('Cleanup report is missing after verified QA seed.');
 if (cleanupReport && cleanupReport.runId && cleanupReport.runId !== runId) cleanupFailures.push(`Cleanup used runId ${cleanupReport.runId} instead of ${runId}.`);
@@ -199,15 +201,17 @@ function addGroup(group, example) {
   if (example && row.examples.length < 5) row.examples.push(example);
 }
 if (runnerBlockingReason) {
-  const group = /role|account|MANAGER_EMAIL|OWNER_EMAIL|STAFF_EMAIL|SYSTEM_ADMIN_EMAIL|System Administrator|superAdmin/i.test(runnerBlockingReason)
-    ? 'test-account-configuration'
-    : (/dependenc|npm ci|module|Playwright executable|Chromium/i.test(runnerBlockingReason) ? 'dependency-preflight' : 'runner-blocker');
+  const group = provisioningBlockedBeforeRole || /provision/i.test(runnerBlockingReason)
+    ? 'test-account-provisioning'
+    : (/role|account|MANAGER_EMAIL|OWNER_EMAIL|STAFF_EMAIL|SYSTEM_ADMIN_EMAIL|System Administrator|superAdmin/i.test(runnerBlockingReason)
+      ? 'test-account-configuration'
+      : (/dependenc|npm ci|module|Playwright executable|Chromium/i.test(runnerBlockingReason) ? 'dependency-preflight' : 'runner-blocker'));
   addGroup(group, runnerBlockingReason);
 }
 for (const text of preflightFailures) addGroup('environment-preflight', text);
 for (const text of dependencyFailures) addGroup('dependency-preflight', text);
 for (const text of accountProvisionFailures) addGroup('test-account-provisioning', text);
-for (const text of roleFailures) addGroup('test-account-configuration', text);
+if (!accountProvisionFailures.length && !provisioningBlockedBeforeRole) for (const text of roleFailures) addGroup('test-account-configuration', text);
 const groupRe = [
   [/setup|seed|cleanup|stale|runId|artifact/i, 'harness-seed-cleanup'],
   [/timeout/i, 'timeout'],
@@ -300,6 +304,8 @@ const summary = {
   preflightFailures,
   artifactsSkippedByPreflight,
   artifactsSkippedByRunnerBlock,
+  expectedSkippedArtifacts: artifactsSkippedByRunnerBlock.map(item => item.artifact),
+  jsonParseDiagnostics: releaseGateJsonDiagnostics,
   artifacts: summaries.map(x => x.file).filter(f => f.includes(`/86chaos-play-store-release-gate/${runId}/`)),
   truth: [
     'This report reads only the current run directory.',

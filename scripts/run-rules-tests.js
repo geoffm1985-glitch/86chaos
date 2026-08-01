@@ -11,7 +11,7 @@ const {
   assertSucceeds,
   assertFails
 } = require('@firebase/rules-unit-testing');
-const { doc, setDoc, updateDoc, deleteDoc } = require('firebase/firestore');
+const { doc, setDoc, updateDoc, deleteDoc, writeBatch, runTransaction } = require('firebase/firestore');
 const { ref, uploadBytes, deleteObject } = require('firebase/storage');
 
 const projectId = process.env.GCLOUD_PROJECT || process.env.FIREBASE_PROJECT || 'chaos-rules-test-local';
@@ -41,6 +41,10 @@ async function runFirestoreTests(env) {
   const tenantB = 'tenant_b';
   await seedUser(env, 'staffA', { restaurantId: tenantA, workspaceIds: [tenantA], memberships: { [tenantA]: { isActive: true, permissions: {} } } });
   await seedUser(env, 'managerA', { restaurantId: tenantA, workspaceIds: [tenantA], memberships: { [tenantA]: { isActive: true, isAdmin: true, permissions: { schedule: true, events: true, maintenance: true, inventory: true } } } });
+  await seedUser(env, 'ownerA', { restaurantId: tenantA, workspaceIds: [tenantA], memberships: { [tenantA]: { isActive: true, isOwner: true, accountRole: 'owner', permissions: { team: true } } } });
+  await seedUser(env, 'restaurantAdminA', { restaurantId: tenantA, workspaceIds: [tenantA], memberships: { [tenantA]: { isActive: true, isAdmin: true, permissions: { team: true } } } });
+  await seedUser(env, 'teamLeadA', { restaurantId: tenantA, workspaceIds: [tenantA], memberships: { [tenantA]: { isActive: true, permissions: { team: true } } } });
+  await seedUser(env, 'founder', { restaurantId: tenantA, email: 'geoffm1985@gmail.com', emailLower: 'geoffm1985@gmail.com', isSuperAdmin: true, systemAccess: { superAdmin: true }, memberships: { [tenantA]: { isActive: true, role: 'Kitchen' } } });
   await seedUser(env, 'staffB', { restaurantId: tenantB, workspaceIds: [tenantB], memberships: { [tenantB]: { isActive: true, permissions: {} } } });
   await seedUser(env, 'superAdmin', { isSuperAdmin: true, systemAccess: { superAdmin: true } });
 
@@ -56,6 +60,9 @@ async function runFirestoreTests(env) {
 
   const staffA = env.authenticatedContext('staffA', { email: 'staffa@example.com' }).firestore();
   const managerA = env.authenticatedContext('managerA', { email: 'managera@example.com' }).firestore();
+  const ownerA = env.authenticatedContext('ownerA', { email: 'ownera@example.com' }).firestore();
+  const restaurantAdminA = env.authenticatedContext('restaurantAdminA', { email: 'restadmin@example.com' }).firestore();
+  const teamLeadA = env.authenticatedContext('teamLeadA', { email: 'teamlead@example.com' }).firestore();
   const staffB = env.authenticatedContext('staffB', { email: 'staffb@example.com' }).firestore();
   const superAdmin = env.authenticatedContext('superAdmin', { email: 'super@example.com', superAdmin: true }).firestore();
   const anon = env.unauthenticatedContext().firestore();
@@ -70,6 +77,62 @@ async function runFirestoreTests(env) {
   await assertFails(deleteDoc(doc(staffB, 'maintenanceLogs', 'maint_a')));
   await assertSucceeds(updateDoc(doc(managerA, 'maintenanceLogs', 'maint_a'), { status: 'in_progress', restaurantId: tenantA }));
   await assertFails(setDoc(doc(staffA, 'shiftSwaps', 'bad_swap'), { restaurantId: tenantA, requesterId: 'staffB', targetEmployeeId: 'staffA', acceptedBy: 'staffA', shiftId: 'shift_a', status: 'requested' }));
+
+
+
+  // Platform authority must not be creatable or upgradable by tenant-level staff managers.
+  const privilegedAuthorityValues = [true, 'true', 1, '1', 'yes', [], {}];
+  const privilegedCreatePayloads = [
+    ...privilegedAuthorityValues.map(value => ({ isSuperAdmin: value })),
+    ...privilegedAuthorityValues.map(value => ({ systemAccess: { superAdmin: value } })),
+    ...privilegedAuthorityValues.map(value => ({ systemAccess: { platformAdmin: value } })),
+    ...privilegedAuthorityValues.map(value => ({ systemAccess: { systemAdministrator: value } })),
+    ...privilegedAuthorityValues.map(value => ({ systemAccess: { rootAdmin: value } })),
+    { systemAccess: { superAdmin: { nested: true } } },
+    { systemAccess: { superAdmin: ['true'] } },
+    { protectedRootAdmin: true },
+    { foundingAdministrator: true },
+    { rootAdmin: true }
+  ];
+  for (const [idx, privileged] of privilegedCreatePayloads.entries()) {
+    await assertFails(setDoc(doc(staffA, 'users', `bad_priv_staff_${idx}`), { restaurantId: tenantA, name: 'Bad Staff', ...privileged }));
+    await assertFails(setDoc(doc(managerA, 'users', `bad_priv_manager_${idx}`), { restaurantId: tenantA, name: 'Bad Manager', ...privileged }));
+    await assertFails(setDoc(doc(ownerA, 'users', `bad_priv_owner_${idx}`), { restaurantId: tenantA, name: 'Bad Owner', ...privileged }));
+    await assertFails(setDoc(doc(restaurantAdminA, 'users', `bad_priv_rest_admin_${idx}`), { restaurantId: tenantA, name: 'Bad Restaurant Admin', ...privileged }));
+    await assertFails(setDoc(doc(teamLeadA, 'users', `bad_priv_team_${idx}`), { restaurantId: tenantA, name: 'Bad Team', ...privileged }));
+  }
+  await assertSucceeds(setDoc(doc(managerA, 'users', 'safe_created_employee'), {
+    restaurantId: tenantA,
+    workspaceIds: [tenantA],
+    name: 'Safe Employee',
+    role: 'Kitchen',
+    isSuperAdmin: false,
+    systemAccess: {},
+    permissions: { schedule: false }
+  }));
+  await assertSucceeds(setDoc(doc(ownerA, 'users', 'safe_invited_employee'), {
+    restaurantId: tenantA,
+    workspaceIds: [tenantA],
+    name: 'Safe Invited Employee',
+    role: 'Staff',
+    isSuperAdmin: false,
+    systemAccess: { superAdmin: false }
+  }));
+  await seedUser(env, 'ordinaryTarget', { restaurantId: tenantA, workspaceIds: [tenantA], name: 'Ordinary Target', isSuperAdmin: false, systemAccess: {} });
+  for (const value of privilegedAuthorityValues) {
+    await assertFails(updateDoc(doc(managerA, 'users', 'ordinaryTarget'), { isSuperAdmin: value }));
+    await assertFails(updateDoc(doc(managerA, 'users', 'ordinaryTarget'), { systemAccess: { superAdmin: value } }));
+    await assertFails(updateDoc(doc(managerA, 'users', 'ordinaryTarget'), { 'systemAccess.superAdmin': value }));
+  }
+  const batch = writeBatch(managerA);
+  batch.set(doc(managerA, 'users', 'bad_priv_batch'), { restaurantId: tenantA, name: 'Bad Batch', systemAccess: { superAdmin: true } });
+  await assertFails(batch.commit());
+  await assertFails(runTransaction(managerA, async (tx) => {
+    tx.set(doc(managerA, 'users', 'bad_priv_transaction'), { restaurantId: tenantA, name: 'Bad Transaction', isSuperAdmin: true });
+  }));
+  await assertFails(updateDoc(doc(managerA, 'users', 'founder'), { isSuperAdmin: false, systemAccess: { superAdmin: false } }));
+  await assertSucceeds(updateDoc(doc(managerA, 'users', 'safe_created_employee'), { phone: '920-555-0101', role: 'Prep Cook', restaurantId: tenantA }));
+  await assertSucceeds(setDoc(doc(superAdmin, 'users', 'trusted_backend_like_admin'), { restaurantId: tenantA, name: 'Trusted Admin Write', isSuperAdmin: true, systemAccess: { superAdmin: true } }));
 
   const pushDevice = {
     token: 'test-token',

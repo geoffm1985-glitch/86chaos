@@ -2,14 +2,28 @@
 const fs = require('fs');
 const path = require('path');
 
-const { ensureRunDir, getSeedReportPath, getRoleReportPath, readJsonIfExists } = require('../86chaos-release-gate/run-context.cjs');
+const { ensureRunDir, getSeedReportPath, getRoleReportPath, getSetupStatePath, readJsonIfExists, writeJson } = require('../86chaos-release-gate/run-context.cjs');
+const { applyQaWorkspaceEnv, validateQaWorkspaceName } = require('../86chaos-release-gate/qa-workspace.cjs');
+const { assertMutationSafety } = require('../86chaos-release-gate/mutation-safety.cjs');
 const { runId: RUN_ID, runDir: RELEASE_RUN_DIR } = ensureRunDir();
 const OUT_DIR = path.join(process.cwd(), 'test-results');
 fs.mkdirSync(OUT_DIR, { recursive: true });
 fs.mkdirSync(RELEASE_RUN_DIR, { recursive: true });
-const QA_RESTAURANT_NAME = '86 Chaos Full Audit QA Restaurant';
+const QA_RESTAURANT_NAME = applyQaWorkspaceEnv(process.env, RUN_ID);
 const REPORT_PATH = getSeedReportPath(RUN_ID);
 const LEGACY_REPORT_PATH = path.join(OUT_DIR, '86chaos-full-audit-seed-report.json');
+
+const SETUP_STATE_PATH = getSetupStatePath(RUN_ID);
+function mergeSetupState(patch = {}) {
+  const current = readJsonIfExists(SETUP_STATE_PATH) || {};
+  writeJson(SETUP_STATE_PATH, {
+    ...current,
+    runId: RUN_ID,
+    qaWorkspaceName: QA_RESTAURANT_NAME,
+    updatedAt: new Date().toISOString(),
+    ...patch,
+  });
+}
 
 function writeReportSync(report) {
   const payload = JSON.stringify({ runId: RUN_ID, generatedAt: new Date().toISOString(), mode: 'seed', ...report }, null, 2);
@@ -326,6 +340,11 @@ function withIds(profile, createdIds) {
 }
 
 async function main() {
+  const qaNameCheck = validateQaWorkspaceName(QA_RESTAURANT_NAME, RUN_ID);
+  if (!qaNameCheck.ok) throw new Error(`QA workspace name failed safety validation: ${qaNameCheck.errors.join('; ')}`);
+  const earlyMutationSafety = assertMutationSafety({ env: process.env, runId: RUN_ID, requireAdminCredentials: false });
+  if (!earlyMutationSafety.ok) throw new Error(`QA seed mutation safety failed: ${earlyMutationSafety.errors.join('; ')}`);
+  mergeSetupState({ writesStarted: false, mutationSafety: earlyMutationSafety, qaWorkspaceValidation: qaNameCheck });
   const report = { ok: false, warnings: [] };
   let browser;
   try {
@@ -341,6 +360,9 @@ async function main() {
     if (!report.env.appUrlPresent) throw new Error('APP_URL or CHAOS_BASE_URL is required before browser-based seeding can run.');
 
     const config = readFirebaseConfig();
+    const mutationSafety = assertMutationSafety({ env: process.env, runId: RUN_ID, projectId: config.projectId, requireAdminCredentials: false });
+    if (!mutationSafety.ok) throw new Error(`QA seed mutation safety failed: ${mutationSafety.errors.join('; ')}`);
+    report.mutationSafety = mutationSafety;
     report.firebaseProjectId = config.projectId;
     report.seedMethod = 'browser-origin-rest';
     const { chromium } = require('playwright');
@@ -388,6 +410,7 @@ async function main() {
       restaurantRef = restRef;
       restaurantId = restRef.id;
       report.createdRestaurant = true;
+      mergeSetupState({ writesStarted: true, qaDataWritesStarted: true, restaurantId, temporaryRestaurantId: restaurantId, qaWorkspaceName: QA_RESTAURANT_NAME, createdRestaurant: true, cleanupAllowed: true });
     }
     if (!restaurantId) throw new Error('No QA restaurant target found. Set CHAOS_QA_RESTAURANT_ID or set CHAOS_QA_CREATE_RESTAURANT=true.');
     report.restaurantId = restaurantId;
@@ -462,12 +485,14 @@ async function main() {
     }
 
     report.seededDocuments = summarizeCreatedDocuments(created, report.memberships, restaurantRef, restaurantId);
+    mergeSetupState({ writesStarted: true, qaDataWritesStarted: true, seeded: true, restaurantId, temporaryRestaurantId: restaurantId, seededDocumentCount: report.seededDocuments.length, createdDocumentIds: report.seededDocuments });
     report.expectedCounts = EXPECTED_MINIMUM_COUNTS;
     report.createdCounts = Object.fromEntries(Object.entries(created).map(([k, v]) => [k, v.length]));
     report.createdCounts.workspaceMembers = report.memberships.length;
     report.createdCounts.restaurants = restaurantRef ? 1 : 0;
     report.verification = await verifySeedDocuments(page, rest, report.seededDocuments, EXPECTED_MINIMUM_COUNTS, restaurantId);
     report.ok = report.verification.ok === true;
+    mergeSetupState({ verified: report.ok === true, verificationOk: report.verification?.ok === true });
     report.profile = { restaurantId, restaurantName: QA_RESTAURANT_NAME, users: created.users, createdCounts: report.createdCounts, ids, expectations: profile.expectations, scheduleTruth: summarizeSchedule(profile.collections.shifts) };
     if (!report.ok) throw new Error(`Seed verification failed. Missing=${report.verification.missing.length}; bad=${report.verification.bad.length}; countFailures=${report.verification.countFailures.length}.`);
     await writeReport(report);

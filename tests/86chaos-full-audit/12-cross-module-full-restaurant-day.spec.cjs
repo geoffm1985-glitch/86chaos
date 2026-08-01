@@ -33,10 +33,10 @@ test.describe('12 cross-module impact and full restaurant day', () => {
     requireCreds(account, 'owner-like account');
     await login(page, account.email, account.password);
     const managerBrief = await gotoTab(page, 'today', { settleMs: 2200, maxText: 70000 });
-    const kitchen = await gotoTab(page, 'kitchen', { settleMs: 1800, maxText: 70000 });
+    const ops = await gotoTab(page, 'ops', { settleMs: 1800, maxText: 70000 });
     const messages = await gotoTab(page, 'messages', { settleMs: 1600, maxText: 50000 });
-    const joined = `${managerBrief}\n${kitchen}\n${messages}`;
-    await attachJson(testInfo, '12-downstream-homes.json', { managerBrief: managerBrief.slice(0, 7000), kitchen: kitchen.slice(0, 7000), messages: messages.slice(0, 5000) });
+    const joined = `${managerBrief}\n${ops}\n${messages}`;
+    await attachJson(testInfo, '12-downstream-homes.json', { managerBrief: managerBrief.slice(0, 7000), ops: ops.slice(0, 7000), messages: messages.slice(0, 5000) });
     expect(joined, 'Seeded 86/inventory/maintenance signals should appear somewhere in operational downstream surfaces').toMatch(/QA Salmon|86|Critical Fryer|Fryer|below par|maintenance|Need Attention|Alert/i);
   });
 });

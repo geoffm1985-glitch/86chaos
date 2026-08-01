@@ -93,6 +93,30 @@ const TabPersonalReminders = ({ appUser, addToast }) => {
   const [showCompleted, setShowCompleted] = useState(false);
   const [teamMembers, setTeamMembers] = useState([]);
   const [teamLoadError, setTeamLoadError] = useState('');
+  const reminderRecognitionRef = useRef(null);
+
+
+  const stopReminderRecognition = () => {
+    const rec = reminderRecognitionRef.current;
+    if (rec) {
+      try { rec._chaosIntentionalStop = true; } catch (_) {}
+      try { rec.abort?.(); } catch (_) { try { rec.stop?.(); } catch (e) {} }
+      reminderRecognitionRef.current = null;
+    }
+    setListening(false);
+  };
+
+  useEffect(() => () => stopReminderRecognition(), [appUser?.id, appUser?.restaurantId]);
+
+  const reminderVoiceErrorMessage = (error = {}) => {
+    const code = String(error?.error || error?.name || error?.message || '').toLowerCase();
+    if (/not-allowed|permission|denied/.test(code)) return 'Microphone permission is blocked. Type the reminder instead.';
+    if (/audio-capture|device/.test(code)) return 'No microphone was found. Type the reminder instead.';
+    if (/no-speech/.test(code)) return 'No speech was detected. Try again or type the reminder.';
+    if (/network/.test(code)) return 'Speech recognition had a network problem. Type the reminder instead.';
+    if (/abort/.test(code)) return '';
+    return 'Could not hear the reminder clearly. Type it instead.';
+  };
 
   const activeReminders = useLiveCollection('personalReminders', appUser?.restaurantId, {
     enabled: !!appUser?.restaurantId && !!appUser?.id,
@@ -165,22 +189,38 @@ const TabPersonalReminders = ({ appUser, addToast }) => {
   const startListening = () => {
     const SpeechRecognition = typeof window !== 'undefined' ? (window.SpeechRecognition || window.webkitSpeechRecognition) : null;
     if (!SpeechRecognition) return addToast('Mic Unavailable', 'This browser does not support built-in speech recognition. Type the reminder instead.');
+    if (reminderRecognitionRef.current) return addToast('Already Listening', 'Speak Reminder is already listening. Stop it before starting another microphone session.');
     try {
       const rec = new SpeechRecognition();
+      reminderRecognitionRef.current = rec;
       rec.lang = 'en-US';
       rec.interimResults = false;
+      rec.maxAlternatives = 1;
       setListening(true);
       rec.onresult = (event) => {
+        if (reminderRecognitionRef.current !== rec) return;
         const text = event.results?.[0]?.[0]?.transcript || '';
+        reminderRecognitionRef.current = null;
         setListening(false);
         applyParsedText(text);
       };
-      rec.onerror = () => { setListening(false); addToast('Voice Error', 'Could not hear the reminder clearly.'); };
-      rec.onend = () => setListening(false);
+      rec.onerror = (event) => {
+        if (reminderRecognitionRef.current !== rec) return;
+        reminderRecognitionRef.current = null;
+        setListening(false);
+        const message = rec._chaosIntentionalStop ? '' : reminderVoiceErrorMessage(event);
+        if (message) addToast('Voice Error', message);
+      };
+      rec.onend = () => {
+        if (reminderRecognitionRef.current !== rec) return;
+        reminderRecognitionRef.current = null;
+        setListening(false);
+      };
       rec.start();
     } catch (err) {
+      reminderRecognitionRef.current = null;
       setListening(false);
-      addToast('Voice Error', 'Could not start the microphone.');
+      addToast('Voice Error', reminderVoiceErrorMessage(err) || 'Could not start the microphone.');
     }
   };
 
@@ -280,7 +320,7 @@ const TabPersonalReminders = ({ appUser, addToast }) => {
     <div className="space-y-4 animate-[slideIn_0.25s_ease-out]">
       <div className={`${T.card} p-4 flex flex-col lg:flex-row lg:items-center justify-between gap-3`}>
         <div><h2 className="text-xl font-black text-white">Personal Reminders</h2><p className="text-xs text-slate-400 font-bold">Private or teammate reminders, queued for the optimized dispatcher.</p></div>
-        <button type="button" onClick={startListening} className={`${T.btnAlt} flex items-center justify-center gap-2 ${listening ? 'text-red-300 border-red-500/40' : ''}`}><Mic size={16}/> {listening ? 'Listening' : 'Speak Reminder'}</button>
+        <button type="button" aria-label={listening ? 'Stop reminder voice entry' : 'Speak Reminder'} aria-pressed={listening} onClick={listening ? stopReminderRecognition : startListening} className={`${T.btnAlt} flex items-center justify-center gap-2 ${listening ? 'text-red-300 border-red-500/40' : ''}`}><Mic size={16}/> {listening ? 'Listening' : 'Speak Reminder'}</button>
       </div>
 
       <form onSubmit={saveReminder} className={`${T.card} p-4 grid lg:grid-cols-[1.35fr_.62fr_.52fr_.72fr_auto] gap-3 items-end`}>

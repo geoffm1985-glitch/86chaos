@@ -16,39 +16,6 @@ import { resolveFeatureAccess, featureForRoute, isMasterAdminUser } from '../lib
 import { FEATURE_KEYS } from '../config/plans';
 
 
-const perfArraySignature = (rows = []) => {
-  if (!Array.isArray(rows) || rows.length === 0) return '0';
-  const first = rows[0] || {};
-  const last = rows[rows.length - 1] || {};
-  return [
-    rows.length,
-    first.id || first.uid || first.email || first.date || '',
-    first.updatedAt || first.createdAt || first.time || '',
-    last.id || last.uid || last.email || last.date || '',
-    last.updatedAt || last.createdAt || last.time || ''
-  ].join('|');
-};
-
-const shallowObjectSignature = (value = {}) => {
-  if (!value || typeof value !== 'object') return String(value || '');
-  try {
-    return Object.keys(value).sort().map(key => `${key}:${typeof value[key] === 'object' ? JSON.stringify(value[key]) : String(value[key])}`).join('|');
-  } catch (_) {
-    return Object.keys(value || {}).sort().join('|');
-  }
-};
-
-const voiceDockPropsAreEqual = (prev = {}, next = {}) => {
-  const prevUser = prev.appUser || {};
-  const nextUser = next.appUser || {};
-  const stableUser = ['id','uid','email','restaurantId','role','isAdmin','isSuperAdmin'].every(key => String(prevUser?.[key] ?? '') === String(nextUser?.[key] ?? ''));
-  if (!stableUser) return false;
-  const arrayProps = ['inventoryItems','recipes','users','prepItems','tasks','events','maintenanceLogs','menuDependencies','shifts','timePunches','timeOffRequests','sales','invoices','wasteLogs'];
-  if (arrayProps.some(key => perfArraySignature(prev[key]) !== perfArraySignature(next[key]))) return false;
-  return shallowObjectSignature(prev.clientFeatures || {}) === shallowObjectSignature(next.clientFeatures || {})
-    && shallowObjectSignature(prev.clientData?.systemSettings || prev.clientData || {}) === shallowObjectSignature(next.clientData?.systemSettings || next.clientData || {});
-};
-
 const buildReminderQueueFields = (scheduledAt, status = 'scheduled') => ({
   dispatchEligible: Boolean(scheduledAt && !['sent','done','completed','cancelled','canceled','dismissed','archived'].includes(String(status).toLowerCase())),
   nextDispatchAt: scheduledAt || null,
@@ -162,6 +129,7 @@ const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppU
   const tabs = [];
   const perms = appUser?.permissions || {};
   const isGod = Boolean((MASTER_ADMIN_EMAIL && appUser?.email?.toLowerCase() === MASTER_ADMIN_EMAIL.toLowerCase()) || appUser?.isSuperAdmin || isMasterAdminUser(appUser));
+  const canShowSystemAdministrator = Boolean(isGod || appUser?.pendingSystemAdminVerification === true);
 
   const isEnabled = (feat) => clientFeatures[feat] !== false;
   const planAllowsTab = (tabId) => {
@@ -182,7 +150,7 @@ const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppU
   if (isEnabled('prep')) pushTab({ id: 'prep', label: 'Prep & Tasks', icon: <ClipboardList size={18}/> });
   if (isEnabled('recipes')) pushTab({ id: 'recipes', label: 'Recipe Book', icon: <BookOpen size={18}/> });
   if (isEnabled('inventory')) pushTab({ id: 'inventory', label: 'Inventory & Orders', icon: <Package size={18}/> });  
-  if (!appUser?.isDemo) pushTab({ id: 'ai-tools', label: 'AI Tools', icon: <Sparkles size={18}/> });
+  if (!appUser?.isDemo && (isGod || appUser?.isAdmin || perms.inventory || perms.prep || perms.team)) pushTab({ id: 'ai-tools', label: 'AI Tools', icon: <Sparkles size={18}/> });
   if (canUseMenuIntelligence(appUser, clientData)) pushTab({ id: 'menu-intelligence', label: 'Menu Intelligence', icon: <Network size={18}/> });
   pushTab({ id: 'reminders', label: 'My Reminders', icon: <Bell size={18}/>, dot: hasReminderAlert });
   if (isEnabled('team')) pushTab({ id: 'team', label: 'Staff Roster', icon: <Users size={18}/> });
@@ -190,7 +158,8 @@ const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppU
   if (isEnabled('maintenance') && (appUser?.isAdmin || perms.team)) pushTab({ id: 'maintenance', label: 'Maintenance Log', icon: <Wrench size={18}/> });
   
   const isTrueGod = Boolean((MASTER_ADMIN_EMAIL && (appUser?.email || '').toLowerCase() === MASTER_ADMIN_EMAIL.toLowerCase()) || appUser?.isSuperAdmin === true);
-  if (isTrueGod) pushTab({ id: 'godmode', label: 'System Administrator', icon: <Globe size={18}/> });
+  const canShowTrueGodmode = Boolean(isTrueGod || appUser?.pendingSystemAdminVerification === true);
+  if (canShowTrueGodmode) pushTab({ id: 'godmode', label: 'System Administrator', icon: <Globe size={18}/> });
   if (!appUser?.isDemo && (appUser?.isAdmin || isTrueGod)) pushTab({ id: 'audit', label: 'System Audit', icon: <Shield size={18}/> });  
   pushTab({ id: 'help', label: 'Help Center', icon: <BookOpen size={18}/>, dot: hasHelpUpdate });
   if (!appUser?.isDemo) pushTab({ id: 'settings', label: 'Settings', icon: <Settings size={18}/> });
@@ -742,7 +711,7 @@ const canVoiceOpenTab = (user = {}, clientFeatures = {}, tab = 'today', clientDa
   if (tab === 'maintenance') return voiceFeatureEnabled(clientFeatures, 'maintenance') && (isAdmin || !!perms.team || !!perms.maintenance || isLegacyManagerRole);
   if (tab === 'settings') return !user?.isDemo;
   if (tab === 'audit') return !user?.isDemo && (isSuper || isAdmin);
-  if (tab === 'godmode') return isSuper;
+  if (tab === 'godmode') return isSuper || user?.pendingSystemAdminVerification === true;
   return false;
 };
 const fetchVoicePrepMatchCandidates = async (restaurantId = '', prepDates = [], existingPrepItems = []) => {
@@ -1523,12 +1492,59 @@ const VoiceCommandDockBase = ({ appUser, inventoryItems = [], recipes = [], user
   const eightySixContextRef = useRef({ restaurantId: '', loadedAt: 0, inventoryItems: [], menuDependencies: [] });
   const voiceSessionRef = useRef({ id: '', startedAt: 0, commits: 0, finalFingerprint: '' });
   const processedVoiceCommandRef = useRef(new Set());
+  const activeRecognitionRef = useRef(null);
+  const pendingVoiceStartTimerRef = useRef(null);
+  const voiceMountedRef = useRef(false);
+  const voiceSessionOrdinalRef = useRef(0);
 
   const resetVoiceReminderSession = () => {
     const id = `voice_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
     voiceSessionRef.current = { id, startedAt: Date.now(), commits: 0, finalFingerprint: '' };
     return id;
   };
+
+  const cancelPendingVoiceStart = () => {
+    if (pendingVoiceStartTimerRef.current) {
+      clearTimeout(pendingVoiceStartTimerRef.current);
+      pendingVoiceStartTimerRef.current = null;
+    }
+  };
+
+  const stopActiveRecognition = (reason = 'closed') => {
+    cancelPendingVoiceStart();
+    const rec = activeRecognitionRef.current;
+    if (rec) {
+      try { rec._chaosIntentionalStop = true; } catch (_) {}
+      try { rec.abort?.(); } catch (_) { try { rec.stop?.(); } catch (e) {} }
+      if (activeRecognitionRef.current === rec) activeRecognitionRef.current = null;
+    }
+    setListening(false);
+  };
+
+  const closeDock = () => {
+    stopActiveRecognition('closed');
+    setOpen(false);
+  };
+
+  const voiceErrorMessage = (error = {}) => {
+    const code = String(error?.error || error?.name || error?.message || '').toLowerCase();
+    if (/not-allowed|permission|denied/.test(code)) return 'Microphone permission is blocked. You can still type the command here.';
+    if (/service-not-allowed|security/.test(code)) return 'The browser or operating system blocked speech recognition. Use typed command fallback.';
+    if (/audio-capture|no-speech-device|device/.test(code)) return 'No microphone or audio-capture device was found. Use typed command fallback.';
+    if (/no-speech/.test(code)) return 'No speech was detected. Try again or type the command.';
+    if (/network/.test(code)) return 'Speech recognition had a network problem. Type the command or try again.';
+    if (/aborted|abort/.test(code)) return '';
+    return 'Microphone recognition failed. You can type the command instead.';
+  };
+
+  useEffect(() => {
+    voiceMountedRef.current = true;
+    return () => {
+      voiceMountedRef.current = false;
+      stopActiveRecognition('unmount');
+    };
+  }, [appUser?.id, appUser?.restaurantId]);
+
 
   const findRecentReminderDuplicate = async ({ title, scheduledAt, visibility, assignedToUserId, clientCommandId }) => {
     if (!appUser?.restaurantId) return null;
@@ -1578,12 +1594,18 @@ const VoiceCommandDockBase = ({ appUser, inventoryItems = [], recipes = [], user
   };
 
   const openDock = () => {
+    stopActiveRecognition('reopen');
     setOpen(true);
     setPending(null);
     setHeardText('');
     setManualText('');
     setVoiceResult(null);
-    setTimeout(() => startListening(), 80);
+    cancelPendingVoiceStart();
+    pendingVoiceStartTimerRef.current = setTimeout(() => {
+      pendingVoiceStartTimerRef.current = null;
+      if (!voiceMountedRef.current) return;
+      startListening({ autoStart: true });
+    }, 80);
   };
 
   const parseCommand = async (spokenText) => {
@@ -2020,17 +2042,36 @@ const VoiceCommandDockBase = ({ appUser, inventoryItems = [], recipes = [], user
     }
   };
 
-  const startListening = () => {
-    if (!canUseSpeech) return setOpen(true);
+  const startListening = (options = {}) => {
+    cancelPendingVoiceStart();
+    if (!voiceMountedRef.current) return;
+    if (!canUseSpeech) {
+      setOpen(true);
+      addToast?.('Voice Unavailable', 'This browser does not support built-in speech recognition. Type the command instead.');
+      return;
+    }
+    if (activeRecognitionRef.current) {
+      addToast?.('Already Listening', '86Voice is already listening. Stop it before starting another microphone session.');
+      return;
+    }
     try {
       const voiceSessionId = resetVoiceReminderSession();
       const rec = new SpeechRecognition();
+      const sessionOrdinal = voiceSessionOrdinalRef.current + 1;
+      voiceSessionOrdinalRef.current = sessionOrdinal;
+      rec._chaosSessionOrdinal = sessionOrdinal;
+      rec._chaosIntentionalStop = false;
+      activeRecognitionRef.current = rec;
       rec.lang = 'en-US';
       rec.interimResults = true;
       rec.maxAlternatives = 1;
       setListening(true);
       setOpen(true);
+      rec.onstart = () => {
+        if (activeRecognitionRef.current === rec && voiceMountedRef.current) setListening(true);
+      };
       rec.onresult = (event) => {
+        if (activeRecognitionRef.current !== rec || !voiceMountedRef.current) return;
         for (let i = event.resultIndex || 0; i < event.results.length; i += 1) {
           const result = event.results[i];
           const text = result?.[0]?.transcript || '';
@@ -2046,17 +2087,29 @@ const VoiceCommandDockBase = ({ appUser, inventoryItems = [], recipes = [], user
           }
           voiceSessionRef.current.finalFingerprint = fingerprint;
           setListening(false);
+          activeRecognitionRef.current = null;
           try { rec.stop(); } catch (e) {}
           processText(text, { fromVoice: true, isFinal: true, voiceSessionId });
           break;
         }
       };
-      rec.onerror = () => { setListening(false); addToast('Voice Error', 'Microphone recognition failed. You can type the command instead.'); };
-      rec.onend = () => setListening(false);
+      rec.onerror = (event) => {
+        if (activeRecognitionRef.current !== rec) return;
+        activeRecognitionRef.current = null;
+        setListening(false);
+        const message = rec._chaosIntentionalStop ? '' : voiceErrorMessage(event);
+        if (message) addToast?.('Voice Error', message);
+      };
+      rec.onend = () => {
+        if (activeRecognitionRef.current !== rec) return;
+        activeRecognitionRef.current = null;
+        setListening(false);
+      };
       rec.start();
     } catch (err) {
+      activeRecognitionRef.current = null;
       setListening(false);
-      addToast('Voice Unavailable', 'Browser voice recognition is unavailable. Use the text box instead.');
+      addToast?.('Voice Unavailable', voiceErrorMessage(err) || 'Browser voice recognition is unavailable. Use the text box instead.');
     }
   };
 
@@ -2939,10 +2992,10 @@ const VoiceCommandDockBase = ({ appUser, inventoryItems = [], recipes = [], user
     {open && <div className="cockpit-panel rounded-2xl p-3 w-[min(92vw,360px)] shadow-2xl border border-[#2A353D] bg-[#1A2126]">
       <div className="flex items-center justify-between gap-2 border-b border-[#2A353D] pb-2 mb-3">
         <div><div className="text-[10px] font-black uppercase tracking-widest text-[#D4A381] flex items-center gap-1"><Sparkles size={13}/> 86 Voice</div><div className="text-[10px] text-slate-500 font-bold">Tap once, speak, and safe commands run. Destructive commands still ask first.</div></div>
-        <button onClick={() => setOpen(false)} className="p-1.5 rounded-lg hover:bg-[#12161A] text-slate-400"><X size={16}/></button>
+        <button type="button" aria-label="Close 86Voice" onClick={closeDock} className="p-1.5 rounded-lg hover:bg-[#12161A] text-slate-400"><X size={16}/></button>
       </div>
       <div className="space-y-2">
-        <button type="button" onClick={startListening} className={`w-full ${listening ? 'bg-red-900/30 text-red-300 border-red-500/40' : 'bg-[#12161A] text-[#D4A381] border-[#2A353D]'} border rounded-xl py-3 font-black uppercase tracking-widest text-xs flex items-center justify-center gap-2`}>
+        <button type="button" aria-label={listening ? 'Stop listening' : 'Start listening'} aria-pressed={listening} onClick={listening ? () => stopActiveRecognition('manual-stop') : () => startListening({ manual: true })} className={`w-full ${listening ? 'bg-red-900/30 text-red-300 border-red-500/40' : 'bg-[#12161A] text-[#D4A381] border-[#2A353D]'} border rounded-xl py-3 font-black uppercase tracking-widest text-xs flex items-center justify-center gap-2`}>
           {listening ? <MicOff size={16}/> : <Mic size={16}/>} {listening ? 'Listening...' : 'Start Listening'}
         </button>
         <textarea value={manualText} onChange={e=>setManualText(e.target.value)} className={T.input} rows="2" placeholder='Try: "86 salmon", "prep 2 pans tomatoes", "add event Friday at 6pm", "request off next Monday", "set availability Tuesday 10am to 4pm"' />
@@ -3000,11 +3053,11 @@ const VoiceCommandDockBase = ({ appUser, inventoryItems = [], recipes = [], user
         {!canUseSpeech && <div className="text-[10px] text-amber-300 bg-amber-900/10 border border-amber-900/40 rounded-xl p-2 font-bold">This browser does not support built-in speech recognition. Type the command here, or use Chrome/Android for voice.</div>}
       </div>
     </div>}
-    <button onClick={open ? () => setOpen(false) : openDock} className="no-compact w-14 h-14 rounded-full bg-[#0B0E11] border border-[#D4A381]/70 text-[#D4A381] shadow-2xl flex items-center justify-center hover:scale-105 transition-transform" title="86 Voice Assistant"><Mic size={24}/></button>
+    <button type="button" aria-label={open ? 'Close 86Voice' : 'Open 86Voice'} aria-expanded={open} onClick={open ? closeDock : openDock} className="no-compact w-14 h-14 rounded-full bg-[#0B0E11] border border-[#D4A381]/70 text-[#D4A381] shadow-2xl flex items-center justify-center hover:scale-105 transition-transform" title="86 Voice Assistant"><Mic size={24}/></button>
   </div>;
 };
 
-const VoiceCommandDock = React.memo(VoiceCommandDockBase, voiceDockPropsAreEqual);
+const VoiceCommandDock = VoiceCommandDockBase;
 
 const KitchenTVMode = React.memo(({ isOpen, onClose, shifts, events, prepItems, maintenanceLogs, inventoryItems }) => {
   const today = getToday();

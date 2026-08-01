@@ -1,7 +1,7 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { decidePlatformAdminAuthority, hasFirestorePlatformAdminFlag } = require('./_platform-admin-authority.cjs');
+const { decidePlatformAdminAuthority, hasFirestorePlatformAdminFlag, AUTHORITATIVE_PROFILE_AUTHORITY_FIELDS, AUTHORITATIVE_SYSTEM_ACCESS_FIELDS } = require('./_platform-admin-authority.cjs');
 const fs = require('fs');
 const path = require('path');
 const sessionAccessSource = fs.readFileSync(path.join(__dirname, '..', 'src', 'core', 'sessionAccess.js'), 'utf8');
@@ -18,6 +18,11 @@ test('protected founding account keeps platform authority while restaurant role 
   assert.equal(decision.protected, true);
   assert.equal(decision.workspaceRole, 'Kitchen');
   assert.equal(decision.source, 'protected-root-admin');
+});
+
+test('canonical authoritative platform field list is explicit and narrow', () => {
+  assert.deepEqual(AUTHORITATIVE_PROFILE_AUTHORITY_FIELDS, ['isSuperAdmin', 'systemAccess']);
+  assert.deepEqual(AUTHORITATIVE_SYSTEM_ACCESS_FIELDS, ['superAdmin']);
 });
 
 test('server-protected isSuperAdmin flag is accepted independently from ordinary role text', () => {
@@ -112,4 +117,21 @@ test('App access hydration path uses declared platform marker variables and no s
   assert.match(appSource, /const localProfileHasSystemAdminMarker = Boolean/);
   assert.match(appSource, /localUserLooksSystemAdmin: Boolean\(serverSaysSuperAdmin \|\| localProfileHasSystemAdminMarker\)/);
   assert.doesNotMatch(appSource, /permissions\?\.systemAdmin === true\s*\|\|\s*\n\s*liveAppUser\?\.permissions\?\.godmode === true/);
+});
+
+test('platform authority uses strict boolean true only for profile flags and custom claims', () => {
+  const unsafeValues = ['true', 1, '1', 'yes', [], {}, 'TRUE'];
+  for (const value of unsafeValues) {
+    assert.equal(hasFirestorePlatformAdminFlag({ isSuperAdmin: value }), false, `profile.isSuperAdmin ${JSON.stringify(value)} must not grant`);
+    assert.equal(hasFirestorePlatformAdminFlag({ systemAccess: { superAdmin: value } }), false, `systemAccess.superAdmin ${JSON.stringify(value)} must not grant`);
+    const claimDecision = decidePlatformAdminAuthority({
+      decoded: { uid: 'claim-user', email: 'claim-user@example.com', superAdmin: value, systemAccess: { superAdmin: value } },
+      profile: { email: 'claim-user@example.com', role: 'Kitchen' },
+      masterEmails: [],
+      protectedRootEmails: []
+    });
+    assert.equal(claimDecision.superAdmin, false, `custom claim ${JSON.stringify(value)} must not grant`);
+  }
+  assert.equal(hasFirestorePlatformAdminFlag({ isSuperAdmin: true }), true);
+  assert.equal(hasFirestorePlatformAdminFlag({ systemAccess: { superAdmin: true } }), true);
 });

@@ -1,7 +1,9 @@
 const fs = require('fs');
 const path = require('path');
 const { loadEnv, env, boolEnv } = require('../86chaos-full-audit/env-loader.cjs');
-const { ensureRunDir } = require('./run-context.cjs');
+const { ensureRunDir, writeJson } = require('./run-context.cjs');
+const { applyQaWorkspaceEnv, validateQaWorkspaceName } = require('./qa-workspace.cjs');
+const { assertMutationSafety } = require('./mutation-safety.cjs');
 
 const { root, runId, runDir } = ensureRunDir();
 const loaded = loadEnv(root);
@@ -45,8 +47,9 @@ function requirePair(prefix) {
 async function main() {
   const appUrl = value('APP_URL', 'CHAOS_BASE_URL', 'BASE_URL');
   const expectedVersion = sanitizeVersionText(value('CHAOS_EXPECTED_VERSION'));
-  const qaWorkspaceName = value('CHAOS_QA_WORKSPACE_NAME', 'CHAOS_QA_WORKSPACE') || '86 Chaos Full Audit QA Restaurant';
-  if (qaWorkspaceName !== '86 Chaos Full Audit QA Restaurant') errors.push('CHAOS_QA_WORKSPACE_NAME must be exactly "86 Chaos Full Audit QA Restaurant" so Platform Operations cleanup can identify it.');
+  const qaWorkspaceName = applyQaWorkspaceEnv(process.env, runId);
+  const qaNameCheck = validateQaWorkspaceName(qaWorkspaceName, runId);
+  if (!qaNameCheck.ok) errors.push(...qaNameCheck.errors);
   if (!appUrl) errors.push('Missing APP_URL or CHAOS_BASE_URL.');
   if (/YOUR-LATEST|REPLACE_ME|example\.com/i.test(String(appUrl || ''))) errors.push('APP_URL still contains a template placeholder. Replace it with the real safe testing-preview URL.');
   if (!expectedVersion) errors.push('Missing CHAOS_EXPECTED_VERSION.');
@@ -55,7 +58,6 @@ async function main() {
   try { parsedUrl = appUrl ? new URL(appUrl) : null; }
   catch (_) { errors.push(`APP_URL is not a valid absolute URL: ${appUrl}`); }
   if (parsedUrl) {
-    if (parsedUrl.hostname === 'app.86chaos.com') errors.push('The full release gate refuses production app.86chaos.com. Use a safe testing/preview deployment.');
     if (/^(localhost|127\.0\.0\.1|0\.0\.0\.0)$/i.test(parsedUrl.hostname) && !boolEnv('CHAOS_ALLOW_LOCAL_UI_ONLY')) {
       errors.push('APP_URL points to localhost. A React dev server cannot fully exercise Vercel /api routes. Use the latest safe Vercel testing preview, or explicitly set CHAOS_ALLOW_LOCAL_UI_ONLY=true for a non-release diagnostic run.');
     }
@@ -140,6 +142,17 @@ async function main() {
     errors.push(`Firebase TEST client config could not be resolved: ${error.message}`);
   }
 
+
+  const safetyForMutation = assertMutationSafety({
+    env: process.env,
+    appUrl,
+    projectId: firebaseProjectId || process.env.REACT_APP_FIREBASE_PROJECT_ID || process.env.REACT_APP_TEST_FIREBASE_PROJECT_ID,
+    runId,
+    requireAdminCredentials: boolEnv('CHAOS_ALLOW_MUTATION') || boolEnv('CHAOS_QA_AUTO_PROVISION_TEST_USERS'),
+    allowLocalEmulator: boolEnv('CHAOS_ALLOW_LOCAL_UI_ONLY')
+  });
+  if (!safetyForMutation.ok && (boolEnv('CHAOS_ALLOW_MUTATION') || boolEnv('CHAOS_QA_AUTO_PROVISION_TEST_USERS'))) errors.push(...safetyForMutation.errors);
+
   if (/^(1|true|yes)$/i.test(String(process.env.DISABLE_ESLINT_PLUGIN || ''))) {
     warnings.push('DISABLE_ESLINT_PLUGIN=true was found. The release runner overrides it to false so build linting cannot be hidden.');
   }
@@ -172,6 +185,8 @@ async function main() {
     notificationEvidenceRequired: boolEnv('CHAOS_REQUIRE_NOTIFICATION_PIPELINE'),
     mutationRequested: boolEnv('CHAOS_ALLOW_MUTATION'),
     qaWorkspaceName,
+    qaWorkspaceValidation: qaNameCheck,
+    mutationSafety: safetyForMutation,
     versionEvidence: {
       versionJsonStatus: versionFetch?.status || null,
       versionJsonUrl: versionFetch?.url || '',

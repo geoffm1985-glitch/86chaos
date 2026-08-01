@@ -70,3 +70,21 @@ test('PowerShell runner saves final state before creating slim upload zip', () =
   assert.ok(zipIndex > collectIndex, 'slim zip is created after final state and collector');
   assert.match(ps1, /\$RunnerState\.finalExitCode = 1/);
 });
+
+test('release-gate JSON helper parses BOM-prefixed runner state and preserves diagnostics on invalid JSON', () => {
+  const fs = require('fs');
+  const os = require('os');
+  const path = require('path');
+  const { readJsonIfExists } = require('../scripts/86chaos-release-gate/json-utils.cjs');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), '86-chaos-json-bom-'));
+  const statePath = path.join(dir, 'runner-state.json');
+  fs.writeFileSync(statePath, '\uFEFF{"status":"blocked","blockingReason":"account provisioning blocked","finalExitCode":1}\r\n', 'utf8');
+  const parsed = readJsonIfExists(statePath);
+  assert.equal(parsed.status, 'blocked');
+  assert.equal(parsed.blockingReason, 'account provisioning blocked');
+  const diagnostics = [];
+  fs.writeFileSync(path.join(dir, 'bad.json'), '\uFEFF{"status":', 'utf8');
+  assert.equal(readJsonIfExists(path.join(dir, 'bad.json'), diagnostics), null);
+  assert.equal(diagnostics.length, 1);
+  assert.match(diagnostics[0].error, /Unexpected|JSON/);
+});
