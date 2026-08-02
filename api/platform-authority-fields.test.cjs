@@ -23,7 +23,7 @@ test('platform authority resolver exposes one canonical list protected by Firest
   assert.match(rules, /platformAuthorityCreateIsSafe/);
   assert.match(rules, /systemAccessCreateIsSafe/);
   assert.match(rules, /authorityFlagCreateIsSafe\(data\.get\('isSuperAdmin', false\)\)/);
-  assert.match(rules, /authorityFlagCreateIsSafe\(data\.systemAccess\.get\('superAdmin', false\)\)/);
+  assert.match(rules, /authorityFlagCreateIsSafe\(access\.get\('superAdmin', false\)\)/);
   assert.match(rules, /affectedKeys\(\)\.hasAny\(\['isSuperAdmin',[^\]]*'systemAccess'/s);
 });
 

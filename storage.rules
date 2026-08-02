@@ -7,6 +7,11 @@ service firebase.storage {
       return request.auth != null;
     }
 
+    function authEmailMatches(value) {
+      let email = signedIn() ? request.auth.token.get('email', '') : '';
+      return email != '' && value is string && value != '' && value == email;
+    }
+
     function uploadPurposeIs(expected) {
       return request.resource != null && request.resource.metadata is map && request.resource.metadata.purpose == expected;
     }
@@ -46,11 +51,11 @@ service firebase.storage {
       let user = userDoc();
       let member = user.get('memberships', {}).get(restaurantId, {});
       let perms = member.get('permissions', user.get('permissions', {}));
-      return request.auth.uid == uid ||
-        isStorageSuperAdmin() ||
+      return isStorageSuperAdmin() ||
         (
           isTenantMember(restaurantId) &&
           (
+            request.auth.uid == uid ||
             member.get('isOwner', false) == true ||
             member.get('accountOwner', false) == true ||
             member.get('workspaceOwner', false) == true ||
@@ -75,8 +80,8 @@ service firebase.storage {
           (
             restaurant.get('ownerUid', '') == request.auth.uid ||
             restaurant.get('ownerUserId', '') == request.auth.uid ||
-            restaurant.get('ownerEmail', '') == request.auth.token.email ||
-            restaurant.get('ownerEmailLower', '') == request.auth.token.email ||
+            authEmailMatches(restaurant.get('ownerEmail', '')) ||
+            authEmailMatches(restaurant.get('ownerEmailLower', '')) ||
             member.get('isOwner', false) == true ||
             member.get('accountOwner', false) == true ||
             member.get('workspaceOwner', false) == true ||
@@ -177,8 +182,8 @@ service firebase.storage {
           (
             restaurant.get('ownerUid', '') == request.auth.uid ||
             restaurant.get('ownerUserId', '') == request.auth.uid ||
-            restaurant.get('ownerEmail', '') == request.auth.token.email ||
-            restaurant.get('ownerEmailLower', '') == request.auth.token.email ||
+            authEmailMatches(restaurant.get('ownerEmail', '')) ||
+            authEmailMatches(restaurant.get('ownerEmailLower', '')) ||
             member.get('isOwner', false) == true ||
             member.get('accountOwner', false) == true ||
             member.get('workspaceOwner', false) == true ||

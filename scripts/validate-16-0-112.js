@@ -12,8 +12,8 @@ const assert = (condition, message) => {
 const read = (file) => fs.readFileSync(path.join(process.cwd(), file), 'utf8');
 const pkg = JSON.parse(read('package.json'));
 const versionJson = JSON.parse(read('public/version.json'));
-assert(pkg.version === '16.0.111', 'package.json version is 16.0.111');
-assert(versionJson.version === '16.0.111' && versionJson.build === '16.0.111', 'public/version.json version/build are 16.0.111');
+assert(pkg.version === '16.0.112', 'package.json version is 16.0.112');
+assert(versionJson.version === '16.0.112' && versionJson.build === '16.0.112', 'public/version.json version/build are 16.0.112');
 assert(!/16\.0\.89 Admin Push Release Gate Fix/.test(JSON.stringify(versionJson)), 'release label does not restore stale 16.0.89 text');
 const app = read('src/App.js');
 assert(app.includes("'hr': 'hr-training'"), 'legacy hr deep links normalize to hr-training');
@@ -54,7 +54,23 @@ while ((helperMatch = helperCallPattern.exec(firestoreRules)) !== null) {
   assert(args.length <= 7, `${helperMatch[1]} call stays within Firebase's 7-argument limit`);
 }
 
+
+assert(storageRules.includes("isTenantMember(restaurantId) &&\n          (\n            request.auth.uid == uid ||") && !storageRules.includes("return request.auth.uid == uid ||\n        isStorageSuperAdmin()"), 'profile photo writes require tenant membership before self or manager authorization');
+assert(!storageRules.includes('request.auth.token.email') && storageRules.includes("request.auth.token.get('email', '')"), 'Storage rules safely read optional email claims');
+assert(!firestoreRules.includes('request.auth.token.email') && firestoreRules.includes("request.auth.token.get('email', '')"), 'Firestore rules safely read optional email claims');
+const selfUpdateBlock = firestoreRules.match(/function userSafeSelfUpdate\(\) \{([\s\S]*?)function presenceSessionKeys/);
+assert(Boolean(selfUpdateBlock) && !/forcePasswordChange|passwordPurgedAt|passwordStored/.test(selfUpdateBlock[1]), 'users cannot directly edit server-controlled forced-password fields');
+assert(!firestoreRules.includes('function isManagerRoleFor') && !firestoreRules.includes('isManagerRoleFor(restId)'), 'dead always-false manager-role helper is removed while permission helpers remain authoritative');
+const forcedPasswordApi = read('api/complete-forced-password.js');
+assert(forcedPasswordApi.includes("verifyIdToken(token, true)") && forcedPasswordApi.includes("auth.updateUser(uid, { password: newPassword })"), 'forced-password endpoint verifies a non-revoked token and changes Firebase Auth server-side');
+assert(forcedPasswordApi.includes('forcePasswordChange: false') && forcedPasswordApi.includes('passwordStored: false') && !forcedPasswordApi.includes('password: newPassword,\n      forcePasswordChange'), 'forced-password endpoint clears protected Firestore flags without storing plaintext passwords');
+const forcedPasswordAuthSource = read('src/features/auth.jsx');
+assert(forcedPasswordAuthSource.includes("secureFetch('/api/complete-forced-password'") && !forcedPasswordAuthSource.includes('await updatePassword(auth.currentUser, newPass)'), 'active login flow uses the protected forced-password API instead of client-clearing Firestore flags');
+const legacyLogin = read('src/components/LoginScreen.js');
+assert(!legacyLogin.includes('password: newPass') && legacyLogin.includes("secureFetch('/api/complete-forced-password'"), 'legacy login component no longer writes plaintext passwords or clears reset flags directly');
+
 const rulesRunner = read('scripts/run-rules-tests.js');
+assert(rulesRunner.includes('cross-tenant.png') && rulesRunner.includes('forcePasswordChange: false'), 'rules emulator suite covers cross-tenant profile photos and self-clearing password flags');
 assert(rulesRunner.includes('getMetadata') && !rulesRunner.includes('getBlob'), 'Storage emulator tests use Node-compatible authenticated read checks');
 assert(rulesRunner.includes("'demo-no-project'") && !rulesRunner.includes("'chaos-rules-test-local'"), 'Firestore rules test runner uses emulator default project id to avoid single-project warnings');
 const psFull = read('RUN_86CHAOS_PLAY_STORE_RELEASE_GATE.ps1');

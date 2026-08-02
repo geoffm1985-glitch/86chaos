@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Bell, Check, Camera, ChevronLeft, ChevronRight, MessageSquare, Plus, Trash2, Users, Calendar, Clock, X, Loader2, Package, ClipboardList, Menu, Settings, LogOut, Shield, Send, Repeat, Edit, Moon, Sun, TrendingUp, BookOpen, Search, ChefHat, Scale, Coffee, Star, Bug, Wrench, Globe } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
 import { getFirestore, collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, where, getDoc, setDoc, getDocs } from 'firebase/firestore';
-import { getAuth, signInWithEmailAndPassword, sendPasswordResetEmail, createUserWithEmailAndPassword, updatePassword, getMultiFactorResolver, PhoneAuthProvider, PhoneMultiFactorGenerator, RecaptchaVerifier } from 'firebase/auth';
+import { getAuth, signInWithEmailAndPassword, sendPasswordResetEmail, createUserWithEmailAndPassword, getMultiFactorResolver, PhoneAuthProvider, PhoneMultiFactorGenerator, RecaptchaVerifier } from 'firebase/auth';
 import { getToken, onMessage } from 'firebase/messaging';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { MapContainer, TileLayer, Marker, Circle, useMapEvents } from 'react-leaflet';
@@ -681,23 +681,43 @@ const LoginScreen = ({ setAppUser }) => {
     if (newPass !== confirmPass) return setLoginError('Passwords do not match.');
     if (newPass.length < 6) return setLoginError('Password must be at least 6 characters.');
 
+    let passwordChanged = false;
     try {
-      // 1. Update the secure Firebase Auth password
-      await updatePassword(auth.currentUser, newPass);
-      
-      // 2. Flip the database flag so they are never asked again.
-      // Passwords belong ONLY in Firebase Auth, never in Firestore.
-      await updateDoc(doc(db, "users", pendingUser.id), { 
-        forcePasswordChange: false,
-        passwordPurgedAt: new Date().toISOString()
+      const response = await secureFetch('/api/complete-forced-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ newPassword: newPass })
       });
-      
-      // 3. Unlock the system without caching the password in app state.
-      const { password, ...safePendingUser } = pendingUser;
-      await finishLoginWithWorkspace({ ...safePendingUser, forcePasswordChange: false }, auth.currentUser, { forcePicker: true });
-      
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || data?.ok === false) {
+        throw new Error(data?.error || 'Your password could not be changed. Please sign in again and retry.');
+      }
+      passwordChanged = true;
+
+      // The server changes Firebase Auth and clears the protected Firestore flag.
+      // Sign in again so this browser receives a fresh post-password-change session.
+      const accountEmail = auth.currentUser?.email || pendingUser?.email || email;
+      if (!accountEmail) throw new Error('Your password was changed, but the account email could not be reloaded. Sign in again with your new password.');
+      const refreshedCredential = await signInWithEmailAndPassword(auth, accountEmail, newPass);
+      const { password: ignoredPassword, ...safePendingUser } = pendingUser;
+      await finishLoginWithWorkspace(
+        { ...safePendingUser, forcePasswordChange: false, passwordStored: false, passwordPurgedAt: data.passwordPurgedAt || safePendingUser.passwordPurgedAt },
+        refreshedCredential.user,
+        { forcePicker: true }
+      );
+      setNewPass('');
+      setConfirmPass('');
     } catch (error) {
-      setLoginError(error.message);
+      if (passwordChanged) {
+        try { await auth.signOut(); } catch (_) {}
+        setPendingUser(null);
+        setPassword('');
+        setNewPass('');
+        setConfirmPass('');
+        setLoginError('Your password was changed successfully. Sign in again with your new password.');
+        return;
+      }
+      setLoginError(error.message || 'Your password could not be changed.');
     }
   };
 

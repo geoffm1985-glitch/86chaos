@@ -2,6 +2,10 @@ rules_version = '2';
 service cloud.firestore {
 match /databases/{database}/documents {
 function signedIn() { return request.auth != null; }
+function authEmailMatches(value) {
+let email = signedIn() ? request.auth.token.get('email', '') : '';
+return email != '' && value is string && value != '' && value == email;
+}
 function userPath() { return /databases/$(database)/documents/users/$(request.auth.uid); }
 function hasUserDoc() { return signedIn() && exists(userPath()); }
 function userData() { return get(userPath()).data; }
@@ -177,9 +181,9 @@ currentUserLegacyTeamAuthorityFrom(u, legacyPerms, restId)
 function currentUserOwnerAuthorityFromRestaurant(restId) {
 let restaurant = safeRestaurantData(restId);
 return signedIn() && restId is string && (
-restaurant.get('ownerEmail', '') == request.auth.token.get('email', '') ||
-restaurant.get('ownerEmailLower', '') == request.auth.token.get('email', '') ||
-restaurant.get('ownerUserEmail', '') == request.auth.token.get('email', '') ||
+authEmailMatches(restaurant.get('ownerEmail', '')) ||
+authEmailMatches(restaurant.get('ownerEmailLower', '')) ||
+authEmailMatches(restaurant.get('ownerUserEmail', '')) ||
 restaurant.get('ownerUserId', '') == request.auth.uid ||
 restaurant.get('ownerUid', '') == request.auth.uid
 );
@@ -213,9 +217,9 @@ let u = safeUserData();
 let member = membershipDataFor(restId);
 let restaurant = safeRestaurantData(restId);
 return signedIn() && restId is string && (
-restaurant.get('ownerEmail', '') == request.auth.token.get('email', '') ||
-restaurant.get('ownerEmailLower', '') == request.auth.token.get('email', '') ||
-restaurant.get('ownerUserEmail', '') == request.auth.token.get('email', '') ||
+authEmailMatches(restaurant.get('ownerEmail', '')) ||
+authEmailMatches(restaurant.get('ownerEmailLower', '')) ||
+authEmailMatches(restaurant.get('ownerUserEmail', '')) ||
 restaurant.get('ownerUserId', '') == request.auth.uid ||
 restaurant.get('ownerUid', '') == request.auth.uid ||
 (member.get('isActive', false) == true && (
@@ -266,9 +270,9 @@ return signedIn() && restId is string && (
 request.auth.token.get('superAdmin', false) == true ||
 u.get('isSuperAdmin', false) == true ||
 (access is map && access.get('superAdmin', false) == true) ||
-restaurant.get('ownerEmail', '') == request.auth.token.get('email', '') ||
-restaurant.get('ownerEmailLower', '') == request.auth.token.get('email', '') ||
-restaurant.get('ownerUserEmail', '') == request.auth.token.get('email', '') ||
+authEmailMatches(restaurant.get('ownerEmail', '')) ||
+authEmailMatches(restaurant.get('ownerEmailLower', '')) ||
+authEmailMatches(restaurant.get('ownerUserEmail', '')) ||
 restaurant.get('ownerUserId', '') == request.auth.uid ||
 restaurant.get('ownerUid', '') == request.auth.uid ||
 (member.get('isActive', false) == true && (
@@ -687,7 +691,7 @@ data.createdBy == request.auth.uid ||
 (data.recipientUserIds is list && data.recipientUserIds.hasAny([request.auth.uid]))
 );
 }
-function isOwnerOfRestaurantDoc() { return signedIn() && request.auth.token.email == resource.data.ownerEmail; }
+function isOwnerOfRestaurantDoc() { return signedIn() && authEmailMatches(resource.data.get('ownerEmail', '')); }
 function protectedUserKeys() {
 return [
 'restaurantId', 'workspaceIds', 'memberships', 'defaultRestaurantId',
@@ -711,7 +715,7 @@ return request.resource.data.diff(resource.data).affectedKeys().hasOnly([
 'pushNeedsRepair', 'pushForceServiceWorkerRefresh', 'pushRepairStatus', 'pushRepairCompletedAt',
 'pushRepairCompletedHost', 'lastPushRepairError', 'lastPushFailureCode',
 'device', 'host', 'theme', 'settings', 'preferences', 'notificationPrefs', 'activeRestaurantId', 'lastWorkspaceId',
-'forcePasswordChange', 'passwordPurgedAt', 'passwordStored', 'lastWorkspaceSwitchedAt'
+'lastWorkspaceSwitchedAt'
 ]) &&
 !request.resource.data.diff(resource.data).affectedKeys().hasAny(protectedUserKeys()) &&
 pushDevicesSelfUpdateIsSafe();
@@ -966,14 +970,11 @@ request.resource.data.get('reportedByUid', '') == resource.data.get('reportedByU
 request.resource.data.get('createdBy', '') == resource.data.get('createdBy', '') &&
 request.resource.data.diff(resource.data).affectedKeys().hasOnly(['notes', 'comment', 'comments', 'updatedAt', 'updatedBy']);
 }
-function isManagerRoleFor(restId) {
-return restId is string && false;
-}
 function canManageTasks(restId) {
-return hasWorkspaceAuthorityFor(restId, 'team', '', '', '', '', '') || isManagerRoleFor(restId);
+return hasWorkspaceAuthorityFor(restId, 'team', '', '', '', '', '');
 }
 function canManageKitchenSpecials(restId) {
-return hasWorkspaceAuthorityFor(restId, 'prep', 'ops', 'team', '', '', '') || isManagerRoleFor(restId);
+return hasWorkspaceAuthorityFor(restId, 'prep', 'ops', 'team', '', '', '');
 }
 function kitchenSpecialIsValid(data) {
 return data.restaurantId is string &&
@@ -1035,7 +1036,7 @@ match /workspaceMembers/{memberId} {
 allow read: if signedIn() && (
 isSuperAdmin() ||
 resource.data.userId == request.auth.uid ||
-(resource.data.email == request.auth.token.email) ||
+authEmailMatches(resource.data.get('email', '')) ||
 (resource.data.restaurantId is string && isTenantMatch(resource.data.restaurantId)) ||
 (resource.data.restaurantId is string && isRestaurantOwner(resource.data.restaurantId))
 );

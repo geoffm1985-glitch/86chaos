@@ -49,6 +49,7 @@ async function runFirestoreTests(env) {
   await seedUser(env, 'founder', { restaurantId: tenantA, email: 'geoffm1985@gmail.com', emailLower: 'geoffm1985@gmail.com', isSuperAdmin: true, systemAccess: { superAdmin: true }, memberships: { [tenantA]: { isActive: true, role: 'Kitchen' } } });
   await seedUser(env, 'legacyNoEmailTarget', { restaurantId: tenantA, workspaceIds: [tenantA], name: 'Legacy No Email Target', isSuperAdmin: false, systemAccess: {} });
   await seedUser(env, 'staffB', { restaurantId: tenantB, workspaceIds: [tenantB], memberships: { [tenantB]: { isActive: true, permissions: {} } } });
+  await seedUser(env, 'forcedUserA', { restaurantId: tenantA, workspaceIds: [tenantA], forcePasswordChange: true, passwordStored: true, passwordPurgedAt: '2026-08-01T00:00:00.000Z', memberships: { [tenantA]: { isActive: true, permissions: {} } } });
   await seedUser(env, 'superAdmin', { isSuperAdmin: true, systemAccess: { superAdmin: true } });
 
   await seedDoc(env, 'tasks', 'task_a', { restaurantId: tenantA, title: 'Prep onions', createdBy: 'staffA' });
@@ -62,14 +63,18 @@ async function runFirestoreTests(env) {
   }
 
   const staffA = env.authenticatedContext('staffA', { email: 'staffa@example.com' }).firestore();
+  const staffANoEmail = env.authenticatedContext('staffA').firestore();
   const managerA = env.authenticatedContext('managerA', { email: 'managera@example.com' }).firestore();
   const ownerA = env.authenticatedContext('ownerA', { email: 'ownera@example.com' }).firestore();
   const restaurantAdminA = env.authenticatedContext('restaurantAdminA', { email: 'restadmin@example.com' }).firestore();
   const teamLeadA = env.authenticatedContext('teamLeadA', { email: 'teamlead@example.com' }).firestore();
   const staffB = env.authenticatedContext('staffB', { email: 'staffb@example.com' }).firestore();
+  const forcedUserA = env.authenticatedContext('forcedUserA', { email: 'forced@example.com' }).firestore();
   const superAdmin = env.authenticatedContext('superAdmin', { email: 'super@example.com', superAdmin: true }).firestore();
   const anon = env.unauthenticatedContext().firestore();
 
+  // Missing email claims must never match missing owner-email fields.
+  await assertFails(deleteDoc(doc(staffANoEmail, 'inventoryItems', 'inventoryItems_a')));
   await assertFails(updateDoc(doc(staffA, 'tasks', 'task_a'), { restaurantId: tenantB }));
   await assertFails(updateDoc(doc(managerA, 'tasks', 'task_a'), { restaurantId: tenantB }));
   await assertFails(updateDoc(doc(managerA, 'menuIntelligenceScans', 'scan_a'), { restaurantId: tenantB }));
@@ -80,6 +85,12 @@ async function runFirestoreTests(env) {
   await assertFails(deleteDoc(doc(staffB, 'maintenanceLogs', 'maint_a')));
   await assertSucceeds(updateDoc(doc(managerA, 'maintenanceLogs', 'maint_a'), { status: 'in_progress', restaurantId: tenantA }));
   await assertFails(setDoc(doc(staffA, 'shiftSwaps', 'bad_swap'), { restaurantId: tenantA, requesterId: 'staffB', targetEmployeeId: 'staffA', acceptedBy: 'staffA', shiftId: 'shift_a', status: 'requested' }));
+
+  // Password-reset state is server-controlled. A signed-in user cannot clear or rewrite it directly.
+  await assertFails(updateDoc(doc(forcedUserA, 'users', 'forcedUserA'), { forcePasswordChange: false }));
+  await assertFails(updateDoc(doc(forcedUserA, 'users', 'forcedUserA'), { passwordStored: false }));
+  await assertFails(updateDoc(doc(forcedUserA, 'users', 'forcedUserA'), { passwordPurgedAt: new Date().toISOString() }));
+  await assertSucceeds(updateDoc(doc(forcedUserA, 'users', 'forcedUserA'), { theme: 'dark' }));
 
 
 
@@ -210,6 +221,10 @@ async function runStorageTests(env) {
 
   await assertSucceeds(uploadBytes(ref(staffAStorage, `${tenantA}/profilePhotos/staffA/photo.png`), image, { contentType: 'image/png' }));
   await assertSucceeds(deleteObject(ref(staffAStorage, `${tenantA}/profilePhotos/staffA/photo.png`)));
+  await assertFails(uploadBytes(ref(staffAStorage, `${tenantB}/profilePhotos/staffA/cross-tenant.png`), image, { contentType: 'image/png' }));
+  await assertFails(uploadBytes(ref(staffBStorage, `${tenantA}/profilePhotos/staffB/cross-tenant.png`), image, { contentType: 'image/png' }));
+  await assertSucceeds(uploadBytes(ref(managerStorage, `${tenantA}/profilePhotos/staffA/manager-upload.png`), image, { contentType: 'image/png' }));
+  await assertSucceeds(deleteObject(ref(managerStorage, `${tenantA}/profilePhotos/staffA/manager-upload.png`)));
   await assertSucceeds(uploadBytes(ref(managerStorage, `${tenantA}/brandAssets/logo.png`), image, { contentType: 'image/png' }));
   await assertFails(deleteObject(ref(staffBStorage, `${tenantA}/brandAssets/logo.png`)));
   await assertSucceeds(deleteObject(ref(managerStorage, `${tenantA}/brandAssets/logo.png`)));

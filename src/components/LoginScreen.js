@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { signInWithEmailAndPassword, sendPasswordResetEmail, updatePassword } from 'firebase/auth';
-import { doc, getDoc, updateDoc } from 'firebase/firestore';
+import { signInWithEmailAndPassword, sendPasswordResetEmail } from 'firebase/auth';
+import { doc, getDoc } from 'firebase/firestore';
+import { secureFetch } from '../core/appCore';
 
 const LoginScreen = ({ setAppUser, auth, db }) => {
   const [email, setEmail] = useState('');
@@ -47,21 +48,38 @@ const LoginScreen = ({ setAppUser, auth, db }) => {
     if (newPass !== confirmPass) return setLoginError('Passwords do not match.');
     if (newPass.length < 6) return setLoginError('Password must be at least 6 characters.');
 
+    let passwordChanged = false;
     try {
-      // 1. Update the secure Firebase Auth password
-      await updatePassword(auth.currentUser, newPass);
-      
-      // 2. Flip the database flag so they are never asked again, and track the new text password
-      await updateDoc(doc(db, "users", pendingUser.id), { 
-        forcePasswordChange: false,
-        password: newPass 
+      const response = await secureFetch('/api/complete-forced-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ newPassword: newPass })
       });
-      
-      // 3. Unlock the system
-      setAppUser({ ...pendingUser, forcePasswordChange: false, password: newPass });
-      
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || data?.ok === false) throw new Error(data?.error || 'Your password could not be changed.');
+      passwordChanged = true;
+      const accountEmail = auth.currentUser?.email || pendingUser?.email || email;
+      const refreshedCredential = await signInWithEmailAndPassword(auth, accountEmail, newPass);
+      setAppUser({
+        ...pendingUser,
+        forcePasswordChange: false,
+        passwordStored: false,
+        passwordPurgedAt: data.passwordPurgedAt || pendingUser.passwordPurgedAt,
+        authUid: refreshedCredential.user.uid
+      });
+      setNewPass('');
+      setConfirmPass('');
     } catch (error) {
-      setLoginError(error.message);
+      if (passwordChanged) {
+        try { await auth.signOut(); } catch (_) {}
+        setPendingUser(null);
+        setPassword('');
+        setNewPass('');
+        setConfirmPass('');
+        setLoginError('Your password was changed successfully. Sign in again with your new password.');
+        return;
+      }
+      setLoginError(error.message || 'Your password could not be changed.');
     }
   };
 

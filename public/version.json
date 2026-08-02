@@ -1,14 +1,15 @@
 {
-  "version": "16.0.111",
-  "name": "86 Chaos 16.0.111 Storage Rules Evaluation and Node Test Hotfix",
-  "build": "16.0.111",
-  "label": "86 Chaos 16.0.111 Storage Rules Evaluation and Node Test Hotfix",
-  "releasedAt": "2026-08-02T03:08:00-05:00",
-  "releaseTitle": "86 Chaos 16.0.111 Storage Rules Evaluation and Node Test Hotfix",
+  "version": "16.0.112",
+  "name": "86 Chaos 16.0.112 Tenant Isolation and Forced Password Security Hotfix",
+  "build": "16.0.112",
+  "label": "86 Chaos 16.0.112 Tenant Isolation and Forced Password Security Hotfix",
+  "releasedAt": "2026-08-02T12:57:00-05:00",
+  "releaseTitle": "86 Chaos 16.0.112 Tenant Isolation and Forced Password Security Hotfix",
   "notes": [
-    "Safely reads the optional Storage superAdmin custom claim so users without that claim do not trigger a rules evaluation exception.",
-    "Uses Node-compatible Firebase Storage metadata reads in the emulator security suite instead of browser-only getBlob().",
-    "Preserves the completed Firestore expression-limit fix, tenant isolation, Storage access decisions, Firebase configuration, indexes, and all application behavior."
+    "Requires profile-photo writers to belong to the restaurant in the Storage path, closing the cross-tenant self-upload loophole.",
+    "Moves forced-password completion to an authenticated server route so users cannot directly clear password-reset flags in Firestore.",
+    "Safely reads optional email claims and removes the permanently false manager-role helper without changing permission-based manager access.",
+    "Adds emulator and server regression tests for tenant isolation, protected password-state fields, recent-auth enforcement, and legacy email-keyed profiles."
   ],
-  "title": "86 Chaos 16.0.111 Storage Rules Evaluation and Node Test Hotfix"
+  "title": "86 Chaos 16.0.112 Tenant Isolation and Forced Password Security Hotfix"
 }
