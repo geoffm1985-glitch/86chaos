@@ -1,1538 +1,1503 @@
 rules_version = '2';
-
 service cloud.firestore {
-  match /databases/{database}/documents {
-
-    // ============================================================
-    // 86 CHAOS SECURITY RULES
-    // Tenant isolation + multi-workspace memberships + safer writes
-    // ============================================================
-
-    function signedIn() { return request.auth != null; }
-    function userPath() { return /databases/$(database)/documents/users/$(request.auth.uid); }
-    function hasUserDoc() { return signedIn() && exists(userPath()); }
-    function userData() { return get(userPath()).data; }
-
-    function protectedFoundingAdminEmail() { return 'geoffm1985@gmail.com'; }
-    function isProtectedFoundingAdminUser(data) {
-      return data.email == protectedFoundingAdminEmail() ||
-        data.emailLower == protectedFoundingAdminEmail() ||
-        data.emailLowercase == protectedFoundingAdminEmail() ||
-        data.normalizedEmail == protectedFoundingAdminEmail() ||
-        data.authEmail == protectedFoundingAdminEmail();
-    }
-
-
-    function privilegedSystemAccessKeys() {
-      return ['superAdmin', 'platformAdmin', 'systemAdministrator', 'rootAdmin', 'protectedRootAdmin', 'foundingAdministrator', 'allAccess'];
-    }
-
-    function authorityFlagCreateIsSafe(value) {
-      return value == null || (value is bool && value == false);
-    }
-
-    function systemAccessCreateIsSafe(data) {
-      return !(('systemAccess') in data) ||
-        data.systemAccess == null ||
-        (data.systemAccess is map &&
-          data.systemAccess.keys().hasOnly(privilegedSystemAccessKeys()) &&
-          authorityFlagCreateIsSafe(data.systemAccess.get('superAdmin', false)) &&
-          authorityFlagCreateIsSafe(data.systemAccess.get('platformAdmin', false)) &&
-          authorityFlagCreateIsSafe(data.systemAccess.get('systemAdministrator', false)) &&
-          authorityFlagCreateIsSafe(data.systemAccess.get('rootAdmin', false)) &&
-          authorityFlagCreateIsSafe(data.systemAccess.get('protectedRootAdmin', false)) &&
-          authorityFlagCreateIsSafe(data.systemAccess.get('foundingAdministrator', false)) &&
-          authorityFlagCreateIsSafe(data.systemAccess.get('allAccess', false)));
-    }
-
-    function platformAuthorityCreateIsSafe(data) {
-      return authorityFlagCreateIsSafe(data.get('isSuperAdmin', false)) &&
-        authorityFlagCreateIsSafe(data.get('protectedRootAdmin', false)) &&
-        authorityFlagCreateIsSafe(data.get('protectedFoundingAdmin', false)) &&
-        authorityFlagCreateIsSafe(data.get('foundingAdministrator', false)) &&
-        authorityFlagCreateIsSafe(data.get('rootAdmin', false)) &&
-        systemAccessCreateIsSafe(data);
-    }
-
-    function protectedFoundingAdminKeys() {
-      return ['isSuperAdmin', 'superAdmin', 'systemAccess', 'platformAccess', 'protectedRootAdmin', 'protectedFoundingAdmin', 'foundingAdministrator', 'rootAdmin', 'isAdmin', 'isActive', 'disabled', 'isDisabled', 'deactivated', 'archived', 'deleted', 'role', 'accountRole', 'permissions'];
-    }
-    function protectedFoundingAdminUserUpdateIsSafe() {
-      return !isProtectedFoundingAdminUser(resource.data) ||
-        !request.resource.data.diff(resource.data).affectedKeys().hasAny(protectedFoundingAdminKeys());
-    }
-
-
-    function isSuperAdmin() {
-      return signedIn() && (
-        request.auth.token.superAdmin == true ||
-        (hasUserDoc() && (
-          userData().isSuperAdmin == true ||
-          userData().systemAccess.superAdmin == true
-        ))
-      );
-    }
-
-    function membershipMapHas(restId) {
-      return hasUserDoc() &&
-        userData().memberships is map &&
-        userData().memberships[restId] is map &&
-        userData().memberships[restId].isActive == true;
-    }
-
-    function workspaceIdsHas(restId) {
-      return hasUserDoc() && userData().workspaceIds is list && userData().workspaceIds.hasAny([restId]);
-    }
-
-    function isTenantMatch(restId) {
-      return hasUserDoc() && restId is string && (
-        userData().restaurantId == restId ||
-        workspaceIdsHas(restId) ||
-        membershipMapHas(restId)
-      );
-    }
-
-    function memberData(restId) {
-      return userData().memberships[restId];
-    }
-
-    function restaurantPath(restId) { return /databases/$(database)/documents/restaurants/$(restId); }
-    function hasRestaurantDoc(restId) { return restId is string && exists(restaurantPath(restId)); }
-    function restaurantData(restId) { return get(restaurantPath(restId)).data; }
-
-    function isRestaurantOwner(restId) {
-      return signedIn() && restId is string && (
-        (
-          hasRestaurantDoc(restId) && (
-            restaurantData(restId).ownerEmail == request.auth.token.email ||
-            restaurantData(restId).ownerEmailLower == request.auth.token.email ||
-            restaurantData(restId).ownerUserEmail == request.auth.token.email ||
-            restaurantData(restId).ownerUserId == request.auth.uid ||
-            restaurantData(restId).ownerUid == request.auth.uid
-          )
-        ) ||
-        (
-          membershipMapHas(restId) && (
-            memberData(restId).get('isOwner', false) == true ||
-            memberData(restId).get('accountOwner', false) == true ||
-            memberData(restId).get('workspaceOwner', false) == true ||
-            memberData(restId).get('accountRole', '') == 'owner'
-          )
-        ) ||
-        (
-          !membershipMapHas(restId) && userData().restaurantId == restId && (
-            userData().get('isOwner', false) == true ||
-            userData().get('accountOwner', false) == true ||
-            userData().get('owner', false) == true ||
-            userData().get('workspaceOwner', false) == true ||
-            userData().get('accountRole', '') == 'owner'
-          )
-        )
-      );
-    }
-
-    function isAdminFor(restId) {
-      return isTenantMatch(restId) && (
-        (membershipMapHas(restId) && memberData(restId).get('isAdmin', false) == true) ||
-        (!membershipMapHas(restId) && userData().restaurantId == restId && userData().get('isAdmin', false) == true)
-      );
-    }
-
-    function hasPermFor(restId, perm) {
-      return isTenantMatch(restId) && (
-        (membershipMapHas(restId) && memberData(restId).get('permissions', {}).get(perm, false) == true) ||
-        (!membershipMapHas(restId) && userData().restaurantId == restId && userData().get('permissions', {}).get(perm, false) == true)
-      );
-    }
-
-    function canManageStaff(restId) {
-      return isSuperAdmin() || isRestaurantOwner(restId) || (isTenantMatch(restId) && (isAdminFor(restId) || hasPermFor(restId, 'team')));
-    }
-
-    function isHrOwnerFor(restId) {
-      return signedIn() && restId is string && (
-        (
-          hasRestaurantDoc(restId) && (
-            restaurantData(restId).ownerEmail == request.auth.token.email ||
-            restaurantData(restId).ownerEmailLower == request.auth.token.email ||
-            restaurantData(restId).ownerUserEmail == request.auth.token.email ||
-            restaurantData(restId).ownerUserId == request.auth.uid ||
-            restaurantData(restId).ownerUid == request.auth.uid
-          )
-        ) ||
-        (membershipMapHas(restId) && (memberData(restId).get('isOwner', false) == true || memberData(restId).get('accountOwner', false) == true || memberData(restId).get('workspaceOwner', false) == true || memberData(restId).get('accountRole', '') == 'owner')) ||
-        (!membershipMapHas(restId) && hasUserDoc() && userData().restaurantId == restId && (userData().get('isOwner', false) == true || userData().get('accountOwner', false) == true || userData().get('owner', false) == true || userData().get('workspaceOwner', false) == true || userData().get('accountRole', '') == 'owner'))
-      );
-    }
-
-    function isHrAdminFor(restId) {
-      return isTenantMatch(restId) && (
-        (membershipMapHas(restId) && memberData(restId).get('isAdmin', false) == true) ||
-        (!membershipMapHas(restId) && userData().restaurantId == restId && userData().get('isAdmin', false) == true)
-      );
-    }
-
-    function hasHrPermissionFor(restId) {
-      return isTenantMatch(restId) && (
-        (membershipMapHas(restId) && memberData(restId).get('permissions', {}).get('hr', false) == true) ||
-        (!membershipMapHas(restId) && userData().restaurantId == restId && userData().get('permissions', {}).get('hr', false) == true)
-      );
-    }
-
-    function canChooseHrAccess(restId) {
-      return isSuperAdmin() || isHrOwnerFor(restId);
-    }
-
-    function canManageHr(restId) {
-      return isSuperAdmin() || isHrOwnerFor(restId) || isHrAdminFor(restId) || hasHrPermissionFor(restId);
-    }
-
-    function trainingManualPath(manualId) {
-      return /databases/$(database)/documents/trainingManuals/$(manualId);
-    }
-
-    function publishedTrainingManualExists(manualId, restId) {
-      return manualId is string &&
-        exists(trainingManualPath(manualId)) &&
-        get(trainingManualPath(manualId)).data.restaurantId == restId &&
-        get(trainingManualPath(manualId)).data.status == 'Published';
-    }
-
-    function trainingManualRecordIsValid(data) {
-      return data.restaurantId is string &&
-        data.title is string && data.title.size() > 0 && data.title.size() <= 120 &&
-        data.version is string && data.version.size() > 0 && data.version.size() <= 24 &&
-        data.status in ['Uploading', 'Published', 'Archived'] &&
-        data.fileName is string && data.fileName.size() > 0 && data.fileName.size() <= 255 &&
-        data.fileType in ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'text/plain'] &&
-        data.fileSize is number && data.fileSize > 0 && data.fileSize <= 15 * 1024 * 1024 &&
-        (!('originalFileSize' in data) || (data.originalFileSize is number && data.originalFileSize > 0 && data.originalFileSize <= 50 * 1024 * 1024)) &&
-        (!('compressed' in data) || data.compressed is bool) &&
-        (!('compression' in data) || data.compression in ['', 'gzip']) &&
-        (!('storedFileType' in data) || data.storedFileType in ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'text/plain', 'application/gzip']) &&
-        data.storagePath is string;
-    }
-
-    function optionalString(data, key, maxSize) {
-      return !(key in data) || (data[key] is string && data[key].size() <= maxSize);
-    }
-
-    function optionalNumber(data, key, maxAbs) {
-      return !(key in data) || (data[key] is number && data[key] >= -maxAbs && data[key] <= maxAbs);
-    }
-
-    function optionalBool(data, key) {
-      return !(key in data) || data[key] is bool;
-    }
-
-    function optionalDateTime(data, key) {
-      return !(key in data) ||
-        data[key] is timestamp ||
-        (data[key] is string && data[key].size() <= 40);
-    }
-
-    function dateTimePresent(data, key) {
-      return key in data && (
-        data[key] is timestamp ||
-        (data[key] is string && data[key].size() > 0 && data[key].size() <= 40)
-      );
-    }
-
-    function isoDateOrEmpty(value) {
-      return value is string && (value == '' || value.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$'));
-    }
-
-    function onboardingTaskRecordIsValid(data) {
-      return data.restaurantId is string && data.restaurantId.size() > 0 && data.restaurantId.size() <= 160 &&
-        data.userId is string && data.userId.size() > 0 && data.userId.size() <= 160 &&
-        data.employeeName is string && data.employeeName.size() > 0 && data.employeeName.size() <= 200 &&
-        data.title is string && data.title.size() > 0 && data.title.size() <= 300 &&
-        isoDateOrEmpty(data.get('dueDate', '')) &&
-        data.completed is bool &&
-        data.assignedById is string && data.assignedById.size() > 0 && data.assignedById.size() <= 160 &&
-        data.assignedByName is string && data.assignedByName.size() > 0 && data.assignedByName.size() <= 200 &&
-        optionalString(data, 'completedBy', 160) &&
-        optionalString(data, 'updatedBy', 200) &&
-        optionalDateTime(data, 'completedAt') &&
-        dateTimePresent(data, 'createdAt') &&
-        dateTimePresent(data, 'updatedAt');
-    }
-
-    function certificationRecordIsValid(data) {
-      return data.restaurantId is string && data.restaurantId.size() > 0 && data.restaurantId.size() <= 160 &&
-        data.userId is string && data.userId.size() > 0 && data.userId.size() <= 160 &&
-        data.employeeName is string && data.employeeName.size() > 0 && data.employeeName.size() <= 200 &&
-        data.name is string && data.name.size() > 0 && data.name.size() <= 120 &&
-        optionalString(data, 'issuer', 120) &&
-        isoDateOrEmpty(data.get('issuedDate', '')) &&
-        isoDateOrEmpty(data.get('expiresDate', '')) &&
-        optionalString(data, 'notes', 500) &&
-        data.createdById is string && data.createdById.size() > 0 && data.createdById.size() <= 160 &&
-        optionalString(data, 'updatedBy', 200) &&
-        dateTimePresent(data, 'createdAt') &&
-        dateTimePresent(data, 'updatedAt');
-    }
-
-    function performanceNoteRecordIsValid(data) {
-      return data.restaurantId is string && data.restaurantId.size() > 0 && data.restaurantId.size() <= 160 &&
-        data.userId is string && data.userId.size() > 0 && data.userId.size() <= 160 &&
-        data.employeeName is string && data.employeeName.size() > 0 && data.employeeName.size() <= 200 &&
-        data.type in ['Coaching', 'Recognition', 'Performance Review', 'Attendance', 'Corrective Action', 'Manager Follow-up'] &&
-        data.date is string && data.date.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$') &&
-        data.confidentialSummary is string && data.confidentialSummary.size() > 0 && data.confidentialSummary.size() <= 3000 &&
-        optionalString(data, 'nextSteps', 1600) &&
-        data.confidential == true &&
-        data.createdById is string && data.createdById.size() > 0 && data.createdById.size() <= 160 &&
-        data.createdByName is string && data.createdByName.size() > 0 && data.createdByName.size() <= 200 &&
-        optionalString(data, 'updatedBy', 200) &&
-        dateTimePresent(data, 'createdAt') &&
-        dateTimePresent(data, 'updatedAt');
-    }
-
-    function onboardingSelfCompletionIsSafe() {
-      return onboardingTaskRecordIsValid(request.resource.data) &&
-        resource.data.userId == request.auth.uid &&
-        request.resource.data.userId == resource.data.userId &&
-        request.resource.data.restaurantId == resource.data.restaurantId &&
-        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['completed', 'completedAt', 'completedBy', 'updatedAt', 'updatedBy']) &&
-        (
-          (request.resource.data.completed == true && request.resource.data.get('completedBy', '') == request.auth.uid && dateTimePresent(request.resource.data, 'completedAt')) ||
-          (request.resource.data.completed == false && request.resource.data.get('completedBy', '') == '' && request.resource.data.get('completedAt', '') == '')
-        );
-    }
-
-
-    function restaurantProtectedSubscriptionKeys() {
-      return [
-        'subscription', 'planId', 'planType', 'subscriptionStatus', 'billingStatus', 'billingProvider',
-        'billingNotes', 'customPrice', 'trialDays', 'isFounderBeta', 'founderBeta', 'selectedFutureTier',
-        'futurePlanId', 'betaStartedAt', 'betaEndsAt', 'betaExtendedUntil', 'founderDiscountPercent',
-        'founderDiscountEndsAt', 'integrations', 'integrationsLocked', 'integrationSecrets',
-        'featureAccess', 'featureOverrides'
-      ];
-    }
-
-    function restaurantOwnerUpdateIsSafe(restId) {
-      return restId is string && isOwnerOfRestaurantDoc() &&
-        !request.resource.data.diff(resource.data).affectedKeys().hasAny(restaurantProtectedSubscriptionKeys());
-    }
-
-    function workspaceSubscription(restId) {
-      return !hasRestaurantDoc(restId)
-        ? {}
-        : ((restaurantData(restId).get('subscription', {}) is map) ? restaurantData(restId).get('subscription', {}) : {});
-    }
-
-    function rawWorkspacePlanId(restId) {
-      return workspaceSubscription(restId).get('planId', restaurantData(restId).get('planId', ''));
-    }
-
-    // Safe migration default: existing workspaces with no modern subscription/planId are treated as
-    // Smart Kitchen Founder Beta until Master Admin backfills or manually changes them.
-    function workspacePlanId(restId) {
-      return isSuperAdmin()
-        ? 'master_admin'
-        : (rawWorkspacePlanId(restId) in ['shift', 'operations', 'smart_kitchen', 'owner_pro', 'master_admin']
-          ? rawWorkspacePlanId(restId)
-          : 'smart_kitchen');
-    }
-
-    function workspaceSubscriptionStatus(restId) {
-      return workspaceSubscription(restId).get('status', restaurantData(restId).get('subscriptionStatus', restaurantData(restId).get('billingStatus', 'active')));
-    }
-
-    function hasActiveEntitlement(restId) {
-      return isSuperAdmin() || (hasRestaurantDoc(restId) &&
-        workspaceSubscription(restId).get('entitlementActive', true) != false &&
-        !(workspaceSubscriptionStatus(restId) in ['canceled', 'cancelled', 'trial_expired', 'expired', 'disabled', 'suspended'])
-      );
-    }
-
-    function planAtLeastOperations(restId) {
-      return isSuperAdmin() || (hasActiveEntitlement(restId) && workspacePlanId(restId) in ['operations', 'smart_kitchen', 'owner_pro', 'master_admin']);
-    }
-
-    function planAtLeastSmartKitchen(restId) {
-      return isSuperAdmin() || (hasActiveEntitlement(restId) && workspacePlanId(restId) in ['smart_kitchen', 'owner_pro', 'master_admin']);
-    }
-
-    function planAtLeastOwnerPro(restId) {
-      return isSuperAdmin() || (hasActiveEntitlement(restId) && workspacePlanId(restId) in ['owner_pro', 'master_admin']);
-    }
-
-    function canEditWages(restId) {
-      return isSuperAdmin() || isRestaurantOwner(restId) || (isTenantMatch(restId) && hasPermFor(restId, 'wageEdit'));
-    }
-
-    function canChooseWageAccess(restId) { return isSuperAdmin() || isRestaurantOwner(restId); }
-
-    function canManageWorkspaceSettings(restId) {
-      return isSuperAdmin() || isRestaurantOwner(restId) || (isTenantMatch(restId) && (hasPermFor(restId, 'settings') || hasPermFor(restId, 'branding')));
-    }
-
-    function canUseMenuIntelligence(restId) {
-      return planAtLeastSmartKitchen(restId) && (isSuperAdmin() || isRestaurantOwner(restId) || isAdminFor(restId) || (isTenantMatch(restId) && (hasPermFor(restId, 'menuIntelligence') || hasPermFor(restId, 'inventory') || hasPermFor(restId, 'inventoryEdit') || hasPermFor(restId, 'ops'))));
-    }
-
-    function canReadBasicInventory(restId) {
-      return planAtLeastOperations(restId) && (isSuperAdmin() || isRestaurantOwner(restId) || isAdminFor(restId) || (isTenantMatch(restId) && (hasPermFor(restId, 'inventory') || hasPermFor(restId, 'inventoryEdit') || hasPermFor(restId, 'ops'))));
-    }
-
-    function canWriteBasicInventory(restId) {
-      return planAtLeastOperations(restId) && (isSuperAdmin() || isRestaurantOwner(restId) || isAdminFor(restId) || (isTenantMatch(restId) && (hasPermFor(restId, 'inventory') || hasPermFor(restId, 'inventoryEdit'))));
-    }
-
-    function canReadSmartInventory(restId) {
-      return planAtLeastSmartKitchen(restId) && canReadBasicInventory(restId);
-    }
-
-    function canWriteSmartInventory(restId) {
-      return planAtLeastSmartKitchen(restId) && canWriteBasicInventory(restId);
-    }
-
-    function canReadFinancials(restId) {
-      return isSuperAdmin() || isRestaurantOwner(restId) || isAdminFor(restId) ||
-        (isTenantMatch(restId) && (
-          hasPermFor(restId, 'sales') ||
-          hasPermFor(restId, 'salesRead') ||
-          hasPermFor(restId, 'financialRead') ||
-          hasPermFor(restId, 'labor') ||
-          hasPermFor(restId, 'laborRead') ||
-          hasPermFor(restId, 'wageView') ||
-          hasPermFor(restId, 'wageEdit')
-        ));
-    }
-
-    function canWriteFinancials(restId) {
-      return isSuperAdmin() || isRestaurantOwner(restId) || isAdminFor(restId) ||
-        (isTenantMatch(restId) && (hasPermFor(restId, 'sales') || hasPermFor(restId, 'salesEdit') || hasPermFor(restId, 'financialEdit')));
-    }
-
-    function canReadOperationsFinancials(restId) { return canReadFinancials(restId) && planAtLeastOperations(restId); }
-    function canWriteOperationsFinancials(restId) { return canWriteFinancials(restId) && planAtLeastOperations(restId); }
-    function canReadSmartFinancials(restId) { return canReadFinancials(restId) && planAtLeastSmartKitchen(restId); }
-    function canWriteSmartFinancials(restId) { return canWriteFinancials(restId) && planAtLeastSmartKitchen(restId); }
-    function canReadBackOffice(restId) {
-      return planAtLeastOwnerPro(restId) && (
-        isSuperAdmin() || isRestaurantOwner(restId) || isAdminFor(restId) ||
-        (isTenantMatch(restId) && (hasPermFor(restId, 'backOffice') || hasPermFor(restId, 'ownerTools') || hasPermFor(restId, 'settings') || hasPermFor(restId, 'financialEdit')))
-      );
-    }
-    function canWriteBackOffice(restId) { return canReadBackOffice(restId); }
-    function allowedBackOfficeVaultMime(value) {
-      return value in [
-        'application/pdf',
-        'image/jpeg',
-        'image/png',
-        'image/webp',
-        'image/heic',
-        'image/heif',
-        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-        'text/plain',
-        'text/csv'
-      ];
-    }
-
-    function safeBackOfficeVaultPath(data) {
-      return data.get('storagePath', '') is string &&
-        data.get('storagePath', '').matches('^restaurants/[^/]+/back-office/document-vault/[^/]+/[^?#]+$');
-    }
-
-    function backOfficeDocumentVaultFieldsAreValid(data) {
-      return data.get('type', '') != 'document' ||
-        data.get('hasFile', false) != true ||
-        (
-          data.get('vaultFilePurpose', '') == 'document-vault' &&
-          safeBackOfficeVaultPath(data) &&
-          data.get('originalFileName', '') is string &&
-          data.get('sanitizedFileName', '') is string &&
-          allowedBackOfficeVaultMime(data.get('fileMimeType', '')) &&
-          data.get('fileSize', 0) is number &&
-          data.get('fileSize', 0) > 0 &&
-          data.get('fileSize', 0) <= 12 * 1024 * 1024 &&
-          data.get('uploadedBy', '') is string &&
-          data.get('uploadedBy', '').size() > 0 &&
-          data.get('uploadStatus', '') in ['uploaded', 'replacement_failed', 'failed', 'metadata_only', 'partial_delete_failed']
-        );
-    }
-
-    function backOfficeRecordIsValid(data) {
-      return data.restaurantId is string &&
-        data.type in ['deposit', 'document', 'approval', 'quickbooks', 'quickbooks_mapping', 'quickbooks_bill_draft', 'quickbooks_vendor_match', 'quickbooks_vendor_credit_draft', 'quickbooks_sync_event', 'quickbooks_accountant_packet', 'quickbooks_owner_rollup', 'quickbooks_sync_health', 'ownerReport'] &&
-        data.status is string &&
-        data.createdAt != null &&
-        data.updatedAt != null &&
-        backOfficeDocumentVaultFieldsAreValid(data);
-    }
-    function canReadOwnPunch(data) {
-      return signedIn() && data.restaurantId is string && isTenantMatch(data.restaurantId) &&
-        (data.employeeId == request.auth.uid || data.userId == request.auth.uid || data.createdBy == request.auth.uid);
-    }
-
-    function ownPunchUpdateIsSafe() {
-      return canReadOwnPunch(resource.data) &&
-        request.resource.data.restaurantId == resource.data.restaurantId &&
-        request.resource.data.get('employeeId', '') == resource.data.get('employeeId', '') &&
-        request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-          'clockOutTime', 'status', 'breakStartTime', 'breakMinutes', 'cashTips', 'creditTips',
-          'tipDeclaredAt', 'tipDeclaredBy', 'updatedAt'
-        ]);
-    }
-
-    function salesCloseRecordIsValid(data) {
-      return data.keys().hasOnly([
-          'restaurantId', 'date', 'grossSales', 'netSales', 'cashSales', 'cardSales', 'giftCardSales',
-          'discounts', 'comps', 'refunds', 'salesTax', 'foodSales', 'liquorSales', 'beerSales', 'wineSales',
-          'beverageSales', 'specialsSales', 'cateringSales', 'otherSales', 'laborCost', 'foodCost', 'beverageCost',
-          'tipsPaidOut', 'startingBank', 'cashPaidOut', 'cashCounted', 'depositAmount', 'depositStatus', 'closeStatus',
-          'managerSignOff', 'notes', 'expectedCash', 'cashVariance', 'categorySalesTotal', 'estimatedProfit',
-          'loggedBy', 'timestamp', 'createdAt', 'updatedAt', 'updatedBy', 'source', 'amount', 'totalSales', 'sales'
-        ]) &&
-        data.restaurantId is string && data.restaurantId.size() > 0 && data.restaurantId.size() <= 160 &&
-        data.date is string && data.date.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$') &&
-        optionalString(data, 'depositStatus', 40) && optionalString(data, 'closeStatus', 40) &&
-        optionalString(data, 'managerSignOff', 120) && optionalString(data, 'notes', 2500) &&
-        optionalString(data, 'loggedBy', 200) && optionalString(data, 'updatedBy', 200) && optionalString(data, 'source', 80) &&
-        optionalDateTime(data, 'timestamp') && optionalDateTime(data, 'createdAt') && optionalDateTime(data, 'updatedAt') &&
-        optionalNumber(data, 'grossSales', 10000000) && optionalNumber(data, 'netSales', 10000000) &&
-        optionalNumber(data, 'cashSales', 10000000) && optionalNumber(data, 'cardSales', 10000000) && optionalNumber(data, 'giftCardSales', 10000000) &&
-        optionalNumber(data, 'discounts', 10000000) && optionalNumber(data, 'comps', 10000000) && optionalNumber(data, 'refunds', 10000000) && optionalNumber(data, 'salesTax', 10000000) &&
-        optionalNumber(data, 'foodSales', 10000000) && optionalNumber(data, 'liquorSales', 10000000) && optionalNumber(data, 'beerSales', 10000000) && optionalNumber(data, 'wineSales', 10000000) &&
-        optionalNumber(data, 'beverageSales', 10000000) && optionalNumber(data, 'specialsSales', 10000000) && optionalNumber(data, 'cateringSales', 10000000) && optionalNumber(data, 'otherSales', 10000000) &&
-        optionalNumber(data, 'laborCost', 10000000) && optionalNumber(data, 'foodCost', 10000000) && optionalNumber(data, 'beverageCost', 10000000) &&
-        optionalNumber(data, 'tipsPaidOut', 10000000) && optionalNumber(data, 'startingBank', 10000000) && optionalNumber(data, 'cashPaidOut', 10000000) && optionalNumber(data, 'cashCounted', 10000000) && optionalNumber(data, 'depositAmount', 10000000) &&
-        optionalNumber(data, 'expectedCash', 10000000) && optionalNumber(data, 'cashVariance', 10000000) && optionalNumber(data, 'categorySalesTotal', 10000000) && optionalNumber(data, 'estimatedProfit', 10000000) &&
-        optionalNumber(data, 'amount', 10000000) && optionalNumber(data, 'totalSales', 10000000) && optionalNumber(data, 'sales', 10000000);
-    }
-
-    function financialExpenseRecordIsValid(data) {
-      return data.keys().hasOnly(['restaurantId', 'date', 'vendor', 'payee', 'category', 'amount', 'paymentMethod', 'dueDate', 'paid', 'notes', 'createdAt', 'createdBy', 'updatedAt', 'updatedBy']) &&
-        data.restaurantId is string && data.restaurantId.size() > 0 && data.restaurantId.size() <= 160 &&
-        data.date is string && data.date.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$') &&
-        data.amount is number && data.amount >= 0 && data.amount <= 10000000 &&
-        optionalString(data, 'vendor', 200) && optionalString(data, 'payee', 200) && optionalString(data, 'category', 80) && optionalString(data, 'paymentMethod', 80) &&
-        (!(('dueDate') in data) || isoDateOrEmpty(data.dueDate)) && optionalBool(data, 'paid') && optionalString(data, 'notes', 1600) &&
-        optionalString(data, 'createdBy', 200) && optionalString(data, 'updatedBy', 200) && optionalDateTime(data, 'createdAt') && optionalDateTime(data, 'updatedAt');
-    }
-
-    function financialTargetsRecordIsValid(data) {
-      return data.keys().hasOnly(['restaurantId', 'laborPct', 'foodPct', 'beveragePct', 'primePct', 'weeklySalesGoal', 'monthlySalesGoal', 'cashVarianceAlert', 'overtimeAlertHours', 'updatedAt', 'updatedBy']) &&
-        data.restaurantId is string && data.restaurantId.size() > 0 && data.restaurantId.size() <= 160 &&
-        optionalNumber(data, 'laborPct', 100) && optionalNumber(data, 'foodPct', 100) && optionalNumber(data, 'beveragePct', 100) && optionalNumber(data, 'primePct', 200) &&
-        optionalNumber(data, 'weeklySalesGoal', 10000000) && optionalNumber(data, 'monthlySalesGoal', 10000000) && optionalNumber(data, 'cashVarianceAlert', 1000000) && optionalNumber(data, 'overtimeAlertHours', 168) &&
-        optionalString(data, 'updatedBy', 200) && optionalDateTime(data, 'updatedAt');
-    }
-
-    function restaurantSettingsWriteIsSafe(restId) {
-      return canManageWorkspaceSettings(restId) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['systemSettings', 'settingsHistory', 'updatedAt']);
-    }
-
-    function otherUserPath(userId) {
-      return /databases/$(database)/documents/users/$(userId);
-    }
-
-    function canonicalWorkspaceMemberPath(userId, restId) {
-      return /databases/$(database)/documents/workspaceMembers/$(userId + '_' + restId);
-    }
-
-    function userIsActiveTenantMember(userId, restId) {
-      return userId is string && userId.size() > 0 && restId is string && (
-        (
-          exists(canonicalWorkspaceMemberPath(userId, restId)) &&
-          get(canonicalWorkspaceMemberPath(userId, restId)).data.get('restaurantId', '') == restId &&
-          get(canonicalWorkspaceMemberPath(userId, restId)).data.get('isActive', true) != false &&
-          get(canonicalWorkspaceMemberPath(userId, restId)).data.get('status', 'active') != 'inactive'
-        ) ||
-        (
-          exists(otherUserPath(userId)) &&
-          get(otherUserPath(userId)).data.get('disabled', false) != true &&
-          get(otherUserPath(userId)).data.get('isActive', true) != false && (
-            get(otherUserPath(userId)).data.get('restaurantId', '') == restId ||
-            (get(otherUserPath(userId)).data.get('workspaceIds', []) is list && get(otherUserPath(userId)).data.get('workspaceIds', []).hasAny([restId])) ||
-            (get(otherUserPath(userId)).data.get('memberships', {}) is map &&
-              get(otherUserPath(userId)).data.get('memberships', {})[restId] is map &&
-              get(otherUserPath(userId)).data.get('memberships', {})[restId].get('isActive', false) == true)
-          )
-        )
-      );
-    }
-
-    function reminderUsesCanonicalParticipants(data) {
-      return data.get('participantSchemaVersion', 0) == 1;
-    }
-
-    function reminderParticipantsAreValid(data) {
-      return reminderUsesCanonicalParticipants(data) &&
-        data.participantUserIds is list &&
-        data.participantUserIds.size() >= 1 &&
-        data.participantUserIds.size() <= 2 &&
-        request.auth.uid in data.participantUserIds &&
-        data.assignedToUserId is string &&
-        data.assignedToUserId in data.participantUserIds &&
-        data.participantUserIds.hasOnly([request.auth.uid, data.assignedToUserId]) &&
-        userIsActiveTenantMember(data.assignedToUserId, data.restaurantId);
-    }
-
-    function reminderParticipant(data) {
-      return signedIn() && (
-        (reminderUsesCanonicalParticipants(data) && data.participantUserIds is list && request.auth.uid in data.participantUserIds) ||
-        (!reminderUsesCanonicalParticipants(data) && (
-          data.get('userId', '') == request.auth.uid ||
-          data.get('assignedToUserId', '') == request.auth.uid ||
-          data.get('createdBy', '') == request.auth.uid
-        ))
-      );
-    }
-
-    function reminderTenant(data) {
-      return data.restaurantId is string && isTenantMatch(data.restaurantId);
-    }
-
-    function reminderCreateIsValid(data) {
-      return reminderTenant(data) &&
-        data.createdBy == request.auth.uid &&
-        reminderParticipantsAreValid(data) &&
-        (!(('systemGenerated') in data) || data.systemGenerated == false);
-    }
-
-    // Participant status actions are performed through the authenticated
-    // personal-reminder-action server endpoint. Client rules deliberately
-    // reject direct recipient writes to delivery/lease metadata.
-
-    function canManageScheduleData(restId) {
-      return isSuperAdmin() || isRestaurantOwner(restId) || (isTenantMatch(restId) && (isAdminFor(restId) || hasPermFor(restId, 'schedule') || hasPermFor(restId, 'team')));
-    }
-
-    function canManageEventData(restId) {
-      return canManageScheduleData(restId) || (isTenantMatch(restId) && hasPermFor(restId, 'events'));
-    }
-
-    function timeOffParticipant(data) {
-      return signedIn() && (
-        data.userId == request.auth.uid ||
-        data.employeeId == request.auth.uid ||
-        data.createdBy == request.auth.uid
-      );
-    }
-
-    function ownTimeOffStatusUpdate() {
-      return request.resource.data.restaurantId == resource.data.restaurantId &&
-        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'previousStatus', 'archived', 'cancelledAt', 'cancelledBy', 'updatedAt', 'updatedBy']);
-    }
-
-    function availabilityParticipant(data) {
-      return signedIn() && (
-        data.get('authUid', '') == request.auth.uid ||
-        data.get('userId', '') == request.auth.uid ||
-        data.get('createdBy', '') == request.auth.uid
-      );
-    }
-
-    function ownAvailabilityPendingUpdate() {
-      return resource.data.status == 'pending' &&
-        request.resource.data.restaurantId == resource.data.restaurantId &&
-        request.resource.data.get('scheduleUserId', '') == resource.data.get('scheduleUserId', '') &&
-        request.resource.data.get('authUid', '') == resource.data.get('authUid', '') &&
-        request.resource.data.get('userId', '') == resource.data.get('userId', '') &&
-        request.resource.data.createdBy == resource.data.createdBy;
-    }
-
-    function eventReminderParticipant(data) {
-      return signedIn() && (
-        data.createdBy == request.auth.uid ||
-        (data.recipientUserIds is list && data.recipientUserIds.hasAny([request.auth.uid]))
-      );
-    }
-
-    function isOwnerOfRestaurantDoc() { return signedIn() && request.auth.token.email == resource.data.ownerEmail; }
-
-    function protectedUserKeys() {
-      return [
-        'restaurantId', 'workspaceIds', 'memberships', 'defaultRestaurantId',
-        'isSuperAdmin', 'isOwner', 'accountOwner', 'owner', 'workspaceOwner', 'accountRole',
-        'superAdminClaimUpdatedAt', 'superAdminClaimUpdatedBy', 'systemAccess', 'protectedRootAdmin', 'protectedFoundingAdmin', 'foundingAdministrator', 'rootAdmin', 'billingStatus', 'planType'
-      ];
-    }
-
-    function pushDevicesSelfUpdateIsSafe() {
-      return !request.resource.data.diff(resource.data).affectedKeys().hasAny(['pushDevices']) ||
-        (
-          request.resource.data.get('pushDevices', {}) is map &&
-          request.resource.data.get('pushDevices', {}).keys().size() <= 8
-        );
-    }
-
-    function userSafeSelfUpdate() {
-      return request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-        'name', 'phone', 'photoURL',
-        'notificationPermission',
-        'fcmToken', 'fcmTokenUpdatedAt', 'lastPushTokenSyncAt', 'pushTokenHost', 'pushTokenPermission',
-        'pushTokenCanonical', 'pushTokenDedupeVersion', 'pushDevices',
-        'pushNeedsRepair', 'pushForceServiceWorkerRefresh', 'pushRepairStatus', 'pushRepairCompletedAt',
-        'pushRepairCompletedHost', 'lastPushRepairError', 'lastPushFailureCode',
-        'device', 'host', 'theme', 'settings', 'preferences', 'notificationPrefs', 'activeRestaurantId', 'lastWorkspaceId',
-        'forcePasswordChange', 'passwordPurgedAt', 'passwordStored', 'lastWorkspaceSwitchedAt'
-      ]) &&
-        !request.resource.data.diff(resource.data).affectedKeys().hasAny(protectedUserKeys()) &&
-        pushDevicesSelfUpdateIsSafe();
-    }
-
-    function presenceSessionKeys() {
-      return [
-        'userId', 'uid', 'restaurantId', 'userName', 'userEmail', 'email', 'role', 'photoURL',
-        'lastActive', 'lastSeen', 'lastHeartbeatAt', 'presenceUpdatedAt', 'heartbeatEpochMs',
-        'onlineState', 'activeTab', 'activeSessionId', 'activeDevice', 'activeHost',
-        'notificationPermission', 'gpsPermission', 'deviceDiagnostics', 'createdAt', 'updatedAt', 'source', 'sessionId'
-      ];
-    }
-
-    function presenceCreateIsSafe() {
-      return request.resource.data.keys().hasOnly(presenceSessionKeys()) &&
-        request.resource.data.userId == request.auth.uid &&
-        request.resource.data.restaurantId is string &&
-        isTenantMatch(request.resource.data.restaurantId);
-    }
-
-    function presenceUpdateIsSafe() {
-      return request.resource.data.diff(resource.data).affectedKeys().hasOnly(presenceSessionKeys()) &&
-        resource.data.userId == request.auth.uid &&
-        request.resource.data.userId == resource.data.userId &&
-        request.resource.data.restaurantId == resource.data.restaurantId &&
-        resource.data.restaurantId is string &&
-        isTenantMatch(resource.data.restaurantId);
-    }
-
-    function livePresenceKeys() {
-      return [
-        'userId', 'uid', 'restaurantId', 'userName', 'userEmail', 'email', 'role', 'photoURL',
-        'lastActive', 'lastSeen', 'lastHeartbeatAt', 'presenceUpdatedAt', 'heartbeatEpochMs',
-        'onlineState', 'activeTab', 'activeSessionId', 'activeDevice', 'activeHost',
-        'notificationPermission', 'gpsPermission', 'deviceDiagnostics', 'createdAt', 'updatedAt', 'source'
-      ];
-    }
-
-    function livePresenceWriteIsSafe() {
-      return request.resource.data.keys().hasOnly(livePresenceKeys()) &&
-        request.resource.data.userId == request.auth.uid &&
-        request.resource.data.restaurantId is string &&
-        isTenantMatch(request.resource.data.restaurantId);
-    }
-
-    function wageValueChanged() { return request.resource.data.diff(resource.data).affectedKeys().hasAny(['wage']); }
-    function adminFlagChanged() { return request.resource.data.diff(resource.data).affectedKeys().hasAny(['isAdmin']); }
-    function wagePermissionChanged() {
-      return request.resource.data.diff(resource.data).affectedKeys().hasAny(['permissions']) && (
-        request.resource.data.permissions.wageView != resource.data.permissions.wageView ||
-        request.resource.data.permissions.wageEdit != resource.data.permissions.wageEdit
-      );
-    }
-    function settingsPermissionChanged() {
-      return request.resource.data.diff(resource.data).affectedKeys().hasAny(['permissions']) && (
-        request.resource.data.permissions.settings != resource.data.permissions.settings ||
-        request.resource.data.permissions.branding != resource.data.permissions.branding ||
-        request.resource.data.permissions.integrations != resource.data.permissions.integrations ||
-        request.resource.data.permissions.menuIntelligence != resource.data.permissions.menuIntelligence ||
-        request.resource.data.get('permissions', {}).get('hr', false) != resource.data.get('permissions', {}).get('hr', false)
-      );
-    }
-
-    function hrPermissionChanged() {
-      return request.resource.data.diff(resource.data).affectedKeys().hasAny(['permissions']) &&
-        request.resource.data.get('permissions', {}).get('hr', false) != resource.data.get('permissions', {}).get('hr', false);
-    }
-
-    function workspaceMemberHrCreateIsSafe(restId) {
-      return canChooseHrAccess(restId) || request.resource.data.get('permissions', {}).get('hr', false) != true;
-    }
-
-    function workspaceMemberHrUpdateIsSafe(restId) {
-      return canChooseHrAccess(restId) ||
-        request.resource.data.get('permissions', {}).get('hr', false) == resource.data.get('permissions', {}).get('hr', false);
-    }
-
-    function tenantAdminUserUpdateIsSafe() {
-      return request.resource.data.restaurantId == resource.data.restaurantId &&
-        request.resource.data.isSuperAdmin == resource.data.isSuperAdmin &&
-        !request.resource.data.diff(resource.data).affectedKeys().hasAny(['isSuperAdmin', 'superAdminClaimUpdatedAt', 'superAdminClaimUpdatedBy', 'systemAccess', 'protectedRootAdmin', 'protectedFoundingAdmin', 'foundingAdministrator', 'rootAdmin']) &&
-        (!wageValueChanged() || canEditWages(resource.data.restaurantId)) &&
-        (!wagePermissionChanged() || canChooseWageAccess(resource.data.restaurantId)) &&
-        (!settingsPermissionChanged() || canChooseWageAccess(resource.data.restaurantId)) &&
-        (!hrPermissionChanged() || canChooseHrAccess(resource.data.restaurantId)) &&
-        (!adminFlagChanged() || canChooseWageAccess(resource.data.restaurantId));
-    }
-
-    function commonTenantWriteAllowed(collectionName) {
-      return collectionName in ['timePunches', 'tempLogs', 'wasteLogs', 'offlineWriteReceipts'];
-    }
-
-
-    function canModerateMessages(restId) {
-      return isSuperAdmin() || isRestaurantOwner(restId) || (isTenantMatch(restId) && (isAdminFor(restId) || hasPermFor(restId, 'messageBoard') || hasPermFor(restId, 'messages') || hasPermFor(restId, 'team') || hasPermFor(restId, 'ops')));
-    }
-
-    function messageAuthorMatches(data) {
-      return signedIn() && (
-        data.get('authorId', '') == request.auth.uid ||
-        data.get('userId', '') == request.auth.uid ||
-        data.get('createdBy', '') == request.auth.uid ||
-        data.get('senderId', '') == request.auth.uid
-      );
-    }
-
-    function messageCreateIdentityIsSafe(data) {
-      return signedIn() &&
-        (data.keys().hasAny(['authorId']) ? data.authorId == request.auth.uid : true) &&
-        (data.keys().hasAny(['userId']) ? data.userId == request.auth.uid : true) &&
-        (data.keys().hasAny(['createdBy']) ? data.createdBy == request.auth.uid : true) &&
-        (data.keys().hasAny(['senderId']) ? data.senderId == request.auth.uid : true) &&
-        messageAuthorMatches(data) &&
-        data.get('isSystemAlert', false) == false &&
-        data.get('systemAlert', false) == false &&
-        data.get('systemGenerated', false) == false &&
-        !data.keys().hasAny(['moderatedBy', 'moderatedAt', 'roleOverride', 'adminOnly', 'ownerOnly']);
-    }
-
-    function messageAuthorFieldsStable() {
-      return request.resource.data.get('authorId', '') == resource.data.get('authorId', '') &&
-        request.resource.data.get('userId', '') == resource.data.get('userId', '') &&
-        request.resource.data.get('createdBy', '') == resource.data.get('createdBy', '') &&
-        request.resource.data.get('senderId', '') == resource.data.get('senderId', '');
-    }
-
-    function messageSafeAuthorUpdate() {
-      return request.resource.data.restaurantId == resource.data.restaurantId &&
-        messageAuthorFieldsStable() &&
-        !request.resource.data.diff(resource.data).affectedKeys().hasAny(['isSystemAlert', 'systemAlert', 'systemGenerated', 'messageCategory', 'flags', 'roleOverride', 'authorName', 'senderName', 'authorEmail', 'senderEmail']) &&
-        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['text', 'body', 'message', 'content', 'replies', 'reactions', 'readBy', 'acknowledgedBy', 'acknowledgedAt', 'editedAt', 'updatedAt', 'updatedBy']);
-    }
-
-    function shiftSwapParticipant(data) {
-      return signedIn() && (
-        data.get('requesterId', '') == request.auth.uid ||
-        data.get('createdBy', '') == request.auth.uid ||
-        data.get('userId', '') == request.auth.uid ||
-        data.get('employeeId', '') == request.auth.uid ||
-        data.get('targetEmployeeId', '') == request.auth.uid ||
-        data.get('acceptedBy', '') == request.auth.uid
-      );
-    }
-
-    function shiftSwapRequesterMatches(data) {
-      return signedIn() && (
-        data.get('requesterId', '') == request.auth.uid ||
-        data.get('createdBy', '') == request.auth.uid ||
-        data.get('userId', '') == request.auth.uid ||
-        data.get('employeeId', '') == request.auth.uid
-      );
-    }
-
-    function shiftSwapCreateIsSafe(data) {
-      return shiftSwapRequesterMatches(data) &&
-        data.get('acceptedBy', '') == '' &&
-        data.get('approvedBy', '') == '' &&
-        data.get('managerApprovedBy', '') == '' &&
-        (data.get('status', 'requested') == 'requested' || data.get('status', 'requested') == 'pending' || data.get('status', 'requested') == 'open');
-    }
-
-    function shiftSwapParticipantUpdateIsSafe() {
-      return request.resource.data.restaurantId == resource.data.restaurantId &&
-        request.resource.data.get('requesterId', '') == resource.data.get('requesterId', '') &&
-        request.resource.data.get('createdBy', '') == resource.data.get('createdBy', '') &&
-        request.resource.data.get('userId', '') == resource.data.get('userId', '') &&
-        request.resource.data.get('employeeId', '') == resource.data.get('employeeId', '') &&
-        request.resource.data.get('shiftId', '') == resource.data.get('shiftId', '') &&
-        request.resource.data.get('sourceShiftId', '') == resource.data.get('sourceShiftId', '') &&
-        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'acceptedBy', 'acceptedAt', 'declinedBy', 'declinedAt', 'cancelledBy', 'cancelledAt', 'updatedAt', 'updatedBy', 'responseNote']);
-    }
-
-    function maintenanceReporterMatches(data) {
-      return signedIn() && (
-        data.get('reportedById', '') == request.auth.uid ||
-        data.get('reportedByUid', '') == request.auth.uid ||
-        data.get('createdBy', '') == request.auth.uid ||
-        data.get('userId', '') == request.auth.uid
-      );
-    }
-
-    function maintenanceCreateIdentityIsSafe(data) {
-      return maintenanceReporterMatches(data) &&
-        (data.keys().hasAny(['reportedById']) ? data.reportedById == request.auth.uid : true) &&
-        (data.keys().hasAny(['reportedByUid']) ? data.reportedByUid == request.auth.uid : true) &&
-        (data.keys().hasAny(['createdBy']) ? data.createdBy == request.auth.uid : true) &&
-        (data.keys().hasAny(['userId']) ? data.userId == request.auth.uid : true) &&
-        data.get('assignedTo', '') == '' &&
-        data.get('resolvedBy', '') == '' &&
-        data.get('systemCreated', false) == false;
-    }
-
-    function canManageMaintenanceData(restId) {
-      return isSuperAdmin() || isRestaurantOwner(restId) || (isTenantMatch(restId) && (isAdminFor(restId) || hasPermFor(restId, 'maintenance') || hasPermFor(restId, 'ops') || hasPermFor(restId, 'team')));
-    }
-
-    function maintenanceReporterUpdateIsSafe() {
-      return request.resource.data.restaurantId == resource.data.restaurantId &&
-        request.resource.data.get('reportedById', '') == resource.data.get('reportedById', '') &&
-        request.resource.data.get('reportedByUid', '') == resource.data.get('reportedByUid', '') &&
-        request.resource.data.get('createdBy', '') == resource.data.get('createdBy', '') &&
-        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['notes', 'comment', 'comments', 'updatedAt', 'updatedBy']);
-    }
-
-    function isManagerRoleFor(restId) {
-      // Role-name shortcuts were removed so custom Roster Roles remain the source of truth.
-      // Elevated access should come from owner/admin flags or explicit permission toggles.
-      return restId is string && false;
-    }
-
-    function canManageTasks(restId) {
-      return isSuperAdmin() || isRestaurantOwner(restId) || (isTenantMatch(restId) && (isAdminFor(restId) || hasPermFor(restId, 'team') || isManagerRoleFor(restId)));
-    }
-
-    function canManageKitchenSpecials(restId) {
-      return isSuperAdmin() || isRestaurantOwner(restId) || (isTenantMatch(restId) && (
-        isAdminFor(restId) ||
-        hasPermFor(restId, 'prep') ||
-        hasPermFor(restId, 'ops') ||
-        hasPermFor(restId, 'team') ||
-        isManagerRoleFor(restId)
-      ));
-    }
-
-    function kitchenSpecialIsValid(data) {
-      return data.restaurantId is string &&
-        data.name is string && data.name.size() > 0 && data.name.size() <= 120 &&
-        data.startDate is string && data.startDate.size() == 10 &&
-        data.endDate is string && data.endDate.size() == 10 &&
-        data.description is string && data.description.size() <= 1200 &&
-        data.allergens is string && data.allergens.size() <= 500 &&
-        data.dietaryNotes is string && data.dietaryNotes.size() <= 500 &&
-        data.prepNotes is string && data.prepNotes.size() <= 1200 &&
-        data.price is number && data.price >= 0 && data.price <= 100000 &&
-        data.status in ['Draft', 'Scheduled', 'Active', 'Sold Out', 'Archived'] &&
-        data.isArchived is bool &&
-        ((data.status == 'Archived' && data.isArchived == true) || (data.status != 'Archived' && data.isArchived == false));
-    }
-
-    function taskCompletionUpdateIsSafe() {
-      return request.resource.data.restaurantId == resource.data.restaurantId && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['completions']);
-    }
-
-    function kitchenWriteAllowed(collectionName, restId) {
-      return collectionName in ['prepItems', 'prepCategories', 'lineCheckItems', 'recipes'] &&
-        (isAdminFor(restId) || hasPermFor(restId, 'prep') || hasPermFor(restId, 'team'));
-    }
-
-    function inventoryWriteAllowed(collectionName, restId) {
-      return (collectionName in ['inventoryItems', 'vendors', 'orders'] && (isAdminFor(restId) || hasPermFor(restId, 'inventory') || hasPermFor(restId, 'inventoryEdit'))) ||
-        (collectionName in ['invoices'] && (isAdminFor(restId) || hasPermFor(restId, 'inventory') || hasPermFor(restId, 'inventoryEdit') || hasPermFor(restId, 'invoiceScan') || hasPermFor(restId, 'scans')));
-    }
-
-    function scheduleCollection(collectionName) {
-      return collectionName in ['shifts', 'timeOffRequests', 'scheduleTemplates', 'scheduleCoverageTargets'];
-    }
-
-    function scheduleWriteAllowed(collectionName, restId) {
-      return scheduleCollection(collectionName) && (isSuperAdmin() || isRestaurantOwner(restId) || isAdminFor(restId) || hasPermFor(restId, 'schedule') || hasPermFor(restId, 'team'));
-    }
-
-    function managerWriteAllowed(collectionName, restId) {
-      return (collectionName in ['roles', 'pmSchedules'] && (isAdminFor(restId) || hasPermFor(restId, 'team'))) ||
-        (collectionName in ['sales'] && (isAdminFor(restId) || hasPermFor(restId, 'sales') || hasPermFor(restId, 'salesEdit') || hasPermFor(restId, 'financialEdit')));
-    }
-
-    function canTenantWriteCollection(collectionName, restId) {
-      return (isTenantMatch(restId) || (scheduleCollection(collectionName) && isRestaurantOwner(restId))) && (
-        commonTenantWriteAllowed(collectionName) ||
-        kitchenWriteAllowed(collectionName, restId) ||
-        inventoryWriteAllowed(collectionName, restId) ||
-        scheduleWriteAllowed(collectionName, restId) ||
-        managerWriteAllowed(collectionName, restId)
-      );
-    }
-
-    // ============================================================
-    // USERS / WORKSPACE MEMBERSHIPS
-    // ============================================================
-    match /users/{userId} {
-      allow read: if signedIn() && (
-        isSuperAdmin() ||
-        request.auth.uid == userId ||
-        (resource.data.restaurantId is string && isTenantMatch(resource.data.restaurantId)) ||
-        (resource.data.workspaceIds is list && hasUserDoc() && userData().workspaceIds is list && resource.data.workspaceIds.hasAny(userData().workspaceIds)) ||
-        (resource.data.restaurantId is string && isRestaurantOwner(resource.data.restaurantId))
-      );
-
-      allow create: if signedIn() && (isSuperAdmin() || (
-        request.resource.data.restaurantId is string &&
-        canManageStaff(request.resource.data.restaurantId) &&
-        workspaceMemberHrCreateIsSafe(request.resource.data.restaurantId) &&
-        platformAuthorityCreateIsSafe(request.resource.data)
-      ));
-
-      allow update: if signedIn() && protectedFoundingAdminUserUpdateIsSafe() && (
-        isSuperAdmin() ||
-        (request.auth.uid == userId && userSafeSelfUpdate()) ||
-        (resource.data.restaurantId is string && canManageStaff(resource.data.restaurantId) && tenantAdminUserUpdateIsSafe())
-      );
-
-      allow delete: if signedIn() && !isProtectedFoundingAdminUser(resource.data) && (isSuperAdmin() || (resource.data.restaurantId is string && canManageStaff(resource.data.restaurantId)));
-    }
-
-    match /workspaceMembers/{memberId} {
-      allow read: if signedIn() && (
-        isSuperAdmin() ||
-        resource.data.userId == request.auth.uid ||
-        (resource.data.email == request.auth.token.email) ||
-        (resource.data.restaurantId is string && isTenantMatch(resource.data.restaurantId)) ||
-        (resource.data.restaurantId is string && isRestaurantOwner(resource.data.restaurantId))
-      );
-
-      allow create: if signedIn() && (
-        isSuperAdmin() ||
-        (request.resource.data.restaurantId is string && canManageStaff(request.resource.data.restaurantId) && workspaceMemberHrCreateIsSafe(request.resource.data.restaurantId))
-      );
-
-      allow update: if signedIn() && (
-        isSuperAdmin() ||
-        (resource.data.restaurantId is string && canManageStaff(resource.data.restaurantId) && workspaceMemberHrUpdateIsSafe(resource.data.restaurantId))
-      );
-
-      allow delete: if signedIn() && (
-        isSuperAdmin() ||
-        (resource.data.restaurantId is string && canManageStaff(resource.data.restaurantId))
-      );
-    }
-
-    // ============================================================
-    // PRESENCE
-    // ============================================================
-    match /presenceSessions/{sessionId} {
-      allow read: if signedIn() && isSuperAdmin();
-      allow create: if signedIn() && presenceCreateIsSafe();
-      allow update: if signedIn() && presenceUpdateIsSafe();
-      allow delete: if signedIn() && (isSuperAdmin() || resource.data.userId == request.auth.uid);
-    }
-
-    match /livePresence/{docId} {
-      allow read: if signedIn() && isSuperAdmin();
-      allow create, update: if signedIn() && livePresenceWriteIsSafe();
-      allow delete: if signedIn() && (isSuperAdmin() || resource.data.userId == request.auth.uid);
-    }
-
-    // ============================================================
-    // RESTAURANTS
-    // ============================================================
-    match /restaurants/{restaurantId} {
-      allow read: if signedIn() && (isSuperAdmin() || isTenantMatch(restaurantId) || isOwnerOfRestaurantDoc());
-      allow create, delete: if isSuperAdmin();
-      allow update: if signedIn() && (isSuperAdmin() || restaurantOwnerUpdateIsSafe(restaurantId) || restaurantSettingsWriteIsSafe(restaurantId));
-    }
-
-    // ============================================================
-    // AUDIT / SYSTEM
-    // ============================================================
-    match /auditLogs/{docId} {
-      allow read: if signedIn() && (isSuperAdmin() || (resource.data.restaurantId is string && canManageStaff(resource.data.restaurantId)));
-      allow create: if isSuperAdmin();
-      allow update, delete: if false;
-    }
-
-    match /crashReports/{docId} {
-      allow read, update, delete: if isSuperAdmin();
-      allow create: if false;
-    }
-
-    match /system/{docId} { allow read, write: if isSuperAdmin(); }
-
-    match /accountDeletionRequests/{userId} {
-      allow read: if signedIn() && (isSuperAdmin() || request.auth.uid == userId);
-      allow create: if signedIn() &&
-        request.auth.uid == userId &&
-        request.resource.data.uid == request.auth.uid &&
-        request.resource.data.status == 'requested';
-      allow update: if signedIn() && isSuperAdmin();
-      allow delete: if false;
-    }
-
-    match /securityAlerts/{docId} {
-      allow read, write: if signedIn() && isSuperAdmin();
-    }
-
-    // ============================================================
-    // TASKS
-    // ============================================================
-    match /tasks/{docId} {
-      allow read: if signedIn() && (isSuperAdmin() || (resource.data.restaurantId is string && isTenantMatch(resource.data.restaurantId)));
-      allow create: if signedIn() && (isSuperAdmin() || (request.resource.data.restaurantId is string && isTenantMatch(request.resource.data.restaurantId) && canManageTasks(request.resource.data.restaurantId)));
-      allow update: if signedIn() && (isSuperAdmin() || (resource.data.restaurantId is string && request.resource.data.restaurantId == resource.data.restaurantId && isTenantMatch(resource.data.restaurantId) && (canManageTasks(resource.data.restaurantId) || taskCompletionUpdateIsSafe())));
-      allow delete: if signedIn() && (isSuperAdmin() || (resource.data.restaurantId is string && isTenantMatch(resource.data.restaurantId) && canManageTasks(resource.data.restaurantId)));
-    }
-
-    // ============================================================
-    // PRIVATE + SHARED REMINDERS
-    // Users can read reminders they own, created, or were assigned.
-    // Creators can edit/delete shared reminders; assigned teammates can mark done/cancelled only.
-    // ============================================================
-    match /personalReminders/{docId} {
-      allow read: if signedIn() && (isSuperAdmin() || (reminderTenant(resource.data) && reminderParticipant(resource.data)));
-      allow create: if signedIn() && reminderCreateIsValid(request.resource.data);
-      // Reminder edits and participant workflow actions are validated by authenticated
-      // server endpoints. Direct client updates cannot write delivery or lease metadata.
-      allow update: if signedIn() && isSuperAdmin();
-      allow delete: if signedIn() && (isSuperAdmin() || (reminderTenant(resource.data) && resource.data.createdBy == request.auth.uid));
-    }
-
-    match /timeOffRequests/{docId} {
-      allow read: if signedIn() && resource.data.restaurantId is string && isTenantMatch(resource.data.restaurantId) && (canManageScheduleData(resource.data.restaurantId) || timeOffParticipant(resource.data));
-      allow create: if signedIn() && request.resource.data.restaurantId is string && isTenantMatch(request.resource.data.restaurantId) && (
-        canManageScheduleData(request.resource.data.restaurantId) ||
-        (request.resource.data.userId == request.auth.uid && request.resource.data.employeeId == request.auth.uid && request.resource.data.createdBy == request.auth.uid)
-      );
-      allow update: if signedIn() && resource.data.restaurantId is string && request.resource.data.restaurantId == resource.data.restaurantId && isTenantMatch(resource.data.restaurantId) && (
-        canManageScheduleData(resource.data.restaurantId) ||
-        (timeOffParticipant(resource.data) && ownTimeOffStatusUpdate())
-      );
-      allow delete: if signedIn() && isSuperAdmin();
-    }
-
-    match /availabilityRecords/{docId} {
-      allow read: if signedIn() && resource.data.restaurantId is string && isTenantMatch(resource.data.restaurantId) && (canManageScheduleData(resource.data.restaurantId) || availabilityParticipant(resource.data));
-      allow create: if signedIn() && request.resource.data.restaurantId is string && isTenantMatch(request.resource.data.restaurantId) && (
-        canManageScheduleData(request.resource.data.restaurantId) ||
-        (request.resource.data.get('authUid', '') == request.auth.uid && request.resource.data.get('userId', '') == request.auth.uid && request.resource.data.get('scheduleUserId', '') is string && request.resource.data.get('scheduleUserId', '').size() > 0 && request.resource.data.createdBy == request.auth.uid)
-      );
-      allow update: if signedIn() && resource.data.restaurantId is string && request.resource.data.restaurantId == resource.data.restaurantId && isTenantMatch(resource.data.restaurantId) && (
-        canManageScheduleData(resource.data.restaurantId) ||
-        (availabilityParticipant(resource.data) && ownAvailabilityPendingUpdate())
-      );
-      allow delete: if signedIn() && isSuperAdmin();
-    }
-
-    match /eventReminders/{docId} {
-      allow read: if signedIn() && resource.data.restaurantId is string && isTenantMatch(resource.data.restaurantId) && (canManageEventData(resource.data.restaurantId) || eventReminderParticipant(resource.data));
-      allow create: if signedIn() && request.resource.data.restaurantId is string && canManageEventData(request.resource.data.restaurantId);
-      allow update: if signedIn() && resource.data.restaurantId is string && request.resource.data.restaurantId == resource.data.restaurantId && canManageEventData(resource.data.restaurantId);
-      allow delete: if signedIn() && isSuperAdmin();
-    }
-
-
-    // ============================================================
-    // INVENTORY + COST DATA WITH PLAN GATES
-    // Operations gets basic inventory, vendors, orders, and burn/waste logs.
-    // Smart Kitchen gets invoices, COGS/import-adjacent data, and menu dependency data.
-    // ============================================================
-    match /inventoryItems/{docId} {
-      allow read: if signedIn() && resource.data.restaurantId is string && canReadBasicInventory(resource.data.restaurantId);
-      allow create: if signedIn() && request.resource.data.restaurantId is string && canWriteBasicInventory(request.resource.data.restaurantId);
-      allow update: if signedIn() && resource.data.restaurantId is string && request.resource.data.restaurantId == resource.data.restaurantId && canWriteBasicInventory(resource.data.restaurantId);
-      allow delete: if signedIn() && resource.data.restaurantId is string && canWriteBasicInventory(resource.data.restaurantId);
-    }
-
-    match /vendors/{docId} {
-      allow read: if signedIn() && resource.data.restaurantId is string && canReadBasicInventory(resource.data.restaurantId);
-      allow create: if signedIn() && request.resource.data.restaurantId is string && canWriteBasicInventory(request.resource.data.restaurantId);
-      allow update: if signedIn() && resource.data.restaurantId is string && request.resource.data.restaurantId == resource.data.restaurantId && canWriteBasicInventory(resource.data.restaurantId);
-      allow delete: if signedIn() && resource.data.restaurantId is string && canWriteBasicInventory(resource.data.restaurantId);
-    }
-
-    match /orders/{docId} {
-      allow read: if signedIn() && resource.data.restaurantId is string && canReadBasicInventory(resource.data.restaurantId);
-      allow create: if signedIn() && request.resource.data.restaurantId is string && canWriteBasicInventory(request.resource.data.restaurantId);
-      allow update: if signedIn() && resource.data.restaurantId is string && request.resource.data.restaurantId == resource.data.restaurantId && canWriteBasicInventory(resource.data.restaurantId);
-      allow delete: if signedIn() && resource.data.restaurantId is string && canWriteBasicInventory(resource.data.restaurantId);
-    }
-
-    match /wasteLogs/{docId} {
-      allow read: if signedIn() && resource.data.restaurantId is string && canReadBasicInventory(resource.data.restaurantId);
-      allow create: if signedIn() && request.resource.data.restaurantId is string && canWriteBasicInventory(request.resource.data.restaurantId);
-      allow update: if signedIn() && resource.data.restaurantId is string && request.resource.data.restaurantId == resource.data.restaurantId && canWriteBasicInventory(resource.data.restaurantId);
-      allow delete: if signedIn() && resource.data.restaurantId is string && canWriteBasicInventory(resource.data.restaurantId);
-    }
-
-    match /invoices/{docId} {
-      allow read: if signedIn() && resource.data.restaurantId is string && canReadSmartInventory(resource.data.restaurantId);
-      allow create: if signedIn() && request.resource.data.restaurantId is string && canWriteSmartInventory(request.resource.data.restaurantId);
-      allow update: if signedIn() && resource.data.restaurantId is string && request.resource.data.restaurantId == resource.data.restaurantId && canWriteSmartInventory(resource.data.restaurantId);
-      allow delete: if signedIn() && resource.data.restaurantId is string && canWriteSmartInventory(resource.data.restaurantId);
-    }
-
-    match /reports/{docId} {
-      allow read: if signedIn() && resource.data.restaurantId is string && canReadSmartFinancials(resource.data.restaurantId);
-      allow create: if signedIn() && request.resource.data.restaurantId is string && canWriteSmartFinancials(request.resource.data.restaurantId);
-      allow update: if signedIn() && resource.data.restaurantId is string && request.resource.data.restaurantId == resource.data.restaurantId && canWriteSmartFinancials(resource.data.restaurantId);
-      allow delete: if signedIn() && resource.data.restaurantId is string && canWriteSmartFinancials(resource.data.restaurantId);
-    }
-
-    match /exports/{docId} {
-      allow read: if signedIn() && resource.data.restaurantId is string && canReadSmartFinancials(resource.data.restaurantId);
-      allow create: if signedIn() && request.resource.data.restaurantId is string && canWriteSmartFinancials(request.resource.data.restaurantId);
-      allow update: if signedIn() && resource.data.restaurantId is string && request.resource.data.restaurantId == resource.data.restaurantId && canWriteSmartFinancials(resource.data.restaurantId);
-      allow delete: if signedIn() && resource.data.restaurantId is string && canWriteSmartFinancials(resource.data.restaurantId);
-    }
-
-    // ============================================================
-    // MENU INTELLIGENCE
-    // ============================================================
-    match /menuIntelligenceScans/{docId} {
-      allow read: if signedIn() && resource.data.restaurantId is string && canUseMenuIntelligence(resource.data.restaurantId);
-      allow create: if signedIn() && request.resource.data.restaurantId is string && canUseMenuIntelligence(request.resource.data.restaurantId);
-      allow update: if signedIn() && resource.data.restaurantId is string && request.resource.data.restaurantId == resource.data.restaurantId && canUseMenuIntelligence(resource.data.restaurantId);
-      allow delete: if signedIn() && resource.data.restaurantId is string && canUseMenuIntelligence(resource.data.restaurantId);
-    }
-
-    match /menuDependencies/{docId} {
-      allow read: if signedIn() && resource.data.restaurantId is string && canUseMenuIntelligence(resource.data.restaurantId);
-      allow create: if signedIn() && request.resource.data.restaurantId is string && canUseMenuIntelligence(request.resource.data.restaurantId);
-      allow update: if signedIn() && resource.data.restaurantId is string && request.resource.data.restaurantId == resource.data.restaurantId && canUseMenuIntelligence(resource.data.restaurantId);
-      allow delete: if signedIn() && resource.data.restaurantId is string && canUseMenuIntelligence(resource.data.restaurantId);
-    }
-
-    // ============================================================
-    // KITCHEN SPECIALS
-    // Every workspace member can see current service information. Only
-    // kitchen leads and managers can publish or change it; records are archived
-    // instead of being silently deleted.
-    // ============================================================
-    match /kitchenSpecials/{docId} {
-      allow read: if signedIn() && resource.data.restaurantId is string && isTenantMatch(resource.data.restaurantId);
-      allow create: if signedIn() && kitchenSpecialIsValid(request.resource.data) && canManageKitchenSpecials(request.resource.data.restaurantId);
-      allow update: if signedIn() && kitchenSpecialIsValid(request.resource.data) &&
-        request.resource.data.restaurantId == resource.data.restaurantId &&
-        canManageKitchenSpecials(resource.data.restaurantId);
-      allow delete: if signedIn() && isSuperAdmin();
-    }
-
-    // ============================================================
-    // HR + TRAINING
-    // Published manuals are shared with the workspace. Employee-specific
-    // records are limited to the subject employee and authorized HR managers.
-    // Confidential performance notes are never readable by employees.
-    // ============================================================
-    match /trainingManuals/{manualId} {
-      allow read: if signedIn() && resource.data.restaurantId is string && (
-        canManageHr(resource.data.restaurantId) ||
-        (isTenantMatch(resource.data.restaurantId) && resource.data.status == 'Published')
-      );
-      allow create: if signedIn() && trainingManualRecordIsValid(request.resource.data) && canManageHr(request.resource.data.restaurantId);
-      allow update: if signedIn() && trainingManualRecordIsValid(request.resource.data) &&
-        request.resource.data.restaurantId == resource.data.restaurantId &&
-        canManageHr(resource.data.restaurantId);
-      allow delete: if signedIn() && resource.data.restaurantId is string && canManageHr(resource.data.restaurantId);
-    }
-
-    match /trainingAcknowledgements/{ackId} {
-      allow read: if signedIn() && resource.data.restaurantId is string && (
-        canManageHr(resource.data.restaurantId) ||
-        (isTenantMatch(resource.data.restaurantId) && resource.data.userId == request.auth.uid)
-      );
-      allow create: if signedIn() &&
-        request.resource.data.keys().hasOnly(['restaurantId', 'manualId', 'manualTitle', 'manualVersion', 'userId', 'attestation', 'acknowledgedAt']) &&
-        request.resource.data.restaurantId is string &&
-        request.resource.data.manualId is string && request.resource.data.manualId.size() > 0 && request.resource.data.manualId.size() <= 160 &&
-        ackId == request.resource.data.manualId + '_' + request.auth.uid &&
-        isTenantMatch(request.resource.data.restaurantId) &&
-        request.resource.data.userId == request.auth.uid &&
-        request.resource.data.attestation == 'I acknowledge that I received and reviewed this training manual.' &&
-        request.resource.data.acknowledgedAt == request.time &&
-        publishedTrainingManualExists(request.resource.data.manualId, request.resource.data.restaurantId) &&
-        request.resource.data.manualTitle == get(trainingManualPath(request.resource.data.manualId)).data.title &&
-        request.resource.data.manualVersion == get(trainingManualPath(request.resource.data.manualId)).data.version;
-      // Acknowledgments are immutable compliance records. Only the System
-      // Administrator may remove one for a verified privacy/legal request.
-      allow update: if false;
-      allow delete: if isSuperAdmin();
-    }
-
-    match /hrOnboardingTasks/{taskId} {
-      allow read: if signedIn() && resource.data.restaurantId is string && (
-        canManageHr(resource.data.restaurantId) ||
-        (isTenantMatch(resource.data.restaurantId) && resource.data.userId == request.auth.uid)
-      );
-      allow create: if signedIn() && onboardingTaskRecordIsValid(request.resource.data) && canManageHr(request.resource.data.restaurantId);
-      allow update: if signedIn() && resource.data.restaurantId is string &&
-        request.resource.data.restaurantId == resource.data.restaurantId &&
-        onboardingTaskRecordIsValid(request.resource.data) && (
-          (canManageHr(resource.data.restaurantId) &&
-            request.resource.data.createdAt == resource.data.createdAt &&
-            request.resource.data.assignedById == resource.data.assignedById) ||
-          (isTenantMatch(resource.data.restaurantId) && onboardingSelfCompletionIsSafe())
-        );
-      allow delete: if signedIn() && resource.data.restaurantId is string && canManageHr(resource.data.restaurantId);
-    }
-
-    match /hrCertifications/{certId} {
-      allow read: if signedIn() && resource.data.restaurantId is string && (
-        canManageHr(resource.data.restaurantId) ||
-        (isTenantMatch(resource.data.restaurantId) && resource.data.userId == request.auth.uid)
-      );
-      allow create: if signedIn() && certificationRecordIsValid(request.resource.data) && canManageHr(request.resource.data.restaurantId);
-      allow update: if signedIn() && resource.data.restaurantId is string &&
-        request.resource.data.restaurantId == resource.data.restaurantId &&
-        request.resource.data.createdAt == resource.data.createdAt &&
-        request.resource.data.createdById == resource.data.createdById &&
-        certificationRecordIsValid(request.resource.data) &&
-        canManageHr(resource.data.restaurantId);
-      allow delete: if signedIn() && resource.data.restaurantId is string && canManageHr(resource.data.restaurantId);
-    }
-
-    match /hrPerformanceNotes/{noteId} {
-      allow read: if signedIn() && resource.data.restaurantId is string && canManageHr(resource.data.restaurantId);
-      allow create: if signedIn() && performanceNoteRecordIsValid(request.resource.data) && canManageHr(request.resource.data.restaurantId);
-      allow update: if signedIn() && resource.data.restaurantId is string &&
-        request.resource.data.restaurantId == resource.data.restaurantId &&
-        request.resource.data.createdAt == resource.data.createdAt &&
-        request.resource.data.createdById == resource.data.createdById &&
-        request.resource.data.confidential == resource.data.confidential &&
-        performanceNoteRecordIsValid(request.resource.data) &&
-        canManageHr(resource.data.restaurantId);
-      allow delete: if signedIn() && resource.data.restaurantId is string && canManageHr(resource.data.restaurantId);
-    }
-
-
-    // ============================================================
-    // RESTAURANT OWNER/ADMIN ALERTS
-    // Python Automation writes these through Firebase Admin SDK only.
-    // Browser clients can read and acknowledge them only when they are
-    // owners/admins for the same restaurant. System Administrators may
-    // inspect them, but Python/System Admin scans do not apply changes.
-    // ============================================================
-    function canReadRestaurantAdminAlert(restId) {
-      return signedIn() && restId is string && (
-        isSuperAdmin() || isRestaurantOwner(restId) || isAdminFor(restId) || hasPermFor(restId, 'settings') || hasPermFor(restId, 'team')
-      );
-    }
-
-    function canAcknowledgeRestaurantAdminAlert(restId) {
-      return signedIn() && restId is string && (
-        isRestaurantOwner(restId) || isAdminFor(restId) || hasPermFor(restId, 'settings') || hasPermFor(restId, 'team')
-      );
-    }
-
-    match /restaurantAdminAlerts/{alertId} {
-      allow read: if resource.data.restaurantId is string && canReadRestaurantAdminAlert(resource.data.restaurantId);
-      allow create: if false;
-      allow update: if resource.data.restaurantId is string &&
-        request.resource.data.restaurantId == resource.data.restaurantId &&
-        canAcknowledgeRestaurantAdminAlert(resource.data.restaurantId) &&
-        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'acknowledgedAt', 'acknowledgedBy', 'acknowledgedByName', 'reviewedAt', 'reviewedBy', 'reviewedByName', 'updatedAt']) &&
-        request.resource.data.status in ['open', 'acknowledged', 'dismissed', 'resolved'];
-      allow delete: if false;
-    }
-
-    // ============================================================
-    // SERVER-ONLY AI PAGE USAGE + LIMITS
-    // Firebase Admin SDK enforces access, monthly limits, bypass identity,
-    // idempotency, and event logging. Browser clients cannot edit usage or limits.
-    // ============================================================
-    match /aiUsage/{usageId} {
-      // Owners/admins may read the monthly workspace usage summary for Plan & Billing.
-      // Event rows can contain user-level diagnostics and stay server-only below.
-      allow read: if signedIn() && resource.data.restaurantId is string && (
-        isSuperAdmin() || isRestaurantOwner(resource.data.restaurantId) || isAdminFor(resource.data.restaurantId) ||
-        (isTenantMatch(resource.data.restaurantId) && hasPermFor(resource.data.restaurantId, 'settings'))
-      );
-      allow write: if false;
-      match /events/{eventId} {
-        allow read, write: if false;
-      }
-    }
-
-    // Durable AI duplicate-request locks are written only by the Firebase Admin
-    // SDK. They contain user/workspace identifiers and must never be exposed to
-    // browser clients, including browser sessions with elevated UI access.
-    match /aiRequestLocks/{lockId} {
-      allow read, write: if false;
-      match /{nestedDocument=**} {
-        allow read, write: if false;
-      }
-    }
-
-    // ============================================================
-    // SERVER-ONLY RETENTION JOB LOCKS
-    // Firebase Admin SDK bypasses rules. Browser clients never need these.
-    // ============================================================
-    match /_retentionJobLocks/{docId} {
-      allow read, write: if false;
-    }
-
-    // ============================================================
-    // FINANCIAL CENTER
-    // Financial records are tenant-isolated and no longer fall through the
-    // broad tenant read rule. Frontend visibility and Firestore enforcement
-    // must agree for sales, targets, expenses, deposits, and reports.
-    // ============================================================
-    match /sales/{docId} {
-      allow read: if signedIn() && resource.data.restaurantId is string && canReadOperationsFinancials(resource.data.restaurantId);
-      allow create: if signedIn() && salesCloseRecordIsValid(request.resource.data) && canWriteOperationsFinancials(request.resource.data.restaurantId);
-      allow update: if signedIn() && resource.data.restaurantId is string &&
-        request.resource.data.restaurantId == resource.data.restaurantId &&
-        salesCloseRecordIsValid(request.resource.data) && canWriteOperationsFinancials(resource.data.restaurantId);
-      allow delete: if signedIn() && resource.data.restaurantId is string && canWriteOperationsFinancials(resource.data.restaurantId);
-    }
-
-    match /financialExpenses/{docId} {
-      allow read: if signedIn() && resource.data.restaurantId is string && canReadSmartFinancials(resource.data.restaurantId);
-      allow create: if signedIn() && financialExpenseRecordIsValid(request.resource.data) && canWriteSmartFinancials(request.resource.data.restaurantId);
-      allow update: if signedIn() && resource.data.restaurantId is string &&
-        request.resource.data.restaurantId == resource.data.restaurantId &&
-        financialExpenseRecordIsValid(request.resource.data) && canWriteSmartFinancials(resource.data.restaurantId);
-      allow delete: if signedIn() && resource.data.restaurantId is string && canWriteSmartFinancials(resource.data.restaurantId);
-    }
-
-    match /financialTargets/{docId} {
-      allow read: if signedIn() && resource.data.restaurantId is string && canReadSmartFinancials(resource.data.restaurantId);
-      allow create: if signedIn() && financialTargetsRecordIsValid(request.resource.data) && canWriteSmartFinancials(request.resource.data.restaurantId);
-      allow update: if signedIn() && resource.data.restaurantId is string &&
-        request.resource.data.restaurantId == resource.data.restaurantId &&
-        financialTargetsRecordIsValid(request.resource.data) && canWriteSmartFinancials(resource.data.restaurantId);
-      allow delete: if signedIn() && resource.data.restaurantId is string && canWriteSmartFinancials(resource.data.restaurantId);
-    }
-
-    match /timePunches/{docId} {
-      allow read: if signedIn() && resource.data.restaurantId is string && (
-        canReadOperationsFinancials(resource.data.restaurantId) || canReadOwnPunch(resource.data)
-      );
-      allow create: if signedIn() && request.resource.data.restaurantId is string && (
-        canWriteOperationsFinancials(request.resource.data.restaurantId) || canReadOwnPunch(request.resource.data)
-      );
-      allow update: if signedIn() && resource.data.restaurantId is string &&
-        request.resource.data.restaurantId == resource.data.restaurantId && (
-          canWriteOperationsFinancials(resource.data.restaurantId) || ownPunchUpdateIsSafe()
-        );
-      allow delete: if signedIn() && resource.data.restaurantId is string && canWriteOperationsFinancials(resource.data.restaurantId);
-    }
-
-    match /dailyCloses/{docId} {
-      allow read: if signedIn() && resource.data.restaurantId is string && canReadOperationsFinancials(resource.data.restaurantId);
-      allow create: if signedIn() && request.resource.data.restaurantId is string && canWriteOperationsFinancials(request.resource.data.restaurantId);
-      allow update: if signedIn() && resource.data.restaurantId is string && request.resource.data.restaurantId == resource.data.restaurantId && canWriteOperationsFinancials(resource.data.restaurantId);
-      allow delete: if signedIn() && resource.data.restaurantId is string && canWriteOperationsFinancials(resource.data.restaurantId);
-    }
-
-    match /deposits/{docId} {
-      allow read: if signedIn() && resource.data.restaurantId is string && canReadOperationsFinancials(resource.data.restaurantId);
-      allow create: if signedIn() && request.resource.data.restaurantId is string && canWriteOperationsFinancials(request.resource.data.restaurantId);
-      allow update: if signedIn() && resource.data.restaurantId is string && request.resource.data.restaurantId == resource.data.restaurantId && canWriteOperationsFinancials(resource.data.restaurantId);
-      allow delete: if signedIn() && resource.data.restaurantId is string && canWriteOperationsFinancials(resource.data.restaurantId);
-    }
-
-    match /tipRecords/{docId} {
-      allow read: if signedIn() && resource.data.restaurantId is string && (
-        canReadOperationsFinancials(resource.data.restaurantId) || canReadOwnPunch(resource.data)
-      );
-      allow create: if signedIn() && request.resource.data.restaurantId is string && (
-        canWriteOperationsFinancials(request.resource.data.restaurantId) || canReadOwnPunch(request.resource.data)
-      );
-      allow update: if signedIn() && resource.data.restaurantId is string && request.resource.data.restaurantId == resource.data.restaurantId && (
-        canWriteOperationsFinancials(resource.data.restaurantId) || canReadOwnPunch(resource.data)
-      );
-      allow delete: if signedIn() && resource.data.restaurantId is string && canWriteOperationsFinancials(resource.data.restaurantId);
-    }
-
-    match /expenses/{docId} {
-      allow read: if signedIn() && resource.data.restaurantId is string && canReadSmartFinancials(resource.data.restaurantId);
-      allow create: if signedIn() && request.resource.data.restaurantId is string && canWriteSmartFinancials(request.resource.data.restaurantId);
-      allow update: if signedIn() && resource.data.restaurantId is string && request.resource.data.restaurantId == resource.data.restaurantId && canWriteSmartFinancials(resource.data.restaurantId);
-      allow delete: if signedIn() && resource.data.restaurantId is string && canWriteSmartFinancials(resource.data.restaurantId);
-    }
-
-    match /financialReports/{docId} {
-      allow read: if signedIn() && resource.data.restaurantId is string && canReadSmartFinancials(resource.data.restaurantId);
-      allow create: if signedIn() && request.resource.data.restaurantId is string && canWriteSmartFinancials(request.resource.data.restaurantId);
-      allow update: if signedIn() && resource.data.restaurantId is string && request.resource.data.restaurantId == resource.data.restaurantId && canWriteSmartFinancials(resource.data.restaurantId);
-      allow delete: if signedIn() && resource.data.restaurantId is string && canWriteSmartFinancials(resource.data.restaurantId);
-    }
-
-
-    match /backOfficeRecords/{docId} {
-      allow read: if signedIn() && resource.data.restaurantId is string && canReadBackOffice(resource.data.restaurantId);
-      allow create: if signedIn() && backOfficeRecordIsValid(request.resource.data) && canWriteBackOffice(request.resource.data.restaurantId);
-      allow update: if signedIn() && resource.data.restaurantId is string &&
-        request.resource.data.restaurantId == resource.data.restaurantId &&
-        backOfficeRecordIsValid(request.resource.data) &&
-        canWriteBackOffice(resource.data.restaurantId);
-      allow delete: if signedIn() && resource.data.restaurantId is string && canWriteBackOffice(resource.data.restaurantId);
-    }
-
-    match /quickBooksSettings/{docId} {
-      allow read: if signedIn() && resource.data.restaurantId is string && canReadBackOffice(resource.data.restaurantId);
-      allow create: if signedIn() && request.resource.data.restaurantId is string && canWriteBackOffice(request.resource.data.restaurantId) && !request.resource.data.keys().hasAny(['accessToken', 'refreshToken', 'clientSecret', 'privateKey']);
-      allow update: if signedIn() && resource.data.restaurantId is string &&
-        request.resource.data.restaurantId == resource.data.restaurantId &&
-        canWriteBackOffice(resource.data.restaurantId) &&
-        !request.resource.data.keys().hasAny(['accessToken', 'refreshToken', 'clientSecret', 'privateKey']);
-      allow delete: if false;
-    }
-
-    // Future POS/accounting import collections stay locked behind Smart Kitchen+ financial access.
-    match /posImports/{docId} {
-      allow read: if signedIn() && resource.data.restaurantId is string && canReadSmartFinancials(resource.data.restaurantId);
-      allow create: if signedIn() && request.resource.data.restaurantId is string && canWriteSmartFinancials(request.resource.data.restaurantId);
-      allow update: if signedIn() && resource.data.restaurantId is string && request.resource.data.restaurantId == resource.data.restaurantId && canWriteSmartFinancials(resource.data.restaurantId);
-      allow delete: if signedIn() && resource.data.restaurantId is string && canWriteSmartFinancials(resource.data.restaurantId);
-    }
-
-    match /accountingImports/{docId} {
-      allow read: if signedIn() && resource.data.restaurantId is string && canReadSmartFinancials(resource.data.restaurantId);
-      allow create: if signedIn() && request.resource.data.restaurantId is string && canWriteSmartFinancials(request.resource.data.restaurantId);
-      allow update: if signedIn() && resource.data.restaurantId is string && request.resource.data.restaurantId == resource.data.restaurantId && canWriteSmartFinancials(resource.data.restaurantId);
-      allow delete: if signedIn() && resource.data.restaurantId is string && canWriteSmartFinancials(resource.data.restaurantId);
-    }
-
-    match /importBatches/{docId} {
-      allow read: if signedIn() && resource.data.restaurantId is string && canReadSmartFinancials(resource.data.restaurantId);
-      allow create: if signedIn() && request.resource.data.restaurantId is string && canWriteSmartFinancials(request.resource.data.restaurantId);
-      allow update: if signedIn() && resource.data.restaurantId is string && request.resource.data.restaurantId == resource.data.restaurantId && canWriteSmartFinancials(resource.data.restaurantId);
-      allow delete: if signedIn() && resource.data.restaurantId is string && canWriteSmartFinancials(resource.data.restaurantId);
-    }
-
-
-    // Dedicated tenant rules for shared collections that must not use blanket staff writes.
-    match /events/{eventId} {
-      allow read: if signedIn() && (isSuperAdmin() || (resource.data.restaurantId is string && isTenantMatch(resource.data.restaurantId)));
-      allow create: if signedIn() && request.resource.data.restaurantId is string && canManageEventData(request.resource.data.restaurantId);
-      allow update: if signedIn() && resource.data.restaurantId is string && request.resource.data.restaurantId == resource.data.restaurantId && canManageEventData(resource.data.restaurantId);
-      allow delete: if signedIn() && resource.data.restaurantId is string && canManageEventData(resource.data.restaurantId);
-    }
-
-    match /messages/{messageId} {
-      allow read: if signedIn() && (isSuperAdmin() || (resource.data.restaurantId is string && isTenantMatch(resource.data.restaurantId)));
-      allow create: if signedIn() && request.resource.data.restaurantId is string && isTenantMatch(request.resource.data.restaurantId) && (canModerateMessages(request.resource.data.restaurantId) || messageCreateIdentityIsSafe(request.resource.data));
-      allow update: if signedIn() && resource.data.restaurantId is string && request.resource.data.restaurantId == resource.data.restaurantId && (canModerateMessages(resource.data.restaurantId) || (messageAuthorMatches(resource.data) && messageSafeAuthorUpdate()));
-      allow delete: if signedIn() && resource.data.restaurantId is string && (canModerateMessages(resource.data.restaurantId) || messageAuthorMatches(resource.data));
-    }
-
-    match /shiftSwaps/{swapId} {
-      allow read: if signedIn() && (isSuperAdmin() || (resource.data.restaurantId is string && isTenantMatch(resource.data.restaurantId)));
-      allow create: if signedIn() && request.resource.data.restaurantId is string && isTenantMatch(request.resource.data.restaurantId) && (canManageScheduleData(request.resource.data.restaurantId) || shiftSwapCreateIsSafe(request.resource.data));
-      allow update: if signedIn() && resource.data.restaurantId is string && request.resource.data.restaurantId == resource.data.restaurantId && (canManageScheduleData(resource.data.restaurantId) || (shiftSwapParticipant(resource.data) && shiftSwapParticipantUpdateIsSafe()));
-      allow delete: if signedIn() && resource.data.restaurantId is string && canManageScheduleData(resource.data.restaurantId);
-    }
-
-    match /maintenanceLogs/{logId} {
-      allow read: if signedIn() && (isSuperAdmin() || (resource.data.restaurantId is string && isTenantMatch(resource.data.restaurantId)));
-      allow create: if signedIn() && request.resource.data.restaurantId is string && isTenantMatch(request.resource.data.restaurantId) && (canManageMaintenanceData(request.resource.data.restaurantId) || maintenanceCreateIdentityIsSafe(request.resource.data));
-      allow update: if signedIn() && resource.data.restaurantId is string && request.resource.data.restaurantId == resource.data.restaurantId && (canManageMaintenanceData(resource.data.restaurantId) || (maintenanceReporterMatches(resource.data) && maintenanceReporterUpdateIsSafe()));
-      allow delete: if signedIn() && resource.data.restaurantId is string && canManageMaintenanceData(resource.data.restaurantId);
-    }
-
-
-    function isStandardTenantCollection(collectionName) {
-      return collectionName in [
-        'prepItems', 'prepCategories', 'lineCheckItems', 'recipes', 'roles',
-        'pmSchedules', 'shifts', 'scheduleTemplates', 'scheduleCoverageTargets',
-        'kitchenSpecials', 'tempLogs'
-      ];
-    }
-
-    // ============================================================
-    // STANDARD TENANT COLLECTIONS
-    // ============================================================
-    match /{collectionName}/{docId} {
-      allow read: if isStandardTenantCollection(collectionName) && signedIn() && (isSuperAdmin() || (resource.data.restaurantId is string && isTenantMatch(resource.data.restaurantId)));
-      allow create: if isStandardTenantCollection(collectionName) && signedIn() && (isSuperAdmin() || (request.resource.data.restaurantId is string && canTenantWriteCollection(collectionName, request.resource.data.restaurantId)));
-      allow update: if isStandardTenantCollection(collectionName) && signedIn() && (isSuperAdmin() || (resource.data.restaurantId is string && request.resource.data.restaurantId == resource.data.restaurantId && canTenantWriteCollection(collectionName, resource.data.restaurantId)));
-      allow delete: if isStandardTenantCollection(collectionName) && signedIn() && (isSuperAdmin() || (resource.data.restaurantId is string && canTenantWriteCollection(collectionName, resource.data.restaurantId)));
-    }
-  }
+match /databases/{database}/documents {
+function signedIn() { return request.auth != null; }
+function userPath() { return /databases/$(database)/documents/users/$(request.auth.uid); }
+function hasUserDoc() { return signedIn() && exists(userPath()); }
+function userData() { return get(userPath()).data; }
+function safeUserData() { return hasUserDoc() ? userData() : {}; }
+function protectedFoundingAdminEmail() { return 'geoffm1985@gmail.com'; }
+function isProtectedFoundingAdminUser(data) {
+return data.get('email', '') == protectedFoundingAdminEmail() ||
+data.get('emailLower', '') == protectedFoundingAdminEmail() ||
+data.get('emailLowercase', '') == protectedFoundingAdminEmail() ||
+data.get('normalizedEmail', '') == protectedFoundingAdminEmail() ||
+data.get('authEmail', '') == protectedFoundingAdminEmail();
+}
+function privilegedSystemAccessKeys() {
+return ['superAdmin', 'platformAdmin', 'systemAdministrator', 'rootAdmin', 'protectedRootAdmin', 'foundingAdministrator', 'allAccess'];
+}
+function authorityFlagCreateIsSafe(value) {
+return value == null || (value is bool && value == false);
+}
+function systemAccessCreateIsSafe(data) {
+let access = data.get('systemAccess', null);
+return access == null ? true : (
+!(access is map) ? false : (
+!access.keys().hasOnly(privilegedSystemAccessKeys()) ? false : (
+!authorityFlagCreateIsSafe(access.get('superAdmin', false)) ? false : (
+!authorityFlagCreateIsSafe(access.get('platformAdmin', false)) ? false : (
+!authorityFlagCreateIsSafe(access.get('systemAdministrator', false)) ? false : (
+!authorityFlagCreateIsSafe(access.get('rootAdmin', false)) ? false : (
+!authorityFlagCreateIsSafe(access.get('protectedRootAdmin', false)) ? false : (
+!authorityFlagCreateIsSafe(access.get('foundingAdministrator', false)) ? false :
+authorityFlagCreateIsSafe(access.get('allAccess', false))
+)
+)
+)
+)
+)
+)
+)
+);
+}
+function platformAuthorityCreateIsSafe(data) {
+return !authorityFlagCreateIsSafe(data.get('isSuperAdmin', false)) ? false : (
+!authorityFlagCreateIsSafe(data.get('superAdmin', false)) ? false : (
+!authorityFlagCreateIsSafe(data.get('protectedRootAdmin', false)) ? false : (
+!authorityFlagCreateIsSafe(data.get('protectedFoundingAdmin', false)) ? false : (
+!authorityFlagCreateIsSafe(data.get('foundingAdministrator', false)) ? false : (
+!authorityFlagCreateIsSafe(data.get('rootAdmin', false)) ? false :
+systemAccessCreateIsSafe(data)
+)
+)
+)
+)
+);
+}
+function protectedFoundingAdminKeys() {
+return ['isSuperAdmin', 'superAdmin', 'systemAccess', 'platformAccess', 'protectedRootAdmin', 'protectedFoundingAdmin', 'foundingAdministrator', 'rootAdmin', 'isAdmin', 'isActive', 'disabled', 'isDisabled', 'deactivated', 'archived', 'deleted', 'role', 'accountRole', 'permissions'];
+}
+function protectedFoundingAdminUserUpdateIsSafe() {
+return !isProtectedFoundingAdminUser(resource.data) ||
+!request.resource.data.diff(resource.data).affectedKeys().hasAny(protectedFoundingAdminKeys());
+}
+function isSuperAdmin() {
+let u = safeUserData();
+let access = u.get('systemAccess', {});
+return signedIn() && (
+request.auth.token.get('superAdmin', false) == true ||
+u.get('isSuperAdmin', false) == true ||
+(access is map && access.get('superAdmin', false) == true)
+);
+}
+function membershipDataFromUser(u, restId) {
+let memberships = u.get('memberships', {});
+return restId is string && memberships is map && memberships.get(restId, {}) is map
+? memberships.get(restId, {})
+: {};
+}
+function membershipDataFor(restId) {
+let u = safeUserData();
+return membershipDataFromUser(u, restId);
+}
+function isTenantMatch(restId) {
+let u = safeUserData();
+let ids = u.get('workspaceIds', []);
+let member = membershipDataFor(restId);
+return signedIn() && restId is string && (
+u.get('restaurantId', '') == restId ||
+(ids is list && ids.hasAny([restId])) ||
+member.get('isActive', false) == true
+);
+}
+function permissionDataFromUserAndMember(u, member, restId) {
+let memberPerms = member.get('permissions', {});
+let userPerms = u.get('permissions', {});
+return member.get('isActive', false) == true && memberPerms is map
+? memberPerms
+: (u.get('restaurantId', '') == restId && userPerms is map ? userPerms : {});
+}
+function permissionDataFor(restId) {
+let u = safeUserData();
+let member = membershipDataFromUser(u, restId);
+return permissionDataFromUserAndMember(u, member, restId);
+}
+function restaurantPath(restId) { return /databases/$(database)/documents/restaurants/$(restId); }
+function hasRestaurantDoc(restId) { return restId is string && exists(restaurantPath(restId)); }
+function restaurantData(restId) { return get(restaurantPath(restId)).data; }
+function safeRestaurantData(restId) { return hasRestaurantDoc(restId) ? restaurantData(restId) : {}; }
+function currentUserSystemAccessMap(u) {
+let access = u.get('systemAccess', {});
+return access is map ? access : {};
+}
+function currentAuthTokenSuperAdmin() {
+return signedIn() && request.auth.token.get('superAdmin', false) == true;
+}
+function currentUserDocSuperAdminFrom(u) {
+let access = currentUserSystemAccessMap(u);
+return u.get('isSuperAdmin', false) == true || access.get('superAdmin', false) == true;
+}
+function currentUserSuperAdminLean() {
+let u = safeUserData();
+return currentAuthTokenSuperAdmin() || currentUserDocSuperAdminFrom(u);
+}
+function currentUserMemberPermsFrom(member) {
+let perms = member.get('permissions', {});
+return perms is map ? perms : {};
+}
+function currentUserLegacyPermsFrom(u, restId) {
+let perms = u.get('permissions', {});
+return u.get('restaurantId', '') == restId && perms is map ? perms : {};
+}
+function currentUserActiveMemberOwnerFrom(member) {
+return member.get('isActive', false) == true && (
+member.get('isOwner', false) == true ||
+member.get('accountOwner', false) == true ||
+member.get('workspaceOwner', false) == true ||
+member.get('accountRole', '') == 'owner'
+);
+}
+function currentUserLegacyOwnerFrom(u, restId) {
+return u.get('restaurantId', '') == restId && (
+u.get('isOwner', false) == true ||
+u.get('accountOwner', false) == true ||
+u.get('owner', false) == true ||
+u.get('workspaceOwner', false) == true ||
+u.get('accountRole', '') == 'owner'
+);
+}
+function currentUserOwnerAuthorityFrom(u, member, restId) {
+return currentUserActiveMemberOwnerFrom(member) || currentUserLegacyOwnerFrom(u, restId);
+}
+function currentUserMemberTeamAuthorityFrom(member, memberPerms) {
+return member.get('isActive', false) == true && (
+member.get('isAdmin', false) == true ||
+memberPerms.get('team', false) == true
+);
+}
+function currentUserLegacyTeamAuthorityFrom(u, legacyPerms, restId) {
+return u.get('restaurantId', '') == restId && (
+u.get('isAdmin', false) == true ||
+legacyPerms.get('team', false) == true
+);
+}
+function currentUserStaffAuthorityFromDoc(restId) {
+let u = safeUserData();
+let member = membershipDataFromUser(u, restId);
+let memberPerms = currentUserMemberPermsFrom(member);
+let legacyPerms = currentUserLegacyPermsFrom(u, restId);
+return signedIn() && restId is string && (
+currentUserDocSuperAdminFrom(u) ||
+currentUserOwnerAuthorityFrom(u, member, restId) ||
+currentUserMemberTeamAuthorityFrom(member, memberPerms) ||
+currentUserLegacyTeamAuthorityFrom(u, legacyPerms, restId)
+);
+}
+function currentUserOwnerAuthorityFromRestaurant(restId) {
+let restaurant = safeRestaurantData(restId);
+return signedIn() && restId is string && (
+restaurant.get('ownerEmail', '') == request.auth.token.get('email', '') ||
+restaurant.get('ownerEmailLower', '') == request.auth.token.get('email', '') ||
+restaurant.get('ownerUserEmail', '') == request.auth.token.get('email', '') ||
+restaurant.get('ownerUserId', '') == request.auth.uid ||
+restaurant.get('ownerUid', '') == request.auth.uid
+);
+}
+function currentUserOwnerAuthorityLean(restId) {
+let u = safeUserData();
+let member = membershipDataFromUser(u, restId);
+return signedIn() && restId is string && (
+currentAuthTokenSuperAdmin() ||
+currentUserDocSuperAdminFrom(u) ||
+currentUserOwnerAuthorityFrom(u, member, restId) ||
+currentUserOwnerAuthorityFromRestaurant(restId)
+);
+}
+function currentUserCanEditWagesLean(restId) {
+let u = safeUserData();
+let member = membershipDataFromUser(u, restId);
+let memberPerms = currentUserMemberPermsFrom(member);
+let legacyPerms = currentUserLegacyPermsFrom(u, restId);
+return signedIn() && restId is string && (
+currentAuthTokenSuperAdmin() ||
+currentUserDocSuperAdminFrom(u) ||
+currentUserOwnerAuthorityFrom(u, member, restId) ||
+currentUserOwnerAuthorityFromRestaurant(restId) ||
+(member.get('isActive', false) == true && memberPerms.get('wageEdit', false) == true) ||
+(u.get('restaurantId', '') == restId && legacyPerms.get('wageEdit', false) == true)
+);
+}
+function isRestaurantOwner(restId) {
+let u = safeUserData();
+let member = membershipDataFor(restId);
+let restaurant = safeRestaurantData(restId);
+return signedIn() && restId is string && (
+restaurant.get('ownerEmail', '') == request.auth.token.get('email', '') ||
+restaurant.get('ownerEmailLower', '') == request.auth.token.get('email', '') ||
+restaurant.get('ownerUserEmail', '') == request.auth.token.get('email', '') ||
+restaurant.get('ownerUserId', '') == request.auth.uid ||
+restaurant.get('ownerUid', '') == request.auth.uid ||
+(member.get('isActive', false) == true && (
+member.get('isOwner', false) == true ||
+member.get('accountOwner', false) == true ||
+member.get('workspaceOwner', false) == true ||
+member.get('accountRole', '') == 'owner'
+)) ||
+(u.get('restaurantId', '') == restId && (
+u.get('isOwner', false) == true ||
+u.get('accountOwner', false) == true ||
+u.get('owner', false) == true ||
+u.get('workspaceOwner', false) == true ||
+u.get('accountRole', '') == 'owner'
+))
+);
+}
+function isAdminFor(restId) {
+let u = safeUserData();
+let member = membershipDataFor(restId);
+return signedIn() && restId is string && (
+(member.get('isActive', false) == true && member.get('isAdmin', false) == true) ||
+(u.get('restaurantId', '') == restId && u.get('isAdmin', false) == true)
+);
+}
+function hasPermFor(restId, perm) {
+let perms = permissionDataFor(restId);
+return signedIn() && restId is string && perms.get(perm, false) == true;
+}
+function hasAnyPermissionFor(restId, a, b, c, d, e, f) {
+let perms = permissionDataFor(restId);
+return signedIn() && restId is string && (
+perms.get(a, false) == true ||
+perms.get(b, false) == true ||
+perms.get(c, false) == true ||
+perms.get(d, false) == true ||
+perms.get(e, false) == true ||
+perms.get(f, false) == true
+);
+}
+function hasWorkspaceAuthorityFor(restId, a, b, c, d, e, f) {
+let u = safeUserData();
+let member = membershipDataFor(restId);
+let perms = permissionDataFor(restId);
+let access = u.get('systemAccess', {});
+let restaurant = safeRestaurantData(restId);
+return signedIn() && restId is string && (
+request.auth.token.get('superAdmin', false) == true ||
+u.get('isSuperAdmin', false) == true ||
+(access is map && access.get('superAdmin', false) == true) ||
+restaurant.get('ownerEmail', '') == request.auth.token.get('email', '') ||
+restaurant.get('ownerEmailLower', '') == request.auth.token.get('email', '') ||
+restaurant.get('ownerUserEmail', '') == request.auth.token.get('email', '') ||
+restaurant.get('ownerUserId', '') == request.auth.uid ||
+restaurant.get('ownerUid', '') == request.auth.uid ||
+(member.get('isActive', false) == true && (
+member.get('isOwner', false) == true ||
+member.get('accountOwner', false) == true ||
+member.get('workspaceOwner', false) == true ||
+member.get('accountRole', '') == 'owner' ||
+member.get('isAdmin', false) == true ||
+perms.get(a, false) == true ||
+perms.get(b, false) == true ||
+perms.get(c, false) == true ||
+perms.get(d, false) == true ||
+perms.get(e, false) == true ||
+perms.get(f, false) == true
+)) ||
+(u.get('restaurantId', '') == restId && (
+u.get('isOwner', false) == true ||
+u.get('accountOwner', false) == true ||
+u.get('owner', false) == true ||
+u.get('workspaceOwner', false) == true ||
+u.get('accountRole', '') == 'owner' ||
+u.get('isAdmin', false) == true ||
+perms.get(a, false) == true ||
+perms.get(b, false) == true ||
+perms.get(c, false) == true ||
+perms.get(d, false) == true ||
+perms.get(e, false) == true ||
+perms.get(f, false) == true
+))
+);
+}
+function currentUserStaffAuthorityFromCachedUser(u, restId) {
+let member = membershipDataFromUser(u, restId);
+let memberPerms = currentUserMemberPermsFrom(member);
+let legacyPerms = currentUserLegacyPermsFrom(u, restId);
+return currentUserDocSuperAdminFrom(u) ? true : (
+currentUserOwnerAuthorityFrom(u, member, restId) ? true : (
+currentUserMemberTeamAuthorityFrom(member, memberPerms) ? true : (
+currentUserLegacyTeamAuthorityFrom(u, legacyPerms, restId) ? true :
+currentUserOwnerAuthorityFromRestaurant(restId)
+)
+)
+);
+}
+function canManageStaffFromCurrentUser(u, restId) {
+return signedIn() && restId is string && restId != '' ? (
+currentAuthTokenSuperAdmin() ? true : currentUserStaffAuthorityFromCachedUser(u, restId)
+) : false;
+}
+function canManageStaff(restId) {
+let u = safeUserData();
+return canManageStaffFromCurrentUser(u, restId);
+}
+function isHrOwnerFor(restId) {
+return isRestaurantOwner(restId);
+}
+function isHrAdminFor(restId) {
+return isAdminFor(restId);
+}
+function hasHrPermissionFor(restId) {
+return hasPermFor(restId, 'hr');
+}
+function canChooseHrAccess(restId) {
+return isSuperAdmin() || isHrOwnerFor(restId);
+}
+function canManageHr(restId) {
+return isSuperAdmin() || isHrOwnerFor(restId) || isHrAdminFor(restId) || hasHrPermissionFor(restId);
+}
+function trainingManualPath(manualId) {
+return /databases/$(database)/documents/trainingManuals/$(manualId);
+}
+function publishedTrainingManualExists(manualId, restId) {
+return manualId is string &&
+exists(trainingManualPath(manualId)) &&
+get(trainingManualPath(manualId)).data.restaurantId == restId &&
+get(trainingManualPath(manualId)).data.status == 'Published';
+}
+function trainingManualRecordIsValid(data) {
+return data.restaurantId is string &&
+data.title is string && data.title.size() > 0 && data.title.size() <= 120 &&
+data.version is string && data.version.size() > 0 && data.version.size() <= 24 &&
+data.status in ['Uploading', 'Published', 'Archived'] &&
+data.fileName is string && data.fileName.size() > 0 && data.fileName.size() <= 255 &&
+data.fileType in ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'text/plain'] &&
+data.fileSize is number && data.fileSize > 0 && data.fileSize <= 15 * 1024 * 1024 &&
+(!('originalFileSize' in data) || (data.originalFileSize is number && data.originalFileSize > 0 && data.originalFileSize <= 50 * 1024 * 1024)) &&
+(!('compressed' in data) || data.compressed is bool) &&
+(!('compression' in data) || data.compression in ['', 'gzip']) &&
+(!('storedFileType' in data) || data.storedFileType in ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'text/plain', 'application/gzip']) &&
+data.storagePath is string;
+}
+function optionalString(data, key, maxSize) {
+return !(key in data) || (data[key] is string && data[key].size() <= maxSize);
+}
+function optionalNumber(data, key, maxAbs) {
+return !(key in data) || (data[key] is number && data[key] >= -maxAbs && data[key] <= maxAbs);
+}
+function optionalBool(data, key) {
+return !(key in data) || data[key] is bool;
+}
+function optionalDateTime(data, key) {
+return !(key in data) ||
+data[key] is timestamp ||
+(data[key] is string && data[key].size() <= 40);
+}
+function dateTimePresent(data, key) {
+return key in data && (
+data[key] is timestamp ||
+(data[key] is string && data[key].size() > 0 && data[key].size() <= 40)
+);
+}
+function isoDateOrEmpty(value) {
+return value is string && (value == '' || value.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$'));
+}
+function onboardingTaskRecordIsValid(data) {
+return data.restaurantId is string && data.restaurantId.size() > 0 && data.restaurantId.size() <= 160 &&
+data.userId is string && data.userId.size() > 0 && data.userId.size() <= 160 &&
+data.employeeName is string && data.employeeName.size() > 0 && data.employeeName.size() <= 200 &&
+data.title is string && data.title.size() > 0 && data.title.size() <= 300 &&
+isoDateOrEmpty(data.get('dueDate', '')) &&
+data.completed is bool &&
+data.assignedById is string && data.assignedById.size() > 0 && data.assignedById.size() <= 160 &&
+data.assignedByName is string && data.assignedByName.size() > 0 && data.assignedByName.size() <= 200 &&
+optionalString(data, 'completedBy', 160) &&
+optionalString(data, 'updatedBy', 200) &&
+optionalDateTime(data, 'completedAt') &&
+dateTimePresent(data, 'createdAt') &&
+dateTimePresent(data, 'updatedAt');
+}
+function certificationRecordIsValid(data) {
+return data.restaurantId is string && data.restaurantId.size() > 0 && data.restaurantId.size() <= 160 &&
+data.userId is string && data.userId.size() > 0 && data.userId.size() <= 160 &&
+data.employeeName is string && data.employeeName.size() > 0 && data.employeeName.size() <= 200 &&
+data.name is string && data.name.size() > 0 && data.name.size() <= 120 &&
+optionalString(data, 'issuer', 120) &&
+isoDateOrEmpty(data.get('issuedDate', '')) &&
+isoDateOrEmpty(data.get('expiresDate', '')) &&
+optionalString(data, 'notes', 500) &&
+data.createdById is string && data.createdById.size() > 0 && data.createdById.size() <= 160 &&
+optionalString(data, 'updatedBy', 200) &&
+dateTimePresent(data, 'createdAt') &&
+dateTimePresent(data, 'updatedAt');
+}
+function performanceNoteRecordIsValid(data) {
+return data.restaurantId is string && data.restaurantId.size() > 0 && data.restaurantId.size() <= 160 &&
+data.userId is string && data.userId.size() > 0 && data.userId.size() <= 160 &&
+data.employeeName is string && data.employeeName.size() > 0 && data.employeeName.size() <= 200 &&
+data.type in ['Coaching', 'Recognition', 'Performance Review', 'Attendance', 'Corrective Action', 'Manager Follow-up'] &&
+data.date is string && data.date.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$') &&
+data.confidentialSummary is string && data.confidentialSummary.size() > 0 && data.confidentialSummary.size() <= 3000 &&
+optionalString(data, 'nextSteps', 1600) &&
+data.confidential == true &&
+data.createdById is string && data.createdById.size() > 0 && data.createdById.size() <= 160 &&
+data.createdByName is string && data.createdByName.size() > 0 && data.createdByName.size() <= 200 &&
+optionalString(data, 'updatedBy', 200) &&
+dateTimePresent(data, 'createdAt') &&
+dateTimePresent(data, 'updatedAt');
+}
+function onboardingSelfCompletionIsSafe() {
+return onboardingTaskRecordIsValid(request.resource.data) &&
+resource.data.userId == request.auth.uid &&
+request.resource.data.userId == resource.data.userId &&
+request.resource.data.restaurantId == resource.data.restaurantId &&
+request.resource.data.diff(resource.data).affectedKeys().hasOnly(['completed', 'completedAt', 'completedBy', 'updatedAt', 'updatedBy']) &&
+(
+(request.resource.data.completed == true && request.resource.data.get('completedBy', '') == request.auth.uid && dateTimePresent(request.resource.data, 'completedAt')) ||
+(request.resource.data.completed == false && request.resource.data.get('completedBy', '') == '' && request.resource.data.get('completedAt', '') == '')
+);
+}
+function restaurantProtectedSubscriptionKeys() {
+return [
+'subscription', 'planId', 'planType', 'subscriptionStatus', 'billingStatus', 'billingProvider',
+'billingNotes', 'customPrice', 'trialDays', 'isFounderBeta', 'founderBeta', 'selectedFutureTier',
+'futurePlanId', 'betaStartedAt', 'betaEndsAt', 'betaExtendedUntil', 'founderDiscountPercent',
+'founderDiscountEndsAt', 'integrations', 'integrationsLocked', 'integrationSecrets',
+'featureAccess', 'featureOverrides'
+];
+}
+function restaurantOwnerUpdateIsSafe(restId) {
+return restId is string && isOwnerOfRestaurantDoc() &&
+!request.resource.data.diff(resource.data).affectedKeys().hasAny(restaurantProtectedSubscriptionKeys());
+}
+function workspaceSubscription(restId) {
+let restaurant = safeRestaurantData(restId);
+let subscription = restaurant.get('subscription', {});
+return subscription is map ? subscription : {};
+}
+function rawWorkspacePlanId(restId) {
+let restaurant = safeRestaurantData(restId);
+let subscription = workspaceSubscription(restId);
+return subscription.get('planId', restaurant.get('planId', ''));
+}
+function workspacePlanId(restId) {
+let plan = rawWorkspacePlanId(restId);
+return plan in ['shift', 'operations', 'smart_kitchen', 'owner_pro', 'master_admin']
+? plan
+: 'smart_kitchen';
+}
+function workspaceSubscriptionStatus(restId) {
+let restaurant = safeRestaurantData(restId);
+let subscription = workspaceSubscription(restId);
+return subscription.get('status', restaurant.get('subscriptionStatus', restaurant.get('billingStatus', 'active')));
+}
+function hasActiveEntitlement(restId) {
+let subscription = workspaceSubscription(restId);
+return hasRestaurantDoc(restId) &&
+subscription.get('entitlementActive', true) != false &&
+!(workspaceSubscriptionStatus(restId) in ['canceled', 'cancelled', 'trial_expired', 'expired', 'disabled', 'suspended']);
+}
+function planAtLeastOperations(restId) {
+return hasActiveEntitlement(restId) && workspacePlanId(restId) in ['operations', 'smart_kitchen', 'owner_pro', 'master_admin'];
+}
+function planAtLeastSmartKitchen(restId) {
+return hasActiveEntitlement(restId) && workspacePlanId(restId) in ['smart_kitchen', 'owner_pro', 'master_admin'];
+}
+function planAtLeastOwnerPro(restId) {
+return hasActiveEntitlement(restId) && workspacePlanId(restId) in ['owner_pro', 'master_admin'];
+}
+function canEditWages(restId) {
+return isSuperAdmin() || isRestaurantOwner(restId) || hasAnyPermissionFor(restId, 'wageEdit', '', '', '', '', '');
+}
+function canChooseWageAccess(restId) { return isSuperAdmin() || isRestaurantOwner(restId); }
+function canManageWorkspaceSettings(restId) {
+return isSuperAdmin() || isRestaurantOwner(restId) || hasAnyPermissionFor(restId, 'settings', 'branding', '', '', '', '');
+}
+function canUseMenuIntelligence(restId) {
+return isSuperAdmin() || (planAtLeastSmartKitchen(restId) && hasWorkspaceAuthorityFor(restId, 'menuIntelligence', 'inventory', 'inventoryEdit', 'ops', '', ''));
+}
+function canReadBasicInventory(restId) {
+return isSuperAdmin() || (planAtLeastOperations(restId) && hasWorkspaceAuthorityFor(restId, 'inventory', 'inventoryEdit', 'ops', '', '', ''));
+}
+function canWriteBasicInventory(restId) {
+return isSuperAdmin() || (planAtLeastOperations(restId) && hasWorkspaceAuthorityFor(restId, 'inventory', 'inventoryEdit', '', '', '', ''));
+}
+function canReadSmartInventory(restId) {
+return planAtLeastSmartKitchen(restId) &&
+hasWorkspaceAuthorityFor(restId, 'inventory', 'inventoryEdit', 'ops', '', '', '');
+}
+function canWriteSmartInventory(restId) {
+return planAtLeastSmartKitchen(restId) &&
+hasWorkspaceAuthorityFor(restId, 'inventory', 'inventoryEdit', '', '', '', '');
+}
+function canReadFinancials(restId) {
+return hasWorkspaceAuthorityFor(restId, 'sales', 'salesRead', 'financialRead', 'labor', 'laborRead', 'wageView') || hasWorkspaceAuthorityFor(restId, 'wageEdit', '', '', '', '', '');
+}
+function canWriteFinancials(restId) {
+return hasWorkspaceAuthorityFor(restId, 'sales', 'salesEdit', 'financialEdit', '', '', '');
+}
+function canReadOperationsFinancials(restId) { return canReadFinancials(restId) && planAtLeastOperations(restId); }
+function canWriteOperationsFinancials(restId) { return canWriteFinancials(restId) && planAtLeastOperations(restId); }
+function canReadSmartFinancials(restId) { return canReadFinancials(restId) && planAtLeastSmartKitchen(restId); }
+function canWriteSmartFinancials(restId) { return canWriteFinancials(restId) && planAtLeastSmartKitchen(restId); }
+function canReadBackOffice(restId) {
+return isSuperAdmin() || (planAtLeastOwnerPro(restId) && hasWorkspaceAuthorityFor(restId, 'backOffice', 'ownerTools', 'settings', 'financialEdit', '', ''));
+}
+function canWriteBackOffice(restId) { return canReadBackOffice(restId); }
+function backOfficeRecordIsValid(data) {
+return data.restaurantId is string &&
+data.type in ['deposit', 'document', 'approval', 'quickbooks', 'quickbooks_mapping', 'quickbooks_bill_draft', 'quickbooks_vendor_match', 'quickbooks_vendor_credit_draft', 'quickbooks_sync_event', 'quickbooks_accountant_packet', 'quickbooks_owner_rollup', 'quickbooks_sync_health', 'ownerReport'] &&
+data.status is string &&
+data.createdAt != null &&
+data.updatedAt != null;
+}
+function canReadOwnPunch(data) {
+return signedIn() && data.restaurantId is string && isTenantMatch(data.restaurantId) &&
+(data.employeeId == request.auth.uid || data.userId == request.auth.uid || data.createdBy == request.auth.uid);
+}
+function ownPunchUpdateIsSafe() {
+return canReadOwnPunch(resource.data) &&
+request.resource.data.restaurantId == resource.data.restaurantId &&
+request.resource.data.get('employeeId', '') == resource.data.get('employeeId', '') &&
+request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+'clockOutTime', 'status', 'breakStartTime', 'breakMinutes', 'cashTips', 'creditTips',
+'tipDeclaredAt', 'tipDeclaredBy', 'updatedAt'
+]);
+}
+function salesCloseRecordIsValid(data) {
+return data.keys().hasOnly([
+'restaurantId', 'date', 'grossSales', 'netSales', 'cashSales', 'cardSales', 'giftCardSales',
+'discounts', 'comps', 'refunds', 'salesTax', 'foodSales', 'liquorSales', 'beerSales', 'wineSales',
+'beverageSales', 'specialsSales', 'cateringSales', 'otherSales', 'laborCost', 'foodCost', 'beverageCost',
+'tipsPaidOut', 'startingBank', 'cashPaidOut', 'cashCounted', 'depositAmount', 'depositStatus', 'closeStatus',
+'managerSignOff', 'notes', 'expectedCash', 'cashVariance', 'categorySalesTotal', 'estimatedProfit',
+'loggedBy', 'timestamp', 'createdAt', 'updatedAt', 'updatedBy', 'source', 'amount', 'totalSales', 'sales'
+]) &&
+data.restaurantId is string && data.restaurantId.size() > 0 && data.restaurantId.size() <= 160 &&
+data.date is string && data.date.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$') &&
+optionalString(data, 'depositStatus', 40) && optionalString(data, 'closeStatus', 40) &&
+optionalString(data, 'managerSignOff', 120) && optionalString(data, 'notes', 2500) &&
+optionalString(data, 'loggedBy', 200) && optionalString(data, 'updatedBy', 200) && optionalString(data, 'source', 80) &&
+optionalDateTime(data, 'timestamp') && optionalDateTime(data, 'createdAt') && optionalDateTime(data, 'updatedAt') &&
+optionalNumber(data, 'grossSales', 10000000) && optionalNumber(data, 'netSales', 10000000) &&
+optionalNumber(data, 'cashSales', 10000000) && optionalNumber(data, 'cardSales', 10000000) && optionalNumber(data, 'giftCardSales', 10000000) &&
+optionalNumber(data, 'discounts', 10000000) && optionalNumber(data, 'comps', 10000000) && optionalNumber(data, 'refunds', 10000000) && optionalNumber(data, 'salesTax', 10000000) &&
+optionalNumber(data, 'foodSales', 10000000) && optionalNumber(data, 'liquorSales', 10000000) && optionalNumber(data, 'beerSales', 10000000) && optionalNumber(data, 'wineSales', 10000000) &&
+optionalNumber(data, 'beverageSales', 10000000) && optionalNumber(data, 'specialsSales', 10000000) && optionalNumber(data, 'cateringSales', 10000000) && optionalNumber(data, 'otherSales', 10000000) &&
+optionalNumber(data, 'laborCost', 10000000) && optionalNumber(data, 'foodCost', 10000000) && optionalNumber(data, 'beverageCost', 10000000) &&
+optionalNumber(data, 'tipsPaidOut', 10000000) && optionalNumber(data, 'startingBank', 10000000) && optionalNumber(data, 'cashPaidOut', 10000000) && optionalNumber(data, 'cashCounted', 10000000) && optionalNumber(data, 'depositAmount', 10000000) &&
+optionalNumber(data, 'expectedCash', 10000000) && optionalNumber(data, 'cashVariance', 10000000) && optionalNumber(data, 'categorySalesTotal', 10000000) && optionalNumber(data, 'estimatedProfit', 10000000) &&
+optionalNumber(data, 'amount', 10000000) && optionalNumber(data, 'totalSales', 10000000) && optionalNumber(data, 'sales', 10000000);
+}
+function financialExpenseRecordIsValid(data) {
+return data.keys().hasOnly(['restaurantId', 'date', 'vendor', 'payee', 'category', 'amount', 'paymentMethod', 'dueDate', 'paid', 'notes', 'createdAt', 'createdBy', 'updatedAt', 'updatedBy']) &&
+data.restaurantId is string && data.restaurantId.size() > 0 && data.restaurantId.size() <= 160 &&
+data.date is string && data.date.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$') &&
+data.amount is number && data.amount >= 0 && data.amount <= 10000000 &&
+optionalString(data, 'vendor', 200) && optionalString(data, 'payee', 200) && optionalString(data, 'category', 80) && optionalString(data, 'paymentMethod', 80) &&
+(!(('dueDate') in data) || isoDateOrEmpty(data.dueDate)) && optionalBool(data, 'paid') && optionalString(data, 'notes', 1600) &&
+optionalString(data, 'createdBy', 200) && optionalString(data, 'updatedBy', 200) && optionalDateTime(data, 'createdAt') && optionalDateTime(data, 'updatedAt');
+}
+function financialTargetsRecordIsValid(data) {
+return data.keys().hasOnly(['restaurantId', 'laborPct', 'foodPct', 'beveragePct', 'primePct', 'weeklySalesGoal', 'monthlySalesGoal', 'cashVarianceAlert', 'overtimeAlertHours', 'updatedAt', 'updatedBy']) &&
+data.restaurantId is string && data.restaurantId.size() > 0 && data.restaurantId.size() <= 160 &&
+optionalNumber(data, 'laborPct', 100) && optionalNumber(data, 'foodPct', 100) && optionalNumber(data, 'beveragePct', 100) && optionalNumber(data, 'primePct', 200) &&
+optionalNumber(data, 'weeklySalesGoal', 10000000) && optionalNumber(data, 'monthlySalesGoal', 10000000) && optionalNumber(data, 'cashVarianceAlert', 1000000) && optionalNumber(data, 'overtimeAlertHours', 168) &&
+optionalString(data, 'updatedBy', 200) && optionalDateTime(data, 'updatedAt');
+}
+function restaurantSettingsWriteIsSafe(restId) {
+return canManageWorkspaceSettings(restId) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['systemSettings', 'settingsHistory', 'updatedAt']);
+}
+function otherUserPath(userId) {
+return /databases/$(database)/documents/users/$(userId);
+}
+function canonicalWorkspaceMemberPath(userId, restId) {
+return /databases/$(database)/documents/workspaceMembers/$(userId + '_' + restId);
+}
+function userIsActiveTenantMember(userId, restId) {
+return userId is string && userId.size() > 0 && restId is string && (
+(
+exists(canonicalWorkspaceMemberPath(userId, restId)) &&
+get(canonicalWorkspaceMemberPath(userId, restId)).data.get('restaurantId', '') == restId &&
+get(canonicalWorkspaceMemberPath(userId, restId)).data.get('isActive', true) != false &&
+get(canonicalWorkspaceMemberPath(userId, restId)).data.get('status', 'active') != 'inactive'
+) ||
+(
+exists(otherUserPath(userId)) &&
+get(otherUserPath(userId)).data.get('disabled', false) != true &&
+get(otherUserPath(userId)).data.get('isActive', true) != false && (
+get(otherUserPath(userId)).data.get('restaurantId', '') == restId ||
+(get(otherUserPath(userId)).data.get('workspaceIds', []) is list && get(otherUserPath(userId)).data.get('workspaceIds', []).hasAny([restId])) ||
+(get(otherUserPath(userId)).data.get('memberships', {}) is map &&
+get(otherUserPath(userId)).data.get('memberships', {})[restId] is map &&
+get(otherUserPath(userId)).data.get('memberships', {})[restId].get('isActive', false) == true)
+)
+)
+);
+}
+function reminderUsesCanonicalParticipants(data) {
+return data.get('participantSchemaVersion', 0) == 1;
+}
+function reminderParticipantsAreValid(data) {
+return reminderUsesCanonicalParticipants(data) &&
+data.participantUserIds is list &&
+data.participantUserIds.size() >= 1 &&
+data.participantUserIds.size() <= 2 &&
+request.auth.uid in data.participantUserIds &&
+data.assignedToUserId is string &&
+data.assignedToUserId in data.participantUserIds &&
+data.participantUserIds.hasOnly([request.auth.uid, data.assignedToUserId]) &&
+userIsActiveTenantMember(data.assignedToUserId, data.restaurantId);
+}
+function reminderParticipant(data) {
+return signedIn() && (
+(reminderUsesCanonicalParticipants(data) && data.participantUserIds is list && request.auth.uid in data.participantUserIds) ||
+(!reminderUsesCanonicalParticipants(data) && (
+data.get('userId', '') == request.auth.uid ||
+data.get('assignedToUserId', '') == request.auth.uid ||
+data.get('createdBy', '') == request.auth.uid
+))
+);
+}
+function reminderTenant(data) {
+return data.restaurantId is string && isTenantMatch(data.restaurantId);
+}
+function reminderCreateIsValid(data) {
+return reminderTenant(data) &&
+data.createdBy == request.auth.uid &&
+reminderParticipantsAreValid(data) &&
+(!(('systemGenerated') in data) || data.systemGenerated == false);
+}
+function canManageScheduleData(restId) {
+return hasWorkspaceAuthorityFor(restId, 'schedule', 'team', '', '', '', '');
+}
+function canManageEventData(restId) {
+return hasWorkspaceAuthorityFor(restId, 'schedule', 'team', 'events', '', '', '');
+}
+function timeOffParticipant(data) {
+return signedIn() && (
+data.userId == request.auth.uid ||
+data.employeeId == request.auth.uid ||
+data.createdBy == request.auth.uid
+);
+}
+function ownTimeOffStatusUpdate() {
+return request.resource.data.restaurantId == resource.data.restaurantId &&
+request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'previousStatus', 'archived', 'cancelledAt', 'cancelledBy', 'updatedAt', 'updatedBy']);
+}
+function availabilityParticipant(data) {
+return signedIn() && (
+data.get('authUid', '') == request.auth.uid ||
+data.get('userId', '') == request.auth.uid ||
+data.get('createdBy', '') == request.auth.uid
+);
+}
+function ownAvailabilityPendingUpdate() {
+return resource.data.status == 'pending' &&
+request.resource.data.restaurantId == resource.data.restaurantId &&
+request.resource.data.get('scheduleUserId', '') == resource.data.get('scheduleUserId', '') &&
+request.resource.data.get('authUid', '') == resource.data.get('authUid', '') &&
+request.resource.data.get('userId', '') == resource.data.get('userId', '') &&
+request.resource.data.createdBy == resource.data.createdBy;
+}
+function eventReminderParticipant(data) {
+return signedIn() && (
+data.createdBy == request.auth.uid ||
+(data.recipientUserIds is list && data.recipientUserIds.hasAny([request.auth.uid]))
+);
+}
+function isOwnerOfRestaurantDoc() { return signedIn() && request.auth.token.email == resource.data.ownerEmail; }
+function protectedUserKeys() {
+return [
+'restaurantId', 'workspaceIds', 'memberships', 'defaultRestaurantId',
+'isSuperAdmin', 'superAdmin', 'isOwner', 'accountOwner', 'owner', 'workspaceOwner', 'accountRole',
+'superAdminClaimUpdatedAt', 'superAdminClaimUpdatedBy', 'systemAccess', 'protectedRootAdmin', 'protectedFoundingAdmin', 'foundingAdministrator', 'rootAdmin', 'billingStatus', 'planType'
+];
+}
+function pushDevicesSelfUpdateIsSafe() {
+return !request.resource.data.diff(resource.data).affectedKeys().hasAny(['pushDevices']) ||
+(
+request.resource.data.get('pushDevices', {}) is map &&
+request.resource.data.get('pushDevices', {}).keys().size() <= 8
+);
+}
+function userSafeSelfUpdate() {
+return request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+'name', 'phone', 'photoURL',
+'notificationPermission',
+'fcmToken', 'fcmTokenUpdatedAt', 'lastPushTokenSyncAt', 'pushTokenHost', 'pushTokenPermission',
+'pushTokenCanonical', 'pushTokenDedupeVersion', 'pushDevices',
+'pushNeedsRepair', 'pushForceServiceWorkerRefresh', 'pushRepairStatus', 'pushRepairCompletedAt',
+'pushRepairCompletedHost', 'lastPushRepairError', 'lastPushFailureCode',
+'device', 'host', 'theme', 'settings', 'preferences', 'notificationPrefs', 'activeRestaurantId', 'lastWorkspaceId',
+'forcePasswordChange', 'passwordPurgedAt', 'passwordStored', 'lastWorkspaceSwitchedAt'
+]) &&
+!request.resource.data.diff(resource.data).affectedKeys().hasAny(protectedUserKeys()) &&
+pushDevicesSelfUpdateIsSafe();
+}
+function presenceSessionKeys() {
+return [
+'userId', 'uid', 'restaurantId', 'userName', 'userEmail', 'email', 'role', 'photoURL',
+'lastActive', 'lastSeen', 'lastHeartbeatAt', 'presenceUpdatedAt', 'heartbeatEpochMs',
+'onlineState', 'activeTab', 'activeSessionId', 'activeDevice', 'activeHost',
+'notificationPermission', 'gpsPermission', 'deviceDiagnostics', 'createdAt', 'updatedAt', 'source', 'sessionId'
+];
+}
+function presenceCreateIsSafe() {
+return request.resource.data.keys().hasOnly(presenceSessionKeys()) &&
+request.resource.data.userId == request.auth.uid &&
+request.resource.data.restaurantId is string &&
+isTenantMatch(request.resource.data.restaurantId);
+}
+function presenceUpdateIsSafe() {
+return request.resource.data.diff(resource.data).affectedKeys().hasOnly(presenceSessionKeys()) &&
+resource.data.userId == request.auth.uid &&
+request.resource.data.userId == resource.data.userId &&
+request.resource.data.restaurantId == resource.data.restaurantId &&
+resource.data.restaurantId is string &&
+isTenantMatch(resource.data.restaurantId);
+}
+function livePresenceKeys() {
+return [
+'userId', 'uid', 'restaurantId', 'userName', 'userEmail', 'email', 'role', 'photoURL',
+'lastActive', 'lastSeen', 'lastHeartbeatAt', 'presenceUpdatedAt', 'heartbeatEpochMs',
+'onlineState', 'activeTab', 'activeSessionId', 'activeDevice', 'activeHost',
+'notificationPermission', 'gpsPermission', 'deviceDiagnostics', 'createdAt', 'updatedAt', 'source'
+];
+}
+function livePresenceWriteIsSafe() {
+return request.resource.data.keys().hasOnly(livePresenceKeys()) &&
+request.resource.data.userId == request.auth.uid &&
+request.resource.data.restaurantId is string &&
+isTenantMatch(request.resource.data.restaurantId);
+}
+function wageValueChanged() { return request.resource.data.diff(resource.data).affectedKeys().hasAny(['wage']); }
+function adminFlagChanged() { return request.resource.data.diff(resource.data).affectedKeys().hasAny(['isAdmin']); }
+function safePermissionsFrom(data) {
+let perms = data.get('permissions', {});
+return perms is map ? perms : {};
+}
+function permissionPayloadShapeIsSafe() {
+return !request.resource.data.diff(resource.data).affectedKeys().hasAny(['permissions']) ||
+request.resource.data.get('permissions', {}) is map;
+}
+function wagePermissionChanged() {
+let after = safePermissionsFrom(request.resource.data);
+let before = safePermissionsFrom(resource.data);
+return request.resource.data.diff(resource.data).affectedKeys().hasAny(['permissions']) && (
+after.get('wageView', false) != before.get('wageView', false) ||
+after.get('wageEdit', false) != before.get('wageEdit', false)
+);
+}
+function settingsPermissionChanged() {
+let after = safePermissionsFrom(request.resource.data);
+let before = safePermissionsFrom(resource.data);
+return request.resource.data.diff(resource.data).affectedKeys().hasAny(['permissions']) && (
+after.get('settings', false) != before.get('settings', false) ||
+after.get('branding', false) != before.get('branding', false) ||
+after.get('integrations', false) != before.get('integrations', false) ||
+after.get('menuIntelligence', false) != before.get('menuIntelligence', false) ||
+after.get('hr', false) != before.get('hr', false)
+);
+}
+function hrPermissionChanged() {
+let after = safePermissionsFrom(request.resource.data);
+let before = safePermissionsFrom(resource.data);
+return request.resource.data.diff(resource.data).affectedKeys().hasAny(['permissions']) &&
+after.get('hr', false) != before.get('hr', false);
+}
+function workspaceMemberHrCreateIsSafe(restId) {
+let perms = safePermissionsFrom(request.resource.data);
+return perms.get('hr', false) == true ? currentUserOwnerAuthorityLean(restId) : true;
+}
+function workspaceMemberHrUpdateIsSafe(restId) {
+let after = safePermissionsFrom(request.resource.data);
+let before = safePermissionsFrom(resource.data);
+return currentUserOwnerAuthorityLean(restId) || after.get('hr', false) == before.get('hr', false);
+}
+function tenantAdminUserUpdateCheapRejectsAreClear(restId) {
+return request.resource.data.get('restaurantId', '') == restId &&
+!request.resource.data.diff(resource.data).affectedKeys().hasAny(['isSuperAdmin', 'superAdmin', 'superAdminClaimUpdatedAt', 'superAdminClaimUpdatedBy', 'systemAccess', 'protectedRootAdmin', 'protectedFoundingAdmin', 'foundingAdministrator', 'rootAdmin']) &&
+request.resource.data.get('isSuperAdmin', false) == resource.data.get('isSuperAdmin', false) &&
+request.resource.data.get('superAdmin', false) == resource.data.get('superAdmin', false) &&
+request.resource.data.get('systemAccess', {}) == resource.data.get('systemAccess', {}) &&
+permissionPayloadShapeIsSafe();
+}
+function tenantAdminUserSensitiveChangesAreAllowed(restId) {
+return wageValueChanged() && !currentUserCanEditWagesLean(restId) ? false : (
+wagePermissionChanged() && !currentUserOwnerAuthorityLean(restId) ? false : (
+settingsPermissionChanged() && !currentUserOwnerAuthorityLean(restId) ? false : (
+hrPermissionChanged() && !currentUserOwnerAuthorityLean(restId) ? false : (
+adminFlagChanged() && !currentUserOwnerAuthorityLean(restId) ? false : true
+)
+)
+)
+);
+}
+function tenantAdminUserUpdateIsSafeFor(restId) {
+return restId is string && restId != '' ? (
+tenantAdminUserUpdateCheapRejectsAreClear(restId) ? tenantAdminUserSensitiveChangesAreAllowed(restId) : false
+) : false;
+}
+function tenantAdminUserUpdateIsSafe() {
+return tenantAdminUserUpdateIsSafeFor(resource.data.get('restaurantId', ''));
+}
+function tenantUserCreateAllowedForCurrentUser(u) {
+let restId = request.resource.data.get('restaurantId', '');
+return restId is string && restId != '' ? (
+platformAuthorityCreateIsSafe(request.resource.data) ? (
+workspaceMemberHrCreateIsSafe(restId) ? canManageStaffFromCurrentUser(u, restId) : false
+) : false
+) : false;
+}
+function userCreateAllowed() {
+let u = safeUserData();
+return currentAuthTokenSuperAdmin() ? true : (
+currentUserDocSuperAdminFrom(u) ? true : tenantUserCreateAllowedForCurrentUser(u)
+);
+}
+function tenantUserCreateAllowed() {
+let u = safeUserData();
+return tenantUserCreateAllowedForCurrentUser(u);
+}
+function selfUserUpdateAllowed(userId) {
+return request.auth.uid == userId && userSafeSelfUpdate();
+}
+function tenantStaffUserUpdateAllowed() {
+let restId = resource.data.get('restaurantId', '');
+let u = safeUserData();
+return restId is string && restId != '' ? (
+request.resource.data.get('restaurantId', '') == restId ? (
+tenantAdminUserUpdateIsSafeFor(restId) ? canManageStaffFromCurrentUser(u, restId) : false
+) : false
+) : false;
+}
+function superAdminUserUpdateAllowed() {
+return currentUserSuperAdminLean();
+}
+function userUpdateAllowed(userId) {
+return request.auth.uid == userId ? (
+protectedFoundingAdminUserUpdateIsSafe() && userSafeSelfUpdate()
+) : (
+resource.data.get('restaurantId', '') is string && resource.data.get('restaurantId', '') != '' ? (
+protectedFoundingAdminUserUpdateIsSafe() ? tenantStaffUserUpdateAllowed() : false
+) : superAdminUserUpdateAllowed()
+);
+}
+function commonTenantWriteAllowed(collectionName) {
+return collectionName in ['timePunches', 'tempLogs', 'wasteLogs', 'offlineWriteReceipts'];
+}
+function canModerateMessages(restId) {
+return hasWorkspaceAuthorityFor(restId, 'messageBoard', 'messages', 'team', 'ops', '', '');
+}
+function messageAuthorMatches(data) {
+return signedIn() && (
+data.get('authorId', '') == request.auth.uid ||
+data.get('userId', '') == request.auth.uid ||
+data.get('createdBy', '') == request.auth.uid ||
+data.get('senderId', '') == request.auth.uid
+);
+}
+function messageCreateIdentityIsSafe(data) {
+return signedIn() &&
+(data.keys().hasAny(['authorId']) ? data.authorId == request.auth.uid : true) &&
+(data.keys().hasAny(['userId']) ? data.userId == request.auth.uid : true) &&
+(data.keys().hasAny(['createdBy']) ? data.createdBy == request.auth.uid : true) &&
+(data.keys().hasAny(['senderId']) ? data.senderId == request.auth.uid : true) &&
+messageAuthorMatches(data) &&
+data.get('isSystemAlert', false) == false &&
+data.get('systemAlert', false) == false &&
+data.get('systemGenerated', false) == false &&
+!data.keys().hasAny(['moderatedBy', 'moderatedAt', 'roleOverride', 'adminOnly', 'ownerOnly']);
+}
+function messageAuthorFieldsStable() {
+return request.resource.data.get('authorId', '') == resource.data.get('authorId', '') &&
+request.resource.data.get('userId', '') == resource.data.get('userId', '') &&
+request.resource.data.get('createdBy', '') == resource.data.get('createdBy', '') &&
+request.resource.data.get('senderId', '') == resource.data.get('senderId', '');
+}
+function messageSafeAuthorUpdate() {
+return request.resource.data.restaurantId == resource.data.restaurantId &&
+messageAuthorFieldsStable() &&
+!request.resource.data.diff(resource.data).affectedKeys().hasAny(['isSystemAlert', 'systemAlert', 'systemGenerated', 'messageCategory', 'flags', 'roleOverride', 'authorName', 'senderName', 'authorEmail', 'senderEmail']) &&
+request.resource.data.diff(resource.data).affectedKeys().hasOnly(['text', 'body', 'message', 'content', 'replies', 'reactions', 'readBy', 'acknowledgedBy', 'acknowledgedAt', 'editedAt', 'updatedAt', 'updatedBy']);
+}
+function shiftSwapParticipant(data) {
+return signedIn() && (
+data.get('requesterId', '') == request.auth.uid ||
+data.get('createdBy', '') == request.auth.uid ||
+data.get('userId', '') == request.auth.uid ||
+data.get('employeeId', '') == request.auth.uid ||
+data.get('targetEmployeeId', '') == request.auth.uid ||
+data.get('acceptedBy', '') == request.auth.uid
+);
+}
+function shiftSwapRequesterMatches(data) {
+return signedIn() && (
+data.get('requesterId', '') == request.auth.uid ||
+data.get('createdBy', '') == request.auth.uid ||
+data.get('userId', '') == request.auth.uid ||
+data.get('employeeId', '') == request.auth.uid
+);
+}
+function shiftSwapCreateIsSafe(data) {
+return shiftSwapRequesterMatches(data) &&
+data.get('acceptedBy', '') == '' &&
+data.get('approvedBy', '') == '' &&
+data.get('managerApprovedBy', '') == '' &&
+(data.get('status', 'requested') == 'requested' || data.get('status', 'requested') == 'pending' || data.get('status', 'requested') == 'open');
+}
+function shiftSwapParticipantUpdateIsSafe() {
+return request.resource.data.restaurantId == resource.data.restaurantId &&
+request.resource.data.get('requesterId', '') == resource.data.get('requesterId', '') &&
+request.resource.data.get('createdBy', '') == resource.data.get('createdBy', '') &&
+request.resource.data.get('userId', '') == resource.data.get('userId', '') &&
+request.resource.data.get('employeeId', '') == resource.data.get('employeeId', '') &&
+request.resource.data.get('shiftId', '') == resource.data.get('shiftId', '') &&
+request.resource.data.get('sourceShiftId', '') == resource.data.get('sourceShiftId', '') &&
+request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'acceptedBy', 'acceptedAt', 'declinedBy', 'declinedAt', 'cancelledBy', 'cancelledAt', 'updatedAt', 'updatedBy', 'responseNote']);
+}
+function maintenanceReporterMatches(data) {
+return signedIn() && (
+data.get('reportedById', '') == request.auth.uid ||
+data.get('reportedByUid', '') == request.auth.uid ||
+data.get('createdBy', '') == request.auth.uid ||
+data.get('userId', '') == request.auth.uid
+);
+}
+function maintenanceCreateIdentityIsSafe(data) {
+return maintenanceReporterMatches(data) &&
+(data.keys().hasAny(['reportedById']) ? data.reportedById == request.auth.uid : true) &&
+(data.keys().hasAny(['reportedByUid']) ? data.reportedByUid == request.auth.uid : true) &&
+(data.keys().hasAny(['createdBy']) ? data.createdBy == request.auth.uid : true) &&
+(data.keys().hasAny(['userId']) ? data.userId == request.auth.uid : true) &&
+data.get('assignedTo', '') == '' &&
+data.get('resolvedBy', '') == '' &&
+data.get('systemCreated', false) == false;
+}
+function canManageMaintenanceData(restId) {
+return hasWorkspaceAuthorityFor(restId, 'maintenance', 'ops', 'team', '', '', '');
+}
+function maintenanceReporterUpdateIsSafe() {
+return request.resource.data.restaurantId == resource.data.restaurantId &&
+request.resource.data.get('reportedById', '') == resource.data.get('reportedById', '') &&
+request.resource.data.get('reportedByUid', '') == resource.data.get('reportedByUid', '') &&
+request.resource.data.get('createdBy', '') == resource.data.get('createdBy', '') &&
+request.resource.data.diff(resource.data).affectedKeys().hasOnly(['notes', 'comment', 'comments', 'updatedAt', 'updatedBy']);
+}
+function isManagerRoleFor(restId) {
+return restId is string && false;
+}
+function canManageTasks(restId) {
+return hasWorkspaceAuthorityFor(restId, 'team', '', '', '', '', '') || isManagerRoleFor(restId);
+}
+function canManageKitchenSpecials(restId) {
+return hasWorkspaceAuthorityFor(restId, 'prep', 'ops', 'team', '', '', '') || isManagerRoleFor(restId);
+}
+function kitchenSpecialIsValid(data) {
+return data.restaurantId is string &&
+data.name is string && data.name.size() > 0 && data.name.size() <= 120 &&
+data.startDate is string && data.startDate.size() == 10 &&
+data.endDate is string && data.endDate.size() == 10 &&
+data.description is string && data.description.size() <= 1200 &&
+data.allergens is string && data.allergens.size() <= 500 &&
+data.dietaryNotes is string && data.dietaryNotes.size() <= 500 &&
+data.prepNotes is string && data.prepNotes.size() <= 1200 &&
+data.price is number && data.price >= 0 && data.price <= 100000 &&
+data.status in ['Draft', 'Scheduled', 'Active', 'Sold Out', 'Archived'] &&
+data.isArchived is bool &&
+((data.status == 'Archived' && data.isArchived == true) || (data.status != 'Archived' && data.isArchived == false));
+}
+function taskCompletionUpdateIsSafe() {
+return request.resource.data.restaurantId == resource.data.restaurantId && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['completions']);
+}
+function kitchenWriteAllowed(collectionName, restId) {
+return collectionName in ['prepItems', 'prepCategories', 'lineCheckItems', 'recipes'] &&
+hasWorkspaceAuthorityFor(restId, 'prep', 'team', '', '', '', '');
+}
+function inventoryWriteAllowed(collectionName, restId) {
+return (collectionName in ['inventoryItems', 'vendors', 'orders'] && hasWorkspaceAuthorityFor(restId, 'inventory', 'inventoryEdit', '', '', '', '')) ||
+(collectionName in ['invoices'] && hasWorkspaceAuthorityFor(restId, 'inventory', 'inventoryEdit', 'invoiceScan', 'scans', '', ''));
+}
+function scheduleCollection(collectionName) {
+return collectionName in ['shifts', 'timeOffRequests', 'scheduleTemplates', 'scheduleCoverageTargets'];
+}
+function scheduleWriteAllowed(collectionName, restId) {
+return scheduleCollection(collectionName) && hasWorkspaceAuthorityFor(restId, 'schedule', 'team', '', '', '', '');
+}
+function managerWriteAllowed(collectionName, restId) {
+return (collectionName in ['roles', 'pmSchedules'] && hasWorkspaceAuthorityFor(restId, 'team', '', '', '', '', '')) ||
+(collectionName in ['sales'] && hasWorkspaceAuthorityFor(restId, 'sales', 'salesEdit', 'financialEdit', '', '', ''));
+}
+function canTenantWriteCollection(collectionName, restId) {
+return (isTenantMatch(restId) || (scheduleCollection(collectionName) && isRestaurantOwner(restId))) && (
+commonTenantWriteAllowed(collectionName) ||
+kitchenWriteAllowed(collectionName, restId) ||
+inventoryWriteAllowed(collectionName, restId) ||
+scheduleWriteAllowed(collectionName, restId) ||
+managerWriteAllowed(collectionName, restId)
+);
+}
+match /users/{userId} {
+allow read: if signedIn() && (
+isSuperAdmin() ||
+request.auth.uid == userId ||
+(resource.data.restaurantId is string && isTenantMatch(resource.data.restaurantId)) ||
+(resource.data.workspaceIds is list && hasUserDoc() && userData().get('workspaceIds', []) is list && resource.data.workspaceIds.hasAny(userData().get('workspaceIds', []))) ||
+(resource.data.restaurantId is string && isRestaurantOwner(resource.data.restaurantId))
+);
+allow create: if signedIn() && userCreateAllowed();
+allow update: if signedIn() && userUpdateAllowed(userId);
+allow delete: if signedIn() && !isProtectedFoundingAdminUser(resource.data) && (currentUserSuperAdminLean() || (resource.data.restaurantId is string && canManageStaff(resource.data.restaurantId)));
+}
+match /workspaceMembers/{memberId} {
+allow read: if signedIn() && (
+isSuperAdmin() ||
+resource.data.userId == request.auth.uid ||
+(resource.data.email == request.auth.token.email) ||
+(resource.data.restaurantId is string && isTenantMatch(resource.data.restaurantId)) ||
+(resource.data.restaurantId is string && isRestaurantOwner(resource.data.restaurantId))
+);
+allow create: if signedIn() && (
+isSuperAdmin() ||
+(request.resource.data.restaurantId is string && canManageStaff(request.resource.data.restaurantId) && workspaceMemberHrCreateIsSafe(request.resource.data.restaurantId))
+);
+allow update: if signedIn() && (
+isSuperAdmin() ||
+(resource.data.restaurantId is string && canManageStaff(resource.data.restaurantId) && workspaceMemberHrUpdateIsSafe(resource.data.restaurantId))
+);
+allow delete: if signedIn() && (
+isSuperAdmin() ||
+(resource.data.restaurantId is string && canManageStaff(resource.data.restaurantId))
+);
+}
+match /presenceSessions/{sessionId} {
+allow read: if signedIn() && isSuperAdmin();
+allow create: if signedIn() && presenceCreateIsSafe();
+allow update: if signedIn() && presenceUpdateIsSafe();
+allow delete: if signedIn() && (isSuperAdmin() || resource.data.userId == request.auth.uid);
+}
+match /livePresence/{docId} {
+allow read: if signedIn() && isSuperAdmin();
+allow create, update: if signedIn() && livePresenceWriteIsSafe();
+allow delete: if signedIn() && (isSuperAdmin() || resource.data.userId == request.auth.uid);
+}
+match /restaurants/{restaurantId} {
+allow read: if signedIn() && (isSuperAdmin() || isTenantMatch(restaurantId) || isOwnerOfRestaurantDoc());
+allow create, delete: if isSuperAdmin();
+allow update: if signedIn() && (isSuperAdmin() || restaurantOwnerUpdateIsSafe(restaurantId) || restaurantSettingsWriteIsSafe(restaurantId));
+}
+match /auditLogs/{docId} {
+allow read: if signedIn() && (isSuperAdmin() || (resource.data.restaurantId is string && canManageStaff(resource.data.restaurantId)));
+allow create: if isSuperAdmin();
+allow update, delete: if false;
+}
+match /crashReports/{docId} {
+allow read, update, delete: if isSuperAdmin();
+allow create: if false;
+}
+match /system/{docId} { allow read, write: if isSuperAdmin(); }
+match /accountDeletionRequests/{userId} {
+allow read: if signedIn() && (isSuperAdmin() || request.auth.uid == userId);
+allow create: if signedIn() &&
+request.auth.uid == userId &&
+request.resource.data.uid == request.auth.uid &&
+request.resource.data.status == 'requested';
+allow update: if signedIn() && isSuperAdmin();
+allow delete: if false;
+}
+match /securityAlerts/{docId} {
+allow read, write: if signedIn() && isSuperAdmin();
+}
+match /tasks/{docId} {
+allow read: if signedIn() && (isSuperAdmin() || (resource.data.restaurantId is string && isTenantMatch(resource.data.restaurantId)));
+allow create: if signedIn() && request.resource.data.restaurantId is string && (isSuperAdmin() || (isTenantMatch(request.resource.data.restaurantId) && canManageTasks(request.resource.data.restaurantId)));
+allow update: if signedIn() && resource.data.restaurantId is string && request.resource.data.restaurantId == resource.data.restaurantId && (isSuperAdmin() || (isTenantMatch(resource.data.restaurantId) && (taskCompletionUpdateIsSafe() || canManageTasks(resource.data.restaurantId))));
+allow delete: if signedIn() && resource.data.restaurantId is string && (isSuperAdmin() || (isTenantMatch(resource.data.restaurantId) && canManageTasks(resource.data.restaurantId)));
+}
+match /personalReminders/{docId} {
+allow read: if signedIn() && (isSuperAdmin() || (reminderTenant(resource.data) && reminderParticipant(resource.data)));
+allow create: if signedIn() && reminderCreateIsValid(request.resource.data);
+allow update: if signedIn() && isSuperAdmin();
+allow delete: if signedIn() && (isSuperAdmin() || (reminderTenant(resource.data) && resource.data.createdBy == request.auth.uid));
+}
+match /timeOffRequests/{docId} {
+allow read: if signedIn() && resource.data.restaurantId is string && isTenantMatch(resource.data.restaurantId) && (canManageScheduleData(resource.data.restaurantId) || timeOffParticipant(resource.data));
+allow create: if signedIn() && request.resource.data.restaurantId is string && isTenantMatch(request.resource.data.restaurantId) && (
+canManageScheduleData(request.resource.data.restaurantId) ||
+(request.resource.data.userId == request.auth.uid && request.resource.data.employeeId == request.auth.uid && request.resource.data.createdBy == request.auth.uid)
+);
+allow update: if signedIn() && resource.data.restaurantId is string && request.resource.data.restaurantId == resource.data.restaurantId && isTenantMatch(resource.data.restaurantId) && (
+canManageScheduleData(resource.data.restaurantId) ||
+(timeOffParticipant(resource.data) && ownTimeOffStatusUpdate())
+);
+allow delete: if signedIn() && isSuperAdmin();
+}
+match /availabilityRecords/{docId} {
+allow read: if signedIn() && resource.data.restaurantId is string && isTenantMatch(resource.data.restaurantId) && (canManageScheduleData(resource.data.restaurantId) || availabilityParticipant(resource.data));
+allow create: if signedIn() && request.resource.data.restaurantId is string && isTenantMatch(request.resource.data.restaurantId) && (
+canManageScheduleData(request.resource.data.restaurantId) ||
+(request.resource.data.get('authUid', '') == request.auth.uid && request.resource.data.get('userId', '') == request.auth.uid && request.resource.data.get('scheduleUserId', '') is string && request.resource.data.get('scheduleUserId', '').size() > 0 && request.resource.data.createdBy == request.auth.uid)
+);
+allow update: if signedIn() && resource.data.restaurantId is string && request.resource.data.restaurantId == resource.data.restaurantId && isTenantMatch(resource.data.restaurantId) && (
+canManageScheduleData(resource.data.restaurantId) ||
+(availabilityParticipant(resource.data) && ownAvailabilityPendingUpdate())
+);
+allow delete: if signedIn() && isSuperAdmin();
+}
+match /eventReminders/{docId} {
+allow read: if signedIn() && resource.data.restaurantId is string && isTenantMatch(resource.data.restaurantId) && (canManageEventData(resource.data.restaurantId) || eventReminderParticipant(resource.data));
+allow create: if signedIn() && request.resource.data.restaurantId is string && canManageEventData(request.resource.data.restaurantId);
+allow update: if signedIn() && resource.data.restaurantId is string && request.resource.data.restaurantId == resource.data.restaurantId && canManageEventData(resource.data.restaurantId);
+allow delete: if signedIn() && isSuperAdmin();
+}
+match /inventoryItems/{docId} {
+allow read: if signedIn() && resource.data.restaurantId is string && canReadBasicInventory(resource.data.restaurantId);
+allow create: if signedIn() && request.resource.data.restaurantId is string && canWriteBasicInventory(request.resource.data.restaurantId);
+allow update: if signedIn() && resource.data.restaurantId is string && request.resource.data.restaurantId == resource.data.restaurantId && canWriteBasicInventory(resource.data.restaurantId);
+allow delete: if signedIn() && resource.data.restaurantId is string && canWriteBasicInventory(resource.data.restaurantId);
+}
+match /vendors/{docId} {
+allow read: if signedIn() && resource.data.restaurantId is string && canReadBasicInventory(resource.data.restaurantId);
+allow create: if signedIn() && request.resource.data.restaurantId is string && canWriteBasicInventory(request.resource.data.restaurantId);
+allow update: if signedIn() && resource.data.restaurantId is string && request.resource.data.restaurantId == resource.data.restaurantId && canWriteBasicInventory(resource.data.restaurantId);
+allow delete: if signedIn() && resource.data.restaurantId is string && canWriteBasicInventory(resource.data.restaurantId);
+}
+match /orders/{docId} {
+allow read: if signedIn() && resource.data.restaurantId is string && canReadBasicInventory(resource.data.restaurantId);
+allow create: if signedIn() && request.resource.data.restaurantId is string && canWriteBasicInventory(request.resource.data.restaurantId);
+allow update: if signedIn() && resource.data.restaurantId is string && request.resource.data.restaurantId == resource.data.restaurantId && canWriteBasicInventory(resource.data.restaurantId);
+allow delete: if signedIn() && resource.data.restaurantId is string && canWriteBasicInventory(resource.data.restaurantId);
+}
+match /wasteLogs/{docId} {
+allow read: if signedIn() && resource.data.restaurantId is string && canReadBasicInventory(resource.data.restaurantId);
+allow create: if signedIn() && request.resource.data.restaurantId is string && canWriteBasicInventory(request.resource.data.restaurantId);
+allow update: if signedIn() && resource.data.restaurantId is string && request.resource.data.restaurantId == resource.data.restaurantId && canWriteBasicInventory(resource.data.restaurantId);
+allow delete: if signedIn() && resource.data.restaurantId is string && canWriteBasicInventory(resource.data.restaurantId);
+}
+match /invoices/{docId} {
+allow read: if signedIn() && resource.data.restaurantId is string && canReadSmartInventory(resource.data.restaurantId);
+allow create: if signedIn() && request.resource.data.restaurantId is string && canWriteSmartInventory(request.resource.data.restaurantId);
+allow update: if signedIn() && resource.data.restaurantId is string && request.resource.data.restaurantId == resource.data.restaurantId && canWriteSmartInventory(resource.data.restaurantId);
+allow delete: if signedIn() && resource.data.restaurantId is string && canWriteSmartInventory(resource.data.restaurantId);
+}
+match /reports/{docId} {
+allow read: if signedIn() && resource.data.restaurantId is string && canReadSmartFinancials(resource.data.restaurantId);
+allow create: if signedIn() && request.resource.data.restaurantId is string && canWriteSmartFinancials(request.resource.data.restaurantId);
+allow update: if signedIn() && resource.data.restaurantId is string && request.resource.data.restaurantId == resource.data.restaurantId && canWriteSmartFinancials(resource.data.restaurantId);
+allow delete: if signedIn() && resource.data.restaurantId is string && canWriteSmartFinancials(resource.data.restaurantId);
+}
+match /exports/{docId} {
+allow read: if signedIn() && resource.data.restaurantId is string && canReadSmartFinancials(resource.data.restaurantId);
+allow create: if signedIn() && request.resource.data.restaurantId is string && canWriteSmartFinancials(request.resource.data.restaurantId);
+allow update: if signedIn() && resource.data.restaurantId is string && request.resource.data.restaurantId == resource.data.restaurantId && canWriteSmartFinancials(resource.data.restaurantId);
+allow delete: if signedIn() && resource.data.restaurantId is string && canWriteSmartFinancials(resource.data.restaurantId);
+}
+match /menuIntelligenceScans/{docId} {
+allow read: if signedIn() && resource.data.restaurantId is string && canUseMenuIntelligence(resource.data.restaurantId);
+allow create: if signedIn() && request.resource.data.restaurantId is string && canUseMenuIntelligence(request.resource.data.restaurantId);
+allow update: if signedIn() && resource.data.restaurantId is string && request.resource.data.restaurantId == resource.data.restaurantId && canUseMenuIntelligence(resource.data.restaurantId);
+allow delete: if signedIn() && resource.data.restaurantId is string && canUseMenuIntelligence(resource.data.restaurantId);
+}
+match /menuDependencies/{docId} {
+allow read: if signedIn() && resource.data.restaurantId is string && canUseMenuIntelligence(resource.data.restaurantId);
+allow create: if signedIn() && request.resource.data.restaurantId is string && canUseMenuIntelligence(request.resource.data.restaurantId);
+allow update: if signedIn() && resource.data.restaurantId is string && request.resource.data.restaurantId == resource.data.restaurantId && canUseMenuIntelligence(resource.data.restaurantId);
+allow delete: if signedIn() && resource.data.restaurantId is string && canUseMenuIntelligence(resource.data.restaurantId);
+}
+match /kitchenSpecials/{docId} {
+allow read: if signedIn() && resource.data.restaurantId is string && isTenantMatch(resource.data.restaurantId);
+allow create: if signedIn() && kitchenSpecialIsValid(request.resource.data) && canManageKitchenSpecials(request.resource.data.restaurantId);
+allow update: if signedIn() && kitchenSpecialIsValid(request.resource.data) &&
+request.resource.data.restaurantId == resource.data.restaurantId &&
+canManageKitchenSpecials(resource.data.restaurantId);
+allow delete: if signedIn() && isSuperAdmin();
+}
+match /trainingManuals/{manualId} {
+allow read: if signedIn() && resource.data.restaurantId is string && (
+canManageHr(resource.data.restaurantId) ||
+(isTenantMatch(resource.data.restaurantId) && resource.data.status == 'Published')
+);
+allow create: if signedIn() && trainingManualRecordIsValid(request.resource.data) && canManageHr(request.resource.data.restaurantId);
+allow update: if signedIn() && trainingManualRecordIsValid(request.resource.data) &&
+request.resource.data.restaurantId == resource.data.restaurantId &&
+canManageHr(resource.data.restaurantId);
+allow delete: if signedIn() && resource.data.restaurantId is string && canManageHr(resource.data.restaurantId);
+}
+match /trainingAcknowledgements/{ackId} {
+allow read: if signedIn() && resource.data.restaurantId is string && (
+canManageHr(resource.data.restaurantId) ||
+(isTenantMatch(resource.data.restaurantId) && resource.data.userId == request.auth.uid)
+);
+allow create: if signedIn() &&
+request.resource.data.keys().hasOnly(['restaurantId', 'manualId', 'manualTitle', 'manualVersion', 'userId', 'attestation', 'acknowledgedAt']) &&
+request.resource.data.restaurantId is string &&
+request.resource.data.manualId is string && request.resource.data.manualId.size() > 0 && request.resource.data.manualId.size() <= 160 &&
+ackId == request.resource.data.manualId + '_' + request.auth.uid &&
+isTenantMatch(request.resource.data.restaurantId) &&
+request.resource.data.userId == request.auth.uid &&
+request.resource.data.attestation == 'I acknowledge that I received and reviewed this training manual.' &&
+request.resource.data.acknowledgedAt == request.time &&
+publishedTrainingManualExists(request.resource.data.manualId, request.resource.data.restaurantId) &&
+request.resource.data.manualTitle == get(trainingManualPath(request.resource.data.manualId)).data.title &&
+request.resource.data.manualVersion == get(trainingManualPath(request.resource.data.manualId)).data.version;
+allow update: if false;
+allow delete: if isSuperAdmin();
+}
+match /hrOnboardingTasks/{taskId} {
+allow read: if signedIn() && resource.data.restaurantId is string && (
+canManageHr(resource.data.restaurantId) ||
+(isTenantMatch(resource.data.restaurantId) && resource.data.userId == request.auth.uid)
+);
+allow create: if signedIn() && onboardingTaskRecordIsValid(request.resource.data) && canManageHr(request.resource.data.restaurantId);
+allow update: if signedIn() && resource.data.restaurantId is string &&
+request.resource.data.restaurantId == resource.data.restaurantId &&
+onboardingTaskRecordIsValid(request.resource.data) && (
+(canManageHr(resource.data.restaurantId) &&
+request.resource.data.createdAt == resource.data.createdAt &&
+request.resource.data.assignedById == resource.data.assignedById) ||
+(isTenantMatch(resource.data.restaurantId) && onboardingSelfCompletionIsSafe())
+);
+allow delete: if signedIn() && resource.data.restaurantId is string && canManageHr(resource.data.restaurantId);
+}
+match /hrCertifications/{certId} {
+allow read: if signedIn() && resource.data.restaurantId is string && (
+canManageHr(resource.data.restaurantId) ||
+(isTenantMatch(resource.data.restaurantId) && resource.data.userId == request.auth.uid)
+);
+allow create: if signedIn() && certificationRecordIsValid(request.resource.data) && canManageHr(request.resource.data.restaurantId);
+allow update: if signedIn() && resource.data.restaurantId is string &&
+request.resource.data.restaurantId == resource.data.restaurantId &&
+request.resource.data.createdAt == resource.data.createdAt &&
+request.resource.data.createdById == resource.data.createdById &&
+certificationRecordIsValid(request.resource.data) &&
+canManageHr(resource.data.restaurantId);
+allow delete: if signedIn() && resource.data.restaurantId is string && canManageHr(resource.data.restaurantId);
+}
+match /hrPerformanceNotes/{noteId} {
+allow read: if signedIn() && resource.data.restaurantId is string && canManageHr(resource.data.restaurantId);
+allow create: if signedIn() && performanceNoteRecordIsValid(request.resource.data) && canManageHr(request.resource.data.restaurantId);
+allow update: if signedIn() && resource.data.restaurantId is string &&
+request.resource.data.restaurantId == resource.data.restaurantId &&
+request.resource.data.createdAt == resource.data.createdAt &&
+request.resource.data.createdById == resource.data.createdById &&
+request.resource.data.confidential == resource.data.confidential &&
+performanceNoteRecordIsValid(request.resource.data) &&
+canManageHr(resource.data.restaurantId);
+allow delete: if signedIn() && resource.data.restaurantId is string && canManageHr(resource.data.restaurantId);
+}
+function canReadRestaurantAdminAlert(restId) {
+return signedIn() && restId is string && (
+isSuperAdmin() || isRestaurantOwner(restId) || isAdminFor(restId) || hasAnyPermissionFor(restId, 'settings', 'team', '', '', '', '')
+);
+}
+function canAcknowledgeRestaurantAdminAlert(restId) {
+return signedIn() && restId is string && (
+isRestaurantOwner(restId) || isAdminFor(restId) || hasAnyPermissionFor(restId, 'settings', 'team', '', '', '', '')
+);
+}
+match /restaurantAdminAlerts/{alertId} {
+allow read: if resource.data.restaurantId is string && canReadRestaurantAdminAlert(resource.data.restaurantId);
+allow create: if false;
+allow update: if resource.data.restaurantId is string &&
+request.resource.data.restaurantId == resource.data.restaurantId &&
+canAcknowledgeRestaurantAdminAlert(resource.data.restaurantId) &&
+request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'acknowledgedAt', 'acknowledgedBy', 'acknowledgedByName', 'reviewedAt', 'reviewedBy', 'reviewedByName', 'updatedAt']) &&
+request.resource.data.status in ['open', 'acknowledged', 'dismissed', 'resolved'];
+allow delete: if false;
+}
+match /aiUsage/{usageId} {
+allow read: if signedIn() && resource.data.restaurantId is string && (
+isSuperAdmin() || isRestaurantOwner(resource.data.restaurantId) || isAdminFor(resource.data.restaurantId) ||
+hasAnyPermissionFor(resource.data.restaurantId, 'settings', '', '', '', '', '')
+);
+allow write: if false;
+match /events/{eventId} {
+allow read, write: if false;
+}
+}
+match /aiRequestLocks/{lockId} {
+allow read, write: if false;
+match /{nestedDocument=**} {
+allow read, write: if false;
+}
+}
+match /_retentionJobLocks/{docId} {
+allow read, write: if false;
+}
+match /sales/{docId} {
+allow read: if signedIn() && resource.data.restaurantId is string && canReadOperationsFinancials(resource.data.restaurantId);
+allow create: if signedIn() && salesCloseRecordIsValid(request.resource.data) && canWriteOperationsFinancials(request.resource.data.restaurantId);
+allow update: if signedIn() && resource.data.restaurantId is string &&
+request.resource.data.restaurantId == resource.data.restaurantId &&
+salesCloseRecordIsValid(request.resource.data) && canWriteOperationsFinancials(resource.data.restaurantId);
+allow delete: if signedIn() && resource.data.restaurantId is string && canWriteOperationsFinancials(resource.data.restaurantId);
+}
+match /financialExpenses/{docId} {
+allow read: if signedIn() && resource.data.restaurantId is string && canReadSmartFinancials(resource.data.restaurantId);
+allow create: if signedIn() && financialExpenseRecordIsValid(request.resource.data) && canWriteSmartFinancials(request.resource.data.restaurantId);
+allow update: if signedIn() && resource.data.restaurantId is string &&
+request.resource.data.restaurantId == resource.data.restaurantId &&
+financialExpenseRecordIsValid(request.resource.data) && canWriteSmartFinancials(resource.data.restaurantId);
+allow delete: if signedIn() && resource.data.restaurantId is string && canWriteSmartFinancials(resource.data.restaurantId);
+}
+match /financialTargets/{docId} {
+allow read: if signedIn() && resource.data.restaurantId is string && canReadSmartFinancials(resource.data.restaurantId);
+allow create: if signedIn() && financialTargetsRecordIsValid(request.resource.data) && canWriteSmartFinancials(request.resource.data.restaurantId);
+allow update: if signedIn() && resource.data.restaurantId is string &&
+request.resource.data.restaurantId == resource.data.restaurantId &&
+financialTargetsRecordIsValid(request.resource.data) && canWriteSmartFinancials(resource.data.restaurantId);
+allow delete: if signedIn() && resource.data.restaurantId is string && canWriteSmartFinancials(resource.data.restaurantId);
+}
+match /timePunches/{docId} {
+allow read: if signedIn() && resource.data.restaurantId is string && (
+canReadOperationsFinancials(resource.data.restaurantId) || canReadOwnPunch(resource.data)
+);
+allow create: if signedIn() && request.resource.data.restaurantId is string && (
+canWriteOperationsFinancials(request.resource.data.restaurantId) || canReadOwnPunch(request.resource.data)
+);
+allow update: if signedIn() && resource.data.restaurantId is string &&
+request.resource.data.restaurantId == resource.data.restaurantId && (
+canWriteOperationsFinancials(resource.data.restaurantId) || ownPunchUpdateIsSafe()
+);
+allow delete: if signedIn() && resource.data.restaurantId is string && canWriteOperationsFinancials(resource.data.restaurantId);
+}
+match /dailyCloses/{docId} {
+allow read: if signedIn() && resource.data.restaurantId is string && canReadOperationsFinancials(resource.data.restaurantId);
+allow create: if signedIn() && request.resource.data.restaurantId is string && canWriteOperationsFinancials(request.resource.data.restaurantId);
+allow update: if signedIn() && resource.data.restaurantId is string && request.resource.data.restaurantId == resource.data.restaurantId && canWriteOperationsFinancials(resource.data.restaurantId);
+allow delete: if signedIn() && resource.data.restaurantId is string && canWriteOperationsFinancials(resource.data.restaurantId);
+}
+match /deposits/{docId} {
+allow read: if signedIn() && resource.data.restaurantId is string && canReadOperationsFinancials(resource.data.restaurantId);
+allow create: if signedIn() && request.resource.data.restaurantId is string && canWriteOperationsFinancials(request.resource.data.restaurantId);
+allow update: if signedIn() && resource.data.restaurantId is string && request.resource.data.restaurantId == resource.data.restaurantId && canWriteOperationsFinancials(resource.data.restaurantId);
+allow delete: if signedIn() && resource.data.restaurantId is string && canWriteOperationsFinancials(resource.data.restaurantId);
+}
+match /tipRecords/{docId} {
+allow read: if signedIn() && resource.data.restaurantId is string && (
+canReadOperationsFinancials(resource.data.restaurantId) || canReadOwnPunch(resource.data)
+);
+allow create: if signedIn() && request.resource.data.restaurantId is string && (
+canWriteOperationsFinancials(request.resource.data.restaurantId) || canReadOwnPunch(request.resource.data)
+);
+allow update: if signedIn() && resource.data.restaurantId is string && request.resource.data.restaurantId == resource.data.restaurantId && (
+canWriteOperationsFinancials(resource.data.restaurantId) || canReadOwnPunch(resource.data)
+);
+allow delete: if signedIn() && resource.data.restaurantId is string && canWriteOperationsFinancials(resource.data.restaurantId);
+}
+match /expenses/{docId} {
+allow read: if signedIn() && resource.data.restaurantId is string && canReadSmartFinancials(resource.data.restaurantId);
+allow create: if signedIn() && request.resource.data.restaurantId is string && canWriteSmartFinancials(request.resource.data.restaurantId);
+allow update: if signedIn() && resource.data.restaurantId is string && request.resource.data.restaurantId == resource.data.restaurantId && canWriteSmartFinancials(resource.data.restaurantId);
+allow delete: if signedIn() && resource.data.restaurantId is string && canWriteSmartFinancials(resource.data.restaurantId);
+}
+match /financialReports/{docId} {
+allow read: if signedIn() && resource.data.restaurantId is string && canReadSmartFinancials(resource.data.restaurantId);
+allow create: if signedIn() && request.resource.data.restaurantId is string && canWriteSmartFinancials(request.resource.data.restaurantId);
+allow update: if signedIn() && resource.data.restaurantId is string && request.resource.data.restaurantId == resource.data.restaurantId && canWriteSmartFinancials(resource.data.restaurantId);
+allow delete: if signedIn() && resource.data.restaurantId is string && canWriteSmartFinancials(resource.data.restaurantId);
+}
+match /backOfficeRecords/{docId} {
+allow read: if signedIn() && resource.data.restaurantId is string && canReadBackOffice(resource.data.restaurantId);
+allow create: if signedIn() && backOfficeRecordIsValid(request.resource.data) && canWriteBackOffice(request.resource.data.restaurantId);
+allow update: if signedIn() && resource.data.restaurantId is string &&
+request.resource.data.restaurantId == resource.data.restaurantId &&
+backOfficeRecordIsValid(request.resource.data) &&
+canWriteBackOffice(resource.data.restaurantId);
+allow delete: if signedIn() && resource.data.restaurantId is string && canWriteBackOffice(resource.data.restaurantId);
+}
+match /quickBooksSettings/{docId} {
+allow read: if signedIn() && resource.data.restaurantId is string && canReadBackOffice(resource.data.restaurantId);
+allow create: if signedIn() && request.resource.data.restaurantId is string && canWriteBackOffice(request.resource.data.restaurantId) && !request.resource.data.keys().hasAny(['accessToken', 'refreshToken', 'clientSecret', 'privateKey']);
+allow update: if signedIn() && resource.data.restaurantId is string &&
+request.resource.data.restaurantId == resource.data.restaurantId &&
+canWriteBackOffice(resource.data.restaurantId) &&
+!request.resource.data.keys().hasAny(['accessToken', 'refreshToken', 'clientSecret', 'privateKey']);
+allow delete: if false;
+}
+match /posImports/{docId} {
+allow read: if signedIn() && resource.data.restaurantId is string && canReadSmartFinancials(resource.data.restaurantId);
+allow create: if signedIn() && request.resource.data.restaurantId is string && canWriteSmartFinancials(request.resource.data.restaurantId);
+allow update: if signedIn() && resource.data.restaurantId is string && request.resource.data.restaurantId == resource.data.restaurantId && canWriteSmartFinancials(resource.data.restaurantId);
+allow delete: if signedIn() && resource.data.restaurantId is string && canWriteSmartFinancials(resource.data.restaurantId);
+}
+match /accountingImports/{docId} {
+allow read: if signedIn() && resource.data.restaurantId is string && canReadSmartFinancials(resource.data.restaurantId);
+allow create: if signedIn() && request.resource.data.restaurantId is string && canWriteSmartFinancials(request.resource.data.restaurantId);
+allow update: if signedIn() && resource.data.restaurantId is string && request.resource.data.restaurantId == resource.data.restaurantId && canWriteSmartFinancials(resource.data.restaurantId);
+allow delete: if signedIn() && resource.data.restaurantId is string && canWriteSmartFinancials(resource.data.restaurantId);
+}
+match /importBatches/{docId} {
+allow read: if signedIn() && resource.data.restaurantId is string && canReadSmartFinancials(resource.data.restaurantId);
+allow create: if signedIn() && request.resource.data.restaurantId is string && canWriteSmartFinancials(request.resource.data.restaurantId);
+allow update: if signedIn() && resource.data.restaurantId is string && request.resource.data.restaurantId == resource.data.restaurantId && canWriteSmartFinancials(resource.data.restaurantId);
+allow delete: if signedIn() && resource.data.restaurantId is string && canWriteSmartFinancials(resource.data.restaurantId);
+}
+match /events/{eventId} {
+allow read: if signedIn() && (isSuperAdmin() || (resource.data.restaurantId is string && isTenantMatch(resource.data.restaurantId)));
+allow create: if signedIn() && request.resource.data.restaurantId is string && canManageEventData(request.resource.data.restaurantId);
+allow update: if signedIn() && resource.data.restaurantId is string && request.resource.data.restaurantId == resource.data.restaurantId && canManageEventData(resource.data.restaurantId);
+allow delete: if signedIn() && resource.data.restaurantId is string && canManageEventData(resource.data.restaurantId);
+}
+match /messages/{messageId} {
+allow read: if signedIn() && (isSuperAdmin() || (resource.data.restaurantId is string && isTenantMatch(resource.data.restaurantId)));
+allow create: if signedIn() && request.resource.data.restaurantId is string && isTenantMatch(request.resource.data.restaurantId) && (messageCreateIdentityIsSafe(request.resource.data) || canModerateMessages(request.resource.data.restaurantId));
+allow update: if signedIn() && resource.data.restaurantId is string && request.resource.data.restaurantId == resource.data.restaurantId && ((messageAuthorMatches(resource.data) && messageSafeAuthorUpdate()) || canModerateMessages(resource.data.restaurantId));
+allow delete: if signedIn() && resource.data.restaurantId is string && (canModerateMessages(resource.data.restaurantId) || messageAuthorMatches(resource.data));
+}
+match /shiftSwaps/{swapId} {
+allow read: if signedIn() && (isSuperAdmin() || (resource.data.restaurantId is string && isTenantMatch(resource.data.restaurantId)));
+allow create: if signedIn() && request.resource.data.restaurantId is string && isTenantMatch(request.resource.data.restaurantId) && (shiftSwapCreateIsSafe(request.resource.data) || canManageScheduleData(request.resource.data.restaurantId));
+allow update: if signedIn() && resource.data.restaurantId is string && request.resource.data.restaurantId == resource.data.restaurantId && ((shiftSwapParticipant(resource.data) && shiftSwapParticipantUpdateIsSafe()) || canManageScheduleData(resource.data.restaurantId));
+allow delete: if signedIn() && resource.data.restaurantId is string && canManageScheduleData(resource.data.restaurantId);
+}
+match /maintenanceLogs/{logId} {
+allow read: if signedIn() && (isSuperAdmin() || (resource.data.restaurantId is string && isTenantMatch(resource.data.restaurantId)));
+allow create: if signedIn() && request.resource.data.restaurantId is string && isTenantMatch(request.resource.data.restaurantId) && (maintenanceCreateIdentityIsSafe(request.resource.data) || canManageMaintenanceData(request.resource.data.restaurantId));
+allow update: if signedIn() && resource.data.restaurantId is string && request.resource.data.restaurantId == resource.data.restaurantId && ((maintenanceReporterMatches(resource.data) && maintenanceReporterUpdateIsSafe()) || canManageMaintenanceData(resource.data.restaurantId));
+allow delete: if signedIn() && resource.data.restaurantId is string && canManageMaintenanceData(resource.data.restaurantId);
+}
+match /prepItems/{docId} {
+allow read: if signedIn() && (isSuperAdmin() || (resource.data.restaurantId is string && isTenantMatch(resource.data.restaurantId)));
+allow create: if signedIn() && request.resource.data.restaurantId is string && (isSuperAdmin() || canTenantWriteCollection('prepItems', request.resource.data.restaurantId));
+allow update: if signedIn() && resource.data.restaurantId is string && request.resource.data.restaurantId == resource.data.restaurantId && (isSuperAdmin() || canTenantWriteCollection('prepItems', resource.data.restaurantId));
+allow delete: if signedIn() && resource.data.restaurantId is string && (isSuperAdmin() || canTenantWriteCollection('prepItems', resource.data.restaurantId));
+}
+match /prepCategories/{docId} {
+allow read: if signedIn() && (isSuperAdmin() || (resource.data.restaurantId is string && isTenantMatch(resource.data.restaurantId)));
+allow create: if signedIn() && request.resource.data.restaurantId is string && (isSuperAdmin() || canTenantWriteCollection('prepCategories', request.resource.data.restaurantId));
+allow update: if signedIn() && resource.data.restaurantId is string && request.resource.data.restaurantId == resource.data.restaurantId && (isSuperAdmin() || canTenantWriteCollection('prepCategories', resource.data.restaurantId));
+allow delete: if signedIn() && resource.data.restaurantId is string && (isSuperAdmin() || canTenantWriteCollection('prepCategories', resource.data.restaurantId));
+}
+match /lineCheckItems/{docId} {
+allow read: if signedIn() && (isSuperAdmin() || (resource.data.restaurantId is string && isTenantMatch(resource.data.restaurantId)));
+allow create: if signedIn() && request.resource.data.restaurantId is string && (isSuperAdmin() || canTenantWriteCollection('lineCheckItems', request.resource.data.restaurantId));
+allow update: if signedIn() && resource.data.restaurantId is string && request.resource.data.restaurantId == resource.data.restaurantId && (isSuperAdmin() || canTenantWriteCollection('lineCheckItems', resource.data.restaurantId));
+allow delete: if signedIn() && resource.data.restaurantId is string && (isSuperAdmin() || canTenantWriteCollection('lineCheckItems', resource.data.restaurantId));
+}
+match /recipes/{docId} {
+allow read: if signedIn() && (isSuperAdmin() || (resource.data.restaurantId is string && isTenantMatch(resource.data.restaurantId)));
+allow create: if signedIn() && request.resource.data.restaurantId is string && (isSuperAdmin() || canTenantWriteCollection('recipes', request.resource.data.restaurantId));
+allow update: if signedIn() && resource.data.restaurantId is string && request.resource.data.restaurantId == resource.data.restaurantId && (isSuperAdmin() || canTenantWriteCollection('recipes', resource.data.restaurantId));
+allow delete: if signedIn() && resource.data.restaurantId is string && (isSuperAdmin() || canTenantWriteCollection('recipes', resource.data.restaurantId));
+}
+match /roles/{docId} {
+allow read: if signedIn() && (isSuperAdmin() || (resource.data.restaurantId is string && isTenantMatch(resource.data.restaurantId)));
+allow create: if signedIn() && request.resource.data.restaurantId is string && (isSuperAdmin() || canTenantWriteCollection('roles', request.resource.data.restaurantId));
+allow update: if signedIn() && resource.data.restaurantId is string && request.resource.data.restaurantId == resource.data.restaurantId && (isSuperAdmin() || canTenantWriteCollection('roles', resource.data.restaurantId));
+allow delete: if signedIn() && resource.data.restaurantId is string && (isSuperAdmin() || canTenantWriteCollection('roles', resource.data.restaurantId));
+}
+match /pmSchedules/{docId} {
+allow read: if signedIn() && (isSuperAdmin() || (resource.data.restaurantId is string && isTenantMatch(resource.data.restaurantId)));
+allow create: if signedIn() && request.resource.data.restaurantId is string && (isSuperAdmin() || canTenantWriteCollection('pmSchedules', request.resource.data.restaurantId));
+allow update: if signedIn() && resource.data.restaurantId is string && request.resource.data.restaurantId == resource.data.restaurantId && (isSuperAdmin() || canTenantWriteCollection('pmSchedules', resource.data.restaurantId));
+allow delete: if signedIn() && resource.data.restaurantId is string && (isSuperAdmin() || canTenantWriteCollection('pmSchedules', resource.data.restaurantId));
+}
+match /shifts/{docId} {
+allow read: if signedIn() && (isSuperAdmin() || (resource.data.restaurantId is string && isTenantMatch(resource.data.restaurantId)));
+allow create: if signedIn() && request.resource.data.restaurantId is string && (isSuperAdmin() || canTenantWriteCollection('shifts', request.resource.data.restaurantId));
+allow update: if signedIn() && resource.data.restaurantId is string && request.resource.data.restaurantId == resource.data.restaurantId && (isSuperAdmin() || canTenantWriteCollection('shifts', resource.data.restaurantId));
+allow delete: if signedIn() && resource.data.restaurantId is string && (isSuperAdmin() || canTenantWriteCollection('shifts', resource.data.restaurantId));
+}
+match /scheduleTemplates/{docId} {
+allow read: if signedIn() && (isSuperAdmin() || (resource.data.restaurantId is string && isTenantMatch(resource.data.restaurantId)));
+allow create: if signedIn() && request.resource.data.restaurantId is string && (isSuperAdmin() || canTenantWriteCollection('scheduleTemplates', request.resource.data.restaurantId));
+allow update: if signedIn() && resource.data.restaurantId is string && request.resource.data.restaurantId == resource.data.restaurantId && (isSuperAdmin() || canTenantWriteCollection('scheduleTemplates', resource.data.restaurantId));
+allow delete: if signedIn() && resource.data.restaurantId is string && (isSuperAdmin() || canTenantWriteCollection('scheduleTemplates', resource.data.restaurantId));
+}
+match /scheduleCoverageTargets/{docId} {
+allow read: if signedIn() && (isSuperAdmin() || (resource.data.restaurantId is string && isTenantMatch(resource.data.restaurantId)));
+allow create: if signedIn() && request.resource.data.restaurantId is string && (isSuperAdmin() || canTenantWriteCollection('scheduleCoverageTargets', request.resource.data.restaurantId));
+allow update: if signedIn() && resource.data.restaurantId is string && request.resource.data.restaurantId == resource.data.restaurantId && (isSuperAdmin() || canTenantWriteCollection('scheduleCoverageTargets', resource.data.restaurantId));
+allow delete: if signedIn() && resource.data.restaurantId is string && (isSuperAdmin() || canTenantWriteCollection('scheduleCoverageTargets', resource.data.restaurantId));
+}
+match /tempLogs/{docId} {
+allow read: if signedIn() && (isSuperAdmin() || (resource.data.restaurantId is string && isTenantMatch(resource.data.restaurantId)));
+allow create: if signedIn() && request.resource.data.restaurantId is string && (isSuperAdmin() || canTenantWriteCollection('tempLogs', request.resource.data.restaurantId));
+allow update: if signedIn() && resource.data.restaurantId is string && request.resource.data.restaurantId == resource.data.restaurantId && (isSuperAdmin() || canTenantWriteCollection('tempLogs', resource.data.restaurantId));
+allow delete: if signedIn() && resource.data.restaurantId is string && (isSuperAdmin() || canTenantWriteCollection('tempLogs', resource.data.restaurantId));
+}
+}
 }

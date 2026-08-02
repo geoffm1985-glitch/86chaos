@@ -1,15 +1,14 @@
 {
-  "version": "16.0.100",
-  "name": "86 Chaos 16.0.100 Rules Compile Hotfix",
-  "build": "16.0.100",
-  "label": "86 Chaos 16.0.100 Rules Compile Hotfix",
-  "releasedAt": "2026-08-01T20:56:00-05:00",
-  "releaseTitle": "86 Chaos 16.0.100 Rules Compile Hotfix",
+  "version": "16.0.111",
+  "name": "86 Chaos 16.0.111 Storage Rules Evaluation and Node Test Hotfix",
+  "build": "16.0.111",
+  "label": "86 Chaos 16.0.111 Storage Rules Evaluation and Node Test Hotfix",
+  "releasedAt": "2026-08-02T03:08:00-05:00",
+  "releaseTitle": "86 Chaos 16.0.111 Storage Rules Evaluation and Node Test Hotfix",
   "notes": [
-    "Document Vault Storage now has an exact workspace-scoped Firebase Storage rule for upload, preview/download, replacement, and deletion.",
-    "Document Vault file workflows compensate failed metadata writes and validate stored Storage paths before preview, replacement, or deletion.",
-    "Release-gate PowerShell runners invoke cleanup after partial current-run QA writes without requiring full setup verification.",
-    "Route access now uses the canonical route-access resolver across app rendering, drawer/search surfaces, voice navigation, and route tests.",
-    "QA System Administrator remains Kitchen and non-owner/non-admin in the temporary restaurant while platform authority stays server verified."
-  ]
+    "Safely reads the optional Storage superAdmin custom claim so users without that claim do not trigger a rules evaluation exception.",
+    "Uses Node-compatible Firebase Storage metadata reads in the emulator security suite instead of browser-only getBlob().",
+    "Preserves the completed Firestore expression-limit fix, tenant isolation, Storage access decisions, Firebase configuration, indexes, and all application behavior."
+  ],
+  "title": "86 Chaos 16.0.111 Storage Rules Evaluation and Node Test Hotfix"
 }

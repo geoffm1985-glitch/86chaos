@@ -12,9 +12,9 @@ const {
   assertFails
 } = require('@firebase/rules-unit-testing');
 const { doc, setDoc, updateDoc, deleteDoc, writeBatch, runTransaction } = require('firebase/firestore');
-const { ref, uploadBytes, getBlob, deleteObject } = require('firebase/storage');
+const { ref, uploadBytes, getMetadata, deleteObject } = require('firebase/storage');
 
-const projectId = process.env.GCLOUD_PROJECT || process.env.FIREBASE_PROJECT || 'chaos-rules-test-local';
+const projectId = process.env.GCLOUD_PROJECT || process.env.FIREBASE_PROJECT || 'demo-no-project';
 const firestoreHost = process.env.FIRESTORE_EMULATOR_HOST || '';
 const storageHost = process.env.FIREBASE_STORAGE_EMULATOR_HOST || process.env.STORAGE_EMULATOR_HOST || '';
 
@@ -39,12 +39,15 @@ async function runFirestoreTests(env) {
   await env.clearFirestore();
   const tenantA = 'tenant_a';
   const tenantB = 'tenant_b';
+  await seedDoc(env, 'restaurants', tenantA, { planId: 'owner_pro', subscription: { planId: 'owner_pro', status: 'active', entitlementActive: true }, ownerUid: 'ownerA', ownerEmail: 'ownera@example.com' });
+  await seedDoc(env, 'restaurants', tenantB, { planId: 'owner_pro', subscription: { planId: 'owner_pro', status: 'active', entitlementActive: true }, ownerUid: 'ownerB', ownerEmail: 'ownerb@example.com' });
   await seedUser(env, 'staffA', { restaurantId: tenantA, workspaceIds: [tenantA], memberships: { [tenantA]: { isActive: true, permissions: {} } } });
   await seedUser(env, 'managerA', { restaurantId: tenantA, workspaceIds: [tenantA], memberships: { [tenantA]: { isActive: true, isAdmin: true, permissions: { schedule: true, events: true, maintenance: true, inventory: true } } } });
   await seedUser(env, 'ownerA', { restaurantId: tenantA, workspaceIds: [tenantA], memberships: { [tenantA]: { isActive: true, isOwner: true, accountRole: 'owner', permissions: { team: true } } } });
   await seedUser(env, 'restaurantAdminA', { restaurantId: tenantA, workspaceIds: [tenantA], memberships: { [tenantA]: { isActive: true, isAdmin: true, permissions: { team: true } } } });
   await seedUser(env, 'teamLeadA', { restaurantId: tenantA, workspaceIds: [tenantA], memberships: { [tenantA]: { isActive: true, permissions: { team: true } } } });
   await seedUser(env, 'founder', { restaurantId: tenantA, email: 'geoffm1985@gmail.com', emailLower: 'geoffm1985@gmail.com', isSuperAdmin: true, systemAccess: { superAdmin: true }, memberships: { [tenantA]: { isActive: true, role: 'Kitchen' } } });
+  await seedUser(env, 'legacyNoEmailTarget', { restaurantId: tenantA, workspaceIds: [tenantA], name: 'Legacy No Email Target', isSuperAdmin: false, systemAccess: {} });
   await seedUser(env, 'staffB', { restaurantId: tenantB, workspaceIds: [tenantB], memberships: { [tenantB]: { isActive: true, permissions: {} } } });
   await seedUser(env, 'superAdmin', { isSuperAdmin: true, systemAccess: { superAdmin: true } });
 
@@ -82,17 +85,13 @@ async function runFirestoreTests(env) {
 
   // Platform authority must not be creatable or upgradable by tenant-level staff managers.
   const privilegedAuthorityValues = [true, 'true', 1, '1', 'yes', [], {}];
+  const privilegedTopLevelAuthorityKeys = ['isSuperAdmin', 'superAdmin', 'protectedRootAdmin', 'protectedFoundingAdmin', 'foundingAdministrator', 'rootAdmin'];
+  const privilegedSystemAccessKeys = ['superAdmin', 'platformAdmin', 'systemAdministrator', 'rootAdmin', 'protectedRootAdmin', 'foundingAdministrator', 'allAccess'];
   const privilegedCreatePayloads = [
-    ...privilegedAuthorityValues.map(value => ({ isSuperAdmin: value })),
-    ...privilegedAuthorityValues.map(value => ({ systemAccess: { superAdmin: value } })),
-    ...privilegedAuthorityValues.map(value => ({ systemAccess: { platformAdmin: value } })),
-    ...privilegedAuthorityValues.map(value => ({ systemAccess: { systemAdministrator: value } })),
-    ...privilegedAuthorityValues.map(value => ({ systemAccess: { rootAdmin: value } })),
+    ...privilegedTopLevelAuthorityKeys.flatMap(key => privilegedAuthorityValues.map(value => ({ [key]: value }))),
+    ...privilegedSystemAccessKeys.flatMap(key => privilegedAuthorityValues.map(value => ({ systemAccess: { [key]: value } }))),
     { systemAccess: { superAdmin: { nested: true } } },
-    { systemAccess: { superAdmin: ['true'] } },
-    { protectedRootAdmin: true },
-    { foundingAdministrator: true },
-    { rootAdmin: true }
+    { systemAccess: { superAdmin: ['true'] } }
   ];
   for (const [idx, privileged] of privilegedCreatePayloads.entries()) {
     await assertFails(setDoc(doc(staffA, 'users', `bad_priv_staff_${idx}`), { restaurantId: tenantA, name: 'Bad Staff', ...privileged }));
@@ -110,6 +109,14 @@ async function runFirestoreTests(env) {
     systemAccess: {},
     permissions: { schedule: false }
   }));
+  await assertSucceeds(setDoc(doc(managerA, 'users', 'safe_created_no_email_employee'), {
+    restaurantId: tenantA,
+    workspaceIds: [tenantA],
+    name: 'Safe Employee Without Email Fields',
+    role: 'Dish',
+    isSuperAdmin: false,
+    systemAccess: {}
+  }));
   await assertSucceeds(setDoc(doc(ownerA, 'users', 'safe_invited_employee'), {
     restaurantId: tenantA,
     workspaceIds: [tenantA],
@@ -119,10 +126,15 @@ async function runFirestoreTests(env) {
     systemAccess: { superAdmin: false }
   }));
   await seedUser(env, 'ordinaryTarget', { restaurantId: tenantA, workspaceIds: [tenantA], name: 'Ordinary Target', isSuperAdmin: false, systemAccess: {} });
+  await assertFails(updateDoc(doc(managerA, 'users', 'legacyNoEmailTarget'), { isSuperAdmin: true }));
   for (const value of privilegedAuthorityValues) {
-    await assertFails(updateDoc(doc(managerA, 'users', 'ordinaryTarget'), { isSuperAdmin: value }));
-    await assertFails(updateDoc(doc(managerA, 'users', 'ordinaryTarget'), { systemAccess: { superAdmin: value } }));
-    await assertFails(updateDoc(doc(managerA, 'users', 'ordinaryTarget'), { 'systemAccess.superAdmin': value }));
+    for (const key of privilegedTopLevelAuthorityKeys) {
+      await assertFails(updateDoc(doc(managerA, 'users', 'ordinaryTarget'), { [key]: value }));
+    }
+    for (const key of privilegedSystemAccessKeys) {
+      await assertFails(updateDoc(doc(managerA, 'users', 'ordinaryTarget'), { systemAccess: { [key]: value } }));
+      await assertFails(updateDoc(doc(managerA, 'users', 'ordinaryTarget'), { [`systemAccess.${key}`]: value }));
+    }
   }
   const batch = writeBatch(managerA);
   batch.set(doc(managerA, 'users', 'bad_priv_batch'), { restaurantId: tenantA, name: 'Bad Batch', systemAccess: { superAdmin: true } });
@@ -132,7 +144,9 @@ async function runFirestoreTests(env) {
   }));
   await assertFails(updateDoc(doc(managerA, 'users', 'founder'), { isSuperAdmin: false, systemAccess: { superAdmin: false } }));
   await assertSucceeds(updateDoc(doc(managerA, 'users', 'safe_created_employee'), { phone: '920-555-0101', role: 'Prep Cook', restaurantId: tenantA }));
+  await assertSucceeds(updateDoc(doc(ownerA, 'users', 'safe_created_no_email_employee'), { phone: '920-555-0102', role: 'Line Cook', restaurantId: tenantA }));
   await assertSucceeds(setDoc(doc(superAdmin, 'users', 'trusted_backend_like_admin'), { restaurantId: tenantA, name: 'Trusted Admin Write', isSuperAdmin: true, systemAccess: { superAdmin: true } }));
+  await assertSucceeds(updateDoc(doc(superAdmin, 'users', 'trusted_backend_like_admin'), { name: 'Trusted Admin Updated', isSuperAdmin: true, systemAccess: { superAdmin: true } }));
 
   const pushDevice = {
     token: 'test-token',
@@ -145,6 +159,7 @@ async function runFirestoreTests(env) {
     lastVerifiedAt: '2026-07-26T00:00:00.000Z',
     updatedAt: '2026-07-26T00:00:00.000Z'
   };
+  await assertSucceeds(updateDoc(doc(staffA, 'users', 'staffA'), { phone: '920-555-0199' }));
   await assertSucceeds(updateDoc(doc(staffA, 'users', 'staffA'), {
     'pushDevices.web_test': pushDevice,
     pushTokenCanonical: true,
@@ -205,9 +220,9 @@ async function runStorageTests(env) {
   const vaultStoragePath = `restaurants/${tenantA}/back-office/document-vault/record1/permit.pdf`;
   const vaultMeta = { purpose: 'document-vault', restaurantId: tenantA, recordId: 'record1', uploadedBy: 'ownerA', source: '86chaos-document-vault' };
   await assertSucceeds(uploadBytes(ref(ownerStorage, vaultStoragePath), pdf, { contentType: 'application/pdf', customMetadata: vaultMeta }));
-  await assertSucceeds(getBlob(ref(ownerStorage, vaultStoragePath)));
-  await assertFails(getBlob(ref(staffAStorage, vaultStoragePath)));
-  await assertFails(getBlob(ref(staffBStorage, vaultStoragePath)));
+  await assertSucceeds(getMetadata(ref(ownerStorage, vaultStoragePath)));
+  await assertFails(getMetadata(ref(staffAStorage, vaultStoragePath)));
+  await assertFails(getMetadata(ref(staffBStorage, vaultStoragePath)));
   await assertFails(deleteObject(ref(staffBStorage, vaultStoragePath)));
   await assertSucceeds(deleteObject(ref(ownerStorage, vaultStoragePath)));
 
