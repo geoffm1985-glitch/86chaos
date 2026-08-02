@@ -4,7 +4,7 @@ import { initializeApp } from 'firebase/app';
 import { getFirestore, collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, where, getDoc, setDoc, getDocs, Timestamp, deleteField, orderBy, limit as firestoreLimit } from 'firebase/firestore';
 import { getAuth, signInWithEmailAndPassword, sendPasswordResetEmail, createUserWithEmailAndPassword, updatePassword, EmailAuthProvider, reauthenticateWithCredential, sendEmailVerification, multiFactor, PhoneAuthProvider, PhoneMultiFactorGenerator, RecaptchaVerifier } from 'firebase/auth';
 import { getToken, onMessage } from 'firebase/messaging';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { ref, uploadBytes, getBlob, getDownloadURL, deleteObject } from 'firebase/storage';
 import { MapContainer, TileLayer, Marker, Circle, useMap } from 'react-leaflet';
 import { T, db, storage, auth, messaging, firebaseConfig, secureFetch, MASTER_ADMIN_EMAIL, EVENT_TAGS, CURRENT_VERSION, useLiveCollection, formatDate, getToday, getMonthStr, formatDisplayDate, formatDisplayFullDate, formatDisplayMonth, getDaysInMonth, formatShortTime, formatClockTime, formatClockDateTime, getAvatar, generateTempPass, getExpDate, getHoliday, logAudit, customMapIcon, getRestaurantExportPrefix, safeFilenamePart, downloadCsvRows, downloadTextFile, openPrintableReport, buildPermissionPreview, buildImportBridgeTemplates, buildV14ClientGuardrailReport } from '../core/appCore';
 import { CheersLogo, Modal, DrawerMenu, DayDotPrintScreen, MapClickListener, SmartEmptyState, MiniProblemCard, getHomeProfile, calculatePunchHours, getWeekStart, getWeekDates, roleMatches, toLocalTimeInput, makeLocalIso, PunchTable, StatusTile, FriendlyEmpty, GlobalSearchModal, QuickActionDock, KitchenTVMode, ChangeLogModal, UndoBar } from '../components/common';
@@ -11573,6 +11573,8 @@ const TabBackOffice = ({ currentDate, users = [], sales = [], timePunches = [], 
   const [subTab, setSubTab] = useState('dashboard');
   const [depositForm, setDepositForm] = useState({ date: getToday(), cashSales: '', cardSales: '', tipsPaid: '', payouts: '', depositAmount: '', drawerVariance: '', closedBy: appUser?.name || '', notes: '' });
   const [documentForm, setDocumentForm] = useState({ title: '', category: 'License / Permit', expiresAt: '', location: '', notes: '' });
+  const [documentFile, setDocumentFile] = useState(null);
+  const [documentBusyId, setDocumentBusyId] = useState('');
   const [approvalForm, setApprovalForm] = useState({ title: '', category: 'Owner Review', priority: 'normal', requestedBy: appUser?.name || '', notes: '' });
   const [qbMapping, setQbMapping] = useState({ bankAccount: '', accountsPayable: '', salesIncome: '', tipsPayable: '', cashOverShort: '', foodPurchases: '', beveragePurchases: '', supplies: '', cogs: '', taxAccount: '', classTracking: 'off', defaultClass: '', defaultLocation: '', foodClass: '', beverageClass: '', suppliesClass: '', salesClass: '', taxAgency: '', memoTemplate: '86 Chaos {month} {vendor} {number}', exportBasis: 'accrual' });
   const [qbCreditForm, setQbCreditForm] = useState({ vendorName: '', creditDate: getToday(), amount: '', invoiceNumber: '', reason: '', account: 'Food Purchases' });
@@ -11726,11 +11728,226 @@ const TabBackOffice = ({ currentDate, users = [], sales = [], timePunches = [], 
     setDepositForm({ date: getToday(), cashSales: '', cardSales: '', tipsPaid: '', payouts: '', depositAmount: '', drawerVariance: '', closedBy: appUser?.name || '', notes: '' });
   };
 
+  const DOCUMENT_VAULT_MAX_BYTES = 12 * 1024 * 1024;
+  const DOCUMENT_VAULT_ALLOWED_TYPES = new Set([
+    'application/pdf',
+    'image/jpeg',
+    'image/png',
+    'image/webp',
+    'image/heic',
+    'image/heif',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    'text/plain',
+    'text/csv'
+  ]);
+  const DOCUMENT_VAULT_EXT_BY_TYPE = {
+    'application/pdf': ['pdf'],
+    'image/jpeg': ['jpg', 'jpeg'],
+    'image/png': ['png'],
+    'image/webp': ['webp'],
+    'image/heic': ['heic'],
+    'image/heif': ['heif'],
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document': ['docx'],
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['xlsx'],
+    'text/plain': ['txt'],
+    'text/csv': ['csv']
+  };
+  const DOCUMENT_VAULT_BLOCKED_EXT = /\.(?:exe|bat|cmd|com|scr|ps1|vbs|js|mjs|cjs|jar|msi|dll|sh|php|html?|svg|zip|rar|7z|tar|gz|iso|dmg|docm|xlsm)$/i;
+  const DOCUMENT_VAULT_STORAGE_PREFIX = (rid = restaurantId) => `restaurants/${rid}/back-office/document-vault/`;
+  const safeVaultFilename = (name = 'document') => {
+    const cleaned = safeFilenamePart(String(name || 'document').replace(/[\\/]+/g, '-')).replace(/\.+/g, '.').replace(/^\.+|\.+$/g, '').slice(0, 110);
+    return cleaned || `document-${Date.now()}`;
+  };
+  const getVaultFileExtension = (name = '') => String(name || '').toLowerCase().split('.').pop() || '';
+  const validateVaultFile = (file) => {
+    if (!file) return { ok: true };
+    const name = String(file.name || 'document');
+    const type = String(file.type || '').toLowerCase();
+    const ext = getVaultFileExtension(name);
+    if (DOCUMENT_VAULT_BLOCKED_EXT.test(name)) return { ok: false, message: 'Executable, script, archive, HTML, SVG, and macro-enabled files are not allowed in the Document Vault.' };
+    if (Number(file.size || 0) <= 0) return { ok: false, message: 'Document file is empty. Upload a file with content.' };
+    if (Number(file.size || 0) > DOCUMENT_VAULT_MAX_BYTES) return { ok: false, message: 'Document is too large. Use a file under 12 MB.' };
+    if (!DOCUMENT_VAULT_ALLOWED_TYPES.has(type)) return { ok: false, message: 'Unsupported document type. Upload a PDF, JPEG, PNG, WebP, HEIC/HEIF, CSV, text file, Word document, or Excel workbook.' };
+    const allowedExts = DOCUMENT_VAULT_EXT_BY_TYPE[type] || [];
+    if (!allowedExts.includes(ext)) return { ok: false, message: 'Document file type and filename extension do not match.' };
+    return { ok: true };
+  };
+  const vaultStoragePath = (recordId, fileName) => `${DOCUMENT_VAULT_STORAGE_PREFIX()}${recordId}/${Date.now()}-${safeVaultFilename(fileName)}`;
+  const isValidVaultStoragePath = (record, storagePath = record?.storagePath || '') => {
+    const rid = String(restaurantId || '');
+    const recordId = String(record?.id || '');
+    const pathValue = String(storagePath || '');
+    if (!rid || !recordId || !pathValue) return false;
+    if (pathValue.includes('..') || pathValue.includes('\\')) return false;
+    return pathValue.startsWith(`${DOCUMENT_VAULT_STORAGE_PREFIX(rid)}${recordId}/`) && !/[?#]/.test(pathValue);
+  };
+  const buildVaultMetadata = (recordId, file) => {
+    const sanitizedFileName = safeVaultFilename(file.name || 'document');
+    const storagePath = vaultStoragePath(recordId, sanitizedFileName);
+    const uploadedBy = String(auth.currentUser?.uid || appUser?.uid || appUser?.authUid || appUser?.id || '');
+    return {
+      storagePath,
+      sanitizedFileName,
+      uploadMetadata: {
+        contentType: file.type,
+        customMetadata: {
+          purpose: 'document-vault',
+          restaurantId: String(restaurantId || ''),
+          recordId: String(recordId || ''),
+          uploadedBy,
+          source: '86chaos-document-vault'
+        }
+      },
+      firestorePayload: sanitizeForFirestore({
+        hasFile: true,
+        storagePath,
+        originalFileName: file.name || sanitizedFileName,
+        sanitizedFileName,
+        fileMimeType: file.type || '',
+        fileSize: Number(file.size || 0),
+        uploadedAt: stamp(),
+        uploadedBy,
+        uploadedByName: appUser?.name || appUser?.email || 'Owner/Admin',
+        uploadStatus: 'uploaded',
+        vaultFilePurpose: 'document-vault',
+        updatedAt: stamp(),
+        uploadError: deleteField(),
+        repairStatus: deleteField(),
+        failedUploadStoragePath: deleteField()
+      })
+    };
+  };
+  const deleteVaultObjectSafely = async (storagePath) => {
+    if (!storagePath) return { ok: true, skipped: true };
+    try {
+      await deleteObject(ref(storage, storagePath));
+      return { ok: true };
+    } catch (error) {
+      return { ok: false, error: error?.message || String(error) };
+    }
+  };
+  const uploadVaultObject = async (recordId, file) => {
+    const validation = validateVaultFile(file);
+    if (!validation.ok) throw new Error(validation.message);
+    const details = buildVaultMetadata(recordId, file);
+    await uploadBytes(ref(storage, details.storagePath), file, details.uploadMetadata);
+    return details;
+  };
+  const uploadVaultFileForRecord = async (recordRef, recordId, file, { replace = false, oldPath = '' } = {}) => {
+    const details = await uploadVaultObject(recordId, file);
+    try {
+      await updateDoc(recordRef, details.firestorePayload);
+    } catch (metadataError) {
+      const compensation = await deleteVaultObjectSafely(details.storagePath);
+      const repairPayload = sanitizeForFirestore({
+        uploadStatus: replace ? 'replacement_failed' : 'failed',
+        uploadError: String(metadataError?.message || metadataError).slice(0, 240),
+        repairStatus: compensation.ok ? 'uploaded_object_removed_after_metadata_failure' : 'uploaded_object_orphaned_after_metadata_failure',
+        failedUploadStoragePath: compensation.ok ? deleteField() : details.storagePath,
+        updatedAt: stamp()
+      });
+      try { await updateDoc(recordRef, repairPayload); } catch (_) {}
+      const message = compensation.ok
+        ? 'File upload was rolled back because document metadata could not be saved.'
+        : 'File uploaded, but metadata failed and automatic cleanup could not remove the uploaded object. Repair is needed.';
+      throw new Error(message);
+    }
+    if (replace && oldPath && oldPath !== details.storagePath) {
+      const cleanup = await deleteVaultObjectSafely(oldPath);
+      if (!cleanup.ok) {
+        try {
+          await updateDoc(recordRef, sanitizeForFirestore({
+            oldFileCleanupStatus: 'needs_review',
+            oldFileCleanupError: String(cleanup.error || 'previous file delete failed').slice(0, 240),
+            oldFileOrphanStoragePath: oldPath,
+            updatedAt: stamp()
+          }));
+        } catch (_) {}
+        addToast?.('Old File Cleanup Needed', 'Replacement saved, but the previous Storage object could not be removed automatically.');
+      }
+    }
+    return details;
+  };
   const saveDocument = async (event) => {
     event.preventDefault();
+    if (!restaurantId) return addToast?.('Missing Workspace', 'No restaurant workspace was loaded.');
     if (!documentForm.title.trim()) return addToast?.('Document Not Saved', 'Add a document title.');
-    await saveRecord({ type: 'document', status: 'active', ...documentForm }, 'Document Record Saved');
-    setDocumentForm({ title: '', category: 'License / Permit', expiresAt: '', location: '', notes: '' });
+    if (documentFile) {
+      const validation = validateVaultFile(documentFile);
+      if (!validation.ok) return addToast?.('Document Not Saved', validation.message);
+    }
+    setDocumentBusyId('new');
+    let recordRef = null;
+    try {
+      recordRef = await addDoc(collection(db, 'backOfficeRecords'), sanitizeForFirestore({
+        type: 'document',
+        status: 'active',
+        ...documentForm,
+        restaurantId,
+        workspaceName: clientData?.name || clientData?.restaurantName || appUser?.restaurantName || '',
+        hasFile: false,
+        uploadStatus: documentFile ? 'pending_upload' : 'metadata_only',
+        createdAt: stamp(),
+        updatedAt: stamp(),
+        createdBy: appUser?.id || auth.currentUser?.uid || '',
+        createdByName: appUser?.name || appUser?.email || 'Owner/Admin'
+      }));
+      if (documentFile) await uploadVaultFileForRecord(recordRef, recordRef.id, documentFile);
+      addToast?.(documentFile ? 'Document Uploaded' : 'Document Record Saved', documentFile ? 'Document file and metadata were saved.' : 'Document metadata saved. No uploaded file attached.');
+      setDocumentForm({ title: '', category: 'License / Permit', expiresAt: '', location: '', notes: '' });
+      setDocumentFile(null);
+    } catch (error) {
+      if (recordRef?.id) {
+        try { await updateDoc(recordRef, sanitizeForFirestore({ uploadStatus: 'failed', uploadError: String(error?.message || error).slice(0, 240), updatedAt: stamp() })); } catch (_) {}
+      }
+      addToast?.('Document Not Saved', error?.message || 'Could not save the document vault entry.');
+    } finally {
+      setDocumentBusyId('');
+    }
+  };
+  const downloadVaultDocument = async (record) => {
+    if (!record?.storagePath) return addToast?.('No File Attached', 'This legacy document record has metadata but no uploaded file.');
+    if (!isValidVaultStoragePath(record)) return addToast?.('Download Blocked', 'This document file path does not match the current workspace and record.');
+    setDocumentBusyId(`download:${record.id}`);
+    try {
+      const blob = await getBlob(ref(storage, record.storagePath));
+      const url = URL.createObjectURL(blob);
+      window.open(url, '_blank', 'noopener,noreferrer');
+      window.setTimeout(() => URL.revokeObjectURL(url), 60000);
+    } catch (error) {
+      addToast?.('Download Failed', error?.message || 'Could not open this document file.');
+    } finally { setDocumentBusyId(''); }
+  };
+  const replaceVaultDocument = async (record, file) => {
+    if (!record?.id || !file) return;
+    const validation = validateVaultFile(file);
+    if (!validation.ok) return addToast?.('Replacement Rejected', validation.message);
+    const oldPath = record.storagePath || '';
+    if (oldPath && !isValidVaultStoragePath(record, oldPath)) return addToast?.('Replacement Blocked', 'The current file path does not belong to this workspace and record.');
+    setDocumentBusyId(`replace:${record.id}`);
+    try {
+      await uploadVaultFileForRecord(doc(db, 'backOfficeRecords', record.id), record.id, file, { replace: true, oldPath });
+      addToast?.('Document Replaced', 'The new file is attached to this Document Vault record.');
+    } catch (error) {
+      addToast?.('Replacement Failed', error?.message || 'Could not replace this document file.');
+    } finally { setDocumentBusyId(''); }
+  };
+  const deleteVaultDocument = async (record) => {
+    if (!record?.id) return;
+    setDocumentBusyId(`delete:${record.id}`);
+    const failures = [];
+    if (record.storagePath) {
+      if (!isValidVaultStoragePath(record)) failures.push('file path does not belong to this workspace and record');
+      else {
+        const fileDelete = await deleteVaultObjectSafely(record.storagePath);
+        if (!fileDelete.ok) failures.push(`file: ${fileDelete.error}`);
+      }
+    }
+    try { await deleteDoc(doc(db, 'backOfficeRecords', record.id)); } catch (error) { failures.push(`metadata: ${error?.message || error}`); }
+    if (failures.length) addToast?.('Partial Delete', `Document Vault cleanup needs review. ${failures.join(' • ').slice(0, 220)}`);
+    else addToast?.('Document Deleted', 'Document file and metadata were removed.');
+    setDocumentBusyId('');
   };
 
   const saveApproval = async (event) => {
@@ -11950,7 +12167,52 @@ const TabBackOffice = ({ currentDate, users = [], sales = [], timePunches = [], 
 
       {subTab === 'approvals' && <div className="grid lg:grid-cols-3 gap-4"><form onSubmit={saveApproval} className={`${T.card} p-4 space-y-3`}><h3 className="text-xl font-black text-white">Create Approval Item</h3><label className={T.label}>Title</label><input value={approvalForm.title} onChange={e=>setApprovalForm({...approvalForm,title:e.target.value})} className={T.input} placeholder="Price jump, repair quote, menu change..."/><label className={T.label}>Category</label><select value={approvalForm.category} onChange={e=>setApprovalForm({...approvalForm,category:e.target.value})} className={T.input}>{['Owner Review','Invoice Issue','Vendor Credit','Repair / Maintenance','Menu / Pricing','Payroll / Labor','Python Alert Follow-up','QuickBooks Sync Repair'].map(x=><option key={x}>{x}</option>)}</select><label className={T.label}>Priority</label><select value={approvalForm.priority} onChange={e=>setApprovalForm({...approvalForm,priority:e.target.value})} className={T.input}><option value="normal">Normal</option><option value="high">High</option><option value="urgent">Urgent</option></select><label className={T.label}>Notes</label><textarea value={approvalForm.notes} onChange={e=>setApprovalForm({...approvalForm,notes:e.target.value})} className={T.input} rows={4}/><button className={`${T.btn} w-full`}>Add to Approval Queue</button></form><div className="lg:col-span-2 space-y-3">{approvals.length === 0 && <FriendlyEmpty title="No approvals yet" text="Manager suggestions, Python findings, and owner decisions can live here." />}{approvals.slice(0, 40).map(item => <Row key={item.id}><div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3"><div><div className="text-sm font-black text-white">{item.title}</div><div className="text-[10px] font-black uppercase tracking-widest text-[#D4A381] mt-1">{item.category} • {item.priority} • {item.status || 'pending'}</div><div className="text-xs font-bold text-slate-400 mt-1">{item.notes}</div></div><div className="flex gap-2"><button type="button" onClick={() => updateRecordStatus(item, 'approved')} className={T.btn}>Approve</button><button type="button" onClick={() => updateRecordStatus(item, 'dismissed')} className={T.btnAlt}>Dismiss</button></div></div></Row>)}</div></div>}
 
-      {subTab === 'documents' && <div className="grid lg:grid-cols-3 gap-4"><form onSubmit={saveDocument} className={`${T.card} p-4 space-y-3`}><h3 className="text-xl font-black text-white">Add Document Record</h3><p className="text-xs font-bold text-slate-400">This saves the document record and renewal reminder data. File upload storage can be added after the owner/admin permission flow is tested.</p><label className={T.label}>Title</label><input value={documentForm.title} onChange={e=>setDocumentForm({...documentForm,title:e.target.value})} className={T.input} placeholder="Liquor license, insurance, hood inspection..."/><label className={T.label}>Category</label><select value={documentForm.category} onChange={e=>setDocumentForm({...documentForm,category:e.target.value})} className={T.input}>{['License / Permit','Insurance','Inspection','Vendor Contract','Equipment Manual','Employee Document','Lease / Utility','Other'].map(x=><option key={x}>{x}</option>)}</select><label className={T.label}>Expiration / Renewal Date</label><input type="date" value={documentForm.expiresAt} onChange={e=>setDocumentForm({...documentForm,expiresAt:e.target.value})} className={T.input}/><label className={T.label}>Storage Location / Link Note</label><input value={documentForm.location} onChange={e=>setDocumentForm({...documentForm,location:e.target.value})} className={T.input}/><label className={T.label}>Notes</label><textarea value={documentForm.notes} onChange={e=>setDocumentForm({...documentForm,notes:e.target.value})} className={T.input} rows={3}/><button className={`${T.btn} w-full`}>Save Document Record</button></form><div className="lg:col-span-2 space-y-3">{documents.length === 0 && <FriendlyEmpty title="No documents yet" text="Track licenses, permits, insurance, contracts, inspections, and renewal dates here." />}{documents.slice(0, 40).map(docItem => <Row key={docItem.id}><div className="flex justify-between gap-3"><div><div className="text-sm font-black text-white">{docItem.title}</div><div className="text-xs font-bold text-slate-400">{docItem.category} • Expires {docItem.expiresAt ? formatDisplayDate(docItem.expiresAt) : 'No date'} • {docItem.location || 'No location note'}</div>{docItem.notes && <div className="text-xs text-slate-500 mt-1">{docItem.notes}</div>}</div><button type="button" onClick={() => updateRecordStatus(docItem, 'reviewed')} className={T.btnAlt}>Reviewed</button></div></Row>)}</div></div>}
+      {subTab === 'documents' && <div className="grid lg:grid-cols-3 gap-4">
+        <form onSubmit={saveDocument} className={`${T.card} p-4 space-y-3`}>
+          <h3 className="text-xl font-black text-white">Document Vault</h3>
+          <p className="text-xs font-bold text-slate-400">Save renewal metadata and attach the actual business document in Firebase Storage. Legacy metadata-only records still work.</p>
+          <label className={T.label}>Title</label>
+          <input value={documentForm.title} onChange={e=>setDocumentForm({...documentForm,title:e.target.value})} className={T.input} placeholder="Liquor license, insurance, hood inspection..."/>
+          <label className={T.label}>Category</label>
+          <select value={documentForm.category} onChange={e=>setDocumentForm({...documentForm,category:e.target.value})} className={T.input}>{['License / Permit','Insurance','Inspection','Vendor Contract','Equipment Manual','Employee Document','Lease / Utility','Other'].map(x=><option key={x}>{x}</option>)}</select>
+          <label className={T.label}>Expiration / Renewal Date</label>
+          <input type="date" value={documentForm.expiresAt} onChange={e=>setDocumentForm({...documentForm,expiresAt:e.target.value})} className={T.input}/>
+          <label className={T.label}>Storage Location / Link Note</label>
+          <input value={documentForm.location} onChange={e=>setDocumentForm({...documentForm,location:e.target.value})} className={T.input} placeholder="Optional note for paper originals"/>
+          <label className={T.label}>Upload File</label>
+          <input type="file" aria-label="Upload Document Vault file" accept=".pdf,.jpg,.jpeg,.png,.webp,.heic,.heif,.docx,.xlsx,.txt,.csv,application/pdf,image/jpeg,image/png,image/webp,image/heic,image/heif,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/plain,text/csv" onChange={e=>setDocumentFile(e.target.files?.[0] || null)} className={T.input}/>
+          {documentFile && <p className="text-[10px] font-bold text-slate-400">Selected: {documentFile.name} • {Math.round((documentFile.size || 0) / 1024)} KB</p>}
+          <label className={T.label}>Notes</label>
+          <textarea value={documentForm.notes} onChange={e=>setDocumentForm({...documentForm,notes:e.target.value})} className={T.input} rows={3}/>
+          <button disabled={documentBusyId === 'new'} className={`${T.btn} w-full`}>{documentBusyId === 'new' ? 'Saving...' : 'Save Document Record'}</button>
+        </form>
+        <div className="lg:col-span-2 space-y-3">
+          {documents.length === 0 && <FriendlyEmpty title="No documents yet" text="Track licenses, permits, insurance, contracts, inspections, and renewal dates here." />}
+          {documents.slice(0, 40).map(docItem => <Row key={docItem.id}>
+            <div className="flex flex-col gap-3">
+              <div className="flex justify-between gap-3">
+                <div>
+                  <div className="text-sm font-black text-white">{docItem.title}</div>
+                  <div className="text-xs font-bold text-slate-400">{docItem.category} • Expires {docItem.expiresAt ? formatDisplayDate(docItem.expiresAt) : 'No date'} • {docItem.location || 'No location note'}</div>
+                  <div className="text-[10px] font-black uppercase tracking-widest text-slate-500 mt-1">{docItem.hasFile && docItem.storagePath ? `${docItem.originalFileName || docItem.sanitizedFileName || 'Uploaded file'} • ${Math.round(Number(docItem.fileSize || 0) / 1024)} KB` : 'No uploaded file attached'}</div>
+                  {docItem.notes && <div className="text-xs text-slate-500 mt-1">{docItem.notes}</div>}
+                  {docItem.uploadStatus === 'failed' && <div className="text-xs text-red-300 font-bold mt-1">Upload failed: {docItem.uploadError || 'File was not attached.'}</div>}
+                </div>
+                <button type="button" onClick={() => updateRecordStatus(docItem, 'reviewed')} className={T.btnAlt}>Reviewed</button>
+              </div>
+              <div className="flex flex-wrap gap-2 items-center">
+                <button type="button" onClick={() => downloadVaultDocument(docItem)} className={T.btnAlt}>{docItem.hasFile && docItem.storagePath ? 'Preview / Download' : 'No File Attached'}</button>
+                <label className={`${T.btnAlt} cursor-pointer`}>
+                  Replace File
+                  <input type="file" aria-label={`Replace Document Vault file for ${docItem.title || 'document'}`} className="hidden" accept=".pdf,.jpg,.jpeg,.png,.webp,.heic,.heif,.docx,.xlsx,.txt,.csv,application/pdf,image/jpeg,image/png,image/webp,image/heic,image/heif,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/plain,text/csv" onChange={e=>replaceVaultDocument(docItem, e.target.files?.[0] || null)} />
+                </label>
+                <button type="button" onClick={() => deleteVaultDocument(docItem)} className="px-3 py-2 rounded-xl border border-red-900/50 text-red-300 text-xs font-black uppercase tracking-wider hover:bg-red-900/20">Delete</button>
+                {documentBusyId.includes(docItem.id) && <span className="text-xs font-bold text-slate-400">Working...</span>}
+              </div>
+            </div>
+          </Row>)}
+        </div>
+      </div>}
 
       {subTab === 'reports' && <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-4">{[['Owner Summary','KPIs, alerts, approvals, deposits, documents, and QuickBooks draft status.', printOwnerReport],['Back Office CSV','Spreadsheet-friendly export of Back Office records.', downloadBackOfficeCsv],['QuickBooks Prep CSV','Export bill drafts, vendor matches, credits, and repair queue.', downloadQuickBooksCsv],['Financial Center','Open the regular Financials tab for daily close, labor, tips, COGS, P&L, and budgets.', () => setActiveTab?.('financials')],['Document Review','Open vault records and renewal dates.', () => setSubTab('documents')],['QuickBooks Prep','Review invoice bill drafts, vendor credits, mappings, and sync repair.', () => setSubTab('quickbooks')]].map(([title, desc, action]) => <button type="button" key={title} onClick={action} className={`${T.card} p-5 text-left hover:border-[#D4A381]/60 transition-colors`}><h3 className="text-lg font-black text-white">{title}</h3><p className="text-sm text-slate-400 font-bold mt-2 leading-relaxed">{desc}</p></button>)}</div>}
 

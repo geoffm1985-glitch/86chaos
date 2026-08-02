@@ -432,8 +432,8 @@ async function main() {
         isOwner: account.isOwner === true,
         isSuperAdmin: false,
         systemAdministratorVerifiedByWhoami: account.key === 'systemAdmin',
-        accountOwner: account.isOwner === true,
-        workspaceOwner: account.isOwner === true,
+        accountOwner: account.accountOwner === true,
+        workspaceOwner: account.workspaceOwner === true,
         permissions: account.permissions || {},
         isActive: true,
         qaOwned: true,
@@ -442,10 +442,14 @@ async function main() {
         updatedAt: new Date().toISOString(),
       };
       const ref = await patchDoc(page, rest, 'workspaceMembers', `${account.uid}_${restaurantId}`, membership);
-      report.memberships.push({ key: account.key, uid: account.uid, email: account.email, id: ref.id, docName: ref.docName, role: account.role });
+      report.memberships.push({ key: account.key, uid: account.uid, email: account.email, id: ref.id, docName: ref.docName, role: account.role, isAdmin: membership.isAdmin, isOwner: membership.isOwner, accountOwner: membership.accountOwner, workspaceOwner: membership.workspaceOwner });
     }
     const memberIds = report.memberships.map(m => m.id);
     if (new Set(memberIds).size !== report.memberships.length) throw new Error(`Role membership documents were not unique: ${memberIds.join(', ')}`);
+    const systemAdminMembership = report.memberships.find(m => m.key === 'systemAdmin');
+    if (!systemAdminMembership || systemAdminMembership.role !== 'Kitchen' || systemAdminMembership.isAdmin === true || systemAdminMembership.isOwner === true || systemAdminMembership.accountOwner === true || systemAdminMembership.workspaceOwner === true) {
+      throw new Error('QA System Administrator must seed as Kitchen and non-owner/non-admin. Platform authority must remain independent of restaurant authority.');
+    }
     report.membershipVerification = { ok: true, count: report.memberships.length, ids: memberIds };
 
     const seedAnchorDate = new Date();

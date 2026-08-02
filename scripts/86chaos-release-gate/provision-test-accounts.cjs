@@ -6,6 +6,7 @@ const { ensureRunDir, getRunFile, writeJson } = require('./run-context.cjs');
 const { loadEnv } = require('../86chaos-full-audit/env-loader.cjs');
 const { assertMutationSafety } = require('./mutation-safety.cjs');
 const { EXPECTED_FIREBASE_PROJECT, ROLE_DEFINITIONS, readConfiguredAccounts, validateLocalRoleEnv, analyzeRoleRows, verifyRoleAccounts } = require('./verify-role-accounts.cjs');
+const { roleForKey } = require('./qa-role-definitions.cjs');
 
 const PROTECTED_ROOT_EMAILS = new Set(['geoffm1985@gmail.com']);
 const SAFE_TEMP_EMAIL_RE = /(^86chaos[.+_-]?qa|[.+_-]86chaos[.+_-]?qa|release[.+_-]?gate|qa[.+_-]?release)/i;
@@ -22,13 +23,6 @@ function nowIso() {
   return new Date().toISOString();
 }
 
-function roleForKey(key) {
-  if (key === 'systemAdmin') return { role: 'Kitchen', superAdmin: true, systemAdministrator: true, isAdmin: false, isOwner: false };
-  if (key === 'owner') return { role: 'Owner', superAdmin: false, systemAdministrator: false, isAdmin: true, isOwner: true };
-  if (key === 'manager') return { role: 'General Manager', superAdmin: false, systemAdministrator: false, isAdmin: true, isOwner: false };
-  return { role: 'Line Cook', superAdmin: false, systemAdministrator: false, isAdmin: false, isOwner: false };
-}
-
 function profileForAccount(account, uid, runId) {
   const role = roleForKey(account.key);
   return {
@@ -37,17 +31,19 @@ function profileForAccount(account, uid, runId) {
     email: normalizeEmail(account.email),
     displayName: account.name || account.label,
     name: account.name || account.label,
-    role: role.role,
-    restaurantRole: role.role,
+    role: role.restaurantRole || role.role,
+    restaurantRole: role.restaurantRole || role.role,
     isAdmin: role.isAdmin,
     isOwner: role.isOwner,
-    isSuperAdmin: role.superAdmin === true,
-    systemAccess: { superAdmin: role.superAdmin === true, protectedReleaseGateAdmin: account.key === 'systemAdmin' },
+    accountOwner: role.accountOwner === true,
+    workspaceOwner: role.workspaceOwner === true,
+    isSuperAdmin: role.expectedSuperAdmin === true,
+    systemAccess: { superAdmin: role.expectedSuperAdmin === true, protectedReleaseGateAdmin: account.key === 'systemAdmin' },
     protectedRootAdmin: account.key === 'systemAdmin',
-    superAdmin: role.superAdmin,
-    systemAdministrator: role.systemAdministrator,
-    firestoreSuperAdmin: role.superAdmin,
-    firestoreSystemAdministrator: role.systemAdministrator,
+    superAdmin: role.expectedSuperAdmin,
+    systemAdministrator: role.expectedPlatformAuthority,
+    firestoreSuperAdmin: role.expectedSuperAdmin,
+    firestoreSystemAdministrator: role.expectedPlatformAuthority,
     qaOwned: true,
     testingOnly: true,
     qaRunId: runId,
@@ -246,7 +242,7 @@ async function provisionTestAccounts(options = {}) {
         uid: user.uid,
         created: user.created,
         customClaimsWritten: Object.keys(claims).sort(),
-        expectedSuperAdmin: role.superAdmin,
+        expectedSuperAdmin: role.expectedSuperAdmin,
         profileWrite,
       });
     } catch (error) {
@@ -268,6 +264,13 @@ async function provisionTestAccounts(options = {}) {
     serverMasterAdminMatched: false,
     firestoreSuperAdmin: row.key === 'systemAdmin',
     firestoreSystemAdministrator: row.key === 'systemAdmin',
+    role: roleForKey(row.key).restaurantRole || roleForKey(row.key).role,
+    restaurantRole: roleForKey(row.key).restaurantRole || roleForKey(row.key).role,
+    isAdmin: roleForKey(row.key).isAdmin === true,
+    isOwner: roleForKey(row.key).isOwner === true,
+    accountOwner: roleForKey(row.key).accountOwner === true,
+    workspaceOwner: roleForKey(row.key).workspaceOwner === true,
+    permissions: roleForKey(row.key).permissions || {},
   }));
   report.errors.push(...analyzeRoleRows(roleRows, EXPECTED_FIREBASE_PROJECT));
   report.errors = [...new Set(report.errors)];

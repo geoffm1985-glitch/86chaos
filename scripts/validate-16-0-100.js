@@ -1,0 +1,54 @@
+#!/usr/bin/env node
+const fs = require('fs');
+const path = require('path');
+const assert = (condition, message) => {
+  if (!condition) {
+    console.error(`✗ ${message}`);
+    process.exitCode = 1;
+  } else {
+    console.log(`✓ ${message}`);
+  }
+};
+const read = (file) => fs.readFileSync(path.join(process.cwd(), file), 'utf8');
+const pkg = JSON.parse(read('package.json'));
+const versionJson = JSON.parse(read('public/version.json'));
+assert(pkg.version === '16.0.100', 'package.json version is 16.0.100');
+assert(versionJson.version === '16.0.100' && versionJson.build === '16.0.100', 'public/version.json version/build are 16.0.100');
+assert(!/16\.0\.89 Admin Push Release Gate Fix/.test(JSON.stringify(versionJson)), 'release label does not restore stale 16.0.89 text');
+const app = read('src/App.js');
+assert(app.includes("'hr': 'hr-training'"), 'legacy hr deep links normalize to hr-training');
+assert(app.includes("'hr-training', 'prep'") && !app.includes("'messages', 'hr', 'prep'"), 'App roster listener is keyed to hr-training instead of obsolete hr route');
+const management = read('src/features/management.jsx');
+assert(management.includes('Document Vault') && management.includes('uploadBytes(ref(storage, details.storagePath), file'), 'Back Office Document Vault uploads actual files to Firebase Storage');
+assert(management.includes('deleteObject(ref(storage') && management.includes('getBlob(ref(storage, record.storagePath)'), 'Document Vault supports delete and authenticated SDK blob preview/download actions');
+assert(!management.includes('getDownloadURL(ref(storage, record.storagePath)'), 'Document Vault does not expose persistent Storage download URLs for vault files');
+assert(management.includes('No uploaded file attached'), 'Document Vault preserves metadata-only legacy records');
+
+const storageRules = read('storage.rules');
+assert(storageRules.includes('match /restaurants/{restaurantId}/back-office/document-vault/{recordId}/{fileName}'), 'Storage rules include exact Document Vault path');
+assert(storageRules.includes("request.resource.metadata.purpose == 'document-vault'") && storageRules.includes('request.resource.metadata.uploadedBy == request.auth.uid'), 'Document Vault Storage rule requires strict metadata and uploader identity');
+assert(storageRules.includes('request.resource.size <= 12 * 1024 * 1024') && storageRules.includes('blockedVaultFileName'), 'Document Vault Storage rule enforces 12 MB limit and blocks dangerous extensions');
+const firestoreRules = read('firestore.rules');
+assert(firestoreRules.includes('backOfficeDocumentVaultFieldsAreValid') && firestoreRules.includes('safeBackOfficeVaultPath'), 'Firestore Back Office records validate Document Vault file-state metadata');
+const psFull = read('RUN_86CHAOS_PLAY_STORE_RELEASE_GATE.ps1');
+const psFailed = read('RUN_86CHAOS_FAILED_ONLY_RELEASE_GATE.ps1');
+assert(psFull.includes('$WritesStarted') && psFailed.includes('$WritesStarted') && !psFull.includes('$setup.attempted -and $setup.seeded -and $setup.verified') && !psFailed.includes('$setup.attempted -and $setup.seeded -and $setup.verified'), 'PowerShell release-gate runners clean partial current-run QA writes');
+const qaRoles = read('scripts/86chaos-release-gate/qa-role-definitions.cjs');
+assert(qaRoles.includes("role: 'Kitchen'") && qaRoles.includes('expectedPlatformAuthority: true') && qaRoles.includes('accountOwner: false'), 'QA System Administrator is canonical Kitchen non-owner with platform authority only');
+const routeMatrix = read('scripts/86chaos-release-gate/route-access-matrix.cjs');
+assert(routeMatrix.includes("'published'") && routeMatrix.includes("'hr-training'") && routeMatrix.includes("'ops'") && !routeMatrix.includes("'kitchen',"), 'canonical browser route matrix uses current route IDs and staff Published Schedule');
+const workflowManifest = read('tests/86chaos-release-gate/mutation-workflow-manifest.cjs');
+assert(workflowManifest.includes('actionIds') && !workflowManifest.includes('evidence:'), 'mutation coverage manifest requires executed action IDs instead of lexical evidence regex');
+
+const safety = read('scripts/86chaos-release-gate/mutation-safety.cjs');
+assert(safety.includes('projectIdentitySupplied') && safety.includes('project identity is missing') && !safety.includes("|| APPROVED_TEST_PROJECT || ''"), 'mutation safety requires explicit project identity and no longer defaults to testing project');
+const teardown = read('tests/86chaos-release-gate/global-teardown.cjs');
+assert(teardown.includes('writesStarted') && !teardown.includes('!setup.seeded || !setup.verified'), 'global teardown cleans when current-run writes started, even after partial setup failure');
+const common = read('src/components/common.jsx');
+assert(common.includes('activeRecognitionRef') && common.includes('pendingVoiceStartTimerRef'), '86Voice single-recognition lifecycle guard is preserved');
+const featureAccess = read('src/lib/featureAccess.js');
+assert(featureAccess.includes('isMasterAdminUser = (user = {}) => isVerifiedPlatformAdminUser(user)'), 'master-admin feature access uses verified platform authority, not role text');
+const auth = read('src/features/auth.jsx');
+const userDataMatch = auth.match(/userData\s*=\s*\{([\s\S]*?)\n\s*\};/);
+assert(Boolean(userDataMatch) && (userDataMatch[1].match(/\bid:\s*firebaseUser\.uid/g) || []).length === 1, 'auth bootstrap userData has one id property and preserves identity fields');
+if (process.exitCode) process.exit(process.exitCode);

@@ -28,7 +28,18 @@ function collectQaEmails(env = process.env) {
 }
 function assertMutationSafety(options = {}) {
   const env = options.env || process.env;
-  const projectId = String(options.projectId || env.REACT_APP_FIREBASE_PROJECT_ID || env.REACT_APP_TEST_FIREBASE_PROJECT_ID || env.GCLOUD_PROJECT || env.GOOGLE_CLOUD_PROJECT || APPROVED_TEST_PROJECT || '').trim();
+  const projectSources = {
+    optionProjectId: options.projectId,
+    reactAppProjectId: env.REACT_APP_FIREBASE_PROJECT_ID,
+    reactAppTestProjectId: env.REACT_APP_TEST_FIREBASE_PROJECT_ID,
+    gcloudProject: env.GCLOUD_PROJECT,
+    googleCloudProject: env.GOOGLE_CLOUD_PROJECT,
+    firebaseProjectId: env.FIREBASE_PROJECT_ID,
+    credentialProjectId: options.credentialProjectId || env.FIREBASE_ADMIN_PROJECT_ID || env.FIREBASE_TEST_ADMIN_PROJECT_ID || ''
+  };
+  const suppliedProjectValues = Object.values(projectSources).map(value => String(value || '').trim()).filter(Boolean);
+  const uniqueProjectValues = Array.from(new Set(suppliedProjectValues));
+  const projectId = String(options.projectId || env.REACT_APP_FIREBASE_PROJECT_ID || env.REACT_APP_TEST_FIREBASE_PROJECT_ID || env.GCLOUD_PROJECT || env.GOOGLE_CLOUD_PROJECT || env.FIREBASE_PROJECT_ID || '').trim();
   const url = String(options.appUrl || env.APP_URL || env.CHAOS_BASE_URL || env.PLAYWRIGHT_BASE_URL || env.BASE_URL || '').trim();
   const host = parseHost(url);
   const runId = String(options.runId || env.CHAOS_RELEASE_GATE_RUN_ID || env.CHAOS_FULL_AUDIT_RUN_ID || '').trim();
@@ -36,8 +47,10 @@ function assertMutationSafety(options = {}) {
   const adminCredentialPresent = options.adminCredentialPresent === true || Boolean(env.FIREBASE_TEST_SERVICE_ACCOUNT_KEY || env.FIREBASE_SERVICE_ACCOUNT_KEY || env.GOOGLE_APPLICATION_CREDENTIALS || env.GCLOUD_SERVICE_ACCOUNT_KEY);
   const qaEmails = options.qaEmails || collectQaEmails(env);
   const errors = [];
+  if (!suppliedProjectValues.length) errors.push('Refusing mutation because Firebase project identity is missing.');
+  if (uniqueProjectValues.length > 1) errors.push(`Refusing mutation because Firebase project identities disagree: ${uniqueProjectValues.join(', ')}.`);
   if (projectId !== APPROVED_TEST_PROJECT) errors.push(`Refusing mutation for Firebase project ${projectId || '(missing)'}; expected ${APPROVED_TEST_PROJECT}.`);
-  if (projectId === PRODUCTION_PROJECT) errors.push(`Refusing mutation for production Firebase project ${PRODUCTION_PROJECT}.`);
+  if (projectId === PRODUCTION_PROJECT || uniqueProjectValues.includes(PRODUCTION_PROJECT)) errors.push(`Refusing mutation for production Firebase project ${PRODUCTION_PROJECT}.`);
   if (!url) errors.push('Refusing mutation because APP_URL/CHAOS_BASE_URL is missing.');
   if (url && !host) errors.push(`Refusing mutation because deployment URL is malformed: ${redactSecrets(url)}`);
   if (host && isProductionHost(host)) errors.push(`Refusing mutation against production host ${host}.`);
@@ -49,7 +62,7 @@ function assertMutationSafety(options = {}) {
   for (const email of qaEmails) {
     if (!APPROVED_QA_EMAIL_RE.test(email)) errors.push(`Refusing mutation for non-approved QA identity: ${email || '(missing)'}.`);
   }
-  const result = { ok: errors.length === 0, errors: [...new Set(errors)], projectId, host, runId, testingProject: APPROVED_TEST_PROJECT, productionProject: PRODUCTION_PROJECT, qaEmailsApproved: errors.filter(e => /non-approved QA/i.test(e)).length === 0 };
+  const result = { ok: errors.length === 0, errors: [...new Set(errors)], projectId, projectSources, projectIdentitiesCompared: uniqueProjectValues, projectIdentitySupplied: suppliedProjectValues.length > 0, host, runId, testingProject: APPROVED_TEST_PROJECT, productionProject: PRODUCTION_PROJECT, qaEmailsApproved: errors.filter(e => /non-approved QA/i.test(e)).length === 0 };
   if (!result.ok && options.throwOnFailure) throw new Error(result.errors.join('\n'));
   return result;
 }

@@ -10,16 +10,18 @@ module.exports = async () => {
   const keep = bool(process.env.CHAOS_KEEP_QA_RESTAURANT);
   const mutation = bool(process.env.CHAOS_ALLOW_MUTATION);
   const setupStatePath = getSetupStatePath(runId);
-  const setup = readJsonIfExists(setupStatePath) || { runId, attempted: false, seeded: false, verified: false };
-  if (keep || !mutation || !setup.attempted || !setup.seeded || !setup.verified || setup.runId !== runId || !setup.restaurantId) {
+  const setup = readJsonIfExists(setupStatePath) || { runId, attempted: false, seeded: false, verified: false, writesStarted: false };
+  const writesStarted = setup.writesStarted === true || setup.qaDataWritesStarted === true || setup.seeded === true || setup.createdRestaurant === true || Boolean(setup.restaurantId || setup.temporaryRestaurantId);
+  const cleanupRestaurantId = setup.restaurantId || setup.temporaryRestaurantId || '';
+  if (keep || !mutation || setup.runId !== runId || !writesStarted || !cleanupRestaurantId) {
     writeJson(cleanupReportPath, {
-      ok: !setup.seeded,
+      ok: !writesStarted,
       generatedAt: new Date().toISOString(),
       runId,
       runDir,
       cleanupMethod: 'safely-skipped-by-global-teardown',
       skipped: true,
-      reason: keep ? 'CHAOS_KEEP_QA_RESTAURANT=true' : (!mutation ? 'CHAOS_ALLOW_MUTATION was not true' : 'QA setup was skipped, failed, or not verified for this run'),
+      reason: keep ? 'CHAOS_KEEP_QA_RESTAURANT=true' : (!mutation ? 'CHAOS_ALLOW_MUTATION was not true' : 'No current-run Firebase writes were recorded, runId mismatched, or no temporary restaurant ID was available'),
       setupState: setup,
       deleted: {},
       remaining: {},

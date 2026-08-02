@@ -12,7 +12,7 @@ const {
   assertFails
 } = require('@firebase/rules-unit-testing');
 const { doc, setDoc, updateDoc, deleteDoc, writeBatch, runTransaction } = require('firebase/firestore');
-const { ref, uploadBytes, deleteObject } = require('firebase/storage');
+const { ref, uploadBytes, getBlob, deleteObject } = require('firebase/storage');
 
 const projectId = process.env.GCLOUD_PROJECT || process.env.FIREBASE_PROJECT || 'chaos-rules-test-local';
 const firestoreHost = process.env.FIRESTORE_EMULATOR_HOST || '';
@@ -171,15 +171,27 @@ async function runStorageTests(env) {
   await env.clearFirestore();
   const tenantA = 'tenant_a';
   const tenantB = 'tenant_b';
+  await seedDoc(env, 'restaurants', tenantA, { planId: 'owner_pro', subscription: { planId: 'owner_pro', status: 'active', entitlementActive: true }, ownerUid: 'ownerA', ownerEmail: 'ownera@example.com' });
+  await seedDoc(env, 'restaurants', tenantB, { planId: 'owner_pro', subscription: { planId: 'owner_pro', status: 'active', entitlementActive: true }, ownerUid: 'ownerB', ownerEmail: 'ownerb@example.com' });
   await seedUser(env, 'staffA', { restaurantId: tenantA, workspaceIds: [tenantA], memberships: { [tenantA]: { isActive: true, permissions: {} } } });
   await seedUser(env, 'managerA', { restaurantId: tenantA, workspaceIds: [tenantA], memberships: { [tenantA]: { isActive: true, isAdmin: true, permissions: { inventory: true, maintenance: true, branding: true, hr: true } } } });
+  await seedUser(env, 'ownerA', { restaurantId: tenantA, workspaceIds: [tenantA], memberships: { [tenantA]: { isActive: true, isOwner: true, accountRole: 'owner', permissions: { backOffice: true, ownerTools: true } } } });
+  await seedUser(env, 'vaultA', { restaurantId: tenantA, workspaceIds: [tenantA], memberships: { [tenantA]: { isActive: true, permissions: { backOffice: true } } } });
   await seedUser(env, 'staffB', { restaurantId: tenantB, workspaceIds: [tenantB], memberships: { [tenantB]: { isActive: true, permissions: {} } } });
+  await seedUser(env, 'superAdmin', { isSuperAdmin: true, systemAccess: { superAdmin: true }, memberships: { [tenantA]: { isActive: true, role: 'Kitchen' } } });
 
   const managerStorage = env.authenticatedContext('managerA').storage();
   const staffAStorage = env.authenticatedContext('staffA').storage();
   const staffBStorage = env.authenticatedContext('staffB').storage();
+  const ownerStorage = env.authenticatedContext('ownerA').storage();
+  const vaultStorage = env.authenticatedContext('vaultA').storage();
+  const superStorage = env.authenticatedContext('superAdmin', { superAdmin: true }).storage();
   const image = new Blob(['x'], { type: 'image/png' });
   const pdf = new Blob(['%PDF-1.4'], { type: 'application/pdf' });
+  const csv = new Blob(['date,total\n2026-08-01,42'], { type: 'text/csv' });
+  const docx = new Blob(['PK\u0003\u0004docx'], { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
+  const executable = new Blob(['MZ'], { type: 'application/x-msdownload' });
+  const tooLarge = new Blob([new Uint8Array((12 * 1024 * 1024) + 1)], { type: 'application/pdf' });
 
   await assertSucceeds(uploadBytes(ref(staffAStorage, `${tenantA}/profilePhotos/staffA/photo.png`), image, { contentType: 'image/png' }));
   await assertSucceeds(deleteObject(ref(staffAStorage, `${tenantA}/profilePhotos/staffA/photo.png`)));
@@ -189,6 +201,24 @@ async function runStorageTests(env) {
   await assertSucceeds(uploadBytes(ref(managerStorage, `${tenantA}/invoices/invoice.pdf`), pdf, { contentType: 'application/pdf', customMetadata: { restaurantId: tenantA, purpose: 'invoice-scan' } }));
   await assertSucceeds(deleteObject(ref(managerStorage, `${tenantA}/invoices/invoice.pdf`)));
   await assertFails(uploadBytes(ref(managerStorage, `${tenantA}/menuUploads/bad.png`), image, { contentType: 'image/png', customMetadata: { restaurantId: tenantB, purpose: 'menu-scan' } }));
+
+  const vaultStoragePath = `restaurants/${tenantA}/back-office/document-vault/record1/permit.pdf`;
+  const vaultMeta = { purpose: 'document-vault', restaurantId: tenantA, recordId: 'record1', uploadedBy: 'ownerA', source: '86chaos-document-vault' };
+  await assertSucceeds(uploadBytes(ref(ownerStorage, vaultStoragePath), pdf, { contentType: 'application/pdf', customMetadata: vaultMeta }));
+  await assertSucceeds(getBlob(ref(ownerStorage, vaultStoragePath)));
+  await assertFails(getBlob(ref(staffAStorage, vaultStoragePath)));
+  await assertFails(getBlob(ref(staffBStorage, vaultStoragePath)));
+  await assertFails(deleteObject(ref(staffBStorage, vaultStoragePath)));
+  await assertSucceeds(deleteObject(ref(ownerStorage, vaultStoragePath)));
+
+  await assertSucceeds(uploadBytes(ref(superStorage, `restaurants/${tenantA}/back-office/document-vault/record2/inspection.csv`), csv, { contentType: 'text/csv', customMetadata: { purpose: 'document-vault', restaurantId: tenantA, recordId: 'record2', uploadedBy: 'superAdmin', source: '86chaos-document-vault' } }));
+  await assertSucceeds(uploadBytes(ref(vaultStorage, `restaurants/${tenantA}/back-office/document-vault/record3/policy.docx`), docx, { contentType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', customMetadata: { purpose: 'document-vault', restaurantId: tenantA, recordId: 'record3', uploadedBy: 'vaultA', source: '86chaos-document-vault' } }));
+  await assertFails(uploadBytes(ref(staffAStorage, `restaurants/${tenantA}/back-office/document-vault/record4/secret.pdf`), pdf, { contentType: 'application/pdf', customMetadata: { purpose: 'document-vault', restaurantId: tenantA, recordId: 'record4', uploadedBy: 'staffA', source: '86chaos-document-vault' } }));
+  await assertFails(uploadBytes(ref(ownerStorage, `restaurants/${tenantA}/back-office/document-vault/record5/wrong.pdf`), pdf, { contentType: 'application/pdf', customMetadata: { purpose: 'document-vault', restaurantId: tenantB, recordId: 'record5', uploadedBy: 'ownerA', source: '86chaos-document-vault' } }));
+  await assertFails(uploadBytes(ref(ownerStorage, `restaurants/${tenantA}/back-office/document-vault/record6/wrong.pdf`), pdf, { contentType: 'application/pdf', customMetadata: { purpose: 'document-vault', restaurantId: tenantA, recordId: 'otherRecord', uploadedBy: 'ownerA', source: '86chaos-document-vault' } }));
+  await assertFails(uploadBytes(ref(ownerStorage, `restaurants/${tenantA}/back-office/document-vault/record7/missing-purpose.pdf`), pdf, { contentType: 'application/pdf', customMetadata: { restaurantId: tenantA, recordId: 'record7', uploadedBy: 'ownerA', source: '86chaos-document-vault' } }));
+  await assertFails(uploadBytes(ref(ownerStorage, `restaurants/${tenantA}/back-office/document-vault/record8/big.pdf`), tooLarge, { contentType: 'application/pdf', customMetadata: { purpose: 'document-vault', restaurantId: tenantA, recordId: 'record8', uploadedBy: 'ownerA', source: '86chaos-document-vault' } }));
+  await assertFails(uploadBytes(ref(ownerStorage, `restaurants/${tenantA}/back-office/document-vault/record9/run.exe`), executable, { contentType: 'application/x-msdownload', customMetadata: { purpose: 'document-vault', restaurantId: tenantA, recordId: 'record9', uploadedBy: 'ownerA', source: '86chaos-document-vault' } }));
 }
 
 (async () => {

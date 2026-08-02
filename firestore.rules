@@ -22,9 +22,6 @@ service cloud.firestore {
         data.authEmail == protectedFoundingAdminEmail();
     }
 
-    function authoritativePlatformUserFields() {
-      return ['isSuperAdmin', 'systemAccess'];
-    }
 
     function privilegedSystemAccessKeys() {
       return ['superAdmin', 'platformAdmin', 'systemAdministrator', 'rootAdmin', 'protectedRootAdmin', 'foundingAdministrator', 'allAccess'];
@@ -304,27 +301,6 @@ service cloud.firestore {
         );
     }
 
-    function isPrivateHrCollection(collectionName) {
-      return collectionName in ['trainingManuals', 'trainingAcknowledgements', 'hrOnboardingTasks', 'hrCertifications', 'hrPerformanceNotes'];
-    }
-
-    function isPrivateSchedulingCollection(collectionName) {
-      return collectionName in ['personalReminders', 'timeOffRequests', 'availabilityRecords', 'eventReminders'];
-    }
-
-    function isPrivateFinancialCollection(collectionName) {
-      return collectionName in [
-        'sales', 'timePunches', 'dailyCloses', 'expenses', 'financialExpenses', 'deposits',
-        'tipRecords', 'financialTargets', 'financialReports', 'posImports', 'accountingImports', 'importBatches'
-      ];
-    }
-
-    function isPlanSensitiveCollection(collectionName) {
-      return collectionName in [
-        'inventoryItems', 'vendors', 'orders', 'invoices', 'wasteLogs', 'menuIntelligenceScans',
-        'menuDependencies', 'reports', 'exports', 'advancedReports', 'importJobs', 'futureImports'
-      ];
-    }
 
     function restaurantProtectedSubscriptionKeys() {
       return [
@@ -337,7 +313,7 @@ service cloud.firestore {
     }
 
     function restaurantOwnerUpdateIsSafe(restId) {
-      return isOwnerOfRestaurantDoc() &&
+      return restId is string && isOwnerOfRestaurantDoc() &&
         !request.resource.data.diff(resource.data).affectedKeys().hasAny(restaurantProtectedSubscriptionKeys());
     }
 
@@ -443,12 +419,51 @@ service cloud.firestore {
       );
     }
     function canWriteBackOffice(restId) { return canReadBackOffice(restId); }
+    function allowedBackOfficeVaultMime(value) {
+      return value in [
+        'application/pdf',
+        'image/jpeg',
+        'image/png',
+        'image/webp',
+        'image/heic',
+        'image/heif',
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        'text/plain',
+        'text/csv'
+      ];
+    }
+
+    function safeBackOfficeVaultPath(data) {
+      return data.get('storagePath', '') is string &&
+        data.get('storagePath', '').matches('^restaurants/[^/]+/back-office/document-vault/[^/]+/[^?#]+$');
+    }
+
+    function backOfficeDocumentVaultFieldsAreValid(data) {
+      return data.get('type', '') != 'document' ||
+        data.get('hasFile', false) != true ||
+        (
+          data.get('vaultFilePurpose', '') == 'document-vault' &&
+          safeBackOfficeVaultPath(data) &&
+          data.get('originalFileName', '') is string &&
+          data.get('sanitizedFileName', '') is string &&
+          allowedBackOfficeVaultMime(data.get('fileMimeType', '')) &&
+          data.get('fileSize', 0) is number &&
+          data.get('fileSize', 0) > 0 &&
+          data.get('fileSize', 0) <= 12 * 1024 * 1024 &&
+          data.get('uploadedBy', '') is string &&
+          data.get('uploadedBy', '').size() > 0 &&
+          data.get('uploadStatus', '') in ['uploaded', 'replacement_failed', 'failed', 'metadata_only', 'partial_delete_failed']
+        );
+    }
+
     function backOfficeRecordIsValid(data) {
       return data.restaurantId is string &&
         data.type in ['deposit', 'document', 'approval', 'quickbooks', 'quickbooks_mapping', 'quickbooks_bill_draft', 'quickbooks_vendor_match', 'quickbooks_vendor_credit_draft', 'quickbooks_sync_event', 'quickbooks_accountant_packet', 'quickbooks_owner_rollup', 'quickbooks_sync_health', 'ownerReport'] &&
         data.status is string &&
         data.createdAt != null &&
-        data.updatedAt != null;
+        data.updatedAt != null &&
+        backOfficeDocumentVaultFieldsAreValid(data);
     }
     function canReadOwnPunch(data) {
       return signedIn() && data.restaurantId is string && isTenantMatch(data.restaurantId) &&
@@ -581,29 +596,9 @@ service cloud.firestore {
         (!(('systemGenerated') in data) || data.systemGenerated == false);
     }
 
-    function reminderIdentityStable() {
-      return request.resource.data.restaurantId == resource.data.restaurantId &&
-        request.resource.data.createdBy == resource.data.createdBy &&
-        request.resource.data.get('participantSchemaVersion', 0) == resource.data.get('participantSchemaVersion', 0);
-    }
-
-    function reminderCreatorEditAllowed() {
-      return request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-        'title', 'notes', 'scheduledAt', 'occurrenceScheduledAt', 'recurrenceAnchorAt', 'recurrenceAnchorDay', 'nextDispatchAt', 'dispatchEligible', 'dispatchAttemptAt', 'dispatchLeaseUntil',
-        'status', 'participantUserIds', 'assignedToUserId', 'assignedToName', 'assignedToEmail', 'shared', 'visibility', 'updatedAt', 'terminalAt', 'completedAt', 'cancelledAt', 'dismissedAt', 'snoozedUntil', 'reopenedAt',
-        'currentOccurrenceKey', 'lastSuccessfulOccurrenceKey', 'dispatchKey', 'dispatchedAt', 'dispatchError', 'deliveryProblemAt', 'nextReminderAt', 'source'
-      ]) &&
-      request.resource.data.restaurantId == resource.data.restaurantId &&
-      request.resource.data.createdBy == resource.data.createdBy &&
-      reminderParticipantsAreValid(request.resource.data);
-    }
-
     // Participant status actions are performed through the authenticated
     // personal-reminder-action server endpoint. Client rules deliberately
     // reject direct recipient writes to delivery/lease metadata.
-    function reminderRecipientStatusUpdate() {
-      return false;
-    }
 
     function canManageScheduleData(restId) {
       return isSuperAdmin() || isRestaurantOwner(restId) || (isTenantMatch(restId) && (isAdminFor(restId) || hasPermFor(restId, 'schedule') || hasPermFor(restId, 'team')));
@@ -886,7 +881,7 @@ service cloud.firestore {
     function isManagerRoleFor(restId) {
       // Role-name shortcuts were removed so custom Roster Roles remain the source of truth.
       // Elevated access should come from owner/admin flags or explicit permission toggles.
-      return false;
+      return restId is string && false;
     }
 
     function canManageTasks(restId) {

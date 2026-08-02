@@ -7,7 +7,7 @@ test.describe('12 cross-module impact and full restaurant day', () => {
     const account = ownerLikeCreds();
     requireCreds(account, 'owner-like account');
     await login(page, account.email, account.password);
-    const tabs = ['today', 'kitchen', 'schedule', 'inventory', 'messages', 'financials'];
+    const tabs = ['today', 'ops', 'schedule', 'inventory', 'messages', 'financials'];
     const samples = {};
     for (const tab of tabs) samples[tab] = (await gotoTab(page, tab, { settleMs: 1500, maxText: 50000 })).slice(0, 6000);
     const joined = Object.values(samples).join('\n');

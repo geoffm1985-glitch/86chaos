@@ -1,14 +1,15 @@
 {
-  "version": "16.0.97",
-  "name": "86 Chaos 16.0.97 System Admin Runtime Interop Fix",
-  "build": "16.0.97",
-  "label": "86 Chaos 16.0.97 System Admin Runtime Interop Fix",
-  "releasedAt": "2026-08-01T15:24:00-05:00",
-  "releaseTitle": "86 Chaos 16.0.97 System Admin Runtime Interop Fix",
+  "version": "16.0.100",
+  "name": "86 Chaos 16.0.100 Rules Compile Hotfix",
+  "build": "16.0.100",
+  "label": "86 Chaos 16.0.100 Rules Compile Hotfix",
+  "releasedAt": "2026-08-01T20:56:00-05:00",
+  "releaseTitle": "86 Chaos 16.0.100 Rules Compile Hotfix",
   "notes": [
-    "System Administrator runtime imports now safely resolve CommonJS helper modules in the browser bundle.",
-    "The section error boundary now keeps a fallback report ID even if runtime-report helper interop fails.",
-    "System Administrator live-data safety helpers now fall back safely instead of crashing the console when module interop changes.",
-    "Firebase-sensitive configuration, Schedule Builder, employee deletion, shift deletion, and push-repair behavior were not changed."
+    "Document Vault Storage now has an exact workspace-scoped Firebase Storage rule for upload, preview/download, replacement, and deletion.",
+    "Document Vault file workflows compensate failed metadata writes and validate stored Storage paths before preview, replacement, or deletion.",
+    "Release-gate PowerShell runners invoke cleanup after partial current-run QA writes without requiring full setup verification.",
+    "Route access now uses the canonical route-access resolver across app rendering, drawer/search surfaces, voice navigation, and route tests.",
+    "QA System Administrator remains Kitchen and non-owner/non-admin in the temporary restaurant while platform authority stays server verified."
   ]
 }

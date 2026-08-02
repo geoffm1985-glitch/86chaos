@@ -143,6 +143,98 @@ service firebase.storage {
         hasPermFor(restaurantId, 'team');
     }
 
+    function workspaceSubscription(restaurantId) {
+      return restaurantDoc(restaurantId).get('subscription', {});
+    }
+
+    function rawWorkspacePlanId(restaurantId) {
+      return workspaceSubscription(restaurantId).get('planId', restaurantDoc(restaurantId).get('planId', ''));
+    }
+
+    function workspacePlanId(restaurantId) {
+      return isSuperAdmin()
+        ? 'master_admin'
+        : (rawWorkspacePlanId(restaurantId) in ['shift', 'operations', 'smart_kitchen', 'owner_pro', 'master_admin']
+          ? rawWorkspacePlanId(restaurantId)
+          : 'smart_kitchen');
+    }
+
+    function workspaceSubscriptionStatus(restaurantId) {
+      return workspaceSubscription(restaurantId).get('status', restaurantDoc(restaurantId).get('subscriptionStatus', restaurantDoc(restaurantId).get('billingStatus', 'active')));
+    }
+
+    function hasActiveEntitlement(restaurantId) {
+      return isSuperAdmin() || (
+        workspaceSubscription(restaurantId).get('entitlementActive', true) != false &&
+        !(workspaceSubscriptionStatus(restaurantId) in ['canceled', 'cancelled', 'trial_expired', 'expired', 'disabled', 'suspended'])
+      );
+    }
+
+    function planAtLeastOwnerPro(restaurantId) {
+      return isSuperAdmin() || (hasActiveEntitlement(restaurantId) && workspacePlanId(restaurantId) in ['owner_pro', 'master_admin']);
+    }
+
+    function canUseBackOfficeVault(restaurantId) {
+      return planAtLeastOwnerPro(restaurantId) && isTenantMatch(restaurantId) && (
+        isSuperAdmin() ||
+        isRestaurantOwner(restaurantId) ||
+        isAdminFor(restaurantId) ||
+        hasPermFor(restaurantId, 'backOffice') ||
+        hasPermFor(restaurantId, 'ownerTools') ||
+        hasPermFor(restaurantId, 'settings') ||
+        hasPermFor(restaurantId, 'financialEdit')
+      );
+    }
+
+    function documentVaultMetadataMatches(restaurantId, recordId) {
+      return request.resource != null &&
+        request.resource.metadata is map &&
+        request.resource.metadata.purpose == 'document-vault' &&
+        request.resource.metadata.restaurantId == restaurantId &&
+        request.resource.metadata.recordId == recordId &&
+        request.resource.metadata.uploadedBy == request.auth.uid &&
+        request.resource.metadata.source == '86chaos-document-vault';
+    }
+
+    function allowedVaultContentType(fileName) {
+      return (request.resource.contentType == 'application/pdf' && fileName.matches('.*[.][Pp][Dd][Ff]$')) ||
+        (request.resource.contentType == 'image/jpeg' && fileName.matches('.*[.][Jj][Pp][Ee]?[Gg]$')) ||
+        (request.resource.contentType == 'image/png' && fileName.matches('.*[.][Pp][Nn][Gg]$')) ||
+        (request.resource.contentType == 'image/webp' && fileName.matches('.*[.][Ww][Ee][Bb][Pp]$')) ||
+        (request.resource.contentType == 'image/heic' && fileName.matches('.*[.][Hh][Ee][Ii][Cc]$')) ||
+        (request.resource.contentType == 'image/heif' && fileName.matches('.*[.][Hh][Ee][Ii][Ff]$')) ||
+        (request.resource.contentType == 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' && fileName.matches('.*[.][Dd][Oo][Cc][Xx]$')) ||
+        (request.resource.contentType == 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' && fileName.matches('.*[.][Xx][Ll][Ss][Xx]$')) ||
+        (request.resource.contentType == 'text/plain' && fileName.matches('.*[.][Tt][Xx][Tt]$')) ||
+        (request.resource.contentType == 'text/csv' && fileName.matches('.*[.][Cc][Ss][Vv]$'));
+    }
+
+    function blockedVaultFileName(fileName) {
+      return fileName.matches('.*[.][Ee][Xx][Ee]$') ||
+        fileName.matches('.*[.][Bb][Aa][Tt]$') ||
+        fileName.matches('.*[.][Cc][Mm][Dd]$') ||
+        fileName.matches('.*[.][Pp][Ss]1$') ||
+        fileName.matches('.*[.][Ss][Hh]$') ||
+        fileName.matches('.*[.][Jj][Ss]$') ||
+        fileName.matches('.*[.][Mm][Jj][Ss]$') ||
+        fileName.matches('.*[.][Cc][Jj][Ss]$') ||
+        fileName.matches('.*[.][Hh][Tt][Mm][Ll]?$') ||
+        fileName.matches('.*[.][Ss][Vv][Gg]$') ||
+        fileName.matches('.*[.][Zz][Ii][Pp]$') ||
+        fileName.matches('.*[.][Rr][Aa][Rr]$') ||
+        fileName.matches('.*[.][Dd][Oo][Cc][Mm]$') ||
+        fileName.matches('.*[.][Xx][Ll][Ss][Mm]$');
+    }
+
+    function isAllowedDocumentVaultObject(restaurantId, recordId, fileName) {
+      return request.resource != null &&
+        request.resource.size > 0 &&
+        request.resource.size <= 12 * 1024 * 1024 &&
+        !blockedVaultFileName(fileName) &&
+        allowedVaultContentType(fileName) &&
+        documentVaultMetadataMatches(restaurantId, recordId);
+    }
+
     function isAllowedImage() {
       return request.resource != null &&
         request.resource.size < 8 * 1024 * 1024 &&
@@ -330,6 +422,14 @@ service firebase.storage {
       allow create: if canManageHr(restaurantId) && isAllowedTrainingManual(restaurantId, manualId);
       allow update: if false;
       allow delete: if canManageHr(restaurantId);
+    }
+
+    // Owner Pro Back Office Document Vault files. This exact app path must stay locked to
+    // Back Office-authorized users and the metadata must match the route path.
+    match /restaurants/{restaurantId}/back-office/document-vault/{recordId}/{fileName} {
+      allow read: if canUseBackOfficeVault(restaurantId);
+      allow create, update: if canUseBackOfficeVault(restaurantId) && isAllowedDocumentVaultObject(restaurantId, recordId, fileName);
+      allow delete: if canUseBackOfficeVault(restaurantId);
     }
 
     // Backups are Super Admin only. No regular signed-in user can read or write backups.
