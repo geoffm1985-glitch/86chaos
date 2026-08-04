@@ -70,8 +70,12 @@ test('Document Vault Storage rules contain the exact workspace-scoped path and s
   assert.match(rules, /wordprocessingml\.document/);
   assert.match(rules, /spreadsheetml\.sheet/);
   assert.match(rules, /text\/csv/);
-  assert.match(rules, /blockedVaultFileName/);
-  assert.doesNotMatch(rules, /allow read, write: if signedIn\(\)/, 'Document Vault must not devolve to broad signed-in Storage access');
+  assert.match(rules, /allowedVaultContentType\(fileName\)/);
+  assert.doesNotMatch(rules, /blockedVaultFileName/, 'Document Vault uses a compact MIME-plus-extension allowlist instead of the old oversized blocked-extension chain');
+  const vaultBlock = rules.match(/match \/restaurants\/\{restaurantId\}\/back-office\/document-vault\/\{recordId\}\/\{fileName\} \{([\s\S]*?)\n    \}/);
+  assert.ok(vaultBlock, 'Document Vault Storage rule block should be present');
+  assert.doesNotMatch(vaultBlock[1], /allow read:\s*if signedIn\(\)\s*;/, 'Document Vault read must not devolve to any signed-in user');
+  assert.doesNotMatch(vaultBlock[1], /allow create, update:\s*if signedIn\(\)\s*;/, 'Document Vault writes must not devolve to any signed-in user');
 });
 
 test('Document Vault lifecycle compensates failed metadata writes and validates stored paths', () => {

@@ -183,6 +183,41 @@ async function runFirestoreTests(env) {
     'pushDevices.web_test': pushDevice
   }));
 
+  // Daily-close rules keep tenant, field allowlist, date, and critical totals at the security boundary.
+  await assertSucceeds(setDoc(doc(managerA, 'sales', 'close_a'), {
+    restaurantId: tenantA,
+    date: '2026-08-02',
+    grossSales: 1250.5,
+    netSales: 1190.25,
+    cashSales: 450,
+    cardSales: 800.5,
+    depositStatus: 'Prepared',
+    closeStatus: 'Manager Reviewed',
+    notes: 'Validated by the application before save.',
+    updatedAt: '2026-08-02T23:00:00.000Z'
+  }));
+  await assertFails(setDoc(doc(managerA, 'sales', 'close_bad_field'), {
+    restaurantId: tenantA,
+    date: '2026-08-02',
+    grossSales: 100,
+    unexpectedAuthorityField: true
+  }));
+  await assertFails(setDoc(doc(managerA, 'sales', 'close_bad_date'), {
+    restaurantId: tenantA,
+    date: '08/02/2026',
+    grossSales: 100
+  }));
+  await assertFails(setDoc(doc(managerA, 'sales', 'close_huge_total'), {
+    restaurantId: tenantA,
+    date: '2026-08-02',
+    grossSales: 10000001
+  }));
+  await assertFails(setDoc(doc(staffB, 'sales', 'close_cross_tenant'), {
+    restaurantId: tenantA,
+    date: '2026-08-02',
+    grossSales: 100
+  }));
+
   for (const collectionName of ['inventoryItems', 'vendors', 'orders', 'wasteLogs', 'invoices', 'reports', 'exports']) {
     await assertSucceeds(deleteDoc(doc(managerA, collectionName, `${collectionName}_a`)));
     await seedDoc(env, collectionName, `${collectionName}_a2`, { restaurantId: tenantA, createdBy: 'managerA', name: collectionName });

@@ -12,8 +12,8 @@ const assert = (condition, message) => {
 const read = (file) => fs.readFileSync(path.join(process.cwd(), file), 'utf8');
 const pkg = JSON.parse(read('package.json'));
 const versionJson = JSON.parse(read('public/version.json'));
-assert(pkg.version === '16.0.112', 'package.json version is 16.0.112');
-assert(versionJson.version === '16.0.112' && versionJson.build === '16.0.112', 'public/version.json version/build are 16.0.112');
+assert(pkg.version === '16.0.113', 'package.json version is 16.0.113');
+assert(versionJson.version === '16.0.113' && versionJson.build === '16.0.113', 'public/version.json version/build are 16.0.113');
 assert(!/16\.0\.89 Admin Push Release Gate Fix/.test(JSON.stringify(versionJson)), 'release label does not restore stale 16.0.89 text');
 const app = read('src/App.js');
 assert(app.includes("'hr': 'hr-training'"), 'legacy hr deep links normalize to hr-training');
@@ -35,12 +35,18 @@ assert(!firestoreRules.includes('backOfficeDocumentVaultFieldsAreValid') && !fir
 
 assert(firestoreRules.includes("request.auth.token.get('superAdmin', false) == true"), 'Firestore super admin rule safely reads token claims with defaults');
 assert(firestoreRules.includes("let access = u.get('systemAccess', {})") && firestoreRules.includes("access is map && access.get('superAdmin', false) == true") && !firestoreRules.includes('userData().systemAccess.superAdmin'), 'Firestore super admin rule safely handles missing systemAccess maps');
-assert(firestoreRules.includes('platformAuthorityCreateIsSafe(request.resource.data) ?') && firestoreRules.includes('workspaceMemberHrCreateIsSafe(restId) ? canManageStaffFromCurrentUser') && firestoreRules.includes("taskCompletionUpdateIsSafe() || canManageTasks"), 'Firestore rules evaluate cheap safety checks before expensive permission helpers');
+const systemCreateBlock = firestoreRules.match(/function systemAccessCreateIsSafe\(data\) \{([\s\S]*?)function platformAuthorityCreateIsSafe/);
+const platformCreateBlock = firestoreRules.match(/function platformAuthorityCreateIsSafe\(data\) \{([\s\S]*?)function protectedFoundingAdminKeys/);
+assert(Boolean(systemCreateBlock) && Boolean(platformCreateBlock) && !systemCreateBlock[1].includes('?') && !platformCreateBlock[1].includes('?'), 'platform authority create guards are flattened with no nested ternary tree');
+assert(firestoreRules.includes('platformAuthorityCreateIsSafe(request.resource.data) &&') && firestoreRules.includes('workspaceMemberHrCreateIsSafe(restId) &&') && firestoreRules.includes("taskCompletionUpdateIsSafe() || canManageTasks"), 'Firestore rules evaluate cheap safety checks before expensive permission helpers');
 assert(!firestoreRules.includes('match /{collectionName}/{docId}') && !firestoreRules.includes('function isStandardTenantCollection'), 'Firestore rules no longer evaluate a generic top-level standard-tenant catch-all for every collection');
 assert(firestoreRules.includes("match /shifts/{docId}") && firestoreRules.includes("canTenantWriteCollection('shifts'") && firestoreRules.includes("match /tempLogs/{docId}"), 'Firestore standard tenant collections use explicit collection matches');
 assert(firestoreRules.includes("function isTenantMatch(restId)") && firestoreRules.includes("safeUserData()") && !firestoreRules.includes('userData().restaurantId'), 'Firestore tenant membership helpers avoid unsafe direct userData field reads');
 
-assert(firestoreRules.includes('function safeUserData()') && firestoreRules.includes('function membershipDataFor(restId)') && firestoreRules.includes('function permissionDataFor(restId)'), 'Firestore rules use cached safe user, membership, and permission helpers');
+assert(firestoreRules.includes('function safeUserData()') && firestoreRules.includes('function membershipDataFromUser(u, restId)') && firestoreRules.includes('function permissionDataFromUserAndMember(u, member, restId)') && !firestoreRules.includes('function membershipDataFor(restId)') && !firestoreRules.includes('function permissionDataFor(restId)'), 'Firestore rules reuse cached user and membership maps instead of re-reading through wrapper helpers');
+const workspaceAuthorityBlock = firestoreRules.match(/function hasWorkspaceAuthorityFor\(restId, a, b, c, d, e, f\) \{([\s\S]*?)function hasFinancialReadAuthorityFor/);
+assert(Boolean(workspaceAuthorityBlock) && (workspaceAuthorityBlock[1].match(/safeUserData\(\)/g) || []).length === 1 && !workspaceAuthorityBlock[1].includes('membershipDataFor(') && !workspaceAuthorityBlock[1].includes('permissionDataFor('), 'workspace authority performs one safe user lookup and derives membership and permissions from that cached map');
+assert(firestoreRules.includes('function workspaceEntitlementAllows(restId, allowedPlans)') && !firestoreRules.includes('function workspaceSubscriptionStatus(restId)') && !firestoreRules.includes('function rawWorkspacePlanId(restId)'), 'plan entitlement checks use one compact restaurant/subscription path');
 assert(firestoreRules.includes('function hasWorkspaceAuthorityFor(restId, a, b, c, d, e, f)') && firestoreRules.includes("hasWorkspaceAuthorityFor(restId, 'messageBoard', 'messages', 'team', 'ops'"), 'Firestore rules collapse repeated owner/admin/permission checks into one helper chain without exceeding the Firebase function argument limit');
 assert(!firestoreRules.includes('function membershipMapHas') && !firestoreRules.includes('function workspaceIdsHas') && !firestoreRules.includes('function memberData(restId)'), 'Firestore rules remove unused helper functions that make the rules compiler fail');
 assert(!firestoreRules.includes('function hasAnyPermissionFor(restId, a, b, c, d, e, f, g)') && !firestoreRules.includes('function hasWorkspaceAuthorityFor(restId, a, b, c, d, e, f, g)'), 'Firestore helper function signatures stay within the 7-argument Firebase rules limit');
@@ -58,6 +64,11 @@ while ((helperMatch = helperCallPattern.exec(firestoreRules)) !== null) {
 assert(storageRules.includes("isTenantMember(restaurantId) &&\n          (\n            request.auth.uid == uid ||") && !storageRules.includes("return request.auth.uid == uid ||\n        isStorageSuperAdmin()"), 'profile photo writes require tenant membership before self or manager authorization');
 assert(!storageRules.includes('request.auth.token.email') && storageRules.includes("request.auth.token.get('email', '')"), 'Storage rules safely read optional email claims');
 assert(!firestoreRules.includes('request.auth.token.email') && firestoreRules.includes("request.auth.token.get('email', '')"), 'Firestore rules safely read optional email claims');
+assert(firestoreRules.includes('function authEmailMatchesAny(values)') && firestoreRules.includes("request.auth.token.get('email', '') != ''"), 'missing email claims cannot match missing owner-email fields');
+const salesCloseBlock = firestoreRules.match(/function salesCloseRecordIsValid\(data\) \{([\s\S]*?)function financialExpenseRecordIsValid/);
+assert(Boolean(salesCloseBlock) && (salesCloseBlock[1].match(/optionalNumber\(/g) || []).length <= 5 && salesCloseBlock[1].includes("data.keys().hasOnly([") && salesCloseBlock[1].includes("data.date.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$')"), 'daily-close rules retain structural security checks while avoiding exhaustive numeric-field evaluation');
+assert((firestoreRules.match(/\?/g) || []).length <= 25, 'Firestore rules keep total ternary use below the remote-compiler complexity guardrail');
+assert(management.includes('const validateFinanceClosePayload =') && management.includes('FINANCE_CLOSE_NUMERIC_FIELDS.find') && management.includes('const validationError = validateFinanceClosePayload(payload)'), 'daily-close exhaustive amount and text validation runs in the application before Firestore writes');
 const selfUpdateBlock = firestoreRules.match(/function userSafeSelfUpdate\(\) \{([\s\S]*?)function presenceSessionKeys/);
 assert(Boolean(selfUpdateBlock) && !/forcePasswordChange|passwordPurgedAt|passwordStored/.test(selfUpdateBlock[1]), 'users cannot directly edit server-controlled forced-password fields');
 assert(!firestoreRules.includes('function isManagerRoleFor') && !firestoreRules.includes('isManagerRoleFor(restId)'), 'dead always-false manager-role helper is removed while permission helpers remain authoritative');
@@ -71,6 +82,7 @@ assert(!legacyLogin.includes('password: newPass') && legacyLogin.includes("secur
 
 const rulesRunner = read('scripts/run-rules-tests.js');
 assert(rulesRunner.includes('cross-tenant.png') && rulesRunner.includes('forcePasswordChange: false'), 'rules emulator suite covers cross-tenant profile photos and self-clearing password flags');
+assert(rulesRunner.includes("'close_bad_field'") && rulesRunner.includes("'close_bad_date'") && rulesRunner.includes("'close_huge_total'") && rulesRunner.includes("'close_cross_tenant'"), 'rules emulator suite covers the simplified daily-close security boundary');
 assert(rulesRunner.includes('getMetadata') && !rulesRunner.includes('getBlob'), 'Storage emulator tests use Node-compatible authenticated read checks');
 assert(rulesRunner.includes("'demo-no-project'") && !rulesRunner.includes("'chaos-rules-test-local'"), 'Firestore rules test runner uses emulator default project id to avoid single-project warnings');
 const psFull = read('RUN_86CHAOS_PLAY_STORE_RELEASE_GATE.ps1');

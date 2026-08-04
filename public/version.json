@@ -1,15 +1,16 @@
 {
-  "version": "16.0.112",
-  "name": "86 Chaos 16.0.112 Tenant Isolation and Forced Password Security Hotfix",
-  "build": "16.0.112",
-  "label": "86 Chaos 16.0.112 Tenant Isolation and Forced Password Security Hotfix",
-  "releasedAt": "2026-08-02T12:57:00-05:00",
-  "releaseTitle": "86 Chaos 16.0.112 Tenant Isolation and Forced Password Security Hotfix",
+  "version": "16.0.113",
+  "name": "86 Chaos 16.0.113 Firestore Rules Compiler Complexity Hotfix",
+  "build": "16.0.113",
+  "label": "86 Chaos 16.0.113 Firestore Rules Compiler Complexity Hotfix",
+  "releasedAt": "2026-08-03T17:05:00-05:00",
+  "releaseTitle": "86 Chaos 16.0.113 Firestore Rules Compiler Complexity Hotfix",
   "notes": [
-    "Requires profile-photo writers to belong to the restaurant in the Storage path, closing the cross-tenant self-upload loophole.",
-    "Moves forced-password completion to an authenticated server route so users cannot directly clear password-reset flags in Firestore.",
-    "Safely reads optional email claims and removes the permanently false manager-role helper without changing permission-based manager access.",
-    "Adds emulator and server regression tests for tenant isolation, protected password-state fields, recent-auth enforcement, and legacy email-keyed profiles."
+    "Flattens deeply nested platform-authority create checks into direct boolean guards while preserving every privileged-field denial.",
+    "Reuses one current-user, membership, permission, and restaurant lookup per authority decision instead of repeatedly chaining safeUserData, exists, and get calls.",
+    "Collapses subscription-plan evaluation and financial-read authority paths to reduce remote Firestore Rules compiler work without changing tier or role access.",
+    "Keeps the daily-close field allowlist, tenant binding, date format, text limits, and critical total limits in Firestore while moving exhaustive amount validation into the app save flow.",
+    "Includes the 16.0.112 blank-email authority correction so missing email claims can never match missing owner-email fields."
   ],
-  "title": "86 Chaos 16.0.112 Tenant Isolation and Forced Password Security Hotfix"
+  "title": "86 Chaos 16.0.113 Firestore Rules Compiler Complexity Hotfix"
 }

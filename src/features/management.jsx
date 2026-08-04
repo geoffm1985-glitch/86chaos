@@ -3349,6 +3349,12 @@ const TabSales = ({ sales, timePunches = [], users = [], addToast, appUser }) =>
       source: 'financial_center_daily_close'
     };
 
+    const validationError = validateFinanceClosePayload(payload);
+    if (validationError) {
+      addToast('Error', validationError);
+      return;
+    }
+
     try {
       if (existing) {
         await updateDoc(doc(db, 'sales', existing.id), payload);
@@ -10720,6 +10726,26 @@ const FINANCE_EXPENSE_CATEGORIES = ['Food', 'Liquor / Beer / Wine', 'Payroll', '
 const FINANCE_PAYMENT_METHODS = ['Unpaid', 'Cash', 'Card', 'ACH', 'Check', 'Auto Pay', 'Owner Paid', 'Other'];
 const FINANCE_DEPOSIT_STATUSES = ['Not Prepared', 'Prepared', 'Deposited', 'Verified'];
 const FINANCE_CLOSE_STATUSES = ['Open', 'Manager Reviewed', 'Locked'];
+const FINANCE_CLOSE_NUMERIC_FIELDS = [
+  'grossSales', 'netSales', 'cashSales', 'cardSales', 'giftCardSales', 'discounts', 'comps', 'refunds', 'salesTax',
+  'foodSales', 'liquorSales', 'beerSales', 'wineSales', 'beverageSales', 'specialsSales', 'cateringSales', 'otherSales',
+  'laborCost', 'foodCost', 'beverageCost', 'tipsPaidOut', 'startingBank', 'cashPaidOut', 'cashCounted', 'depositAmount',
+  'expectedCash', 'cashVariance', 'categorySalesTotal', 'estimatedProfit'
+];
+const validateFinanceClosePayload = (payload = {}) => {
+  const restaurantId = String(payload.restaurantId || '').trim();
+  if (!restaurantId || restaurantId.length > 160) return 'The restaurant identifier is invalid.';
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(payload.date || ''))) return 'The business date must use YYYY-MM-DD.';
+  const invalidNumber = FINANCE_CLOSE_NUMERIC_FIELDS.find((field) => !Number.isFinite(payload[field]) || Math.abs(payload[field]) > 10000000);
+  if (invalidNumber) return `${invalidNumber} must be a valid amount between -10,000,000 and 10,000,000.`;
+  if (!FINANCE_DEPOSIT_STATUSES.includes(String(payload.depositStatus || ''))) return 'The deposit status is invalid.';
+  if (!FINANCE_CLOSE_STATUSES.includes(String(payload.closeStatus || ''))) return 'The close status is invalid.';
+  if (String(payload.managerSignOff || '').length > 120) return 'Manager sign-off must be 120 characters or fewer.';
+  if (String(payload.notes || '').length > 2500) return 'Notes must be 2,500 characters or fewer.';
+  if (String(payload.loggedBy || '').length > 200) return 'Logged-by text must be 200 characters or fewer.';
+  if (String(payload.source || '').length > 80) return 'The financial close source is invalid.';
+  return '';
+};
 const DEFAULT_FINANCE_TARGETS = { laborPct: 28, foodPct: 32, beveragePct: 22, primePct: 60, weeklySalesGoal: 0, monthlySalesGoal: 0, cashVarianceAlert: 10, overtimeAlertHours: 40 };
 const financeAccess = (user = {}, perm = '') => Boolean(user?.isSuperAdmin || user?.isAdmin || user?.isOwner || user?.accountOwner || user?.owner || user?.workspaceOwner || user?.accountRole === 'owner' || (perm && user?.permissions?.[perm]));
 
