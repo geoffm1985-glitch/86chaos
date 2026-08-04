@@ -121,16 +121,23 @@ function validateLocalRoleEnv(accounts, expectedProject = EXPECTED_FIREBASE_PROJ
   return errors;
 }
 
-async function fetchJson(url, options = {}, fetchImpl = global.fetch) {
+async function fetchDetailedJson(url, options = {}, fetchImpl = global.fetch) {
   if (typeof fetchImpl !== 'function') throw new Error('Global fetch is unavailable. Run the release gate under Node 24.');
   const response = await fetchImpl(url, options);
   const text = await response.text();
   let data = null;
   try { data = text ? JSON.parse(text) : null; } catch (_) { data = { rawText: text }; }
-  if (!response.ok) {
-    const safeText = typeof text === 'string' ? text.slice(0, 1000) : '';
-    throw new Error(`HTTP ${response.status} ${response.statusText || ''} for ${url}: ${safeText}`.trim());
-  }
+  return { response, text, data };
+}
+
+function throwHttpResponseError(url, response, text) {
+  const safeText = typeof text === 'string' ? text.slice(0, 1000) : '';
+  throw new Error(`HTTP ${response.status} ${response.statusText || ''} for ${url}: ${safeText}`.trim());
+}
+
+async function fetchJson(url, options = {}, fetchImpl = global.fetch) {
+  const { response, text, data } = await fetchDetailedJson(url, options, fetchImpl);
+  if (!response.ok) throwHttpResponseError(url, response, text);
   return data;
 }
 
@@ -147,23 +154,28 @@ async function signInAccount(account, config, fetchImpl = global.fetch) {
 async function fetchWhoami(account, fetchImpl = global.fetch) {
   const url = appUrl('/api/whoami');
   if (!url) throw new Error('APP_URL or CHAOS_BASE_URL is missing, so /api/whoami cannot be verified.');
-  const whoami = await fetchJson(url, buildFirebaseAuthFetchOptions({ method: 'GET', headers: { Authorization: `Bearer ${account.idToken}` } }), fetchImpl);
-  return {
+  const { response, text, data: whoami } = await fetchDetailedJson(url, buildFirebaseAuthFetchOptions({ method: 'GET', headers: { Authorization: `Bearer ${account.idToken}` } }), fetchImpl);
+  const expectedPlatformAuthority = account.expectedPlatformAuthority === true;
+  const expectedNonPlatformDenial = !expectedPlatformAuthority && response.status === 403;
+  if (!response.ok && !expectedNonPlatformDenial) throwHttpResponseError(url, response, text);
+  const row = {
     key: account.key,
     label: account.label,
     emailEnv: account.emailEnv,
     passwordEnv: account.passwordEnv,
     email: account.email,
     uid: account.uid,
-    whoamiUid: whoami.uid || '',
-    whoamiEmail: normalizeEmail(whoami.email),
-    superAdmin: whoami.superAdmin === true,
-    customClaimSuperAdmin: whoami.customClaimSuperAdmin === true,
-    serverMasterAdminMatched: whoami.serverMasterAdminMatched === true,
-    firestoreSuperAdmin: whoami.firestoreSuperAdmin === true,
-    firestoreSystemAdministrator: whoami.firestoreSystemAdministrator === true,
-    firestoreProfileRole: whoami.firestoreProfileRole || '',
-    runtimeProjectId: whoami.runtime?.firebaseProjectId || '',
+    whoamiUid: whoami?.uid || '',
+    whoamiEmail: normalizeEmail(whoami?.email),
+    whoamiStatus: response.status,
+    whoamiExpectedDenial: expectedNonPlatformDenial,
+    superAdmin: whoami?.superAdmin === true,
+    customClaimSuperAdmin: whoami?.customClaimSuperAdmin === true,
+    serverMasterAdminMatched: whoami?.serverMasterAdminMatched === true,
+    firestoreSuperAdmin: whoami?.firestoreSuperAdmin === true,
+    firestoreSystemAdministrator: whoami?.firestoreSystemAdministrator === true,
+    firestoreProfileRole: whoami?.firestoreProfileRole || '',
+    runtimeProjectId: whoami?.runtime?.firebaseProjectId || '',
     firebaseProjectId: account.firebaseProjectId || '',
     role: account.role || '',
     restaurantRole: account.restaurantRole || account.role || '',
@@ -173,8 +185,10 @@ async function fetchWhoami(account, fetchImpl = global.fetch) {
     workspaceOwner: account.workspaceOwner === true,
     permissions: account.permissions || {},
     expectedSuperAdmin: account.expectedSuperAdmin === true,
-    expectedPlatformAuthority: account.expectedPlatformAuthority === true,
+    expectedPlatformAuthority,
   };
+  if (expectedNonPlatformDenial) row.expectedDenialVerified = whoami?.platformAuthorityAuthoritative === true || whoami?.platformAuthority?.authoritative === true;
+  return row;
 }
 
 function safeRow(row) {
@@ -186,6 +200,9 @@ function safeRow(row) {
     uid: row.uid,
     whoamiUid: row.whoamiUid || '',
     whoamiEmail: row.whoamiEmail || '',
+    whoamiStatus: Number(row.whoamiStatus || 0),
+    whoamiExpectedDenial: row.whoamiExpectedDenial === true,
+    expectedDenialVerified: row.expectedDenialVerified === true,
     superAdmin: row.superAdmin === true,
     customClaimSuperAdmin: row.customClaimSuperAdmin === true,
     serverMasterAdminMatched: row.serverMasterAdminMatched === true,
@@ -223,6 +240,8 @@ function analyzeRoleRows(rows, expectedProject = EXPECTED_FIREBASE_PROJECT) {
     }
     if (row.firebaseProjectId && row.firebaseProjectId !== expectedProject) errors.push(`${row.emailEnv} signed into Firebase project ${row.firebaseProjectId}; expected ${expectedProject}.`);
     if (row.runtimeProjectId && row.runtimeProjectId !== expectedProject) errors.push(`${row.emailEnv} /api/whoami reported Firebase project ${row.runtimeProjectId}; expected ${expectedProject}.`);
+    if (row.expectedPlatformAuthority === true && row.whoamiStatus && row.whoamiStatus !== 200) errors.push(`${row.emailEnv} expected platform authority but /api/whoami returned HTTP ${row.whoamiStatus}.`);
+    if (row.expectedPlatformAuthority === false && row.whoamiStatus && ![200, 403].includes(row.whoamiStatus)) errors.push(`${row.emailEnv} expected a normal user /api/whoami response or authoritative 403 denial, but received HTTP ${row.whoamiStatus}.`);
   }
   const byKey = Object.fromEntries(rows.map(row => [row.key, row]));
   if (byKey.systemAdmin && byKey.systemAdmin.superAdmin !== true) {
@@ -378,6 +397,7 @@ module.exports = {
   analyzeRoleRows,
   verifyRoleAccounts,
   validateRoleReportForSeed,
+  fetchWhoami,
   buildFirebaseAuthRequestHeaders,
   buildFirebaseAuthFetchOptions,
   getFirebaseAuthOriginHeaderCounts,

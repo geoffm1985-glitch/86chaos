@@ -1,15 +1,15 @@
 {
-  "version": "16.0.115",
-  "name": "86 Chaos 16.0.115 Release Gate Credential Fallback",
-  "build": "16.0.115",
-  "label": "86 Chaos 16.0.115 Release Gate Credential Fallback",
-  "releasedAt": "2026-08-03T21:33:00-05:00",
-  "releaseTitle": "86 Chaos 16.0.115 Release Gate Credential Fallback",
+  "version": "16.0.116",
+  "name": "86 Chaos 16.0.116 Release Gate Role Verification Fix",
+  "build": "16.0.116",
+  "label": "86 Chaos 16.0.116 Release Gate Role Verification Fix",
+  "releasedAt": "2026-08-03T22:09:00-05:00",
+  "releaseTitle": "86 Chaos 16.0.116 Release Gate Role Verification Fix",
   "notes": [
-    "Lets the release-gate runner skip temporary account auto-provisioning when Firebase Admin credentials are unavailable and verify already configured QA accounts instead.",
-    "Allows the existing generic service-account credential names, including FIREBASE_SERVICE_ACCOUNT_KEY and GOOGLE_APPLICATION_CREDENTIALS file paths, to satisfy testing credential lookup when they belong to chaos-test-d1601.",
-    "Keeps mutation safety checks on the testing Firebase project and avoids production Firebase mutations.",
+    "Fixes the release-gate role preflight so authoritative /api/whoami 403 denials are accepted for normal owner, manager, and staff QA accounts.",
+    "Keeps System Administrator verification strict: the System Administrator QA account must still receive 200 verified platform authority.",
+    "Prevents correct non-platform denial responses from blocking Playwright before test execution.",
     "Preserves the already deployed Firestore rules byte-for-byte."
   ],
-  "title": "86 Chaos 16.0.115 Release Gate Credential Fallback"
+  "title": "86 Chaos 16.0.116 Release Gate Role Verification Fix"
 }
