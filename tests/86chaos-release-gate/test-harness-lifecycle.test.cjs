@@ -703,10 +703,31 @@ test('global setup can carry verified role-project identity into no-admin QA see
   assert.match(source, /FIREBASE_PROJECT_ID\s*=\s*process\.env\.FIREBASE_PROJECT_ID\s*\|\|\s*clean/);
 });
 
-test('browser-origin seed uses verified role-project identity before Firebase config reads', () => {
+test('QA seed uses server-verified System Administrator API instead of client Firestore REST writes', () => {
   const source = fs.readFileSync(seedPath, 'utf8');
   assert.match(source, /function verifiedRoleProjectId\(report\)/);
   assert.match(source, /readJsonIfExists\(getRoleReportPath\(RUN_ID\)\)/);
   assert.match(source, /projectId:\s*roleVerifiedProjectId/);
-  assert.doesNotMatch(source, /projectId:\s*'chaos-test-d1601'/);
+  assert.match(source, /\/api\/full-audit-qa-seed/);
+  assert.match(source, /server-verified-qa-seed-api/);
+  assert.match(source, /buildServerSeedDocuments/);
+  assert.doesNotMatch(source, /seedMethod\s*=\s*'browser-origin-rest'/);
+});
+
+test('QA cleanup uses server-verified API instead of client Firestore runQuery cleanup', () => {
+  const source = fs.readFileSync(cleanupPath, 'utf8');
+  assert.match(source, /\/api\/full-audit-qa-seed/);
+  assert.match(source, /server-verified-qa-seed-api/);
+  assert.match(source, /callQaSeedApi\('cleanup'/);
+  assert.doesNotMatch(source, /const cleanup = await cleanupCurrentRun/);
+});
+
+test('server QA seed API remains System Administrator and testing-project gated', () => {
+  const source = fs.readFileSync(path.resolve(__dirname, '../../api/full-audit-qa-seed.js'), 'utf8');
+  assert.match(source, /const TESTING_PROJECT_ID = 'chaos-test-d1601'/);
+  assert.match(source, /System Administrator authority is required/);
+  assert.match(source, /QA seed route only runs against/);
+  assert.match(source, /QA seed route refused a production host/);
+  assert.match(source, /validateDocuments/);
+  assert.match(source, /createdBy: '86chaos-full-audit'/);
 });

@@ -302,12 +302,86 @@ async function cleanupCurrentRun({ page, rest, storage, seed = {}, restaurantId 
   };
 }
 
+
+async function fetchJson(url, options = {}, fetchImpl = global.fetch) {
+  if (typeof fetchImpl !== 'function') throw new Error('Global fetch is unavailable. Run the release gate under Node 24.');
+  const response = await fetchImpl(url, options);
+  const text = await response.text();
+  let data = null;
+  try { data = text ? JSON.parse(text) : null; } catch (_) { data = { rawText: text }; }
+  if (!response.ok) {
+    const safeText = String(text || '').replace(/(token|secret|private[_ -]?key|authorization|password)[=:]\s*[^\s,;}]+/gi, '$1=[redacted]').slice(0, 1200);
+    throw new Error(`HTTP ${response.status} ${response.statusText || ''} for ${url}: ${safeText}`.trim());
+  }
+  return data;
+}
+
+async function signInForIdToken(config, email, password) {
+  const signInUrl = `https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${encodeURIComponent(config.apiKey)}`;
+  const signed = await fetchJson(signInUrl, {
+    method: 'POST',
+    headers: buildFirebaseAuthRequestHeaders(),
+    body: JSON.stringify({ email, password, returnSecureToken: true }),
+  });
+  if (!signed.idToken) throw new Error('Firebase Auth cleanup sign-in did not return idToken.');
+  return signed;
+}
+
+function buildApiHeaders(idToken) {
+  const headers = { Authorization: `Bearer ${idToken}`, 'Content-Type': 'application/json' };
+  const base = appUrl();
+  if (base) {
+    try {
+      const origin = new URL(base).origin;
+      headers.Origin = origin;
+      headers.Referer = `${origin}/`;
+    } catch (_) {
+      headers.Referer = String(base);
+    }
+  }
+  return headers;
+}
+
+async function callQaSeedApi(action, idToken, body) {
+  const url = appUrl('/api/full-audit-qa-seed');
+  if (!url) throw new Error('APP_URL or CHAOS_BASE_URL is required before server-verified QA cleanup can run.');
+  return fetchJson(url, {
+    method: 'POST',
+    headers: buildApiHeaders(idToken),
+    body: JSON.stringify({ action, ...body }),
+  });
+}
+
+function roleAccountsForCleanup(seed = {}) {
+  const fromSeed = Array.isArray(seed.roleAccounts) ? seed.roleAccounts : [];
+  const fromVerification = Array.isArray(seed.roleIdentityVerification?.accounts) ? seed.roleIdentityVerification.accounts : [];
+  const rows = fromSeed.length ? fromSeed : fromVerification;
+  return rows.map(row => ({
+    key: row.key,
+    email: row.email,
+    uid: row.uid,
+    name: row.name || row.label || row.email || row.key,
+    role: row.role || row.restaurantRole || '',
+    restaurantRole: row.restaurantRole || row.role || '',
+    isAdmin: row.isAdmin === true,
+    isOwner: row.isOwner === true,
+    accountOwner: row.accountOwner === true,
+    workspaceOwner: row.workspaceOwner === true,
+    permissions: row.permissions || {},
+  })).filter(row => row.key && row.email && row.uid);
+}
+
+function nodeFetchPage() {
+  return {
+    evaluate: async (fn, request) => fn(request),
+  };
+}
+
 async function main() {
   const report = { ok: false, expected: {}, deleted: {}, alreadyAbsent: {}, failed: [], remaining: {}, additionalRunRecords: {}, warnings: [] };
-  let browser;
   try {
     if (!boolEnv('CHAOS_ALLOW_MUTATION')) throw new Error('CHAOS_ALLOW_MUTATION=true required for cleanup.');
-    if (!env('APP_URL', 'CHAOS_BASE_URL', 'PLAYWRIGHT_BASE_URL', 'BASE_URL')) throw new Error('APP_URL / CHAOS_BASE_URL required for browser-origin cleanup.');
+    if (!env('APP_URL', 'CHAOS_BASE_URL', 'PLAYWRIGHT_BASE_URL', 'BASE_URL')) throw new Error('APP_URL / CHAOS_BASE_URL required for server-verified cleanup.');
 
     const seedPath = getSeedReportPath(RUN_ID);
     const seed = readJsonIfExists(seedPath);
@@ -323,13 +397,13 @@ async function main() {
           ...report,
           ok: true,
           skipped: true,
+          cleanupMethod: 'server-verified-qa-seed-api',
           reason: 'Cleanup safely skipped because QA setup did not create a current-run restaurant or seeded child records.',
           setupState: setupState || null,
         });
         return;
       }
-      throw new Error(`Cleanup refused before deleting anything:
-${validation.errors.join('\n')}`);
+      throw new Error(`Cleanup refused before deleting anything:\n${validation.errors.join('\n')}`);
     }
     const restaurantId = validation.restaurantId;
     const qaNameCheck = validateQaWorkspaceName(QA_RESTAURANT_NAME, RUN_ID);
@@ -341,58 +415,42 @@ ${validation.errors.join('\n')}`);
     if (!mutationSafety.ok) throw new Error(`QA cleanup mutation safety failed: ${mutationSafety.errors.join('; ')}`);
     report.mutationSafety = mutationSafety;
     const { email, password } = getCredentials();
-
-    const { chromium } = require('playwright');
-    browser = await chromium.launch({ headless: true });
-    const context = await browser.newContext({ viewport: { width: 1365, height: 900 } });
-    const page = await context.newPage();
-    await page.goto(appUrl('today'), { waitUntil: 'domcontentloaded', timeout: 60000 });
-
-    const signInUrl = `https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${encodeURIComponent(config.apiKey)}`;
-    const signed = await pageFetchJson(page, {
-      url: signInUrl,
-      method: 'POST',
-      headers: buildFirebaseAuthRequestHeaders(),
-      body: { email, password, returnSecureToken: true },
-    });
-    if (!signed.idToken) throw new Error('Browser-origin Firebase Auth cleanup sign-in did not return idToken.');
+    const signed = await signInForIdToken(config, email, password);
     report.signedInAs = email;
     report.restaurantId = restaurantId;
     report.restaurantName = seed?.restaurantName || seed?.profile?.restaurantName || QA_RESTAURANT_NAME;
+    report.cleanupMethod = 'server-verified-qa-seed-api';
 
-    const rest = firestoreRest(config, signed.idToken);
+    const apiResult = await callQaSeedApi('cleanup', signed.idToken, {
+      runId: RUN_ID,
+      expectedProjectId: config.projectId,
+      restaurantId,
+      workspaceName: report.restaurantName,
+      seededDocuments: Array.isArray(seed?.seededDocuments) ? seed.seededDocuments : [],
+      roleAccounts: roleAccountsForCleanup(seed || {}),
+    });
+    report.apiResult = { ok: apiResult.ok === true, action: apiResult.action, projectId: apiResult.projectId, cleanupMethod: apiResult.cleanupMethod };
+    report.failed = Array.isArray(apiResult.failures) ? apiResult.failures : [];
+    report.remaining = Array.isArray(apiResult.remaining) && apiResult.remaining.length ? Object.fromEntries(apiResult.remaining.map(row => [row.collection, row.count || 1])) : {};
+    report.deletedOrUpdated = apiResult.deletedOrUpdated || 0;
+
     const storage = storageRest(config, signed.idToken);
-    const restaurantDocName = `projects/${config.projectId}/databases/(default)/documents/restaurants/${restaurantId}`;
-    const restaurantDoc = await getDocByName(page, rest, restaurantDocName);
-    if (!restaurantDoc) throw new Error(`Current-run restaurant document does not exist before cleanup: ${restaurantId}`);
-    const restaurantData = firestoreDocData(restaurantDoc);
-    const restaurantErrors = [];
-    const restaurantName = restaurantData.name || restaurantData.restaurantName || restaurantData.qaCleanupName || '';
-    if (restaurantName !== QA_RESTAURANT_NAME) restaurantErrors.push(`restaurant name was ${restaurantName || '(missing)'}, expected ${QA_RESTAURANT_NAME}`);
-    if (restaurantData.qaOwned !== true) restaurantErrors.push(`qaOwned was ${String(restaurantData.qaOwned)}`);
-    if (restaurantData.qaRunId !== RUN_ID) restaurantErrors.push(`qaRunId was ${restaurantData.qaRunId || '(missing)'}`);
-    if (restaurantData.createdBy !== '86chaos-full-audit') restaurantErrors.push(`createdBy was ${restaurantData.createdBy || '(missing)'}`);
-    if (restaurantErrors.length) throw new Error(`Cleanup refused non-current/non-QA restaurant: ${restaurantErrors.join('; ')}`);
-
-    const cleanup = await cleanupCurrentRun({ page, rest, storage, seed, restaurantId });
-    Object.assign(report, cleanup);
-
-    const restaurantDelete = await deleteDocName(page, rest, restaurantDocName);
-    report.restaurantDeleted = restaurantDelete.ok && !restaurantDelete.alreadyAbsent ? 1 : 0;
-    if (!restaurantDelete.ok) report.failed.push({ collection: 'restaurants', id: restaurantId, docName: restaurantDocName, error: restaurantDelete.error || restaurantDelete.reason || 'delete failed' });
-    const restaurantAfter = await getDocByName(page, rest, restaurantDocName);
-    report.restaurantRemaining = Boolean(restaurantAfter);
-
-    const accountedFailures = [];
-    for (const [collection, expectedCount] of Object.entries(report.expected)) {
-      const accounted = (report.deleted[collection] || 0) + (report.alreadyAbsent[collection] || 0);
-      if (accounted < expectedCount) accountedFailures.push({ collection, expected: expectedCount, accounted });
+    try {
+      const documentVaultStorage = await cleanupDocumentVaultStorage(nodeFetchPage(), storage, restaurantId);
+      report.storageObjectsRemoved = documentVaultStorage.removed || [];
+      report.storageObjectsFound = documentVaultStorage.found || 0;
+      report.unresolvedQaLeftovers = documentVaultStorage.unresolved || [];
+      if (documentVaultStorage.failed?.length) report.failed.push(...documentVaultStorage.failed.map(row => ({ collection: '_storage', ...row })));
+      if (documentVaultStorage.remaining?.length) report.remaining._storage = documentVaultStorage.remaining.length;
+    } catch (error) {
+      report.failed.push({ collection: '_storage', error: `Document Vault Storage cleanup failed: ${error.message}` });
     }
-    if (Object.keys(report.expected).length && Object.values(report.expected).every(v => Number(v) === 0)) {
-      accountedFailures.push({ collection: '*', expected: 'nonzero seed counts', accounted: 0, reason: 'seed report had zero expected records' });
-    }
-    report.accountedFailures = accountedFailures;
-    report.ok = report.seedValidation.ok === true && report.failed.length === 0 && accountedFailures.length === 0 && Object.keys(report.remaining).length === 0 && (report.unresolvedQaLeftovers || []).length === 0 && report.restaurantDeleted === 1 && report.restaurantRemaining === false;
+
+    report.expected = buildExpectedByCollection(seed || {});
+    report.restaurantDeleted = apiResult.remaining?.some?.(row => row.collection === 'restaurants') ? 0 : 1;
+    report.restaurantRemaining = report.restaurantDeleted !== 1;
+    report.accountedFailures = [];
+    report.ok = apiResult.ok === true && report.failed.length === 0 && Object.keys(report.remaining).length === 0 && (report.unresolvedQaLeftovers || []).length === 0;
     if (!report.ok) process.exitCode = 1;
   } catch (error) {
     report.ok = false;
@@ -400,7 +458,6 @@ ${validation.errors.join('\n')}`);
     console.error(error.stack || error.message);
     process.exitCode = 1;
   } finally {
-    if (browser) await browser.close().catch(() => {});
     writeReport(report);
     console.log(`Cleanup report: ${REPORT_PATH}`);
   }

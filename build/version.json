@@ -1,15 +1,15 @@
 {
-  "version": "16.0.117",
-  "name": "86 Chaos 16.0.117 Release Gate QA Seed Project Fix",
-  "build": "16.0.117",
-  "label": "86 Chaos 16.0.117 Release Gate QA Seed Project Fix",
-  "releasedAt": "2026-08-03T22:09:00-05:00",
-  "releaseTitle": "86 Chaos 16.0.117 Release Gate QA Seed Project Fix",
+  "version": "16.0.118",
+  "name": "86 Chaos 16.0.118 Release Gate Server Seed Fix",
+  "build": "16.0.118",
+  "label": "86 Chaos 16.0.118 Release Gate Server Seed Fix",
+  "releasedAt": "2026-08-04T16:18:00-05:00",
+  "releaseTitle": "86 Chaos 16.0.118 Release Gate Server Seed Fix",
   "notes": [
-    "Fixes the release-gate role preflight so authoritative /api/whoami 403 denials are accepted for normal owner, manager, and staff QA accounts.",
-    "Keeps System Administrator verification strict: the System Administrator QA account must still receive 200 verified platform authority.",
-    "Prevents correct non-platform denial responses from blocking Playwright before test execution.",
-    "Preserves the already deployed Firestore rules byte-for-byte."
+    "Moves release-gate QA Firestore seed and cleanup through a server-verified System Administrator API route.",
+    "Allows the full release gate to use the configured temporary QA accounts without requiring a local test service-account key.",
+    "Keeps QA mutation pinned to the testing Firebase project chaos-test-d1601 and refuses production hosts.",
+    "Preserves the already deployed Firestore and Storage rules byte-for-byte."
   ],
-  "title": "86 Chaos 16.0.117 Release Gate QA Seed Project Fix"
+  "title": "86 Chaos 16.0.118 Release Gate Server Seed Fix"
 }
