@@ -69,6 +69,19 @@ async function writeReport(report) {
   writeReportSync(report);
 }
 
+
+function verifiedRoleProjectId(report) {
+  if (!report || report.ok !== true) return '';
+  const values = [
+    report.firebaseProjectId,
+    report.expectedFirebaseProjectId,
+    ...(Array.isArray(report.accounts) ? report.accounts.flatMap(row => [row.firebaseProjectId, row.runtimeProjectId]) : []),
+  ].map(value => String(value || '').trim()).filter(Boolean);
+  const unique = Array.from(new Set(values));
+  if (unique.length === 1) return unique[0];
+  return '';
+}
+
 function appUrl(pathOrTab = '') {
   const base = env('APP_URL', 'CHAOS_BASE_URL').replace(/\/+$/, '');
   if (!pathOrTab) return base;
@@ -342,7 +355,9 @@ function withIds(profile, createdIds) {
 async function main() {
   const qaNameCheck = validateQaWorkspaceName(QA_RESTAURANT_NAME, RUN_ID);
   if (!qaNameCheck.ok) throw new Error(`QA workspace name failed safety validation: ${qaNameCheck.errors.join('; ')}`);
-  const earlyMutationSafety = assertMutationSafety({ env: process.env, runId: RUN_ID, requireAdminCredentials: false });
+  const roleReportForProject = readJsonIfExists(getRoleReportPath(RUN_ID));
+  const roleVerifiedProjectId = verifiedRoleProjectId(roleReportForProject);
+  const earlyMutationSafety = assertMutationSafety({ env: process.env, runId: RUN_ID, projectId: roleVerifiedProjectId, requireAdminCredentials: false });
   if (!earlyMutationSafety.ok) throw new Error(`QA seed mutation safety failed: ${earlyMutationSafety.errors.join('; ')}`);
   mergeSetupState({ writesStarted: false, mutationSafety: earlyMutationSafety, qaWorkspaceValidation: qaNameCheck });
   const report = { ok: false, warnings: [] };

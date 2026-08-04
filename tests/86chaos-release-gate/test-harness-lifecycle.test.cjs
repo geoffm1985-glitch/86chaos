@@ -693,3 +693,20 @@ test('PowerShell release gate enables safe auto provisioning and unique QA resta
   assert.match(source, /CHAOS_QA_CREATE_RESTAURANT\s*=\s*"true"/);
   assert.match(source, /86 Chaos Release Gate QA \$RunId/);
 });
+
+
+test('global setup can carry verified role-project identity into no-admin QA seeding', () => {
+  const source = fs.readFileSync(path.resolve(__dirname, './global-setup.cjs'), 'utf8');
+  assert.match(source, /function verifiedRoleProjectId\(report\)/);
+  assert.match(source, /applyVerifiedRoleProjectEnv\(verifiedRoleProjectId\(roleReport\)\)/);
+  assert.match(source, /projectId:\s*roleVerifiedProjectId/);
+  assert.match(source, /FIREBASE_PROJECT_ID\s*=\s*process\.env\.FIREBASE_PROJECT_ID\s*\|\|\s*clean/);
+});
+
+test('browser-origin seed uses verified role-project identity before Firebase config reads', () => {
+  const source = fs.readFileSync(seedPath, 'utf8');
+  assert.match(source, /function verifiedRoleProjectId\(report\)/);
+  assert.match(source, /readJsonIfExists\(getRoleReportPath\(RUN_ID\)\)/);
+  assert.match(source, /projectId:\s*roleVerifiedProjectId/);
+  assert.doesNotMatch(source, /projectId:\s*'chaos-test-d1601'/);
+});

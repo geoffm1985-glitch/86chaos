@@ -27,11 +27,11 @@ const whoami = read('api/whoami.js');
 const protectedRoot = read('api/_protected-root-admin.js');
 const apiVersion = read('api/_version.js');
 
-assert(pkg.version === '16.0.116', 'package.json version is 16.0.116');
-assert(lock.version === '16.0.116' && lock.packages?.['']?.version === '16.0.116', 'package-lock root versions are 16.0.116');
-assert(versionJson.version === '16.0.116' && versionJson.build === '16.0.116', 'public/version.json version/build are 16.0.116');
-assert(appCore.includes("export const CURRENT_VERSION = '16.0.116'"), 'src/core/appCore.js CURRENT_VERSION is 16.0.116');
-assert(apiVersion.includes("APP_VERSION = '16.0.116'") && apiVersion.includes("SECURITY_SCHEMA_VERSION = '16.0.116'"), 'api/_version.js reports 16.0.116');
+assert(pkg.version === '16.0.117', 'package.json version is 16.0.117');
+assert(lock.version === '16.0.117' && lock.packages?.['']?.version === '16.0.117', 'package-lock root versions are 16.0.117');
+assert(versionJson.version === '16.0.117' && versionJson.build === '16.0.117', 'public/version.json version/build are 16.0.117');
+assert(appCore.includes("export const CURRENT_VERSION = '16.0.117'"), 'src/core/appCore.js CURRENT_VERSION is 16.0.117');
+assert(apiVersion.includes("APP_VERSION = '16.0.117'") && apiVersion.includes("SECURITY_SCHEMA_VERSION = '16.0.117'"), 'api/_version.js reports 16.0.117');
 
 assert(sha256('firestore.rules') === '239f5c27bf0275f8aae86fed1e6478d3a10f6231cc225d17199086da5070b1ff', 'deployed firestore.rules SHA-256 is preserved byte-for-byte');
 assert(sha256('storage.rules') === '4037c82b31a1a16cc0f7b5c43d8557a3c180adcf8011cc8c893465355c7f62be', 'storage.rules remains unchanged from the uploaded source ZIP');
@@ -79,5 +79,14 @@ assert(roleVerifier.includes('expectedNonPlatformDenial = !expectedPlatformAutho
 assert(roleVerifier.includes('if (!response.ok && !expectedNonPlatformDenial) throwHttpResponseError'), 'release-gate role verifier still rejects unexpected /api/whoami failures and System Administrator denial');
 assert(roleVerifier.includes('whoamiStatus: response.status') && roleVerifier.includes('expectedDenialVerified'), 'release-gate role verifier records safe whoami status/denial diagnostics');
 assert(read('tests/86chaos-release-gate/role-account-verification.test.cjs').includes('accepts authoritative 403 /api/whoami denial'), 'targeted release-gate role verification regression test exists');
+
+const globalSetup = read('tests/86chaos-release-gate/global-setup.cjs');
+const seedScript = read('scripts/86chaos-full-audit/seed-fake-restaurant.cjs');
+assert(globalSetup.includes('function verifiedRoleProjectId(report)'), 'release-gate global setup derives Firebase project identity from verified role preflight');
+assert(globalSetup.includes('applyVerifiedRoleProjectEnv(verifiedRoleProjectId(roleReport))'), 'release-gate global setup applies verified role project before QA seed safety gate');
+assert(globalSetup.includes('projectId: roleVerifiedProjectId'), 'release-gate global setup passes verified role project into mutation safety without requiring Admin credentials');
+assert(seedScript.includes('readJsonIfExists(getRoleReportPath(RUN_ID))'), 'browser-origin QA seed reads current role preflight report for project identity');
+assert(seedScript.includes('projectId: roleVerifiedProjectId'), 'browser-origin QA seed accepts verified role project identity before Firebase config validation');
+assert(read('tests/86chaos-release-gate/test-harness-lifecycle.test.cjs').includes('global setup can carry verified role-project identity'), 'targeted release-gate QA seed project regression test exists');
 
 if (process.exitCode) process.exit(process.exitCode);

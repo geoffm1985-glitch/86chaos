@@ -17,6 +17,27 @@ function isSafeTestingUrl(value = '') {
   } catch (_) { return false; }
 }
 
+
+function verifiedRoleProjectId(report) {
+  if (!report || report.ok !== true) return '';
+  const values = [
+    report.firebaseProjectId,
+    report.expectedFirebaseProjectId,
+    ...(Array.isArray(report.accounts) ? report.accounts.flatMap(row => [row.firebaseProjectId, row.runtimeProjectId]) : []),
+  ].map(value => String(value || '').trim()).filter(Boolean);
+  const unique = Array.from(new Set(values));
+  if (unique.length === 1) return unique[0];
+  return '';
+}
+
+function applyVerifiedRoleProjectEnv(projectId = '') {
+  const clean = String(projectId || '').trim();
+  if (!clean) return '';
+  process.env.FIREBASE_PROJECT_ID = process.env.FIREBASE_PROJECT_ID || clean;
+  process.env.REACT_APP_TEST_FIREBASE_PROJECT_ID = process.env.REACT_APP_TEST_FIREBASE_PROJECT_ID || clean;
+  return clean;
+}
+
 function updateRunnerState(runId, patch) {
   const statePath = getRunFile('runner-state.json', runId);
   const existing = readJsonIfExists(statePath) || { runId, steps: [] };
@@ -116,7 +137,8 @@ module.exports = async () => {
     writeState();
     throw new Error(state.errors.join('\n'));
   }
-  const mutationSafety = assertMutationSafety({ env: process.env, appUrl, runId, requireAdminCredentials: false });
+  const roleVerifiedProjectId = applyVerifiedRoleProjectEnv(verifiedRoleProjectId(roleReport));
+  const mutationSafety = assertMutationSafety({ env: process.env, appUrl, runId, projectId: roleVerifiedProjectId, requireAdminCredentials: false });
   state.mutationSafety = mutationSafety;
   if (!mutationSafety.ok) {
     state.errors.push(...mutationSafety.errors);
