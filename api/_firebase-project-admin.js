@@ -1,5 +1,6 @@
 const admin = require('firebase-admin');
 const crypto = require('crypto');
+const fs = require('fs');
 
 const TRUSTED_PROJECTS = ['chaos-test-d1601', 'cheers-34b8d'];
 const PROJECT_ENV_ALIASES = {
@@ -164,6 +165,16 @@ function normalizedCredential(credential = {}) {
   };
 }
 
+function readServiceAccountFile(filePath, sourceName) {
+  const resolved = clean(filePath);
+  if (!resolved) return null;
+  if (!fs.existsSync(resolved)) {
+    throw new Error(`${sourceName} points to ${resolved}, but that file was not found.`);
+  }
+  const credential = parseJsonCredential(fs.readFileSync(resolved, 'utf8'), sourceName);
+  return { credential: normalizedCredential(credential), source: sourceName };
+}
+
 function readGenericCredential() {
   const jsonNames = ['FIREBASE_SERVICE_ACCOUNT_KEY', 'FIREBASE_ADMIN_CREDENTIALS', 'FIREBASE_SERVICE_ACCOUNT_JSON', 'GOOGLE_APPLICATION_CREDENTIALS_JSON', 'GOOGLE_FIREBASE_SERVICE_ACCOUNT_KEY'];
   for (const name of jsonNames) {
@@ -171,6 +182,12 @@ function readGenericCredential() {
     if (!raw || !String(raw).trim()) continue;
     const credential = parseJsonCredential(String(raw), name);
     return { credential: normalizedCredential(credential), source: name };
+  }
+
+  for (const name of ['GOOGLE_APPLICATION_CREDENTIALS', 'GCLOUD_SERVICE_ACCOUNT_KEY_PATH', 'FIREBASE_SERVICE_ACCOUNT_KEY_PATH']) {
+    const raw = process.env[name];
+    if (!raw || !String(raw).trim()) continue;
+    return readServiceAccountFile(raw, name);
   }
 
   const projectId = clean(process.env.FIREBASE_PROJECT_ID);

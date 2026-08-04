@@ -103,6 +103,56 @@ async function getDefaultAdminApp(projectId) {
   return getAdminAppForProject(projectId, { requireCredentials: true });
 }
 
+async function verifyExistingAccountsWithoutProvisioning(report, credentialError, options = {}) {
+  report.skipped = true;
+  report.status = 'using-existing-accounts';
+  report.autoProvisionSkipped = true;
+  report.credentialRequired = false;
+  report.credentialSource = 'none';
+  report.notes.push('No Firebase Admin credential was available, so the release gate skipped temporary account provisioning and verified the already configured QA accounts instead.');
+  report.notes.push('This mode does not create users, change passwords, set custom claims, or write Firestore profiles.');
+  if (credentialError?.message) {
+    report.adminCredentialUnavailable = credentialError.message;
+  }
+  try {
+    const verifyExistingRoleAccounts = options.verifyRoleAccounts || verifyRoleAccounts;
+    const verified = await verifyExistingRoleAccounts({ throwOnFailure: false, writeReport: true, phase: 'existing-account-provision-fallback', loadEnvironment: false });
+    report.verifiedExistingAccounts = verified.report?.ok === true;
+    report.roleVerificationOutput = verified.out;
+    report.accounts = (verified.report?.accounts || []).map(row => ({
+      key: row.key,
+      label: row.label,
+      emailEnv: row.emailEnv,
+      email: row.email,
+      uid: row.uid,
+      superAdmin: row.superAdmin === true,
+      runtimeProjectId: row.runtimeProjectId || '',
+      firebaseProjectId: row.firebaseProjectId || '',
+    }));
+    if (verified.report?.ok !== true) {
+      report.ok = false;
+      report.blocked = true;
+      report.status = 'blocked-existing-accounts-invalid';
+      report.errors = [...new Set(verified.report?.errors || ['Existing release-gate role accounts could not be verified.'])];
+      report.manualConfigurationRequired = [
+        'Auto-provisioning was skipped because no Firebase Admin credential was available.',
+        'Fix the already configured SYSTEM_ADMIN/OWNER/MANAGER/STAFF test accounts in .env.test.local, or provide a generic FIREBASE_SERVICE_ACCOUNT_KEY / GOOGLE_APPLICATION_CREDENTIALS credential for chaos-test-d1601.',
+        ...(verified.report?.manualConfigurationRequired || []),
+      ];
+    }
+  } catch (error) {
+    report.ok = false;
+    report.blocked = true;
+    report.status = 'blocked-existing-account-verification-crashed';
+    report.errors = [error.message || String(error)];
+    report.manualConfigurationRequired = [
+      'Auto-provisioning was skipped because no Firebase Admin credential was available.',
+      'Existing QA account verification crashed before Playwright could start. Check .env.test.local and the /api/whoami response.',
+    ];
+  }
+  return report;
+}
+
 async function upsertAuthUser(auth, account) {
   let existing = null;
   const email = normalizeEmail(account.email);
@@ -218,9 +268,7 @@ async function provisionTestAccounts(options = {}) {
   try {
     app = options.adminApp || await getDefaultAdminApp(EXPECTED_FIREBASE_PROJECT);
   } catch (error) {
-    report.ok = false;
-    report.errors.push(`Testing Firebase Admin credentials are required to auto-provision release-gate users for ${EXPECTED_FIREBASE_PROJECT}. Configure FIREBASE_TEST_SERVICE_ACCOUNT_KEY or another supported testing service-account env var, or create the accounts manually.`);
-    report.errors.push(error.message || String(error));
+    await verifyExistingAccountsWithoutProvisioning(report, error, options);
     writeJson(out, report);
     return report;
   }
@@ -302,5 +350,6 @@ module.exports = {
   profileForAccount,
   safeClaimPatchForAccount,
   validateProvisionSafety,
+  verifyExistingAccountsWithoutProvisioning,
   provisionTestAccounts,
 };
