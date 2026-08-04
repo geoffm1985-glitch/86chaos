@@ -13,6 +13,7 @@ import { getVoiceMatchScore, resolveVoiceMatch } from '../core/voiceIntelligence
 import { buildAiOrderAssistant, parseAiOrderingVoiceIntent, summarizeAiOrderAssistant } from '../core/aiOrderAssistant';
 import { buildRestaurantAiInsightBundle, summarizeInsightBundleForVoice, extractRestaurantGeofenceLocation } from '../core/restaurantAiInsights';
 import { resolveFeatureAccess, resolveRouteAccess, isMasterAdminUser } from '../lib/featureAccess';
+import { PLATFORM_ADMIN_ACCESS_STATES, resolvePlatformAdminAccessState } from '../core/sessionAccess';
 import { FEATURE_KEYS } from '../config/plans';
 
 
@@ -108,7 +109,7 @@ const reminderNeedsAttention = (reminder = {}, appUser = {}) => {
   return Number.isFinite(dueAt) && dueAt <= Date.now();
 };
 
-const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppUser, hasUnreadMessages, hasMyShiftAlert, hasScheduleBuilderAlert, hasHelpUpdate = false, clientFeatures = {}, clientData = {}, addToast, availableWorkspaces = [], activeWorkspaceName = '', onOpenWorkspaceSwitcher }) => {
+const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppUser, hasUnreadMessages, hasMyShiftAlert, hasScheduleBuilderAlert, hasHelpUpdate = false, clientFeatures = {}, clientData = {}, addToast, availableWorkspaces = [], activeWorkspaceName = '', onOpenWorkspaceSwitcher, platformAdminAccessState = null }) => {
   const [menuSearch, setMenuSearch] = useState('');
 
   // Reset the drawer search every time the hamburger menu opens/closes.
@@ -128,8 +129,14 @@ const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppU
   if (!isOpen) return null;
   const tabs = [];
   const isEnabled = (feat) => clientFeatures[feat] !== false;
-  const routeAccessFor = (tabId) => resolveRouteAccess({ workspace: clientData || {}, user: appUser || {}, clientFeatures, route: tabId, demoMode: appUser?.isDemo === true, serverVerifiedPlatformAdmin: isMasterAdminUser(appUser), platformAdminPending: appUser?.pendingSystemAdminVerification === true });
+  const resolvedPlatformAdminAccessState = platformAdminAccessState || resolvePlatformAdminAccessState({ user: appUser || {}, masterAdminEmail: MASTER_ADMIN_EMAIL });
+  const platformAdminPendingForRoute = Boolean(
+    resolvedPlatformAdminAccessState.showDrawerEntry === true &&
+    (resolvedPlatformAdminAccessState.state === PLATFORM_ADMIN_ACCESS_STATES.PENDING || resolvedPlatformAdminAccessState.state === PLATFORM_ADMIN_ACCESS_STATES.TEMPORARILY_UNAVAILABLE)
+  );
+  const routeAccessFor = (tabId) => resolveRouteAccess({ workspace: clientData || {}, user: appUser || {}, clientFeatures, route: tabId, demoMode: appUser?.isDemo === true, serverVerifiedPlatformAdmin: resolvedPlatformAdminAccessState.verified === true || isMasterAdminUser(appUser), platformAdminPending: tabId === 'godmode' ? platformAdminPendingForRoute : appUser?.pendingSystemAdminVerification === true });
   const planAllowsTab = (tabId) => {
+    if (tabId === 'godmode') return resolvedPlatformAdminAccessState.verified === true || platformAdminPendingForRoute;
     const access = routeAccessFor(tabId);
     return access.allowed === true || access.pending === true;
   };
@@ -153,9 +160,13 @@ const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppU
   if (planAllowsTab('hr-training')) pushTab({ id: 'hr-training', label: 'HR & Training', icon: <BookOpen size={18}/> });
   if (planAllowsTab('maintenance')) pushTab({ id: 'maintenance', label: 'Maintenance Log', icon: <Wrench size={18}/> });
   
-  const isTrueGod = Boolean((MASTER_ADMIN_EMAIL && (appUser?.email || '').toLowerCase() === MASTER_ADMIN_EMAIL.toLowerCase()) || appUser?.isSuperAdmin === true);
-  const canShowTrueGodmode = Boolean(isTrueGod || appUser?.pendingSystemAdminVerification === true);
-  if (canShowTrueGodmode) pushTab({ id: 'godmode', label: 'System Administrator', icon: <Globe size={18}/> });
+  if (resolvedPlatformAdminAccessState.verified === true || platformAdminPendingForRoute) {
+    pushTab({
+      id: 'godmode',
+      label: resolvedPlatformAdminAccessState.verified === true ? 'System Administrator' : 'System Administrator • Verifying',
+      icon: <Globe size={18}/>
+    });
+  }
   if (planAllowsTab('audit')) pushTab({ id: 'audit', label: 'System Audit', icon: <Shield size={18}/> });  
   pushTab({ id: 'help', label: 'Help Center', icon: <BookOpen size={18}/>, dot: hasHelpUpdate });
   if (!appUser?.isDemo) pushTab({ id: 'settings', label: 'Settings', icon: <Settings size={18}/> });

@@ -1,15 +1,16 @@
 {
-  "version": "16.0.100",
-  "name": "86 Chaos 16.0.100 Rules Compile Hotfix",
-  "build": "16.0.100",
-  "label": "86 Chaos 16.0.100 Rules Compile Hotfix",
-  "releasedAt": "2026-08-01T20:56:00-05:00",
-  "releaseTitle": "86 Chaos 16.0.100 Rules Compile Hotfix",
+  "version": "16.0.114",
+  "name": "86 Chaos 16.0.114 System Administrator Access Fix",
+  "build": "16.0.114",
+  "label": "86 Chaos 16.0.114 System Administrator Access Fix",
+  "releasedAt": "2026-08-03T20:10:00-05:00",
+  "releaseTitle": "86 Chaos 16.0.114 System Administrator Access Fix",
   "notes": [
-    "Document Vault Storage now has an exact workspace-scoped Firebase Storage rule for upload, preview/download, replacement, and deletion.",
-    "Document Vault file workflows compensate failed metadata writes and validate stored Storage paths before preview, replacement, or deletion.",
-    "Release-gate PowerShell runners invoke cleanup after partial current-run QA writes without requiring full setup verification.",
-    "Route access now uses the canonical route-access resolver across app rendering, drawer/search surfaces, voice navigation, and route tests.",
-    "QA System Administrator remains Kitchen and non-owner/non-admin in the temporary restaurant while platform authority stays server verified."
-  ]
+    "Fixes System Administrator visibility by using one canonical server-verification state for drawer visibility, direct routing, protected rendering, and retry diagnostics.",
+    "Allows the public master-admin email only as a secure verification-pending hint, never as final authorization for protected controls.",
+    "Preserves protected-root System Administrator authority across workspace/profile hydration after /api/whoami verifies the signed-in account.",
+    "Adds safe /api/whoami diagnostics for status, reason category, API version, Firebase project, retryability, verification state, and authority source without exposing tokens or credentials.",
+    "Preserves the already deployed Firestore rules byte-for-byte."
+  ],
+  "title": "86 Chaos 16.0.114 System Administrator Access Fix"
 }

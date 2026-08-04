@@ -2,15 +2,10 @@ rules_version = '2';
 service cloud.firestore {
 match /databases/{database}/documents {
 function signedIn() { return request.auth != null; }
-function authEmailMatchesAny(values) {
-return signedIn() &&
-request.auth.token.get('email', '') != '' &&
-request.auth.token.get('email', '') in values;
-}
 function userPath() { return /databases/$(database)/documents/users/$(request.auth.uid); }
-function safeUserData() {
-return signedIn() && exists(userPath()) ? get(userPath()).data : {};
-}
+function hasUserDoc() { return signedIn() && exists(userPath()); }
+function userData() { return get(userPath()).data; }
+function safeUserData() { return signedIn() && exists(userPath()) ? get(userPath()).data : {}; }
 function protectedFoundingAdminEmail() { return 'geoffm1985@gmail.com'; }
 function isProtectedFoundingAdminUser(data) {
 return data.get('email', '') == protectedFoundingAdminEmail() ||
@@ -39,6 +34,7 @@ authorityFlagCreateIsSafe(access.get('foundingAdministrator', false)) &&
 authorityFlagCreateIsSafe(access.get('allAccess', false))
 );
 }
+
 function platformAuthorityCreateIsSafe(data) {
 return authorityFlagCreateIsSafe(data.get('isSuperAdmin', false)) &&
 authorityFlagCreateIsSafe(data.get('superAdmin', false)) &&
@@ -48,6 +44,7 @@ authorityFlagCreateIsSafe(data.get('foundingAdministrator', false)) &&
 authorityFlagCreateIsSafe(data.get('rootAdmin', false)) &&
 systemAccessCreateIsSafe(data);
 }
+
 function protectedFoundingAdminKeys() {
 return ['isSuperAdmin', 'superAdmin', 'systemAccess', 'platformAccess', 'protectedRootAdmin', 'protectedFoundingAdmin', 'foundingAdministrator', 'rootAdmin', 'isAdmin', 'isActive', 'disabled', 'isDisabled', 'deactivated', 'archived', 'deleted', 'role', 'accountRole', 'permissions'];
 }
@@ -70,6 +67,7 @@ return restId is string && memberships is map && memberships.get(restId, {}) is 
 ? memberships.get(restId, {})
 : {};
 }
+
 function isTenantMatch(restId) {
 let u = safeUserData();
 let ids = u.get('workspaceIds', []);
@@ -80,24 +78,16 @@ u.get('restaurantId', '') == restId ||
 member.get('isActive', false) == true
 );
 }
-function sharesWorkspaceWithCurrentUser(data) {
-let u = safeUserData();
-let currentIds = u.get('workspaceIds', []);
-let targetIds = data.get('workspaceIds', []);
-return targetIds is list && currentIds is list && targetIds.hasAny(currentIds);
-}
+
 function permissionDataFromUserAndMember(u, member, restId) {
 let memberPerms = member.get('permissions', {});
-let userPerms = u.get('permissions', {});
 return member.get('isActive', false) == true && memberPerms is map
 ? memberPerms
-: (u.get('restaurantId', '') == restId && userPerms is map ? userPerms : {});
+: currentUserLegacyPermsFrom(u, restId);
 }
+
 function restaurantPath(restId) { return /databases/$(database)/documents/restaurants/$(restId); }
-function hasRestaurantDoc(restId) { return restId is string && exists(restaurantPath(restId)); }
-function safeRestaurantData(restId) {
-return hasRestaurantDoc(restId) ? get(restaurantPath(restId)).data : {};
-}
+function safeRestaurantData(restId) { return restId is string && exists(restaurantPath(restId)) ? get(restaurantPath(restId)).data : {}; }
 function currentUserSystemAccessMap(u) {
 let access = u.get('systemAccess', {});
 return access is map ? access : {};
@@ -153,26 +143,12 @@ u.get('isAdmin', false) == true ||
 legacyPerms.get('team', false) == true
 );
 }
-function currentUserStaffAuthorityFromDoc(restId) {
-let u = safeUserData();
-let member = membershipDataFromUser(u, restId);
-let memberPerms = currentUserMemberPermsFrom(member);
-let legacyPerms = currentUserLegacyPermsFrom(u, restId);
-return signedIn() && restId is string && (
-currentUserDocSuperAdminFrom(u) ||
-currentUserOwnerAuthorityFrom(u, member, restId) ||
-currentUserMemberTeamAuthorityFrom(member, memberPerms) ||
-currentUserLegacyTeamAuthorityFrom(u, legacyPerms, restId)
-);
-}
 function currentUserOwnerAuthorityFromRestaurant(restId) {
 let restaurant = safeRestaurantData(restId);
 return signedIn() && restId is string && (
-authEmailMatchesAny([
-restaurant.get('ownerEmail', ''),
-restaurant.get('ownerEmailLower', ''),
-restaurant.get('ownerUserEmail', '')
-]) ||
+restaurant.get('ownerEmail', '') == request.auth.token.get('email', '') ||
+restaurant.get('ownerEmailLower', '') == request.auth.token.get('email', '') ||
+restaurant.get('ownerUserEmail', '') == request.auth.token.get('email', '') ||
 restaurant.get('ownerUserId', '') == request.auth.uid ||
 restaurant.get('ownerUid', '') == request.auth.uid
 );
@@ -206,28 +182,15 @@ let u = safeUserData();
 let member = membershipDataFromUser(u, restId);
 let restaurant = safeRestaurantData(restId);
 return signedIn() && restId is string && (
-authEmailMatchesAny([
-restaurant.get('ownerEmail', ''),
-restaurant.get('ownerEmailLower', ''),
-restaurant.get('ownerUserEmail', '')
-]) ||
+restaurant.get('ownerEmail', '') == request.auth.token.get('email', '') ||
+restaurant.get('ownerEmailLower', '') == request.auth.token.get('email', '') ||
+restaurant.get('ownerUserEmail', '') == request.auth.token.get('email', '') ||
 restaurant.get('ownerUserId', '') == request.auth.uid ||
 restaurant.get('ownerUid', '') == request.auth.uid ||
-(member.get('isActive', false) == true && (
-member.get('isOwner', false) == true ||
-member.get('accountOwner', false) == true ||
-member.get('workspaceOwner', false) == true ||
-member.get('accountRole', '') == 'owner'
-)) ||
-(u.get('restaurantId', '') == restId && (
-u.get('isOwner', false) == true ||
-u.get('accountOwner', false) == true ||
-u.get('owner', false) == true ||
-u.get('workspaceOwner', false) == true ||
-u.get('accountRole', '') == 'owner'
-))
+currentUserOwnerAuthorityFrom(u, member, restId)
 );
 }
+
 function isAdminFor(restId) {
 let u = safeUserData();
 let member = membershipDataFromUser(u, restId);
@@ -236,12 +199,7 @@ return signedIn() && restId is string && (
 (u.get('restaurantId', '') == restId && u.get('isAdmin', false) == true)
 );
 }
-function hasPermFor(restId, perm) {
-let u = safeUserData();
-let member = membershipDataFromUser(u, restId);
-let perms = permissionDataFromUserAndMember(u, member, restId);
-return signedIn() && restId is string && perms.get(perm, false) == true;
-}
+
 function hasAnyPermissionFor(restId, a, b, c, d, e, f) {
 let u = safeUserData();
 let member = membershipDataFromUser(u, restId);
@@ -255,71 +213,31 @@ perms.get(e, false) == true ||
 perms.get(f, false) == true
 );
 }
-function workspaceBaseAuthorityFrom(u, member, restaurant, restId) {
-let access = u.get('systemAccess', {});
-return request.auth.token.get('superAdmin', false) == true ||
-u.get('isSuperAdmin', false) == true ||
-(access is map && access.get('superAdmin', false) == true) ||
-authEmailMatchesAny([
-restaurant.get('ownerEmail', ''),
-restaurant.get('ownerEmailLower', ''),
-restaurant.get('ownerUserEmail', '')
-]) ||
-restaurant.get('ownerUserId', '') == request.auth.uid ||
-restaurant.get('ownerUid', '') == request.auth.uid ||
-(member.get('isActive', false) == true && (
-member.get('isOwner', false) == true ||
-member.get('accountOwner', false) == true ||
-member.get('workspaceOwner', false) == true ||
-member.get('accountRole', '') == 'owner' ||
-member.get('isAdmin', false) == true
-)) ||
-(u.get('restaurantId', '') == restId && (
-u.get('isOwner', false) == true ||
-u.get('accountOwner', false) == true ||
-u.get('owner', false) == true ||
-u.get('workspaceOwner', false) == true ||
-u.get('accountRole', '') == 'owner' ||
-u.get('isAdmin', false) == true
-));
-}
-function permissionSetAllows(perms, a, b, c, d, e, f) {
-return perms.get(a, false) == true ||
-perms.get(b, false) == true ||
-perms.get(c, false) == true ||
-perms.get(d, false) == true ||
-perms.get(e, false) == true ||
-perms.get(f, false) == true;
-}
 function hasWorkspaceAuthorityFor(restId, a, b, c, d, e, f) {
 let u = safeUserData();
 let member = membershipDataFromUser(u, restId);
 let perms = permissionDataFromUserAndMember(u, member, restId);
 let restaurant = safeRestaurantData(restId);
 return signedIn() && restId is string && (
-workspaceBaseAuthorityFrom(u, member, restaurant, restId) ||
-(
-(member.get('isActive', false) == true || u.get('restaurantId', '') == restId) &&
-permissionSetAllows(perms, a, b, c, d, e, f)
-)
+currentAuthTokenSuperAdmin() ||
+currentUserDocSuperAdminFrom(u) ||
+restaurant.get('ownerEmail', '') == request.auth.token.get('email', '') ||
+restaurant.get('ownerEmailLower', '') == request.auth.token.get('email', '') ||
+restaurant.get('ownerUserEmail', '') == request.auth.token.get('email', '') ||
+restaurant.get('ownerUserId', '') == request.auth.uid ||
+restaurant.get('ownerUid', '') == request.auth.uid ||
+currentUserOwnerAuthorityFrom(u, member, restId) ||
+(member.get('isActive', false) == true && member.get('isAdmin', false) == true) ||
+(u.get('restaurantId', '') == restId && u.get('isAdmin', false) == true) ||
+perms.get(a, false) == true ||
+perms.get(b, false) == true ||
+perms.get(c, false) == true ||
+perms.get(d, false) == true ||
+perms.get(e, false) == true ||
+perms.get(f, false) == true
 );
 }
-function hasFinancialReadAuthorityFor(restId) {
-let u = safeUserData();
-let member = membershipDataFromUser(u, restId);
-let perms = permissionDataFromUserAndMember(u, member, restId);
-let restaurant = safeRestaurantData(restId);
-return signedIn() && restId is string && (
-workspaceBaseAuthorityFrom(u, member, restaurant, restId) ||
-(
-(member.get('isActive', false) == true || u.get('restaurantId', '') == restId) &&
-(
-permissionSetAllows(perms, 'sales', 'salesRead', 'financialRead', 'labor', 'laborRead', 'wageView') ||
-perms.get('wageEdit', false) == true
-)
-)
-);
-}
+
 function currentUserStaffAuthorityFromCachedUser(u, restId) {
 let member = membershipDataFromUser(u, restId);
 let memberPerms = currentUserMemberPermsFrom(member);
@@ -330,30 +248,21 @@ currentUserMemberTeamAuthorityFrom(member, memberPerms) ||
 currentUserLegacyTeamAuthorityFrom(u, legacyPerms, restId) ||
 currentUserOwnerAuthorityFromRestaurant(restId);
 }
+
 function canManageStaffFromCurrentUser(u, restId) {
 return signedIn() && restId is string && restId != '' && (
 currentAuthTokenSuperAdmin() || currentUserStaffAuthorityFromCachedUser(u, restId)
 );
 }
+
 function canManageStaff(restId) {
 let u = safeUserData();
 return canManageStaffFromCurrentUser(u, restId);
 }
-function isHrOwnerFor(restId) {
-return isRestaurantOwner(restId);
-}
-function isHrAdminFor(restId) {
-return isAdminFor(restId);
-}
-function hasHrPermissionFor(restId) {
-return hasPermFor(restId, 'hr');
-}
-function canChooseHrAccess(restId) {
-return isSuperAdmin() || isHrOwnerFor(restId);
-}
 function canManageHr(restId) {
-return isSuperAdmin() || isHrOwnerFor(restId) || isHrAdminFor(restId) || hasHrPermissionFor(restId);
+return hasWorkspaceAuthorityFor(restId, 'hr', '', '', '', '', '');
 }
+
 function trainingManualPath(manualId) {
 return /databases/$(database)/documents/trainingManuals/$(manualId);
 }
@@ -398,8 +307,9 @@ data[key] is timestamp ||
 );
 }
 function isoDateOrEmpty(value) {
-return value is string && (value == '' || value.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$'));
+return value is string && (value == '' || value.size() == 10);
 }
+
 function onboardingTaskRecordIsValid(data) {
 return data.restaurantId is string && data.restaurantId.size() > 0 && data.restaurantId.size() <= 160 &&
 data.userId is string && data.userId.size() > 0 && data.userId.size() <= 160 &&
@@ -434,7 +344,7 @@ return data.restaurantId is string && data.restaurantId.size() > 0 && data.resta
 data.userId is string && data.userId.size() > 0 && data.userId.size() <= 160 &&
 data.employeeName is string && data.employeeName.size() > 0 && data.employeeName.size() <= 200 &&
 data.type in ['Coaching', 'Recognition', 'Performance Review', 'Attendance', 'Corrective Action', 'Manager Follow-up'] &&
-data.date is string && data.date.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$') &&
+isoDateOrEmpty(data.date) && data.date != '' &&
 data.confidentialSummary is string && data.confidentialSummary.size() > 0 && data.confidentialSummary.size() <= 3000 &&
 optionalString(data, 'nextSteps', 1600) &&
 data.confidential == true &&
@@ -444,6 +354,7 @@ optionalString(data, 'updatedBy', 200) &&
 dateTimePresent(data, 'createdAt') &&
 dateTimePresent(data, 'updatedAt');
 }
+
 function onboardingSelfCompletionIsSafe() {
 return onboardingTaskRecordIsValid(request.resource.data) &&
 resource.data.userId == request.auth.uid &&
@@ -468,33 +379,34 @@ function restaurantOwnerUpdateIsSafe(restId) {
 return restId is string && isOwnerOfRestaurantDoc() &&
 !request.resource.data.diff(resource.data).affectedKeys().hasAny(restaurantProtectedSubscriptionKeys());
 }
-function workspaceEntitlementAllows(restId, allowedPlans) {
-let restaurant = safeRestaurantData(restId);
+function workspacePlanAllowsForRestaurant(restaurant, allowedPlans) {
 let rawSubscription = restaurant.get('subscription', {});
 let subscription = rawSubscription is map ? rawSubscription : {};
-let plan = subscription.get('planId', restaurant.get('planId', ''));
+let rawPlan = subscription.get('planId', restaurant.get('planId', ''));
+let plan = rawPlan in ['shift', 'operations', 'smart_kitchen', 'owner_pro', 'master_admin'] ? rawPlan : 'smart_kitchen';
 let status = subscription.get('status', restaurant.get('subscriptionStatus', restaurant.get('billingStatus', 'active')));
-return hasRestaurantDoc(restId) &&
-subscription.get('entitlementActive', true) != false &&
+return subscription.get('entitlementActive', true) != false &&
 !(status in ['canceled', 'cancelled', 'trial_expired', 'expired', 'disabled', 'suspended']) &&
-(
-plan in allowedPlans ||
-(!(plan in ['shift', 'operations', 'smart_kitchen', 'owner_pro', 'master_admin']) && 'smart_kitchen' in allowedPlans)
-);
+plan in allowedPlans;
 }
+function workspacePlanAllows(restId, allowedPlans) {
+return restId is string &&
+exists(restaurantPath(restId)) &&
+workspacePlanAllowsForRestaurant(get(restaurantPath(restId)).data, allowedPlans);
+}
+
 function planAtLeastOperations(restId) {
-return workspaceEntitlementAllows(restId, ['operations', 'smart_kitchen', 'owner_pro', 'master_admin']);
+return workspacePlanAllows(restId, ['operations', 'smart_kitchen', 'owner_pro', 'master_admin']);
 }
+
 function planAtLeastSmartKitchen(restId) {
-return workspaceEntitlementAllows(restId, ['smart_kitchen', 'owner_pro', 'master_admin']);
+return workspacePlanAllows(restId, ['smart_kitchen', 'owner_pro', 'master_admin']);
 }
+
 function planAtLeastOwnerPro(restId) {
-return workspaceEntitlementAllows(restId, ['owner_pro', 'master_admin']);
+return workspacePlanAllows(restId, ['owner_pro', 'master_admin']);
 }
-function canEditWages(restId) {
-return isSuperAdmin() || isRestaurantOwner(restId) || hasAnyPermissionFor(restId, 'wageEdit', '', '', '', '', '');
-}
-function canChooseWageAccess(restId) { return isSuperAdmin() || isRestaurantOwner(restId); }
+
 function canManageWorkspaceSettings(restId) {
 return isSuperAdmin() || isRestaurantOwner(restId) || hasAnyPermissionFor(restId, 'settings', 'branding', '', '', '', '');
 }
@@ -516,7 +428,7 @@ return planAtLeastSmartKitchen(restId) &&
 hasWorkspaceAuthorityFor(restId, 'inventory', 'inventoryEdit', '', '', '', '');
 }
 function canReadFinancials(restId) {
-return hasFinancialReadAuthorityFor(restId);
+return hasWorkspaceAuthorityFor(restId, 'sales', 'salesRead', 'financialRead', 'labor', 'laborRead', 'wageView') || hasWorkspaceAuthorityFor(restId, 'wageEdit', '', '', '', '', '');
 }
 function canWriteFinancials(restId) {
 return hasWorkspaceAuthorityFor(restId, 'sales', 'salesEdit', 'financialEdit', '', '', '');
@@ -559,23 +471,38 @@ return data.keys().hasOnly([
 'loggedBy', 'timestamp', 'createdAt', 'updatedAt', 'updatedBy', 'source', 'amount', 'totalSales', 'sales'
 ]) &&
 data.restaurantId is string && data.restaurantId.size() > 0 && data.restaurantId.size() <= 160 &&
-data.date is string && data.date.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$') &&
-optionalString(data, 'depositStatus', 40) && optionalString(data, 'closeStatus', 40) &&
-optionalString(data, 'managerSignOff', 120) && optionalString(data, 'notes', 2500) &&
-optionalString(data, 'loggedBy', 200) && optionalString(data, 'updatedBy', 200) && optionalString(data, 'source', 80) &&
-optionalDateTime(data, 'timestamp') && optionalDateTime(data, 'createdAt') && optionalDateTime(data, 'updatedAt') &&
-optionalNumber(data, 'grossSales', 10000000) && optionalNumber(data, 'netSales', 10000000) &&
-optionalNumber(data, 'amount', 10000000) && optionalNumber(data, 'totalSales', 10000000) && optionalNumber(data, 'sales', 10000000);
+isoDateOrEmpty(data.date) && data.date != '' &&
+optionalString(data, 'depositStatus', 40) &&
+optionalString(data, 'closeStatus', 40) &&
+optionalString(data, 'managerSignOff', 120) &&
+optionalString(data, 'notes', 2500) &&
+optionalString(data, 'loggedBy', 200) &&
+optionalString(data, 'updatedBy', 200) &&
+optionalString(data, 'source', 80) &&
+optionalDateTime(data, 'timestamp') &&
+optionalDateTime(data, 'createdAt') &&
+optionalDateTime(data, 'updatedAt') &&
+optionalNumber(data, 'grossSales', 10000000) &&
+optionalNumber(data, 'netSales', 10000000) &&
+optionalNumber(data, 'laborCost', 10000000) &&
+optionalNumber(data, 'foodCost', 10000000) &&
+optionalNumber(data, 'beverageCost', 10000000) &&
+optionalNumber(data, 'cashVariance', 10000000) &&
+optionalNumber(data, 'amount', 10000000) &&
+optionalNumber(data, 'totalSales', 10000000) &&
+optionalNumber(data, 'sales', 10000000);
 }
+
 function financialExpenseRecordIsValid(data) {
 return data.keys().hasOnly(['restaurantId', 'date', 'vendor', 'payee', 'category', 'amount', 'paymentMethod', 'dueDate', 'paid', 'notes', 'createdAt', 'createdBy', 'updatedAt', 'updatedBy']) &&
 data.restaurantId is string && data.restaurantId.size() > 0 && data.restaurantId.size() <= 160 &&
-data.date is string && data.date.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$') &&
+isoDateOrEmpty(data.date) && data.date != '' &&
 data.amount is number && data.amount >= 0 && data.amount <= 10000000 &&
 optionalString(data, 'vendor', 200) && optionalString(data, 'payee', 200) && optionalString(data, 'category', 80) && optionalString(data, 'paymentMethod', 80) &&
-(!(('dueDate') in data) || isoDateOrEmpty(data.dueDate)) && optionalBool(data, 'paid') && optionalString(data, 'notes', 1600) &&
+(!('dueDate' in data) || isoDateOrEmpty(data.dueDate)) && optionalBool(data, 'paid') && optionalString(data, 'notes', 1600) &&
 optionalString(data, 'createdBy', 200) && optionalString(data, 'updatedBy', 200) && optionalDateTime(data, 'createdAt') && optionalDateTime(data, 'updatedAt');
 }
+
 function financialTargetsRecordIsValid(data) {
 return data.keys().hasOnly(['restaurantId', 'laborPct', 'foodPct', 'beveragePct', 'primePct', 'weeklySalesGoal', 'monthlySalesGoal', 'cashVarianceAlert', 'overtimeAlertHours', 'updatedAt', 'updatedBy']) &&
 data.restaurantId is string && data.restaurantId.size() > 0 && data.restaurantId.size() <= 160 &&
@@ -684,7 +611,7 @@ data.createdBy == request.auth.uid ||
 (data.recipientUserIds is list && data.recipientUserIds.hasAny([request.auth.uid]))
 );
 }
-function isOwnerOfRestaurantDoc() { return signedIn() && authEmailMatchesAny([resource.data.get('ownerEmail', '')]); }
+function isOwnerOfRestaurantDoc() { return signedIn() && request.auth.token.email == resource.data.ownerEmail; }
 function protectedUserKeys() {
 return [
 'restaurantId', 'workspaceIds', 'memberships', 'defaultRestaurantId',
@@ -708,7 +635,7 @@ return request.resource.data.diff(resource.data).affectedKeys().hasOnly([
 'pushNeedsRepair', 'pushForceServiceWorkerRefresh', 'pushRepairStatus', 'pushRepairCompletedAt',
 'pushRepairCompletedHost', 'lastPushRepairError', 'lastPushFailureCode',
 'device', 'host', 'theme', 'settings', 'preferences', 'notificationPrefs', 'activeRestaurantId', 'lastWorkspaceId',
-'lastWorkspaceSwitchedAt'
+'forcePasswordChange', 'passwordPurgedAt', 'passwordStored', 'lastWorkspaceSwitchedAt'
 ]) &&
 !request.resource.data.diff(resource.data).affectedKeys().hasAny(protectedUserKeys()) &&
 pushDevicesSelfUpdateIsSafe();
@@ -786,8 +713,9 @@ after.get('hr', false) != before.get('hr', false);
 }
 function workspaceMemberHrCreateIsSafe(restId) {
 let perms = safePermissionsFrom(request.resource.data);
-return perms.get('hr', false) == true ? currentUserOwnerAuthorityLean(restId) : true;
+return perms.get('hr', false) != true || currentUserOwnerAuthorityLean(restId);
 }
+
 function workspaceMemberHrUpdateIsSafe(restId) {
 let after = safePermissionsFrom(request.resource.data);
 let before = safePermissionsFrom(resource.data);
@@ -802,20 +730,20 @@ request.resource.data.get('systemAccess', {}) == resource.data.get('systemAccess
 permissionPayloadShapeIsSafe();
 }
 function tenantAdminUserSensitiveChangesAreAllowed(restId) {
+let ownerAuthority = currentUserOwnerAuthorityLean(restId);
 return (!wageValueChanged() || currentUserCanEditWagesLean(restId)) &&
-(!wagePermissionChanged() || currentUserOwnerAuthorityLean(restId)) &&
-(!settingsPermissionChanged() || currentUserOwnerAuthorityLean(restId)) &&
-(!hrPermissionChanged() || currentUserOwnerAuthorityLean(restId)) &&
-(!adminFlagChanged() || currentUserOwnerAuthorityLean(restId));
+(!wagePermissionChanged() || ownerAuthority) &&
+(!settingsPermissionChanged() || ownerAuthority) &&
+(!hrPermissionChanged() || ownerAuthority) &&
+(!adminFlagChanged() || ownerAuthority);
 }
+
 function tenantAdminUserUpdateIsSafeFor(restId) {
 return restId is string && restId != '' &&
 tenantAdminUserUpdateCheapRejectsAreClear(restId) &&
 tenantAdminUserSensitiveChangesAreAllowed(restId);
 }
-function tenantAdminUserUpdateIsSafe() {
-return tenantAdminUserUpdateIsSafeFor(resource.data.get('restaurantId', ''));
-}
+
 function tenantUserCreateAllowedForCurrentUser(u) {
 let restId = request.resource.data.get('restaurantId', '');
 return restId is string && restId != '' &&
@@ -823,19 +751,14 @@ platformAuthorityCreateIsSafe(request.resource.data) &&
 workspaceMemberHrCreateIsSafe(restId) &&
 canManageStaffFromCurrentUser(u, restId);
 }
+
 function userCreateAllowed() {
 let u = safeUserData();
 return currentAuthTokenSuperAdmin() ||
 currentUserDocSuperAdminFrom(u) ||
 tenantUserCreateAllowedForCurrentUser(u);
 }
-function tenantUserCreateAllowed() {
-let u = safeUserData();
-return tenantUserCreateAllowedForCurrentUser(u);
-}
-function selfUserUpdateAllowed(userId) {
-return request.auth.uid == userId && userSafeSelfUpdate();
-}
+
 function tenantStaffUserUpdateAllowed() {
 let restId = resource.data.get('restaurantId', '');
 let u = safeUserData();
@@ -844,17 +767,17 @@ request.resource.data.get('restaurantId', '') == restId &&
 tenantAdminUserUpdateIsSafeFor(restId) &&
 canManageStaffFromCurrentUser(u, restId);
 }
+
 function superAdminUserUpdateAllowed() {
 return currentUserSuperAdminLean();
 }
 function userUpdateAllowed(userId) {
-return request.auth.uid == userId ? (
-protectedFoundingAdminUserUpdateIsSafe() && userSafeSelfUpdate()
-) : (
-resource.data.get('restaurantId', '') is string && resource.data.get('restaurantId', '') != '' ? (
-protectedFoundingAdminUserUpdateIsSafe() ? tenantStaffUserUpdateAllowed() : false
-) : superAdminUserUpdateAllowed()
-);
+let isSelf = request.auth.uid == userId;
+let restId = resource.data.get('restaurantId', '');
+let isTenantUser = restId is string && restId != '';
+return (isSelf && protectedFoundingAdminUserUpdateIsSafe() && userSafeSelfUpdate()) ||
+(!isSelf && isTenantUser && protectedFoundingAdminUserUpdateIsSafe() && tenantStaffUserUpdateAllowed()) ||
+(!isSelf && !isTenantUser && superAdminUserUpdateAllowed());
 }
 function commonTenantWriteAllowed(collectionName) {
 return collectionName in ['timePunches', 'tempLogs', 'wasteLogs', 'offlineWriteReceipts'];
@@ -872,16 +795,17 @@ data.get('senderId', '') == request.auth.uid
 }
 function messageCreateIdentityIsSafe(data) {
 return signedIn() &&
-(data.keys().hasAny(['authorId']) ? data.authorId == request.auth.uid : true) &&
-(data.keys().hasAny(['userId']) ? data.userId == request.auth.uid : true) &&
-(data.keys().hasAny(['createdBy']) ? data.createdBy == request.auth.uid : true) &&
-(data.keys().hasAny(['senderId']) ? data.senderId == request.auth.uid : true) &&
+(!('authorId' in data) || data.authorId == request.auth.uid) &&
+(!('userId' in data) || data.userId == request.auth.uid) &&
+(!('createdBy' in data) || data.createdBy == request.auth.uid) &&
+(!('senderId' in data) || data.senderId == request.auth.uid) &&
 messageAuthorMatches(data) &&
 data.get('isSystemAlert', false) == false &&
 data.get('systemAlert', false) == false &&
 data.get('systemGenerated', false) == false &&
 !data.keys().hasAny(['moderatedBy', 'moderatedAt', 'roleOverride', 'adminOnly', 'ownerOnly']);
 }
+
 function messageAuthorFieldsStable() {
 return request.resource.data.get('authorId', '') == resource.data.get('authorId', '') &&
 request.resource.data.get('userId', '') == resource.data.get('userId', '') &&
@@ -939,14 +863,15 @@ data.get('userId', '') == request.auth.uid
 }
 function maintenanceCreateIdentityIsSafe(data) {
 return maintenanceReporterMatches(data) &&
-(data.keys().hasAny(['reportedById']) ? data.reportedById == request.auth.uid : true) &&
-(data.keys().hasAny(['reportedByUid']) ? data.reportedByUid == request.auth.uid : true) &&
-(data.keys().hasAny(['createdBy']) ? data.createdBy == request.auth.uid : true) &&
-(data.keys().hasAny(['userId']) ? data.userId == request.auth.uid : true) &&
+(!('reportedById' in data) || data.reportedById == request.auth.uid) &&
+(!('reportedByUid' in data) || data.reportedByUid == request.auth.uid) &&
+(!('createdBy' in data) || data.createdBy == request.auth.uid) &&
+(!('userId' in data) || data.userId == request.auth.uid) &&
 data.get('assignedTo', '') == '' &&
 data.get('resolvedBy', '') == '' &&
 data.get('systemCreated', false) == false;
 }
+
 function canManageMaintenanceData(restId) {
 return hasWorkspaceAuthorityFor(restId, 'maintenance', 'ops', 'team', '', '', '');
 }
@@ -957,11 +882,14 @@ request.resource.data.get('reportedByUid', '') == resource.data.get('reportedByU
 request.resource.data.get('createdBy', '') == resource.data.get('createdBy', '') &&
 request.resource.data.diff(resource.data).affectedKeys().hasOnly(['notes', 'comment', 'comments', 'updatedAt', 'updatedBy']);
 }
+function isManagerRoleFor(restId) {
+return restId is string && false;
+}
 function canManageTasks(restId) {
-return hasWorkspaceAuthorityFor(restId, 'team', '', '', '', '', '');
+return hasWorkspaceAuthorityFor(restId, 'team', '', '', '', '', '') || isManagerRoleFor(restId);
 }
 function canManageKitchenSpecials(restId) {
-return hasWorkspaceAuthorityFor(restId, 'prep', 'ops', 'team', '', '', '');
+return hasWorkspaceAuthorityFor(restId, 'prep', 'ops', 'team', '', '', '') || isManagerRoleFor(restId);
 }
 function kitchenSpecialIsValid(data) {
 return data.restaurantId is string &&
@@ -1012,7 +940,7 @@ allow read: if signedIn() && (
 isSuperAdmin() ||
 request.auth.uid == userId ||
 (resource.data.restaurantId is string && isTenantMatch(resource.data.restaurantId)) ||
-sharesWorkspaceWithCurrentUser(resource.data) ||
+(resource.data.workspaceIds is list && hasUserDoc() && userData().get('workspaceIds', []) is list && resource.data.workspaceIds.hasAny(userData().get('workspaceIds', []))) ||
 (resource.data.restaurantId is string && isRestaurantOwner(resource.data.restaurantId))
 );
 allow create: if signedIn() && userCreateAllowed();
@@ -1023,7 +951,7 @@ match /workspaceMembers/{memberId} {
 allow read: if signedIn() && (
 isSuperAdmin() ||
 resource.data.userId == request.auth.uid ||
-authEmailMatchesAny([resource.data.get('email', '')]) ||
+(resource.data.email == request.auth.token.email) ||
 (resource.data.restaurantId is string && isTenantMatch(resource.data.restaurantId)) ||
 (resource.data.restaurantId is string && isRestaurantOwner(resource.data.restaurantId))
 );

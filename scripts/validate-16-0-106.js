@@ -12,8 +12,8 @@ const assert = (condition, message) => {
 const read = (file) => fs.readFileSync(path.join(process.cwd(), file), 'utf8');
 const pkg = JSON.parse(read('package.json'));
 const versionJson = JSON.parse(read('public/version.json'));
-assert(pkg.version === '16.0.100', 'package.json version is 16.0.100');
-assert(versionJson.version === '16.0.100' && versionJson.build === '16.0.100', 'public/version.json version/build are 16.0.100');
+assert(pkg.version === '16.0.106', 'package.json version is 16.0.106');
+assert(versionJson.version === '16.0.106' && versionJson.build === '16.0.106', 'public/version.json version/build are 16.0.106');
 assert(!/16\.0\.89 Admin Push Release Gate Fix/.test(JSON.stringify(versionJson)), 'release label does not restore stale 16.0.89 text');
 const app = read('src/App.js');
 assert(app.includes("'hr': 'hr-training'"), 'legacy hr deep links normalize to hr-training');
@@ -27,9 +27,34 @@ assert(management.includes('No uploaded file attached'), 'Document Vault preserv
 const storageRules = read('storage.rules');
 assert(storageRules.includes('match /restaurants/{restaurantId}/back-office/document-vault/{recordId}/{fileName}'), 'Storage rules include exact Document Vault path');
 assert(storageRules.includes("request.resource.metadata.purpose == 'document-vault'") && storageRules.includes('request.resource.metadata.uploadedBy == request.auth.uid'), 'Document Vault Storage rule requires strict metadata and uploader identity');
-assert(storageRules.includes('request.resource.size <= 12 * 1024 * 1024') && storageRules.includes('blockedVaultFileName'), 'Document Vault Storage rule enforces 12 MB limit and blocks dangerous extensions');
+assert(storageRules.includes('request.resource.size <= 12 * 1024 * 1024') && storageRules.includes('allowedVaultContentType(fileName)') && !storageRules.includes('blockedVaultFileName'), 'Document Vault Storage rule keeps 12 MB limit and uses MIME plus extension allowlist without oversized blocked-extension regex chain');
+assert(storageRules.includes('isTenantMember(restaurantId)') && storageRules.includes('canUseBackOfficeVault(restaurantId)'), 'Storage rules use compact tenant and Document Vault access helpers');
 const firestoreRules = read('firestore.rules');
-assert(firestoreRules.includes('backOfficeDocumentVaultFieldsAreValid') && firestoreRules.includes('safeBackOfficeVaultPath'), 'Firestore Back Office records validate Document Vault file-state metadata');
+assert(!firestoreRules.includes('backOfficeDocumentVaultFieldsAreValid') && !firestoreRules.includes('safeBackOfficeVaultPath'), 'Firestore rules avoid deploy-choking Document Vault file regex; Storage rules and app workflow enforce vault file security');
+
+assert(firestoreRules.includes("request.auth.token.get('superAdmin', false) == true"), 'Firestore super admin rule safely reads token claims with defaults');
+assert(firestoreRules.includes("let access = u.get('systemAccess', {})") && firestoreRules.includes("access is map && access.get('superAdmin', false) == true") && !firestoreRules.includes('userData().systemAccess.superAdmin'), 'Firestore super admin rule safely handles missing systemAccess maps');
+assert(firestoreRules.includes("platformAuthorityCreateIsSafe(request.resource.data) &&\n        workspaceMemberHrCreateIsSafe") && firestoreRules.includes("taskCompletionUpdateIsSafe() || canManageTasks"), 'Firestore rules evaluate cheap safety checks before expensive permission helpers');
+assert(!firestoreRules.includes('match /{collectionName}/{docId}') && !firestoreRules.includes('function isStandardTenantCollection'), 'Firestore rules no longer evaluate a generic top-level standard-tenant catch-all for every collection');
+assert(firestoreRules.includes("match /shifts/{docId}") && firestoreRules.includes("canTenantWriteCollection('shifts'") && firestoreRules.includes("match /tempLogs/{docId}"), 'Firestore standard tenant collections use explicit collection matches');
+assert(firestoreRules.includes("function isTenantMatch(restId)") && firestoreRules.includes("safeUserData()") && !firestoreRules.includes('userData().restaurantId'), 'Firestore tenant membership helpers avoid unsafe direct userData field reads');
+
+assert(firestoreRules.includes('function safeUserData()') && firestoreRules.includes('function membershipDataFor(restId)') && firestoreRules.includes('function permissionDataFor(restId)'), 'Firestore rules use cached safe user, membership, and permission helpers');
+assert(firestoreRules.includes('function hasWorkspaceAuthorityFor(restId, a, b, c, d, e, f)') && firestoreRules.includes("hasWorkspaceAuthorityFor(restId, 'messageBoard', 'messages', 'team', 'ops'"), 'Firestore rules collapse repeated owner/admin/permission checks into one helper chain without exceeding the Firebase function argument limit');
+assert(!firestoreRules.includes('function membershipMapHas') && !firestoreRules.includes('function workspaceIdsHas') && !firestoreRules.includes('function memberData(restId)'), 'Firestore rules remove unused helper functions that make the rules compiler fail');
+assert(!firestoreRules.includes('function hasAnyPermissionFor(restId, a, b, c, d, e, f, g)') && !firestoreRules.includes('function hasWorkspaceAuthorityFor(restId, a, b, c, d, e, f, g)'), 'Firestore helper function signatures stay within the 7-argument Firebase rules limit');
+assert(firestoreRules.includes("allow update: if signedIn() && resource.data.restaurantId is string && request.resource.data.restaurantId == resource.data.restaurantId && (isSuperAdmin()") && !firestoreRules.includes("allow update: if signedIn() && (isSuperAdmin() || (resource.data.restaurantId is string"), 'Firestore update rules check immutable restaurantId before expensive permission checks');
+
+
+const helperCallPattern = /\b(hasAnyPermissionFor|hasWorkspaceAuthorityFor)\s*\(([^\n;)]*)\)/g;
+let helperMatch;
+while ((helperMatch = helperCallPattern.exec(firestoreRules)) !== null) {
+  const args = helperMatch[2].split(',').map((part) => part.trim()).filter(Boolean);
+  assert(args.length <= 7, `${helperMatch[1]} call stays within Firebase's 7-argument limit`);
+}
+
+const rulesRunner = read('scripts/run-rules-tests.js');
+assert(rulesRunner.includes("'demo-no-project'") && !rulesRunner.includes("'chaos-rules-test-local'"), 'Firestore rules test runner uses emulator default project id to avoid single-project warnings');
 const psFull = read('RUN_86CHAOS_PLAY_STORE_RELEASE_GATE.ps1');
 const psFailed = read('RUN_86CHAOS_FAILED_ONLY_RELEASE_GATE.ps1');
 assert(psFull.includes('$WritesStarted') && psFailed.includes('$WritesStarted') && !psFull.includes('$setup.attempted -and $setup.seeded -and $setup.verified') && !psFailed.includes('$setup.attempted -and $setup.seeded -and $setup.verified'), 'PowerShell release-gate runners clean partial current-run QA writes');

@@ -1,18 +1,11 @@
 import { PLAN_DEFINITIONS, PLAN_IDS, PLAN_ORDER, FEATURE_MIN_PLAN, FEATURE_LABELS, ROUTE_FEATURES, FINANCIAL_SUBTAB_FEATURES, FOUNDER_DISCOUNT_PERCENT, FOUNDER_BETA_DAYS, FOUNDER_BETA_EXTENSION_DAYS } from '../config/plans';
+import { userHasServerVerifiedPlatformAuthority } from '../core/sessionAccess';
 
 const clean = (value = '') => String(value == null ? '' : value).trim();
 const lower = (value = '') => clean(value).toLowerCase();
 const nowMs = () => Date.now();
 
-export const isVerifiedPlatformAdminUser = (user = {}) => {
-  const serverCheck = user?.serverAdminCheck || user?.platformAdminVerification || {};
-  const trustedSource = clean(user?.superAdminAccessSource || serverCheck?.platformAuthority?.source || '');
-  return Boolean(
-    serverCheck?.superAdmin === true ||
-    serverCheck?.platformAuthority?.superAdmin === true ||
-    (user?.isSuperAdmin === true && trustedSource && trustedSource !== 'local-profile-hint')
-  );
-};
+export const isVerifiedPlatformAdminUser = (user = {}) => userHasServerVerifiedPlatformAuthority(user);
 
 export const isMasterAdminUser = (user = {}) => isVerifiedPlatformAdminUser(user);
 

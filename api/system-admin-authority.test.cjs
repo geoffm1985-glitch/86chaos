@@ -107,16 +107,17 @@ test('custom Auth claims can grant platform authority without relying on profile
 test('session access helper preserves verified access on transient failures and removes it on authoritative denial', () => {
   assert.match(sessionAccessSource, /TRANSIENT_FAILURE/);
   assert.match(sessionAccessSource, /return user;/);
-  assert.match(sessionAccessSource, /verification\?\.definitive === true/);
+  assert.match(sessionAccessSource, /safeVerification\.definitive === true/);
   assert.match(sessionAccessSource, /server-verified-not-system-admin/);
-  assert.match(sessionAccessSource, /platformAuthority\?\.source/);
+  assert.match(sessionAccessSource, /platformAuthoritySourceFrom/);
 });
 
-test('App access hydration path uses declared platform marker variables and no stale localRoleLooksSystemAdmin identifier', () => {
+test('App access hydration path uses the canonical platform-admin access state', () => {
   assert.doesNotMatch(appSource, /localRoleLooksSystemAdmin/);
+  assert.match(appSource, /resolvePlatformAdminAccessState\(\{ user: liveAppUser \|\| appUser \|\| \{\}, verification: serverAdminCheck, masterAdminEmail: MASTER_ADMIN_EMAIL \}\)/);
   assert.match(appSource, /const localProfileHasSystemAdminMarker = Boolean/);
   assert.match(appSource, /localUserLooksSystemAdmin: Boolean\(serverSaysSuperAdmin \|\| localProfileHasSystemAdminMarker\)/);
-  assert.doesNotMatch(appSource, /permissions\?\.systemAdmin === true\s*\|\|\s*\n\s*liveAppUser\?\.permissions\?\.godmode === true/);
+  assert.doesNotMatch(appSource, new RegExp('permissions\\?\\.systemAdmin === true\\s*\\|\\|\\s*\\n\\s*liveAppUser\\?\\.permissions\\?\\.godmode === true'));
 });
 
 test('platform authority uses strict boolean true only for profile flags and custom claims', () => {

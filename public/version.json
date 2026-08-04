@@ -1,16 +1,16 @@
 {
-  "version": "16.0.113",
-  "name": "86 Chaos 16.0.113 Firestore Rules Compiler Complexity Hotfix",
-  "build": "16.0.113",
-  "label": "86 Chaos 16.0.113 Firestore Rules Compiler Complexity Hotfix",
-  "releasedAt": "2026-08-03T17:05:00-05:00",
-  "releaseTitle": "86 Chaos 16.0.113 Firestore Rules Compiler Complexity Hotfix",
+  "version": "16.0.114",
+  "name": "86 Chaos 16.0.114 System Administrator Access Fix",
+  "build": "16.0.114",
+  "label": "86 Chaos 16.0.114 System Administrator Access Fix",
+  "releasedAt": "2026-08-03T20:10:00-05:00",
+  "releaseTitle": "86 Chaos 16.0.114 System Administrator Access Fix",
   "notes": [
-    "Flattens deeply nested platform-authority create checks into direct boolean guards while preserving every privileged-field denial.",
-    "Reuses one current-user, membership, permission, and restaurant lookup per authority decision instead of repeatedly chaining safeUserData, exists, and get calls.",
-    "Collapses subscription-plan evaluation and financial-read authority paths to reduce remote Firestore Rules compiler work without changing tier or role access.",
-    "Keeps the daily-close field allowlist, tenant binding, date format, text limits, and critical total limits in Firestore while moving exhaustive amount validation into the app save flow.",
-    "Includes the 16.0.112 blank-email authority correction so missing email claims can never match missing owner-email fields."
+    "Fixes System Administrator visibility by using one canonical server-verification state for drawer visibility, direct routing, protected rendering, and retry diagnostics.",
+    "Allows the public master-admin email only as a secure verification-pending hint, never as final authorization for protected controls.",
+    "Preserves protected-root System Administrator authority across workspace/profile hydration after /api/whoami verifies the signed-in account.",
+    "Adds safe /api/whoami diagnostics for status, reason category, API version, Firebase project, retryability, verification state, and authority source without exposing tokens or credentials.",
+    "Preserves the already deployed Firestore rules byte-for-byte."
   ],
-  "title": "86 Chaos 16.0.113 Firestore Rules Compiler Complexity Hotfix"
+  "title": "86 Chaos 16.0.114 System Administrator Access Fix"
 }

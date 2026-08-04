@@ -11,7 +11,7 @@ import { LockedFeatureScreen } from './components/PlanGate';
 import { usePlanAccess } from './hooks/usePlanAccess';
 import { resolveFeatureAccess } from './lib/featureAccess';
 import { buildScheduleQueryPlan, buildScheduleDateKeyRangeClauses, mergeLoadedScheduleShifts } from './core/scheduleQueryPlanner';
-import { WHOAMI_STATES, classifyWhoamiResponse, mergeVerifiedAccess, shouldHoldAccessHydration } from './core/sessionAccess';
+import { WHOAMI_STATES, PLATFORM_ADMIN_ACCESS_STATES, classifyWhoamiResponse, mergeVerifiedAccess, resolvePlatformAdminAccessState, shouldHoldAccessHydration } from './core/sessionAccess';
 import { FEATURE_KEYS } from './config/plans';
 import { LoginScreen } from './features/auth';
 import * as runtimeReportStateModule from './core/runtimeReportState.cjs';
@@ -571,6 +571,10 @@ const buildWorkspaceUser = (currentUser = {}, workspace = {}) => {
     wage: workspace.wage ?? currentUser.wage ?? 0,
     photoURL: workspace.photoURL || currentUser.photoURL || accountProfile.photoURL || '',
     isAdmin: currentUser.isSuperAdmin === true || scopedAccess.isAdmin,
+    isSuperAdmin: currentUser.isSuperAdmin === true,
+    systemAccess: currentUser.systemAccess || accountProfile.systemAccess || {},
+    superAdminAccessSource: currentUser.superAdminAccessSource || accountProfile.superAdminAccessSource || '',
+    platformAdminVerification: currentUser.platformAdminVerification || accountProfile.platformAdminVerification || null,
     isOwner: scopedAccess.isOwner,
     owner: scopedAccess.isOwner,
     accountOwner: scopedAccess.accountOwner,
@@ -612,6 +616,10 @@ const userFromWorkspaceMember = (member = {}, accountUser = {}) => {
     restaurantName: safeWorkspaceName(member),
     permissions: { ...(member.permissions || {}) },
     isAdmin: member.isAdmin === true || accountUser.isSuperAdmin === true,
+    isSuperAdmin: accountUser.isSuperAdmin === true,
+    systemAccess: accountUser.systemAccess || {},
+    superAdminAccessSource: accountUser.superAdminAccessSource || '',
+    platformAdminVerification: accountUser.platformAdminVerification || null,
     isOwner: memberOwner,
     owner: memberOwner,
     accountOwner: member.accountOwner === true,
@@ -776,7 +784,10 @@ export default function App() {
     let retryTimer = null;
     const fetchWhoami = async (forceTokenRefresh = false) => {
       const res = await secureFetch('/api/whoami', { forceTokenRefresh, authWaitMs: 10000 });
-      const data = await res.json().catch(() => ({}));
+      const contentType = res.headers?.get?.('content-type') || '';
+      const data = contentType.toLowerCase().includes('application/json')
+        ? await res.json().catch(() => ({ reasonCategory: 'whoami-json-parse-failed', error: `Could not parse /api/whoami JSON (${res.status}).`, retryable: true }))
+        : { reasonCategory: 'whoami-non-json-response', error: `Non-JSON /api/whoami response (${res.status}${contentType ? `, ${contentType}` : ''}).`, retryable: true };
       return { res, data };
     };
     const applyVerification = (verification) => {
@@ -1133,25 +1144,18 @@ const [currentDate, setCurrentDate] = useState(getToday());
 
   const isDemoMode = !!liveAppUser?.isDemo;
   const sessionEmailForAdmin = String(liveAppUser?.email || appUser?.email || auth.currentUser?.email || '').toLowerCase();
-  const serverSaysSuperAdmin = Boolean(
-    serverAdminCheck?.superAdmin === true && (
-      serverAdminCheck?.platformAuthority?.superAdmin === true ||
-      serverAdminCheck?.serverMasterAdminMatched === true ||
-      serverAdminCheck?.protectedRootAdminMatched === true ||
-      serverAdminCheck?.customClaimSuperAdmin === true ||
-      serverAdminCheck?.firestoreSuperAdmin === true ||
-      serverAdminCheck?.firestoreSystemAdministrator === true
-    )
-  );
+  const platformAdminAccessState = resolvePlatformAdminAccessState({ user: liveAppUser || appUser || {}, verification: serverAdminCheck, masterAdminEmail: MASTER_ADMIN_EMAIL });
+  const serverSaysSuperAdmin = platformAdminAccessState.verified === true;
   const localProfileHasSystemAdminMarker = Boolean(
     liveAppUser?.isSuperAdmin === true ||
-    liveAppUser?.systemAccess?.superAdmin === true
+    liveAppUser?.systemAccess?.superAdmin === true ||
+    (MASTER_ADMIN_EMAIL && sessionEmailForAdmin === MASTER_ADMIN_EMAIL.toLowerCase())
   );
   const whoamiStatus = serverAdminCheck?.status || WHOAMI_STATES.IDLE;
-  const serverAdminCheckPending = Boolean(appUser?.id && appUser.id !== 'dev-backdoor' && [WHOAMI_STATES.PENDING, WHOAMI_STATES.RETRYING].includes(whoamiStatus));
-  const serverAdminCheckTemporarilyUnavailable = Boolean(appUser?.id && appUser.id !== 'dev-backdoor' && whoamiStatus === WHOAMI_STATES.TRANSIENT_FAILURE);
-  const serverDefinitivelyDeniedSuperAdmin = Boolean(whoamiStatus === WHOAMI_STATES.DENIED && serverAdminCheck?.definitive === true);
-  // Local profile markers may only hold a secure restoring state while /api/whoami is pending.
+  const serverAdminCheckPending = Boolean(appUser?.id && appUser.id !== 'dev-backdoor' && platformAdminAccessState.state === PLATFORM_ADMIN_ACCESS_STATES.PENDING);
+  const serverAdminCheckTemporarilyUnavailable = Boolean(appUser?.id && appUser.id !== 'dev-backdoor' && platformAdminAccessState.state === PLATFORM_ADMIN_ACCESS_STATES.TEMPORARILY_UNAVAILABLE);
+  const serverDefinitivelyDeniedSuperAdmin = Boolean(platformAdminAccessState.state === PLATFORM_ADMIN_ACCESS_STATES.DENIED && platformAdminAccessState.definitive === true);
+  // Local profile and public master-email markers may only create a secure pending hint while /api/whoami verifies.
   // They are never treated as final System Administrator authorization.
   const pendingLocalSystemAdminHint = Boolean(
     !isDemoMode &&
@@ -1165,7 +1169,9 @@ const [currentDate, setCurrentDate] = useState(getToday());
       isSuperAdmin: false,
       systemAccess: { ...(liveAppUser.systemAccess || {}), superAdmin: false },
       permissions: { ...(liveAppUser.permissions || {}), systemAdmin: false, godmode: false },
-      superAdminAccessSource: 'server-verified-not-system-admin'
+      superAdminAccessSource: 'server-verified-not-system-admin',
+      platformAdminVerification: platformAdminAccessState.verification,
+      serverAdminCheck
     };
   }
   if (!isDemoMode && liveAppUser && pendingLocalSystemAdminHint && !serverSaysSuperAdmin) {
@@ -1174,16 +1180,20 @@ const [currentDate, setCurrentDate] = useState(getToday());
       isSuperAdmin: false,
       systemAccess: { ...(liveAppUser.systemAccess || {}), superAdmin: false },
       pendingSystemAdminVerification: true,
-      superAdminAccessSource: 'pending-server-verification'
+      superAdminAccessSource: 'pending-server-verification',
+      platformAdminVerification: platformAdminAccessState.verification,
+      serverAdminCheck
     };
   }
-  if (!isDemoMode && liveAppUser && serverSaysSuperAdmin && liveAppUser.isSuperAdmin !== true) {
+  if (!isDemoMode && liveAppUser && serverSaysSuperAdmin && (liveAppUser.isSuperAdmin !== true || liveAppUser.platformAdminVerification?.status !== WHOAMI_STATES.VERIFIED || liveAppUser.serverAdminCheck?.status !== WHOAMI_STATES.VERIFIED)) {
     liveAppUser = {
       ...liveAppUser,
       isSuperAdmin: true,
       pendingSystemAdminVerification: false,
       systemAccess: { ...(liveAppUser.systemAccess || {}), superAdmin: true },
-      superAdminAccessSource: serverAdminCheck?.platformAuthority?.source || (serverAdminCheck?.protectedRootAdminMatched ? 'protected-root-admin' : serverAdminCheck?.serverMasterAdminMatched ? 'server-master-admin-env' : serverAdminCheck?.customClaimSuperAdmin ? 'firebase-custom-claim' : serverAdminCheck?.firestoreSuperAdmin ? 'firestore-profile-flag' : 'api-whoami')
+      superAdminAccessSource: platformAdminAccessState.source || serverAdminCheck?.platformAuthority?.source || (serverAdminCheck?.protectedRootAdminMatched ? 'protected-root-admin' : serverAdminCheck?.serverMasterAdminMatched ? 'server-master-admin-env' : serverAdminCheck?.customClaimSuperAdmin ? 'firebase-custom-claim' : serverAdminCheck?.firestoreSuperAdmin ? 'firestore-profile-flag' : 'api-whoami'),
+      platformAdminVerification: platformAdminAccessState.verification,
+      serverAdminCheck
     };
   }
 
@@ -2814,7 +2824,7 @@ What I clicked / expected:
     if (activeTabState === 'settings' && routeAllowed) return <TabSettings key={`set-${rId}`} addToast={addToast} appUser={liveAppUser} clientData={displayClientData} users={displayUsers} presenceSelf={selfPresenceRecord} />;
     if (activeTabState === 'help' && routeAllowed) return <TabHelpCenter key={`help-${rId}`} appUser={liveAppUser} activeTab={activeTabState} voiceHelpSearchTarget={voiceHelpSearchTarget} addToast={addToast} />;
     if (activeTabState === 'godmode' && serverSaysSuperAdmin) return <TabGodMode key={`god-${rId}-${serverAdminRetryKey}`} appUser={{ ...liveAppUser, isSuperAdmin: true, serverAdminCheck }} addToast={addToast} setGhostTenant={setGhostTenant} setActiveTab={stableSetActiveTab} />;
-    if (activeTabState === 'godmode' && (serverAdminCheckPending || serverAdminCheckTemporarilyUnavailable) && localProfileHasSystemAdminMarker) return (
+    if (activeTabState === 'godmode' && (serverAdminCheckPending || serverAdminCheckTemporarilyUnavailable) && pendingLocalSystemAdminHint) return (
       <div className={`${T.card} p-5 sm:p-8 max-w-2xl mx-auto text-center space-y-4 border-amber-500/40`}>
         <div className="mx-auto w-12 h-12 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-300 text-2xl">🔐</div>
         <div>
@@ -2822,6 +2832,14 @@ What I clicked / expected:
           <h2 className="text-xl font-black text-white mt-2">System Administrator check is temporarily unavailable</h2>
           <p className="text-sm font-bold text-slate-400 mt-2">Your normal 86 Chaos tools are still available. Protected platform controls will open after the server verifies this account.</p>
           {serverAdminCheck?.error && <p className="text-xs font-bold text-amber-200/80 mt-3">Last check: {String(serverAdminCheck.error).slice(0, 180)}</p>}
+          <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-2 text-left text-[10px] font-black uppercase tracking-widest text-slate-400">
+            <div className="rounded-xl bg-black/20 border border-white/10 p-2">HTTP: <span className="text-slate-200">{platformAdminAccessState.statusCode || 'pending'}</span></div>
+            <div className="rounded-xl bg-black/20 border border-white/10 p-2">Reason: <span className="text-slate-200">{platformAdminAccessState.reasonCategory || serverAdminCheck?.reasonCategory || 'verification-pending'}</span></div>
+            <div className="rounded-xl bg-black/20 border border-white/10 p-2">Retryable: <span className="text-slate-200">{platformAdminAccessState.retryable ? 'yes' : 'checking'}</span></div>
+            <div className="rounded-xl bg-black/20 border border-white/10 p-2">API: <span className="text-slate-200">{serverAdminCheck?.version || 'unknown'}</span></div>
+            <div className="rounded-xl bg-black/20 border border-white/10 p-2">Firebase: <span className="text-slate-200">{serverAdminCheck?.runtime?.firebaseProjectId || 'unknown'}</span></div>
+            <div className="rounded-xl bg-black/20 border border-white/10 p-2">State: <span className="text-slate-200">{platformAdminAccessState.state}</span></div>
+          </div>
         </div>
         <div className="flex flex-col sm:flex-row gap-2 justify-center">
           <button onClick={() => setServerAdminRetryKey(k => k + 1)} className={T.btn}>Retry Verification</button>
@@ -2837,6 +2855,12 @@ What I clicked / expected:
           <p className="text-[10px] font-black uppercase tracking-[0.25em] text-red-300">Restricted Platform Tools</p>
           <h2 className="text-xl font-black text-white mt-2">Your role does not include this area</h2>
           <p className="text-sm font-bold text-slate-400 mt-2">These internal platform controls are hidden for this account.</p>
+          <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-2 text-left text-[10px] font-black uppercase tracking-widest text-slate-400">
+            <div className="rounded-xl bg-black/20 border border-white/10 p-2">HTTP: <span className="text-slate-200">{platformAdminAccessState.statusCode || serverAdminCheck?.statusCode || 'not checked'}</span></div>
+            <div className="rounded-xl bg-black/20 border border-white/10 p-2">Reason: <span className="text-slate-200">{platformAdminAccessState.reasonCategory || serverAdminCheck?.reasonCategory || 'platform-authority-required'}</span></div>
+            <div className="rounded-xl bg-black/20 border border-white/10 p-2">API: <span className="text-slate-200">{serverAdminCheck?.version || 'unknown'}</span></div>
+            <div className="rounded-xl bg-black/20 border border-white/10 p-2">Firebase: <span className="text-slate-200">{serverAdminCheck?.runtime?.firebaseProjectId || 'unknown'}</span></div>
+          </div>
         </div>
         <div className="flex flex-col sm:flex-row gap-2 justify-center">
           <button onClick={() => setActiveTab('today')} className={T.btn}>Go to Today</button>
@@ -3046,7 +3070,7 @@ return (
         </div>
       )}
 
-      <DrawerMenu isOpen={isMenuOpen} onClose={closeMenu} activeTab={activeTabState} setActiveTab={stableSetActiveTab} appUser={liveAppUser} setAppUser={setAppUser} hasUnreadMessages={hasUnreadMessages} hasMyShiftAlert={hasMyShiftAlert} hasScheduleBuilderAlert={hasScheduleBuilderAlert} hasHelpUpdate={hasHelpUpdate} clientFeatures={displayClientFeatures} clientData={displayClientData} addToast={addToast} availableWorkspaces={availableWorkspaces} activeWorkspaceName={liveAppUser?.restaurantName || displayClientData?.name || ''} onOpenWorkspaceSwitcher={openWorkspaceSwitcherFromDrawer} />
+      <DrawerMenu isOpen={isMenuOpen} onClose={closeMenu} activeTab={activeTabState} setActiveTab={stableSetActiveTab} appUser={liveAppUser} setAppUser={setAppUser} hasUnreadMessages={hasUnreadMessages} hasMyShiftAlert={hasMyShiftAlert} hasScheduleBuilderAlert={hasScheduleBuilderAlert} hasHelpUpdate={hasHelpUpdate} clientFeatures={displayClientFeatures} clientData={displayClientData} addToast={addToast} availableWorkspaces={availableWorkspaces} activeWorkspaceName={liveAppUser?.restaurantName || displayClientData?.name || ''} onOpenWorkspaceSwitcher={openWorkspaceSwitcherFromDrawer} platformAdminAccessState={platformAdminAccessState} />
       <GlobalSearchModal isOpen={isGlobalSearchOpen} onClose={closeGlobalSearch} queryText={globalSearchQuery} setQueryText={setGlobalSearchQuery} users={displayUsers} events={events} shifts={shifts} recipes={recipes} inventoryItems={inventoryItems} maintenanceLogs={maintenanceLogs} setActiveTab={stableSetActiveTab} appUser={liveAppUser} clientData={displayClientData} clientFeatures={displayClientFeatures} />
       <KitchenTVMode isOpen={isKitchenTVOpen} onClose={closeKitchenTV} shifts={shifts} events={events} prepItems={prepItems} maintenanceLogs={maintenanceLogs} inventoryItems={inventoryItems} />
       <UndoBar undoItem={undoItem} clearUndo={clearUndoItem} />
