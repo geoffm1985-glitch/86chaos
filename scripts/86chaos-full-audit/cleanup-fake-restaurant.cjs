@@ -40,7 +40,7 @@ function writeReport(report) {
     generatedAt: new Date().toISOString(),
     runId: RUN_ID,
     runDir: RELEASE_RUN_DIR,
-    cleanupMethod: 'current-run-exact-id-browser-origin-rest',
+    cleanupMethod: 'server-verified-qa-seed-api',
     ...report,
   });
 }
@@ -434,21 +434,19 @@ async function main() {
     report.remaining = Array.isArray(apiResult.remaining) && apiResult.remaining.length ? Object.fromEntries(apiResult.remaining.map(row => [row.collection, row.count || 1])) : {};
     report.deletedOrUpdated = apiResult.deletedOrUpdated || 0;
 
-    const storage = storageRest(config, signed.idToken);
-    try {
-      const documentVaultStorage = await cleanupDocumentVaultStorage(nodeFetchPage(), storage, restaurantId);
-      report.storageObjectsRemoved = documentVaultStorage.removed || [];
-      report.storageObjectsFound = documentVaultStorage.found || 0;
-      report.unresolvedQaLeftovers = documentVaultStorage.unresolved || [];
-      if (documentVaultStorage.failed?.length) report.failed.push(...documentVaultStorage.failed.map(row => ({ collection: '_storage', ...row })));
-      if (documentVaultStorage.remaining?.length) report.remaining._storage = documentVaultStorage.remaining.length;
-    } catch (error) {
-      report.failed.push({ collection: '_storage', error: `Document Vault Storage cleanup failed: ${error.message}` });
-    }
+    const storageResult = apiResult.storage || {};
+    report.storage = storageResult;
+    report.storageObjectsRemoved = Array.isArray(storageResult.deleted) ? storageResult.deleted : [];
+    report.storageObjectsFound = Number(apiResult.storageObjectsFound ?? storageResult.objectsFound ?? 0);
+    report.storageObjectsDeleted = Number(apiResult.storageObjectsDeleted ?? storageResult.objectsDeleted ?? report.storageObjectsRemoved.length ?? 0);
+    report.storageObjectsRemaining = Number(apiResult.storageObjectsRemaining ?? storageResult.objectsRemaining ?? 0);
+    report.unresolvedQaLeftovers = Array.isArray(storageResult.unresolved) ? storageResult.unresolved : [];
+    if (report.storageObjectsRemaining > 0) report.remaining._storage = report.storageObjectsRemaining;
 
     report.expected = buildExpectedByCollection(seed || {});
-    report.restaurantDeleted = apiResult.remaining?.some?.(row => row.collection === 'restaurants') ? 0 : 1;
-    report.restaurantRemaining = report.restaurantDeleted !== 1;
+    report.restaurantExisted = apiResult.restaurantExisted === true;
+    report.restaurantDeleted = apiResult.restaurantDeleted === true ? 1 : 0;
+    report.restaurantRemaining = Array.isArray(apiResult.remaining) && apiResult.remaining.some(row => row.collection === 'restaurants');
     report.accountedFailures = [];
     report.ok = apiResult.ok === true && report.failed.length === 0 && Object.keys(report.remaining).length === 0 && (report.unresolvedQaLeftovers || []).length === 0;
     if (!report.ok) process.exitCode = 1;

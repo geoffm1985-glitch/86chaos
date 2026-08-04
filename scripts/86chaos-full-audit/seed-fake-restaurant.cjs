@@ -338,7 +338,7 @@ function withIds(profile, createdIds) {
     delete item.vendorKey;
   }
   for (const req of profile.collections.timeOffRequests) {
-    if (req.userKey && userIdsByKey[req.userKey]) { const uid = userIdsByKey[req.userKey]; req.userId = uid; req.employeeId = uid; req.createdBy = uid; }
+    if (req.userKey && userIdsByKey[req.userKey]) { const uid = userIdsByKey[req.userKey]; req.userId = uid; req.employeeId = uid; }
     delete req.userKey;
   }
   for (const rec of profile.collections.availabilityRecords) {
@@ -619,6 +619,8 @@ if (require.main === module) main();
 
 module.exports = {
   EXPECTED_MINIMUM_COUNTS,
+  buildServerSeedDocuments,
+  withIds,
   verifySeedDocuments,
   summarizeCreatedDocuments,
   fromFirestoreFields,

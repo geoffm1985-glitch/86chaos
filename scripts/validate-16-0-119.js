@@ -27,11 +27,11 @@ const whoami = read('api/whoami.js');
 const protectedRoot = read('api/_protected-root-admin.js');
 const apiVersion = read('api/_version.js');
 
-assert(pkg.version === '16.0.118', 'package.json version is 16.0.118');
-assert(lock.version === '16.0.118' && lock.packages?.['']?.version === '16.0.118', 'package-lock root versions are 16.0.118');
-assert(versionJson.version === '16.0.118' && versionJson.build === '16.0.118', 'public/version.json version/build are 16.0.118');
-assert(appCore.includes("export const CURRENT_VERSION = '16.0.118'"), 'src/core/appCore.js CURRENT_VERSION is 16.0.118');
-assert(apiVersion.includes("APP_VERSION = '16.0.118'") && apiVersion.includes("SECURITY_SCHEMA_VERSION = '16.0.118'"), 'api/_version.js reports 16.0.118');
+assert(pkg.version === '16.0.119', 'package.json version is 16.0.119');
+assert(lock.version === '16.0.119' && lock.packages?.['']?.version === '16.0.119', 'package-lock root versions are 16.0.119');
+assert(versionJson.version === '16.0.119' && versionJson.build === '16.0.119', 'public/version.json version/build are 16.0.119');
+assert(appCore.includes("export const CURRENT_VERSION = '16.0.119'"), 'src/core/appCore.js CURRENT_VERSION is 16.0.119');
+assert(apiVersion.includes("APP_VERSION = '16.0.119'") && apiVersion.includes("SECURITY_SCHEMA_VERSION = '16.0.119'"), 'api/_version.js reports 16.0.119');
 
 assert(sha256('firestore.rules') === '239f5c27bf0275f8aae86fed1e6478d3a10f6231cc225d17199086da5070b1ff', 'deployed firestore.rules SHA-256 is preserved byte-for-byte');
 assert(sha256('storage.rules') === '4037c82b31a1a16cc0f7b5c43d8557a3c180adcf8011cc8c893465355c7f62be', 'storage.rules remains unchanged from the uploaded source ZIP');
@@ -103,5 +103,12 @@ assert(seedAudit.includes('buildServerSeedDocuments') && seedAudit.includes('cal
 assert(!seedAudit.includes("report.seedMethod = 'browser-origin-rest'"), 'release-gate seed no longer uses browser-origin-rest as its write method');
 assert(cleanupAudit.includes('/api/full-audit-qa-seed') && cleanupAudit.includes('callQaSeedApi(\'cleanup\''), 'release-gate cleanup uses server-verified QA cleanup API');
 assert(!cleanupAudit.includes('const cleanup = await cleanupCurrentRun'), 'release-gate cleanup no longer relies on client Firestore runQuery cleanup for seeded docs');
+assert(seedAudit.includes('req.userId = uid; req.employeeId = uid;') && !seedAudit.includes('req.createdBy = uid'), 'release-gate request-off seed transformation preserves createdBy ownership marker while resolving employee UIDs');
+assert(qaSeedApi.includes('cleanupCurrentRunDocumentVaultStorage') && qaSeedApi.includes('server-admin-document-vault-prefix'), 'server QA cleanup owns current-run Document Vault cleanup through Admin SDK storage path');
+assert(qaSeedApi.indexOf('cleanupCurrentRunDocumentVaultStorage(app, base.restaurantId, base.runId)') < qaSeedApi.indexOf('const refs = new Map();'), 'server QA cleanup runs storage cleanup before collecting Firestore refs for deletion');
+assert(qaSeedApi.includes('storageObjectsFound') && qaSeedApi.includes('storageObjectsDeleted') && qaSeedApi.includes('storageObjectsRemaining'), 'server QA cleanup returns truthful storage cleanup counts');
+assert(!cleanupAudit.includes('cleanupDocumentVaultStorage(nodeFetchPage(), storage') && !cleanupAudit.includes('storageRest(config, signed.idToken)'), 'release-gate cleanup script no longer performs redundant client-token Firebase Storage REST cleanup');
+assert(cleanupAudit.includes('report.restaurantDeleted = apiResult.restaurantDeleted === true ? 1 : 0'), 'release-gate cleanup reports restaurant deletion only when the server confirms it');
+assert(read('tests/86chaos-release-gate/qa-seed-cleanup-behavior.test.cjs').includes('request-off seed transformation preserves QA ownership marker'), 'focused release-gate seed/cleanup behavioral regression tests exist');
 
 if (process.exitCode) process.exit(process.exitCode);

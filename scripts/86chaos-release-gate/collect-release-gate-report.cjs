@@ -170,9 +170,34 @@ if (!accountProvisionFailures.length && setupState && setupState.attempted && se
 if (fs.existsSync(artifact['86chaos-full-audit-seed-report.json']) && seedReport && seedReport.ok !== true) setupFailures.push(`Seed report not ok:true: ${seedReport.error || 'unknown seed failure'}`);
 if (seedReport && seedReport.verification && seedReport.verification.ok !== true) setupFailures.push('Seed verification failed.');
 
+
+function firstCleanupError(report = {}) {
+  const failed = Array.isArray(report.failed) ? report.failed : [];
+  if (failed.length) {
+    const first = failed[0];
+    return first.error || first.reason || first.message || JSON.stringify(first).slice(0, 500);
+  }
+  const failures = Array.isArray(report.failures) ? report.failures : [];
+  if (failures.length) {
+    const first = failures[0];
+    return first.error || first.reason || first.message || JSON.stringify(first).slice(0, 500);
+  }
+  const storageFailures = Array.isArray(report.storage?.failures) ? report.storage.failures : [];
+  if (storageFailures.length) {
+    const first = storageFailures[0];
+    return first.error || first.reason || first.message || JSON.stringify(first).slice(0, 500);
+  }
+  const unresolved = Array.isArray(report.storage?.unresolved) ? report.storage.unresolved : [];
+  if (unresolved.length) {
+    const first = unresolved[0];
+    return first.error || (Array.isArray(first.errors) ? first.errors.join('; ') : '') || JSON.stringify(first).slice(0, 500);
+  }
+  return report.error || 'unknown cleanup failure';
+}
+
 const cleanupFailures = [];
 const cleanupRequired = setupState && (setupState.writesStarted === true || setupState.qaDataWritesStarted === true || (setupState.attempted === true && setupState.seeded === true));
-if (fs.existsSync(artifact['86chaos-full-audit-cleanup-report.json']) && cleanupReport && cleanupReport.ok !== true) cleanupFailures.push(`Cleanup report not ok:true: ${cleanupReport.error || 'unknown cleanup failure'}`);
+if (fs.existsSync(artifact['86chaos-full-audit-cleanup-report.json']) && cleanupReport && cleanupReport.ok !== true) cleanupFailures.push(`Cleanup report not ok:true: ${firstCleanupError(cleanupReport)}`);
 if (cleanupRequired && !fs.existsSync(artifact['86chaos-full-audit-cleanup-report.json'])) cleanupFailures.push('Cleanup report is missing after verified QA seed.');
 if (cleanupReport && cleanupReport.runId && cleanupReport.runId !== runId) cleanupFailures.push(`Cleanup used runId ${cleanupReport.runId} instead of ${runId}.`);
 if (cleanupReport && cleanupReport.restaurantRemaining) cleanupFailures.push('Current-run restaurant still remains after cleanup.');

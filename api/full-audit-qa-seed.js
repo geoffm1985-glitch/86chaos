@@ -164,6 +164,108 @@ async function verifyDocs(db, projectId, documents, restaurantId, runId) {
   }
   return { ok: missing.length === 0 && bad.length === 0, verifiedCounts, missing, bad };
 }
+
+function documentVaultPrefix(restaurantId = '') {
+  return `restaurants/${safeId(restaurantId, 180)}/back-office/document-vault/`;
+}
+
+function boolMeta(value) {
+  return value === true || String(value || '').toLowerCase() === 'true';
+}
+
+function storageObjectSafetyErrors(metadata = {}, restaurantId = '', runId = '') {
+  const name = String(metadata.name || '').trim();
+  const prefix = documentVaultPrefix(restaurantId);
+  const meta = metadata.metadata && typeof metadata.metadata === 'object' ? metadata.metadata : {};
+  const errors = [];
+  if (!name.startsWith(prefix)) errors.push('object path is outside the exact current-run Document Vault prefix');
+  if (meta.restaurantId && meta.restaurantId !== restaurantId) errors.push('metadata.restaurantId does not match the current QA restaurant');
+  if (meta.qaRunId && meta.qaRunId !== runId) errors.push('metadata.qaRunId belongs to another QA run');
+  if (Object.prototype.hasOwnProperty.call(meta, 'qaOwned') && !boolMeta(meta.qaOwned)) errors.push('metadata.qaOwned is not true');
+  return errors;
+}
+
+async function listDocumentVaultFiles(bucket, restaurantId) {
+  const prefix = documentVaultPrefix(restaurantId);
+  const files = [];
+  let query = { prefix, autoPaginate: false, maxResults: PAGE_SIZE };
+  for (;;) {
+    const [pageFiles, , response] = await bucket.getFiles(query);
+    for (const file of pageFiles || []) files.push(file);
+    const nextPageToken = response?.nextPageToken;
+    if (!nextPageToken) break;
+    query = { ...query, pageToken: nextPageToken };
+  }
+  return { prefix, files };
+}
+
+async function cleanupCurrentRunDocumentVaultStorage(app, restaurantId = '', runId = '') {
+  const prefix = documentVaultPrefix(restaurantId);
+  const result = {
+    ok: false,
+    method: 'server-admin-document-vault-prefix',
+    prefix,
+    objectsFound: 0,
+    objectsDeleted: 0,
+    objectsRemaining: 0,
+    deleted: [],
+    failures: [],
+    unresolved: [],
+    remaining: [],
+  };
+  let bucket;
+  try {
+    bucket = app.storage().bucket();
+  } catch (error) {
+    result.failures.push({ prefix, error: error?.message || 'Firebase Storage bucket is unavailable.' });
+    return result;
+  }
+
+  let files = [];
+  try {
+    ({ files } = await listDocumentVaultFiles(bucket, restaurantId));
+  } catch (error) {
+    result.failures.push({ prefix, error: `Document Vault Storage list failed: ${error?.message || error}` });
+    return result;
+  }
+  result.objectsFound = files.length;
+
+  for (const file of files) {
+    const fallbackMetadata = { name: file.name || '', metadata: {} };
+    let metadata = fallbackMetadata;
+    try {
+      const [loaded] = typeof file.getMetadata === 'function' ? await file.getMetadata() : [fallbackMetadata];
+      metadata = { ...fallbackMetadata, ...(loaded || {}), name: loaded?.name || file.name || '' };
+    } catch (error) {
+      result.failures.push({ storagePath: file.name || '', error: `metadata read failed: ${error?.message || error}` });
+      continue;
+    }
+    const safetyErrors = storageObjectSafetyErrors(metadata, restaurantId, runId);
+    if (safetyErrors.length) {
+      result.unresolved.push({ storagePath: file.name || metadata.name || '', errors: safetyErrors });
+      continue;
+    }
+    try {
+      if (typeof file.delete !== 'function') throw new Error('Storage file delete function is unavailable.');
+      await file.delete({ ignoreNotFound: true });
+      result.objectsDeleted += 1;
+      result.deleted.push(file.name || metadata.name || '');
+    } catch (error) {
+      result.failures.push({ storagePath: file.name || metadata.name || '', error: error?.message || String(error) });
+    }
+  }
+
+  try {
+    const remaining = await listDocumentVaultFiles(bucket, restaurantId);
+    result.remaining = (remaining.files || []).map(file => file.name || '').filter(Boolean);
+    result.objectsRemaining = result.remaining.length;
+  } catch (error) {
+    result.failures.push({ prefix, error: `Document Vault Storage remaining verification failed: ${error?.message || error}` });
+  }
+  result.ok = result.failures.length === 0 && result.unresolved.length === 0 && result.objectsRemaining === 0;
+  return result;
+}
+
 async function seedQa(req, res, { auth, db, projectId, body, base }) {
   const roleCheck = validateRoleAccounts(body.roleAccounts, base.restaurantId, base.runId);
   const docCheck = validateDocuments(body.documents, base.restaurantId, base.runId);
@@ -216,7 +318,7 @@ async function seedQa(req, res, { auth, db, projectId, body, base }) {
   await writeAudit(db, auth, 'QA_RELEASE_GATE_SEED', base.restaurantId, JSON.stringify({ runId: base.runId, docs: seededDocuments.length, method: output.seedMethod }), base.restaurantId);
   return res.status(output.ok ? 200 : 500).json(output);
 }
-async function cleanupQa(req, res, { auth, db, projectId, body, base }) {
+async function cleanupQa(req, res, { app, auth, db, projectId, body, base }) {
   const restaurantRef = db.collection('restaurants').doc(base.restaurantId);
   const restaurantSnap = await restaurantRef.get();
   if (restaurantSnap.exists) {
@@ -227,6 +329,34 @@ async function cleanupQa(req, res, { auth, db, projectId, body, base }) {
     if (data.qaRunId !== base.runId) errors.push('restaurant.qaRunId does not match current run');
     if (base.workspaceName && name !== base.workspaceName) errors.push('restaurant name does not match current QA workspace');
     if (errors.length) return res.status(409).json({ ok: false, error: `Cleanup refused non-current/non-QA restaurant: ${errors.join('; ')}` });
+  }
+
+  let storage = { ok: true, method: 'server-admin-document-vault-prefix', prefix: documentVaultPrefix(base.restaurantId), objectsFound: 0, objectsDeleted: 0, objectsRemaining: 0, deleted: [], failures: [], unresolved: [], remaining: [], skipped: !restaurantSnap.exists };
+  if (restaurantSnap.exists) storage = await cleanupCurrentRunDocumentVaultStorage(app, base.restaurantId, base.runId);
+  if (storage.ok !== true) {
+    const failures = [
+      ...(storage.failures || []).map(row => ({ collection: '_storage', ...row })),
+      ...(storage.unresolved || []).map(row => ({ collection: '_storage', ...row, error: row.error || (row.errors || []).join('; ') || 'unresolved storage ownership evidence' })),
+    ];
+    const remaining = (storage.objectsRemaining || 0) > 0 ? [{ collection: '_storage', count: storage.objectsRemaining, prefix: storage.prefix }] : [];
+    const output = {
+      ok: false,
+      action: 'cleanup',
+      projectId,
+      restaurantId: base.restaurantId,
+      restaurantExisted: restaurantSnap.exists,
+      restaurantDeleted: false,
+      deletedOrUpdated: 0,
+      failures,
+      remaining,
+      storage,
+      storageObjectsFound: storage.objectsFound || 0,
+      storageObjectsDeleted: storage.objectsDeleted || 0,
+      storageObjectsRemaining: storage.objectsRemaining || 0,
+      cleanupMethod: 'server-verified-qa-seed-api'
+    };
+    await writeAudit(db, auth, 'QA_RELEASE_GATE_CLEANUP_STORAGE_BLOCKED', base.restaurantId, JSON.stringify({ runId: base.runId, failures: failures.length, remaining: remaining.length, storageObjectsFound: output.storageObjectsFound, storageObjectsDeleted: output.storageObjectsDeleted, storageObjectsRemaining: output.storageObjectsRemaining }).slice(0, 900), base.restaurantId);
+    return res.status(207).json(output);
   }
 
   const refs = new Map();
@@ -278,8 +408,26 @@ async function cleanupQa(req, res, { auth, db, projectId, body, base }) {
   }
   const restaurantAfter = await restaurantRef.get();
   if (restaurantAfter.exists) remaining.push({ collection: 'restaurants', count: 1 });
-  const output = { ok: failures.length === 0 && remaining.length === 0, action: 'cleanup', projectId, restaurantId: base.restaurantId, deletedOrUpdated: committed, failures, remaining, cleanupMethod: 'server-verified-qa-seed-api' };
-  await writeAudit(db, auth, 'QA_RELEASE_GATE_CLEANUP', base.restaurantId, JSON.stringify({ runId: base.runId, ok: output.ok, failures: failures.length, remaining: remaining.length }), base.restaurantId);
+  for (const failure of storage.failures || []) failures.push({ collection: '_storage', ...failure });
+  for (const row of storage.unresolved || []) failures.push({ collection: '_storage', ...row, error: row.error || (row.errors || []).join('; ') || 'unresolved storage ownership evidence' });
+  if ((storage.objectsRemaining || 0) > 0) remaining.push({ collection: '_storage', count: storage.objectsRemaining, prefix: storage.prefix });
+  const output = {
+    ok: failures.length === 0 && remaining.length === 0 && storage.ok === true,
+    action: 'cleanup',
+    projectId,
+    restaurantId: base.restaurantId,
+    restaurantExisted: restaurantSnap.exists,
+    restaurantDeleted: restaurantSnap.exists && !restaurantAfter.exists,
+    deletedOrUpdated: committed,
+    failures,
+    remaining,
+    storage,
+    storageObjectsFound: storage.objectsFound || 0,
+    storageObjectsDeleted: storage.objectsDeleted || 0,
+    storageObjectsRemaining: storage.objectsRemaining || 0,
+    cleanupMethod: 'server-verified-qa-seed-api'
+  };
+  await writeAudit(db, auth, 'QA_RELEASE_GATE_CLEANUP', base.restaurantId, JSON.stringify({ runId: base.runId, ok: output.ok, failures: failures.length, remaining: remaining.length, storageObjectsFound: output.storageObjectsFound, storageObjectsDeleted: output.storageObjectsDeleted, storageObjectsRemaining: output.storageObjectsRemaining }), base.restaurantId);
   return res.status(output.ok ? 200 : 207).json(output);
 }
 
@@ -294,7 +442,7 @@ module.exports = async function handler(req, res) {
     const projectId = app.options?.projectId || auth.app?.options?.projectId || '';
     const base = validateBase({ req, auth, body, projectId });
     if (!base.ok) return res.status(403).json({ ok: false, error: base.errors.join(' '), errors: base.errors });
-    const ctx = { auth, db, projectId, body, base };
+    const ctx = { app, auth, db, projectId, body, base };
     if (body.action === 'seed') return seedQa(req, res, ctx);
     if (body.action === 'cleanup') return cleanupQa(req, res, ctx);
     return res.status(400).json({ ok: false, error: 'Unsupported action. Use seed or cleanup.' });
@@ -305,3 +453,7 @@ module.exports = async function handler(req, res) {
 };
 
 module.exports.config = { maxDuration: 300 };
+module.exports.validateDocuments = validateDocuments;
+module.exports.cleanupCurrentRunDocumentVaultStorage = cleanupCurrentRunDocumentVaultStorage;
+module.exports.storageObjectSafetyErrors = storageObjectSafetyErrors;
+module.exports.documentVaultPrefix = documentVaultPrefix;
