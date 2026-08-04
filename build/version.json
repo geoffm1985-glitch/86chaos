@@ -1,14 +1,16 @@
 {
-  "version": "16.0.97",
-  "name": "86 Chaos 16.0.97 System Admin Runtime Interop Fix",
-  "build": "16.0.97",
-  "label": "86 Chaos 16.0.97 System Admin Runtime Interop Fix",
-  "releasedAt": "2026-08-01T15:24:00-05:00",
-  "releaseTitle": "86 Chaos 16.0.97 System Admin Runtime Interop Fix",
+  "version": "16.0.114",
+  "name": "86 Chaos 16.0.114 System Administrator Access Fix",
+  "build": "16.0.114",
+  "label": "86 Chaos 16.0.114 System Administrator Access Fix",
+  "releasedAt": "2026-08-03T20:10:00-05:00",
+  "releaseTitle": "86 Chaos 16.0.114 System Administrator Access Fix",
   "notes": [
-    "System Administrator runtime imports now safely resolve CommonJS helper modules in the browser bundle.",
-    "The section error boundary now keeps a fallback report ID even if runtime-report helper interop fails.",
-    "System Administrator live-data safety helpers now fall back safely instead of crashing the console when module interop changes.",
-    "Firebase-sensitive configuration, Schedule Builder, employee deletion, shift deletion, and push-repair behavior were not changed."
-  ]
+    "Fixes System Administrator visibility by using one canonical server-verification state for drawer visibility, direct routing, protected rendering, and retry diagnostics.",
+    "Allows the public master-admin email only as a secure verification-pending hint, never as final authorization for protected controls.",
+    "Preserves protected-root System Administrator authority across workspace/profile hydration after /api/whoami verifies the signed-in account.",
+    "Adds safe /api/whoami diagnostics for status, reason category, API version, Firebase project, retryability, verification state, and authority source without exposing tokens or credentials.",
+    "Preserves the already deployed Firestore rules byte-for-byte."
+  ],
+  "title": "86 Chaos 16.0.114 System Administrator Access Fix"
 }

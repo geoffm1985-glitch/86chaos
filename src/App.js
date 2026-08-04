@@ -11,7 +11,7 @@ import { LockedFeatureScreen } from './components/PlanGate';
 import { usePlanAccess } from './hooks/usePlanAccess';
 import { resolveFeatureAccess } from './lib/featureAccess';
 import { buildScheduleQueryPlan, buildScheduleDateKeyRangeClauses, mergeLoadedScheduleShifts } from './core/scheduleQueryPlanner';
-import { WHOAMI_STATES, classifyWhoamiResponse, mergeVerifiedAccess, shouldHoldAccessHydration } from './core/sessionAccess';
+import { WHOAMI_STATES, PLATFORM_ADMIN_ACCESS_STATES, classifyWhoamiResponse, mergeVerifiedAccess, resolvePlatformAdminAccessState, shouldHoldAccessHydration } from './core/sessionAccess';
 import { FEATURE_KEYS } from './config/plans';
 import { LoginScreen } from './features/auth';
 import * as runtimeReportStateModule from './core/runtimeReportState.cjs';
@@ -480,6 +480,7 @@ const LEGACY_TAB_ALIASES = {
   'message-board': 'messages',
   'help-center': 'help',
   'admin-manual': 'help',
+  'hr': 'hr-training',
   'backoffice': 'back-office',
   'owner-office': 'back-office',
   'office': 'back-office',
@@ -570,6 +571,10 @@ const buildWorkspaceUser = (currentUser = {}, workspace = {}) => {
     wage: workspace.wage ?? currentUser.wage ?? 0,
     photoURL: workspace.photoURL || currentUser.photoURL || accountProfile.photoURL || '',
     isAdmin: currentUser.isSuperAdmin === true || scopedAccess.isAdmin,
+    isSuperAdmin: currentUser.isSuperAdmin === true,
+    systemAccess: currentUser.systemAccess || accountProfile.systemAccess || {},
+    superAdminAccessSource: currentUser.superAdminAccessSource || accountProfile.superAdminAccessSource || '',
+    platformAdminVerification: currentUser.platformAdminVerification || accountProfile.platformAdminVerification || null,
     isOwner: scopedAccess.isOwner,
     owner: scopedAccess.isOwner,
     accountOwner: scopedAccess.accountOwner,
@@ -611,6 +616,10 @@ const userFromWorkspaceMember = (member = {}, accountUser = {}) => {
     restaurantName: safeWorkspaceName(member),
     permissions: { ...(member.permissions || {}) },
     isAdmin: member.isAdmin === true || accountUser.isSuperAdmin === true,
+    isSuperAdmin: accountUser.isSuperAdmin === true,
+    systemAccess: accountUser.systemAccess || {},
+    superAdminAccessSource: accountUser.superAdminAccessSource || '',
+    platformAdminVerification: accountUser.platformAdminVerification || null,
     isOwner: memberOwner,
     owner: memberOwner,
     accountOwner: member.accountOwner === true,
@@ -775,7 +784,10 @@ export default function App() {
     let retryTimer = null;
     const fetchWhoami = async (forceTokenRefresh = false) => {
       const res = await secureFetch('/api/whoami', { forceTokenRefresh, authWaitMs: 10000 });
-      const data = await res.json().catch(() => ({}));
+      const contentType = res.headers?.get?.('content-type') || '';
+      const data = contentType.toLowerCase().includes('application/json')
+        ? await res.json().catch(() => ({ reasonCategory: 'whoami-json-parse-failed', error: `Could not parse /api/whoami JSON (${res.status}).`, retryable: true }))
+        : { reasonCategory: 'whoami-non-json-response', error: `Non-JSON /api/whoami response (${res.status}${contentType ? `, ${contentType}` : ''}).`, retryable: true };
       return { res, data };
     };
     const applyVerification = (verification) => {
@@ -928,7 +940,7 @@ const [currentDate, setCurrentDate] = useState(getToday());
   const canViewTeamScheduleData = Boolean(appUser?.isSuperAdmin || appUser?.isAdmin || appUser?.isOwner || appUser?.accountOwner || appUser?.workspaceOwner || appUser?.permissions?.schedule || appUser?.permissions?.team);
   const canViewTeamPresenceData = Boolean(appUser?.isSuperAdmin || appUser?.isAdmin || appUser?.isOwner || appUser?.accountOwner || appUser?.workspaceOwner || appUser?.permissions?.team);
   const wantsFullRosterData = Boolean(rId && !ghostTenant && (
-    schedulePlan.needsRoster || wantsToday || ['team', 'labor', 'financials', 'messages', 'hr', 'prep'].includes(activeTabState) || isGlobalSearchOpen
+    schedulePlan.needsRoster || wantsToday || ['team', 'labor', 'financials', 'messages', 'hr-training', 'prep'].includes(activeTabState) || isGlobalSearchOpen
   ));
   const wantsWorkspaceMembershipList = Boolean(rId && !ghostTenant && ['schedule', 'published', 'events', 'team'].includes(activeTabState));
 
@@ -1132,25 +1144,18 @@ const [currentDate, setCurrentDate] = useState(getToday());
 
   const isDemoMode = !!liveAppUser?.isDemo;
   const sessionEmailForAdmin = String(liveAppUser?.email || appUser?.email || auth.currentUser?.email || '').toLowerCase();
-  const serverSaysSuperAdmin = Boolean(
-    serverAdminCheck?.superAdmin === true && (
-      serverAdminCheck?.platformAuthority?.superAdmin === true ||
-      serverAdminCheck?.serverMasterAdminMatched === true ||
-      serverAdminCheck?.protectedRootAdminMatched === true ||
-      serverAdminCheck?.customClaimSuperAdmin === true ||
-      serverAdminCheck?.firestoreSuperAdmin === true ||
-      serverAdminCheck?.firestoreSystemAdministrator === true
-    )
-  );
+  const platformAdminAccessState = resolvePlatformAdminAccessState({ user: liveAppUser || appUser || {}, verification: serverAdminCheck, masterAdminEmail: MASTER_ADMIN_EMAIL });
+  const serverSaysSuperAdmin = platformAdminAccessState.verified === true;
   const localProfileHasSystemAdminMarker = Boolean(
     liveAppUser?.isSuperAdmin === true ||
-    liveAppUser?.systemAccess?.superAdmin === true
+    liveAppUser?.systemAccess?.superAdmin === true ||
+    (MASTER_ADMIN_EMAIL && sessionEmailForAdmin === MASTER_ADMIN_EMAIL.toLowerCase())
   );
   const whoamiStatus = serverAdminCheck?.status || WHOAMI_STATES.IDLE;
-  const serverAdminCheckPending = Boolean(appUser?.id && appUser.id !== 'dev-backdoor' && [WHOAMI_STATES.PENDING, WHOAMI_STATES.RETRYING].includes(whoamiStatus));
-  const serverAdminCheckTemporarilyUnavailable = Boolean(appUser?.id && appUser.id !== 'dev-backdoor' && whoamiStatus === WHOAMI_STATES.TRANSIENT_FAILURE);
-  const serverDefinitivelyDeniedSuperAdmin = Boolean(whoamiStatus === WHOAMI_STATES.DENIED && serverAdminCheck?.definitive === true);
-  // Local profile markers may only hold a secure restoring state while /api/whoami is pending.
+  const serverAdminCheckPending = Boolean(appUser?.id && appUser.id !== 'dev-backdoor' && platformAdminAccessState.state === PLATFORM_ADMIN_ACCESS_STATES.PENDING);
+  const serverAdminCheckTemporarilyUnavailable = Boolean(appUser?.id && appUser.id !== 'dev-backdoor' && platformAdminAccessState.state === PLATFORM_ADMIN_ACCESS_STATES.TEMPORARILY_UNAVAILABLE);
+  const serverDefinitivelyDeniedSuperAdmin = Boolean(platformAdminAccessState.state === PLATFORM_ADMIN_ACCESS_STATES.DENIED && platformAdminAccessState.definitive === true);
+  // Local profile and public master-email markers may only create a secure pending hint while /api/whoami verifies.
   // They are never treated as final System Administrator authorization.
   const pendingLocalSystemAdminHint = Boolean(
     !isDemoMode &&
@@ -1164,7 +1169,9 @@ const [currentDate, setCurrentDate] = useState(getToday());
       isSuperAdmin: false,
       systemAccess: { ...(liveAppUser.systemAccess || {}), superAdmin: false },
       permissions: { ...(liveAppUser.permissions || {}), systemAdmin: false, godmode: false },
-      superAdminAccessSource: 'server-verified-not-system-admin'
+      superAdminAccessSource: 'server-verified-not-system-admin',
+      platformAdminVerification: platformAdminAccessState.verification,
+      serverAdminCheck
     };
   }
   if (!isDemoMode && liveAppUser && pendingLocalSystemAdminHint && !serverSaysSuperAdmin) {
@@ -1173,16 +1180,20 @@ const [currentDate, setCurrentDate] = useState(getToday());
       isSuperAdmin: false,
       systemAccess: { ...(liveAppUser.systemAccess || {}), superAdmin: false },
       pendingSystemAdminVerification: true,
-      superAdminAccessSource: 'pending-server-verification'
+      superAdminAccessSource: 'pending-server-verification',
+      platformAdminVerification: platformAdminAccessState.verification,
+      serverAdminCheck
     };
   }
-  if (!isDemoMode && liveAppUser && serverSaysSuperAdmin && liveAppUser.isSuperAdmin !== true) {
+  if (!isDemoMode && liveAppUser && serverSaysSuperAdmin && (liveAppUser.isSuperAdmin !== true || liveAppUser.platformAdminVerification?.status !== WHOAMI_STATES.VERIFIED || liveAppUser.serverAdminCheck?.status !== WHOAMI_STATES.VERIFIED)) {
     liveAppUser = {
       ...liveAppUser,
       isSuperAdmin: true,
       pendingSystemAdminVerification: false,
       systemAccess: { ...(liveAppUser.systemAccess || {}), superAdmin: true },
-      superAdminAccessSource: serverAdminCheck?.platformAuthority?.source || (serverAdminCheck?.protectedRootAdminMatched ? 'protected-root-admin' : serverAdminCheck?.serverMasterAdminMatched ? 'server-master-admin-env' : serverAdminCheck?.customClaimSuperAdmin ? 'firebase-custom-claim' : serverAdminCheck?.firestoreSuperAdmin ? 'firestore-profile-flag' : 'api-whoami')
+      superAdminAccessSource: platformAdminAccessState.source || serverAdminCheck?.platformAuthority?.source || (serverAdminCheck?.protectedRootAdminMatched ? 'protected-root-admin' : serverAdminCheck?.serverMasterAdminMatched ? 'server-master-admin-env' : serverAdminCheck?.customClaimSuperAdmin ? 'firebase-custom-claim' : serverAdminCheck?.firestoreSuperAdmin ? 'firestore-profile-flag' : 'api-whoami'),
+      platformAdminVerification: platformAdminAccessState.verification,
+      serverAdminCheck
     };
   }
 
@@ -2789,30 +2800,31 @@ What I clicked / expected:
         </div>
       );
     }
-    const routeAccess = planAccess.canRoute(activeTabState);
+    const routeAccess = planAccess.canRoute(activeTabState, { clientFeatures: displayClientFeatures, serverVerifiedPlatformAdmin: serverSaysSuperAdmin, platformAdminPending: serverAdminCheckPending || serverAdminCheckTemporarilyUnavailable });
+    const routeAllowed = routeAccess && routeAccess.allowed === true;
     const routeIsInternalAdmin = activeTabState === 'godmode' || activeTabState === 'audit';
     if (!routeIsInternalAdmin && routeAccess && routeAccess.allowed === false) return <LockedFeatureScreen access={routeAccess} appUser={liveAppUser} setActiveTab={stableSetActiveTab} />;
     if (activeTabState === 'today') return <TabToday key={`tdy-${rId}`} currentDate={currentDate} appUser={liveAppUser} users={displayUsers} shifts={shifts} shiftSwaps={shiftSwaps} timeOffRequests={timeOffRequests} events={events} sales={sales} timePunches={timePunches} inventoryItems={inventoryItems} maintenanceLogs={maintenanceLogs} prepItems={prepItems} tasks={tasks} recipes={recipes} menuDependencies={menuDependencies} restaurantAdminAlerts={restaurantAdminAlerts} clientData={displayClientData} setActiveTab={setActiveTab} addToast={addToast} registerUndo={registerUndo} />;
-    if (activeTabState === 'schedule' && (liveAppUser?.isAdmin || liveAppUser?.permissions?.schedule)) return <TabMasterSchedule key={`schpub-${rId}-${liveAppUser?.id}`} currentDate={currentDate} setCurrentDate={setCurrentDate} onSubTabChange={setActiveScheduleSubTab} appUser={liveAppUser} users={scheduleDisplayUsers} shifts={shifts} shiftSwaps={shiftSwaps} timeOffRequests={timeOffRequests} events={events} addToast={addToast} initialSubTab="schedule-builder" voiceScheduleSubTabTarget={voiceScheduleSubTabTarget} clientData={displayClientData} scheduleBuilderProps={{ currentDate, users: scheduleDisplayUsers, shifts, events, timeOffRequests, timePunches, addToast, appUser: liveAppUser, clientData: displayClientData }} />;
-    if (activeTabState === 'events' && displayClientFeatures?.events !== false && (liveAppUser?.isSuperAdmin || liveAppUser?.isAdmin || liveAppUser?.isOwner || liveAppUser?.accountOwner || liveAppUser?.workspaceOwner || liveAppUser?.permissions?.events || liveAppUser?.permissions?.schedule || liveAppUser?.permissions?.team)) return <TabSchedule key={`evt-${rId}`} currentDate={currentDate} users={scheduleDisplayUsers} shifts={shifts} events={events} timeOffRequests={timeOffRequests} timePunches={timePunches} addToast={addToast} appUser={liveAppUser} clientData={displayClientData} initialSubTab="events" hideSubTabs />;
+    if (activeTabState === 'schedule' && routeAllowed) return <TabMasterSchedule key={`schpub-${rId}-${liveAppUser?.id}`} currentDate={currentDate} setCurrentDate={setCurrentDate} onSubTabChange={setActiveScheduleSubTab} appUser={liveAppUser} users={scheduleDisplayUsers} shifts={shifts} shiftSwaps={shiftSwaps} timeOffRequests={timeOffRequests} events={events} addToast={addToast} initialSubTab="schedule-builder" voiceScheduleSubTabTarget={voiceScheduleSubTabTarget} clientData={displayClientData} scheduleBuilderProps={{ currentDate, users: scheduleDisplayUsers, shifts, events, timeOffRequests, timePunches, addToast, appUser: liveAppUser, clientData: displayClientData }} />;
+    if (activeTabState === 'events' && routeAllowed) return <TabSchedule key={`evt-${rId}`} currentDate={currentDate} users={scheduleDisplayUsers} shifts={shifts} events={events} timeOffRequests={timeOffRequests} timePunches={timePunches} addToast={addToast} appUser={liveAppUser} clientData={displayClientData} initialSubTab="events" hideSubTabs />;
     if (activeTabState === 'published') return <TabMasterSchedule key={`pub-${rId}-${liveAppUser?.id}`} currentDate={currentDate} setCurrentDate={setCurrentDate} onSubTabChange={setActiveScheduleSubTab} appUser={liveAppUser} users={scheduleDisplayUsers} shifts={shifts} shiftSwaps={shiftSwaps} timeOffRequests={timeOffRequests} events={events} addToast={addToast} voiceScheduleSubTabTarget={voiceScheduleSubTabTarget} clientData={displayClientData} scheduleBuilderProps={{ currentDate, users: scheduleDisplayUsers, shifts, events, timeOffRequests, timePunches, addToast, appUser: liveAppUser, clientData: displayClientData }} />;
-    if (activeTabState === 'ops' && displayClientFeatures?.ops !== false && (liveAppUser?.isSuperAdmin || liveAppUser?.isAdmin || liveAppUser?.permissions?.ops)) return <TabOpsCenter key={`ops-${rId}`} currentDate={currentDate} appUser={liveAppUser} users={displayUsers} shifts={shifts} events={events} sales={sales} timePunches={timePunches} addToast={addToast} setActiveTab={setActiveTab} clientData={displayClientData} />;
-    if (activeTabState === 'back-office' && !isDemoMode) return <TabBackOffice key={`bo-${rId}`} currentDate={currentDate} users={displayUsers} sales={sales} timePunches={timePunches} restaurantAdminAlerts={restaurantAdminAlerts} appUser={liveAppUser} clientData={displayClientData} setActiveTab={setActiveTab} addToast={addToast} />;
-    if ((activeTabState === 'financials' || activeTabState === 'sales' || activeTabState === 'labor') && (liveAppUser?.isSuperAdmin || liveAppUser?.isAdmin || liveAppUser?.permissions?.labor || liveAppUser?.permissions?.sales)) return <TabFinancials key={`fin-${rId}`} currentDate={currentDate} users={displayUsers} shifts={shifts} sales={sales} timePunches={timePunches} addToast={addToast} appUser={liveAppUser} clientData={displayClientData} setActiveTab={setActiveTab} initialSubTab={activeTabState === 'sales' ? 'ledger' : activeTabState === 'labor' ? 'labor' : 'overview'} />;
-    if (activeTabState === 'messages' && displayClientFeatures?.messages !== false) return <TabMessages key={`msg-${rId}`} events={events} appUser={liveAppUser} users={displayUsers} addToast={addToast} />;
-    if (activeTabState === 'prep' && displayClientFeatures?.prep !== false) return <TabPrep key={`prp-${rId}`} currentDate={currentDate} appUser={liveAppUser} addToast={addToast} setLabelsToPrint={setLabelsToPrint} />;
-    if (activeTabState === 'recipes' && displayClientFeatures?.recipes !== false) return <TabRecipes key={`rec-${rId}`} appUser={liveAppUser} addToast={addToast} voiceRecipeTarget={voiceRecipeTarget} />;
-    if (activeTabState === 'inventory' && displayClientFeatures?.inventory !== false) return <TabInventory key={`inv-${rId}-${inventorySubTabTarget || 'default'}`} addToast={addToast} appUser={liveAppUser} clientData={displayClientData} initialSubTab={inventorySubTabTarget} onInitialSubTabConsumed={() => setInventorySubTabTarget(null)} />;
-    if (activeTabState === 'ai-tools' && !isDemoMode && (serverSaysSuperAdmin || liveAppUser?.isAdmin || liveAppUser?.permissions?.inventory || liveAppUser?.permissions?.prep || liveAppUser?.permissions?.team)) return <TabAITools key={`ai-${rId}`} appUser={liveAppUser} clientData={displayClientData} setActiveTab={setActiveTab} setInventorySubTabTarget={setInventorySubTabTarget} addToast={addToast} />;
-    if (activeTabState === 'menu-intelligence' && !isDemoMode) return <TabMenuIntelligence key={`mi-${rId}`} appUser={liveAppUser} clientData={displayClientData} inventoryItems={inventoryItems} addToast={addToast} />;
-    if (activeTabState === 'reminders' && !isDemoMode) return <TabPersonalReminders key={`rem-${rId}-${liveAppUser?.id}`} appUser={liveAppUser} addToast={addToast} />;
-    if (activeTabState === 'team' && displayClientFeatures?.team !== false) return <TabTeam key={`tea-${rId}`} appUser={liveAppUser} users={displayUsers} clientData={displayClientData} addToast={addToast} />;
-    if (activeTabState === 'hr-training' && !isDemoMode && displayClientFeatures?.hr !== false) return <TabHrTraining key={`hrt-${rId}-${liveAppUser?.id}`} appUser={liveAppUser} users={displayUsers} addToast={addToast} />;
-    if (activeTabState === 'maintenance' && displayClientFeatures?.maintenance !== false && (liveAppUser?.isAdmin || liveAppUser?.permissions?.team)) return <TabMaintenance key={`mtn-${rId}`} appUser={liveAppUser} addToast={addToast} />;
-    if (activeTabState === 'settings' && !isDemoMode) return <TabSettings key={`set-${rId}`} addToast={addToast} appUser={liveAppUser} clientData={displayClientData} users={displayUsers} presenceSelf={selfPresenceRecord} />;
-    if (activeTabState === 'help') return <TabHelpCenter key={`help-${rId}`} appUser={liveAppUser} activeTab={activeTabState} voiceHelpSearchTarget={voiceHelpSearchTarget} addToast={addToast} />;
+    if (activeTabState === 'ops' && routeAllowed) return <TabOpsCenter key={`ops-${rId}`} currentDate={currentDate} appUser={liveAppUser} users={displayUsers} shifts={shifts} events={events} sales={sales} timePunches={timePunches} addToast={addToast} setActiveTab={setActiveTab} clientData={displayClientData} />;
+    if (activeTabState === 'back-office' && routeAllowed) return <TabBackOffice key={`bo-${rId}`} currentDate={currentDate} users={displayUsers} sales={sales} timePunches={timePunches} restaurantAdminAlerts={restaurantAdminAlerts} appUser={liveAppUser} clientData={displayClientData} setActiveTab={setActiveTab} addToast={addToast} />;
+    if ((activeTabState === 'financials' || activeTabState === 'sales' || activeTabState === 'labor') && routeAllowed) return <TabFinancials key={`fin-${rId}`} currentDate={currentDate} users={displayUsers} shifts={shifts} sales={sales} timePunches={timePunches} addToast={addToast} appUser={liveAppUser} clientData={displayClientData} setActiveTab={setActiveTab} initialSubTab={activeTabState === 'sales' ? 'ledger' : activeTabState === 'labor' ? 'labor' : 'overview'} />;
+    if (activeTabState === 'messages' && routeAllowed) return <TabMessages key={`msg-${rId}`} events={events} appUser={liveAppUser} users={displayUsers} addToast={addToast} />;
+    if (activeTabState === 'prep' && routeAllowed) return <TabPrep key={`prp-${rId}`} currentDate={currentDate} appUser={liveAppUser} addToast={addToast} setLabelsToPrint={setLabelsToPrint} />;
+    if (activeTabState === 'recipes' && routeAllowed) return <TabRecipes key={`rec-${rId}`} appUser={liveAppUser} addToast={addToast} voiceRecipeTarget={voiceRecipeTarget} />;
+    if (activeTabState === 'inventory' && routeAllowed) return <TabInventory key={`inv-${rId}-${inventorySubTabTarget || 'default'}`} addToast={addToast} appUser={liveAppUser} clientData={displayClientData} initialSubTab={inventorySubTabTarget} onInitialSubTabConsumed={() => setInventorySubTabTarget(null)} />;
+    if (activeTabState === 'ai-tools' && routeAllowed) return <TabAITools key={`ai-${rId}`} appUser={liveAppUser} clientData={displayClientData} setActiveTab={setActiveTab} setInventorySubTabTarget={setInventorySubTabTarget} addToast={addToast} />;
+    if (activeTabState === 'menu-intelligence' && routeAllowed) return <TabMenuIntelligence key={`mi-${rId}`} appUser={liveAppUser} clientData={displayClientData} inventoryItems={inventoryItems} addToast={addToast} />;
+    if (activeTabState === 'reminders' && routeAllowed) return <TabPersonalReminders key={`rem-${rId}-${liveAppUser?.id}`} appUser={liveAppUser} addToast={addToast} />;
+    if (activeTabState === 'team' && routeAllowed) return <TabTeam key={`tea-${rId}`} appUser={liveAppUser} users={displayUsers} clientData={displayClientData} addToast={addToast} />;
+    if (activeTabState === 'hr-training' && routeAllowed) return <TabHrTraining key={`hrt-${rId}-${liveAppUser?.id}`} appUser={liveAppUser} users={displayUsers} addToast={addToast} />;
+    if (activeTabState === 'maintenance' && routeAllowed) return <TabMaintenance key={`mtn-${rId}`} appUser={liveAppUser} addToast={addToast} />;
+    if (activeTabState === 'settings' && routeAllowed) return <TabSettings key={`set-${rId}`} addToast={addToast} appUser={liveAppUser} clientData={displayClientData} users={displayUsers} presenceSelf={selfPresenceRecord} />;
+    if (activeTabState === 'help' && routeAllowed) return <TabHelpCenter key={`help-${rId}`} appUser={liveAppUser} activeTab={activeTabState} voiceHelpSearchTarget={voiceHelpSearchTarget} addToast={addToast} />;
     if (activeTabState === 'godmode' && serverSaysSuperAdmin) return <TabGodMode key={`god-${rId}-${serverAdminRetryKey}`} appUser={{ ...liveAppUser, isSuperAdmin: true, serverAdminCheck }} addToast={addToast} setGhostTenant={setGhostTenant} setActiveTab={stableSetActiveTab} />;
-    if (activeTabState === 'godmode' && (serverAdminCheckPending || serverAdminCheckTemporarilyUnavailable) && localProfileHasSystemAdminMarker) return (
+    if (activeTabState === 'godmode' && (serverAdminCheckPending || serverAdminCheckTemporarilyUnavailable) && pendingLocalSystemAdminHint) return (
       <div className={`${T.card} p-5 sm:p-8 max-w-2xl mx-auto text-center space-y-4 border-amber-500/40`}>
         <div className="mx-auto w-12 h-12 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-300 text-2xl">🔐</div>
         <div>
@@ -2820,6 +2832,14 @@ What I clicked / expected:
           <h2 className="text-xl font-black text-white mt-2">System Administrator check is temporarily unavailable</h2>
           <p className="text-sm font-bold text-slate-400 mt-2">Your normal 86 Chaos tools are still available. Protected platform controls will open after the server verifies this account.</p>
           {serverAdminCheck?.error && <p className="text-xs font-bold text-amber-200/80 mt-3">Last check: {String(serverAdminCheck.error).slice(0, 180)}</p>}
+          <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-2 text-left text-[10px] font-black uppercase tracking-widest text-slate-400">
+            <div className="rounded-xl bg-black/20 border border-white/10 p-2">HTTP: <span className="text-slate-200">{platformAdminAccessState.statusCode || 'pending'}</span></div>
+            <div className="rounded-xl bg-black/20 border border-white/10 p-2">Reason: <span className="text-slate-200">{platformAdminAccessState.reasonCategory || serverAdminCheck?.reasonCategory || 'verification-pending'}</span></div>
+            <div className="rounded-xl bg-black/20 border border-white/10 p-2">Retryable: <span className="text-slate-200">{platformAdminAccessState.retryable ? 'yes' : 'checking'}</span></div>
+            <div className="rounded-xl bg-black/20 border border-white/10 p-2">API: <span className="text-slate-200">{serverAdminCheck?.version || 'unknown'}</span></div>
+            <div className="rounded-xl bg-black/20 border border-white/10 p-2">Firebase: <span className="text-slate-200">{serverAdminCheck?.runtime?.firebaseProjectId || 'unknown'}</span></div>
+            <div className="rounded-xl bg-black/20 border border-white/10 p-2">State: <span className="text-slate-200">{platformAdminAccessState.state}</span></div>
+          </div>
         </div>
         <div className="flex flex-col sm:flex-row gap-2 justify-center">
           <button onClick={() => setServerAdminRetryKey(k => k + 1)} className={T.btn}>Retry Verification</button>
@@ -2835,6 +2855,12 @@ What I clicked / expected:
           <p className="text-[10px] font-black uppercase tracking-[0.25em] text-red-300">Restricted Platform Tools</p>
           <h2 className="text-xl font-black text-white mt-2">Your role does not include this area</h2>
           <p className="text-sm font-bold text-slate-400 mt-2">These internal platform controls are hidden for this account.</p>
+          <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-2 text-left text-[10px] font-black uppercase tracking-widest text-slate-400">
+            <div className="rounded-xl bg-black/20 border border-white/10 p-2">HTTP: <span className="text-slate-200">{platformAdminAccessState.statusCode || serverAdminCheck?.statusCode || 'not checked'}</span></div>
+            <div className="rounded-xl bg-black/20 border border-white/10 p-2">Reason: <span className="text-slate-200">{platformAdminAccessState.reasonCategory || serverAdminCheck?.reasonCategory || 'platform-authority-required'}</span></div>
+            <div className="rounded-xl bg-black/20 border border-white/10 p-2">API: <span className="text-slate-200">{serverAdminCheck?.version || 'unknown'}</span></div>
+            <div className="rounded-xl bg-black/20 border border-white/10 p-2">Firebase: <span className="text-slate-200">{serverAdminCheck?.runtime?.firebaseProjectId || 'unknown'}</span></div>
+          </div>
         </div>
         <div className="flex flex-col sm:flex-row gap-2 justify-center">
           <button onClick={() => setActiveTab('today')} className={T.btn}>Go to Today</button>
@@ -2843,7 +2869,7 @@ What I clicked / expected:
         </div>
       </div>
     );
-    if (activeTabState === 'audit' && !isDemoMode && (liveAppUser?.isAdmin || liveAppUser?.isSuperAdmin)) return <TabAuditLog key={`aud-${rId}`} appUser={liveAppUser} />;
+    if (activeTabState === 'audit' && routeAllowed) return <TabAuditLog key={`aud-${rId}`} appUser={liveAppUser} />;
 
     return (
       <div className={`${T.card} p-5 sm:p-8 max-w-2xl mx-auto text-center space-y-4`}>
@@ -3044,8 +3070,8 @@ return (
         </div>
       )}
 
-      <DrawerMenu isOpen={isMenuOpen} onClose={closeMenu} activeTab={activeTabState} setActiveTab={stableSetActiveTab} appUser={liveAppUser} setAppUser={setAppUser} hasUnreadMessages={hasUnreadMessages} hasMyShiftAlert={hasMyShiftAlert} hasScheduleBuilderAlert={hasScheduleBuilderAlert} hasHelpUpdate={hasHelpUpdate} clientFeatures={displayClientFeatures} clientData={displayClientData} addToast={addToast} availableWorkspaces={availableWorkspaces} activeWorkspaceName={liveAppUser?.restaurantName || displayClientData?.name || ''} onOpenWorkspaceSwitcher={openWorkspaceSwitcherFromDrawer} />
-      <GlobalSearchModal isOpen={isGlobalSearchOpen} onClose={closeGlobalSearch} queryText={globalSearchQuery} setQueryText={setGlobalSearchQuery} users={displayUsers} events={events} shifts={shifts} recipes={recipes} inventoryItems={inventoryItems} maintenanceLogs={maintenanceLogs} setActiveTab={stableSetActiveTab} />
+      <DrawerMenu isOpen={isMenuOpen} onClose={closeMenu} activeTab={activeTabState} setActiveTab={stableSetActiveTab} appUser={liveAppUser} setAppUser={setAppUser} hasUnreadMessages={hasUnreadMessages} hasMyShiftAlert={hasMyShiftAlert} hasScheduleBuilderAlert={hasScheduleBuilderAlert} hasHelpUpdate={hasHelpUpdate} clientFeatures={displayClientFeatures} clientData={displayClientData} addToast={addToast} availableWorkspaces={availableWorkspaces} activeWorkspaceName={liveAppUser?.restaurantName || displayClientData?.name || ''} onOpenWorkspaceSwitcher={openWorkspaceSwitcherFromDrawer} platformAdminAccessState={platformAdminAccessState} />
+      <GlobalSearchModal isOpen={isGlobalSearchOpen} onClose={closeGlobalSearch} queryText={globalSearchQuery} setQueryText={setGlobalSearchQuery} users={displayUsers} events={events} shifts={shifts} recipes={recipes} inventoryItems={inventoryItems} maintenanceLogs={maintenanceLogs} setActiveTab={stableSetActiveTab} appUser={liveAppUser} clientData={displayClientData} clientFeatures={displayClientFeatures} />
       <KitchenTVMode isOpen={isKitchenTVOpen} onClose={closeKitchenTV} shifts={shifts} events={events} prepItems={prepItems} maintenanceLogs={maintenanceLogs} inventoryItems={inventoryItems} />
       <UndoBar undoItem={undoItem} clearUndo={clearUndoItem} />
       <VoiceCommandDock appUser={liveAppUser} inventoryItems={inventoryItems} recipes={recipes} users={displayUsers} prepItems={prepItems} tasks={tasks} events={events} maintenanceLogs={maintenanceLogs} menuDependencies={menuDependencies} shifts={shifts} timePunches={timePunches} timeOffRequests={timeOffRequests} sales={sales} clientFeatures={displayClientFeatures} clientData={displayClientData} setActiveTab={stableSetActiveTab} setCurrentDate={setCurrentDate} setScheduleSubTabTarget={setVoiceScheduleSubTabTarget} setHelpSearchTarget={setVoiceHelpSearchTarget} setRecipeTarget={setVoiceRecipeTarget} addToast={addToast} />

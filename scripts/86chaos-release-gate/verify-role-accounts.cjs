@@ -4,14 +4,7 @@ const path = require('path');
 const { ensureRunDir, writeJson, getRoleReportPath, readJsonIfExists } = require('./run-context.cjs');
 const { loadEnv, env } = require('../86chaos-full-audit/env-loader.cjs');
 const { readFirebaseConfig } = require('../86chaos-full-audit/firebase-client.cjs');
-
-const EXPECTED_FIREBASE_PROJECT = 'chaos-test-d1601';
-const ROLE_DEFINITIONS = [
-  { key: 'systemAdmin', label: 'System Administrator', emailEnv: 'SYSTEM_ADMIN_EMAIL', passwordEnv: 'SYSTEM_ADMIN_PASSWORD', expectedSuperAdmin: true, name: 'QA System Administrator', role: 'Owner', isAdmin: true, isOwner: true, permissions: { schedule: true, inventory: true, financials: true, team: true, events: true, settings: true, ops: true, maintenance: true } },
-  { key: 'owner', label: 'Owner', emailEnv: 'OWNER_EMAIL', passwordEnv: 'OWNER_PASSWORD', expectedSuperAdmin: false, name: 'QA Owner Login', role: 'Owner', isAdmin: true, isOwner: true, permissions: { schedule: true, inventory: true, financials: true, team: true, events: true, settings: true, ops: true, maintenance: true } },
-  { key: 'manager', label: 'Manager', emailEnv: 'MANAGER_EMAIL', passwordEnv: 'MANAGER_PASSWORD', expectedSuperAdmin: false, name: 'QA Manager Login', role: 'Manager', isAdmin: true, isOwner: false, permissions: { schedule: true, inventory: true, financials: true, team: true, events: true, ops: true, maintenance: true } },
-  { key: 'staff', label: 'Staff', emailEnv: 'STAFF_EMAIL', passwordEnv: 'STAFF_PASSWORD', expectedSuperAdmin: false, name: 'QA Staff Login', role: 'Line Cook', isAdmin: false, isOwner: false, permissions: { help: true } },
-];
+const { EXPECTED_FIREBASE_PROJECT, ROLE_DEFINITIONS, safeAccountDefinition } = require('./qa-role-definitions.cjs');
 
 function normalizeEmail(value) {
   return String(value || '').trim().toLowerCase();
@@ -80,21 +73,6 @@ function buildFirebaseAuthFetchOptions(init = {}) {
 
 function isFirebaseAuthRequestFormatFailure(message = '') {
   return /multiple values in (Origin|Referer|Referrer) header|multiple header values|duplicate (Origin|Referer|Referrer)/i.test(String(message || ''));
-}
-
-function safeAccountDefinition(def) {
-  return {
-    key: def.key,
-    label: def.label,
-    emailEnv: def.emailEnv,
-    passwordEnv: def.passwordEnv,
-    expectedSuperAdmin: def.expectedSuperAdmin,
-    name: def.name,
-    role: def.role,
-    isAdmin: def.isAdmin === true,
-    isOwner: def.isOwner === true,
-    permissions: def.permissions || {},
-  };
 }
 
 function readConfiguredAccounts() {
@@ -187,6 +165,15 @@ async function fetchWhoami(account, fetchImpl = global.fetch) {
     firestoreProfileRole: whoami.firestoreProfileRole || '',
     runtimeProjectId: whoami.runtime?.firebaseProjectId || '',
     firebaseProjectId: account.firebaseProjectId || '',
+    role: account.role || '',
+    restaurantRole: account.restaurantRole || account.role || '',
+    isAdmin: account.isAdmin === true,
+    isOwner: account.isOwner === true,
+    accountOwner: account.accountOwner === true,
+    workspaceOwner: account.workspaceOwner === true,
+    permissions: account.permissions || {},
+    expectedSuperAdmin: account.expectedSuperAdmin === true,
+    expectedPlatformAuthority: account.expectedPlatformAuthority === true,
   };
 }
 
@@ -207,6 +194,15 @@ function safeRow(row) {
     firestoreProfileRole: row.firestoreProfileRole || '',
     runtimeProjectId: row.runtimeProjectId || '',
     firebaseProjectId: row.firebaseProjectId || '',
+    role: row.role || '',
+    restaurantRole: row.restaurantRole || row.role || '',
+    isAdmin: row.isAdmin === true,
+    isOwner: row.isOwner === true,
+    accountOwner: row.accountOwner === true,
+    workspaceOwner: row.workspaceOwner === true,
+    permissions: row.permissions || {},
+    expectedSuperAdmin: row.expectedSuperAdmin === true,
+    expectedPlatformAuthority: row.expectedPlatformAuthority === true,
   };
 }
 
@@ -231,6 +227,12 @@ function analyzeRoleRows(rows, expectedProject = EXPECTED_FIREBASE_PROJECT) {
   const byKey = Object.fromEntries(rows.map(row => [row.key, row]));
   if (byKey.systemAdmin && byKey.systemAdmin.superAdmin !== true) {
     errors.push(`SYSTEM_ADMIN_EMAIL is not server-verified as System Administrator. Configure SYSTEM_ADMIN_EMAIL with the dedicated testing System Administrator account.`);
+  }
+  if (byKey.systemAdmin && (byKey.systemAdmin.role && byKey.systemAdmin.role !== 'Kitchen')) {
+    errors.push(`SYSTEM_ADMIN_EMAIL workspace role must remain Kitchen, not ${byKey.systemAdmin.role}. Platform authority must not depend on restaurant owner/admin role.`);
+  }
+  if (byKey.systemAdmin && (byKey.systemAdmin.isAdmin === true || byKey.systemAdmin.isOwner === true || byKey.systemAdmin.accountOwner === true || byKey.systemAdmin.workspaceOwner === true)) {
+    errors.push('SYSTEM_ADMIN_EMAIL must remain non-owner and non-admin inside the QA restaurant workspace.');
   }
   for (const key of ['owner', 'manager', 'staff']) {
     const row = byKey[key];

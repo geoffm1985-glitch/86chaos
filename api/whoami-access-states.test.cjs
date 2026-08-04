@@ -104,3 +104,26 @@ test('/api/whoami returns 403 for completed authoritative non-admin decisions an
   assert.equal(res.body.platformAuthority.restaurantRole, 'Kitchen');
   assert.equal(res.body.platformAuthority.protected, true);
 });
+test('/api/whoami verifies protected root without Firestore profile or during profile read failures', async () => {
+  let handler = loadWhoamiWithFakeAdmin({
+    verifyIdToken: async () => ({ uid: 'founder-no-profile', email: 'geoffm1985@gmail.com' }),
+    getProfile: async () => null
+  });
+  let res = await call(handler);
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.body.superAdmin, true);
+  assert.equal(res.body.platformAuthority.source, 'protected-root-admin');
+  assert.equal(res.body.firestoreProfileFound, false);
+  assert.equal(Object.prototype.hasOwnProperty.call(res.body, 'claims'), false);
+
+  handler = loadWhoamiWithFakeAdmin({
+    verifyIdToken: async () => ({ uid: 'founder-read-fail', email: 'geoffm1985@gmail.com' }),
+    getProfile: async () => { throw new Error('Firestore unavailable'); }
+  });
+  res = await call(handler);
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.body.superAdmin, true);
+  assert.equal(res.body.protectedRootAdminMatched, true);
+  assert.equal(res.body.platformAuthority.source, 'protected-root-admin');
+  assert.equal(res.body.runtime.firebaseProjectId, 'chaos-test-d1601');
+});

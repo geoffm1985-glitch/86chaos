@@ -1,4 +1,4 @@
-import { WHOAMI_STATES, classifyWhoamiResponse, isTransientWhoamiFailure, mergeVerifiedAccess, shouldHoldAccessHydration } from './sessionAccess';
+import { WHOAMI_STATES, PLATFORM_ADMIN_ACCESS_STATES, classifyWhoamiResponse, isTransientWhoamiFailure, mergeVerifiedAccess, resolvePlatformAdminAccessState, shouldHoldAccessHydration } from './sessionAccess';
 
 describe('session access hydration and whoami verification', () => {
   it('holds role-gated navigation while a cached refresh session is hydrating', () => {
@@ -66,4 +66,54 @@ describe('session access hydration and whoami verification', () => {
     expect(next.isSuperAdmin).toBe(false);
     expect(next.permissions.schedule).toBe(true);
   });
+
+  it('uses one platform-admin state for verified, pending, temporary, and denied access', () => {
+    const verified = resolvePlatformAdminAccessState({
+      user: { id: 'root', email: 'geoffm1985@gmail.com' },
+      verification: { ok: true, status: WHOAMI_STATES.VERIFIED, superAdmin: true, platformAuthority: { superAdmin: true, source: 'protected-root-admin' } },
+      masterAdminEmail: 'geoffm1985@gmail.com'
+    });
+    expect(verified.state).toBe(PLATFORM_ADMIN_ACCESS_STATES.VERIFIED);
+    expect(verified.canRenderProtectedControls).toBe(true);
+    expect(verified.showDrawerEntry).toBe(true);
+
+    const pending = resolvePlatformAdminAccessState({
+      user: { id: 'root', email: 'geoffm1985@gmail.com' },
+      verification: { status: WHOAMI_STATES.PENDING },
+      masterAdminEmail: 'geoffm1985@gmail.com'
+    });
+    expect(pending.state).toBe(PLATFORM_ADMIN_ACCESS_STATES.PENDING);
+    expect(pending.showDrawerEntry).toBe(true);
+    expect(pending.canRenderProtectedControls).toBe(false);
+
+    const temporary = resolvePlatformAdminAccessState({
+      user: { id: 'root', email: 'geoffm1985@gmail.com' },
+      verification: { status: WHOAMI_STATES.TRANSIENT_FAILURE, statusCode: 503, reasonCategory: 'firestore-profile-read-unavailable', retryable: true },
+      masterAdminEmail: 'geoffm1985@gmail.com'
+    });
+    expect(temporary.state).toBe(PLATFORM_ADMIN_ACCESS_STATES.TEMPORARILY_UNAVAILABLE);
+    expect(temporary.retryable).toBe(true);
+    expect(temporary.canRenderProtectedControls).toBe(false);
+
+    const denied = resolvePlatformAdminAccessState({
+      user: { id: 'kitchen', email: 'kitchen@example.com', role: 'Kitchen', permissions: { systemAdmin: true, godmode: true } },
+      verification: { status: WHOAMI_STATES.DENIED, statusCode: 403, superAdmin: false, definitive: true },
+      masterAdminEmail: 'geoffm1985@gmail.com'
+    });
+    expect(denied.state).toBe(PLATFORM_ADMIN_ACCESS_STATES.DENIED);
+    expect(denied.showDrawerEntry).toBe(false);
+    expect(denied.canRenderProtectedControls).toBe(false);
+  });
+
+  it('does not grant protected controls from public master-email hints alone', () => {
+    const state = resolvePlatformAdminAccessState({
+      user: { id: 'root', email: 'geoffm1985@gmail.com' },
+      verification: { status: WHOAMI_STATES.IDLE },
+      masterAdminEmail: 'geoffm1985@gmail.com'
+    });
+    expect(state.state).toBe(PLATFORM_ADMIN_ACCESS_STATES.PENDING);
+    expect(state.showDrawerEntry).toBe(true);
+    expect(state.canRenderProtectedControls).toBe(false);
+  });
+
 });

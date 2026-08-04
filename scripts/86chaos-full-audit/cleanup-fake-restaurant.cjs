@@ -85,6 +85,13 @@ function firestoreRest(config, idToken) {
   return { base, headers, projectId: config.projectId };
 }
 
+function storageRest(config, idToken) {
+  const bucket = config.storageBucket || '';
+  const base = `https://firebasestorage.googleapis.com/v0/b/${encodeURIComponent(bucket)}/o`;
+  const headers = { Authorization: `Bearer ${idToken}` };
+  return { base, headers, bucket, projectId: config.projectId };
+}
+
 function fromFirestoreValue(value) {
   if (!value || typeof value !== 'object') return undefined;
   if ('stringValue' in value) return value.stringValue;
@@ -141,7 +148,7 @@ async function queryCurrentRunDocs(page, rest, colName, restaurantId, limit = 50
   return (rows || []).map(r => r.document).filter(Boolean);
 }
 
-function buildExpectedByCollection(seed) {
+function buildExpectedByCollection(seed = {}) {
   const expected = {};
   for (const row of seed.seededDocuments || []) {
     if (row.collection === 'restaurants') continue;
@@ -151,6 +158,64 @@ function buildExpectedByCollection(seed) {
     expected[collection] = Math.max(expected[collection] || 0, Number(count) || 0);
   }
   return expected;
+}
+
+function encodeObjectName(name) { return encodeURIComponent(String(name || '')); }
+
+async function listStorageObjects(page, storage, prefix) {
+  const objects = [];
+  let pageToken = '';
+  for (let guard = 0; guard < 40; guard += 1) {
+    const params = new URLSearchParams({ prefix, maxResults: '1000' });
+    if (pageToken) params.set('pageToken', pageToken);
+    const data = await pageFetchJson(page, { url: `${storage.base}?${params.toString()}`, method: 'GET', headers: storage.headers });
+    for (const item of data?.items || []) objects.push(item);
+    pageToken = data?.nextPageToken || '';
+    if (!pageToken) break;
+  }
+  return objects;
+}
+
+async function deleteStorageObject(page, storage, name) {
+  try {
+    await pageFetchJson(page, { url: `${storage.base}/${encodeObjectName(name)}`, method: 'DELETE', headers: storage.headers });
+    return { ok: true };
+  } catch (error) {
+    if (/HTTP 404\b/.test(error.message || '')) return { ok: true, alreadyAbsent: true };
+    return { ok: false, error: error.message || String(error) };
+  }
+}
+
+function documentVaultObjectOwnershipErrors(object = {}, restaurantId) {
+  const meta = object.metadata || {};
+  const errors = [];
+  if (!String(object.name || '').startsWith(`restaurants/${restaurantId}/back-office/document-vault/`)) errors.push('path is outside current-run Document Vault prefix');
+  if (meta.purpose !== 'document-vault') errors.push('missing purpose=document-vault metadata');
+  if (meta.restaurantId !== restaurantId) errors.push('metadata restaurantId does not match current-run restaurant');
+  if (meta.source !== '86chaos-document-vault') errors.push('missing 86 Chaos Document Vault source metadata');
+  if (meta.qaRunId && meta.qaRunId !== RUN_ID) errors.push('qaRunId metadata belongs to another run');
+  return errors;
+}
+
+async function cleanupDocumentVaultStorage(page, storage, restaurantId) {
+  const prefix = `restaurants/${restaurantId}/back-office/document-vault/`;
+  const removed = [];
+  const failed = [];
+  const unresolved = [];
+  const objects = await listStorageObjects(page, storage, prefix);
+  for (const object of objects) {
+    const evidenceErrors = documentVaultObjectOwnershipErrors(object, restaurantId);
+    if (evidenceErrors.length) {
+      unresolved.push({ storagePath: object.name || '', missingOwnershipEvidence: evidenceErrors });
+      continue;
+    }
+    const deleted = await deleteStorageObject(page, storage, object.name);
+    if (deleted.ok) removed.push(object.name);
+    else failed.push({ storagePath: object.name || '', error: deleted.error || 'delete failed' });
+  }
+  const remainingObjects = await listStorageObjects(page, storage, prefix).catch(() => []);
+  const remaining = remainingObjects.map(object => object.name || '').filter(Boolean);
+  return { prefix, found: objects.length, removed, failed, unresolved, remaining };
 }
 
 function validateSeedForCleanup(seed, currentRunId, setupState = {}) {
@@ -170,14 +235,15 @@ function validateSeedForCleanup(seed, currentRunId, setupState = {}) {
   return { ok: errors.length === 0, errors, warnings, restaurantId, writesStarted };
 }
 
-async function cleanupCurrentRun({ page, rest, seed, restaurantId }) {
-  const expected = buildExpectedByCollection(seed);
+async function cleanupCurrentRun({ page, rest, storage, seed = {}, restaurantId }) {
+  const expected = buildExpectedByCollection(seed || {});
   const deleted = {};
   const alreadyAbsent = {};
   const failed = [];
   const additionalRunRecords = {};
   const remaining = {};
-  const seededRows = (seed.seededDocuments || []).filter(row => row.collection !== 'restaurants');
+  let documentVaultStorage = { prefix: `restaurants/${restaurantId}/back-office/document-vault/`, found: 0, removed: [], failed: [], unresolved: [], remaining: [] };
+  const seededRows = (Array.isArray(seed?.seededDocuments) ? seed.seededDocuments : []).filter(row => row.collection !== 'restaurants');
 
   for (const row of seededRows) {
     const before = await getDocByName(page, rest, row.docName);
@@ -215,7 +281,25 @@ async function cleanupCurrentRun({ page, rest, seed, restaurantId }) {
     }
   }
 
-  return { expected, deleted, alreadyAbsent, failed, additionalRunRecords, remaining };
+  if (storage) {
+    try {
+      documentVaultStorage = await cleanupDocumentVaultStorage(page, storage, restaurantId);
+    } catch (error) {
+      failed.push({ collection: '_storage', prefix: documentVaultStorage.prefix, error: `Document Vault Storage cleanup failed: ${error.message}` });
+    }
+  }
+
+  return {
+    expected,
+    deleted,
+    alreadyAbsent,
+    failed: failed.concat((documentVaultStorage.failed || []).map(row => ({ collection: '_storage', ...row }))),
+    additionalRunRecords,
+    remaining: { ...remaining, ...(documentVaultStorage.remaining?.length ? { _storage: documentVaultStorage.remaining.length } : {}) },
+    storageObjectsRemoved: documentVaultStorage.removed || [],
+    storageObjectsFound: documentVaultStorage.found || 0,
+    unresolvedQaLeftovers: documentVaultStorage.unresolved || []
+  };
 }
 
 async function main() {
@@ -274,9 +358,10 @@ ${validation.errors.join('\n')}`);
     if (!signed.idToken) throw new Error('Browser-origin Firebase Auth cleanup sign-in did not return idToken.');
     report.signedInAs = email;
     report.restaurantId = restaurantId;
-    report.restaurantName = seed.restaurantName || seed.profile?.restaurantName || QA_RESTAURANT_NAME;
+    report.restaurantName = seed?.restaurantName || seed?.profile?.restaurantName || QA_RESTAURANT_NAME;
 
     const rest = firestoreRest(config, signed.idToken);
+    const storage = storageRest(config, signed.idToken);
     const restaurantDocName = `projects/${config.projectId}/databases/(default)/documents/restaurants/${restaurantId}`;
     const restaurantDoc = await getDocByName(page, rest, restaurantDocName);
     if (!restaurantDoc) throw new Error(`Current-run restaurant document does not exist before cleanup: ${restaurantId}`);
@@ -289,7 +374,7 @@ ${validation.errors.join('\n')}`);
     if (restaurantData.createdBy !== '86chaos-full-audit') restaurantErrors.push(`createdBy was ${restaurantData.createdBy || '(missing)'}`);
     if (restaurantErrors.length) throw new Error(`Cleanup refused non-current/non-QA restaurant: ${restaurantErrors.join('; ')}`);
 
-    const cleanup = await cleanupCurrentRun({ page, rest, seed, restaurantId });
+    const cleanup = await cleanupCurrentRun({ page, rest, storage, seed, restaurantId });
     Object.assign(report, cleanup);
 
     const restaurantDelete = await deleteDocName(page, rest, restaurantDocName);
@@ -307,7 +392,7 @@ ${validation.errors.join('\n')}`);
       accountedFailures.push({ collection: '*', expected: 'nonzero seed counts', accounted: 0, reason: 'seed report had zero expected records' });
     }
     report.accountedFailures = accountedFailures;
-    report.ok = report.seedValidation.ok === true && report.failed.length === 0 && accountedFailures.length === 0 && Object.keys(report.remaining).length === 0 && report.restaurantDeleted === 1 && report.restaurantRemaining === false;
+    report.ok = report.seedValidation.ok === true && report.failed.length === 0 && accountedFailures.length === 0 && Object.keys(report.remaining).length === 0 && (report.unresolvedQaLeftovers || []).length === 0 && report.restaurantDeleted === 1 && report.restaurantRemaining === false;
     if (!report.ok) process.exitCode = 1;
   } catch (error) {
     report.ok = false;
@@ -328,6 +413,9 @@ module.exports = {
   buildExpectedByCollection,
   cleanupCurrentRun,
   firestoreDocData,
+  cleanupDocumentVaultStorage,
+  documentVaultObjectOwnershipErrors,
+  storageRest,
   COLLECTIONS,
   QA_RESTAURANT_NAME,
 };

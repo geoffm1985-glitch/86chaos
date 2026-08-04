@@ -22,18 +22,23 @@ function withTempCwd(fn) {
 }
 
 function withQaAccountEnv(fn) {
-  const keys = ['SYSTEM_ADMIN_EMAIL','SYSTEM_ADMIN_PASSWORD','OWNER_EMAIL','OWNER_PASSWORD','MANAGER_EMAIL','MANAGER_PASSWORD','STAFF_EMAIL','STAFF_PASSWORD','CHAOS_QA_AUTO_PROVISION_TEST_USERS','CHAOS_QA_ALLOW_MUTATING_ROLE_ACCOUNTS','MASTER_ADMIN_EMAIL','REACT_APP_FIREBASE_PROJECT_ID','REACT_APP_TEST_FIREBASE_PROJECT_ID','CHAOS_RELEASE_GATE_RUN_ID','CHAOS_FULL_AUDIT_RUN_ID','CHAOS_RELEASE_GATE_RUN_DIR'];
+  const keys = ['SYSTEM_ADMIN_EMAIL','SYSTEM_ADMIN_PASSWORD','OWNER_EMAIL','OWNER_PASSWORD','MANAGER_EMAIL','MANAGER_PASSWORD','STAFF_EMAIL','STAFF_PASSWORD','CHAOS_QA_AUTO_PROVISION_TEST_USERS','CHAOS_QA_ALLOW_MUTATING_ROLE_ACCOUNTS','MASTER_ADMIN_EMAIL','REACT_APP_FIREBASE_PROJECT_ID','REACT_APP_TEST_FIREBASE_PROJECT_ID','CHAOS_RELEASE_GATE_RUN_ID','CHAOS_FULL_AUDIT_RUN_ID','CHAOS_RELEASE_GATE_RUN_DIR','APP_URL','CHAOS_BASE_URL','CHAOS_RELEASE_GATE_TEST_MODE','CHAOS_ALLOW_MUTATION','FIREBASE_TEST_SERVICE_ACCOUNT_KEY'];
   const old = Object.fromEntries(keys.map(k => [k, process.env[k]]));
-  process.env.SYSTEM_ADMIN_EMAIL = '86chaos.qa.system.unit@example.test';
+  process.env.SYSTEM_ADMIN_EMAIL = '86chaos.qa.system-admin.20260729-1302@example.test';
   process.env.SYSTEM_ADMIN_PASSWORD = 'UnitPass!111111111';
-  process.env.OWNER_EMAIL = '86chaos.qa.owner.unit@example.test';
+  process.env.OWNER_EMAIL = '86chaos.qa.owner.20260729-1302@example.test';
   process.env.OWNER_PASSWORD = 'UnitPass!222222222';
-  process.env.MANAGER_EMAIL = '86chaos.qa.manager.unit@example.test';
+  process.env.MANAGER_EMAIL = '86chaos.qa.manager.20260729-1302@example.test';
   process.env.MANAGER_PASSWORD = 'UnitPass!333333333';
-  process.env.STAFF_EMAIL = '86chaos.qa.staff.unit@example.test';
+  process.env.STAFF_EMAIL = '86chaos.qa.staff.20260729-1302@example.test';
   process.env.STAFF_PASSWORD = 'UnitPass!444444444';
   process.env.CHAOS_QA_AUTO_PROVISION_TEST_USERS = 'true';
   process.env.CHAOS_QA_ALLOW_MUTATING_ROLE_ACCOUNTS = 'true';
+  process.env.CHAOS_RELEASE_GATE_TEST_MODE = 'true';
+  process.env.CHAOS_ALLOW_MUTATION = 'true';
+  process.env.APP_URL = 'https://cheers-portal-4oxv-git-testing-cheers-portal-s-projects.vercel.app';
+  process.env.REACT_APP_FIREBASE_PROJECT_ID = 'chaos-test-d1601';
+  process.env.FIREBASE_TEST_SERVICE_ACCOUNT_KEY = '{\"project_id\":\"chaos-test-d1601\",\"client_email\":\"unit@example.test\",\"private_key\":\"redacted\"}';
   try { return fn(); }
   finally {
     for (const [k, v] of Object.entries(old)) {
@@ -77,9 +82,9 @@ test('provisioner refuses to use protected root administrator email as disposabl
   const { validateProvisionSafety } = freshRequire(provisionAccountsPath);
   const errors = validateProvisionSafety([
     { key: 'systemAdmin', emailEnv: 'SYSTEM_ADMIN_EMAIL', passwordEnv: 'SYSTEM_ADMIN_PASSWORD', label: 'System Administrator', email: 'geoffm1985@gmail.com', password: 'x', emailPresent: true, passwordPresent: true },
-    { key: 'owner', emailEnv: 'OWNER_EMAIL', passwordEnv: 'OWNER_PASSWORD', label: 'Owner', email: '86chaos.qa.owner@example.test', password: 'x', emailPresent: true, passwordPresent: true },
-    { key: 'manager', emailEnv: 'MANAGER_EMAIL', passwordEnv: 'MANAGER_PASSWORD', label: 'Manager', email: '86chaos.qa.manager@example.test', password: 'x', emailPresent: true, passwordPresent: true },
-    { key: 'staff', emailEnv: 'STAFF_EMAIL', passwordEnv: 'STAFF_PASSWORD', label: 'Staff', email: '86chaos.qa.staff@example.test', password: 'x', emailPresent: true, passwordPresent: true },
+    { key: 'owner', emailEnv: 'OWNER_EMAIL', passwordEnv: 'OWNER_PASSWORD', label: 'Owner', email: '86chaos.qa.owner.20260729-1302@example.test', password: 'x', emailPresent: true, passwordPresent: true },
+    { key: 'manager', emailEnv: 'MANAGER_EMAIL', passwordEnv: 'MANAGER_PASSWORD', label: 'Manager', email: '86chaos.qa.manager.20260729-1302@example.test', password: 'x', emailPresent: true, passwordPresent: true },
+    { key: 'staff', emailEnv: 'STAFF_EMAIL', passwordEnv: 'STAFF_PASSWORD', label: 'Staff', email: '86chaos.qa.staff.20260729-1302@example.test', password: 'x', emailPresent: true, passwordPresent: true },
   ]);
   assert.ok(errors.some(error => /protected root administrator email/.test(error)));
 });

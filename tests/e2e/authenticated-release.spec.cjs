@@ -1,12 +1,18 @@
 const { test, expect } = require('@playwright/test');
+const { expectedRoutesForRole } = require('../../scripts/86chaos-release-gate/route-access-matrix.cjs');
 
 const releaseGate = process.env.CHAOS_RELEASE_GATE === 'true';
 const roles = [
-  { role: 'system-admin', emailKey: 'SYSTEM_ADMIN_EMAIL', passwordKey: 'SYSTEM_ADMIN_PASSWORD', tabs: ['today','ops','schedule','financials','inventory','recipes','prep','maintenance','messages','reminders','team','hr','settings','help','godmode'] },
-  { role: 'owner', emailKey: 'OWNER_EMAIL', passwordKey: 'OWNER_PASSWORD', tabs: ['today','ops','schedule','financials','inventory','recipes','prep','maintenance','messages','reminders','team','hr','settings','help'] },
-  { role: 'manager', emailKey: 'MANAGER_EMAIL', passwordKey: 'MANAGER_PASSWORD', tabs: ['today','ops','schedule','financials','inventory','recipes','prep','maintenance','messages','reminders','team','hr','settings','help'] },
-  { role: 'staff', emailKey: 'STAFF_EMAIL', passwordKey: 'STAFF_PASSWORD', tabs: ['today','schedule','recipes','prep','maintenance','messages','reminders','team','hr','settings','help'] }
-];
+  { role: 'system-admin', emailKey: 'SYSTEM_ADMIN_EMAIL', passwordKey: 'SYSTEM_ADMIN_PASSWORD' },
+  { role: 'owner', emailKey: 'OWNER_EMAIL', passwordKey: 'OWNER_PASSWORD' },
+  { role: 'manager', emailKey: 'MANAGER_EMAIL', passwordKey: 'MANAGER_PASSWORD' },
+  { role: 'staff', emailKey: 'STAFF_EMAIL', passwordKey: 'STAFF_PASSWORD' }
+].map(entry => ({
+  ...entry,
+  routeMatrix: expectedRoutesForRole(entry.role),
+  get tabs() { return this.routeMatrix.filter(row => row.expectedVisible).map(row => row.route); },
+  get deniedTabs() { return this.routeMatrix.filter(row => !row.directNavigationAllowed).map(row => row.route); }
+}));
 
 function credentials(entry) {
   const email = process.env[entry.emailKey] || (!releaseGate ? process.env.TEST_EMAIL : '');
@@ -52,7 +58,7 @@ async function openRoute(page, tab) {
 async function assertHealthyScreen(page, role, tab) {
   const body = page.locator('body');
   await expect(body).not.toContainText(/Something went wrong|React error boundary|Unhandled exception|ChunkLoadError/i);
-  await expect(body).not.toContainText(/This page is not available/i);
+  await expect(body).not.toContainText(/This page is not available|Page unavailable|access denied unexpectedly|section error|fatal error/i);
   const text = (await body.innerText()).trim();
   expect(text.length, `${role} ${tab} rendered meaningful content`).toBeGreaterThan(40);
   const layout = await page.evaluate(() => ({
@@ -76,13 +82,15 @@ for (const entry of roles) {
       }
     });
 
-    if (entry.role !== 'system-admin') {
-      test('cannot enter System Administrator by direct URL', async ({ page }) => {
-        const { email, password } = credentials(entry);
-        await login(page, email, password);
-        await openRoute(page, 'godmode');
-        await expect(page.locator('body')).toContainText(/does not include this tool|System Administrator tools are internal-only|not available/i);
-      });
-    }
+    test('direct navigation follows the canonical denied-route matrix', async ({ page }) => {
+      const deniedTabs = entry.deniedTabs.slice(0, releaseGate ? undefined : 6);
+      test.skip(deniedTabs.length === 0, `${entry.role} has no denied primary routes in the canonical matrix`);
+      const { email, password } = credentials(entry);
+      await login(page, email, password);
+      for (const tab of deniedTabs) {
+        await openRoute(page, tab);
+        await expect(page.locator('body')).toContainText(/does not include this tool|internal-only|not available|upgrade|permission|access/i);
+      }
+    });
   });
 }

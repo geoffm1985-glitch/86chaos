@@ -56,22 +56,50 @@ test.describe('11 mobile, desktop, 86Voice, and upload/scan UI', () => {
     expect(text, 'Desktop schedule should expose full times like 10a-9p / 3p-9p when present').not.toMatch(/\b\.\.\.|…/);
   });
 
-  test('86Voice mic button is reachable, large enough, and has no PREVIEW label', async ({ page }, testInfo) => {
+  test('86Voice mic button is reachable, lifecycle-safe, and does not pass when missing', async ({ page }, testInfo) => {
+    await page.addInitScript(() => {
+      window.__voiceRecognitionInstances = [];
+      class MockSpeechRecognition {
+        constructor() { this.started = false; this.stopped = false; this.aborted = false; this.onresult = null; this.onerror = null; this.onend = null; window.__voiceRecognitionInstances.push(this); }
+        start() { this.started = true; }
+        stop() { this.stopped = true; if (typeof this.onend === 'function') this.onend(); }
+        abort() { this.aborted = true; if (typeof this.onend === 'function') this.onend(); }
+        emitFinal(text) { if (typeof this.onresult === 'function') this.onresult({ results: [{ 0: { transcript: text }, isFinal: true }] }); }
+      }
+      window.SpeechRecognition = MockSpeechRecognition;
+      window.webkitSpeechRecognition = MockSpeechRecognition;
+    });
     const account = ownerLikeCreds();
     requireCreds(account, 'owner-like account');
     await login(page, account.email, account.password);
     const text = await bodyText(page, 30000);
-    const metrics = await page.locator('button:visible').evaluateAll((buttons) => buttons.map(button => {
-      const label = (button.innerText || button.getAttribute('aria-label') || '').trim();
+    const voiceButton = page.getByRole('button', { name: /open 86voice|close 86voice|86 voice assistant/i }).first();
+    await expect(voiceButton, 'Authorized account must expose a stable accessible 86Voice control').toBeVisible({ timeout: 10_000 });
+    const metrics = await voiceButton.evaluate((button) => {
       const rect = button.getBoundingClientRect();
-      return { label, width: Math.round(rect.width), height: Math.round(rect.height) };
-    }).filter(b => /86Voice|voice|mic|microphone|🎙|🎤/i.test(b.label))).catch(() => []);
-    await attachJson(testInfo, '11-voice-button-metrics.json', { metrics, textSample: text.slice(0, 5000) });
+      return { label: button.getAttribute('aria-label') || button.getAttribute('title') || button.innerText || '', width: Math.round(rect.width), height: Math.round(rect.height) };
+    });
     expect(text, 'Voice/mic button should not show PREVIEW label').not.toMatch(/\bPREVIEW\b/i);
-    if (metrics.length) {
-      expect(Math.max(...metrics.map(m => m.width)), 'Mic/voice button should be wide enough to tap').toBeGreaterThanOrEqual(42);
-      expect(Math.max(...metrics.map(m => m.height)), 'Mic/voice button should be tall enough to tap').toBeGreaterThanOrEqual(38);
+    expect(metrics.label, '86Voice button should have a real accessible label').toMatch(/86Voice|86 voice/i);
+    expect(metrics.width, 'Mic/voice button should be wide enough to tap').toBeGreaterThanOrEqual(42);
+    expect(metrics.height, 'Mic/voice button should be tall enough to tap').toBeGreaterThanOrEqual(38);
+
+    await voiceButton.click();
+    await expect(page.getByRole('button', { name: /close 86voice/i })).toBeVisible({ timeout: 5000 });
+    await page.getByRole('button', { name: /close 86voice/i }).click();
+    await expect(page.getByRole('button', { name: /open 86voice/i })).toBeVisible({ timeout: 5000 });
+
+    await page.getByRole('button', { name: /open 86voice/i }).click();
+    const maybeStart = page.getByRole('button', { name: /start listening|listen|microphone|start/i }).first();
+    if (await maybeStart.isVisible({ timeout: 2500 }).catch(() => false)) {
+      await maybeStart.click();
+      await maybeStart.click().catch(() => {});
+      const instanceCount = await page.evaluate(() => window.__voiceRecognitionInstances.length);
+      expect(instanceCount, 'Repeated start taps must not create duplicate recognition sessions').toBeLessThanOrEqual(1);
+      const instanceState = await page.evaluate(() => (window.__voiceRecognitionInstances || []).map(r => ({ started: r.started, stopped: r.stopped, aborted: r.aborted })));
+      expect(instanceState.some(r => r.started), 'Deterministic SpeechRecognition mock should be started by the real UI control').toBe(true);
     }
+    await attachJson(testInfo, '11-voice-button-metrics.json', { metrics, textSample: text.slice(0, 5000), instances: await page.evaluate(() => (window.__voiceRecognitionInstances || []).length) });
   });
 
   test('file upload / scan surfaces reject obvious broken display states', async ({ page }, testInfo) => {

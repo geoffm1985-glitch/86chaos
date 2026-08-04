@@ -12,7 +12,8 @@ import { parseReminderCommand } from '../core/reminderUtils';
 import { getVoiceMatchScore, resolveVoiceMatch } from '../core/voiceIntelligence';
 import { buildAiOrderAssistant, parseAiOrderingVoiceIntent, summarizeAiOrderAssistant } from '../core/aiOrderAssistant';
 import { buildRestaurantAiInsightBundle, summarizeInsightBundleForVoice, extractRestaurantGeofenceLocation } from '../core/restaurantAiInsights';
-import { resolveFeatureAccess, featureForRoute, isMasterAdminUser } from '../lib/featureAccess';
+import { resolveFeatureAccess, resolveRouteAccess, isMasterAdminUser } from '../lib/featureAccess';
+import { PLATFORM_ADMIN_ACCESS_STATES, resolvePlatformAdminAccessState } from '../core/sessionAccess';
 import { FEATURE_KEYS } from '../config/plans';
 
 
@@ -108,7 +109,7 @@ const reminderNeedsAttention = (reminder = {}, appUser = {}) => {
   return Number.isFinite(dueAt) && dueAt <= Date.now();
 };
 
-const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppUser, hasUnreadMessages, hasMyShiftAlert, hasScheduleBuilderAlert, hasHelpUpdate = false, clientFeatures = {}, clientData = {}, addToast, availableWorkspaces = [], activeWorkspaceName = '', onOpenWorkspaceSwitcher }) => {
+const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppUser, hasUnreadMessages, hasMyShiftAlert, hasScheduleBuilderAlert, hasHelpUpdate = false, clientFeatures = {}, clientData = {}, addToast, availableWorkspaces = [], activeWorkspaceName = '', onOpenWorkspaceSwitcher, platformAdminAccessState = null }) => {
   const [menuSearch, setMenuSearch] = useState('');
 
   // Reset the drawer search every time the hamburger menu opens/closes.
@@ -127,40 +128,46 @@ const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppU
 
   if (!isOpen) return null;
   const tabs = [];
-  const perms = appUser?.permissions || {};
-  const isGod = Boolean((MASTER_ADMIN_EMAIL && appUser?.email?.toLowerCase() === MASTER_ADMIN_EMAIL.toLowerCase()) || appUser?.isSuperAdmin || isMasterAdminUser(appUser));
-  const canShowSystemAdministrator = Boolean(isGod || appUser?.pendingSystemAdminVerification === true);
-
   const isEnabled = (feat) => clientFeatures[feat] !== false;
+  const resolvedPlatformAdminAccessState = platformAdminAccessState || resolvePlatformAdminAccessState({ user: appUser || {}, masterAdminEmail: MASTER_ADMIN_EMAIL });
+  const platformAdminPendingForRoute = Boolean(
+    resolvedPlatformAdminAccessState.showDrawerEntry === true &&
+    (resolvedPlatformAdminAccessState.state === PLATFORM_ADMIN_ACCESS_STATES.PENDING || resolvedPlatformAdminAccessState.state === PLATFORM_ADMIN_ACCESS_STATES.TEMPORARILY_UNAVAILABLE)
+  );
+  const routeAccessFor = (tabId) => resolveRouteAccess({ workspace: clientData || {}, user: appUser || {}, clientFeatures, route: tabId, demoMode: appUser?.isDemo === true, serverVerifiedPlatformAdmin: resolvedPlatformAdminAccessState.verified === true || isMasterAdminUser(appUser), platformAdminPending: tabId === 'godmode' ? platformAdminPendingForRoute : appUser?.pendingSystemAdminVerification === true });
   const planAllowsTab = (tabId) => {
-    const featureKey = featureForRoute(tabId);
-    if (!featureKey) return true;
-    return resolveFeatureAccess({ workspace: clientData || {}, user: appUser || {}, featureKey }).allowed;
+    if (tabId === 'godmode') return resolvedPlatformAdminAccessState.verified === true || platformAdminPendingForRoute;
+    const access = routeAccessFor(tabId);
+    return access.allowed === true || access.pending === true;
   };
   const pushTab = (tab) => { if (planAllowsTab(tab.id)) tabs.push(tab); };
 
   const managerBriefAccess = resolveFeatureAccess({ workspace: clientData || {}, user: appUser || {}, featureKey: FEATURE_KEYS.MANAGER_BRIEF });
   pushTab({ id: 'today', label: managerBriefAccess.allowed ? 'Manager Brief' : 'Today Home', icon: <Star size={18}/>, dot: hasUnreadMessages || hasMyShiftAlert || hasScheduleBuilderAlert });
   if (isEnabled('schedule')) pushTab({ id: 'published', label: 'Time Clock & Schedule', icon: <Clock size={18}/>, dot: hasMyShiftAlert }); 
-  if ((isEnabled('labor') || isEnabled('sales')) && (isGod || appUser?.isAdmin || perms.labor || perms.schedule || perms.sales)) pushTab({ id: 'financials', label: 'Financials', icon: <Scale size={18}/> });
-  if (!appUser?.isDemo && (isGod || appUser?.isOwner || appUser?.accountOwner || appUser?.workspaceOwner || appUser?.isAdmin || perms.settings || perms.backOffice || perms.ownerTools || perms.financialEdit)) pushTab({ id: 'back-office', label: 'Back Office', icon: <ClipboardList size={18}/> });
-  if (isEnabled('ops') && (isGod || appUser?.isAdmin || perms.ops)) pushTab({ id: 'ops', label: 'Kitchen Command Center', icon: <ChefHat size={18}/> }); 
+  if (planAllowsTab('financials')) pushTab({ id: 'financials', label: 'Financials', icon: <Scale size={18}/> });
+  if (planAllowsTab('back-office')) pushTab({ id: 'back-office', label: 'Back Office', icon: <ClipboardList size={18}/> });
+  if (planAllowsTab('ops')) pushTab({ id: 'ops', label: 'Kitchen Command Center', icon: <ChefHat size={18}/> }); 
   if (isEnabled('messages')) pushTab({ id: 'messages', label: 'Message Board', icon: <MessageSquare size={18}/>, dot: hasUnreadMessages });
   if (isEnabled('events')) pushTab({ id: 'events', label: 'Event Calendar', icon: <Star size={18}/> });
   if (isEnabled('prep')) pushTab({ id: 'prep', label: 'Prep & Tasks', icon: <ClipboardList size={18}/> });
   if (isEnabled('recipes')) pushTab({ id: 'recipes', label: 'Recipe Book', icon: <BookOpen size={18}/> });
   if (isEnabled('inventory')) pushTab({ id: 'inventory', label: 'Inventory & Orders', icon: <Package size={18}/> });  
-  if (!appUser?.isDemo && (isGod || appUser?.isAdmin || perms.inventory || perms.prep || perms.team)) pushTab({ id: 'ai-tools', label: 'AI Tools', icon: <Sparkles size={18}/> });
-  if (canUseMenuIntelligence(appUser, clientData)) pushTab({ id: 'menu-intelligence', label: 'Menu Intelligence', icon: <Network size={18}/> });
+  if (planAllowsTab('ai-tools')) pushTab({ id: 'ai-tools', label: 'AI Tools', icon: <Sparkles size={18}/> });
+  if (planAllowsTab('menu-intelligence')) pushTab({ id: 'menu-intelligence', label: 'Menu Intelligence', icon: <Network size={18}/> });
   pushTab({ id: 'reminders', label: 'My Reminders', icon: <Bell size={18}/>, dot: hasReminderAlert });
   if (isEnabled('team')) pushTab({ id: 'team', label: 'Staff Roster', icon: <Users size={18}/> });
-  if (!appUser?.isDemo && isEnabled('hr')) pushTab({ id: 'hr-training', label: 'HR & Training', icon: <BookOpen size={18}/> });
-  if (isEnabled('maintenance') && (appUser?.isAdmin || perms.team)) pushTab({ id: 'maintenance', label: 'Maintenance Log', icon: <Wrench size={18}/> });
+  if (planAllowsTab('hr-training')) pushTab({ id: 'hr-training', label: 'HR & Training', icon: <BookOpen size={18}/> });
+  if (planAllowsTab('maintenance')) pushTab({ id: 'maintenance', label: 'Maintenance Log', icon: <Wrench size={18}/> });
   
-  const isTrueGod = Boolean((MASTER_ADMIN_EMAIL && (appUser?.email || '').toLowerCase() === MASTER_ADMIN_EMAIL.toLowerCase()) || appUser?.isSuperAdmin === true);
-  const canShowTrueGodmode = Boolean(isTrueGod || appUser?.pendingSystemAdminVerification === true);
-  if (canShowTrueGodmode) pushTab({ id: 'godmode', label: 'System Administrator', icon: <Globe size={18}/> });
-  if (!appUser?.isDemo && (appUser?.isAdmin || isTrueGod)) pushTab({ id: 'audit', label: 'System Audit', icon: <Shield size={18}/> });  
+  if (resolvedPlatformAdminAccessState.verified === true || platformAdminPendingForRoute) {
+    pushTab({
+      id: 'godmode',
+      label: resolvedPlatformAdminAccessState.verified === true ? 'System Administrator' : 'System Administrator • Verifying',
+      icon: <Globe size={18}/>
+    });
+  }
+  if (planAllowsTab('audit')) pushTab({ id: 'audit', label: 'System Audit', icon: <Shield size={18}/> });  
   pushTab({ id: 'help', label: 'Help Center', icon: <BookOpen size={18}/>, dot: hasHelpUpdate });
   if (!appUser?.isDemo) pushTab({ id: 'settings', label: 'Settings', icon: <Settings size={18}/> });
 
@@ -456,11 +463,12 @@ const StatusTile = ({ label, value }) => <div className="bg-[#12161A] border bor
 
 const FriendlyEmpty = ({ title, text }) => <div className="border border-dashed border-[#2A353D] rounded-xl p-5 text-center"><div className="font-black text-white text-sm">{title}</div><p className="text-xs text-slate-400 font-bold mt-1">{text}</p></div>;
 
-const GlobalSearchModal = React.memo(({ isOpen, onClose, queryText, setQueryText, users, events, shifts, recipes, inventoryItems, maintenanceLogs, setActiveTab }) => {
+const GlobalSearchModal = React.memo(({ isOpen, onClose, queryText, setQueryText, users, events, shifts, recipes, inventoryItems, maintenanceLogs, setActiveTab, appUser, clientData, clientFeatures = {} }) => {
   const deferredQueryText = useDeferredValue(queryText || '');
   const q = useMemo(() => String(deferredQueryText || '').trim().toLowerCase(), [deferredQueryText]);
   const results = useMemo(() => {
     if (!isOpen || !q) return [];
+    const canShowRoute = (tab) => resolveRouteAccess({ workspace: clientData || {}, user: appUser || {}, clientFeatures, route: tab, demoMode: appUser?.isDemo === true, serverVerifiedPlatformAdmin: isMasterAdminUser(appUser), platformAdminPending: appUser?.pendingSystemAdminVerification === true }).allowed === true;
     return [
       ...(users || []).filter(u => `${u.name} ${u.email} ${u.role}`.toLowerCase().includes(q)).slice(0, 5).map(x => ({ kind: 'User', title: x.name, detail: x.email || x.role, tab: 'team' })),
       ...(recipes || []).filter(r => `${r.title} ${r.ingredients}`.toLowerCase().includes(q)).slice(0, 5).map(x => ({ kind: 'Recipe', title: x.title, detail: x.category, tab: 'recipes' })),
@@ -468,8 +476,8 @@ const GlobalSearchModal = React.memo(({ isOpen, onClose, queryText, setQueryText
       ...(events || []).filter(e => `${e.title} ${e.author} ${e.notes}`.toLowerCase().includes(q)).slice(0, 6).map(x => ({ kind: x.type === 'special_event' ? 'Event' : 'Message', title: x.title, detail: x.date || x.author, tab: x.type === 'special_event' ? 'events' : 'messages' })),
       ...(maintenanceLogs || []).filter(m => `${m.equipment} ${m.issue}`.toLowerCase().includes(q)).slice(0, 5).map(x => ({ kind: 'Maintenance', title: x.equipment, detail: x.issue, tab: 'maintenance' })),
       ...(shifts || []).filter(s => `${s.role} ${s.date}`.toLowerCase().includes(q)).slice(0, 5).map(x => ({ kind: 'Shift', title: `${x.role} ${x.date}`, detail: `${formatShortTime(x.startTime)}-${formatShortTime(x.endTime)}`, tab: 'schedule' }))
-    ].slice(0, 18);
-  }, [isOpen, q, users, recipes, inventoryItems, events, maintenanceLogs, shifts]);
+    ].filter(item => canShowRoute(item.tab)).slice(0, 18);
+  }, [isOpen, q, users, recipes, inventoryItems, events, maintenanceLogs, shifts, appUser, clientData, clientFeatures]);
   if (!isOpen) return null;
   return <div className="chaos-perf-overlay fixed inset-0 z-[100000] bg-[#0B0E11]/90 backdrop-blur-md p-4 flex items-start justify-center pt-10">
     <div className="w-full max-w-2xl cockpit-panel rounded-2xl overflow-hidden">
@@ -681,38 +689,8 @@ const isVoiceManagerOrAdmin = (user = {}, clientData = {}) => {
 };
 const voiceFeatureEnabled = (features = {}, feature) => !feature || features?.[feature] !== false;
 const canVoiceOpenTab = (user = {}, clientFeatures = {}, tab = 'today', clientData = {}) => {
-  const featureKey = featureForRoute(tab);
-  if (featureKey) {
-    const access = resolveFeatureAccess({ workspace: clientData || {}, user: user || {}, featureKey });
-    if (!access.allowed) return false;
-  }
-  const perms = user?.permissions || {};
-  const isSuper = isVoiceSuperAdmin(user);
-  const isAdmin = isVoiceAdmin(user);
-  const role = normalizeVoiceText(user?.role || '');
-  const rosterRoles = Array.isArray(clientData?.rosterRoles) ? clientData.rosterRoles : (Array.isArray(clientData?.systemSettings?.rosterRoles) ? clientData.systemSettings.rosterRoles : []);
-  const hasCustomRosterRoles = rosterRoles.length > 0;
-  const isKitchenRole = !hasCustomRosterRoles && (role.includes('kitchen') || role.includes('cook') || role.includes('chef'));
-  const isLegacyManagerRole = !hasCustomRosterRoles && (role.includes('manager') || role.includes('owner') || role.includes('lead') || role.includes('supervisor'));
-  if (tab === 'today' || tab === 'help') return true;
-  if (tab === 'published') return voiceFeatureEnabled(clientFeatures, 'schedule');
-  if (tab === 'schedule') return voiceFeatureEnabled(clientFeatures, 'schedule') && (isAdmin || !!perms.schedule);
-  if (tab === 'events') return voiceFeatureEnabled(clientFeatures, 'events') && (isAdmin || !!perms.events || !!perms.schedule || !!perms.team);
-  if (tab === 'back-office') return !user?.isDemo && (isSuper || isAdmin || !!user?.isOwner || !!user?.accountOwner || !!user?.workspaceOwner || !!perms.settings || !!perms.backOffice || !!perms.ownerTools || !!perms.financialEdit);
-  if (tab === 'financials' || tab === 'sales' || tab === 'labor') return (voiceFeatureEnabled(clientFeatures, 'labor') || voiceFeatureEnabled(clientFeatures, 'sales')) && (isSuper || isAdmin || !!perms.labor || !!perms.sales || !!perms.schedule);
-  if (tab === 'ops') return voiceFeatureEnabled(clientFeatures, 'ops') && (isSuper || isAdmin || !!perms.ops || isLegacyManagerRole);
-  if (tab === 'messages') return voiceFeatureEnabled(clientFeatures, 'messages');
-  if (tab === 'prep') return voiceFeatureEnabled(clientFeatures, 'prep') && (isAdmin || isKitchenRole || !!perms.prep);
-  if (tab === 'reminders') return true;
-  if (tab === 'menu-intelligence') return canUseMenuIntelligence(user, clientData);
-  if (tab === 'recipes') return voiceFeatureEnabled(clientFeatures, 'recipes') && (isAdmin || isKitchenRole || !!perms.prep || !!perms.team);
-  if (tab === 'inventory') return voiceFeatureEnabled(clientFeatures, 'inventory') && (isAdmin || !!perms.inventory || !!perms.team || isLegacyManagerRole);
-  if (tab === 'team') return voiceFeatureEnabled(clientFeatures, 'team');
-  if (tab === 'maintenance') return voiceFeatureEnabled(clientFeatures, 'maintenance') && (isAdmin || !!perms.team || !!perms.maintenance || isLegacyManagerRole);
-  if (tab === 'settings') return !user?.isDemo;
-  if (tab === 'audit') return !user?.isDemo && (isSuper || isAdmin);
-  if (tab === 'godmode') return isSuper || user?.pendingSystemAdminVerification === true;
-  return false;
+  const access = resolveRouteAccess({ workspace: clientData || {}, user: user || {}, clientFeatures, route: tab, demoMode: user?.isDemo === true, serverVerifiedPlatformAdmin: isMasterAdminUser(user), platformAdminPending: user?.pendingSystemAdminVerification === true });
+  return access.allowed === true;
 };
 const fetchVoicePrepMatchCandidates = async (restaurantId = '', prepDates = [], existingPrepItems = []) => {
   const byId = new Map();

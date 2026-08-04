@@ -64,11 +64,13 @@ test.describe('15 exhaustive interactive-control census', () => {
         else if (['link','tab','menuitem'].includes(control.role) || /^(link|tab|menuitem)$/i.test(control.role) || /route|nav|menu|tab/i.test(label)) classification = 'navigation-control';
         else if (/\b(explain|review|need attention|setup checklist|active workspace|report a problem|86 voice assistant|voice assistant|preferences|labor|help center|refresh|copy|download|print|search)\b/i.test(label)) classification = 'known-informational-action';
         else if (MUTATION_RE.test(label)) {
-          const workflow = WORKFLOWS.find(item => item.label.test(label));
+          const workflow = WORKFLOWS.find(item => item.controlLabel.test(label));
           if (workflow) {
             const fullPath = path.join(process.cwd(), workflow.testFile);
             const source = fs.existsSync(fullPath) ? fs.readFileSync(fullPath, 'utf8') : '';
-            classification = source && workflow.evidence.test(source) ? 'mutation-covered-workflow' : 'mutation-workflow-missing-evidence';
+            const markers = workflow.actionIds || [];
+            const covered = markers.length > 0 && markers.every(id => source.includes(id) && /recordMutationEvidence|attachJson|server result|reload persistence|cleanup result/i.test(source));
+            classification = covered ? 'mutation-covered-by-runtime-evidence-workflow' : 'mutation-workflow-missing-runtime-evidence';
           } else classification = 'mutation-requires-workflow';
         }
         else if (SAFE_NAV_RE.test(label) || control.role === 'tab' || control.type === 'search') classification = 'safe-navigation-or-filter';
@@ -84,7 +86,7 @@ test.describe('15 exhaustive interactive-control census', () => {
     const unique = [...dedupe.values()];
     const unnamed = unique.filter(x => !x.label && !x.disabled);
     const unclassified = unique.filter(x => x.classification === 'unclassified');
-    const mutationUncovered = unique.filter(x => ['mutation-requires-workflow', 'mutation-workflow-missing-evidence'].includes(x.classification));
+    const mutationUncovered = unique.filter(x => ['mutation-requires-workflow', 'mutation-workflow-missing-runtime-evidence'].includes(x.classification));
     const mobileProject = /mobile/i.test(testInfo.project.name || '');
     const smallTapTargets = mobileProject ? unique.filter(x => !x.disabled && ['button', 'link', 'tab', 'menuitem'].includes(x.role) && (x.width < 42 || x.height < 42)) : [];
 
@@ -102,7 +104,7 @@ test.describe('15 exhaustive interactive-control census', () => {
       mutationUncovered,
       smallTapTargets,
       unique,
-      note: 'A visible mutating control is not considered tested merely because its page rendered. It needs a named create/edit/delete/undo verification workflow in the release suite.',
+      note: 'A visible mutating control is not considered tested because related words exist in source. It needs runtime evidence with route/control/action/server/reload/cleanup results.',
     });
 
     expect(unnamed, 'Every visible enabled control must have an accessible name').toEqual([]);

@@ -148,10 +148,12 @@ module.exports = async () => {
   state.verified = seed?.ok === true && seed?.verification?.ok === true;
   state.restaurantId = seed?.restaurantId || seed?.profile?.restaurantId || '';
   state.createdRestaurant = seed?.createdRestaurant === true;
-  state.qaDataWritesStarted = state.seeded || state.createdRestaurant || Boolean(seed?.seededDocuments?.length);
-  state.cleanupAllowed = state.attempted && state.seeded && state.verified && Boolean(state.restaurantId);
-  updateRunnerState(runId, { qaDataWritesStarted: state.qaDataWritesStarted, qaRestaurantCreated: state.createdRestaurant, qaSeedVerified: state.verified });
-  if (result.status !== 0 || !state.cleanupAllowed) {
+  state.qaDataWritesStarted = state.seeded || state.createdRestaurant || Boolean(seed?.seededDocuments?.length) || seed?.writesStarted === true;
+  state.writesStarted = state.qaDataWritesStarted;
+  state.createdDocumentIds = Array.isArray(seed?.seededDocuments) ? seed.seededDocuments : [];
+  state.cleanupAllowed = state.attempted && state.qaDataWritesStarted && Boolean(state.restaurantId);
+  updateRunnerState(runId, { qaDataWritesStarted: state.qaDataWritesStarted, writesStarted: state.qaDataWritesStarted, qaRestaurantCreated: state.createdRestaurant, qaSeedVerified: state.verified, cleanupRequired: state.cleanupAllowed, temporaryRestaurantId: state.restaurantId });
+  if (result.status !== 0 || !state.verified) {
     const seedError = seed?.error || (Array.isArray(seed?.verification?.missing) && seed.verification.missing.length ? `Seed verification missing ${seed.verification.missing.length} expected records.` : 'Seed report was not ok:true.');
     state.errors.push(`Disposable QA restaurant setup failed or did not verify. Exit=${result.status}. ${seedError}`);
     writeState();

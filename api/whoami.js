@@ -35,6 +35,7 @@ function respondTemporary(res, status, category, message, extra = {}) {
   return res.status(status).json({
     ok: false,
     version: APP_VERSION,
+    appVersion: APP_VERSION,
     superAdmin: false,
     platformSuperAdmin: false,
     retryable: true,
@@ -68,6 +69,7 @@ function publicPlatformPayload({ app, decoded, firestoreProfile, platformAuthori
   return {
     ok: true,
     version: APP_VERSION,
+    appVersion: APP_VERSION,
     runtime: {
       firebaseProjectId: getRuntimeProjectId(app),
       firebaseStorageBucket: clean(app?.options?.storageBucket || process.env.FIREBASE_STORAGE_BUCKET || ''),
@@ -104,8 +106,7 @@ function publicPlatformPayload({ app, decoded, firestoreProfile, platformAuthori
     firestoreProfileRole: firestoreProfile?.role || '',
     firestoreRestaurantId: firestoreProfile?.restaurantId || '',
     reasonCategory: superAdmin ? 'platform-admin-verified' : 'not-platform-admin',
-    retryable: false,
-    claims: decoded
+    retryable: false
   };
 }
 
@@ -130,6 +131,7 @@ module.exports = async function handler(req, res) {
   if (!token) return res.status(401).json({
     ok: false,
     version: APP_VERSION,
+    appVersion: APP_VERSION,
     superAdmin: false,
     retryable: false,
     reasonCategory: 'missing-token',
@@ -155,6 +157,7 @@ module.exports = async function handler(req, res) {
       return res.status(401).json({
         ok: false,
         version: APP_VERSION,
+        appVersion: APP_VERSION,
         superAdmin: false,
         retryable: false,
         reasonCategory: 'invalid-token',

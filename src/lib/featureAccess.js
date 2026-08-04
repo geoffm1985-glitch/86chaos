@@ -1,18 +1,11 @@
 import { PLAN_DEFINITIONS, PLAN_IDS, PLAN_ORDER, FEATURE_MIN_PLAN, FEATURE_LABELS, ROUTE_FEATURES, FINANCIAL_SUBTAB_FEATURES, FOUNDER_DISCOUNT_PERCENT, FOUNDER_BETA_DAYS, FOUNDER_BETA_EXTENSION_DAYS } from '../config/plans';
+import { userHasServerVerifiedPlatformAuthority } from '../core/sessionAccess';
 
 const clean = (value = '') => String(value == null ? '' : value).trim();
 const lower = (value = '') => clean(value).toLowerCase();
 const nowMs = () => Date.now();
 
-export const isVerifiedPlatformAdminUser = (user = {}) => {
-  const serverCheck = user?.serverAdminCheck || user?.platformAdminVerification || {};
-  const trustedSource = clean(user?.superAdminAccessSource || serverCheck?.platformAuthority?.source || '');
-  return Boolean(
-    serverCheck?.superAdmin === true ||
-    serverCheck?.platformAuthority?.superAdmin === true ||
-    (user?.isSuperAdmin === true && trustedSource && trustedSource !== 'local-profile-hint')
-  );
-};
+export const isVerifiedPlatformAdminUser = (user = {}) => userHasServerVerifiedPlatformAuthority(user);
 
 export const isMasterAdminUser = (user = {}) => isVerifiedPlatformAdminUser(user);
 
@@ -171,20 +164,26 @@ export const roleAllowsFeature = (user = {}, featureKey, workspace = {}) => {
     case 'basic_schedule_view':
     case 'team_messages': return true;
     case 'staff_roster_basic': return true;
+    case 'manager_brief': return true;
+    case 'kitchen_command': return Boolean(ownerAdmin || perms.ops || perms.events || perms.schedule || perms.team);
+    case 'cleaning_routines': return Boolean(ownerAdmin || perms.maintenance || perms.team || perms.ops);
     case 'prep_lists':
-    case 'recipes_basic': return Boolean(ownerAdmin || perms.prep || perms.kitchen || legacyKitchenFallback);
+    case 'recipes_basic': return Boolean(ownerAdmin || perms.prep || perms.recipes || perms.kitchen || perms.ops || legacyKitchenFallback);
     case 'basic_inventory':
     case 'burn_log':
     case 'invoice_scanning':
     case 'menu_scanning':
     case 'menu_intelligence':
-    case 'dependency_tools': return Boolean(ownerAdmin || perms.inventory || perms.inventoryEdit || perms.menuIntelligence || perms.scans);
+    case 'dependency_tools': return Boolean(ownerAdmin || perms.inventory || perms.inventoryEdit || perms.menuIntelligence || perms.scans || perms.ops);
+    case 'ai_order_assistant':
+    case 'python_intelligence':
+    case 'smart_86_alerts': return Boolean(ownerAdmin || perms.inventory || perms.inventoryEdit || perms.prep || perms.team || perms.ops);
     case 'schedule_builder': return Boolean(ownerAdmin || perms.schedule);
     case 'time_clock': return true;
     case 'basic_dashboard': return true;
     case 'timesheets':
     case 'labor_command':
-    case 'tip_center': return Boolean(ownerAdmin || perms.labor || perms.laborRead || perms.sales || perms.salesRead || perms.schedule);
+    case 'tip_center': return Boolean(ownerAdmin || perms.labor || perms.laborRead || perms.sales || perms.salesRead || perms.financialRead || perms.financialEdit || perms.schedule);
     case 'daily_close':
     case 'sales_breakdown':
     case 'financial_overview':
@@ -234,8 +233,126 @@ export const resolveFeatureAccess = ({ workspace = {}, user = {}, featureKey }) 
 
 export const hasFeature = (workspace = {}, user = {}, featureKey = '') => resolveFeatureAccess({ workspace, user, featureKey }).allowed;
 
-export const featureForRoute = (route) => ROUTE_FEATURES[route] || null;
+export const normalizeRouteId = (route = '') => {
+  const value = lower(route).replace(/_/g, '-');
+  if (value === 'hr') return 'hr-training';
+  if (value === 'kitchen') return 'ops';
+  return value;
+};
+
+export const APP_ROUTE_IDS = Object.freeze([
+  'today', 'published', 'schedule', 'events', 'ops', 'financials', 'sales', 'labor',
+  'back-office', 'messages', 'prep', 'recipes', 'inventory', 'ai-tools',
+  'menu-intelligence', 'reminders', 'team', 'hr-training', 'maintenance',
+  'godmode', 'audit', 'help', 'settings'
+]);
+
+export const ROUTE_CLIENT_FEATURES = Object.freeze({
+  published: 'schedule',
+  schedule: 'schedule',
+  events: 'events',
+  ops: 'ops',
+  financials: 'labor',
+  sales: 'sales',
+  labor: 'labor',
+  messages: 'messages',
+  prep: 'prep',
+  recipes: 'recipes',
+  inventory: 'inventory',
+  team: 'team',
+  'hr-training': 'hr',
+  maintenance: 'maintenance'
+});
+
+const ROUTE_PERMISSION_ALIASES = Object.freeze({
+  schedule: ['schedule'],
+  events: ['events', 'schedule', 'team'],
+  ops: ['ops'],
+  financials: ['sales', 'salesRead', 'labor', 'laborRead', 'financialRead', 'financialEdit', 'wageView', 'wageEdit'],
+  sales: ['sales', 'salesRead', 'financialRead', 'financialEdit'],
+  labor: ['labor', 'laborRead', 'schedule', 'financialRead', 'financialEdit', 'wageView', 'wageEdit'],
+  'back-office': ['backOffice', 'ownerTools', 'settings', 'financialEdit'],
+  prep: ['prep', 'ops'],
+  recipes: ['prep', 'recipes', 'team'],
+  inventory: ['inventory', 'inventoryEdit', 'ops'],
+  'ai-tools': ['inventory', 'inventoryEdit', 'prep', 'team', 'ops'],
+  'menu-intelligence': ['menuIntelligence', 'inventory', 'inventoryEdit', 'ops'],
+  'hr-training': ['hr', 'team'],
+  maintenance: ['maintenance', 'team'],
+  audit: ['audit', 'settings'],
+  settings: ['settings', 'branding']
+});
+
+const ROUTE_OWNER_ADMIN_ALLOWED = new Set(['schedule', 'events', 'ops', 'financials', 'sales', 'labor', 'back-office', 'prep', 'recipes', 'inventory', 'ai-tools', 'menu-intelligence', 'hr-training', 'maintenance', 'audit', 'settings']);
+
+export const routePermissionAliases = (route = '') => ROUTE_PERMISSION_ALIASES[normalizeRouteId(route)] || [];
+
+const routeUserIsOwnerAdmin = (user = {}) => Boolean(
+  isMasterAdminUser(user) || user?.isOwner === true || user?.accountOwner === true ||
+  user?.workspaceOwner === true || user?.owner === true || user?.isAdmin === true
+);
+
+const routeUserHasAlias = (user = {}, aliases = []) => {
+  const perms = user?.permissions || {};
+  return aliases.some(alias => perms?.[alias] === true);
+};
+
+const routeClientFeatureEnabled = (clientFeatures = {}, route = '') => {
+  const feature = ROUTE_CLIENT_FEATURES[normalizeRouteId(route)];
+  return !feature || clientFeatures?.[feature] !== false;
+};
+
+export const featureForRoute = (route) => ROUTE_FEATURES[normalizeRouteId(route)] || null;
 export const featureForFinancialSubtab = (subTab) => FINANCIAL_SUBTAB_FEATURES[subTab] || null;
+
+export const resolveRouteAccess = ({ route = '', workspace = {}, user = {}, clientFeatures = {}, demoMode = false, serverVerifiedPlatformAdmin = false, platformAdminPending = false } = {}) => {
+  const routeId = normalizeRouteId(route);
+  const knownRoute = APP_ROUTE_IDS.includes(routeId);
+  const featureKey = featureForRoute(routeId);
+  const featureAccess = featureKey ? resolveFeatureAccess({ workspace, user, featureKey }) : { allowed: knownRoute, planAllowed: true, roleAllowed: true, reason: knownRoute ? 'no_feature_gate' : 'unknown_route', subscription: resolveSubscription(workspace, user) };
+  const aliases = routePermissionAliases(routeId);
+  const ownerAdmin = routeUserIsOwnerAdmin(user);
+  const aliasAllowed = routeUserHasAlias(user, aliases);
+  const clientEnabled = routeClientFeatureEnabled(clientFeatures, routeId);
+  const demoDenied = demoMode === true && ['godmode', 'audit', 'back-office', 'ai-tools', 'settings'].includes(routeId);
+
+  if (!knownRoute) {
+    return { allowed: false, pending: false, route: routeId, featureKey, requiredPlan: featureAccess.requiredPlan, permissionReason: 'unknown_route', roleReason: 'unknown_route', featureDisabledReason: '', demoModeReason: '', planReason: 'unknown_route', reason: 'unknown_route', subscription: featureAccess.subscription };
+  }
+  if (routeId === 'godmode') {
+    const verified = serverVerifiedPlatformAdmin === true || isVerifiedPlatformAdminUser(user);
+    const pending = !verified && (platformAdminPending === true || user?.pendingSystemAdminVerification === true);
+    return { allowed: verified, pending, route: routeId, featureKey, requiredPlan: featureAccess.requiredPlan, permissionReason: verified ? 'server_verified_platform_authority' : (pending ? 'pending_secure_verification' : 'platform_authority_required'), roleReason: verified ? 'server_verified_platform_authority' : 'platform_authority_required', featureDisabledReason: '', demoModeReason: demoDenied ? 'demo_mode' : '', planReason: 'internal_platform_tools', reason: verified ? 'allowed' : (pending ? 'pending_secure_verification' : 'platform_authority_required'), subscription: featureAccess.subscription };
+  }
+  if (demoDenied) {
+    return { ...featureAccess, allowed: false, pending: false, route: routeId, featureKey, permissionReason: 'demo_mode', roleReason: 'demo_mode', featureDisabledReason: '', demoModeReason: 'demo_mode', planReason: featureAccess.planAllowed ? 'plan_allowed' : featureAccess.reason, reason: 'demo_mode' };
+  }
+  if (!clientEnabled) {
+    return { ...featureAccess, allowed: false, pending: false, route: routeId, featureKey, permissionReason: 'feature_disabled', roleReason: 'feature_disabled', featureDisabledReason: ROUTE_CLIENT_FEATURES[routeId] || 'feature_disabled', demoModeReason: '', planReason: featureAccess.planAllowed ? 'plan_allowed' : featureAccess.reason, reason: 'feature_disabled' };
+  }
+
+  const publicRoleRoute = ['today', 'published', 'messages', 'reminders', 'team', 'help'].includes(routeId);
+  const routeRoleAllowed = publicRoleRoute || featureAccess.roleAllowed === true || aliasAllowed || (ownerAdmin && ROUTE_OWNER_ADMIN_ALLOWED.has(routeId));
+  const planAllowed = featureAccess.planAllowed !== false;
+  const allowed = Boolean(planAllowed && routeRoleAllowed);
+  const reason = allowed ? 'allowed' : (!planAllowed ? 'plan_locked' : 'permission_locked');
+  return {
+    ...featureAccess,
+    allowed,
+    pending: false,
+    route: routeId,
+    featureKey,
+    routeRoleAllowed,
+    permissionAliases: aliases,
+    permissionReason: allowed ? (aliasAllowed ? `permission:${aliases.find(alias => user?.permissions?.[alias] === true)}` : (ownerAdmin ? 'owner_or_admin' : 'public_or_feature_role')) : reason,
+    roleReason: routeRoleAllowed ? (ownerAdmin ? 'owner_or_admin' : aliasAllowed ? 'permission_alias' : 'feature_role') : 'missing_required_permission',
+    featureDisabledReason: '',
+    demoModeReason: '',
+    planReason: planAllowed ? 'plan_allowed' : 'plan_locked',
+    reason
+  };
+};
+
 export const isPlanAtLeast = (planId, minimumPlanId) => PLAN_ORDER.indexOf(normalizePlanId(planId)) >= PLAN_ORDER.indexOf(normalizePlanId(minimumPlanId));
 
 export const formatMoney = (amount) => `$${Number(amount || 0).toFixed(2)}`;
