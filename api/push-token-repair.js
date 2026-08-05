@@ -1,8 +1,6 @@
-import { getFirestore } from 'firebase-admin/firestore';
-import { createRequire } from 'module';
-import projectAdmin from './_firebase-project-admin.js';
-
-const require = createRequire(import.meta.url);
+const { getFirestore } = require('firebase-admin/firestore');
+const { getAppCheck } = require('firebase-admin/app-check');
+const projectAdmin = require('./_firebase-project-admin.js');
 const selfRepair = require('./_push-token-self-repair-logic.cjs');
 
 const { verifyRequestToken } = projectAdmin;
@@ -16,7 +14,6 @@ async function requireAppCheckIfEnforced(req, res, app) {
     return false;
   }
   try {
-    const { getAppCheck } = await import('firebase-admin/app-check');
     await getAppCheck(app).verifyToken(token);
     return true;
   } catch (err) {
@@ -214,7 +211,7 @@ async function writeAudit(db, { caller, action, target, restaurantId, details })
   }).catch(() => null);
 }
 
-export default async function handler(req, res) {
+async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method Not Allowed' });
 
   let authContext;
@@ -353,3 +350,5 @@ export default async function handler(req, res) {
     return res.status(500).json({ error: error.message || 'Push token repair failed.', firebaseProject: projectId });
   }
 }
+
+module.exports = handler;

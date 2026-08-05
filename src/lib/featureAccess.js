@@ -1,4 +1,4 @@
-import { PLAN_DEFINITIONS, PLAN_IDS, PLAN_ORDER, FEATURE_MIN_PLAN, FEATURE_LABELS, ROUTE_FEATURES, FINANCIAL_SUBTAB_FEATURES, FOUNDER_DISCOUNT_PERCENT, FOUNDER_BETA_DAYS, FOUNDER_BETA_EXTENSION_DAYS } from '../config/plans';
+import { PLAN_DEFINITIONS, PLAN_IDS, PLAN_ORDER, FEATURE_MIN_PLAN, FEATURE_LABELS, ROUTE_FEATURES, FINANCIAL_SUBTAB_FEATURES, FOUNDER_DISCOUNT_PERCENT, FOUNDER_BETA_DAYS, FOUNDER_BETA_EXTENSION_DAYS, FEATURE_KEYS } from '../config/plans';
 import { userHasServerVerifiedPlatformAuthority } from '../core/sessionAccess';
 
 const clean = (value = '') => String(value == null ? '' : value).trim();
@@ -229,6 +229,36 @@ export const resolveFeatureAccess = ({ workspace = {}, user = {}, featureKey }) 
     reason: integrationsLocked ? 'integrations_locked' : !planAllowed ? 'plan_locked' : !roleAllowed ? 'permission_locked' : 'allowed'
   };
 };
+
+
+export const userHasRestaurantLeadershipAuthority = (user = {}, workspace = {}) => {
+  if (isMasterAdminUser(user)) return true;
+  const perms = user?.permissions || {};
+  const ownerAdmin = Boolean(user?.isOwner || user?.accountOwner || user?.workspaceOwner || user?.owner || user?.isAdmin);
+  return Boolean(ownerAdmin ||
+    perms.ops === true ||
+    perms.team === true ||
+    perms.settings === true ||
+    perms.ownerTools === true ||
+    perms.backOffice === true ||
+    perms.menuIntelligence === true ||
+    perms.inventoryEdit === true ||
+    perms.financialRead === true ||
+    perms.financialEdit === true);
+};
+
+export const resolveOpsIntelligenceAccess = ({ workspace = {}, user = {} } = {}) => {
+  const feature = resolveFeatureAccess({ workspace, user, featureKey: FEATURE_KEYS.PYTHON_INTELLIGENCE });
+  const leadershipAllowed = userHasRestaurantLeadershipAuthority(user, workspace);
+  return {
+    ...feature,
+    allowed: Boolean(feature.planAllowed && leadershipAllowed),
+    roleAllowed: Boolean(leadershipAllowed),
+    reason: !feature.planAllowed ? 'plan_locked' : !leadershipAllowed ? 'leadership_required' : 'allowed'
+  };
+};
+
+export const canViewRestaurantOpsIntelligence = (args = {}) => resolveOpsIntelligenceAccess(args).allowed;
 
 
 export const hasFeature = (workspace = {}, user = {}, featureKey = '') => resolveFeatureAccess({ workspace, user, featureKey }).allowed;

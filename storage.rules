@@ -203,11 +203,11 @@ service firebase.storage {
     function documentVaultMetadataMatches(restaurantId, recordId) {
       return request.resource != null &&
         request.resource.metadata is map &&
-        request.resource.metadata.purpose == 'document-vault' &&
-        request.resource.metadata.restaurantId == restaurantId &&
-        request.resource.metadata.recordId == recordId &&
-        request.resource.metadata.uploadedBy == request.auth.uid &&
-        request.resource.metadata.source == '86chaos-document-vault';
+        request.resource.metadata.get('purpose', '') == 'document-vault' &&
+        request.resource.metadata.get('restaurantId', '') == restaurantId &&
+        request.resource.metadata.get('recordId', '') == recordId &&
+        request.resource.metadata.get('uploadedBy', '') == request.auth.uid &&
+        request.resource.metadata.get('source', '') == '86chaos-document-vault';
     }
 
     function allowedVaultContentType(fileName) {

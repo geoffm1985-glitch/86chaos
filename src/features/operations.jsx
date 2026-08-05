@@ -17,6 +17,7 @@ import { classifyInvoiceRow, inferInvoiceProductFields, invoiceProductKey, invoi
 import { CheersLogo, Modal, DrawerMenu, DayDotPrintScreen, MapClickListener, SmartEmptyState, MiniProblemCard, getHomeProfile, calculatePunchHours, getWeekStart, getWeekDates, roleMatches, toLocalTimeInput, makeLocalIso, PunchTable, StatusTile, FriendlyEmpty, GlobalSearchModal, QuickActionDock, KitchenTVMode, ChangeLogModal, UndoBar } from '../components/common';
 import { usePlanAccess } from '../hooks/usePlanAccess';
 import { FEATURE_KEYS } from '../config/plans';
+import { canViewRestaurantOpsIntelligence } from '../lib/featureAccess';
 
 const readableApiError = (value) => {
   if (!value) return '';
@@ -1139,7 +1140,7 @@ const TabMaintenance = ({ appUser, addToast }) => {
   };
 
   const getUrgencyColor = (u) => {
-    if (u === 'Critical') return 'text-red-500 font-black animate-pulse';
+    if (u === 'Critical') return 'text-red-300 font-black animate-pulse';
     if (u === 'High') return 'text-orange-500 font-bold';
     return 'text-slate-400';
   };
@@ -2128,7 +2129,7 @@ const TabToday = ({ currentDate, appUser, users, shifts, shiftSwaps, timeOffRequ
   const canUseBasicInventory = todayPlanAccess.canUse(FEATURE_KEYS.BASIC_INVENTORY).allowed || todayPlanAccess.canUse(FEATURE_KEYS.BURN_LOG).allowed;
   const canUseMenuIntelligence = todayPlanAccess.canUse(FEATURE_KEYS.MENU_INTELLIGENCE).allowed || todayPlanAccess.canUse(FEATURE_KEYS.SMART_86_ALERTS).allowed;
   const canUseAiOrdering = todayPlanAccess.canUse(FEATURE_KEYS.AI_ORDER_ASSISTANT).allowed;
-  const canUsePythonIntelligence = todayPlanAccess.canUse(FEATURE_KEYS.PYTHON_INTELLIGENCE).allowed;
+  const canUsePythonIntelligence = todayPlanAccess.canUse(FEATURE_KEYS.PYTHON_INTELLIGENCE).allowed && canViewRestaurantOpsIntelligence({ workspace: clientData || {}, user: appUser || {} });
   const canUseLabor = todayPlanAccess.canUse(FEATURE_KEYS.LABOR_COMMAND).allowed || todayPlanAccess.canUse(FEATURE_KEYS.TIME_CLOCK).allowed;
   const canUseScheduleBuilder = todayPlanAccess.canUse(FEATURE_KEYS.SCHEDULE_BUILDER).allowed;
   const canUseCleaningRoutines = todayPlanAccess.canUse(FEATURE_KEYS.CLEANING_ROUTINES).allowed;

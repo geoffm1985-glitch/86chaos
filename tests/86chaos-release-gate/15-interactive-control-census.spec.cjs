@@ -38,6 +38,8 @@ async function collectControls(page) {
         width: Math.round(rect.width),
         height: Math.round(rect.height),
         href: el.getAttribute('href') || '',
+        controlKind: el.getAttribute('data-chaos-control-kind') || el.getAttribute('data-control-kind') || '',
+        workflowId: el.getAttribute('data-chaos-workflow-id') || el.getAttribute('data-workflow-id') || '',
       };
     });
   });
@@ -59,6 +61,8 @@ test.describe('15 exhaustive interactive-control census', () => {
         const label = control.label || '';
         let classification = 'unclassified';
         if (control.disabled) classification = 'disabled';
+        else if (control.controlKind && /^navigation|informational|form-control|disabled$/i.test(control.controlKind)) classification = `metadata-${control.controlKind}`;
+        else if (control.controlKind && /mutation/i.test(control.controlKind) && control.workflowId) classification = 'mutation-covered-by-stable-control-metadata';
         else if (INTENTIONAL_EXCLUDE_RE.test(label)) classification = 'destructive-session-control';
         else if (['input','textarea','select'].includes(control.tag) || ['input','textarea','select','search','date','number','checkbox','radio'].includes(control.role) || /^(search|date|number|checkbox|radio|email|tel|time|month)$/i.test(control.type)) classification = label ? 'form-or-filter-control' : 'unnamed-form-control';
         else if (['link','tab','menuitem'].includes(control.role) || /^(link|tab|menuitem)$/i.test(control.role) || /route|nav|menu|tab/i.test(label)) classification = 'navigation-control';

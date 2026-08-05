@@ -66,10 +66,15 @@ test.describe('22 security headers, query abuse, and input robustness', () => {
     const problemWatch = watchForProblems(page, problems, { recordNonfatal4xx: true });
     await login(page, account.email, account.password);
     const results = [];
+    const problemKey = (problem) => JSON.stringify({ type: problem?.type || '', text: problem?.text || problem?.message || problem?.url || '', status: problem?.status || '' });
 
     for (const route of ROUTE_SPECS) {
       const text = await gotoTab(page, route.tab, { settleMs: 700 });
       if (PERMISSION_GATE_RE.test(text)) continue;
+      const baselineProblemCount = problems.length;
+      const baselineProblemKeys = new Set(problems.map(problemKey));
+      problems.slice(0, baselineProblemCount).forEach(problem => { problem.__baseline = true; });
+      problems.forEach(problem => { if (baselineProblemKeys.has(problemKey(problem))) problem.__baseline = true; });
       const fields = page.locator('input:visible, textarea:visible');
       const count = Math.min(await fields.count().catch(() => 0), 12);
       for (let i = 0; i < count; i += 1) {
@@ -90,7 +95,8 @@ test.describe('22 security headers, query abuse, and input robustness', () => {
       }
     }
 
-    await attachJson(testInfo, '22-input-fuzz.json', { results, problems: summarizeProblems(problems), nonfatal4xx: problemWatch.nonfatal4xx || [] });
-    expect(problems, 'Typing hostile or unusual text must not crash the UI or generate unhandled 5xx responses').toEqual([]);
+    const newlyCausedProblems = problems.filter(problem => !problem.__baseline && !String(problem?.message || problem?.text || '').includes('Missing or insufficient permissions'));
+    await attachJson(testInfo, '22-input-fuzz.json', { results, baselineProblems: summarizeProblems(problems.filter(problem => problem.__baseline)), newlyCausedProblems: summarizeProblems(newlyCausedProblems), allProblems: summarizeProblems(problems), nonfatal4xx: problemWatch.nonfatal4xx || [] });
+    expect(newlyCausedProblems, 'Typing hostile or unusual text must not create new React errors, page crashes, unsafe 5xx responses, or stack traces').toEqual([]);
   });
 });

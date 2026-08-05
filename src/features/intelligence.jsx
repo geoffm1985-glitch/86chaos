@@ -1,8 +1,9 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Bell, Calendar, Check, Clock, Edit3, Loader2, Mic, Package, Plus, Save, Share2, Sparkles, Trash2, Upload, X } from 'lucide-react';
 import { collection, addDoc, updateDoc, deleteDoc, doc, getDocs, query, where, writeBatch, orderBy, limit as firestoreLimit } from 'firebase/firestore';
 import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 import { T, db, storage, auth, secureFetch, useLiveCollection, formatClockDateTime, getToday, logAudit } from '../core/appCore';
+import { usePersonalReminderRows } from '../core/personalReminderQueries';
 import { Modal, SmartEmptyState } from '../components/common';
 import { canUseMenuIntelligence, getZeroStockMenuImpacts } from '../core/menuIntelligence';
 import { buildMenuCostBreakdowns, summarizeMenuCostBreakdowns } from '../core/menuCosting';
@@ -118,27 +119,19 @@ const TabPersonalReminders = ({ appUser, addToast }) => {
     return 'Could not hear the reminder clearly. Type it instead.';
   };
 
-  const activeReminders = useLiveCollection('personalReminders', appUser?.restaurantId, {
+  const allReminderRows = usePersonalReminderRows(appUser, {
     enabled: !!appUser?.restaurantId && !!appUser?.id,
-    whereClauses: [['participantUserIds', 'array-contains', currentUserId], ['dispatchEligible', '==', true]],
-    orderByField: 'nextDispatchAt',
-    orderDirection: 'asc',
-    limitCount: 80,
-    fallbackLimitCount: 40,
-    debugLabel: 'personal-reminders:active'
+    limitCount: 120,
+    fallbackLimitCount: 60,
+    debugLabel: 'personal-reminders'
   });
-  const completedReminderRows = useLiveCollection('personalReminders', appUser?.restaurantId, {
-    enabled: !!appUser?.restaurantId && !!appUser?.id && showCompleted,
-    whereClauses: [['participantUserIds', 'array-contains', currentUserId], ['status', 'in', ['sent','done','completed','dismissed','archived','cancelled','canceled']]],
-    orderByField: 'terminalAt',
-    orderDirection: 'desc',
-    limitCount: 40,
-    fallbackLimitCount: 20,
-    debugLabel: 'personal-reminders:history'
-  });
-  const sortedActiveReminders = [...(activeReminders || [])].sort((a, b) => String(a.nextDispatchAt || a.scheduledAt || '').localeCompare(String(b.nextDispatchAt || b.scheduledAt || '')));
+  const sortedActiveReminders = useMemo(() => [...(allReminderRows || [])]
+    .filter(r => r.dispatchEligible !== false)
+    .sort((a, b) => String(a.nextDispatchAt || a.scheduledAt || '').localeCompare(String(b.nextDispatchAt || b.scheduledAt || ''))), [allReminderRows]);
   const pendingReminders = sortedActiveReminders.filter(r => !['done','completed','cancelled','canceled','dismissed','archived','sent'].includes(String(r.status || '').toLowerCase()));
-  const completedReminders = showCompleted ? [...(completedReminderRows || [])].sort((a,b) => String(b.terminalAt || b.completedAt || b.dispatchedAt || b.updatedAt || '').localeCompare(String(a.terminalAt || a.completedAt || a.dispatchedAt || a.updatedAt || ''))) : [];
+  const completedReminders = useMemo(() => showCompleted ? [...(allReminderRows || [])]
+    .filter(r => ['sent','done','completed','dismissed','archived','cancelled','canceled'].includes(String(r.status || '').toLowerCase()))
+    .sort((a,b) => String(b.terminalAt || b.completedAt || b.dispatchedAt || b.updatedAt || '').localeCompare(String(a.terminalAt || a.completedAt || a.dispatchedAt || a.updatedAt || ''))) : [], [allReminderRows, showCompleted]);
   const dueReminderCount = pendingReminders.filter(reminderNeedsAttention).length;
 
   useEffect(() => {

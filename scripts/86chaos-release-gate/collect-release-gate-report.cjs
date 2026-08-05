@@ -265,8 +265,8 @@ if (hasOwn(javaPrerequisite, 'ok') && javaPrerequisite.ok !== true) {
 }
 const nodeFailures = [];
 if (hasOwn(nodeTestSummary, 'ok') && nodeTestSummary.ok !== true) {
-  for (const t of nodeTestSummary.tests || []) {
-    if (['failed', 'cancelled'].includes(t.status)) nodeFailures.push(`${t.title}: ${t.error || t.status}`);
+  for (const t of (nodeTestSummary.results || nodeTestSummary.tests || [])) {
+    if (['failed', 'cancelled', 'blocked'].includes(t.status)) nodeFailures.push(`${t.group || t.title || t.command}: ${t.firstUsefulFailure || t.error || t.status}`);
   }
   if (!nodeFailures.length) nodeFailures.push('Node test live summary reported failure without individual details.');
 }
@@ -319,6 +319,21 @@ const summary = {
   playwright: { totalResults: tests.length, status: blockedBeforeTestExecution ? 'BLOCKED BEFORE TEST EXECUTION' : (noTestsExecuted ? 'No tests executed' : 'Tests executed'), failed: failedTests.length, timedOut: timedOutTests.length, skipped: skippedTests.length, failedTests: blockedBeforeTestExecution ? [] : failedTests.slice(0, 200), skippedTests: skippedTests.slice(0, 200) },
   seed: seedReport && seedReport.ok !== undefined ? { ok: seedReport.ok, runId: seedReport.runId || '', restaurantId: seedReport.restaurantId || seedReport.profile?.restaurantId || '', restaurantName: seedReport.restaurantName || seedReport.profile?.restaurantName || '', expectedCounts: seedReport.expectedCounts || {}, verifiedCounts: seedReport.verification?.verifiedCounts || {}, verificationOk: seedReport.verification?.ok === true } : null,
   cleanup: cleanupReport && cleanupReport.ok !== undefined ? { ok: cleanupReport.ok, runId: cleanupReport.runId || '', expected: cleanupReport.expected || {}, deleted: cleanupReport.deleted || {}, alreadyAbsent: cleanupReport.alreadyAbsent || {}, remaining: cleanupReport.remaining || {}, additionalRunRecords: cleanupReport.additionalRunRecords || {}, restaurantDeleted: cleanupReport.restaurantDeleted || 0, failures: cleanupReport.failed || [], accountedFailures: cleanupReport.accountedFailures || [] } : null,
+  releaseReadiness: {
+    sourceVersion: preflight.sourceVersion || sourceInventory.version || sourceInventory.packageVersion || '',
+    deployedVersion: preflight.deployedVersion || '',
+    versionMatch: Boolean((preflight.sourceVersion || sourceInventory.version || sourceInventory.packageVersion || '') && preflight.deployedVersion && (preflight.sourceVersion || sourceInventory.version || sourceInventory.packageVersion || '') === preflight.deployedVersion),
+    testingFirebaseProject: preflight.firebaseProjectId || sourceInventory.firebaseProjectId || '',
+    localSourceChecks: nodeTestSummary?.results || [],
+    rulesTests: nodeTestSummary?.results?.find?.(row => /rules/i.test(row.group || '')) || null,
+    testAccountVerification: roleVerification?.ok === true,
+    qaSeed: seedReport?.ok === true && seedReport?.verification?.ok === true,
+    playwrightTotals: { passed: tests.filter(t => t.status === 'passed').length, failed: failedTests.length, timedOut: timedOutTests.length, skipped: skippedTests.length, blocked: blockedBeforeTestExecution ? 1 : 0, notRun: blockedBeforeTestExecution ? 1 : 0 },
+    cleanup: cleanupReport?.ok === true,
+    remainingQaRecordsOrStorageObjects: cleanupReport?.remaining || {},
+    finalState: ok ? 'RELEASE READY' : (blockedBeforeTestExecution ? 'BLOCKED' : 'FAILED'),
+    firstActionableBlocker: primaryBlockingFailure || 'None'
+  },
   setupState,
   roleIdentityVerification: roleVerification && roleVerification.ok !== undefined ? roleVerification : null,
   failedOnlyManifest,

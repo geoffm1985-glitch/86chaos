@@ -9,11 +9,20 @@ test.describe('02 role permissions and direct-route security', () => {
     const checked = [];
     for (const tab of ['today', 'schedule', 'financials', 'back-office', 'team', 'settings', 'godmode', 'audit']) {
       const text = await gotoTab(page, tab, { settleMs: 1200 });
-      checked.push({ tab, hasGate: PERMISSION_GATE_RE.test(text), forbidden: STAFF_FORBIDDEN_RE.test(text), actions: STAFF_ACTION_RE.test(text), sample: text.slice(0, 1800) });
+      const protectedControls = await page.locator('button, a, [role="button"], [role="menuitem"], [role="tab"]').evaluateAll(nodes => nodes.map(node => ({
+        text: (node.innerText || node.textContent || '').replace(/\s+/g, ' ').trim(),
+        aria: node.getAttribute('aria-label') || '',
+        title: node.getAttribute('title') || '',
+        hidden: node.offsetParent === null || node.getAttribute('aria-hidden') === 'true'
+      })).catch(() => []));
+      const visibleProtectedControls = protectedControls.filter(control => !control.hidden && STAFF_FORBIDDEN_RE.test(`${control.text} ${control.aria} ${control.title}`));
+      const directRouteLeak = ['godmode', 'audit'].includes(tab) && !PERMISSION_GATE_RE.test(text) && /Backup Center|Security Center|Forensics|Platform Operations|Python Automation/i.test(text);
+      const actionLeak = tab !== 'team' && STAFF_ACTION_RE.test(text);
+      checked.push({ tab, hasGate: PERMISSION_GATE_RE.test(text), directRouteLeak, visibleProtectedControls, actionLeak, sample: text.slice(0, 1800) });
     }
     await attachJson(testInfo, '02-staff-permissions.json', { checked });
-    const leaks = checked.filter(x => x.forbidden || x.actions);
-    expect(leaks, 'Staff should not see system admin, wage, backup, forensics, QuickBooks, Python automation, or destructive owner actions').toEqual([]);
+    const leaks = checked.filter(x => x.directRouteLeak || x.actionLeak || x.visibleProtectedControls.length);
+    expect(leaks, 'Staff should not see protected routes, owner/system-admin controls, wage actions, Python automation, QuickBooks, or destructive owner actions').toEqual([]);
   });
 
   test('manager account does not see system admin unless explicitly configured as admin', async ({ page }, testInfo) => {

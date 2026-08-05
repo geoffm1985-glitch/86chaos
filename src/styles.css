@@ -5256,3 +5256,37 @@ span.bg-red-500.text-white,
   }
 }
 
+
+
+/* 16.0.120: Mobile schedule shift chips keep compact text while exposing a real finger-sized destructive tap target. */
+@media (max-width: 767px) {
+  .schedule-builder-desktop-table button.schedule-builder-time-chip:not(.schedule-builder-event-chip):not(.schedule-builder-event-more):not(:disabled),
+  .desktop-pro-shell .app-content-shell .schedule-builder-desktop-table button.schedule-builder-time-chip:not(.schedule-builder-event-chip):not(.schedule-builder-event-more):not(:disabled),
+  .ui-v12-compact .schedule-builder-desktop-table button.schedule-builder-time-chip:not(.schedule-builder-event-chip):not(.schedule-builder-event-more):not(:disabled) {
+    min-width: 42px !important;
+    min-height: 42px !important;
+    width: max-content !important;
+    max-width: calc(100% - 2px) !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    padding: 2px 4px !important;
+    touch-action: manipulation !important;
+    line-height: 1.05 !important;
+  }
+}
+
+/* 16.0.128: Mobile month schedule keeps the calendar grid fixed while showing full shift times. */
+@media (max-width: 767px) {
+  .schedule-month-shift {
+    white-space: nowrap !important;
+    overflow: visible !important;
+    text-overflow: clip !important;
+    max-width: 100% !important;
+    font-size: clamp(6px, 1.55vw, 7.5px) !important;
+    letter-spacing: -0.085em !important;
+    line-height: 1.05 !important;
+    padding-left: 1px !important;
+    padding-right: 1px !important;
+  }
+}

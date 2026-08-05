@@ -52,7 +52,8 @@ test.describe('17 stale chunk, offline, refresh, and service-worker resilience',
     const firstText = await bodyText(page, 30000);
     const firstUrl = page.url();
 
-    await page.waitForTimeout(3000);
+    const recoveryControl = page.locator('[data-chaos-recovery-state="manual-update-available"], button[aria-label*="recover" i], button:has-text("REFRESH NOW")').first();
+    await recoveryControl.waitFor({ state: 'visible', timeout: 15000 }).catch(() => {});
     const finalText = await bodyText(page, 30000);
     const finalUrl = page.url();
     const recoveryEvents = await page.evaluate(() => window.__chaosRecoveryEvents || []).catch(() => []);

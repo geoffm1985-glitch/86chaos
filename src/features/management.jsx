@@ -3423,7 +3423,7 @@ const TabSales = ({ sales, timePunches = [], users = [], addToast, appUser }) =>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
                   {data.laborCost === '' && autoLabor > 0 && <span className="px-3 py-1 rounded-full border border-emerald-800/60 bg-emerald-900/20 text-emerald-300 text-xs font-black">Auto labor {moneyText(autoLabor, 2)}</span>}
-                  {existing && <span className="px-3 py-1 rounded-full border border-[#D4A381]/30 bg-[#8F6040]/20 text-[#D4A381] text-xs font-black">Saved</span>}
+                  {existing && <span className="px-3 py-1 rounded-full border border-[#F4C38A]/60 bg-[#241B14] text-[#FFE5C2] text-xs font-black">Saved</span>}
                   {existing && appUser?.isAdmin && <button onClick={async () => { if (window.confirm('Delete this daily close record?')) { await deleteDoc(doc(db, 'sales', existing.id)); await logAudit(appUser, 'FINANCIAL_CLOSE_DELETED', `sales/${existing.id}`, `Deleted daily close for ${date}`); addToast('Deleted', 'Daily close record removed.'); } }} className="p-2 text-slate-400 hover:text-red-400"><Trash2 size={16}/></button>}
                 </div>
               </div>

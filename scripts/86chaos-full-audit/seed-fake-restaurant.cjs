@@ -504,6 +504,7 @@ async function main() {
     report.mutationSafety = mutationSafety;
     report.firebaseProjectId = config.projectId;
     report.seedMethod = 'server-verified-qa-seed-api';
+    report.seedReportSchemaVersion = 2;
 
     const roleReportPath = getRoleReportPath(RUN_ID);
     const existingRoleReport = readJsonIfExists(roleReportPath);
