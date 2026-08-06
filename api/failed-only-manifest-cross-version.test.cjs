@@ -161,4 +161,22 @@ test('failed-only reporting and runner source keep baseline and target distinct'
   assert.match(collector, /failedOnlyMode/);
   assert.match(collector, /fullGateOnlyArtifacts/);
   assert.match(collector, /attemptStatus/);
+  assert.match(collector, /noTestsSelectedFailure/);
+  assert.match(collector, /seedReportPresent/);
+  assert.match(collector, /cleanupReportPresent/);
+});
+
+
+test('failed-only Playwright grep matches exact selected titles inside Playwright title paths', () => {
+  const { grepForProject, specsFromManifest } = require('../tests/86chaos-release-gate/failed-only-manifest.cjs');
+  const manifest = buildAcceptedManifest('16.0.136');
+  const desktopGrep = grepForProject(manifest.selected, 'chromium');
+  const mobileGrep = grepForProject(manifest.selected, 'mobile-chromium');
+
+  assert.equal(specsFromManifest(manifest.selected).includes('**/86chaos-full-audit/01-auth-route-health.spec.cjs'), true);
+  assert.equal(desktopGrep.test('01 auth and every-route health owner-like account logs in and every major route renders without fatal UI, NaN, Invalid Date, or 5xx'), true);
+  assert.equal(desktopGrep.test('86chaos-full-audit/02-permission-role-security.spec.cjs staff account cannot see or use owner/system-admin-only surfaces'), true);
+  assert.equal(mobileGrep.test('16 accessibility release gate every major route has zero serious or critical axe violations'), true);
+  assert.equal(desktopGrep.test('owner-like account logs in and every major route renders without fatal UI, NaN, Invalid Date, or 5xx extra words'), false);
+  assert.equal(desktopGrep.test('not the real selected test'), false);
 });

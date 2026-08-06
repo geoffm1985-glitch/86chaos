@@ -3,19 +3,12 @@ const path = require('path');
 const { defineConfig, devices } = require('@playwright/test');
 
 const { ensureRunDir, getFailedOnlyManifestPath } = require('./scripts/86chaos-release-gate/run-context.cjs');
-const { FAILED_ONLY_TESTS, FAILED_ONLY_MANIFEST_ERRORS, FAILED_ONLY_MANIFEST_PATH, specsFromManifest } = require('./tests/86chaos-release-gate/failed-only-manifest.cjs');
+const { FAILED_ONLY_TESTS, FAILED_ONLY_MANIFEST_ERRORS, FAILED_ONLY_MANIFEST_PATH, specsFromManifest, grepForProject } = require('./tests/86chaos-release-gate/failed-only-manifest.cjs');
 
 const { runDir, runId } = ensureRunDir();
 const baseURL = process.env.APP_URL || process.env.CHAOS_BASE_URL || process.env.PLAYWRIGHT_BASE_URL || process.env.BASE_URL || 'http://127.0.0.1:3000';
 const resultsRoot = path.join(runDir, 'failed-only');
 fs.mkdirSync(resultsRoot, { recursive: true });
-
-function escapeRegExp(value) { return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
-function grepForProject(projectName) {
-  const titles = [...new Set(FAILED_ONLY_TESTS.filter(item => (item.projects || []).includes(projectName)).map(item => item.title || item.exactTestTitle))];
-  if (!titles.length) return /$a/;
-  return new RegExp(titles.map(title => `(?:^|.* > )${escapeRegExp(title)}$`).join('|'));
-}
 
 if (!FAILED_ONLY_TESTS.length) {
   throw new Error(`Failed-only manifest selected zero tests. Refusing to run a false-green diagnostic gate. ${FAILED_ONLY_MANIFEST_ERRORS.join('; ')}`);
@@ -64,7 +57,7 @@ module.exports = defineConfig({
     video: 'retain-on-failure'
   },
   projects: [
-    { name: 'chromium', grep: grepForProject('chromium'), use: { ...devices['Desktop Chrome'] } },
-    { name: 'mobile-chromium', grep: grepForProject('mobile-chromium'), use: { ...devices['Pixel 5'] } }
+    { name: 'chromium', grep: grepForProject(FAILED_ONLY_TESTS, 'chromium'), use: { ...devices['Desktop Chrome'] } },
+    { name: 'mobile-chromium', grep: grepForProject(FAILED_ONLY_TESTS, 'mobile-chromium'), use: { ...devices['Pixel 5'] } }
   ]
 });

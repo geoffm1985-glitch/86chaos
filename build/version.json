@@ -1,14 +1,14 @@
 {
-  "version": "16.0.136",
-  "name": "86 Chaos 16.0.136 Print Calendar Shift Overflow Fix",
-  "build": "16.0.136",
-  "label": "86 Chaos 16.0.136 Print Calendar Shift Overflow Fix",
-  "releasedAt": "2026-08-06T10:28:00-05:00",
-  "releaseTitle": "Print Calendar Shift Overflow Fix",
+  "version": "16.0.137",
+  "name": "86 Chaos 16.0.137 Failed-Only Playwright Selection Fix",
+  "build": "16.0.137",
+  "label": "86 Chaos 16.0.137 Failed-Only Playwright Selection Fix",
+  "releasedAt": "2026-08-06T16:16:00-05:00",
+  "releaseTitle": "Failed-Only Playwright Selection Fix",
   "notes": [
-    "Adds print-only compact month-calendar shift rows so high-staffing days do not clip lower names on paper.",
-    "Preserves schedule data, publishing, filters, mobile month view, and Firebase-sensitive files.",
-    "Keeps full employee names visible in print while retaining compact mobile labels on screen."
+    "Fixes failed-only Playwright selection so exact prior failures are actually discovered and executed instead of producing a false No tests found blocker.",
+    "Keeps baseline failure evidence separate from the repaired target version and preserves the 16.0.136 print-calendar/browser fixes.",
+    "Preserves Firebase rules, indexes, config, credentials, schedule data, publishing, filters, and real app behavior."
   ],
-  "title": "86 Chaos 16.0.136 Print Calendar Shift Overflow Fix"
+  "title": "86 Chaos 16.0.137 Failed-Only Playwright Selection Fix"
 }

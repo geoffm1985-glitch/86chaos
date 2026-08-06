@@ -33,12 +33,12 @@ const localChecks = read('scripts/86chaos-release-gate/run-node-release-checks.c
 const maturityGuards = read('src/core/maturityGuards.js');
 const maturityGuardsTest = read('src/core/maturityGuards.test.js');
 
-assert(pkg.version === '16.0.136', 'package.json version is 16.0.136');
-assert(lock.version === '16.0.136' && lock.packages?.['']?.version === '16.0.136', 'package-lock root versions are 16.0.136');
-assert(version.version === '16.0.136' && version.build === '16.0.136', 'public/version.json version/build are 16.0.136');
-assert(appCore.includes("CURRENT_VERSION = '16.0.136'"), 'app core CURRENT_VERSION is 16.0.136');
-assert(apiVersion.includes("APP_VERSION = '16.0.136'") && apiVersion.includes("SECURITY_SCHEMA_VERSION = '16.0.136'"), 'api version reports 16.0.136');
-assert(pkg.scripts['test:source'] === 'node scripts/validate-16-0-136.js', 'test:source points at the 16.0.136 validator');
+assert(pkg.version === '16.0.137', 'package.json version is 16.0.137');
+assert(lock.version === '16.0.137' && lock.packages?.['']?.version === '16.0.137', 'package-lock root versions are 16.0.137');
+assert(version.version === '16.0.137' && version.build === '16.0.137', 'public/version.json version/build are 16.0.137');
+assert(appCore.includes("CURRENT_VERSION = '16.0.137'"), 'app core CURRENT_VERSION is 16.0.137');
+assert(apiVersion.includes("APP_VERSION = '16.0.137'") && apiVersion.includes("SECURITY_SCHEMA_VERSION = '16.0.137'"), 'api version reports 16.0.137');
+assert(pkg.scripts['test:source'] === 'node scripts/validate-16-0-137.js', 'test:source points at the 16.0.137 validator');
 assert(!fs.existsSync(path.join(root, 'scripts/validate-16-0-135.js')), 'previous 16.0.135 validator was replaced');
 
 assert(sha('firestore.rules') === '51bfd7d39edd59f680ae41a149c108cec8cd42d00b102d84cb00ee40d90264d9', 'working Firestore rules are preserved byte-for-byte for this app-only maturity pass');
@@ -161,8 +161,10 @@ assert(failedOnlyUtils.includes('validateManifestTestIdentities') && failedOnlyU
 assert(!failedOnlyUtils.includes('Stale failed-only manifest: source') && !failedOnlyUtils.includes('does not match current source'), 'failed-only manifest validation no longer rejects safe cross-version remediation evidence');
 assert(failedOnlyPrepare.includes('write: false') && failedOnlyPrepare.includes('targetQualifiedManifest') && failedOnlyPrepare.includes('failed-only-manifest-validation.json'), 'failed-only preparation does not mutate the baseline run and writes current-run validation evidence');
 assert(failedOnlyRunner.includes('ManifestValidation') && !failedOnlyRunner.includes('missing, stale, empty, or version-mismatched'), 'failed-only runner reports the precise manifest blocker instead of the old generic version-mismatch message');
-assert(collector.includes('failedOnlyMode') && collector.includes('fullGateOnlyArtifacts') && collector.includes('attemptStatus') && collector.includes('failedOnlyManifestValidation'), 'collector is mode-aware for failed-only runs and reports unattempted stages as blocked/not-run');
+assert(collector.includes('failedOnlyMode') && collector.includes('fullGateOnlyArtifacts') && collector.includes('attemptStatus') && collector.includes('failedOnlyManifestValidation') && collector.includes('noTestsSelectedFailure') && collector.includes('seedReportPresent') && collector.includes('cleanupReportPresent'), 'collector is mode-aware for failed-only runs, reports no-test selection blockers, and uses seed/cleanup reports for attempt status');
 assert(read('api/failed-only-manifest-cross-version.test.cjs').includes('valid cross-version remediation') && read('api/failed-only-manifest-cross-version.test.cjs').includes('same-version diagnostic rerun'), 'server tests cover cross-version and same-version failed-only manifest workflows');
+assert(read('tests/86chaos-release-gate/failed-only-manifest.cjs').includes('grepForProject') && read('tests/86chaos-release-gate/failed-only-manifest.cjs').includes('[\\\\s\\\\S]*\\\\s'), 'failed-only Playwright grep matches selected title suffixes inside Playwright title paths');
+assert(read('playwright.failed-release.config.cjs').includes("grepForProject(FAILED_ONLY_TESTS, 'chromium')") && read('playwright.failed-release.config.cjs').includes("grepForProject(FAILED_ONLY_TESTS, 'mobile-chromium')"), 'failed-only Playwright config uses shared manifest grep helper for each project');
 
 
 const scheduleFeature = read('src/features/schedule.jsx');

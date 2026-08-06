@@ -220,6 +220,16 @@ if (cleanupReport && cleanupReport.remaining && Object.keys(cleanupReport.remain
 if (cleanupReport && cleanupReport.accountedFailures?.length) cleanupFailures.push(`Cleanup did not account for seeded records: ${JSON.stringify(cleanupReport.accountedFailures)}`);
 
 const noTestsExecuted = tests.length === 0;
+const selectedFailedOnlyCount = Number(failedOnlyManifest?.totalSelected || failedOnlyManifest?.selected?.length || 0);
+const noTestsSelectedFailure = failedOnlyMode && playwrightStarted && noTestsExecuted && selectedFailedOnlyCount > 0
+  ? `Failed-only Playwright selection resolved to zero tests even though ${selectedFailedOnlyCount} manifest row(s) were selected.`
+  : '';
+const seedReportPresent = fs.existsSync(artifact['86chaos-full-audit-seed-report.json']) && seedReport && hasOwn(seedReport, 'ok');
+const cleanupReportPresent = fs.existsSync(artifact['86chaos-full-audit-cleanup-report.json']) && cleanupReport && hasOwn(cleanupReport, 'ok');
+const qaSeedAttempted = runnerState.qaSeedAttempted === true || runnerState.qaSeedProcessStarted === true || runnerState.qaDataWritesStarted === true || seedReportPresent;
+const qaSeedPassed = runnerState.qaSeedVerified === true || (seedReportPresent && seedReport.ok === true && seedReport.verification?.ok === true);
+const cleanupAttempted = runnerState.cleanupAttempted === true || cleanupReportPresent;
+const cleanupPassed = runnerState.cleanupCompleted === true || (cleanupReportPresent && cleanupReport.ok === true);
 const blockedBeforeTestExecution = Boolean(noTestsExecuted && (blockedBeforePlaywright || runnerState.blockedBeforeTestExecution === true || !playwrightStarted));
 const releaseGateStatus = ok => ok ? 'PASS' : (blockedBeforeTestExecution ? 'BLOCKED BEFORE TEST EXECUTION' : 'FAIL');
 const executionBlockedMessage = blockedBeforePlaywright
@@ -269,6 +279,7 @@ for (const text of [...setupFailures, ...cleanupFailures, ...missingArtifacts]) 
   const group = /seed|cleanup|setup|artifact|run/i.test(text) ? 'harness-seed-cleanup' : 'reporting';
   addGroup(group, text);
 }
+if (noTestsSelectedFailure) addGroup('failed-only-playwright-selection', noTestsSelectedFailure);
 
 
 const javaFailures = [];
@@ -293,6 +304,7 @@ const primaryBlockingFailure = preflightFailures[0]
   || nodeFailures[0]
   || setupFailures[0]
   || cleanupFailures[0]
+  || noTestsSelectedFailure
   || (rulesGateReport?.firstActionableFailure || '')
   || (failedTests[0] ? `${failedTests[0].title}: ${failedTests[0].error}` : '')
   || runnerBlockingReason
@@ -347,9 +359,9 @@ const summary = {
     browserInstallation: { attempted: runnerPhase === 'install-chromium' || runnerState.browserInstallPassed === true, status: runnerState.browserInstallPassed === true ? 'passed' : (blockedBeforePlaywright ? 'blocked' : 'not_run') },
     testAccountProvisioning: { attempted: runnerState.testAccountProvisionAttempted === true, status: runnerState.testAccountProvisionPassed === true ? 'passed' : (runnerState.testAccountProvisionAttempted === true ? 'failed' : (blockedBeforePlaywright ? 'blocked' : 'not_run')) },
     roleVerification: { attempted: runnerState.rolePreflightStarted === true, status: runnerState.rolePreflightPassed === true ? 'passed' : (runnerState.rolePreflightStarted === true ? 'failed' : (blockedBeforePlaywright ? 'blocked' : 'not_run')) },
-    qaSeed: { attempted: runnerState.qaSeedAttempted === true || runnerState.qaSeedProcessStarted === true || runnerState.qaDataWritesStarted === true, status: runnerState.qaSeedVerified === true ? 'passed' : ((runnerState.qaSeedAttempted === true || runnerState.qaSeedProcessStarted === true || runnerState.qaDataWritesStarted === true) ? 'failed' : (blockedBeforePlaywright ? 'blocked' : 'not_run')) },
-    playwright: { attempted: playwrightStarted, status: playwrightStarted ? (failedTests.length || timedOutTests.length ? 'failed' : 'passed') : (blockedBeforePlaywright ? 'blocked' : 'not_run') },
-    cleanup: { attempted: runnerState.cleanupAttempted === true, status: runnerState.cleanupCompleted === true ? 'passed' : (runnerState.cleanupAttempted === true ? 'failed' : (blockedBeforePlaywright ? 'blocked' : 'not_run')) },
+    qaSeed: { attempted: qaSeedAttempted, status: qaSeedPassed ? 'passed' : (qaSeedAttempted ? 'failed' : (blockedBeforePlaywright ? 'blocked' : 'not_run')) },
+    playwright: { attempted: playwrightStarted, status: playwrightStarted ? (failedTests.length || timedOutTests.length || noTestsSelectedFailure ? 'failed' : 'passed') : (blockedBeforePlaywright ? 'blocked' : 'not_run') },
+    cleanup: { attempted: cleanupAttempted, status: cleanupPassed ? 'passed' : (cleanupAttempted ? 'failed' : (blockedBeforePlaywright ? 'blocked' : 'not_run')) },
   },
   seed: seedReport && seedReport.ok !== undefined ? { ok: seedReport.ok, runId: seedReport.runId || '', restaurantId: seedReport.restaurantId || seedReport.profile?.restaurantId || '', restaurantName: seedReport.restaurantName || seedReport.profile?.restaurantName || '', expectedCounts: seedReport.expectedCounts || {}, verifiedCounts: seedReport.verification?.verifiedCounts || {}, verificationOk: seedReport.verification?.ok === true } : null,
   cleanup: cleanupReport && cleanupReport.ok !== undefined ? { ok: cleanupReport.ok, runId: cleanupReport.runId || '', expected: cleanupReport.expected || {}, deleted: cleanupReport.deleted || {}, alreadyAbsent: cleanupReport.alreadyAbsent || {}, remaining: cleanupReport.remaining || {}, additionalRunRecords: cleanupReport.additionalRunRecords || {}, restaurantDeleted: cleanupReport.restaurantDeleted || 0, failures: cleanupReport.failed || [], accountedFailures: cleanupReport.accountedFailures || [] } : null,
