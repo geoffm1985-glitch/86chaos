@@ -27,7 +27,7 @@ test('interactive control census fails missing expected mutation evidence instea
 test('86Voice browser test fails when authorized voice control is absent', () => {
   const voice = fs.readFileSync(path.join(root, 'tests/86chaos-full-audit/11-mobile-desktop-voice-upload.spec.cjs'), 'utf8');
   assert.match(voice, /SpeechRecognition/);
-  assert.match(voice, /Authorized account must expose a stable accessible 86Voice control/);
-  assert.match(voice, /toBeVisible\(\{ timeout: 10_000 \}\)/);
+  assert.match(voice, /Authorized account must expose one stable accessible Open 86Voice control/);
+  assert.match(voice, /toHaveCount\(1, \{ timeout: 10_000 \}\)/);
   assert.doesNotMatch(voice, /if \(metrics\.length\)/);
 });

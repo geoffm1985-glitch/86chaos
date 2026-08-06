@@ -48,12 +48,17 @@ test.describe('17 stale chunk, offline, refresh, and service-worker resilience',
     const reloads = [];
     page.on('framenavigated', frame => { if (frame === page.mainFrame()) reloads.push({ at: Date.now(), url: frame.url(), note: 'supporting-evidence-only' }); });
     await page.goto(appUrl('recipes'), { waitUntil: 'domcontentloaded', timeout: 60000 }).catch(() => {});
-    await page.waitForTimeout(5000);
+    await page.waitForFunction(() => {
+      const stateNode = document.querySelector('[data-chaos-recovery-state]');
+      const text = (document.body?.innerText || '').trim();
+      return Boolean(stateNode || text.length > 20);
+    }, null, { timeout: 15000 }).catch(() => {});
     const firstText = await bodyText(page, 30000);
     const firstUrl = page.url();
 
-    const recoveryControl = page.locator('[data-chaos-recovery-state="manual-update-available"], button[aria-label*="recover" i], button:has-text("REFRESH NOW")').first();
+    const recoveryControl = page.locator('[data-chaos-recovery-state], button[aria-label*="recover" i], button:has-text("REFRESH NOW")').first();
     await recoveryControl.waitFor({ state: 'visible', timeout: 15000 }).catch(() => {});
+    const recoveryStateNodes = await page.locator('[data-chaos-recovery-state]').evaluateAll(nodes => nodes.map(node => ({ state: node.getAttribute('data-chaos-recovery-state'), text: (node.innerText || '').replace(/\s+/g, ' ').trim().slice(0, 500) }))).catch(() => []);
     const finalText = await bodyText(page, 30000);
     const finalUrl = page.url();
     const recoveryEvents = await page.evaluate(() => window.__chaosRecoveryEvents || []).catch(() => []);
@@ -68,7 +73,10 @@ test.describe('17 stale chunk, offline, refresh, and service-worker resilience',
       finalText: finalText.slice(0, 5000),
       reloads,
       recoveryEvents,
+      recoveryStateNodes,
       automaticRecoveryAttempts,
+      firstNonemptyRecoveryUi: recoveryStateNodes[0]?.state || '',
+      finalRouteState: finalUrl,
       problems: summarizeProblems(problems),
     });
 

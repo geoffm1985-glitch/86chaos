@@ -1,6 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const { ensureRunDir, readJsonIfExists } = require('./run-context.cjs');
+const { generateFailedOnlyManifestFromRun } = require('./failed-only-manifest-utils.cjs');
 const releaseGateJsonDiagnostics = [];
 
 const { root, resultsRoot, runId, runDir } = ensureRunDir();
@@ -48,7 +49,7 @@ const rulesGateReport = readJsonIfExists(artifact['firebase-rules-release-gate.j
 const setupState = readJsonIfExists(artifact['qa-setup-state.json'], releaseGateJsonDiagnostics) || {};
 const seedReport = readJsonIfExists(artifact['86chaos-full-audit-seed-report.json'], releaseGateJsonDiagnostics) || {};
 const cleanupReport = readJsonIfExists(artifact['86chaos-full-audit-cleanup-report.json'], releaseGateJsonDiagnostics) || {};
-const failedOnlyManifest = readJsonIfExists(path.join(runDir, 'failed-only-test-manifest.json'), releaseGateJsonDiagnostics) || null;
+let failedOnlyManifest = readJsonIfExists(path.join(runDir, 'failed-only-test-manifest.json'), releaseGateJsonDiagnostics) || null;
 
 const preflightRan = preflight && Object.keys(preflight).length > 0;
 const preflightFailedBeforeMutation = preflightRan && preflight.ok === false;
@@ -130,6 +131,13 @@ if (playwright) collectSuites(playwright.suites || []);
 const failedTests = tests.filter(t => !['passed', 'skipped'].includes(t.status));
 const skippedTests = tests.filter(t => t.status === 'skipped');
 const timedOutTests = tests.filter(t => t.status === 'timedOut' || /timeout/i.test(t.error || ''));
+if (!failedOnlyManifest && playwright && failedTests.length > 0 && String(runnerState.mode || '').toLowerCase() !== 'failed-only') {
+  try {
+    failedOnlyManifest = generateFailedOnlyManifestFromRun(runDir, { write: true });
+  } catch (error) {
+    releaseGateJsonDiagnostics.push({ file: 'failed-only-test-manifest.json', error: error?.message || String(error) });
+  }
+}
 
 const appUrl = process.env.APP_URL || process.env.CHAOS_BASE_URL || preflight.appUrl || '';
 const expectedVersion = process.env.CHAOS_EXPECTED_VERSION || preflight.expectedVersion || '';

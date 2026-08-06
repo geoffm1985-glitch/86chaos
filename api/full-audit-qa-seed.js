@@ -78,9 +78,10 @@ function validateRestaurantPayload(data = {}, restaurantId = '', runId = '', wor
   if (data.restaurantId && data.restaurantId !== restaurantId) errors.push('restaurant.restaurantId must match the document id.');
   return errors;
 }
-function validateDocuments(documents = [], restaurantId = '', runId = '') {
+function validateDocuments(documents = [], restaurantId = '', runId = '', roleAccounts = []) {
   const errors = [];
   const rows = Array.isArray(documents) ? documents : [];
+  const roleUidSet = new Set((Array.isArray(roleAccounts) ? roleAccounts : []).map(row => clean(row.uid || row.userId || '', '')).filter(Boolean));
   if (rows.length > MAX_DOCS) errors.push(`Too many QA documents requested (${rows.length}); max ${MAX_DOCS}.`);
   for (const [index, row] of rows.entries()) {
     const collection = clean(row.collection || '', '');
@@ -92,7 +93,20 @@ function validateDocuments(documents = [], restaurantId = '', runId = '') {
     if (data && data.restaurantId !== restaurantId) errors.push(`${collection}/${id} restaurantId does not match current QA restaurant.`);
     if (data && data.qaOwned !== true) errors.push(`${collection}/${id} qaOwned must be true.`);
     if (data && data.qaRunId !== runId) errors.push(`${collection}/${id} qaRunId must match runId.`);
-    if (data && data.createdBy !== '86chaos-full-audit') errors.push(`${collection}/${id} createdBy must be 86chaos-full-audit.`);
+    if (data && collection === 'personalReminders') {
+      const participants = Array.isArray(data.participantUserIds) ? data.participantUserIds.map(value => clean(value || '', '')).filter(Boolean) : [];
+      const creator = clean(data.createdBy || '', '');
+      const assignedTo = clean(data.assignedToUserId || data.userId || '', '');
+      const qaMarker = clean(data.qaCreatedBy || data.qaSeedSource || data.source || '', '');
+      if (Number(data.participantSchemaVersion || 0) !== 1) errors.push(`${collection}/${id} participantSchemaVersion must be 1.`);
+      if (!participants.length) errors.push(`${collection}/${id} must have participantUserIds.`);
+      if (roleUidSet.size && participants.some(uid => !roleUidSet.has(uid))) errors.push(`${collection}/${id} participantUserIds must be verified QA role-account UIDs.`);
+      if (assignedTo && roleUidSet.size && !roleUidSet.has(assignedTo)) errors.push(`${collection}/${id} assignedToUserId must be a verified QA role-account UID.`);
+      if (!creator || (roleUidSet.size && !roleUidSet.has(creator))) errors.push(`${collection}/${id} createdBy must be a legitimate verified QA role-account UID.`);
+      if (qaMarker !== '86chaos-full-audit') errors.push(`${collection}/${id} must keep a separate qaCreatedBy/qaSeedSource ownership marker.`);
+    } else if (data && data.createdBy !== '86chaos-full-audit') {
+      errors.push(`${collection}/${id} createdBy must be 86chaos-full-audit.`);
+    }
   }
   return { ok: errors.length === 0, errors, rows };
 }
@@ -268,7 +282,7 @@ async function cleanupCurrentRunDocumentVaultStorage(app, restaurantId = '', run
 
 async function seedQa(req, res, { auth, db, projectId, body, base }) {
   const roleCheck = validateRoleAccounts(body.roleAccounts, base.restaurantId, base.runId);
-  const docCheck = validateDocuments(body.documents, base.restaurantId, base.runId);
+  const docCheck = validateDocuments(body.documents, base.restaurantId, base.runId, body.roleAccounts);
   const restaurantPayload = body.restaurant && typeof body.restaurant === 'object' ? body.restaurant : {};
   const restaurantErrors = validateRestaurantPayload(restaurantPayload, base.restaurantId, base.runId, base.workspaceName);
   const errors = [...roleCheck.errors, ...docCheck.errors, ...restaurantErrors];

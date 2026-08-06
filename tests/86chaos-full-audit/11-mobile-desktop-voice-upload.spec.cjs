@@ -73,8 +73,9 @@ test.describe('11 mobile, desktop, 86Voice, and upload/scan UI', () => {
     requireCreds(account, 'owner-like account');
     await login(page, account.email, account.password);
     const text = await bodyText(page, 30000);
-    const voiceButton = page.getByRole('button', { name: /open 86voice|close 86voice|86 voice assistant/i }).first();
-    await expect(voiceButton, 'Authorized account must expose a stable accessible 86Voice control').toBeVisible({ timeout: 10_000 });
+    const openVoice = page.getByRole('button', { name: /open 86voice/i });
+    await expect(openVoice, 'Authorized account must expose one stable accessible Open 86Voice control').toHaveCount(1, { timeout: 10_000 });
+    const voiceButton = openVoice.first();
     const metrics = await voiceButton.evaluate((button) => {
       const rect = button.getBoundingClientRect();
       return { label: button.getAttribute('aria-label') || button.getAttribute('title') || button.innerText || '', width: Math.round(rect.width), height: Math.round(rect.height) };
@@ -85,11 +86,17 @@ test.describe('11 mobile, desktop, 86Voice, and upload/scan UI', () => {
     expect(metrics.height, 'Mic/voice button should be tall enough to tap').toBeGreaterThanOrEqual(38);
 
     await voiceButton.click();
-    await expect(page.getByRole('button', { name: /close 86voice/i })).toBeVisible({ timeout: 5000 });
-    await page.getByRole('button', { name: /close 86voice/i }).click();
+    const headerClose = page.getByRole('button', { name: 'Close 86Voice panel' });
+    const floatingHide = page.getByRole('button', { name: 'Hide 86Voice assistant' });
+    await expect(headerClose).toBeVisible({ timeout: 5000 });
+    await expect(floatingHide).toBeVisible({ timeout: 5000 });
+    await expect(page.locator('.voice-command-dock')).toHaveCount(1);
+    await headerClose.click();
     await expect(page.getByRole('button', { name: /open 86voice/i })).toBeVisible({ timeout: 5000 });
 
     await page.getByRole('button', { name: /open 86voice/i }).click();
+    await expect(headerClose).toBeVisible({ timeout: 5000 });
+    await expect(floatingHide).toBeVisible({ timeout: 5000 });
     const maybeStart = page.getByRole('button', { name: /start listening|listen|microphone|start/i }).first();
     if (await maybeStart.isVisible({ timeout: 2500 }).catch(() => false)) {
       await maybeStart.click();
@@ -99,7 +106,13 @@ test.describe('11 mobile, desktop, 86Voice, and upload/scan UI', () => {
       const instanceState = await page.evaluate(() => (window.__voiceRecognitionInstances || []).map(r => ({ started: r.started, stopped: r.stopped, aborted: r.aborted })));
       expect(instanceState.some(r => r.started), 'Deterministic SpeechRecognition mock should be started by the real UI control').toBe(true);
     }
-    await attachJson(testInfo, '11-voice-button-metrics.json', { metrics, textSample: text.slice(0, 5000), instances: await page.evaluate(() => (window.__voiceRecognitionInstances || []).length) });
+    await floatingHide.click();
+    await expect(page.getByRole('button', { name: /open 86voice/i })).toBeVisible({ timeout: 5000 });
+    const closedInstanceState = await page.evaluate(() => (window.__voiceRecognitionInstances || []).map(r => ({ started: r.started, stopped: r.stopped, aborted: r.aborted })));
+    expect(closedInstanceState.every(r => !r.started || r.stopped || r.aborted), 'Closing from the floating hide control must stop active recognition').toBe(true);
+    await page.getByRole('button', { name: /open 86voice/i }).click();
+    await expect(page.locator('.voice-command-dock')).toHaveCount(1);
+    await attachJson(testInfo, '11-voice-button-metrics.json', { metrics, textSample: text.slice(0, 5000), instances: await page.evaluate(() => (window.__voiceRecognitionInstances || []).length), closedInstanceState });
   });
 
   test('file upload / scan surfaces reject obvious broken display states', async ({ page }, testInfo) => {

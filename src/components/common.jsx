@@ -2971,7 +2971,7 @@ const VoiceCommandDockBase = ({ appUser, inventoryItems = [], recipes = [], user
     {open && <div className="cockpit-panel rounded-2xl p-3 w-[min(92vw,360px)] shadow-2xl border border-[#2A353D] bg-[#1A2126]">
       <div className="flex items-center justify-between gap-2 border-b border-[#2A353D] pb-2 mb-3">
         <div><div className="text-[10px] font-black uppercase tracking-widest text-[#D4A381] flex items-center gap-1"><Sparkles size={13}/> 86 Voice</div><div className="text-[10px] text-slate-500 font-bold">Tap once, speak, and safe commands run. Destructive commands still ask first.</div></div>
-        <button type="button" aria-label="Close 86Voice" onClick={closeDock} className="p-1.5 rounded-lg hover:bg-[#12161A] text-slate-400"><X size={16}/></button>
+        <button type="button" aria-label="Close 86Voice panel" title="Close 86Voice panel" onClick={closeDock} className="p-1.5 rounded-lg hover:bg-[#12161A] text-slate-400"><X size={16}/></button>
       </div>
       <div className="space-y-2">
         <button type="button" aria-label={listening ? 'Stop listening' : 'Start listening'} aria-pressed={listening} onClick={listening ? () => stopActiveRecognition('manual-stop') : () => startListening({ manual: true })} className={`w-full ${listening ? 'bg-red-900/30 text-red-300 border-red-500/40' : 'bg-[#12161A] text-[#D4A381] border-[#2A353D]'} border rounded-xl py-3 font-black uppercase tracking-widest text-xs flex items-center justify-center gap-2`}>
@@ -3032,7 +3032,7 @@ const VoiceCommandDockBase = ({ appUser, inventoryItems = [], recipes = [], user
         {!canUseSpeech && <div className="text-[10px] text-amber-300 bg-amber-900/10 border border-amber-900/40 rounded-xl p-2 font-bold">This browser does not support built-in speech recognition. Type the command here, or use Chrome/Android for voice.</div>}
       </div>
     </div>}
-    <button type="button" aria-label={open ? 'Close 86Voice' : 'Open 86Voice'} aria-expanded={open} onClick={open ? closeDock : openDock} className="no-compact w-14 h-14 rounded-full bg-[#0B0E11] border border-[#D4A381]/70 text-[#D4A381] shadow-2xl flex items-center justify-center hover:scale-105 transition-transform" title="86 Voice Assistant"><Mic size={24}/></button>
+    <button type="button" aria-label={open ? 'Hide 86Voice assistant' : 'Open 86Voice'} aria-expanded={open} onClick={open ? closeDock : openDock} className="no-compact w-14 h-14 rounded-full bg-[#0B0E11] border border-[#D4A381]/70 text-[#D4A381] shadow-2xl flex items-center justify-center hover:scale-105 transition-transform" title={open ? 'Hide 86Voice assistant' : '86 Voice Assistant'}><Mic size={24}/></button>
   </div>;
 };
 

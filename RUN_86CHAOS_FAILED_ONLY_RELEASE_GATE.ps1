@@ -285,9 +285,14 @@ if ($PreflightExit -ne 0) {
           if ($InventoryExit -ne 0) {
             Stop-BeforePlaywright "Release gate blocked before Playwright because source inventory failed."
           } else {
-            $PlaywrightExe = Join-Path $Root "node_modules\.bin\playwright.cmd"
-            Set-RunnerPhase 'install-chromium'
-            $BrowserExit = Run-Step "Install Chromium browser" "& '$PlaywrightExe' install chromium"
+            Set-RunnerPhase 'failed-only-manifest'
+            $ManifestExit = Run-Step "Prepare dynamic failed-only manifest" "node scripts/86chaos-release-gate/prepare-failed-only-manifest.cjs"
+            if ($ManifestExit -ne 0) {
+              Stop-BeforePlaywright "Release gate blocked before Playwright because the dynamic failed-only manifest was missing, stale, empty, or version-mismatched. Run npm run test:play-store first."
+            } else {
+              $PlaywrightExe = Join-Path $Root "node_modules\.bin\playwright.cmd"
+              Set-RunnerPhase 'install-chromium'
+              $BrowserExit = Run-Step "Install Chromium browser" "& '$PlaywrightExe' install chromium"
             $RunnerState.browserInstallPassed = ($BrowserExit -eq 0)
             Save-RunnerState
             if ($BrowserExit -ne 0) {
@@ -326,6 +331,7 @@ if ($PreflightExit -ne 0) {
                   Run-LiveStep "Failed-only Playwright gate" "& '$PlaywrightExe' test --config '$PlaywrightConfig'"
                 }
               }
+            }
             }
           }
         }

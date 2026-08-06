@@ -116,4 +116,29 @@ test.describe('15 exhaustive interactive-control census', () => {
     expect(mutationUncovered, 'Every visible mutating control needs an explicit end-to-end workflow test; route smoke tests do not count').toEqual([]);
     expect(smallTapTargets, 'All visible interactive controls must meet the 42x42 mobile tap-target minimum').toEqual([]);
   });
+
+  test('mobile maintenance Edit and Delete record controls meet tap-target minimums', async ({ browser }, testInfo) => {
+    const account = ownerLikeCreds();
+    requireCreds(account, 'owner-like account');
+    const context = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true });
+    const page = await context.newPage();
+    await login(page, account.email, account.password);
+    const text = await gotoTab(page, 'maintenance', { settleMs: 1500, maxText: 40000 });
+    if (PERMISSION_GATE_RE.test(text)) test.skip(true, 'Maintenance route is permission gated for this account.');
+    const edit = page.getByTitle('Edit record').first();
+    const del = page.getByTitle('Delete record').first();
+    await expect(edit, 'Seeded maintenance route should expose Edit record action').toBeVisible({ timeout: 10000 });
+    await expect(del, 'Seeded maintenance route should expose Delete record action').toBeVisible({ timeout: 10000 });
+    const boxes = {
+      edit: await edit.boundingBox(),
+      delete: await del.boundingBox(),
+    };
+    await attachJson(testInfo, '15-maintenance-mobile-tap-targets.json', { boxes });
+    expect(boxes.edit?.width || 0, 'Open Edit record must be at least 42px wide on mobile').toBeGreaterThanOrEqual(42);
+    expect(boxes.edit?.height || 0, 'Open Edit record must be at least 42px tall on mobile').toBeGreaterThanOrEqual(42);
+    expect(boxes.delete?.width || 0, 'Delete record must be at least 42px wide on mobile').toBeGreaterThanOrEqual(42);
+    expect(boxes.delete?.height || 0, 'Delete record must be at least 42px tall on mobile').toBeGreaterThanOrEqual(42);
+    await context.close();
+  });
+
 });

@@ -8,11 +8,8 @@ export const resolveAuthenticatedReminderUid = (appUser = {}) => (
 export const reminderBelongsToUser = (reminder = {}, uid = '') => {
   const userUid = String(uid || '').trim();
   if (!userUid) return false;
-  const participants = Array.isArray(reminder.participantUserIds) ? reminder.participantUserIds.map(String) : [];
-  return participants.includes(userUid) ||
-    String(reminder.userId || '') === userUid ||
-    String(reminder.assignedToUserId || '') === userUid ||
-    String(reminder.createdBy || '') === userUid;
+  const participants = Array.isArray(reminder.participantUserIds) ? reminder.participantUserIds.map(value => String(value || '').trim()).filter(Boolean) : [];
+  return participants.includes(userUid);
 };
 
 export const mergeReminderRows = (...groups) => {
@@ -34,10 +31,7 @@ export const buildReminderQuerySpecs = (uid = '') => {
   const safeUid = String(uid || '').trim();
   if (!safeUid) return [];
   return [
-    { key: 'canonical-participant', whereClauses: [['participantUserIds', 'array-contains', safeUid]] },
-    { key: 'legacy-user-id', whereClauses: [['userId', '==', safeUid]] },
-    { key: 'legacy-assigned-to', whereClauses: [['assignedToUserId', '==', safeUid]] },
-    { key: 'legacy-created-by', whereClauses: [['createdBy', '==', safeUid]] }
+    { key: 'canonical-participant', whereClauses: [['participantUserIds', 'array-contains', safeUid]] }
   ];
 };
 
@@ -46,37 +40,16 @@ export const usePersonalReminderRows = (appUser = {}, options = {}) => {
   const restaurantId = appUser?.restaurantId || '';
   const enabled = options.enabled !== false && Boolean(restaurantId && uid);
   const limitCount = options.limitCount || 80;
-  const specs = buildReminderQuerySpecs(uid);
+  const spec = buildReminderQuerySpecs(uid)[0] || null;
   const canonicalRows = useLiveCollection('personalReminders', restaurantId, {
-    enabled,
-    whereClauses: specs[0]?.whereClauses || [],
+    enabled: enabled && Boolean(spec),
+    whereClauses: spec?.whereClauses || [],
     limitCount,
     fallbackLimitCount: options.fallbackLimitCount || 40,
-    debugLabel: `${options.debugLabel || 'personal-reminders'}:canonical`
-  });
-  const legacyUserRows = useLiveCollection('personalReminders', restaurantId, {
-    enabled,
-    whereClauses: specs[1]?.whereClauses || [],
-    limitCount,
-    fallbackLimitCount: options.fallbackLimitCount || 40,
-    debugLabel: `${options.debugLabel || 'personal-reminders'}:legacy-user-id`
-  });
-  const legacyAssignedRows = useLiveCollection('personalReminders', restaurantId, {
-    enabled,
-    whereClauses: specs[2]?.whereClauses || [],
-    limitCount,
-    fallbackLimitCount: options.fallbackLimitCount || 40,
-    debugLabel: `${options.debugLabel || 'personal-reminders'}:legacy-assigned-to`
-  });
-  const legacyCreatedRows = useLiveCollection('personalReminders', restaurantId, {
-    enabled,
-    whereClauses: specs[3]?.whereClauses || [],
-    limitCount,
-    fallbackLimitCount: options.fallbackLimitCount || 40,
-    debugLabel: `${options.debugLabel || 'personal-reminders'}:legacy-created-by`
+    debugLabel: `${options.debugLabel || 'personal-reminders'}:canonical-participant`
   });
   return useMemo(() => sortReminderRows(
-    mergeReminderRows(canonicalRows, legacyUserRows, legacyAssignedRows, legacyCreatedRows)
+    mergeReminderRows(canonicalRows)
       .filter(row => row?.restaurantId === restaurantId && reminderBelongsToUser(row, uid))
-  ), [canonicalRows, legacyUserRows, legacyAssignedRows, legacyCreatedRows, restaurantId, uid]);
+  ), [canonicalRows, restaurantId, uid]);
 };

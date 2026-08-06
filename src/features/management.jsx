@@ -3215,7 +3215,7 @@ const TabAuditLog = ({ appUser }) => {
           <span className={`bg-red-900/20 border border-red-500/50 text-red-500 px-3 py-1 rounded-full font-black text-[10px] uppercase tracking-widest`}>Master Admin View</span>
         </div>
         
-        <div className={`divide-y ${T.border} max-h-[70vh] overflow-y-auto custom-scrollbar`}>
+        <section role="region" aria-label="System audit log entries" tabIndex={0} className={`divide-y ${T.border} max-h-[70vh] overflow-y-auto custom-scrollbar`}>
           {sortedLogs.length === 0 && <div className="p-8 text-center text-slate-500 font-bold">No security events logged yet.</div>}
           
           {sortedLogs.map(log => (
@@ -3234,7 +3234,7 @@ const TabAuditLog = ({ appUser }) => {
               </div>
             </div>
           ))}
-        </div>
+        </section>
       </div>
     </div>
   );

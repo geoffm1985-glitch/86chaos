@@ -30,13 +30,13 @@ const localChecks = read('scripts/86chaos-release-gate/run-node-release-checks.c
 const maturityGuards = read('src/core/maturityGuards.js');
 const maturityGuardsTest = read('src/core/maturityGuards.test.js');
 
-assert(pkg.version === '16.0.133', 'package.json version is 16.0.133');
-assert(lock.version === '16.0.133' && lock.packages?.['']?.version === '16.0.133', 'package-lock root versions are 16.0.133');
-assert(version.version === '16.0.133' && version.build === '16.0.133', 'public/version.json version/build are 16.0.133');
-assert(appCore.includes("CURRENT_VERSION = '16.0.133'"), 'app core CURRENT_VERSION is 16.0.133');
-assert(apiVersion.includes("APP_VERSION = '16.0.133'") && apiVersion.includes("SECURITY_SCHEMA_VERSION = '16.0.133'"), 'api version reports 16.0.133');
-assert(pkg.scripts['test:source'] === 'node scripts/validate-16-0-133.js', 'test:source points at the 16.0.133 validator');
-assert(!fs.existsSync(path.join(root, 'scripts/validate-16-0-132.js')), 'previous 16.0.132 validator was replaced');
+assert(pkg.version === '16.0.134', 'package.json version is 16.0.134');
+assert(lock.version === '16.0.134' && lock.packages?.['']?.version === '16.0.134', 'package-lock root versions are 16.0.134');
+assert(version.version === '16.0.134' && version.build === '16.0.134', 'public/version.json version/build are 16.0.134');
+assert(appCore.includes("CURRENT_VERSION = '16.0.134'"), 'app core CURRENT_VERSION is 16.0.134');
+assert(apiVersion.includes("APP_VERSION = '16.0.134'") && apiVersion.includes("SECURITY_SCHEMA_VERSION = '16.0.134'"), 'api version reports 16.0.134');
+assert(pkg.scripts['test:source'] === 'node scripts/validate-16-0-134.js', 'test:source points at the 16.0.134 validator');
+assert(!fs.existsSync(path.join(root, 'scripts/validate-16-0-133.js')), 'previous 16.0.133 validator was replaced');
 
 assert(sha('firestore.rules') === '51bfd7d39edd59f680ae41a149c108cec8cd42d00b102d84cb00ee40d90264d9', 'working Firestore rules are preserved byte-for-byte for this app-only maturity pass');
 assert(sha('storage.rules') === '174e7e9a140193ff69ccf0f0d3e5c65b81a9e0fbbd612bff45ce57e7a3a7ce9c', 'Storage rules include the minimal missing-user clean-denial guard proven by the corrected harness');
@@ -59,11 +59,11 @@ assert(/allow create, update, delete: if false;/.test(rules), 'ops intelligence 
 assert(rules.includes('match /personalReminders/{docId}') && rules.includes('reminderParticipant'), 'personal reminder rules remain participant-scoped');
 
 assert(common.includes('usePersonalReminderRows') && !common.includes("useLiveCollection('personalReminders', appUser?.restaurantId, { enabled: !!isOpen"), 'drawer reminders use shared participant-scoped query boundary');
-assert(reminders.includes("['participantUserIds', 'array-contains'") && reminders.includes("['userId', '=='") && reminders.includes("['assignedToUserId', '=='") && reminders.includes("['createdBy', '=='"), 'reminder query helper covers canonical and legacy UID-scoped queries without broad fallback');
+assert(reminders.includes("['participantUserIds', 'array-contains'") && !reminders.includes("legacy-user-id") && !reminders.includes("legacy-assigned-to") && !reminders.includes("legacy-created-by") && ((reminders.match(/useLiveCollection\('personalReminders'/g) || []).length === 1), 'reminder query helper uses one canonical participant UID-scoped query without broad fallback');
 assert(intelligence.includes('usePersonalReminderRows'), 'personal reminders feature reuses the shared reminder-query boundary');
 
 assert(featureAccess.includes('canViewRestaurantOpsIntelligence') && featureAccess.includes('userHasRestaurantLeadershipAuthority'), 'ops intelligence frontend access uses one leadership-aware selector');
-assert(operations.includes('canViewRestaurantOpsIntelligence') && operations.includes('useLiveDocument(\'opsIntelligenceReports\'') && operations.includes('canUsePythonIntelligence'), 'ops intelligence listener is gated before it starts');
+assert(operations.includes('canViewRestaurantOpsIntelligence') && operations.includes("useLiveCollectionState('opsIntelligenceReports'") && !operations.includes("useLiveDocument('opsIntelligenceReports'") && operations.includes('canUsePythonIntelligence'), 'ops intelligence listener is gated before it starts');
 
 assert(app.includes('validLabelledByText') && app.includes('hasExplicitName') && app.includes('if (!hasExplicitName && normalized)'), 'global control normalizer preserves explicit accessible names');
 assert(app.includes('data-chaos-control-kind') && app.includes('data-chaos-workflow-id'), 'controls receive stable nonvisual semantics for the release census');
@@ -89,6 +89,8 @@ assert(localChecks.includes('node-test-live-summary.json') && localChecks.includ
 assert(localChecks.includes('firebase emulators:exec --only firestore,storage') && localChecks.includes('node scripts/86chaos-release-gate/run-rules-release-gate.cjs'), 'focused release-gate rules smoke check still runs inside Firebase emulator discovery');
 assert(/metadata\\\.get\\\('purpose', ''\\\) == 'document-vault'/.test(read('api/app-route-and-document-vault.test.cjs')) && /metadata\\\.get\\\('restaurantId', ''\\\) == restaurantId/.test(read('api/app-route-and-document-vault.test.cjs')), 'Document Vault server assertion matches supplied safe metadata.get Storage rules');
 assert(collector.includes('releaseReadiness') && collector.includes('firstActionableBlocker'), 'collector emits compact release-readiness summary and first blocker');
+assert(read('scripts/86chaos-release-gate/failed-only-manifest-utils.cjs').includes('findMostRecentCompletedFullRun') && read('scripts/86chaos-release-gate/prepare-failed-only-manifest.cjs').includes('Refusing stale or invalid failed-only manifest'), 'failed-only runner builds a dynamic manifest from the newest completed full run');
+assert(!read('tests/86chaos-release-gate/failed-only-manifest.cjs').includes('const FAILED_ONLY_TESTS = ['), 'failed-only manifest no longer uses a permanently hardcoded failure list');
 
 assert(read('tests/86chaos-full-audit/02-permission-role-security.spec.cjs').includes('visibleProtectedControls') && !read('tests/86chaos-full-audit/02-permission-role-security.spec.cjs').includes('const leaks = checked.filter(x => x.forbidden || x.actions)'), 'staff permission test no longer fails on raw body text phrases');
 assert(read('tests/86chaos-full-audit/05-schedule-builder-mutation.spec.cjs').includes('getByRole(\'row\'') && read('tests/86chaos-full-audit/05-schedule-builder-mutation.spec.cjs').includes('Schedule Builder context'), 'schedule visibility test uses semantic Schedule Builder locators');

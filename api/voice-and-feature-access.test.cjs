@@ -9,7 +9,7 @@ test('86Voice source has a guarded microphone lifecycle and accessible controls'
   assert.match(common, /activeRecognitionRef/);
   assert.match(common, /pendingVoiceStartTimerRef/);
   assert.match(common, /stopActiveRecognition/);
-  assert.match(common, /aria-label=\{open \? 'Close 86Voice' : 'Open 86Voice'\}/);
+  assert.match(common, /aria-label=\{open \? 'Hide 86Voice assistant' : 'Open 86Voice'\}/);
   assert.match(common, /aria-label=\{listening \? 'Stop listening' : 'Start listening'\}/);
   assert.match(common, /const VoiceCommandDock = VoiceCommandDockBase;/);
   assert.doesNotMatch(common, /React\.memo\(VoiceCommandDockBase, voiceDockPropsAreEqual\)/);

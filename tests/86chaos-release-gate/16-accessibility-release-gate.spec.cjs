@@ -83,6 +83,29 @@ test.describe('16 WCAG accessibility release gate', () => {
   });
 
 
+  test('Audit log scroll region is keyboard-accessible on desktop and mobile', async ({ browser }, testInfo) => {
+    const account = ownerLikeCreds();
+    requireCreds(account, 'owner-like account');
+    const findings = [];
+    for (const viewport of [{ name: 'desktop', width: 1440, height: 900 }, { name: 'mobile', width: 390, height: 844 }]) {
+      const context = await browser.newContext({ viewport: { width: viewport.width, height: viewport.height } });
+      const page = await context.newPage();
+      await login(page, account.email, account.password);
+      await gotoTab(page, 'audit', { settleMs: 1000 });
+      const region = page.getByRole('region', { name: /system audit log entries/i });
+      await expect(region, `${viewport.name} Audit route should expose a named scroll region`).toBeVisible({ timeout: 10000 });
+      await region.focus();
+      const focused = await region.evaluate(node => document.activeElement === node);
+      findings.push({ viewport: viewport.name, focused });
+      expect(focused, `${viewport.name} Audit log scroll region should accept keyboard focus`).toBe(true);
+      const result = await runAxe(page);
+      const blocking = result.violations.filter(v => ['serious', 'critical'].includes(v.impact)).map(simplifyViolation).filter(v => v.id === 'scrollable-region-focusable');
+      expect(blocking, `${viewport.name} Audit route should not have scrollable-region-focusable violations`).toEqual([]);
+      await context.close();
+    }
+    await attachJson(testInfo, '16-audit-scroll-region-focus.json', { findings });
+  });
+
   test('decorative cockpit light spans are not made focusable by the accessibility preparer', async ({ page }) => {
     const account = ownerLikeCreds();
     requireCreds(account, 'owner-like account');

@@ -1,7 +1,25 @@
 const { test, expect } = require('@playwright/test');
 const { creds, ownerLikeCreds, requireCreds, login, gotoTab, bodyText, attachJson, STAFF_FORBIDDEN_RE, STAFF_ACTION_RE, PERMISSION_GATE_RE } = require('./utils/audit-helpers.cjs');
 
+const collectProtectedControls = async (locator) => locator.evaluateAll(nodes => nodes.map(node => ({
+  text: (node.innerText || node.textContent || '').replace(/\s+/g, ' ').trim(),
+  aria: node.getAttribute('aria-label') || '',
+  title: node.getAttribute('title') || '',
+  hidden: node.offsetParent === null || node.getAttribute('aria-hidden') === 'true'
+})));
+
 test.describe('02 role permissions and direct-route security', () => {
+  test('protected-control evaluator returns a normal array for visible controls', async ({ page }) => {
+    await page.setContent(`
+      <button aria-label="System Administrator">gear</button>
+      <a href="#" title="Backup Center">backup</a>
+      <button style="display:none" aria-label="Hidden wages">hidden</button>
+    `);
+    const controls = await collectProtectedControls(page.locator('button, a, [role="button"], [role="menuitem"], [role="tab"]'));
+    expect(Array.isArray(controls)).toBe(true);
+    expect(controls.filter(control => !control.hidden).map(control => `${control.text} ${control.aria} ${control.title}`)).toEqual(expect.arrayContaining([expect.stringMatching(/System Administrator/), expect.stringMatching(/Backup Center/)]));
+  });
+
   test('staff account cannot see or use owner/system-admin-only surfaces', async ({ page }, testInfo) => {
     const staff = creds('STAFF');
     if (!staff.email || !staff.password) test.skip(true, 'STAFF_EMAIL/STAFF_PASSWORD not configured. Add them to test staff permission leaks.');
@@ -9,12 +27,12 @@ test.describe('02 role permissions and direct-route security', () => {
     const checked = [];
     for (const tab of ['today', 'schedule', 'financials', 'back-office', 'team', 'settings', 'godmode', 'audit']) {
       const text = await gotoTab(page, tab, { settleMs: 1200 });
-      const protectedControls = await page.locator('button, a, [role="button"], [role="menuitem"], [role="tab"]').evaluateAll(nodes => nodes.map(node => ({
-        text: (node.innerText || node.textContent || '').replace(/\s+/g, ' ').trim(),
-        aria: node.getAttribute('aria-label') || '',
-        title: node.getAttribute('title') || '',
-        hidden: node.offsetParent === null || node.getAttribute('aria-hidden') === 'true'
-      })).catch(() => []));
+      let protectedControls = [];
+      try {
+        protectedControls = await collectProtectedControls(page.locator('button, a, [role="button"], [role="menuitem"], [role="tab"]'));
+      } catch (error) {
+        throw new Error(`Protected-control evaluator failed on ${tab}: ${error?.message || error}`);
+      }
       const visibleProtectedControls = protectedControls.filter(control => !control.hidden && STAFF_FORBIDDEN_RE.test(`${control.text} ${control.aria} ${control.title}`));
       const directRouteLeak = ['godmode', 'audit'].includes(tab) && !PERMISSION_GATE_RE.test(text) && /Backup Center|Security Center|Forensics|Platform Operations|Python Automation/i.test(text);
       const actionLeak = tab !== 'team' && STAFF_ACTION_RE.test(text);
