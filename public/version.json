@@ -1,14 +1,14 @@
 {
-  "version": "16.0.132",
-  "name": "86 Chaos 16.0.132 Release Gate Readiness Fix",
-  "build": "16.0.132",
-  "label": "86 Chaos 16.0.132 Release Gate Readiness Fix",
-  "releasedAt": "2026-08-05T20:58:00-05:00",
-  "releaseTitle": "Release Gate Readiness Fix",
+  "version": "16.0.133",
+  "name": "86 Chaos 16.0.133 Release Gate Canonical Rules Harness Fix",
+  "build": "16.0.133",
+  "label": "86 Chaos 16.0.133 Release Gate Canonical Rules Harness Fix",
+  "releasedAt": "2026-08-05T22:13:00-05:00",
+  "releaseTitle": "Release Gate Canonical Rules Harness Fix",
   "notes": [
-    "Fixes the local release-gate readiness check so Firebase emulator rules tests run inside firebase emulators:exec instead of calling the rules-unit-testing harness without emulator discovery.",
-    "Updates the Document Vault server assertion to match the supplied working Storage rules safe metadata.get validation without changing Storage rules.",
-    "Leaves working Firestore rules, Storage rules, Firebase config, indexes, Auth, App Check, MFA, and Vercel wiring unchanged."
+    "Runs the complete canonical Firestore and Storage emulator rules suite as the required release-gate authority before Playwright.",
+    "Fixes the focused rules smoke harness to reuse cached Firestore and Storage clients and the emulator-provided project namespace.",
+    "Adds current-run structured rules reporting, safer firstUsefulFailure parsing, positive Storage controls, and clean denial for missing Storage user profiles."
   ],
-  "title": "86 Chaos 16.0.132 Release Gate Readiness Fix"
+  "title": "86 Chaos 16.0.133 Release Gate Canonical Rules Harness Fix"
 }

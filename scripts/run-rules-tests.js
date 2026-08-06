@@ -11,7 +11,7 @@ const {
   assertSucceeds,
   assertFails
 } = require('@firebase/rules-unit-testing');
-const { doc, setDoc, updateDoc, deleteDoc, deleteField, writeBatch, runTransaction } = require('firebase/firestore');
+const { doc, setDoc, getDoc, updateDoc, deleteDoc, deleteField, writeBatch, runTransaction } = require('firebase/firestore');
 const { ref, uploadBytes, getMetadata, deleteObject } = require('firebase/storage');
 
 const projectId = process.env.GCLOUD_PROJECT || process.env.FIREBASE_PROJECT || 'demo-no-project';
@@ -96,6 +96,7 @@ async function runFirestoreTests(env) {
   await seedDoc(env, 'inventoryItems', 'inventory_uid_owner_only_existing', { restaurantId: 'tenant_uid_owner_only', createdBy: 'seed', name: 'UID owner item' });
   await seedDoc(env, 'inventoryItems', 'inventory_tenant_b_existing', { restaurantId: tenantB, createdBy: 'ownerB', name: 'Tenant B item' });
   await seedDoc(env, 'menuIntelligenceScans', 'scan_a', { restaurantId: tenantA, createdBy: 'managerA' });
+  await seedDoc(env, 'opsIntelligenceReports', 'tenant_a_current', { restaurantId: tenantA, generatedAt: '2026-08-05T00:00:00.000Z', summary: 'QA ops intelligence' });
   await seedDoc(env, 'menuDependencies', 'dep_a', { restaurantId: tenantA, menuItemId: 'burger' });
   await seedDoc(env, 'messages', 'msg_a', { restaurantId: tenantA, authorId: 'staffA', text: 'Need sauce' });
   await seedDoc(env, 'maintenanceLogs', 'maint_a', { restaurantId: tenantA, reporterId: 'staffA', title: 'Light out' });
@@ -148,6 +149,16 @@ async function runFirestoreTests(env) {
   await assertFails(deleteDoc(doc(staffB, 'maintenanceLogs', 'maint_a')));
   await assertSucceeds(updateDoc(doc(managerA, 'maintenanceLogs', 'maint_a'), { status: 'in_progress', restaurantId: tenantA }));
   await assertFails(setDoc(doc(staffA, 'shiftSwaps', 'bad_swap'), { restaurantId: tenantA, requesterId: 'staffB', targetEmployeeId: 'staffA', acceptedBy: 'staffA', shiftId: 'shift_a', status: 'requested' }));
+
+  setRuleCase('Operations-intelligence rules');
+  await assertSucceeds(getDoc(doc(ownerA, 'opsIntelligenceReports', 'tenant_a_current')));
+  await assertSucceeds(getDoc(doc(managerA, 'opsIntelligenceReports', 'tenant_a_current')));
+  await assertFails(getDoc(doc(staffA, 'opsIntelligenceReports', 'tenant_a_current')));
+  await assertFails(getDoc(doc(staffB, 'opsIntelligenceReports', 'tenant_a_current')));
+  await assertFails(getDoc(doc(anon, 'opsIntelligenceReports', 'tenant_a_current')));
+  await assertFails(setDoc(doc(ownerA, 'opsIntelligenceReports', 'tenant_a_client_write'), { restaurantId: tenantA, summary: 'client write' }));
+  await assertFails(updateDoc(doc(ownerA, 'opsIntelligenceReports', 'tenant_a_current'), { summary: 'client update' }));
+  await assertFails(deleteDoc(doc(ownerA, 'opsIntelligenceReports', 'tenant_a_current')));
 
   setRuleCase('Forced-password-state hardening');
   // Password-reset state is server-controlled. A signed-in user cannot clear, set, delete, or rewrite it directly.
@@ -326,6 +337,7 @@ async function runStorageTests(env) {
   const ownerStorage = env.authenticatedContext('ownerA').storage();
   const vaultStorage = env.authenticatedContext('vaultA').storage();
   const superStorage = env.authenticatedContext('superAdmin', { superAdmin: true }).storage();
+  const missingProfileStorage = env.authenticatedContext('missingProfile').storage();
   const image = new Blob(['x'], { type: 'image/png' });
   const pdf = new Blob(['%PDF-1.4'], { type: 'application/pdf' });
   const csv = new Blob(['date,total\n2026-08-01,42'], { type: 'text/csv' });
@@ -335,15 +347,20 @@ async function runStorageTests(env) {
 
   await assertSucceeds(uploadBytes(ref(staffAStorage, `${tenantA}/profilePhotos/staffA/photo.png`), image, { contentType: 'image/png' }));
   await assertSucceeds(deleteObject(ref(staffAStorage, `${tenantA}/profilePhotos/staffA/photo.png`)));
+  await assertFails(uploadBytes(ref(missingProfileStorage, `${tenantA}/profilePhotos/missingProfile/photo.png`), image, { contentType: 'image/png' }));
   await assertFails(uploadBytes(ref(staffAStorage, `${tenantB}/profilePhotos/staffA/cross-tenant.png`), image, { contentType: 'image/png' }));
   await assertFails(uploadBytes(ref(staffBStorage, `${tenantA}/profilePhotos/staffB/cross-tenant.png`), image, { contentType: 'image/png' }));
   await assertSucceeds(uploadBytes(ref(managerStorage, `${tenantA}/profilePhotos/staffA/manager-upload.png`), image, { contentType: 'image/png' }));
   await assertSucceeds(deleteObject(ref(managerStorage, `${tenantA}/profilePhotos/staffA/manager-upload.png`)));
+  await assertSucceeds(uploadBytes(ref(staffAStorage, `${tenantA}/profilePhotos/staffA/cross-delete.png`), image, { contentType: 'image/png' }));
+  await assertFails(deleteObject(ref(staffBStorage, `${tenantA}/profilePhotos/staffA/cross-delete.png`)));
+  await assertSucceeds(deleteObject(ref(staffAStorage, `${tenantA}/profilePhotos/staffA/cross-delete.png`)));
   await assertSucceeds(uploadBytes(ref(managerStorage, `${tenantA}/brandAssets/logo.png`), image, { contentType: 'image/png' }));
   await assertFails(deleteObject(ref(staffBStorage, `${tenantA}/brandAssets/logo.png`)));
   await assertSucceeds(deleteObject(ref(managerStorage, `${tenantA}/brandAssets/logo.png`)));
   await assertSucceeds(uploadBytes(ref(managerStorage, `${tenantA}/invoices/invoice.pdf`), pdf, { contentType: 'application/pdf', customMetadata: { restaurantId: tenantA, purpose: 'invoice-scan' } }));
   await assertSucceeds(deleteObject(ref(managerStorage, `${tenantA}/invoices/invoice.pdf`)));
+  await assertFails(uploadBytes(ref(managerStorage, `${tenantA}/invoices/mismatch.pdf`), pdf, { contentType: 'application/pdf', customMetadata: { restaurantId: tenantB, purpose: 'invoice-scan' } }));
   await assertFails(uploadBytes(ref(managerStorage, `${tenantA}/menuUploads/bad.png`), image, { contentType: 'image/png', customMetadata: { restaurantId: tenantB, purpose: 'menu-scan' } }));
 
   const vaultStoragePath = `restaurants/${tenantA}/back-office/document-vault/record1/permit.pdf`;

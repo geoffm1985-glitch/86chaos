@@ -30,16 +30,16 @@ const localChecks = read('scripts/86chaos-release-gate/run-node-release-checks.c
 const maturityGuards = read('src/core/maturityGuards.js');
 const maturityGuardsTest = read('src/core/maturityGuards.test.js');
 
-assert(pkg.version === '16.0.132', 'package.json version is 16.0.132');
-assert(lock.version === '16.0.132' && lock.packages?.['']?.version === '16.0.132', 'package-lock root versions are 16.0.132');
-assert(version.version === '16.0.132' && version.build === '16.0.132', 'public/version.json version/build are 16.0.132');
-assert(appCore.includes("CURRENT_VERSION = '16.0.132'"), 'app core CURRENT_VERSION is 16.0.132');
-assert(apiVersion.includes("APP_VERSION = '16.0.132'") && apiVersion.includes("SECURITY_SCHEMA_VERSION = '16.0.132'"), 'api version reports 16.0.132');
-assert(pkg.scripts['test:source'] === 'node scripts/validate-16-0-132.js', 'test:source points at the 16.0.132 validator');
-assert(!fs.existsSync(path.join(root, 'scripts/validate-16-0-131.js')), 'previous 16.0.131 validator was replaced');
+assert(pkg.version === '16.0.133', 'package.json version is 16.0.133');
+assert(lock.version === '16.0.133' && lock.packages?.['']?.version === '16.0.133', 'package-lock root versions are 16.0.133');
+assert(version.version === '16.0.133' && version.build === '16.0.133', 'public/version.json version/build are 16.0.133');
+assert(appCore.includes("CURRENT_VERSION = '16.0.133'"), 'app core CURRENT_VERSION is 16.0.133');
+assert(apiVersion.includes("APP_VERSION = '16.0.133'") && apiVersion.includes("SECURITY_SCHEMA_VERSION = '16.0.133'"), 'api version reports 16.0.133');
+assert(pkg.scripts['test:source'] === 'node scripts/validate-16-0-133.js', 'test:source points at the 16.0.133 validator');
+assert(!fs.existsSync(path.join(root, 'scripts/validate-16-0-132.js')), 'previous 16.0.132 validator was replaced');
 
 assert(sha('firestore.rules') === '51bfd7d39edd59f680ae41a149c108cec8cd42d00b102d84cb00ee40d90264d9', 'working Firestore rules are preserved byte-for-byte for this app-only maturity pass');
-assert(sha('storage.rules') === 'efe2abb95c6227767927f51eca64984661686b65574957433ee14d7911fce5d3', 'Storage rules are preserved byte-for-byte for this app-only maturity pass');
+assert(sha('storage.rules') === '174e7e9a140193ff69ccf0f0d3e5c65b81a9e0fbbd612bff45ce57e7a3a7ce9c', 'Storage rules include the minimal missing-user clean-denial guard proven by the corrected harness');
 assert(sha('firebase.json') === 'bd837a11c71750d4da6ccfcb725ca54e78dd76008b525ec54c7fe79a5b8a3ca4', 'firebase.json is preserved byte-for-byte');
 assert(sha('firestore.indexes.json') === 'ee666de303988cd269f7c09fa63678a2deb1cfcaa199cb4f1656dd9bddcc4b4b', 'Firestore indexes are preserved byte-for-byte');
 assert(sha('database.rules.json') === '152b5cd3f9839f598c9602706d8205b96759296e865d540b52c780900bfba138', 'Realtime Database rules are preserved byte-for-byte');
@@ -85,8 +85,8 @@ assert(read('scripts/86chaos-full-audit/seed-fake-restaurant.cjs').includes('see
 assert(read('tests/86chaos-release-gate/00-qa-restaurant-lifecycle.spec.cjs').includes('roleAccounts') && read('tests/86chaos-release-gate/00-qa-restaurant-lifecycle.spec.cjs').includes('seedReportSchemaVersion'), 'lifecycle test uses roleAccounts seed report contract');
 assert(psRunner.includes('check-java-prerequisite.cjs') && psRunner.includes('run-node-release-checks.cjs'), 'PowerShell release gate generates Java and node readiness artifacts before Playwright');
 assert(psRunner.includes('Test-Path $CleanupPath') && psRunner.includes('qa-setup-state.json'), 'PowerShell runner always synchronizes setup and cleanup reports');
-assert(localChecks.includes('node-test-live-summary.json') && localChecks.includes('run-rules-release-gate.cjs'), 'node-test-live-summary is produced from real local/source/build/rules checks');
-assert(localChecks.includes('firebase emulators:exec --only firestore,storage') && localChecks.includes('node scripts/86chaos-release-gate/run-rules-release-gate.cjs'), 'release-gate rules readiness check runs inside Firebase emulator discovery instead of bare rules-unit-testing');
+assert(localChecks.includes('node-test-live-summary.json') && localChecks.includes('npm run test:rules'), 'node-test-live-summary requires the complete canonical rules suite before Playwright');
+assert(localChecks.includes('firebase emulators:exec --only firestore,storage') && localChecks.includes('node scripts/86chaos-release-gate/run-rules-release-gate.cjs'), 'focused release-gate rules smoke check still runs inside Firebase emulator discovery');
 assert(/metadata\\\.get\\\('purpose', ''\\\) == 'document-vault'/.test(read('api/app-route-and-document-vault.test.cjs')) && /metadata\\\.get\\\('restaurantId', ''\\\) == restaurantId/.test(read('api/app-route-and-document-vault.test.cjs')), 'Document Vault server assertion matches supplied safe metadata.get Storage rules');
 assert(collector.includes('releaseReadiness') && collector.includes('firstActionableBlocker'), 'collector emits compact release-readiness summary and first blocker');
 
@@ -115,7 +115,7 @@ assert(rulesRunner.includes("passwordStored: false") && rulesRunner.includes("pa
 assert(rulesRunner.includes("passwordPurgedAt: new Date().toISOString()") && rulesRunner.includes("passwordPurgedAt: deleteField()"), 'rules tests deny setting, rewriting, and deleting passwordPurgedAt');
 assert(rulesRunner.includes("theme: 'dark', forcePasswordChange: false"), 'rules tests deny mixed safe-and-protected self update');
 assert(rulesRunner.includes("notificationPrefs: { email: false, push: true }") && rulesRunner.includes("preferences: { compactMode: true }"), 'rules tests preserve safe self-service profile preferences');
-assert(rulesRunner.includes("const { doc, setDoc, updateDoc, deleteDoc, deleteField"), 'rules tests use Firestore deleteField behavior for protected field removal');
+assert(rulesRunner.includes("const { doc, setDoc, getDoc, updateDoc, deleteDoc, deleteField"), 'rules tests use Firestore getDoc and deleteField behavior for protected coverage');
 
 
 assert(sha('firestore.rules') === '51bfd7d39edd59f680ae41a149c108cec8cd42d00b102d84cb00ee40d90264d9', 'Firestore user-rule implementation is intentionally preserved because the supplied rules work');
@@ -136,5 +136,18 @@ assert(read('src/features/schedule.jsx').includes('getScheduleShiftMonthLabels')
 assert(!read('src/features/schedule.jsx').includes("users.find(u=>u.id===s.employeeId)?.name || users.find(u=>u.id===s.employeeId)?.displayName || 'Unknown'"), 'month view no longer falls back to Unknown from employeeId-only lookup');
 assert(!read('src/features/schedule.jsx').includes("emp?.name || emp?.displayName || emp?.fullName || 'Unknown'"), 'full schedule no longer falls back to Unknown from employeeId-only lookup');
 assert(read('src/features/schedule.jsx').includes('schedule-month-shift') && read('src/styles.css').includes('.schedule-month-shift'), 'mobile month-view shift chips use a dedicated full-shift visibility class');
+
+
+const focusedRules = read('scripts/86chaos-release-gate/run-rules-release-gate.cjs');
+const provisioning = read('scripts/86chaos-release-gate/provision-test-accounts.cjs');
+assert(focusedRules.includes("activeEmulatorProjectId = process.env.GCLOUD_PROJECT || process.env.FIREBASE_PROJECT || 'demo-no-project'") && !focusedRules.includes('demo-86chaos-release-${Date.now()}'), 'focused rules harness uses emulator-provided project namespace instead of a dynamic project ID');
+assert(focusedRules.includes('const db = {') && focusedRules.includes('ownerA: ownerAContext.firestore()') && focusedRules.includes('const storage = {') && focusedRules.includes('ownerA: ownerAContext.storage()'), 'focused rules harness caches Firestore and Storage clients per context');
+assert(focusedRules.includes('firebase-rules-release-gate.json') && focusedRules.includes('firstActionableFailure') && focusedRules.includes('harness_lifecycle_error'), 'focused rules harness writes structured current-run failure classifications');
+assert(focusedRules.includes('missing Storage user profile denies cleanly') && storageRules.includes('function userExists()'), 'Storage missing-profile clean-denial behavior is covered by focused tests and guarded in rules');
+assert(rulesRunner.includes("setRuleCase('Operations-intelligence rules')") && rulesRunner.includes('opsIntelligenceReports') && rulesRunner.includes('mismatch.pdf') && rulesRunner.includes('missingProfileStorage'), 'canonical rules suite covers focused smoke behaviors and Storage positive/negative controls');
+assert(collector.includes('firebase-rules-release-gate.json') && collector.includes('rulesGateReport') && collector.includes('Rules reports are read only from the current run directory'), 'collector reads current-run focused rules report and surfaces it in summaries');
+assert(localChecks.includes("result.firstUsefulFailure = result.status === 'passed'") && localChecks.includes('Passed commands always have an empty firstUsefulFailure'), 'passed local checks cannot carry fake firstUsefulFailure text');
+assert(provisioning.includes('customClaimKeysProcessed') && provisioning.includes('enabledCustomClaims') && provisioning.includes('qaRoleClaim'), 'QA provisioning reports processed claims separately from enabled claims');
+assert(read('api/release-gate-provisioning-report.test.cjs').includes('release-gate provisioning reports only actually enabled custom claims'), 'server tests prove false-valued admin claim cleanup is not reported as enabled authority');
 
 if (failures) process.exit(1);
