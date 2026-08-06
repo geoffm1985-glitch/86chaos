@@ -63,7 +63,7 @@ for (const row of commands) results.push(runCommand(row));
 const java = checkJava();
 const rules = {
   group: 'firestore/storage emulator rules tests',
-  command: 'node scripts/86chaos-release-gate/run-rules-release-gate.cjs',
+  command: 'firebase emulators:exec --only firestore,storage "node scripts/86chaos-release-gate/run-rules-release-gate.cjs"',
   status: java.ok ? 'not run' : 'blocked',
   startedAt: new Date().toISOString(),
   finishedAt: new Date().toISOString(),

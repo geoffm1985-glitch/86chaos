@@ -30,13 +30,13 @@ const localChecks = read('scripts/86chaos-release-gate/run-node-release-checks.c
 const maturityGuards = read('src/core/maturityGuards.js');
 const maturityGuardsTest = read('src/core/maturityGuards.test.js');
 
-assert(pkg.version === '16.0.131', 'package.json version is 16.0.131');
-assert(lock.version === '16.0.131' && lock.packages?.['']?.version === '16.0.131', 'package-lock root versions are 16.0.131');
-assert(version.version === '16.0.131' && version.build === '16.0.131', 'public/version.json version/build are 16.0.131');
-assert(appCore.includes("CURRENT_VERSION = '16.0.131'"), 'app core CURRENT_VERSION is 16.0.131');
-assert(apiVersion.includes("APP_VERSION = '16.0.131'") && apiVersion.includes("SECURITY_SCHEMA_VERSION = '16.0.131'"), 'api version reports 16.0.131');
-assert(pkg.scripts['test:source'] === 'node scripts/validate-16-0-131.js', 'test:source points at the 16.0.131 validator');
-assert(!fs.existsSync(path.join(root, 'scripts/validate-16-0-130.js')), 'previous 16.0.130 validator was replaced');
+assert(pkg.version === '16.0.132', 'package.json version is 16.0.132');
+assert(lock.version === '16.0.132' && lock.packages?.['']?.version === '16.0.132', 'package-lock root versions are 16.0.132');
+assert(version.version === '16.0.132' && version.build === '16.0.132', 'public/version.json version/build are 16.0.132');
+assert(appCore.includes("CURRENT_VERSION = '16.0.132'"), 'app core CURRENT_VERSION is 16.0.132');
+assert(apiVersion.includes("APP_VERSION = '16.0.132'") && apiVersion.includes("SECURITY_SCHEMA_VERSION = '16.0.132'"), 'api version reports 16.0.132');
+assert(pkg.scripts['test:source'] === 'node scripts/validate-16-0-132.js', 'test:source points at the 16.0.132 validator');
+assert(!fs.existsSync(path.join(root, 'scripts/validate-16-0-131.js')), 'previous 16.0.131 validator was replaced');
 
 assert(sha('firestore.rules') === '51bfd7d39edd59f680ae41a149c108cec8cd42d00b102d84cb00ee40d90264d9', 'working Firestore rules are preserved byte-for-byte for this app-only maturity pass');
 assert(sha('storage.rules') === 'efe2abb95c6227767927f51eca64984661686b65574957433ee14d7911fce5d3', 'Storage rules are preserved byte-for-byte for this app-only maturity pass');
@@ -86,6 +86,8 @@ assert(read('tests/86chaos-release-gate/00-qa-restaurant-lifecycle.spec.cjs').in
 assert(psRunner.includes('check-java-prerequisite.cjs') && psRunner.includes('run-node-release-checks.cjs'), 'PowerShell release gate generates Java and node readiness artifacts before Playwright');
 assert(psRunner.includes('Test-Path $CleanupPath') && psRunner.includes('qa-setup-state.json'), 'PowerShell runner always synchronizes setup and cleanup reports');
 assert(localChecks.includes('node-test-live-summary.json') && localChecks.includes('run-rules-release-gate.cjs'), 'node-test-live-summary is produced from real local/source/build/rules checks');
+assert(localChecks.includes('firebase emulators:exec --only firestore,storage') && localChecks.includes('node scripts/86chaos-release-gate/run-rules-release-gate.cjs'), 'release-gate rules readiness check runs inside Firebase emulator discovery instead of bare rules-unit-testing');
+assert(/metadata\\\.get\\\('purpose', ''\\\) == 'document-vault'/.test(read('api/app-route-and-document-vault.test.cjs')) && /metadata\\\.get\\\('restaurantId', ''\\\) == restaurantId/.test(read('api/app-route-and-document-vault.test.cjs')), 'Document Vault server assertion matches supplied safe metadata.get Storage rules');
 assert(collector.includes('releaseReadiness') && collector.includes('firstActionableBlocker'), 'collector emits compact release-readiness summary and first blocker');
 
 assert(read('tests/86chaos-full-audit/02-permission-role-security.spec.cjs').includes('visibleProtectedControls') && !read('tests/86chaos-full-audit/02-permission-role-security.spec.cjs').includes('const leaks = checked.filter(x => x.forbidden || x.actions)'), 'staff permission test no longer fails on raw body text phrases');

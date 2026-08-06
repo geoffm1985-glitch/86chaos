@@ -1,14 +1,14 @@
 {
-  "version": "16.0.131",
-  "name": "86 Chaos 16.0.131 App Icon Asset Restore",
-  "build": "16.0.131",
-  "label": "86 Chaos 16.0.131 App Icon Asset Restore",
-  "releasedAt": "2026-08-05T20:16:00-05:00",
-  "releaseTitle": "App Icon Asset Restore",
+  "version": "16.0.132",
+  "name": "86 Chaos 16.0.132 Release Gate Readiness Fix",
+  "build": "16.0.132",
+  "label": "86 Chaos 16.0.132 Release Gate Readiness Fix",
+  "releasedAt": "2026-08-05T20:58:00-05:00",
+  "releaseTitle": "Release Gate Readiness Fix",
   "notes": [
-    "Restores the packaged 86 Chaos app icon asset at public/wisco.png so the header shows the app icon instead of broken-image alt text.",
-    "Restores the packaged 86 Chaos wordmark asset at public/6139.png so the locked app brand renders correctly on mobile and desktop.",
+    "Fixes the local release-gate readiness check so Firebase emulator rules tests run inside firebase emulators:exec instead of calling the rules-unit-testing harness without emulator discovery.",
+    "Updates the Document Vault server assertion to match the supplied working Storage rules safe metadata.get validation without changing Storage rules.",
     "Leaves working Firestore rules, Storage rules, Firebase config, indexes, Auth, App Check, MFA, and Vercel wiring unchanged."
   ],
-  "title": "86 Chaos 16.0.131 App Icon Asset Restore"
+  "title": "86 Chaos 16.0.132 Release Gate Readiness Fix"
 }
