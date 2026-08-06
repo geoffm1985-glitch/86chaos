@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { appendOfflineQueueItem, classifyRuntimeIssue, normalizeOfflineQueue, readJsonFromStorage, recordLocalRuntimeEvent, writeJsonToStorage } from './maturityGuards';
 import { initializeApp } from 'firebase/app';
 import { getFirestore, collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, where, getDoc, setDoc, getDocs, enableIndexedDbPersistence, orderBy, limit as firestoreLimit } from 'firebase/firestore';
 import { getAuth, onAuthStateChanged } from 'firebase/auth';
@@ -404,7 +405,7 @@ export const MASTER_ADMIN_EMAIL = (process.env.REACT_APP_MASTER_ADMIN_EMAIL || '
 export const EVENT_TAGS = ['Standard Day', 'Packers Game', 'Brewers Game', 'Live Music', 'Severe Weather', 'Private Catering', 'Holiday'];
 
 // --- VERSION TRACKING ---
-export const CURRENT_VERSION = '16.0.129';
+export const CURRENT_VERSION = '16.0.131';
 
 // --- Helpers ---
 const usePageVisible = () => {
@@ -1519,16 +1520,28 @@ export const safeWrite = async ({ user, action = 'set', collectionName, docId = 
 export const getOfflineQueueKey = (restaurantId, userId) => `chaosOfflineWriteQueue_${restaurantId || 'unknown'}_${userId || 'unknown'}`;
 export const getOfflineQueue = (restaurantId, userId) => {
   if (typeof window === 'undefined') return [];
-  try { return JSON.parse(localStorage.getItem(getOfflineQueueKey(restaurantId, userId)) || '[]'); } catch (_) { return []; }
+  const key = getOfflineQueueKey(restaurantId, userId);
+  const result = readJsonFromStorage(localStorage, key, []);
+  const queue = normalizeOfflineQueue(result.value || []);
+  // If storage was corrupted or contained malformed/duplicate rows, persist the repaired queue locally.
+  if (result.repaired || JSON.stringify(result.value || []) !== JSON.stringify(queue)) writeJsonToStorage(localStorage, key, queue);
+  return queue;
 };
 export const queueOfflineWrite = ({ user, collectionName, docId = '', action = 'add', data = {}, label = '' }) => {
   if (typeof window === 'undefined') return [];
   const key = getOfflineQueueKey(user?.restaurantId, user?.id);
   const queue = getOfflineQueue(user?.restaurantId, user?.id);
-  const item = { id: `${Date.now()}_${Math.random().toString(36).slice(2)}`, queuedAt: new Date().toISOString(), collectionName, docId, action, data: scrubForAudit(data), label };
-  queue.push(item);
-  localStorage.setItem(key, JSON.stringify(queue.slice(-75)));
-  return queue;
+  const nextQueue = appendOfflineQueueItem(queue, {
+    id: `${Date.now()}_${Math.random().toString(36).slice(2)}`,
+    queuedAt: new Date().toISOString(),
+    collectionName,
+    docId,
+    action,
+    data: scrubForAudit(data),
+    label
+  });
+  writeJsonToStorage(localStorage, key, nextQueue);
+  return nextQueue;
 };
 export const replayOfflineQueue = async (user, addToast) => {
   const queue = getOfflineQueue(user?.restaurantId, user?.id);
@@ -1540,10 +1553,10 @@ export const replayOfflineQueue = async (user, addToast) => {
       await safeWrite({ user, collectionName: item.collectionName, docId: item.docId, action: item.action, data: item.data || {}, label: item.label });
       saved += 1;
     } catch (err) {
-      failed.push({ ...item, lastError: err.message, lastTriedAt: new Date().toISOString() });
+      failed.push({ ...item, attemptCount: Number(item.attemptCount || 0) + 1, lastError: String(err?.message || err || '').slice(0, 500), lastTriedAt: new Date().toISOString() });
     }
   }
-  if (typeof window !== 'undefined') localStorage.setItem(getOfflineQueueKey(user?.restaurantId, user?.id), JSON.stringify(failed));
+  if (typeof window !== 'undefined') writeJsonToStorage(localStorage, getOfflineQueueKey(user?.restaurantId, user?.id), normalizeOfflineQueue(failed));
   if (addToast && saved) addToast('Offline Queue Synced', `${saved} queued kitchen action(s) saved.`);
   return { attempted: queue.length, saved, failed: failed.length };
 };
@@ -1553,11 +1566,22 @@ export const safeWriteWithQueue = async ({ user, addToast = null, label = '', ..
     return await safeWrite({ user, addToast, label, ...writeArgs });
   } catch (err) {
     const message = err?.message || String(err);
-    const looksOffline = typeof navigator !== 'undefined' && (navigator.onLine === false || /offline|network|unavailable|failed to fetch/i.test(message));
+    const issueType = classifyRuntimeIssue(err || message);
+    if (typeof window !== 'undefined') {
+      recordLocalRuntimeEvent(localStorage, {
+        type: 'safe-write-error',
+        severity: issueType === 'permission' ? 'warning' : 'error',
+        source: writeArgs.sourceScreen || label || writeArgs.collectionName || 'safeWriteWithQueue',
+        issueType,
+        message,
+        detail: { collectionName: writeArgs.collectionName, action: writeArgs.action || 'set', label }
+      });
+    }
+    const looksOffline = typeof navigator !== 'undefined' && (navigator.onLine === false || issueType === 'network');
     if (looksOffline && user?.restaurantId && user?.id && ['add','set','update'].includes(writeArgs.action || 'set')) {
-      queueOfflineWrite({ user, collectionName: writeArgs.collectionName, docId: writeArgs.docId || '', action: writeArgs.action || 'set', data: writeArgs.data || {}, label });
+      const queue = queueOfflineWrite({ user, collectionName: writeArgs.collectionName, docId: writeArgs.docId || '', action: writeArgs.action || 'set', data: writeArgs.data || {}, label });
       if (addToast) addToast('Queued Offline', `${label || writeArgs.collectionName || 'Kitchen action'} will sync when the connection comes back.`);
-      return { queued: true, error: message };
+      return { queued: true, error: message, issueType, queueDepth: queue.length };
     }
     if (addToast) addToast('Save Blocked', message);
     throw err;
