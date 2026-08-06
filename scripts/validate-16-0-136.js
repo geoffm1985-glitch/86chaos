@@ -26,17 +26,20 @@ const storageRules = read('storage.rules');
 const pushRepair = read('api/push-token-repair.js');
 const psRunner = read('RUN_86CHAOS_PLAY_STORE_RELEASE_GATE.ps1');
 const collector = read('scripts/86chaos-release-gate/collect-release-gate-report.cjs');
+const failedOnlyUtils = read('scripts/86chaos-release-gate/failed-only-manifest-utils.cjs');
+const failedOnlyPrepare = read('scripts/86chaos-release-gate/prepare-failed-only-manifest.cjs');
+const failedOnlyRunner = read('RUN_86CHAOS_FAILED_ONLY_RELEASE_GATE.ps1');
 const localChecks = read('scripts/86chaos-release-gate/run-node-release-checks.cjs');
 const maturityGuards = read('src/core/maturityGuards.js');
 const maturityGuardsTest = read('src/core/maturityGuards.test.js');
 
-assert(pkg.version === '16.0.134', 'package.json version is 16.0.134');
-assert(lock.version === '16.0.134' && lock.packages?.['']?.version === '16.0.134', 'package-lock root versions are 16.0.134');
-assert(version.version === '16.0.134' && version.build === '16.0.134', 'public/version.json version/build are 16.0.134');
-assert(appCore.includes("CURRENT_VERSION = '16.0.134'"), 'app core CURRENT_VERSION is 16.0.134');
-assert(apiVersion.includes("APP_VERSION = '16.0.134'") && apiVersion.includes("SECURITY_SCHEMA_VERSION = '16.0.134'"), 'api version reports 16.0.134');
-assert(pkg.scripts['test:source'] === 'node scripts/validate-16-0-134.js', 'test:source points at the 16.0.134 validator');
-assert(!fs.existsSync(path.join(root, 'scripts/validate-16-0-133.js')), 'previous 16.0.133 validator was replaced');
+assert(pkg.version === '16.0.136', 'package.json version is 16.0.136');
+assert(lock.version === '16.0.136' && lock.packages?.['']?.version === '16.0.136', 'package-lock root versions are 16.0.136');
+assert(version.version === '16.0.136' && version.build === '16.0.136', 'public/version.json version/build are 16.0.136');
+assert(appCore.includes("CURRENT_VERSION = '16.0.136'"), 'app core CURRENT_VERSION is 16.0.136');
+assert(apiVersion.includes("APP_VERSION = '16.0.136'") && apiVersion.includes("SECURITY_SCHEMA_VERSION = '16.0.136'"), 'api version reports 16.0.136');
+assert(pkg.scripts['test:source'] === 'node scripts/validate-16-0-136.js', 'test:source points at the 16.0.136 validator');
+assert(!fs.existsSync(path.join(root, 'scripts/validate-16-0-135.js')), 'previous 16.0.135 validator was replaced');
 
 assert(sha('firestore.rules') === '51bfd7d39edd59f680ae41a149c108cec8cd42d00b102d84cb00ee40d90264d9', 'working Firestore rules are preserved byte-for-byte for this app-only maturity pass');
 assert(sha('storage.rules') === '174e7e9a140193ff69ccf0f0d3e5c65b81a9e0fbbd612bff45ce57e7a3a7ce9c', 'Storage rules include the minimal missing-user clean-denial guard proven by the corrected harness');
@@ -89,7 +92,7 @@ assert(localChecks.includes('node-test-live-summary.json') && localChecks.includ
 assert(localChecks.includes('firebase emulators:exec --only firestore,storage') && localChecks.includes('node scripts/86chaos-release-gate/run-rules-release-gate.cjs'), 'focused release-gate rules smoke check still runs inside Firebase emulator discovery');
 assert(/metadata\\\.get\\\('purpose', ''\\\) == 'document-vault'/.test(read('api/app-route-and-document-vault.test.cjs')) && /metadata\\\.get\\\('restaurantId', ''\\\) == restaurantId/.test(read('api/app-route-and-document-vault.test.cjs')), 'Document Vault server assertion matches supplied safe metadata.get Storage rules');
 assert(collector.includes('releaseReadiness') && collector.includes('firstActionableBlocker'), 'collector emits compact release-readiness summary and first blocker');
-assert(read('scripts/86chaos-release-gate/failed-only-manifest-utils.cjs').includes('findMostRecentCompletedFullRun') && read('scripts/86chaos-release-gate/prepare-failed-only-manifest.cjs').includes('Refusing stale or invalid failed-only manifest'), 'failed-only runner builds a dynamic manifest from the newest completed full run');
+assert(read('scripts/86chaos-release-gate/failed-only-manifest-utils.cjs').includes('findMostRecentCompletedFullRun') && read('scripts/86chaos-release-gate/prepare-failed-only-manifest.cjs').includes('targetQualifiedManifest'), 'failed-only runner builds a dynamic manifest from the newest completed full run and qualifies it with target metadata');
 assert(!read('tests/86chaos-release-gate/failed-only-manifest.cjs').includes('const FAILED_ONLY_TESTS = ['), 'failed-only manifest no longer uses a permanently hardcoded failure list');
 
 assert(read('tests/86chaos-full-audit/02-permission-role-security.spec.cjs').includes('visibleProtectedControls') && !read('tests/86chaos-full-audit/02-permission-role-security.spec.cjs').includes('const leaks = checked.filter(x => x.forbidden || x.actions)'), 'staff permission test no longer fails on raw body text phrases');
@@ -151,5 +154,23 @@ assert(collector.includes('firebase-rules-release-gate.json') && collector.inclu
 assert(localChecks.includes("result.firstUsefulFailure = result.status === 'passed'") && localChecks.includes('Passed commands always have an empty firstUsefulFailure'), 'passed local checks cannot carry fake firstUsefulFailure text');
 assert(provisioning.includes('customClaimKeysProcessed') && provisioning.includes('enabledCustomClaims') && provisioning.includes('qaRoleClaim'), 'QA provisioning reports processed claims separately from enabled claims');
 assert(read('api/release-gate-provisioning-report.test.cjs').includes('release-gate provisioning reports only actually enabled custom claims'), 'server tests prove false-valued admin claim cleanup is not reported as enabled authority');
+
+
+assert(failedOnlyUtils.includes('baselineSourceVersion') && failedOnlyUtils.includes('targetSourceVersion') && failedOnlyUtils.includes('validateBaselineManifest'), 'failed-only manifest utilities keep baseline evidence separate from repaired target metadata');
+assert(failedOnlyUtils.includes('validateManifestTestIdentities') && failedOnlyUtils.includes('Selected test title no longer exists') && failedOnlyUtils.includes('Selected test project no longer exists'), 'failed-only manifest utilities validate exact current Playwright test identities');
+assert(!failedOnlyUtils.includes('Stale failed-only manifest: source') && !failedOnlyUtils.includes('does not match current source'), 'failed-only manifest validation no longer rejects safe cross-version remediation evidence');
+assert(failedOnlyPrepare.includes('write: false') && failedOnlyPrepare.includes('targetQualifiedManifest') && failedOnlyPrepare.includes('failed-only-manifest-validation.json'), 'failed-only preparation does not mutate the baseline run and writes current-run validation evidence');
+assert(failedOnlyRunner.includes('ManifestValidation') && !failedOnlyRunner.includes('missing, stale, empty, or version-mismatched'), 'failed-only runner reports the precise manifest blocker instead of the old generic version-mismatch message');
+assert(collector.includes('failedOnlyMode') && collector.includes('fullGateOnlyArtifacts') && collector.includes('attemptStatus') && collector.includes('failedOnlyManifestValidation'), 'collector is mode-aware for failed-only runs and reports unattempted stages as blocked/not-run');
+assert(read('api/failed-only-manifest-cross-version.test.cjs').includes('valid cross-version remediation') && read('api/failed-only-manifest-cross-version.test.cjs').includes('same-version diagnostic rerun'), 'server tests cover cross-version and same-version failed-only manifest workflows');
+
+
+const scheduleFeature = read('src/features/schedule.jsx');
+const standaloneMonth = read('src/components/TabMonth.js');
+assert(scheduleFeature.includes('print-shift-stack') && standaloneMonth.includes('print-shift-stack'), 'month print calendar uses a print-only shift stack in both schedule month surfaces');
+assert(scheduleFeature.includes('print-day-dense') && standaloneMonth.includes('print-day-dense'), 'month print calendar switches heavily staffed days into compact print mode');
+assert(scheduleFeature.includes('font-size: 7px !important') && standaloneMonth.includes('font-size: 7px !important'), 'dense print rows use smaller print-only text instead of clipping lower names');
+assert(scheduleFeature.includes('[class~="hidden"][class~="sm:inline"]') && scheduleFeature.includes('[class~="sm:hidden"]'), 'printed month view prefers full shift labels over mobile-only labels');
+assert(scheduleFeature.includes('dayShifts.length >= 6') && standaloneMonth.includes('dayShifts.length >= 6'), 'dense print mode activates on high-staffing days such as Friday schedule cells');
 
 if (failures) process.exit(1);

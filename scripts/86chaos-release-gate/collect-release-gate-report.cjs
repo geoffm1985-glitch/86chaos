@@ -50,6 +50,7 @@ const setupState = readJsonIfExists(artifact['qa-setup-state.json'], releaseGate
 const seedReport = readJsonIfExists(artifact['86chaos-full-audit-seed-report.json'], releaseGateJsonDiagnostics) || {};
 const cleanupReport = readJsonIfExists(artifact['86chaos-full-audit-cleanup-report.json'], releaseGateJsonDiagnostics) || {};
 let failedOnlyManifest = readJsonIfExists(path.join(runDir, 'failed-only-test-manifest.json'), releaseGateJsonDiagnostics) || null;
+const failedOnlyManifestValidation = readJsonIfExists(path.join(runDir, 'failed-only-manifest-validation.json'), releaseGateJsonDiagnostics) || {};
 
 const preflightRan = preflight && Object.keys(preflight).length > 0;
 const preflightFailedBeforeMutation = preflightRan && preflight.ok === false;
@@ -59,6 +60,9 @@ const preflightFailures = preflightFailedBeforeMutation
 
 const runnerBlockingReason = String(runnerState.blockingReason || '').trim();
 const runnerPhase = String(runnerState.currentPhase || '').trim();
+const failedOnlyMode = String(runnerState.mode || '').toLowerCase() === 'failed-only' || process.env.CHAOS_FAILED_ONLY_RELEASE_GATE === 'true';
+const fullGateOnlyArtifacts = new Set(['java-prerequisite.json', 'node-test-live-summary.json', 'firebase-rules-release-gate.json']);
+if (failedOnlyMode) missingArtifacts = missingArtifacts.filter(name => !fullGateOnlyArtifacts.has(name));
 const playwrightStarted = runnerState.playwrightStarted === true;
 const dependencyInstallIncomplete = runnerState.dependencyInstallAttempted === true && runnerState.dependencyInstallPassed !== true;
 const blockedBeforePlaywright = Boolean((runnerBlockingReason || dependencyInstallIncomplete || /install-locked-test-dependencies|role|provision|account|playwright|java|coverage/i.test(runnerPhase)) && !playwrightStarted);
@@ -67,6 +71,7 @@ const rolePreflightPassed = runnerState.rolePreflightPassed === true;
 
 function skippedByRunnerBlock(name) {
   if (name === 'runner-state.json' || name === 'environment-preflight.json') return false;
+  if (failedOnlyMode && fullGateOnlyArtifacts.has(name)) return true;
   if (preflightFailedBeforeMutation) return true;
   if (!blockedBeforePlaywright) return false;
   if (runnerState.dependencyInstallPassed !== true) {
@@ -228,6 +233,10 @@ function addGroup(group, example) {
   const row = failureGroups.find(x => x.group === group);
   if (example && row.examples.length < 5) row.examples.push(example);
 }
+if (failedOnlyManifestValidation && failedOnlyManifestValidation.ok === false) {
+  const example = failedOnlyManifestValidation.primaryBlockingFailure || (Array.isArray(failedOnlyManifestValidation.errors) ? failedOnlyManifestValidation.errors[0] : '') || 'Failed-only manifest validation failed.';
+  addGroup('failed-only-manifest', example);
+}
 if (runnerBlockingReason) {
   const group = provisioningBlockedBeforeRole || /provision/i.test(runnerBlockingReason)
     ? 'test-account-provisioning'
@@ -334,6 +343,14 @@ const summary = {
   rulesGateReport: rulesGateReport && Object.keys(rulesGateReport).length ? { ok: rulesGateReport.ok, totalCases: rulesGateReport.totalCases, passed: rulesGateReport.passed, failed: rulesGateReport.failed, blocked: rulesGateReport.blocked, firstActionableFailure: rulesGateReport.firstActionableFailure || '' } : null,
   testAccountConfigurationFailure: roleFailures.length > 0,
   playwright: { totalResults: tests.length, status: blockedBeforeTestExecution ? 'BLOCKED BEFORE TEST EXECUTION' : (noTestsExecuted ? 'No tests executed' : 'Tests executed'), failed: failedTests.length, timedOut: timedOutTests.length, skipped: skippedTests.length, failedTests: blockedBeforeTestExecution ? [] : failedTests.slice(0, 200), skippedTests: skippedTests.slice(0, 200) },
+  attemptStatus: {
+    browserInstallation: { attempted: runnerPhase === 'install-chromium' || runnerState.browserInstallPassed === true, status: runnerState.browserInstallPassed === true ? 'passed' : (blockedBeforePlaywright ? 'blocked' : 'not_run') },
+    testAccountProvisioning: { attempted: runnerState.testAccountProvisionAttempted === true, status: runnerState.testAccountProvisionPassed === true ? 'passed' : (runnerState.testAccountProvisionAttempted === true ? 'failed' : (blockedBeforePlaywright ? 'blocked' : 'not_run')) },
+    roleVerification: { attempted: runnerState.rolePreflightStarted === true, status: runnerState.rolePreflightPassed === true ? 'passed' : (runnerState.rolePreflightStarted === true ? 'failed' : (blockedBeforePlaywright ? 'blocked' : 'not_run')) },
+    qaSeed: { attempted: runnerState.qaSeedAttempted === true || runnerState.qaSeedProcessStarted === true || runnerState.qaDataWritesStarted === true, status: runnerState.qaSeedVerified === true ? 'passed' : ((runnerState.qaSeedAttempted === true || runnerState.qaSeedProcessStarted === true || runnerState.qaDataWritesStarted === true) ? 'failed' : (blockedBeforePlaywright ? 'blocked' : 'not_run')) },
+    playwright: { attempted: playwrightStarted, status: playwrightStarted ? (failedTests.length || timedOutTests.length ? 'failed' : 'passed') : (blockedBeforePlaywright ? 'blocked' : 'not_run') },
+    cleanup: { attempted: runnerState.cleanupAttempted === true, status: runnerState.cleanupCompleted === true ? 'passed' : (runnerState.cleanupAttempted === true ? 'failed' : (blockedBeforePlaywright ? 'blocked' : 'not_run')) },
+  },
   seed: seedReport && seedReport.ok !== undefined ? { ok: seedReport.ok, runId: seedReport.runId || '', restaurantId: seedReport.restaurantId || seedReport.profile?.restaurantId || '', restaurantName: seedReport.restaurantName || seedReport.profile?.restaurantName || '', expectedCounts: seedReport.expectedCounts || {}, verifiedCounts: seedReport.verification?.verifiedCounts || {}, verificationOk: seedReport.verification?.ok === true } : null,
   cleanup: cleanupReport && cleanupReport.ok !== undefined ? { ok: cleanupReport.ok, runId: cleanupReport.runId || '', expected: cleanupReport.expected || {}, deleted: cleanupReport.deleted || {}, alreadyAbsent: cleanupReport.alreadyAbsent || {}, remaining: cleanupReport.remaining || {}, additionalRunRecords: cleanupReport.additionalRunRecords || {}, restaurantDeleted: cleanupReport.restaurantDeleted || 0, failures: cleanupReport.failed || [], accountedFailures: cleanupReport.accountedFailures || [] } : null,
   releaseReadiness: {
@@ -354,6 +371,8 @@ const summary = {
   setupState,
   roleIdentityVerification: roleVerification && roleVerification.ok !== undefined ? roleVerification : null,
   failedOnlyManifest,
+  failedOnlyManifestValidation: failedOnlyManifestValidation && Object.keys(failedOnlyManifestValidation).length ? failedOnlyManifestValidation : null,
+  failedOnlyMode,
   failureGroups,
   missingArtifacts,
   setupFailures,
@@ -408,6 +427,12 @@ const lines = [
   '',
   'RULES GATE REPORT',
   JSON.stringify(summary.rulesGateReport || {}, null, 2),
+  '',
+  'FAILED-ONLY MANIFEST VALIDATION',
+  JSON.stringify(summary.failedOnlyManifestValidation || {}, null, 2),
+  '',
+  'ATTEMPT STATUS',
+  JSON.stringify(summary.attemptStatus || {}, null, 2),
   '',
   'ENVIRONMENT PREFLIGHT FAILURES',
   ...(preflightFailures.length ? preflightFailures.map(f => `- ${f}`) : ['- None']),

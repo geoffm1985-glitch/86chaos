@@ -75,12 +75,12 @@ test('chunk recovery writes stable state before automatic navigation and keeps a
   assert.match(source, /Recovering app shell/);
 });
 
-test('failed-only manifest is generated dynamically from the most recent full run', () => {
+test('failed-only manifest is generated dynamically from the most recent full run and target-qualified', () => {
   const helper = read('scripts/86chaos-release-gate/failed-only-manifest-utils.cjs');
   const prepare = read('scripts/86chaos-release-gate/prepare-failed-only-manifest.cjs');
   const manifest = read('tests/86chaos-release-gate/failed-only-manifest.cjs');
   assert.match(helper, /findMostRecentCompletedFullRun/);
   assert.match(helper, /generateFailedOnlyManifestFromRun/);
-  assert.match(prepare, /Refusing stale or invalid failed-only manifest/);
+  assert.match(prepare, /targetQualifiedManifest/);
   assert.doesNotMatch(manifest, /const FAILED_ONLY_TESTS = \[/);
 });

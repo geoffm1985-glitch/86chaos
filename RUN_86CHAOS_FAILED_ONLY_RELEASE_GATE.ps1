@@ -288,7 +288,21 @@ if ($PreflightExit -ne 0) {
             Set-RunnerPhase 'failed-only-manifest'
             $ManifestExit = Run-Step "Prepare dynamic failed-only manifest" "node scripts/86chaos-release-gate/prepare-failed-only-manifest.cjs"
             if ($ManifestExit -ne 0) {
-              Stop-BeforePlaywright "Release gate blocked before Playwright because the dynamic failed-only manifest was missing, stale, empty, or version-mismatched. Run npm run test:play-store first."
+              $ManifestReason = "Release gate blocked before Playwright because the dynamic failed-only manifest could not be prepared. Run npm run test:play-store first, then rerun npm run test:play-store:failed."
+              $ManifestValidationPath = Join-Path $RunDir 'failed-only-manifest-validation.json'
+              if (Test-Path $ManifestValidationPath) {
+                try {
+                  $ManifestValidation = Get-Content $ManifestValidationPath -Raw | ConvertFrom-Json
+                  if ($ManifestValidation.primaryBlockingFailure) {
+                    $ManifestReason = [string]$ManifestValidation.primaryBlockingFailure
+                  } elseif ($ManifestValidation.errors -and $ManifestValidation.errors.Count -gt 0) {
+                    $ManifestReason = [string]$ManifestValidation.errors[0]
+                  }
+                } catch {
+                  # Keep the safe generic manifest reason when the validation report itself cannot be parsed.
+                }
+              }
+              Stop-BeforePlaywright $ManifestReason
             } else {
               $PlaywrightExe = Join-Path $Root "node_modules\.bin\playwright.cmd"
               Set-RunnerPhase 'install-chromium'

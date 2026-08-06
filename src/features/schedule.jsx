@@ -4177,24 +4177,47 @@ const TabMonth = ({ currentDate, users, shifts, appUser }) => {
             display: flex !important;
             flex-direction: column !important;
             overflow: hidden !important;
+            gap: 1px !important;
           }
           
           .cell-header-text { color: black !important; font-size: 11px !important; font-weight: 900 !important; }
           .cell-date { font-size: 13px !important; font-weight: 900 !important; color: black !important; margin-bottom: 2px !important; }
           
           /* The Shifts */
+          .print-shift-stack {
+            display: flex !important;
+            flex-direction: column !important;
+            gap: 1px !important;
+            min-height: 0 !important;
+            overflow: visible !important;
+          }
+
           .print-shift {
             background: #f8fafc !important;
             color: black !important;
             border: 1px solid #94a3b8 !important;
-            border-radius: 4px !important;
-            padding: 1px 4px !important;
-            font-size: 9px !important;
+            border-radius: 3px !important;
+            padding: 0 2px !important;
+            font-size: 7.6px !important;
             font-weight: 900 !important;
-            margin-bottom: 2px !important;
+            line-height: 1.05 !important;
+            margin-bottom: 0 !important;
+            min-height: 0 !important;
             white-space: nowrap !important;
             overflow: hidden !important;
+            text-overflow: clip !important;
+            flex: 0 0 auto !important;
           }
+
+          .print-day-dense .print-shift {
+            border-radius: 2px !important;
+            padding: 0 1px !important;
+            font-size: 7px !important;
+            line-height: 1 !important;
+          }
+
+          .print-shift [class~="hidden"][class~="sm:inline"] { display: inline !important; }
+          .print-shift [class~="sm:hidden"] { display: none !important; }
         }
       `}</style>
       
@@ -4228,9 +4251,9 @@ const TabMonth = ({ currentDate, users, shifts, appUser }) => {
               return (a.startTime || '').localeCompare(b.startTime || '');
             });
           return (
-            <div key={date} className={`p-0.5 border-b border-r ${T.border} min-h-[50px] flex flex-col cell`}>
+            <div key={date} className={`p-0.5 border-b border-r ${T.border} min-h-[50px] flex flex-col cell ${dayShifts.length >= 6 ? 'print-day-dense' : ''}`}>
               <span className={`text-right text-[9px] font-black ${T.muted} mb-0.5 cell-date`}>{i+1}</span>
-              <div className="space-y-0.5 overflow-y-auto no-scrollbar flex-1">
+              <div className="space-y-0.5 overflow-y-auto no-scrollbar flex-1 print-shift-stack">
                 {dayShifts.map(s=>{
                   const labels = getScheduleShiftMonthLabels(s, users);
                   return (
