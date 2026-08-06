@@ -62,7 +62,12 @@ async function check(name, fn) {
         email: 'staff-a@example.com', restaurantId: 'tenantA', workspaceIds: ['tenantA'],
         memberships: { tenantA: { isActive: true, accountRole: 'staff', permissions: {} } },
       });
+      await setDoc(doc(db, 'users', 'managerA'), {
+        email: 'manager-a@example.com', restaurantId: 'tenantA', workspaceIds: ['tenantA'],
+        memberships: { tenantA: { isActive: true, accountRole: 'manager', permissions: { ops: true, team: true } } },
+      });
       await setDoc(doc(db, 'inventoryItems', 'itemA'), { restaurantId: 'tenantA', name: 'QA Item', currentStock: 2 });
+      await setDoc(doc(db, 'opsIntelligenceReports', 'tenantA_current'), { restaurantId: 'tenantA', generatedAt: new Date().toISOString(), summary: 'QA ops intelligence', qaOwned: true });
       await setDoc(doc(db, 'tasks', 'taskA'), { restaurantId: 'tenantA', title: 'QA Task', completed: false, createdBy: 'ownerA' });
       await setDoc(doc(db, 'menuIntelligenceScans', 'scanA'), { restaurantId: 'tenantA', status: 'review' });
       await setDoc(doc(db, 'messages', 'messageA'), { restaurantId: 'tenantA', authorId: 'staffA', userId: 'staffA', text: 'QA message', status: 'open' });
@@ -73,6 +78,7 @@ async function check(name, fn) {
     const ownerA = env.authenticatedContext('ownerA', { email: 'owner-a@example.com' });
     const ownerB = env.authenticatedContext('ownerB', { email: 'owner-b@example.com' });
     const staffA = env.authenticatedContext('staffA', { email: 'staff-a@example.com' });
+    const managerA = env.authenticatedContext('managerA', { email: 'manager-a@example.com' });
     const anon = env.unauthenticatedContext();
 
     await check('unauthenticated tenant read is denied', async () => {
@@ -119,6 +125,33 @@ async function check(name, fn) {
 
     await check('staff cannot delete another maintenance report', async () => {
       await assertFails(deleteDoc(doc(staffA.firestore(), 'maintenanceLogs', 'maintenanceA')));
+    });
+
+
+    await check('ops intelligence owner read succeeds', async () => {
+      await assertSucceeds(getDoc(doc(ownerA.firestore(), 'opsIntelligenceReports', 'tenantA_current')));
+    });
+
+    await check('ops intelligence manager leadership read succeeds', async () => {
+      await assertSucceeds(getDoc(doc(managerA.firestore(), 'opsIntelligenceReports', 'tenantA_current')));
+    });
+
+    await check('ops intelligence staff read is denied', async () => {
+      await assertFails(getDoc(doc(staffA.firestore(), 'opsIntelligenceReports', 'tenantA_current')));
+    });
+
+    await check('ops intelligence cross tenant read is denied', async () => {
+      await assertFails(getDoc(doc(ownerB.firestore(), 'opsIntelligenceReports', 'tenantA_current')));
+    });
+
+    await check('ops intelligence unauthenticated read is denied', async () => {
+      await assertFails(getDoc(doc(anon.firestore(), 'opsIntelligenceReports', 'tenantA_current')));
+    });
+
+    await check('ops intelligence client writes are denied', async () => {
+      await assertFails(setDoc(doc(ownerA.firestore(), 'opsIntelligenceReports', 'tenantA_client_write'), { restaurantId: 'tenantA', summary: 'client write' }));
+      await assertFails(updateDoc(doc(ownerA.firestore(), 'opsIntelligenceReports', 'tenantA_current'), { summary: 'client update' }));
+      await assertFails(deleteDoc(doc(ownerA.firestore(), 'opsIntelligenceReports', 'tenantA_current')));
     });
 
     await check('authorized profile-photo upload and delete succeed', async () => {

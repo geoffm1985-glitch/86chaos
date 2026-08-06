@@ -69,6 +69,19 @@ async function writeReport(report) {
   writeReportSync(report);
 }
 
+
+function verifiedRoleProjectId(report) {
+  if (!report || report.ok !== true) return '';
+  const values = [
+    report.firebaseProjectId,
+    report.expectedFirebaseProjectId,
+    ...(Array.isArray(report.accounts) ? report.accounts.flatMap(row => [row.firebaseProjectId, row.runtimeProjectId]) : []),
+  ].map(value => String(value || '').trim()).filter(Boolean);
+  const unique = Array.from(new Set(values));
+  if (unique.length === 1) return unique[0];
+  return '';
+}
+
 function appUrl(pathOrTab = '') {
   const base = env('APP_URL', 'CHAOS_BASE_URL').replace(/\/+$/, '');
   if (!pathOrTab) return base;
@@ -325,7 +338,7 @@ function withIds(profile, createdIds) {
     delete item.vendorKey;
   }
   for (const req of profile.collections.timeOffRequests) {
-    if (req.userKey && userIdsByKey[req.userKey]) { const uid = userIdsByKey[req.userKey]; req.userId = uid; req.employeeId = uid; req.createdBy = uid; }
+    if (req.userKey && userIdsByKey[req.userKey]) { const uid = userIdsByKey[req.userKey]; req.userId = uid; req.employeeId = uid; }
     delete req.userKey;
   }
   for (const rec of profile.collections.availabilityRecords) {
@@ -339,14 +352,140 @@ function withIds(profile, createdIds) {
   return { userIdsByKey, vendorIdsByKey };
 }
 
+
+function sanitizeDocId(value, fallback = 'qa') {
+  const text = String(value || fallback)
+    .trim()
+    .replace(/[^A-Za-z0-9_-]+/g, '_')
+    .replace(/_+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .slice(0, 220);
+  return text.length >= 3 ? text : `qa_${text || fallback}`.slice(0, 220);
+}
+
+function deterministicRestaurantId(runId = RUN_ID) {
+  return sanitizeDocId(`qa_${runId}`, 'qa_release_gate_restaurant');
+}
+
+function cloneWithoutKeys(record = {}, keys = []) {
+  const payload = { ...record };
+  const meta = {};
+  for (const key of keys) {
+    if (payload[key] !== undefined) {
+      meta[key] = payload[key];
+      delete payload[key];
+    }
+  }
+  return { payload, meta };
+}
+
+function makeDocumentSpec(collection, index, record, keys = []) {
+  const { payload, meta } = cloneWithoutKeys(record, keys);
+  const label = meta.idKey || meta.key || payload.title || payload.name || payload.employeeName || payload.date || index;
+  const id = sanitizeDocId(`qa_${RUN_ID}_${collection}_${index}_${label}`);
+  return { collection, id, data: payload, meta };
+}
+
+function buildServerSeedDocuments(profile) {
+  const docs = [];
+  const created = {};
+  created.users = [];
+  (profile.collections.users || []).forEach((record, index) => {
+    const spec = makeDocumentSpec('users', index, record, ['idKey']);
+    created.users.push({ id: spec.id, idKey: spec.meta.idKey, name: spec.data.name || '', docName: '' });
+    docs.push(spec);
+  });
+  created.vendors = [];
+  (profile.collections.vendors || []).forEach((record, index) => {
+    const spec = makeDocumentSpec('vendors', index, record, ['key']);
+    created.vendors.push({ id: spec.id, key: spec.meta.key, name: spec.data.name || '', docName: '' });
+    docs.push(spec);
+  });
+  const ids = withIds(profile, created);
+  const restCollections = ['inventoryItems', 'recipes', 'menuDependencies', 'shifts', 'timeOffRequests', 'events', 'timePunches', 'prepItems', 'tasks', 'maintenanceLogs', 'pmSchedules', 'sales', 'financialExpenses', 'restaurantAdminAlerts', 'personalReminders', 'availabilityRecords', 'scheduleTemplates', 'scheduleCoverageTargets'];
+  for (const colName of restCollections) {
+    created[colName] = [];
+    (profile.collections[colName] || []).forEach((record, index) => {
+      const spec = makeDocumentSpec(colName, index, record);
+      created[colName].push({ id: spec.id, name: spec.data.name || spec.data.title || spec.data.employeeName || '', docName: '' });
+      docs.push(spec);
+    });
+  }
+  return { docs, created, ids };
+}
+
+function validateCreatedCounts(createdCounts = {}, expectedCounts = EXPECTED_MINIMUM_COUNTS) {
+  const countFailures = [];
+  for (const [collection, minimum] of Object.entries(expectedCounts || {})) {
+    const actual = Number(createdCounts[collection] || 0);
+    if (actual < minimum) countFailures.push({ collection, expectedMinimum: minimum, actual });
+  }
+  return countFailures;
+}
+
+function safeRoleAccount(account = {}) {
+  return {
+    key: account.key,
+    email: account.email,
+    uid: account.uid,
+    name: account.name || account.label || account.email || account.key,
+    role: account.role || account.restaurantRole || (account.key === 'owner' ? 'Owner' : account.key === 'manager' ? 'Manager' : account.key === 'staff' ? 'Line Cook' : 'Kitchen'),
+    restaurantRole: account.restaurantRole || account.role || '',
+    isAdmin: account.isAdmin === true,
+    isOwner: account.isOwner === true,
+    accountOwner: account.accountOwner === true,
+    workspaceOwner: account.workspaceOwner === true,
+    permissions: account.permissions || {},
+  };
+}
+
+async function fetchJson(url, options = {}, fetchImpl = global.fetch) {
+  if (typeof fetchImpl !== 'function') throw new Error('Global fetch is unavailable. Run the release gate under Node 24.');
+  const response = await fetchImpl(url, options);
+  const text = await response.text();
+  let data = null;
+  try { data = text ? JSON.parse(text) : null; } catch (_) { data = { rawText: text }; }
+  if (!response.ok) {
+    const safeText = String(text || '').replace(/(token|secret|private[_ -]?key|authorization|password)[=:]\s*[^\s,;}]+/gi, '$1=[redacted]').slice(0, 1200);
+    throw new Error(`HTTP ${response.status} ${response.statusText || ''} for ${url}: ${safeText}`.trim());
+  }
+  return data;
+}
+
+function buildApiHeaders(idToken) {
+  const headers = { Authorization: `Bearer ${idToken}`, 'Content-Type': 'application/json' };
+  const base = appUrl();
+  if (base) {
+    try {
+      const origin = new URL(base).origin;
+      headers.Origin = origin;
+      headers.Referer = `${origin}/`;
+    } catch (_) {
+      headers.Referer = String(base);
+    }
+  }
+  return headers;
+}
+
+async function callQaSeedApi(action, idToken, body) {
+  const url = appUrl('/api/full-audit-qa-seed');
+  if (!url) throw new Error('APP_URL or CHAOS_BASE_URL is required before server-verified QA seeding can run.');
+  return fetchJson(url, {
+    method: 'POST',
+    headers: buildApiHeaders(idToken),
+    body: JSON.stringify({ action, ...body }),
+  });
+}
+
 async function main() {
   const qaNameCheck = validateQaWorkspaceName(QA_RESTAURANT_NAME, RUN_ID);
   if (!qaNameCheck.ok) throw new Error(`QA workspace name failed safety validation: ${qaNameCheck.errors.join('; ')}`);
-  const earlyMutationSafety = assertMutationSafety({ env: process.env, runId: RUN_ID, requireAdminCredentials: false });
+  const roleReportForProject = readJsonIfExists(getRoleReportPath(RUN_ID));
+  const roleVerifiedProjectId = verifiedRoleProjectId(roleReportForProject);
+  const earlyMutationSafety = assertMutationSafety({ env: process.env, runId: RUN_ID, projectId: roleVerifiedProjectId, requireAdminCredentials: false });
   if (!earlyMutationSafety.ok) throw new Error(`QA seed mutation safety failed: ${earlyMutationSafety.errors.join('; ')}`);
   mergeSetupState({ writesStarted: false, mutationSafety: earlyMutationSafety, qaWorkspaceValidation: qaNameCheck });
   const report = { ok: false, warnings: [] };
-  let browser;
   try {
     report.env = {
       appUrlPresent: Boolean(env('APP_URL', 'CHAOS_BASE_URL')),
@@ -357,19 +496,15 @@ async function main() {
       ownerEmailPresent: Boolean(env('OWNER_EMAIL', 'TEST_OWNER_EMAIL', 'ADMIN_EMAIL', 'MANAGER_EMAIL', 'TEST_EMAIL')),
     };
     if (!ALLOW_MUTATION) throw new Error('CHAOS_ALLOW_MUTATION=true is required before seeding fake restaurant data.');
-    if (!report.env.appUrlPresent) throw new Error('APP_URL or CHAOS_BASE_URL is required before browser-based seeding can run.');
+    if (!report.env.appUrlPresent) throw new Error('APP_URL or CHAOS_BASE_URL is required before server-verified QA seeding can run.');
 
     const config = readFirebaseConfig();
-    const mutationSafety = assertMutationSafety({ env: process.env, runId: RUN_ID, projectId: config.projectId, requireAdminCredentials: false });
+    const mutationSafety = assertMutationSafety({ env: process.env, runId: RUN_ID, projectId: roleVerifiedProjectId || config.projectId, requireAdminCredentials: false });
     if (!mutationSafety.ok) throw new Error(`QA seed mutation safety failed: ${mutationSafety.errors.join('; ')}`);
     report.mutationSafety = mutationSafety;
     report.firebaseProjectId = config.projectId;
-    report.seedMethod = 'browser-origin-rest';
-    const { chromium } = require('playwright');
-    browser = await chromium.launch({ headless: true });
-    const context = await browser.newContext({ viewport: { width: 1365, height: 900 } });
-    const page = await context.newPage();
-    await page.goto(appUrl('today'), { waitUntil: 'domcontentloaded', timeout: 60000 });
+    report.seedMethod = 'server-verified-qa-seed-api';
+    report.seedReportSchemaVersion = 2;
 
     const roleReportPath = getRoleReportPath(RUN_ID);
     const existingRoleReport = readJsonIfExists(roleReportPath);
@@ -380,81 +515,24 @@ async function main() {
     const verifiedRoles = await verifyRoleAccounts({ writeReport: true, throwOnFailure: true, phase: 'seed-role-verification' });
     report.roleIdentityVerification = verifiedRoles.report;
     const roleAccounts = verifiedRoles.accounts;
-    const writer = roleAccounts.find(account => account.key === 'systemAdmin') || roleAccounts.find(account => account.key === 'owner');
-    if (!writer) throw new Error('No System Administrator test account was available for QA setup.');
+    const writer = roleAccounts.find(account => account.key === 'systemAdmin');
+    if (!writer || !writer.idToken) throw new Error('No verified System Administrator test account was available for QA setup.');
     report.signedInAs = writer.email;
     report.signedInUid = writer.uid;
     report.roleAccounts = roleAccounts.map(({ key, email, uid, role }) => ({ key, email, uid, role }));
-    const rest = firestoreRest(config, writer.idToken);
 
     let restaurantId = env('CHAOS_QA_RESTAURANT_ID');
-    let restaurantRef = null;
-    if (!restaurantId && boolEnv('CHAOS_QA_CREATE_RESTAURANT')) {
-      const restRef = await createDoc(page, rest, 'restaurants', {
-        name: QA_RESTAURANT_NAME,
-        restaurantName: QA_RESTAURANT_NAME,
-        ownerEmail: roleAccounts.find(account => account.key === 'owner')?.email || writer.email,
-        ownerUid: roleAccounts.find(account => account.key === 'owner')?.uid || writer.uid,
-        isActive: true,
-        subscriptionStatus: 'beta',
-        planId: 'owner_pro',
-        qaOwned: true,
-        qaRunId: RUN_ID,
-        qaCleanupName: QA_RESTAURANT_NAME,
-        createdBy: '86chaos-full-audit',
-        source: '86chaos-full-audit',
-        createdAt: new Date().toISOString(),
-        systemSettings: { overtime: 40, enableTargets: true, targetLaborPct: 23 },
-        features: { schedule: true, events: true, ops: true, messages: true, prep: true, recipes: true, inventory: true, sales: true, team: true, maintenance: true, timesheets: true, labor: true },
-      });
-      restaurantRef = restRef;
-      restaurantId = restRef.id;
-      report.createdRestaurant = true;
-      mergeSetupState({ writesStarted: true, qaDataWritesStarted: true, restaurantId, temporaryRestaurantId: restaurantId, qaWorkspaceName: QA_RESTAURANT_NAME, createdRestaurant: true, cleanupAllowed: true });
-    }
+    if (!restaurantId && boolEnv('CHAOS_QA_CREATE_RESTAURANT')) restaurantId = deterministicRestaurantId(RUN_ID);
     if (!restaurantId) throw new Error('No QA restaurant target found. Set CHAOS_QA_RESTAURANT_ID or set CHAOS_QA_CREATE_RESTAURANT=true.');
+    restaurantId = sanitizeDocId(restaurantId, 'qa_release_gate_restaurant');
     report.restaurantId = restaurantId;
     report.restaurantName = QA_RESTAURANT_NAME;
-
-    report.deletedOldQaData = await deleteQaOwned(page, rest, restaurantId);
-    report.memberships = [];
-    for (const account of roleAccounts) {
-      const membership = {
-        userId: account.uid,
-        uid: account.uid,
-        authUid: account.uid,
-        email: account.email,
-        name: account.name,
-        role: account.role,
-        restaurantId,
-        restaurantName: QA_RESTAURANT_NAME,
-        isAdmin: account.isAdmin === true,
-        isOwner: account.isOwner === true,
-        isSuperAdmin: false,
-        systemAdministratorVerifiedByWhoami: account.key === 'systemAdmin',
-        accountOwner: account.accountOwner === true,
-        workspaceOwner: account.workspaceOwner === true,
-        permissions: account.permissions || {},
-        isActive: true,
-        qaOwned: true,
-        qaRunId: RUN_ID,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      };
-      const ref = await patchDoc(page, rest, 'workspaceMembers', `${account.uid}_${restaurantId}`, membership);
-      report.memberships.push({ key: account.key, uid: account.uid, email: account.email, id: ref.id, docName: ref.docName, role: account.role, isAdmin: membership.isAdmin, isOwner: membership.isOwner, accountOwner: membership.accountOwner, workspaceOwner: membership.workspaceOwner });
-    }
-    const memberIds = report.memberships.map(m => m.id);
-    if (new Set(memberIds).size !== report.memberships.length) throw new Error(`Role membership documents were not unique: ${memberIds.join(', ')}`);
-    const systemAdminMembership = report.memberships.find(m => m.key === 'systemAdmin');
-    if (!systemAdminMembership || systemAdminMembership.role !== 'Kitchen' || systemAdminMembership.isAdmin === true || systemAdminMembership.isOwner === true || systemAdminMembership.accountOwner === true || systemAdminMembership.workspaceOwner === true) {
-      throw new Error('QA System Administrator must seed as Kitchen and non-owner/non-admin. Platform authority must remain independent of restaurant authority.');
-    }
-    report.membershipVerification = { ok: true, count: report.memberships.length, ids: memberIds };
+    report.createdRestaurant = true;
 
     const seedAnchorDate = new Date();
     report.seedAnchorDate = seedAnchorDate.toISOString();
     const profile = buildFakeRestaurantProfile({ restaurantId, runId: RUN_ID, anchorDate: seedAnchorDate });
+    const now = new Date().toISOString();
     const today = new Date().toISOString().slice(0, 10);
     const roleByKey = Object.fromEntries(roleAccounts.map(account => [account.key, account]));
     for (const key of ['manager', 'staff']) {
@@ -475,30 +553,58 @@ async function main() {
         endTime: key === 'manager' ? '17:00' : '19:00',
         status: 'published',
         published: true,
+        isPublished: true,
         qaOwned: true,
         qaRunId: RUN_ID,
+        createdBy: '86chaos-full-audit',
+        createdAt: now,
       });
-      profile.collections.availabilityRecords.push({ restaurantId, userId: account.uid, employeeId: account.uid, scheduleUserId: account.uid, employeeName: account.name, dayOfWeek: new Date().toLocaleDateString('en-US', { weekday: 'long', timeZone: 'America/Chicago' }), availableFrom: '08:00', availableTo: '22:00', isActive: true, qaOwned: true, qaRunId: RUN_ID });
+      profile.collections.availabilityRecords.push({ restaurantId, userId: account.uid, employeeId: account.uid, scheduleUserId: account.uid, employeeName: account.name, dayOfWeek: new Date().toLocaleDateString('en-US', { weekday: 'long', timeZone: 'America/Chicago' }), availableFrom: '08:00', availableTo: '22:00', isActive: true, qaOwned: true, qaRunId: RUN_ID, createdBy: '86chaos-full-audit', createdAt: now });
     }
-    const created = {};
-    created.users = await addCollection(page, rest, 'users', profile.collections.users, ['idKey']);
-    created.vendors = await addCollection(page, rest, 'vendors', profile.collections.vendors, ['key']);
-    const ids = withIds(profile, created);
-    for (const colName of ['inventoryItems', 'recipes', 'menuDependencies', 'shifts', 'timeOffRequests', 'events', 'timePunches', 'prepItems', 'tasks', 'maintenanceLogs', 'pmSchedules', 'sales', 'financialExpenses', 'restaurantAdminAlerts', 'personalReminders', 'availabilityRecords', 'scheduleTemplates', 'scheduleCoverageTargets']) {
-      created[colName] = await addCollection(page, rest, colName, profile.collections[colName] || []);
-    }
+    const { docs, created, ids } = buildServerSeedDocuments(profile);
+    const restaurant = {
+      ...profile.restaurant,
+      restaurantId,
+      name: QA_RESTAURANT_NAME,
+      restaurantName: QA_RESTAURANT_NAME,
+      ownerEmail: roleAccounts.find(account => account.key === 'owner')?.email || writer.email,
+      ownerUid: roleAccounts.find(account => account.key === 'owner')?.uid || writer.uid,
+      isActive: true,
+      subscriptionStatus: 'beta',
+      planId: 'owner_pro',
+      qaOwned: true,
+      qaRunId: RUN_ID,
+      qaCleanupName: QA_RESTAURANT_NAME,
+      createdBy: '86chaos-full-audit',
+      source: '86chaos-full-audit',
+      createdAt: profile.restaurant.createdAt || now,
+      systemSettings: { overtime: 40, enableTargets: true, targetLaborPct: 23 },
+      features: { schedule: true, events: true, ops: true, messages: true, prep: true, recipes: true, inventory: true, sales: true, team: true, maintenance: true, timesheets: true, labor: true },
+    };
 
-    report.seededDocuments = summarizeCreatedDocuments(created, report.memberships, restaurantRef, restaurantId);
-    mergeSetupState({ writesStarted: true, qaDataWritesStarted: true, seeded: true, restaurantId, temporaryRestaurantId: restaurantId, seededDocumentCount: report.seededDocuments.length, createdDocumentIds: report.seededDocuments });
+    mergeSetupState({ writesStarted: true, qaDataWritesStarted: true, restaurantId, temporaryRestaurantId: restaurantId, qaWorkspaceName: QA_RESTAURANT_NAME, createdRestaurant: true, cleanupAllowed: true });
+    const apiResult = await callQaSeedApi('seed', writer.idToken, {
+      runId: RUN_ID,
+      expectedProjectId: config.projectId,
+      restaurantId,
+      workspaceName: QA_RESTAURANT_NAME,
+      restaurant,
+      roleAccounts: roleAccounts.map(safeRoleAccount),
+      documents: docs,
+    });
+    report.seededDocuments = apiResult.seededDocuments || [];
     report.expectedCounts = EXPECTED_MINIMUM_COUNTS;
-    report.createdCounts = Object.fromEntries(Object.entries(created).map(([k, v]) => [k, v.length]));
-    report.createdCounts.workspaceMembers = report.memberships.length;
-    report.createdCounts.restaurants = restaurantRef ? 1 : 0;
-    report.verification = await verifySeedDocuments(page, rest, report.seededDocuments, EXPECTED_MINIMUM_COUNTS, restaurantId);
-    report.ok = report.verification.ok === true;
-    mergeSetupState({ verified: report.ok === true, verificationOk: report.verification?.ok === true });
+    report.createdCounts = apiResult.createdCounts || Object.fromEntries(Object.entries(created).map(([k, v]) => [k, v.length]));
+    report.createdCounts.users = report.createdCounts.users || (created.users || []).length;
+    report.createdCounts.vendors = report.createdCounts.vendors || (created.vendors || []).length;
+    report.createdCounts.restaurants = report.createdCounts.restaurants || 1;
+    const countFailures = validateCreatedCounts(report.createdCounts, EXPECTED_MINIMUM_COUNTS);
+    report.verification = { ...(apiResult.verification || {}), expectedCounts: EXPECTED_MINIMUM_COUNTS, countFailures, ok: apiResult.verification?.ok === true && countFailures.length === 0 };
+    report.ok = report.verification.ok === true && apiResult.ok === true;
+    report.apiResult = { ok: apiResult.ok === true, action: apiResult.action, projectId: apiResult.projectId, seedMethod: apiResult.seedMethod };
     report.profile = { restaurantId, restaurantName: QA_RESTAURANT_NAME, users: created.users, createdCounts: report.createdCounts, ids, expectations: profile.expectations, scheduleTruth: summarizeSchedule(profile.collections.shifts) };
-    if (!report.ok) throw new Error(`Seed verification failed. Missing=${report.verification.missing.length}; bad=${report.verification.bad.length}; countFailures=${report.verification.countFailures.length}.`);
+    mergeSetupState({ verified: report.ok === true, verificationOk: report.verification?.ok === true, seeded: report.ok === true, seededDocumentCount: report.seededDocuments.length, createdDocumentIds: report.seededDocuments });
+    if (!report.ok) throw new Error(`Seed verification failed. Missing=${report.verification.missing?.length || 0}; bad=${report.verification.bad?.length || 0}; countFailures=${countFailures.length}.`);
     await writeReport(report);
     console.log(`Seeded and verified fake QA restaurant data for ${restaurantId}. Report: ${REPORT_PATH}`);
   } catch (error) {
@@ -507,8 +613,6 @@ async function main() {
     await writeReport(report);
     console.error(error.stack || error.message);
     process.exit(1);
-  } finally {
-    if (browser) await browser.close().catch(() => {});
   }
 }
 
@@ -516,6 +620,8 @@ if (require.main === module) main();
 
 module.exports = {
   EXPECTED_MINIMUM_COUNTS,
+  buildServerSeedDocuments,
+  withIds,
   verifySeedDocuments,
   summarizeCreatedDocuments,
   fromFirestoreFields,

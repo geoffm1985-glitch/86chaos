@@ -25,13 +25,23 @@ test.describe('05 Schedule Builder mutation and data-integrity checks', () => {
     await gotoTab(page, 'schedule', { settleMs: 2200 });
     await page.reload({ waitUntil: 'domcontentloaded' }).catch(() => {});
     await page.waitForTimeout(2200);
-    const text = await bodyText(page, 60000);
     const staff = ['Allen QA', 'Chuck QA', 'Lani QA'];
-    const missing = staff.filter(name => !text.includes(name));
     const evidence = {};
-    for (const name of staff) evidence[name] = await collectTextNear(page, name, 1600);
-    await attachJson(testInfo, '05-schedule-visible-after-refresh.json', { missing, evidence, sample: text.slice(0, 7000) });
-    expect(missing, 'Seeded employees should remain visible after refresh').toEqual([]);
+    const missing = [];
+    const scheduleSurface = page.locator('[data-testid="schedule-builder"], .schedule-builder-desktop-table, main, body').first();
+    for (const name of staff) {
+      const escapedName = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const row = scheduleSurface.getByRole('row', { name: new RegExp(escapedName, 'i') }).first();
+      const rowVisible = await row.isVisible().catch(() => false);
+      const semanticText = rowVisible ? await row.innerText().catch(() => '') : '';
+      const fallback = scheduleSurface.getByText(name, { exact: true }).first();
+      const fallbackVisible = rowVisible ? false : await fallback.isVisible().catch(() => false);
+      evidence[name] = rowVisible ? { strategy: 'row', text: semanticText.slice(0, 1600) } : { strategy: 'visible-text', text: fallbackVisible ? await fallback.evaluate(el => el.closest('tr, [role="row"], .schedule-builder-desktop-table, main')?.textContent || el.textContent || '').catch(() => '') : '' };
+      if (!rowVisible && !fallbackVisible) missing.push(name);
+    }
+    const text = await bodyText(page, 12000);
+    await attachJson(testInfo, '05-schedule-visible-after-refresh.json', { missing, evidence, sample: text.slice(0, 4000) });
+    expect(missing, 'Seeded employees should remain visible in the Schedule Builder context after refresh').toEqual([]);
   });
 
   test('Schedule Builder does not count OFF/request-off/event chips as worked hours', async ({ page }, testInfo) => {

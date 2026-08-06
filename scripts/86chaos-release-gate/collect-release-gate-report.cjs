@@ -170,9 +170,34 @@ if (!accountProvisionFailures.length && setupState && setupState.attempted && se
 if (fs.existsSync(artifact['86chaos-full-audit-seed-report.json']) && seedReport && seedReport.ok !== true) setupFailures.push(`Seed report not ok:true: ${seedReport.error || 'unknown seed failure'}`);
 if (seedReport && seedReport.verification && seedReport.verification.ok !== true) setupFailures.push('Seed verification failed.');
 
+
+function firstCleanupError(report = {}) {
+  const failed = Array.isArray(report.failed) ? report.failed : [];
+  if (failed.length) {
+    const first = failed[0];
+    return first.error || first.reason || first.message || JSON.stringify(first).slice(0, 500);
+  }
+  const failures = Array.isArray(report.failures) ? report.failures : [];
+  if (failures.length) {
+    const first = failures[0];
+    return first.error || first.reason || first.message || JSON.stringify(first).slice(0, 500);
+  }
+  const storageFailures = Array.isArray(report.storage?.failures) ? report.storage.failures : [];
+  if (storageFailures.length) {
+    const first = storageFailures[0];
+    return first.error || first.reason || first.message || JSON.stringify(first).slice(0, 500);
+  }
+  const unresolved = Array.isArray(report.storage?.unresolved) ? report.storage.unresolved : [];
+  if (unresolved.length) {
+    const first = unresolved[0];
+    return first.error || (Array.isArray(first.errors) ? first.errors.join('; ') : '') || JSON.stringify(first).slice(0, 500);
+  }
+  return report.error || 'unknown cleanup failure';
+}
+
 const cleanupFailures = [];
 const cleanupRequired = setupState && (setupState.writesStarted === true || setupState.qaDataWritesStarted === true || (setupState.attempted === true && setupState.seeded === true));
-if (fs.existsSync(artifact['86chaos-full-audit-cleanup-report.json']) && cleanupReport && cleanupReport.ok !== true) cleanupFailures.push(`Cleanup report not ok:true: ${cleanupReport.error || 'unknown cleanup failure'}`);
+if (fs.existsSync(artifact['86chaos-full-audit-cleanup-report.json']) && cleanupReport && cleanupReport.ok !== true) cleanupFailures.push(`Cleanup report not ok:true: ${firstCleanupError(cleanupReport)}`);
 if (cleanupRequired && !fs.existsSync(artifact['86chaos-full-audit-cleanup-report.json'])) cleanupFailures.push('Cleanup report is missing after verified QA seed.');
 if (cleanupReport && cleanupReport.runId && cleanupReport.runId !== runId) cleanupFailures.push(`Cleanup used runId ${cleanupReport.runId} instead of ${runId}.`);
 if (cleanupReport && cleanupReport.restaurantRemaining) cleanupFailures.push('Current-run restaurant still remains after cleanup.');
@@ -240,8 +265,8 @@ if (hasOwn(javaPrerequisite, 'ok') && javaPrerequisite.ok !== true) {
 }
 const nodeFailures = [];
 if (hasOwn(nodeTestSummary, 'ok') && nodeTestSummary.ok !== true) {
-  for (const t of nodeTestSummary.tests || []) {
-    if (['failed', 'cancelled'].includes(t.status)) nodeFailures.push(`${t.title}: ${t.error || t.status}`);
+  for (const t of (nodeTestSummary.results || nodeTestSummary.tests || [])) {
+    if (['failed', 'cancelled', 'blocked'].includes(t.status)) nodeFailures.push(`${t.group || t.title || t.command}: ${t.firstUsefulFailure || t.error || t.status}`);
   }
   if (!nodeFailures.length) nodeFailures.push('Node test live summary reported failure without individual details.');
 }
@@ -294,6 +319,21 @@ const summary = {
   playwright: { totalResults: tests.length, status: blockedBeforeTestExecution ? 'BLOCKED BEFORE TEST EXECUTION' : (noTestsExecuted ? 'No tests executed' : 'Tests executed'), failed: failedTests.length, timedOut: timedOutTests.length, skipped: skippedTests.length, failedTests: blockedBeforeTestExecution ? [] : failedTests.slice(0, 200), skippedTests: skippedTests.slice(0, 200) },
   seed: seedReport && seedReport.ok !== undefined ? { ok: seedReport.ok, runId: seedReport.runId || '', restaurantId: seedReport.restaurantId || seedReport.profile?.restaurantId || '', restaurantName: seedReport.restaurantName || seedReport.profile?.restaurantName || '', expectedCounts: seedReport.expectedCounts || {}, verifiedCounts: seedReport.verification?.verifiedCounts || {}, verificationOk: seedReport.verification?.ok === true } : null,
   cleanup: cleanupReport && cleanupReport.ok !== undefined ? { ok: cleanupReport.ok, runId: cleanupReport.runId || '', expected: cleanupReport.expected || {}, deleted: cleanupReport.deleted || {}, alreadyAbsent: cleanupReport.alreadyAbsent || {}, remaining: cleanupReport.remaining || {}, additionalRunRecords: cleanupReport.additionalRunRecords || {}, restaurantDeleted: cleanupReport.restaurantDeleted || 0, failures: cleanupReport.failed || [], accountedFailures: cleanupReport.accountedFailures || [] } : null,
+  releaseReadiness: {
+    sourceVersion: preflight.sourceVersion || sourceInventory.version || sourceInventory.packageVersion || '',
+    deployedVersion: preflight.deployedVersion || '',
+    versionMatch: Boolean((preflight.sourceVersion || sourceInventory.version || sourceInventory.packageVersion || '') && preflight.deployedVersion && (preflight.sourceVersion || sourceInventory.version || sourceInventory.packageVersion || '') === preflight.deployedVersion),
+    testingFirebaseProject: preflight.firebaseProjectId || sourceInventory.firebaseProjectId || '',
+    localSourceChecks: nodeTestSummary?.results || [],
+    rulesTests: nodeTestSummary?.results?.find?.(row => /rules/i.test(row.group || '')) || null,
+    testAccountVerification: roleVerification?.ok === true,
+    qaSeed: seedReport?.ok === true && seedReport?.verification?.ok === true,
+    playwrightTotals: { passed: tests.filter(t => t.status === 'passed').length, failed: failedTests.length, timedOut: timedOutTests.length, skipped: skippedTests.length, blocked: blockedBeforeTestExecution ? 1 : 0, notRun: blockedBeforeTestExecution ? 1 : 0 },
+    cleanup: cleanupReport?.ok === true,
+    remainingQaRecordsOrStorageObjects: cleanupReport?.remaining || {},
+    finalState: ok ? 'RELEASE READY' : (blockedBeforeTestExecution ? 'BLOCKED' : 'FAILED'),
+    firstActionableBlocker: primaryBlockingFailure || 'None'
+  },
   setupState,
   roleIdentityVerification: roleVerification && roleVerification.ok !== undefined ? roleVerification : null,
   failedOnlyManifest,

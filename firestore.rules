@@ -2,6 +2,15 @@ rules_version = '2';
 service cloud.firestore {
 match /databases/{database}/documents {
 function signedIn() { return request.auth != null; }
+function authEmailMatchesStoredEmail(storedEmail) {
+let email = signedIn() ? request.auth.token.get('email', null) : null;
+return email is string &&
+email.matches('.*\\S.*') &&
+storedEmail is string &&
+storedEmail.matches('.*\\S.*') &&
+storedEmail == email;
+}
+
 function userPath() { return /databases/$(database)/documents/users/$(request.auth.uid); }
 function hasUserDoc() { return signedIn() && exists(userPath()); }
 function userData() { return get(userPath()).data; }
@@ -146,9 +155,9 @@ legacyPerms.get('team', false) == true
 function currentUserOwnerAuthorityFromRestaurant(restId) {
 let restaurant = safeRestaurantData(restId);
 return signedIn() && restId is string && (
-restaurant.get('ownerEmail', '') == request.auth.token.get('email', '') ||
-restaurant.get('ownerEmailLower', '') == request.auth.token.get('email', '') ||
-restaurant.get('ownerUserEmail', '') == request.auth.token.get('email', '') ||
+authEmailMatchesStoredEmail(restaurant.get('ownerEmail', null)) ||
+authEmailMatchesStoredEmail(restaurant.get('ownerEmailLower', null)) ||
+authEmailMatchesStoredEmail(restaurant.get('ownerUserEmail', null)) ||
 restaurant.get('ownerUserId', '') == request.auth.uid ||
 restaurant.get('ownerUid', '') == request.auth.uid
 );
@@ -163,28 +172,15 @@ currentUserOwnerAuthorityFrom(u, member, restId) ||
 currentUserOwnerAuthorityFromRestaurant(restId)
 );
 }
-function currentUserCanEditWagesLean(restId) {
-let u = safeUserData();
-let member = membershipDataFromUser(u, restId);
-let memberPerms = currentUserMemberPermsFrom(member);
-let legacyPerms = currentUserLegacyPermsFrom(u, restId);
-return signedIn() && restId is string && (
-currentAuthTokenSuperAdmin() ||
-currentUserDocSuperAdminFrom(u) ||
-currentUserOwnerAuthorityFrom(u, member, restId) ||
-currentUserOwnerAuthorityFromRestaurant(restId) ||
-(member.get('isActive', false) == true && memberPerms.get('wageEdit', false) == true) ||
-(u.get('restaurantId', '') == restId && legacyPerms.get('wageEdit', false) == true)
-);
-}
+
 function isRestaurantOwner(restId) {
 let u = safeUserData();
 let member = membershipDataFromUser(u, restId);
 let restaurant = safeRestaurantData(restId);
 return signedIn() && restId is string && (
-restaurant.get('ownerEmail', '') == request.auth.token.get('email', '') ||
-restaurant.get('ownerEmailLower', '') == request.auth.token.get('email', '') ||
-restaurant.get('ownerUserEmail', '') == request.auth.token.get('email', '') ||
+authEmailMatchesStoredEmail(restaurant.get('ownerEmail', null)) ||
+authEmailMatchesStoredEmail(restaurant.get('ownerEmailLower', null)) ||
+authEmailMatchesStoredEmail(restaurant.get('ownerUserEmail', null)) ||
 restaurant.get('ownerUserId', '') == request.auth.uid ||
 restaurant.get('ownerUid', '') == request.auth.uid ||
 currentUserOwnerAuthorityFrom(u, member, restId)
@@ -221,9 +217,9 @@ let restaurant = safeRestaurantData(restId);
 return signedIn() && restId is string && (
 currentAuthTokenSuperAdmin() ||
 currentUserDocSuperAdminFrom(u) ||
-restaurant.get('ownerEmail', '') == request.auth.token.get('email', '') ||
-restaurant.get('ownerEmailLower', '') == request.auth.token.get('email', '') ||
-restaurant.get('ownerUserEmail', '') == request.auth.token.get('email', '') ||
+authEmailMatchesStoredEmail(restaurant.get('ownerEmail', null)) ||
+authEmailMatchesStoredEmail(restaurant.get('ownerEmailLower', null)) ||
+authEmailMatchesStoredEmail(restaurant.get('ownerUserEmail', null)) ||
 restaurant.get('ownerUserId', '') == request.auth.uid ||
 restaurant.get('ownerUid', '') == request.auth.uid ||
 currentUserOwnerAuthorityFrom(u, member, restId) ||
@@ -307,7 +303,8 @@ data[key] is timestamp ||
 );
 }
 function isoDateOrEmpty(value) {
-return value is string && (value == '' || value.size() == 10);
+return value is string &&
+(value == '' || value.matches('^[0-9]{4}-(0[1-9]|1[0-2])-([0-2][0-9]|3[01])$'));
 }
 
 function onboardingTaskRecordIsValid(data) {
@@ -376,8 +373,14 @@ return [
 ];
 }
 function restaurantOwnerUpdateIsSafe(restId) {
-return restId is string && isOwnerOfRestaurantDoc() &&
-!request.resource.data.diff(resource.data).affectedKeys().hasAny(restaurantProtectedSubscriptionKeys());
+let changed = request.resource.data.diff(resource.data).affectedKeys();
+return restId is string &&
+isOwnerOfRestaurantDoc() &&
+!changed.hasAny(restaurantProtectedSubscriptionKeys()) &&
+!changed.hasAny([
+'ownerEmail', 'ownerEmailLower', 'ownerUserEmail',
+'ownerUserId', 'ownerUid', 'workspaceOwnerEmail'
+]);
 }
 function workspacePlanAllowsForRestaurant(restaurant, allowedPlans) {
 let rawSubscription = restaurant.get('subscription', {});
@@ -413,6 +416,17 @@ return isSuperAdmin() || isRestaurantOwner(restId) || hasAnyPermissionFor(restId
 function canUseMenuIntelligence(restId) {
 return isSuperAdmin() || (planAtLeastSmartKitchen(restId) && hasWorkspaceAuthorityFor(restId, 'menuIntelligence', 'inventory', 'inventoryEdit', 'ops', '', ''));
 }
+function canReadOpsIntelligence(restId) {
+return isSuperAdmin() ||
+(
+planAtLeastSmartKitchen(restId) &&
+hasWorkspaceAuthorityFor(
+restId,
+'ops', 'team', 'settings', 'ownerTools', 'backOffice', 'menuIntelligence'
+)
+);
+}
+
 function canReadBasicInventory(restId) {
 return isSuperAdmin() || (planAtLeastOperations(restId) && hasWorkspaceAuthorityFor(restId, 'inventory', 'inventoryEdit', 'ops', '', '', ''));
 }
@@ -611,7 +625,10 @@ data.createdBy == request.auth.uid ||
 (data.recipientUserIds is list && data.recipientUserIds.hasAny([request.auth.uid]))
 );
 }
-function isOwnerOfRestaurantDoc() { return signedIn() && request.auth.token.email == resource.data.ownerEmail; }
+function isOwnerOfRestaurantDoc() {
+return signedIn() &&
+authEmailMatchesStoredEmail(resource.data.get('ownerEmail', null));
+}
 function protectedUserKeys() {
 return [
 'restaurantId', 'workspaceIds', 'memberships', 'defaultRestaurantId',
@@ -619,26 +636,30 @@ return [
 'superAdminClaimUpdatedAt', 'superAdminClaimUpdatedBy', 'systemAccess', 'protectedRootAdmin', 'protectedFoundingAdmin', 'foundingAdministrator', 'rootAdmin', 'billingStatus', 'planType'
 ];
 }
-function pushDevicesSelfUpdateIsSafe() {
-return !request.resource.data.diff(resource.data).affectedKeys().hasAny(['pushDevices']) ||
+function pushDevicesSelfUpdateIsSafe(changed) {
+return !changed.hasAny(['pushDevices']) ||
 (
 request.resource.data.get('pushDevices', {}) is map &&
 request.resource.data.get('pushDevices', {}).keys().size() <= 8
 );
 }
 function userSafeSelfUpdate() {
-return request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+let changed = request.resource.data.diff(resource.data).affectedKeys();
+return !changed.hasAny([
+'forcePasswordChange', 'passwordStored', 'passwordPurgedAt'
+]) &&
+changed.hasOnly([
 'name', 'phone', 'photoURL',
 'notificationPermission',
 'fcmToken', 'fcmTokenUpdatedAt', 'lastPushTokenSyncAt', 'pushTokenHost', 'pushTokenPermission',
 'pushTokenCanonical', 'pushTokenDedupeVersion', 'pushDevices',
 'pushNeedsRepair', 'pushForceServiceWorkerRefresh', 'pushRepairStatus', 'pushRepairCompletedAt',
 'pushRepairCompletedHost', 'lastPushRepairError', 'lastPushFailureCode',
-'device', 'host', 'theme', 'settings', 'preferences', 'notificationPrefs', 'activeRestaurantId', 'lastWorkspaceId',
-'forcePasswordChange', 'passwordPurgedAt', 'passwordStored', 'lastWorkspaceSwitchedAt'
+'device', 'host', 'theme', 'settings', 'preferences', 'notificationPrefs',
+'activeRestaurantId', 'lastWorkspaceId', 'lastWorkspaceSwitchedAt'
 ]) &&
-!request.resource.data.diff(resource.data).affectedKeys().hasAny(protectedUserKeys()) &&
-pushDevicesSelfUpdateIsSafe();
+!changed.hasAny(protectedUserKeys()) &&
+pushDevicesSelfUpdateIsSafe(changed);
 }
 function presenceSessionKeys() {
 return [
@@ -676,108 +697,153 @@ request.resource.data.userId == request.auth.uid &&
 request.resource.data.restaurantId is string &&
 isTenantMatch(request.resource.data.restaurantId);
 }
-function wageValueChanged() { return request.resource.data.diff(resource.data).affectedKeys().hasAny(['wage']); }
-function adminFlagChanged() { return request.resource.data.diff(resource.data).affectedKeys().hasAny(['isAdmin']); }
 function safePermissionsFrom(data) {
 let perms = data.get('permissions', {});
 return perms is map ? perms : {};
 }
-function permissionPayloadShapeIsSafe() {
-return !request.resource.data.diff(resource.data).affectedKeys().hasAny(['permissions']) ||
-request.resource.data.get('permissions', {}) is map;
-}
-function wagePermissionChanged() {
-let after = safePermissionsFrom(request.resource.data);
-let before = safePermissionsFrom(resource.data);
-return request.resource.data.diff(resource.data).affectedKeys().hasAny(['permissions']) && (
-after.get('wageView', false) != before.get('wageView', false) ||
-after.get('wageEdit', false) != before.get('wageEdit', false)
-);
-}
-function settingsPermissionChanged() {
-let after = safePermissionsFrom(request.resource.data);
-let before = safePermissionsFrom(resource.data);
-return request.resource.data.diff(resource.data).affectedKeys().hasAny(['permissions']) && (
-after.get('settings', false) != before.get('settings', false) ||
-after.get('branding', false) != before.get('branding', false) ||
-after.get('integrations', false) != before.get('integrations', false) ||
-after.get('menuIntelligence', false) != before.get('menuIntelligence', false) ||
-after.get('hr', false) != before.get('hr', false)
-);
-}
-function hrPermissionChanged() {
-let after = safePermissionsFrom(request.resource.data);
-let before = safePermissionsFrom(resource.data);
-return request.resource.data.diff(resource.data).affectedKeys().hasAny(['permissions']) &&
-after.get('hr', false) != before.get('hr', false);
-}
 function workspaceMemberHrCreateIsSafe(restId) {
 let perms = safePermissionsFrom(request.resource.data);
-return perms.get('hr', false) != true || currentUserOwnerAuthorityLean(restId);
+return perms.get('hr', false) != true ||
+currentUserOwnerAuthorityLean(restId);
 }
-
 function workspaceMemberHrUpdateIsSafe(restId) {
 let after = safePermissionsFrom(request.resource.data);
 let before = safePermissionsFrom(resource.data);
-return currentUserOwnerAuthorityLean(restId) || after.get('hr', false) == before.get('hr', false);
+return currentUserOwnerAuthorityLean(restId) ||
+after.get('hr', false) == before.get('hr', false);
 }
-function tenantAdminUserUpdateCheapRejectsAreClear(restId) {
-return request.resource.data.get('restaurantId', '') == restId &&
-!request.resource.data.diff(resource.data).affectedKeys().hasAny(['isSuperAdmin', 'superAdmin', 'superAdminClaimUpdatedAt', 'superAdminClaimUpdatedBy', 'systemAccess', 'protectedRootAdmin', 'protectedFoundingAdmin', 'foundingAdministrator', 'rootAdmin']) &&
-request.resource.data.get('isSuperAdmin', false) == resource.data.get('isSuperAdmin', false) &&
-request.resource.data.get('superAdmin', false) == resource.data.get('superAdmin', false) &&
-request.resource.data.get('systemAccess', {}) == resource.data.get('systemAccess', {}) &&
-permissionPayloadShapeIsSafe();
+function tenantUserOwnerAuthorityFromCached(u, member, restaurant, restId) {
+return currentAuthTokenSuperAdmin() ||
+currentUserDocSuperAdminFrom(u) ||
+currentUserOwnerAuthorityFrom(u, member, restId) ||
+authEmailMatchesStoredEmail(restaurant.get('ownerEmail', null)) ||
+authEmailMatchesStoredEmail(restaurant.get('ownerEmailLower', null)) ||
+authEmailMatchesStoredEmail(restaurant.get('ownerUserEmail', null)) ||
+restaurant.get('ownerUserId', '') == request.auth.uid ||
+restaurant.get('ownerUid', '') == request.auth.uid;
 }
-function tenantAdminUserSensitiveChangesAreAllowed(restId) {
-let ownerAuthority = currentUserOwnerAuthorityLean(restId);
-return (!wageValueChanged() || currentUserCanEditWagesLean(restId)) &&
-(!wagePermissionChanged() || ownerAuthority) &&
-(!settingsPermissionChanged() || ownerAuthority) &&
-(!hrPermissionChanged() || ownerAuthority) &&
-(!adminFlagChanged() || ownerAuthority);
+function tenantUserStaffAuthorityFromCached(u, member, restId, ownerAuthority) {
+let memberPerms = currentUserMemberPermsFrom(member);
+let legacyPerms = currentUserLegacyPermsFrom(u, restId);
+return ownerAuthority ||
+(
+member.get('isActive', false) == true &&
+(
+member.get('isAdmin', false) == true ||
+memberPerms.get('team', false) == true
+)
+) ||
+(
+u.get('restaurantId', '') == restId &&
+(
+u.get('isAdmin', false) == true ||
+legacyPerms.get('team', false) == true
+)
+);
 }
-
-function tenantAdminUserUpdateIsSafeFor(restId) {
-return restId is string && restId != '' &&
-tenantAdminUserUpdateCheapRejectsAreClear(restId) &&
-tenantAdminUserSensitiveChangesAreAllowed(restId);
+function tenantUserWageAuthorityFromCached(u, member, restId, ownerAuthority) {
+let memberPerms = currentUserMemberPermsFrom(member);
+let legacyPerms = currentUserLegacyPermsFrom(u, restId);
+return ownerAuthority ||
+(
+member.get('isActive', false) == true &&
+memberPerms.get('wageEdit', false) == true
+) ||
+(
+u.get('restaurantId', '') == restId &&
+legacyPerms.get('wageEdit', false) == true
+);
 }
-
+function tenantUserOwnerSensitiveChanged(changed, afterPerms, beforePerms) {
+return changed.hasAny(['isAdmin']) ||
+(
+changed.hasAny(['permissions']) &&
+(
+afterPerms.get('wageView', false) != beforePerms.get('wageView', false) ||
+afterPerms.get('wageEdit', false) != beforePerms.get('wageEdit', false) ||
+afterPerms.get('settings', false) != beforePerms.get('settings', false) ||
+afterPerms.get('branding', false) != beforePerms.get('branding', false) ||
+afterPerms.get('integrations', false) != beforePerms.get('integrations', false) ||
+afterPerms.get('menuIntelligence', false) != beforePerms.get('menuIntelligence', false) ||
+afterPerms.get('hr', false) != beforePerms.get('hr', false)
+)
+);
+}
 function tenantUserCreateAllowedForCurrentUser(u) {
 let restId = request.resource.data.get('restaurantId', '');
-return restId is string && restId != '' &&
-platformAuthorityCreateIsSafe(request.resource.data) &&
-workspaceMemberHrCreateIsSafe(restId) &&
-canManageStaffFromCurrentUser(u, restId);
+let member = membershipDataFromUser(u, restId);
+let restaurant = safeRestaurantData(restId);
+let createPerms = safePermissionsFrom(request.resource.data);
+let ownerAuthority = tenantUserOwnerAuthorityFromCached(u, member, restaurant, restId);
+return platformAuthorityCreateIsSafe(request.resource.data) &&
+restId is string && restId != '' &&
+tenantUserStaffAuthorityFromCached(u, member, restId, ownerAuthority) &&
+(
+createPerms.get('hr', false) != true ||
+ownerAuthority
+);
 }
-
 function userCreateAllowed() {
 let u = safeUserData();
 return currentAuthTokenSuperAdmin() ||
 currentUserDocSuperAdminFrom(u) ||
 tenantUserCreateAllowedForCurrentUser(u);
 }
-
 function tenantStaffUserUpdateAllowed() {
+let changed = request.resource.data.diff(resource.data).affectedKeys();
 let restId = resource.data.get('restaurantId', '');
 let u = safeUserData();
+let member = membershipDataFromUser(u, restId);
+let restaurant = safeRestaurantData(restId);
+let afterPerms = safePermissionsFrom(request.resource.data);
+let beforePerms = safePermissionsFrom(resource.data);
+let ownerAuthority = tenantUserOwnerAuthorityFromCached(u, member, restaurant, restId);
 return restId is string && restId != '' &&
 request.resource.data.get('restaurantId', '') == restId &&
-tenantAdminUserUpdateIsSafeFor(restId) &&
-canManageStaffFromCurrentUser(u, restId);
+!changed.hasAny([
+'isSuperAdmin', 'superAdmin',
+'superAdminClaimUpdatedAt', 'superAdminClaimUpdatedBy',
+'systemAccess', 'protectedRootAdmin', 'protectedFoundingAdmin',
+'foundingAdministrator', 'rootAdmin'
+]) &&
+(
+!changed.hasAny(['permissions']) ||
+request.resource.data.get('permissions', {}) is map
+) &&
+tenantUserStaffAuthorityFromCached(u, member, restId, ownerAuthority) &&
+(
+!changed.hasAny(['wage']) ||
+tenantUserWageAuthorityFromCached(u, member, restId, ownerAuthority)
+) &&
+(
+!tenantUserOwnerSensitiveChanged(changed, afterPerms, beforePerms) ||
+ownerAuthority
+);
 }
-
 function superAdminUserUpdateAllowed() {
-return currentUserSuperAdminLean();
+let u = safeUserData();
+return currentAuthTokenSuperAdmin() ||
+currentUserDocSuperAdminFrom(u);
 }
 function userUpdateAllowed(userId) {
 let isSelf = request.auth.uid == userId;
 let restId = resource.data.get('restaurantId', '');
-let isTenantUser = restId is string && restId != '';
-return (isSelf && protectedFoundingAdminUserUpdateIsSafe() && userSafeSelfUpdate()) ||
-(!isSelf && isTenantUser && protectedFoundingAdminUserUpdateIsSafe() && tenantStaffUserUpdateAllowed()) ||
-(!isSelf && !isTenantUser && superAdminUserUpdateAllowed());
+return (
+isSelf &&
+protectedFoundingAdminUserUpdateIsSafe() &&
+userSafeSelfUpdate()
+) ||
+(
+!isSelf &&
+restId is string && restId != '' &&
+protectedFoundingAdminUserUpdateIsSafe() &&
+tenantStaffUserUpdateAllowed()
+) ||
+(
+!isSelf &&
+(!(restId is string) || restId == '') &&
+superAdminUserUpdateAllowed()
+);
 }
 function commonTenantWriteAllowed(collectionName) {
 return collectionName in ['timePunches', 'tempLogs', 'wasteLogs', 'offlineWriteReceipts'];
@@ -951,7 +1017,7 @@ match /workspaceMembers/{memberId} {
 allow read: if signedIn() && (
 isSuperAdmin() ||
 resource.data.userId == request.auth.uid ||
-(resource.data.email == request.auth.token.email) ||
+authEmailMatchesStoredEmail(resource.data.get('email', null)) ||
 (resource.data.restaurantId is string && isTenantMatch(resource.data.restaurantId)) ||
 (resource.data.restaurantId is string && isRestaurantOwner(resource.data.restaurantId))
 );
@@ -1011,6 +1077,12 @@ allow read: if signedIn() && (isSuperAdmin() || (resource.data.restaurantId is s
 allow create: if signedIn() && request.resource.data.restaurantId is string && (isSuperAdmin() || (isTenantMatch(request.resource.data.restaurantId) && canManageTasks(request.resource.data.restaurantId)));
 allow update: if signedIn() && resource.data.restaurantId is string && request.resource.data.restaurantId == resource.data.restaurantId && (isSuperAdmin() || (isTenantMatch(resource.data.restaurantId) && (taskCompletionUpdateIsSafe() || canManageTasks(resource.data.restaurantId))));
 allow delete: if signedIn() && resource.data.restaurantId is string && (isSuperAdmin() || (isTenantMatch(resource.data.restaurantId) && canManageTasks(resource.data.restaurantId)));
+}
+match /opsIntelligenceReports/{docId} {
+allow read: if signedIn() &&
+resource.data.restaurantId is string &&
+canReadOpsIntelligence(resource.data.restaurantId);
+allow create, update, delete: if false;
 }
 match /personalReminders/{docId} {
 allow read: if signedIn() && (isSuperAdmin() || (reminderTenant(resource.data) && reminderParticipant(resource.data)));

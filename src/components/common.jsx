@@ -14,6 +14,7 @@ import { buildAiOrderAssistant, parseAiOrderingVoiceIntent, summarizeAiOrderAssi
 import { buildRestaurantAiInsightBundle, summarizeInsightBundleForVoice, extractRestaurantGeofenceLocation } from '../core/restaurantAiInsights';
 import { resolveFeatureAccess, resolveRouteAccess, isMasterAdminUser } from '../lib/featureAccess';
 import { PLATFORM_ADMIN_ACCESS_STATES, resolvePlatformAdminAccessState } from '../core/sessionAccess';
+import { usePersonalReminderRows } from '../core/personalReminderQueries';
 import { FEATURE_KEYS } from '../config/plans';
 
 
@@ -123,7 +124,7 @@ const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppU
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isOpen, onClose]);
 
-  const drawerReminders = useLiveCollection('personalReminders', appUser?.restaurantId, { enabled: !!isOpen && !!appUser?.restaurantId && !!appUser?.id, limitCount: 120, fallbackLimitCount: 60 });
+  const drawerReminders = usePersonalReminderRows(appUser, { enabled: !!isOpen && !!appUser?.restaurantId && !!appUser?.id, limitCount: 120, fallbackLimitCount: 60, debugLabel: 'drawer-reminders' });
   const hasReminderAlert = (drawerReminders || []).some(reminder => reminderNeedsAttention(reminder, appUser));
 
   if (!isOpen) return null;

@@ -364,11 +364,23 @@ if ($PreflightExit -ne 0) {
                   }
                   Stop-BeforePlaywright $RoleReason
                 } else {
-                  Set-RunnerPhase 'playwright'
-                  $PlaywrightConfig = ".\playwright.play-store-release.config.cjs"
-                  $RunnerState.playwrightStarted = $true
-                  Save-RunnerState
-                  Run-LiveStep "Playwright release gate" "& '$PlaywrightExe' test --config '$PlaywrightConfig'"
+                  Set-RunnerPhase 'java-prerequisite'
+                  $JavaExit = Run-Step "Java prerequisite" "node scripts/86chaos-release-gate/check-java-prerequisite.cjs"
+                  if ($JavaExit -ne 0) {
+                    Stop-BeforePlaywright "Release gate BLOCKED BEFORE PLAYWRIGHT because Java is required for emulator rules validation. See java-prerequisite.json."
+                  } else {
+                    Set-RunnerPhase 'local-release-checks'
+                    $LocalChecksExit = Run-Step "Local release readiness checks" "node scripts/86chaos-release-gate/run-node-release-checks.cjs"
+                    if ($LocalChecksExit -ne 0) {
+                      Stop-BeforePlaywright "Release gate BLOCKED BEFORE PLAYWRIGHT because required local source/unit/build/rules checks failed or were blocked. See node-test-live-summary.json."
+                    } else {
+                      Set-RunnerPhase 'playwright'
+                      $PlaywrightConfig = ".\playwright.play-store-release.config.cjs"
+                      $RunnerState.playwrightStarted = $true
+                      Save-RunnerState
+                      Run-LiveStep "Playwright release gate" "& '$PlaywrightExe' test --config '$PlaywrightConfig'"
+                    }
+                  }
                 }
               }
             }
@@ -384,28 +396,47 @@ if ($PreflightExit -ne 0) {
 
 $SetupStatePath = Join-Path $RunDir 'qa-setup-state.json'
 $CleanupPath = Join-Path $RunDir '86chaos-full-audit-cleanup-report.json'
-if ((Test-Path $SetupStatePath) -and -not (Test-Path $CleanupPath)) {
-  $setup = Get-Content $SetupStatePath -Raw | ConvertFrom-Json
-  $RunnerState.globalSetupStarted = [bool]($setup.globalSetupStarted -or $setup.attempted)
-  $RunnerState.qaSeedProcessStarted = [bool]$setup.qaSeedProcessStarted
-  $RunnerState.qaDataWritesStarted = [bool]$setup.qaDataWritesStarted
-  $RunnerState.qaRestaurantCreated = [bool]$setup.createdRestaurant
-  $RunnerState.qaSeedAttempted = [bool]$setup.seeded
-  $RunnerState.qaSeedVerified = [bool]$setup.verified
-  Save-RunnerState
+$setup = $null
+if (Test-Path $SetupStatePath) {
+  try {
+    $setup = Get-Content $SetupStatePath -Raw | ConvertFrom-Json
+    $RunnerState.globalSetupStarted = [bool]($setup.globalSetupStarted -or $setup.attempted)
+    $RunnerState.qaSeedProcessStarted = [bool]$setup.qaSeedProcessStarted
+    $RunnerState.qaDataWritesStarted = [bool]($setup.qaDataWritesStarted -or $setup.writesStarted)
+    $RunnerState.qaRestaurantCreated = [bool]($setup.createdRestaurant -or $setup.restaurantCreated)
+    $RunnerState.qaSeedAttempted = [bool]($setup.seeded -or $setup.qaSeedAttempted -or $setup.fixtureSeedStarted)
+    $RunnerState.qaSeedVerified = [bool]($setup.verified -or $setup.verificationOk)
+    Save-RunnerState
+  } catch {}
+}
+
+if (Test-Path $CleanupPath) {
+  try {
+    $cleanup = Get-Content $CleanupPath -Raw | ConvertFrom-Json
+    $RunnerState.cleanupAttempted = $true
+    $RunnerState.cleanupCompleted = [bool]$cleanup.ok
+    $CleanupError = [string]$cleanup.error
+    if ([string]::IsNullOrWhiteSpace($CleanupError)) { $CleanupError = [string]$cleanup.firstError }
+    if ([string]::IsNullOrWhiteSpace($CleanupError)) { $CleanupError = 'cleanup report existed but did not report ok:true' }
+    $RunnerState.cleanupRefusalReason = if ($cleanup.ok) { '' } else { $CleanupError }
+    Save-RunnerState
+  } catch {
+    $RunnerState.cleanupAttempted = $true
+    $RunnerState.cleanupCompleted = $false
+    $RunnerState.cleanupRefusalReason = 'cleanup report could not be parsed'
+    Save-RunnerState
+  }
+} elseif ($setup) {
   $SetupRunId = [string]$setup.runId
   $SetupProjectId = [string]$setup.testingProjectId
   if ([string]::IsNullOrWhiteSpace($SetupProjectId)) { $SetupProjectId = [string]$setup.firebaseProjectId }
   if ([string]::IsNullOrWhiteSpace($SetupProjectId)) { $SetupProjectId = [string]$setup.projectId }
   if ([string]::IsNullOrWhiteSpace($SetupProjectId)) { $SetupProjectId = [string]$env:REACT_APP_FIREBASE_PROJECT_ID }
-
   $SetupRestaurantId = [string]$setup.restaurantId
   if ([string]::IsNullOrWhiteSpace($SetupRestaurantId)) { $SetupRestaurantId = [string]$setup.temporaryRestaurantId }
-
   $WritesStarted = [bool]($setup.writesStarted -or $setup.qaDataWritesStarted -or $setup.createdRestaurant -or $setup.restaurantCreated -or $setup.membershipsCreated -or $setup.seeded -or $setup.fixtureSeedStarted)
   $CleanupEligible = $WritesStarted -and ($SetupRunId -eq $RunId) -and ($SetupProjectId -eq 'chaos-test-d1601')
   if ($setup.createdRestaurant -or $setup.restaurantCreated) { $CleanupEligible = $CleanupEligible -and -not [string]::IsNullOrWhiteSpace($SetupRestaurantId) }
-
   if ($CleanupEligible) {
     Set-RunnerPhase 'cleanup'
     $RunnerState.cleanupAttempted = $true

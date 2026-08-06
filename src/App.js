@@ -1822,7 +1822,11 @@ if (liveAppUser && clientData) {
       if (/backup window missed/i.test(label)) return 'Open health details';
       if (/auto[-\s]?fill/i.test(label)) return 'Auto-fill schedule';
       if (/report (a )?problem|bug report/i.test(label)) return 'Open report problem';
-      if (/86\s*voice|voice assistant|microphone|mic/i.test(label)) return 'Open 86 Voice Assistant';
+      if (/86\s*voice|86voice|voice assistant|microphone|mic|listening/i.test(label)) {
+        if (/close|stop|hide|cancel/i.test(label)) return label;
+        if (/start/i.test(label)) return label;
+        return /86voice|86\s*voice/i.test(label) ? label : 'Open 86Voice';
+      }
       if (/active workspace/i.test(label)) return `Open ${label}`;
       if (/overview|request off|availability|sales|labor|payroll|gross sales|net sales|tips|discounts|guest count|ticket count/i.test(label)) return `${context} ${label}`;
       if (role === 'tab' || role === 'menuitem') return `Open ${label || context}`;
@@ -1830,14 +1834,35 @@ if (liveAppUser && clientData) {
       if (/button|a/.test(tag.toLowerCase()) || role === 'button') return `Open ${label || `86 Chaos control ${index + 1}`}`;
       return label || `${context} control ${index + 1}`;
     };
+    const validLabelledByText = (labelledBy = '') => labelledBy.split(/\s+/).map(id => document.getElementById(id)?.textContent || '').join(' ').trim();
+    const classifyControlIntent = (label = '', el) => {
+      const tag = String(el.tagName || '').toUpperCase();
+      const role = String(el.getAttribute('role') || '').toLowerCase();
+      const href = String(el.getAttribute('href') || '');
+      if (el.disabled || el.getAttribute('aria-disabled') === 'true') return 'disabled';
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return 'form-control';
+      if (/delete|remove|archive|clear cache|reset|disable|deny|cancel request/i.test(label)) return 'destructive-mutation';
+      if (mutationLabelRe.test(label)) return 'mutation';
+      if (tag === 'A' || role === 'tab' || role === 'menuitem' || href || /open|view|back|next|previous|tab|menu|settings|help|details|jump/i.test(label)) return 'navigation';
+      if (/show|hide|expand|collapse|filter|search|copy|download|print|refresh|retry/i.test(label)) return 'informational';
+      return 'informational';
+    };
+    const workflowIdFor = (label = '', intent = '') => {
+      if (!/mutation/.test(intent)) return '';
+      return cleanLabel(label).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 80) || 'unknown-mutation';
+    };
     const describeControl = (el, index) => {
       const tag = String(el.tagName || '').toUpperCase();
       const escapedId = el.id && typeof CSS !== 'undefined' && typeof CSS.escape === 'function' ? CSS.escape(el.id) : '';
       const nearbyLabel = escapedId ? document.querySelector(`label[for="${escapedId}"]`) : null;
-      const explicit = el.getAttribute('aria-label') || el.getAttribute('title') || '';
+      const explicitAria = cleanLabel(el.getAttribute('aria-label') || '');
       const labelledBy = el.getAttribute('aria-labelledby') || '';
+      const labelledByText = cleanLabel(validLabelledByText(labelledBy));
+      const title = cleanLabel(el.getAttribute('title') || '');
       const labelText = cleanLabel(
-        explicit ||
+        explicitAria ||
+        labelledByText ||
+        title ||
         nearbyLabel?.textContent ||
         el.closest?.('label')?.textContent ||
         el.textContent ||
@@ -1847,8 +1872,13 @@ if (liveAppUser && clientData) {
         el.getAttribute('data-label') ||
         ''
       );
+      const hasExplicitName = Boolean(explicitAria || labelledByText);
       const normalized = normalizeControlLabel(labelText, el, index);
-      if (!labelledBy || !isCoveredClassification(labelText)) el.setAttribute('aria-label', normalized);
+      const intent = classifyControlIntent(labelText || normalized, el);
+      if (!el.getAttribute('data-chaos-control-kind')) el.setAttribute('data-chaos-control-kind', intent);
+      const workflowId = workflowIdFor(labelText || normalized, intent);
+      if (workflowId && !el.getAttribute('data-chaos-workflow-id')) el.setAttribute('data-chaos-workflow-id', workflowId);
+      if (!hasExplicitName && normalized) el.setAttribute('aria-label', normalized);
       if (!el.getAttribute('title') && normalized) el.setAttribute('title', normalized);
       if ((tag === 'BUTTON' || tag === 'A' || el.getAttribute('role') === 'button') && !el.classList.contains('no-compact')) {
         el.classList.add('chaos-release-tap-target');
@@ -2768,7 +2798,13 @@ What I clicked / expected:
 
   if (cachedSessionAccessHydrating) {
     return (
-      <div className="non-admin-controls-compact min-h-screen bg-[#0B0E11] text-white flex items-center justify-center p-6">
+      <div className="non-admin-controls-compact min-h-screen bg-[#0B0E11] text-white flex flex-col items-center justify-center p-6 gap-4">
+        {showUpdateBanner && !updateAlertMemory.isDismissed && (
+          <div data-chaos-recovery-state="manual-update-available" role="alert" className="w-full max-w-2xl rounded-2xl border border-red-500/50 bg-red-950/50 text-white p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-2xl">
+            <span className="text-xs font-black uppercase tracking-widest">Update available. Refresh app to recover the newest version.</span>
+            <button type="button" aria-label="Refresh now to recover the newest version" onClick={() => window.location.reload(true)} className="bg-white text-red-700 px-4 py-2 rounded-xl font-black text-[10px] uppercase tracking-widest">REFRESH NOW</button>
+          </div>
+        )}
         <div className="max-w-sm w-full rounded-3xl border border-[#2A353D] bg-[#161D22]/95 p-6 text-center shadow-2xl">
           <Loader2 className="w-8 h-8 mx-auto mb-4 animate-spin text-[#D4A381]" />
           <p className="text-[10px] font-black uppercase tracking-[0.25em] text-[#D4A381]">Restoring session</p>
@@ -3001,7 +3037,7 @@ return (
 
       {/* UPDATE ALERT BANNER */}
       {showUpdateBanner && !updateAlertMemory.isDismissed && (
-        <div className="bg-red-600 text-white text-[11px] sm:text-xs font-black px-4 py-2.5 flex items-center justify-between sticky top-0 z-[9999] shadow-2xl uppercase tracking-wider">
+        <div data-chaos-recovery-state="manual-update-available" role="alert" className="bg-red-600 text-white text-[11px] sm:text-xs font-black px-4 py-2.5 flex items-center justify-between sticky top-0 z-[9999] shadow-2xl uppercase tracking-wider">
           <div className="flex items-center gap-2 min-w-0">
             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="flex-shrink-0 animate-pulse text-white"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"></path><path d="M12 9v4"></path><path d="M12 17h.01"></path></svg>
             <span className="truncate">Update available. Refresh app to recover the newest version.</span>
@@ -3009,6 +3045,7 @@ return (
           <div className="flex items-center gap-2 flex-shrink-0 ml-3">
             <button 
               onClick={() => window.location.reload(true)} 
+              aria-label="Refresh now to recover the newest version"
               className="bg-white text-red-600 px-3 py-1.5 rounded-lg font-black text-[10px] shadow-md hover:bg-slate-100 transition-all tracking-widest"
             >
               REFRESH NOW

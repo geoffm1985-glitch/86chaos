@@ -129,6 +129,50 @@ const isRequestOffConflictCountable = (request = {}) => {
   return request.archived !== true && !['cancelled', 'canceled', 'archived'].includes(status);
 };
 
+const cleanScheduleDisplayName = (value = '') => {
+  const text = String(value || '').replace(/\s+/g, ' ').trim();
+  if (!text) return '';
+  const lower = text.toLowerCase();
+  if (['unknown', 'unknown staff', 'unknown employee', 'employee unknown'].includes(lower)) return '';
+  return text;
+};
+
+const getSchedulePersonName = (person = {}) => cleanScheduleDisplayName(
+  person?.employeeName || person?.name || person?.displayName || person?.fullName || person?.assignedName || person?.email || person?.employeeEmail || ''
+);
+
+const getScheduleShiftFallbackName = (shift = {}) => cleanScheduleDisplayName(
+  shift?.employeeName || shift?.assignedName || shift?.userName || shift?.name || shift?.displayName || shift?.employeeEmail || shift?.assignedEmail || shift?.email || ''
+);
+
+const resolveScheduleShiftPersonForDisplay = (shift = {}, roster = []) => {
+  const resolved = resolveSchedulePersonForShift(shift, roster);
+  if (resolved?.ok && resolved.person) return resolved.person;
+
+  const activeRoster = (Array.isArray(roster) ? roster : []).filter(person => person && person.isActive !== false);
+  const shiftAliases = collectScheduleIdentityAliases(shift);
+  if (shiftAliases.length) {
+    const match = activeRoster.find(person => collectScheduleIdentityAliases(person).some(alias => shiftAliases.includes(alias)));
+    if (match) return match;
+  }
+  return null;
+};
+
+const getScheduleShiftDisplayName = (shift = {}, roster = [], fallback = 'Unassigned') => {
+  const person = resolveScheduleShiftPersonForDisplay(shift, roster);
+  return getSchedulePersonName(person) || getScheduleShiftFallbackName(shift) || fallback;
+};
+
+const getScheduleShiftMonthLabels = (shift = {}, roster = []) => {
+  const name = getScheduleShiftDisplayName(shift, roster);
+  const firstName = cleanScheduleDisplayName(String(name || '').split(/\s+/)[0] || name) || name;
+  const timeRange = `${formatShortTime(shift.startTime)}-${formatShortTime(shift.endTime)}`;
+  return {
+    full: `${name} ${timeRange}`.trim(),
+    mobile: `${firstName} ${timeRange}`.trim()
+  };
+};
+
 const getSchedulePersonForAppUser = (appUser = {}, users = []) => {
   if (!appUser) return {};
   const resolved = resolveSchedulePersonForAccount(appUser, users);
@@ -1479,7 +1523,8 @@ const handleOfferSwap = async (shift) => {
             </div>
             <div className="divide-y divide-[#2A353D] max-h-[60vh] overflow-y-auto custom-scrollbar">
               {filteredRosterShifts.map((shift, index) => {
-                 const emp = users.find(u => u.id === shift.employeeId);
+                 const emp = resolveScheduleShiftPersonForDisplay(shift, users);
+                 const empName = getScheduleShiftDisplayName(shift, users);
                  const showDivider = index === 0 || shift.date !== filteredRosterShifts[index - 1].date;
                  const isPastShift = isShiftInPast(shift, scheduleNow);
                  const isPastDay = showDivider && isScheduleDateComplete(shift.date, rosterShiftsByDate[shift.date] || [], scheduleNow);
@@ -1495,7 +1540,7 @@ const handleOfferSwap = async (shift) => {
                      )}
                      <div className={`${T.row} transition-colors ${isPastShift ? 'bg-[#0B0E11]/70 opacity-50 grayscale' : 'hover:bg-[#12161A]'}`}>
                        <div className="flex items-center justify-between">
-                         <div className="flex items-center gap-3"><img src={getAvatar(emp?.name, emp?.photoURL)} className={`w-8 h-8 rounded-full border object-cover ${isPastShift ? 'border-[#1F2933] opacity-60' : T.border}`} alt="avatar"/><div><div className={`text-sm font-bold ${isPastShift ? 'text-slate-500' : 'text-white'}`}>{emp?.name || emp?.displayName || emp?.fullName || 'Unknown'}</div><div className={`text-[9px] font-bold uppercase ${isPastShift ? 'text-slate-600' : T.muted}`}>{shift.role}</div></div></div>
+                         <div className="flex items-center gap-3"><img src={getAvatar(empName, emp?.photoURL)} className={`w-8 h-8 rounded-full border object-cover ${isPastShift ? 'border-[#1F2933] opacity-60' : T.border}`} alt="avatar"/><div><div className={`text-sm font-bold ${isPastShift ? 'text-slate-500' : 'text-white'}`}>{empName}</div><div className={`text-[9px] font-bold uppercase ${isPastShift ? 'text-slate-600' : T.muted}`}>{shift.role}</div></div></div>
                          <div className={`text-xs font-mono font-bold px-2 py-1 rounded-md border ${isPastShift ? 'bg-[#0B0E11] text-slate-500 border-[#1F2933]' : `bg-[#12161A] ${T.copper} ${T.border}`}`}>{formatShortTime(shift.startTime)} - {formatShortTime(shift.endTime)}</div>
                        </div>
                      </div>
@@ -3659,7 +3704,7 @@ const handleExportTimesheets = () => {
                       
                       return (
                       <th key={d} className={`p-0.5 sm:p-1 text-center border-r border-[#2A353D] align-top relative group cursor-help ${new Date(d+'T12:00').getDay()%6===0?'bg-[#1A2126]':''}`}>
-                        <div className={`font-bold uppercase text-[8px] sm:text-[9px] ${T.muted}`}>{new Date(d+'T12:00').toLocaleDateString('en-US',{weekday:'narrow'})}</div>
+                        <div className={`font-bold uppercase text-[8px] sm:text-[9px] tracking-tight ${T.muted}`}>{new Date(d+'T12:00').toLocaleDateString('en-US',{weekday:'short'}).toUpperCase()}</div>
                         <div className={`text-xs sm:text-sm font-black mt-0.5 ${hasAlert ? (holiday ? 'text-amber-400' : 'text-red-400') : 'text-white'}`}>
                           {parseInt(d.split('-')[2])}
                         </div>
@@ -3745,6 +3790,9 @@ const handleExportTimesheets = () => {
                                     key={shift.id || `${d}-${u.id}-${shift.startTime}-${shift.endTime}`}
                                     type="button"
                                     onClick={(event) => handleDeleteSpecificShift(event, shift, u, d)}
+                                    aria-label={`Delete shift ${timeStatus.displayRange} for ${u.name || u.email || 'employee'} on ${d}`}
+                                    data-chaos-control-kind="destructive-mutation"
+                                    data-chaos-workflow-id="schedule-delete-shift"
                                     className={`schedule-builder-time-chip w-full rounded font-bold text-[7px] sm:text-[8px] py-0.5 text-center ${invalidTimeRange ? 'bg-amber-950/70 text-amber-200 border border-amber-400/90 shadow-[0_0_8px_rgba(245,158,11,0.35)]' : getRoleColors(shift.role, isBuilderShiftPublished(shift))} ${shiftConflict ? 'border-2 border-red-500 animate-pulse shadow-[0_0_8px_rgba(239,68,68,0.8)]' : ''}`} 
                                     title={`${timeStatus.displayRange} ${shiftConflict ? '(CONFLICT DETECTED)' : ''}${invalidTimeRange ? ` (INVALID TIME RANGE - NOT COUNTED: ${timeStatus.reason})` : ''} Tap to delete only this shift.`}
                                   >
@@ -4183,11 +4231,15 @@ const TabMonth = ({ currentDate, users, shifts, appUser }) => {
             <div key={date} className={`p-0.5 border-b border-r ${T.border} min-h-[50px] flex flex-col cell`}>
               <span className={`text-right text-[9px] font-black ${T.muted} mb-0.5 cell-date`}>{i+1}</span>
               <div className="space-y-0.5 overflow-y-auto no-scrollbar flex-1">
-                {dayShifts.map(s=>(
-                  <div key={s.id} className={`text-[8px] font-bold px-0.5 rounded leading-tight truncate bg-[#12161A] border ${T.border} text-[#D4A381] print-shift`}>
-                    {users.find(u=>u.id===s.employeeId)?.name || users.find(u=>u.id===s.employeeId)?.displayName || 'Unknown'} {formatShortTime(s.startTime)}-{formatShortTime(s.endTime)}
-                  </div>
-                ))}
+                {dayShifts.map(s=>{
+                  const labels = getScheduleShiftMonthLabels(s, users);
+                  return (
+                    <div key={s.id} className={`schedule-month-shift text-[8px] font-bold px-0.5 rounded leading-tight truncate bg-[#12161A] border ${T.border} text-[#D4A381] print-shift`}>
+                      <span className="hidden sm:inline">{labels.full}</span>
+                      <span className="sm:hidden">{labels.mobile}</span>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           )

@@ -22,7 +22,7 @@ function withTempCwd(fn) {
 }
 
 function withQaAccountEnv(fn) {
-  const keys = ['SYSTEM_ADMIN_EMAIL','SYSTEM_ADMIN_PASSWORD','OWNER_EMAIL','OWNER_PASSWORD','MANAGER_EMAIL','MANAGER_PASSWORD','STAFF_EMAIL','STAFF_PASSWORD','CHAOS_QA_AUTO_PROVISION_TEST_USERS','CHAOS_QA_ALLOW_MUTATING_ROLE_ACCOUNTS','MASTER_ADMIN_EMAIL','REACT_APP_FIREBASE_PROJECT_ID','REACT_APP_TEST_FIREBASE_PROJECT_ID','CHAOS_RELEASE_GATE_RUN_ID','CHAOS_FULL_AUDIT_RUN_ID','CHAOS_RELEASE_GATE_RUN_DIR','APP_URL','CHAOS_BASE_URL','CHAOS_RELEASE_GATE_TEST_MODE','CHAOS_ALLOW_MUTATION','FIREBASE_TEST_SERVICE_ACCOUNT_KEY'];
+  const keys = ['SYSTEM_ADMIN_EMAIL','SYSTEM_ADMIN_PASSWORD','OWNER_EMAIL','OWNER_PASSWORD','MANAGER_EMAIL','MANAGER_PASSWORD','STAFF_EMAIL','STAFF_PASSWORD','CHAOS_QA_AUTO_PROVISION_TEST_USERS','CHAOS_QA_ALLOW_MUTATING_ROLE_ACCOUNTS','MASTER_ADMIN_EMAIL','REACT_APP_FIREBASE_PROJECT_ID','REACT_APP_TEST_FIREBASE_PROJECT_ID','CHAOS_RELEASE_GATE_RUN_ID','CHAOS_FULL_AUDIT_RUN_ID','CHAOS_RELEASE_GATE_RUN_DIR','APP_URL','CHAOS_BASE_URL','CHAOS_RELEASE_GATE_TEST_MODE','CHAOS_ALLOW_MUTATION','FIREBASE_TEST_SERVICE_ACCOUNT_KEY','FIREBASE_SERVICE_ACCOUNT_KEY','GOOGLE_APPLICATION_CREDENTIALS'];
   const old = Object.fromEntries(keys.map(k => [k, process.env[k]]));
   process.env.SYSTEM_ADMIN_EMAIL = '86chaos.qa.system-admin.20260729-1302@example.test';
   process.env.SYSTEM_ADMIN_PASSWORD = 'UnitPass!111111111';
@@ -113,6 +113,39 @@ test('provisioner creates four distinct mocked users and writes no passwords or 
     assert.equal([...fake.claimsByUid.values()].filter(c => c.superAdmin === true).length, 1);
     assert.ok(fake.profiles.size >= 4);
     assert.doesNotMatch(JSON.stringify(report), /UnitPass|idToken|refreshToken|private_key/i);
+  });
+}));
+
+test('provisioner can skip auto-provisioning and verify existing accounts without Firebase Admin credentials', async () => withTempCwd(async () => {
+  await withQaAccountEnv(async () => {
+    process.env.CHAOS_RELEASE_GATE_RUN_ID = 'existing-users-unit';
+    process.env.CHAOS_FULL_AUDIT_RUN_ID = 'existing-users-unit';
+    delete process.env.CHAOS_RELEASE_GATE_RUN_DIR;
+    delete process.env.FIREBASE_TEST_SERVICE_ACCOUNT_KEY;
+    delete process.env.FIREBASE_SERVICE_ACCOUNT_KEY;
+    delete process.env.GOOGLE_APPLICATION_CREDENTIALS;
+    const { verifyExistingAccountsWithoutProvisioning } = freshRequire(provisionAccountsPath);
+    const report = { ok: true, skipped: false, runId: 'existing-users-unit', firebaseProjectId: 'chaos-test-d1601', accounts: [], errors: [], notes: [] };
+    const verifiedRows = ['systemAdmin', 'owner', 'manager', 'staff'].map((key, index) => ({
+      key,
+      label: key,
+      emailEnv: key === 'systemAdmin' ? 'SYSTEM_ADMIN_EMAIL' : `${key.toUpperCase()}_EMAIL`,
+      email: `86chaos.qa.${key}.20260729-1302@example.test`,
+      uid: `uid-${index + 1}`,
+      superAdmin: key === 'systemAdmin',
+      firebaseProjectId: 'chaos-test-d1601',
+      runtimeProjectId: 'chaos-test-d1601',
+    }));
+    const result = await verifyExistingAccountsWithoutProvisioning(report, new Error('No server credential is configured for Firebase project chaos-test-d1601.'), {
+      verifyRoleAccounts: async () => ({ out: 'role-identity-verification.json', report: { ok: true, accounts: verifiedRows, errors: [] } }),
+    });
+    assert.equal(result.ok, true);
+    assert.equal(result.skipped, true);
+    assert.equal(result.autoProvisionSkipped, true);
+    assert.equal(result.verifiedExistingAccounts, true);
+    assert.equal(result.accounts.length, 4);
+    assert.match(result.notes.join(' '), /skipped temporary account provisioning/);
+    assert.match(result.notes.join(' '), /does not create users, change passwords, set custom claims, or write Firestore profiles/);
   });
 }));
 

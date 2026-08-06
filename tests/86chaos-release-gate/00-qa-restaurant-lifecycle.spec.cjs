@@ -19,9 +19,15 @@ test.describe('disposable QA restaurant lifecycle', () => {
     expect(seed.restaurantName).toBe(QA_WORKSPACE_NAME);
     expect(seed.createdRestaurant).toBe(true);
     expect(seed.restaurantId).toBeTruthy();
-    expect(Array.isArray(seed.memberships)).toBe(true);
-    const keys = new Set(seed.memberships.map(row => row.key));
-    for (const key of ['systemAdmin', 'owner', 'manager', 'staff']) expect(keys.has(key), `${key} membership exists`).toBe(true);
+    expect(seed.seedReportSchemaVersion, 'seed report schema version should be explicit').toBe(2);
+    expect(Array.isArray(seed.roleAccounts)).toBe(true);
+    const accountsByKey = Object.fromEntries(seed.roleAccounts.map(row => [row.key, row]));
+    for (const key of ['systemAdmin', 'owner', 'manager', 'staff']) {
+      expect(accountsByKey[key], `${key} role account exists`).toBeTruthy();
+      expect(accountsByKey[key].uid, `${key} role account has uid`).toBeTruthy();
+      expect(accountsByKey[key].role, `${key} role account has role identity`).toBeTruthy();
+    }
+    expect(seed.createdCounts?.workspaceMembers, 'workspace member count should cover attached role accounts').toBeGreaterThanOrEqual(4);
   });
 
   test('System Administrator exposes the matching Platform Operations cleanup tool', async ({ page }) => {

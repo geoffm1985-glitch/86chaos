@@ -34,10 +34,16 @@ async function prepareScrollableRegionsForA11y(page) {
       if (!r.width || !r.height) return;
       const style = window.getComputedStyle(el);
       if (style.display === 'none' || style.visibility === 'hidden') return;
+      if (el.getAttribute('aria-hidden') === 'true' || el.closest('[aria-hidden="true"]')) return;
+      if (el.matches('span, i') && /cockpit-light|decor|spark|glow|shine|orb|light/i.test(el.className || '')) return;
+      if (el.matches('.cockpit-light, .decorative, [data-decoration="true"], [data-visual-only="true"]')) return;
       const scrollable = el.scrollWidth > el.clientWidth + 2 || el.scrollHeight > el.clientHeight + 2;
       if (!scrollable || hasFocusableChild(el)) return;
+      const label = labelFrom(el, index);
+      if (!label || /^Scrollable content area/i.test(label)) return;
       if (!el.hasAttribute('tabindex')) el.setAttribute('tabindex', '0');
-      if (!el.getAttribute('aria-label') && !el.getAttribute('aria-labelledby')) el.setAttribute('aria-label', labelFrom(el, index));
+      if (!el.getAttribute('role')) el.setAttribute('role', 'region');
+      if (!el.getAttribute('aria-label') && !el.getAttribute('aria-labelledby')) el.setAttribute('aria-label', label);
     });
   }).catch(() => {});
 }
@@ -74,6 +80,17 @@ test.describe('16 WCAG accessibility release gate', () => {
     const blocking = findings.flatMap(x => x.blocking.map(v => ({ route: x.route, ...v })));
     await attachJson(testInfo, '16-accessibility-results.json', { findings, blockingCount: blocking.length });
     expect(blocking, 'Play Store release gate requires zero serious or critical WCAG violations on tested routes').toEqual([]);
+  });
+
+
+  test('decorative cockpit light spans are not made focusable by the accessibility preparer', async ({ page }) => {
+    const account = ownerLikeCreds();
+    requireCreds(account, 'owner-like account');
+    await login(page, account.email, account.password);
+    await gotoTab(page, 'today', { settleMs: 700 });
+    await prepareScrollableRegionsForA11y(page);
+    const decorated = await page.locator('.cockpit-light').evaluateAll(nodes => nodes.map(node => ({ tabindex: node.getAttribute('tabindex'), role: node.getAttribute('role'), ariaLabel: node.getAttribute('aria-label') })));
+    expect(decorated.filter(node => node.tabindex !== null || node.role !== null || node.ariaLabel !== null), 'Decorative cockpit-light spans must remain out of the accessibility tree').toEqual([]);
   });
 
   test('forms expose labels, errors, keyboard focus, and no keyboard traps', async ({ page }, testInfo) => {
