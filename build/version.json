@@ -1,14 +1,14 @@
 {
-  "version": "16.0.131",
-  "name": "86 Chaos 16.0.131 App Icon Asset Restore",
-  "build": "16.0.131",
-  "label": "86 Chaos 16.0.131 App Icon Asset Restore",
-  "releasedAt": "2026-08-05T20:16:00-05:00",
-  "releaseTitle": "App Icon Asset Restore",
+  "version": "16.0.133",
+  "name": "86 Chaos 16.0.133 Release Gate Canonical Rules Harness Fix",
+  "build": "16.0.133",
+  "label": "86 Chaos 16.0.133 Release Gate Canonical Rules Harness Fix",
+  "releasedAt": "2026-08-05T22:13:00-05:00",
+  "releaseTitle": "Release Gate Canonical Rules Harness Fix",
   "notes": [
-    "Restores the packaged 86 Chaos app icon asset at public/wisco.png so the header shows the app icon instead of broken-image alt text.",
-    "Restores the packaged 86 Chaos wordmark asset at public/6139.png so the locked app brand renders correctly on mobile and desktop.",
-    "Leaves working Firestore rules, Storage rules, Firebase config, indexes, Auth, App Check, MFA, and Vercel wiring unchanged."
+    "Runs the complete canonical Firestore and Storage emulator rules suite as the required release-gate authority before Playwright.",
+    "Fixes the focused rules smoke harness to reuse cached Firestore and Storage clients and the emulator-provided project namespace.",
+    "Adds current-run structured rules reporting, safer firstUsefulFailure parsing, positive Storage controls, and clean denial for missing Storage user profiles."
   ],
-  "title": "86 Chaos 16.0.131 App Icon Asset Restore"
+  "title": "86 Chaos 16.0.133 Release Gate Canonical Rules Harness Fix"
 }

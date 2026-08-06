@@ -58,11 +58,11 @@ test('auth bootstrap keeps a single id field and preserves uid/profileDocId', ()
 test('Document Vault Storage rules contain the exact workspace-scoped path and strict metadata allowlist', () => {
   const rules = read('storage.rules');
   assert.match(rules, /match \/restaurants\/\{restaurantId\}\/back-office\/document-vault\/\{recordId\}\/\{fileName\}/);
-  assert.match(rules, /purpose == 'document-vault'/);
-  assert.match(rules, /metadata\.restaurantId == restaurantId/);
-  assert.match(rules, /metadata\.recordId == recordId/);
-  assert.match(rules, /metadata\.uploadedBy == request\.auth\.uid/);
-  assert.match(rules, /source == '86chaos-document-vault'/);
+  assert.match(rules, /metadata\.get\('purpose', ''\) == 'document-vault'/);
+  assert.match(rules, /metadata\.get\('restaurantId', ''\) == restaurantId/);
+  assert.match(rules, /metadata\.get\('recordId', ''\) == recordId/);
+  assert.match(rules, /metadata\.get\('uploadedBy', ''\) == request\.auth\.uid/);
+  assert.match(rules, /metadata\.get\('source', ''\) == '86chaos-document-vault'/);
   assert.match(rules, /request\.resource\.size > 0/);
   assert.match(rules, /request\.resource\.size <= 12 \* 1024 \* 1024/);
   assert.match(rules, /application\/pdf/);

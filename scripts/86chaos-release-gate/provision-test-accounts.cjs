@@ -73,6 +73,17 @@ function safeClaimPatchForAccount(account) {
   };
 }
 
+
+function summarizeCustomClaims(claims = {}) {
+  const customClaimKeysProcessed = Object.keys(claims).sort();
+  const enabledCustomClaims = customClaimKeysProcessed.filter(key => claims[key] === true);
+  return {
+    customClaimKeysProcessed,
+    enabledCustomClaims,
+    qaRoleClaim: claims.qaReleaseGateRole || '',
+  };
+}
+
 function validateProvisionSafety(accounts) {
   const errors = [];
   errors.push(...validateLocalRoleEnv(accounts, EXPECTED_FIREBASE_PROJECT));
@@ -289,7 +300,7 @@ async function provisionTestAccounts(options = {}) {
         email: normalizeEmail(account.email),
         uid: user.uid,
         created: user.created,
-        customClaimsWritten: Object.keys(claims).sort(),
+        ...summarizeCustomClaims(claims),
         expectedSuperAdmin: role.expectedSuperAdmin,
         profileWrite,
       });
@@ -333,7 +344,7 @@ async function provisionTestAccounts(options = {}) {
 if (require.main === module) {
   provisionTestAccounts()
     .then((report) => {
-      console.log(JSON.stringify({ ok: report.ok, skipped: report.skipped, runId: report.runId, firebaseProjectId: report.firebaseProjectId, accounts: report.accounts.map(a => ({ key: a.key, emailEnv: a.emailEnv, email: a.email, uid: a.uid, created: a.created, expectedSuperAdmin: a.expectedSuperAdmin, error: a.error || '' })), errors: report.errors, notes: report.notes }, null, 2));
+      console.log(JSON.stringify({ ok: report.ok, skipped: report.skipped, runId: report.runId, firebaseProjectId: report.firebaseProjectId, accounts: report.accounts.map(a => ({ key: a.key, emailEnv: a.emailEnv, email: a.email, uid: a.uid, created: a.created, customClaimKeysProcessed: a.customClaimKeysProcessed || [], enabledCustomClaims: a.enabledCustomClaims || [], qaRoleClaim: a.qaRoleClaim || '', expectedSuperAdmin: a.expectedSuperAdmin, error: a.error || '' })), errors: report.errors, notes: report.notes }, null, 2));
       if (!report.ok) process.exitCode = 1;
     })
     .catch((error) => {
@@ -349,6 +360,7 @@ module.exports = {
   SAFE_TEMP_EMAIL_RE,
   profileForAccount,
   safeClaimPatchForAccount,
+  summarizeCustomClaims,
   validateProvisionSafety,
   verifyExistingAccountsWithoutProvisioning,
   provisionTestAccounts,
