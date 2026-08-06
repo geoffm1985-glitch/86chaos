@@ -289,6 +289,63 @@ async function dismissNoise(page) {
   try { await page.keyboard.press('Escape'); } catch (_) {}
 }
 
+
+async function visibleDialogSnapshot(page) {
+  return page.locator('[role="dialog"]:visible').evaluateAll((dialogs) => dialogs.map((dialog, index) => {
+    const labelledBy = dialog.getAttribute('aria-labelledby') || '';
+    const labelledNode = labelledBy ? document.getElementById(labelledBy) : null;
+    const heading = dialog.querySelector('h1,h2,h3,[data-dialog-title]');
+    const title = (dialog.getAttribute('aria-label') || labelledNode?.innerText || heading?.innerText || dialog.innerText || '').replace(/\s+/g, ' ').trim().slice(0, 120);
+    return { index, title, text: (dialog.innerText || '').replace(/\s+/g, ' ').trim().slice(0, 260) };
+  })).catch(() => []);
+}
+
+async function dismissBlockingDialogs(page, options = {}) {
+  const maxPasses = options.maxPasses || 4;
+  const dismissed = [];
+  const dangerous = /delete|remove|archive|reset|restore|publish|approve|deny|confirm|yes|ok delete|permanently/i;
+  for (let pass = 0; pass < maxPasses; pass += 1) {
+    const dialogs = await visibleDialogSnapshot(page);
+    const backdropCount = await page.locator('.chaos-modal-backdrop:visible').count().catch(() => 0);
+    if (!dialogs.length && backdropCount === 0) return { ok: true, dismissed, remainingDialogs: [], backdropCount: 0 };
+    const dialog = dialogs[0] || { title: 'modal backdrop', text: '' };
+    const title = dialog.title || 'dialog';
+    const candidates = [];
+    if (title && title !== 'dialog' && title !== 'modal backdrop') candidates.push({ label: `Close ${title}`, exact: true });
+    candidates.push(
+      { label: "Skip and don't show again", exact: true },
+      { label: 'Skip and don\'t show again', exact: true },
+      { label: 'Got it', exact: true },
+      { label: 'Not now', exact: true },
+      { label: 'Maybe later', exact: true },
+      { label: 'Close', exact: true },
+      { label: '×', exact: true }
+    );
+    let used = null;
+    for (const candidate of candidates) {
+      if (dangerous.test(candidate.label)) continue;
+      const locator = page.getByRole('button', { name: candidate.label, exact: candidate.exact }).first();
+      if (await locator.isVisible({ timeout: 650 }).catch(() => false)) {
+        await locator.click({ timeout: 2500 });
+        used = candidate.label;
+        break;
+      }
+    }
+    if (!used) {
+      return { ok: false, dismissed, remainingDialogs: await visibleDialogSnapshot(page), backdropCount: await page.locator('.chaos-modal-backdrop:visible').count().catch(() => 0), failure: `Visible dialog could not be safely dismissed: ${title}` };
+    }
+    await page.waitForTimeout(400);
+    await page.locator('.chaos-modal-backdrop:visible').first().waitFor({ state: 'hidden', timeout: 3500 }).catch(() => {});
+    dismissed.push({ title, control: used });
+  }
+  const remainingDialogs = await visibleDialogSnapshot(page);
+  const backdropCount = await page.locator('.chaos-modal-backdrop:visible').count().catch(() => 0);
+  if (remainingDialogs.length || backdropCount) {
+    return { ok: false, dismissed, remainingDialogs, backdropCount, failure: `Blocking dialogs remained after ${maxPasses} dismiss attempts.` };
+  }
+  return { ok: true, dismissed, remainingDialogs: [], backdropCount: 0 };
+}
+
 async function login(page, email, password, options = {}) {
   await page.goto(appUrl(options.tab || 'today'), { waitUntil: 'domcontentloaded', timeout: 45000 });
   await page.waitForLoadState('domcontentloaded');
@@ -517,5 +574,7 @@ module.exports = {
   seedReportPath,
   mutationSkipMessage,
   chooseQaWorkspace,
+  dismissBlockingDialogs,
+  visibleDialogSnapshot,
   QA_WORKSPACE_NAME,
 };

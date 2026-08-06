@@ -1039,7 +1039,8 @@ const [currentDate, setCurrentDate] = useState(getToday());
   const wantsPublishedSchedule = activeTabState === 'published';
   const wantsScheduleData = wantsPublishedSchedule || (wantsToday && canReadScheduleView) || (wantsScheduleScreen && (canReadScheduleView || canReadScheduleBuilder)) || (['labor', 'ops'].includes(activeTabState) && (canReadScheduleView || canReadOperationsLabor));
   const wantsShiftData = wantsScheduleData && schedulePlan.shiftsEnabled !== false;
-  const wantsTimeOffData = wantsScheduleData && schedulePlan.timeOffEnabled !== false;
+  const userGhostRequestOffPath = Boolean(ghostTenant?.impersonate && activeTabState === 'schedule' && activeScheduleSubTab === 'time-off');
+  const wantsTimeOffData = wantsScheduleData && schedulePlan.timeOffEnabled !== false && !userGhostRequestOffPath;
   const wantsLaborData = (['financials', 'labor', 'sales', 'ops'].includes(activeTabState) || (wantsToday && canReadOperationsLabor)) && canReadOperationsLabor;
   const wantsInventoryData = (((wantsToday || isGlobalSearchOpen) && (canReadBasicInventory || canReadSmartInventory)) || (activeTabState === 'menu-intelligence' && canReadMenuCollections));
   const wantsPrepData = wantsToday; // Prep screen owns its live prep/task listeners; App keeps only Today summaries.

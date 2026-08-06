@@ -127,6 +127,149 @@ function collectFailedEntriesFromSummary(summary = {}, meta = {}) {
   return dedupeSelections(entries);
 }
 
+
+function loadManifestFromRunDir(runDir = '') {
+  if (!runDir) return null;
+  return readJsonIfExists(path.join(runDir, 'failed-only-test-manifest.json'))
+    || readJsonIfExists(path.join(runDir, 'failed-only-manifest-selection.json'))
+    || null;
+}
+
+function selectionKey(row = {}) {
+  const normalized = normalizeSelection(row);
+  return `${normalized.specPath}\u0000${normalized.title}\u0000${normalized.project}`;
+}
+
+function countPlaywrightResults(playwright = {}) {
+  const counts = { total: 0, passed: 0, failed: 0, timedOut: 0, skipped: 0, unexpected: 0 };
+  const walkSuites = (suites = []) => {
+    for (const suite of suites || []) {
+      for (const spec of suite.specs || []) {
+        for (const t of spec.tests || []) {
+          for (const result of t.results || []) {
+            const status = String(result.status || '');
+            counts.total += 1;
+            if (status === 'passed') counts.passed += 1;
+            else if (status === 'skipped') counts.skipped += 1;
+            else if (status === 'timedOut' || /timeout/i.test(String(result.error?.message || ''))) {
+              counts.timedOut += 1;
+              counts.unexpected += 1;
+            } else {
+              counts.failed += 1;
+              counts.unexpected += 1;
+            }
+          }
+        }
+      }
+      walkSuites(suite.suites || []);
+    }
+  };
+  walkSuites(playwright.suites || []);
+  return counts;
+}
+
+function getManifestBaselineId(manifest = {}) {
+  return manifest?.baselineFullRunId || manifest?.baseline?.fullRunId || manifest?.fullRunId || '';
+}
+
+function findLatestCompletedFailedOnlyDescendant({ baselineFullRunId = '', currentRunDir = getRunDir(), resultsRoot = getResultsRoot() } = {}) {
+  const current = path.resolve(currentRunDir || '');
+  return listRunDirs(resultsRoot).find(dir => {
+    if (path.resolve(dir) === current) return false;
+    if (!isFailedOnlyRun(dir)) return false;
+    const playwright = readJsonIfExists(path.join(dir, 'playwright-report.json'));
+    if (!playwright || !Array.isArray(playwright.suites)) return false;
+    const counts = countPlaywrightResults(playwright);
+    if (counts.total <= 0) return false;
+    const manifest = loadManifestFromRunDir(dir) || {};
+    const rowBaseline = getManifestBaselineId(manifest);
+    if (baselineFullRunId && rowBaseline && rowBaseline !== baselineFullRunId) return false;
+    if (baselineFullRunId && !rowBaseline) return false;
+    const state = readJsonIfExists(path.join(dir, 'runner-state.json')) || {};
+    if (state.playwrightStarted === false) return false;
+    return true;
+  }) || '';
+}
+
+function buildNarrowedManifestFromFailedOnlyRun(failedOnlyRunDir, { baselineManifest = null, target = {}, currentRunDir = getRunDir() } = {}) {
+  if (!fs.existsSync(failedOnlyRunDir)) throw new Error(`Previous failed-only run directory does not exist: ${failedOnlyRunDir}`);
+  const previousManifest = loadManifestFromRunDir(failedOnlyRunDir) || {};
+  const playwright = readJsonIfExists(path.join(failedOnlyRunDir, 'playwright-report.json'));
+  if (!playwright || !Array.isArray(playwright.suites)) throw new Error(`Previous failed-only run has no readable Playwright report: ${failedOnlyRunDir}`);
+  const previousMeta = loadRunMeta(failedOnlyRunDir);
+  const counts = countPlaywrightResults(playwright);
+  if (counts.total <= 0) throw new Error('Previous failed-only run did not execute any Playwright tests.');
+  if (counts.unexpected <= 0) throw new Error('Latest compatible failed-only run has zero failed or timed-out tests. Run the complete npm run test:play-store instead of creating a zero-test failed-only run.');
+  const originalByKey = new Map(dedupeSelections(previousManifest.selected || []).map(row => [selectionKey(row), row]));
+  const baseline = baselineManifest || previousManifest;
+  const selected = collectFailedEntriesFromPlaywright(playwright, previousMeta).map((row) => {
+    const normalized = normalizeSelection(row);
+    const original = originalByKey.get(selectionKey(normalized)) || {};
+    const baselineFullRunId = original.baselineFullRunId || baseline.baselineFullRunId || previousManifest.baselineFullRunId || '';
+    const baselineSourceVersion = original.baselineSourceVersion || baseline.baselineSourceVersion || previousManifest.baselineSourceVersion || '';
+    const baselineDeployedVersion = original.baselineDeployedVersion || baseline.baselineDeployedVersion || previousManifest.baselineDeployedVersion || '';
+    return {
+      ...normalized,
+      priorStatus: normalized.priorStatus || 'failed',
+      baselineFullRunId,
+      baselineSourceVersion,
+      baselineDeployedVersion,
+      sourceVersion: baselineSourceVersion,
+      deployedVersion: baselineDeployedVersion,
+      fullRunId: baselineFullRunId,
+      previousFailedOnlyRunId: previousMeta.fullRunId || path.basename(failedOnlyRunDir),
+      previousFailedOnlySourceVersion: previousMeta.sourceVersion || previousManifest.targetSourceVersion || previousManifest.sourceVersion || '',
+      previousFailedOnlyDeployedVersion: previousMeta.deployedVersion || previousManifest.targetDeployedVersion || previousManifest.deployedVersion || '',
+    };
+  });
+  const deduped = dedupeSelections(selected);
+  const previousFailedOnlyRunId = previousMeta.fullRunId || path.basename(failedOnlyRunDir);
+  const previousFailedOnlySourceVersion = previousMeta.sourceVersion || previousManifest.targetSourceVersion || previousManifest.sourceVersion || '';
+  const previousFailedOnlyDeployedVersion = previousMeta.deployedVersion || previousManifest.targetDeployedVersion || previousManifest.deployedVersion || '';
+  return {
+    ok: deduped.length > 0,
+    manifestSchemaVersion: MANIFEST_SCHEMA_VERSION,
+    generatedAt: new Date().toISOString(),
+    source: 'dynamic-latest-compatible-failed-only-playwright-report',
+    selectionSource: 'latest-compatible-failed-only-result',
+    baselineFullRunId: baseline.baselineFullRunId || previousManifest.baselineFullRunId || '',
+    baselineFullRunDir: baseline.baselineFullRunDir || previousManifest.baselineFullRunDir || '',
+    baselineSourceVersion: baseline.baselineSourceVersion || previousManifest.baselineSourceVersion || '',
+    baselineDeployedVersion: baseline.baselineDeployedVersion || previousManifest.baselineDeployedVersion || '',
+    baselineGeneratedAt: baseline.baselineGeneratedAt || previousManifest.baselineGeneratedAt || '',
+    previousFailedOnlyRunId,
+    previousFailedOnlyRunDir: failedOnlyRunDir,
+    previousFailedOnlySourceVersion,
+    previousFailedOnlyDeployedVersion,
+    previousFailedOnlyCounts: counts,
+    targetRunId: target.targetRunId || '',
+    targetSourceVersion: target.targetSourceVersion || '',
+    targetDeployedVersion: target.targetDeployedVersion || '',
+    currentRunDir,
+    selected: deduped,
+    totalSelected: deduped.length,
+    desktopSelected: deduped.filter(item => item.project === 'chromium' || item.projects?.includes('chromium')).length,
+    mobileSelected: deduped.filter(item => item.project === 'mobile-chromium' || item.projects?.includes('mobile-chromium')).length,
+    fullRunId: baseline.baselineFullRunId || previousManifest.baselineFullRunId || '',
+    fullRunDir: baseline.baselineFullRunDir || previousManifest.baselineFullRunDir || '',
+    sourceVersion: baseline.baselineSourceVersion || previousManifest.baselineSourceVersion || '',
+    deployedVersion: baseline.baselineDeployedVersion || previousManifest.baselineDeployedVersion || '',
+    note: 'Failed-only success is diagnostic only. Complete npm run test:play-store is still required for release approval.',
+  };
+}
+
+function selectFailedOnlyManifestForCurrentRun({ currentRunDir = getRunDir(), resultsRoot = getResultsRoot(), target = {} } = {}) {
+  const baselineFullRunDir = findMostRecentCompletedFullRun({ currentRunDir, resultsRoot });
+  if (!baselineFullRunDir) throw new Error('No completed full release-gate run with failed Playwright results was found. Run npm run test:play-store before npm run test:play-store:failed.');
+  const baselineManifest = generateFailedOnlyManifestFromRun(baselineFullRunDir, { write: false, currentRunDir });
+  const latestFailedOnlyRunDir = findLatestCompletedFailedOnlyDescendant({ baselineFullRunId: baselineManifest.baselineFullRunId, currentRunDir, resultsRoot });
+  if (latestFailedOnlyRunDir) {
+    const narrowed = buildNarrowedManifestFromFailedOnlyRun(latestFailedOnlyRunDir, { baselineManifest, target, currentRunDir });
+    return { manifest: narrowed, baselineFullRunDir, latestFailedOnlyRunDir, selectionSource: narrowed.selectionSource };
+  }
+  return { manifest: baselineManifest, baselineFullRunDir, latestFailedOnlyRunDir: '', selectionSource: baselineManifest.source || 'dynamic-most-recent-full-playwright-report' };
+}
+
 function dedupeSelections(rows = []) {
   const deduped = [];
   const seen = new Set();
@@ -371,6 +514,7 @@ function validateManifestForCurrentRun(manifest, options = {}) {
 }
 
 function targetQualifiedManifest(manifest, { targetRunId = '', targetRunDir = '', targetSourceVersion = '', targetDeployedVersion = '' } = {}) {
+  const selected = dedupeSelections((manifest.selected || []).map(row => normalizeSelection(row, manifest)));
   return {
     ...manifest,
     targetRunId,
@@ -380,7 +524,10 @@ function targetQualifiedManifest(manifest, { targetRunId = '', targetRunDir = ''
     copiedToRunId: targetRunId,
     copiedToRunDir: targetRunDir,
     copiedAt: new Date().toISOString(),
-    selected: dedupeSelections((manifest.selected || []).map(row => normalizeSelection(row, manifest))),
+    selected,
+    totalSelected: selected.length,
+    desktopSelected: selected.filter(item => item.project === 'chromium' || item.projects?.includes('chromium')).length,
+    mobileSelected: selected.filter(item => item.project === 'mobile-chromium' || item.projects?.includes('mobile-chromium')).length,
   };
 }
 
@@ -389,6 +536,10 @@ module.exports = {
   normalizeRel,
   readPackageVersion,
   findMostRecentCompletedFullRun,
+  findLatestCompletedFailedOnlyDescendant,
+  buildNarrowedManifestFromFailedOnlyRun,
+  selectFailedOnlyManifestForCurrentRun,
+  countPlaywrightResults,
   generateFailedOnlyManifestFromRun,
   buildFailedOnlyManifest,
   targetQualifiedManifest,

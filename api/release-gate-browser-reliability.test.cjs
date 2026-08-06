@@ -16,6 +16,7 @@ test('operations intelligence listener is empty-safe and tenant constrained with
 
 test('personal reminders use one canonical participant-scoped browser listener', () => {
   const source = read('src/core/personalReminderQueries.js');
+  assert.match(source, /\['participantSchemaVersion',\s*'==',\s*1\]/);
   assert.match(source, /\['participantUserIds',\s*'array-contains',\s*safeUid\]/);
   assert.match(source, /canonical-participant/);
   assert.doesNotMatch(source, /legacy-user-id|legacy-assigned-to|legacy-created-by/);
@@ -48,12 +49,30 @@ test('86Voice close controls have distinct accessible names and tests do not hid
   assert.doesNotMatch(spec, /getByRole\('button',\s*\{ name:\s*\/close 86voice\/i \}\)\.first\(\)/i);
 });
 
+
+test('86Voice test dismisses legitimate blocking dialogs before interacting with the dock', () => {
+  const helpers = read('tests/86chaos-full-audit/utils/audit-helpers.cjs');
+  const spec = read('tests/86chaos-full-audit/11-mobile-desktop-voice-upload.spec.cjs');
+  assert.match(helpers, /async function dismissBlockingDialogs/);
+  assert.match(helpers, /\[role="dialog"\]:visible/);
+  assert.match(helpers, /Skip and don\'t show again|Skip and don't show again/);
+  assert.match(helpers, /chaos-modal-backdrop/);
+  assert.doesNotMatch(helpers, /\.evaluate\(\(\) => document\.querySelector\('\.chaos-modal-backdrop'\)\.remove/);
+  assert.match(spec, /dismissBlockingDialogs\(page/);
+  assert.match(spec, /voice-modal-dismissal/);
+});
+
 test('mobile maintenance action controls keep compact icons with 42px mobile tap targets', () => {
   const source = read('src/features/operations.jsx');
-  assert.match(source, /title="Edit record"/);
-  assert.match(source, /title="Delete record"/);
-  assert.match(source, /min-w-\[42px\]/);
-  assert.match(source, /min-h-\[42px\]/);
+  const styles = read('src/styles.css');
+  assert.match(source, /aria-label="Edit maintenance record"/);
+  assert.match(source, /aria-label="Delete maintenance record"/);
+  assert.match(source, /maintenance-record-action-button/);
+  assert.match(styles, /\.maintenance-record-action-button/);
+  assert.match(styles, /width:\s*42px/);
+  assert.match(styles, /height:\s*42px/);
+  assert.match(styles, /min-width:\s*42px/);
+  assert.match(styles, /min-height:\s*42px/);
 });
 
 test('Audit route owns a named focusable scroll region instead of relying on test-side injection', () => {
@@ -80,6 +99,8 @@ test('failed-only manifest is generated dynamically from the most recent full ru
   const prepare = read('scripts/86chaos-release-gate/prepare-failed-only-manifest.cjs');
   const manifest = read('tests/86chaos-release-gate/failed-only-manifest.cjs');
   assert.match(helper, /findMostRecentCompletedFullRun/);
+  assert.match(helper, /findLatestCompletedFailedOnlyDescendant/);
+  assert.match(helper, /selectionSource:\s*'latest-compatible-failed-only-result'/);
   assert.match(helper, /generateFailedOnlyManifestFromRun/);
   assert.match(prepare, /targetQualifiedManifest/);
   assert.doesNotMatch(manifest, /const FAILED_ONLY_TESTS = \[/);

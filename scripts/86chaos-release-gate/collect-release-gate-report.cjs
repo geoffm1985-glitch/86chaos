@@ -133,10 +133,11 @@ function collectSuites(suites = [], parents = []) {
   }
 }
 if (playwright) collectSuites(playwright.suites || []);
-const failedTests = tests.filter(t => !['passed', 'skipped'].includes(t.status));
 const skippedTests = tests.filter(t => t.status === 'skipped');
 const timedOutTests = tests.filter(t => t.status === 'timedOut' || /timeout/i.test(t.error || ''));
-if (!failedOnlyManifest && playwright && failedTests.length > 0 && String(runnerState.mode || '').toLowerCase() !== 'failed-only') {
+const failedTests = tests.filter(t => !['passed', 'skipped', 'timedOut'].includes(t.status) && !/timeout/i.test(t.error || ''));
+const unexpectedTests = [...failedTests, ...timedOutTests];
+if (!failedOnlyManifest && playwright && unexpectedTests.length > 0 && String(runnerState.mode || '').toLowerCase() !== 'failed-only') {
   try {
     failedOnlyManifest = generateFailedOnlyManifestFromRun(runDir, { write: true });
   } catch (error) {
@@ -230,6 +231,17 @@ const qaSeedAttempted = runnerState.qaSeedAttempted === true || runnerState.qaSe
 const qaSeedPassed = runnerState.qaSeedVerified === true || (seedReportPresent && seedReport.ok === true && seedReport.verification?.ok === true);
 const cleanupAttempted = runnerState.cleanupAttempted === true || cleanupReportPresent;
 const cleanupPassed = runnerState.cleanupCompleted === true || (cleanupReportPresent && cleanupReport.ok === true);
+const runnerStateReconciled = {
+  ...runnerState,
+  globalSetupStarted: runnerState.globalSetupStarted === true || setupState.globalSetupStarted === true || setupState.attempted === true || seedReportPresent,
+  qaSeedProcessStarted: runnerState.qaSeedProcessStarted === true || setupState.qaSeedProcessStarted === true || setupState.attempted === true || seedReportPresent,
+  qaDataWritesStarted: runnerState.qaDataWritesStarted === true || setupState.qaDataWritesStarted === true || setupState.writesStarted === true || seedReportPresent,
+  qaRestaurantCreated: runnerState.qaRestaurantCreated === true || setupState.qaRestaurantCreated === true || setupState.createdRestaurant === true || setupState.restaurantCreated === true || Boolean(seedReport.restaurantId || seedReport.profile?.restaurantId),
+  qaSeedAttempted,
+  qaSeedVerified: qaSeedPassed,
+  cleanupAttempted,
+  cleanupCompleted: cleanupPassed,
+};
 const blockedBeforeTestExecution = Boolean(noTestsExecuted && (blockedBeforePlaywright || runnerState.blockedBeforeTestExecution === true || !playwrightStarted));
 const releaseGateStatus = ok => ok ? 'PASS' : (blockedBeforeTestExecution ? 'BLOCKED BEFORE TEST EXECUTION' : 'FAIL');
 const executionBlockedMessage = blockedBeforePlaywright
@@ -271,7 +283,7 @@ const groupRe = [
   [/coverage|JavaScript/i, 'runtime-coverage'],
   [/control|mutating/i, 'control-census'],
 ];
-for (const t of failedTests) {
+for (const t of unexpectedTests) {
   const text = `${t.title}\n${t.error}`;
   addGroup(groupRe.find(([re]) => re.test(text))?.[1] || 'other', t.title);
 }
@@ -306,7 +318,7 @@ const primaryBlockingFailure = preflightFailures[0]
   || cleanupFailures[0]
   || noTestsSelectedFailure
   || (rulesGateReport?.firstActionableFailure || '')
-  || (failedTests[0] ? `${failedTests[0].title}: ${failedTests[0].error}` : '')
+  || (unexpectedTests[0] ? `${unexpectedTests[0].title}: ${unexpectedTests[0].error}` : '')
   || runnerBlockingReason
   || (missingArtifacts[0] ? `Missing artifact: ${missingArtifacts[0]}` : '');
 
@@ -344,7 +356,7 @@ const summary = {
   outcome: releaseGateStatus(ok),
   blockedBeforeTestExecution,
   primaryBlockingFailure,
-  runnerState,
+  runnerState: runnerStateReconciled,
   dependencyPreflight: dependencyPreflight && hasOwn(dependencyPreflight, 'ok') ? dependencyPreflight : null,
   dependencyFailures,
   accountProvisionFailures,
@@ -354,7 +366,7 @@ const summary = {
   nodeFailures,
   rulesGateReport: rulesGateReport && Object.keys(rulesGateReport).length ? { ok: rulesGateReport.ok, totalCases: rulesGateReport.totalCases, passed: rulesGateReport.passed, failed: rulesGateReport.failed, blocked: rulesGateReport.blocked, firstActionableFailure: rulesGateReport.firstActionableFailure || '' } : null,
   testAccountConfigurationFailure: roleFailures.length > 0,
-  playwright: { totalResults: tests.length, status: blockedBeforeTestExecution ? 'BLOCKED BEFORE TEST EXECUTION' : (noTestsExecuted ? 'No tests executed' : 'Tests executed'), failed: failedTests.length, timedOut: timedOutTests.length, skipped: skippedTests.length, failedTests: blockedBeforeTestExecution ? [] : failedTests.slice(0, 200), skippedTests: skippedTests.slice(0, 200) },
+  playwright: { totalResults: tests.length, status: blockedBeforeTestExecution ? 'BLOCKED BEFORE TEST EXECUTION' : (noTestsExecuted ? 'No tests executed' : 'Tests executed'), passed: tests.filter(t => t.status === 'passed').length, failed: failedTests.length, timedOut: timedOutTests.length, skipped: skippedTests.length, blocked: blockedBeforeTestExecution ? 1 : 0, notRun: blockedBeforeTestExecution ? 1 : 0, unexpected: unexpectedTests.length, failedTests: blockedBeforeTestExecution ? [] : unexpectedTests.slice(0, 200), timedOutTests: timedOutTests.slice(0, 200), skippedTests: skippedTests.slice(0, 200) },
   attemptStatus: {
     browserInstallation: { attempted: runnerPhase === 'install-chromium' || runnerState.browserInstallPassed === true, status: runnerState.browserInstallPassed === true ? 'passed' : (blockedBeforePlaywright ? 'blocked' : 'not_run') },
     testAccountProvisioning: { attempted: runnerState.testAccountProvisionAttempted === true, status: runnerState.testAccountProvisionPassed === true ? 'passed' : (runnerState.testAccountProvisionAttempted === true ? 'failed' : (blockedBeforePlaywright ? 'blocked' : 'not_run')) },
@@ -374,7 +386,7 @@ const summary = {
     rulesTests: nodeTestSummary?.results?.find?.(row => /rules/i.test(row.group || '')) || null,
     testAccountVerification: roleVerification?.ok === true,
     qaSeed: seedReport?.ok === true && seedReport?.verification?.ok === true,
-    playwrightTotals: { passed: tests.filter(t => t.status === 'passed').length, failed: failedTests.length, timedOut: timedOutTests.length, skipped: skippedTests.length, blocked: blockedBeforeTestExecution ? 1 : 0, notRun: blockedBeforeTestExecution ? 1 : 0 },
+    playwrightTotals: { passed: tests.filter(t => t.status === 'passed').length, failed: failedTests.length, timedOut: timedOutTests.length, skipped: skippedTests.length, blocked: blockedBeforeTestExecution ? 1 : 0, notRun: blockedBeforeTestExecution ? 1 : 0, unexpected: unexpectedTests.length },
     cleanup: cleanupReport?.ok === true,
     remainingQaRecordsOrStorageObjects: cleanupReport?.remaining || {},
     finalState: ok ? 'RELEASE READY' : (blockedBeforeTestExecution ? 'BLOCKED' : 'FAILED'),
@@ -474,7 +486,7 @@ const lines = [
   ...(failureGroups.length ? failureGroups.map(g => `- ${g.group}: ${g.examples.join(' | ')}`) : ['- None']),
   '',
   'FAILED TESTS',
-  ...(failedTests.length ? failedTests.map(t => `- ${t.title}: ${t.error}`) : ['- None']),
+  ...(unexpectedTests.length ? unexpectedTests.map(t => `- ${t.title}: ${t.error}`) : ['- None']),
   '',
   'SKIPPED TESTS',
   ...(skippedTests.length ? skippedTests.map(t => `- ${t.title}`) : ['- None']),

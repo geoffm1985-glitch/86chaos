@@ -1,8 +1,7 @@
 const path = require('path');
 const { ensureRunDir, readJsonIfExists, writeJson } = require('./run-context.cjs');
 const {
-  findMostRecentCompletedFullRun,
-  generateFailedOnlyManifestFromRun,
+  selectFailedOnlyManifestForCurrentRun,
   readPackageVersion,
   targetQualifiedManifest,
   validateManifestForCurrentRun,
@@ -24,25 +23,27 @@ function fail(message, details = []) {
   process.exit(1);
 }
 
-const fullRunDir = findMostRecentCompletedFullRun({ currentRunDir: runDir });
-if (!fullRunDir) {
-  fail('No completed full release-gate run with failed Playwright results was found. Run npm run test:play-store before npm run test:play-store:failed.');
-}
-
 const preflight = readJsonIfExists(path.join(runDir, 'environment-preflight.json')) || {};
 const currentSourceVersion = readPackageVersion();
 const currentDeployedVersion = preflight.deployedVersion || preflight.visibleVersion || '';
 const firebaseProjectId = preflight.firebaseProjectId || '';
 const appUrl = preflight.appUrl || process.env.APP_URL || process.env.CHAOS_BASE_URL || '';
 
-let baselineManifest;
+let selectedSource;
 try {
-  baselineManifest = generateFailedOnlyManifestFromRun(fullRunDir, { write: false, currentRunDir: runDir });
+  selectedSource = selectFailedOnlyManifestForCurrentRun({
+    currentRunDir: runDir,
+    target: {
+      targetRunId: runId,
+      targetSourceVersion: currentSourceVersion,
+      targetDeployedVersion: currentDeployedVersion,
+    },
+  });
 } catch (error) {
   fail('Failed-only baseline evidence is malformed or unsafe.', [error?.message || String(error)]);
 }
-
-const copied = targetQualifiedManifest(baselineManifest, {
+const fullRunDir = selectedSource.baselineFullRunDir;
+const copied = targetQualifiedManifest(selectedSource.manifest, {
   targetRunId: runId,
   targetRunDir: runDir,
   targetSourceVersion: currentSourceVersion,
@@ -67,6 +68,8 @@ writeJson(path.join(runDir, 'failed-only-manifest-selection.json'), {
   runId,
   mode: 'failed-only',
   sourceFullRunDir: fullRunDir,
+  previousFailedOnlyRunDir: selectedSource.latestFailedOnlyRunDir || '',
+  selectionSource: copied.selectionSource || selectedSource.selectionSource || '',
   manifestPath: currentManifestPath,
   baseline: {
     fullRunId: copied.baselineFullRunId,
@@ -94,12 +97,17 @@ writeJson(validationPath, {
   baselineDeployedVersion: copied.baselineDeployedVersion,
   targetSourceVersion: currentSourceVersion,
   targetDeployedVersion: currentDeployedVersion,
+  selectionSource: copied.selectionSource || selectedSource.selectionSource || '',
+  previousFailedOnlyRunId: copied.previousFailedOnlyRunId || '',
+  previousFailedOnlySourceVersion: copied.previousFailedOnlySourceVersion || '',
+  previousFailedOnlyDeployedVersion: copied.previousFailedOnlyDeployedVersion || '',
   totalSelected: copied.totalSelected,
   desktopSelected: copied.desktopSelected,
   mobileSelected: copied.mobileSelected,
   generatedAt: new Date().toISOString(),
 });
 console.log(`Prepared dynamic failed-only manifest from ${fullRunDir}`);
+if (copied.previousFailedOnlyRunId) console.log(`Narrowed from failed-only descendant: ${copied.previousFailedOnlyRunId} (${copied.previousFailedOnlySourceVersion}/${copied.previousFailedOnlyDeployedVersion})`);
 console.log(`Baseline: ${copied.baselineSourceVersion}/${copied.baselineDeployedVersion}`);
 console.log(`Target: ${currentSourceVersion}/${currentDeployedVersion}`);
 console.log(`Selected ${copied.selected.length} exact failed project/test combination(s).`);

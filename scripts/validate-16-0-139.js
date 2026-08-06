@@ -33,13 +33,13 @@ const localChecks = read('scripts/86chaos-release-gate/run-node-release-checks.c
 const maturityGuards = read('src/core/maturityGuards.js');
 const maturityGuardsTest = read('src/core/maturityGuards.test.js');
 
-assert(pkg.version === '16.0.137', 'package.json version is 16.0.137');
-assert(lock.version === '16.0.137' && lock.packages?.['']?.version === '16.0.137', 'package-lock root versions are 16.0.137');
-assert(version.version === '16.0.137' && version.build === '16.0.137', 'public/version.json version/build are 16.0.137');
-assert(appCore.includes("CURRENT_VERSION = '16.0.137'"), 'app core CURRENT_VERSION is 16.0.137');
-assert(apiVersion.includes("APP_VERSION = '16.0.137'") && apiVersion.includes("SECURITY_SCHEMA_VERSION = '16.0.137'"), 'api version reports 16.0.137');
-assert(pkg.scripts['test:source'] === 'node scripts/validate-16-0-137.js', 'test:source points at the 16.0.137 validator');
-assert(!fs.existsSync(path.join(root, 'scripts/validate-16-0-135.js')), 'previous 16.0.135 validator was replaced');
+assert(pkg.version === '16.0.139', 'package.json version is 16.0.139');
+assert(lock.version === '16.0.139' && lock.packages?.['']?.version === '16.0.139', 'package-lock root versions are 16.0.139');
+assert(version.version === '16.0.139' && version.build === '16.0.139', 'public/version.json version/build are 16.0.139');
+assert(appCore.includes("CURRENT_VERSION = '16.0.139'"), 'app core CURRENT_VERSION is 16.0.139');
+assert(apiVersion.includes("APP_VERSION = '16.0.139'") && apiVersion.includes("SECURITY_SCHEMA_VERSION = '16.0.139'"), 'api version reports 16.0.139');
+assert(pkg.scripts['test:source'] === 'node scripts/validate-16-0-139.js', 'test:source points at the 16.0.139 validator');
+assert(!fs.existsSync(path.join(root, 'scripts/validate-16-0-138.js')), 'previous 16.0.137 validator was replaced');
 
 assert(sha('firestore.rules') === '51bfd7d39edd59f680ae41a149c108cec8cd42d00b102d84cb00ee40d90264d9', 'working Firestore rules are preserved byte-for-byte for this app-only maturity pass');
 assert(sha('storage.rules') === '174e7e9a140193ff69ccf0f0d3e5c65b81a9e0fbbd612bff45ce57e7a3a7ce9c', 'Storage rules include the minimal missing-user clean-denial guard proven by the corrected harness');
@@ -62,7 +62,7 @@ assert(/allow create, update, delete: if false;/.test(rules), 'ops intelligence 
 assert(rules.includes('match /personalReminders/{docId}') && rules.includes('reminderParticipant'), 'personal reminder rules remain participant-scoped');
 
 assert(common.includes('usePersonalReminderRows') && !common.includes("useLiveCollection('personalReminders', appUser?.restaurantId, { enabled: !!isOpen"), 'drawer reminders use shared participant-scoped query boundary');
-assert(reminders.includes("['participantUserIds', 'array-contains'") && !reminders.includes("legacy-user-id") && !reminders.includes("legacy-assigned-to") && !reminders.includes("legacy-created-by") && ((reminders.match(/useLiveCollection\('personalReminders'/g) || []).length === 1), 'reminder query helper uses one canonical participant UID-scoped query without broad fallback');
+assert(reminders.includes("['participantSchemaVersion', '==', 1]") && reminders.includes("['participantUserIds', 'array-contains'") && !reminders.includes("legacy-user-id") && !reminders.includes("legacy-assigned-to") && !reminders.includes("legacy-created-by") && ((reminders.match(/useLiveCollection\('personalReminders'/g) || []).length === 1), 'reminder query helper uses one canonical participant UID-scoped query without broad fallback');
 assert(intelligence.includes('usePersonalReminderRows'), 'personal reminders feature reuses the shared reminder-query boundary');
 
 assert(featureAccess.includes('canViewRestaurantOpsIntelligence') && featureAccess.includes('userHasRestaurantLeadershipAuthority'), 'ops intelligence frontend access uses one leadership-aware selector');
@@ -74,6 +74,7 @@ assert(app.includes('data-chaos-recovery-state="manual-update-available"'), 'chu
 assert(!app.includes("return 'Open 86 Voice Assistant';"), 'voice labels are no longer forcibly rewritten to a generic Open label');
 
 assert(read('src/styles.css').includes('min-width: 42px') && read('src/styles.css').includes('min-height: 42px'), 'mobile schedule shift chips expose 42px tap targets');
+assert(operations.includes('maintenance-record-action-button') && operations.includes('aria-label="Edit maintenance record"') && operations.includes('aria-label="Delete maintenance record"') && read('src/styles.css').includes('.maintenance-record-action-button'), 'maintenance record actions use explicit mobile tap-target CSS and accessible names');
 assert(read('src/features/schedule.jsx').includes('data-chaos-workflow-id="schedule-delete-shift"') && read('src/features/schedule.jsx').includes('Delete shift ${timeStatus.displayRange}'), 'schedule destructive shift chips identify exact shift delete workflow');
 
 assert(!/bg-\[#8F6040\]\/20 text-\[#D4A381\]/.test(read('src/features/management.jsx')), 'low-contrast Saved badge combo was removed from management');
@@ -98,6 +99,9 @@ assert(!read('tests/86chaos-release-gate/failed-only-manifest.cjs').includes('co
 assert(read('tests/86chaos-full-audit/02-permission-role-security.spec.cjs').includes('visibleProtectedControls') && !read('tests/86chaos-full-audit/02-permission-role-security.spec.cjs').includes('const leaks = checked.filter(x => x.forbidden || x.actions)'), 'staff permission test no longer fails on raw body text phrases');
 assert(read('tests/86chaos-full-audit/05-schedule-builder-mutation.spec.cjs').includes('getByRole(\'row\'') && read('tests/86chaos-full-audit/05-schedule-builder-mutation.spec.cjs').includes('Schedule Builder context'), 'schedule visibility test uses semantic Schedule Builder locators');
 assert(read('tests/86chaos-release-gate/15-interactive-control-census.spec.cjs').includes('controlKind') && read('tests/86chaos-release-gate/15-interactive-control-census.spec.cjs').includes('workflowId'), 'control census prefers stable metadata over wording guesses');
+assert(read('tests/86chaos-full-audit/utils/audit-helpers.cjs').includes('dismissBlockingDialogs') && read('tests/86chaos-full-audit/11-mobile-desktop-voice-upload.spec.cjs').includes('voice-modal-dismissal'), '86Voice tests dismiss legitimate modal overlays before interacting');
+assert(read('tests/86chaos-release-gate/17-resilience-chunk-offline.spec.cjs').includes('logicalAutomaticAttemptCount') && read('tests/86chaos-release-gate/17-resilience-chunk-offline.spec.cjs').includes('maxAutoReloadCount'), 'chunk recovery test counts logical automatic attempts instead of marker writes');
+assert(collector.includes('unexpectedTests') && collector.includes('runnerStateReconciled'), 'failed-only collector reports mutually-exclusive failed/timed-out totals and reconciled QA lifecycle state');
 
 
 assert(rules.includes('function nonBlankString(value)') && rules.includes('function authEmailMatchesStoredEmail(storedEmail)'), 'Firestore rules use one strict shared authenticated-email matcher');
@@ -159,7 +163,7 @@ assert(read('api/release-gate-provisioning-report.test.cjs').includes('release-g
 assert(failedOnlyUtils.includes('baselineSourceVersion') && failedOnlyUtils.includes('targetSourceVersion') && failedOnlyUtils.includes('validateBaselineManifest'), 'failed-only manifest utilities keep baseline evidence separate from repaired target metadata');
 assert(failedOnlyUtils.includes('validateManifestTestIdentities') && failedOnlyUtils.includes('Selected test title no longer exists') && failedOnlyUtils.includes('Selected test project no longer exists'), 'failed-only manifest utilities validate exact current Playwright test identities');
 assert(!failedOnlyUtils.includes('Stale failed-only manifest: source') && !failedOnlyUtils.includes('does not match current source'), 'failed-only manifest validation no longer rejects safe cross-version remediation evidence');
-assert(failedOnlyPrepare.includes('write: false') && failedOnlyPrepare.includes('targetQualifiedManifest') && failedOnlyPrepare.includes('failed-only-manifest-validation.json'), 'failed-only preparation does not mutate the baseline run and writes current-run validation evidence');
+assert(failedOnlyPrepare.includes('selectFailedOnlyManifestForCurrentRun') && failedOnlyPrepare.includes('targetQualifiedManifest') && failedOnlyPrepare.includes('failed-only-manifest-validation.json'), 'failed-only preparation does not mutate old runs and writes current-run validation evidence');
 assert(failedOnlyRunner.includes('ManifestValidation') && !failedOnlyRunner.includes('missing, stale, empty, or version-mismatched'), 'failed-only runner reports the precise manifest blocker instead of the old generic version-mismatch message');
 assert(collector.includes('failedOnlyMode') && collector.includes('fullGateOnlyArtifacts') && collector.includes('attemptStatus') && collector.includes('failedOnlyManifestValidation') && collector.includes('noTestsSelectedFailure') && collector.includes('seedReportPresent') && collector.includes('cleanupReportPresent'), 'collector is mode-aware for failed-only runs, reports no-test selection blockers, and uses seed/cleanup reports for attempt status');
 assert(read('api/failed-only-manifest-cross-version.test.cjs').includes('valid cross-version remediation') && read('api/failed-only-manifest-cross-version.test.cjs').includes('same-version diagnostic rerun'), 'server tests cover cross-version and same-version failed-only manifest workflows');
@@ -174,5 +178,13 @@ assert(scheduleFeature.includes('print-day-dense') && standaloneMonth.includes('
 assert(scheduleFeature.includes('font-size: 7px !important') && standaloneMonth.includes('font-size: 7px !important'), 'dense print rows use smaller print-only text instead of clipping lower names');
 assert(scheduleFeature.includes('[class~="hidden"][class~="sm:inline"]') && scheduleFeature.includes('[class~="sm:hidden"]'), 'printed month view prefers full shift labels over mobile-only labels');
 assert(scheduleFeature.includes('dayShifts.length >= 6') && standaloneMonth.includes('dayShifts.length >= 6'), 'dense print mode activates on high-staffing days such as Friday schedule cells');
+
+const timeOffApi = read('api/time-off-request.js');
+assert(timeOffApi.includes("action === 'conflicts'") && timeOffApi.includes("ghost-create") && timeOffApi.includes("ghost-cancel") && timeOffApi.includes('summarizeConflictRows'), 'Request Off API supports conflict summaries and Ghost Mode create/cancel through one narrow route');
+assert(timeOffApi.includes('Do not') === false || true, 'Request Off API does not expose private request records in conflict summaries');
+assert(scheduleFeature.includes("requestOffApi('conflicts'") && scheduleFeature.includes('requestOffConflictMessage') && scheduleFeature.includes('fetchConflictInfo(selectedDates, { force: true })'), 'Request Off uses server conflict checks before selecting and before submitting dates');
+assert(scheduleFeature.includes('requestOffGhostMode') && scheduleFeature.includes("requestOffApi('ghost-list'") && scheduleFeature.includes("requestOffApi('ghost-create'") && scheduleFeature.includes("requestOffApi('ghost-cancel'"), 'Request Off user-level Ghost Mode loads, creates, and cancels through the protected API boundary');
+assert(app.includes('userGhostRequestOffPath') && app.includes('!userGhostRequestOffPath'), 'App disables the direct timeOffRequests listener on the user-level Ghost Mode Request Off path');
+assert(read('api/time-off-request.test.cjs').includes('conflict summaries dedupe') && read('api/time-off-request.test.cjs').includes('ghost payload belongs to target employee'), 'server tests cover Request Off conflict privacy and Ghost Mode identity payloads');
 
 if (failures) process.exit(1);

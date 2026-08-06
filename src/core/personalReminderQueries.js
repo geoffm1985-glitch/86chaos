@@ -31,7 +31,7 @@ export const buildReminderQuerySpecs = (uid = '') => {
   const safeUid = String(uid || '').trim();
   if (!safeUid) return [];
   return [
-    { key: 'canonical-participant', whereClauses: [['participantUserIds', 'array-contains', safeUid]] }
+    { key: 'canonical-participant', whereClauses: [['participantSchemaVersion', '==', 1], ['participantUserIds', 'array-contains', safeUid]] }
   ];
 };
 

@@ -1,14 +1,14 @@
 {
-  "version": "16.0.137",
-  "name": "86 Chaos 16.0.137 Failed-Only Playwright Selection Fix",
-  "build": "16.0.137",
-  "label": "86 Chaos 16.0.137 Failed-Only Playwright Selection Fix",
-  "releasedAt": "2026-08-06T16:16:00-05:00",
-  "releaseTitle": "Failed-Only Playwright Selection Fix",
+  "version": "16.0.139",
+  "name": "86 Chaos 16.0.139 Reminder Query and Failed-Only Narrowing Fix",
+  "build": "16.0.139",
+  "label": "86 Chaos 16.0.139 Reminder Query and Failed-Only Narrowing Fix",
+  "releasedAt": "2026-08-06T17:33:00-05:00",
+  "releaseTitle": "Reminder Query and Failed-Only Narrowing Fix",
   "notes": [
-    "Fixes failed-only Playwright selection so exact prior failures are actually discovered and executed instead of producing a false No tests found blocker.",
-    "Keeps baseline failure evidence separate from the repaired target version and preserves the 16.0.136 print-calendar/browser fixes.",
-    "Preserves Firebase rules, indexes, config, credentials, schedule data, publishing, filters, and real app behavior."
+    "Adds the canonical participantSchemaVersion constraint to the personal reminder browser query so it matches the existing rules without weakening access.",
+    "Narrows failed-only release-gate reruns from the latest compatible failed-only descendant while preserving the original full-run lineage.",
+    "Fixes 86Voice modal dismissal, maintenance tap-target CSS, chunk-recovery attempt counting, and failed-only reporting totals while preserving Firebase rules and real app behavior."
   ],
-  "title": "86 Chaos 16.0.137 Failed-Only Playwright Selection Fix"
+  "title": "86 Chaos 16.0.139 Reminder Query and Failed-Only Narrowing Fix"
 }

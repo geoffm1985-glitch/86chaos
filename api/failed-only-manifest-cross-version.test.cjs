@@ -10,6 +10,8 @@ const {
   targetQualifiedManifest,
   validateManifestForCurrentRun,
   validateManifestTestIdentities,
+  buildNarrowedManifestFromFailedOnlyRun,
+  countPlaywrightResults,
 } = require('../scripts/86chaos-release-gate/failed-only-manifest-utils.cjs');
 
 const BASELINE_SELECTIONS = [
@@ -59,6 +61,43 @@ function makeBaselineRun({ sourceVersion = '16.0.133', deployedVersion = '16.0.1
   writeJson(path.join(dir, 'runner-state.json'), { runId: 'baseline-run', mode, playwrightStarted });
   writeJson(path.join(dir, 'environment-preflight.json'), { runId: 'baseline-run', sourceVersion, deployedVersion, visibleVersion: deployedVersion, firebaseProjectId: 'chaos-test-d1601' });
   if (selections) writeJson(path.join(dir, 'playwright-report.json'), makePlaywrightReport(selections));
+  return dir;
+}
+
+
+function makeFailedOnlyRunFromBaseline(manifest, { sourceVersion = '16.0.137', deployedVersion = '16.0.137' } = {}) {
+  const dir = tempDir();
+  writeJson(path.join(dir, 'runner-state.json'), { runId: 'failed-only-descendant', mode: 'failed-only', playwrightStarted: true, cleanupCompleted: true });
+  writeJson(path.join(dir, 'environment-preflight.json'), { runId: 'failed-only-descendant', sourceVersion, deployedVersion, visibleVersion: deployedVersion, firebaseProjectId: 'chaos-test-d1601' });
+  writeJson(path.join(dir, 'failed-only-test-manifest.json'), manifest);
+  const passingKeys = new Set([
+    'chromium|86chaos-full-audit/02-permission-role-security.spec.cjs',
+    'mobile-chromium|86chaos-full-audit/02-permission-role-security.spec.cjs',
+    'chromium|86chaos-release-gate/16-accessibility-release-gate.spec.cjs',
+    'mobile-chromium|86chaos-release-gate/16-accessibility-release-gate.spec.cjs',
+  ]);
+  const timedOutKeys = new Set([
+    'chromium|86chaos-full-audit/11-mobile-desktop-voice-upload.spec.cjs',
+    'mobile-chromium|86chaos-full-audit/11-mobile-desktop-voice-upload.spec.cjs',
+  ]);
+  const report = {
+    suites: [{
+      title: 'failed-only descendant fixture',
+      specs: manifest.selected.map((item, index) => {
+        const key = `${item.project}|${item.specPath}`;
+        const status = passingKeys.has(key) ? 'passed' : (timedOutKeys.has(key) ? 'timedOut' : 'failed');
+        return {
+          title: item.title,
+          file: item.specPath,
+          tests: [{
+            projectName: item.project,
+            results: [{ status, duration: 1000 + index, error: status === 'passed' ? undefined : { message: `${status} ${index}` } }],
+          }],
+        };
+      }),
+    }],
+  };
+  writeJson(path.join(dir, 'playwright-report.json'), report);
   return dir;
 }
 
@@ -145,6 +184,43 @@ test('current test identity validation rejects removed specs, titles, projects, 
   assert.match(validateManifestTestIdentities(missingTitle, { root }).errors.join('\n'), /title no longer exists/);
   assert.match(validateManifestTestIdentities(missingProject, { root }).errors.join('\n'), /project no longer exists/);
   assert.match(validateManifestTestIdentities(empty, { root }).errors.join('\n'), /selected zero tests/);
+});
+
+
+test('latest compatible failed-only descendant narrows selection to nine remaining failures and timeouts', () => {
+  const baselineManifest = buildAcceptedManifest('16.0.137');
+  const failedOnlyDir = makeFailedOnlyRunFromBaseline(baselineManifest);
+  const narrowed = buildNarrowedManifestFromFailedOnlyRun(failedOnlyDir, {
+    baselineManifest,
+    target: { targetRunId: 'target-138', targetSourceVersion: '16.0.138', targetDeployedVersion: '16.0.138' },
+    currentRunDir: tempDir(),
+  });
+  const selectedKeys = narrowed.selected.map(item => `${item.project}|${item.specPath}`);
+
+  assert.equal(narrowed.selectionSource, 'latest-compatible-failed-only-result');
+  assert.equal(narrowed.baselineSourceVersion, '16.0.133');
+  assert.equal(narrowed.previousFailedOnlySourceVersion, '16.0.137');
+  assert.equal(narrowed.targetSourceVersion, '16.0.138');
+  assert.equal(narrowed.totalSelected, 9);
+  assert.equal(narrowed.desktopSelected, 4);
+  assert.equal(narrowed.mobileSelected, 5);
+  assert.equal(selectedKeys.includes('chromium|86chaos-full-audit/02-permission-role-security.spec.cjs'), false);
+  assert.equal(selectedKeys.includes('mobile-chromium|86chaos-release-gate/16-accessibility-release-gate.spec.cjs'), false);
+  assert.equal(selectedKeys.includes('mobile-chromium|86chaos-release-gate/15-interactive-control-census.spec.cjs'), true);
+});
+
+test('failed-only status counts are mutually exclusive', () => {
+  const manifest = buildAcceptedManifest('16.0.137');
+  const failedOnlyDir = makeFailedOnlyRunFromBaseline(manifest);
+  const report = JSON.parse(fs.readFileSync(path.join(failedOnlyDir, 'playwright-report.json'), 'utf8'));
+  const counts = countPlaywrightResults(report);
+
+  assert.equal(counts.total, 13);
+  assert.equal(counts.passed, 4);
+  assert.equal(counts.failed, 7);
+  assert.equal(counts.timedOut, 2);
+  assert.equal(counts.skipped, 0);
+  assert.equal(counts.unexpected, 9);
 });
 
 test('failed-only reporting and runner source keep baseline and target distinct', () => {

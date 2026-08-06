@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { Bell, Check, Camera, ChevronLeft, ChevronRight, MessageSquare, Plus, Trash2, Users, Calendar, Clock, X, Loader2, Package, ClipboardList, Menu, Settings, LogOut, Shield, Send, Repeat, Edit, Moon, Sun, TrendingUp, BookOpen, Search, ChefHat, Scale, Coffee, Star, Bug, Wrench, Globe } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
 import { getFirestore, collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, where, getDoc, setDoc, getDocs, getDocsFromServer, writeBatch, orderBy, limit as firestoreLimit } from 'firebase/firestore';
@@ -4394,6 +4394,29 @@ const TabAvailability = ({ availabilityRecords = [], appUser, users = [], addToa
   );
 };
 
+
+const isUserLevelGhostTimeOff = (user = {}) => Boolean(user?.isGhost === true && user?.ghostMode === 'user');
+const requestOffTargetIdForUser = (user = {}) => String(user?.ghostTargetUserId || user?.authUid || user?.uid || user?.userId || user?.id || '').trim();
+const requestOffCacheKey = (restaurantId = '', date = '', user = {}) => [restaurantId, date, requestOffTargetIdForUser(user), isUserLevelGhostTimeOff(user) ? 'ghost' : 'self'].join('|');
+const parseRequestOffApiPayload = async (response) => {
+  const contentType = String(response?.headers?.get?.('content-type') || '').toLowerCase();
+  if (contentType.includes('application/json')) return response.json().catch(() => ({}));
+  return {};
+};
+const requestOffConflictMessage = (dateKey = '', info = {}) => {
+  const count = Number(info?.count || 0);
+  const peopleText = count === 1 ? '1 person has' : `${count} people have`;
+  const names = Array.isArray(info?.names) ? info.names.filter(Boolean) : [];
+  const previewNames = names.slice(0, 4).join(', ');
+  return `${formatDisplayDate(dateKey)} has already been requested off.\n\n${peopleText} requested this day off before you${previewNames ? ` (${previewNames}${count > 4 ? ', ...' : ''})` : ''}.\n\nIt might not be available. Do you still want to request it?`;
+};
+const normalizeConflictResult = (row = {}, dateKey = '') => ({
+  date: row?.date || dateKey,
+  hasConflict: row?.hasConflict === true || Number(row?.count || 0) > 0,
+  count: Number(row?.count || 0) || 0,
+  names: Array.isArray(row?.names) ? row.names.map(v => String(v || '').trim()).filter(Boolean).slice(0, 8) : []
+});
+
 const TabTimeOff = ({ timeOffRequests, appUser, users, addToast, events = [], shifts = [], clientData = null }) => {
   const [calMonth, setCalMonth] = useState(getToday().substring(0, 7));
   const [selectedDates, setSelectedDates] = useState([]);
@@ -4405,20 +4428,31 @@ const TabTimeOff = ({ timeOffRequests, appUser, users, addToast, events = [], sh
   const [customStart, setCustomStart] = useState(getToday());
   const [customEnd, setCustomEnd] = useState(getToday());
   const [selectedRequestIds, setSelectedRequestIds] = useState([]);
+  const [ghostTimeOffRequests, setGhostTimeOffRequests] = useState([]);
+  const [ghostListStatus, setGhostListStatus] = useState('idle');
+  const [checkingDate, setCheckingDate] = useState('');
+  const [isSubmittingTimeOff, setIsSubmittingTimeOff] = useState(false);
+  const [acknowledgedConflicts, setAcknowledgedConflicts] = useState({});
+  const conflictCacheRef = useRef(new Map());
+  const inFlightConflictRef = useRef(new Map());
 
+  const requestOffGhostMode = isUserLevelGhostTimeOff(appUser);
   const perms = appUser?.permissions || {};
-  const canManage = !!(appUser?.isSuperAdmin || appUser?.isAdmin || perms.schedule || perms.team);
-  const authUserId = auth?.currentUser?.uid || appUser?.authUid || appUser?.uid || appUser?.id || '';
+  const canManage = !requestOffGhostMode && !!(appUser?.isSuperAdmin || appUser?.isAdmin || perms.schedule || perms.team);
+  const authUserId = requestOffGhostMode
+    ? requestOffTargetIdForUser(appUser)
+    : (auth?.currentUser?.uid || appUser?.authUid || appUser?.uid || appUser?.id || '');
   const myId = authUserId;
   const schedulePublishingSettings = getSchedulePublishingSettings(appUser, clientData);
-  const schedulePerson = getSchedulePersonForAppUser(appUser, users);
+  const schedulePerson = requestOffGhostMode ? { ...appUser, id: authUserId, userId: authUserId, authUid: authUserId, uid: authUserId } : getSchedulePersonForAppUser(appUser, users);
   const postPublishedTimeOffAllowed = schedulePublishingSettings.allowPostPublishedTimeOff;
   const monthDays = Array.from({length: getDaysInMonth(calMonth)}).map((_, i) => `${calMonth}-${String(i+1).padStart(2, '0')}`);
   const firstDayOffset = new Date(calMonth+'-01T12:00:00').getDay();
   const monthEvents = events.filter(e => e.type === 'special_event' && e.date?.startsWith(calMonth));
   const isArchivedRequest = (r = {}) => r.archived === true || r.processed === true || ['archived','processed','cancelled','canceled'].includes(String(r.status || '').toLowerCase());
   const normalizeStatus = (r = {}) => String(r.status || 'pending').toLowerCase();
-  const visibleRequests = (timeOffRequests || []).filter(r => canManage || timeOffMatchesPerson(r, schedulePerson) || timeOffMatchesPerson(r, appUser));
+  const timeOffRequestRows = requestOffGhostMode ? ghostTimeOffRequests : (timeOffRequests || []);
+  const visibleRequests = (timeOffRequestRows || []).filter(r => canManage || timeOffMatchesPerson(r, schedulePerson) || timeOffMatchesPerson(r, appUser));
   const myRequests = visibleRequests.filter(r => timeOffMatchesPerson(r, schedulePerson) || timeOffMatchesPerson(r, appUser)).sort((a,b) => new Date(a.date || 0) - new Date(b.date || 0));
 
   const getDateFilterRange = () => {
@@ -4444,6 +4478,69 @@ const TabTimeOff = ({ timeOffRequests, appUser, users, addToast, events = [], sh
     })
     .sort((a,b) => new Date(a.date || 0) - new Date(b.date || 0));
 
+  const requestOffApi = useCallback(async (action, payload = {}) => {
+    const response = await secureFetch('/api/time-off-request', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action,
+        restaurantId: appUser?.restaurantId || '',
+        ...(requestOffGhostMode ? { ghostTargetUserId: appUser?.ghostTargetUserId || appUser?.id || '', targetUserId: appUser?.ghostTargetUserId || appUser?.id || '' } : {}),
+        ...payload
+      })
+    });
+    const data = await parseRequestOffApiPayload(response);
+    if (!response.ok || data?.ok === false) {
+      const err = new Error(data?.error || `Request Off API failed (${response.status})`);
+      err.code = data?.code || 'request-off-api-failed';
+      throw err;
+    }
+    return data;
+  }, [appUser?.restaurantId, appUser?.ghostTargetUserId, appUser?.id, requestOffGhostMode]);
+
+  const refreshGhostRequests = useCallback(async () => {
+    if (!requestOffGhostMode || !appUser?.restaurantId) return;
+    setGhostListStatus('loading');
+    try {
+      const data = await requestOffApi('ghost-list');
+      setGhostTimeOffRequests(Array.isArray(data?.requests) ? data.requests : []);
+      setGhostListStatus('ready');
+    } catch (err) {
+      setGhostListStatus('error');
+      setGhostTimeOffRequests([]);
+      addToast('Request Off unavailable', 'We could not load this employee’s Request Off records. Please try again.');
+      console.warn('Handled Request Off ghost-list failure', { operation: 'ghost-list', route: 'schedule/request-off', workspaceId: appUser?.restaurantId || '', ghostMode: true, code: err?.code || 'request-off-ghost-list-failed' });
+    }
+  }, [requestOffGhostMode, requestOffApi, appUser?.restaurantId, addToast]);
+
+  useEffect(() => {
+    conflictCacheRef.current.clear();
+    inFlightConflictRef.current.clear();
+    setAcknowledgedConflicts({});
+    if (requestOffGhostMode) refreshGhostRequests();
+    else { setGhostTimeOffRequests([]); setGhostListStatus('idle'); }
+  }, [requestOffGhostMode, appUser?.restaurantId, appUser?.ghostTargetUserId, authUserId, refreshGhostRequests]);
+
+  const fetchConflictInfo = useCallback(async (dates = [], options = {}) => {
+    const cleanDates = [...new Set((Array.isArray(dates) ? dates : [dates]).filter(Boolean))];
+    const force = options?.force === true;
+    const missing = force ? cleanDates : cleanDates.filter(d => !conflictCacheRef.current.has(requestOffCacheKey(appUser?.restaurantId || '', d, appUser)));
+    if (missing.length) {
+      const inFlightKey = missing.map(d => requestOffCacheKey(appUser?.restaurantId || '', d, appUser)).join('||');
+      if (!inFlightConflictRef.current.has(inFlightKey)) {
+        inFlightConflictRef.current.set(inFlightKey, requestOffApi('conflicts', { dates: missing }).then(data => {
+          const rows = Array.isArray(data?.conflicts) ? data.conflicts : [];
+          missing.forEach(dateKey => {
+            const row = rows.find(item => item?.date === dateKey) || { date: dateKey, count: 0, names: [] };
+            conflictCacheRef.current.set(requestOffCacheKey(appUser?.restaurantId || '', dateKey, appUser), normalizeConflictResult(row, dateKey));
+          });
+        }).finally(() => inFlightConflictRef.current.delete(inFlightKey)));
+      }
+      await inFlightConflictRef.current.get(inFlightKey);
+    }
+    return cleanDates.map(dateKey => conflictCacheRef.current.get(requestOffCacheKey(appUser?.restaurantId || '', dateKey, appUser)) || normalizeConflictResult({}, dateKey));
+  }, [appUser, requestOffApi]);
+
   const changeMonth = (offset) => { const d = new Date(calMonth + '-01T12:00:00'); d.setMonth(d.getMonth() + offset); setCalMonth(d.toISOString().substring(0, 7)); };
   const updateRequest = async (r, update, action = 'TIME_OFF_UPDATED') => {
     await updateDoc(doc(db, 'timeOffRequests', r.id), { ...update, updatedAt: new Date().toISOString(), updatedBy: appUser.id || '' });
@@ -4453,7 +4550,21 @@ const TabTimeOff = ({ timeOffRequests, appUser, users, addToast, events = [], sh
   const denyRequest = async (r) => { await updateRequest(r, { status:'denied', deniedAt:new Date().toISOString(), deniedBy: appUser.id || '', deniedByName: appUser.name || appUser.email || '' }, 'TIME_OFF_DENIED'); addToast('Denied', 'Request-off denied.'); };
   const archiveRequest = async (r) => { await updateRequest(r, { previousStatus: r.status || 'pending', status:'archived', archived:true, archivedAt:new Date().toISOString(), archivedBy: appUser.id || '', archivedByName: appUser.name || appUser.email || '' }, 'TIME_OFF_ARCHIVED'); addToast('Archived', 'Request moved to history.'); };
   const restoreRequest = async (r) => { await updateRequest(r, { status: r.previousStatus || 'pending', archived:false, processed:false, restoredAt:new Date().toISOString(), restoredBy: appUser.id || '' }, 'TIME_OFF_RESTORED'); addToast('Restored', 'Request restored to the active workflow.'); };
-  const cancelRequest = async (r) => { await updateRequest(r, { previousStatus: r.status || 'pending', status:'cancelled', archived:true, cancelledAt:new Date().toISOString(), cancelledBy: appUser.id || '' }, 'TIME_OFF_CANCELLED'); addToast('Canceled', 'Request was canceled and kept in history.'); };
+  const cancelRequest = async (r) => {
+    if (requestOffGhostMode) {
+      try {
+        await requestOffApi('ghost-cancel', { requestId: r.id });
+        await refreshGhostRequests();
+        addToast('Canceled', 'Request was canceled and kept in history.');
+      } catch (err) {
+        addToast('Request not canceled', 'We could not cancel that Request Off entry. Please try again.');
+        console.warn('Handled Request Off ghost-cancel failure', { operation: 'ghost-cancel', route: 'schedule/request-off', workspaceId: appUser?.restaurantId || '', ghostMode: true, code: err?.code || 'request-off-ghost-cancel-failed' });
+      }
+      return;
+    }
+    await updateRequest(r, { previousStatus: r.status || 'pending', status:'cancelled', archived:true, cancelledAt:new Date().toISOString(), cancelledBy: appUser.id || '' }, 'TIME_OFF_CANCELLED');
+    addToast('Canceled', 'Request was canceled and kept in history.');
+  };
   const archiveSelected = async () => {
     const selected = filteredRequests.filter(r => selectedRequestIds.includes(r.id));
     await Promise.all(selected.map(archiveRequest));
@@ -4461,9 +4572,11 @@ const TabTimeOff = ({ timeOffRequests, appUser, users, addToast, events = [], sh
   };
 
   const priorRequestInfoForDate = (dateKey = '') => {
+    const cached = conflictCacheRef.current.get(requestOffCacheKey(appUser?.restaurantId || '', dateKey, appUser));
+    if (cached) return cached;
     const currentKeys = new Set([requestOffPersonKey({ userId: authUserId, authUid: authUserId, employeeId: authUserId, rosterUserId: schedulePerson.rosterUserId || schedulePerson.id, userEmail: schedulePerson.email, employeeName: schedulePerson.name }), requestOffPersonKey({ userId: authUserId, authUid: authUserId, userEmail: appUser.email, employeeName: appUser.name })].filter(Boolean));
     const people = new Map();
-    (timeOffRequests || [])
+    (timeOffRequestRows || [])
       .filter(r => r?.date === dateKey && isRequestOffConflictCountable(r))
       .forEach(r => {
         const key = requestOffPersonKey(r);
@@ -4473,23 +4586,30 @@ const TabTimeOff = ({ timeOffRequests, appUser, users, addToast, events = [], sh
     return { count: people.size, names: Array.from(people.values()) };
   };
 
-  const handleToggleDate = (d) => {
+  const handleToggleDate = async (d) => {
+    if (checkingDate === d) return;
     if (d < getToday()) return addToast('Locked', 'Cannot request past dates.');
     if (!postPublishedTimeOffAllowed && !appUser?.isAdmin && isDateInsidePublishedSchedule(d, shifts)) return addToast('Schedule Published', 'This workspace blocks employee time-off requests after that date has already been published. Ask a manager to adjust the schedule.');
     const existingReq = myRequests.find(r => r.date === d && isActiveTimeOffRequest(r));
     if (existingReq) { if (window.confirm(`Cancel your time-off request for ${formatDisplayDate(d)}?`)) cancelRequest(existingReq); return; }
     const addingDate = !selectedDates.includes(d);
     if (addingDate) {
-      const priorInfo = priorRequestInfoForDate(d);
-      if (priorInfo.count > 0) {
-        const peopleText = priorInfo.count === 1 ? '1 person has' : `${priorInfo.count} people have`;
-        const previewNames = priorInfo.names.slice(0, 4).join(', ');
-        const continueAnyway = window.confirm(`${formatDisplayDate(d)} has already been requested off.
-
-${peopleText} requested this day off before you${previewNames ? ` (${previewNames}${priorInfo.count > 4 ? ', ...' : ''})` : ''}.
-
-It might not be available. Do you still want to request it?`);
-        if (!continueAnyway) return;
+      setCheckingDate(d);
+      try {
+        const [priorInfo] = await fetchConflictInfo([d]);
+        if (priorInfo.count > 0) {
+          const continueAnyway = window.confirm(requestOffConflictMessage(d, priorInfo));
+          if (!continueAnyway) return;
+          setAcknowledgedConflicts(prev => ({ ...prev, [d]: { count: priorInfo.count, names: priorInfo.names || [] } }));
+        } else {
+          setAcknowledgedConflicts(prev => ({ ...prev, [d]: { count: 0, names: [] } }));
+        }
+      } catch (err) {
+        addToast('Request Off unavailable', 'We could not verify Request Off availability. Please try again.');
+        console.warn('Handled Request Off conflict lookup failure', { operation: 'conflicts', route: 'schedule/request-off', workspaceId: appUser?.restaurantId || '', ghostMode: requestOffGhostMode, code: err?.code || 'request-off-conflict-failed' });
+        return;
+      } finally {
+        setCheckingDate('');
       }
     }
     setSelectedDates(prev => prev.includes(d) ? prev.filter(x => x !== d) : [...prev, d]);
@@ -4497,44 +4617,70 @@ It might not be available. Do you still want to request it?`);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (isSubmittingTimeOff) return;
     if (selectedDates.length === 0) return addToast('Error', 'Select days on the calendar first.');
     if (isPartial && (!startTime || !endTime)) return addToast('Error', 'Please set partial times.');
     const blockedAfterPublish = selectedDates.filter(d => !postPublishedTimeOffAllowed && !appUser?.isAdmin && isDateInsidePublishedSchedule(d, shifts));
     if (blockedAfterPublish.length) return addToast('Schedule Published', 'One or more selected dates are already published. Ask a manager to adjust the schedule.');
-    const nowIso = new Date().toISOString();
-    await Promise.all(selectedDates.map(d => addDoc(collection(db, 'timeOffRequests'), {
-      restaurantId: appUser.restaurantId,
-      workspaceId: appUser.restaurantId,
-      userId: authUserId,
-      employeeId: authUserId,
-      rosterUserId: schedulePerson.rosterUserId || schedulePerson.id || '',
-      scheduleUserId: getCanonicalScheduleUserId(schedulePerson || appUser),
-      authUid: authUserId,
-      userEmail: appUser.email || '',
-      employeeEmail: schedulePerson.employeeEmail || schedulePerson.email || appUser.email || '',
-      userName: appUser.name || appUser.email || 'Employee',
-      employeeName: schedulePerson.employeeName || schedulePerson.name || appUser.name || appUser.email || 'Employee',
-      date: d,
-      isPartial,
-      startTime: isPartial ? startTime : '',
-      endTime: isPartial ? endTime : '',
-      status: 'pending',
-      archived: false,
-      processed: false,
-      requestedAt: nowIso,
-      requestedAtMs: Date.now(),
-      requestTimestamp: nowIso,
-      submittedAt: nowIso,
-      createdAt: nowIso,
-      updatedAt: nowIso,
-      createdBy: authUserId,
-      requestedBy: authUserId,
-      requestedByName: appUser.name || appUser.email || 'Employee',
-      source: 'time_off_request'
-    })));
-    await logAudit(appUser, 'TIME_OFF_SUBMITTED', appUser.name || appUser.email || 'Request off', selectedDates.join(', '));
-    setSelectedDates([]);
-    addToast('Submitted', 'Your request-off dates were sent for review.');
+    setIsSubmittingTimeOff(true);
+    try {
+      const latestConflicts = await fetchConflictInfo(selectedDates, { force: true });
+      const changedConflicts = latestConflicts.filter(info => {
+        const acknowledged = acknowledgedConflicts[info.date] || { count: 0, names: [] };
+        return Number(info.count || 0) > 0 && (Number(info.count || 0) !== Number(acknowledged.count || 0) || (info.names || []).join('|') !== (acknowledged.names || []).join('|'));
+      });
+      if (changedConflicts.length) {
+        const summary = changedConflicts.map(info => `${formatDisplayDate(info.date)}: ${info.count} other request${info.count === 1 ? '' : 's'}${info.names?.length ? ` (${info.names.slice(0, 4).join(', ')}${info.count > 4 ? ', ...' : ''})` : ''}`).join('\n');
+        const continueAnyway = window.confirm(`Request Off availability changed before submit.\n\n${summary}\n\nIt might not be available. Do you still want to submit?`);
+        if (!continueAnyway) return;
+        setAcknowledgedConflicts(prev => changedConflicts.reduce((acc, info) => ({ ...acc, [info.date]: { count: info.count, names: info.names || [] } }), { ...prev }));
+      }
+      if (requestOffGhostMode) {
+        await requestOffApi('ghost-create', { dates: selectedDates, isPartial, startTime, endTime });
+        await refreshGhostRequests();
+      } else {
+        const nowIso = new Date().toISOString();
+        await Promise.all(selectedDates.map(d => addDoc(collection(db, 'timeOffRequests'), {
+          restaurantId: appUser.restaurantId,
+          workspaceId: appUser.restaurantId,
+          userId: authUserId,
+          employeeId: authUserId,
+          rosterUserId: schedulePerson.rosterUserId || schedulePerson.id || '',
+          scheduleUserId: getCanonicalScheduleUserId(schedulePerson || appUser),
+          authUid: authUserId,
+          userEmail: appUser.email || '',
+          employeeEmail: schedulePerson.employeeEmail || schedulePerson.email || appUser.email || '',
+          userName: appUser.name || appUser.email || 'Employee',
+          employeeName: schedulePerson.employeeName || schedulePerson.name || appUser.name || appUser.email || 'Employee',
+          date: d,
+          isPartial,
+          startTime: isPartial ? startTime : '',
+          endTime: isPartial ? endTime : '',
+          status: 'pending',
+          archived: false,
+          processed: false,
+          requestedAt: nowIso,
+          requestedAtMs: Date.now(),
+          requestTimestamp: nowIso,
+          submittedAt: nowIso,
+          createdAt: nowIso,
+          updatedAt: nowIso,
+          createdBy: authUserId,
+          requestedBy: authUserId,
+          requestedByName: appUser.name || appUser.email || 'Employee',
+          source: 'time_off_request'
+        })));
+        await logAudit(appUser, 'TIME_OFF_SUBMITTED', appUser.name || appUser.email || 'Request off', selectedDates.join(', '));
+      }
+      setSelectedDates([]);
+      setAcknowledgedConflicts({});
+      addToast('Submitted', 'Your request-off dates were sent for review.');
+    } catch (err) {
+      addToast('Request not submitted', 'We could not verify Request Off availability. Please try again.');
+      console.warn('Handled Request Off submit failure', { operation: requestOffGhostMode ? 'ghost-create' : 'submit', route: 'schedule/request-off', workspaceId: appUser?.restaurantId || '', ghostMode: requestOffGhostMode, code: err?.code || 'request-off-submit-failed' });
+    } finally {
+      setIsSubmittingTimeOff(false);
+    }
   };
 
   const formatRequestDateLabel = (value = '') => {
@@ -4593,7 +4739,7 @@ It might not be available. Do you still want to request it?`);
               const isPast = d < getToday();
               const holiday = getHoliday(d);
               const dayEvents = monthEvents.filter(e => e.date === d);
-              return <div key={d} onClick={() => !isPast && handleToggleDate(d)} className={`p-1 border-b border-r ${T.border} min-h-[50px] flex flex-col items-center justify-start pt-1 transition-colors ${isPast ? 'bg-[#12161A]/50 opacity-50 cursor-not-allowed' : existingReq ? 'bg-red-900/10 cursor-pointer hover:bg-red-900/20 border border-red-900/30 shadow-inner' : isSelected ? 'bg-[#8F6040]/20 border border-[#C59373] cursor-pointer shadow-inner' : 'hover:bg-[#12161A] cursor-pointer'}`}><span className={`text-xs font-black ${isSelected ? T.copper : existingReq ? 'text-red-400' : 'text-slate-300'}`}>{parseInt(d.split('-')[2])}</span>{holiday && <span className="text-[6px] sm:text-[7px] text-amber-500 font-bold uppercase text-center leading-tight mt-0.5 px-0.5">{holiday}</span>}{dayEvents.map(ev => <span key={ev.id} className="text-[6px] sm:text-[7px] text-blue-400 font-bold uppercase text-center leading-tight mt-0.5 px-0.5 w-full truncate" title={ev.title}>{ev.title}</span>)}{priorCount > 0 && !existingReq && !isSelected && <span className="text-[7px] font-black uppercase mt-auto mb-0.5 text-amber-300">{priorCount} req</span>}{existingReq && <span className={`text-[7px] font-black uppercase mt-auto mb-1 ${existingReq.status === 'pending' ? 'text-orange-400' : 'text-red-500'}`}>{existingReq.status === 'pending' ? 'Pend' : 'Off'}</span>}{isSelected && <Check size={10} className={`mt-auto mb-1 ${T.copper}`}/>}</div>;
+              return <div key={d} onClick={() => !isPast && handleToggleDate(d)} className={`p-1 border-b border-r ${T.border} min-h-[50px] flex flex-col items-center justify-start pt-1 transition-colors ${isPast ? 'bg-[#12161A]/50 opacity-50 cursor-not-allowed' : existingReq ? 'bg-red-900/10 cursor-pointer hover:bg-red-900/20 border border-red-900/30 shadow-inner' : isSelected ? 'bg-[#8F6040]/20 border border-[#C59373] cursor-pointer shadow-inner' : 'hover:bg-[#12161A] cursor-pointer'}`}><span className={`text-xs font-black ${isSelected ? T.copper : existingReq ? 'text-red-400' : 'text-slate-300'}`}>{parseInt(d.split('-')[2])}</span>{holiday && <span className="text-[6px] sm:text-[7px] text-amber-500 font-bold uppercase text-center leading-tight mt-0.5 px-0.5">{holiday}</span>}{dayEvents.map(ev => <span key={ev.id} className="text-[6px] sm:text-[7px] text-blue-400 font-bold uppercase text-center leading-tight mt-0.5 px-0.5 w-full truncate" title={ev.title}>{ev.title}</span>)}{checkingDate === d && <Loader2 size={10} className="mt-auto mb-1 text-amber-300 animate-spin"/>}{checkingDate !== d && priorCount > 0 && !existingReq && !isSelected && <span className="text-[7px] font-black uppercase mt-auto mb-0.5 text-amber-300">{priorCount} req</span>}{checkingDate !== d && existingReq && <span className={`text-[7px] font-black uppercase mt-auto mb-1 ${existingReq.status === 'pending' ? 'text-orange-400' : 'text-red-500'}`}>{existingReq.status === 'pending' ? 'Pend' : 'Off'}</span>}{checkingDate !== d && isSelected && <Check size={10} className={`mt-auto mb-1 ${T.copper}`}/>}</div>;
             })}
           </div>
         </div>
@@ -4601,7 +4747,9 @@ It might not be available. Do you still want to request it?`);
           <h3 className="font-black text-base mb-1 text-white">Request Off</h3>
           <p className={`text-[10px] font-bold ${T.muted} mb-2 leading-tight`}>Tap specific dates to request off. Use Availability for normal weekly schedules.</p>
           {!postPublishedTimeOffAllowed && !appUser?.isAdmin && <div className="mb-4 bg-amber-900/15 border border-amber-900/40 rounded-xl p-2 text-[10px] font-bold text-amber-200 leading-snug">Time-off requests close once that schedule period has been published.</div>}
-          <form onSubmit={handleSubmit} className="space-y-4"><label className={`flex items-center gap-2 text-xs font-bold text-slate-300 cursor-pointer p-2.5 bg-[#12161A] rounded-xl border ${T.border}`}><input type="checkbox" checked={isPartial} onChange={e=>setIsPartial(e.target.checked)} className="w-4 h-4 rounded bg-[#1A2126] border-[#2A353D] accent-[#8F6040]" />Partial Day Only?</label>{isPartial && <div className="grid grid-cols-2 gap-3"><div><label className={T.label}>Start Time</label><input type="time" value={startTime} onChange={e=>setStartTime(e.target.value)} className={T.input} required /></div><div><label className={T.label}>End Time</label><input type="time" value={endTime} onChange={e=>setEndTime(e.target.value)} className={T.input} required /></div></div>}<button type="submit" disabled={selectedDates.length === 0} className={`w-full ${T.btn} disabled:opacity-50 disabled:cursor-not-allowed`}>Submit {selectedDates.length > 0 ? `(${selectedDates.length})` : ''}</button></form>
+          {requestOffGhostMode && ghostListStatus === 'loading' && <div className="mb-4 bg-blue-900/15 border border-blue-900/40 rounded-xl p-2 text-[10px] font-bold text-blue-200 leading-snug">Loading this employee’s Request Off records...</div>}
+          {requestOffGhostMode && ghostListStatus === 'error' && <div className="mb-4 bg-red-900/15 border border-red-900/40 rounded-xl p-2 text-[10px] font-bold text-red-200 leading-snug">Request Off records could not load. Try refreshing before submitting.</div>}
+          <form onSubmit={handleSubmit} className="space-y-4"><label className={`flex items-center gap-2 text-xs font-bold text-slate-300 cursor-pointer p-2.5 bg-[#12161A] rounded-xl border ${T.border}`}><input type="checkbox" checked={isPartial} onChange={e=>setIsPartial(e.target.checked)} className="w-4 h-4 rounded bg-[#1A2126] border-[#2A353D] accent-[#8F6040]" />Partial Day Only?</label>{isPartial && <div className="grid grid-cols-2 gap-3"><div><label className={T.label}>Start Time</label><input type="time" value={startTime} onChange={e=>setStartTime(e.target.value)} className={T.input} required /></div><div><label className={T.label}>End Time</label><input type="time" value={endTime} onChange={e=>setEndTime(e.target.value)} className={T.input} required /></div></div>}<button type="submit" disabled={selectedDates.length === 0 || isSubmittingTimeOff || !!checkingDate} className={`w-full ${T.btn} disabled:opacity-50 disabled:cursor-not-allowed`}>{isSubmittingTimeOff ? 'Checking...' : `Submit ${selectedDates.length > 0 ? `(${selectedDates.length})` : ''}`}</button></form>
         </div>
       </div>
       <div className={`${T.card} p-4`}>

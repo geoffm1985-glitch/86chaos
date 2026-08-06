@@ -125,10 +125,10 @@ test.describe('15 exhaustive interactive-control census', () => {
     await login(page, account.email, account.password);
     const text = await gotoTab(page, 'maintenance', { settleMs: 1500, maxText: 40000 });
     if (PERMISSION_GATE_RE.test(text)) test.skip(true, 'Maintenance route is permission gated for this account.');
-    const edit = page.getByTitle('Edit record').first();
-    const del = page.getByTitle('Delete record').first();
-    await expect(edit, 'Seeded maintenance route should expose Edit record action').toBeVisible({ timeout: 10000 });
-    await expect(del, 'Seeded maintenance route should expose Delete record action').toBeVisible({ timeout: 10000 });
+    const edit = page.getByRole('button', { name: 'Edit maintenance record' }).first();
+    const del = page.getByRole('button', { name: 'Delete maintenance record' }).first();
+    await expect(edit, 'Seeded maintenance route should expose Edit maintenance record action').toBeVisible({ timeout: 10000 });
+    await expect(del, 'Seeded maintenance route should expose Delete maintenance record action').toBeVisible({ timeout: 10000 });
     const boxes = {
       edit: await edit.boundingBox(),
       delete: await del.boundingBox(),
