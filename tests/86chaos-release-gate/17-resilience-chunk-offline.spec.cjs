@@ -48,16 +48,39 @@ test.describe('17 stale chunk, offline, refresh, and service-worker resilience',
     const reloads = [];
     page.on('framenavigated', frame => { if (frame === page.mainFrame()) reloads.push({ at: Date.now(), url: frame.url(), note: 'supporting-evidence-only' }); });
     await page.goto(appUrl('recipes'), { waitUntil: 'domcontentloaded', timeout: 60000 }).catch(() => {});
-    await page.waitForTimeout(5000);
+    await page.waitForFunction(() => {
+      const stateNode = document.querySelector('[data-chaos-recovery-state]');
+      const text = (document.body?.innerText || '').trim();
+      return Boolean(stateNode || text.length > 20);
+    }, null, { timeout: 15000 }).catch(() => {});
     const firstText = await bodyText(page, 30000);
     const firstUrl = page.url();
 
-    const recoveryControl = page.locator('[data-chaos-recovery-state="manual-update-available"], button[aria-label*="recover" i], button:has-text("REFRESH NOW")').first();
+    const recoveryControl = page.locator('[data-chaos-recovery-state], button[aria-label*="recover" i], button:has-text("REFRESH NOW")').first();
     await recoveryControl.waitFor({ state: 'visible', timeout: 15000 }).catch(() => {});
+    const recoveryStateNodes = await page.locator('[data-chaos-recovery-state]').evaluateAll(nodes => nodes.map(node => ({ state: node.getAttribute('data-chaos-recovery-state'), text: (node.innerText || '').replace(/\s+/g, ' ').trim().slice(0, 500) }))).catch(() => []);
     const finalText = await bodyText(page, 30000);
     const finalUrl = page.url();
     const recoveryEvents = await page.evaluate(() => window.__chaosRecoveryEvents || []).catch(() => []);
-    const automaticRecoveryAttempts = recoveryEvents.filter(x => /location\.(replace|reload)|chaosReloadAt|autoReload/i.test(`${x.type} ${x.key || ''}`)).length;
+    const parsedStateWrites = recoveryEvents
+      .filter(x => x.type === 'sessionStorage.setItem' && /chunkRecoveryState|chunk|recovery/i.test(String(x.key || '')))
+      .map((x) => {
+        try { return { ...JSON.parse(x.value || '{}'), eventAt: x.at, key: x.key }; } catch (_) { return null; }
+      })
+      .filter(Boolean);
+    const stateTransitions = [...recoveryStateNodes, ...parsedStateWrites.map(row => ({ state: row.stage || '', autoReloadCount: Number(row.autoReloadCount || 0), eventAt: row.eventAt, key: row.key }))];
+    const maxAutoReloadCount = Math.max(0, ...stateTransitions.map(row => Number(row.autoReloadCount || 0)).filter(Number.isFinite));
+    const autoRecoveryStartedTransitions = stateTransitions.filter(row => row.state === 'auto-recovery-started').length;
+    const recoveryStartedAt = Math.min(...stateTransitions.filter(row => row.state === 'auto-recovery-started' && row.eventAt).map(row => row.eventAt));
+    const markerWrites = recoveryEvents.filter(x => /autoReloadInFlight|autoReloadUsed|chaosReloadAt/i.test(String(x.key || '')));
+    const postRecoveryNavigations = recoveryEvents.filter(x => /location\.(replace|reload)/.test(String(x.type || '')) && (!Number.isFinite(recoveryStartedAt) || Number(x.at || 0) >= recoveryStartedAt));
+    const uniqueAutoReloadUsedGenerations = new Set(markerWrites.filter(x => /autoReloadUsed/i.test(String(x.key || ''))).map(x => `${x.key || ''}:${x.value || ''}`)).size;
+    const automaticRecoveryAttempts = Math.max(
+      maxAutoReloadCount,
+      autoRecoveryStartedTransitions,
+      uniqueAutoReloadUsedGenerations ? 1 : 0,
+      postRecoveryNavigations.length ? 1 : 0
+    );
 
     await attachJson(testInfo, '17-chunk-failure-recovery.json', {
       aborted,
@@ -68,13 +91,26 @@ test.describe('17 stale chunk, offline, refresh, and service-worker resilience',
       finalText: finalText.slice(0, 5000),
       reloads,
       recoveryEvents,
+      stateTransitions,
+      recoveryStateNodes,
+      maxAutoReloadCount,
+      autoRecoveryStartedTransitions,
+      recoveryStartedAt: Number.isFinite(recoveryStartedAt) ? recoveryStartedAt : null,
+      markerWrites,
+      postRecoveryNavigations,
+      uniqueAutoReloadUsedGenerations,
+      logicalAutomaticAttemptCount: automaticRecoveryAttempts,
       automaticRecoveryAttempts,
+      firstNonemptyRecoveryUi: recoveryStateNodes[0]?.state || '',
+      finalRouteState: finalUrl,
       problems: summarizeProblems(problems),
     });
 
     expect(aborted, 'The test must actually intercept one lazy JavaScript chunk').toBe(true);
     expect(firstText, 'Chunk failure must not produce a blank or fatal-only screen').not.toMatch(FATAL_BLANK_RE);
     expect(finalText, 'Repeated chunk failure must provide a usable update/recovery action').toMatch(RECOVERY_RE);
+    expect(maxAutoReloadCount, 'Chunk recovery structured autoReloadCount must never exceed one').toBeLessThanOrEqual(1);
+    expect(autoRecoveryStartedTransitions, 'Chunk recovery should start automatic recovery at most once').toBeLessThanOrEqual(1);
     expect(automaticRecoveryAttempts, 'Chunk recovery must not enter an infinite reload loop').toBeLessThanOrEqual(1);
   });
 

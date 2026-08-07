@@ -5290,3 +5290,22 @@ span.bg-red-500.text-white,
     padding-right: 1px !important;
   }
 }
+
+/* 16.0.138 maintenance action buttons: explicit mobile hit target without bloating desktop. */
+.maintenance-record-action-button {
+  width: 42px !important;
+  height: 42px !important;
+  min-width: 42px !important;
+  min-height: 42px !important;
+  padding: 0 !important;
+  flex: 0 0 auto !important;
+}
+
+@media (min-width: 640px) {
+  .maintenance-record-action-button {
+    width: 32px !important;
+    height: 32px !important;
+    min-width: 32px !important;
+    min-height: 32px !important;
+  }
+}

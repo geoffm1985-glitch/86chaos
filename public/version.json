@@ -1,14 +1,14 @@
 {
-  "version": "16.0.133",
-  "name": "86 Chaos 16.0.133 Release Gate Canonical Rules Harness Fix",
-  "build": "16.0.133",
-  "label": "86 Chaos 16.0.133 Release Gate Canonical Rules Harness Fix",
-  "releasedAt": "2026-08-05T22:13:00-05:00",
-  "releaseTitle": "Release Gate Canonical Rules Harness Fix",
+  "version": "16.0.141",
+  "name": "86 Chaos 16.0.141 API Workspace Authorization and Ghost Target Hardening",
+  "build": "16.0.141",
+  "label": "86 Chaos 16.0.141 API Workspace Authorization and Ghost Target Hardening",
+  "releasedAt": "2026-08-06T20:33:00-05:00",
+  "releaseTitle": "API Workspace Authorization and Ghost Target Hardening",
   "notes": [
-    "Runs the complete canonical Firestore and Storage emulator rules suite as the required release-gate authority before Playwright.",
-    "Fixes the focused rules smoke harness to reuse cached Firestore and Storage clients and the emulator-provided project namespace.",
-    "Adds current-run structured rules reporting, safer firstUsefulFailure parsing, positive Storage controls, and clean denial for missing Storage user profiles."
+    "Hardens the personal reminder API so workspace access requires concrete active user or membership evidence.",
+    "Prevents selector-only Ghost Mode target fields from authorizing Request Off actions and rejects archived targets.",
+    "Reconciles failed-only runner state from authoritative QA seed and cleanup artifacts and narrows the next inherited failed-only run to one desktop crawl."
   ],
-  "title": "86 Chaos 16.0.133 Release Gate Canonical Rules Harness Fix"
+  "title": "86 Chaos 16.0.141 API Workspace Authorization and Ghost Target Hardening"
 }

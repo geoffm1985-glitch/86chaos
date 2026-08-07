@@ -405,7 +405,7 @@ export const MASTER_ADMIN_EMAIL = (process.env.REACT_APP_MASTER_ADMIN_EMAIL || '
 export const EVENT_TAGS = ['Standard Day', 'Packers Game', 'Brewers Game', 'Live Music', 'Severe Weather', 'Private Catering', 'Holiday'];
 
 // --- VERSION TRACKING ---
-export const CURRENT_VERSION = '16.0.133';
+export const CURRENT_VERSION = '16.0.141';
 
 // --- Helpers ---
 const usePageVisible = () => {
@@ -645,6 +645,7 @@ const acquireSharedLiveCollection = ({ coll, restId, constraints, key, setData, 
       queryKey: key,
       collection: coll,
       restaurantId: restId,
+      debugLabel: debugLabel || '',
       consumerLabels: [],
       subscriberCount: 0,
       listenerCreationCount: 1,
@@ -699,10 +700,10 @@ const acquireSharedLiveCollection = ({ coll, restId, constraints, key, setData, 
         const message = err?.message || String(err || '');
         const isIndexProblem = err?.code === 'failed-precondition' || /index|requires an index|currently building/i.test(message);
         if (isIndexProblem) console.warn(`Firestore index pending for ${coll} / ${restId}. Waiting for the deployed index instead of showing a mismatched fallback query.`, message);
-        else console.error(`Live collection error for ${coll} / ${restId}:`, err);
+        else console.error(`Live collection error for ${coll} / ${restId}${debugLabel ? ` [${debugLabel}]` : ''}:`, err);
         entry.lastError = message;
         entry.stale = true;
-        annotateListenerDiagnostics(key, { lastError: message, lastErrorAt: new Date().toISOString(), stale: true, cached: entry.hasCachedSnapshot === true });
+        annotateListenerDiagnostics(key, { debugLabel: debugLabel || '', consumerLabels: entryConsumerLabels(entry), lastError: message, lastErrorAt: new Date().toISOString(), stale: true, cached: entry.hasCachedSnapshot === true });
         // Preserve last valid data. Do not push an empty array for transient errors.
         entry.subscribers.forEach(row => row.fn(entry.data || [], { resolved: true, stale: true, error: message, fromServer: false }));
       }
@@ -729,7 +730,7 @@ const acquireSharedLiveCollection = ({ coll, restId, constraints, key, setData, 
   const subscriber = makeSubscriberRecord(setData, debugLabel);
   entry.subscribers.add(subscriber);
   setData(entry.data || [], { resolved: entry.initialSnapshotSeen === true, stale: entry.stale === true, error: entry.lastError || null, cached: entry.hasCachedSnapshot === true });
-  annotateListenerDiagnostics(key, { subscriberCount: entry.subscribers.size, consumerLabels: entryConsumerLabels(entry), cached: entry.hasCachedSnapshot && !entry.initialSnapshotSeen, stale: entry.stale === true });
+  annotateListenerDiagnostics(key, { debugLabel: debugLabel || '', subscriberCount: entry.subscribers.size, consumerLabels: entryConsumerLabels(entry), cached: entry.hasCachedSnapshot && !entry.initialSnapshotSeen, stale: entry.stale === true });
 
   return () => {
     const current = liveCollectionRegistry.get(key);

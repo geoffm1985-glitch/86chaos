@@ -3,7 +3,7 @@ import { Bell, Calendar, Check, Clock, Edit3, Loader2, Mic, Package, Plus, Save,
 import { collection, addDoc, updateDoc, deleteDoc, doc, getDocs, query, where, writeBatch, orderBy, limit as firestoreLimit } from 'firebase/firestore';
 import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 import { T, db, storage, auth, secureFetch, useLiveCollection, formatClockDateTime, getToday, logAudit } from '../core/appCore';
-import { usePersonalReminderRows } from '../core/personalReminderQueries';
+import { requestPersonalReminderRefresh, usePersonalReminderRows } from '../core/personalReminderQueries';
 import { Modal, SmartEmptyState } from '../components/common';
 import { canUseMenuIntelligence, getZeroStockMenuImpacts } from '../core/menuIntelligence';
 import { buildMenuCostBreakdowns, summarizeMenuCostBreakdowns } from '../core/menuCosting';
@@ -253,6 +253,7 @@ const TabPersonalReminders = ({ appUser, addToast }) => {
     if (editing?.id) addToast('Reminder Updated', title.trim());
     else addToast('Reminder Saved', `${title.trim()} at ${formatClockDateTime(scheduledDate.toISOString())}.`);
     await logAudit(appUser, editing ? 'REMINDER_UPDATED' : 'REMINDER_CREATED', title.trim(), scheduledDate.toISOString());
+    requestPersonalReminderRefresh({ restaurantId: appUser.restaurantId, uid: auth?.currentUser?.uid || appUser?.authUid || appUser?.id || '' });
     resetForm();
   };
 
@@ -276,6 +277,7 @@ const TabPersonalReminders = ({ appUser, addToast }) => {
     });
     const result = await response.json().catch(() => ({}));
     if (!response.ok || !result.ok) throw new Error(result.error || 'Reminder action failed.');
+    requestPersonalReminderRefresh({ restaurantId: appUser.restaurantId, uid: auth?.currentUser?.uid || appUser?.authUid || appUser?.id || '' });
     return result;
   };
 

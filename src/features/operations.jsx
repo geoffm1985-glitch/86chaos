@@ -6,7 +6,7 @@ import { getAuth, signInWithEmailAndPassword, sendPasswordResetEmail, createUser
 import { getToken, onMessage } from 'firebase/messaging';
 import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 import { MapContainer, TileLayer, Marker, Circle, useMapEvents } from 'react-leaflet';
-import { T, db, storage, auth, messaging, firebaseConfig, secureFetch, MASTER_ADMIN_EMAIL, EVENT_TAGS, CURRENT_VERSION, useLiveCollection, useLiveDocument, formatDate, getToday, getMonthStr, formatDisplayDate, formatDisplayFullDate, formatDisplayMonth, getDaysInMonth, formatShortTime, formatClockTime, formatClockDateTime, getAvatar, generateTempPass, getExpDate, getHoliday, logAudit, customMapIcon, getRestaurantExportPrefix, safeFilenamePart, downloadCsvRows, openPrintableReport, buildMenuDependencyReport, safeWriteWithQueue, replayOfflineQueue } from '../core/appCore';
+import { T, db, storage, auth, messaging, firebaseConfig, secureFetch, MASTER_ADMIN_EMAIL, EVENT_TAGS, CURRENT_VERSION, useLiveCollection, useLiveCollectionState, formatDate, getToday, getMonthStr, formatDisplayDate, formatDisplayFullDate, formatDisplayMonth, getDaysInMonth, formatShortTime, formatClockTime, formatClockDateTime, getAvatar, generateTempPass, getExpDate, getHoliday, logAudit, customMapIcon, getRestaurantExportPrefix, safeFilenamePart, downloadCsvRows, openPrintableReport, buildMenuDependencyReport, safeWriteWithQueue, replayOfflineQueue } from '../core/appCore';
 import { buildPrepCreatePayload, buildPrepQuantityUpdate, findPrepMatch, formatPrepAmount, parsePrepCommandItems, summarizePrepResults } from '../core/smartPrep';
 import { buildEightySixAlertDetails, buildMenuImpactText, getMenuImpactForInventoryItem, getZeroStockMenuImpacts, resolveEightySixInventoryMatch } from '../core/menuIntelligence';
 import { prepareScannerUploadFile, isPdfFile } from '../core/fileCompression';
@@ -1254,7 +1254,7 @@ const TabMaintenance = ({ appUser, addToast }) => {
                   <div className="flex flex-wrap items-center gap-1.5"><h3 className="font-black text-white truncate">{log.equipment || 'Equipment'}</h3><span className={`text-[8px] font-black uppercase tracking-widest px-2 py-0.5 rounded border ${getStatusColor(log.status || 'Reported')}`}>{log.status || 'Reported'}</span>{isPmLog && <span className="text-[8px] font-black uppercase tracking-widest px-2 py-0.5 rounded border border-blue-900/50 bg-blue-900/20 text-blue-300">PM History</span>}</div>
                   <div className={`text-[9px] font-black uppercase tracking-widest mt-1 ${getUrgencyColor(log.urgency)}`}>{isPmLog ? 'Preventative maintenance' : `${log.urgency || 'Standard'} priority`}</div>
                 </div>
-                <div className="flex gap-1 flex-shrink-0"><button onClick={() => handleEdit(log)} className="no-compact w-8 h-8 rounded-lg border border-[#2A353D] bg-[#12161A] text-slate-400 hover:text-[#D4A381] flex items-center justify-center" title="Edit record"><Edit size={14}/></button><button onClick={() => { if(window.confirm('Delete this maintenance record permanently?')) safeMaintenanceWrite({ action: 'delete', collectionName: 'maintenanceLogs', docId: log.id, label: 'Maintenance log', before: log }); }} className="no-compact w-8 h-8 rounded-lg border border-[#2A353D] bg-[#12161A] text-slate-400 hover:text-red-400 flex items-center justify-center" title="Delete record"><Trash2 size={14}/></button></div>
+                <div className="flex gap-1 flex-shrink-0"><button onClick={() => handleEdit(log)} className="no-compact maintenance-record-action-button rounded-lg border border-[#2A353D] bg-[#12161A] text-slate-400 hover:text-[#D4A381] flex items-center justify-center" title="Edit maintenance record" aria-label="Edit maintenance record"><Edit size={14}/></button><button onClick={() => { if(window.confirm('Delete this maintenance record permanently?')) safeMaintenanceWrite({ action: 'delete', collectionName: 'maintenanceLogs', docId: log.id, label: 'Maintenance log', before: log }); }} className="no-compact maintenance-record-action-button rounded-lg border border-[#2A353D] bg-[#12161A] text-slate-400 hover:text-red-400 flex items-center justify-center" title="Delete maintenance record" aria-label="Delete maintenance record"><Trash2 size={14}/></button></div>
               </div>
               <div className="mt-2 rounded-lg bg-[#12161A] border border-[#2A353D] px-3 py-2 text-sm font-bold text-slate-200 leading-snug">{String(log.issue || '').replace('[PM COMPLETED] ', '')}</div>
               {log.notes && <div className="mt-2 text-xs font-bold text-[#D4A381] line-clamp-2">{log.notes}</div>}
@@ -2156,7 +2156,17 @@ const TabToday = ({ currentDate, appUser, users, shifts, shiftSwaps, timeOffRequ
   const openPrep = useMemo(() => (prepItems || []).filter(p => (p.date === today || p.date === 'MASTER') && !p.isCompleted).slice(0, 8), [prepItems, today]);
   const pendingRequests = useMemo(() => canUseScheduleBuilder ? (timeOffRequests || []).filter(r => r.status === 'pending').slice(0, 5) : [], [canUseScheduleBuilder, timeOffRequests]);
   const openSwaps = useMemo(() => canUseScheduleBuilder ? (shiftSwaps || []).filter(s => s.status === 'available' && s.date >= today).slice(0, 5) : [], [canUseScheduleBuilder, shiftSwaps, today]);
-  const currentOpsIntel = useLiveDocument('opsIntelligenceReports', appUser?.restaurantId ? `${appUser.restaurantId}_current` : '', { enabled: !!appUser?.restaurantId && canUsePythonIntelligence, debugLabel: 'today:current-ops-intelligence' });
+  const currentOpsIntelState = useLiveCollectionState('opsIntelligenceReports', appUser?.restaurantId || '', {
+    enabled: Boolean(appUser?.restaurantId && canUsePythonIntelligence),
+    limitCount: 10,
+    fallbackLimitCount: 3,
+    debugLabel: 'today:current-ops-intelligence:tenant-query'
+  });
+  const currentOpsIntel = useMemo(() => {
+    const rows = Array.isArray(currentOpsIntelState?.data) ? currentOpsIntelState.data : [];
+    const currentDocId = appUser?.restaurantId ? `${appUser.restaurantId}_current` : '';
+    return rows.find(row => row?.id === currentDocId || row?.docId === currentDocId) || rows.find(row => row?.status !== 'deleted') || null;
+  }, [currentOpsIntelState?.data, appUser?.restaurantId]);
   useEffect(() => {
     if (currentOpsIntel && !briefOpsLoading) setBriefOpsIntel(currentOpsIntel);
   }, [currentOpsIntel?.id, currentOpsIntel?.generatedAt, briefOpsLoading]);

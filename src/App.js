@@ -213,6 +213,73 @@ const reportRuntimeErrorWithDeliveryRules = async (kind, error, extra = {}) => {
 const reportRuntimeSectionError = (error, extra = {}) => reportRuntimeErrorWithDeliveryRules('section-runtime-error', error, extra);
 
 const reportRuntimeChunkFailure = (error, extra = {}) => reportRuntimeErrorWithDeliveryRules('chunk-failure', error, extra);
+
+const chunkRecoveryStateKey = () => `86chaos:chunkRecovery:${CURRENT_VERSION}:state`;
+const readChunkRecoveryState = () => {
+  if (typeof window === 'undefined') return null;
+  const key = chunkRecoveryStateKey();
+  const raw = (() => {
+    try { return sessionStorage.getItem(key) || localStorage.getItem(key) || ''; } catch (_) { return ''; }
+  })();
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === 'object' ? parsed : null;
+  } catch (_) { return null; }
+};
+const writeChunkRecoveryState = (patch = {}) => {
+  if (typeof window === 'undefined') return null;
+  const previous = readChunkRecoveryState() || {};
+  const at = new Date().toISOString();
+  const stage = patch.stage || previous.stage || 'chunk-recovery-visible';
+  const transitions = Array.isArray(previous.transitions) ? previous.transitions.slice(-10) : [];
+  const next = {
+    ...previous,
+    ...patch,
+    appVersion: CURRENT_VERSION,
+    stage,
+    updatedAt: at,
+    autoReloadCount: Number(patch.autoReloadCount ?? previous.autoReloadCount ?? 0) || 0,
+    transitions: [...transitions, { stage, at, chunkUrl: patch.chunkUrl || previous.chunkUrl || '' }]
+  };
+  const key = chunkRecoveryStateKey();
+  const serialized = JSON.stringify(next);
+  try { sessionStorage.setItem(key, serialized); } catch (_) {}
+  try { localStorage.setItem(key, serialized); } catch (_) {}
+  return next;
+};
+const clearChunkRecoveryState = () => {
+  if (typeof window === 'undefined') return;
+  try { sessionStorage.removeItem(chunkRecoveryStateKey()); } catch (_) {}
+  try { localStorage.removeItem(chunkRecoveryStateKey()); } catch (_) {}
+};
+const renderImmediateChunkRecoverySurface = (state = {}) => {
+  if (typeof document === 'undefined') return;
+  const id = 'chaos-chunk-recovery-surface';
+  let root = document.getElementById(id);
+  if (!root) {
+    root = document.createElement('div');
+    root.id = id;
+    document.body?.prepend(root);
+  }
+  root.setAttribute('data-chaos-recovery-state', state.stage || 'chunk-recovery-visible');
+  root.setAttribute('role', 'alert');
+  root.style.cssText = 'position:fixed;inset:0;z-index:2147483647;background:#0B0E11;color:#fff;display:flex;align-items:center;justify-content:center;padding:24px;font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;';
+  root.innerHTML = `
+    <div style="max-width:520px;width:100%;border:1px solid #7f1d1d;background:#1A2126;border-radius:24px;padding:24px;box-shadow:0 20px 80px rgba(0,0,0,.5);">
+      <div style="font-size:11px;font-weight:900;letter-spacing:.22em;text-transform:uppercase;color:#D4A381;">Recovering 86 Chaos</div>
+      <h1 style="font-size:24px;line-height:1.15;margin:10px 0 8px;font-weight:900;">A stale app chunk failed to load.</h1>
+      <p style="font-size:14px;line-height:1.5;color:#CBD5E1;font-weight:700;margin:0 0 16px;">86 Chaos is keeping this recovery screen visible while it refreshes the app shell. This prevents a blank page and avoids reload loops.</p>
+      <button type="button" aria-label="Recover app manually" id="chaos-manual-chunk-recover" style="background:#fff;color:#991b1b;border:0;border-radius:12px;padding:12px 16px;font-size:11px;font-weight:900;letter-spacing:.14em;text-transform:uppercase;">Recover app</button>
+      <div style="font-size:11px;color:#94A3B8;margin-top:12px;font-weight:700;word-break:break-all;">${String(state.chunkUrl || '').slice(0, 180)}</div>
+    </div>`;
+  const button = document.getElementById('chaos-manual-chunk-recover');
+  if (button) button.onclick = () => {
+    const current = writeChunkRecoveryState({ stage: 'manual-recovery-clicked', autoReloadCount: Number(state.autoReloadCount || 0) });
+    renderImmediateChunkRecoverySurface(current || state);
+    window.location.reload();
+  };
+};
 const recoverFromChunkFailureOnce = async (error, exportName = 'section') => {
   if (!isChunkLoadFailure(error) || typeof window === 'undefined') throw error;
   const chunkUrl = extractChunkUrl(error) || exportName;
@@ -227,12 +294,24 @@ const recoverFromChunkFailureOnce = async (error, exportName = 'section') => {
   };
   const alreadyReloaded = readRecoveryMarker(reloadUsedKey);
   const reloadInFlight = window.__chaosChunkRecoveryInFlight || readRecoveryMarker(inFlightKey);
-  if (!alreadyReloaded && !reloadInFlight) {
+  const priorState = readChunkRecoveryState() || {};
+  if (!alreadyReloaded && !reloadInFlight && Number(priorState.autoReloadCount || 0) < 1) {
     const stamp = new Date().toISOString();
     window.__chaosChunkRecoveryInFlight = true;
+    const recoveryState = writeChunkRecoveryState({
+      stage: 'auto-recovery-started',
+      chunkUrl,
+      exportName,
+      autoReloadCount: 1,
+      firstNonemptyRecoveryUi: 'immediate-dom-overlay',
+      finalRouteState: `${window.location.pathname}${window.location.search}`,
+      startedAt: stamp
+    });
+    renderImmediateChunkRecoverySurface(recoveryState || { stage: 'auto-recovery-started', chunkUrl, autoReloadCount: 1 });
     writeRecoveryMarker(inFlightKey, stamp);
     writeRecoveryMarker(reloadUsedKey, `${stamp}|${chunkUrl}`);
-    await reportRuntimeChunkFailure(error, { source: 'lazy_feature_import', exportName, chunkAutoReload: 'one-shot' });
+    await reportRuntimeChunkFailure(error, { source: 'lazy_feature_import', exportName, chunkAutoReload: 'one-shot', recoveryState: 'auto-recovery-started' });
+    writeChunkRecoveryState({ stage: 'clearing-runtime-caches', chunkUrl, autoReloadCount: 1 });
     await clearRuntimeRecoveryCaches('auto-chunk-recovery', { preserveRecoveryMarkers: true });
     try {
       const registration = await navigator.serviceWorker?.getRegistration?.();
@@ -242,10 +321,20 @@ const recoverFromChunkFailureOnce = async (error, exportName = 'section') => {
     const url = new URL(window.location.href);
     url.searchParams.set('chaosReloadVersion', CURRENT_VERSION);
     url.searchParams.set('chaosReloadAt', String(Date.now()));
+    writeChunkRecoveryState({ stage: 'navigating-after-cache-clear', chunkUrl, autoReloadCount: 1, finalRouteState: url.toString() });
     window.location.replace(url.toString());
     return new Promise(() => {});
   }
-  await reportRuntimeChunkFailure(error, { source: 'lazy_feature_import', exportName, chunkAutoReload: 'already-used' });
+  const state = writeChunkRecoveryState({
+    stage: 'manual-recovery-required',
+    chunkUrl,
+    exportName,
+    autoReloadCount: Number(priorState.autoReloadCount || 1) || 1,
+    firstNonemptyRecoveryUi: priorState.firstNonemptyRecoveryUi || 'manual-dom-overlay',
+    finalRouteState: `${window.location.pathname}${window.location.search}`
+  });
+  renderImmediateChunkRecoverySurface(state || { stage: 'manual-recovery-required', chunkUrl, autoReloadCount: 1 });
+  await reportRuntimeChunkFailure(error, { source: 'lazy_feature_import', exportName, chunkAutoReload: 'already-used', recoveryState: 'manual-recovery-required' });
   throw error;
 };
 const lazyFeature = (loader, exportName) => React.lazy(() => loader()
@@ -674,11 +763,43 @@ export default function App() {
   const [serverAdminCheck, setServerAdminCheck] = useState({ status: WHOAMI_STATES.IDLE });
   const [serverAdminRetryKey, setServerAdminRetryKey] = useState(0);
   const [authRestoreState, setAuthRestoreState] = useState(() => ({ status: appUser?.sessionCached ? WHOAMI_STATES.PENDING : 'ready', uid: auth?.currentUser?.uid || '' }));
+  const [chunkRecoveryNotice, setChunkRecoveryNotice] = useState(() => {
+    const state = readChunkRecoveryState();
+    if (!state || state.appVersion !== CURRENT_VERSION) return null;
+    if (!state.stage && typeof window !== 'undefined' && !new URLSearchParams(window.location.search).has('chaosReloadVersion')) return null;
+    return { ...state, stage: state.stage || 'chunk-recovery-visible' };
+  });
 
   useEffect(() => {
     if (!auth?.currentUser?.uid && !appUser?.id) return;
     getCurrentAuthSessionStartedMs();
   }, [appUser?.id, auth?.currentUser?.uid]);
+
+  useEffect(() => {
+    if (!chunkRecoveryNotice) return;
+    const current = writeChunkRecoveryState({
+      stage: chunkRecoveryNotice.stage || 'visible-in-app-shell',
+      finalRouteState: typeof window !== 'undefined' ? `${window.location.pathname}${window.location.search}` : ''
+    });
+    if (current?.stage !== chunkRecoveryNotice.stage) setChunkRecoveryNotice(current);
+  }, [chunkRecoveryNotice?.stage, activeTabState]);
+
+  const dismissChunkRecoveryNotice = useCallback(() => {
+    clearChunkRecoveryState();
+    try {
+      const url = new URL(window.location.href);
+      url.searchParams.delete('chaosReloadVersion');
+      url.searchParams.delete('chaosReloadAt');
+      window.history.replaceState({}, '', url.toString());
+    } catch (_) {}
+    setChunkRecoveryNotice(null);
+  }, []);
+
+  const runManualChunkRecovery = useCallback(() => {
+    const current = writeChunkRecoveryState({ stage: 'manual-recovery-clicked', autoReloadCount: Number(chunkRecoveryNotice?.autoReloadCount || 1) || 1 });
+    setChunkRecoveryNotice(current || chunkRecoveryNotice || { stage: 'manual-recovery-clicked' });
+    window.location.reload();
+  }, [chunkRecoveryNotice]);
 
   useEffect(() => {
     let mounted = true;
@@ -918,7 +1039,8 @@ const [currentDate, setCurrentDate] = useState(getToday());
   const wantsPublishedSchedule = activeTabState === 'published';
   const wantsScheduleData = wantsPublishedSchedule || (wantsToday && canReadScheduleView) || (wantsScheduleScreen && (canReadScheduleView || canReadScheduleBuilder)) || (['labor', 'ops'].includes(activeTabState) && (canReadScheduleView || canReadOperationsLabor));
   const wantsShiftData = wantsScheduleData && schedulePlan.shiftsEnabled !== false;
-  const wantsTimeOffData = wantsScheduleData && schedulePlan.timeOffEnabled !== false;
+  const userGhostRequestOffPath = Boolean(ghostTenant?.impersonate && activeTabState === 'schedule' && activeScheduleSubTab === 'time-off');
+  const wantsTimeOffData = wantsScheduleData && schedulePlan.timeOffEnabled !== false && !userGhostRequestOffPath;
   const wantsLaborData = (['financials', 'labor', 'sales', 'ops'].includes(activeTabState) || (wantsToday && canReadOperationsLabor)) && canReadOperationsLabor;
   const wantsInventoryData = (((wantsToday || isGlobalSearchOpen) && (canReadBasicInventory || canReadSmartInventory)) || (activeTabState === 'menu-intelligence' && canReadMenuCollections));
   const wantsPrepData = wantsToday; // Prep screen owns its live prep/task listeners; App keeps only Today summaries.
@@ -2794,11 +2916,25 @@ What I clicked / expected:
     roleControlsHydrating: Boolean(appUser?.sessionCached && appUser?.accessHydrationRequired && !directAccountUserState.resolved && !directAccountUserState.error)
   });
 
+  const chunkRecoveryBanner = chunkRecoveryNotice ? (
+    <div data-chaos-recovery-state={chunkRecoveryNotice.stage || 'manual-update-available'} role="alert" className="w-full max-w-3xl rounded-2xl border border-red-500/50 bg-red-950/50 text-white p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-2xl">
+      <div className="min-w-0">
+        <p className="text-[10px] font-black uppercase tracking-[0.25em] text-[#D4A381]">Recovering app shell</p>
+        <p className="text-xs font-bold text-slate-200 mt-1">A stale 86 Chaos file failed to load. This recovery surface stays visible while the app refreshes safely, without a blank page or reload loop.</p>
+      </div>
+      <div className="flex items-center gap-2 flex-shrink-0">
+        <button type="button" aria-label="Recover app manually" onClick={runManualChunkRecovery} className="bg-white text-red-700 px-4 py-2 rounded-xl font-black text-[10px] uppercase tracking-widest">RECOVER APP</button>
+        <button type="button" aria-label="Dismiss app recovery notice" onClick={dismissChunkRecoveryNotice} className="bg-red-800/70 text-white px-3 py-2 rounded-xl font-black text-[10px] uppercase tracking-widest">Dismiss</button>
+      </div>
+    </div>
+  ) : null;
+
   if (labelsToPrint) return <div className="non-admin-controls-compact"><DayDotPrintScreen labelsToPrint={labelsToPrint.items} prepDate={labelsToPrint.prepDate} appUser={liveAppUser} onClose={() => setLabelsToPrint(null)} /></div>;
 
   if (cachedSessionAccessHydrating) {
     return (
       <div className="non-admin-controls-compact min-h-screen bg-[#0B0E11] text-white flex flex-col items-center justify-center p-6 gap-4">
+        {chunkRecoveryBanner}
         {showUpdateBanner && !updateAlertMemory.isDismissed && (
           <div data-chaos-recovery-state="manual-update-available" role="alert" className="w-full max-w-2xl rounded-2xl border border-red-500/50 bg-red-950/50 text-white p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-2xl">
             <span className="text-xs font-black uppercase tracking-widest">Update available. Refresh app to recover the newest version.</span>
@@ -3034,6 +3170,8 @@ return (
           .ui-v12-compact .text-lg { font-size: .98rem !important; line-height: 1.3rem !important; }
         }
       `}</style>
+
+      {chunkRecoveryBanner && <div className="px-3 pt-3 flex justify-center">{chunkRecoveryBanner}</div>}
 
       {/* UPDATE ALERT BANNER */}
       {showUpdateBanner && !updateAlertMemory.isDismissed && (

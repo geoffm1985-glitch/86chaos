@@ -11,7 +11,7 @@ const {
   assertSucceeds,
   assertFails
 } = require('@firebase/rules-unit-testing');
-const { doc, setDoc, getDoc, updateDoc, deleteDoc, deleteField, writeBatch, runTransaction } = require('firebase/firestore');
+const { collection, doc, setDoc, getDoc, getDocs, query, where, updateDoc, deleteDoc, deleteField, writeBatch, runTransaction } = require('firebase/firestore');
 const { ref, uploadBytes, getMetadata, deleteObject } = require('firebase/storage');
 
 const projectId = process.env.GCLOUD_PROJECT || process.env.FIREBASE_PROJECT || 'demo-no-project';
@@ -101,6 +101,11 @@ async function runFirestoreTests(env) {
   await seedDoc(env, 'messages', 'msg_a', { restaurantId: tenantA, authorId: 'staffA', text: 'Need sauce' });
   await seedDoc(env, 'maintenanceLogs', 'maint_a', { restaurantId: tenantA, reporterId: 'staffA', title: 'Light out' });
   await seedDoc(env, 'shiftSwaps', 'swap_a', { restaurantId: tenantA, requesterId: 'staffA', shiftId: 'shift_a', status: 'requested' });
+  await seedDoc(env, 'personalReminders', 'rem_owner_staff_shared', { restaurantId: tenantA, participantSchemaVersion: 1, participantUserIds: ['ownerA', 'staffA'], assignedToUserId: 'staffA', createdBy: 'ownerA', title: 'Shared owner staff reminder' });
+  await seedDoc(env, 'personalReminders', 'rem_manager', { restaurantId: tenantA, participantSchemaVersion: 1, participantUserIds: ['managerA'], assignedToUserId: 'managerA', createdBy: 'managerA', title: 'Manager reminder' });
+  await seedDoc(env, 'personalReminders', 'rem_staff', { restaurantId: tenantA, participantSchemaVersion: 1, participantUserIds: ['staffA'], assignedToUserId: 'staffA', createdBy: 'staffA', title: 'Staff reminder' });
+  await seedDoc(env, 'personalReminders', 'rem_tenant_b_staff_a', { restaurantId: tenantB, participantSchemaVersion: 1, participantUserIds: ['staffA'], assignedToUserId: 'staffA', createdBy: 'staffA', title: 'Cross tenant reminder' });
+  await seedDoc(env, 'personalReminders', 'rem_other_user', { restaurantId: tenantA, participantSchemaVersion: 1, participantUserIds: ['staffB'], assignedToUserId: 'staffB', createdBy: 'staffB', title: 'Other user reminder' });
   for (const collectionName of ['inventoryItems', 'vendors', 'orders', 'wasteLogs', 'invoices', 'reports', 'exports']) {
     await seedDoc(env, collectionName, `${collectionName}_a`, { restaurantId: tenantA, createdBy: 'managerA', name: collectionName });
   }
@@ -270,6 +275,28 @@ async function runFirestoreTests(env) {
     isSuperAdmin: true,
     'pushDevices.web_test': pushDevice
   }));
+
+
+  setRuleCase('Personal reminder canonical participant queries');
+  const canonicalReminderQuery = (db, uid, restaurantId) => query(
+    collection(db, 'personalReminders'),
+    where('restaurantId', '==', restaurantId),
+    where('participantSchemaVersion', '==', 1),
+    where('participantUserIds', 'array-contains', uid)
+  );
+  const ownerReminderSnap = await assertSucceeds(getDocs(canonicalReminderQuery(ownerA, 'ownerA', tenantA)));
+  assert(ownerReminderSnap.docs.some((row) => row.id === 'rem_owner_staff_shared'), 'owner participant receives shared reminder from exact canonical query');
+  const managerReminderSnap = await assertSucceeds(getDocs(canonicalReminderQuery(managerA, 'managerA', tenantA)));
+  assert(managerReminderSnap.docs.some((row) => row.id === 'rem_manager'), 'manager participant receives assigned reminder from exact canonical query');
+  const staffReminderSnap = await assertSucceeds(getDocs(canonicalReminderQuery(staffA, 'staffA', tenantA)));
+  assert(staffReminderSnap.docs.some((row) => row.id === 'rem_staff'), 'staff participant receives assigned reminder from exact canonical query');
+  assert(staffReminderSnap.docs.some((row) => row.id === 'rem_owner_staff_shared'), 'staff participant receives shared reminder from exact canonical query');
+  assert(!staffReminderSnap.docs.some((row) => row.id === 'rem_other_user'), 'nonparticipant reminder is not returned by exact canonical query');
+  assert(!staffReminderSnap.docs.some((row) => row.id === 'rem_tenant_b_staff_a'), 'cross-tenant reminder is not returned by exact canonical query');
+  const staffBEmptySnap = await assertSucceeds(getDocs(canonicalReminderQuery(staffB, 'staffB', tenantB)));
+  assert(!staffBEmptySnap.docs.some((row) => row.data().restaurantId === tenantA), 'cross-tenant participant receives no tenant A reminder data');
+  const emptySnap = await assertSucceeds(getDocs(canonicalReminderQuery(ownerA, 'ownerA', 'tenant_empty_email')));
+  assert.strictEqual(emptySnap.empty, true, 'empty canonical reminder query resolves cleanly without a permission error');
 
   setRuleCase('Tenant protected collection writes');
   // Daily-close rules keep tenant, field allowlist, date, and critical totals at the security boundary.

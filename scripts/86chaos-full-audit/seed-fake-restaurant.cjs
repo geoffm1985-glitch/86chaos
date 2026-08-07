@@ -535,6 +535,30 @@ async function main() {
     const now = new Date().toISOString();
     const today = new Date().toISOString().slice(0, 10);
     const roleByKey = Object.fromEntries(roleAccounts.map(account => [account.key, account]));
+    const ownerAccount = roleByKey.owner || roleByKey.systemAdmin || writer;
+    const managerAccount = roleByKey.manager || ownerAccount;
+    const staffAccount = roleByKey.staff || managerAccount;
+    const canonicalReminderSeeds = Array.isArray(profile.collections.personalReminders) ? profile.collections.personalReminders : [];
+    profile.collections.personalReminders = canonicalReminderSeeds.map((reminder, index) => {
+      const assignedAccount = index === 0 ? managerAccount : staffAccount;
+      const sharedWithOwner = index > 0 && ownerAccount?.uid && ownerAccount.uid !== assignedAccount?.uid;
+      const participantUserIds = Array.from(new Set([assignedAccount?.uid, sharedWithOwner ? ownerAccount.uid : null].filter(Boolean)));
+      const next = {
+        ...reminder,
+        restaurantId,
+        assignedToUserId: assignedAccount?.uid || writer.uid,
+        userId: assignedAccount?.uid || writer.uid,
+        participantSchemaVersion: 1,
+        participantUserIds,
+        createdBy: ownerAccount?.uid || writer.uid,
+        createdByEmail: ownerAccount?.email || writer.email,
+        qaCreatedBy: '86chaos-full-audit',
+        qaSeedSource: '86chaos-full-audit',
+        createdAt: reminder.createdAt || now,
+        updatedAt: now,
+      };
+      return next;
+    });
     for (const key of ['manager', 'staff']) {
       const account = roleByKey[key];
       if (!account) continue;
