@@ -12,6 +12,7 @@ loadEnv(process.cwd());
 
 const { runId: RUN_ID, runDir: RELEASE_RUN_DIR } = ensureRunDir();
 const REPORT_PATH = getCleanupReportPath(RUN_ID);
+const GHOST_TARGET_AUTH_PATH = path.join(RELEASE_RUN_DIR, 'ghost-target-auth.json');
 const QA_RESTAURANT_NAME = resolveQaWorkspaceName(process.env, RUN_ID);
 const COLLECTIONS = [
   'restaurantAdminAlerts', 'eventReminders', 'personalReminders', 'scheduleCoverageTargets',
@@ -19,6 +20,29 @@ const COLLECTIONS = [
   'shifts', 'events', 'financialExpenses', 'sales', 'maintenanceLogs', 'pmSchedules', 'tasks',
   'prepItems', 'menuDependencies', 'recipes', 'inventoryItems', 'vendors', 'users', 'workspaceMembers'
 ];
+
+
+async function deleteGhostTargetAuthAccount(projectId) {
+  const ghost = readJsonIfExists(GHOST_TARGET_AUTH_PATH) || null;
+  if (!ghost?.uid) return { attempted: false, deleted: 0, verifiedAbsent: false, reason: 'missing ghost-target-auth.json' };
+  const { getAdminAppForProject } = require('../../api/_firebase-project-admin.js');
+  const app = getAdminAppForProject(projectId, { requireCredentials: true });
+  const auth = app.auth();
+  try {
+    await auth.deleteUser(ghost.uid);
+  } catch (error) {
+    const code = String(error?.code || error?.errorInfo?.code || '');
+    if (!/user-not-found/i.test(code)) return { attempted: true, deleted: 0, verifiedAbsent: false, uid: ghost.uid, error: error.message || String(error) };
+  }
+  let verifiedAbsent = false;
+  try {
+    await auth.getUser(ghost.uid);
+  } catch (error) {
+    const code = String(error?.code || error?.errorInfo?.code || '');
+    verifiedAbsent = /user-not-found/i.test(code);
+  }
+  return { attempted: true, deleted: 1, verifiedAbsent, uid: ghost.uid, email: ghost.email || '' };
+}
 
 function buildFirebaseAuthRequestHeaders() {
   const headers = { 'Content-Type': 'application/json' };
@@ -447,6 +471,11 @@ async function main() {
     report.restaurantExisted = apiResult.restaurantExisted === true;
     report.restaurantDeleted = apiResult.restaurantDeleted === true ? 1 : 0;
     report.restaurantRemaining = Array.isArray(apiResult.remaining) && apiResult.remaining.some(row => row.collection === 'restaurants');
+    report.temporaryAuthAccounts = { ghostTarget: await deleteGhostTargetAuthAccount(config.projectId).catch(error => ({ attempted: true, deleted: 0, verifiedAbsent: false, error: error.message || String(error) })) };
+    report.temporaryAuthAccountsDeleted = Number(report.temporaryAuthAccounts.ghostTarget?.deleted || 0);
+    if (report.temporaryAuthAccounts.ghostTarget?.attempted && report.temporaryAuthAccounts.ghostTarget?.verifiedAbsent !== true) {
+      report.failed.push({ collection: '_auth', error: report.temporaryAuthAccounts.ghostTarget?.error || 'Temporary Ghost-target Auth account was not verified absent after cleanup.' });
+    }
     report.accountedFailures = [];
     report.ok = apiResult.ok === true && report.failed.length === 0 && Object.keys(report.remaining).length === 0 && (report.unresolvedQaLeftovers || []).length === 0;
     if (!report.ok) process.exitCode = 1;
@@ -470,6 +499,7 @@ module.exports = {
   firestoreDocData,
   cleanupDocumentVaultStorage,
   documentVaultObjectOwnershipErrors,
+  deleteGhostTargetAuthAccount,
   storageRest,
   COLLECTIONS,
   QA_RESTAURANT_NAME,

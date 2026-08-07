@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 
 const { ensureRunDir, getRunFile, writeJson } = require('./run-context.cjs');
 const { loadEnv } = require('../86chaos-full-audit/env-loader.cjs');
@@ -82,6 +83,52 @@ function summarizeCustomClaims(claims = {}) {
     enabledCustomClaims,
     qaRoleClaim: claims.qaReleaseGateRole || '',
   };
+}
+
+
+function ghostTargetAccount(runId) {
+  const safeRunId = String(runId || 'local').replace(/[^a-z0-9_-]/gi, '').slice(0, 48) || 'local';
+  return {
+    key: 'ghostTarget',
+    label: 'Ghost Target QA',
+    emailEnv: 'GHOST_TARGET_EMAIL',
+    email: `86chaos.qa+ghost-target.${safeRunId}@86chaos.test`,
+    password: `Ghost-${safeRunId}-${crypto.randomBytes(12).toString('hex')}!`,
+    name: 'Allen QA',
+  };
+}
+
+function safeGhostClaimPatch() {
+  return {
+    superAdmin: false,
+    systemAdmin: false,
+    systemAdministrator: false,
+    chaosSystemAdministrator: false,
+    qaReleaseGateRole: 'ghostTarget',
+    qaReleaseGateOnly: true,
+  };
+}
+
+async function provisionGhostTargetAuth(auth, runId, runDir) {
+  const account = ghostTargetAccount(runId);
+  const user = await upsertAuthUser(auth, account);
+  const claims = safeGhostClaimPatch();
+  await auth.setCustomUserClaims(user.uid, claims);
+  const safe = {
+    key: 'GHOST_TARGET',
+    label: account.label,
+    email: normalizeEmail(account.email),
+    uid: user.uid,
+    authUid: user.uid,
+    created: user.created,
+    displayName: account.name,
+    qaRoleClaim: 'ghostTarget',
+    customClaimKeysProcessed: Object.keys(claims).sort(),
+    enabledCustomClaims: Object.keys(claims).filter(key => claims[key] === true),
+  };
+  writeJson(path.join(runDir, 'ghost-target-auth.json'), safe);
+  fs.writeFileSync(path.join(runDir, 'ghost-target-auth.runtime-secret'), JSON.stringify({ ...safe, password: account.password }, null, 2));
+  return safe;
 }
 
 function validateProvisionSafety(accounts) {
@@ -331,6 +378,12 @@ async function provisionTestAccounts(options = {}) {
     workspaceOwner: roleForKey(row.key).workspaceOwner === true,
     permissions: roleForKey(row.key).permissions || {},
   }));
+  try {
+    report.ghostTargetAuth = await provisionGhostTargetAuth(auth, runId, runDir);
+    report.notes.push('Temporary Ghost-target Auth account was provisioned for release-gate browser verification; password is stored only in the current-run runtime secret file and is excluded from reports.');
+  } catch (error) {
+    report.errors.push(`GHOST_TARGET provisioning failed: ${error.message || String(error)}`);
+  }
   report.errors.push(...analyzeRoleRows(roleRows, EXPECTED_FIREBASE_PROJECT));
   report.errors = [...new Set(report.errors)];
   report.ok = report.errors.length === 0;
@@ -363,5 +416,7 @@ module.exports = {
   summarizeCustomClaims,
   validateProvisionSafety,
   verifyExistingAccountsWithoutProvisioning,
+  provisionGhostTargetAuth,
+  ghostTargetAccount,
   provisionTestAccounts,
 };

@@ -51,6 +51,10 @@ const seedReport = readJsonIfExists(artifact['86chaos-full-audit-seed-report.jso
 const cleanupReport = readJsonIfExists(artifact['86chaos-full-audit-cleanup-report.json'], releaseGateJsonDiagnostics) || {};
 let failedOnlyManifest = readJsonIfExists(path.join(runDir, 'failed-only-test-manifest.json'), releaseGateJsonDiagnostics) || null;
 const failedOnlyManifestValidation = readJsonIfExists(path.join(runDir, 'failed-only-manifest-validation.json'), releaseGateJsonDiagnostics) || {};
+const failedAndNewSelection = readJsonIfExists(path.join(runDir, 'failed-and-new-manifest-selection.json'), releaseGateJsonDiagnostics) || {};
+const criticalInventory = readJsonIfExists(path.join(runDir, 'release-critical-test-inventory.json'), releaseGateJsonDiagnostics) || {};
+const iconParity = readJsonIfExists(path.join(runDir, 'pwa-icon-source-deployed-parity.json'), releaseGateJsonDiagnostics) || null;
+const iconSourceInventory = readJsonIfExists(path.join(runDir, 'pwa-icon-source-inventory.json'), releaseGateJsonDiagnostics) || null;
 
 const preflightRan = preflight && Object.keys(preflight).length > 0;
 const preflightFailedBeforeMutation = preflightRan && preflight.ok === false;
@@ -60,7 +64,7 @@ const preflightFailures = preflightFailedBeforeMutation
 
 const runnerBlockingReason = String(runnerState.blockingReason || '').trim();
 const runnerPhase = String(runnerState.currentPhase || '').trim();
-const failedOnlyMode = String(runnerState.mode || '').toLowerCase() === 'failed-only' || process.env.CHAOS_FAILED_ONLY_RELEASE_GATE === 'true';
+const failedOnlyMode = ['failed-only', 'failed+new', 'delta'].includes(String(runnerState.mode || '').toLowerCase()) || process.env.CHAOS_FAILED_ONLY_RELEASE_GATE === 'true' || process.env.CHAOS_FAILED_AND_NEW_RELEASE_GATE === 'true';
 const fullGateOnlyArtifacts = new Set(['java-prerequisite.json', 'node-test-live-summary.json', 'firebase-rules-release-gate.json']);
 if (failedOnlyMode) missingArtifacts = missingArtifacts.filter(name => !fullGateOnlyArtifacts.has(name));
 const playwrightStarted = runnerState.playwrightStarted === true;
@@ -134,9 +138,22 @@ function collectSuites(suites = [], parents = []) {
 }
 if (playwright) collectSuites(playwright.suites || []);
 const skippedTests = tests.filter(t => t.status === 'skipped');
-const timedOutTests = tests.filter(t => t.status === 'timedOut' || /timeout/i.test(t.error || ''));
-const failedTests = tests.filter(t => !['passed', 'skipped', 'timedOut'].includes(t.status) && !/timeout/i.test(t.error || ''));
+const timedOutTests = tests.filter(t => t.status === 'timedOut');
+const failedTests = tests.filter(t => !['passed', 'skipped', 'timedOut'].includes(t.status));
 const unexpectedTests = [...failedTests, ...timedOutTests];
+const assertionTimeoutTests = tests.filter(t => t.status === 'failed' && /timeout/i.test(t.error || ''));
+const perProject = {};
+for (const t of tests) {
+  const project = t.projectName || 'unknown';
+  if (!perProject[project]) perProject[project] = { total: 0, passed: 0, failed: 0, timedOut: 0, skipped: 0, blocked: 0, notRun: 0, retries: 0 };
+  perProject[project].total += 1;
+  if (t.status === 'passed') perProject[project].passed += 1;
+  else if (t.status === 'skipped') perProject[project].skipped += 1;
+  else if (t.status === 'timedOut') perProject[project].timedOut += 1;
+  else perProject[project].failed += 1;
+}
+const slowestTests = tests.slice().sort((a, b) => Number(b.duration || 0) - Number(a.duration || 0)).slice(0, 10);
+const failedByCategory = unexpectedTests.map(t => ({ ...t, category: /ERR_CONNECTION|net::/i.test(t.error) ? 'infrastructure/network' : /Firebase|permission-denied|Missing or insufficient/i.test(t.error) ? 'Firebase emulator' : /login|auth/i.test(t.error) ? 'authentication/setup' : /cleanup/i.test(t.error) ? 'cleanup' : 'application assertion' }));
 if (!failedOnlyManifest && playwright && unexpectedTests.length > 0 && String(runnerState.mode || '').toLowerCase() !== 'failed-only') {
   try {
     failedOnlyManifest = generateFailedOnlyManifestFromRun(runDir, { write: true });
@@ -374,7 +391,7 @@ const summary = {
   nodeFailures,
   rulesGateReport: rulesGateReport && Object.keys(rulesGateReport).length ? { ok: rulesGateReport.ok, totalCases: rulesGateReport.totalCases, passed: rulesGateReport.passed, failed: rulesGateReport.failed, blocked: rulesGateReport.blocked, firstActionableFailure: rulesGateReport.firstActionableFailure || '' } : null,
   testAccountConfigurationFailure: roleFailures.length > 0,
-  playwright: { totalResults: tests.length, status: blockedBeforeTestExecution ? 'BLOCKED BEFORE TEST EXECUTION' : (noTestsExecuted ? 'No tests executed' : 'Tests executed'), passed: tests.filter(t => t.status === 'passed').length, failed: failedTests.length, timedOut: timedOutTests.length, skipped: skippedTests.length, blocked: blockedBeforeTestExecution ? 1 : 0, notRun: blockedBeforeTestExecution ? 1 : 0, unexpected: unexpectedTests.length, failedTests: blockedBeforeTestExecution ? [] : unexpectedTests.slice(0, 200), timedOutTests: timedOutTests.slice(0, 200), skippedTests: skippedTests.slice(0, 200) },
+  playwright: { totalResults: tests.length, status: blockedBeforeTestExecution ? 'BLOCKED BEFORE TEST EXECUTION' : (noTestsExecuted ? 'No tests executed' : 'Tests executed'), passed: tests.filter(t => t.status === 'passed').length, failed: failedTests.length, timedOut: timedOutTests.length, skipped: skippedTests.length, blocked: blockedBeforeTestExecution ? 1 : 0, notRun: blockedBeforeTestExecution ? 1 : 0, unexpected: unexpectedTests.length, failedTests: blockedBeforeTestExecution ? [] : unexpectedTests.slice(0, 200), timedOutTests: timedOutTests.slice(0, 200), skippedTests: skippedTests.slice(0, 200), assertionTimeoutTests, perProject, failedByCategory: failedByCategory.slice(0, 200), slowestTests },
   attemptStatus: {
     browserInstallation: { attempted: runnerPhase === 'install-chromium' || runnerState.browserInstallPassed === true, status: runnerState.browserInstallPassed === true ? 'passed' : (blockedBeforePlaywright ? 'blocked' : 'not_run') },
     testAccountProvisioning: { attempted: runnerState.testAccountProvisionAttempted === true, status: runnerState.testAccountProvisionPassed === true ? 'passed' : (runnerState.testAccountProvisionAttempted === true ? 'failed' : (blockedBeforePlaywright ? 'blocked' : 'not_run')) },
@@ -404,6 +421,10 @@ const summary = {
   roleIdentityVerification: roleVerification && roleVerification.ok !== undefined ? roleVerification : null,
   failedOnlyManifest,
   failedOnlyManifestValidation: failedOnlyManifestValidation && Object.keys(failedOnlyManifestValidation).length ? failedOnlyManifestValidation : null,
+  failedAndNewSelection: failedAndNewSelection && Object.keys(failedAndNewSelection).length ? failedAndNewSelection : null,
+  criticalTestInventory: criticalInventory && Object.keys(criticalInventory).length ? criticalInventory : null,
+  pwaIconSourceInventory: iconSourceInventory,
+  pwaIconSourceDeployedParity: iconParity,
   failedOnlyMode,
   failureGroups,
   missingArtifacts,
@@ -450,6 +471,13 @@ const lines = [
   `Playwright failed: ${failedTests.length}`,
   `Playwright timed out: ${timedOutTests.length}`,
   `Playwright skipped: ${skippedTests.length}`,
+  `Playwright assertion timeouts classified as failed assertions: ${assertionTimeoutTests.length}`,
+  '',
+  'PER-PROJECT PLAYWRIGHT TOTALS',
+  JSON.stringify(perProject, null, 2),
+  '',
+  'TOP SLOWEST TESTS',
+  JSON.stringify(slowestTests, null, 2),
   '',
   'DEPENDENCY PREFLIGHT',
   JSON.stringify(summary.dependencyPreflight || {}, null, 2),
@@ -460,8 +488,8 @@ const lines = [
   'RULES GATE REPORT',
   JSON.stringify(summary.rulesGateReport || {}, null, 2),
   '',
-  'FAILED-ONLY MANIFEST VALIDATION',
-  JSON.stringify(summary.failedOnlyManifestValidation || {}, null, 2),
+  'FAILED + NEW MANIFEST VALIDATION',
+  JSON.stringify({ validation: summary.failedOnlyManifestValidation || {}, selection: summary.failedAndNewSelection || {} }, null, 2),
   '',
   'ATTEMPT STATUS',
   JSON.stringify(summary.attemptStatus || {}, null, 2),
@@ -494,7 +522,7 @@ const lines = [
   ...(failureGroups.length ? failureGroups.map(g => `- ${g.group}: ${g.examples.join(' | ')}`) : ['- None']),
   '',
   'FAILED TESTS',
-  ...(unexpectedTests.length ? unexpectedTests.map(t => `- ${t.title}: ${t.error}`) : ['- None']),
+  ...(unexpectedTests.length ? unexpectedTests.map(t => `- [${t.status}] ${t.title}: ${t.error}`) : ['- None']),
   '',
   'SKIPPED TESTS',
   ...(skippedTests.length ? skippedTests.map(t => `- ${t.title}`) : ['- None']),

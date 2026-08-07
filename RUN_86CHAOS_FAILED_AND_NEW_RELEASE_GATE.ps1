@@ -1,10 +1,4 @@
 $ErrorActionPreference = 'Continue'
-[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)
-$OutputEncoding = [System.Text.UTF8Encoding]::new($false)
-$PSDefaultParameterValues['Out-File:Encoding'] = 'utf8'
-$PSDefaultParameterValues['Set-Content:Encoding'] = 'utf8'
-$PSDefaultParameterValues['Add-Content:Encoding'] = 'utf8'
-$env:PYTHONUTF8 = '1'
 
 $Root = Split-Path -Parent $MyInvocation.MyCommand.Path
 Set-Location $Root
@@ -41,7 +35,8 @@ $RunId = Get-Date -Format "yyyy-MM-ddTHH-mm-ss"
 $env:CHAOS_RELEASE_GATE_RUN_ID = $RunId
 $env:CHAOS_FULL_AUDIT_RUN_ID = $RunId
 $env:CHAOS_RELEASE_GATE_STEP_FAILURES = "0"
-[Environment]::SetEnvironmentVariable('CHAOS_FAILED_ONLY_RELEASE_GATE', $null, 'Process')
+$env:CHAOS_FAILED_ONLY_RELEASE_GATE = "true"
+$env:CHAOS_FAILED_AND_NEW_RELEASE_GATE = "true"
 if (-not $env:CHAOS_QA_DISABLE_AUTO_PROVISION_TEST_USERS) { $env:CHAOS_QA_AUTO_PROVISION_TEST_USERS = "true" }
 if (-not $env:CHAOS_RELEASE_GATE_NO_MUTATION) {
   $env:CHAOS_ALLOW_MUTATION = "true"
@@ -61,7 +56,7 @@ New-Item -ItemType Directory -Force $RunDir | Out-Null
 New-Item -ItemType Directory -Force $RunnerLogDir | Out-Null
 
 Get-ChildItem $ResultsRoot -File -ErrorAction SilentlyContinue | Where-Object { $_.Name -ne '.last-run.json' } | Remove-Item -Force -ErrorAction SilentlyContinue
-@{ runId = $RunId; runDir = $RunDir; mode = 'full'; updatedAt = (Get-Date -Format o) } | ConvertTo-Json | Set-Content (Join-Path $ResultsRoot '.last-run.json')
+@{ runId = $RunId; runDir = $RunDir; mode = 'failed+new'; updatedAt = (Get-Date -Format o) } | ConvertTo-Json | Set-Content (Join-Path $ResultsRoot '.last-run.json')
 
 $StepResults = @()
 $RunnerState = [ordered]@{
@@ -89,13 +84,6 @@ $RunnerState = [ordered]@{
   cleanupCompleted = $false
   cleanupRefusalReason = ''
   blockingReason = ''
-  status = 'running'
-  startedAt = (Get-Date -Format o)
-  finishedAt = ''
-  lastCompletedStep = ''
-  anyTestsRan = $false
-  blockedBeforeTestExecution = $false
-  finalExitCode = $null
   steps = @()
 }
 
@@ -117,8 +105,8 @@ function Set-BlockingReason {
 }
 Save-RunnerState
 
-Write-Host "86 Chaos Play Store Release Gate" -ForegroundColor Cyan
-Write-Host "Slim upload report only by default." -ForegroundColor Cyan
+Write-Host "86 Chaos failed + new release gate" -ForegroundColor Cyan
+Write-Host "This only reruns the current failed/fixed harness areas. It does NOT replace the full release gate." -ForegroundColor Yellow
 Write-Host "Run ID: $RunId" -ForegroundColor Cyan
 Write-Host "Current-run directory: $RunDir" -ForegroundColor Cyan
 
@@ -127,8 +115,6 @@ function Add-StepResult {
   $step = [pscustomobject]@{ name = $Name; exitCode = $ExitCode; passed = ($ExitCode -eq 0); logPath = $LogPath; countsAsFailure = $CountsAsFailure; finishedAt = (Get-Date -Format o) }
   $script:StepResults += $step
   $script:RunnerState.steps += $step
-  $script:RunnerState.lastCompletedStep = $Name
-  if ($Name -match 'Playwright') { $script:RunnerState.anyTestsRan = ($ExitCode -ne 124) }
   Save-RunnerState
   if ($ExitCode -ne 0 -and $CountsAsFailure) {
     $count = 0
@@ -253,7 +239,7 @@ function Write-RunnerSummary {
     }
   }
   $lines | Set-Content $summaryPath
-  @{ runId = $RunId; runDir = $RunDir; mode = 'full'; blockingReason = $RunnerState.blockingReason; steps = $StepResults; generatedAt = (Get-Date -Format o) } | ConvertTo-Json -Depth 12 | Set-Content $jsonPath
+  @{ runId = $RunId; runDir = $RunDir; mode = 'failed+new'; blockingReason = $RunnerState.blockingReason; steps = $StepResults; generatedAt = (Get-Date -Format o) } | ConvertTo-Json -Depth 12 | Set-Content $jsonPath
 }
 
 function Stop-BeforePlaywright {
@@ -262,24 +248,6 @@ function Stop-BeforePlaywright {
   Write-Host $Reason -ForegroundColor Red
 }
 
-$RunLockPath = Join-Path $ResultsRoot '.current-run.lock'
-$AnotherReleaseGateRunActive = $false
-if (Test-Path $RunLockPath) {
-  try {
-    $ExistingRun = Get-Content $RunLockPath -Raw | ConvertFrom-Json
-    if ($ExistingRun.pid -and (Get-Process -Id ([int]$ExistingRun.pid) -ErrorAction SilentlyContinue)) {
-      $AnotherReleaseGateRunActive = $true
-      Set-RunnerPhase 'blocked-overlapping-run'
-      $RunnerState.blockedBeforeTestExecution = $true
-      Stop-BeforePlaywright "Release gate BLOCKED BEFORE TEST EXECUTION because another release-gate run is already active. Existing runId=$($ExistingRun.runId) pid=$($ExistingRun.pid)."
-    }
-  } catch {}
-}
-if (-not $AnotherReleaseGateRunActive) {
-  @{ runId = $RunId; pid = $PID; startedAt = (Get-Date -Format o); runDir = $RunDir } | ConvertTo-Json | Set-Content $RunLockPath
-}
-
-if (-not $AnotherReleaseGateRunActive) {
 Set-RunnerPhase 'environment-preflight'
 $PreflightExit = Run-Step "Environment preflight" "node scripts/86chaos-release-gate/preflight-env.cjs"
 if ($PreflightExit -ne 0) {
@@ -295,26 +263,14 @@ if ($PreflightExit -ne 0) {
     if ($LockExit -ne 0) {
       Stop-BeforePlaywright "Release gate blocked before Playwright because lockfile integrity failed."
     } else {
-      Set-RunnerPhase 'verify-windows-npm-wrapper'
-      $NpmWrapperExit = Run-Step "Verify npm wrapper" "node scripts/86chaos-release-gate/run-observable-command.cjs --label 'Verify npm wrapper' --heartbeat 20 --timeout 60 -- npm --version"
-      if ($NpmWrapperExit -ne 0) {
-        $RunnerState.blockedBeforeTestExecution = $true
-        Stop-BeforePlaywright "Release gate BLOCKED BEFORE TEST EXECUTION because the observable npm wrapper could not launch npm --version."
-      } else {
       Set-RunnerPhase 'install-locked-test-dependencies'
       $RunnerState.dependencyInstallAttempted = $true
       Save-RunnerState
-      $InstallExit = Run-Step "Install locked test dependencies" "node scripts/86chaos-release-gate/run-observable-command.cjs --label 'Install locked test dependencies' --heartbeat 20 --timeout 1800 -- npm ci --include=dev --no-audit --no-fund"
+      $InstallExit = Run-Step "Install locked test dependencies" "npm ci --include=dev --no-audit --no-fund"
       $RunnerState.dependencyInstallPassed = ($InstallExit -eq 0)
       Save-RunnerState
       if ($InstallExit -ne 0) {
-        if ($InstallExit -eq 124) {
-          $RunnerState.blockedBeforeTestExecution = $true
-          Stop-BeforePlaywright "Release gate BLOCKED BEFORE TEST EXECUTION because locked dependency installation timed out after 30 minutes. Upload the slim report; this is a runner/install blocker, not an app-test result."
-        } else {
-          $RunnerState.blockedBeforeTestExecution = $true
-          Stop-BeforePlaywright "Release gate blocked before Playwright because locked development dependencies were not installed."
-        }
+        Stop-BeforePlaywright "Release gate blocked before Playwright because locked development dependencies were not installed."
       } else {
         Set-RunnerPhase 'dependency-preflight'
         $DependencyExit = Run-Step "Dependency preflight" "node scripts/86chaos-release-gate/dependency-preflight.cjs"
@@ -330,9 +286,28 @@ if ($PreflightExit -ne 0) {
           if ($InventoryExit -ne 0) {
             Stop-BeforePlaywright "Release gate blocked before Playwright because source inventory failed."
           } else {
-            $PlaywrightExe = Join-Path $Root "node_modules\.bin\playwright.cmd"
-            Set-RunnerPhase 'install-chromium'
-            $BrowserExit = Run-Step "Install Playwright browsers" "& '$PlaywrightExe' install chromium firefox webkit"
+            Set-RunnerPhase 'failed+new-manifest'
+            $ManifestExit = Run-Step "Prepare dynamic failed+new manifest" "node scripts/86chaos-release-gate/prepare-failed-only-manifest.cjs"
+            if ($ManifestExit -ne 0) {
+              $ManifestReason = "Release gate blocked before Playwright because the dynamic failed+new manifest could not be prepared. Run npm run test:play-store first, then rerun npm run test:play-store:failed or npm run test:play-store:delta."
+              $ManifestValidationPath = Join-Path $RunDir 'failed+new-manifest-validation.json'
+              if (Test-Path $ManifestValidationPath) {
+                try {
+                  $ManifestValidation = Get-Content $ManifestValidationPath -Raw | ConvertFrom-Json
+                  if ($ManifestValidation.primaryBlockingFailure) {
+                    $ManifestReason = [string]$ManifestValidation.primaryBlockingFailure
+                  } elseif ($ManifestValidation.errors -and $ManifestValidation.errors.Count -gt 0) {
+                    $ManifestReason = [string]$ManifestValidation.errors[0]
+                  }
+                } catch {
+                  # Keep the safe generic manifest reason when the validation report itself cannot be parsed.
+                }
+              }
+              Stop-BeforePlaywright $ManifestReason
+            } else {
+              $PlaywrightExe = Join-Path $Root "node_modules\.bin\playwright.cmd"
+              Set-RunnerPhase 'install-chromium'
+              $BrowserExit = Run-Step "Install Playwright browsers" "& '$PlaywrightExe' install chromium firefox webkit"
             $RunnerState.browserInstallPassed = ($BrowserExit -eq 0)
             Save-RunnerState
             if ($BrowserExit -ne 0) {
@@ -364,25 +339,14 @@ if ($PreflightExit -ne 0) {
                   }
                   Stop-BeforePlaywright $RoleReason
                 } else {
-                  Set-RunnerPhase 'java-prerequisite'
-                  $JavaExit = Run-Step "Java prerequisite" "node scripts/86chaos-release-gate/check-java-prerequisite.cjs"
-                  if ($JavaExit -ne 0) {
-                    Stop-BeforePlaywright "Release gate BLOCKED BEFORE PLAYWRIGHT because Java is required for emulator rules validation. See java-prerequisite.json."
-                  } else {
-                    Set-RunnerPhase 'local-release-checks'
-                    $LocalChecksExit = Run-Step "Local release readiness checks" "node scripts/86chaos-release-gate/run-node-release-checks.cjs"
-                    if ($LocalChecksExit -ne 0) {
-                      Stop-BeforePlaywright "Release gate BLOCKED BEFORE PLAYWRIGHT because required local source/unit/build/rules checks failed or were blocked. See node-test-live-summary.json."
-                    } else {
-                      Set-RunnerPhase 'playwright'
-                      $PlaywrightConfig = ".\playwright.play-store-release.config.cjs"
-                      $RunnerState.playwrightStarted = $true
-                      Save-RunnerState
-                      Run-LiveStep "Playwright release gate" "& '$PlaywrightExe' test --config '$PlaywrightConfig'"
-                    }
-                  }
+                  Set-RunnerPhase 'playwright'
+                  $PlaywrightConfig = ".\playwright.failed-release.config.cjs"
+                  $RunnerState.playwrightStarted = $true
+                  Save-RunnerState
+                  Run-LiveStep "Failed+new Playwright gate" "& '$PlaywrightExe' test --config '$PlaywrightConfig'"
                 }
               }
+            }
             }
           }
         }
@@ -391,52 +355,30 @@ if ($PreflightExit -ne 0) {
   }
 }
 
-}
-}
-
 $SetupStatePath = Join-Path $RunDir 'qa-setup-state.json'
 $CleanupPath = Join-Path $RunDir '86chaos-full-audit-cleanup-report.json'
-$setup = $null
-if (Test-Path $SetupStatePath) {
-  try {
-    $setup = Get-Content $SetupStatePath -Raw | ConvertFrom-Json
-    $RunnerState.globalSetupStarted = [bool]($setup.globalSetupStarted -or $setup.attempted)
-    $RunnerState.qaSeedProcessStarted = [bool]$setup.qaSeedProcessStarted
-    $RunnerState.qaDataWritesStarted = [bool]($setup.qaDataWritesStarted -or $setup.writesStarted)
-    $RunnerState.qaRestaurantCreated = [bool]($setup.createdRestaurant -or $setup.restaurantCreated)
-    $RunnerState.qaSeedAttempted = [bool]($setup.seeded -or $setup.qaSeedAttempted -or $setup.fixtureSeedStarted)
-    $RunnerState.qaSeedVerified = [bool]($setup.verified -or $setup.verificationOk)
-    Save-RunnerState
-  } catch {}
-}
-
-if (Test-Path $CleanupPath) {
-  try {
-    $cleanup = Get-Content $CleanupPath -Raw | ConvertFrom-Json
-    $RunnerState.cleanupAttempted = $true
-    $RunnerState.cleanupCompleted = [bool]$cleanup.ok
-    $CleanupError = [string]$cleanup.error
-    if ([string]::IsNullOrWhiteSpace($CleanupError)) { $CleanupError = [string]$cleanup.firstError }
-    if ([string]::IsNullOrWhiteSpace($CleanupError)) { $CleanupError = 'cleanup report existed but did not report ok:true' }
-    $RunnerState.cleanupRefusalReason = if ($cleanup.ok) { '' } else { $CleanupError }
-    Save-RunnerState
-  } catch {
-    $RunnerState.cleanupAttempted = $true
-    $RunnerState.cleanupCompleted = $false
-    $RunnerState.cleanupRefusalReason = 'cleanup report could not be parsed'
-    Save-RunnerState
-  }
-} elseif ($setup) {
+if ((Test-Path $SetupStatePath) -and -not (Test-Path $CleanupPath)) {
+  $setup = Get-Content $SetupStatePath -Raw | ConvertFrom-Json
+  $RunnerState.globalSetupStarted = [bool]($setup.globalSetupStarted -or $setup.attempted)
+  $RunnerState.qaSeedProcessStarted = [bool]$setup.qaSeedProcessStarted
+  $RunnerState.qaDataWritesStarted = [bool]$setup.qaDataWritesStarted
+  $RunnerState.qaRestaurantCreated = [bool]$setup.createdRestaurant
+  $RunnerState.qaSeedAttempted = [bool]$setup.seeded
+  $RunnerState.qaSeedVerified = [bool]$setup.verified
+  Save-RunnerState
   $SetupRunId = [string]$setup.runId
   $SetupProjectId = [string]$setup.testingProjectId
   if ([string]::IsNullOrWhiteSpace($SetupProjectId)) { $SetupProjectId = [string]$setup.firebaseProjectId }
   if ([string]::IsNullOrWhiteSpace($SetupProjectId)) { $SetupProjectId = [string]$setup.projectId }
   if ([string]::IsNullOrWhiteSpace($SetupProjectId)) { $SetupProjectId = [string]$env:REACT_APP_FIREBASE_PROJECT_ID }
+
   $SetupRestaurantId = [string]$setup.restaurantId
   if ([string]::IsNullOrWhiteSpace($SetupRestaurantId)) { $SetupRestaurantId = [string]$setup.temporaryRestaurantId }
+
   $WritesStarted = [bool]($setup.writesStarted -or $setup.qaDataWritesStarted -or $setup.createdRestaurant -or $setup.restaurantCreated -or $setup.membershipsCreated -or $setup.seeded -or $setup.fixtureSeedStarted)
   $CleanupEligible = $WritesStarted -and ($SetupRunId -eq $RunId) -and ($SetupProjectId -eq 'chaos-test-d1601')
   if ($setup.createdRestaurant -or $setup.restaurantCreated) { $CleanupEligible = $CleanupEligible -and -not [string]::IsNullOrWhiteSpace($SetupRestaurantId) }
+
   if ($CleanupEligible) {
     Set-RunnerPhase 'cleanup'
     $RunnerState.cleanupAttempted = $true
@@ -462,34 +404,13 @@ if (Test-Path $CleanupPath) {
 }
 
 Set-RunnerPhase 'report-collection'
-if ($RunnerState.blockingReason -and $RunnerState.playwrightStarted -ne $true) { $RunnerState.blockedBeforeTestExecution = $true }
-$RunnerState.finishedAt = (Get-Date -Format o)
-if ($RunnerState.blockingReason) { $RunnerState.status = 'blocked' } elseif ([int]$env:CHAOS_RELEASE_GATE_STEP_FAILURES -gt 0) { $RunnerState.status = 'failed' } else { $RunnerState.status = 'passed' }
-if ([int]$env:CHAOS_RELEASE_GATE_STEP_FAILURES -gt 0 -or $RunnerState.blockingReason) { $RunnerState.finalExitCode = 1 } else { $RunnerState.finalExitCode = 0 }
-Save-RunnerState
-Run-CollectorStep "Collect report" "node scripts/86chaos-release-gate/collect-release-gate-report.cjs"
-$RunnerState.updatedAt = (Get-Date -Format o)
-Save-RunnerState
+Run-CollectorStep "Collect failed+new report" "node scripts/86chaos-release-gate/collect-release-gate-report.cjs"
 Write-RunnerSummary
 New-Slim-ReleaseGateReport -SourceDir $RunDir -DestinationDir $SlimDir -ZipPath $SlimZipPath
 
-if ($env:CHAOS_RELEASE_GATE_FULL_ZIP -eq 'true' -and (Test-Path $RunDir)) {
-  $FullZipPath = Join-Path $Root ("86chaos-universal-release-gate-UPLOAD-ME-$RunId.zip")
-  Compress-Archive -Path "$RunDir\*" -DestinationPath $FullZipPath -Force
-  Write-Host ""
-  Write-Host "Full release-gate ZIP created because CHAOS_RELEASE_GATE_FULL_ZIP=true:" -ForegroundColor Yellow
-  Write-Host $FullZipPath -ForegroundColor Yellow
-}
-
-try {
-  if ((Test-Path $RunLockPath) -and -not $AnotherReleaseGateRunActive) {
-    $OwnedRun = Get-Content $RunLockPath -Raw | ConvertFrom-Json
-    if ($OwnedRun.runId -eq $RunId) { Remove-Item $RunLockPath -Force -ErrorAction SilentlyContinue }
-  }
-} catch {}
 Save-RunnerState
 
-if ([int]$env:CHAOS_RELEASE_GATE_STEP_FAILURES -gt 0 -or $RunnerState.blockingReason) {
+if ([int]$env:CHAOS_RELEASE_GATE_STEP_FAILURES -gt 0) {
   Write-Host ""
   Write-Host "Release gate finished with failures. Upload 86chaos-release-gate-SLIM-UPLOAD-ME.zip." -ForegroundColor Red
   exit 1

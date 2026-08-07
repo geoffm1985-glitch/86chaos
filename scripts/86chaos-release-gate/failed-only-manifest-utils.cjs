@@ -151,7 +151,7 @@ function countPlaywrightResults(playwright = {}) {
             counts.total += 1;
             if (status === 'passed') counts.passed += 1;
             else if (status === 'skipped') counts.skipped += 1;
-            else if (status === 'timedOut' || /timeout/i.test(String(result.error?.message || ''))) {
+            else if (status === 'timedOut') {
               counts.timedOut += 1;
               counts.unexpected += 1;
             } else {
@@ -258,16 +258,153 @@ function buildNarrowedManifestFromFailedOnlyRun(failedOnlyRunDir, { baselineMani
   };
 }
 
-function selectFailedOnlyManifestForCurrentRun({ currentRunDir = getRunDir(), resultsRoot = getResultsRoot(), target = {} } = {}) {
+function identityKeyFromParts(specPath = '', title = '', project = '') {
+  return `${normalizeRel(specPath)}\u0000${String(title || '')}\u0000${String(project || '')}`;
+}
+
+function inventoryFromPlaywrightReport(playwright = {}) {
+  const records = [];
+  const walkSuites = (suites = []) => {
+    for (const suite of suites || []) {
+      for (const spec of suite.specs || []) {
+        for (const t of spec.tests || []) {
+          const specPath = normalizeRel(spec.file || '');
+          const title = t.title || spec.title || '';
+          const project = t.projectName || '';
+          if (specPath && title && project) {
+            records.push({ specPath, exactTestTitle: title, title, project, stableKey: identityKeyFromParts(specPath, title, project) });
+          }
+        }
+      }
+      walkSuites(suite.suites || []);
+    }
+  };
+  walkSuites(playwright.suites || []);
+  return records;
+}
+
+function currentInventoryRecords(root = process.cwd()) {
+  try {
+    const { generatePlaywrightInventory } = require('./playwright-inventory.cjs');
+    return generatePlaywrightInventory({ root }).records || [];
+  } catch (_) {
+    return [];
+  }
+}
+
+function priorInventoryRecordsFromRun(dir = '') {
+  const inventory = readJsonIfExists(path.join(dir, 'playwright-test-inventory.json'));
+  if (inventory && Array.isArray(inventory.records)) return inventory.records;
+  const playwright = readJsonIfExists(path.join(dir, 'playwright-report.json'));
+  return playwright ? inventoryFromPlaywrightReport(playwright) : [];
+}
+
+function latestKnownStatuses({ baselineFullRunDir = '', baselineFullRunId = '', resultsRoot = getResultsRoot(), currentRunDir = getRunDir() } = {}) {
+  const map = new Map();
+  const applyReport = (dir) => {
+    const report = readJsonIfExists(path.join(dir, 'playwright-report.json'));
+    if (!report || !Array.isArray(report.suites)) return;
+    const walkSuites = (suites = []) => {
+      for (const suite of suites || []) {
+        for (const spec of suite.specs || []) {
+          for (const t of spec.tests || []) {
+            for (const result of t.results || []) {
+              const key = identityKeyFromParts(spec.file || '', t.title || spec.title || '', t.projectName || '');
+              if (key) map.set(key, { status: String(result.status || ''), dir, duration: result.duration || 0, error: result.error?.message || '' });
+            }
+          }
+        }
+        walkSuites(suite.suites || []);
+      }
+    };
+    walkSuites(report.suites || []);
+  };
+  if (baselineFullRunDir) applyReport(baselineFullRunDir);
+  for (const dir of listRunDirs(resultsRoot).reverse()) {
+    if (path.resolve(dir) === path.resolve(currentRunDir || '')) continue;
+    if (!isFailedOnlyRun(dir)) continue;
+    const manifest = loadManifestFromRunDir(dir) || {};
+    if (baselineFullRunId && getManifestBaselineId(manifest) !== baselineFullRunId) continue;
+    applyReport(dir);
+  }
+  return map;
+}
+
+function addNewInventorySelections(manifest, { baselineFullRunDir = '', baselineFullRunId = '', resultsRoot = getResultsRoot(), currentRunDir = getRunDir(), root = process.cwd() } = {}) {
+  const priorRecords = priorInventoryRecordsFromRun(baselineFullRunDir);
+  const priorKeys = new Set(priorRecords.map(r => r.stableKey || identityKeyFromParts(r.specPath || r.spec, r.exactTestTitle || r.title, r.project)));
+  const known = latestKnownStatuses({ baselineFullRunDir, baselineFullRunId, resultsRoot, currentRunDir });
+  const selectedKeys = new Set((manifest.selected || []).map(row => selectionKey(row)));
+  const current = currentInventoryRecords(root);
+  const newSelections = [];
+  for (const row of current) {
+    const key = row.stableKey || identityKeyFromParts(row.specPath, row.exactTestTitle || row.title, row.project);
+    if (!key || priorKeys.has(key)) continue;
+    const latest = known.get(key);
+    if (latest && latest.status === 'passed') continue;
+    const normalized = normalizeSelection({ specPath: row.specPath, exactTestTitle: row.exactTestTitle, title: row.exactTestTitle, project: row.project, projects: [row.project], priorStatus: latest?.status || 'new', fullTitle: row.fullTitle || row.exactTestTitle }, manifest);
+    const sKey = selectionKey(normalized);
+    if (selectedKeys.has(sKey)) continue;
+    normalized.selectionReasons = latest?.status === 'timedOut' ? ['previous_timeout', 'new_test'] : latest?.status === 'failed' ? ['previous_failure', 'new_test'] : ['new_test'];
+    normalized.priorStatus = latest?.status || 'new';
+    selectedKeys.add(sKey);
+    newSelections.push(normalized);
+  }
+  const selected = dedupeSelections([...(manifest.selected || []), ...newSelections].map(row => {
+    const normalized = normalizeSelection(row, manifest);
+    if (row.selectionReasons) normalized.selectionReasons = row.selectionReasons;
+    return normalized;
+  }));
+  const previousFailures = selected.filter(row => row.selectionReasons?.includes('previous_failure') || row.priorStatus === 'failed').length;
+  const previousTimeouts = selected.filter(row => row.selectionReasons?.includes('previous_timeout') || row.priorStatus === 'timedOut').length;
+  const newTests = selected.filter(row => row.selectionReasons?.includes('new_test') || row.priorStatus === 'new').length;
+  return {
+    ...manifest,
+    mode: 'failed+new',
+    source: manifest.source || 'dynamic-failed-and-new',
+    selected,
+    totalSelected: selected.length,
+    desktopSelected: selected.filter(item => item.project === 'chromium' || item.projects?.includes('chromium')).length,
+    mobileSelected: selected.filter(item => item.project === 'mobile-chromium' || item.projects?.includes('mobile-chromium')).length,
+    priorInventoryCount: priorKeys.size,
+    currentInventoryCount: current.length,
+    previousFailuresCount: previousFailures,
+    previousTimeoutsCount: previousTimeouts,
+    newTestsCount: newTests,
+    newProjectCombinationsCount: 0,
+    removedTestsCount: Math.max(0, priorKeys.size - current.length),
+    possibleRenameCount: 0,
+  };
+}
+
+function selectFailedOnlyManifestForCurrentRun({ currentRunDir = getRunDir(), resultsRoot = getResultsRoot(), target = {}, root = process.cwd() } = {}) {
   const baselineFullRunDir = findMostRecentCompletedFullRun({ currentRunDir, resultsRoot });
-  if (!baselineFullRunDir) throw new Error('No completed full release-gate run with failed Playwright results was found. Run npm run test:play-store before npm run test:play-store:failed.');
+  if (!baselineFullRunDir) throw new Error('No completed full release-gate run with Playwright evidence was found. Run npm run test:play-store before npm run test:play-store:failed.');
   const baselineManifest = generateFailedOnlyManifestFromRun(baselineFullRunDir, { write: false, currentRunDir });
   const latestFailedOnlyRunDir = findLatestCompletedFailedOnlyDescendant({ baselineFullRunId: baselineManifest.baselineFullRunId, currentRunDir, resultsRoot });
+  let manifest;
+  let selectionSource;
   if (latestFailedOnlyRunDir) {
     const narrowed = buildNarrowedManifestFromFailedOnlyRun(latestFailedOnlyRunDir, { baselineManifest, target, currentRunDir });
-    return { manifest: narrowed, baselineFullRunDir, latestFailedOnlyRunDir, selectionSource: narrowed.selectionSource };
+    manifest = narrowed;
+    selectionSource = narrowed.selectionSource;
+  } else {
+    manifest = baselineManifest;
+    selectionSource = baselineManifest.source || 'dynamic-most-recent-full-playwright-report';
   }
-  return { manifest: baselineManifest, baselineFullRunDir, latestFailedOnlyRunDir: '', selectionSource: baselineManifest.source || 'dynamic-most-recent-full-playwright-report' };
+  manifest.selected = (manifest.selected || []).map(row => {
+    const normalized = normalizeSelection(row, manifest);
+    if (!normalized.selectionReasons) {
+      normalized.selectionReasons = normalized.priorStatus === 'timedOut' ? ['previous_timeout'] : ['previous_failure'];
+    }
+    return normalized;
+  });
+  manifest = addNewInventorySelections(manifest, { baselineFullRunDir, baselineFullRunId: baselineManifest.baselineFullRunId, resultsRoot, currentRunDir, root });
+  manifest.selectionSource = manifest.newTestsCount > 0 ? 'failed-and-new-latest-known-results-plus-current-inventory' : selectionSource;
+  if (manifest.totalSelected <= 0) {
+    throw new Error('No failed or new Playwright tests remain. Run the complete release gate.');
+  }
+  return { manifest, baselineFullRunDir, latestFailedOnlyRunDir, selectionSource: manifest.selectionSource };
 }
 
 function dedupeSelections(rows = []) {
@@ -451,7 +588,7 @@ function resolveSpecFile(root, specPath) {
 
 function extractTestTitlesFromSpec(source = '') {
   const titles = [];
-  const re = /(?:^|[\n;])\s*(?:base\.)?test(?:\.(?!describe\b)[A-Za-z]+)?\(\s*(['"`])((?:\\.|(?!\1)[\s\S])*?)\1/g;
+  const re = /(?:^|[\n;{])\s*(?:base\.)?test(?:\.(?!describe\b)[A-Za-z]+)?\(\s*(['"`])((?:\\.|(?!\1)[\s\S])*?)\1/g;
   let match;
   while ((match = re.exec(source))) {
     titles.push(match[2].replace(/\\`/g, '`').replace(/\\'/g, "'").replace(/\\"/g, '"'));
@@ -553,4 +690,7 @@ module.exports = {
   readProjectNames,
   extractTestTitlesFromSpec,
   compareVersions,
+  inventoryFromPlaywrightReport,
+  addNewInventorySelections,
+  currentInventoryRecords,
 };

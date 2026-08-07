@@ -5,9 +5,13 @@ const { defineConfig, devices } = require('@playwright/test');
 const root = process.cwd();
 const { ensureRunDir } = require('./scripts/86chaos-release-gate/run-context.cjs');
 const { runDir, runId } = ensureRunDir();
+const { generatePlaywrightInventory } = require('./scripts/86chaos-release-gate/playwright-inventory.cjs');
+const { buildCriticalInventory } = require('./scripts/86chaos-release-gate/critical-test-inventory.cjs');
 const baseURL = process.env.APP_URL || process.env.CHAOS_BASE_URL || process.env.PLAYWRIGHT_BASE_URL || process.env.BASE_URL || 'http://127.0.0.1:3000';
 const resultsRoot = runDir;
 fs.mkdirSync(resultsRoot, { recursive: true });
+generatePlaywrightInventory({ root, outputPath: path.join(resultsRoot, 'playwright-test-inventory.json'), runId });
+buildCriticalInventory({ outputPath: path.join(resultsRoot, 'release-critical-test-inventory.json'), runId });
 
 module.exports = defineConfig({
   testDir: './tests',
@@ -37,6 +41,10 @@ module.exports = defineConfig({
   },
   projects: [
     { name: 'chromium', use: { ...devices['Desktop Chrome'] } },
-    { name: 'mobile-chromium', use: { ...devices['Pixel 5'] }, testIgnore: /21-runtime-code-coverage\.spec\.cjs/ }
+    { name: 'mobile-chromium', use: { ...devices['Pixel 5'] }, testIgnore: /21-runtime-code-coverage\.spec\.cjs/ },
+    { name: 'edge-pwa', testMatch: /86chaos-release-gate\/(26-pwa-icon-source-deployed-parity|27-pwa-browser-icon-matrix)\.spec\.cjs/, use: { ...devices['Desktop Edge'], channel: 'msedge' } },
+    { name: 'firefox-pwa', testMatch: /86chaos-release-gate\/(26-pwa-icon-source-deployed-parity|27-pwa-browser-icon-matrix)\.spec\.cjs/, use: { ...devices['Desktop Firefox'] } },
+    { name: 'webkit-pwa', testMatch: /86chaos-release-gate\/(26-pwa-icon-source-deployed-parity|27-pwa-browser-icon-matrix)\.spec\.cjs/, use: { ...devices['Desktop Safari'] } },
+    { name: 'mobile-webkit-pwa', testMatch: /86chaos-release-gate\/(26-pwa-icon-source-deployed-parity|27-pwa-browser-icon-matrix)\.spec\.cjs/, use: { ...devices['iPhone 13'] } }
   ]
 });

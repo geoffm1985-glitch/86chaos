@@ -6,6 +6,7 @@ const fs = require('fs');
 const path = require('path');
 const { ensureRunDir, writeJson, readJsonIfExists } = require('./run-context.cjs');
 const { writeJavaPreflight } = require('./check-java-prerequisite.cjs');
+const { firstUsefulFailureFromOutput } = require('./failure-extractor.cjs');
 
 const { runDir, runId } = ensureRunDir();
 fs.mkdirSync(runDir, { recursive: true });
@@ -18,28 +19,6 @@ const commands = [
   { group: 'client tests', command: 'npm run test:client -- --runInBand', required: true },
   { group: 'production build', command: 'npm run build', required: true }
 ];
-
-function normalizeLine(line) {
-  return String(line || '').trim();
-}
-
-function usefulFailureLines(text) {
-  return String(text || '')
-    .split(/\r?\n/)
-    .map(normalizeLine)
-    .filter(Boolean)
-    .filter(line => !/^npm notice\b/i.test(line))
-    .filter(line => !/\bno longer fails\b/i.test(line))
-    .filter(line => !/^✓\s/.test(line))
-    .filter(line => !/^PASS\b/.test(line))
-    .filter(line => !/^passed\b/i.test(line));
-}
-
-function firstUsefulFailureFromOutput(child) {
-  if (child.error?.message) return child.error.message;
-  const lines = usefulFailureLines(`${child.stderr || ''}\n${child.stdout || ''}`);
-  return lines.find(line => /exception|firebaseerror|assertionerror|syntaxerror|referenceerror|typeerror|error:|\berror\b|failed|\bfail\b|not found|cannot find|missing dependency|exited with code|denied|permission_denied/i.test(line)) || '';
-}
 
 function structuredFailureFor(row) {
   if (!/focused rules/i.test(row.group || '')) return '';

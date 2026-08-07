@@ -1,14 +1,14 @@
 {
-  "version": "16.0.141",
-  "name": "86 Chaos 16.0.141 API Workspace Authorization and Ghost Target Hardening",
-  "build": "16.0.141",
-  "label": "86 Chaos 16.0.141 API Workspace Authorization and Ghost Target Hardening",
-  "releasedAt": "2026-08-06T20:33:00-05:00",
-  "releaseTitle": "API Workspace Authorization and Ghost Target Hardening",
+  "version": "16.0.143",
+  "name": "86 Chaos 16.0.143 Release Gate Maturity, Failed+New Testing, and PWA Icon Hardening",
+  "build": "16.0.143",
+  "label": "86 Chaos 16.0.143 Release Gate Maturity, Failed+New Testing, and PWA Icon Hardening",
+  "releasedAt": "2026-08-06T21:41:00-05:00",
+  "releaseTitle": "Release Gate Maturity, Failed+New Testing, and PWA Icon Hardening",
   "notes": [
-    "Hardens the personal reminder API so workspace access requires concrete active user or membership evidence.",
-    "Prevents selector-only Ghost Mode target fields from authorizing Request Off actions and rejects archived targets.",
-    "Reconciles failed-only runner state from authoritative QA seed and cleanup artifacts and narrows the next inherited failed-only run to one desktop crawl."
+    "Aligns the canonical rules suite with the current server-only personal reminder reader so the retired browser list query is intentionally denied.",
+    "Adds release-gate failure extraction that ignores expected assertFails permission-denied diagnostics and reports the real failed assertion.",
+    "Adds focused Ghost Mode Request Off browser workflow coverage while preserving the hardened reminder API and Ghost target authorization."
   ],
-  "title": "86 Chaos 16.0.141 API Workspace Authorization and Ghost Target Hardening"
+  "title": "86 Chaos 16.0.143 Release Gate Maturity, Failed+New Testing, and PWA Icon Hardening"
 }

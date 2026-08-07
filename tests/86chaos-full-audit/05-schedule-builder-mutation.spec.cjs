@@ -23,25 +23,41 @@ test.describe('05 Schedule Builder mutation and data-integrity checks', () => {
     requireCreds(account, 'owner-like account');
     await login(page, account.email, account.password);
     await gotoTab(page, 'schedule', { settleMs: 2200 });
+    const builderButtons = page.getByRole('button', { name: /schedule builder/i });
+    if (await builderButtons.count().catch(() => 0)) await builderButtons.first().click().catch(() => {});
+    await expect(page.locator('.schedule-builder-desktop-table').first(), 'Schedule Builder table should render before refresh').toBeVisible({ timeout: 15000 });
     await page.reload({ waitUntil: 'domcontentloaded' }).catch(() => {});
     await page.waitForTimeout(2200);
+    if (await builderButtons.count().catch(() => 0)) await builderButtons.first().click().catch(() => {});
+    const table = page.locator('.schedule-builder-desktop-table').first();
+    await expect(table, 'Schedule Builder table should remain visible after refresh').toBeVisible({ timeout: 15000 });
     const staff = ['Allen QA', 'Chuck QA', 'Lani QA'];
-    const evidence = {};
+    const diagnostics = {};
     const missing = [];
-    const scheduleSurface = page.locator('[data-testid="schedule-builder"], .schedule-builder-desktop-table, main, body').first();
+    const tableText = await table.innerText({ timeout: 5000 }).catch(() => '');
     for (const name of staff) {
       const escapedName = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      const row = scheduleSurface.getByRole('row', { name: new RegExp(escapedName, 'i') }).first();
-      const rowVisible = await row.isVisible().catch(() => false);
-      const semanticText = rowVisible ? await row.innerText().catch(() => '') : '';
-      const fallback = scheduleSurface.getByText(name, { exact: true }).first();
-      const fallbackVisible = rowVisible ? false : await fallback.isVisible().catch(() => false);
-      evidence[name] = rowVisible ? { strategy: 'row', text: semanticText.slice(0, 1600) } : { strategy: 'visible-text', text: fallbackVisible ? await fallback.evaluate(el => el.closest('tr, [role="row"], .schedule-builder-desktop-table, main')?.textContent || el.textContent || '').catch(() => '') : '' };
-      if (!rowVisible && !fallbackVisible) missing.push(name);
+      const exactCell = table.getByRole('cell', { name: new RegExp(`^${escapedName}$`, 'i') });
+      const rowMatch = table.getByRole('row', { name: new RegExp(`\\b${escapedName}\\b`, 'i') });
+      const exactCellCount = await exactCell.count().catch(() => 0);
+      const rowCount = await rowMatch.count().catch(() => 0);
+      const visibleCells = [];
+      for (let i = 0; i < Math.min(exactCellCount, 5); i += 1) {
+        const cell = exactCell.nth(i);
+        if (await cell.isVisible().catch(() => false)) visibleCells.push(await cell.innerText().catch(() => ''));
+      }
+      const rowVisible = rowCount > 0 ? await rowMatch.first().isVisible().catch(() => false) : false;
+      diagnostics[name] = { exactCellCount, rowCount, visibleCellCount: visibleCells.length, rowVisible, visibleCells };
+      if (!visibleCells.length && !rowVisible) missing.push(name);
     }
-    const text = await bodyText(page, 12000);
-    await attachJson(testInfo, '05-schedule-visible-after-refresh.json', { missing, evidence, sample: text.slice(0, 4000) });
-    expect(missing, 'Seeded employees should remain visible in the Schedule Builder context after refresh').toEqual([]);
+    await attachJson(testInfo, '05-schedule-builder-deterministic-table-visibility.json', {
+      missing,
+      diagnostics,
+      currentUrl: page.url(),
+      tableTextSample: tableText.slice(0, 6000),
+      note: 'Assertions are scoped to .schedule-builder-desktop-table so hidden selector options cannot create false positives or false negatives.',
+    });
+    expect(missing, 'Seeded employees should remain visible inside the real Schedule Builder table after refresh').toEqual([]);
   });
 
   test('Schedule Builder does not count OFF/request-off/event chips as worked hours', async ({ page }, testInfo) => {

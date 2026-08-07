@@ -277,26 +277,28 @@ async function runFirestoreTests(env) {
   }));
 
 
-  setRuleCase('Personal reminder canonical participant queries');
-  const canonicalReminderQuery = (db, uid, restaurantId) => query(
+  setRuleCase('Canonical reminder collection list remains server-only');
+  const retiredCanonicalReminderQuery = (db, uid, restaurantId) => query(
     collection(db, 'personalReminders'),
     where('restaurantId', '==', restaurantId),
     where('participantSchemaVersion', '==', 1),
     where('participantUserIds', 'array-contains', uid)
   );
-  const ownerReminderSnap = await assertSucceeds(getDocs(canonicalReminderQuery(ownerA, 'ownerA', tenantA)));
-  assert(ownerReminderSnap.docs.some((row) => row.id === 'rem_owner_staff_shared'), 'owner participant receives shared reminder from exact canonical query');
-  const managerReminderSnap = await assertSucceeds(getDocs(canonicalReminderQuery(managerA, 'managerA', tenantA)));
-  assert(managerReminderSnap.docs.some((row) => row.id === 'rem_manager'), 'manager participant receives assigned reminder from exact canonical query');
-  const staffReminderSnap = await assertSucceeds(getDocs(canonicalReminderQuery(staffA, 'staffA', tenantA)));
-  assert(staffReminderSnap.docs.some((row) => row.id === 'rem_staff'), 'staff participant receives assigned reminder from exact canonical query');
-  assert(staffReminderSnap.docs.some((row) => row.id === 'rem_owner_staff_shared'), 'staff participant receives shared reminder from exact canonical query');
-  assert(!staffReminderSnap.docs.some((row) => row.id === 'rem_other_user'), 'nonparticipant reminder is not returned by exact canonical query');
-  assert(!staffReminderSnap.docs.some((row) => row.id === 'rem_tenant_b_staff_a'), 'cross-tenant reminder is not returned by exact canonical query');
-  const staffBEmptySnap = await assertSucceeds(getDocs(canonicalReminderQuery(staffB, 'staffB', tenantB)));
-  assert(!staffBEmptySnap.docs.some((row) => row.data().restaurantId === tenantA), 'cross-tenant participant receives no tenant A reminder data');
-  const emptySnap = await assertSucceeds(getDocs(canonicalReminderQuery(ownerA, 'ownerA', 'tenant_empty_email')));
-  assert.strictEqual(emptySnap.empty, true, 'empty canonical reminder query resolves cleanly without a permission error');
+  // Reminder reads moved to /api/personal-reminder-list in 16.0.140. The server
+  // verifies the Firebase ID token, workspace membership, and uses Admin SDK to
+  // query only reminders containing the caller's Auth UID. Browser collection
+  // listing stays intentionally closed under the unchanged Firestore rules.
+  await assertFails(getDocs(retiredCanonicalReminderQuery(ownerA, 'ownerA', tenantA)));
+  await assertFails(getDocs(retiredCanonicalReminderQuery(managerA, 'managerA', tenantA)));
+  await assertFails(getDocs(retiredCanonicalReminderQuery(staffA, 'staffA', tenantA)));
+  await assertFails(getDocs(retiredCanonicalReminderQuery(staffA, 'staffB', tenantA)));
+  await assertFails(getDocs(retiredCanonicalReminderQuery(staffB, 'staffB', tenantA)));
+  await assertFails(getDocs(retiredCanonicalReminderQuery(anon, 'staffA', tenantA)));
+  await assertSucceeds(getDoc(doc(ownerA, 'personalReminders', 'rem_owner_staff_shared')));
+  await assertSucceeds(getDoc(doc(staffA, 'personalReminders', 'rem_owner_staff_shared')));
+  await assertFails(getDoc(doc(staffB, 'personalReminders', 'rem_owner_staff_shared')));
+  await assertFails(getDoc(doc(staffA, 'personalReminders', 'rem_tenant_b_staff_a')));
+  await assertFails(getDoc(doc(anon, 'personalReminders', 'rem_staff')));
 
   setRuleCase('Tenant protected collection writes');
   // Daily-close rules keep tenant, field allowlist, date, and critical totals at the security boundary.

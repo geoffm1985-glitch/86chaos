@@ -3,12 +3,14 @@ const path = require('path');
 const { defineConfig, devices } = require('@playwright/test');
 
 const { ensureRunDir, getFailedOnlyManifestPath } = require('./scripts/86chaos-release-gate/run-context.cjs');
+const { generatePlaywrightInventory } = require('./scripts/86chaos-release-gate/playwright-inventory.cjs');
 const { FAILED_ONLY_TESTS, FAILED_ONLY_MANIFEST_ERRORS, FAILED_ONLY_MANIFEST_PATH, specsFromManifest, grepForProject } = require('./tests/86chaos-release-gate/failed-only-manifest.cjs');
 
 const { runDir, runId } = ensureRunDir();
 const baseURL = process.env.APP_URL || process.env.CHAOS_BASE_URL || process.env.PLAYWRIGHT_BASE_URL || process.env.BASE_URL || 'http://127.0.0.1:3000';
 const resultsRoot = path.join(runDir, 'failed-only');
 fs.mkdirSync(resultsRoot, { recursive: true });
+generatePlaywrightInventory({ root: process.cwd(), outputPath: path.join(runDir, 'playwright-test-inventory.json'), runId });
 
 if (!FAILED_ONLY_TESTS.length) {
   throw new Error(`Failed-only manifest selected zero tests. Refusing to run a false-green diagnostic gate. ${FAILED_ONLY_MANIFEST_ERRORS.join('; ')}`);
@@ -18,20 +20,20 @@ const manifest = {
   generatedAt: new Date().toISOString(),
   runId,
   runDir,
-  mode: 'failed-only',
+  mode: 'failed+new',
   sourceManifestPath: FAILED_ONLY_MANIFEST_PATH,
   selected: FAILED_ONLY_TESTS,
   desktopSelected: FAILED_ONLY_TESTS.filter(item => (item.projects || []).includes('chromium')).length,
   mobileSelected: FAILED_ONLY_TESTS.filter(item => (item.projects || []).includes('mobile-chromium')).length,
-  note: 'Failed-only success is diagnostic only. Complete npm run test:play-store is still required for release approval.'
+  note: 'Failed+new delta success is diagnostic only. Complete npm run test:play-store is still required for release approval.'
 };
 fs.writeFileSync(path.join(runDir, 'failed-only-playwright-selection.json'), JSON.stringify(manifest, null, 2));
-console.log('86 Chaos failed-only selected tests:');
+console.log('86 Chaos failed + new selected tests:');
 for (const item of FAILED_ONLY_TESTS) console.log(`- [${(item.projects || []).join(', ')}] ${item.spec || item.specPath} :: ${item.title || item.exactTestTitle}`);
 console.log(`Desktop tests selected: ${manifest.desktopSelected}`);
 console.log(`Mobile tests selected: ${manifest.mobileSelected}`);
-console.log(`Failed-only manifest: ${FAILED_ONLY_MANIFEST_PATH}`);
-console.log(`Failed-only run directory: ${resultsRoot}`);
+console.log(`Failed+new manifest: ${FAILED_ONLY_MANIFEST_PATH}`);
+console.log(`Failed+new run directory: ${resultsRoot}`);
 
 module.exports = defineConfig({
   testDir: './tests',
@@ -58,6 +60,10 @@ module.exports = defineConfig({
   },
   projects: [
     { name: 'chromium', grep: grepForProject(FAILED_ONLY_TESTS, 'chromium'), use: { ...devices['Desktop Chrome'] } },
-    { name: 'mobile-chromium', grep: grepForProject(FAILED_ONLY_TESTS, 'mobile-chromium'), use: { ...devices['Pixel 5'] } }
+    { name: 'mobile-chromium', grep: grepForProject(FAILED_ONLY_TESTS, 'mobile-chromium'), use: { ...devices['Pixel 5'] } },
+    { name: 'edge-pwa', grep: grepForProject(FAILED_ONLY_TESTS, 'edge-pwa'), testMatch: /86chaos-release-gate\/(26-pwa-icon-source-deployed-parity|27-pwa-browser-icon-matrix)\.spec\.cjs/, use: { ...devices['Desktop Edge'], channel: 'msedge' } },
+    { name: 'firefox-pwa', grep: grepForProject(FAILED_ONLY_TESTS, 'firefox-pwa'), testMatch: /86chaos-release-gate\/(26-pwa-icon-source-deployed-parity|27-pwa-browser-icon-matrix)\.spec\.cjs/, use: { ...devices['Desktop Firefox'] } },
+    { name: 'webkit-pwa', grep: grepForProject(FAILED_ONLY_TESTS, 'webkit-pwa'), testMatch: /86chaos-release-gate\/(26-pwa-icon-source-deployed-parity|27-pwa-browser-icon-matrix)\.spec\.cjs/, use: { ...devices['Desktop Safari'] } },
+    { name: 'mobile-webkit-pwa', grep: grepForProject(FAILED_ONLY_TESTS, 'mobile-webkit-pwa'), testMatch: /86chaos-release-gate\/(26-pwa-icon-source-deployed-parity|27-pwa-browser-icon-matrix)\.spec\.cjs/, use: { ...devices['iPhone 13'] } }
   ]
 });

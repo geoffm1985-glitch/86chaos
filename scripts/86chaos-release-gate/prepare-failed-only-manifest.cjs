@@ -40,7 +40,7 @@ try {
     },
   });
 } catch (error) {
-  fail('Failed-only baseline evidence is malformed or unsafe.', [error?.message || String(error)]);
+  fail('Failed+new baseline evidence is malformed or unsafe.', [error?.message || String(error)]);
 }
 const fullRunDir = selectedSource.baselineFullRunDir;
 const copied = targetQualifiedManifest(selectedSource.manifest, {
@@ -58,15 +58,17 @@ const validation = validateManifestForCurrentRun(copied, {
   appUrl,
 });
 if (!validation.ok) {
-  fail('Refusing unsafe failed-only manifest.', validation.errors);
+  fail('Refusing unsafe failed+new manifest.', validation.errors);
 }
 
 const currentManifestPath = path.join(runDir, 'failed-only-test-manifest.json');
 writeJson(currentManifestPath, copied);
-writeJson(path.join(runDir, 'failed-only-manifest-selection.json'), {
+const failedAndNewSelectionPath = path.join(runDir, 'failed-and-new-manifest-selection.json');
+const failedOnlySelectionPath = path.join(runDir, 'failed-only-manifest-selection.json');
+const selectionPayload = {
   ok: true,
   runId,
-  mode: 'failed-only',
+  mode: 'failed+new',
   sourceFullRunDir: fullRunDir,
   previousFailedOnlyRunDir: selectedSource.latestFailedOnlyRunDir || '',
   selectionSource: copied.selectionSource || selectedSource.selectionSource || '',
@@ -87,7 +89,9 @@ writeJson(path.join(runDir, 'failed-only-manifest-selection.json'), {
   totalSelected: copied.selected.length,
   desktopSelected: copied.desktopSelected,
   mobileSelected: copied.mobileSelected,
-});
+};
+writeJson(failedAndNewSelectionPath, selectionPayload);
+writeJson(failedOnlySelectionPath, selectionPayload);
 writeJson(validationPath, {
   ok: true,
   runId,
@@ -106,9 +110,9 @@ writeJson(validationPath, {
   mobileSelected: copied.mobileSelected,
   generatedAt: new Date().toISOString(),
 });
-console.log(`Prepared dynamic failed-only manifest from ${fullRunDir}`);
+console.log(`Prepared dynamic failed+new manifest from ${fullRunDir}`);
 if (copied.previousFailedOnlyRunId) console.log(`Narrowed from failed-only descendant: ${copied.previousFailedOnlyRunId} (${copied.previousFailedOnlySourceVersion}/${copied.previousFailedOnlyDeployedVersion})`);
 console.log(`Baseline: ${copied.baselineSourceVersion}/${copied.baselineDeployedVersion}`);
 console.log(`Target: ${currentSourceVersion}/${currentDeployedVersion}`);
-console.log(`Selected ${copied.selected.length} exact failed project/test combination(s).`);
+console.log(`Selected ${copied.selected.length} exact previous-failure/new project/test combination(s).`);
 for (const item of copied.selected) console.log(`- [${item.project || (item.projects || []).join(', ')}] ${item.specPath || item.spec} :: ${item.title || item.exactTestTitle}`);
