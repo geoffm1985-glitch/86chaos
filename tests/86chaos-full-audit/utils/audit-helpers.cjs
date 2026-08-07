@@ -316,6 +316,8 @@ async function dismissBlockingDialogs(page, options = {}) {
       { label: "Skip and don't show again", exact: true },
       { label: 'Skip and don\'t show again', exact: true },
       { label: 'Got it', exact: true },
+      { label: 'I understand', exact: true },
+      { label: 'Done', exact: true },
       { label: 'Not now', exact: true },
       { label: 'Maybe later', exact: true },
       { label: 'Close', exact: true },
@@ -354,8 +356,9 @@ async function login(page, email, password, options = {}) {
     await dismissNoise(page);
     return text;
   }
-  const emailBox = page.getByPlaceholder(/email/i).first();
-  const passwordBox = page.getByPlaceholder(/password/i).first();
+  await dismissBlockingDialogs(page, { maxPasses: 6 }).catch(() => null);
+  const emailBox = page.getByRole('textbox', { name: /^Email Address$/i }).first();
+  const passwordBox = page.locator('input[type="password"][autocomplete="current-password"], input[type="password"][aria-label="Password"]').first();
   await expect(emailBox, 'Login email box should be visible').toBeVisible({ timeout: 30000 });
   await emailBox.fill(email);
   await passwordBox.fill(password);
@@ -363,7 +366,9 @@ async function login(page, email, password, options = {}) {
   await loginButton.click();
   await page.waitForLoadState('domcontentloaded').catch(() => {});
   await page.waitForTimeout(2500);
+  await dismissBlockingDialogs(page, { maxPasses: 6 }).catch(() => null);
   await chooseQaWorkspace(page);
+  await dismissBlockingDialogs(page, { maxPasses: 6 }).catch(() => null);
   await dismissNoise(page);
   text = await bodyText(page, 16000);
   if (LOGIN_RE.test(text) && /invalid|wrong|error|failed|not attached/i.test(text)) {
@@ -429,7 +434,9 @@ async function gotoTab(page, tab, options = {}) {
     await page.goto(appUrl(tab), { waitUntil: 'domcontentloaded', timeout: options.timeout || 45000 }).catch(() => {});
     await page.waitForLoadState('domcontentloaded').catch(() => {});
     await page.waitForTimeout(options.settleMs || 900);
+    await dismissBlockingDialogs(page, { maxPasses: 6 }).catch(() => null);
     await chooseQaWorkspace(page);
+    await dismissBlockingDialogs(page, { maxPasses: 6 }).catch(() => null);
     await dismissNoise(page);
     return bodyText(page, options.maxText || 30000);
   }

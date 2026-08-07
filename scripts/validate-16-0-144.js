@@ -26,14 +26,14 @@ const provisioner = read('scripts/86chaos-release-gate/provision-test-accounts.c
 const seed = read('scripts/86chaos-full-audit/seed-fake-restaurant.cjs');
 const cleanup = read('scripts/86chaos-full-audit/cleanup-fake-restaurant.cjs');
 
-assert(pkg.version === '16.0.143', 'package.json version is 16.0.143');
-assert(lock.version === '16.0.143' && lock.packages?.['']?.version === '16.0.143', 'package-lock root versions are 16.0.143');
-assert(version.version === '16.0.143' && version.build === '16.0.143', 'public/version.json version/build are 16.0.143');
-assert(appCore.includes("CURRENT_VERSION = '16.0.143'"), 'app core CURRENT_VERSION is 16.0.143');
-assert(apiVersion.includes("APP_VERSION = '16.0.143'") && apiVersion.includes("SECURITY_SCHEMA_VERSION = '16.0.143'"), 'api version reports 16.0.143');
-assert(pkg.scripts['test:source'] === 'node scripts/validate-16-0-143.js', 'test:source points at 16.0.143 validator');
+assert(pkg.version === '16.0.144', 'package.json version is 16.0.144');
+assert(lock.version === '16.0.144' && lock.packages?.['']?.version === '16.0.144', 'package-lock root versions are 16.0.144');
+assert(version.version === '16.0.144' && version.build === '16.0.144', 'public/version.json version/build are 16.0.144');
+assert(appCore.includes("CURRENT_VERSION = '16.0.144'"), 'app core CURRENT_VERSION is 16.0.144');
+assert(apiVersion.includes("APP_VERSION = '16.0.144'") && apiVersion.includes("SECURITY_SCHEMA_VERSION = '16.0.144'"), 'api version reports 16.0.144');
+assert(pkg.scripts['test:source'] === 'node scripts/validate-16-0-144.js', 'test:source points at 16.0.144 validator');
 assert(pkg.scripts['test:play-store:delta'] && pkg.scripts['test:play-store:delta'].includes('FAILED_AND_NEW'), 'failed+new delta command is present');
-assert(!fs.existsSync(path.join(root, 'scripts/validate-16-0-142.js')), 'previous 16.0.142 validator was replaced');
+assert(!fs.existsSync(path.join(root, 'scripts/validate-16-0-143.js')), 'previous 16.0.143 validator was replaced');
 
 assert(sha('firestore.rules') === '51bfd7d39edd59f680ae41a149c108cec8cd42d00b102d84cb00ee40d90264d9', 'firestore.rules unchanged');
 assert(sha('storage.rules') === '174e7e9a140193ff69ccf0f0d3e5c65b81a9e0fbbd612bff45ce57e7a3a7ce9c', 'storage.rules unchanged');
@@ -62,5 +62,16 @@ const inventory = generatePlaywrightInventory({ root });
 assert(inventory.records.some(r => r.project === 'edge-pwa'), 'Playwright inventory includes Edge PWA project identities');
 assert(inventory.records.some(r => r.specPath.includes('26-pwa-icon-source-deployed-parity')), 'Playwright inventory includes new PWA icon parity test');
 
+assert(fs.existsSync(path.join(root, 'src/core/customerHelpKnowledge.cjs')), 'customer Help knowledge base exists');
+assert(fs.existsSync(path.join(root, 'src/core/customerHelpKnowledge.js')), 'customer Help browser knowledge export exists');
+assert(fs.existsSync(path.join(root, 'api/help-assistant.js')), 'Ask 86 help assistant API exists');
+assert(fs.existsSync(path.join(root, 'public/customer-help-coverage.json')), 'customer help coverage artifact exists');
+assert(fs.existsSync(path.join(root, 'public/customer-help-validation.json')), 'customer help validation artifact exists');
+assert(fs.existsSync(path.join(root, 'public/ask-86-help-validation.json')), 'Ask 86 validation artifact exists');
+assert(fs.existsSync(path.join(root, 'api/playwright-inventory-v3.test.cjs')), 'Playwright inventory schema v3 tests exist');
+assert(fs.existsSync(path.join(root, 'api/customer-help-intelligence.test.cjs')), 'customer Help intelligence tests exist');
+assert(fs.existsSync(path.join(root, 'api/help-assistant.test.cjs')), 'Ask 86 grounding tests exist');
+assert(pkg.scripts['test:play-store:delta'], 'failed+new delta script alias exists');
+
 if (failures) { console.error(`\n${failures} validation check(s) failed.`); process.exit(1); }
-console.log('\n16.0.143 source validation passed.');
+console.log('\n16.0.144 source validation passed.');

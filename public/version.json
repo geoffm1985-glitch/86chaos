@@ -1,14 +1,14 @@
 {
-  "version": "16.0.143",
-  "name": "86 Chaos 16.0.143 Release Gate Maturity, Failed+New Testing, and PWA Icon Hardening",
-  "build": "16.0.143",
-  "label": "86 Chaos 16.0.143 Release Gate Maturity, Failed+New Testing, and PWA Icon Hardening",
-  "releasedAt": "2026-08-06T21:41:00-05:00",
-  "releaseTitle": "Release Gate Maturity, Failed+New Testing, and PWA Icon Hardening",
+  "version": "16.0.144",
+  "name": "86 Chaos 16.0.144 Customer Help Intelligence and Delta Gate Reliability",
+  "build": "16.0.144",
+  "label": "86 Chaos 16.0.144 Customer Help Intelligence and Delta Gate Reliability",
+  "releasedAt": "2026-08-07T01:44:00-05:00",
+  "releaseTitle": "Customer Help Intelligence and Delta Gate Reliability",
   "notes": [
-    "Aligns the canonical rules suite with the current server-only personal reminder reader so the retired browser list query is intentionally denied.",
-    "Adds release-gate failure extraction that ignores expected assertFails permission-denied diagnostics and reports the real failed assertion.",
-    "Adds focused Ghost Mode Request Off browser workflow coverage while preserving the hardened reminder API and Ghost target authorization."
+    "Rebuilds the customer Help Center as a customer-safe subject, subtopic, and article system with deterministic question search and Ask 86 fallback.",
+    "Upgrades failed+new Playwright inventory to schema v3 based on real Playwright discovery with exact selection/execution reconciliation.",
+    "Hardens login accessibility, stacked-modal test lifecycle, Ghost People targeting, and PWA icon source/deployed path normalization without changing Firebase rules or indexes."
   ],
-  "title": "86 Chaos 16.0.143 Release Gate Maturity, Failed+New Testing, and PWA Icon Hardening"
+  "title": "86 Chaos 16.0.144 Customer Help Intelligence and Delta Gate Reliability"
 }

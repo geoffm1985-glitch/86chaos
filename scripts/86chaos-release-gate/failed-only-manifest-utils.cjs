@@ -2,7 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const { getResultsRoot, getRunDir, getFailedOnlyManifestPath, readJsonIfExists, writeJson } = require('./run-context.cjs');
 
-const MANIFEST_SCHEMA_VERSION = 2;
+const MANIFEST_SCHEMA_VERSION = 3;
 
 function normalizeRel(value = '') {
   return String(value || '').replace(/\\/g, '/').replace(/^\.\//, '').replace(/^tests\//, '');
@@ -69,12 +69,19 @@ function collectFailedEntriesFromPlaywright(playwright = {}, meta = {}) {
           for (const result of failed) {
             const exactTitle = t.title || spec.title || '';
             const specPath = normalizeRel(spec.file || '');
+            const fullSuitePath = suitePathFromParents(nextParents, spec, t);
+            const titlePathParts = [...(fullSuitePath ? fullSuitePath.split(' > ') : []), exactTitle];
             entries.push({
               specPath,
               spec: specPath,
               title: exactTitle,
+              leafTitle: exactTitle,
               exactTestTitle: exactTitle,
-              fullTitle: [...nextParents, spec.title, t.title].filter(Boolean).join(' > '),
+              fullSuitePath,
+              suitePathParts: fullSuitePath ? fullSuitePath.split(' > ') : [],
+              fullTitle: titlePathParts.join(' > '),
+              titlePathParts,
+              stableKey: identityKeyFromParts(specPath, exactTitle, t.projectName || '', fullSuitePath),
               project: t.projectName || '',
               projects: [t.projectName || ''].filter(Boolean),
               priorStatus: result.status || 'failed',
@@ -105,12 +112,18 @@ function collectFailedEntriesFromSummary(summary = {}, meta = {}) {
     const parts = fullTitle.split(' > ').map(part => part.trim()).filter(Boolean);
     const exactTitle = parts[parts.length - 1] || fullTitle;
     const specPath = normalizeRel(row.file || (parts[0] || '').replace(/\\/g, '/'));
+    const fullSuitePath = parts.slice(0, -1).filter(part => !/\.spec\./.test(part)).join(' > ');
     entries.push({
       specPath,
       spec: specPath,
       title: exactTitle,
+      leafTitle: exactTitle,
       exactTestTitle: exactTitle,
+      fullSuitePath,
+      suitePathParts: fullSuitePath ? fullSuitePath.split(' > ') : [],
       fullTitle,
+      titlePathParts: [...(fullSuitePath ? fullSuitePath.split(' > ') : []), exactTitle],
+      stableKey: identityKeyFromParts(specPath, exactTitle, row.projectName || row.project || '', fullSuitePath),
       project: row.projectName || row.project || '',
       projects: [row.projectName || row.project || ''].filter(Boolean),
       priorStatus: row.status || 'failed',
@@ -137,7 +150,7 @@ function loadManifestFromRunDir(runDir = '') {
 
 function selectionKey(row = {}) {
   const normalized = normalizeSelection(row);
-  return `${normalized.specPath}\u0000${normalized.title}\u0000${normalized.project}`;
+  return normalized.stableKey || `${normalized.specPath}\u0000${normalized.fullSuitePath || ''}\u0000${normalized.title}\u0000${normalized.project}`;
 }
 
 function countPlaywrightResults(playwright = {}) {
@@ -258,25 +271,35 @@ function buildNarrowedManifestFromFailedOnlyRun(failedOnlyRunDir, { baselineMani
   };
 }
 
-function identityKeyFromParts(specPath = '', title = '', project = '') {
-  return `${normalizeRel(specPath)}\u0000${String(title || '')}\u0000${String(project || '')}`;
+function identityKeyFromParts(specPath = '', title = '', project = '', fullSuitePath = '') {
+  return `${normalizeRel(specPath)}\u0000${String(fullSuitePath || '')}\u0000${String(title || '')}\u0000${String(project || '')}`;
+}
+
+function suitePathFromParents(parents = [], spec = {}, t = {}) {
+  const ignore = part => !/^failed(?:-only)? .*fixture$/i.test(String(part || '').trim());
+  const raw = Array.isArray(t.titlePath) ? t.titlePath : [];
+  if (raw.length > 1) return raw.slice(0, -1).filter(Boolean).filter(ignore).join(' > ');
+  return (parents || []).filter(Boolean).filter(ignore).join(' > ');
 }
 
 function inventoryFromPlaywrightReport(playwright = {}) {
   const records = [];
-  const walkSuites = (suites = []) => {
+  const walkSuites = (suites = [], parents = []) => {
     for (const suite of suites || []) {
+      const nextParents = suite.title ? [...parents, suite.title] : parents;
       for (const spec of suite.specs || []) {
         for (const t of spec.tests || []) {
           const specPath = normalizeRel(spec.file || '');
           const title = t.title || spec.title || '';
           const project = t.projectName || '';
+          const fullSuitePath = suitePathFromParents(nextParents, spec, t);
           if (specPath && title && project) {
-            records.push({ specPath, exactTestTitle: title, title, project, stableKey: identityKeyFromParts(specPath, title, project) });
+            const fullTitle = [...fullSuitePath.split(' > ').filter(Boolean), title].join(' > ');
+            records.push({ specPath, exactTestTitle: title, title, leafTitle: title, fullSuitePath, suitePathParts: fullSuitePath ? fullSuitePath.split(' > ') : [], fullTitle, titlePathParts: [...(fullSuitePath ? fullSuitePath.split(' > ') : []), title], project, stableKey: identityKeyFromParts(specPath, title, project, fullSuitePath) });
           }
         }
       }
-      walkSuites(suite.suites || []);
+      walkSuites(suite.suites || [], nextParents);
     }
   };
   walkSuites(playwright.suites || []);
@@ -304,17 +327,19 @@ function latestKnownStatuses({ baselineFullRunDir = '', baselineFullRunId = '', 
   const applyReport = (dir) => {
     const report = readJsonIfExists(path.join(dir, 'playwright-report.json'));
     if (!report || !Array.isArray(report.suites)) return;
-    const walkSuites = (suites = []) => {
+    const walkSuites = (suites = [], parents = []) => {
       for (const suite of suites || []) {
+        const nextParents = suite.title ? [...parents, suite.title] : parents;
         for (const spec of suite.specs || []) {
           for (const t of spec.tests || []) {
             for (const result of t.results || []) {
-              const key = identityKeyFromParts(spec.file || '', t.title || spec.title || '', t.projectName || '');
+              const fullSuitePath = suitePathFromParents(nextParents, spec, t);
+              const key = identityKeyFromParts(spec.file || '', t.title || spec.title || '', t.projectName || '', fullSuitePath);
               if (key) map.set(key, { status: String(result.status || ''), dir, duration: result.duration || 0, error: result.error?.message || '' });
             }
           }
         }
-        walkSuites(suite.suites || []);
+        walkSuites(suite.suites || [], nextParents);
       }
     };
     walkSuites(report.suites || []);
@@ -332,17 +357,17 @@ function latestKnownStatuses({ baselineFullRunDir = '', baselineFullRunId = '', 
 
 function addNewInventorySelections(manifest, { baselineFullRunDir = '', baselineFullRunId = '', resultsRoot = getResultsRoot(), currentRunDir = getRunDir(), root = process.cwd() } = {}) {
   const priorRecords = priorInventoryRecordsFromRun(baselineFullRunDir);
-  const priorKeys = new Set(priorRecords.map(r => r.stableKey || identityKeyFromParts(r.specPath || r.spec, r.exactTestTitle || r.title, r.project)));
+  const priorKeys = new Set(priorRecords.map(r => r.stableKey || identityKeyFromParts(r.specPath || r.spec, r.exactTestTitle || r.title, r.project, r.fullSuitePath || '')));
   const known = latestKnownStatuses({ baselineFullRunDir, baselineFullRunId, resultsRoot, currentRunDir });
   const selectedKeys = new Set((manifest.selected || []).map(row => selectionKey(row)));
   const current = currentInventoryRecords(root);
   const newSelections = [];
   for (const row of current) {
-    const key = row.stableKey || identityKeyFromParts(row.specPath, row.exactTestTitle || row.title, row.project);
+    const key = row.stableKey || identityKeyFromParts(row.specPath, row.exactTestTitle || row.title, row.project, row.fullSuitePath || '');
     if (!key || priorKeys.has(key)) continue;
     const latest = known.get(key);
     if (latest && latest.status === 'passed') continue;
-    const normalized = normalizeSelection({ specPath: row.specPath, exactTestTitle: row.exactTestTitle, title: row.exactTestTitle, project: row.project, projects: [row.project], priorStatus: latest?.status || 'new', fullTitle: row.fullTitle || row.exactTestTitle }, manifest);
+    const normalized = normalizeSelection({ specPath: row.specPath, exactTestTitle: row.exactTestTitle, title: row.exactTestTitle, leafTitle: row.leafTitle, fullSuitePath: row.fullSuitePath || '', suitePathParts: row.suitePathParts || [], titlePathParts: row.titlePathParts || [], stableKey: row.stableKey, project: row.project, projects: [row.project], priorStatus: latest?.status || 'new', fullTitle: row.fullTitle || row.exactTestTitle }, manifest);
     const sKey = selectionKey(normalized);
     if (selectedKeys.has(sKey)) continue;
     normalized.selectionReasons = latest?.status === 'timedOut' ? ['previous_timeout', 'new_test'] : latest?.status === 'failed' ? ['previous_failure', 'new_test'] : ['new_test'];
@@ -412,7 +437,7 @@ function dedupeSelections(rows = []) {
   const seen = new Set();
   for (const row of rows || []) {
     const normalized = normalizeSelection(row);
-    const key = `${normalized.specPath}\u0000${normalized.title}\u0000${normalized.project}`;
+    const key = normalized.stableKey || `${normalized.specPath}\u0000${normalized.fullSuitePath || ''}\u0000${normalized.title}\u0000${normalized.project}`;
     if (seen.has(key)) continue;
     seen.add(key);
     deduped.push(normalized);
@@ -424,16 +449,26 @@ function normalizeSelection(row = {}, manifest = {}) {
   const specPath = normalizeRel(row.specPath || row.spec || row.file || '');
   const projects = Array.isArray(row.projects) && row.projects.length ? row.projects : [row.project || row.projectName || ''].filter(Boolean);
   const project = row.project || row.projectName || projects[0] || '';
-  const title = row.title || row.exactTestTitle || '';
+  const title = row.title || row.exactTestTitle || row.leafTitle || '';
+  const suitePathParts = Array.isArray(row.suitePathParts) ? row.suitePathParts : String(row.fullSuitePath || '').split(' > ').filter(Boolean);
+  const fullSuitePath = row.fullSuitePath || suitePathParts.join(' > ');
+  const titlePathParts = Array.isArray(row.titlePathParts) && row.titlePathParts.length ? row.titlePathParts : [...suitePathParts, title].filter(Boolean);
+  const fullTitle = row.fullTitle || titlePathParts.join(' > ') || title;
   const baselineFullRunId = row.baselineFullRunId || row.fullRunId || manifest.baselineFullRunId || manifest.fullRunId || '';
   const baselineSourceVersion = row.baselineSourceVersion || row.sourceVersion || manifest.baselineSourceVersion || manifest.sourceVersion || '';
   const baselineDeployedVersion = row.baselineDeployedVersion || row.deployedVersion || manifest.baselineDeployedVersion || manifest.deployedVersion || '';
+  const stableKey = row.stableKey || identityKeyFromParts(specPath, title, project, fullSuitePath);
   return {
     spec: specPath,
     specPath,
     title,
+    leafTitle: row.leafTitle || title,
     exactTestTitle: row.exactTestTitle || title,
-    fullTitle: row.fullTitle || title,
+    fullSuitePath,
+    suitePathParts,
+    titlePathParts,
+    fullTitle,
+    stableKey,
     project,
     projects,
     priorStatus: row.priorStatus || row.status || '',
@@ -445,6 +480,7 @@ function normalizeSelection(row = {}, manifest = {}) {
     fullRunId: row.fullRunId || baselineFullRunId,
     duration: row.duration || 0,
     error: row.error || '',
+    selectionReasons: row.selectionReasons,
   };
 }
 
@@ -601,29 +637,37 @@ function validateManifestTestIdentities(manifest, { root = process.cwd(), projec
   const selected = dedupeSelections(manifest?.selected || []);
   if (!selected.length) errors.push('Failed-only manifest selected zero tests.');
   const availableProjects = new Set(projectNames || []);
-  const seen = new Set();
+  const current = currentInventoryRecords(root);
+  const inventoryByKey = new Map(current.map(row => [row.stableKey || identityKeyFromParts(row.specPath, row.exactTestTitle || row.title, row.project, row.fullSuitePath || ''), row]));
+  const inventoryByLooseKey = new Map();
+  for (const row of current) {
+    const loose = [normalizeRel(row.specPath || ''), String(row.exactTestTitle || row.title || row.leafTitle || ''), String(row.project || '')].join('\u0000');
+    const rows = inventoryByLooseKey.get(loose) || [];
+    rows.push(row);
+    inventoryByLooseKey.set(loose, rows);
+  }
   const valid = [];
   for (const row of selected) {
-    const key = `${row.specPath}\u0000${row.title}\u0000${row.project}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
     const specFile = resolveSpecFile(root, row.specPath);
     if (!specFile) {
       errors.push(`Selected test spec no longer exists: ${row.specPath}`);
       continue;
     }
     if (availableProjects.size && !availableProjects.has(row.project)) {
-      errors.push(`Selected test project no longer exists: ${row.project} (${row.specPath} :: ${row.title})`);
+      errors.push(`Selected test project no longer exists: ${row.project} (${row.specPath} :: ${row.fullTitle || row.title})`);
       continue;
     }
-    const titles = extractTestTitlesFromSpec(fs.readFileSync(specFile, 'utf8'));
-    const matches = titles.filter(title => title === row.title || title === row.exactTestTitle);
-    if (matches.length === 0) {
-      errors.push(`Selected test title no longer exists: ${row.specPath} :: ${row.title}`);
-      continue;
-    }
-    if (matches.length > 1) {
-      errors.push(`Selected test title is ambiguous in current source: ${row.specPath} :: ${row.title}`);
+    const key = row.stableKey || selectionKey(row);
+    if (inventoryByKey.size && !inventoryByKey.has(key)) {
+      const loose = [normalizeRel(row.specPath || ''), String(row.exactTestTitle || row.title || row.leafTitle || ''), String(row.project || '')].join('\u0000');
+      const looseMatches = inventoryByLooseKey.get(loose) || [];
+      if (looseMatches.length === 1) {
+        valid.push({ ...row, migratedFromLegacyIdentity: true, fullSuitePath: looseMatches[0].fullSuitePath || row.fullSuitePath || '', stableKey: looseMatches[0].stableKey || key });
+        continue;
+      }
+      errors.push(looseMatches.length > 1
+        ? `Selected test title is ambiguous under schema v3: ${row.specPath} :: ${row.title} [${row.project}]`
+        : `Selected test title no longer exists in Playwright discovery: ${row.specPath} :: ${row.fullTitle || row.title} [${row.project}]`);
       continue;
     }
     valid.push(row);

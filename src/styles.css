@@ -5309,3 +5309,11 @@ span.bg-red-500.text-white,
     min-height: 32px !important;
   }
 }
+
+/* 16.0.144 login accessibility/tap-target hardening */
+.chaos-login-primary-action,
+.chaos-login-secondary-action { min-height: 44px; touch-action: manipulation; }
+.chaos-login-secondary-action { display: inline-flex; align-items: center; justify-content: center; }
+@media (max-width: 640px) {
+  .chaos-login-primary-action, .chaos-login-secondary-action { min-height: 44px; }
+}

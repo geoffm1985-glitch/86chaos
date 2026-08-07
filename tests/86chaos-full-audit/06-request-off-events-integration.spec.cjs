@@ -66,23 +66,34 @@ test.describe('06 request-off, availability, and scheduled events integration', 
       await gotoTab(page, 'godmode', { settleMs: 1600, maxText: 60000 });
       await dismissBlockingDialogs(page);
       await neutralizeTestingPreviewOverlays(page, { reason: 'ghost-request-off-open-people' });
-      const openPeople = page.getByRole('button', { name: /^Open People$/i }).or(page.getByRole('button', { name: /people directory|people/i })).first();
+      const openPeople = page.locator('[data-testid="system-admin-open-people"]').or(page.getByRole('button', { name: /^Open People$/i })).first();
       if (!(await openPeople.isVisible({ timeout: 10000 }).catch(() => false))) {
         await attachState('06-ghost-request-off-people-open-missing.json', { visibleButtons: await page.getByRole('button').evaluateAll(btns => btns.slice(0, 80).map(btn => btn.innerText || btn.getAttribute('aria-label') || btn.textContent || '')).catch(() => []) });
       }
       await expect(openPeople, 'System Administrator People directory must be explicitly reachable before Ghost Mode possession').toBeVisible({ timeout: 12000 });
       await openPeople.click();
       await page.waitForTimeout(900);
-      const peopleScope = page.locator('[data-testid*="people" i], [aria-label*="People" i], section, main').filter({ hasText: /People|Directory|Possess|User/i }).first();
-      const search = peopleScope.getByRole('textbox', { name: /search/i }).or(page.getByRole('textbox', { name: /search people|people search|search users/i })).first();
+      await dismissBlockingDialogs(page, { maxPasses: 4 });
+      const peopleScope = page.locator('[data-testid="system-admin-people-directory"]').first();
+      await expect(peopleScope, 'People Directory root should be visible before target search').toBeVisible({ timeout: 12000 });
+      const search = peopleScope.locator('[data-testid="system-admin-people-search"]').or(peopleScope.getByRole('textbox', { name: /^Search People Directory$/i })).first();
       await expect(search, 'People directory search field should be scoped to the People area').toBeVisible({ timeout: 12000 });
       await search.fill(targetName);
       await page.waitForTimeout(1200);
-      const result = peopleScope.getByRole('row', { name: new RegExp(targetName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i') })
-        .or(peopleScope.locator('article,li,div').filter({ hasText: new RegExp(targetName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i') }))
-        .first();
+      const expectedDocId = seed.ghostTargetUserId || seed.profile?.ghostTargetUserId || seed.ghostTargetDocumentId || '';
+      const expectedAuthUid = seed.ghostTargetAuthUid || seed.profile?.ghostTargetAuthUid || '';
+      const escapedTargetName = targetName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const result = expectedDocId
+        ? peopleScope.locator(`[data-testid="system-admin-person-${expectedDocId}"]`).first()
+        : peopleScope.locator('[data-testid^="system-admin-person-"]').filter({ hasText: new RegExp(escapedTargetName, 'i') }).first();
       await expect(result, `People directory should show the exact Ghost target ${targetName}`).toBeVisible({ timeout: 15000 });
-      const possess = result.getByRole('button', { name: /^Possess$/i }).or(result.getByRole('button', { name: /possess/i })).first();
+      const resultText = await result.innerText().catch(() => '');
+      expect(resultText, 'Exact target row must be Allen QA, not another user').toMatch(/Allen QA/i);
+      expect(resultText, 'Ghost target row must not be Alex or Unknown Location').not.toMatch(/Alex @ Unknown Location|Unknown Location/i);
+      if (expectedAuthUid) await expect(result, 'Target row should carry the expected temporary Auth UID evidence').toHaveAttribute(/data-auth-uid/i, expectedAuthUid, { timeout: 5000 });
+      const possess = expectedDocId
+        ? result.locator(`[data-testid="system-admin-possess-${expectedDocId}"]`).first()
+        : result.getByRole('button', { name: new RegExp(`Possess ${escapedTargetName}`, 'i') }).first();
       await expect(possess, `Possess control should be inside the ${targetName} row/card`).toBeVisible({ timeout: 12000 });
       await possess.click();
       await page.waitForTimeout(1800);

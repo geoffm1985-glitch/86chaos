@@ -2,11 +2,12 @@ const { test, expect } = require('@playwright/test');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
-const { validateIconSourcePackage, pngDimensions, icoDimensions, sha256 } = require('../../scripts/86chaos-release-gate/icon-source-validator.cjs');
+const { validateIconSourcePackage, pngDimensions, icoDimensions, sha256, publicPathFromUrl } = require('../../scripts/86chaos-release-gate/icon-source-validator.cjs');
 const { ensureRunDir, writeJson } = require('../../scripts/86chaos-release-gate/run-context.cjs');
 
-function publicUrl(baseURL, src) { return new URL(src.replace(/^\//, ''), baseURL.endsWith('/') ? baseURL : `${baseURL}/`).toString(); }
-function localPath(root, src) { return path.join(root, src.replace(/^\//, '').startsWith('public/') ? src.replace(/^\//, '') : `public/${src.replace(/^\//, '')}`); }
+function publicAssetPath(src) { return publicPathFromUrl(src).replace(/\\/g, '/').replace(/^public\//, ''); }
+function publicUrl(baseURL, src) { return new URL(publicAssetPath(src), baseURL.endsWith('/') ? baseURL : `${baseURL}/`).toString(); }
+function localPath(root, src) { return path.join(root, publicPathFromUrl(src)); }
 function expectedSizes(sizes='') { return String(sizes || '').split(/\s+/).filter(Boolean).map(s => { const m=s.match(/^(\d+)x(\d+)$/); return m ? [Number(m[1]), Number(m[2])] : null; }).filter(Boolean); }
 
 test('PWA source and deployed icon bytes match declared manifest assets', async ({ request, baseURL }, testInfo) => {

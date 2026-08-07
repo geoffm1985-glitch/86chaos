@@ -154,6 +154,32 @@ for (const t of tests) {
 }
 const slowestTests = tests.slice().sort((a, b) => Number(b.duration || 0) - Number(a.duration || 0)).slice(0, 10);
 const failedByCategory = unexpectedTests.map(t => ({ ...t, category: /ERR_CONNECTION|net::/i.test(t.error) ? 'infrastructure/network' : /Firebase|permission-denied|Missing or insufficient/i.test(t.error) ? 'Firebase emulator' : /login|auth/i.test(t.error) ? 'authentication/setup' : /cleanup/i.test(t.error) ? 'cleanup' : 'application assertion' }));
+function normSpec(value = '') { return String(value || '').replace(/\\/g, '/').replace(/^tests\//, ''); }
+function normTitle(value = '') { return String(value || '').replace(/\s+›\s+/g, ' > ').replace(/\s+/g, ' ').trim(); }
+function manifestIdentity(row = {}) {
+  const title = normTitle(row.fullTitle || [...(row.suitePathParts || []), row.title || row.exactTestTitle || row.leafTitle || ''].filter(Boolean).join(' > '));
+  return `${normSpec(row.specPath || row.spec || row.file)}\u0000${title}\u0000${row.project || row.projectName || (row.projects || [])[0] || ''}`;
+}
+function executedIdentity(row = {}) {
+  return `${normSpec(row.file || row.specPath || row.spec)}\u0000${normTitle(row.title || row.fullTitle || '')}\u0000${row.projectName || row.project || ''}`;
+}
+const manifestSelected = Array.isArray(failedOnlyManifest?.selected) ? failedOnlyManifest.selected : [];
+const selectedIdentitySet = new Set(manifestSelected.map(manifestIdentity));
+const executedUniqueByKey = new Map();
+for (const t of tests) executedUniqueByKey.set(executedIdentity(t), t);
+const executedKeySet = new Set(executedUniqueByKey.keys());
+const selectedNotExecuted = [...selectedIdentitySet].filter(key => !executedKeySet.has(key) && ![...executedKeySet].some(exec => exec.includes(key.split('\u0000')[1]) && exec.endsWith(key.split('\u0000')[2])));
+const unexpectedExtraExecution = [...executedKeySet].filter(key => !selectedIdentitySet.has(key) && ![...selectedIdentitySet].some(sel => key.includes(sel.split('\u0000')[1]) && key.endsWith(sel.split('\u0000')[2])));
+const deltaReconciliation = {
+  mode: failedOnlyMode ? 'failed+new' : 'full',
+  manifestSelectedUniqueCount: selectedIdentitySet.size,
+  actualExecutedUniqueCount: executedKeySet.size,
+  selectedNotExecutedCount: failedOnlyMode ? selectedNotExecuted.length : 0,
+  unexpectedExtraExecutionCount: failedOnlyMode ? unexpectedExtraExecution.length : 0,
+  selectedNotExecuted: failedOnlyMode ? selectedNotExecuted.slice(0, 50) : [],
+  unexpectedExtraExecution: failedOnlyMode ? unexpectedExtraExecution.slice(0, 50) : [],
+  perProjectSelected: manifestSelected.reduce((acc, row) => { const p = row.project || row.projectName || (row.projects || [])[0] || 'unknown'; acc[p] = (acc[p] || 0) + 1; return acc; }, {}),
+};
 if (!failedOnlyManifest && playwright && unexpectedTests.length > 0 && String(runnerState.mode || '').toLowerCase() !== 'failed-only') {
   try {
     failedOnlyManifest = generateFailedOnlyManifestFromRun(runDir, { write: true });
@@ -362,7 +388,8 @@ const ok = failedTests.length === 0
   && javaFailures.length === 0
   && nodeFailures.length === 0
   && !blockedBeforePlaywright
-  && !(playwrightStarted && noTestsExecuted);
+  && !(playwrightStarted && noTestsExecuted)
+  && !(failedOnlyMode && (deltaReconciliation.selectedNotExecutedCount > 0 || deltaReconciliation.unexpectedExtraExecutionCount > 0));
 
 const summary = {
   ok,
@@ -373,7 +400,7 @@ const summary = {
   expectedVersion,
   sourceVersion: preflight.sourceVersion || sourceInventory.version || sourceInventory.packageVersion || '',
   deployedVersion: preflight.deployedVersion || '',
-  visibleVersion: preflight.visibleVersion || '',
+  visibleVersion: preflight.visibleVersion || 'not_observed',
   testedVersion,
   firebaseProjectId: preflight.firebaseProjectId || sourceInventory.firebaseProjectId || '',
   node: process.version,
@@ -391,7 +418,7 @@ const summary = {
   nodeFailures,
   rulesGateReport: rulesGateReport && Object.keys(rulesGateReport).length ? { ok: rulesGateReport.ok, totalCases: rulesGateReport.totalCases, passed: rulesGateReport.passed, failed: rulesGateReport.failed, blocked: rulesGateReport.blocked, firstActionableFailure: rulesGateReport.firstActionableFailure || '' } : null,
   testAccountConfigurationFailure: roleFailures.length > 0,
-  playwright: { totalResults: tests.length, status: blockedBeforeTestExecution ? 'BLOCKED BEFORE TEST EXECUTION' : (noTestsExecuted ? 'No tests executed' : 'Tests executed'), passed: tests.filter(t => t.status === 'passed').length, failed: failedTests.length, timedOut: timedOutTests.length, skipped: skippedTests.length, blocked: blockedBeforeTestExecution ? 1 : 0, notRun: blockedBeforeTestExecution ? 1 : 0, unexpected: unexpectedTests.length, failedTests: blockedBeforeTestExecution ? [] : unexpectedTests.slice(0, 200), timedOutTests: timedOutTests.slice(0, 200), skippedTests: skippedTests.slice(0, 200), assertionTimeoutTests, perProject, failedByCategory: failedByCategory.slice(0, 200), slowestTests },
+  playwright: { totalResults: tests.length, status: blockedBeforeTestExecution ? 'BLOCKED BEFORE TEST EXECUTION' : (noTestsExecuted ? 'No tests executed' : 'Tests executed'), passed: tests.filter(t => t.status === 'passed').length, failed: failedTests.length, timedOut: timedOutTests.length, skipped: skippedTests.length, blocked: blockedBeforeTestExecution ? 1 : 0, notRun: blockedBeforeTestExecution ? 1 : 0, unexpected: unexpectedTests.length, failedTests: blockedBeforeTestExecution ? [] : unexpectedTests.slice(0, 200), timedOutTests: timedOutTests.slice(0, 200), skippedTests: skippedTests.slice(0, 200), assertionTimeoutTests, perProject, failedByCategory: failedByCategory.slice(0, 200), slowestTests, deltaReconciliation },
   attemptStatus: {
     browserInstallation: { attempted: runnerPhase === 'install-chromium' || runnerState.browserInstallPassed === true, status: runnerState.browserInstallPassed === true ? 'passed' : (blockedBeforePlaywright ? 'blocked' : 'not_run') },
     testAccountProvisioning: { attempted: runnerState.testAccountProvisionAttempted === true, status: runnerState.testAccountProvisionPassed === true ? 'passed' : (runnerState.testAccountProvisionAttempted === true ? 'failed' : (blockedBeforePlaywright ? 'blocked' : 'not_run')) },
