@@ -168,3 +168,19 @@ test('personal reminder list still returns only reminders containing the real au
   const rows = await api.listPersonalReminders({ db, uid: 'uid-a', restaurantId: 'r1' });
   assert.deepEqual(rows.map(row => row.id), ['own']);
 });
+
+const path = require('path');
+const fs = require('fs');
+
+test('retired direct client listener is not reintroduced in drawer or reminders page', () => {
+  const root = path.resolve(__dirname, '..');
+  const reader = fs.readFileSync(path.join(root, 'src/core/personalReminderQueries.js'), 'utf8');
+  const drawer = fs.readFileSync(path.join(root, 'src/components/common.jsx'), 'utf8');
+  const page = fs.readFileSync(path.join(root, 'src/features/intelligence.jsx'), 'utf8');
+  assert.match(reader, /\/api\/personal-reminder-list/);
+  assert.match(drawer, /usePersonalReminderRows/);
+  assert.match(page, /usePersonalReminderRows/);
+  assert.doesNotMatch(reader, /useLiveCollection\(['"]personalReminders/);
+  assert.doesNotMatch(drawer, /useLiveCollection\(['"]personalReminders['"]/);
+  assert.doesNotMatch(page, /useLiveCollection\(['"]personalReminders['"]/);
+});

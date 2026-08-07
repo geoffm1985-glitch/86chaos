@@ -31,16 +31,17 @@ const failedOnlyUtils = read('scripts/86chaos-release-gate/failed-only-manifest-
 const failedOnlyPrepare = read('scripts/86chaos-release-gate/prepare-failed-only-manifest.cjs');
 const failedOnlyRunner = read('RUN_86CHAOS_FAILED_ONLY_RELEASE_GATE.ps1');
 const localChecks = read('scripts/86chaos-release-gate/run-node-release-checks.cjs');
+const failureExtractor = read('scripts/86chaos-release-gate/failure-extractor.cjs');
 const maturityGuards = read('src/core/maturityGuards.js');
 const maturityGuardsTest = read('src/core/maturityGuards.test.js');
 
-assert(pkg.version === '16.0.141', 'package.json version is 16.0.141');
-assert(lock.version === '16.0.141' && lock.packages?.['']?.version === '16.0.141', 'package-lock root versions are 16.0.141');
-assert(version.version === '16.0.141' && version.build === '16.0.141', 'public/version.json version/build are 16.0.141');
-assert(appCore.includes("CURRENT_VERSION = '16.0.141'"), 'app core CURRENT_VERSION is 16.0.141');
-assert(apiVersion.includes("APP_VERSION = '16.0.141'") && apiVersion.includes("SECURITY_SCHEMA_VERSION = '16.0.141'"), 'api version reports 16.0.141');
-assert(pkg.scripts['test:source'] === 'node scripts/validate-16-0-141.js', 'test:source points at the 16.0.141 validator');
-assert(!fs.existsSync(path.join(root, 'scripts/validate-16-0-140.js')), 'previous 16.0.140 validator was replaced');
+assert(pkg.version === '16.0.142', 'package.json version is 16.0.142');
+assert(lock.version === '16.0.142' && lock.packages?.['']?.version === '16.0.142', 'package-lock root versions are 16.0.142');
+assert(version.version === '16.0.142' && version.build === '16.0.142', 'public/version.json version/build are 16.0.142');
+assert(appCore.includes("CURRENT_VERSION = '16.0.142'"), 'app core CURRENT_VERSION is 16.0.142');
+assert(apiVersion.includes("APP_VERSION = '16.0.142'") && apiVersion.includes("SECURITY_SCHEMA_VERSION = '16.0.142'"), 'api version reports 16.0.142');
+assert(pkg.scripts['test:source'] === 'node scripts/validate-16-0-142.js', 'test:source points at the 16.0.142 validator');
+assert(!fs.existsSync(path.join(root, 'scripts/validate-16-0-141.js')), 'previous 16.0.141 validator was replaced');
 
 assert(sha('firestore.rules') === '51bfd7d39edd59f680ae41a149c108cec8cd42d00b102d84cb00ee40d90264d9', 'working Firestore rules are preserved byte-for-byte for this app-only maturity pass');
 assert(sha('storage.rules') === '174e7e9a140193ff69ccf0f0d3e5c65b81a9e0fbbd612bff45ce57e7a3a7ce9c', 'Storage rules include the minimal missing-user clean-denial guard proven by the corrected harness');
@@ -66,6 +67,7 @@ assert(common.includes('usePersonalReminderRows') && !common.includes("useLiveCo
 assert(reminders.includes("['participantSchemaVersion', '==', 1]") && reminders.includes("['participantUserIds', 'array-contains'") && reminders.includes("/api/personal-reminder-list") && reminders.includes('requestPersonalReminderRefresh') && reminders.includes('__getPersonalReminderReaderDiagnostics') && !reminders.includes("legacy-user-id") && !reminders.includes("legacy-assigned-to") && !reminders.includes("legacy-created-by") && ((reminders.match(/useLiveCollection\('personalReminders'/g) || []).length === 0), 'reminder reader uses one canonical participant UID-scoped API boundary without broad fallback listeners');
 assert(personalReminderApi.includes("where('participantSchemaVersion', '==', 1)") && personalReminderApi.includes("where('participantUserIds', 'array-contains', uid)") && personalReminderApi.includes('verifyIdToken') && personalReminderApi.includes('userHasWorkspace'), 'personal reminder API reads only canonical participant reminders for the verified active workspace member');
 assert(intelligence.includes('usePersonalReminderRows'), 'personal reminders feature reuses the shared reminder-query boundary');
+assert(read('api/personal-reminder-list.test.cjs').includes('retired direct client listener is not reintroduced') || (reminders.includes('/api/personal-reminder-list') && !reminders.includes("useLiveCollection('personalReminders'")), 'client reminder architecture keeps the retired direct Firestore collection listener out of the drawer/page reader');
 
 assert(featureAccess.includes('canViewRestaurantOpsIntelligence') && featureAccess.includes('userHasRestaurantLeadershipAuthority'), 'ops intelligence frontend access uses one leadership-aware selector');
 assert(operations.includes('canViewRestaurantOpsIntelligence') && operations.includes("useLiveCollectionState('opsIntelligenceReports'") && !operations.includes("useLiveDocument('opsIntelligenceReports'") && operations.includes('canUsePythonIntelligence'), 'ops intelligence listener is gated before it starts');
@@ -95,6 +97,8 @@ assert(localChecks.includes('node-test-live-summary.json') && localChecks.includ
 assert(localChecks.includes('firebase emulators:exec --only firestore,storage') && localChecks.includes('node scripts/86chaos-release-gate/run-rules-release-gate.cjs'), 'focused release-gate rules smoke check still runs inside Firebase emulator discovery');
 assert(/metadata\\\.get\\\('purpose', ''\\\) == 'document-vault'/.test(read('api/app-route-and-document-vault.test.cjs')) && /metadata\\\.get\\\('restaurantId', ''\\\) == restaurantId/.test(read('api/app-route-and-document-vault.test.cjs')), 'Document Vault server assertion matches supplied safe metadata.get Storage rules');
 assert(collector.includes('releaseReadiness') && collector.includes('firstActionableBlocker'), 'collector emits compact release-readiness summary and first blocker');
+assert(localChecks.includes("require('./failure-extractor.cjs')") && failureExtractor.includes('extractRulesPrimaryFailure') && failureExtractor.includes('isIntentionalRulesDiagnostic'), 'release-gate failure extraction ignores expected assertFails permission-denied diagnostics and reports real failed assertions');
+assert(read('api/release-gate-failure-extractor.test.cjs').includes('intentional assertFails') && read('api/release-gate-failure-extractor.test.cjs').includes('later unexpected denial'), 'failure-extractor regression tests cover expected denials before a real rules-suite failure');
 assert(read('scripts/86chaos-release-gate/failed-only-manifest-utils.cjs').includes('findMostRecentCompletedFullRun') && read('scripts/86chaos-release-gate/prepare-failed-only-manifest.cjs').includes('targetQualifiedManifest'), 'failed-only runner builds a dynamic manifest from the newest completed full run and qualifies it with target metadata');
 assert(!read('tests/86chaos-release-gate/failed-only-manifest.cjs').includes('const FAILED_ONLY_TESTS = ['), 'failed-only manifest no longer uses a permanently hardcoded failure list');
 
@@ -156,7 +160,7 @@ assert(focusedRules.includes('const db = {') && focusedRules.includes('ownerA: o
 assert(focusedRules.includes('firebase-rules-release-gate.json') && focusedRules.includes('firstActionableFailure') && focusedRules.includes('harness_lifecycle_error'), 'focused rules harness writes structured current-run failure classifications');
 assert(focusedRules.includes('missing Storage user profile denies cleanly') && storageRules.includes('function userExists()'), 'Storage missing-profile clean-denial behavior is covered by focused tests and guarded in rules');
 assert(rulesRunner.includes("setRuleCase('Operations-intelligence rules')") && rulesRunner.includes('opsIntelligenceReports') && rulesRunner.includes('mismatch.pdf') && rulesRunner.includes('missingProfileStorage'), 'canonical rules suite covers focused smoke behaviors and Storage positive/negative controls');
-assert(rulesRunner.includes("setRuleCase('Personal reminder canonical participant queries')") && rulesRunner.includes("where('participantSchemaVersion', '==', 1)") && rulesRunner.includes("where('participantUserIds', 'array-contains', uid)"), 'canonical rules suite includes exact personal reminder list-query coverage for the production query shape');
+assert(rulesRunner.includes("setRuleCase('Canonical reminder collection list remains server-only')") && rulesRunner.includes('retiredCanonicalReminderQuery') && rulesRunner.includes('await assertFails(getDocs(retiredCanonicalReminderQuery(ownerA') && rulesRunner.includes('/api/personal-reminder-list'), 'canonical rules suite proves the retired browser reminder list query is intentionally denied and documented as server-only');
 assert(collector.includes('firebase-rules-release-gate.json') && collector.includes('rulesGateReport') && collector.includes('Rules reports are read only from the current run directory'), 'collector reads current-run focused rules report and surfaces it in summaries');
 assert(localChecks.includes("result.firstUsefulFailure = result.status === 'passed'") && localChecks.includes('Passed commands always have an empty firstUsefulFailure'), 'passed local checks cannot carry fake firstUsefulFailure text');
 assert(provisioning.includes('customClaimKeysProcessed') && provisioning.includes('enabledCustomClaims') && provisioning.includes('qaRoleClaim'), 'QA provisioning reports processed claims separately from enabled claims');
@@ -191,4 +195,7 @@ assert(scheduleFeature.includes('requestOffGhostMode') && scheduleFeature.includ
 assert(app.includes('userGhostRequestOffPath') && app.includes('!userGhostRequestOffPath'), 'App disables the direct timeOffRequests listener on the user-level Ghost Mode Request Off path');
 assert(read('api/time-off-request.test.cjs').includes('conflict summaries dedupe') && read('api/time-off-request.test.cjs').includes('ghost payload belongs to target employee'), 'server tests cover Request Off conflict privacy and Ghost Mode identity payloads');
 
-if (failures) process.exit(1);
+assert(read('tests/86chaos-full-audit/06-request-off-events-integration.spec.cjs').includes('Ghost Mode Request Off as a legacy employee') && read('tests/86chaos-full-audit/06-request-off-events-integration.spec.cjs').includes('Request Off unavailable'), 'focused Ghost Mode Request Off browser workflow regression test is present');
+
+if (failures) { console.error(`\n${failures} validation check(s) failed.`); process.exit(1); }
+console.log('\n16.0.142 source validation passed.');
