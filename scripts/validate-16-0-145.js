@@ -26,14 +26,14 @@ const provisioner = read('scripts/86chaos-release-gate/provision-test-accounts.c
 const seed = read('scripts/86chaos-full-audit/seed-fake-restaurant.cjs');
 const cleanup = read('scripts/86chaos-full-audit/cleanup-fake-restaurant.cjs');
 
-assert(pkg.version === '16.0.144', 'package.json version is 16.0.144');
-assert(lock.version === '16.0.144' && lock.packages?.['']?.version === '16.0.144', 'package-lock root versions are 16.0.144');
-assert(version.version === '16.0.144' && version.build === '16.0.144', 'public/version.json version/build are 16.0.144');
-assert(appCore.includes("CURRENT_VERSION = '16.0.144'"), 'app core CURRENT_VERSION is 16.0.144');
-assert(apiVersion.includes("APP_VERSION = '16.0.144'") && apiVersion.includes("SECURITY_SCHEMA_VERSION = '16.0.144'"), 'api version reports 16.0.144');
-assert(pkg.scripts['test:source'] === 'node scripts/validate-16-0-144.js', 'test:source points at 16.0.144 validator');
+assert(pkg.version === '16.0.145', 'package.json version is 16.0.145');
+assert(lock.version === '16.0.145' && lock.packages?.['']?.version === '16.0.145', 'package-lock root versions are 16.0.145');
+assert(version.version === '16.0.145' && version.build === '16.0.145', 'public/version.json version/build are 16.0.145');
+assert(appCore.includes("CURRENT_VERSION = '16.0.145'"), 'app core CURRENT_VERSION is 16.0.145');
+assert(apiVersion.includes("APP_VERSION = '16.0.145'") && apiVersion.includes("SECURITY_SCHEMA_VERSION = '16.0.145'"), 'api version reports 16.0.145');
+assert(pkg.scripts['test:source'] === 'node scripts/validate-16-0-145.js', 'test:source points at 16.0.145 validator');
 assert(pkg.scripts['test:play-store:delta'] && pkg.scripts['test:play-store:delta'].includes('FAILED_AND_NEW'), 'failed+new delta command is present');
-assert(!fs.existsSync(path.join(root, 'scripts/validate-16-0-143.js')), 'previous 16.0.143 validator was replaced');
+assert(!fs.existsSync(path.join(root, 'scripts/validate-16-0-144.js')), 'previous 16.0.144 validator was replaced');
 
 assert(sha('firestore.rules') === '51bfd7d39edd59f680ae41a149c108cec8cd42d00b102d84cb00ee40d90264d9', 'firestore.rules unchanged');
 assert(sha('storage.rules') === '174e7e9a140193ff69ccf0f0d3e5c65b81a9e0fbbd612bff45ce57e7a3a7ce9c', 'storage.rules unchanged');
@@ -73,5 +73,15 @@ assert(fs.existsSync(path.join(root, 'api/customer-help-intelligence.test.cjs'))
 assert(fs.existsSync(path.join(root, 'api/help-assistant.test.cjs')), 'Ask 86 grounding tests exist');
 assert(pkg.scripts['test:play-store:delta'], 'failed+new delta script alias exists');
 
+const pwaPathTest = read('api/pwa-public-url-normalization.test.cjs');
+const failureExtractor = read('scripts/86chaos-release-gate/failure-extractor.cjs');
+const failureExtractorTest = read('api/release-gate-failure-extractor.test.cjs');
+assert(pwaPathTest.includes('path.normalize(actual)') && pwaPathTest.includes("path.join(...parts)"), 'PWA path normalization test compares native filesystem paths semantically');
+assert(pwaPathTest.includes('toBrowserAssetUrl') && pwaPathTest.includes("'/86chaos-icon-16-v1.png'"), 'PWA URL tests keep browser URLs slash-based');
+assert(failureExtractor.includes('isSuccessfulLine') && failureExtractor.includes('✔') && failureExtractor.includes('PASS'), 'failure extractor recognizes successful test markers before scanning scary words');
+assert(failureExtractor.includes('looksLikeNodeTestOutput') && failureExtractor.includes('extractNodeTestFailure'), 'Node test failure extraction uses Node test structure before generic text scanning');
+assert(failureExtractorTest.includes('successful lines with scary words are never primary failures'), 'failure extractor regression covers scary words in passing test names');
+assert(failureExtractorTest.includes('PWA icon source paths normalize PUBLIC_URL and root-relative forms'), 'failure extractor regression covers the 16.0.144 PWA failure fixture');
+
 if (failures) { console.error(`\n${failures} validation check(s) failed.`); process.exit(1); }
-console.log('\n16.0.144 source validation passed.');
+console.log('\n16.0.145 source validation passed.');
