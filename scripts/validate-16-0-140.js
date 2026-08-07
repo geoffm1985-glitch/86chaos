@@ -18,6 +18,7 @@ const apiVersion = read('api/_version.js');
 const common = read('src/components/common.jsx');
 const reminders = read('src/core/personalReminderQueries.js');
 const intelligence = read('src/features/intelligence.jsx');
+const personalReminderApi = read('api/personal-reminder-list.js');
 const operations = read('src/features/operations.jsx');
 const featureAccess = read('src/lib/featureAccess.js');
 const app = read('src/App.js');
@@ -33,13 +34,13 @@ const localChecks = read('scripts/86chaos-release-gate/run-node-release-checks.c
 const maturityGuards = read('src/core/maturityGuards.js');
 const maturityGuardsTest = read('src/core/maturityGuards.test.js');
 
-assert(pkg.version === '16.0.139', 'package.json version is 16.0.139');
-assert(lock.version === '16.0.139' && lock.packages?.['']?.version === '16.0.139', 'package-lock root versions are 16.0.139');
-assert(version.version === '16.0.139' && version.build === '16.0.139', 'public/version.json version/build are 16.0.139');
-assert(appCore.includes("CURRENT_VERSION = '16.0.139'"), 'app core CURRENT_VERSION is 16.0.139');
-assert(apiVersion.includes("APP_VERSION = '16.0.139'") && apiVersion.includes("SECURITY_SCHEMA_VERSION = '16.0.139'"), 'api version reports 16.0.139');
-assert(pkg.scripts['test:source'] === 'node scripts/validate-16-0-139.js', 'test:source points at the 16.0.139 validator');
-assert(!fs.existsSync(path.join(root, 'scripts/validate-16-0-138.js')), 'previous 16.0.137 validator was replaced');
+assert(pkg.version === '16.0.140', 'package.json version is 16.0.140');
+assert(lock.version === '16.0.140' && lock.packages?.['']?.version === '16.0.140', 'package-lock root versions are 16.0.140');
+assert(version.version === '16.0.140' && version.build === '16.0.140', 'public/version.json version/build are 16.0.140');
+assert(appCore.includes("CURRENT_VERSION = '16.0.140'"), 'app core CURRENT_VERSION is 16.0.140');
+assert(apiVersion.includes("APP_VERSION = '16.0.140'") && apiVersion.includes("SECURITY_SCHEMA_VERSION = '16.0.140'"), 'api version reports 16.0.140');
+assert(pkg.scripts['test:source'] === 'node scripts/validate-16-0-140.js', 'test:source points at the 16.0.140 validator');
+assert(!fs.existsSync(path.join(root, 'scripts/validate-16-0-139.js')), 'previous 16.0.139 validator was replaced');
 
 assert(sha('firestore.rules') === '51bfd7d39edd59f680ae41a149c108cec8cd42d00b102d84cb00ee40d90264d9', 'working Firestore rules are preserved byte-for-byte for this app-only maturity pass');
 assert(sha('storage.rules') === '174e7e9a140193ff69ccf0f0d3e5c65b81a9e0fbbd612bff45ce57e7a3a7ce9c', 'Storage rules include the minimal missing-user clean-denial guard proven by the corrected harness');
@@ -62,7 +63,8 @@ assert(/allow create, update, delete: if false;/.test(rules), 'ops intelligence 
 assert(rules.includes('match /personalReminders/{docId}') && rules.includes('reminderParticipant'), 'personal reminder rules remain participant-scoped');
 
 assert(common.includes('usePersonalReminderRows') && !common.includes("useLiveCollection('personalReminders', appUser?.restaurantId, { enabled: !!isOpen"), 'drawer reminders use shared participant-scoped query boundary');
-assert(reminders.includes("['participantSchemaVersion', '==', 1]") && reminders.includes("['participantUserIds', 'array-contains'") && !reminders.includes("legacy-user-id") && !reminders.includes("legacy-assigned-to") && !reminders.includes("legacy-created-by") && ((reminders.match(/useLiveCollection\('personalReminders'/g) || []).length === 1), 'reminder query helper uses one canonical participant UID-scoped query without broad fallback');
+assert(reminders.includes("['participantSchemaVersion', '==', 1]") && reminders.includes("['participantUserIds', 'array-contains'") && reminders.includes("/api/personal-reminder-list") && reminders.includes('requestPersonalReminderRefresh') && reminders.includes('__getPersonalReminderReaderDiagnostics') && !reminders.includes("legacy-user-id") && !reminders.includes("legacy-assigned-to") && !reminders.includes("legacy-created-by") && ((reminders.match(/useLiveCollection\('personalReminders'/g) || []).length === 0), 'reminder reader uses one canonical participant UID-scoped API boundary without broad fallback listeners');
+assert(personalReminderApi.includes("where('participantSchemaVersion', '==', 1)") && personalReminderApi.includes("where('participantUserIds', 'array-contains', uid)") && personalReminderApi.includes('verifyIdToken') && personalReminderApi.includes('userHasWorkspace'), 'personal reminder API reads only canonical participant reminders for the verified active workspace member');
 assert(intelligence.includes('usePersonalReminderRows'), 'personal reminders feature reuses the shared reminder-query boundary');
 
 assert(featureAccess.includes('canViewRestaurantOpsIntelligence') && featureAccess.includes('userHasRestaurantLeadershipAuthority'), 'ops intelligence frontend access uses one leadership-aware selector');
@@ -124,7 +126,7 @@ assert(rulesRunner.includes("passwordStored: false") && rulesRunner.includes("pa
 assert(rulesRunner.includes("passwordPurgedAt: new Date().toISOString()") && rulesRunner.includes("passwordPurgedAt: deleteField()"), 'rules tests deny setting, rewriting, and deleting passwordPurgedAt');
 assert(rulesRunner.includes("theme: 'dark', forcePasswordChange: false"), 'rules tests deny mixed safe-and-protected self update');
 assert(rulesRunner.includes("notificationPrefs: { email: false, push: true }") && rulesRunner.includes("preferences: { compactMode: true }"), 'rules tests preserve safe self-service profile preferences');
-assert(rulesRunner.includes("const { doc, setDoc, getDoc, updateDoc, deleteDoc, deleteField"), 'rules tests use Firestore getDoc and deleteField behavior for protected coverage');
+assert(rulesRunner.includes('getDoc') && rulesRunner.includes('deleteField') && rulesRunner.includes('getDocs') && rulesRunner.includes('query') && rulesRunner.includes('where'), 'rules tests use Firestore getDoc/deleteField behavior plus query coverage for protected reads');
 
 
 assert(sha('firestore.rules') === '51bfd7d39edd59f680ae41a149c108cec8cd42d00b102d84cb00ee40d90264d9', 'Firestore user-rule implementation is intentionally preserved because the supplied rules work');
@@ -154,6 +156,7 @@ assert(focusedRules.includes('const db = {') && focusedRules.includes('ownerA: o
 assert(focusedRules.includes('firebase-rules-release-gate.json') && focusedRules.includes('firstActionableFailure') && focusedRules.includes('harness_lifecycle_error'), 'focused rules harness writes structured current-run failure classifications');
 assert(focusedRules.includes('missing Storage user profile denies cleanly') && storageRules.includes('function userExists()'), 'Storage missing-profile clean-denial behavior is covered by focused tests and guarded in rules');
 assert(rulesRunner.includes("setRuleCase('Operations-intelligence rules')") && rulesRunner.includes('opsIntelligenceReports') && rulesRunner.includes('mismatch.pdf') && rulesRunner.includes('missingProfileStorage'), 'canonical rules suite covers focused smoke behaviors and Storage positive/negative controls');
+assert(rulesRunner.includes("setRuleCase('Personal reminder canonical participant queries')") && rulesRunner.includes("where('participantSchemaVersion', '==', 1)") && rulesRunner.includes("where('participantUserIds', 'array-contains', uid)"), 'canonical rules suite includes exact personal reminder list-query coverage for the production query shape');
 assert(collector.includes('firebase-rules-release-gate.json') && collector.includes('rulesGateReport') && collector.includes('Rules reports are read only from the current run directory'), 'collector reads current-run focused rules report and surfaces it in summaries');
 assert(localChecks.includes("result.firstUsefulFailure = result.status === 'passed'") && localChecks.includes('Passed commands always have an empty firstUsefulFailure'), 'passed local checks cannot carry fake firstUsefulFailure text');
 assert(provisioning.includes('customClaimKeysProcessed') && provisioning.includes('enabledCustomClaims') && provisioning.includes('qaRoleClaim'), 'QA provisioning reports processed claims separately from enabled claims');
@@ -181,6 +184,7 @@ assert(scheduleFeature.includes('dayShifts.length >= 6') && standaloneMonth.incl
 
 const timeOffApi = read('api/time-off-request.js');
 assert(timeOffApi.includes("action === 'conflicts'") && timeOffApi.includes("ghost-create") && timeOffApi.includes("ghost-cancel") && timeOffApi.includes('summarizeConflictRows'), 'Request Off API supports conflict summaries and Ghost Mode create/cancel through one narrow route');
+assert(timeOffApi.includes('decidePlatformAdminAuthority') && timeOffApi.includes('target-auth-uid-unresolved') && timeOffApi.includes('resolveTargetAuthUid') && timeOffApi.includes('workspaceIds') && timeOffApi.includes('activeRestaurantId') && timeOffApi.includes('defaultRestaurantId') && timeOffApi.includes('memberships') && timeOffApi.includes('getUserByEmail'), 'Request Off Ghost Mode uses canonical platform authority, safe legacy workspace evidence, and proven target Auth UID resolution');
 assert(timeOffApi.includes('Do not') === false || true, 'Request Off API does not expose private request records in conflict summaries');
 assert(scheduleFeature.includes("requestOffApi('conflicts'") && scheduleFeature.includes('requestOffConflictMessage') && scheduleFeature.includes('fetchConflictInfo(selectedDates, { force: true })'), 'Request Off uses server conflict checks before selecting and before submitting dates');
 assert(scheduleFeature.includes('requestOffGhostMode') && scheduleFeature.includes("requestOffApi('ghost-list'") && scheduleFeature.includes("requestOffApi('ghost-create'") && scheduleFeature.includes("requestOffApi('ghost-cancel'"), 'Request Off user-level Ghost Mode loads, creates, and cancels through the protected API boundary');

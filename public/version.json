@@ -1,14 +1,14 @@
 {
-  "version": "16.0.139",
-  "name": "86 Chaos 16.0.139 Reminder Query and Failed-Only Narrowing Fix",
-  "build": "16.0.139",
-  "label": "86 Chaos 16.0.139 Reminder Query and Failed-Only Narrowing Fix",
+  "version": "16.0.140",
+  "name": "86 Chaos 16.0.140 Ghost Request Off, Reminder Reader, and Voice Lifecycle Fix",
+  "build": "16.0.140",
+  "label": "86 Chaos 16.0.140 Ghost Request Off, Reminder Reader, and Voice Lifecycle Fix",
   "releasedAt": "2026-08-06T17:33:00-05:00",
-  "releaseTitle": "Reminder Query and Failed-Only Narrowing Fix",
+  "releaseTitle": "Ghost Request Off, Reminder Reader, and Voice Lifecycle Fix",
   "notes": [
-    "Adds the canonical participantSchemaVersion constraint to the personal reminder browser query so it matches the existing rules without weakening access.",
-    "Narrows failed-only release-gate reruns from the latest compatible failed-only descendant while preserving the original full-run lineage.",
-    "Fixes 86Voice modal dismissal, maintenance tap-target CSS, chunk-recovery attempt counting, and failed-only reporting totals while preserving Firebase rules and real app behavior."
+    "Moves personal reminder reads behind a narrow authenticated API reader while preserving canonical participant scoping and tenant isolation.",
+    "Fixes user-level Ghost Mode Request Off target resolution for valid legacy employees and uses the canonical System Administrator authority resolver.",
+    "Updates 86Voice release-gate tests to count concurrent recognition sessions and neutralize only Vercel testing-preview overlays."
   ],
-  "title": "86 Chaos 16.0.139 Reminder Query and Failed-Only Narrowing Fix"
+  "title": "86 Chaos 16.0.140 Ghost Request Off, Reminder Reader, and Voice Lifecycle Fix"
 }

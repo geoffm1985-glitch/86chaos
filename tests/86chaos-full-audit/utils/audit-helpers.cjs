@@ -521,6 +521,51 @@ async function collectTextNear(page, needle, radius = 1200) {
   }, { needle, radius });
 }
 
+
+async function neutralizeTestingPreviewOverlays(page, options = {}) {
+  const evidence = [];
+  const url = page.url?.() || BASE_URL || '';
+  if (!SAFE_TESTING_URL_RE.test(url) || PRODUCTION_URL_RE.test(url)) {
+    return { ok: true, skipped: true, reason: 'not a safe testing-preview URL', evidence };
+  }
+  const result = await page.evaluate(() => {
+    const rows = [];
+    const knownTags = new Set(['VERCEL-LIVE-FEEDBACK', 'VERCEL-TOOLBAR', 'VERCEL-LIVE-FEEDBACK-BUTTON']);
+    const candidates = Array.from(document.querySelectorAll('vercel-live-feedback, vercel-toolbar, [data-vercel-toolbar], [data-vercel-live-feedback]'))
+      .filter(el => knownTags.has(el.tagName) || String(el.tagName || '').toLowerCase().includes('vercel'));
+    for (const el of candidates) {
+      const rect = el.getBoundingClientRect();
+      const style = window.getComputedStyle(el);
+      const row = {
+        tag: el.tagName,
+        visible: Boolean(rect.width || rect.height),
+        boundingBox: { x: Math.round(rect.x), y: Math.round(rect.y), width: Math.round(rect.width), height: Math.round(rect.height) },
+        pointerEvents: style.pointerEvents || '',
+        action: 'none',
+      };
+      try {
+        const shadowButtons = el.shadowRoot ? Array.from(el.shadowRoot.querySelectorAll('button,[role="button"]')) : [];
+        const close = shadowButtons.find(button => /close|hide|dismiss/i.test(button.getAttribute('aria-label') || button.getAttribute('title') || button.textContent || ''));
+        if (close) {
+          close.click();
+          row.action = 'clicked-shadow-close';
+        } else {
+          el.setAttribute('data-86chaos-test-overlay-neutralized', 'true');
+          el.style.pointerEvents = 'none';
+          row.action = 'disabled-pointer-events';
+        }
+      } catch (err) {
+        row.action = `failed:${String(err?.message || err).slice(0, 120)}`;
+      }
+      rows.push(row);
+    }
+    return { evidence: rows, remaining: Array.from(document.querySelectorAll('vercel-live-feedback, vercel-toolbar, [data-vercel-toolbar], [data-vercel-live-feedback]')).length };
+  }).catch(err => ({ evidence: [{ action: 'evaluate-failed', error: String(err?.message || err).slice(0, 200) }], remaining: -1 }));
+  evidence.push(...(result.evidence || []));
+  if (options.attach && evidence.length) await options.attach('vercel-preview-overlay-neutralized.json', { evidence, remaining: result.remaining });
+  return { ok: true, skipped: false, evidence, remaining: result.remaining };
+}
+
 function seedReportPath() {
   const runId = process.env.CHAOS_RELEASE_GATE_RUN_ID || process.env.CHAOS_FULL_AUDIT_RUN_ID || RUN_ID;
   return runContext?.getSeedReportPath?.(runId) || path.join(process.cwd(), 'test-results', '86chaos-play-store-release-gate', runId, '86chaos-full-audit-seed-report.json');
@@ -576,5 +621,6 @@ module.exports = {
   chooseQaWorkspace,
   dismissBlockingDialogs,
   visibleDialogSnapshot,
+  neutralizeTestingPreviewOverlays,
   QA_WORKSPACE_NAME,
 };

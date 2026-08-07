@@ -1,6 +1,7 @@
 'use strict';
 
 const { admin, getAdminAppForRequest, readBody, requireAppCheckIfEnforced, readWorkspaceMember, userHasWorkspace, profileForWorkspace, masterEmails, norm, clean } = require('./_chaos-admin');
+const { decidePlatformAdminAuthority } = require('./_platform-admin-authority.cjs');
 const { enforceRateLimit, sendRateLimited } = require('./_rate-limit');
 
 const ACTIVE_CONFLICT_STATUSES = new Set(['pending', 'approved']);
@@ -145,11 +146,12 @@ async function loadCallerContext(app, req, body = {}) {
   const user = await getUserByUidOrEmail(db, decoded.uid, email);
   const member = await readWorkspaceMember(db, decoded.uid, email || user.email || '', restaurantId);
   const workspaceProfile = profileForWorkspace({ ...(user || {}), id: user.id || decoded.uid }, member, restaurantId) || user || {};
-  const isSystemAdmin = Boolean(decoded.superAdmin === true || user?.isSuperAdmin === true || user?.systemAccess?.superAdmin === true || masterEmails().includes(email));
+  const platformAuthority = decidePlatformAdminAuthority({ decoded, profile: user || {}, masterEmails: masterEmails(), protectedRootEmails: masterEmails() });
+  const isSystemAdmin = platformAuthority.superAdmin === true;
   if (!callerHasWorkspaceAccess(user, member, restaurantId, isSystemAdmin)) {
     throw Object.assign(new Error('You do not have active access to this workspace.'), { status: 403, code: 'no-workspace-access' });
   }
-  return { app, db, decoded, uid: decoded.uid, email, user, userDocId: user.id || decoded.uid, member, restaurantId, workspaceProfile, isSystemAdmin };
+  return { app, db, decoded, uid: decoded.uid, email, user, userDocId: user.id || decoded.uid, member, restaurantId, workspaceProfile, isSystemAdmin, platformAuthority };
 }
 
 async function findMembershipByTarget(db, restaurantId, targetId = '', targetEmail = '') {
@@ -194,8 +196,84 @@ async function findUserByTarget(db, targetId = '', targetEmail = '') {
   return null;
 }
 
-function buildTargetIdentity(targetUser = {}, targetMember = {}, restaurantId = '') {
-  const authUid = cleanString(targetMember.authUid || targetMember.uid || targetMember.userId || targetUser.authUid || targetUser.uid || targetUser.id || '', 180);
+function activeEmbeddedMembership(user = {}, restaurantId = '') {
+  const member = user?.memberships?.[restaurantId];
+  return member && typeof member === 'object' && member.isActive !== false && member.disabled !== true && member.archived !== true && member.deleted !== true ? member : null;
+}
+
+function targetHasWorkspaceEvidence(user = {}, member = null, restaurantId = '') {
+  if (member && memberActive(member) && String(member.restaurantId || restaurantId) === restaurantId) return true;
+  if (!userActive(user || {})) return false;
+  return Boolean(
+    user?.restaurantId === restaurantId ||
+    user?.activeRestaurantId === restaurantId ||
+    user?.defaultRestaurantId === restaurantId ||
+    (Array.isArray(user?.workspaceIds) && user.workspaceIds.includes(restaurantId)) ||
+    activeEmbeddedMembership(user, restaurantId)
+  );
+}
+
+function effectiveTargetMember(user = {}, member = null, restaurantId = '') {
+  if (member && memberActive(member) && String(member.restaurantId || restaurantId) === restaurantId) return member;
+  const embedded = activeEmbeddedMembership(user, restaurantId) || {};
+  if (!targetHasWorkspaceEvidence(user, member, restaurantId)) return null;
+  return {
+    ...embedded,
+    id: embedded.id || embedded.membershipId || user.workspaceMemberId || user.membershipId || '',
+    restaurantId,
+    isActive: true,
+    uid: embedded.uid || user.authUid || user.uid || '',
+    authUid: embedded.authUid || user.authUid || user.uid || '',
+    userId: embedded.userId || user.userId || user.id || '',
+    accountUserId: embedded.accountUserId || user.accountUserId || user.id || '',
+    employeeId: embedded.employeeId || user.employeeId || '',
+    rosterUserId: embedded.rosterUserId || user.rosterUserId || '',
+    scheduleUserId: embedded.scheduleUserId || user.scheduleUserId || '',
+    email: embedded.email || user.email || user.employeeEmail || '',
+    employeeEmail: embedded.employeeEmail || embedded.email || user.employeeEmail || user.email || '',
+    name: embedded.name || embedded.employeeName || user.name || user.displayName || user.email || '',
+    employeeName: embedded.employeeName || embedded.name || user.employeeName || user.name || user.displayName || ''
+  };
+}
+
+async function authUserExists(ctx, uid = '') {
+  const candidate = cleanString(uid, 180);
+  if (!candidate || !ctx?.app?.auth) return false;
+  try {
+    const authApi = ctx.app.auth();
+    if (!authApi || typeof authApi.getUser !== 'function') return false;
+    await authApi.getUser(candidate);
+    return true;
+  } catch (_) { return false; }
+}
+
+async function resolveTargetAuthUid(ctx, targetUser = {}, targetMember = {}) {
+  const trusted = [targetMember.authUid, targetUser.authUid, targetMember.uid, targetUser.uid, targetMember.firebaseUid, targetUser.firebaseUid]
+    .map(value => cleanString(value, 180)).filter(Boolean);
+  if (trusted.length) return trusted[0];
+  for (const candidate of [targetUser.id, targetMember.userId, targetUser.userId, targetUser.accountUserId]) {
+    const value = cleanString(candidate, 180);
+    if (value && await authUserExists(ctx, value)) return value;
+  }
+  const email = norm(targetMember.employeeEmail || targetMember.email || targetUser.employeeEmail || targetUser.email || '');
+  if (email && ctx?.app?.auth) {
+    try {
+      const authApi = ctx.app.auth();
+      if (authApi && typeof authApi.getUserByEmail === 'function') {
+        const authUser = await authApi.getUserByEmail(email);
+        if (authUser?.uid) return cleanString(authUser.uid, 180);
+      }
+    } catch (_) {}
+  }
+  for (const candidate of [targetMember.accountAuthUid, targetUser.accountAuthUid, targetMember.authUserId, targetUser.authUserId]) {
+    const value = cleanString(candidate, 180);
+    if (value) return value;
+  }
+  throw Object.assign(new Error('Target employee Firebase Auth UID could not be resolved.'), { status: 409, code: 'target-auth-uid-unresolved' });
+}
+
+function buildTargetIdentity(targetUser = {}, targetMember = {}, restaurantId = '', provenAuthUid = '') {
+  const authUid = cleanString(provenAuthUid || targetMember.authUid || targetMember.uid || targetUser.authUid || targetUser.uid || '', 180);
   const accountUserId = cleanString(targetMember.accountUserId || targetMember.userId || targetUser.id || targetUser.userId || authUid, 180);
   const scheduleUserId = cleanString(targetMember.scheduleUserId || targetMember.employeeId || targetMember.rosterUserId || targetMember.id || targetUser.scheduleUserId || targetUser.employeeId || targetUser.rosterUserId || accountUserId || authUid, 180);
   const employeeId = cleanString(targetMember.employeeId || targetUser.employeeId || scheduleUserId || authUid, 180);
@@ -211,7 +289,7 @@ function buildTargetIdentity(targetUser = {}, targetMember = {}, restaurantId = 
     uid: authUid,
     userId: authUid || accountUserId,
     accountUserId,
-    employeeId,
+    employeeId: authUid || employeeId,
     rosterUserId,
     scheduleUserId,
     membershipId: targetMember.id || '',
@@ -234,15 +312,18 @@ async function resolveTargetIdentity(ctx, body = {}) {
     findUserByTarget(ctx.db, targetId, targetEmail),
     findMembershipByTarget(ctx.db, ctx.restaurantId, targetId, targetEmail)
   ]);
-  const finalMember = targetMember || (targetUser ? await readWorkspaceMember(ctx.db, targetUser.authUid || targetUser.uid || targetUser.id, targetUser.email || '', ctx.restaurantId) : null);
-  const finalUser = targetUser || (finalMember ? await findUserByTarget(ctx.db, finalMember.userId || finalMember.uid || finalMember.authUid || '', finalMember.email || '') : null);
-  if (!finalMember || !memberActive(finalMember)) throw Object.assign(new Error('Target employee is not an active member of this workspace.'), { status: 403, code: 'inactive-target' });
-  if (finalUser && !userActive(finalUser)) throw Object.assign(new Error('Target employee account is inactive.'), { status: 403, code: 'inactive-target-account' });
-  return buildTargetIdentity(finalUser || {}, finalMember || {}, ctx.restaurantId);
+  const finalUser = targetUser || (targetMember ? await findUserByTarget(ctx.db, targetMember.userId || targetMember.uid || targetMember.authUid || '', targetMember.email || '') : null);
+  const fallbackMember = targetMember || (finalUser ? await readWorkspaceMember(ctx.db, finalUser.authUid || finalUser.uid || finalUser.id, finalUser.email || '', ctx.restaurantId) : null);
+  const finalMember = effectiveTargetMember(finalUser || {}, fallbackMember, ctx.restaurantId);
+  if (!finalUser) throw Object.assign(new Error('Target employee was not found.'), { status: 404, code: 'missing-target' });
+  if (!targetHasWorkspaceEvidence(finalUser || {}, finalMember, ctx.restaurantId)) throw Object.assign(new Error('Target employee is not an active member of this workspace.'), { status: 403, code: 'inactive-target' });
+  if (!userActive(finalUser || {})) throw Object.assign(new Error('Target employee account is inactive.'), { status: 403, code: 'inactive-target-account' });
+  const authUid = await resolveTargetAuthUid(ctx, finalUser || {}, finalMember || {});
+  return buildTargetIdentity(finalUser || {}, finalMember || {}, ctx.restaurantId, authUid);
 }
 
 function callerIdentity(ctx) {
-  return buildTargetIdentity(ctx.user || {}, ctx.member || {}, ctx.restaurantId);
+  return buildTargetIdentity(ctx.user || {}, ctx.member || {}, ctx.restaurantId, ctx.uid || ctx.decoded?.uid || '');
 }
 
 async function resolveRequestingIdentity(ctx, body = {}) {
@@ -510,6 +591,12 @@ module.exports._test = {
   requestBelongsToIdentity,
   summarizeConflictRows,
   publicRequestShape,
+  activeEmbeddedMembership,
+  targetHasWorkspaceEvidence,
+  effectiveTargetMember,
+  resolveTargetAuthUid,
+  resolveTargetIdentity,
+  loadCallerContext,
   buildTargetIdentity,
   buildRequestPayload,
   routeAction

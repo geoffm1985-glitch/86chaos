@@ -81,3 +81,89 @@ test('invalid and oversized conflict date lists are rejected', () => {
   assert.throws(() => api.parseDateList({ dates: Array.from({ length: 15 }, (_, i) => `2026-09-${String(i + 1).padStart(2, '0')}`) }), /Too many/);
   assert.deepEqual(api.parseDateList({ dates: ['2026-09-04', '2026-09-04'] }), ['2026-09-04']);
 });
+
+function makeCollectionRows(rowsById = {}) {
+  const rows = Object.entries(rowsById).map(([id, data]) => ({ id, data }));
+  const query = (filters = []) => ({
+    where(field, op, value) { return query([...filters, [field, op, value]]); },
+    limit() { return this; },
+    async get() {
+      const matched = rows.filter(([, data]) => filters.every(([field, op, value]) => op === '==' ? data[field] === value : true));
+      return { empty: matched.length === 0, docs: matched.map(([id, data]) => ({ id, data: () => data })), forEach(fn) { matched.forEach(([id, data]) => fn({ id, data: () => data })); } };
+    },
+    doc(id) {
+      const data = rowsById[id];
+      return { async get() { return { id, exists: Boolean(data), data: () => data || {} }; } };
+    },
+  });
+  return query();
+}
+
+function makeDb({ users = {}, members = {} } = {}) {
+  return {
+    collection(name) {
+      if (name === 'users') return makeCollectionRows(users);
+      if (name === 'workspaceMembers') return makeCollectionRows(members);
+      return makeCollectionRows({});
+    }
+  };
+}
+
+function makeAuth({ existing = [], byEmail = {} } = {}) {
+  return {
+    async getUser(uid) {
+      if (existing.includes(uid)) return { uid };
+      const err = new Error('not found'); err.code = 'auth/user-not-found'; throw err;
+    },
+    async getUserByEmail(email) {
+      const uid = byEmail[email];
+      if (uid) return { uid, email };
+      const err = new Error('not found'); err.code = 'auth/user-not-found'; throw err;
+    }
+  };
+}
+
+test('Ghost target workspace evidence accepts active legacy user shapes without standalone member document', () => {
+  assert.equal(api.targetHasWorkspaceEvidence({ isActive: true, restaurantId: 'r1' }, null, 'r1'), true);
+  assert.equal(api.targetHasWorkspaceEvidence({ isActive: true, activeRestaurantId: 'r1' }, null, 'r1'), true);
+  assert.equal(api.targetHasWorkspaceEvidence({ isActive: true, defaultRestaurantId: 'r1' }, null, 'r1'), true);
+  assert.equal(api.targetHasWorkspaceEvidence({ isActive: true, workspaceIds: ['r1'] }, null, 'r1'), true);
+  assert.equal(api.targetHasWorkspaceEvidence({ isActive: true, memberships: { r1: { isActive: true, role: 'staff' } } }, null, 'r1'), true);
+  assert.equal(api.targetHasWorkspaceEvidence({ isActive: true, restaurantId: 'r2' }, null, 'r1'), false);
+  assert.equal(api.targetHasWorkspaceEvidence({ isActive: false, restaurantId: 'r1' }, null, 'r1'), false);
+});
+
+test('Ghost target Auth UID resolution uses proven sources and rejects guesses', async () => {
+  const ctx = { app: { auth: () => makeAuth({ existing: ['doc-is-auth'], byEmail: { 'target@example.test': 'email-auth' } }) } };
+  assert.equal(await api.resolveTargetAuthUid(ctx, { authUid: 'explicit-auth' }, {}), 'explicit-auth');
+  assert.equal(await api.resolveTargetAuthUid(ctx, { id: 'doc-is-auth' }, {}), 'doc-is-auth');
+  assert.equal(await api.resolveTargetAuthUid(ctx, { id: 'profile-doc', email: 'target@example.test' }, {}), 'email-auth');
+  await assert.rejects(() => api.resolveTargetAuthUid({ app: { auth: () => makeAuth() } }, { id: 'profile-doc' }, {}), /Firebase Auth UID could not be resolved/);
+});
+
+test('Ghost target identity accepts active legacy restaurant user and stores proven Auth UID', async () => {
+  const db = makeDb({ users: { 'legacy-profile': { id: 'legacy-profile', restaurantId: 'r1', isActive: true, authUid: 'auth-legacy', email: 'legacy@example.test', name: 'Legacy Employee' } } });
+  const ctx = { db, restaurantId: 'r1', app: { auth: () => makeAuth({ existing: ['auth-legacy'] }) } };
+  const target = await api.resolveTargetIdentity(ctx, { targetUserId: 'legacy-profile' });
+  assert.equal(target.authUid, 'auth-legacy');
+  assert.equal(target.userId, 'auth-legacy');
+  assert.equal(target.employeeId, 'auth-legacy');
+  assert.equal(target.name, 'Legacy Employee');
+});
+
+test('Ghost target identity rejects cross-tenant and unresolved Auth UID targets', async () => {
+  const db = makeDb({ users: {
+    'cross-profile': { id: 'cross-profile', restaurantId: 'r2', isActive: true, authUid: 'auth-cross' },
+    'no-auth': { id: 'no-auth', restaurantId: 'r1', isActive: true, email: 'noauth@example.test' },
+  } });
+  const ctx = { db, restaurantId: 'r1', app: { auth: () => makeAuth({ existing: [] }) } };
+  await assert.rejects(() => api.resolveTargetIdentity(ctx, { targetUserId: 'cross-profile' }), /not an active member/);
+  await assert.rejects(() => api.resolveTargetIdentity(ctx, { targetUserId: 'no-auth' }), /Firebase Auth UID could not be resolved/);
+});
+
+test('Ghost Mode Request Off source delegates System Administrator checks to canonical platform authority resolver', () => {
+  const source = require('node:fs').readFileSync(require('node:path').join(__dirname, 'time-off-request.js'), 'utf8');
+  assert.match(source, /decidePlatformAdminAuthority/);
+  assert.match(source, /platformAuthority\.superAdmin === true/);
+  assert.doesNotMatch(source, /role\s*===\s*['"]System Administrator['"]/);
+});

@@ -14,13 +14,19 @@ test('operations intelligence listener is empty-safe and tenant constrained with
   assert.doesNotMatch(source, /useLiveDocument\('opsIntelligenceReports'/);
 });
 
-test('personal reminders use one canonical participant-scoped browser listener', () => {
+test('personal reminders use one canonical participant-scoped API reader without legacy listeners', () => {
   const source = read('src/core/personalReminderQueries.js');
+  const api = read('api/personal-reminder-list.js');
   assert.match(source, /\['participantSchemaVersion',\s*'==',\s*1\]/);
   assert.match(source, /\['participantUserIds',\s*'array-contains',\s*safeUid\]/);
-  assert.match(source, /canonical-participant/);
+  assert.match(source, /\/api\/personal-reminder-list/);
+  assert.match(source, /requestPersonalReminderRefresh/);
+  assert.match(source, /__getPersonalReminderReaderDiagnostics/);
+  assert.doesNotMatch(source, /useLiveCollection\('personalReminders'/);
   assert.doesNotMatch(source, /legacy-user-id|legacy-assigned-to|legacy-created-by/);
-  assert.equal((source.match(/useLiveCollection\('personalReminders'/g) || []).length, 1);
+  assert.match(api, /where\('participantSchemaVersion',\s*'==',\s*1\)/);
+  assert.match(api, /where\('participantUserIds',\s*'array-contains',\s*uid\)/);
+  assert.match(api, /verifyIdToken/);
 });
 
 test('QA reminder seed preserves canonical participants and separate QA ownership metadata', () => {
@@ -47,6 +53,26 @@ test('86Voice close controls have distinct accessible names and tests do not hid
   assert.match(spec, /Close 86Voice panel/);
   assert.match(spec, /Hide 86Voice assistant/);
   assert.doesNotMatch(spec, /getByRole\('button',\s*\{ name:\s*\/close 86voice\/i \}\)\.first\(\)/i);
+});
+
+
+test('86Voice lifecycle test measures concurrent active recognition sessions instead of lifetime instances', () => {
+  const spec = read('tests/86chaos-full-audit/11-mobile-desktop-voice-upload.spec.cjs');
+  assert.match(spec, /maxConcurrentActive/);
+  assert.match(spec, /activeIds/);
+  assert.match(spec, /duplicate simultaneous recognition sessions/i);
+  assert.doesNotMatch(spec, /__voiceRecognitionInstances\.length,\s*1/);
+});
+
+test('testing-preview overlay helper is limited to Vercel overlays and does not remove app dialogs', () => {
+  const helpers = read('tests/86chaos-full-audit/utils/audit-helpers.cjs');
+  const spec = read('tests/86chaos-full-audit/11-mobile-desktop-voice-upload.spec.cjs');
+  assert.match(helpers, /neutralizeTestingPreviewOverlays/);
+  assert.match(helpers, /vercel-live-feedback/);
+  assert.match(helpers, /vercel-toolbar/);
+  assert.match(helpers, /pointerEvents\s*=\s*'none'/);
+  assert.doesNotMatch(helpers, /chaos-modal-backdrop.*remove/);
+  assert.match(spec, /neutralizeTestingPreviewOverlays\(page/);
 });
 
 

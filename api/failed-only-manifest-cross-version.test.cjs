@@ -101,6 +101,42 @@ function makeFailedOnlyRunFromBaseline(manifest, { sourceVersion = '16.0.137', d
   return dir;
 }
 
+
+function makeNineCaseFailedOnlyRun(manifest, { sourceVersion = '16.0.139', deployedVersion = '16.0.139' } = {}) {
+  const dir = tempDir();
+  writeJson(path.join(dir, 'runner-state.json'), { runId: 'failed-only-nine-case', mode: 'failed-only', playwrightStarted: true, cleanupCompleted: true });
+  writeJson(path.join(dir, 'environment-preflight.json'), { runId: 'failed-only-nine-case', sourceVersion, deployedVersion, visibleVersion: deployedVersion, firebaseProjectId: 'chaos-test-d1601' });
+  writeJson(path.join(dir, 'failed-only-test-manifest.json'), manifest);
+  const passingKeys = new Set([
+    'chromium|86chaos-release-gate/17-resilience-chunk-offline.spec.cjs',
+    'mobile-chromium|86chaos-release-gate/17-resilience-chunk-offline.spec.cjs',
+    'mobile-chromium|86chaos-release-gate/15-interactive-control-census.spec.cjs',
+  ]);
+  const timedOutKeys = new Set([
+    'mobile-chromium|86chaos-full-audit/11-mobile-desktop-voice-upload.spec.cjs',
+  ]);
+  const report = {
+    suites: [{
+      title: 'failed-only nine-case fixture',
+      specs: manifest.selected.map((item, index) => {
+        const key = `${item.project}|${item.specPath}`;
+        const status = passingKeys.has(key) ? 'passed' : (timedOutKeys.has(key) ? 'timedOut' : 'failed');
+        return {
+          title: item.title,
+          file: item.specPath,
+          tests: [{
+            title: item.title,
+            projectName: item.project,
+            results: [{ status, duration: 1000 + index, error: status === 'passed' ? undefined : { message: `${status} ${index}` } }],
+          }],
+        };
+      }),
+    }],
+  };
+  writeJson(path.join(dir, 'playwright-report.json'), report);
+  return dir;
+}
+
 function buildAcceptedManifest(targetSourceVersion = '16.0.135', targetDeployedVersion = targetSourceVersion) {
   const baselineDir = makeBaselineRun();
   const manifest = generateFailedOnlyManifestFromRun(baselineDir, { write: false, currentRunDir: tempDir() });
@@ -207,6 +243,34 @@ test('latest compatible failed-only descendant narrows selection to nine remaini
   assert.equal(selectedKeys.includes('chromium|86chaos-full-audit/02-permission-role-security.spec.cjs'), false);
   assert.equal(selectedKeys.includes('mobile-chromium|86chaos-release-gate/16-accessibility-release-gate.spec.cjs'), false);
   assert.equal(selectedKeys.includes('mobile-chromium|86chaos-release-gate/15-interactive-control-census.spec.cjs'), true);
+});
+
+test('latest compatible nine-case failed-only descendant narrows selection to six inherited failures', () => {
+  const baselineManifest = buildAcceptedManifest('16.0.137');
+  const failedOnlyDir = makeFailedOnlyRunFromBaseline(baselineManifest);
+  const nine = buildNarrowedManifestFromFailedOnlyRun(failedOnlyDir, {
+    baselineManifest,
+    target: { targetRunId: 'target-138', targetSourceVersion: '16.0.138', targetDeployedVersion: '16.0.138' },
+    currentRunDir: tempDir(),
+  });
+  const nineDir = makeNineCaseFailedOnlyRun(nine);
+  const six = buildNarrowedManifestFromFailedOnlyRun(nineDir, {
+    baselineManifest,
+    target: { targetRunId: 'target-140', targetSourceVersion: '16.0.140', targetDeployedVersion: '16.0.140' },
+    currentRunDir: tempDir(),
+  });
+  const selectedKeys = six.selected.map(item => `${item.project}|${item.specPath}`);
+  assert.equal(six.selectionSource, 'latest-compatible-failed-only-result');
+  assert.equal(six.previousFailedOnlySourceVersion, '16.0.139');
+  assert.equal(six.targetSourceVersion, '16.0.140');
+  assert.equal(six.totalSelected, 6);
+  assert.equal(six.desktopSelected, 3);
+  assert.equal(six.mobileSelected, 3);
+  assert.equal(selectedKeys.includes('chromium|86chaos-release-gate/17-resilience-chunk-offline.spec.cjs'), false);
+  assert.equal(selectedKeys.includes('mobile-chromium|86chaos-release-gate/17-resilience-chunk-offline.spec.cjs'), false);
+  assert.equal(selectedKeys.includes('mobile-chromium|86chaos-release-gate/15-interactive-control-census.spec.cjs'), false);
+  assert.equal(selectedKeys.includes('chromium|86chaos-full-audit/01-auth-route-health.spec.cjs'), true);
+  assert.equal(selectedKeys.includes('mobile-chromium|86chaos-full-audit/11-mobile-desktop-voice-upload.spec.cjs'), true);
 });
 
 test('failed-only status counts are mutually exclusive', () => {

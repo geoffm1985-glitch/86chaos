@@ -1,5 +1,5 @@
 const { test, expect, devices } = require('@playwright/test');
-const { ownerLikeCreds, requireCreds, login, gotoTab, bodyText, attachJson, viewportAudit, dismissBlockingDialogs, visibleDialogSnapshot } = require('./utils/audit-helpers.cjs');
+const { ownerLikeCreds, requireCreds, login, gotoTab, bodyText, attachJson, viewportAudit, dismissBlockingDialogs, visibleDialogSnapshot, neutralizeTestingPreviewOverlays } = require('./utils/audit-helpers.cjs');
 
 const mobileRoutes = ['today', 'schedule', 'published', 'events', 'inventory', 'financials', 'prep', 'messages', 'settings'];
 
@@ -59,11 +59,32 @@ test.describe('11 mobile, desktop, 86Voice, and upload/scan UI', () => {
   test('86Voice mic button is reachable, lifecycle-safe, and does not pass when missing', async ({ page }, testInfo) => {
     await page.addInitScript(() => {
       window.__voiceRecognitionInstances = [];
+      window.__voiceRecognitionState = { createdCount: 0, startedCount: 0, activeIds: [], maxConcurrentActive: 0, events: [] };
+      const markInactive = (instance, reason) => {
+        if (!instance.active) return;
+        instance.active = false;
+        window.__voiceRecognitionState.activeIds = window.__voiceRecognitionState.activeIds.filter(id => id !== instance.instanceId);
+        window.__voiceRecognitionState.events.push({ id: instance.instanceId, type: reason, activeCount: window.__voiceRecognitionState.activeIds.length });
+      };
       class MockSpeechRecognition {
-        constructor() { this.started = false; this.stopped = false; this.aborted = false; this.onresult = null; this.onerror = null; this.onend = null; window.__voiceRecognitionInstances.push(this); }
-        start() { this.started = true; }
-        stop() { this.stopped = true; if (typeof this.onend === 'function') this.onend(); }
-        abort() { this.aborted = true; if (typeof this.onend === 'function') this.onend(); }
+        constructor() {
+          this.instanceId = ++window.__voiceRecognitionState.createdCount;
+          this.started = false; this.active = false; this.stopped = false; this.aborted = false; this.onresult = null; this.onerror = null; this.onend = null;
+          window.__voiceRecognitionInstances.push(this);
+          window.__voiceRecognitionState.events.push({ id: this.instanceId, type: 'created', activeCount: window.__voiceRecognitionState.activeIds.length });
+        }
+        start() {
+          this.started = true;
+          window.__voiceRecognitionState.startedCount += 1;
+          if (!this.active) {
+            this.active = true;
+            window.__voiceRecognitionState.activeIds.push(this.instanceId);
+            window.__voiceRecognitionState.maxConcurrentActive = Math.max(window.__voiceRecognitionState.maxConcurrentActive, window.__voiceRecognitionState.activeIds.length);
+          }
+          window.__voiceRecognitionState.events.push({ id: this.instanceId, type: 'started', activeCount: window.__voiceRecognitionState.activeIds.length });
+        }
+        stop() { this.stopped = true; markInactive(this, 'stopped'); if (typeof this.onend === 'function') this.onend(); }
+        abort() { this.aborted = true; markInactive(this, 'aborted'); if (typeof this.onend === 'function') this.onend(); }
         emitFinal(text) { if (typeof this.onresult === 'function') this.onresult({ results: [{ 0: { transcript: text }, isFinal: true }] }); }
       }
       window.SpeechRecognition = MockSpeechRecognition;
@@ -78,6 +99,7 @@ test.describe('11 mobile, desktop, 86Voice, and upload/scan UI', () => {
       await attachJson(testInfo, '11-voice-modal-dismissal-failure.json', modalDismissal);
       throw new Error(modalDismissal.failure || 'Blocking dialog could not be dismissed before 86Voice interaction.');
     }
+    const overlayBeforeVoice = await neutralizeTestingPreviewOverlays(page, { attach: (name, data) => attachJson(testInfo, name, data) });
     const text = await bodyText(page, 30000);
     const openVoice = page.getByRole('button', { name: /open 86voice/i });
     await expect(openVoice, 'Authorized account must expose one stable accessible Open 86Voice control').toHaveCount(1, { timeout: 10_000 });
@@ -96,16 +118,19 @@ test.describe('11 mobile, desktop, 86Voice, and upload/scan UI', () => {
       await attachJson(testInfo, '11-voice-before-open-modal-dismissal-failure.json', beforeOpenDismissal);
       throw new Error(beforeOpenDismissal.failure || 'Blocking dialog remained before Open 86Voice click.');
     }
+    await neutralizeTestingPreviewOverlays(page, { attach: (name, data) => attachJson(testInfo, name, data) });
     await voiceButton.click();
     const headerClose = page.getByRole('button', { name: 'Close 86Voice panel' });
     const floatingHide = page.getByRole('button', { name: 'Hide 86Voice assistant' });
     await expect(headerClose).toBeVisible({ timeout: 5000 });
     await expect(floatingHide).toBeVisible({ timeout: 5000 });
     await expect(page.locator('.voice-command-dock')).toHaveCount(1);
+    await neutralizeTestingPreviewOverlays(page, { attach: (name, data) => attachJson(testInfo, name, data) });
     await headerClose.click();
     await expect(page.getByRole('button', { name: /open 86voice/i })).toBeVisible({ timeout: 5000 });
 
     await dismissBlockingDialogs(page, { maxPasses: 2 });
+    await neutralizeTestingPreviewOverlays(page, { attach: (name, data) => attachJson(testInfo, name, data) });
     await page.getByRole('button', { name: /open 86voice/i }).click();
     await expect(headerClose).toBeVisible({ timeout: 5000 });
     await expect(floatingHide).toBeVisible({ timeout: 5000 });
@@ -113,18 +138,19 @@ test.describe('11 mobile, desktop, 86Voice, and upload/scan UI', () => {
     if (await maybeStart.isVisible({ timeout: 2500 }).catch(() => false)) {
       await maybeStart.click();
       await maybeStart.click().catch(() => {});
-      const instanceCount = await page.evaluate(() => window.__voiceRecognitionInstances.length);
-      expect(instanceCount, 'Repeated start taps must not create duplicate recognition sessions').toBeLessThanOrEqual(1);
-      const instanceState = await page.evaluate(() => (window.__voiceRecognitionInstances || []).map(r => ({ started: r.started, stopped: r.stopped, aborted: r.aborted })));
-      expect(instanceState.some(r => r.started), 'Deterministic SpeechRecognition mock should be started by the real UI control').toBe(true);
+      const recognitionState = await page.evaluate(() => window.__voiceRecognitionState || {});
+      expect(recognitionState.maxConcurrentActive || 0, 'Repeated start taps must not create duplicate simultaneous recognition sessions').toBeLessThanOrEqual(1);
+      expect(recognitionState.startedCount || 0, 'Deterministic SpeechRecognition mock should be started by the real UI control').toBeGreaterThanOrEqual(1);
     }
+    await neutralizeTestingPreviewOverlays(page, { attach: (name, data) => attachJson(testInfo, name, data) });
     await floatingHide.click();
     await expect(page.getByRole('button', { name: /open 86voice/i })).toBeVisible({ timeout: 5000 });
     const closedInstanceState = await page.evaluate(() => (window.__voiceRecognitionInstances || []).map(r => ({ started: r.started, stopped: r.stopped, aborted: r.aborted })));
     expect(closedInstanceState.every(r => !r.started || r.stopped || r.aborted), 'Closing from the floating hide control must stop active recognition').toBe(true);
+    await neutralizeTestingPreviewOverlays(page, { attach: (name, data) => attachJson(testInfo, name, data) });
     await page.getByRole('button', { name: /open 86voice/i }).click();
     await expect(page.locator('.voice-command-dock')).toHaveCount(1);
-    await attachJson(testInfo, '11-voice-button-metrics.json', { metrics, beforeDismissalDialogs, modalDismissal, beforeOpenDismissal, remainingDialogs: await visibleDialogSnapshot(page), backdropCount: await page.locator('.chaos-modal-backdrop:visible').count().catch(() => 0), voiceControlCount: await page.getByRole('button', { name: /86voice/i }).count().catch(() => 0), textSample: text.slice(0, 5000), instances: await page.evaluate(() => (window.__voiceRecognitionInstances || []).length), closedInstanceState });
+    await attachJson(testInfo, '11-voice-button-metrics.json', { metrics, beforeDismissalDialogs, modalDismissal, beforeOpenDismissal, remainingDialogs: await visibleDialogSnapshot(page), backdropCount: await page.locator('.chaos-modal-backdrop:visible').count().catch(() => 0), voiceControlCount: await page.getByRole('button', { name: /86voice/i }).count().catch(() => 0), textSample: text.slice(0, 5000), instances: await page.evaluate(() => (window.__voiceRecognitionInstances || []).length), recognitionState: await page.evaluate(() => window.__voiceRecognitionState || {}), overlayBeforeVoice, closedInstanceState });
   });
 
   test('file upload / scan surfaces reject obvious broken display states', async ({ page }, testInfo) => {

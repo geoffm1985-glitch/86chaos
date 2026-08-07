@@ -14,7 +14,7 @@ import { buildAiOrderAssistant, parseAiOrderingVoiceIntent, summarizeAiOrderAssi
 import { buildRestaurantAiInsightBundle, summarizeInsightBundleForVoice, extractRestaurantGeofenceLocation } from '../core/restaurantAiInsights';
 import { resolveFeatureAccess, resolveRouteAccess, isMasterAdminUser } from '../lib/featureAccess';
 import { PLATFORM_ADMIN_ACCESS_STATES, resolvePlatformAdminAccessState } from '../core/sessionAccess';
-import { usePersonalReminderRows } from '../core/personalReminderQueries';
+import { requestPersonalReminderRefresh, usePersonalReminderRows } from '../core/personalReminderQueries';
 import { FEATURE_KEYS } from '../config/plans';
 
 
@@ -2701,6 +2701,7 @@ const VoiceCommandDockBase = ({ appUser, inventoryItems = [], recipes = [], user
         });
         processedVoiceCommandRef.current.add(clientCommandId);
         if (isVoiceReminder) voiceSessionRef.current.commits += 1;
+        requestPersonalReminderRefresh({ restaurantId: appUser.restaurantId, uid: reminderCreatorUid });
         rememberVoiceUndo(`shared reminder: ${title}`, [{ kind:'delete', collectionName:'personalReminders', id:reminderRef.id }]);
         await logAudit(appUser, 'VOICE_SHARED_REMINDER', title, `Assigned to ${assignee.name || assignee.email || 'teammate'} | ${actionToRun.scheduledAt}`);
         addToast('Shared Reminder Saved', `${title} was assigned to ${assignee.name || assignee.email || 'teammate'}.`);
@@ -2787,6 +2788,7 @@ const VoiceCommandDockBase = ({ appUser, inventoryItems = [], recipes = [], user
         });
         processedVoiceCommandRef.current.add(clientCommandId);
         if (isVoiceReminder) voiceSessionRef.current.commits += 1;
+        requestPersonalReminderRefresh({ restaurantId: appUser.restaurantId, uid: reminderCreatorUid });
         rememberVoiceUndo(`personal reminder: ${title}`, [{ kind:'delete', collectionName:'personalReminders', id:reminderRef.id }]);
         await logAudit(appUser, 'VOICE_PERSONAL_REMINDER', title, actionToRun.scheduledAt);
         addToast('Reminder Saved', `${title} at ${formatClockDateTime(actionToRun.scheduledAt)}.`);
