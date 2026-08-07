@@ -124,11 +124,11 @@ async function getUserByUidOrEmail(db, uid = '', email = '') {
 }
 
 function userActive(user = {}) {
-  return user && user.isActive !== false && user.disabled !== true && user.accountDisabled !== true && user.deleted !== true;
+  return Boolean(user && typeof user === 'object' && Object.keys(user).length > 0 && user.isActive !== false && user.disabled !== true && user.accountDisabled !== true && user.deleted !== true && user.archived !== true);
 }
 
 function memberActive(member = {}) {
-  return member && member.isActive !== false && member.disabled !== true && member.archived !== true && member.deleted !== true;
+  return Boolean(member && typeof member === 'object' && Object.keys(member).length > 0 && member.isActive !== false && member.disabled !== true && member.archived !== true && member.deleted !== true);
 }
 
 function callerHasWorkspaceAccess(user = {}, member = null, restaurantId = '', isSystemAdmin = false) {
@@ -202,12 +202,10 @@ function activeEmbeddedMembership(user = {}, restaurantId = '') {
 }
 
 function targetHasWorkspaceEvidence(user = {}, member = null, restaurantId = '') {
-  if (member && memberActive(member) && String(member.restaurantId || restaurantId) === restaurantId) return true;
+  if (member && memberActive(member) && String(member.restaurantId || '') === restaurantId) return true;
   if (!userActive(user || {})) return false;
   return Boolean(
     user?.restaurantId === restaurantId ||
-    user?.activeRestaurantId === restaurantId ||
-    user?.defaultRestaurantId === restaurantId ||
     (Array.isArray(user?.workspaceIds) && user.workspaceIds.includes(restaurantId)) ||
     activeEmbeddedMembership(user, restaurantId)
   );
@@ -592,6 +590,8 @@ module.exports._test = {
   summarizeConflictRows,
   publicRequestShape,
   activeEmbeddedMembership,
+  userActive,
+  memberActive,
   targetHasWorkspaceEvidence,
   effectiveTargetMember,
   resolveTargetAuthUid,

@@ -137,6 +137,35 @@ function makeNineCaseFailedOnlyRun(manifest, { sourceVersion = '16.0.139', deplo
   return dir;
 }
 
+
+function makeSixCaseFailedOnlyRun(manifest, { sourceVersion = '16.0.140', deployedVersion = '16.0.140' } = {}) {
+  const dir = tempDir();
+  writeJson(path.join(dir, 'runner-state.json'), { runId: 'failed-only-six-case', mode: 'failed-only', playwrightStarted: true, cleanupCompleted: true });
+  writeJson(path.join(dir, 'environment-preflight.json'), { runId: 'failed-only-six-case', sourceVersion, deployedVersion, visibleVersion: deployedVersion, firebaseProjectId: 'chaos-test-d1601' });
+  writeJson(path.join(dir, 'failed-only-test-manifest.json'), manifest);
+  const failingKey = 'chromium|86chaos-full-audit/03-safe-button-crawl.spec.cjs';
+  const report = {
+    suites: [{
+      title: 'failed-only six-case fixture',
+      specs: manifest.selected.map((item, index) => {
+        const key = `${item.project}|${item.specPath}`;
+        const status = key === failingKey ? 'failed' : 'passed';
+        return {
+          title: item.title,
+          file: item.specPath,
+          tests: [{
+            title: item.title,
+            projectName: item.project,
+            results: [{ status, duration: 1000 + index, error: status === 'passed' ? undefined : { message: 'net::ERR_CONNECTION_RESET /static/css/main.css' } }],
+          }],
+        };
+      }),
+    }],
+  };
+  writeJson(path.join(dir, 'playwright-report.json'), report);
+  return dir;
+}
+
 function buildAcceptedManifest(targetSourceVersion = '16.0.135', targetDeployedVersion = targetSourceVersion) {
   const baselineDir = makeBaselineRun();
   const manifest = generateFailedOnlyManifestFromRun(baselineDir, { write: false, currentRunDir: tempDir() });
@@ -271,6 +300,37 @@ test('latest compatible nine-case failed-only descendant narrows selection to si
   assert.equal(selectedKeys.includes('mobile-chromium|86chaos-release-gate/15-interactive-control-census.spec.cjs'), false);
   assert.equal(selectedKeys.includes('chromium|86chaos-full-audit/01-auth-route-health.spec.cjs'), true);
   assert.equal(selectedKeys.includes('mobile-chromium|86chaos-full-audit/11-mobile-desktop-voice-upload.spec.cjs'), true);
+});
+
+
+test('latest compatible six-case failed-only descendant narrows selection to the one inherited desktop safe-button crawl failure', () => {
+  const baselineManifest = buildAcceptedManifest('16.0.137');
+  const thirteenDir = makeFailedOnlyRunFromBaseline(baselineManifest);
+  const nine = buildNarrowedManifestFromFailedOnlyRun(thirteenDir, {
+    baselineManifest,
+    target: { targetRunId: 'target-138', targetSourceVersion: '16.0.138', targetDeployedVersion: '16.0.138' },
+    currentRunDir: tempDir(),
+  });
+  const nineDir = makeNineCaseFailedOnlyRun(nine);
+  const six = buildNarrowedManifestFromFailedOnlyRun(nineDir, {
+    baselineManifest,
+    target: { targetRunId: 'target-140', targetSourceVersion: '16.0.140', targetDeployedVersion: '16.0.140' },
+    currentRunDir: tempDir(),
+  });
+  const sixDir = makeSixCaseFailedOnlyRun(six);
+  const one = buildNarrowedManifestFromFailedOnlyRun(sixDir, {
+    baselineManifest,
+    target: { targetRunId: 'target-141', targetSourceVersion: '16.0.141', targetDeployedVersion: '16.0.141' },
+    currentRunDir: tempDir(),
+  });
+  assert.equal(one.totalSelected, 1);
+  assert.equal(one.desktopSelected, 1);
+  assert.equal(one.mobileSelected, 0);
+  assert.equal(one.previousFailedOnlySourceVersion, '16.0.140');
+  assert.equal(one.targetSourceVersion, '16.0.141');
+  assert.equal(one.selected[0].project, 'chromium');
+  assert.equal(one.selected[0].specPath, '86chaos-full-audit/03-safe-button-crawl.spec.cjs');
+  assert.equal(one.selected[0].title, 'safe visible buttons across every major tab do not crash or poison the next route');
 });
 
 test('failed-only status counts are mutually exclusive', () => {

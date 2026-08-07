@@ -34,13 +34,13 @@ const localChecks = read('scripts/86chaos-release-gate/run-node-release-checks.c
 const maturityGuards = read('src/core/maturityGuards.js');
 const maturityGuardsTest = read('src/core/maturityGuards.test.js');
 
-assert(pkg.version === '16.0.140', 'package.json version is 16.0.140');
-assert(lock.version === '16.0.140' && lock.packages?.['']?.version === '16.0.140', 'package-lock root versions are 16.0.140');
-assert(version.version === '16.0.140' && version.build === '16.0.140', 'public/version.json version/build are 16.0.140');
-assert(appCore.includes("CURRENT_VERSION = '16.0.140'"), 'app core CURRENT_VERSION is 16.0.140');
-assert(apiVersion.includes("APP_VERSION = '16.0.140'") && apiVersion.includes("SECURITY_SCHEMA_VERSION = '16.0.140'"), 'api version reports 16.0.140');
-assert(pkg.scripts['test:source'] === 'node scripts/validate-16-0-140.js', 'test:source points at the 16.0.140 validator');
-assert(!fs.existsSync(path.join(root, 'scripts/validate-16-0-139.js')), 'previous 16.0.139 validator was replaced');
+assert(pkg.version === '16.0.141', 'package.json version is 16.0.141');
+assert(lock.version === '16.0.141' && lock.packages?.['']?.version === '16.0.141', 'package-lock root versions are 16.0.141');
+assert(version.version === '16.0.141' && version.build === '16.0.141', 'public/version.json version/build are 16.0.141');
+assert(appCore.includes("CURRENT_VERSION = '16.0.141'"), 'app core CURRENT_VERSION is 16.0.141');
+assert(apiVersion.includes("APP_VERSION = '16.0.141'") && apiVersion.includes("SECURITY_SCHEMA_VERSION = '16.0.141'"), 'api version reports 16.0.141');
+assert(pkg.scripts['test:source'] === 'node scripts/validate-16-0-141.js', 'test:source points at the 16.0.141 validator');
+assert(!fs.existsSync(path.join(root, 'scripts/validate-16-0-140.js')), 'previous 16.0.140 validator was replaced');
 
 assert(sha('firestore.rules') === '51bfd7d39edd59f680ae41a149c108cec8cd42d00b102d84cb00ee40d90264d9', 'working Firestore rules are preserved byte-for-byte for this app-only maturity pass');
 assert(sha('storage.rules') === '174e7e9a140193ff69ccf0f0d3e5c65b81a9e0fbbd612bff45ce57e7a3a7ce9c', 'Storage rules include the minimal missing-user clean-denial guard proven by the corrected harness');
@@ -184,7 +184,7 @@ assert(scheduleFeature.includes('dayShifts.length >= 6') && standaloneMonth.incl
 
 const timeOffApi = read('api/time-off-request.js');
 assert(timeOffApi.includes("action === 'conflicts'") && timeOffApi.includes("ghost-create") && timeOffApi.includes("ghost-cancel") && timeOffApi.includes('summarizeConflictRows'), 'Request Off API supports conflict summaries and Ghost Mode create/cancel through one narrow route');
-assert(timeOffApi.includes('decidePlatformAdminAuthority') && timeOffApi.includes('target-auth-uid-unresolved') && timeOffApi.includes('resolveTargetAuthUid') && timeOffApi.includes('workspaceIds') && timeOffApi.includes('activeRestaurantId') && timeOffApi.includes('defaultRestaurantId') && timeOffApi.includes('memberships') && timeOffApi.includes('getUserByEmail'), 'Request Off Ghost Mode uses canonical platform authority, safe legacy workspace evidence, and proven target Auth UID resolution');
+assert(timeOffApi.includes('decidePlatformAdminAuthority') && timeOffApi.includes('target-auth-uid-unresolved') && timeOffApi.includes('resolveTargetAuthUid') && timeOffApi.includes('workspaceIds') && timeOffApi.includes('memberships') && timeOffApi.includes('getUserByEmail') && !timeOffApi.includes('user?.activeRestaurantId === restaurantId') && !timeOffApi.includes('user?.defaultRestaurantId === restaurantId'), 'Request Off Ghost Mode uses canonical platform authority, durable workspace evidence, and proven target Auth UID resolution without selector-only authorization');
 assert(timeOffApi.includes('Do not') === false || true, 'Request Off API does not expose private request records in conflict summaries');
 assert(scheduleFeature.includes("requestOffApi('conflicts'") && scheduleFeature.includes('requestOffConflictMessage') && scheduleFeature.includes('fetchConflictInfo(selectedDates, { force: true })'), 'Request Off uses server conflict checks before selecting and before submitting dates');
 assert(scheduleFeature.includes('requestOffGhostMode') && scheduleFeature.includes("requestOffApi('ghost-list'") && scheduleFeature.includes("requestOffApi('ghost-create'") && scheduleFeature.includes("requestOffApi('ghost-cancel'"), 'Request Off user-level Ghost Mode loads, creates, and cancels through the protected API boundary');

@@ -131,3 +131,12 @@ test('failed-only manifest is generated dynamically from the most recent full ru
   assert.match(prepare, /targetQualifiedManifest/);
   assert.doesNotMatch(manifest, /const FAILED_ONLY_TESTS = \[/);
 });
+
+
+test('release-gate collector rewrites runner-state from authoritative seed and cleanup artifacts', () => {
+  const collector = read('scripts/86chaos-release-gate/collect-release-gate-report.cjs');
+  assert.match(collector, /runnerStateReconciled/);
+  assert.match(collector, /fs\.writeFileSync\(artifact\['runner-state\.json'\]/);
+  assert.match(collector, /seedReportPresent/);
+  assert.match(collector, /cleanupReportPresent/);
+});

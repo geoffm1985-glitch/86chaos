@@ -1,10 +1,22 @@
 'use strict';
-const { getAdminAppForRequest, readBody, requireAppCheckIfEnforced, readWorkspaceMember, userHasWorkspace } = require('./_chaos-admin');
+const { getAdminAppForRequest, readBody, requireAppCheckIfEnforced, readWorkspaceMember, userHasWorkspace, norm } = require('./_chaos-admin');
 
 function clean(value = '', max = 400) { return String(value == null ? '' : value).replace(/[\u0000-\u001F\u007F]/g, ' ').trim().slice(0, max); }
 function authToken(req = {}) { return String(req.headers?.authorization || '').replace(/^Bearer\s+/i, '').trim(); }
-function activeUser(user = {}) { return user && user.isActive !== false && user.disabled !== true && user.accountDisabled !== true && user.deleted !== true && user.archived !== true; }
-function activeMember(member = {}) { return member && member.isActive !== false && member.disabled !== true && member.deleted !== true && member.archived !== true; }
+function hasConcreteRecord(record) {
+  return Boolean(record && typeof record === 'object' && Object.keys(record).some(key => key !== 'id' && record[key] != null && record[key] !== ''));
+}
+function activeUser(user = {}) {
+  return hasConcreteRecord(user) && user.isActive !== false && user.disabled !== true && user.accountDisabled !== true && user.deleted !== true && user.archived !== true;
+}
+function activeMember(member = {}, restaurantId = '') {
+  return hasConcreteRecord(member)
+    && member.isActive !== false
+    && member.disabled !== true
+    && member.deleted !== true
+    && member.archived !== true
+    && (!restaurantId || String(member.restaurantId || '') === restaurantId);
+}
 function participantRowsOnly(rows = [], uid = '', restaurantId = '') {
   const safeUid = clean(uid, 180);
   return rows.filter(row => String(row.restaurantId || row.workspaceId || '') === restaurantId && Number(row.participantSchemaVersion || 0) === 1 && Array.isArray(row.participantUserIds) && row.participantUserIds.map(String).includes(safeUid));
@@ -42,11 +54,46 @@ function publicReminderShape(row = {}) {
     source: clean(row.source || '', 100)
   };
 }
+async function collectUserMatches(db, decoded = {}) {
+  const uid = clean(decoded.uid || '', 180);
+  const email = norm(decoded.email || '');
+  const found = new Map();
+  const addSnap = (snap) => {
+    if (snap && snap.exists) found.set(snap.id, { id: snap.id, ...(snap.data() || {}) });
+  };
+  const addQuery = (snap) => {
+    if (!snap || snap.empty) return;
+    for (const doc of snap.docs || []) addSnap(doc);
+  };
+  if (uid) addSnap(await db.collection('users').doc(uid).get());
+  for (const field of ['authUid', 'uid']) {
+    if (!uid) continue;
+    addQuery(await db.collection('users').where(field, '==', uid).limit(3).get());
+  }
+  if (email) addQuery(await db.collection('users').where('email', '==', email).limit(3).get());
+  return [...found.values()].filter(hasConcreteRecord);
+}
+
+async function resolveCallerUser(db, decoded = {}) {
+  const matches = await collectUserMatches(db, decoded);
+  if (matches.length > 1) {
+    const err = new Error('Authenticated identity matched multiple user records.');
+    err.status = 409; err.code = 'ambiguous-caller-identity';
+    throw err;
+  }
+  return matches[0] || null;
+}
+
+function hasVerifiedWorkspaceEvidence(user, member, restaurantId) {
+  const userEvidence = activeUser(user) && userHasWorkspace(user, restaurantId);
+  const memberEvidence = activeMember(member, restaurantId);
+  return Boolean(userEvidence || memberEvidence);
+}
+
 async function verifyCaller({ db, decoded, restaurantId }) {
-  const userSnap = await db.collection('users').doc(decoded.uid).get();
-  const user = userSnap.exists ? { id: userSnap.id, ...(userSnap.data() || {}) } : null;
+  const user = await resolveCallerUser(db, decoded);
   const member = await readWorkspaceMember(db, decoded.uid, decoded.email || user?.email || '', restaurantId);
-  if (!activeUser(user || {}) || (!userHasWorkspace(user || {}, restaurantId) && !activeMember(member || {}))) {
+  if (!hasVerifiedWorkspaceEvidence(user, member, restaurantId)) {
     const err = new Error('You do not have active access to this workspace.');
     err.status = 403; err.code = 'no-workspace-access';
     throw err;
@@ -88,4 +135,4 @@ module.exports = async function handler(req, res) {
     return res.status(status >= 400 && status < 600 ? status : 500).json({ ok: false, error: safeError(err), code: clean(err?.code || 'personal-reminder-list-failed', 80) });
   }
 };
-module.exports._test = { publicReminderShape, participantRowsOnly, listPersonalReminders, verifyCaller };
+module.exports._test = { publicReminderShape, participantRowsOnly, listPersonalReminders, verifyCaller, activeUser, activeMember, resolveCallerUser, hasVerifiedWorkspaceEvidence };

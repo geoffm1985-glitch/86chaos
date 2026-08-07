@@ -83,7 +83,7 @@ test('invalid and oversized conflict date lists are rejected', () => {
 });
 
 function makeCollectionRows(rowsById = {}) {
-  const rows = Object.entries(rowsById).map(([id, data]) => ({ id, data }));
+  const rows = Object.entries(rowsById);
   const query = (filters = []) => ({
     where(field, op, value) { return query([...filters, [field, op, value]]); },
     limit() { return this; },
@@ -123,14 +123,17 @@ function makeAuth({ existing = [], byEmail = {} } = {}) {
   };
 }
 
-test('Ghost target workspace evidence accepts active legacy user shapes without standalone member document', () => {
+test('Ghost target workspace evidence accepts only durable membership proof and rejects selector-only fields', () => {
   assert.equal(api.targetHasWorkspaceEvidence({ isActive: true, restaurantId: 'r1' }, null, 'r1'), true);
-  assert.equal(api.targetHasWorkspaceEvidence({ isActive: true, activeRestaurantId: 'r1' }, null, 'r1'), true);
-  assert.equal(api.targetHasWorkspaceEvidence({ isActive: true, defaultRestaurantId: 'r1' }, null, 'r1'), true);
+  assert.equal(api.targetHasWorkspaceEvidence({ isActive: true, activeRestaurantId: 'r1' }, null, 'r1'), false);
+  assert.equal(api.targetHasWorkspaceEvidence({ isActive: true, defaultRestaurantId: 'r1' }, null, 'r1'), false);
   assert.equal(api.targetHasWorkspaceEvidence({ isActive: true, workspaceIds: ['r1'] }, null, 'r1'), true);
   assert.equal(api.targetHasWorkspaceEvidence({ isActive: true, memberships: { r1: { isActive: true, role: 'staff' } } }, null, 'r1'), true);
+  assert.equal(api.targetHasWorkspaceEvidence({ isActive: true }, { restaurantId: 'r1', isActive: true, role: 'staff' }, 'r1'), true);
+  assert.equal(api.targetHasWorkspaceEvidence({ isActive: true }, { restaurantId: 'r2', isActive: true, role: 'staff' }, 'r1'), false);
   assert.equal(api.targetHasWorkspaceEvidence({ isActive: true, restaurantId: 'r2' }, null, 'r1'), false);
   assert.equal(api.targetHasWorkspaceEvidence({ isActive: false, restaurantId: 'r1' }, null, 'r1'), false);
+  assert.equal(api.targetHasWorkspaceEvidence({ archived: true, restaurantId: 'r1' }, null, 'r1'), false);
 });
 
 test('Ghost target Auth UID resolution uses proven sources and rejects guesses', async () => {
@@ -166,4 +169,34 @@ test('Ghost Mode Request Off source delegates System Administrator checks to can
   assert.match(source, /decidePlatformAdminAuthority/);
   assert.match(source, /platformAuthority\.superAdmin === true/);
   assert.doesNotMatch(source, /role\s*===\s*['"]System Administrator['"]/);
+});
+
+
+test('Ghost target identity rejects activeRestaurantId-only, defaultRestaurantId-only, and archived users', async () => {
+  const db = makeDb({ users: {
+    'active-only': { id: 'active-only', activeRestaurantId: 'r1', isActive: true, authUid: 'auth-active-only' },
+    'default-only': { id: 'default-only', defaultRestaurantId: 'r1', isActive: true, authUid: 'auth-default-only' },
+    'archived': { id: 'archived', restaurantId: 'r1', archived: true, authUid: 'auth-archived' },
+  } });
+  const ctx = { db, restaurantId: 'r1', app: { auth: () => makeAuth({ existing: ['auth-active-only', 'auth-default-only', 'auth-archived'] }) } };
+  await assert.rejects(() => api.resolveTargetIdentity(ctx, { targetUserId: 'active-only' }), /not an active member/);
+  await assert.rejects(() => api.resolveTargetIdentity(ctx, { targetUserId: 'default-only' }), /not an active member/);
+  await assert.rejects(() => api.resolveTargetIdentity(ctx, { targetUserId: 'archived' }), /active member|inactive/);
+});
+
+test('Ghost target identity still accepts workspaceIds, embedded membership, and standalone membership targets', async () => {
+  const db = makeDb({
+    users: {
+      'workspace-list': { id: 'workspace-list', workspaceIds: ['r1'], isActive: true, authUid: 'auth-list', name: 'List User' },
+      'embedded': { id: 'embedded', isActive: true, memberships: { r1: { isActive: true, employeeName: 'Embedded User', authUid: 'auth-embedded' } } },
+      'member-profile': { id: 'member-profile', isActive: true, email: 'member@example.test', name: 'Member User' },
+    },
+    members: {
+      [`member-profile_r1`]: { restaurantId: 'r1', isActive: true, userId: 'member-profile', authUid: 'auth-member', employeeName: 'Member User', email: 'member@example.test' },
+    }
+  });
+  const ctx = { db, restaurantId: 'r1', app: { auth: () => makeAuth({ existing: ['auth-list', 'auth-embedded', 'auth-member'] }) } };
+  assert.equal((await api.resolveTargetIdentity(ctx, { targetUserId: 'workspace-list' })).authUid, 'auth-list');
+  assert.equal((await api.resolveTargetIdentity(ctx, { targetUserId: 'embedded' })).authUid, 'auth-embedded');
+  assert.equal((await api.resolveTargetIdentity(ctx, { targetUserId: 'member-profile' })).authUid, 'auth-member');
 });

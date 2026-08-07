@@ -71,3 +71,100 @@ test('listPersonalReminders uses the exact canonical production query and bounde
   assert.equal(rows.length, 1);
   assert.equal(rows[0].id, 'rem-1');
 });
+
+
+function memberDocId(uid, restaurantId) {
+  return `${String(uid).replace(/[^A-Za-z0-9_-]/g, '_')}_${String(restaurantId).replace(/[^A-Za-z0-9_-]/g, '_')}`.slice(0, 240);
+}
+
+function makeCollectionRows(rowsById = {}) {
+  const rows = Object.entries(rowsById);
+  const query = (filters = []) => ({
+    where(field, op, value) { return query([...filters, [field, op, value]]); },
+    limit() { return this; },
+    async get() {
+      const matched = rows.filter(([, data]) => filters.every(([field, op, value]) => {
+        if (op !== '==') return true;
+        return data?.[field] === value;
+      }));
+      return { empty: matched.length === 0, docs: matched.map(([id, data]) => ({ id, exists: true, data: () => data })), forEach(fn) { matched.forEach(([id, data]) => fn({ id, exists: true, data: () => data })); } };
+    },
+    doc(id) {
+      const data = rowsById[id];
+      return { async get() { return { id, exists: Boolean(data), data: () => data || {} }; } };
+    },
+  });
+  return query();
+}
+
+function makeDb({ users = {}, members = {} } = {}) {
+  return {
+    collection(name) {
+      if (name === 'users') return makeCollectionRows(users);
+      if (name === 'workspaceMembers') return makeCollectionRows(members);
+      return makeCollectionRows({});
+    }
+  };
+}
+
+test('personal reminder API rejects missing user and missing workspace membership evidence', async () => {
+  const db = makeDb();
+  await assert.rejects(() => api.verifyCaller({ db, decoded: { uid: 'uid-a', email: 'a@example.test' }, restaurantId: 'r1' }), /active access/);
+});
+
+test('personal reminder API rejects empty identity objects and inactive membership evidence', async () => {
+  assert.equal(api.activeUser({}), false);
+  assert.equal(api.activeMember({}, 'r1'), false);
+  assert.equal(api.activeMember({ restaurantId: 'r1', isActive: false, role: 'staff' }, 'r1'), false);
+  const db = makeDb({ users: { 'uid-a': {} }, members: { [memberDocId('uid-a', 'r1')]: { restaurantId: 'r1', isActive: false, role: 'staff' } } });
+  await assert.rejects(() => api.verifyCaller({ db, decoded: { uid: 'uid-a', email: 'a@example.test' }, restaurantId: 'r1' }), /active access/);
+});
+
+test('personal reminder API accepts concrete active workspace evidence from supported user and member records', async () => {
+  const cases = [
+    { users: { 'uid-primary': { isActive: true, restaurantId: 'r1', email: 'primary@example.test' } }, decoded: { uid: 'uid-primary', email: 'primary@example.test' } },
+    { users: { 'profile-workspaces': { isActive: true, authUid: 'uid-workspaces', workspaceIds: ['r1'], email: 'workspaces@example.test' } }, decoded: { uid: 'uid-workspaces', email: 'workspaces@example.test' } },
+    { users: { 'uid-embedded': { isActive: true, memberships: { r1: { isActive: true, role: 'staff' } }, email: 'embedded@example.test' } }, decoded: { uid: 'uid-embedded', email: 'embedded@example.test' } },
+    { users: {}, members: { [memberDocId('uid-member', 'r1')]: { restaurantId: 'r1', isActive: true, role: 'staff' } }, decoded: { uid: 'uid-member', email: 'member@example.test' } },
+  ];
+  for (const row of cases) {
+    const db = makeDb({ users: row.users || {}, members: row.members || {} });
+    const ctx = await api.verifyCaller({ db, decoded: row.decoded, restaurantId: 'r1' });
+    assert.ok(ctx.user || ctx.member);
+  }
+});
+
+test('personal reminder API rejects inactive, archived, disabled, cross-workspace, and ambiguous caller identity', async () => {
+  const invalidUsers = [
+    { isActive: false, restaurantId: 'r1' },
+    { archived: true, restaurantId: 'r1' },
+    { disabled: true, restaurantId: 'r1' },
+    { accountDisabled: true, restaurantId: 'r1' },
+    { isActive: true, restaurantId: 'r2' },
+  ];
+  for (const user of invalidUsers) {
+    const db = makeDb({ users: { 'uid-a': user } });
+    await assert.rejects(() => api.verifyCaller({ db, decoded: { uid: 'uid-a', email: 'a@example.test' }, restaurantId: 'r1' }), /active access/);
+  }
+  const ambiguousDb = makeDb({ users: {
+    'profile-a': { isActive: true, authUid: 'uid-a', restaurantId: 'r1', email: 'same@example.test' },
+    'profile-b': { isActive: true, uid: 'uid-a', restaurantId: 'r1', email: 'same@example.test' },
+  } });
+  await assert.rejects(() => api.verifyCaller({ db: ambiguousDb, decoded: { uid: 'uid-a', email: 'same@example.test' }, restaurantId: 'r1' }), /multiple user records/);
+});
+
+test('personal reminder list still returns only reminders containing the real authenticated UID', async () => {
+  const docs = [
+    { id: 'own', data: () => ({ restaurantId: 'r1', participantSchemaVersion: 1, participantUserIds: ['uid-a'], title: 'Mine' }) },
+    { id: 'other', data: () => ({ restaurantId: 'r1', participantSchemaVersion: 1, participantUserIds: ['uid-b'], title: 'Hidden' }) },
+    { id: 'cross', data: () => ({ restaurantId: 'r2', participantSchemaVersion: 1, participantUserIds: ['uid-a'], title: 'Cross' }) },
+  ];
+  const query = {
+    where() { return this; },
+    limit() { return this; },
+    async get() { return { forEach(fn) { docs.forEach(fn); } }; },
+  };
+  const db = { collection(name) { assert.equal(name, 'personalReminders'); return query; } };
+  const rows = await api.listPersonalReminders({ db, uid: 'uid-a', restaurantId: 'r1' });
+  assert.deepEqual(rows.map(row => row.id), ['own']);
+});

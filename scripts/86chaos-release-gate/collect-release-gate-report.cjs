@@ -242,6 +242,14 @@ const runnerStateReconciled = {
   cleanupAttempted,
   cleanupCompleted: cleanupPassed,
 };
+try {
+  const reconciledChanged = JSON.stringify(runnerStateReconciled) !== JSON.stringify(runnerState || {});
+  if (reconciledChanged && artifact['runner-state.json']) {
+    fs.writeFileSync(artifact['runner-state.json'], JSON.stringify(runnerStateReconciled, null, 2));
+  }
+} catch (err) {
+  releaseGateJsonDiagnostics.push({ file: artifact['runner-state.json'] || 'runner-state.json', error: `Could not rewrite reconciled runner state: ${err.message}` });
+}
 const blockedBeforeTestExecution = Boolean(noTestsExecuted && (blockedBeforePlaywright || runnerState.blockedBeforeTestExecution === true || !playwrightStarted));
 const releaseGateStatus = ok => ok ? 'PASS' : (blockedBeforeTestExecution ? 'BLOCKED BEFORE TEST EXECUTION' : 'FAIL');
 const executionBlockedMessage = blockedBeforePlaywright
