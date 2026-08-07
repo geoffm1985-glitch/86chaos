@@ -350,13 +350,15 @@ test('failed-only status counts are mutually exclusive', () => {
 test('failed-only reporting and runner source keep baseline and target distinct', () => {
   const helper = fs.readFileSync(path.join(root, 'scripts/86chaos-release-gate/failed-only-manifest-utils.cjs'), 'utf8');
   const prepare = fs.readFileSync(path.join(root, 'scripts/86chaos-release-gate/prepare-failed-only-manifest.cjs'), 'utf8');
-  const runner = fs.readFileSync(path.join(root, 'RUN_86CHAOS_FAILED_ONLY_RELEASE_GATE.ps1'), 'utf8');
+  const runner = fs.readFileSync(path.join(root, 'RUN_86CHAOS_FAILED_AND_NEW_RELEASE_GATE.ps1'), 'utf8');
+  const legacyRunner = fs.readFileSync(path.join(root, 'RUN_86CHAOS_FAILED_ONLY_RELEASE_GATE.ps1'), 'utf8');
   const collector = fs.readFileSync(path.join(root, 'scripts/86chaos-release-gate/collect-release-gate-report.cjs'), 'utf8');
 
   assert.match(helper, /baselineSourceVersion/);
   assert.match(helper, /targetSourceVersion/);
   assert.match(prepare, /failed-only-manifest-validation\.json/);
   assert.match(runner, /ManifestValidation/);
+  assert.match(legacyRunner, /RUN_86CHAOS_FAILED_AND_NEW_RELEASE_GATE/);
   assert.doesNotMatch(runner, /missing, stale, empty, or version-mismatched/);
   assert.match(collector, /failedOnlyMode/);
   assert.match(collector, /fullGateOnlyArtifacts/);

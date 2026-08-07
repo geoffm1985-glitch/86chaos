@@ -12,6 +12,7 @@ fs.mkdirSync(RELEASE_RUN_DIR, { recursive: true });
 const QA_RESTAURANT_NAME = applyQaWorkspaceEnv(process.env, RUN_ID);
 const REPORT_PATH = getSeedReportPath(RUN_ID);
 const LEGACY_REPORT_PATH = path.join(OUT_DIR, '86chaos-full-audit-seed-report.json');
+const GHOST_TARGET_AUTH_PATH = path.join(RELEASE_RUN_DIR, 'ghost-target-auth.json');
 
 const SETUP_STATE_PATH = getSetupStatePath(RUN_ID);
 function mergeSetupState(patch = {}) {
@@ -69,6 +70,32 @@ async function writeReport(report) {
   writeReportSync(report);
 }
 
+
+
+function readGhostTargetAuth() {
+  const row = readJsonIfExists(GHOST_TARGET_AUTH_PATH) || null;
+  if (!row?.uid) return null;
+  return row;
+}
+
+function applyGhostTargetToLegacyProfile(profile, ghostTarget = null, restaurantId = '') {
+  if (!ghostTarget?.uid || !Array.isArray(profile?.collections?.users)) return null;
+  const target = profile.collections.users.find(user => user.idKey === 'allen' || user.name === 'Allen QA');
+  if (!target) return null;
+  target.authUid = ghostTarget.uid;
+  target.firebaseUid = ghostTarget.uid;
+  target.verifiedAuthUid = ghostTarget.uid;
+  target.email = ghostTarget.email || target.email;
+  target.restaurantId = restaurantId || target.restaurantId;
+  target.isActive = true;
+  target.archived = false;
+  target.disabled = false;
+  target.deleted = false;
+  target.accountDisabled = false;
+  target.qaGhostTarget = true;
+  target.workspaceIds = Array.from(new Set([...(Array.isArray(target.workspaceIds) ? target.workspaceIds : []), restaurantId].filter(Boolean)));
+  return { name: target.name || 'Allen QA', email: target.email, uid: ghostTarget.uid, authUid: ghostTarget.uid, legacyProfileDocumentIdDifferentFromAuthUid: true };
+}
 
 function verifiedRoleProjectId(report) {
   if (!report || report.ok !== true) return '';
@@ -532,6 +559,12 @@ async function main() {
     const seedAnchorDate = new Date();
     report.seedAnchorDate = seedAnchorDate.toISOString();
     const profile = buildFakeRestaurantProfile({ restaurantId, runId: RUN_ID, anchorDate: seedAnchorDate });
+    const ghostTargetAuth = readGhostTargetAuth();
+    const ghostTargetProfile = applyGhostTargetToLegacyProfile(profile, ghostTargetAuth, restaurantId);
+    const ghostRequestOffConflictDate = (profile.collections.timeOffRequests || []).find(req => req.employeeName === 'Sara QA' && ['pending', 'approved'].includes(String(req.status || '').toLowerCase()))?.date || '';
+    report.ghostTargetAuth = ghostTargetAuth ? { key: ghostTargetAuth.key || 'GHOST_TARGET', email: ghostTargetAuth.email || '', uid: ghostTargetAuth.uid || '', authUid: ghostTargetAuth.authUid || ghostTargetAuth.uid || '' } : null;
+    report.ghostTargetName = ghostTargetProfile?.name || 'Allen QA';
+    report.ghostRequestOffConflictDate = ghostRequestOffConflictDate;
     const now = new Date().toISOString();
     const today = new Date().toISOString().slice(0, 10);
     const roleByKey = Object.fromEntries(roleAccounts.map(account => [account.key, account]));
@@ -626,7 +659,8 @@ async function main() {
     report.verification = { ...(apiResult.verification || {}), expectedCounts: EXPECTED_MINIMUM_COUNTS, countFailures, ok: apiResult.verification?.ok === true && countFailures.length === 0 };
     report.ok = report.verification.ok === true && apiResult.ok === true;
     report.apiResult = { ok: apiResult.ok === true, action: apiResult.action, projectId: apiResult.projectId, seedMethod: apiResult.seedMethod };
-    report.profile = { restaurantId, restaurantName: QA_RESTAURANT_NAME, users: created.users, createdCounts: report.createdCounts, ids, expectations: profile.expectations, scheduleTruth: summarizeSchedule(profile.collections.shifts) };
+    report.profile = { restaurantId, restaurantName: QA_RESTAURANT_NAME, users: created.users, createdCounts: report.createdCounts, ids, expectations: profile.expectations, scheduleTruth: summarizeSchedule(profile.collections.shifts), ghostTargetAuth: report.ghostTargetAuth, ghostTargetName: report.ghostTargetName, ghostRequestOffConflictDate };
+    report.ghostTargetProfile = ghostTargetProfile;
     mergeSetupState({ verified: report.ok === true, verificationOk: report.verification?.ok === true, seeded: report.ok === true, seededDocumentCount: report.seededDocuments.length, createdDocumentIds: report.seededDocuments });
     if (!report.ok) throw new Error(`Seed verification failed. Missing=${report.verification.missing?.length || 0}; bad=${report.verification.bad?.length || 0}; countFailures=${countFailures.length}.`);
     await writeReport(report);

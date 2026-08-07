@@ -1,14 +1,14 @@
 {
-  "version": "16.0.142",
-  "name": "86 Chaos 16.0.142 Rules Harness Alignment and Ghost Request Off Verification",
-  "build": "16.0.142",
-  "label": "86 Chaos 16.0.142 Rules Harness Alignment and Ghost Request Off Verification",
+  "version": "16.0.143",
+  "name": "86 Chaos 16.0.143 Release Gate Maturity, Failed+New Testing, and PWA Icon Hardening",
+  "build": "16.0.143",
+  "label": "86 Chaos 16.0.143 Release Gate Maturity, Failed+New Testing, and PWA Icon Hardening",
   "releasedAt": "2026-08-06T21:41:00-05:00",
-  "releaseTitle": "Rules Harness Alignment and Ghost Request Off Verification",
+  "releaseTitle": "Release Gate Maturity, Failed+New Testing, and PWA Icon Hardening",
   "notes": [
     "Aligns the canonical rules suite with the current server-only personal reminder reader so the retired browser list query is intentionally denied.",
     "Adds release-gate failure extraction that ignores expected assertFails permission-denied diagnostics and reports the real failed assertion.",
     "Adds focused Ghost Mode Request Off browser workflow coverage while preserving the hardened reminder API and Ghost target authorization."
   ],
-  "title": "86 Chaos 16.0.142 Rules Harness Alignment and Ghost Request Off Verification"
+  "title": "86 Chaos 16.0.143 Release Gate Maturity, Failed+New Testing, and PWA Icon Hardening"
 }
