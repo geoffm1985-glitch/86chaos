@@ -1,0 +1,14 @@
+{
+  "version": "16.0.147",
+  "name": "86 Chaos 16.0.147 Release Truth, Cross-Device Reliability, Help Completion, and Approved App Branding",
+  "build": "16.0.147",
+  "label": "86 Chaos 16.0.147 Release Truth, Cross-Device Reliability, Help Completion, and Approved App Branding",
+  "releasedAt": "2026-08-07T21:22:00-05:00",
+  "releaseTitle": "Release Truth, Cross-Device Reliability, Help Completion, and Approved App Branding",
+  "notes": [
+    "Eliminates recursive Playwright inventory discovery and keeps release inventory tied to the real full gate universe.",
+    "Improves customer Help links, Help version artifacts, System Administrator exact lookup, and shared Custom Shift preset plumbing.",
+    "Preserves Firebase rules, indexes, configuration, and current production behavior while deferring unavailable approved-icon replacement until the source asset is supplied."
+  ],
+  "title": "86 Chaos 16.0.147 Release Truth, Cross-Device Reliability, Help Completion, and Approved App Branding"
+}
