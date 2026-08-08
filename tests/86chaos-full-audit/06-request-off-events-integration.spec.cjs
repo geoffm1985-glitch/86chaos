@@ -66,23 +66,51 @@ test.describe('06 request-off, availability, and scheduled events integration', 
       await gotoTab(page, 'godmode', { settleMs: 1600, maxText: 60000 });
       await dismissBlockingDialogs(page);
       await neutralizeTestingPreviewOverlays(page, { reason: 'ghost-request-off-open-people' });
-      const openPeople = page.getByRole('button', { name: /^Open People$/i }).or(page.getByRole('button', { name: /people directory|people/i })).first();
+      const openPeople = page.locator('[data-testid="system-admin-open-people"]').or(page.getByRole('button', { name: /^Open People$/i })).first();
       if (!(await openPeople.isVisible({ timeout: 10000 }).catch(() => false))) {
         await attachState('06-ghost-request-off-people-open-missing.json', { visibleButtons: await page.getByRole('button').evaluateAll(btns => btns.slice(0, 80).map(btn => btn.innerText || btn.getAttribute('aria-label') || btn.textContent || '')).catch(() => []) });
       }
       await expect(openPeople, 'System Administrator People directory must be explicitly reachable before Ghost Mode possession').toBeVisible({ timeout: 12000 });
       await openPeople.click();
       await page.waitForTimeout(900);
-      const peopleScope = page.locator('[data-testid*="people" i], [aria-label*="People" i], section, main').filter({ hasText: /People|Directory|Possess|User/i }).first();
-      const search = peopleScope.getByRole('textbox', { name: /search/i }).or(page.getByRole('textbox', { name: /search people|people search|search users/i })).first();
+      await dismissBlockingDialogs(page, { maxPasses: 4 });
+      const peopleScope = page.locator('[data-testid="system-admin-people-directory"]').first();
+      await expect(peopleScope, 'People Directory root should be visible before target search').toBeVisible({ timeout: 12000 });
+      const search = peopleScope.locator('[data-testid="system-admin-people-search"]').or(peopleScope.getByRole('textbox', { name: /^Search People Directory$/i })).first();
       await expect(search, 'People directory search field should be scoped to the People area').toBeVisible({ timeout: 12000 });
-      await search.fill(targetName);
+      const expectedDocId = seed.ghostTargetUserId || seed.profile?.ghostTargetUserId || seed.ghostTargetDocumentId || seed.profile?.users?.find?.(u => u.idKey === 'allen')?.id || '';
+      const expectedAuthUid = seed.ghostTargetAuthUid || seed.profile?.ghostTargetAuthUid || seed.ghostTargetAuth?.uid || seed.profile?.ghostTargetAuth?.uid || '';
+      const expectedEmail = seed.ghostTargetEmail || seed.profile?.ghostTargetAuth?.email || seed.ghostTargetAuth?.email || '';
+      const expectedRestaurantId = seed.profile?.restaurantId || seed.restaurantId || '';
+      const expectedWorkspaceName = seed.profile?.restaurantName || seed.qaWorkspaceName || process.env.CHAOS_QA_WORKSPACE_NAME || '';
+      await search.fill(expectedEmail || expectedAuthUid || targetName);
       await page.waitForTimeout(1200);
-      const result = peopleScope.getByRole('row', { name: new RegExp(targetName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i') })
-        .or(peopleScope.locator('article,li,div').filter({ hasText: new RegExp(targetName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i') }))
-        .first();
-      await expect(result, `People directory should show the exact Ghost target ${targetName}`).toBeVisible({ timeout: 15000 });
-      const possess = result.getByRole('button', { name: /^Possess$/i }).or(result.getByRole('button', { name: /possess/i })).first();
+      const escapeRegex = (value) => String(value || '').replace(/[.*+?^${}()|\[\]\\]/g, '\\$&');
+      const escapedTargetName = escapeRegex(targetName);
+      const result = expectedDocId
+        ? peopleScope.locator(`[data-testid="system-admin-person-${expectedDocId}"]`).first()
+        : peopleScope.locator('[data-testid^="system-admin-person-"]').filter({ hasText: expectedEmail ? new RegExp(escapeRegex(expectedEmail), 'i') : new RegExp(escapedTargetName, 'i') }).first();
+      await expect(result, `People directory should show the exact current-run Ghost target ${targetName}`).toBeVisible({ timeout: 15000 });
+      const resultText = await result.innerText().catch(() => '');
+      const attrs = await result.evaluate(el => ({
+        userId: el.getAttribute('data-user-id') || '',
+        authUid: el.getAttribute('data-auth-uid') || '',
+        email: el.getAttribute('data-user-email') || '',
+        workspaceId: el.getAttribute('data-workspace-id') || '',
+        workspaceName: el.getAttribute('data-workspace-name') || '',
+        text: el.innerText || ''
+      })).catch(() => ({}));
+      await attachState('06-ghost-request-off-target-candidate.json', { expectedDocId, expectedAuthUid, expectedEmail, expectedRestaurantId, expectedWorkspaceName, attrs, resultText });
+      expect(resultText, 'Exact target row must be Allen QA, not another user').toMatch(/Allen QA/i);
+      expect(resultText, 'Ghost target row must not be Alex or Unknown Location').not.toMatch(/Alex @ Unknown Location|Unknown Location/i);
+      if (expectedDocId) expect(attrs.userId, 'Ghost target user document ID must match the current run seed').toBe(expectedDocId);
+      if (expectedAuthUid) expect(attrs.authUid, 'Ghost target Auth UID must match the current run seed').toBe(expectedAuthUid);
+      if (expectedEmail) expect(String(attrs.email || '').toLowerCase(), 'Ghost target email must match the current run seed').toBe(String(expectedEmail).toLowerCase());
+      if (expectedRestaurantId) expect(attrs.workspaceId, 'Ghost target workspace must match current run restaurant').toBe(expectedRestaurantId);
+      if (/2026-08-0[1-6]|15-57-57|Unknown Location|Alex/i.test(`${resultText} ${attrs.workspaceName || ''}`)) throw new Error('STALE QA GHOST TARGET SELECTED');
+      const possess = expectedDocId
+        ? result.locator(`[data-testid="system-admin-possess-${expectedDocId}"]`).first()
+        : result.getByRole('button', { name: new RegExp(`Possess ${escapedTargetName}`, 'i') }).first();
       await expect(possess, `Possess control should be inside the ${targetName} row/card`).toBeVisible({ timeout: 12000 });
       await possess.click();
       await page.waitForTimeout(1800);
@@ -90,6 +118,7 @@ test.describe('06 request-off, availability, and scheduled events integration', 
       const ghostText = await bodyText(page, 40000);
       await attachState('06-ghost-request-off-after-possess.json', { targetName, ghostTextSample: ghostText.slice(0, 6000) });
       expect(ghostText, 'Ghost Mode must activate for the exact target before opening Request Off').toMatch(/Ghost Mode|Possessing|Allen QA/i);
+      if (/Alex @ Unknown Location|Unknown Location|2026-08-04T15-57-57/i.test(ghostText)) throw new Error('STALE QA GHOST TARGET SELECTED');
     }
     async function openRequestOff() {
       await gotoTab(page, 'schedule', { settleMs: 1800, maxText: 70000 });

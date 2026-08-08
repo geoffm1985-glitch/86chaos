@@ -564,6 +564,10 @@ async function main() {
     const ghostRequestOffConflictDate = (profile.collections.timeOffRequests || []).find(req => req.employeeName === 'Sara QA' && ['pending', 'approved'].includes(String(req.status || '').toLowerCase()))?.date || '';
     report.ghostTargetAuth = ghostTargetAuth ? { key: ghostTargetAuth.key || 'GHOST_TARGET', email: ghostTargetAuth.email || '', uid: ghostTargetAuth.uid || '', authUid: ghostTargetAuth.authUid || ghostTargetAuth.uid || '' } : null;
     report.ghostTargetName = ghostTargetProfile?.name || 'Allen QA';
+    report.ghostTargetAuthUid = report.ghostTargetAuth?.uid || report.ghostTargetAuth?.authUid || '';
+    report.ghostTargetEmail = report.ghostTargetAuth?.email || ghostTargetProfile?.email || '';
+    report.ghostTargetUserId = (created.users || []).find(row => row.idKey === 'allen')?.id || '';
+    report.ghostTargetDocumentId = report.ghostTargetUserId;
     report.ghostRequestOffConflictDate = ghostRequestOffConflictDate;
     const now = new Date().toISOString();
     const today = new Date().toISOString().slice(0, 10);

@@ -824,7 +824,7 @@ const LoginScreen = ({ setAppUser }) => {
               <input type="password" placeholder="Confirm New Password" value={confirmPass} onChange={e => setConfirmPass(e.target.value)} className="w-full text-center text-lg font-bold bg-[#0B0E11] border border-[#2A353D] rounded-xl py-4 text-white focus:outline-none focus:border-[#D4A381] transition-colors shadow-inner" required />
             </div>
             
-            <button type="submit" className="w-full bg-gradient-to-r from-[#D4A381] to-[#b58563] text-slate-900 font-black tracking-widest uppercase text-lg py-4 rounded-xl shadow-[0_0_20px_rgba(212,163,129,0.2)] hover:scale-[1.02] transition-all mt-2">
+            <button type="submit" aria-label="Unlock System" className="chaos-login-primary-action w-full bg-gradient-to-r from-[#D4A381] to-[#b58563] text-slate-900 font-black tracking-widest uppercase text-lg py-4 min-h-[44px] rounded-xl shadow-[0_0_20px_rgba(212,163,129,0.2)] hover:scale-[1.02] transition-all mt-2">
               Save & Enter OS
             </button>
           </form>
@@ -840,25 +840,25 @@ const LoginScreen = ({ setAppUser }) => {
             </details>}
 
             <div>
-              <input type="text" placeholder="Email Address" value={email} onChange={e => setEmail(e.target.value)} disabled={isLoginBusy || workspaceLoading} autoComplete="email" className="w-full text-center text-lg font-bold bg-[#0B0E11] border border-[#2A353D] rounded-xl py-4 text-white focus:outline-none focus:border-[#D4A381] transition-colors shadow-inner" />
+              <input type="text" aria-label="Email Address" placeholder="Email Address" value={email} onChange={e => setEmail(e.target.value)} disabled={isLoginBusy || workspaceLoading} autoComplete="email" className="w-full text-center text-lg font-bold bg-[#0B0E11] border border-[#2A353D] rounded-xl py-4 text-white focus:outline-none focus:border-[#D4A381] transition-colors shadow-inner" />
             </div>
      <div>
-              <input type="password" placeholder="Password" value={password} onChange={e => setPassword(e.target.value)} disabled={isLoginBusy || workspaceLoading} autoComplete="current-password" className="w-full text-center text-lg font-bold bg-[#0B0E11] border border-[#2A353D] rounded-xl py-4 text-white focus:outline-none focus:border-[#D4A381] transition-colors shadow-inner" />
+              <input type="password" aria-label="Password" placeholder="Password" value={password} onChange={e => setPassword(e.target.value)} disabled={isLoginBusy || workspaceLoading} autoComplete="current-password" className="w-full text-center text-lg font-bold bg-[#0B0E11] border border-[#2A353D] rounded-xl py-4 text-white focus:outline-none focus:border-[#D4A381] transition-colors shadow-inner" />
             </div>
 
             <label className="flex items-center justify-center gap-2 cursor-pointer mt-2">
-              <input type="checkbox" checked={rememberMe} onChange={(e) => setRememberMe(e.target.checked)} disabled={isLoginBusy || workspaceLoading} className="w-4 h-4 accent-[#D4A381] bg-[#0B0E11] border border-[#2A353D] rounded cursor-pointer" />
+              <input type="checkbox" aria-label="Remember Me" checked={rememberMe} onChange={(e) => setRememberMe(e.target.checked)} disabled={isLoginBusy || workspaceLoading} className="w-4 h-4 accent-[#D4A381] bg-[#0B0E11] border border-[#2A353D] rounded cursor-pointer" />
               <span className="text-[10px] uppercase font-bold text-slate-400 tracking-widest">Remember Me</span>
             </label>
             
-            <button type="submit" disabled={isLoginBusy || workspaceLoading} className="w-full bg-gradient-to-r from-[#D4A381] to-[#b58563] disabled:opacity-60 disabled:cursor-wait text-slate-900 font-black tracking-widest uppercase text-lg py-4 rounded-xl shadow-[0_0_20px_rgba(212,163,129,0.2)] hover:scale-[1.02] transition-all mt-4">
+            <button type="submit" aria-label="Unlock System" disabled={isLoginBusy || workspaceLoading} className="chaos-login-primary-action w-full bg-gradient-to-r from-[#D4A381] to-[#b58563] disabled:opacity-60 disabled:cursor-wait text-slate-900 font-black tracking-widest uppercase text-lg py-4 min-h-[44px] rounded-xl shadow-[0_0_20px_rgba(212,163,129,0.2)] hover:scale-[1.02] transition-all mt-4">
               {isLoginBusy ? 'Unlocking...' : (workspaceLoading ? 'Checking Workspaces...' : 'Unlock System')}
             </button>
 <div className="pt-3 text-center flex flex-col gap-2">
-              <button type="button" onClick={handleForgotCredentials} className="text-[10px] font-bold text-slate-500 uppercase tracking-widest hover:text-[#D4A381] transition-colors">
+              <button type="button" onClick={handleForgotCredentials} aria-label="Forgot Password or Username?" className="chaos-login-secondary-action min-h-[44px] px-3 py-2 text-[10px] font-bold text-slate-500 uppercase tracking-widest hover:text-[#D4A381] transition-colors">
                 Forgot Password or Username?
               </button>
-              <button type="button" onClick={() => setIsPrivacyModalOpen(true)} className="text-[10px] font-bold text-slate-600 hover:text-slate-400 transition-colors mt-4">
+              <button type="button" onClick={() => setIsPrivacyModalOpen(true)} aria-label="Privacy Policy & Terms of Service" className="chaos-login-secondary-action min-h-[44px] px-3 py-2 text-[10px] font-bold text-slate-600 hover:text-slate-400 transition-colors mt-4">
                 Privacy Policy & Terms of Service
               </button>
               <div data-chaos-app-version="true" className="text-[9px] font-black uppercase tracking-widest text-slate-700">Version {CURRENT_VERSION}</div>

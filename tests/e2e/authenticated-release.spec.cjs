@@ -1,5 +1,6 @@
 const { test, expect } = require('@playwright/test');
 const { expectedRoutesForRole } = require('../../scripts/86chaos-release-gate/route-access-matrix.cjs');
+const { loginIfNeeded } = require('./utils/release-login-helper.cjs');
 
 const releaseGate = process.env.CHAOS_RELEASE_GATE === 'true';
 const roles = [
@@ -39,12 +40,7 @@ async function chooseWorkspace(page) {
 
 async function login(page, email, password) {
   await page.goto('/', { waitUntil: 'domcontentloaded' });
-  const emailInput = page.getByLabel(/email/i);
-  if (await emailInput.isVisible({ timeout: 5000 }).catch(() => false)) {
-    await emailInput.fill(email);
-    await page.getByLabel(/password/i).fill(password);
-    await page.getByRole('button', { name: /log in|sign in/i }).click();
-  }
+  await loginIfNeeded(page, email, password);
   await chooseWorkspace(page);
   await expect(page.locator('body')).toContainText(/86 chaos|today|manager brief|kitchen command|schedule/i, { timeout: 30_000 });
 }

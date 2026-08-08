@@ -1,6 +1,7 @@
 const { test, expect } = require('@playwright/test');
 const fs = require('fs');
 const path = require('path');
+const { loginIfNeeded } = require('./utils/release-login-helper.cjs');
 
 const releaseGate = process.env.CHAOS_RELEASE_GATE === 'true';
 const required = (name) => {
@@ -37,12 +38,7 @@ async function chooseWorkspace(page) {
 
 async function loginNeutral(page, emailKey, passwordKey) {
   await page.goto('/?tab=help', { waitUntil: 'domcontentloaded' });
-  const emailInput = page.getByLabel(/email/i);
-  if (await emailInput.isVisible({ timeout: 5000 }).catch(() => false)) {
-    await emailInput.fill(required(emailKey));
-    await page.getByLabel(/password/i).fill(required(passwordKey));
-    await page.getByRole('button', { name: /log in|sign in/i }).click();
-  }
+  await loginIfNeeded(page, required(emailKey), required(passwordKey));
   await chooseWorkspace(page);
   await page.goto('/?tab=help', { waitUntil: 'domcontentloaded' });
   await page.waitForLoadState('networkidle', { timeout: 15_000 }).catch(() => {});

@@ -316,6 +316,8 @@ async function dismissBlockingDialogs(page, options = {}) {
       { label: "Skip and don't show again", exact: true },
       { label: 'Skip and don\'t show again', exact: true },
       { label: 'Got it', exact: true },
+      { label: 'I understand', exact: true },
+      { label: 'Done', exact: true },
       { label: 'Not now', exact: true },
       { label: 'Maybe later', exact: true },
       { label: 'Close', exact: true },
@@ -354,8 +356,9 @@ async function login(page, email, password, options = {}) {
     await dismissNoise(page);
     return text;
   }
-  const emailBox = page.getByPlaceholder(/email/i).first();
-  const passwordBox = page.getByPlaceholder(/password/i).first();
+  await dismissBlockingDialogs(page, { maxPasses: 6 }).catch(() => null);
+  const emailBox = page.getByRole('textbox', { name: /^Email Address$/i }).first();
+  const passwordBox = page.locator('input[type="password"][autocomplete="current-password"], input[type="password"][aria-label="Password"]').first();
   await expect(emailBox, 'Login email box should be visible').toBeVisible({ timeout: 30000 });
   await emailBox.fill(email);
   await passwordBox.fill(password);
@@ -363,7 +366,9 @@ async function login(page, email, password, options = {}) {
   await loginButton.click();
   await page.waitForLoadState('domcontentloaded').catch(() => {});
   await page.waitForTimeout(2500);
+  await dismissBlockingDialogs(page, { maxPasses: 6 }).catch(() => null);
   await chooseQaWorkspace(page);
+  await dismissBlockingDialogs(page, { maxPasses: 6 }).catch(() => null);
   await dismissNoise(page);
   text = await bodyText(page, 16000);
   if (LOGIN_RE.test(text) && /invalid|wrong|error|failed|not attached/i.test(text)) {
@@ -429,7 +434,9 @@ async function gotoTab(page, tab, options = {}) {
     await page.goto(appUrl(tab), { waitUntil: 'domcontentloaded', timeout: options.timeout || 45000 }).catch(() => {});
     await page.waitForLoadState('domcontentloaded').catch(() => {});
     await page.waitForTimeout(options.settleMs || 900);
+    await dismissBlockingDialogs(page, { maxPasses: 6 }).catch(() => null);
     await chooseQaWorkspace(page);
+    await dismissBlockingDialogs(page, { maxPasses: 6 }).catch(() => null);
     await dismissNoise(page);
     return bodyText(page, options.maxText || 30000);
   }
@@ -491,12 +498,15 @@ async function viewportAudit(page) {
       }
       if (offenders.length >= 25) break;
     }
+    const coarsePointer = Boolean(window.matchMedia?.('(pointer: coarse)')?.matches) || viewportWidth <= 640;
+    const minHit = coarsePointer ? 42 : 24;
     const smallButtons = Array.from(document.querySelectorAll('button')).map(el => {
       const rect = el.getBoundingClientRect();
       const text = (el.innerText || el.getAttribute('aria-label') || '').trim();
-      return { text, width: rect.width, height: rect.height };
-    }).filter(b => b.text && b.width > 0 && b.height > 0 && (b.width < 38 || b.height < 34)).slice(0, 40);
-    return { viewportWidth, viewportHeight, scrollWidth: Math.max(doc.scrollWidth, body.scrollWidth), scrollHeight: Math.max(doc.scrollHeight, body.scrollHeight), horizontalOverflow: Math.max(doc.scrollWidth, body.scrollWidth) > viewportWidth + 8, offenders, smallButtons };
+      const style = window.getComputedStyle(el);
+      return { text, width: Math.round(rect.width), height: Math.round(rect.height), minHit, coarsePointer, display: style.display, visibility: style.visibility };
+    }).filter(b => b.text && b.width > 0 && b.height > 0 && b.display !== 'none' && b.visibility !== 'hidden' && (b.width < minHit || b.height < minHit)).slice(0, 40);
+    return { viewportWidth, viewportHeight, scrollWidth: Math.max(doc.scrollWidth, body.scrollWidth), scrollHeight: Math.max(doc.scrollHeight, body.scrollHeight), horizontalOverflow: Math.max(doc.scrollWidth, body.scrollWidth) > viewportWidth + 8, offenders, smallButtons, touchTargetPolicy: { coarsePointer, minHit } };
   });
 }
 

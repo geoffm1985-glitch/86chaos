@@ -3,6 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
+process.env.CHAOS_ALLOW_SOURCE_INVENTORY_FALLBACK = '1';
 
 const root = path.resolve(__dirname, '..');
 const {

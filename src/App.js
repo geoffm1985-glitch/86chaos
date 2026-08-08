@@ -737,6 +737,7 @@ export default function App() {
   const rId = ghostTenant ? ghostTenant.id : appUser?.restaurantId;
   const authenticatedUid = auth?.currentUser?.uid || appUser?.id || '';
   const [activeTabState, setActiveTabState] = useState(() => normalizeRouteTab(appUser?.preferences?.defaultTab || 'today'));
+  const [helpOriginState, setHelpOriginState] = useState('');
   const [clientData, setClientData] = useState(null);
   const [heartbeatDebug, setHeartbeatDebug] = useState(null);
   const clientFeatures = clientData?.features || {};
@@ -1881,7 +1882,9 @@ if (liveAppUser && clientData) {
   }, [appUser, transitionActiveTabState]);
 
   const setActiveTab = (tab) => {
+    const previousActiveTab = activeTabState;
     tab = normalizeRouteTab(tab);
+    if (tab === 'help' && previousActiveTab && previousActiveTab !== 'help') setHelpOriginState(previousActiveTab);
     if (mfaFrontendLockActive && !['settings', 'help'].includes(tab)) {
       addToast('Two-Step Login Required', 'Open Account Security in Settings to finish MFA setup before using elevated tools.');
       tab = 'settings';
@@ -2994,7 +2997,7 @@ What I clicked / expected:
     if (activeTabState === 'hr-training' && routeAllowed) return <TabHrTraining key={`hrt-${rId}-${liveAppUser?.id}`} appUser={liveAppUser} users={displayUsers} addToast={addToast} />;
     if (activeTabState === 'maintenance' && routeAllowed) return <TabMaintenance key={`mtn-${rId}`} appUser={liveAppUser} addToast={addToast} />;
     if (activeTabState === 'settings' && routeAllowed) return <TabSettings key={`set-${rId}`} addToast={addToast} appUser={liveAppUser} clientData={displayClientData} users={displayUsers} presenceSelf={selfPresenceRecord} />;
-    if (activeTabState === 'help' && routeAllowed) return <TabHelpCenter key={`help-${rId}`} appUser={liveAppUser} activeTab={activeTabState} voiceHelpSearchTarget={voiceHelpSearchTarget} addToast={addToast} />;
+    if (activeTabState === 'help' && routeAllowed) return <TabHelpCenter key={`help-${rId}`} appUser={liveAppUser} activeTab={activeTabState} helpOrigin={helpOriginState} voiceHelpSearchTarget={voiceHelpSearchTarget} addToast={addToast} setActiveTab={stableSetActiveTab} setScheduleSubTabTarget={setVoiceScheduleSubTabTarget} setInventorySubTabTarget={setInventorySubTabTarget} />;
     if (activeTabState === 'godmode' && serverSaysSuperAdmin) return <TabGodMode key={`god-${rId}-${serverAdminRetryKey}`} appUser={{ ...liveAppUser, isSuperAdmin: true, serverAdminCheck }} addToast={addToast} setGhostTenant={setGhostTenant} setActiveTab={stableSetActiveTab} />;
     if (activeTabState === 'godmode' && (serverAdminCheckPending || serverAdminCheckTemporarilyUnavailable) && pendingLocalSystemAdminHint) return (
       <div className={`${T.card} p-5 sm:p-8 max-w-2xl mx-auto text-center space-y-4 border-amber-500/40`}>
