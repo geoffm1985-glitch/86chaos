@@ -4132,6 +4132,7 @@ firebase deploy --only functions --project YOUR_PRODUCTION_PROJECT_ID
   
   // Master Data States
   const [restaurants, setRestaurants] = useState([]);
+  const [restaurantRosterState, setRestaurantRosterState] = useState({ source: 'loading', loading: false, refreshing: false, error: '', fetchedAt: '', projectId: '', count: 0 });
   const [superAdmins, setSuperAdmins] = useState([]);
   const [allUsers, setAllUsers] = useState([]);
   const [globalLogoutBusy, setGlobalLogoutBusy] = useState(false);
@@ -4561,6 +4562,20 @@ const LEGACY_JULY_2026_SCHEDULE = [
     } catch(err) { addToast('Error', err.message); }
   };
 
+  const loadSystemAdminWorkspaceRoster = async ({ refreshing = false } = {}) => {
+    setRestaurantRosterState(prev => ({ ...prev, loading: !refreshing, refreshing, error: '' }));
+    try {
+      const response = await secureFetch('/api/system-admin/workspaces?limit=500');
+      const json = await response.json().catch(() => ({}));
+      if (!response.ok || !json?.ok) throw new Error(json?.error || 'Could not load authoritative client roster.');
+      const rows = Array.isArray(json.workspaces) ? json.workspaces : [];
+      setRestaurants(rows.map(r => normalizeRestaurantRecord(r.id, r, [])));
+      setRestaurantRosterState({ source: 'server', loading: false, refreshing: false, error: '', fetchedAt: json.fetchedAt || new Date().toISOString(), projectId: json.projectId || '', count: rows.length });
+    } catch (error) {
+      setRestaurantRosterState(prev => ({ ...prev, loading: false, refreshing: false, error: error?.message || 'Could not load authoritative client roster.', source: prev.source === 'server' ? 'server-stale' : 'error' }));
+    }
+  };
+
   // Fetch Global Intelligence with section-scoped, bounded listeners; 16.0.28 admin pagination uses bounded server-side pages.
   useEffect(() => {
     const unsubs = [];
@@ -4616,9 +4631,7 @@ const LEGACY_JULY_2026_SCHEDULE = [
     listenDoc('operationsReview', doc(db, 'system', 'operationsReview'), setOperationsReview);
 
     if (['overview', 'tenants', 'ops', 'push'].includes(subTab)) {
-      listen('restaurants', query(collection(db, 'restaurants'), orderBy('name', 'asc'), firestoreLimit(subTab === 'tenants' || subTab === 'push' ? 160 : 40)), setRestaurants, mapDocs('restaurants', normalizeRestaurantRecord));
-    } else {
-      setRestaurants(prev => prev.slice(0, 40));
+      loadSystemAdminWorkspaceRoster({ refreshing: false });
     }
 
     if (subTab === 'users' || subTab === 'push' || subTab === 'live') {
@@ -9567,10 +9580,13 @@ Type RESTORE to continue.`);
                 <div className="text-[9px] text-slate-500 font-bold uppercase tracking-widest mt-1">Created date/time is stamped on every new client.</div>
               </div>
               <div className="flex flex-wrap items-center gap-2">
-                <span className="bg-[#1A2126] text-slate-400 px-2 py-1 rounded text-[10px] font-black uppercase tracking-widest border border-[#2A353D]">{restaurants.length} Total</span>
+                <span className="bg-[#1A2126] text-slate-400 px-2 py-1 rounded text-[10px] font-black uppercase tracking-widest border border-[#2A353D]">{restaurantRosterState.source === 'server' ? restaurantRosterState.count : restaurants.length} Total</span>
+                <span className={`px-2 py-1 rounded text-[9px] font-black uppercase tracking-widest border ${restaurantRosterState.error ? 'bg-red-950/30 border-red-800/50 text-red-200' : 'bg-emerald-950/20 border-emerald-800/40 text-emerald-200'}`}>{restaurantRosterState.error ? 'Roster Error' : `${restaurantRosterState.projectId || 'Project'} • ${restaurantRosterState.source || 'loading'}`}</span>
+                <button type="button" onClick={() => loadSystemAdminWorkspaceRoster({ refreshing: true })} disabled={restaurantRosterState.loading || restaurantRosterState.refreshing} className="bg-[#1A2126] text-[#D4A381] px-2.5 py-1.5 rounded text-[10px] font-black uppercase tracking-widest border border-[#2A353D] hover:border-[#D4A381]/60 transition-colors disabled:opacity-50">{restaurantRosterState.refreshing ? 'Refreshing…' : 'Refresh Clients'}</button>
                 <button type="button" onClick={handleStampMissingClientCreatedAt} className="bg-[#1A2126] text-[#D4A381] px-2.5 py-1.5 rounded text-[10px] font-black uppercase tracking-widest border border-[#2A353D] hover:border-[#D4A381]/60 transition-colors">Stamp Missing</button>
               </div>
             </div>
+{restaurantRosterState.error && <div className="bg-red-950/20 border border-red-800/50 text-red-100 rounded-xl p-3 text-xs font-bold">Authoritative client roster could not load: {restaurantRosterState.error}</div>}
 <div className={`divide-y ${T.border}`}>
 {restaurants.map(r => {
                 // Subscription Math Engine
@@ -11089,13 +11105,18 @@ const TabHelpCenter = ({ appUser, activeTab, helpOrigin = '', voiceHelpSearchTar
   const [feedbackText, setFeedbackText] = useState('');
 
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const subject = params.get('helpSubject') || '';
-    const subtopic = params.get('helpSubtopic') || '';
-    const article = params.get('helpArticle') || '';
-    if (HELP_SUBJECTS.some(s => s.id === subject)) setSelectedSubject(subject);
-    if (HELP_SUBTOPICS.some(s => s.id === subtopic)) setSelectedSubtopic(subtopic);
-    if (CUSTOMER_HELP_ARTICLES.some(a => a.id === article)) setSelectedArticleId(article);
+    const applyHelpStateFromUrl = () => {
+      const params = new URLSearchParams(window.location.search);
+      const subject = params.get('helpSubject') || '';
+      const subtopic = params.get('helpSubtopic') || '';
+      const article = params.get('helpArticle') || '';
+      setSelectedSubject(HELP_SUBJECTS.some(s => s.id === subject) ? subject : '');
+      setSelectedSubtopic(HELP_SUBTOPICS.some(s => s.id === subtopic) ? subtopic : '');
+      setSelectedArticleId(CUSTOMER_HELP_ARTICLES.some(a => a.id === article) ? article : '');
+    };
+    applyHelpStateFromUrl();
+    window.addEventListener('popstate', applyHelpStateFromUrl);
+    return () => window.removeEventListener('popstate', applyHelpStateFromUrl);
   }, []);
 
   useEffect(() => {
@@ -11253,6 +11274,7 @@ const TabHelpCenter = ({ appUser, activeTab, helpOrigin = '', voiceHelpSearchTar
       const allowed = canOpenHelpLink(id);
       return <button key={id} type="button" onClick={() => openHelpLink(id)} className={`${allowed ? T.btn : T.btnAlt} min-h-[42px]`} aria-disabled={!allowed}>{allowed ? `Open ${dest.label}` : `${dest.label}: manager or owner needed`}</button>;
     })}</section> : null}
+    {a.externalLinks?.length ? <section className="bg-[#12161A] border border-[#2A353D] rounded-2xl p-4"><h4 className="font-black text-white mb-2">Helpful external links</h4><div className="flex flex-wrap gap-2">{a.externalLinks.filter(link => /^https:\/\//i.test(link.url || '')).map(link => <a key={link.id || link.url} href={link.url} target="_blank" rel="noopener noreferrer" className={`${T.btnAlt} min-h-[42px] inline-flex items-center gap-2`}>{link.label || 'Open link'} ↗</a>)}</div></section> : null}
     <section className="border-t border-[#2A353D] pt-4">
       <h4 className="font-black text-white mb-2">Still having trouble?</h4>
       <div className="flex flex-wrap gap-2"><button type="button" onClick={() => { setAskQuestion(a.title); submitAsk86(a.title); }} className={T.btnAlt}>Ask another question</button><button type="button" onClick={() => setFeedbackOpen(true)} className={T.btnAlt}>Did this solve your problem?</button><button type="button" onClick={() => setBugCategory('Help Problem')} className={T.btnAlt}>Report a Problem</button></div>
@@ -11274,14 +11296,14 @@ const TabHelpCenter = ({ appUser, activeTab, helpOrigin = '', voiceHelpSearchTar
 
     {query.trim() && directAnswer && <section className={`${T.card} p-5 border-[#D4A381]/30`} aria-live="polite">
       <div className="text-[10px] uppercase tracking-widest font-black text-[#D4A381]">Direct answer</div>
-      <p className="text-lg text-white font-black mt-2 leading-snug">{directAnswer.answer}</p>
+      <p className="text-lg text-white font-black mt-2 leading-snug"><HelpInlineText text={directAnswer.answer} canOpenHelpLink={canOpenHelpLink} openHelpLink={openHelpLink}/></p>
       <div className="mt-4 grid sm:grid-cols-2 lg:grid-cols-3 gap-2">{searchResults.slice(0, 6).map(a => <ArticleCard key={a.id} a={a}/>)}</div>
     </section>}
 
     {askResult && <section className={`${T.card} p-5 border-emerald-900/40`} aria-live="polite">
       <div className="flex items-center gap-2 text-[10px] uppercase tracking-widest font-black text-emerald-300"><Sparkles size={14}/> Ask 86 {askResult.fallbackUsed ? 'built-in fallback' : 'answer'}</div>
-      <p className="text-sm text-slate-100 font-bold leading-relaxed mt-3">{askResult.answer}</p>
-      <div className="mt-3"><div className="text-[10px] uppercase tracking-widest font-black text-slate-500 mb-2">Based on</div><div className="flex flex-wrap gap-2">{(askResult.sourceArticleIds || []).map(id => CUSTOMER_HELP_ARTICLES.find(a => a.id === id)).filter(Boolean).map(a => <button type="button" key={a.id} onClick={() => chooseArticle(a.id)} className={T.btnAlt}>{a.title}</button>)}</div></div>
+      <p className="text-sm text-slate-100 font-bold leading-relaxed mt-3"><HelpInlineText text={askResult.answer} canOpenHelpLink={canOpenHelpLink} openHelpLink={openHelpLink}/></p>
+      <div className="mt-3"><div className="text-[10px] uppercase tracking-widest font-black text-slate-500 mb-2">Based on</div><div className="flex flex-wrap gap-2">{(askResult.sourceArticleIds || []).map(id => CUSTOMER_HELP_ARTICLES.find(a => a.id === id)).filter(Boolean).map(a => <button type="button" key={a.id} onClick={() => chooseArticle(a.id)} className={T.btnAlt}>{a.title}</button>)}</div></div><div className="mt-3"><div className="text-[10px] uppercase tracking-widest font-black text-slate-500 mb-2">Suggested app links</div><div className="flex flex-wrap gap-2">{(askResult.suggestedDeepLinkIds || []).filter(id => HELP_DEEP_LINKS[id]).map(id => { const dest = HELP_DEEP_LINKS[id]; const allowed = canOpenHelpLink(id); return <button type="button" key={id} onClick={() => openHelpLink(id)} className={`${allowed ? T.btn : T.btnAlt} min-h-[42px]`} aria-disabled={!allowed}>{allowed ? `Open ${dest.label}` : `${dest.label}: manager or owner needed`}</button>; })}</div></div>
       <div className="mt-3 flex gap-2"><input value={askQuestion} onChange={e => setAskQuestion(e.target.value)} maxLength={900} className={`${T.input} min-h-[42px]`} placeholder="Ask a follow-up"/><button type="button" onClick={() => submitAsk86()} className={`${T.btn} min-h-[42px]`}>Ask follow-up</button><button type="button" onClick={() => { setAskHistory([]); setAskResult(null); }} className={`${T.btnAlt} min-h-[42px]`}>Clear</button></div>
     </section>}
 

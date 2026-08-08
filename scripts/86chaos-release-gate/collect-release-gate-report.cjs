@@ -164,17 +164,27 @@ function executedIdentity(row = {}) {
   return `${normSpec(row.file || row.specPath || row.spec)}\u0000${normTitle(row.title || row.fullTitle || '')}\u0000${row.projectName || row.project || ''}`;
 }
 const manifestSelected = Array.isArray(failedOnlyManifest?.selected) ? failedOnlyManifest.selected : [];
-const selectedIdentitySet = new Set(manifestSelected.map(manifestIdentity));
+function manifestIdentityRows(rows = []) {
+  const expanded = [];
+  for (const row of rows) {
+    const projects = Array.isArray(row.projects) && row.projects.length ? row.projects : [row.project || row.projectName || ''];
+    for (const project of projects.filter(Boolean)) expanded.push({ ...row, project, projectName: project, projects: [project] });
+  }
+  return expanded;
+}
+const manifestSelectedExpanded = manifestIdentityRows(manifestSelected);
+const selectedIdentitySet = new Set(manifestSelectedExpanded.map(manifestIdentity));
 const executedUniqueByKey = new Map();
 for (const t of tests) executedUniqueByKey.set(executedIdentity(t), t);
 const executedKeySet = new Set(executedUniqueByKey.keys());
 const selectedNotExecuted = [...selectedIdentitySet].filter(key => !executedKeySet.has(key));
 const unexpectedExtraExecution = [...executedKeySet].filter(key => !selectedIdentitySet.has(key));
 const perProjectExecutedUnique = [...executedUniqueByKey.values()].reduce((acc, row) => { const p = row.projectName || row.project || 'unknown'; acc[p] = (acc[p] || 0) + 1; return acc; }, {});
-const perProjectSelected = manifestSelected.reduce((acc, row) => { const p = row.project || row.projectName || (row.projects || [])[0] || 'unknown'; acc[p] = (acc[p] || 0) + 1; return acc; }, {});
+const perProjectSelected = manifestSelectedExpanded.reduce((acc, row) => { const p = row.project || row.projectName || 'unknown'; acc[p] = (acc[p] || 0) + 1; return acc; }, {});
 const executedUnique = executedKeySet.size;
 const selectedUnique = selectedIdentitySet.size;
-const reconciled = !failedOnlyMode || (selectedUnique === executedUnique + selectedNotExecuted.length && unexpectedExtraExecution.length === 0 && executedUnique === tests.filter(t => ['passed','failed','timedOut','skipped','interrupted'].includes(String(t.status || ''))).length);
+const statusUniqueCount = tests.filter(t => ['passed','failed','timedOut','skipped','interrupted'].includes(String(t.status || ''))).length;
+const reconciled = !failedOnlyMode || (selectedUnique === executedUnique + selectedNotExecuted.length - unexpectedExtraExecution.length && unexpectedExtraExecution.length === 0 && executedUnique === statusUniqueCount);
 const deltaReconciliation = {
   mode: failedOnlyMode ? 'failed+new' : 'full',
   manifestSelectedUniqueCount: selectedUnique,

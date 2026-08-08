@@ -66,7 +66,7 @@ function discoveryDiagnostic(result, args = []) {
 function titleContainsTemplate(records = []) {
   return records.filter(row => /\$\{/.test([row.fullTitle, row.fullSuitePath, row.leafTitle, row.exactTestTitle, row.title].filter(Boolean).join(' ')));
 }
-function discoverWithPlaywrightList({ root = process.cwd(), config = 'playwright.play-store-release.config.cjs', env = {}, timeoutMs = 10 * 60 * 1000, maxBuffer = 96 * 1024 * 1024 } = {}) {
+function discoverWithPlaywrightList({ root = process.cwd(), config = 'playwright.inventory.config.cjs', env = {}, timeoutMs = 10 * 60 * 1000, maxBuffer = 96 * 1024 * 1024 } = {}) {
   const cli = findLocalPlaywrightCli(root);
   if (!cli) return { ok: false, error: 'Local Playwright package is not installed.', records: [], diagnostic: { command: '', status: null, error: 'Local Playwright package is not installed.' } };
   const args = [cli, 'test', `--config=${config}`, '--list'];
@@ -114,8 +114,9 @@ function extractStaticTestsFromSpec(source='') {
 const MAIN_PROJECTS = ['chromium', 'mobile-chromium'];
 const PWA_PROJECTS = ['edge-pwa', 'firefox-pwa', 'webkit-pwa', 'mobile-webkit-pwa'];
 function projectsForSpec(rel) {
-  if (/86chaos-release-gate\/(26-pwa-icon-source-deployed-parity|27-pwa-browser-icon-matrix)\.spec\.cjs$/.test(rel)) return [...MAIN_PROJECTS, ...PWA_PROJECTS];
-  if (/runtime-code-coverage/i.test(rel)) return ['chromium'];
+  const normalized = normalizeRel(rel);
+  if (/86chaos-release-gate\/(26-pwa-icon-source-deployed-parity|27-pwa-browser-icon-matrix)\.spec\.cjs$/.test(normalized)) return [...MAIN_PROJECTS, ...PWA_PROJECTS];
+  if (/21-runtime-code-coverage\.spec\.cjs|runtime-code-coverage/i.test(normalized)) return ['chromium'];
   return MAIN_PROJECTS;
 }
 function fallbackStaticInventory({ root = process.cwd() } = {}) {
@@ -151,7 +152,7 @@ function validateInventoryRecords(records = []) {
   const perProject = records.reduce((acc, row) => { acc[row.project] = (acc[row.project] || 0) + 1; return acc; }, {});
   return { ok: duplicates.length === 0, discoveredTestCount: records.length, perProject, duplicateIdentityCount: duplicates.length, duplicates };
 }
-function generatePlaywrightInventory({ root=process.cwd(), outputPath='', runId='', sourceVersion='', config='playwright.play-store-release.config.cjs', allowStaticFallback = false, releaseMode = true }={}) {
+function generatePlaywrightInventory({ root=process.cwd(), outputPath='', runId='', sourceVersion='', config='playwright.inventory.config.cjs', allowStaticFallback = false, releaseMode = true }={}) {
   const generatedAt = new Date().toISOString();
   const discovered = discoverWithPlaywrightList({ root, config });
   let discoveryMode = 'playwright-list';

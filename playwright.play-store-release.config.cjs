@@ -1,6 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const { defineConfig, devices } = require('@playwright/test');
+const { RELEASE_TEST_MATCH, PWA_SPEC_PATTERN } = require('./scripts/86chaos-release-gate/release-test-universe.cjs');
 
 const root = process.cwd();
 const { ensureRunDir } = require('./scripts/86chaos-release-gate/run-context.cjs');
@@ -10,15 +11,14 @@ const { buildCriticalInventory } = require('./scripts/86chaos-release-gate/criti
 const baseURL = process.env.APP_URL || process.env.CHAOS_BASE_URL || process.env.PLAYWRIGHT_BASE_URL || process.env.BASE_URL || 'http://127.0.0.1:3000';
 const resultsRoot = runDir;
 fs.mkdirSync(resultsRoot, { recursive: true });
-generatePlaywrightInventory({ root, outputPath: path.join(resultsRoot, 'playwright-test-inventory.json'), runId });
+if (process.env.CHAOS_INVENTORY_DISCOVERY !== '1') {
+  generatePlaywrightInventory({ root, outputPath: path.join(resultsRoot, 'playwright-test-inventory.json'), runId, config: 'playwright.inventory.config.cjs' });
+}
 buildCriticalInventory({ outputPath: path.join(resultsRoot, 'release-critical-test-inventory.json'), runId });
 
 module.exports = defineConfig({
   testDir: './tests',
-  testMatch: [
-    '86chaos-full-audit/**/*.spec.cjs',
-    '86chaos-release-gate/**/*.spec.cjs'
-  ],
+  testMatch: [...RELEASE_TEST_MATCH],
   timeout: 90_000,
   expect: { timeout: 12_000 },
   fullyParallel: false,
@@ -42,9 +42,9 @@ module.exports = defineConfig({
   projects: [
     { name: 'chromium', use: { ...devices['Desktop Chrome'] } },
     { name: 'mobile-chromium', use: { ...devices['Pixel 5'] }, testIgnore: /21-runtime-code-coverage\.spec\.cjs/ },
-    { name: 'edge-pwa', testMatch: /86chaos-release-gate\/(26-pwa-icon-source-deployed-parity|27-pwa-browser-icon-matrix)\.spec\.cjs/, use: { ...devices['Desktop Edge'], channel: 'msedge' } },
-    { name: 'firefox-pwa', testMatch: /86chaos-release-gate\/(26-pwa-icon-source-deployed-parity|27-pwa-browser-icon-matrix)\.spec\.cjs/, use: { ...devices['Desktop Firefox'] } },
-    { name: 'webkit-pwa', testMatch: /86chaos-release-gate\/(26-pwa-icon-source-deployed-parity|27-pwa-browser-icon-matrix)\.spec\.cjs/, use: { ...devices['Desktop Safari'] } },
-    { name: 'mobile-webkit-pwa', testMatch: /86chaos-release-gate\/(26-pwa-icon-source-deployed-parity|27-pwa-browser-icon-matrix)\.spec\.cjs/, use: { ...devices['iPhone 13'] } }
+    { name: 'edge-pwa', testMatch: PWA_SPEC_PATTERN, use: { ...devices['Desktop Edge'], channel: 'msedge' } },
+    { name: 'firefox-pwa', testMatch: PWA_SPEC_PATTERN, use: { ...devices['Desktop Firefox'] } },
+    { name: 'webkit-pwa', testMatch: PWA_SPEC_PATTERN, use: { ...devices['Desktop Safari'] } },
+    { name: 'mobile-webkit-pwa', testMatch: PWA_SPEC_PATTERN, use: { ...devices['iPhone 13'] } }
   ]
 });
