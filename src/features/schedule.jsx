@@ -8,9 +8,20 @@ import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { MapContainer, TileLayer, Marker, Circle, useMapEvents } from 'react-leaflet';
 import { T, db, storage, auth, messaging, firebaseConfig, secureFetch, MASTER_ADMIN_EMAIL, EVENT_TAGS, CURRENT_VERSION, useLiveCollection, formatDate, getToday, getMonthStr, formatDisplayDate, formatDisplayFullDate, formatDisplayMonth, getDaysInMonth, formatShortTime, formatClockTime, formatClockDateTime, getAvatar, generateTempPass, getExpDate, getHoliday, logAudit, customMapIcon, getRestaurantExportPrefix, safeFilenamePart, downloadCsvRows, downloadTextFile, openPrintableReport } from '../core/appCore';
 import { buildAlertFingerprint, useRememberedAlert } from '../core/alertMemory';
+import scheduleWarningControls from '../core/scheduleWarningControls.cjs';
 import { getCanonicalScheduleUserId, collectScheduleDurableIdentityAliases, collectScheduleEmailAliases, collectScheduleFullNameAliases, collectScheduleFirstNameAliases, collectScheduleIdentityAliases, resolveSchedulePersonForAccount, resolveSchedulePersonForShift, buildCanonicalScheduleIdentityBlock, scheduleIdentityBlockMatchesPerson } from '../core/scheduleQueryPlanner';
 import { CheersLogo, Modal, DrawerMenu, DayDotPrintScreen, MapClickListener, SmartEmptyState, MiniProblemCard, getHomeProfile, calculatePunchHours, getWeekStart, getWeekDates, roleMatches, toLocalTimeInput, makeLocalIso, PunchTable, FriendlyEmpty, GlobalSearchModal, QuickActionDock, KitchenTVMode, ChangeLogModal, UndoBar } from '../components/common';
 
+
+
+const {
+  requestSubjectLabel,
+  requestMatchesEmployeeFilter,
+  scheduleWarningEmployeeLabel,
+  warningShiftContext,
+  buildCoverageVarianceRows,
+  isRequestOffBulkEligible,
+} = scheduleWarningControls;
 
 const cleanScheduleRoleName = (role = '') => String(role || '').replace(/\s+/g, ' ').trim();
 
@@ -4499,6 +4510,8 @@ const TabTimeOff = ({ timeOffRequests, appUser, users, addToast, events = [], sh
   const [customStart, setCustomStart] = useState(getToday());
   const [customEnd, setCustomEnd] = useState(getToday());
   const [selectedRequestIds, setSelectedRequestIds] = useState([]);
+  const [employeeFilter, setEmployeeFilter] = useState('');
+  const [bulkBusy, setBulkBusy] = useState('');
   const [ghostTimeOffRequests, setGhostTimeOffRequests] = useState([]);
   const [ghostListStatus, setGhostListStatus] = useState('idle');
   const [checkingDate, setCheckingDate] = useState('');
@@ -4538,16 +4551,19 @@ const TabTimeOff = ({ timeOffRequests, appUser, users, addToast, events = [], sh
     return { start: '0000-01-01', end: '9999-12-31' };
   };
   const range = getDateFilterRange();
-  const filteredRequests = visibleRequests
-    .filter(r => !r.date || (r.date >= range.start && r.date <= range.end))
-    .filter(r => {
-      const status = normalizeStatus(r);
-      if (viewFilter === 'needs-review') return status === 'pending' && !isArchivedRequest(r);
-      if (viewFilter === 'upcoming-approved') return status === 'approved' && !isArchivedRequest(r) && r.date >= getToday();
-      if (viewFilter === 'archived') return isArchivedRequest(r);
-      return true;
-    })
+  const dateFilteredRequests = visibleRequests.filter(r => !r.date || (r.date >= range.start && r.date <= range.end));
+  const statusFilteredRequests = dateFilteredRequests.filter(r => {
+    const status = normalizeStatus(r);
+    if (viewFilter === 'needs-review') return status === 'pending' && !isArchivedRequest(r);
+    if (viewFilter === 'upcoming-approved') return status === 'approved' && !isArchivedRequest(r) && r.date >= getToday();
+    if (viewFilter === 'archived') return isArchivedRequest(r);
+    return true;
+  });
+  const filteredRequests = statusFilteredRequests
+    .filter(r => !canManage || requestMatchesEmployeeFilter(r, employeeFilter))
     .sort((a,b) => new Date(a.date || 0) - new Date(b.date || 0));
+  const visibleRequestIds = filteredRequests.map(r => r.id).filter(Boolean);
+  const activeEmployeeFilterLabel = employeeFilter.trim();
 
   const requestOffApi = useCallback(async (action, payload = {}) => {
     const response = await secureFetch('/api/time-off-request', {
@@ -4640,6 +4656,58 @@ const TabTimeOff = ({ timeOffRequests, appUser, users, addToast, events = [], sh
     const selected = filteredRequests.filter(r => selectedRequestIds.includes(r.id));
     await Promise.all(selected.map(archiveRequest));
     setSelectedRequestIds([]);
+  };
+
+  const eligibleVisibleRequests = (options = {}) => filteredRequests.filter(r => isRequestOffBulkEligible(r, {
+    visibleIds: visibleRequestIds,
+    workspaceId: appUser?.restaurantId || '',
+    canManage,
+    normalizeStatus,
+    isArchivedRequest,
+    requirePending: options.requirePending === true,
+  }));
+
+  const runBulkRequestUpdate = async ({ mode, requests, confirmMessage, buildUpdate, action, successVerb }) => {
+    if (!canManage || bulkBusy) return;
+    if (!requests.length) return addToast('Nothing to update', 'No visible eligible Request Off requests match this action.');
+    if (!window.confirm(confirmMessage)) return;
+    setBulkBusy(mode);
+    try {
+      const results = await Promise.allSettled(requests.map(r => updateRequest(r, buildUpdate(r), action)));
+      const passed = results.filter(result => result.status === 'fulfilled').length;
+      const failed = results.length - passed;
+      if (failed) addToast(`${successVerb} ${passed}`, `${successVerb} ${passed} request${passed === 1 ? '' : 's'}. ${failed} could not be updated.`);
+      else addToast(`${successVerb} ${passed}`, `${successVerb} ${passed} request${passed === 1 ? '' : 's'}.`);
+      setSelectedRequestIds(prev => prev.filter(id => !requests.some(r => r.id === id)));
+    } finally {
+      setBulkBusy('');
+    }
+  };
+
+  const approveAllVisible = async () => {
+    const requests = eligibleVisibleRequests({ requirePending: true });
+    const scoped = activeEmployeeFilterLabel ? ` for ${activeEmployeeFilterLabel}` : '';
+    await runBulkRequestUpdate({
+      mode: 'approve-visible',
+      requests,
+      confirmMessage: `Approve ${requests.length} visible pending Request Off request${requests.length === 1 ? '' : 's'}${scoped}?`,
+      action: 'TIME_OFF_APPROVED',
+      successVerb: 'Approved',
+      buildUpdate: () => ({ status:'approved', approvedAt:new Date().toISOString(), approvedBy: appUser.id || '', approvedByName: appUser.name || appUser.email || '' })
+    });
+  };
+
+  const archiveAllVisible = async () => {
+    const requests = eligibleVisibleRequests({ requirePending: false });
+    const scoped = activeEmployeeFilterLabel ? ` for ${activeEmployeeFilterLabel}` : '';
+    await runBulkRequestUpdate({
+      mode: 'archive-visible',
+      requests,
+      confirmMessage: `Archive ${requests.length} visible Request Off request${requests.length === 1 ? '' : 's'}${scoped}?`,
+      action: 'TIME_OFF_ARCHIVED',
+      successVerb: 'Archived',
+      buildUpdate: (r) => ({ previousStatus: r.status || 'pending', status:'archived', archived:true, archivedAt:new Date().toISOString(), archivedBy: appUser.id || '', archivedByName: appUser.name || appUser.email || '' })
+    });
   };
 
   const priorRequestInfoForDate = (dateKey = '') => {
@@ -4781,7 +4849,7 @@ const TabTimeOff = ({ timeOffRequests, appUser, users, addToast, events = [], sh
     return <div className={`${T.row} items-start gap-3 ${publishedFlag ? 'border-amber-500/40 bg-amber-900/10' : ''}`}>
       {canManage && <input type="checkbox" checked={selectedRequestIds.includes(r.id)} onChange={e => setSelectedRequestIds(prev => e.target.checked ? [...prev, r.id] : prev.filter(id => id !== r.id))} className="mt-1 accent-[#8F6040]" />}
       <div className="flex-1 min-w-0">
-        <div className="font-black text-white text-sm">{r.userName || r.employeeName || 'Employee'}</div>
+        <div className="font-black text-white text-sm">{requestSubjectLabel(r)}</div>
         <div className={`text-[10px] font-bold ${T.muted} flex flex-wrap gap-2 mt-0.5`}><span>{formatRequestDateLabel(r.date)}</span>{r.isPartial && <span className="text-[#D4A381]">{formatRequestPartialRange(r)}</span>}<span className="uppercase tracking-widest">{status}</span>{publishedFlag && <span className="text-amber-300">Unresolved on published schedule</span>}</div>
         <div className="mt-1 text-[10px] font-bold text-slate-500">Requested {formatClockDateTime(r.requestedAt || r.submittedAt || r.createdAt || r.requestTimestamp) || 'time not recorded'}{(r.requestedByName || r.userName || r.employeeName) ? ` by ${r.requestedByName || r.userName || r.employeeName}` : ''}</div>
         {isArchivedRequest(r) && <div className="mt-1 text-[10px] font-bold text-slate-500">{r.scheduleId ? `Schedule: ${r.scheduleId}` : 'History record'}{r.publishedAt ? ` • Published ${formatClockDateTime(r.publishedAt)} by ${r.publishedByName || r.publishedBy || 'manager'}` : ''}{r.approvedAt ? ` • Approved ${formatClockDateTime(r.approvedAt)} by ${r.approvedByName || r.approvedBy || ''}` : ''}{r.deniedAt ? ` • Denied ${formatClockDateTime(r.deniedAt)} by ${r.deniedByName || r.deniedBy || ''}` : ''}</div>}
@@ -4824,9 +4892,10 @@ const TabTimeOff = ({ timeOffRequests, appUser, users, addToast, events = [], sh
         </div>
       </div>
       <div className={`${T.card} p-4`}>
-        <div className="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-3 mb-3"><div><h3 className="font-black text-white">Request-Off Workflow</h3><p className={`text-xs font-bold ${T.muted}`}>Default view only shows items that need attention. Published and archived requests stay searchable.</p></div>{canManage && selectedRequestIds.length > 0 && <button onClick={archiveSelected} className={T.btnAlt}>Archive selected ({selectedRequestIds.length})</button>}</div>
+        <div className="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-3 mb-3"><div><h3 className="font-black text-white">Request-Off Workflow</h3><p className={`text-xs font-bold ${T.muted}`}>Default view only shows items that need attention. Published and archived requests stay searchable.</p></div>{canManage && <div className="flex flex-wrap gap-2"><button onClick={approveAllVisible} disabled={!!bulkBusy} className={`${T.btnAlt} disabled:opacity-50`}>Approve All Visible</button><button onClick={archiveAllVisible} disabled={!!bulkBusy} className={`${T.btnAlt} disabled:opacity-50`}>Archive All Visible</button>{selectedRequestIds.length > 0 && <button onClick={archiveSelected} disabled={!!bulkBusy} className={`${T.btnAlt} disabled:opacity-50`}>Archive selected ({selectedRequestIds.length})</button>}</div>}</div>
         <div className="flex flex-wrap gap-2 mb-3">{[['needs-review','Needs Review'],['upcoming-approved','Upcoming Approved'],['archived','Published/Archived'],['all','All']].map(([id,label]) => <button key={id} onClick={() => setViewFilter(id)} className={viewFilter === id ? T.btn : T.btnAlt}>{label}</button>)}</div>
         <div className="flex flex-wrap gap-2 mb-4">{[['this-week','This Week'],['next-week','Next Week'],['this-month','This Month'],['next-month','Next Month'],['custom','Custom Range']].map(([id,label]) => <button key={id} onClick={() => setDateFilter(id)} className={dateFilter === id ? T.btn : T.btnAlt}>{label}</button>)}{dateFilter === 'custom' && <><input type="date" value={customStart} onChange={e=>setCustomStart(e.target.value)} className={T.input}/><input type="date" value={customEnd} onChange={e=>setCustomEnd(e.target.value)} className={T.input}/></>}</div>
+        {canManage && <div className="flex flex-col sm:flex-row gap-2 mb-4"><input value={employeeFilter} onChange={e=>setEmployeeFilter(e.target.value)} className={`${T.input} flex-1`} placeholder="Filter by employee..." aria-label="Filter Request Off by employee" />{employeeFilter && <button onClick={() => setEmployeeFilter('')} className={T.btnAlt}>All Employees</button>}</div>}
         <div className="space-y-2 max-h-[520px] overflow-y-auto custom-scrollbar">{filteredRequests.length === 0 && <FriendlyEmpty title="No requests here" text="Switch filters to review history or upcoming approvals." />}{filteredRequests.map(r => <RequestCard key={r.id} r={r}/>)}</div>
       </div>
       {canManage && <div className={`${T.card} p-4`}><h3 className="font-black text-white text-sm mb-2">Master Override Log</h3><p className={`text-xs font-bold ${T.muted}`}>Manager approvals, denials, archives, restores, cancellations, and published-schedule processing are preserved in audit logs and request history.</p></div>}
@@ -4840,6 +4909,32 @@ const TabScheduleWorkbench = ({ currentDate, users, shifts, events, timeOffReque
     <TabSchedule currentDate={currentDate} users={users} shifts={shifts} events={events} timeOffRequests={timeOffRequests} timePunches={timePunches} addToast={addToast} appUser={appUser} clientData={clientData} availabilityRecords={availabilityRecords} />
   </div>
 );
+
+const ScheduleWarningCard = ({ warning, appUser }) => {
+  const memory = useRememberedAlert({
+    user: appUser,
+    workspaceId: appUser?.restaurantId || '',
+    alertId: warning.alertId,
+    fingerprint: warning.fingerprint,
+    enabled: !!warning.alertId && !!warning.fingerprint,
+  });
+  if (memory.isDismissed) return null;
+  const tone = warning.type === 'coverage-over'
+    ? 'bg-blue-900/10 border-blue-900/40 text-blue-200'
+    : warning.type === 'coverage-under'
+      ? 'bg-amber-900/10 border-amber-900/40 text-amber-200'
+      : 'bg-red-900/10 border-red-900/40 text-red-200';
+  const titleTone = warning.type === 'coverage-over' ? 'text-blue-300' : warning.type === 'coverage-under' ? 'text-amber-300' : 'text-red-200';
+  return <div className={`${tone} border rounded-xl p-3 mb-2 text-sm font-bold`}>
+    <div className="flex items-start justify-between gap-2">
+      <div className="min-w-0">
+        <div className={`font-black ${titleTone}`}>{warning.message}</div>
+        {warning.detail && <div className="text-xs text-slate-400 mt-1">{warning.detail}</div>}
+      </div>
+      <button type="button" onClick={memory.dismiss} aria-label="Dismiss warning" className="min-h-[42px] min-w-[42px] rounded-lg border border-white/10 bg-[#12161A] text-slate-300 hover:text-white flex items-center justify-center"><X size={14}/></button>
+    </div>
+  </div>;
+};
 
 const ScheduleCopilot = ({ currentDate, users = [], shifts = [], timeOffRequests = [], addToast, appUser }) => {
   const templates = useLiveCollection('scheduleTemplates', appUser?.restaurantId, { enabled: !!appUser?.restaurantId, limitCount: 120 });
@@ -4879,36 +4974,67 @@ const ScheduleCopilot = ({ currentDate, users = [], shifts = [], timeOffRequests
   const templateOptions = [...templates].sort((a,b) => (a.name || '').localeCompare(b.name || ''));
   const activeTemplate = templates.find(t => t.id === templateId) || null;
   const draftCount = weekShifts.filter(s => !s.isPublished).length;
-  const conflictList = getScheduleWarnings(weekShifts, users, timeOffRequests, weekDates);
-  const missingTargets = coverageTargets.flatMap(t => {
-    const date = weekDates[parseInt(t.dayIndex || 0, 10)];
-    const targetRole = canonicalScheduleRole(t.role);
-    const existing = weekShifts.filter(s => s.date === date && roleMatches(s.role, targetRole) && (!t.startTime || s.startTime === t.startTime)).length;
-    const needed = Math.max(0, (parseInt(t.count || 0,10) || 0) - existing);
-    return needed > 0 ? [{ ...t, role: targetRole, originalRole: t.role, date, needed, existing }] : [];
-  });
+  const coverageVarianceRows = buildCoverageVarianceRows({ coverageTargets, weekDates, weekShifts, roleMatcher: roleMatches, canonicalRole: canonicalScheduleRole });
+  const missingTargets = coverageVarianceRows.filter(row => row.type === 'under');
+  const coverageWarnings = coverageVarianceRows.map(row => ({
+    ...row,
+    type: row.type === 'under' ? 'coverage-under' : 'coverage-over',
+    alertId: `schedule-${weekStart}-coverage-${row.type}-${row.id}-${row.date}-${row.role}`,
+    fingerprint: buildAlertFingerprint('schedule-coverage', weekStart, row.type, row.date, row.role, row.existing, row.count, row.startTime || '', row.endTime || ''),
+    message: row.type === 'under'
+      ? `${formatDisplayDate(row.date)} needs ${row.needed} more ${row.role}`
+      : `${formatDisplayDate(row.date)} has ${row.over} more ${row.role} than the coverage target.`,
+    detail: `Existing: ${row.existing} • Target: ${row.count}`,
+  }));
+  const conflictList = getScheduleWarnings(weekShifts, users, timeOffRequests);
+  const allScheduleWarnings = [...coverageWarnings, ...conflictList];
 
-  function getScheduleWarnings(schedule, allUsers, requests, dates) {
+  function getScheduleWarnings(schedule, allUsers, requests) {
     const warnings = [];
     schedule.forEach(s => {
-      const emp = allUsers.find(u => u.id === s.employeeId);
-      const empForMatch = emp || { id: s.employeeId, name: s.employeeName, email: s.employeeEmail };
+      const resolved = resolveSchedulePersonForShift(s, allUsers);
+      const person = resolved?.ok ? resolved.person : null;
+      const employeeLabel = scheduleWarningEmployeeLabel(s, person);
+      const empForMatch = person || {
+        id: s.employeeId || s.scheduleUserId || s.rosterUserId || s.userId || s.authUid || '',
+        employeeId: s.employeeId || '',
+        scheduleUserId: s.scheduleUserId || '',
+        rosterUserId: s.rosterUserId || '',
+        userId: s.userId || '',
+        authUid: s.authUid || '',
+        name: s.employeeName || s.userName || s.name || '',
+        employeeName: s.employeeName || s.userName || s.name || '',
+        email: s.employeeEmail || s.userEmail || s.email || '',
+        employeeEmail: s.employeeEmail || s.userEmail || s.email || '',
+      };
       const off = requests.find(r => timeOffMatchesPerson(r, empForMatch) && r.date === s.date && isActiveTimeOffRequest(r));
-      if (off) warnings.push(`${emp?.name || 'Someone'} is scheduled on requested-off date ${formatDisplayDate(s.date)}.`);
+      if (off) {
+        warnings.push({
+          type: 'request-off-conflict',
+          alertId: `schedule-${weekStart}-request-off-${s.id || s.employeeId || s.scheduleUserId || s.date}-${s.date}`,
+          fingerprint: buildAlertFingerprint('schedule-request-off', weekStart, s.id || '', s.date, employeeLabel, s.employeeId || '', s.scheduleUserId || '', s.rosterUserId || '', s.startTime || '', s.endTime || '', s.role || '', off.id || ''),
+          message: `${employeeLabel} is scheduled on requested-off date ${formatDisplayDate(s.date)}.`,
+          detail: employeeLabel === 'Unresolved employee' ? warningShiftContext(s) : '',
+        });
+      }
     });
     allUsers.forEach(u => {
       const count = schedule.filter(s => s.employeeId === u.id).length;
-      if (count >= 6) warnings.push(`${u.name} has ${count} scheduled days this week.`);
-    });
-    dates.forEach(d => {
-      const targetForDay = coverageTargets.filter(t => weekDates[parseInt(t.dayIndex || 0, 10)] === d);
-      targetForDay.forEach(t => {
-        const targetRole = canonicalScheduleRole(t.role);
-        const existing = schedule.filter(s => s.date === d && roleMatches(s.role, targetRole)).length;
-        if (existing < (parseInt(t.count || 0, 10) || 0)) warnings.push(`Coverage target short on ${formatDisplayDate(d)} for ${targetRole}.`);
+      if (count >= 6) warnings.push({
+        type: 'schedule-load',
+        alertId: `schedule-${weekStart}-load-${u.id || u.name}`,
+        fingerprint: buildAlertFingerprint('schedule-load', weekStart, u.id || '', u.name || '', count),
+        message: `${u.name} has ${count} scheduled days this week.`,
+        detail: '',
       });
     });
-    return [...new Set(warnings)].slice(0, 12);
+    const seen = new Set();
+    return warnings.filter(w => {
+      const key = `${w.type}|${w.message}|${w.detail}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    }).slice(0, 12);
   }
 
   const addTemplateRow = () => setTemplateRows([...templateRows, { dayIndex: 5, role: firstScheduleRole, startTime: '16:00', endTime: '21:00', count: 1 }]);
@@ -5008,7 +5134,7 @@ const ScheduleCopilot = ({ currentDate, users = [], shifts = [], timeOffRequests
   const publishWeek = async () => {
     const drafts = weekShifts.filter(s => !s.isPublished);
     if (!drafts.length) return addToast('Nothing To Publish', 'No draft shifts found this week.');
-    const warningText = [...missingTargets.map(m => `${dayNames[m.dayIndex]} ${m.role}: short ${m.needed}`), ...conflictList].slice(0,8).join('\n');
+    const warningText = allScheduleWarnings.map(w => w.message).slice(0,8).join('\n');
     if (!window.confirm(`Publish ${drafts.length} draft shifts?${warningText ? '\n\nWarnings:\n' + warningText : ''}`)) return;
     try { await Promise.all(drafts.map(s => updateDoc(doc(db, 'shifts', s.id), { isPublished: true, publishedAt: new Date().toISOString(), publishedBy: appUser.id || 'manager' }))); addToast('Published', `${drafts.length} shifts published.`); }
     catch(err) { addToast('Error', err.message); }
@@ -5043,7 +5169,7 @@ const ScheduleCopilot = ({ currentDate, users = [], shifts = [], timeOffRequests
     <div className={`${T.card} schedule-copilot-launcher p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-[#D4A381]/30`}>
       <div className="min-w-0">
         <div className="text-[10px] uppercase tracking-widest font-black text-[#D4A381]">Schedule Copilot</div>
-        <div className="text-sm font-black text-white mt-0.5">{draftCount} drafts · {missingTargets.length} gaps · {conflictList.length} warnings</div>
+        <div className="text-sm font-black text-white mt-0.5">{draftCount} drafts · {missingTargets.length} gaps · {allScheduleWarnings.length} warnings</div>
         <div className="text-xs text-slate-400 font-bold mt-0.5">{formatDisplayDate(weekStart)} through {formatDisplayDate(weekEnd)}</div>
       </div>
       <button onClick={() => setOpen(true)} className={`${T.btnAlt} flex items-center justify-center gap-2 flex-shrink-0`}><ChefHat size={16}/> Open Copilot Tools</button>
@@ -5061,7 +5187,7 @@ const ScheduleCopilot = ({ currentDate, users = [], shifts = [], timeOffRequests
         <div className="flex flex-wrap gap-1.5 flex-shrink-0"><button onClick={copyPreviousWeek} className={T.btnAlt}>Copy Week</button><button onClick={smartFill} className={T.btnAlt}>Smart Fill</button><button onClick={publishWeek} className={T.btn}>Publish</button><button onClick={() => setOpen(false)} className={T.btnAlt}>Hide</button></div>
       </div>
       <div className="grid grid-cols-4 gap-1.5">
-        {[['Drafts',draftCount],['Missing',missingTargets.length],['Warnings',conflictList.length],['Templates',templates.length]].map(([label,value]) => <div key={label} className="schedule-copilot-metric bg-[#12161A] border border-[#2A353D]"><span className="text-[8px] uppercase tracking-widest font-black text-slate-500">{label}</span><strong className="text-white">{value}</strong></div>)}
+        {[['Drafts',draftCount],['Missing',missingTargets.length],['Warnings',allScheduleWarnings.length],['Templates',templates.length]].map(([label,value]) => <div key={label} className="schedule-copilot-metric bg-[#12161A] border border-[#2A353D]"><span className="text-[8px] uppercase tracking-widest font-black text-slate-500">{label}</span><strong className="text-white">{value}</strong></div>)}
       </div>
       <div className="flex gap-1.5 overflow-x-auto custom-scrollbar border-b border-[#2A353D] pb-2">{[['targets','Coverage'],['templates','Templates'],['template-editor', editingTemplateId ? 'Edit Template' : 'Create Template'],['drag','Drag Board'],['warnings','Warnings']].map(([id,label]) => <button key={id} onClick={() => setActiveTool(id)} className={`flex-shrink-0 px-2.5 py-1.5 rounded-lg text-[9px] uppercase tracking-widest font-black ${activeTool===id ? `${T.grad} text-slate-900` : 'bg-[#12161A] text-slate-400 hover:text-white'}`}>{label}</button>)}</div>
       <div className="schedule-copilot-body custom-scrollbar space-y-3">
@@ -5069,7 +5195,7 @@ const ScheduleCopilot = ({ currentDate, users = [], shifts = [], timeOffRequests
       {activeTool === 'templates' && <div className="space-y-3"><div className="flex flex-col md:flex-row gap-2"><select value={templateId} onChange={e => setTemplateId(e.target.value)} className={`${T.input} flex-1`}><option value="">Select template to apply</option>{templateOptions.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}</select><button onClick={applyTemplate} className={`${T.btn} py-2`}>Apply to Current Week</button><button onClick={saveCurrentWeekAsTemplate} className={T.btnAlt}>Save Current Week</button></div>{templateOptions.length === 0 ? <FriendlyEmpty title="No templates yet" text="Create a Normal Week, Packers Sunday, Fish Fry Friday, or Live Music template. Each restaurant gets its own library."/> : templateOptions.map(t => <div key={t.id} className="bg-[#12161A] border border-[#2A353D] rounded-xl p-3 flex justify-between items-center"><div><div className="font-black text-white">{t.name}</div><div className="text-xs text-slate-400 font-bold">{t.description || 'No description'} • {(t.rows || []).length} rules</div></div><div className="flex gap-2"><button onClick={() => editTemplate(t)} className={T.btnAlt}>Edit</button><button onClick={() => deleteTemplate(t)} className="px-3 py-2 rounded-xl bg-red-900/20 text-red-300 border border-red-900/50 text-xs font-black">Delete</button></div></div>)}</div>}
       {activeTool === 'template-editor' && <form onSubmit={saveTemplate} className="space-y-3"><div className="grid md:grid-cols-2 gap-2"><input value={templateName} onChange={e=>setTemplateName(e.target.value)} className={T.input} placeholder="Template name" required/><input value={templateDesc} onChange={e=>setTemplateDesc(e.target.value)} className={T.input} placeholder="Description"/></div><div className="space-y-2">{templateRows.map((r,idx)=><div key={idx} className="grid grid-cols-2 md:grid-cols-6 gap-2 bg-[#12161A] border border-[#2A353D] rounded-xl p-2"><select value={r.dayIndex} onChange={e=>updateTemplateRow(idx,{dayIndex:e.target.value})} className={T.input}>{dayNames.map((d,i)=><option key={d} value={i}>{d}</option>)}</select><select value={r.role} onChange={e=>updateTemplateRow(idx,{role:e.target.value})} className={T.input}>{scheduleRoleOptions.map(roleName => <option key={roleName} value={roleName}>{roleName}</option>)}</select><input type="time" value={r.startTime} onChange={e=>updateTemplateRow(idx,{startTime:e.target.value})} className={T.input}/><input type="time" value={r.endTime} onChange={e=>updateTemplateRow(idx,{endTime:e.target.value})} className={T.input}/><input type="number" min="1" value={r.count} onChange={e=>updateTemplateRow(idx,{count:e.target.value})} className={T.input}/><button type="button" onClick={()=>removeTemplateRow(idx)} className="bg-red-900/20 border border-red-900/50 text-red-300 rounded-xl font-black text-xs">Remove</button></div>)}</div><div className="flex gap-2"><button type="button" onClick={addTemplateRow} className={T.btnAlt}>Add Row</button><button type="submit" className={`${T.btn} py-2`}>{editingTemplateId ? 'Update Template' : 'Create Template'}</button></div></form>}
       {activeTool === 'drag' && <div className="space-y-3"><p className="text-xs text-slate-400 font-bold">Drag shifts between days on desktop, or use the Move to day dropdown on mobile. Quick edit controls can change employee/time without opening the big schedule grid.</p><div className="grid md:grid-cols-7 gap-2">{weekDates.map((date, dayIdx) => <div key={date} onDragOver={e => e.preventDefault()} onDrop={() => moveShiftToDay(date)} className="min-h-[160px] bg-[#12161A] border border-[#2A353D] rounded-xl p-2"><div className="text-[10px] font-black uppercase tracking-widest text-[#D4A381] mb-2">{dayNames[dayIdx]}<br/><span className="text-slate-500">{date.substring(5)}</span></div>{weekShifts.filter(s => s.date === date).sort((a,b)=>(a.startTime||'').localeCompare(b.startTime||'')).map(shift => <div key={shift.id} draggable onDragStart={() => setDraggedShiftId(shift.id)} onDragEnd={() => setDraggedShiftId(null)} className={`mb-2 rounded-lg border p-2 cursor-move ${draggedShiftId === shift.id ? 'border-[#D4A381] bg-[#D4A381]/10' : 'border-[#2A353D] bg-[#1A2126]'}`}><div className="font-black text-white text-xs truncate">{shift.employeeName || users.find(u=>u.id===shift.employeeId)?.name || 'Unassigned'}</div><div className="text-[9px] text-slate-400 font-bold uppercase">{shift.role} • {formatShortTime(shift.startTime)}-{formatShortTime(shift.endTime)}</div><div className="grid grid-cols-1 gap-1 mt-2"><select value="" onChange={e=>e.target.value && quickUpdateShift(shift,{date:e.target.value})} className="bg-[#12161A] border border-[#2A353D] rounded-md px-1.5 py-1 text-[10px] text-[#D4A381] outline-none md:hidden"><option value="">Move to day...</option>{weekDates.map((d,i)=><option key={d} value={d}>{dayNames[i]} {d.substring(5)}</option>)}</select><select value={shift.employeeId || ''} onChange={e=>quickUpdateShift(shift,{employeeId:e.target.value})} className="bg-[#12161A] border border-[#2A353D] rounded-md px-1.5 py-1 text-[10px] text-white outline-none"><option value="">Unassigned</option>{activeUsers.map(u=><option key={u.id} value={u.id}>{u.name}</option>)}</select><div className="flex gap-1"><input type="time" defaultValue={shift.startTime || '09:00'} onBlur={e=>e.target.value && quickUpdateShift(shift,{startTime:e.target.value})} className="w-full bg-[#12161A] border border-[#2A353D] rounded-md px-1 py-1 text-[10px] text-white"/><input type="time" defaultValue={shift.endTime || '17:00'} onBlur={e=>e.target.value && quickUpdateShift(shift,{endTime:e.target.value})} className="w-full bg-[#12161A] border border-[#2A353D] rounded-md px-1 py-1 text-[10px] text-white"/></div></div></div>)}{weekShifts.filter(s => s.date === date).length === 0 && <div className="border border-dashed border-[#2A353D] rounded-lg p-3 text-center text-[10px] font-bold text-slate-500">Drop shifts here</div>}</div>)}</div></div>}
-      {activeTool === 'warnings' && <div className="grid md:grid-cols-2 gap-3"><div>{missingTargets.length === 0 ? <FriendlyEmpty title="Coverage targets met" text="No target gaps found for the current week."/> : missingTargets.map(m => <div key={`${m.id}-${m.date}`} className="bg-amber-900/10 border border-amber-900/40 rounded-xl p-3 mb-2"><div className="font-black text-amber-300">{formatDisplayDate(m.date)} needs {m.needed} more {m.role}</div><div className="text-xs text-slate-400">Existing: {m.existing} • Target: {m.count}</div></div>)}</div><div>{conflictList.length === 0 ? <FriendlyEmpty title="No conflicts found" text="No schedule warning dragons spotted this week."/> : conflictList.map((w,i)=><div key={i} className="bg-red-900/10 border border-red-900/40 rounded-xl p-3 mb-2 text-sm font-bold text-red-200">{w}</div>)}</div></div>}
+      {activeTool === 'warnings' && <div className="grid md:grid-cols-2 gap-3"><div>{coverageWarnings.length === 0 ? <FriendlyEmpty title="Coverage targets met" text="No target gaps or over-coverage found for the current week."/> : coverageWarnings.map(w => <ScheduleWarningCard key={w.alertId} warning={w} appUser={appUser} />)}</div><div>{conflictList.length === 0 ? <FriendlyEmpty title="No conflicts found" text="No schedule warning dragons spotted this week."/> : conflictList.map(w => <ScheduleWarningCard key={w.alertId} warning={w} appUser={appUser} />)}</div></div>}
       </div>
     </div>
   );

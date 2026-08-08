@@ -27,6 +27,17 @@ const qaEnv = {
 
 function tmpDir() { return fs.mkdtempSync(path.join(os.tmpdir(), '86chaos-target-')); }
 function writeJson(file, data) { fs.mkdirSync(path.dirname(file), { recursive: true }); fs.writeFileSync(file, JSON.stringify(data, null, 2)); }
+function writeCompletedSummary(dir, runId, overrides = {}) {
+  writeJson(path.join(dir, `86chaos-play-store-release-gate-summary-${runId}.json`), {
+    runId,
+    outcome: 'FAILED',
+    sourceVersion: '16.0.147',
+    deployedVersion: '16.0.147',
+    firebaseProjectId: 'chaos-test-d1601',
+    playwright: { totalResults: 1, failedTests: [{ file: 'e2e/app-health.spec.cjs', title: 'baseline > alpha', projectName: 'chromium', status: 'failed' }] },
+    ...overrides,
+  });
+}
 
 test('canonical Vercel preview target accepts 86chaos and rejects production, retired, and unrelated projects', () => {
   assert.equal(CANONICAL_VERCEL_PROJECT_SLUG, '86chaos');
@@ -83,12 +94,14 @@ test('preflight-only blocked run does not replace executed Playwright lineage', 
   const baseline = path.join(root, 'baseline-full');
   const executed = path.join(root, 'failed-executed');
   const blocked = path.join(root, 'failed-blocked-later');
-  writeJson(path.join(baseline, 'runner-state.json'), { runId: 'baseline-full', mode: 'full', playwrightStarted: true });
+  writeJson(path.join(baseline, 'runner-state.json'), { runId: 'baseline-full', mode: 'full', playwrightStarted: true, currentPhase: 'report-collection' });
   writeJson(path.join(baseline, 'environment-preflight.json'), { runId: 'baseline-full', sourceVersion: '16.0.147', deployedVersion: '16.0.147' });
   writeJson(path.join(baseline, 'playwright-report.json'), { suites: [{ title: 'baseline', specs: [{ title: 'alpha', file: 'e2e/app-health.spec.cjs', tests: [{ title: 'alpha', projectName: 'chromium', results: [{ status: 'failed' }] }] }] }] });
-  writeJson(path.join(executed, 'runner-state.json'), { runId: 'failed-executed', mode: 'failed-only', playwrightStarted: true });
+  writeCompletedSummary(baseline, 'baseline-full');
+  writeJson(path.join(executed, 'runner-state.json'), { runId: 'failed-executed', mode: 'failed-only', playwrightStarted: true, currentPhase: 'report-collection' });
   writeJson(path.join(executed, 'failed-only-test-manifest.json'), { baselineFullRunId: 'baseline-full', baselineFullRunDir: baseline, baselineSourceVersion: '16.0.147', baselineDeployedVersion: '16.0.147', selected: [{ specPath: 'e2e/app-health.spec.cjs', title: 'alpha', project: 'chromium' }] });
   writeJson(path.join(executed, 'playwright-report.json'), { suites: [{ title: 'executed', specs: [{ title: 'alpha', file: 'e2e/app-health.spec.cjs', tests: [{ title: 'alpha', projectName: 'chromium', results: [{ status: 'failed' }] }] }] }] });
+  writeCompletedSummary(executed, 'failed-executed');
   writeJson(path.join(blocked, 'runner-state.json'), { runId: 'failed-blocked-later', mode: 'failed-only', playwrightStarted: false, blockingReason: 'Environment preflight blocked before test execution.' });
   writeJson(path.join(blocked, 'environment-preflight.json'), { ok: false, runId: 'failed-blocked-later', sourceVersion: '16.0.148', deployedVersion: '16.0.147' });
   const now = Date.now();

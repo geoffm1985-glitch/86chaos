@@ -66,7 +66,9 @@ const preflightFailures = preflightFailedBeforeMutation
 
 const runnerBlockingReason = String(runnerState.blockingReason || '').trim();
 const runnerPhase = String(runnerState.currentPhase || '').trim();
-const failedOnlyMode = ['failed-only', 'failed+new', 'delta'].includes(String(runnerState.mode || '').toLowerCase()) || process.env.CHAOS_FAILED_ONLY_RELEASE_GATE === 'true' || process.env.CHAOS_FAILED_AND_NEW_RELEASE_GATE === 'true';
+const selectionMode = String(runnerState.mode || process.env.CHAOS_RELEASE_GATE_SELECTION_MODE || (process.env.CHAOS_FAILED_AND_NEW_RELEASE_GATE === 'true' ? 'failed+new' : (process.env.CHAOS_FAILED_ONLY_RELEASE_GATE === 'true' ? 'failed-only' : 'full'))).toLowerCase();
+const failedOnlyMode = ['failed-only', 'failed+new', 'delta', 'repair'].includes(selectionMode) || process.env.CHAOS_FAILED_ONLY_RELEASE_GATE === 'true' || process.env.CHAOS_FAILED_AND_NEW_RELEASE_GATE === 'true';
+const noFailedOnlyTestsRemain = Boolean(selectionMode === 'failed-only' && runnerState.noFailedOnlyTestsRemain === true);
 const fullGateOnlyArtifacts = new Set(['java-prerequisite.json', 'node-test-live-summary.json', 'firebase-rules-release-gate.json']);
 if (failedOnlyMode) missingArtifacts = missingArtifacts.filter(name => !fullGateOnlyArtifacts.has(name));
 const playwrightStarted = runnerState.playwrightStarted === true;
@@ -78,6 +80,7 @@ const rolePreflightPassed = runnerState.rolePreflightPassed === true;
 function skippedByRunnerBlock(name) {
   if (name === 'runner-state.json' || name === 'environment-preflight.json') return false;
   if (failedOnlyMode && fullGateOnlyArtifacts.has(name)) return true;
+  if (noFailedOnlyTestsRemain) return !['runner-state.json', 'environment-preflight.json', 'dependency-preflight.json', 'source-inventory.json', 'failed-only-test-manifest.json', 'failed-only-manifest-validation.json'].includes(name);
   if (preflightFailedBeforeMutation) return true;
   if (!blockedBeforePlaywright) return false;
   if (runnerState.dependencyInstallPassed !== true) {
@@ -111,8 +114,8 @@ function skippedByRunnerBlock(name) {
 const artifactsSkippedByPreflight = preflightFailedBeforeMutation
   ? missingArtifacts.filter(name => skippedByRunnerBlock(name))
   : [];
-const artifactsSkippedByRunnerBlock = blockedBeforePlaywright
-  ? missingArtifacts.filter(name => skippedByRunnerBlock(name)).map(name => ({ artifact: name, reason: `Not created because test execution was blocked before Playwright global setup: ${runnerBlockingReason}` }))
+const artifactsSkippedByRunnerBlock = (blockedBeforePlaywright || noFailedOnlyTestsRemain)
+  ? missingArtifacts.filter(name => skippedByRunnerBlock(name)).map(name => ({ artifact: name, reason: noFailedOnlyTestsRemain ? 'Not created because strict failed-only mode found no failed or timed-out tests to rerun.' : `Not created because test execution was blocked before Playwright global setup: ${runnerBlockingReason}` }))
   : [];
 missingArtifacts = missingArtifacts.filter(name => !skippedByRunnerBlock(name));
 
@@ -192,7 +195,7 @@ const statusUniqueCount = tests.filter(t => ['passed','failed','timedOut','skipp
 const deltaBlockedBeforeExecution = failedOnlyMode && blockedBeforePlaywright && !playwright;
 const reconciled = deltaBlockedBeforeExecution ? false : (!failedOnlyMode || (selectedUnique === executedUnique + selectedNotExecuted.length - unexpectedExtraExecution.length && unexpectedExtraExecution.length === 0 && executedUnique === statusUniqueCount));
 const deltaReconciliation = {
-  mode: failedOnlyMode ? 'failed+new' : 'full',
+  mode: failedOnlyMode ? selectionMode : 'full',
   manifestSelectedUniqueCount: selectedUnique,
   actualExecutedUniqueCount: executedUnique,
   selectedNotExecutedCount: failedOnlyMode ? selectedNotExecuted.length : 0,
@@ -329,7 +332,7 @@ try {
 } catch (err) {
   releaseGateJsonDiagnostics.push({ file: artifact['runner-state.json'] || 'runner-state.json', error: `Could not rewrite reconciled runner state: ${err.message}` });
 }
-const blockedBeforeTestExecution = Boolean(noTestsExecuted && (blockedBeforePlaywright || runnerState.blockedBeforeTestExecution === true || !playwrightStarted));
+const blockedBeforeTestExecution = Boolean(noTestsExecuted && !noFailedOnlyTestsRemain && (blockedBeforePlaywright || runnerState.blockedBeforeTestExecution === true || !playwrightStarted));
 const releaseGateStatus = ok => ok ? 'PASS' : (blockedBeforeTestExecution ? 'BLOCKED BEFORE TEST EXECUTION' : 'FAIL');
 const executionBlockedMessage = blockedBeforePlaywright
   ? `Not created because test execution was blocked before Playwright global setup: ${runnerBlockingReason}`
@@ -447,6 +450,8 @@ const summary = {
   node: process.version,
   stepFailures,
   outcome: releaseGateStatus(ok),
+  selectionMode: failedOnlyMode ? selectionMode : 'full',
+  noFailedOnlyTestsRemain,
   blockedBeforeTestExecution,
   primaryBlockingFailure,
   runnerState: runnerStateReconciled,
@@ -461,14 +466,14 @@ const summary = {
   rulesGateReport: rulesGateReport && Object.keys(rulesGateReport).length ? { ok: rulesGateReport.ok, totalCases: rulesGateReport.totalCases, passed: rulesGateReport.passed, failed: rulesGateReport.failed, blocked: rulesGateReport.blocked, firstActionableFailure: rulesGateReport.firstActionableFailure || '' } : null,
   previewServerFirebaseBoundaryFailure: serverBoundaryFailures.length > 0,
   testAccountConfigurationFailure: roleFailures.length > 0,
-  playwright: { totalResults: tests.length, status: blockedBeforeTestExecution ? 'BLOCKED BEFORE TEST EXECUTION' : (noTestsExecuted ? 'No tests executed' : 'Tests executed'), passed: tests.filter(t => t.status === 'passed').length, failed: failedTests.length, timedOut: timedOutTests.length, skipped: skippedTests.length, blocked: blockedBeforeTestExecution ? 1 : 0, notRun: blockedBeforeTestExecution ? 1 : 0, unexpected: unexpectedTests.length, failedTests: blockedBeforeTestExecution ? [] : unexpectedTests.slice(0, 200), timedOutTests: timedOutTests.slice(0, 200), skippedTests: skippedTests.slice(0, 200), assertionTimeoutTests, perProject, failedByCategory: failedByCategory.slice(0, 200), slowestTests, deltaReconciliation },
+  playwright: { totalResults: tests.length, status: noFailedOnlyTestsRemain ? 'No failed or timed-out Playwright tests remain' : (blockedBeforeTestExecution ? 'BLOCKED BEFORE TEST EXECUTION' : (noTestsExecuted ? 'No tests executed' : 'Tests executed')), passed: tests.filter(t => t.status === 'passed').length, failed: failedTests.length, timedOut: timedOutTests.length, skipped: skippedTests.length, blocked: blockedBeforeTestExecution ? 1 : 0, notRun: blockedBeforeTestExecution ? 1 : 0, unexpected: unexpectedTests.length, failedTests: blockedBeforeTestExecution ? [] : unexpectedTests.slice(0, 200), timedOutTests: timedOutTests.slice(0, 200), skippedTests: skippedTests.slice(0, 200), assertionTimeoutTests, perProject, failedByCategory: failedByCategory.slice(0, 200), slowestTests, deltaReconciliation },
   attemptStatus: {
     browserInstallation: { attempted: runnerPhase === 'install-chromium' || runnerState.browserInstallPassed === true, status: runnerState.browserInstallPassed === true ? 'passed' : (blockedBeforePlaywright ? 'blocked' : 'not_run') },
     serverFirebaseBoundaryPreflight: { attempted: runnerState.serverIdentityPreflightStarted === true, status: runnerState.serverIdentityPreflightPassed === true ? 'passed' : (runnerState.serverIdentityPreflightStarted === true ? 'failed' : (blockedBeforePlaywright ? 'blocked' : 'not_run')) },
     testAccountProvisioning: { attempted: runnerState.testAccountProvisionAttempted === true, status: runnerState.testAccountProvisionPassed === true ? 'passed' : (runnerState.testAccountProvisionAttempted === true ? 'failed' : (blockedBeforePlaywright ? 'blocked' : 'not_run')) },
     roleVerification: { attempted: runnerState.rolePreflightStarted === true, status: runnerState.rolePreflightPassed === true ? 'passed' : (runnerState.rolePreflightStarted === true ? 'failed' : (blockedBeforePlaywright ? 'blocked' : 'not_run')) },
     qaSeed: { attempted: qaSeedAttempted, status: qaSeedPassed ? 'passed' : (qaSeedAttempted ? 'failed' : (blockedBeforePlaywright ? 'blocked' : 'not_run')) },
-    playwright: { attempted: playwrightStarted, status: playwrightStarted ? (failedTests.length || timedOutTests.length || noTestsSelectedFailure ? 'failed' : 'passed') : (blockedBeforePlaywright ? 'blocked' : 'not_run') },
+    playwright: { attempted: playwrightStarted, status: noFailedOnlyTestsRemain ? 'not_needed' : (playwrightStarted ? (failedTests.length || timedOutTests.length || noTestsSelectedFailure ? 'failed' : 'passed') : (blockedBeforePlaywright ? 'blocked' : 'not_run')) },
     cleanup: { attempted: cleanupAttempted, status: cleanupPassed ? 'passed' : (cleanupAttempted ? 'failed' : (blockedBeforePlaywright ? 'blocked' : 'not_run')) },
   },
   seed: seedReport && seedReport.ok !== undefined ? { ok: seedReport.ok, runId: seedReport.runId || '', restaurantId: seedReport.restaurantId || seedReport.profile?.restaurantId || '', restaurantName: seedReport.restaurantName || seedReport.profile?.restaurantName || '', expectedCounts: seedReport.expectedCounts || {}, verifiedCounts: seedReport.verification?.verifiedCounts || {}, verificationOk: seedReport.verification?.ok === true } : null,
@@ -498,6 +503,8 @@ const summary = {
   pwaIconSourceInventory: iconSourceInventory,
   pwaIconSourceDeployedParity: iconParity,
   failedOnlyMode,
+  selectionMode: failedOnlyMode ? selectionMode : 'full',
+  noFailedOnlyTestsRemain,
   failureGroups,
   missingArtifacts,
   setupFailures,

@@ -1,3 +1,8 @@
+param(
+  [ValidateSet('failed+new','failed-only','repair')]
+  [string]$SelectionMode = 'failed+new'
+)
+
 $ErrorActionPreference = 'Continue'
 
 $Root = Split-Path -Parent $MyInvocation.MyCommand.Path
@@ -85,7 +90,8 @@ $env:CHAOS_RELEASE_GATE_RUN_ID = $RunId
 $env:CHAOS_FULL_AUDIT_RUN_ID = $RunId
 $env:CHAOS_RELEASE_GATE_STEP_FAILURES = "0"
 $env:CHAOS_FAILED_ONLY_RELEASE_GATE = "true"
-$env:CHAOS_FAILED_AND_NEW_RELEASE_GATE = "true"
+$env:CHAOS_RELEASE_GATE_SELECTION_MODE = $SelectionMode
+$env:CHAOS_FAILED_AND_NEW_RELEASE_GATE = if ($SelectionMode -eq "failed+new") { "true" } else { "false" }
 if (-not $env:CHAOS_QA_DISABLE_AUTO_PROVISION_TEST_USERS) { $env:CHAOS_QA_AUTO_PROVISION_TEST_USERS = "true" }
 if (-not $env:CHAOS_RELEASE_GATE_NO_MUTATION) {
   $env:CHAOS_ALLOW_MUTATION = "true"
@@ -105,7 +111,7 @@ New-Item -ItemType Directory -Force $RunDir | Out-Null
 New-Item -ItemType Directory -Force $RunnerLogDir | Out-Null
 
 Get-ChildItem $ResultsRoot -File -ErrorAction SilentlyContinue | Where-Object { $_.Name -ne '.last-run.json' } | Remove-Item -Force -ErrorAction SilentlyContinue
-@{ runId = $RunId; runDir = $RunDir; mode = 'failed+new'; updatedAt = (Get-Date -Format o) } | ConvertTo-Json | Set-Content (Join-Path $ResultsRoot '.last-run.json')
+@{ runId = $RunId; runDir = $RunDir; mode = $SelectionMode; updatedAt = (Get-Date -Format o) } | ConvertTo-Json | Set-Content (Join-Path $ResultsRoot '.last-run.json')
 
 $StepResults = @()
 $RunnerState = [ordered]@{
@@ -113,6 +119,8 @@ $RunnerState = [ordered]@{
   generatedAt = (Get-Date -Format o)
   updatedAt = (Get-Date -Format o)
   currentPhase = 'created'
+  mode = $SelectionMode
+  noFailedOnlyTestsRemain = $false
   dependencyInstallAttempted = $false
   dependencyInstallPassed = $false
   dependencyPreflightPassed = $false
@@ -158,8 +166,8 @@ function Set-BlockingReason {
 }
 Save-RunnerState
 
-Write-Host "86 Chaos failed + new release gate" -ForegroundColor Cyan
-Write-Host "This only reruns the current failed/fixed harness areas. It does NOT replace the full release gate." -ForegroundColor Yellow
+Write-Host "86 Chaos $SelectionMode release gate" -ForegroundColor Cyan
+Write-Host "This selection mode only reruns scoped repair tests. It does NOT replace the full release gate." -ForegroundColor Yellow
 Write-Host "Run ID: $RunId" -ForegroundColor Cyan
 Write-Host "Current-run directory: $RunDir" -ForegroundColor Cyan
 
@@ -339,11 +347,11 @@ if ($PreflightExit -ne 0) {
           if ($InventoryExit -ne 0) {
             Stop-BeforePlaywright "Release gate blocked before Playwright because source inventory failed."
           } else {
-            Set-RunnerPhase 'failed+new-manifest'
-            $ManifestExit = Run-Step "Prepare dynamic failed+new manifest" "node scripts/86chaos-release-gate/prepare-failed-only-manifest.cjs"
+            Set-RunnerPhase "$SelectionMode-manifest"
+            $ManifestExit = Run-Step "Prepare dynamic $SelectionMode manifest" "node scripts/86chaos-release-gate/prepare-failed-only-manifest.cjs --mode=$SelectionMode"
             if ($ManifestExit -ne 0) {
-              $ManifestReason = "Release gate blocked before Playwright because the dynamic failed+new manifest could not be prepared. Run npm run test:play-store first, then rerun npm run test:play-store:failed or npm run test:play-store:delta."
-              $ManifestValidationPath = Join-Path $RunDir 'failed+new-manifest-validation.json'
+              $ManifestReason = "Release gate blocked before Playwright because the dynamic scoped manifest could not be prepared. Run npm run test:play-store first if no completed baseline exists, then rerun the scoped command."
+              $ManifestValidationPath = Join-Path $RunDir 'failed-only-manifest-validation.json'
               if (Test-Path $ManifestValidationPath) {
                 try {
                   $ManifestValidation = Get-Content $ManifestValidationPath -Raw | ConvertFrom-Json
@@ -358,73 +366,98 @@ if ($PreflightExit -ne 0) {
               }
               Stop-BeforePlaywright $ManifestReason
             } else {
-              $PlaywrightExe = Join-Path $Root "node_modules\.bin\playwright.cmd"
-              Set-RunnerPhase 'install-chromium'
-              $BrowserExit = Run-Step "Install Playwright browsers" "& '$PlaywrightExe' install chromium firefox webkit"
-            $RunnerState.browserInstallPassed = ($BrowserExit -eq 0)
-            Save-RunnerState
-            if ($BrowserExit -ne 0) {
-              Stop-BeforePlaywright "Release gate blocked before Playwright because Chromium browser installation failed."
-            } else {
-              Set-RunnerPhase 'server-firebase-boundary-preflight'
-              $RunnerState.serverIdentityPreflightStarted = $true
-              Save-RunnerState
-              $ServerIdentityExit = Run-Step "Verify deployed server Firebase boundary" "node scripts/86chaos-release-gate/server-firebase-boundary-preflight.cjs"
-              $RunnerState.serverIdentityPreflightPassed = ($ServerIdentityExit -eq 0)
-              $ServerIdentityReportPath = Join-Path $RunDir 'server-firebase-boundary-preflight.json'
-              if (Test-Path $ServerIdentityReportPath) {
+              $ManifestValidationPath = Join-Path $RunDir 'failed-only-manifest-validation.json'
+              $NoFailedOnlyRemain = $false
+              if (Test-Path $ManifestValidationPath) {
                 try {
-                  $ServerIdentityReport = Get-Content $ServerIdentityReportPath -Raw | ConvertFrom-Json
-                  $RunnerState.serverIdentityPreflightFailureCategory = [string]$ServerIdentityReport.failureCategory
-                  $RunnerState.serverIdentityPreflightPrimaryBlocker = [string]$ServerIdentityReport.primaryBlockingFailure
-                } catch {}
+                  $ManifestValidation = Get-Content $ManifestValidationPath -Raw | ConvertFrom-Json
+                  if ($ManifestValidation.PSObject.Properties.Name -contains 'previousFailuresSelected') { $RunnerState.previousFailuresSelected = [int]$ManifestValidation.previousFailuresSelected }
+                  if ($ManifestValidation.PSObject.Properties.Name -contains 'currentReleaseFeatureTestsSelected') { $RunnerState.currentReleaseFeatureTestsSelected = [int]$ManifestValidation.currentReleaseFeatureTestsSelected }
+                  if ($ManifestValidation.PSObject.Properties.Name -contains 'duplicateIdentitiesRemoved') { $RunnerState.duplicateIdentitiesRemoved = [int]$ManifestValidation.duplicateIdentitiesRemoved }
+                  if ($ManifestValidation.PSObject.Properties.Name -contains 'totalSelected') { $RunnerState.totalSelected = [int]$ManifestValidation.totalSelected }
+                  if ($SelectionMode -eq 'failed-only' -and ([bool]$ManifestValidation.noFailedOrTimedOutTestsRemain -or [int]$ManifestValidation.totalSelected -eq 0)) {
+                    $NoFailedOnlyRemain = $true
+                  }
+                } catch {
+                  # Do not block a legitimate selected-test run merely because optional manifest metadata could not be copied to runner-state.
+                }
               }
               Save-RunnerState
-              if ($ServerIdentityExit -ne 0) {
-                $ServerIdentityReason = "Release gate blocked before mutation because deployed server Firebase identity preflight failed."
-                if (Test-Path $ServerIdentityReportPath) {
-                  try {
-                    $ServerIdentityReport = Get-Content $ServerIdentityReportPath -Raw | ConvertFrom-Json
-                    if ($ServerIdentityReport.primaryBlockingFailure) { $ServerIdentityReason = [string]$ServerIdentityReport.primaryBlockingFailure }
-                    elseif ($ServerIdentityReport.errors -and $ServerIdentityReport.errors.Count -gt 0) { $ServerIdentityReason = [string]$ServerIdentityReport.errors[0] }
-                  } catch {}
-                }
-                Stop-BeforePlaywright $ServerIdentityReason
+              if ($NoFailedOnlyRemain) {
+                $RunnerState.noFailedOnlyTestsRemain = $true
+                Save-RunnerState
+                Set-RunnerPhase 'no-failed-tests-remain'
+                Write-Host "No failed or timed-out Playwright tests remain." -ForegroundColor Green
               } else {
-                Set-RunnerPhase 'test-account-provisioning'
-                $RunnerState.testAccountProvisionAttempted = $true
+                $PlaywrightExe = Join-Path $Root "node_modules\.bin\playwright.cmd"
+                Set-RunnerPhase 'install-chromium'
+                $BrowserExit = Run-Step "Install Playwright browsers" "& '$PlaywrightExe' install chromium firefox webkit"
+                $RunnerState.browserInstallPassed = ($BrowserExit -eq 0)
                 Save-RunnerState
-                $ProvisionExit = Run-Step "Provision temporary release-gate test accounts" "node scripts/86chaos-release-gate/provision-test-accounts.cjs"
-              $RunnerState.testAccountProvisionPassed = ($ProvisionExit -eq 0)
-              Save-RunnerState
-              if ($ProvisionExit -ne 0) {
-                Stop-BeforePlaywright "Release gate blocked before tests because temporary release-gate test accounts could not be provisioned. Check test-account-provisioning.json in the current run directory."
-              } else {
-                Set-RunnerPhase 'role-preflight'
-                $RunnerState.rolePreflightStarted = $true
-                Save-RunnerState
-                $RoleExit = Run-Step "Verify release-gate role accounts" "node scripts/86chaos-release-gate/verify-role-accounts.cjs"
-                $RunnerState.rolePreflightPassed = ($RoleExit -eq 0)
-                Save-RunnerState
-                if ($RoleExit -ne 0) {
-                  $RoleReason = "Release gate blocked before tests because role-account preflight failed. Configure a dedicated non-System-Administrator manager test account in .env.test.local."
-                  $RoleReportPath = Join-Path $RunDir 'role-identity-verification.json'
-                  if (Test-Path $RoleReportPath) {
+                if ($BrowserExit -ne 0) {
+                  Stop-BeforePlaywright "Release gate blocked before Playwright because Chromium browser installation failed."
+                } else {
+                  Set-RunnerPhase 'server-firebase-boundary-preflight'
+                  $RunnerState.serverIdentityPreflightStarted = $true
+                  Save-RunnerState
+                  $ServerIdentityExit = Run-Step "Verify deployed server Firebase boundary" "node scripts/86chaos-release-gate/server-firebase-boundary-preflight.cjs"
+                  $RunnerState.serverIdentityPreflightPassed = ($ServerIdentityExit -eq 0)
+                  $ServerIdentityReportPath = Join-Path $RunDir 'server-firebase-boundary-preflight.json'
+                  if (Test-Path $ServerIdentityReportPath) {
                     try {
-                      $RoleReport = Get-Content $RoleReportPath -Raw | ConvertFrom-Json
-                      if ($RoleReport.errors -and $RoleReport.errors.Count -gt 0) { $RoleReason = "Release gate blocked before tests because $($RoleReport.errors[0])" }
+                      $ServerIdentityReport = Get-Content $ServerIdentityReportPath -Raw | ConvertFrom-Json
+                      $RunnerState.serverIdentityPreflightFailureCategory = [string]$ServerIdentityReport.failureCategory
+                      $RunnerState.serverIdentityPreflightPrimaryBlocker = [string]$ServerIdentityReport.primaryBlockingFailure
                     } catch {}
                   }
-                  Stop-BeforePlaywright $RoleReason
-                } else {
-                  Set-RunnerPhase 'playwright'
-                  $PlaywrightConfig = ".\playwright.failed-release.config.cjs"
-                  $RunnerState.playwrightStarted = $true
                   Save-RunnerState
-                  Run-LiveStep "Failed+new Playwright gate" "& '$PlaywrightExe' test --config '$PlaywrightConfig'"
+                  if ($ServerIdentityExit -ne 0) {
+                    $ServerIdentityReason = "Release gate blocked before mutation because deployed server Firebase identity preflight failed."
+                    if (Test-Path $ServerIdentityReportPath) {
+                      try {
+                        $ServerIdentityReport = Get-Content $ServerIdentityReportPath -Raw | ConvertFrom-Json
+                        if ($ServerIdentityReport.primaryBlockingFailure) { $ServerIdentityReason = [string]$ServerIdentityReport.primaryBlockingFailure }
+                        elseif ($ServerIdentityReport.errors -and $ServerIdentityReport.errors.Count -gt 0) { $ServerIdentityReason = [string]$ServerIdentityReport.errors[0] }
+                      } catch {}
+                    }
+                    Stop-BeforePlaywright $ServerIdentityReason
+                  } else {
+                    Set-RunnerPhase 'test-account-provisioning'
+                    $RunnerState.testAccountProvisionAttempted = $true
+                    Save-RunnerState
+                    $ProvisionExit = Run-Step "Provision temporary release-gate test accounts" "node scripts/86chaos-release-gate/provision-test-accounts.cjs"
+                    $RunnerState.testAccountProvisionPassed = ($ProvisionExit -eq 0)
+                    Save-RunnerState
+                    if ($ProvisionExit -ne 0) {
+                      Stop-BeforePlaywright "Release gate blocked before tests because temporary release-gate test accounts could not be provisioned. Check test-account-provisioning.json in the current run directory."
+                    } else {
+                      Set-RunnerPhase 'role-preflight'
+                      $RunnerState.rolePreflightStarted = $true
+                      Save-RunnerState
+                      $RoleExit = Run-Step "Verify release-gate role accounts" "node scripts/86chaos-release-gate/verify-role-accounts.cjs"
+                      $RunnerState.rolePreflightPassed = ($RoleExit -eq 0)
+                      Save-RunnerState
+                      if ($RoleExit -ne 0) {
+                        $RoleReason = "Release gate blocked before tests because role-account preflight failed. Configure a dedicated non-System-Administrator manager test account in .env.test.local."
+                        $RoleReportPath = Join-Path $RunDir 'role-identity-verification.json'
+                        if (Test-Path $RoleReportPath) {
+                          try {
+                            $RoleReport = Get-Content $RoleReportPath -Raw | ConvertFrom-Json
+                            if ($RoleReport.errors -and $RoleReport.errors.Count -gt 0) { $RoleReason = "Release gate blocked before tests because $($RoleReport.errors[0])" }
+                          } catch {}
+                        }
+                        Stop-BeforePlaywright $RoleReason
+                      } else {
+                        Set-RunnerPhase 'playwright'
+                        $PlaywrightConfig = ".\playwright.failed-release.config.cjs"
+                        $RunnerState.playwrightStarted = $true
+                        Save-RunnerState
+                        Run-LiveStep "$SelectionMode Playwright gate" "& '$PlaywrightExe' test --config '$PlaywrightConfig'"
+                      }
+                    }
+                  }
                 }
               }
-            }
             }
           }
         }
@@ -433,7 +466,6 @@ if ($PreflightExit -ne 0) {
   }
 }
 
-}
 
 $SetupStatePath = Join-Path $RunDir 'qa-setup-state.json'
 $CleanupPath = Join-Path $RunDir '86chaos-full-audit-cleanup-report.json'
@@ -484,7 +516,7 @@ if ((Test-Path $SetupStatePath) -and -not (Test-Path $CleanupPath)) {
 }
 
 Set-RunnerPhase 'report-collection'
-Run-CollectorStep "Collect failed+new report" "node scripts/86chaos-release-gate/collect-release-gate-report.cjs"
+Run-CollectorStep "Collect $SelectionMode report" "node scripts/86chaos-release-gate/collect-release-gate-report.cjs"
 Write-RunnerSummary
 New-Slim-ReleaseGateReport -SourceDir $RunDir -DestinationDir $SlimDir -ZipPath $SlimZipPath
 
@@ -492,9 +524,9 @@ Save-RunnerState
 
 if ([int]$env:CHAOS_RELEASE_GATE_STEP_FAILURES -gt 0) {
   Write-Host ""
-  Write-Host "Release gate finished with failures. Upload 86chaos-release-gate-SLIM-UPLOAD-ME.zip." -ForegroundColor Red
+  Write-Host "$SelectionMode release gate finished with failures. Upload 86chaos-release-gate-SLIM-UPLOAD-ME.zip." -ForegroundColor Red
   exit 1
 }
 Write-Host ""
-Write-Host "Release gate passed." -ForegroundColor Green
+Write-Host "$SelectionMode release gate passed." -ForegroundColor Green
 exit 0

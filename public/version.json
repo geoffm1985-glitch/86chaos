@@ -1,14 +1,14 @@
 {
-  "version": "16.0.152",
-  "name": "86 Chaos 16.0.152 Authenticated Browser Reliability and Request Off Conflict Identity Repair",
-  "build": "16.0.152",
-  "label": "86 Chaos 16.0.152 Authenticated Browser Reliability and Request Off Conflict Identity Repair",
+  "version": "16.0.153",
+  "name": "86 Chaos 16.0.153 Schedule Warning Controls, Request Off Management, and True Failed-Only Testing",
+  "build": "16.0.153",
+  "label": "86 Chaos 16.0.153 Schedule Warning Controls, Request Off Management, and True Failed-Only Testing",
   "releasedAt": "2026-08-08T11:47:00-05:00",
-  "releaseTitle": "Authenticated Browser Reliability and Request Off Conflict Identity Repair",
+  "releaseTitle": "Schedule Warning Controls, Request Off Management, and True Failed-Only Testing",
   "notes": [
-    "Repairs authenticated browser readiness in release-gate tests without accepting the login logo as proof of login.",
-    "Fixes Request Off conflict identity semantics so shared audit provenance cannot merge different employees.",
-    "Preserves canonical Vercel targeting, Preview Firebase boundary checks, Playwright identity lineage, Firebase rules/indexes/configuration, customer Help content, and POS deferral."
+    "Adds Schedule Builder warning controls for requested-off conflict names, over-coverage math, and user-scoped dismissal.",
+    "Adds manager Request Off employee filtering plus Approve All Visible and Archive All Visible bulk actions scoped to the visible eligible list.",
+    "Separates true failed-only Playwright selection from failed-plus-new delta behavior and adds a focused repair mode for 16.0.153 feature tests."
   ],
-  "title": "86 Chaos 16.0.152 Authenticated Browser Reliability and Request Off Conflict Identity Repair"
+  "title": "86 Chaos 16.0.153 Schedule Warning Controls, Request Off Management, and True Failed-Only Testing"
 }

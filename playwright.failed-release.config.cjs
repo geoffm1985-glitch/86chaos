@@ -16,25 +16,26 @@ generatePlaywrightInventory({ root: process.cwd(), outputPath: path.join(runDir,
 if (!FAILED_ONLY_TESTS.length) {
   throw new Error(`Failed-only manifest selected zero tests. Refusing to run a false-green diagnostic gate. ${FAILED_ONLY_MANIFEST_ERRORS.join('; ')}`);
 }
+const releaseSelectionMode = process.env.CHAOS_RELEASE_GATE_SELECTION_MODE || 'failed+new';
 const manifest = {
   ok: true,
   generatedAt: new Date().toISOString(),
   runId,
   runDir,
-  mode: 'failed+new',
+  mode: releaseSelectionMode,
   sourceManifestPath: FAILED_ONLY_MANIFEST_PATH,
   selected: FAILED_ONLY_TESTS,
   desktopSelected: FAILED_ONLY_TESTS.filter(item => (item.projects || []).includes('chromium')).length,
   mobileSelected: FAILED_ONLY_TESTS.filter(item => (item.projects || []).includes('mobile-chromium')).length,
-  note: 'Failed+new delta success is diagnostic only. Complete npm run test:play-store is still required for release approval.'
+  note: `${releaseSelectionMode} success is diagnostic only. Complete npm run test:play-store is still required for release approval.`
 };
 fs.writeFileSync(path.join(runDir, 'failed-only-playwright-selection.json'), JSON.stringify(manifest, null, 2));
-console.log('86 Chaos failed + new selected tests:');
+console.log(`86 Chaos ${releaseSelectionMode} selected tests:`);
 for (const item of FAILED_ONLY_TESTS) console.log(`- [${(item.projects || []).join(', ')}] ${item.spec || item.specPath} :: ${item.title || item.exactTestTitle}`);
 console.log(`Desktop tests selected: ${manifest.desktopSelected}`);
 console.log(`Mobile tests selected: ${manifest.mobileSelected}`);
-console.log(`Failed+new manifest: ${FAILED_ONLY_MANIFEST_PATH}`);
-console.log(`Failed+new run directory: ${resultsRoot}`);
+console.log(`${releaseSelectionMode} manifest: ${FAILED_ONLY_MANIFEST_PATH}`);
+console.log(`${releaseSelectionMode} run directory: ${resultsRoot}`);
 
 module.exports = defineConfig({
   testDir: './tests',

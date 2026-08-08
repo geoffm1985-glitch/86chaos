@@ -170,6 +170,7 @@ const ARTICLES = [
   article('request-off-conflicts', 'Why did I get a Request Off warning?', 'schedule-time-clock', 'request-off', AUDIENCE.EVERYONE, 'The warning means another employee already has an active request for that date.', ['Why does Request Off warn me?', 'Someone else requested this date'], ['request off warning','conflict','already requested','day may not be available'], [
     { title: 'Short answer', body: ['The day may not be available because someone else has already requested it.'] },
     { title: 'What to do', steps: ['Read the warning.', 'Choose Cancel if you do not want to request that day.', 'Choose Continue if you still want to ask.', 'Wait for a manager to approve or deny the request.'] },
+    { title: 'Manager workflow', body: ['Managers can filter Request Off by employee, then approve or archive only the visible filtered requests in bulk. Hidden requests are not included.'] },
   ], ['The warning does not mean your request is blocked. It helps you avoid surprises.'], ['request-off-how'], ['request-off']),
   article('availability-use', 'How do I set my availability?', 'schedule-time-clock', 'availability', AUDIENCE.EVERYONE, 'Availability tells managers when you usually can or cannot work.', ['How do I set availability?', 'Why can’t I work that day?'], ['availability','cannot work','preferred time','schedule'], [
     { title: 'Short answer', body: ['Open [[Availability|availability]] and save the days or times you can usually work.'] },
@@ -179,6 +180,7 @@ const ARTICLES = [
     { title: 'Short answer', body: ['Managers and owners can open [[Schedule Builder|schedule-builder]] from Time Clock & Schedule.'] },
     { title: 'How to open it', steps: ['Open Time Clock & Schedule.', 'Choose Schedule Builder.', 'Pick the week or month you are working on.', 'Add, copy, or edit shifts.'] },
     { title: 'Staff note', body: ['If you are staff, you may not have access to Schedule Builder. Ask a manager to check it.'] },
+    { title: 'Warnings', body: ['Schedule Builder warnings can flag requested-off conflicts, missing coverage, or over-coverage against targets. Dismissing a warning only hides that warning for your view; it does not delete shifts, requests, or targets.'] },
   ], ['If an employee is missing, check that the staff record is active and assigned to the right workspace.'], ['employee-missing-schedule-builder','schedule-publish'], ['schedule-builder']),
   article('schedule-publish', 'Why aren’t my schedules publishing?', 'schedule-time-clock', 'schedule-publishing', AUDIENCE.MANAGER_OWNER, 'Schedules usually stay unpublished when the week has not been selected, changes were made after the last publish, or the wrong schedule period is open.', ['Why aren\'t my schedules publishing?', 'Schedule not publishing', 'How do I publish selected weeks?'], ['schedule publish','publishing','selected weeks','draft shifts','live shifts','employee cannot see'], [
     { title: 'Short answer', body: ['Schedules usually stay unpublished when the correct week is not selected, the shifts are still drafts, or you are looking at a different schedule period.'] },

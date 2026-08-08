@@ -181,6 +181,30 @@ function countPlaywrightResults(playwright = {}) {
   return counts;
 }
 
+function listSummaryFiles(fullRunDir = '') {
+  if (!fullRunDir || !fs.existsSync(fullRunDir)) return [];
+  return fs.readdirSync(fullRunDir)
+    .filter(name => /^86chaos-play-store-release-gate-summary-.*\.json$/.test(name))
+    .map(name => path.join(fullRunDir, name))
+    .sort((a, b) => fs.statSync(b).mtimeMs - fs.statSync(a).mtimeMs);
+}
+
+function hasCompletedReleaseGateEvidence(dir = '') {
+  if (!dir || !fs.existsSync(dir)) return { ok: false, reason: 'missing-run-dir', counts: countPlaywrightResults({}) };
+  const playwright = readJsonIfExists(path.join(dir, 'playwright-report.json'));
+  if (!playwright || !Array.isArray(playwright.suites)) return { ok: false, reason: 'missing-playwright-report', counts: countPlaywrightResults({}) };
+  const counts = countPlaywrightResults(playwright);
+  if (counts.total <= 0) return { ok: false, reason: 'zero-playwright-results', counts };
+  const state = readJsonIfExists(path.join(dir, 'runner-state.json')) || {};
+  if (state.playwrightStarted !== true) return { ok: false, reason: 'playwright-not-started', counts };
+  const summaries = listSummaryFiles(dir);
+  if (!summaries.length) return { ok: false, reason: 'missing-completed-summary', counts };
+  if (String(state.blockingReason || '').trim()) return { ok: false, reason: 'runner-blocked-before-normal-collection', counts };
+  const phase = String(state.currentPhase || '').toLowerCase();
+  if (['created', 'playwright'].includes(phase)) return { ok: false, reason: `abandoned-mid-${phase}`, counts };
+  return { ok: true, reason: 'latest compatible completed Playwright run', counts, summaryPath: summaries[0] };
+}
+
 function getManifestBaselineId(manifest = {}) {
   return manifest?.baselineFullRunId || manifest?.baseline?.fullRunId || manifest?.fullRunId || '';
 }
@@ -190,10 +214,8 @@ function findLatestCompletedFailedOnlyDescendant({ baselineFullRunId = '', curre
   return listRunDirs(resultsRoot).find(dir => {
     if (path.resolve(dir) === current) return false;
     if (!isFailedOnlyRun(dir)) return false;
-    const playwright = readJsonIfExists(path.join(dir, 'playwright-report.json'));
-    if (!playwright || !Array.isArray(playwright.suites)) return false;
-    const counts = countPlaywrightResults(playwright);
-    if (counts.total <= 0) return false;
+    const completed = hasCompletedReleaseGateEvidence(dir);
+    if (!completed.ok) return false;
     const manifest = loadManifestFromRunDir(dir) || {};
     const rowBaseline = getManifestBaselineId(manifest);
     if (baselineFullRunId && rowBaseline && rowBaseline !== baselineFullRunId) return false;
@@ -212,9 +234,42 @@ function buildNarrowedManifestFromFailedOnlyRun(failedOnlyRunDir, { baselineMani
   const previousMeta = loadRunMeta(failedOnlyRunDir);
   const counts = countPlaywrightResults(playwright);
   if (counts.total <= 0) throw new Error('Previous failed-only run did not execute any Playwright tests.');
-  if (counts.unexpected <= 0) throw new Error('Latest compatible failed-only run has zero failed or timed-out tests. Run the complete npm run test:play-store instead of creating a zero-test failed-only run.');
-  const originalByKey = new Map(dedupeSelections(previousManifest.selected || []).map(row => [selectionKey(row), row]));
   const baseline = baselineManifest || previousManifest;
+  const previousFailedOnlyRunId = previousMeta.fullRunId || path.basename(failedOnlyRunDir);
+  const previousFailedOnlySourceVersion = previousMeta.sourceVersion || previousManifest.targetSourceVersion || previousManifest.sourceVersion || '';
+  const previousFailedOnlyDeployedVersion = previousMeta.deployedVersion || previousManifest.targetDeployedVersion || previousManifest.deployedVersion || '';
+  if (counts.unexpected <= 0) return {
+    ok: true,
+    noFailedOrTimedOutTestsRemain: true,
+    manifestSchemaVersion: MANIFEST_SCHEMA_VERSION,
+    generatedAt: new Date().toISOString(),
+    source: 'dynamic-latest-compatible-failed-only-playwright-report',
+    selectionSource: 'latest-compatible-failed-only-result',
+    baselineFullRunId: baseline.baselineFullRunId || previousManifest.baselineFullRunId || '',
+    baselineFullRunDir: baseline.baselineFullRunDir || previousManifest.baselineFullRunDir || '',
+    baselineSourceVersion: baseline.baselineSourceVersion || previousManifest.baselineSourceVersion || '',
+    baselineDeployedVersion: baseline.baselineDeployedVersion || previousManifest.baselineDeployedVersion || '',
+    baselineGeneratedAt: baseline.baselineGeneratedAt || previousManifest.baselineGeneratedAt || '',
+    previousFailedOnlyRunId,
+    previousFailedOnlyRunDir: failedOnlyRunDir,
+    previousFailedOnlySourceVersion,
+    previousFailedOnlyDeployedVersion,
+    previousFailedOnlyCounts: counts,
+    targetRunId: target.targetRunId || '',
+    targetSourceVersion: target.targetSourceVersion || '',
+    targetDeployedVersion: target.targetDeployedVersion || '',
+    currentRunDir,
+    selected: [],
+    totalSelected: 0,
+    desktopSelected: 0,
+    mobileSelected: 0,
+    fullRunId: baseline.baselineFullRunId || previousManifest.baselineFullRunId || '',
+    fullRunDir: baseline.baselineFullRunDir || previousManifest.baselineFullRunDir || '',
+    sourceVersion: baseline.baselineSourceVersion || previousManifest.baselineSourceVersion || '',
+    deployedVersion: baseline.baselineDeployedVersion || previousManifest.baselineDeployedVersion || '',
+    note: 'No failed or timed-out Playwright tests remain.',
+  };
+  const originalByKey = new Map(dedupeSelections(previousManifest.selected || []).map(row => [selectionKey(row), row]));
   const selected = collectFailedEntriesFromPlaywright(playwright, previousMeta).map((row) => {
     const normalized = normalizeSelection(row);
     const original = originalByKey.get(selectionKey(normalized)) || {};
@@ -236,9 +291,6 @@ function buildNarrowedManifestFromFailedOnlyRun(failedOnlyRunDir, { baselineMani
     };
   });
   const deduped = dedupeSelections(selected);
-  const previousFailedOnlyRunId = previousMeta.fullRunId || path.basename(failedOnlyRunDir);
-  const previousFailedOnlySourceVersion = previousMeta.sourceVersion || previousManifest.targetSourceVersion || previousManifest.sourceVersion || '';
-  const previousFailedOnlyDeployedVersion = previousMeta.deployedVersion || previousManifest.targetDeployedVersion || previousManifest.deployedVersion || '';
   return {
     ok: deduped.length > 0,
     manifestSchemaVersion: MANIFEST_SCHEMA_VERSION,
@@ -501,9 +553,9 @@ function addNewInventorySelections(manifest, { baselineFullRunDir = '', baseline
   };
 }
 
-function selectFailedOnlyManifestForCurrentRun({ currentRunDir = getRunDir(), resultsRoot = getResultsRoot(), target = {}, root = process.cwd() } = {}) {
+function selectFailedOnlyManifestForCurrentRun({ currentRunDir = getRunDir(), resultsRoot = getResultsRoot(), target = {}, root = process.cwd(), includeNewInventory = true, currentRecords = null } = {}) {
   const baselineFullRunDir = findMostRecentCompletedFullRun({ currentRunDir, resultsRoot });
-  if (!baselineFullRunDir) throw new Error('No completed full release-gate run with Playwright evidence was found. Run npm run test:play-store before npm run test:play-store:failed.');
+  if (!baselineFullRunDir) throw new Error('No completed full release-gate run with Playwright evidence was found. Run npm run test:play-store before npm run test:play-store:failed. Canceled or incomplete runs are ignored.');
   const baselineManifest = generateFailedOnlyManifestFromRun(baselineFullRunDir, { write: false, currentRunDir });
   const latestFailedOnlyRunDir = findLatestCompletedFailedOnlyDescendant({ baselineFullRunId: baselineManifest.baselineFullRunId, currentRunDir, resultsRoot });
   let manifest;
@@ -523,9 +575,18 @@ function selectFailedOnlyManifestForCurrentRun({ currentRunDir = getRunDir(), re
     }
     return normalized;
   });
-  manifest = addNewInventorySelections(manifest, { baselineFullRunDir, baselineFullRunId: baselineManifest.baselineFullRunId, resultsRoot, currentRunDir, root });
-  manifest.selectionSource = manifest.newTestsCount > 0 ? 'failed-and-new-latest-known-results-plus-current-inventory' : selectionSource;
-  if (manifest.totalSelected <= 0) {
+  if (includeNewInventory) {
+    manifest = addNewInventorySelections(manifest, { baselineFullRunDir, baselineFullRunId: baselineManifest.baselineFullRunId, resultsRoot, currentRunDir, root });
+    manifest.selectionSource = manifest.newTestsCount > 0 ? 'failed-and-new-latest-known-results-plus-current-inventory' : selectionSource;
+  } else {
+    manifest = qualifyManifestSelectionsWithCurrentInventory(manifest, { root, currentRecords });
+    manifest.mode = 'failed-only';
+    manifest.selectionSource = selectionSource || 'strict-failed-only-latest-compatible-result';
+    manifest.previousFailuresCount = manifest.selected.filter(row => row.selectionReasons?.includes('previous_failure') || row.priorStatus === 'failed' || row.priorStatus === 'interrupted').length;
+    manifest.previousTimeoutsCount = manifest.selected.filter(row => row.selectionReasons?.includes('previous_timeout') || row.priorStatus === 'timedOut').length;
+    manifest.newTestsCount = 0;
+  }
+  if (manifest.totalSelected <= 0 && includeNewInventory) {
     throw new Error('No failed or new Playwright tests remain. Run the complete release gate.');
   }
   return { manifest, baselineFullRunDir, latestFailedOnlyRunDir, selectionSource: manifest.selectionSource };
@@ -594,9 +655,9 @@ function findMostRecentCompletedFullRun({ currentRunDir = getRunDir(), resultsRo
     const resolved = path.resolve(dir);
     if (resolved === current) return false;
     if (isFailedOnlyRun(dir)) return false;
-    if (!runHasPlaywrightEvidence(dir)) return false;
+    const completed = hasCompletedReleaseGateEvidence(dir);
+    if (!completed.ok) return false;
     const meta = loadRunMeta(dir);
-    if (meta.state.playwrightStarted === false) return false;
     const generated = generateFailedOnlyManifestFromRun(dir, { write: false, validateBaseline: false });
     return generated.selected.length > 0;
   }) || '';
@@ -810,6 +871,7 @@ module.exports = {
   readPackageVersion,
   findMostRecentCompletedFullRun,
   findLatestCompletedFailedOnlyDescendant,
+  hasCompletedReleaseGateEvidence,
   buildNarrowedManifestFromFailedOnlyRun,
   selectFailedOnlyManifestForCurrentRun,
   countPlaywrightResults,
@@ -831,4 +893,6 @@ module.exports = {
   currentInventoryRecords,
   qualifyManifestSelectionsWithCurrentInventory,
   resolveSelectionRowsAgainstInventory,
+  dedupeSelections,
+  selectionKey,
 };

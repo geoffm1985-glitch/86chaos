@@ -15,6 +15,17 @@ const {
 
 function tmpDir() { return fs.mkdtempSync(path.join(os.tmpdir(), '86chaos-server-boundary-')); }
 function writeJson(file, data) { fs.mkdirSync(path.dirname(file), { recursive: true }); fs.writeFileSync(file, JSON.stringify(data, null, 2)); }
+function writeCompletedSummary(dir, runId, overrides = {}) {
+  writeJson(path.join(dir, `86chaos-play-store-release-gate-summary-${runId}.json`), {
+    runId,
+    outcome: 'FAILED',
+    sourceVersion: '16.0.152',
+    deployedVersion: '16.0.152',
+    firebaseProjectId: 'chaos-test-d1601',
+    playwright: { totalResults: 1, failedTests: [{ file: 'e2e/app-health.spec.cjs', title: 'baseline > alpha', projectName: 'chromium', status: 'failed' }] },
+    ...overrides,
+  });
+}
 
 const appUrlValue = 'https://86chaos-git-testing-example.vercel.app';
 
@@ -136,11 +147,13 @@ test('failed+new Playwright lineage is not replaced by this zero-execution serve
   const baseline = path.join(root, 'baseline-full');
   const executed = path.join(root, 'failed-executed');
   const blocked = path.join(root, 'failed-blocked-server-boundary-later');
-  writeJson(path.join(baseline, 'runner-state.json'), { runId: 'baseline-full', mode: 'full', playwrightStarted: true });
+  writeJson(path.join(baseline, 'runner-state.json'), { runId: 'baseline-full', mode: 'full', playwrightStarted: true, currentPhase: 'report-collection' });
   writeJson(path.join(baseline, 'playwright-report.json'), { suites: [{ title: 'baseline', specs: [{ title: 'alpha', file: 'e2e/app-health.spec.cjs', tests: [{ title: 'alpha', projectName: 'chromium', results: [{ status: 'failed' }] }] }] }] });
-  writeJson(path.join(executed, 'runner-state.json'), { runId: 'failed-executed', mode: 'failed-only', playwrightStarted: true });
+  writeCompletedSummary(baseline, 'baseline-full');
+  writeJson(path.join(executed, 'runner-state.json'), { runId: 'failed-executed', mode: 'failed-only', playwrightStarted: true, currentPhase: 'report-collection' });
   writeJson(path.join(executed, 'failed-only-test-manifest.json'), { baselineFullRunId: 'baseline-full', baselineFullRunDir: baseline, selected: [{ specPath: 'e2e/app-health.spec.cjs', title: 'alpha', project: 'chromium' }] });
   writeJson(path.join(executed, 'playwright-report.json'), { suites: [{ title: 'executed', specs: [{ title: 'alpha', file: 'e2e/app-health.spec.cjs', tests: [{ title: 'alpha', projectName: 'chromium', results: [{ status: 'failed' }] }] }] }] });
+  writeCompletedSummary(executed, 'failed-executed');
   writeJson(path.join(blocked, 'runner-state.json'), { runId: 'failed-blocked-server-boundary-later', mode: 'failed-only', playwrightStarted: false, serverIdentityPreflightStarted: true, serverIdentityPreflightPassed: false, blockingReason: 'Preview Firebase boundary mismatch.' });
   writeJson(path.join(blocked, 'server-firebase-boundary-preflight.json'), { ok: false, failureCategory: 'previewServerFirebaseBoundaryFailure', errors: ['Preview Firebase boundary mismatch.'] });
   const now = Date.now();
