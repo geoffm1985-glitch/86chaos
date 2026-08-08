@@ -357,6 +357,103 @@ function latestKnownStatuses({ baselineFullRunDir = '', baselineFullRunId = '', 
   return map;
 }
 
+
+function inventorySelectionFromRow(inventoryRow = {}, sourceRow = {}, manifest = {}) {
+  const normalized = normalizeSelection({
+    specPath: inventoryRow.specPath || inventoryRow.spec,
+    spec: inventoryRow.specPath || inventoryRow.spec,
+    title: inventoryRow.exactTestTitle || inventoryRow.leafTitle || inventoryRow.title,
+    exactTestTitle: inventoryRow.exactTestTitle || inventoryRow.leafTitle || inventoryRow.title,
+    leafTitle: inventoryRow.leafTitle || inventoryRow.exactTestTitle || inventoryRow.title,
+    fullSuitePath: inventoryRow.fullSuitePath || '',
+    suitePathParts: inventoryRow.suitePathParts || [],
+    titlePathParts: inventoryRow.titlePathParts || [],
+    fullTitle: inventoryRow.fullTitle || '',
+    stableKey: inventoryRow.stableKey || '',
+    project: inventoryRow.project || inventoryRow.projectName || sourceRow.project || '',
+    projects: [inventoryRow.project || inventoryRow.projectName || sourceRow.project || ''].filter(Boolean),
+    priorStatus: sourceRow.priorStatus || sourceRow.status || '',
+    baselineFullRunId: sourceRow.baselineFullRunId || sourceRow.fullRunId || manifest.baselineFullRunId || manifest.fullRunId || '',
+    baselineSourceVersion: sourceRow.baselineSourceVersion || sourceRow.sourceVersion || manifest.baselineSourceVersion || manifest.sourceVersion || '',
+    baselineDeployedVersion: sourceRow.baselineDeployedVersion || sourceRow.deployedVersion || manifest.baselineDeployedVersion || manifest.deployedVersion || '',
+    sourceVersion: sourceRow.sourceVersion || manifest.baselineSourceVersion || manifest.sourceVersion || '',
+    deployedVersion: sourceRow.deployedVersion || manifest.baselineDeployedVersion || manifest.deployedVersion || '',
+    duration: sourceRow.duration || 0,
+    error: sourceRow.error || '',
+    selectionReasons: sourceRow.selectionReasons,
+  }, manifest);
+  return {
+    ...normalized,
+    sourceFileHash: inventoryRow.sourceFileHash || sourceRow.sourceFileHash || '',
+    migratedFromLegacyIdentity: Boolean(sourceRow.migratedFromLegacyIdentity || sourceRow.migratedFromLegacyAmbiguousIdentity),
+    migrationSourceStableKey: sourceRow.stableKey || '',
+  };
+}
+
+function inventoryLookup(records = []) {
+  const byKey = new Map();
+  const byLooseKey = new Map();
+  for (const row of records || []) {
+    const key = row.stableKey || identityKeyFromParts(row.specPath || row.spec, row.exactTestTitle || row.title || row.leafTitle, row.project || row.projectName, row.fullSuitePath || '');
+    if (key) byKey.set(key, row);
+    const loose = [normalizeRel(row.specPath || row.spec || ''), String(row.exactTestTitle || row.title || row.leafTitle || ''), String(row.project || row.projectName || '')].join('\u0000');
+    const rows = byLooseKey.get(loose) || [];
+    rows.push(row);
+    byLooseKey.set(loose, rows);
+  }
+  return { byKey, byLooseKey };
+}
+
+function resolveSelectionRowsAgainstInventory(row = {}, manifest = {}, lookup = inventoryLookup([])) {
+  const normalized = normalizeSelection(row, manifest);
+  const stable = normalized.stableKey || selectionKey(normalized);
+  const exact = lookup.byKey.get(stable);
+  if (exact) return [inventorySelectionFromRow(exact, normalized, manifest)];
+  const loose = [normalizeRel(normalized.specPath || ''), String(normalized.exactTestTitle || normalized.title || normalized.leafTitle || ''), String(normalized.project || '')].join('\u0000');
+  const looseMatches = lookup.byLooseKey.get(loose) || [];
+  if (looseMatches.length === 1) {
+    return [{ ...inventorySelectionFromRow(looseMatches[0], normalized, manifest), migratedFromLegacyIdentity: true }];
+  }
+  if (looseMatches.length > 1) {
+    const suite = String(normalized.fullSuitePath || '').trim();
+    const titlePath = String(normalized.fullTitle || '').trim();
+    const narrowed = looseMatches.filter(candidate => {
+      const candidateSuite = String(candidate.fullSuitePath || '').trim();
+      const candidateFull = String(candidate.fullTitle || '').trim();
+      return (suite && candidateSuite === suite) || (titlePath && candidateFull === titlePath);
+    });
+    const matches = narrowed.length ? narrowed : looseMatches;
+    return matches.map(candidate => ({
+      ...inventorySelectionFromRow(candidate, normalized, manifest),
+      migratedFromLegacyIdentity: true,
+      migratedFromLegacyAmbiguousIdentity: !narrowed.length,
+      legacyAmbiguousMatchCount: looseMatches.length,
+    }));
+  }
+  return [normalized];
+}
+
+function qualifyManifestSelectionsWithCurrentInventory(manifest = {}, { root = process.cwd(), currentRecords = null, allowStaticFallback = false } = {}) {
+  const current = currentRecords || currentInventoryRecords(root, { allowStaticFallback });
+  const lookup = inventoryLookup(current);
+  const expanded = [];
+  for (const row of manifest.selected || []) expanded.push(...resolveSelectionRowsAgainstInventory(row, manifest, lookup));
+  const selected = dedupeSelections(expanded);
+  return {
+    ...manifest,
+    selected,
+    totalSelected: selected.length,
+    desktopSelected: selected.filter(item => item.project === 'chromium' || item.projects?.includes('chromium')).length,
+    mobileSelected: selected.filter(item => item.project === 'mobile-chromium' || item.projects?.includes('mobile-chromium')).length,
+    currentInventoryCount: current.length,
+    legacyIdentityMigration: {
+      attempted: true,
+      expandedAmbiguousCount: selected.filter(item => item.migratedFromLegacyAmbiguousIdentity).length,
+      migratedCount: selected.filter(item => item.migratedFromLegacyIdentity).length,
+    },
+  };
+}
+
 function addNewInventorySelections(manifest, { baselineFullRunDir = '', baselineFullRunId = '', resultsRoot = getResultsRoot(), currentRunDir = getRunDir(), root = process.cwd() } = {}) {
   const priorRecords = priorInventoryRecordsFromRun(baselineFullRunDir);
   const priorKeys = new Set(priorRecords.map(r => r.stableKey || identityKeyFromParts(r.specPath || r.spec, r.exactTestTitle || r.title, r.project, r.fullSuitePath || '')));
@@ -483,6 +580,11 @@ function normalizeSelection(row = {}, manifest = {}) {
     duration: row.duration || 0,
     error: row.error || '',
     selectionReasons: row.selectionReasons,
+    migratedFromLegacyIdentity: Boolean(row.migratedFromLegacyIdentity),
+    migratedFromLegacyAmbiguousIdentity: Boolean(row.migratedFromLegacyAmbiguousIdentity),
+    legacyAmbiguousMatchCount: row.legacyAmbiguousMatchCount || 0,
+    migrationSourceStableKey: row.migrationSourceStableKey || '',
+    sourceFileHash: row.sourceFileHash || '',
   };
 }
 
@@ -640,42 +742,30 @@ function validateManifestTestIdentities(manifest, { root = process.cwd(), projec
   if (!selected.length) errors.push('Failed-only manifest selected zero tests.');
   const availableProjects = new Set(projectNames || []);
   const current = currentInventoryRecords(root, { allowStaticFallback });
-  const inventoryByKey = new Map(current.map(row => [row.stableKey || identityKeyFromParts(row.specPath, row.exactTestTitle || row.title, row.project, row.fullSuitePath || ''), row]));
-  const inventoryByLooseKey = new Map();
-  for (const row of current) {
-    const loose = [normalizeRel(row.specPath || ''), String(row.exactTestTitle || row.title || row.leafTitle || ''), String(row.project || '')].join('\u0000');
-    const rows = inventoryByLooseKey.get(loose) || [];
-    rows.push(row);
-    inventoryByLooseKey.set(loose, rows);
-  }
+  const lookup = inventoryLookup(current);
   const valid = [];
   for (const row of selected) {
-    const specFile = resolveSpecFile(root, row.specPath);
+    const normalized = normalizeSelection(row, manifest);
+    const specFile = resolveSpecFile(root, normalized.specPath);
     if (!specFile) {
-      errors.push(`Selected test spec no longer exists: ${row.specPath}`);
+      errors.push(`Selected test spec no longer exists: ${normalized.specPath}`);
       continue;
     }
-    if (availableProjects.size && !availableProjects.has(row.project)) {
-      errors.push(`Selected test project no longer exists: ${row.project} (${row.specPath} :: ${row.fullTitle || row.title})`);
+    if (availableProjects.size && !availableProjects.has(normalized.project)) {
+      errors.push(`Selected test project no longer exists: ${normalized.project} (${normalized.specPath} :: ${normalized.fullTitle || normalized.title})`);
       continue;
     }
-    const key = row.stableKey || selectionKey(row);
-    if (inventoryByKey.size && !inventoryByKey.has(key)) {
-      const loose = [normalizeRel(row.specPath || ''), String(row.exactTestTitle || row.title || row.leafTitle || ''), String(row.project || '')].join('\u0000');
-      const looseMatches = inventoryByLooseKey.get(loose) || [];
-      if (looseMatches.length === 1) {
-        valid.push({ ...row, migratedFromLegacyIdentity: true, fullSuitePath: looseMatches[0].fullSuitePath || row.fullSuitePath || '', stableKey: looseMatches[0].stableKey || key });
-        continue;
-      }
-      errors.push(looseMatches.length > 1
-        ? `Selected test title is ambiguous under schema v3: ${row.specPath} :: ${row.title} [${row.project}]`
-        : `Selected test title no longer exists in Playwright discovery: ${row.specPath} :: ${row.fullTitle || row.title} [${row.project}]`);
+    const resolved = resolveSelectionRowsAgainstInventory(normalized, manifest, lookup);
+    const unresolved = resolved.length === 1 && !lookup.byKey.has(resolved[0].stableKey || selectionKey(resolved[0]));
+    if (unresolved) {
+      errors.push(`Selected test title no longer exists in Playwright discovery: ${normalized.specPath} :: ${normalized.fullTitle || normalized.title} [${normalized.project}]`);
       continue;
     }
-    valid.push(row);
+    valid.push(...resolved);
   }
-  if (selected.length && valid.length === 0) errors.push('Every selected failed-only test was removed or disabled in the current source.');
-  return { ok: errors.length === 0, errors, selected: valid, totalSelected: valid.length };
+  const dedupedValid = dedupeSelections(valid);
+  if (selected.length && dedupedValid.length === 0) errors.push('Every selected failed-only test was removed or disabled in the current source.');
+  return { ok: errors.length === 0, errors, selected: dedupedValid, totalSelected: dedupedValid.length };
 }
 
 function validateManifestForCurrentRun(manifest, options = {}) {
@@ -739,4 +829,6 @@ module.exports = {
   inventoryFromPlaywrightReport,
   addNewInventorySelections,
   currentInventoryRecords,
+  qualifyManifestSelectionsWithCurrentInventory,
+  resolveSelectionRowsAgainstInventory,
 };

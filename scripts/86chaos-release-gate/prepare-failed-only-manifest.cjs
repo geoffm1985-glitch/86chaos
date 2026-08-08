@@ -5,6 +5,7 @@ const {
   readPackageVersion,
   targetQualifiedManifest,
   validateManifestForCurrentRun,
+  qualifyManifestSelectionsWithCurrentInventory,
 } = require('./failed-only-manifest-utils.cjs');
 
 const { runDir, runId } = ensureRunDir();
@@ -43,12 +44,17 @@ try {
   fail('Failed+new baseline evidence is malformed or unsafe.', [error?.message || String(error)]);
 }
 const fullRunDir = selectedSource.baselineFullRunDir;
-const copied = targetQualifiedManifest(selectedSource.manifest, {
+let copied = targetQualifiedManifest(selectedSource.manifest, {
   targetRunId: runId,
   targetRunDir: runDir,
   targetSourceVersion: currentSourceVersion,
   targetDeployedVersion: currentDeployedVersion,
 });
+try {
+  copied = qualifyManifestSelectionsWithCurrentInventory(copied, { root: process.cwd() });
+} catch (error) {
+  fail('Failed+new current Playwright inventory could not be used to qualify selections.', [error?.message || String(error)]);
+}
 
 const validation = validateManifestForCurrentRun(copied, {
   currentRunDir: runDir,

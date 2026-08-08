@@ -26,14 +26,14 @@ const provisioner = read('scripts/86chaos-release-gate/provision-test-accounts.c
 const seed = read('scripts/86chaos-full-audit/seed-fake-restaurant.cjs');
 const cleanup = read('scripts/86chaos-full-audit/cleanup-fake-restaurant.cjs');
 
-assert(pkg.version === '16.0.147', 'package.json version is 16.0.147');
-assert(lock.version === '16.0.147' && lock.packages?.['']?.version === '16.0.147', 'package-lock root versions are 16.0.147');
-assert(version.version === '16.0.147' && version.build === '16.0.147', 'public/version.json version/build are 16.0.147');
-assert(appCore.includes("CURRENT_VERSION = '16.0.147'"), 'app core CURRENT_VERSION is 16.0.147');
-assert(apiVersion.includes("APP_VERSION = '16.0.147'") && apiVersion.includes("SECURITY_SCHEMA_VERSION = '16.0.147'"), 'api version reports 16.0.147');
-assert(pkg.scripts['test:source'] === 'node scripts/validate-16-0-147.js', 'test:source points at 16.0.147 validator');
+assert(pkg.version === '16.0.148', 'package.json version is 16.0.148');
+assert(lock.version === '16.0.148' && lock.packages?.['']?.version === '16.0.148', 'package-lock root versions are 16.0.148');
+assert(version.version === '16.0.148' && version.build === '16.0.148', 'public/version.json version/build are 16.0.148');
+assert(appCore.includes("CURRENT_VERSION = '16.0.148'"), 'app core CURRENT_VERSION is 16.0.148');
+assert(apiVersion.includes("APP_VERSION = '16.0.148'") && apiVersion.includes("SECURITY_SCHEMA_VERSION = '16.0.148'"), 'api version reports 16.0.148');
+assert(pkg.scripts['test:source'] === 'node scripts/validate-16-0-148.js', 'test:source points at 16.0.148 validator');
 assert(pkg.scripts['test:play-store:delta'] && pkg.scripts['test:play-store:delta'].includes('FAILED_AND_NEW'), 'failed+new delta command is present');
-assert(!fs.existsSync(path.join(root, 'scripts/validate-16-0-146.js')), 'previous 16.0.146 validator was replaced');
+assert(!fs.existsSync(path.join(root, 'scripts/validate-16-0-147.js')), 'previous 16.0.147 validator was replaced');
 
 assert(sha('firestore.rules') === '51bfd7d39edd59f680ae41a149c108cec8cd42d00b102d84cb00ee40d90264d9', 'firestore.rules unchanged');
 assert(sha('storage.rules') === '174e7e9a140193ff69ccf0f0d3e5c65b81a9e0fbbd612bff45ce57e7a3a7ce9c', 'storage.rules unchanged');
@@ -86,7 +86,7 @@ assert(failureExtractorTest.includes('PWA icon source paths normalize PUBLIC_URL
 
 
 const helpKnowledge = read('src/core/customerHelpKnowledge.cjs');
-assert(helpKnowledge.includes("CUSTOMER_HELP_VERSION = '16.0.147'"), 'customer Help knowledge version is 16.0.147');
+assert(helpKnowledge.includes("CUSTOMER_HELP_VERSION = '16.0.148'"), 'customer Help knowledge version is 16.0.148');
 assert(helpKnowledge.includes('custom-shifts-on-phone') && helpKnowledge.includes('custom-shift-save'), 'customer Help includes Custom Shift synchronization articles');
 assert(fs.existsSync(path.join(root, 'playwright.inventory.config.cjs')), 'side-effect-free Playwright inventory config exists');
 const releaseUniverse = read('scripts/86chaos-release-gate/release-test-universe.cjs');
@@ -94,4 +94,4 @@ assert(releaseUniverse.includes('e2e/**/*.spec.cjs') && releaseUniverse.includes
 assert(!read('playwright.inventory.config.cjs').includes('generatePlaywrightInventory'), 'inventory discovery config does not generate another inventory');
 
 if (failures) { console.error(`\n${failures} validation check(s) failed.`); process.exit(1); }
-console.log('\n16.0.147 source validation passed.');
+console.log('\n16.0.148 source validation passed.');
