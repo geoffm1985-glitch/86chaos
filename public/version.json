@@ -1,14 +1,14 @@
 {
-  "version": "16.0.148",
-  "name": "86 Chaos 16.0.148 Delta Manifest Identity Qualification Fix",
-  "build": "16.0.148",
-  "label": "86 Chaos 16.0.148 Delta Manifest Identity Qualification Fix",
-  "releasedAt": "2026-08-07T21:22:00-05:00",
-  "releaseTitle": "Release Truth, Cross-Device Reliability, Help Completion, and Approved App Branding",
+  "version": "16.0.149",
+  "name": "86 Chaos 16.0.149 Canonical Vercel Testing Target and Stale Preview Prevention",
+  "build": "16.0.149",
+  "label": "86 Chaos 16.0.149 Canonical Vercel Testing Target and Stale Preview Prevention",
+  "releasedAt": "2026-08-08T01:45:00-05:00",
+  "releaseTitle": "Canonical Vercel Testing Target and Stale Preview Prevention",
   "notes": [
-    "Eliminates recursive Playwright inventory discovery and keeps release inventory tied to the real full gate universe.",
-    "Improves customer Help links, Help version artifacts, System Administrator exact lookup, and shared Custom Shift preset plumbing.",
-    "Preserves Firebase rules, indexes, configuration, and current production behavior while deferring unavailable approved-icon replacement until the source asset is supplied."
+    "Rejects retired duplicate Vercel preview targets and requires canonical 86chaos testing previews before QA mutation.",
+    "Detects conflicting APP_URL/CHAOS_BASE_URL/expected-version values across shell and local env files before release-gate testing begins.",
+    "Preserves strict version mismatch blocking, Playwright identity qualification, Firebase rules, indexes, and production behavior."
   ],
-  "title": "86 Chaos 16.0.148 Delta Manifest Identity Qualification Fix"
+  "title": "86 Chaos 16.0.149 Canonical Vercel Testing Target and Stale Preview Prevention"
 }

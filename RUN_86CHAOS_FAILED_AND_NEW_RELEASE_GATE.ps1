@@ -10,9 +10,13 @@ if (-not (Test-Path ".\package-lock.json")) {
   throw "package-lock.json was not found. The release gate requires the committed lockfile."
 }
 
-function Import-EnvFile {
+$ReleaseTargetKeys = @('APP_URL', 'CHAOS_BASE_URL', 'CHAOS_EXPECTED_VERSION', 'CHAOS_EXPECTED_VERCEL_PROJECT_SLUG')
+$CanonicalVercelProjectSlug = '86chaos'
+
+function Read-EnvFileMap {
   param([string]$Path)
-  if (-not (Test-Path $Path)) { return }
+  $map = @{}
+  if (-not (Test-Path $Path)) { return $map }
   Get-Content $Path | ForEach-Object {
     $line = $_.Trim()
     if (-not $line -or $line.StartsWith('#') -or $line -notmatch '=') { return }
@@ -22,14 +26,59 @@ function Import-EnvFile {
     if (($value.StartsWith('"') -and $value.EndsWith('"')) -or ($value.StartsWith("'") -and $value.EndsWith("'"))) {
       $value = $value.Substring(1, $value.Length - 2)
     }
+    if ($name -match '^[A-Za-z_][A-Za-z0-9_]*$') { $map[$name] = $value }
+  }
+  return $map
+}
+
+function Normalize-ReleaseTargetValue {
+  param([string]$Name, [string]$Value)
+  if (-not $Value) { return '' }
+  if ($Name -match 'URL$|BASE_URL$') { return $Value.Trim().TrimEnd('/') }
+  return $Value.Trim()
+}
+
+function Assert-NoReleaseTargetConflicts {
+  param([hashtable]$TestEnv, [hashtable]$LocalEnv)
+  foreach ($key in $ReleaseTargetKeys) {
+    $values = @()
+    $processValue = [Environment]::GetEnvironmentVariable($key, 'Process')
+    if ($processValue) { $values += [pscustomobject]@{ Source = 'process environment'; Value = $processValue } }
+    if ($TestEnv.ContainsKey($key) -and $TestEnv[$key]) { $values += [pscustomobject]@{ Source = '.env.test.local'; Value = $TestEnv[$key] } }
+    if ($LocalEnv.ContainsKey($key) -and $LocalEnv[$key]) { $values += [pscustomobject]@{ Source = '.env.local'; Value = $LocalEnv[$key] } }
+    for ($i = 0; $i -lt $values.Count; $i++) {
+      for ($j = $i + 1; $j -lt $values.Count; $j++) {
+        $left = Normalize-ReleaseTargetValue $key $values[$i].Value
+        $right = Normalize-ReleaseTargetValue $key $values[$j].Value
+        if ($left -and $right -and $left -ne $right) {
+          throw "Conflicting $key values detected. $($values[$i].Source) points to $($values[$i].Value) while $($values[$j].Source) points to $($values[$j].Value). Clear the stale process variable or explicitly choose the intended target."
+        }
+      }
+    }
+  }
+}
+
+function Import-EnvFile {
+  param([hashtable]$Map)
+  foreach ($name in $Map.Keys) {
+    $value = $Map[$name]
     if ($name -match '^[A-Za-z_][A-Za-z0-9_]*$' -and -not [Environment]::GetEnvironmentVariable($name, 'Process')) {
       [Environment]::SetEnvironmentVariable($name, $value, 'Process')
     }
   }
 }
 
-Import-EnvFile (Join-Path $Root '.env.test.local')
-Import-EnvFile (Join-Path $Root '.env.local')
+$EnvTestLocal = Read-EnvFileMap (Join-Path $Root '.env.test.local')
+$EnvLocal = Read-EnvFileMap (Join-Path $Root '.env.local')
+Assert-NoReleaseTargetConflicts $EnvTestLocal $EnvLocal
+Import-EnvFile $EnvTestLocal
+Import-EnvFile $EnvLocal
+if (-not $env:CHAOS_EXPECTED_VERCEL_PROJECT_SLUG) { $env:CHAOS_EXPECTED_VERCEL_PROJECT_SLUG = $CanonicalVercelProjectSlug }
+Write-Host "Release-gate target:" -ForegroundColor Cyan
+Write-Host "  APP_URL=$env:APP_URL" -ForegroundColor Cyan
+Write-Host "  CHAOS_BASE_URL=$env:CHAOS_BASE_URL" -ForegroundColor Cyan
+Write-Host "  CHAOS_EXPECTED_VERSION=$env:CHAOS_EXPECTED_VERSION" -ForegroundColor Cyan
+Write-Host "  CHAOS_EXPECTED_VERCEL_PROJECT_SLUG=$env:CHAOS_EXPECTED_VERCEL_PROJECT_SLUG" -ForegroundColor Cyan
 
 $RunId = Get-Date -Format "yyyy-MM-ddTHH-mm-ss"
 $env:CHAOS_RELEASE_GATE_RUN_ID = $RunId

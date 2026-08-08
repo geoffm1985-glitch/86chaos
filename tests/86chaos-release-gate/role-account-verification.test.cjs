@@ -12,7 +12,7 @@ function freshRequire(file) {
 
 async function withAppUrl(fn) {
   const old = process.env.APP_URL;
-  process.env.APP_URL = 'https://cheers-portal-4oxv-git-testing-cheers-portal-s-projects.vercel.app';
+  process.env.APP_URL = 'https://86chaos-git-testing-example.vercel.app';
   try { return await fn(); }
   finally {
     if (old === undefined) delete process.env.APP_URL;

@@ -184,7 +184,8 @@ const perProjectSelected = manifestSelectedExpanded.reduce((acc, row) => { const
 const executedUnique = executedKeySet.size;
 const selectedUnique = selectedIdentitySet.size;
 const statusUniqueCount = tests.filter(t => ['passed','failed','timedOut','skipped','interrupted'].includes(String(t.status || ''))).length;
-const reconciled = !failedOnlyMode || (selectedUnique === executedUnique + selectedNotExecuted.length - unexpectedExtraExecution.length && unexpectedExtraExecution.length === 0 && executedUnique === statusUniqueCount);
+const deltaBlockedBeforeExecution = failedOnlyMode && blockedBeforePlaywright && !playwright;
+const reconciled = deltaBlockedBeforeExecution ? false : (!failedOnlyMode || (selectedUnique === executedUnique + selectedNotExecuted.length - unexpectedExtraExecution.length && unexpectedExtraExecution.length === 0 && executedUnique === statusUniqueCount));
 const deltaReconciliation = {
   mode: failedOnlyMode ? 'failed+new' : 'full',
   manifestSelectedUniqueCount: selectedUnique,
@@ -196,7 +197,7 @@ const deltaReconciliation = {
   perProjectSelected,
   perProjectExecutedUnique,
   reconciled,
-  reconciliationProof: failedOnlyMode ? `${selectedUnique} selected = ${executedUnique} executed + ${selectedNotExecuted.length} selected_not_executed; unexpected_extra=${unexpectedExtraExecution.length}` : 'full run, no delta reconciliation required'
+  reconciliationProof: deltaBlockedBeforeExecution ? 'Playwright was blocked before test execution; delta reconciliation is not applicable and must not become a green lineage result.' : (failedOnlyMode ? `${selectedUnique} selected = ${executedUnique} executed + ${selectedNotExecuted.length} selected_not_executed; unexpected_extra=${unexpectedExtraExecution.length}` : 'full run, no delta reconciliation required')
 };
 if (!failedOnlyManifest && playwright && unexpectedTests.length > 0 && String(runnerState.mode || '').toLowerCase() !== 'failed-only') {
   try {
