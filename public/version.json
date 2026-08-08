@@ -1,14 +1,14 @@
 {
-  "version": "16.0.150",
-  "name": "86 Chaos 16.0.150 Preview Firebase Admin Boundary and Server Identity Preflight",
-  "build": "16.0.150",
-  "label": "86 Chaos 16.0.150 Preview Firebase Admin Boundary and Server Identity Preflight",
-  "releasedAt": "2026-08-08T03:20:00-05:00",
-  "releaseTitle": "Preview Firebase Admin Boundary and Server Identity Preflight",
+  "version": "16.0.151",
+  "name": "86 Chaos 16.0.151 QA Seed Ghost Target Initialization Ordering Fix",
+  "build": "16.0.151",
+  "label": "86 Chaos 16.0.151 QA Seed Ghost Target Initialization Ordering Fix",
+  "releasedAt": "2026-08-08T03:46:00-05:00",
+  "releaseTitle": "QA Seed Ghost Target Initialization Ordering Fix",
   "notes": [
-    "Adds a pre-mutation deployed-server Firebase Admin boundary check before release-gate account provisioning, QA seeding, or Playwright.",
-    "Classifies Preview server Firebase Admin project mismatch as a deployment environment failure instead of a role-account failure.",
-    "Preserves canonical 86chaos Vercel preview targeting, strict version checks, Playwright identity qualification, and Firebase rules/index/config freeze."
+    "Fixes the release-gate QA seed temporal-dead-zone failure by assigning the Ghost target document ID only after deterministic seed documents are built.",
+    "Preserves the 16.0.150 Preview Firebase Admin boundary preflight, canonical Vercel targeting, Playwright identity qualification, and all product behavior.",
+    "No Firebase rules, indexes, configuration, customer Help content, POS work, or production behavior changes."
   ],
-  "title": "86 Chaos 16.0.150 Preview Firebase Admin Boundary and Server Identity Preflight"
+  "title": "86 Chaos 16.0.151 QA Seed Ghost Target Initialization Ordering Fix"
 }

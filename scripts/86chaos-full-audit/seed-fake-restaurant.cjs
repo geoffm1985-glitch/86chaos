@@ -566,8 +566,6 @@ async function main() {
     report.ghostTargetName = ghostTargetProfile?.name || 'Allen QA';
     report.ghostTargetAuthUid = report.ghostTargetAuth?.uid || report.ghostTargetAuth?.authUid || '';
     report.ghostTargetEmail = report.ghostTargetAuth?.email || ghostTargetProfile?.email || '';
-    report.ghostTargetUserId = (created.users || []).find(row => row.idKey === 'allen')?.id || '';
-    report.ghostTargetDocumentId = report.ghostTargetUserId;
     report.ghostRequestOffConflictDate = ghostRequestOffConflictDate;
     const now = new Date().toISOString();
     const today = new Date().toISOString().slice(0, 10);
@@ -623,6 +621,8 @@ async function main() {
       profile.collections.availabilityRecords.push({ restaurantId, userId: account.uid, employeeId: account.uid, scheduleUserId: account.uid, employeeName: account.name, dayOfWeek: new Date().toLocaleDateString('en-US', { weekday: 'long', timeZone: 'America/Chicago' }), availableFrom: '08:00', availableTo: '22:00', isActive: true, qaOwned: true, qaRunId: RUN_ID, createdBy: '86chaos-full-audit', createdAt: now });
     }
     const { docs, created, ids } = buildServerSeedDocuments(profile);
+    report.ghostTargetUserId = (created.users || []).find(row => row.idKey === 'allen')?.id || '';
+    report.ghostTargetDocumentId = report.ghostTargetUserId;
     const restaurant = {
       ...profile.restaurant,
       restaurantId,

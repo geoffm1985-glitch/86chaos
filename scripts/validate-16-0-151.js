@@ -26,14 +26,14 @@ const provisioner = read('scripts/86chaos-release-gate/provision-test-accounts.c
 const seed = read('scripts/86chaos-full-audit/seed-fake-restaurant.cjs');
 const cleanup = read('scripts/86chaos-full-audit/cleanup-fake-restaurant.cjs');
 
-assert(pkg.version === '16.0.150', 'package.json version is 16.0.150');
-assert(lock.version === '16.0.150' && lock.packages?.['']?.version === '16.0.150', 'package-lock root versions are 16.0.150');
-assert(version.version === '16.0.150' && version.build === '16.0.150', 'public/version.json version/build are 16.0.150');
-assert(appCore.includes("CURRENT_VERSION = '16.0.150'"), 'app core CURRENT_VERSION is 16.0.150');
-assert(apiVersion.includes("APP_VERSION = '16.0.150'") && apiVersion.includes("SECURITY_SCHEMA_VERSION = '16.0.150'"), 'api version reports 16.0.150');
-assert(pkg.scripts['test:source'] === 'node scripts/validate-16-0-150.js', 'test:source points at 16.0.150 validator');
+assert(pkg.version === '16.0.151', 'package.json version is 16.0.151');
+assert(lock.version === '16.0.151' && lock.packages?.['']?.version === '16.0.151', 'package-lock root versions are 16.0.151');
+assert(version.version === '16.0.151' && version.build === '16.0.151', 'public/version.json version/build are 16.0.151');
+assert(appCore.includes("CURRENT_VERSION = '16.0.151'"), 'app core CURRENT_VERSION is 16.0.151');
+assert(apiVersion.includes("APP_VERSION = '16.0.151'") && apiVersion.includes("SECURITY_SCHEMA_VERSION = '16.0.151'"), 'api version reports 16.0.151');
+assert(pkg.scripts['test:source'] === 'node scripts/validate-16-0-151.js', 'test:source points at 16.0.151 validator');
 assert(pkg.scripts['test:play-store:delta'] && pkg.scripts['test:play-store:delta'].includes('FAILED_AND_NEW'), 'failed+new delta command is present');
-assert(!fs.existsSync(path.join(root, 'scripts/validate-16-0-149.js')), 'previous 16.0.149 validator was replaced');
+assert(!fs.existsSync(path.join(root, 'scripts/validate-16-0-150.js')), 'previous 16.0.150 validator was replaced');
 
 assert(sha('firestore.rules') === '51bfd7d39edd59f680ae41a149c108cec8cd42d00b102d84cb00ee40d90264d9', 'firestore.rules unchanged');
 assert(sha('storage.rules') === '174e7e9a140193ff69ccf0f0d3e5c65b81a9e0fbbd612bff45ce57e7a3a7ce9c', 'storage.rules unchanged');
@@ -55,6 +55,7 @@ assert(requestOffSpec.includes('Open People') && requestOffSpec.includes('ghostR
 assert(!requestOffSpec.includes('test.skip(true, `Could not find selectable Request Off calendar cell'), 'critical Ghost Request Off workflow cannot silently skip missing date cells');
 assert(provisioner.includes('GHOST_TARGET') && provisioner.includes('ghost-target-auth.runtime-secret') && provisioner.includes('provisionGhostTargetAuth'), 'temporary Ghost target Auth account is provisioned without reporting password');
 assert(seed.includes('applyGhostTargetToLegacyProfile') && seed.includes('ghostRequestOffConflictDate'), 'QA seed exposes legacy Ghost target auth UID and deterministic conflict date');
+assert(seed.indexOf('const { docs, created, ids } = buildServerSeedDocuments(profile);') < seed.indexOf("report.ghostTargetUserId = (created.users || []).find(row => row.idKey === 'allen')?.id || '';"), 'QA seed derives Ghost target document ID only after created seed documents are initialized');
 assert(cleanup.includes('deleteGhostTargetAuthAccount') && cleanup.includes('temporaryAuthAccountsDeleted'), 'QA cleanup deletes temporary Ghost target Auth account');
 assert(fs.existsSync(path.join(root, 'tests/86chaos-release-gate/26-pwa-icon-source-deployed-parity.spec.cjs')), 'PWA icon source/deployed parity Playwright test exists');
 assert(fs.existsSync(path.join(root, 'tests/86chaos-release-gate/27-pwa-browser-icon-matrix.spec.cjs')), 'cross-browser PWA metadata matrix Playwright test exists');
@@ -108,4 +109,4 @@ assert(collector.includes('server-firebase-boundary-preflight.json') && collecto
 assert(serverBoundaryTest.includes('server Admin cheers-34b8d blocks') && serverBoundaryTest.includes('testAccountProvisioning.attempted, false'), 'server boundary regression tests cover preview/prod mismatch before provisioning');
 
 if (failures) { console.error(`\n${failures} validation check(s) failed.`); process.exit(1); }
-console.log('\n16.0.150 source validation passed.');
+console.log('\n16.0.151 source validation passed.');
