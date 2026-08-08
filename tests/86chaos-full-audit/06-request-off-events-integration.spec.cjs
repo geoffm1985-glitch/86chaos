@@ -134,9 +134,26 @@ test.describe('06 request-off, availability, and scheduled events integration', 
       expect(conflictDate, 'QA seed must expose ghostRequestOffConflictDate for deterministic Request Off conflict testing').toMatch(/^\d{4}-\d{2}-\d{2}$/);
       const day = String(Number(conflictDate.slice(-2)));
       const dialogPromise = page.waitForEvent('dialog', { timeout: 6000 }).catch(() => null);
+      const conflictResponsePromise = page.waitForResponse(response => /\/api\/time-off-request/i.test(response.url()), { timeout: 8000 }).catch(() => null);
       const cell = page.locator('div.cursor-pointer, button, [role="gridcell"]').filter({ hasText: new RegExp(`^${day}(?:\\s|$)`) }).first();
       await expect(cell, `Request Off conflict date cell for ${conflictDate} should be selectable`).toBeVisible({ timeout: 15000 });
       await cell.click();
+      const conflictResponse = await conflictResponsePromise;
+      let conflictBody = null;
+      try { conflictBody = conflictResponse ? await conflictResponse.json() : null; } catch (_) {}
+      const conflictRow = Array.isArray(conflictBody?.conflicts) ? conflictBody.conflicts.find(row => row.date === conflictDate) : null;
+      await attachState('06-ghost-request-off-conflict-api.json', {
+        conflictDate,
+        status: conflictResponse?.status?.() || 0,
+        ok: conflictResponse?.ok?.() || false,
+        returnedDate: conflictRow?.date || '',
+        conflictCount: Number(conflictRow?.count || 0),
+        names: Array.isArray(conflictRow?.names) ? conflictRow.names.slice(0, 8) : []
+      });
+      expect(conflictResponse, 'Selecting the seeded conflict date should call the Request Off conflicts API').toBeTruthy();
+      expect(conflictResponse.ok(), 'Request Off conflicts API should succeed before warning is evaluated').toBe(true);
+      expect(conflictRow?.date, 'Conflict API response should include the seeded conflict date').toBe(conflictDate);
+      expect(Number(conflictRow?.count || 0), 'Seeded Sara Request Off should count as at least one other-employee conflict').toBeGreaterThanOrEqual(1);
       const dialog = await dialogPromise;
       if (dialog) {
         const message = dialog.message();

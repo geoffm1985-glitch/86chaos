@@ -5356,3 +5356,14 @@ span.bg-red-500.text-white,
     min-width: 42px !important;
   }
 }
+
+/* 16.0.152: Desktop/fine-pointer Schedule Builder time chips honor the release-gate 24px target despite earlier compact !important chip rules. */
+@media (min-width: 768px) and (pointer: fine) {
+  .schedule-builder-desktop-table button.schedule-builder-time-chip:not(.schedule-builder-event-chip):not(.schedule-builder-event-more):not(:disabled),
+  .desktop-pro-shell .app-content-shell .schedule-builder-desktop-table button.schedule-builder-time-chip:not(.schedule-builder-event-chip):not(.schedule-builder-event-more):not(:disabled),
+  .ui-v12-compact .schedule-builder-desktop-table button.schedule-builder-time-chip:not(.schedule-builder-event-chip):not(.schedule-builder-event-more):not(:disabled) {
+    min-height: 24px !important;
+    min-width: 24px !important;
+    box-sizing: border-box !important;
+  }
+}

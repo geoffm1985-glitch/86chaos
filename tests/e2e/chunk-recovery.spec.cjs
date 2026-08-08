@@ -1,19 +1,11 @@
 const { test, expect } = require('@playwright/test');
-const { fillReleaseLogin } = require('./utils/release-login-helper.cjs');
+const { loginIfNeeded, gotoAuthenticatedRoute, assertAuthenticatedAfterNavigation, isLoginShellVisible } = require('./utils/release-login-helper.cjs');
 
 const releaseGate = process.env.CHAOS_RELEASE_GATE === 'true';
 
 async function login(page, email, password) {
   await page.goto('/', { waitUntil: 'domcontentloaded' });
-  await fillReleaseLogin(page, email, password);
-  const chooser = page.getByText(/choose workspace/i).first();
-  if (await chooser.isVisible({ timeout: 5000 }).catch(() => false)) {
-    const name = process.env.CHAOS_QA_WORKSPACE_NAME || process.env.CHAOS_QA_WORKSPACE || '';
-    if (releaseGate && !name) throw new Error('CHAOS_QA_WORKSPACE_NAME is required for chunk recovery.');
-    const target = name ? page.getByText(name, { exact: false }).first() : page.locator('button,[role="button"]').filter({ hasText: /owner|manager|staff|admin/i }).first();
-    await target.click();
-  }
-  await expect(page.locator('body')).toContainText(/86 chaos|today|manager brief/i, { timeout: 30_000 });
+  await loginIfNeeded(page, email, password, { timeout: 30_000 });
 }
 
 test('lazy chunk failure reports once, avoids a reload loop, and recovers without losing auth', async ({ page }) => {
@@ -35,29 +27,38 @@ test('lazy chunk failure reports once, avoids a reload loop, and recovers withou
     reportAttempts += 1;
     await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, reportId: 'qa_chunk_report' }) });
   });
-  await page.route(/\/static\/(?:js|css)\/.*\.(?:chunk\.)?(?:js|css)(?:\?.*)?$/, async route => {
+  await page.route(/\/static\/js\/(?!main\.)[^/?]+\.chunk\.js(?:\?.*)?$/i, async route => {
     if (!blockingEnabled || blockedUrl) return route.continue();
     blockedUrl = route.request().url();
     return route.abort('failed');
   });
 
   await login(page, email, password);
+  await gotoAuthenticatedRoute(page, 'today', { timeout: 30_000 });
   const baselineNavigations = topLevelNavigations;
   blockingEnabled = true;
-  await page.goto('/?tab=recipes', { waitUntil: 'domcontentloaded' });
+
+  await page.evaluate(() => {
+    const url = new URL(window.location.href);
+    url.searchParams.set('tab', 'recipes');
+    window.history.pushState({}, '', url.toString());
+    window.dispatchEvent(new PopStateEvent('popstate', { state: {} }));
+  });
   await page.waitForTimeout(4500);
 
-  expect(blockedUrl, 'a concrete lazy asset request was intercepted').not.toBe('');
+  expect(blockedUrl, 'a concrete lazy JavaScript chunk request was intercepted').toMatch(/\/static\/js\/(?!main\.)[^/?]+\.chunk\.js(?:\?.*)?$/i);
+  expect(blockedUrl, 'chunk recovery test must not intercept CSS, main JS, service worker, or runtime boot assets').not.toMatch(/\/static\/css\/|\/main\.|service-worker|runtime/i);
   expect(reportAttempts, 'one crash report was submitted').toBe(1);
   expect(topLevelNavigations - baselineNavigations, 'recovery performed no more than one extra top-level navigation').toBeLessThanOrEqual(2);
   await expect(page.locator('body')).toContainText(/refresh app|update required|stale app file|failed to load/i, { timeout: 15_000 });
 
   blockingEnabled = false;
-  await page.unroute(/\/static\/(?:js|css)\/.*\.(?:chunk\.)?(?:js|css)(?:\?.*)?$/);
+  await page.unroute(/\/static\/js\/(?!main\.)[^/?]+\.chunk\.js(?:\?.*)?$/i);
   const refresh = page.getByRole('button', { name: /refresh app|refresh/i }).first();
   if (await refresh.isVisible({ timeout: 3000 }).catch(() => false)) await refresh.click();
   else await page.reload({ waitUntil: 'domcontentloaded' });
-  await page.goto('/?tab=recipes', { waitUntil: 'domcontentloaded' });
+  await assertAuthenticatedAfterNavigation(page, { timeout: 30_000 });
+  await gotoAuthenticatedRoute(page, 'recipes', { timeout: 30_000 });
   await expect(page.locator('body')).toContainText(/recipes/i, { timeout: 30_000 });
-  await expect(page.getByLabel(/email/i)).not.toBeVisible({ timeout: 3000 }).catch(() => {});
+  expect(await isLoginShellVisible(page), 'authentication should survive the lazy chunk recovery path').toBe(false);
 });

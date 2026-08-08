@@ -52,7 +52,7 @@ function identityValue(value = '') {
 function collectIdentityAliases(...records) {
   const fields = [
     'id', 'uid', 'authUid', 'userId', 'accountUserId', 'employeeId', 'rosterUserId', 'scheduleUserId',
-    'membershipId', 'workspaceMemberId', 'createdBy', 'requestedBy'
+    'membershipId', 'workspaceMemberId'
   ];
   const aliases = new Set();
   for (const record of records.filter(Boolean)) {
@@ -87,7 +87,7 @@ function requestBelongsToIdentity(request = {}, identity = {}) {
 }
 
 function requestPersonKey(request = {}) {
-  const personFields = ['authUid', 'uid', 'userId', 'accountUserId', 'employeeId', 'rosterUserId', 'scheduleUserId', 'membershipId', 'workspaceMemberId', 'createdBy', 'requestedBy'];
+  const personFields = ['authUid', 'uid', 'userId', 'accountUserId', 'employeeId', 'rosterUserId', 'scheduleUserId', 'membershipId', 'workspaceMemberId'];
   for (const field of personFields) {
     const value = identityValue(request?.[field]);
     if (value) return `id:${value}`;

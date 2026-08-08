@@ -26,14 +26,14 @@ const provisioner = read('scripts/86chaos-release-gate/provision-test-accounts.c
 const seed = read('scripts/86chaos-full-audit/seed-fake-restaurant.cjs');
 const cleanup = read('scripts/86chaos-full-audit/cleanup-fake-restaurant.cjs');
 
-assert(pkg.version === '16.0.151', 'package.json version is 16.0.151');
-assert(lock.version === '16.0.151' && lock.packages?.['']?.version === '16.0.151', 'package-lock root versions are 16.0.151');
-assert(version.version === '16.0.151' && version.build === '16.0.151', 'public/version.json version/build are 16.0.151');
-assert(appCore.includes("CURRENT_VERSION = '16.0.151'"), 'app core CURRENT_VERSION is 16.0.151');
-assert(apiVersion.includes("APP_VERSION = '16.0.151'") && apiVersion.includes("SECURITY_SCHEMA_VERSION = '16.0.151'"), 'api version reports 16.0.151');
-assert(pkg.scripts['test:source'] === 'node scripts/validate-16-0-151.js', 'test:source points at 16.0.151 validator');
+assert(pkg.version === '16.0.152', 'package.json version is 16.0.152');
+assert(lock.version === '16.0.152' && lock.packages?.['']?.version === '16.0.152', 'package-lock root versions are 16.0.152');
+assert(version.version === '16.0.152' && version.build === '16.0.152', 'public/version.json version/build are 16.0.152');
+assert(appCore.includes("CURRENT_VERSION = '16.0.152'"), 'app core CURRENT_VERSION is 16.0.152');
+assert(apiVersion.includes("APP_VERSION = '16.0.152'") && apiVersion.includes("SECURITY_SCHEMA_VERSION = '16.0.152'"), 'api version reports 16.0.152');
+assert(pkg.scripts['test:source'] === 'node scripts/validate-16-0-152.js', 'test:source points at 16.0.152 validator');
 assert(pkg.scripts['test:play-store:delta'] && pkg.scripts['test:play-store:delta'].includes('FAILED_AND_NEW'), 'failed+new delta command is present');
-assert(!fs.existsSync(path.join(root, 'scripts/validate-16-0-150.js')), 'previous 16.0.150 validator was replaced');
+assert(!fs.existsSync(path.join(root, 'scripts/validate-16-0-151.js')), 'previous 16.0.151 validator was replaced');
 
 assert(sha('firestore.rules') === '51bfd7d39edd59f680ae41a149c108cec8cd42d00b102d84cb00ee40d90264d9', 'firestore.rules unchanged');
 assert(sha('storage.rules') === '174e7e9a140193ff69ccf0f0d3e5c65b81a9e0fbbd612bff45ce57e7a3a7ce9c', 'storage.rules unchanged');
@@ -108,5 +108,20 @@ assert(serverBoundary.includes('credentialSourceName') && serverBoundary.include
 assert(collector.includes('server-firebase-boundary-preflight.json') && collector.includes('previewServerFirebaseBoundaryFailure'), 'release report includes server Firebase boundary preflight classification');
 assert(serverBoundaryTest.includes('server Admin cheers-34b8d blocks') && serverBoundaryTest.includes('testAccountProvisioning.attempted, false'), 'server boundary regression tests cover preview/prod mismatch before provisioning');
 
+
+const loginHelper = read('tests/e2e/utils/release-login-helper.cjs');
+const authRelease = read('tests/e2e/authenticated-release.spec.cjs');
+const costRegression = read('tests/e2e/cost-regression.spec.cjs');
+const chunkRecovery = read('tests/e2e/chunk-recovery.spec.cjs');
+const compactUi = read('tests/e2e/compact-ui-layout.spec.cjs');
+const timeOffApi = read('api/time-off-request.js');
+assert(loginHelper.includes('waitForAuthenticatedShell') && loginHelper.includes('Switch workspace') && loginHelper.includes('Authenticated session was not restored after direct navigation'), 'release login helper waits for authenticated shell and explicit session restoration');
+assert(!authRelease.includes("waitForLoadState('networkidle'") && authRelease.includes('gotoAuthenticatedRoute'), 'authenticated release tests use deterministic route readiness without networkidle');
+assert(costRegression.includes('gotoAuthenticatedRoute') && costRegression.includes('assertAuthenticatedAfterNavigation'), 'cost regression uses shared authenticated readiness');
+assert(chunkRecovery.includes('.chunk\\.js') && !chunkRecovery.includes('static\\/(?:js|css)'), 'chunk recovery test targets lazy JavaScript chunks, not CSS/main assets');
+assert(compactUi.includes('expect.poll') && compactUi.includes('rect.height >= 42'), 'mobile login tap-target test waits for stable rendered sizing');
+assert(!timeOffApi.includes("'createdBy', 'requestedBy'"), 'Request Off employee identity aliases exclude audit provenance fields');
+assert(fs.existsSync(path.join(root, 'api/release-browser-reliability.test.cjs')), 'release browser reliability source regressions exist');
+
 if (failures) { console.error(`\n${failures} validation check(s) failed.`); process.exit(1); }
-console.log('\n16.0.151 source validation passed.');
+console.log('\n16.0.152 source validation passed.');

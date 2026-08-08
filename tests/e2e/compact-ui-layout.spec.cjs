@@ -29,6 +29,21 @@ test.describe('compact professional UI containment', () => {
   test('keeps mobile tap targets usable on the login shell', async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await expect(page.getByRole('button', { name: /^Unlock System$/i })).toBeVisible({ timeout: 10000 });
+    await expect.poll(async () => page.evaluate(() => {
+      const labels = [/^Unlock System$/i, /^Forgot Password or Username\?$/i, /^Privacy Policy & Terms of Service$/i];
+      const measured = labels.map(pattern => {
+        const button = Array.from(document.querySelectorAll('button')).find(node => pattern.test((node.textContent || '').trim()));
+        if (!button) return { text: String(pattern), height: 0, width: 0, found: false, ready: false };
+        const rect = button.getBoundingClientRect();
+        return { text: (button.textContent || '').trim(), height: rect.height, width: rect.width, found: true, ready: rect.height >= 42 && rect.width >= 42 };
+      });
+      return measured.every(row => row.ready) ? 'stable' : JSON.stringify(measured);
+    }), {
+      timeout: 10000,
+      intervals: [100, 200, 400, 800],
+      message: 'Login shell tap targets should be measured only after final CSS/layout has settled at >=42px'
+    }).toBe('stable');
     const tooSmall = await page.evaluate(() => Array.from(document.querySelectorAll('button')).filter(button => {
       const rect = button.getBoundingClientRect();
       const style = window.getComputedStyle(button);

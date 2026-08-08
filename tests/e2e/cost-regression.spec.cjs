@@ -1,7 +1,7 @@
 const { test, expect } = require('@playwright/test');
 const fs = require('fs');
 const path = require('path');
-const { loginIfNeeded } = require('./utils/release-login-helper.cjs');
+const { loginIfNeeded, gotoAuthenticatedRoute, assertAuthenticatedAfterNavigation } = require('./utils/release-login-helper.cjs');
 
 const releaseGate = process.env.CHAOS_RELEASE_GATE === 'true';
 const required = (name) => {
@@ -27,21 +27,10 @@ const scenarios = [
   { name: 'unchanged-push-token', email: 'OWNER_EMAIL', password: 'OWNER_PASSWORD', tab: 'settings', action: 'reload-for-push-sync' }
 ];
 
-async function chooseWorkspace(page) {
-  const chooser = page.getByText(/choose workspace/i).first();
-  if (!(await chooser.isVisible({ timeout: 5000 }).catch(() => false))) return;
-  const workspace = process.env.CHAOS_QA_WORKSPACE_NAME || process.env.CHAOS_QA_WORKSPACE || '';
-  if (releaseGate && !workspace) throw new Error('CHAOS_QA_WORKSPACE_NAME is required when the chooser appears.');
-  const target = workspace ? page.getByText(workspace, { exact: false }).first() : page.locator('button,[role="button"]').filter({ hasText: /owner|manager|staff|admin/i }).first();
-  await target.click();
-}
-
 async function loginNeutral(page, emailKey, passwordKey) {
   await page.goto('/?tab=help', { waitUntil: 'domcontentloaded' });
-  await loginIfNeeded(page, required(emailKey), required(passwordKey));
-  await chooseWorkspace(page);
-  await page.goto('/?tab=help', { waitUntil: 'domcontentloaded' });
-  await page.waitForLoadState('networkidle', { timeout: 15_000 }).catch(() => {});
+  await loginIfNeeded(page, required(emailKey), required(passwordKey), { timeout: 30_000 });
+  await gotoAuthenticatedRoute(page, 'help', { timeout: 30_000 });
 }
 
 async function resetDiagnostics(page) {
@@ -71,13 +60,12 @@ async function diagnostics(page) {
 }
 
 async function openScenario(page, scenario) {
-  await page.goto(`/?tab=${encodeURIComponent(scenario.tab)}`, { waitUntil: 'domcontentloaded' });
-  await page.waitForLoadState('networkidle', { timeout: 15_000 }).catch(() => {});
+  await gotoAuthenticatedRoute(page, scenario.tab, { timeout: 30_000 });
   if (scenario.subtab) {
     const control = page.getByRole('button', { name: scenario.subtab }).first().or(page.getByText(scenario.subtab).first());
     await expect(control, `${scenario.name} subtab control`).toBeVisible({ timeout: 12_000 });
     await control.click();
-    await page.waitForLoadState('networkidle', { timeout: 12_000 }).catch(() => {});
+    await assertAuthenticatedAfterNavigation(page, { timeout: 20_000 });
   }
   if (scenario.action === 'background') {
     await page.evaluate(() => {
@@ -97,7 +85,7 @@ async function openScenario(page, scenario) {
     await current.locator('xpath=ancestor::button[1]').click().catch(async () => page.getByRole('button', { name: /close/i }).click());
   } else if (scenario.action === 'reload-for-push-sync') {
     await page.reload({ waitUntil: 'domcontentloaded' });
-    await page.waitForLoadState('networkidle', { timeout: 20_000 }).catch(() => {});
+    await assertAuthenticatedAfterNavigation(page, { timeout: 30_000 });
     await page.waitForTimeout(1500);
   } else {
     await page.waitForTimeout(1000);

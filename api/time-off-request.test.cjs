@@ -200,3 +200,66 @@ test('Ghost target identity still accepts workspaceIds, embedded membership, and
   assert.equal((await api.resolveTargetIdentity(ctx, { targetUserId: 'embedded' })).authUid, 'auth-embedded');
   assert.equal((await api.resolveTargetIdentity(ctx, { targetUserId: 'member-profile' })).authUid, 'auth-member');
 });
+
+test('Request Off conflicts do not treat shared createdBy provenance as employee ownership', () => {
+  const allenIdentity = {
+    authUid: 'allen-auth-current',
+    userId: 'allen-auth-current',
+    employeeId: 'allen-employee-current',
+    createdBy: '86chaos-full-audit',
+    employeeEmail: 'allen-current@example.test',
+    name: 'Allen QA'
+  };
+  const rows = [
+    {
+      id: 'sara-conflict',
+      restaurantId: 'r1',
+      date: '2026-09-04',
+      status: 'pending',
+      userId: 'sara-auth-current',
+      employeeId: 'sara-employee-current',
+      createdBy: '86chaos-full-audit',
+      employeeName: 'Sara QA',
+      reason: 'private reason',
+      employeeEmail: 'sara-current@example.test'
+    },
+    {
+      id: 'allen-own',
+      restaurantId: 'r1',
+      date: '2026-09-04',
+      status: 'approved',
+      userId: 'allen-auth-current',
+      employeeId: 'allen-employee-current',
+      createdBy: '86chaos-full-audit',
+      employeeName: 'Allen QA'
+    },
+    {
+      id: 'sara-denied',
+      restaurantId: 'r1',
+      date: '2026-09-04',
+      status: 'denied',
+      userId: 'sara-auth-current',
+      employeeId: 'sara-employee-current',
+      createdBy: '86chaos-full-audit',
+      employeeName: 'Sara QA'
+    },
+    {
+      id: 'sara-cancelled',
+      restaurantId: 'r1',
+      date: '2026-09-04',
+      status: 'cancelled',
+      userId: 'sara-auth-current',
+      employeeId: 'sara-employee-current',
+      createdBy: '86chaos-full-audit',
+      employeeName: 'Sara QA'
+    }
+  ];
+  assert.equal(api.requestBelongsToIdentity(rows[0], allenIdentity), false);
+  assert.equal(api.requestBelongsToIdentity(rows[1], allenIdentity), true);
+  const summary = api.summarizeConflictRows(rows, allenIdentity);
+  assert.equal(summary.hasConflict, true);
+  assert.equal(summary.count, 1);
+  assert.deepEqual(summary.names, ['Sara QA']);
+  assert.equal(Object.prototype.hasOwnProperty.call(summary, 'reason'), false);
+  assert.equal(Object.prototype.hasOwnProperty.call(summary, 'employeeEmail'), false);
+});

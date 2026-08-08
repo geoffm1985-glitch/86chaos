@@ -1,14 +1,14 @@
 {
-  "version": "16.0.151",
-  "name": "86 Chaos 16.0.151 QA Seed Ghost Target Initialization Ordering Fix",
-  "build": "16.0.151",
-  "label": "86 Chaos 16.0.151 QA Seed Ghost Target Initialization Ordering Fix",
-  "releasedAt": "2026-08-08T03:46:00-05:00",
-  "releaseTitle": "QA Seed Ghost Target Initialization Ordering Fix",
+  "version": "16.0.152",
+  "name": "86 Chaos 16.0.152 Authenticated Browser Reliability and Request Off Conflict Identity Repair",
+  "build": "16.0.152",
+  "label": "86 Chaos 16.0.152 Authenticated Browser Reliability and Request Off Conflict Identity Repair",
+  "releasedAt": "2026-08-08T11:47:00-05:00",
+  "releaseTitle": "Authenticated Browser Reliability and Request Off Conflict Identity Repair",
   "notes": [
-    "Fixes the release-gate QA seed temporal-dead-zone failure by assigning the Ghost target document ID only after deterministic seed documents are built.",
-    "Preserves the 16.0.150 Preview Firebase Admin boundary preflight, canonical Vercel targeting, Playwright identity qualification, and all product behavior.",
-    "No Firebase rules, indexes, configuration, customer Help content, POS work, or production behavior changes."
+    "Repairs authenticated browser readiness in release-gate tests without accepting the login logo as proof of login.",
+    "Fixes Request Off conflict identity semantics so shared audit provenance cannot merge different employees.",
+    "Preserves canonical Vercel targeting, Preview Firebase boundary checks, Playwright identity lineage, Firebase rules/indexes/configuration, customer Help content, and POS deferral."
   ],
-  "title": "86 Chaos 16.0.151 QA Seed Ghost Target Initialization Ordering Fix"
+  "title": "86 Chaos 16.0.152 Authenticated Browser Reliability and Request Off Conflict Identity Repair"
 }
