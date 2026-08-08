@@ -123,6 +123,10 @@ $RunnerState = [ordered]@{
   dependencyPreflightPassed = $false
   sourceInventoryPassed = $false
   browserInstallPassed = $false
+  serverIdentityPreflightStarted = $false
+  serverIdentityPreflightPassed = $false
+  serverIdentityPreflightFailureCategory = ''
+  serverIdentityPreflightPrimaryBlocker = ''
   testAccountProvisionAttempted = $false
   testAccountProvisionPassed = $false
   rolePreflightStarted = $false
@@ -387,10 +391,35 @@ if ($PreflightExit -ne 0) {
             if ($BrowserExit -ne 0) {
               Stop-BeforePlaywright "Release gate blocked before Playwright because Chromium browser installation failed."
             } else {
-              Set-RunnerPhase 'test-account-provisioning'
-              $RunnerState.testAccountProvisionAttempted = $true
+              Set-RunnerPhase 'server-firebase-boundary-preflight'
+              $RunnerState.serverIdentityPreflightStarted = $true
               Save-RunnerState
-              $ProvisionExit = Run-Step "Provision temporary release-gate test accounts" "node scripts/86chaos-release-gate/provision-test-accounts.cjs"
+              $ServerIdentityExit = Run-Step "Verify deployed server Firebase boundary" "node scripts/86chaos-release-gate/server-firebase-boundary-preflight.cjs"
+              $RunnerState.serverIdentityPreflightPassed = ($ServerIdentityExit -eq 0)
+              $ServerIdentityReportPath = Join-Path $RunDir 'server-firebase-boundary-preflight.json'
+              if (Test-Path $ServerIdentityReportPath) {
+                try {
+                  $ServerIdentityReport = Get-Content $ServerIdentityReportPath -Raw | ConvertFrom-Json
+                  $RunnerState.serverIdentityPreflightFailureCategory = [string]$ServerIdentityReport.failureCategory
+                  $RunnerState.serverIdentityPreflightPrimaryBlocker = [string]$ServerIdentityReport.primaryBlockingFailure
+                } catch {}
+              }
+              Save-RunnerState
+              if ($ServerIdentityExit -ne 0) {
+                $ServerIdentityReason = "Release gate blocked before mutation because deployed server Firebase identity preflight failed."
+                if (Test-Path $ServerIdentityReportPath) {
+                  try {
+                    $ServerIdentityReport = Get-Content $ServerIdentityReportPath -Raw | ConvertFrom-Json
+                    if ($ServerIdentityReport.primaryBlockingFailure) { $ServerIdentityReason = [string]$ServerIdentityReport.primaryBlockingFailure }
+                    elseif ($ServerIdentityReport.errors -and $ServerIdentityReport.errors.Count -gt 0) { $ServerIdentityReason = [string]$ServerIdentityReport.errors[0] }
+                  } catch {}
+                }
+                Stop-BeforePlaywright $ServerIdentityReason
+              } else {
+                Set-RunnerPhase 'test-account-provisioning'
+                $RunnerState.testAccountProvisionAttempted = $true
+                Save-RunnerState
+                $ProvisionExit = Run-Step "Provision temporary release-gate test accounts" "node scripts/86chaos-release-gate/provision-test-accounts.cjs"
               $RunnerState.testAccountProvisionPassed = ($ProvisionExit -eq 0)
               Save-RunnerState
               if ($ProvisionExit -ne 0) {
@@ -441,6 +470,8 @@ if ($PreflightExit -ne 0) {
 }
 
 }
+}
+
 }
 
 $SetupStatePath = Join-Path $RunDir 'qa-setup-state.json'

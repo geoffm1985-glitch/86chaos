@@ -1,14 +1,14 @@
 {
-  "version": "16.0.149",
-  "name": "86 Chaos 16.0.149 Canonical Vercel Testing Target and Stale Preview Prevention",
-  "build": "16.0.149",
-  "label": "86 Chaos 16.0.149 Canonical Vercel Testing Target and Stale Preview Prevention",
-  "releasedAt": "2026-08-08T01:45:00-05:00",
-  "releaseTitle": "Canonical Vercel Testing Target and Stale Preview Prevention",
+  "version": "16.0.150",
+  "name": "86 Chaos 16.0.150 Preview Firebase Admin Boundary and Server Identity Preflight",
+  "build": "16.0.150",
+  "label": "86 Chaos 16.0.150 Preview Firebase Admin Boundary and Server Identity Preflight",
+  "releasedAt": "2026-08-08T03:20:00-05:00",
+  "releaseTitle": "Preview Firebase Admin Boundary and Server Identity Preflight",
   "notes": [
-    "Rejects retired duplicate Vercel preview targets and requires canonical 86chaos testing previews before QA mutation.",
-    "Detects conflicting APP_URL/CHAOS_BASE_URL/expected-version values across shell and local env files before release-gate testing begins.",
-    "Preserves strict version mismatch blocking, Playwright identity qualification, Firebase rules, indexes, and production behavior."
+    "Adds a pre-mutation deployed-server Firebase Admin boundary check before release-gate account provisioning, QA seeding, or Playwright.",
+    "Classifies Preview server Firebase Admin project mismatch as a deployment environment failure instead of a role-account failure.",
+    "Preserves canonical 86chaos Vercel preview targeting, strict version checks, Playwright identity qualification, and Firebase rules/index/config freeze."
   ],
-  "title": "86 Chaos 16.0.149 Canonical Vercel Testing Target and Stale Preview Prevention"
+  "title": "86 Chaos 16.0.150 Preview Firebase Admin Boundary and Server Identity Preflight"
 }

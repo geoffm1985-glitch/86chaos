@@ -26,14 +26,14 @@ const provisioner = read('scripts/86chaos-release-gate/provision-test-accounts.c
 const seed = read('scripts/86chaos-full-audit/seed-fake-restaurant.cjs');
 const cleanup = read('scripts/86chaos-full-audit/cleanup-fake-restaurant.cjs');
 
-assert(pkg.version === '16.0.149', 'package.json version is 16.0.149');
-assert(lock.version === '16.0.149' && lock.packages?.['']?.version === '16.0.149', 'package-lock root versions are 16.0.149');
-assert(version.version === '16.0.149' && version.build === '16.0.149', 'public/version.json version/build are 16.0.149');
-assert(appCore.includes("CURRENT_VERSION = '16.0.149'"), 'app core CURRENT_VERSION is 16.0.149');
-assert(apiVersion.includes("APP_VERSION = '16.0.149'") && apiVersion.includes("SECURITY_SCHEMA_VERSION = '16.0.149'"), 'api version reports 16.0.149');
-assert(pkg.scripts['test:source'] === 'node scripts/validate-16-0-149.js', 'test:source points at 16.0.149 validator');
+assert(pkg.version === '16.0.150', 'package.json version is 16.0.150');
+assert(lock.version === '16.0.150' && lock.packages?.['']?.version === '16.0.150', 'package-lock root versions are 16.0.150');
+assert(version.version === '16.0.150' && version.build === '16.0.150', 'public/version.json version/build are 16.0.150');
+assert(appCore.includes("CURRENT_VERSION = '16.0.150'"), 'app core CURRENT_VERSION is 16.0.150');
+assert(apiVersion.includes("APP_VERSION = '16.0.150'") && apiVersion.includes("SECURITY_SCHEMA_VERSION = '16.0.150'"), 'api version reports 16.0.150');
+assert(pkg.scripts['test:source'] === 'node scripts/validate-16-0-150.js', 'test:source points at 16.0.150 validator');
 assert(pkg.scripts['test:play-store:delta'] && pkg.scripts['test:play-store:delta'].includes('FAILED_AND_NEW'), 'failed+new delta command is present');
-assert(!fs.existsSync(path.join(root, 'scripts/validate-16-0-147.js')), 'previous 16.0.147 validator was replaced');
+assert(!fs.existsSync(path.join(root, 'scripts/validate-16-0-149.js')), 'previous 16.0.149 validator was replaced');
 
 assert(sha('firestore.rules') === '51bfd7d39edd59f680ae41a149c108cec8cd42d00b102d84cb00ee40d90264d9', 'firestore.rules unchanged');
 assert(sha('storage.rules') === '174e7e9a140193ff69ccf0f0d3e5c65b81a9e0fbbd612bff45ce57e7a3a7ce9c', 'storage.rules unchanged');
@@ -86,12 +86,26 @@ assert(failureExtractorTest.includes('PWA icon source paths normalize PUBLIC_URL
 
 
 const helpKnowledge = read('src/core/customerHelpKnowledge.cjs');
-assert(helpKnowledge.includes("CUSTOMER_HELP_VERSION = '16.0.149'"), 'customer Help knowledge version is 16.0.149');
+assert(helpKnowledge.includes("CUSTOMER_HELP_VERSION = '16.0.150'"), 'customer Help knowledge version is 16.0.150');
 assert(helpKnowledge.includes('custom-shifts-on-phone') && helpKnowledge.includes('custom-shift-save'), 'customer Help includes Custom Shift synchronization articles');
 assert(fs.existsSync(path.join(root, 'playwright.inventory.config.cjs')), 'side-effect-free Playwright inventory config exists');
 const releaseUniverse = read('scripts/86chaos-release-gate/release-test-universe.cjs');
 assert(releaseUniverse.includes('e2e/**/*.spec.cjs') && releaseUniverse.includes('app-health.spec.cjs') && releaseUniverse.includes('cost-regression.spec.cjs'), 'canonical release universe includes applicable e2e specs');
 assert(!read('playwright.inventory.config.cjs').includes('generatePlaywrightInventory'), 'inventory discovery config does not generate another inventory');
 
+
+const failedRunner = read('RUN_86CHAOS_FAILED_AND_NEW_RELEASE_GATE.ps1');
+const fullRunner = read('RUN_86CHAOS_PLAY_STORE_RELEASE_GATE.ps1');
+const serverBoundary = read('scripts/86chaos-release-gate/server-firebase-boundary-preflight.cjs');
+const serverBoundaryTest = read('api/server-firebase-boundary-preflight.test.cjs');
+assert(fs.existsSync(path.join(root, 'scripts/86chaos-release-gate/server-firebase-boundary-preflight.cjs')), 'server Firebase boundary preflight script exists');
+assert(fs.existsSync(path.join(root, 'api/server-firebase-boundary-preflight.test.cjs')), 'server Firebase boundary preflight tests exist');
+assert(failedRunner.indexOf('Verify deployed server Firebase boundary') > -1 && failedRunner.indexOf('Verify deployed server Firebase boundary') < failedRunner.indexOf('Provision temporary release-gate test accounts'), 'failed+new runner verifies deployed server Firebase boundary before account provisioning');
+assert(fullRunner.indexOf('Verify deployed server Firebase boundary') > -1 && fullRunner.indexOf('Verify deployed server Firebase boundary') < fullRunner.indexOf('Provision temporary release-gate test accounts'), 'full runner verifies deployed server Firebase boundary before account provisioning');
+assert(serverBoundary.includes('previewServerFirebaseBoundaryFailure') && serverBoundary.includes('firebase-admin-initialization'), 'server boundary preflight classifies Firebase Admin initialization as deployment boundary failure');
+assert(serverBoundary.includes('credentialSourceName') && serverBoundary.includes('redactCredentialContents'), 'server boundary preflight reports credential source names without credential values');
+assert(collector.includes('server-firebase-boundary-preflight.json') && collector.includes('previewServerFirebaseBoundaryFailure'), 'release report includes server Firebase boundary preflight classification');
+assert(serverBoundaryTest.includes('server Admin cheers-34b8d blocks') && serverBoundaryTest.includes('testAccountProvisioning.attempted, false'), 'server boundary regression tests cover preview/prod mismatch before provisioning');
+
 if (failures) { console.error(`\n${failures} validation check(s) failed.`); process.exit(1); }
-console.log('\n16.0.149 source validation passed.');
+console.log('\n16.0.150 source validation passed.');

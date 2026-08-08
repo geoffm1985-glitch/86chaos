@@ -24,6 +24,7 @@ const requiredArtifacts = [
   'environment-preflight.json',
   'dependency-preflight.json',
   'source-inventory.json',
+  'server-firebase-boundary-preflight.json',
   'test-account-provisioning.json',
   'role-identity-verification.json',
   'java-prerequisite.json',
@@ -41,6 +42,7 @@ const runnerState = readJsonIfExists(artifact['runner-state.json'], releaseGateJ
 const preflight = readJsonIfExists(artifact['environment-preflight.json'], releaseGateJsonDiagnostics) || {};
 const dependencyPreflight = readJsonIfExists(artifact['dependency-preflight.json'], releaseGateJsonDiagnostics) || {};
 const sourceInventory = readJsonIfExists(artifact['source-inventory.json'], releaseGateJsonDiagnostics) || {};
+const serverFirebaseBoundaryPreflight = readJsonIfExists(artifact['server-firebase-boundary-preflight.json'], releaseGateJsonDiagnostics) || {};
 const testAccountProvisioning = readJsonIfExists(artifact['test-account-provisioning.json'], releaseGateJsonDiagnostics) || {};
 const roleVerification = readJsonIfExists(artifact['role-identity-verification.json'], releaseGateJsonDiagnostics) || {};
 const javaPrerequisite = readJsonIfExists(artifact['java-prerequisite.json'], releaseGateJsonDiagnostics) || {};
@@ -85,12 +87,15 @@ function skippedByRunnerBlock(name) {
     return ['source-inventory.json', 'role-identity-verification.json', 'qa-setup-state.json', '86chaos-full-audit-seed-report.json', 'playwright-report.json', '86chaos-full-audit-cleanup-report.json'].includes(name);
   }
   if (runnerState.sourceInventoryPassed !== true) {
-    return ['test-account-provisioning.json', 'role-identity-verification.json', 'qa-setup-state.json', '86chaos-full-audit-seed-report.json', 'playwright-report.json', '86chaos-full-audit-cleanup-report.json'].includes(name);
+    return ['server-firebase-boundary-preflight.json', 'test-account-provisioning.json', 'role-identity-verification.json', 'qa-setup-state.json', '86chaos-full-audit-seed-report.json', 'playwright-report.json', '86chaos-full-audit-cleanup-report.json'].includes(name);
   }
   if (runnerState.browserInstallPassed !== true) {
-    return ['test-account-provisioning.json', 'role-identity-verification.json', 'qa-setup-state.json', '86chaos-full-audit-seed-report.json', 'playwright-report.json', '86chaos-full-audit-cleanup-report.json'].includes(name);
+    return ['server-firebase-boundary-preflight.json', 'test-account-provisioning.json', 'role-identity-verification.json', 'qa-setup-state.json', '86chaos-full-audit-seed-report.json', 'playwright-report.json', '86chaos-full-audit-cleanup-report.json'].includes(name);
   }
   if (name === 'java-prerequisite.json' && (runnerState.currentPhase || '').toLowerCase().indexOf('rules') < 0) return true;
+  if (runnerState.serverIdentityPreflightStarted === true && runnerState.serverIdentityPreflightPassed !== true) {
+    return ['test-account-provisioning.json', 'role-identity-verification.json', 'java-prerequisite.json', 'node-test-live-summary.json', 'firebase-rules-release-gate.json', 'qa-setup-state.json', '86chaos-full-audit-seed-report.json', 'playwright-report.json', '86chaos-full-audit-cleanup-report.json'].includes(name);
+  }
   if (runnerState.testAccountProvisionAttempted === true && runnerState.testAccountProvisionPassed !== true) {
     return ['role-identity-verification.json', 'java-prerequisite.json', 'node-test-live-summary.json', 'firebase-rules-release-gate.json', 'qa-setup-state.json', '86chaos-full-audit-seed-report.json', 'playwright-report.json', '86chaos-full-audit-cleanup-report.json'].includes(name);
   }
@@ -215,7 +220,7 @@ const versionMismatch = Boolean(expectedVersion && testedVersion && expectedVers
 if (versionMismatch) missingArtifacts.push(`version-mismatch expected=${expectedVersion} tested=${testedVersion}`);
 
 const runMismatchFailures = [];
-for (const [name, data] of Object.entries({ runnerState, preflight, dependencyPreflight, sourceInventory, testAccountProvisioning, roleVerification, javaPrerequisite, nodeTestSummary, rulesGateReport, setupState, seedReport, cleanupReport })) {
+for (const [name, data] of Object.entries({ runnerState, preflight, dependencyPreflight, sourceInventory, serverFirebaseBoundaryPreflight, testAccountProvisioning, roleVerification, javaPrerequisite, nodeTestSummary, rulesGateReport, setupState, seedReport, cleanupReport })) {
   if (data && data.runId && data.runId !== runId) runMismatchFailures.push(`${name} runId=${data.runId} expected=${runId}`);
 }
 if (runMismatchFailures.length) missingArtifacts.push(...runMismatchFailures.map(x => `run-mismatch ${x}`));
@@ -226,6 +231,18 @@ if (hasOwn(dependencyPreflight, 'ok') && dependencyPreflight.ok !== true) {
 }
 if (blockedBeforePlaywright && /dependenc/i.test(runnerBlockingReason) && !dependencyFailures.length) dependencyFailures.push(runnerBlockingReason);
 if (dependencyInstallIncomplete && !dependencyFailures.length) dependencyFailures.push(runnerBlockingReason || 'Dependency installation started but did not record completion, exit code, timeout, or failure details.');
+
+const serverBoundaryFailures = [];
+if (hasOwn(serverFirebaseBoundaryPreflight, 'ok') && serverFirebaseBoundaryPreflight.ok !== true) {
+  const primary = serverFirebaseBoundaryPreflight.primaryBlockingFailure || '';
+  if (primary) serverBoundaryFailures.push(primary);
+  const errors = Array.isArray(serverFirebaseBoundaryPreflight.errors) ? serverFirebaseBoundaryPreflight.errors : [];
+  for (const error of errors) if (error && !serverBoundaryFailures.includes(error)) serverBoundaryFailures.push(error);
+  if (!serverBoundaryFailures.length) serverBoundaryFailures.push('Preview server Firebase identity preflight failed before mutation.');
+}
+if (blockedBeforePlaywright && /Firebase boundary|server Firebase|firebase-admin-initialization|server identity/i.test(runnerBlockingReason) && !serverBoundaryFailures.length) {
+  serverBoundaryFailures.push(runnerBlockingReason);
+}
 
 const accountProvisionFailures = [];
 if (hasOwn(testAccountProvisioning, 'ok') && testAccountProvisioning.ok !== true) {
@@ -330,15 +347,18 @@ if (failedOnlyManifestValidation && failedOnlyManifestValidation.ok === false) {
   addGroup('failed-only-manifest', example);
 }
 if (runnerBlockingReason) {
-  const group = provisioningBlockedBeforeRole || /provision/i.test(runnerBlockingReason)
-    ? 'test-account-provisioning'
-    : (/role|account|MANAGER_EMAIL|OWNER_EMAIL|STAFF_EMAIL|SYSTEM_ADMIN_EMAIL|System Administrator|superAdmin/i.test(runnerBlockingReason)
-      ? 'test-account-configuration'
-      : (/dependenc|npm ci|module|Playwright executable|Chromium/i.test(runnerBlockingReason) ? 'dependency-preflight' : 'runner-blocker'));
+  const group = /Firebase boundary|server Firebase|firebase-admin-initialization|server identity/i.test(runnerBlockingReason)
+    ? 'previewServerFirebaseBoundaryFailure'
+    : (provisioningBlockedBeforeRole || /provision/i.test(runnerBlockingReason)
+      ? 'test-account-provisioning'
+      : (/role|account|MANAGER_EMAIL|OWNER_EMAIL|STAFF_EMAIL|SYSTEM_ADMIN_EMAIL|System Administrator|superAdmin/i.test(runnerBlockingReason)
+        ? 'test-account-configuration'
+        : (/dependenc|npm ci|module|Playwright executable|Chromium/i.test(runnerBlockingReason) ? 'dependency-preflight' : 'runner-blocker')));
   addGroup(group, runnerBlockingReason);
 }
 for (const text of preflightFailures) addGroup('environment-preflight', text);
 for (const text of dependencyFailures) addGroup('dependency-preflight', text);
+for (const text of serverBoundaryFailures) addGroup('previewServerFirebaseBoundaryFailure', text);
 for (const text of accountProvisionFailures) addGroup('test-account-provisioning', text);
 if (!accountProvisionFailures.length && !provisioningBlockedBeforeRole) for (const text of roleFailures) addGroup('test-account-configuration', text);
 const groupRe = [
@@ -380,6 +400,7 @@ for (const text of nodeFailures) addGroup('node-test-failure', text);
 
 const primaryBlockingFailure = preflightFailures[0]
   || dependencyFailures[0]
+  || serverBoundaryFailures[0]
   || accountProvisionFailures[0]
   || roleFailures[0]
   || javaFailures[0]
@@ -402,6 +423,7 @@ const ok = failedTests.length === 0
   && cleanupFailures.length === 0
   && preflightFailures.length === 0
   && dependencyFailures.length === 0
+  && serverBoundaryFailures.length === 0
   && accountProvisionFailures.length === 0
   && roleFailures.length === 0
   && javaFailures.length === 0
@@ -430,16 +452,19 @@ const summary = {
   runnerState: runnerStateReconciled,
   dependencyPreflight: dependencyPreflight && hasOwn(dependencyPreflight, 'ok') ? dependencyPreflight : null,
   dependencyFailures,
+  serverBoundaryFailures,
   accountProvisionFailures,
   testAccountProvisioning: testAccountProvisioning && hasOwn(testAccountProvisioning, 'ok') ? testAccountProvisioning : null,
   roleFailures,
   javaFailures,
   nodeFailures,
   rulesGateReport: rulesGateReport && Object.keys(rulesGateReport).length ? { ok: rulesGateReport.ok, totalCases: rulesGateReport.totalCases, passed: rulesGateReport.passed, failed: rulesGateReport.failed, blocked: rulesGateReport.blocked, firstActionableFailure: rulesGateReport.firstActionableFailure || '' } : null,
+  previewServerFirebaseBoundaryFailure: serverBoundaryFailures.length > 0,
   testAccountConfigurationFailure: roleFailures.length > 0,
   playwright: { totalResults: tests.length, status: blockedBeforeTestExecution ? 'BLOCKED BEFORE TEST EXECUTION' : (noTestsExecuted ? 'No tests executed' : 'Tests executed'), passed: tests.filter(t => t.status === 'passed').length, failed: failedTests.length, timedOut: timedOutTests.length, skipped: skippedTests.length, blocked: blockedBeforeTestExecution ? 1 : 0, notRun: blockedBeforeTestExecution ? 1 : 0, unexpected: unexpectedTests.length, failedTests: blockedBeforeTestExecution ? [] : unexpectedTests.slice(0, 200), timedOutTests: timedOutTests.slice(0, 200), skippedTests: skippedTests.slice(0, 200), assertionTimeoutTests, perProject, failedByCategory: failedByCategory.slice(0, 200), slowestTests, deltaReconciliation },
   attemptStatus: {
     browserInstallation: { attempted: runnerPhase === 'install-chromium' || runnerState.browserInstallPassed === true, status: runnerState.browserInstallPassed === true ? 'passed' : (blockedBeforePlaywright ? 'blocked' : 'not_run') },
+    serverFirebaseBoundaryPreflight: { attempted: runnerState.serverIdentityPreflightStarted === true, status: runnerState.serverIdentityPreflightPassed === true ? 'passed' : (runnerState.serverIdentityPreflightStarted === true ? 'failed' : (blockedBeforePlaywright ? 'blocked' : 'not_run')) },
     testAccountProvisioning: { attempted: runnerState.testAccountProvisionAttempted === true, status: runnerState.testAccountProvisionPassed === true ? 'passed' : (runnerState.testAccountProvisionAttempted === true ? 'failed' : (blockedBeforePlaywright ? 'blocked' : 'not_run')) },
     roleVerification: { attempted: runnerState.rolePreflightStarted === true, status: runnerState.rolePreflightPassed === true ? 'passed' : (runnerState.rolePreflightStarted === true ? 'failed' : (blockedBeforePlaywright ? 'blocked' : 'not_run')) },
     qaSeed: { attempted: qaSeedAttempted, status: qaSeedPassed ? 'passed' : (qaSeedAttempted ? 'failed' : (blockedBeforePlaywright ? 'blocked' : 'not_run')) },
@@ -464,6 +489,7 @@ const summary = {
     firstActionableBlocker: primaryBlockingFailure || 'None'
   },
   setupState,
+  serverFirebaseBoundaryPreflight: serverFirebaseBoundaryPreflight && serverFirebaseBoundaryPreflight.ok !== undefined ? serverFirebaseBoundaryPreflight : null,
   roleIdentityVerification: roleVerification && roleVerification.ok !== undefined ? roleVerification : null,
   failedOnlyManifest,
   failedOnlyManifestValidation: failedOnlyManifestValidation && Object.keys(failedOnlyManifestValidation).length ? failedOnlyManifestValidation : null,
@@ -477,6 +503,7 @@ const summary = {
   setupFailures,
   cleanupFailures,
   preflightFailures,
+  serverBoundaryFailures,
   artifactsSkippedByPreflight,
   artifactsSkippedByRunnerBlock,
   expectedSkippedArtifacts: artifactsSkippedByRunnerBlock.map(item => item.artifact),
@@ -490,6 +517,7 @@ const summary = {
     'When Playwright never starts, missing role verification, setup, seed, Playwright, and cleanup artifacts are not seed or cleanup defects.',
     'Rules reports are read only from the current run directory.',
     'Cleanup is required after any verified QA seed, and not required when no QA setup or seed was attempted.',
+    'Preview server Firebase boundary failures are deployment-environment blockers, not role-account password failures, app failures, seed defects, cleanup defects, Firebase rules failures, or Playwright test failures.',
     'Role-account configuration failures are test harness/account setup blockers, not app failures, seed defects, cleanup defects, or Playwright test failures.',
   ],
 };
@@ -545,6 +573,9 @@ const lines = [
   '',
   'DEPENDENCY FAILURES',
   ...(dependencyFailures.length ? dependencyFailures.map(f => `- ${f}`) : ['- None']),
+  '',
+  'PREVIEW SERVER FIREBASE BOUNDARY FAILURES',
+  ...(serverBoundaryFailures.length ? serverBoundaryFailures.map(f => `- ${f}`) : ['- None']),
   '',
   'ROLE ACCOUNT FAILURES',
   ...(roleFailures.length ? roleFailures.map(f => `- ${f}`) : ['- None']),
