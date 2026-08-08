@@ -1,7 +1,7 @@
 {
   "ok": true,
-  "version": "16.0.144",
-  "generatedAt": "2026-08-07T07:10:51.936Z",
+  "version": "16.0.147",
+  "generatedAt": "2026-08-08T02:31:40.665Z",
   "searchResults": [
     {
       "question": "why aren't my schedules publishing",
@@ -94,7 +94,7 @@
               "full-schedule"
             ],
             "externalLinks": [],
-            "lastVerifiedVersion": "16.0.144",
+            "lastVerifiedVersion": "16.0.147",
             "score": 100
           },
           {
@@ -142,7 +142,7 @@
               "availability"
             ],
             "externalLinks": [],
-            "lastVerifiedVersion": "16.0.144",
+            "lastVerifiedVersion": "16.0.147",
             "score": 47
           },
           {
@@ -196,7 +196,7 @@
               "full-schedule"
             ],
             "externalLinks": [],
-            "lastVerifiedVersion": "16.0.144",
+            "lastVerifiedVersion": "16.0.147",
             "score": 45
           },
           {
@@ -254,63 +254,75 @@
               "full-schedule"
             ],
             "externalLinks": [],
-            "lastVerifiedVersion": "16.0.144",
+            "lastVerifiedVersion": "16.0.147",
             "score": 43
           },
           {
-            "id": "app-icon-gray",
-            "title": "Why does my installed app show the wrong icon?",
-            "subjectId": "troubleshooting",
-            "subtopicId": "wrong-icon",
-            "audience": "Everyone",
-            "summary": "Installed apps can hold on to an old cached icon after an update.",
+            "id": "custom-shifts-on-phone",
+            "title": "Why aren’t my saved Custom Shifts on my phone?",
+            "subjectId": "schedule-time-clock",
+            "subtopicId": "schedule-builder",
+            "audience": "Manager / Owner",
+            "summary": "Custom Shifts should sync through the restaurant workspace so authorized managers can see them on other devices.",
             "commonQuestions": [
-              "Why is my app icon gray?",
-              "Wrong app icon"
+              "Why are saved shifts missing on my phone?",
+              "Why are custom shifts not on mobile?",
+              "Are custom shifts shared?",
+              "Where did my custom shifts go?"
             ],
             "keywords": [
-              "app icon gray",
-              "wrong icon",
-              "generic icon",
-              "installed app",
-              "pwa icon"
+              "custom shifts phone",
+              "saved shifts on phone",
+              "mobile custom shifts",
+              "shared shifts",
+              "sync custom shifts",
+              "another device"
             ],
             "synonyms": [
-              "app icon gray",
-              "wrong icon",
-              "generic icon",
-              "installed app",
-              "pwa icon"
+              "custom shifts phone",
+              "saved shifts on phone",
+              "mobile custom shifts",
+              "shared shifts",
+              "sync custom shifts",
+              "another device"
             ],
             "sections": [
               {
                 "title": "Short answer",
                 "body": [
-                  "Remove the installed app, then install it again after the icon update is live."
+                  "Custom Shifts are shared for the restaurant. Open the same workspace on your phone and refresh [[Schedule Builder|schedule-builder]]."
                 ]
               },
               {
                 "title": "Try this",
                 "steps": [
-                  "Open the installed app once and confirm it is 86 Chaos.",
-                  "Remove or uninstall the installed app from your device.",
-                  "Open 86 Chaos in the browser.",
-                  "Install it again from the browser menu.",
-                  "Check the new icon."
+                  "Make sure the phone is signed into the same restaurant workspace.",
+                  "Open [[Schedule Builder|schedule-builder]].",
+                  "Wait for the Custom Shift list to finish loading.",
+                  "Refresh once if the list still looks old.",
+                  "Ask a manager or owner to confirm the shift was saved successfully."
+                ]
+              },
+              {
+                "title": "If it still does not show",
+                "body": [
+                  "The app may be using a last-known list while it reconnects. Do not create duplicates until the shared list loads."
                 ]
               }
             ],
             "troubleshooting": [
-              "This does not delete restaurant data. Your data is saved in the app, not in the home-screen icon."
+              "A saved Custom Shift is shared only inside the restaurant where it was created."
             ],
             "relatedArticleIds": [
-              "install-app",
-              "reinstall-pwa"
+              "custom-shifts-overview",
+              "custom-shift-save"
             ],
-            "deepLinkIds": [],
+            "deepLinkIds": [
+              "schedule-builder"
+            ],
             "externalLinks": [],
-            "lastVerifiedVersion": "16.0.144",
-            "score": 27
+            "lastVerifiedVersion": "16.0.147",
+            "score": 35
           }
         ]
       }
@@ -319,16 +331,16 @@
       "question": "employee can't see schedule",
       "topArticleIds": [
         "schedule-visibility",
-        "schedule-publish",
-        "availability-use"
+        "custom-shifts-on-phone",
+        "schedule-publish"
       ],
       "answer": {
         "ok": true,
         "answer": "A missing shift is usually unpublished, assigned to the wrong employee, or outside the view being checked. Check publish status, date range, and the employee assigned to the shift. Try this: Open [[Schedule Builder|schedule-builder]]. Find the shift. Confirm the shift is published.",
         "sourceArticleIds": [
           "schedule-visibility",
-          "schedule-publish",
-          "availability-use"
+          "custom-shifts-on-phone",
+          "schedule-publish"
         ],
         "suggestedDeepLinkIds": [
           "schedule-builder",
@@ -394,8 +406,75 @@
               "full-schedule"
             ],
             "externalLinks": [],
-            "lastVerifiedVersion": "16.0.144",
+            "lastVerifiedVersion": "16.0.147",
             "score": 100
+          },
+          {
+            "id": "custom-shifts-on-phone",
+            "title": "Why aren’t my saved Custom Shifts on my phone?",
+            "subjectId": "schedule-time-clock",
+            "subtopicId": "schedule-builder",
+            "audience": "Manager / Owner",
+            "summary": "Custom Shifts should sync through the restaurant workspace so authorized managers can see them on other devices.",
+            "commonQuestions": [
+              "Why are saved shifts missing on my phone?",
+              "Why are custom shifts not on mobile?",
+              "Are custom shifts shared?",
+              "Where did my custom shifts go?"
+            ],
+            "keywords": [
+              "custom shifts phone",
+              "saved shifts on phone",
+              "mobile custom shifts",
+              "shared shifts",
+              "sync custom shifts",
+              "another device"
+            ],
+            "synonyms": [
+              "custom shifts phone",
+              "saved shifts on phone",
+              "mobile custom shifts",
+              "shared shifts",
+              "sync custom shifts",
+              "another device"
+            ],
+            "sections": [
+              {
+                "title": "Short answer",
+                "body": [
+                  "Custom Shifts are shared for the restaurant. Open the same workspace on your phone and refresh [[Schedule Builder|schedule-builder]]."
+                ]
+              },
+              {
+                "title": "Try this",
+                "steps": [
+                  "Make sure the phone is signed into the same restaurant workspace.",
+                  "Open [[Schedule Builder|schedule-builder]].",
+                  "Wait for the Custom Shift list to finish loading.",
+                  "Refresh once if the list still looks old.",
+                  "Ask a manager or owner to confirm the shift was saved successfully."
+                ]
+              },
+              {
+                "title": "If it still does not show",
+                "body": [
+                  "The app may be using a last-known list while it reconnects. Do not create duplicates until the shared list loads."
+                ]
+              }
+            ],
+            "troubleshooting": [
+              "A saved Custom Shift is shared only inside the restaurant where it was created."
+            ],
+            "relatedArticleIds": [
+              "custom-shifts-overview",
+              "custom-shift-save"
+            ],
+            "deepLinkIds": [
+              "schedule-builder"
+            ],
+            "externalLinks": [],
+            "lastVerifiedVersion": "16.0.147",
+            "score": 48
           },
           {
             "id": "schedule-publish",
@@ -464,7 +543,7 @@
               "full-schedule"
             ],
             "externalLinks": [],
-            "lastVerifiedVersion": "16.0.144",
+            "lastVerifiedVersion": "16.0.147",
             "score": 48
           },
           {
@@ -512,7 +591,7 @@
               "availability"
             ],
             "externalLinks": [],
-            "lastVerifiedVersion": "16.0.144",
+            "lastVerifiedVersion": "16.0.147",
             "score": 47
           },
           {
@@ -566,54 +645,8 @@
               "full-schedule"
             ],
             "externalLinks": [],
-            "lastVerifiedVersion": "16.0.144",
+            "lastVerifiedVersion": "16.0.147",
             "score": 43
-          },
-          {
-            "id": "full-schedule-view",
-            "title": "How do I use Full Schedule?",
-            "subjectId": "schedule-time-clock",
-            "subtopicId": "full-schedule",
-            "audience": "Everyone",
-            "summary": "Full Schedule shows the restaurant schedule when your role allows it.",
-            "commonQuestions": [
-              "Where is Full Schedule?",
-              "Can I see everyone’s schedule?"
-            ],
-            "keywords": [
-              "full schedule",
-              "all shifts",
-              "restaurant schedule"
-            ],
-            "synonyms": [
-              "full schedule",
-              "all shifts",
-              "restaurant schedule"
-            ],
-            "sections": [
-              {
-                "title": "Short answer",
-                "body": [
-                  "Open [[Full Schedule|full-schedule]] to see the shared schedule your role can view."
-                ]
-              },
-              {
-                "title": "If it does not show everything",
-                "body": [
-                  "Your role may only allow your own shifts. Ask a manager if you need more visibility."
-                ]
-              }
-            ],
-            "troubleshooting": [],
-            "relatedArticleIds": [
-              "my-schedule-view"
-            ],
-            "deepLinkIds": [
-              "full-schedule"
-            ],
-            "externalLinks": [],
-            "lastVerifiedVersion": "16.0.144",
-            "score": 38
           }
         ]
       }
@@ -704,7 +737,7 @@
               "request-off"
             ],
             "externalLinks": [],
-            "lastVerifiedVersion": "16.0.144",
+            "lastVerifiedVersion": "16.0.147",
             "score": 100
           },
           {
@@ -752,7 +785,7 @@
               "availability"
             ],
             "externalLinks": [],
-            "lastVerifiedVersion": "16.0.144",
+            "lastVerifiedVersion": "16.0.147",
             "score": 56
           },
           {
@@ -805,7 +838,7 @@
               "request-off"
             ],
             "externalLinks": [],
-            "lastVerifiedVersion": "16.0.144",
+            "lastVerifiedVersion": "16.0.147",
             "score": 48
           },
           {
@@ -867,7 +900,7 @@
               "prep"
             ],
             "externalLinks": [],
-            "lastVerifiedVersion": "16.0.144",
+            "lastVerifiedVersion": "16.0.147",
             "score": 40
           },
           {
@@ -917,7 +950,7 @@
               "month-view"
             ],
             "externalLinks": [],
-            "lastVerifiedVersion": "16.0.144",
+            "lastVerifiedVersion": "16.0.147",
             "score": 35
           }
         ]
@@ -1003,7 +1036,7 @@
               "time-clock"
             ],
             "externalLinks": [],
-            "lastVerifiedVersion": "16.0.144",
+            "lastVerifiedVersion": "16.0.147",
             "score": 60
           },
           {
@@ -1054,7 +1087,7 @@
               "labor"
             ],
             "externalLinks": [],
-            "lastVerifiedVersion": "16.0.144",
+            "lastVerifiedVersion": "16.0.147",
             "score": 35
           },
           {
@@ -1102,119 +1135,138 @@
               "availability"
             ],
             "externalLinks": [],
-            "lastVerifiedVersion": "16.0.144",
+            "lastVerifiedVersion": "16.0.147",
             "score": 27
           },
           {
-            "id": "schedule-visibility",
-            "title": "Why can’t an employee see a shift?",
+            "id": "custom-shifts-overview",
+            "title": "What are Custom Shifts?",
             "subjectId": "schedule-time-clock",
-            "subtopicId": "schedule-visibility",
+            "subtopicId": "schedule-builder",
             "audience": "Manager / Owner",
-            "summary": "A missing shift is usually unpublished, assigned to the wrong employee, or outside the view being checked.",
+            "summary": "Custom Shifts are saved shift presets for one restaurant. They help managers add the same kind of shift without typing the times every time.",
             "commonQuestions": [
-              "Why can't Allen see his schedule?",
-              "Employee can't see schedule"
+              "What are Custom Shifts?",
+              "Are custom shifts shared?",
+              "Where did my saved shifts go?"
             ],
             "keywords": [
-              "employee cannot see schedule",
-              "shift missing",
-              "published",
-              "wrong employee",
-              "visibility"
+              "custom shifts",
+              "saved shifts",
+              "shift preset",
+              "schedule builder",
+              "shared shifts",
+              "preset"
             ],
             "synonyms": [
-              "employee cannot see schedule",
-              "shift missing",
-              "published",
-              "wrong employee",
-              "visibility"
+              "custom shifts",
+              "saved shifts",
+              "shift preset",
+              "schedule builder",
+              "shared shifts",
+              "preset"
             ],
             "sections": [
               {
                 "title": "Short answer",
                 "body": [
-                  "Check publish status, date range, and the employee assigned to the shift."
+                  "Custom Shifts are reusable shift buttons inside [[Schedule Builder|schedule-builder]]. They are shared for that restaurant with people who can use Schedule Builder."
                 ]
               },
               {
-                "title": "Try this",
-                "steps": [
-                  "Open [[Schedule Builder|schedule-builder]].",
-                  "Find the shift.",
-                  "Confirm the shift is published.",
-                  "Confirm the employee name and account match the real staff member.",
-                  "Open [[My Schedule|my-schedule]] or [[Full Schedule|full-schedule]] to verify."
+                "title": "Who can use this",
+                "body": [
+                  "Managers, owners, and other people with Schedule Builder permission can use shared Custom Shifts. Staff who only view their own schedule cannot edit them."
+                ]
+              },
+              {
+                "title": "What you should see",
+                "body": [
+                  "When a Custom Shift is saved for the restaurant, it should appear on desktop, phone, tablet, and any fresh browser session for the same workspace."
                 ]
               }
             ],
             "troubleshooting": [
-              "Deleted or old shifts should not reappear. Report a problem if they do."
+              "Make sure you are in the right restaurant workspace.",
+              "Ask a manager or owner to confirm you have Schedule Builder access."
             ],
             "relatedArticleIds": [
-              "schedule-publish"
+              "custom-shift-save",
+              "custom-shifts-on-phone"
             ],
             "deepLinkIds": [
-              "schedule-builder",
-              "my-schedule",
-              "full-schedule"
+              "schedule-builder"
             ],
             "externalLinks": [],
-            "lastVerifiedVersion": "16.0.144",
+            "lastVerifiedVersion": "16.0.147",
             "score": 27
           },
           {
-            "id": "cannot-request-off",
-            "title": "Why can’t I request off?",
-            "subjectId": "troubleshooting",
-            "subtopicId": "cannot-request-off",
-            "audience": "Everyone",
-            "summary": "Request Off may be unavailable if your account, date, schedule window, or network needs attention.",
+            "id": "custom-shifts-on-phone",
+            "title": "Why aren’t my saved Custom Shifts on my phone?",
+            "subjectId": "schedule-time-clock",
+            "subtopicId": "schedule-builder",
+            "audience": "Manager / Owner",
+            "summary": "Custom Shifts should sync through the restaurant workspace so authorized managers can see them on other devices.",
             "commonQuestions": [
-              "Cannot request off",
-              "Request Off unavailable"
+              "Why are saved shifts missing on my phone?",
+              "Why are custom shifts not on mobile?",
+              "Are custom shifts shared?",
+              "Where did my custom shifts go?"
             ],
             "keywords": [
-              "cannot request off",
-              "request off unavailable",
-              "time off error"
+              "custom shifts phone",
+              "saved shifts on phone",
+              "mobile custom shifts",
+              "shared shifts",
+              "sync custom shifts",
+              "another device"
             ],
             "synonyms": [
-              "cannot request off",
-              "request off unavailable",
-              "time off error"
+              "custom shifts phone",
+              "saved shifts on phone",
+              "mobile custom shifts",
+              "shared shifts",
+              "sync custom shifts",
+              "another device"
             ],
             "sections": [
               {
                 "title": "Short answer",
                 "body": [
-                  "Refresh once, then try Request Off again."
+                  "Custom Shifts are shared for the restaurant. Open the same workspace on your phone and refresh [[Schedule Builder|schedule-builder]]."
                 ]
               },
               {
                 "title": "Try this",
                 "steps": [
-                  "Make sure you are in the right workspace.",
-                  "Open [[Request Off|request-off]].",
-                  "Pick one valid future date.",
-                  "Read any warning.",
-                  "Submit again.",
-                  "Ask a manager if the page still says unavailable."
+                  "Make sure the phone is signed into the same restaurant workspace.",
+                  "Open [[Schedule Builder|schedule-builder]].",
+                  "Wait for the Custom Shift list to finish loading.",
+                  "Refresh once if the list still looks old.",
+                  "Ask a manager or owner to confirm the shift was saved successfully."
+                ]
+              },
+              {
+                "title": "If it still does not show",
+                "body": [
+                  "The app may be using a last-known list while it reconnects. Do not create duplicates until the shared list loads."
                 ]
               }
             ],
             "troubleshooting": [
-              "A manager may need to check your staff account."
+              "A saved Custom Shift is shared only inside the restaurant where it was created."
             ],
             "relatedArticleIds": [
-              "request-off-how"
+              "custom-shifts-overview",
+              "custom-shift-save"
             ],
             "deepLinkIds": [
-              "request-off"
+              "schedule-builder"
             ],
             "externalLinks": [],
-            "lastVerifiedVersion": "16.0.144",
-            "score": 24
+            "lastVerifiedVersion": "16.0.147",
+            "score": 27
           }
         ]
       }
@@ -1224,7 +1276,7 @@
       "topArticleIds": [
         "schedule-builder-find",
         "navigation-basics",
-        "employee-missing-schedule-builder"
+        "custom-shifts-overview"
       ],
       "answer": {
         "ok": true,
@@ -1232,7 +1284,7 @@
         "sourceArticleIds": [
           "schedule-builder-find",
           "navigation-basics",
-          "employee-missing-schedule-builder"
+          "custom-shifts-overview"
         ],
         "suggestedDeepLinkIds": [
           "schedule-builder",
@@ -1302,7 +1354,7 @@
               "schedule-builder"
             ],
             "externalLinks": [],
-            "lastVerifiedVersion": "16.0.144",
+            "lastVerifiedVersion": "16.0.147",
             "score": 100
           },
           {
@@ -1364,8 +1416,135 @@
               "prep"
             ],
             "externalLinks": [],
-            "lastVerifiedVersion": "16.0.144",
+            "lastVerifiedVersion": "16.0.147",
             "score": 100
+          },
+          {
+            "id": "custom-shifts-overview",
+            "title": "What are Custom Shifts?",
+            "subjectId": "schedule-time-clock",
+            "subtopicId": "schedule-builder",
+            "audience": "Manager / Owner",
+            "summary": "Custom Shifts are saved shift presets for one restaurant. They help managers add the same kind of shift without typing the times every time.",
+            "commonQuestions": [
+              "What are Custom Shifts?",
+              "Are custom shifts shared?",
+              "Where did my saved shifts go?"
+            ],
+            "keywords": [
+              "custom shifts",
+              "saved shifts",
+              "shift preset",
+              "schedule builder",
+              "shared shifts",
+              "preset"
+            ],
+            "synonyms": [
+              "custom shifts",
+              "saved shifts",
+              "shift preset",
+              "schedule builder",
+              "shared shifts",
+              "preset"
+            ],
+            "sections": [
+              {
+                "title": "Short answer",
+                "body": [
+                  "Custom Shifts are reusable shift buttons inside [[Schedule Builder|schedule-builder]]. They are shared for that restaurant with people who can use Schedule Builder."
+                ]
+              },
+              {
+                "title": "Who can use this",
+                "body": [
+                  "Managers, owners, and other people with Schedule Builder permission can use shared Custom Shifts. Staff who only view their own schedule cannot edit them."
+                ]
+              },
+              {
+                "title": "What you should see",
+                "body": [
+                  "When a Custom Shift is saved for the restaurant, it should appear on desktop, phone, tablet, and any fresh browser session for the same workspace."
+                ]
+              }
+            ],
+            "troubleshooting": [
+              "Make sure you are in the right restaurant workspace.",
+              "Ask a manager or owner to confirm you have Schedule Builder access."
+            ],
+            "relatedArticleIds": [
+              "custom-shift-save",
+              "custom-shifts-on-phone"
+            ],
+            "deepLinkIds": [
+              "schedule-builder"
+            ],
+            "externalLinks": [],
+            "lastVerifiedVersion": "16.0.147",
+            "score": 68
+          },
+          {
+            "id": "custom-shift-edit-delete",
+            "title": "How do I edit or delete a Custom Shift?",
+            "subjectId": "schedule-time-clock",
+            "subtopicId": "schedule-builder",
+            "audience": "Manager / Owner",
+            "summary": "Editing a Custom Shift changes the reusable preset. It does not change shifts already placed on the schedule.",
+            "commonQuestions": [
+              "How do I edit a Custom Shift?",
+              "How do I delete a saved shift?",
+              "Will deleting a preset delete scheduled shifts?"
+            ],
+            "keywords": [
+              "edit custom shift",
+              "delete custom shift",
+              "saved shift",
+              "preset",
+              "schedule builder"
+            ],
+            "synonyms": [
+              "edit custom shift",
+              "delete custom shift",
+              "saved shift",
+              "preset",
+              "schedule builder"
+            ],
+            "sections": [
+              {
+                "title": "Short answer",
+                "body": [
+                  "Open [[Schedule Builder|schedule-builder]], find the saved Custom Shift, then use Edit or Delete for that exact preset."
+                ]
+              },
+              {
+                "title": "How to do it",
+                "steps": [
+                  "Open [[Schedule Builder|schedule-builder]].",
+                  "Find the exact Custom Shift name.",
+                  "Choose Edit to change the name or times.",
+                  "Choose Delete only when you no longer want the preset.",
+                  "Confirm when the app asks."
+                ]
+              },
+              {
+                "title": "What changes",
+                "body": [
+                  "Only the reusable Custom Shift preset changes. Shifts that were already added to the schedule stay where they are."
+                ]
+              }
+            ],
+            "troubleshooting": [
+              "If you do not see Edit or Delete, you may not have Schedule Builder permission."
+            ],
+            "relatedArticleIds": [
+              "custom-shifts-overview",
+              "custom-shifts-on-phone"
+            ],
+            "deepLinkIds": [
+              "schedule-builder"
+            ],
+            "externalLinks": [],
+            "lastVerifiedVersion": "16.0.147",
+            "score": 63
           },
           {
             "id": "employee-missing-schedule-builder",
@@ -1417,132 +1596,8 @@
               "schedule-builder"
             ],
             "externalLinks": [],
-            "lastVerifiedVersion": "16.0.144",
+            "lastVerifiedVersion": "16.0.147",
             "score": 52
-          },
-          {
-            "id": "schedule-publish",
-            "title": "Why aren’t my schedules publishing?",
-            "subjectId": "schedule-time-clock",
-            "subtopicId": "schedule-publishing",
-            "audience": "Manager / Owner",
-            "summary": "Schedules usually stay unpublished when the week has not been selected, changes were made after the last publish, or the wrong schedule period is open.",
-            "commonQuestions": [
-              "Why aren't my schedules publishing?",
-              "Schedule not publishing",
-              "How do I publish selected weeks?"
-            ],
-            "keywords": [
-              "schedule publish",
-              "publishing",
-              "selected weeks",
-              "draft shifts",
-              "live shifts",
-              "employee cannot see"
-            ],
-            "synonyms": [
-              "schedule publish",
-              "publishing",
-              "selected weeks",
-              "draft shifts",
-              "live shifts",
-              "employee cannot see"
-            ],
-            "sections": [
-              {
-                "title": "Short answer",
-                "body": [
-                  "Schedules usually stay unpublished when the correct week is not selected, the shifts are still drafts, or you are looking at a different schedule period."
-                ]
-              },
-              {
-                "title": "Try this",
-                "steps": [
-                  "Open [[Schedule Builder|schedule-builder]].",
-                  "Check that you are on the right week or month.",
-                  "Choose Publish.",
-                  "Select the week or weeks you want.",
-                  "Confirm the publish action.",
-                  "Open My Schedule or Full Schedule to verify the shifts appear."
-                ]
-              },
-              {
-                "title": "What staff should see",
-                "body": [
-                  "Employees see published shifts that are assigned to their correct employee account."
-                ]
-              }
-            ],
-            "troubleshooting": [
-              "If one employee cannot see a shift, check the employee identity on the shift.",
-              "If a whole week is missing, check selected-week publishing."
-            ],
-            "relatedArticleIds": [
-              "schedule-visibility",
-              "schedule-visibility"
-            ],
-            "deepLinkIds": [
-              "schedule-builder",
-              "my-schedule",
-              "full-schedule"
-            ],
-            "externalLinks": [],
-            "lastVerifiedVersion": "16.0.144",
-            "score": 43
-          },
-          {
-            "id": "my-schedule-view",
-            "title": "How do I see my schedule?",
-            "subjectId": "schedule-time-clock",
-            "subtopicId": "my-schedule",
-            "audience": "Everyone",
-            "summary": "My Schedule shows your published shifts.",
-            "commonQuestions": [
-              "How do I see my schedule?",
-              "Where are my shifts?"
-            ],
-            "keywords": [
-              "my schedule",
-              "shift",
-              "published",
-              "see my shifts"
-            ],
-            "synonyms": [
-              "my schedule",
-              "shift",
-              "published",
-              "see my shifts"
-            ],
-            "sections": [
-              {
-                "title": "Short answer",
-                "body": [
-                  "Open [[My Schedule|my-schedule]] to see your published shifts."
-                ]
-              },
-              {
-                "title": "What you should see",
-                "steps": [
-                  "Open Time Clock & Schedule.",
-                  "Choose My Schedule.",
-                  "Look for your shifts by date.",
-                  "Use Full Schedule if your manager allows you to see more."
-                ]
-              }
-            ],
-            "troubleshooting": [
-              "If a shift is missing, ask a manager to confirm the schedule was published and that the shift is assigned to the right employee."
-            ],
-            "relatedArticleIds": [
-              "schedule-visibility"
-            ],
-            "deepLinkIds": [
-              "my-schedule",
-              "full-schedule"
-            ],
-            "externalLinks": [],
-            "lastVerifiedVersion": "16.0.144",
-            "score": 40
           }
         ]
       }
@@ -1628,7 +1683,7 @@
               "invoices"
             ],
             "externalLinks": [],
-            "lastVerifiedVersion": "16.0.144",
+            "lastVerifiedVersion": "16.0.147",
             "score": 100
           },
           {
@@ -1679,7 +1734,7 @@
               "invoices"
             ],
             "externalLinks": [],
-            "lastVerifiedVersion": "16.0.144",
+            "lastVerifiedVersion": "16.0.147",
             "score": 36
           },
           {
@@ -1737,7 +1792,7 @@
               "invoices"
             ],
             "externalLinks": [],
-            "lastVerifiedVersion": "16.0.144",
+            "lastVerifiedVersion": "16.0.147",
             "score": 24
           },
           {
@@ -1792,7 +1847,7 @@
               "86voice"
             ],
             "externalLinks": [],
-            "lastVerifiedVersion": "16.0.144",
+            "lastVerifiedVersion": "16.0.147",
             "score": 20
           },
           {
@@ -1855,7 +1910,7 @@
               "recipes"
             ],
             "externalLinks": [],
-            "lastVerifiedVersion": "16.0.144",
+            "lastVerifiedVersion": "16.0.147",
             "score": 16
           }
         ]
@@ -1866,7 +1921,7 @@
       "topArticleIds": [
         "install-app",
         "reinstall-pwa",
-        "first-login"
+        "custom-shift-edit-delete"
       ],
       "answer": {
         "ok": true,
@@ -1874,12 +1929,12 @@
         "sourceArticleIds": [
           "install-app",
           "reinstall-pwa",
-          "first-login"
+          "custom-shift-edit-delete"
         ],
         "suggestedDeepLinkIds": [
+          "schedule-builder",
           "settings",
-          "request-off",
-          "invoices"
+          "request-off"
         ],
         "confidence": 0.82,
         "insufficientInformation": false,
@@ -1977,7 +2032,7 @@
                 "url": "https://support.apple.com/"
               }
             ],
-            "lastVerifiedVersion": "16.0.144",
+            "lastVerifiedVersion": "16.0.147",
             "score": 100
           },
           {
@@ -2028,8 +2083,72 @@
             ],
             "deepLinkIds": [],
             "externalLinks": [],
-            "lastVerifiedVersion": "16.0.144",
+            "lastVerifiedVersion": "16.0.147",
             "score": 48
+          },
+          {
+            "id": "custom-shift-edit-delete",
+            "title": "How do I edit or delete a Custom Shift?",
+            "subjectId": "schedule-time-clock",
+            "subtopicId": "schedule-builder",
+            "audience": "Manager / Owner",
+            "summary": "Editing a Custom Shift changes the reusable preset. It does not change shifts already placed on the schedule.",
+            "commonQuestions": [
+              "How do I edit a Custom Shift?",
+              "How do I delete a saved shift?",
+              "Will deleting a preset delete scheduled shifts?"
+            ],
+            "keywords": [
+              "edit custom shift",
+              "delete custom shift",
+              "saved shift",
+              "preset",
+              "schedule builder"
+            ],
+            "synonyms": [
+              "edit custom shift",
+              "delete custom shift",
+              "saved shift",
+              "preset",
+              "schedule builder"
+            ],
+            "sections": [
+              {
+                "title": "Short answer",
+                "body": [
+                  "Open [[Schedule Builder|schedule-builder]], find the saved Custom Shift, then use Edit or Delete for that exact preset."
+                ]
+              },
+              {
+                "title": "How to do it",
+                "steps": [
+                  "Open [[Schedule Builder|schedule-builder]].",
+                  "Find the exact Custom Shift name.",
+                  "Choose Edit to change the name or times.",
+                  "Choose Delete only when you no longer want the preset.",
+                  "Confirm when the app asks."
+                ]
+              },
+              {
+                "title": "What changes",
+                "body": [
+                  "Only the reusable Custom Shift preset changes. Shifts that were already added to the schedule stay where they are."
+                ]
+              }
+            ],
+            "troubleshooting": [
+              "If you do not see Edit or Delete, you may not have Schedule Builder permission."
+            ],
+            "relatedArticleIds": [
+              "custom-shifts-overview",
+              "custom-shifts-on-phone"
+            ],
+            "deepLinkIds": [
+              "schedule-builder"
+            ],
+            "externalLinks": [],
+            "lastVerifiedVersion": "16.0.147",
+            "score": 40
           },
           {
             "id": "first-login",
@@ -2099,7 +2218,7 @@
               "settings"
             ],
             "externalLinks": [],
-            "lastVerifiedVersion": "16.0.144",
+            "lastVerifiedVersion": "16.0.147",
             "score": 40
           },
           {
@@ -2164,59 +2283,8 @@
               "request-off"
             ],
             "externalLinks": [],
-            "lastVerifiedVersion": "16.0.144",
+            "lastVerifiedVersion": "16.0.147",
             "score": 40
-          },
-          {
-            "id": "price-changes-use",
-            "title": "How do price change warnings work?",
-            "subjectId": "inventory-purchasing",
-            "subtopicId": "price-changes",
-            "audience": "Manager / Owner",
-            "summary": "Price change warnings help you spot vendor cost jumps before they surprise you.",
-            "commonQuestions": [
-              "What is a price jump?",
-              "Why did a price warning show?"
-            ],
-            "keywords": [
-              "price change",
-              "price jump",
-              "vendor cost",
-              "invoice"
-            ],
-            "synonyms": [
-              "price change",
-              "price jump",
-              "vendor cost",
-              "invoice"
-            ],
-            "sections": [
-              {
-                "title": "Short answer",
-                "body": [
-                  "The app compares recent invoice prices and flags items that changed enough to review."
-                ]
-              },
-              {
-                "title": "What to do",
-                "steps": [
-                  "Open the price warning.",
-                  "Compare old and new prices.",
-                  "Check pack size and unit first.",
-                  "Update menu or order decisions if needed."
-                ]
-              }
-            ],
-            "troubleshooting": [],
-            "relatedArticleIds": [
-              "invoice-scan-review"
-            ],
-            "deepLinkIds": [
-              "invoices"
-            ],
-            "externalLinks": [],
-            "lastVerifiedVersion": "16.0.144",
-            "score": 35
           }
         ]
       }
@@ -2294,7 +2362,7 @@
             ],
             "deepLinkIds": [],
             "externalLinks": [],
-            "lastVerifiedVersion": "16.0.144",
+            "lastVerifiedVersion": "16.0.147",
             "score": 100
           },
           {
@@ -2390,7 +2458,7 @@
                 "url": "https://support.apple.com/"
               }
             ],
-            "lastVerifiedVersion": "16.0.144",
+            "lastVerifiedVersion": "16.0.147",
             "score": 84
           },
           {
@@ -2441,7 +2509,7 @@
             ],
             "deepLinkIds": [],
             "externalLinks": [],
-            "lastVerifiedVersion": "16.0.144",
+            "lastVerifiedVersion": "16.0.147",
             "score": 56
           },
           {
@@ -2491,7 +2559,7 @@
             ],
             "deepLinkIds": [],
             "externalLinks": [],
-            "lastVerifiedVersion": "16.0.144",
+            "lastVerifiedVersion": "16.0.147",
             "score": 40
           },
           {
@@ -2550,7 +2618,7 @@
               "time-clock"
             ],
             "externalLinks": [],
-            "lastVerifiedVersion": "16.0.144",
+            "lastVerifiedVersion": "16.0.147",
             "score": 24
           }
         ]
@@ -2631,7 +2699,7 @@
               "86voice"
             ],
             "externalLinks": [],
-            "lastVerifiedVersion": "16.0.144",
+            "lastVerifiedVersion": "16.0.147",
             "score": 100
           },
           {
@@ -2686,7 +2754,7 @@
               "86voice"
             ],
             "externalLinks": [],
-            "lastVerifiedVersion": "16.0.144",
+            "lastVerifiedVersion": "16.0.147",
             "score": 67
           },
           {
@@ -2749,7 +2817,7 @@
               "recipes"
             ],
             "externalLinks": [],
-            "lastVerifiedVersion": "16.0.144",
+            "lastVerifiedVersion": "16.0.147",
             "score": 27
           },
           {
@@ -2789,7 +2857,7 @@
               "events"
             ],
             "externalLinks": [],
-            "lastVerifiedVersion": "16.0.144",
+            "lastVerifiedVersion": "16.0.147",
             "score": 11
           },
           {
@@ -2837,7 +2905,7 @@
               "reminders"
             ],
             "externalLinks": [],
-            "lastVerifiedVersion": "16.0.144",
+            "lastVerifiedVersion": "16.0.147",
             "score": 8
           }
         ]
@@ -2848,7 +2916,7 @@
       "topArticleIds": [
         "back-office-use",
         "navigation-basics",
-        "hr-training-use"
+        "custom-shifts-overview"
       ],
       "answer": {
         "ok": true,
@@ -2856,7 +2924,7 @@
         "sourceArticleIds": [
           "back-office-use",
           "navigation-basics",
-          "hr-training-use"
+          "custom-shifts-overview"
         ],
         "suggestedDeepLinkIds": [
           "back-office",
@@ -2915,7 +2983,7 @@
               "staff-roster"
             ],
             "externalLinks": [],
-            "lastVerifiedVersion": "16.0.144",
+            "lastVerifiedVersion": "16.0.147",
             "score": 100
           },
           {
@@ -2977,8 +3045,138 @@
               "prep"
             ],
             "externalLinks": [],
-            "lastVerifiedVersion": "16.0.144",
+            "lastVerifiedVersion": "16.0.147",
             "score": 36
+          },
+          {
+            "id": "custom-shifts-overview",
+            "title": "What are Custom Shifts?",
+            "subjectId": "schedule-time-clock",
+            "subtopicId": "schedule-builder",
+            "audience": "Manager / Owner",
+            "summary": "Custom Shifts are saved shift presets for one restaurant. They help managers add the same kind of shift without typing the times every time.",
+            "commonQuestions": [
+              "What are Custom Shifts?",
+              "Are custom shifts shared?",
+              "Where did my saved shifts go?"
+            ],
+            "keywords": [
+              "custom shifts",
+              "saved shifts",
+              "shift preset",
+              "schedule builder",
+              "shared shifts",
+              "preset"
+            ],
+            "synonyms": [
+              "custom shifts",
+              "saved shifts",
+              "shift preset",
+              "schedule builder",
+              "shared shifts",
+              "preset"
+            ],
+            "sections": [
+              {
+                "title": "Short answer",
+                "body": [
+                  "Custom Shifts are reusable shift buttons inside [[Schedule Builder|schedule-builder]]. They are shared for that restaurant with people who can use Schedule Builder."
+                ]
+              },
+              {
+                "title": "Who can use this",
+                "body": [
+                  "Managers, owners, and other people with Schedule Builder permission can use shared Custom Shifts. Staff who only view their own schedule cannot edit them."
+                ]
+              },
+              {
+                "title": "What you should see",
+                "body": [
+                  "When a Custom Shift is saved for the restaurant, it should appear on desktop, phone, tablet, and any fresh browser session for the same workspace."
+                ]
+              }
+            ],
+            "troubleshooting": [
+              "Make sure you are in the right restaurant workspace.",
+              "Ask a manager or owner to confirm you have Schedule Builder access."
+            ],
+            "relatedArticleIds": [
+              "custom-shift-save",
+              "custom-shifts-on-phone"
+            ],
+            "deepLinkIds": [
+              "schedule-builder"
+            ],
+            "externalLinks": [],
+            "lastVerifiedVersion": "16.0.147",
+            "score": 24
+          },
+          {
+            "id": "custom-shifts-on-phone",
+            "title": "Why aren’t my saved Custom Shifts on my phone?",
+            "subjectId": "schedule-time-clock",
+            "subtopicId": "schedule-builder",
+            "audience": "Manager / Owner",
+            "summary": "Custom Shifts should sync through the restaurant workspace so authorized managers can see them on other devices.",
+            "commonQuestions": [
+              "Why are saved shifts missing on my phone?",
+              "Why are custom shifts not on mobile?",
+              "Are custom shifts shared?",
+              "Where did my custom shifts go?"
+            ],
+            "keywords": [
+              "custom shifts phone",
+              "saved shifts on phone",
+              "mobile custom shifts",
+              "shared shifts",
+              "sync custom shifts",
+              "another device"
+            ],
+            "synonyms": [
+              "custom shifts phone",
+              "saved shifts on phone",
+              "mobile custom shifts",
+              "shared shifts",
+              "sync custom shifts",
+              "another device"
+            ],
+            "sections": [
+              {
+                "title": "Short answer",
+                "body": [
+                  "Custom Shifts are shared for the restaurant. Open the same workspace on your phone and refresh [[Schedule Builder|schedule-builder]]."
+                ]
+              },
+              {
+                "title": "Try this",
+                "steps": [
+                  "Make sure the phone is signed into the same restaurant workspace.",
+                  "Open [[Schedule Builder|schedule-builder]].",
+                  "Wait for the Custom Shift list to finish loading.",
+                  "Refresh once if the list still looks old.",
+                  "Ask a manager or owner to confirm the shift was saved successfully."
+                ]
+              },
+              {
+                "title": "If it still does not show",
+                "body": [
+                  "The app may be using a last-known list while it reconnects. Do not create duplicates until the shared list loads."
+                ]
+              }
+            ],
+            "troubleshooting": [
+              "A saved Custom Shift is shared only inside the restaurant where it was created."
+            ],
+            "relatedArticleIds": [
+              "custom-shifts-overview",
+              "custom-shift-save"
+            ],
+            "deepLinkIds": [
+              "schedule-builder"
+            ],
+            "externalLinks": [],
+            "lastVerifiedVersion": "16.0.147",
+            "score": 24
           },
           {
             "id": "hr-training-use",
@@ -3025,121 +3223,7 @@
               "hr-training"
             ],
             "externalLinks": [],
-            "lastVerifiedVersion": "16.0.144",
-            "score": 19
-          },
-          {
-            "id": "labor-timesheets",
-            "title": "How do labor and timesheets work?",
-            "subjectId": "financials",
-            "subtopicId": "labor",
-            "audience": "Manager / Owner",
-            "summary": "Labor tools help managers review time punches, hours, tips, and payroll-ready issues.",
-            "commonQuestions": [
-              "Where are timesheets?",
-              "How do I review labor?"
-            ],
-            "keywords": [
-              "labor",
-              "timesheets",
-              "payroll",
-              "tips",
-              "missed punches"
-            ],
-            "synonyms": [
-              "labor",
-              "timesheets",
-              "payroll",
-              "tips",
-              "missed punches"
-            ],
-            "sections": [
-              {
-                "title": "Short answer",
-                "body": [
-                  "Open [[Labor|labor]] to review punches, hours, tips, and exceptions."
-                ]
-              },
-              {
-                "title": "Important",
-                "body": [
-                  "Use this for operational review. Follow your payroll provider and local rules for final payroll decisions."
-                ]
-              }
-            ],
-            "troubleshooting": [
-              "Fix missed punches before exporting."
-            ],
-            "relatedArticleIds": [
-              "missed-punch-help"
-            ],
-            "deepLinkIds": [
-              "labor"
-            ],
-            "externalLinks": [],
-            "lastVerifiedVersion": "16.0.144",
-            "score": 19
-          },
-          {
-            "id": "schedule-builder-find",
-            "title": "Where is Schedule Builder?",
-            "subjectId": "schedule-time-clock",
-            "subtopicId": "schedule-builder",
-            "audience": "Manager / Owner",
-            "summary": "Schedule Builder lives inside Time Clock & Schedule for managers and owners.",
-            "commonQuestions": [
-              "Where is Schedule Builder?",
-              "How do I build a schedule?"
-            ],
-            "keywords": [
-              "schedule builder",
-              "build schedule",
-              "smart fill",
-              "coverage target",
-              "templates"
-            ],
-            "synonyms": [
-              "schedule builder",
-              "build schedule",
-              "smart fill",
-              "coverage target",
-              "templates"
-            ],
-            "sections": [
-              {
-                "title": "Short answer",
-                "body": [
-                  "Managers and owners can open [[Schedule Builder|schedule-builder]] from Time Clock & Schedule."
-                ]
-              },
-              {
-                "title": "How to open it",
-                "steps": [
-                  "Open Time Clock & Schedule.",
-                  "Choose Schedule Builder.",
-                  "Pick the week or month you are working on.",
-                  "Add, copy, or edit shifts."
-                ]
-              },
-              {
-                "title": "Staff note",
-                "body": [
-                  "If you are staff, you may not have access to Schedule Builder. Ask a manager to check it."
-                ]
-              }
-            ],
-            "troubleshooting": [
-              "If an employee is missing, check that the staff record is active and assigned to the right workspace."
-            ],
-            "relatedArticleIds": [
-              "employee-missing-schedule-builder",
-              "schedule-publish"
-            ],
-            "deepLinkIds": [
-              "schedule-builder"
-            ],
-            "externalLinks": [],
-            "lastVerifiedVersion": "16.0.144",
+            "lastVerifiedVersion": "16.0.147",
             "score": 19
           }
         ]

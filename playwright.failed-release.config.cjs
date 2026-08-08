@@ -1,6 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const { defineConfig, devices } = require('@playwright/test');
+const { PWA_SPEC_PATTERN } = require('./scripts/86chaos-release-gate/release-test-universe.cjs');
 
 const { ensureRunDir, getFailedOnlyManifestPath } = require('./scripts/86chaos-release-gate/run-context.cjs');
 const { generatePlaywrightInventory } = require('./scripts/86chaos-release-gate/playwright-inventory.cjs');
@@ -10,7 +11,7 @@ const { runDir, runId } = ensureRunDir();
 const baseURL = process.env.APP_URL || process.env.CHAOS_BASE_URL || process.env.PLAYWRIGHT_BASE_URL || process.env.BASE_URL || 'http://127.0.0.1:3000';
 const resultsRoot = path.join(runDir, 'failed-only');
 fs.mkdirSync(resultsRoot, { recursive: true });
-generatePlaywrightInventory({ root: process.cwd(), outputPath: path.join(runDir, 'playwright-test-inventory.json'), runId });
+generatePlaywrightInventory({ root: process.cwd(), outputPath: path.join(runDir, 'playwright-test-inventory.json'), runId, config: 'playwright.inventory.config.cjs' });
 
 if (!FAILED_ONLY_TESTS.length) {
   throw new Error(`Failed-only manifest selected zero tests. Refusing to run a false-green diagnostic gate. ${FAILED_ONLY_MANIFEST_ERRORS.join('; ')}`);
@@ -61,9 +62,9 @@ module.exports = defineConfig({
   projects: [
     { name: 'chromium', grep: grepForProject(FAILED_ONLY_TESTS, 'chromium'), use: { ...devices['Desktop Chrome'] } },
     { name: 'mobile-chromium', grep: grepForProject(FAILED_ONLY_TESTS, 'mobile-chromium'), use: { ...devices['Pixel 5'] } },
-    { name: 'edge-pwa', grep: grepForProject(FAILED_ONLY_TESTS, 'edge-pwa'), testMatch: /86chaos-release-gate\/(26-pwa-icon-source-deployed-parity|27-pwa-browser-icon-matrix)\.spec\.cjs/, use: { ...devices['Desktop Edge'], channel: 'msedge' } },
-    { name: 'firefox-pwa', grep: grepForProject(FAILED_ONLY_TESTS, 'firefox-pwa'), testMatch: /86chaos-release-gate\/(26-pwa-icon-source-deployed-parity|27-pwa-browser-icon-matrix)\.spec\.cjs/, use: { ...devices['Desktop Firefox'] } },
-    { name: 'webkit-pwa', grep: grepForProject(FAILED_ONLY_TESTS, 'webkit-pwa'), testMatch: /86chaos-release-gate\/(26-pwa-icon-source-deployed-parity|27-pwa-browser-icon-matrix)\.spec\.cjs/, use: { ...devices['Desktop Safari'] } },
-    { name: 'mobile-webkit-pwa', grep: grepForProject(FAILED_ONLY_TESTS, 'mobile-webkit-pwa'), testMatch: /86chaos-release-gate\/(26-pwa-icon-source-deployed-parity|27-pwa-browser-icon-matrix)\.spec\.cjs/, use: { ...devices['iPhone 13'] } }
+    { name: 'edge-pwa', grep: grepForProject(FAILED_ONLY_TESTS, 'edge-pwa'), testMatch: PWA_SPEC_PATTERN, use: { ...devices['Desktop Edge'], channel: 'msedge' } },
+    { name: 'firefox-pwa', grep: grepForProject(FAILED_ONLY_TESTS, 'firefox-pwa'), testMatch: PWA_SPEC_PATTERN, use: { ...devices['Desktop Firefox'] } },
+    { name: 'webkit-pwa', grep: grepForProject(FAILED_ONLY_TESTS, 'webkit-pwa'), testMatch: PWA_SPEC_PATTERN, use: { ...devices['Desktop Safari'] } },
+    { name: 'mobile-webkit-pwa', grep: grepForProject(FAILED_ONLY_TESTS, 'mobile-webkit-pwa'), testMatch: PWA_SPEC_PATTERN, use: { ...devices['iPhone 13'] } }
   ]
 });

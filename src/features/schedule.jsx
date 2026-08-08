@@ -1850,34 +1850,89 @@ const [eventDate, setEventDate] = useState(getToday());
   }
 
   // --- CUSTOM SHIFT PRESETS LOGIC ---
+  const BUILT_IN_SHIFT_PRESETS = useMemo(() => [
+    { id: 'builtin-9-3', label: "9a-3p", start: "09:00", end: "15:00", builtIn: true },
+    { id: 'builtin-10-4', label: "10a-4p", start: "10:00", end: "16:00", builtIn: true },
+    { id: 'builtin-10-9', label: "10a-9p", start: "10:00", end: "21:00", builtIn: true },
+    { id: 'builtin-11-3', label: "11a-3p", start: "11:00", end: "15:00", builtIn: true },
+    { id: 'builtin-11-4', label: "11a-4p", start: "11:00", end: "16:00", builtIn: true },
+    { id: 'builtin-4-9', label: "4p-9p", start: "16:00", end: "21:00", builtIn: true }
+  ], []);
   const [customPresets, setCustomPresets] = useState([]);
+  const [customPresetSyncStatus, setCustomPresetSyncStatus] = useState('idle');
+  const [customPresetSyncMessage, setCustomPresetSyncMessage] = useState('');
   const [isPresetModalOpen, setIsPresetModalOpen] = useState(false);
   const [editingPresetId, setEditingPresetId] = useState(null);
   const [newPresetLabel, setNewPresetLabel] = useState('');
   const [newPresetStart, setNewPresetStart] = useState('16:00');
   const [newPresetEnd, setNewPresetEnd] = useState('21:00');
 
-  useEffect(() => {
-    const saved = localStorage.getItem(`customPresets_${appUser?.restaurantId}`);
-    if (saved) {
-      setCustomPresets(JSON.parse(saved));
-    } else {
-      const seed = [ 
-        { id: '1', label: "9a-3p", start: "09:00", end: "15:00" }, { id: '2', label: "10a-4p", start: "10:00", end: "16:00" }, 
-        { id: '3', label: "10a-9p", start: "10:00", end: "21:00" }, { id: '4', label: "11a-3p", start: "11:00", end: "15:00" }, 
-        { id: '5', label: "11a-4p", start: "11:00", end: "16:00" }, { id: '6', label: "4p-9p", start: "16:00", end: "21:00" }
-      ];
-      setCustomPresets(seed);
-      localStorage.setItem(`customPresets_${appUser?.restaurantId}`, JSON.stringify(seed));
+  const normalizePresetClient = (preset = {}) => {
+    const label = String(preset.label || preset.name || '').trim().replace(/\s+/g, ' ').slice(0, 48);
+    const start = String(preset.start || preset.startTime || '').trim();
+    const end = String(preset.end || preset.endTime || '').trim();
+    const id = String(preset.id || preset.presetId || '').trim();
+    if (!label || !/^\d{2}:\d{2}$/.test(start) || !/^\d{2}:\d{2}$/.test(end) || start === end) return null;
+    return { id, label, start, end };
+  };
+  const presetKeyClient = (p = {}) => `${String(p.label || '').toLowerCase()}|${p.start}|${p.end}`;
+  const dedupePresetClient = (rows = []) => {
+    const seen = new Set();
+    const out = [];
+    for (const row of rows || []) {
+      const p = normalizePresetClient(row);
+      if (!p) continue;
+      const key = presetKeyClient(p);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push(p);
     }
+    return out.sort((a,b) => a.start.localeCompare(b.start) || a.label.localeCompare(b.label));
+  };
+  const customPresetCacheKey = `customPresets_${appUser?.restaurantId || 'unknown'}`;
+  const customPresetMigrationKey = `customPresetsSharedMigration_${appUser?.restaurantId || 'unknown'}`;
+  const fetchCustomPresetServer = async (options = {}) => {
+    if (!appUser?.restaurantId) return [];
+    const response = await secureFetch(`/api/custom-shift-presets?restaurantId=${encodeURIComponent(appUser.restaurantId)}`, options);
+    const json = await response.json().catch(() => ({}));
+    if (!response.ok || !json?.ok) throw new Error(json?.error || 'Custom Shift sync failed.');
+    const rows = dedupePresetClient(json.presets || []);
+    localStorage.setItem(customPresetCacheKey, JSON.stringify(rows));
+    setCustomPresets(rows);
+    return rows;
+  };
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      if (!appUser?.restaurantId) return;
+      const localRows = (() => { try { return dedupePresetClient(JSON.parse(localStorage.getItem(customPresetCacheKey) || '[]')); } catch (_) { return []; } })();
+      if (localRows.length) setCustomPresets(localRows);
+      setCustomPresetSyncStatus('loading');
+      setCustomPresetSyncMessage('Loading shared Custom Shifts...');
+      try {
+        const migrated = localStorage.getItem(customPresetMigrationKey) === 'done';
+        if (!migrated && localRows.length) {
+          const response = await secureFetch('/api/custom-shift-presets', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'merge', restaurantId: appUser.restaurantId, presets: localRows }) });
+          const json = await response.json().catch(() => ({}));
+          if (!response.ok || !json?.ok) throw new Error(json?.error || 'Custom Shift migration failed.');
+          localStorage.setItem(customPresetMigrationKey, 'done');
+          const rows = dedupePresetClient(json.presets || []);
+          if (!cancelled) setCustomPresets(rows);
+          localStorage.setItem(customPresetCacheKey, JSON.stringify(rows));
+        } else {
+          await fetchCustomPresetServer();
+        }
+        if (!cancelled) { setCustomPresetSyncStatus('synced'); setCustomPresetSyncMessage('Custom Shifts are shared for this restaurant.'); }
+      } catch (error) {
+        if (!cancelled) { setCustomPresetSyncStatus('offline'); setCustomPresetSyncMessage('Using the last saved Custom Shifts. New changes will need the server connection.'); }
+      }
+    };
+    load();
+    return () => { cancelled = true; };
   }, [appUser?.restaurantId]);
 
-  const saveCustomPresetsLocally = (newPresets) => {
-    setCustomPresets(newPresets);
-    localStorage.setItem(`customPresets_${appUser?.restaurantId}`, JSON.stringify(newPresets));
-  };
-
   const SHIFT_PRESETS = [
+    ...BUILT_IN_SHIFT_PRESETS,
     ...[...customPresets].sort((a,b) => a.start.localeCompare(b.start)),
     { id: 'custom', label: "Custom", start: "", end: "" }
   ];
@@ -1892,30 +1947,31 @@ const [eventDate, setEventDate] = useState(getToday());
     } 
   };
 
-  const handleSavePreset = (e) => {
+  const handleSavePreset = async (e) => {
     e.preventDefault();
     if (!newPresetLabel || !newPresetStart || !newPresetEnd) return;
-    
-    if (editingPresetId) {
-      const updated = customPresets.map(p => 
-        p.id === editingPresetId ? { ...p, label: newPresetLabel.trim(), start: newPresetStart, end: newPresetEnd } : p
-      );
-      saveCustomPresetsLocally(updated);
-      addToast('Updated', 'Shift preset updated.');
-    } else {
-      const newPreset = {
-        id: Date.now().toString(),
-        label: newPresetLabel.trim(),
-        start: newPresetStart,
-        end: newPresetEnd
-      };
-      saveCustomPresetsLocally([...customPresets, newPreset]);
-      addToast('Saved', 'New shift preset added.');
+    setCustomPresetSyncStatus('saving');
+    try {
+      const payload = { label: newPresetLabel.trim(), start: newPresetStart, end: newPresetEnd, ...(editingPresetId ? { id: editingPresetId } : {}) };
+      const response = await secureFetch('/api/custom-shift-presets', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: editingPresetId ? 'update' : 'create', restaurantId: appUser.restaurantId, preset: payload }) });
+      const json = await response.json().catch(() => ({}));
+      if (!response.ok || !json?.ok) throw new Error(json?.error || 'Custom Shift save failed.');
+      const rows = dedupePresetClient(json.presets || []);
+      setCustomPresets(rows);
+      localStorage.setItem(customPresetCacheKey, JSON.stringify(rows));
+      setCustomPresetSyncStatus('synced');
+      setCustomPresetSyncMessage('Custom Shifts are shared for this restaurant.');
+      addToast(editingPresetId ? 'Updated' : 'Saved', editingPresetId ? 'Shared Custom Shift updated.' : 'Shared Custom Shift saved.');
+      cancelPresetEdit();
+    } catch (error) {
+      setCustomPresetSyncStatus('error');
+      setCustomPresetSyncMessage('Custom Shift was not saved. Check your connection and permissions.');
+      addToast('Not Saved', error.message || 'Custom Shift was not saved.');
     }
-    cancelPresetEdit();
   };
 
   const handleEditPreset = (preset) => {
+    if (preset.builtIn) return;
     setNewPresetLabel(preset.label);
     setNewPresetStart(preset.start);
     setNewPresetEnd(preset.end);
@@ -1930,10 +1986,24 @@ const [eventDate, setEventDate] = useState(getToday());
     setEditingPresetId(null);
   };
 
-  const handleDeletePreset = (id) => {
-    if(window.confirm('Delete this preset?')) {
-      const filtered = customPresets.filter(p => p.id !== id);
-      saveCustomPresetsLocally(filtered);
+  const handleDeletePreset = async (id) => {
+    if(window.confirm('Delete this shared preset? Scheduled shifts that already exist will not be changed.')) {
+      setCustomPresetSyncStatus('saving');
+      try {
+        const response = await secureFetch('/api/custom-shift-presets', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'delete', restaurantId: appUser.restaurantId, id }) });
+        const json = await response.json().catch(() => ({}));
+        if (!response.ok || !json?.ok) throw new Error(json?.error || 'Custom Shift delete failed.');
+        const rows = dedupePresetClient(json.presets || []);
+        setCustomPresets(rows);
+        localStorage.setItem(customPresetCacheKey, JSON.stringify(rows));
+        setCustomPresetSyncStatus('synced');
+        setCustomPresetSyncMessage('Custom Shifts are shared for this restaurant.');
+        addToast('Deleted', 'Shared Custom Shift deleted.');
+      } catch (error) {
+        setCustomPresetSyncStatus('error');
+        setCustomPresetSyncMessage('Custom Shift was not deleted. Check your connection and permissions.');
+        addToast('Not Deleted', error.message || 'Custom Shift was not deleted.');
+      }
     }
   };
 
@@ -3529,6 +3599,7 @@ const handleExportTimesheets = () => {
       {/* --- PRESET MANAGER MODAL --- */}
       <Modal isOpen={isPresetModalOpen} onClose={() => { setIsPresetModalOpen(false); cancelPresetEdit(); }} title="Manage Custom Shifts">
         <div className="space-y-4 max-h-[60vh] overflow-y-auto custom-scrollbar pr-2 pb-10">
+            {customPresetSyncMessage && <div className={`rounded-xl border px-3 py-2 text-xs font-bold ${customPresetSyncStatus === 'error' ? 'border-red-800/60 bg-red-950/20 text-red-100' : customPresetSyncStatus === 'offline' ? 'border-amber-700/50 bg-amber-950/20 text-amber-100' : 'border-emerald-800/50 bg-emerald-950/20 text-emerald-100'}`}>{customPresetSyncMessage}</div>}
             <form id="preset-modal-form" onSubmit={handleSavePreset} className="space-y-3 p-4 bg-[#1A2126] border border-[#2A353D] rounded-xl">
                 <div className="flex justify-between items-center">
                     <h4 className="text-sm font-black text-[#D4A381] uppercase tracking-widest">{editingPresetId ? 'Edit Preset' : 'Add New Preset'}</h4>

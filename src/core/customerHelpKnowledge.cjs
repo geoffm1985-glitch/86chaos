@@ -1,6 +1,6 @@
 'use strict';
 
-const CUSTOMER_HELP_VERSION = '16.0.144';
+const CUSTOMER_HELP_VERSION = '16.0.147';
 
 const AUDIENCE = Object.freeze({ EVERYONE: 'Everyone', EMPLOYEE: 'Employee', MANAGER_OWNER: 'Manager / Owner' });
 
@@ -75,7 +75,7 @@ const CUSTOMER_FEATURES = [
   ['manager-brief', 'Manager Brief', 'today', 'Manager / Owner', ['manager-brief-use']],
   ['kitchen-command', 'Kitchen Command Center', 'ops', 'Manager / Owner', ['kitchen-command-use']],
   ['schedule', 'Time Clock & Schedule', 'published', 'Everyone', ['my-schedule-view', 'full-schedule-view', 'request-off-how', 'clock-in-help']],
-  ['schedule-builder', 'Schedule Builder', 'schedule', 'Manager / Owner', ['schedule-builder-find', 'schedule-publish']],
+  ['schedule-builder', 'Schedule Builder', 'schedule', 'Manager / Owner', ['schedule-builder-find', 'schedule-publish', 'custom-shifts-overview', 'custom-shift-save', 'custom-shift-edit-delete', 'custom-shifts-on-phone']],
   ['inventory', 'Inventory', 'inventory', 'Manager / Owner', ['inventory-counts', 'invoice-scan-review', 'orders-vendors']],
   ['menu-intelligence', 'Menu Intelligence', 'menu-intelligence', 'Manager / Owner', ['menu-intelligence-guide']],
   ['recipes', 'Recipes', 'recipes', 'Everyone', ['recipes-use']],
@@ -292,6 +292,28 @@ const ARTICLES = [
   article('event-reminders-use', 'How do event reminders work?', 'maintenance-events', 'event-reminders', AUDIENCE.EVERYONE, 'Event reminders help the team prepare before important dates.', ['Can events remind me?', 'How do event reminders work?'], ['event reminders','events','notifications'], [
     { title: 'Short answer', body: ['When event reminders are enabled, the app can show reminders before the event.'] },
   ], [], ['events-use'], ['events']),
+
+  article('custom-shifts-overview', 'What are Custom Shifts?', 'schedule-time-clock', 'schedule-builder', AUDIENCE.MANAGER_OWNER, 'Custom Shifts are saved shift presets for one restaurant. They help managers add the same kind of shift without typing the times every time.', ['What are Custom Shifts?', 'Are custom shifts shared?', 'Where did my saved shifts go?'], ['custom shifts','saved shifts','shift preset','schedule builder','shared shifts','preset'], [
+    { title: 'Short answer', body: ['Custom Shifts are reusable shift buttons inside [[Schedule Builder|schedule-builder]]. They are shared for that restaurant with people who can use Schedule Builder.'] },
+    { title: 'Who can use this', body: ['Managers, owners, and other people with Schedule Builder permission can use shared Custom Shifts. Staff who only view their own schedule cannot edit them.'] },
+    { title: 'What you should see', body: ['When a Custom Shift is saved for the restaurant, it should appear on desktop, phone, tablet, and any fresh browser session for the same workspace.'] },
+  ], ['Make sure you are in the right restaurant workspace.', 'Ask a manager or owner to confirm you have Schedule Builder access.'], ['custom-shift-save','custom-shifts-on-phone'], ['schedule-builder']),
+  article('custom-shift-save', 'How do I save a Custom Shift?', 'schedule-time-clock', 'schedule-builder', AUDIENCE.MANAGER_OWNER, 'Save a Custom Shift from Schedule Builder when you want to reuse the same shift name and times.', ['How do I save a shift preset?', 'How do I create a Custom Shift?', 'How do I save Dinner 4p to 10p?'], ['save custom shift','create custom shift','dinner shift','shift preset','schedule builder'], [
+    { title: 'Short answer', body: ['Open [[Schedule Builder|schedule-builder]], choose Custom, enter the shift name and times, then save it.'] },
+    { title: 'How to do it', steps: ['Open [[Schedule Builder|schedule-builder]].', 'Open the Custom Shift option.', 'Type a clear name like Dinner 4p-10p.', 'Choose the start and end time.', 'Save the Custom Shift.', 'Use the returned list before you leave the page.'] },
+    { title: 'What you should see', body: ['After it saves, the shift preset appears in the Custom Shift list for that restaurant.'] },
+  ], ['If it says the shift was not saved, wait a moment and try again. Do not assume it synced until the app shows it was saved.'], ['custom-shifts-overview','custom-shift-edit-delete'], ['schedule-builder']),
+  article('custom-shift-edit-delete', 'How do I edit or delete a Custom Shift?', 'schedule-time-clock', 'schedule-builder', AUDIENCE.MANAGER_OWNER, 'Editing a Custom Shift changes the reusable preset. It does not change shifts already placed on the schedule.', ['How do I edit a Custom Shift?', 'How do I delete a saved shift?', 'Will deleting a preset delete scheduled shifts?'], ['edit custom shift','delete custom shift','saved shift','preset','schedule builder'], [
+    { title: 'Short answer', body: ['Open [[Schedule Builder|schedule-builder]], find the saved Custom Shift, then use Edit or Delete for that exact preset.'] },
+    { title: 'How to do it', steps: ['Open [[Schedule Builder|schedule-builder]].', 'Find the exact Custom Shift name.', 'Choose Edit to change the name or times.', 'Choose Delete only when you no longer want the preset.', 'Confirm when the app asks.'] },
+    { title: 'What changes', body: ['Only the reusable Custom Shift preset changes. Shifts that were already added to the schedule stay where they are.'] },
+  ], ['If you do not see Edit or Delete, you may not have Schedule Builder permission.'], ['custom-shifts-overview','custom-shifts-on-phone'], ['schedule-builder']),
+  article('custom-shifts-on-phone', 'Why aren’t my saved Custom Shifts on my phone?', 'schedule-time-clock', 'schedule-builder', AUDIENCE.MANAGER_OWNER, 'Custom Shifts should sync through the restaurant workspace so authorized managers can see them on other devices.', ['Why are saved shifts missing on my phone?', 'Why are custom shifts not on mobile?', 'Are custom shifts shared?', 'Where did my custom shifts go?'], ['custom shifts phone','saved shifts on phone','mobile custom shifts','shared shifts','sync custom shifts','another device'], [
+    { title: 'Short answer', body: ['Custom Shifts are shared for the restaurant. Open the same workspace on your phone and refresh [[Schedule Builder|schedule-builder]].'] },
+    { title: 'Try this', steps: ['Make sure the phone is signed into the same restaurant workspace.', 'Open [[Schedule Builder|schedule-builder]].', 'Wait for the Custom Shift list to finish loading.', 'Refresh once if the list still looks old.', 'Ask a manager or owner to confirm the shift was saved successfully.'] },
+    { title: 'If it still does not show', body: ['The app may be using a last-known list while it reconnects. Do not create duplicates until the shared list loads.'] },
+  ], ['A saved Custom Shift is shared only inside the restaurant where it was created.'], ['custom-shifts-overview','custom-shift-save'], ['schedule-builder']),
+
   article('voice-open-close', 'How do I open and close 86Voice?', 'voice-smart-tools', 'voice-open-close', AUDIENCE.EVERYONE, '86Voice opens from the microphone button and can help with navigation, prep, tasks, reminders, and searches.', ['How do I open 86Voice?', 'How do I close 86Voice?'], ['86voice','voice','microphone','open voice','close voice'], [
     { title: 'Short answer', body: ['Use the microphone button to open 86Voice. Use Close 86Voice panel or Hide 86Voice assistant to close it.'] },
     { title: 'What it can do', steps: ['Open pages.', 'Search Help.', 'Add prep or tasks when allowed.', 'Create reminders when allowed.', 'Look up recipes.'] },
@@ -349,7 +371,7 @@ function tokenize(value = '') {
   return String(value || '').toLowerCase().normalize('NFKD').replace(/[^a-z0-9]+/g, ' ').split(/\s+/).filter(Boolean);
 }
 const SYNONYMS = {
-  publish: ['publishing','published','live','post'], schedule: ['shifts','shift','roster'], invoice: ['bill','vendor bill','scan'], clock: ['punch','timeclock','clockin','clock-in'], request: ['time off','day off','vacation'], voice: ['86voice','mic','microphone','speech'], icon: ['pwa','home screen','installed app','gray icon'], inventory: ['stock','items','count'], back: ['office','owner tools'],
+  publish: ['publishing','published','live','post'], schedule: ['shifts','shift','roster'], invoice: ['bill','vendor bill','scan'], clock: ['punch','timeclock','clockin','clock-in'], request: ['time off','day off','vacation'], voice: ['86voice','mic','microphone','speech'], icon: ['pwa','home screen','installed app','gray icon'], custom: ['custom shifts','saved shifts','shift preset','shift presets'], inventory: ['stock','items','count'], back: ['office','owner tools'],
 };
 function expandTerms(tokens) {
   const set = new Set(tokens);
@@ -393,6 +415,8 @@ function searchCustomerHelp(question = '', { limit = 6 } = {}) {
     for (const kw of article.keywords || []) if (qPhrase.includes(String(kw).toLowerCase())) score += 20;
     if (article.id === 'app-icon-gray' && /app icon|wrong icon|gray icon|grey icon|generic icon/.test(qPhrase)) score += 120;
     if (article.id === 'invoice-scan-failed' && /invoice.*(scan|fail|didnt|didn)/.test(qPhrase)) score += 80;
+    if (article.id === 'custom-shifts-on-phone' && /(custom|saved).*(shift|preset).*(phone|mobile|device|where|go|gone|missing|shared)/.test(qPhrase)) score += 120;
+    if (article.id === 'custom-shifts-overview' && /(custom|saved).*(shift|preset).*(shared|what|where)/.test(qPhrase)) score += 90;
     if (article.id === 'voice-not-hearing' && /(86voice|voice).*(hear|hearing|listen|mic|microphone|cant|can.t)/.test(qPhrase)) score += 100;
     return { article, score };
   }).filter(row => row.score > 0).sort((a,b) => b.score - a.score || a.article.title.localeCompare(b.article.title));

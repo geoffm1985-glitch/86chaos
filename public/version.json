@@ -1,14 +1,14 @@
 {
-  "version": "16.0.146",
-  "name": "86 Chaos 16.0.145 Cross-Platform PWA Test and Release Failure Reporting Fix",
-  "build": "16.0.146",
-  "label": "86 Chaos 16.0.145 Cross-Platform PWA Test and Release Failure Reporting Fix",
-  "releasedAt": "2026-08-07T01:44:00-05:00",
-  "releaseTitle": "Cross-Platform PWA Test and Release Failure Reporting Fix",
+  "version": "16.0.147",
+  "name": "86 Chaos 16.0.147 Release Truth, Cross-Device Reliability, Help Completion, and Approved App Branding",
+  "build": "16.0.147",
+  "label": "86 Chaos 16.0.147 Release Truth, Cross-Device Reliability, Help Completion, and Approved App Branding",
+  "releasedAt": "2026-08-07T21:22:00-05:00",
+  "releaseTitle": "Release Truth, Cross-Device Reliability, Help Completion, and Approved App Branding",
   "notes": [
-    "Fixes cross-platform PWA icon path tests by comparing native filesystem paths semantically.",
-    "Corrects release-gate failure extraction so passing tests with scary words never become primary blockers.",
-    "Preserves the 16.0.144 Help Center, Ask 86, PWA icon, and Firebase security boundary work unchanged."
+    "Eliminates recursive Playwright inventory discovery and keeps release inventory tied to the real full gate universe.",
+    "Improves customer Help links, Help version artifacts, System Administrator exact lookup, and shared Custom Shift preset plumbing.",
+    "Preserves Firebase rules, indexes, configuration, and current production behavior while deferring unavailable approved-icon replacement until the source asset is supplied."
   ],
-  "title": "86 Chaos 16.0.145 Cross-Platform PWA Test and Release Failure Reporting Fix"
+  "title": "86 Chaos 16.0.147 Release Truth, Cross-Device Reliability, Help Completion, and Approved App Branding"
 }
