@@ -5317,3 +5317,42 @@ span.bg-red-500.text-white,
 @media (max-width: 640px) {
   .chaos-login-primary-action, .chaos-login-secondary-action { min-height: 44px; }
 }
+
+/* 16.0.146 rendered login/touch target reliability */
+.chaos-login-primary-action,
+.chaos-login-secondary-action {
+  min-height: 44px !important;
+  height: auto !important;
+  min-width: 44px !important;
+  box-sizing: border-box !important;
+  line-height: 1.2 !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  touch-action: manipulation !important;
+}
+.chaos-login-primary-action { width: 100% !important; }
+@media (max-width: 640px), (pointer: coarse) {
+  .chaos-login-primary-action,
+  .chaos-login-secondary-action {
+    min-height: 44px !important;
+    padding-top: 10px !important;
+    padding-bottom: 10px !important;
+  }
+}
+
+/* Desktop/fine-pointer schedule controls stay compact visually while meeting a real hit area. */
+.schedule-builder-desktop-table button,
+.schedule-builder-compact-control,
+.schedule-builder-icon-control {
+  min-height: 24px;
+  box-sizing: border-box;
+}
+@media (max-width: 640px), (pointer: coarse) {
+  .schedule-builder-desktop-table button,
+  .schedule-builder-compact-control,
+  .schedule-builder-icon-control {
+    min-height: 42px !important;
+    min-width: 42px !important;
+  }
+}

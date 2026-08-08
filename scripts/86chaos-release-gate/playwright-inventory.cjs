@@ -49,15 +49,37 @@ function findLocalPlaywrightCli(root = process.cwd()) {
   const cli = path.join(root, 'node_modules', '@playwright', 'test', 'cli.js');
   return fs.existsSync(cli) ? cli : '';
 }
-function discoverWithPlaywrightList({ root = process.cwd(), config = 'playwright.play-store-release.config.cjs', env = {} } = {}) {
+function discoveryDiagnostic(result, args = []) {
+  const stdout = String(result?.stdout || '');
+  const stderr = String(result?.stderr || '');
+  return {
+    command: [process.execPath, ...args].join(' '),
+    status: result?.status ?? null,
+    signal: result?.signal || '',
+    error: result?.error ? (result.error.stack || result.error.message || String(result.error)) : '',
+    stderr: stderr.slice(-8000),
+    stdoutTail: stdout.slice(-8000),
+    timedOut: result?.error && /timeout|ETIMEDOUT/i.test(String(result.error.message || result.error)),
+    bufferLimited: /maxBuffer|ENOBUFS/i.test(String(result?.error?.message || ''))
+  };
+}
+function titleContainsTemplate(records = []) {
+  return records.filter(row => /\$\{/.test([row.fullTitle, row.fullSuitePath, row.leafTitle, row.exactTestTitle, row.title].filter(Boolean).join(' ')));
+}
+function discoverWithPlaywrightList({ root = process.cwd(), config = 'playwright.play-store-release.config.cjs', env = {}, timeoutMs = 10 * 60 * 1000, maxBuffer = 96 * 1024 * 1024 } = {}) {
   const cli = findLocalPlaywrightCli(root);
-  if (!cli) return { ok: false, error: 'Local Playwright package is not installed.', records: [] };
+  if (!cli) return { ok: false, error: 'Local Playwright package is not installed.', records: [], diagnostic: { command: '', status: null, error: 'Local Playwright package is not installed.' } };
   const args = [cli, 'test', `--config=${config}`, '--list'];
-  const result = childProcess.spawnSync(process.execPath, args, { cwd: root, env: { ...process.env, ...env, CHAOS_INVENTORY_DISCOVERY: '1' }, encoding: 'utf8', timeout: 120000, maxBuffer: 20 * 1024 * 1024 });
+  const result = childProcess.spawnSync(process.execPath, args, { cwd: root, env: { ...process.env, ...env, CHAOS_INVENTORY_DISCOVERY: '1' }, encoding: 'utf8', timeout: timeoutMs, maxBuffer });
   const output = `${result.stdout || ''}\n${result.stderr || ''}`;
-  const records = parsePlaywrightListOutput(output, root);
-  if (result.status !== 0 && !records.length) return { ok: false, error: output.trim() || `Playwright list exited ${result.status}`, records: [] };
-  return { ok: true, output, records };
+  let records = [];
+  try { records = parsePlaywrightListOutput(output, root); }
+  catch (error) { return { ok: false, error: error.message || String(error), records: [], output, diagnostic: { ...discoveryDiagnostic(result, args), parserError: error.stack || error.message || String(error) } }; }
+  const templateRows = titleContainsTemplate(records);
+  if (templateRows.length) return { ok: false, error: `Playwright inventory contains unresolved template titles: ${templateRows.length}`, records, output, diagnostic: { ...discoveryDiagnostic(result, args), templateRows: templateRows.slice(0, 10) } };
+  if (result.status !== 0) return { ok: false, error: `Playwright list exited ${result.status ?? 'null'}`, records, output, diagnostic: discoveryDiagnostic(result, args) };
+  if (!records.length) return { ok: false, error: 'Playwright list completed but no tests were discovered.', records: [], output, diagnostic: discoveryDiagnostic(result, args) };
+  return { ok: true, output, records, diagnostic: discoveryDiagnostic(result, args) };
 }
 function listSpecFiles(root=process.cwd()) {
   const base = path.join(root, 'tests');
@@ -129,26 +151,34 @@ function validateInventoryRecords(records = []) {
   const perProject = records.reduce((acc, row) => { acc[row.project] = (acc[row.project] || 0) + 1; return acc; }, {});
   return { ok: duplicates.length === 0, discoveredTestCount: records.length, perProject, duplicateIdentityCount: duplicates.length, duplicates };
 }
-function generatePlaywrightInventory({ root=process.cwd(), outputPath='', runId='', sourceVersion='', config='playwright.play-store-release.config.cjs', allowStaticFallback = true }={}) {
+function generatePlaywrightInventory({ root=process.cwd(), outputPath='', runId='', sourceVersion='', config='playwright.play-store-release.config.cjs', allowStaticFallback = false, releaseMode = true }={}) {
   const generatedAt = new Date().toISOString();
   const discovered = discoverWithPlaywrightList({ root, config });
   let discoveryMode = 'playwright-list';
-  let records = discovered.records;
+  let records = discovered.records || [];
   let discoveryError = discovered.error || '';
-  if (!records.length && allowStaticFallback) {
+  let discoveryDiagnosticReport = discovered.diagnostic || {};
+  if ((!discovered.ok || !records.length) && allowStaticFallback && !releaseMode) {
     records = fallbackStaticInventory({ root });
     discoveryMode = 'static-fallback-for-source-tests-only';
   }
   records = withKeys(records, { generatedAt, runId, sourceVersion });
+  const unresolvedTemplateRows = titleContainsTemplate(records);
   const validation = validateInventoryRecords(records);
-  const report = { ok: validation.ok && records.length > 0, inventorySchemaVersion: INVENTORY_SCHEMA_VERSION, generatedAt, runId, sourceVersion, config, discoveryMode, discoveryError, count: records.length, discoveredTestCount: validation.discoveredTestCount, perProject: validation.perProject, duplicateIdentityCount: validation.duplicateIdentityCount, duplicates: validation.duplicates, records };
+  const ok = validation.ok && records.length > 0 && unresolvedTemplateRows.length === 0 && (discovered.ok || (allowStaticFallback && !releaseMode));
+  const report = { ok, inventorySchemaVersion: INVENTORY_SCHEMA_VERSION, generatedAt, runId, sourceVersion, config, discoveryMode, discoveryError, discoveryDiagnostic: discoveryDiagnosticReport, count: records.length, discoveredTestCount: validation.discoveredTestCount, perProject: validation.perProject, duplicateIdentityCount: validation.duplicateIdentityCount, unresolvedTemplateTitleCount: unresolvedTemplateRows.length, unresolvedTemplateTitles: unresolvedTemplateRows.slice(0, 25), duplicates: validation.duplicates, records };
   if (outputPath) writeJson(outputPath, report);
+  if (releaseMode && !ok) {
+    const err = new Error(`Playwright release inventory discovery failed: ${discoveryError || (unresolvedTemplateRows.length ? 'unresolved template titles' : 'inventory invalid')}`);
+    err.report = report;
+    throw err;
+  }
   return report;
 }
 if (require.main === module) {
   const outputPath = process.argv[2] || path.join(process.cwd(), 'playwright-test-inventory.json');
-  const report = generatePlaywrightInventory({ outputPath });
+  const report = generatePlaywrightInventory({ outputPath, releaseMode: true, allowStaticFallback: false });
   console.log(`Wrote Playwright inventory v${INVENTORY_SCHEMA_VERSION}: ${report.count} identities -> ${outputPath}`);
   if (!report.ok) process.exit(1);
 }
-module.exports = { INVENTORY_SCHEMA_VERSION, normalizeRel, parsePlaywrightListLine, parsePlaywrightListOutput, discoverWithPlaywrightList, generatePlaywrightInventory, validateInventoryRecords, stableIdentityKey, projectsForSpec, MAIN_PROJECTS, PWA_PROJECTS };
+module.exports = { INVENTORY_SCHEMA_VERSION, normalizeRel, parsePlaywrightListLine, parsePlaywrightListOutput, discoverWithPlaywrightList, generatePlaywrightInventory, validateInventoryRecords, stableIdentityKey, projectsForSpec, MAIN_PROJECTS, PWA_PROJECTS, titleContainsTemplate, discoveryDiagnostic };

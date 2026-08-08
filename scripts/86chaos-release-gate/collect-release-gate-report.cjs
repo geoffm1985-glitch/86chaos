@@ -168,17 +168,25 @@ const selectedIdentitySet = new Set(manifestSelected.map(manifestIdentity));
 const executedUniqueByKey = new Map();
 for (const t of tests) executedUniqueByKey.set(executedIdentity(t), t);
 const executedKeySet = new Set(executedUniqueByKey.keys());
-const selectedNotExecuted = [...selectedIdentitySet].filter(key => !executedKeySet.has(key) && ![...executedKeySet].some(exec => exec.includes(key.split('\u0000')[1]) && exec.endsWith(key.split('\u0000')[2])));
-const unexpectedExtraExecution = [...executedKeySet].filter(key => !selectedIdentitySet.has(key) && ![...selectedIdentitySet].some(sel => key.includes(sel.split('\u0000')[1]) && key.endsWith(sel.split('\u0000')[2])));
+const selectedNotExecuted = [...selectedIdentitySet].filter(key => !executedKeySet.has(key));
+const unexpectedExtraExecution = [...executedKeySet].filter(key => !selectedIdentitySet.has(key));
+const perProjectExecutedUnique = [...executedUniqueByKey.values()].reduce((acc, row) => { const p = row.projectName || row.project || 'unknown'; acc[p] = (acc[p] || 0) + 1; return acc; }, {});
+const perProjectSelected = manifestSelected.reduce((acc, row) => { const p = row.project || row.projectName || (row.projects || [])[0] || 'unknown'; acc[p] = (acc[p] || 0) + 1; return acc; }, {});
+const executedUnique = executedKeySet.size;
+const selectedUnique = selectedIdentitySet.size;
+const reconciled = !failedOnlyMode || (selectedUnique === executedUnique + selectedNotExecuted.length && unexpectedExtraExecution.length === 0 && executedUnique === tests.filter(t => ['passed','failed','timedOut','skipped','interrupted'].includes(String(t.status || ''))).length);
 const deltaReconciliation = {
   mode: failedOnlyMode ? 'failed+new' : 'full',
-  manifestSelectedUniqueCount: selectedIdentitySet.size,
-  actualExecutedUniqueCount: executedKeySet.size,
+  manifestSelectedUniqueCount: selectedUnique,
+  actualExecutedUniqueCount: executedUnique,
   selectedNotExecutedCount: failedOnlyMode ? selectedNotExecuted.length : 0,
   unexpectedExtraExecutionCount: failedOnlyMode ? unexpectedExtraExecution.length : 0,
-  selectedNotExecuted: failedOnlyMode ? selectedNotExecuted.slice(0, 50) : [],
-  unexpectedExtraExecution: failedOnlyMode ? unexpectedExtraExecution.slice(0, 50) : [],
-  perProjectSelected: manifestSelected.reduce((acc, row) => { const p = row.project || row.projectName || (row.projects || [])[0] || 'unknown'; acc[p] = (acc[p] || 0) + 1; return acc; }, {}),
+  selectedNotExecuted: failedOnlyMode ? selectedNotExecuted.slice(0, 80) : [],
+  unexpectedExtraExecution: failedOnlyMode ? unexpectedExtraExecution.slice(0, 80) : [],
+  perProjectSelected,
+  perProjectExecutedUnique,
+  reconciled,
+  reconciliationProof: failedOnlyMode ? `${selectedUnique} selected = ${executedUnique} executed + ${selectedNotExecuted.length} selected_not_executed; unexpected_extra=${unexpectedExtraExecution.length}` : 'full run, no delta reconciliation required'
 };
 if (!failedOnlyManifest && playwright && unexpectedTests.length > 0 && String(runnerState.mode || '').toLowerCase() !== 'failed-only') {
   try {

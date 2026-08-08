@@ -1,12 +1,11 @@
 const { test, expect } = require('@playwright/test');
+const { fillReleaseLogin } = require('./utils/release-login-helper.cjs');
 
 const releaseGate = process.env.CHAOS_RELEASE_GATE === 'true';
 
 async function login(page, email, password) {
   await page.goto('/', { waitUntil: 'domcontentloaded' });
-  await page.getByLabel(/email/i).fill(email);
-  await page.getByLabel(/password/i).fill(password);
-  await page.getByRole('button', { name: /log in|sign in/i }).click();
+  await fillReleaseLogin(page, email, password);
   const chooser = page.getByText(/choose workspace/i).first();
   if (await chooser.isVisible({ timeout: 5000 }).catch(() => false)) {
     const name = process.env.CHAOS_QA_WORKSPACE_NAME || process.env.CHAOS_QA_WORKSPACE || '';

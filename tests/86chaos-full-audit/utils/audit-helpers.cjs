@@ -498,12 +498,15 @@ async function viewportAudit(page) {
       }
       if (offenders.length >= 25) break;
     }
+    const coarsePointer = Boolean(window.matchMedia?.('(pointer: coarse)')?.matches) || viewportWidth <= 640;
+    const minHit = coarsePointer ? 42 : 24;
     const smallButtons = Array.from(document.querySelectorAll('button')).map(el => {
       const rect = el.getBoundingClientRect();
       const text = (el.innerText || el.getAttribute('aria-label') || '').trim();
-      return { text, width: rect.width, height: rect.height };
-    }).filter(b => b.text && b.width > 0 && b.height > 0 && (b.width < 38 || b.height < 34)).slice(0, 40);
-    return { viewportWidth, viewportHeight, scrollWidth: Math.max(doc.scrollWidth, body.scrollWidth), scrollHeight: Math.max(doc.scrollHeight, body.scrollHeight), horizontalOverflow: Math.max(doc.scrollWidth, body.scrollWidth) > viewportWidth + 8, offenders, smallButtons };
+      const style = window.getComputedStyle(el);
+      return { text, width: Math.round(rect.width), height: Math.round(rect.height), minHit, coarsePointer, display: style.display, visibility: style.visibility };
+    }).filter(b => b.text && b.width > 0 && b.height > 0 && b.display !== 'none' && b.visibility !== 'hidden' && (b.width < minHit || b.height < minHit)).slice(0, 40);
+    return { viewportWidth, viewportHeight, scrollWidth: Math.max(doc.scrollWidth, body.scrollWidth), scrollHeight: Math.max(doc.scrollHeight, body.scrollHeight), horizontalOverflow: Math.max(doc.scrollWidth, body.scrollWidth) > viewportWidth + 8, offenders, smallButtons, touchTargetPolicy: { coarsePointer, minHit } };
   });
 }
 

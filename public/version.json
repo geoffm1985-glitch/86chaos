@@ -1,7 +1,7 @@
 {
-  "version": "16.0.145",
+  "version": "16.0.146",
   "name": "86 Chaos 16.0.145 Cross-Platform PWA Test and Release Failure Reporting Fix",
-  "build": "16.0.145",
+  "build": "16.0.146",
   "label": "86 Chaos 16.0.145 Cross-Platform PWA Test and Release Failure Reporting Fix",
   "releasedAt": "2026-08-07T01:44:00-05:00",
   "releaseTitle": "Cross-Platform PWA Test and Release Failure Reporting Fix",

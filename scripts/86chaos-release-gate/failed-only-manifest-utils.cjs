@@ -306,12 +306,14 @@ function inventoryFromPlaywrightReport(playwright = {}) {
   return records;
 }
 
-function currentInventoryRecords(root = process.cwd()) {
+function currentInventoryRecords(root = process.cwd(), { allowStaticFallback = false } = {}) {
+  const fallbackAllowed = allowStaticFallback || process.env.CHAOS_ALLOW_SOURCE_INVENTORY_FALLBACK === '1';
   try {
     const { generatePlaywrightInventory } = require('./playwright-inventory.cjs');
-    return generatePlaywrightInventory({ root }).records || [];
-  } catch (_) {
-    return [];
+    return generatePlaywrightInventory({ root, releaseMode: !fallbackAllowed, allowStaticFallback: fallbackAllowed }).records || [];
+  } catch (error) {
+    error.message = `Current Playwright inventory discovery failed for release delta: ${error.message || error}`;
+    throw error;
   }
 }
 
@@ -632,12 +634,12 @@ function extractTestTitlesFromSpec(source = '') {
   return titles;
 }
 
-function validateManifestTestIdentities(manifest, { root = process.cwd(), projectNames = readProjectNames(root) } = {}) {
+function validateManifestTestIdentities(manifest, { root = process.cwd(), projectNames = readProjectNames(root), allowStaticFallback = false } = {}) {
   const errors = [];
   const selected = dedupeSelections(manifest?.selected || []);
   if (!selected.length) errors.push('Failed-only manifest selected zero tests.');
   const availableProjects = new Set(projectNames || []);
-  const current = currentInventoryRecords(root);
+  const current = currentInventoryRecords(root, { allowStaticFallback });
   const inventoryByKey = new Map(current.map(row => [row.stableKey || identityKeyFromParts(row.specPath, row.exactTestTitle || row.title, row.project, row.fullSuitePath || ''), row]));
   const inventoryByLooseKey = new Map();
   for (const row of current) {
@@ -688,7 +690,7 @@ function validateManifestForCurrentRun(manifest, options = {}) {
     errors.push(`Target version ${targetVersion} is older than baseline failure version ${baselineVersion}.`);
   }
   if (options.validateIdentities !== false) {
-    const identities = validateManifestTestIdentities(manifest, { root: options.root || process.cwd(), projectNames: options.projectNames });
+    const identities = validateManifestTestIdentities(manifest, { root: options.root || process.cwd(), projectNames: options.projectNames, allowStaticFallback: options.allowStaticFallback === true });
     if (!identities.ok) errors.push(...identities.errors);
   }
   return { ok: errors.length === 0, errors };

@@ -9740,7 +9740,7 @@ another@email.com"></textarea>
               const restName = restaurants.find(r => r.id === u.restaurantId)?.name || 'Unknown Location';
               const presenceInfo = getUserPresenceSummary(u);
               return (
-                <div key={u.id} data-testid={`system-admin-person-${u.id}`} data-user-id={u.id} data-auth-uid={u.authUid || u.uid || ''} className={`${T.row} flex flex-col md:flex-row justify-between md:items-center gap-3`}>
+                <div key={u.id} data-testid={`system-admin-person-${u.id}`} data-user-id={u.id} data-auth-uid={u.authUid || u.uid || ''} data-user-email={u.email || ''} data-workspace-id={u.restaurantId || ''} data-workspace-name={restName || ''} className={`${T.row} flex flex-col md:flex-row justify-between md:items-center gap-3`}>
                   <div>
                     <div className="font-bold text-white text-sm flex items-center gap-2 flex-wrap">{u.name} {u.isAdmin && <span className="bg-red-500 text-white text-[8px] px-1.5 py-0.5 rounded uppercase ml-1">Admin</span>} {presenceInfo.online && <SignalPip tone="emerald" label="ONLINE" hot />}</div>
                     <div className="text-[10px] text-slate-400 font-medium">{u.email} <span className="mx-1"> </span> <span className={T.copper}>{u.role}</span></div>

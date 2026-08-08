@@ -26,12 +26,12 @@ const provisioner = read('scripts/86chaos-release-gate/provision-test-accounts.c
 const seed = read('scripts/86chaos-full-audit/seed-fake-restaurant.cjs');
 const cleanup = read('scripts/86chaos-full-audit/cleanup-fake-restaurant.cjs');
 
-assert(pkg.version === '16.0.145', 'package.json version is 16.0.145');
-assert(lock.version === '16.0.145' && lock.packages?.['']?.version === '16.0.145', 'package-lock root versions are 16.0.145');
-assert(version.version === '16.0.145' && version.build === '16.0.145', 'public/version.json version/build are 16.0.145');
-assert(appCore.includes("CURRENT_VERSION = '16.0.145'"), 'app core CURRENT_VERSION is 16.0.145');
-assert(apiVersion.includes("APP_VERSION = '16.0.145'") && apiVersion.includes("SECURITY_SCHEMA_VERSION = '16.0.145'"), 'api version reports 16.0.145');
-assert(pkg.scripts['test:source'] === 'node scripts/validate-16-0-145.js', 'test:source points at 16.0.145 validator');
+assert(pkg.version === '16.0.146', 'package.json version is 16.0.146');
+assert(lock.version === '16.0.146' && lock.packages?.['']?.version === '16.0.146', 'package-lock root versions are 16.0.146');
+assert(version.version === '16.0.146' && version.build === '16.0.146', 'public/version.json version/build are 16.0.146');
+assert(appCore.includes("CURRENT_VERSION = '16.0.146'"), 'app core CURRENT_VERSION is 16.0.146');
+assert(apiVersion.includes("APP_VERSION = '16.0.146'") && apiVersion.includes("SECURITY_SCHEMA_VERSION = '16.0.146'"), 'api version reports 16.0.146');
+assert(pkg.scripts['test:source'] === 'node scripts/validate-16-0-146.js', 'test:source points at 16.0.146 validator');
 assert(pkg.scripts['test:play-store:delta'] && pkg.scripts['test:play-store:delta'].includes('FAILED_AND_NEW'), 'failed+new delta command is present');
 assert(!fs.existsSync(path.join(root, 'scripts/validate-16-0-144.js')), 'previous 16.0.144 validator was replaced');
 
@@ -58,8 +58,9 @@ assert(seed.includes('applyGhostTargetToLegacyProfile') && seed.includes('ghostR
 assert(cleanup.includes('deleteGhostTargetAuthAccount') && cleanup.includes('temporaryAuthAccountsDeleted'), 'QA cleanup deletes temporary Ghost target Auth account');
 assert(fs.existsSync(path.join(root, 'tests/86chaos-release-gate/26-pwa-icon-source-deployed-parity.spec.cjs')), 'PWA icon source/deployed parity Playwright test exists');
 assert(fs.existsSync(path.join(root, 'tests/86chaos-release-gate/27-pwa-browser-icon-matrix.spec.cjs')), 'cross-browser PWA metadata matrix Playwright test exists');
-const inventory = generatePlaywrightInventory({ root });
+const inventory = generatePlaywrightInventory({ root, releaseMode: false, allowStaticFallback: true });
 assert(inventory.records.some(r => r.project === 'edge-pwa'), 'Playwright inventory includes Edge PWA project identities');
+assert(inventory.unresolvedTemplateTitleCount === 0 || inventory.discoveryMode === 'static-fallback-for-source-tests-only', 'release inventory rejects unresolved template titles; source fallback remains diagnostic-only');
 assert(inventory.records.some(r => r.specPath.includes('26-pwa-icon-source-deployed-parity')), 'Playwright inventory includes new PWA icon parity test');
 
 assert(fs.existsSync(path.join(root, 'src/core/customerHelpKnowledge.cjs')), 'customer Help knowledge base exists');
@@ -84,4 +85,4 @@ assert(failureExtractorTest.includes('successful lines with scary words are neve
 assert(failureExtractorTest.includes('PWA icon source paths normalize PUBLIC_URL and root-relative forms'), 'failure extractor regression covers the 16.0.144 PWA failure fixture');
 
 if (failures) { console.error(`\n${failures} validation check(s) failed.`); process.exit(1); }
-console.log('\n16.0.145 source validation passed.');
+console.log('\n16.0.146 source validation passed.');
