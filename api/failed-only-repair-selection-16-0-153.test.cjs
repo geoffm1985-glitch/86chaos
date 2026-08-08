@@ -112,6 +112,8 @@ test('strict failed-only selects failed and timedOut identities only, never pass
   assert.equal(selected.manifest.selected.length, 7);
   assert.equal(selected.manifest.totalSelected, 7);
   assert.equal(selected.manifest.newTestsCount, 0);
+  assert.equal(selected.manifest.previousFailuresCount, 5);
+  assert.equal(selected.manifest.previousTimeoutsCount, 2);
   assert.ok(selected.manifest.selected.every(row => ['failed', 'timedOut'].includes(row.priorStatus)));
   assert.ok(selected.manifest.selected.every(row => !(row.selectionReasons || []).includes('new_test')));
 });
@@ -169,6 +171,7 @@ test('repair selection equals strict failed-only union explicit current release 
   const failedSelected = [...unrelatedFailures, featureRows[0], featureRows[1]];
   const repair = buildRepairSelection({ failedOnlySelected: failedSelected, currentReleaseSelected: featureRows });
   assert.equal(repair.previousFailuresSelected, 6);
+  assert.equal(repair.previousTimeoutsSelected, 0);
   assert.equal(repair.currentReleaseFeatureTestsSelected, 8);
   assert.equal(repair.duplicateIdentitiesRemoved, 2);
   assert.equal(repair.totalSelected, 12);

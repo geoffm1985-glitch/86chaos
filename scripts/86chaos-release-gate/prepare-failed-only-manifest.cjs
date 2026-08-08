@@ -98,6 +98,7 @@ if (selectionMode === 'repair') {
     desktopSelected: repairStats.selected.filter(item => item.project === 'chromium' || item.projects?.includes('chromium')).length,
     mobileSelected: repairStats.selected.filter(item => item.project === 'mobile-chromium' || item.projects?.includes('mobile-chromium')).length,
     previousFailuresSelected: repairStats.previousFailuresSelected,
+    previousTimeoutsSelected: repairStats.previousTimeoutsSelected,
     currentReleaseFeatureTestsSelected: repairStats.currentReleaseFeatureTestsSelected,
     duplicateIdentitiesRemoved: repairStats.duplicateIdentitiesRemoved,
   };
@@ -145,6 +146,7 @@ const selectionPayload = {
   desktopSelected: copied.desktopSelected,
   mobileSelected: copied.mobileSelected,
   previousFailuresSelected: copied.previousFailuresSelected ?? copied.previousFailuresCount ?? 0,
+  previousTimeoutsSelected: copied.previousTimeoutsSelected ?? copied.previousTimeoutsCount ?? 0,
   currentReleaseFeatureTestsSelected: copied.currentReleaseFeatureTestsSelected || 0,
   duplicateIdentitiesRemoved: copied.duplicateIdentitiesRemoved || 0,
   newTestsCount: copied.newTestsCount || 0,
@@ -170,6 +172,7 @@ writeJson(validationPath, {
   desktopSelected: copied.desktopSelected,
   mobileSelected: copied.mobileSelected,
   previousFailuresSelected: selectionPayload.previousFailuresSelected,
+  previousTimeoutsSelected: selectionPayload.previousTimeoutsSelected,
   currentReleaseFeatureTestsSelected: selectionPayload.currentReleaseFeatureTestsSelected,
   duplicateIdentitiesRemoved: selectionPayload.duplicateIdentitiesRemoved,
   newTestsCount: selectionPayload.newTestsCount,
@@ -184,7 +187,8 @@ console.log(`Failed-only source run: ${copied.previousFailedOnlyRunId || copied.
 console.log(`Source reason: ${copied.selectionSource || selectedSource.selectionSource || 'latest compatible completed Playwright run'}`);
 console.log(`Baseline: ${copied.baselineSourceVersion || 'none'}/${copied.baselineDeployedVersion || 'none'}`);
 console.log(`Target: ${currentSourceVersion}/${currentDeployedVersion}`);
-console.log(`Previous failures selected: ${selectionPayload.previousFailuresSelected}`);
+console.log(`Previous failed identities selected: ${selectionPayload.previousFailuresSelected}`);
+console.log(`Previous timed-out identities selected: ${selectionPayload.previousTimeoutsSelected}`);
 if (selectionMode === 'repair') {
   console.log(`Current release feature tests selected: ${selectionPayload.currentReleaseFeatureTestsSelected}`);
   console.log(`Duplicate identities removed: ${selectionPayload.duplicateIdentitiesRemoved}`);

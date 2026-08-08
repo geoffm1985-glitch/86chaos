@@ -16,6 +16,21 @@ function unlockLoginButton(page) {
     .first();
 }
 
+
+function escapeRegex(value = '') {
+  return String(value || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function normalizedTextRegex(value = '') {
+  const parts = String(value || '').trim().split(/\s+/).filter(Boolean).map(escapeRegex);
+  return new RegExp(`^\\s*${parts.join('\\s+')}\\s*$`, 'i');
+}
+
+
+function releaseWorkspaceName(options = {}) {
+  return String(options.workspaceName || process.env.CHAOS_QA_WORKSPACE_NAME || process.env.CHAOS_QA_WORKSPACE || '').trim();
+}
+
 function authenticatedShellLocator(page) {
   return page.getByRole('button', { name: /switch workspace\. active workspace/i })
     .or(page.getByLabel(/switch workspace/i))
@@ -24,7 +39,16 @@ function authenticatedShellLocator(page) {
 }
 
 function workspaceChooserLocator(page) {
-  return page.getByText(/choose workspace/i).first();
+  const chooserText = /choose workspace|select workspace|select restaurant|choose restaurant/i;
+  return page.getByRole('dialog', { name: chooserText })
+    .or(page.locator('[data-testid*="workspace" i], [data-testid*="restaurant" i], main, section, form, article').filter({ hasText: chooserText }))
+    .first();
+}
+
+function workspaceChoiceButton(page, workspaceName) {
+  const region = workspaceChooserLocator(page);
+  const exactName = normalizedTextRegex(workspaceName);
+  return region.getByRole('button', { name: exactName }).first();
 }
 
 async function isLoginShellVisible(page) {
@@ -50,39 +74,63 @@ async function fillReleaseLogin(page, email, password) {
 
 async function chooseReleaseWorkspaceIfNeeded(page, options = {}) {
   const chooser = workspaceChooserLocator(page);
-  if (!(await chooser.isVisible({ timeout: options.chooserTimeout || 5000 }).catch(() => false))) return false;
-  const requested = options.workspaceName || process.env.CHAOS_QA_WORKSPACE_NAME || process.env.CHAOS_QA_WORKSPACE || '';
+  if (!(await chooser.isVisible({ timeout: options.chooserTimeout || 700 }).catch(() => false))) return false;
+  const requested = releaseWorkspaceName(options);
   if (process.env.CHAOS_RELEASE_GATE === 'true' && !requested) {
     throw new Error('CHAOS_QA_WORKSPACE_NAME is required when a workspace chooser appears.');
   }
-  const target = requested
-    ? page.getByText(requested, { exact: false }).first()
-    : page.locator('button, [role="button"]').filter({ hasText: /owner|manager|staff|admin/i }).first();
-  await expect(target, `Workspace chooser should show ${requested || 'an available workspace'}`).toBeVisible({ timeout: 10_000 });
+  if (!requested) {
+    throw new Error('Workspace chooser appeared but no workspaceName or CHAOS_QA_WORKSPACE_NAME was configured.');
+  }
+  await expect(chooser, 'Choose Workspace region should be visible before selecting a release workspace').toBeVisible({ timeout: 10_000 });
+  const target = workspaceChoiceButton(page, requested);
+  await expect(target, `Workspace chooser should show an exact button for ${requested}`).toBeVisible({ timeout: 10_000 });
   await target.click();
-  await expect(chooser, 'Workspace chooser should close after selecting the release workspace').toBeHidden({ timeout: 15_000 }).catch(() => {});
+  await expect(chooser, 'Workspace chooser should close after selecting the configured release workspace').toBeHidden({ timeout: 15_000 }).catch(() => {});
   return true;
 }
 
 async function waitForAuthenticatedShell(page, options = {}) {
   const timeout = Number(options.timeout || 30_000);
-  if (options.chooseWorkspace !== false) await chooseReleaseWorkspaceIfNeeded(page, options);
-  await expect.poll(async () => {
-    if (await isLoginShellVisible(page)) return 'login-shell';
-    if (await workspaceChooserLocator(page).isVisible({ timeout: 300 }).catch(() => false)) return 'workspace-chooser';
-    if (await authenticatedShellLocator(page).isVisible({ timeout: 500 }).catch(() => false)) return 'authenticated-shell';
-    return 'pending';
-  }, {
-    timeout,
-    intervals: [150, 250, 500, 750],
-    message: options.message || 'Authenticated app shell should be ready without accepting the login logo as proof'
-  }).toBe('authenticated-shell');
+  const deadline = Date.now() + timeout;
+  let lastState = 'pending';
+  let selectedWorkspace = false;
+  while (Date.now() < deadline) {
+    if (await authenticatedShellLocator(page).isVisible({ timeout: 450 }).catch(() => false)) {
+      if (await isLoginShellVisible(page)) {
+        throw new Error(options.persistenceCheck
+          ? 'Authenticated session was not restored after direct navigation'
+          : 'Login shell remained visible after authenticated readiness was claimed');
+      }
+      return { state: 'authenticated-shell', selectedWorkspace };
+    }
 
-  if (await isLoginShellVisible(page)) {
+    if (options.chooseWorkspace !== false && await workspaceChooserLocator(page).isVisible({ timeout: 450 }).catch(() => false)) {
+      lastState = 'workspace-chooser';
+      selectedWorkspace = await chooseReleaseWorkspaceIfNeeded(page, { ...options, chooserTimeout: 450 }) || selectedWorkspace;
+      await page.waitForTimeout(250);
+      continue;
+    }
+
+    if (await isLoginShellVisible(page)) {
+      lastState = 'login-shell';
+      await page.waitForTimeout(250);
+      continue;
+    }
+
+    lastState = 'pending';
+    await page.waitForTimeout(250);
+  }
+
+  if (lastState === 'login-shell') {
     throw new Error(options.persistenceCheck
       ? 'Authenticated session was not restored after direct navigation'
-      : 'Login shell remained visible after authenticated readiness was claimed');
+      : 'Login shell remained visible while waiting for authenticated readiness');
   }
+  if (lastState === 'workspace-chooser') {
+    throw new Error('Workspace chooser remained visible while waiting for authenticated readiness.');
+  }
+  throw new Error(options.message || 'Authenticated app shell should be ready without accepting the login logo as proof');
 }
 
 async function loginIfNeeded(page, email, password, options = {}) {

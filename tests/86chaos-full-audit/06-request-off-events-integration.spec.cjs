@@ -121,8 +121,8 @@ test.describe('06 request-off, availability, and scheduled events integration', 
       if (/Alex @ Unknown Location|Unknown Location|2026-08-04T15-57-57/i.test(ghostText)) throw new Error('STALE QA GHOST TARGET SELECTED');
     }
     async function openRequestOff() {
-      await gotoTab(page, 'schedule', { settleMs: 1800, maxText: 70000 });
-      const requestOffTab = page.getByRole('button', { name: /request off/i }).first();
+      await gotoTab(page, 'published', { settleMs: 1800, maxText: 70000 });
+      const requestOffTab = page.getByRole('button', { name: /^Request Off$/i }).first();
       await expect(requestOffTab, 'Request Off tab should be reachable from Time Clock & Schedule').toBeVisible({ timeout: 15000 });
       await requestOffTab.click();
       await page.waitForTimeout(1600);

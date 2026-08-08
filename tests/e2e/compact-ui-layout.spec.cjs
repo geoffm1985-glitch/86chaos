@@ -36,7 +36,22 @@ test.describe('compact professional UI containment', () => {
         const button = Array.from(document.querySelectorAll('button')).find(node => pattern.test((node.textContent || '').trim()));
         if (!button) return { text: String(pattern), height: 0, width: 0, found: false, ready: false };
         const rect = button.getBoundingClientRect();
-        return { text: (button.textContent || '').trim(), height: rect.height, width: rect.width, found: true, ready: rect.height >= 42 && rect.width >= 42 };
+        const style = window.getComputedStyle(button);
+        const parentStyle = button.parentElement ? window.getComputedStyle(button.parentElement) : null;
+        return {
+          text: (button.textContent || '').trim(),
+          height: rect.height,
+          width: rect.width,
+          minHeight: style.minHeight,
+          paddingTop: style.paddingTop,
+          paddingBottom: style.paddingBottom,
+          lineHeight: style.lineHeight,
+          boxSizing: style.boxSizing,
+          transform: style.transform,
+          parentTransform: parentStyle?.transform || '',
+          found: true,
+          ready: rect.height >= 42 && rect.width >= 42,
+        };
       });
       return measured.every(row => row.ready) ? 'stable' : JSON.stringify(measured);
     }), {

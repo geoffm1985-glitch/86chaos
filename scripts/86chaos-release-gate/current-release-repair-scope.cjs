@@ -1,6 +1,7 @@
 'use strict';
 
 const CURRENT_RELEASE_VERSION = '16.0.153';
+const CURRENT_RELEASE_CARRY_FORWARD_NOTE = 'Carried forward from 16.0.153 until a successful repair or full baseline proves these feature tests.';
 const CURRENT_RELEASE_REPAIR_SCOPE = [
   'Schedule Builder requested-off warning shows employee name and never Someone',
   'Schedule Builder coverage warnings show under and over target math',
@@ -68,7 +69,7 @@ function resolveCurrentReleaseRepairScope({ currentRecords = [], explicitScope =
     const key = keyOf(desired);
     const match = inventory.get(key);
     if (!match) missing.push(desired);
-    else selected.push({ ...match, selectionReasons: ['current_release_feature_test'], currentReleaseVersion: CURRENT_RELEASE_VERSION });
+    else selected.push({ ...match, selectionReasons: ['current_release_feature_test'], currentReleaseVersion: CURRENT_RELEASE_VERSION, carryForwardNote: CURRENT_RELEASE_CARRY_FORWARD_NOTE });
   }
   return {
     ok: missing.length === 0,
@@ -81,13 +82,22 @@ function resolveCurrentReleaseRepairScope({ currentRecords = [], explicitScope =
   };
 }
 
+function isTimeoutSelection(row = {}) {
+  return row.priorStatus === 'timedOut' || (Array.isArray(row.selectionReasons) && row.selectionReasons.includes('previous_timeout'));
+}
+
+function isFailureSelection(row = {}) {
+  return !isTimeoutSelection(row) && (row.priorStatus === 'failed' || row.priorStatus === 'interrupted' || (Array.isArray(row.selectionReasons) && row.selectionReasons.includes('previous_failure')));
+}
+
 function buildRepairSelection({ failedOnlySelected = [], currentReleaseSelected = [] } = {}) {
   const previous = dedupe((failedOnlySelected || []).map(row => ({ ...row, selectionReasons: row.selectionReasons || ['previous_failure'] })));
   const features = dedupe((currentReleaseSelected || []).map(row => ({ ...row, selectionReasons: row.selectionReasons || ['current_release_feature_test'] })));
   const selected = dedupe([...previous, ...features]);
   return {
     mode: 'repair',
-    previousFailuresSelected: previous.length,
+    previousFailuresSelected: previous.filter(isFailureSelection).length,
+    previousTimeoutsSelected: previous.filter(isTimeoutSelection).length,
     currentReleaseFeatureTestsSelected: features.length,
     duplicateIdentitiesRemoved: previous.length + features.length - selected.length,
     totalSelected: selected.length,
@@ -97,11 +107,14 @@ function buildRepairSelection({ failedOnlySelected = [], currentReleaseSelected 
 
 module.exports = {
   CURRENT_RELEASE_VERSION,
+  CURRENT_RELEASE_CARRY_FORWARD_NOTE,
   CURRENT_RELEASE_REPAIR_SCOPE,
   normalizeRel,
   keyOf,
   normalizeSelection,
   dedupe,
   resolveCurrentReleaseRepairScope,
+  isTimeoutSelection,
+  isFailureSelection,
   buildRepairSelection,
 };

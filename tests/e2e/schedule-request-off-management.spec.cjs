@@ -18,13 +18,32 @@ async function openSchedule(page) {
   await login(page, account.email, account.password);
   await gotoTab(page, 'schedule', { settleMs: 1400, maxText: 60000 });
   await dismissBlockingDialogs(page, { maxPasses: 4 }).catch(() => null);
+  await expect(page.locator('body'), 'Schedule Builder should render before opening warning tools').toContainText(/Schedule Builder|Coverage|Auto-Fill|Publish/i, { timeout: 15000 });
 }
 
 async function openWarnings(page) {
-  await page.getByRole('button', { name: /^Warnings$/i }).click({ timeout: 10000 }).catch(async () => {
-    await page.getByText(/Warnings/i).first().click({ timeout: 10000 });
-  });
+  const openCopilot = page.getByRole('button', { name: /^Open Copilot Tools$/i }).first();
+  if (await openCopilot.isVisible({ timeout: 1500 }).catch(() => false)) {
+    await openCopilot.click();
+    await page.waitForTimeout(400);
+  }
+  const warningsButton = page.getByRole('button', { name: /^Warnings$/i }).first();
+  await expect(warningsButton, 'Warnings tool button should be opened by exact role, not loose page text').toBeVisible({ timeout: 10000 });
+  await warningsButton.click();
   await page.waitForTimeout(500);
+}
+
+async function openManagerRequestOff(page) {
+  const account = ownerLikeCreds();
+  requireCreds(account, 'manager/owner account');
+  await login(page, account.email, account.password);
+  await gotoTab(page, 'published', { settleMs: 1400, maxText: 60000 });
+  await dismissBlockingDialogs(page, { maxPasses: 4 }).catch(() => null);
+  const requestOffTab = page.getByRole('button', { name: /^Request Off$/i }).first();
+  await expect(requestOffTab, 'Request Off subtab should be visible inside Time Clock & Schedule').toBeVisible({ timeout: 15000 });
+  await requestOffTab.click();
+  await expect(page.locator('body'), 'Request-Off Workflow should render before manager Request Off assertions').toContainText(/Request-Off Workflow/i, { timeout: 15000 });
+  await expect(page.getByLabel(/Filter Request Off by employee/i).or(page.getByPlaceholder(/Filter by employee/i)).first(), 'Manager Request Off employee filter should be ready').toBeVisible({ timeout: 10000 });
 }
 
 async function ensureSeeded(testInfo) {
@@ -75,7 +94,7 @@ test.describe('16.0.153 Schedule warnings and Request Off management', () => {
 
   test('Request Off employee filter narrows and clears manager-visible requests', async ({ page }, testInfo) => {
     await ensureSeeded(testInfo);
-    await openSchedule(page);
+    await openManagerRequestOff(page);
     const filter = page.getByLabel(/Filter Request Off by employee/i).or(page.getByPlaceholder(/Filter by employee/i)).first();
     await expect(filter, 'Managers should see an employee filter for Request Off workflow').toBeVisible({ timeout: 10000 });
     const unfiltered = await bodyText(page, 60000);
@@ -93,7 +112,8 @@ test.describe('16.0.153 Schedule warnings and Request Off management', () => {
 
   test('Approve All Visible updates only filtered visible pending requests', async ({ page }, testInfo) => {
     await ensureSeeded(testInfo);
-    await openSchedule(page);
+    await openManagerRequestOff(page);
+    await page.getByRole('button', { name: /^Needs Review$/i }).click();
     const filter = page.getByLabel(/Filter Request Off by employee/i).or(page.getByPlaceholder(/Filter by employee/i)).first();
     await expect(filter).toBeVisible({ timeout: 10000 });
     await filter.fill('Sara');
@@ -111,7 +131,8 @@ test.describe('16.0.153 Schedule warnings and Request Off management', () => {
 
   test('Archive All Visible archives only filtered visible eligible requests', async ({ page }, testInfo) => {
     await ensureSeeded(testInfo);
-    await openSchedule(page);
+    await openManagerRequestOff(page);
+    await page.getByRole('button', { name: /^Upcoming Approved$/i }).click();
     const filter = page.getByLabel(/Filter Request Off by employee/i).or(page.getByPlaceholder(/Filter by employee/i)).first();
     await expect(filter).toBeVisible({ timeout: 10000 });
     await filter.fill('Allen');

@@ -5367,3 +5367,26 @@ span.bg-red-500.text-white,
     box-sizing: border-box !important;
   }
 }
+
+/* 16.0.154 login action target cascade repair: keep compact app controls from shrinking sign-in actions. */
+.non-admin-controls-compact .chaos-login-card .chaos-login-primary-action,
+.non-admin-controls-compact .chaos-login-card .chaos-login-secondary-action,
+.ui-v12-compact .chaos-login-card .chaos-login-primary-action,
+.ui-v12-compact .chaos-login-card .chaos-login-secondary-action,
+.chaos-login-screen .chaos-login-primary-action,
+.chaos-login-screen .chaos-login-secondary-action {
+  min-height: 44px !important;
+  height: auto !important;
+  min-width: 44px !important;
+  padding-top: 10px !important;
+  padding-bottom: 10px !important;
+  line-height: 1.2 !important;
+  box-sizing: border-box !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+}
+
+.chaos-login-screen .chaos-login-primary-action {
+  width: 100% !important;
+}
