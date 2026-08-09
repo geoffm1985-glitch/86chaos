@@ -95,6 +95,25 @@ const isActiveTimeOffRequest = (request = {}) => {
 
 const timeOffMatchesPerson = (request = {}, person = {}) => recordMatchesPerson(request, person);
 
+const requestOffSubjectMatchesPerson = (request = {}, person = {}) => {
+  if (!request || !person) return false;
+  const keys = personIdentityKeys(person);
+  const subjectValues = [
+    request.userId, request.employeeId, request.rosterUserId, request.accountUserId, request.scheduleUserId, request.uid, request.authUid,
+    request.ghostTargetUserId, request.targetUserId, request.requestedForUserId, request.requestedBy,
+    request.userEmail, request.employeeEmail, request.email, request.assignedEmail,
+    request.userName, request.employeeName, request.name, request.displayName
+  ].map(v => [normalizeScheduleIdentity(v), normalizeScheduleName(v)]).flat().filter(Boolean);
+  if (subjectValues.some(v => keys.has(v))) return true;
+  const hasDurableSubjectKey = !!(request.userId || request.employeeId || request.uid || request.authUid || request.scheduleUserId || request.userEmail || request.employeeEmail || request.email);
+  if (!hasDurableSubjectKey) {
+    const recordFirst = firstNameKey(request.employeeName || request.userName || request.name || '');
+    const personFirst = firstNameKey(person.name || person.displayName || person.email || '');
+    if (recordFirst && personFirst && recordFirst === personFirst) return true;
+  }
+  return false;
+};
+
 const shiftMatchesPerson = (shift = {}, person = {}, roster = []) => {
   if (!shift || !person) return false;
 
@@ -4362,6 +4381,7 @@ const TabAvailability = ({ availabilityRecords = [], appUser, users = [], addToa
   const [maxShiftsPerWeek, setMaxShiftsPerWeek] = useState('');
   const [preferredDaysOff, setPreferredDaysOff] = useState([]);
   const [weeklyAvailability, setWeeklyAvailability] = useState(() => SCHEDULE_WEEKDAYS.reduce((acc, day) => ({ ...acc, [day]: { available: !['Sunday'].includes(day), start: '09:00', end: '17:00', preferred: false } }), {}));
+  const [deletingAvailabilityId, setDeletingAvailabilityId] = useState('');
 
   const perms = appUser?.permissions || {};
   const canManage = !!(appUser?.isSuperAdmin || appUser?.isAdmin || perms.schedule || perms.team);
@@ -4420,7 +4440,30 @@ const TabAvailability = ({ availabilityRecords = [], appUser, users = [], addToa
     addToast('Availability Updated', `Availability ${status === 'restored' ? 'restored' : status}.`);
   };
 
-  const AvailabilityCard = ({ record }) => (
+  const deleteAvailabilityHistory = async (record) => {
+    if (!record?.id || deletingAvailabilityId) return;
+    const who = record.employeeName || record.userName || 'this employee';
+    const start = formatDisplayDate(record.effectiveStartDate || getToday());
+    const ok = window.confirm(`Delete availability history for ${who} starting ${start}?\n\nThis permanently deletes this availability history entry. It does not delete the employee, schedules, or Request Off records.`);
+    if (!ok) return;
+    setDeletingAvailabilityId(record.id);
+    try {
+      const response = await secureFetch('/api/availability-record', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'delete', id: record.id, restaurantId: appUser?.restaurantId || record.restaurantId || record.workspaceId || '' })
+      });
+      const data = await parseRequestOffApiPayload(response);
+      if (!response.ok || data?.ok === false) throw new Error(data?.error || `Availability delete failed (${response.status})`);
+      addToast('Availability Deleted', 'Availability history entry was permanently deleted.');
+    } catch (err) {
+      addToast('Delete Failed', err?.message || 'Could not delete availability history.');
+    } finally {
+      setDeletingAvailabilityId('');
+    }
+  };
+
+  const AvailabilityCard = ({ record, allowDelete = false }) => (
     <div className={`${T.row} items-start gap-3`}>
       <div className="flex-1 min-w-0">
         <div className="font-black text-white text-sm">{record.employeeName || 'Employee'}</div>
@@ -4439,6 +4482,7 @@ const TabAvailability = ({ availabilityRecords = [], appUser, users = [], addToa
           {record.status === 'pending' && <button onClick={() => updateAvailabilityStatus(record, 'approved')} className="p-2 rounded-lg bg-emerald-900/20 text-emerald-300 border border-emerald-900/50"><Check size={14}/></button>}
           {record.status === 'pending' && <button onClick={() => updateAvailabilityStatus(record, 'denied')} className="p-2 rounded-lg bg-red-900/20 text-red-300 border border-red-900/50"><X size={14}/></button>}
           {record.archived || record.status === 'archived' ? <button onClick={() => updateAvailabilityStatus(record, 'restored')} className={T.btnAlt}>Restore</button> : <button onClick={() => updateAvailabilityStatus(record, 'archived')} className={T.btnAlt}>Archive</button>}
+          {allowDelete && <button type="button" onClick={() => deleteAvailabilityHistory(record)} disabled={deletingAvailabilityId === record.id} className="p-2 rounded-lg bg-red-950/30 text-red-300 border border-red-900/50 disabled:opacity-50" aria-label={`Delete availability history for ${record.employeeName || 'employee'}`} title="Delete availability history"><Trash2 size={14}/></button>}
         </div>
       )}
     </div>
@@ -4467,8 +4511,8 @@ const TabAvailability = ({ availabilityRecords = [], appUser, users = [], addToa
           </form>
         </div>
         <div className="space-y-4">
-          <div className={`${T.card} p-4`}><h3 className="font-black text-white text-sm mb-3">Pending Availability Changes</h3><div className="space-y-2 max-h-[420px] overflow-y-auto custom-scrollbar">{pendingRecords.length === 0 && <FriendlyEmpty title="Nothing waiting" text="Pending availability changes will land here." />}{pendingRecords.map(record => <AvailabilityCard key={record.id} record={record}/>)}</div></div>
-          <div className={`${T.card} p-4`}><h3 className="font-black text-white text-sm mb-3">Availability History</h3><div className="space-y-2 max-h-[360px] overflow-y-auto custom-scrollbar">{historyRecords.length === 0 && <FriendlyEmpty title="No history yet" text="Approved, denied, archived, and restored availability stays here." />}{historyRecords.slice(0,80).map(record => <AvailabilityCard key={record.id} record={record}/>)}</div></div>
+          <div className={`${T.card} p-4`}><h3 className="font-black text-white text-sm mb-3">Pending Availability Changes</h3><div className="space-y-2 max-h-[420px] overflow-y-auto custom-scrollbar">{pendingRecords.length === 0 && <FriendlyEmpty title="Nothing waiting" text="Pending availability changes will land here." />}{pendingRecords.map(record => <AvailabilityCard key={record.id} record={record} allowDelete={false}/>)}</div></div>
+          <div className={`${T.card} p-4`}><h3 className="font-black text-white text-sm mb-3">Availability History</h3><div className="space-y-2 max-h-[360px] overflow-y-auto custom-scrollbar">{historyRecords.length === 0 && <FriendlyEmpty title="No history yet" text="Approved, denied, archived, and restored availability stays here." />}{historyRecords.slice(0,80).map(record => <AvailabilityCard key={record.id} record={record} allowDelete={canManage}/>)}</div></div>
         </div>
       </div>
     </div>
@@ -4522,6 +4566,32 @@ const TabTimeOff = ({ timeOffRequests, appUser, users, addToast, events = [], sh
   const requestOffGhostMode = isUserLevelGhostTimeOff(appUser);
   const perms = appUser?.permissions || {};
   const canManage = !requestOffGhostMode && !!(appUser?.isSuperAdmin || appUser?.isAdmin || perms.schedule || perms.team);
+  const requestOffEmployeeOptions = useMemo(() => {
+    const seen = new Set();
+    const byRole = new Map();
+    (users || [])
+      .filter(u => u && u.isActive !== false)
+      .forEach((u) => {
+        const value = String(u.scheduleUserId || u.authUid || u.uid || u.userId || u.id || u.email || '').trim();
+        if (!value || seen.has(value)) return;
+        seen.add(value);
+        const role = cleanScheduleRoleName(u.role || u.scheduleRole || u.primaryRole || 'Other') || 'Other';
+        const label = String(u.name || u.displayName || u.fullName || u.email || value).trim();
+        if (!byRole.has(role)) byRole.set(role, []);
+        byRole.get(role).push({ value, label, person: u });
+      });
+    return Array.from(byRole.entries())
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([role, rows]) => ({ role, rows: rows.sort((a, b) => a.label.localeCompare(b.label)) }));
+  }, [users]);
+  const selectedRequestOffEmployee = useMemo(() => {
+    if (!employeeFilter) return null;
+    for (const group of requestOffEmployeeOptions) {
+      const found = group.rows.find(row => row.value === employeeFilter);
+      if (found) return found;
+    }
+    return null;
+  }, [employeeFilter, requestOffEmployeeOptions]);
   const authUserId = requestOffGhostMode
     ? requestOffTargetIdForUser(appUser)
     : (auth?.currentUser?.uid || appUser?.authUid || appUser?.uid || appUser?.id || '');
@@ -4559,10 +4629,10 @@ const TabTimeOff = ({ timeOffRequests, appUser, users, addToast, events = [], sh
     return true;
   });
   const filteredRequests = statusFilteredRequests
-    .filter(r => !canManage || requestMatchesEmployeeFilter(r, employeeFilter))
+    .filter(r => !canManage || !selectedRequestOffEmployee || requestOffSubjectMatchesPerson(r, selectedRequestOffEmployee.person))
     .sort((a,b) => new Date(a.date || 0) - new Date(b.date || 0));
   const visibleRequestIds = filteredRequests.map(r => r.id).filter(Boolean);
-  const activeEmployeeFilterLabel = employeeFilter.trim();
+  const activeEmployeeFilterLabel = selectedRequestOffEmployee?.label || '';
 
   const requestOffApi = useCallback(async (action, payload = {}) => {
     const response = await secureFetch('/api/time-off-request', {
@@ -4890,11 +4960,11 @@ const TabTimeOff = ({ timeOffRequests, appUser, users, addToast, events = [], sh
           <form onSubmit={handleSubmit} className="space-y-4"><label className={`flex items-center gap-2 text-xs font-bold text-slate-300 cursor-pointer p-2.5 bg-[#12161A] rounded-xl border ${T.border}`}><input type="checkbox" checked={isPartial} onChange={e=>setIsPartial(e.target.checked)} className="w-4 h-4 rounded bg-[#1A2126] border-[#2A353D] accent-[#8F6040]" />Partial Day Only?</label>{isPartial && <div className="grid grid-cols-2 gap-3"><div><label className={T.label}>Start Time</label><input type="time" value={startTime} onChange={e=>setStartTime(e.target.value)} className={T.input} required /></div><div><label className={T.label}>End Time</label><input type="time" value={endTime} onChange={e=>setEndTime(e.target.value)} className={T.input} required /></div></div>}<button type="submit" disabled={selectedDates.length === 0 || isSubmittingTimeOff || !!checkingDate} className={`w-full ${T.btn} disabled:opacity-50 disabled:cursor-not-allowed`}>{isSubmittingTimeOff ? 'Checking...' : `Submit ${selectedDates.length > 0 ? `(${selectedDates.length})` : ''}`}</button></form>
         </div>
       </div>
-      <div className={`${T.card} p-4`}>
-        <div className="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-3 mb-3"><div><h3 className="font-black text-white">Request-Off Workflow</h3><p className={`text-xs font-bold ${T.muted}`}>Default view only shows items that need attention. Published and archived requests stay searchable.</p></div>{canManage && <div className="flex flex-wrap gap-2"><button onClick={approveAllVisible} disabled={!!bulkBusy} className={`${T.btnAlt} disabled:opacity-50`}>Approve All Visible</button><button onClick={archiveAllVisible} disabled={!!bulkBusy} className={`${T.btnAlt} disabled:opacity-50`}>Archive All Visible</button>{selectedRequestIds.length > 0 && <button onClick={archiveSelected} disabled={!!bulkBusy} className={`${T.btnAlt} disabled:opacity-50`}>Archive selected ({selectedRequestIds.length})</button>}</div>}</div>
-        <div className="flex flex-wrap gap-2 mb-3">{[['needs-review','Needs Review'],['upcoming-approved','Upcoming Approved'],['archived','Published/Archived'],['all','All']].map(([id,label]) => <button key={id} onClick={() => setViewFilter(id)} className={viewFilter === id ? T.btn : T.btnAlt}>{label}</button>)}</div>
-        <div className="flex flex-wrap gap-2 mb-4">{[['this-week','This Week'],['next-week','Next Week'],['this-month','This Month'],['next-month','Next Month'],['custom','Custom Range']].map(([id,label]) => <button key={id} onClick={() => setDateFilter(id)} className={dateFilter === id ? T.btn : T.btnAlt}>{label}</button>)}{dateFilter === 'custom' && <><input type="date" value={customStart} onChange={e=>setCustomStart(e.target.value)} className={T.input}/><input type="date" value={customEnd} onChange={e=>setCustomEnd(e.target.value)} className={T.input}/></>}</div>
-        {canManage && <div className="flex flex-col sm:flex-row gap-2 mb-4"><input value={employeeFilter} onChange={e=>setEmployeeFilter(e.target.value)} className={`${T.input} flex-1`} placeholder="Filter by employee..." aria-label="Filter Request Off by employee" />{employeeFilter && <button onClick={() => setEmployeeFilter('')} className={T.btnAlt}>All Employees</button>}</div>}
+      <div className={`${T.card} p-4 request-off-workflow-panel`}>
+        <div className="flex flex-col xl:flex-row xl:items-start xl:justify-between gap-3 mb-3"><div><h3 className="font-black text-white">Request-Off Workflow</h3><p className={`text-xs font-bold ${T.muted}`}>Default view only shows items that need attention. Published and archived requests stay searchable.</p></div>{canManage && <div className="request-off-bulk-grid"><button onClick={approveAllVisible} disabled={!!bulkBusy} className={`${T.btnAlt} disabled:opacity-50`}>Approve All Visible</button><button onClick={archiveAllVisible} disabled={!!bulkBusy} className={`${T.btnAlt} disabled:opacity-50`}>Archive All Visible</button>{selectedRequestIds.length > 0 && <button onClick={archiveSelected} disabled={!!bulkBusy} className={`${T.btnAlt} disabled:opacity-50 request-off-span-all`}>Archive selected ({selectedRequestIds.length})</button>}</div>}</div>
+        <div className="request-off-control-group"><div className="request-off-control-label">Status</div><div className="request-off-status-grid">{[['needs-review','Needs Review'],['upcoming-approved','Upcoming Approved'],['archived','Published/Archived'],['all','All']].map(([id,label]) => <button key={id} onClick={() => setViewFilter(id)} className={viewFilter === id ? T.btn : T.btnAlt}>{label}</button>)}</div></div>
+        <div className="request-off-control-group"><div className="request-off-control-label">Date</div><div className="request-off-date-grid">{[['this-week','This Week'],['next-week','Next Week'],['this-month','This Month'],['next-month','Next Month'],['custom','Custom Range']].map(([id,label]) => <button key={id} onClick={() => setDateFilter(id)} className={`${dateFilter === id ? T.btn : T.btnAlt} ${id === 'custom' ? 'request-off-custom-range' : ''}`}>{label}</button>)}</div>{dateFilter === 'custom' && <div className="request-off-custom-dates"><input type="date" value={customStart} onChange={e=>setCustomStart(e.target.value)} className={T.input}/><input type="date" value={customEnd} onChange={e=>setCustomEnd(e.target.value)} className={T.input}/></div>}</div>
+        {canManage && <div className="request-off-employee-filter"><label className="request-off-control-label" htmlFor="request-off-employee-filter">Employee</label><select id="request-off-employee-filter" value={employeeFilter} onChange={e=>setEmployeeFilter(e.target.value)} className={`${T.input} request-off-employee-select`} aria-label="Filter Request Off by employee"><option value="">All Employees</option>{requestOffEmployeeOptions.map(group => <optgroup key={group.role} label={group.role}>{group.rows.map(row => <option key={row.value} value={row.value}>{row.label}</option>)}</optgroup>)}</select></div>}
         <div className="space-y-2 max-h-[520px] overflow-y-auto custom-scrollbar">{filteredRequests.length === 0 && <FriendlyEmpty title="No requests here" text="Switch filters to review history or upcoming approvals." />}{filteredRequests.map(r => <RequestCard key={r.id} r={r}/>)}</div>
       </div>
       {canManage && <div className={`${T.card} p-4`}><h3 className="font-black text-white text-sm mb-2">Master Override Log</h3><p className={`text-xs font-bold ${T.muted}`}>Manager approvals, denials, archives, restores, cancellations, and published-schedule processing are preserved in audit logs and request history.</p></div>}

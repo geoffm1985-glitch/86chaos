@@ -72,7 +72,7 @@ async function openManagerRequestOff(page, seed = {}) {
   await expect(requestOffTab, 'Request Off subtab should be visible inside Time Clock & Schedule').toBeVisible({ timeout: 15000 });
   await requestOffTab.click();
   await expect(page.locator('body'), 'Request-Off Workflow should render before manager Request Off assertions').toContainText(/Request-Off Workflow/i, { timeout: 15000 });
-  await expect(page.getByLabel(/Filter Request Off by employee/i).or(page.getByPlaceholder(/Filter by employee/i)).first(), 'Manager Request Off employee filter should be ready').toBeVisible({ timeout: 10000 });
+  await expect(page.getByLabel(/Filter Request Off by employee/i).first(), 'Manager Request Off employee filter should be ready').toBeVisible({ timeout: 10000 });
 }
 
 async function openRequestOffView(page, label) {
@@ -82,6 +82,26 @@ async function openRequestOffView(page, label) {
 async function waitForRequestOffEmployee(page, employeeName, message) {
   await expect(page.locator('body'), message || `${employeeName} Request Off row should be visible before filtering or bulk actions`).toContainText(new RegExp(employeeName.replace(/\s+/g, '\\s+'), 'i'), { timeout: 15000 });
   await expect(page.locator('body'), `${employeeName} readiness should not be the empty Request Off state`).not.toContainText(/No requests here/i, { timeout: 1000 });
+}
+
+async function selectRequestOffEmployee(page, employeeName) {
+  const filter = page.getByLabel(/Filter Request Off by employee/i).first();
+  await expect(filter, 'Managers should see an employee dropdown for Request Off workflow').toBeVisible({ timeout: 10000 });
+  const selected = await filter.evaluate((select, name) => {
+    const wanted = String(name || '').toLowerCase();
+    const option = Array.from(select.options || []).find(row => String(row.label || row.textContent || '').toLowerCase().includes(wanted));
+    if (!option) return '';
+    select.value = option.value;
+    select.dispatchEvent(new Event('change', { bubbles: true }));
+    return option.label || option.textContent || '';
+  }, employeeName);
+  expect(selected, `Request Off employee dropdown should include ${employeeName}`).toMatch(new RegExp(employeeName.replace(/\s+/g, '\\s+'), 'i'));
+  return filter;
+}
+
+async function clearRequestOffEmployee(page) {
+  const filter = page.getByLabel(/Filter Request Off by employee/i).first();
+  await filter.selectOption('');
 }
 
 async function ensureSeeded(testInfo) {
@@ -151,14 +171,12 @@ test.describe('16.0.153 Schedule warnings and Request Off management', () => {
     const seed = await ensureSeeded(testInfo);
     await openManagerRequestOff(page, seed);
     await waitForRequestOffEmployee(page, 'Sara QA', 'Seeded Sara QA pending request should be visible before employee filtering');
-    const filter = page.getByLabel(/Filter Request Off by employee/i).or(page.getByPlaceholder(/Filter by employee/i)).first();
-    await expect(filter, 'Managers should see an employee filter for Request Off workflow').toBeVisible({ timeout: 10000 });
     const unfiltered = await bodyText(page, 60000);
-    await filter.fill('Sara');
+    await selectRequestOffEmployee(page, 'Sara QA');
     await expect(page.locator('body'), 'Filtered Request Off workflow should show Sara QA after listener readiness').toContainText(/Sara QA/i, { timeout: 15000 });
     await expect(page.locator('body'), 'Filtered Request Off workflow should not show the empty state for seeded Sara QA').not.toContainText(/No requests here/i, { timeout: 1000 });
     const filtered = await bodyText(page, 60000);
-    await page.getByRole('button', { name: /^Open All Employees$/i }).or(page.getByRole('button', { name: /^All Employees$/i })).first().click();
+    await clearRequestOffEmployee(page);
     await page.waitForTimeout(500);
     const cleared = await bodyText(page, 60000);
     await attachJson(testInfo, '16-0-153-request-off-filter-state.json', { unfiltered: unfiltered.slice(0, 8000), filtered: filtered.slice(0, 8000), cleared: cleared.slice(0, 8000) });
@@ -172,9 +190,7 @@ test.describe('16.0.153 Schedule warnings and Request Off management', () => {
     await openManagerRequestOff(page, seed);
     await openRequestOffView(page, 'Needs Review');
     await waitForRequestOffEmployee(page, 'Sara QA', 'Seeded Sara QA pending request should be visible before bulk approve');
-    const filter = page.getByLabel(/Filter Request Off by employee/i).or(page.getByPlaceholder(/Filter by employee/i)).first();
-    await expect(filter).toBeVisible({ timeout: 10000 });
-    await filter.fill('Sara');
+    await selectRequestOffEmployee(page, 'Sara QA');
     await expect(page.locator('body'), 'Sara QA should remain visible after applying the Sara employee filter').toContainText(/Sara QA/i, { timeout: 15000 });
     page.once('dialog', async dialog => {
       expect(dialog.message(), 'Bulk approval confirmation should state visible pending count and active employee filter').toMatch(/Approve \d+ visible pending Request Off requests? for Sara\?/i);
@@ -192,9 +208,7 @@ test.describe('16.0.153 Schedule warnings and Request Off management', () => {
     await openManagerRequestOff(page, seed);
     await openRequestOffView(page, 'Upcoming Approved');
     await waitForRequestOffEmployee(page, 'Allen QA', 'Seeded Allen QA approved request should be visible before bulk archive');
-    const filter = page.getByLabel(/Filter Request Off by employee/i).or(page.getByPlaceholder(/Filter by employee/i)).first();
-    await expect(filter).toBeVisible({ timeout: 10000 });
-    await filter.fill('Allen');
+    await selectRequestOffEmployee(page, 'Allen QA');
     await expect(page.locator('body'), 'Allen QA should remain visible after applying the Allen employee filter').toContainText(/Allen QA/i, { timeout: 15000 });
     page.once('dialog', async dialog => {
       expect(dialog.message(), 'Bulk archive confirmation should state visible count and active employee filter').toMatch(/Archive \d+ visible Request Off requests? for Allen\?/i);

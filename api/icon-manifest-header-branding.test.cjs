@@ -9,7 +9,7 @@ const indexHtml = fs.readFileSync(path.join(root, 'public/index.html'), 'utf8');
 const common = fs.readFileSync(path.join(root, 'src/components/common.jsx'), 'utf8');
 const cheersLogo = fs.readFileSync(path.join(root, 'src/components/CheersLogo.js'), 'utf8');
 
-test('PWA manifest and browser icons use the v2 metallic 86 Chaos artwork', () => {
+test('PWA manifest and browser icons use v2 metallic artwork plus v3 safe-area maskables', () => {
   const expectedSizes = ['16','32','48','144','180','192','256','384','512'];
   for (const size of expectedSizes) {
     const iconPath = path.join(root, `public/86chaos-icon-${size}-v2.png`);
@@ -17,9 +17,9 @@ test('PWA manifest and browser icons use the v2 metallic 86 Chaos artwork', () =
     assert.ok(manifest.icons.some(icon => icon.src === `/86chaos-icon-${size}-v2.png` && icon.sizes === `${size}x${size}`), `${size} manifest icon should reference v2`);
   }
   for (const size of ['192', '512']) {
-    const iconPath = path.join(root, `public/86chaos-maskable-${size}-v2.png`);
+    const iconPath = path.join(root, `public/86chaos-maskable-${size}-v3.png`);
     assert.ok(fs.statSync(iconPath).size > 500, `${iconPath} should exist and be non-empty`);
-    assert.ok(manifest.icons.some(icon => icon.src === `/86chaos-maskable-${size}-v2.png` && icon.purpose === 'maskable'), `${size} maskable manifest icon should reference v2`);
+    assert.ok(manifest.icons.some(icon => icon.src === `/86chaos-maskable-${size}-v3.png` && icon.purpose === 'maskable'), `${size} maskable manifest icon should reference v3`);
   }
 });
 

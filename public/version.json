@@ -1,15 +1,16 @@
 {
-  "version": "16.0.162",
-  "name": "86 Chaos 16.0.161 Employee Access Firestore Assertion Correct App Icon Repair",
-  "build": "16.0.162",
-  "label": "86 Chaos 16.0.161 Employee Access Firestore Assertion Correct App Icon Repair",
-  "releasedAt": "2026-08-09T02:59:00-05:00",
-  "releaseTitle": "Current Failed Mobile Request Off and Mobile UI Repair",
+  "version": "16.0.163",
+  "name": "86 Chaos 16.0.163 App Density, Availability History Delete, and UI Symmetry",
+  "build": "16.0.163",
+  "label": "86 Chaos 16.0.163 App Density, Availability History Delete, and UI Symmetry",
+  "releasedAt": "2026-08-09T04:48:00-05:00",
+  "releaseTitle": "App Density, Availability History Delete, and UI Symmetry",
   "notes": [
-    "Fails staff removal if required Firebase Auth disable fails for a user with no other active workspace.",
-    "Prevents explicit inactive workspace membership from being revived by stale legacy login fields or duplicate records.",
-    "Guards shared Firestore listeners against stale callbacks after release/tenant cleanup.",
-    "Uses the supplied metallic 86 Chaos artwork for app/PWA icons and header app mark."
+    "Pads maskable PWA startup icons so the complete metallic 86 Chaos artwork fits safely inside Android masks.",
+    "Adds a manager-authorized server-side delete action for Availability History with audit logging.",
+    "Tightens Message Board and Request Off controls with intentional responsive grids.",
+    "Replaces the Request Off manager employee text filter with a role-grouped durable-identity dropdown.",
+    "Slightly tightens shared responsive density tokens without shrinking mobile touch targets."
   ],
-  "title": "86 Chaos 16.0.161 Employee Access Firestore Assertion Correct App Icon Repair"
+  "title": "86 Chaos 16.0.163 App Density, Availability History Delete, and UI Symmetry"
 }

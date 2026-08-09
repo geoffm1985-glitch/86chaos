@@ -14,8 +14,8 @@ test('PWA manifest and HTML icon declarations all resolve to real source assets'
     'public/86chaos-icon-180-v2.png',
     'public/86chaos-icon-192-v2.png',
     'public/86chaos-icon-512-v2.png',
-    'public/86chaos-maskable-192-v2.png',
-    'public/86chaos-maskable-512-v2.png',
+    'public/86chaos-maskable-192-v3.png',
+    'public/86chaos-maskable-512-v3.png',
     'public/favicon.ico',
   ]) assert.ok(paths.includes(required), `${required} should be declared and packaged`);
 });

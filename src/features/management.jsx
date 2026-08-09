@@ -828,9 +828,9 @@ const TabMessages = ({ events, appUser, users, addToast }) => {
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={15}/>
               <input type="text" placeholder="Search posts..." value={searchTerm} onChange={(e)=>setSearchTerm(e.target.value)} className="w-full pl-9 pr-3 py-2 bg-[#0B0E11] border border-[#2A353D] text-white text-xs rounded-lg outline-none focus:border-[#D4A381] transition-colors placeholder-slate-600" />
             </div>
-            <div className="flex flex-wrap gap-1">
+            <div className="message-board-filter-grid">
               {['All','Shift Note','86 Alert','Maintenance','Announcement','General'].map(cat => (
-                <button key={cat} type="button" onClick={() => setCategoryFilter(cat)} className={`px-2 py-1 rounded-md border text-[8px] font-black uppercase tracking-widest whitespace-nowrap ${categoryFilter === cat ? 'bg-[#D4A381] text-slate-900 border-[#D4A381]' : 'bg-[#0B0E11] text-slate-500 border-[#2A353D]'}`}>{cat}</button>
+                <button key={cat} type="button" onClick={() => setCategoryFilter(cat)} className={`message-board-control ${categoryFilter === cat ? 'bg-[#D4A381] text-slate-900 border-[#D4A381]' : 'bg-[#0B0E11] text-slate-500 border-[#2A353D]'}`}>{cat}</button>
               ))}
             </div>
           </div>
@@ -841,9 +841,9 @@ const TabMessages = ({ events, appUser, users, addToast }) => {
             <img src={getAvatar(appUser.name, appUser.photoURL)} className="w-8 h-8 rounded-full border border-[#2A353D] object-cover flex-shrink-0" alt="avatar"/>
             <div className="flex-1 min-w-0">
               <textarea value={message} onChange={e=>setMessage(e.target.value)} className="w-full bg-[#0B0E11] border border-[#2A353D] text-white text-sm outline-none resize-none min-h-[38px] rounded-lg px-3 py-2 placeholder-slate-600 focus:border-[#D4A381] transition-colors" placeholder="Post a clear shift note, 86 item, handoff, or manager update..." />
-              <div className="flex flex-wrap gap-1.5 mt-2">
+              <div className="message-board-composer-grid mt-2">
                 {['Shift Note','86 Alert','Maintenance','Announcement','General'].map(cat => (
-                  <button type="button" key={cat} onClick={() => setMessageCategory(cat)} className={`px-2 py-1 rounded-md border text-[8px] font-black uppercase tracking-widest transition-colors ${messageCategory === cat ? 'bg-[#D4A381] text-slate-900 border-[#D4A381]' : 'bg-[#0B0E11] text-slate-500 border-[#2A353D] hover:text-slate-200'}`}>{cat}</button>
+                  <button type="button" key={cat} onClick={() => setMessageCategory(cat)} className={`message-board-control ${cat === 'General' ? 'message-board-general-control' : ''} ${messageCategory === cat ? 'bg-[#D4A381] text-slate-900 border-[#D4A381]' : 'bg-[#0B0E11] text-slate-500 border-[#2A353D] hover:text-slate-200'}`}>{cat}</button>
                 ))}
               </div>
               {imageFile && (
@@ -852,15 +852,13 @@ const TabMessages = ({ events, appUser, users, addToast }) => {
                   <button type="button" onClick={()=>setImageFile(null)} className="text-slate-400 hover:text-white p-1 rounded-md transition-colors"><X size={12}/></button>
                 </div>
               )}
-              <div className="flex justify-between items-center gap-2 mt-2">
-                <div className="flex items-center gap-2 min-w-0">
-                  <label className="h-8 w-8 rounded-lg bg-[#0B0E11] border border-[#2A353D] text-[#D4A381] hover:bg-[#12161A] flex items-center justify-center cursor-pointer transition-colors" title="Attach Photo"><Camera size={15} /><input type="file" accept="image/*" onChange={(e) => setImageFile(e.target.files[0])} className="hidden" disabled={isUploading} /></label>
-                  <label className={`flex items-center gap-2 cursor-pointer rounded-lg px-2.5 py-2 border transition-colors ${isImportant ? 'bg-red-900/20 border-red-500/50 text-red-300' : 'bg-[#0B0E11] border-[#2A353D] text-slate-400 hover:text-slate-200'}`}>
-                    <input type="checkbox" checked={isImportant} onChange={e=>setIsImportant(e.target.checked)} className="w-3.5 h-3.5 rounded bg-[#12161A] border-[#2A353D] accent-red-500 cursor-pointer" />
-                    <span className="text-[9px] font-black uppercase tracking-widest">Priority</span>
-                  </label>
-                </div>
-                <button type="submit" disabled={isUploading || (!message.trim() && !imageFile)} className="bg-gradient-to-r from-[#C59373] to-[#8F6040] hover:opacity-90 text-slate-900 font-black tracking-widest uppercase text-[10px] py-2 px-4 rounded-lg transition-all disabled:opacity-50 flex items-center justify-center gap-1.5">
+              <div className="message-board-action-row mt-2">
+                <label className="message-board-photo-control" title="Attach Photo"><Camera size={15} /><input type="file" accept="image/*" onChange={(e) => setImageFile(e.target.files[0])} className="hidden" disabled={isUploading} /></label>
+                <label className={`message-board-priority-control ${isImportant ? 'bg-red-900/20 border-red-500/50 text-red-300' : 'bg-[#0B0E11] border-[#2A353D] text-slate-400 hover:text-slate-200'}`}>
+                  <input type="checkbox" checked={isImportant} onChange={e=>setIsImportant(e.target.checked)} className="w-3.5 h-3.5 rounded bg-[#12161A] border-[#2A353D] accent-red-500 cursor-pointer" />
+                  <span className="text-[9px] font-black uppercase tracking-widest">Priority</span>
+                </label>
+                <button type="submit" disabled={isUploading || (!message.trim() && !imageFile)} className="message-board-post-button bg-gradient-to-r from-[#C59373] to-[#8F6040] hover:opacity-90 text-slate-900 font-black tracking-widest uppercase text-[10px] transition-all disabled:opacity-50 flex items-center justify-center gap-1.5">
                   {isUploading ? <Loader2 className="animate-spin" size={14}/> : <><Send size={13}/> Post</>}
                 </button>
               </div>

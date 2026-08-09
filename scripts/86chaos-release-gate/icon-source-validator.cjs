@@ -96,7 +96,7 @@ function validateIconSourcePackage(root=process.cwd(), { writeReport = false, re
     inventory.push(item);
   }
   const declared = refs.map(r => r.src || '').join('\n');
-  for (const required of ['86chaos-icon-192-v2.png','86chaos-icon-512-v2.png','86chaos-maskable-192-v2.png','86chaos-maskable-512-v2.png','86chaos-icon-180-v2.png','favicon.ico']) {
+  for (const required of ['86chaos-icon-192-v2.png','86chaos-icon-512-v2.png','86chaos-maskable-192-v3.png','86chaos-maskable-512-v3.png','86chaos-icon-180-v2.png','favicon.ico']) {
     if (!declared.includes(required)) errors.push(`Required icon is not declared: ${required}`);
     if (!fs.existsSync(path.join(root, 'public', required))) errors.push(`Required icon file is missing: public/${required}`);
   }
