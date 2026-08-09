@@ -210,7 +210,7 @@ function Run-LiveStep {
   param([string]$Name, [string]$Command)
   Write-Host ""
   Write-Host "=== $Name ===" -ForegroundColor Yellow
-  Write-Host "Live Playwright list output enabled. The slim JSON/log report is still written quietly for upload." -ForegroundColor Cyan
+  Write-Host "Live ASCII release-gate output enabled. The slim JSON/log report is still written quietly for upload." -ForegroundColor Cyan
   $safeName = ($Name -replace '[^A-Za-z0-9_-]', '_').Trim('_')
   if ([string]::IsNullOrWhiteSpace($safeName)) { $safeName = "step" }
   $LogPath = Join-Path $RunnerLogDir ("{0}-{1}.log" -f $RunId, $safeName)
@@ -262,6 +262,12 @@ function New-Slim-ReleaseGateReport {
         New-Item -ItemType Directory -Force (Split-Path $target) | Out-Null
         Copy-Item $_.FullName $target -Force
       }
+  }
+  foreach ($summaryName in @('TEST-SUMMARY.txt', 'FAILED-TESTS.txt')) {
+    $summaryPath = Join-Path $SourceDir $summaryName
+    if (Test-Path $summaryPath) {
+      Copy-Item $summaryPath (Join-Path $DestinationDir $summaryName) -Force
+    }
   }
   if (Test-Path $ZipPath) { Remove-Item $ZipPath -Force -ErrorAction SilentlyContinue }
   $copiedCount = (Get-ChildItem $DestinationDir -Recurse -File -ErrorAction SilentlyContinue | Measure-Object).Count

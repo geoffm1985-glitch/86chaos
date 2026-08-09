@@ -1,6 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const { defineConfig, devices } = require('@playwright/test');
+const chaosReleaseGateReporter = require.resolve('./test-tools/reporters/chaos-release-gate-reporter.cjs');
 const { PWA_SPEC_PATTERN } = require('./scripts/86chaos-release-gate/release-test-universe.cjs');
 
 const { ensureRunDir, getFailedOnlyManifestPath } = require('./scripts/86chaos-release-gate/run-context.cjs');
@@ -30,12 +31,7 @@ const manifest = {
   note: `${releaseSelectionMode} success is diagnostic only. Complete npm run test:play-store is still required for release approval.`
 };
 fs.writeFileSync(path.join(runDir, 'failed-only-playwright-selection.json'), JSON.stringify(manifest, null, 2));
-console.log(`86 Chaos ${releaseSelectionMode} selected tests:`);
-for (const item of FAILED_ONLY_TESTS) console.log(`- [${(item.projects || []).join(', ')}] ${item.spec || item.specPath} :: ${item.title || item.exactTestTitle}`);
-console.log(`Desktop tests selected: ${manifest.desktopSelected}`);
-console.log(`Mobile tests selected: ${manifest.mobileSelected}`);
-console.log(`${releaseSelectionMode} manifest: ${FAILED_ONLY_MANIFEST_PATH}`);
-console.log(`${releaseSelectionMode} run directory: ${resultsRoot}`);
+// Human-readable selected-test output is emitted once by the ASCII release-gate reporter.
 
 module.exports = defineConfig({
   testDir: './tests',
@@ -50,7 +46,7 @@ module.exports = defineConfig({
   globalTeardown: require.resolve('./tests/86chaos-release-gate/global-teardown.cjs'),
   outputDir: path.join(resultsRoot, 'playwright-artifacts'),
   reporter: [
-    ['list'],
+    [chaosReleaseGateReporter],
     ['json', { outputFile: path.join(runDir, 'playwright-report.json') }],
     ['html', { outputFolder: path.join(resultsRoot, 'html-report'), open: 'never' }]
   ],

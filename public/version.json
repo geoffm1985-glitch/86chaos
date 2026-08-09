@@ -1,14 +1,14 @@
 {
-  "version": "16.0.156",
-  "name": "86 Chaos 16.0.156 Schedule Runtime Function Repair",
-  "build": "16.0.156",
-  "label": "86 Chaos 16.0.156 Schedule Runtime Function Repair",
-  "releasedAt": "2026-08-08T20:03:00-05:00",
-  "releaseTitle": "Schedule Runtime Function Repair",
+  "version": "16.0.157",
+  "name": "86 Chaos 16.0.157 Release Gate Console Usability Repair",
+  "build": "16.0.157",
+  "label": "86 Chaos 16.0.157 Release Gate Console Usability Repair",
+  "releasedAt": "2026-08-08T20:39:00-05:00",
+  "releaseTitle": "Release Gate Console Usability Repair",
   "notes": [
-    "Repairs the Schedule warning helper browser import boundary so production Schedule render receives callable warning functions.",
-    "Hardens Schedule warning helper callback contracts so malformed injected values cannot crash Schedule Builder.",
-    "Adds focused regression coverage for Schedule warning runtime rendering and warning helper callable exports."
+    "Replaces noisy Playwright release-gate console output with an ASCII-only human-readable reporter.",
+    "Prints selected release-gate tests once, then one concise PASS/FAIL/SKIP/TIMEOUT line per completed test.",
+    "Adds TEST-SUMMARY.txt and FAILED-TESTS.txt to release-gate artifacts and slim upload packages."
   ],
-  "title": "86 Chaos 16.0.156 Schedule Runtime Function Repair"
+  "title": "86 Chaos 16.0.157 Release Gate Console Usability Repair"
 }

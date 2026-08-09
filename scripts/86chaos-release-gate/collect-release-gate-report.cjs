@@ -2,6 +2,10 @@ const fs = require('fs');
 const path = require('path');
 const { ensureRunDir, readJsonIfExists } = require('./run-context.cjs');
 const { generateFailedOnlyManifestFromRun } = require('./failed-only-manifest-utils.cjs');
+const {
+  createCompletedSummaryLines,
+  createFailedTestsArtifactLines,
+} = require('../../test-tools/reporters/chaos-release-gate-reporter.cjs');
 const releaseGateJsonDiagnostics = [];
 
 const { root, resultsRoot, runId, runDir } = ensureRunDir();
@@ -532,6 +536,30 @@ const summary = {
 const jsonPath = path.join(runDir, `86chaos-play-store-release-gate-summary-${testedVersion || 'unknown'}-${runId}.json`);
 const textPath = path.join(runDir, `86chaos-play-store-release-gate-UPLOAD-ME-${testedVersion || 'unknown'}-${runId}.txt`);
 fs.writeFileSync(jsonPath, JSON.stringify(summary, null, 2));
+const humanResultRows = tests.map(t => ({
+  project: t.projectName || 'unknown',
+  projectName: t.projectName || 'unknown',
+  title: t.title || '',
+  file: t.file || '',
+  status: t.status || '',
+  duration: t.duration || 0,
+  error: t.error || '',
+}));
+const humanSummaryLines = createCompletedSummaryLines({
+  results: humanResultRows,
+  mode: summary.selectionMode || selectionMode || 'release',
+  runDir,
+  resultOverride: summary.outcome === 'PASS' ? 'PASSED' : (summary.outcome === 'FAIL' ? 'FAILED' : (summary.outcome || '')),
+  primaryBlockingFailure: summary.primaryBlockingFailure || '',
+});
+const failedTestsLines = createFailedTestsArtifactLines({
+  results: humanResultRows,
+  runId,
+  version: summary.sourceVersion || summary.expectedVersion || summary.deployedVersion || '',
+  mode: summary.selectionMode || selectionMode || 'release',
+});
+fs.writeFileSync(path.join(runDir, 'TEST-SUMMARY.txt'), humanSummaryLines.join('\n'));
+fs.writeFileSync(path.join(runDir, 'FAILED-TESTS.txt'), failedTestsLines.join('\n'));
 const lines = [
   '86 CHAOS PLAY STORE RELEASE GATE',
   `Generated: ${summary.generatedAt}`,
@@ -624,7 +652,12 @@ const lines = [
   ...summary.artifacts.map(f => `- ${f}`),
 ];
 fs.writeFileSync(textPath, lines.join('\n'));
-console.log(JSON.stringify({ summary, jsonPath, textPath, resultsRoot, runDir }, null, 2));
+console.log(humanSummaryLines.join('\n'));
+console.log('');
+console.log(`Human summary: ${path.join(runDir, 'TEST-SUMMARY.txt')}`);
+console.log(`Failed tests: ${path.join(runDir, 'FAILED-TESTS.txt')}`);
+console.log(`Structured summary: ${jsonPath}`);
+console.log(`Full text report: ${textPath}`);
 // Report collection succeeded when this accurate report was written.
 // The release gate status is carried in summary.ok; the collector exit code must not
 // become another cascade failure when earlier preflight steps blocked Playwright.

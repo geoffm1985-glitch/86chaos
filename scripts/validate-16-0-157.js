@@ -23,6 +23,9 @@ const failedUtils = read('scripts/86chaos-release-gate/failed-only-manifest-util
 const prepareManifest = read('scripts/86chaos-release-gate/prepare-failed-only-manifest.cjs');
 const repairScope = read('scripts/86chaos-release-gate/current-release-repair-scope.cjs');
 const failedConfig = read('playwright.failed-release.config.cjs');
+const fullConfig = read('playwright.play-store-release.config.cjs');
+const releaseReporter = read('test-tools/reporters/chaos-release-gate-reporter.cjs');
+const reporterUnitSpec = read('api/release-gate-console-reporter.test.cjs');
 const collector = read('scripts/86chaos-release-gate/collect-release-gate-report.cjs');
 const helpKnowledge = read('src/core/customerHelpKnowledge.cjs');
 const loginHelper = read('tests/e2e/utils/release-login-helper.cjs');
@@ -30,17 +33,17 @@ const ghostRequestOffSpec = read('tests/86chaos-full-audit/06-request-off-events
 const compactUiSpec = read('tests/e2e/compact-ui-layout.spec.cjs');
 const styles = read('src/styles.css');
 
-assert(pkg.version === '16.0.156', 'package.json version is 16.0.156');
-assert(lock.version === '16.0.156' && lock.packages?.['']?.version === '16.0.156', 'package-lock root versions are 16.0.156');
-assert(version.version === '16.0.156' && version.build === '16.0.156', 'public/version.json version/build are 16.0.156');
-assert(version.releaseTitle === 'Schedule Runtime Function Repair', 'public/version.json release title is 16.0.156 release name');
-assert(appCore.includes("CURRENT_VERSION = '16.0.156'"), 'app core CURRENT_VERSION is 16.0.156');
-assert(apiVersion.includes("APP_VERSION = '16.0.156'") && apiVersion.includes("SECURITY_SCHEMA_VERSION = '16.0.156'"), 'api version reports 16.0.156');
-assert(pkg.scripts['test:source'] === 'node scripts/validate-16-0-156.js', 'test:source points at 16.0.156 validator');
+assert(pkg.version === '16.0.157', 'package.json version is 16.0.157');
+assert(lock.version === '16.0.157' && lock.packages?.['']?.version === '16.0.157', 'package-lock root versions are 16.0.157');
+assert(version.version === '16.0.157' && version.build === '16.0.157', 'public/version.json version/build are 16.0.157');
+assert(version.releaseTitle === 'Release Gate Console Usability Repair', 'public/version.json release title is 16.0.157 release name');
+assert(appCore.includes("CURRENT_VERSION = '16.0.157'"), 'app core CURRENT_VERSION is 16.0.157');
+assert(apiVersion.includes("APP_VERSION = '16.0.157'") && apiVersion.includes("SECURITY_SCHEMA_VERSION = '16.0.157'"), 'api version reports 16.0.157');
+assert(pkg.scripts['test:source'] === 'node scripts/validate-16-0-157.js', 'test:source points at 16.0.157 validator');
 assert(pkg.scripts['test:play-store:delta'] === 'powershell -NoProfile -ExecutionPolicy Bypass -File .\\RUN_86CHAOS_FAILED_AND_NEW_RELEASE_GATE.ps1', 'delta command remains failed+new shared runner');
 assert(pkg.scripts['test:play-store:failed'] === 'powershell -NoProfile -ExecutionPolicy Bypass -File .\\RUN_86CHAOS_FAILED_ONLY_RELEASE_GATE.ps1', 'failed command uses strict failed-only wrapper');
 assert(pkg.scripts['test:play-store:repair']?.includes('-SelectionMode repair'), 'repair command selects explicit repair mode');
-assert(!fs.existsSync(path.join(root, 'scripts/validate-16-0-155.js')), 'previous 16.0.155 validator was replaced');
+assert(!fs.existsSync(path.join(root, 'scripts/validate-16-0-156.js')), 'previous 16.0.156 validator was replaced');
 
 assert(sha('firestore.rules') === '51bfd7d39edd59f680ae41a149c108cec8cd42d00b102d84cb00ee40d90264d9', 'firestore.rules unchanged');
 assert(sha('storage.rules') === '174e7e9a140193ff69ccf0f0d3e5c65b81a9e0fbbd612bff45ce57e7a3a7ce9c', 'storage.rules unchanged');
@@ -53,9 +56,16 @@ assert(failedOnlyWrapper.includes('-SelectionMode failed-only') && !failedOnlyWr
 assert(prepareManifest.includes("includeNewInventory: selectionMode === 'failed+new'") && prepareManifest.includes("selectionMode === 'repair'") && prepareManifest.includes('previousTimeoutsSelected') && prepareManifest.includes('currentReleaseFeatureTestsSelected') && prepareManifest.includes('duplicateIdentitiesRemoved'), 'manifest preparer separates failed+new, failed-only, and repair semantics with failed/timed-out counts');
 assert(failedUtils.includes('hasCompletedReleaseGateEvidence') && failedUtils.includes('missing-completed-summary') && failedUtils.includes('includeNewInventory = true') && failedUtils.includes('if (includeNewInventory)') && failedUtils.includes("manifest.newTestsCount = 0"), 'failed-only utilities require completed evidence and can disable new-test expansion');
 assert(failedUtils.includes('No failed or timed-out Playwright tests remain.') && failedRunner.includes('no-failed-tests-remain'), 'strict failed-only can exit cleanly when no failures remain');
-assert(repairScope.includes("CURRENT_RELEASE_VERSION = '16.0.156'") && repairScope.includes('Schedule runtime function repair scope for 16.0.156') && repairScope.includes('schedule-request-off-management.spec.cjs') && repairScope.includes('buildRepairSelection') && !repairScope.includes('old full baseline'), 'current-release repair scope includes the explicit 16.0.156 runtime repair checks without baseline-new expansion');
+assert(repairScope.includes("CURRENT_RELEASE_VERSION = '16.0.156'") && repairScope.includes('Schedule runtime function repair scope for 16.0.156') && repairScope.includes('schedule-request-off-management.spec.cjs') && repairScope.includes('buildRepairSelection') && !repairScope.includes('old full baseline'), 'current-release repair scope remains unchanged so repair selection semantics stay identical');
 assert(failedConfig.includes('CHAOS_RELEASE_GATE_SELECTION_MODE') && failedConfig.includes('releaseSelectionMode'), 'Playwright failed config reports real selection mode');
 assert(collector.includes("'repair'") && collector.includes('selectionMode') && collector.includes('noFailedOnlyTestsRemain'), 'release report records failed+new, failed-only, and repair modes accurately');
+assert(failedConfig.includes('chaos-release-gate-reporter.cjs') && failedConfig.includes('[chaosReleaseGateReporter]') && !failedConfig.includes("['list']"), 'failed/repair Playwright config uses ASCII release-gate reporter instead of list reporter');
+assert(fullConfig.includes('chaos-release-gate-reporter.cjs') && fullConfig.includes('[chaosReleaseGateReporter]') && !fullConfig.includes("['list']"), 'full Play Store config uses ASCII release-gate reporter instead of list reporter');
+assert(!failedConfig.includes('console.log(`86 Chaos ${releaseSelectionMode} selected tests:`)') && failedConfig.includes('specsFromManifest(FAILED_ONLY_TESTS)') && failedConfig.includes("grepForProject(FAILED_ONLY_TESTS, 'chromium')"), 'failed/repair config no longer reprints the manifest while preserving selection semantics');
+assert(releaseReporter.includes("86 Chaos ${mode || selection.mode || 'release'} selected tests:") && releaseReporter.includes('createResultLine') && releaseReporter.includes('PASS') && releaseReporter.includes('TIMEOUT'), 'release-gate reporter owns one-time selected-test output and ASCII result lines');
+assert(releaseReporter.includes('TEST-SUMMARY.txt') && releaseReporter.includes('FAILED-TESTS.txt') && collector.includes('TEST-SUMMARY.txt') && collector.includes('FAILED-TESTS.txt'), 'human summary artifacts are written and collected into run artifacts');
+assert(failedRunner.includes("foreach ($summaryName in @('TEST-SUMMARY.txt', 'FAILED-TESTS.txt'))") && read('RUN_86CHAOS_PLAY_STORE_RELEASE_GATE.ps1').includes("foreach ($summaryName in @('TEST-SUMMARY.txt', 'FAILED-TESTS.txt'))"), 'slim release-gate ZIP promotes TEST-SUMMARY and FAILED-TESTS near the top level');
+assert(reporterUnitSpec.includes('prints selected manifest once') && reporterUnitSpec.includes('output is ASCII-only') && reporterUnitSpec.includes('interrupted run summary is explicitly non-authoritative'), 'focused reporter regression tests cover one-time manifest, ASCII output, and interrupted runs');
 
 assert(loginHelper.includes('while (Date.now() < deadline)') && loginHelper.includes('workspaceChooserLocator(page).isVisible') && loginHelper.includes('chooseReleaseWorkspaceIfNeeded(page, { ...options, chooserTimeout: 450 })'), 'auth readiness helper re-checks and selects a late workspace chooser during the readiness window');
 assert(loginHelper.includes('CHAOS_QA_WORKSPACE_NAME is required when a workspace chooser appears') && loginHelper.includes("getByRole('heading', { name: /^(Choose|Select) (Workspace|Restaurant)$/i }).first()") && loginHelper.includes('workspaceOpenButtonRegex(workspaceName)') && loginHelper.includes('targetCount !== 1'), 'auth readiness helper targets the real chooser heading and requires exactly one configured QA workspace Open button');
@@ -105,7 +115,7 @@ assert(fs.existsSync(path.join(root, 'api/failed-only-repair-selection-16-0-153.
 
 assert(helpKnowledge.includes("CUSTOMER_HELP_VERSION = '16.0.150'"), 'customer Help knowledge version was not bumped unnecessarily');
 assert(helpKnowledge.includes('over-coverage against targets') && helpKnowledge.includes('approve or archive only the visible filtered requests in bulk'), 'minimal relevant customer Help additions are present');
-assert(!read('src/core/customerHelpKnowledge.js').includes("CUSTOMER_HELP_VERSION = '16.0.156'"), 'browser Help export version was not bumped to app version');
+assert(!read('src/core/customerHelpKnowledge.js').includes("CUSTOMER_HELP_VERSION = '16.0.157'"), 'browser Help export version was not bumped to app version');
 
 if (failures) { console.error(`\n${failures} validation check(s) failed.`); process.exit(1); }
-console.log('\n16.0.156 source validation passed.');
+console.log('\n16.0.157 source validation passed.');
