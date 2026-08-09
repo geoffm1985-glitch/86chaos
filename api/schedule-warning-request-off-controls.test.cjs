@@ -2,6 +2,8 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
 
 const {
   scheduleWarningEmployeeLabel,
@@ -9,7 +11,27 @@ const {
   buildScheduleConflictWarningRows,
   requestMatchesEmployeeFilter,
   isRequestOffBulkEligible,
+  asFunction,
 } = require('../src/core/scheduleWarningControls.cjs');
+
+
+test('Schedule browser import contract exposes warning helpers as callable functions', () => {
+  const root = path.join(__dirname, '..');
+  const scheduleSource = fs.readFileSync(path.join(root, 'src/features/schedule.jsx'), 'utf8');
+  assert.match(scheduleSource, /import \* as scheduleWarningControls from '\.\.\/core\/scheduleWarningControls\.cjs';/, 'Schedule browser code should use namespace import for the CJS warning helper boundary');
+  assert.match(scheduleSource, /scheduleWarningControlExports/, 'Schedule browser code should normalize CJS default/direct helper exports before render-time destructuring');
+  assert.doesNotMatch(scheduleSource, /import scheduleWarningControls from '\.\.\/core\/scheduleWarningControls\.cjs';/, 'Schedule browser code should not use the fragile default-only CJS import shape');
+
+  const controls = require('../src/core/scheduleWarningControls.cjs');
+  [
+    'buildCoverageVarianceRows',
+    'buildScheduleConflictWarningRows',
+    'scheduleWarningEmployeeLabel',
+    'warningShiftContext',
+    'requestMatchesEmployeeFilter',
+    'isRequestOffBulkEligible',
+  ].forEach(name => assert.equal(typeof controls[name], 'function', `${name} should be a callable warning helper export`));
+});
 
 test('schedule requested-off warning resolver uses canonical person data and never Someone', () => {
   const label = scheduleWarningEmployeeLabel(
@@ -161,4 +183,34 @@ test('Request Off bulk eligibility excludes hidden, archived, wrong-workspace, a
   assert.equal(isRequestOffBulkEligible({ id: 'req-other-workspace', restaurantId: 'other', status: 'pending' }, { ...options, requirePending: true }), false);
   assert.equal(isRequestOffBulkEligible({ id: 'req-approved', restaurantId: 'cheers_chilton_01', status: 'approved' }, { ...options, requirePending: true }), false);
   assert.equal(isRequestOffBulkEligible({ id: 'req-approved', restaurantId: 'cheers_chilton_01', status: 'approved' }, { ...options, requirePending: false }), true);
+});
+
+
+test('schedule warning helpers ignore malformed injected callbacks instead of crashing render', () => {
+  assert.equal(asFunction('not-callable', () => 'fallback')(), 'fallback');
+
+  const coverageRows = buildCoverageVarianceRows({
+    coverageTargets: [{ id: 'target-kitchen', dayIndex: 0, role: 'Kitchen', startTime: '09:00', count: 2 }],
+    weekDates: ['2026-08-02'],
+    weekShifts: [{ date: '2026-08-02', role: 'Kitchen', startTime: '09:00' }],
+    roleMatcher: 'legacy bad role matcher',
+    canonicalRole: 'legacy bad canonical role',
+  });
+  assert.equal(coverageRows.length, 1);
+  assert.equal(coverageRows[0].type, 'under');
+  assert.equal(coverageRows[0].needed, 1);
+
+  assert.doesNotThrow(() => buildScheduleConflictWarningRows({
+    weekStart: '2026-08-02',
+    schedule: [{ id: 'shift-legacy', employeeName: 'Legacy Person', date: '2026-08-08' }],
+    allUsers: [{ id: 'legacy-user', name: 'Legacy Person' }],
+    requests: [{ id: 'bad-request', employeeName: 'Legacy Person', date: '2026-08-08', status: 'approved' }],
+    resolvePerson: 'not a resolver',
+    matchesTimeOff: 'not a matcher',
+    isActiveRequest: 'not a status function',
+    employeeLabeler: 'not a labeler',
+    shiftContext: 'not a shift context function',
+    fingerprintBuilder: 'not a fingerprint function',
+    formatDate: 'not a date formatter',
+  }));
 });

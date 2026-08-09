@@ -1,8 +1,9 @@
 'use strict';
 
-const CURRENT_RELEASE_VERSION = '16.0.153';
-const CURRENT_RELEASE_CARRY_FORWARD_NOTE = 'Carried forward from 16.0.153 until a successful repair or full baseline proves these feature tests.';
+const CURRENT_RELEASE_VERSION = '16.0.156';
+const CURRENT_RELEASE_CARRY_FORWARD_NOTE = 'Schedule runtime function repair scope for 16.0.156, with carried-forward Schedule warning and Request Off checks until a successful repair or full baseline proves them.';
 const CURRENT_RELEASE_REPAIR_SCOPE = [
+  'Schedule Builder warning runtime renders without Runtime Recovery or TypeError',
   'Schedule Builder requested-off warning shows employee name and never Someone',
   'Schedule Builder coverage warnings show under and over target math',
   'Schedule Builder warning dismissal hides only the warning',

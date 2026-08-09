@@ -1,5 +1,5 @@
-const APP_VERSION = '16.0.155';
-const SECURITY_SCHEMA_VERSION = '16.0.155';
+const APP_VERSION = '16.0.156';
+const SECURITY_SCHEMA_VERSION = '16.0.156';
 
 module.exports = {
   APP_VERSION,

@@ -55,6 +55,22 @@ async function ensureSeeded(testInfo) {
 }
 
 test.describe('16.0.153 Schedule warnings and Request Off management', () => {
+  test('Schedule Builder warning runtime renders without Runtime Recovery or TypeError', async ({ page }, testInfo) => {
+    await ensureSeeded(testInfo);
+    const runtimeErrors = [];
+    page.on('pageerror', error => runtimeErrors.push({ message: String(error?.message || ''), stack: String(error?.stack || '') }));
+    await openSchedule(page);
+    await openWarnings(page);
+    const text = await bodyText(page, 60000);
+    await attachJson(testInfo, '16-0-156-schedule-runtime-warning-render.json', {
+      runtimeErrors,
+      text: text.slice(0, 12000),
+    });
+    expect(text, 'Schedule route should not fall into the app runtime recovery surface').not.toMatch(/86 CHAOS RUNTIME RECOVERY|This section hit a snag/i);
+    expect(text, 'Schedule warning/coverage surface should render after opening Warnings').toMatch(/Warnings|Coverage|coverage target|scheduled on requested-off date|needs \d+ more|has \d+ more/i);
+    expect(runtimeErrors.filter(error => /is not a function|TypeError/i.test(`${error.message}\n${error.stack}`)), 'Schedule render should not throw TypeError while loading warning helpers').toEqual([]);
+  });
+
   test('Schedule Builder requested-off warning shows employee name and never Someone', async ({ page }, testInfo) => {
     await ensureSeeded(testInfo);
     await openSchedule(page);

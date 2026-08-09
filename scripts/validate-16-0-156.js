@@ -30,17 +30,17 @@ const ghostRequestOffSpec = read('tests/86chaos-full-audit/06-request-off-events
 const compactUiSpec = read('tests/e2e/compact-ui-layout.spec.cjs');
 const styles = read('src/styles.css');
 
-assert(pkg.version === '16.0.155', 'package.json version is 16.0.155');
-assert(lock.version === '16.0.155' && lock.packages?.['']?.version === '16.0.155', 'package-lock root versions are 16.0.155');
-assert(version.version === '16.0.155' && version.build === '16.0.155', 'public/version.json version/build are 16.0.155');
-assert(version.releaseTitle === 'Workspace Targeting, Request Off Navigation, and Schedule Warning Runtime Repair', 'public/version.json release title is 16.0.155 release name');
-assert(appCore.includes("CURRENT_VERSION = '16.0.155'"), 'app core CURRENT_VERSION is 16.0.155');
-assert(apiVersion.includes("APP_VERSION = '16.0.155'") && apiVersion.includes("SECURITY_SCHEMA_VERSION = '16.0.155'"), 'api version reports 16.0.155');
-assert(pkg.scripts['test:source'] === 'node scripts/validate-16-0-155.js', 'test:source points at 16.0.155 validator');
+assert(pkg.version === '16.0.156', 'package.json version is 16.0.156');
+assert(lock.version === '16.0.156' && lock.packages?.['']?.version === '16.0.156', 'package-lock root versions are 16.0.156');
+assert(version.version === '16.0.156' && version.build === '16.0.156', 'public/version.json version/build are 16.0.156');
+assert(version.releaseTitle === 'Schedule Runtime Function Repair', 'public/version.json release title is 16.0.156 release name');
+assert(appCore.includes("CURRENT_VERSION = '16.0.156'"), 'app core CURRENT_VERSION is 16.0.156');
+assert(apiVersion.includes("APP_VERSION = '16.0.156'") && apiVersion.includes("SECURITY_SCHEMA_VERSION = '16.0.156'"), 'api version reports 16.0.156');
+assert(pkg.scripts['test:source'] === 'node scripts/validate-16-0-156.js', 'test:source points at 16.0.156 validator');
 assert(pkg.scripts['test:play-store:delta'] === 'powershell -NoProfile -ExecutionPolicy Bypass -File .\\RUN_86CHAOS_FAILED_AND_NEW_RELEASE_GATE.ps1', 'delta command remains failed+new shared runner');
 assert(pkg.scripts['test:play-store:failed'] === 'powershell -NoProfile -ExecutionPolicy Bypass -File .\\RUN_86CHAOS_FAILED_ONLY_RELEASE_GATE.ps1', 'failed command uses strict failed-only wrapper');
 assert(pkg.scripts['test:play-store:repair']?.includes('-SelectionMode repair'), 'repair command selects explicit repair mode');
-assert(!fs.existsSync(path.join(root, 'scripts/validate-16-0-154.js')), 'previous 16.0.154 validator was replaced');
+assert(!fs.existsSync(path.join(root, 'scripts/validate-16-0-155.js')), 'previous 16.0.155 validator was replaced');
 
 assert(sha('firestore.rules') === '51bfd7d39edd59f680ae41a149c108cec8cd42d00b102d84cb00ee40d90264d9', 'firestore.rules unchanged');
 assert(sha('storage.rules') === '174e7e9a140193ff69ccf0f0d3e5c65b81a9e0fbbd612bff45ce57e7a3a7ce9c', 'storage.rules unchanged');
@@ -53,7 +53,7 @@ assert(failedOnlyWrapper.includes('-SelectionMode failed-only') && !failedOnlyWr
 assert(prepareManifest.includes("includeNewInventory: selectionMode === 'failed+new'") && prepareManifest.includes("selectionMode === 'repair'") && prepareManifest.includes('previousTimeoutsSelected') && prepareManifest.includes('currentReleaseFeatureTestsSelected') && prepareManifest.includes('duplicateIdentitiesRemoved'), 'manifest preparer separates failed+new, failed-only, and repair semantics with failed/timed-out counts');
 assert(failedUtils.includes('hasCompletedReleaseGateEvidence') && failedUtils.includes('missing-completed-summary') && failedUtils.includes('includeNewInventory = true') && failedUtils.includes('if (includeNewInventory)') && failedUtils.includes("manifest.newTestsCount = 0"), 'failed-only utilities require completed evidence and can disable new-test expansion');
 assert(failedUtils.includes('No failed or timed-out Playwright tests remain.') && failedRunner.includes('no-failed-tests-remain'), 'strict failed-only can exit cleanly when no failures remain');
-assert(repairScope.includes("CURRENT_RELEASE_VERSION = '16.0.153'") && repairScope.includes('Carried forward from 16.0.153') && repairScope.includes('schedule-request-off-management.spec.cjs') && repairScope.includes('buildRepairSelection') && !repairScope.includes('old full baseline'), 'current-release repair scope carries forward the explicit 16.0.153 feature tests without baseline-new expansion');
+assert(repairScope.includes("CURRENT_RELEASE_VERSION = '16.0.156'") && repairScope.includes('Schedule runtime function repair scope for 16.0.156') && repairScope.includes('schedule-request-off-management.spec.cjs') && repairScope.includes('buildRepairSelection') && !repairScope.includes('old full baseline'), 'current-release repair scope includes the explicit 16.0.156 runtime repair checks without baseline-new expansion');
 assert(failedConfig.includes('CHAOS_RELEASE_GATE_SELECTION_MODE') && failedConfig.includes('releaseSelectionMode'), 'Playwright failed config reports real selection mode');
 assert(collector.includes("'repair'") && collector.includes('selectionMode') && collector.includes('noFailedOnlyTestsRemain'), 'release report records failed+new, failed-only, and repair modes accurately');
 
@@ -64,13 +64,14 @@ assert(ghostRequestOffSpec.includes("gotoTab(page, 'published'") && ghostRequest
 assert(styles.includes('16.0.154 login action target cascade repair') && styles.includes('.chaos-login-screen .chaos-login-primary-action') && styles.includes('.chaos-login-screen .chaos-login-secondary-action') && /min-height:\s*44px !important/.test(styles), 'login tap-target cascade repair is scoped to login primary/secondary actions');
 assert(compactUiSpec.includes('minHeight') && compactUiSpec.includes('paddingTop') && compactUiSpec.includes('parentTransform'), 'login tap-target test captures computed dimensions and cascade diagnostics');
 
+assert(schedule.includes("import * as scheduleWarningControls from '../core/scheduleWarningControls.cjs';") && schedule.includes('scheduleWarningControlExports') && !schedule.includes("import scheduleWarningControls from '../core/scheduleWarningControls.cjs';"), 'Schedule browser code uses a namespace CJS warning helper import with normalized exports');
 assert(schedule.includes('buildScheduleConflictWarningRows') && schedule.includes('resolvePerson: resolveSchedulePersonForShift') && schedule.includes('employeeLabeler: scheduleWarningEmployeeLabel'), 'Schedule warnings use guarded canonical shift/person resolution');
 assert(!schedule.includes('Someone is scheduled on requested-off date') && !schedule.includes("|| 'Someone'"), 'Schedule warnings no longer produce literal Someone fallback');
 assert(warningHelpers.includes('Unresolved employee') && warningHelpers.includes('warningShiftContext(shift)'), 'unresolved schedule warnings use safe fallback with shift context');
 assert(schedule.includes('buildCoverageVarianceRows') && schedule.includes("row.type === 'under'") && schedule.includes('coverage-over') && schedule.includes('Existing: ${row.existing} • Target: ${row.count}'), 'coverage warnings include under and over target variance with shared math');
 assert(schedule.includes('useRememberedAlert') && schedule.includes('buildAlertFingerprint') && schedule.includes('Dismiss warning'), 'Schedule warnings use existing alert memory for per-warning dismissal');
 assert(warningHelpers.includes('buildCoverageVarianceRows') && warningHelpers.includes('delta = existing - targetCount') && warningHelpers.includes("type: delta < 0 ? 'under' : 'over'"), 'coverage variance helper implements delta model');
-assert(warningHelpers.includes('safeRecordArray') && warningHelpers.includes('buildScheduleConflictWarningRows') && warningHelpers.includes('A malformed legacy shift must not take down Schedule Builder'), 'Schedule warning model isolates malformed legacy rows instead of crashing the Schedule Builder route');
+assert(warningHelpers.includes('safeRecordArray') && warningHelpers.includes('asFunction') && warningHelpers.includes('buildScheduleConflictWarningRows') && warningHelpers.includes('A malformed legacy shift must not take down Schedule Builder'), 'Schedule warning model isolates malformed legacy rows and malformed injected callbacks instead of crashing the Schedule Builder route');
 const qaProfile = read('tests/86chaos-full-audit/utils/fake-restaurant-profile.cjs');
 assert(qaProfile.includes("dayIndex: 2, role: 'Bartender', startTime: '10a', endTime: '4p', count: 1"), 'QA seed has deterministic Tuesday Bartender over-coverage fixture');
 
@@ -80,12 +81,13 @@ assert(schedule.includes('Approve All Visible') && schedule.includes('eligibleVi
 assert(schedule.includes('Archive All Visible') && schedule.includes('eligibleVisibleRequests({ requirePending: false })') && schedule.includes('previousStatus'), 'Archive All Visible is scoped to visible eligible requests and preserves previous status');
 assert(schedule.includes('bulkBusy') && schedule.includes('disabled={!!bulkBusy}'), 'bulk actions have a busy/double-click guard');
 
-assert(fs.existsSync(path.join(root, 'tests/e2e/schedule-request-off-management.spec.cjs')), 'focused 16.0.153 carried-forward Playwright feature spec exists');
+assert(fs.existsSync(path.join(root, 'tests/e2e/schedule-request-off-management.spec.cjs')), 'focused Schedule runtime Playwright feature spec exists');
 const featureSpec = read('tests/e2e/schedule-request-off-management.spec.cjs');
 assert(featureSpec.includes('openManagerRequestOff') && featureSpec.includes("gotoTab(page, 'published'") && featureSpec.includes("getByRole('button', { name: /^Schedule Request Off$/i })"), 'carried-forward Request Off feature tests explicitly open the Request Off workflow');
 assert(featureSpec.includes('Open Copilot Tools') && featureSpec.includes("getByRole('button', { name: /^Warnings$/i })") && !featureSpec.includes('getByText(/Warnings/i).first().click'), 'carried-forward warning tests open exact Schedule Copilot warning controls');
 assert(featureSpec.includes("getByRole('button', { name: /^Needs Review$/i })") && featureSpec.includes("getByRole('button', { name: /^Upcoming Approved$/i })"), 'carried-forward bulk tests use the correct seeded Request Off views');
 [
+  'Schedule Builder warning runtime renders without Runtime Recovery or TypeError',
   'Schedule Builder requested-off warning shows employee name and never Someone',
   'Schedule Builder coverage warnings show under and over target math',
   'Schedule Builder warning dismissal hides only the warning',
@@ -97,11 +99,13 @@ assert(featureSpec.includes("getByRole('button', { name: /^Needs Review$/i })") 
 });
 assert(repairScope.match(/mobile-chromium/g)?.length >= 1 && repairScope.match(/chromium/g)?.length >= 1, 'repair scope covers chromium and mobile-chromium feature identities');
 assert(fs.existsSync(path.join(root, 'api/schedule-warning-request-off-controls.test.cjs')), 'focused Schedule/Request Off helper unit tests exist');
+const helperUnitSpec = read('api/schedule-warning-request-off-controls.test.cjs');
+assert(helperUnitSpec.includes('Schedule browser import contract exposes warning helpers as callable functions') && helperUnitSpec.includes('schedule warning helpers ignore malformed injected callbacks'), 'focused helper tests cover browser import callable contract and malformed callback hardening');
 assert(fs.existsSync(path.join(root, 'api/failed-only-repair-selection-16-0-153.test.cjs')), 'focused failed-only/repair selection unit tests exist');
 
 assert(helpKnowledge.includes("CUSTOMER_HELP_VERSION = '16.0.150'"), 'customer Help knowledge version was not bumped unnecessarily');
 assert(helpKnowledge.includes('over-coverage against targets') && helpKnowledge.includes('approve or archive only the visible filtered requests in bulk'), 'minimal relevant customer Help additions are present');
-assert(!read('src/core/customerHelpKnowledge.js').includes("CUSTOMER_HELP_VERSION = '16.0.155'"), 'browser Help export version was not bumped to app version');
+assert(!read('src/core/customerHelpKnowledge.js').includes("CUSTOMER_HELP_VERSION = '16.0.156'"), 'browser Help export version was not bumped to app version');
 
 if (failures) { console.error(`\n${failures} validation check(s) failed.`); process.exit(1); }
-console.log('\n16.0.155 source validation passed.');
+console.log('\n16.0.156 source validation passed.');

@@ -20,6 +20,18 @@ function safeRecordArray(value) {
   return Array.isArray(value) ? value.filter(item => item && typeof item === 'object') : [];
 }
 
+function asFunction(candidate, fallback) {
+  return typeof candidate === 'function' ? candidate : fallback;
+}
+
+const defaultRoleMatcher = (a, b) => cleanText(a).toLowerCase() === cleanText(b).toLowerCase();
+const defaultCanonicalRole = role => role;
+const defaultResolvePerson = () => ({ ok: false, person: null });
+const defaultMatchesTimeOff = () => false;
+const defaultIsActiveRequest = () => true;
+const defaultFingerprintBuilder = (...parts) => parts.map(cleanText).join('|');
+const defaultFormatDate = date => cleanText(date);
+
 function firstNonEmpty(record = {}, fields = []) {
   for (const field of fields) {
     const value = cleanText(record?.[field]);
@@ -68,7 +80,11 @@ function warningShiftContext(shift = {}) {
   return `${start}-${end} • ${role}`;
 }
 
-function buildCoverageVarianceRows({ coverageTargets = [], weekDates = [], weekShifts = [], roleMatcher = (a, b) => cleanText(a).toLowerCase() === cleanText(b).toLowerCase(), canonicalRole = role => role } = {}) {
+function buildCoverageVarianceRows(options = {}) {
+  const safeOptions = options && typeof options === 'object' ? options : {};
+  const { coverageTargets = [], weekDates = [], weekShifts = [] } = safeOptions;
+  const roleMatcher = asFunction(safeOptions.roleMatcher, defaultRoleMatcher);
+  const canonicalRole = asFunction(safeOptions.canonicalRole, defaultCanonicalRole);
   const rows = [];
   const targets = safeRecordArray(coverageTargets);
   const dates = Array.isArray(weekDates) ? weekDates : [];
@@ -115,19 +131,16 @@ function buildCoverageVarianceRows({ coverageTargets = [], weekDates = [], weekS
   return rows;
 }
 
-function buildScheduleConflictWarningRows({
-  weekStart = '',
-  schedule = [],
-  allUsers = [],
-  requests = [],
-  resolvePerson = () => ({ ok: false, person: null }),
-  matchesTimeOff = () => false,
-  isActiveRequest = () => true,
-  employeeLabeler = scheduleWarningEmployeeLabel,
-  shiftContext = warningShiftContext,
-  fingerprintBuilder = (...parts) => parts.map(cleanText).join('|'),
-  formatDate = date => cleanText(date),
-} = {}) {
+function buildScheduleConflictWarningRows(options = {}) {
+  const safeOptions = options && typeof options === 'object' ? options : {};
+  const { weekStart = '', schedule = [], allUsers = [], requests = [] } = safeOptions;
+  const resolvePerson = asFunction(safeOptions.resolvePerson, defaultResolvePerson);
+  const matchesTimeOff = asFunction(safeOptions.matchesTimeOff, defaultMatchesTimeOff);
+  const isActiveRequest = asFunction(safeOptions.isActiveRequest, defaultIsActiveRequest);
+  const employeeLabeler = asFunction(safeOptions.employeeLabeler, scheduleWarningEmployeeLabel);
+  const shiftContext = asFunction(safeOptions.shiftContext, warningShiftContext);
+  const fingerprintBuilder = asFunction(safeOptions.fingerprintBuilder, defaultFingerprintBuilder);
+  const formatDate = asFunction(safeOptions.formatDate, defaultFormatDate);
   const safeSchedule = safeRecordArray(schedule);
   const safeUsers = safeRecordArray(allUsers);
   const safeRequests = safeRecordArray(requests);
@@ -278,6 +291,7 @@ module.exports = {
   scheduleWarningEmployeeLabel,
   warningShiftContext,
   safeRecordArray,
+  asFunction,
   buildCoverageVarianceRows,
   buildScheduleConflictWarningRows,
   isRequestOffBulkEligible,

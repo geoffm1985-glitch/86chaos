@@ -8,11 +8,15 @@ import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { MapContainer, TileLayer, Marker, Circle, useMapEvents } from 'react-leaflet';
 import { T, db, storage, auth, messaging, firebaseConfig, secureFetch, MASTER_ADMIN_EMAIL, EVENT_TAGS, CURRENT_VERSION, useLiveCollection, formatDate, getToday, getMonthStr, formatDisplayDate, formatDisplayFullDate, formatDisplayMonth, getDaysInMonth, formatShortTime, formatClockTime, formatClockDateTime, getAvatar, generateTempPass, getExpDate, getHoliday, logAudit, customMapIcon, getRestaurantExportPrefix, safeFilenamePart, downloadCsvRows, downloadTextFile, openPrintableReport } from '../core/appCore';
 import { buildAlertFingerprint, useRememberedAlert } from '../core/alertMemory';
-import scheduleWarningControls from '../core/scheduleWarningControls.cjs';
+import * as scheduleWarningControls from '../core/scheduleWarningControls.cjs';
 import { getCanonicalScheduleUserId, collectScheduleDurableIdentityAliases, collectScheduleEmailAliases, collectScheduleFullNameAliases, collectScheduleFirstNameAliases, collectScheduleIdentityAliases, resolveSchedulePersonForAccount, resolveSchedulePersonForShift, buildCanonicalScheduleIdentityBlock, scheduleIdentityBlockMatchesPerson } from '../core/scheduleQueryPlanner';
 import { CheersLogo, Modal, DrawerMenu, DayDotPrintScreen, MapClickListener, SmartEmptyState, MiniProblemCard, getHomeProfile, calculatePunchHours, getWeekStart, getWeekDates, roleMatches, toLocalTimeInput, makeLocalIso, PunchTable, FriendlyEmpty, GlobalSearchModal, QuickActionDock, KitchenTVMode, ChangeLogModal, UndoBar } from '../components/common';
 
 
+
+const scheduleWarningControlExports = (scheduleWarningControls.default && typeof scheduleWarningControls.default === 'object')
+  ? { ...scheduleWarningControls.default, ...scheduleWarningControls }
+  : scheduleWarningControls;
 
 const {
   requestSubjectLabel,
@@ -22,7 +26,7 @@ const {
   buildCoverageVarianceRows,
   buildScheduleConflictWarningRows,
   isRequestOffBulkEligible,
-} = scheduleWarningControls;
+} = scheduleWarningControlExports;
 
 const cleanScheduleRoleName = (role = '') => String(role || '').replace(/\s+/g, ' ').trim();
 
