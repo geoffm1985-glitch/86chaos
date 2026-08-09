@@ -35,15 +35,16 @@ test('lazy chunk failure reports once, avoids a reload loop, and recovers withou
 
   await login(page, email, password);
   await gotoAuthenticatedRoute(page, 'today', { timeout: 30_000 });
+  const targetTab = 'inventory';
   const baselineNavigations = topLevelNavigations;
   blockingEnabled = true;
 
-  await page.evaluate(() => {
+  await page.evaluate((targetTab) => {
     const url = new URL(window.location.href);
-    url.searchParams.set('tab', 'recipes');
+    url.searchParams.set('tab', targetTab);
     window.history.pushState({}, '', url.toString());
     window.dispatchEvent(new PopStateEvent('popstate', { state: {} }));
-  });
+  }, targetTab);
   await page.waitForTimeout(4500);
 
   expect(blockedUrl, 'a concrete lazy JavaScript chunk request was intercepted').toMatch(/\/static\/js\/(?!main\.)[^/?]+\.chunk\.js(?:\?.*)?$/i);
@@ -58,7 +59,7 @@ test('lazy chunk failure reports once, avoids a reload loop, and recovers withou
   if (await refresh.isVisible({ timeout: 3000 }).catch(() => false)) await refresh.click();
   else await page.reload({ waitUntil: 'domcontentloaded' });
   await assertAuthenticatedAfterNavigation(page, { timeout: 30_000 });
-  await gotoAuthenticatedRoute(page, 'recipes', { timeout: 30_000 });
-  await expect(page.locator('body')).toContainText(/recipes/i, { timeout: 30_000 });
+  await gotoAuthenticatedRoute(page, targetTab, { timeout: 30_000 });
+  await expect(page.locator('body')).toContainText(/inventory|par|stock|vendors|orders/i, { timeout: 30_000 });
   expect(await isLoginShellVisible(page), 'authentication should survive the lazy chunk recovery path').toBe(false);
 });

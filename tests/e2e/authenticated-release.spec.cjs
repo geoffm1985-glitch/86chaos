@@ -70,7 +70,7 @@ for (const entry of roles) {
       await login(page, email, password);
       for (const tab of deniedTabs) {
         await openRoute(page, tab);
-        await expect(page.locator('body')).toContainText(/does not include this tool|internal-only|not available|upgrade|permission|access/i);
+        await expect(page.locator('body')).toContainText(/Plan & Permission Gate|Restricted Platform Tools|Your role does not include this (?:tool|area)|not-platform-admin|HTTP:\s*403/i);
       }
     });
   });

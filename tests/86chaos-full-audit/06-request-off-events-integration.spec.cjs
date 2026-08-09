@@ -62,6 +62,19 @@ test.describe('06 request-off, availability, and scheduled events integration', 
         apiResponses,
       });
     }
+
+    function isConflictResponseForDate(response, conflictDate) {
+      let url;
+      try { url = new URL(response.url()); } catch (_) { return false; }
+      if (!/\/api\/time-off-request$/i.test(url.pathname)) return false;
+      const request = response.request();
+      if (request.method().toUpperCase() !== 'POST') return false;
+      let body = null;
+      try { body = request.postDataJSON(); } catch (_) { return false; }
+      const dates = Array.isArray(body?.dates) ? body.dates.map(String) : [];
+      const action = String(body?.action || '');
+      return action === 'conflicts' && dates.includes(conflictDate);
+    }
     async function openPeopleAndPossess(targetName) {
       await gotoTab(page, 'godmode', { settleMs: 1600, maxText: 60000 });
       await dismissBlockingDialogs(page);
@@ -134,7 +147,7 @@ test.describe('06 request-off, availability, and scheduled events integration', 
       expect(conflictDate, 'QA seed must expose ghostRequestOffConflictDate for deterministic Request Off conflict testing').toMatch(/^\d{4}-\d{2}-\d{2}$/);
       const day = String(Number(conflictDate.slice(-2)));
       const dialogPromise = page.waitForEvent('dialog', { timeout: 6000 }).catch(() => null);
-      const conflictResponsePromise = page.waitForResponse(response => /\/api\/time-off-request/i.test(response.url()), { timeout: 8000 }).catch(() => null);
+      const conflictResponsePromise = page.waitForResponse(response => isConflictResponseForDate(response, conflictDate), { timeout: 8000 }).catch(() => null);
       const cell = page.locator('div.cursor-pointer, button, [role="gridcell"]').filter({ hasText: new RegExp(`^${day}(?:\\s|$)`) }).first();
       await expect(cell, `Request Off conflict date cell for ${conflictDate} should be selectable`).toBeVisible({ timeout: 15000 });
       await cell.click();

@@ -1,18 +1,25 @@
 const { expect } = require('@playwright/test');
 
+function loginShellLocator(page) {
+  return page.locator('.chaos-login-screen').first();
+}
+
 function emailLoginField(page) {
-  return page.getByRole('textbox', { name: /^Email Address$/i })
-    .or(page.locator('input[type="email"], input[autocomplete="email"], input[aria-label="Email Address"]'))
+  const shell = loginShellLocator(page);
+  return shell.getByRole('textbox', { name: /^Email Address$/i })
+    .or(shell.locator('input[type="email"], input[autocomplete="email"], input[aria-label="Email Address"]'))
     .first();
 }
 
 function passwordLoginField(page) {
-  return page.locator('input[type="password"][autocomplete="current-password"], input[type="password"][aria-label="Password"]').first();
+  const shell = loginShellLocator(page);
+  return shell.locator('input[type="password"][autocomplete="current-password"], input[type="password"][aria-label="Password"]').first();
 }
 
 function unlockLoginButton(page) {
-  return page.getByRole('button', { name: /^Unlock System$/i })
-    .or(page.getByRole('button', { name: /^(Log In|Sign In)$/i }))
+  const shell = loginShellLocator(page);
+  return shell.getByRole('button', { name: /^Unlock System$/i })
+    .or(shell.getByRole('button', { name: /^(Log In|Sign In)$/i }))
     .first();
 }
 
@@ -52,6 +59,8 @@ function workspaceChoiceButton(page, workspaceName) {
 }
 
 async function isLoginShellVisible(page) {
+  const shell = loginShellLocator(page);
+  if (!(await shell.isVisible({ timeout: 600 }).catch(() => false))) return false;
   const [emailVisible, passwordVisible, unlockVisible] = await Promise.all([
     emailLoginField(page).isVisible({ timeout: 600 }).catch(() => false),
     passwordLoginField(page).isVisible({ timeout: 600 }).catch(() => false),
@@ -166,5 +175,6 @@ module.exports = {
   waitForAuthenticatedShell,
   assertAuthenticatedAfterNavigation,
   gotoAuthenticatedRoute,
-  authenticatedShellLocator
+  authenticatedShellLocator,
+  loginShellLocator
 };

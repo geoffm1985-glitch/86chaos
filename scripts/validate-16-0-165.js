@@ -21,14 +21,14 @@ const styles = read('src/styles.css');
 const iconValidator = read('scripts/86chaos-release-gate/icon-source-validator.cjs');
 const serverBoundaryTest = read('api/server-firebase-boundary-preflight.test.cjs');
 const vercelTargetTest = read('api/vercel-target-validation.test.cjs');
-assert(pkg.version === '16.0.164', 'package.json version is 16.0.164');
-assert(lock.version === '16.0.164' && lock.packages?.['']?.version === '16.0.164', 'package-lock root versions are 16.0.164');
-assert(pkg.scripts['test:source'] === 'node scripts/validate-16-0-164.js', 'test:source points to 16.0.164 validator');
-assert(version.version === '16.0.164' && version.build === '16.0.164', 'public/version.json version/build are 16.0.164');
-assert(version.releaseTitle === 'PWA Launch Icon and Release Gate Test Isolation Repair', 'release title is correct');
-assert(appCore.includes("CURRENT_VERSION = '16.0.164'"), 'app core CURRENT_VERSION is 16.0.164');
-assert(apiVersion.includes("APP_VERSION = '16.0.164'") && apiVersion.includes("SECURITY_SCHEMA_VERSION = '16.0.164'"), 'api version reports 16.0.164');
-assert(!fs.existsSync(path.join(root, 'scripts/validate-16-0-163.js')), 'previous validator was replaced');
+assert(pkg.version === '16.0.165', 'package.json version is 16.0.165');
+assert(lock.version === '16.0.165' && lock.packages?.['']?.version === '16.0.165', 'package-lock root versions are 16.0.165');
+assert(pkg.scripts['test:source'] === 'node scripts/validate-16-0-165.js', 'test:source points to 16.0.165 validator');
+assert(version.version === '16.0.165' && version.build === '16.0.165', 'public/version.json version/build are 16.0.165');
+assert(version.releaseTitle === 'Release Gate Test Alignment Repair', 'release title is correct');
+assert(appCore.includes("CURRENT_VERSION = '16.0.165'"), 'app core CURRENT_VERSION is 16.0.165');
+assert(apiVersion.includes("APP_VERSION = '16.0.165'") && apiVersion.includes("SECURITY_SCHEMA_VERSION = '16.0.165'"), 'api version reports 16.0.165');
+assert(!fs.existsSync(path.join(root, 'scripts/validate-16-0-164.js')), 'previous validator was replaced');
 assert(sha('firestore.rules') === '51bfd7d39edd59f680ae41a149c108cec8cd42d00b102d84cb00ee40d90264d9', 'firestore.rules unchanged');
 assert(sha('storage.rules') === '174e7e9a140193ff69ccf0f0d3e5c65b81a9e0fbbd612bff45ce57e7a3a7ce9c', 'storage.rules unchanged');
 assert(sha('database.rules.json') === '152b5cd3f9839f598c9602706d8205b96759296e865d540b52c780900bfba138', 'database.rules.json unchanged');
@@ -54,5 +54,22 @@ assert(serverBoundaryTest.includes('function collectorFixtureEnv') && serverBoun
 assert(vercelTargetTest.includes('function collectorFixtureEnv') && vercelTargetTest.includes('delete childEnv.CHAOS_RELEASE_GATE_RUN_DIR') && vercelTargetTest.includes('exactly one summary inside its temporary run directory'), 'vercel-target unit test sanitizes inherited release-gate run dir');
 assert(fs.existsSync(path.join(root, 'api/pwa-icon-source-integrity.test.cjs')), 'PWA icon safe-area regression exists');
 
+const pwaMatrix = read('tests/86chaos-release-gate/27-pwa-browser-icon-matrix.spec.cjs');
+const loginHelper = read('tests/e2e/utils/release-login-helper.cjs');
+const authenticatedRelease = read('tests/e2e/authenticated-release.spec.cjs');
+const chunkRecovery = read('tests/e2e/chunk-recovery.spec.cjs');
+const costRegression = read('tests/e2e/cost-regression.spec.cjs');
+const requestOffE2e = read('tests/e2e/schedule-request-off-management.spec.cjs');
+const ghostRequestOff = read('tests/86chaos-full-audit/06-request-off-events-integration.spec.cjs');
+assert(pwaMatrix.includes('86chaos-icon-180-v2.png') && !pwaMatrix.includes('86chaos-icon-180-v1.png'), 'PWA browser icon matrix expects current v2 Apple touch icon');
+assert(loginHelper.includes("locator('.chaos-login-screen')") && loginHelper.includes('loginShellLocator') && !loginHelper.includes("page.locator('input[type=\"email\"]"), 'release login helper scopes login detection to .chaos-login-screen');
+assert(authenticatedRelease.includes('Restricted Platform Tools') && authenticatedRelease.includes('not-platform-admin'), 'denied-route matrix recognizes current permission-gate surfaces');
+assert(chunkRecovery.includes("const targetTab = 'inventory'") && chunkRecovery.includes('gotoAuthenticatedRoute(page, targetTab'), 'chunk recovery targets a distinct lazy inventory module');
+assert(costRegression.includes("name: 'staff-time-off'") && costRegression.includes("tab: 'published'") && costRegression.includes('Request Off'), 'staff Request Off cost scenario uses published route and Request Off label');
+assert(costRegression.includes("name: 'staff-my-schedule'") && costRegression.includes("tab: 'published'"), 'staff My Schedule cost scenario uses published route');
+assert(costRegression.includes('Open Support Diagnostics') && costRegression.includes("getByRole('button', { name: /switch workspace/i })"), 'cost regression locators use current support diagnostics and workspace switcher controls');
+assert(requestOffE2e.includes("filter.locator('option').filter") && requestOffE2e.includes('selectOption') && requestOffE2e.includes('selectedOptionLabel'), 'Request Off E2E helper waits for real select options and returns selected label');
+assert(ghostRequestOff.includes("action === 'conflicts'") && ghostRequestOff.includes('postDataJSON') && ghostRequestOff.includes('dates.includes(conflictDate)'), 'Ghost Request Off captures only the precise conflicts API response');
+
 if (failures) { console.error(`\n${failures} validation check(s) failed.`); process.exit(1); }
-console.log('\n16.0.164 source validation passed.');
+console.log('\n16.0.165 source validation passed.');

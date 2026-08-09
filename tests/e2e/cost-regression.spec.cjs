@@ -14,13 +14,13 @@ const scenarios = [
   { name: 'owner-today', email: 'OWNER_EMAIL', password: 'OWNER_PASSWORD', tab: 'today' },
   { name: 'recipes', email: 'OWNER_EMAIL', password: 'OWNER_PASSWORD', tab: 'recipes' },
   { name: 'operations-center', email: 'MANAGER_EMAIL', password: 'MANAGER_PASSWORD', tab: 'ops' },
-  { name: 'staff-my-schedule', email: 'STAFF_EMAIL', password: 'STAFF_PASSWORD', tab: 'schedule' },
+  { name: 'staff-my-schedule', email: 'STAFF_EMAIL', password: 'STAFF_PASSWORD', tab: 'published' },
   { name: 'manager-schedule-builder', email: 'MANAGER_EMAIL', password: 'MANAGER_PASSWORD', tab: 'schedule', subtab: /schedule builder/i },
-  { name: 'staff-time-off', email: 'STAFF_EMAIL', password: 'STAFF_PASSWORD', tab: 'schedule', subtab: /time off/i },
-  { name: 'staff-availability', email: 'STAFF_EMAIL', password: 'STAFF_PASSWORD', tab: 'schedule', subtab: /availability/i },
+  { name: 'staff-time-off', email: 'STAFF_EMAIL', password: 'STAFF_PASSWORD', tab: 'published', subtab: /Request Off/i },
+  { name: 'staff-availability', email: 'STAFF_EMAIL', password: 'STAFF_PASSWORD', tab: 'published', subtab: /Availability/i },
   { name: 'personal-reminders', email: 'STAFF_EMAIL', password: 'STAFF_PASSWORD', tab: 'reminders' },
   { name: 'system-admin-overview', email: 'SYSTEM_ADMIN_EMAIL', password: 'SYSTEM_ADMIN_PASSWORD', tab: 'godmode' },
-  { name: 'bug-ledger', email: 'SYSTEM_ADMIN_EMAIL', password: 'SYSTEM_ADMIN_PASSWORD', tab: 'godmode', subtab: /bug ledger|support/i },
+  { name: 'bug-ledger', email: 'SYSTEM_ADMIN_EMAIL', password: 'SYSTEM_ADMIN_PASSWORD', tab: 'godmode', subtab: /Open Support Diagnostics/i },
   { name: 'audit-logs', email: 'SYSTEM_ADMIN_EMAIL', password: 'SYSTEM_ADMIN_PASSWORD', tab: 'audit' },
   { name: 'background-return', email: 'OWNER_EMAIL', password: 'OWNER_PASSWORD', tab: 'today', action: 'background' },
   { name: 'select-active-workspace', email: 'OWNER_EMAIL', password: 'OWNER_PASSWORD', tab: 'today', action: 'select-current-workspace' },
@@ -77,12 +77,12 @@ async function openScenario(page, scenario) {
     await page.evaluate(() => { window.__chaosQaVisibilityState = 'visible'; document.dispatchEvent(new Event('visibilitychange')); });
     await page.waitForTimeout(1000);
   } else if (scenario.action === 'select-current-workspace') {
-    const trigger = page.locator('button').filter({ hasText: /current|workspace|restaurant/i }).first();
+    const trigger = page.getByRole('button', { name: /switch workspace/i }).first();
     await expect(trigger, 'workspace switcher trigger').toBeVisible({ timeout: 8000 });
     await trigger.click();
-    const current = page.getByText(/current/i).first();
-    await expect(current).toBeVisible({ timeout: 5000 });
-    await current.locator('xpath=ancestor::button[1]').click().catch(async () => page.getByRole('button', { name: /close/i }).click());
+    const current = page.getByRole('button', { name: /current|active workspace|switch/i }).first();
+    await expect(current, 'current workspace option or switcher panel should appear').toBeVisible({ timeout: 5000 });
+    await current.click().catch(async () => page.getByRole('button', { name: /close/i }).click());
   } else if (scenario.action === 'reload-for-push-sync') {
     await page.reload({ waitUntil: 'domcontentloaded' });
     await assertAuthenticatedAfterNavigation(page, { timeout: 30_000 });

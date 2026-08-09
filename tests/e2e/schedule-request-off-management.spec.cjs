@@ -87,17 +87,15 @@ async function waitForRequestOffEmployee(page, employeeName, message) {
 async function selectRequestOffEmployee(page, employeeName) {
   const filter = page.getByLabel(/Filter Request Off by employee/i).first();
   await expect(filter, 'Managers should see an employee dropdown for Request Off workflow').toBeVisible({ timeout: 10000 });
-  const selected = await filter.evaluate((select, name) => {
-    const wanted = String(name || '').toLowerCase();
-    const option = Array.from(select.options || []).find(row => String(row.label || row.textContent || '').toLowerCase().includes(wanted));
-    if (!option) return '';
-    select.value = option.value;
-    select.dispatchEvent(new Event('change', { bubbles: true }));
-    return option.label || option.textContent || '';
-  }, employeeName);
-  expect(selected, `Request Off employee dropdown should include ${employeeName}`).toMatch(new RegExp(employeeName.replace(/\s+/g, '\\s+'), 'i'));
-  return filter;
+  const option = filter.locator('option').filter({ hasText: new RegExp(employeeName.replace(/\s+/g, '\\s+'), 'i') });
+  await expect(option, `Request Off employee dropdown should include ${employeeName}`).toHaveCount(1, { timeout: 15000 });
+  const selectedOption = await option.first().evaluate(node => ({ value: node.value, label: node.label || node.textContent || '' }));
+  await filter.selectOption(selectedOption.value);
+  const selectedOptionLabel = selectedOption.label.trim();
+  expect(selectedOptionLabel, `Request Off employee dropdown should select ${employeeName}`).toMatch(new RegExp(employeeName.replace(/\s+/g, '\\s+'), 'i'));
+  return { filter, selectedOptionLabel };
 }
+
 
 async function clearRequestOffEmployee(page) {
   const filter = page.getByLabel(/Filter Request Off by employee/i).first();
@@ -190,10 +188,11 @@ test.describe('16.0.153 Schedule warnings and Request Off management', () => {
     await openManagerRequestOff(page, seed);
     await openRequestOffView(page, 'Needs Review');
     await waitForRequestOffEmployee(page, 'Sara QA', 'Seeded Sara QA pending request should be visible before bulk approve');
-    await selectRequestOffEmployee(page, 'Sara QA');
+    const { selectedOptionLabel: selectedSaraLabel } = await selectRequestOffEmployee(page, 'Sara QA');
     await expect(page.locator('body'), 'Sara QA should remain visible after applying the Sara employee filter').toContainText(/Sara QA/i, { timeout: 15000 });
+    const escapedSaraLabel = selectedSaraLabel.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     page.once('dialog', async dialog => {
-      expect(dialog.message(), 'Bulk approval confirmation should state visible pending count and active employee filter').toMatch(/Approve \d+ visible pending Request Off requests? for Sara\?/i);
+      expect(dialog.message(), 'Bulk approval confirmation should state visible pending count and active employee filter').toMatch(new RegExp(`Approve \\d+ visible pending Request Off requests? for ${escapedSaraLabel}\\?`, 'i'));
       await dialog.accept();
     });
     await page.getByRole('button', { name: /^Approve All Visible$/i }).click();
@@ -208,10 +207,11 @@ test.describe('16.0.153 Schedule warnings and Request Off management', () => {
     await openManagerRequestOff(page, seed);
     await openRequestOffView(page, 'Upcoming Approved');
     await waitForRequestOffEmployee(page, 'Allen QA', 'Seeded Allen QA approved request should be visible before bulk archive');
-    await selectRequestOffEmployee(page, 'Allen QA');
+    const { selectedOptionLabel: selectedAllenLabel } = await selectRequestOffEmployee(page, 'Allen QA');
     await expect(page.locator('body'), 'Allen QA should remain visible after applying the Allen employee filter').toContainText(/Allen QA/i, { timeout: 15000 });
+    const escapedAllenLabel = selectedAllenLabel.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     page.once('dialog', async dialog => {
-      expect(dialog.message(), 'Bulk archive confirmation should state visible count and active employee filter').toMatch(/Archive \d+ visible Request Off requests? for Allen\?/i);
+      expect(dialog.message(), 'Bulk archive confirmation should state visible count and active employee filter').toMatch(new RegExp(`Archive \\d+ visible Request Off requests? for ${escapedAllenLabel}\\?`, 'i'));
       await dialog.accept();
     });
     await page.getByRole('button', { name: /^Archive All Visible$/i }).click();
