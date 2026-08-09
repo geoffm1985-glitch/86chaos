@@ -1,14 +1,15 @@
 {
-  "version": "16.0.159",
-  "name": "86 Chaos 16.0.159 Repair Lineage Recovery and Blocked-Run Reporting",
-  "build": "16.0.159",
-  "label": "86 Chaos 16.0.159 Repair Lineage Recovery and Blocked-Run Reporting",
-  "releasedAt": "2026-08-08T21:33:00-05:00",
-  "releaseTitle": "Repair Lineage Recovery and Blocked-Run Reporting",
+  "version": "16.0.161",
+  "name": "86 Chaos 16.0.161 Employee Access Firestore Assertion Correct App Icon Repair",
+  "build": "16.0.161",
+  "label": "86 Chaos 16.0.161 Employee Access Firestore Assertion Correct App Icon Repair",
+  "releasedAt": "2026-08-09T02:59:00-05:00",
+  "releaseTitle": "Employee Access Firestore Assertion Correct App Icon Repair",
   "notes": [
-    "Allows strict failed-only and repair selection to recover from the latest completed focused run when an older full-baseline directory has been pruned.",
-    "Keeps failed+new delta dependent on a completed full baseline and continues to reject canceled, blocked, or incomplete run evidence.",
-    "Blocked-before-execution summaries now state that prior failures were not evaluated or cleared instead of reporting zero remaining failures."
+    "Fails staff removal if required Firebase Auth disable fails for a user with no other active workspace.",
+    "Prevents explicit inactive workspace membership from being revived by stale legacy login fields or duplicate records.",
+    "Guards shared Firestore listeners against stale callbacks after release/tenant cleanup.",
+    "Uses the supplied metallic 86 Chaos artwork for app/PWA icons and header app mark."
   ],
-  "title": "86 Chaos 16.0.159 Repair Lineage Recovery and Blocked-Run Reporting"
+  "title": "86 Chaos 16.0.161 Employee Access Firestore Assertion Correct App Icon Repair"
 }

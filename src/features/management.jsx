@@ -3035,7 +3035,7 @@ const Toggle = ({ label, desc, checked, onChange, disabled = false }) => (
                 <div className="text-xs font-black text-white">Restaurant Logo</div>
                 <div className="flex items-center gap-3 flex-wrap">
                   <div className="flex items-center gap-2 bg-[#0B0E11] border border-[#2A353D] rounded-xl px-3 py-2" title="86 Chaos branding is locked and always displayed">
-                    <img src="/wisco.png" alt="86 Chaos icon" className="h-8 w-auto" />
+                    <img src="/86chaos-icon-48-v2.png" alt="86 Chaos icon" className="h-8 w-auto" />
                     <img src="/6139.png" alt="86 Chaos" className="h-5 w-auto" />
                   </div>
                   {sysRestaurantLogoUrl ? <img src={sysRestaurantLogoUrl} alt="Restaurant logo preview" className="h-12 max-w-[180px] object-contain bg-white/5 border border-[#2A353D] rounded-xl p-2" /> : <div className="text-[10px] text-slate-500 font-bold">No restaurant logo uploaded yet.</div>}

@@ -24,6 +24,18 @@ function cleanPerms(perms = {}) {
   if (!perms || typeof perms !== 'object') return {};
   return Object.fromEntries(Object.entries(perms).filter(([k, v]) => /^[A-Za-z0-9_-]{1,40}$/.test(k) && typeof v === 'boolean'));
 }
+function inactiveMembershipState(raw = {}) {
+  if (!raw || typeof raw !== 'object') return false;
+  const status = clean(raw.status || raw.recordStatus || raw.membershipStatus).toLowerCase();
+  return raw.isActive === false || raw.disabled === true || raw.deleted === true || raw.removed === true || raw.archived === true || ['inactive', 'disabled', 'deleted', 'removed', 'deactivated'].includes(status);
+}
+function mergeWorkspaceOption(current = {}, raw = {}, restaurantId = '', source = '') {
+  const rawInactive = inactiveMembershipState(raw);
+  const currentInactive = inactiveMembershipState(current);
+  return currentInactive && !rawInactive
+    ? { ...raw, ...current, restaurantId, membershipSource: clean(current.membershipSource || source || raw.membershipSource) }
+    : { ...current, ...raw, restaurantId, membershipSource: clean(raw.membershipSource || source || current.membershipSource) };
+}
 function safeMembership(raw = {}, rest = {}, uid = '', email = '') {
   const restaurantId = clean(raw.restaurantId || raw.id);
   if (!restaurantId || isDeletedRestaurant(rest)) return null;
@@ -81,7 +93,7 @@ async function addWorkspaceMembersByQuery(db, options, queryRef, uid, email, sou
     const restaurantId = clean(raw.restaurantId);
     if (!restaurantId) return;
     const current = options.get(restaurantId) || {};
-    options.set(restaurantId, { ...current, ...raw, restaurantId });
+    options.set(restaurantId, mergeWorkspaceOption(current, raw, restaurantId, source));
   });
 }
 
@@ -105,7 +117,7 @@ module.exports = async function handler(req, res) {
       const restaurantId = clean(raw.restaurantId || raw.id);
       if (!restaurantId) return;
       const current = options.get(restaurantId) || {};
-      options.set(restaurantId, { ...current, ...raw, restaurantId, membershipSource: clean(raw.membershipSource || source || current.membershipSource) });
+      options.set(restaurantId, mergeWorkspaceOption(current, raw, restaurantId, source));
     };
 
     // Only restaurantId is a legacy membership. activeRestaurantId and

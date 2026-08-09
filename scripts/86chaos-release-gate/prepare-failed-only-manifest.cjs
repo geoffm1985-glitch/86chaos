@@ -53,32 +53,42 @@ function loadReportedFailedOnlyManifest() {
   const manifestPath = path.join(__dirname, 'reported-failed-only-20260809-004632.json');
   const manifest = readJsonIfExists(manifestPath);
   if (!manifest || !Array.isArray(manifest.selected)) fail('Reported failed-only manifest is missing or malformed.', [manifestPath]);
-  const runtimeTitle = 'Schedule Builder warning runtime renders without Runtime Recovery or TypeError';
+  const excludedPassingTitles = new Set([
+    'Schedule Builder warning runtime renders without Runtime Recovery or TypeError',
+    'Schedule Builder requested-off warning shows employee name and never Someone',
+    'Schedule Builder coverage warnings show under and over target math',
+    'Schedule Builder warning dismissal hides only the warning',
+  ]);
   const projects = new Set((manifest.selected || []).map(row => row.project || (row.projects || [])[0] || ''));
   const desktop = manifest.selected.filter(row => row.project === 'chromium' || row.projects?.includes('chromium')).length;
   const mobile = manifest.selected.filter(row => row.project === 'mobile-chromium' || row.projects?.includes('mobile-chromium')).length;
   const badProjects = [...projects].filter(project => !['chromium', 'mobile-chromium'].includes(project));
-  const runtimeSelected = manifest.selected.filter(row => (row.leafTitle || row.exactTestTitle || row.title) === runtimeTitle);
+  const excludedSelected = manifest.selected.filter(row => excludedPassingTitles.has(row.leafTitle || row.exactTestTitle || row.title));
   const errors = [];
-  if (manifest.selected.length !== 12) errors.push(`Reported failed-only manifest must select exactly 12 identities, got ${manifest.selected.length}.`);
-  if (desktop !== 6) errors.push(`Reported failed-only manifest must select exactly 6 chromium identities, got ${desktop}.`);
-  if (mobile !== 6) errors.push(`Reported failed-only manifest must select exactly 6 mobile-chromium identities, got ${mobile}.`);
+  if (manifest.selected.length !== 6) errors.push(`Reported failed-only manifest must select exactly 6 identities, got ${manifest.selected.length}.`);
+  if (desktop !== 3) errors.push(`Reported failed-only manifest must select exactly 3 chromium identities, got ${desktop}.`);
+  if (mobile !== 3) errors.push(`Reported failed-only manifest must select exactly 3 mobile-chromium identities, got ${mobile}.`);
   if (badProjects.length) errors.push(`Reported failed-only manifest contains disallowed projects: ${badProjects.join(', ')}.`);
-  if (runtimeSelected.length) errors.push('Reported failed-only manifest must exclude the already-passing Schedule runtime test.');
+  if (excludedSelected.length) errors.push(`Reported failed-only manifest must exclude passing tests: ${excludedSelected.map(row => row.leafTitle || row.title).join(', ')}.`);
   if (errors.length) fail('Reported failed-only selection guard failed.', errors);
   return manifest;
 }
 
 function assertReportedFailedOnlySelection(manifest) {
-  const runtimeTitle = 'Schedule Builder warning runtime renders without Runtime Recovery or TypeError';
+  const excludedPassingTitles = new Set([
+    'Schedule Builder warning runtime renders without Runtime Recovery or TypeError',
+    'Schedule Builder requested-off warning shows employee name and never Someone',
+    'Schedule Builder coverage warnings show under and over target math',
+    'Schedule Builder warning dismissal hides only the warning',
+  ]);
   const selected = manifest.selected || [];
   const desktop = selected.filter(row => row.project === 'chromium' || row.projects?.includes('chromium')).length;
   const mobile = selected.filter(row => row.project === 'mobile-chromium' || row.projects?.includes('mobile-chromium')).length;
   const errors = [];
-  if (selected.length !== 12) errors.push(`Expected exactly 12 reported failed-only identities, got ${selected.length}.`);
-  if (desktop !== 6) errors.push(`Expected 6 chromium identities, got ${desktop}.`);
-  if (mobile !== 6) errors.push(`Expected 6 mobile-chromium identities, got ${mobile}.`);
-  if (selected.some(row => (row.leafTitle || row.exactTestTitle || row.title) === runtimeTitle)) errors.push('Already-passing Schedule runtime test was selected.');
+  if (selected.length !== 6) errors.push(`Expected exactly 6 reported failed-only identities, got ${selected.length}.`);
+  if (desktop !== 3) errors.push(`Expected 3 chromium identities, got ${desktop}.`);
+  if (mobile !== 3) errors.push(`Expected 3 mobile-chromium identities, got ${mobile}.`);
+  if (selected.some(row => excludedPassingTitles.has(row.leafTitle || row.exactTestTitle || row.title))) errors.push('A passing Schedule warning/runtime test was selected.');
   if (selected.some(row => !['chromium', 'mobile-chromium'].includes(row.project || (row.projects || [])[0] || ''))) errors.push('Reported failed-only selected a project outside chromium/mobile-chromium.');
   if (errors.length) fail('Reported failed-only selection guard failed after inventory qualification.', errors);
 }
@@ -91,7 +101,7 @@ try {
       manifest: qualifyManifestSelectionsWithCurrentInventory(manifest, { root: process.cwd(), currentRecords: loadCurrentRecords() }),
       baselineFullRunDir: '',
       latestFailedOnlyRunDir: '',
-      selectionSource: manifest.selectionSource || 'uploaded-failed-tests-20260809-063843',
+      selectionSource: manifest.selectionSource || 'uploaded-failed-tests-20260809-072157',
       lineageMode: 'none',
     };
   } else {
@@ -129,8 +139,8 @@ let copied = targetQualifiedManifest(selectedSource.manifest, {
 copied.lineageMode = copied.lineageMode || selectedSource.lineageMode || 'full-baseline';
 if (selectionMode === 'reported-failed-only') {
   copied.mode = 'reported-failed-only';
-  copied.source = 'uploaded-failed-tests-20260809-063843';
-  copied.selectionSource = 'uploaded-failed-tests-20260809-063843';
+  copied.source = 'uploaded-failed-tests-20260809-072157';
+  copied.selectionSource = 'uploaded-failed-tests-20260809-072157';
   copied.lineageMode = 'none';
   copied.previousFailuresSelected = copied.selected.length;
   copied.previousTimeoutsSelected = 0;
@@ -261,7 +271,7 @@ if (selectionMode === 'repair') {
   console.log(`Duplicate identities removed: ${selectionPayload.duplicateIdentitiesRemoved}`);
   console.log(`Total repair tests selected: ${copied.selected.length}`);
 } else if (selectionMode === 'reported-failed-only') {
-  console.log('Reported failed-only guard: exactly 12 identities selected (chromium 6, mobile-chromium 6).');
+  console.log('Reported failed-only guard: exactly 6 identities selected (chromium 6, mobile-chromium 6).');
   console.log('Already-passing Schedule runtime tests excluded.');
 } else {
   console.log(`Previous failed/timed-out identities selected: ${copied.selected.length}`);

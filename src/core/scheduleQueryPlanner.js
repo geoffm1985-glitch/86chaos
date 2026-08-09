@@ -293,10 +293,13 @@ export function buildScheduleQueryPlan({ activeTabState = '', activeScheduleSubT
       ...plan,
       shiftClauses: canManageSchedule ? [['date','>=', recentWindowStart], ['date','<=', scheduleWindowEnd]] : [...ownUserClause, ['date','>=', recentWindowStart], ['date','<=', scheduleWindowEnd]],
       shiftLimit: canManageSchedule ? 250 : 80,
+      // Managers need the Request Off workflow to load the visible date window even when
+      // the stricter status+date composite listener is unavailable or still building in QA.
+      // TabTimeOff already applies the status/date/employee filters client-side.
       timeOffClauses: canManageSchedule
-        ? [['status','in',activeStatuses], ['date','>=', recentWindowStart]]
+        ? [['date','>=', recentWindowStart], ['date','<=', scheduleWindowEnd]]
         : (authUserId ? [['userId','==',authUserId], ['status','in',activeStatuses], ['date','>=', recentWindowStart]] : [['userId','==','__none__']]),
-      timeOffLimit: canManageSchedule ? 120 : 60,
+      timeOffLimit: canManageSchedule ? 220 : 60,
       timeOffHistoryEnabled: true,
       timeOffHistoryClauses: canManageSchedule
         ? [['status','in',terminalStatuses]]

@@ -1,6 +1,11 @@
 const admin = require('firebase-admin');
 const { getAdminAppForRequest } = require('./_firebase-project-admin');
 const { isProtectedRootAdminEmail, mergeProtectedRootAdminEmails, protectedRootAdminError } = require('./_protected-root-admin');
+const {
+  buildTargetIdentity,
+  membershipMatchesTargetIdentity,
+  isActiveWorkspaceMembership
+} = require('./_delete-user-cleanup-logic.cjs');
 
 function initAdmin(req) {
   return getAdminAppForRequest(req, { requireCredentials: true });
@@ -32,6 +37,67 @@ function membershipFromUserMap(user, restaurantId) {
   const m = user?.memberships?.[restaurantId];
   return m && typeof m === 'object' ? m : null;
 }
+
+function isInactiveMembership(raw = {}) {
+  if (!raw || typeof raw !== 'object') return false;
+  const status = String(raw.status || raw.recordStatus || raw.membershipStatus || '').toLowerCase().trim();
+  return raw.isActive === false || raw.disabled === true || raw.deleted === true || raw.removed === true || raw.archived === true || ['inactive', 'disabled', 'deleted', 'removed', 'deactivated'].includes(status);
+}
+async function collectTargetWorkspaceMembershipDocs(db, targetUid, targetEmail, targetUser, restaurantId) {
+  const identity = buildTargetIdentity(targetUid, targetEmail, targetUser || {});
+  const seen = new Map();
+  const addSnap = (snap) => {
+    snap.forEach((doc) => {
+      const data = doc.data() || {};
+      if (String(data.restaurantId || '') !== String(restaurantId || '')) return;
+      if (!membershipMatchesTargetIdentity(data, identity, doc.id)) return;
+      seen.set(doc.id, { ref: doc.ref, id: doc.id, data });
+    });
+  };
+  const queries = [];
+  if (targetUid) {
+    queries.push(db.collection('workspaceMembers').where('userId', '==', targetUid).get());
+    queries.push(db.collection('workspaceMembers').where('uid', '==', targetUid).get());
+    queries.push(db.collection('workspaceMembers').where('authUid', '==', targetUid).get());
+    queries.push(db.collection('workspaceMembers').where('accountUserId', '==', targetUid).get());
+  }
+  if (targetEmail) {
+    queries.push(db.collection('workspaceMembers').where('email', '==', targetEmail).get());
+    queries.push(db.collection('workspaceMembers').where('emailLower', '==', targetEmail).get());
+    queries.push(db.collection('workspaceMembers').where('employeeEmail', '==', targetEmail).get());
+    queries.push(db.collection('workspaceMembers').where('userEmail', '==', targetEmail).get());
+  }
+  await Promise.all(queries.map(p => p.then(addSnap).catch(() => {})));
+  const canonicalId = memberDocId(targetUid, restaurantId);
+  const canonicalSnap = await db.collection('workspaceMembers').doc(canonicalId).get().catch(() => null);
+  if (canonicalSnap?.exists) seen.set(canonicalSnap.id, { ref: canonicalSnap.ref, id: canonicalSnap.id, data: canonicalSnap.data() || {} });
+  return Array.from(seen.values());
+}
+async function collectRemainingActiveMemberships(db, targetUid, targetEmail, targetUser, removedRestaurantId) {
+  const identity = buildTargetIdentity(targetUid, targetEmail, targetUser || {});
+  const seen = new Map();
+  const consider = (doc) => {
+    const data = doc.data() || {};
+    const restaurantId = cleanString(data.restaurantId || '');
+    if (!restaurantId || restaurantId === removedRestaurantId) return;
+    if (!membershipMatchesTargetIdentity(data, identity, doc.id)) return;
+    if (!isActiveWorkspaceMembership(data)) return;
+    seen.set(`${restaurantId}:${doc.id}`, { id: doc.id, ...data });
+  };
+  const queries = [];
+  if (targetUid) {
+    queries.push(db.collection('workspaceMembers').where('userId', '==', targetUid).where('isActive', '==', true).get());
+    queries.push(db.collection('workspaceMembers').where('uid', '==', targetUid).where('isActive', '==', true).get());
+  }
+  if (targetEmail) queries.push(db.collection('workspaceMembers').where('email', '==', targetEmail).where('isActive', '==', true).get());
+  await Promise.all(queries.map(p => p.then(snap => snap.forEach(consider)).catch(() => {})));
+  const memberships = targetUser?.memberships && typeof targetUser.memberships === 'object' ? targetUser.memberships : {};
+  Object.entries(memberships).forEach(([restaurantId, member]) => {
+    if (restaurantId !== removedRestaurantId && isActiveWorkspaceMembership(member || {})) seen.set(`map:${restaurantId}`, { id: member?.membershipId || restaurantId, restaurantId, ...(member || {}) });
+  });
+  return Array.from(seen.values());
+}
+
 async function loadWorkspaceMember(db, uid, email, restaurantId) {
   if (!restaurantId) return null;
   if (uid) {
@@ -362,14 +428,8 @@ module.exports = async function handler(req, res) {
         membershipSource: 'staff-member-api-v14-multi-workspace'
       };
 
-      const activeMemberSnap = await db.collection('workspaceMembers').where('userId', '==', targetUid).where('isActive', '==', true).get().catch(() => null);
-      const remainingActive = [];
-      if (activeMemberSnap) {
-        activeMemberSnap.forEach(doc => {
-          const m = doc.data() || {};
-          if (m.restaurantId !== ctx.restaurantId) remainingActive.push({ id: doc.id, ...m });
-        });
-      }
+      const duplicateWorkspaceMembers = await collectTargetWorkspaceMembershipDocs(db, targetUid, targetEmail, targetUser, ctx.restaurantId);
+      const remainingActive = await collectRemainingActiveMemberships(db, targetUid, targetEmail, targetUser, ctx.restaurantId);
       const mapPatch = {
         restaurantId: ctx.restaurantId,
         restaurantName: deactivatedMember.restaurantName || ctx.restaurant?.name || ctx.restaurantId,
@@ -383,13 +443,23 @@ module.exports = async function handler(req, res) {
       const userPatch = {
         [`memberships.${ctx.restaurantId}`]: mapPatch,
         updatedAt: now,
-        staffWriteSource: 'staff-member-api-v14-multi-workspace'
+        staffWriteSource: 'staff-member-api-v14-multi-workspace',
+        forceLogout: true,
+        forceLogoutAt: now,
+        forceLogoutNonce: `${now}_${Math.random().toString(36).slice(2)}`,
+        forceLogoutReason: 'staff-removed-from-workspace'
       };
       let authDisabled = false;
       if (remainingActive.length === 0) {
         userPatch.isActive = false;
-        try { await auth.updateUser(targetUid, { disabled: true }); authDisabled = true; }
-        catch (authErr) { console.warn('staff-member deactivate could not disable auth user:', authErr?.code || authErr?.message || authErr); }
+        try {
+          await auth.updateUser(targetUid, { disabled: true });
+          authDisabled = true;
+        } catch (authErr) {
+          const detail = authErr?.code || authErr?.message || String(authErr || 'unknown');
+          console.error('staff-member deactivate could not disable auth user:', detail);
+          return res.status(500).json({ error: 'Staff account was not removed because Firebase Auth could not be disabled for a user with no other active workspace access.', authDisableFailed: true, detail });
+        }
       } else if (targetUser.restaurantId === ctx.restaurantId || targetUser.activeRestaurantId === ctx.restaurantId || targetUser.defaultRestaurantId === ctx.restaurantId) {
         const next = remainingActive[0];
         userPatch.isActive = true;
@@ -399,11 +469,20 @@ module.exports = async function handler(req, res) {
       }
 
       const batch = db.batch();
-      batch.set(db.collection('workspaceMembers').doc(memberId), deactivatedMember, { merge: true });
+      const deactivationPatch = {
+        ...deactivatedMember,
+        disabled: true,
+        removed: true,
+        status: 'inactive'
+      };
+      const memberDocs = duplicateWorkspaceMembers.length ? duplicateWorkspaceMembers : [{ ref: db.collection('workspaceMembers').doc(memberId), id: memberId, data: current || {} }];
+      memberDocs.forEach((row) => {
+        batch.set(row.ref || db.collection('workspaceMembers').doc(row.id), { ...(row.data || {}), ...deactivationPatch, membershipId: row.id || memberId, id: row.id || memberId }, { merge: true });
+      });
       batch.set(targetRef, userPatch, { merge: true });
       await batch.commit();
       await writeAudit(db, ctx, 'STAFF_REMOVE_FROM_WORKSPACE', `${targetUid}/${ctx.restaurantId}`, `${current?.name || targetUser.email || targetUid} was removed from this workspace by ${ctx.callerEmail}. Auth disabled: ${authDisabled ? 'yes, no other active workspaces' : 'no, other active workspace remains'}.`);
-      return res.status(200).json({ ok: true, action: 'deactivate', uid: targetUid, membershipId: memberId, authDisabled, remainingWorkspaces: remainingActive.length });
+      return res.status(200).json({ ok: true, action: 'deactivate', uid: targetUid, membershipId: memberId, authDisabled, remainingWorkspaces: remainingActive.length, deactivatedMemberships: duplicateWorkspaceMembers.length || 1 });
     }
 
     return res.status(400).json({ error: 'Unsupported staff action.' });

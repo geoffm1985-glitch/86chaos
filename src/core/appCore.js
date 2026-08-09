@@ -405,7 +405,7 @@ export const MASTER_ADMIN_EMAIL = (process.env.REACT_APP_MASTER_ADMIN_EMAIL || '
 export const EVENT_TAGS = ['Standard Day', 'Packers Game', 'Brewers Game', 'Live Music', 'Severe Weather', 'Private Catering', 'Holiday'];
 
 // --- VERSION TRACKING ---
-export const CURRENT_VERSION = '16.0.159';
+export const CURRENT_VERSION = '16.0.161';
 
 // --- Helpers ---
 const usePageVisible = () => {
@@ -530,6 +530,7 @@ export const clearTenantListenerCache = (boundary = {}) => {
   let releasedDocuments = 0;
   for (const [key, entry] of liveCollectionRegistry.entries()) {
     if (!matches(entry)) continue;
+    entry.closed = true;
     try { entry.unsubscribe?.(); } catch (_) {}
     if (entry.releaseTimer) clearTimeout(entry.releaseTimer);
     liveCollectionRegistry.delete(key);
@@ -537,6 +538,7 @@ export const clearTenantListenerCache = (boundary = {}) => {
   }
   for (const [key, entry] of liveDocumentRegistry.entries()) {
     if (!matches(entry)) continue;
+    entry.closed = true;
     try { entry.unsubscribe?.(); } catch (_) {}
     if (entry.releaseTimer) clearTimeout(entry.releaseTimer);
     liveDocumentRegistry.delete(key);
@@ -639,7 +641,8 @@ const acquireSharedLiveCollection = ({ coll, restId, constraints, key, setData, 
       listenerCreationCount: 1,
       listenerReuseCount: 0,
       listenerReleaseCount: 0,
-      reconnectCount: cached ? 1 : 0
+      reconnectCount: cached ? 1 : 0,
+      closed: false
     };
     annotateListenerDiagnostics(key, {
       queryKey: key,
@@ -667,6 +670,7 @@ const acquireSharedLiveCollection = ({ coll, restId, constraints, key, setData, 
     entry.unsubscribe = onSnapshot(
       query(collection(db, coll), ...constraints),
       snap => {
+        if (entry.closed === true || liveCollectionRegistry.get(key) !== entry) return;
         const docs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
         const isInitial = !entry.initialSnapshotSeen;
         entry.initialSnapshotSeen = true;
@@ -697,6 +701,7 @@ const acquireSharedLiveCollection = ({ coll, restId, constraints, key, setData, 
         entry.subscribers.forEach(row => row.fn(entry.data, { resolved: true, stale: false, error: null, fromServer: true }));
       },
       err => {
+        if (entry.closed === true || liveCollectionRegistry.get(key) !== entry) return;
         const message = err?.message || String(err || '');
         const isIndexProblem = err?.code === 'failed-precondition' || /index|requires an index|currently building/i.test(message);
         if (isIndexProblem) console.warn(`Firestore index pending for ${coll} / ${restId}. Waiting for the deployed index instead of showing a mismatched fallback query.`, message);
@@ -741,6 +746,7 @@ const acquireSharedLiveCollection = ({ coll, restId, constraints, key, setData, 
       current.releaseTimer = setTimeout(() => {
         const latest = liveCollectionRegistry.get(key);
         if (!latest || latest.subscribers.size > 0) return;
+        latest.closed = true;
         try { latest.unsubscribe?.(); } catch (err) { console.warn('Failed to release shared Firestore listener', err); }
         latest.unsubscribe = null;
         latest.listenerReleaseCount += 1;
@@ -880,9 +886,11 @@ const acquireSharedLiveDocument = ({ coll, docId, key, setValue, debugLabel = ''
       unsubscribe: null,
       attachedAt: new Date().toISOString(),
       listenerReuseCount: 0,
-      listenerReleaseCount: 0
+      listenerReleaseCount: 0,
+      closed: false
     };
     entry.unsubscribe = onSnapshot(doc(db, coll, docId), snap => {
+      if (entry.closed === true || liveDocumentRegistry.get(key) !== entry) return;
       entry.data = snap.exists() ? { id: snap.id, ...snap.data() } : null;
       entry.initialSnapshotSeen = true;
       entry.hasCachedSnapshot = true;
@@ -905,6 +913,7 @@ const acquireSharedLiveDocument = ({ coll, docId, key, setValue, debugLabel = ''
         lastError: ''
       };
     }, err => {
+      if (entry.closed === true || liveDocumentRegistry.get(key) !== entry) return;
       const message = err?.message || String(err || '');
       console.error(`Live document error for ${coll}/${docId}:`, err);
       entry.initialSnapshotSeen = true;
@@ -963,6 +972,7 @@ const acquireSharedLiveDocument = ({ coll, docId, key, setValue, debugLabel = ''
       current.releaseTimer = setTimeout(() => {
         const latest = liveDocumentRegistry.get(key);
         if (!latest || latest.subscribers.size > 0) return;
+        latest.closed = true;
         try { latest.unsubscribe?.(); } catch (_) {}
         latest.unsubscribe = null;
         latest.listenerReleaseCount += 1;

@@ -149,11 +149,23 @@ async function getRestaurantMap(db, restaurantIds = []) {
   }
   return out;
 }
+function inactiveMembershipState(raw = {}) {
+  if (!raw || typeof raw !== 'object') return false;
+  const status = clean(raw.status || raw.recordStatus || raw.membershipStatus).toLowerCase();
+  return raw.isActive === false || raw.disabled === true || raw.deleted === true || raw.removed === true || raw.archived === true || ['inactive', 'disabled', 'deleted', 'removed', 'deactivated'].includes(status);
+}
 function addRawWorkspace(options, raw = {}, source = '') {
   const restaurantId = clean(raw.restaurantId || raw.id);
   if (!restaurantId) return;
   const current = options.get(restaurantId) || {};
-  options.set(restaurantId, { ...current, ...raw, restaurantId, membershipSource: clean(raw.membershipSource || source || current.membershipSource) });
+  const rawInactive = inactiveMembershipState(raw);
+  const currentInactive = inactiveMembershipState(current);
+  // Explicit inactive/deleted workspace state wins over stale legacy fields or duplicate active rows for the same restaurant.
+  // This prevents removed employees from regaining a workspace through cached restaurantId/defaultRestaurantId/workspaceIds.
+  const merged = currentInactive && !rawInactive
+    ? { ...raw, ...current, restaurantId, membershipSource: clean(current.membershipSource || source || raw.membershipSource) }
+    : { ...current, ...raw, restaurantId, membershipSource: clean(raw.membershipSource || source || current.membershipSource) };
+  options.set(restaurantId, merged);
 }
 async function addWorkspaceQuery(db, options, queryRef, source) {
   const snap = await queryRef.get();

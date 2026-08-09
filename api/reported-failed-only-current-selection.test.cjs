@@ -9,27 +9,30 @@ const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
 const rows = manifest.selected || [];
 const runtimeTitle = 'Schedule Builder warning runtime renders without Runtime Recovery or TypeError';
 const expectedTitles = [
-  'Schedule Builder requested-off warning shows employee name and never Someone',
-  'Schedule Builder coverage warnings show under and over target math',
-  'Schedule Builder warning dismissal hides only the warning',
   'Request Off employee filter narrows and clears manager-visible requests',
   'Approve All Visible updates only filtered visible pending requests',
   'Archive All Visible archives only filtered visible eligible requests',
 ];
+const excludedPassingTitles = [
+  runtimeTitle,
+  'Schedule Builder requested-off warning shows employee name and never Someone',
+  'Schedule Builder coverage warnings show under and over target math',
+  'Schedule Builder warning dismissal hides only the warning',
+];
 
-test('reported failed-only manifest selects exactly the 12 uploaded failures', () => {
+test('reported failed-only manifest selects exactly the six current uploaded failures', () => {
   assert.equal(manifest.mode, 'reported-failed-only');
-  assert.equal(rows.length, 12);
-  assert.equal(rows.filter(row => row.project === 'chromium').length, 6);
-  assert.equal(rows.filter(row => row.project === 'mobile-chromium').length, 6);
+  assert.equal(rows.length, 6);
+  assert.equal(rows.filter(row => row.project === 'chromium').length, 3);
+  assert.equal(rows.filter(row => row.project === 'mobile-chromium').length, 3);
   assert.deepEqual([...new Set(rows.map(row => row.project))].sort(), ['chromium', 'mobile-chromium']);
   assert.ok(rows.every(row => row.specPath === 'e2e/schedule-request-off-management.spec.cjs'));
   assert.ok(rows.every(row => row.fullSuitePath === '16.0.153 Schedule warnings and Request Off management'));
-  assert.ok(rows.every(row => row.selectionReasons?.includes('uploaded_report_failure')));
+  assert.ok(rows.every(row => row.selectionReasons?.includes('uploaded_current_failed_report_failure')));
 });
 
-test('reported failed-only manifest excludes already-passing runtime tests and unrelated current-release scope', () => {
-  assert.equal(rows.some(row => row.leafTitle === runtimeTitle), false);
+test('reported failed-only manifest excludes already-passing runtime/passing Schedule tests and unrelated current-release scope', () => {
+  for (const title of excludedPassingTitles) assert.equal(rows.some(row => row.leafTitle === title), false, `${title} should not be selected`);
   assert.equal(rows.some(row => row.selectionReasons?.includes('current_release_feature_test')), false);
   for (const title of expectedTitles) {
     assert.equal(rows.filter(row => row.leafTitle === title).length, 2, `${title} should appear once per project`);

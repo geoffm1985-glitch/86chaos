@@ -9,13 +9,13 @@ test('PWA manifest and HTML icon declarations all resolve to real source assets'
   assert.equal(report.ok, true, report.errors.join('\n'));
   const paths = report.inventory.map(i => i.relPath);
   for (const required of [
-    'public/86chaos-icon-16-v1.png',
-    'public/86chaos-icon-32-v1.png',
-    'public/86chaos-icon-180-v1.png',
-    'public/86chaos-icon-192-v1.png',
-    'public/86chaos-icon-512-v1.png',
-    'public/86chaos-maskable-192-v1.png',
-    'public/86chaos-maskable-512-v1.png',
+    'public/86chaos-icon-16-v2.png',
+    'public/86chaos-icon-32-v2.png',
+    'public/86chaos-icon-180-v2.png',
+    'public/86chaos-icon-192-v2.png',
+    'public/86chaos-icon-512-v2.png',
+    'public/86chaos-maskable-192-v2.png',
+    'public/86chaos-maskable-512-v2.png',
     'public/favicon.ico',
   ]) assert.ok(paths.includes(required), `${required} should be declared and packaged`);
 });

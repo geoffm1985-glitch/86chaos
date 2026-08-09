@@ -4,181 +4,13 @@
   "generatedAt": "2026-08-09T06:38:24.000Z",
   "mode": "reported-failed-only",
   "lineageMode": "none",
-  "source": "uploaded-failed-tests-20260809-063843",
-  "selectionSource": "uploaded-failed-tests-20260809-063843",
+  "source": "uploaded-failed-tests-20260809-072157",
+  "selectionSource": "uploaded-failed-tests-20260809-072157",
   "baselineFullRunId": "2026-08-09T00-46-32",
   "baselineSourceVersion": "16.0.159",
   "baselineDeployedVersion": "16.0.159",
   "baselineGeneratedAt": "2026-08-09T05:51:06.242Z",
   "selected": [
-    {
-      "specPath": "e2e/schedule-request-off-management.spec.cjs",
-      "suitePathParts": [
-        "16.0.153 Schedule warnings and Request Off management"
-      ],
-      "fullSuitePath": "16.0.153 Schedule warnings and Request Off management",
-      "leafTitle": "Schedule Builder requested-off warning shows employee name and never Someone",
-      "exactTestTitle": "Schedule Builder requested-off warning shows employee name and never Someone",
-      "title": "Schedule Builder requested-off warning shows employee name and never Someone",
-      "fullTitle": "16.0.153 Schedule warnings and Request Off management > Schedule Builder requested-off warning shows employee name and never Someone",
-      "titlePathParts": [
-        "16.0.153 Schedule warnings and Request Off management",
-        "Schedule Builder requested-off warning shows employee name and never Someone"
-      ],
-      "project": "chromium",
-      "sourceFileHash": "65fc8e51a59573341cfc744fe73edf92f301482e314d0ea9092e062a8bc93ff4",
-      "stableKey": "e2e/schedule-request-off-management.spec.cjs\u000016.0.153 Schedule warnings and Request Off management\u0000Schedule Builder requested-off warning shows employee name and never Someone\u0000chromium",
-      "spec": "e2e/schedule-request-off-management.spec.cjs",
-      "projects": [
-        "chromium"
-      ],
-      "priorStatus": "failed",
-      "selectionReasons": [
-        "uploaded_report_failure"
-      ],
-      "baselineStatus": "failed",
-      "error": "Error: Requested-off warning should still mention requested-off date context"
-    },
-    {
-      "specPath": "e2e/schedule-request-off-management.spec.cjs",
-      "suitePathParts": [
-        "16.0.153 Schedule warnings and Request Off management"
-      ],
-      "fullSuitePath": "16.0.153 Schedule warnings and Request Off management",
-      "leafTitle": "Schedule Builder requested-off warning shows employee name and never Someone",
-      "exactTestTitle": "Schedule Builder requested-off warning shows employee name and never Someone",
-      "title": "Schedule Builder requested-off warning shows employee name and never Someone",
-      "fullTitle": "16.0.153 Schedule warnings and Request Off management > Schedule Builder requested-off warning shows employee name and never Someone",
-      "titlePathParts": [
-        "16.0.153 Schedule warnings and Request Off management",
-        "Schedule Builder requested-off warning shows employee name and never Someone"
-      ],
-      "project": "mobile-chromium",
-      "sourceFileHash": "65fc8e51a59573341cfc744fe73edf92f301482e314d0ea9092e062a8bc93ff4",
-      "stableKey": "e2e/schedule-request-off-management.spec.cjs\u000016.0.153 Schedule warnings and Request Off management\u0000Schedule Builder requested-off warning shows employee name and never Someone\u0000mobile-chromium",
-      "spec": "e2e/schedule-request-off-management.spec.cjs",
-      "projects": [
-        "mobile-chromium"
-      ],
-      "priorStatus": "failed",
-      "selectionReasons": [
-        "uploaded_report_failure"
-      ],
-      "baselineStatus": "failed",
-      "error": "Error: Requested-off warning should still mention requested-off date context"
-    },
-    {
-      "specPath": "e2e/schedule-request-off-management.spec.cjs",
-      "suitePathParts": [
-        "16.0.153 Schedule warnings and Request Off management"
-      ],
-      "fullSuitePath": "16.0.153 Schedule warnings and Request Off management",
-      "leafTitle": "Schedule Builder coverage warnings show under and over target math",
-      "exactTestTitle": "Schedule Builder coverage warnings show under and over target math",
-      "title": "Schedule Builder coverage warnings show under and over target math",
-      "fullTitle": "16.0.153 Schedule warnings and Request Off management > Schedule Builder coverage warnings show under and over target math",
-      "titlePathParts": [
-        "16.0.153 Schedule warnings and Request Off management",
-        "Schedule Builder coverage warnings show under and over target math"
-      ],
-      "project": "chromium",
-      "sourceFileHash": "65fc8e51a59573341cfc744fe73edf92f301482e314d0ea9092e062a8bc93ff4",
-      "stableKey": "e2e/schedule-request-off-management.spec.cjs\u000016.0.153 Schedule warnings and Request Off management\u0000Schedule Builder coverage warnings show under and over target math\u0000chromium",
-      "spec": "e2e/schedule-request-off-management.spec.cjs",
-      "projects": [
-        "chromium"
-      ],
-      "priorStatus": "failed",
-      "selectionReasons": [
-        "uploaded_report_failure"
-      ],
-      "baselineStatus": "failed",
-      "error": "Error: Over-target coverage warnings should show the inverse condition"
-    },
-    {
-      "specPath": "e2e/schedule-request-off-management.spec.cjs",
-      "suitePathParts": [
-        "16.0.153 Schedule warnings and Request Off management"
-      ],
-      "fullSuitePath": "16.0.153 Schedule warnings and Request Off management",
-      "leafTitle": "Schedule Builder coverage warnings show under and over target math",
-      "exactTestTitle": "Schedule Builder coverage warnings show under and over target math",
-      "title": "Schedule Builder coverage warnings show under and over target math",
-      "fullTitle": "16.0.153 Schedule warnings and Request Off management > Schedule Builder coverage warnings show under and over target math",
-      "titlePathParts": [
-        "16.0.153 Schedule warnings and Request Off management",
-        "Schedule Builder coverage warnings show under and over target math"
-      ],
-      "project": "mobile-chromium",
-      "sourceFileHash": "65fc8e51a59573341cfc744fe73edf92f301482e314d0ea9092e062a8bc93ff4",
-      "stableKey": "e2e/schedule-request-off-management.spec.cjs\u000016.0.153 Schedule warnings and Request Off management\u0000Schedule Builder coverage warnings show under and over target math\u0000mobile-chromium",
-      "spec": "e2e/schedule-request-off-management.spec.cjs",
-      "projects": [
-        "mobile-chromium"
-      ],
-      "priorStatus": "failed",
-      "selectionReasons": [
-        "uploaded_report_failure"
-      ],
-      "baselineStatus": "failed",
-      "error": "Error: Over-target coverage warnings should show the inverse condition"
-    },
-    {
-      "specPath": "e2e/schedule-request-off-management.spec.cjs",
-      "suitePathParts": [
-        "16.0.153 Schedule warnings and Request Off management"
-      ],
-      "fullSuitePath": "16.0.153 Schedule warnings and Request Off management",
-      "leafTitle": "Schedule Builder warning dismissal hides only the warning",
-      "exactTestTitle": "Schedule Builder warning dismissal hides only the warning",
-      "title": "Schedule Builder warning dismissal hides only the warning",
-      "fullTitle": "16.0.153 Schedule warnings and Request Off management > Schedule Builder warning dismissal hides only the warning",
-      "titlePathParts": [
-        "16.0.153 Schedule warnings and Request Off management",
-        "Schedule Builder warning dismissal hides only the warning"
-      ],
-      "project": "chromium",
-      "sourceFileHash": "65fc8e51a59573341cfc744fe73edf92f301482e314d0ea9092e062a8bc93ff4",
-      "stableKey": "e2e/schedule-request-off-management.spec.cjs\u000016.0.153 Schedule warnings and Request Off management\u0000Schedule Builder warning dismissal hides only the warning\u0000chromium",
-      "spec": "e2e/schedule-request-off-management.spec.cjs",
-      "projects": [
-        "chromium"
-      ],
-      "priorStatus": "failed",
-      "selectionReasons": [
-        "uploaded_report_failure"
-      ],
-      "baselineStatus": "failed",
-      "error": "Error: Dismiss control should not delete underlying operational records or collapse the whole route"
-    },
-    {
-      "specPath": "e2e/schedule-request-off-management.spec.cjs",
-      "suitePathParts": [
-        "16.0.153 Schedule warnings and Request Off management"
-      ],
-      "fullSuitePath": "16.0.153 Schedule warnings and Request Off management",
-      "leafTitle": "Schedule Builder warning dismissal hides only the warning",
-      "exactTestTitle": "Schedule Builder warning dismissal hides only the warning",
-      "title": "Schedule Builder warning dismissal hides only the warning",
-      "fullTitle": "16.0.153 Schedule warnings and Request Off management > Schedule Builder warning dismissal hides only the warning",
-      "titlePathParts": [
-        "16.0.153 Schedule warnings and Request Off management",
-        "Schedule Builder warning dismissal hides only the warning"
-      ],
-      "project": "mobile-chromium",
-      "sourceFileHash": "65fc8e51a59573341cfc744fe73edf92f301482e314d0ea9092e062a8bc93ff4",
-      "stableKey": "e2e/schedule-request-off-management.spec.cjs\u000016.0.153 Schedule warnings and Request Off management\u0000Schedule Builder warning dismissal hides only the warning\u0000mobile-chromium",
-      "spec": "e2e/schedule-request-off-management.spec.cjs",
-      "projects": [
-        "mobile-chromium"
-      ],
-      "priorStatus": "failed",
-      "selectionReasons": [
-        "uploaded_report_failure"
-      ],
-      "baselineStatus": "failed",
-      "error": "Error: Dismiss control should not delete underlying operational records or collapse the whole route"
-    },
     {
       "specPath": "e2e/schedule-request-off-management.spec.cjs",
       "suitePathParts": [
@@ -202,10 +34,10 @@
       ],
       "priorStatus": "failed",
       "selectionReasons": [
-        "uploaded_report_failure"
+        "uploaded_current_failed_report_failure"
       ],
       "baselineStatus": "failed",
-      "error": "Error: Employee filter should narrow to the searched employee"
+      "error": "Error: Seeded Sara QA pending request should be visible before employee filtering"
     },
     {
       "specPath": "e2e/schedule-request-off-management.spec.cjs",
@@ -230,10 +62,10 @@
       ],
       "priorStatus": "failed",
       "selectionReasons": [
-        "uploaded_report_failure"
+        "uploaded_current_failed_report_failure"
       ],
       "baselineStatus": "failed",
-      "error": "Error: Employee filter should narrow to the searched employee"
+      "error": "Error: Seeded Sara QA pending request should be visible before employee filtering"
     },
     {
       "specPath": "e2e/schedule-request-off-management.spec.cjs",
@@ -258,10 +90,10 @@
       ],
       "priorStatus": "failed",
       "selectionReasons": [
-        "uploaded_report_failure"
+        "uploaded_current_failed_report_failure"
       ],
       "baselineStatus": "failed",
-      "error": "Error: Bulk approve should show one final summary toast"
+      "error": "Error: Seeded Sara QA pending request should be visible before bulk approve"
     },
     {
       "specPath": "e2e/schedule-request-off-management.spec.cjs",
@@ -286,10 +118,10 @@
       ],
       "priorStatus": "failed",
       "selectionReasons": [
-        "uploaded_report_failure"
+        "uploaded_current_failed_report_failure"
       ],
       "baselineStatus": "failed",
-      "error": "Error: Bulk approve should show one final summary toast"
+      "error": "Error: Seeded Sara QA pending request should be visible before bulk approve"
     },
     {
       "specPath": "e2e/schedule-request-off-management.spec.cjs",
@@ -314,10 +146,10 @@
       ],
       "priorStatus": "failed",
       "selectionReasons": [
-        "uploaded_report_failure"
+        "uploaded_current_failed_report_failure"
       ],
       "baselineStatus": "failed",
-      "error": "Error: Bulk archive should show one final summary toast"
+      "error": "Error: Seeded Allen QA approved request should be visible before bulk archive"
     },
     {
       "specPath": "e2e/schedule-request-off-management.spec.cjs",
@@ -342,15 +174,15 @@
       ],
       "priorStatus": "failed",
       "selectionReasons": [
-        "uploaded_report_failure"
+        "uploaded_current_failed_report_failure"
       ],
       "baselineStatus": "failed",
-      "error": "Error: Bulk archive should show one final summary toast"
+      "error": "Error: Seeded Allen QA approved request should be visible before bulk archive"
     }
   ],
-  "totalSelected": 12,
-  "desktopSelected": 6,
-  "mobileSelected": 6,
+  "totalSelected": 6,
+  "desktopSelected": 3,
+  "mobileSelected": 3,
   "previousFailuresSelected": 12,
   "previousTimeoutsSelected": 0,
   "currentReleaseFeatureTestsSelected": 0,
@@ -368,5 +200,6 @@
       "reason": "Passed in uploaded report"
     }
   ],
-  "note": "Strictly selects the 12 failed project/test identities from the uploaded 20260809 slim report. Does not union current-release tests."
+  "note": "Strictly selects the 12 failed project/test identities from the uploaded 20260809 slim report. Does not union current-release tests.",
+  "description": "Six current failed identities from 86chaos-release-gate-SLIM-UPLOAD-ME(20260809-072157).zip only."
 }
