@@ -29,6 +29,18 @@ function writeCompletedSummary(dir, runId, overrides = {}) {
 
 const appUrlValue = 'https://86chaos-git-testing-example.vercel.app';
 
+function collectorFixtureEnv(runId, overrides = {}) {
+  const childEnv = { ...process.env };
+  delete childEnv.CHAOS_RELEASE_GATE_RUN_DIR;
+  return {
+    ...childEnv,
+    CHAOS_RELEASE_GATE_RUN_ID: runId,
+    CHAOS_FULL_AUDIT_RUN_ID: runId,
+    CHAOS_FAILED_AND_NEW_RELEASE_GATE: 'true',
+    ...overrides,
+  };
+}
+
 function classify(overrides = {}) {
   return classifyWhoamiBoundary({
     appUrlValue,
@@ -188,9 +200,10 @@ test('collect report classifies server-boundary blocks separately from role acco
   writeJson(path.join(runDir, 'server-firebase-boundary-preflight.json'), { ok: false, runId, failureCategory: 'previewServerFirebaseBoundaryFailure', primaryBlockingFailure: 'Preview Firebase boundary mismatch: browser/test project is chaos-test-d1601 but deployed server Firebase Admin credential resolves to cheers-34b8d.', errors: ['Preview Firebase boundary mismatch: browser/test project is chaos-test-d1601 but deployed server Firebase Admin credential resolves to cheers-34b8d.'], beforeMutation: true, testAccountProvisioningAttempted: false });
   writeJson(path.join(runDir, 'failed-only-test-manifest.json'), { totalSelected: 1, selected: [{ stableKey: 'a', project: 'chromium' }] });
   const script = path.join(__dirname, '..', 'scripts', '86chaos-release-gate', 'collect-release-gate-report.cjs');
-  const result = spawnSync(process.execPath, [script], { cwd: dir, env: { ...process.env, CHAOS_RELEASE_GATE_RUN_ID: runId, CHAOS_FULL_AUDIT_RUN_ID: runId, CHAOS_FAILED_AND_NEW_RELEASE_GATE: 'true' }, encoding: 'utf8' });
+  const result = spawnSync(process.execPath, [script], { cwd: dir, env: collectorFixtureEnv(runId), encoding: 'utf8' });
   assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
   const summaryFile = fs.readdirSync(runDir).find(name => /^86chaos-play-store-release-gate-summary-.*\.json$/.test(name));
+  assert.ok(summaryFile, `nested collector should write a summary inside its temporary run directory: ${runDir}`);
   const summary = JSON.parse(fs.readFileSync(path.join(runDir, summaryFile), 'utf8'));
   assert.equal(summary.outcome, 'BLOCKED BEFORE TEST EXECUTION');
   assert.equal(summary.previewServerFirebaseBoundaryFailure, true);

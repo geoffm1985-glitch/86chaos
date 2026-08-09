@@ -87,12 +87,13 @@ test('shared density tokens are tightened without shrinking mobile tap minimum',
   assert.doesNotMatch(styles, /font-size reduction/i);
 });
 
-test('PWA manifest uses v3 padded maskable icons and keeps normal v2 artwork', () => {
+test('PWA manifest uses v4 safe-canvas launch icons and keeps small normal v2 artwork', () => {
   const manifest = json('public/manifest.json');
   const maskables = manifest.icons.filter(icon => /maskable/i.test(icon.purpose || ''));
-  assert.deepEqual(maskables.map(icon => icon.src).sort(), ['/86chaos-maskable-192-v3.png','/86chaos-maskable-512-v3.png']);
-  assert.ok(manifest.icons.some(icon => icon.src === '/86chaos-icon-512-v2.png' && icon.purpose === 'any'));
-  for (const [file, size] of [['public/86chaos-maskable-192-v3.png', 192], ['public/86chaos-maskable-512-v3.png', 512]]) {
+  assert.deepEqual(maskables.map(icon => icon.src).sort(), ['/86chaos-maskable-192-v4.png','/86chaos-maskable-512-v4.png']);
+  assert.ok(manifest.icons.some(icon => icon.src === '/86chaos-pwa-512-v4.png' && icon.purpose === 'any'));
+  assert.ok(manifest.icons.some(icon => icon.src === '/86chaos-icon-180-v2.png' && icon.purpose === 'any'));
+  for (const [file, size] of [['public/86chaos-pwa-192-v4.png', 192], ['public/86chaos-pwa-512-v4.png', 512], ['public/86chaos-maskable-192-v4.png', 192], ['public/86chaos-maskable-512-v4.png', 512]]) {
     const buf = fs.readFileSync(path.join(root, file));
     const dims = pngDimensions(buf);
     assert.equal(dims.width, size);

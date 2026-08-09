@@ -39,6 +39,18 @@ function writeCompletedSummary(dir, runId, overrides = {}) {
   });
 }
 
+function collectorFixtureEnv(runId, overrides = {}) {
+  const childEnv = { ...process.env };
+  delete childEnv.CHAOS_RELEASE_GATE_RUN_DIR;
+  return {
+    ...childEnv,
+    CHAOS_RELEASE_GATE_RUN_ID: runId,
+    CHAOS_FULL_AUDIT_RUN_ID: runId,
+    CHAOS_FAILED_AND_NEW_RELEASE_GATE: 'true',
+    ...overrides,
+  };
+}
+
 test('canonical Vercel preview target accepts 86chaos and rejects production, retired, and unrelated projects', () => {
   assert.equal(CANONICAL_VERCEL_PROJECT_SLUG, '86chaos');
   assert.equal(isCanonicalVercelPreviewHost('86chaos-git-testing-abc.vercel.app'), true);
@@ -133,10 +145,10 @@ test('blocked preflight-only delta report stays blocked and does not claim recon
   writeJson(path.join(runDir, 'environment-preflight.json'), { ok: false, runId, appUrl: 'https://cheers-portal-4oxv-git-testing-old.vercel.app/', sourceVersion: '16.0.148', expectedVersion: '16.0.148', deployedVersion: '16.0.147', errors: ['Deployed /version.json reports 16.0.147, but CHAOS_EXPECTED_VERSION is 16.0.148. Stop now; the preview is stale.'] });
   const script = path.join(__dirname, '..', 'scripts', '86chaos-release-gate', 'collect-release-gate-report.cjs');
   const { spawnSync } = require('child_process');
-  const result = spawnSync(process.execPath, [script], { cwd: dir, env: { ...process.env, CHAOS_RELEASE_GATE_RUN_ID: runId, CHAOS_FULL_AUDIT_RUN_ID: runId, CHAOS_FAILED_AND_NEW_RELEASE_GATE: 'true' }, encoding: 'utf8' });
+  const result = spawnSync(process.execPath, [script], { cwd: dir, env: collectorFixtureEnv(runId), encoding: 'utf8' });
   assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
   const summaries = fs.readdirSync(runDir).filter(name => /^86chaos-play-store-release-gate-summary-.*\.json$/.test(name));
-  assert.equal(summaries.length, 1);
+  assert.equal(summaries.length, 1, `nested collector should write exactly one summary inside its temporary run directory: ${runDir}`);
   const summary = JSON.parse(fs.readFileSync(path.join(runDir, summaries[0]), 'utf8'));
   assert.equal(summary.outcome, 'BLOCKED BEFORE TEST EXECUTION');
   assert.equal(summary.playwright.status, 'BLOCKED BEFORE TEST EXECUTION');

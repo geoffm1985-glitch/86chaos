@@ -41,13 +41,16 @@ test('shared Firestore listeners ignore stale callbacks after release or tenant 
 test('metallic 86 Chaos icon is active in manifest, favicon, apple touch, and header mark', () => {
   const manifest = json('public/manifest.json');
   const iconSources = manifest.icons.map(icon => icon.src);
-  assert.ok(iconSources.filter(src => src.includes('-v2.png')).length >= 9, 'normal manifest icons should keep v2 cache-busted files');
-  assert.ok(iconSources.includes('/86chaos-maskable-192-v3.png') && iconSources.includes('/86chaos-maskable-512-v3.png'), 'maskable splash icons should use v3 safe-area assets');
-  for (const size of [16,32,48,144,180,192,256,384,512]) {
+  assert.ok(iconSources.filter(src => src.includes('-v2.png')).length >= 7, 'small normal manifest icons should keep v2 cache-busted files');
+  assert.ok(iconSources.includes('/86chaos-pwa-192-v4.png') && iconSources.includes('/86chaos-pwa-512-v4.png'), 'normal PWA launch icons should use v4 safe-canvas assets');
+  assert.ok(iconSources.includes('/86chaos-maskable-192-v4.png') && iconSources.includes('/86chaos-maskable-512-v4.png'), 'maskable splash icons should use v4 safe-canvas assets');
+  for (const size of [16,32,48,144,180,256,384]) {
     assert.ok(fs.existsSync(path.join(root, `public/86chaos-icon-${size}-v2.png`)), `icon ${size} exists`);
   }
-  assert.ok(fs.existsSync(path.join(root, 'public/86chaos-maskable-192-v3.png')));
-  assert.ok(fs.existsSync(path.join(root, 'public/86chaos-maskable-512-v3.png')));
+  assert.ok(fs.existsSync(path.join(root, 'public/86chaos-pwa-192-v4.png')));
+  assert.ok(fs.existsSync(path.join(root, 'public/86chaos-pwa-512-v4.png')));
+  assert.ok(fs.existsSync(path.join(root, 'public/86chaos-maskable-192-v4.png')));
+  assert.ok(fs.existsSync(path.join(root, 'public/86chaos-maskable-512-v4.png')));
   assert.match(read('public/index.html'), /86chaos-icon-180-v2\.png/);
   assert.match(read('public/index.html'), /86chaos-icon-32-v2\.png/);
   assert.match(read('src/components/common.jsx'), /86chaos-icon-48-v2\.png/);

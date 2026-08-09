@@ -1,16 +1,14 @@
 {
-  "version": "16.0.163",
-  "name": "86 Chaos 16.0.163 App Density, Availability History Delete, and UI Symmetry",
-  "build": "16.0.163",
-  "label": "86 Chaos 16.0.163 App Density, Availability History Delete, and UI Symmetry",
-  "releasedAt": "2026-08-09T04:48:00-05:00",
-  "releaseTitle": "App Density, Availability History Delete, and UI Symmetry",
+  "version": "16.0.164",
+  "name": "86 Chaos 16.0.164 PWA Launch Icon and Release Gate Test Isolation Repair",
+  "build": "16.0.164",
+  "label": "86 Chaos 16.0.164 PWA Launch Icon and Release Gate Test Isolation Repair",
+  "releasedAt": "2026-08-09T05:37:00-05:00",
+  "releaseTitle": "PWA Launch Icon and Release Gate Test Isolation Repair",
   "notes": [
-    "Pads maskable PWA startup icons so the complete metallic 86 Chaos artwork fits safely inside Android masks.",
-    "Adds a manager-authorized server-side delete action for Availability History with audit logging.",
-    "Tightens Message Board and Request Off controls with intentional responsive grids.",
-    "Replaces the Request Off manager employee text filter with a role-grouped durable-identity dropdown.",
-    "Slightly tightens shared responsive density tokens without shrinking mobile touch targets."
+    "Adds dedicated safe-canvas PWA manifest launch icons so Android masks crop only background, not the metallic 86 Chaos artwork.",
+    "Isolates nested release-gate unit-test collector environments so fixture summaries stay inside temporary run directories.",
+    "Preserves the 16.0.163 Availability Delete, responsive density, Request Off, Message Board, employee access, Firestore listener, header, and PWA Back behavior fixes."
   ],
-  "title": "86 Chaos 16.0.163 App Density, Availability History Delete, and UI Symmetry"
+  "title": "86 Chaos 16.0.164 PWA Launch Icon and Release Gate Test Isolation Repair"
 }
