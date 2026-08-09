@@ -29,13 +29,13 @@ function assertReportedFailedOnlySelection(rows = []) {
   const desktop = rows.filter(item => (item.projects || []).includes('chromium') || item.project === 'chromium').length;
   const mobile = rows.filter(item => (item.projects || []).includes('mobile-chromium') || item.project === 'mobile-chromium').length;
   const errors = [];
-  if (rows.length !== 6) errors.push(`expected 6 selected identities, got ${rows.length}`);
-  if (desktop !== 3) errors.push(`expected 3 chromium identities, got ${desktop}`);
+  if (rows.length !== 3) errors.push(`expected 3 selected identities, got ${rows.length}`);
+  if (desktop !== 0) errors.push(`expected 0 chromium identities, got ${desktop}`);
   if (mobile !== 3) errors.push(`expected 3 mobile-chromium identities, got ${mobile}`);
   if (rows.some(item => excludedPassingTitles.has(item.leafTitle || item.exactTestTitle || item.title))) errors.push('a passing Schedule warning/runtime test was selected');
   const badProjects = rows.filter(item => !['chromium', 'mobile-chromium'].includes(item.project || (item.projects || [])[0] || ''));
   if (badProjects.length) errors.push(`unexpected projects selected: ${[...new Set(badProjects.map(item => item.project || (item.projects || [])[0] || 'unknown'))].join(', ')}`);
-  if (errors.length) throw new Error(`reported-failed-only selection must be exactly the 6 current failed identities from the uploaded report: ${errors.join('; ')}`);
+  if (errors.length) throw new Error(`reported-failed-only selection must be exactly the 3 current failed identities from the uploaded report: ${errors.join('; ')}`);
 }
 
 assertReportedFailedOnlySelection(FAILED_ONLY_TESTS);
@@ -51,7 +51,7 @@ const manifest = {
   desktopSelected: FAILED_ONLY_TESTS.filter(item => (item.projects || []).includes('chromium')).length,
   mobileSelected: FAILED_ONLY_TESTS.filter(item => (item.projects || []).includes('mobile-chromium')).length,
   note: releaseSelectionMode === 'reported-failed-only'
-    ? 'reported-failed-only runs only the 6 current failed identities from the uploaded slim report.'
+    ? 'reported-failed-only runs only the 3 current failed identities from the uploaded slim report.'
     : `${releaseSelectionMode} success is diagnostic only. Complete npm run test:play-store is still required for release approval.`
 };
 fs.writeFileSync(path.join(runDir, 'failed-only-playwright-selection.json'), JSON.stringify(manifest, null, 2));

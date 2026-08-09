@@ -54,11 +54,11 @@ test('metallic 86 Chaos icon is active in manifest, favicon, apple touch, and he
   assert.doesNotMatch(read('src/components/common.jsx') + read('src/components/CheersLogo.js'), /wisco\.png/);
 });
 
-test('reported failed-current runner remains exactly six historical Request Off failures', () => {
+test('reported failed-current runner remains narrowed to the three latest mobile Request Off failures', () => {
   const manifest = json('scripts/86chaos-release-gate/reported-failed-only-20260809-004632.json');
   assert.strictEqual(manifest.mode, 'reported-failed-only');
-  assert.strictEqual(manifest.selected.length, 6);
-  assert.strictEqual(manifest.selected.filter(row => row.project === 'chromium').length, 3);
+  assert.strictEqual(manifest.selected.length, 3);
+  assert.strictEqual(manifest.selected.filter(row => row.project === 'chromium').length, 0);
   assert.strictEqual(manifest.selected.filter(row => row.project === 'mobile-chromium').length, 3);
   const titles = new Set(manifest.selected.map(row => row.leafTitle || row.title));
   assert.deepStrictEqual([...titles].sort(), [

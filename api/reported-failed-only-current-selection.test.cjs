@@ -20,22 +20,22 @@ const excludedPassingTitles = [
   'Schedule Builder warning dismissal hides only the warning',
 ];
 
-test('reported failed-only manifest selects exactly the six current uploaded failures', () => {
+test('reported failed-only manifest selects exactly the three current uploaded failures', () => {
   assert.equal(manifest.mode, 'reported-failed-only');
-  assert.equal(rows.length, 6);
-  assert.equal(rows.filter(row => row.project === 'chromium').length, 3);
+  assert.equal(rows.length, 3);
+  assert.equal(rows.filter(row => row.project === 'chromium').length, 0);
   assert.equal(rows.filter(row => row.project === 'mobile-chromium').length, 3);
-  assert.deepEqual([...new Set(rows.map(row => row.project))].sort(), ['chromium', 'mobile-chromium']);
+  assert.deepEqual([...new Set(rows.map(row => row.project))].sort(), ['mobile-chromium']);
   assert.ok(rows.every(row => row.specPath === 'e2e/schedule-request-off-management.spec.cjs'));
   assert.ok(rows.every(row => row.fullSuitePath === '16.0.153 Schedule warnings and Request Off management'));
-  assert.ok(rows.every(row => row.selectionReasons?.includes('uploaded_current_failed_report_failure')));
+  assert.ok(rows.every(row => row.selectionReasons?.includes('uploaded_latest_failed_report_failure')));
 });
 
 test('reported failed-only manifest excludes already-passing runtime/passing Schedule tests and unrelated current-release scope', () => {
   for (const title of excludedPassingTitles) assert.equal(rows.some(row => row.leafTitle === title), false, `${title} should not be selected`);
   assert.equal(rows.some(row => row.selectionReasons?.includes('current_release_feature_test')), false);
   for (const title of expectedTitles) {
-    assert.equal(rows.filter(row => row.leafTitle === title).length, 2, `${title} should appear once per project`);
+    assert.equal(rows.filter(row => row.leafTitle === title).length, 1, `${title} should appear only for the currently failed mobile project`);
   }
 });
 

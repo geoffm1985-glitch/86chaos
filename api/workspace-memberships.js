@@ -29,13 +29,16 @@ function inactiveMembershipState(raw = {}) {
   const status = clean(raw.status || raw.recordStatus || raw.membershipStatus).toLowerCase();
   return raw.isActive === false || raw.disabled === true || raw.deleted === true || raw.removed === true || raw.archived === true || ['inactive', 'disabled', 'deleted', 'removed', 'deactivated'].includes(status);
 }
-function mergeWorkspaceOption(current = {}, raw = {}, restaurantId = '', source = '') {
+function mergeWorkspaceAccessOption(current = {}, raw = {}, restaurantId = '', source = '') {
   const rawInactive = inactiveMembershipState(raw);
   const currentInactive = inactiveMembershipState(current);
-  return currentInactive && !rawInactive
+  const merged = currentInactive && !rawInactive
     ? { ...raw, ...current, restaurantId, membershipSource: clean(current.membershipSource || source || raw.membershipSource) }
     : { ...current, ...raw, restaurantId, membershipSource: clean(raw.membershipSource || source || current.membershipSource) };
+  if (currentInactive || rawInactive) merged.membershipSuppressedByInactiveRecord = true;
+  return merged;
 }
+const mergeWorkspaceOption = mergeWorkspaceAccessOption;
 function safeMembership(raw = {}, rest = {}, uid = '', email = '') {
   const restaurantId = clean(raw.restaurantId || raw.id);
   if (!restaurantId || isDeletedRestaurant(rest)) return null;
@@ -168,4 +171,9 @@ module.exports = async function handler(req, res) {
     console.error('workspace-memberships API error:', err);
     return res.status(500).json({ ok: false, error: err?.message || 'Could not load workspace memberships.' });
   }
+};
+
+module.exports._test = {
+  inactiveMembershipState,
+  mergeWorkspaceAccessOption
 };

@@ -5390,3 +5390,22 @@ span.bg-red-500.text-white,
 .chaos-login-screen .chaos-login-primary-action {
   width: 100% !important;
 }
+
+/* 16.0.162 targeted mobile polish: preserve compact controls while keeping leading icons out of placeholder text. */
+.non-admin-controls-compact .relative > svg.absolute + input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=color]):not([type=file]),
+.non-admin-controls-compact .relative > .absolute + input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=color]):not([type=file]) {
+  padding-left: 2.75rem !important;
+}
+
+/* 16.0.162 targeted System Administrator mobile readability repair for light admin cards. */
+.admin46-shell #admin-content-start [class*="text-slate-50"],
+.admin46-shell #admin-content-start [class*="text-slate-100"],
+.admin46-shell #admin-content-start [class*="text-slate-200"] {
+  color: var(--admin-ink) !important;
+}
+
+.admin46-shell #admin-content-start [class*="text-slate-700"],
+.admin46-shell #admin-content-start [class*="text-slate-800"],
+.admin46-shell #admin-content-start [class*="text-slate-900"] {
+  color: #223446 !important;
+}

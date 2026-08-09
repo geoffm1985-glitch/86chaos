@@ -2386,8 +2386,18 @@ What I clicked / expected:
         const data = await res.json().catch(() => ({}));
         if (!res.ok || !Array.isArray(data.workspaces) || canceled) return;
         const nextWorkspaces = data.workspaces.filter(isSelectableWorkspace);
-        if (!nextWorkspaces.length) return;
+        const currentWorkspaceMembershipInactive = !nextWorkspaces.some(w => w.restaurantId === appUser.restaurantId);
+        if (!nextWorkspaces.length) {
+          try { localStorage.removeItem(`chaosActiveRestaurantId_${appUser.id}`); } catch (_) {}
+          try { window.dispatchEvent(new CustomEvent('chaos:workspace-memberships-changed', { detail: { removedRestaurantIds: [appUser.restaurantId].filter(Boolean), reason: 'currentWorkspaceMembershipInactive' } })); } catch (_) {}
+          clearSessionAndLogout();
+          return;
+        }
         const active = nextWorkspaces.find(w => w.restaurantId === appUser.restaurantId) || nextWorkspaces.find(w => w.restaurantId === data.activeRestaurantId) || nextWorkspaces[0];
+        if (currentWorkspaceMembershipInactive && appUser.restaurantId) {
+          try { localStorage.removeItem(`chaosActiveRestaurantId_${appUser.id}`); } catch (_) {}
+          try { window.dispatchEvent(new CustomEvent('chaos:workspace-memberships-changed', { detail: { removedRestaurantIds: [appUser.restaurantId], reason: 'currentWorkspaceMembershipInactive' } })); } catch (_) {}
+        }
         setAppUser(prev => {
           if (!prev?.id || prev.id !== appUser.id) return prev;
           const merged = buildWorkspaceUser({ ...prev, availableWorkspaces: nextWorkspaces }, active);

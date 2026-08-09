@@ -65,8 +65,8 @@ function loadReportedFailedOnlyManifest() {
   const badProjects = [...projects].filter(project => !['chromium', 'mobile-chromium'].includes(project));
   const excludedSelected = manifest.selected.filter(row => excludedPassingTitles.has(row.leafTitle || row.exactTestTitle || row.title));
   const errors = [];
-  if (manifest.selected.length !== 6) errors.push(`Reported failed-only manifest must select exactly 6 identities, got ${manifest.selected.length}.`);
-  if (desktop !== 3) errors.push(`Reported failed-only manifest must select exactly 3 chromium identities, got ${desktop}.`);
+  if (manifest.selected.length !== 3) errors.push(`Reported failed-only manifest must select exactly 3 identities, got ${manifest.selected.length}.`);
+  if (desktop !== 0) errors.push(`Reported failed-only manifest must select exactly 0 chromium identities, got ${desktop}.`);
   if (mobile !== 3) errors.push(`Reported failed-only manifest must select exactly 3 mobile-chromium identities, got ${mobile}.`);
   if (badProjects.length) errors.push(`Reported failed-only manifest contains disallowed projects: ${badProjects.join(', ')}.`);
   if (excludedSelected.length) errors.push(`Reported failed-only manifest must exclude passing tests: ${excludedSelected.map(row => row.leafTitle || row.title).join(', ')}.`);
@@ -85,8 +85,8 @@ function assertReportedFailedOnlySelection(manifest) {
   const desktop = selected.filter(row => row.project === 'chromium' || row.projects?.includes('chromium')).length;
   const mobile = selected.filter(row => row.project === 'mobile-chromium' || row.projects?.includes('mobile-chromium')).length;
   const errors = [];
-  if (selected.length !== 6) errors.push(`Expected exactly 6 reported failed-only identities, got ${selected.length}.`);
-  if (desktop !== 3) errors.push(`Expected 3 chromium identities, got ${desktop}.`);
+  if (selected.length !== 3) errors.push(`Expected exactly 3 reported failed-only identities, got ${selected.length}.`);
+  if (desktop !== 0) errors.push(`Expected 0 chromium identities, got ${desktop}.`);
   if (mobile !== 3) errors.push(`Expected 3 mobile-chromium identities, got ${mobile}.`);
   if (selected.some(row => excludedPassingTitles.has(row.leafTitle || row.exactTestTitle || row.title))) errors.push('A passing Schedule warning/runtime test was selected.');
   if (selected.some(row => !['chromium', 'mobile-chromium'].includes(row.project || (row.projects || [])[0] || ''))) errors.push('Reported failed-only selected a project outside chromium/mobile-chromium.');
@@ -271,7 +271,7 @@ if (selectionMode === 'repair') {
   console.log(`Duplicate identities removed: ${selectionPayload.duplicateIdentitiesRemoved}`);
   console.log(`Total repair tests selected: ${copied.selected.length}`);
 } else if (selectionMode === 'reported-failed-only') {
-  console.log('Reported failed-only guard: exactly 6 identities selected (chromium 6, mobile-chromium 6).');
+  console.log('Reported failed-only guard: exactly 3 identities selected (chromium 0, mobile-chromium 3).');
   console.log('Already-passing Schedule runtime tests excluded.');
 } else {
   console.log(`Previous failed/timed-out identities selected: ${copied.selected.length}`);

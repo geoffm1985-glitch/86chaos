@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { appendOfflineQueueItem, classifyRuntimeIssue, normalizeOfflineQueue, readJsonFromStorage, recordLocalRuntimeEvent, writeJsonToStorage } from './maturityGuards';
 import { initializeApp } from 'firebase/app';
-import { getFirestore, collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, where, getDoc, setDoc, getDocs, enableIndexedDbPersistence, orderBy, limit as firestoreLimit } from 'firebase/firestore';
+import { getFirestore, collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, where, getDoc, setDoc, getDocs, enableIndexedDbPersistence, enableMultiTabIndexedDbPersistence, orderBy, limit as firestoreLimit } from 'firebase/firestore';
 import { getAuth, onAuthStateChanged } from 'firebase/auth';
 import { getMessaging, isSupported } from 'firebase/messaging';
 import { getStorage } from 'firebase/storage';
@@ -171,8 +171,28 @@ export const messagingReady = typeof window !== "undefined" && hasFirebaseMessag
       .catch((err) => quietlyHandleMessagingStartupError(err, 'Firebase Messaging support check'))
   : Promise.resolve(null);
 
-// Kitchen Wi-Fi Armor: Keep app working in walk-in coolers
-enableIndexedDbPersistence(db).catch((err) => console.warn("Offline mode issue:", err.code));
+// Kitchen Wi-Fi Armor: keep offline cache without tripping single-tab persistence in Android Chrome/PWA tab piles.
+const enableChaosFirestorePersistence = () => {
+  if (typeof window === 'undefined') return Promise.resolve(null);
+  window.__chaosFirestorePersistenceInit = window.__chaosFirestorePersistenceInit || null;
+  if (window.__chaosFirestorePersistenceInit) return window.__chaosFirestorePersistenceInit;
+  window.__chaosFirestorePersistenceInit = Promise.resolve()
+    .then(() => enableMultiTabIndexedDbPersistence(db))
+    .catch((err) => {
+      const code = String(err?.code || '').toLowerCase();
+      const message = String(err?.message || err || '');
+      if (/failed-precondition|unimplemented/.test(code) || /multiple tabs|persistence/i.test(message)) {
+        console.warn('Offline persistence unavailable in this browser session:', code || message);
+        return null;
+      }
+      return enableIndexedDbPersistence(db).catch((fallbackErr) => {
+        console.warn('Offline persistence unavailable:', fallbackErr?.code || fallbackErr?.message || fallbackErr);
+        return null;
+      });
+    });
+  return window.__chaosFirestorePersistenceInit;
+};
+enableChaosFirestorePersistence();
 
 
 
@@ -405,7 +425,7 @@ export const MASTER_ADMIN_EMAIL = (process.env.REACT_APP_MASTER_ADMIN_EMAIL || '
 export const EVENT_TAGS = ['Standard Day', 'Packers Game', 'Brewers Game', 'Live Music', 'Severe Weather', 'Private Catering', 'Holiday'];
 
 // --- VERSION TRACKING ---
-export const CURRENT_VERSION = '16.0.161';
+export const CURRENT_VERSION = '16.0.162';
 
 // --- Helpers ---
 const usePageVisible = () => {
@@ -596,6 +616,27 @@ const setLiveCacheEntry = (map, key, value = {}) => {
 const makeSubscriberRecord = (fn, label = '') => ({ fn, label: label || '', id: `${Date.now()}_${Math.random().toString(36).slice(2)}` });
 const entryConsumerLabels = (entry) => Array.from(entry.subscribers || []).map(row => row.label).filter(Boolean);
 
+const FIRESTORE_INTERNAL_ASSERTION_RE = /INTERNAL ASSERTION FAILED|Unexpected state/i;
+
+function releaseLiveCollectionEntry(key, entry, options = {}) {
+  if (!entry) return;
+  entry.closed = true;
+  try { entry.unsubscribe?.(); } catch (_) {}
+  if (entry.releaseTimer) clearTimeout(entry.releaseTimer);
+  if (liveCollectionRegistry.get(key) === entry) liveCollectionRegistry.delete(key);
+  if (options.cache === false) liveCollectionSessionCache.delete(key);
+  annotateListenerDiagnostics(key, { releasedAt: new Date().toISOString(), releaseReason: options.reason || 'released', stale: options.cache === false });
+}
+
+function releaseLiveDocumentEntry(key, entry, options = {}) {
+  if (!entry) return;
+  entry.closed = true;
+  try { entry.unsubscribe?.(); } catch (_) {}
+  if (entry.releaseTimer) clearTimeout(entry.releaseTimer);
+  if (liveDocumentRegistry.get(key) === entry) liveDocumentRegistry.delete(key);
+  if (options.cache === false) liveDocumentSessionCache.delete(key);
+}
+
 export const makeLiveCollectionKey = ({ coll, restId, whereClauses, orderByField, orderDirection, limitCount, cursor = null, viewerUid = currentViewerUid() }) => stableJson({
   projectId: firebaseConfig?.projectId || 'default',
   viewerUid: viewerUid || 'anonymous',
@@ -703,6 +744,12 @@ const acquireSharedLiveCollection = ({ coll, restId, constraints, key, setData, 
       err => {
         if (entry.closed === true || liveCollectionRegistry.get(key) !== entry) return;
         const message = err?.message || String(err || '');
+        if (FIRESTORE_INTERNAL_ASSERTION_RE.test(message)) {
+          console.error(`Live collection internal Firestore assertion for ${coll} / ${restId}${debugLabel ? ` [${debugLabel}]` : ''}:`, err);
+          releaseLiveCollectionEntry(key, entry, { reason: 'firestore-internal-assertion-rebuild', cache: false });
+          entry.subscribers.forEach(row => row.fn(entry.data || [], { resolved: true, stale: true, error: message, fromServer: false }));
+          return;
+        }
         const isIndexProblem = err?.code === 'failed-precondition' || /index|requires an index|currently building/i.test(message);
         if (isIndexProblem) console.warn(`Firestore index pending for ${coll} / ${restId}. Waiting for the deployed index instead of showing a mismatched fallback query.`, message);
         else console.error(`Live collection error for ${coll} / ${restId}${debugLabel ? ` [${debugLabel}]` : ''}:`, err);
@@ -915,6 +962,12 @@ const acquireSharedLiveDocument = ({ coll, docId, key, setValue, debugLabel = ''
     }, err => {
       if (entry.closed === true || liveDocumentRegistry.get(key) !== entry) return;
       const message = err?.message || String(err || '');
+      if (FIRESTORE_INTERNAL_ASSERTION_RE.test(message)) {
+        console.error(`Live document internal Firestore assertion for ${coll}/${docId}:`, err);
+        releaseLiveDocumentEntry(key, entry, { reason: 'firestore-internal-assertion-rebuild', cache: false });
+        entry.subscribers.forEach(row => row.fn(entry.data, { resolved: true, stale: true, error: message, fromServer: false, cached: entry.hasCachedSnapshot === true }));
+        return;
+      }
       console.error(`Live document error for ${coll}/${docId}:`, err);
       entry.initialSnapshotSeen = true;
       entry.lastError = message;

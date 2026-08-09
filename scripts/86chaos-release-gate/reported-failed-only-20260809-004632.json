@@ -1,44 +1,16 @@
 {
   "ok": true,
   "manifestSchemaVersion": 3,
-  "generatedAt": "2026-08-09T06:38:24.000Z",
+  "generatedAt": "2026-08-09T09:01:04.000Z",
   "mode": "reported-failed-only",
   "lineageMode": "none",
-  "source": "uploaded-failed-tests-20260809-072157",
-  "selectionSource": "uploaded-failed-tests-20260809-072157",
-  "baselineFullRunId": "2026-08-09T00-46-32",
-  "baselineSourceVersion": "16.0.159",
-  "baselineDeployedVersion": "16.0.159",
-  "baselineGeneratedAt": "2026-08-09T05:51:06.242Z",
+  "source": "uploaded-failed-tests-20260809-084213",
+  "selectionSource": "uploaded-failed-tests-20260809-084213",
+  "baselineFullRunId": "2026-08-09T03-19-28",
+  "baselineSourceVersion": "16.0.161",
+  "baselineDeployedVersion": "16.0.161",
+  "baselineGeneratedAt": "2026-08-09T08:42:13.000Z",
   "selected": [
-    {
-      "specPath": "e2e/schedule-request-off-management.spec.cjs",
-      "suitePathParts": [
-        "16.0.153 Schedule warnings and Request Off management"
-      ],
-      "fullSuitePath": "16.0.153 Schedule warnings and Request Off management",
-      "leafTitle": "Request Off employee filter narrows and clears manager-visible requests",
-      "exactTestTitle": "Request Off employee filter narrows and clears manager-visible requests",
-      "title": "Request Off employee filter narrows and clears manager-visible requests",
-      "fullTitle": "16.0.153 Schedule warnings and Request Off management > Request Off employee filter narrows and clears manager-visible requests",
-      "titlePathParts": [
-        "16.0.153 Schedule warnings and Request Off management",
-        "Request Off employee filter narrows and clears manager-visible requests"
-      ],
-      "project": "chromium",
-      "sourceFileHash": "65fc8e51a59573341cfc744fe73edf92f301482e314d0ea9092e062a8bc93ff4",
-      "stableKey": "e2e/schedule-request-off-management.spec.cjs\u000016.0.153 Schedule warnings and Request Off management\u0000Request Off employee filter narrows and clears manager-visible requests\u0000chromium",
-      "spec": "e2e/schedule-request-off-management.spec.cjs",
-      "projects": [
-        "chromium"
-      ],
-      "priorStatus": "failed",
-      "selectionReasons": [
-        "uploaded_current_failed_report_failure"
-      ],
-      "baselineStatus": "failed",
-      "error": "Error: Seeded Sara QA pending request should be visible before employee filtering"
-    },
     {
       "specPath": "e2e/schedule-request-off-management.spec.cjs",
       "suitePathParts": [
@@ -62,38 +34,10 @@
       ],
       "priorStatus": "failed",
       "selectionReasons": [
-        "uploaded_current_failed_report_failure"
+        "uploaded_latest_failed_report_failure"
       ],
       "baselineStatus": "failed",
       "error": "Error: Seeded Sara QA pending request should be visible before employee filtering"
-    },
-    {
-      "specPath": "e2e/schedule-request-off-management.spec.cjs",
-      "suitePathParts": [
-        "16.0.153 Schedule warnings and Request Off management"
-      ],
-      "fullSuitePath": "16.0.153 Schedule warnings and Request Off management",
-      "leafTitle": "Approve All Visible updates only filtered visible pending requests",
-      "exactTestTitle": "Approve All Visible updates only filtered visible pending requests",
-      "title": "Approve All Visible updates only filtered visible pending requests",
-      "fullTitle": "16.0.153 Schedule warnings and Request Off management > Approve All Visible updates only filtered visible pending requests",
-      "titlePathParts": [
-        "16.0.153 Schedule warnings and Request Off management",
-        "Approve All Visible updates only filtered visible pending requests"
-      ],
-      "project": "chromium",
-      "sourceFileHash": "65fc8e51a59573341cfc744fe73edf92f301482e314d0ea9092e062a8bc93ff4",
-      "stableKey": "e2e/schedule-request-off-management.spec.cjs\u000016.0.153 Schedule warnings and Request Off management\u0000Approve All Visible updates only filtered visible pending requests\u0000chromium",
-      "spec": "e2e/schedule-request-off-management.spec.cjs",
-      "projects": [
-        "chromium"
-      ],
-      "priorStatus": "failed",
-      "selectionReasons": [
-        "uploaded_current_failed_report_failure"
-      ],
-      "baselineStatus": "failed",
-      "error": "Error: Seeded Sara QA pending request should be visible before bulk approve"
     },
     {
       "specPath": "e2e/schedule-request-off-management.spec.cjs",
@@ -118,38 +62,10 @@
       ],
       "priorStatus": "failed",
       "selectionReasons": [
-        "uploaded_current_failed_report_failure"
+        "uploaded_latest_failed_report_failure"
       ],
       "baselineStatus": "failed",
       "error": "Error: Seeded Sara QA pending request should be visible before bulk approve"
-    },
-    {
-      "specPath": "e2e/schedule-request-off-management.spec.cjs",
-      "suitePathParts": [
-        "16.0.153 Schedule warnings and Request Off management"
-      ],
-      "fullSuitePath": "16.0.153 Schedule warnings and Request Off management",
-      "leafTitle": "Archive All Visible archives only filtered visible eligible requests",
-      "exactTestTitle": "Archive All Visible archives only filtered visible eligible requests",
-      "title": "Archive All Visible archives only filtered visible eligible requests",
-      "fullTitle": "16.0.153 Schedule warnings and Request Off management > Archive All Visible archives only filtered visible eligible requests",
-      "titlePathParts": [
-        "16.0.153 Schedule warnings and Request Off management",
-        "Archive All Visible archives only filtered visible eligible requests"
-      ],
-      "project": "chromium",
-      "sourceFileHash": "65fc8e51a59573341cfc744fe73edf92f301482e314d0ea9092e062a8bc93ff4",
-      "stableKey": "e2e/schedule-request-off-management.spec.cjs\u000016.0.153 Schedule warnings and Request Off management\u0000Archive All Visible archives only filtered visible eligible requests\u0000chromium",
-      "spec": "e2e/schedule-request-off-management.spec.cjs",
-      "projects": [
-        "chromium"
-      ],
-      "priorStatus": "failed",
-      "selectionReasons": [
-        "uploaded_current_failed_report_failure"
-      ],
-      "baselineStatus": "failed",
-      "error": "Error: Seeded Allen QA approved request should be visible before bulk archive"
     },
     {
       "specPath": "e2e/schedule-request-off-management.spec.cjs",
@@ -174,16 +90,16 @@
       ],
       "priorStatus": "failed",
       "selectionReasons": [
-        "uploaded_current_failed_report_failure"
+        "uploaded_latest_failed_report_failure"
       ],
       "baselineStatus": "failed",
       "error": "Error: Seeded Allen QA approved request should be visible before bulk archive"
     }
   ],
-  "totalSelected": 6,
-  "desktopSelected": 3,
+  "totalSelected": 3,
+  "desktopSelected": 0,
   "mobileSelected": 3,
-  "previousFailuresSelected": 12,
+  "previousFailuresSelected": 3,
   "previousTimeoutsSelected": 0,
   "currentReleaseFeatureTestsSelected": 0,
   "duplicateIdentitiesRemoved": 0,

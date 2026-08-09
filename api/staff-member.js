@@ -43,6 +43,39 @@ function isInactiveMembership(raw = {}) {
   const status = String(raw.status || raw.recordStatus || raw.membershipStatus || '').toLowerCase().trim();
   return raw.isActive === false || raw.disabled === true || raw.deleted === true || raw.removed === true || raw.archived === true || ['inactive', 'disabled', 'deleted', 'removed', 'deactivated'].includes(status);
 }
+
+function workspaceMemberMatchesTargetWorkspace(record = {}, target = {}, restaurantId = '') {
+  if (!record || typeof record !== 'object') return false;
+  const targetRestaurantId = cleanString(restaurantId);
+  const recordRestaurantId = cleanString(record.restaurantId || record.workspaceId || record.activeRestaurantId || record.defaultRestaurantId);
+  if (!targetRestaurantId || recordRestaurantId !== targetRestaurantId) return false;
+  const identity = buildTargetIdentity(target.uid || target.userId || target.authUid || target.accountUserId, target.email || target.emailLower || target.employeeEmail || target.userEmail, target || {});
+  return membershipMatchesTargetIdentity(record, identity, record.id || record.membershipId || '');
+}
+
+function buildInactiveMembershipPatch(current = {}, target = {}, restaurantId = '', ctx = {}, now = new Date().toISOString()) {
+  const uid = cleanString(target.uid || target.userId || target.authUid || target.accountUserId || current.userId || current.uid || current.authUid);
+  const email = norm(target.email || target.emailLower || target.employeeEmail || target.userEmail || current.email || current.emailLower || current.employeeEmail || current.userEmail);
+  return {
+    ...(current || {}),
+    userId: uid || current.userId,
+    uid: uid || current.uid,
+    authUid: uid || current.authUid,
+    email: email || current.email,
+    emailLower: email || current.emailLower,
+    restaurantId: cleanString(restaurantId || current.restaurantId || current.workspaceId),
+    isActive: false,
+    disabled: true,
+    removed: true,
+    status: 'inactive',
+    membershipStatus: 'inactive',
+    deactivatedAt: now,
+    deactivatedBy: ctx.callerDocId || ctx?.decoded?.uid || '',
+    deactivatedByEmail: ctx.callerEmail || '',
+    updatedAt: now,
+    membershipSource: 'staff-member-api-v14-multi-workspace'
+  };
+}
 async function collectTargetWorkspaceMembershipDocs(db, targetUid, targetEmail, targetUser, restaurantId) {
   const identity = buildTargetIdentity(targetUid, targetEmail, targetUser || {});
   const seen = new Map();
@@ -495,4 +528,11 @@ module.exports = async function handler(req, res) {
       : 500;
     return res.status(status).json({ error: status >= 500 ? 'Staff save failed.' : message });
   }
+};
+
+module.exports._test = {
+  workspaceMemberMatchesTargetWorkspace,
+  buildInactiveMembershipPatch,
+  isInactiveMembership,
+  memberDocId
 };
