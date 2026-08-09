@@ -22,13 +22,14 @@ async function openSchedule(page) {
 }
 
 async function openWarnings(page) {
-  const openCopilot = page.getByRole('button', { name: /^Open Copilot Tools$/i }).first();
-  if (await openCopilot.isVisible({ timeout: 1500 }).catch(() => false)) {
+  const warningsButton = page.getByRole('button', { name: /^Open Warnings$/i }).or(page.getByRole('button', { name: /^Warnings$/i })).first();
+  if (!await warningsButton.isVisible().catch(() => false)) {
+    const openCopilot = page.getByRole('button', { name: /^Open Copilot Tools$/i }).first();
+    await expect(openCopilot, 'Schedule Copilot should already be open or expose Open Copilot Tools').toBeVisible({ timeout: 10000 });
     await openCopilot.click();
     await page.waitForTimeout(400);
   }
-  const warningsButton = page.getByRole('button', { name: /^Warnings$/i }).first();
-  await expect(warningsButton, 'Warnings tool button should be opened by exact role, not loose page text').toBeVisible({ timeout: 10000 });
+  await expect(warningsButton, 'Warnings tool button should use the current accessible control name').toBeVisible({ timeout: 10000 });
   await warningsButton.click();
   await page.waitForTimeout(500);
 }
@@ -117,7 +118,7 @@ test.describe('16.0.153 Schedule warnings and Request Off management', () => {
     await filter.fill('Sara');
     await page.waitForTimeout(500);
     const filtered = await bodyText(page, 60000);
-    await page.getByRole('button', { name: /^All Employees$/i }).click();
+    await page.getByRole('button', { name: /^Open All Employees$/i }).or(page.getByRole('button', { name: /^All Employees$/i })).first().click();
     await page.waitForTimeout(500);
     const cleared = await bodyText(page, 60000);
     await attachJson(testInfo, '16-0-153-request-off-filter-state.json', { unfiltered: unfiltered.slice(0, 8000), filtered: filtered.slice(0, 8000), cleared: cleared.slice(0, 8000) });
@@ -129,7 +130,7 @@ test.describe('16.0.153 Schedule warnings and Request Off management', () => {
   test('Approve All Visible updates only filtered visible pending requests', async ({ page }, testInfo) => {
     await ensureSeeded(testInfo);
     await openManagerRequestOff(page);
-    await page.getByRole('button', { name: /^Needs Review$/i }).click();
+    await page.getByRole('button', { name: /^Open Needs Review$/i }).or(page.getByRole('button', { name: /^Needs Review$/i })).first().click();
     const filter = page.getByLabel(/Filter Request Off by employee/i).or(page.getByPlaceholder(/Filter by employee/i)).first();
     await expect(filter).toBeVisible({ timeout: 10000 });
     await filter.fill('Sara');
@@ -148,7 +149,7 @@ test.describe('16.0.153 Schedule warnings and Request Off management', () => {
   test('Archive All Visible archives only filtered visible eligible requests', async ({ page }, testInfo) => {
     await ensureSeeded(testInfo);
     await openManagerRequestOff(page);
-    await page.getByRole('button', { name: /^Upcoming Approved$/i }).click();
+    await page.getByRole('button', { name: /^Open Upcoming Approved$/i }).or(page.getByRole('button', { name: /^Upcoming Approved$/i })).first().click();
     const filter = page.getByLabel(/Filter Request Off by employee/i).or(page.getByPlaceholder(/Filter by employee/i)).first();
     await expect(filter).toBeVisible({ timeout: 10000 });
     await filter.fill('Allen');
@@ -159,7 +160,7 @@ test.describe('16.0.153 Schedule warnings and Request Off management', () => {
     });
     await page.getByRole('button', { name: /^Archive All Visible$/i }).click();
     await expect(page.locator('body'), 'Bulk archive should show one final summary toast').toContainText(/Archived \d+ request/i, { timeout: 15000 });
-    await page.getByRole('button', { name: /Published\/Archived|Archived/i }).first().click();
+    await page.getByRole('button', { name: /^Open Published\/Archived$/i }).or(page.getByRole('button', { name: /^Published\/Archived$/i })).first().click();
     await page.waitForTimeout(500);
     const history = await bodyText(page, 60000);
     await attachJson(testInfo, '16-0-153-archive-visible-history.json', { history: history.slice(0, 12000) });
