@@ -1,14 +1,14 @@
 {
-  "version": "16.0.154",
-  "name": "86 Chaos 16.0.154 Workspace Chooser Auth Readiness and Focused Browser Repair",
-  "build": "16.0.154",
-  "label": "86 Chaos 16.0.154 Workspace Chooser Auth Readiness and Focused Browser Repair",
-  "releasedAt": "2026-08-08T16:20:00-05:00",
-  "releaseTitle": "Workspace Chooser Auth Readiness and Focused Browser Repair",
+  "version": "16.0.155",
+  "name": "86 Chaos 16.0.155 Workspace Targeting, Request Off Navigation, and Schedule Warning Runtime Repair",
+  "build": "16.0.155",
+  "label": "86 Chaos 16.0.155 Workspace Targeting, Request Off Navigation, and Schedule Warning Runtime Repair",
+  "releasedAt": "2026-08-08T19:03:00-05:00",
+  "releaseTitle": "Workspace Targeting, Request Off Navigation, and Schedule Warning Runtime Repair",
   "notes": [
-    "Repairs release-gate authenticated readiness so a late workspace chooser selects the configured QA workspace instead of timing out.",
-    "Repairs focused Ghost Request Off navigation to use the employee Time Clock & Schedule route without elevating Schedule Builder permissions.",
-    "Scopes the login tap-target cascade fix to login actions and carries forward the explicit 16.0.153 feature repair scope."
+    "Targets the real Choose Workspace heading and unique configured QA workspace Open button during authenticated browser readiness.",
+    "Repairs focused Request Off browser navigation to use the actual Schedule Request Off accessible control without changing permissions.",
+    "Hardens Schedule Builder warning evaluation so malformed legacy warning records cannot take down the route and gives the QA seed a deterministic over-coverage case."
   ],
-  "title": "86 Chaos 16.0.154 Workspace Chooser Auth Readiness and Focused Browser Repair"
+  "title": "86 Chaos 16.0.155 Workspace Targeting, Request Off Navigation, and Schedule Warning Runtime Repair"
 }

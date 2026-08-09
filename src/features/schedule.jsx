@@ -20,6 +20,7 @@ const {
   scheduleWarningEmployeeLabel,
   warningShiftContext,
   buildCoverageVarianceRows,
+  buildScheduleConflictWarningRows,
   isRequestOffBulkEligible,
 } = scheduleWarningControls;
 
@@ -4943,8 +4944,12 @@ const ScheduleCopilot = ({ currentDate, users = [], shifts = [], timeOffRequests
   const weekDates = getWeekDates(currentDate);
   const weekStart = weekDates[0];
   const weekEnd = weekDates[6];
-  const weekShifts = shifts.filter(s => weekDates.includes(s.date));
-  const activeUsers = users.filter(u => u.isActive !== false);
+  const safeShifts = Array.isArray(shifts) ? shifts.filter(Boolean) : [];
+  const safeUsers = Array.isArray(users) ? users.filter(Boolean) : [];
+  const safeTimeOffRequests = Array.isArray(timeOffRequests) ? timeOffRequests.filter(Boolean) : [];
+  const safeTemplates = Array.isArray(templates) ? templates.filter(Boolean) : [];
+  const weekShifts = safeShifts.filter(s => weekDates.includes(s?.date));
+  const activeUsers = safeUsers.filter(u => u?.isActive !== false);
   const [open, setOpen] = useState(false);
   const [activeTool, setActiveTool] = useState('targets');
   const [templateId, setTemplateId] = useState('');
@@ -4971,8 +4976,8 @@ const ScheduleCopilot = ({ currentDate, users = [], shifts = [], timeOffRequests
     }));
   }, [firstScheduleRole, scheduleRoleOptions.join('|')]);
 
-  const templateOptions = [...templates].sort((a,b) => (a.name || '').localeCompare(b.name || ''));
-  const activeTemplate = templates.find(t => t.id === templateId) || null;
+  const templateOptions = [...safeTemplates].sort((a,b) => (a.name || '').localeCompare(b.name || ''));
+  const activeTemplate = safeTemplates.find(t => t.id === templateId) || null;
   const draftCount = weekShifts.filter(s => !s.isPublished).length;
   const coverageVarianceRows = buildCoverageVarianceRows({ coverageTargets, weekDates, weekShifts, roleMatcher: roleMatches, canonicalRole: canonicalScheduleRole });
   const missingTargets = coverageVarianceRows.filter(row => row.type === 'under');
@@ -4986,56 +4991,20 @@ const ScheduleCopilot = ({ currentDate, users = [], shifts = [], timeOffRequests
       : `${formatDisplayDate(row.date)} has ${row.over} more ${row.role} than the coverage target.`,
     detail: `Existing: ${row.existing} • Target: ${row.count}`,
   }));
-  const conflictList = getScheduleWarnings(weekShifts, users, timeOffRequests);
+  const conflictList = buildScheduleConflictWarningRows({
+    weekStart,
+    schedule: weekShifts,
+    allUsers: safeUsers,
+    requests: safeTimeOffRequests,
+    resolvePerson: resolveSchedulePersonForShift,
+    matchesTimeOff: timeOffMatchesPerson,
+    isActiveRequest: isActiveTimeOffRequest,
+    employeeLabeler: scheduleWarningEmployeeLabel,
+    shiftContext: warningShiftContext,
+    fingerprintBuilder: buildAlertFingerprint,
+    formatDate: formatDisplayDate,
+  });
   const allScheduleWarnings = [...coverageWarnings, ...conflictList];
-
-  function getScheduleWarnings(schedule, allUsers, requests) {
-    const warnings = [];
-    schedule.forEach(s => {
-      const resolved = resolveSchedulePersonForShift(s, allUsers);
-      const person = resolved?.ok ? resolved.person : null;
-      const employeeLabel = scheduleWarningEmployeeLabel(s, person);
-      const empForMatch = person || {
-        id: s.employeeId || s.scheduleUserId || s.rosterUserId || s.userId || s.authUid || '',
-        employeeId: s.employeeId || '',
-        scheduleUserId: s.scheduleUserId || '',
-        rosterUserId: s.rosterUserId || '',
-        userId: s.userId || '',
-        authUid: s.authUid || '',
-        name: s.employeeName || s.userName || s.name || '',
-        employeeName: s.employeeName || s.userName || s.name || '',
-        email: s.employeeEmail || s.userEmail || s.email || '',
-        employeeEmail: s.employeeEmail || s.userEmail || s.email || '',
-      };
-      const off = requests.find(r => timeOffMatchesPerson(r, empForMatch) && r.date === s.date && isActiveTimeOffRequest(r));
-      if (off) {
-        warnings.push({
-          type: 'request-off-conflict',
-          alertId: `schedule-${weekStart}-request-off-${s.id || s.employeeId || s.scheduleUserId || s.date}-${s.date}`,
-          fingerprint: buildAlertFingerprint('schedule-request-off', weekStart, s.id || '', s.date, employeeLabel, s.employeeId || '', s.scheduleUserId || '', s.rosterUserId || '', s.startTime || '', s.endTime || '', s.role || '', off.id || ''),
-          message: `${employeeLabel} is scheduled on requested-off date ${formatDisplayDate(s.date)}.`,
-          detail: employeeLabel === 'Unresolved employee' ? warningShiftContext(s) : '',
-        });
-      }
-    });
-    allUsers.forEach(u => {
-      const count = schedule.filter(s => s.employeeId === u.id).length;
-      if (count >= 6) warnings.push({
-        type: 'schedule-load',
-        alertId: `schedule-${weekStart}-load-${u.id || u.name}`,
-        fingerprint: buildAlertFingerprint('schedule-load', weekStart, u.id || '', u.name || '', count),
-        message: `${u.name} has ${count} scheduled days this week.`,
-        detail: '',
-      });
-    });
-    const seen = new Set();
-    return warnings.filter(w => {
-      const key = `${w.type}|${w.message}|${w.detail}`;
-      if (seen.has(key)) return false;
-      seen.add(key);
-      return true;
-    }).slice(0, 12);
-  }
 
   const addTemplateRow = () => setTemplateRows([...templateRows, { dayIndex: 5, role: firstScheduleRole, startTime: '16:00', endTime: '21:00', count: 1 }]);
   const updateTemplateRow = (idx, patch) => setTemplateRows(templateRows.map((r,i) => i === idx ? { ...r, ...patch } : r));
@@ -5187,7 +5156,7 @@ const ScheduleCopilot = ({ currentDate, users = [], shifts = [], timeOffRequests
         <div className="flex flex-wrap gap-1.5 flex-shrink-0"><button onClick={copyPreviousWeek} className={T.btnAlt}>Copy Week</button><button onClick={smartFill} className={T.btnAlt}>Smart Fill</button><button onClick={publishWeek} className={T.btn}>Publish</button><button onClick={() => setOpen(false)} className={T.btnAlt}>Hide</button></div>
       </div>
       <div className="grid grid-cols-4 gap-1.5">
-        {[['Drafts',draftCount],['Missing',missingTargets.length],['Warnings',allScheduleWarnings.length],['Templates',templates.length]].map(([label,value]) => <div key={label} className="schedule-copilot-metric bg-[#12161A] border border-[#2A353D]"><span className="text-[8px] uppercase tracking-widest font-black text-slate-500">{label}</span><strong className="text-white">{value}</strong></div>)}
+        {[['Drafts',draftCount],['Missing',missingTargets.length],['Warnings',allScheduleWarnings.length],['Templates',safeTemplates.length]].map(([label,value]) => <div key={label} className="schedule-copilot-metric bg-[#12161A] border border-[#2A353D]"><span className="text-[8px] uppercase tracking-widest font-black text-slate-500">{label}</span><strong className="text-white">{value}</strong></div>)}
       </div>
       <div className="flex gap-1.5 overflow-x-auto custom-scrollbar border-b border-[#2A353D] pb-2">{[['targets','Coverage'],['templates','Templates'],['template-editor', editingTemplateId ? 'Edit Template' : 'Create Template'],['drag','Drag Board'],['warnings','Warnings']].map(([id,label]) => <button key={id} onClick={() => setActiveTool(id)} className={`flex-shrink-0 px-2.5 py-1.5 rounded-lg text-[9px] uppercase tracking-widest font-black ${activeTool===id ? `${T.grad} text-slate-900` : 'bg-[#12161A] text-slate-400 hover:text-white'}`}>{label}</button>)}</div>
       <div className="schedule-copilot-body custom-scrollbar space-y-3">

@@ -16,6 +16,10 @@ function unique(values = []) {
   return Array.from(new Set(values.map(cleanText).filter(Boolean)));
 }
 
+function safeRecordArray(value) {
+  return Array.isArray(value) ? value.filter(item => item && typeof item === 'object') : [];
+}
+
 function firstNonEmpty(record = {}, fields = []) {
   for (const field of fields) {
     const value = cleanText(record?.[field]);
@@ -66,37 +70,184 @@ function warningShiftContext(shift = {}) {
 
 function buildCoverageVarianceRows({ coverageTargets = [], weekDates = [], weekShifts = [], roleMatcher = (a, b) => cleanText(a).toLowerCase() === cleanText(b).toLowerCase(), canonicalRole = role => role } = {}) {
   const rows = [];
-  for (const target of coverageTargets || []) {
-    const dayIndex = Number.parseInt(target?.dayIndex || 0, 10) || 0;
-    const date = weekDates[dayIndex];
-    if (!date) continue;
-    const role = canonicalRole(target?.role || 'Unassigned');
-    const targetCount = Number.parseInt(target?.count || 0, 10) || 0;
-    if (targetCount <= 0) continue;
-    const existing = (weekShifts || []).filter(shift => (
-      shift?.date === date
-      && roleMatcher(shift?.role, role)
-      && (!target?.startTime || shift?.startTime === target.startTime)
-    )).length;
-    const delta = existing - targetCount;
-    if (delta === 0) continue;
-    rows.push({
-      ...target,
-      id: target?.id || `${dayIndex}-${role}-${target?.startTime || ''}-${target?.endTime || ''}`,
-      dayIndex,
-      date,
-      role,
-      originalRole: target?.role,
-      count: targetCount,
-      target: targetCount,
-      existing,
-      delta,
-      type: delta < 0 ? 'under' : 'over',
-      needed: delta < 0 ? Math.abs(delta) : 0,
-      over: delta > 0 ? delta : 0,
-    });
+  const targets = safeRecordArray(coverageTargets);
+  const dates = Array.isArray(weekDates) ? weekDates : [];
+  const shifts = safeRecordArray(weekShifts);
+  for (const target of targets) {
+    try {
+      const parsedDayIndex = Number.parseInt(target?.dayIndex ?? 0, 10);
+      const dayIndex = Number.isFinite(parsedDayIndex) ? parsedDayIndex : 0;
+      const date = dates[dayIndex];
+      if (!date) continue;
+      const role = cleanText(canonicalRole(target?.role || 'Unassigned')) || 'Unassigned';
+      const targetCount = Number.parseInt(target?.count || 0, 10) || 0;
+      if (targetCount <= 0) continue;
+      const existing = shifts.filter(shift => {
+        try {
+          return shift?.date === date
+            && roleMatcher(shift?.role, role)
+            && (!target?.startTime || shift?.startTime === target.startTime);
+        } catch (_) {
+          return false;
+        }
+      }).length;
+      const delta = existing - targetCount;
+      if (delta === 0) continue;
+      rows.push({
+        ...target,
+        id: target?.id || `${dayIndex}-${role}-${target?.startTime || ''}-${target?.endTime || ''}`,
+        dayIndex,
+        date,
+        role,
+        originalRole: target?.role,
+        count: targetCount,
+        target: targetCount,
+        existing,
+        delta,
+        type: delta < 0 ? 'under' : 'over',
+        needed: delta < 0 ? Math.abs(delta) : 0,
+        over: delta > 0 ? delta : 0,
+      });
+    } catch (_) {
+      // A malformed legacy target must not take down Schedule Builder.
+    }
   }
   return rows;
+}
+
+function buildScheduleConflictWarningRows({
+  weekStart = '',
+  schedule = [],
+  allUsers = [],
+  requests = [],
+  resolvePerson = () => ({ ok: false, person: null }),
+  matchesTimeOff = () => false,
+  isActiveRequest = () => true,
+  employeeLabeler = scheduleWarningEmployeeLabel,
+  shiftContext = warningShiftContext,
+  fingerprintBuilder = (...parts) => parts.map(cleanText).join('|'),
+  formatDate = date => cleanText(date),
+} = {}) {
+  const safeSchedule = safeRecordArray(schedule);
+  const safeUsers = safeRecordArray(allUsers);
+  const safeRequests = safeRecordArray(requests);
+  const warnings = [];
+
+  for (const shift of safeSchedule) {
+    try {
+      let person = null;
+      try {
+        const resolved = resolvePerson(shift, safeUsers);
+        person = resolved?.ok && resolved?.person && typeof resolved.person === 'object' ? resolved.person : null;
+      } catch (_) {
+        person = null;
+      }
+
+      let employeeLabel = 'Unresolved employee';
+      try {
+        employeeLabel = cleanText(employeeLabeler(shift, person)) || 'Unresolved employee';
+      } catch (_) {
+        employeeLabel = scheduleWarningEmployeeLabel(shift, person);
+      }
+
+      const subject = person || {
+        id: shift.employeeId || shift.scheduleUserId || shift.rosterUserId || shift.userId || shift.authUid || '',
+        employeeId: shift.employeeId || '',
+        scheduleUserId: shift.scheduleUserId || '',
+        rosterUserId: shift.rosterUserId || '',
+        userId: shift.userId || '',
+        authUid: shift.authUid || '',
+        name: shift.employeeName || shift.userName || shift.name || '',
+        employeeName: shift.employeeName || shift.userName || shift.name || '',
+        email: shift.employeeEmail || shift.userEmail || shift.email || '',
+        employeeEmail: shift.employeeEmail || shift.userEmail || shift.email || '',
+      };
+
+      let off = null;
+      for (const request of safeRequests) {
+        try {
+          if (request?.date !== shift?.date) continue;
+          if (!isActiveRequest(request)) continue;
+          if (!matchesTimeOff(request, subject)) continue;
+          off = request;
+          break;
+        } catch (_) {
+          // Skip only the malformed request and keep evaluating the rest.
+        }
+      }
+
+      if (off) {
+        let fingerprint = '';
+        try {
+          fingerprint = fingerprintBuilder(
+            'schedule-request-off',
+            weekStart,
+            shift.id || '',
+            shift.date || '',
+            employeeLabel,
+            shift.employeeId || '',
+            shift.scheduleUserId || '',
+            shift.rosterUserId || '',
+            shift.startTime || '',
+            shift.endTime || '',
+            shift.role || '',
+            off.id || ''
+          );
+        } catch (_) {
+          fingerprint = `${weekStart}|${shift.id || shift.date || ''}|${off.id || ''}`;
+        }
+        let detail = '';
+        if (employeeLabel === 'Unresolved employee') {
+          try { detail = cleanText(shiftContext(shift)); } catch (_) { detail = warningShiftContext(shift); }
+        }
+        let displayDate = cleanText(shift.date);
+        try { displayDate = formatDate(shift.date) || displayDate; } catch (_) {}
+        warnings.push({
+          type: 'request-off-conflict',
+          alertId: `schedule-${weekStart}-request-off-${shift.id || shift.employeeId || shift.scheduleUserId || shift.date}-${shift.date}`,
+          fingerprint,
+          message: `${employeeLabel} is scheduled on requested-off date ${displayDate}.`,
+          detail,
+        });
+      }
+    } catch (_) {
+      // A malformed legacy shift must not take down Schedule Builder.
+    }
+  }
+
+  for (const user of safeUsers) {
+    try {
+      const userId = user.id || user.employeeId || user.scheduleUserId || user.rosterUserId || user.userId || '';
+      if (!userId) continue;
+      const count = safeSchedule.filter(shift => (
+        shift?.employeeId === userId
+        || shift?.scheduleUserId === userId
+        || shift?.rosterUserId === userId
+      )).length;
+      if (count < 6) continue;
+      const userName = cleanText(user.name || user.employeeName || user.displayName || user.email) || 'Employee';
+      let fingerprint = '';
+      try { fingerprint = fingerprintBuilder('schedule-load', weekStart, userId, userName, count); }
+      catch (_) { fingerprint = `${weekStart}|${userId}|${count}`; }
+      warnings.push({
+        type: 'schedule-load',
+        alertId: `schedule-${weekStart}-load-${userId}`,
+        fingerprint,
+        message: `${userName} has ${count} scheduled days this week.`,
+        detail: '',
+      });
+    } catch (_) {
+      // Skip only the malformed roster row.
+    }
+  }
+
+  const seen = new Set();
+  return warnings.filter(warning => {
+    const key = `${warning.type}|${warning.message}|${warning.detail}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  }).slice(0, 12);
 }
 
 function requestWorkspaceId(request = {}) {
@@ -126,6 +277,8 @@ module.exports = {
   requestMatchesEmployeeFilter,
   scheduleWarningEmployeeLabel,
   warningShiftContext,
+  safeRecordArray,
   buildCoverageVarianceRows,
+  buildScheduleConflictWarningRows,
   isRequestOffBulkEligible,
 };

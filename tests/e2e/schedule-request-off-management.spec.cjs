@@ -39,7 +39,7 @@ async function openManagerRequestOff(page) {
   await login(page, account.email, account.password);
   await gotoTab(page, 'published', { settleMs: 1400, maxText: 60000 });
   await dismissBlockingDialogs(page, { maxPasses: 4 }).catch(() => null);
-  const requestOffTab = page.getByRole('button', { name: /^Request Off$/i }).first();
+  const requestOffTab = page.getByRole('button', { name: /^Schedule Request Off$/i }).first();
   await expect(requestOffTab, 'Request Off subtab should be visible inside Time Clock & Schedule').toBeVisible({ timeout: 15000 });
   await requestOffTab.click();
   await expect(page.locator('body'), 'Request-Off Workflow should render before manager Request Off assertions').toContainText(/Request-Off Workflow/i, { timeout: 15000 });

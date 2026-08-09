@@ -30,17 +30,17 @@ const ghostRequestOffSpec = read('tests/86chaos-full-audit/06-request-off-events
 const compactUiSpec = read('tests/e2e/compact-ui-layout.spec.cjs');
 const styles = read('src/styles.css');
 
-assert(pkg.version === '16.0.154', 'package.json version is 16.0.154');
-assert(lock.version === '16.0.154' && lock.packages?.['']?.version === '16.0.154', 'package-lock root versions are 16.0.154');
-assert(version.version === '16.0.154' && version.build === '16.0.154', 'public/version.json version/build are 16.0.154');
-assert(version.releaseTitle === 'Workspace Chooser Auth Readiness and Focused Browser Repair', 'public/version.json release title is 16.0.154 release name');
-assert(appCore.includes("CURRENT_VERSION = '16.0.154'"), 'app core CURRENT_VERSION is 16.0.154');
-assert(apiVersion.includes("APP_VERSION = '16.0.154'") && apiVersion.includes("SECURITY_SCHEMA_VERSION = '16.0.154'"), 'api version reports 16.0.154');
-assert(pkg.scripts['test:source'] === 'node scripts/validate-16-0-154.js', 'test:source points at 16.0.154 validator');
+assert(pkg.version === '16.0.155', 'package.json version is 16.0.155');
+assert(lock.version === '16.0.155' && lock.packages?.['']?.version === '16.0.155', 'package-lock root versions are 16.0.155');
+assert(version.version === '16.0.155' && version.build === '16.0.155', 'public/version.json version/build are 16.0.155');
+assert(version.releaseTitle === 'Workspace Targeting, Request Off Navigation, and Schedule Warning Runtime Repair', 'public/version.json release title is 16.0.155 release name');
+assert(appCore.includes("CURRENT_VERSION = '16.0.155'"), 'app core CURRENT_VERSION is 16.0.155');
+assert(apiVersion.includes("APP_VERSION = '16.0.155'") && apiVersion.includes("SECURITY_SCHEMA_VERSION = '16.0.155'"), 'api version reports 16.0.155');
+assert(pkg.scripts['test:source'] === 'node scripts/validate-16-0-155.js', 'test:source points at 16.0.155 validator');
 assert(pkg.scripts['test:play-store:delta'] === 'powershell -NoProfile -ExecutionPolicy Bypass -File .\\RUN_86CHAOS_FAILED_AND_NEW_RELEASE_GATE.ps1', 'delta command remains failed+new shared runner');
 assert(pkg.scripts['test:play-store:failed'] === 'powershell -NoProfile -ExecutionPolicy Bypass -File .\\RUN_86CHAOS_FAILED_ONLY_RELEASE_GATE.ps1', 'failed command uses strict failed-only wrapper');
 assert(pkg.scripts['test:play-store:repair']?.includes('-SelectionMode repair'), 'repair command selects explicit repair mode');
-assert(!fs.existsSync(path.join(root, 'scripts/validate-16-0-153.js')), 'previous 16.0.153 validator was replaced');
+assert(!fs.existsSync(path.join(root, 'scripts/validate-16-0-154.js')), 'previous 16.0.154 validator was replaced');
 
 assert(sha('firestore.rules') === '51bfd7d39edd59f680ae41a149c108cec8cd42d00b102d84cb00ee40d90264d9', 'firestore.rules unchanged');
 assert(sha('storage.rules') === '174e7e9a140193ff69ccf0f0d3e5c65b81a9e0fbbd612bff45ce57e7a3a7ce9c', 'storage.rules unchanged');
@@ -58,18 +58,22 @@ assert(failedConfig.includes('CHAOS_RELEASE_GATE_SELECTION_MODE') && failedConfi
 assert(collector.includes("'repair'") && collector.includes('selectionMode') && collector.includes('noFailedOnlyTestsRemain'), 'release report records failed+new, failed-only, and repair modes accurately');
 
 assert(loginHelper.includes('while (Date.now() < deadline)') && loginHelper.includes('workspaceChooserLocator(page).isVisible') && loginHelper.includes('chooseReleaseWorkspaceIfNeeded(page, { ...options, chooserTimeout: 450 })'), 'auth readiness helper re-checks and selects a late workspace chooser during the readiness window');
-assert(loginHelper.includes('CHAOS_QA_WORKSPACE_NAME is required when a workspace chooser appears') && loginHelper.includes('workspaceChoiceButton(page, requested)') && loginHelper.includes("region.getByRole('button', { name: exactName }).first()"), 'auth readiness helper requires the exact configured QA workspace button');
+assert(loginHelper.includes('CHAOS_QA_WORKSPACE_NAME is required when a workspace chooser appears') && loginHelper.includes("getByRole('heading', { name: /^(Choose|Select) (Workspace|Restaurant)$/i }).first()") && loginHelper.includes('workspaceOpenButtonRegex(workspaceName)') && loginHelper.includes('targetCount !== 1'), 'auth readiness helper targets the real chooser heading and requires exactly one configured QA workspace Open button');
 assert(!loginHelper.includes('86 Chaos OS Logo') && !/getByText\(requested/.test(loginHelper), 'auth readiness does not accept the logo or broad page text as proof/selection');
-assert(ghostRequestOffSpec.includes("gotoTab(page, 'published'") && ghostRequestOffSpec.includes("getByRole('button', { name: /^Request Off$/i })") && !ghostRequestOffSpec.includes("gotoTab(page, 'schedule', { settleMs: 1800, maxText: 70000 })"), 'Ghost Request Off uses Time Clock & Schedule published route, not Schedule Builder');
+assert(ghostRequestOffSpec.includes("gotoTab(page, 'published'") && ghostRequestOffSpec.includes("getByRole('button', { name: /^Schedule Request Off$/i })") && !ghostRequestOffSpec.includes("gotoTab(page, 'schedule', { settleMs: 1800, maxText: 70000 })"), 'Ghost Request Off uses Time Clock & Schedule published route, not Schedule Builder');
 assert(styles.includes('16.0.154 login action target cascade repair') && styles.includes('.chaos-login-screen .chaos-login-primary-action') && styles.includes('.chaos-login-screen .chaos-login-secondary-action') && /min-height:\s*44px !important/.test(styles), 'login tap-target cascade repair is scoped to login primary/secondary actions');
 assert(compactUiSpec.includes('minHeight') && compactUiSpec.includes('paddingTop') && compactUiSpec.includes('parentTransform'), 'login tap-target test captures computed dimensions and cascade diagnostics');
 
-assert(schedule.includes('resolveSchedulePersonForShift(s, allUsers)') && schedule.includes('scheduleWarningEmployeeLabel(s, person)'), 'Schedule warnings use canonical shift/person resolution');
+assert(schedule.includes('buildScheduleConflictWarningRows') && schedule.includes('resolvePerson: resolveSchedulePersonForShift') && schedule.includes('employeeLabeler: scheduleWarningEmployeeLabel'), 'Schedule warnings use guarded canonical shift/person resolution');
 assert(!schedule.includes('Someone is scheduled on requested-off date') && !schedule.includes("|| 'Someone'"), 'Schedule warnings no longer produce literal Someone fallback');
-assert(schedule.includes('Unresolved employee') && schedule.includes('warningShiftContext(s)'), 'unresolved schedule warnings use safe fallback with shift context');
+assert(warningHelpers.includes('Unresolved employee') && warningHelpers.includes('warningShiftContext(shift)'), 'unresolved schedule warnings use safe fallback with shift context');
 assert(schedule.includes('buildCoverageVarianceRows') && schedule.includes("row.type === 'under'") && schedule.includes('coverage-over') && schedule.includes('Existing: ${row.existing} • Target: ${row.count}'), 'coverage warnings include under and over target variance with shared math');
 assert(schedule.includes('useRememberedAlert') && schedule.includes('buildAlertFingerprint') && schedule.includes('Dismiss warning'), 'Schedule warnings use existing alert memory for per-warning dismissal');
 assert(warningHelpers.includes('buildCoverageVarianceRows') && warningHelpers.includes('delta = existing - targetCount') && warningHelpers.includes("type: delta < 0 ? 'under' : 'over'"), 'coverage variance helper implements delta model');
+assert(warningHelpers.includes('safeRecordArray') && warningHelpers.includes('buildScheduleConflictWarningRows') && warningHelpers.includes('A malformed legacy shift must not take down Schedule Builder'), 'Schedule warning model isolates malformed legacy rows instead of crashing the Schedule Builder route');
+const qaProfile = read('tests/86chaos-full-audit/utils/fake-restaurant-profile.cjs');
+assert(qaProfile.includes("dayIndex: 2, role: 'Bartender', startTime: '10a', endTime: '4p', count: 1"), 'QA seed has deterministic Tuesday Bartender over-coverage fixture');
+
 assert(warningHelpers.includes('SUBJECT_ID_FIELDS') && !warningHelpers.includes("'createdBy'") && !warningHelpers.includes("'requestedBy'"), 'Request Off employee filtering uses subject identity fields, not audit actor fields');
 assert(schedule.includes('Filter Request Off by employee') && schedule.includes('requestMatchesEmployeeFilter(r, employeeFilter)'), 'Request Off manager workflow has employee filter');
 assert(schedule.includes('Approve All Visible') && schedule.includes('eligibleVisibleRequests({ requirePending: true })') && schedule.includes('Promise.allSettled'), 'Approve All Visible is scoped to visible pending eligible requests with all-settled reporting');
@@ -78,7 +82,7 @@ assert(schedule.includes('bulkBusy') && schedule.includes('disabled={!!bulkBusy}
 
 assert(fs.existsSync(path.join(root, 'tests/e2e/schedule-request-off-management.spec.cjs')), 'focused 16.0.153 carried-forward Playwright feature spec exists');
 const featureSpec = read('tests/e2e/schedule-request-off-management.spec.cjs');
-assert(featureSpec.includes('openManagerRequestOff') && featureSpec.includes("gotoTab(page, 'published'") && featureSpec.includes("getByRole('button', { name: /^Request Off$/i })"), 'carried-forward Request Off feature tests explicitly open the Request Off workflow');
+assert(featureSpec.includes('openManagerRequestOff') && featureSpec.includes("gotoTab(page, 'published'") && featureSpec.includes("getByRole('button', { name: /^Schedule Request Off$/i })"), 'carried-forward Request Off feature tests explicitly open the Request Off workflow');
 assert(featureSpec.includes('Open Copilot Tools') && featureSpec.includes("getByRole('button', { name: /^Warnings$/i })") && !featureSpec.includes('getByText(/Warnings/i).first().click'), 'carried-forward warning tests open exact Schedule Copilot warning controls');
 assert(featureSpec.includes("getByRole('button', { name: /^Needs Review$/i })") && featureSpec.includes("getByRole('button', { name: /^Upcoming Approved$/i })"), 'carried-forward bulk tests use the correct seeded Request Off views');
 [
@@ -97,7 +101,7 @@ assert(fs.existsSync(path.join(root, 'api/failed-only-repair-selection-16-0-153.
 
 assert(helpKnowledge.includes("CUSTOMER_HELP_VERSION = '16.0.150'"), 'customer Help knowledge version was not bumped unnecessarily');
 assert(helpKnowledge.includes('over-coverage against targets') && helpKnowledge.includes('approve or archive only the visible filtered requests in bulk'), 'minimal relevant customer Help additions are present');
-assert(!read('src/core/customerHelpKnowledge.js').includes("CUSTOMER_HELP_VERSION = '16.0.154'"), 'browser Help export version was not bumped to app version');
+assert(!read('src/core/customerHelpKnowledge.js').includes("CUSTOMER_HELP_VERSION = '16.0.155'"), 'browser Help export version was not bumped to app version');
 
 if (failures) { console.error(`\n${failures} validation check(s) failed.`); process.exit(1); }
-console.log('\n16.0.154 source validation passed.');
+console.log('\n16.0.155 source validation passed.');

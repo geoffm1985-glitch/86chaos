@@ -26,6 +26,11 @@ function normalizedTextRegex(value = '') {
   return new RegExp(`^\\s*${parts.join('\\s+')}\\s*$`, 'i');
 }
 
+function workspaceOpenButtonRegex(value = '') {
+  const parts = String(value || '').trim().split(/\s+/).filter(Boolean).map(escapeRegex);
+  return new RegExp(`^\\s*Open\\s+${parts.join('\\s+')}`, 'i');
+}
+
 
 function releaseWorkspaceName(options = {}) {
   return String(options.workspaceName || process.env.CHAOS_QA_WORKSPACE_NAME || process.env.CHAOS_QA_WORKSPACE || '').trim();
@@ -39,16 +44,11 @@ function authenticatedShellLocator(page) {
 }
 
 function workspaceChooserLocator(page) {
-  const chooserText = /choose workspace|select workspace|select restaurant|choose restaurant/i;
-  return page.getByRole('dialog', { name: chooserText })
-    .or(page.locator('[data-testid*="workspace" i], [data-testid*="restaurant" i], main, section, form, article').filter({ hasText: chooserText }))
-    .first();
+  return page.getByRole('heading', { name: /^(Choose|Select) (Workspace|Restaurant)$/i }).first();
 }
 
 function workspaceChoiceButton(page, workspaceName) {
-  const region = workspaceChooserLocator(page);
-  const exactName = normalizedTextRegex(workspaceName);
-  return region.getByRole('button', { name: exactName }).first();
+  return page.getByRole('button', { name: workspaceOpenButtonRegex(workspaceName) });
 }
 
 async function isLoginShellVisible(page) {
@@ -82,10 +82,15 @@ async function chooseReleaseWorkspaceIfNeeded(page, options = {}) {
   if (!requested) {
     throw new Error('Workspace chooser appeared but no workspaceName or CHAOS_QA_WORKSPACE_NAME was configured.');
   }
-  await expect(chooser, 'Choose Workspace region should be visible before selecting a release workspace').toBeVisible({ timeout: 10_000 });
+  await expect(chooser, 'Choose Workspace heading should be visible before selecting a release workspace').toBeVisible({ timeout: 10_000 });
   const target = workspaceChoiceButton(page, requested);
-  await expect(target, `Workspace chooser should show an exact button for ${requested}`).toBeVisible({ timeout: 10_000 });
-  await target.click();
+  const targetCount = await target.count();
+  if (targetCount !== 1) {
+    throw new Error(`Workspace chooser must expose exactly one button for ${requested}; found ${targetCount}.`);
+  }
+  const targetButton = target.first();
+  await expect(targetButton, `Workspace chooser should show the configured QA workspace button for ${requested}`).toBeVisible({ timeout: 10_000 });
+  await targetButton.click();
   await expect(chooser, 'Workspace chooser should close after selecting the configured release workspace').toBeHidden({ timeout: 15_000 }).catch(() => {});
   return true;
 }

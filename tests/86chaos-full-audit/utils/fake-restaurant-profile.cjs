@@ -133,6 +133,8 @@ function buildFakeRestaurantProfile({ restaurantId = '', runId = '', anchorDate 
   const scheduleCoverageTargets = [
     { restaurantId, dayIndex: 5, role: 'Line Cook', startTime: '16:00', endTime: '22:00', count: 3, ...tag },
     { restaurantId, dayIndex: 5, role: 'Server', startTime: '16:00', endTime: '22:00', count: 4, ...tag },
+    // Tuesday has two seeded Chuck QA 10a-4p bartender shifts; target 1 gives a deterministic over-coverage warning.
+    { restaurantId, dayIndex: 2, role: 'Bartender', startTime: '10a', endTime: '4p', count: 1, ...tag },
   ];
 
   return {

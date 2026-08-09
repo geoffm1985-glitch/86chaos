@@ -26,11 +26,14 @@ test('release login helper handles late workspace chooser as an auth-readiness s
   assert.match(helper, /Workspace chooser remained visible while waiting for authenticated readiness/);
 });
 
-test('release login helper requires exact configured QA workspace button in chooser', () => {
+test('release login helper targets the real chooser heading and unique Open workspace button', () => {
   const helper = read('tests/e2e/utils/release-login-helper.cjs');
   assert.match(helper, /CHAOS_QA_WORKSPACE_NAME is required when a workspace chooser appears/);
+  assert.match(helper, /getByRole\('heading', \{ name: \/\^\(Choose\|Select\) \(Workspace\|Restaurant\)\$\/i \}\)\.first\(\)/);
   assert.match(helper, /workspaceChoiceButton\(page, requested\)/);
-  assert.match(helper, /region\.getByRole\('button', \{ name: exactName \}\)\.first\(\)/);
+  assert.match(helper, /workspaceOpenButtonRegex\(workspaceName\)/);
+  assert.match(helper, /const targetCount = await target\.count\(\)/);
+  assert.match(helper, /targetCount !== 1/);
   assert.doesNotMatch(helper, /page\.getByText\(requested/);
   assert.doesNotMatch(helper, /owner\|manager\|staff\|admin/);
 });
@@ -81,7 +84,7 @@ test('login tap-target CSS repair is scoped to login actions and includes comput
 test('Ghost Request Off uses employee Time Clock and Schedule route without elevating Schedule Builder access', () => {
   const spec = read('tests/86chaos-full-audit/06-request-off-events-integration.spec.cjs');
   assert.match(spec, /gotoTab\(page, 'published'/);
-  assert.ok(spec.includes("getByRole('button', { name: /^Request Off$/i })"));
+  assert.ok(spec.includes("getByRole('button', { name: /^Schedule Request Off$/i })"));
   assert.doesNotMatch(spec, /gotoTab\(page, 'schedule', \{ settleMs: 1800, maxText: 70000 \}\)/);
   assert.doesNotMatch(spec, /Allen QA[\s\S]{0,200}Schedule Builder permission/);
 });
