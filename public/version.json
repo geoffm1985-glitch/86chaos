@@ -1,14 +1,14 @@
 {
-  "version": "16.0.158",
-  "name": "86 Chaos 16.0.158 Schedule Builder Runtime Root Cause Repair",
-  "build": "16.0.158",
-  "label": "86 Chaos 16.0.158 Schedule Builder Runtime Root Cause Repair",
-  "releasedAt": "2026-08-08T21:09:00-05:00",
-  "releaseTitle": "Schedule Builder Runtime Root Cause Repair",
+  "version": "16.0.159",
+  "name": "86 Chaos 16.0.159 Repair Lineage Recovery and Blocked-Run Reporting",
+  "build": "16.0.159",
+  "label": "86 Chaos 16.0.159 Repair Lineage Recovery and Blocked-Run Reporting",
+  "releasedAt": "2026-08-08T21:33:00-05:00",
+  "releaseTitle": "Repair Lineage Recovery and Blocked-Run Reporting",
   "notes": [
-    "Removes the direct CommonJS schedule warning helper import from browser React code.",
-    "Adds browser-native ESM named exports for Schedule Builder warning helpers while keeping one shared implementation for Node tests.",
-    "Preserves the 16.0.157 readable release-gate console output and reporting artifacts."
+    "Allows strict failed-only and repair selection to recover from the latest completed focused run when an older full-baseline directory has been pruned.",
+    "Keeps failed+new delta dependent on a completed full baseline and continues to reject canceled, blocked, or incomplete run evidence.",
+    "Blocked-before-execution summaries now state that prior failures were not evaluated or cleared instead of reporting zero remaining failures."
   ],
-  "title": "86 Chaos 16.0.158 Schedule Builder Runtime Root Cause Repair"
+  "title": "86 Chaos 16.0.159 Repair Lineage Recovery and Blocked-Run Reporting"
 }

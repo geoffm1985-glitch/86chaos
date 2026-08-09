@@ -38,7 +38,7 @@ test('release-gate reporter prints selected manifest once and one result line pe
       { project: 'mobile-chromium', specPath: 'tests/e2e/c.spec.cjs', fullSuitePath: 'Schedule Builder', title: 'coverage warnings show under and over target math' },
     ],
   };
-  const reporter = new Reporter({ output: line => lines.push(line), runDir, mode: 'repair', version: '16.0.158', selection });
+  const reporter = new Reporter({ output: line => lines.push(line), runDir, mode: 'repair', version: '16.0.159', selection });
   const suite = { allTests: () => [1, 2, 3] };
   reporter.onBegin({}, suite);
   reporter.onBegin({}, suite);
@@ -68,7 +68,7 @@ test('summary and failed artifact reconcile totals and include only failures or 
     { project: 'mobile-chromium', file: 'tests/d.spec.cjs', title: 'skips', status: 'skipped' },
   ];
   const summary = Reporter.createCompletedSummaryLines({ results, mode: 'repair', runDir: 'test-results/run' }).join('\n');
-  const failed = Reporter.createFailedTestsArtifactLines({ results, runId: 'run-1', version: '16.0.158', mode: 'repair' }).join('\n');
+  const failed = Reporter.createFailedTestsArtifactLines({ results, runId: 'run-1', version: '16.0.159', mode: 'repair' }).join('\n');
 
   assert.match(summary, /TOTAL:\s+4/);
   assert.match(summary, /PASS:\s+1/);
@@ -80,6 +80,37 @@ test('summary and failed artifact reconcile totals and include only failures or 
   assert.match(failed, /times out/);
   assert.doesNotMatch(failed, /passes/);
   assert.doesNotMatch(failed, /skips/);
+});
+
+
+test('blocked-before-execution summary does not claim that previous failures are cleared', () => {
+  const summary = Reporter.createCompletedSummaryLines({
+    results: [],
+    mode: 'repair',
+    runDir: 'test-results/run',
+    nextCommand: 'npm run test:play-store:repair',
+    resultOverride: 'BLOCKED BEFORE TEST EXECUTION',
+    primaryBlockingFailure: 'Refusing unsafe repair manifest.',
+    blockedBeforeTestExecution: true,
+  }).join('\n');
+  const failed = Reporter.createFailedTestsArtifactLines({
+    results: [],
+    runId: 'run-blocked',
+    version: '16.0.159',
+    mode: 'repair',
+    blockedBeforeTestExecution: true,
+    primaryBlockingFailure: 'Refusing unsafe repair manifest.',
+  }).join('\n');
+
+  assert.match(summary, /RESULT: BLOCKED BEFORE TEST EXECUTION/);
+  assert.match(summary, /Not evaluated - Playwright did not start/);
+  assert.match(summary, /Existing failed-test lineage was not cleared/);
+  assert.match(summary, /rerun npm run test:play-store:repair/);
+  assert.doesNotMatch(summary, /Remaining failures: 0/);
+  assert.doesNotMatch(summary, /None - no failed tests remain/);
+  assert.match(failed, /No Playwright test results were produced because the run was blocked before test execution/);
+  assert.match(failed, /Existing failed-test lineage was not evaluated or cleared/);
+  assert.doesNotMatch(failed, /No failed or timed-out tests\./);
 });
 
 test('ASCII labels render without PowerShell mojibake-prone symbols', () => {
@@ -105,7 +136,7 @@ test('interrupted run summary is explicitly non-authoritative', () => {
 test('reporter writes human summary artifacts on completed run', () => {
   const lines = [];
   const runDir = fs.mkdtempSync(path.join(os.tmpdir(), '86chaos-reporter-completed-'));
-  const reporter = new Reporter({ output: line => lines.push(line), runDir, mode: 'repair', version: '16.0.158', selection: { totalSelected: 1, selected: [] } });
+  const reporter = new Reporter({ output: line => lines.push(line), runDir, mode: 'repair', version: '16.0.159', selection: { totalSelected: 1, selected: [] } });
   reporter.onBegin({}, { allTests: () => [1] });
   reporter.onTestEnd(fakeTest('passes'), { status: 'passed', duration: 100 });
   reporter.onEnd({ status: 'passed' });

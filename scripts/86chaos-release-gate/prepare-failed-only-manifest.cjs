@@ -62,7 +62,13 @@ try {
   });
 } catch (error) {
   if (selectionMode === 'repair' && /No completed full release-gate run/i.test(error?.message || '')) {
-    selectedSource = { manifest: { ok: true, selected: [], totalSelected: 0, mode: 'failed-only', selectionSource: 'no-compatible-previous-failures' }, baselineFullRunDir: '', latestFailedOnlyRunDir: '', selectionSource: 'no-compatible-previous-failures' };
+    selectedSource = {
+      manifest: { ok: true, selected: [], totalSelected: 0, mode: 'failed-only', lineageMode: 'none', selectionSource: 'no-compatible-previous-failures-feature-scope-only' },
+      baselineFullRunDir: '',
+      latestFailedOnlyRunDir: '',
+      selectionSource: 'no-compatible-previous-failures-feature-scope-only',
+      lineageMode: 'none',
+    };
   } else {
     fail(`${selectionMode} baseline evidence is malformed or unsafe.`, [error?.message || String(error)]);
   }
@@ -74,6 +80,7 @@ let copied = targetQualifiedManifest(selectedSource.manifest, {
   targetSourceVersion: currentSourceVersion,
   targetDeployedVersion: currentDeployedVersion,
 });
+copied.lineageMode = copied.lineageMode || selectedSource.lineageMode || 'full-baseline';
 
 try {
   if (selectionMode === 'failed+new') {
@@ -125,6 +132,7 @@ const selectionPayload = {
   ok: true,
   runId,
   mode: selectionMode,
+  lineageMode: copied.lineageMode || 'full-baseline',
   sourceFullRunDir: selectedSource.baselineFullRunDir,
   previousFailedOnlyRunDir: selectedSource.latestFailedOnlyRunDir || '',
   selectionSource: copied.selectionSource || selectedSource.selectionSource || '',
@@ -159,6 +167,7 @@ writeJson(validationPath, {
   runId,
   runDir,
   mode: selectionMode,
+  lineageMode: copied.lineageMode || 'full-baseline',
   baselineFullRunDir: selectedSource.baselineFullRunDir,
   baselineSourceVersion: copied.baselineSourceVersion,
   baselineDeployedVersion: copied.baselineDeployedVersion,

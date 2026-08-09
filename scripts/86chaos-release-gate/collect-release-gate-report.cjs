@@ -545,18 +545,25 @@ const humanResultRows = tests.map(t => ({
   duration: t.duration || 0,
   error: t.error || '',
 }));
+const rerunCommand = (summary.selectionMode || selectionMode) === 'repair'
+  ? 'npm run test:play-store:repair'
+  : ((summary.selectionMode || selectionMode) === 'failed-only' ? 'npm run test:play-store:failed' : 'npm run test:play-store:delta');
 const humanSummaryLines = createCompletedSummaryLines({
   results: humanResultRows,
   mode: summary.selectionMode || selectionMode || 'release',
   runDir,
+  nextCommand: rerunCommand,
   resultOverride: summary.outcome === 'PASS' ? 'PASSED' : (summary.outcome === 'FAIL' ? 'FAILED' : (summary.outcome || '')),
   primaryBlockingFailure: summary.primaryBlockingFailure || '',
+  blockedBeforeTestExecution,
 });
 const failedTestsLines = createFailedTestsArtifactLines({
   results: humanResultRows,
   runId,
   version: summary.sourceVersion || summary.expectedVersion || summary.deployedVersion || '',
   mode: summary.selectionMode || selectionMode || 'release',
+  blockedBeforeTestExecution,
+  primaryBlockingFailure: summary.primaryBlockingFailure || '',
 });
 fs.writeFileSync(path.join(runDir, 'TEST-SUMMARY.txt'), humanSummaryLines.join('\n'));
 fs.writeFileSync(path.join(runDir, 'FAILED-TESTS.txt'), failedTestsLines.join('\n'));

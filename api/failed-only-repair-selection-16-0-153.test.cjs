@@ -12,6 +12,7 @@ const {
   generateFailedOnlyManifestFromRun,
   targetQualifiedManifest,
   hasCompletedReleaseGateEvidence,
+  validateManifestForCurrentRun,
   selectionKey,
 } = require('../scripts/86chaos-release-gate/failed-only-manifest-utils.cjs');
 const {
@@ -163,6 +164,76 @@ test('canceled or incomplete newest run is ignored as failed-only lineage eviden
   });
   assert.equal(path.basename(selected.baselineFullRunDir), 'run-a-completed');
   assert.equal(selected.manifest.selected.length, 6);
+});
+
+
+test('strict failed-only recovers from latest completed focused run when the old full baseline directory was pruned', () => {
+  const resultsRoot = tempRoot();
+  const rows = [
+    makeRow(0, 'failed'),
+    makeRow(1, 'passed'),
+    makeRow(2, 'failed'),
+    makeRow(3, 'timedOut'),
+  ];
+  const { dir: focusedDir, report } = writeCompletedRun(resultsRoot, 'run-b-repair', {
+    mode: 'repair',
+    rows,
+    sourceVersion: '16.0.158',
+    deployedVersion: '16.0.158',
+  });
+  const prunedBaselineDir = path.join(resultsRoot, 'run-a-pruned-full');
+  const selectedRows = rows.map(row => ({
+    ...row,
+    priorStatus: 'failed',
+    projects: [row.project],
+    baselineFullRunId: 'run-a-pruned-full',
+    baselineSourceVersion: '16.0.142',
+    baselineDeployedVersion: '16.0.142',
+  }));
+  writeJson(path.join(focusedDir, 'failed-only-test-manifest.json'), {
+    ok: true,
+    manifestSchemaVersion: 3,
+    mode: 'repair',
+    baselineFullRunId: 'run-a-pruned-full',
+    baselineFullRunDir: prunedBaselineDir,
+    baselineSourceVersion: '16.0.142',
+    baselineDeployedVersion: '16.0.142',
+    targetRunId: 'run-b-repair',
+    targetSourceVersion: '16.0.158',
+    targetDeployedVersion: '16.0.158',
+    selected: selectedRows,
+    totalSelected: selectedRows.length,
+  });
+  const currentRunDir = makeCurrentRun(resultsRoot, 'run-c-current');
+  touch(focusedDir, -1000);
+  touch(currentRunDir, 1000);
+
+  const recovered = selectFailedOnlyManifestForCurrentRun({
+    currentRunDir,
+    resultsRoot,
+    includeNewInventory: false,
+    currentRecords: inventoryFromPlaywrightReport(report),
+    target: {
+      targetRunId: 'run-c-current',
+      targetSourceVersion: '16.0.159',
+      targetDeployedVersion: '16.0.159',
+    },
+  });
+
+  assert.equal(recovered.lineageMode, 'focused');
+  assert.equal(path.basename(recovered.latestFailedOnlyRunDir), 'run-b-repair');
+  assert.equal(recovered.manifest.selected.length, 3);
+  assert.deepEqual(recovered.manifest.selected.map(row => row.priorStatus).sort(), ['failed', 'failed', 'timedOut']);
+  assert.equal(recovered.manifest.newTestsCount, 0);
+  const validation = validateManifestForCurrentRun(recovered.manifest, {
+    currentRunDir,
+    currentSourceVersion: '16.0.159',
+    currentDeployedVersion: '16.0.159',
+    firebaseProjectId: 'chaos-test-d1601',
+    appUrl: 'https://86chaos-git-testing-cheers-portal-s-projects.vercel.app',
+    validateIdentities: false,
+  });
+  assert.equal(validation.ok, true, validation.errors.join('\n'));
 });
 
 test('repair selection equals strict failed-only union explicit current release scope with duplicates removed', () => {

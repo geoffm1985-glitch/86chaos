@@ -21,9 +21,14 @@ function listRunDirs(resultsRoot = getResultsRoot()) {
     .sort((a, b) => fs.statSync(b).mtimeMs - fs.statSync(a).mtimeMs);
 }
 
-function isFailedOnlyRun(dir) {
+function isFocusedSelectionRun(dir) {
   const state = readJsonIfExists(path.join(dir, 'runner-state.json')) || {};
-  return String(state.mode || '').toLowerCase() === 'failed-only' || fs.existsSync(path.join(dir, 'failed-only', 'playwright-artifacts'));
+  const mode = String(state.mode || '').toLowerCase();
+  return ['failed-only', 'repair', 'failed+new'].includes(mode) || fs.existsSync(path.join(dir, 'failed-only', 'playwright-artifacts'));
+}
+
+function isFailedOnlyRun(dir) {
+  return isFocusedSelectionRun(dir);
 }
 
 function loadRunMeta(fullRunDir = '') {
@@ -207,6 +212,18 @@ function hasCompletedReleaseGateEvidence(dir = '') {
 
 function getManifestBaselineId(manifest = {}) {
   return manifest?.baselineFullRunId || manifest?.baseline?.fullRunId || manifest?.fullRunId || '';
+}
+
+function findLatestCompletedFocusedRun({ currentRunDir = getRunDir(), resultsRoot = getResultsRoot() } = {}) {
+  const current = path.resolve(currentRunDir || '');
+  return listRunDirs(resultsRoot).find(dir => {
+    if (path.resolve(dir) === current) return false;
+    if (!isFocusedSelectionRun(dir)) return false;
+    const completed = hasCompletedReleaseGateEvidence(dir);
+    if (!completed.ok) return false;
+    const manifest = loadManifestFromRunDir(dir);
+    return Boolean(manifest && Array.isArray(manifest.selected));
+  }) || '';
 }
 
 function findLatestCompletedFailedOnlyDescendant({ baselineFullRunId = '', currentRunDir = getRunDir(), resultsRoot = getResultsRoot() } = {}) {
@@ -555,18 +572,34 @@ function addNewInventorySelections(manifest, { baselineFullRunDir = '', baseline
 
 function selectFailedOnlyManifestForCurrentRun({ currentRunDir = getRunDir(), resultsRoot = getResultsRoot(), target = {}, root = process.cwd(), includeNewInventory = true, currentRecords = null } = {}) {
   const baselineFullRunDir = findMostRecentCompletedFullRun({ currentRunDir, resultsRoot });
-  if (!baselineFullRunDir) throw new Error('No completed full release-gate run with Playwright evidence was found. Run npm run test:play-store before npm run test:play-store:failed. Canceled or incomplete runs are ignored.');
-  const baselineManifest = generateFailedOnlyManifestFromRun(baselineFullRunDir, { write: false, currentRunDir });
-  const latestFailedOnlyRunDir = findLatestCompletedFailedOnlyDescendant({ baselineFullRunId: baselineManifest.baselineFullRunId, currentRunDir, resultsRoot });
+  let baselineManifest = null;
+  let latestFailedOnlyRunDir = '';
   let manifest;
   let selectionSource;
-  if (latestFailedOnlyRunDir) {
-    const narrowed = buildNarrowedManifestFromFailedOnlyRun(latestFailedOnlyRunDir, { baselineManifest, target, currentRunDir });
-    manifest = narrowed;
-    selectionSource = narrowed.selectionSource;
+  let lineageMode = 'full-baseline';
+
+  if (baselineFullRunDir) {
+    baselineManifest = generateFailedOnlyManifestFromRun(baselineFullRunDir, { write: false, currentRunDir });
+    latestFailedOnlyRunDir = findLatestCompletedFailedOnlyDescendant({ baselineFullRunId: baselineManifest.baselineFullRunId, currentRunDir, resultsRoot });
+    if (latestFailedOnlyRunDir) {
+      const narrowed = buildNarrowedManifestFromFailedOnlyRun(latestFailedOnlyRunDir, { baselineManifest, target, currentRunDir });
+      manifest = narrowed;
+      selectionSource = narrowed.selectionSource;
+    } else {
+      manifest = baselineManifest;
+      selectionSource = baselineManifest.source || 'dynamic-most-recent-full-playwright-report';
+    }
+  } else if (!includeNewInventory) {
+    latestFailedOnlyRunDir = findLatestCompletedFocusedRun({ currentRunDir, resultsRoot });
+    if (!latestFailedOnlyRunDir) {
+      throw new Error('No completed full release-gate run or completed focused repair/failed-only run with Playwright evidence was found. Canceled, blocked, and incomplete runs are ignored.');
+    }
+    const previousManifest = loadManifestFromRunDir(latestFailedOnlyRunDir) || {};
+    manifest = buildNarrowedManifestFromFailedOnlyRun(latestFailedOnlyRunDir, { baselineManifest: previousManifest, target, currentRunDir });
+    selectionSource = 'latest-compatible-focused-result-with-pruned-full-baseline';
+    lineageMode = 'focused';
   } else {
-    manifest = baselineManifest;
-    selectionSource = baselineManifest.source || 'dynamic-most-recent-full-playwright-report';
+    throw new Error('No completed full release-gate run with Playwright evidence was found. Failed+new delta selection requires a completed full baseline. Canceled, blocked, and incomplete runs are ignored.');
   }
   manifest.selected = (manifest.selected || []).map(row => {
     const normalized = normalizeSelection(row, manifest);
@@ -589,7 +622,9 @@ function selectFailedOnlyManifestForCurrentRun({ currentRunDir = getRunDir(), re
   if (manifest.totalSelected <= 0 && includeNewInventory) {
     throw new Error('No failed or new Playwright tests remain. Run the complete release gate.');
   }
-  return { manifest, baselineFullRunDir, latestFailedOnlyRunDir, selectionSource: manifest.selectionSource };
+  manifest.lineageMode = lineageMode;
+  if (lineageMode === 'focused') manifest.selectionSource = selectionSource;
+  return { manifest, baselineFullRunDir, latestFailedOnlyRunDir, selectionSource: manifest.selectionSource, lineageMode };
 }
 
 function dedupeSelections(rows = []) {
@@ -831,14 +866,37 @@ function validateManifestTestIdentities(manifest, { root = process.cwd(), projec
 
 function validateManifestForCurrentRun(manifest, options = {}) {
   const errors = [];
-  const baseline = validateBaselineManifest(manifest, { currentRunDir: options.currentRunDir || getRunDir() });
-  if (!baseline.ok) errors.push(...baseline.errors);
+  const baselineMode = options.baselineMode || manifest?.lineageMode || 'full-baseline';
+  if (baselineMode === 'focused') {
+    const focusedDir = manifest?.previousFailedOnlyRunDir || '';
+    if (!focusedDir) {
+      errors.push('Focused lineage source run directory is missing.');
+    } else if (!fs.existsSync(focusedDir)) {
+      errors.push(`Focused lineage source run directory does not exist: ${focusedDir}`);
+    } else {
+      const completed = hasCompletedReleaseGateEvidence(focusedDir);
+      if (!completed.ok) errors.push(`Focused lineage source run is not completed Playwright evidence: ${completed.reason}.`);
+      const focusedMeta = loadRunMeta(focusedDir);
+      const sourceVersion = manifest?.previousFailedOnlySourceVersion || focusedMeta.sourceVersion || '';
+      const deployedVersion = manifest?.previousFailedOnlyDeployedVersion || focusedMeta.deployedVersion || '';
+      if (!sourceVersion) errors.push('Focused lineage source version is missing.');
+      if (!deployedVersion) errors.push('Focused lineage deployed version is missing.');
+      if (sourceVersion && deployedVersion && sourceVersion !== deployedVersion) errors.push(`Focused lineage source/deployed versions do not match: ${sourceVersion} vs ${deployedVersion}.`);
+      const targetVersion = options.currentSourceVersion || '';
+      if (sourceVersion && targetVersion && compareVersions(targetVersion, sourceVersion) < 0) errors.push(`Target version ${targetVersion} is older than focused lineage version ${sourceVersion}.`);
+    }
+  } else if (baselineMode !== 'none') {
+    const baseline = validateBaselineManifest(manifest, { currentRunDir: options.currentRunDir || getRunDir() });
+    if (!baseline.ok) errors.push(...baseline.errors);
+  }
   const target = validateTargetManifestContext(options);
   if (!target.ok) errors.push(...target.errors);
-  const baselineVersion = manifest?.baselineSourceVersion || manifest?.sourceVersion || '';
-  const targetVersion = options.currentSourceVersion || '';
-  if (baselineVersion && targetVersion && compareVersions(targetVersion, baselineVersion) < 0) {
-    errors.push(`Target version ${targetVersion} is older than baseline failure version ${baselineVersion}.`);
+  if (baselineMode !== 'focused' && baselineMode !== 'none') {
+    const baselineVersion = manifest?.baselineSourceVersion || manifest?.sourceVersion || '';
+    const targetVersion = options.currentSourceVersion || '';
+    if (baselineVersion && targetVersion && compareVersions(targetVersion, baselineVersion) < 0) {
+      errors.push(`Target version ${targetVersion} is older than baseline failure version ${baselineVersion}.`);
+    }
   }
   if (options.validateIdentities !== false) {
     const identities = validateManifestTestIdentities(manifest, { root: options.root || process.cwd(), projectNames: options.projectNames, allowStaticFallback: options.allowStaticFallback === true });
@@ -870,6 +928,7 @@ module.exports = {
   normalizeRel,
   readPackageVersion,
   findMostRecentCompletedFullRun,
+  findLatestCompletedFocusedRun,
   findLatestCompletedFailedOnlyDescendant,
   hasCompletedReleaseGateEvidence,
   buildNarrowedManifestFromFailedOnlyRun,

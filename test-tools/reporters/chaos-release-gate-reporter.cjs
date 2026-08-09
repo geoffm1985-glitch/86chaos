@@ -227,7 +227,7 @@ function failedOrTimedOut(results = []) {
   });
 }
 
-function createCompletedSummaryLines({ results = [], mode = process.env.CHAOS_RELEASE_GATE_SELECTION_MODE || 'release', runDir = process.env.CHAOS_RELEASE_GATE_RUN_DIR || '', nextCommand = 'npm run test:play-store:failed', resultOverride = '', primaryBlockingFailure = '' } = {}) {
+function createCompletedSummaryLines({ results = [], mode = process.env.CHAOS_RELEASE_GATE_SELECTION_MODE || 'release', runDir = process.env.CHAOS_RELEASE_GATE_RUN_DIR || '', nextCommand = 'npm run test:play-store:failed', resultOverride = '', primaryBlockingFailure = '', blockedBeforeTestExecution = false } = {}) {
   const counts = countByStatus(results);
   const failures = failedOrTimedOut(results);
   const passed = failures.length === 0;
@@ -248,7 +248,10 @@ function createCompletedSummaryLines({ results = [], mode = process.env.CHAOS_RE
     '',
     'Failed / timed-out tests:',
   ];
-  if (failures.length) {
+  if (blockedBeforeTestExecution) {
+    lines.push('Not evaluated - Playwright did not start.');
+    lines.push('Existing failed-test lineage was not cleared by this blocked run.');
+  } else if (failures.length) {
     failures.forEach((row, index) => {
       lines.push(`${index + 1}. [${row.project || row.projectName || 'unknown'}] ${row.title || row.fullTitle || row.exactTestTitle || 'untitled'}`);
     });
@@ -257,7 +260,8 @@ function createCompletedSummaryLines({ results = [], mode = process.env.CHAOS_RE
     lines.push('Remaining failures: 0');
   }
   lines.push('');
-  lines.push(`Next command: ${passed ? 'None - no failed tests remain.' : nextCommand}`);
+  if (blockedBeforeTestExecution) lines.push(`Next command: Fix the blocker above, then rerun ${nextCommand}`);
+  else lines.push(`Next command: ${passed ? 'None - no failed tests remain.' : nextCommand}`);
   lines.push('');
   lines.push('Artifacts:');
   lines.push(runDir || 'See current release-gate run directory.');
@@ -284,7 +288,7 @@ function createInterruptedSummaryLines({ completed = 0, total = 0, counts = {}, 
   ].map(ascii);
 }
 
-function createFailedTestsArtifactLines({ results = [], runId = process.env.CHAOS_RELEASE_GATE_RUN_ID || '', version = readPackageVersion(), mode = process.env.CHAOS_RELEASE_GATE_SELECTION_MODE || '' } = {}) {
+function createFailedTestsArtifactLines({ results = [], runId = process.env.CHAOS_RELEASE_GATE_RUN_ID || '', version = readPackageVersion(), mode = process.env.CHAOS_RELEASE_GATE_SELECTION_MODE || '', blockedBeforeTestExecution = false, primaryBlockingFailure = '' } = {}) {
   const failures = failedOrTimedOut(results);
   const lines = [
     '86 Chaos Failed Tests',
@@ -293,6 +297,12 @@ function createFailedTestsArtifactLines({ results = [], runId = process.env.CHAO
     `Mode: ${mode || 'unknown'}`,
     '',
   ];
+  if (blockedBeforeTestExecution) {
+    lines.push('No Playwright test results were produced because the run was blocked before test execution.');
+    lines.push('Existing failed-test lineage was not evaluated or cleared.');
+    if (primaryBlockingFailure) lines.push(`Blocker: ${primaryBlockingFailure}`);
+    return lines.map(ascii);
+  }
   if (!failures.length) {
     lines.push('No failed or timed-out tests.');
     return lines.map(ascii);

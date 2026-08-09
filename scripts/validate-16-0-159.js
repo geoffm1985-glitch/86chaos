@@ -35,17 +35,17 @@ const ghostRequestOffSpec = read('tests/86chaos-full-audit/06-request-off-events
 const compactUiSpec = read('tests/e2e/compact-ui-layout.spec.cjs');
 const styles = read('src/styles.css');
 
-assert(pkg.version === '16.0.158', 'package.json version is 16.0.158');
-assert(lock.version === '16.0.158' && lock.packages?.['']?.version === '16.0.158', 'package-lock root versions are 16.0.158');
-assert(version.version === '16.0.158' && version.build === '16.0.158', 'public/version.json version/build are 16.0.158');
-assert(version.releaseTitle === 'Schedule Builder Runtime Root Cause Repair', 'public/version.json release title is 16.0.158 release name');
-assert(appCore.includes("CURRENT_VERSION = '16.0.158'"), 'app core CURRENT_VERSION is 16.0.158');
-assert(apiVersion.includes("APP_VERSION = '16.0.158'") && apiVersion.includes("SECURITY_SCHEMA_VERSION = '16.0.158'"), 'api version reports 16.0.158');
-assert(pkg.scripts['test:source'] === 'node scripts/validate-16-0-158.js', 'test:source points at 16.0.158 validator');
+assert(pkg.version === '16.0.159', 'package.json version is 16.0.159');
+assert(lock.version === '16.0.159' && lock.packages?.['']?.version === '16.0.159', 'package-lock root versions are 16.0.159');
+assert(version.version === '16.0.159' && version.build === '16.0.159', 'public/version.json version/build are 16.0.159');
+assert(version.releaseTitle === 'Repair Lineage Recovery and Blocked-Run Reporting', 'public/version.json release title is 16.0.159 release name');
+assert(appCore.includes("CURRENT_VERSION = '16.0.159'"), 'app core CURRENT_VERSION is 16.0.159');
+assert(apiVersion.includes("APP_VERSION = '16.0.159'") && apiVersion.includes("SECURITY_SCHEMA_VERSION = '16.0.159'"), 'api version reports 16.0.159');
+assert(pkg.scripts['test:source'] === 'node scripts/validate-16-0-159.js', 'test:source points at 16.0.159 validator');
 assert(pkg.scripts['test:play-store:delta'] === 'powershell -NoProfile -ExecutionPolicy Bypass -File .\\RUN_86CHAOS_FAILED_AND_NEW_RELEASE_GATE.ps1', 'delta command remains failed+new shared runner');
 assert(pkg.scripts['test:play-store:failed'] === 'powershell -NoProfile -ExecutionPolicy Bypass -File .\\RUN_86CHAOS_FAILED_ONLY_RELEASE_GATE.ps1', 'failed command uses strict failed-only wrapper');
 assert(pkg.scripts['test:play-store:repair']?.includes('-SelectionMode repair'), 'repair command selects explicit repair mode');
-assert(!fs.existsSync(path.join(root, 'scripts/validate-16-0-157.js')), 'previous 16.0.157 validator was replaced');
+assert(!fs.existsSync(path.join(root, 'scripts/validate-16-0-158.js')), 'previous 16.0.158 validator was replaced');
 
 assert(sha('firestore.rules') === '51bfd7d39edd59f680ae41a149c108cec8cd42d00b102d84cb00ee40d90264d9', 'firestore.rules unchanged');
 assert(sha('storage.rules') === '174e7e9a140193ff69ccf0f0d3e5c65b81a9e0fbbd612bff45ce57e7a3a7ce9c', 'storage.rules unchanged');
@@ -120,8 +120,17 @@ assert(fs.existsSync(path.join(root, 'api/failed-only-repair-selection-16-0-153.
 
 assert(helpKnowledge.includes("CUSTOMER_HELP_VERSION = '16.0.150'"), 'customer Help knowledge version was not bumped unnecessarily');
 assert(helpKnowledge.includes('over-coverage against targets') && helpKnowledge.includes('approve or archive only the visible filtered requests in bulk'), 'minimal relevant customer Help additions are present');
-assert(!read('src/core/customerHelpKnowledge.js').includes("CUSTOMER_HELP_VERSION = '16.0.158'"), 'browser Help export version was not bumped to app version');
-assert(fs.existsSync(path.join(root, 'artifacts/16.0.158-schedule-runtime-root-cause.txt')), '16.0.158 Schedule runtime diagnostic artifact exists');
+assert(!read('src/core/customerHelpKnowledge.js').includes("CUSTOMER_HELP_VERSION = '16.0.159'"), 'browser Help export version was not bumped to app version');
+assert(fs.existsSync(path.join(root, 'artifacts/16.0.158-schedule-runtime-root-cause.txt')), '16.0.158 Schedule runtime diagnostic artifact is retained');
+
+
+assert(failedUtils.includes("['failed-only', 'repair', 'failed+new'].includes(mode)") && failedUtils.includes('findLatestCompletedFocusedRun'), 'focused repair/failed-only runs are classified separately from full baselines and can be recovered');
+assert(failedUtils.includes('latest-compatible-focused-result-with-pruned-full-baseline') && failedUtils.includes("baselineMode === 'focused'"), 'strict failed-only can safely narrow from the latest completed focused run when the old full baseline directory was pruned');
+assert(prepareManifest.includes("lineageMode: 'none'") && prepareManifest.includes('no-compatible-previous-failures-feature-scope-only'), 'repair mode can still run the explicit feature scope when no historical Playwright lineage exists');
+assert(read('api/failed-only-repair-selection-16-0-153.test.cjs').includes('recovers from latest completed focused run when the old full baseline directory was pruned'), 'focused lineage recovery has a regression test');
+assert(reporterUnitSpec.includes('blocked-before-execution summary does not claim that previous failures are cleared') || read('api/release-gate-console-reporter.test.cjs').includes('blocked-before-execution summary does not claim that previous failures are cleared'), 'blocked run reporting has a regression test');
+assert(releaseReporter.includes('Not evaluated - Playwright did not start.') && releaseReporter.includes('Existing failed-test lineage was not cleared by this blocked run.'), 'blocked human summary does not falsely report zero remaining failures');
+assert(collector.includes('blockedBeforeTestExecution') && collector.includes('rerunCommand'), 'collector passes blocked status and the correct rerun command into human summaries');
 
 if (failures) { console.error(`\n${failures} validation check(s) failed.`); process.exit(1); }
-console.log('\n16.0.158 source validation passed.');
+console.log('\n16.0.159 source validation passed.');
