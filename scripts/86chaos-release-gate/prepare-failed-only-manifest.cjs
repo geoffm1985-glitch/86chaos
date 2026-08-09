@@ -17,7 +17,7 @@ const { runDir, runId } = ensureRunDir();
 const validationPath = path.join(runDir, 'failed-only-manifest-validation.json');
 const modeArg = process.argv.find(arg => /^--mode=/.test(arg));
 const selectionMode = String((modeArg ? modeArg.split('=')[1] : '') || process.env.CHAOS_RELEASE_GATE_SELECTION_MODE || (process.env.CHAOS_FAILED_AND_NEW_RELEASE_GATE === 'true' ? 'failed+new' : 'failed-only')).toLowerCase();
-const validModes = new Set(['failed+new', 'failed-only', 'repair']);
+const validModes = new Set(['failed+new', 'failed-only', 'repair', 'reported-failed-only']);
 if (!validModes.has(selectionMode)) fail(`Unknown failed selection mode: ${selectionMode}`);
 
 function fail(message, details = []) {
@@ -48,18 +48,64 @@ function loadCurrentRecords() {
   return currentRecords;
 }
 
+
+function loadReportedFailedOnlyManifest() {
+  const manifestPath = path.join(__dirname, 'reported-failed-only-20260809-004632.json');
+  const manifest = readJsonIfExists(manifestPath);
+  if (!manifest || !Array.isArray(manifest.selected)) fail('Reported failed-only manifest is missing or malformed.', [manifestPath]);
+  const runtimeTitle = 'Schedule Builder warning runtime renders without Runtime Recovery or TypeError';
+  const projects = new Set((manifest.selected || []).map(row => row.project || (row.projects || [])[0] || ''));
+  const desktop = manifest.selected.filter(row => row.project === 'chromium' || row.projects?.includes('chromium')).length;
+  const mobile = manifest.selected.filter(row => row.project === 'mobile-chromium' || row.projects?.includes('mobile-chromium')).length;
+  const badProjects = [...projects].filter(project => !['chromium', 'mobile-chromium'].includes(project));
+  const runtimeSelected = manifest.selected.filter(row => (row.leafTitle || row.exactTestTitle || row.title) === runtimeTitle);
+  const errors = [];
+  if (manifest.selected.length !== 12) errors.push(`Reported failed-only manifest must select exactly 12 identities, got ${manifest.selected.length}.`);
+  if (desktop !== 6) errors.push(`Reported failed-only manifest must select exactly 6 chromium identities, got ${desktop}.`);
+  if (mobile !== 6) errors.push(`Reported failed-only manifest must select exactly 6 mobile-chromium identities, got ${mobile}.`);
+  if (badProjects.length) errors.push(`Reported failed-only manifest contains disallowed projects: ${badProjects.join(', ')}.`);
+  if (runtimeSelected.length) errors.push('Reported failed-only manifest must exclude the already-passing Schedule runtime test.');
+  if (errors.length) fail('Reported failed-only selection guard failed.', errors);
+  return manifest;
+}
+
+function assertReportedFailedOnlySelection(manifest) {
+  const runtimeTitle = 'Schedule Builder warning runtime renders without Runtime Recovery or TypeError';
+  const selected = manifest.selected || [];
+  const desktop = selected.filter(row => row.project === 'chromium' || row.projects?.includes('chromium')).length;
+  const mobile = selected.filter(row => row.project === 'mobile-chromium' || row.projects?.includes('mobile-chromium')).length;
+  const errors = [];
+  if (selected.length !== 12) errors.push(`Expected exactly 12 reported failed-only identities, got ${selected.length}.`);
+  if (desktop !== 6) errors.push(`Expected 6 chromium identities, got ${desktop}.`);
+  if (mobile !== 6) errors.push(`Expected 6 mobile-chromium identities, got ${mobile}.`);
+  if (selected.some(row => (row.leafTitle || row.exactTestTitle || row.title) === runtimeTitle)) errors.push('Already-passing Schedule runtime test was selected.');
+  if (selected.some(row => !['chromium', 'mobile-chromium'].includes(row.project || (row.projects || [])[0] || ''))) errors.push('Reported failed-only selected a project outside chromium/mobile-chromium.');
+  if (errors.length) fail('Reported failed-only selection guard failed after inventory qualification.', errors);
+}
+
 let selectedSource;
 try {
-  selectedSource = selectFailedOnlyManifestForCurrentRun({
-    currentRunDir: runDir,
-    includeNewInventory: selectionMode === 'failed+new',
-    currentRecords: selectionMode === 'failed+new' ? null : loadCurrentRecords(),
-    target: {
-      targetRunId: runId,
-      targetSourceVersion: currentSourceVersion,
-      targetDeployedVersion: currentDeployedVersion,
-    },
-  });
+  if (selectionMode === 'reported-failed-only') {
+    const manifest = loadReportedFailedOnlyManifest();
+    selectedSource = {
+      manifest: qualifyManifestSelectionsWithCurrentInventory(manifest, { root: process.cwd(), currentRecords: loadCurrentRecords() }),
+      baselineFullRunDir: '',
+      latestFailedOnlyRunDir: '',
+      selectionSource: manifest.selectionSource || 'uploaded-failed-tests-20260809-063843',
+      lineageMode: 'none',
+    };
+  } else {
+    selectedSource = selectFailedOnlyManifestForCurrentRun({
+      currentRunDir: runDir,
+      includeNewInventory: selectionMode === 'failed+new',
+      currentRecords: selectionMode === 'failed+new' ? null : loadCurrentRecords(),
+      target: {
+        targetRunId: runId,
+        targetSourceVersion: currentSourceVersion,
+        targetDeployedVersion: currentDeployedVersion,
+      },
+    });
+  }
 } catch (error) {
   if (selectionMode === 'repair' && /No completed full release-gate run/i.test(error?.message || '')) {
     selectedSource = {
@@ -81,6 +127,18 @@ let copied = targetQualifiedManifest(selectedSource.manifest, {
   targetDeployedVersion: currentDeployedVersion,
 });
 copied.lineageMode = copied.lineageMode || selectedSource.lineageMode || 'full-baseline';
+if (selectionMode === 'reported-failed-only') {
+  copied.mode = 'reported-failed-only';
+  copied.source = 'uploaded-failed-tests-20260809-063843';
+  copied.selectionSource = 'uploaded-failed-tests-20260809-063843';
+  copied.lineageMode = 'none';
+  copied.previousFailuresSelected = copied.selected.length;
+  copied.previousTimeoutsSelected = 0;
+  copied.currentReleaseFeatureTestsSelected = 0;
+  copied.duplicateIdentitiesRemoved = 0;
+  copied.newTestsCount = 0;
+  assertReportedFailedOnlySelection(copied);
+}
 
 try {
   if (selectionMode === 'failed+new') {
@@ -202,6 +260,9 @@ if (selectionMode === 'repair') {
   console.log(`Current release feature tests selected: ${selectionPayload.currentReleaseFeatureTestsSelected}`);
   console.log(`Duplicate identities removed: ${selectionPayload.duplicateIdentitiesRemoved}`);
   console.log(`Total repair tests selected: ${copied.selected.length}`);
+} else if (selectionMode === 'reported-failed-only') {
+  console.log('Reported failed-only guard: exactly 12 identities selected (chromium 6, mobile-chromium 6).');
+  console.log('Already-passing Schedule runtime tests excluded.');
 } else {
   console.log(`Previous failed/timed-out identities selected: ${copied.selected.length}`);
 }

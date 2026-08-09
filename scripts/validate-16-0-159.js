@@ -25,6 +25,8 @@ const failedUtils = read('scripts/86chaos-release-gate/failed-only-manifest-util
 const prepareManifest = read('scripts/86chaos-release-gate/prepare-failed-only-manifest.cjs');
 const repairScope = read('scripts/86chaos-release-gate/current-release-repair-scope.cjs');
 const failedConfig = read('playwright.failed-release.config.cjs');
+const appShell = read('src/App.js');
+const reportedFailedManifest = json('scripts/86chaos-release-gate/reported-failed-only-20260809-004632.json');
 const fullConfig = read('playwright.play-store-release.config.cjs');
 const releaseReporter = read('test-tools/reporters/chaos-release-gate-reporter.cjs');
 const reporterUnitSpec = read('api/release-gate-console-reporter.test.cjs');
@@ -45,6 +47,7 @@ assert(pkg.scripts['test:source'] === 'node scripts/validate-16-0-159.js', 'test
 assert(pkg.scripts['test:play-store:delta'] === 'powershell -NoProfile -ExecutionPolicy Bypass -File .\\RUN_86CHAOS_FAILED_AND_NEW_RELEASE_GATE.ps1', 'delta command remains failed+new shared runner');
 assert(pkg.scripts['test:play-store:failed'] === 'powershell -NoProfile -ExecutionPolicy Bypass -File .\\RUN_86CHAOS_FAILED_ONLY_RELEASE_GATE.ps1', 'failed command uses strict failed-only wrapper');
 assert(pkg.scripts['test:play-store:repair']?.includes('-SelectionMode repair'), 'repair command selects explicit repair mode');
+assert(pkg.scripts['test:play-store:failed-current'] === 'powershell -NoProfile -ExecutionPolicy Bypass -File .\\RUN_86CHAOS_FAILED_AND_NEW_RELEASE_GATE.ps1 -SelectionMode reported-failed-only', 'failed-current command runs reported-failed-only mode only');
 assert(!fs.existsSync(path.join(root, 'scripts/validate-16-0-158.js')), 'previous 16.0.158 validator was replaced');
 
 assert(sha('firestore.rules') === '51bfd7d39edd59f680ae41a149c108cec8cd42d00b102d84cb00ee40d90264d9', 'firestore.rules unchanged');
@@ -53,14 +56,15 @@ assert(sha('database.rules.json') === '152b5cd3f9839f598c9602706d8205b96759296e8
 assert(sha('firestore.indexes.json') === 'ee666de303988cd269f7c09fa63678a2deb1cfcaa199cb4f1656dd9bddcc4b4b', 'firestore.indexes.json unchanged');
 assert(sha('firebase.json') === 'bd837a11c71750d4da6ccfcb725ca54e78dd76008b525ec54c7fe79a5b8a3ca4', 'firebase.json unchanged');
 
-assert(failedRunner.includes('param(') && failedRunner.includes("[ValidateSet('failed+new','failed-only','repair')]") && failedRunner.includes('$env:CHAOS_RELEASE_GATE_SELECTION_MODE = $SelectionMode'), 'shared runner is parameterized by selection mode');
+assert(failedRunner.includes('param(') && failedRunner.includes("[ValidateSet('failed+new','failed-only','repair','reported-failed-only')]") && failedRunner.includes('$env:CHAOS_RELEASE_GATE_SELECTION_MODE = $SelectionMode'), 'shared runner is parameterized by selection mode including reported failed-only');
 assert(failedOnlyWrapper.includes('-SelectionMode failed-only') && !failedOnlyWrapper.includes('FAILED_AND_NEW_RELEASE_GATE.ps1"\n& $script @args'), 'failed-only wrapper no longer aliases failed+new unqualified behavior');
-assert(prepareManifest.includes("includeNewInventory: selectionMode === 'failed+new'") && prepareManifest.includes("selectionMode === 'repair'") && prepareManifest.includes('previousTimeoutsSelected') && prepareManifest.includes('currentReleaseFeatureTestsSelected') && prepareManifest.includes('duplicateIdentitiesRemoved'), 'manifest preparer separates failed+new, failed-only, and repair semantics with failed/timed-out counts');
+assert(prepareManifest.includes("includeNewInventory: selectionMode === 'failed+new'") && prepareManifest.includes("selectionMode === 'repair'") && prepareManifest.includes("selectionMode === 'reported-failed-only'") && prepareManifest.includes('previousTimeoutsSelected') && prepareManifest.includes('currentReleaseFeatureTestsSelected') && prepareManifest.includes('duplicateIdentitiesRemoved'), 'manifest preparer separates failed+new, failed-only, repair, and reported failed-only semantics with failed/timed-out counts');
 assert(failedUtils.includes('hasCompletedReleaseGateEvidence') && failedUtils.includes('missing-completed-summary') && failedUtils.includes('includeNewInventory = true') && failedUtils.includes('if (includeNewInventory)') && failedUtils.includes("manifest.newTestsCount = 0"), 'failed-only utilities require completed evidence and can disable new-test expansion');
 assert(failedUtils.includes('No failed or timed-out Playwright tests remain.') && failedRunner.includes('no-failed-tests-remain'), 'strict failed-only can exit cleanly when no failures remain');
 assert(repairScope.includes('schedule-request-off-management.spec.cjs') && repairScope.includes('buildRepairSelection') && !repairScope.includes('old full baseline'), 'current-release repair scope selection identities remain intact');
 assert(failedConfig.includes('CHAOS_RELEASE_GATE_SELECTION_MODE') && failedConfig.includes('releaseSelectionMode'), 'Playwright failed config reports real selection mode');
-assert(collector.includes("'repair'") && collector.includes('selectionMode') && collector.includes('noFailedOnlyTestsRemain'), 'release report records failed+new, failed-only, and repair modes accurately');
+assert(failedConfig.includes('assertReportedFailedOnlySelection') && failedConfig.includes("rows.length !== 12") && failedConfig.includes("allProjects.filter(project => ['chromium', 'mobile-chromium'].includes(project.name))"), 'Playwright failed config fail-closes reported failed-only selection to exactly 12 chromium/mobile identities');
+assert(collector.includes("'reported-failed-only'") && collector.includes('selectionMode') && collector.includes('noFailedOnlyTestsRemain'), 'release report records failed+new, failed-only, repair, and reported failed-only modes accurately');
 assert(failedConfig.includes('chaos-release-gate-reporter.cjs') && failedConfig.includes('[chaosReleaseGateReporter]') && !failedConfig.includes("['list']"), 'failed/repair Playwright config uses ASCII release-gate reporter instead of list reporter');
 assert(fullConfig.includes('chaos-release-gate-reporter.cjs') && fullConfig.includes('[chaosReleaseGateReporter]') && !fullConfig.includes("['list']"), 'full Play Store config uses ASCII release-gate reporter instead of list reporter');
 assert(!failedConfig.includes('console.log(`86 Chaos ${releaseSelectionMode} selected tests:`)') && failedConfig.includes('specsFromManifest(FAILED_ONLY_TESTS)') && failedConfig.includes("grepForProject(FAILED_ONLY_TESTS, 'chromium')"), 'failed/repair config no longer reprints the manifest while preserving selection semantics');
@@ -68,6 +72,13 @@ assert(releaseReporter.includes("86 Chaos ${mode || selection.mode || 'release'}
 assert(releaseReporter.includes('TEST-SUMMARY.txt') && releaseReporter.includes('FAILED-TESTS.txt') && collector.includes('TEST-SUMMARY.txt') && collector.includes('FAILED-TESTS.txt'), 'human summary artifacts are written and collected into run artifacts');
 assert(failedRunner.includes("foreach ($summaryName in @('TEST-SUMMARY.txt', 'FAILED-TESTS.txt'))") && read('RUN_86CHAOS_PLAY_STORE_RELEASE_GATE.ps1').includes("foreach ($summaryName in @('TEST-SUMMARY.txt', 'FAILED-TESTS.txt'))"), 'slim release-gate ZIP promotes TEST-SUMMARY and FAILED-TESTS near the top level');
 assert(reporterUnitSpec.includes('prints selected manifest once') && reporterUnitSpec.includes('output is ASCII-only') && reporterUnitSpec.includes('interrupted run summary is explicitly non-authoritative'), 'focused reporter regression tests cover one-time manifest, ASCII output, and interrupted runs');
+const reportedRows = reportedFailedManifest.selected || [];
+assert(reportedFailedManifest.mode === 'reported-failed-only' && reportedRows.length === 12, 'reported failed-only manifest contains exactly 12 identities');
+assert(reportedRows.filter(row => row.project === 'chromium').length === 6 && reportedRows.filter(row => row.project === 'mobile-chromium').length === 6, 'reported failed-only manifest is 6 chromium and 6 mobile-chromium identities');
+assert(!reportedRows.some(row => (row.leafTitle || row.title) === 'Schedule Builder warning runtime renders without Runtime Recovery or TypeError'), 'reported failed-only manifest excludes already-passing Schedule runtime tests');
+assert(new Set(reportedRows.map(row => row.leafTitle)).size === 6 && reportedRows.every(row => row.specPath === 'e2e/schedule-request-off-management.spec.cjs'), 'reported failed-only manifest contains only the six failed Schedule/Request Off titles');
+assert(fs.existsSync(path.join(root, 'api/reported-failed-only-current-selection.test.cjs')), 'reported failed-only selection regression test exists');
+assert(fs.existsSync(path.join(root, 'api/pwa-back-exit-source.test.cjs')), 'PWA double-back exit source regression test exists');
 
 assert(loginHelper.includes('while (Date.now() < deadline)') && loginHelper.includes('workspaceChooserLocator(page).isVisible') && loginHelper.includes('chooseReleaseWorkspaceIfNeeded(page, { ...options, chooserTimeout: 450 })'), 'auth readiness helper re-checks and selects a late workspace chooser during the readiness window');
 assert(loginHelper.includes('CHAOS_QA_WORKSPACE_NAME is required when a workspace chooser appears') && loginHelper.includes("getByRole('heading', { name: /^(Choose|Select) (Workspace|Restaurant)$/i }).first()") && loginHelper.includes('workspaceOpenButtonRegex(workspaceName)') && loginHelper.includes('targetCount !== 1'), 'auth readiness helper targets the real chooser heading and requires exactly one configured QA workspace Open button');
@@ -75,6 +86,10 @@ assert(!loginHelper.includes('86 Chaos OS Logo') && !/getByText\(requested/.test
 assert(ghostRequestOffSpec.includes("gotoTab(page, 'published'") && ghostRequestOffSpec.includes("getByRole('button', { name: /^Schedule Request Off$/i })") && !ghostRequestOffSpec.includes("gotoTab(page, 'schedule', { settleMs: 1800, maxText: 70000 })"), 'Ghost Request Off uses Time Clock & Schedule published route, not Schedule Builder');
 assert(styles.includes('16.0.154 login action target cascade repair') && styles.includes('.chaos-login-screen .chaos-login-primary-action') && styles.includes('.chaos-login-screen .chaos-login-secondary-action') && /min-height:\s*44px !important/.test(styles), 'login tap-target cascade repair is scoped to login primary/secondary actions');
 assert(compactUiSpec.includes('minHeight') && compactUiSpec.includes('paddingTop') && compactUiSpec.includes('parentTransform'), 'login tap-target test captures computed dimensions and cascade diagnostics');
+
+assert(appShell.includes('CHAOS_PWA_BACK_EXIT_WINDOW_MS = 2000') && appShell.includes('isStandalone86ChaosPwa') && appShell.includes("display-mode: standalone"), 'App shell detects installed PWA/standalone mode for double-back exit handling');
+assert(appShell.includes('writeTopLevelTabHistory') && appShell.includes('window.history.replaceState({ ...currentState, tab: normalized, chaosAppShell: true, chaosPwaBackGuard: true }') && appShell.includes('window.history.pushState({ tab, chaosAppShell: true, chaosPwaBackGuard: true }'), 'installed PWA top-level tab navigation updates URL without growing tab history stack');
+assert(appShell.includes("Press back again to exit.") && appShell.includes('window.history.back()') && !appShell.includes('window.close()'), 'installed PWA Back shows exit toast first and uses browser history, not window.close');
 
 assert(schedule.includes("from '../core/scheduleWarningControls';") && !schedule.includes('scheduleWarningControls.cjs') && !schedule.includes('scheduleWarningControlExports'), 'Schedule browser code uses native ESM named warning helper imports and no direct CJS helper import');
 assert(warningBrowserWrapper.includes("import './scheduleWarningControls.shared';") && warningBrowserWrapper.includes('export const buildCoverageVarianceRows') && warningBrowserWrapper.includes('export const buildScheduleConflictWarningRows'), 'browser warning helper wrapper exposes explicit named exports');
@@ -100,7 +115,10 @@ assert(fs.existsSync(path.join(root, 'tests/e2e/schedule-request-off-management.
 const featureSpec = read('tests/e2e/schedule-request-off-management.spec.cjs');
 assert(featureSpec.includes('openManagerRequestOff') && featureSpec.includes("gotoTab(page, 'published'") && featureSpec.includes("getByRole('button', { name: /^Schedule Request Off$/i })"), 'carried-forward Request Off feature tests explicitly open the Request Off workflow');
 assert(featureSpec.includes('Open Copilot Tools') && featureSpec.includes("getByRole('button', { name: /^Warnings$/i })") && !featureSpec.includes('getByText(/Warnings/i).first().click'), 'carried-forward warning tests open exact Schedule Copilot warning controls');
-assert(featureSpec.includes("getByRole('button', { name: /^Needs Review$/i })") && featureSpec.includes("getByRole('button', { name: /^Upcoming Approved$/i })"), 'carried-forward bulk tests use the correct seeded Request Off views');
+assert(featureSpec.includes("openRequestOffView(page, 'Needs Review')") && featureSpec.includes("openRequestOffView(page, 'Upcoming Approved')") && featureSpec.includes("new RegExp(`^Open ${label}$`, 'i')"), 'carried-forward bulk tests use the correct seeded Request Off views');
+assert(featureSpec.includes('installSeededScheduleClock') && featureSpec.includes('scheduleFixtureDateFromSeed') && featureSpec.includes('__CHAOS_QA_FIXED_SCHEDULE_DATE__'), 'Schedule/Request Off feature tests freeze the browser clock to the seeded fixture week');
+assert(featureSpec.includes('waitForRequestOffEmployee') && featureSpec.includes('Seeded Sara QA pending request should be visible before employee filtering') && featureSpec.includes('Seeded Allen QA approved request should be visible before bulk archive'), 'Request Off tests wait for seeded request rows before filtering and bulk actions');
+assert(!featureSpec.includes("not.toMatch(/No schedule|No requests here.*No coverage targets/i)"), 'warning dismissal test no longer uses overbroad body-wide No schedule regex');
 [
   'Schedule Builder warning runtime renders without Runtime Recovery or TypeError',
   'Schedule Builder requested-off warning shows employee name and never Someone',
@@ -130,7 +148,7 @@ assert(prepareManifest.includes("lineageMode: 'none'") && prepareManifest.includ
 assert(read('api/failed-only-repair-selection-16-0-153.test.cjs').includes('recovers from latest completed focused run when the old full baseline directory was pruned'), 'focused lineage recovery has a regression test');
 assert(reporterUnitSpec.includes('blocked-before-execution summary does not claim that previous failures are cleared') || read('api/release-gate-console-reporter.test.cjs').includes('blocked-before-execution summary does not claim that previous failures are cleared'), 'blocked run reporting has a regression test');
 assert(releaseReporter.includes('Not evaluated - Playwright did not start.') && releaseReporter.includes('Existing failed-test lineage was not cleared by this blocked run.'), 'blocked human summary does not falsely report zero remaining failures');
-assert(collector.includes('blockedBeforeTestExecution') && collector.includes('rerunCommand'), 'collector passes blocked status and the correct rerun command into human summaries');
+assert(collector.includes('blockedBeforeTestExecution') && collector.includes('rerunCommand') && collector.includes('test:play-store:failed-current'), 'collector passes blocked status and the correct rerun command into human summaries');
 
 if (failures) { console.error(`\n${failures} validation check(s) failed.`); process.exit(1); }
 console.log('\n16.0.159 source validation passed.');

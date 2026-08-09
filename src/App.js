@@ -576,6 +576,14 @@ const LEGACY_TAB_ALIASES = {
   'back-office-suite': 'back-office'
 };
 const normalizeRouteTab = (tab = 'today') => LEGACY_TAB_ALIASES[String(tab || '').trim()] || String(tab || 'today').trim() || 'today';
+const CHAOS_PWA_BACK_EXIT_WINDOW_MS = 2000;
+const isStandalone86ChaosPwa = () => {
+  if (typeof window === 'undefined') return false;
+  try { if (window.matchMedia?.('(display-mode: standalone)')?.matches) return true; } catch (_) {}
+  try { if (window.navigator?.standalone === true) return true; } catch (_) {}
+  return false;
+};
+const appTabUrl = (tab = 'today') => `?tab=${normalizeRouteTab(tab)}`;
 const buildSafeSessionCache = (user = {}) => user ? {
   id: user.id || user.userId || '',
   userId: user.userId || user.id || '',
@@ -737,6 +745,8 @@ export default function App() {
   const rId = ghostTenant ? ghostTenant.id : appUser?.restaurantId;
   const authenticatedUid = auth?.currentUser?.uid || appUser?.id || '';
   const [activeTabState, setActiveTabState] = useState(() => normalizeRouteTab(appUser?.preferences?.defaultTab || 'today'));
+  const activeTabStateRef = useRef(activeTabState);
+  const pwaBackExitRef = useRef({ armed: false, timer: null, initialized: false, exiting: false });
   const [helpOriginState, setHelpOriginState] = useState('');
   const [clientData, setClientData] = useState(null);
   const [heartbeatDebug, setHeartbeatDebug] = useState(null);
@@ -1861,25 +1871,38 @@ if (liveAppUser && clientData) {
 
  
   const transitionActiveTabState = useCallback((nextTab) => {
-    const commit = () => setActiveTabState(nextTab);
+    const normalized = normalizeRouteTab(nextTab);
+    activeTabStateRef.current = normalized;
+    const commit = () => setActiveTabState(normalized);
     if (typeof React.startTransition === 'function') React.startTransition(commit);
     else commit();
   }, []);
 
-  useEffect(() => {
-    const handlePopState = (e) => {
-      const params = new URLSearchParams(window.location.search);
-      const nextTab = normalizeRouteTab(e?.state?.tab || params.get('tab') || 'published');
-      transitionActiveTabState(nextTab);
-    };
-    window.addEventListener('popstate', handlePopState);
-    const params = new URLSearchParams(window.location.search);
-    const preferredTab = normalizeRouteTab(appUser?.preferences?.defaultTab || 'today');
-    const rawTab = params.get('tab') || preferredTab;
-    const tab = normalizeRouteTab(rawTab);
-    transitionActiveTabState(tab); window.history.replaceState({ tab }, '', `?tab=${tab}`);
-    return () => window.removeEventListener('popstate', handlePopState);
-  }, [appUser, transitionActiveTabState]);
+  const disarmPwaBackExit = useCallback(() => {
+    const state = pwaBackExitRef.current;
+    state.armed = false;
+    state.exiting = false;
+    if (state.timer) {
+      clearTimeout(state.timer);
+      state.timer = null;
+    }
+  }, []);
+
+  const writeTopLevelTabHistory = useCallback((tab, options = {}) => {
+    if (typeof window === 'undefined') return;
+    const normalized = normalizeRouteTab(tab);
+    const nextUrl = appTabUrl(normalized);
+    try {
+      const currentState = window.history.state && typeof window.history.state === 'object' ? window.history.state : {};
+      if (isStandalone86ChaosPwa()) {
+        window.history.replaceState({ ...currentState, tab: normalized, chaosAppShell: true, chaosPwaBackGuard: true }, '', nextUrl);
+      } else if (options.replace === true) {
+        window.history.replaceState({ ...currentState, tab: normalized }, '', nextUrl);
+      } else {
+        window.history.pushState({ tab: normalized }, '', nextUrl);
+      }
+    } catch (_) {}
+  }, []);
 
   const setActiveTab = (tab) => {
     const previousActiveTab = activeTabState;
@@ -1904,7 +1927,9 @@ if (liveAppUser && clientData) {
         localStorage.setItem(key, JSON.stringify([tab, ...current].slice(0, 6)));
       } catch(e) {}
     }
-    window.history.pushState({ tab }, '', `?tab=${tab}`); transitionActiveTabState(tab);
+    disarmPwaBackExit();
+    writeTopLevelTabHistory(tab);
+    transitionActiveTabState(tab);
   };
 
   const setActiveTabRef = useRef(setActiveTab);
@@ -2219,6 +2244,77 @@ What I clicked / expected:
     setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), reportable ? 9000 : 6000);
   }, []);
 
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined;
+
+    const params = new URLSearchParams(window.location.search);
+    const preferredTab = normalizeRouteTab(appUser?.preferences?.defaultTab || 'today');
+    const rawTab = params.get('tab') || preferredTab;
+    const tab = normalizeRouteTab(rawTab);
+    transitionActiveTabState(tab);
+
+    try {
+      if (isStandalone86ChaosPwa()) {
+        const currentState = window.history.state && typeof window.history.state === 'object' ? window.history.state : {};
+        if (!pwaBackExitRef.current.initialized || !currentState.chaosPwaBackGuard) {
+          window.history.replaceState({ ...currentState, tab, chaosAppShell: true, chaosPwaBackBase: true }, '', appTabUrl(tab));
+          window.history.pushState({ tab, chaosAppShell: true, chaosPwaBackGuard: true }, '', appTabUrl(tab));
+          pwaBackExitRef.current.initialized = true;
+        } else {
+          window.history.replaceState({ ...currentState, tab, chaosAppShell: true, chaosPwaBackGuard: true }, '', appTabUrl(tab));
+        }
+      } else {
+        window.history.replaceState({ ...(window.history.state || {}), tab }, '', appTabUrl(tab));
+      }
+    } catch (_) {}
+
+    const handlePopState = (event) => {
+      const standalone = isStandalone86ChaosPwa();
+      const state = pwaBackExitRef.current;
+
+      if (standalone && event?.state?.chaosPwaBackBase) {
+        const currentTab = normalizeRouteTab(activeTabStateRef.current || tab || 'today');
+        if (state.armed) {
+          disarmPwaBackExit();
+          state.exiting = true;
+          setTimeout(() => {
+            try { window.history.back(); } catch (_) {}
+          }, 0);
+          return;
+        }
+
+        state.armed = true;
+        if (state.timer) clearTimeout(state.timer);
+        state.timer = setTimeout(() => {
+          state.armed = false;
+          state.timer = null;
+        }, CHAOS_PWA_BACK_EXIT_WINDOW_MS);
+        addToast('Exit 86 Chaos', 'Press back again to exit.');
+        transitionActiveTabState(currentTab);
+        try {
+          window.history.pushState({ tab: currentTab, chaosAppShell: true, chaosPwaBackGuard: true }, '', appTabUrl(currentTab));
+        } catch (_) {}
+        return;
+      }
+
+      if (standalone && state.exiting) return;
+      disarmPwaBackExit();
+      const nextParams = new URLSearchParams(window.location.search);
+      const nextTab = normalizeRouteTab(event?.state?.tab || nextParams.get('tab') || 'published');
+      transitionActiveTabState(nextTab);
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => {
+      window.removeEventListener('popstate', handlePopState);
+      if (pwaBackExitRef.current.timer) {
+        clearTimeout(pwaBackExitRef.current.timer);
+        pwaBackExitRef.current.timer = null;
+      }
+    };
+  }, [appUser?.preferences?.defaultTab, addToast, disarmPwaBackExit, transitionActiveTabState]);
+
   const offlineQueue = liveAppUser ? getOfflineQueue(liveAppUser.restaurantId, liveAppUser.id) : [];
   const openMenu = useCallback(() => setIsMenuOpen(true), []);
   const closeMenu = useCallback(() => setIsMenuOpen(false), []);
@@ -2354,8 +2450,10 @@ What I clicked / expected:
     setClientData(null);
     setAppUser(nextUser);
     const nextDefaultTab = normalizeRouteTab(nextUser.preferences?.defaultTab || 'today');
+    activeTabStateRef.current = nextDefaultTab;
     setActiveTabState(nextDefaultTab);
-    try { window.history.replaceState({ tab: nextDefaultTab }, '', `?tab=${nextDefaultTab}`); } catch (_) {}
+    disarmPwaBackExit();
+    writeTopLevelTabHistory(nextDefaultTab, { replace: true });
     setIsWorkspaceSwitcherOpen(false);
     addToast('Workspace Switched', `Now working in ${safeWorkspaceName(workspace)}.`);
   };
@@ -3105,7 +3203,7 @@ return (
             <Moon size={16} className={`flex-shrink-0 animate-pulse ${isDemoMode ? 'text-cyan-300' : 'text-fuchsia-300'}`} />
             <span className="truncate">{isDemoMode ? `DEMO MODE: ${liveAppUser?.demoRole === 'employee' ? 'Regular Employee' : 'Manager'} view @ ${ghostTenant.name} • contact info hidden • read-only` : `GHOST MODE OVERRIDE: ${ghostTenant.impersonate ? `${ghostTenant.impersonate.name || ghostTenant.impersonate.email} @ ${ghostTenant.name}` : ghostTenant.name}`}</span>
           </div>
-          <button onClick={() => { setGhostTenant(null); window.history.pushState({ tab: 'godmode' }, '', '?tab=godmode'); setActiveTabState('godmode'); }} className="bg-white text-slate-900 px-3 py-1.5 rounded-lg font-black text-[10px] shadow-md hover:bg-slate-100 transition-all tracking-widest flex-shrink-0 ml-3">
+          <button onClick={() => { setGhostTenant(null); disarmPwaBackExit(); writeTopLevelTabHistory('godmode', { replace: true }); transitionActiveTabState('godmode'); }} className="bg-white text-slate-900 px-3 py-1.5 rounded-lg font-black text-[10px] shadow-md hover:bg-slate-100 transition-all tracking-widest flex-shrink-0 ml-3">
             {isDemoMode ? 'EXIT DEMO' : 'EXIT GHOST MODE'}
           </button>
         </div>

@@ -1,5 +1,5 @@
 param(
-  [ValidateSet('failed+new','failed-only','repair')]
+  [ValidateSet('failed+new','failed-only','repair','reported-failed-only')]
   [string]$SelectionMode = 'failed+new'
 )
 

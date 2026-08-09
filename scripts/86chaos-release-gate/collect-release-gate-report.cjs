@@ -71,7 +71,7 @@ const preflightFailures = preflightFailedBeforeMutation
 const runnerBlockingReason = String(runnerState.blockingReason || '').trim();
 const runnerPhase = String(runnerState.currentPhase || '').trim();
 const selectionMode = String(runnerState.mode || process.env.CHAOS_RELEASE_GATE_SELECTION_MODE || (process.env.CHAOS_FAILED_AND_NEW_RELEASE_GATE === 'true' ? 'failed+new' : (process.env.CHAOS_FAILED_ONLY_RELEASE_GATE === 'true' ? 'failed-only' : 'full'))).toLowerCase();
-const failedOnlyMode = ['failed-only', 'failed+new', 'delta', 'repair'].includes(selectionMode) || process.env.CHAOS_FAILED_ONLY_RELEASE_GATE === 'true' || process.env.CHAOS_FAILED_AND_NEW_RELEASE_GATE === 'true';
+const failedOnlyMode = ['failed-only', 'failed+new', 'delta', 'repair', 'reported-failed-only'].includes(selectionMode) || process.env.CHAOS_FAILED_ONLY_RELEASE_GATE === 'true' || process.env.CHAOS_FAILED_AND_NEW_RELEASE_GATE === 'true';
 const noFailedOnlyTestsRemain = Boolean(selectionMode === 'failed-only' && runnerState.noFailedOnlyTestsRemain === true);
 const fullGateOnlyArtifacts = new Set(['java-prerequisite.json', 'node-test-live-summary.json', 'firebase-rules-release-gate.json']);
 if (failedOnlyMode) missingArtifacts = missingArtifacts.filter(name => !fullGateOnlyArtifacts.has(name));
@@ -545,9 +545,12 @@ const humanResultRows = tests.map(t => ({
   duration: t.duration || 0,
   error: t.error || '',
 }));
-const rerunCommand = (summary.selectionMode || selectionMode) === 'repair'
+const rerunMode = summary.selectionMode || selectionMode;
+const rerunCommand = rerunMode === 'repair'
   ? 'npm run test:play-store:repair'
-  : ((summary.selectionMode || selectionMode) === 'failed-only' ? 'npm run test:play-store:failed' : 'npm run test:play-store:delta');
+  : (rerunMode === 'reported-failed-only'
+    ? 'npm run test:play-store:failed-current'
+    : (rerunMode === 'failed-only' ? 'npm run test:play-store:failed' : 'npm run test:play-store:delta'));
 const humanSummaryLines = createCompletedSummaryLines({
   results: humanResultRows,
   mode: summary.selectionMode || selectionMode || 'release',

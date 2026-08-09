@@ -53,7 +53,8 @@
     "test:play-store": "powershell -NoProfile -ExecutionPolicy Bypass -File .\\RUN_86CHAOS_PLAY_STORE_RELEASE_GATE.ps1",
     "test:play-store:failed": "powershell -NoProfile -ExecutionPolicy Bypass -File .\\RUN_86CHAOS_FAILED_ONLY_RELEASE_GATE.ps1",
     "test:play-store:delta": "powershell -NoProfile -ExecutionPolicy Bypass -File .\\RUN_86CHAOS_FAILED_AND_NEW_RELEASE_GATE.ps1",
-    "test:play-store:repair": "powershell -NoProfile -ExecutionPolicy Bypass -File .\\RUN_86CHAOS_FAILED_AND_NEW_RELEASE_GATE.ps1 -SelectionMode repair"
+    "test:play-store:repair": "powershell -NoProfile -ExecutionPolicy Bypass -File .\\RUN_86CHAOS_FAILED_AND_NEW_RELEASE_GATE.ps1 -SelectionMode repair",
+    "test:play-store:failed-current": "powershell -NoProfile -ExecutionPolicy Bypass -File .\\RUN_86CHAOS_FAILED_AND_NEW_RELEASE_GATE.ps1 -SelectionMode reported-failed-only"
   },
   "browserslist": {
     "production": [
