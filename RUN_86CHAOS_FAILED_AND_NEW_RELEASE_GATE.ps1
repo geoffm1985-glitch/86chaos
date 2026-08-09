@@ -306,7 +306,7 @@ function Write-RunnerSummary {
     }
   }
   $lines | Set-Content $summaryPath
-  @{ runId = $RunId; runDir = $RunDir; mode = 'failed+new'; blockingReason = $RunnerState.blockingReason; steps = $StepResults; generatedAt = (Get-Date -Format o) } | ConvertTo-Json -Depth 12 | Set-Content $jsonPath
+  @{ runId = $RunId; runDir = $RunDir; mode = $SelectionMode; blockingReason = $RunnerState.blockingReason; steps = $StepResults; generatedAt = (Get-Date -Format o) } | ConvertTo-Json -Depth 12 | Set-Content $jsonPath
 }
 
 function Stop-BeforePlaywright {

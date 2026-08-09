@@ -38,7 +38,7 @@ test('release-gate reporter prints selected manifest once and one result line pe
       { project: 'mobile-chromium', specPath: 'tests/e2e/c.spec.cjs', fullSuitePath: 'Schedule Builder', title: 'coverage warnings show under and over target math' },
     ],
   };
-  const reporter = new Reporter({ output: line => lines.push(line), runDir, mode: 'repair', version: '16.0.157', selection });
+  const reporter = new Reporter({ output: line => lines.push(line), runDir, mode: 'repair', version: '16.0.158', selection });
   const suite = { allTests: () => [1, 2, 3] };
   reporter.onBegin({}, suite);
   reporter.onBegin({}, suite);
@@ -68,7 +68,7 @@ test('summary and failed artifact reconcile totals and include only failures or 
     { project: 'mobile-chromium', file: 'tests/d.spec.cjs', title: 'skips', status: 'skipped' },
   ];
   const summary = Reporter.createCompletedSummaryLines({ results, mode: 'repair', runDir: 'test-results/run' }).join('\n');
-  const failed = Reporter.createFailedTestsArtifactLines({ results, runId: 'run-1', version: '16.0.157', mode: 'repair' }).join('\n');
+  const failed = Reporter.createFailedTestsArtifactLines({ results, runId: 'run-1', version: '16.0.158', mode: 'repair' }).join('\n');
 
   assert.match(summary, /TOTAL:\s+4/);
   assert.match(summary, /PASS:\s+1/);
@@ -105,7 +105,7 @@ test('interrupted run summary is explicitly non-authoritative', () => {
 test('reporter writes human summary artifacts on completed run', () => {
   const lines = [];
   const runDir = fs.mkdtempSync(path.join(os.tmpdir(), '86chaos-reporter-completed-'));
-  const reporter = new Reporter({ output: line => lines.push(line), runDir, mode: 'repair', version: '16.0.157', selection: { totalSelected: 1, selected: [] } });
+  const reporter = new Reporter({ output: line => lines.push(line), runDir, mode: 'repair', version: '16.0.158', selection: { totalSelected: 1, selected: [] } });
   reporter.onBegin({}, { allTests: () => [1] });
   reporter.onTestEnd(fakeTest('passes'), { status: 'passed', duration: 100 });
   reporter.onEnd({ status: 'passed' });

@@ -1,14 +1,14 @@
 {
-  "version": "16.0.157",
-  "name": "86 Chaos 16.0.157 Release Gate Console Usability Repair",
-  "build": "16.0.157",
-  "label": "86 Chaos 16.0.157 Release Gate Console Usability Repair",
-  "releasedAt": "2026-08-08T20:39:00-05:00",
-  "releaseTitle": "Release Gate Console Usability Repair",
+  "version": "16.0.158",
+  "name": "86 Chaos 16.0.158 Schedule Builder Runtime Root Cause Repair",
+  "build": "16.0.158",
+  "label": "86 Chaos 16.0.158 Schedule Builder Runtime Root Cause Repair",
+  "releasedAt": "2026-08-08T21:09:00-05:00",
+  "releaseTitle": "Schedule Builder Runtime Root Cause Repair",
   "notes": [
-    "Replaces noisy Playwright release-gate console output with an ASCII-only human-readable reporter.",
-    "Prints selected release-gate tests once, then one concise PASS/FAIL/SKIP/TIMEOUT line per completed test.",
-    "Adds TEST-SUMMARY.txt and FAILED-TESTS.txt to release-gate artifacts and slim upload packages."
+    "Removes the direct CommonJS schedule warning helper import from browser React code.",
+    "Adds browser-native ESM named exports for Schedule Builder warning helpers while keeping one shared implementation for Node tests.",
+    "Preserves the 16.0.157 readable release-gate console output and reporting artifacts."
   ],
-  "title": "86 Chaos 16.0.157 Release Gate Console Usability Repair"
+  "title": "86 Chaos 16.0.158 Schedule Builder Runtime Root Cause Repair"
 }

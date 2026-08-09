@@ -15,14 +15,17 @@ const {
 } = require('../src/core/scheduleWarningControls.cjs');
 
 
-test('Schedule browser import contract exposes warning helpers as callable functions', () => {
+test('Schedule browser import contract uses native ESM named warning helpers', () => {
   const root = path.join(__dirname, '..');
   const scheduleSource = fs.readFileSync(path.join(root, 'src/features/schedule.jsx'), 'utf8');
-  assert.match(scheduleSource, /import \* as scheduleWarningControls from '\.\.\/core\/scheduleWarningControls\.cjs';/, 'Schedule browser code should use namespace import for the CJS warning helper boundary');
-  assert.match(scheduleSource, /scheduleWarningControlExports/, 'Schedule browser code should normalize CJS default/direct helper exports before render-time destructuring');
-  assert.doesNotMatch(scheduleSource, /import scheduleWarningControls from '\.\.\/core\/scheduleWarningControls\.cjs';/, 'Schedule browser code should not use the fragile default-only CJS import shape');
+  const browserWrapper = fs.readFileSync(path.join(root, 'src/core/scheduleWarningControls.js'), 'utf8');
+  const sharedSource = fs.readFileSync(path.join(root, 'src/core/scheduleWarningControls.shared.js'), 'utf8');
+  const cjsWrapper = fs.readFileSync(path.join(root, 'src/core/scheduleWarningControls.cjs'), 'utf8');
 
-  const controls = require('../src/core/scheduleWarningControls.cjs');
+  assert.match(scheduleSource, /from '\.\.\/core\/scheduleWarningControls';/, 'Schedule browser code should use the native ESM warning helper wrapper');
+  assert.doesNotMatch(scheduleSource, /scheduleWarningControls\.cjs/, 'Schedule browser code must not directly import the CommonJS helper');
+  assert.doesNotMatch(scheduleSource, /scheduleWarningControlExports/, 'Schedule browser code should not rely on a CJS compatibility spread during render');
+
   [
     'buildCoverageVarianceRows',
     'buildScheduleConflictWarningRows',
@@ -30,7 +33,11 @@ test('Schedule browser import contract exposes warning helpers as callable funct
     'warningShiftContext',
     'requestMatchesEmployeeFilter',
     'isRequestOffBulkEligible',
-  ].forEach(name => assert.equal(typeof controls[name], 'function', `${name} should be a callable warning helper export`));
+  ].forEach(name => {
+    assert.match(browserWrapper, new RegExp(`export const ${name} = scheduleWarningControls\\.${name};`), `${name} should be an explicit browser ESM named export`);
+    assert.match(sharedSource, new RegExp(`function ${name}\\b|const ${name}\\b`), `${name} should be defined in the shared implementation`);
+  });
+  assert.match(cjsWrapper, /require\('\.\/scheduleWarningControls\.shared\.js'\)/, 'Node CJS wrapper should load the same shared implementation');
 });
 
 test('schedule requested-off warning resolver uses canonical person data and never Someone', () => {

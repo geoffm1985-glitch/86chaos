@@ -16,7 +16,9 @@ const version = json('public/version.json');
 const appCore = read('src/core/appCore.js');
 const apiVersion = read('api/_version.js');
 const schedule = read('src/features/schedule.jsx');
-const warningHelpers = read('src/core/scheduleWarningControls.cjs');
+const warningHelpers = read('src/core/scheduleWarningControls.shared.js');
+const warningBrowserWrapper = read('src/core/scheduleWarningControls.js');
+const warningCjsWrapper = read('src/core/scheduleWarningControls.cjs');
 const failedRunner = read('RUN_86CHAOS_FAILED_AND_NEW_RELEASE_GATE.ps1');
 const failedOnlyWrapper = read('RUN_86CHAOS_FAILED_ONLY_RELEASE_GATE.ps1');
 const failedUtils = read('scripts/86chaos-release-gate/failed-only-manifest-utils.cjs');
@@ -33,17 +35,17 @@ const ghostRequestOffSpec = read('tests/86chaos-full-audit/06-request-off-events
 const compactUiSpec = read('tests/e2e/compact-ui-layout.spec.cjs');
 const styles = read('src/styles.css');
 
-assert(pkg.version === '16.0.157', 'package.json version is 16.0.157');
-assert(lock.version === '16.0.157' && lock.packages?.['']?.version === '16.0.157', 'package-lock root versions are 16.0.157');
-assert(version.version === '16.0.157' && version.build === '16.0.157', 'public/version.json version/build are 16.0.157');
-assert(version.releaseTitle === 'Release Gate Console Usability Repair', 'public/version.json release title is 16.0.157 release name');
-assert(appCore.includes("CURRENT_VERSION = '16.0.157'"), 'app core CURRENT_VERSION is 16.0.157');
-assert(apiVersion.includes("APP_VERSION = '16.0.157'") && apiVersion.includes("SECURITY_SCHEMA_VERSION = '16.0.157'"), 'api version reports 16.0.157');
-assert(pkg.scripts['test:source'] === 'node scripts/validate-16-0-157.js', 'test:source points at 16.0.157 validator');
+assert(pkg.version === '16.0.158', 'package.json version is 16.0.158');
+assert(lock.version === '16.0.158' && lock.packages?.['']?.version === '16.0.158', 'package-lock root versions are 16.0.158');
+assert(version.version === '16.0.158' && version.build === '16.0.158', 'public/version.json version/build are 16.0.158');
+assert(version.releaseTitle === 'Schedule Builder Runtime Root Cause Repair', 'public/version.json release title is 16.0.158 release name');
+assert(appCore.includes("CURRENT_VERSION = '16.0.158'"), 'app core CURRENT_VERSION is 16.0.158');
+assert(apiVersion.includes("APP_VERSION = '16.0.158'") && apiVersion.includes("SECURITY_SCHEMA_VERSION = '16.0.158'"), 'api version reports 16.0.158');
+assert(pkg.scripts['test:source'] === 'node scripts/validate-16-0-158.js', 'test:source points at 16.0.158 validator');
 assert(pkg.scripts['test:play-store:delta'] === 'powershell -NoProfile -ExecutionPolicy Bypass -File .\\RUN_86CHAOS_FAILED_AND_NEW_RELEASE_GATE.ps1', 'delta command remains failed+new shared runner');
 assert(pkg.scripts['test:play-store:failed'] === 'powershell -NoProfile -ExecutionPolicy Bypass -File .\\RUN_86CHAOS_FAILED_ONLY_RELEASE_GATE.ps1', 'failed command uses strict failed-only wrapper');
 assert(pkg.scripts['test:play-store:repair']?.includes('-SelectionMode repair'), 'repair command selects explicit repair mode');
-assert(!fs.existsSync(path.join(root, 'scripts/validate-16-0-156.js')), 'previous 16.0.156 validator was replaced');
+assert(!fs.existsSync(path.join(root, 'scripts/validate-16-0-157.js')), 'previous 16.0.157 validator was replaced');
 
 assert(sha('firestore.rules') === '51bfd7d39edd59f680ae41a149c108cec8cd42d00b102d84cb00ee40d90264d9', 'firestore.rules unchanged');
 assert(sha('storage.rules') === '174e7e9a140193ff69ccf0f0d3e5c65b81a9e0fbbd612bff45ce57e7a3a7ce9c', 'storage.rules unchanged');
@@ -56,7 +58,7 @@ assert(failedOnlyWrapper.includes('-SelectionMode failed-only') && !failedOnlyWr
 assert(prepareManifest.includes("includeNewInventory: selectionMode === 'failed+new'") && prepareManifest.includes("selectionMode === 'repair'") && prepareManifest.includes('previousTimeoutsSelected') && prepareManifest.includes('currentReleaseFeatureTestsSelected') && prepareManifest.includes('duplicateIdentitiesRemoved'), 'manifest preparer separates failed+new, failed-only, and repair semantics with failed/timed-out counts');
 assert(failedUtils.includes('hasCompletedReleaseGateEvidence') && failedUtils.includes('missing-completed-summary') && failedUtils.includes('includeNewInventory = true') && failedUtils.includes('if (includeNewInventory)') && failedUtils.includes("manifest.newTestsCount = 0"), 'failed-only utilities require completed evidence and can disable new-test expansion');
 assert(failedUtils.includes('No failed or timed-out Playwright tests remain.') && failedRunner.includes('no-failed-tests-remain'), 'strict failed-only can exit cleanly when no failures remain');
-assert(repairScope.includes("CURRENT_RELEASE_VERSION = '16.0.156'") && repairScope.includes('Schedule runtime function repair scope for 16.0.156') && repairScope.includes('schedule-request-off-management.spec.cjs') && repairScope.includes('buildRepairSelection') && !repairScope.includes('old full baseline'), 'current-release repair scope remains unchanged so repair selection semantics stay identical');
+assert(repairScope.includes('schedule-request-off-management.spec.cjs') && repairScope.includes('buildRepairSelection') && !repairScope.includes('old full baseline'), 'current-release repair scope selection identities remain intact');
 assert(failedConfig.includes('CHAOS_RELEASE_GATE_SELECTION_MODE') && failedConfig.includes('releaseSelectionMode'), 'Playwright failed config reports real selection mode');
 assert(collector.includes("'repair'") && collector.includes('selectionMode') && collector.includes('noFailedOnlyTestsRemain'), 'release report records failed+new, failed-only, and repair modes accurately');
 assert(failedConfig.includes('chaos-release-gate-reporter.cjs') && failedConfig.includes('[chaosReleaseGateReporter]') && !failedConfig.includes("['list']"), 'failed/repair Playwright config uses ASCII release-gate reporter instead of list reporter');
@@ -74,7 +76,10 @@ assert(ghostRequestOffSpec.includes("gotoTab(page, 'published'") && ghostRequest
 assert(styles.includes('16.0.154 login action target cascade repair') && styles.includes('.chaos-login-screen .chaos-login-primary-action') && styles.includes('.chaos-login-screen .chaos-login-secondary-action') && /min-height:\s*44px !important/.test(styles), 'login tap-target cascade repair is scoped to login primary/secondary actions');
 assert(compactUiSpec.includes('minHeight') && compactUiSpec.includes('paddingTop') && compactUiSpec.includes('parentTransform'), 'login tap-target test captures computed dimensions and cascade diagnostics');
 
-assert(schedule.includes("import * as scheduleWarningControls from '../core/scheduleWarningControls.cjs';") && schedule.includes('scheduleWarningControlExports') && !schedule.includes("import scheduleWarningControls from '../core/scheduleWarningControls.cjs';"), 'Schedule browser code uses a namespace CJS warning helper import with normalized exports');
+assert(schedule.includes("from '../core/scheduleWarningControls';") && !schedule.includes('scheduleWarningControls.cjs') && !schedule.includes('scheduleWarningControlExports'), 'Schedule browser code uses native ESM named warning helper imports and no direct CJS helper import');
+assert(warningBrowserWrapper.includes("import './scheduleWarningControls.shared';") && warningBrowserWrapper.includes('export const buildCoverageVarianceRows') && warningBrowserWrapper.includes('export const buildScheduleConflictWarningRows'), 'browser warning helper wrapper exposes explicit named exports');
+assert(warningCjsWrapper.includes("require('./scheduleWarningControls.shared.js')") && warningCjsWrapper.includes('module.exports = scheduleWarningControls'), 'Node warning helper wrapper uses the same shared implementation');
+assert(warningHelpers.includes('__86ChaosScheduleWarningControlsShared') && warningHelpers.includes('const scheduleWarningControlsShared = {'), 'shared warning helper implementation is the single business-logic source');
 assert(schedule.includes('buildScheduleConflictWarningRows') && schedule.includes('resolvePerson: resolveSchedulePersonForShift') && schedule.includes('employeeLabeler: scheduleWarningEmployeeLabel'), 'Schedule warnings use guarded canonical shift/person resolution');
 assert(!schedule.includes('Someone is scheduled on requested-off date') && !schedule.includes("|| 'Someone'"), 'Schedule warnings no longer produce literal Someone fallback');
 assert(warningHelpers.includes('Unresolved employee') && warningHelpers.includes('warningShiftContext(shift)'), 'unresolved schedule warnings use safe fallback with shift context');
@@ -110,12 +115,13 @@ assert(featureSpec.includes("getByRole('button', { name: /^Needs Review$/i })") 
 assert(repairScope.match(/mobile-chromium/g)?.length >= 1 && repairScope.match(/chromium/g)?.length >= 1, 'repair scope covers chromium and mobile-chromium feature identities');
 assert(fs.existsSync(path.join(root, 'api/schedule-warning-request-off-controls.test.cjs')), 'focused Schedule/Request Off helper unit tests exist');
 const helperUnitSpec = read('api/schedule-warning-request-off-controls.test.cjs');
-assert(helperUnitSpec.includes('Schedule browser import contract exposes warning helpers as callable functions') && helperUnitSpec.includes('schedule warning helpers ignore malformed injected callbacks'), 'focused helper tests cover browser import callable contract and malformed callback hardening');
+assert(helperUnitSpec.includes('Schedule browser import contract uses native ESM named warning helpers') && helperUnitSpec.includes('schedule warning helpers ignore malformed injected callbacks'), 'focused helper tests cover browser import callable contract and malformed callback hardening');
 assert(fs.existsSync(path.join(root, 'api/failed-only-repair-selection-16-0-153.test.cjs')), 'focused failed-only/repair selection unit tests exist');
 
 assert(helpKnowledge.includes("CUSTOMER_HELP_VERSION = '16.0.150'"), 'customer Help knowledge version was not bumped unnecessarily');
 assert(helpKnowledge.includes('over-coverage against targets') && helpKnowledge.includes('approve or archive only the visible filtered requests in bulk'), 'minimal relevant customer Help additions are present');
-assert(!read('src/core/customerHelpKnowledge.js').includes("CUSTOMER_HELP_VERSION = '16.0.157'"), 'browser Help export version was not bumped to app version');
+assert(!read('src/core/customerHelpKnowledge.js').includes("CUSTOMER_HELP_VERSION = '16.0.158'"), 'browser Help export version was not bumped to app version');
+assert(fs.existsSync(path.join(root, 'artifacts/16.0.158-schedule-runtime-root-cause.txt')), '16.0.158 Schedule runtime diagnostic artifact exists');
 
 if (failures) { console.error(`\n${failures} validation check(s) failed.`); process.exit(1); }
-console.log('\n16.0.157 source validation passed.');
+console.log('\n16.0.158 source validation passed.');
