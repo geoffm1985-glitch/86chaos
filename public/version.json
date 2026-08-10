@@ -1,14 +1,14 @@
 {
-  "version": "16.0.169",
-  "name": "86 Chaos 16.0.169",
-  "build": "16.0.169",
-  "label": "86 Chaos 16.0.169",
+  "version": "16.0.170",
+  "name": "86 Chaos 16.0.170",
+  "build": "16.0.170",
+  "label": "86 Chaos 16.0.170",
   "releasedAt": "2026-08-09T05:37:00-05:00",
-  "releaseTitle": "System Administrator Workspace Membership and Backup Health Repair",
+  "releaseTitle": "System Administrator Authoritative People Directory Repair",
   "notes": [
-    "Enriches System Administrator global people rows with active canonical workspaceMembers so Workspaces / Clients shows users in every assigned workspace.",
-    "Moves System Administrator backup status/health reads behind server-authorized Admin SDK routes and adds precise native backup IAM diagnostics.",
-    "Preserves Firebase rules, failed-only infrastructure, PWA behavior, push delivery, Request Off, and prior read-demand repairs."
+    "Uses the authoritative server people roster for System Administrator People Directory and Live/Last Seen so browser caches cannot decide platform visibility.",
+    "Preserves Workspaces / Clients, Push Control Center, Backup Health, watchdog IAM diagnostics, and canonical workspaceMembers enrichment.",
+    "Keeps Firestore rules, persistence, failed-only infrastructure, Request Off, Push, Backup, and PWA behavior unchanged."
   ],
-  "title": "86 Chaos 16.0.169"
+  "title": "86 Chaos 16.0.170"
 }
