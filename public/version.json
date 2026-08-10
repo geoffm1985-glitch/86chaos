@@ -1,14 +1,14 @@
 {
-  "version": "16.0.171",
-  "name": "86 Chaos 16.0.171",
-  "build": "16.0.171",
-  "label": "86 Chaos 16.0.171",
-  "releasedAt": "2026-08-09T05:37:00-05:00",
-  "releaseTitle": "System Administrator Trust Boundary and Test Harness Integrity Repair",
+  "version": "16.0.172",
+  "name": "86 Chaos 16.0.172",
+  "build": "16.0.172",
+  "label": "86 Chaos 16.0.172",
+  "releasedAt": "2026-08-10T13:54:00-05:00",
+  "releaseTitle": "Deterministic Month View Calendar Printing Repair",
   "notes": [
-    "Uses the authoritative server people roster for System Administrator People Directory and Live/Last Seen so browser caches cannot decide platform visibility.",
-    "Preserves Workspaces / Clients, Push Control Center, Backup Health, watchdog IAM diagnostics, and canonical workspaceMembers enrichment.",
-    "Keeps Firestore rules, persistence, failed-only infrastructure, Request Off, Push, Backup, and PWA behavior unchanged."
+    "Month View Print Calendar now creates a frozen standalone print document for the selected month.",
+    "Screen and print use the same computed month/day/shift model with explicit data-calendar-month identity.",
+    "Keeps Schedule data loading, Firebase rules, System Administrator repairs, failed-only infrastructure, and PWA behavior unchanged."
   ],
-  "title": "86 Chaos 16.0.171"
+  "title": "86 Chaos 16.0.172"
 }
