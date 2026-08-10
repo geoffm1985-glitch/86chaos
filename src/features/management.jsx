@@ -4131,6 +4131,8 @@ firebase deploy --only functions --project YOUR_PRODUCTION_PROJECT_ID
   // Master Data States
   const [restaurants, setRestaurants] = useState([]);
   const [restaurantRosterState, setRestaurantRosterState] = useState({ source: 'loading', loading: false, refreshing: false, error: '', fetchedAt: '', projectId: '', count: 0 });
+  const [systemAdminPeopleState, setSystemAdminPeopleState] = useState({ source: 'idle', loading: false, refreshing: false, error: '', fetchedAt: '', projectId: '', count: 0 });
+  const systemAdminPeopleRequestGenerationRef = useRef(0);
   const [superAdmins, setSuperAdmins] = useState([]);
   const [allUsers, setAllUsers] = useState([]);
   const [globalLogoutBusy, setGlobalLogoutBusy] = useState(false);
@@ -4574,6 +4576,78 @@ const LEGACY_JULY_2026_SCHEDULE = [
     }
   };
 
+
+  function getSystemAdminUserWorkspaceIds(user = {}) {
+    const values = [user.restaurantId, ...(Array.isArray(user.workspaceIds) ? user.workspaceIds : [])];
+    const seen = new Set();
+    return values.map(value => String(value || '').trim()).filter(value => {
+      if (!value || seen.has(value)) return false;
+      seen.add(value);
+      return true;
+    });
+  }
+
+  const compareSystemAdminPeople = (a = {}, b = {}) => {
+    const an = String(a.name || '').toLowerCase();
+    const bn = String(b.name || '').toLowerCase();
+    if (an !== bn) return an.localeCompare(bn);
+    const ae = String(a.email || '').toLowerCase();
+    const be = String(b.email || '').toLowerCase();
+    if (ae !== be) return ae.localeCompare(be);
+    return String(a.id || '').localeCompare(String(b.id || ''));
+  };
+
+  const applySystemAdminUserCounts = (rows = []) => {
+    const counts = {};
+    rows.forEach(user => {
+      getSystemAdminUserWorkspaceIds(user).forEach(workspaceId => {
+        counts[workspaceId] = (counts[workspaceId] || 0) + 1;
+      });
+    });
+    setUserCounts(counts);
+  };
+
+  const loadSystemAdminPeopleRoster = async ({ refreshing = false } = {}) => {
+    const generation = systemAdminPeopleRequestGenerationRef.current + 1;
+    systemAdminPeopleRequestGenerationRef.current = generation;
+    setSystemAdminPeopleState(prev => ({ ...prev, loading: !refreshing, refreshing, error: '' }));
+    try {
+      const usersById = new Map();
+      const seenCursors = new Set();
+      let cursor = '';
+      let page = 0;
+      let projectId = '';
+      let fetchedAt = '';
+      while (true) {
+        page += 1;
+        if (page > 50) throw new Error('Authoritative platform user roster exceeded the safe pagination ceiling.');
+        const queryString = cursor ? `?limit=250&cursor=${encodeURIComponent(cursor)}` : '?limit=250';
+        const response = await secureFetch(`/api/system-admin/people${queryString}`);
+        const json = await response.json().catch(() => ({}));
+        if (!response.ok || !json?.ok) throw new Error(json?.error || 'Could not load authoritative platform user roster.');
+        projectId = json.projectId || projectId;
+        fetchedAt = json.fetchedAt || fetchedAt;
+        (Array.isArray(json.users) ? json.users : []).forEach(user => {
+          if (user?.id && !usersById.has(user.id)) usersById.set(user.id, user);
+        });
+        if (json.hasMore !== true) break;
+        const nextCursor = String(json.nextCursor || '').trim();
+        if (!nextCursor) throw new Error('Authoritative platform user roster pagination returned hasMore without a cursor.');
+        if (seenCursors.has(nextCursor)) throw new Error('Authoritative platform user roster pagination repeated a cursor.');
+        seenCursors.add(nextCursor);
+        cursor = nextCursor;
+      }
+      if (generation !== systemAdminPeopleRequestGenerationRef.current) return;
+      const rows = [...usersById.values()].sort(compareSystemAdminPeople);
+      setAllUsers(rows);
+      applySystemAdminUserCounts(rows);
+      setSystemAdminPeopleState({ source: 'server', loading: false, refreshing: false, error: '', fetchedAt: fetchedAt || new Date().toISOString(), projectId, count: rows.length });
+    } catch (error) {
+      if (generation !== systemAdminPeopleRequestGenerationRef.current) return;
+      setSystemAdminPeopleState(prev => ({ ...prev, loading: false, refreshing: false, error: error?.message || 'Could not load authoritative platform user roster.', source: prev.source === 'server' ? 'server-stale' : 'error' }));
+    }
+  };
+
   // Fetch Global Intelligence with section-scoped, bounded listeners; 16.0.28 admin pagination uses bounded server-side pages.
   useEffect(() => {
     const unsubs = [];
@@ -4632,16 +4706,21 @@ const LEGACY_JULY_2026_SCHEDULE = [
       loadSystemAdminWorkspaceRoster({ refreshing: false });
     }
 
-    if (subTab === 'users' || subTab === 'push' || subTab === 'live') {
-      listen('users', query(collection(db, 'users'), orderBy('name', 'asc'), firestoreLimit(subTab === 'push' ? 240 : 120)), rows => {
+    if (subTab === 'tenants' || subTab === 'push') {
+      loadSystemAdminPeopleRoster({ refreshing: false });
+    }
+
+    if (subTab === 'users' || subTab === 'live') {
+      systemAdminPeopleRequestGenerationRef.current += 1;
+      listen('users', query(collection(db, 'users'), orderBy('name', 'asc'), firestoreLimit(120)), rows => {
         setAllUsers(rows);
-        const counts = {};
-        rows.forEach(u => { if (u.restaurantId) counts[u.restaurantId] = (counts[u.restaurantId] || 0) + 1; });
-        setUserCounts(counts);
+        applySystemAdminUserCounts(rows);
       });
-    } else {
+    } else if (subTab !== 'tenants' && subTab !== 'push') {
+      systemAdminPeopleRequestGenerationRef.current += 1;
       setAllUsers([]);
       setUserCounts({});
+      setSystemAdminPeopleState(prev => ({ ...prev, source: 'idle', loading: false, refreshing: false, error: '' }));
     }
 
     if (['overview', 'push', 'forensics'].includes(subTab)) {
@@ -5942,9 +6021,13 @@ const activeTrials = restaurants.filter(r => resolveSubscription(r, appUser).sta
     }
     return rows.filter(row => row.active !== false);
   };
-  const getUserPushDeviceCount = (user = {}) => collectUserPushDevices(user).length;
+  const getUserPushDeviceCount = (user = {}) => {
+    const serverCount = Number(user.pushDeviceCount);
+    if (Number.isFinite(serverCount) && serverCount >= 0) return serverCount;
+    return collectUserPushDevices(user).length;
+  };
   const getLatestPushSyncMs = (user = {}) => {
-    const values = [user.fcmTokenUpdatedAt, user.lastPushTokenSyncAt, ...collectUserPushDevices(user).map(device => device.updatedAt)].map(parsePresenceTimeMs).filter(Boolean);
+    const values = [user.pushLastSyncAt, user.fcmTokenUpdatedAt, user.lastPushTokenSyncAt, ...collectUserPushDevices(user).map(device => device.updatedAt)].map(parsePresenceTimeMs).filter(Boolean);
     return values.length ? Math.max(...values) : 0;
   };
   const pushOptInRate = allUsers.length > 0 ? ((allUsers.filter(u => getUserPushDeviceCount(u) > 0).length / allUsers.length) * 100).toFixed(0) : 0;
@@ -6107,7 +6190,7 @@ const activeTrials = restaurants.filter(r => resolveSubscription(r, appUser).sta
   };
 
   const selectedClientUsers = selectedClient ? allUsers
-    .filter(u => u.restaurantId === selectedClient.id)
+    .filter(u => getSystemAdminUserWorkspaceIds(u).includes(selectedClient.id))
     .sort((a,b) => (b.isAdmin === true) - (a.isAdmin === true) || (a.name || a.email || '').localeCompare(b.name || b.email || '')) : [];
   const selectedClientAdmins = selectedClientUsers.filter(u => u.isAdmin || u.isSuperAdmin);
   const selectedClientOnline = selectedClient ? onlineUsers.filter(u => u.restaurantId === selectedClient.id) : [];
@@ -6201,16 +6284,17 @@ const activeTrials = restaurants.filter(r => resolveSubscription(r, appUser).sta
   });
   const pushRows = allUsers.map(u => {
     const devices = collectUserPushDevices(u);
+    const deviceCount = getUserPushDeviceCount(u);
     const lastTokenSyncMs = getLatestPushSyncMs(u);
-    const stale = devices.length > 0 && (!lastTokenSyncMs || (Date.now() - lastTokenSyncMs) > 30 * 86400000);
+    const stale = deviceCount > 0 && (!lastTokenSyncMs || (Date.now() - lastTokenSyncMs) > 30 * 86400000);
     return {
       ...u,
       pushDeviceRows: devices,
-      hasPushToken: devices.length > 0,
-      deviceCount: devices.length,
-      tokenFresh: devices.length > 0 && !stale,
+      hasPushToken: deviceCount > 0,
+      deviceCount,
+      tokenFresh: deviceCount > 0 && !stale,
       lastTokenSyncMs,
-      pushStatus: devices.length === 0 ? 'missing token' : stale ? 'stale token' : (u.notificationPermission || u.pushTokenPermission || 'saved')
+      pushStatus: deviceCount === 0 ? 'missing token' : stale ? 'stale token' : (u.notificationPermission || u.pushTokenPermission || 'saved')
     };
   }).sort((a,b) => (b.lastTokenSyncMs || 0) - (a.lastTokenSyncMs || 0));
 
@@ -6225,7 +6309,7 @@ const activeTrials = restaurants.filter(r => resolveSubscription(r, appUser).sta
       group.restaurantNames.push(restaurant.name || restaurant.id);
     });
     const rows = Array.from(groups.values()).map((group) => {
-      const usersInGroup = allUsers.filter(u => group.restaurantIds.includes(u.restaurantId));
+      const usersInGroup = allUsers.filter(u => getSystemAdminUserWorkspaceIds(u).some(workspaceId => group.restaurantIds.includes(workspaceId)));
       return {
         ...group,
         restaurantIds: [...new Set(group.restaurantIds.filter(Boolean))],
@@ -6246,7 +6330,7 @@ const activeTrials = restaurants.filter(r => resolveSubscription(r, appUser).sta
     }
     return activePushWorkspaceId ? [activePushWorkspaceId] : [];
   })();
-  const selectedPushRecipients = allUsers.filter(u => selectedPushRestaurantIds.includes(u.restaurantId));
+  const selectedPushRecipients = allUsers.filter(u => getSystemAdminUserWorkspaceIds(u).some(workspaceId => selectedPushRestaurantIds.includes(workspaceId)));
   const selectedPushTokenRecipients = selectedPushRecipients.filter(u => getUserPushDeviceCount(u) > 0);
   const selectedPushDeviceCount = selectedPushTokenRecipients.reduce((sum, u) => sum + getUserPushDeviceCount(u), 0);
   const selectedPushGroup = restaurantGroups.find(g => g.key === activePushGroupKey) || restaurantGroups[0] || null;
@@ -7276,7 +7360,7 @@ ${body}`;
   const handleDownloadClientDirectory = () => {
     const rows = [['Restaurant ID','Restaurant','Owner','Owner Email','Plan','Billing','Users','Online','Last Active','Modules Enabled']];
     restaurants.forEach(r => {
-      const usersForRest = allUsers.filter(u => u.restaurantId === r.id);
+      const usersForRest = allUsers.filter(u => getSystemAdminUserWorkspaceIds(u).includes(r.id));
       const modulesEnabled = moduleList.filter(key => r.features?.[key] !== false).join('|');
       rows.push([r.id, r.name || '', r.ownerName || '', r.ownerEmail || '', getPlanDefinition(resolveSubscription(r, appUser).planId).label || '', resolveSubscription(r, appUser).status || '', usersForRest.length, usersForRest.filter(isOnlineNow).length, r.lastActive || '', modulesEnabled]);
     });
@@ -8413,7 +8497,7 @@ Type RESTORE to continue.`);
                         <div className="text-[10px] text-slate-400 font-bold truncate mt-0.5">{u.email || 'No email'} • <span className="text-[#D4A381]">{u.role || 'No role'}</span></div>
                         <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 mt-2">
                           <div className="bg-[#0B0E11] border border-[#2A353D] rounded-lg px-2 py-1"><div className="text-[7px] uppercase tracking-widest text-slate-500 font-black">Presence</div><div className="text-[10px] text-slate-300 font-bold truncate">Manual snapshot only</div></div>
-                          <div className="bg-[#0B0E11] border border-[#2A353D] rounded-lg px-2 py-1"><div className="text-[7px] uppercase tracking-widest text-slate-500 font-black">Push</div><div className={`text-[10px] font-bold truncate ${u.fcmToken ? 'text-emerald-300' : 'text-slate-400'}`}>{u.fcmToken ? 'On' : 'Off'}</div></div>
+                          <div className="bg-[#0B0E11] border border-[#2A353D] rounded-lg px-2 py-1"><div className="text-[7px] uppercase tracking-widest text-slate-500 font-black">Push</div><div className={`text-[10px] font-bold truncate ${getUserPushDeviceCount(u) > 0 ? 'text-emerald-300' : 'text-slate-400'}`}>{getUserPushDeviceCount(u) > 0 ? 'On' : 'Off'}</div></div>
                           <div className="bg-[#0B0E11] border border-[#2A353D] rounded-lg px-2 py-1"><div className="text-[7px] uppercase tracking-widest text-slate-500 font-black">GPS</div><div className="text-[10px] text-slate-300 font-bold truncate">{u.gpsPermission || u.deviceDiagnostics?.gpsPermission || 'Unknown'}</div></div>
                           <div className="bg-[#0B0E11] border border-[#2A353D] rounded-lg px-2 py-1"><div className="text-[7px] uppercase tracking-widest text-slate-500 font-black">Tab</div><div className="text-[10px] text-slate-300 font-bold truncate">{u.activeTab || 'Unknown'}</div></div>
                         </div>
@@ -8458,7 +8542,7 @@ Type RESTORE to continue.`);
           const currentSubscription = resolveSubscription(editingRest, appUser);
           const currentPlan = getPlanDefinition(currentSubscription.planId);
           const futurePlan = getPlanDefinition(currentSubscription.selectedFutureTier || currentSubscription.planId);
-          const workspaceUsersForResolver = allUsers.filter(u => u.restaurantId === editingRest.id || (Array.isArray(u.workspaceIds) && u.workspaceIds.includes(editingRest.id)));
+          const workspaceUsersForResolver = allUsers.filter(u => getSystemAdminUserWorkspaceIds(u).includes(editingRest.id));
           const selectedResolverUser = featureResolverUserId === 'owner'
             ? { id: 'owner', name: editingRest.ownerName || 'Owner', email: editingRest.ownerEmail || '', isOwner: true, accountOwner: true, isAdmin: true, permissions: { settings: true, team: true, schedule: true, inventory: true, sales: true, labor: true, wageView: true, wageEdit: true } }
             : (workspaceUsersForResolver.find(u => u.id === featureResolverUserId) || { id: 'staff', name: 'Sample Staff', permissions: {} });
@@ -8871,6 +8955,7 @@ Type RESTORE to continue.`);
 
       {subTab === 'push' && (
         <div className="space-y-4 animate-[slideIn_0.2s_ease-out]">
+          {systemAdminPeopleState.error && <div className="bg-red-950/20 border border-red-800/50 text-red-100 rounded-xl p-3 text-xs font-bold">Authoritative platform user roster could not load: {systemAdminPeopleState.error}</div>}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
             <CockpitMetric label="Connected Devices" value={totalPushDeviceCount} detail={`${pushEnabledUsers.length} user(s), ${allUsers.length - pushEnabledUsers.length} missing`} tone={pushEnabledUsers.length ? 'emerald' : 'amber'} />
             <CockpitMetric label="Stale Tokens" value={stalePushUsers.length} detail="30+ days since sync" tone={stalePushUsers.length ? 'amber' : 'emerald'} hot={stalePushUsers.length > 0} />
@@ -8902,7 +8987,7 @@ Type RESTORE to continue.`);
                 <div>
                   <label className="text-[9px] font-black uppercase tracking-widest text-slate-500 block mb-1">Workspace</label>
                   <select value={pushBroadcastWorkspaceId || restaurants[0]?.id || ''} onChange={e => setPushBroadcastWorkspaceId(e.target.value)} className={T.input}>
-                    {restaurants.map(r => <option key={r.id} value={r.id}>{r.name || r.id} • {allUsers.filter(u => u.restaurantId === r.id).reduce((sum, u) => sum + getUserPushDeviceCount(u), 0)} token(s)</option>)}
+                    {restaurants.map(r => <option key={r.id} value={r.id}>{r.name || r.id} • {allUsers.filter(u => getSystemAdminUserWorkspaceIds(u).includes(r.id)).reduce((sum, u) => sum + getUserPushDeviceCount(u), 0)} token(s)</option>)}
                   </select>
                 </div>
               )}
@@ -8978,7 +9063,7 @@ Type RESTORE to continue.`);
                       <div className="text-[10px] font-bold text-slate-400 truncate">{restName} • {u.email || 'no email'} • Devices: {u.deviceCount}</div>
                       <div className="grid sm:grid-cols-4 gap-2 mt-2 text-[10px] font-bold">
                         <div className="bg-[#0B0E11] border border-[#2A353D] rounded-lg p-2"><div className="text-slate-500 uppercase tracking-widest text-[8px]">Permission</div><div className="text-white">{u.notificationPermission || u.pushTokenPermission || 'unknown'}</div></div>
-                        <div className="bg-[#0B0E11] border border-[#2A353D] rounded-lg p-2"><div className="text-slate-500 uppercase tracking-widest text-[8px]">Last Sync</div><div className="text-white">{getExactTime(u.fcmTokenUpdatedAt || u.lastPushTokenSyncAt)}</div></div>
+                        <div className="bg-[#0B0E11] border border-[#2A353D] rounded-lg p-2"><div className="text-slate-500 uppercase tracking-widest text-[8px]">Last Sync</div><div className="text-white">{getExactTime(u.pushLastSyncAt || u.fcmTokenUpdatedAt || u.lastPushTokenSyncAt)}</div></div>
                         <div className="bg-[#0B0E11] border border-[#2A353D] rounded-lg p-2"><div className="text-slate-500 uppercase tracking-widest text-[8px]">Host</div><div className="text-white truncate">{u.pushTokenHost || u.activeHost || 'unknown'}</div></div>
                         <div className="bg-[#0B0E11] border border-[#2A353D] rounded-lg p-2"><div className="text-slate-500 uppercase tracking-widest text-[8px]">Result</div><div className={u.hasPushToken ? (u.tokenFresh ? 'text-emerald-300' : 'text-amber-300') : 'text-red-300'}>{u.pushStatus}</div></div>
                       </div>
@@ -9580,11 +9665,13 @@ Type RESTORE to continue.`);
               <div className="flex flex-wrap items-center gap-2">
                 <span className="bg-[#1A2126] text-slate-400 px-2 py-1 rounded text-[10px] font-black uppercase tracking-widest border border-[#2A353D]">{restaurantRosterState.source === 'server' ? restaurantRosterState.count : restaurants.length} Total</span>
                 <span className={`px-2 py-1 rounded text-[9px] font-black uppercase tracking-widest border ${restaurantRosterState.error ? 'bg-red-950/30 border-red-800/50 text-red-200' : 'bg-emerald-950/20 border-emerald-800/40 text-emerald-200'}`}>{restaurantRosterState.error ? 'Roster Error' : `${restaurantRosterState.projectId || 'Project'} • ${restaurantRosterState.source || 'loading'}`}</span>
-                <button type="button" onClick={() => loadSystemAdminWorkspaceRoster({ refreshing: true })} disabled={restaurantRosterState.loading || restaurantRosterState.refreshing} className="bg-[#1A2126] text-[#D4A381] px-2.5 py-1.5 rounded text-[10px] font-black uppercase tracking-widest border border-[#2A353D] hover:border-[#D4A381]/60 transition-colors disabled:opacity-50">{restaurantRosterState.refreshing ? 'Refreshing…' : 'Refresh Clients'}</button>
+                <span className={`px-2 py-1 rounded text-[9px] font-black uppercase tracking-widest border ${systemAdminPeopleState.error ? 'bg-red-950/30 border-red-800/50 text-red-200' : 'bg-blue-950/20 border-blue-800/40 text-blue-200'}`}>{systemAdminPeopleState.error ? 'People Error' : `${systemAdminPeopleState.count || allUsers.length} Platform Users`}</span>
+                <button type="button" onClick={() => Promise.all([loadSystemAdminWorkspaceRoster({ refreshing: true }), loadSystemAdminPeopleRoster({ refreshing: true })])} disabled={restaurantRosterState.loading || restaurantRosterState.refreshing || systemAdminPeopleState.loading || systemAdminPeopleState.refreshing} className="bg-[#1A2126] text-[#D4A381] px-2.5 py-1.5 rounded text-[10px] font-black uppercase tracking-widest border border-[#2A353D] hover:border-[#D4A381]/60 transition-colors disabled:opacity-50">{restaurantRosterState.refreshing || systemAdminPeopleState.refreshing ? 'Refreshing…' : 'Refresh Clients'}</button>
                 <button type="button" onClick={handleStampMissingClientCreatedAt} className="bg-[#1A2126] text-[#D4A381] px-2.5 py-1.5 rounded text-[10px] font-black uppercase tracking-widest border border-[#2A353D] hover:border-[#D4A381]/60 transition-colors">Stamp Missing</button>
               </div>
             </div>
 {restaurantRosterState.error && <div className="bg-red-950/20 border border-red-800/50 text-red-100 rounded-xl p-3 text-xs font-bold">Authoritative client roster could not load: {restaurantRosterState.error}</div>}
+{systemAdminPeopleState.error && <div className="bg-red-950/20 border border-red-800/50 text-red-100 rounded-xl p-3 text-xs font-bold">Authoritative platform user roster could not load: {systemAdminPeopleState.error}</div>}
 <div className={`divide-y ${T.border}`}>
 {restaurants.map(r => {
                 // Subscription Math Engine
