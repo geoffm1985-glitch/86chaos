@@ -100,7 +100,7 @@ const requestOffSubjectMatchesPerson = (request = {}, person = {}) => {
   const keys = personIdentityKeys(person);
   const subjectValues = [
     request.userId, request.employeeId, request.rosterUserId, request.accountUserId, request.scheduleUserId, request.uid, request.authUid,
-    request.ghostTargetUserId, request.targetUserId, request.requestedForUserId, request.requestedBy,
+    request.ghostTargetUserId, request.targetUserId, request.requestedForUserId,
     request.userEmail, request.employeeEmail, request.email, request.assignedEmail,
     request.userName, request.employeeName, request.name, request.displayName
   ].map(v => [normalizeScheduleIdentity(v), normalizeScheduleName(v)]).flat().filter(Boolean);
@@ -112,6 +112,53 @@ const requestOffSubjectMatchesPerson = (request = {}, person = {}) => {
     if (recordFirst && personFirst && recordFirst === personFirst) return true;
   }
   return false;
+};
+
+const requestOffSubjectIdFields = [
+  'scheduleUserId', 'employeeId', 'rosterUserId', 'accountUserId', 'userId', 'authUid', 'uid',
+  'ghostTargetUserId', 'targetUserId', 'requestedForUserId'
+];
+const requestOffSubjectEmailFields = ['userEmail', 'employeeEmail', 'email', 'assignedEmail'];
+const requestOffSubjectNameFields = ['employeeName', 'userName', 'name', 'displayName'];
+const requestOffSubjectRoleFields = ['role', 'scheduleRole', 'primaryRole'];
+
+const firstCleanRequestField = (record = {}, fields = []) => {
+  for (const field of fields) {
+    const value = String(record?.[field] || '').trim();
+    if (value) return value;
+  }
+  return '';
+};
+
+const buildRequestOffSubjectFallbackPerson = (request = {}) => {
+  const subjectId = firstCleanRequestField(request, requestOffSubjectIdFields);
+  const subjectEmail = firstCleanRequestField(request, requestOffSubjectEmailFields);
+  const subjectLabel = firstCleanRequestField(request, requestOffSubjectNameFields) || subjectEmail || subjectId;
+  if (!subjectLabel && !subjectEmail && !subjectId) return null;
+  const role = firstCleanRequestField(request, requestOffSubjectRoleFields) || 'Other';
+  const synthetic = subjectId || subjectEmail || `request-subject:${normalizeScheduleName(subjectLabel)}`;
+  return {
+    id: synthetic,
+    scheduleUserId: request.scheduleUserId || '',
+    employeeId: request.employeeId || '',
+    rosterUserId: request.rosterUserId || '',
+    accountUserId: request.accountUserId || '',
+    userId: request.userId || '',
+    authUid: request.authUid || '',
+    uid: request.uid || '',
+    ghostTargetUserId: request.ghostTargetUserId || '',
+    targetUserId: request.targetUserId || '',
+    requestedForUserId: request.requestedForUserId || '',
+    name: subjectLabel,
+    displayName: subjectLabel,
+    fullName: subjectLabel,
+    email: subjectEmail,
+    employeeEmail: subjectEmail,
+    role,
+    isActive: true,
+    requestOnly: true,
+    source: 'request-off-subject-fallback'
+  };
 };
 
 const shiftMatchesPerson = (shift = {}, person = {}, roster = []) => {
@@ -4566,24 +4613,37 @@ const TabTimeOff = ({ timeOffRequests, appUser, users, addToast, events = [], sh
   const requestOffGhostMode = isUserLevelGhostTimeOff(appUser);
   const perms = appUser?.permissions || {};
   const canManage = !requestOffGhostMode && !!(appUser?.isSuperAdmin || appUser?.isAdmin || perms.schedule || perms.team);
+  const timeOffRequestRows = requestOffGhostMode ? ghostTimeOffRequests : (timeOffRequests || []);
   const requestOffEmployeeOptions = useMemo(() => {
-    const seen = new Set();
+    const seenValues = new Set();
+    const seenIdentityKeys = new Set();
     const byRole = new Map();
+    const addOption = (person = {}) => {
+      const value = String(person.scheduleUserId || person.authUid || person.uid || person.userId || person.id || person.email || person.employeeEmail || '').trim();
+      if (!value || seenValues.has(value)) return;
+      const identityKeys = personIdentityKeys(person);
+      if ([...identityKeys].some(key => seenIdentityKeys.has(key))) return;
+      seenValues.add(value);
+      identityKeys.forEach(key => seenIdentityKeys.add(key));
+      const role = cleanScheduleRoleName(person.role || person.scheduleRole || person.primaryRole || 'Other') || 'Other';
+      const label = String(person.name || person.displayName || person.fullName || person.email || value).trim();
+      if (!label) return;
+      if (!byRole.has(role)) byRole.set(role, []);
+      byRole.get(role).push({ value, label, person });
+    };
     (users || [])
       .filter(u => u && u.isActive !== false)
-      .forEach((u) => {
-        const value = String(u.scheduleUserId || u.authUid || u.uid || u.userId || u.id || u.email || '').trim();
-        if (!value || seen.has(value)) return;
-        seen.add(value);
-        const role = cleanScheduleRoleName(u.role || u.scheduleRole || u.primaryRole || 'Other') || 'Other';
-        const label = String(u.name || u.displayName || u.fullName || u.email || value).trim();
-        if (!byRole.has(role)) byRole.set(role, []);
-        byRole.get(role).push({ value, label, person: u });
-      });
+      .forEach(addOption);
+    if (canManage) {
+      (timeOffRequestRows || [])
+        .map(buildRequestOffSubjectFallbackPerson)
+        .filter(Boolean)
+        .forEach(addOption);
+    }
     return Array.from(byRole.entries())
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([role, rows]) => ({ role, rows: rows.sort((a, b) => a.label.localeCompare(b.label)) }));
-  }, [users]);
+  }, [users, canManage, timeOffRequestRows]);
   const selectedRequestOffEmployee = useMemo(() => {
     if (!employeeFilter) return null;
     for (const group of requestOffEmployeeOptions) {
@@ -4604,7 +4664,6 @@ const TabTimeOff = ({ timeOffRequests, appUser, users, addToast, events = [], sh
   const monthEvents = events.filter(e => e.type === 'special_event' && e.date?.startsWith(calMonth));
   const isArchivedRequest = (r = {}) => r.archived === true || r.processed === true || ['archived','processed','cancelled','canceled'].includes(String(r.status || '').toLowerCase());
   const normalizeStatus = (r = {}) => String(r.status || 'pending').toLowerCase();
-  const timeOffRequestRows = requestOffGhostMode ? ghostTimeOffRequests : (timeOffRequests || []);
   const visibleRequests = (timeOffRequestRows || []).filter(r => canManage || timeOffMatchesPerson(r, schedulePerson) || timeOffMatchesPerson(r, appUser));
   const myRequests = visibleRequests.filter(r => timeOffMatchesPerson(r, schedulePerson) || timeOffMatchesPerson(r, appUser)).sort((a,b) => new Date(a.date || 0) - new Date(b.date || 0));
 

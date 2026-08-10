@@ -18,25 +18,29 @@ if (!FAILED_ONLY_TESTS.length) {
   throw new Error(`Failed-only manifest selected zero tests. Refusing to run a false-green diagnostic gate. ${FAILED_ONLY_MANIFEST_ERRORS.join('; ')}`);
 }
 const releaseSelectionMode = process.env.CHAOS_RELEASE_GATE_SELECTION_MODE || 'failed+new';
+function reportedProject(row = {}) {
+  return row.project || (row.projects || [])[0] || '';
+}
+
 function assertReportedFailedOnlySelection(rows = []) {
   if (releaseSelectionMode !== 'reported-failed-only') return;
-  const excludedPassingTitles = new Set([
-    'Schedule Builder warning runtime renders without Runtime Recovery or TypeError',
-    'Schedule Builder requested-off warning shows employee name and never Someone',
-    'Schedule Builder coverage warnings show under and over target math',
-    'Schedule Builder warning dismissal hides only the warning',
-  ]);
   const desktop = rows.filter(item => (item.projects || []).includes('chromium') || item.project === 'chromium').length;
   const mobile = rows.filter(item => (item.projects || []).includes('mobile-chromium') || item.project === 'mobile-chromium').length;
+  const stableKeys = rows.map(row => row.stableKey || `${row.specPath || row.spec || ''}\u0000${row.fullSuitePath || ''}\u0000${row.leafTitle || row.exactTestTitle || row.title || ''}\u0000${reportedProject(row)}`);
   const errors = [];
-  if (rows.length !== 3) errors.push(`expected 3 selected identities, got ${rows.length}`);
-  if (desktop !== 0) errors.push(`expected 0 chromium identities, got ${desktop}`);
-  if (mobile !== 3) errors.push(`expected 3 mobile-chromium identities, got ${mobile}`);
-  if (rows.some(item => excludedPassingTitles.has(item.leafTitle || item.exactTestTitle || item.title))) errors.push('a passing Schedule warning/runtime test was selected');
-  const badProjects = rows.filter(item => !['chromium', 'mobile-chromium'].includes(item.project || (item.projects || [])[0] || ''));
-  if (badProjects.length) errors.push(`unexpected projects selected: ${[...new Set(badProjects.map(item => item.project || (item.projects || [])[0] || 'unknown'))].join(', ')}`);
-  if (errors.length) throw new Error(`reported-failed-only selection must be exactly the 3 current failed identities from the uploaded report: ${errors.join('; ')}`);
+  if (rows.length !== 10) errors.push(`expected 10 selected FAIL identities, got ${rows.length}`);
+  if (desktop !== 4) errors.push(`expected 4 chromium identities, got ${desktop}`);
+  if (mobile !== 6) errors.push(`expected 6 mobile-chromium identities, got ${mobile}`);
+  if (rows.some(item => String(item.priorStatus || '').toLowerCase() !== 'failed')) errors.push('reported-failed-only selected a non-failed priorStatus');
+  if (rows.some(item => String(item.baselineStatus || '').toLowerCase() !== 'failed')) errors.push('reported-failed-only selected a non-failed baselineStatus');
+  if (rows.some(item => String(item.priorStatus || '').toLowerCase() === 'timedout' || String(item.priorStatus || '').toLowerCase() === 'timeout')) errors.push('reported-failed-only selected a timeout status');
+  if (rows.some(item => item.selectionReasons?.some(reason => /previous_timeout|timeout|current_release_feature_test|new_test|repair/i.test(String(reason))))) errors.push('reported-failed-only selected a timeout/current-release/new/repair reason');
+  const badProjects = rows.filter(item => !['chromium', 'mobile-chromium'].includes(reportedProject(item)));
+  if (badProjects.length) errors.push(`unexpected projects selected: ${[...new Set(badProjects.map(reportedProject))].join(', ')}`);
+  if (new Set(stableKeys).size !== stableKeys.length) errors.push('duplicate stable identities selected');
+  if (errors.length) throw new Error(`reported-failed-only selection must be exactly the 10 current FAIL identities from 20260809-233053: ${errors.join('; ')}`);
 }
+
 
 assertReportedFailedOnlySelection(FAILED_ONLY_TESTS);
 
@@ -51,7 +55,7 @@ const manifest = {
   desktopSelected: FAILED_ONLY_TESTS.filter(item => (item.projects || []).includes('chromium')).length,
   mobileSelected: FAILED_ONLY_TESTS.filter(item => (item.projects || []).includes('mobile-chromium')).length,
   note: releaseSelectionMode === 'reported-failed-only'
-    ? 'reported-failed-only runs only the 3 current failed identities from the uploaded slim report.'
+    ? 'reported-failed-only runs only the 10 FAIL identities from 20260809-233053 and excludes TIMEOUT, PASS, and SKIP identities.'
     : `${releaseSelectionMode} success is diagnostic only. Complete npm run test:play-store is still required for release approval.`
 };
 fs.writeFileSync(path.join(runDir, 'failed-only-playwright-selection.json'), JSON.stringify(manifest, null, 2));

@@ -11,6 +11,9 @@ const {
   mutationSkipMessage,
   dismissBlockingDialogs,
 } = require('../86chaos-full-audit/utils/audit-helpers.cjs');
+const { initFirebase, signInOwner } = require('../../scripts/86chaos-full-audit/firebase-client.cjs');
+
+const QA_TEST_PROJECT_ID = 'chaos-test-d1601';
 
 function scheduleFixtureDateFromSeed(seed = {}) {
   const fixture = seed?.profile?.expectations?.fixture || seed?.profile?.fixture || {};
@@ -110,6 +113,51 @@ async function ensureSeeded(testInfo) {
   return seed;
 }
 
+function requireSafeRequestOffResetSeed(seed = {}) {
+  expect(seed?.ok, 'Request Off fixture reset requires a successful current QA seed').toBe(true);
+  expect(seed?.firebaseProjectId, 'Request Off fixture reset must use testing Firebase only').toBe(QA_TEST_PROJECT_ID);
+  expect(String(seed?.runId || ''), 'Request Off fixture reset requires a nonempty run id').not.toBe('');
+  expect(seed?.restaurantId, 'Request Off fixture reset must target the current QA restaurant').toBe(`qa_${seed.runId}`);
+}
+
+function findSeededRequestOffDoc(seed = {}, employeeKey = '') {
+  const suffix = employeeKey === 'allen' ? '_Allen_QA' : employeeKey === 'sara' ? '_Sara_QA' : '';
+  if (!suffix) throw new Error(`Unsupported Request Off reset employee key: ${employeeKey}`);
+  const match = (seed.seededDocuments || []).find(row => row?.collection === 'timeOffRequests' && String(row?.id || '').endsWith(suffix));
+  if (!match?.id) throw new Error(`Could not resolve current-run seeded Request Off document for ${employeeKey}.`);
+  if (!String(match.id).includes(seed.runId)) throw new Error(`Refusing Request Off reset for non-current-run document: ${match.id}`);
+  return match;
+}
+
+async function resetSeededRequestOffFixture(seed = {}, employeeKey = '') {
+  requireSafeRequestOffResetSeed(seed);
+  const firebase = await initFirebase();
+  if (firebase?.config?.projectId !== QA_TEST_PROJECT_ID) throw new Error(`Refusing Request Off reset outside ${QA_TEST_PROJECT_ID}: ${firebase?.config?.projectId || 'unknown'}`);
+  await signInOwner(firebase);
+  const target = findSeededRequestOffDoc(seed, employeeKey);
+  const { doc, getDoc, updateDoc, deleteField } = firebase.firestore;
+  const ref = doc(firebase.db, 'timeOffRequests', target.id);
+  const snap = await getDoc(ref);
+  if (!snap.exists()) throw new Error(`Seeded Request Off document does not exist: ${target.id}`);
+  const current = snap.data() || {};
+  const expectedName = employeeKey === 'allen' ? 'Allen QA' : 'Sara QA';
+  const expectedUserId = seed?.profile?.ids?.userIdsByKey?.[employeeKey] || '';
+  if (current.qaOwned !== true) throw new Error(`Refusing Request Off reset for non-QA-owned document: ${target.id}`);
+  if (current.qaRunId !== seed.runId) throw new Error(`Refusing Request Off reset for wrong qaRunId on ${target.id}`);
+  if (current.restaurantId !== seed.restaurantId) throw new Error(`Refusing Request Off reset for wrong restaurantId on ${target.id}`);
+  if (String(current.employeeName || current.userName || '').trim() !== expectedName) throw new Error(`Refusing Request Off reset for unexpected employee on ${target.id}`);
+  const deleteMutationFields = [
+    'approvedAt','approvedBy','approvedByName','deniedAt','deniedBy','deniedByName','archived','archivedAt','archivedBy','archivedByName','previousStatus','processed','processedAt','processedBy','processedByName','publishedAt','publishedBy','publishedByName','cancelledAt','cancelledBy','restoredAt','restoredBy','updatedAt','updatedBy'
+  ];
+  const patch = {
+    status: employeeKey === 'allen' ? 'approved' : 'pending',
+    userId: expectedUserId,
+    employeeId: expectedUserId,
+  };
+  for (const field of deleteMutationFields) patch[field] = deleteField();
+  await updateDoc(ref, patch);
+}
+
 test.describe('16.0.153 Schedule warnings and Request Off management', () => {
   test('Schedule Builder warning runtime renders without Runtime Recovery or TypeError', async ({ page }, testInfo) => {
     const seed = await ensureSeeded(testInfo);
@@ -129,6 +177,7 @@ test.describe('16.0.153 Schedule warnings and Request Off management', () => {
 
   test('Schedule Builder requested-off warning shows employee name and never Someone', async ({ page }, testInfo) => {
     const seed = await ensureSeeded(testInfo);
+    await resetSeededRequestOffFixture(seed, 'allen');
     await openSchedule(page, seed);
     await openWarnings(page);
     const text = await bodyText(page, 60000);
@@ -167,6 +216,7 @@ test.describe('16.0.153 Schedule warnings and Request Off management', () => {
 
   test('Request Off employee filter narrows and clears manager-visible requests', async ({ page }, testInfo) => {
     const seed = await ensureSeeded(testInfo);
+    await resetSeededRequestOffFixture(seed, 'sara');
     await openManagerRequestOff(page, seed);
     await waitForRequestOffEmployee(page, 'Sara QA', 'Seeded Sara QA pending request should be visible before employee filtering');
     const unfiltered = await bodyText(page, 60000);
@@ -185,6 +235,7 @@ test.describe('16.0.153 Schedule warnings and Request Off management', () => {
 
   test('Approve All Visible updates only filtered visible pending requests', async ({ page }, testInfo) => {
     const seed = await ensureSeeded(testInfo);
+    await resetSeededRequestOffFixture(seed, 'sara');
     await openManagerRequestOff(page, seed);
     await openRequestOffView(page, 'Needs Review');
     await waitForRequestOffEmployee(page, 'Sara QA', 'Seeded Sara QA pending request should be visible before bulk approve');
@@ -204,6 +255,7 @@ test.describe('16.0.153 Schedule warnings and Request Off management', () => {
 
   test('Archive All Visible archives only filtered visible eligible requests', async ({ page }, testInfo) => {
     const seed = await ensureSeeded(testInfo);
+    await resetSeededRequestOffFixture(seed, 'allen');
     await openManagerRequestOff(page, seed);
     await openRequestOffView(page, 'Upcoming Approved');
     await waitForRequestOffEmployee(page, 'Allen QA', 'Seeded Allen QA approved request should be visible before bulk archive');

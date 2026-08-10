@@ -1,0 +1,289 @@
+{
+  "ok": true,
+  "manifestSchemaVersion": 3,
+  "generatedAt": "2026-08-10T00:09:30.000Z",
+  "mode": "reported-failed-only",
+  "lineageMode": "none",
+  "source": "uploaded-failed-tests-20260809-233053",
+  "selectionSource": "uploaded-failed-tests-20260809-233053",
+  "baselineFullRunId": "2026-08-09T16-14-18",
+  "baselineSourceVersion": "16.0.165",
+  "baselineDeployedVersion": "16.0.165",
+  "baselineGeneratedAt": "2026-08-09T23:30:53.000Z",
+  "selected": [
+    {
+      "specPath": "e2e/authenticated-release.spec.cjs",
+      "suitePathParts": [
+        "manager authenticated release surfaces"
+      ],
+      "fullSuitePath": "manager authenticated release surfaces",
+      "leafTitle": "direct navigation follows the canonical denied-route matrix",
+      "exactTestTitle": "direct navigation follows the canonical denied-route matrix",
+      "title": "direct navigation follows the canonical denied-route matrix",
+      "fullTitle": "manager authenticated release surfaces > direct navigation follows the canonical denied-route matrix",
+      "titlePathParts": [
+        "manager authenticated release surfaces",
+        "direct navigation follows the canonical denied-route matrix"
+      ],
+      "project": "chromium",
+      "stableKey": "e2e/authenticated-release.spec.cjs\u0000manager authenticated release surfaces\u0000direct navigation follows the canonical denied-route matrix\u0000chromium",
+      "spec": "e2e/authenticated-release.spec.cjs",
+      "projects": [
+        "chromium"
+      ],
+      "priorStatus": "failed",
+      "selectionReasons": [
+        "uploaded_latest_failed_report_failure"
+      ],
+      "baselineStatus": "failed",
+      "error": "AssertionError: Manager should be denied Audit route"
+    },
+    {
+      "specPath": "e2e/authenticated-release.spec.cjs",
+      "suitePathParts": [
+        "manager authenticated release surfaces"
+      ],
+      "fullSuitePath": "manager authenticated release surfaces",
+      "leafTitle": "direct navigation follows the canonical denied-route matrix",
+      "exactTestTitle": "direct navigation follows the canonical denied-route matrix",
+      "title": "direct navigation follows the canonical denied-route matrix",
+      "fullTitle": "manager authenticated release surfaces > direct navigation follows the canonical denied-route matrix",
+      "titlePathParts": [
+        "manager authenticated release surfaces",
+        "direct navigation follows the canonical denied-route matrix"
+      ],
+      "project": "mobile-chromium",
+      "stableKey": "e2e/authenticated-release.spec.cjs\u0000manager authenticated release surfaces\u0000direct navigation follows the canonical denied-route matrix\u0000mobile-chromium",
+      "spec": "e2e/authenticated-release.spec.cjs",
+      "projects": [
+        "mobile-chromium"
+      ],
+      "priorStatus": "failed",
+      "selectionReasons": [
+        "uploaded_latest_failed_report_failure"
+      ],
+      "baselineStatus": "failed",
+      "error": "AssertionError: Manager should be denied Audit route"
+    },
+    {
+      "specPath": "e2e/chunk-recovery.spec.cjs",
+      "suitePathParts": [],
+      "fullSuitePath": "",
+      "leafTitle": "lazy chunk failure reports once, avoids a reload loop, and recovers without losing auth",
+      "exactTestTitle": "lazy chunk failure reports once, avoids a reload loop, and recovers without losing auth",
+      "title": "lazy chunk failure reports once, avoids a reload loop, and recovers without losing auth",
+      "fullTitle": "lazy chunk failure reports once, avoids a reload loop, and recovers without losing auth",
+      "titlePathParts": [
+        "lazy chunk failure reports once, avoids a reload loop, and recovers without losing auth"
+      ],
+      "project": "chromium",
+      "stableKey": "e2e/chunk-recovery.spec.cjs\u0000\u0000lazy chunk failure reports once, avoids a reload loop, and recovers without losing auth\u0000chromium",
+      "spec": "e2e/chunk-recovery.spec.cjs",
+      "projects": [
+        "chromium"
+      ],
+      "priorStatus": "failed",
+      "selectionReasons": [
+        "uploaded_latest_failed_report_failure"
+      ],
+      "baselineStatus": "failed",
+      "error": "Expected top-level navigation delta <= 2"
+    },
+    {
+      "specPath": "e2e/chunk-recovery.spec.cjs",
+      "suitePathParts": [],
+      "fullSuitePath": "",
+      "leafTitle": "lazy chunk failure reports once, avoids a reload loop, and recovers without losing auth",
+      "exactTestTitle": "lazy chunk failure reports once, avoids a reload loop, and recovers without losing auth",
+      "title": "lazy chunk failure reports once, avoids a reload loop, and recovers without losing auth",
+      "fullTitle": "lazy chunk failure reports once, avoids a reload loop, and recovers without losing auth",
+      "titlePathParts": [
+        "lazy chunk failure reports once, avoids a reload loop, and recovers without losing auth"
+      ],
+      "project": "mobile-chromium",
+      "stableKey": "e2e/chunk-recovery.spec.cjs\u0000\u0000lazy chunk failure reports once, avoids a reload loop, and recovers without losing auth\u0000mobile-chromium",
+      "spec": "e2e/chunk-recovery.spec.cjs",
+      "projects": [
+        "mobile-chromium"
+      ],
+      "priorStatus": "failed",
+      "selectionReasons": [
+        "uploaded_latest_failed_report_failure"
+      ],
+      "baselineStatus": "failed",
+      "error": "Expected top-level navigation delta <= 2"
+    },
+    {
+      "specPath": "e2e/schedule-request-off-management.spec.cjs",
+      "suitePathParts": [
+        "16.0.153 Schedule warnings and Request Off management"
+      ],
+      "fullSuitePath": "16.0.153 Schedule warnings and Request Off management",
+      "leafTitle": "Request Off employee filter narrows and clears manager-visible requests",
+      "exactTestTitle": "Request Off employee filter narrows and clears manager-visible requests",
+      "title": "Request Off employee filter narrows and clears manager-visible requests",
+      "fullTitle": "16.0.153 Schedule warnings and Request Off management > Request Off employee filter narrows and clears manager-visible requests",
+      "titlePathParts": [
+        "16.0.153 Schedule warnings and Request Off management",
+        "Request Off employee filter narrows and clears manager-visible requests"
+      ],
+      "project": "chromium",
+      "stableKey": "e2e/schedule-request-off-management.spec.cjs\u000016.0.153 Schedule warnings and Request Off management\u0000Request Off employee filter narrows and clears manager-visible requests\u0000chromium",
+      "spec": "e2e/schedule-request-off-management.spec.cjs",
+      "projects": [
+        "chromium"
+      ],
+      "priorStatus": "failed",
+      "selectionReasons": [
+        "uploaded_latest_failed_report_failure"
+      ],
+      "baselineStatus": "failed",
+      "error": "Request Off employee dropdown should include Sara QA"
+    },
+    {
+      "specPath": "e2e/schedule-request-off-management.spec.cjs",
+      "suitePathParts": [
+        "16.0.153 Schedule warnings and Request Off management"
+      ],
+      "fullSuitePath": "16.0.153 Schedule warnings and Request Off management",
+      "leafTitle": "Approve All Visible updates only filtered visible pending requests",
+      "exactTestTitle": "Approve All Visible updates only filtered visible pending requests",
+      "title": "Approve All Visible updates only filtered visible pending requests",
+      "fullTitle": "16.0.153 Schedule warnings and Request Off management > Approve All Visible updates only filtered visible pending requests",
+      "titlePathParts": [
+        "16.0.153 Schedule warnings and Request Off management",
+        "Approve All Visible updates only filtered visible pending requests"
+      ],
+      "project": "chromium",
+      "stableKey": "e2e/schedule-request-off-management.spec.cjs\u000016.0.153 Schedule warnings and Request Off management\u0000Approve All Visible updates only filtered visible pending requests\u0000chromium",
+      "spec": "e2e/schedule-request-off-management.spec.cjs",
+      "projects": [
+        "chromium"
+      ],
+      "priorStatus": "failed",
+      "selectionReasons": [
+        "uploaded_latest_failed_report_failure"
+      ],
+      "baselineStatus": "failed",
+      "error": "Request Off employee dropdown should include Sara QA"
+    },
+    {
+      "specPath": "e2e/schedule-request-off-management.spec.cjs",
+      "suitePathParts": [
+        "16.0.153 Schedule warnings and Request Off management"
+      ],
+      "fullSuitePath": "16.0.153 Schedule warnings and Request Off management",
+      "leafTitle": "Schedule Builder requested-off warning shows employee name and never Someone",
+      "exactTestTitle": "Schedule Builder requested-off warning shows employee name and never Someone",
+      "title": "Schedule Builder requested-off warning shows employee name and never Someone",
+      "fullTitle": "16.0.153 Schedule warnings and Request Off management > Schedule Builder requested-off warning shows employee name and never Someone",
+      "titlePathParts": [
+        "16.0.153 Schedule warnings and Request Off management",
+        "Schedule Builder requested-off warning shows employee name and never Someone"
+      ],
+      "project": "mobile-chromium",
+      "stableKey": "e2e/schedule-request-off-management.spec.cjs\u000016.0.153 Schedule warnings and Request Off management\u0000Schedule Builder requested-off warning shows employee name and never Someone\u0000mobile-chromium",
+      "spec": "e2e/schedule-request-off-management.spec.cjs",
+      "projects": [
+        "mobile-chromium"
+      ],
+      "priorStatus": "failed",
+      "selectionReasons": [
+        "uploaded_latest_failed_report_failure"
+      ],
+      "baselineStatus": "failed",
+      "error": "Requested-off warning should identify employee after reset"
+    },
+    {
+      "specPath": "e2e/schedule-request-off-management.spec.cjs",
+      "suitePathParts": [
+        "16.0.153 Schedule warnings and Request Off management"
+      ],
+      "fullSuitePath": "16.0.153 Schedule warnings and Request Off management",
+      "leafTitle": "Request Off employee filter narrows and clears manager-visible requests",
+      "exactTestTitle": "Request Off employee filter narrows and clears manager-visible requests",
+      "title": "Request Off employee filter narrows and clears manager-visible requests",
+      "fullTitle": "16.0.153 Schedule warnings and Request Off management > Request Off employee filter narrows and clears manager-visible requests",
+      "titlePathParts": [
+        "16.0.153 Schedule warnings and Request Off management",
+        "Request Off employee filter narrows and clears manager-visible requests"
+      ],
+      "project": "mobile-chromium",
+      "stableKey": "e2e/schedule-request-off-management.spec.cjs\u000016.0.153 Schedule warnings and Request Off management\u0000Request Off employee filter narrows and clears manager-visible requests\u0000mobile-chromium",
+      "spec": "e2e/schedule-request-off-management.spec.cjs",
+      "projects": [
+        "mobile-chromium"
+      ],
+      "priorStatus": "failed",
+      "selectionReasons": [
+        "uploaded_latest_failed_report_failure"
+      ],
+      "baselineStatus": "failed",
+      "error": "Request Off employee dropdown should include Sara QA"
+    },
+    {
+      "specPath": "e2e/schedule-request-off-management.spec.cjs",
+      "suitePathParts": [
+        "16.0.153 Schedule warnings and Request Off management"
+      ],
+      "fullSuitePath": "16.0.153 Schedule warnings and Request Off management",
+      "leafTitle": "Approve All Visible updates only filtered visible pending requests",
+      "exactTestTitle": "Approve All Visible updates only filtered visible pending requests",
+      "title": "Approve All Visible updates only filtered visible pending requests",
+      "fullTitle": "16.0.153 Schedule warnings and Request Off management > Approve All Visible updates only filtered visible pending requests",
+      "titlePathParts": [
+        "16.0.153 Schedule warnings and Request Off management",
+        "Approve All Visible updates only filtered visible pending requests"
+      ],
+      "project": "mobile-chromium",
+      "stableKey": "e2e/schedule-request-off-management.spec.cjs\u000016.0.153 Schedule warnings and Request Off management\u0000Approve All Visible updates only filtered visible pending requests\u0000mobile-chromium",
+      "spec": "e2e/schedule-request-off-management.spec.cjs",
+      "projects": [
+        "mobile-chromium"
+      ],
+      "priorStatus": "failed",
+      "selectionReasons": [
+        "uploaded_latest_failed_report_failure"
+      ],
+      "baselineStatus": "failed",
+      "error": "Request Off employee dropdown should include Sara QA"
+    },
+    {
+      "specPath": "e2e/schedule-request-off-management.spec.cjs",
+      "suitePathParts": [
+        "16.0.153 Schedule warnings and Request Off management"
+      ],
+      "fullSuitePath": "16.0.153 Schedule warnings and Request Off management",
+      "leafTitle": "Archive All Visible archives only filtered visible eligible requests",
+      "exactTestTitle": "Archive All Visible archives only filtered visible eligible requests",
+      "title": "Archive All Visible archives only filtered visible eligible requests",
+      "fullTitle": "16.0.153 Schedule warnings and Request Off management > Archive All Visible archives only filtered visible eligible requests",
+      "titlePathParts": [
+        "16.0.153 Schedule warnings and Request Off management",
+        "Archive All Visible archives only filtered visible eligible requests"
+      ],
+      "project": "mobile-chromium",
+      "stableKey": "e2e/schedule-request-off-management.spec.cjs\u000016.0.153 Schedule warnings and Request Off management\u0000Archive All Visible archives only filtered visible eligible requests\u0000mobile-chromium",
+      "spec": "e2e/schedule-request-off-management.spec.cjs",
+      "projects": [
+        "mobile-chromium"
+      ],
+      "priorStatus": "failed",
+      "selectionReasons": [
+        "uploaded_latest_failed_report_failure"
+      ],
+      "baselineStatus": "failed",
+      "error": "Seeded Allen QA approved request should be visible before bulk archive"
+    }
+  ],
+  "totalSelected": 10,
+  "desktopSelected": 4,
+  "mobileSelected": 6,
+  "previousFailuresSelected": 10,
+  "previousTimeoutsSelected": 0,
+  "currentReleaseFeatureTestsSelected": 0,
+  "duplicateIdentitiesRemoved": 0,
+  "newTestsCount": 0,
+  "note": "reported-failed-only runs only the 10 FAIL identities from 20260809-233053 and excludes TIMEOUT, PASS, and SKIP identities.",
+  "description": "Ten current FAIL identities from the uploaded 20260809-233053 report only."
+}

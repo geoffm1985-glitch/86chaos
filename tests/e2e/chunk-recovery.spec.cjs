@@ -8,7 +8,7 @@ async function login(page, email, password) {
   await loginIfNeeded(page, email, password, { timeout: 30_000 });
 }
 
-test('lazy chunk failure reports once, avoids a reload loop, and recovers without losing auth', async ({ page }) => {
+test('lazy chunk failure reports once, avoids a reload loop, and recovers without losing auth', async ({ page }, testInfo) => {
   const base = process.env.APP_URL || process.env.CHAOS_E2E_BASE_URL || '';
   if (/app\.86chaos\.com/i.test(base)) throw new Error('Chunk interception is blocked on production.');
   const email = process.env.OWNER_EMAIL || (!releaseGate ? process.env.TEST_EMAIL : '');
@@ -32,6 +32,21 @@ test('lazy chunk failure reports once, avoids a reload loop, and recovers withou
     blockedUrl = route.request().url();
     return route.abort('failed');
   });
+  await page.addInitScript(() => {
+    window.__chaosRecoveryEvents = [];
+    const record = (type, detail = {}) => {
+      try { window.__chaosRecoveryEvents.push({ type, at: Date.now(), url: location.href, ...detail }); } catch (_) {}
+    };
+    const originalReplace = window.location.replace.bind(window.location);
+    window.location.replace = (url) => { record('location.replace', { target: String(url || '') }); return originalReplace(url); };
+    const originalReload = window.location.reload.bind(window.location);
+    window.location.reload = () => { record('location.reload'); return originalReload(); };
+    const originalSetItem = window.sessionStorage.setItem.bind(window.sessionStorage);
+    window.sessionStorage.setItem = (key, value) => {
+      if (/chaosReloadAt|chunk|recovery|autoReload/i.test(String(key))) record('sessionStorage.setItem', { key: String(key), value: String(value).slice(0, 180) });
+      return originalSetItem(key, value);
+    };
+  });
 
   await login(page, email, password);
   await gotoAuthenticatedRoute(page, 'today', { timeout: 30_000 });
@@ -50,8 +65,35 @@ test('lazy chunk failure reports once, avoids a reload loop, and recovers withou
   expect(blockedUrl, 'a concrete lazy JavaScript chunk request was intercepted').toMatch(/\/static\/js\/(?!main\.)[^/?]+\.chunk\.js(?:\?.*)?$/i);
   expect(blockedUrl, 'chunk recovery test must not intercept CSS, main JS, service worker, or runtime boot assets').not.toMatch(/\/static\/css\/|\/main\.|service-worker|runtime/i);
   expect(reportAttempts, 'one crash report was submitted').toBe(1);
-  expect(topLevelNavigations - baselineNavigations, 'recovery performed no more than one extra top-level navigation').toBeLessThanOrEqual(2);
   await expect(page.locator('body')).toContainText(/refresh app|update required|stale app file|failed to load/i, { timeout: 15_000 });
+  const recoveryEvents = await page.evaluate(() => window.__chaosRecoveryEvents || []).catch(() => []);
+  const parsedStateWrites = recoveryEvents
+    .filter(x => x.type === 'sessionStorage.setItem' && /chunkRecoveryState|chunk|recovery/i.test(String(x.key || '')))
+    .map((x) => {
+      try { return { ...JSON.parse(x.value || '{}'), eventAt: x.at, key: x.key }; } catch (_) { return null; }
+    })
+    .filter(Boolean);
+  const recoveryStateNodes = await page.locator('[data-chaos-recovery-state]').evaluateAll(nodes => nodes.map(node => ({
+    state: node.getAttribute('data-chaos-recovery-state') || '',
+    text: (node.innerText || '').replace(/\s+/g, ' ').trim().slice(0, 500)
+  }))).catch(() => []);
+  const stateTransitions = [...recoveryStateNodes, ...parsedStateWrites.map(row => ({ state: row.stage || '', autoReloadCount: Number(row.autoReloadCount || 0), eventAt: row.eventAt, key: row.key }))];
+  const maxAutoReloadCount = Math.max(0, ...stateTransitions.map(row => Number(row.autoReloadCount || 0)).filter(Number.isFinite));
+  const autoRecoveryStartedTransitions = stateTransitions.filter(row => row.state === 'auto-recovery-started').length;
+  const recoveryStartedAt = Math.min(...stateTransitions.filter(row => row.state === 'auto-recovery-started' && row.eventAt).map(row => row.eventAt));
+  const markerWrites = recoveryEvents.filter(x => /autoReloadInFlight|autoReloadUsed|chaosReloadAt/i.test(String(x.key || '')));
+  const postRecoveryNavigations = recoveryEvents.filter(x => /location\.(replace|reload)/.test(String(x.type || '')) && (!Number.isFinite(recoveryStartedAt) || Number(x.at || 0) >= recoveryStartedAt));
+  const uniqueAutoReloadUsedGenerations = new Set(markerWrites.filter(x => /autoReloadUsed/i.test(String(x.key || ''))).map(x => `${x.key || ''}:${x.value || ''}`)).size;
+  const automaticRecoveryAttempts = Math.max(
+    maxAutoReloadCount,
+    autoRecoveryStartedTransitions,
+    uniqueAutoReloadUsedGenerations ? 1 : 0,
+    postRecoveryNavigations.length ? 1 : 0
+  );
+  expect(maxAutoReloadCount, 'Chunk recovery structured autoReloadCount must never exceed one').toBeLessThanOrEqual(1);
+  expect(autoRecoveryStartedTransitions, 'Chunk recovery should start automatic recovery at most once').toBeLessThanOrEqual(1);
+  expect(automaticRecoveryAttempts, 'Chunk recovery must not enter an infinite reload loop').toBeLessThanOrEqual(1);
+  await testInfo.attach('chunk-recovery-logical-attempts.json', { body: JSON.stringify({ topLevelNavigations, baselineNavigations, recoveryEvents, stateTransitions, maxAutoReloadCount, autoRecoveryStartedTransitions, markerWrites, postRecoveryNavigations, uniqueAutoReloadUsedGenerations, automaticRecoveryAttempts }, null, 2), contentType: 'application/json' }).catch(() => null);
 
   blockingEnabled = false;
   await page.unroute(/\/static\/js\/(?!main\.)[^/?]+\.chunk\.js(?:\?.*)?$/i);

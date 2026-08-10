@@ -4,39 +4,57 @@ const path = require('path');
 const { test } = require('node:test');
 
 const root = path.resolve(__dirname, '..');
-const manifestPath = path.join(root, 'scripts/86chaos-release-gate/reported-failed-only-20260809-004632.json');
+const manifestPath = path.join(root, 'scripts/86chaos-release-gate/reported-failed-only-20260809-233053.json');
 const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
 const rows = manifest.selected || [];
-const runtimeTitle = 'Schedule Builder warning runtime renders without Runtime Recovery or TypeError';
-const expectedTitles = [
+const chromiumTitles = new Set([
+  'direct navigation follows the canonical denied-route matrix',
+  'lazy chunk failure reports once, avoids a reload loop, and recovers without losing auth',
+  'Request Off employee filter narrows and clears manager-visible requests',
+  'Approve All Visible updates only filtered visible pending requests',
+]);
+const mobileTitles = new Set([
+  'direct navigation follows the canonical denied-route matrix',
+  'lazy chunk failure reports once, avoids a reload loop, and recovers without losing auth',
+  'Schedule Builder requested-off warning shows employee name and never Someone',
   'Request Off employee filter narrows and clears manager-visible requests',
   'Approve All Visible updates only filtered visible pending requests',
   'Archive All Visible archives only filtered visible eligible requests',
-];
-const excludedPassingTitles = [
-  runtimeTitle,
-  'Schedule Builder requested-off warning shows employee name and never Someone',
-  'Schedule Builder coverage warnings show under and over target math',
-  'Schedule Builder warning dismissal hides only the warning',
-];
+]);
 
-test('reported failed-only manifest selects exactly the three current uploaded failures', () => {
+function projectRows(project) {
+  return rows.filter(row => row.project === project || row.projects?.includes(project));
+}
+
+test('reported failed-only manifest selects exactly the ten current FAIL identities', () => {
   assert.equal(manifest.mode, 'reported-failed-only');
-  assert.equal(rows.length, 3);
-  assert.equal(rows.filter(row => row.project === 'chromium').length, 0);
-  assert.equal(rows.filter(row => row.project === 'mobile-chromium').length, 3);
-  assert.deepEqual([...new Set(rows.map(row => row.project))].sort(), ['mobile-chromium']);
-  assert.ok(rows.every(row => row.specPath === 'e2e/schedule-request-off-management.spec.cjs'));
-  assert.ok(rows.every(row => row.fullSuitePath === '16.0.153 Schedule warnings and Request Off management'));
-  assert.ok(rows.every(row => row.selectionReasons?.includes('uploaded_latest_failed_report_failure')));
+  assert.equal(manifest.source, 'uploaded-failed-tests-20260809-233053');
+  assert.equal(manifest.selectionSource, 'uploaded-failed-tests-20260809-233053');
+  assert.equal(rows.length, 10);
+  assert.equal(projectRows('chromium').length, 4);
+  assert.equal(projectRows('mobile-chromium').length, 6);
+  assert.deepEqual([...new Set(rows.map(row => row.project))].sort(), ['chromium', 'mobile-chromium']);
+  assert.equal(manifest.previousFailuresSelected, 10);
+  assert.equal(manifest.previousTimeoutsSelected, 0);
+  assert.equal(manifest.currentReleaseFeatureTestsSelected, 0);
+  assert.equal(manifest.newTestsCount, 0);
+  assert.ok(rows.every(row => row.priorStatus === 'failed'));
+  assert.ok(rows.every(row => row.baselineStatus === 'failed'));
+  assert.equal(new Set(rows.map(row => row.stableKey)).size, rows.length);
 });
 
-test('reported failed-only manifest excludes already-passing runtime/passing Schedule tests and unrelated current-release scope', () => {
-  for (const title of excludedPassingTitles) assert.equal(rows.some(row => row.leafTitle === title), false, `${title} should not be selected`);
-  assert.equal(rows.some(row => row.selectionReasons?.includes('current_release_feature_test')), false);
-  for (const title of expectedTitles) {
-    assert.equal(rows.filter(row => row.leafTitle === title).length, 1, `${title} should appear only for the currently failed mobile project`);
-  }
+test('reported failed-only manifest excludes timeout, current-release, and sibling passed selections', () => {
+  assert.equal(rows.some(row => /timedout|timeout/i.test(String(row.priorStatus || row.baselineStatus || ''))), false);
+  assert.equal(rows.some(row => row.selectionReasons?.some(reason => /previous_timeout|current_release_feature_test|new_test|repair/i.test(String(reason)))), false);
+  assert.equal(rows.some(row => /86chaos-full-audit\/06-request-off-events-integration\.spec\.cjs/.test(row.specPath || row.spec || '')), false);
+  assert.equal(rows.some(row => /e2e\/cost-regression\.spec\.cjs/.test(row.specPath || row.spec || '')), false);
+});
+
+test('reported failed-only manifest contains the exact chromium and mobile chromium fail sets', () => {
+  assert.deepEqual(new Set(projectRows('chromium').map(row => row.leafTitle)), chromiumTitles);
+  assert.deepEqual(new Set(projectRows('mobile-chromium').map(row => row.leafTitle)), mobileTitles);
+  assert.ok(rows.some(row => row.project === 'chromium' && row.specPath === 'e2e/authenticated-release.spec.cjs' && row.fullSuitePath === 'manager authenticated release surfaces'));
+  assert.ok(rows.some(row => row.project === 'mobile-chromium' && row.specPath === 'e2e/schedule-request-off-management.spec.cjs' && row.leafTitle === 'Archive All Visible archives only filtered visible eligible requests'));
 });
 
 test('reported failed-current npm command uses the strict reported failed-only mode', () => {
