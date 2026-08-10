@@ -21,13 +21,18 @@ test('System Administrator people endpoint is server-authorized, paginated, and 
   assert.doesNotMatch(route, /for\s*\([^)]*user[\s\S]{0,200}collection\('workspaceMembers'\)/, 'must not do one workspaceMembers query per user');
 });
 
-test('System Administrator active management component uses authoritative people roster for tenants and push only', () => {
+test('System Administrator active management component uses authoritative people roster for all platform people tabs', () => {
   const source = read('src/features/management.jsx');
   assert.match(source, /\/api\/system-admin\/people/);
   assert.match(source, /loadSystemAdminPeopleRoster/);
-  assert.match(source, /subTab === 'tenants' \|\| subTab === 'push'/);
-  assert.match(source, /subTab === 'users' \|\| subTab === 'live'/);
-  assert.doesNotMatch(source, /subTab === 'users' \|\| subTab === 'push' \|\| subTab === 'live'/);
+  assert.match(source, /SYSTEM_ADMIN_GLOBAL_PEOPLE_TABS/);
+  assert.match(source, /new Set\(\['tenants', 'push', 'users', 'live'\]\)/);
+  assert.match(source, /SYSTEM_ADMIN_GLOBAL_PEOPLE_TABS\.has\(subTab\)[\s\S]{0,160}loadSystemAdminPeopleRoster\(\{ refreshing: false \}\)/);
+  assert.doesNotMatch(source, /if \(subTab === 'users' \|\| subTab === 'live'\)[\s\S]{0,400}collection\(db, 'users'\)/, 'People Directory and Live/Last Seen must not install a browser users roster listener');
+  assert.doesNotMatch(source, /listen\('users',[\s\S]{0,240}collection\(db, 'users'\)[\s\S]{0,240}applySystemAdminUserCounts/, 'System Administrator roster must not be populated from a client users onSnapshot query');
+  assert.match(source, /Authoritative server roster/);
+  assert.match(source, /Authoritative platform user roster could not load/);
+  assert.match(source, /Refresh People/);
   assert.match(source, /getSystemAdminUserWorkspaceIds\(u\)\.includes\(selectedClient\.id\)/);
   assert.match(source, /getSystemAdminUserWorkspaceIds\(u\)\.some\(workspaceId => selectedPushRestaurantIds\.includes\(workspaceId\)\)/);
   assert.match(source, /getUserPushDeviceCount\(u\) > 0 \? 'On' : 'Off'/);

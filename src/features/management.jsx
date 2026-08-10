@@ -4597,6 +4597,8 @@ const LEGACY_JULY_2026_SCHEDULE = [
     return String(a.id || '').localeCompare(String(b.id || ''));
   };
 
+  const SYSTEM_ADMIN_GLOBAL_PEOPLE_TABS = useMemo(() => new Set(['tenants', 'push', 'users', 'live']), []);
+
   const applySystemAdminUserCounts = (rows = []) => {
     const counts = {};
     rows.forEach(user => {
@@ -4705,17 +4707,9 @@ const LEGACY_JULY_2026_SCHEDULE = [
       loadSystemAdminWorkspaceRoster({ refreshing: false });
     }
 
-    if (subTab === 'tenants' || subTab === 'push') {
+    if (SYSTEM_ADMIN_GLOBAL_PEOPLE_TABS.has(subTab)) {
       loadSystemAdminPeopleRoster({ refreshing: false });
-    }
-
-    if (subTab === 'users' || subTab === 'live') {
-      systemAdminPeopleRequestGenerationRef.current += 1;
-      listen('users', query(collection(db, 'users'), orderBy('name', 'asc'), firestoreLimit(120)), rows => {
-        setAllUsers(rows);
-        applySystemAdminUserCounts(rows);
-      });
-    } else if (subTab !== 'tenants' && subTab !== 'push') {
+    } else {
       systemAdminPeopleRequestGenerationRef.current += 1;
       setAllUsers([]);
       setUserCounts({});
@@ -9755,6 +9749,16 @@ Type RESTORE to continue.`);
             <Search className={T.copper} size={20}/>
             <input type="text" aria-label="Search People Directory" data-testid="system-admin-people-search" placeholder="Search users by name, email, role, ID, workspace, online, or last seen..." value={userSearch} onChange={e=>setUserSearch(e.target.value)} className={T.input}/>
           </div>
+
+          <div className={`${T.card} p-3 border-blue-900/40 bg-blue-950/10 flex flex-col md:flex-row md:items-center justify-between gap-3`} data-testid="system-admin-people-roster-source">
+            <div className="text-[10px] font-black uppercase tracking-widest text-slate-300 flex flex-wrap items-center gap-x-3 gap-y-1">
+              <span className="text-blue-200">Source: Authoritative server roster</span>
+              <span>People: <strong className="text-white">{systemAdminPeopleState.count || allUsers.length}</strong></span>
+              <span>Last refreshed: <strong className="text-white">{systemAdminPeopleState.fetchedAt ? timeAgo(systemAdminPeopleState.fetchedAt) : 'Not loaded'}</strong></span>
+            </div>
+            <button type="button" onClick={() => loadSystemAdminPeopleRoster({ refreshing: true })} disabled={systemAdminPeopleState.loading || systemAdminPeopleState.refreshing} className="px-3 py-2 bg-[#12161A] border border-[#2A353D] text-[#D4A381] rounded-lg font-black uppercase tracking-widest hover:bg-[#1A2126] disabled:opacity-50 flex items-center justify-center gap-2">{systemAdminPeopleState.refreshing ? <Loader2 size={14} className="animate-spin"/> : <Users size={14}/>} Refresh People</button>
+          </div>
+          {systemAdminPeopleState.error && <div className="bg-red-950/20 border border-red-800/50 text-red-100 rounded-xl p-3 text-xs font-bold">Authoritative platform user roster could not load: {systemAdminPeopleState.error}</div>}
 
           <div className={`${T.card} p-4 border-emerald-900/40 bg-emerald-950/10`}>
             <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">

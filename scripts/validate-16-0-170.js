@@ -34,14 +34,14 @@ const manifest = json('scripts/86chaos-release-gate/reported-failed-only-2026081
 const rows = manifest.selected || [];
 const vercel = read('vercel.json');
 
-assert(pkg.version === '16.0.169', 'package.json version is 16.0.169');
-assert(lock.version === '16.0.169' && lock.packages?.['']?.version === '16.0.169', 'package-lock root versions are 16.0.169');
-assert(pkg.scripts['test:source'] === 'node scripts/validate-16-0-169.js', 'test:source points to 16.0.169 validator');
-assert(version.version === '16.0.169' && version.build === '16.0.169', 'public/version.json version/build are 16.0.169');
-assert(version.releaseTitle === 'System Administrator Workspace Membership and Backup Health Repair', 'release title is correct');
-assert(appCore.includes("CURRENT_VERSION = '16.0.169'"), 'app core CURRENT_VERSION is 16.0.169');
-assert(apiVersion.includes("APP_VERSION = '16.0.169'") && apiVersion.includes("SECURITY_SCHEMA_VERSION = '16.0.169'"), 'api version reports 16.0.169');
-assert(!fs.existsSync(path.join(root, 'scripts/validate-16-0-168.js')), 'previous validator was replaced');
+assert(pkg.version === '16.0.170', 'package.json version is 16.0.170');
+assert(lock.version === '16.0.170' && lock.packages?.['']?.version === '16.0.170', 'package-lock root versions are 16.0.170');
+assert(pkg.scripts['test:source'] === 'node scripts/validate-16-0-170.js', 'test:source points to 16.0.170 validator');
+assert(version.version === '16.0.170' && version.build === '16.0.170', 'public/version.json version/build are 16.0.170');
+assert(version.releaseTitle === 'System Administrator Authoritative People Directory Repair', 'release title is correct');
+assert(appCore.includes("CURRENT_VERSION = '16.0.170'"), 'app core CURRENT_VERSION is 16.0.170');
+assert(apiVersion.includes("APP_VERSION = '16.0.170'") && apiVersion.includes("SECURITY_SCHEMA_VERSION = '16.0.170'"), 'api version reports 16.0.170');
+assert(!fs.existsSync(path.join(root, 'scripts/validate-16-0-169.js')), 'previous validator was replaced');
 
 assert(sha('firestore.rules') === '51bfd7d39edd59f680ae41a149c108cec8cd42d00b102d84cb00ee40d90264d9', 'firestore.rules unchanged');
 assert(sha('storage.rules') === '174e7e9a140193ff69ccf0f0d3e5c65b81a9e0fbbd612bff45ce57e7a3a7ce9c', 'storage.rules unchanged');
@@ -74,6 +74,11 @@ assert(safeRows.includes('workspaceMemberIdentityKeys') && safeRows.includes('em
 assert(!/displayName[\s\S]{0,160}workspaceMemberIdentityKeys/.test(safeRows), 'workspace membership identity does not use display name as primary identity');
 assert(management.includes('getSystemAdminUserWorkspaceIds(u).includes(selectedClient.id)'), 'Workspaces / Clients filters users by workspaceIds helper');
 assert(management.includes('getSystemAdminUserWorkspaceIds(u).some(workspaceId => selectedPushRestaurantIds.includes(workspaceId))'), 'Push Control Center roster behavior remains workspaceIds-based');
+assert(management.includes("new Set(['tenants', 'push', 'users', 'live'])"), 'TabGodMode server people roster tabs include tenants, push, users, and live');
+assert(/SYSTEM_ADMIN_GLOBAL_PEOPLE_TABS\.has\(subTab\)[\s\S]{0,180}loadSystemAdminPeopleRoster\(\{ refreshing: false \}\)/.test(management), 'TabGodMode loads authoritative server people roster for every platform people tab');
+assert(!/if \(subTab === 'users' \|\| subTab === 'live'\)[\s\S]{0,500}collection\(db, 'users'\)/.test(management), 'People Directory and Live no longer use browser Firestore users roster listener');
+assert(!/listen\('users',[\s\S]{0,260}collection\(db, 'users'\)[\s\S]{0,260}applySystemAdminUserCounts/.test(management), 'System Administrator people roster is not populated from client users onSnapshot');
+assert(management.includes('Authoritative platform user roster could not load') && management.includes('Refresh People') && management.includes('Authoritative server roster'), 'People Directory exposes authoritative roster status, error, and refresh');
 
 // Backup status trust boundary.
 assert(!management.includes("listenDoc('backupStatus'"), 'System Admin no longer installs direct backupStatus browser listener');
@@ -97,4 +102,4 @@ assert(read('scripts/verify-native-backup-iam.js').includes('gcloud projects add
 assert(vercel.includes('/api/firestore-backup') && vercel.includes('0 9 * * *') && vercel.includes('/api/firestore-backup-watchdog') && vercel.includes('0 21 * * *'), 'vercel cron schedules remain unchanged');
 
 if (failures) { console.error(`\n${failures} validation check(s) failed.`); process.exit(1); }
-console.log('\n16.0.169 source validation passed.');
+console.log('\n16.0.170 source validation passed.');
