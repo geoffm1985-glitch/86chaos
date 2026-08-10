@@ -4698,7 +4698,6 @@ const LEGACY_JULY_2026_SCHEDULE = [
 
     listen('superAdmins', query(collection(db, 'users'), where('isSuperAdmin', '==', true), firestoreLimit(25)), setSuperAdmins);
     listenDoc('pricing', doc(db, 'system', 'pricing'), setTierPrices, (raw) => normalizeTierPriceMap(raw, defaultTierPrices), defaultTierPrices);
-    listenDoc('backupStatus', doc(db, 'system', 'backupStatus'), setBackupStatus);
     listenDoc('restoreDrillStatus', doc(db, 'system', 'restoreDrillStatus'), setRestoreDrillStatus);
     listenDoc('operationsReview', doc(db, 'system', 'operationsReview'), setOperationsReview);
 
@@ -5962,7 +5961,7 @@ const handleRevokeAccess = async (user) => {
   const nextAutoBackupDate = getNextAutoBackupDate();
   const nextBackupCountdown = backupRunning ? 'running now' : formatCountdown(nextAutoBackupDate.getTime() - backupCountdownTick);
   const nextBackupLocalTime = nextAutoBackupDate.toLocaleString([], { weekday: 'short', hour: 'numeric', minute: '2-digit', timeZoneName: 'short' });
-  const backupWatchdogDetail = backupStatus?.lastWatchdogResult ? `Watchdog: ${backupStatus.lastWatchdogResult}` : 'Watchdog fallback scheduled for production';
+  const backupWatchdogDetail = backupStatus?.nativeBackupPermissionState === 'permission_required' ? 'Native backup check blocked: IAM permission required' : (backupStatus?.lastWatchdogResult ? `Watchdog: ${backupStatus.lastWatchdogResult}` : 'Watchdog verifies native Firestore backup state');
   const backupCommandDeckDetail = `${backupDetail} • Next: ${nextBackupCountdown} • ${backupWatchdogDetail}`;
   const filteredBackupList = backupList.filter(b => backupListFilter === 'all' || b.mode === backupListFilter);
   const envReport = typeof window !== 'undefined' ? {
@@ -5980,8 +5979,8 @@ const handleRevokeAccess = async (user) => {
     ? 'Testing deployments do not receive Vercel Cron invocations. Use Run Backup Now in testing; verify automatic scheduled backups on production.'
     : 'Production cron should call /api/firestore-backup daily at 9:00 UTC / 4:00 AM Central, with /api/firestore-backup-watchdog as the evening safety check.';
   const backupTroubleshootingSummary = backupMissedDailyWindow
-    ? `${autoBackupEnvironmentNote} Check Vercel Cron logs, CRON_SECRET, Firebase Admin credentials, and Storage bucket if production is stale.`
-    : autoBackupEnvironmentNote;
+    ? (backupStatus?.nativeBackupPermissionState === 'permission_required' ? `${autoBackupEnvironmentNote} Native Firestore backup inspection needs IAM viewer roles: roles/datastore.backupSchedulesViewer and roles/datastore.backupsViewer.` : `${autoBackupEnvironmentNote} Check Vercel Cron logs, CRON_SECRET, Firebase Admin credentials, and Storage bucket if production is stale.`)
+    : (backupStatus?.nativeBackupPermissionState === 'permission_required' ? `${autoBackupEnvironmentNote} Native Firestore backup inspection needs IAM viewer roles: roles/datastore.backupSchedulesViewer and roles/datastore.backupsViewer.` : autoBackupEnvironmentNote);
 
   // --- NEW SAAS HEALTH METRICS ---
 const activeTrials = restaurants.filter(r => resolveSubscription(r, appUser).status === 'beta').length;
@@ -6810,7 +6809,7 @@ ${body}`;
     { title: 'Version 15.0.40 System Administrator Mobile Usability', group: 'System Administrator', keywords: 'v15 15.0.40 mobile phone system administrator menu quick jump sticky nav touch friendly command deck', body: ['15.0.40 makes System Administrator easier to operate from a phone by adding a mobile command strip with critical status, section picker, and quick-jump chips for the most common admin tools.', 'The left Admin Menu still lives on the left side on desktop, but on phones it opens immediately under the System Administrator header instead of getting buried below the Command Deck.', 'Mobile admin buttons now have larger touch targets, shorter labels, and a two-column menu layout where space allows. The active section is easier to see and switching sections automatically closes the mobile menu.', 'The Command Deck stays available, but it no longer has to be the first thing you fight through on a mobile device. Use Show Info Board only when you need the full signal board.'] },
     { title: 'Version 15.0.39 Gemini Manual Instruction Upgrade', group: 'System Administrator', keywords: 'v15 15.0.39 gemini manual assistant instructions step by step what to do system administrator support', body: ['15.0.39 improves the Gemini-powered System Administrator Manual assistant so answers are structured around what the issue means, where to go in System Administrator, what to click or check, how to verify success, what not to touch yet, and what needs separate Vercel/Firebase deployment.', 'The manual assistant now sends current admin context such as active admin section, backup freshness, health attention count, risky user count, and environment clues when available. It redacts secrets and signed URLs before sending context.', 'If Gemini fails or returns no useful text, the route now returns a local manual fallback answer from the matched playbook instead of leaving the admin with a dead panel.', 'Use Ask Gemini for troubleshooting guidance only. Do not paste service account JSON, raw tokens, private employee/customer information, or signed backup download URLs into the question.'] },
     { title: 'Version 15.0.38 Diagnostics Cleanup and Admin Nav Top Rail', group: 'System Administrator', keywords: 'v15 15.0.38 diagnostics health checks api manifest signed urls backup watchdog admin menu left nav top rail', body: ['15.0.38 fixes the Health Checks API manifest so Vercel serverless packaging no longer makes every API route look missing.', 'Backup lists now omit signed download URLs by default so Full System Diagnostics exports do not leak temporary Storage links. Backup Center asks for signed URLs only when the download button needs them.', 'System Administrator now keeps the left Admin Menu pinned at the top of the desktop layout, while the Command Deck lives to the right instead of pushing the menu downward.', 'The backup cards now include a manual Check Watchdog Now control so a Super Admin can force the stale-backup watchdog check from the app after deploying.'] },
-    { title: 'Version 15.0.37 Gemini Manual and Backup Watchdog', group: 'System Administrator', keywords: 'v15 15.0.37 gemini system administrator manual assistant backup watchdog automatic backup cron vercel production preview', body: ['15.0.37 adds a Gemini-powered System Administrator Manual assistant. It answers from the matched manual articles/playbook through /api/gemini-admin-manual and requires GEMINI_API_KEY on the server.', 'The Gemini assistant is Super Admin only and keeps the API key on Vercel. It should be used for troubleshooting guidance, not for exposing customer records, service account JSON, signed backup URLs, or secrets.', 'Automatic backups still run from Vercel Cron on production. Testing deployments do not receive Vercel Cron calls, so testing must use Run Backup Now.', 'A new /api/firestore-backup-watchdog route is scheduled as a production fallback. If the daily backup is stale, the watchdog triggers a catch-up backup using CRON_SECRET.', 'The backup route now stamps cron schedule headers and watchdog metadata into system/backupStatus so the Command Deck can show whether production cron actually hit the route.'] },
+    { title: 'Version 15.0.37 Gemini Manual and Backup Watchdog', group: 'System Administrator', keywords: 'v15 15.0.37 gemini system administrator manual assistant backup watchdog automatic backup cron vercel production preview', body: ['15.0.37 adds a Gemini-powered System Administrator Manual assistant. It answers from the matched manual articles/playbook through /api/gemini-admin-manual and requires GEMINI_API_KEY on the server.', 'The Gemini assistant is Super Admin only and keeps the API key on Vercel. It should be used for troubleshooting guidance, not for exposing customer records, service account JSON, signed backup URLs, or secrets.', 'Automatic backups still run from Vercel Cron on production. Testing deployments do not receive Vercel Cron calls, so testing must use Run Backup Now.', 'The /api/firestore-backup-watchdog route verifies native Firestore scheduled backup state through the Google Firestore Admin API. It does not run the custom JSON backup. A 403 means IAM permission to inspect native backups is missing.', 'The backup route now stamps cron schedule headers and watchdog metadata into system/backupStatus so the Command Deck can show whether production cron actually hit the route.'] },
     { title: 'Version 15.0.36 Master Admin Repair Verification', group: 'System Administrator', keywords: 'v15 15.0.36 master admin repair firestore users auth uid verified project mismatch placeholder env whoami', body: ['15.0.36 hardens Master Admin Self-Repair so /api/master-admin-repair writes users/{authUid} and immediately reads the document back to verify it exists.', 'The repair result now shows the Firebase project the API wrote to. If you are checking chaos-test-d1601 but the result shows cheers-34b8d, fix Vercel Firebase admin env vars and run repair again.', 'Invalid placeholder values such as SECOND_ADMIN_EMAIL_HERE are skipped and shown in the result instead of making a successful repair look failed.', 'After the row shows Verified: yes, log out and back in before publishing hardened Firestore rules so Firebase custom claims refresh.'] },
     { title: 'Version 15.0.35 Administrator Layout Polish', group: 'System Administrator', keywords: 'v15 15.0.35 administrator layout left menu info board command deck mobile collapsible navigation', body: ['15.0.35 moves System Administrator section buttons from the top of the tab into a left-side admin menu on desktop.', 'On phones, the admin menu is collapsible. Tap Menu from the current-section bar to open it, then pick a section and the menu closes automatically.', 'The Command Deck / signal information board now sits above the main admin workspace and remains collapsible through Show Info Board / Hide Info Board.', 'This layout keeps troubleshooting signals visible at the top while leaving the actual tools easier to scan from the left rail.'] },
     ...ADMIN_TROUBLESHOOTING_ARTICLES,
@@ -6896,7 +6895,7 @@ ${body}`;
     { title: 'Using the calm Admin Workspace', group: 'System Administrator', keywords: 'admin workspace overview priority list quick actions sections search mobile navigation organized calm', body: ['System Administrator now opens as the Admin Workspace. The home page shows only the short priority list, six common actions, four core numbers, and the organized admin areas.', 'Use the left rail on desktop or the section selector on mobile. Each page has a plain title, purpose statement, and Back to admin home button.', 'Search at the top finds tools, actions, customers, and Administrator Manual articles without exposing unauthorized sections.', 'The old always-visible Command Deck and dense signal board were removed. Detailed information still lives inside Health, Security, Backups, People, Workspaces, Push, and Support.', 'Danger Zone remains separated at the bottom of Platform Tools and still requires confirmations.'] },
     { title: 'Maintenance, branding, data, and Danger Zone', group: 'System Administrator', keywords: 'maintenance mode custom message auto unlock branding display logo data import export danger zone restore reset disable clear demo', body: ['Maintenance Mode can lock every workspace or one workspace while leaving Super Admin able to enter and fix the app.', 'Branding / Display settings keep the app name locked as 86 Chaos, store restaurant/group display name, customer logo URL/display preference, accent color, login message, Help Center contact, timezone, and date/time formats on the workspace record. Customer logo uploads use a secure server route first, with Firebase Storage rules as fallback protection. The customer logo can appear beside 86 Chaos, but cannot replace or hide it.', 'Import / Export Center exports staff, recipes, inventory, punches, schedules, and audit logs. Imports require preview-before-apply.', 'Danger Zone separates destructive tools such as backup restore, staff deletion, schedule reset, demo-data cleanup, workspace disablement, stale push cleanup, and restaurant config reset. Run Backup Now first.'] },
     { title: 'Backup status in Admin Workspace', group: 'Backups', keywords: 'database backup status last backup maintenance cron firestore export storage run now', body: ['The Backup summary at the top of Admin Workspace reads system/backupStatus, which is written by the automatic Firestore backup route.', 'Click the Backup summary, Run backup on Admin Home, or open Backup Center & Audit Trail to inspect status and run a manual backup.', 'A stale or missing backup status means the Vercel cron route, CRON_SECRET, Firebase service account, or Storage bucket should be checked.', 'Weekly maintenance is housekeeping; Firestore Backup is the JSON data export saved to Firebase Storage.'] },
-    { title: 'Automatic database backups', group: 'Backups', keywords: 'automatic daily database backup firestore storage cron secret firebase storage bucket restore export', body: ['The scheduled route /api/firestore-backup runs from Vercel Cron every day and exports Firestore data to Firebase Storage.', 'It writes progress and results to system/backupStatus so the Command Deck can show the last backup.', 'Required Vercel variables: FIREBASE_SERVICE_ACCOUNT_KEY, CRON_SECRET, and optionally FIREBASE_STORAGE_BUCKET.', 'Use Run Backup Now from the Command Deck or Forensics after installing the route to verify everything works.'] },
+    { title: 'Automatic database backups', group: 'Backups', keywords: 'automatic daily database backup firestore storage cron secret firebase storage bucket restore export', body: ['The scheduled route /api/firestore-backup runs from Vercel Cron every day and exports Firestore data to Firebase Storage.', 'It writes progress and results to system/backupStatus server-side so the Command Deck can show the last custom JSON backup.', 'Required Vercel variables: FIREBASE_SERVICE_ACCOUNT_KEY, CRON_SECRET, and optionally FIREBASE_STORAGE_BUCKET.', 'Use Run Backup Now to verify the custom JSON backup. Use Check Watchdog Now to verify native Firestore scheduled backup visibility and IAM.'] },
     { title: 'Restoring a full Firestore backup', group: 'Backups', keywords: 'restore full backup firestore storage path json gzip deleted data recover database', body: ['Open System Administrator → Forensics & Backups.', 'Copy the backup storage path from Command Deck Last Backup or Firebase Storage, for example backups/firestore/manual/...json.gz.', 'Open Backup Center, choose the backup from the list, then type RESTORE when prompted.', 'The restore is merge-based: it recreates missing/deleted documents and overwrites damaged documents from the backup, but it does not delete newer documents that are not in the backup. For schedules, use Emergency Schedule Rescue after a full restore if a month needs a clean hard replacement.'] },
     { title: 'Restoring a full Firestore backup', group: 'Backups', keywords: 'restore backup firestore storage path deleted documents recovery database', body: ['Open System Administrator → Forensics & Backups.', 'Run Backup Now first if you need a current safety copy.', 'Open Backup Center and select the backup file from the list instead of pasting a Storage path.', 'Type RESTORE. The restore is merge-based: it restores documents from the backup but does not delete newer documents. If restored schedule data mixes with old/current schedule records, run the Emergency Schedule Rescue for that month so the month is hard-replaced.'] },
     { title: 'Health Dashboard and full diagnostics', group: 'System Administrator', keywords: 'health dashboard firestore latency storage usage api response times sync diagnostics deployment report', body: ['Open System Administrator → Health Dashboard to see Firestore read latency, backup Storage usage, API route response times, backup integrity, and last successful sync.', 'Click Refresh Health to retest live timings without changing data.', 'Click Run Full System Diagnostics before deployments to download a JSON report with client runtime health plus server-side Firebase/Admin/Storage checks.', 'A failed backup-integrity badge means the latest backup could not be verified after upload and should be checked before deploying risky changes.'] },
@@ -7469,6 +7468,7 @@ ${body}`;
       const result = await response.json().catch(() => ({}));
       if (!response.ok || result.ok === false) throw new Error(result.error || `Backup list failed with status ${response.status}`);
       setBackupList(Array.isArray(result.backups) ? result.backups : []);
+      if (result.backupStatus) setBackupStatus(result.backupStatus);
       if (!silent) addToast('Backups Loaded', `${result.count ?? result.backups?.length ?? 0} backup file(s) found.`);
     } catch (err) {
       const msg = err.message || 'Backup list route failed. Check Vercel logs.';
@@ -7497,11 +7497,6 @@ ${body}`;
     setHealthError('');
     const generatedAt = new Date().toISOString();
     try {
-      const firestoreStart = performance.now();
-      const backupSnap = await getDoc(doc(db, 'system', 'backupStatus'));
-      const firestoreLatencyMs = Math.round(performance.now() - firestoreStart);
-      const liveBackupStatus = backupSnap.exists() ? { id: backupSnap.id, ...backupSnap.data() } : null;
-
       const apiChecks = [];
       apiChecks.push(await runTimedApiCheck('Whoami Auth Check', '/api/whoami', { method: 'GET' }));
       apiChecks.push(await runTimedApiCheck('Security Diagnostics', '/api/security-diagnostics', { method: 'GET' }));
@@ -7513,6 +7508,10 @@ ${body}`;
       const backupListCheck = apiChecks.find(c => c.label === 'Storage Usage / Backup List');
       const backupResult = backupListCheck?.result || {};
       if (Array.isArray(backupResult.backups)) setBackupList(backupResult.backups);
+      const liveBackupStatus = backupResult.backupStatus || backupStatus || null;
+      if (backupResult.backupStatus) setBackupStatus(backupResult.backupStatus);
+      const firestoreLatencyMs = Number(routeManifestCheck?.result?.firestoreLatencyMs ?? routeManifestCheck?.ms ?? 0);
+      const firestoreReadOk = routeManifestCheck?.result?.firestoreReadOk !== false;
 
       const storageUsage = {
         bucket: backupResult.bucket || liveBackupStatus?.storageBucket || 'unknown',
@@ -7526,7 +7525,10 @@ ${body}`;
       const snapshot = {
         generatedAt,
         firestoreLatencyMs,
-        firestoreStatus: firestoreLatencyMs < 800 ? 'healthy' : firestoreLatencyMs < 1800 ? 'slow' : 'degraded',
+        firestoreStatus: firestoreReadOk ? (firestoreLatencyMs < 800 ? 'healthy' : firestoreLatencyMs < 1800 ? 'slow' : 'degraded') : 'failed',
+        firestoreReadOk,
+        firestoreError: routeManifestCheck?.result?.firestoreError || '',
+        firestoreErrorCategory: routeManifestCheck?.result?.firestoreErrorCategory || '',
         storageUsage,
         apiChecks,
         apiRouteManifest,
@@ -7540,7 +7542,7 @@ ${body}`;
         clientRuntime: envReport
       };
       setHealthSnapshot(snapshot);
-      if (!silent) addToast('Health Refreshed', `Firestore ${snapshot.firestoreLatencyMs}ms • ${apiChecks.filter(c => c.ok).length}/${apiChecks.length} API checks healthy.`);
+      if (!silent) addToast('Health Refreshed', `Firestore ${snapshot.firestoreReadOk === false ? 'server check failed' : `${snapshot.firestoreLatencyMs}ms`} • ${apiChecks.filter(c => c.ok).length}/${apiChecks.length} API checks healthy.`);
       return snapshot;
     } catch (err) {
       const msg = err.message || 'Health check failed.';
@@ -7647,13 +7649,22 @@ ${body}`;
   const handleRunBackupWatchdog = async () => {
     if (isBackupWatchdogRunning) return;
     setIsBackupWatchdogRunning(true);
-    addToast('Backup Watchdog Started', 'Checking whether a catch-up backup is needed.');
+    addToast('Backup Watchdog Started', 'Checking native Firestore backup schedule and backup visibility.');
     try {
       const response = await secureFetch('/api/firestore-backup-watchdog', { method: 'POST' });
       const result = await response.json().catch(() => ({}));
-      if (!response.ok || result.ok === false) throw new Error(result.error || `Watchdog failed with status ${response.status}`);
-      if (result.ranBackup) addToast('Watchdog Backup Complete', `Catch-up backup ran. Age before run: ${result.backupAgeHours ?? 'unknown'}h.`);
-      else addToast('Watchdog Check Complete', 'Backup is fresh. No catch-up backup needed.');
+      if (!response.ok || result.ok === false) {
+        if (result.errorCategory === 'permission_denied') {
+          setBackupStatus(prev => ({ ...(prev || {}), ...result }));
+          const roles = Array.isArray(result.recommendedRoles) ? result.recommendedRoles.join(', ') : 'roles/datastore.backupSchedulesViewer, roles/datastore.backupsViewer';
+          const serviceAccount = result.serviceAccountEmail ? ` Service account: ${result.serviceAccountEmail}.` : '';
+          addToast('Watchdog IAM Permission Required', `Project ${result.projectId || 'unknown'} needs ${roles}.${serviceAccount}`);
+          return;
+        }
+        throw new Error(result.error || `Watchdog failed with status ${response.status}`);
+      }
+      setBackupStatus(prev => ({ ...(prev || {}), ...result }));
+      addToast('Watchdog Check Complete', result.nativeBackupVerified ? 'Native Firestore backup verification passed.' : 'Native backup check completed with attention items.');
       loadBackupList({ silent: true });
       refreshHealthDashboard({ silent: true });
     } catch (err) {

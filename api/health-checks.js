@@ -15,7 +15,7 @@ const ROUTE_CHECKS = [
   { route: '/api/deploy-tenant', file: 'deploy-tenant.js', method: 'POST', auth: 'super-admin', notes: 'Workspace deployment helper.' },
   { route: '/api/dispatch-reminders', file: 'dispatch-reminders.js', method: 'POST', auth: 'cron-or-admin', notes: 'Reminder dispatcher cron route.' },
   { route: '/api/firestore-backup', file: 'firestore-backup.js', method: 'GET/POST', auth: 'cron-or-admin', notes: 'Firestore backup route.' },
-  { route: '/api/firestore-backup-watchdog', file: 'firestore-backup-watchdog.js', method: 'GET/POST', auth: 'cron-or-admin', notes: 'Daily backup fallback watchdog. Runs a catch-up backup only when last successful backup is stale.' },
+  { route: '/api/firestore-backup-watchdog', file: 'firestore-backup-watchdog.js', method: 'GET/POST', auth: 'cron-or-admin', notes: 'Native Firestore backup watchdog. Verifies scheduled backup metadata through the Google Firestore Admin API; it does not run the custom JSON backup.' },
   { route: '/api/gemini-admin-manual', file: 'gemini-admin-manual.js', method: 'POST', auth: 'super-admin', notes: 'Gemini-powered System Administrator manual assistant.' },
   { route: '/api/openai-diagnostics-explain', file: 'openai-diagnostics-explain.js', method: 'POST', auth: 'super-admin', notes: 'OpenAI structured diagnostics repair guidance with server-side redaction.' },
   { route: '/api/python-order-intelligence', file: 'python-order-intelligence.js', method: 'POST', auth: 'workspace-inventory-admin', notes: 'Node auth wrapper for Python order forecasting, par tuning, price trend, waste, prep, and event supply analysis.' },
@@ -122,6 +122,20 @@ module.exports = async function handler(req, res) {
     if (!ctx.ok || !ctx.isSuperAdmin) return res.status(ctx.status || 403).json({ ok: false, error: ctx.error || 'Super admin required.' });
 
     const startedAt = Date.now();
+    const firestoreStartedAt = Date.now();
+    let firestoreReadOk = false;
+    let firestoreLatencyMs = 0;
+    let firestoreError = '';
+    let firestoreErrorCategory = '';
+    try {
+      await (ctx.db || app.firestore()).collection('system').doc('backupStatus').get();
+      firestoreReadOk = true;
+      firestoreLatencyMs = Date.now() - firestoreStartedAt;
+    } catch (error) {
+      firestoreLatencyMs = Date.now() - firestoreStartedAt;
+      firestoreError = String(error?.message || error).slice(0, 220);
+      firestoreErrorCategory = /permission|denied|forbidden/i.test(firestoreError) ? 'permission_denied' : 'firestore_read_failed';
+    }
     const rows = ROUTE_CHECKS.map(check => {
       const parse = safeRequire(check.file);
       return {
@@ -157,6 +171,10 @@ module.exports = async function handler(req, res) {
       readyCount: rows.filter(r => r.status === 'ready').length,
       attentionCount: rows.filter(r => r.status !== 'ready').length,
       env,
+      firestoreReadOk,
+      firestoreLatencyMs,
+      firestoreError,
+      firestoreErrorCategory,
       routes: rows
     });
   } catch (err) {

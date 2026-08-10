@@ -1,8 +1,11 @@
 const { initAdmin, authorize, requireAppCheckIfEnforced, writeAudit } = require('./_chaos-admin');
 const { APP_VERSION } = require('./_version');
 const { durationToSeconds, secondsToDays, exactDatabaseResource, databaseResourceFromSchedule, scheduleRetentionSeconds, scheduleIsDaily, successfulBackupForDatabase, sanitizeBackupError } = require('./_backup-logic');
+const { projectCredentialStatus } = require('./_firebase-project-admin');
 
 const DEFAULT_STALE_HOURS = 26;
+const REQUIRED_NATIVE_BACKUP_PERMISSIONS = ['datastore.backupSchedules.list', 'datastore.backups.list'];
+const RECOMMENDED_NATIVE_BACKUP_ROLES = ['roles/datastore.backupSchedulesViewer', 'roles/datastore.backupsViewer'];
 
 async function authorizeWatchdog(req, app) {
   const cronSecret = process.env.CRON_SECRET;
@@ -63,6 +66,22 @@ function statusCodeForHealth({ authorized = true, setupComplete = false, apiErro
   if (apiError) return 503;
   if (!setupComplete) return 424;
   return 200;
+}
+
+function nativeBackupIamDiagnostic(projectId = '', databaseId = '') {
+  const credential = projectCredentialStatus(projectId);
+  return {
+    requiredPermissions: REQUIRED_NATIVE_BACKUP_PERMISSIONS,
+    recommendedRoles: RECOMMENDED_NATIVE_BACKUP_ROLES,
+    projectId,
+    databaseId,
+    serviceAccountEmail: credential.serviceAccountEmail || '',
+    credentialSource: credential.source || credential.recommendedEnv || credential.error || ''
+  };
+}
+function nativeBackupPermissionMessage(projectId = '', serviceAccountEmail = '') {
+  const target = serviceAccountEmail ? `runtime service account ${serviceAccountEmail}` : 'the runtime Firebase Admin service account';
+  return `The Firebase Admin service account can authenticate but does not have permission to read native Firestore backup schedules/backups. Grant ${RECOMMENDED_NATIVE_BACKUP_ROLES.join(' and ')} to ${target} in project ${projectId || 'the active Firebase project'}.`;
 }
 
 module.exports = async function handler(req, res) {
@@ -131,6 +150,9 @@ module.exports = async function handler(req, res) {
       lastWatchdogCheckAt: startedAt.toISOString(),
       lastWatchdogSource: ctx.source,
       lastWatchdogVersion: APP_VERSION,
+      lastWatchdogResult: verified ? 'verified' : 'attention',
+      nativeBackupPermissionState: 'ok',
+      nativeBackupVerificationState: verified ? 'verified' : 'attention',
       manualJsonBackupEndpointPreserved: true,
       automaticCustomJsonBackupDisabled: true,
       lastError: ''
@@ -142,9 +164,32 @@ module.exports = async function handler(req, res) {
     return res.status(statusCodeForHealth({ setupComplete: verified, apiError: unreachableLocations.length > 0 })).json({ ok: verified, version: APP_VERSION, mode: 'native-admin-api-watchdog', projectId, databaseId, scheduleCount: schedules.length, backupCount: backups.length, unreachableLocations, schedulePages: schedulePage.pageCount, backupPages: backupPage.pageCount, ...next });
   } catch (err) {
     const code = err.statusCode || (/permission|forbidden/i.test(err.message) ? 403 : 503);
-    const next = { status: 'attention', lastStatus: 'attention', nativeBackupVerified: false, nativeBackupSetupIncompleteReason: 'Native backup setup incomplete', lastWatchdogResult: 'configuration_error', lastError: sanitizeBackupError(err.message), lastErrorAt: new Date().toISOString(), lastWatchdogVersion: APP_VERSION, manualJsonBackupEndpointPreserved: true };
+    const isPermissionDenied = code === 403 || err.safeCategory === 'permission_denied';
+    const iam = isPermissionDenied ? nativeBackupIamDiagnostic(projectId, databaseId) : {};
+    const preciseMessage = isPermissionDenied
+      ? nativeBackupPermissionMessage(projectId, iam.serviceAccountEmail)
+      : sanitizeBackupError(err.message);
+    const next = {
+      status: 'attention',
+      lastStatus: 'attention',
+      nativeBackupVerified: false,
+      nativeBackupSetupIncompleteReason: isPermissionDenied ? 'Native backup check blocked by IAM permission.' : 'Native backup setup incomplete',
+      nativeBackupPermissionState: isPermissionDenied ? 'permission_required' : 'unknown',
+      nativeBackupVerificationState: isPermissionDenied ? 'blocked_by_iam' : 'configuration_error',
+      lastWatchdogResult: isPermissionDenied ? 'iam_permission_required' : 'configuration_error',
+      lastError: sanitizeBackupError(preciseMessage),
+      lastErrorAt: new Date().toISOString(),
+      lastWatchdogVersion: APP_VERSION,
+      manualJsonBackupEndpointPreserved: true,
+      ...iam
+    };
     if (statusRef && shouldWriteStatus(previous, next, req.method === 'POST')) await statusRef.set(next, { merge: true }).catch(() => null);
-    return res.status(code).json({ ok: false, version: APP_VERSION, error: next.lastError || 'Native backup verification failed', errorCategory: err.safeCategory || 'backup_watchdog_error', ...next });
+    return res.status(code).json({ ok: false, version: APP_VERSION, error: next.lastError || 'Native backup verification failed', errorCategory: isPermissionDenied ? 'permission_denied' : (err.safeCategory || 'backup_watchdog_error'), ...next });
   }
 };
 module.exports.config = { maxDuration: 60 };
+
+module.exports.REQUIRED_NATIVE_BACKUP_PERMISSIONS = REQUIRED_NATIVE_BACKUP_PERMISSIONS;
+module.exports.RECOMMENDED_NATIVE_BACKUP_ROLES = RECOMMENDED_NATIVE_BACKUP_ROLES;
+module.exports.nativeBackupIamDiagnostic = nativeBackupIamDiagnostic;
+module.exports.nativeBackupPermissionMessage = nativeBackupPermissionMessage;

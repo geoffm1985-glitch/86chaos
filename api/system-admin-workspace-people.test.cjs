@@ -93,3 +93,27 @@ test('System Admin platform people row preserves safe support-editor fields only
     assert.equal(Object.prototype.hasOwnProperty.call(row, key), false, `${key} must not be returned`);
   }
 });
+
+test('System Admin platform people row accepts canonical workspaceMembers enrichment without changing primary restaurant', () => {
+  const row = safePlatformUser(doc('userDoc123', {
+    name: 'Workspace Member',
+    email: 'member@example.com',
+    restaurantId: 'restaurant_a',
+    workspaceIds: [],
+    memberships: {}
+  }), ['restaurant_b', 'restaurant_c', 'restaurant_b']);
+  assert.equal(row.restaurantId, 'restaurant_a');
+  assert.deepEqual(row.workspaceIds.sort(), ['restaurant_a', 'restaurant_b', 'restaurant_c'].sort());
+  assert.equal(new Set(row.workspaceIds).size, row.workspaceIds.length);
+});
+
+test('System Admin workspaceMembers helpers match legacy email identity and ignore inactive memberships', () => {
+  const helpers = require('./system-admin-safe-rows.cjs');
+  const userKeys = new Set(helpers.platformUserIdentityKeys({ email: 'Legacy@Example.com' }, 'userDoc123'));
+  const activeMember = { restaurantId: 'restaurant_b', email: 'legacy@example.com', isActive: true };
+  const inactiveMember = { restaurantId: 'restaurant_old', email: 'legacy@example.com', isActive: false };
+  assert.equal(helpers.workspaceMemberIsActive(activeMember), true);
+  assert.equal(helpers.workspaceMemberIsActive(inactiveMember), false);
+  assert.equal(helpers.workspaceIdForMember(activeMember, 'memberDoc'), 'restaurant_b');
+  assert.ok(helpers.workspaceMemberIdentityKeys(activeMember, 'memberDoc').some(key => userKeys.has(key)), 'email identity should match without using display name');
+});
