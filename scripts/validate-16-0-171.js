@@ -34,13 +34,13 @@ const manifest = json('scripts/86chaos-release-gate/reported-failed-only-2026081
 const rows = manifest.selected || [];
 const vercel = read('vercel.json');
 
-assert(pkg.version === '16.0.170', 'package.json version is 16.0.170');
-assert(lock.version === '16.0.170' && lock.packages?.['']?.version === '16.0.170', 'package-lock root versions are 16.0.170');
-assert(pkg.scripts['test:source'] === 'node scripts/validate-16-0-170.js', 'test:source points to 16.0.170 validator');
-assert(version.version === '16.0.170' && version.build === '16.0.170', 'public/version.json version/build are 16.0.170');
-assert(version.releaseTitle === 'System Administrator Authoritative People Directory Repair', 'release title is correct');
-assert(appCore.includes("CURRENT_VERSION = '16.0.170'"), 'app core CURRENT_VERSION is 16.0.170');
-assert(apiVersion.includes("APP_VERSION = '16.0.170'") && apiVersion.includes("SECURITY_SCHEMA_VERSION = '16.0.170'"), 'api version reports 16.0.170');
+assert(pkg.version === '16.0.171', 'package.json version is 16.0.171');
+assert(lock.version === '16.0.171' && lock.packages?.['']?.version === '16.0.171', 'package-lock root versions are 16.0.171');
+assert(pkg.scripts['test:source'] === 'node scripts/validate-16-0-171.js', 'test:source points to 16.0.171 validator');
+assert(version.version === '16.0.171' && version.build === '16.0.171', 'public/version.json version/build are 16.0.171');
+assert(version.releaseTitle === 'System Administrator Trust Boundary and Test Harness Integrity Repair', 'release title is correct');
+assert(appCore.includes("CURRENT_VERSION = '16.0.171'"), 'app core CURRENT_VERSION is 16.0.171');
+assert(apiVersion.includes("APP_VERSION = '16.0.171'") && apiVersion.includes("SECURITY_SCHEMA_VERSION = '16.0.171'"), 'api version reports 16.0.171');
 assert(!fs.existsSync(path.join(root, 'scripts/validate-16-0-169.js')), 'previous validator was replaced');
 
 assert(sha('firestore.rules') === '51bfd7d39edd59f680ae41a149c108cec8cd42d00b102d84cb00ee40d90264d9', 'firestore.rules unchanged');
@@ -101,5 +101,36 @@ assert(fs.existsSync(path.join(root, 'scripts/verify-native-backup-iam.js')), 'n
 assert(read('scripts/verify-native-backup-iam.js').includes('gcloud projects add-iam-policy-binding') && read('scripts/verify-native-backup-iam.js').includes('roles/datastore.backupsViewer'), 'IAM helper prints copyable least-privilege gcloud commands');
 assert(vercel.includes('/api/firestore-backup') && vercel.includes('0 9 * * *') && vercel.includes('/api/firestore-backup-watchdog') && vercel.includes('0 21 * * *'), 'vercel cron schedules remain unchanged');
 
+assert(fs.existsSync(path.join(root, 'api/system-admin/dashboard.js')), 'System Administrator dashboard API exists');
+assert(fs.existsSync(path.join(root, 'api/system-admin/platform-config.js')), 'System Administrator platform-config action API exists');
+assert(fs.existsSync(path.join(root, 'api/system-admin/user-actions.js')), 'System Administrator user-actions API exists');
+assert(fs.existsSync(path.join(root, 'api/system-admin/workspace-actions.js')), 'System Administrator workspace-actions API exists');
+assert(fs.existsSync(path.join(root, 'api/system-admin/automation.js')), 'System Administrator automation API exists');
+const tabGodMode = management.slice(management.indexOf('const TabGodMode'), management.indexOf('const TabLabor') > management.indexOf('const TabGodMode') ? management.indexOf('const TabLabor') : management.length);
+for (const prohibited of ['superAdmins', 'crashReports', 'auditLogs', 'restaurantAdminAlerts', 'opsIntelligenceReports', 'pythonAutomationRuns', 'pythonAutomationConfigs', 'accountDeletionRequests']) {
+  assert(!new RegExp(`listen\\(\\s*['"]${prohibited}['"]`).test(tabGodMode), `TabGodMode has no direct browser listener for ${prohibited}`);
+}
+for (const prohibited of ['pricing', 'dataRetention', 'rolePermissionMatrix', 'operationsReview', 'restoreDrillStatus']) {
+  assert(!new RegExp(`doc\\(db,\\s*['"]system['"],\\s*['"]${prohibited}['"]`).test(tabGodMode), `TabGodMode has no direct browser system doc access for ${prohibited}`);
+}
+assert(!/doc\(db,\s*['"]pythonAutomationConfigs['"]/.test(tabGodMode), 'TabGodMode no longer directly writes pythonAutomationConfigs');
+assert(!/doc\(db,\s*['"]aiRecommendationQueue['"]/.test(tabGodMode), 'TabGodMode no longer directly writes aiRecommendationQueue');
+assert(fs.existsSync(path.join(root, 'scripts/run-repair-regression-pack.cjs')), 'repair regression pack runner exists');
+assert(fs.existsSync(path.join(root, 'scripts/run-repair-browser-regression.cjs')), 'repair browser regression runner exists');
+assert(fs.existsSync(path.join(root, 'scripts/repair-regression-pack-16.0.171.json')), 'repair regression pack manifest exists');
+assert(fs.existsSync(path.join(root, 'scripts/86chaos-release-gate/repair-regression-16.0.171.json')), 'repair browser regression manifest exists');
+for (const name of ['test:repair-current','test:repair-current:local','test:repair-current:browser','test:repair-current:strict','test:repair-16-0-171']) {
+  assert(Boolean(pkg.scripts[name]), `${name} package script exists`);
+}
+const repairManifest = json('scripts/86chaos-release-gate/repair-regression-16.0.171.json');
+const stable = new Set();
+let dupes = 0;
+for (const row of repairManifest.selected || []) {
+  const key = [row.specPath, row.fullSuitePath, row.leafTitle, row.project].join('\0');
+  if (stable.has(key)) dupes += 1;
+  stable.add(key);
+}
+assert(dupes === 0, 'repair browser manifest has zero duplicate stable identities');
+
 if (failures) { console.error(`\n${failures} validation check(s) failed.`); process.exit(1); }
-console.log('\n16.0.170 source validation passed.');
+console.log('\n16.0.171 source validation passed.');

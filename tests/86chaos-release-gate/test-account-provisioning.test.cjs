@@ -21,6 +21,16 @@ function withTempCwd(fn) {
   finally { process.chdir(oldCwd); fs.rmSync(dir, { recursive: true, force: true }); }
 }
 
+function effectiveRunnerSource(file) {
+  const source = fs.readFileSync(path.resolve(root || path.resolve(__dirname, '../..'), file), 'utf8');
+  if (file === 'RUN_86CHAOS_FAILED_ONLY_RELEASE_GATE.ps1') {
+    assert.match(source, /RUN_86CHAOS_FAILED_AND_NEW_RELEASE_GATE\.ps1/);
+    assert.match(source, /-SelectionMode failed-only/);
+    return fs.readFileSync(path.resolve(root || path.resolve(__dirname, '../..'), 'RUN_86CHAOS_FAILED_AND_NEW_RELEASE_GATE.ps1'), 'utf8');
+  }
+  return source;
+}
+
 function withQaAccountEnv(fn) {
   const keys = ['SYSTEM_ADMIN_EMAIL','SYSTEM_ADMIN_PASSWORD','OWNER_EMAIL','OWNER_PASSWORD','MANAGER_EMAIL','MANAGER_PASSWORD','STAFF_EMAIL','STAFF_PASSWORD','CHAOS_QA_AUTO_PROVISION_TEST_USERS','CHAOS_QA_ALLOW_MUTATING_ROLE_ACCOUNTS','MASTER_ADMIN_EMAIL','REACT_APP_FIREBASE_PROJECT_ID','REACT_APP_TEST_FIREBASE_PROJECT_ID','CHAOS_RELEASE_GATE_RUN_ID','CHAOS_FULL_AUDIT_RUN_ID','CHAOS_RELEASE_GATE_RUN_DIR','APP_URL','CHAOS_BASE_URL','CHAOS_RELEASE_GATE_TEST_MODE','CHAOS_ALLOW_MUTATION','FIREBASE_TEST_SERVICE_ACCOUNT_KEY','FIREBASE_SERVICE_ACCOUNT_KEY','GOOGLE_APPLICATION_CREDENTIALS'];
   const old = Object.fromEntries(keys.map(k => [k, process.env[k]]));
@@ -151,7 +161,7 @@ test('provisioner can skip auto-provisioning and verify existing accounts withou
 
 test('release-gate runners provision temporary accounts before role preflight and Playwright', () => {
   for (const file of ['RUN_86CHAOS_FAILED_ONLY_RELEASE_GATE.ps1', 'RUN_86CHAOS_PLAY_STORE_RELEASE_GATE.ps1']) {
-    const source = fs.readFileSync(path.join(root, file), 'utf8');
+    const source = effectiveRunnerSource(file);
     assert.match(source, /Provision temporary release-gate test accounts/);
     assert.match(source, /provision-test-accounts\.cjs/);
     assert.ok(source.indexOf('Install Chromium browser') < source.indexOf('Provision temporary release-gate test accounts'));
