@@ -28,9 +28,9 @@ function assertReportedFailedOnlySelection(rows = []) {
   const mobile = rows.filter(item => (item.projects || []).includes('mobile-chromium') || item.project === 'mobile-chromium').length;
   const stableKeys = rows.map(row => row.stableKey || `${row.specPath || row.spec || ''}\u0000${row.fullSuitePath || ''}\u0000${row.leafTitle || row.exactTestTitle || row.title || ''}\u0000${reportedProject(row)}`);
   const errors = [];
-  if (rows.length !== 10) errors.push(`expected 10 selected FAIL identities, got ${rows.length}`);
-  if (desktop !== 4) errors.push(`expected 4 chromium identities, got ${desktop}`);
-  if (mobile !== 6) errors.push(`expected 6 mobile-chromium identities, got ${mobile}`);
+  if (rows.length !== 6) errors.push(`expected 6 selected FAIL identities, got ${rows.length}`);
+  if (desktop !== 2) errors.push(`expected 2 chromium identities, got ${desktop}`);
+  if (mobile !== 4) errors.push(`expected 4 mobile-chromium identities, got ${mobile}`);
   if (rows.some(item => String(item.priorStatus || '').toLowerCase() !== 'failed')) errors.push('reported-failed-only selected a non-failed priorStatus');
   if (rows.some(item => String(item.baselineStatus || '').toLowerCase() !== 'failed')) errors.push('reported-failed-only selected a non-failed baselineStatus');
   if (rows.some(item => String(item.priorStatus || '').toLowerCase() === 'timedout' || String(item.priorStatus || '').toLowerCase() === 'timeout')) errors.push('reported-failed-only selected a timeout status');
@@ -38,7 +38,7 @@ function assertReportedFailedOnlySelection(rows = []) {
   const badProjects = rows.filter(item => !['chromium', 'mobile-chromium'].includes(reportedProject(item)));
   if (badProjects.length) errors.push(`unexpected projects selected: ${[...new Set(badProjects.map(reportedProject))].join(', ')}`);
   if (new Set(stableKeys).size !== stableKeys.length) errors.push('duplicate stable identities selected');
-  if (errors.length) throw new Error(`reported-failed-only selection must be exactly the 10 current FAIL identities from 20260809-233053: ${errors.join('; ')}`);
+  if (errors.length) throw new Error(`reported-failed-only selection must be exactly the 6 current FAIL identities from 20260810-015004: ${errors.join('; ')}`);
 }
 
 
@@ -55,7 +55,7 @@ const manifest = {
   desktopSelected: FAILED_ONLY_TESTS.filter(item => (item.projects || []).includes('chromium')).length,
   mobileSelected: FAILED_ONLY_TESTS.filter(item => (item.projects || []).includes('mobile-chromium')).length,
   note: releaseSelectionMode === 'reported-failed-only'
-    ? 'reported-failed-only runs only the 10 FAIL identities from 20260809-233053 and excludes TIMEOUT, PASS, and SKIP identities.'
+    ? 'reported-failed-only runs only the 6 FAIL identities from 20260810-015004 and excludes TIMEOUT, PASS, and SKIP identities.'
     : `${releaseSelectionMode} success is diagnostic only. Complete npm run test:play-store is still required for release approval.`
 };
 fs.writeFileSync(path.join(runDir, 'failed-only-playwright-selection.json'), JSON.stringify(manifest, null, 2));

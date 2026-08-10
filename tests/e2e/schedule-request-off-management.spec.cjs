@@ -10,10 +10,31 @@ const {
   ALLOW_MUTATION,
   mutationSkipMessage,
   dismissBlockingDialogs,
+  BASE_URL,
 } = require('../86chaos-full-audit/utils/audit-helpers.cjs');
-const { initFirebase, signInOwner } = require('../../scripts/86chaos-full-audit/firebase-client.cjs');
+const { readFirebaseConfig, readConfiguredAccounts, signInAccount, buildFirebaseAuthFetchOptions } = require('../../scripts/86chaos-release-gate/verify-role-accounts.cjs');
 
 const QA_TEST_PROJECT_ID = 'chaos-test-d1601';
+
+let qaRequestOffResetAuthPromise = null;
+async function getQaRequestOffResetAuth() {
+  if (qaRequestOffResetAuthPromise) return qaRequestOffResetAuthPromise;
+  const promise = (async () => {
+    const config = readFirebaseConfig();
+    if (config?.projectId !== QA_TEST_PROJECT_ID) throw new Error(`Refusing QA Request Off reset auth outside ${QA_TEST_PROJECT_ID}: ${config?.projectId || 'unknown'}`);
+    const systemAdminAccount = readConfiguredAccounts().find(account => account.key === 'systemAdmin');
+    if (!systemAdminAccount?.email || !systemAdminAccount?.password) throw new Error('System Administrator QA account credentials are required for Request Off fixture reset.');
+    const signed = await signInAccount(systemAdminAccount, config);
+    if (!signed?.idToken) throw new Error('System Administrator QA account did not return an ID token.');
+    if (signed.firebaseProjectId !== QA_TEST_PROJECT_ID) throw new Error(`System Administrator token is for ${signed.firebaseProjectId || 'unknown'}, expected ${QA_TEST_PROJECT_ID}.`);
+    return { idToken: signed.idToken, uid: signed.uid, projectId: signed.firebaseProjectId };
+  })();
+  qaRequestOffResetAuthPromise = promise.catch(error => {
+    qaRequestOffResetAuthPromise = null;
+    throw error;
+  });
+  return qaRequestOffResetAuthPromise;
+}
 
 function scheduleFixtureDateFromSeed(seed = {}) {
   const fixture = seed?.profile?.expectations?.fixture || seed?.profile?.fixture || {};
@@ -131,31 +152,35 @@ function findSeededRequestOffDoc(seed = {}, employeeKey = '') {
 
 async function resetSeededRequestOffFixture(seed = {}, employeeKey = '') {
   requireSafeRequestOffResetSeed(seed);
-  const firebase = await initFirebase();
-  if (firebase?.config?.projectId !== QA_TEST_PROJECT_ID) throw new Error(`Refusing Request Off reset outside ${QA_TEST_PROJECT_ID}: ${firebase?.config?.projectId || 'unknown'}`);
-  await signInOwner(firebase);
   const target = findSeededRequestOffDoc(seed, employeeKey);
-  const { doc, getDoc, updateDoc, deleteField } = firebase.firestore;
-  const ref = doc(firebase.db, 'timeOffRequests', target.id);
-  const snap = await getDoc(ref);
-  if (!snap.exists()) throw new Error(`Seeded Request Off document does not exist: ${target.id}`);
-  const current = snap.data() || {};
-  const expectedName = employeeKey === 'allen' ? 'Allen QA' : 'Sara QA';
   const expectedUserId = seed?.profile?.ids?.userIdsByKey?.[employeeKey] || '';
-  if (current.qaOwned !== true) throw new Error(`Refusing Request Off reset for non-QA-owned document: ${target.id}`);
-  if (current.qaRunId !== seed.runId) throw new Error(`Refusing Request Off reset for wrong qaRunId on ${target.id}`);
-  if (current.restaurantId !== seed.restaurantId) throw new Error(`Refusing Request Off reset for wrong restaurantId on ${target.id}`);
-  if (String(current.employeeName || current.userName || '').trim() !== expectedName) throw new Error(`Refusing Request Off reset for unexpected employee on ${target.id}`);
-  const deleteMutationFields = [
-    'approvedAt','approvedBy','approvedByName','deniedAt','deniedBy','deniedByName','archived','archivedAt','archivedBy','archivedByName','previousStatus','processed','processedAt','processedBy','processedByName','publishedAt','publishedBy','publishedByName','cancelledAt','cancelledBy','restoredAt','restoredBy','updatedAt','updatedBy'
-  ];
-  const patch = {
-    status: employeeKey === 'allen' ? 'approved' : 'pending',
-    userId: expectedUserId,
-    employeeId: expectedUserId,
-  };
-  for (const field of deleteMutationFields) patch[field] = deleteField();
-  await updateDoc(ref, patch);
+  if (!expectedUserId) throw new Error(`Request Off reset expected user id is missing for ${employeeKey}.`);
+  if (!BASE_URL) throw new Error('BASE_URL is required for the safe QA Request Off reset endpoint.');
+  const expectedStatus = employeeKey === 'allen' ? 'approved' : employeeKey === 'sara' ? 'pending' : '';
+  if (!expectedStatus) throw new Error(`Unsupported Request Off reset employee key: ${employeeKey}`);
+  const { idToken } = await getQaRequestOffResetAuth();
+  const resetUrl = `${BASE_URL.replace(/\/+$/, '')}/api/full-audit-qa-seed`;
+  const response = await fetch(resetUrl, buildFirebaseAuthFetchOptions({
+    method: 'POST',
+    headers: { Authorization: `Bearer ${idToken}` },
+    body: JSON.stringify({
+      action: 'reset-request-off-fixture',
+      expectedProjectId: QA_TEST_PROJECT_ID,
+      runId: seed.runId,
+      restaurantId: seed.restaurantId,
+      workspaceName: `86 Chaos Release Gate QA ${seed.runId}`,
+      documentId: target.id,
+      employeeKey,
+      expectedUserId,
+    }),
+  }));
+  let data = null;
+  try { data = await response.json(); } catch (_) { data = null; }
+  if (!response.ok || data?.ok !== true || data?.action !== 'reset-request-off-fixture' || data?.projectId !== QA_TEST_PROJECT_ID || data?.runId !== seed.runId || data?.restaurantId !== seed.restaurantId || data?.documentId !== target.id || data?.employeeKey !== employeeKey || data?.status !== expectedStatus) {
+    const safeError = String(data?.error || response.statusText || 'Request Off reset failed').replace(/Bearer\s+[A-Za-z0-9._-]+/g, 'Bearer [redacted]').slice(0, 400);
+    throw new Error(`Request Off fixture reset failed (${response.status}): ${safeError}`);
+  }
+  return data;
 }
 
 test.describe('16.0.153 Schedule warnings and Request Off management', () => {

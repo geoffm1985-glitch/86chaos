@@ -332,6 +332,76 @@ async function seedQa(req, res, { auth, db, projectId, body, base }) {
   await writeAudit(db, auth, 'QA_RELEASE_GATE_SEED', base.restaurantId, JSON.stringify({ runId: base.runId, docs: seededDocuments.length, method: output.seedMethod }), base.restaurantId);
   return res.status(output.ok ? 200 : 500).json(output);
 }
+
+const REQUEST_OFF_RESET_SUBJECTS = {
+  allen: { expectedName: 'Allen QA', baselineStatus: 'approved', suffix: '_Allen_QA' },
+  sara: { expectedName: 'Sara QA', baselineStatus: 'pending', suffix: '_Sara_QA' },
+};
+const REQUEST_OFF_MUTATION_FIELDS = [
+  'approvedAt','approvedBy','approvedByName','deniedAt','deniedBy','deniedByName','archived','archivedAt','archivedBy','archivedByName','previousStatus','processed','processedAt','processedBy','processedByName','publishedAt','publishedBy','publishedByName','cancelledAt','cancelledBy','restoredAt','restoredBy','updatedAt','updatedBy'
+];
+function resetRefusal(status, message) {
+  const error = new Error(message);
+  error.status = status;
+  return error;
+}
+function subjectName(data = {}) {
+  return clean(data.employeeName || data.userName || '', '');
+}
+function hasInconsistentExistingSubjectId(data = {}, expectedUserId = '') {
+  if (!expectedUserId) return true;
+  const fields = ['userId', 'employeeId'];
+  return fields.some(field => data[field] && data[field] !== expectedUserId);
+}
+async function resetRequestOffFixture(req, res, { auth, db, projectId, body, base }) {
+  try {
+    const employeeKey = clean(body.employeeKey || '', '').toLowerCase();
+    const subject = REQUEST_OFF_RESET_SUBJECTS[employeeKey];
+    if (!subject) throw resetRefusal(400, 'Unsupported employeeKey. Use allen or sara.');
+    const documentIdRaw = clean(body.documentId || '', '');
+    const documentId = safeId(documentIdRaw, 240);
+    const expectedUserId = clean(body.expectedUserId || '', '');
+    if (!documentId || documentId !== documentIdRaw) throw resetRefusal(400, 'documentId is missing or unsafe.');
+    if (!expectedUserId || safeId(expectedUserId, 160) !== expectedUserId) throw resetRefusal(400, 'expectedUserId is missing or unsafe.');
+    const expectedPrefix = `qa_${safeId(base.runId, 100)}_timeOffRequests_`;
+    if (!documentId.startsWith(expectedPrefix) || !documentId.endsWith(subject.suffix)) {
+      throw resetRefusal(403, 'Request Off reset refused a non-current-run or wrong-employee document.');
+    }
+
+    const requestRef = db.collection('timeOffRequests').doc(documentId);
+    const snap = await requestRef.get();
+    if (!snap.exists) throw resetRefusal(404, 'Seeded Request Off document was not found.');
+    const current = snap.data() || {};
+    if (current.qaOwned !== true) throw resetRefusal(403, 'Request Off reset refused a non-QA-owned document.');
+    if (current.qaRunId !== base.runId) throw resetRefusal(403, 'Request Off reset refused a wrong qaRunId document.');
+    if (current.restaurantId !== base.restaurantId) throw resetRefusal(403, 'Request Off reset refused a wrong restaurantId document.');
+    if (current.createdBy !== '86chaos-full-audit') throw resetRefusal(403, 'Request Off reset refused a document not created by the full-audit seeder.');
+    if (subjectName(current) !== subject.expectedName) throw resetRefusal(403, 'Request Off reset refused an unexpected employee subject.');
+    if (hasInconsistentExistingSubjectId(current, expectedUserId)) throw resetRefusal(403, 'Request Off reset refused inconsistent existing subject IDs.');
+
+    const userSnap = await db.collection('users').doc(expectedUserId).get();
+    if (!userSnap.exists) throw resetRefusal(403, 'Expected QA user document was not found.');
+    const user = userSnap.data() || {};
+    if (user.qaOwned !== true) throw resetRefusal(403, 'Expected user is not QA-owned.');
+    if (user.qaRunId !== base.runId) throw resetRefusal(403, 'Expected user belongs to a different QA run.');
+    if (user.restaurantId !== base.restaurantId) throw resetRefusal(403, 'Expected user belongs to a different restaurant.');
+    if (clean(user.name || user.displayName || '', '') !== subject.expectedName) throw resetRefusal(403, 'Expected user name does not match reset employee.');
+
+    const patch = {
+      status: subject.baselineStatus,
+      userId: expectedUserId,
+      employeeId: expectedUserId,
+    };
+    for (const field of REQUEST_OFF_MUTATION_FIELDS) patch[field] = admin.firestore.FieldValue.delete();
+    await requestRef.update(patch);
+    await writeAudit(db, auth, 'QA_RELEASE_GATE_REQUEST_OFF_RESET', base.restaurantId, JSON.stringify({ runId: base.runId, restaurantId: base.restaurantId, documentId, employeeKey, baselineStatus: subject.baselineStatus }), base.restaurantId);
+    return res.status(200).json({ ok: true, action: 'reset-request-off-fixture', projectId, runId: base.runId, restaurantId: base.restaurantId, documentId, employeeKey, employeeName: subject.expectedName, status: subject.baselineStatus });
+  } catch (error) {
+    const status = Number(error?.status || 500);
+    return res.status(status >= 400 && status < 600 ? status : 500).json({ ok: false, action: 'reset-request-off-fixture', error: String(error?.message || error || 'Request Off reset failed').slice(0, 500) });
+  }
+}
+
 async function cleanupQa(req, res, { app, auth, db, projectId, body, base }) {
   const restaurantRef = db.collection('restaurants').doc(base.restaurantId);
   const restaurantSnap = await restaurantRef.get();
@@ -459,7 +529,8 @@ module.exports = async function handler(req, res) {
     const ctx = { app, auth, db, projectId, body, base };
     if (body.action === 'seed') return seedQa(req, res, ctx);
     if (body.action === 'cleanup') return cleanupQa(req, res, ctx);
-    return res.status(400).json({ ok: false, error: 'Unsupported action. Use seed or cleanup.' });
+    if (body.action === 'reset-request-off-fixture') return resetRequestOffFixture(req, res, ctx);
+    return res.status(400).json({ ok: false, error: 'Unsupported action. Use seed, cleanup, or reset-request-off-fixture.' });
   } catch (error) {
     const message = String(error?.message || error || 'QA seed route failed').replace(/(token|secret|private[_ -]?key|authorization|password)[=:]\s*[^\s,;}]+/gi, '$1=[redacted]').slice(0, 600);
     return res.status(500).json({ ok: false, error: message });
@@ -471,3 +542,5 @@ module.exports.validateDocuments = validateDocuments;
 module.exports.cleanupCurrentRunDocumentVaultStorage = cleanupCurrentRunDocumentVaultStorage;
 module.exports.storageObjectSafetyErrors = storageObjectSafetyErrors;
 module.exports.documentVaultPrefix = documentVaultPrefix;
+
+module.exports.resetRequestOffFixture = resetRequestOffFixture;

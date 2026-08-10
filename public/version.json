@@ -1,13 +1,13 @@
 {
-  "version": "16.0.166",
-  "name": "86 Chaos 16.0.165 Release Gate Test Alignment Repair",
-  "build": "16.0.166",
-  "label": "86 Chaos 16.0.165 Release Gate Test Alignment Repair",
+  "version": "16.0.167",
+  "name": "86 Chaos 16.0.167",
+  "build": "16.0.167",
+  "label": "86 Chaos 16.0.167",
   "releasedAt": "2026-08-09T05:37:00-05:00",
-  "releaseTitle": "Failed-Only Authorization and Request Off Determinism Repair",
+  "releaseTitle": "Failed-Only Fixture Auth and Firestore Read Demand Repair",
   "notes": [
     "Aligns release-gate tests with current app behavior for login-shell detection, denial surfaces, PWA metadata, lazy chunk recovery, cost scenarios, and Request Off employee select readiness.",
     "Preserves current production app behavior, Firebase infrastructure, PWA artwork, Request Off workflow, Availability Delete, employee access security, Firestore listener repair, and responsive UI work."
   ],
-  "title": "86 Chaos 16.0.165 Release Gate Test Alignment Repair"
+  "title": "86 Chaos 16.0.167"
 }

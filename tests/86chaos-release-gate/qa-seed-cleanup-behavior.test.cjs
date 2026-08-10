@@ -17,7 +17,7 @@ require.cache[chaosAdminPath] = {
   filename: chaosAdminPath,
   loaded: true,
   exports: {
-    admin: { firestore: { FieldValue: { arrayUnion: () => ({}), arrayRemove: () => ({}), delete: () => ({}) } } },
+    admin: { firestore: { FieldValue: { arrayUnion: () => ({}), arrayRemove: () => ({}), delete: () => ({ __fieldValueDelete: true }) } } },
     initAdmin: () => ({}),
     authorize: async () => ({ ok: true, isSuperAdmin: true, uid: 'system-admin', email: 'system-admin@example.test' }),
     readBody: async () => ({}),
@@ -35,7 +35,16 @@ function buildSeedPayload() {
   const runId = 'qa-seed-cleanup-behavior-unit';
   const restaurantId = 'qa_seed_cleanup_behavior_unit';
   const profile = buildFakeRestaurantProfile({ restaurantId, runId, anchorDate: new Date('2026-08-04T12:00:00-05:00') });
-  return { runId, restaurantId, profile, ...seedScript.buildServerSeedDocuments(profile) };
+  const serverSeed = seedScript.buildServerSeedDocuments(profile);
+  const reminderParticipant = serverSeed.ids?.userIdsByKey?.manager || serverSeed.ids?.userIdsByKey?.owner || 'qa-reminder-participant';
+  for (const row of serverSeed.docs || []) {
+    if (row.collection === 'personalReminders') {
+      row.data.participantSchemaVersion = 1;
+      row.data.participantUserIds = row.data.participantUserIds?.length ? row.data.participantUserIds : [reminderParticipant];
+      row.data.qaCreatedBy = row.data.qaCreatedBy || '86chaos-full-audit';
+    }
+  }
+  return { runId, restaurantId, profile, ...serverSeed };
 }
 
 function makeStorageFile(name, options = {}) {
@@ -171,4 +180,135 @@ test('cleanup script only reports restaurantDeleted after the server confirms it
   assert.match(source, /report\.restaurantExisted = apiResult\.restaurantExisted === true/);
   assert.match(source, /report\.restaurantDeleted = apiResult\.restaurantDeleted === true \? 1 : 0/);
   assert.doesNotMatch(source, /restaurantDeleted = apiResult\.remaining\?\.some\?\./);
+});
+
+
+function makeResetResponse() {
+  return {
+    statusCode: 0,
+    payload: null,
+    status(code) { this.statusCode = code; return this; },
+    json(payload) { this.payload = payload; return this; },
+  };
+}
+
+function makeResetDb({ runId = 'qa-seed-cleanup-behavior-unit', restaurantId = 'qa_seed_cleanup_behavior_unit', employeeKey = 'sara', qaOwned = true, qaRunId = null, docRestaurantId = null, employeeName = null, expectedUserId = null, createdBy = '86chaos-full-audit', userPatch = {} } = {}) {
+  const isAllen = employeeKey === 'allen';
+  const name = employeeName || (isAllen ? 'Allen QA' : 'Sara QA');
+  const uid = expectedUserId || (isAllen ? 'uid-allen' : 'uid-sara');
+  const docId = `qa_${runId}_timeOffRequests_${isAllen ? '0_Allen_QA' : '1_Sara_QA'}`;
+  const requestData = {
+    qaOwned,
+    qaRunId: qaRunId || runId,
+    restaurantId: docRestaurantId || restaurantId,
+    createdBy,
+    employeeName: name,
+    userName: name,
+    userId: uid,
+    employeeId: uid,
+    date: '2026-08-10',
+    requestDate: '2026-08-10',
+    reason: 'QA fixture',
+    requestedAt: '2026-08-01T00:00:00.000Z',
+    approvedAt: 'old-approval',
+    archived: true,
+  };
+  const userData = {
+    qaOwned: true,
+    qaRunId: runId,
+    restaurantId,
+    name,
+    createdBy: '86chaos-full-audit',
+    ...userPatch,
+  };
+  const updates = [];
+  const collections = {
+    timeOffRequests: { [docId]: requestData },
+    users: { [uid]: userData },
+  };
+  const db = {
+    collection(collectionName) {
+      if (collectionName === 'auditLogs') return { add: async () => ({ id: 'audit' }) };
+      return {
+        doc(id) {
+          return {
+            path: `${collectionName}/${id}`,
+            async get() {
+              const data = collections[collectionName]?.[id];
+              return { exists: Boolean(data), data: () => data || {} };
+            },
+            async update(patch) {
+              updates.push({ collection: collectionName, id, patch });
+              collections[collectionName][id] = { ...(collections[collectionName][id] || {}), ...patch };
+            },
+          };
+        },
+      };
+    },
+  };
+  return { db, docId, uid, updates, runId, restaurantId };
+}
+
+async function callResetFixture(options = {}) {
+  const fixture = makeResetDb(options);
+  const employeeKey = options.employeeKey || 'sara';
+  const res = makeResetResponse();
+  await qaSeedApi.resetRequestOffFixture({}, res, {
+    auth: { uid: 'system-admin', email: 'system-admin@example.test', user: { name: 'System Admin' } },
+    db: fixture.db,
+    projectId: 'chaos-test-d1601',
+    base: { runId: fixture.runId, restaurantId: fixture.restaurantId, workspaceName: `86 Chaos Release Gate QA ${fixture.runId}` },
+    body: { employeeKey, documentId: fixture.docId, expectedUserId: fixture.uid },
+  });
+  return { ...fixture, res };
+}
+
+test('reset-request-off-fixture restores Sara and Allen baseline states with delete markers', async () => {
+  const sara = await callResetFixture({ employeeKey: 'sara' });
+  assert.equal(sara.res.statusCode, 200);
+  assert.equal(sara.res.payload.ok, true);
+  assert.equal(sara.res.payload.status, 'pending');
+  assert.equal(sara.updates[0].patch.status, 'pending');
+  assert.equal(sara.updates[0].patch.userId, sara.uid);
+  assert.equal(sara.updates[0].patch.employeeId, sara.uid);
+  assert.deepEqual(sara.updates[0].patch.approvedAt, { __fieldValueDelete: true });
+  assert.deepEqual(sara.updates[0].patch.archived, { __fieldValueDelete: true });
+
+  const allen = await callResetFixture({ employeeKey: 'allen' });
+  assert.equal(allen.res.statusCode, 200);
+  assert.equal(allen.res.payload.status, 'approved');
+  assert.equal(allen.updates[0].patch.status, 'approved');
+  assert.equal(allen.updates[0].patch.userId, allen.uid);
+  assert.equal(allen.updates[0].patch.employeeId, allen.uid);
+});
+
+test('reset-request-off-fixture fails closed for wrong key, ownership, run, restaurant, employee, and user', async () => {
+  for (const options of [
+    { employeeKey: 'chuck' },
+    { employeeKey: 'sara', qaOwned: false },
+    { employeeKey: 'sara', qaRunId: 'wrong-run' },
+    { employeeKey: 'sara', docRestaurantId: 'wrong_restaurant' },
+    { employeeKey: 'sara', employeeName: 'Not Sara QA' },
+    { employeeKey: 'sara', userPatch: { qaOwned: false } },
+    { employeeKey: 'sara', userPatch: { qaRunId: 'wrong-run' } },
+    { employeeKey: 'sara', userPatch: { restaurantId: 'wrong_restaurant' } },
+    { employeeKey: 'sara', userPatch: { name: 'Not Sara QA' } },
+  ]) {
+    const result = await callResetFixture(options);
+    assert.notEqual(result.res.statusCode, 200, `expected rejection for ${JSON.stringify(options)}`);
+    assert.equal(result.updates.length, 0, `no update should be written for ${JSON.stringify(options)}`);
+  }
+});
+
+test('reset-request-off-fixture source is narrow and cannot accept arbitrary collection, patch, status, or production project', () => {
+  const source = fs.readFileSync(qaSeedApiPath, 'utf8');
+  assert.match(source, /reset-request-off-fixture/);
+  assert.match(source, /REQUEST_OFF_RESET_SUBJECTS/);
+  assert.match(source, /allen:[\s\S]*baselineStatus: 'approved'/);
+  assert.match(source, /sara:[\s\S]*baselineStatus: 'pending'/);
+  assert.match(source, /db\.collection\('timeOffRequests'\)\.doc\(documentId\)/);
+  assert.doesNotMatch(source, /body\.collection/);
+  assert.doesNotMatch(source, /body\.patch/);
+  assert.doesNotMatch(source, /body\.status/);
+  assert.match(source, /TESTING_PROJECT_ID = 'chaos-test-d1601'/);
 });

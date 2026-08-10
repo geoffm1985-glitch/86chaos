@@ -576,6 +576,35 @@ const LEGACY_TAB_ALIASES = {
   'back-office-suite': 'back-office'
 };
 const normalizeRouteTab = (tab = 'today') => LEGACY_TAB_ALIASES[String(tab || '').trim()] || String(tab || 'today').trim() || 'today';
+const SCHEDULE_INITIAL_SUBTABS = new Set(['my-schedule', 'full-schedule', 'month-view', 'trade-board', 'time-off', 'availability', 'schedule-builder']);
+const peekScheduleFocusSubTab = () => {
+  if (typeof window === 'undefined') return '';
+  try {
+    const requested = window.sessionStorage?.getItem('scheduleFocus') || '';
+    return SCHEDULE_INITIAL_SUBTABS.has(requested) ? requested : '';
+  } catch (_) {
+    return '';
+  }
+};
+const defaultScheduleSubTabForTopLevelTab = (tab = 'published') => {
+  const normalized = normalizeRouteTab(tab);
+  if (normalized === 'schedule' || normalized === 'published') {
+    const focused = peekScheduleFocusSubTab();
+    if (focused) return focused;
+  }
+  if (normalized === 'schedule') return 'schedule-builder';
+  return 'my-schedule';
+};
+const resolveInitialTopLevelTab = (defaultTab = 'today') => {
+  const fallback = normalizeRouteTab(defaultTab || 'today');
+  if (typeof window === 'undefined' || !window.location) return fallback;
+  try {
+    const requested = new URLSearchParams(window.location.search).get('tab');
+    return requested ? normalizeRouteTab(requested) : fallback;
+  } catch (_) {
+    return fallback;
+  }
+};
 const CHAOS_PWA_BACK_EXIT_WINDOW_MS = 2000;
 const isStandalone86ChaosPwa = () => {
   if (typeof window === 'undefined') return false;
@@ -744,7 +773,11 @@ export default function App() {
       
   const rId = ghostTenant ? ghostTenant.id : appUser?.restaurantId;
   const authenticatedUid = auth?.currentUser?.uid || appUser?.id || '';
-  const [activeTabState, setActiveTabState] = useState(() => normalizeRouteTab(appUser?.preferences?.defaultTab || 'today'));
+  const [initialRouteState] = useState(() => {
+    const topLevelTab = resolveInitialTopLevelTab(appUser?.preferences?.defaultTab || 'today');
+    return { topLevelTab, scheduleSubTab: defaultScheduleSubTabForTopLevelTab(topLevelTab) };
+  });
+  const [activeTabState, setActiveTabState] = useState(initialRouteState.topLevelTab);
   const activeTabStateRef = useRef(activeTabState);
   const pwaBackExitRef = useRef({ armed: false, timer: null, initialized: false, exiting: false });
   const [helpOriginState, setHelpOriginState] = useState('');
@@ -975,15 +1008,18 @@ export default function App() {
   }, [appUser?.id, appUser?.email, authRestoreState.status, authRestoreState.uid, serverAdminRetryKey]);
 
 const [currentDate, setCurrentDate] = useState(getToday());
-  const [activeScheduleSubTab, setActiveScheduleSubTab] = useState('my-schedule');
+  const [activeScheduleSubTab, setActiveScheduleSubTab] = useState(() => initialRouteState.scheduleSubTab || 'my-schedule');
 
   useEffect(() => {
     try {
       const postRestoreTab = sessionStorage.getItem('86chaosPostRestoreTab');
       if (postRestoreTab) {
         sessionStorage.removeItem('86chaosPostRestoreTab');
+        const normalizedPostRestoreTab = normalizeRouteTab(postRestoreTab);
         setCurrentDate('2026-07-01');
-        setActiveTabState(postRestoreTab);
+        if (normalizedPostRestoreTab === 'schedule' || normalizedPostRestoreTab === 'published') setActiveScheduleSubTab(defaultScheduleSubTabForTopLevelTab(normalizedPostRestoreTab));
+        activeTabStateRef.current = normalizedPostRestoreTab;
+        setActiveTabState(normalizedPostRestoreTab);
       }
     } catch (_) {}
   }, []);
@@ -1872,6 +1908,9 @@ if (liveAppUser && clientData) {
  
   const transitionActiveTabState = useCallback((nextTab) => {
     const normalized = normalizeRouteTab(nextTab);
+    if ((normalized === 'schedule' || normalized === 'published') && activeTabStateRef.current !== normalized) {
+      setActiveScheduleSubTab(defaultScheduleSubTabForTopLevelTab(normalized));
+    }
     activeTabStateRef.current = normalized;
     const commit = () => setActiveTabState(normalized);
     if (typeof React.startTransition === 'function') React.startTransition(commit);

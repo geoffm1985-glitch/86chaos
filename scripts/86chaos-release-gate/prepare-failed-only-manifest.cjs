@@ -66,7 +66,7 @@ function countReportedRows(rows = []) {
 }
 
 function loadReportedFailedOnlyManifest() {
-  const manifestPath = path.join(__dirname, 'reported-failed-only-20260809-233053.json');
+  const manifestPath = path.join(__dirname, 'reported-failed-only-20260810-015004.json');
   const manifest = readJsonIfExists(manifestPath);
   if (!manifest || !Array.isArray(manifest.selected)) fail('Reported failed-only manifest is missing or malformed.', [manifestPath]);
   const counts = countReportedRows(manifest.selected);
@@ -75,7 +75,7 @@ function loadReportedFailedOnlyManifest() {
   if (counts.total !== Number(manifest.totalSelected || 0)) errors.push(`Reported manifest totalSelected does not match rows: ${manifest.totalSelected} vs ${counts.total}.`);
   if (counts.chromium !== Number(manifest.desktopSelected || 0)) errors.push(`Reported manifest chromium count does not match rows: ${manifest.desktopSelected} vs ${counts.chromium}.`);
   if (counts.mobileChromium !== Number(manifest.mobileSelected || 0)) errors.push(`Reported manifest mobile-chromium count does not match rows: ${manifest.mobileSelected} vs ${counts.mobileChromium}.`);
-  if (counts.total !== 10 || counts.chromium !== 4 || counts.mobileChromium !== 6) errors.push(`Reported failed-only manifest must select the current 10 FAIL identities (chromium 4, mobile-chromium 6), got total ${counts.total}, chromium ${counts.chromium}, mobile-chromium ${counts.mobileChromium}.`);
+  if (counts.total !== 6 || counts.chromium !== 2 || counts.mobileChromium !== 4) errors.push(`Reported failed-only manifest must select the current 6 FAIL identities (chromium 2, mobile-chromium 4), got total ${counts.total}, chromium ${counts.chromium}, mobile-chromium ${counts.mobileChromium}.`);
   if (counts.otherProjects.length) errors.push(`Reported failed-only manifest contains disallowed projects: ${counts.otherProjects.join(', ')}.`);
   if (counts.timeouts) errors.push('Reported failed-only manifest selected a timeout identity or previous_timeout reason.');
   if (counts.duplicates) errors.push(`Reported failed-only manifest contains ${counts.duplicates} duplicate stable identity key(s).`);
@@ -96,7 +96,7 @@ function assertReportedFailedOnlySelection(manifest) {
   if (counts.total !== expectedTotal) errors.push(`Expected ${expectedTotal} reported failed-only identities, got ${counts.total}.`);
   if (counts.chromium !== expectedChromium) errors.push(`Expected ${expectedChromium} chromium identities, got ${counts.chromium}.`);
   if (counts.mobileChromium !== expectedMobile) errors.push(`Expected ${expectedMobile} mobile-chromium identities, got ${counts.mobileChromium}.`);
-  if (expectedTotal !== 10 || expectedChromium !== 4 || expectedMobile !== 6) errors.push('Current reported failed-only manifest metadata must resolve to total 10, chromium 4, mobile-chromium 6.');
+  if (expectedTotal !== 6 || expectedChromium !== 2 || expectedMobile !== 4) errors.push('Current reported failed-only manifest metadata must resolve to total 6, chromium 2, mobile-chromium 4.');
   if (counts.otherProjects.length) errors.push(`Reported failed-only selected unexpected projects: ${counts.otherProjects.join(', ')}.`);
   if (counts.timeouts) errors.push('Reported failed-only selected a timeout identity.');
   if (counts.duplicates) errors.push(`Reported failed-only selected ${counts.duplicates} duplicate identities.`);
@@ -114,7 +114,7 @@ try {
       manifest: qualifyManifestSelectionsWithCurrentInventory(manifest, { root: process.cwd(), currentRecords: loadCurrentRecords() }),
       baselineFullRunDir: '',
       latestFailedOnlyRunDir: '',
-      selectionSource: manifest.selectionSource || 'uploaded-failed-tests-20260809-233053',
+      selectionSource: manifest.selectionSource || 'uploaded-failed-tests-20260810-015004',
       lineageMode: 'none',
     };
   } else {
@@ -152,8 +152,8 @@ let copied = targetQualifiedManifest(selectedSource.manifest, {
 copied.lineageMode = copied.lineageMode || selectedSource.lineageMode || 'full-baseline';
 if (selectionMode === 'reported-failed-only') {
   copied.mode = 'reported-failed-only';
-  copied.source = 'uploaded-failed-tests-20260809-233053';
-  copied.selectionSource = 'uploaded-failed-tests-20260809-233053';
+  copied.source = 'uploaded-failed-tests-20260810-015004';
+  copied.selectionSource = 'uploaded-failed-tests-20260810-015004';
   copied.lineageMode = 'none';
   copied.previousFailuresSelected = copied.selected.length;
   copied.previousTimeoutsSelected = 0;
@@ -284,9 +284,9 @@ if (selectionMode === 'repair') {
   console.log(`Duplicate identities removed: ${selectionPayload.duplicateIdentitiesRemoved}`);
   console.log(`Total repair tests selected: ${copied.selected.length}`);
 } else if (selectionMode === 'reported-failed-only') {
-  console.log('Reported failed-only guard: exactly 10 FAIL identities selected');
-  console.log('chromium 4');
-  console.log('mobile-chromium 6');
+  console.log('Reported failed-only guard: exactly 6 FAIL identities selected');
+  console.log('chromium 2');
+  console.log('mobile-chromium 4');
   console.log('timeouts 0');
 } else {
   console.log(`Previous failed/timed-out identities selected: ${copied.selected.length}`);

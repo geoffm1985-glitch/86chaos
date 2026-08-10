@@ -953,6 +953,10 @@ const TabMasterSchedule = ({ currentDate, setCurrentDate = null, onSubTabChange 
   }, []);
 
   useEffect(() => {
+    if (subTab !== 'my-schedule') {
+      setActivePunch(null);
+      return undefined;
+    }
     if (!appUser?.id || !appUser?.restaurantId) {
       setActivePunch(null);
       return;
@@ -992,7 +996,7 @@ const TabMasterSchedule = ({ currentDate, setCurrentDate = null, onSubTabChange 
       addToast('Clock Sync Warning', 'Clock-in status could not sync yet. Your schedule is still available. Try again in a minute or tell a manager.');
     });
     return () => unsub();
-  }, [appUser?.id, appUser?.restaurantId, appUser?.scheduleUserId, appUser?.employeeId, appUser?.userId, appUser?.rosterUserId]);
+  }, [subTab, appUser?.id, appUser?.restaurantId, appUser?.scheduleUserId, appUser?.employeeId, appUser?.userId, appUser?.rosterUserId]);
 
 
 
@@ -5065,9 +5069,11 @@ const ScheduleWarningCard = ({ warning, appUser }) => {
 };
 
 const ScheduleCopilot = ({ currentDate, users = [], shifts = [], timeOffRequests = [], addToast, appUser }) => {
-  const templates = useLiveCollection('scheduleTemplates', appUser?.restaurantId, { enabled: !!appUser?.restaurantId, limitCount: 120 });
-  const coverageTargets = useLiveCollection('scheduleCoverageTargets', appUser?.restaurantId, { enabled: !!appUser?.restaurantId, limitCount: 200 });
-  const dbRoles = useLiveCollection('roles', appUser?.restaurantId, { enabled: !!appUser?.restaurantId, limitCount: 120 });
+  const [open, setOpen] = useState(false);
+  const copilotReadEnabled = Boolean(open && appUser?.restaurantId);
+  const templates = useLiveCollection('scheduleTemplates', appUser?.restaurantId, { enabled: copilotReadEnabled, limitCount: 120, debugLabel: 'schedule:copilot:templates' });
+  const coverageTargets = useLiveCollection('scheduleCoverageTargets', appUser?.restaurantId, { enabled: copilotReadEnabled, limitCount: 200, debugLabel: 'schedule:copilot:coverage-targets' });
+  const dbRoles = useLiveCollection('roles', appUser?.restaurantId, { enabled: copilotReadEnabled, limitCount: 120, debugLabel: 'schedule:copilot:roles' });
   const weekDates = getWeekDates(currentDate);
   const weekStart = weekDates[0];
   const weekEnd = weekDates[6];
@@ -5077,7 +5083,6 @@ const ScheduleCopilot = ({ currentDate, users = [], shifts = [], timeOffRequests
   const safeTemplates = Array.isArray(templates) ? templates.filter(Boolean) : [];
   const weekShifts = safeShifts.filter(s => weekDates.includes(s?.date));
   const activeUsers = safeUsers.filter(u => u?.isActive !== false);
-  const [open, setOpen] = useState(false);
   const [activeTool, setActiveTool] = useState('targets');
   const [templateId, setTemplateId] = useState('');
   const [editingTemplateId, setEditingTemplateId] = useState(null);
@@ -5265,8 +5270,8 @@ const ScheduleCopilot = ({ currentDate, users = [], shifts = [], timeOffRequests
     <div className={`${T.card} schedule-copilot-launcher p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-[#D4A381]/30`}>
       <div className="min-w-0">
         <div className="text-[10px] uppercase tracking-widest font-black text-[#D4A381]">Schedule Copilot</div>
-        <div className="text-sm font-black text-white mt-0.5">{draftCount} drafts · {missingTargets.length} gaps · {allScheduleWarnings.length} warnings</div>
-        <div className="text-xs text-slate-400 font-bold mt-0.5">{formatDisplayDate(weekStart)} through {formatDisplayDate(weekEnd)}</div>
+        <div className="text-sm font-black text-white mt-0.5">{draftCount} drafts ready</div>
+        <div className="text-xs text-slate-400 font-bold mt-0.5">{formatDisplayDate(weekStart)} through {formatDisplayDate(weekEnd)} • Open Copilot Tools for coverage targets, warnings & templates.</div>
       </div>
       <button onClick={() => setOpen(true)} className={`${T.btnAlt} flex items-center justify-center gap-2 flex-shrink-0`}><ChefHat size={16}/> Open Copilot Tools</button>
     </div>
