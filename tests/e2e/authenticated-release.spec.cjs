@@ -1,6 +1,6 @@
 const { test, expect } = require('@playwright/test');
 const { expectedRoutesForRole } = require('../../scripts/86chaos-release-gate/route-access-matrix.cjs');
-const { loginIfNeeded } = require('./utils/release-login-helper.cjs');
+const { loginIfNeeded, gotoAuthenticatedRoute } = require('./utils/release-login-helper.cjs');
 
 const releaseGate = process.env.CHAOS_RELEASE_GATE === 'true';
 const roles = [
@@ -26,29 +26,14 @@ function credentials(entry) {
   return { email, password };
 }
 
-async function chooseWorkspace(page) {
-  const chooser = page.getByText(/choose workspace/i).first();
-  if (!(await chooser.isVisible({ timeout: 5000 }).catch(() => false))) return;
-  const requested = process.env.CHAOS_QA_WORKSPACE_NAME || process.env.CHAOS_QA_WORKSPACE || '';
-  if (releaseGate && !requested) throw new Error('CHAOS_QA_WORKSPACE_NAME is required when a workspace chooser appears.');
-  const target = requested
-    ? page.getByText(requested, { exact: false }).first()
-    : page.locator('button, [role="button"]').filter({ hasText: /owner|manager|staff|admin/i }).first();
-  await expect(target).toBeVisible({ timeout: 10_000 });
-  await target.click();
-}
-
 async function login(page, email, password) {
   await page.goto('/', { waitUntil: 'domcontentloaded' });
-  await loginIfNeeded(page, email, password);
-  await chooseWorkspace(page);
-  await expect(page.locator('body')).toContainText(/86 chaos|today|manager brief|kitchen command|schedule/i, { timeout: 30_000 });
+  await loginIfNeeded(page, email, password, { timeout: 30_000 });
 }
 
 async function openRoute(page, tab) {
-  await page.goto(`/?tab=${encodeURIComponent(tab)}`, { waitUntil: 'domcontentloaded' });
-  await page.waitForLoadState('networkidle', { timeout: 15_000 }).catch(() => {});
-  await page.waitForTimeout(250);
+  await gotoAuthenticatedRoute(page, tab, { timeout: 30_000 });
+  await page.waitForTimeout(150);
 }
 
 async function assertHealthyScreen(page, role, tab) {
@@ -85,7 +70,7 @@ for (const entry of roles) {
       await login(page, email, password);
       for (const tab of deniedTabs) {
         await openRoute(page, tab);
-        await expect(page.locator('body')).toContainText(/does not include this tool|internal-only|not available|upgrade|permission|access/i);
+        await expect(page.locator('body')).toContainText(/Plan & Permission Gate|Restricted Platform Tools|Your role does not include this (?:tool|area)|not-platform-admin|HTTP:\s*403/i);
       }
     });
   });

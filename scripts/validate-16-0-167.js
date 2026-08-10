@@ -1,0 +1,86 @@
+#!/usr/bin/env node
+'use strict';
+const fs = require('fs');
+const path = require('path');
+const crypto = require('crypto');
+const root = process.cwd();
+const read = (file) => fs.readFileSync(path.join(root, file), 'utf8');
+const json = (file) => JSON.parse(read(file));
+const sha = (file) => crypto.createHash('sha256').update(fs.readFileSync(path.join(root, file))).digest('hex');
+let failures = 0;
+function assert(ok, message) { if (ok) console.log(`✓ ${message}`); else { console.error(`✗ ${message}`); failures += 1; } }
+const pkg = json('package.json');
+const lock = json('package-lock.json');
+const version = json('public/version.json');
+const appCore = read('src/core/appCore.js');
+const apiVersion = read('api/_version.js');
+const featureAccess = read('src/lib/featureAccess.js');
+const app = read('src/App.js');
+const schedule = read('src/features/schedule.jsx');
+const chunkRecovery = read('tests/e2e/chunk-recovery.spec.cjs');
+const scheduleE2e = read('tests/e2e/schedule-request-off-management.spec.cjs');
+const prepare = read('scripts/86chaos-release-gate/prepare-failed-only-manifest.cjs');
+const failedConfig = read('playwright.failed-release.config.cjs');
+const manifestUtils = read('scripts/86chaos-release-gate/failed-only-manifest-utils.cjs');
+const verifyRoles = read('scripts/86chaos-release-gate/verify-role-accounts.cjs');
+const qaSeed = read('api/full-audit-qa-seed.js');
+const inventory = read('src/features/inventory.jsx');
+const manifest = json('scripts/86chaos-release-gate/reported-failed-only-20260810-015004.json');
+const rows = manifest.selected || [];
+assert(pkg.version === '16.0.167', 'package.json version is 16.0.167');
+assert(lock.version === '16.0.167' && lock.packages?.['']?.version === '16.0.167', 'package-lock root versions are 16.0.167');
+assert(pkg.scripts['test:source'] === 'node scripts/validate-16-0-167.js', 'test:source points to 16.0.167 validator');
+assert(version.version === '16.0.167' && version.build === '16.0.167', 'public/version.json version/build are 16.0.167');
+assert(version.releaseTitle === 'Failed-Only Fixture Auth and Firestore Read Demand Repair', 'release title is correct');
+assert(appCore.includes("CURRENT_VERSION = '16.0.167'"), 'app core CURRENT_VERSION is 16.0.167');
+assert(apiVersion.includes("APP_VERSION = '16.0.167'") && apiVersion.includes("SECURITY_SCHEMA_VERSION = '16.0.167'"), 'api version reports 16.0.167');
+assert(!fs.existsSync(path.join(root, 'scripts/validate-16-0-166.js')), 'previous validator was replaced');
+assert(sha('firestore.rules') === '51bfd7d39edd59f680ae41a149c108cec8cd42d00b102d84cb00ee40d90264d9', 'firestore.rules unchanged');
+assert(sha('storage.rules') === '174e7e9a140193ff69ccf0f0d3e5c65b81a9e0fbbd612bff45ce57e7a3a7ce9c', 'storage.rules unchanged');
+assert(sha('database.rules.json') === '152b5cd3f9839f598c9602706d8205b96759296e865d540b52c780900bfba138', 'database.rules.json unchanged');
+assert(sha('firestore.indexes.json') === 'ee666de303988cd269f7c09fa63678a2deb1cfcaa199cb4f1656dd9bddcc4b4b', 'firestore.indexes.json unchanged');
+assert(sha('firebase.json') === 'bd837a11c71750d4da6ccfcb725ca54e78dd76008b525ec54c7fe79a5b8a3ca4', 'firebase.json unchanged');
+// Preserve 16.0.166 protections.
+const ownerAdminAllowed = featureAccess.match(/ROUTE_OWNER_ADMIN_ALLOWED\s*=\s*new Set\(\[([^\]]*)\]\)/s)?.[1] || '';
+assert(!ownerAdminAllowed.includes("'audit'") && !ownerAdminAllowed.includes('"audit"'), 'Audit remains removed from ROUTE_OWNER_ADMIN_ALLOWED');
+assert(featureAccess.includes("if (routeId === 'audit')") && featureAccess.includes('owner_or_platform_admin_required'), 'Audit owner/platform branch preserved');
+assert(app.includes("const routeIsInternalAdmin = activeTabState === 'godmode';"), 'App only exempts godmode from generic LockedFeatureScreen handling');
+assert(chunkRecovery.includes('maxAutoReloadCount') && chunkRecovery.includes('auto-recovery-started') && chunkRecovery.includes('automaticRecoveryAttempts'), 'chunk recovery logical-attempt repair preserved');
+assert(schedule.includes('buildRequestOffSubjectFallbackPerson') && schedule.includes("source: 'request-off-subject-fallback'"), 'Request Off subject fallback preserved');
+assert(json('public/manifest.json').icons.some(icon => icon.src === '/86chaos-pwa-512-v4.png'), 'v4 PWA launch assets preserved');
+assert(fs.existsSync(path.join(root, 'api/availability-record.js')), 'Availability delete API preserved');
+// Current six failed-only manifest.
+assert(fs.existsSync(path.join(root, 'scripts/86chaos-release-gate/reported-failed-only-20260809-233053.json')), 'old 10-test historical manifest remains present');
+assert(fs.existsSync(path.join(root, 'scripts/86chaos-release-gate/reported-failed-only-20260810-015004.json')), 'current six-test manifest exists');
+assert(manifest.source === 'uploaded-failed-tests-20260810-015004' && manifest.selectionSource === 'uploaded-failed-tests-20260810-015004', 'current manifest source is 20260810-015004');
+assert(rows.length === 6, 'current manifest contains 6 selected FAIL identities');
+assert(rows.filter(row => row.project === 'chromium').length === 2, 'current manifest contains 2 chromium identities');
+assert(rows.filter(row => row.project === 'mobile-chromium').length === 4, 'current manifest contains 4 mobile-chromium identities');
+assert(rows.every(row => row.specPath === 'e2e/schedule-request-off-management.spec.cjs'), 'current manifest selects only Schedule Request Off spec identities');
+assert(rows.every(row => row.priorStatus === 'failed' && row.baselineStatus === 'failed'), 'current manifest contains only failed statuses');
+assert(rows.every(row => !(row.selectionReasons || []).some(reason => /timeout|current_release_feature_test|new_test|repair/i.test(String(reason)))), 'current manifest contains 0 timeout/current-release/new/repair selections');
+assert(!rows.some(row => /authenticated-release|chunk-recovery/.test(row.specPath || '')), 'four newly passed identities are not selected');
+assert(prepare.includes('reported-failed-only-20260810-015004.json') && !prepare.includes('reported-failed-only-20260809-004632.json'), 'reported loader points to current 20260810-015004 manifest');
+assert(prepare.includes('exactly 6 FAIL identities selected') && prepare.includes('chromium 2') && prepare.includes('mobile-chromium 4'), 'prepare guard reports 6/2/4 selection');
+assert(failedConfig.includes('expected 6 selected FAIL identities') && failedConfig.includes('expected 2 chromium') && failedConfig.includes('expected 4 mobile-chromium'), 'failed-only config validates current 6/2/4 selection');
+assert(manifestUtils.includes('baselineStatus: sourceRow.baselineStatus') && manifestUtils.includes('baselineStatus: row.baselineStatus'), 'baselineStatus preservation remains in manifest utilities');
+// QA Request Off reset architecture.
+assert(verifyRoles.includes('signInAccount') && /module\.exports\s*=\s*\{[\s\S]*signInAccount/.test(verifyRoles), 'verify-role-accounts exports signInAccount');
+assert(scheduleE2e.includes('reset-request-off-fixture') && scheduleE2e.includes('buildFirebaseAuthFetchOptions') && scheduleE2e.includes('signInAccount'), 'Schedule E2E uses REST auth and safe server QA reset action');
+assert(!scheduleE2e.includes('initFirebase') && !scheduleE2e.includes('signInOwner') && !/\bgetDoc\b|\bupdateDoc\b/.test(scheduleE2e), 'Schedule E2E no longer uses Node Firebase Web SDK fixture writes');
+assert(qaSeed.includes('reset-request-off-fixture') && qaSeed.includes('REQUEST_OFF_RESET_SUBJECTS'), 'full-audit QA seed API contains reset-request-off-fixture');
+assert(qaSeed.includes("allen: { expectedName: 'Allen QA', baselineStatus: 'approved'") && qaSeed.includes("sara: { expectedName: 'Sara QA', baselineStatus: 'pending'"), 'QA reset action only accepts Allen/Sara baselines');
+assert(qaSeed.includes('qaOwned !== true') && qaSeed.includes('qaRunId !== base.runId') && qaSeed.includes('restaurantId !== base.restaurantId') && qaSeed.includes("createdBy !== '86chaos-full-audit'"), 'QA reset validates qaOwned, qaRunId, restaurantId, and createdBy');
+assert(qaSeed.includes("db.collection('users').doc(expectedUserId)") && qaSeed.includes('Expected user belongs to a different QA run'), 'QA reset validates expected QA user');
+assert(!qaSeed.includes('body.collection') && !qaSeed.includes('body.patch') && !qaSeed.includes('body.status'), 'QA reset is not a generic mutation endpoint');
+// Firestore read-demand changes.
+assert(app.includes('resolveInitialTopLevelTab') && app.includes('new URLSearchParams(window.location.search)') && app.includes('useState(initialRouteState.topLevelTab)'), 'App initial top-level route is URL-aware');
+assert(app.includes('defaultScheduleSubTabForTopLevelTab') && app.includes('peekScheduleFocusSubTab') && app.includes('useState(() => initialRouteState.scheduleSubTab'), 'initial Schedule subtab is route-aware');
+assert(schedule.includes('const copilotReadEnabled = Boolean(open && appUser?.restaurantId)') && schedule.includes('enabled: copilotReadEnabled'), 'ScheduleCopilot collection listeners are gated by open');
+assert(schedule.includes("if (subTab !== 'my-schedule')") && /\}, \[subTab, appUser\?\.id, appUser\?\.restaurantId/.test(schedule), 'timePunch listener is gated by subTab === my-schedule');
+assert(appCore.includes('LIVE_COLLECTION_RELEASE_GRACE_MS = 6 * 60 * 1000'), 'global live collection release grace remains six minutes');
+assert(app.includes('rawScheduleDateKeyShifts') && app.includes('mergeLoadedScheduleShifts'), 'scheduleDateKey rescue query and merge remain present');
+assert(inventory.includes('opsIntelEnabled = false'), 'inventory ops intel listeners remain disabled');
+assert(pkg.scripts['test:play-store:failed-current']?.includes('reported-failed-only'), 'failed-current command still uses reported-failed-only mode');
+if (failures) { console.error(`\n${failures} validation check(s) failed.`); process.exit(1); }
+console.log('\n16.0.167 source validation passed.');

@@ -1,6 +1,8 @@
 const APPROVED_TEST_PROJECT = 'chaos-test-d1601';
 const PRODUCTION_PROJECT = 'cheers-34b8d';
 const PRODUCTION_HOSTS = new Set(['86chaos.com', 'www.86chaos.com', 'app.86chaos.com']);
+const RETIRED_VERCEL_PROJECT_SLUGS = ['cheers-portal-4oxv'];
+const CANONICAL_VERCEL_PROJECT_SLUG = '86chaos';
 const APPROVED_QA_EMAIL_RE = /^86chaos\.qa\.(system-admin|owner|manager|staff)\.\d{8}-\d{4}@example\.test$/i;
 
 function normalizeHost(value = '') {
@@ -14,11 +16,24 @@ function isProductionHost(host = '') {
   const clean = normalizeHost(host);
   return PRODUCTION_HOSTS.has(clean) || /(^|\.)86chaos\.com$/i.test(clean);
 }
+function isRetiredVercelHost(host = '') {
+  const clean = normalizeHost(host);
+  return RETIRED_VERCEL_PROJECT_SLUGS.some(slug => clean === `${slug}.vercel.app` || (clean.startsWith(`${slug}-`) && clean.endsWith('.vercel.app')));
+}
+function isCanonicalVercelPreviewHost(host = '', slug = CANONICAL_VERCEL_PROJECT_SLUG) {
+  const clean = normalizeHost(host);
+  const expected = normalizeHost(slug || CANONICAL_VERCEL_PROJECT_SLUG);
+  if (!clean.endsWith('.vercel.app')) return false;
+  if (isRetiredVercelHost(clean)) return false;
+  return clean === `${expected}.vercel.app` || clean.startsWith(`${expected}-`);
+}
 function isTestingPreviewHost(host = '') {
   const clean = normalizeHost(host);
   if (!clean) return false;
   if (isProductionHost(clean)) return false;
-  return /\.vercel\.app$/i.test(clean) || /(?:^|\.)localhost$/i.test(clean) || /^(127\.0\.0\.1|0\.0\.0\.0)$/i.test(clean) || /testing|preview|qa|git-/i.test(clean);
+  if (isRetiredVercelHost(clean)) return false;
+  if (/\.vercel\.app$/i.test(clean)) return isCanonicalVercelPreviewHost(clean);
+  return /(?:^|\.)localhost$/i.test(clean) || /^(127\.0\.0\.1|0\.0\.0\.0)$/i.test(clean) || /testing|preview|qa|git-/i.test(clean);
 }
 function redactSecrets(value = '') {
   return String(value || '').replace(/(password|token|secret|key)(["'\s:=]+)[^\s"'}]+/gi, '$1$2[redacted]');
@@ -54,6 +69,8 @@ function assertMutationSafety(options = {}) {
   if (!url) errors.push('Refusing mutation because APP_URL/CHAOS_BASE_URL is missing.');
   if (url && !host) errors.push(`Refusing mutation because deployment URL is malformed: ${redactSecrets(url)}`);
   if (host && isProductionHost(host)) errors.push(`Refusing mutation against production host ${host}.`);
+  if (host && isRetiredVercelHost(host)) errors.push(`Refusing mutation against retired Vercel project cheers-portal-4oxv; use canonical project ${CANONICAL_VERCEL_PROJECT_SLUG}.`);
+  if (host && /\.vercel\.app$/i.test(host) && !isCanonicalVercelPreviewHost(host)) errors.push(`Refusing mutation because ${host} is not in the canonical Vercel project family ${CANONICAL_VERCEL_PROJECT_SLUG}.`);
   if (host && /^(localhost|127\.0\.0\.1|0\.0\.0\.0)$/i.test(host) && options.allowLocalEmulator !== true) errors.push(`Refusing mutation against localhost host ${host} outside explicit emulator-only mode.`);
   if (host && !isTestingPreviewHost(host) && options.allowLocalEmulator !== true) errors.push(`Refusing mutation because ${host} is not a recognized testing/preview deployment.`);
   if (!testMode) errors.push('Refusing mutation because release-gate test mode is not active.');
@@ -66,4 +83,4 @@ function assertMutationSafety(options = {}) {
   if (!result.ok && options.throwOnFailure) throw new Error(result.errors.join('\n'));
   return result;
 }
-module.exports = { APPROVED_TEST_PROJECT, PRODUCTION_PROJECT, PRODUCTION_HOSTS, APPROVED_QA_EMAIL_RE, normalizeHost, parseHost, isProductionHost, isTestingPreviewHost, assertMutationSafety, redactSecrets, collectQaEmails };
+module.exports = { APPROVED_TEST_PROJECT, PRODUCTION_PROJECT, PRODUCTION_HOSTS, APPROVED_QA_EMAIL_RE, normalizeHost, parseHost, isProductionHost, isRetiredVercelHost, isCanonicalVercelPreviewHost, isTestingPreviewHost, assertMutationSafety, redactSecrets, collectQaEmails };

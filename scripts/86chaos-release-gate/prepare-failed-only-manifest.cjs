@@ -5,16 +5,28 @@ const {
   readPackageVersion,
   targetQualifiedManifest,
   validateManifestForCurrentRun,
+  qualifyManifestSelectionsWithCurrentInventory,
+  currentInventoryRecords,
 } = require('./failed-only-manifest-utils.cjs');
+const {
+  resolveCurrentReleaseRepairScope,
+  buildRepairSelection,
+} = require('./current-release-repair-scope.cjs');
 
 const { runDir, runId } = ensureRunDir();
 const validationPath = path.join(runDir, 'failed-only-manifest-validation.json');
+const modeArg = process.argv.find(arg => /^--mode=/.test(arg));
+const selectionMode = String((modeArg ? modeArg.split('=')[1] : '') || process.env.CHAOS_RELEASE_GATE_SELECTION_MODE || (process.env.CHAOS_FAILED_AND_NEW_RELEASE_GATE === 'true' ? 'failed+new' : 'failed-only')).toLowerCase();
+const validModes = new Set(['failed+new', 'failed-only', 'repair', 'reported-failed-only']);
+if (!validModes.has(selectionMode)) fail(`Unknown failed selection mode: ${selectionMode}`);
+
 function fail(message, details = []) {
   const errors = [message, ...details].filter(Boolean);
   writeJson(validationPath, {
     ok: false,
     runId,
     runDir,
+    mode: selectionMode,
     primaryBlockingFailure: errors[0],
     errors,
     generatedAt: new Date().toISOString(),
@@ -28,37 +40,169 @@ const currentSourceVersion = readPackageVersion();
 const currentDeployedVersion = preflight.deployedVersion || preflight.visibleVersion || '';
 const firebaseProjectId = preflight.firebaseProjectId || '';
 const appUrl = preflight.appUrl || process.env.APP_URL || process.env.CHAOS_BASE_URL || '';
+let currentRecords = null;
+
+function loadCurrentRecords() {
+  if (currentRecords) return currentRecords;
+  currentRecords = currentInventoryRecords(process.cwd());
+  return currentRecords;
+}
+
+
+function reportedProject(row = {}) {
+  return row.project || (row.projects || [])[0] || '';
+}
+
+function countReportedRows(rows = []) {
+  const keys = rows.map(row => row.stableKey || `${row.specPath || row.spec || ''}\u0000${row.fullSuitePath || ''}\u0000${row.leafTitle || row.exactTestTitle || row.title || ''}\u0000${reportedProject(row)}`);
+  return {
+    total: rows.length,
+    chromium: rows.filter(row => reportedProject(row) === 'chromium' || row.projects?.includes('chromium')).length,
+    mobileChromium: rows.filter(row => reportedProject(row) === 'mobile-chromium' || row.projects?.includes('mobile-chromium')).length,
+    otherProjects: [...new Set(rows.map(reportedProject).filter(project => project && !['chromium', 'mobile-chromium'].includes(project)))],
+    timeouts: rows.filter(row => String(row.priorStatus || '').toLowerCase() === 'timedout' || String(row.priorStatus || '').toLowerCase() === 'timeout' || row.selectionReasons?.some(reason => /previous_timeout|timeout/i.test(String(reason)))).length,
+    duplicates: rows.length - new Set(keys).size,
+  };
+}
+
+function loadReportedFailedOnlyManifest() {
+  const manifestPath = path.join(__dirname, 'reported-failed-only-20260810-015004.json');
+  const manifest = readJsonIfExists(manifestPath);
+  if (!manifest || !Array.isArray(manifest.selected)) fail('Reported failed-only manifest is missing or malformed.', [manifestPath]);
+  const counts = countReportedRows(manifest.selected);
+  const errors = [];
+  if (manifest.mode !== 'reported-failed-only') errors.push(`Reported manifest mode must be reported-failed-only, got ${manifest.mode || 'missing'}.`);
+  if (counts.total !== Number(manifest.totalSelected || 0)) errors.push(`Reported manifest totalSelected does not match rows: ${manifest.totalSelected} vs ${counts.total}.`);
+  if (counts.chromium !== Number(manifest.desktopSelected || 0)) errors.push(`Reported manifest chromium count does not match rows: ${manifest.desktopSelected} vs ${counts.chromium}.`);
+  if (counts.mobileChromium !== Number(manifest.mobileSelected || 0)) errors.push(`Reported manifest mobile-chromium count does not match rows: ${manifest.mobileSelected} vs ${counts.mobileChromium}.`);
+  if (counts.total !== 6 || counts.chromium !== 2 || counts.mobileChromium !== 4) errors.push(`Reported failed-only manifest must select the current 6 FAIL identities (chromium 2, mobile-chromium 4), got total ${counts.total}, chromium ${counts.chromium}, mobile-chromium ${counts.mobileChromium}.`);
+  if (counts.otherProjects.length) errors.push(`Reported failed-only manifest contains disallowed projects: ${counts.otherProjects.join(', ')}.`);
+  if (counts.timeouts) errors.push('Reported failed-only manifest selected a timeout identity or previous_timeout reason.');
+  if (counts.duplicates) errors.push(`Reported failed-only manifest contains ${counts.duplicates} duplicate stable identity key(s).`);
+  if ((manifest.selected || []).some(row => String(row.priorStatus || '').toLowerCase() !== 'failed')) errors.push('Every reported failed-only row must have priorStatus failed.');
+  if ((manifest.selected || []).some(row => String(row.baselineStatus || '').toLowerCase() !== 'failed')) errors.push('Every reported failed-only row must have baselineStatus failed.');
+  if ((manifest.selected || []).some(row => row.selectionReasons?.some(reason => /current_release_feature_test|new_test|repair|previous_timeout/i.test(String(reason))))) errors.push('Reported failed-only rows must not include current-release, new-test, repair, or timeout selection reasons.');
+  if (errors.length) fail('Reported failed-only selection guard failed.', errors);
+  return manifest;
+}
+
+function assertReportedFailedOnlySelection(manifest) {
+  const selected = manifest.selected || [];
+  const counts = countReportedRows(selected);
+  const errors = [];
+  const expectedTotal = Number(manifest.totalSelected || 0);
+  const expectedChromium = Number(manifest.desktopSelected || 0);
+  const expectedMobile = Number(manifest.mobileSelected || 0);
+  if (counts.total !== expectedTotal) errors.push(`Expected ${expectedTotal} reported failed-only identities, got ${counts.total}.`);
+  if (counts.chromium !== expectedChromium) errors.push(`Expected ${expectedChromium} chromium identities, got ${counts.chromium}.`);
+  if (counts.mobileChromium !== expectedMobile) errors.push(`Expected ${expectedMobile} mobile-chromium identities, got ${counts.mobileChromium}.`);
+  if (expectedTotal !== 6 || expectedChromium !== 2 || expectedMobile !== 4) errors.push('Current reported failed-only manifest metadata must resolve to total 6, chromium 2, mobile-chromium 4.');
+  if (counts.otherProjects.length) errors.push(`Reported failed-only selected unexpected projects: ${counts.otherProjects.join(', ')}.`);
+  if (counts.timeouts) errors.push('Reported failed-only selected a timeout identity.');
+  if (counts.duplicates) errors.push(`Reported failed-only selected ${counts.duplicates} duplicate identities.`);
+  if (selected.some(row => String(row.priorStatus || '').toLowerCase() !== 'failed')) errors.push('Reported failed-only selected a non-failed priorStatus.');
+  if (selected.some(row => String(row.baselineStatus || '').toLowerCase() !== 'failed')) errors.push('Reported failed-only selected a non-failed baselineStatus.');
+  if (selected.some(row => row.selectionReasons?.some(reason => /previous_timeout|current_release_feature_test|new_test|repair/i.test(String(reason))))) errors.push('Reported failed-only selected timeout/current-release/new/repair reasons.');
+  if (errors.length) fail('Reported failed-only selection guard failed after inventory qualification.', errors);
+}
 
 let selectedSource;
 try {
-  selectedSource = selectFailedOnlyManifestForCurrentRun({
-    currentRunDir: runDir,
-    target: {
-      targetRunId: runId,
-      targetSourceVersion: currentSourceVersion,
-      targetDeployedVersion: currentDeployedVersion,
-    },
-  });
+  if (selectionMode === 'reported-failed-only') {
+    const manifest = loadReportedFailedOnlyManifest();
+    selectedSource = {
+      manifest: qualifyManifestSelectionsWithCurrentInventory(manifest, { root: process.cwd(), currentRecords: loadCurrentRecords() }),
+      baselineFullRunDir: '',
+      latestFailedOnlyRunDir: '',
+      selectionSource: manifest.selectionSource || 'uploaded-failed-tests-20260810-015004',
+      lineageMode: 'none',
+    };
+  } else {
+    selectedSource = selectFailedOnlyManifestForCurrentRun({
+      currentRunDir: runDir,
+      includeNewInventory: selectionMode === 'failed+new',
+      currentRecords: selectionMode === 'failed+new' ? null : loadCurrentRecords(),
+      target: {
+        targetRunId: runId,
+        targetSourceVersion: currentSourceVersion,
+        targetDeployedVersion: currentDeployedVersion,
+      },
+    });
+  }
 } catch (error) {
-  fail('Failed+new baseline evidence is malformed or unsafe.', [error?.message || String(error)]);
+  if (selectionMode === 'repair' && /No completed full release-gate run/i.test(error?.message || '')) {
+    selectedSource = {
+      manifest: { ok: true, selected: [], totalSelected: 0, mode: 'failed-only', lineageMode: 'none', selectionSource: 'no-compatible-previous-failures-feature-scope-only' },
+      baselineFullRunDir: '',
+      latestFailedOnlyRunDir: '',
+      selectionSource: 'no-compatible-previous-failures-feature-scope-only',
+      lineageMode: 'none',
+    };
+  } else {
+    fail(`${selectionMode} baseline evidence is malformed or unsafe.`, [error?.message || String(error)]);
+  }
 }
-const fullRunDir = selectedSource.baselineFullRunDir;
-const copied = targetQualifiedManifest(selectedSource.manifest, {
+
+let copied = targetQualifiedManifest(selectedSource.manifest, {
   targetRunId: runId,
   targetRunDir: runDir,
   targetSourceVersion: currentSourceVersion,
   targetDeployedVersion: currentDeployedVersion,
 });
+copied.lineageMode = copied.lineageMode || selectedSource.lineageMode || 'full-baseline';
+if (selectionMode === 'reported-failed-only') {
+  copied.mode = 'reported-failed-only';
+  copied.source = 'uploaded-failed-tests-20260810-015004';
+  copied.selectionSource = 'uploaded-failed-tests-20260810-015004';
+  copied.lineageMode = 'none';
+  copied.previousFailuresSelected = copied.selected.length;
+  copied.previousTimeoutsSelected = 0;
+  copied.currentReleaseFeatureTestsSelected = 0;
+  copied.duplicateIdentitiesRemoved = 0;
+  copied.newTestsCount = 0;
+  assertReportedFailedOnlySelection(copied);
+}
 
-const validation = validateManifestForCurrentRun(copied, {
-  currentRunDir: runDir,
-  currentSourceVersion,
-  currentDeployedVersion,
-  firebaseProjectId,
-  appUrl,
-});
+try {
+  if (selectionMode === 'failed+new') {
+    copied = qualifyManifestSelectionsWithCurrentInventory(copied, { root: process.cwd() });
+  }
+} catch (error) {
+  fail(`${selectionMode} current Playwright inventory could not be used to qualify selections.`, [error?.message || String(error)]);
+}
+
+let repairStats = null;
+if (selectionMode === 'repair') {
+  const scope = resolveCurrentReleaseRepairScope({ currentRecords: loadCurrentRecords() });
+  if (!scope.ok) fail('Current-release repair scope could not be resolved against Playwright discovery.', scope.missing.map(row => `${row.project} ${row.specPath} :: ${row.fullSuitePath} :: ${row.exactTestTitle}`));
+  repairStats = buildRepairSelection({ failedOnlySelected: copied.selected || [], currentReleaseSelected: scope.selected });
+  copied = {
+    ...copied,
+    mode: 'repair',
+    source: 'strict-failed-only-plus-current-release-repair-scope',
+    selectionSource: 'failed-only-union-current-release-scope',
+    selected: repairStats.selected,
+    totalSelected: repairStats.totalSelected,
+    desktopSelected: repairStats.selected.filter(item => item.project === 'chromium' || item.projects?.includes('chromium')).length,
+    mobileSelected: repairStats.selected.filter(item => item.project === 'mobile-chromium' || item.projects?.includes('mobile-chromium')).length,
+    previousFailuresSelected: repairStats.previousFailuresSelected,
+    previousTimeoutsSelected: repairStats.previousTimeoutsSelected,
+    currentReleaseFeatureTestsSelected: repairStats.currentReleaseFeatureTestsSelected,
+    duplicateIdentitiesRemoved: repairStats.duplicateIdentitiesRemoved,
+  };
+}
+
+const validation = copied.totalSelected === 0 && selectionMode === 'failed-only'
+  ? { ok: true, errors: [] }
+  : validateManifestForCurrentRun(copied, {
+    currentRunDir: runDir,
+    currentSourceVersion,
+    currentDeployedVersion,
+    firebaseProjectId,
+    appUrl,
+  });
 if (!validation.ok) {
-  fail('Refusing unsafe failed+new manifest.', validation.errors);
+  fail(`Refusing unsafe ${selectionMode} manifest.`, validation.errors);
 }
 
 const currentManifestPath = path.join(runDir, 'failed-only-test-manifest.json');
@@ -68,8 +212,9 @@ const failedOnlySelectionPath = path.join(runDir, 'failed-only-manifest-selectio
 const selectionPayload = {
   ok: true,
   runId,
-  mode: 'failed+new',
-  sourceFullRunDir: fullRunDir,
+  mode: selectionMode,
+  lineageMode: copied.lineageMode || 'full-baseline',
+  sourceFullRunDir: selectedSource.baselineFullRunDir,
   previousFailedOnlyRunDir: selectedSource.latestFailedOnlyRunDir || '',
   selectionSource: copied.selectionSource || selectedSource.selectionSource || '',
   manifestPath: currentManifestPath,
@@ -89,6 +234,12 @@ const selectionPayload = {
   totalSelected: copied.selected.length,
   desktopSelected: copied.desktopSelected,
   mobileSelected: copied.mobileSelected,
+  previousFailuresSelected: copied.previousFailuresSelected ?? copied.previousFailuresCount ?? 0,
+  previousTimeoutsSelected: copied.previousTimeoutsSelected ?? copied.previousTimeoutsCount ?? 0,
+  currentReleaseFeatureTestsSelected: copied.currentReleaseFeatureTestsSelected || 0,
+  duplicateIdentitiesRemoved: copied.duplicateIdentitiesRemoved || 0,
+  newTestsCount: copied.newTestsCount || 0,
+  noFailedOrTimedOutTestsRemain: copied.noFailedOrTimedOutTestsRemain === true || (selectionMode === 'failed-only' && copied.totalSelected === 0),
 };
 writeJson(failedAndNewSelectionPath, selectionPayload);
 writeJson(failedOnlySelectionPath, selectionPayload);
@@ -96,7 +247,9 @@ writeJson(validationPath, {
   ok: true,
   runId,
   runDir,
-  baselineFullRunDir: fullRunDir,
+  mode: selectionMode,
+  lineageMode: copied.lineageMode || 'full-baseline',
+  baselineFullRunDir: selectedSource.baselineFullRunDir,
   baselineSourceVersion: copied.baselineSourceVersion,
   baselineDeployedVersion: copied.baselineDeployedVersion,
   targetSourceVersion: currentSourceVersion,
@@ -108,11 +261,34 @@ writeJson(validationPath, {
   totalSelected: copied.totalSelected,
   desktopSelected: copied.desktopSelected,
   mobileSelected: copied.mobileSelected,
+  previousFailuresSelected: selectionPayload.previousFailuresSelected,
+  previousTimeoutsSelected: selectionPayload.previousTimeoutsSelected,
+  currentReleaseFeatureTestsSelected: selectionPayload.currentReleaseFeatureTestsSelected,
+  duplicateIdentitiesRemoved: selectionPayload.duplicateIdentitiesRemoved,
+  newTestsCount: selectionPayload.newTestsCount,
+  noFailedOrTimedOutTestsRemain: selectionPayload.noFailedOrTimedOutTestsRemain,
   generatedAt: new Date().toISOString(),
 });
-console.log(`Prepared dynamic failed+new manifest from ${fullRunDir}`);
+
+console.log(`Prepared ${selectionMode} manifest from ${selectedSource.baselineFullRunDir || 'no previous failure source'}`);
 if (copied.previousFailedOnlyRunId) console.log(`Narrowed from failed-only descendant: ${copied.previousFailedOnlyRunId} (${copied.previousFailedOnlySourceVersion}/${copied.previousFailedOnlyDeployedVersion})`);
-console.log(`Baseline: ${copied.baselineSourceVersion}/${copied.baselineDeployedVersion}`);
+if (selectionPayload.noFailedOrTimedOutTestsRemain) console.log('No failed or timed-out Playwright tests remain.');
+console.log(`Failed-only source run: ${copied.previousFailedOnlyRunId || copied.baselineFullRunId || 'none'}`);
+console.log(`Source reason: ${copied.selectionSource || selectedSource.selectionSource || 'latest compatible completed Playwright run'}`);
+console.log(`Baseline: ${copied.baselineSourceVersion || 'none'}/${copied.baselineDeployedVersion || 'none'}`);
 console.log(`Target: ${currentSourceVersion}/${currentDeployedVersion}`);
-console.log(`Selected ${copied.selected.length} exact previous-failure/new project/test combination(s).`);
-for (const item of copied.selected) console.log(`- [${item.project || (item.projects || []).join(', ')}] ${item.specPath || item.spec} :: ${item.title || item.exactTestTitle}`);
+console.log(`Previous failed identities selected: ${selectionPayload.previousFailuresSelected}`);
+console.log(`Previous timed-out identities selected: ${selectionPayload.previousTimeoutsSelected}`);
+if (selectionMode === 'repair') {
+  console.log(`Current release feature tests selected: ${selectionPayload.currentReleaseFeatureTestsSelected}`);
+  console.log(`Duplicate identities removed: ${selectionPayload.duplicateIdentitiesRemoved}`);
+  console.log(`Total repair tests selected: ${copied.selected.length}`);
+} else if (selectionMode === 'reported-failed-only') {
+  console.log('Reported failed-only guard: exactly 6 FAIL identities selected');
+  console.log('chromium 2');
+  console.log('mobile-chromium 4');
+  console.log('timeouts 0');
+} else {
+  console.log(`Previous failed/timed-out identities selected: ${copied.selected.length}`);
+}
+for (const item of copied.selected) console.log(`- [${item.project || (item.projects || []).join(', ')}] ${item.specPath || item.spec} :: ${item.fullSuitePath ? item.fullSuitePath + ' :: ' : ''}${item.title || item.exactTestTitle}`);

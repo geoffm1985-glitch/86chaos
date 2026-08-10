@@ -1,6 +1,6 @@
 {
-  "version": "16.0.147",
-  "generatedAt": "2026-08-08T02:31:40.608Z",
+  "version": "16.0.150",
+  "generatedAt": "2026-08-08T08:22:51.667Z",
   "coverage": [
     {
       "featureId": "getting-started",
@@ -14,7 +14,7 @@
       ],
       "troubleshootingCoverage": [],
       "deepLinkCoverage": [],
-      "lastVerifiedVersion": "16.0.147",
+      "lastVerifiedVersion": "16.0.150",
       "coverageStatus": "fully_documented"
     },
     {
@@ -30,7 +30,7 @@
       "deepLinkCoverage": [
         "today-home"
       ],
-      "lastVerifiedVersion": "16.0.147",
+      "lastVerifiedVersion": "16.0.150",
       "coverageStatus": "fully_documented"
     },
     {
@@ -45,7 +45,7 @@
       "deepLinkCoverage": [
         "manager-brief"
       ],
-      "lastVerifiedVersion": "16.0.147",
+      "lastVerifiedVersion": "16.0.150",
       "coverageStatus": "fully_documented"
     },
     {
@@ -60,7 +60,7 @@
       "deepLinkCoverage": [
         "kitchen-command"
       ],
-      "lastVerifiedVersion": "16.0.147",
+      "lastVerifiedVersion": "16.0.150",
       "coverageStatus": "fully_documented"
     },
     {
@@ -80,7 +80,7 @@
         "my-schedule",
         "full-schedule"
       ],
-      "lastVerifiedVersion": "16.0.147",
+      "lastVerifiedVersion": "16.0.150",
       "coverageStatus": "fully_documented"
     },
     {
@@ -102,7 +102,7 @@
       "deepLinkCoverage": [
         "schedule-builder"
       ],
-      "lastVerifiedVersion": "16.0.147",
+      "lastVerifiedVersion": "16.0.150",
       "coverageStatus": "fully_documented"
     },
     {
@@ -123,7 +123,7 @@
         "orders",
         "vendors"
       ],
-      "lastVerifiedVersion": "16.0.147",
+      "lastVerifiedVersion": "16.0.150",
       "coverageStatus": "fully_documented"
     },
     {
@@ -138,7 +138,7 @@
       "deepLinkCoverage": [
         "menu-intelligence"
       ],
-      "lastVerifiedVersion": "16.0.147",
+      "lastVerifiedVersion": "16.0.150",
       "coverageStatus": "fully_documented"
     },
     {
@@ -153,7 +153,7 @@
       "deepLinkCoverage": [
         "recipes"
       ],
-      "lastVerifiedVersion": "16.0.147",
+      "lastVerifiedVersion": "16.0.150",
       "coverageStatus": "fully_documented"
     },
     {
@@ -171,7 +171,7 @@
         "prep",
         "tasks"
       ],
-      "lastVerifiedVersion": "16.0.147",
+      "lastVerifiedVersion": "16.0.150",
       "coverageStatus": "fully_documented"
     },
     {
@@ -190,7 +190,7 @@
         "daily-close",
         "labor"
       ],
-      "lastVerifiedVersion": "16.0.147",
+      "lastVerifiedVersion": "16.0.150",
       "coverageStatus": "fully_documented"
     },
     {
@@ -206,7 +206,7 @@
       "deepLinkCoverage": [
         "staff-roster"
       ],
-      "lastVerifiedVersion": "16.0.147",
+      "lastVerifiedVersion": "16.0.150",
       "coverageStatus": "fully_documented"
     },
     {
@@ -221,7 +221,7 @@
       "deepLinkCoverage": [
         "hr-training"
       ],
-      "lastVerifiedVersion": "16.0.147",
+      "lastVerifiedVersion": "16.0.150",
       "coverageStatus": "fully_documented"
     },
     {
@@ -238,7 +238,7 @@
         "messages",
         "reminders"
       ],
-      "lastVerifiedVersion": "16.0.147",
+      "lastVerifiedVersion": "16.0.150",
       "coverageStatus": "fully_documented"
     },
     {
@@ -253,7 +253,7 @@
       "deepLinkCoverage": [
         "maintenance"
       ],
-      "lastVerifiedVersion": "16.0.147",
+      "lastVerifiedVersion": "16.0.150",
       "coverageStatus": "fully_documented"
     },
     {
@@ -268,7 +268,7 @@
       "deepLinkCoverage": [
         "events"
       ],
-      "lastVerifiedVersion": "16.0.147",
+      "lastVerifiedVersion": "16.0.150",
       "coverageStatus": "fully_documented"
     },
     {
@@ -284,7 +284,7 @@
         "voice-not-hearing"
       ],
       "deepLinkCoverage": [],
-      "lastVerifiedVersion": "16.0.147",
+      "lastVerifiedVersion": "16.0.150",
       "coverageStatus": "fully_documented"
     },
     {
@@ -299,7 +299,7 @@
       "deepLinkCoverage": [
         "back-office"
       ],
-      "lastVerifiedVersion": "16.0.147",
+      "lastVerifiedVersion": "16.0.150",
       "coverageStatus": "fully_documented"
     },
     {
@@ -315,7 +315,7 @@
       "deepLinkCoverage": [
         "settings"
       ],
-      "lastVerifiedVersion": "16.0.147",
+      "lastVerifiedVersion": "16.0.150",
       "coverageStatus": "fully_documented"
     },
     {
@@ -340,7 +340,7 @@
       "deepLinkCoverage": [
         "request-off"
       ],
-      "lastVerifiedVersion": "16.0.147",
+      "lastVerifiedVersion": "16.0.150",
       "coverageStatus": "fully_documented"
     }
   ]

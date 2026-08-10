@@ -16,9 +16,13 @@ if (-not (Test-Path ".\package-lock.json")) {
   throw "package-lock.json was not found. The release gate requires the committed lockfile."
 }
 
-function Import-EnvFile {
+$ReleaseTargetKeys = @('APP_URL', 'CHAOS_BASE_URL', 'CHAOS_EXPECTED_VERSION', 'CHAOS_EXPECTED_VERCEL_PROJECT_SLUG')
+$CanonicalVercelProjectSlug = '86chaos'
+
+function Read-EnvFileMap {
   param([string]$Path)
-  if (-not (Test-Path $Path)) { return }
+  $map = @{}
+  if (-not (Test-Path $Path)) { return $map }
   Get-Content $Path | ForEach-Object {
     $line = $_.Trim()
     if (-not $line -or $line.StartsWith('#') -or $line -notmatch '=') { return }
@@ -28,14 +32,59 @@ function Import-EnvFile {
     if (($value.StartsWith('"') -and $value.EndsWith('"')) -or ($value.StartsWith("'") -and $value.EndsWith("'"))) {
       $value = $value.Substring(1, $value.Length - 2)
     }
+    if ($name -match '^[A-Za-z_][A-Za-z0-9_]*$') { $map[$name] = $value }
+  }
+  return $map
+}
+
+function Normalize-ReleaseTargetValue {
+  param([string]$Name, [string]$Value)
+  if (-not $Value) { return '' }
+  if ($Name -match 'URL$|BASE_URL$') { return $Value.Trim().TrimEnd('/') }
+  return $Value.Trim()
+}
+
+function Assert-NoReleaseTargetConflicts {
+  param([hashtable]$TestEnv, [hashtable]$LocalEnv)
+  foreach ($key in $ReleaseTargetKeys) {
+    $values = @()
+    $processValue = [Environment]::GetEnvironmentVariable($key, 'Process')
+    if ($processValue) { $values += [pscustomobject]@{ Source = 'process environment'; Value = $processValue } }
+    if ($TestEnv.ContainsKey($key) -and $TestEnv[$key]) { $values += [pscustomobject]@{ Source = '.env.test.local'; Value = $TestEnv[$key] } }
+    if ($LocalEnv.ContainsKey($key) -and $LocalEnv[$key]) { $values += [pscustomobject]@{ Source = '.env.local'; Value = $LocalEnv[$key] } }
+    for ($i = 0; $i -lt $values.Count; $i++) {
+      for ($j = $i + 1; $j -lt $values.Count; $j++) {
+        $left = Normalize-ReleaseTargetValue $key $values[$i].Value
+        $right = Normalize-ReleaseTargetValue $key $values[$j].Value
+        if ($left -and $right -and $left -ne $right) {
+          throw "Conflicting $key values detected. $($values[$i].Source) points to $($values[$i].Value) while $($values[$j].Source) points to $($values[$j].Value). Clear the stale process variable or explicitly choose the intended target."
+        }
+      }
+    }
+  }
+}
+
+function Import-EnvFile {
+  param([hashtable]$Map)
+  foreach ($name in $Map.Keys) {
+    $value = $Map[$name]
     if ($name -match '^[A-Za-z_][A-Za-z0-9_]*$' -and -not [Environment]::GetEnvironmentVariable($name, 'Process')) {
       [Environment]::SetEnvironmentVariable($name, $value, 'Process')
     }
   }
 }
 
-Import-EnvFile (Join-Path $Root '.env.test.local')
-Import-EnvFile (Join-Path $Root '.env.local')
+$EnvTestLocal = Read-EnvFileMap (Join-Path $Root '.env.test.local')
+$EnvLocal = Read-EnvFileMap (Join-Path $Root '.env.local')
+Assert-NoReleaseTargetConflicts $EnvTestLocal $EnvLocal
+Import-EnvFile $EnvTestLocal
+Import-EnvFile $EnvLocal
+if (-not $env:CHAOS_EXPECTED_VERCEL_PROJECT_SLUG) { $env:CHAOS_EXPECTED_VERCEL_PROJECT_SLUG = $CanonicalVercelProjectSlug }
+Write-Host "Release-gate target:" -ForegroundColor Cyan
+Write-Host "  APP_URL=$env:APP_URL" -ForegroundColor Cyan
+Write-Host "  CHAOS_BASE_URL=$env:CHAOS_BASE_URL" -ForegroundColor Cyan
+Write-Host "  CHAOS_EXPECTED_VERSION=$env:CHAOS_EXPECTED_VERSION" -ForegroundColor Cyan
+Write-Host "  CHAOS_EXPECTED_VERCEL_PROJECT_SLUG=$env:CHAOS_EXPECTED_VERCEL_PROJECT_SLUG" -ForegroundColor Cyan
 
 $RunId = Get-Date -Format "yyyy-MM-ddTHH-mm-ss"
 $env:CHAOS_RELEASE_GATE_RUN_ID = $RunId
@@ -74,6 +123,10 @@ $RunnerState = [ordered]@{
   dependencyPreflightPassed = $false
   sourceInventoryPassed = $false
   browserInstallPassed = $false
+  serverIdentityPreflightStarted = $false
+  serverIdentityPreflightPassed = $false
+  serverIdentityPreflightFailureCategory = ''
+  serverIdentityPreflightPrimaryBlocker = ''
   testAccountProvisionAttempted = $false
   testAccountProvisionPassed = $false
   rolePreflightStarted = $false
@@ -157,7 +210,7 @@ function Run-LiveStep {
   param([string]$Name, [string]$Command)
   Write-Host ""
   Write-Host "=== $Name ===" -ForegroundColor Yellow
-  Write-Host "Live Playwright list output enabled. The slim JSON/log report is still written quietly for upload." -ForegroundColor Cyan
+  Write-Host "Live ASCII release-gate output enabled. The slim JSON/log report is still written quietly for upload." -ForegroundColor Cyan
   $safeName = ($Name -replace '[^A-Za-z0-9_-]', '_').Trim('_')
   if ([string]::IsNullOrWhiteSpace($safeName)) { $safeName = "step" }
   $LogPath = Join-Path $RunnerLogDir ("{0}-{1}.log" -f $RunId, $safeName)
@@ -209,6 +262,12 @@ function New-Slim-ReleaseGateReport {
         New-Item -ItemType Directory -Force (Split-Path $target) | Out-Null
         Copy-Item $_.FullName $target -Force
       }
+  }
+  foreach ($summaryName in @('TEST-SUMMARY.txt', 'FAILED-TESTS.txt')) {
+    $summaryPath = Join-Path $SourceDir $summaryName
+    if (Test-Path $summaryPath) {
+      Copy-Item $summaryPath (Join-Path $DestinationDir $summaryName) -Force
+    }
   }
   if (Test-Path $ZipPath) { Remove-Item $ZipPath -Force -ErrorAction SilentlyContinue }
   $copiedCount = (Get-ChildItem $DestinationDir -Recurse -File -ErrorAction SilentlyContinue | Measure-Object).Count
@@ -338,10 +397,35 @@ if ($PreflightExit -ne 0) {
             if ($BrowserExit -ne 0) {
               Stop-BeforePlaywright "Release gate blocked before Playwright because Chromium browser installation failed."
             } else {
-              Set-RunnerPhase 'test-account-provisioning'
-              $RunnerState.testAccountProvisionAttempted = $true
+              Set-RunnerPhase 'server-firebase-boundary-preflight'
+              $RunnerState.serverIdentityPreflightStarted = $true
               Save-RunnerState
-              $ProvisionExit = Run-Step "Provision temporary release-gate test accounts" "node scripts/86chaos-release-gate/provision-test-accounts.cjs"
+              $ServerIdentityExit = Run-Step "Verify deployed server Firebase boundary" "node scripts/86chaos-release-gate/server-firebase-boundary-preflight.cjs"
+              $RunnerState.serverIdentityPreflightPassed = ($ServerIdentityExit -eq 0)
+              $ServerIdentityReportPath = Join-Path $RunDir 'server-firebase-boundary-preflight.json'
+              if (Test-Path $ServerIdentityReportPath) {
+                try {
+                  $ServerIdentityReport = Get-Content $ServerIdentityReportPath -Raw | ConvertFrom-Json
+                  $RunnerState.serverIdentityPreflightFailureCategory = [string]$ServerIdentityReport.failureCategory
+                  $RunnerState.serverIdentityPreflightPrimaryBlocker = [string]$ServerIdentityReport.primaryBlockingFailure
+                } catch {}
+              }
+              Save-RunnerState
+              if ($ServerIdentityExit -ne 0) {
+                $ServerIdentityReason = "Release gate blocked before mutation because deployed server Firebase identity preflight failed."
+                if (Test-Path $ServerIdentityReportPath) {
+                  try {
+                    $ServerIdentityReport = Get-Content $ServerIdentityReportPath -Raw | ConvertFrom-Json
+                    if ($ServerIdentityReport.primaryBlockingFailure) { $ServerIdentityReason = [string]$ServerIdentityReport.primaryBlockingFailure }
+                    elseif ($ServerIdentityReport.errors -and $ServerIdentityReport.errors.Count -gt 0) { $ServerIdentityReason = [string]$ServerIdentityReport.errors[0] }
+                  } catch {}
+                }
+                Stop-BeforePlaywright $ServerIdentityReason
+              } else {
+                Set-RunnerPhase 'test-account-provisioning'
+                $RunnerState.testAccountProvisionAttempted = $true
+                Save-RunnerState
+                $ProvisionExit = Run-Step "Provision temporary release-gate test accounts" "node scripts/86chaos-release-gate/provision-test-accounts.cjs"
               $RunnerState.testAccountProvisionPassed = ($ProvisionExit -eq 0)
               Save-RunnerState
               if ($ProvisionExit -ne 0) {
@@ -392,6 +476,8 @@ if ($PreflightExit -ne 0) {
 }
 
 }
+}
+
 }
 
 $SetupStatePath = Join-Path $RunDir 'qa-setup-state.json'

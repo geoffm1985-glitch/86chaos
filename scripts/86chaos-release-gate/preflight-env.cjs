@@ -4,12 +4,18 @@ const { loadEnv, env, boolEnv } = require('../86chaos-full-audit/env-loader.cjs'
 const { ensureRunDir, writeJson } = require('./run-context.cjs');
 const { applyQaWorkspaceEnv, validateQaWorkspaceName } = require('./qa-workspace.cjs');
 const { assertMutationSafety } = require('./mutation-safety.cjs');
+const {
+  CANONICAL_VERCEL_PROJECT_SLUG,
+  inspectReleaseTargetEnvConflicts,
+  validateReleaseTarget,
+} = require('./vercel-targets.cjs');
 
 const { root, runId, runDir } = ensureRunDir();
-const loaded = loadEnv(root);
-
 const errors = [];
 const warnings = [];
+const targetEnvConflicts = inspectReleaseTargetEnvConflicts(root, process.env);
+if (!targetEnvConflicts.ok) errors.push(...targetEnvConflicts.errors);
+const loaded = loadEnv(root);
 const present = {};
 
 function value(...names) {
@@ -63,6 +69,16 @@ async function main() {
     }
     if (!/^https?:$/.test(parsedUrl.protocol)) errors.push('APP_URL must use http or https.');
   }
+
+  let targetValidation = validateReleaseTarget({
+    appUrl,
+    chaosBaseUrl: process.env.CHAOS_BASE_URL || '',
+    expectedProjectSlug: value('CHAOS_EXPECTED_VERCEL_PROJECT_SLUG') || CANONICAL_VERCEL_PROJECT_SLUG,
+    expectedVersion,
+    allowLocal: boolEnv('CHAOS_ALLOW_LOCAL_UI_ONLY'),
+  });
+  if (!targetValidation.ok) errors.push(...targetValidation.errors);
+  if (targetValidation.warnings?.length) warnings.push(...targetValidation.warnings);
 
   const accounts = [requirePair('OWNER'), requirePair('MANAGER'), requirePair('STAFF'), requirePair('SYSTEM_ADMIN')];
   const seenEmails = new Map();
@@ -120,7 +136,17 @@ async function main() {
     }
   }
   visibleVersion = htmlVersion || '';
-  if (expectedVersion && deployedVersion && deployedVersion !== expectedVersion) errors.push(`Deployed /version.json reports ${deployedVersion}, but CHAOS_EXPECTED_VERSION is ${expectedVersion}. Stop now; the preview is stale.`);
+  targetValidation = validateReleaseTarget({
+    appUrl,
+    chaosBaseUrl: process.env.CHAOS_BASE_URL || '',
+    expectedProjectSlug: value('CHAOS_EXPECTED_VERCEL_PROJECT_SLUG') || CANONICAL_VERCEL_PROJECT_SLUG,
+    expectedVersion,
+    sourceVersion,
+    deployedVersion,
+    allowLocal: boolEnv('CHAOS_ALLOW_LOCAL_UI_ONLY'),
+  });
+  if (!targetValidation.ok) errors.push(...targetValidation.errors);
+  if (targetValidation.warnings?.length) warnings.push(...targetValidation.warnings);
   if (expectedVersion && visibleVersion && visibleVersion !== expectedVersion) errors.push(`Application HTML/visible version evidence reports ${visibleVersion}, but CHAOS_EXPECTED_VERSION is ${expectedVersion}. Stop now; the preview is stale.`);
 
   let firebaseProjectId = '';
@@ -172,6 +198,12 @@ async function main() {
     runId,
     node: process.version,
     appUrl,
+    chaosBaseUrl: process.env.CHAOS_BASE_URL || '',
+    canonicalVercelProjectSlug: targetValidation.canonicalVercelProjectSlug || CANONICAL_VERCEL_PROJECT_SLUG,
+    appUrlHostname: targetValidation.hostname || '',
+    appUrlHostAppearsCanonical: Boolean(targetValidation.hostAppearsCanonical),
+    retiredVercelProject: targetValidation.retiredVercelProject || '',
+    targetEnvConflicts,
     sourceVersion,
     packageVersion,
     expectedVersion,

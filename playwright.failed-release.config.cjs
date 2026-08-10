@@ -1,6 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const { defineConfig, devices } = require('@playwright/test');
+const chaosReleaseGateReporter = require.resolve('./test-tools/reporters/chaos-release-gate-reporter.cjs');
 const { PWA_SPEC_PATTERN } = require('./scripts/86chaos-release-gate/release-test-universe.cjs');
 
 const { ensureRunDir, getFailedOnlyManifestPath } = require('./scripts/86chaos-release-gate/run-context.cjs');
@@ -16,25 +17,61 @@ generatePlaywrightInventory({ root: process.cwd(), outputPath: path.join(runDir,
 if (!FAILED_ONLY_TESTS.length) {
   throw new Error(`Failed-only manifest selected zero tests. Refusing to run a false-green diagnostic gate. ${FAILED_ONLY_MANIFEST_ERRORS.join('; ')}`);
 }
+const releaseSelectionMode = process.env.CHAOS_RELEASE_GATE_SELECTION_MODE || 'failed+new';
+function reportedProject(row = {}) {
+  return row.project || (row.projects || [])[0] || '';
+}
+
+function assertReportedFailedOnlySelection(rows = []) {
+  if (releaseSelectionMode !== 'reported-failed-only') return;
+  const desktop = rows.filter(item => (item.projects || []).includes('chromium') || item.project === 'chromium').length;
+  const mobile = rows.filter(item => (item.projects || []).includes('mobile-chromium') || item.project === 'mobile-chromium').length;
+  const stableKeys = rows.map(row => row.stableKey || `${row.specPath || row.spec || ''}\u0000${row.fullSuitePath || ''}\u0000${row.leafTitle || row.exactTestTitle || row.title || ''}\u0000${reportedProject(row)}`);
+  const errors = [];
+  if (rows.length !== 6) errors.push(`expected 6 selected FAIL identities, got ${rows.length}`);
+  if (desktop !== 2) errors.push(`expected 2 chromium identities, got ${desktop}`);
+  if (mobile !== 4) errors.push(`expected 4 mobile-chromium identities, got ${mobile}`);
+  if (rows.some(item => String(item.priorStatus || '').toLowerCase() !== 'failed')) errors.push('reported-failed-only selected a non-failed priorStatus');
+  if (rows.some(item => String(item.baselineStatus || '').toLowerCase() !== 'failed')) errors.push('reported-failed-only selected a non-failed baselineStatus');
+  if (rows.some(item => String(item.priorStatus || '').toLowerCase() === 'timedout' || String(item.priorStatus || '').toLowerCase() === 'timeout')) errors.push('reported-failed-only selected a timeout status');
+  if (rows.some(item => item.selectionReasons?.some(reason => /previous_timeout|timeout|current_release_feature_test|new_test|repair/i.test(String(reason))))) errors.push('reported-failed-only selected a timeout/current-release/new/repair reason');
+  const badProjects = rows.filter(item => !['chromium', 'mobile-chromium'].includes(reportedProject(item)));
+  if (badProjects.length) errors.push(`unexpected projects selected: ${[...new Set(badProjects.map(reportedProject))].join(', ')}`);
+  if (new Set(stableKeys).size !== stableKeys.length) errors.push('duplicate stable identities selected');
+  if (errors.length) throw new Error(`reported-failed-only selection must be exactly the 6 current FAIL identities from 20260810-015004: ${errors.join('; ')}`);
+}
+
+
+assertReportedFailedOnlySelection(FAILED_ONLY_TESTS);
+
 const manifest = {
   ok: true,
   generatedAt: new Date().toISOString(),
   runId,
   runDir,
-  mode: 'failed+new',
+  mode: releaseSelectionMode,
   sourceManifestPath: FAILED_ONLY_MANIFEST_PATH,
   selected: FAILED_ONLY_TESTS,
   desktopSelected: FAILED_ONLY_TESTS.filter(item => (item.projects || []).includes('chromium')).length,
   mobileSelected: FAILED_ONLY_TESTS.filter(item => (item.projects || []).includes('mobile-chromium')).length,
-  note: 'Failed+new delta success is diagnostic only. Complete npm run test:play-store is still required for release approval.'
+  note: releaseSelectionMode === 'reported-failed-only'
+    ? 'reported-failed-only runs only the 6 FAIL identities from 20260810-015004 and excludes TIMEOUT, PASS, and SKIP identities.'
+    : `${releaseSelectionMode} success is diagnostic only. Complete npm run test:play-store is still required for release approval.`
 };
 fs.writeFileSync(path.join(runDir, 'failed-only-playwright-selection.json'), JSON.stringify(manifest, null, 2));
-console.log('86 Chaos failed + new selected tests:');
-for (const item of FAILED_ONLY_TESTS) console.log(`- [${(item.projects || []).join(', ')}] ${item.spec || item.specPath} :: ${item.title || item.exactTestTitle}`);
-console.log(`Desktop tests selected: ${manifest.desktopSelected}`);
-console.log(`Mobile tests selected: ${manifest.mobileSelected}`);
-console.log(`Failed+new manifest: ${FAILED_ONLY_MANIFEST_PATH}`);
-console.log(`Failed+new run directory: ${resultsRoot}`);
+// Human-readable selected-test output is emitted once by the ASCII release-gate reporter.
+
+const allProjects = [
+  { name: 'chromium', grep: grepForProject(FAILED_ONLY_TESTS, 'chromium'), use: { ...devices['Desktop Chrome'] } },
+  { name: 'mobile-chromium', grep: grepForProject(FAILED_ONLY_TESTS, 'mobile-chromium'), use: { ...devices['Pixel 5'] } },
+  { name: 'edge-pwa', grep: grepForProject(FAILED_ONLY_TESTS, 'edge-pwa'), testMatch: PWA_SPEC_PATTERN, use: { ...devices['Desktop Edge'], channel: 'msedge' } },
+  { name: 'firefox-pwa', grep: grepForProject(FAILED_ONLY_TESTS, 'firefox-pwa'), testMatch: PWA_SPEC_PATTERN, use: { ...devices['Desktop Firefox'] } },
+  { name: 'webkit-pwa', grep: grepForProject(FAILED_ONLY_TESTS, 'webkit-pwa'), testMatch: PWA_SPEC_PATTERN, use: { ...devices['Desktop Safari'] } },
+  { name: 'mobile-webkit-pwa', grep: grepForProject(FAILED_ONLY_TESTS, 'mobile-webkit-pwa'), testMatch: PWA_SPEC_PATTERN, use: { ...devices['iPhone 13'] } }
+];
+const selectedProjects = releaseSelectionMode === 'reported-failed-only'
+  ? allProjects.filter(project => ['chromium', 'mobile-chromium'].includes(project.name))
+  : allProjects;
 
 module.exports = defineConfig({
   testDir: './tests',
@@ -49,7 +86,7 @@ module.exports = defineConfig({
   globalTeardown: require.resolve('./tests/86chaos-release-gate/global-teardown.cjs'),
   outputDir: path.join(resultsRoot, 'playwright-artifacts'),
   reporter: [
-    ['list'],
+    [chaosReleaseGateReporter],
     ['json', { outputFile: path.join(runDir, 'playwright-report.json') }],
     ['html', { outputFolder: path.join(resultsRoot, 'html-report'), open: 'never' }]
   ],
@@ -59,12 +96,5 @@ module.exports = defineConfig({
     screenshot: 'only-on-failure',
     video: 'retain-on-failure'
   },
-  projects: [
-    { name: 'chromium', grep: grepForProject(FAILED_ONLY_TESTS, 'chromium'), use: { ...devices['Desktop Chrome'] } },
-    { name: 'mobile-chromium', grep: grepForProject(FAILED_ONLY_TESTS, 'mobile-chromium'), use: { ...devices['Pixel 5'] } },
-    { name: 'edge-pwa', grep: grepForProject(FAILED_ONLY_TESTS, 'edge-pwa'), testMatch: PWA_SPEC_PATTERN, use: { ...devices['Desktop Edge'], channel: 'msedge' } },
-    { name: 'firefox-pwa', grep: grepForProject(FAILED_ONLY_TESTS, 'firefox-pwa'), testMatch: PWA_SPEC_PATTERN, use: { ...devices['Desktop Firefox'] } },
-    { name: 'webkit-pwa', grep: grepForProject(FAILED_ONLY_TESTS, 'webkit-pwa'), testMatch: PWA_SPEC_PATTERN, use: { ...devices['Desktop Safari'] } },
-    { name: 'mobile-webkit-pwa', grep: grepForProject(FAILED_ONLY_TESTS, 'mobile-webkit-pwa'), testMatch: PWA_SPEC_PATTERN, use: { ...devices['iPhone 13'] } }
-  ]
+  projects: selectedProjects
 });

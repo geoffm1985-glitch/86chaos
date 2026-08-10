@@ -7,7 +7,7 @@ const cleanup = require('../scripts/86chaos-full-audit/cleanup-fake-restaurant.c
 
 const runId = '2026-08-01T13-37-00';
 const safeEnv = {
-  APP_URL: 'https://cheers-portal-4oxv-git-testing-cheers-portal-s-projects.vercel.app',
+  APP_URL: 'https://86chaos-git-testing-example.vercel.app',
   CHAOS_RELEASE_GATE_RUN_ID: runId,
   CHAOS_ALLOW_MUTATION: 'true',
   SYSTEM_ADMIN_EMAIL: '86chaos.qa.system-admin.20260729-1302@example.test',

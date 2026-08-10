@@ -21,9 +21,14 @@ function listRunDirs(resultsRoot = getResultsRoot()) {
     .sort((a, b) => fs.statSync(b).mtimeMs - fs.statSync(a).mtimeMs);
 }
 
-function isFailedOnlyRun(dir) {
+function isFocusedSelectionRun(dir) {
   const state = readJsonIfExists(path.join(dir, 'runner-state.json')) || {};
-  return String(state.mode || '').toLowerCase() === 'failed-only' || fs.existsSync(path.join(dir, 'failed-only', 'playwright-artifacts'));
+  const mode = String(state.mode || '').toLowerCase();
+  return ['failed-only', 'repair', 'failed+new'].includes(mode) || fs.existsSync(path.join(dir, 'failed-only', 'playwright-artifacts'));
+}
+
+function isFailedOnlyRun(dir) {
+  return isFocusedSelectionRun(dir);
 }
 
 function loadRunMeta(fullRunDir = '') {
@@ -181,8 +186,44 @@ function countPlaywrightResults(playwright = {}) {
   return counts;
 }
 
+function listSummaryFiles(fullRunDir = '') {
+  if (!fullRunDir || !fs.existsSync(fullRunDir)) return [];
+  return fs.readdirSync(fullRunDir)
+    .filter(name => /^86chaos-play-store-release-gate-summary-.*\.json$/.test(name))
+    .map(name => path.join(fullRunDir, name))
+    .sort((a, b) => fs.statSync(b).mtimeMs - fs.statSync(a).mtimeMs);
+}
+
+function hasCompletedReleaseGateEvidence(dir = '') {
+  if (!dir || !fs.existsSync(dir)) return { ok: false, reason: 'missing-run-dir', counts: countPlaywrightResults({}) };
+  const playwright = readJsonIfExists(path.join(dir, 'playwright-report.json'));
+  if (!playwright || !Array.isArray(playwright.suites)) return { ok: false, reason: 'missing-playwright-report', counts: countPlaywrightResults({}) };
+  const counts = countPlaywrightResults(playwright);
+  if (counts.total <= 0) return { ok: false, reason: 'zero-playwright-results', counts };
+  const state = readJsonIfExists(path.join(dir, 'runner-state.json')) || {};
+  if (state.playwrightStarted !== true) return { ok: false, reason: 'playwright-not-started', counts };
+  const summaries = listSummaryFiles(dir);
+  if (!summaries.length) return { ok: false, reason: 'missing-completed-summary', counts };
+  if (String(state.blockingReason || '').trim()) return { ok: false, reason: 'runner-blocked-before-normal-collection', counts };
+  const phase = String(state.currentPhase || '').toLowerCase();
+  if (['created', 'playwright'].includes(phase)) return { ok: false, reason: `abandoned-mid-${phase}`, counts };
+  return { ok: true, reason: 'latest compatible completed Playwright run', counts, summaryPath: summaries[0] };
+}
+
 function getManifestBaselineId(manifest = {}) {
   return manifest?.baselineFullRunId || manifest?.baseline?.fullRunId || manifest?.fullRunId || '';
+}
+
+function findLatestCompletedFocusedRun({ currentRunDir = getRunDir(), resultsRoot = getResultsRoot() } = {}) {
+  const current = path.resolve(currentRunDir || '');
+  return listRunDirs(resultsRoot).find(dir => {
+    if (path.resolve(dir) === current) return false;
+    if (!isFocusedSelectionRun(dir)) return false;
+    const completed = hasCompletedReleaseGateEvidence(dir);
+    if (!completed.ok) return false;
+    const manifest = loadManifestFromRunDir(dir);
+    return Boolean(manifest && Array.isArray(manifest.selected));
+  }) || '';
 }
 
 function findLatestCompletedFailedOnlyDescendant({ baselineFullRunId = '', currentRunDir = getRunDir(), resultsRoot = getResultsRoot() } = {}) {
@@ -190,10 +231,8 @@ function findLatestCompletedFailedOnlyDescendant({ baselineFullRunId = '', curre
   return listRunDirs(resultsRoot).find(dir => {
     if (path.resolve(dir) === current) return false;
     if (!isFailedOnlyRun(dir)) return false;
-    const playwright = readJsonIfExists(path.join(dir, 'playwright-report.json'));
-    if (!playwright || !Array.isArray(playwright.suites)) return false;
-    const counts = countPlaywrightResults(playwright);
-    if (counts.total <= 0) return false;
+    const completed = hasCompletedReleaseGateEvidence(dir);
+    if (!completed.ok) return false;
     const manifest = loadManifestFromRunDir(dir) || {};
     const rowBaseline = getManifestBaselineId(manifest);
     if (baselineFullRunId && rowBaseline && rowBaseline !== baselineFullRunId) return false;
@@ -212,9 +251,42 @@ function buildNarrowedManifestFromFailedOnlyRun(failedOnlyRunDir, { baselineMani
   const previousMeta = loadRunMeta(failedOnlyRunDir);
   const counts = countPlaywrightResults(playwright);
   if (counts.total <= 0) throw new Error('Previous failed-only run did not execute any Playwright tests.');
-  if (counts.unexpected <= 0) throw new Error('Latest compatible failed-only run has zero failed or timed-out tests. Run the complete npm run test:play-store instead of creating a zero-test failed-only run.');
-  const originalByKey = new Map(dedupeSelections(previousManifest.selected || []).map(row => [selectionKey(row), row]));
   const baseline = baselineManifest || previousManifest;
+  const previousFailedOnlyRunId = previousMeta.fullRunId || path.basename(failedOnlyRunDir);
+  const previousFailedOnlySourceVersion = previousMeta.sourceVersion || previousManifest.targetSourceVersion || previousManifest.sourceVersion || '';
+  const previousFailedOnlyDeployedVersion = previousMeta.deployedVersion || previousManifest.targetDeployedVersion || previousManifest.deployedVersion || '';
+  if (counts.unexpected <= 0) return {
+    ok: true,
+    noFailedOrTimedOutTestsRemain: true,
+    manifestSchemaVersion: MANIFEST_SCHEMA_VERSION,
+    generatedAt: new Date().toISOString(),
+    source: 'dynamic-latest-compatible-failed-only-playwright-report',
+    selectionSource: 'latest-compatible-failed-only-result',
+    baselineFullRunId: baseline.baselineFullRunId || previousManifest.baselineFullRunId || '',
+    baselineFullRunDir: baseline.baselineFullRunDir || previousManifest.baselineFullRunDir || '',
+    baselineSourceVersion: baseline.baselineSourceVersion || previousManifest.baselineSourceVersion || '',
+    baselineDeployedVersion: baseline.baselineDeployedVersion || previousManifest.baselineDeployedVersion || '',
+    baselineGeneratedAt: baseline.baselineGeneratedAt || previousManifest.baselineGeneratedAt || '',
+    previousFailedOnlyRunId,
+    previousFailedOnlyRunDir: failedOnlyRunDir,
+    previousFailedOnlySourceVersion,
+    previousFailedOnlyDeployedVersion,
+    previousFailedOnlyCounts: counts,
+    targetRunId: target.targetRunId || '',
+    targetSourceVersion: target.targetSourceVersion || '',
+    targetDeployedVersion: target.targetDeployedVersion || '',
+    currentRunDir,
+    selected: [],
+    totalSelected: 0,
+    desktopSelected: 0,
+    mobileSelected: 0,
+    fullRunId: baseline.baselineFullRunId || previousManifest.baselineFullRunId || '',
+    fullRunDir: baseline.baselineFullRunDir || previousManifest.baselineFullRunDir || '',
+    sourceVersion: baseline.baselineSourceVersion || previousManifest.baselineSourceVersion || '',
+    deployedVersion: baseline.baselineDeployedVersion || previousManifest.baselineDeployedVersion || '',
+    note: 'No failed or timed-out Playwright tests remain.',
+  };
+  const originalByKey = new Map(dedupeSelections(previousManifest.selected || []).map(row => [selectionKey(row), row]));
   const selected = collectFailedEntriesFromPlaywright(playwright, previousMeta).map((row) => {
     const normalized = normalizeSelection(row);
     const original = originalByKey.get(selectionKey(normalized)) || {};
@@ -236,9 +308,6 @@ function buildNarrowedManifestFromFailedOnlyRun(failedOnlyRunDir, { baselineMani
     };
   });
   const deduped = dedupeSelections(selected);
-  const previousFailedOnlyRunId = previousMeta.fullRunId || path.basename(failedOnlyRunDir);
-  const previousFailedOnlySourceVersion = previousMeta.sourceVersion || previousManifest.targetSourceVersion || previousManifest.sourceVersion || '';
-  const previousFailedOnlyDeployedVersion = previousMeta.deployedVersion || previousManifest.targetDeployedVersion || previousManifest.deployedVersion || '';
   return {
     ok: deduped.length > 0,
     manifestSchemaVersion: MANIFEST_SCHEMA_VERSION,
@@ -357,6 +426,104 @@ function latestKnownStatuses({ baselineFullRunDir = '', baselineFullRunId = '', 
   return map;
 }
 
+
+function inventorySelectionFromRow(inventoryRow = {}, sourceRow = {}, manifest = {}) {
+  const normalized = normalizeSelection({
+    specPath: inventoryRow.specPath || inventoryRow.spec,
+    spec: inventoryRow.specPath || inventoryRow.spec,
+    title: inventoryRow.exactTestTitle || inventoryRow.leafTitle || inventoryRow.title,
+    exactTestTitle: inventoryRow.exactTestTitle || inventoryRow.leafTitle || inventoryRow.title,
+    leafTitle: inventoryRow.leafTitle || inventoryRow.exactTestTitle || inventoryRow.title,
+    fullSuitePath: inventoryRow.fullSuitePath || '',
+    suitePathParts: inventoryRow.suitePathParts || [],
+    titlePathParts: inventoryRow.titlePathParts || [],
+    fullTitle: inventoryRow.fullTitle || '',
+    stableKey: inventoryRow.stableKey || '',
+    project: inventoryRow.project || inventoryRow.projectName || sourceRow.project || '',
+    projects: [inventoryRow.project || inventoryRow.projectName || sourceRow.project || ''].filter(Boolean),
+    priorStatus: sourceRow.priorStatus || sourceRow.status || '',
+    baselineStatus: sourceRow.baselineStatus || '',
+    baselineFullRunId: sourceRow.baselineFullRunId || sourceRow.fullRunId || manifest.baselineFullRunId || manifest.fullRunId || '',
+    baselineSourceVersion: sourceRow.baselineSourceVersion || sourceRow.sourceVersion || manifest.baselineSourceVersion || manifest.sourceVersion || '',
+    baselineDeployedVersion: sourceRow.baselineDeployedVersion || sourceRow.deployedVersion || manifest.baselineDeployedVersion || manifest.deployedVersion || '',
+    sourceVersion: sourceRow.sourceVersion || manifest.baselineSourceVersion || manifest.sourceVersion || '',
+    deployedVersion: sourceRow.deployedVersion || manifest.baselineDeployedVersion || manifest.deployedVersion || '',
+    duration: sourceRow.duration || 0,
+    error: sourceRow.error || '',
+    selectionReasons: sourceRow.selectionReasons,
+  }, manifest);
+  return {
+    ...normalized,
+    sourceFileHash: inventoryRow.sourceFileHash || sourceRow.sourceFileHash || '',
+    migratedFromLegacyIdentity: Boolean(sourceRow.migratedFromLegacyIdentity || sourceRow.migratedFromLegacyAmbiguousIdentity),
+    migrationSourceStableKey: sourceRow.stableKey || '',
+  };
+}
+
+function inventoryLookup(records = []) {
+  const byKey = new Map();
+  const byLooseKey = new Map();
+  for (const row of records || []) {
+    const key = row.stableKey || identityKeyFromParts(row.specPath || row.spec, row.exactTestTitle || row.title || row.leafTitle, row.project || row.projectName, row.fullSuitePath || '');
+    if (key) byKey.set(key, row);
+    const loose = [normalizeRel(row.specPath || row.spec || ''), String(row.exactTestTitle || row.title || row.leafTitle || ''), String(row.project || row.projectName || '')].join('\u0000');
+    const rows = byLooseKey.get(loose) || [];
+    rows.push(row);
+    byLooseKey.set(loose, rows);
+  }
+  return { byKey, byLooseKey };
+}
+
+function resolveSelectionRowsAgainstInventory(row = {}, manifest = {}, lookup = inventoryLookup([])) {
+  const normalized = normalizeSelection(row, manifest);
+  const stable = normalized.stableKey || selectionKey(normalized);
+  const exact = lookup.byKey.get(stable);
+  if (exact) return [inventorySelectionFromRow(exact, normalized, manifest)];
+  const loose = [normalizeRel(normalized.specPath || ''), String(normalized.exactTestTitle || normalized.title || normalized.leafTitle || ''), String(normalized.project || '')].join('\u0000');
+  const looseMatches = lookup.byLooseKey.get(loose) || [];
+  if (looseMatches.length === 1) {
+    return [{ ...inventorySelectionFromRow(looseMatches[0], normalized, manifest), migratedFromLegacyIdentity: true }];
+  }
+  if (looseMatches.length > 1) {
+    const suite = String(normalized.fullSuitePath || '').trim();
+    const titlePath = String(normalized.fullTitle || '').trim();
+    const narrowed = looseMatches.filter(candidate => {
+      const candidateSuite = String(candidate.fullSuitePath || '').trim();
+      const candidateFull = String(candidate.fullTitle || '').trim();
+      return (suite && candidateSuite === suite) || (titlePath && candidateFull === titlePath);
+    });
+    const matches = narrowed.length ? narrowed : looseMatches;
+    return matches.map(candidate => ({
+      ...inventorySelectionFromRow(candidate, normalized, manifest),
+      migratedFromLegacyIdentity: true,
+      migratedFromLegacyAmbiguousIdentity: !narrowed.length,
+      legacyAmbiguousMatchCount: looseMatches.length,
+    }));
+  }
+  return [normalized];
+}
+
+function qualifyManifestSelectionsWithCurrentInventory(manifest = {}, { root = process.cwd(), currentRecords = null, allowStaticFallback = false } = {}) {
+  const current = currentRecords || currentInventoryRecords(root, { allowStaticFallback });
+  const lookup = inventoryLookup(current);
+  const expanded = [];
+  for (const row of manifest.selected || []) expanded.push(...resolveSelectionRowsAgainstInventory(row, manifest, lookup));
+  const selected = dedupeSelections(expanded);
+  return {
+    ...manifest,
+    selected,
+    totalSelected: selected.length,
+    desktopSelected: selected.filter(item => item.project === 'chromium' || item.projects?.includes('chromium')).length,
+    mobileSelected: selected.filter(item => item.project === 'mobile-chromium' || item.projects?.includes('mobile-chromium')).length,
+    currentInventoryCount: current.length,
+    legacyIdentityMigration: {
+      attempted: true,
+      expandedAmbiguousCount: selected.filter(item => item.migratedFromLegacyAmbiguousIdentity).length,
+      migratedCount: selected.filter(item => item.migratedFromLegacyIdentity).length,
+    },
+  };
+}
+
 function addNewInventorySelections(manifest, { baselineFullRunDir = '', baselineFullRunId = '', resultsRoot = getResultsRoot(), currentRunDir = getRunDir(), root = process.cwd() } = {}) {
   const priorRecords = priorInventoryRecordsFromRun(baselineFullRunDir);
   const priorKeys = new Set(priorRecords.map(r => r.stableKey || identityKeyFromParts(r.specPath || r.spec, r.exactTestTitle || r.title, r.project, r.fullSuitePath || '')));
@@ -404,20 +571,36 @@ function addNewInventorySelections(manifest, { baselineFullRunDir = '', baseline
   };
 }
 
-function selectFailedOnlyManifestForCurrentRun({ currentRunDir = getRunDir(), resultsRoot = getResultsRoot(), target = {}, root = process.cwd() } = {}) {
+function selectFailedOnlyManifestForCurrentRun({ currentRunDir = getRunDir(), resultsRoot = getResultsRoot(), target = {}, root = process.cwd(), includeNewInventory = true, currentRecords = null } = {}) {
   const baselineFullRunDir = findMostRecentCompletedFullRun({ currentRunDir, resultsRoot });
-  if (!baselineFullRunDir) throw new Error('No completed full release-gate run with Playwright evidence was found. Run npm run test:play-store before npm run test:play-store:failed.');
-  const baselineManifest = generateFailedOnlyManifestFromRun(baselineFullRunDir, { write: false, currentRunDir });
-  const latestFailedOnlyRunDir = findLatestCompletedFailedOnlyDescendant({ baselineFullRunId: baselineManifest.baselineFullRunId, currentRunDir, resultsRoot });
+  let baselineManifest = null;
+  let latestFailedOnlyRunDir = '';
   let manifest;
   let selectionSource;
-  if (latestFailedOnlyRunDir) {
-    const narrowed = buildNarrowedManifestFromFailedOnlyRun(latestFailedOnlyRunDir, { baselineManifest, target, currentRunDir });
-    manifest = narrowed;
-    selectionSource = narrowed.selectionSource;
+  let lineageMode = 'full-baseline';
+
+  if (baselineFullRunDir) {
+    baselineManifest = generateFailedOnlyManifestFromRun(baselineFullRunDir, { write: false, currentRunDir });
+    latestFailedOnlyRunDir = findLatestCompletedFailedOnlyDescendant({ baselineFullRunId: baselineManifest.baselineFullRunId, currentRunDir, resultsRoot });
+    if (latestFailedOnlyRunDir) {
+      const narrowed = buildNarrowedManifestFromFailedOnlyRun(latestFailedOnlyRunDir, { baselineManifest, target, currentRunDir });
+      manifest = narrowed;
+      selectionSource = narrowed.selectionSource;
+    } else {
+      manifest = baselineManifest;
+      selectionSource = baselineManifest.source || 'dynamic-most-recent-full-playwright-report';
+    }
+  } else if (!includeNewInventory) {
+    latestFailedOnlyRunDir = findLatestCompletedFocusedRun({ currentRunDir, resultsRoot });
+    if (!latestFailedOnlyRunDir) {
+      throw new Error('No completed full release-gate run or completed focused repair/failed-only run with Playwright evidence was found. Canceled, blocked, and incomplete runs are ignored.');
+    }
+    const previousManifest = loadManifestFromRunDir(latestFailedOnlyRunDir) || {};
+    manifest = buildNarrowedManifestFromFailedOnlyRun(latestFailedOnlyRunDir, { baselineManifest: previousManifest, target, currentRunDir });
+    selectionSource = 'latest-compatible-focused-result-with-pruned-full-baseline';
+    lineageMode = 'focused';
   } else {
-    manifest = baselineManifest;
-    selectionSource = baselineManifest.source || 'dynamic-most-recent-full-playwright-report';
+    throw new Error('No completed full release-gate run with Playwright evidence was found. Failed+new delta selection requires a completed full baseline. Canceled, blocked, and incomplete runs are ignored.');
   }
   manifest.selected = (manifest.selected || []).map(row => {
     const normalized = normalizeSelection(row, manifest);
@@ -426,12 +609,23 @@ function selectFailedOnlyManifestForCurrentRun({ currentRunDir = getRunDir(), re
     }
     return normalized;
   });
-  manifest = addNewInventorySelections(manifest, { baselineFullRunDir, baselineFullRunId: baselineManifest.baselineFullRunId, resultsRoot, currentRunDir, root });
-  manifest.selectionSource = manifest.newTestsCount > 0 ? 'failed-and-new-latest-known-results-plus-current-inventory' : selectionSource;
-  if (manifest.totalSelected <= 0) {
+  if (includeNewInventory) {
+    manifest = addNewInventorySelections(manifest, { baselineFullRunDir, baselineFullRunId: baselineManifest.baselineFullRunId, resultsRoot, currentRunDir, root });
+    manifest.selectionSource = manifest.newTestsCount > 0 ? 'failed-and-new-latest-known-results-plus-current-inventory' : selectionSource;
+  } else {
+    manifest = qualifyManifestSelectionsWithCurrentInventory(manifest, { root, currentRecords });
+    manifest.mode = 'failed-only';
+    manifest.selectionSource = selectionSource || 'strict-failed-only-latest-compatible-result';
+    manifest.previousFailuresCount = manifest.selected.filter(row => row.selectionReasons?.includes('previous_failure') || row.priorStatus === 'failed' || row.priorStatus === 'interrupted').length;
+    manifest.previousTimeoutsCount = manifest.selected.filter(row => row.selectionReasons?.includes('previous_timeout') || row.priorStatus === 'timedOut').length;
+    manifest.newTestsCount = 0;
+  }
+  if (manifest.totalSelected <= 0 && includeNewInventory) {
     throw new Error('No failed or new Playwright tests remain. Run the complete release gate.');
   }
-  return { manifest, baselineFullRunDir, latestFailedOnlyRunDir, selectionSource: manifest.selectionSource };
+  manifest.lineageMode = lineageMode;
+  if (lineageMode === 'focused') manifest.selectionSource = selectionSource;
+  return { manifest, baselineFullRunDir, latestFailedOnlyRunDir, selectionSource: manifest.selectionSource, lineageMode };
 }
 
 function dedupeSelections(rows = []) {
@@ -474,6 +668,7 @@ function normalizeSelection(row = {}, manifest = {}) {
     project,
     projects,
     priorStatus: row.priorStatus || row.status || '',
+    baselineStatus: row.baselineStatus || '',
     baselineFullRunId,
     baselineSourceVersion,
     baselineDeployedVersion,
@@ -483,6 +678,11 @@ function normalizeSelection(row = {}, manifest = {}) {
     duration: row.duration || 0,
     error: row.error || '',
     selectionReasons: row.selectionReasons,
+    migratedFromLegacyIdentity: Boolean(row.migratedFromLegacyIdentity),
+    migratedFromLegacyAmbiguousIdentity: Boolean(row.migratedFromLegacyAmbiguousIdentity),
+    legacyAmbiguousMatchCount: row.legacyAmbiguousMatchCount || 0,
+    migrationSourceStableKey: row.migrationSourceStableKey || '',
+    sourceFileHash: row.sourceFileHash || '',
   };
 }
 
@@ -492,9 +692,9 @@ function findMostRecentCompletedFullRun({ currentRunDir = getRunDir(), resultsRo
     const resolved = path.resolve(dir);
     if (resolved === current) return false;
     if (isFailedOnlyRun(dir)) return false;
-    if (!runHasPlaywrightEvidence(dir)) return false;
+    const completed = hasCompletedReleaseGateEvidence(dir);
+    if (!completed.ok) return false;
     const meta = loadRunMeta(dir);
-    if (meta.state.playwrightStarted === false) return false;
     const generated = generateFailedOnlyManifestFromRun(dir, { write: false, validateBaseline: false });
     return generated.selected.length > 0;
   }) || '';
@@ -640,54 +840,65 @@ function validateManifestTestIdentities(manifest, { root = process.cwd(), projec
   if (!selected.length) errors.push('Failed-only manifest selected zero tests.');
   const availableProjects = new Set(projectNames || []);
   const current = currentInventoryRecords(root, { allowStaticFallback });
-  const inventoryByKey = new Map(current.map(row => [row.stableKey || identityKeyFromParts(row.specPath, row.exactTestTitle || row.title, row.project, row.fullSuitePath || ''), row]));
-  const inventoryByLooseKey = new Map();
-  for (const row of current) {
-    const loose = [normalizeRel(row.specPath || ''), String(row.exactTestTitle || row.title || row.leafTitle || ''), String(row.project || '')].join('\u0000');
-    const rows = inventoryByLooseKey.get(loose) || [];
-    rows.push(row);
-    inventoryByLooseKey.set(loose, rows);
-  }
+  const lookup = inventoryLookup(current);
   const valid = [];
   for (const row of selected) {
-    const specFile = resolveSpecFile(root, row.specPath);
+    const normalized = normalizeSelection(row, manifest);
+    const specFile = resolveSpecFile(root, normalized.specPath);
     if (!specFile) {
-      errors.push(`Selected test spec no longer exists: ${row.specPath}`);
+      errors.push(`Selected test spec no longer exists: ${normalized.specPath}`);
       continue;
     }
-    if (availableProjects.size && !availableProjects.has(row.project)) {
-      errors.push(`Selected test project no longer exists: ${row.project} (${row.specPath} :: ${row.fullTitle || row.title})`);
+    if (availableProjects.size && !availableProjects.has(normalized.project)) {
+      errors.push(`Selected test project no longer exists: ${normalized.project} (${normalized.specPath} :: ${normalized.fullTitle || normalized.title})`);
       continue;
     }
-    const key = row.stableKey || selectionKey(row);
-    if (inventoryByKey.size && !inventoryByKey.has(key)) {
-      const loose = [normalizeRel(row.specPath || ''), String(row.exactTestTitle || row.title || row.leafTitle || ''), String(row.project || '')].join('\u0000');
-      const looseMatches = inventoryByLooseKey.get(loose) || [];
-      if (looseMatches.length === 1) {
-        valid.push({ ...row, migratedFromLegacyIdentity: true, fullSuitePath: looseMatches[0].fullSuitePath || row.fullSuitePath || '', stableKey: looseMatches[0].stableKey || key });
-        continue;
-      }
-      errors.push(looseMatches.length > 1
-        ? `Selected test title is ambiguous under schema v3: ${row.specPath} :: ${row.title} [${row.project}]`
-        : `Selected test title no longer exists in Playwright discovery: ${row.specPath} :: ${row.fullTitle || row.title} [${row.project}]`);
+    const resolved = resolveSelectionRowsAgainstInventory(normalized, manifest, lookup);
+    const unresolved = resolved.length === 1 && !lookup.byKey.has(resolved[0].stableKey || selectionKey(resolved[0]));
+    if (unresolved) {
+      errors.push(`Selected test title no longer exists in Playwright discovery: ${normalized.specPath} :: ${normalized.fullTitle || normalized.title} [${normalized.project}]`);
       continue;
     }
-    valid.push(row);
+    valid.push(...resolved);
   }
-  if (selected.length && valid.length === 0) errors.push('Every selected failed-only test was removed or disabled in the current source.');
-  return { ok: errors.length === 0, errors, selected: valid, totalSelected: valid.length };
+  const dedupedValid = dedupeSelections(valid);
+  if (selected.length && dedupedValid.length === 0) errors.push('Every selected failed-only test was removed or disabled in the current source.');
+  return { ok: errors.length === 0, errors, selected: dedupedValid, totalSelected: dedupedValid.length };
 }
 
 function validateManifestForCurrentRun(manifest, options = {}) {
   const errors = [];
-  const baseline = validateBaselineManifest(manifest, { currentRunDir: options.currentRunDir || getRunDir() });
-  if (!baseline.ok) errors.push(...baseline.errors);
+  const baselineMode = options.baselineMode || manifest?.lineageMode || 'full-baseline';
+  if (baselineMode === 'focused') {
+    const focusedDir = manifest?.previousFailedOnlyRunDir || '';
+    if (!focusedDir) {
+      errors.push('Focused lineage source run directory is missing.');
+    } else if (!fs.existsSync(focusedDir)) {
+      errors.push(`Focused lineage source run directory does not exist: ${focusedDir}`);
+    } else {
+      const completed = hasCompletedReleaseGateEvidence(focusedDir);
+      if (!completed.ok) errors.push(`Focused lineage source run is not completed Playwright evidence: ${completed.reason}.`);
+      const focusedMeta = loadRunMeta(focusedDir);
+      const sourceVersion = manifest?.previousFailedOnlySourceVersion || focusedMeta.sourceVersion || '';
+      const deployedVersion = manifest?.previousFailedOnlyDeployedVersion || focusedMeta.deployedVersion || '';
+      if (!sourceVersion) errors.push('Focused lineage source version is missing.');
+      if (!deployedVersion) errors.push('Focused lineage deployed version is missing.');
+      if (sourceVersion && deployedVersion && sourceVersion !== deployedVersion) errors.push(`Focused lineage source/deployed versions do not match: ${sourceVersion} vs ${deployedVersion}.`);
+      const targetVersion = options.currentSourceVersion || '';
+      if (sourceVersion && targetVersion && compareVersions(targetVersion, sourceVersion) < 0) errors.push(`Target version ${targetVersion} is older than focused lineage version ${sourceVersion}.`);
+    }
+  } else if (baselineMode !== 'none') {
+    const baseline = validateBaselineManifest(manifest, { currentRunDir: options.currentRunDir || getRunDir() });
+    if (!baseline.ok) errors.push(...baseline.errors);
+  }
   const target = validateTargetManifestContext(options);
   if (!target.ok) errors.push(...target.errors);
-  const baselineVersion = manifest?.baselineSourceVersion || manifest?.sourceVersion || '';
-  const targetVersion = options.currentSourceVersion || '';
-  if (baselineVersion && targetVersion && compareVersions(targetVersion, baselineVersion) < 0) {
-    errors.push(`Target version ${targetVersion} is older than baseline failure version ${baselineVersion}.`);
+  if (baselineMode !== 'focused' && baselineMode !== 'none') {
+    const baselineVersion = manifest?.baselineSourceVersion || manifest?.sourceVersion || '';
+    const targetVersion = options.currentSourceVersion || '';
+    if (baselineVersion && targetVersion && compareVersions(targetVersion, baselineVersion) < 0) {
+      errors.push(`Target version ${targetVersion} is older than baseline failure version ${baselineVersion}.`);
+    }
   }
   if (options.validateIdentities !== false) {
     const identities = validateManifestTestIdentities(manifest, { root: options.root || process.cwd(), projectNames: options.projectNames, allowStaticFallback: options.allowStaticFallback === true });
@@ -719,7 +930,9 @@ module.exports = {
   normalizeRel,
   readPackageVersion,
   findMostRecentCompletedFullRun,
+  findLatestCompletedFocusedRun,
   findLatestCompletedFailedOnlyDescendant,
+  hasCompletedReleaseGateEvidence,
   buildNarrowedManifestFromFailedOnlyRun,
   selectFailedOnlyManifestForCurrentRun,
   countPlaywrightResults,
@@ -739,4 +952,8 @@ module.exports = {
   inventoryFromPlaywrightReport,
   addNewInventorySelections,
   currentInventoryRecords,
+  qualifyManifestSelectionsWithCurrentInventory,
+  resolveSelectionRowsAgainstInventory,
+  dedupeSelections,
+  selectionKey,
 };

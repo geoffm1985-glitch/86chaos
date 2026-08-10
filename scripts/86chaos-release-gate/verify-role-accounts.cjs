@@ -392,7 +392,9 @@ if (require.main === module) {
 module.exports = {
   EXPECTED_FIREBASE_PROJECT,
   ROLE_DEFINITIONS,
+  readFirebaseConfig,
   readConfiguredAccounts,
+  signInAccount,
   validateLocalRoleEnv,
   analyzeRoleRows,
   verifyRoleAccounts,

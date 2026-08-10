@@ -149,11 +149,28 @@ async function getRestaurantMap(db, restaurantIds = []) {
   }
   return out;
 }
+function inactiveMembershipState(raw = {}) {
+  if (!raw || typeof raw !== 'object') return false;
+  const status = clean(raw.status || raw.recordStatus || raw.membershipStatus).toLowerCase();
+  return raw.isActive === false || raw.disabled === true || raw.deleted === true || raw.removed === true || raw.archived === true || ['inactive', 'disabled', 'deleted', 'removed', 'deactivated'].includes(status);
+}
+function mergeWorkspaceAccessOption(current = {}, raw = {}, restaurantId = '', source = '') {
+  const rid = clean(restaurantId || raw.restaurantId || raw.id || current.restaurantId || current.id);
+  const rawInactive = inactiveMembershipState(raw);
+  const currentInactive = inactiveMembershipState(current);
+  // Explicit inactive/deleted workspace state wins over stale legacy fields or duplicate active rows for the same restaurant.
+  // This prevents removed employees from regaining a workspace through cached restaurantId/defaultRestaurantId/workspaceIds.
+  const merged = currentInactive && !rawInactive
+    ? { ...raw, ...current, restaurantId: rid, membershipSource: clean(current.membershipSource || source || raw.membershipSource) }
+    : { ...current, ...raw, restaurantId: rid, membershipSource: clean(raw.membershipSource || source || current.membershipSource) };
+  if (currentInactive || rawInactive) merged.membershipSuppressedByInactiveRecord = true;
+  return merged;
+}
 function addRawWorkspace(options, raw = {}, source = '') {
   const restaurantId = clean(raw.restaurantId || raw.id);
   if (!restaurantId) return;
   const current = options.get(restaurantId) || {};
-  options.set(restaurantId, { ...current, ...raw, restaurantId, membershipSource: clean(raw.membershipSource || source || current.membershipSource) });
+  options.set(restaurantId, mergeWorkspaceAccessOption(current, raw, restaurantId, source));
 }
 async function addWorkspaceQuery(db, options, queryRef, source) {
   const snap = await queryRef.get();
@@ -232,4 +249,9 @@ module.exports = async function handler(req, res) {
     console.error('login-bootstrap API error:', err);
     return res.status(500).json({ ok: false, error: err?.message || 'Login bootstrap check failed.' });
   }
+};
+
+module.exports._test = {
+  inactiveMembershipState,
+  mergeWorkspaceAccessOption
 };

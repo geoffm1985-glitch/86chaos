@@ -15,7 +15,7 @@ test('PWA icon metadata matrix is coherent for this browser engine', async ({ pa
   }));
   expect(metadata.title).toMatch(/86 Chaos/);
   expect(metadata.manifestHref).toBeTruthy();
-  expect(metadata.appleTouchIcon).toContain('86chaos-icon-180-v1.png');
+  expect(metadata.appleTouchIcon).toContain('86chaos-icon-180-v2.png');
   expect(metadata.themeColor).toBeTruthy();
   const manifestResponse = await request.get(new URL(metadata.manifestHref, baseURL).toString());
   expect(manifestResponse.status()).toBe(200);

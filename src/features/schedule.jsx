@@ -8,8 +8,18 @@ import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { MapContainer, TileLayer, Marker, Circle, useMapEvents } from 'react-leaflet';
 import { T, db, storage, auth, messaging, firebaseConfig, secureFetch, MASTER_ADMIN_EMAIL, EVENT_TAGS, CURRENT_VERSION, useLiveCollection, formatDate, getToday, getMonthStr, formatDisplayDate, formatDisplayFullDate, formatDisplayMonth, getDaysInMonth, formatShortTime, formatClockTime, formatClockDateTime, getAvatar, generateTempPass, getExpDate, getHoliday, logAudit, customMapIcon, getRestaurantExportPrefix, safeFilenamePart, downloadCsvRows, downloadTextFile, openPrintableReport } from '../core/appCore';
 import { buildAlertFingerprint, useRememberedAlert } from '../core/alertMemory';
+import {
+  requestSubjectLabel,
+  requestMatchesEmployeeFilter,
+  scheduleWarningEmployeeLabel,
+  warningShiftContext,
+  buildCoverageVarianceRows,
+  buildScheduleConflictWarningRows,
+  isRequestOffBulkEligible,
+} from '../core/scheduleWarningControls';
 import { getCanonicalScheduleUserId, collectScheduleDurableIdentityAliases, collectScheduleEmailAliases, collectScheduleFullNameAliases, collectScheduleFirstNameAliases, collectScheduleIdentityAliases, resolveSchedulePersonForAccount, resolveSchedulePersonForShift, buildCanonicalScheduleIdentityBlock, scheduleIdentityBlockMatchesPerson } from '../core/scheduleQueryPlanner';
 import { CheersLogo, Modal, DrawerMenu, DayDotPrintScreen, MapClickListener, SmartEmptyState, MiniProblemCard, getHomeProfile, calculatePunchHours, getWeekStart, getWeekDates, roleMatches, toLocalTimeInput, makeLocalIso, PunchTable, FriendlyEmpty, GlobalSearchModal, QuickActionDock, KitchenTVMode, ChangeLogModal, UndoBar } from '../components/common';
+
 
 
 const cleanScheduleRoleName = (role = '') => String(role || '').replace(/\s+/g, ' ').trim();
@@ -84,6 +94,72 @@ const isActiveTimeOffRequest = (request = {}) => {
 };
 
 const timeOffMatchesPerson = (request = {}, person = {}) => recordMatchesPerson(request, person);
+
+const requestOffSubjectMatchesPerson = (request = {}, person = {}) => {
+  if (!request || !person) return false;
+  const keys = personIdentityKeys(person);
+  const subjectValues = [
+    request.userId, request.employeeId, request.rosterUserId, request.accountUserId, request.scheduleUserId, request.uid, request.authUid,
+    request.ghostTargetUserId, request.targetUserId, request.requestedForUserId,
+    request.userEmail, request.employeeEmail, request.email, request.assignedEmail,
+    request.userName, request.employeeName, request.name, request.displayName
+  ].map(v => [normalizeScheduleIdentity(v), normalizeScheduleName(v)]).flat().filter(Boolean);
+  if (subjectValues.some(v => keys.has(v))) return true;
+  const hasDurableSubjectKey = !!(request.userId || request.employeeId || request.uid || request.authUid || request.scheduleUserId || request.userEmail || request.employeeEmail || request.email);
+  if (!hasDurableSubjectKey) {
+    const recordFirst = firstNameKey(request.employeeName || request.userName || request.name || '');
+    const personFirst = firstNameKey(person.name || person.displayName || person.email || '');
+    if (recordFirst && personFirst && recordFirst === personFirst) return true;
+  }
+  return false;
+};
+
+const requestOffSubjectIdFields = [
+  'scheduleUserId', 'employeeId', 'rosterUserId', 'accountUserId', 'userId', 'authUid', 'uid',
+  'ghostTargetUserId', 'targetUserId', 'requestedForUserId'
+];
+const requestOffSubjectEmailFields = ['userEmail', 'employeeEmail', 'email', 'assignedEmail'];
+const requestOffSubjectNameFields = ['employeeName', 'userName', 'name', 'displayName'];
+const requestOffSubjectRoleFields = ['role', 'scheduleRole', 'primaryRole'];
+
+const firstCleanRequestField = (record = {}, fields = []) => {
+  for (const field of fields) {
+    const value = String(record?.[field] || '').trim();
+    if (value) return value;
+  }
+  return '';
+};
+
+const buildRequestOffSubjectFallbackPerson = (request = {}) => {
+  const subjectId = firstCleanRequestField(request, requestOffSubjectIdFields);
+  const subjectEmail = firstCleanRequestField(request, requestOffSubjectEmailFields);
+  const subjectLabel = firstCleanRequestField(request, requestOffSubjectNameFields) || subjectEmail || subjectId;
+  if (!subjectLabel && !subjectEmail && !subjectId) return null;
+  const role = firstCleanRequestField(request, requestOffSubjectRoleFields) || 'Other';
+  const synthetic = subjectId || subjectEmail || `request-subject:${normalizeScheduleName(subjectLabel)}`;
+  return {
+    id: synthetic,
+    scheduleUserId: request.scheduleUserId || '',
+    employeeId: request.employeeId || '',
+    rosterUserId: request.rosterUserId || '',
+    accountUserId: request.accountUserId || '',
+    userId: request.userId || '',
+    authUid: request.authUid || '',
+    uid: request.uid || '',
+    ghostTargetUserId: request.ghostTargetUserId || '',
+    targetUserId: request.targetUserId || '',
+    requestedForUserId: request.requestedForUserId || '',
+    name: subjectLabel,
+    displayName: subjectLabel,
+    fullName: subjectLabel,
+    email: subjectEmail,
+    employeeEmail: subjectEmail,
+    role,
+    isActive: true,
+    requestOnly: true,
+    source: 'request-off-subject-fallback'
+  };
+};
 
 const shiftMatchesPerson = (shift = {}, person = {}, roster = []) => {
   if (!shift || !person) return false;
@@ -877,6 +953,10 @@ const TabMasterSchedule = ({ currentDate, setCurrentDate = null, onSubTabChange 
   }, []);
 
   useEffect(() => {
+    if (subTab !== 'my-schedule') {
+      setActivePunch(null);
+      return undefined;
+    }
     if (!appUser?.id || !appUser?.restaurantId) {
       setActivePunch(null);
       return;
@@ -916,7 +996,7 @@ const TabMasterSchedule = ({ currentDate, setCurrentDate = null, onSubTabChange 
       addToast('Clock Sync Warning', 'Clock-in status could not sync yet. Your schedule is still available. Try again in a minute or tell a manager.');
     });
     return () => unsub();
-  }, [appUser?.id, appUser?.restaurantId, appUser?.scheduleUserId, appUser?.employeeId, appUser?.userId, appUser?.rosterUserId]);
+  }, [subTab, appUser?.id, appUser?.restaurantId, appUser?.scheduleUserId, appUser?.employeeId, appUser?.userId, appUser?.rosterUserId]);
 
 
 
@@ -4352,6 +4432,7 @@ const TabAvailability = ({ availabilityRecords = [], appUser, users = [], addToa
   const [maxShiftsPerWeek, setMaxShiftsPerWeek] = useState('');
   const [preferredDaysOff, setPreferredDaysOff] = useState([]);
   const [weeklyAvailability, setWeeklyAvailability] = useState(() => SCHEDULE_WEEKDAYS.reduce((acc, day) => ({ ...acc, [day]: { available: !['Sunday'].includes(day), start: '09:00', end: '17:00', preferred: false } }), {}));
+  const [deletingAvailabilityId, setDeletingAvailabilityId] = useState('');
 
   const perms = appUser?.permissions || {};
   const canManage = !!(appUser?.isSuperAdmin || appUser?.isAdmin || perms.schedule || perms.team);
@@ -4410,7 +4491,30 @@ const TabAvailability = ({ availabilityRecords = [], appUser, users = [], addToa
     addToast('Availability Updated', `Availability ${status === 'restored' ? 'restored' : status}.`);
   };
 
-  const AvailabilityCard = ({ record }) => (
+  const deleteAvailabilityHistory = async (record) => {
+    if (!record?.id || deletingAvailabilityId) return;
+    const who = record.employeeName || record.userName || 'this employee';
+    const start = formatDisplayDate(record.effectiveStartDate || getToday());
+    const ok = window.confirm(`Delete availability history for ${who} starting ${start}?\n\nThis permanently deletes this availability history entry. It does not delete the employee, schedules, or Request Off records.`);
+    if (!ok) return;
+    setDeletingAvailabilityId(record.id);
+    try {
+      const response = await secureFetch('/api/availability-record', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'delete', id: record.id, restaurantId: appUser?.restaurantId || record.restaurantId || record.workspaceId || '' })
+      });
+      const data = await parseRequestOffApiPayload(response);
+      if (!response.ok || data?.ok === false) throw new Error(data?.error || `Availability delete failed (${response.status})`);
+      addToast('Availability Deleted', 'Availability history entry was permanently deleted.');
+    } catch (err) {
+      addToast('Delete Failed', err?.message || 'Could not delete availability history.');
+    } finally {
+      setDeletingAvailabilityId('');
+    }
+  };
+
+  const AvailabilityCard = ({ record, allowDelete = false }) => (
     <div className={`${T.row} items-start gap-3`}>
       <div className="flex-1 min-w-0">
         <div className="font-black text-white text-sm">{record.employeeName || 'Employee'}</div>
@@ -4429,6 +4533,7 @@ const TabAvailability = ({ availabilityRecords = [], appUser, users = [], addToa
           {record.status === 'pending' && <button onClick={() => updateAvailabilityStatus(record, 'approved')} className="p-2 rounded-lg bg-emerald-900/20 text-emerald-300 border border-emerald-900/50"><Check size={14}/></button>}
           {record.status === 'pending' && <button onClick={() => updateAvailabilityStatus(record, 'denied')} className="p-2 rounded-lg bg-red-900/20 text-red-300 border border-red-900/50"><X size={14}/></button>}
           {record.archived || record.status === 'archived' ? <button onClick={() => updateAvailabilityStatus(record, 'restored')} className={T.btnAlt}>Restore</button> : <button onClick={() => updateAvailabilityStatus(record, 'archived')} className={T.btnAlt}>Archive</button>}
+          {allowDelete && <button type="button" onClick={() => deleteAvailabilityHistory(record)} disabled={deletingAvailabilityId === record.id} className="p-2 rounded-lg bg-red-950/30 text-red-300 border border-red-900/50 disabled:opacity-50" aria-label={`Delete availability history for ${record.employeeName || 'employee'}`} title="Delete availability history"><Trash2 size={14}/></button>}
         </div>
       )}
     </div>
@@ -4457,8 +4562,8 @@ const TabAvailability = ({ availabilityRecords = [], appUser, users = [], addToa
           </form>
         </div>
         <div className="space-y-4">
-          <div className={`${T.card} p-4`}><h3 className="font-black text-white text-sm mb-3">Pending Availability Changes</h3><div className="space-y-2 max-h-[420px] overflow-y-auto custom-scrollbar">{pendingRecords.length === 0 && <FriendlyEmpty title="Nothing waiting" text="Pending availability changes will land here." />}{pendingRecords.map(record => <AvailabilityCard key={record.id} record={record}/>)}</div></div>
-          <div className={`${T.card} p-4`}><h3 className="font-black text-white text-sm mb-3">Availability History</h3><div className="space-y-2 max-h-[360px] overflow-y-auto custom-scrollbar">{historyRecords.length === 0 && <FriendlyEmpty title="No history yet" text="Approved, denied, archived, and restored availability stays here." />}{historyRecords.slice(0,80).map(record => <AvailabilityCard key={record.id} record={record}/>)}</div></div>
+          <div className={`${T.card} p-4`}><h3 className="font-black text-white text-sm mb-3">Pending Availability Changes</h3><div className="space-y-2 max-h-[420px] overflow-y-auto custom-scrollbar">{pendingRecords.length === 0 && <FriendlyEmpty title="Nothing waiting" text="Pending availability changes will land here." />}{pendingRecords.map(record => <AvailabilityCard key={record.id} record={record} allowDelete={false}/>)}</div></div>
+          <div className={`${T.card} p-4`}><h3 className="font-black text-white text-sm mb-3">Availability History</h3><div className="space-y-2 max-h-[360px] overflow-y-auto custom-scrollbar">{historyRecords.length === 0 && <FriendlyEmpty title="No history yet" text="Approved, denied, archived, and restored availability stays here." />}{historyRecords.slice(0,80).map(record => <AvailabilityCard key={record.id} record={record} allowDelete={canManage}/>)}</div></div>
         </div>
       </div>
     </div>
@@ -4499,6 +4604,8 @@ const TabTimeOff = ({ timeOffRequests, appUser, users, addToast, events = [], sh
   const [customStart, setCustomStart] = useState(getToday());
   const [customEnd, setCustomEnd] = useState(getToday());
   const [selectedRequestIds, setSelectedRequestIds] = useState([]);
+  const [employeeFilter, setEmployeeFilter] = useState('');
+  const [bulkBusy, setBulkBusy] = useState('');
   const [ghostTimeOffRequests, setGhostTimeOffRequests] = useState([]);
   const [ghostListStatus, setGhostListStatus] = useState('idle');
   const [checkingDate, setCheckingDate] = useState('');
@@ -4510,6 +4617,45 @@ const TabTimeOff = ({ timeOffRequests, appUser, users, addToast, events = [], sh
   const requestOffGhostMode = isUserLevelGhostTimeOff(appUser);
   const perms = appUser?.permissions || {};
   const canManage = !requestOffGhostMode && !!(appUser?.isSuperAdmin || appUser?.isAdmin || perms.schedule || perms.team);
+  const timeOffRequestRows = requestOffGhostMode ? ghostTimeOffRequests : (timeOffRequests || []);
+  const requestOffEmployeeOptions = useMemo(() => {
+    const seenValues = new Set();
+    const seenIdentityKeys = new Set();
+    const byRole = new Map();
+    const addOption = (person = {}) => {
+      const value = String(person.scheduleUserId || person.authUid || person.uid || person.userId || person.id || person.email || person.employeeEmail || '').trim();
+      if (!value || seenValues.has(value)) return;
+      const identityKeys = personIdentityKeys(person);
+      if ([...identityKeys].some(key => seenIdentityKeys.has(key))) return;
+      seenValues.add(value);
+      identityKeys.forEach(key => seenIdentityKeys.add(key));
+      const role = cleanScheduleRoleName(person.role || person.scheduleRole || person.primaryRole || 'Other') || 'Other';
+      const label = String(person.name || person.displayName || person.fullName || person.email || value).trim();
+      if (!label) return;
+      if (!byRole.has(role)) byRole.set(role, []);
+      byRole.get(role).push({ value, label, person });
+    };
+    (users || [])
+      .filter(u => u && u.isActive !== false)
+      .forEach(addOption);
+    if (canManage) {
+      (timeOffRequestRows || [])
+        .map(buildRequestOffSubjectFallbackPerson)
+        .filter(Boolean)
+        .forEach(addOption);
+    }
+    return Array.from(byRole.entries())
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([role, rows]) => ({ role, rows: rows.sort((a, b) => a.label.localeCompare(b.label)) }));
+  }, [users, canManage, timeOffRequestRows]);
+  const selectedRequestOffEmployee = useMemo(() => {
+    if (!employeeFilter) return null;
+    for (const group of requestOffEmployeeOptions) {
+      const found = group.rows.find(row => row.value === employeeFilter);
+      if (found) return found;
+    }
+    return null;
+  }, [employeeFilter, requestOffEmployeeOptions]);
   const authUserId = requestOffGhostMode
     ? requestOffTargetIdForUser(appUser)
     : (auth?.currentUser?.uid || appUser?.authUid || appUser?.uid || appUser?.id || '');
@@ -4522,7 +4668,6 @@ const TabTimeOff = ({ timeOffRequests, appUser, users, addToast, events = [], sh
   const monthEvents = events.filter(e => e.type === 'special_event' && e.date?.startsWith(calMonth));
   const isArchivedRequest = (r = {}) => r.archived === true || r.processed === true || ['archived','processed','cancelled','canceled'].includes(String(r.status || '').toLowerCase());
   const normalizeStatus = (r = {}) => String(r.status || 'pending').toLowerCase();
-  const timeOffRequestRows = requestOffGhostMode ? ghostTimeOffRequests : (timeOffRequests || []);
   const visibleRequests = (timeOffRequestRows || []).filter(r => canManage || timeOffMatchesPerson(r, schedulePerson) || timeOffMatchesPerson(r, appUser));
   const myRequests = visibleRequests.filter(r => timeOffMatchesPerson(r, schedulePerson) || timeOffMatchesPerson(r, appUser)).sort((a,b) => new Date(a.date || 0) - new Date(b.date || 0));
 
@@ -4538,16 +4683,19 @@ const TabTimeOff = ({ timeOffRequests, appUser, users, addToast, events = [], sh
     return { start: '0000-01-01', end: '9999-12-31' };
   };
   const range = getDateFilterRange();
-  const filteredRequests = visibleRequests
-    .filter(r => !r.date || (r.date >= range.start && r.date <= range.end))
-    .filter(r => {
-      const status = normalizeStatus(r);
-      if (viewFilter === 'needs-review') return status === 'pending' && !isArchivedRequest(r);
-      if (viewFilter === 'upcoming-approved') return status === 'approved' && !isArchivedRequest(r) && r.date >= getToday();
-      if (viewFilter === 'archived') return isArchivedRequest(r);
-      return true;
-    })
+  const dateFilteredRequests = visibleRequests.filter(r => !r.date || (r.date >= range.start && r.date <= range.end));
+  const statusFilteredRequests = dateFilteredRequests.filter(r => {
+    const status = normalizeStatus(r);
+    if (viewFilter === 'needs-review') return status === 'pending' && !isArchivedRequest(r);
+    if (viewFilter === 'upcoming-approved') return status === 'approved' && !isArchivedRequest(r) && r.date >= getToday();
+    if (viewFilter === 'archived') return isArchivedRequest(r);
+    return true;
+  });
+  const filteredRequests = statusFilteredRequests
+    .filter(r => !canManage || !selectedRequestOffEmployee || requestOffSubjectMatchesPerson(r, selectedRequestOffEmployee.person))
     .sort((a,b) => new Date(a.date || 0) - new Date(b.date || 0));
+  const visibleRequestIds = filteredRequests.map(r => r.id).filter(Boolean);
+  const activeEmployeeFilterLabel = selectedRequestOffEmployee?.label || '';
 
   const requestOffApi = useCallback(async (action, payload = {}) => {
     const response = await secureFetch('/api/time-off-request', {
@@ -4640,6 +4788,58 @@ const TabTimeOff = ({ timeOffRequests, appUser, users, addToast, events = [], sh
     const selected = filteredRequests.filter(r => selectedRequestIds.includes(r.id));
     await Promise.all(selected.map(archiveRequest));
     setSelectedRequestIds([]);
+  };
+
+  const eligibleVisibleRequests = (options = {}) => filteredRequests.filter(r => isRequestOffBulkEligible(r, {
+    visibleIds: visibleRequestIds,
+    workspaceId: appUser?.restaurantId || '',
+    canManage,
+    normalizeStatus,
+    isArchivedRequest,
+    requirePending: options.requirePending === true,
+  }));
+
+  const runBulkRequestUpdate = async ({ mode, requests, confirmMessage, buildUpdate, action, successVerb }) => {
+    if (!canManage || bulkBusy) return;
+    if (!requests.length) return addToast('Nothing to update', 'No visible eligible Request Off requests match this action.');
+    if (!window.confirm(confirmMessage)) return;
+    setBulkBusy(mode);
+    try {
+      const results = await Promise.allSettled(requests.map(r => updateRequest(r, buildUpdate(r), action)));
+      const passed = results.filter(result => result.status === 'fulfilled').length;
+      const failed = results.length - passed;
+      if (failed) addToast(`${successVerb} ${passed}`, `${successVerb} ${passed} request${passed === 1 ? '' : 's'}. ${failed} could not be updated.`);
+      else addToast(`${successVerb} ${passed}`, `${successVerb} ${passed} request${passed === 1 ? '' : 's'}.`);
+      setSelectedRequestIds(prev => prev.filter(id => !requests.some(r => r.id === id)));
+    } finally {
+      setBulkBusy('');
+    }
+  };
+
+  const approveAllVisible = async () => {
+    const requests = eligibleVisibleRequests({ requirePending: true });
+    const scoped = activeEmployeeFilterLabel ? ` for ${activeEmployeeFilterLabel}` : '';
+    await runBulkRequestUpdate({
+      mode: 'approve-visible',
+      requests,
+      confirmMessage: `Approve ${requests.length} visible pending Request Off request${requests.length === 1 ? '' : 's'}${scoped}?`,
+      action: 'TIME_OFF_APPROVED',
+      successVerb: 'Approved',
+      buildUpdate: () => ({ status:'approved', approvedAt:new Date().toISOString(), approvedBy: appUser.id || '', approvedByName: appUser.name || appUser.email || '' })
+    });
+  };
+
+  const archiveAllVisible = async () => {
+    const requests = eligibleVisibleRequests({ requirePending: false });
+    const scoped = activeEmployeeFilterLabel ? ` for ${activeEmployeeFilterLabel}` : '';
+    await runBulkRequestUpdate({
+      mode: 'archive-visible',
+      requests,
+      confirmMessage: `Archive ${requests.length} visible Request Off request${requests.length === 1 ? '' : 's'}${scoped}?`,
+      action: 'TIME_OFF_ARCHIVED',
+      successVerb: 'Archived',
+      buildUpdate: (r) => ({ previousStatus: r.status || 'pending', status:'archived', archived:true, archivedAt:new Date().toISOString(), archivedBy: appUser.id || '', archivedByName: appUser.name || appUser.email || '' })
+    });
   };
 
   const priorRequestInfoForDate = (dateKey = '') => {
@@ -4781,7 +4981,7 @@ const TabTimeOff = ({ timeOffRequests, appUser, users, addToast, events = [], sh
     return <div className={`${T.row} items-start gap-3 ${publishedFlag ? 'border-amber-500/40 bg-amber-900/10' : ''}`}>
       {canManage && <input type="checkbox" checked={selectedRequestIds.includes(r.id)} onChange={e => setSelectedRequestIds(prev => e.target.checked ? [...prev, r.id] : prev.filter(id => id !== r.id))} className="mt-1 accent-[#8F6040]" />}
       <div className="flex-1 min-w-0">
-        <div className="font-black text-white text-sm">{r.userName || r.employeeName || 'Employee'}</div>
+        <div className="font-black text-white text-sm">{requestSubjectLabel(r)}</div>
         <div className={`text-[10px] font-bold ${T.muted} flex flex-wrap gap-2 mt-0.5`}><span>{formatRequestDateLabel(r.date)}</span>{r.isPartial && <span className="text-[#D4A381]">{formatRequestPartialRange(r)}</span>}<span className="uppercase tracking-widest">{status}</span>{publishedFlag && <span className="text-amber-300">Unresolved on published schedule</span>}</div>
         <div className="mt-1 text-[10px] font-bold text-slate-500">Requested {formatClockDateTime(r.requestedAt || r.submittedAt || r.createdAt || r.requestTimestamp) || 'time not recorded'}{(r.requestedByName || r.userName || r.employeeName) ? ` by ${r.requestedByName || r.userName || r.employeeName}` : ''}</div>
         {isArchivedRequest(r) && <div className="mt-1 text-[10px] font-bold text-slate-500">{r.scheduleId ? `Schedule: ${r.scheduleId}` : 'History record'}{r.publishedAt ? ` • Published ${formatClockDateTime(r.publishedAt)} by ${r.publishedByName || r.publishedBy || 'manager'}` : ''}{r.approvedAt ? ` • Approved ${formatClockDateTime(r.approvedAt)} by ${r.approvedByName || r.approvedBy || ''}` : ''}{r.deniedAt ? ` • Denied ${formatClockDateTime(r.deniedAt)} by ${r.deniedByName || r.deniedBy || ''}` : ''}</div>}
@@ -4823,10 +5023,11 @@ const TabTimeOff = ({ timeOffRequests, appUser, users, addToast, events = [], sh
           <form onSubmit={handleSubmit} className="space-y-4"><label className={`flex items-center gap-2 text-xs font-bold text-slate-300 cursor-pointer p-2.5 bg-[#12161A] rounded-xl border ${T.border}`}><input type="checkbox" checked={isPartial} onChange={e=>setIsPartial(e.target.checked)} className="w-4 h-4 rounded bg-[#1A2126] border-[#2A353D] accent-[#8F6040]" />Partial Day Only?</label>{isPartial && <div className="grid grid-cols-2 gap-3"><div><label className={T.label}>Start Time</label><input type="time" value={startTime} onChange={e=>setStartTime(e.target.value)} className={T.input} required /></div><div><label className={T.label}>End Time</label><input type="time" value={endTime} onChange={e=>setEndTime(e.target.value)} className={T.input} required /></div></div>}<button type="submit" disabled={selectedDates.length === 0 || isSubmittingTimeOff || !!checkingDate} className={`w-full ${T.btn} disabled:opacity-50 disabled:cursor-not-allowed`}>{isSubmittingTimeOff ? 'Checking...' : `Submit ${selectedDates.length > 0 ? `(${selectedDates.length})` : ''}`}</button></form>
         </div>
       </div>
-      <div className={`${T.card} p-4`}>
-        <div className="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-3 mb-3"><div><h3 className="font-black text-white">Request-Off Workflow</h3><p className={`text-xs font-bold ${T.muted}`}>Default view only shows items that need attention. Published and archived requests stay searchable.</p></div>{canManage && selectedRequestIds.length > 0 && <button onClick={archiveSelected} className={T.btnAlt}>Archive selected ({selectedRequestIds.length})</button>}</div>
-        <div className="flex flex-wrap gap-2 mb-3">{[['needs-review','Needs Review'],['upcoming-approved','Upcoming Approved'],['archived','Published/Archived'],['all','All']].map(([id,label]) => <button key={id} onClick={() => setViewFilter(id)} className={viewFilter === id ? T.btn : T.btnAlt}>{label}</button>)}</div>
-        <div className="flex flex-wrap gap-2 mb-4">{[['this-week','This Week'],['next-week','Next Week'],['this-month','This Month'],['next-month','Next Month'],['custom','Custom Range']].map(([id,label]) => <button key={id} onClick={() => setDateFilter(id)} className={dateFilter === id ? T.btn : T.btnAlt}>{label}</button>)}{dateFilter === 'custom' && <><input type="date" value={customStart} onChange={e=>setCustomStart(e.target.value)} className={T.input}/><input type="date" value={customEnd} onChange={e=>setCustomEnd(e.target.value)} className={T.input}/></>}</div>
+      <div className={`${T.card} p-4 request-off-workflow-panel`}>
+        <div className="flex flex-col xl:flex-row xl:items-start xl:justify-between gap-3 mb-3"><div><h3 className="font-black text-white">Request-Off Workflow</h3><p className={`text-xs font-bold ${T.muted}`}>Default view only shows items that need attention. Published and archived requests stay searchable.</p></div>{canManage && <div className="request-off-bulk-grid"><button onClick={approveAllVisible} disabled={!!bulkBusy} className={`${T.btnAlt} disabled:opacity-50`}>Approve All Visible</button><button onClick={archiveAllVisible} disabled={!!bulkBusy} className={`${T.btnAlt} disabled:opacity-50`}>Archive All Visible</button>{selectedRequestIds.length > 0 && <button onClick={archiveSelected} disabled={!!bulkBusy} className={`${T.btnAlt} disabled:opacity-50 request-off-span-all`}>Archive selected ({selectedRequestIds.length})</button>}</div>}</div>
+        <div className="request-off-control-group"><div className="request-off-control-label">Status</div><div className="request-off-status-grid">{[['needs-review','Needs Review'],['upcoming-approved','Upcoming Approved'],['archived','Published/Archived'],['all','All']].map(([id,label]) => <button key={id} onClick={() => setViewFilter(id)} className={viewFilter === id ? T.btn : T.btnAlt}>{label}</button>)}</div></div>
+        <div className="request-off-control-group"><div className="request-off-control-label">Date</div><div className="request-off-date-grid">{[['this-week','This Week'],['next-week','Next Week'],['this-month','This Month'],['next-month','Next Month'],['custom','Custom Range']].map(([id,label]) => <button key={id} onClick={() => setDateFilter(id)} className={`${dateFilter === id ? T.btn : T.btnAlt} ${id === 'custom' ? 'request-off-custom-range' : ''}`}>{label}</button>)}</div>{dateFilter === 'custom' && <div className="request-off-custom-dates"><input type="date" value={customStart} onChange={e=>setCustomStart(e.target.value)} className={T.input}/><input type="date" value={customEnd} onChange={e=>setCustomEnd(e.target.value)} className={T.input}/></div>}</div>
+        {canManage && <div className="request-off-employee-filter"><label className="request-off-control-label" htmlFor="request-off-employee-filter">Employee</label><select id="request-off-employee-filter" value={employeeFilter} onChange={e=>setEmployeeFilter(e.target.value)} className={`${T.input} request-off-employee-select`} aria-label="Filter Request Off by employee"><option value="">All Employees</option>{requestOffEmployeeOptions.map(group => <optgroup key={group.role} label={group.role}>{group.rows.map(row => <option key={row.value} value={row.value}>{row.label}</option>)}</optgroup>)}</select></div>}
         <div className="space-y-2 max-h-[520px] overflow-y-auto custom-scrollbar">{filteredRequests.length === 0 && <FriendlyEmpty title="No requests here" text="Switch filters to review history or upcoming approvals." />}{filteredRequests.map(r => <RequestCard key={r.id} r={r}/>)}</div>
       </div>
       {canManage && <div className={`${T.card} p-4`}><h3 className="font-black text-white text-sm mb-2">Master Override Log</h3><p className={`text-xs font-bold ${T.muted}`}>Manager approvals, denials, archives, restores, cancellations, and published-schedule processing are preserved in audit logs and request history.</p></div>}
@@ -4841,16 +5042,47 @@ const TabScheduleWorkbench = ({ currentDate, users, shifts, events, timeOffReque
   </div>
 );
 
+const ScheduleWarningCard = ({ warning, appUser }) => {
+  const memory = useRememberedAlert({
+    user: appUser,
+    workspaceId: appUser?.restaurantId || '',
+    alertId: warning.alertId,
+    fingerprint: warning.fingerprint,
+    enabled: !!warning.alertId && !!warning.fingerprint,
+  });
+  if (memory.isDismissed) return null;
+  const tone = warning.type === 'coverage-over'
+    ? 'bg-blue-900/10 border-blue-900/40 text-blue-200'
+    : warning.type === 'coverage-under'
+      ? 'bg-amber-900/10 border-amber-900/40 text-amber-200'
+      : 'bg-red-900/10 border-red-900/40 text-red-200';
+  const titleTone = warning.type === 'coverage-over' ? 'text-blue-300' : warning.type === 'coverage-under' ? 'text-amber-300' : 'text-red-200';
+  return <div className={`${tone} border rounded-xl p-3 mb-2 text-sm font-bold`}>
+    <div className="flex items-start justify-between gap-2">
+      <div className="min-w-0">
+        <div className={`font-black ${titleTone}`}>{warning.message}</div>
+        {warning.detail && <div className="text-xs text-slate-400 mt-1">{warning.detail}</div>}
+      </div>
+      <button type="button" onClick={memory.dismiss} aria-label="Dismiss warning" className="min-h-[42px] min-w-[42px] rounded-lg border border-white/10 bg-[#12161A] text-slate-300 hover:text-white flex items-center justify-center"><X size={14}/></button>
+    </div>
+  </div>;
+};
+
 const ScheduleCopilot = ({ currentDate, users = [], shifts = [], timeOffRequests = [], addToast, appUser }) => {
-  const templates = useLiveCollection('scheduleTemplates', appUser?.restaurantId, { enabled: !!appUser?.restaurantId, limitCount: 120 });
-  const coverageTargets = useLiveCollection('scheduleCoverageTargets', appUser?.restaurantId, { enabled: !!appUser?.restaurantId, limitCount: 200 });
-  const dbRoles = useLiveCollection('roles', appUser?.restaurantId, { enabled: !!appUser?.restaurantId, limitCount: 120 });
+  const [open, setOpen] = useState(false);
+  const copilotReadEnabled = Boolean(open && appUser?.restaurantId);
+  const templates = useLiveCollection('scheduleTemplates', appUser?.restaurantId, { enabled: copilotReadEnabled, limitCount: 120, debugLabel: 'schedule:copilot:templates' });
+  const coverageTargets = useLiveCollection('scheduleCoverageTargets', appUser?.restaurantId, { enabled: copilotReadEnabled, limitCount: 200, debugLabel: 'schedule:copilot:coverage-targets' });
+  const dbRoles = useLiveCollection('roles', appUser?.restaurantId, { enabled: copilotReadEnabled, limitCount: 120, debugLabel: 'schedule:copilot:roles' });
   const weekDates = getWeekDates(currentDate);
   const weekStart = weekDates[0];
   const weekEnd = weekDates[6];
-  const weekShifts = shifts.filter(s => weekDates.includes(s.date));
-  const activeUsers = users.filter(u => u.isActive !== false);
-  const [open, setOpen] = useState(false);
+  const safeShifts = Array.isArray(shifts) ? shifts.filter(Boolean) : [];
+  const safeUsers = Array.isArray(users) ? users.filter(Boolean) : [];
+  const safeTimeOffRequests = Array.isArray(timeOffRequests) ? timeOffRequests.filter(Boolean) : [];
+  const safeTemplates = Array.isArray(templates) ? templates.filter(Boolean) : [];
+  const weekShifts = safeShifts.filter(s => weekDates.includes(s?.date));
+  const activeUsers = safeUsers.filter(u => u?.isActive !== false);
   const [activeTool, setActiveTool] = useState('targets');
   const [templateId, setTemplateId] = useState('');
   const [editingTemplateId, setEditingTemplateId] = useState(null);
@@ -4876,40 +5108,35 @@ const ScheduleCopilot = ({ currentDate, users = [], shifts = [], timeOffRequests
     }));
   }, [firstScheduleRole, scheduleRoleOptions.join('|')]);
 
-  const templateOptions = [...templates].sort((a,b) => (a.name || '').localeCompare(b.name || ''));
-  const activeTemplate = templates.find(t => t.id === templateId) || null;
+  const templateOptions = [...safeTemplates].sort((a,b) => (a.name || '').localeCompare(b.name || ''));
+  const activeTemplate = safeTemplates.find(t => t.id === templateId) || null;
   const draftCount = weekShifts.filter(s => !s.isPublished).length;
-  const conflictList = getScheduleWarnings(weekShifts, users, timeOffRequests, weekDates);
-  const missingTargets = coverageTargets.flatMap(t => {
-    const date = weekDates[parseInt(t.dayIndex || 0, 10)];
-    const targetRole = canonicalScheduleRole(t.role);
-    const existing = weekShifts.filter(s => s.date === date && roleMatches(s.role, targetRole) && (!t.startTime || s.startTime === t.startTime)).length;
-    const needed = Math.max(0, (parseInt(t.count || 0,10) || 0) - existing);
-    return needed > 0 ? [{ ...t, role: targetRole, originalRole: t.role, date, needed, existing }] : [];
+  const coverageVarianceRows = buildCoverageVarianceRows({ coverageTargets, weekDates, weekShifts, roleMatcher: roleMatches, canonicalRole: canonicalScheduleRole });
+  const missingTargets = coverageVarianceRows.filter(row => row.type === 'under');
+  const coverageWarnings = coverageVarianceRows.map(row => ({
+    ...row,
+    type: row.type === 'under' ? 'coverage-under' : 'coverage-over',
+    alertId: `schedule-${weekStart}-coverage-${row.type}-${row.id}-${row.date}-${row.role}`,
+    fingerprint: buildAlertFingerprint('schedule-coverage', weekStart, row.type, row.date, row.role, row.existing, row.count, row.startTime || '', row.endTime || ''),
+    message: row.type === 'under'
+      ? `${formatDisplayDate(row.date)} needs ${row.needed} more ${row.role}`
+      : `${formatDisplayDate(row.date)} has ${row.over} more ${row.role} than the coverage target.`,
+    detail: `Existing: ${row.existing} • Target: ${row.count}`,
+  }));
+  const conflictList = buildScheduleConflictWarningRows({
+    weekStart,
+    schedule: weekShifts,
+    allUsers: safeUsers,
+    requests: safeTimeOffRequests,
+    resolvePerson: resolveSchedulePersonForShift,
+    matchesTimeOff: timeOffMatchesPerson,
+    isActiveRequest: isActiveTimeOffRequest,
+    employeeLabeler: scheduleWarningEmployeeLabel,
+    shiftContext: warningShiftContext,
+    fingerprintBuilder: buildAlertFingerprint,
+    formatDate: formatDisplayDate,
   });
-
-  function getScheduleWarnings(schedule, allUsers, requests, dates) {
-    const warnings = [];
-    schedule.forEach(s => {
-      const emp = allUsers.find(u => u.id === s.employeeId);
-      const empForMatch = emp || { id: s.employeeId, name: s.employeeName, email: s.employeeEmail };
-      const off = requests.find(r => timeOffMatchesPerson(r, empForMatch) && r.date === s.date && isActiveTimeOffRequest(r));
-      if (off) warnings.push(`${emp?.name || 'Someone'} is scheduled on requested-off date ${formatDisplayDate(s.date)}.`);
-    });
-    allUsers.forEach(u => {
-      const count = schedule.filter(s => s.employeeId === u.id).length;
-      if (count >= 6) warnings.push(`${u.name} has ${count} scheduled days this week.`);
-    });
-    dates.forEach(d => {
-      const targetForDay = coverageTargets.filter(t => weekDates[parseInt(t.dayIndex || 0, 10)] === d);
-      targetForDay.forEach(t => {
-        const targetRole = canonicalScheduleRole(t.role);
-        const existing = schedule.filter(s => s.date === d && roleMatches(s.role, targetRole)).length;
-        if (existing < (parseInt(t.count || 0, 10) || 0)) warnings.push(`Coverage target short on ${formatDisplayDate(d)} for ${targetRole}.`);
-      });
-    });
-    return [...new Set(warnings)].slice(0, 12);
-  }
+  const allScheduleWarnings = [...coverageWarnings, ...conflictList];
 
   const addTemplateRow = () => setTemplateRows([...templateRows, { dayIndex: 5, role: firstScheduleRole, startTime: '16:00', endTime: '21:00', count: 1 }]);
   const updateTemplateRow = (idx, patch) => setTemplateRows(templateRows.map((r,i) => i === idx ? { ...r, ...patch } : r));
@@ -5008,7 +5235,7 @@ const ScheduleCopilot = ({ currentDate, users = [], shifts = [], timeOffRequests
   const publishWeek = async () => {
     const drafts = weekShifts.filter(s => !s.isPublished);
     if (!drafts.length) return addToast('Nothing To Publish', 'No draft shifts found this week.');
-    const warningText = [...missingTargets.map(m => `${dayNames[m.dayIndex]} ${m.role}: short ${m.needed}`), ...conflictList].slice(0,8).join('\n');
+    const warningText = allScheduleWarnings.map(w => w.message).slice(0,8).join('\n');
     if (!window.confirm(`Publish ${drafts.length} draft shifts?${warningText ? '\n\nWarnings:\n' + warningText : ''}`)) return;
     try { await Promise.all(drafts.map(s => updateDoc(doc(db, 'shifts', s.id), { isPublished: true, publishedAt: new Date().toISOString(), publishedBy: appUser.id || 'manager' }))); addToast('Published', `${drafts.length} shifts published.`); }
     catch(err) { addToast('Error', err.message); }
@@ -5043,8 +5270,8 @@ const ScheduleCopilot = ({ currentDate, users = [], shifts = [], timeOffRequests
     <div className={`${T.card} schedule-copilot-launcher p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-[#D4A381]/30`}>
       <div className="min-w-0">
         <div className="text-[10px] uppercase tracking-widest font-black text-[#D4A381]">Schedule Copilot</div>
-        <div className="text-sm font-black text-white mt-0.5">{draftCount} drafts · {missingTargets.length} gaps · {conflictList.length} warnings</div>
-        <div className="text-xs text-slate-400 font-bold mt-0.5">{formatDisplayDate(weekStart)} through {formatDisplayDate(weekEnd)}</div>
+        <div className="text-sm font-black text-white mt-0.5">{draftCount} drafts ready</div>
+        <div className="text-xs text-slate-400 font-bold mt-0.5">{formatDisplayDate(weekStart)} through {formatDisplayDate(weekEnd)} • Open Copilot Tools for coverage targets, warnings & templates.</div>
       </div>
       <button onClick={() => setOpen(true)} className={`${T.btnAlt} flex items-center justify-center gap-2 flex-shrink-0`}><ChefHat size={16}/> Open Copilot Tools</button>
     </div>
@@ -5061,7 +5288,7 @@ const ScheduleCopilot = ({ currentDate, users = [], shifts = [], timeOffRequests
         <div className="flex flex-wrap gap-1.5 flex-shrink-0"><button onClick={copyPreviousWeek} className={T.btnAlt}>Copy Week</button><button onClick={smartFill} className={T.btnAlt}>Smart Fill</button><button onClick={publishWeek} className={T.btn}>Publish</button><button onClick={() => setOpen(false)} className={T.btnAlt}>Hide</button></div>
       </div>
       <div className="grid grid-cols-4 gap-1.5">
-        {[['Drafts',draftCount],['Missing',missingTargets.length],['Warnings',conflictList.length],['Templates',templates.length]].map(([label,value]) => <div key={label} className="schedule-copilot-metric bg-[#12161A] border border-[#2A353D]"><span className="text-[8px] uppercase tracking-widest font-black text-slate-500">{label}</span><strong className="text-white">{value}</strong></div>)}
+        {[['Drafts',draftCount],['Missing',missingTargets.length],['Warnings',allScheduleWarnings.length],['Templates',safeTemplates.length]].map(([label,value]) => <div key={label} className="schedule-copilot-metric bg-[#12161A] border border-[#2A353D]"><span className="text-[8px] uppercase tracking-widest font-black text-slate-500">{label}</span><strong className="text-white">{value}</strong></div>)}
       </div>
       <div className="flex gap-1.5 overflow-x-auto custom-scrollbar border-b border-[#2A353D] pb-2">{[['targets','Coverage'],['templates','Templates'],['template-editor', editingTemplateId ? 'Edit Template' : 'Create Template'],['drag','Drag Board'],['warnings','Warnings']].map(([id,label]) => <button key={id} onClick={() => setActiveTool(id)} className={`flex-shrink-0 px-2.5 py-1.5 rounded-lg text-[9px] uppercase tracking-widest font-black ${activeTool===id ? `${T.grad} text-slate-900` : 'bg-[#12161A] text-slate-400 hover:text-white'}`}>{label}</button>)}</div>
       <div className="schedule-copilot-body custom-scrollbar space-y-3">
@@ -5069,7 +5296,7 @@ const ScheduleCopilot = ({ currentDate, users = [], shifts = [], timeOffRequests
       {activeTool === 'templates' && <div className="space-y-3"><div className="flex flex-col md:flex-row gap-2"><select value={templateId} onChange={e => setTemplateId(e.target.value)} className={`${T.input} flex-1`}><option value="">Select template to apply</option>{templateOptions.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}</select><button onClick={applyTemplate} className={`${T.btn} py-2`}>Apply to Current Week</button><button onClick={saveCurrentWeekAsTemplate} className={T.btnAlt}>Save Current Week</button></div>{templateOptions.length === 0 ? <FriendlyEmpty title="No templates yet" text="Create a Normal Week, Packers Sunday, Fish Fry Friday, or Live Music template. Each restaurant gets its own library."/> : templateOptions.map(t => <div key={t.id} className="bg-[#12161A] border border-[#2A353D] rounded-xl p-3 flex justify-between items-center"><div><div className="font-black text-white">{t.name}</div><div className="text-xs text-slate-400 font-bold">{t.description || 'No description'} • {(t.rows || []).length} rules</div></div><div className="flex gap-2"><button onClick={() => editTemplate(t)} className={T.btnAlt}>Edit</button><button onClick={() => deleteTemplate(t)} className="px-3 py-2 rounded-xl bg-red-900/20 text-red-300 border border-red-900/50 text-xs font-black">Delete</button></div></div>)}</div>}
       {activeTool === 'template-editor' && <form onSubmit={saveTemplate} className="space-y-3"><div className="grid md:grid-cols-2 gap-2"><input value={templateName} onChange={e=>setTemplateName(e.target.value)} className={T.input} placeholder="Template name" required/><input value={templateDesc} onChange={e=>setTemplateDesc(e.target.value)} className={T.input} placeholder="Description"/></div><div className="space-y-2">{templateRows.map((r,idx)=><div key={idx} className="grid grid-cols-2 md:grid-cols-6 gap-2 bg-[#12161A] border border-[#2A353D] rounded-xl p-2"><select value={r.dayIndex} onChange={e=>updateTemplateRow(idx,{dayIndex:e.target.value})} className={T.input}>{dayNames.map((d,i)=><option key={d} value={i}>{d}</option>)}</select><select value={r.role} onChange={e=>updateTemplateRow(idx,{role:e.target.value})} className={T.input}>{scheduleRoleOptions.map(roleName => <option key={roleName} value={roleName}>{roleName}</option>)}</select><input type="time" value={r.startTime} onChange={e=>updateTemplateRow(idx,{startTime:e.target.value})} className={T.input}/><input type="time" value={r.endTime} onChange={e=>updateTemplateRow(idx,{endTime:e.target.value})} className={T.input}/><input type="number" min="1" value={r.count} onChange={e=>updateTemplateRow(idx,{count:e.target.value})} className={T.input}/><button type="button" onClick={()=>removeTemplateRow(idx)} className="bg-red-900/20 border border-red-900/50 text-red-300 rounded-xl font-black text-xs">Remove</button></div>)}</div><div className="flex gap-2"><button type="button" onClick={addTemplateRow} className={T.btnAlt}>Add Row</button><button type="submit" className={`${T.btn} py-2`}>{editingTemplateId ? 'Update Template' : 'Create Template'}</button></div></form>}
       {activeTool === 'drag' && <div className="space-y-3"><p className="text-xs text-slate-400 font-bold">Drag shifts between days on desktop, or use the Move to day dropdown on mobile. Quick edit controls can change employee/time without opening the big schedule grid.</p><div className="grid md:grid-cols-7 gap-2">{weekDates.map((date, dayIdx) => <div key={date} onDragOver={e => e.preventDefault()} onDrop={() => moveShiftToDay(date)} className="min-h-[160px] bg-[#12161A] border border-[#2A353D] rounded-xl p-2"><div className="text-[10px] font-black uppercase tracking-widest text-[#D4A381] mb-2">{dayNames[dayIdx]}<br/><span className="text-slate-500">{date.substring(5)}</span></div>{weekShifts.filter(s => s.date === date).sort((a,b)=>(a.startTime||'').localeCompare(b.startTime||'')).map(shift => <div key={shift.id} draggable onDragStart={() => setDraggedShiftId(shift.id)} onDragEnd={() => setDraggedShiftId(null)} className={`mb-2 rounded-lg border p-2 cursor-move ${draggedShiftId === shift.id ? 'border-[#D4A381] bg-[#D4A381]/10' : 'border-[#2A353D] bg-[#1A2126]'}`}><div className="font-black text-white text-xs truncate">{shift.employeeName || users.find(u=>u.id===shift.employeeId)?.name || 'Unassigned'}</div><div className="text-[9px] text-slate-400 font-bold uppercase">{shift.role} • {formatShortTime(shift.startTime)}-{formatShortTime(shift.endTime)}</div><div className="grid grid-cols-1 gap-1 mt-2"><select value="" onChange={e=>e.target.value && quickUpdateShift(shift,{date:e.target.value})} className="bg-[#12161A] border border-[#2A353D] rounded-md px-1.5 py-1 text-[10px] text-[#D4A381] outline-none md:hidden"><option value="">Move to day...</option>{weekDates.map((d,i)=><option key={d} value={d}>{dayNames[i]} {d.substring(5)}</option>)}</select><select value={shift.employeeId || ''} onChange={e=>quickUpdateShift(shift,{employeeId:e.target.value})} className="bg-[#12161A] border border-[#2A353D] rounded-md px-1.5 py-1 text-[10px] text-white outline-none"><option value="">Unassigned</option>{activeUsers.map(u=><option key={u.id} value={u.id}>{u.name}</option>)}</select><div className="flex gap-1"><input type="time" defaultValue={shift.startTime || '09:00'} onBlur={e=>e.target.value && quickUpdateShift(shift,{startTime:e.target.value})} className="w-full bg-[#12161A] border border-[#2A353D] rounded-md px-1 py-1 text-[10px] text-white"/><input type="time" defaultValue={shift.endTime || '17:00'} onBlur={e=>e.target.value && quickUpdateShift(shift,{endTime:e.target.value})} className="w-full bg-[#12161A] border border-[#2A353D] rounded-md px-1 py-1 text-[10px] text-white"/></div></div></div>)}{weekShifts.filter(s => s.date === date).length === 0 && <div className="border border-dashed border-[#2A353D] rounded-lg p-3 text-center text-[10px] font-bold text-slate-500">Drop shifts here</div>}</div>)}</div></div>}
-      {activeTool === 'warnings' && <div className="grid md:grid-cols-2 gap-3"><div>{missingTargets.length === 0 ? <FriendlyEmpty title="Coverage targets met" text="No target gaps found for the current week."/> : missingTargets.map(m => <div key={`${m.id}-${m.date}`} className="bg-amber-900/10 border border-amber-900/40 rounded-xl p-3 mb-2"><div className="font-black text-amber-300">{formatDisplayDate(m.date)} needs {m.needed} more {m.role}</div><div className="text-xs text-slate-400">Existing: {m.existing} • Target: {m.count}</div></div>)}</div><div>{conflictList.length === 0 ? <FriendlyEmpty title="No conflicts found" text="No schedule warning dragons spotted this week."/> : conflictList.map((w,i)=><div key={i} className="bg-red-900/10 border border-red-900/40 rounded-xl p-3 mb-2 text-sm font-bold text-red-200">{w}</div>)}</div></div>}
+      {activeTool === 'warnings' && <div className="grid md:grid-cols-2 gap-3"><div>{coverageWarnings.length === 0 ? <FriendlyEmpty title="Coverage targets met" text="No target gaps or over-coverage found for the current week."/> : coverageWarnings.map(w => <ScheduleWarningCard key={w.alertId} warning={w} appUser={appUser} />)}</div><div>{conflictList.length === 0 ? <FriendlyEmpty title="No conflicts found" text="No schedule warning dragons spotted this week."/> : conflictList.map(w => <ScheduleWarningCard key={w.alertId} warning={w} appUser={appUser} />)}</div></div>}
       </div>
     </div>
   );

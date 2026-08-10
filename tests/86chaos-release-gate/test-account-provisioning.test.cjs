@@ -36,7 +36,7 @@ function withQaAccountEnv(fn) {
   process.env.CHAOS_QA_ALLOW_MUTATING_ROLE_ACCOUNTS = 'true';
   process.env.CHAOS_RELEASE_GATE_TEST_MODE = 'true';
   process.env.CHAOS_ALLOW_MUTATION = 'true';
-  process.env.APP_URL = 'https://cheers-portal-4oxv-git-testing-cheers-portal-s-projects.vercel.app';
+  process.env.APP_URL = 'https://86chaos-git-testing-example.vercel.app';
   process.env.REACT_APP_FIREBASE_PROJECT_ID = 'chaos-test-d1601';
   process.env.FIREBASE_TEST_SERVICE_ACCOUNT_KEY = '{\"project_id\":\"chaos-test-d1601\",\"client_email\":\"unit@example.test\",\"private_key\":\"redacted\"}';
   try { return fn(); }

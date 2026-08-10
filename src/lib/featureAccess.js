@@ -313,7 +313,7 @@ const ROUTE_PERMISSION_ALIASES = Object.freeze({
   settings: ['settings', 'branding']
 });
 
-const ROUTE_OWNER_ADMIN_ALLOWED = new Set(['schedule', 'events', 'ops', 'financials', 'sales', 'labor', 'back-office', 'prep', 'recipes', 'inventory', 'ai-tools', 'menu-intelligence', 'hr-training', 'maintenance', 'audit', 'settings']);
+const ROUTE_OWNER_ADMIN_ALLOWED = new Set(['schedule', 'events', 'ops', 'financials', 'sales', 'labor', 'back-office', 'prep', 'recipes', 'inventory', 'ai-tools', 'menu-intelligence', 'hr-training', 'maintenance', 'settings']);
 
 export const routePermissionAliases = (route = '') => ROUTE_PERMISSION_ALIASES[normalizeRouteId(route)] || [];
 
@@ -359,6 +359,35 @@ export const resolveRouteAccess = ({ route = '', workspace = {}, user = {}, clie
   }
   if (!clientEnabled) {
     return { ...featureAccess, allowed: false, pending: false, route: routeId, featureKey, permissionReason: 'feature_disabled', roleReason: 'feature_disabled', featureDisabledReason: ROUTE_CLIENT_FEATURES[routeId] || 'feature_disabled', demoModeReason: '', planReason: featureAccess.planAllowed ? 'plan_allowed' : featureAccess.reason, reason: 'feature_disabled' };
+  }
+  if (routeId === 'audit') {
+    const verifiedPlatformAuthority = serverVerifiedPlatformAdmin === true || isVerifiedPlatformAdminUser(user);
+    const ownerAuthority = Boolean(
+      user?.isOwner === true ||
+      user?.accountOwner === true ||
+      user?.workspaceOwner === true ||
+      user?.owner === true
+    );
+    const routeRoleAllowed = verifiedPlatformAuthority || ownerAuthority;
+    const planAllowed = verifiedPlatformAuthority || featureAccess.planAllowed !== false;
+    const allowed = Boolean(planAllowed && routeRoleAllowed);
+    const roleReason = routeRoleAllowed ? 'owner_or_platform_admin' : 'owner_or_platform_admin_required';
+    const reason = allowed ? 'allowed' : (!planAllowed ? 'plan_locked' : 'permission_locked');
+    return {
+      ...featureAccess,
+      allowed,
+      pending: false,
+      route: 'audit',
+      featureKey,
+      routeRoleAllowed,
+      permissionAliases: aliases,
+      permissionReason: allowed ? 'owner_or_platform_admin' : (!routeRoleAllowed ? 'owner_or_platform_admin_required' : 'plan_locked'),
+      roleReason,
+      featureDisabledReason: '',
+      demoModeReason: '',
+      planReason: planAllowed ? 'plan_allowed' : 'plan_locked',
+      reason
+    };
   }
 
   const publicRoleRoute = ['today', 'published', 'messages', 'reminders', 'team', 'help'].includes(routeId);

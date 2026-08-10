@@ -1,6 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const { defineConfig, devices } = require('@playwright/test');
+const chaosReleaseGateReporter = require.resolve('./test-tools/reporters/chaos-release-gate-reporter.cjs');
 const { RELEASE_TEST_MATCH, PWA_SPEC_PATTERN } = require('./scripts/86chaos-release-gate/release-test-universe.cjs');
 
 const root = process.cwd();
@@ -29,7 +30,7 @@ module.exports = defineConfig({
   globalTeardown: require.resolve('./tests/86chaos-release-gate/global-teardown.cjs'),
   outputDir: path.join(resultsRoot, 'playwright-artifacts'),
   reporter: [
-    ['list'],
+    [chaosReleaseGateReporter],
     ['json', { outputFile: path.join(resultsRoot, 'playwright-report.json') }],
     ['html', { outputFolder: path.join(resultsRoot, 'html-report'), open: 'never' }]
   ],

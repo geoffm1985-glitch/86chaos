@@ -4221,12 +4221,12 @@ select {
 :root {
   --chaos-radius-card: 10px;
   --chaos-radius-button: 8px;
-  --chaos-compact-page-x: 14px;
-  --chaos-compact-page-y: 10px;
-  --chaos-compact-section-gap: 12px;
-  --chaos-compact-card-gap: 10px;
-  --chaos-compact-card-pad: 12px;
-  --chaos-compact-card-pad-sm: 9px;
+  --chaos-compact-page-x: 12px;
+  --chaos-compact-page-y: 8px;
+  --chaos-compact-section-gap: 10px;
+  --chaos-compact-card-gap: 8px;
+  --chaos-compact-card-pad: 10px;
+  --chaos-compact-card-pad-sm: 8px;
   --chaos-compact-radius: 10px;
   --chaos-compact-radius-lg: 12px;
   --chaos-compact-input-h: 36px;
@@ -4242,9 +4242,9 @@ select {
   --chaos-compact-muted: 12px;
   --chaos-compact-border: rgba(148, 163, 184, .16);
   --chaos-compact-shadow: 0 10px 28px rgba(0, 0, 0, .16);
-  --chaos-mobile-page-x: 9px;
-  --chaos-mobile-page-y: 9px;
-  --chaos-mobile-card-pad: 9px;
+  --chaos-mobile-page-x: 8px;
+  --chaos-mobile-page-y: 7px;
+  --chaos-mobile-card-pad: 8px;
   --chaos-mobile-tap-h: 42px;
 }
 
@@ -4627,8 +4627,8 @@ select {
   .desktop-pro-shell .app-content-shell :is(.p-8, .p-7, .p-6, .p-5, .p-4) { padding: var(--chaos-mobile-card-pad) !important; }
   .desktop-pro-shell .app-content-shell :is(.px-6, .px-5, .px-4) { padding-left: var(--chaos-mobile-card-pad) !important; padding-right: var(--chaos-mobile-card-pad) !important; }
   .desktop-pro-shell .app-content-shell :is(.py-6, .py-5, .py-4) { padding-top: var(--chaos-mobile-card-pad) !important; padding-bottom: var(--chaos-mobile-card-pad) !important; }
-  .desktop-pro-shell .app-content-shell :is(.gap-6, .gap-5, .gap-4) { gap: 8px !important; }
-  .desktop-pro-shell .app-content-shell :is(.space-y-6, .space-y-5, .space-y-4) > :not([hidden]) ~ :not([hidden]) { margin-top: 8px !important; }
+  .desktop-pro-shell .app-content-shell :is(.gap-6, .gap-5, .gap-4) { gap: 6px !important; }
+  .desktop-pro-shell .app-content-shell :is(.space-y-6, .space-y-5, .space-y-4) > :not([hidden]) ~ :not([hidden]) { margin-top: 6px !important; }
 
   .desktop-pro-shell .app-content-shell :is(input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=color]):not([type=file]), select, textarea, .chaos-input) {
     min-height: var(--chaos-mobile-tap-h) !important;
@@ -5355,4 +5355,174 @@ span.bg-red-500.text-white,
     min-height: 42px !important;
     min-width: 42px !important;
   }
+}
+
+/* 16.0.152: Desktop/fine-pointer Schedule Builder time chips honor the release-gate 24px target despite earlier compact !important chip rules. */
+@media (min-width: 768px) and (pointer: fine) {
+  .schedule-builder-desktop-table button.schedule-builder-time-chip:not(.schedule-builder-event-chip):not(.schedule-builder-event-more):not(:disabled),
+  .desktop-pro-shell .app-content-shell .schedule-builder-desktop-table button.schedule-builder-time-chip:not(.schedule-builder-event-chip):not(.schedule-builder-event-more):not(:disabled),
+  .ui-v12-compact .schedule-builder-desktop-table button.schedule-builder-time-chip:not(.schedule-builder-event-chip):not(.schedule-builder-event-more):not(:disabled) {
+    min-height: 24px !important;
+    min-width: 24px !important;
+    box-sizing: border-box !important;
+  }
+}
+
+/* 16.0.154 login action target cascade repair: keep compact app controls from shrinking sign-in actions. */
+.non-admin-controls-compact .chaos-login-card .chaos-login-primary-action,
+.non-admin-controls-compact .chaos-login-card .chaos-login-secondary-action,
+.ui-v12-compact .chaos-login-card .chaos-login-primary-action,
+.ui-v12-compact .chaos-login-card .chaos-login-secondary-action,
+.chaos-login-screen .chaos-login-primary-action,
+.chaos-login-screen .chaos-login-secondary-action {
+  min-height: 44px !important;
+  height: auto !important;
+  min-width: 44px !important;
+  padding-top: 10px !important;
+  padding-bottom: 10px !important;
+  line-height: 1.2 !important;
+  box-sizing: border-box !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+}
+
+.chaos-login-screen .chaos-login-primary-action {
+  width: 100% !important;
+}
+
+/* 16.0.162 targeted mobile polish: preserve compact controls while keeping leading icons out of placeholder text. */
+.non-admin-controls-compact .relative > svg.absolute + input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=color]):not([type=file]),
+.non-admin-controls-compact .relative > .absolute + input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=color]):not([type=file]) {
+  padding-left: 2.75rem !important;
+}
+
+/* 16.0.162 targeted System Administrator mobile readability repair for light admin cards. */
+.admin46-shell #admin-content-start [class*="text-slate-50"],
+.admin46-shell #admin-content-start [class*="text-slate-100"],
+.admin46-shell #admin-content-start [class*="text-slate-200"] {
+  color: var(--admin-ink) !important;
+}
+
+.admin46-shell #admin-content-start [class*="text-slate-700"],
+.admin46-shell #admin-content-start [class*="text-slate-800"],
+.admin46-shell #admin-content-start [class*="text-slate-900"] {
+  color: #223446 !important;
+}
+
+
+/* 16.0.163 deliberate responsive control grids. */
+.message-board-filter-grid,
+.message-board-composer-grid,
+.request-off-bulk-grid,
+.request-off-status-grid,
+.request-off-date-grid,
+.request-off-custom-dates {
+  display: grid;
+  gap: 6px;
+  width: 100%;
+  min-width: 0;
+}
+.message-board-filter-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.message-board-composer-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.message-board-general-control { grid-column: 1 / -1; }
+.message-board-control {
+  min-height: 42px;
+  width: 100%;
+  border-width: 1px;
+  border-radius: var(--chaos-compact-radius);
+  padding: 7px 8px;
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  white-space: normal;
+  line-height: 1.1;
+  transition: color .15s ease, background-color .15s ease, border-color .15s ease;
+}
+.message-board-action-row {
+  display: grid;
+  grid-template-columns: 42px minmax(112px, 1fr) minmax(96px, auto);
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+}
+.message-board-photo-control,
+.message-board-priority-control,
+.message-board-post-button {
+  min-height: 42px;
+  border-radius: var(--chaos-compact-radius);
+  border-width: 1px;
+}
+.message-board-photo-control {
+  width: 42px;
+  background: #0B0E11;
+  border-color: #2A353D;
+  color: #D4A381;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+.message-board-priority-control {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 7px 10px;
+  cursor: pointer;
+}
+.message-board-post-button {
+  justify-self: end;
+  padding: 7px 13px;
+}
+.request-off-control-group,
+.request-off-employee-filter {
+  margin-bottom: 10px;
+  min-width: 0;
+}
+.request-off-control-label {
+  display: block;
+  margin-bottom: 5px;
+  color: #94a3b8;
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: .16em;
+  text-transform: uppercase;
+}
+.request-off-bulk-grid,
+.request-off-status-grid,
+.request-off-date-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.request-off-bulk-grid > button,
+.request-off-status-grid > button,
+.request-off-date-grid > button,
+.request-off-custom-dates > input,
+.request-off-employee-select {
+  width: 100%;
+  min-width: 0;
+  min-height: 42px;
+  justify-content: center;
+  text-align: center;
+}
+.request-off-span-all,
+.request-off-custom-range { grid-column: 1 / -1; }
+.request-off-custom-dates {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin-top: 6px;
+}
+@media (min-width: 768px) {
+  .message-board-filter-grid { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+  .message-board-composer-grid { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+  .message-board-general-control { grid-column: auto; }
+  .message-board-control { min-height: 36px; padding: 6px 8px; }
+  .message-board-photo-control,
+  .message-board-priority-control,
+  .message-board-post-button { min-height: 36px; }
+  .message-board-action-row { grid-template-columns: 36px minmax(130px, 180px) minmax(92px, auto); }
+  .message-board-photo-control { width: 36px; }
+  .request-off-bulk-grid { grid-template-columns: repeat(2, minmax(150px, 1fr)); max-width: 420px; }
+  .request-off-status-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .request-off-date-grid { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+  .request-off-custom-range { grid-column: auto; }
+  .request-off-custom-dates { grid-template-columns: repeat(2, minmax(0, 220px)); }
 }
