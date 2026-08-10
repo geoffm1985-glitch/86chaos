@@ -1,21 +1,12 @@
-86 Chaos full local test-suite runner v4
+86 Chaos Full Test Suite
 
-Copy these files into your app folder:
-C:\Users\geoff\Documents\GitHub\86chaos
+Primary command:
+  npm run test:full-suite
 
-Files:
-- RUN_86CHAOS_FULL_TEST_SUITE.cmd
-- RUN_86CHAOS_FULL_TEST_SUITE.ps1
-- README_86CHAOS_FULL_TEST_SUITE.txt
+Local-only command:
+  npm run test:full-suite:local
 
-Run:
-cd "$env:USERPROFILE\Documents\GitHub\86chaos"
-.\RUN_86CHAOS_FULL_TEST_SUITE.cmd
+The runner writes test-results/86chaos-full-local-suite/<runId> and always attempts to create:
+  86chaos-FULL-SUITE-UPLOAD-ME-16.0.174-<timestamp>.zip
 
-Optional:
-.\RUN_86CHAOS_FULL_TEST_SUITE.cmd -FailedOnlyReleaseGate
-.\RUN_86CHAOS_FULL_TEST_SUITE.cmd -IncludeReleaseGate
-.\RUN_86CHAOS_FULL_TEST_SUITE.cmd -SkipInstall
-
-This version fixes PowerShell 5 parser errors and always creates an uploadable ZIP:
-86chaos-full-local-suite-UPLOAD-ME-<runId>.zip
+Statuses are PASS, FAIL, or BLOCKED. BLOCKED means a required external capability was unavailable, such as Java, Firebase emulator, or a safe QA Playwright deployment.

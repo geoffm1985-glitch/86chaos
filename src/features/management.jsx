@@ -357,6 +357,7 @@ const DEFAULT_PERMISSIONS = { schedule: false, events: false, ops: false, invent
   };
   const [perms, setPerms] = useState(DEFAULT_PERMISSIONS);
   const [editingUserId, setEditingUserId] = useState(null);
+  const [editingOriginalEmail, setEditingOriginalEmail] = useState('');
   const [createdLogin, setCreatedLogin] = useState(null);
   const [locallyRemovedStaffKeys, setLocallyRemovedStaffKeys] = useState([]);
 
@@ -374,7 +375,7 @@ const DEFAULT_PERMISSIONS = { schedule: false, events: false, ops: false, invent
   const generateTempPass = () => Math.random().toString(36).slice(-6);
 
   const resetForm = () => {
-    setName(''); setEmail(''); setPhone(''); setWage(''); setPhotoURL(''); setRole(roles[0] || ''); setIsAdmin(false); setPerms(DEFAULT_PERMISSIONS); setEditingUserId(null);
+    setName(''); setEmail(''); setPhone(''); setWage(''); setPhotoURL(''); setRole(roles[0] || ''); setIsAdmin(false); setPerms(DEFAULT_PERMISSIONS); setEditingUserId(null); setEditingOriginalEmail('');
   };
 
   const buildLoginText = (login) => login ? `Welcome to 86 Chaos!\n\nApp: https://app.86chaos.com\n\nName: ${login.name}\nEmail: ${login.email}\nTemporary Password: ${login.password}\n\nThis temporary password is shown one time. Please log in and change it.` : '';
@@ -385,7 +386,8 @@ const DEFAULT_PERMISSIONS = { schedule: false, events: false, ops: false, invent
 
   const handleEditClick = (u) => {
     if (!canManageTeam) return addToast('Read Only', 'Staff Roster is view-only for regular staff.');
-    setName(u.name); setEmail(u.email); setPhone(u.phone || ''); setWage(u.wage || ''); setPhotoURL(u.photoURL || ''); setRole(u.role || roles[0] || ''); setIsAdmin(u.isAdmin || false); setPerms({ ...DEFAULT_PERMISSIONS, ...(u.permissions || {}) }); setEditingUserId(u.id);
+    const originalEmail = String(u.email || '').toLowerCase().trim();
+    setName(u.name); setEmail(u.email); setEditingOriginalEmail(originalEmail); setPhone(u.phone || ''); setWage(u.wage || ''); setPhotoURL(u.photoURL || ''); setRole(u.role || roles[0] || ''); setIsAdmin(u.isAdmin || false); setPerms({ ...DEFAULT_PERMISSIONS, ...(u.permissions || {}) }); setEditingUserId(u.id);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -407,6 +409,12 @@ const DEFAULT_PERMISSIONS = { schedule: false, events: false, ops: false, invent
     };
 
     if (editingUserId) {
+        const normalizedSubmittedEmail = staffPayload.email;
+        const normalizedOriginalEmail = String(editingOriginalEmail || '').toLowerCase().trim();
+        if (normalizedOriginalEmail && normalizedSubmittedEmail !== normalizedOriginalEmail) {
+          const confirmed = window.confirm(`Change this employee's login email from ${normalizedOriginalEmail} to ${normalizedSubmittedEmail}? Their password will stay the same and current sessions will be signed out.`);
+          if (!confirmed) return;
+        }
         try {
             const response = await secureFetch('/api/staff-member', {
               method: 'POST',
@@ -415,7 +423,13 @@ const DEFAULT_PERMISSIONS = { schedule: false, events: false, ops: false, invent
             });
             const result = await response.json().catch(() => ({}));
             if (!response.ok || result?.ok === false) throw new Error(result?.error || 'Staff profile save failed.');
-            addToast('Updated', `${name}'s profile has been updated.`);
+            if (result?.emailChanged === true && result?.sessionsRevoked !== false) {
+              addToast('Email Updated', `${name} now signs in with ${staffPayload.email}. Their password did not change and existing sessions were signed out.`);
+            } else if (result?.emailChanged === true && result?.sessionsRevoked === false) {
+              addToast('Email Updated - Session Warning', `${name} now signs in with ${staffPayload.email}, but one or more existing sessions may need to expire or be closed manually.`);
+            } else {
+              addToast('Updated', `${name}'s profile has been updated.`);
+            }
             resetForm();
         } catch(err) {
           const msg = String(err?.message || 'Permission denied.');
@@ -564,8 +578,9 @@ return (
           <div><label className={T.label}>Name</label><input type="text" value={name} onChange={e=>setName(e.target.value)} className={T.input} required placeholder="e.g. Gordon Ramsay" /></div>
           
           <div>
-            <label className={T.label}>Email {editingUserId && <span className="text-slate-500 lowercase normal-case ml-1">(Cannot be changed after creation)</span>}</label>
-            <input type="email" value={email} onChange={e=>setEmail(e.target.value)} disabled={!!editingUserId} className={`${T.input} ${editingUserId ? 'opacity-50 cursor-not-allowed' : ''}`} required />
+            <label className={T.label}>Email</label>
+            <input type="email" value={email} onChange={e=>setEmail(e.target.value)} className={T.input} required />
+            {editingUserId && <p className="mt-1 text-[10px] font-bold text-amber-200/80">Changing this email changes the employee's login email. Their password stays the same and they will need to sign in again with the new email.</p>}
           </div>
 
           
@@ -5361,8 +5376,7 @@ Type DELETE to continue.`) || '').trim().toUpperCase();
         supportEditedBy: appUser?.email || appUser?.name || 'System Administrator'
       };
 
-      // Keep email visible but do not change Firebase Auth email from the browser.
-      // Auth email changes should go through a secured backend route if needed later.
+      // Email changes are synchronized by the secured backend support-update action.
       if ((supportUserForm.email || '').trim()) updates.email = supportUserForm.email.toLowerCase().trim();
 
       const result = await postSystemAdminAction('/api/system-admin/user-actions', {

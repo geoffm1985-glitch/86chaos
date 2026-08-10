@@ -19,7 +19,7 @@ import {
 } from '../core/scheduleWarningControls';
 import { getCanonicalScheduleUserId, collectScheduleDurableIdentityAliases, collectScheduleEmailAliases, collectScheduleFullNameAliases, collectScheduleFirstNameAliases, collectScheduleIdentityAliases, resolveSchedulePersonForAccount, resolveSchedulePersonForShift, buildCanonicalScheduleIdentityBlock, scheduleIdentityBlockMatchesPerson } from '../core/scheduleQueryPlanner';
 import { CheersLogo, Modal, DrawerMenu, DayDotPrintScreen, MapClickListener, SmartEmptyState, MiniProblemCard, getHomeProfile, calculatePunchHours, getWeekStart, getWeekDates, roleMatches, toLocalTimeInput, makeLocalIso, PunchTable, FriendlyEmpty, GlobalSearchModal, QuickActionDock, KitchenTVMode, ChangeLogModal, UndoBar } from '../components/common';
-import * as scheduleMonthPrint from '../core/scheduleMonthPrint.cjs';
+import scheduleMonthPrint from '../core/scheduleMonthPrint.cjs';
 
 
 

@@ -1,144 +1,56 @@
 <#
-86 Chaos full local test-suite runner.
-Copy this file and RUN_86CHAOS_FULL_TEST_SUITE.cmd into the 86chaos app root.
-Run: .\RUN_86CHAOS_FULL_TEST_SUITE.cmd
-
-Optional:
-  .\RUN_86CHAOS_FULL_TEST_SUITE.cmd -SkipInstall
-  .\RUN_86CHAOS_FULL_TEST_SUITE.cmd -FailedOnlyReleaseGate
-  .\RUN_86CHAOS_FULL_TEST_SUITE.cmd -IncludeReleaseGate
+86 Chaos exhaustive full test-suite runner.
+Primary command:
+  npm run test:full-suite
+Local-only command:
+  npm run test:full-suite:local
 #>
-
 param(
+  [switch]$Exhaustive,
+  [switch]$LocalOnly,
   [switch]$SkipInstall,
   [switch]$NoBuild,
   [switch]$FailedOnlyReleaseGate,
   [switch]$IncludeReleaseGate
 )
-
 $ErrorActionPreference = 'Stop'
-
+$script:AppVersion = '16.0.174'
+$script:Steps = New-Object System.Collections.ArrayList
+$script:Plan = New-Object System.Collections.ArrayList
+$script:GroupStatus = @{}
+$script:ResultZip = ''
 function Find-AppRoot {
   $dir = (Get-Location).Path
   while ($true) {
-    $pkg = Join-Path $dir 'package.json'
-    if (Test-Path $pkg) {
-      try {
-        $raw = Get-Content $pkg -Raw
-        if ($raw -match '"name"\s*:\s*"86chaos"' -or $raw -match '86\s*Chaos' -or (Test-Path (Join-Path $dir 'src'))) {
-          return $dir
-        }
-      } catch {}
-    }
+    if ((Test-Path (Join-Path $dir 'package.json')) -and (Test-Path (Join-Path $dir 'src'))) { return $dir }
     $parent = Split-Path $dir -Parent
     if ([string]::IsNullOrWhiteSpace($parent) -or $parent -eq $dir) { break }
     $dir = $parent
   }
   throw 'Could not find the 86chaos app root. Run this from the folder that contains package.json.'
 }
-
-function New-RunId {
-  return ('local-suite-' + (Get-Date -Format 'yyyyMMdd-HHmmss'))
+function Safe-Name([string]$Value) { if ([string]::IsNullOrWhiteSpace($Value)) { return 'step' }; return (($Value -replace '[^A-Za-z0-9_.-]+','_').Trim('_')) }
+function Status-Color([string]$Status) { if ($Status -eq 'pass') { return 'Green' }; if ($Status -eq 'fail') { return 'Red' }; if ($Status -eq 'blocked') { return 'Yellow' }; if ($Status -eq 'running') { return 'Cyan' }; return 'DarkGray' }
+function Add-PlannedStep {
+  param([string]$Group,[string]$Name,[string]$Command,[bool]$Required = $true,[string]$Capability = '',[bool]$Mutates = $false,[string]$SafeProject = '')
+  $script:Plan.Add([ordered]@{ group=$Group; name=$Name; command=$Command; required=$Required; capability=$Capability; mutates=$Mutates; safeProject=$SafeProject }) | Out-Null
 }
-
-function Convert-ToSafeName {
-  param([string]$Value)
-  if ([string]::IsNullOrWhiteSpace($Value)) { return 'step' }
-  return (($Value -replace '[^A-Za-z0-9_.-]+','_').Trim('_'))
+function Add-BlockedStep {
+  param([string]$Group,[string]$Name,[string]$Command,[string]$Reason,[bool]$Required = $true,[string]$Capability = '')
+  $now = (Get-Date).ToUniversalTime().ToString('o')
+  $step = [ordered]@{ group=$Group; name=$Name; command=$Command; required=$Required; status='blocked'; exitCode=$null; reason=$Reason; startedAt=$now; endedAt=$now; durationSeconds=0; log='' }
+  $script:Steps.Add($step) | Out-Null
+  Write-Host ('[BLOCKED] ' + $Name + ' - ' + $Reason) -ForegroundColor Yellow
 }
-
-function Write-RunnerState {
-  param([string]$Phase, [string]$BlockingReason = '')
-  try {
-    $state = [ordered]@{
-      runId = $script:RunId
-      generatedAt = (Get-Date).ToUniversalTime().ToString('o')
-      appRoot = $script:AppRoot
-      currentPhase = $Phase
-      blockingReason = $BlockingReason
-      resultZip = $script:ResultZip
-      steps = $script:Steps
-    }
-    $statePath = Join-Path $script:RunDir 'local-suite-state.json'
-    $state | ConvertTo-Json -Depth 12 | Set-Content -Path $statePath -Encoding UTF8
-  } catch {}
-}
-
-function Show-LogTail {
-  param([string]$LogPath, [int]$Lines = 160)
-  if (-not (Test-Path $LogPath)) { return }
-  Write-Host ''
-  Write-Host "Last log lines from ${LogPath}:" -ForegroundColor Yellow
-  try {
-    Get-Content $LogPath -Tail $Lines | ForEach-Object { Write-Host $_ -ForegroundColor DarkGray }
-  } catch {}
-}
-
-function Copy-NpmDebugLogs {
-  param([string]$StepName)
-  $dest = Join-Path $script:RunDir 'npm-debug-logs'
-  New-Item -ItemType Directory -Force $dest | Out-Null
-  $safe = Convert-ToSafeName $StepName
-  $candidates = @()
-  try {
-    $cache = (& npm config get cache 2>$null)
-    if ($cache) { $candidates += (Join-Path ([string]$cache).Trim() '_logs') }
-  } catch {}
-  if ($env:LOCALAPPDATA) { $candidates += (Join-Path $env:LOCALAPPDATA 'npm-cache\_logs') }
-  if ($env:APPDATA) { $candidates += (Join-Path $env:APPDATA 'npm-cache\_logs') }
-  $copied = @()
-  foreach ($dir in ($candidates | Select-Object -Unique)) {
-    if (-not (Test-Path $dir)) { continue }
-    try {
-      Get-ChildItem $dir -Filter '*.log' -File -ErrorAction SilentlyContinue |
-        Sort-Object LastWriteTime -Descending |
-        Select-Object -First 5 |
-        ForEach-Object {
-          $target = Join-Path $dest (('{0}-{1}' -f $safe, $_.Name))
-          Copy-Item $_.FullName $target -Force
-          $copied += $target
-        }
-    } catch {}
-  }
-  return $copied
-}
-
-function Create-ResultZip {
-  try {
-    $zipName = ('86chaos-full-local-suite-UPLOAD-ME-{0}.zip' -f $script:RunId)
-    $zipPath = Join-Path $script:AppRoot $zipName
-    if (Test-Path $zipPath) { Remove-Item $zipPath -Force }
-    Compress-Archive -Path (Join-Path $script:RunDir '*') -DestinationPath $zipPath -Force
-    $script:ResultZip = $zipPath
-    return $zipPath
-  } catch {
-    $message = 'Could not create result ZIP: ' + $_.Exception.Message
-    $message | Add-Content -Path (Join-Path $script:RunDir 'zip-error.log')
-    return ''
-  }
-}
-
 function Run-Step {
-  param(
-    [string]$Name,
-    [string]$Command,
-    [switch]$Required
-  )
-
+  param([string]$Group,[string]$Name,[string]$Command,[bool]$Required = $true)
   Write-Host ''
-  Write-Host '============================================================' -ForegroundColor DarkGray
-  Write-Host $Name -ForegroundColor Cyan
-  Write-Host '============================================================' -ForegroundColor DarkGray
-  Write-Host $Command -ForegroundColor Gray
-
-  $safe = Convert-ToSafeName $Name
-  $log = Join-Path $script:RunDir (('{0:00}-{1}.log' -f ($script:Steps.Count + 1), $safe))
+  Write-Host ('>>> ' + $Group + ' / ' + $Name) -ForegroundColor Cyan
+  Write-Host $Command -ForegroundColor DarkGray
+  $safe = Safe-Name ($Group + '-' + $Name)
+  $log = Join-Path $script:LogDir (('{0:00}-{1}.log' -f ($script:Steps.Count + 1), $safe))
   $started = Get-Date
-  $exitCode = 0
-  $status = 'passed'
-  $message = ''
-  $npmDebugLogs = @()
-
+  $exitCode = 1
   try {
     Push-Location $script:AppRoot
     & cmd.exe /d /s /c $Command 2>&1 | Tee-Object -FilePath $log
@@ -146,311 +58,151 @@ function Run-Step {
     Pop-Location
   } catch {
     try { Pop-Location } catch {}
+    $_.Exception.Message | Add-Content -Path $log
     $exitCode = 1
-    $message = $_.Exception.Message
-    $message | Add-Content -Path $log
   }
-
-  if ($Name -match 'Install locked dependencies|npm') {
-    $npmDebugLogs = Copy-NpmDebugLogs -StepName $Name
-  }
-
-  if ($exitCode -ne 0) { $status = 'failed' }
   $ended = Get-Date
-  $step = [ordered]@{
-    name = $Name
-    command = $Command
-    required = [bool]$Required
-    status = $status
-    exitCode = $exitCode
-    startedAt = $started.ToUniversalTime().ToString('o')
-    endedAt = $ended.ToUniversalTime().ToString('o')
-    durationSeconds = [math]::Round(($ended - $started).TotalSeconds, 2)
-    log = $log
-    npmDebugLogs = $npmDebugLogs
-    message = $message
-  }
+  $status = if ($exitCode -eq 0) { 'pass' } else { 'fail' }
+  $step = [ordered]@{ group=$Group; name=$Name; command=$Command; required=$Required; status=$status; exitCode=$exitCode; reason=''; startedAt=$started.ToUniversalTime().ToString('o'); endedAt=$ended.ToUniversalTime().ToString('o'); durationSeconds=[math]::Round(($ended - $started).TotalSeconds,2); log=$log }
   $script:Steps.Add($step) | Out-Null
-  Write-RunnerState -Phase $Name
-
-  if ($exitCode -ne 0) {
-    Show-LogTail -LogPath $log
-    if ($npmDebugLogs.Count -gt 0) {
-      Write-Host ''
-      Write-Host 'Copied npm debug logs:' -ForegroundColor Yellow
-      $npmDebugLogs | ForEach-Object { Write-Host $_ -ForegroundColor Yellow }
-      Show-LogTail -LogPath $npmDebugLogs[0] -Lines 120
-    }
-    if ($Name -match 'Node version project check') {
-      Write-Host ''
-      Write-Host 'Common fix: 86 Chaos requires Node 24.x. Install/use Node 24, then rerun this same command.' -ForegroundColor Yellow
-      Write-Host 'Check with: node --version' -ForegroundColor Yellow
-    }
-    if ($Name -match 'Install locked dependencies') {
-      Write-Host ''
-      Write-Host 'Dependency install failed. The result ZIP and install logs will still be created.' -ForegroundColor Yellow
-      Write-Host 'Open the npm debug log listed above for the exact npm error.' -ForegroundColor Yellow
-    }
-    if ($Required) {
-      Write-Host ('FAILED REQUIRED STEP: ' + $Name) -ForegroundColor Red
-      return $false
-    }
-    Write-Host ('FAILED OPTIONAL STEP: ' + $Name) -ForegroundColor Yellow
-    return $false
-  }
-
-  Write-Host ('PASSED: ' + $Name) -ForegroundColor Green
-  return $true
+  $label = if ($status -eq 'pass') { '[PASS]   ' } else { '[FAIL]   ' }
+  Write-Host ($label + ' ' + $Name + ' (' + $step.durationSeconds + 's)') -ForegroundColor (Status-Color $status)
+  return ($exitCode -eq 0)
 }
-
-function Test-FileExists {
-  param([string]$Path)
-  return (Test-Path (Join-Path $script:AppRoot $Path))
+function Test-CommandAvailable([string]$Command) { try { return [bool](Get-Command $Command -ErrorAction SilentlyContinue) } catch { return $false } }
+function Write-PlanFiles {
+  $jsonPath = Join-Path $script:RunDir 'FULL-TEST-PLAN.json'
+  $mdPath = Join-Path $script:RunDir 'FULL-TEST-PLAN.md'
+  $script:Plan | ConvertTo-Json -Depth 8 | Set-Content -Path $jsonPath -Encoding UTF8
+  $md = @('# 86 Chaos Full Test Plan','','App version: ' + $script:AppVersion,'Run ID: ' + $script:RunId,'')
+  foreach ($p in $script:Plan) { $md += ('- **' + $p.group + ' / ' + $p.name + '**'); $md += ('  - Command: `' + $p.command + '`'); $md += ('  - Required capability: ' + $p.capability); $md += ('  - Mutates external test infrastructure: ' + $p.mutates); $md += ('  - Expected safe project: ' + $p.safeProject) }
+  ($md -join "`n") | Set-Content -Path $mdPath -Encoding UTF8
+  Write-Host 'FULL TEST PLAN' -ForegroundColor Cyan
+  foreach ($p in $script:Plan) { Write-Host ('- ' + $p.group + ' / ' + $p.name + ' :: ' + $p.command) -ForegroundColor Gray }
 }
-
-function Get-AppVersion {
-  $version = 'unknown'
-  $versionJson = Join-Path $script:AppRoot 'public/version.json'
-  if (Test-Path $versionJson) {
-    try {
-      $obj = Get-Content $versionJson -Raw | ConvertFrom-Json
-      if ($obj.version) { $version = [string]$obj.version }
-    } catch {}
-  }
-  if ($version -eq 'unknown') {
-    try {
-      $pkg = Get-Content (Join-Path $script:AppRoot 'package.json') -Raw | ConvertFrom-Json
-      if ($pkg.version) { $version = [string]$pkg.version }
-    } catch {}
-  }
-  return $version
+function Last-ErrorExcerpt([string]$Log) { if (-not $Log -or -not (Test-Path $Log)) { return '' }; return ((Get-Content $Log -Tail 40 -ErrorAction SilentlyContinue) -join "`n") }
+function Write-Reports {
+  $passed = @($script:Steps | Where-Object { $_.status -eq 'pass' }).Count
+  $failed = @($script:Steps | Where-Object { $_.status -eq 'fail' }).Count
+  $blocked = @($script:Steps | Where-Object { $_.status -eq 'blocked' }).Count
+  $overall = if ($failed -gt 0) { 'FAIL' } elseif ($blocked -gt 0) { 'INCOMPLETE / BLOCKED' } else { 'PASS' }
+  $summary = [ordered]@{ runId=$script:RunId; appVersion=$script:AppVersion; startedAt=$script:StartedAt.ToUniversalTime().ToString('o'); endedAt=(Get-Date).ToUniversalTime().ToString('o'); overall=$overall; pass=$passed; fail=$failed; blocked=$blocked; steps=$script:Steps }
+  $summary | ConvertTo-Json -Depth 10 | Set-Content -Path (Join-Path $script:RunDir 'full-suite-summary.json') -Encoding UTF8
+  $summary | ConvertTo-Json -Depth 10 | Set-Content -Path (Join-Path $script:RunDir 'local-suite-summary.json') -Encoding UTF8
+  $state = [ordered]@{ runId=$script:RunId; appVersion=$script:AppVersion; resultZip=$script:ResultZip; steps=$script:Steps }
+  $state | ConvertTo-Json -Depth 10 | Set-Content -Path (Join-Path $script:RunDir 'local-suite-state.json') -Encoding UTF8
+  $txt = @('86 CHAOS FULL SUITE TEST SUMMARY','Run ID: ' + $script:RunId,'App version: ' + $script:AppVersion,'Overall: ' + $overall,'PASS: ' + $passed,'FAIL: ' + $failed,'BLOCKED: ' + $blocked,'','GROUP RESULTS')
+  foreach ($g in ($script:Steps | Group-Object group)) { $gs = if (@($g.Group | Where-Object status -eq 'fail').Count -gt 0) { 'FAIL' } elseif (@($g.Group | Where-Object status -eq 'blocked').Count -gt 0) { 'BLOCKED' } else { 'PASS' }; $txt += ($g.Name + ': ' + $gs) }
+  $txt += ''; $txt += 'FAILED TESTS'; foreach ($s in $script:Steps | Where-Object status -eq 'fail') { $txt += ('- ' + $s.group + ' / ' + $s.name) }
+  $txt += ''; $txt += 'BLOCKED TESTS'; foreach ($s in $script:Steps | Where-Object status -eq 'blocked') { $txt += ('- ' + $s.group + ' / ' + $s.name + ' - ' + $s.reason) }
+  ($txt -join "`n") | Set-Content -Path (Join-Path $script:RunDir 'TEST-SUMMARY.txt') -Encoding UTF8
+  $failedLines = @(); foreach ($s in $script:Steps | Where-Object status -eq 'fail') { $failedLines += ('STEP: ' + $s.group + ' / ' + $s.name); $failedLines += ('COMMAND: ' + $s.command); $failedLines += ('EXIT: ' + $s.exitCode); $failedLines += ('SECONDS: ' + $s.durationSeconds); $failedLines += ('LOG: ' + $s.log); $failedLines += (Last-ErrorExcerpt $s.log); $failedLines += '' }
+  if ($failedLines.Count -eq 0) { $failedLines = @('No failed tests.') }
+  ($failedLines -join "`n") | Set-Content -Path (Join-Path $script:RunDir 'FAILED-TESTS.txt') -Encoding UTF8
+  $blockedLines = @(); foreach ($s in $script:Steps | Where-Object status -eq 'blocked') { $blockedLines += ('STEP: ' + $s.group + ' / ' + $s.name); $blockedLines += ('MISSING PREREQUISITE: ' + $s.reason); $blockedLines += ('COMMAND: ' + $s.command); $blockedLines += 'HOW TO UNBLOCK: install/configure the prerequisite or use chaos-test-d1601 safe QA infrastructure as required.'; $blockedLines += '' }
+  if ($blockedLines.Count -eq 0) { $blockedLines = @('No blocked tests.') }
+  ($blockedLines -join "`n") | Set-Content -Path (Join-Path $script:RunDir 'BLOCKED-TESTS.txt') -Encoding UTF8
+  $md = @('# 86 Chaos Full Suite Summary','','VERSION: ' + $script:AppVersion,'','OVERALL: ' + $overall,'','| Status | Group | Step | Exit | Seconds | Log |','|---|---|---|---:|---:|---|')
+  foreach ($s in $script:Steps) { $icon = if ($s.status -eq 'pass') { '✅ PASS' } elseif ($s.status -eq 'fail') { '❌ FAIL' } else { '⚠ BLOCKED' }; $md += ('| ' + $icon + ' | ' + $s.group + ' | ' + $s.name + ' | ' + $s.exitCode + ' | ' + $s.durationSeconds + ' | ' + $s.log + ' |') }
+  ($md -join "`n") | Set-Content -Path (Join-Path $script:RunDir 'FULL-SUITE-SUMMARY.md') -Encoding UTF8
+  $envLines = @('OS: ' + [System.Environment]::OSVersion.VersionString, 'Node version: ' + ((& node --version 2>$null) -join ' '), 'npm version: ' + ((& npm --version 2>$null) -join ' '), 'PowerShell version: ' + $PSVersionTable.PSVersion.ToString(), 'Java version: ' + ((& java -version 2>&1 | Select-Object -First 1) -join ' '), 'Git version: ' + ((& git --version 2>$null) -join ' '), 'Firebase CLI version: ' + ((& npx firebase --version 2>$null) -join ' '), 'Playwright version: ' + ((& npx playwright --version 2>$null) -join ' '), 'App version: ' + $script:AppVersion)
+  ($envLines -join "`n") | Set-Content -Path (Join-Path $script:RunDir 'ENVIRONMENT.txt') -Encoding UTF8
+  $hashFiles = @('package.json','package-lock.json','firestore.rules','storage.rules','database.rules.json','firestore.indexes.json','firebase.json','vercel.json','public/version.json')
+  $hashes = @{}
+  foreach ($f in $hashFiles) { $p = Join-Path $script:AppRoot $f; if (Test-Path $p) { $hashes[$f] = (Get-FileHash -Algorithm SHA256 $p).Hash.ToLowerInvariant() } }
+  $hashes | ConvertTo-Json -Depth 4 | Set-Content -Path (Join-Path $script:RunDir 'SOURCE-INTEGRITY.json') -Encoding UTF8
 }
-
-function Add-PlannedStep {
-  param([string]$Name, [string]$Command, [bool]$Required = $true)
-  $script:PlannedSteps.Add([ordered]@{ name = $Name; command = $Command; required = $Required }) | Out-Null
+function Create-UploadZip {
+  $zip = Join-Path $script:AppRoot ('86chaos-FULL-SUITE-UPLOAD-ME-16.0.174-' + (Get-Date -Format 'yyyyMMdd-HHmmss') + '.zip')
+  if (Test-Path $zip) { Remove-Item $zip -Force }
+  Compress-Archive -Path (Join-Path $script:RunDir '*') -DestinationPath $zip -Force
+  $script:ResultZip = $zip
+  try { Add-Type -AssemblyName System.IO.Compression.FileSystem; $z=[System.IO.Compression.ZipFile]::OpenRead($zip); $names=$z.Entries | ForEach-Object FullName; $z.Dispose(); if ($names -notcontains 'TEST-SUMMARY.txt') { throw 'missing TEST-SUMMARY.txt' } } catch { Write-Host ('ZIP validation failed: ' + $_.Exception.Message) -ForegroundColor Red }
+  return $zip
 }
-
-function Write-TestPlan {
-  $planPath = Join-Path $script:RunDir 'local-suite-test-plan.md'
-  $md = @()
-  $md += '# 86 Chaos Full Local Test Suite Plan'
-  $md += ''
-  $md += ('- Run ID: ' + $script:RunId)
-  $md += ('- App version: ' + $script:AppVersion)
-  $md += ('- App root: ' + $script:AppRoot)
-  $md += ''
-  $md += '## Steps this runner will attempt'
-  $index = 1
-  foreach ($p in $script:PlannedSteps) {
-    $req = if ($p.required) { 'required' } else { 'optional' }
-    $md += (('{0}. **{1}** ({2})' -f $index, $p.name, $req))
-    $md += ('   - `' + $p.command + '`')
-    $index++
-  }
-  ($md -join "`n") | Set-Content -Path $planPath -Encoding UTF8
-
-  Write-Host ''
-  Write-Host 'Tests/steps this runner will run:' -ForegroundColor Cyan
-  foreach ($p in $script:PlannedSteps) {
-    $req = if ($p.required) { 'required' } else { 'optional' }
-    Write-Host ('- ' + $p.name + ' [' + $req + ']') -ForegroundColor Gray
-  }
-  Write-Host ('Test plan: ' + $planPath) -ForegroundColor Cyan
-}
-
 $script:AppRoot = Find-AppRoot
 Set-Location $script:AppRoot
-$script:RunId = New-RunId
-$script:RunDir = Join-Path $script:AppRoot (Join-Path 'test-results\86chaos-full-local-suite' $script:RunId)
-New-Item -ItemType Directory -Force $script:RunDir | Out-Null
-$script:ResultZip = ''
-$script:Steps = New-Object System.Collections.ArrayList
-$script:PlannedSteps = New-Object System.Collections.ArrayList
+$script:RunId = 'full-suite-' + (Get-Date -Format 'yyyyMMdd-HHmmss')
+$script:RunDir = Join-Path $script:AppRoot (Join-Path 'test-results/86chaos-full-local-suite' $script:RunId)
+$script:LogDir = Join-Path $script:RunDir 'logs'
+New-Item -ItemType Directory -Force $script:LogDir | Out-Null
 $script:StartedAt = Get-Date
-$script:AppVersion = Get-AppVersion
-
-Write-Host '86 Chaos full local test suite' -ForegroundColor Cyan
-Write-Host ('App root: ' + $script:AppRoot)
-Write-Host ('Run ID: ' + $script:RunId)
-Write-Host ('Run dir: ' + $script:RunDir)
-Write-Host ('App version: ' + $script:AppVersion)
-
-$targetedScript = 'scripts/test-' + ($script:AppVersion -replace '\.','-') + '-targeted.cjs'
-
-Add-PlannedStep -Name 'Node and npm versions' -Command 'node --version & npm --version' -Required $false
-Add-PlannedStep -Name 'Node version project check' -Command 'npm run node:check --if-present' -Required $true
-if (-not $SkipInstall) { Add-PlannedStep -Name 'Install locked dependencies' -Command 'npm ci --include=dev --no-audit --no-fund' -Required $true }
-Add-PlannedStep -Name 'Lockfile integrity' -Command 'npm run lock:integrity --if-present' -Required $true
-Add-PlannedStep -Name 'Source validators' -Command 'npm run test:source' -Required $true
-Add-PlannedStep -Name 'API syntax' -Command 'npm run syntax:api' -Required $true
-Add-PlannedStep -Name 'Python syntax' -Command 'npm run syntax:py' -Required $true
-Add-PlannedStep -Name 'Performance split' -Command 'npm run performance:split' -Required $true
-if (Test-FileExists 'tests/86chaos-release-gate/test-harness-lifecycle.test.cjs') { Add-PlannedStep -Name 'Release-gate harness unit tests' -Command 'node --test --test-reporter=spec tests/86chaos-release-gate/test-harness-lifecycle.test.cjs' -Required $true }
-if (Test-FileExists 'tests/86chaos-release-gate/test-account-provisioning.test.cjs') { Add-PlannedStep -Name 'Release-gate test-account provisioning tests' -Command 'node --test --test-reporter=spec tests/86chaos-release-gate/test-account-provisioning.test.cjs' -Required $true }
-if (Test-FileExists $targetedScript) { Add-PlannedStep -Name 'Current-version targeted tests' -Command ('node ' + $targetedScript) -Required $true }
-Add-PlannedStep -Name 'Client tests' -Command 'npm run test:client -- --runInBand --verbose' -Required $true
-Add-PlannedStep -Name 'Server tests' -Command 'node --test --test-reporter=spec api/*.test.cjs' -Required $true
-Add-PlannedStep -Name 'Rules tests' -Command 'npm run test:rules --if-present' -Required $false
-Add-PlannedStep -Name 'Lint' -Command 'npm run lint --if-present -- --quiet' -Required $false
-if (-not $NoBuild) { Add-PlannedStep -Name 'Production build' -Command 'npm run build' -Required $true }
-if ($FailedOnlyReleaseGate) { Add-PlannedStep -Name 'Failed-only Playwright release gate' -Command 'powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\RUN_86CHAOS_FAILED_ONLY_RELEASE_GATE.ps1' -Required $true }
-if ($IncludeReleaseGate) { Add-PlannedStep -Name 'Full Playwright release gate' -Command 'powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\RUN_86CHAOS_PLAY_STORE_RELEASE_GATE.ps1' -Required $true }
-Write-TestPlan
-
-$ok = $true
-$installOk = $true
-
-Run-Step -Name 'Node and npm versions' -Command 'node --version & npm --version' | Out-Null
-
-$nodeOk = Run-Step -Name 'Node version project check' -Command 'npm run node:check --if-present' -Required
-if (-not $nodeOk) { $ok = $false; $installOk = $false }
-
-if ($installOk -and -not $SkipInstall) {
-  $installOk = Run-Step -Name 'Install locked dependencies' -Command 'npm ci --include=dev --no-audit --no-fund' -Required
-  if (-not $installOk) { $ok = $false }
-} elseif ($SkipInstall) {
-  Write-Host 'Skipping npm ci because -SkipInstall was supplied.' -ForegroundColor Yellow
-}
-
-if ($installOk) {
-  $stepOk = Run-Step -Name 'Lockfile integrity' -Command 'npm run lock:integrity --if-present' -Required
-  if (-not $stepOk) { $ok = $false }
-
-  $stepOk = Run-Step -Name 'Source validators' -Command 'npm run test:source' -Required
-  if (-not $stepOk) { $ok = $false }
-
-  $stepOk = Run-Step -Name 'API syntax' -Command 'npm run syntax:api' -Required
-  if (-not $stepOk) { $ok = $false }
-
-  $stepOk = Run-Step -Name 'Python syntax' -Command 'npm run syntax:py' -Required
-  if (-not $stepOk) { $ok = $false }
-
-  $stepOk = Run-Step -Name 'Performance split' -Command 'npm run performance:split' -Required
-  if (-not $stepOk) { $ok = $false }
-
-  if (Test-FileExists 'tests/86chaos-release-gate/test-harness-lifecycle.test.cjs') {
-    $stepOk = Run-Step -Name 'Release-gate harness unit tests' -Command 'node --test --test-reporter=spec tests/86chaos-release-gate/test-harness-lifecycle.test.cjs' -Required
-    if (-not $stepOk) { $ok = $false }
-  }
-
-  if (Test-FileExists 'tests/86chaos-release-gate/test-account-provisioning.test.cjs') {
-    $stepOk = Run-Step -Name 'Release-gate test-account provisioning tests' -Command 'node --test --test-reporter=spec tests/86chaos-release-gate/test-account-provisioning.test.cjs' -Required
-    if (-not $stepOk) { $ok = $false }
-  }
-
-  if (Test-FileExists $targetedScript) {
-    $stepOk = Run-Step -Name 'Current-version targeted tests' -Command ('node ' + $targetedScript) -Required
-    if (-not $stepOk) { $ok = $false }
-  } else {
-    Write-Host ('No current-version targeted test found at ' + $targetedScript) -ForegroundColor Yellow
-  }
-
-  $stepOk = Run-Step -Name 'Client tests' -Command 'npm run test:client -- --runInBand --verbose' -Required
-  if (-not $stepOk) { $ok = $false }
-
-  $stepOk = Run-Step -Name 'Server tests' -Command 'node --test --test-reporter=spec api/*.test.cjs' -Required
-  if (-not $stepOk) { $ok = $false }
-
-  Run-Step -Name 'Rules tests' -Command 'npm run test:rules --if-present' | Out-Null
-  Run-Step -Name 'Lint' -Command 'npm run lint --if-present -- --quiet' | Out-Null
-
-  if (-not $NoBuild) {
-    $stepOk = Run-Step -Name 'Production build' -Command 'npm run build' -Required
-    if (-not $stepOk) { $ok = $false }
-  }
-
-  if ($FailedOnlyReleaseGate) {
-    if (Test-FileExists 'RUN_86CHAOS_FAILED_ONLY_RELEASE_GATE.ps1') {
-      $stepOk = Run-Step -Name 'Failed-only Playwright release gate' -Command 'powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\RUN_86CHAOS_FAILED_ONLY_RELEASE_GATE.ps1' -Required
-      if (-not $stepOk) { $ok = $false }
-    } else {
-      Write-Host 'Failed-only release gate runner not found.' -ForegroundColor Yellow
-      $ok = $false
+try {
+  Add-PlannedStep 'Environment / Dependencies' 'Node version' 'node --version' $true 'Node runtime' $false ''
+  Add-PlannedStep 'Environment / Dependencies' 'npm version' 'npm --version' $true 'npm runtime' $false ''
+  Add-PlannedStep 'Environment / Dependencies' 'Node project check' 'npm run node:check' $true 'Node 24.x' $false ''
+  Add-PlannedStep 'Environment / Dependencies' 'Install locked dependencies' 'npm ci --include=dev --no-audit --no-fund' $true 'npm registry' $false ''
+  Add-PlannedStep 'Environment / Dependencies' 'Lockfile integrity' 'npm run lock:integrity' $true 'installed deps' $false ''
+  Add-PlannedStep 'Environment / Dependencies' 'Dependency security audit' 'npm audit --audit-level=high' $true 'npm registry' $false ''
+  Add-PlannedStep 'Source / Static Validation' 'Source validator' 'npm run test:source' $true 'source' $false ''
+  Add-PlannedStep 'Source / Static Validation' 'API syntax' 'npm run syntax:api' $true 'node' $false ''
+  Add-PlannedStep 'Source / Static Validation' 'Python syntax' 'npm run syntax:py' $true 'python' $false ''
+  Add-PlannedStep 'Source / Static Validation' 'Syntax aggregate' 'npm run syntax' $true 'node/python' $false ''
+  Add-PlannedStep 'Source / Static Validation' 'Performance split' 'npm run performance:split' $true 'node' $false ''
+  Add-PlannedStep 'Source / Static Validation' 'Python auth fallback validator' 'node scripts/validate-python-auth-fallback.js' $true 'node' $false ''
+  Add-PlannedStep 'Source / Static Validation' 'Python ops restore validator' 'node scripts/validate-python-ops-restore.js' $true 'node' $false ''
+  Add-PlannedStep 'Source / Static Validation' 'Full audit source validator' 'node scripts/86chaos-full-audit/validate-full-audit-source.cjs' $true 'node' $false ''
+  Add-PlannedStep 'Source / Static Validation' 'Release source inventory' 'node scripts/86chaos-release-gate/source-inventory.cjs' $true 'node' $false ''
+  Add-PlannedStep 'Source / Static Validation' 'Icon source validator' 'node scripts/86chaos-release-gate/icon-source-validator.cjs' $true 'node' $false ''
+  Add-PlannedStep 'Source / Static Validation' 'Current targeted validator' 'node scripts/test-16-0-174-targeted.cjs' $true 'node' $false ''
+  Add-PlannedStep 'Node / Server Unit Tests' 'Server API tests' 'node --test --test-reporter=spec api/*.test.cjs' $true 'node' $false ''
+  Add-PlannedStep 'Node / Server Unit Tests' 'Server API tests serial' 'node --test --test-concurrency=1 --test-reporter=spec api/*.test.cjs' $true 'node' $false ''
+  Add-PlannedStep 'Node / Server Unit Tests' 'Release harness tests' 'node --test --test-reporter=spec tests/86chaos-release-gate/*.test.cjs' $true 'node' $false ''
+  Add-PlannedStep 'Node / Server Unit Tests' 'Release harness tests serial' 'node --test --test-concurrency=1 --test-reporter=spec tests/86chaos-release-gate/*.test.cjs' $true 'node' $false ''
+  Add-PlannedStep 'Client / React Tests' 'Client tests' 'npm run test:client -- --runInBand --verbose' $true 'installed deps' $false ''
+  Add-PlannedStep 'Security / Firebase Rules' 'Firebase rules tests' 'npm run test:rules' $true 'Java and Firebase emulator' $true 'chaos-test-d1601'
+  Add-PlannedStep 'Cost / Firestore Regression' 'Cost regression' 'npm run test:cost' $true 'Firestore emulator' $true 'chaos-test-d1601'
+  Add-PlannedStep 'Repair Regression Pack' 'Repair current local' 'npm run test:repair-current:local' $true 'node' $false ''
+  Add-PlannedStep 'Build / Lint' 'Lint' 'npm run lint' $true 'installed deps' $false ''
+  if (-not $NoBuild) { Add-PlannedStep 'Build / Lint' 'Production build' 'npm run build' $true 'installed deps' $false '' }
+  Add-PlannedStep 'Safe Migration / Backup Dry Runs' 'Backup setup dry run' 'npm run backup:setup:dry-run' $true 'safe Firebase config' $true 'chaos-test-d1601'
+  Add-PlannedStep 'Safe Migration / Backup Dry Runs' 'Workspace memberships dry run' 'npm run migrate:workspace-memberships:dry-run' $true 'safe Firebase config' $true 'chaos-test-d1601'
+  Add-PlannedStep 'Safe Migration / Backup Dry Runs' 'Reminder migration dry run' 'npm run migrate:reminders:dry-run' $true 'safe Firebase config' $true 'chaos-test-d1601'
+  Add-PlannedStep 'Safe Migration / Backup Dry Runs' 'Schedule migration dry run' 'npm run migrate:schedule:dry-run' $true 'safe Firebase config' $true 'chaos-test-d1601'
+  Add-PlannedStep 'Safe Migration / Backup Dry Runs' 'Participant migration dry run' 'npm run migrate:participants:dry-run' $true 'safe Firebase config' $true 'chaos-test-d1601'
+  if (-not $LocalOnly) { Add-PlannedStep 'Full Browser Release Gate' 'Full Playwright release gate' 'npm run test:play-store' $true 'safe QA deployment' $true 'chaos-test-d1601' }
+  Write-PlanFiles
+  $depsOk = $true
+  foreach ($p in $script:Plan) {
+    if ($p.group -eq 'Full Browser Release Gate') {
+      $proj = $env:CHAOS_FIREBASE_PROJECT_ID; if (-not $proj) { $proj = $env:REACT_APP_FIREBASE_PROJECT_ID }; if (-not $proj) { $proj = $env:CHAOS_TARGET_FIREBASE_PROJECT_ID }
+      $url = $env:CHAOS_BASE_URL; if (-not $url) { $url = $env:APP_URL }
+      if ($proj -ne 'chaos-test-d1601') { Add-BlockedStep $p.group $p.name $p.command 'Firebase project is not exactly chaos-test-d1601.' $p.required $p.capability; continue }
+      if (-not $url -or $url -match 'app\.86chaos\.com|cheers-34b8d|production') { Add-BlockedStep $p.group $p.name $p.command 'Target app URL is missing or production-like.' $p.required $p.capability; continue }
     }
+    if ($p.name -match 'Firebase rules' -and -not (Test-CommandAvailable 'java')) { Add-BlockedStep $p.group $p.name $p.command 'Java is not installed.' $p.required $p.capability; continue }
+    if ($p.command -match 'npm run test:cost' -and -not $env:FIRESTORE_EMULATOR_HOST) { Add-BlockedStep $p.group $p.name $p.command 'FIRESTORE_EMULATOR_HOST is not configured.' $p.required $p.capability; continue }
+    if (-not $depsOk -and ($p.group -match 'Client|Build|Lint|Security|Cost' -or $p.command -match 'react-scripts|eslint|test:client|build|lint|test:rules|test:cost')) { Add-BlockedStep $p.group $p.name $p.command 'Locked dependency installation failed earlier.' $p.required $p.capability; continue }
+    $ok = Run-Step $p.group $p.name $p.command $p.required
+    if ($p.name -eq 'Install locked dependencies' -and -not $ok) { $depsOk = $false }
   }
-
-  if ($IncludeReleaseGate) {
-    if (Test-FileExists 'RUN_86CHAOS_PLAY_STORE_RELEASE_GATE.ps1') {
-      $stepOk = Run-Step -Name 'Full Playwright release gate' -Command 'powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\RUN_86CHAOS_PLAY_STORE_RELEASE_GATE.ps1' -Required
-      if (-not $stepOk) { $ok = $false }
-    } else {
-      Write-Host 'Full release gate runner not found.' -ForegroundColor Yellow
-      $ok = $false
-    }
-  }
+} catch {
+  Add-BlockedStep 'Report / Artifact Integrity' 'Runner exception' '(runner)' $_.Exception.Message $true 'PowerShell'
+} finally {
+  Write-Reports
+  $zip = Create-UploadZip
+  Write-Host ''
+  Write-Host '============================================================' -ForegroundColor DarkGray
+  Write-Host ('86 CHAOS FULL SUITE - ' + $script:AppVersion) -ForegroundColor Cyan
+  Write-Host '============================================================' -ForegroundColor DarkGray
+  foreach ($g in ($script:Steps | Group-Object group)) { $gs = if (@($g.Group | Where-Object status -eq 'fail').Count -gt 0) { 'FAIL' } elseif (@($g.Group | Where-Object status -eq 'blocked').Count -gt 0) { 'BLOCKED' } else { 'PASS' }; Write-Host ($g.Name.PadRight(34) + $gs) -ForegroundColor (Status-Color ($gs.ToLower())) }
+  $pass = @($script:Steps | Where-Object status -eq 'pass').Count; $fail=@($script:Steps|Where-Object status -eq 'fail').Count; $blocked=@($script:Steps|Where-Object status -eq 'blocked').Count
+  Write-Host '------------------------------------------------------------'
+  Write-Host ('TOTAL PLANNED: ' + $script:Plan.Count)
+  Write-Host ('PASS:          ' + $pass) -ForegroundColor Green
+  Write-Host ('FAIL:          ' + $fail) -ForegroundColor Red
+  Write-Host ('BLOCKED:       ' + $blocked) -ForegroundColor Yellow
+  $overall = if ($fail -gt 0) { 'FAIL' } elseif ($blocked -gt 0) { 'INCOMPLETE / BLOCKED' } else { 'PASS' }
+  $overallColor = if ($overall -eq 'PASS') { 'Green' } elseif ($overall -eq 'FAIL') { 'Red' } else { 'Yellow' }
+  Write-Host ('OVERALL: ' + $overall) -ForegroundColor $overallColor
+  Write-Host ''
+  Write-Host 'STATUS | GROUP | STEP | EXIT | SECONDS | LOG' -ForegroundColor Cyan
+  foreach ($s in $script:Steps) { Write-Host (($s.status.ToUpper()).PadRight(8) + ' | ' + $s.group + ' | ' + $s.name + ' | ' + $s.exitCode + ' | ' + $s.durationSeconds + ' | ' + $s.log) -ForegroundColor (Status-Color $s.status) }
+  Write-Host ''
+  Write-Host '============================================================' -ForegroundColor Green
+  Write-Host 'UPLOAD THIS ZIP TO CHATGPT FOR ANALYSIS' -ForegroundColor Green
+  Write-Host '============================================================' -ForegroundColor Green
+  Write-Host $zip -ForegroundColor Green
+  Write-Host '============================================================' -ForegroundColor Green
+  if ($fail -gt 0 -or ($blocked -gt 0 -and $Exhaustive)) { exit 1 } else { exit 0 }
 }
-
-$finished = Get-Date
-$summary = [ordered]@{
-  runId = $script:RunId
-  appVersion = $script:AppVersion
-  appRoot = $script:AppRoot
-  runDir = $script:RunDir
-  resultZip = $script:ResultZip
-  startedAt = $script:StartedAt.ToUniversalTime().ToString('o')
-  finishedAt = $finished.ToUniversalTime().ToString('o')
-  durationSeconds = [math]::Round(($finished - $script:StartedAt).TotalSeconds, 2)
-  ok = [bool]$ok
-  steps = $script:Steps
-}
-$summaryJson = Join-Path $script:RunDir 'local-suite-summary.json'
-$summaryMd = Join-Path $script:RunDir 'local-suite-summary.md'
-$summary | ConvertTo-Json -Depth 12 | Set-Content -Path $summaryJson -Encoding UTF8
-
-$passed = @($script:Steps | Where-Object { $_.status -eq 'passed' }).Count
-$failed = @($script:Steps | Where-Object { $_.status -ne 'passed' }).Count
-$md = @()
-$md += '# 86 Chaos Full Local Test Suite'
-$md += ''
-$md += ('- Run ID: ' + $script:RunId)
-$md += ('- App version: ' + $script:AppVersion)
-if ($ok) { $md += '- Result: PASS' } else { $md += '- Result: FAIL' }
-$md += ('- Passed steps: ' + $passed)
-$md += ('- Failed steps: ' + $failed)
-$md += ('- Run directory: ' + $script:RunDir)
-$md += '- Result ZIP: PENDING'
-$md += ''
-$md += '## Steps'
-foreach ($s in $script:Steps) {
-  $mark = if ($s.status -eq 'passed') { 'PASS' } else { 'FAIL' }
-  $md += ('- [' + $mark + '] ' + $s.name + ' - exit ' + $s.exitCode)
-  $md += ('  - Log: ' + $s.log)
-  if ($s.npmDebugLogs -and $s.npmDebugLogs.Count -gt 0) {
-    foreach ($npmLog in $s.npmDebugLogs) { $md += ('  - npm debug log: ' + $npmLog) }
-  }
-}
-($md -join "`n") | Set-Content -Path $summaryMd -Encoding UTF8
-
-$resultZip = Create-ResultZip
-if ($resultZip) {
-  $summary.resultZip = $resultZip
-  $summary | ConvertTo-Json -Depth 12 | Set-Content -Path $summaryJson -Encoding UTF8
-  ((Get-Content $summaryMd -Raw).Replace('- Result ZIP: PENDING', ('- Result ZIP: ' + $resultZip))) | Set-Content -Path $summaryMd -Encoding UTF8
-  try {
-    Remove-Item $resultZip -Force -ErrorAction SilentlyContinue
-    Compress-Archive -Path (Join-Path $script:RunDir '*') -DestinationPath $resultZip -Force
-  } catch {}
-}
-
-Write-Host ''
-Write-Host '============================================================' -ForegroundColor DarkGray
-Write-Host 'LOCAL TEST SUITE SUMMARY' -ForegroundColor Cyan
-Write-Host '============================================================' -ForegroundColor DarkGray
-Write-Host ('Passed steps: ' + $passed)
-Write-Host ('Failed steps: ' + $failed)
-Write-Host ('Summary: ' + $summaryMd)
-Write-Host ('Logs: ' + $script:RunDir)
-if ($resultZip) {
-  Write-Host 'UPLOAD THIS RESULTS ZIP FOR REVIEW:' -ForegroundColor Green
-  Write-Host $resultZip -ForegroundColor Green
-} else {
-  Write-Host 'Result ZIP could not be created. Use the Logs folder above.' -ForegroundColor Yellow
-}
-
-if ($ok) {
-  Write-RunnerState -Phase 'finished' -BlockingReason ''
-  exit 0
-}
-Write-RunnerState -Phase 'finished' -BlockingReason 'One or more required steps failed.'
-exit 1
