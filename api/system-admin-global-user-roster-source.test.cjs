@@ -6,7 +6,7 @@ const path = require('node:path');
 const root = path.resolve(__dirname, '..');
 const read = (file) => fs.readFileSync(path.join(root, file), 'utf8');
 
-test('System Administrator people endpoint is server-authorized and paginated', () => {
+test('System Administrator people endpoint is server-authorized, paginated, and workspaceMembers-enriched', () => {
   const route = read('api/system-admin/people.js');
   assert.match(route, /authorize\(req,\s*app,\s*\{\s*allowTenantAdmin:\s*false,\s*allowCrossProjectMaster:\s*true\s*\}\)/s);
   assert.match(route, /ctx\.isSuperAdmin\s*!==\s*true/);
@@ -15,6 +15,10 @@ test('System Administrator people endpoint is server-authorized and paginated', 
   assert.match(route, /startAfter\(cursor\)/);
   assert.match(route, /hasMore/);
   assert.match(route, /nextCursor/);
+  assert.match(route, /db\.collection\('workspaceMembers'\)/);
+  assert.match(route, /loadCanonicalWorkspaceMemberIndex/);
+  assert.match(route, /canonicalWorkspaceIdsForUser/);
+  assert.doesNotMatch(route, /for\s*\([^)]*user[\s\S]{0,200}collection\('workspaceMembers'\)/, 'must not do one workspaceMembers query per user');
 });
 
 test('System Administrator active management component uses authoritative people roster for tenants and push only', () => {
@@ -32,7 +36,9 @@ test('System Administrator active management component uses authoritative people
 test('System Administrator safe platform rows do not return raw push tokens and preserve workspaces', () => {
   const safeRows = read('api/system-admin-safe-rows.cjs');
   assert.match(safeRows, /function safePlatformUser/);
-  assert.match(safeRows, /workspaceIdsForPlatformUser/);
+  assert.match(safeRows, /workspaceIdsForPlatformUser\(data = \{\}, canonicalWorkspaceIds = \[\]\)/);
+  assert.match(safeRows, /workspaceMemberIsActive/);
+  assert.match(safeRows, /workspaceMemberIdentityKeys/);
   assert.match(safeRows, /countUniqueActivePushDevices/);
   assert.match(safeRows, /pushLastSyncForPlatformUser/);
   assert.match(safeRows, /pushDeviceCount/);
@@ -41,9 +47,10 @@ test('System Administrator safe platform rows do not return raw push tokens and 
   assert.doesNotMatch(functionBody, /fcmTokens\s*:/);
   assert.doesNotMatch(functionBody, /pushTokens\s*:/);
   assert.doesNotMatch(functionBody, /pushDevices\s*:/);
+  assert.doesNotMatch(safeRows, /displayName[\s\S]{0,160}workspaceMemberIdentityKeys/, 'workspace membership identity must not rely on display name');
 });
 
-test('Failed-current infrastructure remains untouched by global people roster repair', () => {
+test('Failed-current infrastructure remains untouched by global roster repair', () => {
   const pkg = JSON.parse(read('package.json'));
   assert.match(pkg.scripts['test:play-store:failed-current'], /reported-failed-only/);
   const prepare = read('scripts/86chaos-release-gate/prepare-failed-only-manifest.cjs');

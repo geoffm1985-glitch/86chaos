@@ -70,14 +70,83 @@ function safePermissions(permissions = {}) {
     return acc;
   }, {});
 }
-function workspaceIdsForPlatformUser(data = {}) {
+function platformIdentityKeysFromValues(values = []) {
+  return uniqueCleanList(values).flatMap(value => {
+    const raw = clean(value);
+    const lower = norm(raw);
+    const keys = [`id:${raw}`];
+    if (lower && lower !== raw) keys.push(`id:${lower}`);
+    if (raw.includes('@')) keys.push(`email:${lower}`);
+    return keys;
+  });
+}
+function platformUserIdentityKeys(data = {}, docId = '') {
+  return uniqueCleanList([
+    docId,
+    data.id,
+    data.uid,
+    data.authUid,
+    data.userId,
+    data.accountUserId,
+    data.rosterUserId,
+    data.employeeId,
+    data.memberUserId,
+    data.email,
+    data.emailLower,
+    data.userEmail,
+    data.employeeEmail,
+    data.assignedEmail
+  ]).flatMap(value => {
+    const raw = clean(value);
+    const lower = norm(raw);
+    const keys = [`id:${raw}`];
+    if (lower && lower !== raw) keys.push(`id:${lower}`);
+    if (raw.includes('@')) keys.push(`email:${lower}`);
+    return keys;
+  });
+}
+function workspaceMemberIdentityKeys(data = {}, docId = '') {
+  const docParts = clean(docId).split(/[_:/|#]+/).filter(part => part && part.length > 2);
+  return platformIdentityKeysFromValues([
+    data.userId,
+    data.uid,
+    data.authUid,
+    data.accountUserId,
+    data.rosterUserId,
+    data.employeeId,
+    data.memberUserId,
+    data.memberId,
+    data.email,
+    data.emailLower,
+    data.userEmail,
+    data.employeeEmail,
+    data.assignedEmail,
+    docId,
+    ...docParts
+  ]);
+}
+function workspaceMemberIsActive(data = {}) {
+  const status = norm(data.status || data.memberStatus || data.membershipStatus || '');
+  if (data.isActive === false || data.deleted === true || data.archived === true || data.disabled === true || data.removed === true) return false;
+  if (['inactive', 'deleted', 'archived', 'removed', 'disabled', 'revoked'].includes(status)) return false;
+  return true;
+}
+function workspaceIdForMember(data = {}, docId = '') {
+  const direct = clean(data.restaurantId || data.workspaceId || data.activeRestaurantId || data.defaultRestaurantId || data.restaurant || data.clientId);
+  if (direct) return direct;
+  const parts = clean(docId).split(/[_:/|#]+/).filter(Boolean);
+  const maybe = parts.find(part => /^qa_|restaurant_|cheers|[a-z0-9-]+_[a-z0-9-]+/i.test(part));
+  return clean(maybe || '');
+}
+function workspaceIdsForPlatformUser(data = {}, canonicalWorkspaceIds = []) {
   const ids = [data.restaurantId || data.activeRestaurantId || data.defaultRestaurantId];
   if (Array.isArray(data.workspaceIds)) ids.push(...data.workspaceIds);
   if (data.memberships && typeof data.memberships === 'object') {
     Object.entries(data.memberships).forEach(([workspaceId, membership]) => {
-      if (membership && typeof membership === 'object' && membership.isActive !== false) ids.push(workspaceId);
+      if (membership && typeof membership === 'object' && membership.isActive !== false && membership.deleted !== true && membership.archived !== true) ids.push(workspaceId);
     });
   }
+  ids.push(...(Array.isArray(canonicalWorkspaceIds) ? canonicalWorkspaceIds : []));
   return uniqueCleanList(ids);
 }
 function countUniqueActivePushDevices(data = {}) {
@@ -111,7 +180,7 @@ function pushLastSyncForPlatformUser(data = {}) {
   if (data.pushDevices && typeof data.pushDevices === 'object') Object.values(data.pushDevices).forEach(collectMeta);
   return newestIso(values);
 }
-function safePlatformUser(doc) {
+function safePlatformUser(doc, canonicalWorkspaceIds = []) {
   const data = doc.data() || {};
   const deviceDiagnostics = data.deviceDiagnostics && typeof data.deviceDiagnostics === 'object'
     ? { gpsPermission: clean(data.deviceDiagnostics.gpsPermission || '') }
@@ -126,7 +195,7 @@ function safePlatformUser(doc) {
     photoURL: clean(data.photoURL || data.avatarUrl || ''),
     role: clean(data.role || data.accountRole || ''),
     restaurantId: clean(data.restaurantId || data.activeRestaurantId || data.defaultRestaurantId || ''),
-    workspaceIds: workspaceIdsForPlatformUser(data),
+    workspaceIds: workspaceIdsForPlatformUser(data, canonicalWorkspaceIds),
     isActive: data.isActive !== false && data.disabled !== true && data.deleted !== true && data.archived !== true,
     isAdmin: data.isAdmin === true,
     isSuperAdmin: data.isSuperAdmin === true || data.systemAccess?.superAdmin === true,
@@ -156,4 +225,17 @@ function safePlatformUser(doc) {
   if (deviceDiagnostics) row.deviceDiagnostics = deviceDiagnostics;
   return row;
 }
-module.exports = { clean, norm, safeWorkspace, safeUser, safePlatformUser, countUniqueActivePushDevices, pushLastSyncForPlatformUser, workspaceIdsForPlatformUser };
+module.exports = {
+  clean,
+  norm,
+  safeWorkspace,
+  safeUser,
+  safePlatformUser,
+  countUniqueActivePushDevices,
+  pushLastSyncForPlatformUser,
+  workspaceIdsForPlatformUser,
+  platformUserIdentityKeys,
+  workspaceMemberIdentityKeys,
+  workspaceMemberIsActive,
+  workspaceIdForMember
+};

@@ -493,10 +493,10 @@ function projectCredentialStatus(projectId) {
   try {
     const found = readProjectCredential(projectId);
     return found
-      ? { configured: true, projectId, source: found.source }
-      : { configured: false, projectId, source: '', recommendedEnv: projectId === 'chaos-test-d1601' ? 'FIREBASE_TEST_SERVICE_ACCOUNT_KEY' : 'FIREBASE_PRODUCTION_SERVICE_ACCOUNT_KEY' };
+      ? { configured: true, projectId, source: found.source, serviceAccountEmail: clean(found.credential?.clientEmail || found.credential?.client_email || '') }
+      : { configured: false, projectId, source: '', serviceAccountEmail: '', recommendedEnv: projectId === 'chaos-test-d1601' ? 'FIREBASE_TEST_SERVICE_ACCOUNT_KEY' : 'FIREBASE_PRODUCTION_SERVICE_ACCOUNT_KEY' };
   } catch (error) {
-    return { configured: false, projectId, error: error.message };
+    return { configured: false, projectId, serviceAccountEmail: '', error: error.message };
   }
 }
 

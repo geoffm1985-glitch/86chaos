@@ -39,6 +39,52 @@ async function authorize(req, adminApp) {
   }
 }
 
+
+function backupStatusValue(value) {
+  if (value == null) return '';
+  if (typeof value?.toDate === 'function') return value.toDate().toISOString();
+  if (typeof value === 'object' && typeof value.seconds === 'number') return new Date(value.seconds * 1000).toISOString();
+  if (Array.isArray(value)) return value.map(backupStatusValue).filter(Boolean);
+  if (typeof value === 'object') return '';
+  return value;
+}
+
+function safeBackupIntegrity(value = {}) {
+  const src = value && typeof value === 'object' ? value : {};
+  return {
+    status: String(src.status || '').trim(),
+    verifiedAt: backupStatusValue(src.verifiedAt),
+    errors: Array.isArray(src.errors) ? src.errors.map(item => String(item || '').slice(0, 220)).filter(Boolean).slice(0, 8) : []
+  };
+}
+
+function safeBackupStatus(data = {}) {
+  const src = data && typeof data === 'object' ? data : {};
+  const allowed = [
+    'status','lastStatus','backupMode','lastBackupAt','lastSuccessfulBackupAt','lastRunAt','lastExportAt','nextBackupAt','nextScheduledAt','nextRunAt',
+    'documentCount','collectionCount','storagePath','storageBucket','lastIntegrityStatus','lastIntegrityVerifiedAt','backupSha256','nativeBackupVerified',
+    'nativeBackupSetupIncompleteReason','nativeBackupScheduleName','nativeBackupScheduleCount','nativeBackupRetention','nativeBackupRetentionDays','nativeBackupLatestName',
+    'nativeBackupLatestState','nativeBackupLastSuccessfulAt','nativeBackupSnapshotTime','nativeBackupExpireTime','backupAgeHours','backupWatchdogStale',
+    'backupWatchdogStaleHours','lastWatchdogCheckAt','lastWatchdogSource','lastWatchdogVersion','lastWatchdogResult','nativeBackupPermissionState',
+    'nativeBackupVerificationState','requiredPermissions','recommendedRoles','projectId','databaseId','serviceAccountEmail','lastError','lastErrorAt','lastPushResult'
+  ];
+  const out = {};
+  for (const key of allowed) {
+    if (src[key] !== undefined) out[key] = backupStatusValue(src[key]);
+  }
+  if (src.backupIntegrity && typeof src.backupIntegrity === 'object') out.backupIntegrity = safeBackupIntegrity(src.backupIntegrity);
+  return out;
+}
+
+async function readSafeBackupStatus(adminApp) {
+  try {
+    const snap = await adminApp.firestore().collection('system').doc('backupStatus').get();
+    return snap.exists ? safeBackupStatus(snap.data() || {}) : null;
+  } catch (error) {
+    return { status: 'attention', lastStatus: 'attention', lastError: `Backup status server read failed: ${String(error?.message || error).slice(0, 220)}`, lastErrorAt: new Date().toISOString() };
+  }
+}
+
 function parseDateFromName(name) {
   const match = name.match(/(\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2})/);
   if (!match) return null;
@@ -107,11 +153,14 @@ async function handler(req, res) {
       }
       storageUsage = { totalFiles: allFiles.length, totalBytes: allBytes, backupFiles: backups.length, backupBytes: totalBytes };
     }
-    return res.status(200).json({ ok: true, backups: backups.slice(0, 100), count: backups.length, bucket: bucket.name, totalBytes, verifiedCount, storageUsage, signedUrlsIncluded: includeSignedUrls });
+    const backupStatus = await readSafeBackupStatus(adminApp);
+    return res.status(200).json({ ok: true, backups: backups.slice(0, 100), count: backups.length, bucket: bucket.name, totalBytes, verifiedCount, storageUsage, backupStatus, signedUrlsIncluded: includeSignedUrls });
   } catch (err) {
     return res.status(500).json({ ok: false, error: err.message });
   }
 }
 
 module.exports = handler;
+module.exports.safeBackupStatus = safeBackupStatus;
+module.exports.readSafeBackupStatus = readSafeBackupStatus;
 module.exports.config = { maxDuration: 30 };
