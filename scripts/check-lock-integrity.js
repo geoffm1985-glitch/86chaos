@@ -19,7 +19,8 @@ const executablePackages = {
   playwright: '@playwright/test',
   firebase: 'firebase-tools',
   eslint: 'eslint',
-  'react-scripts': 'react-scripts'
+  vite: 'vite',
+  jest: 'jest'
 };
 for (const [scriptName, script] of Object.entries(pkg.scripts || {})) {
   for (const [exe, dep] of Object.entries(executablePackages)) {

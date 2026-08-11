@@ -14,21 +14,28 @@ function parseTimeMs(value) {
   if (typeof value?.seconds === 'number') return value.seconds * 1000;
   return 0;
 }
-
-function publicRow(userId, restaurantId, row = {}) {
+function timeoutAfter(ms, label) {
+  return new Promise((_, reject) => setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms));
+}
+async function withTimeout(promise, ms, label) {
+  return Promise.race([promise, timeoutAfter(ms, label)]);
+}
+function publicRow(userId, restaurantId, row = {}, source = 'rtdb-statusSummary-api') {
   const lastMs = Math.max(
     parseTimeMs(row.lastChanged),
     parseTimeMs(row.lastOnline),
     parseTimeMs(row.presenceUpdatedAt),
     parseTimeMs(row.lastActive),
     parseTimeMs(row.lastSeen),
+    parseTimeMs(row.lastHeartbeatAt),
+    parseTimeMs(row.heartbeatEpochMs),
     parseTimeMs(row.disconnectedAt)
   );
   const lastIso = lastMs ? new Date(lastMs).toISOString() : '';
   const online = row.online === true || row.state === 'online' || row.onlineState === 'online';
   return {
-    id: clean(row.userId || userId),
-    userId: clean(row.userId || userId),
+    id: clean(row.userId || row.uid || row.id || userId),
+    userId: clean(row.userId || row.uid || row.id || userId),
     restaurantId: clean(row.restaurantId || restaurantId),
     name: clean(row.name || row.userName || ''),
     email: clean(row.email || row.userEmail || ''),
@@ -44,10 +51,27 @@ function publicRow(userId, restaurantId, row = {}) {
     lastSeen: lastIso,
     presenceUpdatedAt: lastIso,
     lastHeartbeatAt: lastIso,
-    presenceSource: 'rtdb-statusSummary-api'
+    presenceSource: source,
+    _presenceLastMs: lastMs
   };
 }
-
+async function readFirestorePresenceFallback(db, restaurantId, limit, timeoutMs) {
+  const snap = await withTimeout(
+    db.collection('livePresence').where('restaurantId', '==', restaurantId).limit(limit).get(),
+    timeoutMs,
+    'Firestore livePresence fallback'
+  );
+  return snap.docs
+    .map(doc => publicRow(doc.id, restaurantId, doc.data() || {}, 'firestore-livePresence-fallback'))
+    .filter(row => row.userId && row.restaurantId === restaurantId);
+}
+function sortedLimitedUsers(rows, limit) {
+  return rows
+    .filter(row => row.userId)
+    .sort((a, b) => (b._presenceLastMs || 0) - (a._presenceLastMs || 0))
+    .slice(0, limit)
+    .map(({ _presenceLastMs, ...row }) => row);
+}
 module.exports = async (req, res) => {
   if (req.method !== 'GET') return res.status(405).json({ ok: false, error: 'Method not allowed.' });
   try {
@@ -58,17 +82,34 @@ module.exports = async (req, res) => {
     if (!restaurantId || restaurantId !== ctx.restaurantId) return res.status(403).json({ ok: false, error: 'Workspace mismatch.' });
 
     const limit = Math.min(Math.max(parseInt(req.query?.limit || '400', 10) || 400, 1), 800);
-    const snap = await ctx.app.database().ref(`statusSummary/${restaurantId}`).once('value');
-    const raw = snap.val() || {};
-    const users = Object.entries(raw)
-      .map(([userId, row]) => publicRow(userId, restaurantId, row || {}))
-      .filter(row => row.userId)
-      .sort((a, b) => new Date(b.lastActive || 0).getTime() - new Date(a.lastActive || 0).getTime())
-      .slice(0, limit);
+    const timeoutMs = Math.min(Math.max(parseInt(req.query?.timeoutMs || '3200', 10) || 3200, 1200), 6000);
+    let source = 'rtdb-statusSummary-api';
+    const warnings = [];
+    let users = [];
 
-    return res.status(200).json({ ok: true, source: 'rtdb-statusSummary-api', restaurantId, fetchedAt: new Date().toISOString(), count: users.length, users });
+    try {
+      const snap = await withTimeout(ctx.app.database().ref(`statusSummary/${restaurantId}`).once('value'), timeoutMs, 'RTDB statusSummary read');
+      const raw = snap.val() || {};
+      users = sortedLimitedUsers(Object.entries(raw).map(([userId, row]) => publicRow(userId, restaurantId, row || {}, source)), limit);
+    } catch (rtdbError) {
+      source = 'firestore-livePresence-fallback';
+      warnings.push('Live presence source unavailable. Showing last-seen fallback.');
+      console.warn('Workspace presence RTDB summary failed, using bounded Firestore fallback:', rtdbError?.message || rtdbError);
+      try {
+        const fallbackRows = await readFirestorePresenceFallback(ctx.app.firestore(), restaurantId, limit, Math.min(timeoutMs, 3000));
+        users = sortedLimitedUsers(fallbackRows, limit);
+      } catch (fallbackError) {
+        source = 'empty-safe-fallback';
+        warnings.push('Last-seen fallback unavailable. Showing an empty safe summary.');
+        console.warn('Workspace presence Firestore fallback failed; returning empty safe summary:', fallbackError?.message || fallbackError);
+        users = [];
+      }
+    }
+
+    return res.status(200).json({ ok: true, source, warning: warnings.join(' | '), restaurantId, timeoutMs, fetchedAt: new Date().toISOString(), count: users.length, users });
   } catch (err) {
-    console.error('Workspace presence summary failed:', err);
+    console.error('Workspace presence summary authorization/bootstrap failed:', err);
     return res.status(500).json({ ok: false, error: err.message || 'Workspace presence summary failed.' });
   }
 };
+module.exports._test = { parseTimeMs, timeoutAfter, withTimeout, publicRow, readFirestorePresenceFallback };

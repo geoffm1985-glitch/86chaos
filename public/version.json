@@ -1,12 +1,13 @@
 {
-  "version": "16.0.174",
-  "name": "86 Chaos 16.0.174",
-  "build": "16.0.174",
-  "label": "86 Chaos 16.0.174",
-  "releasedAt": "2026-08-10T15:32:00-05:00",
-  "releaseTitle": "Month Print CommonJS Import Build Repair",
+  "version": "16.0.179",
+  "name": "86 Chaos 16.0.179",
+  "build": "16.0.179",
+  "label": "86 Chaos 16.0.179",
+  "releasedAt": "2026-08-10T20:35:00-05:00",
+  "releaseTitle": "ESLint ESM API Parser Scope Repair",
   "notes": [
-    "Fixes the Month View print helper import so production build can compile while preserving deterministic calendar printing."
+    "Scopes ESLint module parsing to the four API endpoints that intentionally use ES module import/export syntax.",
+    "Preserves the existing script/CommonJS parser mode for all other API files."
   ],
-  "title": "86 Chaos 16.0.174"
+  "title": "86 Chaos 16.0.179"
 }

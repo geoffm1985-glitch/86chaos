@@ -1,23 +1,24 @@
 {
   "name": "86chaos",
-  "version": "16.0.174",
+  "version": "16.0.179",
   "private": true,
   "dependencies": {
+    "@vitejs/plugin-react": "6.0.4",
     "ajv": "^8.20.0",
     "ajv-keywords": "^5.1.0",
-    "firebase": "^10.8.1",
-    "firebase-admin": "^12.1.1",
+    "firebase": "11.10.0",
+    "firebase-admin": "13.10.0",
     "leaflet": "^1.9.4",
     "lucide-react": "^0.344.0",
     "pdf-lib": "^1.17.1",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-leaflet": "^4.2.1",
-    "react-scripts": "5.0.1"
+    "vite": "8.1.5"
   },
   "scripts": {
-    "start": "react-scripts start",
-    "build": "react-scripts build",
+    "start": "vite --host 0.0.0.0",
+    "build": "node scripts/vite-build-with-asset-manifest.cjs",
     "retention:setup": "node scripts/setup-production-retention.js",
     "test": "npm run node:check && npm run lock:integrity && npm run test:source && npm run performance:split && npm run test:unit",
     "test:ci": "npm run node:check && npm run lock:integrity && npm run lint && npm run syntax && npm run test:source && npm run performance:split && npm run test:unit -- --runInBand && npm run test:rules && npm run build && npm run test:e2e && npm run test:cost",
@@ -26,7 +27,7 @@
     "deploy:check": "npm run test:ci && NODE_OPTIONS=--max-old-space-size=4096 GENERATE_SOURCEMAP=false npm run build",
     "validate:audit-repair": "node scripts/validate-repair.js",
     "rules:check": "node scripts/validate-rules.js",
-    "test:source": "node scripts/validate-16-0-174.js",
+    "test:source": "node scripts/validate-16-0-179.js",
     "syntax:api": "node scripts/check-api-syntax.js",
     "test:unit": "npm run test:client && npm run test:server",
     "test:rules": "firebase emulators:exec --only firestore,storage \"node scripts/run-rules-tests.js\"",
@@ -46,7 +47,7 @@
     "lock:integrity": "node scripts/check-lock-integrity.js",
     "syntax": "npm run syntax:api && npm run syntax:py",
     "performance:split": "node scripts/validate-performance-split.js",
-    "test:client": "react-scripts test --watchAll=false",
+    "test:client": "jest --watchAll=false",
     "test:server": "node --test api/*.test.cjs",
     "migrate:workspace-memberships:dry-run": "node scripts/migrate-workspace-memberships.js",
     "migrate:workspace-memberships": "node scripts/migrate-workspace-memberships.js --execute",
@@ -64,7 +65,12 @@
     "test:repair-16-0-173": "npm run test:repair-current",
     "test:full-suite": "powershell -NoProfile -ExecutionPolicy Bypass -File .\\RUN_86CHAOS_FULL_TEST_SUITE.ps1 -Exhaustive",
     "test:full-suite:local": "powershell -NoProfile -ExecutionPolicy Bypass -File .\\RUN_86CHAOS_FULL_TEST_SUITE.ps1 -Exhaustive -LocalOnly",
-    "test:repair-16-0-174": "npm run test:repair-current"
+    "test:repair-16-0-174": "npm run test:repair-current",
+    "test:repair-16-0-175": "npm run test:repair-current",
+    "test:repair-16-0-177": "npm run test:repair-current",
+    "test:repair-16-0-176": "npm run test:repair-current",
+    "test:repair-16-0-178": "npm run test:repair-current",
+    "test:repair-16-0-179": "npm run test:repair-current"
   },
   "browserslist": {
     "production": [
@@ -84,14 +90,20 @@
     "npm": ">=10"
   },
   "devDependencies": {
+    "@babel/core": "7.29.7",
     "@babel/parser": "7.29.7",
+    "@babel/preset-env": "7.29.7",
+    "@babel/preset-react": "7.29.7",
     "@babel/traverse": "7.29.7",
-    "@firebase/rules-unit-testing": "^3.0.3",
+    "@firebase/rules-unit-testing": "4.0.1",
     "@playwright/test": "^1.49.1",
     "@testing-library/jest-dom": "^6.6.3",
     "@testing-library/react": "^13.4.0",
     "@testing-library/user-event": "^14.6.1",
+    "babel-jest": "27.5.1",
     "eslint": "^8.57.1",
-    "firebase-tools": "15.24.0"
+    "firebase-tools": "15.24.0",
+    "jest": "27.5.1",
+    "jest-environment-jsdom": "27.5.1"
   }
 }

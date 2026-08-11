@@ -8,7 +8,9 @@ const REQUIRED_MODULES = [
   '@playwright/test',
   '@babel/parser',
   '@babel/traverse',
-  'react-scripts',
+  'vite',
+  '@vitejs/plugin-react',
+  'jest',
   'eslint',
 ];
 

@@ -5410,13 +5410,21 @@ Type DELETE to continue.`) || '').trim().toUpperCase();
       else if (nukeTarget.type === 'everything') cols = ['inventoryItems', 'vendors', 'invoices', 'users', 'recipes', 'shifts', 'timeOffRequests', 'shiftSwaps', 'events', 'wasteLogs', 'sales', 'maintenanceLogs'];
 
       let totalDeleted = 0;
+      let userPurgeResult = null;
       for (const c of cols) {
+        if (c === 'users') {
+          userPurgeResult = await postSystemAdminAction('/api/system-admin/user-actions', {
+            action: 'purge-workspace-users',
+            restaurantId: nukeTarget.rest.id,
+            confirmation: `PURGE_WORKSPACE_USERS:${nukeTarget.rest.id}`
+          });
+          totalDeleted += Number(userPurgeResult?.targetMembershipsDeactivated || 0);
+          continue;
+        }
         const snap = await getDocs(query(collection(db, c), where("restaurantId", "==", nukeTarget.rest.id)));
         const deletePromises = [];
         
         snap.forEach(d => {
-           if (c === 'users' && d.id === appUser.id) return;
-           if (c === 'users' && isProtectedRootAdminEmail(d.data()?.email)) return;
            deletePromises.push(deleteDoc(doc(db, c, d.id)));
         });
         
@@ -5424,12 +5432,15 @@ Type DELETE to continue.`) || '').trim().toUpperCase();
         totalDeleted += deletePromises.length;
       }
 
-      addToast('Obliterated', `Deleted ${totalDeleted} documents for ${nukeTarget.rest.name}.`);
+      const userFailures = Number(userPurgeResult?.failed || 0);
+      const protectedSkipped = Number(userPurgeResult?.protectedSkipped || 0);
+      const userSummary = userPurgeResult ? ` User memberships deactivated: ${userPurgeResult.targetMembershipsDeactivated || 0}; protected skipped: ${protectedSkipped}; failures: ${userFailures}.` : '';
+      addToast(userFailures ? 'Partial Purge' : 'Obliterated', `Processed ${totalDeleted} records for ${nukeTarget.rest.name}.${userSummary}`);
       setNukeTarget(null);
       setNukePassword('');
       setEditingRest(null); 
     } catch (err) {
-      addToast('Error', 'Authentication failed or deletion error. Check your password.');
+      addToast('Error', err.message || 'Authentication failed or deletion error. Check your password.');
 }
     setIsNuking(false);
   };
