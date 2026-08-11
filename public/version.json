@@ -1,13 +1,13 @@
 {
-  "version": "16.0.179",
-  "name": "86 Chaos 16.0.179",
-  "build": "16.0.179",
-  "label": "86 Chaos 16.0.179",
-  "releasedAt": "2026-08-10T20:35:00-05:00",
-  "releaseTitle": "ESLint ESM API Parser Scope Repair",
+  "version": "16.0.180",
+  "name": "86 Chaos 16.0.180",
+  "build": "16.0.180",
+  "label": "86 Chaos 16.0.180",
+  "releasedAt": "2026-08-10T20:54:00-05:00",
+  "releaseTitle": "Vercel Clean Install Lockfile Integrity Repair",
   "notes": [
-    "Scopes ESLint module parsing to the four API endpoints that intentionally use ES module import/export syntax.",
-    "Preserves the existing script/CommonJS parser mode for all other API files."
+    "Restores the complete Vite 8.1.5 dependency graph required by clean npm ci installs, including Rolldown and LightningCSS platform metadata.",
+    "Preserves the current Firebase 11, Vite, ESLint, application behavior, and Vercel npm ci install contract without changing app business logic."
   ],
-  "title": "86 Chaos 16.0.179"
+  "title": "86 Chaos 16.0.180"
 }

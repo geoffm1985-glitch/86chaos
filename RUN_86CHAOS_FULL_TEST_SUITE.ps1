@@ -14,7 +14,7 @@ param(
   [switch]$IncludeReleaseGate
 )
 $ErrorActionPreference = 'Stop'
-$script:AppVersion = '16.0.179'
+$script:AppVersion = '16.0.180'
 $script:Steps = New-Object System.Collections.ArrayList
 $script:Plan = New-Object System.Collections.ArrayList
 $script:GroupStatus = @{}
@@ -292,7 +292,7 @@ function Update-ResultZipMetadata {
   }
 }
 function Create-UploadZip {
-  $zip = Join-Path $script:AppRoot ('86chaos-FULL-SUITE-UPLOAD-ME-16.0.179-' + (Get-Date -Format 'yyyyMMdd-HHmmss') + '.zip')
+  $zip = Join-Path $script:AppRoot ('86chaos-FULL-SUITE-UPLOAD-ME-16.0.180-' + (Get-Date -Format 'yyyyMMdd-HHmmss') + '.zip')
   if (Test-Path $zip) { Remove-Item $zip -Force }
   Compress-Archive -Path (Join-Path $script:RunDir '*') -DestinationPath $zip -Force
   if (-not (Test-Path $zip)) { throw 'Upload ZIP was not created.' }
