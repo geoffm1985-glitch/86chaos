@@ -12,7 +12,7 @@ const packages = lock.packages || {};
 const expectedInstall = 'npm ci --omit=dev --no-audit --no-fund --progress=false';
 
 test('Vercel clean install preserves optional native dependencies required by Vite 8 / Rolldown', () => {
-  assert.equal(pkg.version, '16.0.181');
+  assert.match(pkg.version, /^16\.0\.\d+$/, 'current app remains on the 16.0.x release line');
   assert.equal(pkg.scripts['vercel:install'], expectedInstall);
   assert.equal(vercel.installCommand, expectedInstall);
   assert.ok(!expectedInstall.includes('--omit=optional'));

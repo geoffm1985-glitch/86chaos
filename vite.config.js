@@ -1,5 +1,6 @@
 const { defineConfig } = require('vite');
 const reactPluginModule = require('@vitejs/plugin-react');
+const { createReactJsxModuleTypePlugin } = require('./scripts/vite-react-jsx-module-type.cjs');
 
 const react = reactPluginModule.default || reactPluginModule;
 
@@ -49,7 +50,7 @@ module.exports = defineConfig(({ mode }) => {
   const processEnv = buildBrowserProcessEnv();
   processEnv.NODE_ENV = nodeEnv;
   return {
-    plugins: [react()],
+    plugins: [createReactJsxModuleTypePlugin(), react()],
     publicDir: 'public',
     define: {
       'process.env': JSON.stringify(processEnv)

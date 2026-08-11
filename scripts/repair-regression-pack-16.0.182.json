@@ -1,0 +1,163 @@
+{
+  "version": "16.0.182",
+  "localCommands": [
+    {
+      "group": "Full Suite 16.0.182 Integrity",
+      "cmd": [
+        "node",
+        "--test",
+        "api/release-integrity-account-lifecycle-16-0-177.test.cjs",
+        "api/full-suite-windows-runner-16-0-176.test.cjs",
+        "api/dependency-security-16-0-176.test.cjs",
+        "api/vite-lock-integrity-16-0-180.test.cjs",
+        "api/vercel-vite-native-binding-16-0-181.test.cjs",
+        "api/lint-config-16-0-176.test.cjs",
+        "api/lint-esm-api-16-0-179.test.cjs",
+        "api/cost-provenance-16-0-176.test.cjs",
+        "api/presence-workspace-summary-16-0-176.test.cjs",
+        "api/system-admin-nuke-users-16-0-176.test.cjs",
+        "api/vite-jsx-module-type-16-0-182.test.cjs"
+      ]
+    },
+    {
+      "group": "Month View Print",
+      "cmd": [
+        "node",
+        "--test",
+        "api/month-view-print-16-0-172.test.cjs",
+        "api/print-calendar-layout.test.cjs"
+      ]
+    },
+    {
+      "group": "Staff Email Editing",
+      "cmd": [
+        "node",
+        "--test",
+        "api/staff-email-change-16-0-173.test.cjs",
+        "api/staff-email-edit-source-16-0-173.test.cjs",
+        "api/employee-access-revocation.test.cjs",
+        "api/employee-access-firestore-icon-16-0-161.test.cjs"
+      ]
+    },
+    {
+      "group": "People Directory",
+      "cmd": [
+        "node",
+        "--test",
+        "api/system-admin-global-user-roster-source.test.cjs"
+      ]
+    },
+    {
+      "group": "Workspace Membership",
+      "cmd": [
+        "node",
+        "--test",
+        "api/system-admin-workspace-people.test.cjs"
+      ]
+    },
+    {
+      "group": "Backup Health and Watchdog",
+      "cmd": [
+        "node",
+        "--test",
+        "api/system-admin-backup-health-16-0-169.test.cjs"
+      ]
+    },
+    {
+      "group": "Firestore Read Demand",
+      "cmd": [
+        "node",
+        "--test",
+        "api/firestore-read-efficiency-16-0-167.test.cjs"
+      ]
+    },
+    {
+      "group": "Audit Authorization",
+      "cmd": [
+        "node",
+        "--test",
+        "api/audit-authorization-regression-16-0-171.test.cjs"
+      ]
+    },
+    {
+      "group": "Request Off",
+      "cmd": [
+        "node",
+        "--test",
+        "api/request-off-regression-16-0-171.test.cjs"
+      ]
+    },
+    {
+      "group": "Chunk Recovery",
+      "cmd": [
+        "node",
+        "--test",
+        "api/chunk-recovery-regression-16-0-171.test.cjs"
+      ]
+    },
+    {
+      "group": "System Admin Trust Boundary",
+      "cmd": [
+        "node",
+        "--test",
+        "api/system-admin-trust-boundary.test.cjs"
+      ]
+    },
+    {
+      "group": "Release Gate Harness",
+      "cmd": [
+        "node",
+        "--test",
+        "tests/86chaos-release-gate/*.test.cjs"
+      ],
+      "expandGlob": true
+    },
+    {
+      "group": "Release Gate Harness Serial",
+      "cmd": [
+        "node",
+        "--test",
+        "--test-concurrency=1",
+        "tests/86chaos-release-gate/*.test.cjs"
+      ],
+      "expandGlob": true
+    },
+    {
+      "group": "V9 Tool Disposition",
+      "cmd": [
+        "node",
+        "--test",
+        "api/v9-preservation-disposition.test.cjs"
+      ]
+    },
+    {
+      "group": "Validators",
+      "cmd": [
+        "node",
+        "scripts/validate-repair.js"
+      ]
+    },
+    {
+      "group": "Python Ops Validator",
+      "cmd": [
+        "node",
+        "scripts/validate-python-ops-restore.js"
+      ]
+    },
+    {
+      "group": "Full Suite Windows Integrity",
+      "cmd": [
+        "node",
+        "--test",
+        "api/full-suite-windows-runner-16-0-175.test.cjs"
+      ]
+    },
+    {
+      "group": "Current Source Validator",
+      "cmd": [
+        "node",
+        "scripts/validate-16-0-182.js"
+      ]
+    }
+  ]
+}

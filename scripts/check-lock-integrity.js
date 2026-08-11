@@ -12,6 +12,12 @@ const pkg = readJson('package.json');
 const lock = readJson('package-lock.json');
 const packages = lock.packages || {};
 const deps = { ...(pkg.dependencies || {}), ...(pkg.devDependencies || {}) };
+for (const [lockPath, row] of Object.entries(packages)) {
+  if (!lockPath || !row || typeof row !== 'object') continue;
+  if (String(row.resolved || '').startsWith('https://registry.npmjs.org/') && !row.integrity) {
+    fail(`${lockPath} resolves from the npm registry but has no integrity metadata`);
+  }
+}
 for (const name of Object.keys(deps).sort()) {
   if (!packages[`node_modules/${name}`]) fail(`${name} is declared in package.json but missing from package-lock.json packages[node_modules/${name}]`);
 }

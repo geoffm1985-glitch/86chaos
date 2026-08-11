@@ -1,13 +1,13 @@
 {
-  "version": "16.0.181",
-  "name": "86 Chaos 16.0.181",
-  "build": "16.0.181",
-  "label": "86 Chaos 16.0.181",
-  "releasedAt": "2026-08-10T21:25:00-05:00",
-  "releaseTitle": "Vercel Vite Native Binding Install Repair",
+  "version": "16.0.183",
+  "name": "86 Chaos 16.0.183",
+  "build": "16.0.183",
+  "label": "86 Chaos 16.0.183",
+  "releasedAt": "2026-08-10T22:20:00-05:00",
+  "releaseTitle": "NPM Registry Lock Metadata Repair",
   "notes": [
-    "Keeps Vercel on deterministic npm ci while allowing required optional native dependencies for the Vite 8/Rolldown build toolchain.",
-    "Removes only the obsolete --omit=optional install flag; application logic, Firebase configuration, dependency versions, and business behavior remain unchanged."
+    "Replaces the invalid undici 6.27.1 lock record with published undici 6.28.0, satisfying firebase-tools ^6.19.0 while incorporating the current 6.x security fixes.",
+    "Restores authoritative integrity metadata for the manually repaired Vite, Vite React plugin, and Firebase Rules Unit Testing registry records without changing application or Firebase behavior."
   ],
-  "title": "86 Chaos 16.0.181"
+  "title": "86 Chaos 16.0.183"
 }
