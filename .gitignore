@@ -5,3 +5,4 @@ release-gate-tools/node_modules/
 playwright-report/
 test-results/
 coverage/
+.vite-build-root-*/

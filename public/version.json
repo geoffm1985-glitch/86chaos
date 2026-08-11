@@ -1,13 +1,13 @@
 {
-  "version": "16.0.183",
-  "name": "86 Chaos 16.0.183",
-  "build": "16.0.183",
-  "label": "86 Chaos 16.0.183",
-  "releasedAt": "2026-08-10T22:20:00-05:00",
-  "releaseTitle": "NPM Registry Lock Metadata Repair",
+  "version": "16.0.184",
+  "name": "86 Chaos 16.0.184",
+  "build": "16.0.184",
+  "label": "86 Chaos 16.0.184",
+  "releasedAt": "2026-08-10T23:00:00-05:00",
+  "releaseTitle": "Vercel Linux Vite Oxc JSX Precompile Repair",
   "notes": [
-    "Replaces the invalid undici 6.27.1 lock record with published undici 6.28.0, satisfying firebase-tools ^6.19.0 while incorporating the current 6.x security fixes.",
-    "Restores authoritative integrity metadata for the manually repaired Vite, Vite React plugin, and Firebase Rules Unit Testing registry records without changing application or Firebase behavior."
+    "Precompiles the temporary Vite build workspace with Vite's own Oxc transformer so CRA-era JSX inside src .js files is normalized before the Vite 8/Rolldown Linux parser runs.",
+    "Keeps real source files, filenames, imports, Firebase configuration, and application behavior unchanged while preserving the existing asset-manifest build contract and cleaning the temporary build workspace after every build."
   ],
-  "title": "86 Chaos 16.0.183"
+  "title": "86 Chaos 16.0.184"
 }
