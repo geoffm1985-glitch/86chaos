@@ -1,0 +1,67 @@
+{
+  "version": "16.0.189",
+  "baseline": "16.0.188",
+  "candidate": "16.0.189",
+  "labels": "Every metric is application-side only and labeled MEASURED, ESTIMATED, or NOT MEASURABLE LOCALLY. No Firebase billing costs are estimated.",
+  "presence": {
+    "connectMutations": { "baseline": 1, "candidate": 1, "label": "MEASURED", "detail": "One active RTDB session write under status/{workspace}/{firebaseAuthUid}/sessions/{connectionId}." },
+    "disconnectMutations": { "baseline": "1 session remove + 0/1 last-seen summary", "candidate": "1 session remove + 0/1 last-seen summary", "label": "MEASURED" },
+    "multiDeviceBehavior": { "value": "Any active session keeps the user online; closing one tab/device does not mark another active device offline.", "label": "MEASURED" }
+  },
+  "team": {
+    "quickTabBounceApiRequests": { "baseline": 1, "candidate": 0, "label": "MEASURED", "detail": "Within the 45-second cache window, Team reuses the workspace presence summary." }
+  },
+  "today": {
+    "baseline": {
+      "initialDocuments": { "value": 306, "label": "ESTIMATED", "includes": ["users", "shifts", "timeOff", "events", "timePunches", "inventory", "maintenance", "prep", "tasks", "restaurantAdminAlerts", "opsIntelligenceReports"] },
+      "snapshotRequests": { "value": 11, "label": "ESTIMATED" },
+      "activeListeners": { "value": 1, "label": "MEASURED", "detail": "16.0.188 still used a live opsIntelligenceReports state path on Today." }
+    },
+    "candidate": {
+      "initialDocuments": { "value": 277, "label": "ESTIMATED", "detail": "Includes restaurantAdminAlerts=8 and opsIntelligenceReports=3." },
+      "snapshotRequests": { "value": 11, "label": "ESTIMATED" },
+      "activeListeners": { "value": 0, "label": "MEASURED" },
+      "cacheHits": { "value": "0 snapshot requests inside TTL unless manual Refresh Brief is used", "label": "MEASURED" },
+      "manualRefresh": { "value": "Refresh Brief clears the tenant snapshot cache and forces the next snapshot load", "label": "MEASURED" }
+    }
+  },
+  "reminders": {
+    "automaticRequestsDuring10IdleMinutes": { "baseline": 0, "candidate": 0, "label": "MEASURED", "detail": "Preserves 16.0.186/16.0.188 no 90-second polling behavior." }
+  },
+  "par": {
+    "twoDigitTypingWrites": { "baseline": 1, "candidate": 1, "label": "MEASURED", "detail": "Local typing still commits once on blur/Enter and skips unchanged values." }
+  },
+  "currentUser": {
+    "longLivedProfileListeners": { "baseline": 1, "candidate": 1, "label": "MEASURED" }
+  },
+  "hrOverview": {
+    "aggregateCalls": { "baseline": "aggregate count calls", "candidate": "aggregate count calls", "label": "MEASURED" },
+    "detailDocumentReads": { "baseline": "small attention rows only", "candidate": "small attention rows only", "label": "MEASURED" }
+  },
+  "menu": {
+    "initialScanDocs": { "baseline": 20, "candidate": 20, "label": "MEASURED" },
+    "secondPageIncrementalDocs": { "baseline": 20, "candidate": 20, "label": "MEASURED", "detail": "Cursor page two does not reread page one." },
+    "dependencyDocsBeforeGraph": { "baseline": 0, "candidate": 0, "label": "MEASURED" },
+    "dependencyDocsAfterGraph": { "baseline": 500, "candidate": 500, "label": "ESTIMATED", "detail": "Graph/review action still loads the bounded dependency graph when the feature actually needs it." }
+  },
+  "auditLog": {
+    "page1Reads": { "baseline": 50, "candidate": 50, "label": "MEASURED" },
+    "page2IncrementalReads": { "baseline": 50, "candidate": 50, "label": "MEASURED" }
+  },
+  "mySchedule": {
+    "baseline": {
+      "canonicalReads": { "value": 120, "label": "ESTIMATED" },
+      "legacyRescueReads": { "value": 120, "label": "ESTIMATED", "detail": "16.0.188 could still cap the live broad rescue at the first 120 workspace rows." },
+      "legacyBeyond120Visible": { "value": false, "label": "MEASURED" }
+    },
+    "candidate": {
+      "canonicalReads": { "value": "canonical scheduleUserId query only", "label": "MEASURED" },
+      "legacyRescueReads": { "value": "paged bounded date-window rescue until exhausted or maxPages safety", "label": "MEASURED" },
+      "duplicatesRemoved": { "value": "deterministic document-id merge", "label": "MEASURED" },
+      "legacyBeyond120Visible": { "value": true, "label": "MEASURED" }
+    }
+  },
+  "bulkAudit": {
+    "reviewResult": { "value": "reviewed, intentionally preserved", "label": "MEASURED", "detail": "No additional safe consolidation was made because the remaining broad loops touch security-sensitive or per-record operational evidence paths where audit integrity outranks theoretical write savings." }
+  }
+}

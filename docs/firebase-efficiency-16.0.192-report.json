@@ -1,0 +1,48 @@
+{
+  "version": "16.0.192",
+  "baseline": "16.0.191",
+  "candidate": "16.0.192",
+  "scope": "My Schedule identity consolidation, real rescue retry telemetry, measured rescue metrics, and ordinary-staff error-detail hardening.",
+  "billingNote": "Metrics labelled MEASURED are deterministic fixture/helper measurements from this source tree, not production Firebase billing data.",
+  "mySchedule": {
+    "baseline": {
+      "identityImplementations": { "value": 2, "label": "MEASURED", "note": "scheduleIdentity.cjs plus a fallback copy in scheduleQueryPlanner.js" },
+      "retryTelemetry": { "value": "retryCount present but not incremented", "label": "MEASURED" },
+      "technicalErrorLeakage": { "value": "schedule permission could reveal raw rescue error", "label": "MEASURED" }
+    },
+    "candidate": {
+      "identityImplementations": { "value": 1, "label": "MEASURED", "note": "scheduleEfficiency and scheduleQueryPlanner delegate to scheduleIdentity.cjs" },
+      "employeeIdIndexedQueryCount": { "value": 0, "label": "MEASURED", "note": "No arbitrary durable aliases are queried as employeeId" },
+      "rescueMetrics": {
+        "queryRequestCount": { "value": 28, "label": "MEASURED" },
+        "scheduleDateKeyPageCount": { "value": 14, "label": "MEASURED" },
+        "datePageCount": { "value": 14, "label": "MEASURED" },
+        "documentsDelivered": { "value": 3210, "label": "MEASURED" },
+        "duplicateDeliveries": { "value": 1602, "label": "MEASURED" },
+        "uniqueMatchingLegacyRows": { "value": 8, "label": "MEASURED" },
+        "employeeIdIndexedQueryCount": { "value": 0, "label": "MEASURED" },
+        "evaluatedAllPages": { "value": true, "label": "MEASURED" },
+        "truncated": { "value": false, "label": "MEASURED" },
+        "cacheReuse": { "value": "not implemented", "label": "NOT MEASURABLE LOCALLY", "note": "Shared broad rescue cache deferred to avoid stale shift correctness risk without live invalidation proof." },
+        "incompleteErrorState": { "value": "visible plain warning + retry; diagnostics gated and sanitized", "label": "MEASURED" }
+      },
+      "retryTelemetry": {
+        "initialAutomaticRescue": { "value": 0, "label": "MEASURED" },
+        "firstExplicitRetry": { "value": 1, "label": "MEASURED" },
+        "secondExplicitRetry": { "value": 2, "label": "MEASURED" },
+        "contextChangeReset": { "value": 0, "label": "MEASURED" },
+        "lastAttemptSucceeded": { "value": true, "label": "MEASURED" }
+      },
+      "staffErrorDisplay": {
+        "ordinaryScheduleStaffRawErrorVisible": { "value": false, "label": "MEASURED" },
+        "ownerSanitizedDiagnosticVisible": { "value": true, "label": "MEASURED" }
+      }
+    }
+  },
+  "preserved": {
+    "refreshBriefScopedCache": "MEASURED: retained from 16.0.190",
+    "presenceArchitecture": "MEASURED: unchanged",
+    "menuCursorPagination": "MEASURED: unchanged",
+    "auditLogCursorPagination": "MEASURED: unchanged"
+  }
+}

@@ -1,12 +1,12 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Bell, Check, Camera, ChevronLeft, ChevronRight, MessageSquare, Plus, Trash2, Users, Calendar, Clock, X, Loader2, Package, ClipboardList, Menu, Settings, LogOut, Shield, Send, Repeat, Edit, Moon, Sun, TrendingUp, BookOpen, Search, ChefHat, Scale, Coffee, Star, Bug, Wrench, Globe, ThumbsUp, HelpCircle, Sparkles } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
-import { getFirestore, collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, where, getDoc, setDoc, getDocs, Timestamp, deleteField, orderBy, limit as firestoreLimit } from 'firebase/firestore';
+import { getFirestore, collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, where, getDoc, setDoc, getDocs, Timestamp, deleteField, orderBy, limit as firestoreLimit, startAfter } from 'firebase/firestore';
 import { getAuth, signInWithEmailAndPassword, sendPasswordResetEmail, createUserWithEmailAndPassword, updatePassword, EmailAuthProvider, reauthenticateWithCredential, sendEmailVerification, multiFactor, PhoneAuthProvider, PhoneMultiFactorGenerator, RecaptchaVerifier } from 'firebase/auth';
 import { getToken, onMessage } from 'firebase/messaging';
 import { ref, uploadBytes, getBlob, getDownloadURL, deleteObject } from 'firebase/storage';
 import { MapContainer, TileLayer, Marker, Circle, useMap } from 'react-leaflet';
-import { T, db, storage, auth, messaging, firebaseConfig, secureFetch, MASTER_ADMIN_EMAIL, EVENT_TAGS, CURRENT_VERSION, useLiveCollection, formatDate, getToday, getMonthStr, formatDisplayDate, formatDisplayFullDate, formatDisplayMonth, getDaysInMonth, formatShortTime, formatClockTime, formatClockDateTime, getAvatar, generateTempPass, getExpDate, getHoliday, logAudit, customMapIcon, getRestaurantExportPrefix, safeFilenamePart, downloadCsvRows, downloadTextFile, openPrintableReport, buildPermissionPreview, buildImportBridgeTemplates, buildV14ClientGuardrailReport } from '../core/appCore';
+import { T, db, storage, auth, messaging, firebaseConfig, secureFetch, MASTER_ADMIN_EMAIL, EVENT_TAGS, CURRENT_VERSION, useLiveCollection, formatDate, getToday, getMonthStr, formatDisplayDate, formatDisplayFullDate, formatDisplayMonth, getDaysInMonth, formatShortTime, formatClockTime, formatClockDateTime, getAvatar, generateTempPass, getExpDate, getHoliday, logAudit, customMapIcon, getRestaurantExportPrefix, safeFilenamePart, downloadCsvRows, downloadTextFile, getFirebaseUsageDiagnostics, resetFirebaseUsageDiagnostics, openPrintableReport, buildPermissionPreview, buildImportBridgeTemplates, buildV14ClientGuardrailReport } from '../core/appCore';
 import { CheersLogo, Modal, DrawerMenu, DayDotPrintScreen, MapClickListener, SmartEmptyState, MiniProblemCard, getHomeProfile, calculatePunchHours, getWeekStart, getWeekDates, roleMatches, toLocalTimeInput, makeLocalIso, PunchTable, StatusTile, FriendlyEmpty, GlobalSearchModal, QuickActionDock, KitchenTVMode, ChangeLogModal, UndoBar } from '../components/common';
 import { SYSTEM_TRAINING_MANUAL_CHAPTERS } from './trainingManual';
 import { usePlanAccess } from '../hooks/usePlanAccess';
@@ -15,6 +15,8 @@ import { PLAN_DEFINITIONS, CUSTOMER_PLAN_ORDER, FEATURE_KEYS } from '../config/p
 import { resolveSubscription, resolveFeatureAccess, getPlanDefinition, formatMoney, normalizePlanId, addDaysIso, addMonthsIso } from '../lib/featureAccess';
 import { HELP_SUBJECTS, HELP_SUBTOPICS, HELP_DEEP_LINKS, CUSTOMER_HELP_ARTICLES, CUSTOMER_HELP_ARTICLES_LEGACY, searchCustomerHelp, makeDeterministicHelpAnswer, buildCustomerHelpCoverage } from '../core/customerHelpKnowledge';
 import * as adminSafetyModule from '../core/systemAdminDataSafety.cjs';
+import presenceTruthModule from '../core/presenceTruth.cjs';
+import scheduleEfficiencyModule from '../core/scheduleEfficiency.cjs';
 
 
 const resolveAdminSafetyModule = (moduleValue) => {
@@ -22,6 +24,9 @@ const resolveAdminSafetyModule = (moduleValue) => {
   return candidate && typeof candidate === 'object' ? candidate : {};
 };
 const adminSafety = resolveAdminSafetyModule(adminSafetyModule);
+const { classifySystemAdminPresenceRow, getPresenceLastMs } = presenceTruthModule;
+const scheduleEfficiency = scheduleEfficiencyModule?.default && typeof scheduleEfficiencyModule.default === 'object' ? scheduleEfficiencyModule.default : scheduleEfficiencyModule;
+const buildCanonicalShiftDateFields = typeof scheduleEfficiency?.buildCanonicalShiftDateFields === 'function' ? scheduleEfficiency.buildCanonicalShiftDateFields : (dateValue = '') => { const date = String(dateValue || getToday()).slice(0, 10); return { date, scheduleDateKey: date, shiftDate: date, scheduleMonth: date.slice(0, 7) }; };
 const fallbackTimestampToIso = (value) => {
   if (!value) return '';
   try {
@@ -3214,8 +3219,36 @@ const Toggle = ({ label, desc, checked, onChange, disabled = false }) => (
 };
 
 const TabAuditLog = ({ appUser }) => {
-  const logs = useLiveCollection('auditLogs', appUser?.restaurantId, { limitCount: 200 });
+  const [logs, setLogs] = useState([]);
+  const [auditCursor, setAuditCursor] = useState(null);
+  const [hasMoreAuditLogs, setHasMoreAuditLogs] = useState(true);
+  const [loadingAuditLogs, setLoadingAuditLogs] = useState(false);
+  const [auditLogError, setAuditLogError] = useState('');
   const isGeoff = appUser?.isSuperAdmin === true;
+  const AUDIT_PAGE_SIZE = 50;
+
+  const loadAuditLogs = async ({ reset = false } = {}) => {
+    if (!appUser?.restaurantId) { setLogs([]); setAuditCursor(null); setHasMoreAuditLogs(false); return; }
+    setLoadingAuditLogs(true);
+    setAuditLogError('');
+    try {
+      const parts = [collection(db, 'auditLogs'), where('restaurantId', '==', appUser.restaurantId), orderBy('timestamp', 'desc')];
+      if (!reset && auditCursor) parts.push(startAfter(auditCursor));
+      parts.push(firestoreLimit(AUDIT_PAGE_SIZE));
+      const snap = await getDocs(query(...parts));
+      const rows = snap.docs.map(row => ({ id: row.id, ...row.data() }));
+      setLogs(prev => reset ? rows : [...prev, ...rows.filter(row => !prev.some(existing => existing.id === row.id))]);
+      setAuditCursor(snap.docs[snap.docs.length - 1] || null);
+      setHasMoreAuditLogs(snap.docs.length === AUDIT_PAGE_SIZE);
+    } catch (err) {
+      setAuditLogError(err?.message || 'Audit logs could not load.');
+    } finally {
+      setLoadingAuditLogs(false);
+    }
+  };
+
+  useEffect(() => { loadAuditLogs({ reset: true }); }, [appUser?.restaurantId]);
+
   const sortedLogs = [...logs]
     .filter(log => isGeoff ? true : log.action !== 'APP_INSTALLED')
     .sort((a,b) => new Date(b.timestamp) - new Date(a.timestamp));
@@ -3223,14 +3256,20 @@ const TabAuditLog = ({ appUser }) => {
   return (
     <div className="max-w-4xl mx-auto space-y-4 pb-24 animate-[slideIn_0.2s_ease-out]">
       <div className={`${T.card} overflow-hidden`}>
-        <div className={`bg-[#12161A] p-4 border-b ${T.border} flex justify-between items-center`}>
-          <h2 className="text-lg font-black text-white flex items-center gap-2"><Shield className="text-red-500"/> System Audit Logs</h2>
-          <span className={`bg-red-900/20 border border-red-500/50 text-red-500 px-3 py-1 rounded-full font-black text-[10px] uppercase tracking-widest`}>Master Admin View</span>
+        <div className={`bg-[#12161A] p-4 border-b ${T.border} flex flex-col sm:flex-row gap-3 sm:justify-between sm:items-center`}>
+          <div>
+            <h2 className="text-lg font-black text-white flex items-center gap-2"><Shield className="text-red-500"/> System Audit Logs</h2>
+            <p className="text-[10px] text-slate-500 font-bold mt-1">Snapshot-based view. Loads 50 records at a time with cursor pagination instead of holding a permanent audit listener.</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <button type="button" onClick={() => loadAuditLogs({ reset: true })} disabled={loadingAuditLogs} className={`${T.btnAlt} whitespace-nowrap`}>{loadingAuditLogs ? 'Refreshing' : 'Refresh'}</button>
+            <button type="button" onClick={() => loadAuditLogs({ reset: false })} disabled={loadingAuditLogs || !hasMoreAuditLogs} className={`${T.btnAlt} whitespace-nowrap`}>{hasMoreAuditLogs ? 'Load More' : 'No More'}</button>
+            <span className={`bg-red-900/20 border border-red-500/50 text-red-500 px-3 py-1 rounded-full font-black text-[10px] uppercase tracking-widest`}>Master Admin View</span>
+          </div>
         </div>
-        
+        {auditLogError && <div className="p-3 text-xs font-bold text-amber-200 bg-amber-950/30 border-b border-amber-900/40">{adminSafeText(auditLogError, 'Audit log load failed.')}</div>}
         <section role="region" aria-label="System audit log entries" tabIndex={0} className={`divide-y ${T.border} max-h-[70vh] overflow-y-auto custom-scrollbar`}>
-          {sortedLogs.length === 0 && <div className="p-8 text-center text-slate-500 font-bold">No security events logged yet.</div>}
-          
+          {sortedLogs.length === 0 && <div className="p-8 text-center text-slate-500 font-bold">{loadingAuditLogs ? 'Loading security events…' : 'No security events logged yet.'}</div>}
           {sortedLogs.map(log => (
             <div key={log.id} className={`${T.row} flex flex-col sm:flex-row gap-2 sm:justify-between sm:items-center`}>
               <div>
@@ -4142,6 +4181,7 @@ firebase deploy --only functions --project YOUR_PRODUCTION_PROJECT_ID
 # Confirm all retention jobs are present before trusting automatic deletion.`;
   const [isCommandDeckOpen, setIsCommandDeckOpen] = useState(false);
   const [isAdminNavOpen, setIsAdminNavOpen] = useState(true);
+  const [, setFirebaseMetricsTick] = useState(0);
   
   // Master Data States
   const [restaurants, setRestaurants] = useState([]);
@@ -5516,26 +5556,37 @@ Type DELETE to continue.`) || '').trim().toUpperCase();
       });
       await Promise.all(userPromises);
 
+      const createModernQaShiftPayload = (person, dateValue, extra = {}) => ({
+        restaurantId: rId,
+        ...buildCanonicalShiftDateFields(dateValue),
+        employeeId: person.id,
+        scheduleUserId: person.id,
+        userId: person.id,
+        rosterUserId: person.id,
+        modernQaFixture: true,
+        ...extra
+      });
+
       // 3. Create Full Schedule (7 Days of Shifts)
       const shiftPromises = [];
       next7Days.forEach(date => {
         // Morning Crew
-        shiftPromises.push(addDoc(collection(db, "shifts"), { restaurantId: rId, employeeId: userIds[1].id, scheduleUserId: userIds[1].id, userId: userIds[1].id, rosterUserId: userIds[1].id, role: 'Manager', date, startTime: '08:00', endTime: '16:00', isPublished: true }));
-        shiftPromises.push(addDoc(collection(db, "shifts"), { restaurantId: rId, employeeId: userIds[14].id, scheduleUserId: userIds[14].id, userId: userIds[14].id, rosterUserId: userIds[14].id, role: 'Prep Cook', date, startTime: '07:00', endTime: '14:00', isPublished: true }));
-        shiftPromises.push(addDoc(collection(db, "shifts"), { restaurantId: rId, employeeId: userIds[10].id, scheduleUserId: userIds[10].id, userId: userIds[10].id, rosterUserId: userIds[10].id, role: 'Line Cook', date, startTime: '09:00', endTime: '16:00', isPublished: true }));
-        shiftPromises.push(addDoc(collection(db, "shifts"), { restaurantId: rId, employeeId: userIds[6].id, scheduleUserId: userIds[6].id, userId: userIds[6].id, rosterUserId: userIds[6].id, role: 'Server', date, startTime: '10:30', endTime: '16:00', isPublished: true }));
-        shiftPromises.push(addDoc(collection(db, "shifts"), { restaurantId: rId, employeeId: userIds[4].id, scheduleUserId: userIds[4].id, userId: userIds[4].id, rosterUserId: userIds[4].id, role: 'Bartender', date, startTime: '10:30', endTime: '17:00', isPublished: true }));
-        shiftPromises.push(addDoc(collection(db, "shifts"), { restaurantId: rId, employeeId: userIds[18].id, scheduleUserId: userIds[18].id, userId: userIds[18].id, rosterUserId: userIds[18].id, role: 'Dishwasher', date, startTime: '11:00', endTime: '16:00', isPublished: true }));
+        shiftPromises.push(addDoc(collection(db, "shifts"), createModernQaShiftPayload(userIds[1], date, { role: 'Manager', startTime: '08:00', endTime: '16:00', isPublished: true })));
+        shiftPromises.push(addDoc(collection(db, "shifts"), createModernQaShiftPayload(userIds[14], date, { role: 'Prep Cook', startTime: '07:00', endTime: '14:00', isPublished: true })));
+        shiftPromises.push(addDoc(collection(db, "shifts"), createModernQaShiftPayload(userIds[10], date, { role: 'Line Cook', startTime: '09:00', endTime: '16:00', isPublished: true })));
+        shiftPromises.push(addDoc(collection(db, "shifts"), createModernQaShiftPayload(userIds[6], date, { role: 'Server', startTime: '10:30', endTime: '16:00', isPublished: true })));
+        shiftPromises.push(addDoc(collection(db, "shifts"), createModernQaShiftPayload(userIds[4], date, { role: 'Bartender', startTime: '10:30', endTime: '17:00', isPublished: true })));
+        shiftPromises.push(addDoc(collection(db, "shifts"), createModernQaShiftPayload(userIds[18], date, { role: 'Dishwasher', startTime: '11:00', endTime: '16:00', isPublished: true })));
         
         // Night Crew
-        shiftPromises.push(addDoc(collection(db, "shifts"), { restaurantId: rId, employeeId: userIds[3].id, scheduleUserId: userIds[3].id, userId: userIds[3].id, rosterUserId: userIds[3].id, role: 'Sous Chef', date, startTime: '14:00', endTime: '22:00', isPublished: true }));
-        shiftPromises.push(addDoc(collection(db, "shifts"), { restaurantId: rId, employeeId: userIds[11].id, scheduleUserId: userIds[11].id, userId: userIds[11].id, rosterUserId: userIds[11].id, role: 'Line Cook', date, startTime: '15:00', endTime: '22:30', isPublished: true }));
-        shiftPromises.push(addDoc(collection(db, "shifts"), { restaurantId: rId, employeeId: userIds[12].id, scheduleUserId: userIds[12].id, userId: userIds[12].id, rosterUserId: userIds[12].id, role: 'Line Cook', date, startTime: '16:00', endTime: '23:00', isPublished: true }));
-        shiftPromises.push(addDoc(collection(db, "shifts"), { restaurantId: rId, employeeId: userIds[7].id, scheduleUserId: userIds[7].id, userId: userIds[7].id, rosterUserId: userIds[7].id, role: 'Server', date, startTime: '16:00', endTime: '23:00', isPublished: true }));
-        shiftPromises.push(addDoc(collection(db, "shifts"), { restaurantId: rId, employeeId: userIds[8].id, scheduleUserId: userIds[8].id, userId: userIds[8].id, rosterUserId: userIds[8].id, role: 'Server', date, startTime: '17:00', endTime: '23:00', isPublished: true }));
-        shiftPromises.push(addDoc(collection(db, "shifts"), { restaurantId: rId, employeeId: userIds[5].id, scheduleUserId: userIds[5].id, userId: userIds[5].id, rosterUserId: userIds[5].id, role: 'Bartender', date, startTime: '16:30', endTime: '23:30', isPublished: true }));
-        shiftPromises.push(addDoc(collection(db, "shifts"), { restaurantId: rId, employeeId: userIds[16].id, scheduleUserId: userIds[16].id, userId: userIds[16].id, rosterUserId: userIds[16].id, role: 'Host', date, startTime: '16:30', endTime: '21:00', isPublished: true }));
-        shiftPromises.push(addDoc(collection(db, "shifts"), { restaurantId: rId, employeeId: userIds[19].id, scheduleUserId: userIds[19].id, userId: userIds[19].id, rosterUserId: userIds[19].id, role: 'Dishwasher', date, startTime: '16:00', endTime: '23:30', isPublished: true }));
+        shiftPromises.push(addDoc(collection(db, "shifts"), createModernQaShiftPayload(userIds[3], date, { role: 'Sous Chef', startTime: '14:00', endTime: '22:00', isPublished: true })));
+        shiftPromises.push(addDoc(collection(db, "shifts"), createModernQaShiftPayload(userIds[11], date, { role: 'Line Cook', startTime: '15:00', endTime: '22:30', isPublished: true })));
+        shiftPromises.push(addDoc(collection(db, "shifts"), createModernQaShiftPayload(userIds[12], date, { role: 'Line Cook', startTime: '16:00', endTime: '23:00', isPublished: true })));
+        shiftPromises.push(addDoc(collection(db, "shifts"), createModernQaShiftPayload(userIds[7], date, { role: 'Server', startTime: '16:00', endTime: '23:00', isPublished: true })));
+        shiftPromises.push(addDoc(collection(db, "shifts"), createModernQaShiftPayload(userIds[8], date, { role: 'Server', startTime: '17:00', endTime: '23:00', isPublished: true })));
+        shiftPromises.push(addDoc(collection(db, "shifts"), createModernQaShiftPayload(userIds[5], date, { role: 'Bartender', startTime: '16:30', endTime: '23:30', isPublished: true })));
+        shiftPromises.push(addDoc(collection(db, "shifts"), createModernQaShiftPayload(userIds[16], date, { role: 'Host', startTime: '16:30', endTime: '21:00', isPublished: true })));
+        shiftPromises.push(addDoc(collection(db, "shifts"), createModernQaShiftPayload(userIds[19], date, { role: 'Dishwasher', startTime: '16:00', endTime: '23:30', isPublished: true })));
       });
       await Promise.all(shiftPromises);
       await addDoc(collection(db, "scheduleTemplates"), { restaurantId: rId, name: 'Normal Week', description: 'Demo reusable weekly staffing template.', rows: [
@@ -5551,7 +5602,7 @@ Type DELETE to continue.`) || '').trim().toUpperCase();
       ]);
 
       // Add a Shift Trade
-      const targetShift = await addDoc(collection(db, "shifts"), { restaurantId: rId, employeeId: userIds[9].id, scheduleUserId: userIds[9].id, userId: userIds[9].id, rosterUserId: userIds[9].id, role: 'Server', date: getOffsetDate(2), startTime: '16:00', endTime: '23:00', isPublished: true });
+      const targetShift = await addDoc(collection(db, "shifts"), createModernQaShiftPayload(userIds[9], getOffsetDate(2), { role: 'Server', startTime: '16:00', endTime: '23:00', isPublished: true }));
       await addDoc(collection(db, "shiftSwaps"), { restaurantId: rId, shiftId: targetShift.id, requesterUserId: userIds[9].id, sourceEmployeeId: userIds[9].id, targetUserId: '', originalEmployeeId: userIds[9].id, role: 'Server', shiftDate: getOffsetDate(2), date: getOffsetDate(2), startTime: '16:00', endTime: '23:00', status: 'available', listedAt: new Date().toISOString() });
 
       // 4. Time Off & Punches
@@ -5999,7 +6050,7 @@ const activeTrials = restaurants.filter(r => resolveSubscription(r, appUser).sta
   const pushOptInRate = allUsers.length > 0 ? ((allUsers.filter(u => getUserPushDeviceCount(u) > 0).length / allUsers.length) * 100).toFixed(0) : 0;
   const apiConnectedCount = restaurants.filter(r => r.integrations?.posProvider || r.integrations?.payrollProvider).length;
   const RECENT_ACTIVE_WINDOW_MS = (Number(presenceSnapshot.windowMinutes || 15) || 15) * 60 * 1000;
-  const TRUE_ONLINE_WINDOW_MS = Math.max(30000, Math.min(Number(presenceSnapshot.onlineSeconds || 90) * 1000, 180000));
+  const LEGACY_ONLINE_WINDOW_MS = Math.max(30000, Math.min(Number(presenceSnapshot.onlineSeconds || 90) * 1000, 180000));
   const nowMs = Date.now();
   const todayStartMs = (() => { const d = new Date(nowMs); d.setHours(0, 0, 0, 0); return d.getTime(); })();
   const presenceSnapshotFetchedAtMs = parseAnyDate(presenceSnapshot.fetchedAt)?.getTime?.() || 0;
@@ -6065,11 +6116,7 @@ const activeTrials = restaurants.filter(r => resolveSubscription(r, appUser).sta
       photoURL: row.photoURL || profile.photoURL || ''
     };
   };
-  const isOnlineNow = (u) => {
-    const last = getLastActiveMs(u);
-    const explicitlyOffline = u.online === false || u.onlineState === 'offline' || u.state === 'offline';
-    return !!presenceSnapshotFetchedAtMs && !!last && !explicitlyOffline && (nowMs - last) <= TRUE_ONLINE_WINDOW_MS;
-  };
+  const isOnlineNow = (u) => classifySystemAdminPresenceRow(u, { nowMs, fetchedAtMs: presenceSnapshotFetchedAtMs, fallbackOnlineWindowMs: LEGACY_ONLINE_WINDOW_MS }).online;
   const isRecentlyActive = (u) => {
     const last = getLastActiveMs(u);
     return !!last && !isOnlineNow(u) && (nowMs - last) <= RECENT_ACTIVE_WINDOW_MS;
@@ -8755,6 +8802,38 @@ Type RESTORE to continue.`);
             <button type="button" onClick={() => selectAdminTab('tenants')} className="admin45-number-card"><span>Estimated MRR</span><strong>${mrr.toLocaleString()}</strong><small>ARPA ${arpa}</small></button>
           </section>
 
+          <section className="admin45-content-card p-4 sm:p-5" data-testid="firebase-efficiency-local-metrics">
+            {(() => {
+              const metrics = getFirebaseUsageDiagnostics?.() || {};
+              const listeners = Object.values(metrics.listeners || {});
+              const deliveries = Object.values(metrics.documentsReceivedByQuery || {});
+              const writes = metrics.writes || {};
+              return (
+                <div className="space-y-3">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div>
+                      <div className="text-[9px] font-black uppercase tracking-[0.2em] text-cyan-300">Firebase Efficiency</div>
+                      <h3 className="text-lg font-black text-white mt-1">Local read/write diagnostics</h3>
+                      <p className="text-[11px] font-semibold text-slate-400 mt-1">Local browser counters only. Refreshing this panel does not call Firebase.</p>
+                    </div>
+                    <div className="flex gap-2"><button type="button" onClick={() => setFirebaseMetricsTick(t => t + 1)} className="admin45-secondary-action">Refresh Local Metrics</button><button type="button" onClick={() => { resetFirebaseUsageDiagnostics?.(); setFirebaseMetricsTick(t => t + 1); }} className="admin45-secondary-action">Reset Counters</button></div>
+                  </div>
+                  <div className="grid grid-cols-2 xl:grid-cols-5 gap-2">
+                    <div className="admin45-number-card"><span>Active listeners</span><strong>{metrics.activeListeners || 0}</strong><small>{listeners.length} labeled</small></div>
+                    <div className="admin45-number-card"><span>Initial docs</span><strong>{deliveries.reduce((sum, row) => sum + Number(row.initialDocCount || row.lastDocCount || 0), 0)}</strong><small>local SDK deliveries</small></div>
+                    <div className="admin45-number-card"><span>Listener reuse</span><strong>{metrics.listenerReuseCount || 0}</strong><small>shared reads avoided</small></div>
+                    <div className="admin45-number-card"><span>No-op writes</span><strong>{metrics.skippedNoOpWrites || 0}</strong><small>prevented locally</small></div>
+                    <div className="admin45-number-card"><span>Audit writes</span><strong>{metrics.auditWritesCreated || 0}</strong><small>tracked locally</small></div>
+                  </div>
+                  <div className="grid lg:grid-cols-2 gap-3">
+                    <div className="rounded-2xl border border-[#2A353D] bg-[#0B0E11]/60 p-3"><div className="text-[9px] font-black uppercase tracking-widest text-slate-500 mb-2">Active listener labels</div>{listeners.slice(0, 8).map((row, idx) => <div key={row.key || idx} className="text-[10px] font-bold text-slate-300 truncate">{row.debugLabel || row.collection || row.key || 'listener'} • {row.releasePolicy || 'default'}</div>)}{listeners.length === 0 && <div className="text-[10px] font-bold text-slate-500">No active listener labels recorded.</div>}</div>
+                    <div className="rounded-2xl border border-[#2A353D] bg-[#0B0E11]/60 p-3"><div className="text-[9px] font-black uppercase tracking-widest text-slate-500 mb-2">Writes</div><div className="text-[10px] font-bold text-slate-300">Initiated: {metrics.writesInitiated || 0}</div><div className="text-[10px] font-bold text-slate-300">Completed: {metrics.writesCompleted || 0}</div><div className="text-[10px] font-bold text-slate-300">No-op skipped: {metrics.skippedNoOpWrites || 0}</div><div className="text-[10px] font-bold text-slate-500 truncate">Labels: {Object.keys(writes).slice(0, 6).join(', ') || 'none'}</div></div>
+                  </div>
+                </div>
+              );
+            })()}
+          </section>
+
           <section className="admin45-content-card p-4 sm:p-5">
             <div className="flex items-center justify-between gap-3 mb-4">
               <div><div className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-500">Browse</div><h3 className="text-lg font-black text-white mt-1">Admin areas</h3></div>
@@ -9392,7 +9471,7 @@ Type RESTORE to continue.`);
           {presenceSnapshotError && <div className="bg-red-900/20 border border-red-900/50 text-red-100 rounded-2xl p-4 text-sm font-bold leading-snug">Online / last-seen snapshot failed: {presenceSnapshotError}</div>}
           {presenceSnapshotWarning && <div className="bg-amber-900/20 border border-amber-500/40 text-amber-100 rounded-2xl p-4 text-sm font-bold leading-snug">Online / last-seen snapshot note: {presenceSnapshotWarning}</div>}
           <div className="bg-[#0B0E11] border border-[#2A353D] rounded-2xl p-3 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3 text-[10px] font-black uppercase tracking-widest text-slate-400">
-            <div className="flex flex-wrap gap-2"><span className="text-emerald-400">Online / Last Seen Snapshot</span><span>Users: {allUsers.length}</span><span>Online now: {onlineUsers.length}</span><span>Recently active: {recentlyActiveUsers.length}</span><span>Active today: {activeTodayUsers.length}</span><span>Online cutoff: {presenceSnapshot.onlineSeconds || 90}s</span><span>{presenceSnapshot.source === 'client-roster-fallback' ? 'Last-seen fallback' : 'One-time bounded read'}</span>{presenceSnapshot.fetchedAt && <span>Fetched: {timeAgo(presenceSnapshot.fetchedAt)}</span>}</div>
+            <div className="flex flex-wrap gap-2"><span className="text-emerald-400">Online / Last Seen Snapshot</span><span>Users: {allUsers.length}</span><span>Online now: {onlineUsers.length}</span><span>Recently active: {recentlyActiveUsers.length}</span><span>Active today: {activeTodayUsers.length}</span><span>Online truth: Active RTDB sessions</span><span>{presenceSnapshot.source === 'client-roster-fallback' ? 'Last-seen fallback' : 'One-time bounded read'}</span>{presenceSnapshot.fetchedAt && <span>Fetched: {timeAgo(presenceSnapshot.fetchedAt)}</span>}</div>
             <button type="button" onClick={() => loadPresenceSnapshot()} disabled={isPresenceSnapshotLoading} className="px-3 py-2 bg-emerald-900/20 border border-emerald-500/50 text-emerald-300 rounded-lg font-black uppercase tracking-widest hover:bg-emerald-900/40 disabled:opacity-50 flex items-center justify-center gap-2">{isPresenceSnapshotLoading ? <Loader2 size={14} className="animate-spin"/> : <Users size={14}/>} Refresh Online / Last Seen</button>
           </div>
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
@@ -9402,7 +9481,7 @@ Type RESTORE to continue.`);
                 <span className="text-[10px] font-black uppercase tracking-widest text-emerald-400">{onlineUsers.length} live</span>
               </div>
               <div className={`divide-y ${T.border} max-h-[55vh] overflow-y-auto custom-scrollbar`}>
-                {onlineUsers.length === 0 && <div className="p-8 text-center text-slate-500 font-bold">No users have a fresh heartbeat in the latest snapshot. Recently active and last-seen rows stay below so stale sessions do not look online.</div>}
+                {onlineUsers.length === 0 && <div className="p-8 text-center text-slate-500 font-bold">No active RTDB sessions in the latest snapshot. Recently active and last-seen fallback rows stay below without pretending to be online.</div>}
                 {onlineUsers.map(u => {
                   const restName = restaurants.find(r => r.id === u.restaurantId)?.name || 'Unknown Workspace';
                   return (
@@ -9425,7 +9504,7 @@ Type RESTORE to continue.`);
             <div className="cockpit-panel rounded-2xl overflow-hidden">
               <div className={`bg-[#12161A] p-3 border-b ${T.border}`}>
                 <h3 className="font-black text-sm text-white">Online Workspaces</h3>
-                <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mt-1">Grouped by users with a fresh online heartbeat only</p>
+                <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mt-1">Grouped by users with an active RTDB session</p>
               </div>
               <div className={`divide-y ${T.border} max-h-[55vh] overflow-y-auto custom-scrollbar`}>
                 {onlineByRestaurant.length === 0 && <div className="p-6 text-center text-slate-500 font-bold text-sm">No workspaces have a truly online user in the latest snapshot.</div>}

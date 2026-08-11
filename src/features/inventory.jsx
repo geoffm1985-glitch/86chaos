@@ -104,6 +104,7 @@ const TabInventory = ({ addToast, appUser, clientData = {}, initialSubTab, onIni
   const [newItemName, setNewItemName] = useState(''); const [newItemCat, setNewItemCat] = useState(''); const [newItemCode, setNewItemCode] = useState(''); const [newItemSupplier, setNewItemSupplier] = useState(''); const [newItemPackSize, setNewItemPackSize] = useState('1 CS'); const [newItemYield, setNewItemYield] = useState('1'); const [newItemPrice, setNewItemPrice] = useState(''); 
   const [editItem, setEditItem] = useState(null); 
   const [orderOverrides, setOrderOverrides] = useState({}); 
+  const [parDrafts, setParDrafts] = useState({}); 
   const [selectedAiOrderIds, setSelectedAiOrderIds] = useState({}); 
   const [confirmModal, setConfirmModal] = useState({ isOpen: false, vendorId: null, items: [] });
   const [aiOrderDaysAhead, setAiOrderDaysAhead] = useState(7);
@@ -286,7 +287,23 @@ const TabInventory = ({ addToast, appUser, clientData = {}, initialSubTab, onIni
       }
     }
   };
-  const updatePar = async (id, newPar) => await safeInventoryWrite({ action: "update", collectionName: "inventoryItems", docId: id, label: "Inventory par", data: { parLevel: Math.max(0, parseFloat(newPar) || 0) } });
+  const getParInputValue = (item = {}) => Object.prototype.hasOwnProperty.call(parDrafts, item.id) ? parDrafts[item.id] : (item.parLevel ?? 0);
+  const setParDraftValue = (id, value) => setParDrafts(prev => ({ ...prev, [id]: value }));
+  const clearParDraft = (id) => setParDrafts(prev => { const next = { ...prev }; delete next[id]; return next; });
+  const commitParDraft = async (item = {}, rawValue = undefined) => {
+    if (!item?.id) return;
+    const raw = rawValue !== undefined ? rawValue : getParInputValue(item);
+    if (raw === '' || raw === null || raw === undefined) { clearParDraft(item.id); return; }
+    const nextPar = Math.max(0, parseFloat(String(raw).replace(/[^0-9.\-]/g, '')) || 0);
+    const currentPar = Math.max(0, parseFloat(item.parLevel) || 0);
+    if (Object.is(nextPar, currentPar)) { clearParDraft(item.id); return; }
+    await safeInventoryWrite({ action: "update", collectionName: "inventoryItems", docId: item.id, label: "Inventory par", before: item, data: { parLevel: nextPar } });
+    clearParDraft(item.id);
+  };
+  const updatePar = async (id, newPar) => {
+    const item = inventoryItems.find(i => i.id === id);
+    return commitParDraft(item, newPar);
+  };
   const handleOrderChange = (id, change, currentQty) => setOrderOverrides(prev => ({ ...prev, [id]: Math.max(0, currentQty + change) }));
   
   const handleAddVendor = async (e) => { e.preventDefault(); if(!vName.trim()) return; await safeInventoryWrite({ action: 'add', collectionName: "vendors", label: "Vendor", data: { name: vName.trim(), rep: vRep.trim(), phone: vPhone.trim(), email: vEmail.trim(), cutOffDays: vDays, cutOffTime: vTime, restaurantId: appUser.restaurantId } }); setVName(''); setVRep(''); setVPhone(''); setVEmail(''); setVDays([]); setVTime(''); addToast('Vendor Added', 'Directory updated.'); };
@@ -1607,7 +1624,7 @@ const groupedItems = orderableInventoryItems
                   <div key={item.id} className={`${T.card} p-2 flex items-center justify-between gap-2 ${isBelowPar(item) ? 'border-red-500/70 shadow-[0_0_18px_rgba(239,68,68,0.15)] bg-red-950/10' : ''}`}>
                     <div className="flex-1 min-w-0"><div className="font-bold text-white text-sm truncate">{item.name}</div><div className={`text-[9px] font-bold ${T.muted} uppercase`}>{vendors.find(v=>v.id===item.supplierId)?.name || 'No Vendor'}   {item.packSize || '1 CS'}   YIELD: {item.yieldQty||1}</div></div>
                     <div className={`flex items-center gap-2 bg-[#12161A] p-1 rounded-md border ${T.border} flex-shrink-0`}>
-                      <div className="flex flex-col items-center"><span className={`text-[8px] font-bold ${T.muted} uppercase`}>PAR</span><input type="number" min="0" value={item.parLevel} onChange={(e) => updatePar(item.id, e.target.value)} disabled={!hasInvPerms} className={`w-8 text-center font-bold border rounded py-0.5 outline-none text-xs bg-[#1A2126] text-white border-[#2A353D]`} /></div>
+                      <div className="flex flex-col items-center"><span className={`text-[8px] font-bold ${T.muted} uppercase`}>PAR</span><input type="number" min="0" value={getParInputValue(item)} onChange={(e) => setParDraftValue(item.id, e.target.value)} onBlur={(e) => commitParDraft(item, e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') { e.currentTarget.blur(); } if (e.key === 'Escape') clearParDraft(item.id); }} disabled={!hasInvPerms} className={`w-8 text-center font-bold border rounded py-0.5 outline-none text-xs bg-[#1A2126] text-white border-[#2A353D]`} /></div>
                       <div className={`h-6 w-px bg-[#2A353D]`}></div>
                       <div className="flex flex-col items-center"><span className={`text-[8px] font-bold ${T.muted} uppercase`}>STOCK</span><div className="flex items-center gap-1"><button onClick={() => updateStock(item.id, (item.currentStock||0) - 1)} className={`w-5 h-5 flex items-center justify-center bg-[#1A2126] border ${T.border} rounded font-bold text-white hover:text-[#D4A381]`}>-</button><span className={`w-6 text-center font-black text-sm ${(item.currentStock||0) < (item.parLevel||0) ? 'text-red-500' : 'text-white'}`}>{Number(item.currentStock||0).toFixed(2).replace(/\.00$/, '')}</span><button onClick={() => updateStock(item.id, (item.currentStock||0) + 1)} className={`w-5 h-5 flex items-center justify-center bg-[#1A2126] border ${T.border} rounded font-bold text-white hover:text-[#D4A381]`}>+</button></div></div>
                     </div>

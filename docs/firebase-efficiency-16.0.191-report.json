@@ -1,0 +1,150 @@
+{
+  "version": "16.0.191",
+  "baseline": "16.0.190",
+  "candidate": "16.0.191",
+  "labels": "Every metric is application-side only and labeled MEASURED, ESTIMATED, or NOT MEASURABLE LOCALLY. No Firebase billing costs are estimated.",
+  "mySchedule": {
+    "baseline": {
+      "employeeIdIndexedQueryCount": {
+        "value": "up to 20 alias-derived employeeId queries",
+        "label": "MEASURED",
+        "detail": "16.0.190 converted durable aliases such as scheduleUserId/authUid/id into employeeId equality filters."
+      },
+      "redundantEmployeeIdFanout": {
+        "value": true,
+        "label": "MEASURED"
+      },
+      "broadScheduleDateKeyPages": {
+        "value": "until date-window exhaustion",
+        "label": "MEASURED"
+      },
+      "broadDatePages": {
+        "value": "until date-window exhaustion",
+        "label": "MEASURED"
+      },
+      "incompleteWarning": {
+        "value": false,
+        "label": "MEASURED"
+      }
+    },
+    "candidate": {
+      "canonicalReads": {
+        "value": "employee-specific scheduleUserId + date range query",
+        "label": "MEASURED"
+      },
+      "employeeIdIndexedQueryCount": {
+        "value": 0,
+        "label": "MEASURED",
+        "detail": "Removed redundant indexed fanout because broad compatibility scans still run for date-only, scheduleDateKey-only, email, and safe-name legacy rows."
+      },
+      "exactEmployeeIdValuesAvailable": {
+        "value": [
+          "EMP-Allen-001"
+        ],
+        "label": "MEASURED",
+        "detail": "Exact case is preserved for diagnostics/future index use; it is not lowercased into a Firestore equality value."
+      },
+      "redundantEmployeeIdFanout": {
+        "value": false,
+        "label": "MEASURED"
+      },
+      "querySources": {
+        "value": [
+          "legacy-scheduleDateKey-range",
+          "legacy-date-range"
+        ],
+        "label": "MEASURED"
+      },
+      "broadScheduleDateKeyPages": {
+        "value": "until bounded date-window exhaustion",
+        "label": "MEASURED"
+      },
+      "broadDatePages": {
+        "value": "until bounded date-window exhaustion",
+        "label": "MEASURED"
+      },
+      "legacyBeyond1500Visible": {
+        "value": true,
+        "label": "MEASURED"
+      },
+      "dateOnlyLegacyVisible": {
+        "value": true,
+        "label": "MEASURED"
+      },
+      "scheduleDateKeyOnlyVisible": {
+        "value": true,
+        "label": "MEASURED"
+      },
+      "importedRestoredVisible": {
+        "value": true,
+        "label": "MEASURED"
+      },
+      "adjacentMonthPayPeriodVisible": {
+        "value": true,
+        "label": "MEASURED"
+      },
+      "uniqueNameFallbackVisible": {
+        "value": true,
+        "label": "MEASURED"
+      },
+      "ambiguousNameRejected": {
+        "value": true,
+        "label": "MEASURED"
+      },
+      "rosterIdentityChangeReevaluates": {
+        "value": true,
+        "label": "MEASURED"
+      },
+      "evaluatedAllPages": {
+        "value": true,
+        "label": "MEASURED"
+      },
+      "truncated": {
+        "value": false,
+        "label": "MEASURED"
+      },
+      "incompleteWarning": {
+        "value": true,
+        "label": "MEASURED"
+      },
+      "retryAction": {
+        "value": true,
+        "label": "MEASURED"
+      },
+      "cacheReuse": {
+        "value": "deferred",
+        "label": "NOT MEASURABLE LOCALLY",
+        "detail": "Shared broad legacy rescue cache was deferred because safe invalidation after schedule edits/publish could not be proven without runtime/browser validation."
+      }
+    }
+  },
+  "today": {
+    "cacheInvalidation": {
+      "value": "today-brief scope only",
+      "label": "MEASURED"
+    },
+    "scheduleTeamCacheRereadsCausedByRefreshBrief": {
+      "value": 0,
+      "label": "MEASURED"
+    }
+  },
+  "presence": {
+    "status": {
+      "value": "preserved 16.0.190 authoritative active sessions",
+      "label": "MEASURED"
+    }
+  },
+  "menu": {
+    "status": {
+      "value": "preserved 16.0.190 cursor pagination and lazy dependency graph",
+      "label": "MEASURED"
+    }
+  },
+  "auditWriteAmplification": {
+    "status": {
+      "value": "reviewed, intentionally preserved",
+      "label": "MEASURED",
+      "detail": "No new clearly safe consolidation found; audit evidence preserved."
+    }
+  }
+}

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Archive, Bell, Check, Camera, ChevronLeft, ChevronRight, MessageSquare, Plus, Trash2, Users, Calendar, Clock, X, Loader2, Package, ClipboardList, Menu, Settings, LogOut, Shield, Send, Repeat, Edit, Moon, Sun, TrendingUp, BookOpen, Search, ChefHat, Scale, Coffee, Star, Bug, Wrench, Globe, Sparkles } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
-import { getFirestore, collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, where, getDoc, setDoc, getDocs } from 'firebase/firestore';
+import { getFirestore, collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, where, getDoc, setDoc, getDocs, orderBy, startAfter, limit as firestoreLimit } from 'firebase/firestore';
 import { getAuth, signInWithEmailAndPassword, sendPasswordResetEmail, createUserWithEmailAndPassword, updatePassword } from 'firebase/auth';
 import { getToken, onMessage } from 'firebase/messaging';
 import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
@@ -2123,7 +2123,7 @@ const TabOpsCenter = ({ currentDate, appUser, users = [], shifts = [], events = 
   );
 };
 
-const TabToday = ({ currentDate, appUser, users, shifts, shiftSwaps, timeOffRequests, events, sales, timePunches, inventoryItems, maintenanceLogs, prepItems, tasks, recipes, menuDependencies = [], restaurantAdminAlerts = [], clientData, setActiveTab, addToast, registerUndo }) => {
+const TabToday = ({ currentDate, appUser, users, shifts, shiftSwaps, timeOffRequests, events, sales, timePunches, inventoryItems, maintenanceLogs, prepItems, tasks, recipes, menuDependencies = [], restaurantAdminAlerts = [], clientData, setActiveTab, addToast, registerUndo, onRefreshBrief, briefRefreshNonce = 0 }) => {
   const todayPlanAccess = usePlanAccess(appUser, clientData);
   const canUseManagerBrief = todayPlanAccess.canUse(FEATURE_KEYS.MANAGER_BRIEF).allowed;
   const canUseBasicInventory = todayPlanAccess.canUse(FEATURE_KEYS.BASIC_INVENTORY).allowed || todayPlanAccess.canUse(FEATURE_KEYS.BURN_LOG).allowed;
@@ -2138,6 +2138,7 @@ const TabToday = ({ currentDate, appUser, users, shifts, shiftSwaps, timeOffRequ
   const [briefOpsLoading, setBriefOpsLoading] = useState(false);
   const [briefOpsError, setBriefOpsError] = useState('');
   const [briefOpsCopied, setBriefOpsCopied] = useState(false);
+  const [briefRefreshing, setBriefRefreshing] = useState(false);
   const [attentionExplain, setAttentionExplain] = useState(null);
   const today = getToday();
   const profile = getHomeProfile(appUser);
@@ -2156,17 +2157,23 @@ const TabToday = ({ currentDate, appUser, users, shifts, shiftSwaps, timeOffRequ
   const openPrep = useMemo(() => (prepItems || []).filter(p => (p.date === today || p.date === 'MASTER') && !p.isCompleted).slice(0, 8), [prepItems, today]);
   const pendingRequests = useMemo(() => canUseScheduleBuilder ? (timeOffRequests || []).filter(r => r.status === 'pending').slice(0, 5) : [], [canUseScheduleBuilder, timeOffRequests]);
   const openSwaps = useMemo(() => canUseScheduleBuilder ? (shiftSwaps || []).filter(s => s.status === 'available' && s.date >= today).slice(0, 5) : [], [canUseScheduleBuilder, shiftSwaps, today]);
-  const currentOpsIntelState = useLiveCollectionState('opsIntelligenceReports', appUser?.restaurantId || '', {
+  const currentOpsIntelRows = useLiveCollection('opsIntelligenceReports', appUser?.restaurantId || '', {
     enabled: Boolean(appUser?.restaurantId && canUsePythonIntelligence),
-    limitCount: 10,
-    fallbackLimitCount: 3,
-    debugLabel: 'today:current-ops-intelligence:tenant-query'
+    live: false,
+    ttlMs: 45_000,
+    cacheScope: 'today-brief',
+    refreshKey: Number(briefRefreshNonce || 0),
+    limitCount: 3,
+    fallbackLimitCount: 1,
+    orderByField: 'generatedAt',
+    orderDirection: 'desc',
+    debugLabel: 'today:current-ops-intelligence:snapshot-latest'
   });
   const currentOpsIntel = useMemo(() => {
-    const rows = Array.isArray(currentOpsIntelState?.data) ? currentOpsIntelState.data : [];
+    const rows = Array.isArray(currentOpsIntelRows) ? currentOpsIntelRows : [];
     const currentDocId = appUser?.restaurantId ? `${appUser.restaurantId}_current` : '';
     return rows.find(row => row?.id === currentDocId || row?.docId === currentDocId) || rows.find(row => row?.status !== 'deleted') || null;
-  }, [currentOpsIntelState?.data, appUser?.restaurantId]);
+  }, [currentOpsIntelRows, appUser?.restaurantId]);
   useEffect(() => {
     if (currentOpsIntel && !briefOpsLoading) setBriefOpsIntel(currentOpsIntel);
   }, [currentOpsIntel?.id, currentOpsIntel?.generatedAt, briefOpsLoading]);
@@ -2411,6 +2418,17 @@ const TabToday = ({ currentDate, appUser, users, shifts, shiftSwaps, timeOffRequ
   const heroTitle = canUseManagerBrief ? (profile === 'manager' || profile === 'system' ? 'Manager Brief' : profile === 'kitchen' ? 'Kitchen Brief' : profile === 'bar' ? 'Bar Brief' : profile === 'service' ? 'Service Brief' : 'Today Brief') : 'Today Home';
   const topPriority = attentionProblems[0]?.detail || (myShift ? `You work ${formatShortTime(myShift.startTime)}-${formatShortTime(myShift.endTime)} as ${myShift.role}.` : 'No urgent problems detected.');
   const managerBriefMathText = `${todaysShifts.length} On Schedule ${activePunches.length} Clocked In ${attentionProblems.length} Needs Eyes`;
+  const refreshBriefNow = async () => {
+    if (briefRefreshing) return;
+    setBriefRefreshing(true);
+    try {
+      await Promise.resolve(onRefreshBrief?.());
+      setBriefOpsIntel(null);
+      addToast?.('Brief Refreshed', 'Manager Brief summary data will reload from the current snapshot set.');
+    } finally {
+      setTimeout(() => setBriefRefreshing(false), 450);
+    }
+  };
 
   return <div className="manager-brief-compact desktop-ops-page max-w-7xl mx-auto space-y-3 pb-24 animate-[slideIn_0.2s_ease-out]">
     <Modal isOpen={!!attentionExplain} onClose={() => setAttentionExplain(null)} title={attentionExplain?.title || 'Why this matters'}>
@@ -2429,6 +2447,7 @@ const TabToday = ({ currentDate, appUser, users, shifts, shiftSwaps, timeOffRequ
           <h1 className="text-2xl sm:text-3xl font-black text-white mt-1">{heroTitle}</h1>
           <p className="text-sm text-slate-300 font-bold mt-2 max-w-2xl leading-snug">{topPriority}</p>
           <p className="text-[10px] text-slate-500 font-black uppercase tracking-widest mt-2" data-testid="manager-brief-math-summary">{managerBriefMathText}</p>
+          <button type="button" onClick={refreshBriefNow} disabled={briefRefreshing} data-testid="refresh-manager-brief" className="mt-3 h-9 px-3 rounded-xl border border-[#2A353D] bg-[#12161A] text-[#D4A381] text-[10px] font-black uppercase tracking-widest disabled:opacity-50">{briefRefreshing ? 'Refreshing…' : 'Refresh Brief'}</button>
         </div>
         <div className="grid grid-cols-3 gap-2 min-w-[230px]">
           <div className="bg-[#0B0E11] border border-[#2A353D] rounded-xl p-2 text-center"><div className="text-lg font-black text-white">{todaysShifts.length}</div><div className="text-[8px] uppercase tracking-widest font-black text-slate-500">On Schedule</div></div>

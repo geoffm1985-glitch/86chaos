@@ -1,8 +1,8 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { auth, secureFetch } from './appCore';
 
-const PERSONAL_REMINDER_REFRESH_MS = 90 * 1000;
-const PERSONAL_REMINDER_STALE_MS = 45 * 1000;
+const PERSONAL_REMINDER_REFRESH_MS = 7 * 60 * 1000;
+const PERSONAL_REMINDER_STALE_MS = 7 * 60 * 1000;
 const reminderApiReaders = new Map();
 
 export const resolveAuthenticatedReminderUid = (appUser = {}) => (
@@ -182,15 +182,17 @@ export const usePersonalReminderRows = (appUser = {}, options = {}) => {
     }
     subscriber({ data: entry.data || [], error: entry.error || null, stale: entry.stale === true, loading: entry.loading === true });
     fetchReminderEntry(entry, { force: false, debugLabel });
-    const refresh = () => fetchReminderEntry(entry, { force: true, debugLabel });
-    const onFocus = () => { if (!document.hidden) refresh(); };
-    window.addEventListener('focus', refresh);
-    document.addEventListener('visibilitychange', onFocus);
-    const interval = window.setInterval(() => { if (!document.hidden) refresh(); }, Math.max(30_000, Number(options.refreshMs || PERSONAL_REMINDER_REFRESH_MS)));
+    const refreshIfStale = () => {
+      if (typeof document !== 'undefined' && document.hidden) return;
+      if (!entry.lastLoadedAt || Date.now() - entry.lastLoadedAt >= Math.max(60_000, Number(options.staleMs || PERSONAL_REMINDER_STALE_MS))) {
+        fetchReminderEntry(entry, { force: true, debugLabel: `${debugLabel}:stale-refresh` });
+      }
+    };
+    window.addEventListener('focus', refreshIfStale);
+    document.addEventListener('visibilitychange', refreshIfStale);
     return () => {
-      window.removeEventListener('focus', refresh);
-      document.removeEventListener('visibilitychange', onFocus);
-      clearInterval(interval);
+      window.removeEventListener('focus', refreshIfStale);
+      document.removeEventListener('visibilitychange', refreshIfStale);
       entry.subscribers.delete(subscriber);
       if (entry.subscribers.size === 0) {
         entry.releaseTimer = setTimeout(() => {

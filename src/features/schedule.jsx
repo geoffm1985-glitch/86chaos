@@ -20,6 +20,7 @@ import {
 import { getCanonicalScheduleUserId, collectScheduleDurableIdentityAliases, collectScheduleEmailAliases, collectScheduleFullNameAliases, collectScheduleFirstNameAliases, collectScheduleIdentityAliases, resolveSchedulePersonForAccount, resolveSchedulePersonForShift, buildCanonicalScheduleIdentityBlock, scheduleIdentityBlockMatchesPerson } from '../core/scheduleQueryPlanner';
 import { CheersLogo, Modal, DrawerMenu, DayDotPrintScreen, MapClickListener, SmartEmptyState, MiniProblemCard, getHomeProfile, calculatePunchHours, getWeekStart, getWeekDates, roleMatches, toLocalTimeInput, makeLocalIso, PunchTable, FriendlyEmpty, GlobalSearchModal, QuickActionDock, KitchenTVMode, ChangeLogModal, UndoBar } from '../components/common';
 import scheduleMonthPrint from '../core/scheduleMonthPrint.cjs';
+import scheduleRescueDiagnostics from '../core/scheduleRescueDiagnostics.cjs';
 
 
 
@@ -611,14 +612,20 @@ const shiftMatchesLocalDeletePruneKeys = (shift = {}, pruneKeySet = new Set()) =
   return getScheduleShiftLocalPruneKeys(shift).some(key => pruneKeySet.has(key));
 };
 
+export const buildCanonicalShiftDateFields = (dateValue = '') => {
+  const raw = String(dateValue || '').trim();
+  const candidate = /^\d{4}-\d{2}-\d{2}$/.test(raw) ? raw : (raw ? formatDate(new Date(`${raw}T12:00:00`)) : getToday());
+  const dateKey = /^\d{4}-\d{2}-\d{2}$/.test(candidate) ? candidate : getToday();
+  return { date: dateKey, scheduleDateKey: dateKey, shiftDate: dateKey, scheduleMonth: getMonthStr(dateKey) };
+};
+
 export const buildAutoPopulateShift = (sourceShift = {}, newDate = '', restaurantId = '', actor = {}, copiedFromMonth = '', resolvedPerson = null) => {
   const nowIso = new Date().toISOString();
-  const month = getMonthStr(newDate || getToday());
+  const canonicalDate = buildCanonicalShiftDateFields(newDate || getToday());
+  const month = canonicalDate.scheduleMonth;
   const identitySource = resolvedPerson || sourceShift;
   return {
-    date: newDate,
-    scheduleDateKey: newDate,
-    scheduleMonth: month,
+    ...canonicalDate,
     ...buildScheduleIdentityFields(identitySource),
     role: sourceShift.role || resolvedPerson?.role || 'Unassigned',
     startTime: sourceShift.startTime || '',
@@ -878,7 +885,7 @@ const normalizeTipAmount = (value) => {
   return Math.round(n * 100) / 100;
 };
 
-const TabMasterSchedule = ({ currentDate, setCurrentDate = null, onSubTabChange = null, appUser, users, shifts, shiftSwaps, timeOffRequests, events, addToast, initialSubTab = 'my-schedule', voiceScheduleSubTabTarget = null, scheduleBuilderProps = null, clientData = null }) => {
+const TabMasterSchedule = ({ currentDate, setCurrentDate = null, onSubTabChange = null, appUser, users, shifts, shiftSwaps, timeOffRequests, events, addToast, initialSubTab = 'my-schedule', voiceScheduleSubTabTarget = null, scheduleBuilderProps = null, clientData = null, myScheduleLegacyRescueState = null, onRetryMyScheduleLegacyRescue = null }) => {
   const [rosterFilterDate, setRosterFilterDate] = useState('');
   const [isFullSchedulePickerOpen, setIsFullSchedulePickerOpen] = useState(false);
   const [fullSchedulePickerMonth, setFullSchedulePickerMonth] = useState(getMonthStr(currentDate));
@@ -906,6 +913,11 @@ const TabMasterSchedule = ({ currentDate, setCurrentDate = null, onSubTabChange 
   const [tipCredit, setTipCredit] = useState('');
   const [subTab, setSubTab] = useState(initialSubTab);
   const canViewTeamAvailability = Boolean(appUser?.isSuperAdmin || appUser?.isAdmin || appUser?.isOwner || appUser?.accountOwner || appUser?.workspaceOwner || appUser?.permissions?.schedule || appUser?.permissions?.team);
+  const scheduleRescueWarningView = scheduleRescueDiagnostics.buildMyScheduleIncompleteWarningView({
+    user: appUser || {},
+    error: myScheduleLegacyRescueState?.error || '',
+    incomplete: Boolean(myScheduleLegacyRescueState?.error || myScheduleLegacyRescueState?.truncated || (!myScheduleLegacyRescueState?.loading && (myScheduleLegacyRescueState?.querySourcesUsed || []).length > 0 && myScheduleLegacyRescueState?.evaluatedAllPages === false))
+  });
   const scheduleIdentity = buildScheduleIdentityFields(getSchedulePersonForAppUser(appUser, users), appUser);
   const availabilityWhereClauses = canViewTeamAvailability ? [] : [['scheduleUserId', '==', scheduleIdentity.scheduleUserId || '__none__']];
   const availabilityRecords = useLiveCollection('availabilityRecords', appUser?.restaurantId, { enabled: !!appUser?.restaurantId && (subTab === 'availability' || subTab === 'schedule-builder'), whereClauses: availabilityWhereClauses, orderByField: canViewTeamAvailability ? 'employeeName' : null, orderDirection: 'asc', limitCount: canViewTeamAvailability ? 220 : 25, fallbackLimitCount: canViewTeamAvailability ? 80 : 25, debugLabel: `schedule:${subTab}:availability` });
@@ -1414,6 +1426,19 @@ const handleOfferSwap = async (shift) => {
 
       {subTab === 'my-schedule' && (
         <div className="space-y-4 animate-[slideIn_0.2s_ease-out]">
+          {scheduleRescueWarningView.visible && (
+            <div className="rounded-2xl border border-amber-400/40 bg-amber-500/10 p-4 text-sm text-amber-100 shadow-lg">
+              <div className="font-black uppercase tracking-widest text-[10px] text-amber-200">Schedule may be incomplete</div>
+              <p className="mt-1 text-xs font-semibold text-amber-100/90">Some older, imported, or restored shifts could not be fully checked. Your current shifts are shown, but this schedule may be incomplete.</p>
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <button type="button" onClick={() => onRetryMyScheduleLegacyRescue?.()} className="rounded-xl border border-amber-300/40 bg-amber-300/10 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-amber-100 hover:bg-amber-300/20">Retry legacy shifts</button>
+                {scheduleRescueWarningView.technicalError && (
+                  <span className="text-[10px] font-semibold text-amber-200/80">Legacy rescue diagnostic: {scheduleRescueWarningView.technicalError}</span>
+                )}
+              </div>
+            </div>
+          )}
+
           {events.filter(e => e.type === 'note' && e.isImportant).slice(0,1).map(alert => (
             <div key={alert.id} className="bg-gradient-to-r from-[#7A4F31]/30 to-[#1A2126] border border-[#B88764]/40 p-3 rounded-xl flex gap-3 shadow-lg">
               <Bell size={24} className="text-red-500 flex-shrink-0" />
@@ -2387,12 +2412,11 @@ const [eventDate, setEventDate] = useState(getToday());
       const savedShiftEchoes = [];
       for (const d of validDates) {
         const nowIso = new Date().toISOString();
-        const shiftMonth = getMonthStr(d);
+        const canonicalDate = buildCanonicalShiftDateFields(d);
+        const shiftMonth = canonicalDate.scheduleMonth;
         const rescueEdit = canEditRescueMonth(shiftMonth);
         const shiftData = {
-          date: d,
-          scheduleDateKey: d,
-          scheduleMonth: shiftMonth,
+          ...canonicalDate,
           ...buildScheduleIdentityFields(emp),
           role: emp.role || 'Unassigned',
           startTime: startTime,
@@ -2497,8 +2521,7 @@ const handlePublish = async (scope = 'selected-weeks') => {
         update: {
           restaurantId: shift.restaurantId || appUser.restaurantId,
           workspaceId: shift.workspaceId || shift.restaurantId || appUser.restaurantId,
-          date: dateKey,
-          scheduleDateKey: dateKey,
+          ...buildCanonicalShiftDateFields(dateKey),
           isPublished: true,
           published: true,
           status: 'published',
@@ -5091,7 +5114,7 @@ const ScheduleCopilot = ({ currentDate, users = [], shifts = [], timeOffRequests
     const scheduleRole = canonicalScheduleRole(row.role);
     const employee = pickUserForShift(scheduleRole, date, usedIds);
     const finalRole = employee?.role ? canonicalScheduleRole(employee.role) : scheduleRole;
-    await addDoc(collection(db, 'shifts'), { restaurantId: appUser.restaurantId, ...buildScheduleIdentityFields(employee || {}), role: finalRole, targetRole: scheduleRole, date, startTime: row.startTime || '09:00', endTime: row.endTime || '17:00', isPublished: false, createdAt: new Date().toISOString(), createdBy: appUser.id || 'schedule-copilot', source: 'schedule_copilot' });
+    await addDoc(collection(db, 'shifts'), { restaurantId: appUser.restaurantId, ...buildCanonicalShiftDateFields(date), ...buildScheduleIdentityFields(employee || {}), role: finalRole, targetRole: scheduleRole, startTime: row.startTime || '09:00', endTime: row.endTime || '17:00', isPublished: false, createdAt: new Date().toISOString(), createdBy: appUser.id || 'schedule-copilot', source: 'schedule_copilot' });
     return employee?.id;
   };
 
@@ -5120,7 +5143,7 @@ const ScheduleCopilot = ({ currentDate, users = [], shifts = [], timeOffRequests
         const oldIndex = prevDates.indexOf(s.date);
         const date = weekDates[oldIndex];
         if (weekShifts.some(x => x.date === date && x.employeeId === s.employeeId && x.startTime === s.startTime)) continue;
-        await addDoc(collection(db, 'shifts'), { restaurantId: appUser.restaurantId, ...buildScheduleIdentityFields(users.find(u => shiftMatchesPerson(s, u, users)) || s), role: canonicalScheduleRole(s.role || users.find(u => u.id === s.employeeId)?.role || 'Staff'), date, startTime: s.startTime, endTime: s.endTime, isPublished: false, copiedFrom: s.id, createdAt: new Date().toISOString(), createdBy: appUser.id || 'copy-week' });
+        await addDoc(collection(db, 'shifts'), { restaurantId: appUser.restaurantId, ...buildCanonicalShiftDateFields(date), ...buildScheduleIdentityFields(users.find(u => shiftMatchesPerson(s, u, users)) || s), role: canonicalScheduleRole(s.role || users.find(u => u.id === s.employeeId)?.role || 'Staff'), startTime: s.startTime, endTime: s.endTime, isPublished: false, copiedFrom: s.id, createdAt: new Date().toISOString(), createdBy: appUser.id || 'copy-week' });
         made++;
       }
       addToast('Copied', `${made} draft shifts copied from previous week.`);
@@ -5163,14 +5186,15 @@ const ScheduleCopilot = ({ currentDate, users = [], shifts = [], timeOffRequests
     setDraggedShiftId(null);
     if (!shift) return;
     try {
-      await updateDoc(doc(db, 'shifts', shift.id), { date: targetDate, updatedAt: new Date().toISOString(), updatedBy: appUser.id || 'schedule-drag-board' });
+      await updateDoc(doc(db, 'shifts', shift.id), { ...buildCanonicalShiftDateFields(targetDate), updatedAt: new Date().toISOString(), updatedBy: appUser.id || 'schedule-drag-board' });
       addToast('Shift Moved', `${shift.employeeName || 'Shift'} moved to ${formatDisplayDate(targetDate)}.`);
     } catch (err) { addToast('Error', err.message); }
   };
 
   const quickUpdateShift = async (shift, patch) => {
     try {
-      const next = { ...patch, updatedAt: new Date().toISOString(), updatedBy: appUser.id || 'schedule-quick-edit' };
+      const datePatch = patch.date || patch.scheduleDateKey || patch.shiftDate;
+      const next = { ...patch, ...(datePatch ? buildCanonicalShiftDateFields(datePatch) : {}), updatedAt: new Date().toISOString(), updatedBy: appUser.id || 'schedule-quick-edit' };
       if (Object.prototype.hasOwnProperty.call(patch, 'employeeId')) {
         const emp = users.find(u => u.id === patch.employeeId);
         if (emp) Object.assign(next, buildScheduleIdentityFields(emp));

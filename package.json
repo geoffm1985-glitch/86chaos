@@ -1,6 +1,6 @@
 {
   "name": "86chaos",
-  "version": "16.0.184",
+  "version": "16.0.192",
   "private": true,
   "dependencies": {
     "@vitejs/plugin-react": "6.0.4",
@@ -27,7 +27,7 @@
     "deploy:check": "npm run test:ci && NODE_OPTIONS=--max-old-space-size=4096 GENERATE_SOURCEMAP=false npm run build",
     "validate:audit-repair": "node scripts/validate-repair.js",
     "rules:check": "node scripts/validate-rules.js",
-    "test:source": "node scripts/validate-16-0-184.js",
+    "test:source": "node scripts/validate-16-0-192.js",
     "syntax:api": "node scripts/check-api-syntax.js",
     "test:unit": "npm run test:client && npm run test:server",
     "test:rules": "firebase emulators:exec --only firestore,storage \"node scripts/run-rules-tests.js\"",
@@ -75,7 +75,15 @@
     "test:repair-16-0-181": "npm run test:repair-current",
     "test:repair-16-0-182": "npm run test:repair-current",
     "test:repair-16-0-183": "npm run test:repair-current",
-    "test:repair-16-0-184": "npm run test:repair-current"
+    "test:repair-16-0-184": "npm run test:repair-current",
+    "test:repair-16-0-185": "npm run test:repair-current",
+    "test:repair-16-0-186": "npm run test:repair-current",
+    "test:repair-16-0-187": "npm run test:repair-current",
+    "test:repair-16-0-188": "npm run test:repair-current",
+    "test:repair-16-0-189": "npm run test:repair-current",
+    "test:repair-16-0-190": "npm run test:repair-current",
+    "test:repair-16-0-191": "npm run test:repair-current",
+    "test:repair-16-0-192": "npm run test:repair-current"
   },
   "browserslist": {
     "production": [

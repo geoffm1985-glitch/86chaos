@@ -545,12 +545,16 @@ const humanResultRows = tests.map(t => ({
   duration: t.duration || 0,
   error: t.error || '',
 }));
-const rerunMode = summary.selectionMode || selectionMode;
-const rerunCommand = rerunMode === 'repair'
-  ? 'npm run test:play-store:repair'
-  : (rerunMode === 'reported-failed-only'
-    ? 'npm run test:play-store:failed-current'
-    : (rerunMode === 'failed-only' ? 'npm run test:play-store:failed' : 'npm run test:play-store:delta'));
+function releaseGateRerunCommandForMode(mode) {
+  const normalized = String(mode || 'full').toLowerCase();
+  if (normalized === 'repair') return 'npm run test:play-store:repair';
+  if (normalized === 'reported-failed-only') return 'npm run test:play-store:failed-current';
+  if (normalized === 'failed-only') return 'npm run test:play-store:failed';
+  if (normalized === 'failed+new' || normalized === 'delta') return 'npm run test:play-store:delta';
+  return 'npm run test:play-store';
+}
+const rerunMode = summary.selectionMode || selectionMode || 'full';
+const rerunCommand = releaseGateRerunCommandForMode(rerunMode);
 const humanSummaryLines = createCompletedSummaryLines({
   results: humanResultRows,
   mode: summary.selectionMode || selectionMode || 'release',

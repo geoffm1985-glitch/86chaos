@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { Bell, Bug, ChevronLeft, ChevronRight, Loader2, Menu, Moon, Send, X } from 'lucide-react';
-import { addDoc, collection, doc, onSnapshot, updateDoc } from 'firebase/firestore';
+import { addDoc, collection, doc, onSnapshot, updateDoc, query, where, orderBy, limit as firestoreLimit, getDocs, startAfter } from 'firebase/firestore';
 import { getToken, onMessage } from 'firebase/messaging';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
 import 'leaflet/dist/leaflet.css';
@@ -10,17 +10,19 @@ import { CheersLogo, Modal, DrawerMenu, DayDotPrintScreen, GlobalSearchModal, Ki
 import { LockedFeatureScreen } from './components/PlanGate';
 import { usePlanAccess } from './hooks/usePlanAccess';
 import { resolveFeatureAccess } from './lib/featureAccess';
-import { buildScheduleQueryPlan, buildScheduleDateKeyRangeClauses, mergeLoadedScheduleShifts } from './core/scheduleQueryPlanner';
+import { buildScheduleQueryPlan, buildScheduleDateKeyRangeClauses, mergeLoadedScheduleShifts, mergeMyScheduleCanonicalAndLegacy, shiftMatchesMyScheduleIdentity } from './core/scheduleQueryPlanner';
 import { WHOAMI_STATES, PLATFORM_ADMIN_ACCESS_STATES, classifyWhoamiResponse, mergeVerifiedAccess, resolvePlatformAdminAccessState, shouldHoldAccessHydration } from './core/sessionAccess';
 import { FEATURE_KEYS } from './config/plans';
 import { LoginScreen } from './features/auth';
 import * as runtimeReportStateModule from './core/runtimeReportState.cjs';
+import * as scheduleEfficiencyModule from './core/scheduleEfficiency.cjs';
 
 const resolveCommonJsModule = (moduleValue) => {
   const candidate = moduleValue?.default && typeof moduleValue.default === 'object' ? moduleValue.default : moduleValue;
   return candidate && typeof candidate === 'object' ? candidate : {};
 };
 const runtimeReportState = resolveCommonJsModule(runtimeReportStateModule);
+const scheduleEfficiency = resolveCommonJsModule(scheduleEfficiencyModule);
 const fallbackRuntimeString = (value, max = 2000) => String(value == null ? '' : value).slice(0, max);
 const fallbackReportIdFactory = (prefix = 'local') => `${String(prefix || 'local').replace(/[^A-Za-z0-9_-]/g, '_')}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`.slice(0, 80);
 const createFallbackReportId = typeof runtimeReportState.createFallbackReportId === 'function' ? runtimeReportState.createFallbackReportId : fallbackReportIdFactory;
@@ -35,6 +37,127 @@ const failReportSubmission = typeof runtimeReportState.failReportSubmission === 
 const createRuntimeDiagnostic = typeof runtimeReportState.createRuntimeDiagnostic === 'function' ? runtimeReportState.createRuntimeDiagnostic : ({ fallbackReportId = '', serverReportId = '', status = 'caught', error = {}, componentStack = '', route = '', activeTab = '', appVersion = '', deployedVersion = '', uid = '', workspaceId = '', browser = '', viewport = '', category = 'runtime' } = {}) => ({ fallbackReportId: fallbackRuntimeString(fallbackReportId, 100), serverReportId: fallbackRuntimeString(serverReportId, 120), status: fallbackRuntimeString(status, 80), category: fallbackRuntimeString(category, 80), errorName: fallbackRuntimeString(error?.name || 'Error', 140), errorMessage: fallbackRuntimeString(error?.message || error || '', 2000), rawStack: fallbackRuntimeString(error?.stack || '', 6000), componentStack: fallbackRuntimeString(componentStack || '', 6000), route: fallbackRuntimeString(route, 300), activeTab: fallbackRuntimeString(activeTab, 80), appVersion: fallbackRuntimeString(appVersion, 80), deployedVersion: fallbackRuntimeString(deployedVersion, 80), uid: fallbackRuntimeString(uid, 140), workspaceId: fallbackRuntimeString(workspaceId, 160), browser: fallbackRuntimeString(browser, 400), viewport: fallbackRuntimeString(viewport, 80), timestamp: new Date().toISOString() });
 const rememberLocalRuntimeDiagnostic = typeof runtimeReportState.rememberLocalRuntimeDiagnostic === 'function' ? runtimeReportState.rememberLocalRuntimeDiagnostic : (() => {});
 const DEFAULT_REPORT_REQUEST_TIMEOUT_MS = Number(runtimeReportState.DEFAULT_REPORT_REQUEST_TIMEOUT_MS || 12000) || 12000;
+
+const usePaginatedMyScheduleLegacyRescue = ({ enabled = false, restaurantId = '', start = '', end = '', user = {}, roster = [], pageSize = 120, refreshKey = 0 } = {}) => {
+  const initialState = { rows: [], pages: 0, delivered: 0, documentsDelivered: 0, duplicatesRemoved: 0, duplicateDocuments: 0, uniqueMatchingLegacyRows: 0, queryRequestCount: 0, loading: false, error: null, evaluatedAllPages: false, truncated: false, querySourcesUsed: [], retryCount: 0, lastAttemptSucceeded: null };
+  const [state, setState] = useState(initialState);
+  const rescueTelemetryRef = useRef({ contextKey: '', lastRefreshKey: refreshKey, retryCount: 0 });
+  const rescueUserKey = useMemo(() => (typeof scheduleEfficiency.buildMyScheduleRosterIdentityFingerprint === 'function'
+    ? scheduleEfficiency.buildMyScheduleRosterIdentityFingerprint(user || {}, roster || [])
+    : JSON.stringify({ user: user || {}, rosterIds: (Array.isArray(roster) ? roster : []).map(row => [row?.id, row?.scheduleUserId, row?.employeeId, row?.email, row?.employeeEmail, row?.name, row?.displayName, row?.isActive]).slice(0, 260) })
+  ), [user, roster]);
+  useEffect(() => {
+    const contextKey = JSON.stringify({ restaurantId, start, end, rescueUserKey });
+    rescueTelemetryRef.current = typeof scheduleEfficiency.advanceMyScheduleRescueRetryTelemetry === 'function'
+      ? scheduleEfficiency.advanceMyScheduleRescueRetryTelemetry(rescueTelemetryRef.current, { contextKey, refreshKey })
+      : (() => {
+        const telemetry = rescueTelemetryRef.current;
+        if (telemetry.contextKey !== contextKey) { telemetry.contextKey = contextKey; telemetry.lastRefreshKey = refreshKey; telemetry.retryCount = 0; }
+        else if (telemetry.lastRefreshKey !== refreshKey) { telemetry.lastRefreshKey = refreshKey; telemetry.retryCount += 1; }
+        return telemetry;
+      })();
+    const activeRetryCount = rescueTelemetryRef.current.retryCount;
+    if (!enabled || !restaurantId || !start || !end) {
+      setState({ ...initialState, retryCount: activeRetryCount });
+      return undefined;
+    }
+    let cancelled = false;
+    const run = async () => {
+      setState(prev => ({ ...prev, loading: true, error: null, truncated: false, retryCount: activeRetryCount, lastAttemptSucceeded: null }));
+      const matchShift = typeof scheduleEfficiency.shiftMatchesMyScheduleIdentity === 'function'
+        ? (row) => scheduleEfficiency.shiftMatchesMyScheduleIdentity(row, user || {}, roster || [])
+        : (row) => shiftMatchesMyScheduleIdentity(row, user || {});
+      const plan = typeof scheduleEfficiency.buildMyScheduleLegacyRescueQuerySources === 'function'
+        ? scheduleEfficiency.buildMyScheduleLegacyRescueQuerySources({ user: user || {}, roster: roster || [], start, end, pageSize })
+        : { sources: [{ id: 'legacy-scheduleDateKey-range', type: 'range', dateField: 'scheduleDateKey', start, end, pageSize }] };
+      const byId = new Map();
+      let delivered = 0;
+      let pages = 0;
+      let duplicatesRemoved = 0;
+      let queryRequestCount = 0;
+      const querySourcesUsed = [];
+      try {
+        for (const source of (plan.sources || [])) {
+          if (cancelled) break;
+          querySourcesUsed.push(source.id || `${source.type || 'query'}:${source.dateField || ''}`);
+          let lastDoc = null;
+          let sourceExhausted = false;
+          while (!cancelled && !sourceExhausted) {
+            const constraints = [where('restaurantId', '==', restaurantId)];
+            if (source.type === 'identity-date' && source.identityField && source.identityValue) {
+              constraints.push(where(source.identityField, '==', source.identityValue));
+            }
+            const dateField = source.dateField || 'scheduleDateKey';
+            constraints.push(where(dateField, '>=', source.start || start));
+            constraints.push(where(dateField, '<=', source.end || end));
+            constraints.push(orderBy(dateField, 'asc'));
+            if (lastDoc) constraints.push(startAfter(lastDoc));
+            constraints.push(firestoreLimit(Number(source.pageSize || pageSize || 120)));
+            queryRequestCount += 1;
+            const snap = await getDocs(query(collection(db, 'shifts'), ...constraints));
+            pages += 1;
+            delivered += snap.docs.length;
+            snap.docs.forEach(docSnap => {
+              const row = { id: docSnap.id, ...docSnap.data() };
+              if (!matchShift(row)) return;
+              const key = String(row.id || `${row.date || row.scheduleDateKey || row.shiftDate}:${row.startTime || ''}:${row.endTime || ''}:${row.scheduleUserId || row.employeeId || row.userId || row.employeeName || ''}`);
+              if (byId.has(key)) { duplicatesRemoved += 1; return; }
+              byId.set(key, row);
+            });
+            if (snap.docs.length < Number(source.pageSize || pageSize || 120)) {
+              sourceExhausted = true;
+              break;
+            }
+            lastDoc = snap.docs[snap.docs.length - 1] || null;
+            if (!lastDoc) sourceExhausted = true;
+          }
+        }
+        if (cancelled) return;
+        setState({
+          rows: Array.from(byId.values()),
+          pages,
+          delivered,
+          documentsDelivered: delivered,
+          duplicatesRemoved,
+          duplicateDocuments: duplicatesRemoved,
+          uniqueMatchingLegacyRows: byId.size,
+          queryRequestCount,
+          loading: false,
+          error: null,
+          evaluatedAllPages: true,
+          truncated: false,
+          querySourcesUsed,
+          retryCount: activeRetryCount,
+          lastAttemptSucceeded: true
+        });
+      } catch (err) {
+        if (cancelled) return;
+        console.warn('My Schedule legacy rescue query failed:', err?.message || err);
+        setState(prev => ({
+          rows: Array.from(byId.values()),
+          pages,
+          delivered,
+          documentsDelivered: delivered,
+          duplicatesRemoved,
+          duplicateDocuments: duplicatesRemoved,
+          uniqueMatchingLegacyRows: byId.size,
+          queryRequestCount,
+          loading: false,
+          error: err?.code || err?.message || String(err),
+          evaluatedAllPages: false,
+          truncated: false,
+          querySourcesUsed,
+          retryCount: activeRetryCount,
+          lastAttemptSucceeded: false
+        }));
+      }
+    };
+    run();
+    return () => { cancelled = true; };
+  }, [enabled, restaurantId, start, end, pageSize, refreshKey, rescueUserKey]);
+  return state;
+};
+
 
 const CHUNK_LOAD_ERROR_NAME_RE = /^(ChunkLoadError|CSS_CHUNK_LOAD_FAILED)$/i;
 const CHUNK_LOAD_ERROR_MESSAGE_RE = /(Loading chunk [^\s]+ failed|ChunkLoadError|Failed to fetch dynamically imported module|Failed to load module script|Importing a module script failed|error loading dynamically imported module|Loading CSS chunk [^\s]+ failed)/i;
@@ -1046,6 +1169,15 @@ const [currentDate, setCurrentDate] = useState(getToday());
   const lightPunchWindowStart = addDays(getToday(), -1);
   const lightPunchWindowEnd = addDays(getToday(), 1);
   const wantsToday = activeTabState === 'today';
+  const [todayRefreshNonce, setTodayRefreshNonce] = useState(0);
+  const [myScheduleRescueNonce, setMyScheduleRescueNonce] = useState(0);
+  const TODAY_SNAPSHOT_TTL_MS = 45_000;
+  const todaySnapshotTtlMs = TODAY_SNAPSHOT_TTL_MS;
+  const refreshTodayBrief = useCallback(() => {
+    clearTenantListenerCache({ projectId: firebaseConfig?.projectId || 'default', restaurantId: rId || undefined, viewerUid: authenticatedUid || undefined, cacheScope: 'today-brief' });
+    setTodayRefreshNonce(value => value + 1);
+    return true;
+  }, [firebaseConfig?.projectId, rId, authenticatedUid]);
   const messageRangeStart = activeTabState === 'messages' ? addDays(getToday(), -60) : recentWindowStart;
 
   const schedulePlan = useMemo(() => buildScheduleQueryPlan({
@@ -1091,13 +1223,14 @@ const [currentDate, setCurrentDate] = useState(getToday());
   const wantsLaborData = (['financials', 'labor', 'sales', 'ops'].includes(activeTabState) || (wantsToday && canReadOperationsLabor)) && canReadOperationsLabor;
   const wantsInventoryData = (((wantsToday || isGlobalSearchOpen) && (canReadBasicInventory || canReadSmartInventory)) || (activeTabState === 'menu-intelligence' && canReadMenuCollections));
   const wantsPrepData = wantsToday; // Prep screen owns its live prep/task listeners; App keeps only Today summaries.
-  const wantsMenuData = (activeTabState === 'menu-intelligence' || wantsToday) && canReadMenuCollections;
+  const wantsMenuData = activeTabState === 'menu-intelligence' && canReadMenuCollections; // Menu Intelligence owns its dependency graph; Today does not open the 500-doc graph.
   const wantsRecipesData = isGlobalSearchOpen; // Recipes screen owns its live query; App keeps only global-search demand.
   const wantsMaintenanceData = wantsToday && canReadMaintenance; // Maintenance screen owns its full listener; App keeps only Today alert context.
   const wantsSalesData = ['financials', 'sales', 'ops', 'labor'].includes(activeTabState) && canReadSalesCollections;
   const shiftRangeStart = schedulePlan.shiftClauses.find(c => c[0] === 'date' && c[1] === '>=')?.[2] || (wantsScheduleScreen ? scheduleWindowStart : getToday());
   const shiftRangeEnd = schedulePlan.shiftClauses.find(c => c[0] === 'date' && c[1] === '<=')?.[2] || (wantsScheduleScreen ? scheduleWindowEnd : todayOpsWindowEnd);
   const scheduleDateKeyShiftClauses = useMemo(() => buildScheduleDateKeyRangeClauses(schedulePlan.shiftClauses), [schedulePlan.shiftClauses]);
+  const legacyScheduleDateKeyShiftClauses = useMemo(() => buildScheduleDateKeyRangeClauses((schedulePlan.shiftClauses || []).filter(clause => !['scheduleUserId','employeeId','rosterUserId','userId','uid','authUid','accountUserId','email','emailLower','employeeEmail','userEmail'].includes(clause?.[0]))), [schedulePlan.shiftClauses]);
   const wantsEventData = wantsToday || wantsScheduleScreen || activeTabState === 'messages' || activeTabState === 'ops' || isGlobalSearchOpen;
   // Schedule Builder needs the same scheduled events a manager sees in Event Calendar.
   // Without loading events on schedule screens, the builder receives an empty/stale events prop
@@ -1113,16 +1246,23 @@ const [currentDate, setCurrentDate] = useState(getToday());
   ));
   const wantsWorkspaceMembershipList = Boolean(rId && !ghostTenant && ['schedule', 'published', 'events', 'team'].includes(activeTabState));
 
-  const users = useLiveCollection('users', rId, { enabled: wantsFullRosterData, limitCount: activeTabState === 'team' ? 220 : 90, fallbackLimitCount: 40, debugLabel: `app:${activeTabState}:roster` });
+  const users = useLiveCollection('users', rId, { enabled: wantsFullRosterData, live: !wantsToday, ttlMs: wantsToday ? todaySnapshotTtlMs : 60_000, limitCount: activeTabState === 'team' ? 220 : (wantsToday ? 48 : 90), fallbackLimitCount: wantsToday ? 24 : 40, debugLabel: `app:${activeTabState}:roster`, cacheScope: wantsToday ? 'today-brief' : '', refreshKey: wantsToday ? todayRefreshNonce : 0 });
   const workspaceMembers = useLiveCollection('workspaceMembers', rId, { enabled: wantsWorkspaceMembershipList, limitCount: activeTabState === 'team' ? 220 : 60, fallbackLimitCount: 30, debugLabel: `app:${activeTabState}:workspace-members` });
   // Low-cost presence: no Firestore live heartbeat/listener. When a manager/team screen needs
   // last-seen hints, read tiny Realtime Database summaries instead of users/livePresence documents.
   const wantsWorkspacePresenceSnapshot = Boolean(activeTabState === 'team' && canViewTeamPresenceData);
   const [workspacePresenceRecords, setWorkspacePresenceRecords] = useState([]);
-  useEffect(() => {
+  const workspacePresenceCacheRef = useRef({ key: '', loadedAt: 0, rows: [] });
+  const refreshWorkspacePresenceSummary = useCallback(({ force = false } = {}) => {
     if (!rId || ghostTenant || !wantsWorkspacePresenceSnapshot) {
       setWorkspacePresenceRecords([]);
-      return undefined;
+      return () => {};
+    }
+    const cacheKey = `${firebaseConfig?.projectId || 'default'}:${rId}`;
+    const cached = workspacePresenceCacheRef.current;
+    if (!force && cached?.key === cacheKey && Date.now() - Number(cached.loadedAt || 0) < 45_000) {
+      setWorkspacePresenceRecords(Array.isArray(cached.rows) ? cached.rows : []);
+      return () => {};
     }
     let alive = true;
     secureFetch(`/api/presence-workspace-summary?restaurantId=${encodeURIComponent(rId)}&limit=500`, { method: 'GET' })
@@ -1130,21 +1270,38 @@ const [currentDate, setCurrentDate] = useState(getToday());
       .then(({ response, data }) => {
         if (!alive) return;
         if (!response.ok || data?.ok === false) throw new Error(data?.error || `API ${response.status}`);
-        setWorkspacePresenceRecords(Array.isArray(data?.users) ? data.users : []);
+        const rows = Array.isArray(data?.users) ? data.users : [];
+        workspacePresenceCacheRef.current = { key: cacheKey, loadedAt: Date.now(), rows };
+        setWorkspacePresenceRecords(rows);
       })
       .catch(err => {
         if (!alive) return;
         console.warn('Workspace presence summary unavailable:', err?.message || err);
-        setWorkspacePresenceRecords([]);
+        setWorkspacePresenceRecords(Array.isArray(cached?.rows) && cached.key === cacheKey ? cached.rows : []);
       });
     return () => { alive = false; };
-  }, [rId, ghostTenant, wantsWorkspacePresenceSnapshot]);
+  }, [rId, ghostTenant, wantsWorkspacePresenceSnapshot, firebaseConfig?.projectId]);
+  useEffect(() => refreshWorkspacePresenceSummary(), [refreshWorkspacePresenceSummary]);
   const livePresenceRecords = workspacePresenceRecords;
-  const selfPresenceRecord = useLowCostPresenceSummary(rId, appUser?.id || '', { enabled: !!rId && !ghostTenant && activeTabState === 'settings' && !!appUser?.id });
+  const selfPresenceRecord = useLowCostPresenceSummary(rId, auth?.currentUser?.uid || appUser?.authUid || appUser?.uid || '', { enabled: !!rId && !ghostTenant && activeTabState === 'settings' && !!(auth?.currentUser?.uid || appUser?.authUid || appUser?.uid) });
   const presenceSessions = livePresenceRecords;
-  const rawDateShifts = useLiveCollection('shifts', rId, { enabled: !!rId && wantsShiftData, whereClauses: schedulePlan.shiftClauses, orderByField: 'date', orderDirection: 'asc', limitCount: schedulePlan.shiftLimit, fallbackLimitCount: Math.min(schedulePlan.shiftLimit || 80, 80), debugLabel: `app:${activeTabState}:${activeScheduleSubTab}:shifts-date-plan` });
-  const rawScheduleDateKeyShifts = useLiveCollection('shifts', rId, { enabled: !!rId && wantsShiftData && wantsScheduleScreen, whereClauses: scheduleDateKeyShiftClauses, orderByField: 'scheduleDateKey', orderDirection: 'asc', limitCount: schedulePlan.shiftLimit, fallbackLimitCount: Math.min(schedulePlan.shiftLimit || 80, 80), debugLabel: `app:${activeTabState}:${activeScheduleSubTab}:shifts-scheduleDateKey-rescue` });
-  const rawShifts = useMemo(() => mergeLoadedScheduleShifts(rawDateShifts, rawScheduleDateKeyShifts), [rawDateShifts, rawScheduleDateKeyShifts]);
+  const isMyScheduleScreen = activeTabState === 'schedule' && activeScheduleSubTab === 'my-schedule';
+  const myScheduleLegacyRescueState = usePaginatedMyScheduleLegacyRescue({
+    enabled: Boolean(rId && wantsShiftData && isMyScheduleScreen),
+    restaurantId: rId,
+    start: shiftRangeStart,
+    end: shiftRangeEnd,
+    user: appUser || {},
+    roster: users || [],
+    pageSize: 120,
+    refreshKey: myScheduleRescueNonce
+  });
+  const rawDateShifts = useLiveCollection('shifts', rId, { enabled: !!rId && wantsShiftData, live: !wantsToday, ttlMs: wantsToday ? todaySnapshotTtlMs : 60_000, whereClauses: schedulePlan.shiftClauses, orderByField: 'date', orderDirection: 'asc', limitCount: schedulePlan.shiftLimit, fallbackLimitCount: Math.min(schedulePlan.shiftLimit || 80, 80), debugLabel: `app:${activeTabState}:${activeScheduleSubTab}:shifts-date-plan`, cacheScope: wantsToday ? 'today-brief' : '', refreshKey: wantsToday ? todayRefreshNonce : 0 });
+  const rawScheduleDateKeyShifts = useLiveCollection('shifts', rId, { enabled: !!rId && wantsShiftData && wantsScheduleScreen && !isMyScheduleScreen, whereClauses: scheduleDateKeyShiftClauses, orderByField: 'scheduleDateKey', orderDirection: 'asc', limitCount: schedulePlan.shiftLimit, fallbackLimitCount: Math.min(schedulePlan.shiftLimit || 80, 80), debugLabel: `app:${activeTabState}:${activeScheduleSubTab}:shifts-scheduleDateKey-rescue` });
+  const rawShifts = useMemo(() => isMyScheduleScreen
+    ? mergeMyScheduleCanonicalAndLegacy({ canonical: rawDateShifts, legacyPages: [myScheduleLegacyRescueState.rows || []], user: appUser || {}, roster: users || [] })
+    : mergeLoadedScheduleShifts(rawDateShifts, rawScheduleDateKeyShifts),
+    [isMyScheduleScreen, rawDateShifts, rawScheduleDateKeyShifts, myScheduleLegacyRescueState.rows, appUser, users]);
   const shifts = useMemo(() => {
     const start = shiftRangeStart;
     const end = shiftRangeEnd;
@@ -1169,21 +1326,21 @@ const [currentDate, setCurrentDate] = useState(getToday());
       .sort((a, b) => String(a.date || '').localeCompare(String(b.date || '')) || String(a.startTime || '').localeCompare(String(b.startTime || '')) || String(a.employeeName || '').localeCompare(String(b.employeeName || '')));
   }, [rawShifts, shiftRangeStart, shiftRangeEnd, clientData?.scheduleRescueEnforceProtected, clientData?.lastScheduleRescueAt, JSON.stringify(clientData?.scheduleRescueProtectedMonths || [])]);
   const shiftSwaps = useLiveCollection('shiftSwaps', rId, { enabled: !!rId && wantsScheduleData && schedulePlan.swapsEnabled, whereClauses: schedulePlan.swapClauses, orderByField: schedulePlan.swapOrderByField || 'shiftDate', orderDirection: 'asc', limitCount: schedulePlan.swapLimit, fallbackLimitCount: 25, debugLabel: `app:${activeTabState}:${activeScheduleSubTab}:shift-swaps` });
-  const events = useLiveCollection('events', rId, { enabled: !!rId && wantsEventData && schedulePlan.eventEnabled, whereClauses: eventRangeClauses, orderByField: 'date', orderDirection: eventOrderDirection, limitCount: eventLimitCount, fallbackLimitCount: wantsScheduleScreen ? 120 : 25 });
+  const events = useLiveCollection('events', rId, { enabled: !!rId && wantsEventData && schedulePlan.eventEnabled, live: !wantsToday, ttlMs: wantsToday ? todaySnapshotTtlMs : 60_000, whereClauses: eventRangeClauses, orderByField: 'date', orderDirection: eventOrderDirection, limitCount: eventLimitCount, fallbackLimitCount: wantsScheduleScreen ? 120 : 25, debugLabel: `app:${activeTabState}:events`, cacheScope: wantsToday ? 'today-brief' : '', refreshKey: wantsToday ? todayRefreshNonce : 0 });
   const sales = useLiveCollection('sales', rId, { enabled: !!rId && wantsSalesData, whereClauses: [['date','>=', monthBounds.start], ['date','<=', monthBounds.end]], orderByField: 'date', orderDirection: 'desc', limitCount: 45, fallbackLimitCount: 20 });
-  const activeTimeOffRequests = useLiveCollection('timeOffRequests', rId, { enabled: !!rId && wantsTimeOffData, whereClauses: schedulePlan.timeOffClauses, orderByField: schedulePlan.timeOffClauses.some(c => c[0] === 'date') ? 'date' : null, orderDirection: 'asc', limitCount: schedulePlan.timeOffLimit, fallbackLimitCount: Math.min(schedulePlan.timeOffLimit || 60, 60), debugLabel: `app:${activeTabState}:${activeScheduleSubTab}:timeoff-plan` });
+  const activeTimeOffRequests = useLiveCollection('timeOffRequests', rId, { enabled: !!rId && wantsTimeOffData, live: !wantsToday, ttlMs: wantsToday ? todaySnapshotTtlMs : 60_000, whereClauses: schedulePlan.timeOffClauses, orderByField: schedulePlan.timeOffClauses.some(c => c[0] === 'date') ? 'date' : null, orderDirection: 'asc', limitCount: schedulePlan.timeOffLimit, fallbackLimitCount: Math.min(schedulePlan.timeOffLimit || 60, 60), debugLabel: `app:${activeTabState}:${activeScheduleSubTab}:timeoff-plan`, cacheScope: wantsToday ? 'today-brief' : '', refreshKey: wantsToday ? todayRefreshNonce : 0 });
   const timeOffHistoryRequests = useLiveCollection('timeOffRequests', rId, { enabled: !!rId && wantsTimeOffData && schedulePlan.timeOffHistoryEnabled === true, whereClauses: schedulePlan.timeOffHistoryClauses || [], orderByField: 'date', orderDirection: 'desc', limitCount: schedulePlan.timeOffHistoryLimit || 40, fallbackLimitCount: 40, debugLabel: `app:${activeTabState}:${activeScheduleSubTab}:timeoff-history` });
   const timeOffRequests = useMemo(() => {
     const byId = new Map();
     [...(activeTimeOffRequests || []), ...(timeOffHistoryRequests || [])].forEach(row => { if (row?.id) byId.set(row.id, row); });
     return Array.from(byId.values());
   }, [activeTimeOffRequests, timeOffHistoryRequests]);
-  const timePunches = useLiveCollection('timePunches', rId, { enabled: !!rId && wantsLaborData, whereClauses: [['date','>=', activeTabState === 'labor' ? laborPunchWindowStart : lightPunchWindowStart], ['date','<=', activeTabState === 'labor' ? laborPunchWindowEnd : lightPunchWindowEnd]], orderByField: 'date', orderDirection: 'desc', limitCount: activeTabState === 'labor' ? 180 : 35, fallbackLimitCount: 30 });
-  const inventoryItems = useLiveCollection('inventoryItems', rId, { enabled: !!rId && wantsInventoryData, limitCount: activeTabState === 'inventory' ? 180 : 55, fallbackLimitCount: 35, debugLabel: `app:${activeTabState}:inventory` });
-  const menuDependencies = useLiveCollection('menuDependencies', rId, { enabled: !!rId && wantsMenuData, limitCount: activeTabState === 'menu-intelligence' ? 500 : 120, fallbackLimitCount: 80 });
-  const maintenanceLogs = useLiveCollection('maintenanceLogs', rId, { enabled: !!rId && wantsMaintenanceData, whereClauses: [], limitCount: activeTabState === 'maintenance' ? 80 : 20, fallbackLimitCount: 20, debugLabel: `app:${activeTabState}:maintenance` });
-  const prepItems = useLiveCollection('prepItems', rId, { enabled: !!rId && wantsPrepData, whereClauses: [['date','in', prepDateWindow]], limitCount: 80, fallbackLimitCount: 35 });
-  const tasks = useLiveCollection('tasks', rId, { enabled: !!rId && wantsPrepData, limitCount: 75, fallbackLimitCount: 35 });
+  const timePunches = useLiveCollection('timePunches', rId, { enabled: !!rId && wantsLaborData, live: !wantsToday, ttlMs: wantsToday ? todaySnapshotTtlMs : 60_000, whereClauses: [['date','>=', activeTabState === 'labor' ? laborPunchWindowStart : lightPunchWindowStart], ['date','<=', activeTabState === 'labor' ? laborPunchWindowEnd : lightPunchWindowEnd]], orderByField: 'date', orderDirection: 'desc', limitCount: activeTabState === 'labor' ? 180 : (wantsToday ? 18 : 35), fallbackLimitCount: 30, debugLabel: `app:${activeTabState}:punches`, cacheScope: wantsToday ? 'today-brief' : '', refreshKey: wantsToday ? todayRefreshNonce : 0 });
+  const inventoryItems = useLiveCollection('inventoryItems', rId, { enabled: !!rId && wantsInventoryData, live: !wantsToday, ttlMs: wantsToday ? todaySnapshotTtlMs : 60_000, limitCount: activeTabState === 'inventory' ? 180 : (wantsToday ? 32 : 55), fallbackLimitCount: 35, debugLabel: `app:${activeTabState}:inventory`, cacheScope: wantsToday ? 'today-brief' : '', refreshKey: wantsToday ? todayRefreshNonce : 0 });
+  const menuDependencies = []; // Menu Intelligence owns dependency graph on demand; App shell must not open a 500-doc menuDependencies query on tab mount.
+  const maintenanceLogs = useLiveCollection('maintenanceLogs', rId, { enabled: !!rId && wantsMaintenanceData, live: !wantsToday, ttlMs: wantsToday ? todaySnapshotTtlMs : 60_000, whereClauses: [], limitCount: activeTabState === 'maintenance' ? 80 : (wantsToday ? 8 : 20), fallbackLimitCount: 20, debugLabel: `app:${activeTabState}:maintenance`, cacheScope: wantsToday ? 'today-brief' : '', refreshKey: wantsToday ? todayRefreshNonce : 0 });
+  const prepItems = useLiveCollection('prepItems', rId, { enabled: !!rId && wantsPrepData, live: !wantsToday, ttlMs: wantsToday ? todaySnapshotTtlMs : 60_000, whereClauses: [['date','in', prepDateWindow]], limitCount: wantsToday ? 40 : 80, fallbackLimitCount: wantsToday ? 20 : 35, debugLabel: `app:${activeTabState}:prep-items`, cacheScope: wantsToday ? 'today-brief' : '', refreshKey: wantsToday ? todayRefreshNonce : 0 });
+  const tasks = useLiveCollection('tasks', rId, { enabled: !!rId && wantsPrepData, live: !wantsToday, ttlMs: wantsToday ? todaySnapshotTtlMs : 60_000, limitCount: wantsToday ? 32 : 75, fallbackLimitCount: wantsToday ? 20 : 35, debugLabel: `app:${activeTabState}:tasks`, cacheScope: wantsToday ? 'today-brief' : '', refreshKey: wantsToday ? todayRefreshNonce : 0 });
   const recipes = useLiveCollection('recipes', rId, { enabled: !!rId && wantsRecipesData, limitCount: 350, fallbackLimitCount: 80, debugLabel: `app:${activeTabState}:recipes` });
 
   const listenerCacheBoundaryRef = useRef('');
@@ -1407,16 +1564,19 @@ const [currentDate, setCurrentDate] = useState(getToday());
 
   useEffect(() => {
     if (!liveAppUser?.id || ghostTenant || isDemoMode) return undefined;
-    const ids = Array.from(new Set([
+    const canonicalSessionUserId = String(liveAppUser.profileDocId || liveAppUser.accountProfile?.id || liveAppUser.id || auth?.currentUser?.uid || '').trim();
+    if (!canonicalSessionUserId) return undefined;
+    const identityAliases = new Set([
       liveAppUser.profileDocId,
       liveAppUser.accountProfile?.id,
       liveAppUser.userId,
       liveAppUser.id,
-      auth?.currentUser?.uid
-    ].filter(Boolean).map(String)));
-    if (!ids.length) return undefined;
+      auth?.currentUser?.uid,
+      liveAppUser.uid,
+      liveAppUser.authUid
+    ].filter(Boolean).map(String));
     let cancelled = false;
-    const unsubs = ids.map((id) => onSnapshot(doc(db, 'users', id), (snap) => {
+    const unsubscribe = onSnapshot(doc(db, 'users', canonicalSessionUserId), (snap) => {
       if (cancelled || !snap.exists()) return;
       const data = snap.data() || {};
       const refreshSignal = getRemoteRefreshSignalValue(
@@ -1426,7 +1586,7 @@ const [currentDate, setCurrentDate] = useState(getToday());
         data.forceRefresh,
         data.refreshAt
       );
-      if (refreshSignal) maybeApplyRemoteRefreshSignal(`user:${id}`, refreshSignal, data.forceRefreshReason || data.clientRefreshReason || 'system-admin-user-refresh');
+      if (refreshSignal) maybeApplyRemoteRefreshSignal(`user:${canonicalSessionUserId}`, refreshSignal, data.forceRefreshReason || data.clientRefreshReason || 'system-admin-user-refresh');
       const nextSessionFields = {
         forceLogout: data.forceLogout === true,
         forceLogoutAt: data.forceLogoutAt || data.forceLogoutTime || data.forcedLogoutAt || data.logoutBefore || data.sessionRevokedAt || '',
@@ -1434,16 +1594,16 @@ const [currentDate, setCurrentDate] = useState(getToday());
         forceLogoutReason: data.forceLogoutReason || ''
       };
       setAppUser(prev => {
-        if (!prev?.id || !ids.includes(String(prev.id))) return prev;
+        if (!prev?.id || !identityAliases.has(String(prev.id))) return prev;
         const same = prev.forceLogout === nextSessionFields.forceLogout &&
           String(prev.forceLogoutAt || '') === String(nextSessionFields.forceLogoutAt || '') &&
           String(prev.forceLogoutNonce || '') === String(nextSessionFields.forceLogoutNonce || '') &&
           String(prev.forceLogoutReason || '') === String(nextSessionFields.forceLogoutReason || '');
         return same ? prev : { ...prev, ...nextSessionFields };
       });
-    }, (err) => console.warn('User session signal listener failed:', err?.message || err)));
-    return () => { cancelled = true; unsubs.forEach(unsub => { try { unsub(); } catch (_) {} }); };
-  }, [liveAppUser?.id, liveAppUser?.profileDocId, liveAppUser?.userId, ghostTenant, isDemoMode]);
+    }, (err) => console.warn('Canonical user session signal listener failed:', err?.message || err));
+    return () => { cancelled = true; try { unsubscribe?.(); } catch (_) {} };
+  }, [liveAppUser?.id, liveAppUser?.profileDocId, liveAppUser?.accountProfile?.id, liveAppUser?.userId, liveAppUser?.uid, liveAppUser?.authUid, ghostTenant, isDemoMode]);
 
   useEffect(() => {
     const signal = getRemoteRefreshSignalValue(
@@ -1476,7 +1636,7 @@ if (liveAppUser && clientData) {
     liveAppUser.isSuperAdmin || liveAppUser.isOwner || liveAppUser.owner || liveAppUser.accountOwner ||
     liveAppUser.workspaceOwner || liveAppUser.isAdmin || liveAppUser.permissions?.settings || liveAppUser.permissions?.team
   ));
-  const restaurantAdminAlerts = useLiveCollection('restaurantAdminAlerts', rId, { enabled: !!rId && canSeeRestaurantAdminAlerts && (activeTabState === 'today' || activeTabState === 'godmode' || activeTabState === 'back-office'), limitCount: 30, fallbackLimitCount: 10 });
+  const restaurantAdminAlerts = useLiveCollection('restaurantAdminAlerts', rId, { enabled: !!rId && canSeeRestaurantAdminAlerts && (activeTabState === 'today' || activeTabState === 'godmode' || activeTabState === 'back-office'), live: activeTabState !== 'today', ttlMs: activeTabState === 'today' ? todaySnapshotTtlMs : 60_000, limitCount: activeTabState === 'today' ? 8 : 30, fallbackLimitCount: activeTabState === 'today' ? 5 : 10, debugLabel: `app:${activeTabState}:restaurant-admin-alerts`, cacheScope: activeTabState === 'today' ? 'today-brief' : '', refreshKey: activeTabState === 'today' ? todayRefreshNonce : 0 });
 
   const rawDemoFeatures = liveAppUser?.demoFeatures || {};
   const displayClientFeatures = isDemoMode ? {
@@ -3126,10 +3286,10 @@ What I clicked / expected:
     const routeAllowed = routeAccess && routeAccess.allowed === true;
     const routeIsInternalAdmin = activeTabState === 'godmode';
     if (!routeIsInternalAdmin && routeAccess && routeAccess.allowed === false) return <LockedFeatureScreen access={routeAccess} appUser={liveAppUser} setActiveTab={stableSetActiveTab} />;
-    if (activeTabState === 'today') return <TabToday key={`tdy-${rId}`} currentDate={currentDate} appUser={liveAppUser} users={displayUsers} shifts={shifts} shiftSwaps={shiftSwaps} timeOffRequests={timeOffRequests} events={events} sales={sales} timePunches={timePunches} inventoryItems={inventoryItems} maintenanceLogs={maintenanceLogs} prepItems={prepItems} tasks={tasks} recipes={recipes} menuDependencies={menuDependencies} restaurantAdminAlerts={restaurantAdminAlerts} clientData={displayClientData} setActiveTab={setActiveTab} addToast={addToast} registerUndo={registerUndo} />;
-    if (activeTabState === 'schedule' && routeAllowed) return <TabMasterSchedule key={`schpub-${rId}-${liveAppUser?.id}`} currentDate={currentDate} setCurrentDate={setCurrentDate} onSubTabChange={setActiveScheduleSubTab} appUser={liveAppUser} users={scheduleDisplayUsers} shifts={shifts} shiftSwaps={shiftSwaps} timeOffRequests={timeOffRequests} events={events} addToast={addToast} initialSubTab="schedule-builder" voiceScheduleSubTabTarget={voiceScheduleSubTabTarget} clientData={displayClientData} scheduleBuilderProps={{ currentDate, users: scheduleDisplayUsers, shifts, events, timeOffRequests, timePunches, addToast, appUser: liveAppUser, clientData: displayClientData }} />;
+    if (activeTabState === 'today') return <TabToday key={`tdy-${rId}`} currentDate={currentDate} appUser={liveAppUser} users={displayUsers} shifts={shifts} shiftSwaps={shiftSwaps} timeOffRequests={timeOffRequests} events={events} sales={sales} timePunches={timePunches} inventoryItems={inventoryItems} maintenanceLogs={maintenanceLogs} prepItems={prepItems} tasks={tasks} recipes={recipes} menuDependencies={menuDependencies} restaurantAdminAlerts={restaurantAdminAlerts} clientData={displayClientData} setActiveTab={setActiveTab} addToast={addToast} registerUndo={registerUndo} onRefreshBrief={refreshTodayBrief} briefRefreshNonce={todayRefreshNonce} />;
+    if (activeTabState === 'schedule' && routeAllowed) return <TabMasterSchedule key={`schpub-${rId}-${liveAppUser?.id}`} currentDate={currentDate} setCurrentDate={setCurrentDate} onSubTabChange={setActiveScheduleSubTab} appUser={liveAppUser} users={scheduleDisplayUsers} shifts={shifts} shiftSwaps={shiftSwaps} timeOffRequests={timeOffRequests} events={events} addToast={addToast} initialSubTab="schedule-builder" voiceScheduleSubTabTarget={voiceScheduleSubTabTarget} clientData={displayClientData} myScheduleLegacyRescueState={myScheduleLegacyRescueState} onRetryMyScheduleLegacyRescue={() => setMyScheduleRescueNonce(v => v + 1)} scheduleBuilderProps={{ currentDate, users: scheduleDisplayUsers, shifts, events, timeOffRequests, timePunches, addToast, appUser: liveAppUser, clientData: displayClientData }} />;
     if (activeTabState === 'events' && routeAllowed) return <TabSchedule key={`evt-${rId}`} currentDate={currentDate} users={scheduleDisplayUsers} shifts={shifts} events={events} timeOffRequests={timeOffRequests} timePunches={timePunches} addToast={addToast} appUser={liveAppUser} clientData={displayClientData} initialSubTab="events" hideSubTabs />;
-    if (activeTabState === 'published') return <TabMasterSchedule key={`pub-${rId}-${liveAppUser?.id}`} currentDate={currentDate} setCurrentDate={setCurrentDate} onSubTabChange={setActiveScheduleSubTab} appUser={liveAppUser} users={scheduleDisplayUsers} shifts={shifts} shiftSwaps={shiftSwaps} timeOffRequests={timeOffRequests} events={events} addToast={addToast} voiceScheduleSubTabTarget={voiceScheduleSubTabTarget} clientData={displayClientData} scheduleBuilderProps={{ currentDate, users: scheduleDisplayUsers, shifts, events, timeOffRequests, timePunches, addToast, appUser: liveAppUser, clientData: displayClientData }} />;
+    if (activeTabState === 'published') return <TabMasterSchedule key={`pub-${rId}-${liveAppUser?.id}`} currentDate={currentDate} setCurrentDate={setCurrentDate} onSubTabChange={setActiveScheduleSubTab} appUser={liveAppUser} users={scheduleDisplayUsers} shifts={shifts} shiftSwaps={shiftSwaps} timeOffRequests={timeOffRequests} events={events} addToast={addToast} voiceScheduleSubTabTarget={voiceScheduleSubTabTarget} clientData={displayClientData} myScheduleLegacyRescueState={myScheduleLegacyRescueState} onRetryMyScheduleLegacyRescue={() => setMyScheduleRescueNonce(v => v + 1)} scheduleBuilderProps={{ currentDate, users: scheduleDisplayUsers, shifts, events, timeOffRequests, timePunches, addToast, appUser: liveAppUser, clientData: displayClientData }} />;
     if (activeTabState === 'ops' && routeAllowed) return <TabOpsCenter key={`ops-${rId}`} currentDate={currentDate} appUser={liveAppUser} users={displayUsers} shifts={shifts} events={events} sales={sales} timePunches={timePunches} addToast={addToast} setActiveTab={setActiveTab} clientData={displayClientData} />;
     if (activeTabState === 'back-office' && routeAllowed) return <TabBackOffice key={`bo-${rId}`} currentDate={currentDate} users={displayUsers} sales={sales} timePunches={timePunches} restaurantAdminAlerts={restaurantAdminAlerts} appUser={liveAppUser} clientData={displayClientData} setActiveTab={setActiveTab} addToast={addToast} />;
     if ((activeTabState === 'financials' || activeTabState === 'sales' || activeTabState === 'labor') && routeAllowed) return <TabFinancials key={`fin-${rId}`} currentDate={currentDate} users={displayUsers} shifts={shifts} sales={sales} timePunches={timePunches} addToast={addToast} appUser={liveAppUser} clientData={displayClientData} setActiveTab={setActiveTab} initialSubTab={activeTabState === 'sales' ? 'ledger' : activeTabState === 'labor' ? 'labor' : 'overview'} />;

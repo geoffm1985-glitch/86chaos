@@ -1,13 +1,10 @@
 {
-  "version": "16.0.184",
-  "name": "86 Chaos 16.0.184",
-  "build": "16.0.184",
-  "label": "86 Chaos 16.0.184",
-  "releasedAt": "2026-08-10T23:00:00-05:00",
-  "releaseTitle": "Vercel Linux Vite Oxc JSX Precompile Repair",
-  "notes": [
-    "Precompiles the temporary Vite build workspace with Vite's own Oxc transformer so CRA-era JSX inside src .js files is normalized before the Vite 8/Rolldown Linux parser runs.",
-    "Keeps real source files, filenames, imports, Firebase configuration, and application behavior unchanged while preserving the existing asset-manifest build contract and cleaning the temporary build workspace after every build."
-  ],
-  "title": "86 Chaos 16.0.184"
+  "version": "16.0.192",
+  "name": "86 Chaos 16.0.192",
+  "build": "16.0.192",
+  "label": "86 Chaos 16.0.192",
+  "releasedAt": "2026-08-11T00:00:00-05:00",
+  "releaseTitle": "My Schedule Identity Consolidation and Rescue Telemetry Completion",
+  "notes": "Centralizes My Schedule identity matching, adds truthful retry telemetry and measured rescue diagnostics, and keeps ordinary staff error details plain.",
+  "title": "86 Chaos 16.0.192"
 }

@@ -1,0 +1,28 @@
+{
+  "version": "16.0.188",
+  "labels": "MEASURED/NOT MEASURABLE LOCALLY as documented",
+  "today": {
+    "baselineMaxInitialDocs": 510,
+    "candidateMaxInitialDocs": 319,
+    "activeListeners": 0
+  },
+  "presence": {
+    "connect": {
+      "sessionWrites": 1,
+      "statusSummaryOnlineWrites": 0
+    },
+    "disconnect": {
+      "sessionRemovals": 1,
+      "lastSeenWrites": 1
+    }
+  },
+  "menu": {
+    "initialAppDependencyDocs": 0,
+    "scanPageSize": 20,
+    "page2RereadsPage1": false
+  },
+  "blocked": [
+    "firebase billing numbers",
+    "Vercel preview READY proof"
+  ]
+}
