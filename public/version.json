@@ -1,10 +1,10 @@
 {
-  "version": "16.0.192",
-  "name": "86 Chaos 16.0.192",
-  "build": "16.0.192",
-  "label": "86 Chaos 16.0.192",
+  "version": "16.0.194",
+  "name": "86 Chaos 16.0.194",
+  "build": "16.0.194",
+  "label": "86 Chaos 16.0.194",
   "releasedAt": "2026-08-11T00:00:00-05:00",
-  "releaseTitle": "My Schedule Identity Consolidation and Rescue Telemetry Completion",
-  "notes": "Centralizes My Schedule identity matching, adds truthful retry telemetry and measured rescue diagnostics, and keeps ordinary staff error details plain.",
-  "title": "86 Chaos 16.0.192"
+  "releaseTitle": "Local Checkout Package Hygiene Gate Repair",
+  "notes": "Repairs the app-only package hygiene gate so normal developer checkouts may contain .git, node_modules, and ignored .env.test.local files while tracked/source-controlled and extracted release artifacts remain fail-closed against forbidden package contents.",
+  "title": "86 Chaos 16.0.194"
 }

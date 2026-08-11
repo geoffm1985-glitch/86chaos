@@ -498,7 +498,7 @@ export const MASTER_ADMIN_EMAIL = (process.env.REACT_APP_MASTER_ADMIN_EMAIL || '
 export const EVENT_TAGS = ['Standard Day', 'Packers Game', 'Brewers Game', 'Live Music', 'Severe Weather', 'Private Catering', 'Holiday'];
 
 // --- VERSION TRACKING ---
-export const CURRENT_VERSION = '16.0.192';
+export const CURRENT_VERSION = '16.0.194';
 
 // --- Helpers ---
 const usePageVisible = () => {
@@ -1057,7 +1057,8 @@ export const useLiveCollectionState = (coll, restId, options = {}) => {
     orderDirection = 'asc',
     fallbackLimitCount = 75,
     pauseWhenHidden = true,
-    debugLabel = ''
+    debugLabel = '',
+    cacheScope = ''
   } = options || {};
   const pageVisible = usePageVisible();
   const debugLabelRef = React.useRef(debugLabel || '');
@@ -1077,8 +1078,8 @@ export const useLiveCollectionState = (coll, restId, options = {}) => {
     if (orderByField) constraints.push(orderBy(orderByField, orderDirection || 'asc'));
     if (limitCount && Number(limitCount) > 0) constraints.push(firestoreLimit(Number(limitCount)));
     const key = makeLiveCollectionKey({ coll, restId, whereClauses, orderByField, orderDirection, limitCount, viewerUid, cacheScope });
-    return acquireSharedLiveCollection({ coll, restId, constraints, key, setData: setter, debugLabel: debugLabelRef.current, viewerUid });
-  }, [coll, restId, enabled, limitCount, orderByField, orderDirection, pauseWhenHidden, pageVisible, viewerUid, stableJson(normalizeWhereClausesForKey(whereClauses || []))]);
+    return acquireSharedLiveCollection({ coll, restId, constraints, key, setData: setter, debugLabel: debugLabelRef.current, viewerUid, cacheScope });
+  }, [coll, restId, enabled, limitCount, orderByField, orderDirection, pauseWhenHidden, pageVisible, viewerUid, cacheScope, stableJson(normalizeWhereClausesForKey(whereClauses || []))]);
   return state;
 };
 

@@ -14,7 +14,7 @@ param(
   [switch]$IncludeReleaseGate
 )
 $ErrorActionPreference = 'Stop'
-$script:AppVersion = '16.0.192'
+$script:AppVersion = '16.0.194'
 $script:Steps = New-Object System.Collections.ArrayList
 $script:Plan = New-Object System.Collections.ArrayList
 $script:GroupStatus = @{}
@@ -292,7 +292,7 @@ function Update-ResultZipMetadata {
   }
 }
 function Create-UploadZip {
-  $zip = Join-Path $script:AppRoot ('86chaos-FULL-SUITE-UPLOAD-ME-16.0.192-' + (Get-Date -Format 'yyyyMMdd-HHmmss') + '.zip')
+  $zip = Join-Path $script:AppRoot ('86chaos-FULL-SUITE-UPLOAD-ME-16.0.194-' + (Get-Date -Format 'yyyyMMdd-HHmmss') + '.zip')
   if (Test-Path $zip) { Remove-Item $zip -Force }
   Compress-Archive -Path (Join-Path $script:RunDir '*') -DestinationPath $zip -Force
   if (-not (Test-Path $zip)) { throw 'Upload ZIP was not created.' }
@@ -337,7 +337,7 @@ try {
   Add-PlannedStep 'Source / Static Validation' 'Full audit source validator' 'node scripts/86chaos-full-audit/validate-full-audit-source.cjs' $true 'node' $false ''
   Add-PlannedStep 'Source / Static Validation' 'Release source inventory' 'node scripts/86chaos-release-gate/source-inventory.cjs' $true 'node' $false ''
   Add-PlannedStep 'Source / Static Validation' 'Icon source validator' 'node scripts/86chaos-release-gate/icon-source-validator.cjs' $true 'node' $false ''
-  Add-PlannedStep 'Source / Static Validation' 'Current targeted validator' 'node scripts/test-16-0-192-targeted.cjs' $true 'node' $false ''
+  Add-PlannedStep 'Source / Static Validation' 'Current targeted validator' 'node scripts/test-16-0-194-targeted.cjs' $true 'node' $false ''
   Add-PlannedStep 'Node / Server Unit Tests' 'Server API tests' 'node --test --test-reporter=spec api/*.test.cjs' $true 'node' $false ''
   Add-PlannedStep 'Node / Server Unit Tests' 'Server API tests serial' 'node --test --test-concurrency=1 --test-reporter=spec api/*.test.cjs' $true 'node' $false ''
   Add-PlannedStep 'Node / Server Unit Tests' 'Release harness tests' 'node --test --test-reporter=spec tests/86chaos-release-gate/*.test.cjs' $true 'node' $false ''
