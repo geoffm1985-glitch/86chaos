@@ -64,24 +64,70 @@ function walkPackageTree(root, dir = root, out = []) {
   return out;
 }
 
+function isGeneratedTestArtifact(relativePath) {
+  const rel = normalizeRel(relativePath);
+  return rel === 'test-results'
+    || rel.startsWith('test-results/')
+    || rel.endsWith('/__pycache__')
+    || rel === '__pycache__'
+    || rel.endsWith('.pyc');
+}
+
+function isLocalReadinessArtifact(relativePath) {
+  const rel = normalizeRel(relativePath);
+  const parts = rel.split('/').filter(Boolean);
+  const first = parts[0] || '';
+  const base = parts[parts.length - 1] || '';
+  // Local release readiness runs after npm ci and may run after a production
+  // build in the same working directory. Those generated directories must not
+  // prevent Playwright from starting. Final app-only ZIP validation still uses
+  // strict package-artifact mode and rejects these paths.
+  return first === 'node_modules'
+    || first === 'build'
+    || first === 'test-results'
+    || first === '86chaos-play-store-release-gate'
+    || first.startsWith('.vite-build-root')
+    || base === '.last-run.json'
+    || rel.endsWith('/__pycache__')
+    || rel === '__pycache__'
+    || rel.endsWith('.pyc');
+}
+
+function shouldAllowLocalReadinessArtifacts(root, options = {}) {
+  if (Object.prototype.hasOwnProperty.call(options, 'allowLocalReadinessArtifacts')) {
+    return options.allowLocalReadinessArtifacts === true;
+  }
+  return process.env.CHAOS_ALLOW_LOCAL_RELEASE_ARTIFACTS === '1'
+    && path.resolve(root) === process.cwd();
+}
+
 function findAppOnlyHygieneOffenders(root, options = {}) {
+  const isActiveWorkingRoot = path.resolve(root) === process.cwd();
   const allowGeneratedTestArtifacts = Object.prototype.hasOwnProperty.call(options, 'allowGeneratedTestArtifacts')
     ? options.allowGeneratedTestArtifacts === true
-    : process.env.CHAOS_ALLOW_GENERATED_TEST_ARTIFACTS === '1';
+    : (process.env.CHAOS_ALLOW_GENERATED_TEST_ARTIFACTS === '1' || isActiveWorkingRoot);
+  const allowLocalReadinessArtifacts = shouldAllowLocalReadinessArtifacts(root, options);
   const trackedFiles = listTrackedFiles(root);
   if (trackedFiles) {
-    // A normal developer checkout is expected to contain .git, node_modules,
-    // and local ignored test environment files. The release safety question is
-    // whether any forbidden artifact is SOURCE CONTROLLED and can therefore be
-    // shipped by a source-based deployment/package operation.
-    return trackedFiles.filter(isForbiddenRelativePath).sort();
+    // A normal developer checkout is expected to contain generated working
+    // artifacts while tests/builds are running. Local readiness may ignore
+    // those generated artifacts so Playwright can start, but it never ignores
+    // tracked secrets or other forbidden source-controlled files.
+    return trackedFiles
+      .filter(isForbiddenRelativePath)
+      .filter(rel => !(allowGeneratedTestArtifacts && isGeneratedTestArtifact(rel)))
+      .filter(rel => !(allowLocalReadinessArtifacts && isLocalReadinessArtifact(rel)))
+      .sort();
   }
 
-  // An extracted app-only release has no .git metadata. In that mode the
-  // physical package tree itself is the artifact, so forbidden files/dirs must
-  // be absent from disk.
+  // An extracted final app-only release has no .git metadata. In strict mode,
+  // the physical package tree itself is the artifact, so forbidden files/dirs
+  // must be absent from disk. Local readiness mode is intentionally narrower
+  // and exists only to prevent generated npm/build/test outputs in a working
+  // checkout from blocking browser/page-load tests before they execute.
   return walkPackageTree(root)
-    .filter(rel => !(allowGeneratedTestArtifacts && (rel === 'test-results' || rel.startsWith('test-results/') || rel.endsWith('/__pycache__') || rel === '__pycache__' || rel.endsWith('.pyc'))))
+    .filter(rel => !(allowGeneratedTestArtifacts && isGeneratedTestArtifact(rel)))
+    .filter(rel => !(allowLocalReadinessArtifacts && isLocalReadinessArtifact(rel)))
     .sort();
 }
 
@@ -92,5 +138,8 @@ module.exports = {
   isForbiddenRelativePath,
   listTrackedFiles,
   walkPackageTree,
+  isGeneratedTestArtifact,
+  isLocalReadinessArtifact,
+  shouldAllowLocalReadinessArtifacts,
   findAppOnlyHygieneOffenders,
 };

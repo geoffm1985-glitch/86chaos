@@ -1,10 +1,12 @@
 {
-  "version": "16.0.196",
-  "name": "86 Chaos 16.0.196",
-  "build": "16.0.196",
-  "label": "86 Chaos 16.0.196",
+  "version": "16.0.197",
+  "name": "86 Chaos 16.0.197",
+  "build": "16.0.197",
+  "label": "16.0.197",
   "releasedAt": "2026-08-11T00:00:00-05:00",
-  "releaseTitle": "Schedule Query Planner Canonical Test Repair",
-  "notes": "Repairs the stale client-side Schedule Query Planner unit test so it matches the production My Schedule architecture: canonical scheduleUserId primary query with separate legacy rescue handling. No Firebase rules, indexes, credentials, business behavior, or schedule rescue runtime semantics changed.",
-  "title": "86 Chaos 16.0.196"
+  "releaseTitle": "Release Gate Local Artifact Hygiene and Page-Load Continuation Repair",
+  "notes": [
+    "Repairs release-gate local readiness so generated build/node_modules/test artifacts in the working checkout do not block Playwright before page-load tests can run; app-only ZIP hygiene remains strict."
+  ],
+  "title": "86 Chaos 16.0.197"
 }
