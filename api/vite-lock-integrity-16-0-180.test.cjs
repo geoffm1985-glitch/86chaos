@@ -24,9 +24,10 @@ const rolldownPlatforms = [
 ];
 
 test('Vite production dependency closure is fully represented for clean npm ci installs', () => {
-  assert.equal(pkg.version, '16.0.180');
+  assert.match(pkg.version, /^16\.0\.\d+$/, 'current app version remains in the 16.0.x release line');
   assert.equal(pkg.dependencies.vite, '8.1.5');
-  assert.equal(pkg.scripts['vercel:install'], 'npm ci --omit=dev --omit=optional --no-audit --no-fund --progress=false');
+  assert.equal(pkg.scripts['vercel:install'], 'npm ci --omit=dev --no-audit --no-fund --progress=false');
+  assert.ok(!pkg.scripts['vercel:install'].includes('--omit=optional'), 'Vercel must install optional Vite/Rolldown native bindings');
   assert.equal(packages['node_modules/vite']?.version, '8.1.5');
   assert.equal(packages['node_modules/lightningcss']?.version, '1.33.0');
   assert.equal(packages['node_modules/detect-libc']?.version, '2.1.2');

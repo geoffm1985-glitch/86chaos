@@ -1,13 +1,13 @@
 {
-  "version": "16.0.180",
-  "name": "86 Chaos 16.0.180",
-  "build": "16.0.180",
-  "label": "86 Chaos 16.0.180",
-  "releasedAt": "2026-08-10T20:54:00-05:00",
-  "releaseTitle": "Vercel Clean Install Lockfile Integrity Repair",
+  "version": "16.0.181",
+  "name": "86 Chaos 16.0.181",
+  "build": "16.0.181",
+  "label": "86 Chaos 16.0.181",
+  "releasedAt": "2026-08-10T21:25:00-05:00",
+  "releaseTitle": "Vercel Vite Native Binding Install Repair",
   "notes": [
-    "Restores the complete Vite 8.1.5 dependency graph required by clean npm ci installs, including Rolldown and LightningCSS platform metadata.",
-    "Preserves the current Firebase 11, Vite, ESLint, application behavior, and Vercel npm ci install contract without changing app business logic."
+    "Keeps Vercel on deterministic npm ci while allowing required optional native dependencies for the Vite 8/Rolldown build toolchain.",
+    "Removes only the obsolete --omit=optional install flag; application logic, Firebase configuration, dependency versions, and business behavior remain unchanged."
   ],
-  "title": "86 Chaos 16.0.180"
+  "title": "86 Chaos 16.0.181"
 }
