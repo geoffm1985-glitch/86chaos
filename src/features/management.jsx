@@ -15,8 +15,8 @@ import { PLAN_DEFINITIONS, CUSTOMER_PLAN_ORDER, FEATURE_KEYS } from '../config/p
 import { resolveSubscription, resolveFeatureAccess, getPlanDefinition, formatMoney, normalizePlanId, addDaysIso, addMonthsIso } from '../lib/featureAccess';
 import { HELP_SUBJECTS, HELP_SUBTOPICS, HELP_DEEP_LINKS, CUSTOMER_HELP_ARTICLES, CUSTOMER_HELP_ARTICLES_LEGACY, searchCustomerHelp, makeDeterministicHelpAnswer, buildCustomerHelpCoverage } from '../core/customerHelpKnowledge';
 import * as adminSafetyModule from '../core/systemAdminDataSafety.cjs';
-import presenceTruthModule from '../core/presenceTruth.cjs';
-import scheduleEfficiencyModule from '../core/scheduleEfficiency.cjs';
+import * as presenceTruthModuleValue from '../core/presenceTruth.cjs';
+import * as scheduleEfficiencyModuleValue from '../core/scheduleEfficiency.cjs';
 
 
 const resolveAdminSafetyModule = (moduleValue) => {
@@ -24,8 +24,33 @@ const resolveAdminSafetyModule = (moduleValue) => {
   return candidate && typeof candidate === 'object' ? candidate : {};
 };
 const adminSafety = resolveAdminSafetyModule(adminSafetyModule);
-const { classifySystemAdminPresenceRow, getPresenceLastMs } = presenceTruthModule;
-const scheduleEfficiency = scheduleEfficiencyModule?.default && typeof scheduleEfficiencyModule.default === 'object' ? scheduleEfficiencyModule.default : scheduleEfficiencyModule;
+const resolveFeatureCjsModule = (moduleValue) => {
+  const candidate = moduleValue?.default && typeof moduleValue.default === 'object' ? moduleValue.default : moduleValue;
+  return candidate && typeof candidate === 'object' ? candidate : {};
+};
+const presenceTruth = resolveFeatureCjsModule(presenceTruthModuleValue);
+const fallbackGetPresenceLastMs = (row = {}) => {
+  const values = [row.lastHeartbeatAt, row.presenceUpdatedAt, row.lastActive, row.lastSeen, row.lastOnline, row.lastChanged, row.connectedAt, row.heartbeatEpochMs];
+  return values.reduce((max, value) => {
+    const parsed = typeof value === 'number' ? (value > 1000000000000 ? value : value * 1000) : Date.parse(String(value || ''));
+    return Number.isFinite(parsed) ? Math.max(max, parsed) : max;
+  }, 0);
+};
+const fallbackClassifySystemAdminPresenceRow = (row = {}, opts = {}) => {
+  const source = String(row.presenceSource || row.source || '').toLowerCase();
+  const authoritative = source.includes('rtdb-status-sessions') || source.includes('status-sessions-presence');
+  const explicitOffline = row.online === false || row.onlineState === 'offline' || row.state === 'offline';
+  const lastMs = fallbackGetPresenceLastMs(row);
+  if (authoritative) return { online: row.online === true && !explicitOffline, authoritative, explicitOffline, lastMs, reason: row.online === true && !explicitOffline ? 'active-rtdb-status-session' : 'authoritative-session-offline' };
+  const nowMs = Number(opts.nowMs || Date.now());
+  const fetchedAtMs = Number(opts.fetchedAtMs || 0);
+  const fallbackOnlineWindowMs = Number(opts.fallbackOnlineWindowMs || opts.onlineWindowMs || 90_000);
+  const online = Boolean(fetchedAtMs && lastMs && !explicitOffline && (nowMs - lastMs) <= fallbackOnlineWindowMs);
+  return { online, authoritative, explicitOffline, lastMs, reason: online ? 'fresh-legacy-fallback' : 'not-online' };
+};
+const classifySystemAdminPresenceRow = typeof presenceTruth.classifySystemAdminPresenceRow === 'function' ? presenceTruth.classifySystemAdminPresenceRow : fallbackClassifySystemAdminPresenceRow;
+const getPresenceLastMs = typeof presenceTruth.getPresenceLastMs === 'function' ? presenceTruth.getPresenceLastMs : fallbackGetPresenceLastMs;
+const scheduleEfficiency = resolveFeatureCjsModule(scheduleEfficiencyModuleValue);
 const buildCanonicalShiftDateFields = typeof scheduleEfficiency?.buildCanonicalShiftDateFields === 'function' ? scheduleEfficiency.buildCanonicalShiftDateFields : (dateValue = '') => { const date = String(dateValue || getToday()).slice(0, 10); return { date, scheduleDateKey: date, shiftDate: date, scheduleMonth: date.slice(0, 7) }; };
 const fallbackTimestampToIso = (value) => {
   if (!value) return '';

@@ -244,13 +244,16 @@ const hardRecoverRuntimeSection = async (reason = 'manual') => {
 
 const getRuntimeReportContext = (error, extra = {}, kind = 'section-runtime-error') => {
   const route = typeof window !== 'undefined' ? `${window.location.pathname}${window.location.search}` : '';
-  const activeTab = typeof window !== 'undefined' ? (new URLSearchParams(window.location.search).get('tab') || '') : '';
+  const search = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
+  const activeTab = extra.activeTab || (search ? (search.get('tab') || '') : '');
+  const activeSubTab = extra.activeSubTab || (search ? (search.get('subTab') || search.get('scheduleSubTab') || '') : '');
   const viewport = typeof window !== 'undefined' ? `${window.innerWidth}x${window.innerHeight}` : '';
   const deployedVersion = typeof window !== 'undefined' ? (window.__CHAOS_VISIBLE_VERSION || window.__CHAOS_DEPLOYED_VERSION || '') : '';
   return {
     kind,
     route,
     activeTab,
+    activeSubTab,
     appVersion: CURRENT_VERSION,
     deployedVersion,
     chunkUrl: extractChunkUrl(error),
@@ -274,6 +277,7 @@ const reportRuntimeErrorWithDeliveryRules = async (kind, error, extra = {}) => {
     componentStack: extra.componentStack || '',
     route: context.route,
     activeTab: context.activeTab,
+    activeSubTab: context.activeSubTab,
     appVersion: context.appVersion,
     deployedVersion: context.deployedVersion,
     uid: context.uid,
@@ -311,6 +315,7 @@ const reportRuntimeErrorWithDeliveryRules = async (kind, error, extra = {}) => {
         deployedVersion: context.deployedVersion,
         route: context.route,
         activeTab: context.activeTab,
+        activeSubTab: context.activeSubTab,
         userAgent: context.userAgent,
         screenSize: context.viewport,
         url: typeof window !== 'undefined' ? window.location.href : '',
@@ -614,7 +619,7 @@ class AppSurfaceErrorBoundary extends React.Component {
     const fallbackReportId = createFallbackReportId(chunkProblem ? 'chunk' : 'section');
     this.setState({ fallbackReportId, reportId: fallbackReportId });
     const reporter = chunkProblem ? reportRuntimeChunkFailure : reportRuntimeSectionError;
-    reporter(error, { source: chunkProblem ? 'react_error_boundary_chunk' : 'react_error_boundary', componentStack: info?.componentStack || '', fallbackReportId }).then(reportId => {
+    reporter(error, { source: chunkProblem ? 'react_error_boundary_chunk' : 'react_error_boundary', componentStack: info?.componentStack || '', fallbackReportId, activeTab: this.props.activeTab || '', activeSubTab: this.props.activeSubTab || '' }).then(reportId => {
       if (reportId) this.setState({ reportId });
     });
   }
@@ -3681,12 +3686,14 @@ return (
           {globalManagerBriefMathText}
         </span>
         <AppSurfaceErrorBoundary
-          key={`${activeTabState}-${liveAppUser?.restaurantId || 'no-restaurant'}`}
-          resetKey={`${activeTabState}-${liveAppUser?.restaurantId || 'no-restaurant'}-${CURRENT_VERSION}-${surfaceRetryKey}`}
+          key={`${activeTabState}-${activeScheduleSubTab || 'no-subtab'}-${liveAppUser?.restaurantId || 'no-restaurant'}`}
+          resetKey={`${activeTabState}-${activeScheduleSubTab || 'no-subtab'}-${liveAppUser?.restaurantId || 'no-restaurant'}-${CURRENT_VERSION}-${surfaceRetryKey}`}
+          activeTab={activeTabState}
+          activeSubTab={activeScheduleSubTab || ''}
           onRetry={() => setSurfaceRetryKey(value => value + 1)}
         >
           <React.Suspense fallback={<RouteLoading />} >
-            <React.Fragment key={`${activeTabState}-${liveAppUser?.restaurantId || 'no-restaurant'}-${surfaceRetryKey}`}>
+            <React.Fragment key={`${activeTabState}-${activeScheduleSubTab || 'no-subtab'}-${liveAppUser?.restaurantId || 'no-restaurant'}-${surfaceRetryKey}`}>
               {renderMainContent()}
             </React.Fragment>
           </React.Suspense>

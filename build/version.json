@@ -1,12 +1,10 @@
 {
-  "version": "16.0.197",
-  "name": "86 Chaos 16.0.197",
-  "build": "16.0.197",
-  "label": "16.0.197",
+  "version": "16.0.199",
+  "name": "86 Chaos 16.0.199",
+  "build": "16.0.199",
+  "label": "16.0.199",
   "releasedAt": "2026-08-11T00:00:00-05:00",
-  "releaseTitle": "Release Gate Local Artifact Hygiene and Page-Load Continuation Repair",
-  "notes": [
-    "Repairs release-gate local readiness so generated build/node_modules/test artifacts in the working checkout do not block Playwright before page-load tests can run; app-only ZIP hygiene remains strict."
-  ],
-  "title": "86 Chaos 16.0.197"
+  "releaseTitle": "Last Known Good Route Load Regression Repair",
+  "notes": "Compares the last fully working 16.0.174 route-loading baseline against the current 16.0.197 source and hardens lazy route chunks, Schedule subtab recovery, and client runtime diagnostics without changing business behavior.",
+  "title": "86 Chaos 16.0.199"
 }

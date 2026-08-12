@@ -20,7 +20,27 @@ import {
 import { getCanonicalScheduleUserId, collectScheduleDurableIdentityAliases, collectScheduleEmailAliases, collectScheduleFullNameAliases, collectScheduleFirstNameAliases, collectScheduleIdentityAliases, resolveSchedulePersonForAccount, resolveSchedulePersonForShift, buildCanonicalScheduleIdentityBlock, scheduleIdentityBlockMatchesPerson } from '../core/scheduleQueryPlanner';
 import { CheersLogo, Modal, DrawerMenu, DayDotPrintScreen, MapClickListener, SmartEmptyState, MiniProblemCard, getHomeProfile, calculatePunchHours, getWeekStart, getWeekDates, roleMatches, toLocalTimeInput, makeLocalIso, PunchTable, FriendlyEmpty, GlobalSearchModal, QuickActionDock, KitchenTVMode, ChangeLogModal, UndoBar } from '../components/common';
 import scheduleMonthPrint from '../core/scheduleMonthPrint.cjs';
-import scheduleRescueDiagnostics from '../core/scheduleRescueDiagnostics.cjs';
+import * as scheduleRescueDiagnosticsModule from '../core/scheduleRescueDiagnostics.cjs';
+
+
+const resolveScheduleCjsModule = (moduleValue) => {
+  const candidate = moduleValue?.default && typeof moduleValue.default === 'object' ? moduleValue.default : moduleValue;
+  return candidate && typeof candidate === 'object' ? candidate : {};
+};
+const scheduleRescueDiagnostics = resolveScheduleCjsModule(scheduleRescueDiagnosticsModule);
+const fallbackBuildMyScheduleIncompleteWarningView = ({ error = '', incomplete = false } = {}) => {
+  const visible = Boolean(incomplete);
+  return {
+    visible,
+    plainWarning: visible ? 'Schedule may be incomplete' : '',
+    plainBody: visible ? 'Some older, imported, or restored shifts could not be fully checked. Your current shifts are shown, but this schedule may be incomplete.' : '',
+    retryVisible: visible,
+    technicalError: ''
+  };
+};
+const buildMyScheduleIncompleteWarningView = typeof scheduleRescueDiagnostics.buildMyScheduleIncompleteWarningView === 'function'
+  ? scheduleRescueDiagnostics.buildMyScheduleIncompleteWarningView
+  : fallbackBuildMyScheduleIncompleteWarningView;
 
 
 
@@ -913,7 +933,7 @@ const TabMasterSchedule = ({ currentDate, setCurrentDate = null, onSubTabChange 
   const [tipCredit, setTipCredit] = useState('');
   const [subTab, setSubTab] = useState(initialSubTab);
   const canViewTeamAvailability = Boolean(appUser?.isSuperAdmin || appUser?.isAdmin || appUser?.isOwner || appUser?.accountOwner || appUser?.workspaceOwner || appUser?.permissions?.schedule || appUser?.permissions?.team);
-  const scheduleRescueWarningView = scheduleRescueDiagnostics.buildMyScheduleIncompleteWarningView({
+  const scheduleRescueWarningView = buildMyScheduleIncompleteWarningView({
     user: appUser || {},
     error: myScheduleLegacyRescueState?.error || '',
     incomplete: Boolean(myScheduleLegacyRescueState?.error || myScheduleLegacyRescueState?.truncated || (!myScheduleLegacyRescueState?.loading && (myScheduleLegacyRescueState?.querySourcesUsed || []).length > 0 && myScheduleLegacyRescueState?.evaluatedAllPages === false))
