@@ -1,0 +1,21 @@
+============================================================
+86 CHAOS TEST RESULT
+
+MODE:      reported-failed-only
+TOTAL:     6
+PASS:      6
+FAIL:      0
+TIMEOUT:   0
+SKIP:      0
+
+RESULT: FAILED
+
+Failed / timed-out tests:
+None
+Remaining failures: 0
+
+Next command: None - no failed tests remain.
+
+Artifacts:
+C:\Users\geoff\Documents\GitHub\86chaos\test-results\86chaos-play-store-release-gate\2026-08-09T22-14-35
+============================================================

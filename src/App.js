@@ -1091,7 +1091,7 @@ const [currentDate, setCurrentDate] = useState(getToday());
   const wantsLaborData = (['financials', 'labor', 'sales', 'ops'].includes(activeTabState) || (wantsToday && canReadOperationsLabor)) && canReadOperationsLabor;
   const wantsInventoryData = (((wantsToday || isGlobalSearchOpen) && (canReadBasicInventory || canReadSmartInventory)) || (activeTabState === 'menu-intelligence' && canReadMenuCollections));
   const wantsPrepData = wantsToday; // Prep screen owns its live prep/task listeners; App keeps only Today summaries.
-  const wantsMenuData = (activeTabState === 'menu-intelligence' || wantsToday) && canReadMenuCollections; // 16.0.202 keeps Today menu impact data but caps its summary listener lower below.
+  const wantsMenuData = (activeTabState === 'menu-intelligence' || wantsToday) && canReadMenuCollections; // 16.0.203 keeps Today menu impact data but caps its summary listener lower below.
   const wantsRecipesData = isGlobalSearchOpen; // Recipes screen owns its live query; App keeps only global-search demand.
   const wantsMaintenanceData = wantsToday && canReadMaintenance; // Maintenance screen owns its full listener; App keeps only Today alert context.
   const wantsSalesData = ['financials', 'sales', 'ops', 'labor'].includes(activeTabState) && canReadSalesCollections;

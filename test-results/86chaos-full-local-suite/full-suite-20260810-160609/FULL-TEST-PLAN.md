@@ -1,0 +1,172 @@
+﻿# 86 Chaos Full Test Plan
+
+App version: 
+16.0.174
+Run ID: 
+full-suite-20260810-160609
+
+- **Environment / Dependencies / Node version**
+  - Command: `node --version`
+  - Required capability: Node runtime
+  - Mutates external test infrastructure: False
+  - Expected safe project: 
+- **Environment / Dependencies / npm version**
+  - Command: `npm --version`
+  - Required capability: npm runtime
+  - Mutates external test infrastructure: False
+  - Expected safe project: 
+- **Environment / Dependencies / Node project check**
+  - Command: `npm run node:check`
+  - Required capability: Node 24.x
+  - Mutates external test infrastructure: False
+  - Expected safe project: 
+- **Environment / Dependencies / Install locked dependencies**
+  - Command: `npm ci --include=dev --no-audit --no-fund`
+  - Required capability: npm registry
+  - Mutates external test infrastructure: False
+  - Expected safe project: 
+- **Environment / Dependencies / Lockfile integrity**
+  - Command: `npm run lock:integrity`
+  - Required capability: installed deps
+  - Mutates external test infrastructure: False
+  - Expected safe project: 
+- **Environment / Dependencies / Dependency security audit**
+  - Command: `npm audit --audit-level=high`
+  - Required capability: npm registry
+  - Mutates external test infrastructure: False
+  - Expected safe project: 
+- **Source / Static Validation / Source validator**
+  - Command: `npm run test:source`
+  - Required capability: source
+  - Mutates external test infrastructure: False
+  - Expected safe project: 
+- **Source / Static Validation / API syntax**
+  - Command: `npm run syntax:api`
+  - Required capability: node
+  - Mutates external test infrastructure: False
+  - Expected safe project: 
+- **Source / Static Validation / Python syntax**
+  - Command: `npm run syntax:py`
+  - Required capability: python
+  - Mutates external test infrastructure: False
+  - Expected safe project: 
+- **Source / Static Validation / Syntax aggregate**
+  - Command: `npm run syntax`
+  - Required capability: node/python
+  - Mutates external test infrastructure: False
+  - Expected safe project: 
+- **Source / Static Validation / Performance split**
+  - Command: `npm run performance:split`
+  - Required capability: node
+  - Mutates external test infrastructure: False
+  - Expected safe project: 
+- **Source / Static Validation / Python auth fallback validator**
+  - Command: `node scripts/validate-python-auth-fallback.js`
+  - Required capability: node
+  - Mutates external test infrastructure: False
+  - Expected safe project: 
+- **Source / Static Validation / Python ops restore validator**
+  - Command: `node scripts/validate-python-ops-restore.js`
+  - Required capability: node
+  - Mutates external test infrastructure: False
+  - Expected safe project: 
+- **Source / Static Validation / Full audit source validator**
+  - Command: `node scripts/86chaos-full-audit/validate-full-audit-source.cjs`
+  - Required capability: node
+  - Mutates external test infrastructure: False
+  - Expected safe project: 
+- **Source / Static Validation / Release source inventory**
+  - Command: `node scripts/86chaos-release-gate/source-inventory.cjs`
+  - Required capability: node
+  - Mutates external test infrastructure: False
+  - Expected safe project: 
+- **Source / Static Validation / Icon source validator**
+  - Command: `node scripts/86chaos-release-gate/icon-source-validator.cjs`
+  - Required capability: node
+  - Mutates external test infrastructure: False
+  - Expected safe project: 
+- **Source / Static Validation / Current targeted validator**
+  - Command: `node scripts/test-16-0-174-targeted.cjs`
+  - Required capability: node
+  - Mutates external test infrastructure: False
+  - Expected safe project: 
+- **Node / Server Unit Tests / Server API tests**
+  - Command: `node --test --test-reporter=spec api/*.test.cjs`
+  - Required capability: node
+  - Mutates external test infrastructure: False
+  - Expected safe project: 
+- **Node / Server Unit Tests / Server API tests serial**
+  - Command: `node --test --test-concurrency=1 --test-reporter=spec api/*.test.cjs`
+  - Required capability: node
+  - Mutates external test infrastructure: False
+  - Expected safe project: 
+- **Node / Server Unit Tests / Release harness tests**
+  - Command: `node --test --test-reporter=spec tests/86chaos-release-gate/*.test.cjs`
+  - Required capability: node
+  - Mutates external test infrastructure: False
+  - Expected safe project: 
+- **Node / Server Unit Tests / Release harness tests serial**
+  - Command: `node --test --test-concurrency=1 --test-reporter=spec tests/86chaos-release-gate/*.test.cjs`
+  - Required capability: node
+  - Mutates external test infrastructure: False
+  - Expected safe project: 
+- **Client / React Tests / Client tests**
+  - Command: `npm run test:client -- --runInBand --verbose`
+  - Required capability: installed deps
+  - Mutates external test infrastructure: False
+  - Expected safe project: 
+- **Security / Firebase Rules / Firebase rules tests**
+  - Command: `npm run test:rules`
+  - Required capability: Java and Firebase emulator
+  - Mutates external test infrastructure: True
+  - Expected safe project: chaos-test-d1601
+- **Cost / Firestore Regression / Cost regression**
+  - Command: `npm run test:cost`
+  - Required capability: Firestore emulator
+  - Mutates external test infrastructure: True
+  - Expected safe project: chaos-test-d1601
+- **Repair Regression Pack / Repair current local**
+  - Command: `npm run test:repair-current:local`
+  - Required capability: node
+  - Mutates external test infrastructure: False
+  - Expected safe project: 
+- **Build / Lint / Lint**
+  - Command: `npm run lint`
+  - Required capability: installed deps
+  - Mutates external test infrastructure: False
+  - Expected safe project: 
+- **Build / Lint / Production build**
+  - Command: `npm run build`
+  - Required capability: installed deps
+  - Mutates external test infrastructure: False
+  - Expected safe project: 
+- **Safe Migration / Backup Dry Runs / Backup setup dry run**
+  - Command: `npm run backup:setup:dry-run`
+  - Required capability: safe Firebase config
+  - Mutates external test infrastructure: True
+  - Expected safe project: chaos-test-d1601
+- **Safe Migration / Backup Dry Runs / Workspace memberships dry run**
+  - Command: `npm run migrate:workspace-memberships:dry-run`
+  - Required capability: safe Firebase config
+  - Mutates external test infrastructure: True
+  - Expected safe project: chaos-test-d1601
+- **Safe Migration / Backup Dry Runs / Reminder migration dry run**
+  - Command: `npm run migrate:reminders:dry-run`
+  - Required capability: safe Firebase config
+  - Mutates external test infrastructure: True
+  - Expected safe project: chaos-test-d1601
+- **Safe Migration / Backup Dry Runs / Schedule migration dry run**
+  - Command: `npm run migrate:schedule:dry-run`
+  - Required capability: safe Firebase config
+  - Mutates external test infrastructure: True
+  - Expected safe project: chaos-test-d1601
+- **Safe Migration / Backup Dry Runs / Participant migration dry run**
+  - Command: `npm run migrate:participants:dry-run`
+  - Required capability: safe Firebase config
+  - Mutates external test infrastructure: True
+  - Expected safe project: chaos-test-d1601
+- **Full Browser Release Gate / Full Playwright release gate**
+  - Command: `npm run test:play-store`
+  - Required capability: safe QA deployment
+  - Mutates external test infrastructure: True
+  - Expected safe project: chaos-test-d1601

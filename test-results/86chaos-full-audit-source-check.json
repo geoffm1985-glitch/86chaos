@@ -1,0 +1,17 @@
+{
+  "ok": true,
+  "appVersion": "16.0.175",
+  "generatedAt": "2026-08-10T22:59:35.237Z",
+  "failures": [],
+  "warnings": [],
+  "filesChecked": [
+    "package.json",
+    "package-lock.json",
+    "public/version.json",
+    "src/core/appCore.js",
+    "src/features/schedule.jsx",
+    "src/features/management.jsx",
+    "src/App.js",
+    "src/components/Modal.js"
+  ]
+}

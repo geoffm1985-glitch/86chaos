@@ -1,0 +1,81 @@
+﻿86 CHAOS RELEASE GATE RUNNER SUMMARY
+Generated: 2026-08-10T23:28:39.4041244-05:00
+Run ID: 2026-08-10T23-25-36
+Root: C:\Users\geoff\Documents\GitHub\86chaos
+Run directory: C:\Users\geoff\Documents\GitHub\86chaos\test-results\86chaos-play-store-release-gate\2026-08-10T23-25-36
+APP_URL: https://86chaos-git-testing-cheers-portal-s-projects.vercel.app
+CHAOS_BASE_URL: https://86chaos-git-testing-cheers-portal-s-projects.vercel.app
+CHAOS_EXPECTED_VERSION: 16.0.184
+Primary blocking reason: Release gate blocked before Playwright because required local test modules or the local Playwright executable were missing.
+Original blocking failures: 1
+All failed steps including collector: 1
+
+STEPS
+- Environment preflight: PASS exit=0 counted=True log=C:\Users\geoff\Documents\GitHub\86chaos\test-results\86chaos-play-store-release-gate\2026-08-10T23-25-36\runner-logs\2026-08-10T23-25-36-Environment_preflight.log
+- Node version: PASS exit=0 counted=True log=C:\Users\geoff\Documents\GitHub\86chaos\test-results\86chaos-play-store-release-gate\2026-08-10T23-25-36\runner-logs\2026-08-10T23-25-36-Node_version.log
+- Lockfile integrity: PASS exit=0 counted=True log=C:\Users\geoff\Documents\GitHub\86chaos\test-results\86chaos-play-store-release-gate\2026-08-10T23-25-36\runner-logs\2026-08-10T23-25-36-Lockfile_integrity.log
+- Verify npm wrapper: PASS exit=0 counted=True log=C:\Users\geoff\Documents\GitHub\86chaos\test-results\86chaos-play-store-release-gate\2026-08-10T23-25-36\runner-logs\2026-08-10T23-25-36-Verify_npm_wrapper.log
+- Install locked test dependencies: PASS exit=0 counted=True log=C:\Users\geoff\Documents\GitHub\86chaos\test-results\86chaos-play-store-release-gate\2026-08-10T23-25-36\runner-logs\2026-08-10T23-25-36-Install_locked_test_dependencies.log
+- Dependency preflight: FAIL exit=1 counted=True log=C:\Users\geoff\Documents\GitHub\86chaos\test-results\86chaos-play-store-release-gate\2026-08-10T23-25-36\runner-logs\2026-08-10T23-25-36-Dependency_preflight.log
+- Collect report: PASS exit=0 counted=False log=C:\Users\geoff\Documents\GitHub\86chaos\test-results\86chaos-play-store-release-gate\2026-08-10T23-25-36\runner-logs\2026-08-10T23-25-36-Collect_report.log
+
+FAILED STEP LOG EXCERPTS
+
+==============================
+FAILED STEP: Dependency preflight
+LOG: C:\Users\geoff\Documents\GitHub\86chaos\test-results\86chaos-play-store-release-gate\2026-08-10T23-25-36\runner-logs\2026-08-10T23-25-36-Dependency_preflight.log
+==============================
+=== Dependency preflight ===
+Command: node scripts/86chaos-release-gate/dependency-preflight.cjs
+Started: 2026-08-10T23:28:36.4291258-05:00
+
+{
+  "ok": false,
+  "output": "C:\\Users\\geoff\\Documents\\GitHub\\86chaos\\test-results\\86chaos-play-store-release-gate\\2026-08-10T23-25-36\\dependency-preflight.json",
+  "nodeVersion": "v24.18.0",
+  "npmVersion": "",
+  "modules": [
+    {
+      "name": "@playwright/test",
+      "ok": true,
+      "version": "1.62.0"
+    },
+    {
+      "name": "@babel/parser",
+      "ok": true,
+      "version": "7.29.7"
+    },
+    {
+      "name": "@babel/traverse",
+      "ok": true,
+      "version": "7.29.7"
+    },
+    {
+      "name": "vite",
+      "ok": true,
+      "version": "8.1.5"
+    },
+    {
+      "name": "@vitejs/plugin-react",
+      "ok": false,
+      "version": ""
+    },
+    {
+      "name": "jest",
+      "ok": true,
+      "version": "27.5.1"
+    },
+    {
+      "name": "eslint",
+      "ok": true,
+      "version": "8.57.1"
+    }
+  ],
+  "localPlaywrightExecutablePath": "C:\\Users\\geoff\\Documents\\GitHub\\86chaos\\node_modules\\.bin\\playwright.cmd",
+  "errors": [
+    "Required local test module is missing: @vitejs/plugin-react. Run npm ci --include=dev --no-audit --no-fund from the app root."
+  ]
+}
+
+Finished: 2026-08-10T23:28:37.8372072-05:00
+ExitCode: 1

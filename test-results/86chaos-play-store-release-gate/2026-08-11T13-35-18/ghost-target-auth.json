@@ -1,0 +1,21 @@
+{
+  "key": "GHOST_TARGET",
+  "label": "Ghost Target QA",
+  "email": "86chaos.qa+ghost-target.2026-08-11t13-35-18@86chaos.test",
+  "uid": "3yAKQx8EZYTh0dDItw83FEvu3P12",
+  "authUid": "3yAKQx8EZYTh0dDItw83FEvu3P12",
+  "created": true,
+  "displayName": "Allen QA",
+  "qaRoleClaim": "ghostTarget",
+  "customClaimKeysProcessed": [
+    "chaosSystemAdministrator",
+    "qaReleaseGateOnly",
+    "qaReleaseGateRole",
+    "superAdmin",
+    "systemAdmin",
+    "systemAdministrator"
+  ],
+  "enabledCustomClaims": [
+    "qaReleaseGateOnly"
+  ]
+}

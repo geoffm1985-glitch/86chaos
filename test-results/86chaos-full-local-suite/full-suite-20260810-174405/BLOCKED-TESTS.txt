@@ -1,0 +1,35 @@
+﻿STEP: Cost / Firestore Regression / Cost regression
+MISSING PREREQUISITE: FIRESTORE_EMULATOR_HOST is not configured.
+COMMAND: npm run test:cost
+HOW TO UNBLOCK: install/configure the prerequisite or use chaos-test-d1601 safe QA infrastructure as required.
+
+STEP: Safe Migration / Backup Dry Runs / Backup setup dry run
+MISSING PREREQUISITE: Safe Firebase dry-run target is not exactly chaos-test-d1601.
+COMMAND: npm run backup:setup:dry-run
+HOW TO UNBLOCK: install/configure the prerequisite or use chaos-test-d1601 safe QA infrastructure as required.
+
+STEP: Safe Migration / Backup Dry Runs / Workspace memberships dry run
+MISSING PREREQUISITE: Safe Firebase dry-run target is not exactly chaos-test-d1601.
+COMMAND: npm run migrate:workspace-memberships:dry-run
+HOW TO UNBLOCK: install/configure the prerequisite or use chaos-test-d1601 safe QA infrastructure as required.
+
+STEP: Safe Migration / Backup Dry Runs / Reminder migration dry run
+MISSING PREREQUISITE: Safe Firebase dry-run target is not exactly chaos-test-d1601.
+COMMAND: npm run migrate:reminders:dry-run
+HOW TO UNBLOCK: install/configure the prerequisite or use chaos-test-d1601 safe QA infrastructure as required.
+
+STEP: Safe Migration / Backup Dry Runs / Schedule migration dry run
+MISSING PREREQUISITE: Safe Firebase dry-run target is not exactly chaos-test-d1601.
+COMMAND: npm run migrate:schedule:dry-run
+HOW TO UNBLOCK: install/configure the prerequisite or use chaos-test-d1601 safe QA infrastructure as required.
+
+STEP: Safe Migration / Backup Dry Runs / Participant migration dry run
+MISSING PREREQUISITE: Safe Firebase dry-run target is not exactly chaos-test-d1601.
+COMMAND: npm run migrate:participants:dry-run
+HOW TO UNBLOCK: install/configure the prerequisite or use chaos-test-d1601 safe QA infrastructure as required.
+
+STEP: Full Browser Release Gate / Full Playwright release gate
+MISSING PREREQUISITE: Firebase project is not exactly chaos-test-d1601.
+COMMAND: npm run test:play-store
+HOW TO UNBLOCK: install/configure the prerequisite or use chaos-test-d1601 safe QA infrastructure as required.
+

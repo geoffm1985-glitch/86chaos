@@ -1,0 +1,71 @@
+﻿{
+    "runId":  "2026-08-10T01-08-29",
+    "generatedAt":  "2026-08-10T01:08:29.3005495-05:00",
+    "updatedAt":  "2026-08-10T01:08:41.4261846-05:00",
+    "currentPhase":  "install-locked-test-dependencies",
+    "dependencyInstallAttempted":  true,
+    "dependencyInstallPassed":  false,
+    "dependencyPreflightPassed":  false,
+    "sourceInventoryPassed":  false,
+    "browserInstallPassed":  false,
+    "serverIdentityPreflightStarted":  false,
+    "serverIdentityPreflightPassed":  false,
+    "serverIdentityPreflightFailureCategory":  "",
+    "serverIdentityPreflightPrimaryBlocker":  "",
+    "testAccountProvisionAttempted":  false,
+    "testAccountProvisionPassed":  false,
+    "rolePreflightStarted":  false,
+    "rolePreflightPassed":  false,
+    "playwrightStarted":  false,
+    "globalSetupStarted":  false,
+    "qaSeedProcessStarted":  false,
+    "qaDataWritesStarted":  false,
+    "qaRestaurantCreated":  false,
+    "qaSeedAttempted":  false,
+    "qaSeedVerified":  false,
+    "cleanupAttempted":  false,
+    "cleanupCompleted":  false,
+    "cleanupRefusalReason":  "",
+    "blockingReason":  "",
+    "status":  "running",
+    "startedAt":  "2026-08-10T01:08:29.3005495-05:00",
+    "finishedAt":  "",
+    "lastCompletedStep":  "Verify npm wrapper",
+    "anyTestsRan":  false,
+    "blockedBeforeTestExecution":  false,
+    "finalExitCode":  null,
+    "steps":  [
+                  {
+                      "name":  "Environment preflight",
+                      "exitCode":  0,
+                      "passed":  true,
+                      "logPath":  "C:\\Users\\geoff\\Documents\\GitHub\\86chaos\\test-results\\86chaos-play-store-release-gate\\2026-08-10T01-08-29\\runner-logs\\2026-08-10T01-08-29-Environment_preflight.log",
+                      "countsAsFailure":  true,
+                      "finishedAt":  "2026-08-10T01:08:32.1654328-05:00"
+                  },
+                  {
+                      "name":  "Node version",
+                      "exitCode":  0,
+                      "passed":  true,
+                      "logPath":  "C:\\Users\\geoff\\Documents\\GitHub\\86chaos\\test-results\\86chaos-play-store-release-gate\\2026-08-10T01-08-29\\runner-logs\\2026-08-10T01-08-29-Node_version.log",
+                      "countsAsFailure":  true,
+                      "finishedAt":  "2026-08-10T01:08:35.5632158-05:00"
+                  },
+                  {
+                      "name":  "Lockfile integrity",
+                      "exitCode":  0,
+                      "passed":  true,
+                      "logPath":  "C:\\Users\\geoff\\Documents\\GitHub\\86chaos\\test-results\\86chaos-play-store-release-gate\\2026-08-10T01-08-29\\runner-logs\\2026-08-10T01-08-29-Lockfile_integrity.log",
+                      "countsAsFailure":  true,
+                      "finishedAt":  "2026-08-10T01:08:38.9692298-05:00"
+                  },
+                  {
+                      "name":  "Verify npm wrapper",
+                      "exitCode":  0,
+                      "passed":  true,
+                      "logPath":  "C:\\Users\\geoff\\Documents\\GitHub\\86chaos\\test-results\\86chaos-play-store-release-gate\\2026-08-10T01-08-29\\runner-logs\\2026-08-10T01-08-29-Verify_npm_wrapper.log",
+                      "countsAsFailure":  true,
+                      "finishedAt":  "2026-08-10T01:08:41.4121141-05:00"
+                  }
+              ]
+}

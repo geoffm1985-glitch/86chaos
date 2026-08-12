@@ -1,0 +1,19 @@
+﻿=== Verify deployed server Firebase boundary ===
+Command: node scripts/86chaos-release-gate/server-firebase-boundary-preflight.cjs
+Started: 2026-08-11T15:42:33.9077712-05:00
+
+{
+  "ok": true,
+  "output": "C:\\Users\\geoff\\Documents\\GitHub\\86chaos\\test-results\\86chaos-play-store-release-gate\\2026-08-11T15-39-07\\server-firebase-boundary-preflight.json",
+  "failureCategory": "",
+  "primaryBlockingFailure": "",
+  "expectedFirebaseProjectId": "chaos-test-d1601",
+  "clientFirebaseProjectId": "chaos-test-d1601",
+  "deployedServerFirebaseProjectId": "chaos-test-d1601",
+  "credentialSourceName": "firebase-custom-claim",
+  "beforeMutation": true,
+  "errors": []
+}
+
+Finished: 2026-08-11T15:42:36.4390568-05:00
+ExitCode: 0

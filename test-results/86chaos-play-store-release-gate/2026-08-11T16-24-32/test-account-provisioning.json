@@ -1,0 +1,161 @@
+{
+  "ok": true,
+  "skipped": false,
+  "runId": "2026-08-11T16-24-32",
+  "generatedAt": "2026-08-11T21:28:08.640Z",
+  "firebaseProjectId": "chaos-test-d1601",
+  "mutationSafety": {
+    "ok": true,
+    "errors": [],
+    "projectId": "chaos-test-d1601",
+    "projectSources": {
+      "optionProjectId": "chaos-test-d1601",
+      "credentialProjectId": ""
+    },
+    "projectIdentitiesCompared": [
+      "chaos-test-d1601"
+    ],
+    "projectIdentitySupplied": true,
+    "host": "86chaos-git-testing-cheers-portal-s-projects.vercel.app",
+    "runId": "2026-08-11T16-24-32",
+    "testingProject": "chaos-test-d1601",
+    "productionProject": "cheers-34b8d",
+    "qaEmailsApproved": true
+  },
+  "accounts": [
+    {
+      "key": "systemAdmin",
+      "label": "System Administrator",
+      "emailEnv": "SYSTEM_ADMIN_EMAIL",
+      "email": "86chaos.qa.system-admin.20260729-1302@example.test",
+      "uid": "cmLRtL0CwxgBCYpzjCnVfhh6Lgd2",
+      "created": false,
+      "customClaimKeysProcessed": [
+        "chaosSystemAdministrator",
+        "qaReleaseGateOnly",
+        "qaReleaseGateRole",
+        "superAdmin",
+        "systemAdmin",
+        "systemAdministrator"
+      ],
+      "enabledCustomClaims": [
+        "chaosSystemAdministrator",
+        "qaReleaseGateOnly",
+        "superAdmin",
+        "systemAdmin",
+        "systemAdministrator"
+      ],
+      "qaRoleClaim": "systemAdmin",
+      "expectedSuperAdmin": true,
+      "profileWrite": {
+        "skipped": false,
+        "collection": "users",
+        "id": "cmLRtL0CwxgBCYpzjCnVfhh6Lgd2"
+      }
+    },
+    {
+      "key": "owner",
+      "label": "Owner",
+      "emailEnv": "OWNER_EMAIL",
+      "email": "86chaos.qa.owner.20260729-1302@example.test",
+      "uid": "3eiR9IceYeWgnP9BJG9rCWEWoOK2",
+      "created": false,
+      "customClaimKeysProcessed": [
+        "chaosSystemAdministrator",
+        "qaReleaseGateOnly",
+        "qaReleaseGateRole",
+        "superAdmin",
+        "systemAdmin",
+        "systemAdministrator"
+      ],
+      "enabledCustomClaims": [
+        "qaReleaseGateOnly"
+      ],
+      "qaRoleClaim": "owner",
+      "expectedSuperAdmin": false,
+      "profileWrite": {
+        "skipped": false,
+        "collection": "users",
+        "id": "3eiR9IceYeWgnP9BJG9rCWEWoOK2"
+      }
+    },
+    {
+      "key": "manager",
+      "label": "Manager",
+      "emailEnv": "MANAGER_EMAIL",
+      "email": "86chaos.qa.manager.20260729-1302@example.test",
+      "uid": "UNn3N2166lZchR4Dk2YtSzLg0B63",
+      "created": false,
+      "customClaimKeysProcessed": [
+        "chaosSystemAdministrator",
+        "qaReleaseGateOnly",
+        "qaReleaseGateRole",
+        "superAdmin",
+        "systemAdmin",
+        "systemAdministrator"
+      ],
+      "enabledCustomClaims": [
+        "qaReleaseGateOnly"
+      ],
+      "qaRoleClaim": "manager",
+      "expectedSuperAdmin": false,
+      "profileWrite": {
+        "skipped": false,
+        "collection": "users",
+        "id": "UNn3N2166lZchR4Dk2YtSzLg0B63"
+      }
+    },
+    {
+      "key": "staff",
+      "label": "Staff",
+      "emailEnv": "STAFF_EMAIL",
+      "email": "86chaos.qa.staff.20260729-1302@example.test",
+      "uid": "xRnSzqBgDbQFL3IwrkV4eYeTln93",
+      "created": false,
+      "customClaimKeysProcessed": [
+        "chaosSystemAdministrator",
+        "qaReleaseGateOnly",
+        "qaReleaseGateRole",
+        "superAdmin",
+        "systemAdmin",
+        "systemAdministrator"
+      ],
+      "enabledCustomClaims": [
+        "qaReleaseGateOnly"
+      ],
+      "qaRoleClaim": "staff",
+      "expectedSuperAdmin": false,
+      "profileWrite": {
+        "skipped": false,
+        "collection": "users",
+        "id": "xRnSzqBgDbQFL3IwrkV4eYeTln93"
+      }
+    }
+  ],
+  "errors": [],
+  "notes": [
+    "Temporary Ghost-target Auth account was provisioned for release-gate browser verification; password is stored only in the current-run runtime secret file and is excluded from reports.",
+    "Passwords, tokens, service-account values, and API keys are intentionally not written to this report."
+  ],
+  "ghostTargetAuth": {
+    "key": "GHOST_TARGET",
+    "label": "Ghost Target QA",
+    "email": "86chaos.qa+ghost-target.2026-08-11t16-24-32@86chaos.test",
+    "uid": "h96qCWqLjnMRLLDzz4nnShmar0z1",
+    "authUid": "h96qCWqLjnMRLLDzz4nnShmar0z1",
+    "created": true,
+    "displayName": "Allen QA",
+    "qaRoleClaim": "ghostTarget",
+    "customClaimKeysProcessed": [
+      "chaosSystemAdministrator",
+      "qaReleaseGateOnly",
+      "qaReleaseGateRole",
+      "superAdmin",
+      "systemAdmin",
+      "systemAdministrator"
+    ],
+    "enabledCustomClaims": [
+      "qaReleaseGateOnly"
+    ]
+  }
+}

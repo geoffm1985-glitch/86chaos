@@ -1,0 +1,95 @@
+﻿{
+    "runId":  "2026-08-10T23-25-36",
+    "generatedAt":  "2026-08-10T23:25:36.5489378-05:00",
+    "updatedAt":  "2026-08-10T23:28:43.1301370-05:00",
+    "currentPhase":  "report-collection",
+    "dependencyInstallAttempted":  true,
+    "dependencyInstallPassed":  true,
+    "dependencyPreflightPassed":  false,
+    "sourceInventoryPassed":  false,
+    "browserInstallPassed":  false,
+    "serverIdentityPreflightStarted":  false,
+    "serverIdentityPreflightPassed":  false,
+    "serverIdentityPreflightFailureCategory":  "",
+    "serverIdentityPreflightPrimaryBlocker":  "",
+    "testAccountProvisionAttempted":  false,
+    "testAccountProvisionPassed":  false,
+    "rolePreflightStarted":  false,
+    "rolePreflightPassed":  false,
+    "playwrightStarted":  false,
+    "globalSetupStarted":  false,
+    "qaSeedProcessStarted":  false,
+    "qaDataWritesStarted":  false,
+    "qaRestaurantCreated":  false,
+    "qaSeedAttempted":  false,
+    "qaSeedVerified":  false,
+    "cleanupAttempted":  false,
+    "cleanupCompleted":  false,
+    "cleanupRefusalReason":  "",
+    "blockingReason":  "Release gate blocked before Playwright because required local test modules or the local Playwright executable were missing.",
+    "status":  "blocked",
+    "startedAt":  "2026-08-10T23:25:36.5489378-05:00",
+    "finishedAt":  "2026-08-10T23:28:37.9526071-05:00",
+    "lastCompletedStep":  "Collect report",
+    "anyTestsRan":  false,
+    "blockedBeforeTestExecution":  true,
+    "finalExitCode":  1,
+    "steps":  [
+                  {
+                      "name":  "Environment preflight",
+                      "exitCode":  0,
+                      "passed":  true,
+                      "logPath":  "C:\\Users\\geoff\\Documents\\GitHub\\86chaos\\test-results\\86chaos-play-store-release-gate\\2026-08-10T23-25-36\\runner-logs\\2026-08-10T23-25-36-Environment_preflight.log",
+                      "countsAsFailure":  true,
+                      "finishedAt":  "2026-08-10T23:25:38.9285104-05:00"
+                  },
+                  {
+                      "name":  "Node version",
+                      "exitCode":  0,
+                      "passed":  true,
+                      "logPath":  "C:\\Users\\geoff\\Documents\\GitHub\\86chaos\\test-results\\86chaos-play-store-release-gate\\2026-08-10T23-25-36\\runner-logs\\2026-08-10T23-25-36-Node_version.log",
+                      "countsAsFailure":  true,
+                      "finishedAt":  "2026-08-10T23:25:42.9726210-05:00"
+                  },
+                  {
+                      "name":  "Lockfile integrity",
+                      "exitCode":  0,
+                      "passed":  true,
+                      "logPath":  "C:\\Users\\geoff\\Documents\\GitHub\\86chaos\\test-results\\86chaos-play-store-release-gate\\2026-08-10T23-25-36\\runner-logs\\2026-08-10T23-25-36-Lockfile_integrity.log",
+                      "countsAsFailure":  true,
+                      "finishedAt":  "2026-08-10T23:25:46.6816471-05:00"
+                  },
+                  {
+                      "name":  "Verify npm wrapper",
+                      "exitCode":  0,
+                      "passed":  true,
+                      "logPath":  "C:\\Users\\geoff\\Documents\\GitHub\\86chaos\\test-results\\86chaos-play-store-release-gate\\2026-08-10T23-25-36\\runner-logs\\2026-08-10T23-25-36-Verify_npm_wrapper.log",
+                      "countsAsFailure":  true,
+                      "finishedAt":  "2026-08-10T23:25:49.3152595-05:00"
+                  },
+                  {
+                      "name":  "Install locked test dependencies",
+                      "exitCode":  0,
+                      "passed":  true,
+                      "logPath":  "C:\\Users\\geoff\\Documents\\GitHub\\86chaos\\test-results\\86chaos-play-store-release-gate\\2026-08-10T23-25-36\\runner-logs\\2026-08-10T23-25-36-Install_locked_test_dependencies.log",
+                      "countsAsFailure":  true,
+                      "finishedAt":  "2026-08-10T23:28:36.3877748-05:00"
+                  },
+                  {
+                      "name":  "Dependency preflight",
+                      "exitCode":  1,
+                      "passed":  false,
+                      "logPath":  "C:\\Users\\geoff\\Documents\\GitHub\\86chaos\\test-results\\86chaos-play-store-release-gate\\2026-08-10T23-25-36\\runner-logs\\2026-08-10T23-25-36-Dependency_preflight.log",
+                      "countsAsFailure":  true,
+                      "finishedAt":  "2026-08-10T23:28:37.8447590-05:00"
+                  },
+                  {
+                      "name":  "Collect report",
+                      "exitCode":  0,
+                      "passed":  true,
+                      "logPath":  "C:\\Users\\geoff\\Documents\\GitHub\\86chaos\\test-results\\86chaos-play-store-release-gate\\2026-08-10T23-25-36\\runner-logs\\2026-08-10T23-25-36-Collect_report.log",
+                      "countsAsFailure":  false,
+                      "finishedAt":  "2026-08-10T23:28:39.2315371-05:00"
+                  }
+              ]
+}

@@ -214,12 +214,40 @@ const cleanScheduleDisplayName = (value = '') => {
   return text;
 };
 
-const getSchedulePersonName = (person = {}) => cleanScheduleDisplayName(
-  person?.employeeName || person?.name || person?.displayName || person?.fullName || person?.assignedName || person?.email || person?.employeeEmail || ''
+const looksLikeGeneratedLoginName = (value = '') => {
+  const text = cleanScheduleDisplayName(value);
+  if (!text) return false;
+  const compact = text.toLowerCase().replace(/[^a-z0-9]/g, '');
+  const emailStem = compact.replace(/@.*$/, '');
+  return /^[a-z][a-z0-9._-]{2,}\d{2,4}$/.test(emailStem) || /^[a-z]{2,}\d{4}$/.test(emailStem);
+};
+
+const pickScheduleDisplayName = (...values) => {
+  const names = values.map(cleanScheduleDisplayName).filter(Boolean);
+  const human = names.find(name => !looksLikeGeneratedLoginName(name));
+  return human || names[0] || '';
+};
+
+const getSchedulePersonName = (person = {}) => pickScheduleDisplayName(
+  person?.employeeName,
+  person?.displayName,
+  person?.fullName,
+  person?.assignedName,
+  person?.name,
+  person?.email,
+  person?.employeeEmail
 );
 
-const getScheduleShiftFallbackName = (shift = {}) => cleanScheduleDisplayName(
-  shift?.employeeName || shift?.assignedName || shift?.userName || shift?.name || shift?.displayName || shift?.employeeEmail || shift?.assignedEmail || shift?.email || ''
+const getScheduleShiftFallbackName = (shift = {}) => pickScheduleDisplayName(
+  shift?.employeeName,
+  shift?.assignedName,
+  shift?.userName,
+  shift?.displayName,
+  shift?.fullName,
+  shift?.name,
+  shift?.employeeEmail,
+  shift?.assignedEmail,
+  shift?.email
 );
 
 const resolveScheduleShiftPersonForDisplay = (shift = {}, roster = []) => {
@@ -237,7 +265,7 @@ const resolveScheduleShiftPersonForDisplay = (shift = {}, roster = []) => {
 
 const getScheduleShiftDisplayName = (shift = {}, roster = [], fallback = 'Unassigned') => {
   const person = resolveScheduleShiftPersonForDisplay(shift, roster);
-  return getSchedulePersonName(person) || getScheduleShiftFallbackName(shift) || fallback;
+  return pickScheduleDisplayName(getScheduleShiftFallbackName(shift), getSchedulePersonName(person), fallback) || fallback;
 };
 
 const getScheduleShiftMonthLabels = (shift = {}, roster = []) => {
@@ -443,6 +471,66 @@ const dedupeScheduleShiftsByDatePersonTime = (shiftList = []) => {
     seen.add(key);
     return true;
   });
+};
+
+const isExplicitScheduleDraft = (shift = {}) => {
+  const tokens = [shift?.status, shift?.publishStatus, shift?.publishState, shift?.schedulePublishStatus, shift?.visibility, shift?.recordStatus]
+    .map(value => String(value || '').toLowerCase().trim())
+    .filter(Boolean);
+  return shift?.draft === true
+    || shift?.scheduleBuilderDraft === true
+    || shift?.readyToPublish === true
+    || (shift?.isPublished === false && shift?.published !== true && shift?.isLive !== true && shift?.schedulePublished !== true)
+    || tokens.some(token => ['draft', 'unpublished', 'pending'].includes(token));
+};
+
+const hasExplicitOpenShiftIntent = (shift = {}) => Boolean(
+  shift?.openShift === true
+  || shift?.isOpenShift === true
+  || shift?.availableForClaim === true
+  || shift?.claimable === true
+  || String(shift?.assignmentSource || shift?.source || '').toLowerCase().includes('open_shift')
+);
+
+const shiftHasAssignedPersonEvidence = (shift = {}, roster = []) => {
+  if (resolveScheduleShiftPersonForDisplay(shift, roster)) return true;
+  const durable = [shift?.scheduleUserId, shift?.employeeId, shift?.rosterUserId, shift?.userId, shift?.accountUserId, shift?.assignedUserId, shift?.uid, shift?.authUid]
+    .map(normalizeScheduleIdentity)
+    .filter(Boolean);
+  const emails = [shift?.employeeEmail, shift?.userEmail, shift?.email, shift?.assignedEmail]
+    .map(normalizeScheduleIdentity)
+    .filter(Boolean);
+  const names = [shift?.employeeName, shift?.userName, shift?.name, shift?.displayName, shift?.assignedName]
+    .map(cleanScheduleDisplayName)
+    .filter(Boolean);
+  const unassignedNames = new Set(['unassigned', 'open', 'open shift', 'staff needed', 'coverage needed']);
+  const hasHumanName = names.some(name => !unassignedNames.has(name.toLowerCase()) && !/^unknown/i.test(name));
+  return durable.length > 0 || emails.length > 0 || hasHumanName;
+};
+
+const getScheduleSlotKey = (shift = {}) => [
+  getShiftDateKey(shift),
+  cleanScheduleRoleName(shift?.role || 'Unassigned').toLowerCase(),
+  normalizeShiftTimeForFingerprint(shift?.startTime),
+  normalizeShiftTimeForFingerprint(shift?.endTime)
+].join('|');
+
+const cleanPublishedScheduleDisplayShifts = (shiftList = [], roster = []) => {
+  const published = (shiftList || []).filter(shift => !isDeletedScheduleShift(shift) && isScheduleShiftPublished(shift));
+  const assignedSlotKeys = new Set(published
+    .filter(shift => shiftHasAssignedPersonEvidence(shift, roster))
+    .map(getScheduleSlotKey)
+    .filter(Boolean));
+  const safeVisible = published.filter(shift => {
+    if (isExplicitScheduleDraft(shift)) return false;
+    if (shiftHasAssignedPersonEvidence(shift, roster)) return true;
+    if (hasExplicitOpenShiftIntent(shift)) return true;
+    // Do not let old draft/coverage placeholders contaminate published schedule views.
+    if (assignedSlotKeys.has(getScheduleSlotKey(shift))) return false;
+    return false;
+  });
+  return dedupeScheduleShiftsByDatePersonTime(safeVisible)
+    .sort((a,b) => getShiftDateKey(a) === getShiftDateKey(b) ? (a.startTime || '').localeCompare(b.startTime || '') : getShiftDateKey(a).localeCompare(getShiftDateKey(b)));
 };
 
 const getShiftPublishIdentity = (shift = {}) => {
@@ -796,6 +884,7 @@ export const isDeletedScheduleShift = (shift = {}) => {
 
 const isScheduleShiftPublished = (shift = {}) => {
   if (isDeletedScheduleShift(shift)) return false;
+  if (isExplicitScheduleDraft(shift)) return false;
   const statusBlob = [
     shift?.status,
     shift?.publishStatus,
@@ -1374,9 +1463,8 @@ const handleOfferSwap = async (shift) => {
   const myNextShift = (shifts || [])
     .filter(isMyMasterUpcomingShift)
     .sort(compareShiftsByStartDateTime)[0] || null;
-  const activeMonthShifts = (shifts || [])
-    .filter(s => !isDeletedScheduleShift(s) && getShiftDateKey(s).startsWith(monthStr) && isScheduleShiftPublished(s))
-    .sort((a,b) => getShiftDateKey(a) === getShiftDateKey(b) ? (a.startTime || '').localeCompare(b.startTime || '') : getShiftDateKey(a).localeCompare(getShiftDateKey(b)));
+  const activeMonthShifts = cleanPublishedScheduleDisplayShifts(shifts || [], users)
+    .filter(s => getShiftDateKey(s).startsWith(monthStr));
 
   const effectiveActivePunch = clockActionBusy && clockActionType === 'out' ? (clockActionPunch || activePunch) : (activePunch && !(clockActionBusy && clockActionType === 'in') ? activePunch : null);
 
@@ -1559,7 +1647,7 @@ const handleOfferSwap = async (shift) => {
         const pickerMonth = fullSchedulePickerMonth || monthStr;
         const pickerDays = Array.from({ length: getDaysInMonth(pickerMonth) }).map((_, i) => `${pickerMonth}-${String(i + 1).padStart(2, '0')}`);
         const pickerFirstDayOffset = new Date(pickerMonth + '-01T12:00:00').getDay();
-        const publishedShiftDays = new Set(shifts.filter(s => isScheduleShiftPublished(s) && String(s.date || s.scheduleDateKey || '').startsWith(pickerMonth)).map(s => getShiftDateKey(s))); 
+        const publishedShiftDays = new Set(cleanPublishedScheduleDisplayShifts(shifts || [], users).filter(s => String(s.date || s.scheduleDateKey || '').startsWith(pickerMonth)).map(s => getShiftDateKey(s))); 
         return (
           <div className={`${T.card} overflow-hidden animate-[slideIn_0.2s_ease-out]`}>
             <div className="bg-[#12161A] p-3 border-b border-[#2A353D] flex flex-col gap-3">
@@ -4262,8 +4350,8 @@ const TabMonth = ({ currentDate, users, shifts, appUser, addToast }) => {
     const schedulePerson = getSchedulePersonForAppUser(appUser, users);
     const dayRows = Array.from({ length: days }).map((_, i) => {
       const date = `${monthStr}-${String(i + 1).padStart(2,'0')}`;
-      const shiftsForDay = shifts
-        .filter(s => getShiftDateKey(s) === date && isScheduleShiftPublished(s) && (roleFilter === 'All' || (roleFilter === 'ME' ? shiftMatchesPerson(s, schedulePerson, users) : s.role === roleFilter)))
+      const shiftsForDay = cleanPublishedScheduleDisplayShifts(shifts || [], users)
+        .filter(s => getShiftDateKey(s) === date && (roleFilter === 'All' || (roleFilter === 'ME' ? shiftMatchesPerson(s, schedulePerson, users) : s.role === roleFilter)))
         .sort((a, b) => {
           if (a.role !== b.role) return (a.role || '').localeCompare(b.role || '');
           return (a.startTime || '').localeCompare(b.startTime || '');

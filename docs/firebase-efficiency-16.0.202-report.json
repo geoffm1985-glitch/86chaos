@@ -1,5 +1,5 @@
 {
-  "version": "16.0.202",
+  "version": "16.0.203",
   "base": "16.0.174",
   "title": "Firebase Read/Write Reduction Baseline from 16.0.174",
   "scope": "Conservative read/write reductions only; no Schedule/navigation rewrite and no Firebase rules/index/config changes.",

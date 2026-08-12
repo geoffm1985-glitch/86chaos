@@ -1,0 +1,35 @@
+﻿=== Collect report ===
+Command: node scripts/86chaos-release-gate/collect-release-gate-report.cjs
+Started: 2026-08-11T15:49:55.6134288-05:00
+
+============================================================
+86 CHAOS TEST RESULT
+
+MODE:      full
+TOTAL:     0
+PASS:      0
+FAIL:      0
+TIMEOUT:   0
+SKIP:      0
+
+RESULT: BLOCKED BEFORE TEST EXECUTION
+
+Primary blocker: server tests: api\app-only-package-hygiene-16-0-188.test.cjs: app-only hygiene rejects forbidden source-controlled artifacts and packaged local secrets (1993.0226ms): AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:
+
+Failed / timed-out tests:
+Not evaluated - Playwright did not start.
+Existing failed-test lineage was not cleared by this blocked run.
+
+Next command: Fix the blocker above, then rerun npm run test:play-store
+
+Artifacts:
+C:\Users\geoff\Documents\GitHub\86chaos\test-results\86chaos-play-store-release-gate\2026-08-11T15-39-07
+============================================================
+
+Human summary: C:\Users\geoff\Documents\GitHub\86chaos\test-results\86chaos-play-store-release-gate\2026-08-11T15-39-07\TEST-SUMMARY.txt
+Failed tests: C:\Users\geoff\Documents\GitHub\86chaos\test-results\86chaos-play-store-release-gate\2026-08-11T15-39-07\FAILED-TESTS.txt
+Structured summary: C:\Users\geoff\Documents\GitHub\86chaos\test-results\86chaos-play-store-release-gate\2026-08-11T15-39-07\86chaos-play-store-release-gate-summary-16.0.196-2026-08-11T15-39-07.json
+Full text report: C:\Users\geoff\Documents\GitHub\86chaos\test-results\86chaos-play-store-release-gate\2026-08-11T15-39-07\86chaos-play-store-release-gate-UPLOAD-ME-16.0.196-2026-08-11T15-39-07.txt
+
+Finished: 2026-08-11T15:49:56.7096116-05:00
+ExitCode: 0

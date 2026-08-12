@@ -1,0 +1,254 @@
+﻿86 CHAOS RELEASE GATE RUNNER SUMMARY
+Generated: 2026-08-11T13:46:08.9004764-05:00
+Run ID: 2026-08-11T13-35-18
+Root: C:\Users\geoff\Documents\GitHub\86chaos
+Run directory: C:\Users\geoff\Documents\GitHub\86chaos\test-results\86chaos-play-store-release-gate\2026-08-11T13-35-18
+APP_URL: https://86chaos-git-testing-cheers-portal-s-projects.vercel.app
+CHAOS_BASE_URL: https://86chaos-git-testing-cheers-portal-s-projects.vercel.app
+CHAOS_EXPECTED_VERSION: 16.0.194
+Primary blocking reason: Release gate BLOCKED BEFORE PLAYWRIGHT because required local source/unit/build/rules checks failed or were blocked. See node-test-live-summary.json.
+Original blocking failures: 1
+All failed steps including collector: 1
+
+STEPS
+- Environment preflight: PASS exit=0 counted=True log=C:\Users\geoff\Documents\GitHub\86chaos\test-results\86chaos-play-store-release-gate\2026-08-11T13-35-18\runner-logs\2026-08-11T13-35-18-Environment_preflight.log
+- Node version: PASS exit=0 counted=True log=C:\Users\geoff\Documents\GitHub\86chaos\test-results\86chaos-play-store-release-gate\2026-08-11T13-35-18\runner-logs\2026-08-11T13-35-18-Node_version.log
+- Lockfile integrity: PASS exit=0 counted=True log=C:\Users\geoff\Documents\GitHub\86chaos\test-results\86chaos-play-store-release-gate\2026-08-11T13-35-18\runner-logs\2026-08-11T13-35-18-Lockfile_integrity.log
+- Verify npm wrapper: PASS exit=0 counted=True log=C:\Users\geoff\Documents\GitHub\86chaos\test-results\86chaos-play-store-release-gate\2026-08-11T13-35-18\runner-logs\2026-08-11T13-35-18-Verify_npm_wrapper.log
+- Install locked test dependencies: PASS exit=0 counted=True log=C:\Users\geoff\Documents\GitHub\86chaos\test-results\86chaos-play-store-release-gate\2026-08-11T13-35-18\runner-logs\2026-08-11T13-35-18-Install_locked_test_dependencies.log
+- Dependency preflight: PASS exit=0 counted=True log=C:\Users\geoff\Documents\GitHub\86chaos\test-results\86chaos-play-store-release-gate\2026-08-11T13-35-18\runner-logs\2026-08-11T13-35-18-Dependency_preflight.log
+- Source inventory: PASS exit=0 counted=True log=C:\Users\geoff\Documents\GitHub\86chaos\test-results\86chaos-play-store-release-gate\2026-08-11T13-35-18\runner-logs\2026-08-11T13-35-18-Source_inventory.log
+- Install Playwright browsers: PASS exit=0 counted=True log=C:\Users\geoff\Documents\GitHub\86chaos\test-results\86chaos-play-store-release-gate\2026-08-11T13-35-18\runner-logs\2026-08-11T13-35-18-Install_Playwright_browsers.log
+- Verify deployed server Firebase boundary: PASS exit=0 counted=True log=C:\Users\geoff\Documents\GitHub\86chaos\test-results\86chaos-play-store-release-gate\2026-08-11T13-35-18\runner-logs\2026-08-11T13-35-18-Verify_deployed_server_Firebase_boundary.log
+- Provision temporary release-gate test accounts: PASS exit=0 counted=True log=C:\Users\geoff\Documents\GitHub\86chaos\test-results\86chaos-play-store-release-gate\2026-08-11T13-35-18\runner-logs\2026-08-11T13-35-18-Provision_temporary_release-gate_test_accounts.log
+- Verify release-gate role accounts: PASS exit=0 counted=True log=C:\Users\geoff\Documents\GitHub\86chaos\test-results\86chaos-play-store-release-gate\2026-08-11T13-35-18\runner-logs\2026-08-11T13-35-18-Verify_release-gate_role_accounts.log
+- Java prerequisite: PASS exit=0 counted=True log=C:\Users\geoff\Documents\GitHub\86chaos\test-results\86chaos-play-store-release-gate\2026-08-11T13-35-18\runner-logs\2026-08-11T13-35-18-Java_prerequisite.log
+- Local release readiness checks: FAIL exit=1 counted=True log=C:\Users\geoff\Documents\GitHub\86chaos\test-results\86chaos-play-store-release-gate\2026-08-11T13-35-18\runner-logs\2026-08-11T13-35-18-Local_release_readiness_checks.log
+- Collect report: PASS exit=0 counted=False log=C:\Users\geoff\Documents\GitHub\86chaos\test-results\86chaos-play-store-release-gate\2026-08-11T13-35-18\runner-logs\2026-08-11T13-35-18-Collect_report.log
+
+FAILED STEP LOG EXCERPTS
+
+==============================
+FAILED STEP: Local release readiness checks
+LOG: C:\Users\geoff\Documents\GitHub\86chaos\test-results\86chaos-play-store-release-gate\2026-08-11T13-35-18\runner-logs\2026-08-11T13-35-18-Local_release_readiness_checks.log
+==============================
+[2026-08-11T18:44:11.046Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x352e807a 
+error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L976:18 for 'update' @ L976, false for 'update' @ L976
+[2026-08-11T18:44:11.066Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x352e807b 
+error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L976:18 for 'update' @ L976, false for 'update' @ L976
+[2026-08-11T18:44:11.086Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x352e807c 
+error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L976:18 for 'update' @ L976, false for 'update' @ L976
+[2026-08-11T18:44:11.106Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x352e807d 
+error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L976:18 for 'update' @ L976, false for 'update' @ L976
+[2026-08-11T18:44:11.135Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x352e807e 
+error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L976:18 for 'update' @ L976, false for 'update' @ L976
+[2026-08-11T18:44:11.166Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x352e807f 
+error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L976:18 for 'update' @ L976, false for 'update' @ L976
+[2026-08-11T18:44:11.186Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x352e8080 
+error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L976:18 for 'update' @ L976, false for 'update' @ L976
+[2026-08-11T18:44:11.206Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x352e8081 
+error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L976:18 for 'update' @ L976, false for 'update' @ L976
+[2026-08-11T18:44:11.225Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x352e8082 
+error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L976:18 for 'update' @ L976, false for 'update' @ L976
+[2026-08-11T18:44:11.244Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x352e8083 
+error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L976:18 for 'update' @ L976, false for 'update' @ L976
+[2026-08-11T18:44:11.267Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x352e8084 
+error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L976:18 for 'update' @ L976, false for 'update' @ L976
+[2026-08-11T18:44:11.289Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x352e8085 
+error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L976:18 for 'update' @ L976, false for 'update' @ L976
+[2026-08-11T18:44:11.325Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x352e8086 
+error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L976:18 for 'update' @ L976, false for 'update' @ L976
+[2026-08-11T18:44:11.348Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x352e8087 
+error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L976:18 for 'update' @ L976, false for 'update' @ L976
+[2026-08-11T18:44:11.368Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x352e8088 
+error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L976:18 for 'update' @ L976, false for 'update' @ L976
+[2026-08-11T18:44:11.390Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x352e8089 
+error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L976:18 for 'update' @ L976, false for 'update' @ L976
+[2026-08-11T18:44:11.415Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x352e808a 
+error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L976:18 for 'update' @ L976, false for 'update' @ L976
+[2026-08-11T18:44:11.435Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x352e808b 
+error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L976:18 for 'update' @ L976, false for 'update' @ L976
+[2026-08-11T18:44:11.455Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x352e808c 
+error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L976:18 for 'update' @ L976, false for 'update' @ L976
+[2026-08-11T18:44:11.476Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x352e808d 
+error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L976:18 for 'update' @ L976, false for 'update' @ L976
+[release-check] PASSED complete canonical firestore/storage emulator rules tests (130365ms)
+
+[release-check] optional focused rules smoke tests: firebase emulators:exec --only firestore,storage "node scripts/86chaos-release-gate/run-rules-release-gate.cjs"
+[2026-08-11T18:44:11.497Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x352e808e 
+error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L976:18 for 'update' @ L976, false for 'update' @ L976
+[2026-08-11T18:44:11.518Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x352e808f 
+error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L976:18 for 'update' @ L976, false for 'update' @ L976
+[2026-08-11T18:44:11.541Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x352e8090 
+error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L976:18 for 'update' @ L976, false for 'update' @ L976
+[2026-08-11T18:44:11.561Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x352e8091 
+error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L976:18 for 'update' @ L976, false for 'update' @ L976
+[2026-08-11T18:44:11.581Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x352e8092 
+error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L976:18 for 'update' @ L976, false for 'update' @ L976
+[2026-08-11T18:44:11.602Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x352e8093 
+error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L976:18 for 'update' @ L976, false for 'update' @ L976
+[2026-08-11T18:44:11.624Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x352e8094 
+error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L976:18 for 'update' @ L976, false for 'update' @ L976
+[2026-08-11T18:44:11.646Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x352e8095 
+error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L976:18 for 'update' @ L976, false for 'update' @ L976
+[2026-08-11T18:44:11.670Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x352e8096 
+error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L976:18 for 'update' @ L976, false for 'update' @ L976
+[2026-08-11T18:44:11.702Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x352e8097 
+error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L975:18 for 'create' @ L975, evaluation error at L976:18 for 'update' @ L976, false for 'create' @ 
+L975
+[2026-08-11T18:44:11.770Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x352e8099 
+error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L976:18 for 'update' @ L976, false for 'update' @ L976
+[2026-08-11T18:44:12.051Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x352e809c 
+error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L976:18 for 'update' @ L976, false for 'update' @ L976
+[2026-08-11T18:44:12.721Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x352e809a 
+error. Code: 7 Message: 7 PERMISSION_DENIED: 
+false for 'create' @ L1261, false for 'update' @ L1262
+[2026-08-11T18:44:12.741Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x352e809d 
+error. Code: 7 Message: 7 PERMISSION_DENIED: 
+false for 'create' @ L1261, false for 'update' @ L1262
+[2026-08-11T18:44:12.760Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x352e809e 
+error. Code: 7 Message: 7 PERMISSION_DENIED: 
+false for 'create' @ L1261, false for 'update' @ L1262
+[2026-08-11T18:44:12.804Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x352e809f 
+error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L1261:18 for 'create' @ L1261, evaluation error at L1262:18 for 'update' @ L1262, false for 
+'create' @ L1261
+[2026-08-11T18:44:12.947Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x352e80a2 
+error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L1089:18 for 'delete' @ L1089, false for 'delete' @ L1089
+[2026-08-11T18:44:13.070Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x352e80a4 
+error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L1095:18 for 'delete' @ L1095, false for 'delete' @ L1095
+[2026-08-11T18:44:13.199Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x352e80a6 
+error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L1101:18 for 'delete' @ L1101, false for 'delete' @ L1101
+[2026-08-11T18:44:13.319Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x352e80a8 
+error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L1107:18 for 'delete' @ L1107, false for 'delete' @ L1107
+[2026-08-11T18:44:13.436Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x352e80aa 
+error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L1113:18 for 'delete' @ L1113, false for 'delete' @ L1113
+[2026-08-11T18:44:13.587Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x352e80ac 
+error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L1119:18 for 'delete' @ L1119, false for 'delete' @ L1119
+[2026-08-11T18:44:13.707Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x352e80ae 
+error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L1125:18 for 'delete' @ L1125, false for 'delete' @ L1125
+[2026-08-11T18:44:13.739Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x352e80af 
+error. Code: 7 Message: 7 PERMISSION_DENIED: 
+false for 'delete' @ L1378
+[36m[1mi  emulators:[22m[39m Starting emulators: firestore, storage
+[36m[1mi  emulators:[22m[39m Detected demo project ID "demo-no-project", emulated services will use a demo configuration and attempts to access non-emulated services for this project will fail.
+[36m[1mi  firestore:[22m[39m Firestore Emulator logging to [1mfirestore-debug.log[22m
+[32m[1m+  firestore:[22m[39m Firestore Emulator was started in standard edition.
+[32m[1m+  firestore:[22m[39m Firestore Emulator UI websocket is running on 9150.
+[36m[1mi [22m[39m Running script: [1mnode scripts/86chaos-release-gate/run-rules-release-gate.cjs[22m
+PASS cached Firestore clients survive repeated sequential use
+PASS unauthenticated tenant read is denied
+PASS cross-tenant read is denied
+PASS authorized inventory delete succeeds
+PASS task restaurantId cannot pivot across tenants
+PASS menu scan restaurantId cannot pivot across tenants
+PASS message create rejects conflicting author identities
+PASS staff cannot turn own message into system alert
+PASS shift swap create cannot be authorized only through target employee
+PASS maintenance create rejects conflicting reporter identities
+PASS staff cannot delete another maintenance report
+PASS ops intelligence owner read succeeds
+PASS ops intelligence manager leadership read succeeds
+PASS ops intelligence staff read is denied
+PASS ops intelligence cross tenant read is denied
+PASS ops intelligence unauthenticated read is denied
+PASS ops intelligence client writes are denied
+PASS authorized profile-photo upload and delete succeed
+PASS missing Storage user profile denies cleanly
+PASS cross-tenant storage deletion is denied
+PASS authorized invoice metadata upload succeeds
+PASS invoice upload with mismatched tenant metadata is denied
+PASS no Firestore started-settings lifecycle errors were captured
+{
+  "ok": true,
+  "runId": "2026-08-11T13-35-18",
+  "activeEmulatorProjectId": "demo-no-project",
+  "output": "C:\\Users\\geoff\\Documents\\GitHub\\86chaos\\test-results\\86chaos-play-store-release-gate\\2026-08-11T13-35-18\\firebase-rules-release-gate.json",
+  "passed": 23,
+  "failed": 0,
+  "blocked": 0,
+  "firstActionableFailure": ""
+}
+[32m[1m+ [22m[39m Script exited successfully (code 0)
+[36m[1mi  emulators:[22m[39m Shutting down emulators.
+[36m[1mi  firestore:[22m[39m Stopping Firestore Emulator
+[33m[1m! [22m[39m Firestore Emulator has exited upon receiving signal: SIGINT
+[36m[1mi  storage:[22m[39m Stopping Storage Emulator
+[36m[1mi  hub:[22m[39m Stopping emulator hub
+[36m[1mi  logging:[22m[39m Stopping Logging Emulator
+[release-check] PASSED optional focused rules smoke tests (93984ms)
+[2026-08-11T18:46:01.059Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x52f89101 
+error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L1041:18 for 'update' @ L1041, false for 'update' @ L1041
+[2026-08-11T18:46:01.156Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x52f89102 
+error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L1130:18 for 'update' @ L1130, false for 'update' @ L1130
+[2026-08-11T18:46:01.431Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x52f89103 
+error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L1376:18 for 'create' @ L1376, evaluation error at L1377:18 for 'update' @ L1377, false for 
+'create' @ L1376
+[2026-08-11T18:46:01.618Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x52f89104 
+error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L1377:18 for 'update' @ L1377, false for 'update' @ L1377
+[2026-08-11T18:46:01.760Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x52f89105 
+error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L1382:18 for 'create' @ L1382, evaluation error at L1383:18 for 'update' @ L1383, false for 
+'create' @ L1382
+[2026-08-11T18:46:01.903Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x52f89106 
+error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L1388:18 for 'create' @ L1388, evaluation error at L1389:18 for 'update' @ L1389, false for 
+'create' @ L1388
+[2026-08-11T18:46:01.990Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x52f89107 
+error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L1390:18 for 'delete' @ L1390, false for 'delete' @ L1390
+[2026-08-11T18:46:02.476Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x52f8910a 
+error. Code: 7 Message: 7 PERMISSION_DENIED: 
+false for 'create' @ L1047, false for 'update' @ L1047
+[2026-08-11T18:46:02.519Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x52f8910b 
+error. Code: 7 Message: 7 PERMISSION_DENIED: 
+false for 'update' @ L1047
+[2026-08-11T18:46:02.552Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x52f8910c 
+error. Code: 7 Message: 7 PERMISSION_DENIED: 
+false for 'delete' @ L1047
+
+Finished: 2026-08-11T13:46:07.3719055-05:00
+ExitCode: 1

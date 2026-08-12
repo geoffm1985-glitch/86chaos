@@ -1,0 +1,68 @@
+﻿=== Verify release-gate role accounts ===
+Command: node scripts/86chaos-release-gate/verify-role-accounts.cjs
+Started: 2026-08-11T11:23:35.4022861-05:00
+
+{
+  "ok": true,
+  "output": "C:\\Users\\geoff\\Documents\\GitHub\\86chaos\\test-results\\86chaos-play-store-release-gate\\2026-08-11T11-19-42\\role-identity-verification.json",
+  "firebaseProjectId": "chaos-test-d1601",
+  "accounts": [
+    {
+      "key": "systemAdmin",
+      "emailEnv": "SYSTEM_ADMIN_EMAIL",
+      "email": "86chaos.qa.system-admin.20260729-1302@example.test",
+      "uid": "cmLRtL0CwxgBCYpzjCnVfhh6Lgd2",
+      "superAdmin": true,
+      "customClaimSuperAdmin": true,
+      "serverMasterAdminMatched": false,
+      "firestoreSuperAdmin": true,
+      "firestoreSystemAdministrator": true,
+      "firestoreProfileRole": "Kitchen",
+      "runtimeProjectId": "chaos-test-d1601"
+    },
+    {
+      "key": "owner",
+      "emailEnv": "OWNER_EMAIL",
+      "email": "86chaos.qa.owner.20260729-1302@example.test",
+      "uid": "3eiR9IceYeWgnP9BJG9rCWEWoOK2",
+      "superAdmin": false,
+      "customClaimSuperAdmin": false,
+      "serverMasterAdminMatched": false,
+      "firestoreSuperAdmin": false,
+      "firestoreSystemAdministrator": false,
+      "firestoreProfileRole": "Owner",
+      "runtimeProjectId": "chaos-test-d1601"
+    },
+    {
+      "key": "manager",
+      "emailEnv": "MANAGER_EMAIL",
+      "email": "86chaos.qa.manager.20260729-1302@example.test",
+      "uid": "UNn3N2166lZchR4Dk2YtSzLg0B63",
+      "superAdmin": false,
+      "customClaimSuperAdmin": false,
+      "serverMasterAdminMatched": false,
+      "firestoreSuperAdmin": false,
+      "firestoreSystemAdministrator": false,
+      "firestoreProfileRole": "Manager",
+      "runtimeProjectId": "chaos-test-d1601"
+    },
+    {
+      "key": "staff",
+      "emailEnv": "STAFF_EMAIL",
+      "email": "86chaos.qa.staff.20260729-1302@example.test",
+      "uid": "xRnSzqBgDbQFL3IwrkV4eYeTln93",
+      "superAdmin": false,
+      "customClaimSuperAdmin": false,
+      "serverMasterAdminMatched": false,
+      "firestoreSuperAdmin": false,
+      "firestoreSystemAdministrator": false,
+      "firestoreProfileRole": "Line Cook",
+      "runtimeProjectId": "chaos-test-d1601"
+    }
+  ],
+  "errors": [],
+  "manualConfigurationRequired": []
+}
+
+Finished: 2026-08-11T11:23:39.8384065-05:00
+ExitCode: 0

@@ -1,0 +1,16 @@
+﻿=== Node version ===
+Command: npm run node:check --if-present
+Started: 2026-08-11T16:24:35.6195853-05:00
+
+powershell : npm notice run 86chaos@16.0.197 node:check
+At C:\Users\geoff\Documents\GitHub\86chaos\RUN_86CHAOS_PLAY_STORE_RELEASE_GATE.ps1:205 char:3
++   powershell -NoProfile -ExecutionPolicy Bypass -Command $Command 2>& ...
++   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (npm notice run ....197 node:check:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+npm notice run node scripts/check-node-version.js
+Detected Node 24.18.0
+
+Finished: 2026-08-11T16:24:39.2450743-05:00
+ExitCode: 0

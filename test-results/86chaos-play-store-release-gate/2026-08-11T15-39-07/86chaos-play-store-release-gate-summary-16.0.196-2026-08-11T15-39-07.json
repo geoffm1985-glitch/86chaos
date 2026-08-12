@@ -1,0 +1,929 @@
+{
+  "ok": false,
+  "generatedAt": "2026-08-11T20:49:56.574Z",
+  "runId": "2026-08-11T15-39-07",
+  "runDir": "C:\\Users\\geoff\\Documents\\GitHub\\86chaos\\test-results\\86chaos-play-store-release-gate\\2026-08-11T15-39-07",
+  "appUrl": "https://86chaos-git-testing-cheers-portal-s-projects.vercel.app",
+  "expectedVersion": "16.0.196",
+  "sourceVersion": "16.0.196",
+  "deployedVersion": "16.0.196",
+  "visibleVersion": "not_observed",
+  "testedVersion": "16.0.196",
+  "firebaseProjectId": "chaos-test-d1601",
+  "node": "v24.18.0",
+  "stepFailures": 1,
+  "outcome": "BLOCKED BEFORE TEST EXECUTION",
+  "selectionMode": "full",
+  "noFailedOnlyTestsRemain": false,
+  "blockedBeforeTestExecution": true,
+  "primaryBlockingFailure": "server tests: api\\app-only-package-hygiene-16-0-188.test.cjs: app-only hygiene rejects forbidden source-controlled artifacts and packaged local secrets (1993.0226ms): AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:",
+  "runnerState": {
+    "runId": "2026-08-11T15-39-07",
+    "generatedAt": "2026-08-11T15:39:07.2725767-05:00",
+    "updatedAt": "2026-08-11T15:49:55.5778298-05:00",
+    "currentPhase": "report-collection",
+    "dependencyInstallAttempted": true,
+    "dependencyInstallPassed": true,
+    "dependencyPreflightPassed": true,
+    "sourceInventoryPassed": true,
+    "browserInstallPassed": true,
+    "serverIdentityPreflightStarted": true,
+    "serverIdentityPreflightPassed": true,
+    "serverIdentityPreflightFailureCategory": "",
+    "serverIdentityPreflightPrimaryBlocker": "",
+    "testAccountProvisionAttempted": true,
+    "testAccountProvisionPassed": true,
+    "rolePreflightStarted": true,
+    "rolePreflightPassed": true,
+    "playwrightStarted": false,
+    "globalSetupStarted": false,
+    "qaSeedProcessStarted": false,
+    "qaDataWritesStarted": false,
+    "qaRestaurantCreated": false,
+    "qaSeedAttempted": false,
+    "qaSeedVerified": false,
+    "cleanupAttempted": false,
+    "cleanupCompleted": false,
+    "cleanupRefusalReason": "",
+    "blockingReason": "Release gate BLOCKED BEFORE PLAYWRIGHT because required local source/unit/build/rules checks failed or were blocked. See node-test-live-summary.json.",
+    "status": "blocked",
+    "startedAt": "2026-08-11T15:39:07.2725767-05:00",
+    "finishedAt": "2026-08-11T15:49:55.5640453-05:00",
+    "lastCompletedStep": "Local release readiness checks",
+    "anyTestsRan": true,
+    "blockedBeforeTestExecution": true,
+    "finalExitCode": 1,
+    "steps": [
+      {
+        "name": "Environment preflight",
+        "exitCode": 0,
+        "passed": true,
+        "logPath": "C:\\Users\\geoff\\Documents\\GitHub\\86chaos\\test-results\\86chaos-play-store-release-gate\\2026-08-11T15-39-07\\runner-logs\\2026-08-11T15-39-07-Environment_preflight.log",
+        "countsAsFailure": true,
+        "finishedAt": "2026-08-11T15:39:10.3730792-05:00"
+      },
+      {
+        "name": "Node version",
+        "exitCode": 0,
+        "passed": true,
+        "logPath": "C:\\Users\\geoff\\Documents\\GitHub\\86chaos\\test-results\\86chaos-play-store-release-gate\\2026-08-11T15-39-07\\runner-logs\\2026-08-11T15-39-07-Node_version.log",
+        "countsAsFailure": true,
+        "finishedAt": "2026-08-11T15:39:13.6545487-05:00"
+      },
+      {
+        "name": "Lockfile integrity",
+        "exitCode": 0,
+        "passed": true,
+        "logPath": "C:\\Users\\geoff\\Documents\\GitHub\\86chaos\\test-results\\86chaos-play-store-release-gate\\2026-08-11T15-39-07\\runner-logs\\2026-08-11T15-39-07-Lockfile_integrity.log",
+        "countsAsFailure": true,
+        "finishedAt": "2026-08-11T15:39:16.9372638-05:00"
+      },
+      {
+        "name": "Verify npm wrapper",
+        "exitCode": 0,
+        "passed": true,
+        "logPath": "C:\\Users\\geoff\\Documents\\GitHub\\86chaos\\test-results\\86chaos-play-store-release-gate\\2026-08-11T15-39-07\\runner-logs\\2026-08-11T15-39-07-Verify_npm_wrapper.log",
+        "countsAsFailure": true,
+        "finishedAt": "2026-08-11T15:39:19.2409071-05:00"
+      },
+      {
+        "name": "Install locked test dependencies",
+        "exitCode": 0,
+        "passed": true,
+        "logPath": "C:\\Users\\geoff\\Documents\\GitHub\\86chaos\\test-results\\86chaos-play-store-release-gate\\2026-08-11T15-39-07\\runner-logs\\2026-08-11T15-39-07-Install_locked_test_dependencies.log",
+        "countsAsFailure": true,
+        "finishedAt": "2026-08-11T15:42:12.0467463-05:00"
+      },
+      {
+        "name": "Dependency preflight",
+        "exitCode": 0,
+        "passed": true,
+        "logPath": "C:\\Users\\geoff\\Documents\\GitHub\\86chaos\\test-results\\86chaos-play-store-release-gate\\2026-08-11T15-39-07\\runner-logs\\2026-08-11T15-39-07-Dependency_preflight.log",
+        "countsAsFailure": true,
+        "finishedAt": "2026-08-11T15:42:13.1996411-05:00"
+      },
+      {
+        "name": "Source inventory",
+        "exitCode": 0,
+        "passed": true,
+        "logPath": "C:\\Users\\geoff\\Documents\\GitHub\\86chaos\\test-results\\86chaos-play-store-release-gate\\2026-08-11T15-39-07\\runner-logs\\2026-08-11T15-39-07-Source_inventory.log",
+        "countsAsFailure": true,
+        "finishedAt": "2026-08-11T15:42:29.6237700-05:00"
+      },
+      {
+        "name": "Install Playwright browsers",
+        "exitCode": 0,
+        "passed": true,
+        "logPath": "C:\\Users\\geoff\\Documents\\GitHub\\86chaos\\test-results\\86chaos-play-store-release-gate\\2026-08-11T15-39-07\\runner-logs\\2026-08-11T15-39-07-Install_Playwright_browsers.log",
+        "countsAsFailure": true,
+        "finishedAt": "2026-08-11T15:42:33.8584664-05:00"
+      },
+      {
+        "name": "Verify deployed server Firebase boundary",
+        "exitCode": 0,
+        "passed": true,
+        "logPath": "C:\\Users\\geoff\\Documents\\GitHub\\86chaos\\test-results\\86chaos-play-store-release-gate\\2026-08-11T15-39-07\\runner-logs\\2026-08-11T15-39-07-Verify_deployed_server_Firebase_boundary.log",
+        "countsAsFailure": true,
+        "finishedAt": "2026-08-11T15:42:36.4497915-05:00"
+      },
+      {
+        "name": "Provision temporary release-gate test accounts",
+        "exitCode": 0,
+        "passed": true,
+        "logPath": "C:\\Users\\geoff\\Documents\\GitHub\\86chaos\\test-results\\86chaos-play-store-release-gate\\2026-08-11T15-39-07\\runner-logs\\2026-08-11T15-39-07-Provision_temporary_release-gate_test_accounts.log",
+        "countsAsFailure": true,
+        "finishedAt": "2026-08-11T15:42:46.6198895-05:00"
+      },
+      {
+        "name": "Verify release-gate role accounts",
+        "exitCode": 0,
+        "passed": true,
+        "logPath": "C:\\Users\\geoff\\Documents\\GitHub\\86chaos\\test-results\\86chaos-play-store-release-gate\\2026-08-11T15-39-07\\runner-logs\\2026-08-11T15-39-07-Verify_release-gate_role_accounts.log",
+        "countsAsFailure": true,
+        "finishedAt": "2026-08-11T15:42:50.4375173-05:00"
+      },
+      {
+        "name": "Java prerequisite",
+        "exitCode": 0,
+        "passed": true,
+        "logPath": "C:\\Users\\geoff\\Documents\\GitHub\\86chaos\\test-results\\86chaos-play-store-release-gate\\2026-08-11T15-39-07\\runner-logs\\2026-08-11T15-39-07-Java_prerequisite.log",
+        "countsAsFailure": true,
+        "finishedAt": "2026-08-11T15:42:52.0002305-05:00"
+      },
+      {
+        "name": "Local release readiness checks",
+        "exitCode": 1,
+        "passed": false,
+        "logPath": "C:\\Users\\geoff\\Documents\\GitHub\\86chaos\\test-results\\86chaos-play-store-release-gate\\2026-08-11T15-39-07\\runner-logs\\2026-08-11T15-39-07-Local_release_readiness_checks.log",
+        "countsAsFailure": true,
+        "finishedAt": "2026-08-11T15:49:55.4750574-05:00"
+      }
+    ]
+  },
+  "dependencyPreflight": {
+    "runId": "2026-08-11T15-39-07",
+    "generatedAt": "2026-08-11T20:42:13.064Z",
+    "nodeVersion": "v24.18.0",
+    "npmVersion": "",
+    "packageLockPresent": true,
+    "packageLockVersion": 3,
+    "requiredModules": [
+      {
+        "name": "@playwright/test",
+        "ok": true,
+        "version": "1.62.0",
+        "entryPath": "C:\\Users\\geoff\\Documents\\GitHub\\86chaos\\node_modules\\@playwright\\test\\index.js",
+        "packagePath": "C:\\Users\\geoff\\Documents\\GitHub\\86chaos\\node_modules\\@playwright\\test\\package.json",
+        "resolutionMethod": "package-entry",
+        "errorCode": "",
+        "packageJsonExportErrorCode": "",
+        "error": "",
+        "classification": "installed"
+      },
+      {
+        "name": "@babel/parser",
+        "ok": true,
+        "version": "7.29.7",
+        "entryPath": "C:\\Users\\geoff\\Documents\\GitHub\\86chaos\\node_modules\\@babel\\parser\\lib\\index.js",
+        "packagePath": "C:\\Users\\geoff\\Documents\\GitHub\\86chaos\\node_modules\\@babel\\parser\\package.json",
+        "resolutionMethod": "package-entry",
+        "errorCode": "",
+        "packageJsonExportErrorCode": "",
+        "error": "",
+        "classification": "installed"
+      },
+      {
+        "name": "@babel/traverse",
+        "ok": true,
+        "version": "7.29.7",
+        "entryPath": "C:\\Users\\geoff\\Documents\\GitHub\\86chaos\\node_modules\\@babel\\traverse\\lib\\index.js",
+        "packagePath": "C:\\Users\\geoff\\Documents\\GitHub\\86chaos\\node_modules\\@babel\\traverse\\package.json",
+        "resolutionMethod": "package-entry",
+        "errorCode": "",
+        "packageJsonExportErrorCode": "",
+        "error": "",
+        "classification": "installed"
+      },
+      {
+        "name": "vite",
+        "ok": true,
+        "version": "8.1.5",
+        "entryPath": "C:\\Users\\geoff\\Documents\\GitHub\\86chaos\\node_modules\\vite\\dist\\node\\index.js",
+        "packagePath": "C:\\Users\\geoff\\Documents\\GitHub\\86chaos\\node_modules\\vite\\package.json",
+        "resolutionMethod": "package-entry",
+        "errorCode": "",
+        "packageJsonExportErrorCode": "",
+        "error": "",
+        "classification": "installed"
+      },
+      {
+        "name": "@vitejs/plugin-react",
+        "ok": true,
+        "version": "6.0.4",
+        "entryPath": "C:\\Users\\geoff\\Documents\\GitHub\\86chaos\\node_modules\\@vitejs\\plugin-react\\dist\\index.js",
+        "packagePath": "C:\\Users\\geoff\\Documents\\GitHub\\86chaos\\node_modules\\@vitejs\\plugin-react\\package.json",
+        "resolutionMethod": "package-entry",
+        "errorCode": "",
+        "packageJsonExportErrorCode": "ERR_PACKAGE_PATH_NOT_EXPORTED",
+        "error": "",
+        "classification": "installed"
+      },
+      {
+        "name": "jest",
+        "ok": true,
+        "version": "27.5.1",
+        "entryPath": "C:\\Users\\geoff\\Documents\\GitHub\\86chaos\\node_modules\\jest\\build\\jest.js",
+        "packagePath": "C:\\Users\\geoff\\Documents\\GitHub\\86chaos\\node_modules\\jest\\package.json",
+        "resolutionMethod": "package-entry",
+        "errorCode": "",
+        "packageJsonExportErrorCode": "",
+        "error": "",
+        "classification": "installed"
+      },
+      {
+        "name": "eslint",
+        "ok": true,
+        "version": "8.57.1",
+        "entryPath": "C:\\Users\\geoff\\Documents\\GitHub\\86chaos\\node_modules\\eslint\\lib\\api.js",
+        "packagePath": "C:\\Users\\geoff\\Documents\\GitHub\\86chaos\\node_modules\\eslint\\package.json",
+        "resolutionMethod": "package-entry",
+        "errorCode": "",
+        "packageJsonExportErrorCode": "",
+        "error": "",
+        "classification": "installed"
+      }
+    ],
+    "localPlaywrightExecutablePath": "C:\\Users\\geoff\\Documents\\GitHub\\86chaos\\node_modules\\.bin\\playwright.cmd",
+    "localPlaywrightExecutableExists": true,
+    "errors": [],
+    "ok": true
+  },
+  "dependencyFailures": [],
+  "serverBoundaryFailures": [],
+  "accountProvisionFailures": [],
+  "testAccountProvisioning": {
+    "ok": true,
+    "skipped": false,
+    "runId": "2026-08-11T15-39-07",
+    "generatedAt": "2026-08-11T20:42:37.571Z",
+    "firebaseProjectId": "chaos-test-d1601",
+    "mutationSafety": {
+      "ok": true,
+      "errors": [],
+      "projectId": "chaos-test-d1601",
+      "projectSources": {
+        "optionProjectId": "chaos-test-d1601",
+        "credentialProjectId": ""
+      },
+      "projectIdentitiesCompared": [
+        "chaos-test-d1601"
+      ],
+      "projectIdentitySupplied": true,
+      "host": "86chaos-git-testing-cheers-portal-s-projects.vercel.app",
+      "runId": "2026-08-11T15-39-07",
+      "testingProject": "chaos-test-d1601",
+      "productionProject": "cheers-34b8d",
+      "qaEmailsApproved": true
+    },
+    "accounts": [
+      {
+        "key": "systemAdmin",
+        "label": "System Administrator",
+        "emailEnv": "SYSTEM_ADMIN_EMAIL",
+        "email": "86chaos.qa.system-admin.20260729-1302@example.test",
+        "uid": "cmLRtL0CwxgBCYpzjCnVfhh6Lgd2",
+        "created": false,
+        "customClaimKeysProcessed": [
+          "chaosSystemAdministrator",
+          "qaReleaseGateOnly",
+          "qaReleaseGateRole",
+          "superAdmin",
+          "systemAdmin",
+          "systemAdministrator"
+        ],
+        "enabledCustomClaims": [
+          "chaosSystemAdministrator",
+          "qaReleaseGateOnly",
+          "superAdmin",
+          "systemAdmin",
+          "systemAdministrator"
+        ],
+        "qaRoleClaim": "systemAdmin",
+        "expectedSuperAdmin": true,
+        "profileWrite": {
+          "skipped": false,
+          "collection": "users",
+          "id": "cmLRtL0CwxgBCYpzjCnVfhh6Lgd2"
+        }
+      },
+      {
+        "key": "owner",
+        "label": "Owner",
+        "emailEnv": "OWNER_EMAIL",
+        "email": "86chaos.qa.owner.20260729-1302@example.test",
+        "uid": "3eiR9IceYeWgnP9BJG9rCWEWoOK2",
+        "created": false,
+        "customClaimKeysProcessed": [
+          "chaosSystemAdministrator",
+          "qaReleaseGateOnly",
+          "qaReleaseGateRole",
+          "superAdmin",
+          "systemAdmin",
+          "systemAdministrator"
+        ],
+        "enabledCustomClaims": [
+          "qaReleaseGateOnly"
+        ],
+        "qaRoleClaim": "owner",
+        "expectedSuperAdmin": false,
+        "profileWrite": {
+          "skipped": false,
+          "collection": "users",
+          "id": "3eiR9IceYeWgnP9BJG9rCWEWoOK2"
+        }
+      },
+      {
+        "key": "manager",
+        "label": "Manager",
+        "emailEnv": "MANAGER_EMAIL",
+        "email": "86chaos.qa.manager.20260729-1302@example.test",
+        "uid": "UNn3N2166lZchR4Dk2YtSzLg0B63",
+        "created": false,
+        "customClaimKeysProcessed": [
+          "chaosSystemAdministrator",
+          "qaReleaseGateOnly",
+          "qaReleaseGateRole",
+          "superAdmin",
+          "systemAdmin",
+          "systemAdministrator"
+        ],
+        "enabledCustomClaims": [
+          "qaReleaseGateOnly"
+        ],
+        "qaRoleClaim": "manager",
+        "expectedSuperAdmin": false,
+        "profileWrite": {
+          "skipped": false,
+          "collection": "users",
+          "id": "UNn3N2166lZchR4Dk2YtSzLg0B63"
+        }
+      },
+      {
+        "key": "staff",
+        "label": "Staff",
+        "emailEnv": "STAFF_EMAIL",
+        "email": "86chaos.qa.staff.20260729-1302@example.test",
+        "uid": "xRnSzqBgDbQFL3IwrkV4eYeTln93",
+        "created": false,
+        "customClaimKeysProcessed": [
+          "chaosSystemAdministrator",
+          "qaReleaseGateOnly",
+          "qaReleaseGateRole",
+          "superAdmin",
+          "systemAdmin",
+          "systemAdministrator"
+        ],
+        "enabledCustomClaims": [
+          "qaReleaseGateOnly"
+        ],
+        "qaRoleClaim": "staff",
+        "expectedSuperAdmin": false,
+        "profileWrite": {
+          "skipped": false,
+          "collection": "users",
+          "id": "xRnSzqBgDbQFL3IwrkV4eYeTln93"
+        }
+      }
+    ],
+    "errors": [],
+    "notes": [
+      "Temporary Ghost-target Auth account was provisioned for release-gate browser verification; password is stored only in the current-run runtime secret file and is excluded from reports.",
+      "Passwords, tokens, service-account values, and API keys are intentionally not written to this report."
+    ],
+    "ghostTargetAuth": {
+      "key": "GHOST_TARGET",
+      "label": "Ghost Target QA",
+      "email": "86chaos.qa+ghost-target.2026-08-11t15-39-07@86chaos.test",
+      "uid": "GuBRuNGi2rRyJlpFglnVlWB4o1H2",
+      "authUid": "GuBRuNGi2rRyJlpFglnVlWB4o1H2",
+      "created": true,
+      "displayName": "Allen QA",
+      "qaRoleClaim": "ghostTarget",
+      "customClaimKeysProcessed": [
+        "chaosSystemAdministrator",
+        "qaReleaseGateOnly",
+        "qaReleaseGateRole",
+        "superAdmin",
+        "systemAdmin",
+        "systemAdministrator"
+      ],
+      "enabledCustomClaims": [
+        "qaReleaseGateOnly"
+      ]
+    }
+  },
+  "roleFailures": [],
+  "javaFailures": [],
+  "nodeFailures": [
+    "server tests: api\\app-only-package-hygiene-16-0-188.test.cjs: app-only hygiene rejects forbidden source-controlled artifacts and packaged local secrets (1993.0226ms): AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:"
+  ],
+  "rulesGateReport": {
+    "ok": true,
+    "totalCases": 23,
+    "passed": 23,
+    "failed": 0,
+    "blocked": 0,
+    "firstActionableFailure": ""
+  },
+  "previewServerFirebaseBoundaryFailure": false,
+  "testAccountConfigurationFailure": false,
+  "playwright": {
+    "totalResults": 0,
+    "status": "BLOCKED BEFORE TEST EXECUTION",
+    "passed": 0,
+    "failed": 0,
+    "timedOut": 0,
+    "skipped": 0,
+    "blocked": 1,
+    "notRun": 1,
+    "unexpected": 0,
+    "failedTests": [],
+    "timedOutTests": [],
+    "skippedTests": [],
+    "assertionTimeoutTests": [],
+    "perProject": {},
+    "failedByCategory": [],
+    "slowestTests": [],
+    "deltaReconciliation": {
+      "mode": "full",
+      "manifestSelectedUniqueCount": 0,
+      "actualExecutedUniqueCount": 0,
+      "selectedNotExecutedCount": 0,
+      "unexpectedExtraExecutionCount": 0,
+      "selectedNotExecuted": [],
+      "unexpectedExtraExecution": [],
+      "perProjectSelected": {},
+      "perProjectExecutedUnique": {},
+      "reconciled": true,
+      "reconciliationProof": "full run, no delta reconciliation required"
+    }
+  },
+  "attemptStatus": {
+    "browserInstallation": {
+      "attempted": true,
+      "status": "passed"
+    },
+    "serverFirebaseBoundaryPreflight": {
+      "attempted": true,
+      "status": "passed"
+    },
+    "testAccountProvisioning": {
+      "attempted": true,
+      "status": "passed"
+    },
+    "roleVerification": {
+      "attempted": true,
+      "status": "passed"
+    },
+    "qaSeed": {
+      "attempted": false,
+      "status": "blocked"
+    },
+    "playwright": {
+      "attempted": false,
+      "status": "blocked"
+    },
+    "cleanup": {
+      "attempted": false,
+      "status": "blocked"
+    }
+  },
+  "seed": null,
+  "cleanup": null,
+  "releaseReadiness": {
+    "sourceVersion": "16.0.196",
+    "deployedVersion": "16.0.196",
+    "versionMatch": true,
+    "testingFirebaseProject": "chaos-test-d1601",
+    "localSourceChecks": [
+      {
+        "group": "source validator",
+        "command": "npm run test:source",
+        "required": true,
+        "status": "passed",
+        "startedAt": "2026-08-11T20:42:52.940Z",
+        "finishedAt": "2026-08-11T20:42:55.182Z",
+        "durationMs": 2242,
+        "exitCode": 0,
+        "firstUsefulFailure": "",
+        "stdoutTail": "OK: package.json version is 16.0.196\nOK: package-lock root version is 16.0.196\nOK: test:source points to 16.0.196 validator\nOK: test:repair-16-0-196 exists\nOK: public version/build are 16.0.196\nOK: app core CURRENT_VERSION is 16.0.196\nOK: api version is 16.0.196\nOK: full suite uses 16.0.196 targeted validator\nOK: firestore.rules unchanged\nOK: storage.rules unchanged\nOK: database.rules.json unchanged\nOK: firestore.indexes.json unchanged\nOK: firebase.json unchanged\nOK: presence writes use authorized status tree\nOK: presence summary uses authorized statusSummary tree\nOK: presence path owner uses Firebase Auth UID\nOK: presence sessions are removed by onDisconnect\nOK: System Administrator no longer uses 90-second authoritative online cutoff\nOK: System Administrator labels active sessions as online truth\nOK: client connect does not duplicate online state to statusSummary\nOK: 16.0.192 before/after efficiency report exists\nOK: 16.0.192 finalization behavioral tests exist\nOK: 16.0.196 app-only package hygiene test exists\nOK: unauthorized presence tree removed\nOK: workspace presence summary reads status sessions\nOK: manual presence snapshot reads status sessions\nOK: presence snapshot no longer describes heartbeat freshness as online truth\nOK: Team presence path has bounded cache\nOK: Today/Manager Brief collection reads use snapshot mode instead of permanent broad listeners\nOK: Today ops intelligence uses bounded snapshot reads\nOK: Today exposes Refresh Brief control\nOK: My Schedule preserves legacy date-key compatibility and hardened rescue wiring\nOK: My Schedule uses canonical scheduleUserId query where available\nOK: HR overview uses aggregate counts and gated section loading\nOK: Menu Intelligence dependency graph is lazy and scan history uses cursor pagination\nOK: Audit Log uses cursor pagination\nOK: System Administrator exposes local Firebase efficiency diagnostics\nOK: active schedule write paths use canonical date fields\nOK: read-only schedule query-field audit utility exists\nOK: schedule audit utility contains no write capability\nOK: unrelated wisco.png asset restored/preserved\nOK: Today snapshot queries carry today-brief cache scope\nOK: Refresh Brief invalidates today-brief cache scope only\nOK: Refresh Brief no longer mutates Today TTL\nOK: live My Schedule rescue uses loaded roster for legacy identity safety\nOK: live My Schedule rescue has no silent maxPages=12 ceiling\nOK: shared cache scope matcher exists\nOK: shared My Schedule rescue diagnostics helper exists\nOK: 16.0.192 before/after efficiency report exists\nOK: 16.0.192 behavior tests exist\nOK: 16.0.196 package hygiene test exists\nOK: shared My Schedule identity module exists\nOK: scheduleQueryPlanner has no duplicate My Schedule identity algorithm\nOK: scheduleQueryPlanner delegates to shared My Schedule identity matcher\nOK: live My Schedule rescue reruns on roster identity-state changes\nOK: My Schedule exposes incomplete legacy rescue warning and retry\nOK: technical rescue error is not gated by ordinary schedule permission\nOK: legacy planner removes redundant employeeId indexed fanout\nOK: legacy rescue retry telemetry helper exists\nOK: 16.0.192 before/after efficiency report exists\nOK: 16.0.193 authenticated section-load runtime regression exists\nOK: useLiveCollectionState binds cacheScope before using it\nOK: useLiveCollectionState propagates cacheScope to shared listener\nOK: useLiveCollectionState tracks cacheScope in effect dependencies\nOK: dependency preflight resolves package entrypoint first\nOK: dependency preflight does not use package.json subpath as presence test\nOK: dependency preflight distinguishes package exports metadata failures\nOK: 16.0.192 Firebase efficiency completion regression exists\nOK: 16.0.196 targeted test script exists\nOK: repair local manifest version is 16.0.196\nOK: repair browser manifest version is 16.0.196\nOK: repair local pointer uses 16.0.196\nOK: repair browser pointer uses 16.0.196\nOK: shared package hygiene helper exists\nOK: 16.0.196 working-checkout package hygiene regression exists\nOK: package hygiene helper distinguishes tracked checkout contents from extracted package contents\nOK: repair runner grants package hygiene a narrow current-run artifact allowance\nOK: targeted runner grants package hygiene the same narrow current-run artifact allowance\nOK: 16.0.196 page-load readiness regression exists\nOK: Jest setup installs fetch shim before Firebase Auth imports\nOK: Accessibility release spec lazy-loads optional axe modules after Playwright inventory discovery\nOK: Vite build launcher uses Node plus resolved Vite CLI instead of fragile .bin shim\n\n16.0.196 source validation passed.\n",
+        "stderrTail": "npm notice run 86chaos@16.0.196 test:source\nnpm notice run node scripts/validate-16-0-196.js\n"
+      },
+      {
+        "group": "api syntax",
+        "command": "npm run syntax:api",
+        "required": true,
+        "status": "passed",
+        "startedAt": "2026-08-11T20:42:55.183Z",
+        "finishedAt": "2026-08-11T20:44:38.328Z",
+        "durationMs": 103145,
+        "exitCode": 0,
+        "firstUsefulFailure": "",
+        "stdoutTail": "84.js\nOK syntax scripts\\validate-15-0-85.js\nOK syntax scripts\\validate-15-0-86.js\nOK syntax scripts\\validate-15-0-87.js\nOK syntax scripts\\validate-15-0-88.js\nOK syntax scripts\\validate-15-0-89.js\nOK syntax scripts\\validate-15-0-90.js\nOK syntax scripts\\validate-15-0-91.js\nOK syntax scripts\\validate-15-0-92.js\nOK syntax scripts\\validate-15-0-93.js\nOK syntax scripts\\validate-15-0-94.js\nOK syntax scripts\\validate-15-0-99.js\nOK syntax scripts\\validate-16-0-0.js\nOK syntax scripts\\validate-16-0-1.js\nOK syntax scripts\\validate-16-0-10.js\nOK syntax scripts\\validate-16-0-102.js\nOK syntax scripts\\validate-16-0-103.js\nOK syntax scripts\\validate-16-0-104.js\nOK syntax scripts\\validate-16-0-105.js\nOK syntax scripts\\validate-16-0-106.js\nOK syntax scripts\\validate-16-0-11.js\nOK syntax scripts\\validate-16-0-113.js\nOK syntax scripts\\validate-16-0-114.js\nOK syntax scripts\\validate-16-0-115.js\nOK syntax scripts\\validate-16-0-12.js\nOK syntax scripts\\validate-16-0-13.js\nOK syntax scripts\\validate-16-0-14.js\nOK syntax scripts\\validate-16-0-15.js\nOK syntax scripts\\validate-16-0-16.js\nOK syntax scripts\\validate-16-0-171.js\nOK syntax scripts\\validate-16-0-174.js\nOK syntax scripts\\validate-16-0-175.js\nOK syntax scripts\\validate-16-0-176.js\nOK syntax scripts\\validate-16-0-177.js\nOK syntax scripts\\validate-16-0-178.js\nOK syntax scripts\\validate-16-0-179.js\nOK syntax scripts\\validate-16-0-18.js\nOK syntax scripts\\validate-16-0-180.js\nOK syntax scripts\\validate-16-0-181.js\nOK syntax scripts\\validate-16-0-182.js\nOK syntax scripts\\validate-16-0-183.js\nOK syntax scripts\\validate-16-0-184.js\nOK syntax scripts\\validate-16-0-185.js\nOK syntax scripts\\validate-16-0-186.js\nOK syntax scripts\\validate-16-0-187.js\nOK syntax scripts\\validate-16-0-188.js\nOK syntax scripts\\validate-16-0-189.js\nOK syntax scripts\\validate-16-0-19.js\nOK syntax scripts\\validate-16-0-190.js\nOK syntax scripts\\validate-16-0-191.js\nOK syntax scripts\\validate-16-0-192.js\nOK syntax scripts\\validate-16-0-193.js\nOK syntax scripts\\validate-16-0-194.js\nOK syntax scripts\\validate-16-0-195.js\nOK syntax scripts\\validate-16-0-196.js\nOK syntax scripts\\validate-16-0-2.js\nOK syntax scripts\\validate-16-0-20.js\nOK syntax scripts\\validate-16-0-3.js\nOK syntax scripts\\validate-16-0-32.js\nOK syntax scripts\\validate-16-0-33.js\nOK syntax scripts\\validate-16-0-34.js\nOK syntax scripts\\validate-16-0-35.js\nOK syntax scripts\\validate-16-0-36.js\nOK syntax scripts\\validate-16-0-37.js\nOK syntax scripts\\validate-16-0-38.js\nOK syntax scripts\\validate-16-0-39.js\nOK syntax scripts\\validate-16-0-4.js\nOK syntax scripts\\validate-16-0-40.js\nOK syntax scripts\\validate-16-0-41.js\nOK syntax scripts\\validate-16-0-42.js\nOK syntax scripts\\validate-16-0-43.js\nOK syntax scripts\\validate-16-0-44.js\nOK syntax scripts\\validate-16-0-45.js\nOK syntax scripts\\validate-16-0-46.js\nOK syntax scripts\\validate-16-0-47.js\nOK syntax scripts\\validate-16-0-48.js\nOK syntax scripts\\validate-16-0-49.js\nOK syntax scripts\\validate-16-0-5.js\nOK syntax scripts\\validate-16-0-50.js\nOK syntax scripts\\validate-16-0-51.js\nOK syntax scripts\\validate-16-0-52.js\nOK syntax scripts\\validate-16-0-53.js\nOK syntax scripts\\validate-16-0-54.js\nOK syntax scripts\\validate-16-0-55.js\nOK syntax scripts\\validate-16-0-56.js\nOK syntax scripts\\validate-16-0-57.js\nOK syntax scripts\\validate-16-0-58.js\nOK syntax scripts\\validate-16-0-59.js\nOK syntax scripts\\validate-16-0-6.js\nOK syntax scripts\\validate-16-0-60.js\nOK syntax scripts\\validate-16-0-61.js\nOK syntax scripts\\validate-16-0-63.js\nOK syntax scripts\\validate-16-0-64.js\nOK syntax scripts\\validate-16-0-65.js\nOK syntax scripts\\validate-16-0-66.js\nOK syntax scripts\\validate-16-0-67.js\nOK syntax scripts\\validate-16-0-68.js\nOK syntax scripts\\validate-16-0-69.js\nOK syntax scripts\\validate-16-0-7.js\nOK syntax scripts\\validate-16-0-70.js\nOK syntax scripts\\validate-16-0-71.js\nOK syntax scripts\\validate-16-0-72.js\nOK syntax scripts\\validate-16-0-73.js\nOK syntax scripts\\validate-16-0-74.js\nOK syntax scripts\\validate-16-0-75.js\nOK syntax scripts\\validate-16-0-76.js\nOK syntax scripts\\validate-16-0-78.js\nOK syntax scripts\\validate-16-0-8.js\nOK syntax scripts\\validate-16-0-80.js\nOK syntax scripts\\validate-16-0-81.js\nOK syntax scripts\\validate-16-0-82.js\nOK syntax scripts\\validate-16-0-83.js\nOK syntax scripts\\validate-16-0-84.js\nOK syntax scripts\\validate-16-0-85.js\nOK syntax scripts\\validate-16-0-89.js\nOK syntax scripts\\validate-16-0-9.js\nOK syntax scripts\\validate-16-0-90.js\nOK syntax scripts\\validate-auth-hotfix.js\nOK syntax scripts\\validate-performance-split.js\nOK syntax scripts\\validate-python-auth-fallback.js\nOK syntax scripts\\validate-python-ops-fallback-fix.js\nOK syntax scripts\\validate-python-ops-restore.js\nOK syntax scripts\\validate-repair.js\nOK syntax scripts\\validate-rules.js\nOK syntax scripts\\verify-native-backup-iam.js\nOK syntax scripts\\vite-build-source-precompile.cjs\nOK syntax scripts\\vite-build-with-asset-manifest.cjs\nOK syntax scripts\\vite-react-jsx-module-type.cjs\nAPI/script syntax check passed for 436 file(s).\n",
+        "stderrTail": "npm notice run 86chaos@16.0.196 syntax:api\nnpm notice run node scripts/check-api-syntax.js\n"
+      },
+      {
+        "group": "python syntax",
+        "command": "npm run syntax:py",
+        "required": true,
+        "status": "passed",
+        "startedAt": "2026-08-11T20:44:38.448Z",
+        "finishedAt": "2026-08-11T20:44:43.107Z",
+        "durationMs": 4659,
+        "exitCode": 0,
+        "firstUsefulFailure": "",
+        "stdoutTail": "",
+        "stderrTail": "npm notice run 86chaos@16.0.196 syntax:py\nnpm notice run node scripts/check-python-syntax.js\n"
+      },
+      {
+        "group": "server tests",
+        "command": "npm run test:server --if-present",
+        "required": true,
+        "status": "failed",
+        "startedAt": "2026-08-11T20:44:43.108Z",
+        "finishedAt": "2026-08-11T20:45:29.201Z",
+        "durationMs": 46093,
+        "exitCode": 1,
+        "firstUsefulFailure": "api\\app-only-package-hygiene-16-0-188.test.cjs: app-only hygiene rejects forbidden source-controlled artifacts and packaged local secrets (1993.0226ms): AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:",
+        "stdoutTail": "ild/firebase-messaging-sw.js',\n  +   'build/imports/cheers_chilton_01_july_2026_shifts.json',\n  +   'build/index.html',\n  +   'build/manifest.json',\n  +   'build/static/aiScanUsage-D9qaVCpJ.js',\n  +   'build/static/calendar-W9RKIJIq.js',\n  +   'build/static/camera-CQnDhF3a.js',\n  +   'build/static/common-CsRO60ZO.js',\n  +   'build/static/hr-C3nHyLOC.js',\n  +   'build/static/index-C1Fy5KMb.css',\n  +   'build/static/index-COGMZDLp.js',\n  +   'build/static/index.esm-Bu1kHxOO.js',\n  +   'build/static/index.esm-BziQGi1x.js',\n  +   'build/static/index.esm2017-BjWsXNBF.js',\n  +   'build/static/intelligence-D0VfOc4R.js',\n  +   'build/static/inventory-B2_izhXg.js',\n  +   'build/static/invoiceRowClassification-DvX9EeH3.js',\n  +   'build/static/management-DVTwG9QQ.js',\n  +   'build/static/operations-DHZb3v1L.js',\n  +   'build/static/plus-DJlFFtJQ.js',\n  +   'build/static/schedule-dKbTRWFO.js',\n  +   'build/static/trending-up-HaJIriX7.js',\n  +   'build/static/upload-BPnV-OBJ.js',\n  +   'build/version.json',\n  +   'build/wisco.png'\n  + ]\n  - []\n  \n      at TestContext.<anonymous> (C:\\Users\\geoff\\Documents\\GitHub\\86chaos\\api\\app-only-package-hygiene-16-0-196.test.cjs:25:10)\n      at Test.runInAsyncScope (node:async_hooks:227:14)\n      at Test.run (node:internal/test_runner/test:1325:25)\n      at Test.start (node:internal/test_runner/test:1191:17)\n      at startSubtestAfterBootstrap (node:internal/test_runner/harness:385:17) {\n    generatedMessage: true,\n    code: 'ERR_ASSERTION',\n    actual: [\n      'build/6139.png',                                        'build/86chaos-icon-144-v1.png',\n      'build/86chaos-icon-144-v161.png',                       'build/86chaos-icon-144-v2.png',\n      'build/86chaos-icon-16-v1.png',                          'build/86chaos-icon-16-v161.png',\n      'build/86chaos-icon-16-v2.png',                          'build/86chaos-icon-180-v1.png',\n      'build/86chaos-icon-180-v161.png',                       'build/86chaos-icon-180-v2.png',\n      'build/86chaos-icon-192-v1.png',                         'build/86chaos-icon-192-v161.png',\n      'build/86chaos-icon-192-v2.png',                         'build/86chaos-icon-256-v1.png',\n      'build/86chaos-icon-256-v161.png',                       'build/86chaos-icon-256-v2.png',\n      'build/86chaos-icon-32-v1.png',                          'build/86chaos-icon-32-v161.png',\n      'build/86chaos-icon-32-v2.png',                          'build/86chaos-icon-384-v1.png',\n      'build/86chaos-icon-384-v161.png',                       'build/86chaos-icon-384-v2.png',\n      'build/86chaos-icon-48-v1.png',                          'build/86chaos-icon-48-v161.png',\n      'build/86chaos-icon-48-v2.png',                          'build/86chaos-icon-512-v1.png',\n      'build/86chaos-icon-512-v161.png',                       'build/86chaos-icon-512-v2.png',\n      'build/86chaos-maskable-192-v1.png',                     'build/86chaos-maskable-192-v161.png',\n      'build/86chaos-maskable-192-v2.png',                     'build/86chaos-maskable-192-v3.png',\n      'build/86chaos-maskable-192-v4.png',                     'build/86chaos-maskable-512-v1.png',\n      'build/86chaos-maskable-512-v161.png',                   'build/86chaos-maskable-512-v2.png',\n      'build/86chaos-maskable-512-v3.png',                     'build/86chaos-maskable-512-v4.png',\n      'build/86chaos-pwa-192-v4.png',                          'build/86chaos-pwa-512-v4.png',\n      'build/ask-86-help-validation.json',                     'build/asset-manifest.json',\n      'build/customer-help-coverage.json',                     'build/customer-help-validation.json',\n      'build/favicon.ico',                                     'build/firebase-messaging-sw.js',\n      'build/imports/cheers_chilton_01_july_2026_shifts.json', 'build/index.html',\n      'build/manifest.json',                                   'build/static/aiScanUsage-D9qaVCpJ.js',\n      'build/static/calendar-W9RKIJIq.js',                     'build/static/camera-CQnDhF3a.js',\n      'build/static/common-CsRO60ZO.js',                       'build/static/hr-C3nHyLOC.js',\n      'build/static/index-C1Fy5KMb.css',                       'build/static/index-COGMZDLp.js',\n      'build/static/index.esm-Bu1kHxOO.js',                    'build/static/index.esm-BziQGi1x.js',\n      'build/static/index.esm2017-BjWsXNBF.js',                'build/static/intelligence-D0VfOc4R.js',\n      'build/static/inventory-B2_izhXg.js',                    'build/static/invoiceRowClassification-DvX9EeH3.js',\n      'build/static/management-DVTwG9QQ.js',                   'build/static/operations-DHZb3v1L.js',\n      'build/static/plus-DJlFFtJQ.js',                         'build/static/schedule-dKbTRWFO.js',\n      'build/static/trending-up-HaJIriX7.js',                  'build/static/upload-BPnV-OBJ.js',\n      'build/version.json',                                    'build/wisco.png'\n    ],\n    expected: [],\n    operator: 'deepStrictEqual',\n    diff: 'simple'\n  }\n",
+        "stderrTail": "npm notice run 86chaos@16.0.196 test:server\nnpm notice run node --test api/*.test.cjs\n"
+      },
+      {
+        "group": "client tests",
+        "command": "npm run test:client -- --runInBand",
+        "required": true,
+        "status": "passed",
+        "startedAt": "2026-08-11T20:45:30.528Z",
+        "finishedAt": "2026-08-11T20:45:47.388Z",
+        "durationMs": 16860,
+        "exitCode": 0,
+        "firstUsefulFailure": "",
+        "stdoutTail": "",
+        "stderrTail": "e\n\n    console.warn\n      [2026-08-11T20:45:43.862Z]  @firebase/firestore: Firestore (11.10.0): enableMultiTabIndexedDbPersistence() will be deprecated in the future, you can use `FirestoreSettings.cache` instead.\n\n    \u001b[0m \u001b[90m 180 |\u001b[39m   \u001b[36mif\u001b[39m (window\u001b[33m.\u001b[39m__chaosFirestorePersistenceInit) \u001b[36mreturn\u001b[39m window\u001b[33m.\u001b[39m__chaosFirestorePersistenceInit\u001b[33m;\u001b[39m\n     \u001b[90m 181 |\u001b[39m   window\u001b[33m.\u001b[39m__chaosFirestorePersistenceInit \u001b[33m=\u001b[39m \u001b[33mPromise\u001b[39m\u001b[33m.\u001b[39mresolve()\n    \u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 182 |\u001b[39m     \u001b[33m.\u001b[39mthen(() \u001b[33m=>\u001b[39m enableMultiTabIndexedDbPersistence(db))\n     \u001b[90m     |\u001b[39m                                                   \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\n     \u001b[90m 183 |\u001b[39m     \u001b[33m.\u001b[39m\u001b[36mcatch\u001b[39m((err) \u001b[33m=>\u001b[39m {\n     \u001b[90m 184 |\u001b[39m       \u001b[36mconst\u001b[39m code \u001b[33m=\u001b[39m \u001b[33mString\u001b[39m(err\u001b[33m?\u001b[39m\u001b[33m.\u001b[39mcode \u001b[33m||\u001b[39m \u001b[32m''\u001b[39m)\u001b[33m.\u001b[39mtoLowerCase()\u001b[33m;\u001b[39m\n     \u001b[90m 185 |\u001b[39m       \u001b[36mconst\u001b[39m message \u001b[33m=\u001b[39m \u001b[33mString\u001b[39m(err\u001b[33m?\u001b[39m\u001b[33m.\u001b[39mmessage \u001b[33m||\u001b[39m err \u001b[33m||\u001b[39m \u001b[32m''\u001b[39m)\u001b[33m;\u001b[39m\u001b[0m\n\n      at Logger.defaultLogHandler [as _logHandler] (node_modules/@firebase/logger/src/logger.ts:115:57)\n      at Logger.warn (node_modules/@firebase/logger/src/logger.ts:206:10)\n      at logWarn (node_modules/@firebase/firestore/src/util/log.ts:69:15)\n      at enableMultiTabIndexedDbPersistence (node_modules/@firebase/firestore/src/api/database.ts:421:3)\n      at src/core/appCore.js:182:51\n\nPASS src/core/listenerRegistry.test.js\n  ● Console\n\n    console.warn\n      [2026-08-11T20:45:44.580Z]  @firebase/firestore: Firestore (11.10.0): enableMultiTabIndexedDbPersistence() will be deprecated in the future, you can use `FirestoreSettings.cache` instead.\n\n    \u001b[0m \u001b[90m 180 |\u001b[39m   \u001b[36mif\u001b[39m (window\u001b[33m.\u001b[39m__chaosFirestorePersistenceInit) \u001b[36mreturn\u001b[39m window\u001b[33m.\u001b[39m__chaosFirestorePersistenceInit\u001b[33m;\u001b[39m\n     \u001b[90m 181 |\u001b[39m   window\u001b[33m.\u001b[39m__chaosFirestorePersistenceInit \u001b[33m=\u001b[39m \u001b[33mPromise\u001b[39m\u001b[33m.\u001b[39mresolve()\n    \u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 182 |\u001b[39m     \u001b[33m.\u001b[39mthen(() \u001b[33m=>\u001b[39m enableMultiTabIndexedDbPersistence(db))\n     \u001b[90m     |\u001b[39m                                                   \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\n     \u001b[90m 183 |\u001b[39m     \u001b[33m.\u001b[39m\u001b[36mcatch\u001b[39m((err) \u001b[33m=>\u001b[39m {\n     \u001b[90m 184 |\u001b[39m       \u001b[36mconst\u001b[39m code \u001b[33m=\u001b[39m \u001b[33mString\u001b[39m(err\u001b[33m?\u001b[39m\u001b[33m.\u001b[39mcode \u001b[33m||\u001b[39m \u001b[32m''\u001b[39m)\u001b[33m.\u001b[39mtoLowerCase()\u001b[33m;\u001b[39m\n     \u001b[90m 185 |\u001b[39m       \u001b[36mconst\u001b[39m message \u001b[33m=\u001b[39m \u001b[33mString\u001b[39m(err\u001b[33m?\u001b[39m\u001b[33m.\u001b[39mmessage \u001b[33m||\u001b[39m err \u001b[33m||\u001b[39m \u001b[32m''\u001b[39m)\u001b[33m;\u001b[39m\u001b[0m\n\n      at Logger.defaultLogHandler [as _logHandler] (node_modules/@firebase/logger/src/logger.ts:115:57)\n      at Logger.warn (node_modules/@firebase/logger/src/logger.ts:206:10)\n      at logWarn (node_modules/@firebase/firestore/src/util/log.ts:69:15)\n      at enableMultiTabIndexedDbPersistence (node_modules/@firebase/firestore/src/api/database.ts:421:3)\n      at src/core/appCore.js:182:51\n\nPASS src/core/noOpWrite.test.js\n  ● Console\n\n    console.warn\n      [2026-08-11T20:45:45.313Z]  @firebase/firestore: Firestore (11.10.0): enableMultiTabIndexedDbPersistence() will be deprecated in the future, you can use `FirestoreSettings.cache` instead.\n\n    \u001b[0m \u001b[90m 180 |\u001b[39m   \u001b[36mif\u001b[39m (window\u001b[33m.\u001b[39m__chaosFirestorePersistenceInit) \u001b[36mreturn\u001b[39m window\u001b[33m.\u001b[39m__chaosFirestorePersistenceInit\u001b[33m;\u001b[39m\n     \u001b[90m 181 |\u001b[39m   window\u001b[33m.\u001b[39m__chaosFirestorePersistenceInit \u001b[33m=\u001b[39m \u001b[33mPromise\u001b[39m\u001b[33m.\u001b[39mresolve()\n    \u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 182 |\u001b[39m     \u001b[33m.\u001b[39mthen(() \u001b[33m=>\u001b[39m enableMultiTabIndexedDbPersistence(db))\n     \u001b[90m     |\u001b[39m                                                   \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\n     \u001b[90m 183 |\u001b[39m     \u001b[33m.\u001b[39m\u001b[36mcatch\u001b[39m((err) \u001b[33m=>\u001b[39m {\n     \u001b[90m 184 |\u001b[39m       \u001b[36mconst\u001b[39m code \u001b[33m=\u001b[39m \u001b[33mString\u001b[39m(err\u001b[33m?\u001b[39m\u001b[33m.\u001b[39mcode \u001b[33m||\u001b[39m \u001b[32m''\u001b[39m)\u001b[33m.\u001b[39mtoLowerCase()\u001b[33m;\u001b[39m\n     \u001b[90m 185 |\u001b[39m       \u001b[36mconst\u001b[39m message \u001b[33m=\u001b[39m \u001b[33mString\u001b[39m(err\u001b[33m?\u001b[39m\u001b[33m.\u001b[39mmessage \u001b[33m||\u001b[39m err \u001b[33m||\u001b[39m \u001b[32m''\u001b[39m)\u001b[33m;\u001b[39m\u001b[0m\n\n      at Logger.defaultLogHandler [as _logHandler] (node_modules/@firebase/logger/src/logger.ts:115:57)\n      at Logger.warn (node_modules/@firebase/logger/src/logger.ts:206:10)\n      at logWarn (node_modules/@firebase/firestore/src/util/log.ts:69:15)\n      at enableMultiTabIndexedDbPersistence (node_modules/@firebase/firestore/src/api/database.ts:421:3)\n      at src/core/appCore.js:182:51\n\nPASS src/core/sessionAccess.test.js\nPASS src/core/reminderUtils.release-gate.test.js\nPASS src/lib/featureAccess.test.js\nPASS src/core/maturityGuards.test.js\nPASS src/core/reminderUtils.test.js\n\nTest Suites: 9 passed, 9 total\nTests:       51 passed, 51 total\nSnapshots:   0 total\nTime:        11.879 s\nRan all test suites.\n"
+      },
+      {
+        "group": "production build",
+        "command": "npm run build",
+        "required": true,
+        "status": "passed",
+        "startedAt": "2026-08-11T20:45:47.388Z",
+        "finishedAt": "2026-08-11T20:45:58.922Z",
+        "durationMs": 11534,
+        "exitCode": 0,
+        "firstUsefulFailure": "",
+        "stdoutTail": "[vite-build] Oxc precompiled 55 src .js files in temporary build workspace.\n\u001b[36mvite v8.1.5 \u001b[32mbuilding client environment for production...\u001b[36m\u001b[39m\n\u001b[2K\rtransforming...✓ 1740 modules transformed.\nrendering chunks...\ncomputing gzip size...\nbuild/index.html                                       1.83 kB │ gzip:   0.70 kB\nbuild/static/index-C1Fy5KMb.css                      145.17 kB │ gzip:  25.74 kB\nbuild/static/trending-up-HaJIriX7.js                   0.19 kB │ gzip:   0.17 kB\nbuild/static/plus-DJlFFtJQ.js                          0.21 kB │ gzip:   0.18 kB\nbuild/static/camera-CQnDhF3a.js                        0.23 kB │ gzip:   0.20 kB\nbuild/static/calendar-W9RKIJIq.js                      0.24 kB │ gzip:   0.19 kB\nbuild/static/upload-BPnV-OBJ.js                        0.24 kB │ gzip:   0.21 kB\nbuild/static/invoiceRowClassification-DvX9EeH3.js      9.49 kB │ gzip:   4.05 kB\nbuild/static/index.esm-BziQGi1x.js                    13.35 kB │ gzip:   4.84 kB\nbuild/static/index.esm2017-BjWsXNBF.js                37.72 kB │ gzip:  12.91 kB\nbuild/static/hr-C3nHyLOC.js                           41.91 kB │ gzip:  11.25 kB\nbuild/static/intelligence-D0VfOc4R.js                 60.36 kB │ gzip:  17.08 kB\nbuild/static/index.esm-Bu1kHxOO.js                    93.05 kB │ gzip:  27.33 kB\nbuild/static/inventory-B2_izhXg.js                   119.18 kB │ gzip:  28.16 kB\nbuild/static/operations-DHZb3v1L.js                  145.81 kB │ gzip:  36.29 kB\nbuild/static/schedule-dKbTRWFO.js                    219.37 kB │ gzip:  59.65 kB\nbuild/static/index-COGMZDLp.js                       348.65 kB │ gzip: 105.74 kB\nbuild/static/aiScanUsage-D9qaVCpJ.js                 432.23 kB │ gzip: 180.23 kB\nbuild/static/common-CsRO60ZO.js                      946.26 kB │ gzip: 283.49 kB\nbuild/static/management-DVTwG9QQ.js                1,022.93 kB │ gzip: 268.52 kB\n\n\u001b[32m✓ built in 4.73s\u001b[39m\n",
+        "stderrTail": "npm notice run 86chaos@16.0.196 build\nnpm notice run node scripts/vite-build-with-asset-manifest.cjs\n\u001b[33m[lightningcss minify] Unknown at rule: @tailwind\n660 |  \t\t}\n661 |  \t}\n662 |  @tailwind base;\n    |           ^\n663 |  @tailwind components;\n664 |  @tailwind utilities;\u001b[39m\n\u001b[33m[lightningcss minify] Unknown at rule: @tailwind\n661 |  \t}\n662 |  @tailwind base;\n663 |  @tailwind components;\n    |           ^\n664 |  @tailwind utilities;\n665 |  \u001b[39m\n\u001b[33m[lightningcss minify] Unknown at rule: @tailwind\n662 |  @tailwind base;\n663 |  @tailwind components;\n664 |  @tailwind utilities;\n    |           ^\n665 |  \n666 |  html,\u001b[39m\n\u001b[33m\u001b[33m[INEFFECTIVE_DYNAMIC_IMPORT] \u001b[0mnode_modules/pdf-lib/es/index.js is dynamically imported by .vite-build-root-11820/src/core/fileCompression.js but also statically imported by .vite-build-root-11820/src/core/aiScanUsage.js, dynamic import will not move module into another chunk.\n\u001b[39m\n\u001b[33m[plugin builtin:vite-reporter] \n(!) Some chunks are larger than 500 kB after minification. Consider:\n- Using dynamic import() to code-split the application\n- Use build.rolldownOptions.output.codeSplitting to improve chunking: https://rolldown.rs/reference/OutputOptions.codeSplitting\n- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.\u001b[39m\n"
+      },
+      {
+        "group": "java prerequisite",
+        "command": "java -version",
+        "required": true,
+        "status": "passed",
+        "startedAt": "2026-08-11T20:45:58.929Z",
+        "finishedAt": "2026-08-11T20:45:59.322Z",
+        "durationMs": 0,
+        "exitCode": 0,
+        "firstUsefulFailure": "",
+        "stdoutTail": "",
+        "stderrTail": "openjdk version \"21.0.12\" 2026-07-21 LTS\r\nOpenJDK Runtime Environment Temurin-21.0.12+8 (build 21.0.12+8-LTS)\r\nOpenJDK 64-Bit Server VM Temurin-21.0.12+8 (build 21.0.12+8-LTS, mixed mode, sharing)"
+      },
+      {
+        "group": "complete canonical firestore/storage emulator rules tests",
+        "command": "npm run test:rules",
+        "required": true,
+        "status": "passed",
+        "startedAt": "2026-08-11T20:45:59.322Z",
+        "finishedAt": "2026-08-11T20:48:15.763Z",
+        "durationMs": 136441,
+        "exitCode": 0,
+        "firstUsefulFailure": "",
+        "stdoutTail": "\u001b[36m\u001b[1mi  emulators:\u001b[22m\u001b[39m Starting emulators: firestore, storage\r\n\u001b[36m\u001b[1mi  emulators:\u001b[22m\u001b[39m Detected demo project ID \"demo-no-project\", emulated services will use a demo configuration and attempts to access non-emulated services for this project will fail.\r\n\u001b[36m\u001b[1mi  firestore:\u001b[22m\u001b[39m Firestore Emulator logging to \u001b[1mfirestore-debug.log\u001b[22m\r\n\u001b[32m\u001b[1m+  firestore:\u001b[22m\u001b[39m Firestore Emulator was started in standard edition.\r\n\u001b[32m\u001b[1m+  firestore:\u001b[22m\u001b[39m Firestore Emulator UI websocket is running on 9150.\r\n\u001b[36m\u001b[1mi \u001b[22m\u001b[39m Running script: \u001b[1mnode scripts/run-rules-tests.js\u001b[22m\r\n→ Owner-email authority hardening\n→ Operations-intelligence rules\n→ Forced-password-state hardening\n→ Platform authority create protection\n→ Legitimate tenant staff management\n→ System Administrator user management\n→ Self-service profile and push-device updates\n→ Canonical reminder collection list remains server-only\n→ Tenant protected collection writes\n→ Storage rules\nFirestore and Storage emulator security tests passed.\n\u001b[32m\u001b[1m+ \u001b[22m\u001b[39m Script exited successfully (code 0)\r\n\u001b[36m\u001b[1mi  emulators:\u001b[22m\u001b[39m Shutting down emulators.\r\n\u001b[36m\u001b[1mi  firestore:\u001b[22m\u001b[39m Stopping Firestore Emulator\r\n\u001b[33m\u001b[1m! \u001b[22m\u001b[39m Firestore Emulator has exited upon receiving signal: SIGINT\r\n\u001b[36m\u001b[1mi  storage:\u001b[22m\u001b[39m Stopping Storage Emulator\r\n\u001b[36m\u001b[1mi  hub:\u001b[22m\u001b[39m Stopping emulator hub\r\n\u001b[36m\u001b[1mi  logging:\u001b[22m\u001b[39m Stopping Logging Emulator\r\n",
+        "stderrTail": ", false for 'update' @ L976\n[2026-08-11T20:48:00.096Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x52c2de4b error. Code: 7 Message: 7 PERMISSION_DENIED: \nevaluation error at L976:18 for 'update' @ L976, false for 'update' @ L976\n[2026-08-11T20:48:00.119Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x52c2de4c error. Code: 7 Message: 7 PERMISSION_DENIED: \nevaluation error at L976:18 for 'update' @ L976, false for 'update' @ L976\n[2026-08-11T20:48:00.162Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x52c2de4d error. Code: 7 Message: 7 PERMISSION_DENIED: \nevaluation error at L976:18 for 'update' @ L976, false for 'update' @ L976\n[2026-08-11T20:48:00.202Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x52c2de4e error. Code: 7 Message: 7 PERMISSION_DENIED: \nevaluation error at L976:18 for 'update' @ L976, false for 'update' @ L976\n[2026-08-11T20:48:00.226Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x52c2de4f error. Code: 7 Message: 7 PERMISSION_DENIED: \nevaluation error at L976:18 for 'update' @ L976, false for 'update' @ L976\n[2026-08-11T20:48:00.254Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x52c2de50 error. Code: 7 Message: 7 PERMISSION_DENIED: \nevaluation error at L976:18 for 'update' @ L976, false for 'update' @ L976\n[2026-08-11T20:48:00.288Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x52c2de51 error. Code: 7 Message: 7 PERMISSION_DENIED: \nevaluation error at L975:18 for 'create' @ L975, evaluation error at L976:18 for 'update' @ L976, false for 'create' @ L975\n[2026-08-11T20:48:00.372Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x52c2de53 error. Code: 7 Message: 7 PERMISSION_DENIED: \nevaluation error at L976:18 for 'update' @ L976, false for 'update' @ L976\n[2026-08-11T20:48:00.715Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x52c2de56 error. Code: 7 Message: 7 PERMISSION_DENIED: \nevaluation error at L976:18 for 'update' @ L976, false for 'update' @ L976\n[2026-08-11T20:48:01.871Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x52c2de54 error. Code: 7 Message: 7 PERMISSION_DENIED: \nfalse for 'create' @ L1261, false for 'update' @ L1262\n[2026-08-11T20:48:01.892Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x52c2de57 error. Code: 7 Message: 7 PERMISSION_DENIED: \nfalse for 'create' @ L1261, false for 'update' @ L1262\n[2026-08-11T20:48:01.914Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x52c2de58 error. Code: 7 Message: 7 PERMISSION_DENIED: \nfalse for 'create' @ L1261, false for 'update' @ L1262\n[2026-08-11T20:48:01.964Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x52c2de59 error. Code: 7 Message: 7 PERMISSION_DENIED: \nevaluation error at L1261:18 for 'create' @ L1261, evaluation error at L1262:18 for 'update' @ L1262, false for 'create' @ L1261\n[2026-08-11T20:48:02.113Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x52c2de5c error. Code: 7 Message: 7 PERMISSION_DENIED: \nevaluation error at L1089:18 for 'delete' @ L1089, false for 'delete' @ L1089\n[2026-08-11T20:48:02.240Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x52c2de5e error. Code: 7 Message: 7 PERMISSION_DENIED: \nevaluation error at L1095:18 for 'delete' @ L1095, false for 'delete' @ L1095\n[2026-08-11T20:48:02.371Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x52c2de60 error. Code: 7 Message: 7 PERMISSION_DENIED: \nevaluation error at L1101:18 for 'delete' @ L1101, false for 'delete' @ L1101\n[2026-08-11T20:48:02.501Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x52c2de62 error. Code: 7 Message: 7 PERMISSION_DENIED: \nevaluation error at L1107:18 for 'delete' @ L1107, false for 'delete' @ L1107\n[2026-08-11T20:48:02.631Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x52c2de64 error. Code: 7 Message: 7 PERMISSION_DENIED: \nevaluation error at L1113:18 for 'delete' @ L1113, false for 'delete' @ L1113\n[2026-08-11T20:48:02.749Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x52c2de66 error. Code: 7 Message: 7 PERMISSION_DENIED: \nevaluation error at L1119:18 for 'delete' @ L1119, false for 'delete' @ L1119\n[2026-08-11T20:48:02.871Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x52c2de68 error. Code: 7 Message: 7 PERMISSION_DENIED: \nevaluation error at L1125:18 for 'delete' @ L1125, false for 'delete' @ L1125\n[2026-08-11T20:48:02.903Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x52c2de69 error. Code: 7 Message: 7 PERMISSION_DENIED: \nfalse for 'delete' @ L1378\n"
+      },
+      {
+        "group": "optional focused rules smoke tests",
+        "command": "firebase emulators:exec --only firestore,storage \"node scripts/86chaos-release-gate/run-rules-release-gate.cjs\"",
+        "required": false,
+        "status": "passed",
+        "startedAt": "2026-08-11T20:48:21.877Z",
+        "finishedAt": "2026-08-11T20:49:55.311Z",
+        "durationMs": 93434,
+        "exitCode": 0,
+        "firstUsefulFailure": "",
+        "stdoutTail": "\u001b[36m\u001b[1mi  emulators:\u001b[22m\u001b[39m Starting emulators: firestore, storage\r\n\u001b[36m\u001b[1mi  emulators:\u001b[22m\u001b[39m Detected demo project ID \"demo-no-project\", emulated services will use a demo configuration and attempts to access non-emulated services for this project will fail.\r\n\u001b[36m\u001b[1mi  firestore:\u001b[22m\u001b[39m Firestore Emulator logging to \u001b[1mfirestore-debug.log\u001b[22m\r\n\u001b[32m\u001b[1m+  firestore:\u001b[22m\u001b[39m Firestore Emulator was started in standard edition.\r\n\u001b[32m\u001b[1m+  firestore:\u001b[22m\u001b[39m Firestore Emulator UI websocket is running on 9150.\r\n\u001b[36m\u001b[1mi \u001b[22m\u001b[39m Running script: \u001b[1mnode scripts/86chaos-release-gate/run-rules-release-gate.cjs\u001b[22m\r\nPASS cached Firestore clients survive repeated sequential use\nPASS unauthenticated tenant read is denied\nPASS cross-tenant read is denied\nPASS authorized inventory delete succeeds\nPASS task restaurantId cannot pivot across tenants\nPASS menu scan restaurantId cannot pivot across tenants\nPASS message create rejects conflicting author identities\nPASS staff cannot turn own message into system alert\nPASS shift swap create cannot be authorized only through target employee\nPASS maintenance create rejects conflicting reporter identities\nPASS staff cannot delete another maintenance report\nPASS ops intelligence owner read succeeds\nPASS ops intelligence manager leadership read succeeds\nPASS ops intelligence staff read is denied\nPASS ops intelligence cross tenant read is denied\nPASS ops intelligence unauthenticated read is denied\nPASS ops intelligence client writes are denied\nPASS authorized profile-photo upload and delete succeed\nPASS missing Storage user profile denies cleanly\nPASS cross-tenant storage deletion is denied\nPASS authorized invoice metadata upload succeeds\nPASS invoice upload with mismatched tenant metadata is denied\nPASS no Firestore started-settings lifecycle errors were captured\n{\n  \"ok\": true,\n  \"runId\": \"2026-08-11T15-39-07\",\n  \"activeEmulatorProjectId\": \"demo-no-project\",\n  \"output\": \"C:\\\\Users\\\\geoff\\\\Documents\\\\GitHub\\\\86chaos\\\\test-results\\\\86chaos-play-store-release-gate\\\\2026-08-11T15-39-07\\\\firebase-rules-release-gate.json\",\n  \"passed\": 23,\n  \"failed\": 0,\n  \"blocked\": 0,\n  \"firstActionableFailure\": \"\"\n}\n\u001b[32m\u001b[1m+ \u001b[22m\u001b[39m Script exited successfully (code 0)\r\n\u001b[36m\u001b[1mi  emulators:\u001b[22m\u001b[39m Shutting down emulators.\r\n\u001b[36m\u001b[1mi  firestore:\u001b[22m\u001b[39m Stopping Firestore Emulator\r\n\u001b[33m\u001b[1m! \u001b[22m\u001b[39m Firestore Emulator has exited upon receiving signal: SIGINT\r\n\u001b[36m\u001b[1mi  storage:\u001b[22m\u001b[39m Stopping Storage Emulator\r\n\u001b[36m\u001b[1mi  hub:\u001b[22m\u001b[39m Stopping emulator hub\r\n\u001b[36m\u001b[1mi  logging:\u001b[22m\u001b[39m Stopping Logging Emulator\r\n",
+        "stderrTail": "[2026-08-11T20:49:48.824Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x8ca9e325 error. Code: 7 Message: 7 PERMISSION_DENIED: \nevaluation error at L1041:18 for 'update' @ L1041, false for 'update' @ L1041\n[2026-08-11T20:49:48.907Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x8ca9e326 error. Code: 7 Message: 7 PERMISSION_DENIED: \nevaluation error at L1130:18 for 'update' @ L1130, false for 'update' @ L1130\n[2026-08-11T20:49:49.171Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x8ca9e327 error. Code: 7 Message: 7 PERMISSION_DENIED: \nevaluation error at L1376:18 for 'create' @ L1376, evaluation error at L1377:18 for 'update' @ L1377, false for 'create' @ L1376\n[2026-08-11T20:49:49.336Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x8ca9e328 error. Code: 7 Message: 7 PERMISSION_DENIED: \nevaluation error at L1377:18 for 'update' @ L1377, false for 'update' @ L1377\n[2026-08-11T20:49:49.496Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x8ca9e329 error. Code: 7 Message: 7 PERMISSION_DENIED: \nevaluation error at L1382:18 for 'create' @ L1382, evaluation error at L1383:18 for 'update' @ L1383, false for 'create' @ L1382\n[2026-08-11T20:49:49.622Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x8ca9e32a error. Code: 7 Message: 7 PERMISSION_DENIED: \nevaluation error at L1388:18 for 'create' @ L1388, evaluation error at L1389:18 for 'update' @ L1389, false for 'create' @ L1388\n[2026-08-11T20:49:49.696Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x8ca9e32b error. Code: 7 Message: 7 PERMISSION_DENIED: \nevaluation error at L1390:18 for 'delete' @ L1390, false for 'delete' @ L1390\n[2026-08-11T20:49:50.293Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x8ca9e32e error. Code: 7 Message: 7 PERMISSION_DENIED: \nfalse for 'create' @ L1047, false for 'update' @ L1047\n[2026-08-11T20:49:50.335Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x8ca9e32f error. Code: 7 Message: 7 PERMISSION_DENIED: \nfalse for 'update' @ L1047\n[2026-08-11T20:49:50.367Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x8ca9e330 error. Code: 7 Message: 7 PERMISSION_DENIED: \nfalse for 'delete' @ L1047\n"
+      }
+    ],
+    "rulesTests": {
+      "group": "complete canonical firestore/storage emulator rules tests",
+      "command": "npm run test:rules",
+      "required": true,
+      "status": "passed",
+      "startedAt": "2026-08-11T20:45:59.322Z",
+      "finishedAt": "2026-08-11T20:48:15.763Z",
+      "durationMs": 136441,
+      "exitCode": 0,
+      "firstUsefulFailure": "",
+      "stdoutTail": "\u001b[36m\u001b[1mi  emulators:\u001b[22m\u001b[39m Starting emulators: firestore, storage\r\n\u001b[36m\u001b[1mi  emulators:\u001b[22m\u001b[39m Detected demo project ID \"demo-no-project\", emulated services will use a demo configuration and attempts to access non-emulated services for this project will fail.\r\n\u001b[36m\u001b[1mi  firestore:\u001b[22m\u001b[39m Firestore Emulator logging to \u001b[1mfirestore-debug.log\u001b[22m\r\n\u001b[32m\u001b[1m+  firestore:\u001b[22m\u001b[39m Firestore Emulator was started in standard edition.\r\n\u001b[32m\u001b[1m+  firestore:\u001b[22m\u001b[39m Firestore Emulator UI websocket is running on 9150.\r\n\u001b[36m\u001b[1mi \u001b[22m\u001b[39m Running script: \u001b[1mnode scripts/run-rules-tests.js\u001b[22m\r\n→ Owner-email authority hardening\n→ Operations-intelligence rules\n→ Forced-password-state hardening\n→ Platform authority create protection\n→ Legitimate tenant staff management\n→ System Administrator user management\n→ Self-service profile and push-device updates\n→ Canonical reminder collection list remains server-only\n→ Tenant protected collection writes\n→ Storage rules\nFirestore and Storage emulator security tests passed.\n\u001b[32m\u001b[1m+ \u001b[22m\u001b[39m Script exited successfully (code 0)\r\n\u001b[36m\u001b[1mi  emulators:\u001b[22m\u001b[39m Shutting down emulators.\r\n\u001b[36m\u001b[1mi  firestore:\u001b[22m\u001b[39m Stopping Firestore Emulator\r\n\u001b[33m\u001b[1m! \u001b[22m\u001b[39m Firestore Emulator has exited upon receiving signal: SIGINT\r\n\u001b[36m\u001b[1mi  storage:\u001b[22m\u001b[39m Stopping Storage Emulator\r\n\u001b[36m\u001b[1mi  hub:\u001b[22m\u001b[39m Stopping emulator hub\r\n\u001b[36m\u001b[1mi  logging:\u001b[22m\u001b[39m Stopping Logging Emulator\r\n",
+      "stderrTail": ", false for 'update' @ L976\n[2026-08-11T20:48:00.096Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x52c2de4b error. Code: 7 Message: 7 PERMISSION_DENIED: \nevaluation error at L976:18 for 'update' @ L976, false for 'update' @ L976\n[2026-08-11T20:48:00.119Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x52c2de4c error. Code: 7 Message: 7 PERMISSION_DENIED: \nevaluation error at L976:18 for 'update' @ L976, false for 'update' @ L976\n[2026-08-11T20:48:00.162Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x52c2de4d error. Code: 7 Message: 7 PERMISSION_DENIED: \nevaluation error at L976:18 for 'update' @ L976, false for 'update' @ L976\n[2026-08-11T20:48:00.202Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x52c2de4e error. Code: 7 Message: 7 PERMISSION_DENIED: \nevaluation error at L976:18 for 'update' @ L976, false for 'update' @ L976\n[2026-08-11T20:48:00.226Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x52c2de4f error. Code: 7 Message: 7 PERMISSION_DENIED: \nevaluation error at L976:18 for 'update' @ L976, false for 'update' @ L976\n[2026-08-11T20:48:00.254Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x52c2de50 error. Code: 7 Message: 7 PERMISSION_DENIED: \nevaluation error at L976:18 for 'update' @ L976, false for 'update' @ L976\n[2026-08-11T20:48:00.288Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x52c2de51 error. Code: 7 Message: 7 PERMISSION_DENIED: \nevaluation error at L975:18 for 'create' @ L975, evaluation error at L976:18 for 'update' @ L976, false for 'create' @ L975\n[2026-08-11T20:48:00.372Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x52c2de53 error. Code: 7 Message: 7 PERMISSION_DENIED: \nevaluation error at L976:18 for 'update' @ L976, false for 'update' @ L976\n[2026-08-11T20:48:00.715Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x52c2de56 error. Code: 7 Message: 7 PERMISSION_DENIED: \nevaluation error at L976:18 for 'update' @ L976, false for 'update' @ L976\n[2026-08-11T20:48:01.871Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x52c2de54 error. Code: 7 Message: 7 PERMISSION_DENIED: \nfalse for 'create' @ L1261, false for 'update' @ L1262\n[2026-08-11T20:48:01.892Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x52c2de57 error. Code: 7 Message: 7 PERMISSION_DENIED: \nfalse for 'create' @ L1261, false for 'update' @ L1262\n[2026-08-11T20:48:01.914Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x52c2de58 error. Code: 7 Message: 7 PERMISSION_DENIED: \nfalse for 'create' @ L1261, false for 'update' @ L1262\n[2026-08-11T20:48:01.964Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x52c2de59 error. Code: 7 Message: 7 PERMISSION_DENIED: \nevaluation error at L1261:18 for 'create' @ L1261, evaluation error at L1262:18 for 'update' @ L1262, false for 'create' @ L1261\n[2026-08-11T20:48:02.113Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x52c2de5c error. Code: 7 Message: 7 PERMISSION_DENIED: \nevaluation error at L1089:18 for 'delete' @ L1089, false for 'delete' @ L1089\n[2026-08-11T20:48:02.240Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x52c2de5e error. Code: 7 Message: 7 PERMISSION_DENIED: \nevaluation error at L1095:18 for 'delete' @ L1095, false for 'delete' @ L1095\n[2026-08-11T20:48:02.371Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x52c2de60 error. Code: 7 Message: 7 PERMISSION_DENIED: \nevaluation error at L1101:18 for 'delete' @ L1101, false for 'delete' @ L1101\n[2026-08-11T20:48:02.501Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x52c2de62 error. Code: 7 Message: 7 PERMISSION_DENIED: \nevaluation error at L1107:18 for 'delete' @ L1107, false for 'delete' @ L1107\n[2026-08-11T20:48:02.631Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x52c2de64 error. Code: 7 Message: 7 PERMISSION_DENIED: \nevaluation error at L1113:18 for 'delete' @ L1113, false for 'delete' @ L1113\n[2026-08-11T20:48:02.749Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x52c2de66 error. Code: 7 Message: 7 PERMISSION_DENIED: \nevaluation error at L1119:18 for 'delete' @ L1119, false for 'delete' @ L1119\n[2026-08-11T20:48:02.871Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x52c2de68 error. Code: 7 Message: 7 PERMISSION_DENIED: \nevaluation error at L1125:18 for 'delete' @ L1125, false for 'delete' @ L1125\n[2026-08-11T20:48:02.903Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x52c2de69 error. Code: 7 Message: 7 PERMISSION_DENIED: \nfalse for 'delete' @ L1378\n"
+    },
+    "testAccountVerification": true,
+    "qaSeed": false,
+    "playwrightTotals": {
+      "passed": 0,
+      "failed": 0,
+      "timedOut": 0,
+      "skipped": 0,
+      "blocked": 1,
+      "notRun": 1,
+      "unexpected": 0
+    },
+    "cleanup": false,
+    "remainingQaRecordsOrStorageObjects": {},
+    "finalState": "BLOCKED",
+    "firstActionableBlocker": "server tests: api\\app-only-package-hygiene-16-0-188.test.cjs: app-only hygiene rejects forbidden source-controlled artifacts and packaged local secrets (1993.0226ms): AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:"
+  },
+  "setupState": {},
+  "serverFirebaseBoundaryPreflight": {
+    "runId": "2026-08-11T15-39-07",
+    "generatedAt": "2026-08-11T20:42:36.330Z",
+    "phase": "server-firebase-boundary-preflight",
+    "probeAccount": {
+      "key": "systemAdmin",
+      "emailEnv": "SYSTEM_ADMIN_EMAIL",
+      "email": "86chaos.qa.system-admin.20260729-1302@example.test",
+      "uid": "cmLRtL0CwxgBCYpzjCnVfhh6Lgd2"
+    },
+    "ok": true,
+    "failureCategory": "",
+    "primaryBlockingFailure": "",
+    "errors": [],
+    "appUrl": "https://86chaos-git-testing-cheers-portal-s-projects.vercel.app",
+    "vercelEnvironment": "preview",
+    "expectedFirebaseProjectId": "chaos-test-d1601",
+    "clientFirebaseProjectId": "chaos-test-d1601",
+    "deployedServerFirebaseProjectId": "chaos-test-d1601",
+    "credentialSourceName": "firebase-custom-claim",
+    "whoamiStatus": 200,
+    "whoamiReasonCategory": "platform-admin-verified",
+    "beforeMutation": true,
+    "testAccountProvisioningAttempted": false,
+    "qaMutationAllowed": true,
+    "safeDiagnostic": ""
+  },
+  "roleIdentityVerification": {
+    "ok": true,
+    "runId": "2026-08-11T15-39-07",
+    "generatedAt": "2026-08-11T20:42:50.318Z",
+    "phase": "role-preflight",
+    "appUrl": "https://86chaos-git-testing-cheers-portal-s-projects.vercel.app",
+    "expectedFirebaseProjectId": "chaos-test-d1601",
+    "firebaseProjectId": "chaos-test-d1601",
+    "allEmailsUnique": true,
+    "allUidsUnique": true,
+    "accounts": [
+      {
+        "key": "systemAdmin",
+        "label": "System Administrator",
+        "emailEnv": "SYSTEM_ADMIN_EMAIL",
+        "email": "86chaos.qa.system-admin.20260729-1302@example.test",
+        "uid": "cmLRtL0CwxgBCYpzjCnVfhh6Lgd2",
+        "whoamiUid": "cmLRtL0CwxgBCYpzjCnVfhh6Lgd2",
+        "whoamiEmail": "86chaos.qa.system-admin.20260729-1302@example.test",
+        "whoamiStatus": 200,
+        "whoamiExpectedDenial": false,
+        "expectedDenialVerified": false,
+        "superAdmin": true,
+        "customClaimSuperAdmin": true,
+        "serverMasterAdminMatched": false,
+        "firestoreSuperAdmin": true,
+        "firestoreSystemAdministrator": true,
+        "firestoreProfileRole": "Kitchen",
+        "runtimeProjectId": "chaos-test-d1601",
+        "firebaseProjectId": "chaos-test-d1601",
+        "role": "Kitchen",
+        "restaurantRole": "Kitchen",
+        "isAdmin": false,
+        "isOwner": false,
+        "accountOwner": false,
+        "workspaceOwner": false,
+        "permissions": {
+          "help": true
+        },
+        "expectedSuperAdmin": true,
+        "expectedPlatformAuthority": true
+      },
+      {
+        "key": "owner",
+        "label": "Owner",
+        "emailEnv": "OWNER_EMAIL",
+        "email": "86chaos.qa.owner.20260729-1302@example.test",
+        "uid": "3eiR9IceYeWgnP9BJG9rCWEWoOK2",
+        "whoamiUid": "3eiR9IceYeWgnP9BJG9rCWEWoOK2",
+        "whoamiEmail": "86chaos.qa.owner.20260729-1302@example.test",
+        "whoamiStatus": 403,
+        "whoamiExpectedDenial": true,
+        "expectedDenialVerified": true,
+        "superAdmin": false,
+        "customClaimSuperAdmin": false,
+        "serverMasterAdminMatched": false,
+        "firestoreSuperAdmin": false,
+        "firestoreSystemAdministrator": false,
+        "firestoreProfileRole": "Owner",
+        "runtimeProjectId": "chaos-test-d1601",
+        "firebaseProjectId": "chaos-test-d1601",
+        "role": "Owner",
+        "restaurantRole": "Owner",
+        "isAdmin": true,
+        "isOwner": true,
+        "accountOwner": true,
+        "workspaceOwner": true,
+        "permissions": {
+          "schedule": true,
+          "inventory": true,
+          "inventoryEdit": true,
+          "financialRead": true,
+          "financialEdit": true,
+          "sales": true,
+          "salesRead": true,
+          "labor": true,
+          "laborRead": true,
+          "backOffice": true,
+          "ownerTools": true,
+          "team": true,
+          "events": true,
+          "settings": true,
+          "ops": true,
+          "maintenance": true,
+          "prep": true,
+          "recipes": true,
+          "menuIntelligence": true
+        },
+        "expectedSuperAdmin": false,
+        "expectedPlatformAuthority": false
+      },
+      {
+        "key": "manager",
+        "label": "Manager",
+        "emailEnv": "MANAGER_EMAIL",
+        "email": "86chaos.qa.manager.20260729-1302@example.test",
+        "uid": "UNn3N2166lZchR4Dk2YtSzLg0B63",
+        "whoamiUid": "UNn3N2166lZchR4Dk2YtSzLg0B63",
+        "whoamiEmail": "86chaos.qa.manager.20260729-1302@example.test",
+        "whoamiStatus": 403,
+        "whoamiExpectedDenial": true,
+        "expectedDenialVerified": true,
+        "superAdmin": false,
+        "customClaimSuperAdmin": false,
+        "serverMasterAdminMatched": false,
+        "firestoreSuperAdmin": false,
+        "firestoreSystemAdministrator": false,
+        "firestoreProfileRole": "Manager",
+        "runtimeProjectId": "chaos-test-d1601",
+        "firebaseProjectId": "chaos-test-d1601",
+        "role": "Manager",
+        "restaurantRole": "Manager",
+        "isAdmin": true,
+        "isOwner": false,
+        "accountOwner": false,
+        "workspaceOwner": false,
+        "permissions": {
+          "schedule": true,
+          "inventory": true,
+          "inventoryEdit": true,
+          "financialRead": true,
+          "salesRead": true,
+          "laborRead": true,
+          "backOffice": true,
+          "team": true,
+          "events": true,
+          "ops": true,
+          "maintenance": true,
+          "prep": true,
+          "recipes": true,
+          "menuIntelligence": true
+        },
+        "expectedSuperAdmin": false,
+        "expectedPlatformAuthority": false
+      },
+      {
+        "key": "staff",
+        "label": "Staff",
+        "emailEnv": "STAFF_EMAIL",
+        "email": "86chaos.qa.staff.20260729-1302@example.test",
+        "uid": "xRnSzqBgDbQFL3IwrkV4eYeTln93",
+        "whoamiUid": "xRnSzqBgDbQFL3IwrkV4eYeTln93",
+        "whoamiEmail": "86chaos.qa.staff.20260729-1302@example.test",
+        "whoamiStatus": 403,
+        "whoamiExpectedDenial": true,
+        "expectedDenialVerified": true,
+        "superAdmin": false,
+        "customClaimSuperAdmin": false,
+        "serverMasterAdminMatched": false,
+        "firestoreSuperAdmin": false,
+        "firestoreSystemAdministrator": false,
+        "firestoreProfileRole": "Line Cook",
+        "runtimeProjectId": "chaos-test-d1601",
+        "firebaseProjectId": "chaos-test-d1601",
+        "role": "Line Cook",
+        "restaurantRole": "Line Cook",
+        "isAdmin": false,
+        "isOwner": false,
+        "accountOwner": false,
+        "workspaceOwner": false,
+        "permissions": {
+          "help": true
+        },
+        "expectedSuperAdmin": false,
+        "expectedPlatformAuthority": false
+      }
+    ],
+    "manualConfigurationRequired": [],
+    "errors": []
+  },
+  "failedOnlyManifest": null,
+  "failedOnlyManifestValidation": null,
+  "failedAndNewSelection": null,
+  "criticalTestInventory": null,
+  "pwaIconSourceInventory": null,
+  "pwaIconSourceDeployedParity": null,
+  "failedOnlyMode": false,
+  "failureGroups": [
+    {
+      "group": "runner-blocker",
+      "examples": [
+        "Release gate BLOCKED BEFORE PLAYWRIGHT because required local source/unit/build/rules checks failed or were blocked. See node-test-live-summary.json."
+      ]
+    },
+    {
+      "group": "node-test-failure",
+      "examples": [
+        "server tests: api\\app-only-package-hygiene-16-0-188.test.cjs: app-only hygiene rejects forbidden source-controlled artifacts and packaged local secrets (1993.0226ms): AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:"
+      ]
+    }
+  ],
+  "missingArtifacts": [],
+  "setupFailures": [],
+  "cleanupFailures": [],
+  "preflightFailures": [],
+  "artifactsSkippedByPreflight": [],
+  "artifactsSkippedByRunnerBlock": [
+    {
+      "artifact": "qa-setup-state.json",
+      "reason": "Not created because test execution was blocked before Playwright global setup: Release gate BLOCKED BEFORE PLAYWRIGHT because required local source/unit/build/rules checks failed or were blocked. See node-test-live-summary.json."
+    },
+    {
+      "artifact": "86chaos-full-audit-seed-report.json",
+      "reason": "Not created because test execution was blocked before Playwright global setup: Release gate BLOCKED BEFORE PLAYWRIGHT because required local source/unit/build/rules checks failed or were blocked. See node-test-live-summary.json."
+    },
+    {
+      "artifact": "playwright-report.json",
+      "reason": "Not created because test execution was blocked before Playwright global setup: Release gate BLOCKED BEFORE PLAYWRIGHT because required local source/unit/build/rules checks failed or were blocked. See node-test-live-summary.json."
+    },
+    {
+      "artifact": "86chaos-full-audit-cleanup-report.json",
+      "reason": "Not created because test execution was blocked before Playwright global setup: Release gate BLOCKED BEFORE PLAYWRIGHT because required local source/unit/build/rules checks failed or were blocked. See node-test-live-summary.json."
+    }
+  ],
+  "expectedSkippedArtifacts": [
+    "qa-setup-state.json",
+    "86chaos-full-audit-seed-report.json",
+    "playwright-report.json",
+    "86chaos-full-audit-cleanup-report.json"
+  ],
+  "jsonParseDiagnostics": [],
+  "artifacts": [
+    "test-results/86chaos-play-store-release-gate/2026-08-11T15-39-07/dependency-preflight.json",
+    "test-results/86chaos-play-store-release-gate/2026-08-11T15-39-07/environment-preflight.json",
+    "test-results/86chaos-play-store-release-gate/2026-08-11T15-39-07/firebase-rules-release-gate.json",
+    "test-results/86chaos-play-store-release-gate/2026-08-11T15-39-07/ghost-target-auth.json",
+    "test-results/86chaos-play-store-release-gate/2026-08-11T15-39-07/java-prerequisite.json",
+    "test-results/86chaos-play-store-release-gate/2026-08-11T15-39-07/node-test-live-summary.json",
+    "test-results/86chaos-play-store-release-gate/2026-08-11T15-39-07/role-identity-verification.json",
+    "test-results/86chaos-play-store-release-gate/2026-08-11T15-39-07/runner-state.json",
+    "test-results/86chaos-play-store-release-gate/2026-08-11T15-39-07/server-firebase-boundary-preflight.json",
+    "test-results/86chaos-play-store-release-gate/2026-08-11T15-39-07/source-inventory.json",
+    "test-results/86chaos-play-store-release-gate/2026-08-11T15-39-07/test-account-provisioning.json"
+  ],
+  "truth": [
+    "This report reads only the current run directory.",
+    "Root-level legacy seed and cleanup reports are not authoritative.",
+    "No tests executed is a blocked release gate, not a passing test suite, and not an app-test failure.",
+    "Temporary test-account provisioning reports are current-run diagnostics and never include passwords or tokens.",
+    "When Playwright never starts, missing role verification, setup, seed, Playwright, and cleanup artifacts are not seed or cleanup defects.",
+    "Rules reports are read only from the current run directory.",
+    "Cleanup is required after any verified QA seed, and not required when no QA setup or seed was attempted.",
+    "Preview server Firebase boundary failures are deployment-environment blockers, not role-account password failures, app failures, seed defects, cleanup defects, Firebase rules failures, or Playwright test failures.",
+    "Role-account configuration failures are test harness/account setup blockers, not app failures, seed defects, cleanup defects, or Playwright test failures."
+  ]
+}

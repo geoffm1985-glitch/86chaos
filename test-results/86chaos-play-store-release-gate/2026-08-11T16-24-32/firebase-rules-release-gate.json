@@ -1,0 +1,189 @@
+{
+  "ok": true,
+  "runId": "2026-08-11T16-24-32",
+  "generatedAt": "2026-08-11T21:34:40.616Z",
+  "activeEmulatorProjectId": "demo-no-project",
+  "firestoreEmulatorHost": "127.0.0.1:8080",
+  "storageEmulatorHost": "127.0.0.1:9199",
+  "totalCases": 23,
+  "passed": 23,
+  "failed": 0,
+  "blocked": 0,
+  "notRun": 0,
+  "harnessErrors": [],
+  "assertionFailures": [],
+  "ruleEvaluationErrors": [],
+  "firstActionableFailure": "",
+  "tests": [
+    {
+      "name": "cached Firestore clients survive repeated sequential use",
+      "expectedResult": "multiple operations succeed without client reinitialization",
+      "actualResult": "multiple operations succeed without client reinitialization",
+      "status": "passed",
+      "durationMs": 1797
+    },
+    {
+      "name": "unauthenticated tenant read is denied",
+      "expectedResult": "deny",
+      "actualResult": "deny",
+      "status": "passed",
+      "durationMs": 108
+    },
+    {
+      "name": "cross-tenant read is denied",
+      "expectedResult": "deny",
+      "actualResult": "deny",
+      "status": "passed",
+      "durationMs": 124
+    },
+    {
+      "name": "authorized inventory delete succeeds",
+      "expectedResult": "allow",
+      "actualResult": "allow",
+      "status": "passed",
+      "durationMs": 160
+    },
+    {
+      "name": "task restaurantId cannot pivot across tenants",
+      "expectedResult": "deny",
+      "actualResult": "deny",
+      "status": "passed",
+      "durationMs": 145
+    },
+    {
+      "name": "menu scan restaurantId cannot pivot across tenants",
+      "expectedResult": "deny",
+      "actualResult": "deny",
+      "status": "passed",
+      "durationMs": 90
+    },
+    {
+      "name": "message create rejects conflicting author identities",
+      "expectedResult": "deny",
+      "actualResult": "deny",
+      "status": "passed",
+      "durationMs": 223
+    },
+    {
+      "name": "staff cannot turn own message into system alert",
+      "expectedResult": "deny",
+      "actualResult": "deny",
+      "status": "passed",
+      "durationMs": 225
+    },
+    {
+      "name": "shift swap create cannot be authorized only through target employee",
+      "expectedResult": "deny",
+      "actualResult": "deny",
+      "status": "passed",
+      "durationMs": 132
+    },
+    {
+      "name": "maintenance create rejects conflicting reporter identities",
+      "expectedResult": "deny",
+      "actualResult": "deny",
+      "status": "passed",
+      "durationMs": 116
+    },
+    {
+      "name": "staff cannot delete another maintenance report",
+      "expectedResult": "deny",
+      "actualResult": "deny",
+      "status": "passed",
+      "durationMs": 82
+    },
+    {
+      "name": "ops intelligence owner read succeeds",
+      "expectedResult": "allow",
+      "actualResult": "allow",
+      "status": "passed",
+      "durationMs": 109
+    },
+    {
+      "name": "ops intelligence manager leadership read succeeds",
+      "expectedResult": "allow",
+      "actualResult": "allow",
+      "status": "passed",
+      "durationMs": 183
+    },
+    {
+      "name": "ops intelligence staff read is denied",
+      "expectedResult": "deny",
+      "actualResult": "deny",
+      "status": "passed",
+      "durationMs": 103
+    },
+    {
+      "name": "ops intelligence cross tenant read is denied",
+      "expectedResult": "deny",
+      "actualResult": "deny",
+      "status": "passed",
+      "durationMs": 70
+    },
+    {
+      "name": "ops intelligence unauthenticated read is denied",
+      "expectedResult": "deny",
+      "actualResult": "deny",
+      "status": "passed",
+      "durationMs": 16
+    },
+    {
+      "name": "ops intelligence client writes are denied",
+      "expectedResult": "deny",
+      "actualResult": "deny",
+      "status": "passed",
+      "durationMs": 127
+    },
+    {
+      "name": "authorized profile-photo upload and delete succeed",
+      "expectedResult": "allow",
+      "actualResult": "allow",
+      "status": "passed",
+      "durationMs": 1562
+    },
+    {
+      "name": "missing Storage user profile denies cleanly",
+      "expectedResult": "deny without harness lifecycle error",
+      "actualResult": "deny without harness lifecycle error",
+      "status": "passed",
+      "durationMs": 162
+    },
+    {
+      "name": "cross-tenant storage deletion is denied",
+      "expectedResult": "deny after authorized setup succeeds",
+      "actualResult": "deny after authorized setup succeeds",
+      "status": "passed",
+      "durationMs": 823
+    },
+    {
+      "name": "authorized invoice metadata upload succeeds",
+      "expectedResult": "allow",
+      "actualResult": "allow",
+      "status": "passed",
+      "durationMs": 707
+    },
+    {
+      "name": "invoice upload with mismatched tenant metadata is denied",
+      "expectedResult": "deny after invoice positive control succeeds",
+      "actualResult": "deny after invoice positive control succeeds",
+      "status": "passed",
+      "durationMs": 415
+    },
+    {
+      "name": "no Firestore started-settings lifecycle errors were captured",
+      "expectedResult": "no lifecycle error text",
+      "actualResult": "no lifecycle error text",
+      "status": "passed",
+      "durationMs": 1
+    }
+  ],
+  "failures": [],
+  "truth": [
+    "This focused smoke suite is additional evidence only. The complete canonical npm run test:rules suite remains authoritative.",
+    "Firestore and Storage clients are created once per authenticated context and then reused across cases.",
+    "The rules-unit-testing project ID is resolved from the emulator-provided project namespace.",
+    "No passwords, tokens, service-account values, API keys, or full custom-claim payloads are written to this report."
+  ],
+  "consoleRuleDiagnostics": [],
+  "finishedAt": "2026-08-11T21:35:47.027Z"
+}

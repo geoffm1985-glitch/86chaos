@@ -1,7 +1,0 @@
-node_modules/
-release-gate-tools/node_modules/
-.env.test.local
-.env.test
-playwright-report/
-test-results/
-coverage/

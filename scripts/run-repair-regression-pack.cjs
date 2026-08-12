@@ -7,7 +7,7 @@ const root = path.resolve(__dirname, '..');
 const args = new Set(process.argv.slice(2));
 const localOnly = args.has('--local-only');
 const requireBrowser = args.has('--require-browser');
-const manifestPath = path.join(root, 'scripts/repair-regression-pack-16.0.202.json');
+const manifestPath = path.join(root, 'scripts/repair-regression-pack-16.0.203.json');
 const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
 function expand(cmd) {
   if (!cmd.includes('tests/86chaos-release-gate/*.test.cjs')) return cmd;

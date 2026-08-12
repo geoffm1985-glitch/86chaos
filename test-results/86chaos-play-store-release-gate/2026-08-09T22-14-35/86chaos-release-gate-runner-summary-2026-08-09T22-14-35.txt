@@ -1,0 +1,26 @@
+86 CHAOS RELEASE GATE RUNNER SUMMARY
+Generated: 2026-08-09T22:24:09.4101009-05:00
+Run ID: 2026-08-09T22-14-35
+Root: C:\Users\geoff\Documents\GitHub\86chaos
+Run directory: C:\Users\geoff\Documents\GitHub\86chaos\test-results\86chaos-play-store-release-gate\2026-08-09T22-14-35
+APP_URL: https://86chaos-git-testing-cheers-portal-s-projects.vercel.app
+CHAOS_BASE_URL: https://86chaos-git-testing-cheers-portal-s-projects.vercel.app
+CHAOS_EXPECTED_VERSION: 16.0.167
+Primary blocking reason: 
+Original blocking failures: 0
+All failed steps including collector: 0
+
+STEPS
+- Environment preflight: PASS exit=0 counted=True log=C:\Users\geoff\Documents\GitHub\86chaos\test-results\86chaos-play-store-release-gate\2026-08-09T22-14-35\runner-logs\2026-08-09T22-14-35-Environment_preflight.log
+- Node version: PASS exit=0 counted=True log=C:\Users\geoff\Documents\GitHub\86chaos\test-results\86chaos-play-store-release-gate\2026-08-09T22-14-35\runner-logs\2026-08-09T22-14-35-Node_version.log
+- Lockfile integrity: PASS exit=0 counted=True log=C:\Users\geoff\Documents\GitHub\86chaos\test-results\86chaos-play-store-release-gate\2026-08-09T22-14-35\runner-logs\2026-08-09T22-14-35-Lockfile_integrity.log
+- Install locked test dependencies: PASS exit=0 counted=True log=C:\Users\geoff\Documents\GitHub\86chaos\test-results\86chaos-play-store-release-gate\2026-08-09T22-14-35\runner-logs\2026-08-09T22-14-35-Install_locked_test_dependencies.log
+- Dependency preflight: PASS exit=0 counted=True log=C:\Users\geoff\Documents\GitHub\86chaos\test-results\86chaos-play-store-release-gate\2026-08-09T22-14-35\runner-logs\2026-08-09T22-14-35-Dependency_preflight.log
+- Source inventory: PASS exit=0 counted=True log=C:\Users\geoff\Documents\GitHub\86chaos\test-results\86chaos-play-store-release-gate\2026-08-09T22-14-35\runner-logs\2026-08-09T22-14-35-Source_inventory.log
+- Prepare dynamic reported-failed-only manifest: PASS exit=0 counted=True log=C:\Users\geoff\Documents\GitHub\86chaos\test-results\86chaos-play-store-release-gate\2026-08-09T22-14-35\runner-logs\2026-08-09T22-14-35-Prepare_dynamic_reported-failed-only_manifest.log
+- Install Playwright browsers: PASS exit=0 counted=True log=C:\Users\geoff\Documents\GitHub\86chaos\test-results\86chaos-play-store-release-gate\2026-08-09T22-14-35\runner-logs\2026-08-09T22-14-35-Install_Playwright_browsers.log
+- Verify deployed server Firebase boundary: PASS exit=0 counted=True log=C:\Users\geoff\Documents\GitHub\86chaos\test-results\86chaos-play-store-release-gate\2026-08-09T22-14-35\runner-logs\2026-08-09T22-14-35-Verify_deployed_server_Firebase_boundary.log
+- Provision temporary release-gate test accounts: PASS exit=0 counted=True log=C:\Users\geoff\Documents\GitHub\86chaos\test-results\86chaos-play-store-release-gate\2026-08-09T22-14-35\runner-logs\2026-08-09T22-14-35-Provision_temporary_release-gate_test_accounts.log
+- Verify release-gate role accounts: PASS exit=0 counted=True log=C:\Users\geoff\Documents\GitHub\86chaos\test-results\86chaos-play-store-release-gate\2026-08-09T22-14-35\runner-logs\2026-08-09T22-14-35-Verify_release-gate_role_accounts.log
+- reported-failed-only Playwright gate: PASS exit=0 counted=True log=C:\Users\geoff\Documents\GitHub\86chaos\test-results\86chaos-play-store-release-gate\2026-08-09T22-14-35\runner-logs\2026-08-09T22-14-35-reported-failed-only_Playwright_gate.log
+- Collect reported-failed-only report: PASS exit=0 counted=False log=C:\Users\geoff\Documents\GitHub\86chaos\test-results\86chaos-play-store-release-gate\2026-08-09T22-14-35\runner-logs\2026-08-09T22-14-35-Collect_reported-failed-only_report.log

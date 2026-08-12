@@ -1,0 +1,67 @@
+﻿STEP: Environment / Dependencies / Dependency security audit
+COMMAND: npm audit --audit-level=high
+EXIT: 1
+SECONDS: 372.67
+LOG: C:\Users\geoff\Documents\GitHub\86chaos\test-results\86chaos-full-local-suite\full-suite-20260810-174405\logs\06-Environment_Dependencies-Dependency_security_audit.log
+  firebase-admin  7.0.0 - 8.2.0 || >=10.2.0
+  Depends on vulnerable versions of @google-cloud/firestore
+  Depends on vulnerable versions of @google-cloud/storage
+  Depends on vulnerable versions of uuid
+  node_modules/firebase-admin
+  gaxios  6.4.0 - 6.7.1
+  Depends on vulnerable versions of uuid
+  node_modules/gaxios
+  google-gax  4.0.5-experimental - 4.6.1
+  Depends on vulnerable versions of retry-request
+  Depends on vulnerable versions of uuid
+  node_modules/google-gax
+    @google-cloud/firestore  7.5.0-pre.0 || 7.6.0 - 7.11.6
+    Depends on vulnerable versions of google-gax
+    node_modules/@google-cloud/firestore
+  sockjs  >=0.3.17
+  Depends on vulnerable versions of uuid
+  node_modules/sockjs
+    webpack-dev-server  <=5.2.6
+    Depends on vulnerable versions of sockjs
+    node_modules/webpack-dev-server
+  teeny-request  3.9.1 - 9.0.0
+  Depends on vulnerable versions of uuid
+  node_modules/teeny-request
+    @google-cloud/storage  2.2.0 - 2.5.0 || >=5.19.0
+    Depends on vulnerable versions of retry-request
+    Depends on vulnerable versions of teeny-request
+    node_modules/@google-cloud/storage
+    retry-request  7.0.0 - 7.0.2
+    Depends on vulnerable versions of teeny-request
+    node_modules/retry-request
+
+
+55 vulnerabilities (9 low, 27 moderate, 19 high)
+
+To address issues that do not require attention, run:
+  npm audit fix
+
+To address all issues (including breaking changes), run:
+  npm audit fix --force
+
+STEP: Build / Lint / Lint
+COMMAND: npm run lint
+EXIT: 2
+SECONDS: 3.7
+LOG: C:\Users\geoff\Documents\GitHub\86chaos\test-results\86chaos-full-local-suite\full-suite-20260810-174405\logs\26-Build_Lint-Lint.log
+npm notice run 86chaos@16.0.175 lint
+npm notice run eslint "src/**/*.{js,jsx}" "api/**/*.js"
+
+Oops! Something went wrong! :(
+
+ESLint: 8.57.1
+
+ESLint couldn't find a configuration file. To set up a configuration file for this project, please run:
+
+    npm init @eslint/config
+
+ESLint looked for configuration files in C:\Users\geoff\Documents\GitHub\86chaos\src and its ancestors. If it found none, it then looked in your home directory.
+
+If you think you already have a configuration file or if you need more help, please stop by the ESLint Discord server: https://eslint.org/chat
+
+

@@ -1,0 +1,125 @@
+﻿=== Environment preflight ===
+Command: node scripts/86chaos-release-gate/preflight-env.cjs
+Started: 2026-08-11T13:35:19.1966134-05:00
+
+Source version: 16.0.194
+Expected version: 16.0.194
+Deployed version: 16.0.194
+Visible version: (not available before login)
+Firebase testing project: chaos-test-d1601
+{
+  "ok": true,
+  "generatedAt": "2026-08-11T18:35:21.502Z",
+  "runId": "2026-08-11T13-35-18",
+  "node": "v24.18.0",
+  "appUrl": "https://86chaos-git-testing-cheers-portal-s-projects.vercel.app",
+  "chaosBaseUrl": "https://86chaos-git-testing-cheers-portal-s-projects.vercel.app",
+  "canonicalVercelProjectSlug": "86chaos",
+  "appUrlHostname": "86chaos-git-testing-cheers-portal-s-projects.vercel.app",
+  "appUrlHostAppearsCanonical": true,
+  "retiredVercelProject": "",
+  "targetEnvConflicts": {
+    "ok": true,
+    "errors": [],
+    "values": {
+      "APP_URL": {
+        "process": "https://86chaos-git-testing-cheers-portal-s-projects.vercel.app",
+        "envTestLocal": "https://86chaos-git-testing-cheers-portal-s-projects.vercel.app",
+        "envLocal": ""
+      },
+      "CHAOS_BASE_URL": {
+        "process": "https://86chaos-git-testing-cheers-portal-s-projects.vercel.app",
+        "envTestLocal": "https://86chaos-git-testing-cheers-portal-s-projects.vercel.app",
+        "envLocal": ""
+      },
+      "CHAOS_EXPECTED_VERSION": {
+        "process": "16.0.194",
+        "envTestLocal": "16.0.194",
+        "envLocal": ""
+      },
+      "CHAOS_EXPECTED_VERCEL_PROJECT_SLUG": {
+        "process": "86chaos",
+        "envTestLocal": "86chaos",
+        "envLocal": ""
+      }
+    }
+  },
+  "sourceVersion": "16.0.194",
+  "packageVersion": "16.0.194",
+  "expectedVersion": "16.0.194",
+  "deployedVersion": "16.0.194",
+  "visibleVersion": "",
+  "htmlVersion": "",
+  "firebaseProjectId": "chaos-test-d1601",
+  "envFilesLoaded": [
+    {
+      "path": "C:\\Users\\geoff\\Documents\\GitHub\\86chaos\\.env.test.local",
+      "keys": 33,
+      "filled": 0
+    }
+  ],
+  "accounts": [
+    {
+      "prefix": "OWNER",
+      "emailPresent": true,
+      "passwordPresent": true
+    },
+    {
+      "prefix": "MANAGER",
+      "emailPresent": true,
+      "passwordPresent": true
+    },
+    {
+      "prefix": "STAFF",
+      "emailPresent": true,
+      "passwordPresent": true
+    },
+    {
+      "prefix": "SYSTEM_ADMIN",
+      "emailPresent": true,
+      "passwordPresent": true
+    }
+  ],
+  "firebaseConfigResolved": true,
+  "notificationEvidenceRequired": true,
+  "mutationRequested": true,
+  "qaWorkspaceName": "86 Chaos Release Gate QA 2026-08-11T13-35-18",
+  "qaWorkspaceValidation": {
+    "ok": true,
+    "errors": [],
+    "expected": "86 Chaos Release Gate QA 2026-08-11T13-35-18",
+    "actual": "86 Chaos Release Gate QA 2026-08-11T13-35-18",
+    "runId": "2026-08-11T13-35-18",
+    "prefix": "86 Chaos Release Gate QA "
+  },
+  "mutationSafety": {
+    "ok": true,
+    "errors": [],
+    "projectId": "chaos-test-d1601",
+    "projectSources": {
+      "optionProjectId": "chaos-test-d1601",
+      "credentialProjectId": ""
+    },
+    "projectIdentitiesCompared": [
+      "chaos-test-d1601"
+    ],
+    "projectIdentitySupplied": true,
+    "host": "86chaos-git-testing-cheers-portal-s-projects.vercel.app",
+    "runId": "2026-08-11T13-35-18",
+    "testingProject": "chaos-test-d1601",
+    "productionProject": "cheers-34b8d",
+    "qaEmailsApproved": true
+  },
+  "versionEvidence": {
+    "versionJsonStatus": 200,
+    "versionJsonUrl": "https://86chaos-git-testing-cheers-portal-s-projects.vercel.app/version.json?releaseGateRun=2026-08-11T13-35-18",
+    "htmlStatus": 200,
+    "htmlUrl": "https://86chaos-git-testing-cheers-portal-s-projects.vercel.app/?releaseGateVersionCheck=2026-08-11T13-35-18"
+  },
+  "errors": [],
+  "warnings": [],
+  "output": "C:\\Users\\geoff\\Documents\\GitHub\\86chaos\\test-results\\86chaos-play-store-release-gate\\2026-08-11T13-35-18\\environment-preflight.json"
+}
+
+Finished: 2026-08-11T13:35:21.8165630-05:00
+ExitCode: 0

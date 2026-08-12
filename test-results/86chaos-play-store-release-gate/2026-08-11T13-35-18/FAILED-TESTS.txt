@@ -1,0 +1,8 @@
+86 Chaos Failed Tests
+Run: 2026-08-11T13-35-18
+Version: 16.0.194
+Mode: full
+
+No Playwright test results were produced because the run was blocked before test execution.
+Existing failed-test lineage was not evaluated or cleared.
+Blocker: server tests: api\playwright-inventory-v3.test.cjs: real Playwright list discovery does not recurse when Playwright is installed (5823.7977ms): AssertionError [ERR_ASSERTION]: Playwright list should exit 0. stderr=

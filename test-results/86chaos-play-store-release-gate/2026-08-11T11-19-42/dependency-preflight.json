@@ -1,0 +1,98 @@
+{
+  "runId": "2026-08-11T11-19-42",
+  "generatedAt": "2026-08-11T16:22:55.489Z",
+  "nodeVersion": "v24.18.0",
+  "npmVersion": "",
+  "packageLockPresent": true,
+  "packageLockVersion": 3,
+  "requiredModules": [
+    {
+      "name": "@playwright/test",
+      "ok": true,
+      "version": "1.62.0",
+      "entryPath": "C:\\Users\\geoff\\Documents\\GitHub\\86chaos\\node_modules\\@playwright\\test\\index.js",
+      "packagePath": "C:\\Users\\geoff\\Documents\\GitHub\\86chaos\\node_modules\\@playwright\\test\\package.json",
+      "resolutionMethod": "package-entry",
+      "errorCode": "",
+      "packageJsonExportErrorCode": "",
+      "error": "",
+      "classification": "installed"
+    },
+    {
+      "name": "@babel/parser",
+      "ok": true,
+      "version": "7.29.7",
+      "entryPath": "C:\\Users\\geoff\\Documents\\GitHub\\86chaos\\node_modules\\@babel\\parser\\lib\\index.js",
+      "packagePath": "C:\\Users\\geoff\\Documents\\GitHub\\86chaos\\node_modules\\@babel\\parser\\package.json",
+      "resolutionMethod": "package-entry",
+      "errorCode": "",
+      "packageJsonExportErrorCode": "",
+      "error": "",
+      "classification": "installed"
+    },
+    {
+      "name": "@babel/traverse",
+      "ok": true,
+      "version": "7.29.7",
+      "entryPath": "C:\\Users\\geoff\\Documents\\GitHub\\86chaos\\node_modules\\@babel\\traverse\\lib\\index.js",
+      "packagePath": "C:\\Users\\geoff\\Documents\\GitHub\\86chaos\\node_modules\\@babel\\traverse\\package.json",
+      "resolutionMethod": "package-entry",
+      "errorCode": "",
+      "packageJsonExportErrorCode": "",
+      "error": "",
+      "classification": "installed"
+    },
+    {
+      "name": "vite",
+      "ok": true,
+      "version": "8.1.5",
+      "entryPath": "C:\\Users\\geoff\\Documents\\GitHub\\86chaos\\node_modules\\vite\\dist\\node\\index.js",
+      "packagePath": "C:\\Users\\geoff\\Documents\\GitHub\\86chaos\\node_modules\\vite\\package.json",
+      "resolutionMethod": "package-entry",
+      "errorCode": "",
+      "packageJsonExportErrorCode": "",
+      "error": "",
+      "classification": "installed"
+    },
+    {
+      "name": "@vitejs/plugin-react",
+      "ok": true,
+      "version": "6.0.4",
+      "entryPath": "C:\\Users\\geoff\\Documents\\GitHub\\86chaos\\node_modules\\@vitejs\\plugin-react\\dist\\index.js",
+      "packagePath": "C:\\Users\\geoff\\Documents\\GitHub\\86chaos\\node_modules\\@vitejs\\plugin-react\\package.json",
+      "resolutionMethod": "package-entry",
+      "errorCode": "",
+      "packageJsonExportErrorCode": "ERR_PACKAGE_PATH_NOT_EXPORTED",
+      "error": "",
+      "classification": "installed"
+    },
+    {
+      "name": "jest",
+      "ok": true,
+      "version": "27.5.1",
+      "entryPath": "C:\\Users\\geoff\\Documents\\GitHub\\86chaos\\node_modules\\jest\\build\\jest.js",
+      "packagePath": "C:\\Users\\geoff\\Documents\\GitHub\\86chaos\\node_modules\\jest\\package.json",
+      "resolutionMethod": "package-entry",
+      "errorCode": "",
+      "packageJsonExportErrorCode": "",
+      "error": "",
+      "classification": "installed"
+    },
+    {
+      "name": "eslint",
+      "ok": true,
+      "version": "8.57.1",
+      "entryPath": "C:\\Users\\geoff\\Documents\\GitHub\\86chaos\\node_modules\\eslint\\lib\\api.js",
+      "packagePath": "C:\\Users\\geoff\\Documents\\GitHub\\86chaos\\node_modules\\eslint\\package.json",
+      "resolutionMethod": "package-entry",
+      "errorCode": "",
+      "packageJsonExportErrorCode": "",
+      "error": "",
+      "classification": "installed"
+    }
+  ],
+  "localPlaywrightExecutablePath": "C:\\Users\\geoff\\Documents\\GitHub\\86chaos\\node_modules\\.bin\\playwright.cmd",
+  "localPlaywrightExecutableExists": true,
+  "errors": [],
+  "ok": true
+}

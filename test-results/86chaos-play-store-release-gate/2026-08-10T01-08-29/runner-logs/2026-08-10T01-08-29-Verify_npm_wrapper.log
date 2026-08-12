@@ -1,0 +1,20 @@
+﻿=== Verify npm wrapper ===
+Command: node scripts/86chaos-release-gate/run-observable-command.cjs --label 'Verify npm wrapper' --heartbeat 20 --timeout 60 -- npm --version
+Started: 2026-08-10T01:08:38.9938571-05:00
+
+[2026-08-10T06:08:39.954Z] START Verify npm wrapper
+[2026-08-10T06:08:39.965Z] COMMAND npm --version
+[2026-08-10T06:08:39.965Z] SPAWN "C:\Program Files\nodejs\node.exe" C:\Users\geoff\AppData\Roaming\npm\node_modules\npm\bin\npm-cli.js --version
+[2026-08-10T06:08:39.966Z] NODE_EXECUTABLE C:\Program Files\nodejs\node.exe
+[2026-08-10T06:08:39.967Z] NODE_VERSION v24.18.0
+[2026-08-10T06:08:39.967Z] CWD C:\Users\geoff\Documents\GitHub\86chaos
+[2026-08-10T06:08:39.967Z] COMSPEC C:\windows\system32\cmd.exe
+[2026-08-10T06:08:40.650Z] NPM_CLI C:\Users\geoff\AppData\Roaming\npm\node_modules\npm\bin\npm-cli.js
+[2026-08-10T06:08:40.650Z] NPM_VERSION 12.0.2
+[2026-08-10T06:08:40.651Z] PATH_PREVIEW C:\Users\geoff\Documents\GitHub\86chaos\node_modules\.bin;C:\Users\geoff\Documents\GitHub\node_modules\.bin;C:\Users\geoff\Documents\node_modules\.bin;C:\Users\geoff\node_modules\.bin;C:\Users\node_modules\.bin;C:\node_modules\.bin;C:\Users\geoff\AppData\Roaming\npm\node_modules\npm\node_modules\@npmcli\run-script\lib\node-gyp-bin;C:\Program Files\Eclipse Adoptium\jdk-21.0.12.8-hotspot\bin;C:\Program Files\nodejs\;C:\Program Files\Git\cmd;C:\Users\geoff\AppData\Roaming\npm
+[2026-08-10T06:08:40.652Z] TIMEOUT 60s HEARTBEAT 20s
+12.0.2
+[2026-08-10T06:08:41.315Z] FINISHED Verify npm wrapper elapsed=1s exitCode=0 signal= timedOut=false
+
+Finished: 2026-08-10T01:08:41.3942657-05:00
+ExitCode: 0

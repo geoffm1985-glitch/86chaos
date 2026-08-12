@@ -1,0 +1,247 @@
+{
+  "ok": true,
+  "generatedAt": "2026-08-10T03:22:16.100Z",
+  "runId": "2026-08-09T22-14-35",
+  "runDir": "C:\\Users\\geoff\\Documents\\GitHub\\86chaos\\test-results\\86chaos-play-store-release-gate\\2026-08-09T22-14-35",
+  "mode": "reported-failed-only",
+  "sourceManifestPath": "C:\\Users\\geoff\\Documents\\GitHub\\86chaos\\test-results\\86chaos-play-store-release-gate\\2026-08-09T22-14-35\\failed-only-test-manifest.json",
+  "selected": [
+    {
+      "spec": "e2e/schedule-request-off-management.spec.cjs",
+      "specPath": "e2e/schedule-request-off-management.spec.cjs",
+      "title": "Request Off employee filter narrows and clears manager-visible requests",
+      "leafTitle": "Request Off employee filter narrows and clears manager-visible requests",
+      "exactTestTitle": "Request Off employee filter narrows and clears manager-visible requests",
+      "fullSuitePath": "16.0.153 Schedule warnings and Request Off management",
+      "suitePathParts": [
+        "16.0.153 Schedule warnings and Request Off management"
+      ],
+      "titlePathParts": [
+        "16.0.153 Schedule warnings and Request Off management",
+        "Request Off employee filter narrows and clears manager-visible requests"
+      ],
+      "fullTitle": "16.0.153 Schedule warnings and Request Off management > Request Off employee filter narrows and clears manager-visible requests",
+      "stableKey": "e2e/schedule-request-off-management.spec.cjs\u000016.0.153 Schedule warnings and Request Off management\u0000Request Off employee filter narrows and clears manager-visible requests\u0000chromium",
+      "project": "chromium",
+      "projects": [
+        "chromium"
+      ],
+      "priorStatus": "failed",
+      "baselineStatus": "failed",
+      "baselineFullRunId": "2026-08-09T20-40-07",
+      "baselineSourceVersion": "16.0.166",
+      "baselineDeployedVersion": "16.0.166",
+      "sourceVersion": "16.0.166",
+      "deployedVersion": "16.0.166",
+      "fullRunId": "2026-08-09T20-40-07",
+      "duration": 0,
+      "error": "FirebaseError: Firebase: Error (auth/requests-from-referer-<empty>-are-blocked.).",
+      "selectionReasons": [
+        "uploaded_latest_failed_report_failure"
+      ],
+      "migratedFromLegacyIdentity": false,
+      "migratedFromLegacyAmbiguousIdentity": false,
+      "legacyAmbiguousMatchCount": 0,
+      "migrationSourceStableKey": "e2e/schedule-request-off-management.spec.cjs\u000016.0.153 Schedule warnings and Request Off management\u0000Request Off employee filter narrows and clears manager-visible requests\u0000chromium",
+      "sourceFileHash": "d2a3838e6d8b3cb7de98f2c69d845134b7b054b85f7aebc7c822a3b55a5133e0"
+    },
+    {
+      "spec": "e2e/schedule-request-off-management.spec.cjs",
+      "specPath": "e2e/schedule-request-off-management.spec.cjs",
+      "title": "Approve All Visible updates only filtered visible pending requests",
+      "leafTitle": "Approve All Visible updates only filtered visible pending requests",
+      "exactTestTitle": "Approve All Visible updates only filtered visible pending requests",
+      "fullSuitePath": "16.0.153 Schedule warnings and Request Off management",
+      "suitePathParts": [
+        "16.0.153 Schedule warnings and Request Off management"
+      ],
+      "titlePathParts": [
+        "16.0.153 Schedule warnings and Request Off management",
+        "Approve All Visible updates only filtered visible pending requests"
+      ],
+      "fullTitle": "16.0.153 Schedule warnings and Request Off management > Approve All Visible updates only filtered visible pending requests",
+      "stableKey": "e2e/schedule-request-off-management.spec.cjs\u000016.0.153 Schedule warnings and Request Off management\u0000Approve All Visible updates only filtered visible pending requests\u0000chromium",
+      "project": "chromium",
+      "projects": [
+        "chromium"
+      ],
+      "priorStatus": "failed",
+      "baselineStatus": "failed",
+      "baselineFullRunId": "2026-08-09T20-40-07",
+      "baselineSourceVersion": "16.0.166",
+      "baselineDeployedVersion": "16.0.166",
+      "sourceVersion": "16.0.166",
+      "deployedVersion": "16.0.166",
+      "fullRunId": "2026-08-09T20-40-07",
+      "duration": 0,
+      "error": "FirebaseError: Firebase: Error (auth/requests-from-referer-<empty>-are-blocked.).",
+      "selectionReasons": [
+        "uploaded_latest_failed_report_failure"
+      ],
+      "migratedFromLegacyIdentity": false,
+      "migratedFromLegacyAmbiguousIdentity": false,
+      "legacyAmbiguousMatchCount": 0,
+      "migrationSourceStableKey": "e2e/schedule-request-off-management.spec.cjs\u000016.0.153 Schedule warnings and Request Off management\u0000Approve All Visible updates only filtered visible pending requests\u0000chromium",
+      "sourceFileHash": "d2a3838e6d8b3cb7de98f2c69d845134b7b054b85f7aebc7c822a3b55a5133e0"
+    },
+    {
+      "spec": "e2e/schedule-request-off-management.spec.cjs",
+      "specPath": "e2e/schedule-request-off-management.spec.cjs",
+      "title": "Schedule Builder requested-off warning shows employee name and never Someone",
+      "leafTitle": "Schedule Builder requested-off warning shows employee name and never Someone",
+      "exactTestTitle": "Schedule Builder requested-off warning shows employee name and never Someone",
+      "fullSuitePath": "16.0.153 Schedule warnings and Request Off management",
+      "suitePathParts": [
+        "16.0.153 Schedule warnings and Request Off management"
+      ],
+      "titlePathParts": [
+        "16.0.153 Schedule warnings and Request Off management",
+        "Schedule Builder requested-off warning shows employee name and never Someone"
+      ],
+      "fullTitle": "16.0.153 Schedule warnings and Request Off management > Schedule Builder requested-off warning shows employee name and never Someone",
+      "stableKey": "e2e/schedule-request-off-management.spec.cjs\u000016.0.153 Schedule warnings and Request Off management\u0000Schedule Builder requested-off warning shows employee name and never Someone\u0000mobile-chromium",
+      "project": "mobile-chromium",
+      "projects": [
+        "mobile-chromium"
+      ],
+      "priorStatus": "failed",
+      "baselineStatus": "failed",
+      "baselineFullRunId": "2026-08-09T20-40-07",
+      "baselineSourceVersion": "16.0.166",
+      "baselineDeployedVersion": "16.0.166",
+      "sourceVersion": "16.0.166",
+      "deployedVersion": "16.0.166",
+      "fullRunId": "2026-08-09T20-40-07",
+      "duration": 0,
+      "error": "FirebaseError: Firebase: Error (auth/requests-from-referer-<empty>-are-blocked.).",
+      "selectionReasons": [
+        "uploaded_latest_failed_report_failure"
+      ],
+      "migratedFromLegacyIdentity": false,
+      "migratedFromLegacyAmbiguousIdentity": false,
+      "legacyAmbiguousMatchCount": 0,
+      "migrationSourceStableKey": "e2e/schedule-request-off-management.spec.cjs\u000016.0.153 Schedule warnings and Request Off management\u0000Schedule Builder requested-off warning shows employee name and never Someone\u0000mobile-chromium",
+      "sourceFileHash": "d2a3838e6d8b3cb7de98f2c69d845134b7b054b85f7aebc7c822a3b55a5133e0"
+    },
+    {
+      "spec": "e2e/schedule-request-off-management.spec.cjs",
+      "specPath": "e2e/schedule-request-off-management.spec.cjs",
+      "title": "Request Off employee filter narrows and clears manager-visible requests",
+      "leafTitle": "Request Off employee filter narrows and clears manager-visible requests",
+      "exactTestTitle": "Request Off employee filter narrows and clears manager-visible requests",
+      "fullSuitePath": "16.0.153 Schedule warnings and Request Off management",
+      "suitePathParts": [
+        "16.0.153 Schedule warnings and Request Off management"
+      ],
+      "titlePathParts": [
+        "16.0.153 Schedule warnings and Request Off management",
+        "Request Off employee filter narrows and clears manager-visible requests"
+      ],
+      "fullTitle": "16.0.153 Schedule warnings and Request Off management > Request Off employee filter narrows and clears manager-visible requests",
+      "stableKey": "e2e/schedule-request-off-management.spec.cjs\u000016.0.153 Schedule warnings and Request Off management\u0000Request Off employee filter narrows and clears manager-visible requests\u0000mobile-chromium",
+      "project": "mobile-chromium",
+      "projects": [
+        "mobile-chromium"
+      ],
+      "priorStatus": "failed",
+      "baselineStatus": "failed",
+      "baselineFullRunId": "2026-08-09T20-40-07",
+      "baselineSourceVersion": "16.0.166",
+      "baselineDeployedVersion": "16.0.166",
+      "sourceVersion": "16.0.166",
+      "deployedVersion": "16.0.166",
+      "fullRunId": "2026-08-09T20-40-07",
+      "duration": 0,
+      "error": "FirebaseError: Firebase: Error (auth/requests-from-referer-<empty>-are-blocked.).",
+      "selectionReasons": [
+        "uploaded_latest_failed_report_failure"
+      ],
+      "migratedFromLegacyIdentity": false,
+      "migratedFromLegacyAmbiguousIdentity": false,
+      "legacyAmbiguousMatchCount": 0,
+      "migrationSourceStableKey": "e2e/schedule-request-off-management.spec.cjs\u000016.0.153 Schedule warnings and Request Off management\u0000Request Off employee filter narrows and clears manager-visible requests\u0000mobile-chromium",
+      "sourceFileHash": "d2a3838e6d8b3cb7de98f2c69d845134b7b054b85f7aebc7c822a3b55a5133e0"
+    },
+    {
+      "spec": "e2e/schedule-request-off-management.spec.cjs",
+      "specPath": "e2e/schedule-request-off-management.spec.cjs",
+      "title": "Approve All Visible updates only filtered visible pending requests",
+      "leafTitle": "Approve All Visible updates only filtered visible pending requests",
+      "exactTestTitle": "Approve All Visible updates only filtered visible pending requests",
+      "fullSuitePath": "16.0.153 Schedule warnings and Request Off management",
+      "suitePathParts": [
+        "16.0.153 Schedule warnings and Request Off management"
+      ],
+      "titlePathParts": [
+        "16.0.153 Schedule warnings and Request Off management",
+        "Approve All Visible updates only filtered visible pending requests"
+      ],
+      "fullTitle": "16.0.153 Schedule warnings and Request Off management > Approve All Visible updates only filtered visible pending requests",
+      "stableKey": "e2e/schedule-request-off-management.spec.cjs\u000016.0.153 Schedule warnings and Request Off management\u0000Approve All Visible updates only filtered visible pending requests\u0000mobile-chromium",
+      "project": "mobile-chromium",
+      "projects": [
+        "mobile-chromium"
+      ],
+      "priorStatus": "failed",
+      "baselineStatus": "failed",
+      "baselineFullRunId": "2026-08-09T20-40-07",
+      "baselineSourceVersion": "16.0.166",
+      "baselineDeployedVersion": "16.0.166",
+      "sourceVersion": "16.0.166",
+      "deployedVersion": "16.0.166",
+      "fullRunId": "2026-08-09T20-40-07",
+      "duration": 0,
+      "error": "FirebaseError: Firebase: Error (auth/requests-from-referer-<empty>-are-blocked.).",
+      "selectionReasons": [
+        "uploaded_latest_failed_report_failure"
+      ],
+      "migratedFromLegacyIdentity": false,
+      "migratedFromLegacyAmbiguousIdentity": false,
+      "legacyAmbiguousMatchCount": 0,
+      "migrationSourceStableKey": "e2e/schedule-request-off-management.spec.cjs\u000016.0.153 Schedule warnings and Request Off management\u0000Approve All Visible updates only filtered visible pending requests\u0000mobile-chromium",
+      "sourceFileHash": "d2a3838e6d8b3cb7de98f2c69d845134b7b054b85f7aebc7c822a3b55a5133e0"
+    },
+    {
+      "spec": "e2e/schedule-request-off-management.spec.cjs",
+      "specPath": "e2e/schedule-request-off-management.spec.cjs",
+      "title": "Archive All Visible archives only filtered visible eligible requests",
+      "leafTitle": "Archive All Visible archives only filtered visible eligible requests",
+      "exactTestTitle": "Archive All Visible archives only filtered visible eligible requests",
+      "fullSuitePath": "16.0.153 Schedule warnings and Request Off management",
+      "suitePathParts": [
+        "16.0.153 Schedule warnings and Request Off management"
+      ],
+      "titlePathParts": [
+        "16.0.153 Schedule warnings and Request Off management",
+        "Archive All Visible archives only filtered visible eligible requests"
+      ],
+      "fullTitle": "16.0.153 Schedule warnings and Request Off management > Archive All Visible archives only filtered visible eligible requests",
+      "stableKey": "e2e/schedule-request-off-management.spec.cjs\u000016.0.153 Schedule warnings and Request Off management\u0000Archive All Visible archives only filtered visible eligible requests\u0000mobile-chromium",
+      "project": "mobile-chromium",
+      "projects": [
+        "mobile-chromium"
+      ],
+      "priorStatus": "failed",
+      "baselineStatus": "failed",
+      "baselineFullRunId": "2026-08-09T20-40-07",
+      "baselineSourceVersion": "16.0.166",
+      "baselineDeployedVersion": "16.0.166",
+      "sourceVersion": "16.0.166",
+      "deployedVersion": "16.0.166",
+      "fullRunId": "2026-08-09T20-40-07",
+      "duration": 0,
+      "error": "FirebaseError: Firebase: Error (auth/requests-from-referer-<empty>-are-blocked.).",
+      "selectionReasons": [
+        "uploaded_latest_failed_report_failure"
+      ],
+      "migratedFromLegacyIdentity": false,
+      "migratedFromLegacyAmbiguousIdentity": false,
+      "legacyAmbiguousMatchCount": 0,
+      "migrationSourceStableKey": "e2e/schedule-request-off-management.spec.cjs\u000016.0.153 Schedule warnings and Request Off management\u0000Archive All Visible archives only filtered visible eligible requests\u0000mobile-chromium",
+      "sourceFileHash": "d2a3838e6d8b3cb7de98f2c69d845134b7b054b85f7aebc7c822a3b55a5133e0"
+    }
+  ],
+  "desktopSelected": 2,
+  "mobileSelected": 4,
+  "note": "reported-failed-only runs only the 6 FAIL identities from 20260810-015004 and excludes TIMEOUT, PASS, and SKIP identities."
+}

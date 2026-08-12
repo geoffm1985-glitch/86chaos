@@ -1,6 +1,6 @@
 # Firebase Read/Write Reduction Baseline from 16.0.174
 
-Version: 16.0.202
+Version: 16.0.203
 Base: 16.0.174 rollback source
 
 This release intentionally avoids another broad Firebase architecture rewrite. It keeps the stable 16.0.174 routing, Schedule, presence, and build behavior while trimming low-risk read demand.

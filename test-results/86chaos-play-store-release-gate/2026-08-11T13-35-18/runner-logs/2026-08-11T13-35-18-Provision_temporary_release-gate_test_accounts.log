@@ -1,0 +1,108 @@
+﻿=== Provision temporary release-gate test accounts ===
+Command: node scripts/86chaos-release-gate/provision-test-accounts.cjs
+Started: 2026-08-11T13:38:43.2693504-05:00
+
+{
+  "ok": true,
+  "skipped": false,
+  "runId": "2026-08-11T13-35-18",
+  "firebaseProjectId": "chaos-test-d1601",
+  "accounts": [
+    {
+      "key": "systemAdmin",
+      "emailEnv": "SYSTEM_ADMIN_EMAIL",
+      "email": "86chaos.qa.system-admin.20260729-1302@example.test",
+      "uid": "cmLRtL0CwxgBCYpzjCnVfhh6Lgd2",
+      "created": false,
+      "customClaimKeysProcessed": [
+        "chaosSystemAdministrator",
+        "qaReleaseGateOnly",
+        "qaReleaseGateRole",
+        "superAdmin",
+        "systemAdmin",
+        "systemAdministrator"
+      ],
+      "enabledCustomClaims": [
+        "chaosSystemAdministrator",
+        "qaReleaseGateOnly",
+        "superAdmin",
+        "systemAdmin",
+        "systemAdministrator"
+      ],
+      "qaRoleClaim": "systemAdmin",
+      "expectedSuperAdmin": true,
+      "error": ""
+    },
+    {
+      "key": "owner",
+      "emailEnv": "OWNER_EMAIL",
+      "email": "86chaos.qa.owner.20260729-1302@example.test",
+      "uid": "3eiR9IceYeWgnP9BJG9rCWEWoOK2",
+      "created": false,
+      "customClaimKeysProcessed": [
+        "chaosSystemAdministrator",
+        "qaReleaseGateOnly",
+        "qaReleaseGateRole",
+        "superAdmin",
+        "systemAdmin",
+        "systemAdministrator"
+      ],
+      "enabledCustomClaims": [
+        "qaReleaseGateOnly"
+      ],
+      "qaRoleClaim": "owner",
+      "expectedSuperAdmin": false,
+      "error": ""
+    },
+    {
+      "key": "manager",
+      "emailEnv": "MANAGER_EMAIL",
+      "email": "86chaos.qa.manager.20260729-1302@example.test",
+      "uid": "UNn3N2166lZchR4Dk2YtSzLg0B63",
+      "created": false,
+      "customClaimKeysProcessed": [
+        "chaosSystemAdministrator",
+        "qaReleaseGateOnly",
+        "qaReleaseGateRole",
+        "superAdmin",
+        "systemAdmin",
+        "systemAdministrator"
+      ],
+      "enabledCustomClaims": [
+        "qaReleaseGateOnly"
+      ],
+      "qaRoleClaim": "manager",
+      "expectedSuperAdmin": false,
+      "error": ""
+    },
+    {
+      "key": "staff",
+      "emailEnv": "STAFF_EMAIL",
+      "email": "86chaos.qa.staff.20260729-1302@example.test",
+      "uid": "xRnSzqBgDbQFL3IwrkV4eYeTln93",
+      "created": false,
+      "customClaimKeysProcessed": [
+        "chaosSystemAdministrator",
+        "qaReleaseGateOnly",
+        "qaReleaseGateRole",
+        "superAdmin",
+        "systemAdmin",
+        "systemAdministrator"
+      ],
+      "enabledCustomClaims": [
+        "qaReleaseGateOnly"
+      ],
+      "qaRoleClaim": "staff",
+      "expectedSuperAdmin": false,
+      "error": ""
+    }
+  ],
+  "errors": [],
+  "notes": [
+    "Temporary Ghost-target Auth account was provisioned for release-gate browser verification; password is stored only in the current-run runtime secret file and is excluded from reports.",
+    "Passwords, tokens, service-account values, and API keys are intentionally not written to this report."
+  ]
+}
+
+Finished: 2026-08-11T13:38:52.5802786-05:00
+ExitCode: 0

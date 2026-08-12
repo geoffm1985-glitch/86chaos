@@ -1,0 +1,8 @@
+86 Chaos Failed Tests
+Run: 2026-08-10T23-25-36
+Version: 16.0.184
+Mode: full
+
+No Playwright test results were produced because the run was blocked before test execution.
+Existing failed-test lineage was not evaluated or cleared.
+Blocker: Required local test module is missing: @vitejs/plugin-react. Run npm ci --include=dev --no-audit --no-fund from the app root.

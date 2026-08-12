@@ -1,0 +1,35 @@
+﻿=== Collect report ===
+Command: node scripts/86chaos-release-gate/collect-release-gate-report.cjs
+Started: 2026-08-11T15:30:59.7481979-05:00
+
+============================================================
+86 CHAOS TEST RESULT
+
+MODE:      full
+TOTAL:     0
+PASS:      0
+FAIL:      0
+TIMEOUT:   0
+SKIP:      0
+
+RESULT: BLOCKED BEFORE TEST EXECUTION
+
+Primary blocker: Testing preview is stale. Source/expected=16.0.196, deployed=16.0.194. Deploy the current commit to canonical Vercel project 86chaos, then update APP_URL to that preview.
+
+Failed / timed-out tests:
+Not evaluated - Playwright did not start.
+Existing failed-test lineage was not cleared by this blocked run.
+
+Next command: Fix the blocker above, then rerun npm run test:play-store
+
+Artifacts:
+C:\Users\geoff\Documents\GitHub\86chaos\test-results\86chaos-play-store-release-gate\2026-08-11T15-30-56
+============================================================
+
+Human summary: C:\Users\geoff\Documents\GitHub\86chaos\test-results\86chaos-play-store-release-gate\2026-08-11T15-30-56\TEST-SUMMARY.txt
+Failed tests: C:\Users\geoff\Documents\GitHub\86chaos\test-results\86chaos-play-store-release-gate\2026-08-11T15-30-56\FAILED-TESTS.txt
+Structured summary: C:\Users\geoff\Documents\GitHub\86chaos\test-results\86chaos-play-store-release-gate\2026-08-11T15-30-56\86chaos-play-store-release-gate-summary-16.0.194-2026-08-11T15-30-56.json
+Full text report: C:\Users\geoff\Documents\GitHub\86chaos\test-results\86chaos-play-store-release-gate\2026-08-11T15-30-56\86chaos-play-store-release-gate-UPLOAD-ME-16.0.194-2026-08-11T15-30-56.txt
+
+Finished: 2026-08-11T15:31:00.7962430-05:00
+ExitCode: 0

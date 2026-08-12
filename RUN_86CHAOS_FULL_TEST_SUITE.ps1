@@ -14,7 +14,7 @@ param(
   [switch]$IncludeReleaseGate
 )
 $ErrorActionPreference = 'Stop'
-$script:AppVersion = '16.0.202'
+$script:AppVersion = '16.0.203'
 $script:Steps = New-Object System.Collections.ArrayList
 $script:Plan = New-Object System.Collections.ArrayList
 $script:GroupStatus = @{}
@@ -113,7 +113,7 @@ function Write-Reports {
   $hashes | ConvertTo-Json -Depth 4 | Set-Content -Path (Join-Path $script:RunDir 'SOURCE-INTEGRITY.json') -Encoding UTF8
 }
 function Create-UploadZip {
-  $zip = Join-Path $script:AppRoot ('86chaos-FULL-SUITE-UPLOAD-ME-16.0.202-' + (Get-Date -Format 'yyyyMMdd-HHmmss') + '.zip')
+  $zip = Join-Path $script:AppRoot ('86chaos-FULL-SUITE-UPLOAD-ME-16.0.203-' + (Get-Date -Format 'yyyyMMdd-HHmmss') + '.zip')
   if (Test-Path $zip) { Remove-Item $zip -Force }
   Compress-Archive -Path (Join-Path $script:RunDir '*') -DestinationPath $zip -Force
   $script:ResultZip = $zip

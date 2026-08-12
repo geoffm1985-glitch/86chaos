@@ -1,0 +1,16 @@
+﻿=== Lockfile integrity ===
+Command: npm run lock:integrity --if-present
+Started: 2026-08-10T01:08:35.5865862-05:00
+
+powershell : npm notice run 86chaos@16.0.170 lock:integrity
+At C:\Users\geoff\Documents\GitHub\86chaos\RUN_86CHAOS_PLAY_STORE_RELEASE_GATE.ps1:201 char:3
++   powershell -NoProfile -ExecutionPolicy Bypass -Command $Command 2>& ...
++   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (npm notice run ... lock:integrity:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+npm notice run node scripts/check-lock-integrity.js
+Lock integrity validator passed. All declared packages are locked and script tool references are installed locally.
+
+Finished: 2026-08-10T01:08:38.9652065-05:00
+ExitCode: 0
