@@ -45,14 +45,10 @@ function runCommand(row) {
     stderrTail: ''
   };
   console.log(`\n[release-check] ${row.group}: ${row.command}`);
-  const childEnv = { ...process.env };
-  if (/^server tests$/i.test(row.group || '')) {
-    childEnv.CHAOS_ALLOW_LOCAL_RELEASE_ARTIFACTS = '1';
-  }
   const child = cp.spawnSync(row.command, {
     shell: true,
     cwd: process.cwd(),
-    env: childEnv,
+    env: process.env,
     encoding: 'utf8',
     windowsHide: true,
     maxBuffer: 1024 * 1024 * 30

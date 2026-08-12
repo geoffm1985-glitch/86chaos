@@ -67,47 +67,6 @@ function publicPresenceRow(data = {}) {
   };
 }
 
-
-function flattenRtdbDevicePresence(value = {}, restaurantFilter = '') {
-  const rows = [];
-  for (const [restaurantId, users] of Object.entries(value || {})) {
-    if (restaurantFilter && restaurantFilter !== 'all' && restaurantId !== restaurantFilter) continue;
-    for (const [userId, devices] of Object.entries(users || {})) {
-      const sessionMap = devices?.sessions && typeof devices.sessions === 'object' ? devices.sessions : devices;
-      const deviceRows = Object.values(sessionMap || {}).filter(row => row && typeof row === 'object');
-      if (!deviceRows.length) continue;
-      const decorated = deviceRows.map(row => ({ row, lastMs: Math.max(
-        parseTimeMs(row.lastChanged),
-        parseTimeMs(row.lastOnline),
-        parseTimeMs(row.connectedAt),
-        parseTimeMs(row.disconnectedAt),
-        parseTimeMs(row.presenceUpdatedAt),
-        parseTimeMs(row.lastActive),
-        parseTimeMs(row.lastSeen),
-        parseTimeMs(row.lastHeartbeatAt)
-      ) })).sort((a, b) => b.lastMs - a.lastMs);
-      const onlineDevices = decorated.filter(item => item.row.online === true || item.row.state === 'online');
-      const representative = (onlineDevices[0] || decorated[0]).row || {};
-      const lastMs = (onlineDevices[0] || decorated[0]).lastMs || 0;
-      rows.push(publicPresenceRow({
-        id: userId,
-        userId,
-        restaurantId,
-        ...representative,
-        online: onlineDevices.length > 0,
-        state: onlineDevices.length > 0 ? 'online' : 'offline',
-        onlineState: onlineDevices.length > 0 ? 'online' : 'offline',
-        activeSessionCount: onlineDevices.length,
-        activeDeviceCount: onlineDevices.length,
-        lastChanged: lastMs || representative.lastChanged,
-        lastOnline: lastMs || representative.lastOnline,
-        presenceSource: 'rtdb-status-sessions-rest'
-      }));
-    }
-  }
-  return rows.filter(row => row.userId && row.restaurantId);
-}
-
 function flattenRtdbStatusSummary(value = {}, restaurantFilter = '') {
   const rows = [];
   for (const [restaurantId, users] of Object.entries(value || {})) {
@@ -180,25 +139,24 @@ function buildBuckets(rows, limit, windowMinutes, onlineSeconds = 90) {
     .slice(0, limit);
 
   const isOffline = row => row.online === false || row.onlineState === 'offline' || row.state === 'offline';
-  const isAuthoritativeSessionPresence = row => /rtdb-status-sessions|rtdb-device-presence/i.test(String(row.presenceSource || ''));
-  const isOnlineNow = row => (row.online === true && isAuthoritativeSessionPresence(row)) || (!!row._presenceLastMs && row._presenceLastMs >= onlineCutoffMs && !isOffline(row));
+  const isFreshOnline = row => !!row._presenceLastMs && row._presenceLastMs >= onlineCutoffMs && !isOffline(row);
 
   const online = limitedRows
-    .filter(isOnlineNow)
+    .filter(isFreshOnline)
     .map(row => markPresenceBucket(row, 'onlineNow'))
     .sort((a, b) => b._presenceLastMs - a._presenceLastMs);
   const recent = limitedRows
-    .filter(row => row._presenceLastMs && !isOnlineNow(row) && row._presenceLastMs >= recentCutoffMs)
+    .filter(row => row._presenceLastMs && !isFreshOnline(row) && row._presenceLastMs >= recentCutoffMs)
     .map(row => markPresenceBucket(row, 'recentlyActive'))
     .sort((a, b) => b._presenceLastMs - a._presenceLastMs)
     .slice(0, 100);
   const activeToday = limitedRows
-    .filter(row => row._presenceLastMs && !isOnlineNow(row) && row._presenceLastMs < recentCutoffMs && row._presenceLastMs >= todayCutoffMs)
+    .filter(row => row._presenceLastMs && !isFreshOnline(row) && row._presenceLastMs < recentCutoffMs && row._presenceLastMs >= todayCutoffMs)
     .map(row => markPresenceBucket(row, 'activeToday'))
     .sort((a, b) => b._presenceLastMs - a._presenceLastMs)
     .slice(0, 150);
   const lastSeen = limitedRows
-    .filter(row => row._presenceLastMs && !isOnlineNow(row) && row._presenceLastMs < todayCutoffMs)
+    .filter(row => row._presenceLastMs && !isFreshOnline(row) && row._presenceLastMs < todayCutoffMs)
     .map(row => markPresenceBucket(row, 'lastSeen'))
     .sort((a, b) => b._presenceLastMs - a._presenceLastMs)
     .slice(0, 150);
@@ -223,33 +181,20 @@ module.exports = async (req, res) => {
     const forceFirestoreFallback = String(req.query?.source || '').toLowerCase() === 'firestore';
 
     let rows = [];
-    let source = 'rtdb-status-sessions-rest';
+    let source = 'rtdb-statusSummary-rest';
     const warnings = [];
 
     if (!forceFirestoreFallback) {
       try {
-        const refPath = restaurantId && restaurantId !== 'all' ? `status/${restaurantId}` : 'status';
+        const refPath = restaurantId && restaurantId !== 'all' ? `statusSummary/${restaurantId}` : 'statusSummary';
         const raw = await readRtdbStatusSummaryViaRest(app, refPath, timeoutMs);
         rows = restaurantId && restaurantId !== 'all'
-          ? flattenRtdbDevicePresence({ [restaurantId]: raw || {} }, restaurantId)
-          : flattenRtdbDevicePresence(raw || {}, '');
+          ? flattenRtdbStatusSummary({ [restaurantId]: raw || {} }, restaurantId)
+          : flattenRtdbStatusSummary(raw || {}, '');
       } catch (rtdbError) {
-        source = 'rtdb-statusSummary-rest-legacy-fallback';
-        warnings.push('Status session presence source unavailable. Trying legacy summary fallback.');
-        console.warn('RTDB status session presence snapshot failed, trying legacy summary:', rtdbError?.message || rtdbError);
-      }
-      if (!rows.length && source === 'rtdb-statusSummary-rest-legacy-fallback') {
-        try {
-          const refPath = restaurantId && restaurantId !== 'all' ? `statusSummary/${restaurantId}` : 'statusSummary';
-          const raw = await readRtdbStatusSummaryViaRest(app, refPath, Math.min(timeoutMs, 3000));
-          rows = restaurantId && restaurantId !== 'all'
-            ? flattenRtdbStatusSummary({ [restaurantId]: raw || {} }, restaurantId)
-            : flattenRtdbStatusSummary(raw || {}, '');
-        } catch (legacyError) {
-          source = 'firestore-livePresence-fallback';
-          warnings.push('Legacy presence summary unavailable. Showing last-seen fallback.');
-          console.warn('RTDB legacy presence snapshot failed, using bounded fallback:', legacyError?.message || legacyError);
-        }
+        source = 'firestore-livePresence-fallback';
+        warnings.push('Live presence source unavailable. Showing last-seen fallback.');
+        console.warn('RTDB presence snapshot failed, using bounded fallback:', rtdbError?.message || rtdbError);
       }
     } else {
       source = 'firestore-livePresence-fallback';
@@ -258,7 +203,7 @@ module.exports = async (req, res) => {
     if (!rows.length) {
       try {
         rows = await readFirestorePresenceFallback(db, restaurantId, limit, Math.min(timeoutMs, 3000));
-        if (source === 'rtdb-status-sessions-rest') source = 'firestore-livePresence-fallback-empty-rtdb';
+        if (source === 'rtdb-statusSummary-rest') source = 'firestore-livePresence-fallback-empty-rtdb';
       } catch (fallbackError) {
         source = 'empty-safe-fallback';
         warnings.push('Last-seen fallback unavailable. Showing an empty safe snapshot.');
@@ -269,7 +214,7 @@ module.exports = async (req, res) => {
 
     const { limitedRows, online, recent, activeToday, lastSeen } = buildBuckets(rows, limit, windowMinutes, onlineSeconds);
 
-    writeAudit(db, ctx, 'MANUAL_PRESENCE_SNAPSHOT', restaurantId || 'all-workspaces', `Manual presence snapshot read ${limitedRows.length} ${source} row(s); ${online.length} active session row(s) online.`, restaurantId || 'system')
+    writeAudit(db, ctx, 'MANUAL_PRESENCE_SNAPSHOT', restaurantId || 'all-workspaces', `Manual presence snapshot read ${limitedRows.length} ${source} row(s); ${online.length} fresh within ${onlineSeconds} seconds.`, restaurantId || 'system')
       .catch(err => console.warn('Manual presence snapshot audit write skipped:', err?.message || err));
 
     return res.status(200).json({

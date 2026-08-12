@@ -1,6 +1,4 @@
 import { getToday, getMonthStr, formatDate } from './appCore';
-import * as scheduleIdentityModule from './scheduleIdentity.cjs';
-const scheduleIdentity = scheduleIdentityModule?.default && typeof scheduleIdentityModule.default === 'object' ? scheduleIdentityModule.default : scheduleIdentityModule;
 
 const addDays = (dateStr, amount) => {
   const d = new Date(`${dateStr}T12:00:00`);
@@ -241,7 +239,7 @@ export function buildScheduleQueryPlan({ activeTabState = '', activeScheduleSubT
   const scheduleWindowEnd = visibleRange?.end || addDays(monthBounds.end, 60);
   const recentWindowStart = addDays(today, -30);
   const futureWindowEnd = addDays(today, 14);
-  const todayOpsWindowEnd = addDays(today, wantsToday ? 3 : 7);
+  const todayOpsWindowEnd = addDays(today, 7);
   const isScheduleRoute = ['schedule', 'published', 'events'].includes(activeTabState);
   const scheduleUserId = getCanonicalScheduleUserId(safeAppUser);
   const authUserId = safeAppUser.authUid || safeAppUser.uid || safeAppUser.userId || safeAppUser.id || '';
@@ -250,21 +248,21 @@ export function buildScheduleQueryPlan({ activeTabState = '', activeScheduleSubT
   const plan = {
     shiftClauses: [['date','>=', today], ['date','<=', todayOpsWindowEnd]],
     shiftsEnabled: true,
-    shiftLimit: wantsToday ? 48 : 80,
+    shiftLimit: 80,
     timeOffEnabled: true,
     timeOffClauses: authUserId ? [['userId', '==', authUserId]] : [['userId', '==', '__none__']],
-    timeOffLimit: wantsToday ? 20 : 40,
+    timeOffLimit: 40,
     timeOffHistoryEnabled: false,
     timeOffHistoryClauses: [],
     timeOffHistoryLimit: 40,
     eventsEnabled: wantsToday,
     eventEnabled: wantsToday,
     eventClauses: [['date', '>=', messageRangeStart || recentWindowStart], ['date', '<=', todayOpsWindowEnd]],
-    eventLimit: wantsToday ? 20 : 35,
+    eventLimit: 35,
     swapsEnabled: false,
     swapOrderByField: 'shiftDate',
     swapClauses: [['status', 'in', ['available','open']], ['shiftDate','>=', today]],
-    swapLimit: wantsToday ? 20 : 30,
+    swapLimit: 30,
     availabilityEnabled: false,
     needsAvailability: false,
     availabilityClauses: [],
@@ -323,41 +321,5 @@ export function buildScheduleQueryPlan({ activeTabState = '', activeScheduleSubT
   // published August Week 1 can include late-July shifts and still resolve the
   // employee-facing schedule correctly after partial publishing.
   const myScheduleBounds = getOuterScheduleWeekBounds(monthBounds, safeAppUser);
-  return { ...plan, shiftClauses: scheduleUserId ? [...ownUserClause, ['date','>=', myScheduleBounds.start], ['date','<=', myScheduleBounds.end]] : [['date','>=', myScheduleBounds.start], ['date','<=', myScheduleBounds.end]], shiftLimit: scheduleUserId ? 120 : 420, timeOffClauses: authUserId ? [['userId','==', authUserId], ['date','>=', myScheduleBounds.start], ['date','<=', myScheduleBounds.end]] : [['userId','==','__none__']], timeOffLimit: 80, swapsEnabled: true, swapClauses: authUserId ? [['requesterUserId','==', authUserId], ['shiftDate','>=', today]] : [['status','in',['available','open']]], swapLimit: 40, eventEnabled: false, needsRoster: true };
+  return { ...plan, shiftClauses: [['date','>=', myScheduleBounds.start], ['date','<=', myScheduleBounds.end]], shiftLimit: 420, timeOffClauses: authUserId ? [['userId','==', authUserId], ['date','>=', myScheduleBounds.start], ['date','<=', myScheduleBounds.end]] : [['userId','==','__none__']], timeOffLimit: 80, swapsEnabled: true, swapClauses: authUserId ? [['requesterUserId','==', authUserId], ['shiftDate','>=', today]] : [['status','in',['available','open']]], swapLimit: 40, eventEnabled: false, needsRoster: true };
 }
-
-
-
-// My Schedule identity semantics are intentionally centralized in scheduleIdentity.cjs.
-// Do not reintroduce a local fallback matcher here; planner and rescue code must share one truth.
-export function collectMyScheduleIdentityAliases(user = {}) {
-  return scheduleIdentity.unique([
-    ...scheduleIdentity.collectDurableAliases(user || {}, user?.accountProfile || {}),
-    ...scheduleIdentity.collectEmailAliases(user || {}, user?.accountProfile || {})
-  ], value => value);
-}
-export const collectMyScheduleDurableAliases = (...records) => scheduleIdentity.collectDurableAliases(...records);
-export const collectMyScheduleEmailAliases = (...records) => scheduleIdentity.collectEmailAliases(...records);
-export const collectMyScheduleNameAliases = (...records) => scheduleIdentity.collectNameAliases(...records);
-export const collectMyScheduleFirstNameAliases = (...records) => scheduleIdentity.collectFirstNameAliases(...records);
-export const resolveMyScheduleRosterPerson = (user = {}, roster = []) => scheduleIdentity.resolveRosterPersonForUser(user, roster);
-export const buildMyScheduleIdentityContext = (user = {}, roster = []) => scheduleIdentity.buildIdentityContext(user, roster);
-export const shiftMatchesMyScheduleNameSafely = (shift = {}, context = {}) => scheduleIdentity.shiftMatchesNameSafely(shift, context);
-export function shiftMatchesMyScheduleIdentity(shift = {}, user = {}, roster = []) {
-  if (typeof scheduleIdentity.shiftMatchesMyScheduleIdentity !== 'function') {
-    throw new Error('My Schedule identity matcher is unavailable');
-  }
-  return scheduleIdentity.shiftMatchesMyScheduleIdentity(shift, user, roster);
-}
-export function mergeMyScheduleCanonicalAndLegacy({ canonical = [], legacyPages = [], user = {}, roster = [] } = {}) {
-  const byId = new Map();
-  const add = (row, source) => {
-    if (!row || !shiftMatchesMyScheduleIdentity(row, user, roster)) return;
-    const key = String(row.id || `${row.date || row.scheduleDateKey || row.shiftDate}:${row.startTime || ''}:${row.endTime || ''}:${row.scheduleUserId || row.employeeId || row.userId || row.employeeName || ''}`);
-    if (!byId.has(key)) byId.set(key, { ...row, _myScheduleSource: source });
-  };
-  canonical.forEach(row => add(row, 'canonical'));
-  legacyPages.flat().forEach(row => add(row, 'legacy-rescue'));
-  return Array.from(byId.values()).sort((a,b) => String(a.date || a.scheduleDateKey || a.shiftDate || '').localeCompare(String(b.date || b.scheduleDateKey || b.shiftDate || '')) || String(a.startTime || '').localeCompare(String(b.startTime || '')));
-}
-export const __myScheduleRescueTestHooks = { collectMyScheduleIdentityAliases, shiftMatchesMyScheduleIdentity, mergeMyScheduleCanonicalAndLegacy, sharedIdentityModule: scheduleIdentity };

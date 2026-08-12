@@ -14,7 +14,7 @@ param(
   [switch]$IncludeReleaseGate
 )
 $ErrorActionPreference = 'Stop'
-$script:AppVersion = '16.0.201'
+$script:AppVersion = '16.0.202'
 $script:Steps = New-Object System.Collections.ArrayList
 $script:Plan = New-Object System.Collections.ArrayList
 $script:GroupStatus = @{}
@@ -42,142 +42,6 @@ function Add-BlockedStep {
   $script:Steps.Add($step) | Out-Null
   Write-Host ('[BLOCKED] ' + $Name + ' - ' + $Reason) -ForegroundColor Yellow
 }
-function Invoke-LoggedNativeCommand {
-  param([string]$Command,[string]$Log)
-  $cmdLine = $Command + ' 2>&1'
-  & $env:ComSpec /d /s /c $cmdLine | Tee-Object -FilePath $Log
-  $exitCode = if ($null -eq $LASTEXITCODE) { 0 } else { [int]$LASTEXITCODE }
-  return [ordered]@{ exitCode=$exitCode; log=$Log }
-}
-function Get-SafeNativeFirstLine {
-  param([string]$Command,[string]$Fallback = 'unavailable')
-  try {
-    $cmdLine = $Command + ' 2>&1'
-    $lines = & $env:ComSpec /d /s /c $cmdLine
-    $first = @($lines | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -First 1)
-    if ($first.Count -gt 0) { return [string]$first[0] }
-    return $Fallback
-  } catch {
-    return $Fallback
-  }
-}
-function Get-LocalPackageVersion {
-  param([string]$RelativePackageJson)
-  try {
-    $packagePath = Join-Path $script:AppRoot $RelativePackageJson
-    if (-not (Test-Path $packagePath)) { return 'not installed' }
-    $package = Get-Content -Raw -Path $packagePath | ConvertFrom-Json
-    if ($package.version) { return [string]$package.version }
-    return 'unavailable'
-  } catch {
-    return 'unavailable'
-  }
-}
-function Save-NpmAuditJson {
-  $target = Join-Path $script:RunDir 'npm-audit.json'
-  try {
-    $cmdLine = 'npm audit --json > "' + $target + '" 2>&1'
-    & $env:ComSpec /d /s /c $cmdLine | Out-Null
-    if (-not (Test-Path $target)) { '{"error":"npm audit json was not produced"}' | Set-Content -Path $target -Encoding UTF8 }
-  } catch {
-    ('{"error":"npm audit json capture failed","message":"' + ($_.Exception.Message -replace '"','\"') + '"}') | Set-Content -Path $target -Encoding UTF8
-  }
-}
-function Read-EnvFileMap {
-  param([string]$Path)
-  $map = @{}
-  if (-not (Test-Path $Path)) { return $map }
-  Get-Content $Path | ForEach-Object {
-    $line = $_.Trim()
-    if (-not $line -or $line.StartsWith('#') -or $line -notmatch '=') { return }
-    $parts = $line -split '=', 2
-    $name = $parts[0].Trim()
-    $value = $parts[1].Trim()
-    if (($value.StartsWith('"') -and $value.EndsWith('"')) -or ($value.StartsWith("'") -and $value.EndsWith("'"))) {
-      $value = $value.Substring(1, $value.Length - 2)
-    }
-    if ($name -match '^[A-Za-z_][A-Za-z0-9_]*$') { $map[$name] = $value }
-  }
-  return $map
-}
-function Import-TestEnvFileForMutatingSuite {
-  param([hashtable]$Map)
-  $allowedPrefixes = @('CHAOS_', 'REACT_APP_', 'APP_URL', 'OWNER_', 'MANAGER_', 'STAFF_', 'SYSTEM_ADMIN_')
-  foreach ($name in $Map.Keys) {
-    $allowed = $false
-    foreach ($prefix in $allowedPrefixes) { if ($name.StartsWith($prefix)) { $allowed = $true } }
-    if (-not $allowed) { continue }
-    if (-not [Environment]::GetEnvironmentVariable($name, 'Process')) {
-      [Environment]::SetEnvironmentVariable($name, $Map[$name], 'Process')
-    }
-  }
-}
-function Resolve-TargetFirebaseProjectId {
-  $projectKeys = @(
-    'CHAOS_TEST_FIREBASE_PROJECT_ID',
-    'CHAOS_QA_FIREBASE_PROJECT_ID',
-    'CHAOS_FIREBASE_PROJECT_ID',
-    'CHAOS_TARGET_FIREBASE_PROJECT_ID',
-    'REACT_APP_FIREBASE_PROJECT_ID'
-  )
-  $values = @()
-  foreach ($key in $projectKeys) {
-    $value = [Environment]::GetEnvironmentVariable($key, 'Process')
-    if (-not [string]::IsNullOrWhiteSpace($value)) {
-      $values += [pscustomobject]@{ key=$key; value=$value.Trim(); source='process/.env.test.local' }
-    }
-  }
-  $unique = @($values | ForEach-Object { $_.value } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique)
-  $script:ResolvedFirebaseProjectSources = $values
-  if ($unique -contains 'cheers-34b8d') { $script:ResolvedFirebaseProjectError = 'Production Firebase project cheers-34b8d is selected or conflicting.'; return 'cheers-34b8d' }
-  if ($unique.Count -gt 1) { $script:ResolvedFirebaseProjectError = 'Conflicting Firebase project identities: ' + ($unique -join ', '); return '__conflict__' }
-  if ($unique.Count -eq 1) { $script:ResolvedFirebaseProjectError = ''; return [string]$unique[0] }
-  $script:ResolvedFirebaseProjectError = 'Firebase project identity is missing.'
-  return ''
-}
-function Initialize-FullSuiteQaEnvironment {
-  $script:ResolvedFirebaseProjectSources = @()
-  $script:ResolvedFirebaseProjectError = ''
-  $script:EnvTestLocalPath = Join-Path $script:AppRoot '.env.test.local'
-  $script:EnvTestLocal = Read-EnvFileMap $script:EnvTestLocalPath
-  Import-TestEnvFileForMutatingSuite $script:EnvTestLocal
-  if (-not $env:CHAOS_EXPECTED_VERSION) { $env:CHAOS_EXPECTED_VERSION = $script:AppVersion }
-  if (-not $env:CHAOS_EXPECTED_VERCEL_PROJECT_SLUG) { $env:CHAOS_EXPECTED_VERCEL_PROJECT_SLUG = '86chaos' }
-  $resolved = Resolve-TargetFirebaseProjectId
-  Write-Host 'Full-suite QA target resolution:' -ForegroundColor Cyan
-  Write-Host ('  .env.test.local: ' + $script:EnvTestLocalPath) -ForegroundColor Cyan
-  Write-Host ('  resolved Firebase project: ' + $resolved) -ForegroundColor Cyan
-  if ($script:ResolvedFirebaseProjectError) { Write-Host ('  project guard: ' + $script:ResolvedFirebaseProjectError) -ForegroundColor Yellow }
-}
-function SafeProjectBlockReason([string]$Expected = 'chaos-test-d1601') {
-  $targetProject = Resolve-TargetFirebaseProjectId
-  if ($targetProject -eq $Expected) { return '' }
-  if ($targetProject -eq 'cheers-34b8d') { return 'Production Firebase project cheers-34b8d is forbidden for automated mutating QA work.' }
-  if ($targetProject -eq '__conflict__') { return $script:ResolvedFirebaseProjectError }
-  if ([string]::IsNullOrWhiteSpace($targetProject)) { return 'Firebase project identity is missing or unknown.' }
-  return 'Safe Firebase dry-run target is not exactly chaos-test-d1601.'
-}
-function Get-CurrentStepStatus {
-  param([string]$Group,[string]$Name)
-  $matches = @($script:Steps | Where-Object { $_.group -eq $Group -and $_.name -eq $Name })
-  if ($matches.Count -eq 0) { return '' }
-  return [string]$matches[$matches.Count - 1].status
-}
-function Prepare-CostReportValidationEnv {
-  $lastRunPath = Join-Path $script:AppRoot 'test-results/86chaos-play-store-release-gate/.last-run.json'
-  if (-not (Test-Path $lastRunPath)) { return 'Cost regression current-run handoff is missing: .last-run.json was not produced by the browser gate.' }
-  try { $last = Get-Content -Raw -Path $lastRunPath | ConvertFrom-Json } catch { return 'Cost regression current-run handoff is unreadable.' }
-  if ([string]$last.mode -ne 'full') { return 'Cost regression requires a current full release-gate run, not failed-only or repair mode.' }
-  if ([string]::IsNullOrWhiteSpace([string]$last.runId) -or [string]::IsNullOrWhiteSpace([string]$last.runDir)) { return 'Cost regression current-run handoff is missing runId or runDir.' }
-  if (-not (Test-Path ([string]$last.runDir))) { return 'Cost regression current run directory does not exist.' }
-  $scenarioDir = Join-Path ([string]$last.runDir) 'cost-scenarios'
-  if (-not (Test-Path $scenarioDir)) { return 'Cost regression current-run cost-scenarios directory does not exist.' }
-  $env:CHAOS_COST_SCENARIO_REPORT_DIR = $scenarioDir
-  $env:CHAOS_COST_EXPECTED_RUN_ID = [string]$last.runId
-  $env:CHAOS_COST_EXPECTED_FIREBASE_PROJECT_ID = 'chaos-test-d1601'
-  $env:CHAOS_COST_EXPECTED_VERSION = $script:AppVersion
-  return ''
-}
 function Run-Step {
   param([string]$Group,[string]$Name,[string]$Command,[bool]$Required = $true)
   Write-Host ''
@@ -189,15 +53,14 @@ function Run-Step {
   $exitCode = 1
   try {
     Push-Location $script:AppRoot
-    $nativeResult = Invoke-LoggedNativeCommand -Command $Command -Log $log
-    $exitCode = [int]$nativeResult.exitCode
+    & cmd.exe /d /s /c $Command 2>&1 | Tee-Object -FilePath $log
+    $exitCode = $LASTEXITCODE
+    Pop-Location
   } catch {
+    try { Pop-Location } catch {}
     $_.Exception.Message | Add-Content -Path $log
     $exitCode = 1
-  } finally {
-    try { Pop-Location } catch {}
   }
-  if ($Command -eq 'npm audit --audit-level=high') { Save-NpmAuditJson }
   $ended = Get-Date
   $status = if ($exitCode -eq 0) { 'pass' } else { 'fail' }
   $step = [ordered]@{ group=$Group; name=$Name; command=$Command; required=$Required; status=$status; exitCode=$exitCode; reason=''; startedAt=$started.ToUniversalTime().ToString('o'); endedAt=$ended.ToUniversalTime().ToString('o'); durationSeconds=[math]::Round(($ended - $started).TotalSeconds,2); log=$log }
@@ -242,74 +105,19 @@ function Write-Reports {
   $md = @('# 86 Chaos Full Suite Summary','','VERSION: ' + $script:AppVersion,'','OVERALL: ' + $overall,'','| Status | Group | Step | Exit | Seconds | Log |','|---|---|---|---:|---:|---|')
   foreach ($s in $script:Steps) { $icon = if ($s.status -eq 'pass') { '✅ PASS' } elseif ($s.status -eq 'fail') { '❌ FAIL' } else { '⚠ BLOCKED' }; $md += ('| ' + $icon + ' | ' + $s.group + ' | ' + $s.name + ' | ' + $s.exitCode + ' | ' + $s.durationSeconds + ' | ' + $s.log + ' |') }
   ($md -join "`n") | Set-Content -Path (Join-Path $script:RunDir 'FULL-SUITE-SUMMARY.md') -Encoding UTF8
-  $envLines = @(
-    'OS: ' + [System.Environment]::OSVersion.VersionString,
-    'Node version: ' + (Get-SafeNativeFirstLine 'node --version' 'not installed'),
-    'npm version: ' + (Get-SafeNativeFirstLine 'npm --version' 'not installed'),
-    'PowerShell version: ' + $PSVersionTable.PSVersion.ToString(),
-    'Java version: ' + (Get-SafeNativeFirstLine 'java -version' 'not installed'),
-    'Git version: ' + (Get-SafeNativeFirstLine 'git --version' 'not installed'),
-    'Firebase CLI version: ' + (Get-LocalPackageVersion 'node_modules/firebase-tools/package.json'),
-    'Playwright version: ' + (Get-LocalPackageVersion 'node_modules/@playwright/test/package.json'),
-    'App version: ' + $script:AppVersion
-  )
+  $envLines = @('OS: ' + [System.Environment]::OSVersion.VersionString, 'Node version: ' + ((& node --version 2>$null) -join ' '), 'npm version: ' + ((& npm --version 2>$null) -join ' '), 'PowerShell version: ' + $PSVersionTable.PSVersion.ToString(), 'Java version: ' + ((& java -version 2>&1 | Select-Object -First 1) -join ' '), 'Git version: ' + ((& git --version 2>$null) -join ' '), 'Firebase CLI version: ' + ((& npx firebase --version 2>$null) -join ' '), 'Playwright version: ' + ((& npx playwright --version 2>$null) -join ' '), 'App version: ' + $script:AppVersion)
   ($envLines -join "`n") | Set-Content -Path (Join-Path $script:RunDir 'ENVIRONMENT.txt') -Encoding UTF8
   $hashFiles = @('package.json','package-lock.json','firestore.rules','storage.rules','database.rules.json','firestore.indexes.json','firebase.json','vercel.json','public/version.json')
   $hashes = @{}
   foreach ($f in $hashFiles) { $p = Join-Path $script:AppRoot $f; if (Test-Path $p) { $hashes[$f] = (Get-FileHash -Algorithm SHA256 $p).Hash.ToLowerInvariant() } }
   $hashes | ConvertTo-Json -Depth 4 | Set-Content -Path (Join-Path $script:RunDir 'SOURCE-INTEGRITY.json') -Encoding UTF8
-  $dependencyBlockers = Join-Path $script:AppRoot 'DEPENDENCY-SECURITY-BLOCKERS.txt'
-  if (Test-Path $dependencyBlockers) { Copy-Item -Path $dependencyBlockers -Destination (Join-Path $script:RunDir 'DEPENDENCY-SECURITY-BLOCKERS.txt') -Force }
-}
-function Write-EmergencyReports {
-  param([string]$Message)
-  $safeMessage = if ([string]::IsNullOrWhiteSpace($Message)) { 'Unknown reporting failure.' } else { ($Message -replace '(?i)(token|secret|password|key)=\S+', '$1=[redacted]') }
-  $summary = @('REPORT GENERATION ERROR', 'App version: ' + $script:AppVersion, 'Run ID: ' + $script:RunId, 'Error: ' + $safeMessage)
-  ($summary -join "`n") | Set-Content -Path (Join-Path $script:RunDir 'TEST-SUMMARY.txt') -Encoding UTF8
-  ('REPORT GENERATION ERROR' + "`n" + $safeMessage) | Set-Content -Path (Join-Path $script:RunDir 'FAILED-TESTS.txt') -Encoding UTF8
-  'Report generation failed before blocked-test details could be written.' | Set-Content -Path (Join-Path $script:RunDir 'BLOCKED-TESTS.txt') -Encoding UTF8
-  $envLines = @(
-    'REPORT GENERATION ERROR',
-    'OS: ' + [System.Environment]::OSVersion.VersionString,
-    'Node version: ' + (Get-SafeNativeFirstLine 'node --version' 'not installed'),
-    'npm version: ' + (Get-SafeNativeFirstLine 'npm --version' 'not installed'),
-    'Java version: ' + (Get-SafeNativeFirstLine 'java -version' 'not installed'),
-    'Error: ' + $safeMessage
-  )
-  ($envLines -join "`n") | Set-Content -Path (Join-Path $script:RunDir 'ENVIRONMENT.txt') -Encoding UTF8
-}
-function Update-ResultZipMetadata {
-  param([string]$ZipPath)
-  foreach ($name in @('local-suite-state.json','full-suite-summary.json','local-suite-summary.json')) {
-    $path = Join-Path $script:RunDir $name
-    if (Test-Path $path) {
-      try {
-        $json = Get-Content -Raw -Path $path | ConvertFrom-Json
-        $json | Add-Member -NotePropertyName resultZip -NotePropertyValue $ZipPath -Force
-        $json | ConvertTo-Json -Depth 10 | Set-Content -Path $path -Encoding UTF8
-      } catch {}
-    }
-  }
 }
 function Create-UploadZip {
-  $zip = Join-Path $script:AppRoot ('86chaos-FULL-SUITE-UPLOAD-ME-16.0.201-' + (Get-Date -Format 'yyyyMMdd-HHmmss') + '.zip')
+  $zip = Join-Path $script:AppRoot ('86chaos-FULL-SUITE-UPLOAD-ME-16.0.202-' + (Get-Date -Format 'yyyyMMdd-HHmmss') + '.zip')
   if (Test-Path $zip) { Remove-Item $zip -Force }
   Compress-Archive -Path (Join-Path $script:RunDir '*') -DestinationPath $zip -Force
-  if (-not (Test-Path $zip)) { throw 'Upload ZIP was not created.' }
-  if ((Get-Item $zip).Length -le 0) { throw 'Upload ZIP is empty.' }
-  Add-Type -AssemblyName System.IO.Compression.FileSystem
-  $z=[System.IO.Compression.ZipFile]::OpenRead($zip)
-  try {
-    $names=@($z.Entries | ForEach-Object FullName)
-    foreach ($requiredEntry in @('TEST-SUMMARY.txt','FAILED-TESTS.txt','BLOCKED-TESTS.txt')) {
-      if ($names -notcontains $requiredEntry) { throw ('missing ' + $requiredEntry) }
-    }
-    if ((Test-Path (Join-Path $script:RunDir 'full-suite-summary.json')) -and ($names -notcontains 'full-suite-summary.json')) { throw 'missing full-suite-summary.json' }
-  } finally {
-    $z.Dispose()
-  }
   $script:ResultZip = $zip
-  Update-ResultZipMetadata $zip
+  try { Add-Type -AssemblyName System.IO.Compression.FileSystem; $z=[System.IO.Compression.ZipFile]::OpenRead($zip); $names=$z.Entries | ForEach-Object FullName; $z.Dispose(); if ($names -notcontains 'TEST-SUMMARY.txt') { throw 'missing TEST-SUMMARY.txt' } } catch { Write-Host ('ZIP validation failed: ' + $_.Exception.Message) -ForegroundColor Red }
   return $zip
 }
 $script:AppRoot = Find-AppRoot
@@ -318,7 +126,6 @@ $script:RunId = 'full-suite-' + (Get-Date -Format 'yyyyMMdd-HHmmss')
 $script:RunDir = Join-Path $script:AppRoot (Join-Path 'test-results/86chaos-full-local-suite' $script:RunId)
 $script:LogDir = Join-Path $script:RunDir 'logs'
 New-Item -ItemType Directory -Force $script:LogDir | Out-Null
-Initialize-FullSuiteQaEnvironment
 $script:StartedAt = Get-Date
 try {
   Add-PlannedStep 'Environment / Dependencies' 'Node version' 'node --version' $true 'Node runtime' $false ''
@@ -337,65 +144,43 @@ try {
   Add-PlannedStep 'Source / Static Validation' 'Full audit source validator' 'node scripts/86chaos-full-audit/validate-full-audit-source.cjs' $true 'node' $false ''
   Add-PlannedStep 'Source / Static Validation' 'Release source inventory' 'node scripts/86chaos-release-gate/source-inventory.cjs' $true 'node' $false ''
   Add-PlannedStep 'Source / Static Validation' 'Icon source validator' 'node scripts/86chaos-release-gate/icon-source-validator.cjs' $true 'node' $false ''
-  Add-PlannedStep 'Source / Static Validation' 'Current targeted validator' 'node scripts/test-16-0-201-targeted.cjs' $true 'node' $false ''
+  Add-PlannedStep 'Source / Static Validation' 'Current targeted validator' 'node scripts/test-16-0-174-targeted.cjs' $true 'node' $false ''
   Add-PlannedStep 'Node / Server Unit Tests' 'Server API tests' 'node --test --test-reporter=spec api/*.test.cjs' $true 'node' $false ''
   Add-PlannedStep 'Node / Server Unit Tests' 'Server API tests serial' 'node --test --test-concurrency=1 --test-reporter=spec api/*.test.cjs' $true 'node' $false ''
   Add-PlannedStep 'Node / Server Unit Tests' 'Release harness tests' 'node --test --test-reporter=spec tests/86chaos-release-gate/*.test.cjs' $true 'node' $false ''
   Add-PlannedStep 'Node / Server Unit Tests' 'Release harness tests serial' 'node --test --test-concurrency=1 --test-reporter=spec tests/86chaos-release-gate/*.test.cjs' $true 'node' $false ''
   Add-PlannedStep 'Client / React Tests' 'Client tests' 'npm run test:client -- --runInBand --verbose' $true 'installed deps' $false ''
   Add-PlannedStep 'Security / Firebase Rules' 'Firebase rules tests' 'npm run test:rules' $true 'Java and Firebase emulator' $true 'chaos-test-d1601'
+  Add-PlannedStep 'Cost / Firestore Regression' 'Cost regression' 'npm run test:cost' $true 'Firestore emulator' $true 'chaos-test-d1601'
   Add-PlannedStep 'Repair Regression Pack' 'Repair current local' 'npm run test:repair-current:local' $true 'node' $false ''
   Add-PlannedStep 'Build / Lint' 'Lint' 'npm run lint' $true 'installed deps' $false ''
   if (-not $NoBuild) { Add-PlannedStep 'Build / Lint' 'Production build' 'npm run build' $true 'installed deps' $false '' }
-  Add-PlannedStep 'Safe Migration / Backup Dry Runs' 'Backup setup dry run' 'node scripts/setup-native-firestore-backup.js --dry-run --project=chaos-test-d1601' $true 'safe Firebase config' $true 'chaos-test-d1601'
-  Add-PlannedStep 'Safe Migration / Backup Dry Runs' 'Workspace memberships dry run' 'node scripts/migrate-workspace-memberships.js --project=chaos-test-d1601' $true 'safe Firebase config' $true 'chaos-test-d1601'
-  Add-PlannedStep 'Safe Migration / Backup Dry Runs' 'Reminder migration dry run' 'node scripts/migrate-reminder-dispatch-queue.js --dry-run --project=chaos-test-d1601' $true 'safe Firebase config' $true 'chaos-test-d1601'
-  Add-PlannedStep 'Safe Migration / Backup Dry Runs' 'Schedule migration dry run' 'node scripts/migrate-schedule-query-fields.js --dry-run --project=chaos-test-d1601' $true 'safe Firebase config' $true 'chaos-test-d1601'
-  Add-PlannedStep 'Safe Migration / Backup Dry Runs' 'Participant migration dry run' 'node scripts/migrate-reminder-participants.js --dry-run --project=chaos-test-d1601' $true 'safe Firebase config' $true 'chaos-test-d1601'
+  Add-PlannedStep 'Safe Migration / Backup Dry Runs' 'Backup setup dry run' 'npm run backup:setup:dry-run' $true 'safe Firebase config' $true 'chaos-test-d1601'
+  Add-PlannedStep 'Safe Migration / Backup Dry Runs' 'Workspace memberships dry run' 'npm run migrate:workspace-memberships:dry-run' $true 'safe Firebase config' $true 'chaos-test-d1601'
+  Add-PlannedStep 'Safe Migration / Backup Dry Runs' 'Reminder migration dry run' 'npm run migrate:reminders:dry-run' $true 'safe Firebase config' $true 'chaos-test-d1601'
+  Add-PlannedStep 'Safe Migration / Backup Dry Runs' 'Schedule migration dry run' 'npm run migrate:schedule:dry-run' $true 'safe Firebase config' $true 'chaos-test-d1601'
+  Add-PlannedStep 'Safe Migration / Backup Dry Runs' 'Participant migration dry run' 'npm run migrate:participants:dry-run' $true 'safe Firebase config' $true 'chaos-test-d1601'
   if (-not $LocalOnly) { Add-PlannedStep 'Full Browser Release Gate' 'Full Playwright release gate' 'npm run test:play-store' $true 'safe QA deployment' $true 'chaos-test-d1601' }
-  Add-PlannedStep 'Cost / Firestore Regression' 'Cost regression' 'npm run test:cost' $true 'current browser run cost reports' $true 'chaos-test-d1601'
   Write-PlanFiles
   $depsOk = $true
   foreach ($p in $script:Plan) {
-    if ($p.group -eq 'Safe Migration / Backup Dry Runs') {
-      $blockReason = SafeProjectBlockReason 'chaos-test-d1601'
-      if ($blockReason) { Add-BlockedStep $p.group $p.name $p.command $blockReason $p.required $p.capability; continue }
-    }
     if ($p.group -eq 'Full Browser Release Gate') {
-      $blockReason = SafeProjectBlockReason 'chaos-test-d1601'
+      $proj = $env:CHAOS_FIREBASE_PROJECT_ID; if (-not $proj) { $proj = $env:REACT_APP_FIREBASE_PROJECT_ID }; if (-not $proj) { $proj = $env:CHAOS_TARGET_FIREBASE_PROJECT_ID }
       $url = $env:CHAOS_BASE_URL; if (-not $url) { $url = $env:APP_URL }
-      if ($blockReason) { Add-BlockedStep $p.group $p.name $p.command $blockReason $p.required $p.capability; continue }
+      if ($proj -ne 'chaos-test-d1601') { Add-BlockedStep $p.group $p.name $p.command 'Firebase project is not exactly chaos-test-d1601.' $p.required $p.capability; continue }
       if (-not $url -or $url -match 'app\.86chaos\.com|cheers-34b8d|production') { Add-BlockedStep $p.group $p.name $p.command 'Target app URL is missing or production-like.' $p.required $p.capability; continue }
     }
-    if ($p.group -eq 'Cost / Firestore Regression') {
-      $browserStatus = Get-CurrentStepStatus 'Full Browser Release Gate' 'Full Playwright release gate'
-      if ($browserStatus -ne 'pass') { Add-BlockedStep $p.group $p.name $p.command 'Cost regression depends on a successful current Full Playwright release gate.' $p.required $p.capability; continue }
-      $blockReason = SafeProjectBlockReason 'chaos-test-d1601'
-      if ($blockReason) { Add-BlockedStep $p.group $p.name $p.command $blockReason $p.required $p.capability; continue }
-      $costBlock = Prepare-CostReportValidationEnv
-      if ($costBlock) { Add-BlockedStep $p.group $p.name $p.command $costBlock $p.required $p.capability; continue }
-    }
     if ($p.name -match 'Firebase rules' -and -not (Test-CommandAvailable 'java')) { Add-BlockedStep $p.group $p.name $p.command 'Java is not installed.' $p.required $p.capability; continue }
-    if (-not $depsOk -and ($p.group -match 'Client|Build|Lint|Security|Cost' -or $p.command -match 'vite|jest|eslint|test:client|build|lint|test:rules|test:cost')) { Add-BlockedStep $p.group $p.name $p.command 'Locked dependency installation failed earlier.' $p.required $p.capability; continue }
+    if ($p.command -match 'npm run test:cost' -and -not $env:FIRESTORE_EMULATOR_HOST) { Add-BlockedStep $p.group $p.name $p.command 'FIRESTORE_EMULATOR_HOST is not configured.' $p.required $p.capability; continue }
+    if (-not $depsOk -and ($p.group -match 'Client|Build|Lint|Security|Cost' -or $p.command -match 'react-scripts|eslint|test:client|build|lint|test:rules|test:cost')) { Add-BlockedStep $p.group $p.name $p.command 'Locked dependency installation failed earlier.' $p.required $p.capability; continue }
     $ok = Run-Step $p.group $p.name $p.command $p.required
     if ($p.name -eq 'Install locked dependencies' -and -not $ok) { $depsOk = $false }
   }
 } catch {
   Add-BlockedStep 'Report / Artifact Integrity' 'Runner exception' '(runner)' $_.Exception.Message $true 'PowerShell'
 } finally {
-  $zip = ''
-  try {
-    Write-Reports
-  } catch {
-    $script:ReportingException = $_.Exception.Message
-    Write-EmergencyReports $script:ReportingException
-  }
-  try {
-    $zip = Create-UploadZip
-  } catch {
-    Write-Host ('UPLOAD ZIP creation failed: ' + $_.Exception.Message) -ForegroundColor Red
-    $zip = ''
-  }
+  Write-Reports
+  $zip = Create-UploadZip
   Write-Host ''
   Write-Host '============================================================' -ForegroundColor DarkGray
   Write-Host ('86 CHAOS FULL SUITE - ' + $script:AppVersion) -ForegroundColor Cyan
@@ -417,7 +202,7 @@ try {
   Write-Host '============================================================' -ForegroundColor Green
   Write-Host 'UPLOAD THIS ZIP TO CHATGPT FOR ANALYSIS' -ForegroundColor Green
   Write-Host '============================================================' -ForegroundColor Green
-  if ($zip) { Write-Host $zip -ForegroundColor Green } else { Write-Host 'UPLOAD ZIP NOT CREATED' -ForegroundColor Red }
+  Write-Host $zip -ForegroundColor Green
   Write-Host '============================================================' -ForegroundColor Green
   if ($fail -gt 0 -or ($blocked -gt 0 -and $Exhaustive)) { exit 1 } else { exit 0 }
 }

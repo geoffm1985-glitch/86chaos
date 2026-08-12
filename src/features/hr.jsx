@@ -16,7 +16,7 @@ import {
   Upload,
   UserCheck
 } from 'lucide-react';
-import { collection, doc, getCountFromServer, getDocs, limit as firestoreLimit, query, serverTimestamp, setDoc, updateDoc, where } from 'firebase/firestore';
+import { collection, doc, getCountFromServer, query, serverTimestamp, setDoc, updateDoc, where } from 'firebase/firestore';
 import { deleteObject, getBlob, ref, uploadBytesResumable } from 'firebase/storage';
 import {
   T,
@@ -458,36 +458,46 @@ export const TabHrTraining = ({ appUser, users = [], addToast }) => {
   const [certModal, setCertModal] = useState(false);
   const [performanceModal, setPerformanceModal] = useState(false);
   const [busyId, setBusyId] = useState('');
+  const [overviewCounts, setOverviewCounts] = useState({});
 
-  const hrOverviewActive = activeTab === 'overview';
-  const manuals = useLiveCollection('trainingManuals', restaurantId, { enabled: !!restaurantId && activeTab === 'manuals', whereClauses: manager ? [] : [['status', '==', 'Published']], limitCount: 150, fallbackLimitCount: manager ? 150 : 35, debugLabel: `hr:${activeTab}:manuals` });
-  const acknowledgements = useLiveCollection('trainingAcknowledgements', restaurantId, { enabled: !!restaurantId && activeTab === 'manuals', whereClauses: manager ? [] : [['userId', '==', uid]], limitCount: 500, fallbackLimitCount: manager ? 500 : 80, debugLabel: `hr:${activeTab}:acknowledgements` });
-  const onboardingTasks = useLiveCollection('hrOnboardingTasks', restaurantId, { enabled: !!restaurantId && activeTab === 'onboarding', whereClauses: manager ? [] : [['userId', '==', uid]], limitCount: 500, fallbackLimitCount: manager ? 500 : 80, debugLabel: `hr:${activeTab}:onboarding` });
-  const certifications = useLiveCollection('hrCertifications', restaurantId, { enabled: !!restaurantId && activeTab === 'certifications', whereClauses: manager ? [] : [['userId', '==', uid]], limitCount: 300, fallbackLimitCount: manager ? 300 : 80, debugLabel: `hr:${activeTab}:certifications` });
-  const performanceNotes = useLiveCollection('hrPerformanceNotes', restaurantId, { enabled: !!restaurantId && manager && activeTab === 'performance', limitCount: 300, fallbackLimitCount: 120, debugLabel: 'hr:performance:notes' });
-  const [overviewStats, setOverviewStats] = useState({ loading: false, counts: {}, manualsAttention: [], onboardingRecent: [] });
   useEffect(() => {
-    if (!restaurantId || !hrOverviewActive) return undefined;
-    let alive = true;
-    const base = (name) => collection(db, name);
-    const countQuery = (...parts) => getCountFromServer(query(...parts)).then(snap => snap.data().count || 0).catch(() => 0);
-    const manualWhere = [where('restaurantId', '==', restaurantId)];
-    const scopedWhere = (manager ? [where('restaurantId', '==', restaurantId)] : [where('restaurantId', '==', restaurantId), where('userId', '==', uid)]);
-    setOverviewStats(prev => ({ ...prev, loading: true }));
+    if (!restaurantId) {
+      setOverviewCounts({});
+      return undefined;
+    }
+    let cancelled = false;
+    const scopedQuery = (collectionName, clauses = []) => query(
+      collection(db, collectionName),
+      where('restaurantId', '==', restaurantId),
+      ...clauses
+    );
+    const readCount = async (collectionName, clauses = []) => {
+      const snap = await getCountFromServer(scopedQuery(collectionName, clauses));
+      return Number(snap.data()?.count || 0);
+    };
     Promise.all([
-      countQuery(base('trainingManuals'), ...manualWhere, where('status', '==', 'Published')),
-      countQuery(base('trainingAcknowledgements'), ...scopedWhere),
-      countQuery(base('hrOnboardingTasks'), ...scopedWhere),
-      countQuery(base('hrOnboardingTasks'), ...scopedWhere, where('completed', '==', true)),
-      countQuery(base('hrCertifications'), ...scopedWhere),
-      getDocs(query(base('trainingManuals'), ...manualWhere, where('status', '==', 'Published'), firestoreLimit(5))).then(snap => snap.docs.map(doc => ({ id: doc.id, ...doc.data() }))).catch(() => []),
-      getDocs(query(base('hrOnboardingTasks'), ...scopedWhere, firestoreLimit(5))).then(snap => snap.docs.map(doc => ({ id: doc.id, ...doc.data() }))).catch(() => [])
-    ]).then(([manualCount, ackCount, onboardingTotal, onboardingComplete, certTotal, manualsAttention, onboardingRecent]) => {
-      if (!alive) return;
-      setOverviewStats({ loading: false, counts: { manualCount, ackCount, onboardingTotal, onboardingComplete, certTotal }, manualsAttention, onboardingRecent });
-    }).catch(() => { if (alive) setOverviewStats(prev => ({ ...prev, loading: false })); });
-    return () => { alive = false; };
-  }, [restaurantId, hrOverviewActive, manager, uid]);
+      readCount('trainingManuals', manager ? [] : [where('status', '==', 'Published')]),
+      readCount('trainingAcknowledgements', manager ? [] : [where('userId', '==', uid)]),
+      readCount('hrOnboardingTasks', manager ? [] : [where('userId', '==', uid)]),
+      readCount('hrOnboardingTasks', manager ? [where('completed', '==', true)] : [where('userId', '==', uid), where('completed', '==', true)]),
+      readCount('hrCertifications', manager ? [] : [where('userId', '==', uid)])
+    ]).then(([publishedManualsCount, acknowledgementsCount, onboardingCount, onboardingCompletedCount, certificationsCount]) => {
+      if (!cancelled) setOverviewCounts({ publishedManualsCount, acknowledgementsCount, onboardingCount, onboardingCompletedCount, certificationsCount, measuredAt: new Date().toISOString() });
+    }).catch(error => {
+      if (!cancelled) {
+        console.warn('HR overview aggregate counts unavailable; falling back to loaded rows.', error?.message || error);
+        setOverviewCounts(prev => ({ ...prev, countError: String(error?.message || error || '').slice(0, 240) }));
+      }
+    });
+    return () => { cancelled = true; };
+  }, [restaurantId, manager, uid]);
+
+  const wantsHrOverview = activeTab === 'overview';
+  const manuals = useLiveCollection('trainingManuals', restaurantId, { enabled: !!restaurantId && (wantsHrOverview || activeTab === 'manuals'), whereClauses: manager ? [] : [['status', '==', 'Published']], limitCount: activeTab === 'manuals' ? 150 : 50, fallbackLimitCount: manager ? 50 : 0, debugLabel: `hr:${activeTab}:manuals` });
+  const acknowledgements = useLiveCollection('trainingAcknowledgements', restaurantId, { enabled: !!restaurantId && (wantsHrOverview || activeTab === 'manuals'), whereClauses: manager ? [] : [['userId', '==', uid]], limitCount: activeTab === 'manuals' ? (manager ? 500 : 120) : 80, fallbackLimitCount: manager ? 80 : 0, debugLabel: `hr:${activeTab}:acknowledgements` });
+  const onboardingTasks = useLiveCollection('hrOnboardingTasks', restaurantId, { enabled: !!restaurantId && (wantsHrOverview || activeTab === 'onboarding'), whereClauses: manager ? [] : [['userId', '==', uid]], limitCount: activeTab === 'onboarding' ? 500 : 80, fallbackLimitCount: manager ? 80 : 0, debugLabel: `hr:${activeTab}:onboarding` });
+  const certifications = useLiveCollection('hrCertifications', restaurantId, { enabled: !!restaurantId && (wantsHrOverview || activeTab === 'certifications'), whereClauses: manager ? [] : [['userId', '==', uid]], limitCount: activeTab === 'certifications' ? 300 : 80, fallbackLimitCount: manager ? 80 : 0, debugLabel: `hr:${activeTab}:certifications` });
+  const performanceNotes = useLiveCollection('hrPerformanceNotes', restaurantId, { enabled: !!restaurantId && manager && activeTab === 'performance', limitCount: 300, fallbackLimitCount: 300, debugLabel: 'hr:performance-notes' });
 
   const publishedManuals = useMemo(() => sortNewest(manuals.filter(item => item.status === 'Published')), [manuals]);
   const visibleManuals = useMemo(() => manager ? sortNewest(manuals) : publishedManuals, [manager, manuals, publishedManuals]);
@@ -611,14 +621,14 @@ export const TabHrTraining = ({ appUser, users = [], addToast }) => {
       {activeTab === 'overview' && <>
         <SectionHeader eyebrow="At a glance" title={manager ? 'People readiness dashboard' : 'My training dashboard'} text={manager ? 'See training publication, acknowledgment, onboarding, and certification readiness without exposing confidential records.' : 'Review your required manuals, onboarding progress, and certification records.'} />
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <MetricCard icon={<BookOpen size={20} />} label="Published manuals" value={hrOverviewActive ? (overviewStats.counts.manualCount ?? '…') : publishedManuals.length} detail="Current documents available to employees" />
-          <MetricCard icon={<CheckCircle2 size={20} />} label={manager ? 'Acknowledgments' : 'My acknowledgments'} value={hrOverviewActive ? (overviewStats.counts.ackCount ?? '…') : (manager ? acknowledgements.length : acknowledgedIds.size)} detail={manager ? 'Immutable employee attestations recorded' : `${Math.max(0, (hrOverviewActive ? (overviewStats.counts.manualCount || 0) : publishedManuals.length) - (hrOverviewActive ? (overviewStats.counts.ackCount || 0) : acknowledgedIds.size))} current manual(s) still to acknowledge`} />
-          <MetricCard icon={<ClipboardCheck size={20} />} label={manager ? 'Onboarding complete' : 'My onboarding'} value={hrOverviewActive ? `${overviewStats.counts.onboardingComplete ?? 0}/${overviewStats.counts.onboardingTotal ?? 0}` : `${completedTasks}/${onboardingTasks.length}`} detail="Checklist items completed" />
-          <MetricCard icon={<Award size={20} />} label="Certification records" value={hrOverviewActive ? (overviewStats.counts.certTotal ?? '…') : (expiredCerts + expiringCerts)} detail={hrOverviewActive ? 'Exact aggregate count, full records load only in Certifications' : `${expiredCerts} expired • ${expiringCerts} expiring within 60 days`} />
+          <MetricCard icon={<BookOpen size={20} />} label="Published manuals" value={overviewCounts.publishedManualsCount ?? publishedManuals.length} detail="Current documents available to employees" />
+          <MetricCard icon={<CheckCircle2 size={20} />} label={manager ? 'Acknowledgments' : 'My acknowledgments'} value={manager ? (overviewCounts.acknowledgementsCount ?? acknowledgements.length) : acknowledgedIds.size} detail={manager ? 'Immutable employee attestations recorded' : `${Math.max(0, (overviewCounts.publishedManualsCount ?? publishedManuals.length) - acknowledgedIds.size)} current manual(s) still to acknowledge`} />
+          <MetricCard icon={<ClipboardCheck size={20} />} label={manager ? 'Onboarding complete' : 'My onboarding'} value={`${overviewCounts.onboardingCompletedCount ?? completedTasks}/${overviewCounts.onboardingCount ?? onboardingTasks.length}`} detail="Checklist items completed" />
+          <MetricCard icon={<Award size={20} />} label="Certification attention" value={expiredCerts + expiringCerts} detail={`${expiredCerts} expired • ${expiringCerts} expiring within 60 days`} />
         </div>
         <div className="grid gap-4 lg:grid-cols-2">
-          <div className={`${T.card} p-5`}><h3 className="text-base font-black text-white">Training that needs attention</h3><div className="mt-4 space-y-2">{(hrOverviewActive ? overviewStats.manualsAttention : publishedManuals.filter(manual => !acknowledgedIds.has(manual.id))).slice(0, 5).map(manual => <button key={manual.id} type="button" onClick={() => setActiveTab('manuals')} className="flex w-full items-center justify-between gap-3 rounded-xl border border-[#2A353D] bg-[#12161A]/65 p-3 text-left"><div><div className="text-sm font-black text-white">{manual.title}</div><div className="mt-1 text-xs font-semibold text-slate-400">Version {manual.version} • {manual.category}</div></div><StatusPill tone="amber">Review</StatusPill></button>)}{(hrOverviewActive ? overviewStats.manualsAttention : publishedManuals.filter(manual => !acknowledgedIds.has(manual.id))).length === 0 && <Empty title="Training is current" text="There are no published manuals waiting for your acknowledgment." />}</div></div>
-          <div className={`${T.card} p-5`}><h3 className="text-base font-black text-white">Onboarding progress</h3><div className="mt-4 space-y-2">{sortNewest(hrOverviewActive ? overviewStats.onboardingRecent : onboardingTasks).slice(0, 5).map(task => <div key={task.id} className="flex items-center gap-3 rounded-xl border border-[#2A353D] bg-[#12161A]/65 p-3"><span className={`rounded-full p-1 ${task.completed ? 'bg-emerald-500/15 text-emerald-300' : 'bg-slate-500/10 text-slate-400'}`}>{task.completed ? <Check size={16} /> : <Clock3 size={16} />}</span><div className="min-w-0 flex-1"><div className="truncate text-sm font-black text-white">{task.title}</div><div className="mt-1 text-xs font-semibold text-slate-400">{manager ? task.employeeName : task.dueDate ? `Due ${prettyDate(task.dueDate)}` : 'No due date'}</div></div></div>)}{(hrOverviewActive ? overviewStats.onboardingRecent : onboardingTasks).length === 0 && <Empty title="No checklist assigned" text={manager ? 'Assign an onboarding checklist when a new employee starts.' : 'Your manager has not assigned onboarding tasks.'} />}</div></div>
+          <div className={`${T.card} p-5`}><h3 className="text-base font-black text-white">Training that needs attention</h3><div className="mt-4 space-y-2">{publishedManuals.filter(manual => !acknowledgedIds.has(manual.id)).slice(0, 5).map(manual => <button key={manual.id} type="button" onClick={() => setActiveTab('manuals')} className="flex w-full items-center justify-between gap-3 rounded-xl border border-[#2A353D] bg-[#12161A]/65 p-3 text-left"><div><div className="text-sm font-black text-white">{manual.title}</div><div className="mt-1 text-xs font-semibold text-slate-400">Version {manual.version} • {manual.category}</div></div><StatusPill tone="amber">Review</StatusPill></button>)}{publishedManuals.filter(manual => !acknowledgedIds.has(manual.id)).length === 0 && <Empty title="Training is current" text="There are no published manuals waiting for your acknowledgment." />}</div></div>
+          <div className={`${T.card} p-5`}><h3 className="text-base font-black text-white">Onboarding progress</h3><div className="mt-4 space-y-2">{sortNewest(onboardingTasks).slice(0, 5).map(task => <div key={task.id} className="flex items-center gap-3 rounded-xl border border-[#2A353D] bg-[#12161A]/65 p-3"><span className={`rounded-full p-1 ${task.completed ? 'bg-emerald-500/15 text-emerald-300' : 'bg-slate-500/10 text-slate-400'}`}>{task.completed ? <Check size={16} /> : <Clock3 size={16} />}</span><div className="min-w-0 flex-1"><div className="truncate text-sm font-black text-white">{task.title}</div><div className="mt-1 text-xs font-semibold text-slate-400">{manager ? task.employeeName : task.dueDate ? `Due ${prettyDate(task.dueDate)}` : 'No due date'}</div></div></div>)}{onboardingTasks.length === 0 && <Empty title="No checklist assigned" text={manager ? 'Assign an onboarding checklist when a new employee starts.' : 'Your manager has not assigned onboarding tasks.'} />}</div></div>
         </div>
       </>}
 

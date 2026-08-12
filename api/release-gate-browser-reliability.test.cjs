@@ -8,10 +8,8 @@ const read = (rel) => fs.readFileSync(path.join(root, rel), 'utf8');
 
 test('operations intelligence listener is empty-safe and tenant constrained without a direct missing-document read', () => {
   const source = read('src/features/operations.jsx');
-  assert.doesNotMatch(source, /useLiveCollectionState\('opsIntelligenceReports'/);
-  assert.match(source, /useLiveCollection\('opsIntelligenceReports'/);
-  assert.match(source, /live:\s*false/);
-  assert.match(source, /debugLabel:\s*'today:current-ops-intelligence:snapshot-latest'/);
+  assert.match(source, /useLiveCollectionState\('opsIntelligenceReports'/);
+  assert.match(source, /debugLabel:\s*'today:current-ops-intelligence:tenant-query'/);
   assert.match(source, /canUsePythonIntelligence/);
   assert.doesNotMatch(source, /useLiveDocument\('opsIntelligenceReports'/);
 });

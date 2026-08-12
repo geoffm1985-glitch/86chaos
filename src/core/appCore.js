@@ -5,11 +5,9 @@ import { getFirestore, collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot
 import { getAuth, onAuthStateChanged } from 'firebase/auth';
 import { getMessaging, isSupported } from 'firebase/messaging';
 import { getStorage } from 'firebase/storage';
-import { getDatabase, ref as rtdbRef, onValue as onRtdbValue, onDisconnect as rtdbOnDisconnect, set as rtdbSet, remove as rtdbRemove, serverTimestamp as rtdbServerTimestamp } from 'firebase/database';
+import { getDatabase, ref as rtdbRef, onValue as onRtdbValue, onDisconnect as rtdbOnDisconnect, set as rtdbSet, serverTimestamp as rtdbServerTimestamp } from 'firebase/database';
 import L from 'leaflet';
-import * as cacheScopeHelpersModule from './cacheScope.cjs';
 
-const cacheScopeHelpers = cacheScopeHelpersModule?.default && typeof cacheScopeHelpersModule.default === 'object' ? cacheScopeHelpersModule.default : cacheScopeHelpersModule;
 
 // Fix for React-Leaflet invisible pin issue
 export const customMapIcon = new L.Icon({
@@ -207,120 +205,55 @@ const presenceDeviceType = () => {
   return 'desktop';
 };
 
-export const LOW_COST_PRESENCE_TREE = 'status';
-export const LOW_COST_PRESENCE_SUMMARY_TREE = 'statusSummary';
-const LOW_COST_PRESENCE_SUMMARY_CACHE_MS = 45 * 1000;
-const lowCostPresenceSummaryCache = new Map();
-
-const getStablePresenceDeviceId = (workspaceKey = '', userKey = '') => {
-  if (typeof window === 'undefined') return 'server';
-  const storageKey = `chaosPresenceDeviceId_v2_${workspaceKey}_${userKey}`;
-  let id = '';
-  try { id = localStorage.getItem(storageKey) || ''; } catch (_) {}
-  if (!id) {
-    id = `device_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
-    try { localStorage.setItem(storageKey, id); } catch (_) {}
-  }
-  return id;
-};
-
-const getStablePresenceTabId = (workspaceKey = '', userKey = '') => {
-  if (typeof window === 'undefined') return 'server-tab';
-  const storageKey = `chaosPresenceTabId_v2_${workspaceKey}_${userKey}`;
-  let id = '';
-  try { id = sessionStorage.getItem(storageKey) || ''; } catch (_) {}
-  if (!id) {
-    id = `tab_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
-    try { sessionStorage.setItem(storageKey, id); } catch (_) {}
-  }
-  return id;
-};
-
 export function startLowCostPresenceSession({ user = {}, restaurantId = '', activeTab = '', onDebug = null } = {}) {
-  const firebaseUid = String(auth?.currentUser?.uid || user?.authUid || user?.uid || '').trim();
-  if (typeof window === 'undefined' || !realtimeDb || !firebaseUid || !user?.id || !restaurantId) return () => {};
+  if (typeof window === 'undefined' || !realtimeDb || !user?.id || !restaurantId) return () => {};
   const workspaceKey = presenceSafeKey(restaurantId);
-  const authUidKey = presenceSafeKey(firebaseUid);
-  const appUserId = String(user.id || '');
-  const deviceId = getStablePresenceDeviceId(workspaceKey, authUidKey);
-  const tabId = getStablePresenceTabId(workspaceKey, authUidKey);
-  const connectionId = presenceSafeKey(`${deviceId}_${tabId}`);
+  const userKey = presenceSafeKey(user.id);
+  const sessionStorageKey = `chaosRtdbPresenceSession_${workspaceKey}_${userKey}`;
+  let sessionId = '';
+  try { sessionId = sessionStorage.getItem(sessionStorageKey) || ''; } catch (_) {}
+  if (!sessionId) {
+    sessionId = `${Date.now()}_${Math.random().toString(36).slice(2)}`;
+    try { sessionStorage.setItem(sessionStorageKey, sessionId); } catch (_) {}
+  }
+  const sessionKey = presenceSafeKey(sessionId);
   const connectedRef = rtdbRef(realtimeDb, '.info/connected');
-  const sessionRef = rtdbRef(realtimeDb, `${LOW_COST_PRESENCE_TREE}/${workspaceKey}/${authUidKey}/sessions/${connectionId}`);
-  const summaryRef = rtdbRef(realtimeDb, `${LOW_COST_PRESENCE_SUMMARY_TREE}/${workspaceKey}/${authUidKey}`);
+  const sessionRef = rtdbRef(realtimeDb, `status/${workspaceKey}/${userKey}/sessions/${sessionKey}`);
+  const summaryRef = rtdbRef(realtimeDb, `statusSummary/${workspaceKey}/${userKey}`);
   const base = {
-    userId: appUserId,
-    appUserId,
-    uid: firebaseUid,
-    authUid: firebaseUid,
-    firebaseAuthUid: firebaseUid,
+    userId: String(user.id || ''),
     restaurantId: String(restaurantId || ''),
-    deviceId: presenceSafeKey(deviceId),
-    tabId: presenceSafeKey(tabId),
-    connectionId,
     name: String(user.name || user.displayName || user.email || ''),
     email: String(user.email || ''),
     role: String(user.role || ''),
     device: presenceDeviceType(),
     host: typeof window !== 'undefined' ? String(window.location.hostname || '') : '',
     userAgent: typeof navigator !== 'undefined' ? String(navigator.userAgent || '').slice(0, 160) : '',
-    source: 'rtdb-status-sessions-presence'
+    source: 'rtdb-low-cost-presence'
   };
   const unsubscribe = onRtdbValue(connectedRef, (snap) => {
     if (snap.val() !== true) return;
     const onlinePayload = { ...base, state: 'online', online: true, activeTab: String(activeTab || ''), lastChanged: rtdbServerTimestamp(), connectedAt: rtdbServerTimestamp() };
-    const lastSeenPayload = { ...base, state: 'last-seen', online: false, activeTab: String(activeTab || ''), lastChanged: rtdbServerTimestamp(), lastOnline: rtdbServerTimestamp() };
+    const offlinePayload = { ...base, state: 'offline', online: false, activeTab: String(activeTab || ''), lastChanged: rtdbServerTimestamp(), lastOnline: rtdbServerTimestamp(), disconnectedAt: rtdbServerTimestamp() };
     Promise.all([
-      rtdbOnDisconnect(sessionRef).remove(),
-      rtdbOnDisconnect(summaryRef).set(lastSeenPayload)
-    ])
-      .then(() => rtdbSet(sessionRef, onlinePayload))
-      .then(() => {
-        onDebug?.({ ok: true, channel: 'rtdb-presence', message: 'Realtime Database status session presence active. Connect writes one active session only; Last Seen updates occur on disconnect without heartbeat writes.' });
-      }).catch((err) => {
-        onDebug?.({ ok: false, channel: 'rtdb-presence', message: err?.message || String(err) });
-      });
+      rtdbSet(sessionRef, onlinePayload),
+      rtdbSet(summaryRef, { ...onlinePayload, activeSessionCount: 1 }),
+      rtdbOnDisconnect(sessionRef).set(offlinePayload),
+      rtdbOnDisconnect(summaryRef).set({ ...offlinePayload, activeSessionCount: 0 })
+    ]).then(() => {
+      onDebug?.({ ok: true, channel: 'rtdb-presence', message: 'Realtime Database presence session active. No repeating Firestore heartbeat is running.' });
+    }).catch((err) => {
+      onDebug?.({ ok: false, channel: 'rtdb-presence', message: err?.message || String(err) });
+    });
   }, (err) => {
     onDebug?.({ ok: false, channel: 'rtdb-presence-connected', message: err?.message || String(err) });
   });
   return () => {
     try { unsubscribe?.(); } catch (_) {}
-    try { rtdbRemove(sessionRef); } catch (_) {}
-    try { rtdbSet(summaryRef, { ...base, state: 'last-seen', online: false, activeTab: String(activeTab || ''), lastChanged: rtdbServerTimestamp(), lastOnline: rtdbServerTimestamp(), disconnectedAt: rtdbServerTimestamp(), summaryOnly: true }); } catch (_) {}
+    try { rtdbSet(sessionRef, { ...base, state: 'offline', online: false, activeTab: String(activeTab || ''), lastChanged: rtdbServerTimestamp(), lastOnline: rtdbServerTimestamp(), disconnectedAt: rtdbServerTimestamp() }); } catch (_) {}
   };
 }
 
-export const deriveLowCostPresenceRowsFromDeviceTree = (raw = {}, restaurantId = '') => {
-  const rows = [];
-  Object.entries(raw || {}).forEach(([userId, deviceRows]) => {
-    const sessionMap = deviceRows?.sessions && typeof deviceRows.sessions === 'object' ? deviceRows.sessions : deviceRows;
-    const devices = Object.values(sessionMap || {}).filter(row => row && typeof row === 'object');
-    if (!devices.length) return;
-    const decorated = devices.map(row => ({ row, lastMs: Math.max(
-      rtdbServerTimestampToMs(row?.lastChanged),
-      rtdbServerTimestampToMs(row?.lastOnline),
-      rtdbServerTimestampToMs(row?.connectedAt),
-      rtdbServerTimestampToMs(row?.disconnectedAt),
-      rtdbServerTimestampToMs(row?.presenceUpdatedAt),
-      rtdbServerTimestampToMs(row?.lastActive),
-      rtdbServerTimestampToMs(row?.lastSeen)
-    ) })).sort((a, b) => b.lastMs - a.lastMs);
-    const onlineDevices = decorated.filter(item => item.row?.online === true || item.row?.state === 'online');
-    const representative = (onlineDevices[0] || decorated[0])?.row || {};
-    const lastMs = (onlineDevices[0] || decorated[0])?.lastMs || 0;
-    rows.push(normalizeLowCostPresenceRow({
-      ...representative,
-      online: onlineDevices.length > 0,
-      state: onlineDevices.length > 0 ? 'online' : 'offline',
-      activeSessionCount: onlineDevices.length,
-      activeDeviceCount: onlineDevices.length,
-      deviceRows: undefined,
-      lastChanged: lastMs || representative.lastChanged,
-      lastOnline: lastMs || representative.lastOnline
-    }, userId, restaurantId));
-  });
-  return rows;
-};
 
 const rtdbServerTimestampToMs = (value) => {
   if (!value) return 0;
@@ -359,11 +292,11 @@ const normalizeLowCostPresenceRow = (row = {}, userId = '', restaurantId = '') =
     activeHost: row?.host || row?.activeHost || '',
     activeTab: row?.activeTab || '',
     activeSessionCount: Number(row?.activeSessionCount || (online ? 1 : 0)) || 0,
-    presenceSource: 'rtdb-status-sessions-presence'
+    presenceSource: 'rtdb-statusSummary'
   };
 };
 
-export function useLowCostPresenceSummaries(restaurantId = '', { enabled = false, cacheMs = LOW_COST_PRESENCE_SUMMARY_CACHE_MS } = {}) {
+export function useLowCostPresenceSummaries(restaurantId = '', { enabled = false } = {}) {
   const [rows, setRows] = useState([]);
   useEffect(() => {
     if (!enabled || !realtimeDb || !restaurantId) {
@@ -371,37 +304,31 @@ export function useLowCostPresenceSummaries(restaurantId = '', { enabled = false
       return undefined;
     }
     const workspaceKey = presenceSafeKey(restaurantId);
-    const cacheKey = `${firebaseConfig?.projectId || 'default'}:${workspaceKey}`;
-    const cached = lowCostPresenceSummaryCache.get(cacheKey);
-    const now = Date.now();
-    if (cached && now - Number(cached.loadedAt || 0) < Math.max(5_000, Number(cacheMs || LOW_COST_PRESENCE_SUMMARY_CACHE_MS))) {
-      setRows(Array.isArray(cached.rows) ? cached.rows : []);
-    }
-    const presenceRef = rtdbRef(realtimeDb, `${LOW_COST_PRESENCE_TREE}/${workspaceKey}`);
-    return onRtdbValue(presenceRef, (snap) => {
-      const next = deriveLowCostPresenceRowsFromDeviceTree(snap.val() || {}, restaurantId);
-      lowCostPresenceSummaryCache.set(cacheKey, { loadedAt: Date.now(), rows: next });
+    const summaryRef = rtdbRef(realtimeDb, `statusSummary/${workspaceKey}`);
+    return onRtdbValue(summaryRef, (snap) => {
+      const raw = snap.val() || {};
+      const next = Object.entries(raw).map(([userId, row]) => normalizeLowCostPresenceRow(row, userId, restaurantId));
       setRows(next);
-    }, () => setRows(Array.isArray(cached?.rows) ? cached.rows : []));
-  }, [enabled, restaurantId, cacheMs]);
+    }, () => setRows([]));
+  }, [enabled, restaurantId]);
   return rows;
 }
 
-export function useLowCostPresenceSummary(restaurantId = '', firebaseAuthUid = '', { enabled = false } = {}) {
+export function useLowCostPresenceSummary(restaurantId = '', userId = '', { enabled = false } = {}) {
   const [row, setRow] = useState(null);
   useEffect(() => {
-    if (!enabled || !realtimeDb || !restaurantId || !firebaseAuthUid) {
+    if (!enabled || !realtimeDb || !restaurantId || !userId) {
       setRow(null);
       return undefined;
     }
     const workspaceKey = presenceSafeKey(restaurantId);
-    const authUidKey = presenceSafeKey(firebaseAuthUid);
-    const presenceRef = rtdbRef(realtimeDb, `${LOW_COST_PRESENCE_TREE}/${workspaceKey}/${authUidKey}/sessions`);
-    return onRtdbValue(presenceRef, (snap) => {
-      const rows = deriveLowCostPresenceRowsFromDeviceTree({ [authUidKey]: snap.val() || {} }, restaurantId);
-      setRow(rows[0] || null);
+    const userKey = presenceSafeKey(userId);
+    const summaryRef = rtdbRef(realtimeDb, `statusSummary/${workspaceKey}/${userKey}`);
+    return onRtdbValue(summaryRef, (snap) => {
+      const raw = snap.val();
+      setRow(raw ? normalizeLowCostPresenceRow(raw, userId, restaurantId) : null);
     }, () => setRow(null));
-  }, [enabled, restaurantId, firebaseAuthUid]);
+  }, [enabled, restaurantId, userId]);
   return row;
 }
 
@@ -498,7 +425,7 @@ export const MASTER_ADMIN_EMAIL = (process.env.REACT_APP_MASTER_ADMIN_EMAIL || '
 export const EVENT_TAGS = ['Standard Day', 'Packers Game', 'Brewers Game', 'Live Music', 'Severe Weather', 'Private Catering', 'Holiday'];
 
 // --- VERSION TRACKING ---
-export const CURRENT_VERSION = '16.0.201';
+export const CURRENT_VERSION = '16.0.202';
 
 // --- Helpers ---
 const usePageVisible = () => {
@@ -520,17 +447,6 @@ const usePageVisible = () => {
 };
 
 const LIVE_COLLECTION_RELEASE_GRACE_MS = 6 * 60 * 1000;
-const HOT_LIVE_COLLECTION_RELEASE_GRACE_MS = 60 * 1000;
-const ADMIN_LIVE_COLLECTION_RELEASE_GRACE_MS = 20 * 1000;
-const SLOW_LIVE_COLLECTION_RELEASE_GRACE_MS = 6 * 60 * 1000;
-const liveCollectionReleaseGraceMs = (coll = '', debugLabel = '') => {
-  const name = String(coll || '').trim();
-  const label = String(debugLabel || '').toLowerCase();
-  if (/admin|forensics|audit|diagnostic|report|global|system/.test(label) || ['auditLogs', 'crashReports', 'systemAlerts', 'opsIntelligenceReports', 'pythonAutomationRuns'].includes(name)) return ADMIN_LIVE_COLLECTION_RELEASE_GRACE_MS;
-  if (['shifts', 'timePunches', 'tasks', 'prepItems', 'lineCheckItems', 'inventoryItems', 'wasteLogs', 'orders', 'invoices', 'messages', 'events', 'timeOffRequests', 'availabilityRecords'].includes(name)) return HOT_LIVE_COLLECTION_RELEASE_GRACE_MS;
-  if (['roles', 'scheduleCoverageTargets', 'prepCategories', 'recipeCategories', 'vendors', 'recipes', 'restaurants', 'settings'].includes(name)) return SLOW_LIVE_COLLECTION_RELEASE_GRACE_MS;
-  return LIVE_COLLECTION_RELEASE_GRACE_MS;
-};
 const liveCollectionRegistry = new Map();
 const liveDocumentRegistry = new Map();
 const LIVE_QUERY_CACHE_MAX_ENTRIES = 60;
@@ -622,11 +538,14 @@ export const clearTenantListenerCache = (boundary = {}) => {
   const restaurantId = boundary.restaurantId || boundary.restId || null;
   const viewerUid = boundary.viewerUid || boundary.userId || null;
   const userSensitiveOnly = boundary.userSensitiveOnly === true;
-  const cacheScope = boundary.cacheScope || boundary.cacheTag || '';
-  const debugLabelPrefix = boundary.debugLabelPrefix || '';
-  const matches = (row = {}) => cacheScopeHelpers.cacheEntryMatchesBoundary
-    ? cacheScopeHelpers.cacheEntryMatchesBoundary(row, boundary)
-    : (clearAll || Boolean(projectId || restaurantId || viewerUid || userSensitiveOnly || cacheScope || debugLabelPrefix));
+  const matches = (row = {}) => {
+    if (clearAll) return true;
+    if (userSensitiveOnly && row.userSensitive !== true) return false;
+    if (projectId && String(row.projectId || '') !== String(projectId)) return false;
+    if (restaurantId && String(row.restaurantId || row.restId || '') !== String(restaurantId)) return false;
+    if (viewerUid && String(row.viewerUid || '') !== String(viewerUid)) return false;
+    return Boolean(projectId || restaurantId || viewerUid || userSensitiveOnly);
+  };
   let releasedCollections = 0;
   let releasedDocuments = 0;
   for (const [key, entry] of liveCollectionRegistry.entries()) {
@@ -652,7 +571,7 @@ export const clearTenantListenerCache = (boundary = {}) => {
     diag.activeListeners = liveCollectionRegistry.size;
     diag.activeDocuments = liveDocumentRegistry.size;
     diag.listenerReleaseCount = (diag.listenerReleaseCount || 0) + releasedCollections + releasedDocuments;
-    diag.lastCacheClear = { projectId, restaurantId, viewerUid, cacheScope, debugLabelPrefix, clearAll, releasedCollections, releasedDocuments, at: new Date().toISOString() };
+    diag.lastCacheClear = { projectId, restaurantId, viewerUid, clearAll, releasedCollections, releasedDocuments, at: new Date().toISOString() };
   }
   return { releasedCollections, releasedDocuments };
 };
@@ -674,8 +593,6 @@ const setLiveCacheEntry = (map, key, value = {}) => {
     restaurantId: value.restaurantId || value.restId || '',
     viewerUid: value.viewerUid || currentViewerUid(),
     userSensitive: value.userSensitive !== false,
-    cacheScope: value.cacheScope || value.cacheTag || '',
-    debugLabel: value.debugLabel || '',
     cachedAt: Date.now(),
     lastAccessedAt: Date.now()
   };
@@ -720,7 +637,7 @@ function releaseLiveDocumentEntry(key, entry, options = {}) {
   if (options.cache === false) liveDocumentSessionCache.delete(key);
 }
 
-export const makeLiveCollectionKey = ({ coll, restId, whereClauses, orderByField, orderDirection, limitCount, cursor = null, viewerUid = currentViewerUid(), cacheScope = '' }) => stableJson({
+export const makeLiveCollectionKey = ({ coll, restId, whereClauses, orderByField, orderDirection, limitCount, cursor = null, viewerUid = currentViewerUid() }) => stableJson({
   projectId: firebaseConfig?.projectId || 'default',
   viewerUid: viewerUid || 'anonymous',
   coll,
@@ -729,8 +646,7 @@ export const makeLiveCollectionKey = ({ coll, restId, whereClauses, orderByField
   orderByField: orderByField || '',
   orderDirection: orderDirection || 'asc',
   limitCount: Number(limitCount || 0) || null,
-  cursor: cursor || null,
-  cacheScope: cacheScope || ''
+  cursor: cursor || null
 });
 
 const annotateListenerDiagnostics = (key, patch = {}) => {
@@ -741,7 +657,7 @@ const annotateListenerDiagnostics = (key, patch = {}) => {
 };
 
 
-const acquireSharedLiveCollection = ({ coll, restId, constraints, key, setData, debugLabel = '', viewerUid = currentViewerUid(), cacheScope = '' }) => {
+const acquireSharedLiveCollection = ({ coll, restId, constraints, key, setData, debugLabel = '', viewerUid = currentViewerUid() }) => {
   let entry = liveCollectionRegistry.get(key);
   const diagnostics = getFirestoreDiagnostics();
   if (!entry) {
@@ -754,8 +670,6 @@ const acquireSharedLiveCollection = ({ coll, restId, constraints, key, setData, 
       projectId: firebaseConfig?.projectId || 'default',
       viewerUid,
       userSensitive: true,
-      cacheScope: cacheScope || '',
-      debugLabel: debugLabel || '',
       data: Array.isArray(cached?.data) ? cached.data : [],
       lastError: null,
       stale: !!cached,
@@ -776,7 +690,6 @@ const acquireSharedLiveCollection = ({ coll, restId, constraints, key, setData, 
       collection: coll,
       restaurantId: restId,
       debugLabel: debugLabel || '',
-      cacheScope: cacheScope || '',
       consumerLabels: [],
       subscriberCount: 0,
       listenerCreationCount: 1,
@@ -807,7 +720,7 @@ const acquireSharedLiveCollection = ({ coll, restId, constraints, key, setData, 
         entry.lastError = null;
         entry.data = docs;
         const changes = snap.docChanges ? snap.docChanges() : [];
-        setLiveCacheEntry(liveCollectionSessionCache, key, { data: docs, coll, restId, restaurantId: restId, viewerUid, userSensitive: true, cacheScope, debugLabel });
+        setLiveCacheEntry(liveCollectionSessionCache, key, { data: docs, coll, restId, restaurantId: restId, viewerUid, userSensitive: true });
         if (diagnostics) {
           diagnostics.documentsReceivedByQuery = diagnostics.documentsReceivedByQuery && typeof diagnostics.documentsReceivedByQuery === 'object' && !Array.isArray(diagnostics.documentsReceivedByQuery) ? diagnostics.documentsReceivedByQuery : {};
           diagnostics.listeners = diagnostics.listeners && typeof diagnostics.listeners === 'object' && !Array.isArray(diagnostics.listeners) ? diagnostics.listeners : {};
@@ -877,9 +790,6 @@ const acquireSharedLiveCollection = ({ coll, restId, constraints, key, setData, 
     current.subscribers.delete(subscriber);
     annotateListenerDiagnostics(key, { subscriberCount: current.subscribers.size, consumerLabels: entryConsumerLabels(current) });
     if (current.subscribers.size === 0 && !current.releaseTimer) {
-      const releaseLabel = subscriber?.debugLabel || debugLabel || '';
-      const releaseGraceMs = liveCollectionReleaseGraceMs(coll, releaseLabel);
-      annotateListenerDiagnostics(key, { releaseGraceMs, releasePolicy: releaseGraceMs === HOT_LIVE_COLLECTION_RELEASE_GRACE_MS ? 'hot-operational' : releaseGraceMs === ADMIN_LIVE_COLLECTION_RELEASE_GRACE_MS ? 'admin-short' : releaseGraceMs === SLOW_LIVE_COLLECTION_RELEASE_GRACE_MS ? 'slow-config' : 'default' });
       current.releaseTimer = setTimeout(() => {
         const latest = liveCollectionRegistry.get(key);
         if (!latest || latest.subscribers.size > 0) return;
@@ -902,7 +812,7 @@ const acquireSharedLiveCollection = ({ coll, restId, constraints, key, setData, 
           consumerLabels: [],
           cached: true
         });
-      }, liveCollectionReleaseGraceMs(coll, releaseLabel));
+      }, LIVE_COLLECTION_RELEASE_GRACE_MS);
     }
   };
 };
@@ -916,11 +826,7 @@ export const useLiveCollection = (coll, restId, options = {}) => {
     orderDirection = 'asc',
     fallbackLimitCount = 75,
     pauseWhenHidden = true,
-    debugLabel = '',
-    live = true,
-    ttlMs = 60_000,
-    cacheScope = '',
-    refreshKey = 0
+    debugLabel = ''
   } = options || {};
   const [data, setData] = useState([]);
   const pageVisible = usePageVisible();
@@ -944,99 +850,13 @@ export const useLiveCollection = (coll, restId, options = {}) => {
     if (orderByField) constraints.push(orderBy(orderByField, orderDirection || 'asc'));
     if (limitCount && Number(limitCount) > 0) constraints.push(firestoreLimit(Number(limitCount)));
 
-    const key = makeLiveCollectionKey({ coll, restId, whereClauses, orderByField, orderDirection, limitCount, viewerUid, cacheScope });
-    if (live === false) {
-      let alive = true;
-      const snapshotKey = `snapshot:${key}`;
-      const cached = touchLiveCacheEntry(liveCollectionSessionCache, snapshotKey);
-      if (cached?.data && Date.now() - Number(cached.cachedAt || 0) < Math.max(5_000, Number(ttlMs || 60_000))) {
-        setData(Array.isArray(cached.data) ? cached.data : []);
-        return undefined;
-      }
-      getDocs(query(collection(db, coll), ...constraints)).then(snap => {
-        if (!alive) return;
-        const rows = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-        setLiveCacheEntry(liveCollectionSessionCache, snapshotKey, { data: rows, coll, restId, restaurantId: restId, viewerUid, userSensitive: true, cacheScope, debugLabel: debugLabelRef.current });
-        const diag = getFirestoreDiagnostics();
-        if (diag) {
-          const label = debugLabelRef.current || `snapshot:${coll}`;
-          diag.documentsReceivedByQuery[label] = { ...(diag.documentsReceivedByQuery[label] || {}), collection: coll, restaurantId: restId, mode: 'bounded-snapshot', lastDocCount: rows.length, lastSnapshotAt: new Date().toISOString(), listener: false };
-        }
-        setData(rows);
-      }).catch(err => {
-        if (!alive) return;
-        console.warn(`Snapshot query failed for ${coll}${debugLabelRef.current ? ` [${debugLabelRef.current}]` : ''}:`, err?.message || err);
-        setData(Array.isArray(cached?.data) ? cached.data : []);
-      });
-      return () => { alive = false; };
-    }
-    return acquireSharedLiveCollection({ coll, restId, constraints, key, setData, debugLabel: debugLabelRef.current, viewerUid, cacheScope });
-  }, [coll, restId, enabled, limitCount, orderByField, orderDirection, pauseWhenHidden, pageVisible, viewerUid, live, ttlMs, cacheScope, refreshKey, stableJson(normalizeWhereClausesForKey(whereClauses || []))]);
+    const key = makeLiveCollectionKey({ coll, restId, whereClauses, orderByField, orderDirection, limitCount, viewerUid });
+    return acquireSharedLiveCollection({ coll, restId, constraints, key, setData, debugLabel: debugLabelRef.current, viewerUid });
+  }, [coll, restId, enabled, limitCount, orderByField, orderDirection, pauseWhenHidden, pageVisible, viewerUid, stableJson(normalizeWhereClausesForKey(whereClauses || []))]);
 
   return data;
 };
 
-
-
-export const useSnapshotCollection = (coll, restId, options = {}) => {
-  const {
-    enabled = true,
-    limitCount = null,
-    whereClauses = [],
-    orderByField = null,
-    orderDirection = 'asc',
-    pauseWhenHidden = true,
-    debugLabel = '',
-    ttlMs = 60_000,
-    cacheScope = '',
-    refreshKey = 0
-  } = options || {};
-  const [data, setData] = useState([]);
-  const pageVisible = usePageVisible();
-  const viewerUid = currentViewerUid();
-  const key = makeLiveCollectionKey({ coll, restId, whereClauses, orderByField, orderDirection, limitCount, viewerUid, cacheScope });
-  useEffect(() => {
-    if (!enabled || !restId) { setData([]); return undefined; }
-    if (pauseWhenHidden && !pageVisible) return undefined;
-    let alive = true;
-    const cached = touchLiveCacheEntry(liveCollectionSessionCache, `snapshot:${key}`);
-    if (cached?.data && Date.now() - Number(cached.cachedAt || 0) < Math.max(5_000, Number(ttlMs || 60_000))) {
-      setData(Array.isArray(cached.data) ? cached.data : []);
-      return undefined;
-    }
-    const constraints = [where('restaurantId', '==', restId)];
-    (whereClauses || []).forEach(([field, op, value]) => {
-      if (field && op && value !== undefined && value !== null && value !== '') constraints.push(where(field, op, value));
-    });
-    if (orderByField) constraints.push(orderBy(orderByField, orderDirection || 'asc'));
-    if (limitCount && Number(limitCount) > 0) constraints.push(firestoreLimit(Number(limitCount)));
-    getDocs(query(collection(db, coll), ...constraints)).then(snap => {
-      if (!alive) return;
-      const rows = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-      setLiveCacheEntry(liveCollectionSessionCache, `snapshot:${key}`, { data: rows, coll, restId, restaurantId: restId, viewerUid, userSensitive: true, cacheScope, debugLabel });
-      const diag = getFirestoreDiagnostics();
-      if (diag) {
-        const label = debugLabel || `snapshot:${coll}`;
-        diag.documentsReceivedByQuery[label] = {
-          ...(diag.documentsReceivedByQuery[label] || {}),
-          collection: coll,
-          restaurantId: restId,
-          mode: 'bounded-snapshot',
-          lastDocCount: rows.length,
-          lastSnapshotAt: new Date().toISOString(),
-          listener: false
-        };
-      }
-      setData(rows);
-    }).catch(err => {
-      if (!alive) return;
-      console.warn(`Snapshot query failed for ${coll}${debugLabel ? ` [${debugLabel}]` : ''}:`, err?.message || err);
-      setData(Array.isArray(cached?.data) ? cached.data : []);
-    });
-    return () => { alive = false; };
-  }, [coll, restId, enabled, limitCount, orderByField, orderDirection, pauseWhenHidden, pageVisible, viewerUid, ttlMs, cacheScope, refreshKey, stableJson(normalizeWhereClausesForKey(whereClauses || []))]);
-  return data;
-};
 
 export const useLiveCollectionState = (coll, restId, options = {}) => {
   const [state, setState] = useState({ data: [], loading: Boolean(options?.enabled !== false && restId), resolved: false, error: null, stale: false, cached: false });
@@ -1058,8 +878,7 @@ export const useLiveCollectionState = (coll, restId, options = {}) => {
     orderDirection = 'asc',
     fallbackLimitCount = 75,
     pauseWhenHidden = true,
-    debugLabel = '',
-    cacheScope = ''
+    debugLabel = ''
   } = options || {};
   const pageVisible = usePageVisible();
   const debugLabelRef = React.useRef(debugLabel || '');
@@ -1078,9 +897,9 @@ export const useLiveCollectionState = (coll, restId, options = {}) => {
     });
     if (orderByField) constraints.push(orderBy(orderByField, orderDirection || 'asc'));
     if (limitCount && Number(limitCount) > 0) constraints.push(firestoreLimit(Number(limitCount)));
-    const key = makeLiveCollectionKey({ coll, restId, whereClauses, orderByField, orderDirection, limitCount, viewerUid, cacheScope });
-    return acquireSharedLiveCollection({ coll, restId, constraints, key, setData: setter, debugLabel: debugLabelRef.current, viewerUid, cacheScope });
-  }, [coll, restId, enabled, limitCount, orderByField, orderDirection, pauseWhenHidden, pageVisible, viewerUid, cacheScope, stableJson(normalizeWhereClausesForKey(whereClauses || []))]);
+    const key = makeLiveCollectionKey({ coll, restId, whereClauses, orderByField, orderDirection, limitCount, viewerUid });
+    return acquireSharedLiveCollection({ coll, restId, constraints, key, setData: setter, debugLabel: debugLabelRef.current, viewerUid });
+  }, [coll, restId, enabled, limitCount, orderByField, orderDirection, pauseWhenHidden, pageVisible, viewerUid, stableJson(normalizeWhereClausesForKey(whereClauses || []))]);
   return state;
 };
 
@@ -1203,7 +1022,6 @@ const acquireSharedLiveDocument = ({ coll, docId, key, setValue, debugLabel = ''
     current.subscribers.delete(subscriber);
     if (diagnostics) diagnostics.documents[key] = { ...(diagnostics.documents[key] || {}), consumerLabels: entryConsumerLabels(current), subscriberCount: current.subscribers.size };
     if (current.subscribers.size === 0 && !current.releaseTimer) {
-      const releaseGraceMs = liveCollectionReleaseGraceMs(coll, debugLabel);
       current.releaseTimer = setTimeout(() => {
         const latest = liveDocumentRegistry.get(key);
         if (!latest || latest.subscribers.size > 0) return;
@@ -1218,7 +1036,7 @@ const acquireSharedLiveDocument = ({ coll, docId, key, setValue, debugLabel = ''
           diag.activeDocuments = liveDocumentRegistry.size;
           diag.listenerReleaseCount = (diag.listenerReleaseCount || 0) + 1;
         }
-      }, liveCollectionReleaseGraceMs(coll, debugLabel));
+      }, LIVE_COLLECTION_RELEASE_GRACE_MS);
     }
   };
 };
@@ -2071,9 +1889,4 @@ export const buildV14ClientGuardrailReport = ({ currentVersion = CURRENT_VERSION
 // BRANDING & LOGOS
 // ============================================================================
 
-
-const seedLiveCollectionCacheForTest = (key, value = {}) => setLiveCacheEntry(liveCollectionSessionCache, key, value);
-const listLiveCollectionCacheForTest = () => Array.from(liveCollectionSessionCache.entries()).map(([key, value]) => ({ key, ...value }));
-const resetLiveCollectionCacheForTest = () => { liveCollectionSessionCache.clear(); liveCollectionRegistry.clear(); };
-export const __listenerRegistryTestHooks = { makeLiveCollectionKey, clearTenantListenerCache, resetFirebaseUsageDiagnostics, seedLiveCollectionCacheForTest, listLiveCollectionCacheForTest, resetLiveCollectionCacheForTest };
-
+export const __listenerRegistryTestHooks = { makeLiveCollectionKey, clearTenantListenerCache, resetFirebaseUsageDiagnostics };

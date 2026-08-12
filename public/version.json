@@ -1,11 +1,13 @@
 {
-  "version": "16.0.201",
-  "name": "86 Chaos 16.0.201",
-  "build": "16.0.201",
-  "label": "16.0.201",
-  "releasedAt": "2026-08-11T00:00:00-05:00",
-  "releaseTitle": "Schedule Subtab Navigation State Repair",
-  "notes": "Repairs the Schedule subtab navigation regression where changing Time Clock & Schedule subtabs remounted the Schedule surface and bounced users back to My Schedule.",
-  "title": "Schedule Subtab Navigation State Repair",
-  "summary": "Preserves Schedule subtab state across parent rerenders while keeping runtime diagnostics and error-boundary reset behavior."
+  "version": "16.0.202",
+  "name": "86 Chaos 16.0.202",
+  "build": "16.0.202",
+  "label": "86 Chaos 16.0.202",
+  "releasedAt": "2026-08-10T15:32:00-05:00",
+  "releaseTitle": "Firebase Read/Write Reduction Baseline from 16.0.174",
+  "notes": [
+    "Conservative Firebase read/write reduction from the stable 16.0.174 rollback baseline: lower-risk Today demand trimming, HR overview count-first gating, audit-log limit tightening, and retained listener/write diagnostics without Schedule/navigation rewrites.",
+    "Fixes the Month View print helper import so production build can compile while preserving deterministic calendar printing."
+  ],
+  "title": "Firebase Read/Write Reduction Baseline from 16.0.174"
 }

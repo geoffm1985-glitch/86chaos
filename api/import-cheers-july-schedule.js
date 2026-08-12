@@ -158,7 +158,6 @@ module.exports = async function handler(req, res) {
           role: user.role || 'Unassigned',
           date,
           scheduleDateKey: date,
-          shiftDate: date,
           scheduleMonth: '2026-07',
           startTime,
           endTime,

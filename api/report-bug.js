@@ -119,7 +119,6 @@ function sanitizedCrashDiagnostics(body = {}, req = {}) {
     diagnostics: JSON.parse(JSON.stringify({
       route: body.route || body.activeTab || diagnostics.route || '',
       tab: body.tab || body.activeTab || diagnostics.tab || '',
-      subTab: body.subTab || body.activeSubTab || diagnostics.subTab || diagnostics.activeSubTab || '',
       chunkUrl: body.chunkUrl || body.failedChunkUrl || diagnostics.chunkUrl || '',
       appVersion: body.appVersion || body.clientVersion || diagnostics.appVersion || '',
       deploymentId: body.deploymentId || body.vercelDeploymentId || diagnostics.deploymentId || '',
@@ -133,7 +132,6 @@ function sanitizedCrashDiagnostics(body = {}, req = {}) {
     })),
     route: cleanText(body.route || body.activeTab || diagnostics.route || '', 120),
     tab: cleanText(body.tab || body.activeTab || diagnostics.tab || '', 120),
-    subTab: cleanText(body.subTab || body.activeSubTab || diagnostics.subTab || diagnostics.activeSubTab || '', 120),
     chunkUrl: cleanText(body.chunkUrl || body.failedChunkUrl || diagnostics.chunkUrl || '', 1000),
     appVersion: cleanText(body.appVersion || body.clientVersion || diagnostics.appVersion || '', 80),
     deploymentId: cleanText(body.deploymentId || body.vercelDeploymentId || diagnostics.deploymentId || '', 180),
@@ -330,7 +328,6 @@ module.exports = async function handler(req, res) {
       restaurantId,
       restaurantName: cleanText(body.restaurantName || caller.restaurantName || caller.restaurant || '', 160),
       activeTab: cleanText(body.activeTab || crashFields.tab || crashFields.route || 'help', 80),
-      activeSubTab: cleanText(body.activeSubTab || body.subTab || crashFields.subTab || '', 80),
       route: crashFields.route,
       userAgent: cleanText(body.userAgent || req.headers['user-agent'] || '', 500),
       screenSize: cleanText(body.screenSize || crashFields.viewport || '', 80),
@@ -356,19 +353,6 @@ module.exports = async function handler(req, res) {
       supportEmailRequested: isAutomaticCrash,
       supportEmailAttemptedAt: isAutomaticCrash ? nowIso : ''
     };
-
-    if (isAutomaticCrash) {
-      console.info('[report-bug] client-runtime-crash', {
-        reportSource: report.source,
-        appVersion: report.appVersion,
-        activeTab: report.activeTab,
-        activeSubTab: report.activeSubTab,
-        route: report.route,
-        errorName: report.errorName,
-        errorMessage: cleanText(report.errorMessage || report.rawMessage || '', 240),
-        chunkUrl: report.chunkUrl || ''
-      });
-    }
 
     if (isAutomaticCrash && isKnownNonFatalCrashMessage(rawMessage, crashFields, report)) {
       return res.status(200).json({

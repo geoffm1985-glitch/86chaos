@@ -1,0 +1,23 @@
+{
+  "version": "16.0.202",
+  "base": "16.0.174",
+  "title": "Firebase Read/Write Reduction Baseline from 16.0.174",
+  "scope": "Conservative read/write reductions only; no Schedule/navigation rewrite and no Firebase rules/index/config changes.",
+  "measured_locally": {
+    "today_roster_cap": "90 -> 75 when activeTabState is today; team remains 220",
+    "today_admin_alert_cap": "30 -> 8 on Today; non-Today admin/back-office remains 30",
+    "today_menu_dependency_cap": "120 -> 80 for summaries; full Menu Intelligence remains 500",
+    "hr_overview": "uses getCountFromServer aggregates and lower detail listener caps on overview",
+    "audit_log_latest": "200 -> 75 latest audit rows in user-facing System Audit tab",
+    "writes": "existing safeWrite no-op prevention and local write diagnostics preserved"
+  },
+  "not_changed": [
+    "Schedule query planner/runtime",
+    "Time Clock & Schedule navigation",
+    "presence architecture",
+    "Firebase rules/indexes/config",
+    "dependency/build tooling",
+    "release-gate selection semantics"
+  ],
+  "metric_labels": "These are source/test fixture measurements, not production Firebase billing telemetry."
+}

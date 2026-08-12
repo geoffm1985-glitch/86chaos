@@ -1,0 +1,47 @@
+86 Chaos 16.0.158 Schedule Builder Runtime Root Cause Diagnostic
+
+Source ZIP:
+86chaos_16_0_157_release_gate_console_usability_repair_app_only(1).zip
+
+Manual incident evidence:
+- App version: 16.0.157
+- User action: opened Schedule Builder on Android Preview/testing build
+- UI failure surface: 86 CHAOS RUNTIME RECOVERY / This section hit a snag
+- Local browser fallback report ID visible in screenshot: section_msl5oy9c_3p50nxep
+- Context from user: this is one of the failures being fixed
+
+Crash report retrieval status:
+- Firestore crashReports/Bug Ledger data could not be retrieved from this sandbox because no authenticated Firebase/dev credentials or deployed-preview session are available here.
+- No credentials, tokens, or secrets were accessed or exposed.
+- The visible local fallback report ID was captured, but the server Firestore crash report document ID and raw server stack remain unavailable in this environment.
+
+Mapped source area audited:
+- src/features/schedule.jsx
+- src/core/scheduleWarningControls.cjs
+- src/core/scheduleWarningControls.js
+- src/core/scheduleWarningControls.shared.js
+
+Root cause repaired:
+- 16.0.157 Schedule Builder browser React code directly imported ../core/scheduleWarningControls.cjs and normalized CommonJS/default exports before destructuring render-time helper functions.
+- The ScheduleCopilot render path calls buildCoverageVarianceRows() and buildScheduleConflictWarningRows() immediately when Schedule Builder renders.
+- In the production browser bundle, a CommonJS/browser interop mismatch can leave those bindings non-callable, producing a TypeError before the Warnings panel is opened.
+
+Exact repair:
+- Removed the direct .cjs dependency from src/features/schedule.jsx.
+- Added src/core/scheduleWarningControls.shared.js as the single shared implementation.
+- Added src/core/scheduleWarningControls.js as the browser-native ESM named-export wrapper.
+- Replaced Schedule Builder imports with explicit named imports from ../core/scheduleWarningControls.
+- Kept src/core/scheduleWarningControls.cjs as a tiny Node/CommonJS wrapper over the same shared implementation so existing Node tests can keep requiring it.
+
+Important preserved behavior:
+- ScheduleCopilot remains enabled.
+- Under-coverage warnings remain.
+- Over-coverage warnings remain.
+- Requested-off employee-name warnings remain.
+- Warning dismissal remains.
+- Request Off filter/bulk behavior remains.
+- AppSurfaceErrorBoundary and /api/report-bug remain active.
+- No blanket try/catch or crash swallowing was added.
+
+Local validation limitations:
+- Production build and deployed browser regression must be run on the user's machine/Preview under Node 24 because this sandbox has Node 22.16.0 and no installed react-scripts/browser environment.

@@ -7,7 +7,7 @@ const root = path.resolve(__dirname, '..');
 const args = new Set(process.argv.slice(2));
 const localOnly = args.has('--local-only');
 const requireBrowser = args.has('--require-browser');
-const manifestPath = path.join(root, 'scripts/repair-regression-pack-16.0.201.json');
+const manifestPath = path.join(root, 'scripts/repair-regression-pack-16.0.202.json');
 const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
 function expand(cmd) {
   if (!cmd.includes('tests/86chaos-release-gate/*.test.cjs')) return cmd;
@@ -17,10 +17,7 @@ function expand(cmd) {
 function run(entry) {
   const cmd = entry.expandGlob ? expand(entry.cmd) : entry.cmd;
   console.log(`\n[${entry.group}] ${cmd.join(' ')}`);
-  const childEnv = { ...process.env };
-  if (entry.allowGeneratedTestArtifacts === true) childEnv.CHAOS_ALLOW_GENERATED_TEST_ARTIFACTS = '1';
-  if (entry.allowLocalReadinessArtifacts === true) childEnv.CHAOS_ALLOW_LOCAL_RELEASE_ARTIFACTS = '1';
-  const result = spawnSync(cmd[0], cmd.slice(1), { cwd: root, stdio: 'inherit', shell: false, env: childEnv });
+  const result = spawnSync(cmd[0], cmd.slice(1), { cwd: root, stdio: 'inherit', shell: false, env: process.env });
   return { group: entry.group, status: result.status ?? 1 };
 }
 console.log('86 CHAOS REPAIR REGRESSION PACK');

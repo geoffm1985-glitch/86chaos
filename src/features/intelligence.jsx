@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Bell, Calendar, Check, Clock, Edit3, Loader2, Mic, Package, Plus, Save, Share2, Sparkles, Trash2, Upload, X } from 'lucide-react';
-import { collection, addDoc, updateDoc, deleteDoc, doc, getDocs, query, where, writeBatch, orderBy, limit as firestoreLimit, startAfter } from 'firebase/firestore';
+import { collection, addDoc, updateDoc, deleteDoc, doc, getDocs, query, where, writeBatch, orderBy, limit as firestoreLimit } from 'firebase/firestore';
 import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 import { T, db, storage, auth, secureFetch, useLiveCollection, formatClockDateTime, getToday, logAudit } from '../core/appCore';
 import { requestPersonalReminderRefresh, usePersonalReminderRows } from '../core/personalReminderQueries';
@@ -356,13 +356,8 @@ const TabPersonalReminders = ({ appUser, addToast }) => {
 
 const TabMenuIntelligence = ({ appUser, clientData, inventoryItems = [], addToast }) => {
   const allowed = canUseMenuIntelligence(appUser, clientData);
-  const [scans, setScans] = useState([]);
-  const [scanCursor, setScanCursor] = useState(null);
-  const [hasMoreScans, setHasMoreScans] = useState(true);
-  const [scansLoading, setScansLoading] = useState(false);
-  const [dependencyGraphOpen, setDependencyGraphOpen] = useState(false);
-  const menuDependencies = useLiveCollection('menuDependencies', appUser?.restaurantId, { enabled: !!appUser?.restaurantId && allowed && dependencyGraphOpen, live: false, ttlMs: 90_000, limitCount: 500, debugLabel: 'menu-intelligence:dependency-graph-demand-snapshot' });
-
+  const menuDependencies = useLiveCollection('menuDependencies', appUser?.restaurantId, { enabled: !!appUser?.restaurantId && allowed, limitCount: 500 });
+  const scans = useLiveCollection('menuIntelligenceScans', appUser?.restaurantId, { enabled: !!appUser?.restaurantId && allowed, limitCount: 60 });
   const [file, setFile] = useState(null);
   const [scanResult, setScanResult] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -384,38 +379,9 @@ const TabMenuIntelligence = ({ appUser, clientData, inventoryItems = [], addToas
   const approvingRef = useRef(false);
   const editSavingRef = useRef(false);
   const deleteBusyRef = useRef(false);
-  const impacts = dependencyGraphOpen ? getZeroStockMenuImpacts(inventoryItems, menuDependencies) : [];
-  const approvedMenuCostRows = dependencyGraphOpen ? buildMenuCostBreakdowns({ menuDependencies, inventoryItems }) : [];
+  const impacts = getZeroStockMenuImpacts(inventoryItems, menuDependencies);
+  const approvedMenuCostRows = buildMenuCostBreakdowns({ menuDependencies, inventoryItems });
   const approvedMenuCostSummary = summarizeMenuCostBreakdowns(approvedMenuCostRows);
-
-  const loadScanPage = async ({ reset = false } = {}) => {
-    if (!appUser?.restaurantId || !allowed || scansLoading) return;
-    setScansLoading(true);
-    try {
-      const constraints = [where('restaurantId', '==', appUser.restaurantId), orderBy('createdAt', 'desc')];
-      if (!reset && scanCursor) constraints.push(startAfter(scanCursor));
-      constraints.push(firestoreLimit(20));
-      const snap = await getDocs(query(collection(db, 'menuIntelligenceScans'), ...constraints));
-      const rows = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-      setScanCursor(snap.docs[snap.docs.length - 1] || null);
-      setHasMoreScans(snap.docs.length === 20);
-      setScans(prev => reset ? rows : [...new Map([...(prev || []), ...rows].filter(Boolean).map(row => [row.id, row])).values()]);
-    } catch (err) {
-      console.warn('Menu Intelligence scan history page failed:', err?.message || err);
-      addToast?.('Menu History Warning', 'Could not load the next page of menu scan history.');
-    } finally {
-      setScansLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    setScans([]);
-    setScanCursor(null);
-    setHasMoreScans(true);
-    if (appUser?.restaurantId && allowed) loadScanPage({ reset: true });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [appUser?.restaurantId, allowed]);
-
 
   const loadMenuAiUsage = async () => {
     if (!appUser?.restaurantId || !allowed) return;
@@ -1044,8 +1010,8 @@ const TabMenuIntelligence = ({ appUser, clientData, inventoryItems = [], addToas
       </div>
 
       <div className={`${T.card} overflow-hidden`}>
-        <div className={`${T.th} flex items-center justify-between gap-3`}><span>Menu Cost Breakdown</span><button type="button" onClick={() => setDependencyGraphOpen(true)} className="text-[9px] font-black uppercase tracking-widest text-[#D4A381]">{dependencyGraphOpen ? `${approvedMenuCostSummary.pricedCount} priced` : 'Load cost graph'}</button></div>
-        {!dependencyGraphOpen ? <div className="p-6 text-center text-xs text-slate-500 font-bold">Cost graph loads only when requested to avoid a 500-document dependency read on initial tab open.</div> : approvedMenuCostRows.length === 0 ? <div className="p-6 text-center text-xs text-slate-500 font-bold">Upload a menu, approve AI inventory matches, and add/confirm portions to see cost by menu item.</div> : (
+        <div className={`${T.th} flex items-center justify-between gap-3`}><span>Menu Cost Breakdown</span><span className="text-[9px] font-black uppercase tracking-widest text-[#D4A381]">{approvedMenuCostSummary.pricedCount} priced</span></div>
+        {approvedMenuCostRows.length === 0 ? <div className="p-6 text-center text-xs text-slate-500 font-bold">Upload a menu, approve AI inventory matches, and add/confirm portions to see cost by menu item.</div> : (
           <div className="p-3 space-y-3">
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
               <div className="rounded-xl border border-[#2A353D] bg-[#12161A] p-3 text-center"><div className="text-[8px] uppercase tracking-widest text-slate-500 font-black">Items</div><div className="font-black text-white">{approvedMenuCostSummary.menuItemCount}</div></div>
@@ -1074,7 +1040,7 @@ const TabMenuIntelligence = ({ appUser, clientData, inventoryItems = [], addToas
 
       <div className={`${T.card} overflow-hidden`}>
         <div className={T.th}>Recent Menu Scans</div>
-        {scans.length === 0 ? <div className="p-6 text-center text-xs text-slate-500 font-bold">No approved menu scans yet.</div> : scans.map(scan => {
+        {scans.length === 0 ? <div className="p-6 text-center text-xs text-slate-500 font-bold">No approved menu scans yet.</div> : scans.slice(0, 12).map(scan => {
           const isDeletingThisScan = deletingScanId === scan.id || deleteProgress?.scanId === scan.id;
           return (
           <div key={scan.id} className={`${T.row} space-y-3 ${isDeletingThisScan ? 'opacity-80' : ''}`}>
@@ -1089,7 +1055,6 @@ const TabMenuIntelligence = ({ appUser, clientData, inventoryItems = [], addToas
             {isDeletingThisScan && deleteProgress && <WorkProgressBar label={deleteProgress.label} detail={deleteProgress.detail} percent={displayedPercent(deleteProgress, deleteProgress.done ? 100 : 98)} elapsedSeconds={progressElapsed(deleteProgress)} />}
           </div>
         );})}
-        {hasMoreScans && <div className="p-3"><button type="button" onClick={() => loadScanPage({ reset: false })} disabled={scansLoading} className={`${T.btnAlt} w-full`}>{scansLoading ? 'Loading scans…' : 'Load 20 More Scans'}</button></div>}
       </div>
 
       <Modal isOpen={reviewOpen} onClose={() => { if (!approving) setReviewOpen(false); }} title="Review Menu Intelligence" sizeClass="max-w-5xl">

@@ -101,7 +101,7 @@ for (const scenario of scenarios) {
     const before = await diagnostics(page);
     await openScenario(page, scenario);
     const after = await diagnostics(page);
-    fs.writeFileSync(path.join(outDir, `${scenario.name}.json`), JSON.stringify({ scenario: scenario.name, runId: process.env.CHAOS_RELEASE_GATE_RUN_ID || '', firebaseProjectId: process.env.CHAOS_FIREBASE_PROJECT_ID || process.env.CHAOS_TARGET_FIREBASE_PROJECT_ID || process.env.REACT_APP_FIREBASE_PROJECT_ID || '', expectedVersion: process.env.CHAOS_EXPECTED_VERSION || '', appUrl: process.env.CHAOS_BASE_URL || process.env.APP_URL || '', capturedAt: new Date().toISOString(), before, after }, null, 2));
+    fs.writeFileSync(path.join(outDir, `${scenario.name}.json`), JSON.stringify({ scenario: scenario.name, before, after }, null, 2));
     expect(after.capturedAt).toBeTruthy();
   });
 }

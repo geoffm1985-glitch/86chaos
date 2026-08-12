@@ -22,37 +22,6 @@ function withTempCwd(fn) {
   try { return fn(dir); }
   finally { process.chdir(oldCwd); fs.rmSync(dir, { recursive: true, force: true }); }
 }
-
-function currentPackageVersion() {
-  return JSON.parse(fs.readFileSync(path.resolve(__dirname, '../../package.json'), 'utf8')).version;
-}
-function withScopedEnv(values, fn) {
-  const previous = new Map(Object.keys(values).map(key => [
-    key,
-    Object.prototype.hasOwnProperty.call(process.env, key) ? process.env[key] : undefined,
-  ]));
-  try {
-    for (const [key, value] of Object.entries(values)) {
-      if (value === undefined || value === null) delete process.env[key];
-      else process.env[key] = String(value);
-    }
-    return fn();
-  } finally {
-    for (const [key, value] of previous.entries()) {
-      if (value === undefined) delete process.env[key];
-      else process.env[key] = value;
-    }
-  }
-}
-function clearReleaseGateFixtureModules() {
-  for (const file of [
-    runContextPath,
-    path.resolve(__dirname, '../../scripts/86chaos-release-gate/collect-release-gate-report.cjs'),
-    path.resolve(__dirname, '../../scripts/86chaos-release-gate/failed-only-manifest-utils.cjs'),
-  ]) {
-    try { delete require.cache[require.resolve(file)]; } catch {}
-  }
-}
 function firestoreValue(value) {
   if (typeof value === 'boolean') return { booleanValue: value };
   return { stringValue: String(value) };
@@ -711,70 +680,52 @@ test('collector reports account provisioning failure before Playwright without s
   fs.writeFileSync(path.join(runDir, 'test-account-provisioning.json'), JSON.stringify({ ok: false, runId: 'provision-block-unit', errors: ['Testing Firebase Admin credentials are required to auto-provision release-gate users.'] }, null, 2));
   const oldExit = process.exitCode;
   process.exitCode = 0;
-  try {
-    const collectorPath = path.resolve(__dirname, '../../scripts/86chaos-release-gate/collect-release-gate-report.cjs');
-    freshRequire(collectorPath);
-    const summaryFile = fs.readdirSync(runDir).find(name => name.startsWith('86chaos-play-store-release-gate-summary-') && name.endsWith('.json'));
-    const summary = JSON.parse(fs.readFileSync(path.join(runDir, summaryFile), 'utf8'));
-    assert.equal(summary.ok, false);
-    assert.equal(summary.playwright.status, 'BLOCKED BEFORE TEST EXECUTION');
-    assert.equal(summary.playwright.totalResults, 0);
-    assert.deepEqual(summary.playwright.failedTests || [], []);
-    assert.ok(summary.accountProvisionFailures.some(error => /Admin credentials/.test(error)));
-    assert.equal(summary.setupFailures.length, 0);
-    assert.equal(summary.cleanupFailures.length, 0);
-    assert.equal(summary.failureGroups.some(group => group.group === 'test-account-provisioning'), true);
-  } finally {
-    process.exitCode = oldExit;
-  }
+  const collectorPath = path.resolve(__dirname, '../../scripts/86chaos-release-gate/collect-release-gate-report.cjs');
+  freshRequire(collectorPath);
+  const summaryFile = fs.readdirSync(runDir).find(name => name.startsWith('86chaos-play-store-release-gate-summary-') && name.endsWith('.json'));
+  const summary = JSON.parse(fs.readFileSync(path.join(runDir, summaryFile), 'utf8'));
+  assert.equal(summary.ok, false);
+  assert.equal(summary.playwright.status, 'BLOCKED BEFORE TEST EXECUTION');
+  assert.equal(summary.playwright.totalResults, 0);
+  assert.deepEqual(summary.playwright.failedTests || [], []);
+  assert.ok(summary.accountProvisionFailures.some(error => /Admin credentials/.test(error)));
+  assert.equal(summary.setupFailures.length, 0);
+  assert.equal(summary.cleanupFailures.length, 0);
+  assert.equal(summary.failureGroups.some(group => group.group === 'test-account-provisioning'), true);
+  process.exitCode = oldExit;
 }));
 
 
-test('collector keeps node summary expected-skipped when provisioning blocks before tests', () => withTempCwd(() => {
-  const fixtureVersion = currentPackageVersion();
-  return withScopedEnv({
-    CHAOS_EXPECTED_VERSION: fixtureVersion,
-    APP_URL: 'https://preview.example.test/',
-    CHAOS_BASE_URL: undefined,
-    CHAOS_RELEASE_GATE_SELECTION_MODE: undefined,
-    CHAOS_FAILED_ONLY_RELEASE_GATE: undefined,
-    CHAOS_FAILED_AND_NEW_RELEASE_GATE: undefined,
-    CHAOS_RELEASE_GATE_RUN_DIR: undefined,
-    CHAOS_RELEASE_GATE_RUN_ID: 'provision-node-skip-unit',
-    CHAOS_FULL_AUDIT_RUN_ID: 'provision-node-skip-unit',
-    CHAOS_RELEASE_GATE_STEP_FAILURES: '1',
-  }, () => {
-    clearReleaseGateFixtureModules();
-    const { ensureRunDir } = freshRequire(runContextPath);
-    const { runDir } = ensureRunDir();
-    fs.writeFileSync(path.join(runDir, 'runner-state.json'), JSON.stringify({
-      runId: 'provision-node-skip-unit', dependencyInstallPassed: true, dependencyPreflightPassed: true, sourceInventoryPassed: true, browserInstallPassed: true,
-      testAccountProvisionAttempted: true, testAccountProvisionPassed: false, rolePreflightStarted: false, playwrightStarted: false, qaDataWritesStarted: false,
-      blockingReason: 'Release gate blocked before tests because temporary release-gate test accounts could not be provisioned.', steps: []
-    }, null, 2));
-    fs.writeFileSync(path.join(runDir, 'environment-preflight.json'), JSON.stringify({ ok: true, runId: 'provision-node-skip-unit', appUrl: 'https://preview.example.test/', expectedVersion: fixtureVersion, sourceVersion: fixtureVersion, deployedVersion: fixtureVersion, visibleVersion: fixtureVersion, firebaseProjectId: 'chaos-test-d1601' }, null, 2));
-    fs.writeFileSync(path.join(runDir, 'dependency-preflight.json'), JSON.stringify({ ok: true, runId: 'provision-node-skip-unit' }, null, 2));
-    fs.writeFileSync(path.join(runDir, 'server-firebase-boundary-preflight.json'), JSON.stringify({ ok: true, runId: 'provision-node-skip-unit', phase: 'server-firebase-boundary-preflight', firebaseProjectId: 'chaos-test-d1601', serverFirebaseProjectId: 'chaos-test-d1601' }, null, 2));
-    fs.writeFileSync(path.join(runDir, 'source-inventory.json'), JSON.stringify({ ok: true, runId: 'provision-node-skip-unit', packageVersion: fixtureVersion }, null, 2));
-    fs.writeFileSync(path.join(runDir, 'test-account-provisioning.json'), JSON.stringify({ ok: false, runId: 'provision-node-skip-unit', errors: ['INVALID_LOGIN_CREDENTIALS were repaired unsuccessfully because Admin credentials are missing.'] }, null, 2));
-    const oldExit = process.exitCode;
-    process.exitCode = 0;
-    try {
-      clearReleaseGateFixtureModules();
-      freshRequire(path.resolve(__dirname, '../../scripts/86chaos-release-gate/collect-release-gate-report.cjs'));
-      const summaryFile = fs.readdirSync(runDir).find(name => name.startsWith('86chaos-play-store-release-gate-summary-') && name.endsWith('.json'));
-      const summary = JSON.parse(fs.readFileSync(path.join(runDir, summaryFile), 'utf8'));
-      assert.equal(summary.playwright.status, 'BLOCKED BEFORE TEST EXECUTION');
-      assert.equal(summary.failureGroups.filter(group => group.group === 'test-account-provisioning').length, 1);
-      assert.equal(summary.failureGroups.some(group => group.group === 'test-account-configuration'), false);
-      assert.equal(summary.failureGroups.some(group => group.group === 'reporting'), false);
-      assert.ok(summary.expectedSkippedArtifacts.includes('node-test-live-summary.json'));
-      assert.equal(summary.missingArtifacts.includes('node-test-live-summary.json'), false);
-      assert.deepEqual(summary.playwright.failedTests || [], []);
-    } finally {
-      process.exitCode = oldExit;
-    }
-  });
+test('collector keeps node summary expected-skipped when provisioning blocks before tests', () => withTempCwd((dir) => {
+  process.env.CHAOS_RELEASE_GATE_RUN_ID = 'provision-node-skip-unit';
+  process.env.CHAOS_FULL_AUDIT_RUN_ID = 'provision-node-skip-unit';
+  delete process.env.CHAOS_RELEASE_GATE_RUN_DIR;
+  process.env.CHAOS_RELEASE_GATE_STEP_FAILURES = '1';
+  const { ensureRunDir } = freshRequire(runContextPath);
+  const { runDir } = ensureRunDir();
+  fs.writeFileSync(path.join(runDir, 'runner-state.json'), JSON.stringify({
+    runId: 'provision-node-skip-unit', dependencyInstallPassed: true, dependencyPreflightPassed: true, sourceInventoryPassed: true, browserInstallPassed: true,
+    testAccountProvisionAttempted: true, testAccountProvisionPassed: false, rolePreflightStarted: false, playwrightStarted: false, qaDataWritesStarted: false,
+    blockingReason: 'Release gate blocked before tests because temporary release-gate test accounts could not be provisioned.', steps: []
+  }, null, 2));
+  fs.writeFileSync(path.join(runDir, 'environment-preflight.json'), JSON.stringify({ ok: true, runId: 'provision-node-skip-unit', appUrl: 'https://preview.example.test/', expectedVersion: '16.0.95', sourceVersion: '16.0.95', deployedVersion: '16.0.95', visibleVersion: '16.0.95', firebaseProjectId: 'chaos-test-d1601' }, null, 2));
+  fs.writeFileSync(path.join(runDir, 'dependency-preflight.json'), JSON.stringify({ ok: true, runId: 'provision-node-skip-unit' }, null, 2));
+  fs.writeFileSync(path.join(runDir, 'server-firebase-boundary-preflight.json'), JSON.stringify({ ok: true, runId: 'provision-node-skip-unit', phase: 'server-firebase-boundary-preflight', firebaseProjectId: 'chaos-test-d1601', serverFirebaseProjectId: 'chaos-test-d1601' }, null, 2));
+  fs.writeFileSync(path.join(runDir, 'source-inventory.json'), JSON.stringify({ ok: true, runId: 'provision-node-skip-unit', packageVersion: '16.0.95' }, null, 2));
+  fs.writeFileSync(path.join(runDir, 'test-account-provisioning.json'), JSON.stringify({ ok: false, runId: 'provision-node-skip-unit', errors: ['INVALID_LOGIN_CREDENTIALS were repaired unsuccessfully because Admin credentials are missing.'] }, null, 2));
+  const oldExit = process.exitCode;
+  process.exitCode = 0;
+  freshRequire(path.resolve(__dirname, '../../scripts/86chaos-release-gate/collect-release-gate-report.cjs'));
+  const summaryFile = fs.readdirSync(runDir).find(name => name.startsWith('86chaos-play-store-release-gate-summary-') && name.endsWith('.json'));
+  const summary = JSON.parse(fs.readFileSync(path.join(runDir, summaryFile), 'utf8'));
+  assert.equal(summary.playwright.status, 'BLOCKED BEFORE TEST EXECUTION');
+  assert.equal(summary.failureGroups.filter(group => group.group === 'test-account-provisioning').length, 1);
+  assert.equal(summary.failureGroups.some(group => group.group === 'test-account-configuration'), false);
+  assert.equal(summary.failureGroups.some(group => group.group === 'reporting'), false);
+  assert.ok(summary.expectedSkippedArtifacts.includes('node-test-live-summary.json'));
+  assert.equal(summary.missingArtifacts.includes('node-test-live-summary.json'), false);
+  assert.deepEqual(summary.playwright.failedTests || [], []);
+  process.exitCode = oldExit;
 }));
 
 test('PowerShell release gate enables safe auto provisioning and unique QA restaurant by default', () => {
