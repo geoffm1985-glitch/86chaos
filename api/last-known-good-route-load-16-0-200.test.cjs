@@ -24,10 +24,11 @@ test('schedule and management chunks defensively resolve new CommonJS helpers', 
   assert.doesNotMatch(management, /import scheduleEfficiencyModule from ['"]\.\.\/core\/scheduleEfficiency\.cjs['"]/, 'Management no longer uses default-only import for schedule efficiency');
 });
 
-test('route error boundary resets by Schedule subtab and reports subtab context', () => {
+test('route error boundary resets by Schedule subtab without remounting Schedule on every click', () => {
   const app = read('src/App.js');
-  assert.match(app, /key=\{`\$\{activeTabState\}-\$\{activeScheduleSubTab \|\| ['"]no-subtab['"]\}-/, 'surface boundary key includes the active Schedule subtab');
-  assert.match(app, /resetKey=\{`\$\{activeTabState\}-\$\{activeScheduleSubTab \|\| ['"]no-subtab['"]\}-/, 'surface boundary resetKey includes the active Schedule subtab');
+  assert.doesNotMatch(app, /key=\{`\$\{activeTabState\}-\$\{activeScheduleSubTab \|\| ['"]no-subtab['"]\}-/, 'surface boundary key must not include the active Schedule subtab');
+  assert.doesNotMatch(app, /<React\.Fragment\s+key=\{`[^`]*activeScheduleSubTab/, 'route fragment key must not include the active Schedule subtab');
+  assert.match(app, /resetKey=\{`\$\{activeTabState\}-\$\{activeScheduleSubTab \|\| ['"]no-subtab['"]\}-/, 'surface boundary resetKey still includes the active Schedule subtab for error recovery');
   assert.match(app, /activeSubTab=\{activeScheduleSubTab \|\| ['"]['"]\}/, 'error boundary receives active subtab context');
   assert.match(app, /activeSubTab: context\.activeSubTab/, 'runtime reports include active subtab context');
   assert.match(app, /activeSubTab: this\.props\.activeSubTab/, 'error boundary forwards active subtab context to runtime reporting');

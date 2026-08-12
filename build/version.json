@@ -1,11 +1,11 @@
 {
-  "version": "16.0.200",
-  "name": "86 Chaos 16.0.200",
-  "build": "16.0.200",
-  "label": "16.0.200",
+  "version": "16.0.201",
+  "name": "86 Chaos 16.0.201",
+  "build": "16.0.201",
+  "label": "16.0.201",
   "releasedAt": "2026-08-11T00:00:00-05:00",
-  "releaseTitle": "Shared Firestore Listener Release Runtime Crash Repair",
-  "notes": "Compares the last fully working 16.0.174 route-loading baseline against the current 16.0.197 source and hardens lazy route chunks, Schedule subtab recovery, and client runtime diagnostics without changing business behavior.",
-  "title": "86 Chaos 16.0.200",
-  "summary": "Repairs a deployed client ReferenceError in shared listener cleanup that could prevent many routed pages from loading after tab/subtab transitions."
+  "releaseTitle": "Schedule Subtab Navigation State Repair",
+  "notes": "Repairs the Schedule subtab navigation regression where changing Time Clock & Schedule subtabs remounted the Schedule surface and bounced users back to My Schedule.",
+  "title": "Schedule Subtab Navigation State Repair",
+  "summary": "Preserves Schedule subtab state across parent rerenders while keeping runtime diagnostics and error-boundary reset behavior."
 }
