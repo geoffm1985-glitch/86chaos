@@ -498,7 +498,7 @@ export const MASTER_ADMIN_EMAIL = (process.env.REACT_APP_MASTER_ADMIN_EMAIL || '
 export const EVENT_TAGS = ['Standard Day', 'Packers Game', 'Brewers Game', 'Live Music', 'Severe Weather', 'Private Catering', 'Holiday'];
 
 // --- VERSION TRACKING ---
-export const CURRENT_VERSION = '16.0.199';
+export const CURRENT_VERSION = '16.0.200';
 
 // --- Helpers ---
 const usePageVisible = () => {
@@ -877,7 +877,8 @@ const acquireSharedLiveCollection = ({ coll, restId, constraints, key, setData, 
     current.subscribers.delete(subscriber);
     annotateListenerDiagnostics(key, { subscriberCount: current.subscribers.size, consumerLabels: entryConsumerLabels(current) });
     if (current.subscribers.size === 0 && !current.releaseTimer) {
-      const releaseGraceMs = liveCollectionReleaseGraceMs(coll, debugLabelRef?.current || debugLabel);
+      const releaseLabel = subscriber?.debugLabel || debugLabel || '';
+      const releaseGraceMs = liveCollectionReleaseGraceMs(coll, releaseLabel);
       annotateListenerDiagnostics(key, { releaseGraceMs, releasePolicy: releaseGraceMs === HOT_LIVE_COLLECTION_RELEASE_GRACE_MS ? 'hot-operational' : releaseGraceMs === ADMIN_LIVE_COLLECTION_RELEASE_GRACE_MS ? 'admin-short' : releaseGraceMs === SLOW_LIVE_COLLECTION_RELEASE_GRACE_MS ? 'slow-config' : 'default' });
       current.releaseTimer = setTimeout(() => {
         const latest = liveCollectionRegistry.get(key);
@@ -901,7 +902,7 @@ const acquireSharedLiveCollection = ({ coll, restId, constraints, key, setData, 
           consumerLabels: [],
           cached: true
         });
-      }, liveCollectionReleaseGraceMs(coll, debugLabelRef?.current || debugLabel));
+      }, liveCollectionReleaseGraceMs(coll, releaseLabel));
     }
   };
 };
