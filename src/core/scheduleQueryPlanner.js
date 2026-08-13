@@ -17,12 +17,37 @@ const normalizeWeekStart = (value = 'Monday') => Object.prototype.hasOwnProperty
 const normalizeScheduleAliasValue = (value = '') => String(value ?? '').trim().toLowerCase();
 const normalizeScheduleEmailValue = (value = '') => normalizeScheduleAliasValue(value).replace(/^mailto:/, '');
 const normalizeScheduleNameValue = (value = '') => normalizeScheduleAliasValue(value).replace(/[^a-z0-9]+/g, ' ').replace(/\s+/g, ' ').trim();
+const titleCaseScheduleName = (value = '') => String(value || '')
+  .replace(/[_-]+/g, ' ')
+  .replace(/\s+/g, ' ')
+  .trim()
+  .split(' ')
+  .filter(Boolean)
+  .map(part => part.length === 1 ? part.toUpperCase() : part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
+  .join(' ');
+const cleanCanonicalScheduleName = (value = '') => {
+  const text = String(value || '').replace(/\s+/g, ' ').trim();
+  if (!text) return '';
+  const lower = text.toLowerCase();
+  if (['unknown', 'unknown staff', 'unknown employee', 'employee unknown', 'unassigned', 'unassigned staff', 'unassigned employee'].includes(lower)) return '';
+  const emailLocal = text.includes('@') ? text.split('@')[0] : text;
+  const compact = emailLocal.replace(/[_-]+/g, ' ').replace(/\s+/g, '').trim();
+  const machine = compact.match(/^([a-z]{2,})([a-z])(\d{2,})$/i);
+  if (machine) return titleCaseScheduleName(`${machine[1]} ${machine[2]}`);
+  if (text.includes('@') || /^[a-z][a-z0-9._-]*\d{2,}$/i.test(text)) return titleCaseScheduleName(emailLocal.replace(/\d{2,}$/g, ''));
+  return text;
+};
 const uniqueNonEmpty = (values = []) => Array.from(new Set(values.map(v => String(v || '').trim()).filter(Boolean)));
 
 const DURABLE_SCHEDULE_ID_FIELDS = [
   'scheduleUserId', 'employeeId', 'rosterUserId', 'userId', 'authUid', 'uid', 'id',
   'accountUserId', 'assignedUserId', 'membershipId', 'workspaceMemberId',
   'accountProfile.id', 'accountProfile.uid', 'accountProfile.authUid'
+];
+// Shift document `id` is a Firestore document id, not an employee id.
+const DURABLE_SHIFT_EMPLOYEE_ID_FIELDS = [
+  'scheduleUserId', 'employeeId', 'rosterUserId', 'userId', 'authUid', 'uid',
+  'accountUserId', 'assignedUserId', 'membershipId', 'workspaceMemberId'
 ];
 const SCHEDULE_EMAIL_FIELDS = ['email', 'emailLower', 'employeeEmail', 'userEmail', 'assignedEmail', 'authEmail'];
 const SCHEDULE_NAME_FIELDS = ['employeeName', 'assignedName', 'userName', 'name', 'displayName', 'fullName'];
@@ -33,6 +58,14 @@ export const collectScheduleDurableIdentityAliases = (...records) => {
   const values = [];
   records.filter(Boolean).forEach(record => {
     DURABLE_SCHEDULE_ID_FIELDS.forEach(field => values.push(normalizeScheduleAliasValue(getPathValue(record, field))));
+  });
+  return uniqueNonEmpty(values);
+};
+
+export const collectScheduleShiftDurableIdentityAliases = (...records) => {
+  const values = [];
+  records.filter(Boolean).forEach(record => {
+    DURABLE_SHIFT_EMPLOYEE_ID_FIELDS.forEach(field => values.push(normalizeScheduleAliasValue(getPathValue(record, field))));
   });
   return uniqueNonEmpty(values);
 };
@@ -62,6 +95,11 @@ export const collectScheduleIdentityAliases = (...records) => uniqueNonEmpty([
   ...collectScheduleEmailAliases(...records)
 ]);
 
+export const collectScheduleShiftIdentityAliases = (...records) => uniqueNonEmpty([
+  ...collectScheduleShiftDurableIdentityAliases(...records),
+  ...collectScheduleEmailAliases(...records)
+]);
+
 
 export const getScheduleShiftDateKeyValue = (shift = {}) => String(
   shift?.date || shift?.scheduleDateKey || shift?.shiftDate || shift?.day || ''
@@ -75,18 +113,25 @@ export const buildScheduleDateKeyRangeClauses = (clauses = []) => (Array.isArray
 
 const loadedScheduleShiftMergeKey = (shift = {}) => {
   const id = String(shift?.id || '').trim();
+  // Same Firestore shift can arrive from both the legacy date query and the
+  // scheduleDateKey rescue query with different field completeness. Merge those
+  // copies by document id first, then use the logical key only for id-less
+  // legacy/imported rows.
   if (id) return `id:${id}`;
-  const values = [
-    shift?.restaurantId || shift?.workspaceId || '',
-    getScheduleShiftDateKeyValue(shift),
-    shift?.scheduleUserId || shift?.employeeId || shift?.rosterUserId || shift?.userId || shift?.authUid || shift?.uid || '',
-    shift?.employeeEmail || shift?.assignedEmail || shift?.email || '',
-    normalizeScheduleNameValue(shift?.employeeName || shift?.assignedName || shift?.name || ''),
-    shift?.role || shift?.targetRole || '',
-    shift?.startTime || '',
-    shift?.endTime || ''
-  ].map(value => String(value || '').trim().toLowerCase());
-  return values.some(Boolean) ? values.join('|') : '';
+  const dateKey = getScheduleShiftDateKeyValue(shift);
+  const employeeKey = [
+    shift?.scheduleUserId, shift?.employeeId, shift?.rosterUserId, shift?.userId, shift?.authUid, shift?.uid,
+    shift?.accountUserId, shift?.assignedUserId, shift?.membershipId, shift?.workspaceMemberId,
+    shift?.employeeEmail, shift?.assignedEmail, shift?.userEmail, shift?.email,
+    normalizeScheduleNameValue(shift?.employeeName || shift?.assignedName || shift?.userName || shift?.name || '')
+  ].map(value => String(value || '').trim().toLowerCase()).find(Boolean);
+  const start = String(shift?.startTime || '').trim().toLowerCase();
+  const end = String(shift?.endTime || '').trim().toLowerCase();
+  const role = String(shift?.role || shift?.targetRole || '').trim().toLowerCase();
+  const restaurantId = String(shift?.restaurantId || shift?.workspaceId || '').trim().toLowerCase();
+  const publishState = shift?.isPublished === true || String(shift?.status || '').toLowerCase() === 'published' || String(shift?.publishStatus || '').toLowerCase() === 'published' ? 'published' : 'draft';
+  if (restaurantId && dateKey && employeeKey && start && end) return ['logical', restaurantId, dateKey, employeeKey, role, start, end, publishState].join('|');
+  return [restaurantId, dateKey, employeeKey, role, start, end, publishState].filter(Boolean).join('|');
 };
 
 export const normalizeLoadedScheduleShift = (shift = {}) => {
@@ -155,7 +200,7 @@ export const resolveSchedulePersonForAccount = (account = {}, roster = []) => {
 };
 
 export const resolveSchedulePersonForShift = (shift = {}, roster = []) => {
-  const durableAliases = collectScheduleDurableIdentityAliases(shift);
+  const durableAliases = collectScheduleShiftDurableIdentityAliases(shift);
   const emailAliases = collectScheduleEmailAliases(shift);
   const fullNameAliases = collectScheduleFullNameAliases(shift);
   const firstNameAliases = collectScheduleFirstNameAliases(shift);
@@ -194,7 +239,10 @@ export const buildCanonicalScheduleIdentityBlock = (person = {}, evidence = {}) 
   const userId = safePerson.userId || accountUserId || authUid || safeEvidence.userId || scheduleUserId || '';
   const assignedUserId = safePerson.assignedUserId || scheduleUserId || employeeId || rosterUserId || userId || '';
   const email = safePerson.employeeEmail || safePerson.email || safePerson.userEmail || safeEvidence.employeeEmail || safeEvidence.assignedEmail || safeEvidence.email || '';
-  const name = safePerson.employeeName || safePerson.name || safePerson.displayName || safePerson.fullName || safeEvidence.employeeName || safeEvidence.assignedName || safeEvidence.name || email || 'Unknown';
+  const name = cleanCanonicalScheduleName(safePerson.employeeName || safePerson.name || safePerson.displayName || safePerson.fullName)
+    || cleanCanonicalScheduleName(safeEvidence.employeeName || safeEvidence.assignedName || safeEvidence.name || safeEvidence.displayName)
+    || cleanCanonicalScheduleName(email)
+    || 'Unknown';
   return { scheduleUserId, employeeId, rosterUserId, userId, authUid, accountUserId, assignedUserId, employeeName: name, assignedName: name, employeeEmail: email, assignedEmail: email };
 };
 

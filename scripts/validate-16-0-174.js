@@ -41,15 +41,17 @@ const monthPrintSourceTest = read('api/month-print-source.test.cjs');
 const posthogClient = read('src/core/posthogClient.js');
 const posthogServer = read('api/_posthog-server.js');
 const posthogSourceTest = read('api/posthog-instrumentation-source.test.cjs');
+const scheduleIdentitySourceTest = read('api/schedule-identity-dedupe-16-0-173.test.cjs');
+const schedulePlanner = read('src/core/scheduleQueryPlanner.js');
 
-assert(pkg.version === '16.0.172', 'package.json version is 16.0.172');
-assert(lock.version === '16.0.172' && lock.packages?.['']?.version === '16.0.172', 'package-lock root versions are 16.0.172');
-assert(pkg.scripts['test:source'] === 'node scripts/validate-16-0-172.js', 'test:source points to 16.0.172 validator');
-assert(version.version === '16.0.172' && version.build === '16.0.172', 'public/version.json version/build are 16.0.172');
-assert(version.releaseTitle === 'PostHog Observability And PWA Asset Repair', 'release title is correct');
-assert(appCore.includes("CURRENT_VERSION = '16.0.172'"), 'app core CURRENT_VERSION is 16.0.172');
-assert(apiVersion.includes("APP_VERSION = '16.0.172'") && apiVersion.includes("SECURITY_SCHEMA_VERSION = '16.0.172'"), 'api version reports 16.0.172');
-assert(!fs.existsSync(path.join(root, 'scripts/validate-16-0-171.js')), 'previous validator was replaced');
+assert(pkg.version === '16.0.174', 'package.json version is 16.0.174');
+assert(lock.version === '16.0.174' && lock.packages?.['']?.version === '16.0.174', 'package-lock root versions are 16.0.174');
+assert(pkg.scripts['test:source'] === 'node scripts/validate-16-0-174.js', 'test:source points to 16.0.174 validator');
+assert(version.version === '16.0.174' && version.build === '16.0.174', 'public/version.json version/build are 16.0.174');
+assert(version.releaseTitle === 'Schedule Loaded Shift Merge Hotfix', 'release title is correct');
+assert(appCore.includes("CURRENT_VERSION = '16.0.174'"), 'app core CURRENT_VERSION is 16.0.174');
+assert(apiVersion.includes("APP_VERSION = '16.0.174'") && apiVersion.includes("SECURITY_SCHEMA_VERSION = '16.0.174'"), 'api version reports 16.0.174');
+assert(!fs.existsSync(path.join(root, 'scripts/validate-16-0-173.js')), 'previous validator was replaced');
 
 assert(sha('firestore.rules') === '51bfd7d39edd59f680ae41a149c108cec8cd42d00b102d84cb00ee40d90264d9', 'firestore.rules unchanged');
 assert(sha('storage.rules') === '174e7e9a140193ff69ccf0f0d3e5c65b81a9e0fbbd612bff45ce57e7a3a7ce9c', 'storage.rules unchanged');
@@ -57,7 +59,7 @@ assert(sha('database.rules.json') === '152b5cd3f9839f598c9602706d8205b96759296e8
 assert(sha('firestore.indexes.json') === 'ee666de303988cd269f7c09fa63678a2deb1cfcaa199cb4f1656dd9bddcc4b4b', 'firestore.indexes.json unchanged');
 assert(sha('firebase.json') === 'bd837a11c71750d4da6ccfcb725ca54e78dd76008b525ec54c7fe79a5b8a3ca4', 'firebase.json unchanged');
 
-// Targeted 16.0.172 repairs.
+// Targeted 16.0.174 repairs.
 assert(tabMasterSchedule.includes('changeSubTab') && tabMasterSchedule.includes('onSubTabChange(normalized)') && tabMasterSchedule.includes("'month-view'"), 'Schedule parent subtab stays synchronized when Month View is selected');
 assert(tabMonth.includes('visibleMonthShifts') && tabMonth.includes('getShiftDateKey(shift)') && tabMonth.includes('dateKey.startsWith(monthStr)') && tabMonth.includes('shift?.isPublished === true'), 'Month View print source filters to the selected published month shifts');
 assert(tabMonth.includes('buildPrintableCalendarHtml') && tabMonth.includes('handlePrintCalendar') && tabMonth.includes('printWindow.document.write(buildPrintableCalendarHtml())'), 'Month View prints a generated calendar document instead of the stale app shell');
@@ -66,7 +68,7 @@ assert(management.includes('originalEmail') && management.includes('(updates Fir
 assert(staffMemberApi.includes('isValidEmail') && staffMemberApi.includes('resolveTargetAuthUid') && staffMemberApi.includes('auth.getUserByEmail(nextEmail)') && staffMemberApi.includes('auth.updateUser(targetAuthUid, { email: nextEmail, emailVerified: false, displayName })'), 'Staff email updates are validated and applied through Firebase Auth');
 assert(staffMemberApi.includes('authEmailUpdated') && staffMemberApi.includes("forceLogoutReason: 'staff-login-email-changed'") && staffMemberApi.includes("'STAFF_EMAIL_UPDATE'"), 'Staff email updates return status, force session refresh, and audit the Firebase-level change');
 assert(staffMemberApi.includes('emailLower') && staffMemberApi.includes('employeeEmail') && staffMemberApi.includes('userEmail') && staffMemberApi.includes('authEmail'), 'Staff email updates keep Firestore identity aliases synchronized');
-assert(staffEmailSourceTest.includes('Firebase login email') && staffEmailSourceTest.includes('auth.updateUser') && monthPrintSourceTest.includes('generated print document'), '16.0.172 source regression tests exist for staff email and month print repairs');
+assert(staffEmailSourceTest.includes('Firebase login email') && staffEmailSourceTest.includes('auth.updateUser') && monthPrintSourceTest.includes('generated print document'), '16.0.174 source regression tests exist for staff email and month print repairs');
 
 assert(fs.existsSync(path.join(root, 'public/86chaos-icon-16-v2.png')) && fs.existsSync(path.join(root, 'public/86chaos-icon-48-v2.png')) && fs.existsSync(path.join(root, 'public/86chaos-pwa-192-v4.png')) && fs.existsSync(path.join(root, 'public/86chaos-pwa-512-v4.png')) && fs.existsSync(path.join(root, 'public/86chaos-maskable-512-v4.png')) && fs.existsSync(path.join(root, 'public/6139.png')), 'app-owned PWA and header icon assets are present in the app ZIP');
 assert(posthogClient.includes('REACT_APP_POSTHOG_KEY') && posthogClient.includes('REACT_APP_POSTHOG_HOST') && posthogClient.includes('autocapture: false') && posthogClient.includes('disable_session_recording: true') && posthogClient.includes('respect_dnt: true'), 'PostHog browser client is environment gated and privacy guarded');
@@ -75,7 +77,13 @@ assert(app.includes('initChaosPostHog({ appVersion: CURRENT_VERSION })') && app.
 assert(posthogServer.includes('POSTHOG_PROJECT_API_KEY') && posthogServer.includes('/i/v0/e/') && posthogServer.includes('redactSensitive') && staffMemberApi.includes('auth.updateUser'), 'server PostHog helper uses capture endpoint and preserves staff email Firebase Auth repair');
 assert(read('api/report-bug.js').includes('capturePostHogEvent') && read('api/report-bug.js').includes('86chaos_api_crash_report_saved') && read('api/report-bug.js').includes('86chaos_problem_report_saved'), 'report-bug forwards saved crash/problem events to PostHog when configured');
 assert(vercel.includes('https://*.posthog.com') && /script-src[^;]*https:\/\/\*\.posthog\.com/.test(vercel) && /connect-src[^;]*https:\/\/\*\.posthog\.com/.test(vercel), 'Vercel CSP permits PostHog scripts and event ingestion');
-assert(posthogSourceTest.includes('PostHog client is environment gated') && posthogSourceTest.includes('Vercel CSP allows PostHog'), '16.0.172 PostHog regression tests exist');
+assert(posthogSourceTest.includes('PostHog client is environment gated') && posthogSourceTest.includes('Vercel CSP allows PostHog'), '16.0.174 PostHog regression tests exist');
+
+assert(schedulePlanner.includes('DURABLE_SHIFT_EMPLOYEE_ID_FIELDS') && schedulePlanner.includes('collectScheduleShiftDurableIdentityAliases') && !/DURABLE_SHIFT_EMPLOYEE_ID_FIELDS = \[([\s\S]*?)'id'/.test(schedulePlanner), 'shift identity resolver excludes Firestore shift document id from employee aliases');
+assert(schedulePlanner.includes('if (id) return `id:${id}`') && /loadedScheduleShiftMergeKey[\s\S]{0,500}if \(id\) return `id:\$\{id\}`/.test(schedulePlanner), 'loaded date and scheduleDateKey query copies merge by Firestore document id before logical completeness');
+assert(schedule.includes('collapseScheduleDisplayShifts') && schedule.includes('getScheduleShiftDisplayDedupeKey') && schedule.includes('collectScheduleShiftIdentityAliases(shift)') && schedule.includes('prettifyScheduleMachineName'), 'schedule display collapses logical duplicate shifts and cleans machine-like names');
+assert(schedule.includes('const handlePrintCalendar = () =>') && schedule.includes('printWindow.document.write(buildPrintableCalendarHtml())') && !/onClick=\{\(\)=>window\.print\(\)\}/.test(schedule), 'active Month View prints the generated visible-shift document instead of raw window.print');
+assert(scheduleIdentitySourceTest.includes('Month View dedupes duplicate published shift documents') && scheduleIdentitySourceTest.includes('resolveSchedulePersonForShift uses shift employee aliases without Firestore doc id'), '16.0.174 schedule identity regression tests exist');
 
 
 // Preserve recently fixed systems.
@@ -131,4 +139,4 @@ assert(read('scripts/verify-native-backup-iam.js').includes('gcloud projects add
 assert(vercel.includes('/api/firestore-backup') && vercel.includes('0 9 * * *') && vercel.includes('/api/firestore-backup-watchdog') && vercel.includes('0 21 * * *'), 'vercel cron schedules remain unchanged');
 
 if (failures) { console.error(`\n${failures} validation check(s) failed.`); process.exit(1); }
-console.log('\n16.0.172 source validation passed.');
+console.log('\n16.0.174 source validation passed.');

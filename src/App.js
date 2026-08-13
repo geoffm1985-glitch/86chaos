@@ -548,6 +548,34 @@ const RouteLoading = ({ label = 'Loading section...' }) => (
 const normalizeEmail = (value) => String(value || '').toLowerCase().trim();
 const workspaceMemberDocId = (uid = '', restaurantId = '') => `${String(uid || '').replace(/[^A-Za-z0-9_-]/g, '_')}_${String(restaurantId || '').replace(/[^A-Za-z0-9_-]/g, '_')}`.slice(0, 240);
 const safeWorkspaceName = (workspace = {}) => workspace.restaurantName || workspace.name || workspace.businessName || workspace.restaurantId || '86 Chaos Workspace';
+const normalizeDisplayNameKey = (value = '') => String(value || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').replace(/\s+/g, ' ').trim();
+const looksLikeMachineLoginName = (value = '', email = '') => {
+  const text = String(value || '').trim();
+  if (!text) return false;
+  const compact = text.toLowerCase().replace(/[^a-z0-9]/g, '');
+  const emailLocal = String(email || '').split('@')[0]?.toLowerCase().replace(/[^a-z0-9]/g, '') || '';
+  return Boolean((emailLocal && compact === emailLocal) || /^[a-z]+[a-z0-9._-]*\d{2,}$/i.test(text));
+};
+const looksLikeWorkspaceBusinessName = (value = '', workspace = {}) => {
+  const key = normalizeDisplayNameKey(value);
+  if (!key) return false;
+  return [workspace.restaurantName, workspace.businessName, workspace.restaurantId, workspace.workspaceName, workspace.clientName]
+    .map(normalizeDisplayNameKey)
+    .filter(Boolean)
+    .includes(key);
+};
+const resolveWorkspacePersonDisplayName = (member = {}, accountUser = {}, workspace = {}) => {
+  const email = member.email || member.employeeEmail || accountUser.email || accountUser.employeeEmail || '';
+  const preferred = [member.employeeName, member.staffName, member.fullName, member.displayName, accountUser.employeeName, accountUser.fullName, accountUser.displayName, accountUser.accountProfile?.name, accountUser.name]
+    .map(value => String(value || '').replace(/\s+/g, ' ').trim())
+    .filter(value => value && !looksLikeWorkspaceBusinessName(value, workspace) && !looksLikeMachineLoginName(value, email));
+  if (preferred.length) return preferred[0];
+  const safeMemberName = String(member.name || '').replace(/\s+/g, ' ').trim();
+  if (safeMemberName && !looksLikeWorkspaceBusinessName(safeMemberName, workspace)) return safeMemberName;
+  const safeAccountName = String(accountUser.name || '').replace(/\s+/g, ' ').trim();
+  if (safeAccountName && !looksLikeWorkspaceBusinessName(safeAccountName, workspace)) return safeAccountName;
+  return email || 'Staff';
+};
 
 const normalizeWorkspaceName = (workspace = {}) => String(safeWorkspaceName(workspace)).toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 const isFullAuditQaWorkspaceName = (workspace = {}) => {
@@ -701,7 +729,7 @@ const buildWorkspaceUser = (currentUser = {}, workspace = {}) => {
     restaurantId: workspace.restaurantId || currentUser.restaurantId,
     restaurantName: safeWorkspaceName(workspace),
     membershipId: workspace.membershipId || workspace.id || currentUser.membershipId || '',
-    name: workspace.name || currentUser.name || accountProfile.name || 'Staff',
+    name: resolveWorkspacePersonDisplayName(workspace, currentUser, workspace),
     email: normalizeEmail(workspace.email || currentUser.email || accountProfile.email),
     phone: workspace.phone || currentUser.phone || accountProfile.phone || '',
     role: workspace.role || currentUser.role || 'Staff',
@@ -738,6 +766,7 @@ const userFromWorkspaceMember = (member = {}, accountUser = {}) => {
   return {
     ...accountUser,
     ...Object.fromEntries(Object.entries(member).filter(([key]) => key !== 'id')),
+    name: resolveWorkspacePersonDisplayName(member, accountUser, member),
     id: stableUserId,
     userId: stableUserId,
     accountUserId: accountUid || stableUserId,
@@ -2422,7 +2451,7 @@ What I clicked / expected:
         membershipId: w.membershipId || w.id || `${appUser?.id || 'user'}_${restaurantId}`,
         userId: w.userId || appUser?.id,
         email: normalizeEmail(w.email || appUser?.email),
-        name: w.name || appUser?.name || 'Staff',
+        name: resolveWorkspacePersonDisplayName(w, appUser || {}, w),
         isActive: w.isActive !== false
       });
     };

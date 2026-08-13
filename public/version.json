@@ -1,14 +1,15 @@
 {
-  "version": "16.0.172",
-  "name": "86 Chaos 16.0.172",
-  "build": "16.0.172",
-  "label": "86 Chaos 16.0.172",
-  "releasedAt": "2026-08-13T16:23:00-05:00",
-  "releaseTitle": "PostHog Observability And PWA Asset Repair",
+  "version": "16.0.174",
+  "name": "86 Chaos 16.0.174",
+  "build": "16.0.174",
+  "label": "86 Chaos 16.0.174",
+  "releasedAt": "2026-08-13T17:15:00-05:00",
+  "releaseTitle": "Schedule Loaded Shift Merge Hotfix",
   "notes": [
-    "Restores the app-owned PWA/header icon assets so manifest and icon source integrity checks can pass.",
-    "Adds environment-gated PostHog browser analytics with explicit page, identity, problem report, and runtime error events while keeping autocapture and session recording disabled by default.",
-    "Forwards saved crash/problem reports to PostHog from the API when server PostHog env vars are configured, without blocking the existing Firestore crash report workflow."
+    "Deduplicates published schedule rows by logical employee/date/time identity so duplicate Firestore shift documents do not appear as duplicate shifts in Month View.",
+    "Fixes schedule identity resolution so shift document IDs are not mistaken for employee IDs, allowing legacy roster/email/name fields to resolve correctly.",
+    "Keeps Month View printing on a generated printable calendar built from the exact visible month shift set."
   ],
-  "title": "86 Chaos 16.0.172"
+  "title": "86 Chaos 16.0.174",
+  "summary": "Fixes loaded schedule shift merging so date and scheduleDateKey copies of the same Firestore shift merge by document id before logical field completeness."
 }

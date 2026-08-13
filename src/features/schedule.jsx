@@ -17,10 +17,17 @@ import {
   buildScheduleConflictWarningRows,
   isRequestOffBulkEligible,
 } from '../core/scheduleWarningControls';
-import { getCanonicalScheduleUserId, collectScheduleDurableIdentityAliases, collectScheduleEmailAliases, collectScheduleFullNameAliases, collectScheduleFirstNameAliases, collectScheduleIdentityAliases, resolveSchedulePersonForAccount, resolveSchedulePersonForShift, buildCanonicalScheduleIdentityBlock, scheduleIdentityBlockMatchesPerson } from '../core/scheduleQueryPlanner';
+import { getCanonicalScheduleUserId, collectScheduleDurableIdentityAliases, collectScheduleShiftDurableIdentityAliases, collectScheduleEmailAliases, collectScheduleFullNameAliases, collectScheduleFirstNameAliases, collectScheduleIdentityAliases, collectScheduleShiftIdentityAliases, resolveSchedulePersonForAccount, resolveSchedulePersonForShift, buildCanonicalScheduleIdentityBlock, scheduleIdentityBlockMatchesPerson } from '../core/scheduleQueryPlanner';
 import { CheersLogo, Modal, DrawerMenu, DayDotPrintScreen, MapClickListener, SmartEmptyState, MiniProblemCard, getHomeProfile, calculatePunchHours, getWeekStart, getWeekDates, roleMatches, toLocalTimeInput, makeLocalIso, PunchTable, FriendlyEmpty, GlobalSearchModal, QuickActionDock, KitchenTVMode, ChangeLogModal, UndoBar } from '../components/common';
 
 
+
+const escapeSchedulePrintHtml = (value = '') => String(value ?? '')
+  .replace(/&/g, '&amp;')
+  .replace(/</g, '&lt;')
+  .replace(/>/g, '&gt;')
+  .replace(/"/g, '&quot;')
+  .replace(/'/g, '&#39;');
 
 const cleanScheduleRoleName = (role = '') => String(role || '').replace(/\s+/g, ' ').trim();
 
@@ -169,7 +176,7 @@ const shiftMatchesPerson = (shift = {}, person = {}, roster = []) => {
   const personNames = collectScheduleFullNameAliases(person, person.accountProfile || {});
   const personFirstNames = collectScheduleFirstNameAliases(person, person.accountProfile || {});
 
-  const shiftDurable = collectScheduleDurableIdentityAliases(shift);
+  const shiftDurable = collectScheduleShiftDurableIdentityAliases(shift);
   const shiftEmails = collectScheduleEmailAliases(shift);
   const shiftNames = collectScheduleFullNameAliases(shift);
   const shiftFirstNames = collectScheduleFirstNameAliases(shift);
@@ -205,11 +212,33 @@ const isRequestOffConflictCountable = (request = {}) => {
   return request.archived !== true && !['cancelled', 'canceled', 'archived'].includes(status);
 };
 
+const titleCaseScheduleNamePart = (value = '') => String(value || '')
+  .replace(/[_-]+/g, ' ')
+  .replace(/\s+/g, ' ')
+  .trim()
+  .split(' ')
+  .filter(Boolean)
+  .map(part => part.length === 1 ? part.toUpperCase() : part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
+  .join(' ');
+
+const prettifyScheduleMachineName = (value = '') => {
+  const text = String(value || '').replace(/\s+/g, ' ').trim();
+  if (!text) return '';
+  const emailLocal = text.includes('@') ? text.split('@')[0] : text;
+  const normalized = emailLocal.replace(/[_-]+/g, ' ').replace(/\s+/g, ' ').trim();
+  const compact = normalized.replace(/\s+/g, '');
+  const slugWithTrailingDigits = compact.match(/^([a-z]{2,})([a-z])(\d{2,})$/i);
+  if (slugWithTrailingDigits) return titleCaseScheduleNamePart(`${slugWithTrailingDigits[1]} ${slugWithTrailingDigits[2]}`);
+  const slugParts = normalized.replace(/\d{2,}$/g, '').trim();
+  return titleCaseScheduleNamePart(slugParts || normalized);
+};
+
 const cleanScheduleDisplayName = (value = '') => {
   const text = String(value || '').replace(/\s+/g, ' ').trim();
   if (!text) return '';
   const lower = text.toLowerCase();
-  if (['unknown', 'unknown staff', 'unknown employee', 'employee unknown'].includes(lower)) return '';
+  if (['unknown', 'unknown staff', 'unknown employee', 'employee unknown', 'unassigned', 'unassigned staff', 'unassigned employee'].includes(lower)) return '';
+  if (text.includes('@') || /^[a-z][a-z0-9._-]*\d{2,}$/i.test(text)) return prettifyScheduleMachineName(text);
   return text;
 };
 
@@ -226,7 +255,7 @@ const resolveScheduleShiftPersonForDisplay = (shift = {}, roster = []) => {
   if (resolved?.ok && resolved.person) return resolved.person;
 
   const activeRoster = (Array.isArray(roster) ? roster : []).filter(person => person && person.isActive !== false);
-  const shiftAliases = collectScheduleIdentityAliases(shift);
+  const shiftAliases = collectScheduleShiftIdentityAliases(shift);
   if (shiftAliases.length) {
     const match = activeRoster.find(person => collectScheduleIdentityAliases(person).some(alias => shiftAliases.includes(alias)));
     if (match) return match;
@@ -234,9 +263,77 @@ const resolveScheduleShiftPersonForDisplay = (shift = {}, roster = []) => {
   return null;
 };
 
-const getScheduleShiftDisplayName = (shift = {}, roster = [], fallback = 'Unassigned') => {
+const getScheduleShiftDisplayName = (shift = {}, roster = [], fallback = 'Open Shift') => {
   const person = resolveScheduleShiftPersonForDisplay(shift, roster);
   return getSchedulePersonName(person) || getScheduleShiftFallbackName(shift) || fallback;
+};
+
+const shiftResolvedPersonKey = (shift = {}, roster = []) => {
+  const person = resolveScheduleShiftPersonForDisplay(shift, roster);
+  const identitySource = person || shift;
+  const durable = (person ? collectScheduleDurableIdentityAliases(person) : collectScheduleShiftDurableIdentityAliases(shift)).find(Boolean);
+  if (durable) return `id:${durable}`;
+  const email = collectScheduleEmailAliases(identitySource).find(Boolean);
+  if (email) return `email:${email}`;
+  const fullName = collectScheduleFullNameAliases(identitySource).find(Boolean);
+  if (person && fullName) return `name:${fullName}`;
+  return '';
+};
+
+const getScheduleShiftSlotKey = (shift = {}) => [
+  String(shift.restaurantId || shift.workspaceId || '').trim().toLowerCase(),
+  getShiftDateKey(shift),
+  cleanScheduleRoleName(shift.role || shift.targetRole || 'Unassigned').toLowerCase(),
+  normalizeShiftTimeForFingerprint(shift.startTime),
+  normalizeShiftTimeForFingerprint(shift.endTime)
+].join('|');
+
+const shiftLooksUnresolvedForScheduleDisplay = (shift = {}, roster = []) => {
+  if (resolveScheduleShiftPersonForDisplay(shift, roster)) return false;
+  if (shiftResolvedPersonKey(shift, roster)) return false;
+  const fallbackName = normalizeScheduleName(getScheduleShiftFallbackName(shift));
+  return !fallbackName || ['unassigned', 'unknown', 'unknown staff', 'open shift'].includes(fallbackName);
+};
+
+const rankScheduleShiftForDisplay = (shift = {}, roster = []) => {
+  let score = 0;
+  if (resolveScheduleShiftPersonForDisplay(shift, roster)) score += 100;
+  if (shiftResolvedPersonKey(shift, roster)) score += 50;
+  if (getScheduleShiftFallbackName(shift)) score += 20;
+  if (isScheduleShiftPublished(shift)) score += 10;
+  if (shift.scheduleBuilderDraft || shift.readyToPublish || shift.rescueProtected || shift.rescueEditable) score += 5;
+  score += Math.min(9, Math.floor(getShiftRecordTimeMs(shift) / 1000000000000));
+  return score;
+};
+
+const collapseScheduleDisplayShifts = (shiftList = [], roster = []) => {
+  const safeList = (Array.isArray(shiftList) ? shiftList : []).filter(Boolean);
+  const assignedSlots = new Set(safeList
+    .filter(shift => !shiftLooksUnresolvedForScheduleDisplay(shift, roster))
+    .map(getScheduleShiftSlotKey)
+    .filter(Boolean));
+
+  const bySemanticKey = new Map();
+  safeList.forEach((shift) => {
+    const slotKey = getScheduleShiftSlotKey(shift);
+    const unresolved = shiftLooksUnresolvedForScheduleDisplay(shift, roster);
+    // If an unresolved/open placeholder shares the exact same date/role/time slot as a resolved
+    // employee shift, it is stale duplicate noise from import/restore/listener overlap and must
+    // not be shown as a real month-view shift. A genuinely open shift with no assigned duplicate
+    // is still preserved.
+    if (unresolved && slotKey && assignedSlots.has(slotKey)) return;
+
+    const personKey = shiftResolvedPersonKey(shift, roster);
+    const semanticKey = personKey
+      ? `${slotKey}|${personKey}`
+      : `${slotKey}|open:${normalizeScheduleName(getScheduleShiftFallbackName(shift)) || 'slot'}`;
+    if (!semanticKey || semanticKey === '||||open:slot') return;
+    const previous = bySemanticKey.get(semanticKey);
+    if (!previous || rankScheduleShiftForDisplay(shift, roster) >= rankScheduleShiftForDisplay(previous, roster)) {
+      bySemanticKey.set(semanticKey, shift);
+    }
+  });
+  return Array.from(bySemanticKey.values());
 };
 
 const getScheduleShiftMonthLabels = (shift = {}, roster = []) => {
@@ -249,14 +346,45 @@ const getScheduleShiftMonthLabels = (shift = {}, roster = []) => {
   };
 };
 
+const getScheduleShiftDisplayIdentityKey = (shift = {}, roster = []) => {
+  const person = resolveScheduleShiftPersonForDisplay(shift, roster);
+  const personAliases = person ? collectScheduleIdentityAliases(person) : [];
+  if (personAliases.length) return `person:${personAliases[0]}`;
+  const shiftAliases = collectScheduleShiftIdentityAliases(shift);
+  if (shiftAliases.length) return `shift:${shiftAliases[0]}`;
+  const label = normalizeScheduleName(getScheduleShiftFallbackName(shift));
+  return label ? `name:${label}` : 'open:unresolved';
+};
+
+const getScheduleShiftDisplayDedupeKey = (shift = {}, roster = []) => {
+  const date = getShiftDateKey(shift);
+  const identity = getScheduleShiftDisplayIdentityKey(shift, roster);
+  const role = cleanScheduleRoleName(shift.role || shift.targetRole || '').toLowerCase();
+  const start = normalizeShiftTimeForFingerprint(shift.startTime);
+  const end = normalizeShiftTimeForFingerprint(shift.endTime);
+  return [date, identity, role, start, end].join('|');
+};
+
+const getScheduleDisplayResolutionScore = (shift = {}, roster = []) => {
+  const person = resolveScheduleShiftPersonForDisplay(shift, roster);
+  const hasUsefulName = Boolean(getSchedulePersonName(person) || getScheduleShiftFallbackName(shift));
+  const hasDurable = collectScheduleShiftDurableIdentityAliases(shift).length > 0;
+  const isPublished = isScheduleShiftPublished(shift);
+  return (person ? 1000 : 0) + (hasUsefulName ? 100 : 0) + (hasDurable ? 10 : 0) + (isPublished ? 5 : 0) + Math.min(getShiftRecordTimeMs(shift) / 1000000000000, 4);
+};
+
+const dedupePublishedScheduleShiftsForDisplay = (shiftList = [], roster = []) => collapseScheduleDisplayShifts(shiftList, roster);
+
 const getSchedulePersonForAppUser = (appUser = {}, users = []) => {
   if (!appUser) return {};
   const resolved = resolveSchedulePersonForAccount(appUser, users);
   const rosterUser = resolved.ok ? resolved.person : null;
   if (!rosterUser) return appUser;
   const canonical = buildCanonicalScheduleIdentityBlock(rosterUser, appUser);
+  const rosterDisplayName = getSchedulePersonName(rosterUser) || cleanScheduleDisplayName(canonical.employeeName) || cleanScheduleDisplayName(appUser.name) || prettifyScheduleMachineName(appUser.email || '');
   // Preserve account/session identity and roster/schedule identity separately.
-  // Canonical fields are assigned after spreads so auth UID cannot overwrite the roster scheduleUserId.
+  // Canonical fields are assigned after spreads so auth UID cannot overwrite the roster scheduleUserId
+  // and a machine-like login/display label cannot overwrite the human roster name on schedule chips.
   return {
     ...appUser,
     ...rosterUser,
@@ -268,8 +396,9 @@ const getSchedulePersonForAppUser = (appUser = {}, users = []) => {
     loginEmail: appUser.email || appUser.userEmail || '',
     email: appUser.email || rosterUser.email || canonical.employeeEmail || '',
     employeeEmail: canonical.employeeEmail || rosterUser.email || appUser.email || '',
-    employeeName: canonical.employeeName || rosterUser.name || appUser.name || '',
-    name: appUser.name || rosterUser.name || appUser.email || ''
+    employeeName: rosterDisplayName || canonical.employeeName || rosterUser.name || appUser.name || '',
+    assignedName: rosterDisplayName || canonical.assignedName || canonical.employeeName || '',
+    name: rosterDisplayName || cleanScheduleDisplayName(appUser.name) || appUser.email || ''
   };
 };
 
@@ -1373,8 +1502,8 @@ const handleOfferSwap = async (shift) => {
   const myNextShift = (shifts || [])
     .filter(isMyMasterUpcomingShift)
     .sort(compareShiftsByStartDateTime)[0] || null;
-  const activeMonthShifts = (shifts || [])
-    .filter(s => !isDeletedScheduleShift(s) && getShiftDateKey(s).startsWith(monthStr) && isScheduleShiftPublished(s))
+  const activeMonthShifts = dedupePublishedScheduleShiftsForDisplay((shifts || [])
+    .filter(s => !isDeletedScheduleShift(s) && getShiftDateKey(s).startsWith(monthStr) && isScheduleShiftPublished(s)), users)
     .sort((a,b) => getShiftDateKey(a) === getShiftDateKey(b) ? (a.startTime || '').localeCompare(b.startTime || '') : getShiftDateKey(a).localeCompare(getShiftDateKey(b)));
 
   const effectiveActivePunch = clockActionBusy && clockActionType === 'out' ? (clockActionPunch || activePunch) : (activePunch && !(clockActionBusy && clockActionType === 'in') ? activePunch : null);
@@ -1764,7 +1893,7 @@ const [eventDate, setEventDate] = useState(getToday());
     autoFillVisibleShifts.filter(shift => shift?.restaurantId === appUser?.restaurantId && getShiftDateKey(shift).startsWith(monthStr) && !isDeletedScheduleShift(shift)),
     localBuilderShiftEchoes.filter(shift => shift?.restaurantId === appUser?.restaurantId && getShiftDateKey(shift).startsWith(monthStr) && !isDeletedScheduleShift(shift))
   );
-  const visibleShifts = visibleSourceShifts.filter(shift => !isDeletedScheduleShift(shift) && !shiftMatchesLocalDeleteMarkers(shift, activeLocalDeleteKeySet, activeLocalDeleteMarkerMap));
+  const visibleShifts = collapseScheduleDisplayShifts(visibleSourceShifts.filter(shift => !isDeletedScheduleShift(shift) && !shiftMatchesLocalDeleteMarkers(shift, activeLocalDeleteKeySet, activeLocalDeleteMarkerMap)), users);
   const schedulePeriodBounds = getSchedulePeriodBounds(currentDate, schedulePublishingSettings);
   const schedulePeriodDays = buildDateRange(schedulePeriodBounds.start, schedulePeriodBounds.end);
   const schedulePeriodLabel = getSchedulePeriodLabel(schedulePeriodBounds, schedulePublishingSettings);
@@ -1778,12 +1907,12 @@ const [eventDate, setEventDate] = useState(getToday());
       Array.from(daySet).map(day => schedulePeriodShifts.filter(s => getShiftDateKey(s) === day && shiftMatchesPerson(s, person, users)))
     ));
   };
-  const publicationSourceShifts = mergeSchedulePublishCandidates(
+  const publicationSourceShifts = collapseScheduleDisplayShifts(mergeSchedulePublishCandidates(
     (shifts || []).filter(shift => !isDeletedScheduleShift(shift)),
     visibleSourceShifts,
     autoFillVisibleShifts.filter(shift => shift?.restaurantId === appUser?.restaurantId && !isDeletedScheduleShift(shift)),
     localBuilderShiftEchoes.filter(shift => shift?.restaurantId === appUser?.restaurantId && !isDeletedScheduleShift(shift))
-  ).filter(shift => !isDeletedScheduleShift(shift) && !shiftMatchesLocalDeleteMarkers(shift, activeLocalDeleteKeySet, activeLocalDeleteMarkerMap));
+  ).filter(shift => !isDeletedScheduleShift(shift) && !shiftMatchesLocalDeleteMarkers(shift, activeLocalDeleteKeySet, activeLocalDeleteMarkerMap)), users);
   const publicationPeriodShifts = publicationSourceShifts.filter(s => { const d = getShiftDateKey(s); return d >= publicationWeekBounds.start && d <= publicationWeekBounds.end; });
   const renderedPublicationPeriodShifts = mergeSchedulePublishCandidates(publicationPeriodShifts, getScheduleBuilderRenderedShiftsForDaySet(new Set(publicationWeekDays)))
     .filter(shift => !isDeletedScheduleShift(shift) && !shiftMatchesLocalDeleteMarkers(shift, activeLocalDeleteKeySet, activeLocalDeleteMarkerMap));
@@ -4250,15 +4379,72 @@ const handleExportTimesheets = () => {
 
 const TabMonth = ({ currentDate, users, shifts, appUser }) => {
   const [roleFilter, setRoleFilter] = useState('All');
-  const uniqueRoles = ['All', ...new Set(users.map(u => u.role).filter(Boolean))].sort();
+  const activeUsers = useMemo(() => (Array.isArray(users) ? users : []).filter(u => u && u.isActive !== false), [users]);
+  const uniqueRoles = useMemo(() => ['All', ...new Set(activeUsers.map(u => u.role).filter(Boolean))].sort(), [activeUsers]);
 
   const monthStr = getMonthStr(currentDate); 
   const firstDay = new Date(monthStr+'-01T12:00:00').getDay(); 
   const days = getDaysInMonth(monthStr);
+  const monthSchedulePerson = useMemo(() => getSchedulePersonForAppUser(appUser, activeUsers), [appUser, activeUsers]);
+  const visibleMonthShifts = useMemo(() => {
+    const filtered = (Array.isArray(shifts) ? shifts : [])
+      .filter(s => {
+        const dateKey = getShiftDateKey(s);
+        if (!dateKey || !dateKey.startsWith(monthStr)) return false;
+        if (isDeletedScheduleShift(s) || !isScheduleShiftPublished(s)) return false;
+        if (roleFilter === 'All') return true;
+        if (roleFilter === 'ME') return shiftMatchesPerson(s, monthSchedulePerson, activeUsers);
+        return String(s.role || s.targetRole || '') === String(roleFilter || '');
+      });
+    return collapseScheduleDisplayShifts(filtered, activeUsers).sort((a, b) => {
+      const dateSort = getShiftDateKey(a).localeCompare(getShiftDateKey(b));
+      if (dateSort) return dateSort;
+      const roleSort = String(a.role || '').localeCompare(String(b.role || ''));
+      if (roleSort) return roleSort;
+      const timeSort = String(a.startTime || '').localeCompare(String(b.startTime || ''));
+      if (timeSort) return timeSort;
+      return getScheduleShiftDisplayName(a, activeUsers).localeCompare(getScheduleShiftDisplayName(b, activeUsers));
+    });
+  }, [shifts, monthStr, roleFilter, monthSchedulePerson, activeUsers]);
+
+  const shiftsByDate = useMemo(() => {
+    const grouped = new Map();
+    visibleMonthShifts.forEach(shift => {
+      const dateKey = getShiftDateKey(shift);
+      if (!grouped.has(dateKey)) grouped.set(dateKey, []);
+      grouped.get(dateKey).push(shift);
+    });
+    return grouped;
+  }, [visibleMonthShifts]);
   
   // Calculate how many weeks this month spans to perfectly stretch the grid rows on paper
   const totalCells = firstDay + days;
   const weeks = Math.ceil(totalCells / 7);
+
+  const buildPrintableCalendarHtml = () => {
+    const monthTitle = `${roleFilter !== 'All' ? `${roleFilter} - ` : ''}${formatDisplayMonth(monthStr)}`;
+    const weekdayHeader = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map(day => `<div class="weekday">${escapeSchedulePrintHtml(day)}</div>`).join('');
+    const blanks = Array.from({ length: firstDay }).map(() => '<div class="day blank"></div>').join('');
+    const dayCells = Array.from({ length: days }).map((_, index) => {
+      const dayNumber = index + 1;
+      const date = `${monthStr}-${String(dayNumber).padStart(2,'0')}`;
+      const dayShifts = shiftsByDate.get(date) || [];
+      const shiftRows = dayShifts.map(shift => `<div class="shift">${escapeSchedulePrintHtml(getScheduleShiftMonthLabels(shift, activeUsers).full)}</div>`).join('');
+      return `<div class="day"><div class="date">${dayNumber}</div><div class="shiftStack">${shiftRows}</div></div>`;
+    }).join('');
+    return `<!doctype html><html><head><meta charset="utf-8" /><title>86 Chaos Schedule ${escapeSchedulePrintHtml(monthTitle)}</title><style>@page{size:landscape;margin:0.25in}*{box-sizing:border-box}body{margin:0;color:#000;background:#fff;font-family:Arial,Helvetica,sans-serif}.calendar{width:100vw;min-height:100vh;display:flex;flex-direction:column}h1{margin:0 0 8px;text-align:center;font-size:20px;line-height:1.1;text-transform:uppercase;letter-spacing:.04em}.meta{margin:0 0 8px;display:flex;justify-content:space-between;gap:12px;font-size:10px;font-weight:700;color:#111}.grid{flex:1 1 auto;display:grid;grid-template-columns:repeat(7,1fr);grid-template-rows:24px repeat(${weeks},minmax(82px,1fr));border-top:2px solid #000;border-left:2px solid #000}.weekday,.day{border-right:2px solid #000;border-bottom:2px solid #000}.weekday{display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:900;text-transform:uppercase;background:#f1f5f9}.day{min-height:82px;padding:3px;overflow:hidden}.blank{background:#f8fafc}.date{text-align:right;font-size:12px;font-weight:900;margin-bottom:2px}.shiftStack{display:flex;flex-direction:column;gap:1px}.shift{border:1px solid #94a3b8;border-radius:3px;background:#f8fafc;padding:1px 2px;font-size:7.4px;line-height:1.05;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:clip;color:#000}</style></head><body><div class="calendar"><h1>86 Chaos Schedule ${escapeSchedulePrintHtml(monthTitle)}</h1><div class="meta"><span>${escapeSchedulePrintHtml(visibleMonthShifts.length)} published shifts</span><span>Printed ${escapeSchedulePrintHtml(new Date().toLocaleString())}</span></div><div class="grid">${weekdayHeader}${blanks}${dayCells}</div></div><script>window.addEventListener('load',function(){setTimeout(function(){window.focus();window.print();},150);});</script></body></html>`;
+  };
+
+  const handlePrintCalendar = () => {
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) {
+      window.print();
+      return;
+    }
+    printWindow.document.open();
+    printWindow.document.write(buildPrintableCalendarHtml());
+    printWindow.document.close();
+  };
 
   return (
     <div className={`${T.card} overflow-hidden print-container`}>
@@ -4381,7 +4567,7 @@ const TabMonth = ({ currentDate, users, shifts, appUser }) => {
             {uniqueRoles.filter(r => r !== 'All').map(r => <option key={r} value={r}>{r}</option>)}
           </select>
         </div>
-        <button onClick={()=>window.print()} className={T.btnAlt}>🖨️ Print Calendar</button>
+        <button onClick={handlePrintCalendar} className={T.btnAlt}>🖨️ Print Calendar</button>
       </div>
       
       <div className="hidden print:block print-header">
@@ -4395,20 +4581,15 @@ const TabMonth = ({ currentDate, users, shifts, appUser }) => {
         
 {Array.from({length:days}).map((_,i)=>{
           const date = `${monthStr}-${String(i+1).padStart(2,'0')}`; 
-          const dayShifts = shifts
-            .filter(s => getShiftDateKey(s) === date && isScheduleShiftPublished(s) && (roleFilter === 'All' || (roleFilter === 'ME' ? shiftMatchesPerson(s, getSchedulePersonForAppUser(appUser, users), users) : s.role === roleFilter)))
-            .sort((a, b) => {
-              if (a.role !== b.role) return (a.role || '').localeCompare(b.role || '');
-              return (a.startTime || '').localeCompare(b.startTime || '');
-            });
+          const dayShifts = shiftsByDate.get(date) || [];
           return (
             <div key={date} className={`p-0.5 border-b border-r ${T.border} min-h-[50px] flex flex-col cell ${dayShifts.length >= 6 ? 'print-day-dense' : ''}`}>
               <span className={`text-right text-[9px] font-black ${T.muted} mb-0.5 cell-date`}>{i+1}</span>
               <div className="space-y-0.5 overflow-y-auto no-scrollbar flex-1 print-shift-stack">
                 {dayShifts.map(s=>{
-                  const labels = getScheduleShiftMonthLabels(s, users);
+                  const labels = getScheduleShiftMonthLabels(s, activeUsers);
                   return (
-                    <div key={s.id} className={`schedule-month-shift text-[8px] font-bold px-0.5 rounded leading-tight truncate bg-[#12161A] border ${T.border} text-[#D4A381] print-shift`}>
+                    <div key={getScheduleShiftDisplayDedupeKey(s, activeUsers) || s.id} className={`schedule-month-shift text-[8px] font-bold px-0.5 rounded leading-tight truncate bg-[#12161A] border ${T.border} text-[#D4A381] print-shift`}>
                       <span className="hidden sm:inline">{labels.full}</span>
                       <span className="sm:hidden">{labels.mobile}</span>
                     </div>

@@ -77,6 +77,55 @@ const getShiftDisplayName = (shift = {}, userLookup = new Map()) => {
   return firstName(user?.name || user?.displayName || user?.fullName || shift.employeeName || shift.assignedName || shift.userName || shift.name || shift.displayName || shift.fullName || 'Unknown');
 };
 
+const getShiftSlotKey = (shift = {}) => [
+  String(shift.restaurantId || shift.workspaceId || '').trim().toLowerCase(),
+  getShiftDateKey(shift),
+  String(shift.role || shift.targetRole || 'Unassigned').trim().toLowerCase(),
+  String(shift.startTime || '').trim().toLowerCase(),
+  String(shift.endTime || '').trim().toLowerCase()
+].join('|');
+
+const getResolvedShiftPersonKey = (shift = {}, userLookup = new Map()) => {
+  const user = resolveShiftUser(shift, userLookup);
+  const source = user || shift;
+  const key = [source.scheduleUserId, source.employeeId, source.rosterUserId, source.userId, source.authUid, source.uid, source.id]
+    .map(normalizeIdentity)
+    .find(Boolean);
+  if (key) return `id:${key}`;
+  const email = [source.employeeEmail, source.email, source.emailLower, source.userEmail, source.assignedEmail]
+    .map(normalizeIdentity)
+    .find(value => value.includes('@'));
+  if (email) return `email:${email}`;
+  if (user) {
+    const name = [source.employeeName, source.name, source.displayName, source.fullName]
+      .map(normalizeIdentity)
+      .find(Boolean);
+    if (name) return `name:${name}`;
+  }
+  return '';
+};
+
+const shiftLooksUnresolved = (shift = {}, userLookup = new Map()) => {
+  if (resolveShiftUser(shift, userLookup)) return false;
+  if (getResolvedShiftPersonKey(shift, userLookup)) return false;
+  const label = normalizeIdentity(shift.employeeName || shift.assignedName || shift.userName || shift.name || shift.displayName || shift.fullName || '');
+  return !label || ['unassigned', 'unknown', 'unknown staff', 'open shift'].includes(label);
+};
+
+const collapseMonthDisplayShifts = (shiftList = [], userLookup = new Map()) => {
+  const list = (Array.isArray(shiftList) ? shiftList : []).filter(Boolean);
+  const assignedSlots = new Set(list.filter(shift => !shiftLooksUnresolved(shift, userLookup)).map(getShiftSlotKey).filter(Boolean));
+  const byKey = new Map();
+  list.forEach(shift => {
+    const slotKey = getShiftSlotKey(shift);
+    if (shiftLooksUnresolved(shift, userLookup) && assignedSlots.has(slotKey)) return;
+    const personKey = getResolvedShiftPersonKey(shift, userLookup) || `open:${normalizeIdentity(shift.employeeName || shift.assignedName || shift.name || shift.id || '')}`;
+    const key = `${slotKey}|${personKey}`;
+    if (!byKey.has(key)) byKey.set(key, shift);
+  });
+  return Array.from(byKey.values());
+};
+
 const TabMonth = ({ currentDate, users, shifts, T, getMonthStr, getDaysInMonth, formatDisplayMonth, formatShortTime }) => {
   const [roleFilter, setRoleFilter] = useState('All');
   const userLookup = useMemo(() => buildUserLookup(users), [users]);
@@ -91,12 +140,12 @@ const TabMonth = ({ currentDate, users, shifts, T, getMonthStr, getDaysInMonth, 
   const weeks = Math.ceil(totalCells / 7);
 
   const visibleMonthShifts = useMemo(() => {
-    return (Array.isArray(shifts) ? shifts : [])
+    return collapseMonthDisplayShifts((Array.isArray(shifts) ? shifts : [])
       .filter((shift) => {
         const dateKey = getShiftDateKey(shift);
         const role = shift?.role || shift?.targetRole || '';
         return dateKey.startsWith(monthStr) && shift?.isPublished === true && (roleFilter === 'All' || role === roleFilter);
-      })
+      }), userLookup)
       .sort((a, b) => {
         const dateSort = getShiftDateKey(a).localeCompare(getShiftDateKey(b));
         if (dateSort) return dateSort;
