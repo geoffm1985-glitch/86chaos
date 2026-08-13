@@ -42,13 +42,13 @@ const tabMonthStart = schedule.indexOf('const TabMonth =');
 const tabMonthEnd = schedule.indexOf('const TabAvailability', tabMonthStart);
 const tabMonth = tabMonthStart >= 0 && tabMonthEnd > tabMonthStart ? schedule.slice(tabMonthStart, tabMonthEnd) : '';
 
-assert(pkg.version === '16.0.174', 'package.json version is 16.0.174');
-assert(lock.version === '16.0.174' && lock.packages?.['']?.version === '16.0.174', 'package-lock root versions are 16.0.174');
-assert(pkg.scripts['test:source'] === 'node scripts/validate-16-0-174.js', 'test:source points to 16.0.174 validator');
-assert(version.version === '16.0.174' && version.build === '16.0.174', 'public/version.json version/build are 16.0.174');
-assert(version.releaseTitle === 'Month Print CommonJS Import Build Repair', 'release title is correct');
-assert(appCore.includes("CURRENT_VERSION = '16.0.174'"), 'app core CURRENT_VERSION is 16.0.174');
-assert(apiVersion.includes("APP_VERSION = '16.0.174'") && apiVersion.includes("SECURITY_SCHEMA_VERSION = '16.0.174'"), 'api version reports 16.0.174');
+assert(pkg.version === '16.0.172', 'package.json version is 16.0.172');
+assert(lock.version === '16.0.172' && lock.packages?.['']?.version === '16.0.172', 'package-lock root versions are 16.0.172');
+assert(pkg.scripts['test:source'] === 'node scripts/validate-16-0-172.js', 'test:source points to 16.0.172 validator');
+assert(version.version === '16.0.172' && version.build === '16.0.172', 'public/version.json version/build are 16.0.172');
+assert(version.releaseTitle === 'Deterministic Month View Calendar Printing Repair', 'release title is correct');
+assert(appCore.includes("CURRENT_VERSION = '16.0.172'"), 'app core CURRENT_VERSION is 16.0.172');
+assert(apiVersion.includes("APP_VERSION = '16.0.172'") && apiVersion.includes("SECURITY_SCHEMA_VERSION = '16.0.172'"), 'api version reports 16.0.172');
 assert(!fs.existsSync(path.join(root, 'scripts/validate-16-0-170.js')), 'older 16.0.170 validator is not current');
 
 assert(sha('firestore.rules') === '51bfd7d39edd59f680ae41a149c108cec8cd42d00b102d84cb00ee40d90264d9', 'firestore.rules unchanged');
@@ -125,12 +125,12 @@ assert(!/doc\(db,\s*['"]pythonAutomationConfigs['"]/.test(tabGodMode), 'TabGodMo
 assert(!/doc\(db,\s*['"]aiRecommendationQueue['"]/.test(tabGodMode), 'TabGodMode no longer directly writes aiRecommendationQueue');
 assert(fs.existsSync(path.join(root, 'scripts/run-repair-regression-pack.cjs')), 'repair regression pack runner exists');
 assert(fs.existsSync(path.join(root, 'scripts/run-repair-browser-regression.cjs')), 'repair browser regression runner exists');
-assert(fs.existsSync(path.join(root, 'scripts/repair-regression-pack-16.0.174.json')), 'repair regression pack manifest exists');
-assert(fs.existsSync(path.join(root, 'scripts/86chaos-release-gate/repair-regression-16.0.174.json')), 'repair browser regression manifest exists');
-for (const name of ['test:repair-current','test:repair-current:local','test:repair-current:browser','test:repair-current:strict','test:repair-16-0-174']) {
+assert(fs.existsSync(path.join(root, 'scripts/repair-regression-pack-16.0.172.json')), 'repair regression pack manifest exists');
+assert(fs.existsSync(path.join(root, 'scripts/86chaos-release-gate/repair-regression-16.0.172.json')), 'repair browser regression manifest exists');
+for (const name of ['test:repair-current','test:repair-current:local','test:repair-current:browser','test:repair-current:strict','test:repair-16-0-172']) {
   assert(Boolean(pkg.scripts[name]), `${name} package script exists`);
 }
-const repairManifest = json('scripts/86chaos-release-gate/repair-regression-16.0.174.json');
+const repairManifest = json('scripts/86chaos-release-gate/repair-regression-16.0.172.json');
 const stable = new Set();
 let dupes = 0;
 for (const row of repairManifest.selected || []) {
@@ -143,11 +143,6 @@ assert(dupes === 0, 'repair browser manifest has zero duplicate stable identitie
 
 // Month View deterministic print repair.
 assert(fs.existsSync(path.join(root, 'src/core/scheduleMonthPrint.cjs')), 'scheduleMonthPrint pure print module exists');
-
-assert(schedule.includes("import scheduleMonthPrint from '../core/scheduleMonthPrint.cjs';"), 'Month View imports CommonJS print helper through default import for production build compatibility');
-assert(!schedule.includes("import * as scheduleMonthPrint from '../core/scheduleMonthPrint.cjs';"), 'Month View no longer namespace-imports the CommonJS print helper');
-assert(!/import\s*\{[^}]*openScheduleMonthPrintWindow[^}]*\}\s*from\s*['"]\.\.\/core\/scheduleMonthPrint\.cjs['"]/.test(schedule), 'Month View does not named-import openScheduleMonthPrintWindow from CommonJS helper');
-
 assert(appScheduleImport.includes("import('./features/schedule')"), 'App still loads active Schedule from ./features/schedule');
 assert(tabMonth.includes('monthCalendarModel') && tabMonth.includes('dayRows'), 'active Month View builds a shared monthCalendarModel/dayRows model');
 assert(tabMonth.includes('scheduleMonthPrint.openScheduleMonthPrintWindow(monthCalendarModel)'), 'active Month View invokes dedicated print helper with frozen model');
@@ -163,70 +158,19 @@ assert(monthPrintTest.includes('2026-08') && monthPrintTest.includes('2026-09') 
 assert(printLayoutTest.includes('active Month View print path uses a dedicated isolated print helper') && printLayoutTest.includes('active Month View no longer relies on SPA-wide print visibility hijacking'), 'print layout source contract targets active Month View and helper');
 assert(fs.existsSync(path.join(root, 'tests/e2e/month-view-print.spec.cjs')), 'Month View Playwright print regression spec exists');
 assert(read('tests/e2e/month-view-print.spec.cjs').includes('Month View Print Calendar prints the currently selected month'), 'Month View Playwright print identity exists');
-assert(fs.existsSync(path.join(root, 'scripts/repair-regression-pack-16.0.174.json')), '16.0.174 repair local manifest exists');
-assert(fs.existsSync(path.join(root, 'scripts/86chaos-release-gate/repair-regression-16.0.174.json')), '16.0.174 repair browser manifest exists');
-assert(read('scripts/run-repair-regression-pack.cjs').includes('repair-regression-pack-16.0.174.json'), 'repair pack runner points to 16.0.174 manifest');
-assert(read('scripts/run-repair-browser-regression.cjs').includes('repair-regression-16.0.174.json'), 'repair browser runner points to 16.0.174 manifest');
-const repairLocal172 = json('scripts/repair-regression-pack-16.0.174.json');
-assert(repairLocal172.version === '16.0.174', 'repair local manifest version is 16.0.174');
+assert(fs.existsSync(path.join(root, 'scripts/repair-regression-pack-16.0.172.json')), '16.0.172 repair local manifest exists');
+assert(fs.existsSync(path.join(root, 'scripts/86chaos-release-gate/repair-regression-16.0.172.json')), '16.0.172 repair browser manifest exists');
+assert(read('scripts/run-repair-regression-pack.cjs').includes('repair-regression-pack-16.0.172.json'), 'repair pack runner points to 16.0.172 manifest');
+assert(read('scripts/run-repair-browser-regression.cjs').includes('repair-regression-16.0.172.json'), 'repair browser runner points to 16.0.172 manifest');
+const repairLocal172 = json('scripts/repair-regression-pack-16.0.172.json');
+assert(repairLocal172.version === '16.0.172', 'repair local manifest version is 16.0.172');
 assert((repairLocal172.localCommands || []).some(entry => entry.group === 'Month View Print' && entry.cmd.includes('api/month-view-print-16-0-172.test.cjs') && entry.cmd.includes('api/print-calendar-layout.test.cjs')), 'Month View print local regression is included in repair pack');
-const repairBrowser172 = json('scripts/86chaos-release-gate/repair-regression-16.0.174.json');
-assert(repairBrowser172.version === '16.0.174', 'repair browser manifest version is 16.0.174');
+const repairBrowser172 = json('scripts/86chaos-release-gate/repair-regression-16.0.172.json');
+assert(repairBrowser172.version === '16.0.172', 'repair browser manifest version is 16.0.172');
 assert((repairBrowser172.selected || []).some(row => row.specPath === 'tests/e2e/month-view-print.spec.cjs' && row.leafTitle === 'Month View Print Calendar prints the currently selected month' && row.project === 'chromium'), 'Month View browser print chromium identity is included');
 assert((repairBrowser172.selected || []).some(row => row.specPath === 'tests/e2e/month-view-print.spec.cjs' && row.leafTitle === 'Month View Print Calendar prints the currently selected month' && row.project === 'mobile-chromium'), 'Month View browser print mobile identity is included');
-assert(Boolean(pkg.scripts['test:repair-16-0-174']), 'test:repair-16-0-174 package script exists');
+assert(Boolean(pkg.scripts['test:repair-16-0-172']), 'test:repair-16-0-172 package script exists');
 assert(pkg.scripts['test:play-store:failed-current'], 'failed-only infrastructure package script remains present');
 
-
-// 16.0.174 staff login email edit and full-suite reporting repair.
-const staffMember = read('api/staff-member.js');
-const userActions = read('api/system-admin/user-actions.js');
-const emailHelper = read('api/_account-email-change.cjs');
-const fullSuite = read('RUN_86CHAOS_FULL_TEST_SUITE.ps1');
-assert(fs.existsSync(path.join(root, 'api/_account-email-change.cjs')), 'canonical account email-change helper exists');
-assert(emailHelper.includes('auth.updateUser(authUid, { email: newEmail, emailVerified: false })'), 'helper updates Firebase Auth email and sets emailVerified false');
-assert(!/password\s*:/.test(emailHelper), 'helper never sets password in auth.updateUser');
-assert(emailHelper.includes('auth.getUserByEmail(newEmail)') && emailHelper.includes('email-conflict'), 'helper detects Firebase email conflict');
-assert(emailHelper.includes("db.collection('workspaceMembers')") && emailHelper.includes('membershipEmailPatch'), 'helper synchronizes workspaceMembers email aliases');
-assert(emailHelper.includes('resolveAuthUser') && emailHelper.includes('getUserByEmail(currentEmail)'), 'helper supports legacy Auth/profile identity resolution');
-assert(!emailHelper.includes('targetRef = db.collection') && emailHelper.includes('targetRef'), 'helper updates existing profile ref without renaming legacy profile doc IDs');
-assert(emailHelper.includes('multi-workspace-email-change-requires-system-admin'), 'ordinary manager cannot globally change multi-workspace login email');
-assert(emailHelper.includes('ctx.isSuperAdmin !== true') && emailHelper.includes('activeWorkspaceIds.length > 1'), 'System Administrator multi-workspace policy is explicit');
-assert(emailHelper.includes('targetIsPrivileged') && emailHelper.includes('isProtectedRootAdminEmail'), 'owner/platform/protected-root target email changes are blocked');
-assert(emailHelper.includes("forceLogoutReason: 'staff-email-changed'") && emailHelper.includes('auth.revokeRefreshTokens(authUid)'), 'successful change forces logout and attempts token revocation');
-assert(emailHelper.includes('rolledBack: true') && emailHelper.includes('emailChangePartialFailure'), 'Firestore failure path contains Auth rollback handling and partial failure reporting');
-assert(emailHelper.includes('STAFF_EMAIL_UPDATE'), 'STAFF_EMAIL_UPDATE audit action is present');
-assert(staffMember.includes('changeAccountLoginEmail') && staffMember.includes('submittedEmail !== currentEmail'), 'staff-member update uses canonical helper when submitted email differs');
-assert(!staffMember.includes('current.email || targetUser.email || body.email'), 'staff-member update no longer forces old email over body.email');
-assert(userActions.includes('changeAccountLoginEmail') && userActions.includes("action === 'support-update'"), 'System Admin Support Edit uses the same canonical email helper');
-const tabTeam = management.slice(management.indexOf('const TabTeam'), management.indexOf('const TabDailyClose') > management.indexOf('const TabTeam') ? management.indexOf('const TabDailyClose') : management.indexOf('const TabGodMode'));
-assert(!tabTeam.includes('Cannot be changed after creation'), 'active Staff Roster edit email restriction text is gone');
-assert(!/disabled=\{!!editingUserId\}/.test(tabTeam), 'active Staff Roster edit email field is enabled');
-assert(tabTeam.includes("Changing this email changes the employee's login email"), 'Staff Roster explains login-email/session effect');
-assert(!tabTeam.includes('updateEmail('), 'Staff Roster does not use client Firebase updateEmail');
-assert(fs.existsSync(path.join(root, 'api/staff-email-change-16-0-173.test.cjs')), 'staff-email-change test exists');
-assert(fs.existsSync(path.join(root, 'api/staff-email-edit-source-16-0-173.test.cjs')), 'staff-email-edit source test exists');
-assert(fs.existsSync(path.join(root, 'tests/e2e/staff-email-edit.spec.cjs')), 'Staff email Playwright spec exists');
-const repair173 = json('scripts/repair-regression-pack-16.0.174.json');
-assert((repair173.localCommands || []).some(entry => entry.group === 'Staff Email Editing'), '16.0.174 repair local manifest includes Staff Email Editing');
-const repairBrowser173 = json('scripts/86chaos-release-gate/repair-regression-16.0.174.json');
-assert((repairBrowser173.selected || []).some(row => row.specPath === 'tests/e2e/staff-email-edit.spec.cjs' && row.leafTitle === 'Manager changes an employee login email and the new email authenticates' && row.project === 'chromium'), '16.0.174 repair browser manifest includes staff email chromium identity');
-assert((repairBrowser173.selected || []).some(row => row.specPath === 'tests/e2e/staff-email-edit.spec.cjs' && row.project === 'mobile-chromium'), '16.0.174 repair browser manifest includes staff email mobile identity');
-assert(fullSuite.includes('[PASS]') && fullSuite.includes('[FAIL]') && fullSuite.includes('[BLOCKED]') && fullSuite.includes('Add-BlockedStep'), 'exhaustive full-suite runner records PASS/FAIL/BLOCKED');
-assert(fullSuite.includes('tests/86chaos-release-gate/*.test.cjs'), 'exhaustive runner runs ALL release-gate harness Node tests');
-assert(fullSuite.includes('api/*.test.cjs'), 'exhaustive runner runs server tests');
-assert(fullSuite.includes('npm run test:client'), 'exhaustive runner runs client tests');
-assert(fullSuite.includes('npm run test:rules'), 'exhaustive runner runs rules tests');
-assert(fullSuite.includes('npm run test:cost'), 'exhaustive runner runs cost tests');
-assert(fullSuite.includes('npm run test:repair-current:local'), 'exhaustive runner runs repair-current:local');
-assert(fullSuite.includes('npm run lint'), 'exhaustive runner runs lint');
-assert(fullSuite.includes('npm run build'), 'exhaustive runner runs build');
-assert(fullSuite.includes('npm run test:play-store'), 'exhaustive runner attempts full Play Store release gate');
-assert(fullSuite.includes('FAILED-TESTS.txt') && fullSuite.includes('BLOCKED-TESTS.txt') && fullSuite.includes('TEST-SUMMARY.txt'), 'exhaustive runner creates readable summaries');
-assert(fullSuite.includes('86chaos-FULL-SUITE-UPLOAD-ME-16.0.174'), 'full-suite upload ZIP is versioned and finalized');
-assert(pkg.scripts['test:full-suite'] && pkg.scripts['test:full-suite:local'], 'full-suite package scripts exist');
-assert(pkg.scripts['test:repair-16-0-174'] === 'npm run test:repair-current', 'test:repair-16-0-174 package script exists');
-assert(fs.existsSync(path.join(root, 'scripts/test-16-0-174-targeted.cjs')), '16.0.174 targeted test script exists');
-
 if (failures) { console.error(`\n${failures} validation check(s) failed.`); process.exit(1); }
-console.log('\n16.0.174 source validation passed.');
+console.log('\n16.0.172 source validation passed.');

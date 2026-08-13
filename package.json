@@ -1,6 +1,6 @@
 {
   "name": "86chaos",
-  "version": "16.0.203",
+  "version": "16.0.172",
   "private": true,
   "dependencies": {
     "ajv": "^8.20.0",
@@ -26,7 +26,7 @@
     "deploy:check": "npm run test:ci && NODE_OPTIONS=--max-old-space-size=4096 GENERATE_SOURCEMAP=false npm run build",
     "validate:audit-repair": "node scripts/validate-repair.js",
     "rules:check": "node scripts/validate-rules.js",
-    "test:source": "node scripts/validate-16-0-203.js",
+    "test:source": "node scripts/validate-16-0-172.js",
     "syntax:api": "node scripts/check-api-syntax.js",
     "test:unit": "npm run test:client && npm run test:server",
     "test:rules": "firebase emulators:exec --only firestore,storage \"node scripts/run-rules-tests.js\"",
@@ -60,12 +60,7 @@
     "test:repair-current:browser": "node scripts/run-repair-browser-regression.cjs",
     "test:repair-current:strict": "node scripts/run-repair-regression-pack.cjs --require-browser",
     "test:repair-16-0-171": "npm run test:repair-current",
-    "test:repair-16-0-172": "npm run test:repair-current",
-    "test:repair-16-0-173": "npm run test:repair-current",
-    "test:full-suite": "powershell -NoProfile -ExecutionPolicy Bypass -File .\\RUN_86CHAOS_FULL_TEST_SUITE.ps1 -Exhaustive",
-    "test:full-suite:local": "powershell -NoProfile -ExecutionPolicy Bypass -File .\\RUN_86CHAOS_FULL_TEST_SUITE.ps1 -Exhaustive -LocalOnly",
-    "test:repair-16-0-174": "npm run test:repair-current",
-    "test:repair-16-0-203": "npm run test:repair-current"
+    "test:repair-16-0-172": "npm run test:repair-current"
   },
   "browserslist": {
     "production": [

@@ -2,7 +2,7 @@ import React from 'react';
 import { Shield } from 'lucide-react';
 
 const TabAuditLog = ({ appUser, useLiveCollection, T }) => {
-  const logs = useLiveCollection('auditLogs', appUser?.restaurantId, { orderByField: 'timestamp', orderDirection: 'desc', limitCount: 75, fallbackLimitCount: 50, debugLabel: 'audit-log:latest-75' });
+  const logs = useLiveCollection('auditLogs', appUser?.restaurantId, { orderByField: 'timestamp', orderDirection: 'desc', limitCount: 100, fallbackLimitCount: 50, debugLabel: 'audit-log:latest' });
   const sortedLogs = [...logs];
 
   return (

@@ -1,6 +1,5 @@
 const { getAdminAppForRequest, authorize, readBody, writeAudit, clean } = require('../_chaos-admin');
 const { isProtectedRootAdminEmail } = require('../_protected-root-admin');
-const { changeAccountLoginEmail, normalizeEmail: normalizeAccountEmail } = require('../_account-email-change.cjs');
 async function requireSystemAdmin(req) {
   const app = getAdminAppForRequest(req);
   const ctx = await authorize(req, app, { allowTenantAdmin: false, allowCrossProjectMaster: true });
@@ -58,36 +57,10 @@ module.exports = async function handler(req, res) {
         supportEditedAt: now,
         supportEditedBy: auth.ctx.email || auth.ctx.uid || 'System Administrator'
       };
-      const submittedEmail = normalizeAccountEmail(input.email || '');
-      const currentEmail = normalizeAccountEmail(current.email || current.emailLower || email || '');
-      let emailChangeResult = { emailChanged: false, newEmail: currentEmail || submittedEmail };
-      if (submittedEmail && submittedEmail !== currentEmail) {
-        emailChangeResult = await changeAccountLoginEmail({
-          db: auth.db,
-          auth: auth.app.auth(),
-          ctx: { ...auth.ctx, isSuperAdmin: true, restaurantId, restaurant: rest },
-          targetRef: ref,
-          targetDocId: userId,
-          targetUid: userId,
-          targetUser: current,
-          currentMembership: {},
-          currentEmail,
-          submittedEmail,
-          writeAudit: (actionName, detail) => writeAudit(
-            auth.db,
-            auth.ctx,
-            actionName,
-            `users/${userId}`,
-            `Support login email changed from ${detail.oldEmail} to ${detail.newEmail}. Memberships synchronized: ${detail.membershipCount}. Sessions revoked: ${detail.sessionsRevoked ? 'yes' : 'no'}.`,
-            restaurantId || 'platform'
-          )
-        });
-      } else if (submittedEmail) {
-        patch.email = submittedEmail.slice(0, 180);
-      }
+      if (input.email) patch.email = clean(input.email).toLowerCase().slice(0, 180);
       await ref.set(patch, { merge: true });
-      await writeAudit(auth.db, auth.ctx, 'SUPPORT_USER_EDIT', `users/${userId}`, `Support edited ${emailChangeResult.newEmail || currentEmail || userId}; workspace=${patch.restaurantName}; role=${patch.role}; admin=${patch.isAdmin}; active=${patch.isActive}.`, patch.restaurantId || 'platform');
-      return res.status(200).json({ ok: true, action, user: { id: userId, ...patch, email: emailChangeResult.newEmail || patch.email || currentEmail }, emailChanged: emailChangeResult.emailChanged === true, sessionsRevoked: emailChangeResult.sessionsRevoked, sessionWarning: emailChangeResult.sessionWarning || '' });
+      await writeAudit(auth.db, auth.ctx, 'SUPPORT_USER_EDIT', `users/${userId}`, `Support edited ${patch.email || email || userId}; workspace=${patch.restaurantName}; role=${patch.role}; admin=${patch.isAdmin}; active=${patch.isActive}.`, patch.restaurantId || 'platform');
+      return res.status(200).json({ ok: true, action, user: { id: userId, ...patch } });
     }
     if (action === 'force-logout') {
       const patch = { forceLogout: true, forceLogoutAt: now, forceLogoutReason: clean(body.reason || 'system-admin-user-cache-clear').slice(0, 160) };
@@ -103,7 +76,7 @@ module.exports = async function handler(req, res) {
     }
     return res.status(400).json({ ok: false, error: `Unsupported user action: ${action}` });
   } catch (error) {
-    return res.status(Number(error?.status || error?.httpStatus || 400)).json({ ok: false, code: error?.code || 'system-admin-user-action-failed', error: String(error?.message || error).slice(0, 300), emailChangePartialFailure: error?.emailChangePartialFailure === true, authEmailMayBeChanged: error?.authEmailMayBeChanged === true, targetUid: error?.targetUid || undefined, authUid: error?.authUid || undefined, oldEmail: error?.oldEmail || undefined, newEmail: error?.newEmail || undefined });
+    return res.status(400).json({ ok: false, error: String(error?.message || error).slice(0, 300) });
   }
 };
 module.exports._test = { safePermissions };

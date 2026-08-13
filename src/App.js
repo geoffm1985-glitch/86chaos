@@ -1091,7 +1091,7 @@ const [currentDate, setCurrentDate] = useState(getToday());
   const wantsLaborData = (['financials', 'labor', 'sales', 'ops'].includes(activeTabState) || (wantsToday && canReadOperationsLabor)) && canReadOperationsLabor;
   const wantsInventoryData = (((wantsToday || isGlobalSearchOpen) && (canReadBasicInventory || canReadSmartInventory)) || (activeTabState === 'menu-intelligence' && canReadMenuCollections));
   const wantsPrepData = wantsToday; // Prep screen owns its live prep/task listeners; App keeps only Today summaries.
-  const wantsMenuData = (activeTabState === 'menu-intelligence' || wantsToday) && canReadMenuCollections; // 16.0.203 keeps Today menu impact data but caps its summary listener lower below.
+  const wantsMenuData = (activeTabState === 'menu-intelligence' || wantsToday) && canReadMenuCollections;
   const wantsRecipesData = isGlobalSearchOpen; // Recipes screen owns its live query; App keeps only global-search demand.
   const wantsMaintenanceData = wantsToday && canReadMaintenance; // Maintenance screen owns its full listener; App keeps only Today alert context.
   const wantsSalesData = ['financials', 'sales', 'ops', 'labor'].includes(activeTabState) && canReadSalesCollections;
@@ -1113,7 +1113,7 @@ const [currentDate, setCurrentDate] = useState(getToday());
   ));
   const wantsWorkspaceMembershipList = Boolean(rId && !ghostTenant && ['schedule', 'published', 'events', 'team'].includes(activeTabState));
 
-  const users = useLiveCollection('users', rId, { enabled: wantsFullRosterData, limitCount: activeTabState === 'team' ? 220 : (wantsToday ? 75 : 90), fallbackLimitCount: 40, debugLabel: `app:${activeTabState}:roster` });
+  const users = useLiveCollection('users', rId, { enabled: wantsFullRosterData, limitCount: activeTabState === 'team' ? 220 : 90, fallbackLimitCount: 40, debugLabel: `app:${activeTabState}:roster` });
   const workspaceMembers = useLiveCollection('workspaceMembers', rId, { enabled: wantsWorkspaceMembershipList, limitCount: activeTabState === 'team' ? 220 : 60, fallbackLimitCount: 30, debugLabel: `app:${activeTabState}:workspace-members` });
   // Low-cost presence: no Firestore live heartbeat/listener. When a manager/team screen needs
   // last-seen hints, read tiny Realtime Database summaries instead of users/livePresence documents.
@@ -1180,7 +1180,7 @@ const [currentDate, setCurrentDate] = useState(getToday());
   }, [activeTimeOffRequests, timeOffHistoryRequests]);
   const timePunches = useLiveCollection('timePunches', rId, { enabled: !!rId && wantsLaborData, whereClauses: [['date','>=', activeTabState === 'labor' ? laborPunchWindowStart : lightPunchWindowStart], ['date','<=', activeTabState === 'labor' ? laborPunchWindowEnd : lightPunchWindowEnd]], orderByField: 'date', orderDirection: 'desc', limitCount: activeTabState === 'labor' ? 180 : 35, fallbackLimitCount: 30 });
   const inventoryItems = useLiveCollection('inventoryItems', rId, { enabled: !!rId && wantsInventoryData, limitCount: activeTabState === 'inventory' ? 180 : 55, fallbackLimitCount: 35, debugLabel: `app:${activeTabState}:inventory` });
-  const menuDependencies = useLiveCollection('menuDependencies', rId, { enabled: !!rId && wantsMenuData, limitCount: activeTabState === 'menu-intelligence' ? 500 : 80, fallbackLimitCount: 60, debugLabel: `app:${activeTabState}:menu-dependencies-summary` });
+  const menuDependencies = useLiveCollection('menuDependencies', rId, { enabled: !!rId && wantsMenuData, limitCount: activeTabState === 'menu-intelligence' ? 500 : 120, fallbackLimitCount: 80 });
   const maintenanceLogs = useLiveCollection('maintenanceLogs', rId, { enabled: !!rId && wantsMaintenanceData, whereClauses: [], limitCount: activeTabState === 'maintenance' ? 80 : 20, fallbackLimitCount: 20, debugLabel: `app:${activeTabState}:maintenance` });
   const prepItems = useLiveCollection('prepItems', rId, { enabled: !!rId && wantsPrepData, whereClauses: [['date','in', prepDateWindow]], limitCount: 80, fallbackLimitCount: 35 });
   const tasks = useLiveCollection('tasks', rId, { enabled: !!rId && wantsPrepData, limitCount: 75, fallbackLimitCount: 35 });
@@ -1476,7 +1476,7 @@ if (liveAppUser && clientData) {
     liveAppUser.isSuperAdmin || liveAppUser.isOwner || liveAppUser.owner || liveAppUser.accountOwner ||
     liveAppUser.workspaceOwner || liveAppUser.isAdmin || liveAppUser.permissions?.settings || liveAppUser.permissions?.team
   ));
-  const restaurantAdminAlerts = useLiveCollection('restaurantAdminAlerts', rId, { enabled: !!rId && canSeeRestaurantAdminAlerts && (activeTabState === 'today' || activeTabState === 'godmode' || activeTabState === 'back-office'), limitCount: activeTabState === 'today' ? 8 : 30, fallbackLimitCount: activeTabState === 'today' ? 8 : 10, debugLabel: `app:${activeTabState}:restaurant-admin-alerts-summary` });
+  const restaurantAdminAlerts = useLiveCollection('restaurantAdminAlerts', rId, { enabled: !!rId && canSeeRestaurantAdminAlerts && (activeTabState === 'today' || activeTabState === 'godmode' || activeTabState === 'back-office'), limitCount: 30, fallbackLimitCount: 10 });
 
   const rawDemoFeatures = liveAppUser?.demoFeatures || {};
   const displayClientFeatures = isDemoMode ? {

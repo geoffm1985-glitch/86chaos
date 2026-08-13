@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   Award,
   BookOpen,
@@ -16,7 +16,7 @@ import {
   Upload,
   UserCheck
 } from 'lucide-react';
-import { collection, doc, getCountFromServer, query, serverTimestamp, setDoc, updateDoc, where } from 'firebase/firestore';
+import { collection, doc, serverTimestamp, setDoc, updateDoc } from 'firebase/firestore';
 import { deleteObject, getBlob, ref, uploadBytesResumable } from 'firebase/storage';
 import {
   T,
@@ -458,46 +458,12 @@ export const TabHrTraining = ({ appUser, users = [], addToast }) => {
   const [certModal, setCertModal] = useState(false);
   const [performanceModal, setPerformanceModal] = useState(false);
   const [busyId, setBusyId] = useState('');
-  const [overviewCounts, setOverviewCounts] = useState({});
 
-  useEffect(() => {
-    if (!restaurantId) {
-      setOverviewCounts({});
-      return undefined;
-    }
-    let cancelled = false;
-    const scopedQuery = (collectionName, clauses = []) => query(
-      collection(db, collectionName),
-      where('restaurantId', '==', restaurantId),
-      ...clauses
-    );
-    const readCount = async (collectionName, clauses = []) => {
-      const snap = await getCountFromServer(scopedQuery(collectionName, clauses));
-      return Number(snap.data()?.count || 0);
-    };
-    Promise.all([
-      readCount('trainingManuals', manager ? [] : [where('status', '==', 'Published')]),
-      readCount('trainingAcknowledgements', manager ? [] : [where('userId', '==', uid)]),
-      readCount('hrOnboardingTasks', manager ? [] : [where('userId', '==', uid)]),
-      readCount('hrOnboardingTasks', manager ? [where('completed', '==', true)] : [where('userId', '==', uid), where('completed', '==', true)]),
-      readCount('hrCertifications', manager ? [] : [where('userId', '==', uid)])
-    ]).then(([publishedManualsCount, acknowledgementsCount, onboardingCount, onboardingCompletedCount, certificationsCount]) => {
-      if (!cancelled) setOverviewCounts({ publishedManualsCount, acknowledgementsCount, onboardingCount, onboardingCompletedCount, certificationsCount, measuredAt: new Date().toISOString() });
-    }).catch(error => {
-      if (!cancelled) {
-        console.warn('HR overview aggregate counts unavailable; falling back to loaded rows.', error?.message || error);
-        setOverviewCounts(prev => ({ ...prev, countError: String(error?.message || error || '').slice(0, 240) }));
-      }
-    });
-    return () => { cancelled = true; };
-  }, [restaurantId, manager, uid]);
-
-  const wantsHrOverview = activeTab === 'overview';
-  const manuals = useLiveCollection('trainingManuals', restaurantId, { enabled: !!restaurantId && (wantsHrOverview || activeTab === 'manuals'), whereClauses: manager ? [] : [['status', '==', 'Published']], limitCount: activeTab === 'manuals' ? 150 : 50, fallbackLimitCount: manager ? 50 : 0, debugLabel: `hr:${activeTab}:manuals` });
-  const acknowledgements = useLiveCollection('trainingAcknowledgements', restaurantId, { enabled: !!restaurantId && (wantsHrOverview || activeTab === 'manuals'), whereClauses: manager ? [] : [['userId', '==', uid]], limitCount: activeTab === 'manuals' ? (manager ? 500 : 120) : 80, fallbackLimitCount: manager ? 80 : 0, debugLabel: `hr:${activeTab}:acknowledgements` });
-  const onboardingTasks = useLiveCollection('hrOnboardingTasks', restaurantId, { enabled: !!restaurantId && (wantsHrOverview || activeTab === 'onboarding'), whereClauses: manager ? [] : [['userId', '==', uid]], limitCount: activeTab === 'onboarding' ? 500 : 80, fallbackLimitCount: manager ? 80 : 0, debugLabel: `hr:${activeTab}:onboarding` });
-  const certifications = useLiveCollection('hrCertifications', restaurantId, { enabled: !!restaurantId && (wantsHrOverview || activeTab === 'certifications'), whereClauses: manager ? [] : [['userId', '==', uid]], limitCount: activeTab === 'certifications' ? 300 : 80, fallbackLimitCount: manager ? 80 : 0, debugLabel: `hr:${activeTab}:certifications` });
-  const performanceNotes = useLiveCollection('hrPerformanceNotes', restaurantId, { enabled: !!restaurantId && manager && activeTab === 'performance', limitCount: 300, fallbackLimitCount: 300, debugLabel: 'hr:performance-notes' });
+  const manuals = useLiveCollection('trainingManuals', restaurantId, { enabled: !!restaurantId, whereClauses: manager ? [] : [['status', '==', 'Published']], limitCount: 150, fallbackLimitCount: manager ? 150 : 0 });
+  const acknowledgements = useLiveCollection('trainingAcknowledgements', restaurantId, { enabled: !!restaurantId, whereClauses: manager ? [] : [['userId', '==', uid]], limitCount: 500, fallbackLimitCount: manager ? 500 : 0 });
+  const onboardingTasks = useLiveCollection('hrOnboardingTasks', restaurantId, { enabled: !!restaurantId, whereClauses: manager ? [] : [['userId', '==', uid]], limitCount: 500, fallbackLimitCount: manager ? 500 : 0 });
+  const certifications = useLiveCollection('hrCertifications', restaurantId, { enabled: !!restaurantId, whereClauses: manager ? [] : [['userId', '==', uid]], limitCount: 300, fallbackLimitCount: manager ? 300 : 0 });
+  const performanceNotes = useLiveCollection('hrPerformanceNotes', restaurantId, { enabled: !!restaurantId && manager, limitCount: 300, fallbackLimitCount: 300 });
 
   const publishedManuals = useMemo(() => sortNewest(manuals.filter(item => item.status === 'Published')), [manuals]);
   const visibleManuals = useMemo(() => manager ? sortNewest(manuals) : publishedManuals, [manager, manuals, publishedManuals]);
@@ -621,9 +587,9 @@ export const TabHrTraining = ({ appUser, users = [], addToast }) => {
       {activeTab === 'overview' && <>
         <SectionHeader eyebrow="At a glance" title={manager ? 'People readiness dashboard' : 'My training dashboard'} text={manager ? 'See training publication, acknowledgment, onboarding, and certification readiness without exposing confidential records.' : 'Review your required manuals, onboarding progress, and certification records.'} />
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <MetricCard icon={<BookOpen size={20} />} label="Published manuals" value={overviewCounts.publishedManualsCount ?? publishedManuals.length} detail="Current documents available to employees" />
-          <MetricCard icon={<CheckCircle2 size={20} />} label={manager ? 'Acknowledgments' : 'My acknowledgments'} value={manager ? (overviewCounts.acknowledgementsCount ?? acknowledgements.length) : acknowledgedIds.size} detail={manager ? 'Immutable employee attestations recorded' : `${Math.max(0, (overviewCounts.publishedManualsCount ?? publishedManuals.length) - acknowledgedIds.size)} current manual(s) still to acknowledge`} />
-          <MetricCard icon={<ClipboardCheck size={20} />} label={manager ? 'Onboarding complete' : 'My onboarding'} value={`${overviewCounts.onboardingCompletedCount ?? completedTasks}/${overviewCounts.onboardingCount ?? onboardingTasks.length}`} detail="Checklist items completed" />
+          <MetricCard icon={<BookOpen size={20} />} label="Published manuals" value={publishedManuals.length} detail="Current documents available to employees" />
+          <MetricCard icon={<CheckCircle2 size={20} />} label={manager ? 'Acknowledgments' : 'My acknowledgments'} value={manager ? acknowledgements.length : acknowledgedIds.size} detail={manager ? 'Immutable employee attestations recorded' : `${Math.max(0, publishedManuals.length - acknowledgedIds.size)} current manual(s) still to acknowledge`} />
+          <MetricCard icon={<ClipboardCheck size={20} />} label={manager ? 'Onboarding complete' : 'My onboarding'} value={`${completedTasks}/${onboardingTasks.length}`} detail="Checklist items completed" />
           <MetricCard icon={<Award size={20} />} label="Certification attention" value={expiredCerts + expiringCerts} detail={`${expiredCerts} expired • ${expiringCerts} expiring within 60 days`} />
         </div>
         <div className="grid gap-4 lg:grid-cols-2">

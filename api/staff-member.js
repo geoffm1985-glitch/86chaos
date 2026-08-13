@@ -6,7 +6,6 @@ const {
   membershipMatchesTargetIdentity,
   isActiveWorkspaceMembership
 } = require('./_delete-user-cleanup-logic.cjs');
-const { changeAccountLoginEmail, normalizeEmail: normalizeAccountEmail, AccountEmailChangeError } = require('./_account-email-change.cjs');
 
 function initAdmin(req) {
   return getAdminAppForRequest(req, { requireCredentials: true });
@@ -417,39 +416,10 @@ module.exports = async function handler(req, res) {
       const legacyMatch = targetUser.restaurantId === ctx.restaurantId;
       if (!memberSnap.exists && !legacyMatch && !ctx.isSuperAdmin) return res.status(404).json({ error: 'That staff member is not part of this workspace.' });
       const current = memberSnap.exists ? memberSnap.data() || {} : targetUser;
-      const submittedEmail = normalizeAccountEmail(body.email || '');
-      const currentEmail = normalizeAccountEmail(current.email || targetUser.email || current.emailLower || targetUser.emailLower || '');
-      let emailChangeResult = { emailChanged: false, newEmail: currentEmail || submittedEmail };
-      if (submittedEmail && submittedEmail !== currentEmail) {
-        emailChangeResult = await changeAccountLoginEmail({
-          db,
-          auth,
-          ctx: { ...ctx, targetUid },
-          targetRef,
-          targetDocId: targetUid,
-          targetUid,
-          targetUser,
-          currentMembership: current,
-          currentEmail,
-          submittedEmail,
-          writeAudit: (actionName, detail) => writeAudit(
-            db,
-            ctx,
-            actionName,
-            `${targetUid}/${ctx.restaurantId}`,
-            `Login email changed from ${detail.oldEmail} to ${detail.newEmail} by ${ctx.callerEmail}. Memberships synchronized: ${detail.membershipCount}. Sessions revoked: ${detail.sessionsRevoked ? 'yes' : 'no'}.`,
-            ctx.restaurantId
-          )
-        });
-      }
-      const targetEmailFallback = normalizeAccountEmail(current.email || targetUser.email || '');
-      const submittedFallbackEmail = normalizeAccountEmail(body.email || '');
-      const existingEmailFallback = currentEmail || targetEmailFallback || submittedFallbackEmail;
-      const canonicalEmail = emailChangeResult.emailChanged ? emailChangeResult.newEmail : (submittedEmail || existingEmailFallback);
-      const membershipPayload = buildMembershipPayload(ctx, targetUid, { ...body, email: canonicalEmail }, current);
+      const membershipPayload = buildMembershipPayload(ctx, targetUid, { ...body, email: current.email || targetUser.email || body.email }, current);
       const { membershipId } = await upsertAccountAndMembership(db, targetUid, { name: membershipPayload.name, email: membershipPayload.email, phone: membershipPayload.phone, photoURL: membershipPayload.photoURL }, membershipPayload);
       await writeAudit(db, ctx, membershipPayload.wage !== undefined ? 'STAFF_WAGE_UPDATE' : 'STAFF_UPDATE', `${targetUid}/${ctx.restaurantId}`, `${membershipPayload.name || targetUid} was updated by ${ctx.callerEmail}.`);
-      return res.status(200).json({ ok: true, action: 'update', uid: targetUid, membershipId, staff: { id: targetUid, ...membershipPayload }, emailChanged: emailChangeResult.emailChanged === true, sessionsRevoked: emailChangeResult.sessionsRevoked, sessionWarning: emailChangeResult.sessionWarning || '' });
+      return res.status(200).json({ ok: true, action: 'update', uid: targetUid, membershipId, staff: { id: targetUid, ...membershipPayload } });
     }
 
     if (action === 'deactivate' || action === 'delete') {
@@ -552,11 +522,10 @@ module.exports = async function handler(req, res) {
   } catch (err) {
     console.error('staff-member API error:', err);
     const message = String(err?.message || 'Staff save failed.');
-    const status = Number(err?.status || err?.httpStatus || 0) || (/missing firebase id token|missing.*token|unauthorized/i.test(message) ? 401
-      : /conflict|already assigned|already active/i.test(message) ? 409
-      : /invalid email|valid email|required|unsupported|invalid json|too large/i.test(message) ? 400
-      : /permission|owner|admin|forbidden|member|workspace|protected/i.test(message) ? 403
-      : 500);
+    const status = /missing firebase id token|missing.*token|unauthorized/i.test(message) ? 401
+      : /invalid.*token|permission|owner|admin|forbidden|member|workspace|already active/i.test(message) ? 403
+      : /required|unsupported|invalid json|too large/i.test(message) ? 400
+      : 500;
     return res.status(status).json({ error: status >= 500 ? 'Staff save failed.' : message });
   }
 };
