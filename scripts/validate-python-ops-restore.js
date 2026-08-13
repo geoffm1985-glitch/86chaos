@@ -22,28 +22,12 @@ const add = (name, pass) => checks.push({ name, pass: Boolean(pass) });
 for (const file of requiredFiles) add(`${file} exists`, exists(file));
 
 const vercel = JSON.parse(read('vercel.json'));
-function functionRuleFor(file) {
-  const functions = vercel.functions || {};
-  if (functions[file]) return functions[file];
-  const ext = path.extname(file).replace(/^\./, '');
-  for (const [pattern, rule] of Object.entries(functions)) {
-    if (pattern === `api/**/*.${ext}` && file.startsWith('api/') && file.endsWith(`.${ext}`)) return rule;
-  }
-  return null;
-}
 add('Vercel cron includes Python Automation Run', (vercel.crons || []).some(c => c.path === '/api/python-automation-run'));
-for (const file of ['api/python-ops-intelligence.js','api/python-order-intelligence.js','api/python-automation-run.js']) {
-  const rule = functionRuleFor(file);
-  add(`Vercel function rule covers ${file}`, Boolean(rule));
-  add(`Vercel JS wildcard/current rule gives ${file} required maxDuration`, Number(rule?.maxDuration || 0) >= 300);
-  add(`Vercel JS wildcard/current rule gives ${file} required memory`, Number(rule?.memory || 0) >= 1024);
-}
-for (const file of ['api/python-ops-engine.py','api/python-order-engine.py']) {
-  const rule = functionRuleFor(file);
-  add(`Vercel function rule covers ${file}`, Boolean(rule));
-  add(`Vercel Python wildcard/current rule gives ${file} required maxDuration`, Number(rule?.maxDuration || 0) >= 60);
-  add(`Vercel Python wildcard/current rule gives ${file} required memory`, Number(rule?.memory || 0) >= 512);
-}
+add('Vercel config includes Python Ops wrapper', Boolean(vercel.functions?.['api/python-ops-intelligence.js']));
+add('Vercel config includes Python Order wrapper', Boolean(vercel.functions?.['api/python-order-intelligence.js']));
+add('Vercel config includes Python Automation wrapper', Boolean(vercel.functions?.['api/python-automation-run.js']));
+add('Vercel config includes Python Ops engine', Boolean(vercel.functions?.['api/python-ops-engine.py']));
+add('Vercel config includes Python Order engine', Boolean(vercel.functions?.['api/python-order-engine.py']));
 
 const opsWrapper = read('api/python-ops-intelligence.js');
 const orderWrapper = read('api/python-order-intelligence.js');

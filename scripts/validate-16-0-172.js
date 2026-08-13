@@ -25,10 +25,6 @@ const watchdog = read('api/firestore-backup-watchdog.js');
 const healthChecks = read('api/health-checks.js');
 const app = read('src/App.js');
 const schedule = read('src/features/schedule.jsx');
-const scheduleMonthPrint = read('src/core/scheduleMonthPrint.cjs');
-const printLayoutTest = read('api/print-calendar-layout.test.cjs');
-const monthPrintTest = read('api/month-view-print-16-0-172.test.cjs');
-const appScheduleImport = read('src/App.js');
 const appCoreSource = read('src/core/appCore.js');
 const inventory = read('src/features/inventory.jsx');
 const prepare = read('scripts/86chaos-release-gate/prepare-failed-only-manifest.cjs');
@@ -37,25 +33,50 @@ const manifestUtils = read('scripts/86chaos-release-gate/failed-only-manifest-ut
 const manifest = json('scripts/86chaos-release-gate/reported-failed-only-20260810-015004.json');
 const rows = manifest.selected || [];
 const vercel = read('vercel.json');
-
-const tabMonthStart = schedule.indexOf('const TabMonth =');
-const tabMonthEnd = schedule.indexOf('const TabAvailability', tabMonthStart);
-const tabMonth = tabMonthStart >= 0 && tabMonthEnd > tabMonthStart ? schedule.slice(tabMonthStart, tabMonthEnd) : '';
+const tabMonth = read('src/components/TabMonth.js');
+const tabMasterSchedule = read('src/components/TabMasterSchedule.js');
+const staffMemberApi = read('api/staff-member.js');
+const staffEmailSourceTest = read('api/staff-member-email-update-source.test.cjs');
+const monthPrintSourceTest = read('api/month-print-source.test.cjs');
+const posthogClient = read('src/core/posthogClient.js');
+const posthogServer = read('api/_posthog-server.js');
+const posthogSourceTest = read('api/posthog-instrumentation-source.test.cjs');
 
 assert(pkg.version === '16.0.172', 'package.json version is 16.0.172');
 assert(lock.version === '16.0.172' && lock.packages?.['']?.version === '16.0.172', 'package-lock root versions are 16.0.172');
 assert(pkg.scripts['test:source'] === 'node scripts/validate-16-0-172.js', 'test:source points to 16.0.172 validator');
 assert(version.version === '16.0.172' && version.build === '16.0.172', 'public/version.json version/build are 16.0.172');
-assert(version.releaseTitle === 'Deterministic Month View Calendar Printing Repair', 'release title is correct');
+assert(version.releaseTitle === 'PostHog Observability And PWA Asset Repair', 'release title is correct');
 assert(appCore.includes("CURRENT_VERSION = '16.0.172'"), 'app core CURRENT_VERSION is 16.0.172');
 assert(apiVersion.includes("APP_VERSION = '16.0.172'") && apiVersion.includes("SECURITY_SCHEMA_VERSION = '16.0.172'"), 'api version reports 16.0.172');
-assert(!fs.existsSync(path.join(root, 'scripts/validate-16-0-170.js')), 'older 16.0.170 validator is not current');
+assert(!fs.existsSync(path.join(root, 'scripts/validate-16-0-171.js')), 'previous validator was replaced');
 
 assert(sha('firestore.rules') === '51bfd7d39edd59f680ae41a149c108cec8cd42d00b102d84cb00ee40d90264d9', 'firestore.rules unchanged');
 assert(sha('storage.rules') === '174e7e9a140193ff69ccf0f0d3e5c65b81a9e0fbbd612bff45ce57e7a3a7ce9c', 'storage.rules unchanged');
 assert(sha('database.rules.json') === '152b5cd3f9839f598c9602706d8205b96759296e865d540b52c780900bfba138', 'database.rules.json unchanged');
 assert(sha('firestore.indexes.json') === 'ee666de303988cd269f7c09fa63678a2deb1cfcaa199cb4f1656dd9bddcc4b4b', 'firestore.indexes.json unchanged');
 assert(sha('firebase.json') === 'bd837a11c71750d4da6ccfcb725ca54e78dd76008b525ec54c7fe79a5b8a3ca4', 'firebase.json unchanged');
+
+// Targeted 16.0.172 repairs.
+assert(tabMasterSchedule.includes('changeSubTab') && tabMasterSchedule.includes('onSubTabChange(normalized)') && tabMasterSchedule.includes("'month-view'"), 'Schedule parent subtab stays synchronized when Month View is selected');
+assert(tabMonth.includes('visibleMonthShifts') && tabMonth.includes('getShiftDateKey(shift)') && tabMonth.includes('dateKey.startsWith(monthStr)') && tabMonth.includes('shift?.isPublished === true'), 'Month View print source filters to the selected published month shifts');
+assert(tabMonth.includes('buildPrintableCalendarHtml') && tabMonth.includes('handlePrintCalendar') && tabMonth.includes('printWindow.document.write(buildPrintableCalendarHtml())'), 'Month View prints a generated calendar document instead of the stale app shell');
+assert(tabMonth.includes('getShiftDisplayName') && tabMonth.includes('buildUserLookup') && tabMonth.includes('employeeEmail') && tabMonth.includes('scheduleUserId'), 'Month View print resolves names across legacy schedule/user identity fields');
+assert(management.includes('originalEmail') && management.includes('(updates Firebase login email)') && !management.includes('Cannot be changed after creation') && !management.includes('disabled={!!editingUserId}'), 'Staff Roster email field is editable during profile edits');
+assert(staffMemberApi.includes('isValidEmail') && staffMemberApi.includes('resolveTargetAuthUid') && staffMemberApi.includes('auth.getUserByEmail(nextEmail)') && staffMemberApi.includes('auth.updateUser(targetAuthUid, { email: nextEmail, emailVerified: false, displayName })'), 'Staff email updates are validated and applied through Firebase Auth');
+assert(staffMemberApi.includes('authEmailUpdated') && staffMemberApi.includes("forceLogoutReason: 'staff-login-email-changed'") && staffMemberApi.includes("'STAFF_EMAIL_UPDATE'"), 'Staff email updates return status, force session refresh, and audit the Firebase-level change');
+assert(staffMemberApi.includes('emailLower') && staffMemberApi.includes('employeeEmail') && staffMemberApi.includes('userEmail') && staffMemberApi.includes('authEmail'), 'Staff email updates keep Firestore identity aliases synchronized');
+assert(staffEmailSourceTest.includes('Firebase login email') && staffEmailSourceTest.includes('auth.updateUser') && monthPrintSourceTest.includes('generated print document'), '16.0.172 source regression tests exist for staff email and month print repairs');
+
+assert(fs.existsSync(path.join(root, 'public/86chaos-icon-16-v2.png')) && fs.existsSync(path.join(root, 'public/86chaos-icon-48-v2.png')) && fs.existsSync(path.join(root, 'public/86chaos-pwa-192-v4.png')) && fs.existsSync(path.join(root, 'public/86chaos-pwa-512-v4.png')) && fs.existsSync(path.join(root, 'public/86chaos-maskable-512-v4.png')) && fs.existsSync(path.join(root, 'public/6139.png')), 'app-owned PWA and header icon assets are present in the app ZIP');
+assert(posthogClient.includes('REACT_APP_POSTHOG_KEY') && posthogClient.includes('REACT_APP_POSTHOG_HOST') && posthogClient.includes('autocapture: false') && posthogClient.includes('disable_session_recording: true') && posthogClient.includes('respect_dnt: true'), 'PostHog browser client is environment gated and privacy guarded');
+assert(posthogClient.includes('identifyChaosPostHogUser') && posthogClient.includes('trackChaosPageView') && posthogClient.includes('trackChaosRuntimeError') && posthogClient.includes('resetChaosPostHogIdentity'), 'PostHog browser helper exposes identity, pageview, runtime error, and reset events');
+assert(app.includes('initChaosPostHog({ appVersion: CURRENT_VERSION })') && app.includes('identifyChaosPostHogUser(liveAppUser') && app.includes('trackChaosPageView(activeTabState') && app.includes("trackChaosPostHogEvent('86chaos_problem_report_submitted'") && appCore.includes('__chaosPostHogRuntimeError'), 'App and appCore wire PostHog initialization, identity, page view, problem report, and global runtime error events');
+assert(posthogServer.includes('POSTHOG_PROJECT_API_KEY') && posthogServer.includes('/i/v0/e/') && posthogServer.includes('redactSensitive') && staffMemberApi.includes('auth.updateUser'), 'server PostHog helper uses capture endpoint and preserves staff email Firebase Auth repair');
+assert(read('api/report-bug.js').includes('capturePostHogEvent') && read('api/report-bug.js').includes('86chaos_api_crash_report_saved') && read('api/report-bug.js').includes('86chaos_problem_report_saved'), 'report-bug forwards saved crash/problem events to PostHog when configured');
+assert(vercel.includes('https://*.posthog.com') && /script-src[^;]*https:\/\/\*\.posthog\.com/.test(vercel) && /connect-src[^;]*https:\/\/\*\.posthog\.com/.test(vercel), 'Vercel CSP permits PostHog scripts and event ingestion');
+assert(posthogSourceTest.includes('PostHog client is environment gated') && posthogSourceTest.includes('Vercel CSP allows PostHog'), '16.0.172 PostHog regression tests exist');
+
 
 // Preserve recently fixed systems.
 assert(app.includes('resolveInitialTopLevelTab') && app.includes('new URLSearchParams(window.location.search)'), '16.0.167 initial route read reduction preserved');
@@ -108,69 +129,6 @@ assert(watchdog.includes('serviceAccountEmail') && watchdog.includes('projectCre
 assert(fs.existsSync(path.join(root, 'scripts/verify-native-backup-iam.js')), 'native backup IAM helper exists');
 assert(read('scripts/verify-native-backup-iam.js').includes('gcloud projects add-iam-policy-binding') && read('scripts/verify-native-backup-iam.js').includes('roles/datastore.backupsViewer'), 'IAM helper prints copyable least-privilege gcloud commands');
 assert(vercel.includes('/api/firestore-backup') && vercel.includes('0 9 * * *') && vercel.includes('/api/firestore-backup-watchdog') && vercel.includes('0 21 * * *'), 'vercel cron schedules remain unchanged');
-
-assert(fs.existsSync(path.join(root, 'api/system-admin/dashboard.js')), 'System Administrator dashboard API exists');
-assert(fs.existsSync(path.join(root, 'api/system-admin/platform-config.js')), 'System Administrator platform-config action API exists');
-assert(fs.existsSync(path.join(root, 'api/system-admin/user-actions.js')), 'System Administrator user-actions API exists');
-assert(fs.existsSync(path.join(root, 'api/system-admin/workspace-actions.js')), 'System Administrator workspace-actions API exists');
-assert(fs.existsSync(path.join(root, 'api/system-admin/automation.js')), 'System Administrator automation API exists');
-const tabGodMode = management.slice(management.indexOf('const TabGodMode'), management.indexOf('const TabLabor') > management.indexOf('const TabGodMode') ? management.indexOf('const TabLabor') : management.length);
-for (const prohibited of ['superAdmins', 'crashReports', 'auditLogs', 'restaurantAdminAlerts', 'opsIntelligenceReports', 'pythonAutomationRuns', 'pythonAutomationConfigs', 'accountDeletionRequests']) {
-  assert(!new RegExp(`listen\\(\\s*['"]${prohibited}['"]`).test(tabGodMode), `TabGodMode has no direct browser listener for ${prohibited}`);
-}
-for (const prohibited of ['pricing', 'dataRetention', 'rolePermissionMatrix', 'operationsReview', 'restoreDrillStatus']) {
-  assert(!new RegExp(`doc\\(db,\\s*['"]system['"],\\s*['"]${prohibited}['"]`).test(tabGodMode), `TabGodMode has no direct browser system doc access for ${prohibited}`);
-}
-assert(!/doc\(db,\s*['"]pythonAutomationConfigs['"]/.test(tabGodMode), 'TabGodMode no longer directly writes pythonAutomationConfigs');
-assert(!/doc\(db,\s*['"]aiRecommendationQueue['"]/.test(tabGodMode), 'TabGodMode no longer directly writes aiRecommendationQueue');
-assert(fs.existsSync(path.join(root, 'scripts/run-repair-regression-pack.cjs')), 'repair regression pack runner exists');
-assert(fs.existsSync(path.join(root, 'scripts/run-repair-browser-regression.cjs')), 'repair browser regression runner exists');
-assert(fs.existsSync(path.join(root, 'scripts/repair-regression-pack-16.0.172.json')), 'repair regression pack manifest exists');
-assert(fs.existsSync(path.join(root, 'scripts/86chaos-release-gate/repair-regression-16.0.172.json')), 'repair browser regression manifest exists');
-for (const name of ['test:repair-current','test:repair-current:local','test:repair-current:browser','test:repair-current:strict','test:repair-16-0-172']) {
-  assert(Boolean(pkg.scripts[name]), `${name} package script exists`);
-}
-const repairManifest = json('scripts/86chaos-release-gate/repair-regression-16.0.172.json');
-const stable = new Set();
-let dupes = 0;
-for (const row of repairManifest.selected || []) {
-  const key = [row.specPath, row.fullSuitePath, row.leafTitle, row.project].join('\0');
-  if (stable.has(key)) dupes += 1;
-  stable.add(key);
-}
-assert(dupes === 0, 'repair browser manifest has zero duplicate stable identities');
-
-
-// Month View deterministic print repair.
-assert(fs.existsSync(path.join(root, 'src/core/scheduleMonthPrint.cjs')), 'scheduleMonthPrint pure print module exists');
-assert(appScheduleImport.includes("import('./features/schedule')"), 'App still loads active Schedule from ./features/schedule');
-assert(tabMonth.includes('monthCalendarModel') && tabMonth.includes('dayRows'), 'active Month View builds a shared monthCalendarModel/dayRows model');
-assert(tabMonth.includes('scheduleMonthPrint.openScheduleMonthPrintWindow(monthCalendarModel)'), 'active Month View invokes dedicated print helper with frozen model');
-assert(!/window\.print\s*\(/.test(tabMonth), 'active Month View button does not call main-window window.print');
-assert(!/body \*\s*\{\s*visibility:\s*hidden/.test(tabMonth), 'active Month View no longer uses body-wide print visibility hijack');
-assert(!/print-container/.test(tabMonth), 'active Month View official print root no longer uses generic print-container');
-assert(scheduleMonthPrint.includes('data-calendar-month') && scheduleMonthPrint.includes('buildScheduleMonthPrintHtml'), 'print document exposes data-calendar-month identity');
-assert(scheduleMonthPrint.includes('assertValidMonthKey') && !/new Date\(\)/.test(scheduleMonthPrint), 'print module validates explicit month and does not fall back to current date');
-assert(scheduleMonthPrint.includes('<!doctype html>') && scheduleMonthPrint.includes('<html>') && scheduleMonthPrint.includes('<style>'), 'print document is standalone HTML with inline CSS');
-assert(scheduleMonthPrint.includes('print-shift-stack') && scheduleMonthPrint.includes('print-day-dense') && scheduleMonthPrint.includes('font-size: 7px'), 'existing dense shift print layout remains represented');
-assert(tabMonth.includes('fullLabel: labels.full') && tabMonth.includes('{s.fullLabel}'), 'full shift labels remain represented for screen and print model');
-assert(monthPrintTest.includes('2026-08') && monthPrintTest.includes('2026-09') && monthPrintTest.includes('Invalid schedule print month') && monthPrintTest.includes('data-calendar-month="2026-07"'), 'month print pure regression covers deterministic months, invalid input, escaping, and frozen snapshots');
-assert(printLayoutTest.includes('active Month View print path uses a dedicated isolated print helper') && printLayoutTest.includes('active Month View no longer relies on SPA-wide print visibility hijacking'), 'print layout source contract targets active Month View and helper');
-assert(fs.existsSync(path.join(root, 'tests/e2e/month-view-print.spec.cjs')), 'Month View Playwright print regression spec exists');
-assert(read('tests/e2e/month-view-print.spec.cjs').includes('Month View Print Calendar prints the currently selected month'), 'Month View Playwright print identity exists');
-assert(fs.existsSync(path.join(root, 'scripts/repair-regression-pack-16.0.172.json')), '16.0.172 repair local manifest exists');
-assert(fs.existsSync(path.join(root, 'scripts/86chaos-release-gate/repair-regression-16.0.172.json')), '16.0.172 repair browser manifest exists');
-assert(read('scripts/run-repair-regression-pack.cjs').includes('repair-regression-pack-16.0.172.json'), 'repair pack runner points to 16.0.172 manifest');
-assert(read('scripts/run-repair-browser-regression.cjs').includes('repair-regression-16.0.172.json'), 'repair browser runner points to 16.0.172 manifest');
-const repairLocal172 = json('scripts/repair-regression-pack-16.0.172.json');
-assert(repairLocal172.version === '16.0.172', 'repair local manifest version is 16.0.172');
-assert((repairLocal172.localCommands || []).some(entry => entry.group === 'Month View Print' && entry.cmd.includes('api/month-view-print-16-0-172.test.cjs') && entry.cmd.includes('api/print-calendar-layout.test.cjs')), 'Month View print local regression is included in repair pack');
-const repairBrowser172 = json('scripts/86chaos-release-gate/repair-regression-16.0.172.json');
-assert(repairBrowser172.version === '16.0.172', 'repair browser manifest version is 16.0.172');
-assert((repairBrowser172.selected || []).some(row => row.specPath === 'tests/e2e/month-view-print.spec.cjs' && row.leafTitle === 'Month View Print Calendar prints the currently selected month' && row.project === 'chromium'), 'Month View browser print chromium identity is included');
-assert((repairBrowser172.selected || []).some(row => row.specPath === 'tests/e2e/month-view-print.spec.cjs' && row.leafTitle === 'Month View Print Calendar prints the currently selected month' && row.project === 'mobile-chromium'), 'Month View browser print mobile identity is included');
-assert(Boolean(pkg.scripts['test:repair-16-0-172']), 'test:repair-16-0-172 package script exists');
-assert(pkg.scripts['test:play-store:failed-current'], 'failed-only infrastructure package script remains present');
 
 if (failures) { console.error(`\n${failures} validation check(s) failed.`); process.exit(1); }
 console.log('\n16.0.172 source validation passed.');

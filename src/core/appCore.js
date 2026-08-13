@@ -1306,6 +1306,17 @@ if (typeof window !== 'undefined' && !window.crashCatcherAttached) {
         const oldest = window.__chaosCrashFingerprints.keys().next().value;
         if (oldest) window.__chaosCrashFingerprints.delete(oldest);
       }
+      try {
+        window.__chaosPostHogRuntimeError?.(payload.error || payload.reason || message, {
+          category: chunkUrl ? 'chunk-failure' : 'global-runtime-error',
+          source: payload.source || 'runtime_error',
+          activeTab: new URLSearchParams(window.location.search).get('tab') || '',
+          workspaceId: '',
+          appVersion: CURRENT_VERSION,
+          route: window.location.pathname + window.location.search,
+          chunkUrl
+        });
+      } catch (_) {}
       secureFetch('/api/report-bug', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

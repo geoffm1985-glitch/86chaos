@@ -87,8 +87,16 @@ const isScheduleDateComplete = (dateKey, shiftsForDate = [], now = new Date()) =
   return dayShifts.length > 0 && dayShifts.every(s => isShiftInPast(s, now));
 };
 
-const TabMasterSchedule = ({ currentDate, appUser, users, shifts, shiftSwaps, timeOffRequests, events, addToast, db, Modal, T, getToday, getMonthStr, formatDisplayDate, formatShortTime, getDaysInMonth, formatDisplayMonth, getHoliday, clientData = null }) => {
-  const [subTab, setSubTab] = useState('my-schedule');
+const VISIBLE_SCHEDULE_SUBTABS = ['my-schedule', 'full-schedule', 'month-view', 'trade-board', 'time-off'];
+const normalizeVisibleScheduleSubTab = (value = 'my-schedule') => VISIBLE_SCHEDULE_SUBTABS.includes(String(value || '')) ? String(value || '') : 'my-schedule';
+
+const TabMasterSchedule = ({ currentDate, appUser, users, shifts, shiftSwaps, timeOffRequests, events, addToast, db, Modal, T, getToday, getMonthStr, formatDisplayDate, formatShortTime, getDaysInMonth, formatDisplayMonth, getHoliday, clientData = null, initialSubTab = 'my-schedule', onSubTabChange = null }) => {
+  const [subTab, setSubTab] = useState(() => normalizeVisibleScheduleSubTab(initialSubTab));
+  const changeSubTab = (nextSubTab) => {
+    const normalized = normalizeVisibleScheduleSubTab(nextSubTab);
+    setSubTab(normalized);
+    if (typeof onSubTabChange === 'function') onSubTabChange(normalized);
+  };
   const monthStr = getMonthStr(currentDate);
   
   // --- TIME CLOCK LOGIC ---
@@ -271,7 +279,7 @@ const TabMasterSchedule = ({ currentDate, appUser, users, shifts, shiftSwaps, ti
        await updateDoc(doc(db, "shiftSwaps", swap.id), { status: 'claimed', claimedBy: appUser.id });
        await addDoc(collection(db, "events"), { date: new Date().toISOString(), title: `✅ Shift Claimed! ${appUser.name.split(' ')[0]} picked up a ${swap.role} shift on ${formatDisplayDate(swap.date)}.`, type: 'note', author: 'System Alert', isImportant: false, restaurantId: appUser.restaurantId });
        addToast('Claimed', 'Shift successfully added to your schedule.');
-       setSubTab('my-schedule'); 
+       changeSubTab('my-schedule'); 
     } catch (e) {
        addToast('Error', e.message);
     }
@@ -299,7 +307,7 @@ const TabMasterSchedule = ({ currentDate, appUser, users, shifts, shiftSwaps, ti
 
       <div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-2 border-b border-[#2A353D] mb-4 pb-2">
         {['my-schedule', 'full-schedule', 'month-view', 'time-off'].map((tab) => (
-          <button key={tab} onClick={() => setSubTab(tab)} className={`px-2 sm:px-4 py-2 text-[10px] sm:text-xs font-black rounded-xl uppercase tracking-widest transition-all sm:flex-1 ${subTab === tab ? `${T.grad} text-slate-900 shadow-md` : 'bg-[#1A2126] text-slate-400 hover:text-white'}`}>
+          <button key={tab} onClick={() => changeSubTab(tab)} className={`px-2 sm:px-4 py-2 text-[10px] sm:text-xs font-black rounded-xl uppercase tracking-widest transition-all sm:flex-1 ${subTab === tab ? `${T.grad} text-slate-900 shadow-md` : 'bg-[#1A2126] text-slate-400 hover:text-white'}`}>
             {tab.replace('-', ' ')}
           </button>
         ))}
@@ -346,12 +354,12 @@ const TabMasterSchedule = ({ currentDate, appUser, users, shifts, shiftSwaps, ti
           </div>
           
           <div className="grid grid-cols-2 gap-3">
-            <button onClick={() => setSubTab('trade-board')} className={`${T.card} p-4 flex flex-col items-center justify-center gap-2 hover:bg-[#2A353D] transition-colors relative`}>
+            <button onClick={() => changeSubTab('trade-board')} className={`${T.card} p-4 flex flex-col items-center justify-center gap-2 hover:bg-[#2A353D] transition-colors relative`}>
               <Repeat size={24} className={T.copper}/>
               <span className="text-[10px] font-bold uppercase tracking-wider text-slate-300">Trade Board</span>
               {availableSwaps.length > 0 && <span className="absolute top-2 right-2 bg-red-500 text-white text-[9px] font-black w-5 h-5 rounded-full flex items-center justify-center shadow-lg">{availableSwaps.length}</span>}
             </button>
-            <button onClick={() => setSubTab('time-off')} className={`${T.card} p-4 flex flex-col items-center justify-center gap-2 hover:bg-[#2A353D] transition-colors`}>
+            <button onClick={() => changeSubTab('time-off')} className={`${T.card} p-4 flex flex-col items-center justify-center gap-2 hover:bg-[#2A353D] transition-colors`}>
               <Calendar size={24} className={T.copper}/>
               <span className="text-[10px] font-bold uppercase tracking-wider text-slate-300">Request Off</span>
             </button>
@@ -404,7 +412,7 @@ const TabMasterSchedule = ({ currentDate, appUser, users, shifts, shiftSwaps, ti
           <div className={`${T.card} overflow-hidden`}>
             <div className={`bg-[#12161A] p-4 border-b ${T.border} flex justify-between items-center`}>
               <h3 className={`font-black text-lg flex items-center gap-2 ${T.copper}`}><Repeat size={18} /> Trade Board</h3>
-              <button onClick={() => setSubTab('my-schedule')} className="text-xs font-bold text-slate-400 hover:text-white border border-[#2A353D] px-3 py-1.5 rounded-lg">Back to Dashboard</button>
+              <button onClick={() => changeSubTab('my-schedule')} className="text-xs font-bold text-slate-400 hover:text-white border border-[#2A353D] px-3 py-1.5 rounded-lg">Back to Dashboard</button>
             </div>
             
             <div className={`divide-y ${T.border}`}>

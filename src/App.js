@@ -15,6 +15,7 @@ import { WHOAMI_STATES, PLATFORM_ADMIN_ACCESS_STATES, classifyWhoamiResponse, me
 import { FEATURE_KEYS } from './config/plans';
 import { LoginScreen } from './features/auth';
 import * as runtimeReportStateModule from './core/runtimeReportState.cjs';
+import { initChaosPostHog, identifyChaosPostHogUser, resetChaosPostHogIdentity, trackChaosPageView, trackChaosPostHogEvent, trackChaosRuntimeError } from './core/posthogClient';
 
 const resolveCommonJsModule = (moduleValue) => {
   const candidate = moduleValue?.default && typeof moduleValue.default === 'object' ? moduleValue.default : moduleValue;
@@ -143,6 +144,16 @@ const reportRuntimeErrorWithDeliveryRules = async (kind, error, extra = {}) => {
   const context = getRuntimeReportContext(error, extra, kind);
   const fingerprint = buildRuntimeReportFingerprint(kind, error, context);
   const fallbackReportId = normalizeReportId(extra.fallbackReportId) || createFallbackReportId(kind === 'chunk-failure' ? 'chunk' : 'section');
+  trackChaosRuntimeError(error, {
+    kind,
+    category: kind,
+    source: extra.source || '',
+    activeTab: context.activeTab,
+    workspaceId: context.workspaceId,
+    appVersion: context.appVersion,
+    route: context.route,
+    chunkUrl: context.chunkUrl
+  });
   const diagnosticBase = createRuntimeDiagnostic({
     fallbackReportId,
     status: 'caught',
@@ -793,6 +804,7 @@ export default function App() {
   const [isWorkspaceSwitcherOpen, setIsWorkspaceSwitcherOpen] = useState(false);
   const [workspaceMembershipRefreshKey, setWorkspaceMembershipRefreshKey] = useState(0);
   const clearSessionAndLogout = React.useCallback(() => {
+    resetChaosPostHogIdentity();
     clearTenantListenerCache({ all: true });
     try { localStorage.removeItem('86chaosUser'); } catch (_) {}
     try { sessionStorage.removeItem('86chaosUser'); } catch (_) {}
@@ -807,6 +819,10 @@ export default function App() {
   const [serverAdminCheck, setServerAdminCheck] = useState({ status: WHOAMI_STATES.IDLE });
   const [serverAdminRetryKey, setServerAdminRetryKey] = useState(0);
   const [authRestoreState, setAuthRestoreState] = useState(() => ({ status: appUser?.sessionCached ? WHOAMI_STATES.PENDING : 'ready', uid: auth?.currentUser?.uid || '' }));
+
+  useEffect(() => {
+    initChaosPostHog({ appVersion: CURRENT_VERSION });
+  }, []);
   const [chunkRecoveryNotice, setChunkRecoveryNotice] = useState(() => {
     const state = readChunkRecoveryState();
     if (!state || state.appVersion !== CURRENT_VERSION) return null;
@@ -1313,6 +1329,7 @@ const [currentDate, setCurrentDate] = useState(getToday());
 
   const isDemoMode = !!liveAppUser?.isDemo;
   const sessionEmailForAdmin = String(liveAppUser?.email || appUser?.email || auth.currentUser?.email || '').toLowerCase();
+
   const platformAdminAccessState = resolvePlatformAdminAccessState({ user: liveAppUser || appUser || {}, verification: serverAdminCheck, masterAdminEmail: MASTER_ADMIN_EMAIL });
   const serverSaysSuperAdmin = platformAdminAccessState.verified === true;
   const localProfileHasSystemAdminMarker = Boolean(
@@ -1623,6 +1640,18 @@ if (liveAppUser && clientData) {
     liveAppUser = { ...liveAppUser, id: displayUsers[0].id, name: 'Demo Employee', role: displayUsers[0].role || 'Demo Employee', isAdmin: false, isSuperAdmin: false, permissions: { help: true } };
   }
   const displayClientData = isDemoMode && clientData ? { ...clientData, ownerEmail: 'Hidden for demo', ownerPhone: 'Hidden for demo', address: 'Hidden for demo', businessAddress: 'Hidden for demo', systemSettings: { tips: true, ...(clientData.systemSettings || {}), address: 'Hidden for demo', geofenceAddress: 'Hidden for demo' } } : clientData;
+
+  useEffect(() => {
+    if (!liveAppUser?.id && !auth?.currentUser?.uid) return;
+    identifyChaosPostHogUser(liveAppUser || {}, {
+      authUid: auth?.currentUser?.uid || liveAppUser?.id || '',
+      restaurantId: rId || '',
+      appVersion: CURRENT_VERSION,
+      isDemoMode,
+      plan: displayClientData?.selectedFutureTier || displayClientData?.plan || displayClientData?.subscriptionPlan || ''
+    });
+  }, [liveAppUser?.id, liveAppUser?.role, liveAppUser?.isAdmin, liveAppUser?.isSuperAdmin, liveAppUser?.workspaceOwner, auth?.currentUser?.uid, rId, isDemoMode, displayClientData?.selectedFutureTier, displayClientData?.plan, displayClientData?.subscriptionPlan]);
+
   const planAccess = usePlanAccess(liveAppUser, displayClientData);
   const mfaEnvValue = String(process.env.REACT_APP_MFA_ENFORCE_ELEVATED_ROLES || '').toLowerCase().trim();
   const mfaFrontendEnforced = ['true', '1', 'yes', 'enforce'].includes(mfaEnvValue) || displayClientData?.systemSettings?.mfaEnforceElevatedRoles === true || displayClientData?.securityCenter?.mfaEnforceElevatedRoles === true;
@@ -1976,6 +2005,16 @@ if (liveAppUser && clientData) {
   const stableSetActiveTab = useCallback((tab) => setActiveTabRef.current?.(tab), []);
 
   useEffect(() => {
+    trackChaosPageView(activeTabState, {
+      restaurantId: rId || '',
+      role: liveAppUser?.role || '',
+      isAdmin: liveAppUser?.isAdmin === true,
+      isSuperAdmin: liveAppUser?.isSuperAdmin === true,
+      appVersion: CURRENT_VERSION
+    });
+  }, [activeTabState, rId, liveAppUser?.role, liveAppUser?.isAdmin, liveAppUser?.isSuperAdmin]);
+
+  useEffect(() => {
     if (typeof document === 'undefined') return undefined;
     const safeLabelRe = /\b(open|close|view|details|back|next|previous|today|tomorrow|week|month|filter|search|clear|show|hide|expand|collapse|menu|settings|help|refresh|retry|print|copy|download|export|jump|calendar|schedule|inventory|recipe|message|maintenance|team|financial|event|reminder|tab)\b|^[×x✕✖+\-]$/i;
     const mutationLabelRe = /\b(add|assign|save|create|delete|remove|publish|submit|send|post|reply|upload|scan|clock in|clock out|start break|end break|approve|deny|archive|restore|reset|repair|run|apply|generate|sync|reconnect|enable|disable|log|complete|resolve|reopen|order|backup|import|push|notify|test push|force|clear cache|update stock|deduct)\b/i;
@@ -2240,6 +2279,12 @@ What I clicked / expected:
         const errBody = await res.json().catch(() => ({}));
         throw new Error(errBody.error || 'Could not send problem report.');
       }
+      trackChaosPostHogEvent('86chaos_problem_report_submitted', {
+        category: problemModal.category || 'Bug / Error',
+        active_tab: activeTabState || '',
+        workspace_id: liveAppUser?.restaurantId || rId || '',
+        app_version: CURRENT_VERSION
+      });
       setProblemModal({ open: false, title: '', message: '', category: 'Bug / Error' });
       setProblemText('');
       addToast('Report Sent', 'Support report sent with device diagnostics.');

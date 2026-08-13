@@ -338,6 +338,7 @@ const TabTeam = ({ users, appUser, clientData, addToast }) => {
   const canEditWages = Boolean(canChooseWageAccess || appUser?.permissions?.wageEdit === true || wageEditAccess.includes(appUser?.id));
   const [name, setName] = useState(''); 
   const [email, setEmail] = useState(''); 
+  const [originalEmail, setOriginalEmail] = useState('');
   const [phone, setPhone] = useState(''); 
   const [role, setRole] = useState(''); 
   const [wage, setWage] = useState(''); 
@@ -374,7 +375,7 @@ const DEFAULT_PERMISSIONS = { schedule: false, events: false, ops: false, invent
   const generateTempPass = () => Math.random().toString(36).slice(-6);
 
   const resetForm = () => {
-    setName(''); setEmail(''); setPhone(''); setWage(''); setPhotoURL(''); setRole(roles[0] || ''); setIsAdmin(false); setPerms(DEFAULT_PERMISSIONS); setEditingUserId(null);
+    setName(''); setEmail(''); setOriginalEmail(''); setPhone(''); setWage(''); setPhotoURL(''); setRole(roles[0] || ''); setIsAdmin(false); setPerms(DEFAULT_PERMISSIONS); setEditingUserId(null);
   };
 
   const buildLoginText = (login) => login ? `Welcome to 86 Chaos!\n\nApp: https://app.86chaos.com\n\nName: ${login.name}\nEmail: ${login.email}\nTemporary Password: ${login.password}\n\nThis temporary password is shown one time. Please log in and change it.` : '';
@@ -385,7 +386,7 @@ const DEFAULT_PERMISSIONS = { schedule: false, events: false, ops: false, invent
 
   const handleEditClick = (u) => {
     if (!canManageTeam) return addToast('Read Only', 'Staff Roster is view-only for regular staff.');
-    setName(u.name); setEmail(u.email); setPhone(u.phone || ''); setWage(u.wage || ''); setPhotoURL(u.photoURL || ''); setRole(u.role || roles[0] || ''); setIsAdmin(u.isAdmin || false); setPerms({ ...DEFAULT_PERMISSIONS, ...(u.permissions || {}) }); setEditingUserId(u.id);
+    setName(u.name); const rosterEmail = u.email || u.employeeEmail || u.emailLower || ''; const authUid = u.authUid || u.uid || u.userId || u.accountUserId || u.id; setEmail(rosterEmail); setOriginalEmail(String(rosterEmail || '').toLowerCase().trim()); setPhone(u.phone || ''); setWage(u.wage || ''); setPhotoURL(u.photoURL || ''); setRole(u.role || roles[0] || ''); setIsAdmin(u.isAdmin || false); setPerms({ ...DEFAULT_PERMISSIONS, ...(u.permissions || {}) }); setEditingUserId(authUid);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -415,7 +416,7 @@ const DEFAULT_PERMISSIONS = { schedule: false, events: false, ops: false, invent
             });
             const result = await response.json().catch(() => ({}));
             if (!response.ok || result?.ok === false) throw new Error(result?.error || 'Staff profile save failed.');
-            addToast('Updated', `${name}'s profile has been updated.`);
+            addToast(result?.authEmailUpdated ? 'Login Email Updated' : 'Updated', result?.authEmailUpdated ? `${name}'s Firebase login email was updated.` : `${name}'s profile has been updated.`);
             resetForm();
         } catch(err) {
           const msg = String(err?.message || 'Permission denied.');
@@ -564,8 +565,9 @@ return (
           <div><label className={T.label}>Name</label><input type="text" value={name} onChange={e=>setName(e.target.value)} className={T.input} required placeholder="e.g. Gordon Ramsay" /></div>
           
           <div>
-            <label className={T.label}>Email {editingUserId && <span className="text-slate-500 lowercase normal-case ml-1">(Cannot be changed after creation)</span>}</label>
-            <input type="email" value={email} onChange={e=>setEmail(e.target.value)} disabled={!!editingUserId} className={`${T.input} ${editingUserId ? 'opacity-50 cursor-not-allowed' : ''}`} required />
+            <label className={T.label}>Email {editingUserId && <span className="text-amber-400 lowercase normal-case ml-1">(updates Firebase login email)</span>}</label>
+            <input type="email" value={email} onChange={e=>setEmail(e.target.value)} className={T.input} required />
+            {editingUserId && originalEmail && email.toLowerCase().trim() !== originalEmail && <p className="text-[10px] font-bold text-amber-300 mt-1">Saving will change this employee's Firebase Auth sign-in email from {originalEmail} to {email.toLowerCase().trim()}.</p>}
           </div>
 
           
@@ -4133,7 +4135,6 @@ firebase deploy --only functions --project YOUR_PRODUCTION_PROJECT_ID
   const [restaurantRosterState, setRestaurantRosterState] = useState({ source: 'loading', loading: false, refreshing: false, error: '', fetchedAt: '', projectId: '', count: 0 });
   const [systemAdminPeopleState, setSystemAdminPeopleState] = useState({ source: 'idle', loading: false, refreshing: false, error: '', fetchedAt: '', projectId: '', count: 0 });
   const systemAdminPeopleRequestGenerationRef = useRef(0);
-  const systemAdminDashboardRequestGenerationRef = useRef(0);
   const [superAdmins, setSuperAdmins] = useState([]);
   const [allUsers, setAllUsers] = useState([]);
   const [globalLogoutBusy, setGlobalLogoutBusy] = useState(false);
@@ -4288,6 +4289,14 @@ const [editingRest, setEditingRest] = useState(null);
   }, []);
 
   useEffect(() => {
+    let cancelled = false;
+    getDoc(doc(db, 'system', 'dataRetention')).then(snapshot => {
+      if (!cancelled && snapshot.exists()) setRetentionConfig({ id: snapshot.id, ...snapshot.data() });
+    }).catch(err => console.warn('Data retention config load failed', err?.message || err));
+    return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
     const selected = restaurants.find(r => r.id === brandingWorkspaceId);
     if (!selected) return;
     const sysSettings = selected.systemSettings || {};
@@ -4320,6 +4329,21 @@ const [editingRest, setEditingRest] = useState(null);
     prepMobileAdmin();
     window.addEventListener('orientationchange', prepMobileAdmin);
     return () => window.removeEventListener('orientationchange', prepMobileAdmin);
+  }, []);
+
+  useEffect(() => {
+    let canceled = false;
+    getDoc(doc(db, 'system', 'rolePermissionMatrix')).then(snap => {
+      if (canceled || !snap.exists()) return;
+      const saved = snap.data()?.matrix;
+      if (saved && typeof saved === 'object') {
+        const defaults = buildDefaultRoleMatrix();
+        const merged = {};
+        ROLE_MANAGER_ROLES.forEach(role => { merged[role] = { ...(defaults[role] || {}), ...(saved[role] || {}) }; });
+        setRolePermissionMatrix(merged);
+      }
+    }).catch(err => console.warn('Role matrix load failed', err?.message || err));
+    return () => { canceled = true; };
   }, []);
 
   const loadSecurityCenter = async ({ silent = false } = {}) => {
@@ -4499,79 +4523,6 @@ const LEGACY_JULY_2026_SCHEDULE = [
     return result;
   };
 
-
-  const postSystemAdminAction = async (url, payload = {}) => {
-    const response = await secureFetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
-    });
-    const data = await response.json().catch(() => ({}));
-    if (!response.ok || data?.ok === false) throw new Error(data?.error || `System Administrator action failed (${response.status}).`);
-    return data;
-  };
-
-  const applySystemAdminDashboardPayload = (json = {}) => {
-    const core = json.core || {};
-    if (core.superAdmins) setSuperAdmins(Array.isArray(core.superAdmins) ? core.superAdmins : []);
-    if (core.pricing !== undefined) setTierPrices(normalizeTierPriceMap(core.pricing || {}, defaultTierPrices));
-    if (core.dataRetention !== undefined) setRetentionConfig(core.dataRetention || null);
-    if (core.rolePermissionMatrix !== undefined) {
-      const saved = core.rolePermissionMatrix?.matrix;
-      if (saved && typeof saved === 'object') {
-        const defaults = buildDefaultRoleMatrix();
-        const merged = {};
-        ROLE_MANAGER_ROLES.forEach(role => { merged[role] = { ...(defaults[role] || {}), ...(saved[role] || {}) }; });
-        setRolePermissionMatrix(merged);
-      }
-    }
-    if (core.operationsReview !== undefined) setOperationsReview(core.operationsReview || null);
-
-    const forensics = json.forensics || {};
-    if (forensics.crashReports) setCrashLogs(Array.isArray(forensics.crashReports.rows) ? forensics.crashReports.rows.map(row => normalizeCrashReport(row.id, row, [])) : []);
-    if (forensics.auditLogs) {
-      const rows = Array.isArray(forensics.auditLogs.rows) ? forensics.auditLogs.rows.map(row => normalizeAuditLog(row.id, row, [])) : [];
-      setAuditLogs(rows);
-      setTotalInstalls(rows.filter(log => log.action === 'APP_INSTALLED').length);
-    }
-
-    const ops = json.ops || {};
-    if (ops.restaurantAdminAlerts) setAutomationQueue(Array.isArray(ops.restaurantAdminAlerts.rows) ? ops.restaurantAdminAlerts.rows : []);
-    if (ops.opsIntelligenceReports) setAutomationReports(Array.isArray(ops.opsIntelligenceReports.rows) ? ops.opsIntelligenceReports.rows : []);
-    if (ops.pythonAutomationRuns) setAutomationRuns(Array.isArray(ops.pythonAutomationRuns.rows) ? ops.pythonAutomationRuns.rows : []);
-    if (ops.pythonAutomationConfigs) setAutomationConfigs(Array.isArray(ops.pythonAutomationConfigs.rows) ? ops.pythonAutomationConfigs.rows : []);
-
-    const security = json.security || {};
-    if (security.accountDeletionRequests) setAccountDeletionRequests(Array.isArray(security.accountDeletionRequests.rows) ? security.accountDeletionRequests.rows : []);
-  };
-
-  const loadSystemAdminDashboardSections = async (sections = ['core'], { refreshing = false } = {}) => {
-    const requestedSections = [...new Set((Array.isArray(sections) ? sections : [sections]).filter(Boolean))];
-    const generation = systemAdminDashboardRequestGenerationRef.current + 1;
-    systemAdminDashboardRequestGenerationRef.current = generation;
-    requestedSections.forEach(section => setAdminDataErrors(prev => {
-      if (!prev[`server:${section}`]) return prev;
-      const next = { ...prev };
-      delete next[`server:${section}`];
-      return next;
-    }));
-    try {
-      const params = new URLSearchParams({ sections: requestedSections.join(',') });
-      const response = await secureFetch(`/api/system-admin/dashboard?${params.toString()}`);
-      const json = await response.json().catch(() => ({}));
-      if (!response.ok || json?.ok === false) throw new Error(json?.error || `System Administrator dashboard load failed (${response.status}).`);
-      if (systemAdminDashboardRequestGenerationRef.current !== generation) return null;
-      applySystemAdminDashboardPayload(json);
-      return json;
-    } catch (error) {
-      if (systemAdminDashboardRequestGenerationRef.current !== generation) return null;
-      const message = error?.message || 'Authoritative System Administrator data could not load.';
-      requestedSections.forEach(section => setAdminDataErrors(prev => ({ ...prev, [`server:${section}`]: message })));
-      if (!refreshing) console.warn('System Administrator server data load failed:', message);
-      return null;
-    }
-  };
-
   const handlePushBanner = async (e) => {
     e.preventDefault();
     if (!bannerText.trim()) return addToast('Error', 'Banner text required.');
@@ -4607,12 +4558,9 @@ const LEGACY_JULY_2026_SCHEDULE = [
     e.preventDefault();
     if (!rawInspectorId.trim()) return;
     try {
-      const params = new URLSearchParams({ collection: rawInspectorCollection, documentId: rawInspectorId.trim() });
-      const response = await secureFetch(`/api/system-admin/raw-doc?${params.toString()}`);
-      const payload = await response.json().catch(() => ({}));
-      if (response.status === 404) return addToast('Not Found', 'No document found with that ID in that collection.');
-      if (!response.ok || payload?.ok === false) throw new Error(payload?.error || 'Inspector request failed.');
-      setRawInspectorData(payload.data || null);
+      const docSnap = await getDoc(doc(db, rawInspectorCollection, rawInspectorId.trim()));
+      if (docSnap.exists()) setRawInspectorData({ id: docSnap.id, ...docSnap.data() });
+      else addToast('Not Found', 'No document found with that ID in that collection.');
     } catch(err) { addToast('Error', err.message); }
   };
 
@@ -4704,18 +4652,62 @@ const LEGACY_JULY_2026_SCHEDULE = [
     }
   };
 
-  // Fetch System Administrator platform data through server-authorized APIs.
+  // Fetch Global Intelligence with section-scoped, bounded listeners; 16.0.28 admin pagination uses bounded server-side pages.
   useEffect(() => {
-    const dashboardSections = ['core'];
-    if (['overview', 'push', 'forensics', 'support'].includes(subTab)) dashboardSections.push('forensics');
-    if (['overview', 'ops'].includes(subTab)) dashboardSections.push('ops');
-    if (['security', 'users'].includes(subTab)) dashboardSections.push('security');
+    const unsubs = [];
+    const noteLoadError = (key, err) => {
+      console.warn(`System Administrator data load failed: ${key}`, err?.message || err);
+      setAdminDataErrors(prev => ({ ...prev, [key]: err?.message || 'Permission denied or network blocked.' }));
+    };
+    const clearLoadError = (key) => setAdminDataErrors(prev => {
+      if (!prev[key]) return prev;
+      const next = { ...prev };
+      delete next[key];
+      return next;
+    });
+    const mapDocs = (collectionName, normalizer = null) => (snap) => {
+      const diagnostics = [];
+      const rows = snap.docs.map(d => {
+        try {
+          const data = d.data();
+          return normalizer ? normalizer(d.id, data, diagnostics) : { id: d.id, ...data };
+        } catch (err) {
+          diagnostics.push(safeDiagnostic(collectionName, d.id, '*', err?.message || 'Malformed live document skipped.'));
+          return null;
+        }
+      }).filter(Boolean);
+      diagnostics.forEach(item => noteMalformedAdminData(item.collection, item.id, item.field, item.reason));
+      return rows;
+    };
+    const listen = (key, q, setter, mapper = mapDocs(key)) => {
+      const unsub = onSnapshot(q, snap => {
+        clearLoadError(key);
+        try { setter(mapper(snap)); } catch (err) { setter([]); noteLoadError(key, err); }
+      }, err => noteLoadError(key, err));
+      unsubs.push(unsub);
+    };
+    const listenDoc = (key, refObj, setter, normalizer = null, fallback = null) => {
+      const unsub = onSnapshot(refObj, docSnap => {
+        clearLoadError(key);
+        try {
+          const raw = docSnap.exists() ? { id: docSnap.id, ...docSnap.data() } : fallback;
+          setter(normalizer ? normalizer(raw, fallback) : raw);
+        } catch (err) {
+          setter(fallback);
+          noteLoadError(key, err);
+        }
+      }, err => { setter(fallback); noteLoadError(key, err); });
+      unsubs.push(unsub);
+    };
+
+    listen('superAdmins', query(collection(db, 'users'), where('isSuperAdmin', '==', true), firestoreLimit(25)), setSuperAdmins);
+    listenDoc('pricing', doc(db, 'system', 'pricing'), setTierPrices, (raw) => normalizeTierPriceMap(raw, defaultTierPrices), defaultTierPrices);
+    listenDoc('restoreDrillStatus', doc(db, 'system', 'restoreDrillStatus'), setRestoreDrillStatus);
+    listenDoc('operationsReview', doc(db, 'system', 'operationsReview'), setOperationsReview);
 
     if (['overview', 'tenants', 'ops', 'push'].includes(subTab)) {
       loadSystemAdminWorkspaceRoster({ refreshing: false });
     }
-
-    loadSystemAdminDashboardSections(dashboardSections, { refreshing: false });
 
     if (SYSTEM_ADMIN_GLOBAL_PEOPLE_TABS.has(subTab)) {
       loadSystemAdminPeopleRoster({ refreshing: false });
@@ -4726,22 +4718,46 @@ const LEGACY_JULY_2026_SCHEDULE = [
       setSystemAdminPeopleState(prev => ({ ...prev, source: 'idle', loading: false, refreshing: false, error: '' }));
     }
 
-    if (!dashboardSections.includes('forensics')) {
+    if (['overview', 'push', 'forensics'].includes(subTab)) {
+      listen('crashReports', query(collection(db, 'crashReports'), orderBy('time', 'desc'), firestoreLimit(subTab === 'push' ? 50 : 15)), setCrashLogs, mapDocs('crashReports', normalizeCrashReport));
+    } else {
       setCrashLogs([]);
+    }
+
+    if (subTab === 'forensics') {
+      listen('auditLogs', query(collection(db, 'auditLogs'), orderBy('timestamp', 'desc'), firestoreLimit(100)), rows => {
+        setAuditLogs(rows);
+        setTotalInstalls(rows.filter(log => log.action === 'APP_INSTALLED').length);
+      }, mapDocs('auditLogs', normalizeAuditLog));
+    } else {
       setAuditLogs([]);
       setTotalInstalls(0);
     }
-    if (!dashboardSections.includes('ops')) {
+
+    if (['overview', 'ops'].includes(subTab)) {
+      listen('restaurantAdminAlerts', query(collection(db, 'restaurantAdminAlerts'), where('status', '==', 'open'), orderBy('updatedAt', 'desc'), firestoreLimit(40)), setAutomationQueue);
+    } else {
       setAutomationQueue([]);
+    }
+
+    if (subTab === 'ops') {
+      listen('opsIntelligenceReports', query(collection(db, 'opsIntelligenceReports'), orderBy('createdAt', 'desc'), firestoreLimit(50)), setAutomationReports);
+      listen('pythonAutomationRuns', query(collection(db, 'pythonAutomationRuns'), orderBy('startedAt', 'desc'), firestoreLimit(50)), setAutomationRuns);
+      listen('pythonAutomationConfigs', query(collection(db, 'pythonAutomationConfigs'), firestoreLimit(120)), setAutomationConfigs);
+    } else {
       setAutomationReports([]);
       setAutomationRuns([]);
       setAutomationConfigs([]);
     }
-    if (!dashboardSections.includes('security')) {
+
+    if (['security', 'users'].includes(subTab)) {
+      listen('accountDeletionRequests', query(collection(db, 'accountDeletionRequests'), orderBy('updatedAt', 'desc'), firestoreLimit(50)), setAccountDeletionRequests);
+    } else {
       setAccountDeletionRequests([]);
     }
-  }, [subTab]);
 
+    return () => { unsubs.forEach(unsub => { try { unsub(); } catch (_) {} }); };
+  }, [subTab]);
 
 
 
@@ -4839,9 +4855,16 @@ The workspace will be disabled now. The retention function will remove its data 
 
     addToast('Scheduling Deletion', `Disabling ${tenantName} and starting the 30-day recovery window...`);
     try {
-      await postSystemAdminAction('/api/system-admin/workspace-actions', {
-        action: 'schedule-delete',
-        workspaceId: tenantId
+      const deletedAt = Timestamp.now();
+      const deletionScheduledFor = Timestamp.fromMillis(deletedAt.toMillis() + (30 * 24 * 60 * 60 * 1000));
+      await updateDoc(doc(db, "restaurants", tenantId), {
+        isActive: false,
+        archived: true,
+        deleted_at: deletedAt,
+        deletionScheduledFor,
+        deletionStatus: 'scheduled',
+        deletedBy: appUser?.email || appUser?.id || 'system-administrator',
+        updatedAt: new Date().toISOString()
       });
       addToast('Deletion Scheduled', `${tenantName} is disabled and will be permanently deleted after 30 days unless restored.`);
     } catch (err) {
@@ -4852,9 +4875,16 @@ The workspace will be disabled now. The retention function will remove its data 
   const handleRestoreTenant = async (tenantId, tenantName) => {
     if (!window.confirm(`Restore ${tenantName} and cancel its scheduled deletion?`)) return;
     try {
-      await postSystemAdminAction('/api/system-admin/workspace-actions', {
-        action: 'restore-deleted',
-        workspaceId: tenantId
+      await updateDoc(doc(db, "restaurants", tenantId), {
+        isActive: true,
+        archived: false,
+        deleted_at: deleteField(),
+        deletionScheduledFor: deleteField(),
+        deletionStatus: deleteField(),
+        deletedBy: deleteField(),
+        restoredAt: new Date().toISOString(),
+        restoredBy: appUser?.email || appUser?.id || 'system-administrator',
+        updatedAt: new Date().toISOString()
       });
       addToast('Workspace Restored', `${tenantName} is active again and will not be deleted.`);
     } catch (err) {
@@ -4872,12 +4902,19 @@ The workspace will be disabled now. The retention function will remove its data 
 
 Old clients cannot reveal their original creation time, so they will be marked as backfilled today.`)) return;
 
+    const stamp = new Date().toISOString();
+    let count = 0;
     try {
-      const result = await postSystemAdminAction('/api/system-admin/workspace-actions', {
-        action: 'stamp-missing-created-at',
-        workspaceIds: missing.map(r => r.id)
-      });
-      addToast('Stamped', `Added created timestamps to ${result.count || 0} client record(s).`);
+      for (const r of missing) {
+        await updateDoc(doc(db, "restaurants", r.id), {
+          createdAt: stamp,
+          createdAtEstimated: true,
+          createdAtBackfilledAt: stamp,
+          createdAtSource: 'admin_backfill'
+        });
+        count++;
+      }
+      addToast('Stamped', `Added created timestamps to ${count} client record(s).`);
     } catch (err) {
       addToast('Error', err.message);
     }
@@ -4915,8 +4952,30 @@ Old clients cannot reveal their original creation time, so they will be marked a
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'Failed to deploy tenant.');
 
-      // deploy-tenant owns the authoritative createdAt stamp server-side.
+      // Stamp new client records with an exact creation date/time.
+      // If the backend route already did it, this safely leaves the same value in place.
+      try {
+        const deployedAt = data.createdAt || new Date().toISOString();
+        const returnedRestId = data.restaurantId || data.tenantId || data.restId || data.id;
+        const deployStamp = {
+          createdAt: deployedAt,
+          createdAtSource: data.createdAt ? 'api_deploy_tenant' : 'app_deploy_confirmed',
+          createdByEmail: appUser?.email || MASTER_ADMIN_EMAIL,
+          createdByName: appUser?.name || 'System Administrator'
+        };
 
+        if (returnedRestId) {
+          await setDoc(doc(db, "restaurants", returnedRestId), deployStamp, { merge: true });
+        } else {
+          const restSnap = await getDocs(query(collection(db, "restaurants"), where("ownerEmail", "==", oEmail.toLowerCase().trim())));
+          const targetDoc = restSnap.docs
+            .map(d => ({ id: d.id, ...d.data() }))
+            .find(r => (r.name || '').trim().toLowerCase() === rName.trim().toLowerCase() || !getClientCreatedAt(r));
+          if (targetDoc?.id) await setDoc(doc(db, "restaurants", targetDoc.id), deployStamp, { merge: true });
+        }
+      } catch (stampErr) {
+        console.warn('Client timestamp stamp failed:', stampErr);
+      }
       setCreatedWorkspaceLogin({ kind:'workspace', restaurantName: rName.trim(), ownerName: oName.trim(), email: oEmail.toLowerCase().trim(), phone: oPhone.trim(), password: tPass, restaurantId: data.restaurantId || data.tenantId || data.restId || data.id || '' });
       
       addToast('Tenant Deployed', `${rName} is now live.`); 
@@ -4931,7 +4990,9 @@ Old clients cannot reveal their original creation time, so they will be marked a
   const handleUpdateTenant = async (e) => {
     e.preventDefault();
     try {
-      const beforeData = editingRest || {};
+      const restRef = doc(db, "restaurants", editingRest.id);
+      const beforeSnap = await getDoc(restRef);
+      const beforeData = beforeSnap.exists() ? beforeSnap.data() : {};
       const rawSubscription = editingRest.subscription || {};
       const resolvedDefaults = resolveSubscription(editingRest, appUser);
       const selectedPlanId = normalizePlanId(rawSubscription.planId || editingRest.planId || resolvedDefaults.planId || 'smart_kitchen');
@@ -4983,16 +5044,12 @@ Old clients cannot reveal their original creation time, so they will be marked a
         before: { name: beforeData.name, ownerName: beforeData.ownerName, ownerEmail: beforeData.ownerEmail, ownerPhone: beforeData.ownerPhone, systemSettings: beforeData.systemSettings || {}, planId: beforeData.planId, planType: beforeData.planType, billingStatus: beforeData.billingStatus, subscription: beforeData.subscription || {}, customPrice: beforeData.customPrice, trialDays: beforeData.trialDays, isActive: beforeData.isActive, isReadOnly: beforeData.isReadOnly, features: beforeData.features || {}, labs: beforeData.labs || {} },
         after: cleanUpdatePayload
       });
-      await postSystemAdminAction('/api/system-admin/workspace-actions', {
-        action: 'update-workspace',
-        workspaceId: editingRest.id,
-        update: cleanUpdatePayload,
-        historyEntry
-      });
+      const existingHistory = Array.isArray(beforeData.settingsHistory) ? beforeData.settingsHistory.slice(-24) : [];
+      await updateDoc(restRef, sanitizeForFirestore({ ...cleanUpdatePayload, settingsHistory: [...existingHistory, historyEntry] }));
       const beforeSubText = JSON.stringify(resolveSubscription(beforeData, appUser));
       const afterSubText = JSON.stringify(resolveSubscription(cleanUpdatePayload, appUser));
       if (beforeSubText !== afterSubText) {
-        console.info('Subscription plan changed through server workspace action.', editingRest.id);
+        await logAudit(appUser, 'SUBSCRIPTION_PLAN_CHANGED', `restaurants/${editingRest.id}`, `Plan/subscription updated for ${editingRest.name || editingRest.id}. Before: ${beforeSubText.slice(0, 600)} After: ${afterSubText.slice(0, 600)}`);
       }
       addToast('Saved', 'Client workspace configuration updated and history snapshot saved.');
       setEditingRest(null);
@@ -5003,22 +5060,22 @@ Old clients cannot reveal their original creation time, so they will be marked a
 
   const handleExportData = async (rest) => {
     try {
-      const usersList = allUsers.filter(u => getSystemAdminUserWorkspaceIds(u).includes(rest.id));
+      const usersSnap = await getDocs(query(collection(db, 'users'), where("restaurantId", "==", rest.id)));
+      const usersList = usersSnap.docs.map(d => d.data());
       if (usersList.length === 0) return addToast('Empty', 'No users found for this workspace.');
 
       let csv = "Name,Email,Role,Phone,Admin\n" + usersList.map(u => `"${u.name}","${u.email}","${u.role}","${u.phone || ''}","${u.isAdmin || false}"`).join("\n");
-      const blob = new Blob(["﻿" + csv], { type: 'text/csv;charset=utf-8;' });
+      const blob = new Blob(["\uFEFF" + csv], { type: 'text/csv;charset=utf-8;' });
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.setAttribute("href", url);
       link.setAttribute("download", `${safeFilenamePart(rest.name || 'Restaurant')}-Users-Export.csv`);
       document.body.appendChild(link); link.click(); document.body.removeChild(link);
-      addToast('Exported', 'User list downloaded from authoritative server roster.');
+      addToast('Exported', 'User list downloaded.');
     } catch (err) { 
       addToast('Error', 'Export failed.'); 
     }
   };
-
 
   // --- DATABASE SNAPSHOT ENGINE (BACKUP & RESTORE) ---
   const handleCreateBackup = async (rest) => {
@@ -5365,12 +5422,9 @@ Type DELETE to continue.`) || '').trim().toUpperCase();
       // Auth email changes should go through a secured backend route if needed later.
       if ((supportUserForm.email || '').trim()) updates.email = supportUserForm.email.toLowerCase().trim();
 
-      const result = await postSystemAdminAction('/api/system-admin/user-actions', {
-        action: 'support-update',
-        userId: editingGlobalUser.id,
-        updates: { ...updates, permissions: supportUserForm.permissions || {} }
-      });
-      addToast('User Updated', `${result.user?.name || updates.name} now belongs to ${result.user?.restaurantName || updates.restaurantName}.`);
+      await updateDoc(doc(db, 'users', editingGlobalUser.id), updates);
+      await logAudit({ ...appUser, restaurantId: updates.restaurantId || appUser?.restaurantId || 'system' }, 'SUPPORT_USER_EDIT', `users/${editingGlobalUser.id}`, `Support edited ${updates.email || editingGlobalUser.email || editingGlobalUser.id}; workspace=${updates.restaurantName}; role=${updates.role}; admin=${updates.isAdmin}; active=${updates.isActive}; note=${supportUserForm.supportNote || 'none'}`);
+      addToast('User Updated', `${updates.name} now belongs to ${updates.restaurantName}.`);
       setEditingGlobalUser(null);
       setSupportUserForm({});
     } catch (err) {
@@ -6401,8 +6455,9 @@ const activeTrials = restaurants.filter(r => resolveSubscription(r, appUser).sta
     setRetentionSaving(true);
     try {
       const payload = buildLegalRetentionSetupPayload();
-      const result = await postSystemAdminAction('/api/system-admin/platform-config', { action: 'update-data-retention', payload });
-      setRetentionConfig(result.dataRetention || payload);
+      await setDoc(doc(db, 'system', 'dataRetention'), payload, { merge: true });
+      await logAudit({ ...appUser, restaurantId: 'platform' }, 'DATA_RETENTION_CONFIG_INITIALIZED', 'system/dataRetention', 'Legal data retention configuration initialized from System Administrator safe setup button.');
+      setRetentionConfig(payload);
       addToast('Retention Setup Saved', 'Legal retention policy marker saved. Next: deploy Firebase Functions in production.');
     } catch (err) {
       addToast('Retention Setup Error', err.message || 'Could not save data retention config.');
@@ -6433,7 +6488,8 @@ const activeTrials = restaurants.filter(r => resolveSubscription(r, appUser).sta
   const saveRoleMatrix = async () => {
     setIsSavingRoleMatrix(true);
     try {
-      await postSystemAdminAction('/api/system-admin/platform-config', { action: 'update-role-permission-matrix', matrix: rolePermissionMatrix });
+      await setDoc(doc(db, 'system', 'rolePermissionMatrix'), { matrix: rolePermissionMatrix, updatedAt: new Date().toISOString(), updatedBy: appUser?.email || appUser?.name || 'System Admin' }, { merge: true });
+      await logAudit({ ...appUser, restaurantId: 'platform' }, 'ROLE_PERMISSION_MATRIX_UPDATED', 'system/rolePermissionMatrix', 'Platform role permission guide was updated.');
       addToast('Role Matrix Saved', 'Permission guide updated. Apply specific staff permissions from Staff Roster when needed.');
     } catch (err) { addToast('Save Error', err.message || 'Could not save role matrix.'); }
     setIsSavingRoleMatrix(false);
@@ -6586,48 +6642,81 @@ ${body}`;
       maintenanceUpdatedBy: actor
     });
     try {
-      await postSystemAdminAction('/api/system-admin/workspace-actions', {
-        action: 'set-maintenance',
-        workspaceIds: targetRestaurants.map(r => r.id),
-        payload,
-        historyEntry: { type: 'maintenance_mode_enabled', at: new Date().toISOString(), by: actor, summary: 'Maintenance mode enabled from System Administrator.', after: payload }
-      });
+      await Promise.all(targetRestaurants.map(async (r) => {
+        const restRef = doc(db, 'restaurants', r.id);
+        const beforeSnap = await getDoc(restRef);
+        const beforeData = beforeSnap.exists() ? beforeSnap.data() : {};
+        const historyEntry = sanitizeForFirestore({
+          type: 'maintenance_mode_enabled',
+          at: new Date().toISOString(),
+          by: actor,
+          summary: 'Maintenance mode enabled from System Administrator.',
+          before: {
+            billingStatus: beforeData.billingStatus ?? null,
+            maintenanceMode: beforeData.maintenanceMode ?? null,
+            maintenanceAudience: beforeData.maintenanceAudience ?? null,
+            maintenanceMessage: beforeData.maintenanceMessage ?? null,
+            maintenanceStartsAt: beforeData.maintenanceStartsAt ?? null,
+            maintenanceEndsAt: beforeData.maintenanceEndsAt ?? null
+          },
+          after: payload
+        });
+        const existingHistory = Array.isArray(beforeData.settingsHistory) ? beforeData.settingsHistory.slice(-24).map(h => sanitizeForFirestore(h)).filter(Boolean) : [];
+        await updateDoc(restRef, sanitizeForFirestore({ ...payload, settingsHistory: [...existingHistory, historyEntry] }));
+      }));
       addToast('Maintenance Enabled', `${targetRestaurants.length} workspace(s) locked with maintenance message.`);
     } catch (err) { addToast('Maintenance Error', err.message || 'Could not enable maintenance mode.'); }
   };
-
 
   const clearMaintenanceMode = async () => {
     const targetRestaurants = maintenanceScope === 'global' ? restaurants : restaurants.filter(r => r.id === maintenanceRestaurantId);
     if (!targetRestaurants.length) return addToast('Missing Target', 'Choose a workspace or global scope.');
     if (!window.confirm(`Clear maintenance mode for ${targetRestaurants.length} workspace(s)?`)) return;
     const actor = appUser?.email || appUser?.name || 'System Admin';
-    const clearPayload = sanitizeForFirestore({
-      billingStatus: 'Paid',
-      maintenanceMode: false,
-      maintenanceAudience: null,
-      maintenanceStartsAt: null,
-      maintenanceEndsAt: null,
-      maintenanceMessage: null,
-      maintenanceClearedAt: new Date().toISOString(),
-      maintenanceClearedBy: actor
-    });
     try {
-      await postSystemAdminAction('/api/system-admin/workspace-actions', {
-        action: 'set-maintenance',
-        workspaceIds: targetRestaurants.map(r => r.id),
-        payload: clearPayload,
-        historyEntry: { type: 'maintenance_mode_cleared', at: new Date().toISOString(), by: actor, summary: 'Maintenance mode cleared from System Administrator.', after: clearPayload }
-      });
+      await Promise.all(targetRestaurants.map(async (r) => {
+        const restRef = doc(db, 'restaurants', r.id);
+        const beforeSnap = await getDoc(restRef);
+        const beforeData = beforeSnap.exists() ? beforeSnap.data() : {};
+        const clearPayload = sanitizeForFirestore({
+          billingStatus: 'Paid',
+          maintenanceMode: false,
+          maintenanceAudience: null,
+          maintenanceStartsAt: null,
+          maintenanceEndsAt: null,
+          maintenanceMessage: null,
+          maintenanceClearedAt: new Date().toISOString(),
+          maintenanceClearedBy: actor
+        });
+        const historyEntry = sanitizeForFirestore({
+          type: 'maintenance_mode_cleared',
+          at: new Date().toISOString(),
+          by: actor,
+          summary: 'Maintenance mode cleared from System Administrator.',
+          before: {
+            billingStatus: beforeData.billingStatus ?? null,
+            maintenanceMode: beforeData.maintenanceMode ?? null,
+            maintenanceAudience: beforeData.maintenanceAudience ?? null,
+            maintenanceMessage: beforeData.maintenanceMessage ?? null,
+            maintenanceStartsAt: beforeData.maintenanceStartsAt ?? null,
+            maintenanceEndsAt: beforeData.maintenanceEndsAt ?? null
+          },
+          after: clearPayload
+        });
+        const existingHistory = Array.isArray(beforeData.settingsHistory) ? beforeData.settingsHistory.slice(-24).map(h => sanitizeForFirestore(h)).filter(Boolean) : [];
+        await updateDoc(restRef, sanitizeForFirestore({ ...clearPayload, settingsHistory: [...existingHistory, historyEntry] }));
+      }));
       addToast('Maintenance Cleared', `${targetRestaurants.length} workspace(s) restored.`);
     } catch (err) { addToast('Maintenance Error', err.message || 'Could not clear maintenance mode.'); }
   };
-
 
   const saveBrandingSettings = async () => {
     const targetId = brandingWorkspaceId || restaurants[0]?.id || '';
     if (!targetId) return addToast('Missing Workspace', 'Choose a workspace for branding.');
     try {
+      const restRef = doc(db, 'restaurants', targetId);
+      const beforeSnap = await getDoc(restRef);
+      const beforeData = beforeSnap.exists() ? beforeSnap.data() : {};
       const nextBranding = {
         ...brandingForm,
         appName: '86 Chaos',
@@ -6638,15 +6727,12 @@ ${body}`;
         updatedAt: new Date().toISOString(),
         updatedBy: appUser?.email || appUser?.name || 'System Admin'
       };
-      await postSystemAdminAction('/api/system-admin/workspace-actions', {
-        action: 'save-branding',
-        workspaceId: targetId,
-        branding: nextBranding
-      });
+      const historyEntry = { type: 'branding_display_settings', at: new Date().toISOString(), by: appUser?.email || appUser?.name || 'System Admin', summary: 'Branding / Display settings changed.', before: { branding: beforeData.branding || {} }, after: { branding: nextBranding } };
+      const existingHistory = Array.isArray(beforeData.settingsHistory) ? beforeData.settingsHistory.slice(-24) : [];
+      await setDoc(restRef, { branding: nextBranding, settingsHistory: [...existingHistory, historyEntry] }, { merge: true });
       addToast('Branding Saved', 'Workspace branding/display settings saved and history snapshot created.');
     } catch (err) { addToast('Branding Error', err.message || 'Could not save branding.'); }
   };
-
 
   const restoreSettingsHistoryEntry = async (entry) => {
     if (!selectedHistoryWorkspace?.id || !entry?.before) return addToast('No Restore Data', 'This history row does not include restorable previous settings.');
@@ -6657,16 +6743,15 @@ ${body}`;
       const allowed = {};
       ['name','ownerName','ownerEmail','ownerPhone','systemSettings','planId','subscriptionStatus','subscription','integrationsLocked','isFounderBeta','founderDiscountPercent','founderDiscountEndsAt','billingStatus','customPrice','trialDays','isActive','isReadOnly','features','labs','branding'].forEach(key => { if (before[key] !== undefined) allowed[key] = before[key]; });
       if (!Object.keys(allowed).length) return addToast('No Restore Data', 'No supported fields were found in this snapshot.');
-      await postSystemAdminAction('/api/system-admin/workspace-actions', {
-        action: 'restore-settings-history',
-        workspaceId: selectedHistoryWorkspace.id,
-        restore: allowed,
-        summary: `Restored settings snapshot from ${entry.at || entry.timestamp || 'history'}.`
-      });
+      const restRef = doc(db, 'restaurants', selectedHistoryWorkspace.id);
+      const snap = await getDoc(restRef);
+      const current = snap.exists() ? snap.data() : {};
+      const restoreEntry = { type: 'settings_restore', at: new Date().toISOString(), by: appUser?.email || appUser?.name || 'System Admin', summary: `Restored settings snapshot from ${entry.at || entry.timestamp || 'history'}.`, before: current, after: allowed };
+      const existingHistory = Array.isArray(current.settingsHistory) ? current.settingsHistory.slice(-24) : [];
+      await updateDoc(restRef, { ...allowed, settingsHistory: [...existingHistory, restoreEntry] });
       addToast('Settings Restored', 'Previous settings snapshot restored.');
     } catch (err) { addToast('Restore Error', err.message || 'Could not restore settings.'); }
   };
-
 
 
   const ghostAuditLogs = auditLogs.filter(log => log.isGhost);
@@ -7299,8 +7384,8 @@ ${body}`;
       readOnlyWorkspaces: readOnlyWorkspaces.length
     };
     try {
-      const result = await postSystemAdminAction('/api/system-admin/platform-config', { action: 'stamp-operations-review', payload });
-      setOperationsReview(result.operationsReview || payload);
+      await setDoc(doc(db, 'system', 'operationsReview'), payload, { merge: true });
+      await logAudit({ ...appUser, restaurantId: 'platform' }, 'SYSTEM_OPERATIONS_REVIEW_STAMP', 'system/operationsReview', `Operations review stamped. Status: ${platformStatus}. Action items: ${adminRiskQueue.length}.`);
       addToast('Review Stamp Created', 'System operations review stamp updated. View it under Forensics & Backups.');
     } catch (err) {
       addToast('Ops Review Error', err.message || 'Could not write operations review.');
@@ -7882,20 +7967,26 @@ Type RESTORE to continue.`);
     if (!automationTargetId) return addToast('Choose Workspace', 'Pick a workspace before pausing or resuming Python automation.');
     const rest = restaurants.find(r => r.id === automationTargetId);
     const nextPaused = !(selectedAutomationConfig?.paused === true);
-    const result = await postSystemAdminAction('/api/system-admin/automation', {
-      action: 'set-automation-paused',
+    await setDoc(doc(db, 'pythonAutomationConfigs', automationTargetId), {
+      restaurantId: automationTargetId,
       workspaceId: automationTargetId,
-      paused: nextPaused
-    });
-    if (result.config) setAutomationConfigs(prev => [result.config, ...prev.filter(row => row.id !== result.config.id)]);
+      restaurantName: rest?.name || selectedAutomationConfig?.restaurantName || automationTargetId,
+      paused: nextPaused,
+      jobs: selectedAutomationConfig?.jobs || {},
+      updatedAt: new Date().toISOString(),
+      updatedBy: appUser.id || appUser.email || 'system-admin',
+      updatedByName: appUser.name || appUser.email || 'System Administrator'
+    }, { merge: true });
     addToast(nextPaused ? 'Automation Paused' : 'Automation Resumed', rest?.name || automationTargetId);
   };
 
   const updateAutomationQueueStatus = async (item, status) => {
-    await postSystemAdminAction('/api/system-admin/automation', {
-      action: 'review-recommendation',
-      recommendationId: item.id,
-      status
+    await updateDoc(doc(db, 'aiRecommendationQueue', item.id), {
+      status,
+      reviewedAt: new Date().toISOString(),
+      reviewedBy: appUser.id || appUser.email || '',
+      reviewedByName: appUser.name || appUser.email || 'System Administrator',
+      updatedAt: new Date().toISOString()
     });
     addToast('Recommendation Updated', `${item.title || 'Item'} marked ${status}.`);
   };
@@ -8422,7 +8513,7 @@ Type RESTORE to continue.`);
                     <div className="grid grid-cols-2 sm:flex sm:flex-wrap lg:justify-end gap-2 lg:min-w-[360px]">
                       <button onClick={() => openSupportUserEditor(u)} className="px-2.5 py-2 bg-blue-900/20 border border-blue-500/50 text-blue-300 font-bold text-[9px] uppercase tracking-widest rounded-lg hover:bg-blue-900/40">Support Edit</button>
                       <button onClick={() => { setGhostTenant({ id: selectedClient.id, name: selectedClient.name, mode: 'user', impersonate: u }); setSelectedClient(null); setActiveTab('published'); }} className="px-2.5 py-2 bg-fuchsia-900/20 border border-fuchsia-500/50 text-fuchsia-300 font-bold text-[9px] uppercase tracking-widest rounded-lg hover:bg-fuchsia-900/40">Possess</button>
-                      <button onClick={async () => { if(!window.confirm(`Force ${u.name || u.email} to log out and clear their device cache?`)) return; await postSystemAdminAction('/api/system-admin/user-actions', { action: 'force-logout', userId: u.id, reason: 'system-admin-user-cache-clear' }); addToast('Executed', 'Kill signal sent to user device.'); }} className="px-2.5 py-2 bg-orange-900/20 border border-orange-900/50 text-orange-300 font-bold text-[9px] uppercase tracking-widest rounded-lg hover:bg-orange-900/40">Force Logout</button>
+                      <button onClick={async () => { if(!window.confirm(`Force ${u.name || u.email} to log out and clear their device cache?`)) return; await updateDoc(doc(db, 'users', u.id), { forceLogout: true, forceLogoutAt: new Date().toISOString(), forceLogoutReason: 'system-admin-user-cache-clear' }); addToast('Executed', 'Kill signal sent to user device.'); }} className="px-2.5 py-2 bg-orange-900/20 border border-orange-900/50 text-orange-300 font-bold text-[9px] uppercase tracking-widest rounded-lg hover:bg-orange-900/40">Force Logout</button>
                       <button onClick={() => handleDeleteGlobalUser(u)} className="px-2.5 py-2 bg-red-900/20 border border-red-900/50 text-red-300 font-bold text-[9px] uppercase tracking-widest rounded-lg hover:bg-red-900/40">Delete</button>
                     </div>
                   </div>
@@ -9787,14 +9878,14 @@ another@email.com"></textarea>
                     </label>
               <button onClick={async () => {
                       if(!window.confirm(`Force ${u.name} to log out and clear their device cache?`)) return;
-                      await postSystemAdminAction('/api/system-admin/user-actions', { action: 'force-logout', userId: u.id, reason: 'system-admin-user-cache-clear' });
+                      await updateDoc(doc(db, "users", u.id), { forceLogout: true, forceLogoutAt: new Date().toISOString(), forceLogoutReason: 'system-admin-user-cache-clear' });
                       addToast('Executed', 'Kill signal sent to user device.');
                     }} className="p-1.5 bg-orange-900/20 border border-orange-900/50 text-orange-500 hover:bg-orange-900/40 rounded-lg transition-colors shadow-sm" title="Force Logout & Cache Clear">
                       🔌
                     </button>
                     <button onClick={async () => {
                       if(!window.confirm(`Force ${u.name} into the Password Reset flow on their next login?`)) return;
-                      await postSystemAdminAction('/api/system-admin/user-actions', { action: 'force-password-change', userId: u.id });
+                      await updateDoc(doc(db, "users", u.id), { forcePasswordChange: true });
                       addToast('Executed', 'User must reset password on next login.');
                     }} className="p-1.5 bg-yellow-900/20 border border-yellow-900/50 text-yellow-500 hover:bg-yellow-900/40 rounded-lg transition-colors shadow-sm" title="Force Password Reset Screen">
                       🔑
@@ -9824,7 +9915,7 @@ another@email.com"></textarea>
               </div>
               <div className="flex gap-2">
                 <button onClick={handleCopyDiagnostics} className="text-[9px] font-black uppercase tracking-widest text-[#D4A381] hover:text-white border border-[#2A353D] px-2 py-1 rounded transition-colors">Copy Diagnostics</button>
-                <button onClick={async () => { if(window.confirm("Clear loaded crash-report page?")) { try { await postSystemAdminAction('/api/system-admin/crash-actions', { action: 'clear-crash-reports', ids: crashLogs.map(log => log.id).filter(Boolean) }); setCrashLogs([]); addToast('Crash Logs Cleared', 'Selected crash reports were cleared server-side.'); } catch (err) { addToast('Clear Logs Failed', err.message || 'Could not clear crash reports.'); } } }} className="text-[9px] font-black uppercase tracking-widest text-slate-500 hover:text-red-500 border border-[#2A353D] px-2 py-1 rounded transition-colors">Clear Logs</button>
+                <button onClick={() => { if(window.confirm("Clear loaded crash-report page?")) { crashLogs.forEach(log => deleteDoc(doc(db, "crashReports", log.id))); } }} className="text-[9px] font-black uppercase tracking-widest text-slate-500 hover:text-red-500 border border-[#2A353D] px-2 py-1 rounded transition-colors">Clear Logs</button>
               </div>
             </div>
 

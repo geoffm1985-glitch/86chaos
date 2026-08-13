@@ -54,13 +54,7 @@
     "test:play-store:failed": "powershell -NoProfile -ExecutionPolicy Bypass -File .\\RUN_86CHAOS_FAILED_ONLY_RELEASE_GATE.ps1",
     "test:play-store:delta": "powershell -NoProfile -ExecutionPolicy Bypass -File .\\RUN_86CHAOS_FAILED_AND_NEW_RELEASE_GATE.ps1",
     "test:play-store:repair": "powershell -NoProfile -ExecutionPolicy Bypass -File .\\RUN_86CHAOS_FAILED_AND_NEW_RELEASE_GATE.ps1 -SelectionMode repair",
-    "test:play-store:failed-current": "powershell -NoProfile -ExecutionPolicy Bypass -File .\\RUN_86CHAOS_FAILED_AND_NEW_RELEASE_GATE.ps1 -SelectionMode reported-failed-only",
-    "test:repair-current": "node scripts/run-repair-regression-pack.cjs",
-    "test:repair-current:local": "node scripts/run-repair-regression-pack.cjs --local-only",
-    "test:repair-current:browser": "node scripts/run-repair-browser-regression.cjs",
-    "test:repair-current:strict": "node scripts/run-repair-regression-pack.cjs --require-browser",
-    "test:repair-16-0-171": "npm run test:repair-current",
-    "test:repair-16-0-172": "npm run test:repair-current"
+    "test:play-store:failed-current": "powershell -NoProfile -ExecutionPolicy Bypass -File .\\RUN_86CHAOS_FAILED_AND_NEW_RELEASE_GATE.ps1 -SelectionMode reported-failed-only"
   },
   "browserslist": {
     "production": [

@@ -160,45 +160,14 @@ test('remaining current-run records make cleanup evidence fail', async () => {
   assert.equal(result.remaining.tasks, 1);
 });
 
-test('failed-only manifest resolves exact identities and a zero-test diagnostic gate stays empty', () => withTempCwd((dir) => {
-  const manifestPath = path.join(dir, 'failed-only-test-manifest.json');
-  const row = {
-    specPath: 'tests/e2e/schedule-request-off-management.spec.cjs',
-    spec: 'tests/e2e/schedule-request-off-management.spec.cjs',
-    fullSuitePath: '16.0.153 Schedule warnings and Request Off management',
-    suitePathParts: ['16.0.153 Schedule warnings and Request Off management'],
-    leafTitle: 'Request Off employee filter narrows and clears manager-visible requests',
-    exactTestTitle: 'Request Off employee filter narrows and clears manager-visible requests',
-    title: 'Request Off employee filter narrows and clears manager-visible requests',
-    fullTitle: '16.0.153 Schedule warnings and Request Off management > Request Off employee filter narrows and clears manager-visible requests',
-    titlePathParts: ['16.0.153 Schedule warnings and Request Off management', 'Request Off employee filter narrows and clears manager-visible requests'],
-    project: 'chromium',
-    projects: ['chromium'],
-    priorStatus: 'failed',
-    baselineStatus: 'failed',
-  };
-  fs.writeFileSync(manifestPath, JSON.stringify({ manifestSchemaVersion: 3, mode: 'reported-failed-only', selected: [row, row] }, null, 2));
-  const oldManifestPath = process.env.CHAOS_FAILED_ONLY_MANIFEST_PATH;
-  process.env.CHAOS_FAILED_ONLY_MANIFEST_PATH = manifestPath;
-  delete require.cache[require.resolve(failedManifestPath)];
-  const manifest = freshRequire(failedManifestPath);
-  assert.equal(manifest.FAILED_ONLY_TESTS.length, 1);
-  assert.deepEqual(manifest.specsFromManifest(), ['**/e2e/schedule-request-off-management.spec.cjs']);
-  assert.equal(manifest.grepForProject(undefined, 'chromium').test(row.fullTitle), true);
-  assert.equal(manifest.grepForProject(undefined, 'mobile-chromium').test(row.fullTitle), false);
-
-  const emptyPath = path.join(dir, 'empty-failed-only-test-manifest.json');
-  fs.writeFileSync(emptyPath, JSON.stringify({ manifestSchemaVersion: 3, mode: 'reported-failed-only', selected: [] }, null, 2));
-  process.env.CHAOS_FAILED_ONLY_MANIFEST_PATH = emptyPath;
-  delete require.cache[require.resolve(failedManifestPath)];
-  const empty = freshRequire(failedManifestPath);
-  assert.equal(empty.FAILED_ONLY_TESTS.length, 0);
-  assert.deepEqual(empty.specsFromManifest(), []);
-  assert.equal(empty.grepForProject(undefined, 'chromium').test(row.fullTitle), false);
-  assert.equal(empty.grepForProject(undefined, 'chromium').test('tests/e2e/schedule-request-off-management.spec.cjs'), false);
-  if (oldManifestPath === undefined) delete process.env.CHAOS_FAILED_ONLY_MANIFEST_PATH;
-  else process.env.CHAOS_FAILED_ONLY_MANIFEST_PATH = oldManifestPath;
-}));
+test('failed-only manifest has exact titles and refuses a zero-test diagnostic gate', () => {
+  const { FAILED_ONLY_TESTS, specsFromManifest, grepFromManifest } = freshRequire(failedManifestPath);
+  assert.ok(FAILED_ONLY_TESTS.length > 0);
+  assert.ok(specsFromManifest().every(spec => spec.endsWith('.spec.cjs')));
+  const grep = grepFromManifest();
+  assert.equal(grep.test('01 auth and every-route health > owner-like account logs in and every major route renders without fatal UI, NaN, Invalid Date, or 5xx'), true);
+  assert.equal(grepFromManifest([]).test('anything'), false);
+});
 
 test('collector reports duplicate role preflight as environment blocker without pretending seed or cleanup failed', () => withTempCwd((dir) => {
   process.env.CHAOS_RELEASE_GATE_RUN_ID = 'preflight-block-unit';
@@ -242,7 +211,7 @@ test('collector reports duplicate role preflight as environment blocker without 
 
 test('PowerShell runners keep step command output out of assigned exit-code variables', () => {
   for (const file of ['RUN_86CHAOS_FAILED_ONLY_RELEASE_GATE.ps1', 'RUN_86CHAOS_PLAY_STORE_RELEASE_GATE.ps1']) {
-    const source = effectiveRunnerSource(file);
+    const source = fs.readFileSync(path.resolve(__dirname, '../..', file), 'utf8');
     assert.match(source, /Tee-Object -FilePath \$LogPath -Append \| Out-Host/, `${file} Run-Step must send command output to host, not the function success stream`);
     assert.match(source, /ForEach-Object \{ Add-Content -Path \$LogPath -Value \$_; Write-Host \$_ \}/, `${file} Run-LiveStep must log live output without returning it as function output`);
     assert.doesNotMatch(source, /powershell -NoProfile -ExecutionPolicy Bypass -Command \$Command 2>&1 \| Tee-Object -FilePath \$LogPath -Append\r?\n/, `${file} must not let Tee-Object output pollute assigned step results`);
@@ -337,25 +306,25 @@ test('collector classifies dependency installation block as pre-Playwright, not 
 
 test('PowerShell runners install locked dev dependencies before inventory or Playwright and never use npx downloads', () => {
   for (const file of ['RUN_86CHAOS_FAILED_ONLY_RELEASE_GATE.ps1', 'RUN_86CHAOS_PLAY_STORE_RELEASE_GATE.ps1']) {
-    const source = effectiveRunnerSource(file);
+    const source = fs.readFileSync(path.resolve(__dirname, '../..', file), 'utf8');
     assert.match(source, /Install locked test dependencies/);
     assert.match(source, /npm ci --include=dev --no-audit --no-fund/);
     assert.match(source, /Dependency preflight/);
     assert.match(source, /dependency-preflight\.cjs/);
-    assert.match(source, /Install (Chromium|Playwright) browsers/);
+    assert.match(source, /Install Chromium browser/);
     assert.match(source, /node_modules\\\.bin\\playwright\.cmd/);
     assert.match(source, /& '\$PlaywrightExe' test --config/);
     assert.doesNotMatch(source, /npx\s+playwright|npx\s+--no-install\s+playwright|Ok to proceed\? \(y\)|Need to install/);
     assert.ok(source.indexOf('Install locked test dependencies') < source.indexOf('Source inventory'));
     assert.ok(source.indexOf('Dependency preflight') < source.indexOf('Source inventory'));
-    assert.ok(source.indexOf('Source inventory') < Math.max(source.indexOf('Install Chromium browser'), source.indexOf('Install Playwright browsers')));
-    assert.ok(Math.max(source.indexOf('Install Chromium browser'), source.indexOf('Install Playwright browsers')) < source.indexOf('$RunnerState.playwrightStarted = $true'));
+    assert.ok(source.indexOf('Source inventory') < source.indexOf('Install Chromium browser'));
+    assert.ok(source.indexOf('Install Chromium browser') < source.indexOf('$RunnerState.playwrightStarted = $true'));
   }
 });
 
 test('PowerShell runners stop before Playwright for npm, dependency, source inventory, or browser failures', () => {
   for (const file of ['RUN_86CHAOS_FAILED_ONLY_RELEASE_GATE.ps1', 'RUN_86CHAOS_PLAY_STORE_RELEASE_GATE.ps1']) {
-    const source = effectiveRunnerSource(file);
+    const source = fs.readFileSync(path.resolve(__dirname, '../..', file), 'utf8');
     assert.match(source, /locked development dependencies were not installed/);
     assert.match(source, /required local test modules or the local Playwright executable were missing/);
     assert.match(source, /source inventory failed/);
@@ -506,27 +475,17 @@ test('collector classifies failed role preflight as test-account configuration w
 
 test('PowerShell runners verify role accounts after Chromium and before Playwright', () => {
   for (const file of ['RUN_86CHAOS_FAILED_ONLY_RELEASE_GATE.ps1', 'RUN_86CHAOS_PLAY_STORE_RELEASE_GATE.ps1']) {
-    const source = effectiveRunnerSource(file);
+    const source = fs.readFileSync(path.resolve(__dirname, '../..', file), 'utf8');
     assert.match(source, /Verify release-gate role accounts/);
     assert.match(source, /verify-role-accounts\.cjs/);
     assert.match(source, /rolePreflightStarted/);
     assert.match(source, /rolePreflightPassed/);
-    assert.ok(Math.max(source.indexOf('Install Chromium browser'), source.indexOf('Install Playwright browsers')) < source.indexOf('Verify release-gate role accounts'));
+    assert.ok(source.indexOf('Install Chromium browser') < source.indexOf('Verify release-gate role accounts'));
     assert.ok(source.indexOf('Verify release-gate role accounts') < source.indexOf('$RunnerState.playwrightStarted = $true'));
   }
 });
 
 const provisionAccountsPath = path.resolve(__dirname, '../../scripts/86chaos-release-gate/provision-test-accounts.cjs');
-
-function effectiveRunnerSource(file) {
-  const source = fs.readFileSync(path.resolve(__dirname, '../..', file), 'utf8');
-  if (file === 'RUN_86CHAOS_FAILED_ONLY_RELEASE_GATE.ps1') {
-    assert.match(source, /RUN_86CHAOS_FAILED_AND_NEW_RELEASE_GATE\.ps1/);
-    assert.match(source, /-SelectionMode failed-only/);
-    return fs.readFileSync(path.resolve(__dirname, '../..', 'RUN_86CHAOS_FAILED_AND_NEW_RELEASE_GATE.ps1'), 'utf8');
-  }
-  return source;
-}
 
 function withQaAccountEnv(fn) {
   const keys = ['SYSTEM_ADMIN_EMAIL','SYSTEM_ADMIN_PASSWORD','OWNER_EMAIL','OWNER_PASSWORD','MANAGER_EMAIL','MANAGER_PASSWORD','STAFF_EMAIL','STAFF_PASSWORD','CHAOS_QA_AUTO_PROVISION_TEST_USERS','CHAOS_QA_ALLOW_MUTATING_ROLE_ACCOUNTS','CHAOS_RELEASE_GATE_TEST_MODE','CHAOS_ALLOW_MUTATION','APP_URL','CHAOS_BASE_URL','MASTER_ADMIN_EMAIL','REACT_APP_FIREBASE_PROJECT_ID','REACT_APP_TEST_FIREBASE_PROJECT_ID'];
@@ -641,7 +600,7 @@ test('temporary account provisioning can create four distinct mocked Firebase Au
 
 test('PowerShell runners provision temporary accounts before role preflight and before Playwright', () => {
   for (const file of ['RUN_86CHAOS_FAILED_ONLY_RELEASE_GATE.ps1', 'RUN_86CHAOS_PLAY_STORE_RELEASE_GATE.ps1']) {
-    const source = effectiveRunnerSource(file);
+    const source = fs.readFileSync(path.resolve(__dirname, '../..', file), 'utf8');
     assert.match(source, /Provision temporary release-gate test accounts/);
     assert.match(source, /provision-test-accounts\.cjs/);
     assert.match(source, /testAccountProvisionAttempted/);
@@ -710,7 +669,6 @@ test('collector keeps node summary expected-skipped when provisioning blocks bef
   }, null, 2));
   fs.writeFileSync(path.join(runDir, 'environment-preflight.json'), JSON.stringify({ ok: true, runId: 'provision-node-skip-unit', appUrl: 'https://preview.example.test/', expectedVersion: '16.0.95', sourceVersion: '16.0.95', deployedVersion: '16.0.95', visibleVersion: '16.0.95', firebaseProjectId: 'chaos-test-d1601' }, null, 2));
   fs.writeFileSync(path.join(runDir, 'dependency-preflight.json'), JSON.stringify({ ok: true, runId: 'provision-node-skip-unit' }, null, 2));
-  fs.writeFileSync(path.join(runDir, 'server-firebase-boundary-preflight.json'), JSON.stringify({ ok: true, runId: 'provision-node-skip-unit', phase: 'server-firebase-boundary-preflight', firebaseProjectId: 'chaos-test-d1601', serverFirebaseProjectId: 'chaos-test-d1601' }, null, 2));
   fs.writeFileSync(path.join(runDir, 'source-inventory.json'), JSON.stringify({ ok: true, runId: 'provision-node-skip-unit', packageVersion: '16.0.95' }, null, 2));
   fs.writeFileSync(path.join(runDir, 'test-account-provisioning.json'), JSON.stringify({ ok: false, runId: 'provision-node-skip-unit', errors: ['INVALID_LOGIN_CREDENTIALS were repaired unsuccessfully because Admin credentials are missing.'] }, null, 2));
   const oldExit = process.exitCode;
