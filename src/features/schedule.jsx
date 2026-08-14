@@ -5171,7 +5171,7 @@ const TabTimeOff = ({ timeOffRequests, appUser, users, addToast, events = [], sh
         {canManage && status === 'pending' && !isArchivedRequest(r) && <button onClick={() => approveRequest(r)} className="p-2 rounded-lg bg-emerald-900/20 text-emerald-300 border border-emerald-900/50"><Check size={14}/></button>}
         {canManage && status === 'pending' && !isArchivedRequest(r) && <button onClick={() => denyRequest(r)} className="p-2 rounded-lg bg-red-900/20 text-red-300 border border-red-900/50"><X size={14}/></button>}
         {canManage && (isArchivedRequest(r) ? <button onClick={() => restoreRequest(r)} className={T.btnAlt}>Restore</button> : <button onClick={() => archiveRequest(r)} className={T.btnAlt}>Archive</button>)}
-        {!canManage && (status === 'pending' || status === 'approved') && !isArchivedRequest(r) && <button onClick={() => { if(window.confirm('Cancel this request-off?')) cancelRequest(r); }} className="text-slate-400 hover:text-red-500 p-2 bg-[#1A2126] rounded-lg border border-[#2A353D]"><Trash2 size={14}/></button>}
+        {!canManage && (status === 'pending' || status === 'approved') && !isArchivedRequest(r) && <button type="button" data-testid={`request-off-cancel-${r.id}`} aria-label={`Cancel Request Off for ${formatRequestDateLabel(r.date)}`} title={`Cancel Request Off for ${formatRequestDateLabel(r.date)}`} onClick={() => { if(window.confirm('Cancel this request-off?')) cancelRequest(r); }} className="text-slate-400 hover:text-red-500 p-2 bg-[#1A2126] rounded-lg border border-[#2A353D]"><Trash2 size={14}/></button>}
       </div>
     </div>;
   };

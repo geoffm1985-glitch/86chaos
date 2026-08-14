@@ -1,16 +1,17 @@
 {
-  "version": "16.0.178",
-  "name": "86 Chaos 16.0.178",
-  "build": "16.0.178",
-  "label": "86 Chaos 16.0.178",
-  "releasedAt": "2026-08-13T20:55:00-05:00",
-  "releaseTitle": "Current Blockers Release Gate Repair",
+  "version": "16.0.179",
+  "name": "86 Chaos 16.0.179",
+  "build": "16.0.179",
+  "label": "86 Chaos 16.0.179",
+  "releasedAt": "2026-08-13T23:45:00-05:00",
+  "releaseTitle": "Remaining Current Blockers Release Gate Repair",
   "notes": [
-    "Extends login profile bootstrap timeouts so a valid password does not fail the release gate just because profile hydration is slow on preview.",
-    "Hardens release-gate workspace chooser handling so tests select the current QA workspace instead of getting stuck behind the chooser dialog.",
-    "Adds a partial-resume Play Store command that runs only the failed, timed-out, and not-run identities from the uploaded interrupted 16.0.175 release-gate run and excludes the 65 tests that already passed."
+    "Scopes the current-blockers Play Store runner to only the four remaining failed or timed-out identities from the latest 16.0.178 report.",
+    "Repairs the workspace-switch cost-regression test selector to use the existing current-workspace test hook instead of the broad close-button fallback.",
+    "Repairs the Ghost Mode Request Off browser flow by handling native conflict and cancellation dialogs immediately and by canceling the exact request created in the test.",
+    "Adds an accessible name and stable test hook to the user Request Off cancellation control without changing its visual behavior."
   ],
-  "title": "86 Chaos 16.0.178",
-  "summary": "Fixes slow preview login/workspace chooser release-gate failures and adds a partial-resume Play Store command that reruns only failed, timed-out, and not-run tests from the interrupted 16.0.175 run while excluding tests that already passed.",
-  "description": "Fixes current release-gate blockers for mobile Schedule Builder visibility, Ghost Mode Request Off conflicts, and workspace-switch cost regression while adding a five-test blocker rerun command."
+  "title": "86 Chaos 16.0.179",
+  "summary": "Repairs the two remaining current blocker families: workspace-switch test selection and Ghost Mode Request Off dialog/cancellation flow, while narrowing the current-blockers runner to the four failed/timed-out tests only.",
+  "description": "Surgical release-gate repair for remaining 16.0.178 current blockers only."
 }

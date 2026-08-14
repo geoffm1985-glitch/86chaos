@@ -2,12 +2,12 @@
   "ok": true,
   "manifestSchemaVersion": 3,
   "mode": "reported-current-blockers",
-  "source": "uploaded-current-blockers-20260814-033828",
-  "selectionSource": "uploaded-current-blockers-20260814-033828-fail-timeout-only",
+  "source": "uploaded-current-blockers-20260814-042542",
+  "selectionSource": "uploaded-current-blockers-20260814-042542-fail-timeout-only",
   "lineageMode": "none",
-  "baselineFullRunId": "2026-08-13T21-18-09",
-  "baselineSourceVersion": "16.0.177",
-  "baselineDeployedVersion": "16.0.177",
+  "baselineFullRunId": "2026-08-13T23-13-19",
+  "baselineSourceVersion": "16.0.178",
+  "baselineDeployedVersion": "16.0.178",
   "selected": [
     {
       "spec": "86chaos-full-audit/06-request-off-events-integration.spec.cjs",
@@ -31,14 +31,14 @@
       ],
       "priorStatus": "timedOut",
       "baselineStatus": "timedOut",
-      "baselineFullRunId": "2026-08-13T21-18-09",
-      "baselineSourceVersion": "16.0.177",
-      "baselineDeployedVersion": "16.0.177",
-      "sourceVersion": "16.0.177",
-      "deployedVersion": "16.0.177",
-      "fullRunId": "2026-08-13T21-18-09",
+      "baselineFullRunId": "2026-08-13T23-13-19",
+      "baselineSourceVersion": "16.0.178",
+      "baselineDeployedVersion": "16.0.178",
+      "sourceVersion": "16.0.178",
+      "deployedVersion": "16.0.178",
+      "fullRunId": "2026-08-13T23-13-19",
       "duration": 0,
-      "error": "from current 16.0.177 partial-resume slim report",
+      "error": "from current 16.0.178 current-blockers slim report",
       "selectionReasons": [
         "current_blocker_timeout"
       ],
@@ -65,63 +65,24 @@
       "projects": [
         "chromium"
       ],
-      "priorStatus": "timedOut",
-      "baselineStatus": "timedOut",
-      "baselineFullRunId": "2026-08-13T21-18-09",
-      "baselineSourceVersion": "16.0.177",
-      "baselineDeployedVersion": "16.0.177",
-      "sourceVersion": "16.0.177",
-      "deployedVersion": "16.0.177",
-      "fullRunId": "2026-08-13T21-18-09",
-      "duration": 0,
-      "error": "from current 16.0.177 partial-resume slim report",
-      "selectionReasons": [
-        "current_blocker_timeout"
-      ],
-      "migratedFromLegacyIdentity": false,
-      "migratedFromLegacyAmbiguousIdentity": false,
-      "legacyAmbiguousMatchCount": 0,
-      "migrationSourceStableKey": "e2e/cost-regression.spec.cjs\u0000\u0000cost scenario select-active-workspace\u0000chromium",
-      "sourceFileHash": "50725283e3313d8e020337bf979610c02e36df4ce8ed8f9d7b77700f71241cb6"
-    },
-    {
-      "spec": "86chaos-full-audit/04-schedule-math-oracle.spec.cjs",
-      "specPath": "86chaos-full-audit/04-schedule-math-oracle.spec.cjs",
-      "title": "if fake restaurant seed exists, visible Schedule Builder text must expose seeded staff/events and not hide invalid-time evidence",
-      "leafTitle": "if fake restaurant seed exists, visible Schedule Builder text must expose seeded staff/events and not hide invalid-time evidence",
-      "exactTestTitle": "if fake restaurant seed exists, visible Schedule Builder text must expose seeded staff/events and not hide invalid-time evidence",
-      "fullSuitePath": "04 schedule hours math truth oracle",
-      "suitePathParts": [
-        "04 schedule hours math truth oracle"
-      ],
-      "titlePathParts": [
-        "04 schedule hours math truth oracle",
-        "if fake restaurant seed exists, visible Schedule Builder text must expose seeded staff/events and not hide invalid-time evidence"
-      ],
-      "fullTitle": "04 schedule hours math truth oracle > if fake restaurant seed exists, visible Schedule Builder text must expose seeded staff/events and not hide invalid-time evidence",
-      "stableKey": "86chaos-full-audit/04-schedule-math-oracle.spec.cjs\u000004 schedule hours math truth oracle\u0000if fake restaurant seed exists, visible Schedule Builder text must expose seeded staff/events and not hide invalid-time evidence\u0000mobile-chromium",
-      "project": "mobile-chromium",
-      "projects": [
-        "mobile-chromium"
-      ],
       "priorStatus": "failed",
       "baselineStatus": "failed",
-      "baselineFullRunId": "2026-08-13T21-18-09",
-      "baselineSourceVersion": "16.0.177",
-      "baselineDeployedVersion": "16.0.177",
-      "sourceVersion": "16.0.177",
-      "deployedVersion": "16.0.177",
-      "fullRunId": "2026-08-13T21-18-09",
+      "baselineFullRunId": "2026-08-13T23-13-19",
+      "baselineSourceVersion": "16.0.178",
+      "baselineDeployedVersion": "16.0.178",
+      "sourceVersion": "16.0.178",
+      "deployedVersion": "16.0.178",
+      "fullRunId": "2026-08-13T23-13-19",
       "duration": 0,
-      "error": "from current 16.0.177 partial-resume slim report",
+      "error": "from current 16.0.178 current-blockers slim report",
       "selectionReasons": [
         "current_blocker_failure"
       ],
       "migratedFromLegacyIdentity": false,
       "migratedFromLegacyAmbiguousIdentity": false,
       "legacyAmbiguousMatchCount": 0,
-      "migrationSourceStableKey": "86chaos-full-audit/04-schedule-math-oracle.spec.cjs\u000004 schedule hours math truth oracle\u0000if fake restaurant seed exists, visible Schedule Builder text must expose seeded staff/events and not hide invalid-time evidence\u0000mobile-chromium",
-      "sourceFileHash": "480c6bb4083dca9b54a52f65a6423e4d3a0d6616e01f24b353f19f585d76c1dd"
+      "migrationSourceStableKey": "e2e/cost-regression.spec.cjs\u0000\u0000cost scenario select-active-workspace\u0000chromium",
+      "sourceFileHash": "50725283e3313d8e020337bf979610c02e36df4ce8ed8f9d7b77700f71241cb6"
     },
     {
       "spec": "86chaos-full-audit/06-request-off-events-integration.spec.cjs",
@@ -145,14 +106,14 @@
       ],
       "priorStatus": "timedOut",
       "baselineStatus": "timedOut",
-      "baselineFullRunId": "2026-08-13T21-18-09",
-      "baselineSourceVersion": "16.0.177",
-      "baselineDeployedVersion": "16.0.177",
-      "sourceVersion": "16.0.177",
-      "deployedVersion": "16.0.177",
-      "fullRunId": "2026-08-13T21-18-09",
+      "baselineFullRunId": "2026-08-13T23-13-19",
+      "baselineSourceVersion": "16.0.178",
+      "baselineDeployedVersion": "16.0.178",
+      "sourceVersion": "16.0.178",
+      "deployedVersion": "16.0.178",
+      "fullRunId": "2026-08-13T23-13-19",
       "duration": 0,
-      "error": "from current 16.0.177 partial-resume slim report",
+      "error": "from current 16.0.178 current-blockers slim report",
       "selectionReasons": [
         "current_blocker_timeout"
       ],
@@ -179,18 +140,18 @@
       "projects": [
         "mobile-chromium"
       ],
-      "priorStatus": "timedOut",
-      "baselineStatus": "timedOut",
-      "baselineFullRunId": "2026-08-13T21-18-09",
-      "baselineSourceVersion": "16.0.177",
-      "baselineDeployedVersion": "16.0.177",
-      "sourceVersion": "16.0.177",
-      "deployedVersion": "16.0.177",
-      "fullRunId": "2026-08-13T21-18-09",
+      "priorStatus": "failed",
+      "baselineStatus": "failed",
+      "baselineFullRunId": "2026-08-13T23-13-19",
+      "baselineSourceVersion": "16.0.178",
+      "baselineDeployedVersion": "16.0.178",
+      "sourceVersion": "16.0.178",
+      "deployedVersion": "16.0.178",
+      "fullRunId": "2026-08-13T23-13-19",
       "duration": 0,
-      "error": "from current 16.0.177 partial-resume slim report",
+      "error": "from current 16.0.178 current-blockers slim report",
       "selectionReasons": [
-        "current_blocker_timeout"
+        "current_blocker_failure"
       ],
       "migratedFromLegacyIdentity": false,
       "migratedFromLegacyAmbiguousIdentity": false,
@@ -199,16 +160,16 @@
       "sourceFileHash": "50725283e3313d8e020337bf979610c02e36df4ce8ed8f9d7b77700f71241cb6"
     }
   ],
-  "totalSelected": 5,
+  "totalSelected": 4,
   "desktopSelected": 2,
-  "mobileSelected": 3,
-  "previousFailuresSelected": 1,
-  "previousTimeoutsSelected": 4,
+  "mobileSelected": 2,
+  "previousFailuresSelected": 2,
+  "previousTimeoutsSelected": 2,
   "partialNotRunSelected": 0,
   "currentReleaseFeatureTestsSelected": 0,
   "duplicateIdentitiesRemoved": 0,
   "newTestsCount": 0,
-  "note": "Runs only the 5 current blockers from 16.0.177 partial-resume report: 1 FAIL and 4 TIMEOUT. Excludes 149 PASS and 2 SKIP identities.",
+  "note": "Runs only the four current 16.0.178 FAIL/TIMEOUT identities from the 20260814-042542 current-blockers report. Excludes PASS, SKIP, NOT-RUN, and the mobile Schedule Builder identity that passed.",
   "targetSourceVersion": "16.0.178",
-  "targetDeployedVersion": ""
+  "targetDeployedVersion": "16.0.178"
 }

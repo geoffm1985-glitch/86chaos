@@ -51,16 +51,16 @@ const loginWorkspaceResumeTest = read('api/login-workspace-resume-16-0-177.test.
 const auditHelpers = read('tests/86chaos-full-audit/utils/audit-helpers.cjs');
 const authFeature = read('src/features/auth.jsx');
 const partialResumeWrapper = read('RUN_86CHAOS_PARTIAL_RESUME_RELEASE_GATE.ps1');
-const currentBlockersManifest = json('scripts/86chaos-release-gate/reported-current-blockers-20260814-033828.json');
+const currentBlockersManifest = json('scripts/86chaos-release-gate/reported-current-blockers-20260814-042542.json');
 const currentBlockersWrapper = read('RUN_86CHAOS_CURRENT_BLOCKERS_RELEASE_GATE.ps1');
-const currentBlockersSourceTest = read('api/current-blockers-release-gate-source-16-0-178.test.cjs');
+const currentBlockersSourceTest = read('api/current-blockers-release-gate-source-16-0-179.test.cjs');
 const costRegressionTest = read('tests/e2e/cost-regression.spec.cjs');
 const timeOffRequestApi = read('api/time-off-request.js');
 const timeOffRequestTest = read('api/time-off-request.test.cjs');
 
-assert(pkg.version === '16.0.178', 'package.json version is 16.0.178');
-assert(lock.version === '16.0.178' && lock.packages?.['']?.version === '16.0.178', 'package-lock root versions are 16.0.178');
-assert(pkg.scripts['test:source'] === 'node scripts/validate-16-0-178.js', 'test:source points to 16.0.178 validator');
+assert(pkg.version === '16.0.179', 'package.json version is 16.0.179');
+assert(lock.version === '16.0.179' && lock.packages?.['']?.version === '16.0.179', 'package-lock root versions are 16.0.179');
+assert(pkg.scripts['test:source'] === 'node scripts/validate-16-0-179.js', 'test:source points to 16.0.179 validator');
 assert(pkg.scripts['test:since-16-0-170'] === 'node scripts/run-tests-since-16-0-170.cjs', 'targeted since-16.0.170 test command exists');
 assert(pkg.scripts['test:since-16-0-170:node'] === 'node scripts/run-tests-since-16-0-170.cjs --node-only', 'targeted node-only since-16.0.170 test command exists');
 assert(pkg.scripts['test:play-store:resume-current'] === 'powershell -NoProfile -ExecutionPolicy Bypass -File .\\RUN_86CHAOS_PARTIAL_RESUME_RELEASE_GATE.ps1', 'partial resume Play Store command exists');
@@ -69,11 +69,11 @@ assert(pkg.scripts['test:play-store:current-blockers'] === 'powershell -NoProfil
 assert(pkg.scripts['test:play-store:latest-blockers'] === pkg.scripts['test:play-store:current-blockers'], 'latest blockers alias exists');
 assert(lock.packages?.['']?.scripts?.['test:play-store:resume-current'] === pkg.scripts['test:play-store:resume-current'], 'package-lock scripts include partial resume command');
 assert(lock.packages?.['']?.scripts?.['test:play-store:current-blockers'] === pkg.scripts['test:play-store:current-blockers'], 'package-lock scripts include current blockers command');
-assert(version.version === '16.0.178' && version.build === '16.0.178', 'public/version.json version/build are 16.0.178');
-assert(version.releaseTitle === 'Current Blockers Release Gate Repair', 'release title is correct');
-assert(appCore.includes("CURRENT_VERSION = '16.0.178'"), 'app core CURRENT_VERSION is 16.0.178');
-assert(apiVersion.includes("APP_VERSION = '16.0.178'") && apiVersion.includes("SECURITY_SCHEMA_VERSION = '16.0.178'"), 'api version reports 16.0.178');
-assert(!fs.existsSync(path.join(root, 'scripts/validate-16-0-177.js')), 'previous validator was replaced');
+assert(version.version === '16.0.179' && version.build === '16.0.179', 'public/version.json version/build are 16.0.179');
+assert(version.releaseTitle === 'Remaining Current Blockers Release Gate Repair', 'release title is correct');
+assert(appCore.includes("CURRENT_VERSION = '16.0.179'"), 'app core CURRENT_VERSION is 16.0.179');
+assert(apiVersion.includes("APP_VERSION = '16.0.179'") && apiVersion.includes("SECURITY_SCHEMA_VERSION = '16.0.179'"), 'api version reports 16.0.179');
+assert(!fs.existsSync(path.join(root, 'scripts/validate-16-0-178.js')), 'previous validator was replaced');
 
 assert(sha('firestore.rules') === '51bfd7d39edd59f680ae41a149c108cec8cd42d00b102d84cb00ee40d90264d9', 'firestore.rules unchanged');
 assert(sha('storage.rules') === '174e7e9a140193ff69ccf0f0d3e5c65b81a9e0fbbd612bff45ce57e7a3a7ce9c', 'storage.rules unchanged');
@@ -81,7 +81,7 @@ assert(sha('database.rules.json') === '152b5cd3f9839f598c9602706d8205b96759296e8
 assert(sha('firestore.indexes.json') === 'ee666de303988cd269f7c09fa63678a2deb1cfcaa199cb4f1656dd9bddcc4b4b', 'firestore.indexes.json unchanged');
 assert(sha('firebase.json') === 'bd837a11c71750d4da6ccfcb725ca54e78dd76008b525ec54c7fe79a5b8a3ca4', 'firebase.json unchanged');
 
-// Targeted 16.0.178 release-gate resume and login/workspace readiness repairs.
+// Targeted 16.0.179 release-gate resume and login/workspace readiness repairs.
 assert(partialResumeManifest.mode === 'partial-resume' && partialResumeManifest.totalSelected === 156 && partialResumeManifest.previousFailuresSelected === 2 && partialResumeManifest.previousTimeoutsSelected === 3 && partialResumeManifest.partialNotRunSelected === 151, 'partial-resume manifest selects only the uploaded interrupted run non-passed identities');
 assert((partialResumeManifest.selected || []).every(row => !['passed', 'pass'].includes(String(row.priorStatus || '').toLowerCase()) && !['passed', 'pass'].includes(String(row.baselineStatus || '').toLowerCase())), 'partial-resume manifest excludes every already-passed identity');
 assert(prepare.includes("'partial-resume'") && prepare.includes('loadReportedPartialResumeManifest') && prepare.includes('reported-partial-resume-20260813-205319.json') && prepare.includes('Partial resume guard: excludes all 65 passed tests'), 'failed-only manifest preparer supports guarded partial-resume selection');
@@ -89,24 +89,28 @@ assert(failedConfig.includes("resumePartialRun: releaseSelectionMode === 'partia
 assert(partialResumeWrapper.includes('SelectionMode partial-resume') && partialResumeWrapper.includes('excludes tests that already passed'), 'partial resume PowerShell wrapper runs the partial-resume selection mode');
 assert(authFeature.includes("loadLoginBootstrapFromServer(firebaseUser),\n          10000,\n          'Server login bootstrap'") && authFeature.includes("getDoc(userDocRef),\n          2500,\n          'Browser account profile lookup'") && authFeature.includes("getDocs(query(collection(db, 'users'), where('email', '==', candidate))),\n            3000,\n            'Browser email field profile lookup'"), 'login profile bootstrap timeouts are increased for slow preview hydration');
 assert(auditHelpers.includes('const preferredRe = new RegExp(`^Open\\\\s+${escapeRegex(preferred)}') && auditHelpers.includes("getByRole('button', { name: preferredRe })") && auditHelpers.includes('button.evaluate((el) => el.click())') && auditHelpers.includes('await chooseQaWorkspace(page);'), 'release-gate helper selects the current QA workspace and recovers from intercepted clicks');
-assert(partialResumeSourceTest.includes('partial-resume manifest reruns only failed timed-out and not-run') && partialResumeSourceTest.includes('156') && partialResumeSourceTest.includes('65 tests that already passed'), '16.0.178 partial-resume source regression test exists');
-assert(loginWorkspaceResumeTest.includes('Server login bootstrap') && loginWorkspaceResumeTest.includes('release-gate route settling selects the current QA workspace'), '16.0.178 login/workspace source regression test exists');
-assert(sinceRunner.includes('api/partial-resume-release-gate-source-16-0-177.test.cjs') && sinceRunner.includes('api/login-workspace-resume-16-0-177.test.cjs'), 'since-16.0.170 targeted test runner includes 16.0.178 regressions');
+assert(partialResumeSourceTest.includes('partial-resume manifest reruns only failed timed-out and not-run') && partialResumeSourceTest.includes('156') && partialResumeSourceTest.includes('65 tests that already passed'), '16.0.179 partial-resume source regression test exists');
+assert(loginWorkspaceResumeTest.includes('Server login bootstrap') && loginWorkspaceResumeTest.includes('release-gate route settling selects the current QA workspace'), '16.0.179 login/workspace source regression test exists');
+assert(sinceRunner.includes('api/partial-resume-release-gate-source-16-0-177.test.cjs') && sinceRunner.includes('api/login-workspace-resume-16-0-177.test.cjs'), 'since-16.0.170 targeted test runner includes 16.0.179 regressions');
 
 
-// Targeted 16.0.178 current-blocker repairs.
-assert(currentBlockersManifest.mode === 'reported-current-blockers' && currentBlockersManifest.totalSelected === 5 && currentBlockersManifest.previousFailuresSelected === 1 && currentBlockersManifest.previousTimeoutsSelected === 4 && currentBlockersManifest.partialNotRunSelected === 0, 'current-blockers manifest selects only the latest 5 FAIL/TIMEOUT identities');
+// Targeted 16.0.179 current-blocker repairs.
+assert(currentBlockersManifest.mode === 'reported-current-blockers' && currentBlockersManifest.totalSelected === 4 && currentBlockersManifest.previousFailuresSelected === 2 && currentBlockersManifest.previousTimeoutsSelected === 2 && currentBlockersManifest.partialNotRunSelected === 0, 'current-blockers manifest selects only the latest 4 FAIL/TIMEOUT identities');
 assert((currentBlockersManifest.selected || []).every(row => !['passed', 'pass', 'skipped', 'notrun', 'not-run', 'not_run'].includes(String(row.priorStatus || '').toLowerCase())), 'current-blockers manifest excludes pass, skip, and not-run identities');
-assert(prepare.includes('reported-current-blockers') && prepare.includes('loadReportedCurrentBlockersManifest') && prepare.includes('exactly 5') && prepare.includes('Passed and skipped identities selected: 0'), 'manifest preparer supports guarded current-blockers selection');
-assert(failedConfig.includes("currentBlockersRun: releaseSelectionMode === 'reported-current-blockers'") && failedConfig.includes('reported-current-blockers runs only the 5 current FAIL/TIMEOUT identities'), 'failed-release config records current-blockers mode');
-assert(currentBlockersWrapper.includes('SelectionMode reported-current-blockers') && currentBlockersWrapper.includes('149 PASS') && currentBlockersWrapper.includes('2 SKIP'), 'current blockers PowerShell wrapper runs only current blockers');
-assert(app.includes("if (normalized === 'schedule') return 'schedule-builder'") && app.includes("setActiveScheduleSubTab('schedule-builder')"), 'Schedule route primes Schedule Builder before mobile roster/event hydration');
-assert(read('tests/86chaos-full-audit/04-schedule-math-oracle.spec.cjs').includes('expect.poll') && read('tests/86chaos-full-audit/04-schedule-math-oracle.spec.cjs').includes('Schedule Builder should hydrate current-run QA staff/events'), 'Schedule Builder seed visibility test waits for real hydration evidence');
-assert(timeOffRequestApi.includes('function requestDateKey') && timeOffRequestApi.includes("where('workspaceId', '==', restaurantId)") && timeOffRequestApi.includes('listTargetRequests'), 'Request Off API supports legacy workspace/date conflict lookup and target listing');
-assert(timeOffRequestTest.includes('Ghost Mode conflict lookup finds legacy workspace/date rows for other employees') && timeOffRequestTest.includes('Ghost Mode list returns target Request Off rows stored under legacy schedule identity'), 'Request Off API regression tests cover Ghost Mode conflicts/listing');
-assert(app.includes("data-testid={selected ? 'workspace-switcher-current-workspace'") && costRegressionTest.includes('workspace-switcher-current-workspace') && costRegressionTest.includes("getByRole('dialog', { name: /switch workspace/i })"), 'workspace-switch cost test scopes current workspace selection to the switcher dialog');
-assert(currentBlockersSourceTest.includes('current-blockers manifest reruns only the five latest failed or timed-out') && currentBlockersSourceTest.includes('Ghost Request Off conflict lookup supports legacy workspace/date rows'), '16.0.178 current-blockers source regression test exists');
-assert(sinceRunner.includes('api/current-blockers-release-gate-source-16-0-178.test.cjs'), 'since-16.0.170 targeted test runner includes 16.0.178 current-blocker regressions');
+assert(prepare.includes('reported-current-blockers') && prepare.includes('loadReportedCurrentBlockersManifest') && prepare.includes('exactly 4') && prepare.includes('Passed and skipped identities selected: 0'), 'manifest preparer supports guarded current-blockers selection');
+assert(failedConfig.includes("currentBlockersRun: releaseSelectionMode === 'reported-current-blockers'") && failedConfig.includes('reported-current-blockers runs only the 4 current FAIL/TIMEOUT identities'), 'failed-release config records current-blockers mode');
+assert(currentBlockersWrapper.includes('SelectionMode reported-current-blockers') && currentBlockersWrapper.includes('only the 4 current FAIL/TIMEOUT tests') && currentBlockersWrapper.includes('mobile Schedule Builder identity that passed'), 'current blockers PowerShell wrapper runs only current blockers');
+assert((currentBlockersManifest.selected || []).some(row => /06-request-off-events-integration/.test(row.specPath || '') && row.project === 'chromium' && String(row.priorStatus || '').toLowerCase() === 'timedout'), 'current-blockers manifest keeps desktop Ghost Request Off timeout');
+assert((currentBlockersManifest.selected || []).some(row => /06-request-off-events-integration/.test(row.specPath || '') && row.project === 'mobile-chromium' && String(row.priorStatus || '').toLowerCase() === 'timedout'), 'current-blockers manifest keeps mobile Ghost Request Off timeout');
+assert((currentBlockersManifest.selected || []).some(row => /cost-regression/.test(row.specPath || '') && row.project === 'chromium' && String(row.priorStatus || '').toLowerCase() === 'failed'), 'current-blockers manifest keeps desktop cost-regression failure');
+assert((currentBlockersManifest.selected || []).some(row => /cost-regression/.test(row.specPath || '') && row.project === 'mobile-chromium' && String(row.priorStatus || '').toLowerCase() === 'failed'), 'current-blockers manifest keeps mobile cost-regression failure');
+assert((currentBlockersManifest.selected || []).every(row => !/04-schedule-math-oracle/.test(row.specPath || '')), 'passed mobile Schedule Builder identity is excluded from current-blockers manifest');
+assert(costRegressionTest.includes("dialog.getByTestId('workspace-switcher-current-workspace')") && costRegressionTest.includes('current workspace control should be uniquely exposed inside the workspace switcher') && !costRegressionTest.includes("getByRole('button', { name: /close/i })"), 'workspace-switch cost test uses the unique current workspace test hook and no broad close fallback');
+assert(schedule.includes('data-testid={`request-off-cancel-${r.id}`}') && schedule.includes('aria-label={`Cancel Request Off for ${formatRequestDateLabel(r.date)}`}'), 'Request Off cancel control has a stable hook and accessible name');
+assert(read('tests/86chaos-full-audit/06-request-off-events-integration.spec.cjs').includes("waitForEvent('dialog', { timeout: 6000 })") && read('tests/86chaos-full-audit/06-request-off-events-integration.spec.cjs').includes('const [conflictResponse, nativeDialog] = await Promise.all'), 'Ghost Request Off conflict dialog is handled before response/DOM inspection');
+assert(read('tests/86chaos-full-audit/06-request-off-events-integration.spec.cjs').includes("page.getByTestId(`request-off-cancel-${createdRequestId}`)") && read('tests/86chaos-full-audit/06-request-off-events-integration.spec.cjs').includes("isTimeOffResponseAction(response, 'ghost-cancel')"), 'Ghost Request Off cancellation targets the newly created request and verifies ghost-cancel');
+assert(currentBlockersSourceTest.includes('current-blockers manifest reruns only the four latest failed or timed-out') && currentBlockersSourceTest.includes('passed mobile Schedule Builder identity must be absent'), '16.0.179 current-blockers source regression test exists');
+assert(sinceRunner.includes('api/current-blockers-release-gate-source-16-0-179.test.cjs'), 'since-16.0.170 targeted test runner includes 16.0.179 current-blocker regressions');
 
 // Preserve targeted post-16.0.170 repairs.
 assert(tabMasterSchedule.includes('changeSubTab') && tabMasterSchedule.includes('onSubTabChange(normalized)') && tabMasterSchedule.includes("'month-view'"), 'Schedule parent subtab stays synchronized when Month View is selected');
@@ -191,4 +195,4 @@ assert(read('scripts/verify-native-backup-iam.js').includes('gcloud projects add
 assert(vercel.includes('/api/firestore-backup') && vercel.includes('0 9 * * *') && vercel.includes('/api/firestore-backup-watchdog') && vercel.includes('0 21 * * *'), 'vercel cron schedules remain unchanged');
 
 if (failures) { console.error(`\n${failures} validation check(s) failed.`); process.exit(1); }
-console.log('\n16.0.178 source validation passed.');
+console.log('\n16.0.179 source validation passed.');

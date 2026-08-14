@@ -1,39 +1,32 @@
 ============================================================
 86 CHAOS TEST RESULT
 
-MODE:      partial-resume
-TOTAL:     156
-PASS:      149
-FAIL:      1
-TIMEOUT:   4
-SKIP:      2
+MODE:      reported-current-blockers
+TOTAL:     5
+PASS:      1
+FAIL:      2
+TIMEOUT:   2
+SKIP:      0
 
 RESULT: FAILED
 
-Primary blocker: 86chaos-full-audit\04-schedule-math-oracle.spec.cjs > 04 schedule hours math truth oracle > if fake restaurant seed exists, visible Schedule Builder text must expose seeded staff/events and not hide invalid-time evidence: Error: Seeded QA staff/events should be visible in Schedule Builder
+Primary blocker: e2e\cost-regression.spec.cjs > cost scenario select-active-workspace: Error: locator.click: Error: strict mode violation: getByRole('dialog', { name: /switch workspace/i }).first().or(getByRole('dialog').filter({ hasText: /switch workspace/i }).first()).getByRole('button', { name: /close/i }) resolved to 3 elements:
+    1) <button type="button" title="Close Switch Workspace" aria-label="Close Switch Workspace" data-chaos-control-kind="informational" class="p-1.5 hover:bg-[#12161A] rounded-full text-slate-400 hover:text-white transition-colors focus:outline-none focus:ring-2 focus:ring-[#D4A381] chaos-release-tap-target">?</button> aka getByRole('button', { name: 'Close Switch Workspace' })
+    2) <button type="button" data-current-workspace="true" data-chaos-control-kind="informational" data-testid="workspace-switcher-current-workspace" title="Current workspace 86 Chaos Release Gate QA 2026-08-13T23-13-19. Close switcher." aria-label="Current workspace 86 Chaos Release Gate QA 2026-08-13T23-13-19. Close switcher." class="w-full text-left rounded-xl border p-3 transition-all bg-[#D4A381]/10 border-[#D4A381] text-white chaos-release-tap-target">?</button> aka getByTestId('workspace-switcher-current-workspace')
+    3) <button type="button" title="Close" aria-label="Close" data-chaos-control-kind="informational" class="w-full chaos-button chaos-button-secondary bg-[#12161A] text-slate-300 border border-[#2A353D] font-bold rounded-lg hover:text-[#D4A381] transition-all px-3 py-2 text-xs chaos-release-tap-target">Close</button> aka getByRole('button', { name: 'Close', exact: true })
 
-?[2mexpect(?[22m?[31mreceived?[39m?[2m).?[22mtoEqual?[2m(?[22m?[32mexpected?[39m?[2m) // deep equality?[22m
+Call log:
+?[2m  - waiting for getByRole('dialog', { name: /switch workspace/i }).first().or(getByRole('dialog').filter({ hasText: /switch workspace/i }).first()).getByRole('button', { name: /close/i })?[22m
 
-?[32m- Expected  - 1?[39m
-?[31m+ Received  + 6?[39m
-
-?[32m- Array []?[39m
-?[31m+ Array [?[39m
-?[31m+   "Allen QA",?[39m
-?[31m+   "Chuck QA",?[39m
-?[31m+   "Lani QA",?[39m
-?[31m+   "QA Private Party - Staff Up",?[39m
-?[31m+ ]?[39m
 
 Failed / timed-out tests:
-1. [mobile-chromium] 86chaos-full-audit\04-schedule-math-oracle.spec.cjs > 04 schedule hours math truth oracle > if fake restaurant seed exists, visible Schedule Builder text must expose seeded staff/events and not hide invalid-time evidence
-2. [chromium] 86chaos-full-audit\06-request-off-events-integration.spec.cjs > 06 request-off, availability, and scheduled events integration > Ghost Mode Request Off as a legacy employee verifies conflict warning and cancellation workflow
-3. [mobile-chromium] 86chaos-full-audit\06-request-off-events-integration.spec.cjs > 06 request-off, availability, and scheduled events integration > Ghost Mode Request Off as a legacy employee verifies conflict warning and cancellation workflow
-4. [chromium] e2e\cost-regression.spec.cjs > cost scenario select-active-workspace
-5. [mobile-chromium] e2e\cost-regression.spec.cjs > cost scenario select-active-workspace
+1. [chromium] 86chaos-full-audit\06-request-off-events-integration.spec.cjs > 06 request-off, availability, and scheduled events integration > Ghost Mode Request Off as a legacy employee verifies conflict warning and cancellation workflow
+2. [mobile-chromium] 86chaos-full-audit\06-request-off-events-integration.spec.cjs > 06 request-off, availability, and scheduled events integration > Ghost Mode Request Off as a legacy employee verifies conflict warning and cancellation workflow
+3. [chromium] e2e\cost-regression.spec.cjs > cost scenario select-active-workspace
+4. [mobile-chromium] e2e\cost-regression.spec.cjs > cost scenario select-active-workspace
 
 Next command: npm run test:play-store:delta
 
 Artifacts:
-C:\Users\geoff\Documents\GitHub\86chaos\test-results\86chaos-play-store-release-gate\2026-08-13T21-18-09
+C:\Users\geoff\Documents\GitHub\86chaos\test-results\86chaos-play-store-release-gate\2026-08-13T23-13-19
 ============================================================
