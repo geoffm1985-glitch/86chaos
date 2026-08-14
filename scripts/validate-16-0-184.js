@@ -58,9 +58,9 @@ const costRegressionTest = read('tests/e2e/cost-regression.spec.cjs');
 const timeOffRequestApi = read('api/time-off-request.js');
 const timeOffRequestTest = read('api/time-off-request.test.cjs');
 
-assert(pkg.version === '16.0.183', 'package.json version is 16.0.183');
-assert(lock.version === '16.0.183' && lock.packages?.['']?.version === '16.0.183', 'package-lock root versions are 16.0.183');
-assert(pkg.scripts['test:source'] === 'node scripts/validate-16-0-183.js', 'test:source points to 16.0.183 validator');
+assert(pkg.version === '16.0.184', 'package.json version is 16.0.184');
+assert(lock.version === '16.0.184' && lock.packages?.['']?.version === '16.0.184', 'package-lock root versions are 16.0.184');
+assert(pkg.scripts['test:source'] === 'node scripts/validate-16-0-184.js', 'test:source points to 16.0.184 validator');
 assert(pkg.scripts['test:since-16-0-170'] === 'node scripts/run-tests-since-16-0-170.cjs', 'targeted since-16.0.170 test command exists');
 assert(pkg.scripts['test:since-16-0-170:node'] === 'node scripts/run-tests-since-16-0-170.cjs --node-only', 'targeted node-only since-16.0.170 test command exists');
 assert(pkg.scripts['test:play-store:resume-current'] === 'powershell -NoProfile -ExecutionPolicy Bypass -File .\\RUN_86CHAOS_PARTIAL_RESUME_RELEASE_GATE.ps1', 'partial resume Play Store command exists');
@@ -69,17 +69,28 @@ assert(pkg.scripts['test:play-store:current-blockers'] === 'powershell -NoProfil
 assert(pkg.scripts['test:play-store:latest-blockers'] === pkg.scripts['test:play-store:current-blockers'], 'latest blockers alias exists');
 assert(lock.packages?.['']?.scripts?.['test:play-store:resume-current'] === pkg.scripts['test:play-store:resume-current'], 'package-lock scripts include partial resume command');
 assert(lock.packages?.['']?.scripts?.['test:play-store:current-blockers'] === pkg.scripts['test:play-store:current-blockers'], 'package-lock scripts include current blockers command');
-assert(version.version === '16.0.183' && version.build === '16.0.183', 'public/version.json version/build are 16.0.183');
-assert(version.releaseTitle === 'Ghost Request Off Reload Test Flow Repair', 'release title is correct');
-assert(appCore.includes("CURRENT_VERSION = '16.0.183'"), 'app core CURRENT_VERSION is 16.0.183');
-assert(apiVersion.includes("APP_VERSION = '16.0.183'") && apiVersion.includes("SECURITY_SCHEMA_VERSION = '16.0.183'"), 'api version reports 16.0.183');
-assert(!fs.existsSync(path.join(root, 'scripts/validate-16-0-182.js')), 'previous validator was replaced');
+assert(version.version === '16.0.184' && version.build === '16.0.184', 'public/version.json version/build are 16.0.184');
+assert(version.releaseTitle === 'Custom Shift Dropdown Dedupe Repair', 'release title is correct');
+assert(appCore.includes("CURRENT_VERSION = '16.0.184'"), 'app core CURRENT_VERSION is 16.0.184');
+assert(apiVersion.includes("APP_VERSION = '16.0.184'") && apiVersion.includes("SECURITY_SCHEMA_VERSION = '16.0.184'"), 'api version reports 16.0.184');
+assert(!fs.existsSync(path.join(root, 'scripts/validate-16-0-183.js')), 'previous validator was replaced');
 
 assert(sha('firestore.rules') === '51bfd7d39edd59f680ae41a149c108cec8cd42d00b102d84cb00ee40d90264d9', 'firestore.rules unchanged');
 assert(sha('storage.rules') === '174e7e9a140193ff69ccf0f0d3e5c65b81a9e0fbbd612bff45ce57e7a3a7ce9c', 'storage.rules unchanged');
 assert(sha('database.rules.json') === '152b5cd3f9839f598c9602706d8205b96759296e865d540b52c780900bfba138', 'database.rules.json unchanged');
 assert(sha('firestore.indexes.json') === 'ee666de303988cd269f7c09fa63678a2deb1cfcaa199cb4f1656dd9bddcc4b4b', 'firestore.indexes.json unchanged');
 assert(sha('firebase.json') === 'bd837a11c71750d4da6ccfcb725ca54e78dd76008b525ec54c7fe79a5b8a3ca4', 'firebase.json unchanged');
+
+
+
+// Targeted 16.0.184 Custom Shift dropdown dedupe repair.
+const customShiftDropdownSourceTest = read('api/custom-shift-dropdown-source-16-0-184.test.cjs');
+assert(schedule.includes("const presetLabelKeyClient = (p = {}) => String(p.label || '').trim().toLowerCase()"), 'Schedule Builder has a label key helper for dropdown dedupe');
+assert(schedule.includes('const SHIFT_PRESETS = useMemo(() => {') && schedule.includes('const customRowsByLabel = new Map()') && schedule.includes('visibleRows.push(customRowsByLabel.get(key) || preset)'), 'Schedule Builder dropdown merges built-ins and Custom Shifts by visible label');
+assert(schedule.includes('if (!key || usedLabels.has(key)) continue;') && schedule.includes('{customPresets.map(preset => ('), 'Schedule Builder hides duplicate dropdown labels while preserving Manage Custom Shifts list');
+assert(!/const SHIFT_PRESETS = \[\s*\.\.\.BUILT_IN_SHIFT_PRESETS,\s*\.\.\.\[\.\.\.customPresets\]/.test(schedule), 'Schedule Builder no longer blindly concatenates built-ins and Custom Shifts in the dropdown');
+assert(customShiftDropdownSourceTest.includes('Schedule Builder dropdown dedupes custom shifts against built-in labels') && customShiftDropdownSourceTest.includes('customRowsByLabel') && customShiftDropdownSourceTest.includes('Manage Custom Shifts still renders the real custom preset list'), '16.0.184 Custom Shift dropdown source regression exists');
+assert(sinceRunner.includes('api/custom-shift-dropdown-source-16-0-184.test.cjs'), 'since-16.0.170 targeted test runner includes 16.0.184 Custom Shift dropdown regression');
 
 // Targeted 16.0.179 release-gate resume and login/workspace readiness repairs.
 assert(partialResumeManifest.mode === 'partial-resume' && partialResumeManifest.totalSelected === 156 && partialResumeManifest.previousFailuresSelected === 2 && partialResumeManifest.previousTimeoutsSelected === 3 && partialResumeManifest.partialNotRunSelected === 151, 'partial-resume manifest selects only the uploaded interrupted run non-passed identities');
@@ -199,4 +210,4 @@ assert(read('scripts/verify-native-backup-iam.js').includes('gcloud projects add
 assert(vercel.includes('/api/firestore-backup') && vercel.includes('0 9 * * *') && vercel.includes('/api/firestore-backup-watchdog') && vercel.includes('0 21 * * *'), 'vercel cron schedules remain unchanged');
 
 if (failures) { console.error(`\n${failures} validation check(s) failed.`); process.exit(1); }
-console.log('\n16.0.183 source validation passed.');
+console.log('\n16.0.184 source validation passed.');
