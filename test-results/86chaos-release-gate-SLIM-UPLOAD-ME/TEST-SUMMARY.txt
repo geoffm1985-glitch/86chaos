@@ -10,19 +10,11 @@ SKIP:      0
 
 RESULT: FAILED
 
-Primary blocker: 86chaos-full-audit\06-request-off-events-integration.spec.cjs > 06 request-off, availability, and scheduled events integration > Ghost Mode Request Off as a legacy employee verifies conflict warning and cancellation workflow: Error: Request Off conflict date cell for 2026-08-15 should be selectable
+Primary blocker: 86chaos-full-audit\06-request-off-events-integration.spec.cjs > 06 request-off, availability, and scheduled events integration > Ghost Mode Request Off as a legacy employee verifies conflict warning and cancellation workflow: Error: Selecting the seeded conflict date should call the Request Off conflicts API
 
-?[2mexpect(?[22m?[31mlocator?[39m?[2m).?[22mtoBeVisible?[2m(?[22m?[2m)?[22m failed
+?[2mexpect(?[22m?[31mreceived?[39m?[2m).?[22mtoBeTruthy?[2m()?[22m
 
-Locator: locator('div.cursor-pointer, button, [role="gridcell"]').filter({ hasText: /^15(?:\s|$)/ }).first()
-Expected: visible
-Timeout: 15000ms
-Error: element(s) not found
-
-Call log:
-?[2m  - Request Off conflict date cell for 2026-08-15 should be selectable with timeout 15000ms?[22m
-?[2m  - waiting for locator('div.cursor-pointer, button, [role="gridcell"]').filter({ hasText: /^15(?:\s|$)/ }).first()?[22m
-
+Received: ?[31mnull?[39m
 
 Failed / timed-out tests:
 1. [chromium] 86chaos-full-audit\06-request-off-events-integration.spec.cjs > 06 request-off, availability, and scheduled events integration > Ghost Mode Request Off as a legacy employee verifies conflict warning and cancellation workflow
@@ -31,5 +23,5 @@ Failed / timed-out tests:
 Next command: npm run test:play-store:delta
 
 Artifacts:
-C:\Users\geoff\Documents\GitHub\86chaos\test-results\86chaos-play-store-release-gate\2026-08-14T00-33-16
+C:\Users\geoff\Documents\GitHub\86chaos\test-results\86chaos-play-store-release-gate\2026-08-14T01-00-59
 ============================================================

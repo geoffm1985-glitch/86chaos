@@ -1,15 +1,15 @@
 {
-  "version": "16.0.181",
-  "name": "86 Chaos 16.0.181",
-  "build": "16.0.181",
-  "label": "86 Chaos 16.0.181",
-  "releasedAt": "2026-08-14T00:42:00-05:00",
-  "releaseTitle": "Ghost Request Off Date Cell Selector Repair",
+  "version": "16.0.182",
+  "name": "86 Chaos 16.0.182",
+  "build": "16.0.182",
+  "label": "86 Chaos 16.0.182",
+  "releasedAt": "2026-08-14T01:45:00-05:00",
+  "releaseTitle": "Ghost Request Off Cached Conflict Selection Repair",
   "notes": [
-    "Fixes the Ghost Request Off current-blockers date-cell selector so it clicks the visible Request Off calendar day by its day-number span.",
-    "Keeps the current-blockers Play Store rerun narrowed to the exact two failed Ghost Request Off identities from the 16.0.180 report."
+    "Fixes the Ghost Request Off test so the first conflict selection proves the conflicts API response and later selection can use the app\u2019s confirmed cached conflict row.",
+    "Keeps the current-blockers Play Store rerun narrowed to the exact two failed Ghost Request Off identities from the 16.0.181 report."
   ],
-  "title": "86 Chaos 16.0.181",
+  "title": "86 Chaos 16.0.182",
   "summary": "Surgical release-gate repair for the two remaining Ghost Mode Request Off current blockers only.",
-  "description": "Limits the repair to the Ghost Request Off browser test date-cell selector and current-blockers evidence from the 16.0.180 report."
+  "description": "Limits the repair to the Ghost Request Off browser test so a second selection may reuse a confirmed cached conflict row while keeping the current-blockers runner narrowed to the two failed identities."
 }

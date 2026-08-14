@@ -1,4 +1,4 @@
-# Runs only the 2 current FAIL tests from the latest 16.0.180 current-blockers Play Store report.
+# Runs only the 2 current FAIL tests from the latest 16.0.181 current-blockers Play Store report.
 # It intentionally excludes PASS, SKIP, TIMEOUT, NOT-RUN, cost-regression, Schedule Builder, and unrelated identities.
 $ErrorActionPreference = "Stop"
 $script = Join-Path $PSScriptRoot "RUN_86CHAOS_FAILED_AND_NEW_RELEASE_GATE.ps1"

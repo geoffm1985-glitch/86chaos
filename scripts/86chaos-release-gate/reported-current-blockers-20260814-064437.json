@@ -2,12 +2,12 @@
   "ok": true,
   "manifestSchemaVersion": 3,
   "mode": "reported-current-blockers",
-  "source": "uploaded-current-blockers-20260814-054208",
-  "selectionSource": "uploaded-current-blockers-20260814-054208-fail-only",
+  "source": "uploaded-current-blockers-20260814-064437",
+  "selectionSource": "uploaded-current-blockers-20260814-064437-fail-only",
   "lineageMode": "none",
-  "baselineFullRunId": "2026-08-14T00-33-16",
-  "baselineSourceVersion": "16.0.180",
-  "baselineDeployedVersion": "16.0.180",
+  "baselineFullRunId": "2026-08-14T01-00-59",
+  "baselineSourceVersion": "16.0.181",
+  "baselineDeployedVersion": "16.0.181",
   "totalSelected": 2,
   "desktopSelected": 1,
   "mobileSelected": 1,
@@ -17,9 +17,9 @@
   "currentReleaseFeatureTestsSelected": 0,
   "duplicateIdentitiesRemoved": 0,
   "newTestsCount": 0,
-  "note": "Runs only the two current 16.0.180 FAIL identities from the 20260814-054208 current-blockers report. Excludes PASS, SKIP, TIMEOUT, NOT-RUN, cost-regression, Schedule Builder, and unrelated identities.",
-  "targetSourceVersion": "16.0.180",
-  "targetDeployedVersion": "16.0.180",
+  "note": "Runs only the two current 16.0.181 FAIL identities from the 20260814-064437 current-blockers report. Excludes PASS, SKIP, TIMEOUT, NOT-RUN, cost-regression, Schedule Builder, and unrelated identities.",
+  "targetSourceVersion": "16.0.181",
+  "targetDeployedVersion": "16.0.181",
   "selected": [
     {
       "spec": "86chaos-full-audit/06-request-off-events-integration.spec.cjs",
@@ -43,14 +43,14 @@
       ],
       "priorStatus": "failed",
       "baselineStatus": "failed",
-      "baselineFullRunId": "2026-08-14T00-33-16",
-      "baselineSourceVersion": "16.0.180",
-      "baselineDeployedVersion": "16.0.180",
-      "sourceVersion": "16.0.180",
-      "deployedVersion": "16.0.180",
-      "fullRunId": "2026-08-14T00-33-16",
+      "baselineFullRunId": "2026-08-14T01-00-59",
+      "baselineSourceVersion": "16.0.181",
+      "baselineDeployedVersion": "16.0.181",
+      "sourceVersion": "16.0.181",
+      "deployedVersion": "16.0.181",
+      "fullRunId": "2026-08-14T01-00-59",
       "duration": 0,
-      "error": "from current 16.0.180 current-blockers slim report: Request Off conflict date cell for 2026-08-15 should be selectable",
+      "error": "from current 16.0.181 current-blockers slim report: Selecting the seeded conflict date should call the Request Off conflicts API",
       "selectionReasons": [
         "current_blocker_failure"
       ],
@@ -58,7 +58,7 @@
       "migratedFromLegacyAmbiguousIdentity": false,
       "legacyAmbiguousMatchCount": 0,
       "migrationSourceStableKey": "86chaos-full-audit/06-request-off-events-integration.spec.cjs\u000006 request-off, availability, and scheduled events integration\u0000Ghost Mode Request Off as a legacy employee verifies conflict warning and cancellation workflow\u0000chromium",
-      "sourceFileHash": "f6931a51c34ac3c51832d3ad6869c704e3c6268eb869f2b704ebef71cdb845ce"
+      "sourceFileHash": "3867b350e04184236764bf8eee3896d989881dfcbd9f0b444aa9f89699faa0f6"
     },
     {
       "spec": "86chaos-full-audit/06-request-off-events-integration.spec.cjs",
@@ -82,14 +82,14 @@
       ],
       "priorStatus": "failed",
       "baselineStatus": "failed",
-      "baselineFullRunId": "2026-08-14T00-33-16",
-      "baselineSourceVersion": "16.0.180",
-      "baselineDeployedVersion": "16.0.180",
-      "sourceVersion": "16.0.180",
-      "deployedVersion": "16.0.180",
-      "fullRunId": "2026-08-14T00-33-16",
+      "baselineFullRunId": "2026-08-14T01-00-59",
+      "baselineSourceVersion": "16.0.181",
+      "baselineDeployedVersion": "16.0.181",
+      "sourceVersion": "16.0.181",
+      "deployedVersion": "16.0.181",
+      "fullRunId": "2026-08-14T01-00-59",
       "duration": 0,
-      "error": "from current 16.0.180 current-blockers slim report: Request Off conflict date cell for 2026-08-15 should be selectable",
+      "error": "from current 16.0.181 current-blockers slim report: Selecting the seeded conflict date should call the Request Off conflicts API",
       "selectionReasons": [
         "current_blocker_failure"
       ],
@@ -97,7 +97,7 @@
       "migratedFromLegacyAmbiguousIdentity": false,
       "legacyAmbiguousMatchCount": 0,
       "migrationSourceStableKey": "86chaos-full-audit/06-request-off-events-integration.spec.cjs\u000006 request-off, availability, and scheduled events integration\u0000Ghost Mode Request Off as a legacy employee verifies conflict warning and cancellation workflow\u0000mobile-chromium",
-      "sourceFileHash": "f6931a51c34ac3c51832d3ad6869c704e3c6268eb869f2b704ebef71cdb845ce"
+      "sourceFileHash": "3867b350e04184236764bf8eee3896d989881dfcbd9f0b444aa9f89699faa0f6"
     }
   ]
 }

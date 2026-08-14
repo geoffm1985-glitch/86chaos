@@ -60,7 +60,7 @@ function assertReportedCurrentBlockersSelection(rows = []) {
   const badProjects = rows.filter(item => !['chromium', 'mobile-chromium'].includes(reportedProject(item)));
   if (badProjects.length) errors.push(`unexpected projects selected: ${[...new Set(badProjects.map(reportedProject))].join(', ')}`);
   if (new Set(stableKeys).size !== stableKeys.length) errors.push('duplicate stable identities selected');
-  if (errors.length) throw new Error(`reported-current-blockers selection must be exactly the 2 current failed Ghost Request Off blockers from 20260814-054208: ${errors.join('; ')}`);
+  if (errors.length) throw new Error(`reported-current-blockers selection must be exactly the 2 current failed Ghost Request Off blockers from 20260814-064437: ${errors.join('; ')}`);
 }
 
 assertReportedFailedOnlySelection(FAILED_ONLY_TESTS);
@@ -83,7 +83,7 @@ const manifest = {
     : releaseSelectionMode === 'partial-resume'
       ? 'partial-resume runs only the FAIL/TIMEOUT plus NOT-RUN identities from the uploaded interrupted 16.0.175 run and excludes all PASS identities.'
       : releaseSelectionMode === 'reported-current-blockers'
-        ? 'reported-current-blockers runs only the 2 current FAIL identities from the 16.0.180 current-blockers report and excludes PASS, SKIP, TIMEOUT, NOT-RUN, cost-regression, Schedule Builder, and unrelated identities.'
+        ? 'reported-current-blockers runs only the 2 current FAIL identities from the 16.0.181 current-blockers report and excludes PASS, SKIP, TIMEOUT, NOT-RUN, cost-regression, Schedule Builder, and unrelated identities.'
         : `${releaseSelectionMode} success is diagnostic only. Complete npm run test:play-store is still required for release approval.`
 };
 fs.writeFileSync(path.join(runDir, 'failed-only-playwright-selection.json'), JSON.stringify(manifest, null, 2));
