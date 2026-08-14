@@ -13,6 +13,49 @@ function initAdmin(req) {
 
 function norm(v) { return String(v || '').toLowerCase().trim(); }
 function cleanString(v, fallback = '') { return String(v == null ? fallback : v).trim(); }
+
+function normalizeIdentityText(value = '') {
+  return String(value || '').toLowerCase().replace(/[^a-z0-9@._+-]+/g, ' ').replace(/\s+/g, ' ').trim();
+}
+function localPart(value = '') {
+  return String(value || '').split('@')[0] || '';
+}
+function callerIdentityNameKeys(ctx = {}) {
+  const values = [
+    ctx.callerProfile?.name,
+    ctx.callerProfile?.displayName,
+    ctx.callerProfile?.fullName,
+    ctx.caller?.name,
+    ctx.caller?.displayName,
+    ctx.caller?.fullName,
+    ctx.decoded?.name,
+    ctx.decoded?.displayName,
+    ctx.callerEmail,
+    localPart(ctx.callerEmail)
+  ];
+  return new Set(values.map(normalizeIdentityText).filter(Boolean));
+}
+function resolveTargetDisplayName(ctx = {}, body = {}, current = {}, targetUser = {}, targetUid = '') {
+  const requested = cleanString(body.name || body.displayName || body.fullName || '');
+  const existing = cleanString(
+    current.name || current.employeeName || current.staffName || current.displayName || current.fullName ||
+    targetUser.name || targetUser.employeeName || targetUser.staffName || targetUser.displayName || targetUser.fullName ||
+    ''
+  );
+  const targetIsCaller = [targetUid, targetUser.uid, targetUser.authUid, targetUser.userId, targetUser.id]
+    .filter(Boolean)
+    .some(value => cleanString(value) === cleanString(ctx.decoded?.uid || ctx.callerDocId || ''));
+  const requestedKey = normalizeIdentityText(requested);
+  const existingKey = normalizeIdentityText(existing);
+  const callerKeys = callerIdentityNameKeys(ctx);
+  // When an admin edits another employee's email, the request must not be able to
+  // copy the admin's own display name onto the target account. This preserves the
+  // target profile through the Firebase Auth email-change/logout/login loop even if
+  // a stale form or profile hydration accidentally submits the caller name.
+  if (!targetIsCaller && requested && existing && requestedKey !== existingKey && callerKeys.has(requestedKey)) return existing;
+  return requested || existing || 'Staff';
+}
+
 function cleanMoney(v) {
   const n = Number.parseFloat(v);
   return Number.isFinite(n) && n >= 0 ? Number(n.toFixed(2)) : 0;
@@ -453,7 +496,7 @@ module.exports = async function handler(req, res) {
       if ((isProtectedRootAdminEmail(currentEmail) || isProtectedRootAdminEmail(nextEmail)) && !ctx.isSuperAdmin) throw protectedRootAdminError();
 
       let authEmailUpdated = false;
-      const displayName = cleanString(body.name || current.name || targetUser.name || 'Staff');
+      const displayName = resolveTargetDisplayName(ctx, body, current, targetUser, targetAuthUid || targetUid);
       if (nextEmail !== currentEmail) {
         if (!targetAuthUid) return res.status(400).json({ error: 'This staff profile is missing a Firebase Auth UID, so its login email cannot be changed safely.' });
         const existingAuth = await auth.getUserByEmail(nextEmail).catch(err => {
@@ -468,7 +511,8 @@ module.exports = async function handler(req, res) {
       }
 
       const now = new Date().toISOString();
-      const membershipPayload = buildMembershipPayload(ctx, targetAuthUid || targetUid, { ...body, email: nextEmail }, current);
+      const safeUpdateBody = { ...body, name: displayName, email: nextEmail };
+      const membershipPayload = buildMembershipPayload(ctx, targetAuthUid || targetUid, safeUpdateBody, current);
       const extraUserPatch = authEmailUpdated ? {
         previousEmail: currentEmail,
         emailChangedAt: now,
@@ -602,5 +646,7 @@ module.exports._test = {
   workspaceMemberMatchesTargetWorkspace,
   buildInactiveMembershipPatch,
   isInactiveMembership,
-  memberDocId
+  memberDocId,
+  resolveTargetDisplayName,
+  callerIdentityNameKeys
 };

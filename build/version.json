@@ -1,15 +1,15 @@
 {
-  "version": "16.0.174",
-  "name": "86 Chaos 16.0.174",
-  "build": "16.0.174",
-  "label": "86 Chaos 16.0.174",
+  "version": "16.0.175",
+  "name": "86 Chaos 16.0.175",
+  "build": "16.0.175",
+  "label": "86 Chaos 16.0.175",
   "releasedAt": "2026-08-13T17:15:00-05:00",
-  "releaseTitle": "Schedule Loaded Shift Merge Hotfix",
+  "releaseTitle": "Staff Email Identity Guard And Targeted Regression Harness",
   "notes": [
     "Deduplicates published schedule rows by logical employee/date/time identity so duplicate Firestore shift documents do not appear as duplicate shifts in Month View.",
     "Fixes schedule identity resolution so shift document IDs are not mistaken for employee IDs, allowing legacy roster/email/name fields to resolve correctly.",
     "Keeps Month View printing on a generated printable calendar built from the exact visible month shift set."
   ],
-  "title": "86 Chaos 16.0.174",
+  "title": "86 Chaos 16.0.175",
   "summary": "Fixes loaded schedule shift merging so date and scheduleDateKey copies of the same Firestore shift merge by document id before logical field completeness."
 }
