@@ -13,9 +13,59 @@ function initAdmin(req) {
 
 function norm(v) { return String(v || '').toLowerCase().trim(); }
 function cleanString(v, fallback = '') { return String(v == null ? fallback : v).trim(); }
+
+function normalizeIdentityText(value = '') {
+  return String(value || '').toLowerCase().replace(/[^a-z0-9@._+-]+/g, ' ').replace(/\s+/g, ' ').trim();
+}
+function localPart(value = '') {
+  return String(value || '').split('@')[0] || '';
+}
+function callerIdentityNameKeys(ctx = {}) {
+  const values = [
+    ctx.callerProfile?.name,
+    ctx.callerProfile?.displayName,
+    ctx.callerProfile?.fullName,
+    ctx.caller?.name,
+    ctx.caller?.displayName,
+    ctx.caller?.fullName,
+    ctx.decoded?.name,
+    ctx.decoded?.displayName,
+    ctx.callerEmail,
+    localPart(ctx.callerEmail)
+  ];
+  return new Set(values.map(normalizeIdentityText).filter(Boolean));
+}
+function resolveTargetDisplayName(ctx = {}, body = {}, current = {}, targetUser = {}, targetUid = '') {
+  const requested = cleanString(body.name || body.displayName || body.fullName || '');
+  const existing = cleanString(
+    current.name || current.employeeName || current.staffName || current.displayName || current.fullName ||
+    targetUser.name || targetUser.employeeName || targetUser.staffName || targetUser.displayName || targetUser.fullName ||
+    ''
+  );
+  const targetIsCaller = [targetUid, targetUser.uid, targetUser.authUid, targetUser.userId, targetUser.id]
+    .filter(Boolean)
+    .some(value => cleanString(value) === cleanString(ctx.decoded?.uid || ctx.callerDocId || ''));
+  const requestedKey = normalizeIdentityText(requested);
+  const existingKey = normalizeIdentityText(existing);
+  const callerKeys = callerIdentityNameKeys(ctx);
+  // When an admin edits another employee's email, the request must not be able to
+  // copy the admin's own display name onto the target account. This preserves the
+  // target profile through the Firebase Auth email-change/logout/login loop even if
+  // a stale form or profile hydration accidentally submits the caller name.
+  if (!targetIsCaller && requested && existing && requestedKey !== existingKey && callerKeys.has(requestedKey)) return existing;
+  return requested || existing || 'Staff';
+}
+
 function cleanMoney(v) {
   const n = Number.parseFloat(v);
   return Number.isFinite(n) && n >= 0 ? Number(n.toFixed(2)) : 0;
+}
+function isValidEmail(value) {
+  const email = norm(value);
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+}
+function resolveTargetAuthUid(targetUid, targetUser = {}, body = {}) {
+  return cleanString(body.targetAuthUid || body.authUid || body.userAuthUid || targetUser.authUid || targetUser.uid || targetUser.userId || targetUser.accountUserId || targetUid);
 }
 function cleanPerms(perms = {}) {
   const allowed = ['schedule', 'events', 'ops', 'inventory', 'prep', 'sales', 'team', 'labor', 'settings', 'branding', 'integrations', 'menuIntelligence', 'hr', 'wageView', 'wageEdit'];
@@ -269,13 +319,19 @@ function buildMembershipPayload(ctx, uid, base = {}, existing = {}) {
   if (!ctx.canChooseWageAccess) ownerOnlyPermissionKeys.forEach((key) => { permissions[key] = currentPerms[key] === true; });
   if (permissions.wageEdit) permissions.wageView = true;
 
+  const canonicalEmail = norm(base.email || existing.email || existing.emailLower || existing.employeeEmail || existing.userEmail);
   const payload = {
     userId: uid,
     uid,
+    authUid: uid,
     restaurantId: ctx.restaurantId,
     restaurantName: cleanString(ctx.restaurant?.name || ctx.restaurant?.businessName || ctx.restaurantId),
     name: cleanString(base.name, existing.name || 'Staff'),
-    email: norm(base.email || existing.email),
+    email: canonicalEmail,
+    emailLower: canonicalEmail,
+    employeeEmail: canonicalEmail,
+    userEmail: canonicalEmail,
+    authEmail: canonicalEmail,
     phone: cleanString(base.phone, existing.phone || ''),
     role: cleanString(base.role, existing.role || 'Staff') || 'Staff',
     photoURL: cleanString(base.photoURL, existing.photoURL || ''),
@@ -295,7 +351,7 @@ function buildMembershipPayload(ctx, uid, base = {}, existing = {}) {
   return payload;
 }
 
-async function upsertAccountAndMembership(db, uid, accountBase, membershipPayload, { newAccount = false, setForcePasswordChange = false } = {}) {
+async function upsertAccountAndMembership(db, uid, accountBase, membershipPayload, { newAccount = false, setForcePasswordChange = false, extraUserPatch = {} } = {}) {
   const now = new Date().toISOString();
   const userRef = db.collection('users').doc(uid);
   const currentSnap = await userRef.get();
@@ -306,6 +362,10 @@ async function upsertAccountAndMembership(db, uid, accountBase, membershipPayloa
   const membershipForMap = {
     restaurantId: restId,
     restaurantName: membershipPayload.restaurantName,
+    email: membershipPayload.email || '',
+    emailLower: membershipPayload.emailLower || membershipPayload.email || '',
+    employeeEmail: membershipPayload.employeeEmail || membershipPayload.email || '',
+    userEmail: membershipPayload.userEmail || membershipPayload.email || '',
     role: membershipPayload.role,
     permissions: membershipPayload.permissions || {},
     isAdmin: membershipPayload.isAdmin === true,
@@ -316,9 +376,14 @@ async function upsertAccountAndMembership(db, uid, accountBase, membershipPayloa
     membershipId: docId
   };
 
+  const accountEmail = norm(accountBase.email || membershipPayload.email || current.email || current.emailLower || current.employeeEmail || current.userEmail);
   const baseUpdate = {
     name: cleanString(accountBase.name || current.name || membershipPayload.name),
-    email: norm(accountBase.email || current.email || membershipPayload.email),
+    email: accountEmail,
+    emailLower: accountEmail,
+    employeeEmail: accountEmail,
+    userEmail: accountEmail,
+    authEmail: accountEmail,
     phone: cleanString(accountBase.phone || current.phone || membershipPayload.phone || ''),
     photoURL: cleanString(accountBase.photoURL || current.photoURL || membershipPayload.photoURL || ''),
     isActive: current.isActive === false && membershipPayload.isActive !== false ? true : (current.isActive !== false),
@@ -327,6 +392,8 @@ async function upsertAccountAndMembership(db, uid, accountBase, membershipPayloa
     updatedAt: now,
     staffWriteSource: 'staff-member-api-v14-multi-workspace'
   };
+
+  Object.assign(baseUpdate, extraUserPatch || {});
 
   if (!current.restaurantId) baseUpdate.restaurantId = restId;
   if (!current.defaultRestaurantId) baseUpdate.defaultRestaurantId = current.restaurantId || restId;
@@ -411,15 +478,60 @@ module.exports = async function handler(req, res) {
       const targetRef = db.collection('users').doc(targetUid);
       const targetSnap = await targetRef.get();
       const targetUser = targetSnap.exists ? targetSnap.data() || {} : {};
-      const memberId = memberDocId(targetUid, ctx.restaurantId);
-      const memberSnap = await db.collection('workspaceMembers').doc(memberId).get();
+      const targetAuthUid = resolveTargetAuthUid(targetUid, targetUser, body);
+      const memberId = memberDocId(targetAuthUid || targetUid, ctx.restaurantId);
+      let memberSnap = await db.collection('workspaceMembers').doc(memberId).get();
+      let legacyMemberData = null;
+      if (!memberSnap.exists && targetUid && targetUid !== memberId) {
+        const legacyMemberSnap = await db.collection('workspaceMembers').doc(targetUid).get().catch(() => null);
+        const legacyMember = legacyMemberSnap?.exists ? legacyMemberSnap.data() || {} : null;
+        if (legacyMember && cleanString(legacyMember.restaurantId || legacyMember.workspaceId) === ctx.restaurantId) legacyMemberData = legacyMember;
+      }
       const legacyMatch = targetUser.restaurantId === ctx.restaurantId;
-      if (!memberSnap.exists && !legacyMatch && !ctx.isSuperAdmin) return res.status(404).json({ error: 'That staff member is not part of this workspace.' });
-      const current = memberSnap.exists ? memberSnap.data() || {} : targetUser;
-      const membershipPayload = buildMembershipPayload(ctx, targetUid, { ...body, email: current.email || targetUser.email || body.email }, current);
-      const { membershipId } = await upsertAccountAndMembership(db, targetUid, { name: membershipPayload.name, email: membershipPayload.email, phone: membershipPayload.phone, photoURL: membershipPayload.photoURL }, membershipPayload);
-      await writeAudit(db, ctx, membershipPayload.wage !== undefined ? 'STAFF_WAGE_UPDATE' : 'STAFF_UPDATE', `${targetUid}/${ctx.restaurantId}`, `${membershipPayload.name || targetUid} was updated by ${ctx.callerEmail}.`);
-      return res.status(200).json({ ok: true, action: 'update', uid: targetUid, membershipId, staff: { id: targetUid, ...membershipPayload } });
+      if (!memberSnap.exists && !legacyMemberData && !legacyMatch && !ctx.isSuperAdmin) return res.status(404).json({ error: 'That staff member is not part of this workspace.' });
+      const current = memberSnap.exists ? memberSnap.data() || {} : (legacyMemberData || targetUser);
+      const currentEmail = norm(current.email || current.emailLower || current.employeeEmail || current.userEmail || targetUser.email || targetUser.emailLower || targetUser.employeeEmail || targetUser.userEmail);
+      const nextEmail = norm(body.email || currentEmail);
+      if (!nextEmail || !isValidEmail(nextEmail)) return res.status(400).json({ error: 'A valid employee email address is required.' });
+      if ((isProtectedRootAdminEmail(currentEmail) || isProtectedRootAdminEmail(nextEmail)) && !ctx.isSuperAdmin) throw protectedRootAdminError();
+
+      let authEmailUpdated = false;
+      const displayName = resolveTargetDisplayName(ctx, body, current, targetUser, targetAuthUid || targetUid);
+      if (nextEmail !== currentEmail) {
+        if (!targetAuthUid) return res.status(400).json({ error: 'This staff profile is missing a Firebase Auth UID, so its login email cannot be changed safely.' });
+        const existingAuth = await auth.getUserByEmail(nextEmail).catch(err => {
+          if (err?.code === 'auth/user-not-found') return null;
+          throw err;
+        });
+        if (existingAuth && existingAuth.uid !== targetAuthUid) return res.status(409).json({ error: 'That email is already used by another Firebase Auth account.' });
+        await auth.updateUser(targetAuthUid, { email: nextEmail, emailVerified: false, displayName });
+        authEmailUpdated = true;
+      } else if (targetAuthUid && displayName) {
+        await auth.updateUser(targetAuthUid, { displayName }).catch(() => {});
+      }
+
+      const now = new Date().toISOString();
+      const safeUpdateBody = { ...body, name: displayName, email: nextEmail };
+      const membershipPayload = buildMembershipPayload(ctx, targetAuthUid || targetUid, safeUpdateBody, current);
+      const extraUserPatch = authEmailUpdated ? {
+        previousEmail: currentEmail,
+        emailChangedAt: now,
+        emailChangedBy: ctx.callerDocId || ctx.decoded.uid,
+        emailChangedByEmail: ctx.callerEmail || '',
+        forceLogout: true,
+        forceLogoutAt: now,
+        forceLogoutNonce: `${now}_${Math.random().toString(36).slice(2)}`,
+        forceLogoutReason: 'staff-login-email-changed'
+      } : {};
+      const { membershipId } = await upsertAccountAndMembership(
+        db,
+        targetAuthUid || targetUid,
+        { name: membershipPayload.name, email: membershipPayload.email, phone: membershipPayload.phone, photoURL: membershipPayload.photoURL },
+        membershipPayload,
+        { extraUserPatch }
+      );
+      await writeAudit(db, ctx, authEmailUpdated ? 'STAFF_EMAIL_UPDATE' : (membershipPayload.wage !== undefined ? 'STAFF_WAGE_UPDATE' : 'STAFF_UPDATE'), `${targetAuthUid || targetUid}/${ctx.restaurantId}`, `${membershipPayload.name || targetUid} was updated by ${ctx.callerEmail}.${authEmailUpdated ? ` Login email changed from ${currentEmail || 'blank'} to ${nextEmail}.` : ''}`);
+      return res.status(200).json({ ok: true, action: 'update', uid: targetAuthUid || targetUid, membershipId, authEmailUpdated, staff: { id: targetAuthUid || targetUid, ...membershipPayload } });
     }
 
     if (action === 'deactivate' || action === 'delete') {
@@ -534,5 +646,7 @@ module.exports._test = {
   workspaceMemberMatchesTargetWorkspace,
   buildInactiveMembershipPatch,
   isInactiveMembership,
-  memberDocId
+  memberDocId,
+  resolveTargetDisplayName,
+  callerIdentityNameKeys
 };

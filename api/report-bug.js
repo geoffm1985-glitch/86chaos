@@ -3,6 +3,7 @@ const { getBearerToken } = require('./_firebase-project-admin');
 const { enforceRateLimit, sendRateLimited } = require('./_rate-limit');
 const { sendBugReportEmail } = require('./_support-email');
 const crypto = require('crypto');
+const { capturePostHogEvent } = require('./_posthog-server');
 
 function cleanText(value = '', max = 2000) {
   return String(value || '').replace(/\s+/g, ' ').trim().slice(0, max);
@@ -407,6 +408,28 @@ module.exports = async function handler(req, res) {
         expiresAt: new Date(Date.now() + (5 * 60 * 1000)).toISOString()
       }, { merge: true }).catch(() => {});
     }
+
+    const posthogResult = await capturePostHogEvent({
+      event: isAutomaticCrash ? '86chaos_api_crash_report_saved' : '86chaos_problem_report_saved',
+      distinctId: report.userId || decoded.uid || 'unknown-user',
+      groups: restaurantId ? { workspace: restaurantId } : {},
+      properties: {
+        app: '86chaos',
+        app_version: report.appVersion || '',
+        category: report.category,
+        source: report.source,
+        severity: report.severity,
+        active_tab: report.activeTab,
+        route: report.route,
+        restaurant_id: restaurantId || '',
+        report_id: reportRef.id,
+        automatic_crash: isAutomaticCrash,
+        error_name: report.errorName || '',
+        error_message: report.errorMessage || report.rawMessage || '',
+        chunk_url_present: Boolean(report.chunkUrl)
+      }
+    }).catch(error => ({ attempted: true, ok: false, error: error?.message || String(error) }));
+
     const pushResult = await sendSuperAdminPush(app, db, { ...report, reportId: reportRef.id }, caller).catch(error => ({
       attempted: true,
       fcmAcceptedCount: 0,
@@ -447,7 +470,11 @@ module.exports = async function handler(req, res) {
       supportEmailProviderMessageId: emailResult.providerMessageId || '',
       supportEmailFailureCategory: emailResult.failureCategory || '',
       supportEmailFailureMessage: cleanText(emailResult.failureMessage || '', 500),
-      supportEmailAttemptedAt: emailResult.attemptedAt || new Date().toISOString()
+      supportEmailAttemptedAt: emailResult.attemptedAt || new Date().toISOString(),
+      postHogAttempted: posthogResult.attempted === true,
+      postHogAccepted: posthogResult.ok === true,
+      postHogStatus: posthogResult.status || 0,
+      postHogError: posthogResult.error || ''
     }, { merge: true });
 
     await db.collection('auditLogs').add({
@@ -465,7 +492,9 @@ module.exports = async function handler(req, res) {
         supportPushFcmAcceptedCount: pushResult.fcmAcceptedCount ?? pushResult.sentCount ?? 0,
         supportPushFcmRejectedCount: pushResult.fcmRejectedCount ?? pushResult.failedCount ?? 0,
         supportPushEligibleAdminCount: pushResult.eligibleAdminCount || 0,
-        supportPushMissingTokens: pushResult.missingTokens === true
+        supportPushMissingTokens: pushResult.missingTokens === true,
+        postHogAttempted: posthogResult.attempted === true,
+        postHogAccepted: posthogResult.ok === true
       }
     }).catch(() => {});
 
@@ -496,7 +525,12 @@ module.exports = async function handler(req, res) {
       supportPushEligibleAdminCount: pushResult.eligibleAdminCount || 0,
       supportPushMissingTokens: pushResult.missingTokens === true,
       supportEmailProviderAccepted: emailResult.providerAccepted === true,
-      supportEmailAttempted: emailResult.attempted === true
+      supportEmailAttempted: emailResult.attempted === true,
+      postHog: {
+        attempted: posthogResult.attempted === true,
+        accepted: posthogResult.ok === true,
+        status: posthogResult.status || 0
+      }
     });
   } catch (error) {
     console.error('[report-bug] failed:', error);

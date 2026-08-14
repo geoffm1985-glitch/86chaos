@@ -77,7 +77,7 @@ test('reported failed-current npm command uses the strict reported failed-only m
     'powershell -NoProfile -ExecutionPolicy Bypass -File .\\RUN_86CHAOS_FAILED_AND_NEW_RELEASE_GATE.ps1 -SelectionMode reported-failed-only'
   );
   const runner = fs.readFileSync(path.join(root, 'RUN_86CHAOS_FAILED_AND_NEW_RELEASE_GATE.ps1'), 'utf8');
-  assert.match(runner, /ValidateSet\('failed\+new','failed-only','repair','reported-failed-only'\)/);
+  assert.match(runner, /ValidateSet\('failed\+new','failed-only','repair','reported-failed-only','partial-resume','reported-current-blockers'\)/);
 });
 
 

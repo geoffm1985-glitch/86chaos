@@ -80,9 +80,26 @@ async function openScenario(page, scenario) {
     const trigger = page.getByRole('button', { name: /switch workspace/i }).first();
     await expect(trigger, 'workspace switcher trigger').toBeVisible({ timeout: 8000 });
     await trigger.click();
-    const current = page.getByRole('button', { name: /current|active workspace|switch/i }).first();
-    await expect(current, 'current workspace option or switcher panel should appear').toBeVisible({ timeout: 5000 });
-    await current.click().catch(async () => page.getByRole('button', { name: /close/i }).click());
+
+    const dialog = page.getByRole('dialog', { name: /switch workspace/i }).first()
+      .or(page.getByRole('dialog').filter({ hasText: /switch workspace/i }).first());
+    await expect(
+      dialog,
+      'workspace switcher dialog should be visible before selecting the current workspace'
+    ).toBeVisible({ timeout: 8000 });
+
+    const current = dialog.getByTestId('workspace-switcher-current-workspace');
+    await expect(
+      current,
+      'current workspace control should be uniquely exposed inside the workspace switcher'
+    ).toBeVisible({ timeout: 8000 });
+
+    await current.click();
+    await expect(
+      dialog,
+      'selecting the current workspace should close the workspace switcher'
+    ).toBeHidden({ timeout: 8000 });
+    await assertAuthenticatedAfterNavigation(page, { timeout: 20_000 });
   } else if (scenario.action === 'reload-for-push-sync') {
     await page.reload({ waitUntil: 'domcontentloaded' });
     await assertAuthenticatedAfterNavigation(page, { timeout: 30_000 });

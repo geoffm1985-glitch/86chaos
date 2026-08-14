@@ -432,7 +432,7 @@ const LoginScreen = ({ setAppUser }) => {
         const userDocRef = doc(db, 'users', firebaseUser.uid);
         const userDocSnap = await withOperationTimeout(
           getDoc(userDocRef),
-          900,
+          2500,
           'Browser account profile lookup'
         );
         if (userDocSnap.exists()) {
@@ -448,7 +448,7 @@ const LoginScreen = ({ setAppUser }) => {
         for (const candidate of docIdCandidates) {
           const emailDocSnap = await withOperationTimeout(
             getDoc(doc(db, 'users', candidate)),
-            900,
+            2500,
             'Browser email profile lookup'
           );
           if (emailDocSnap.exists()) {
@@ -461,7 +461,7 @@ const LoginScreen = ({ setAppUser }) => {
         for (const candidate of docIdCandidates) {
           const emailFieldSnap = await withOperationTimeout(
             getDocs(query(collection(db, 'users'), where('email', '==', candidate))),
-            1200,
+            3000,
             'Browser email field profile lookup'
           );
           if (!emailFieldSnap.empty) {
@@ -483,7 +483,7 @@ const LoginScreen = ({ setAppUser }) => {
         setLoginStep('Checking account and workspace access on the server...');
         const bootstrap = await withOperationTimeout(
           loadLoginBootstrapFromServer(firebaseUser),
-          1800,
+          10000,
           'Server login bootstrap'
         );
         return { bootstrap, diagnostics: bootstrap?.diagnostics || null };

@@ -9,6 +9,7 @@ const TabTeam = ({ users, appUser, addToast, db, auth, firebaseConfig, T, useLiv
   const canManageTeam = Boolean(appUser?.isSuperAdmin === true || appUser?.isAdmin === true || appUser?.isOwner === true || appUser?.accountOwner === true || appUser?.permissions?.team === true);
   const [name, setName] = useState(''); 
   const [email, setEmail] = useState(''); 
+  const [originalEmail, setOriginalEmail] = useState('');
   const [phone, setPhone] = useState(''); 
   const [role, setRole] = useState(''); 
   const [wage, setWage] = useState(''); 
@@ -26,12 +27,12 @@ const TabTeam = ({ users, appUser, addToast, db, auth, firebaseConfig, T, useLiv
   const generateTempPass = () => Math.random().toString(36).slice(-6);
 
   const resetForm = () => {
-    setName(''); setEmail(''); setPhone(''); setWage(''); setPhotoURL(''); setRole(roles[0] || ''); setIsAdmin(false); setPerms({ schedule: false, inventory: false, prep: false, sales: false, team: false }); setEditingUserId(null);
+    setName(''); setEmail(''); setOriginalEmail(''); setPhone(''); setWage(''); setPhotoURL(''); setRole(roles[0] || ''); setIsAdmin(false); setPerms({ schedule: false, inventory: false, prep: false, sales: false, team: false }); setEditingUserId(null);
   };
 
   const handleEditClick = (u) => {
     if (!canManageTeam) return addToast('Read Only', 'Staff Roster is view-only for regular staff.');
-    setName(u.name); setEmail(u.email); setPhone(u.phone || ''); setWage(u.wage || ''); setPhotoURL(u.photoURL || ''); setRole(u.role || roles[0] || ''); setIsAdmin(u.isAdmin || false); setPerms(u.permissions || { schedule: false, inventory: false, prep: false, sales: false, team: false }); setEditingUserId(u.id);
+    setName(u.name); const rosterEmail = u.email || u.employeeEmail || u.emailLower || ''; const authUid = u.authUid || u.uid || u.userId || u.accountUserId || u.id; setEmail(rosterEmail); setOriginalEmail(String(rosterEmail || '').toLowerCase().trim()); setPhone(u.phone || ''); setWage(u.wage || ''); setPhotoURL(u.photoURL || ''); setRole(u.role || roles[0] || ''); setIsAdmin(u.isAdmin || false); setPerms(u.permissions || { schedule: false, inventory: false, prep: false, sales: false, team: false }); setEditingUserId(authUid);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -61,7 +62,7 @@ const TabTeam = ({ users, appUser, addToast, db, auth, firebaseConfig, T, useLiv
             });
             const result = await response.json().catch(() => ({}));
             if (!response.ok || result?.ok === false) throw new Error(result?.error || 'Staff profile save failed.');
-            addToast('Updated', `${name}'s profile has been updated.`);
+            addToast(result?.authEmailUpdated ? 'Login Email Updated' : 'Updated', result?.authEmailUpdated ? `${name}'s Firebase login email was updated.` : `${name}'s profile has been updated.`);
             resetForm();
         } catch(err) { addToast('Error', err.message); }
         return;
@@ -175,8 +176,9 @@ return (
           <div><label className={T.label}>Name</label><input type="text" value={name} onChange={e=>setName(e.target.value)} className={T.input} required placeholder="e.g. Gordon Ramsay" /></div>
           
           <div>
-            <label className={T.label}>Email {editingUserId && <span className="text-slate-500 lowercase normal-case ml-1">(Cannot be changed after creation)</span>}</label>
-            <input type="email" value={email} onChange={e=>setEmail(e.target.value)} disabled={!!editingUserId} className={`${T.input} ${editingUserId ? 'opacity-50 cursor-not-allowed' : ''}`} required />
+            <label className={T.label}>Email {editingUserId && <span className="text-amber-400 lowercase normal-case ml-1">(updates Firebase login email)</span>}</label>
+            <input type="email" value={email} onChange={e=>setEmail(e.target.value)} className={T.input} required />
+            {editingUserId && originalEmail && email.toLowerCase().trim() !== originalEmail && <p className="text-[10px] font-bold text-amber-300 mt-1">Saving will change this employee's Firebase Auth sign-in email from {originalEmail} to {email.toLowerCase().trim()}.</p>}
           </div>
 
           

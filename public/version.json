@@ -1,14 +1,14 @@
 {
-  "version": "16.0.170",
-  "name": "86 Chaos 16.0.170",
-  "build": "16.0.170",
-  "label": "86 Chaos 16.0.170",
-  "releasedAt": "2026-08-09T05:37:00-05:00",
-  "releaseTitle": "System Administrator Authoritative People Directory Repair",
+  "version": "16.0.183",
+  "name": "86 Chaos 16.0.183",
+  "build": "16.0.183",
+  "label": "86 Chaos 16.0.183",
+  "releasedAt": "2026-08-14T17:32:00-05:00",
+  "releaseTitle": "Ghost Request Off Reload Test Flow Repair",
   "notes": [
-    "Uses the authoritative server people roster for System Administrator People Directory and Live/Last Seen so browser caches cannot decide platform visibility.",
-    "Preserves Workspaces / Clients, Push Control Center, Backup Health, watchdog IAM diagnostics, and canonical workspaceMembers enrichment.",
-    "Keeps Firestore rules, persistence, failed-only infrastructure, Request Off, Push, Backup, and PWA behavior unchanged."
+    "Ghost Request Off test now re-enters the exact employee possession after a full browser reload before verifying persistence and cancellation."
   ],
-  "title": "86 Chaos 16.0.170"
+  "title": "86 Chaos 16.0.183",
+  "summary": "Surgical release-gate repair for the two remaining Ghost Mode Request Off current blockers only.",
+  "description": "Limits the repair to the Ghost Request Off browser test so it respects that Ghost Mode is reset by a full browser reload, then re-enters the same employee possession before verifying the exact created request and canceling it."
 }

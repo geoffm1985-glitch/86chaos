@@ -15,6 +15,7 @@ import { WHOAMI_STATES, PLATFORM_ADMIN_ACCESS_STATES, classifyWhoamiResponse, me
 import { FEATURE_KEYS } from './config/plans';
 import { LoginScreen } from './features/auth';
 import * as runtimeReportStateModule from './core/runtimeReportState.cjs';
+import { initChaosPostHog, identifyChaosPostHogUser, resetChaosPostHogIdentity, trackChaosPageView, trackChaosPostHogEvent, trackChaosRuntimeError } from './core/posthogClient';
 
 const resolveCommonJsModule = (moduleValue) => {
   const candidate = moduleValue?.default && typeof moduleValue.default === 'object' ? moduleValue.default : moduleValue;
@@ -143,6 +144,16 @@ const reportRuntimeErrorWithDeliveryRules = async (kind, error, extra = {}) => {
   const context = getRuntimeReportContext(error, extra, kind);
   const fingerprint = buildRuntimeReportFingerprint(kind, error, context);
   const fallbackReportId = normalizeReportId(extra.fallbackReportId) || createFallbackReportId(kind === 'chunk-failure' ? 'chunk' : 'section');
+  trackChaosRuntimeError(error, {
+    kind,
+    category: kind,
+    source: extra.source || '',
+    activeTab: context.activeTab,
+    workspaceId: context.workspaceId,
+    appVersion: context.appVersion,
+    route: context.route,
+    chunkUrl: context.chunkUrl
+  });
   const diagnosticBase = createRuntimeDiagnostic({
     fallbackReportId,
     status: 'caught',
@@ -537,6 +548,34 @@ const RouteLoading = ({ label = 'Loading section...' }) => (
 const normalizeEmail = (value) => String(value || '').toLowerCase().trim();
 const workspaceMemberDocId = (uid = '', restaurantId = '') => `${String(uid || '').replace(/[^A-Za-z0-9_-]/g, '_')}_${String(restaurantId || '').replace(/[^A-Za-z0-9_-]/g, '_')}`.slice(0, 240);
 const safeWorkspaceName = (workspace = {}) => workspace.restaurantName || workspace.name || workspace.businessName || workspace.restaurantId || '86 Chaos Workspace';
+const normalizeDisplayNameKey = (value = '') => String(value || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').replace(/\s+/g, ' ').trim();
+const looksLikeMachineLoginName = (value = '', email = '') => {
+  const text = String(value || '').trim();
+  if (!text) return false;
+  const compact = text.toLowerCase().replace(/[^a-z0-9]/g, '');
+  const emailLocal = String(email || '').split('@')[0]?.toLowerCase().replace(/[^a-z0-9]/g, '') || '';
+  return Boolean((emailLocal && compact === emailLocal) || /^[a-z]+[a-z0-9._-]*\d{2,}$/i.test(text));
+};
+const looksLikeWorkspaceBusinessName = (value = '', workspace = {}) => {
+  const key = normalizeDisplayNameKey(value);
+  if (!key) return false;
+  return [workspace.restaurantName, workspace.businessName, workspace.restaurantId, workspace.workspaceName, workspace.clientName]
+    .map(normalizeDisplayNameKey)
+    .filter(Boolean)
+    .includes(key);
+};
+const resolveWorkspacePersonDisplayName = (member = {}, accountUser = {}, workspace = {}) => {
+  const email = member.email || member.employeeEmail || accountUser.email || accountUser.employeeEmail || '';
+  const preferred = [member.employeeName, member.staffName, member.fullName, member.displayName, accountUser.employeeName, accountUser.fullName, accountUser.displayName, accountUser.accountProfile?.name, accountUser.name]
+    .map(value => String(value || '').replace(/\s+/g, ' ').trim())
+    .filter(value => value && !looksLikeWorkspaceBusinessName(value, workspace) && !looksLikeMachineLoginName(value, email));
+  if (preferred.length) return preferred[0];
+  const safeMemberName = String(member.name || '').replace(/\s+/g, ' ').trim();
+  if (safeMemberName && !looksLikeWorkspaceBusinessName(safeMemberName, workspace)) return safeMemberName;
+  const safeAccountName = String(accountUser.name || '').replace(/\s+/g, ' ').trim();
+  if (safeAccountName && !looksLikeWorkspaceBusinessName(safeAccountName, workspace)) return safeAccountName;
+  return email || 'Staff';
+};
 
 const normalizeWorkspaceName = (workspace = {}) => String(safeWorkspaceName(workspace)).toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 const isFullAuditQaWorkspaceName = (workspace = {}) => {
@@ -588,11 +627,11 @@ const peekScheduleFocusSubTab = () => {
 };
 const defaultScheduleSubTabForTopLevelTab = (tab = 'published') => {
   const normalized = normalizeRouteTab(tab);
-  if (normalized === 'schedule' || normalized === 'published') {
+  if (normalized === 'schedule') return 'schedule-builder';
+  if (normalized === 'published') {
     const focused = peekScheduleFocusSubTab();
     if (focused) return focused;
   }
-  if (normalized === 'schedule') return 'schedule-builder';
   return 'my-schedule';
 };
 const resolveInitialTopLevelTab = (defaultTab = 'today') => {
@@ -690,7 +729,7 @@ const buildWorkspaceUser = (currentUser = {}, workspace = {}) => {
     restaurantId: workspace.restaurantId || currentUser.restaurantId,
     restaurantName: safeWorkspaceName(workspace),
     membershipId: workspace.membershipId || workspace.id || currentUser.membershipId || '',
-    name: workspace.name || currentUser.name || accountProfile.name || 'Staff',
+    name: resolveWorkspacePersonDisplayName(workspace, currentUser, workspace),
     email: normalizeEmail(workspace.email || currentUser.email || accountProfile.email),
     phone: workspace.phone || currentUser.phone || accountProfile.phone || '',
     role: workspace.role || currentUser.role || 'Staff',
@@ -727,6 +766,7 @@ const userFromWorkspaceMember = (member = {}, accountUser = {}) => {
   return {
     ...accountUser,
     ...Object.fromEntries(Object.entries(member).filter(([key]) => key !== 'id')),
+    name: resolveWorkspacePersonDisplayName(member, accountUser, member),
     id: stableUserId,
     userId: stableUserId,
     accountUserId: accountUid || stableUserId,
@@ -793,6 +833,7 @@ export default function App() {
   const [isWorkspaceSwitcherOpen, setIsWorkspaceSwitcherOpen] = useState(false);
   const [workspaceMembershipRefreshKey, setWorkspaceMembershipRefreshKey] = useState(0);
   const clearSessionAndLogout = React.useCallback(() => {
+    resetChaosPostHogIdentity();
     clearTenantListenerCache({ all: true });
     try { localStorage.removeItem('86chaosUser'); } catch (_) {}
     try { sessionStorage.removeItem('86chaosUser'); } catch (_) {}
@@ -807,6 +848,10 @@ export default function App() {
   const [serverAdminCheck, setServerAdminCheck] = useState({ status: WHOAMI_STATES.IDLE });
   const [serverAdminRetryKey, setServerAdminRetryKey] = useState(0);
   const [authRestoreState, setAuthRestoreState] = useState(() => ({ status: appUser?.sessionCached ? WHOAMI_STATES.PENDING : 'ready', uid: auth?.currentUser?.uid || '' }));
+
+  useEffect(() => {
+    initChaosPostHog({ appVersion: CURRENT_VERSION });
+  }, []);
   const [chunkRecoveryNotice, setChunkRecoveryNotice] = useState(() => {
     const state = readChunkRecoveryState();
     if (!state || state.appVersion !== CURRENT_VERSION) return null;
@@ -1313,6 +1358,7 @@ const [currentDate, setCurrentDate] = useState(getToday());
 
   const isDemoMode = !!liveAppUser?.isDemo;
   const sessionEmailForAdmin = String(liveAppUser?.email || appUser?.email || auth.currentUser?.email || '').toLowerCase();
+
   const platformAdminAccessState = resolvePlatformAdminAccessState({ user: liveAppUser || appUser || {}, verification: serverAdminCheck, masterAdminEmail: MASTER_ADMIN_EMAIL });
   const serverSaysSuperAdmin = platformAdminAccessState.verified === true;
   const localProfileHasSystemAdminMarker = Boolean(
@@ -1623,6 +1669,18 @@ if (liveAppUser && clientData) {
     liveAppUser = { ...liveAppUser, id: displayUsers[0].id, name: 'Demo Employee', role: displayUsers[0].role || 'Demo Employee', isAdmin: false, isSuperAdmin: false, permissions: { help: true } };
   }
   const displayClientData = isDemoMode && clientData ? { ...clientData, ownerEmail: 'Hidden for demo', ownerPhone: 'Hidden for demo', address: 'Hidden for demo', businessAddress: 'Hidden for demo', systemSettings: { tips: true, ...(clientData.systemSettings || {}), address: 'Hidden for demo', geofenceAddress: 'Hidden for demo' } } : clientData;
+
+  useEffect(() => {
+    if (!liveAppUser?.id && !auth?.currentUser?.uid) return;
+    identifyChaosPostHogUser(liveAppUser || {}, {
+      authUid: auth?.currentUser?.uid || liveAppUser?.id || '',
+      restaurantId: rId || '',
+      appVersion: CURRENT_VERSION,
+      isDemoMode,
+      plan: displayClientData?.selectedFutureTier || displayClientData?.plan || displayClientData?.subscriptionPlan || ''
+    });
+  }, [liveAppUser?.id, liveAppUser?.role, liveAppUser?.isAdmin, liveAppUser?.isSuperAdmin, liveAppUser?.workspaceOwner, auth?.currentUser?.uid, rId, isDemoMode, displayClientData?.selectedFutureTier, displayClientData?.plan, displayClientData?.subscriptionPlan]);
+
   const planAccess = usePlanAccess(liveAppUser, displayClientData);
   const mfaEnvValue = String(process.env.REACT_APP_MFA_ENFORCE_ELEVATED_ROLES || '').toLowerCase().trim();
   const mfaFrontendEnforced = ['true', '1', 'yes', 'enforce'].includes(mfaEnvValue) || displayClientData?.systemSettings?.mfaEnforceElevatedRoles === true || displayClientData?.securityCenter?.mfaEnforceElevatedRoles === true;
@@ -1908,7 +1966,12 @@ if (liveAppUser && clientData) {
  
   const transitionActiveTabState = useCallback((nextTab) => {
     const normalized = normalizeRouteTab(nextTab);
-    if ((normalized === 'schedule' || normalized === 'published') && activeTabStateRef.current !== normalized) {
+    if (normalized === 'schedule') {
+      // The top-level Schedule route is the manager Schedule Builder entry point.
+      // Set the parent subtab before the route renders so mobile/preloaded release
+      // checks open the same roster, shift, and event listeners as the desktop path.
+      setActiveScheduleSubTab('schedule-builder');
+    } else if (normalized === 'published') {
       setActiveScheduleSubTab(defaultScheduleSubTabForTopLevelTab(normalized));
     }
     activeTabStateRef.current = normalized;
@@ -1974,6 +2037,16 @@ if (liveAppUser && clientData) {
   const setActiveTabRef = useRef(setActiveTab);
   useEffect(() => { setActiveTabRef.current = setActiveTab; });
   const stableSetActiveTab = useCallback((tab) => setActiveTabRef.current?.(tab), []);
+
+  useEffect(() => {
+    trackChaosPageView(activeTabState, {
+      restaurantId: rId || '',
+      role: liveAppUser?.role || '',
+      isAdmin: liveAppUser?.isAdmin === true,
+      isSuperAdmin: liveAppUser?.isSuperAdmin === true,
+      appVersion: CURRENT_VERSION
+    });
+  }, [activeTabState, rId, liveAppUser?.role, liveAppUser?.isAdmin, liveAppUser?.isSuperAdmin]);
 
   useEffect(() => {
     if (typeof document === 'undefined') return undefined;
@@ -2240,6 +2313,12 @@ What I clicked / expected:
         const errBody = await res.json().catch(() => ({}));
         throw new Error(errBody.error || 'Could not send problem report.');
       }
+      trackChaosPostHogEvent('86chaos_problem_report_submitted', {
+        category: problemModal.category || 'Bug / Error',
+        active_tab: activeTabState || '',
+        workspace_id: liveAppUser?.restaurantId || rId || '',
+        app_version: CURRENT_VERSION
+      });
       setProblemModal({ open: false, title: '', message: '', category: 'Bug / Error' });
       setProblemText('');
       addToast('Report Sent', 'Support report sent with device diagnostics.');
@@ -2377,7 +2456,7 @@ What I clicked / expected:
         membershipId: w.membershipId || w.id || `${appUser?.id || 'user'}_${restaurantId}`,
         userId: w.userId || appUser?.id,
         email: normalizeEmail(w.email || appUser?.email),
-        name: w.name || appUser?.name || 'Staff',
+        name: resolveWorkspacePersonDisplayName(w, appUser || {}, w),
         isActive: w.isActive !== false
       });
     };
@@ -3480,6 +3559,9 @@ return (
               <button
                 key={workspace.restaurantId}
                 type="button"
+                data-testid={selected ? 'workspace-switcher-current-workspace' : 'workspace-switcher-workspace'}
+                data-current-workspace={selected ? 'true' : 'false'}
+                aria-label={selected ? `Current workspace ${safeWorkspaceName(workspace)}. Close switcher.` : `Open workspace ${safeWorkspaceName(workspace)}`}
                 onClick={() => selected ? setIsWorkspaceSwitcherOpen(false) : switchWorkspace(workspace)}
                 className={`w-full text-left rounded-xl border p-3 transition-all ${selected ? 'bg-[#D4A381]/10 border-[#D4A381] text-white' : 'bg-[#12161A] border-[#2A353D] text-slate-300 hover:border-[#D4A381]'}`}
               >

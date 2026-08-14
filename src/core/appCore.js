@@ -425,7 +425,7 @@ export const MASTER_ADMIN_EMAIL = (process.env.REACT_APP_MASTER_ADMIN_EMAIL || '
 export const EVENT_TAGS = ['Standard Day', 'Packers Game', 'Brewers Game', 'Live Music', 'Severe Weather', 'Private Catering', 'Holiday'];
 
 // --- VERSION TRACKING ---
-export const CURRENT_VERSION = '16.0.170';
+export const CURRENT_VERSION = '16.0.183';
 
 // --- Helpers ---
 const usePageVisible = () => {
@@ -1306,6 +1306,17 @@ if (typeof window !== 'undefined' && !window.crashCatcherAttached) {
         const oldest = window.__chaosCrashFingerprints.keys().next().value;
         if (oldest) window.__chaosCrashFingerprints.delete(oldest);
       }
+      try {
+        window.__chaosPostHogRuntimeError?.(payload.error || payload.reason || message, {
+          category: chunkUrl ? 'chunk-failure' : 'global-runtime-error',
+          source: payload.source || 'runtime_error',
+          activeTab: new URLSearchParams(window.location.search).get('tab') || '',
+          workspaceId: '',
+          appVersion: CURRENT_VERSION,
+          route: window.location.pathname + window.location.search,
+          chunkUrl
+        });
+      } catch (_) {}
       secureFetch('/api/report-bug', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
