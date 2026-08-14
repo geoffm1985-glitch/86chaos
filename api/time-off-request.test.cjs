@@ -99,11 +99,12 @@ function makeCollectionRows(rowsById = {}) {
   return query();
 }
 
-function makeDb({ users = {}, members = {} } = {}) {
+function makeDb({ users = {}, members = {}, timeOffRequests = {} } = {}) {
   return {
     collection(name) {
       if (name === 'users') return makeCollectionRows(users);
       if (name === 'workspaceMembers') return makeCollectionRows(members);
+      if (name === 'timeOffRequests') return makeCollectionRows(timeOffRequests);
       return makeCollectionRows({});
     }
   };
@@ -262,4 +263,81 @@ test('Request Off conflicts do not treat shared createdBy provenance as employee
   assert.deepEqual(summary.names, ['Sara QA']);
   assert.equal(Object.prototype.hasOwnProperty.call(summary, 'reason'), false);
   assert.equal(Object.prototype.hasOwnProperty.call(summary, 'employeeEmail'), false);
+});
+
+
+test('Ghost Mode conflict lookup finds legacy workspace/date rows for other employees', async () => {
+  const db = makeDb({
+    timeOffRequests: {
+      'sara-legacy-conflict': {
+        workspaceId: 'r1',
+        requestDate: '2026-08-14',
+        status: 'pending',
+        userId: 'sara-auth',
+        employeeId: 'sara-schedule',
+        employeeName: 'Sara QA',
+        employeeEmail: 'sara@example.test',
+      },
+      'allen-own-request': {
+        restaurantId: 'r1',
+        date: '2026-08-14',
+        status: 'approved',
+        userId: 'allen-auth',
+        scheduleUserId: 'allen-schedule',
+        employeeName: 'Allen QA',
+      },
+      'other-date': {
+        restaurantId: 'r1',
+        date: '2026-08-15',
+        status: 'pending',
+        userId: 'sara-auth',
+        employeeName: 'Sara QA',
+      },
+      'other-workspace': {
+        restaurantId: 'r2',
+        date: '2026-08-14',
+        status: 'pending',
+        userId: 'r2-sara',
+        employeeName: 'Wrong Workspace',
+      },
+    }
+  });
+  const rows = await api.listRequestsByDates(db, 'r1', ['2026-08-14']);
+  const allenIdentity = { authUid: 'allen-auth', userId: 'allen-auth', scheduleUserId: 'allen-schedule', employeeName: 'Allen QA' };
+  const summary = api.summarizeConflictRows(rows, allenIdentity);
+  assert.equal(rows.some(row => row.id === 'sara-legacy-conflict'), true);
+  assert.equal(rows.some(row => row.id === 'other-date'), false);
+  assert.equal(rows.some(row => row.id === 'other-workspace'), false);
+  assert.equal(summary.hasConflict, true);
+  assert.equal(summary.count, 1);
+  assert.deepEqual(summary.names, ['Sara QA']);
+});
+
+test('Ghost Mode list returns target Request Off rows stored under legacy schedule identity', async () => {
+  const db = makeDb({
+    timeOffRequests: {
+      'allen-legacy-request': {
+        restaurantId: 'r1',
+        requestDate: '2026-08-14',
+        status: 'approved',
+        userId: 'allen-schedule',
+        employeeId: 'allen-schedule',
+        employeeName: 'Allen QA',
+      },
+      'sara-request': {
+        restaurantId: 'r1',
+        date: '2026-08-14',
+        status: 'pending',
+        userId: 'sara-auth',
+        employeeName: 'Sara QA',
+      },
+    }
+  });
+  const ctx = { db, restaurantId: 'r1' };
+  const target = { authUid: 'allen-auth', userId: 'allen-auth', scheduleUserId: 'allen-schedule', employeeId: 'allen-schedule', employeeName: 'Allen QA' };
+  const rows = await api.listTargetRequests(ctx, target);
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].id, 'allen-legacy-request');
+  assert.equal(rows[0].date, '2026-08-14');
+  assert.equal(rows[0].employeeName, 'Allen QA');
 });

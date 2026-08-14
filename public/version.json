@@ -1,15 +1,16 @@
 {
-  "version": "16.0.177",
-  "name": "86 Chaos 16.0.177",
-  "build": "16.0.177",
-  "label": "86 Chaos 16.0.177",
+  "version": "16.0.178",
+  "name": "86 Chaos 16.0.178",
+  "build": "16.0.178",
+  "label": "86 Chaos 16.0.178",
   "releasedAt": "2026-08-13T20:55:00-05:00",
-  "releaseTitle": "Partial Resume Release Gate And Login Workspace Repair",
+  "releaseTitle": "Current Blockers Release Gate Repair",
   "notes": [
     "Extends login profile bootstrap timeouts so a valid password does not fail the release gate just because profile hydration is slow on preview.",
     "Hardens release-gate workspace chooser handling so tests select the current QA workspace instead of getting stuck behind the chooser dialog.",
     "Adds a partial-resume Play Store command that runs only the failed, timed-out, and not-run identities from the uploaded interrupted 16.0.175 release-gate run and excludes the 65 tests that already passed."
   ],
-  "title": "86 Chaos 16.0.177",
-  "summary": "Fixes slow preview login/workspace chooser release-gate failures and adds a partial-resume Play Store command that reruns only failed, timed-out, and not-run tests from the interrupted 16.0.175 run while excluding tests that already passed."
+  "title": "86 Chaos 16.0.178",
+  "summary": "Fixes slow preview login/workspace chooser release-gate failures and adds a partial-resume Play Store command that reruns only failed, timed-out, and not-run tests from the interrupted 16.0.175 run while excluding tests that already passed.",
+  "description": "Fixes current release-gate blockers for mobile Schedule Builder visibility, Ghost Mode Request Off conflicts, and workspace-switch cost regression while adding a five-test blocker rerun command."
 }

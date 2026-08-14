@@ -42,7 +42,29 @@ function assertReportedFailedOnlySelection(rows = []) {
 }
 
 
+
+function assertReportedCurrentBlockersSelection(rows = []) {
+  if (releaseSelectionMode !== 'reported-current-blockers') return;
+  const desktop = rows.filter(item => (item.projects || []).includes('chromium') || item.project === 'chromium').length;
+  const mobile = rows.filter(item => (item.projects || []).includes('mobile-chromium') || item.project === 'mobile-chromium').length;
+  const stableKeys = rows.map(row => row.stableKey || `${row.specPath || row.spec || ''}\u0000${row.fullSuitePath || ''}\u0000${row.leafTitle || row.exactTestTitle || row.title || ''}\u0000${reportedProject(row)}`);
+  const errors = [];
+  if (rows.length !== 5) errors.push(`expected 5 current blocker identities, got ${rows.length}`);
+  if (desktop !== 2) errors.push(`expected 2 chromium identities, got ${desktop}`);
+  if (mobile !== 3) errors.push(`expected 3 mobile-chromium identities, got ${mobile}`);
+  const failures = rows.filter(item => String(item.priorStatus || '').toLowerCase() === 'failed').length;
+  const timeouts = rows.filter(item => ['timedout', 'timeout'].includes(String(item.priorStatus || '').toLowerCase())).length;
+  if (failures !== 1) errors.push(`expected 1 failed identity, got ${failures}`);
+  if (timeouts !== 4) errors.push(`expected 4 timed-out identities, got ${timeouts}`);
+  if (rows.some(item => ['passed', 'skipped', 'notrun', 'not_run', 'not-run'].includes(String(item.priorStatus || '').toLowerCase()))) errors.push('current blockers selected a passed, skipped, or not-run identity');
+  const badProjects = rows.filter(item => !['chromium', 'mobile-chromium'].includes(reportedProject(item)));
+  if (badProjects.length) errors.push(`unexpected projects selected: ${[...new Set(badProjects.map(reportedProject))].join(', ')}`);
+  if (new Set(stableKeys).size !== stableKeys.length) errors.push('duplicate stable identities selected');
+  if (errors.length) throw new Error(`reported-current-blockers selection must be exactly the 5 current blockers from 20260814-033828: ${errors.join('; ')}`);
+}
+
 assertReportedFailedOnlySelection(FAILED_ONLY_TESTS);
+assertReportedCurrentBlockersSelection(FAILED_ONLY_TESTS);
 
 const manifest = {
   ok: true,
@@ -51,6 +73,7 @@ const manifest = {
   runDir,
   mode: releaseSelectionMode,
   resumePartialRun: releaseSelectionMode === 'partial-resume',
+  currentBlockersRun: releaseSelectionMode === 'reported-current-blockers',
   sourceManifestPath: FAILED_ONLY_MANIFEST_PATH,
   selected: FAILED_ONLY_TESTS,
   desktopSelected: FAILED_ONLY_TESTS.filter(item => (item.projects || []).includes('chromium')).length,
@@ -59,7 +82,9 @@ const manifest = {
     ? 'reported-failed-only runs only the 6 FAIL identities from 20260810-015004 and excludes TIMEOUT, PASS, and SKIP identities.'
     : releaseSelectionMode === 'partial-resume'
       ? 'partial-resume runs only the FAIL/TIMEOUT plus NOT-RUN identities from the uploaded interrupted 16.0.175 run and excludes all PASS identities.'
-      : `${releaseSelectionMode} success is diagnostic only. Complete npm run test:play-store is still required for release approval.`
+      : releaseSelectionMode === 'reported-current-blockers'
+        ? 'reported-current-blockers runs only the 5 current FAIL/TIMEOUT identities from the 16.0.177 partial-resume report and excludes PASS, SKIP, and NOT-RUN identities.'
+        : `${releaseSelectionMode} success is diagnostic only. Complete npm run test:play-store is still required for release approval.`
 };
 fs.writeFileSync(path.join(runDir, 'failed-only-playwright-selection.json'), JSON.stringify(manifest, null, 2));
 // Human-readable selected-test output is emitted once by the ASCII release-gate reporter.
@@ -72,7 +97,7 @@ const allProjects = [
   { name: 'webkit-pwa', grep: grepForProject(FAILED_ONLY_TESTS, 'webkit-pwa'), testMatch: PWA_SPEC_PATTERN, use: { ...devices['Desktop Safari'] } },
   { name: 'mobile-webkit-pwa', grep: grepForProject(FAILED_ONLY_TESTS, 'mobile-webkit-pwa'), testMatch: PWA_SPEC_PATTERN, use: { ...devices['iPhone 13'] } }
 ];
-const selectedProjects = releaseSelectionMode === 'reported-failed-only'
+const selectedProjects = (releaseSelectionMode === 'reported-failed-only' || releaseSelectionMode === 'reported-current-blockers')
   ? allProjects.filter(project => ['chromium', 'mobile-chromium'].includes(project.name))
   : allProjects;
 

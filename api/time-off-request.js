@@ -26,6 +26,18 @@ function safeDate(value = '') {
   return text;
 }
 
+function requestDateKey(row = {}) {
+  return safeDate(row.date || row.requestDate || row.requestedDate || row.dateKey || row.day || row.requestedDay || '');
+}
+
+function requestWorkspaceKey(row = {}) {
+  return cleanString(row.restaurantId || row.workspaceId || row.tenantId || row.clientId || '', 180);
+}
+
+function sameWorkspaceRequest(row = {}, restaurantId = '') {
+  return requestWorkspaceKey(row) === cleanString(restaurantId, 180);
+}
+
 function parseDateList(body = {}) {
   const raw = Array.isArray(body.dates) ? body.dates : [body.date];
   const dates = [...new Set(raw.map(safeDate).filter(Boolean))];
@@ -346,13 +358,26 @@ function summarizeConflictRows(rows = [], requestingIdentity = {}) {
   return { hasConflict: people.size > 0, count: people.size, names };
 }
 
+async function queryRequestRows(query, rowsById) {
+  const snap = await query.get();
+  snap.forEach(doc => {
+    if (!rowsById.has(doc.id)) rowsById.set(doc.id, { id: doc.id, ...(doc.data() || {}) });
+  });
+}
+
 async function listRequestsByDates(db, restaurantId, dates = []) {
-  const rows = [];
-  for (const date of dates) {
-    const snap = await db.collection('timeOffRequests').where('restaurantId', '==', restaurantId).where('date', '==', date).limit(80).get();
-    snap.forEach(doc => rows.push({ id: doc.id, ...(doc.data() || {}) }));
+  const dateSet = new Set((dates || []).map(safeDate).filter(Boolean));
+  const rowsById = new Map();
+  const collectionRef = db.collection('timeOffRequests');
+  for (const date of dateSet) {
+    await queryRequestRows(collectionRef.where('restaurantId', '==', restaurantId).where('date', '==', date).limit(80), rowsById);
   }
-  return rows;
+  // Legacy/imported Request Off rows can store workspaceId or requestDate instead of
+  // the modern restaurantId+date pair. Always merge one bounded workspace scan so a
+  // direct match for the target employee does not hide another employee's conflict.
+  await queryRequestRows(collectionRef.where('restaurantId', '==', restaurantId).limit(500), rowsById);
+  await queryRequestRows(collectionRef.where('workspaceId', '==', restaurantId).limit(500), rowsById);
+  return [...rowsById.values()].filter(row => sameWorkspaceRequest(row, restaurantId) && dateSet.has(requestDateKey(row)));
 }
 
 async function handleConflicts(ctx, body) {
@@ -361,7 +386,7 @@ async function handleConflicts(ctx, body) {
   const rows = await listRequestsByDates(ctx.db, ctx.restaurantId, dates);
   const conflicts = dates.map(date => ({
     date,
-    ...summarizeConflictRows(rows.filter(row => row.date === date), requestingIdentity)
+    ...summarizeConflictRows(rows.filter(row => requestDateKey(row) === date), requestingIdentity)
   }));
   return { ok: true, action: 'conflicts', restaurantId: ctx.restaurantId, conflicts };
 }
@@ -378,7 +403,7 @@ function publicRequestShape(row = {}) {
     authUid: cleanString(row.authUid || '', 180),
     userName: safeDisplayName(row),
     employeeName: safeDisplayName(row),
-    date: safeDate(row.date || '') || cleanString(row.date || '', 20),
+    date: requestDateKey(row) || cleanString(row.date || row.requestDate || '', 20),
     isPartial: row.isPartial === true,
     startTime: cleanString(row.startTime || '', 20),
     endTime: cleanString(row.endTime || '', 20),
@@ -408,12 +433,21 @@ function publicRequestShape(row = {}) {
 }
 
 async function listTargetRequests(ctx, targetIdentity) {
-  const snap = await ctx.db.collection('timeOffRequests').where('restaurantId', '==', ctx.restaurantId).where('userId', '==', targetIdentity.authUid || targetIdentity.userId).limit(120).get();
+  const rowsById = new Map();
+  const collectionRef = ctx.db.collection('timeOffRequests');
+  const ids = [...collectIdentityAliases(targetIdentity, targetIdentity.member, targetIdentity.user)].filter(Boolean);
+  const primaryId = targetIdentity.authUid || targetIdentity.userId || ids[0] || '';
+  if (primaryId) await queryRequestRows(collectionRef.where('restaurantId', '==', ctx.restaurantId).where('userId', '==', primaryId).limit(120), rowsById);
+  if (![...rowsById.values()].some(row => requestBelongsToIdentity(row, targetIdentity))) {
+    await queryRequestRows(collectionRef.where('restaurantId', '==', ctx.restaurantId).limit(500), rowsById);
+  }
+  if (![...rowsById.values()].some(row => requestBelongsToIdentity(row, targetIdentity))) {
+    await queryRequestRows(collectionRef.where('workspaceId', '==', ctx.restaurantId).limit(500), rowsById);
+  }
   const rows = [];
-  snap.forEach(doc => {
-    const row = { id: doc.id, ...(doc.data() || {}) };
-    if (requestBelongsToIdentity(row, targetIdentity)) rows.push(publicRequestShape(row));
-  });
+  for (const row of rowsById.values()) {
+    if (sameWorkspaceRequest(row, ctx.restaurantId) && requestBelongsToIdentity(row, targetIdentity)) rows.push(publicRequestShape(row));
+  }
   rows.sort((a, b) => String(a.date || '').localeCompare(String(b.date || '')) || String(a.createdAt || '').localeCompare(String(b.createdAt || '')));
   return rows;
 }
@@ -582,12 +616,17 @@ module.exports._test = {
   ACTIVE_CONFLICT_STATUSES,
   TERMINAL_CONFLICT_STATUSES,
   safeDate,
+  requestDateKey,
+  requestWorkspaceKey,
+  sameWorkspaceRequest,
   parseDateList,
   isActiveConflictRequest,
   collectIdentityAliases,
   collectEmailAliases,
   requestBelongsToIdentity,
   summarizeConflictRows,
+  listRequestsByDates,
+  listTargetRequests,
   publicRequestShape,
   activeEmbeddedMembership,
   userActive,

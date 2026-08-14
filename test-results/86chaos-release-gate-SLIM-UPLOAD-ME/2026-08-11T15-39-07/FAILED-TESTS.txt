@@ -1,8 +1,0 @@
-86 Chaos Failed Tests
-Run: 2026-08-11T15-39-07
-Version: 16.0.196
-Mode: full
-
-No Playwright test results were produced because the run was blocked before test execution.
-Existing failed-test lineage was not evaluated or cleared.
-Blocker: server tests: api\app-only-package-hygiene-16-0-188.test.cjs: app-only hygiene rejects forbidden source-controlled artifacts and packaged local secrets (1993.0226ms): AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:

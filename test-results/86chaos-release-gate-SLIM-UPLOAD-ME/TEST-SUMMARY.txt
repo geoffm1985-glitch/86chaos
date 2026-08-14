@@ -1,23 +1,39 @@
 ============================================================
 86 CHAOS TEST RESULT
 
-MODE:      full
-TOTAL:     0
-PASS:      0
-FAIL:      0
-TIMEOUT:   0
-SKIP:      0
+MODE:      partial-resume
+TOTAL:     156
+PASS:      149
+FAIL:      1
+TIMEOUT:   4
+SKIP:      2
 
-RESULT: BLOCKED BEFORE TEST EXECUTION
+RESULT: FAILED
 
-Primary blocker: server tests: api\app-only-package-hygiene-16-0-188.test.cjs: app-only hygiene rejects forbidden source-controlled artifacts and packaged local secrets (1993.0226ms): AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:
+Primary blocker: 86chaos-full-audit\04-schedule-math-oracle.spec.cjs > 04 schedule hours math truth oracle > if fake restaurant seed exists, visible Schedule Builder text must expose seeded staff/events and not hide invalid-time evidence: Error: Seeded QA staff/events should be visible in Schedule Builder
+
+?[2mexpect(?[22m?[31mreceived?[39m?[2m).?[22mtoEqual?[2m(?[22m?[32mexpected?[39m?[2m) // deep equality?[22m
+
+?[32m- Expected  - 1?[39m
+?[31m+ Received  + 6?[39m
+
+?[32m- Array []?[39m
+?[31m+ Array [?[39m
+?[31m+   "Allen QA",?[39m
+?[31m+   "Chuck QA",?[39m
+?[31m+   "Lani QA",?[39m
+?[31m+   "QA Private Party - Staff Up",?[39m
+?[31m+ ]?[39m
 
 Failed / timed-out tests:
-Not evaluated - Playwright did not start.
-Existing failed-test lineage was not cleared by this blocked run.
+1. [mobile-chromium] 86chaos-full-audit\04-schedule-math-oracle.spec.cjs > 04 schedule hours math truth oracle > if fake restaurant seed exists, visible Schedule Builder text must expose seeded staff/events and not hide invalid-time evidence
+2. [chromium] 86chaos-full-audit\06-request-off-events-integration.spec.cjs > 06 request-off, availability, and scheduled events integration > Ghost Mode Request Off as a legacy employee verifies conflict warning and cancellation workflow
+3. [mobile-chromium] 86chaos-full-audit\06-request-off-events-integration.spec.cjs > 06 request-off, availability, and scheduled events integration > Ghost Mode Request Off as a legacy employee verifies conflict warning and cancellation workflow
+4. [chromium] e2e\cost-regression.spec.cjs > cost scenario select-active-workspace
+5. [mobile-chromium] e2e\cost-regression.spec.cjs > cost scenario select-active-workspace
 
-Next command: Fix the blocker above, then rerun npm run test:play-store
+Next command: npm run test:play-store:delta
 
 Artifacts:
-C:\Users\geoff\Documents\GitHub\86chaos\test-results\86chaos-play-store-release-gate\2026-08-11T15-39-07
+C:\Users\geoff\Documents\GitHub\86chaos\test-results\86chaos-play-store-release-gate\2026-08-13T21-18-09
 ============================================================

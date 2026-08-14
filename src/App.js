@@ -627,11 +627,11 @@ const peekScheduleFocusSubTab = () => {
 };
 const defaultScheduleSubTabForTopLevelTab = (tab = 'published') => {
   const normalized = normalizeRouteTab(tab);
-  if (normalized === 'schedule' || normalized === 'published') {
+  if (normalized === 'schedule') return 'schedule-builder';
+  if (normalized === 'published') {
     const focused = peekScheduleFocusSubTab();
     if (focused) return focused;
   }
-  if (normalized === 'schedule') return 'schedule-builder';
   return 'my-schedule';
 };
 const resolveInitialTopLevelTab = (defaultTab = 'today') => {
@@ -1966,7 +1966,12 @@ if (liveAppUser && clientData) {
  
   const transitionActiveTabState = useCallback((nextTab) => {
     const normalized = normalizeRouteTab(nextTab);
-    if ((normalized === 'schedule' || normalized === 'published') && activeTabStateRef.current !== normalized) {
+    if (normalized === 'schedule') {
+      // The top-level Schedule route is the manager Schedule Builder entry point.
+      // Set the parent subtab before the route renders so mobile/preloaded release
+      // checks open the same roster, shift, and event listeners as the desktop path.
+      setActiveScheduleSubTab('schedule-builder');
+    } else if (normalized === 'published') {
       setActiveScheduleSubTab(defaultScheduleSubTabForTopLevelTab(normalized));
     }
     activeTabStateRef.current = normalized;
@@ -3554,6 +3559,9 @@ return (
               <button
                 key={workspace.restaurantId}
                 type="button"
+                data-testid={selected ? 'workspace-switcher-current-workspace' : 'workspace-switcher-workspace'}
+                data-current-workspace={selected ? 'true' : 'false'}
+                aria-label={selected ? `Current workspace ${safeWorkspaceName(workspace)}. Close switcher.` : `Open workspace ${safeWorkspaceName(workspace)}`}
                 onClick={() => selected ? setIsWorkspaceSwitcherOpen(false) : switchWorkspace(workspace)}
                 className={`w-full text-left rounded-xl border p-3 transition-all ${selected ? 'bg-[#D4A381]/10 border-[#D4A381] text-white' : 'bg-[#12161A] border-[#2A353D] text-slate-300 hover:border-[#D4A381]'}`}
               >

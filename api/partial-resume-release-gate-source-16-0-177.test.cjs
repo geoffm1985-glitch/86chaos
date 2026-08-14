@@ -41,11 +41,11 @@ test('partial-resume command and selection guards are wired to the Play Store ru
   const wrapper = read('RUN_86CHAOS_PARTIAL_RESUME_RELEASE_GATE.ps1');
   assert.equal(pkg.scripts['test:play-store:resume-current'], 'powershell -NoProfile -ExecutionPolicy Bypass -File .\\RUN_86CHAOS_PARTIAL_RESUME_RELEASE_GATE.ps1');
   assert.equal(pkg.scripts['test:play-store:partial-resume'], 'powershell -NoProfile -ExecutionPolicy Bypass -File .\\RUN_86CHAOS_PARTIAL_RESUME_RELEASE_GATE.ps1');
-  assert.match(prepare, /validModes = new Set\(\['failed\+new', 'failed-only', 'repair', 'reported-failed-only', 'partial-resume'\]\)/);
+  assert.match(prepare, /validModes = new Set\(\['failed\+new', 'failed-only', 'repair', 'reported-failed-only', 'partial-resume', 'reported-current-blockers'\]\)/);
   assert.match(prepare, /reported-partial-resume-20260813-205319\.json/);
   assert.match(prepare, /Partial resume guard: excludes all 65 passed tests from 20260813-205319/);
   assert.match(failedConfig, /resumePartialRun: releaseSelectionMode === 'partial-resume'/);
   assert.match(failedConfig, /partial-resume runs only the FAIL\/TIMEOUT plus NOT-RUN identities/);
-  assert.match(psRunner, /ValidateSet\('failed\+new','failed-only','repair','reported-failed-only','partial-resume'\)/);
+  assert.match(psRunner, /ValidateSet\('failed\+new','failed-only','repair','reported-failed-only','partial-resume','reported-current-blockers'\)/);
   assert.match(wrapper, /SelectionMode partial-resume/);
 });

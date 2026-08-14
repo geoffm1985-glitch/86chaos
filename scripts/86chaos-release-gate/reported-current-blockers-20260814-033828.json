@@ -1,0 +1,214 @@
+{
+  "ok": true,
+  "manifestSchemaVersion": 3,
+  "mode": "reported-current-blockers",
+  "source": "uploaded-current-blockers-20260814-033828",
+  "selectionSource": "uploaded-current-blockers-20260814-033828-fail-timeout-only",
+  "lineageMode": "none",
+  "baselineFullRunId": "2026-08-13T21-18-09",
+  "baselineSourceVersion": "16.0.177",
+  "baselineDeployedVersion": "16.0.177",
+  "selected": [
+    {
+      "spec": "86chaos-full-audit/06-request-off-events-integration.spec.cjs",
+      "specPath": "86chaos-full-audit/06-request-off-events-integration.spec.cjs",
+      "title": "Ghost Mode Request Off as a legacy employee verifies conflict warning and cancellation workflow",
+      "leafTitle": "Ghost Mode Request Off as a legacy employee verifies conflict warning and cancellation workflow",
+      "exactTestTitle": "Ghost Mode Request Off as a legacy employee verifies conflict warning and cancellation workflow",
+      "fullSuitePath": "06 request-off, availability, and scheduled events integration",
+      "suitePathParts": [
+        "06 request-off, availability, and scheduled events integration"
+      ],
+      "titlePathParts": [
+        "06 request-off, availability, and scheduled events integration",
+        "Ghost Mode Request Off as a legacy employee verifies conflict warning and cancellation workflow"
+      ],
+      "fullTitle": "06 request-off, availability, and scheduled events integration > Ghost Mode Request Off as a legacy employee verifies conflict warning and cancellation workflow",
+      "stableKey": "86chaos-full-audit/06-request-off-events-integration.spec.cjs\u000006 request-off, availability, and scheduled events integration\u0000Ghost Mode Request Off as a legacy employee verifies conflict warning and cancellation workflow\u0000chromium",
+      "project": "chromium",
+      "projects": [
+        "chromium"
+      ],
+      "priorStatus": "timedOut",
+      "baselineStatus": "timedOut",
+      "baselineFullRunId": "2026-08-13T21-18-09",
+      "baselineSourceVersion": "16.0.177",
+      "baselineDeployedVersion": "16.0.177",
+      "sourceVersion": "16.0.177",
+      "deployedVersion": "16.0.177",
+      "fullRunId": "2026-08-13T21-18-09",
+      "duration": 0,
+      "error": "from current 16.0.177 partial-resume slim report",
+      "selectionReasons": [
+        "current_blocker_timeout"
+      ],
+      "migratedFromLegacyIdentity": false,
+      "migratedFromLegacyAmbiguousIdentity": false,
+      "legacyAmbiguousMatchCount": 0,
+      "migrationSourceStableKey": "86chaos-full-audit/06-request-off-events-integration.spec.cjs\u000006 request-off, availability, and scheduled events integration\u0000Ghost Mode Request Off as a legacy employee verifies conflict warning and cancellation workflow\u0000chromium",
+      "sourceFileHash": "6dced9c90cb261ce7cd733b00e6d64e99ae99b9e582f6005f7831e7b950a17dc"
+    },
+    {
+      "spec": "e2e/cost-regression.spec.cjs",
+      "specPath": "e2e/cost-regression.spec.cjs",
+      "title": "cost scenario select-active-workspace",
+      "leafTitle": "cost scenario select-active-workspace",
+      "exactTestTitle": "cost scenario select-active-workspace",
+      "fullSuitePath": "",
+      "suitePathParts": [],
+      "titlePathParts": [
+        "cost scenario select-active-workspace"
+      ],
+      "fullTitle": "cost scenario select-active-workspace",
+      "stableKey": "e2e/cost-regression.spec.cjs\u0000\u0000cost scenario select-active-workspace\u0000chromium",
+      "project": "chromium",
+      "projects": [
+        "chromium"
+      ],
+      "priorStatus": "timedOut",
+      "baselineStatus": "timedOut",
+      "baselineFullRunId": "2026-08-13T21-18-09",
+      "baselineSourceVersion": "16.0.177",
+      "baselineDeployedVersion": "16.0.177",
+      "sourceVersion": "16.0.177",
+      "deployedVersion": "16.0.177",
+      "fullRunId": "2026-08-13T21-18-09",
+      "duration": 0,
+      "error": "from current 16.0.177 partial-resume slim report",
+      "selectionReasons": [
+        "current_blocker_timeout"
+      ],
+      "migratedFromLegacyIdentity": false,
+      "migratedFromLegacyAmbiguousIdentity": false,
+      "legacyAmbiguousMatchCount": 0,
+      "migrationSourceStableKey": "e2e/cost-regression.spec.cjs\u0000\u0000cost scenario select-active-workspace\u0000chromium",
+      "sourceFileHash": "50725283e3313d8e020337bf979610c02e36df4ce8ed8f9d7b77700f71241cb6"
+    },
+    {
+      "spec": "86chaos-full-audit/04-schedule-math-oracle.spec.cjs",
+      "specPath": "86chaos-full-audit/04-schedule-math-oracle.spec.cjs",
+      "title": "if fake restaurant seed exists, visible Schedule Builder text must expose seeded staff/events and not hide invalid-time evidence",
+      "leafTitle": "if fake restaurant seed exists, visible Schedule Builder text must expose seeded staff/events and not hide invalid-time evidence",
+      "exactTestTitle": "if fake restaurant seed exists, visible Schedule Builder text must expose seeded staff/events and not hide invalid-time evidence",
+      "fullSuitePath": "04 schedule hours math truth oracle",
+      "suitePathParts": [
+        "04 schedule hours math truth oracle"
+      ],
+      "titlePathParts": [
+        "04 schedule hours math truth oracle",
+        "if fake restaurant seed exists, visible Schedule Builder text must expose seeded staff/events and not hide invalid-time evidence"
+      ],
+      "fullTitle": "04 schedule hours math truth oracle > if fake restaurant seed exists, visible Schedule Builder text must expose seeded staff/events and not hide invalid-time evidence",
+      "stableKey": "86chaos-full-audit/04-schedule-math-oracle.spec.cjs\u000004 schedule hours math truth oracle\u0000if fake restaurant seed exists, visible Schedule Builder text must expose seeded staff/events and not hide invalid-time evidence\u0000mobile-chromium",
+      "project": "mobile-chromium",
+      "projects": [
+        "mobile-chromium"
+      ],
+      "priorStatus": "failed",
+      "baselineStatus": "failed",
+      "baselineFullRunId": "2026-08-13T21-18-09",
+      "baselineSourceVersion": "16.0.177",
+      "baselineDeployedVersion": "16.0.177",
+      "sourceVersion": "16.0.177",
+      "deployedVersion": "16.0.177",
+      "fullRunId": "2026-08-13T21-18-09",
+      "duration": 0,
+      "error": "from current 16.0.177 partial-resume slim report",
+      "selectionReasons": [
+        "current_blocker_failure"
+      ],
+      "migratedFromLegacyIdentity": false,
+      "migratedFromLegacyAmbiguousIdentity": false,
+      "legacyAmbiguousMatchCount": 0,
+      "migrationSourceStableKey": "86chaos-full-audit/04-schedule-math-oracle.spec.cjs\u000004 schedule hours math truth oracle\u0000if fake restaurant seed exists, visible Schedule Builder text must expose seeded staff/events and not hide invalid-time evidence\u0000mobile-chromium",
+      "sourceFileHash": "480c6bb4083dca9b54a52f65a6423e4d3a0d6616e01f24b353f19f585d76c1dd"
+    },
+    {
+      "spec": "86chaos-full-audit/06-request-off-events-integration.spec.cjs",
+      "specPath": "86chaos-full-audit/06-request-off-events-integration.spec.cjs",
+      "title": "Ghost Mode Request Off as a legacy employee verifies conflict warning and cancellation workflow",
+      "leafTitle": "Ghost Mode Request Off as a legacy employee verifies conflict warning and cancellation workflow",
+      "exactTestTitle": "Ghost Mode Request Off as a legacy employee verifies conflict warning and cancellation workflow",
+      "fullSuitePath": "06 request-off, availability, and scheduled events integration",
+      "suitePathParts": [
+        "06 request-off, availability, and scheduled events integration"
+      ],
+      "titlePathParts": [
+        "06 request-off, availability, and scheduled events integration",
+        "Ghost Mode Request Off as a legacy employee verifies conflict warning and cancellation workflow"
+      ],
+      "fullTitle": "06 request-off, availability, and scheduled events integration > Ghost Mode Request Off as a legacy employee verifies conflict warning and cancellation workflow",
+      "stableKey": "86chaos-full-audit/06-request-off-events-integration.spec.cjs\u000006 request-off, availability, and scheduled events integration\u0000Ghost Mode Request Off as a legacy employee verifies conflict warning and cancellation workflow\u0000mobile-chromium",
+      "project": "mobile-chromium",
+      "projects": [
+        "mobile-chromium"
+      ],
+      "priorStatus": "timedOut",
+      "baselineStatus": "timedOut",
+      "baselineFullRunId": "2026-08-13T21-18-09",
+      "baselineSourceVersion": "16.0.177",
+      "baselineDeployedVersion": "16.0.177",
+      "sourceVersion": "16.0.177",
+      "deployedVersion": "16.0.177",
+      "fullRunId": "2026-08-13T21-18-09",
+      "duration": 0,
+      "error": "from current 16.0.177 partial-resume slim report",
+      "selectionReasons": [
+        "current_blocker_timeout"
+      ],
+      "migratedFromLegacyIdentity": false,
+      "migratedFromLegacyAmbiguousIdentity": false,
+      "legacyAmbiguousMatchCount": 0,
+      "migrationSourceStableKey": "86chaos-full-audit/06-request-off-events-integration.spec.cjs\u000006 request-off, availability, and scheduled events integration\u0000Ghost Mode Request Off as a legacy employee verifies conflict warning and cancellation workflow\u0000mobile-chromium",
+      "sourceFileHash": "6dced9c90cb261ce7cd733b00e6d64e99ae99b9e582f6005f7831e7b950a17dc"
+    },
+    {
+      "spec": "e2e/cost-regression.spec.cjs",
+      "specPath": "e2e/cost-regression.spec.cjs",
+      "title": "cost scenario select-active-workspace",
+      "leafTitle": "cost scenario select-active-workspace",
+      "exactTestTitle": "cost scenario select-active-workspace",
+      "fullSuitePath": "",
+      "suitePathParts": [],
+      "titlePathParts": [
+        "cost scenario select-active-workspace"
+      ],
+      "fullTitle": "cost scenario select-active-workspace",
+      "stableKey": "e2e/cost-regression.spec.cjs\u0000\u0000cost scenario select-active-workspace\u0000mobile-chromium",
+      "project": "mobile-chromium",
+      "projects": [
+        "mobile-chromium"
+      ],
+      "priorStatus": "timedOut",
+      "baselineStatus": "timedOut",
+      "baselineFullRunId": "2026-08-13T21-18-09",
+      "baselineSourceVersion": "16.0.177",
+      "baselineDeployedVersion": "16.0.177",
+      "sourceVersion": "16.0.177",
+      "deployedVersion": "16.0.177",
+      "fullRunId": "2026-08-13T21-18-09",
+      "duration": 0,
+      "error": "from current 16.0.177 partial-resume slim report",
+      "selectionReasons": [
+        "current_blocker_timeout"
+      ],
+      "migratedFromLegacyIdentity": false,
+      "migratedFromLegacyAmbiguousIdentity": false,
+      "legacyAmbiguousMatchCount": 0,
+      "migrationSourceStableKey": "e2e/cost-regression.spec.cjs\u0000\u0000cost scenario select-active-workspace\u0000mobile-chromium",
+      "sourceFileHash": "50725283e3313d8e020337bf979610c02e36df4ce8ed8f9d7b77700f71241cb6"
+    }
+  ],
+  "totalSelected": 5,
+  "desktopSelected": 2,
+  "mobileSelected": 3,
+  "previousFailuresSelected": 1,
+  "previousTimeoutsSelected": 4,
+  "partialNotRunSelected": 0,
+  "currentReleaseFeatureTestsSelected": 0,
+  "duplicateIdentitiesRemoved": 0,
+  "newTestsCount": 0,
+  "note": "Runs only the 5 current blockers from 16.0.177 partial-resume report: 1 FAIL and 4 TIMEOUT. Excludes 149 PASS and 2 SKIP identities.",
+  "targetSourceVersion": "16.0.178",
+  "targetDeployedVersion": ""
+}

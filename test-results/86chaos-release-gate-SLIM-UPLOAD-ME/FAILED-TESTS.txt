@@ -1,8 +1,34 @@
 86 Chaos Failed Tests
-Run: 2026-08-11T15-39-07
-Version: 16.0.196
-Mode: full
+Run: 2026-08-13T21-18-09
+Version: 16.0.177
+Mode: partial-resume
 
-No Playwright test results were produced because the run was blocked before test execution.
-Existing failed-test lineage was not evaluated or cleared.
-Blocker: server tests: api\app-only-package-hygiene-16-0-188.test.cjs: app-only hygiene rejects forbidden source-controlled artifacts and packaged local secrets (1993.0226ms): AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:
+1. [mobile-chromium]
+   86chaos-full-audit/04-schedule-math-oracle.spec.cjs
+   86chaos-full-audit\04-schedule-math-oracle.spec.cjs > 04 schedule hours math truth oracle > if fake restaurant seed exists, visible Schedule Builder text must expose seeded staff/events and not hide invalid-time evidence
+   Status: FAIL
+   Error: Error: Seeded QA staff/events should be visible in Schedule Builder
+
+2. [chromium]
+   86chaos-full-audit/06-request-off-events-integration.spec.cjs
+   86chaos-full-audit\06-request-off-events-integration.spec.cjs > 06 request-off, availability, and scheduled events integration > Ghost Mode Request Off as a legacy employee verifies conflict warning and cancellation workflow
+   Status: TIMEOUT
+   Error: ?[31mTest timeout of 90000ms exceeded.?[39m
+
+3. [mobile-chromium]
+   86chaos-full-audit/06-request-off-events-integration.spec.cjs
+   86chaos-full-audit\06-request-off-events-integration.spec.cjs > 06 request-off, availability, and scheduled events integration > Ghost Mode Request Off as a legacy employee verifies conflict warning and cancellation workflow
+   Status: TIMEOUT
+   Error: ?[31mTest timeout of 90000ms exceeded.?[39m
+
+4. [chromium]
+   e2e/cost-regression.spec.cjs
+   e2e\cost-regression.spec.cjs > cost scenario select-active-workspace
+   Status: TIMEOUT
+   Error: ?[31mTest timeout of 90000ms exceeded.?[39m
+
+5. [mobile-chromium]
+   e2e/cost-regression.spec.cjs
+   e2e\cost-regression.spec.cjs > cost scenario select-active-workspace
+   Status: TIMEOUT
+   Error: ?[31mTest timeout of 90000ms exceeded.?[39m

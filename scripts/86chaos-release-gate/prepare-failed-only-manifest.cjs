@@ -17,7 +17,7 @@ const { runDir, runId } = ensureRunDir();
 const validationPath = path.join(runDir, 'failed-only-manifest-validation.json');
 const modeArg = process.argv.find(arg => /^--mode=/.test(arg));
 const selectionMode = String((modeArg ? modeArg.split('=')[1] : '') || process.env.CHAOS_RELEASE_GATE_SELECTION_MODE || (process.env.CHAOS_FAILED_AND_NEW_RELEASE_GATE === 'true' ? 'failed+new' : 'failed-only')).toLowerCase();
-const validModes = new Set(['failed+new', 'failed-only', 'repair', 'reported-failed-only', 'partial-resume']);
+const validModes = new Set(['failed+new', 'failed-only', 'repair', 'reported-failed-only', 'partial-resume', 'reported-current-blockers']);
 if (!validModes.has(selectionMode)) fail(`Unknown failed selection mode: ${selectionMode}`);
 
 function fail(message, details = []) {
@@ -87,6 +87,30 @@ function loadReportedPartialResumeManifest() {
   return manifest;
 }
 
+function loadReportedCurrentBlockersManifest() {
+  const manifestPath = path.join(__dirname, 'reported-current-blockers-20260814-033828.json');
+  const manifest = readJsonIfExists(manifestPath);
+  if (!manifest || !Array.isArray(manifest.selected)) fail('Current blockers manifest is missing or malformed.', [manifestPath]);
+  const selected = manifest.selected || [];
+  const counts = countReportedRows(selected);
+  const failures = selected.filter(row => String(row.priorStatus || '').toLowerCase() === 'failed').length;
+  const timeouts = selected.filter(row => ['timedout', 'timeout'].includes(String(row.priorStatus || '').toLowerCase())).length;
+  const errors = [];
+  if (manifest.mode !== 'reported-current-blockers') errors.push(`Current blockers manifest mode must be reported-current-blockers, got ${manifest.mode || 'missing'}.`);
+  if (counts.total !== Number(manifest.totalSelected || 0)) errors.push(`Current blockers totalSelected does not match rows: ${manifest.totalSelected} vs ${counts.total}.`);
+  if (counts.chromium !== Number(manifest.desktopSelected || 0)) errors.push(`Current blockers chromium count does not match rows: ${manifest.desktopSelected} vs ${counts.chromium}.`);
+  if (counts.mobileChromium !== Number(manifest.mobileSelected || 0)) errors.push(`Current blockers mobile-chromium count does not match rows: ${manifest.mobileSelected} vs ${counts.mobileChromium}.`);
+  if (counts.total !== 5 || counts.chromium !== 2 || counts.mobileChromium !== 3) errors.push(`Current blockers manifest must select exactly 5 identities (chromium 2, mobile-chromium 3), got total ${counts.total}, chromium ${counts.chromium}, mobile-chromium ${counts.mobileChromium}.`);
+  if (failures !== 1 || timeouts !== 4) errors.push(`Current blockers manifest must contain exactly 1 failed and 4 timed-out identities; got ${failures}/${timeouts}.`);
+  if (counts.otherProjects.length) errors.push(`Current blockers manifest contains disallowed projects: ${counts.otherProjects.join(', ')}.`);
+  if (counts.duplicates) errors.push(`Current blockers manifest contains ${counts.duplicates} duplicate stable identity key(s).`);
+  if (selected.some(row => String(row.priorStatus || '').toLowerCase() === 'passed' || String(row.baselineStatus || '').toLowerCase() === 'passed')) errors.push('Current blockers manifest must not include any passed identities.');
+  if (selected.some(row => String(row.priorStatus || '').toLowerCase() === 'skipped' || String(row.baselineStatus || '').toLowerCase() === 'skipped')) errors.push('Current blockers manifest must not include skipped identities.');
+  if (selected.some(row => ['notrun', 'not_run', 'not-run'].includes(String(row.priorStatus || '').toLowerCase()))) errors.push('Current blockers manifest must not include not-run identities.');
+  if (errors.length) fail('Current blockers selection guard failed.', errors);
+  return manifest;
+}
+
 function loadReportedFailedOnlyManifest() {
   const manifestPath = path.join(__dirname, 'reported-failed-only-20260810-015004.json');
   const manifest = readJsonIfExists(manifestPath);
@@ -148,6 +172,15 @@ try {
       selectionSource: manifest.selectionSource || 'uploaded-partial-release-gate-20260813-205319',
       lineageMode: 'none',
     };
+  } else if (selectionMode === 'reported-current-blockers') {
+    const manifest = loadReportedCurrentBlockersManifest();
+    selectedSource = {
+      manifest: qualifyManifestSelectionsWithCurrentInventory(manifest, { root: process.cwd(), currentRecords: loadCurrentRecords() }),
+      baselineFullRunDir: '',
+      latestFailedOnlyRunDir: '',
+      selectionSource: manifest.selectionSource || 'uploaded-current-blockers-20260814-033828',
+      lineageMode: 'none',
+    };
   } else {
     selectedSource = selectFailedOnlyManifestForCurrentRun({
       currentRunDir: runDir,
@@ -201,6 +234,18 @@ if (selectionMode === 'partial-resume') {
   copied.previousFailuresSelected = copied.selected.filter(row => String(row.priorStatus || '').toLowerCase() === 'failed').length;
   copied.previousTimeoutsSelected = copied.selected.filter(row => ['timedout', 'timeout'].includes(String(row.priorStatus || '').toLowerCase())).length;
   copied.partialNotRunSelected = copied.selected.filter(row => ['notrun', 'not_run', 'not-run'].includes(String(row.priorStatus || '').toLowerCase())).length;
+  copied.currentReleaseFeatureTestsSelected = 0;
+  copied.duplicateIdentitiesRemoved = 0;
+  copied.newTestsCount = 0;
+}
+if (selectionMode === 'reported-current-blockers') {
+  copied.mode = 'reported-current-blockers';
+  copied.source = 'uploaded-current-blockers-20260814-033828';
+  copied.selectionSource = 'uploaded-current-blockers-20260814-033828-fail-timeout-only';
+  copied.lineageMode = 'none';
+  copied.previousFailuresSelected = copied.selected.filter(row => String(row.priorStatus || '').toLowerCase() === 'failed').length;
+  copied.previousTimeoutsSelected = copied.selected.filter(row => ['timedout', 'timeout'].includes(String(row.priorStatus || '').toLowerCase())).length;
+  copied.partialNotRunSelected = 0;
   copied.currentReleaseFeatureTestsSelected = 0;
   copied.duplicateIdentitiesRemoved = 0;
   copied.newTestsCount = 0;
@@ -338,6 +383,11 @@ if (selectionMode === 'repair') {
   console.log(`Failed identities selected: ${copied.previousFailuresSelected || 0}`);
   console.log(`Timed-out identities selected: ${copied.previousTimeoutsSelected || 0}`);
   console.log(`Not-run identities selected: ${copied.partialNotRunSelected || 0}`);
+} else if (selectionMode === 'reported-current-blockers') {
+  console.log('Current blockers guard: exactly 5 current FAIL/TIMEOUT identities selected from 20260814-033828');
+  console.log(`Failed identities selected: ${copied.previousFailuresSelected || 0}`);
+  console.log(`Timed-out identities selected: ${copied.previousTimeoutsSelected || 0}`);
+  console.log('Passed and skipped identities selected: 0');
 } else {
   console.log(`Previous failed/timed-out identities selected: ${copied.selected.length}`);
 }

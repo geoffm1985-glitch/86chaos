@@ -1,5 +1,5 @@
 param(
-  [ValidateSet('failed+new','failed-only','repair','reported-failed-only','partial-resume')]
+  [ValidateSet('failed+new','failed-only','repair','reported-failed-only','partial-resume','reported-current-blockers')]
   [string]$SelectionMode = 'failed+new'
 )
 
@@ -93,6 +93,7 @@ $env:CHAOS_FAILED_ONLY_RELEASE_GATE = "true"
 $env:CHAOS_RELEASE_GATE_SELECTION_MODE = $SelectionMode
 $env:CHAOS_FAILED_AND_NEW_RELEASE_GATE = if ($SelectionMode -eq "failed+new") { "true" } else { "false" }
 $env:CHAOS_PARTIAL_RESUME_RELEASE_GATE = if ($SelectionMode -eq "partial-resume") { "true" } else { "false" }
+$env:CHAOS_CURRENT_BLOCKERS_RELEASE_GATE = if ($SelectionMode -eq "reported-current-blockers") { "true" } else { "false" }
 if (-not $env:CHAOS_QA_DISABLE_AUTO_PROVISION_TEST_USERS) { $env:CHAOS_QA_AUTO_PROVISION_TEST_USERS = "true" }
 if (-not $env:CHAOS_RELEASE_GATE_NO_MUTATION) {
   $env:CHAOS_ALLOW_MUTATION = "true"
