@@ -1,8 +1,0 @@
-86 Chaos Failed Tests
-Run: 2026-08-11T15-30-56
-Version: 16.0.196
-Mode: full
-
-No Playwright test results were produced because the run was blocked before test execution.
-Existing failed-test lineage was not evaluated or cleared.
-Blocker: Testing preview is stale. Source/expected=16.0.196, deployed=16.0.194. Deploy the current commit to canonical Vercel project 86chaos, then update APP_URL to that preview.

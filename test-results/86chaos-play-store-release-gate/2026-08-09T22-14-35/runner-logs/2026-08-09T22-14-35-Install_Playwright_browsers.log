@@ -1,7 +1,0 @@
-=== Install Playwright browsers ===
-Command: & 'C:\Users\geoff\Documents\GitHub\86chaos\node_modules\.bin\playwright.cmd' install chromium firefox webkit
-Started: 2026-08-09T22:20:24.2677449-05:00
-
-
-Finished: 2026-08-09T22:20:28.7414964-05:00
-ExitCode: 0
