@@ -1,15 +1,15 @@
 {
-  "version": "16.0.175",
-  "name": "86 Chaos 16.0.175",
-  "build": "16.0.175",
-  "label": "86 Chaos 16.0.175",
-  "releasedAt": "2026-08-13T17:15:00-05:00",
-  "releaseTitle": "Staff Email Identity Guard And Targeted Regression Harness",
+  "version": "16.0.177",
+  "name": "86 Chaos 16.0.177",
+  "build": "16.0.177",
+  "label": "86 Chaos 16.0.177",
+  "releasedAt": "2026-08-13T20:55:00-05:00",
+  "releaseTitle": "Partial Resume Release Gate And Login Workspace Repair",
   "notes": [
-    "Deduplicates published schedule rows by logical employee/date/time identity so duplicate Firestore shift documents do not appear as duplicate shifts in Month View.",
-    "Fixes schedule identity resolution so shift document IDs are not mistaken for employee IDs, allowing legacy roster/email/name fields to resolve correctly.",
-    "Keeps Month View printing on a generated printable calendar built from the exact visible month shift set."
+    "Extends login profile bootstrap timeouts so a valid password does not fail the release gate just because profile hydration is slow on preview.",
+    "Hardens release-gate workspace chooser handling so tests select the current QA workspace instead of getting stuck behind the chooser dialog.",
+    "Adds a partial-resume Play Store command that runs only the failed, timed-out, and not-run identities from the uploaded interrupted 16.0.175 release-gate run and excludes the 65 tests that already passed."
   ],
-  "title": "86 Chaos 16.0.175",
-  "summary": "Fixes loaded schedule shift merging so date and scheduleDateKey copies of the same Firestore shift merge by document id before logical field completeness."
+  "title": "86 Chaos 16.0.177",
+  "summary": "Fixes slow preview login/workspace chooser release-gate failures and adds a partial-resume Play Store command that reruns only failed, timed-out, and not-run tests from the interrupted 16.0.175 run while excluding tests that already passed."
 }

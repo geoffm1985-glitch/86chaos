@@ -16,7 +16,9 @@ const nodeTests = [
   'api/pwa-icon-source-integrity.test.cjs',
   'api/icon-manifest-header-branding.test.cjs',
   'api/schedule-identity-dedupe-16-0-173.test.cjs',
-  'api/staff-member-identity-contamination-16-0-175.test.cjs'
+  'api/staff-member-identity-contamination-16-0-175.test.cjs',
+  'api/partial-resume-release-gate-source-16-0-177.test.cjs',
+  'api/login-workspace-resume-16-0-177.test.cjs'
 ];
 const jestTests = [
   'src/core/scheduleQueryPlanner.test.js'

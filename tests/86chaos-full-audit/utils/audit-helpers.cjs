@@ -264,17 +264,29 @@ async function chooseQaWorkspace(page) {
 
   const chooserOpen = await openChooser();
   if (!chooserOpen) return false;
+  const escapeRegex = (value) => String(value || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const preferredRe = new RegExp(`^Open\\s+${escapeRegex(preferred)}(?:\\s|$)`, 'i');
+  const directButton = page.getByRole('button', { name: preferredRe }).first();
   const exact = page.getByText(preferred, { exact: true }).first();
   const partial = page.getByText(preferred, { exact: false }).first();
-  let target = null;
-  if (await exact.isVisible({ timeout: 5000 }).catch(() => false)) target = exact;
-  else if (await partial.isVisible({ timeout: 3000 }).catch(() => false)) target = partial;
-  if (!target) throw new Error(`The disposable QA workspace "${preferred}" was not available in the workspace chooser.`);
-  const button = target.locator('xpath=ancestor-or-self::button[1]');
-  if (await button.count()) await button.click();
-  else await target.click();
+  let button = null;
+  if (await directButton.isVisible({ timeout: 5000 }).catch(() => false)) button = directButton;
+  else {
+    let target = null;
+    if (await exact.isVisible({ timeout: 3500 }).catch(() => false)) target = exact;
+    else if (await partial.isVisible({ timeout: 2500 }).catch(() => false)) target = partial;
+    if (!target) throw new Error(`The disposable QA workspace "${preferred}" was not available in the workspace chooser.`);
+    button = target.locator('xpath=ancestor-or-self::button[1]').first();
+  }
+  if (!(await button?.count?.().catch(() => 0))) throw new Error(`The disposable QA workspace "${preferred}" did not resolve to a clickable workspace button.`);
+  await button.click({ timeout: 5000 }).catch(async (err) => {
+    const message = String(err?.message || err || '');
+    if (!/intercepts pointer events|not stable|receives pointer events|timeout/i.test(message)) throw err;
+    await button.evaluate((el) => el.click());
+  });
   await page.waitForLoadState('domcontentloaded').catch(() => {});
   await page.waitForTimeout(1200);
+  await dismissBlockingDialogs(page, { maxPasses: 4 }).catch(() => null);
   return true;
 }
 
@@ -387,14 +399,25 @@ async function expectVersion(page, expected = EXPECTED_VERSION) {
 async function waitForRouteSettle(page, tab, options = {}) {
   const spec = ROUTE_SPECS.find(r => r.tab === tab);
   const timeout = options.timeout || 45000;
-  await page.waitForFunction(({ tab, pattern }) => {
-    const params = new URLSearchParams(window.location.search);
-    const activeTab = params.get('tab') || '';
-    const body = (document.body && document.body.innerText) || '';
-    const routeLooksReady = !/Loading workspace|Preparing|Unlock System|Email Address\s*Password/i.test(body);
-    const re = pattern ? new RegExp(pattern, 'i') : null;
-    return routeLooksReady && (activeTab === tab || !tab) && (!re || re.test(body) || /permission|restricted|not available|access denied/i.test(body));
-  }, { tab, pattern: spec?.expect?.source || '' }, { timeout }).catch(() => {});
+  const deadline = Date.now() + timeout;
+  let selectedWorkspace = false;
+  while (Date.now() < deadline) {
+    const text = await bodyText(page, 16000);
+    if (/choose workspace|select workspace|select restaurant|choose restaurant/i.test(text)) {
+      selectedWorkspace = await chooseQaWorkspace(page).catch((err) => {
+        throw new Error(`Workspace chooser blocked ${tab} route readiness: ${err?.message || err}`);
+      }) || selectedWorkspace;
+      await page.waitForTimeout(500);
+      continue;
+    }
+    const activeTab = await page.evaluate(() => new URLSearchParams(window.location.search).get('tab') || '').catch(() => '');
+    const routeLooksReady = !/Loading workspace|Preparing|Unlock System|Email Address\s*Password/i.test(text);
+    const re = spec?.expect ? new RegExp(spec.expect.source, 'i') : null;
+    if (routeLooksReady && (activeTab === tab || !tab) && (!re || re.test(text) || /permission|restricted|not available|access denied/i.test(text))) break;
+    await page.waitForTimeout(350);
+  }
+  if (selectedWorkspace) await page.waitForTimeout(options.settleMs ?? 700);
+  await dismissBlockingDialogs(page, { maxPasses: 4 }).catch(() => null);
   await dismissNoise(page);
   return bodyText(page, options.maxText || 30000);
 }

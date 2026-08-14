@@ -17,7 +17,7 @@ const { runDir, runId } = ensureRunDir();
 const validationPath = path.join(runDir, 'failed-only-manifest-validation.json');
 const modeArg = process.argv.find(arg => /^--mode=/.test(arg));
 const selectionMode = String((modeArg ? modeArg.split('=')[1] : '') || process.env.CHAOS_RELEASE_GATE_SELECTION_MODE || (process.env.CHAOS_FAILED_AND_NEW_RELEASE_GATE === 'true' ? 'failed+new' : 'failed-only')).toLowerCase();
-const validModes = new Set(['failed+new', 'failed-only', 'repair', 'reported-failed-only']);
+const validModes = new Set(['failed+new', 'failed-only', 'repair', 'reported-failed-only', 'partial-resume']);
 if (!validModes.has(selectionMode)) fail(`Unknown failed selection mode: ${selectionMode}`);
 
 function fail(message, details = []) {
@@ -63,6 +63,28 @@ function countReportedRows(rows = []) {
     timeouts: rows.filter(row => String(row.priorStatus || '').toLowerCase() === 'timedout' || String(row.priorStatus || '').toLowerCase() === 'timeout' || row.selectionReasons?.some(reason => /previous_timeout|timeout/i.test(String(reason)))).length,
     duplicates: rows.length - new Set(keys).size,
   };
+}
+
+function loadReportedPartialResumeManifest() {
+  const manifestPath = path.join(__dirname, 'reported-partial-resume-20260813-205319.json');
+  const manifest = readJsonIfExists(manifestPath);
+  if (!manifest || !Array.isArray(manifest.selected)) fail('Partial resume manifest is missing or malformed.', [manifestPath]);
+  const selected = manifest.selected || [];
+  const counts = countReportedRows(selected);
+  const failures = selected.filter(row => String(row.priorStatus || '').toLowerCase() === 'failed').length;
+  const timeouts = selected.filter(row => ['timedout', 'timeout'].includes(String(row.priorStatus || '').toLowerCase())).length;
+  const notRun = selected.filter(row => ['notrun', 'not_run', 'not-run'].includes(String(row.priorStatus || '').toLowerCase())).length;
+  const errors = [];
+  if (manifest.mode !== 'partial-resume') errors.push(`Partial resume manifest mode must be partial-resume, got ${manifest.mode || 'missing'}.`);
+  if (counts.total !== Number(manifest.totalSelected || 0)) errors.push(`Partial resume totalSelected does not match rows: ${manifest.totalSelected} vs ${counts.total}.`);
+  if (counts.chromium !== Number(manifest.desktopSelected || 0)) errors.push(`Partial resume chromium count does not match rows: ${manifest.desktopSelected} vs ${counts.chromium}.`);
+  if (counts.mobileChromium !== Number(manifest.mobileSelected || 0)) errors.push(`Partial resume mobile-chromium count does not match rows: ${manifest.mobileSelected} vs ${counts.mobileChromium}.`);
+  if (counts.total !== 156 || counts.chromium !== 42 || counts.mobileChromium !== 106) errors.push(`Partial resume manifest must select 156 non-passed identities from the uploaded 16.0.175 partial run (chromium 42, mobile-chromium 106), got total ${counts.total}, chromium ${counts.chromium}, mobile-chromium ${counts.mobileChromium}.`);
+  if (failures !== 2 || timeouts !== 3 || notRun !== 151) errors.push(`Partial resume manifest must contain exactly 2 failed, 3 timed-out, and 151 not-run identities; got ${failures}/${timeouts}/${notRun}.`);
+  if (counts.duplicates) errors.push(`Partial resume manifest contains ${counts.duplicates} duplicate stable identity key(s).`);
+  if (selected.some(row => String(row.priorStatus || '').toLowerCase() === 'passed' || String(row.baselineStatus || '').toLowerCase() === 'passed')) errors.push('Partial resume manifest must not include any passed identities.');
+  if (errors.length) fail('Partial resume selection guard failed.', errors);
+  return manifest;
 }
 
 function loadReportedFailedOnlyManifest() {
@@ -117,6 +139,15 @@ try {
       selectionSource: manifest.selectionSource || 'uploaded-failed-tests-20260810-015004',
       lineageMode: 'none',
     };
+  } else if (selectionMode === 'partial-resume') {
+    const manifest = loadReportedPartialResumeManifest();
+    selectedSource = {
+      manifest: qualifyManifestSelectionsWithCurrentInventory(manifest, { root: process.cwd(), currentRecords: loadCurrentRecords() }),
+      baselineFullRunDir: '',
+      latestFailedOnlyRunDir: '',
+      selectionSource: manifest.selectionSource || 'uploaded-partial-release-gate-20260813-205319',
+      lineageMode: 'none',
+    };
   } else {
     selectedSource = selectFailedOnlyManifestForCurrentRun({
       currentRunDir: runDir,
@@ -161,6 +192,18 @@ if (selectionMode === 'reported-failed-only') {
   copied.duplicateIdentitiesRemoved = 0;
   copied.newTestsCount = 0;
   assertReportedFailedOnlySelection(copied);
+}
+if (selectionMode === 'partial-resume') {
+  copied.mode = 'partial-resume';
+  copied.source = 'uploaded-partial-release-gate-20260813-205319';
+  copied.selectionSource = 'uploaded-partial-release-gate-20260813-205319-fail-timeout-not-run';
+  copied.lineageMode = 'none';
+  copied.previousFailuresSelected = copied.selected.filter(row => String(row.priorStatus || '').toLowerCase() === 'failed').length;
+  copied.previousTimeoutsSelected = copied.selected.filter(row => ['timedout', 'timeout'].includes(String(row.priorStatus || '').toLowerCase())).length;
+  copied.partialNotRunSelected = copied.selected.filter(row => ['notrun', 'not_run', 'not-run'].includes(String(row.priorStatus || '').toLowerCase())).length;
+  copied.currentReleaseFeatureTestsSelected = 0;
+  copied.duplicateIdentitiesRemoved = 0;
+  copied.newTestsCount = 0;
 }
 
 try {
@@ -239,6 +282,7 @@ const selectionPayload = {
   currentReleaseFeatureTestsSelected: copied.currentReleaseFeatureTestsSelected || 0,
   duplicateIdentitiesRemoved: copied.duplicateIdentitiesRemoved || 0,
   newTestsCount: copied.newTestsCount || 0,
+  partialNotRunSelected: copied.partialNotRunSelected || 0,
   noFailedOrTimedOutTestsRemain: copied.noFailedOrTimedOutTestsRemain === true || (selectionMode === 'failed-only' && copied.totalSelected === 0),
 };
 writeJson(failedAndNewSelectionPath, selectionPayload);
@@ -266,6 +310,7 @@ writeJson(validationPath, {
   currentReleaseFeatureTestsSelected: selectionPayload.currentReleaseFeatureTestsSelected,
   duplicateIdentitiesRemoved: selectionPayload.duplicateIdentitiesRemoved,
   newTestsCount: selectionPayload.newTestsCount,
+  partialNotRunSelected: selectionPayload.partialNotRunSelected,
   noFailedOrTimedOutTestsRemain: selectionPayload.noFailedOrTimedOutTestsRemain,
   generatedAt: new Date().toISOString(),
 });
@@ -288,6 +333,11 @@ if (selectionMode === 'repair') {
   console.log('chromium 2');
   console.log('mobile-chromium 4');
   console.log('timeouts 0');
+} else if (selectionMode === 'partial-resume') {
+  console.log('Partial resume guard: excludes all 65 passed tests from 20260813-205319');
+  console.log(`Failed identities selected: ${copied.previousFailuresSelected || 0}`);
+  console.log(`Timed-out identities selected: ${copied.previousTimeoutsSelected || 0}`);
+  console.log(`Not-run identities selected: ${copied.partialNotRunSelected || 0}`);
 } else {
   console.log(`Previous failed/timed-out identities selected: ${copied.selected.length}`);
 }

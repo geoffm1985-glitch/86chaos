@@ -50,13 +50,16 @@ const manifest = {
   runId,
   runDir,
   mode: releaseSelectionMode,
+  resumePartialRun: releaseSelectionMode === 'partial-resume',
   sourceManifestPath: FAILED_ONLY_MANIFEST_PATH,
   selected: FAILED_ONLY_TESTS,
   desktopSelected: FAILED_ONLY_TESTS.filter(item => (item.projects || []).includes('chromium')).length,
   mobileSelected: FAILED_ONLY_TESTS.filter(item => (item.projects || []).includes('mobile-chromium')).length,
   note: releaseSelectionMode === 'reported-failed-only'
     ? 'reported-failed-only runs only the 6 FAIL identities from 20260810-015004 and excludes TIMEOUT, PASS, and SKIP identities.'
-    : `${releaseSelectionMode} success is diagnostic only. Complete npm run test:play-store is still required for release approval.`
+    : releaseSelectionMode === 'partial-resume'
+      ? 'partial-resume runs only the FAIL/TIMEOUT plus NOT-RUN identities from the uploaded interrupted 16.0.175 run and excludes all PASS identities.'
+      : `${releaseSelectionMode} success is diagnostic only. Complete npm run test:play-store is still required for release approval.`
 };
 fs.writeFileSync(path.join(runDir, 'failed-only-playwright-selection.json'), JSON.stringify(manifest, null, 2));
 // Human-readable selected-test output is emitted once by the ASCII release-gate reporter.
