@@ -160,10 +160,19 @@ test.describe('06 request-off, availability, and scheduled events integration', 
       await neutralizeTestingPreviewOverlays(page, { reason: 'ghost-request-off-before-date-select' });
       return ghostListResponse.body;
     }
+    async function findRequestOffDateCell(conflictDate) {
+      const day = String(Number(conflictDate.slice(-2)));
+      const cell = page
+        .locator(`xpath=//main//span[normalize-space(.)="${day}"]/ancestor::div[contains(concat(" ", normalize-space(@class), " "), " cursor-pointer ")][1]`)
+        .first();
+      await expect(cell, `Request Off conflict date cell for ${conflictDate} should be selectable`).toBeVisible({ timeout: 15000 });
+      await cell.scrollIntoViewIfNeeded().catch(() => {});
+      return cell;
+    }
+
     async function clickConflictDate({ accept }) {
       const conflictDate = seed.ghostRequestOffConflictDate || seed.profile?.ghostRequestOffConflictDate || seed.profile?.dates?.tomorrow || '';
       expect(conflictDate, 'QA seed must expose ghostRequestOffConflictDate for deterministic Request Off conflict testing').toMatch(/^\d{4}-\d{2}-\d{2}$/);
-      const day = String(Number(conflictDate.slice(-2)));
       const dialogPromise = page
         .waitForEvent('dialog', { timeout: 6000 })
         .then(async dialog => {
@@ -174,8 +183,7 @@ test.describe('06 request-off, availability, and scheduled events integration', 
         })
         .catch(() => null);
       const conflictResponsePromise = page.waitForResponse(response => isConflictResponseForDate(response, conflictDate), { timeout: 8000 }).catch(() => null);
-      const cell = page.locator('div.cursor-pointer, button, [role="gridcell"]').filter({ hasText: new RegExp(`^${day}(?:\\s|$)`) }).first();
-      await expect(cell, `Request Off conflict date cell for ${conflictDate} should be selectable`).toBeVisible({ timeout: 15000 });
+      const cell = await findRequestOffDateCell(conflictDate);
       await cell.click();
       const [conflictResponse, nativeDialog] = await Promise.all([conflictResponsePromise, dialogPromise]);
       let conflictBody = null;

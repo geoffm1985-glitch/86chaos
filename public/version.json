@@ -1,17 +1,15 @@
 {
-  "version": "16.0.180",
-  "name": "86 Chaos 16.0.180",
-  "build": "16.0.180",
-  "label": "86 Chaos 16.0.180",
-  "releasedAt": "2026-08-14T00:16:00-05:00",
-  "releaseTitle": "Ghost Request Off Current Blockers Repair",
+  "version": "16.0.181",
+  "name": "86 Chaos 16.0.181",
+  "build": "16.0.181",
+  "label": "86 Chaos 16.0.181",
+  "releasedAt": "2026-08-14T00:42:00-05:00",
+  "releaseTitle": "Ghost Request Off Date Cell Selector Repair",
   "notes": [
-    "Corrects the Ghost Request Off privacy assertion scope so it checks only the warning and conflict payload instead of the Ghost Mode page banner.",
-    "Eliminates the Allen/Sara QA Request Off date collision in the release-gate fixture.",
-    "Waits for Ghost Request Off records to load before interacting with the conflict date.",
-    "Narrows the current-blockers Play Store rerun from four tests to the exact two remaining failed Ghost Request Off identities."
+    "Fixes the Ghost Request Off current-blockers date-cell selector so it clicks the visible Request Off calendar day by its day-number span.",
+    "Keeps the current-blockers Play Store rerun narrowed to the exact two failed Ghost Request Off identities from the 16.0.180 report."
   ],
-  "title": "86 Chaos 16.0.180",
+  "title": "86 Chaos 16.0.181",
   "summary": "Surgical release-gate repair for the two remaining Ghost Mode Request Off current blockers only.",
-  "description": "Limits the repair to Ghost Request Off test/fixture synchronization and current-blockers selection from the 16.0.179 report."
+  "description": "Limits the repair to the Ghost Request Off browser test date-cell selector and current-blockers evidence from the 16.0.180 report."
 }

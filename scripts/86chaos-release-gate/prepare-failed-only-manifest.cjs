@@ -88,7 +88,7 @@ function loadReportedPartialResumeManifest() {
 }
 
 function loadReportedCurrentBlockersManifest() {
-  const manifestPath = path.join(__dirname, 'reported-current-blockers-20260814-050722.json');
+  const manifestPath = path.join(__dirname, 'reported-current-blockers-20260814-054208.json');
   const manifest = readJsonIfExists(manifestPath);
   if (!manifest || !Array.isArray(manifest.selected)) fail('Current blockers manifest is missing or malformed.', [manifestPath]);
   const selected = manifest.selected || [];
@@ -178,7 +178,7 @@ try {
       manifest: qualifyManifestSelectionsWithCurrentInventory(manifest, { root: process.cwd(), currentRecords: loadCurrentRecords() }),
       baselineFullRunDir: '',
       latestFailedOnlyRunDir: '',
-      selectionSource: manifest.selectionSource || 'uploaded-current-blockers-20260814-050722',
+      selectionSource: manifest.selectionSource || 'uploaded-current-blockers-20260814-054208',
       lineageMode: 'none',
     };
   } else {
@@ -240,8 +240,8 @@ if (selectionMode === 'partial-resume') {
 }
 if (selectionMode === 'reported-current-blockers') {
   copied.mode = 'reported-current-blockers';
-  copied.source = 'uploaded-current-blockers-20260814-050722';
-  copied.selectionSource = 'uploaded-current-blockers-20260814-050722-fail-only';
+  copied.source = 'uploaded-current-blockers-20260814-054208';
+  copied.selectionSource = 'uploaded-current-blockers-20260814-054208-fail-only';
   copied.lineageMode = 'none';
   copied.previousFailuresSelected = copied.selected.filter(row => String(row.priorStatus || '').toLowerCase() === 'failed').length;
   copied.previousTimeoutsSelected = copied.selected.filter(row => ['timedout', 'timeout'].includes(String(row.priorStatus || '').toLowerCase())).length;
@@ -384,7 +384,7 @@ if (selectionMode === 'repair') {
   console.log(`Timed-out identities selected: ${copied.previousTimeoutsSelected || 0}`);
   console.log(`Not-run identities selected: ${copied.partialNotRunSelected || 0}`);
 } else if (selectionMode === 'reported-current-blockers') {
-  console.log('Current blockers guard: exactly 2 current FAIL identities selected from 20260814-050722');
+  console.log('Current blockers guard: exactly 2 current FAIL identities selected from 20260814-054208');
   console.log(`Failed identities selected: ${copied.previousFailuresSelected || 0}`);
   console.log(`Timed-out identities selected: ${copied.previousTimeoutsSelected || 0}`);
   console.log('Passed and skipped identities selected: 0');

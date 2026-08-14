@@ -19,7 +19,7 @@ const nodeTests = [
   'api/staff-member-identity-contamination-16-0-175.test.cjs',
   'api/partial-resume-release-gate-source-16-0-177.test.cjs',
   'api/login-workspace-resume-16-0-177.test.cjs',
-  'api/current-blockers-release-gate-source-16-0-180.test.cjs'
+  'api/current-blockers-release-gate-source-16-0-181.test.cjs'
 ];
 const jestTests = [
   'src/core/scheduleQueryPlanner.test.js'

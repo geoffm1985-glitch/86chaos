@@ -7,7 +7,7 @@ const path = require('node:path');
 const root = path.resolve(__dirname, '..');
 const read = file => fs.readFileSync(path.join(root, file), 'utf8');
 const json = file => JSON.parse(read(file));
-const currentBlockerManifestPath = 'scripts/86chaos-release-gate/reported-current-blockers-20260814-050722.json';
+const currentBlockerManifestPath = 'scripts/86chaos-release-gate/reported-current-blockers-20260814-054208.json';
 
 function stableKey(row = {}) {
   return `${row.specPath || row.spec || ''}\u0000${row.fullSuitePath || ''}\u0000${row.leafTitle || row.exactTestTitle || row.title || ''}\u0000${row.project || (row.projects || [])[0] || ''}`;
@@ -20,16 +20,16 @@ function priorStatus(row = {}) {
 test('current-blockers manifest reruns only the two remaining failed Ghost Request Off Play Store tests', () => {
   const manifest = json(currentBlockerManifestPath);
   assert.equal(manifest.mode, 'reported-current-blockers');
-  assert.equal(manifest.source, 'uploaded-current-blockers-20260814-050722');
+  assert.equal(manifest.source, 'uploaded-current-blockers-20260814-054208');
   assert.equal(manifest.totalSelected, 2);
   assert.equal(manifest.desktopSelected, 1);
   assert.equal(manifest.mobileSelected, 1);
   assert.equal(manifest.previousFailuresSelected, 2);
   assert.equal(manifest.previousTimeoutsSelected, 0);
   assert.equal(manifest.partialNotRunSelected, 0);
-  assert.equal(manifest.baselineFullRunId, '2026-08-13T23-55-33');
-  assert.equal(manifest.baselineSourceVersion, '16.0.179');
-  assert.equal(manifest.baselineDeployedVersion, '16.0.179');
+  assert.equal(manifest.baselineFullRunId, '2026-08-14T00-33-16');
+  assert.equal(manifest.baselineSourceVersion, '16.0.180');
+  assert.equal(manifest.baselineDeployedVersion, '16.0.180');
   const rows = manifest.selected || [];
   assert.equal(rows.length, 2);
   assert.equal(new Set(rows.map(stableKey)).size, rows.length);
@@ -51,7 +51,7 @@ test('current-blockers Play Store command is guarded to exactly two failed Ghost
   assert.match(wrapper, /SelectionMode reported-current-blockers/);
   assert.match(wrapper, /only the 2 current FAIL tests/);
   assert.match(wrapper, /cost-regression, Schedule Builder, and unrelated identities/);
-  assert.match(prepare, /reported-current-blockers-20260814-050722\.json/);
+  assert.match(prepare, /reported-current-blockers-20260814-054208\.json/);
   assert.match(prepare, /exactly 2/);
   assert.match(config, /reported-current-blockers runs only the 2 current FAIL identities/);
   assert.match(config, /expected 2 current blocker identities/);
@@ -102,4 +102,14 @@ test('Ghost Mode banner remains intact and workflow assertions stay authoritativ
   assert.match(ghostTest, /page\.getByTestId\(`request-off-cancel-\$\{createdRequestId\}`\)/);
   assert.match(ghostTest, /isTimeOffResponseAction\(response, 'ghost-cancel'\)/);
   assert.match(ghostTest, /body\?\.action, 'Ghost Mode Request Off cancellation response should be specifically ghost-cancel'\)\.toBe\('ghost-cancel'\)/);
+});
+
+
+test('Ghost Request Off date-cell selector targets the visible day-number cell rather than brittle whole-cell text', () => {
+  const ghostTest = read('tests/86chaos-full-audit/06-request-off-events-integration.spec.cjs');
+  assert.match(ghostTest, /async function findRequestOffDateCell\(conflictDate\)/);
+  assert.match(ghostTest, /normalize-space\(\.\)="\$\{day\}"/);
+  assert.match(ghostTest, /ancestor::div\[contains\(concat\(" ", normalize-space\(@class\), " "\), " cursor-pointer "\)\]\[1\]/);
+  assert.match(ghostTest, /const cell = await findRequestOffDateCell\(conflictDate\)/);
+  assert.doesNotMatch(ghostTest, /locator\('div\.cursor-pointer, button, \[role="gridcell"\]'\)\.filter\(\{ hasText:/);
 });
