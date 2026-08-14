@@ -53,14 +53,14 @@ const authFeature = read('src/features/auth.jsx');
 const partialResumeWrapper = read('RUN_86CHAOS_PARTIAL_RESUME_RELEASE_GATE.ps1');
 const currentBlockersManifest = json('scripts/86chaos-release-gate/reported-current-blockers-20260814-064437.json');
 const currentBlockersWrapper = read('RUN_86CHAOS_CURRENT_BLOCKERS_RELEASE_GATE.ps1');
-const currentBlockersSourceTest = read('api/current-blockers-release-gate-source-16-0-182.test.cjs');
+const currentBlockersSourceTest = read('api/current-blockers-release-gate-source-16-0-183.test.cjs');
 const costRegressionTest = read('tests/e2e/cost-regression.spec.cjs');
 const timeOffRequestApi = read('api/time-off-request.js');
 const timeOffRequestTest = read('api/time-off-request.test.cjs');
 
-assert(pkg.version === '16.0.182', 'package.json version is 16.0.182');
-assert(lock.version === '16.0.182' && lock.packages?.['']?.version === '16.0.182', 'package-lock root versions are 16.0.182');
-assert(pkg.scripts['test:source'] === 'node scripts/validate-16-0-182.js', 'test:source points to 16.0.182 validator');
+assert(pkg.version === '16.0.183', 'package.json version is 16.0.183');
+assert(lock.version === '16.0.183' && lock.packages?.['']?.version === '16.0.183', 'package-lock root versions are 16.0.183');
+assert(pkg.scripts['test:source'] === 'node scripts/validate-16-0-183.js', 'test:source points to 16.0.183 validator');
 assert(pkg.scripts['test:since-16-0-170'] === 'node scripts/run-tests-since-16-0-170.cjs', 'targeted since-16.0.170 test command exists');
 assert(pkg.scripts['test:since-16-0-170:node'] === 'node scripts/run-tests-since-16-0-170.cjs --node-only', 'targeted node-only since-16.0.170 test command exists');
 assert(pkg.scripts['test:play-store:resume-current'] === 'powershell -NoProfile -ExecutionPolicy Bypass -File .\\RUN_86CHAOS_PARTIAL_RESUME_RELEASE_GATE.ps1', 'partial resume Play Store command exists');
@@ -69,11 +69,11 @@ assert(pkg.scripts['test:play-store:current-blockers'] === 'powershell -NoProfil
 assert(pkg.scripts['test:play-store:latest-blockers'] === pkg.scripts['test:play-store:current-blockers'], 'latest blockers alias exists');
 assert(lock.packages?.['']?.scripts?.['test:play-store:resume-current'] === pkg.scripts['test:play-store:resume-current'], 'package-lock scripts include partial resume command');
 assert(lock.packages?.['']?.scripts?.['test:play-store:current-blockers'] === pkg.scripts['test:play-store:current-blockers'], 'package-lock scripts include current blockers command');
-assert(version.version === '16.0.182' && version.build === '16.0.182', 'public/version.json version/build are 16.0.182');
-assert(version.releaseTitle === 'Ghost Request Off Cached Conflict Selection Repair', 'release title is correct');
-assert(appCore.includes("CURRENT_VERSION = '16.0.182'"), 'app core CURRENT_VERSION is 16.0.182');
-assert(apiVersion.includes("APP_VERSION = '16.0.182'") && apiVersion.includes("SECURITY_SCHEMA_VERSION = '16.0.182'"), 'api version reports 16.0.182');
-assert(!fs.existsSync(path.join(root, 'scripts/validate-16-0-181.js')), 'previous validator was replaced');
+assert(version.version === '16.0.183' && version.build === '16.0.183', 'public/version.json version/build are 16.0.183');
+assert(version.releaseTitle === 'Ghost Request Off Reload Test Flow Repair', 'release title is correct');
+assert(appCore.includes("CURRENT_VERSION = '16.0.183'"), 'app core CURRENT_VERSION is 16.0.183');
+assert(apiVersion.includes("APP_VERSION = '16.0.183'") && apiVersion.includes("SECURITY_SCHEMA_VERSION = '16.0.183'"), 'api version reports 16.0.183');
+assert(!fs.existsSync(path.join(root, 'scripts/validate-16-0-182.js')), 'previous validator was replaced');
 
 assert(sha('firestore.rules') === '51bfd7d39edd59f680ae41a149c108cec8cd42d00b102d84cb00ee40d90264d9', 'firestore.rules unchanged');
 assert(sha('storage.rules') === '174e7e9a140193ff69ccf0f0d3e5c65b81a9e0fbbd612bff45ce57e7a3a7ce9c', 'storage.rules unchanged');
@@ -94,7 +94,7 @@ assert(loginWorkspaceResumeTest.includes('Server login bootstrap') && loginWorks
 assert(sinceRunner.includes('api/partial-resume-release-gate-source-16-0-177.test.cjs') && sinceRunner.includes('api/login-workspace-resume-16-0-177.test.cjs'), 'since-16.0.170 targeted test runner includes 16.0.179 regressions');
 
 
-// Targeted 16.0.182 Ghost Request Off-only current-blocker repairs.
+// Targeted 16.0.183 Ghost Request Off-only current-blocker repairs.
 assert(currentBlockersManifest.mode === 'reported-current-blockers' && currentBlockersManifest.totalSelected === 2 && currentBlockersManifest.previousFailuresSelected === 2 && currentBlockersManifest.previousTimeoutsSelected === 0 && currentBlockersManifest.partialNotRunSelected === 0, 'current-blockers manifest selects only the latest 2 failed Ghost Request Off identities');
 assert(currentBlockersManifest.baselineFullRunId === '2026-08-14T01-00-59' && currentBlockersManifest.baselineSourceVersion === '16.0.181' && currentBlockersManifest.baselineDeployedVersion === '16.0.181', 'current-blockers manifest is based on the 16.0.181 current-blockers report');
 assert((currentBlockersManifest.selected || []).length === 2 && (currentBlockersManifest.selected || []).every(row => String(row.priorStatus || '').toLowerCase() === 'failed' && String(row.baselineStatus || '').toLowerCase() === 'failed'), 'current-blockers manifest contains only failed prior statuses');
@@ -111,8 +111,10 @@ assert(read('tests/86chaos-full-audit/06-request-off-events-integration.spec.cjs
 assert(read('tests/86chaos-full-audit/06-request-off-events-integration.spec.cjs').includes('const conflictPrivacySurface = [') && read('tests/86chaos-full-audit/06-request-off-events-integration.spec.cjs').includes('JSON.stringify(cancelWarning.conflictRow || {})') && !read('tests/86chaos-full-audit/06-request-off-events-integration.spec.cjs').includes("expect(text, 'Canceling the warning should not reveal private request reasons or email addresses')"), 'Ghost Request Off privacy assertion is scoped to warning and conflict payload');
 assert(read('tests/86chaos-full-audit/06-request-off-events-integration.spec.cjs').includes('async function findRequestOffDateCell(conflictDate)') && read('tests/86chaos-full-audit/06-request-off-events-integration.spec.cjs').includes('normalize-space(.)="${day}"') && read('tests/86chaos-full-audit/06-request-off-events-integration.spec.cjs').includes('confirmedConflictRowsByDate') && read('tests/86chaos-full-audit/06-request-off-events-integration.spec.cjs').includes('First seeded conflict-date selection should call the Request Off conflicts API') && !read('tests/86chaos-full-audit/06-request-off-events-integration.spec.cjs').includes("locator('div.cursor-pointer, button, [role=\"gridcell\"]').filter({ hasText:"), 'Ghost Request Off date selection uses the visible day-number span and accepts a confirmed cached conflict row');
 assert(read('tests/86chaos-full-audit/06-request-off-events-integration.spec.cjs').includes('Conflict warning should be backed by the seeded conflict date from a fresh or cached conflict response') && read('tests/86chaos-full-audit/06-request-off-events-integration.spec.cjs').includes('Seeded Sara Request Off should count as at least one other-employee conflict') && read('tests/86chaos-full-audit/06-request-off-events-integration.spec.cjs').includes("Ghost Mode Request Off creation response should be specifically ghost-create") && read('tests/86chaos-full-audit/06-request-off-events-integration.spec.cjs').includes("Ghost Mode Request Off cancellation response should be specifically ghost-cancel"), 'Ghost Request Off workflow keeps conflict/create/cancel assertions authoritative');
-assert(currentBlockersSourceTest.includes('current-blockers manifest reruns only the two remaining failed Ghost Request Off') && currentBlockersSourceTest.includes('passed cost-regression identities must be absent') && currentBlockersSourceTest.includes('cached confirmed conflict row'), '16.0.182 current-blockers source regression test exists');
-assert(sinceRunner.includes('api/current-blockers-release-gate-source-16-0-182.test.cjs'), 'since-16.0.170 targeted test runner includes 16.0.182 current-blocker regressions');
+assert(read('tests/86chaos-full-audit/06-request-off-events-integration.spec.cjs').includes("await openPeopleAndPossess(seed.ghostTargetName || 'Allen QA');\n    const refreshedGhostListBody = await openRequestOff();") && read('tests/86chaos-full-audit/06-request-off-events-integration.spec.cjs').includes('row?.id === createdRequestId') && read('tests/86chaos-full-audit/06-request-off-events-integration.spec.cjs').includes('The exact Ghost Mode Request Off created before refresh must still exist after re-entering possession'), 'Ghost Request Off test re-enters possession after reload and verifies exact created request ID');
+assert(app.includes('const [ghostTenant, setGhostTenant] = useState(null)') && !/localStorage\.setItem\([^)]*ghost|sessionStorage\.setItem\([^)]*ghost|document\.cookie[\s\S]{0,80}ghost/i.test(app), 'Ghost Mode remains in-memory and is not made persistent');
+assert(currentBlockersSourceTest.includes('current-blockers manifest reruns only the two remaining failed Ghost Request Off') && currentBlockersSourceTest.includes('passed cost-regression identities must be absent') && currentBlockersSourceTest.includes('cached confirmed conflict row') && currentBlockersSourceTest.includes('re-enters exact possession after full reload'), '16.0.183 current-blockers source regression test exists');
+assert(sinceRunner.includes('api/current-blockers-release-gate-source-16-0-183.test.cjs'), 'since-16.0.170 targeted test runner includes 16.0.183 current-blocker regressions');
 
 // Preserve targeted post-16.0.170 repairs.
 assert(tabMasterSchedule.includes('changeSubTab') && tabMasterSchedule.includes('onSubTabChange(normalized)') && tabMasterSchedule.includes("'month-view'"), 'Schedule parent subtab stays synchronized when Month View is selected');
@@ -197,4 +199,4 @@ assert(read('scripts/verify-native-backup-iam.js').includes('gcloud projects add
 assert(vercel.includes('/api/firestore-backup') && vercel.includes('0 9 * * *') && vercel.includes('/api/firestore-backup-watchdog') && vercel.includes('0 21 * * *'), 'vercel cron schedules remain unchanged');
 
 if (failures) { console.error(`\n${failures} validation check(s) failed.`); process.exit(1); }
-console.log('\n16.0.182 source validation passed.');
+console.log('\n16.0.183 source validation passed.');

@@ -10,11 +10,11 @@ SKIP:      0
 
 RESULT: FAILED
 
-Primary blocker: 86chaos-full-audit\06-request-off-events-integration.spec.cjs > 06 request-off, availability, and scheduled events integration > Ghost Mode Request Off as a legacy employee verifies conflict warning and cancellation workflow: Error: Selecting the seeded conflict date should call the Request Off conflicts API
+Primary blocker: 86chaos-full-audit\06-request-off-events-integration.spec.cjs > 06 request-off, availability, and scheduled events integration > Ghost Mode Request Off as a legacy employee verifies conflict warning and cancellation workflow: Error: Ghost Mode Request Off should load the possessed employee records before date interaction
 
 ?[2mexpect(?[22m?[31mreceived?[39m?[2m).?[22mtoBeTruthy?[2m()?[22m
 
-Received: ?[31mnull?[39m
+Received: ?[31mundefined?[39m
 
 Failed / timed-out tests:
 1. [chromium] 86chaos-full-audit\06-request-off-events-integration.spec.cjs > 06 request-off, availability, and scheduled events integration > Ghost Mode Request Off as a legacy employee verifies conflict warning and cancellation workflow
@@ -23,5 +23,5 @@ Failed / timed-out tests:
 Next command: npm run test:play-store:delta
 
 Artifacts:
-C:\Users\geoff\Documents\GitHub\86chaos\test-results\86chaos-play-store-release-gate\2026-08-14T01-00-59
+C:\Users\geoff\Documents\GitHub\86chaos\test-results\86chaos-play-store-release-gate\2026-08-14T14-07-00
 ============================================================

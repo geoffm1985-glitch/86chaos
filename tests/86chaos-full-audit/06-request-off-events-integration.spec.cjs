@@ -279,10 +279,19 @@ test.describe('06 request-off, availability, and scheduled events integration', 
 
     await page.reload({ waitUntil: 'domcontentloaded' });
     await page.waitForTimeout(2200);
-    await openRequestOff();
+
+    // A full browser reload intentionally resets in-memory Ghost Mode.
+    // Re-enter possession of the exact current-run employee before verifying
+    // that the created Request Off persisted server-side and can be canceled.
+    await openPeopleAndPossess(seed.ghostTargetName || 'Allen QA');
+    const refreshedGhostListBody = await openRequestOff();
+    const createdRequestAfterRefresh = (Array.isArray(refreshedGhostListBody?.requests) ? refreshedGhostListBody.requests : [])
+      .find(row => row?.id === createdRequestId);
+    expect(createdRequestAfterRefresh, 'The exact Ghost Mode Request Off created before refresh must still exist after re-entering possession').toBeTruthy();
+    expect(String(createdRequestAfterRefresh?.status || '').toLowerCase(), 'The exact refreshed Request Off must remain active before cancellation').toMatch(/pending|approved/);
     text = await bodyText(page, 70000);
-    await attachState('06-ghost-request-off-after-refresh.json', { createdRequestId });
-    expect(text, 'Impersonated employee request should remain visible after refresh').toMatch(/Allen QA|Request-Off Workflow|Pending|Approved|Submitted|Request Off/i);
+    await attachState('06-ghost-request-off-after-refresh.json', { createdRequestId, refreshedRequest: createdRequestAfterRefresh || null });
+    expect(text, 'Impersonated employee request should remain visible after refresh and re-possession').toMatch(/Allen QA|Request-Off Workflow|Pending|Approved|Submitted|Request Off/i);
     expect(text, 'Request Off page should remain free of raw permission errors after refresh').not.toMatch(/Missing or insufficient permissions|Request Off unavailable/i);
 
     const cancelButton = page.getByTestId(`request-off-cancel-${createdRequestId}`);

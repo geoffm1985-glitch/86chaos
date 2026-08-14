@@ -125,3 +125,41 @@ test('Ghost Request Off conflict click accepts a cached confirmed conflict row o
   assert.match(ghostTest, /Conflict warning should be backed by the seeded conflict date from a fresh or cached conflict response/);
   assert.doesNotMatch(ghostTest, /Selecting the seeded conflict date should call the Request Off conflicts API/);
 });
+
+
+test('Ghost Request Off re-enters exact possession after full reload before persistence and cancellation checks', () => {
+  const ghostTest = read('tests/86chaos-full-audit/06-request-off-events-integration.spec.cjs');
+  const app = read('src/App.js');
+  assert.match(
+    ghostTest,
+    /page\.reload\([\s\S]*openPeopleAndPossess\(seed\.ghostTargetName \|\| 'Allen QA'\)[\s\S]*const refreshedGhostListBody = await openRequestOff\(\)/,
+    'Ghost Request Off test re-enters Allen possession after full reload before reopening Request Off'
+  );
+  assert.match(
+    ghostTest,
+    /\.find\(row => row\?\.id === createdRequestId\)/,
+    'Ghost Request Off refresh verification finds the exact created request ID'
+  );
+  assert.match(
+    ghostTest,
+    /The exact Ghost Mode Request Off created before refresh must still exist after re-entering possession/,
+    'Ghost Request Off test asserts exact created request persistence after re-possession'
+  );
+  assert.match(
+    ghostTest,
+    /The exact refreshed Request Off must remain active before cancellation/,
+    'Ghost Request Off test asserts refreshed request remains active before cancellation'
+  );
+  assert.match(
+    ghostTest,
+    /page\.getByTestId\(`request-off-cancel-\$\{createdRequestId\}`\)/,
+    'Ghost Request Off test keeps exact cancellation control for the created request'
+  );
+  assert.match(
+    ghostTest,
+    /isTimeOffResponseAction\(response, 'ghost-cancel'\)/,
+    'Ghost Request Off test keeps authoritative ghost-cancel response verification'
+  );
+  assert.match(app, /const \[ghostTenant, setGhostTenant\] = useState\(null\)/, 'app keeps Ghost Mode as in-memory state');
+  assert.doesNotMatch(app, /localStorage\.setItem\([^)]*ghost|sessionStorage\.setItem\([^)]*ghost|document\.cookie[\s\S]{0,80}ghost/i, 'app does not persist Ghost Mode in browser storage or cookies');
+});

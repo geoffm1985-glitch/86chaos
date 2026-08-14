@@ -1,16 +1,16 @@
 86 Chaos Failed Tests
-Run: 2026-08-14T01-00-59
-Version: 16.0.181
+Run: 2026-08-14T14-07-00
+Version: 16.0.182
 Mode: reported-current-blockers
 
 1. [chromium]
    86chaos-full-audit/06-request-off-events-integration.spec.cjs
    86chaos-full-audit\06-request-off-events-integration.spec.cjs > 06 request-off, availability, and scheduled events integration > Ghost Mode Request Off as a legacy employee verifies conflict warning and cancellation workflow
    Status: FAIL
-   Error: Error: Selecting the seeded conflict date should call the Request Off conflicts API
+   Error: Error: Ghost Mode Request Off should load the possessed employee records before date interaction
 
 2. [mobile-chromium]
    86chaos-full-audit/06-request-off-events-integration.spec.cjs
    86chaos-full-audit\06-request-off-events-integration.spec.cjs > 06 request-off, availability, and scheduled events integration > Ghost Mode Request Off as a legacy employee verifies conflict warning and cancellation workflow
    Status: FAIL
-   Error: Error: Selecting the seeded conflict date should call the Request Off conflicts API
+   Error: Error: QA fixture must leave the Ghost conflict date free of Allen QA active Request Off records
