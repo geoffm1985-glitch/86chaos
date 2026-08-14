@@ -1,0 +1,103 @@
+{
+  "ok": true,
+  "manifestSchemaVersion": 3,
+  "mode": "reported-current-blockers",
+  "source": "uploaded-current-blockers-20260814-050722",
+  "selectionSource": "uploaded-current-blockers-20260814-050722-fail-only",
+  "lineageMode": "none",
+  "baselineFullRunId": "2026-08-13T23-55-33",
+  "baselineSourceVersion": "16.0.179",
+  "baselineDeployedVersion": "16.0.179",
+  "totalSelected": 2,
+  "desktopSelected": 1,
+  "mobileSelected": 1,
+  "previousFailuresSelected": 2,
+  "previousTimeoutsSelected": 0,
+  "partialNotRunSelected": 0,
+  "currentReleaseFeatureTestsSelected": 0,
+  "duplicateIdentitiesRemoved": 0,
+  "newTestsCount": 0,
+  "note": "Runs only the two current 16.0.179 FAIL identities from the 20260814-050722 current-blockers report. Excludes PASS, SKIP, TIMEOUT, NOT-RUN, cost-regression, Schedule Builder, and unrelated identities.",
+  "targetSourceVersion": "16.0.179",
+  "targetDeployedVersion": "16.0.179",
+  "selected": [
+    {
+      "spec": "86chaos-full-audit/06-request-off-events-integration.spec.cjs",
+      "specPath": "86chaos-full-audit/06-request-off-events-integration.spec.cjs",
+      "title": "Ghost Mode Request Off as a legacy employee verifies conflict warning and cancellation workflow",
+      "leafTitle": "Ghost Mode Request Off as a legacy employee verifies conflict warning and cancellation workflow",
+      "exactTestTitle": "Ghost Mode Request Off as a legacy employee verifies conflict warning and cancellation workflow",
+      "fullSuitePath": "06 request-off, availability, and scheduled events integration",
+      "suitePathParts": [
+        "06 request-off, availability, and scheduled events integration"
+      ],
+      "titlePathParts": [
+        "06 request-off, availability, and scheduled events integration",
+        "Ghost Mode Request Off as a legacy employee verifies conflict warning and cancellation workflow"
+      ],
+      "fullTitle": "06 request-off, availability, and scheduled events integration > Ghost Mode Request Off as a legacy employee verifies conflict warning and cancellation workflow",
+      "stableKey": "86chaos-full-audit/06-request-off-events-integration.spec.cjs\u000006 request-off, availability, and scheduled events integration\u0000Ghost Mode Request Off as a legacy employee verifies conflict warning and cancellation workflow\u0000chromium",
+      "project": "chromium",
+      "projects": [
+        "chromium"
+      ],
+      "priorStatus": "failed",
+      "baselineStatus": "failed",
+      "baselineFullRunId": "2026-08-13T23-55-33",
+      "baselineSourceVersion": "16.0.179",
+      "baselineDeployedVersion": "16.0.179",
+      "sourceVersion": "16.0.179",
+      "deployedVersion": "16.0.179",
+      "fullRunId": "2026-08-13T23-55-33",
+      "duration": 0,
+      "error": "from current 16.0.179 current-blockers slim report",
+      "selectionReasons": [
+        "current_blocker_failure"
+      ],
+      "migratedFromLegacyIdentity": false,
+      "migratedFromLegacyAmbiguousIdentity": false,
+      "legacyAmbiguousMatchCount": 0,
+      "migrationSourceStableKey": "86chaos-full-audit/06-request-off-events-integration.spec.cjs\u000006 request-off, availability, and scheduled events integration\u0000Ghost Mode Request Off as a legacy employee verifies conflict warning and cancellation workflow\u0000chromium",
+      "sourceFileHash": "4ab2681a0fbc74a6b51e9b356506729b8e35f2ec57dbb1ea687967cace386ed2"
+    },
+    {
+      "spec": "86chaos-full-audit/06-request-off-events-integration.spec.cjs",
+      "specPath": "86chaos-full-audit/06-request-off-events-integration.spec.cjs",
+      "title": "Ghost Mode Request Off as a legacy employee verifies conflict warning and cancellation workflow",
+      "leafTitle": "Ghost Mode Request Off as a legacy employee verifies conflict warning and cancellation workflow",
+      "exactTestTitle": "Ghost Mode Request Off as a legacy employee verifies conflict warning and cancellation workflow",
+      "fullSuitePath": "06 request-off, availability, and scheduled events integration",
+      "suitePathParts": [
+        "06 request-off, availability, and scheduled events integration"
+      ],
+      "titlePathParts": [
+        "06 request-off, availability, and scheduled events integration",
+        "Ghost Mode Request Off as a legacy employee verifies conflict warning and cancellation workflow"
+      ],
+      "fullTitle": "06 request-off, availability, and scheduled events integration > Ghost Mode Request Off as a legacy employee verifies conflict warning and cancellation workflow",
+      "stableKey": "86chaos-full-audit/06-request-off-events-integration.spec.cjs\u000006 request-off, availability, and scheduled events integration\u0000Ghost Mode Request Off as a legacy employee verifies conflict warning and cancellation workflow\u0000mobile-chromium",
+      "project": "mobile-chromium",
+      "projects": [
+        "mobile-chromium"
+      ],
+      "priorStatus": "failed",
+      "baselineStatus": "failed",
+      "baselineFullRunId": "2026-08-13T23-55-33",
+      "baselineSourceVersion": "16.0.179",
+      "baselineDeployedVersion": "16.0.179",
+      "sourceVersion": "16.0.179",
+      "deployedVersion": "16.0.179",
+      "fullRunId": "2026-08-13T23-55-33",
+      "duration": 0,
+      "error": "from current 16.0.179 current-blockers slim report",
+      "selectionReasons": [
+        "current_blocker_failure"
+      ],
+      "migratedFromLegacyIdentity": false,
+      "migratedFromLegacyAmbiguousIdentity": false,
+      "legacyAmbiguousMatchCount": 0,
+      "migrationSourceStableKey": "86chaos-full-audit/06-request-off-events-integration.spec.cjs\u000006 request-off, availability, and scheduled events integration\u0000Ghost Mode Request Off as a legacy employee verifies conflict warning and cancellation workflow\u0000mobile-chromium",
+      "sourceFileHash": "4ab2681a0fbc74a6b51e9b356506729b8e35f2ec57dbb1ea687967cace386ed2"
+    }
+  ]
+}

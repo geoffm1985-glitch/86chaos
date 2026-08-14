@@ -147,10 +147,18 @@ test.describe('06 request-off, availability, and scheduled events integration', 
       await gotoTab(page, 'published', { settleMs: 1800, maxText: 70000 });
       const requestOffTab = page.getByRole('button', { name: /^Schedule Request Off$/i }).first();
       await expect(requestOffTab, 'Request Off tab should be reachable from Time Clock & Schedule').toBeVisible({ timeout: 15000 });
+      const ghostListResponsePromise = page
+        .waitForResponse(response => isTimeOffResponseAction(response, 'ghost-list'), { timeout: 15000 })
+        .then(async response => ({ response, body: await response.json().catch(() => null) }))
+        .catch(() => null);
       await requestOffTab.click();
-      await page.waitForTimeout(1600);
+      const ghostListResponse = await ghostListResponsePromise;
+      expect(ghostListResponse?.response, 'Ghost Mode Request Off should load the possessed employee records before date interaction').toBeTruthy();
+      expect(ghostListResponse.response.ok(), 'Ghost Mode Request Off ghost-list response should succeed before date interaction').toBe(true);
+      expect(ghostListResponse.body?.action, 'Ghost Mode Request Off initialization response should be ghost-list').toBe('ghost-list');
       await dismissBlockingDialogs(page);
       await neutralizeTestingPreviewOverlays(page, { reason: 'ghost-request-off-before-date-select' });
+      return ghostListResponse.body;
     }
     async function clickConflictDate({ accept }) {
       const conflictDate = seed.ghostRequestOffConflictDate || seed.profile?.ghostRequestOffConflictDate || seed.profile?.dates?.tomorrow || '';
@@ -186,21 +194,28 @@ test.describe('06 request-off, availability, and scheduled events integration', 
       expect(conflictResponse.ok(), 'Request Off conflicts API should succeed before warning is evaluated').toBe(true);
       expect(conflictRow?.date, 'Conflict API response should include the seeded conflict date').toBe(conflictDate);
       expect(Number(conflictRow?.count || 0), 'Seeded Sara Request Off should count as at least one other-employee conflict').toBeGreaterThanOrEqual(1);
-      if (nativeDialog) return { conflictDate, dialogMessage: nativeDialog.message, accepted: accept };
+      if (nativeDialog) return { conflictDate, dialogMessage: nativeDialog.message, accepted: accept, conflictRow };
       const modal = page.getByRole('dialog').filter({ hasText: /already been requested off|may not be available|availability/i }).first();
       await expect(modal, 'Conflict warning dialog should appear for seeded active Request Off conflict').toBeVisible({ timeout: 8000 });
       const message = await modal.innerText().catch(() => '');
       if (accept) await modal.getByRole('button', { name: /continue|yes|submit anyway/i }).first().click();
       else await modal.getByRole('button', { name: /cancel|no|go back/i }).first().click();
       await expect(modal).toBeHidden({ timeout: 8000 }).catch(() => {});
-      return { conflictDate, dialogMessage: message, accepted: accept };
+      return { conflictDate, dialogMessage: message, accepted: accept, conflictRow };
     }
 
 
     await login(page, account.email, account.password, { tab: 'godmode' });
     await dismissBlockingDialogs(page);
     await openPeopleAndPossess(seed.ghostTargetName || 'Allen QA');
-    await openRequestOff();
+    const conflictDate = seed.ghostRequestOffConflictDate || seed.profile?.ghostRequestOffConflictDate || seed.profile?.dates?.tomorrow || '';
+    expect(conflictDate, 'QA seed must expose ghostRequestOffConflictDate for deterministic Request Off conflict testing').toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    const ghostListBody = await openRequestOff();
+    const ownConflictDateRequest = (Array.isArray(ghostListBody?.requests) ? ghostListBody.requests : []).find(row => {
+      const status = String(row?.status || '').toLowerCase();
+      return row?.date === conflictDate && ['pending', 'approved'].includes(status) && row?.archived !== true && row?.processed !== true;
+    });
+    expect(ownConflictDateRequest, 'QA fixture must leave the Ghost conflict date free of Allen QA active Request Off records').toBeFalsy();
     let text = await bodyText(page, 70000);
     await attachState('06-ghost-request-off-initial.json');
     expect(text, 'Request Off page should render in Ghost Mode without the unavailable toast').toMatch(/Request Off/i);
@@ -212,7 +227,11 @@ test.describe('06 request-off, availability, and scheduled events integration', 
     text = await bodyText(page, 70000);
     await attachState('06-ghost-request-off-warning-cancel.json', { cancelWarning });
     expect(cancelWarning.dialogMessage, 'Conflict warning must be shown before canceling date selection').toMatch(/already been requested off|available|conflict/i);
-    expect(text, 'Canceling the warning should not reveal private request reasons or email addresses').not.toMatch(/reason|@86chaos\.test|@example\.test|phone|full request document/i);
+    const conflictPrivacySurface = [
+      cancelWarning.dialogMessage || '',
+      JSON.stringify(cancelWarning.conflictRow || {})
+    ].join('\n');
+    expect(conflictPrivacySurface, 'Conflict warning and conflict response should not reveal private request reasons, emails, phone numbers, or full request documents').not.toMatch(/reason|@86chaos\.test|@example\.test|phone|full request document/i);
 
     const continueWarning = await clickConflictDate({ accept: true });
     await page.waitForTimeout(800);

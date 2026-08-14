@@ -5,6 +5,10 @@ function buildFakeRestaurantProfile({ restaurantId = '', runId = '', anchorDate 
   const todayStr = isoDate(today);
   const tomorrowStr = isoDate(addDays(today, 1));
   const weekStart = startOfWeekMonday(today);
+  const preferredAllenPartialRequestDate = isoDate(addDays(weekStart, 5));
+  const allenPartialRequestDate = preferredAllenPartialRequestDate === tomorrowStr
+    ? isoDate(addDays(today, 2))
+    : preferredAllenPartialRequestDate;
   const fixture = buildAuditScheduleFixture(today);
   const tag = { qaOwned: true, qaRunId: runId, createdBy: '86chaos-full-audit', createdAt: new Date().toISOString() };
   const QA_WORKSPACE_NAME = process.env.CHAOS_QA_WORKSPACE_NAME || `86 Chaos Release Gate QA ${runId}`;
@@ -40,7 +44,7 @@ function buildFakeRestaurantProfile({ restaurantId = '', runId = '', anchorDate 
   }));
 
   const timeOffRequests = [
-    { restaurantId, userKey: 'allen', employeeName: 'Allen QA', userName: 'Allen QA', date: isoDate(addDays(weekStart, 5)), requestDate: isoDate(addDays(weekStart, 5)), startTime: '12p', endTime: '4p', partialDay: true, status: 'approved', reason: 'QA partial request-off visible time check', requestedAt: new Date().toISOString(), ...tag },
+    { restaurantId, userKey: 'allen', employeeName: 'Allen QA', userName: 'Allen QA', date: allenPartialRequestDate, requestDate: allenPartialRequestDate, startTime: '12p', endTime: '4p', partialDay: true, status: 'approved', reason: 'QA partial request-off visible time check', requestedAt: new Date().toISOString(), ...tag },
     { restaurantId, userKey: 'sara', employeeName: 'Sara QA', userName: 'Sara QA', date: tomorrowStr, requestDate: tomorrowStr, allDay: true, status: 'pending', reason: 'QA full day request-off warning check', requestedAt: new Date().toISOString(), ...tag },
   ];
 

@@ -1,28 +1,16 @@
 86 Chaos Failed Tests
-Run: 2026-08-13T23-13-19
-Version: 16.0.178
+Run: 2026-08-13T23-55-33
+Version: 16.0.179
 Mode: reported-current-blockers
 
 1. [chromium]
    86chaos-full-audit/06-request-off-events-integration.spec.cjs
    86chaos-full-audit\06-request-off-events-integration.spec.cjs > 06 request-off, availability, and scheduled events integration > Ghost Mode Request Off as a legacy employee verifies conflict warning and cancellation workflow
-   Status: TIMEOUT
-   Error: ?[31mTest timeout of 90000ms exceeded.?[39m
+   Status: FAIL
+   Error: Error: Canceling the warning should not reveal private request reasons or email addresses
 
 2. [mobile-chromium]
    86chaos-full-audit/06-request-off-events-integration.spec.cjs
    86chaos-full-audit\06-request-off-events-integration.spec.cjs > 06 request-off, availability, and scheduled events integration > Ghost Mode Request Off as a legacy employee verifies conflict warning and cancellation workflow
-   Status: TIMEOUT
-   Error: ?[31mTest timeout of 90000ms exceeded.?[39m
-
-3. [chromium]
-   e2e/cost-regression.spec.cjs
-   e2e\cost-regression.spec.cjs > cost scenario select-active-workspace
    Status: FAIL
-   Error: Error: locator.click: Error: strict mode violation: getByRole('dialog', { name: /switch workspace/i }).first().or(getByRole('dialog').filter({ hasText: /switch workspace/i }).first()).getByRole('button', { name: /close/i }) resolved to 3 elements:
-
-4. [mobile-chromium]
-   e2e/cost-regression.spec.cjs
-   e2e\cost-regression.spec.cjs > cost scenario select-active-workspace
-   Status: FAIL
-   Error: Error: locator.click: Error: strict mode violation: getByRole('dialog', { name: /switch workspace/i }).first().or(getByRole('dialog').filter({ hasText: /switch workspace/i }).first()).getByRole('button', { name: /close/i }) resolved to 3 elements:
+   Error: Error: Request Off conflict date cell for 2026-08-15 should be selectable

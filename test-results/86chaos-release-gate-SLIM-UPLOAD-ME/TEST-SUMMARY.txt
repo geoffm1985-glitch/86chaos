@@ -2,31 +2,107 @@
 86 CHAOS TEST RESULT
 
 MODE:      reported-current-blockers
-TOTAL:     5
-PASS:      1
+TOTAL:     4
+PASS:      2
 FAIL:      2
-TIMEOUT:   2
+TIMEOUT:   0
 SKIP:      0
 
 RESULT: FAILED
 
-Primary blocker: e2e\cost-regression.spec.cjs > cost scenario select-active-workspace: Error: locator.click: Error: strict mode violation: getByRole('dialog', { name: /switch workspace/i }).first().or(getByRole('dialog').filter({ hasText: /switch workspace/i }).first()).getByRole('button', { name: /close/i }) resolved to 3 elements:
-    1) <button type="button" title="Close Switch Workspace" aria-label="Close Switch Workspace" data-chaos-control-kind="informational" class="p-1.5 hover:bg-[#12161A] rounded-full text-slate-400 hover:text-white transition-colors focus:outline-none focus:ring-2 focus:ring-[#D4A381] chaos-release-tap-target">?</button> aka getByRole('button', { name: 'Close Switch Workspace' })
-    2) <button type="button" data-current-workspace="true" data-chaos-control-kind="informational" data-testid="workspace-switcher-current-workspace" title="Current workspace 86 Chaos Release Gate QA 2026-08-13T23-13-19. Close switcher." aria-label="Current workspace 86 Chaos Release Gate QA 2026-08-13T23-13-19. Close switcher." class="w-full text-left rounded-xl border p-3 transition-all bg-[#D4A381]/10 border-[#D4A381] text-white chaos-release-tap-target">?</button> aka getByTestId('workspace-switcher-current-workspace')
-    3) <button type="button" title="Close" aria-label="Close" data-chaos-control-kind="informational" class="w-full chaos-button chaos-button-secondary bg-[#12161A] text-slate-300 border border-[#2A353D] font-bold rounded-lg hover:text-[#D4A381] transition-all px-3 py-2 text-xs chaos-release-tap-target">Close</button> aka getByRole('button', { name: 'Close', exact: true })
+Primary blocker: 86chaos-full-audit\06-request-off-events-integration.spec.cjs > 06 request-off, availability, and scheduled events integration > Ghost Mode Request Off as a legacy employee verifies conflict warning and cancellation workflow: Error: Canceling the warning should not reveal private request reasons or email addresses
 
-Call log:
-?[2m  - waiting for getByRole('dialog', { name: /switch workspace/i }).first().or(getByRole('dialog').filter({ hasText: /switch workspace/i }).first()).getByRole('button', { name: /close/i })?[22m
+?[2mexpect(?[22m?[31mreceived?[39m?[2m).?[22mnot?[2m.?[22mtoMatch?[2m(?[22m?[32mexpected?[39m?[2m)?[22m
 
+Expected pattern: not ?[32m/reason|@86chaos\.test|@example\.test|phone|full request document/i?[39m
+Received string:      ?[31m"GHOST MODE OVERRIDE: ALLEN QA @ 86 CHAOS RELEASE GATE QA 2026-08-13T23-55-33?[39m
+?[31mEXIT GHOST MODE?[39m
+?[31m86 CHAOS RELEASE GATE QA 2026-08-13T23-55-33?[39m
+?[31mViewing user: Allen QA?[39m
+?[31mEmail: 86chaos.qa+ghost-target.2026-08-13t23-55-33?[7m@86chaos.test?[27m?[39m
+?[31mRole: Line Cook?[39m
+?[31mUser ID: qa_2026-08-13T23-55-33_users_2_allen?[39m
+?[31m0 On Schedule 0 Clocked In 1 Needs Eyes?[39m
+?[31mMY SCHEDULE?[39m
+?[31mFULL SCHEDULE?[39m
+?[31mMONTH VIEW?[39m
+?[31mREQUEST OFF?[39m
+?[31mAVAILABILITY?[39m
+?[31mSCHEDULE BUILDER?[39m
+?[31mAugust 2026?[39m
+?[31mSUN?[39m
+?[31mMON?[39m
+?[31mTUE?[39m
+?[31mWED?[39m
+?[31mTHU?[39m
+?[31mFRI?[39m
+?[31mSAT?[39m
+?[31m1?[39m
+?[31m2?[39m
+?[31m3?[39m
+?[31m4?[39m
+?[31m5?[39m
+?[31m6?[39m
+?[31m7?[39m
+?[31m8?[39m
+?[31m9?[39m
+?[31m10?[39m
+?[31m11?[39m
+?[31m12?[39m
+?[31m13?[39m
+?[31m14?[39m
+?[31m15?[39m
+?[31mOFF?[39m
+?[31m16?[39m
+?[31m17?[39m
+?[31m18?[39m
+?[31m19?[39m
+?[31m20?[39m
+?[31m21?[39m
+?[31m22?[39m
+?[31m23?[39m
+?[31m24?[39m
+?[31m25?[39m
+?[31m26?[39m
+?[31m27?[39m
+?[31m28?[39m
+?[31m29?[39m
+?[31m30?[39m
+?[31m31?[39m
+?[31mRequest Off?[39m
+?[31m?[39m
+?[31mTap specific dates to request off. Use Availability for normal weekly schedules.?[39m
+?[31m?[39m
+?[31mPartial Day Only??[39m
+?[31mSUBMIT?[39m
+?[31mRequest-Off Workflow?[39m
+?[31m?[39m
+?[31mDefault view only shows items that need attention. Published and archived requests stay searchable.?[39m
+?[31m?[39m
+?[31mSTATUS?[39m
+?[31mNEEDS REVIEW?[39m
+?[31mUpcoming Approved?[39m
+?[31mPublished/Archived?[39m
+?[31mAll?[39m
+?[31mDATE?[39m
+?[31mThis Week?[39m
+?[31mNext Week?[39m
+?[31mTHIS MONTH?[39m
+?[31mNext Month?[39m
+?[31mCustom Range?[39m
+?[31mNo requests here?[39m
+?[31m?[39m
+?[31mSwitch filters to review history or upcoming approvals.?[39m
+?[31m?[39m
+?[31mVERSION 16.0.179?[39m
+?[31m? 2026 CHILTON APP WORKS LLC"?[39m
 
 Failed / timed-out tests:
 1. [chromium] 86chaos-full-audit\06-request-off-events-integration.spec.cjs > 06 request-off, availability, and scheduled events integration > Ghost Mode Request Off as a legacy employee verifies conflict warning and cancellation workflow
 2. [mobile-chromium] 86chaos-full-audit\06-request-off-events-integration.spec.cjs > 06 request-off, availability, and scheduled events integration > Ghost Mode Request Off as a legacy employee verifies conflict warning and cancellation workflow
-3. [chromium] e2e\cost-regression.spec.cjs > cost scenario select-active-workspace
-4. [mobile-chromium] e2e\cost-regression.spec.cjs > cost scenario select-active-workspace
 
 Next command: npm run test:play-store:delta
 
 Artifacts:
-C:\Users\geoff\Documents\GitHub\86chaos\test-results\86chaos-play-store-release-gate\2026-08-13T23-13-19
+C:\Users\geoff\Documents\GitHub\86chaos\test-results\86chaos-play-store-release-gate\2026-08-13T23-55-33
 ============================================================

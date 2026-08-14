@@ -29,7 +29,7 @@ function assertReportedFailedOnlySelection(rows = []) {
   const stableKeys = rows.map(row => row.stableKey || `${row.specPath || row.spec || ''}\u0000${row.fullSuitePath || ''}\u0000${row.leafTitle || row.exactTestTitle || row.title || ''}\u0000${reportedProject(row)}`);
   const errors = [];
   if (rows.length !== 6) errors.push(`expected 6 selected FAIL identities, got ${rows.length}`);
-  if (desktop !== 2) errors.push(`expected 2 chromium identities, got ${desktop}`);
+  if (desktop !== 1) errors.push(`expected 1 chromium identity, got ${desktop}`);
   if (mobile !== 4) errors.push(`expected 4 mobile-chromium identities, got ${mobile}`);
   if (rows.some(item => String(item.priorStatus || '').toLowerCase() !== 'failed')) errors.push('reported-failed-only selected a non-failed priorStatus');
   if (rows.some(item => String(item.baselineStatus || '').toLowerCase() !== 'failed')) errors.push('reported-failed-only selected a non-failed baselineStatus');
@@ -49,18 +49,18 @@ function assertReportedCurrentBlockersSelection(rows = []) {
   const mobile = rows.filter(item => (item.projects || []).includes('mobile-chromium') || item.project === 'mobile-chromium').length;
   const stableKeys = rows.map(row => row.stableKey || `${row.specPath || row.spec || ''}\u0000${row.fullSuitePath || ''}\u0000${row.leafTitle || row.exactTestTitle || row.title || ''}\u0000${reportedProject(row)}`);
   const errors = [];
-  if (rows.length !== 4) errors.push(`expected 4 current blocker identities, got ${rows.length}`);
-  if (desktop !== 2) errors.push(`expected 2 chromium identities, got ${desktop}`);
-  if (mobile !== 2) errors.push(`expected 2 mobile-chromium identities, got ${mobile}`);
+  if (rows.length !== 2) errors.push(`expected 2 current blocker identities, got ${rows.length}`);
+  if (desktop !== 1) errors.push(`expected 1 chromium identity, got ${desktop}`);
+  if (mobile !== 1) errors.push(`expected 1 mobile-chromium identity, got ${mobile}`);
   const failures = rows.filter(item => String(item.priorStatus || '').toLowerCase() === 'failed').length;
   const timeouts = rows.filter(item => ['timedout', 'timeout'].includes(String(item.priorStatus || '').toLowerCase())).length;
   if (failures !== 2) errors.push(`expected 2 failed identities, got ${failures}`);
-  if (timeouts !== 2) errors.push(`expected 2 timed-out identities, got ${timeouts}`);
+  if (timeouts !== 0) errors.push(`expected 0 timed-out identities, got ${timeouts}`);
   if (rows.some(item => ['passed', 'skipped', 'notrun', 'not_run', 'not-run'].includes(String(item.priorStatus || '').toLowerCase()))) errors.push('current blockers selected a passed, skipped, or not-run identity');
   const badProjects = rows.filter(item => !['chromium', 'mobile-chromium'].includes(reportedProject(item)));
   if (badProjects.length) errors.push(`unexpected projects selected: ${[...new Set(badProjects.map(reportedProject))].join(', ')}`);
   if (new Set(stableKeys).size !== stableKeys.length) errors.push('duplicate stable identities selected');
-  if (errors.length) throw new Error(`reported-current-blockers selection must be exactly the 4 current blockers from 20260814-042542: ${errors.join('; ')}`);
+  if (errors.length) throw new Error(`reported-current-blockers selection must be exactly the 2 current failed Ghost Request Off blockers from 20260814-050722: ${errors.join('; ')}`);
 }
 
 assertReportedFailedOnlySelection(FAILED_ONLY_TESTS);
@@ -83,7 +83,7 @@ const manifest = {
     : releaseSelectionMode === 'partial-resume'
       ? 'partial-resume runs only the FAIL/TIMEOUT plus NOT-RUN identities from the uploaded interrupted 16.0.175 run and excludes all PASS identities.'
       : releaseSelectionMode === 'reported-current-blockers'
-        ? 'reported-current-blockers runs only the 4 current FAIL/TIMEOUT identities from the 16.0.178 current-blockers report and excludes PASS, SKIP, NOT-RUN, and the now-passed Schedule Builder identity.'
+        ? 'reported-current-blockers runs only the 2 current FAIL identities from the 16.0.179 current-blockers report and excludes PASS, SKIP, TIMEOUT, NOT-RUN, cost-regression, Schedule Builder, and unrelated identities.'
         : `${releaseSelectionMode} success is diagnostic only. Complete npm run test:play-store is still required for release approval.`
 };
 fs.writeFileSync(path.join(runDir, 'failed-only-playwright-selection.json'), JSON.stringify(manifest, null, 2));

@@ -1,17 +1,17 @@
 {
-  "version": "16.0.179",
-  "name": "86 Chaos 16.0.179",
-  "build": "16.0.179",
-  "label": "86 Chaos 16.0.179",
-  "releasedAt": "2026-08-13T23:45:00-05:00",
-  "releaseTitle": "Remaining Current Blockers Release Gate Repair",
+  "version": "16.0.180",
+  "name": "86 Chaos 16.0.180",
+  "build": "16.0.180",
+  "label": "86 Chaos 16.0.180",
+  "releasedAt": "2026-08-14T00:16:00-05:00",
+  "releaseTitle": "Ghost Request Off Current Blockers Repair",
   "notes": [
-    "Scopes the current-blockers Play Store runner to only the four remaining failed or timed-out identities from the latest 16.0.178 report.",
-    "Repairs the workspace-switch cost-regression test selector to use the existing current-workspace test hook instead of the broad close-button fallback.",
-    "Repairs the Ghost Mode Request Off browser flow by handling native conflict and cancellation dialogs immediately and by canceling the exact request created in the test.",
-    "Adds an accessible name and stable test hook to the user Request Off cancellation control without changing its visual behavior."
+    "Corrects the Ghost Request Off privacy assertion scope so it checks only the warning and conflict payload instead of the Ghost Mode page banner.",
+    "Eliminates the Allen/Sara QA Request Off date collision in the release-gate fixture.",
+    "Waits for Ghost Request Off records to load before interacting with the conflict date.",
+    "Narrows the current-blockers Play Store rerun from four tests to the exact two remaining failed Ghost Request Off identities."
   ],
-  "title": "86 Chaos 16.0.179",
-  "summary": "Repairs the two remaining current blocker families: workspace-switch test selection and Ghost Mode Request Off dialog/cancellation flow, while narrowing the current-blockers runner to the four failed/timed-out tests only.",
-  "description": "Surgical release-gate repair for remaining 16.0.178 current blockers only."
+  "title": "86 Chaos 16.0.180",
+  "summary": "Surgical release-gate repair for the two remaining Ghost Mode Request Off current blockers only.",
+  "description": "Limits the repair to Ghost Request Off test/fixture synchronization and current-blockers selection from the 16.0.179 report."
 }
