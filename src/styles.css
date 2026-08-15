@@ -5526,3 +5526,64 @@ span.bg-red-500.text-white,
   .request-off-custom-range { grid-column: auto; }
   .request-off-custom-dates { grid-template-columns: repeat(2, minmax(0, 220px)); }
 }
+
+/* 16.0.185: Make Schedule Builder IN/OUT time controls readable. */
+.schedule-builder-time-control-row {
+  min-width: min(100%, 16rem);
+}
+.schedule-builder-time-field {
+  min-width: 7.75rem;
+}
+.schedule-builder-time-label {
+  z-index: 2;
+  line-height: 1;
+  text-shadow: 0 1px 0 rgba(0, 0, 0, .55);
+}
+.schedule-builder-time-input {
+  color: #ffffff !important;
+  font-size: .95rem !important;
+  font-weight: 900 !important;
+  line-height: 1.1 !important;
+  letter-spacing: .01em !important;
+  font-variant-numeric: tabular-nums !important;
+  min-width: 7.75rem !important;
+  padding-left: .82rem !important;
+  padding-right: .5rem !important;
+}
+.schedule-builder-time-input::-webkit-datetime-edit,
+.schedule-builder-time-input::-webkit-datetime-edit-fields-wrapper {
+  color: #ffffff !important;
+  font-weight: 900 !important;
+  padding: 0 !important;
+}
+.schedule-builder-time-input::-webkit-calendar-picker-indicator {
+  width: 1.15rem !important;
+  height: 1.15rem !important;
+  margin-left: .28rem !important;
+  opacity: .95 !important;
+  filter: invert(1) sepia(.12) saturate(.5);
+}
+@media (min-width: 1024px) {
+  .schedule-builder-assignment-row > .schedule-builder-time-control-row {
+    flex: 0 0 16rem !important;
+    min-width: 16rem !important;
+  }
+  .schedule-builder-assignment-row > .schedule-builder-time-control-row > .schedule-builder-time-field {
+    flex: 0 0 7.8rem !important;
+    width: 7.8rem !important;
+  }
+}
+@media (max-width: 640px) {
+  .schedule-builder-time-control-row {
+    gap: .55rem !important;
+  }
+  .schedule-builder-time-field {
+    min-width: 8rem;
+  }
+  .schedule-builder-time-input {
+    min-height: 44px !important;
+    height: 44px !important;
+    font-size: 1rem !important;
+    padding-left: .9rem !important;
+  }
+}

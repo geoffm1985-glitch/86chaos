@@ -3966,14 +3966,28 @@ const handleExportTimesheets = () => {
               </div>
 
         {/* Custom Time Overrides */}
-              <div className="flex gap-1.5 w-full sm:w-auto sm:flex-1 xl:w-auto shrink-0">
-                <div className="relative flex-1 xl:w-32">
-                    <span className="absolute -top-2.5 left-2 bg-[#1A2126] px-1 text-[9px] font-black text-slate-400 uppercase tracking-widest">In</span>
-                    <input type="time" value={startTime} onChange={e=>{setStartTime(e.target.value);setPresetShift('Custom');}} className={`${T.input} schedule-builder-compact-control w-full py-1.5 px-2 text-xs font-bold h-9 shadow-inner`}/>
+              <div className="schedule-builder-time-control-row flex gap-1.5 w-full sm:w-auto sm:flex-1 xl:w-auto shrink-0">
+                <div className="schedule-builder-time-field relative flex-1 xl:w-32">
+                    <span className="schedule-builder-time-label absolute -top-2.5 left-2 bg-[#1A2126] px-1 text-[9px] font-black text-[#D4A381] uppercase tracking-widest">In</span>
+                    <input
+                      type="time"
+                      value={startTime}
+                      aria-label={`Schedule Builder start time ${formatShortTime(startTime)}`}
+                      title={`Start time: ${formatShortTime(startTime)}`}
+                      onChange={e=>{setStartTime(e.target.value);setPresetShift('Custom');}}
+                      className={`${T.input} schedule-builder-compact-control schedule-builder-time-input w-full py-1.5 px-3 text-sm font-black h-9 shadow-inner`}
+                    />
                 </div>
-                <div className="relative flex-1 xl:w-32">
-                    <span className="absolute -top-2.5 left-2 bg-[#1A2126] px-1 text-[9px] font-black text-slate-400 uppercase tracking-widest">Out</span>
-                    <input type="time" value={endTime} onChange={e=>{setEndTime(e.target.value);setPresetShift('Custom');}} className={`${T.input} schedule-builder-compact-control w-full py-1.5 px-2 text-xs font-bold h-9 shadow-inner`}/>
+                <div className="schedule-builder-time-field relative flex-1 xl:w-32">
+                    <span className="schedule-builder-time-label absolute -top-2.5 left-2 bg-[#1A2126] px-1 text-[9px] font-black text-[#D4A381] uppercase tracking-widest">Out</span>
+                    <input
+                      type="time"
+                      value={endTime}
+                      aria-label={`Schedule Builder end time ${formatShortTime(endTime)}`}
+                      title={`End time: ${formatShortTime(endTime)}`}
+                      onChange={e=>{setEndTime(e.target.value);setPresetShift('Custom');}}
+                      className={`${T.input} schedule-builder-compact-control schedule-builder-time-input w-full py-1.5 px-3 text-sm font-black h-9 shadow-inner`}
+                    />
                 </div>
               </div>
 
