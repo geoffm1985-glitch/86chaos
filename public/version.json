@@ -1,14 +1,14 @@
 {
-  "version": "16.0.185",
-  "name": "86 Chaos 16.0.185",
-  "build": "16.0.185",
-  "label": "86 Chaos 16.0.185",
+  "version": "16.0.186",
+  "name": "86 Chaos 16.0.186",
+  "build": "16.0.186",
+  "label": "86 Chaos 16.0.186",
   "releasedAt": "2026-08-14T18:37:00-05:00",
-  "releaseTitle": "Schedule Builder Time Readability Repair",
+  "releaseTitle": "Month View Calendar Print One-Page Repair",
   "notes": [
-    "Make Schedule Builder IN and OUT time controls easier to read without changing scheduling behavior."
+    "Compress the Month View printable calendar so the full month fits on one printed page."
   ],
-  "title": "86 Chaos 16.0.185",
-  "summary": "Surgical Schedule Builder dropdown repair for duplicated Custom Shift labels.",
-  "description": "Dedupes the visible Schedule Builder preset dropdown by label while preserving the full Manage Custom Shifts list and existing custom shift storage."
+  "title": "86 Chaos 16.0.186",
+  "summary": "Compresses the Month View print layout so 6-week months fit on a single landscape letter page.",
+  "description": "Shrinks and constrains the printable Month View calendar layout so dense months print on a single page instead of spilling to a second page."
 }
