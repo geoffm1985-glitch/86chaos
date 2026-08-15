@@ -1,14 +1,14 @@
 {
-  "version": "16.0.184",
-  "name": "86 Chaos 16.0.184",
-  "build": "16.0.184",
-  "label": "86 Chaos 16.0.184",
+  "version": "16.0.185",
+  "name": "86 Chaos 16.0.185",
+  "build": "16.0.185",
+  "label": "86 Chaos 16.0.185",
   "releasedAt": "2026-08-14T18:37:00-05:00",
-  "releaseTitle": "Custom Shift Dropdown Dedupe Repair",
+  "releaseTitle": "Schedule Builder Time Readability Repair",
   "notes": [
-    "Schedule Builder now shows each shift label once in the preset dropdown when a saved Custom Shift matches a built-in preset."
+    "Make Schedule Builder IN and OUT time controls easier to read without changing scheduling behavior."
   ],
-  "title": "86 Chaos 16.0.184",
+  "title": "86 Chaos 16.0.185",
   "summary": "Surgical Schedule Builder dropdown repair for duplicated Custom Shift labels.",
   "description": "Dedupes the visible Schedule Builder preset dropdown by label while preserving the full Manage Custom Shifts list and existing custom shift storage."
 }
