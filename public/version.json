@@ -1,14 +1,14 @@
 {
-  "version": "16.0.183",
-  "name": "86 Chaos 16.0.183",
-  "build": "16.0.183",
-  "label": "86 Chaos 16.0.183",
-  "releasedAt": "2026-08-14T17:32:00-05:00",
-  "releaseTitle": "Ghost Request Off Reload Test Flow Repair",
+  "version": "16.0.184",
+  "name": "86 Chaos 16.0.184",
+  "build": "16.0.184",
+  "label": "86 Chaos 16.0.184",
+  "releasedAt": "2026-08-14T18:37:00-05:00",
+  "releaseTitle": "Custom Shift Dropdown Dedupe Repair",
   "notes": [
-    "Ghost Request Off test now re-enters the exact employee possession after a full browser reload before verifying persistence and cancellation."
+    "Schedule Builder now shows each shift label once in the preset dropdown when a saved Custom Shift matches a built-in preset."
   ],
-  "title": "86 Chaos 16.0.183",
-  "summary": "Surgical release-gate repair for the two remaining Ghost Mode Request Off current blockers only.",
-  "description": "Limits the repair to the Ghost Request Off browser test so it respects that Ghost Mode is reset by a full browser reload, then re-enters the same employee possession before verifying the exact created request and canceling it."
+  "title": "86 Chaos 16.0.184",
+  "summary": "Surgical Schedule Builder dropdown repair for duplicated Custom Shift labels.",
+  "description": "Dedupes the visible Schedule Builder preset dropdown by label while preserving the full Manage Custom Shifts list and existing custom shift storage."
 }

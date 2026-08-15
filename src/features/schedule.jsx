@@ -2085,6 +2085,7 @@ const [eventDate, setEventDate] = useState(getToday());
     return { id, label, start, end };
   };
   const presetKeyClient = (p = {}) => `${String(p.label || '').toLowerCase()}|${p.start}|${p.end}`;
+  const presetLabelKeyClient = (p = {}) => String(p.label || '').trim().toLowerCase();
   const dedupePresetClient = (rows = []) => {
     const seen = new Set();
     const out = [];
@@ -2140,11 +2141,34 @@ const [eventDate, setEventDate] = useState(getToday());
     return () => { cancelled = true; };
   }, [appUser?.restaurantId]);
 
-  const SHIFT_PRESETS = [
-    ...BUILT_IN_SHIFT_PRESETS,
-    ...[...customPresets].sort((a,b) => a.start.localeCompare(b.start)),
-    { id: 'custom', label: "Custom", start: "", end: "" }
-  ];
+  const SHIFT_PRESETS = useMemo(() => {
+    const customRows = [...customPresets].sort((a,b) => a.start.localeCompare(b.start) || a.label.localeCompare(b.label));
+    const customRowsByLabel = new Map();
+    for (const preset of customRows) {
+      const key = presetLabelKeyClient(preset);
+      if (key && !customRowsByLabel.has(key)) customRowsByLabel.set(key, preset);
+    }
+
+    const usedLabels = new Set();
+    const visibleRows = [];
+    for (const preset of BUILT_IN_SHIFT_PRESETS) {
+      const key = presetLabelKeyClient(preset);
+      if (!key || usedLabels.has(key)) continue;
+      visibleRows.push(customRowsByLabel.get(key) || preset);
+      usedLabels.add(key);
+    }
+    for (const preset of customRows) {
+      const key = presetLabelKeyClient(preset);
+      if (!key || usedLabels.has(key)) continue;
+      visibleRows.push(preset);
+      usedLabels.add(key);
+    }
+
+    return [
+      ...visibleRows,
+      { id: 'custom', label: "Custom", start: "", end: "" }
+    ];
+  }, [BUILT_IN_SHIFT_PRESETS, customPresets]);
 
   const handlePresetChange = (e) => { 
     const val = e.target.value; 
@@ -3934,7 +3958,7 @@ const handleExportTimesheets = () => {
               {/* Preset Selector & Edit Button */}
               <div className="flex gap-2 items-center w-full sm:w-auto sm:flex-1 xl:w-auto shrink-0">
                 <select value={presetShift} onChange={handlePresetChange} className={`${T.input} schedule-builder-compact-control w-full py-1.5 px-2 text-xs font-bold h-9 shadow-inner`}>
-                  {SHIFT_PRESETS.map(p=><option key={p.label} value={p.label}>{p.label}</option>)}
+                  {SHIFT_PRESETS.map(p=><option key={p.id || p.label} value={p.label}>{p.label}</option>)}
                 </select>
                 <button onClick={() => setIsPresetModalOpen(true)} className="schedule-builder-icon-control px-2 bg-[#12161A] text-slate-400 hover:text-[#D4A381] border border-[#2A353D] rounded-xl transition-colors h-9 flex items-center justify-center shrink-0 shadow-sm" title="Edit Presets">
                   <Edit size={18} />
