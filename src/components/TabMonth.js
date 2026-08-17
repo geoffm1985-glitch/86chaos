@@ -191,20 +191,20 @@ const TabMonth = ({ currentDate, users, shifts, T, getMonthStr, getDaysInMonth, 
   <meta charset="utf-8" />
   <title>86 Chaos Schedule ${escapeHtml(monthTitle)}</title>
   <style>
-    @page { size: letter landscape; margin: 0.15in; }
+    @page { size: letter landscape; margin: 0.12in; }
     * { box-sizing: border-box; }
-    html, body { width: 10.7in; height: 8.2in; margin: 0; padding: 0; overflow: hidden; } body { color: #000; background: #fff; font-family: Arial, Helvetica, sans-serif; }
+    html, body { width: 10.76in; height: 8.26in; margin: 0; padding: 0; overflow: hidden; } body { color: #000; background: #fff; font-family: Arial, Helvetica, sans-serif; }
     .calendar { width: 100%; height: 100%; display: grid; grid-template-rows: auto auto minmax(0, 1fr); padding: 0; page-break-inside: avoid; break-inside: avoid-page; }
-    h1 { margin: 0 0 4px; text-align: center; font-size: 17px; line-height: 1.05; text-transform: uppercase; letter-spacing: 0.04em; }
-    .meta { margin: 0 0 4px; display: flex; justify-content: space-between; gap: 8px; font-size: 8.5px; font-weight: 700; color: #111; }
+    h1 { margin: 0 0 3px; text-align: center; font-size: 17px; line-height: 1.02; text-transform: uppercase; letter-spacing: 0.035em; }
+    .meta { margin: 0 0 3px; display: flex; justify-content: space-between; gap: 8px; font-size: 9px; font-weight: 800; color: #111; }
     .grid { min-height: 0; height: 100%; display: grid; grid-template-columns: repeat(7, 1fr); grid-template-rows: 18px repeat(${weeks}, minmax(0, 1fr)); border-top: 1.5px solid #000; border-left: 1.5px solid #000; }
     .weekday, .day { border-right: 1.5px solid #000; border-bottom: 1.5px solid #000; }
-    .weekday { display: flex; align-items: center; justify-content: center; font-size: 9px; font-weight: 900; text-transform: uppercase; background: #f1f5f9; }
+    .weekday { display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 900; text-transform: uppercase; background: #f1f5f9; }
     .day { min-height: 0; height: 100%; padding: 2px; overflow: hidden; }
     .blank { background: #f8fafc; }
-    .date { text-align: right; font-size: 10px; font-weight: 900; margin-bottom: 1px; }
+    .date { text-align: right; font-size: 11.5px; font-weight: 900; margin-bottom: 1px; }
     .shiftStack { display: flex; flex-direction: column; gap: 0.5px; }
-    .shift { border: 1px solid #94a3b8; border-radius: 2px; background: #f8fafc; padding: 0 1px; font-size: 6px; line-height: 1; font-weight: 800; white-space: nowrap; overflow: hidden; text-overflow: clip; color: #000; }
+    .shift { border: 0.8px solid #94a3b8; border-radius: 2px; background: #f8fafc; padding: 0 1px; font-family: "Arial Narrow", Arial, Helvetica, sans-serif; font-size: 8.6px; line-height: 1.03; font-weight: 900; letter-spacing: -0.035em; white-space: nowrap; overflow: hidden; text-overflow: clip; color: #000; }
     @media print { .no-print { display: none !important; } }
   </style>
 </head>
@@ -234,7 +234,7 @@ const TabMonth = ({ currentDate, users, shifts, T, getMonthStr, getDaysInMonth, 
     <div className={`${T.card} overflow-hidden print-container`}>
       <style>{`
         @media print {
-          @page { size: letter landscape; margin: 0.15in; }
+          @page { size: letter landscape; margin: 0.12in; }
           body * { visibility: hidden; }
 
           /* Hijack the entire printed page */
