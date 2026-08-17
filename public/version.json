@@ -1,14 +1,14 @@
 {
-  "version": "16.0.186",
-  "name": "86 Chaos 16.0.186",
-  "build": "16.0.186",
-  "label": "86 Chaos 16.0.186",
+  "version": "16.0.187",
+  "name": "86 Chaos 16.0.187",
+  "build": "16.0.187",
+  "label": "86 Chaos 16.0.187",
   "releasedAt": "2026-08-14T18:37:00-05:00",
-  "releaseTitle": "Month View Calendar Print One-Page Repair",
+  "releaseTitle": "Month View Calendar Print Readability Repair",
   "notes": [
-    "Compress the Month View printable calendar so the full month fits on one printed page."
+    "Increase Month View printed shift text while keeping each name/time on one line and keeping the month on one page."
   ],
-  "title": "86 Chaos 16.0.186",
-  "summary": "Compresses the Month View print layout so 6-week months fit on a single landscape letter page.",
-  "description": "Shrinks and constrains the printable Month View calendar layout so dense months print on a single page instead of spilling to a second page."
+  "title": "86 Chaos 16.0.187",
+  "summary": "Improves Month View print readability without spilling to a second page.",
+  "description": "Makes the one-page Month View print layout use larger condensed shift text while preserving one-line name/time rows and the single-page landscape calendar."
 }
