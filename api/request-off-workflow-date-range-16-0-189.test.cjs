@@ -11,7 +11,7 @@ test('Request Off workflow date filters load the selected month or custom range 
   assert.match(schedule, /const workflowDateScopedRequests = useLiveCollection\('timeOffRequests'/);
   assert.match(schedule, /whereClauses: \[\['date', '>=', workflowRequestRange\.start\], \['date', '<=', workflowRequestRange\.end\]\]/);
   assert.match(schedule, /debugLabel: `schedule:request-off-workflow:\$\{dateFilter\}`/);
-  assert.match(schedule, /mergeRequestOffWorkflowRows\(timeOffRequests \|\| \[\], workflowDateScopedRequests \|\| \[\]\)/);
+  assert.match(schedule, /mergeRequestOffWorkflowRows\(timeOffRequests \|\| \[\], workflowDateScopedRequests \|\| \[\], workflowApiRequests \|\| \[\]\)/);
   assert.match(schedule, /if \(dateFilter === 'next-month'\)[\s\S]{0,160}d\.setDate\(1\);[\s\S]{0,160}d\.setMonth\(d\.getMonth\(\)\+1\)/);
   assert.match(schedule, /return startKey <= endKey \? \{ start: startKey, end: endKey \} : \{ start: endKey, end: startKey \}/);
 });

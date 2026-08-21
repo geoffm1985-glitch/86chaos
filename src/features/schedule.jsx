@@ -4846,6 +4846,8 @@ const TabTimeOff = ({ timeOffRequests, appUser, users, addToast, events = [], sh
   const [bulkBusy, setBulkBusy] = useState('');
   const [ghostTimeOffRequests, setGhostTimeOffRequests] = useState([]);
   const [ghostListStatus, setGhostListStatus] = useState('idle');
+  const [workflowApiRequests, setWorkflowApiRequests] = useState([]);
+  const [workflowApiStatus, setWorkflowApiStatus] = useState('idle');
   const [checkingDate, setCheckingDate] = useState('');
   const [isSubmittingTimeOff, setIsSubmittingTimeOff] = useState(false);
   const [acknowledgedConflicts, setAcknowledgedConflicts] = useState({});
@@ -4855,6 +4857,25 @@ const TabTimeOff = ({ timeOffRequests, appUser, users, addToast, events = [], sh
   const requestOffGhostMode = isUserLevelGhostTimeOff(appUser);
   const perms = appUser?.permissions || {};
   const canManage = !requestOffGhostMode && !!(appUser?.isSuperAdmin || appUser?.isAdmin || perms.schedule || perms.team);
+  const requestOffApi = useCallback(async (action, payload = {}) => {
+    const response = await secureFetch('/api/time-off-request', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action,
+        restaurantId: appUser?.restaurantId,
+        ...(requestOffGhostMode ? { ghostTargetUserId: appUser?.ghostTargetUserId || appUser?.id || '', targetUserId: appUser?.ghostTargetUserId || appUser?.id || '' } : {}),
+        ...payload
+      })
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || data?.ok === false) {
+      const err = new Error(data?.error || `Request Off API failed (${response.status})`);
+      err.code = data?.code || `http-${response.status}`;
+      throw err;
+    }
+    return data;
+  }, [appUser?.restaurantId, appUser?.ghostTargetUserId, appUser?.id, requestOffGhostMode]);
   const getDateFilterRange = () => {
     const today = new Date(`${getToday()}T12:00:00`);
     const start = new Date(today);
@@ -4884,10 +4905,32 @@ const TabTimeOff = ({ timeOffRequests, appUser, users, addToast, events = [], sh
     fallbackLimitCount: dateFilter === 'all' ? 180 : 120,
     debugLabel: `schedule:request-off-workflow:${dateFilter}`
   });
+  useEffect(() => {
+    if (!canManage || requestOffGhostMode || !appUser?.restaurantId) {
+      setWorkflowApiRequests([]);
+      setWorkflowApiStatus('idle');
+      return undefined;
+    }
+    let cancelled = false;
+    setWorkflowApiStatus('loading');
+    requestOffApi('workflow-list', { startDate: workflowRequestRange.start, endDate: workflowRequestRange.end, dateFilter })
+      .then(data => {
+        if (cancelled) return;
+        setWorkflowApiRequests(Array.isArray(data?.requests) ? data.requests : []);
+        setWorkflowApiStatus('ready');
+      })
+      .catch(err => {
+        if (cancelled) return;
+        setWorkflowApiRequests([]);
+        setWorkflowApiStatus('error');
+        console.warn('Handled Request Off workflow-list failure', { operation: 'workflow-list', route: 'schedule/request-off', workspaceId: appUser?.restaurantId || '', dateFilter, code: err?.code || 'request-off-workflow-list-failed' });
+      });
+    return () => { cancelled = true; };
+  }, [canManage, requestOffGhostMode, appUser?.restaurantId, workflowRequestRange.start, workflowRequestRange.end, dateFilter, requestOffApi]);
   const timeOffRequestRows = useMemo(() => requestOffGhostMode
     ? mergeRequestOffWorkflowRows(ghostTimeOffRequests)
-    : mergeRequestOffWorkflowRows(timeOffRequests || [], workflowDateScopedRequests || []),
-    [requestOffGhostMode, ghostTimeOffRequests, timeOffRequests, workflowDateScopedRequests]);
+    : mergeRequestOffWorkflowRows(timeOffRequests || [], workflowDateScopedRequests || [], workflowApiRequests || []),
+    [requestOffGhostMode, ghostTimeOffRequests, timeOffRequests, workflowDateScopedRequests, workflowApiRequests]);
   const requestOffEmployeeOptions = useMemo(() => {
     const seenValues = new Set();
     const seenIdentityKeys = new Set();
@@ -4957,26 +5000,6 @@ const TabTimeOff = ({ timeOffRequests, appUser, users, addToast, events = [], sh
     .sort((a,b) => new Date(requestOffDateKey(a) || 0) - new Date(requestOffDateKey(b) || 0));
   const visibleRequestIds = filteredRequests.map(r => r.id).filter(Boolean);
   const activeEmployeeFilterLabel = selectedRequestOffEmployee?.label || '';
-
-  const requestOffApi = useCallback(async (action, payload = {}) => {
-    const response = await secureFetch('/api/time-off-request', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        action,
-        restaurantId: appUser?.restaurantId || '',
-        ...(requestOffGhostMode ? { ghostTargetUserId: appUser?.ghostTargetUserId || appUser?.id || '', targetUserId: appUser?.ghostTargetUserId || appUser?.id || '' } : {}),
-        ...payload
-      })
-    });
-    const data = await parseRequestOffApiPayload(response);
-    if (!response.ok || data?.ok === false) {
-      const err = new Error(data?.error || `Request Off API failed (${response.status})`);
-      err.code = data?.code || 'request-off-api-failed';
-      throw err;
-    }
-    return data;
-  }, [appUser?.restaurantId, appUser?.ghostTargetUserId, appUser?.id, requestOffGhostMode]);
 
   const refreshGhostRequests = useCallback(async () => {
     if (!requestOffGhostMode || !appUser?.restaurantId) return;
@@ -5285,7 +5308,7 @@ const TabTimeOff = ({ timeOffRequests, appUser, users, addToast, events = [], sh
         </div>
       </div>
       <div className={`${T.card} p-4 request-off-workflow-panel`}>
-        <div className="flex flex-col xl:flex-row xl:items-start xl:justify-between gap-3 mb-3"><div><h3 className="font-black text-white">Request-Off Workflow</h3><p className={`text-xs font-bold ${T.muted}`}>Default view only shows items that need attention. Published and archived requests stay searchable.</p></div>{canManage && <div className="request-off-bulk-grid"><button onClick={approveAllVisible} disabled={!!bulkBusy} className={`${T.btnAlt} disabled:opacity-50`}>Approve All Visible</button><button onClick={archiveAllVisible} disabled={!!bulkBusy} className={`${T.btnAlt} disabled:opacity-50`}>Archive All Visible</button>{selectedRequestIds.length > 0 && <button onClick={archiveSelected} disabled={!!bulkBusy} className={`${T.btnAlt} disabled:opacity-50 request-off-span-all`}>Archive selected ({selectedRequestIds.length})</button>}</div>}</div>
+        <div className="flex flex-col xl:flex-row xl:items-start xl:justify-between gap-3 mb-3"><div><h3 className="font-black text-white">Request-Off Workflow</h3><p className={`text-xs font-bold ${T.muted}`}>Default view only shows items that need attention. Published and archived requests stay searchable.</p>{canManage && workflowApiStatus === 'loading' && <p className="text-[10px] font-bold text-blue-300 mt-1">Checking all workspace Request Off records...</p>}{canManage && workflowApiStatus === 'error' && <p className="text-[10px] font-bold text-amber-300 mt-1">Some legacy Request Off records could not be double-checked. Refresh and try again.</p>}</div>{canManage && <div className="request-off-bulk-grid"><button onClick={approveAllVisible} disabled={!!bulkBusy} className={`${T.btnAlt} disabled:opacity-50`}>Approve All Visible</button><button onClick={archiveAllVisible} disabled={!!bulkBusy} className={`${T.btnAlt} disabled:opacity-50`}>Archive All Visible</button>{selectedRequestIds.length > 0 && <button onClick={archiveSelected} disabled={!!bulkBusy} className={`${T.btnAlt} disabled:opacity-50 request-off-span-all`}>Archive selected ({selectedRequestIds.length})</button>}</div>}</div>
         <div className="request-off-control-group"><div className="request-off-control-label">Status</div><div className="request-off-status-grid">{[['needs-review','Needs Review'],['upcoming-approved','Upcoming Approved'],['archived','Published/Archived'],['all','All']].map(([id,label]) => <button key={id} onClick={() => setViewFilter(id)} className={viewFilter === id ? T.btn : T.btnAlt}>{label}</button>)}</div></div>
         <div className="request-off-control-group"><div className="request-off-control-label">Date</div><div className="request-off-date-grid">{[['all','All Dates'],['this-week','This Week'],['next-week','Next Week'],['this-month','This Month'],['next-month','Next Month'],['custom','Custom Range']].map(([id,label]) => <button key={id} onClick={() => setDateFilter(id)} className={`${dateFilter === id ? T.btn : T.btnAlt} ${id === 'custom' ? 'request-off-custom-range' : ''}`}>{label}</button>)}</div>{dateFilter === 'custom' && <div className="request-off-custom-dates"><input type="date" value={customStart} onChange={e=>setCustomStart(e.target.value)} className={T.input}/><input type="date" value={customEnd} onChange={e=>setCustomEnd(e.target.value)} className={T.input}/></div>}</div>
         {canManage && <div className="request-off-employee-filter"><label className="request-off-control-label" htmlFor="request-off-employee-filter">Employee</label><select id="request-off-employee-filter" value={employeeFilter} onChange={e=>setEmployeeFilter(e.target.value)} className={`${T.input} request-off-employee-select`} aria-label="Filter Request Off by employee"><option value="">All Employees</option>{requestOffEmployeeOptions.map(group => <optgroup key={group.role} label={group.role}>{group.rows.map(row => <option key={row.value} value={row.value}>{row.label}</option>)}</optgroup>)}</select></div>}

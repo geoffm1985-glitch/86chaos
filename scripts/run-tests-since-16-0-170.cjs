@@ -24,7 +24,8 @@ const nodeTests = [
   'api/schedule-builder-time-readability-source-16-0-185.test.cjs',
   'api/month-view-print-readability-source-16-0-187.test.cjs',
   'api/request-off-workflow-visibility-16-0-188.test.cjs',
-  'api/request-off-workflow-date-range-16-0-189.test.cjs'
+  'api/request-off-workflow-date-range-16-0-189.test.cjs',
+  'api/request-off-workflow-admin-all-users-16-0-190.test.cjs'
 ];
 const jestTests = [
   'src/core/scheduleQueryPlanner.test.js'
