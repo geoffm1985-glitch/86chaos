@@ -1,14 +1,14 @@
 {
-  "version": "16.0.188",
-  "name": "86 Chaos 16.0.188",
-  "build": "16.0.188",
-  "label": "86 Chaos 16.0.188",
+  "version": "16.0.189",
+  "name": "86 Chaos 16.0.189",
+  "build": "16.0.189",
+  "label": "86 Chaos 16.0.189",
   "releasedAt": "2026-08-14T18:37:00-05:00",
-  "releaseTitle": "Request Off Workflow Visibility Repair",
+  "releaseTitle": "Request Off Workflow Date Range Repair",
   "notes": [
-    "Show all active requested days off in the Request-Off Workflow instead of hiding pending requests outside the current month."
+    "Load Request Off workflow rows for the selected Next Month or Custom Range instead of only using the current-month listener."
   ],
-  "title": "86 Chaos 16.0.188",
-  "summary": "Request-Off Workflow now defaults to All Dates and loads all active pending/approved requests for manager review.",
-  "description": "Ensures manager Request-Off Workflow review shows all active requested days off, including pending requests outside the current month."
+  "title": "86 Chaos 16.0.189",
+  "summary": "Request-Off Workflow date filters now load their selected date range directly and merge it with the existing Request Off data.",
+  "description": "Fixes Request-Off Workflow Next Month and Custom Range filters so requested days off outside the current month are visible to managers."
 }
