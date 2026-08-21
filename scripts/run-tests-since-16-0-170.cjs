@@ -23,7 +23,8 @@ const nodeTests = [
   'api/custom-shift-dropdown-source-16-0-184.test.cjs',
   'api/schedule-builder-time-readability-source-16-0-185.test.cjs',
   'api/month-view-print-readability-source-16-0-187.test.cjs',
-  'api/request-off-workflow-visibility-16-0-188.test.cjs'
+  'api/request-off-workflow-visibility-16-0-188.test.cjs',
+  'api/request-off-workflow-date-range-16-0-189.test.cjs'
 ];
 const jestTests = [
   'src/core/scheduleQueryPlanner.test.js'

@@ -207,6 +207,25 @@ const requestOffPersonKey = (request = {}) => {
   if (durable) return durable;
   return normalizeScheduleName(request.userName || request.employeeName || request.name || 'unknown');
 };
+
+const requestOffDateKey = (request = {}) => {
+  const raw = String(request?.date || request?.requestDate || request?.requestedDate || request?.dateKey || request?.day || request?.requestedDay || request?.scheduleDateKey || '').trim();
+  return /^\d{4}-\d{2}-\d{2}$/.test(raw) ? raw : '';
+};
+
+const normalizeRequestOffWorkflowRow = (request = {}) => {
+  const date = requestOffDateKey(request);
+  return date && request.date !== date ? { ...request, date } : request;
+};
+
+const mergeRequestOffWorkflowRows = (...lists) => {
+  const byKey = new Map();
+  lists.flat().filter(Boolean).map(normalizeRequestOffWorkflowRow).forEach(row => {
+    const key = row.id || `${requestOffDateKey(row) || 'no-date'}|${requestOffPersonKey(row)}|${row.requestedAt || row.submittedAt || row.createdAt || row.requestTimestamp || ''}`;
+    if (key && !byKey.has(key)) byKey.set(key, row);
+  });
+  return Array.from(byKey.values());
+};
 const isRequestOffConflictCountable = (request = {}) => {
   const status = String(request.status || 'pending').toLowerCase();
   return request.archived !== true && !['cancelled', 'canceled', 'archived'].includes(status);
@@ -4836,7 +4855,39 @@ const TabTimeOff = ({ timeOffRequests, appUser, users, addToast, events = [], sh
   const requestOffGhostMode = isUserLevelGhostTimeOff(appUser);
   const perms = appUser?.permissions || {};
   const canManage = !requestOffGhostMode && !!(appUser?.isSuperAdmin || appUser?.isAdmin || perms.schedule || perms.team);
-  const timeOffRequestRows = requestOffGhostMode ? ghostTimeOffRequests : (timeOffRequests || []);
+  const getDateFilterRange = () => {
+    const today = new Date(`${getToday()}T12:00:00`);
+    const start = new Date(today);
+    const end = new Date(today);
+    if (dateFilter === 'this-week') { start.setDate(today.getDate() - today.getDay()); end.setDate(start.getDate() + 6); }
+    if (dateFilter === 'next-week') { start.setDate(today.getDate() - today.getDay() + 7); end.setDate(start.getDate() + 6); }
+    if (dateFilter === 'this-month') { const m = getMonthStr(getToday()); return { start: `${m}-01`, end: `${m}-${String(getDaysInMonth(m)).padStart(2,'0')}` }; }
+    if (dateFilter === 'next-month') { const d = new Date(`${getToday()}T12:00:00`); d.setDate(1); d.setMonth(d.getMonth()+1); const m = getMonthStr(formatDate(d)); return { start: `${m}-01`, end: `${m}-${String(getDaysInMonth(m)).padStart(2,'0')}` }; }
+    if (dateFilter === 'custom') {
+      const startKey = customStart || '0000-01-01';
+      const endKey = customEnd || '9999-12-31';
+      return startKey <= endKey ? { start: startKey, end: endKey } : { start: endKey, end: startKey };
+    }
+    return { start: '0000-01-01', end: '9999-12-31' };
+  };
+  const range = getDateFilterRange();
+  const workflowRequestRange = useMemo(() => {
+    if (dateFilter === 'all') return { start: '0000-01-01', end: '9999-12-31' };
+    return range;
+  }, [dateFilter, range.start, range.end]);
+  const workflowDateScopedRequests = useLiveCollection('timeOffRequests', appUser?.restaurantId, {
+    enabled: canManage && !requestOffGhostMode && !!appUser?.restaurantId,
+    whereClauses: [['date', '>=', workflowRequestRange.start], ['date', '<=', workflowRequestRange.end]],
+    orderByField: 'date',
+    orderDirection: 'asc',
+    limitCount: dateFilter === 'all' ? 750 : 500,
+    fallbackLimitCount: dateFilter === 'all' ? 180 : 120,
+    debugLabel: `schedule:request-off-workflow:${dateFilter}`
+  });
+  const timeOffRequestRows = useMemo(() => requestOffGhostMode
+    ? mergeRequestOffWorkflowRows(ghostTimeOffRequests)
+    : mergeRequestOffWorkflowRows(timeOffRequests || [], workflowDateScopedRequests || []),
+    [requestOffGhostMode, ghostTimeOffRequests, timeOffRequests, workflowDateScopedRequests]);
   const requestOffEmployeeOptions = useMemo(() => {
     const seenValues = new Set();
     const seenIdentityKeys = new Set();
@@ -4888,31 +4939,22 @@ const TabTimeOff = ({ timeOffRequests, appUser, users, addToast, events = [], sh
   const isArchivedRequest = (r = {}) => r.archived === true || r.processed === true || ['archived','processed','cancelled','canceled'].includes(String(r.status || '').toLowerCase());
   const normalizeStatus = (r = {}) => String(r.status || 'pending').toLowerCase();
   const visibleRequests = (timeOffRequestRows || []).filter(r => canManage || timeOffMatchesPerson(r, schedulePerson) || timeOffMatchesPerson(r, appUser));
-  const myRequests = visibleRequests.filter(r => timeOffMatchesPerson(r, schedulePerson) || timeOffMatchesPerson(r, appUser)).sort((a,b) => new Date(a.date || 0) - new Date(b.date || 0));
+  const myRequests = visibleRequests.filter(r => timeOffMatchesPerson(r, schedulePerson) || timeOffMatchesPerson(r, appUser)).sort((a,b) => new Date(requestOffDateKey(a) || 0) - new Date(requestOffDateKey(b) || 0));
 
-  const getDateFilterRange = () => {
-    const today = new Date(`${getToday()}T12:00:00`);
-    const start = new Date(today);
-    const end = new Date(today);
-    if (dateFilter === 'this-week') { start.setDate(today.getDate() - today.getDay()); end.setDate(start.getDate() + 6); }
-    if (dateFilter === 'next-week') { start.setDate(today.getDate() - today.getDay() + 7); end.setDate(start.getDate() + 6); }
-    if (dateFilter === 'this-month') { const m = getMonthStr(getToday()); return { start: `${m}-01`, end: `${m}-${String(getDaysInMonth(m)).padStart(2,'0')}` }; }
-    if (dateFilter === 'next-month') { const d = new Date(`${getToday()}T12:00:00`); d.setMonth(d.getMonth()+1); const m = getMonthStr(formatDate(d)); return { start: `${m}-01`, end: `${m}-${String(getDaysInMonth(m)).padStart(2,'0')}` }; }
-    if (dateFilter === 'custom') return { start: customStart || '0000-01-01', end: customEnd || '9999-12-31' };
-    return { start: '0000-01-01', end: '9999-12-31' };
-  };
-  const range = getDateFilterRange();
-  const dateFilteredRequests = visibleRequests.filter(r => !r.date || (r.date >= range.start && r.date <= range.end));
+  const dateFilteredRequests = visibleRequests.filter(r => {
+    const requestDate = requestOffDateKey(r);
+    return !requestDate || (requestDate >= range.start && requestDate <= range.end);
+  });
   const statusFilteredRequests = dateFilteredRequests.filter(r => {
     const status = normalizeStatus(r);
     if (viewFilter === 'needs-review') return status === 'pending' && !isArchivedRequest(r);
-    if (viewFilter === 'upcoming-approved') return status === 'approved' && !isArchivedRequest(r) && r.date >= getToday();
+    if (viewFilter === 'upcoming-approved') return status === 'approved' && !isArchivedRequest(r) && requestOffDateKey(r) >= getToday();
     if (viewFilter === 'archived') return isArchivedRequest(r);
     return true;
   });
   const filteredRequests = statusFilteredRequests
     .filter(r => !canManage || !selectedRequestOffEmployee || requestOffSubjectMatchesPerson(r, selectedRequestOffEmployee.person))
-    .sort((a,b) => new Date(a.date || 0) - new Date(b.date || 0));
+    .sort((a,b) => new Date(requestOffDateKey(a) || 0) - new Date(requestOffDateKey(b) || 0));
   const visibleRequestIds = filteredRequests.map(r => r.id).filter(Boolean);
   const activeEmployeeFilterLabel = selectedRequestOffEmployee?.label || '';
 
@@ -5080,7 +5122,7 @@ const TabTimeOff = ({ timeOffRequests, appUser, users, addToast, events = [], sh
     if (checkingDate === d) return;
     if (d < getToday()) return addToast('Locked', 'Cannot request past dates.');
     if (!postPublishedTimeOffAllowed && !appUser?.isAdmin && isDateInsidePublishedSchedule(d, shifts)) return addToast('Schedule Published', 'This workspace blocks employee time-off requests after that date has already been published. Ask a manager to adjust the schedule.');
-    const existingReq = myRequests.find(r => r.date === d && isActiveTimeOffRequest(r));
+    const existingReq = myRequests.find(r => requestOffDateKey(r) === d && isActiveTimeOffRequest(r));
     if (existingReq) { if (window.confirm(`Cancel your time-off request for ${formatDisplayDate(d)}?`)) cancelRequest(existingReq); return; }
     const addingDate = !selectedDates.includes(d);
     if (addingDate) {
@@ -5201,7 +5243,7 @@ const TabTimeOff = ({ timeOffRequests, appUser, users, addToast, events = [], sh
       {canManage && <input type="checkbox" checked={selectedRequestIds.includes(r.id)} onChange={e => setSelectedRequestIds(prev => e.target.checked ? [...prev, r.id] : prev.filter(id => id !== r.id))} className="mt-1 accent-[#8F6040]" />}
       <div className="flex-1 min-w-0">
         <div className="font-black text-white text-sm">{requestSubjectLabel(r)}</div>
-        <div className={`text-[10px] font-bold ${T.muted} flex flex-wrap gap-2 mt-0.5`}><span>{formatRequestDateLabel(r.date)}</span>{r.isPartial && <span className="text-[#D4A381]">{formatRequestPartialRange(r)}</span>}<span className="uppercase tracking-widest">{status}</span>{publishedFlag && <span className="text-amber-300">Unresolved on published schedule</span>}</div>
+        <div className={`text-[10px] font-bold ${T.muted} flex flex-wrap gap-2 mt-0.5`}><span>{formatRequestDateLabel(requestOffDateKey(r) || r.date)}</span>{r.isPartial && <span className="text-[#D4A381]">{formatRequestPartialRange(r)}</span>}<span className="uppercase tracking-widest">{status}</span>{publishedFlag && <span className="text-amber-300">Unresolved on published schedule</span>}</div>
         <div className="mt-1 text-[10px] font-bold text-slate-500">Requested {formatClockDateTime(r.requestedAt || r.submittedAt || r.createdAt || r.requestTimestamp) || 'time not recorded'}{(r.requestedByName || r.userName || r.employeeName) ? ` by ${r.requestedByName || r.userName || r.employeeName}` : ''}</div>
         {isArchivedRequest(r) && <div className="mt-1 text-[10px] font-bold text-slate-500">{r.scheduleId ? `Schedule: ${r.scheduleId}` : 'History record'}{r.publishedAt ? ` • Published ${formatClockDateTime(r.publishedAt)} by ${r.publishedByName || r.publishedBy || 'manager'}` : ''}{r.approvedAt ? ` • Approved ${formatClockDateTime(r.approvedAt)} by ${r.approvedByName || r.approvedBy || ''}` : ''}{r.deniedAt ? ` • Denied ${formatClockDateTime(r.deniedAt)} by ${r.deniedByName || r.deniedBy || ''}` : ''}</div>}
       </div>
@@ -5209,7 +5251,7 @@ const TabTimeOff = ({ timeOffRequests, appUser, users, addToast, events = [], sh
         {canManage && status === 'pending' && !isArchivedRequest(r) && <button onClick={() => approveRequest(r)} className="p-2 rounded-lg bg-emerald-900/20 text-emerald-300 border border-emerald-900/50"><Check size={14}/></button>}
         {canManage && status === 'pending' && !isArchivedRequest(r) && <button onClick={() => denyRequest(r)} className="p-2 rounded-lg bg-red-900/20 text-red-300 border border-red-900/50"><X size={14}/></button>}
         {canManage && (isArchivedRequest(r) ? <button onClick={() => restoreRequest(r)} className={T.btnAlt}>Restore</button> : <button onClick={() => archiveRequest(r)} className={T.btnAlt}>Archive</button>)}
-        {!canManage && (status === 'pending' || status === 'approved') && !isArchivedRequest(r) && <button type="button" data-testid={`request-off-cancel-${r.id}`} aria-label={`Cancel Request Off for ${formatRequestDateLabel(r.date)}`} title={`Cancel Request Off for ${formatRequestDateLabel(r.date)}`} onClick={() => { if(window.confirm('Cancel this request-off?')) cancelRequest(r); }} className="text-slate-400 hover:text-red-500 p-2 bg-[#1A2126] rounded-lg border border-[#2A353D]"><Trash2 size={14}/></button>}
+        {!canManage && (status === 'pending' || status === 'approved') && !isArchivedRequest(r) && <button type="button" data-testid={`request-off-cancel-${r.id}`} aria-label={`Cancel Request Off for ${formatRequestDateLabel(requestOffDateKey(r) || r.date)}`} title={`Cancel Request Off for ${formatRequestDateLabel(requestOffDateKey(r) || r.date)}`} onClick={() => { if(window.confirm('Cancel this request-off?')) cancelRequest(r); }} className="text-slate-400 hover:text-red-500 p-2 bg-[#1A2126] rounded-lg border border-[#2A353D]"><Trash2 size={14}/></button>}
       </div>
     </div>;
   };
@@ -5224,7 +5266,7 @@ const TabTimeOff = ({ timeOffRequests, appUser, users, addToast, events = [], sh
             {Array.from({length: firstDayOffset}).map((_,i) => <div key={`empty-${i}`} className={`p-1 border-b border-r ${T.border} bg-[#1A2126] min-h-[45px]`} />)}
             {monthDays.map(d => {
               const isSelected = selectedDates.includes(d);
-              const existingReq = myRequests.find(r => r.date === d && isActiveTimeOffRequest(r));
+              const existingReq = myRequests.find(r => requestOffDateKey(r) === d && isActiveTimeOffRequest(r));
               const priorCount = priorRequestInfoForDate(d).count;
               const isPast = d < getToday();
               const holiday = getHoliday(d);
