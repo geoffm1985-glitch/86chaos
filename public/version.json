@@ -1,14 +1,14 @@
 {
-  "version": "16.0.187",
-  "name": "86 Chaos 16.0.187",
-  "build": "16.0.187",
-  "label": "86 Chaos 16.0.187",
+  "version": "16.0.188",
+  "name": "86 Chaos 16.0.188",
+  "build": "16.0.188",
+  "label": "86 Chaos 16.0.188",
   "releasedAt": "2026-08-14T18:37:00-05:00",
-  "releaseTitle": "Month View Calendar Print Readability Repair",
+  "releaseTitle": "Request Off Workflow Visibility Repair",
   "notes": [
-    "Increase Month View printed shift text while keeping each name/time on one line and keeping the month on one page."
+    "Show all active requested days off in the Request-Off Workflow instead of hiding pending requests outside the current month."
   ],
-  "title": "86 Chaos 16.0.187",
-  "summary": "Improves Month View print readability without spilling to a second page.",
-  "description": "Makes the one-page Month View print layout use larger condensed shift text while preserving one-line name/time rows and the single-page landscape calendar."
+  "title": "86 Chaos 16.0.188",
+  "summary": "Request-Off Workflow now defaults to All Dates and loads all active pending/approved requests for manager review.",
+  "description": "Ensures manager Request-Off Workflow review shows all active requested days off, including pending requests outside the current month."
 }
