@@ -27,7 +27,7 @@ function safeDate(value = '') {
 }
 
 function requestDateKey(row = {}) {
-  return safeDate(row.date || row.requestDate || row.requestedDate || row.dateKey || row.day || row.requestedDay || '');
+  return safeDate(row.date || row.requestDate || row.requestedDate || row.startDate || row.dateKey || row.day || row.requestedDay || row.scheduleDateKey || row.scheduleDayKey || '');
 }
 
 function requestWorkspaceKey(row = {}) {
@@ -35,7 +35,9 @@ function requestWorkspaceKey(row = {}) {
 }
 
 function sameWorkspaceRequest(row = {}, restaurantId = '') {
-  return requestWorkspaceKey(row) === cleanString(restaurantId, 180);
+  const target = cleanString(restaurantId, 180);
+  if (!target) return false;
+  return [row.restaurantId, row.workspaceId, row.tenantId, row.clientId].some(value => cleanString(value, 180) === target);
 }
 
 function parseDateList(body = {}) {
@@ -380,6 +382,61 @@ async function listRequestsByDates(db, restaurantId, dates = []) {
   return [...rowsById.values()].filter(row => sameWorkspaceRequest(row, restaurantId) && dateSet.has(requestDateKey(row)));
 }
 
+
+function callerCanManageRequestOff(ctx = {}) {
+  if (ctx.isSystemAdmin) return true;
+  const profile = ctx.workspaceProfile || {};
+  const permissions = profile.permissions || ctx.user?.permissions || ctx.member?.permissions || {};
+  const roleText = cleanString(profile.role || ctx.member?.role || ctx.user?.role || '', 80).toLowerCase();
+  return Boolean(
+    profile.isSuperAdmin === true || profile.isAdmin === true || profile.isManager === true ||
+    ctx.member?.isAdmin === true || ctx.member?.isManager === true ||
+    permissions.schedule === true || permissions.team === true || permissions.manageSchedule === true || permissions.timeOff === true ||
+    /\b(owner|admin|administrator|manager|gm|general manager)\b/i.test(roleText)
+  );
+}
+
+function normalizeWorkflowRange(body = {}) {
+  const start = safeDate(body.startDate || body.start || body.from || '') || '0000-01-01';
+  const end = safeDate(body.endDate || body.end || body.to || '') || '9999-12-31';
+  return start <= end ? { start, end } : { start: end, end: start };
+}
+
+function workflowStatusAllowed(row = {}) {
+  const status = normalizeStatus(row.status || 'pending');
+  if (row.archived === true || row.processed === true) return true;
+  return !['deleted', 'removed'].includes(status);
+}
+
+function workflowDateAllowed(row = {}, range = {}) {
+  const date = requestDateKey(row);
+  if (!date) return false;
+  return date >= range.start && date <= range.end;
+}
+
+async function listWorkflowRequests(ctx, body = {}) {
+  if (!callerCanManageRequestOff(ctx)) throw Object.assign(new Error('Manager access is required to review Request Off workflow.'), { status: 403, code: 'request-off-manager-required' });
+  const range = normalizeWorkflowRange(body);
+  const rowsById = new Map();
+  const collectionRef = ctx.db.collection('timeOffRequests');
+  const workspaceFields = ['restaurantId', 'workspaceId', 'tenantId', 'clientId'];
+  for (const field of workspaceFields) {
+    await queryRequestRows(collectionRef.where(field, '==', ctx.restaurantId).limit(1200), rowsById);
+  }
+  const rows = [...rowsById.values()]
+    .filter(row => sameWorkspaceRequest(row, ctx.restaurantId))
+    .filter(row => workflowStatusAllowed(row))
+    .filter(row => workflowDateAllowed(row, range))
+    .map(row => publicRequestShape({ ...row, restaurantId: ctx.restaurantId, workspaceId: row.workspaceId || ctx.restaurantId }))
+    .sort((a, b) => String(a.date || '').localeCompare(String(b.date || '')) || String(a.employeeName || a.userName || '').localeCompare(String(b.employeeName || b.userName || '')) || String(a.createdAt || a.requestedAt || '').localeCompare(String(b.createdAt || b.requestedAt || '')));
+  return rows;
+}
+
+async function handleWorkflowList(ctx, body) {
+  const requests = await listWorkflowRequests(ctx, body);
+  return { ok: true, action: 'workflow-list', restaurantId: ctx.restaurantId, requests };
+}
+
 async function handleConflicts(ctx, body) {
   const dates = parseDateList(body);
   const requestingIdentity = await resolveRequestingIdentity(ctx, body);
@@ -581,6 +638,7 @@ async function handleGhostCancel(ctx, body) {
 async function routeAction(ctx, body = {}) {
   const action = cleanString(body.action || 'conflicts', 40).toLowerCase();
   if (action === 'conflicts') return handleConflicts(ctx, body);
+  if (action === 'workflow-list') return handleWorkflowList(ctx, body);
   if (action === 'ghost-list') return handleGhostList(ctx, body);
   if (action === 'ghost-create') return handleGhostCreate(ctx, body);
   if (action === 'ghost-cancel') return handleGhostCancel(ctx, body);
@@ -618,6 +676,9 @@ module.exports._test = {
   safeDate,
   requestDateKey,
   requestWorkspaceKey,
+  callerCanManageRequestOff,
+  normalizeWorkflowRange,
+  listWorkflowRequests,
   sameWorkspaceRequest,
   parseDateList,
   isActiveConflictRequest,

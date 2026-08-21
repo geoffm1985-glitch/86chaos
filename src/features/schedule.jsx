@@ -209,7 +209,7 @@ const requestOffPersonKey = (request = {}) => {
 };
 
 const requestOffDateKey = (request = {}) => {
-  const raw = String(request?.date || request?.requestDate || request?.requestedDate || request?.dateKey || request?.day || request?.requestedDay || request?.scheduleDateKey || '').trim();
+  const raw = String(request?.date || request?.requestDate || request?.requestedDate || request?.startDate || request?.dateKey || request?.day || request?.requestedDay || request?.scheduleDateKey || '').trim();
   return /^\d{4}-\d{2}-\d{2}$/.test(raw) ? raw : '';
 };
 

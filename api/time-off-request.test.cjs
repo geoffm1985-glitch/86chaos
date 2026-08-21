@@ -341,3 +341,132 @@ test('Ghost Mode list returns target Request Off rows stored under legacy schedu
   assert.equal(rows[0].date, '2026-08-14');
   assert.equal(rows[0].employeeName, 'Allen QA');
 });
+
+test('manager workflow-list returns all workspace Request Off rows across legacy workspace and date fields', async () => {
+  const db = makeDb({
+    timeOffRequests: {
+      'modern-maicol': {
+        restaurantId: 'r1',
+        date: '2026-09-04',
+        status: 'pending',
+        userId: 'maicol-auth',
+        employeeName: 'Maicol QA',
+      },
+      'workspace-sara': {
+        workspaceId: 'r1',
+        requestDate: '2026-09-05',
+        status: 'approved',
+        userId: 'sara-auth',
+        employeeName: 'Sara QA',
+      },
+      'stale-restaurant-workspace-match': {
+        restaurantId: 'retired-project',
+        workspaceId: 'r1',
+        scheduleDateKey: '2026-09-06',
+        status: 'pending',
+        userId: 'allen-auth',
+        employeeName: 'Allen QA',
+      },
+      'clientid-legacy': {
+        clientId: 'r1',
+        requestedDate: '2026-09-07',
+        status: 'pending',
+        userId: 'casey-auth',
+        employeeName: 'Casey QA',
+      },
+      'outside-range': {
+        restaurantId: 'r1',
+        date: '2026-10-01',
+        status: 'pending',
+        userId: 'oct-auth',
+        employeeName: 'October QA',
+      },
+      'other-workspace': {
+        restaurantId: 'r2',
+        workspaceId: 'r2',
+        date: '2026-09-04',
+        status: 'pending',
+        userId: 'wrong-auth',
+        employeeName: 'Wrong Workspace',
+      },
+    }
+  });
+  const ctx = { db, restaurantId: 'r1', workspaceProfile: { isAdmin: true, permissions: { schedule: true } } };
+  const rows = await api.listWorkflowRequests(ctx, { startDate: '2026-09-01', endDate: '2026-09-30' });
+  const ids = rows.map(row => row.id).sort();
+  assert.deepEqual(ids, ['clientid-legacy', 'modern-maicol', 'stale-restaurant-workspace-match', 'workspace-sara'].sort());
+  assert.equal(rows.every(row => row.restaurantId === 'r1'), true);
+  assert.equal(rows.find(row => row.id === 'stale-restaurant-workspace-match').date, '2026-09-06');
+});
+
+
+test('manager workflow-list includes future legacy Request Off rows stored with startDate', async () => {
+  const db = makeDb({
+    timeOffRequests: {
+      'modern-request': {
+        restaurantId: 'r1',
+        date: '2026-10-04',
+        status: 'pending',
+        userId: 'modern-user',
+        employeeName: 'Modern Employee'
+      },
+      'legacy-startdate-request': {
+        restaurantId: 'r1',
+        startDate: '2026-10-15',
+        status: 'pending',
+        userId: 'legacy-user',
+        employeeName: 'Legacy Employee'
+      },
+      'legacy-workspace-startdate-request': {
+        workspaceId: 'r1',
+        startDate: '2026-11-03',
+        status: 'approved',
+        userId: 'legacy-workspace-user',
+        employeeName: 'Future Employee'
+      },
+      'wrong-workspace-startdate-request': {
+        restaurantId: 'r2',
+        startDate: '2026-10-20',
+        status: 'pending',
+        userId: 'wrong-user',
+        employeeName: 'Wrong Workspace'
+      }
+    }
+  });
+
+  const ctx = {
+    db,
+    restaurantId: 'r1',
+    workspaceProfile: {
+      isAdmin: true,
+      permissions: { schedule: true }
+    }
+  };
+
+  const rows = await api.listWorkflowRequests(ctx, {
+    startDate: '2026-10-01',
+    endDate: '2026-11-30'
+  });
+
+  const ids = rows.map(row => row.id);
+
+  assert.equal(ids.includes('modern-request'), true);
+  assert.equal(ids.includes('legacy-startdate-request'), true);
+  assert.equal(ids.includes('legacy-workspace-startdate-request'), true);
+  assert.equal(ids.includes('wrong-workspace-startdate-request'), false);
+
+  assert.equal(
+    rows.find(row => row.id === 'legacy-startdate-request')?.date,
+    '2026-10-15'
+  );
+
+  assert.equal(
+    rows.find(row => row.id === 'legacy-workspace-startdate-request')?.date,
+    '2026-11-03'
+  );
+});
+
+test('workflow-list requires Request Off manager access', async () => {
+  const ctx = { db: makeDb(), restaurantId: 'r1', workspaceProfile: { role: 'staff', permissions: {} } };
+  await assert.rejects(() => api.listWorkflowRequests(ctx, { startDate: '2026-09-01', endDate: '2026-09-30' }), /Manager access/);
+});
