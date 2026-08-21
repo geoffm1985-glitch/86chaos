@@ -1,14 +1,14 @@
 {
-  "version": "16.0.190",
-  "name": "86 Chaos 16.0.190",
-  "build": "16.0.190",
-  "label": "86 Chaos 16.0.190",
+  "version": "16.0.191",
+  "name": "86 Chaos 16.0.191",
+  "build": "16.0.191",
+  "label": "86 Chaos 16.0.191",
   "releasedAt": "2026-08-21T13:29:00-05:00",
-  "releaseTitle": "Request Off Admin All-Employees Visibility Repair",
+  "releaseTitle": "Request Off Legacy Start Date Visibility Repair",
   "notes": [
-    "Make Request-Off Workflow double-check all manager-visible workspace requests through the server so admin accounts see every employee across legacy identity and date fields."
+    "Restores manager/admin visibility for legacy Request Off records whose requested date is stored in startDate, including future-month records."
   ],
-  "title": "86 Chaos 16.0.190",
-  "summary": "Adds a manager-only Request Off workflow list API and merges it with live client rows so admins see every employee request in the selected date range.",
-  "description": "Repairs partial admin visibility in Request-Off Workflow by loading workspace-scoped rows across restaurantId, workspaceId, tenantId, clientId and legacy date aliases, then normalizing them into the workflow list."
+  "title": "86 Chaos 16.0.191",
+  "summary": "Restores manager/admin visibility for legacy future Request Off records stored with startDate.",
+  "description": "Teaches the existing client and server Request Off date normalizers to honor the historical startDate field without migrating data or changing Request Off write behavior."
 }
