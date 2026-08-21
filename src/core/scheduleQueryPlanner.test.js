@@ -24,6 +24,14 @@ describe('schedule query planner', () => {
     const plan = buildScheduleQueryPlan({ activeTabState: 'schedule', activeScheduleSubTab: 'time-off', appUser: staff, currentDate: '2026-07-15' });
     expect(plan.timeOffClauses).toContainEqual(['userId', '==', 'u1']);
   });
+
+  test('manager Request Off loads all active requested days for workflow review', () => {
+    const plan = buildScheduleQueryPlan({ activeTabState: 'schedule', activeScheduleSubTab: 'time-off', appUser: manager, currentDate: '2026-07-15' });
+    expect(plan.timeOffClauses).toContainEqual(['status', 'in', ['pending', 'approved']]);
+    expect(plan.timeOffClauses).not.toContainEqual(['date', '>=', '2026-06-15']);
+    expect(plan.timeOffLimit).toBeGreaterThanOrEqual(500);
+  });
+
   test('trade board uses created available/open statuses', () => {
     const plan = buildScheduleQueryPlan({ activeTabState: 'schedule', activeScheduleSubTab: 'trade-board', appUser: manager, currentDate: '2026-07-15' });
     expect(plan.swapClauses).toContainEqual(['status', 'in', ['available', 'open']]);

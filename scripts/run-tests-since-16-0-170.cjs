@@ -22,7 +22,8 @@ const nodeTests = [
   'api/current-blockers-release-gate-source-16-0-183.test.cjs',
   'api/custom-shift-dropdown-source-16-0-184.test.cjs',
   'api/schedule-builder-time-readability-source-16-0-185.test.cjs',
-  'api/month-view-print-readability-source-16-0-187.test.cjs'
+  'api/month-view-print-readability-source-16-0-187.test.cjs',
+  'api/request-off-workflow-visibility-16-0-188.test.cjs'
 ];
 const jestTests = [
   'src/core/scheduleQueryPlanner.test.js'

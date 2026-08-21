@@ -5,12 +5,18 @@ const { test } = require('node:test');
 
 const root = path.resolve(__dirname, '..');
 
-test('manager Request Off query plan uses date-window listener and client-side status filtering', () => {
+test('manager Request Off query plan uses active-status listener and client-side filtering', () => {
   const planner = fs.readFileSync(path.join(root, 'src/core/scheduleQueryPlanner.js'), 'utf8');
   assert.match(planner, /activeScheduleSubTab === 'time-off'/);
-  assert.match(planner, /timeOffClauses: canManageSchedule\s*\? \[\['date','>=', recentWindowStart\], \['date','<=', scheduleWindowEnd\]\]/);
-  assert.match(planner, /TabTimeOff already applies the status\/date\/employee filters client-side/);
-  assert.doesNotMatch(planner, /\? \[\['status','in',activeStatuses\], \['date','>=', recentWindowStart\]\]/);
+  assert.match(planner, /timeOffClauses: canManageSchedule\s*\? \[\['status','in',activeStatuses\]\]/);
+  assert.ok(planner.includes('TabTimeOff applies') && planner.includes('date/status/employee filters client-side after this active-status listener loads.'));
+  assert.ok(!planner.includes("timeOffClauses: canManageSchedule\n        ? [['date','>=', recentWindowStart], ['date','<=', scheduleWindowEnd]]"));
+});
+
+test('Request Off workflow starts on All Dates so active requests are not hidden by month', () => {
+  const schedule = fs.readFileSync(path.join(root, 'src/features/schedule.jsx'), 'utf8');
+  assert.match(schedule, /const \[dateFilter, setDateFilter\] = useState\('all'\)/);
+  assert.match(schedule, /\['all','All Dates'\]/);
 });
 
 test('real 86 Chaos header logo assets referenced by the app are present', () => {

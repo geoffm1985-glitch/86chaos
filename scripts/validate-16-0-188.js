@@ -58,9 +58,9 @@ const costRegressionTest = read('tests/e2e/cost-regression.spec.cjs');
 const timeOffRequestApi = read('api/time-off-request.js');
 const timeOffRequestTest = read('api/time-off-request.test.cjs');
 
-assert(pkg.version === '16.0.187', 'package.json version is 16.0.187');
-assert(lock.version === '16.0.187' && lock.packages?.['']?.version === '16.0.187', 'package-lock root versions are 16.0.187');
-assert(pkg.scripts['test:source'] === 'node scripts/validate-16-0-187.js', 'test:source points to 16.0.187 validator');
+assert(pkg.version === '16.0.188', 'package.json version is 16.0.188');
+assert(lock.version === '16.0.188' && lock.packages?.['']?.version === '16.0.188', 'package-lock root versions are 16.0.188');
+assert(pkg.scripts['test:source'] === 'node scripts/validate-16-0-188.js', 'test:source points to 16.0.188 validator');
 assert(pkg.scripts['test:since-16-0-170'] === 'node scripts/run-tests-since-16-0-170.cjs', 'targeted since-16.0.170 test command exists');
 assert(pkg.scripts['test:since-16-0-170:node'] === 'node scripts/run-tests-since-16-0-170.cjs --node-only', 'targeted node-only since-16.0.170 test command exists');
 assert(pkg.scripts['test:play-store:resume-current'] === 'powershell -NoProfile -ExecutionPolicy Bypass -File .\\RUN_86CHAOS_PARTIAL_RESUME_RELEASE_GATE.ps1', 'partial resume Play Store command exists');
@@ -69,11 +69,11 @@ assert(pkg.scripts['test:play-store:current-blockers'] === 'powershell -NoProfil
 assert(pkg.scripts['test:play-store:latest-blockers'] === pkg.scripts['test:play-store:current-blockers'], 'latest blockers alias exists');
 assert(lock.packages?.['']?.scripts?.['test:play-store:resume-current'] === pkg.scripts['test:play-store:resume-current'], 'package-lock scripts include partial resume command');
 assert(lock.packages?.['']?.scripts?.['test:play-store:current-blockers'] === pkg.scripts['test:play-store:current-blockers'], 'package-lock scripts include current blockers command');
-assert(version.version === '16.0.187' && version.build === '16.0.187', 'public/version.json version/build are 16.0.187');
-assert(version.releaseTitle === 'Month View Calendar Print Readability Repair', 'release title is correct');
-assert(appCore.includes("CURRENT_VERSION = '16.0.187'"), 'app core CURRENT_VERSION is 16.0.187');
-assert(apiVersion.includes("APP_VERSION = '16.0.187'") && apiVersion.includes("SECURITY_SCHEMA_VERSION = '16.0.187'"), 'api version reports 16.0.187');
-assert(!fs.existsSync(path.join(root, 'scripts/validate-16-0-185.js')), 'previous validator was replaced');
+assert(version.version === '16.0.188' && version.build === '16.0.188', 'public/version.json version/build are 16.0.188');
+assert(version.releaseTitle === 'Request Off Workflow Visibility Repair', 'release title is correct');
+assert(appCore.includes("CURRENT_VERSION = '16.0.188'"), 'app core CURRENT_VERSION is 16.0.188');
+assert(apiVersion.includes("APP_VERSION = '16.0.188'") && apiVersion.includes("SECURITY_SCHEMA_VERSION = '16.0.188'"), 'api version reports 16.0.188');
+assert(!fs.existsSync(path.join(root, 'scripts/validate-16-0-187.js')), 'previous validator was replaced');
 
 assert(sha('firestore.rules') === '51bfd7d39edd59f680ae41a149c108cec8cd42d00b102d84cb00ee40d90264d9', 'firestore.rules unchanged');
 assert(sha('storage.rules') === '174e7e9a140193ff69ccf0f0d3e5c65b81a9e0fbbd612bff45ce57e7a3a7ce9c', 'storage.rules unchanged');
@@ -93,22 +93,31 @@ assert(customShiftDropdownSourceTest.includes('Schedule Builder dropdown dedupes
 assert(sinceRunner.includes('api/custom-shift-dropdown-source-16-0-184.test.cjs'), 'since-16.0.170 targeted test runner includes 16.0.184 Custom Shift dropdown regression');
 
 
-// Targeted 16.0.187 Schedule Builder time readability repair.
+// Targeted 16.0.188 Schedule Builder time readability repair.
 const timeReadabilitySourceTest = read('api/schedule-builder-time-readability-source-16-0-185.test.cjs');
 assert(schedule.includes('schedule-builder-time-control-row') && schedule.includes('schedule-builder-time-input') && schedule.includes('schedule-builder-time-label'), 'Schedule Builder IN/OUT time controls use scoped readability classes');
 assert(schedule.includes('Schedule Builder start time ${formatShortTime(startTime)}') && schedule.includes('Schedule Builder end time ${formatShortTime(endTime)}'), 'Schedule Builder time inputs expose readable accessible labels');
 assert(read('src/styles.css').includes('.schedule-builder-time-input') && read('src/styles.css').includes('font-size: .95rem !important') && read('src/styles.css').includes('min-width: 16rem !important'), 'Schedule Builder time controls reserve readable width and font size');
-assert(timeReadabilitySourceTest.includes('Schedule Builder IN and OUT time controls remain readable') && timeReadabilitySourceTest.includes('schedule-builder-time-input') && timeReadabilitySourceTest.includes('height:\\s*44px !important'), '16.0.187 Schedule Builder time readability regression exists');
-assert(sinceRunner.includes('api/schedule-builder-time-readability-source-16-0-185.test.cjs'), 'since-16.0.170 targeted test runner includes 16.0.187 time readability regression');
+assert(timeReadabilitySourceTest.includes('Schedule Builder IN and OUT time controls remain readable') && timeReadabilitySourceTest.includes('schedule-builder-time-input') && timeReadabilitySourceTest.includes('height:\\s*44px !important'), '16.0.188 Schedule Builder time readability regression exists');
+assert(sinceRunner.includes('api/schedule-builder-time-readability-source-16-0-185.test.cjs'), 'since-16.0.170 targeted test runner includes 16.0.188 time readability regression');
 
-// Targeted 16.0.187 Month View print readability repair.
+// Targeted 16.0.188 Month View print readability repair.
 const monthPrintReadability187 = read('api/month-view-print-readability-source-16-0-187.test.cjs');
 assert(schedule.includes('font-size:8.6px') && tabMonth.includes('font-size: 8.6px'), 'Month View printed shift text is larger than the previous 6px one-page layout');
 assert(schedule.includes('font-family:"Arial Narrow",Arial,Helvetica,sans-serif') && tabMonth.includes('font-family: "Arial Narrow", Arial, Helvetica, sans-serif'), 'Month View print uses a condensed font stack to keep name and time on one line');
 assert(schedule.includes('white-space:nowrap') && tabMonth.includes('white-space: nowrap'), 'Month View print still keeps each shift row on one line');
 assert(schedule.includes('width:10.76in;height:8.26in') && tabMonth.includes('width: 10.76in; height: 8.26in'), 'Month View print remains constrained to one landscape letter page');
-assert(monthPrintReadability187.includes('font-size:\\s*8\\.6px') && monthPrintReadability187.includes('white-space:\\s*nowrap'), '16.0.187 Month View print readability source regression exists');
-assert(sinceRunner.includes('api/month-view-print-readability-source-16-0-187.test.cjs'), 'since-16.0.170 targeted test runner includes 16.0.187 Month View print readability regression');
+assert(monthPrintReadability187.includes('font-size:\\s*8\\.6px') && monthPrintReadability187.includes('white-space:\\s*nowrap'), '16.0.188 Month View print readability source regression exists');
+assert(sinceRunner.includes('api/month-view-print-readability-source-16-0-187.test.cjs'), 'since-16.0.170 targeted test runner includes 16.0.188 Month View print readability regression');
+
+// Targeted 16.0.188 Request Off workflow visibility repair.
+const requestOffWorkflowVisibility188 = read('api/request-off-workflow-visibility-16-0-188.test.cjs');
+assert(schedulePlanner.includes("timeOffClauses: canManageSchedule\n        ? [['status','in',activeStatuses]]"), 'Manager Request Off workflow loads all active pending/approved requests, not just current window');
+assert(schedulePlanner.includes('show every active requested day off') && schedulePlanner.includes('timeOffLimit: canManageSchedule ? 500 : 120'), 'Request Off active listener has raised cap for all active requested days');
+assert(schedule.includes("const [dateFilter, setDateFilter] = useState('all')") && schedule.includes("['all','All Dates']"), 'Request Off workflow defaults to All Dates and exposes the All Dates filter');
+assert(requestOffWorkflowVisibility188.includes('loads all active requested days') && requestOffWorkflowVisibility188.includes("useState"), '16.0.188 Request Off workflow visibility regression exists');
+assert(sinceRunner.includes('api/request-off-workflow-visibility-16-0-188.test.cjs'), 'since-16.0.170 targeted test runner includes 16.0.188 Request Off visibility regression');
+
 
 
 // Targeted 16.0.179 release-gate resume and login/workspace readiness repairs.
@@ -229,4 +238,4 @@ assert(read('scripts/verify-native-backup-iam.js').includes('gcloud projects add
 assert(vercel.includes('/api/firestore-backup') && vercel.includes('0 9 * * *') && vercel.includes('/api/firestore-backup-watchdog') && vercel.includes('0 21 * * *'), 'vercel cron schedules remain unchanged');
 
 if (failures) { console.error(`\n${failures} validation check(s) failed.`); process.exit(1); }
-console.log('\n16.0.187 source validation passed.');
+console.log('\n16.0.188 source validation passed.');
