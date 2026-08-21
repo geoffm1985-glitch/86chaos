@@ -1,14 +1,14 @@
 {
-  "version": "16.0.189",
-  "name": "86 Chaos 16.0.189",
-  "build": "16.0.189",
-  "label": "86 Chaos 16.0.189",
-  "releasedAt": "2026-08-14T18:37:00-05:00",
-  "releaseTitle": "Request Off Workflow Date Range Repair",
+  "version": "16.0.190",
+  "name": "86 Chaos 16.0.190",
+  "build": "16.0.190",
+  "label": "86 Chaos 16.0.190",
+  "releasedAt": "2026-08-21T13:29:00-05:00",
+  "releaseTitle": "Request Off Admin All-Employees Visibility Repair",
   "notes": [
-    "Load Request Off workflow rows for the selected Next Month or Custom Range instead of only using the current-month listener."
+    "Make Request-Off Workflow double-check all manager-visible workspace requests through the server so admin accounts see every employee across legacy identity and date fields."
   ],
-  "title": "86 Chaos 16.0.189",
-  "summary": "Request-Off Workflow date filters now load their selected date range directly and merge it with the existing Request Off data.",
-  "description": "Fixes Request-Off Workflow Next Month and Custom Range filters so requested days off outside the current month are visible to managers."
+  "title": "86 Chaos 16.0.190",
+  "summary": "Adds a manager-only Request Off workflow list API and merges it with live client rows so admins see every employee request in the selected date range.",
+  "description": "Repairs partial admin visibility in Request-Off Workflow by loading workspace-scoped rows across restaurantId, workspaceId, tenantId, clientId and legacy date aliases, then normalizing them into the workflow list."
 }
