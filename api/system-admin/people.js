@@ -61,8 +61,9 @@ function canonicalWorkspaceIdsForUser(userDoc, membershipIndex) {
 
 module.exports = async function handler(req, res) {
   if (req.method !== 'GET') return res.status(405).json({ ok: false, error: 'Method not allowed.' });
-  const app = getAdminAppForRequest(req);
-  const ctx = await authorize(req, app, { allowTenantAdmin: false, allowCrossProjectMaster: true });
+  try {
+    const app = getAdminAppForRequest(req);
+    const ctx = await authorize(req, app, { allowTenantAdmin: false, allowCrossProjectMaster: true });
   if (!ctx.ok || ctx.isSuperAdmin !== true) {
     return res.status(ctx.status || 403).json({ ok: false, code: 'system-admin-required', error: ctx.error || 'System Administrator access is required.' });
   }
@@ -95,6 +96,10 @@ module.exports = async function handler(req, res) {
     membershipRowsScanned: canonicalMemberships.scanned,
     fetchedAt: new Date().toISOString()
   });
+  } catch (error) {
+    console.error('system-admin people failed:', error?.message || error);
+    return res.status(500).json({ ok: false, code: 'system-admin-people-failed', error: 'Could not load people.' });
+  }
 };
 module.exports.safePlatformUser = safePlatformUser;
 module.exports.loadCanonicalWorkspaceMemberIndex = loadCanonicalWorkspaceMemberIndex;

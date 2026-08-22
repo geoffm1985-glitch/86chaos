@@ -7,21 +7,26 @@ async function queryOne(db, field, value) {
 }
 module.exports = async function handler(req, res) {
   if (req.method !== 'GET') return res.status(405).json({ ok: false, error: 'Method not allowed.' });
-  const app = getAdminAppForRequest(req);
-  const ctx = await authorize(req, app, { allowTenantAdmin: false, allowCrossProjectMaster: true });
-  if (!ctx.ok || !ctx.isSuperAdmin) return res.status(ctx.status || 403).json({ ok: false, code: 'system-admin-required', error: ctx.error || 'System Administrator access is required.' });
-  const db = ctx.db || app.firestore();
-  const email = norm(req.query?.email || '');
-  const uid = clean(req.query?.uid || req.query?.authUid || '');
-  const userId = clean(req.query?.userId || req.query?.id || '');
-  const restaurantId = clean(req.query?.restaurantId || '');
-  const docs = new Map();
-  if (userId) { const doc = await db.collection('users').doc(userId).get(); if (doc.exists) docs.set(doc.id, doc); }
-  for (const doc of await queryOne(db, 'email', email)) docs.set(doc.id, doc);
-  for (const doc of await queryOne(db, 'emailLower', email)) docs.set(doc.id, doc);
-  for (const doc of await queryOne(db, 'authUid', uid)) docs.set(doc.id, doc);
-  for (const doc of await queryOne(db, 'uid', uid)) docs.set(doc.id, doc);
-  const users = [...docs.values()].map(safeUser).filter(user => !restaurantId || user.restaurantId === restaurantId || user.workspaceIds?.includes?.(restaurantId));
-  return res.status(200).json({ ok: true, source: 'server', count: users.length, users, fetchedAt: new Date().toISOString() });
+  try {
+    const app = getAdminAppForRequest(req);
+    const ctx = await authorize(req, app, { allowTenantAdmin: false, allowCrossProjectMaster: true });
+    if (!ctx.ok || !ctx.isSuperAdmin) return res.status(ctx.status || 403).json({ ok: false, code: 'system-admin-required', error: ctx.error || 'System Administrator access is required.' });
+    const db = ctx.db || app.firestore();
+    const email = norm(req.query?.email || '');
+    const uid = clean(req.query?.uid || req.query?.authUid || '');
+    const userId = clean(req.query?.userId || req.query?.id || '');
+    const restaurantId = clean(req.query?.restaurantId || '');
+    const docs = new Map();
+    if (userId) { const doc = await db.collection('users').doc(userId).get(); if (doc.exists) docs.set(doc.id, doc); }
+    for (const doc of await queryOne(db, 'email', email)) docs.set(doc.id, doc);
+    for (const doc of await queryOne(db, 'emailLower', email)) docs.set(doc.id, doc);
+    for (const doc of await queryOne(db, 'authUid', uid)) docs.set(doc.id, doc);
+    for (const doc of await queryOne(db, 'uid', uid)) docs.set(doc.id, doc);
+    const users = [...docs.values()].map(safeUser).filter(user => !restaurantId || user.restaurantId === restaurantId || user.workspaceIds?.includes?.(restaurantId));
+    return res.status(200).json({ ok: true, source: 'server', count: users.length, users, fetchedAt: new Date().toISOString() });
+  } catch (error) {
+    console.error('system-admin people-search failed:', error?.message || error);
+    return res.status(500).json({ ok: false, code: 'system-admin-people-search-failed', error: 'Could not search people.' });
+  }
 };
 module.exports.safeUser = safeUser;

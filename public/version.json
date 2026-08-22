@@ -1,14 +1,16 @@
 {
-  "version": "16.0.191",
-  "name": "86 Chaos 16.0.191",
-  "build": "16.0.191",
-  "label": "86 Chaos 16.0.191",
+  "version": "16.0.192",
+  "name": "86 Chaos 16.0.192",
+  "build": "16.0.192",
+  "label": "86 Chaos 16.0.192",
   "releasedAt": "2026-08-21T13:29:00-05:00",
-  "releaseTitle": "Request Off Legacy Start Date Visibility Repair",
+  "releaseTitle": "Failed Release Gate Blocker Repair",
   "notes": [
-    "Restores manager/admin visibility for legacy Request Off records whose requested date is stored in startDate, including future-month records."
+    "Synchronize Schedule Builder query state after workspace switches.",
+    "Add controlled failure responses for System Administrator people and workspace read APIs.",
+    "Correct failed release-gate harness assumptions without changing production Firebase behavior."
   ],
-  "title": "86 Chaos 16.0.191",
-  "summary": "Restores manager/admin visibility for legacy future Request Off records stored with startDate.",
-  "description": "Teaches the existing client and server Request Off date normalizers to honor the historical startDate field without migrating data or changing Request Off write behavior."
+  "title": "86 Chaos 16.0.192",
+  "summary": "Repairs the 16.0.191 failed release-gate blockers for workspace-switch schedule hydration, System Administrator API error handling, and targeted release-gate harness assumptions.",
+  "description": "Surgical 16.0.192 repair for the failed 16.0.191 Play Store release-gate blockers only."
 }

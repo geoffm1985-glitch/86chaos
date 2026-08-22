@@ -2578,8 +2578,7 @@ What I clicked / expected:
     setClientData(null);
     setAppUser(nextUser);
     const nextDefaultTab = normalizeRouteTab(nextUser.preferences?.defaultTab || 'today');
-    activeTabStateRef.current = nextDefaultTab;
-    setActiveTabState(nextDefaultTab);
+    transitionActiveTabState(nextDefaultTab);
     disarmPwaBackExit();
     writeTopLevelTabHistory(nextDefaultTab, { replace: true });
     setIsWorkspaceSwitcherOpen(false);

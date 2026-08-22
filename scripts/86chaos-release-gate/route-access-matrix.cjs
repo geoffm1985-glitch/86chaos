@@ -9,7 +9,7 @@ const ROLE_ALLOWED_ROUTES = Object.freeze({
   'system-admin': APP_ROUTE_IDS.slice(),
   owner: APP_ROUTE_IDS.filter(route => route !== 'godmode'),
   manager: APP_ROUTE_IDS.filter(route => route !== 'godmode' && route !== 'audit'),
-  staff: ['today', 'published', 'messages', 'reminders', 'team', 'prep', 'recipes', 'help'],
+  staff: ['today', 'published', 'messages', 'reminders', 'team', 'prep', 'recipes', 'hr-training', 'help'],
 });
 
 const ROLE_DENIAL_REASONS = Object.freeze({

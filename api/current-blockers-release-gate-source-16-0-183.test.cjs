@@ -62,9 +62,11 @@ test('current-blockers Play Store command is guarded to exactly two failed Ghost
 
 test('QA fixture keeps Allen partial Request Off separate from Sara conflict date', () => {
   const fixture = read('tests/86chaos-full-audit/utils/fake-restaurant-profile.cjs');
-  assert.match(fixture, /const preferredAllenPartialRequestDate = isoDate\(addDays\(weekStart, 5\)\)/);
-  assert.match(fixture, /const allenPartialRequestDate = preferredAllenPartialRequestDate === tomorrowStr/);
-  assert.match(fixture, /\? isoDate\(addDays\(today, 2\)\)/);
+  assert.match(fixture, /const fixture = buildAuditScheduleFixture\(today\)/);
+  assert.match(fixture, /validAllenCurrentWeekShifts/);
+  assert.match(fixture, /employeeName !== 'Allen QA'/);
+  assert.match(fixture, /date !== tomorrowStr/);
+  assert.match(fixture, /QA fixture requires a valid Allen QA shift date distinct from Sara QA conflict date\./);
   assert.match(fixture, /date: allenPartialRequestDate, requestDate: allenPartialRequestDate/);
   assert.match(fixture, /userKey: 'sara'[\s\S]{0,220}date: tomorrowStr, requestDate: tomorrowStr/);
 });
