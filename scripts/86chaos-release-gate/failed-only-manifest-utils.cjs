@@ -869,7 +869,22 @@ function validateManifestTestIdentities(manifest, { root = process.cwd(), projec
 function validateManifestForCurrentRun(manifest, options = {}) {
   const errors = [];
   const baselineMode = options.baselineMode || manifest?.lineageMode || 'full-baseline';
-  if (baselineMode === 'focused') {
+  if (baselineMode === 'bundled-full-baseline-fallback') {
+    const baselineSource = manifest?.baselineSourceVersion || manifest?.sourceVersion || '';
+    const baselineDeployed = manifest?.baselineDeployedVersion || manifest?.deployedVersion || '';
+    if (!manifest?.baselineFullRunId) errors.push('Bundled baseline run ID is missing.');
+    if (!baselineSource) errors.push('Bundled baseline source version is missing.');
+    if (!baselineDeployed) errors.push('Bundled baseline deployed version is missing.');
+    if (baselineSource && baselineDeployed && baselineSource !== baselineDeployed) {
+      errors.push(`Bundled baseline source/deployed versions do not match: ${baselineSource} vs ${baselineDeployed}.`);
+    }
+    if (!Array.isArray(manifest?.selected) || manifest.selected.length === 0) {
+      errors.push('Bundled baseline selected zero failed or timed-out tests.');
+    }
+    if (manifest?.selected?.some(row => !row.specPath && !row.spec)) errors.push('One or more bundled baseline tests are missing a spec path.');
+    if (manifest?.selected?.some(row => !(row.title || row.exactTestTitle || row.leafTitle))) errors.push('One or more bundled baseline tests are missing an exact title.');
+    if (manifest?.selected?.some(row => !(row.project || row.projectName || (Array.isArray(row.projects) && row.projects.length)))) errors.push('One or more bundled baseline tests are missing a Playwright project.');
+  } else if (baselineMode === 'focused') {
     const focusedDir = manifest?.previousFailedOnlyRunDir || '';
     if (!focusedDir) {
       errors.push('Focused lineage source run directory is missing.');

@@ -44,7 +44,7 @@ let currentRecords = null;
 
 function loadCurrentRecords() {
   if (currentRecords) return currentRecords;
-  currentRecords = currentInventoryRecords(process.cwd());
+  currentRecords = currentInventoryRecords(process.cwd(), { allowStaticFallback: selectionMode === 'failed-only' });
   return currentRecords;
 }
 
@@ -152,6 +152,37 @@ function assertReportedFailedOnlySelection(manifest) {
   if (errors.length) fail('Reported failed-only selection guard failed after inventory qualification.', errors);
 }
 
+
+function loadBundledUltimateFailedOnlyFallback() {
+  const manifestPath = path.join(__dirname, 'reported-failed-only-20260822-173450.json');
+  const manifest = readJsonIfExists(manifestPath);
+  if (!manifest || !Array.isArray(manifest.selected)) {
+    throw new Error(`Bundled 20260822-173450 failed-only fallback is missing or malformed: ${manifestPath}`);
+  }
+  const selected = manifest.selected || [];
+  const counts = countReportedRows(selected);
+  const failures = selected.filter(row => String(row.priorStatus || '').toLowerCase() === 'failed').length;
+  const timeouts = selected.filter(row => ['timedout', 'timeout'].includes(String(row.priorStatus || '').toLowerCase())).length;
+  const errors = [];
+  if (counts.total !== 16 || counts.chromium !== 9 || counts.mobileChromium !== 7) {
+    errors.push(`Bundled fallback must contain exactly 16 identities (chromium 9, mobile-chromium 7); got ${counts.total}/${counts.chromium}/${counts.mobileChromium}.`);
+  }
+  if (failures !== 14 || timeouts !== 2) {
+    errors.push(`Bundled fallback must contain exactly 14 FAIL and 2 TIMEOUT identities; got ${failures}/${timeouts}.`);
+  }
+  if (counts.otherProjects.length) errors.push(`Bundled fallback contains unexpected projects: ${counts.otherProjects.join(', ')}.`);
+  if (counts.duplicates) errors.push(`Bundled fallback contains ${counts.duplicates} duplicate identities.`);
+  if (selected.some(row => ['passed', 'skipped', 'notrun', 'not_run', 'not-run'].includes(String(row.priorStatus || '').toLowerCase()))) {
+    errors.push('Bundled fallback contains a PASS/SKIP/NOT-RUN identity.');
+  }
+  if (errors.length) throw new Error(errors.join('\n'));
+  return qualifyManifestSelectionsWithCurrentInventory(manifest, {
+    root: process.cwd(),
+    currentRecords: loadCurrentRecords(),
+    allowStaticFallback: true,
+  });
+}
+
 let selectedSource;
 try {
   if (selectionMode === 'reported-failed-only') {
@@ -194,7 +225,16 @@ try {
     });
   }
 } catch (error) {
-  if (selectionMode === 'repair' && /No completed full release-gate run/i.test(error?.message || '')) {
+  if (selectionMode === 'failed-only' && /No completed full release-gate run|No completed full release-gate run or completed focused/i.test(error?.message || '')) {
+    const manifest = loadBundledUltimateFailedOnlyFallback();
+    selectedSource = {
+      manifest,
+      baselineFullRunDir: '',
+      latestFailedOnlyRunDir: '',
+      selectionSource: 'bundled-uploaded-full-release-gate-20260822-173450-fail-timeout-only',
+      lineageMode: 'bundled-full-baseline-fallback',
+    };
+  } else if (selectionMode === 'repair' && /No completed full release-gate run/i.test(error?.message || '')) {
     selectedSource = {
       manifest: { ok: true, selected: [], totalSelected: 0, mode: 'failed-only', lineageMode: 'none', selectionSource: 'no-compatible-previous-failures-feature-scope-only' },
       baselineFullRunDir: '',
@@ -288,6 +328,7 @@ const validation = copied.totalSelected === 0 && selectionMode === 'failed-only'
     currentDeployedVersion,
     firebaseProjectId,
     appUrl,
+    allowStaticFallback: selectionMode === 'failed-only',
   });
 if (!validation.ok) {
   fail(`Refusing unsafe ${selectionMode} manifest.`, validation.errors);

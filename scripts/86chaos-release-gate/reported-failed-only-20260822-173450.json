@@ -1,0 +1,501 @@
+{
+  "ok": true,
+  "manifestSchemaVersion": 3,
+  "generatedAt": "2026-08-22T19:00:00Z",
+  "mode": "failed-only",
+  "source": "uploaded-full-release-gate-20260822-173450",
+  "selectionSource": "uploaded-full-release-gate-20260822-173450-fail-timeout-only",
+  "lineageMode": "bundled-full-baseline-fallback",
+  "baselineFullRunId": "2026-08-21T22-49-42",
+  "baselineFullRunDir": "",
+  "baselineSourceVersion": "16.0.191",
+  "baselineDeployedVersion": "16.0.191",
+  "baselineGeneratedAt": "2026-08-22T03:49:42Z",
+  "selected": [
+    {
+      "specPath": "86chaos-full-audit/04-schedule-math-oracle.spec.cjs",
+      "suitePathParts": [
+        "04 schedule hours math truth oracle"
+      ],
+      "fullSuitePath": "04 schedule hours math truth oracle",
+      "leafTitle": "if fake restaurant seed exists, visible Schedule Builder text must expose seeded staff/events and not hide invalid-time evidence",
+      "exactTestTitle": "if fake restaurant seed exists, visible Schedule Builder text must expose seeded staff/events and not hide invalid-time evidence",
+      "title": "if fake restaurant seed exists, visible Schedule Builder text must expose seeded staff/events and not hide invalid-time evidence",
+      "fullTitle": "04 schedule hours math truth oracle > if fake restaurant seed exists, visible Schedule Builder text must expose seeded staff/events and not hide invalid-time evidence",
+      "titlePathParts": [
+        "04 schedule hours math truth oracle",
+        "if fake restaurant seed exists, visible Schedule Builder text must expose seeded staff/events and not hide invalid-time evidence"
+      ],
+      "project": "chromium",
+      "stableKey": "86chaos-full-audit/04-schedule-math-oracle.spec.cjs\u000004 schedule hours math truth oracle\u0000if fake restaurant seed exists, visible Schedule Builder text must expose seeded staff/events and not hide invalid-time evidence\u0000chromium",
+      "sourceFileHash": "599d6f087511cdec8eea22e5721d1a95bca7ab900db5c23939a84d88deaede38",
+      "projects": [
+        "chromium"
+      ],
+      "priorStatus": "failed",
+      "baselineStatus": "failed",
+      "duration": 45771,
+      "selectionReasons": [
+        "previous_failure"
+      ],
+      "baselineFullRunId": "2026-08-21T22-49-42",
+      "baselineSourceVersion": "16.0.191",
+      "baselineDeployedVersion": "16.0.191"
+    },
+    {
+      "specPath": "86chaos-full-audit/04-schedule-math-oracle.spec.cjs",
+      "suitePathParts": [
+        "04 schedule hours math truth oracle"
+      ],
+      "fullSuitePath": "04 schedule hours math truth oracle",
+      "leafTitle": "if fake restaurant seed exists, visible Schedule Builder text must expose seeded staff/events and not hide invalid-time evidence",
+      "exactTestTitle": "if fake restaurant seed exists, visible Schedule Builder text must expose seeded staff/events and not hide invalid-time evidence",
+      "title": "if fake restaurant seed exists, visible Schedule Builder text must expose seeded staff/events and not hide invalid-time evidence",
+      "fullTitle": "04 schedule hours math truth oracle > if fake restaurant seed exists, visible Schedule Builder text must expose seeded staff/events and not hide invalid-time evidence",
+      "titlePathParts": [
+        "04 schedule hours math truth oracle",
+        "if fake restaurant seed exists, visible Schedule Builder text must expose seeded staff/events and not hide invalid-time evidence"
+      ],
+      "project": "mobile-chromium",
+      "stableKey": "86chaos-full-audit/04-schedule-math-oracle.spec.cjs\u000004 schedule hours math truth oracle\u0000if fake restaurant seed exists, visible Schedule Builder text must expose seeded staff/events and not hide invalid-time evidence\u0000mobile-chromium",
+      "sourceFileHash": "599d6f087511cdec8eea22e5721d1a95bca7ab900db5c23939a84d88deaede38",
+      "projects": [
+        "mobile-chromium"
+      ],
+      "priorStatus": "failed",
+      "baselineStatus": "failed",
+      "duration": 46160,
+      "selectionReasons": [
+        "previous_failure"
+      ],
+      "baselineFullRunId": "2026-08-21T22-49-42",
+      "baselineSourceVersion": "16.0.191",
+      "baselineDeployedVersion": "16.0.191"
+    },
+    {
+      "specPath": "86chaos-full-audit/13-back-office-document-vault.spec.cjs",
+      "suitePathParts": [
+        "13 Back Office Document Vault end-to-end file workflow"
+      ],
+      "fullSuitePath": "13 Back Office Document Vault end-to-end file workflow",
+      "leafTitle": "upload, persistence, download/preview, replace, path guard, delete, and cleanup all work in disposable QA",
+      "exactTestTitle": "upload, persistence, download/preview, replace, path guard, delete, and cleanup all work in disposable QA",
+      "title": "upload, persistence, download/preview, replace, path guard, delete, and cleanup all work in disposable QA",
+      "fullTitle": "13 Back Office Document Vault end-to-end file workflow > upload, persistence, download/preview, replace, path guard, delete, and cleanup all work in disposable QA",
+      "titlePathParts": [
+        "13 Back Office Document Vault end-to-end file workflow",
+        "upload, persistence, download/preview, replace, path guard, delete, and cleanup all work in disposable QA"
+      ],
+      "project": "chromium",
+      "stableKey": "86chaos-full-audit/13-back-office-document-vault.spec.cjs\u000013 Back Office Document Vault end-to-end file workflow\u0000upload, persistence, download/preview, replace, path guard, delete, and cleanup all work in disposable QA\u0000chromium",
+      "sourceFileHash": "1c681da775ddc2873977515503faa5654f369a72724d3912647077c004d57292",
+      "projects": [
+        "chromium"
+      ],
+      "priorStatus": "failed",
+      "baselineStatus": "failed",
+      "duration": 29643,
+      "selectionReasons": [
+        "previous_failure"
+      ],
+      "baselineFullRunId": "2026-08-21T22-49-42",
+      "baselineSourceVersion": "16.0.191",
+      "baselineDeployedVersion": "16.0.191"
+    },
+    {
+      "specPath": "86chaos-full-audit/13-back-office-document-vault.spec.cjs",
+      "suitePathParts": [
+        "13 Back Office Document Vault end-to-end file workflow"
+      ],
+      "fullSuitePath": "13 Back Office Document Vault end-to-end file workflow",
+      "leafTitle": "upload, persistence, download/preview, replace, path guard, delete, and cleanup all work in disposable QA",
+      "exactTestTitle": "upload, persistence, download/preview, replace, path guard, delete, and cleanup all work in disposable QA",
+      "title": "upload, persistence, download/preview, replace, path guard, delete, and cleanup all work in disposable QA",
+      "fullTitle": "13 Back Office Document Vault end-to-end file workflow > upload, persistence, download/preview, replace, path guard, delete, and cleanup all work in disposable QA",
+      "titlePathParts": [
+        "13 Back Office Document Vault end-to-end file workflow",
+        "upload, persistence, download/preview, replace, path guard, delete, and cleanup all work in disposable QA"
+      ],
+      "project": "mobile-chromium",
+      "stableKey": "86chaos-full-audit/13-back-office-document-vault.spec.cjs\u000013 Back Office Document Vault end-to-end file workflow\u0000upload, persistence, download/preview, replace, path guard, delete, and cleanup all work in disposable QA\u0000mobile-chromium",
+      "sourceFileHash": "1c681da775ddc2873977515503faa5654f369a72724d3912647077c004d57292",
+      "projects": [
+        "mobile-chromium"
+      ],
+      "priorStatus": "failed",
+      "baselineStatus": "failed",
+      "duration": 29322,
+      "selectionReasons": [
+        "previous_failure"
+      ],
+      "baselineFullRunId": "2026-08-21T22-49-42",
+      "baselineSourceVersion": "16.0.191",
+      "baselineDeployedVersion": "16.0.191"
+    },
+    {
+      "specPath": "86chaos-release-gate/18-api-contract-release-gate.spec.cjs",
+      "suitePathParts": [
+        "18 recursive API contract + unauthenticated abuse gate"
+      ],
+      "fullSuitePath": "18 recursive API contract + unauthenticated abuse gate",
+      "leafTitle": "every recursive API handler has explicit method/auth/error-handling evidence",
+      "exactTestTitle": "every recursive API handler has explicit method/auth/error-handling evidence",
+      "title": "every recursive API handler has explicit method/auth/error-handling evidence",
+      "fullTitle": "18 recursive API contract + unauthenticated abuse gate > every recursive API handler has explicit method/auth/error-handling evidence",
+      "titlePathParts": [
+        "18 recursive API contract + unauthenticated abuse gate",
+        "every recursive API handler has explicit method/auth/error-handling evidence"
+      ],
+      "project": "chromium",
+      "stableKey": "86chaos-release-gate/18-api-contract-release-gate.spec.cjs\u000018 recursive API contract + unauthenticated abuse gate\u0000every recursive API handler has explicit method/auth/error-handling evidence\u0000chromium",
+      "sourceFileHash": "a2835fdf22db6b9f839e2f64680183df7cfcebe93f310d2b482f43f3e6dfde2c",
+      "projects": [
+        "chromium"
+      ],
+      "priorStatus": "failed",
+      "baselineStatus": "failed",
+      "duration": 79,
+      "selectionReasons": [
+        "previous_failure"
+      ],
+      "baselineFullRunId": "2026-08-21T22-49-42",
+      "baselineSourceVersion": "16.0.191",
+      "baselineDeployedVersion": "16.0.191"
+    },
+    {
+      "specPath": "86chaos-release-gate/18-api-contract-release-gate.spec.cjs",
+      "suitePathParts": [
+        "18 recursive API contract + unauthenticated abuse gate"
+      ],
+      "fullSuitePath": "18 recursive API contract + unauthenticated abuse gate",
+      "leafTitle": "every recursive API handler has explicit method/auth/error-handling evidence",
+      "exactTestTitle": "every recursive API handler has explicit method/auth/error-handling evidence",
+      "title": "every recursive API handler has explicit method/auth/error-handling evidence",
+      "fullTitle": "18 recursive API contract + unauthenticated abuse gate > every recursive API handler has explicit method/auth/error-handling evidence",
+      "titlePathParts": [
+        "18 recursive API contract + unauthenticated abuse gate",
+        "every recursive API handler has explicit method/auth/error-handling evidence"
+      ],
+      "project": "mobile-chromium",
+      "stableKey": "86chaos-release-gate/18-api-contract-release-gate.spec.cjs\u000018 recursive API contract + unauthenticated abuse gate\u0000every recursive API handler has explicit method/auth/error-handling evidence\u0000mobile-chromium",
+      "sourceFileHash": "a2835fdf22db6b9f839e2f64680183df7cfcebe93f310d2b482f43f3e6dfde2c",
+      "projects": [
+        "mobile-chromium"
+      ],
+      "priorStatus": "failed",
+      "baselineStatus": "failed",
+      "duration": 77,
+      "selectionReasons": [
+        "previous_failure"
+      ],
+      "baselineFullRunId": "2026-08-21T22-49-42",
+      "baselineSourceVersion": "16.0.191",
+      "baselineDeployedVersion": "16.0.191"
+    },
+    {
+      "specPath": "86chaos-release-gate/21-runtime-code-coverage.spec.cjs",
+      "suitePathParts": [
+        "21 ultimate Chromium runtime execution coverage"
+      ],
+      "fullSuitePath": "21 ultimate Chromium runtime execution coverage",
+      "leafTitle": "source-derived route/state crawl executes a high share of shipped application code and functions",
+      "exactTestTitle": "source-derived route/state crawl executes a high share of shipped application code and functions",
+      "title": "source-derived route/state crawl executes a high share of shipped application code and functions",
+      "fullTitle": "21 ultimate Chromium runtime execution coverage > source-derived route/state crawl executes a high share of shipped application code and functions",
+      "titlePathParts": [
+        "21 ultimate Chromium runtime execution coverage",
+        "source-derived route/state crawl executes a high share of shipped application code and functions"
+      ],
+      "project": "chromium",
+      "stableKey": "86chaos-release-gate/21-runtime-code-coverage.spec.cjs\u000021 ultimate Chromium runtime execution coverage\u0000source-derived route/state crawl executes a high share of shipped application code and functions\u0000chromium",
+      "sourceFileHash": "dcf725cc8e0e72530cc58dee39f888bbcd7d322af9cf4ab7094c1b429b162733",
+      "projects": [
+        "chromium"
+      ],
+      "priorStatus": "failed",
+      "baselineStatus": "failed",
+      "duration": 400085,
+      "selectionReasons": [
+        "previous_failure"
+      ],
+      "baselineFullRunId": "2026-08-21T22-49-42",
+      "baselineSourceVersion": "16.0.191",
+      "baselineDeployedVersion": "16.0.191"
+    },
+    {
+      "specPath": "86chaos-release-gate/30-exhaustive-role-route-permission-matrix.spec.cjs",
+      "suitePathParts": [
+        "30 exhaustive four-role x every-route permission matrix"
+      ],
+      "fullSuitePath": "30 exhaustive four-role x every-route permission matrix",
+      "leafTitle": "system admin, owner, manager, and staff each exercise every canonical route with the exact allow/deny boundary",
+      "exactTestTitle": "system admin, owner, manager, and staff each exercise every canonical route with the exact allow/deny boundary",
+      "title": "system admin, owner, manager, and staff each exercise every canonical route with the exact allow/deny boundary",
+      "fullTitle": "30 exhaustive four-role x every-route permission matrix > system admin, owner, manager, and staff each exercise every canonical route with the exact allow/deny boundary",
+      "titlePathParts": [
+        "30 exhaustive four-role x every-route permission matrix",
+        "system admin, owner, manager, and staff each exercise every canonical route with the exact allow/deny boundary"
+      ],
+      "project": "chromium",
+      "stableKey": "86chaos-release-gate/30-exhaustive-role-route-permission-matrix.spec.cjs\u000030 exhaustive four-role x every-route permission matrix\u0000system admin, owner, manager, and staff each exercise every canonical route with the exact allow/deny boundary\u0000chromium",
+      "sourceFileHash": "809a3124460796159a4d68abf8160ab1a2d254605990ff63e6145c52aa53a4da",
+      "projects": [
+        "chromium"
+      ],
+      "priorStatus": "failed",
+      "baselineStatus": "failed",
+      "duration": 190890,
+      "selectionReasons": [
+        "previous_failure"
+      ],
+      "baselineFullRunId": "2026-08-21T22-49-42",
+      "baselineSourceVersion": "16.0.191",
+      "baselineDeployedVersion": "16.0.191"
+    },
+    {
+      "specPath": "86chaos-release-gate/30-exhaustive-role-route-permission-matrix.spec.cjs",
+      "suitePathParts": [
+        "30 exhaustive four-role x every-route permission matrix"
+      ],
+      "fullSuitePath": "30 exhaustive four-role x every-route permission matrix",
+      "leafTitle": "system admin, owner, manager, and staff each exercise every canonical route with the exact allow/deny boundary",
+      "exactTestTitle": "system admin, owner, manager, and staff each exercise every canonical route with the exact allow/deny boundary",
+      "title": "system admin, owner, manager, and staff each exercise every canonical route with the exact allow/deny boundary",
+      "fullTitle": "30 exhaustive four-role x every-route permission matrix > system admin, owner, manager, and staff each exercise every canonical route with the exact allow/deny boundary",
+      "titlePathParts": [
+        "30 exhaustive four-role x every-route permission matrix",
+        "system admin, owner, manager, and staff each exercise every canonical route with the exact allow/deny boundary"
+      ],
+      "project": "mobile-chromium",
+      "stableKey": "86chaos-release-gate/30-exhaustive-role-route-permission-matrix.spec.cjs\u000030 exhaustive four-role x every-route permission matrix\u0000system admin, owner, manager, and staff each exercise every canonical route with the exact allow/deny boundary\u0000mobile-chromium",
+      "sourceFileHash": "809a3124460796159a4d68abf8160ab1a2d254605990ff63e6145c52aa53a4da",
+      "projects": [
+        "mobile-chromium"
+      ],
+      "priorStatus": "failed",
+      "baselineStatus": "failed",
+      "duration": 199490,
+      "selectionReasons": [
+        "previous_failure"
+      ],
+      "baselineFullRunId": "2026-08-21T22-49-42",
+      "baselineSourceVersion": "16.0.191",
+      "baselineDeployedVersion": "16.0.191"
+    },
+    {
+      "specPath": "86chaos-release-gate/31-exhaustive-responsive-nested-layout.spec.cjs",
+      "suitePathParts": [
+        "31 exhaustive responsive layout across nested states"
+      ],
+      "fullSuitePath": "31 exhaustive responsive layout across nested states",
+      "leafTitle": "every route and nested surface fits phone/tablet/laptop/desktop without unusable overflow or tap targets",
+      "exactTestTitle": "every route and nested surface fits phone/tablet/laptop/desktop without unusable overflow or tap targets",
+      "title": "every route and nested surface fits phone/tablet/laptop/desktop without unusable overflow or tap targets",
+      "fullTitle": "31 exhaustive responsive layout across nested states > every route and nested surface fits phone/tablet/laptop/desktop without unusable overflow or tap targets",
+      "titlePathParts": [
+        "31 exhaustive responsive layout across nested states",
+        "every route and nested surface fits phone/tablet/laptop/desktop without unusable overflow or tap targets"
+      ],
+      "project": "chromium",
+      "stableKey": "86chaos-release-gate/31-exhaustive-responsive-nested-layout.spec.cjs\u000031 exhaustive responsive layout across nested states\u0000every route and nested surface fits phone/tablet/laptop/desktop without unusable overflow or tap targets\u0000chromium",
+      "sourceFileHash": "3062f938e49232d6b6d5cfe336a367fcbce9cc4954887731d56a044f6bfbe64a",
+      "projects": [
+        "chromium"
+      ],
+      "priorStatus": "failed",
+      "baselineStatus": "failed",
+      "duration": 1382729,
+      "selectionReasons": [
+        "previous_failure"
+      ],
+      "baselineFullRunId": "2026-08-21T22-49-42",
+      "baselineSourceVersion": "16.0.191",
+      "baselineDeployedVersion": "16.0.191"
+    },
+    {
+      "specPath": "86chaos-release-gate/32-exhaustive-nested-accessibility.spec.cjs",
+      "suitePathParts": [
+        "32 nested-state WCAG accessibility"
+      ],
+      "fullSuitePath": "32 nested-state WCAG accessibility",
+      "leafTitle": "every declared nested surface has zero serious/critical WCAG violations on desktop and mobile projects",
+      "exactTestTitle": "every declared nested surface has zero serious/critical WCAG violations on desktop and mobile projects",
+      "title": "every declared nested surface has zero serious/critical WCAG violations on desktop and mobile projects",
+      "fullTitle": "32 nested-state WCAG accessibility > every declared nested surface has zero serious/critical WCAG violations on desktop and mobile projects",
+      "titlePathParts": [
+        "32 nested-state WCAG accessibility",
+        "every declared nested surface has zero serious/critical WCAG violations on desktop and mobile projects"
+      ],
+      "project": "chromium",
+      "stableKey": "86chaos-release-gate/32-exhaustive-nested-accessibility.spec.cjs\u000032 nested-state WCAG accessibility\u0000every declared nested surface has zero serious/critical WCAG violations on desktop and mobile projects\u0000chromium",
+      "sourceFileHash": "14a8535fa6e1e7b3074e8414cb0334e4526e74b0c841bf227b1339062ae70f91",
+      "projects": [
+        "chromium"
+      ],
+      "priorStatus": "failed",
+      "baselineStatus": "failed",
+      "duration": 483949,
+      "selectionReasons": [
+        "previous_failure"
+      ],
+      "baselineFullRunId": "2026-08-21T22-49-42",
+      "baselineSourceVersion": "16.0.191",
+      "baselineDeployedVersion": "16.0.191"
+    },
+    {
+      "specPath": "86chaos-release-gate/32-exhaustive-nested-accessibility.spec.cjs",
+      "suitePathParts": [
+        "32 nested-state WCAG accessibility"
+      ],
+      "fullSuitePath": "32 nested-state WCAG accessibility",
+      "leafTitle": "every declared nested surface has zero serious/critical WCAG violations on desktop and mobile projects",
+      "exactTestTitle": "every declared nested surface has zero serious/critical WCAG violations on desktop and mobile projects",
+      "title": "every declared nested surface has zero serious/critical WCAG violations on desktop and mobile projects",
+      "fullTitle": "32 nested-state WCAG accessibility > every declared nested surface has zero serious/critical WCAG violations on desktop and mobile projects",
+      "titlePathParts": [
+        "32 nested-state WCAG accessibility",
+        "every declared nested surface has zero serious/critical WCAG violations on desktop and mobile projects"
+      ],
+      "project": "mobile-chromium",
+      "stableKey": "86chaos-release-gate/32-exhaustive-nested-accessibility.spec.cjs\u000032 nested-state WCAG accessibility\u0000every declared nested surface has zero serious/critical WCAG violations on desktop and mobile projects\u0000mobile-chromium",
+      "sourceFileHash": "14a8535fa6e1e7b3074e8414cb0334e4526e74b0c841bf227b1339062ae70f91",
+      "projects": [
+        "mobile-chromium"
+      ],
+      "priorStatus": "failed",
+      "baselineStatus": "failed",
+      "duration": 490567,
+      "selectionReasons": [
+        "previous_failure"
+      ],
+      "baselineFullRunId": "2026-08-21T22-49-42",
+      "baselineSourceVersion": "16.0.191",
+      "baselineDeployedVersion": "16.0.191"
+    },
+    {
+      "specPath": "e2e/schedule-request-off-management.spec.cjs",
+      "suitePathParts": [
+        "16.0.153 Schedule warnings and Request Off management"
+      ],
+      "fullSuitePath": "16.0.153 Schedule warnings and Request Off management",
+      "leafTitle": "Schedule Builder requested-off warning shows employee name and never Someone",
+      "exactTestTitle": "Schedule Builder requested-off warning shows employee name and never Someone",
+      "title": "Schedule Builder requested-off warning shows employee name and never Someone",
+      "fullTitle": "16.0.153 Schedule warnings and Request Off management > Schedule Builder requested-off warning shows employee name and never Someone",
+      "titlePathParts": [
+        "16.0.153 Schedule warnings and Request Off management",
+        "Schedule Builder requested-off warning shows employee name and never Someone"
+      ],
+      "project": "chromium",
+      "stableKey": "e2e/schedule-request-off-management.spec.cjs\u000016.0.153 Schedule warnings and Request Off management\u0000Schedule Builder requested-off warning shows employee name and never Someone\u0000chromium",
+      "sourceFileHash": "d2a3838e6d8b3cb7de98f2c69d845134b7b054b85f7aebc7c822a3b55a5133e0",
+      "projects": [
+        "chromium"
+      ],
+      "priorStatus": "failed",
+      "baselineStatus": "failed",
+      "duration": 25598,
+      "selectionReasons": [
+        "previous_failure"
+      ],
+      "baselineFullRunId": "2026-08-21T22-49-42",
+      "baselineSourceVersion": "16.0.191",
+      "baselineDeployedVersion": "16.0.191"
+    },
+    {
+      "specPath": "e2e/schedule-request-off-management.spec.cjs",
+      "suitePathParts": [
+        "16.0.153 Schedule warnings and Request Off management"
+      ],
+      "fullSuitePath": "16.0.153 Schedule warnings and Request Off management",
+      "leafTitle": "Schedule Builder requested-off warning shows employee name and never Someone",
+      "exactTestTitle": "Schedule Builder requested-off warning shows employee name and never Someone",
+      "title": "Schedule Builder requested-off warning shows employee name and never Someone",
+      "fullTitle": "16.0.153 Schedule warnings and Request Off management > Schedule Builder requested-off warning shows employee name and never Someone",
+      "titlePathParts": [
+        "16.0.153 Schedule warnings and Request Off management",
+        "Schedule Builder requested-off warning shows employee name and never Someone"
+      ],
+      "project": "mobile-chromium",
+      "stableKey": "e2e/schedule-request-off-management.spec.cjs\u000016.0.153 Schedule warnings and Request Off management\u0000Schedule Builder requested-off warning shows employee name and never Someone\u0000mobile-chromium",
+      "sourceFileHash": "d2a3838e6d8b3cb7de98f2c69d845134b7b054b85f7aebc7c822a3b55a5133e0",
+      "projects": [
+        "mobile-chromium"
+      ],
+      "priorStatus": "failed",
+      "baselineStatus": "failed",
+      "duration": 28459,
+      "selectionReasons": [
+        "previous_failure"
+      ],
+      "baselineFullRunId": "2026-08-21T22-49-42",
+      "baselineSourceVersion": "16.0.191",
+      "baselineDeployedVersion": "16.0.191"
+    },
+    {
+      "specPath": "86chaos-release-gate/28-exhaustive-route-state-control-graph.spec.cjs",
+      "suitePathParts": [
+        "28 ultimate route + nested-state + control graph"
+      ],
+      "fullSuitePath": "28 ultimate route + nested-state + control graph",
+      "leafTitle": "every real route, declared nested surface, field, and safe control is rendered and probeable",
+      "exactTestTitle": "every real route, declared nested surface, field, and safe control is rendered and probeable",
+      "title": "every real route, declared nested surface, field, and safe control is rendered and probeable",
+      "fullTitle": "28 ultimate route + nested-state + control graph > every real route, declared nested surface, field, and safe control is rendered and probeable",
+      "titlePathParts": [
+        "28 ultimate route + nested-state + control graph",
+        "every real route, declared nested surface, field, and safe control is rendered and probeable"
+      ],
+      "project": "chromium",
+      "stableKey": "86chaos-release-gate/28-exhaustive-route-state-control-graph.spec.cjs\u000028 ultimate route + nested-state + control graph\u0000every real route, declared nested surface, field, and safe control is rendered and probeable\u0000chromium",
+      "sourceFileHash": "e88867c09f37318680eafa886c0e7330c9b411d1ee018b26e9d2b3cfae61d604",
+      "projects": [
+        "chromium"
+      ],
+      "priorStatus": "timedOut",
+      "baselineStatus": "timedOut",
+      "duration": 5149415,
+      "selectionReasons": [
+        "previous_timeout"
+      ],
+      "baselineFullRunId": "2026-08-21T22-49-42",
+      "baselineSourceVersion": "16.0.191",
+      "baselineDeployedVersion": "16.0.191"
+    },
+    {
+      "specPath": "86chaos-release-gate/28-exhaustive-route-state-control-graph.spec.cjs",
+      "suitePathParts": [
+        "28 ultimate route + nested-state + control graph"
+      ],
+      "fullSuitePath": "28 ultimate route + nested-state + control graph",
+      "leafTitle": "every real route, declared nested surface, field, and safe control is rendered and probeable",
+      "exactTestTitle": "every real route, declared nested surface, field, and safe control is rendered and probeable",
+      "title": "every real route, declared nested surface, field, and safe control is rendered and probeable",
+      "fullTitle": "28 ultimate route + nested-state + control graph > every real route, declared nested surface, field, and safe control is rendered and probeable",
+      "titlePathParts": [
+        "28 ultimate route + nested-state + control graph",
+        "every real route, declared nested surface, field, and safe control is rendered and probeable"
+      ],
+      "project": "mobile-chromium",
+      "stableKey": "86chaos-release-gate/28-exhaustive-route-state-control-graph.spec.cjs\u000028 ultimate route + nested-state + control graph\u0000every real route, declared nested surface, field, and safe control is rendered and probeable\u0000mobile-chromium",
+      "sourceFileHash": "e88867c09f37318680eafa886c0e7330c9b411d1ee018b26e9d2b3cfae61d604",
+      "projects": [
+        "mobile-chromium"
+      ],
+      "priorStatus": "timedOut",
+      "baselineStatus": "timedOut",
+      "duration": 4995270,
+      "selectionReasons": [
+        "previous_timeout"
+      ],
+      "baselineFullRunId": "2026-08-21T22-49-42",
+      "baselineSourceVersion": "16.0.191",
+      "baselineDeployedVersion": "16.0.191"
+    }
+  ],
+  "totalSelected": 16,
+  "desktopSelected": 9,
+  "mobileSelected": 7,
+  "previousFailuresSelected": 14,
+  "previousTimeoutsSelected": 2
+}

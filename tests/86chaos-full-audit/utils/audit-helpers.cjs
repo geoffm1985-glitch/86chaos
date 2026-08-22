@@ -116,6 +116,7 @@ const ROUTE_SPECS = [
   { tab: 'events', label: 'Event Calendar', expect: /Event|Calendar|Special Event|Add Event/i, optional: true },
   { tab: 'financials', label: 'Financials', expect: /Financial|Daily Close|Sales|Labor|Tips|Payroll/i },
   { tab: 'sales', label: 'Sales Import / Ledger', expect: /Sales|Import|Ledger|Daily Close|Revenue/i, optional: true },
+  { tab: 'labor', label: 'Labor & Payroll', expect: /Labor|Payroll|Timesheet|Punch|Tips|Hours/i, optional: true },
   { tab: 'back-office', label: 'Back Office', expect: /Back Office|QuickBooks|Owner|Accountant|Records/i, optional: true },
   { tab: 'inventory', label: 'Inventory', expect: /Inventory|Vendor|Invoice|Par|Burn|Order/i },
   { tab: 'menu-intelligence', label: 'Menu Intelligence', expect: /Menu Intelligence|Menu Scan|Menu Items|86 Impact|Ingredient/i, optional: true },

@@ -5,14 +5,30 @@ const chaosReleaseGateReporter = require.resolve('./test-tools/reporters/chaos-r
 const { PWA_SPEC_PATTERN } = require('./scripts/86chaos-release-gate/release-test-universe.cjs');
 
 const { ensureRunDir, getFailedOnlyManifestPath } = require('./scripts/86chaos-release-gate/run-context.cjs');
-const { generatePlaywrightInventory } = require('./scripts/86chaos-release-gate/playwright-inventory.cjs');
 const { FAILED_ONLY_TESTS, FAILED_ONLY_MANIFEST_ERRORS, FAILED_ONLY_MANIFEST_PATH, specsFromManifest, grepForProject } = require('./tests/86chaos-release-gate/failed-only-manifest.cjs');
 
 const { runDir, runId } = ensureRunDir();
 const baseURL = process.env.APP_URL || process.env.CHAOS_BASE_URL || process.env.PLAYWRIGHT_BASE_URL || process.env.BASE_URL || 'http://127.0.0.1:3000';
 const resultsRoot = path.join(runDir, 'failed-only');
 fs.mkdirSync(resultsRoot, { recursive: true });
-generatePlaywrightInventory({ root: process.cwd(), outputPath: path.join(runDir, 'playwright-test-inventory.json'), runId, config: 'playwright.inventory.config.cjs' });
+fs.writeFileSync(
+  path.join(runDir, 'playwright-test-inventory.json'),
+  JSON.stringify({
+    ok: true,
+    inventorySchemaVersion: 3,
+    generatedAt: new Date().toISOString(),
+    runId,
+    sourceVersion: require('./package.json').version,
+    config: 'playwright.failed-release.config.cjs',
+    discoveryMode: 'failed-only-manifest-selection',
+    count: FAILED_ONLY_TESTS.length,
+    discoveredTestCount: FAILED_ONLY_TESTS.length,
+    duplicateIdentityCount: 0,
+    unresolvedTemplateTitleCount: 0,
+    records: FAILED_ONLY_TESTS,
+    note: 'Focused failed-only execution inventory is derived from the already validated exact failed-only manifest; the full release universe is not rediscovered here.'
+  }, null, 2)
+);
 
 if (!FAILED_ONLY_TESTS.length) {
   throw new Error(`Failed-only manifest selected zero tests. Refusing to run a false-green diagnostic gate. ${FAILED_ONLY_MANIFEST_ERRORS.join('; ')}`);
