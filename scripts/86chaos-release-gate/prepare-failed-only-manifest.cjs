@@ -154,21 +154,21 @@ function assertReportedFailedOnlySelection(manifest) {
 
 
 function loadBundledUltimateFailedOnlyFallback() {
-  const manifestPath = path.join(__dirname, 'reported-failed-only-20260823-051244.json');
+  const manifestPath = path.join(__dirname, 'reported-failed-only-20260822-173450.json');
   const manifest = readJsonIfExists(manifestPath);
   if (!manifest || !Array.isArray(manifest.selected)) {
-    throw new Error(`Bundled 20260823-051244 failed-only continuation fallback is missing or malformed: ${manifestPath}`);
+    throw new Error(`Bundled 20260822-173450 failed-only fallback is missing or malformed: ${manifestPath}`);
   }
   const selected = manifest.selected || [];
   const counts = countReportedRows(selected);
   const failures = selected.filter(row => String(row.priorStatus || '').toLowerCase() === 'failed').length;
   const timeouts = selected.filter(row => ['timedout', 'timeout'].includes(String(row.priorStatus || '').toLowerCase())).length;
   const errors = [];
-  if (counts.total !== 10 || counts.chromium !== 6 || counts.mobileChromium !== 4) {
-    errors.push(`Bundled fallback must contain exactly 10 remaining failed identities (chromium 6, mobile-chromium 4); got ${counts.total}/${counts.chromium}/${counts.mobileChromium}.`);
+  if (counts.total !== 16 || counts.chromium !== 9 || counts.mobileChromium !== 7) {
+    errors.push(`Bundled fallback must contain exactly 16 identities (chromium 9, mobile-chromium 7); got ${counts.total}/${counts.chromium}/${counts.mobileChromium}.`);
   }
-  if (failures !== 10 || timeouts !== 0) {
-    errors.push(`Bundled fallback must contain exactly 10 FAIL and 0 TIMEOUT identities; got ${failures}/${timeouts}.`);
+  if (failures !== 14 || timeouts !== 2) {
+    errors.push(`Bundled fallback must contain exactly 14 FAIL and 2 TIMEOUT identities; got ${failures}/${timeouts}.`);
   }
   if (counts.otherProjects.length) errors.push(`Bundled fallback contains unexpected projects: ${counts.otherProjects.join(', ')}.`);
   if (counts.duplicates) errors.push(`Bundled fallback contains ${counts.duplicates} duplicate identities.`);
@@ -181,6 +181,40 @@ function loadBundledUltimateFailedOnlyFallback() {
     currentRecords: loadCurrentRecords(),
     allowStaticFallback: true,
   });
+}
+
+
+function loadBundledLatestFailedOnlyFallback() {
+  const manifestPath = path.join(__dirname, 'reported-failed-only-20260823-183916.json');
+  const manifest = readJsonIfExists(manifestPath);
+  if (!manifest || !Array.isArray(manifest.selected)) {
+    throw new Error(`Bundled 20260823-183916 failed-only fallback is missing or malformed: ${manifestPath}`);
+  }
+  const selected = manifest.selected || [];
+  const counts = countReportedRows(selected);
+  const failures = selected.filter(row => String(row.priorStatus || '').toLowerCase() === 'failed').length;
+  const timeouts = selected.filter(row => ['timedout', 'timeout'].includes(String(row.priorStatus || '').toLowerCase())).length;
+  const errors = [];
+  if (counts.total !== 10 || counts.chromium !== 6 || counts.mobileChromium !== 4) {
+    errors.push(`Latest bundled fallback must contain exactly 10 identities (chromium 6, mobile-chromium 4); got ${counts.total}/${counts.chromium}/${counts.mobileChromium}.`);
+  }
+  if (failures !== 10 || timeouts !== 0) {
+    errors.push(`Latest bundled fallback must contain exactly 10 FAIL and 0 TIMEOUT identities; got ${failures}/${timeouts}.`);
+  }
+  if (counts.otherProjects.length) errors.push(`Latest bundled fallback contains unexpected projects: ${counts.otherProjects.join(', ')}.`);
+  if (counts.duplicates) errors.push(`Latest bundled fallback contains ${counts.duplicates} duplicate identities.`);
+  if (selected.some(row => ['passed', 'skipped', 'notrun', 'not_run', 'not-run'].includes(String(row.priorStatus || '').toLowerCase()))) {
+    errors.push('Latest bundled fallback contains a PASS/SKIP/NOT-RUN identity.');
+  }
+  if (errors.length) throw new Error(errors.join('\n'));
+  const qualified = qualifyManifestSelectionsWithCurrentInventory(manifest, {
+    root: process.cwd(),
+    currentRecords: loadCurrentRecords(),
+    allowStaticFallback: true,
+  });
+  qualified.lineageMode = 'focused';
+  qualified.selectionSource = 'bundled-latest-failed-only-20260823-183916-fail-only';
+  return qualified;
 }
 
 let selectedSource;
@@ -226,13 +260,13 @@ try {
   }
 } catch (error) {
   if (selectionMode === 'failed-only' && /No completed full release-gate run|No completed full release-gate run or completed focused/i.test(error?.message || '')) {
-    const manifest = loadBundledUltimateFailedOnlyFallback();
+    const manifest = loadBundledLatestFailedOnlyFallback();
     selectedSource = {
       manifest,
       baselineFullRunDir: '',
-      latestFailedOnlyRunDir: '',
-      selectionSource: 'bundled-uploaded-failed-only-release-gate-20260823-051244-fail-only',
-      lineageMode: 'bundled-full-baseline-fallback',
+      latestFailedOnlyRunDir: manifest.previousFailedOnlyRunDir || '',
+      selectionSource: 'bundled-latest-failed-only-20260823-183916-fail-only',
+      lineageMode: 'focused',
     };
   } else if (selectionMode === 'repair' && /No completed full release-gate run/i.test(error?.message || '')) {
     selectedSource = {

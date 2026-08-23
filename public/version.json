@@ -3,15 +3,14 @@
   "name": "86 Chaos 16.0.194",
   "build": "16.0.194",
   "label": "86 Chaos 16.0.194",
-  "releasedAt": "2026-08-23T00:13:00-05:00",
-  "releaseTitle": "Remaining Failed Gate Surgical Repair",
+  "releasedAt": "2026-08-23T13:54:00-05:00",
+  "releaseTitle": "Failed-Only Runner Launch Repair",
   "notes": [
-    "Stabilize the exhaustive failed-only UI crawl and correct stale route/state expectations without reducing coverage.",
-    "Fix only the tap-target, contrast, and scroll-region accessibility defects exposed by the latest failed-only report.",
-    "Synchronize Document Vault and Schedule Request Off tests with the real UI state they are validating.",
-    "Narrow the failed-only continuation to the 10 identities still failing in the 16.0.193 run."
+    "Use the latest failed-only result fallback so the next focused run selects only the 10 still-failing identities, not the 6 already-passed failed-only identities.",
+    "Wait for Document Vault file attachment before refreshing the vault workflow test.",
+    "Harden exhaustive state/control helpers and stale route matrix expectations exposed by the focused failed-only run."
   ],
   "title": "86 Chaos 16.0.194",
-  "summary": "Surgically repairs the 10 remaining failed release-gate identities from the 16.0.193 failed-only run.",
-  "description": "Preserves passing behavior and fixes only the latest proven exhaustive-harness, accessibility, tap-target, Document Vault synchronization, and Schedule Request Off synchronization blockers."
+  "summary": "Repairs the failed-only runner fallback so only the latest remaining failed identities run and tightens the failed-test harness fixes exposed by the 16.0.193 failed-only run.",
+  "description": "Surgical failed-only release-gate runner and harness repair on top of 16.0.193; no Firebase or dependency changes."
 }

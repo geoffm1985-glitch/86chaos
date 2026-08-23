@@ -886,7 +886,19 @@ function validateManifestForCurrentRun(manifest, options = {}) {
     if (manifest?.selected?.some(row => !(row.project || row.projectName || (Array.isArray(row.projects) && row.projects.length)))) errors.push('One or more bundled baseline tests are missing a Playwright project.');
   } else if (baselineMode === 'focused') {
     const focusedDir = manifest?.previousFailedOnlyRunDir || '';
-    if (!focusedDir) {
+    const isBundledFocusedFallback = String(manifest?.selectionSource || '') === 'bundled-latest-failed-only-20260823-183916-fail-only'
+      || String(manifest?.source || '') === 'uploaded-failed-only-20260823-183916';
+    if (!focusedDir && isBundledFocusedFallback) {
+      const sourceVersion = manifest?.previousFailedOnlySourceVersion || '';
+      const deployedVersion = manifest?.previousFailedOnlyDeployedVersion || '';
+      if (!manifest?.previousFailedOnlyRunId) errors.push('Bundled focused fallback source run ID is missing.');
+      if (!sourceVersion) errors.push('Bundled focused fallback source version is missing.');
+      if (!deployedVersion) errors.push('Bundled focused fallback deployed version is missing.');
+      if (sourceVersion && deployedVersion && sourceVersion !== deployedVersion) errors.push(`Bundled focused fallback source/deployed versions do not match: ${sourceVersion} vs ${deployedVersion}.`);
+      if (!Array.isArray(manifest?.selected) || manifest.selected.length === 0) errors.push('Bundled focused fallback selected zero failed tests.');
+      const targetVersion = options.currentSourceVersion || '';
+      if (sourceVersion && targetVersion && compareVersions(targetVersion, sourceVersion) < 0) errors.push(`Target version ${targetVersion} is older than bundled focused lineage version ${sourceVersion}.`);
+    } else if (!focusedDir) {
       errors.push('Focused lineage source run directory is missing.');
     } else if (!fs.existsSync(focusedDir)) {
       errors.push(`Focused lineage source run directory does not exist: ${focusedDir}`);

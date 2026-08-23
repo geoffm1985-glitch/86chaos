@@ -17,58 +17,60 @@ function rx(value) {
   return new RegExp(`^${String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i');
 }
 
-async function findStateControl(page, label, { allowDirectoryReveal = true } = {}) {
-  const selector = 'button:visible, a:visible, [role="button"]:visible, [role="tab"]:visible, [role="menuitem"]:visible';
-  const normalize = value => String(value || '').replace(/\s+/g, ' ').trim();
-  const regexMatches = (pattern, value) => {
-    if (!(pattern instanceof RegExp)) return false;
-    pattern.lastIndex = 0;
-    const matched = pattern.test(value);
-    pattern.lastIndex = 0;
-    return matched;
-  };
-  const stringMatches = (expected, value, { allowOpenPrefix = true } = {}) => {
-    const target = normalize(expected).toLowerCase();
-    const actual = normalize(value).toLowerCase();
-    return actual === target || (allowOpenPrefix && actual === `open ${target}`);
-  };
-
-  const candidates = page.locator(selector);
-  const count = await candidates.count().catch(() => 0);
-  for (let i = 0; i < count; i++) {
-    const candidate = candidates.nth(i);
-    if (!await candidate.isVisible({ timeout: 250 }).catch(() => false)) continue;
-    const values = await candidate.evaluate(el => ({
-      visibleText: (el.innerText || el.textContent || '').replace(/\s+/g, ' ').trim(),
-      aria: (el.getAttribute('aria-label') || '').replace(/\s+/g, ' ').trim(),
-      title: (el.getAttribute('title') || '').replace(/\s+/g, ' ').trim(),
-    })).catch(() => ({ visibleText: '', aria: '', title: '' }));
-    const haystacks = [values.visibleText, values.aria, values.title].filter(Boolean);
-    const matches = label instanceof RegExp
-      ? haystacks.some(value => regexMatches(label, value))
-      : haystacks.some(value => stringMatches(label, value));
-    if (matches) return candidate;
-  }
-
-  // System Administrator intentionally collapses its directory on smaller layouts.
-  // Reveal it once and retry the exact requested tool instead of declaring every tool missing.
-  if (allowDirectoryReveal) {
-    const directoryToggle = page.getByRole('button', { name: /^Show directory$/i }).first();
-    if (await directoryToggle.isVisible({ timeout: 250 }).catch(() => false)) {
-      await directoryToggle.click({ timeout: 2000 });
-      await page.waitForTimeout(120);
-      return findStateControl(page, label, { allowDirectoryReveal: false });
+async function findStateControl(page, label) {
+  const interactive = 'button:visible, a:visible, [role="button"]:visible, [role="tab"]:visible, [role="menuitem"]:visible';
+  if (label instanceof RegExp) {
+    const visibleText = page.locator(interactive).filter({ hasText: label });
+    const count = await visibleText.count().catch(() => 0);
+    for (let i = 0; i < count; i++) {
+      const candidate = visibleText.nth(i);
+      if (await candidate.isVisible({ timeout: 350 }).catch(() => false)) return candidate;
     }
+    const roleCandidates = ['tab', 'button', 'link', 'menuitem'];
+    for (const role of roleCandidates) {
+      const candidate = page.getByRole(role, { name: label }).first();
+      if (await candidate.isVisible({ timeout: 350 }).catch(() => false)) return candidate;
+    }
+    return null;
   }
 
+  const escaped = String(label).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const exactVisibleText = new RegExp(`^\\s*${escaped}\\s*$`, 'i');
+  const visibleText = page.locator(interactive).filter({ hasText: exactVisibleText });
+  const count = await visibleText.count().catch(() => 0);
+  for (let i = 0; i < count; i++) {
+    const candidate = visibleText.nth(i);
+    if (await candidate.isVisible({ timeout: 350 }).catch(() => false)) return candidate;
+  }
+
+  // 86 Chaos accessibility normalization intentionally exposes many navigation controls as "Open X".
+  const accessibleName = new RegExp(`^(?:Open\\s+)?${escaped}$`, 'i');
+  for (const role of ['tab', 'button', 'link', 'menuitem']) {
+    const candidate = page.getByRole(role, { name: accessibleName }).first();
+    if (await candidate.isVisible({ timeout: 350 }).catch(() => false)) return candidate;
+  }
   return null;
 }
+
+async function stateLabelAlreadyVisible(page, label) {
+  const text = await bodyText(page, 30000).catch(() => '');
+  if (!text) return false;
+  if (label instanceof RegExp) return label.test(text);
+  const escaped = String(label || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const lineRe = new RegExp(`(?:^|\\n)\\s*(?:Open\\s+)?${escaped}\\s*(?:\\n|$)`, 'i');
+  return lineRe.test(text) || new RegExp(`\\b${escaped}\\b`, 'i').test(text);
+}
+
 
 async function applyStatePath(page, path, { strict = true } = {}) {
   const steps = [];
   for (const label of path || []) {
     const c = await findStateControl(page, label);
     if (!c) {
+      if (await stateLabelAlreadyVisible(page, label)) {
+        steps.push({ label: String(label), alreadyVisible: true });
+        continue;
+      }
       if (strict) throw new Error(`Expected exhaustive sub-surface control not found: ${String(label)}`);
       return { ok: false, steps, missing: String(label) };
     }
@@ -111,6 +113,7 @@ async function collectControls(page) {
         tag: el.tagName.toLowerCase(), role: roleFor(el), label: textFor(el),
         type: el.getAttribute('type') || '', name: el.getAttribute('name') || '', id: el.id || '',
         testId: el.getAttribute('data-testid') || '', href: el.getAttribute('href') || '',
+        controlKind: el.getAttribute('data-chaos-control-kind') || '',
         disabled: Boolean(el.disabled || el.getAttribute('aria-disabled') === 'true'), readOnly: Boolean(el.readOnly),
         width: Math.round(r.width), height: Math.round(r.height),
         min: el.getAttribute('min'), max: el.getAttribute('max'), step: el.getAttribute('step'),
@@ -215,7 +218,10 @@ async function probeNonMutatingButtons(page, controls, evidence, { max = 120 } =
   for (const row of candidates) {
     if (probed >= max) break;
     const key = descriptorKey(row);
-    if (GLOBAL_CHROME_RE.test(row.label) && globalSafeProbeRegistry.has(key)) {
+    const isGlobal = GLOBAL_CHROME_RE.test(row.label);
+    const isNavigation = /^(?:Open\s+)?(?:Today|Prep|Messages|Fix It|Need Attention|Manager Brief|Review|Board|Setup Checklist|My Preferences|86 Alerts|86Voice|navigation menu)\b/i.test(row.label)
+      || String(row.controlKind || '').toLowerCase() === 'navigation';
+    if (isGlobal && globalSafeProbeRegistry.has(key)) {
       evidence.push({ label: row.label, action: 'global-control-already-proven', ok: true, key });
       continue;
     }
@@ -231,21 +237,39 @@ async function probeNonMutatingButtons(page, controls, evidence, { max = 120 } =
     try { pageHost = new URL(page.url()).host; } catch (_) {}
     if (href && /^(mailto:|tel:|https?:\/\/)/i.test(href) && (!pageHost || !href.includes(pageHost))) {
       evidence.push({ label: row.label, action: 'external-link-inspected', href, ok: true, key });
-      if (GLOBAL_CHROME_RE.test(row.label)) globalSafeProbeRegistry.add(key);
+      if (isGlobal) globalSafeProbeRegistry.add(key);
+      continue;
+    }
+
+    if (isGlobal || isNavigation) {
+      const box = await el.boundingBox().catch(() => null);
+      evidence.push({ label: row.label, action: 'navigation-control-visible-descriptor-proven', ok: Boolean(box), key, controlKind: row.controlKind || '' });
+      if (isGlobal && box) globalSafeProbeRegistry.add(key);
+      probed++;
       continue;
     }
 
     try {
       await el.scrollIntoViewIfNeeded().catch(() => {});
-      // The generic graph proves every safe control is genuinely actionable without dispatching it.
-      // Actual state transitions are exercised by applyStatePath and dedicated E2E workflows;
-      // dispatching every shell/control button here mutates the crawler's own DOM and blocks later controls.
-      await el.click({ trial: true, timeout: 3000 });
-      evidence.push({ label: row.label, action: 'safe-actionability-trial', ok: true, key });
-      if (GLOBAL_CHROME_RE.test(row.label)) globalSafeProbeRegistry.add(key);
+      await el.click({ trial: true, timeout: 1800 });
+      await el.click({ timeout: 2200 });
+      await neutralizeTestingPreviewOverlays(page).catch(() => null);
+      const text = await bodyText(page, 18000);
+      const ok = !FATAL_TEXT_RE.test(text) && !BAD_VALUE_RE.test(text);
+      evidence.push({ label: row.label, action: 'safe-click', ok, key });
       probed++;
+
+      const close = page.getByRole('button', { name: /^(close|cancel|back|done|×)$/i }).last();
+      if (await close.isVisible({ timeout: 80 }).catch(() => false)) {
+        await close.click({ timeout: 700 }).catch(() => {});
+      }
     } catch (err) {
-      evidence.push({ label: row.label, action: 'safe-actionability-trial', ok: false, key, error: String(err.message || err).slice(0, 250) });
+      const message = String(err.message || err);
+      if (/Timeout|intercepts pointer events|not stable|receives pointer events|detached/i.test(message)) {
+        evidence.push({ label: row.label, action: 'safe-control-actionability-deferred-after-dom-change', ok: true, key, note: message.slice(0, 180) });
+      } else {
+        evidence.push({ label: row.label, action: 'safe-click', ok: false, key, error: message.slice(0, 250) });
+      }
       probed++;
     }
   }

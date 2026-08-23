@@ -1749,7 +1749,7 @@ const handleOfferSwap = async (shift) => {
                 </div>
               )}
             </div>
-            <div className="divide-y divide-[#2A353D] max-h-[60vh] overflow-y-auto custom-scrollbar" tabIndex={0} role="region" aria-label="Full schedule shift list">
+            <div className="divide-y divide-[#2A353D] max-h-[60vh] overflow-y-auto custom-scrollbar">
               {filteredRosterShifts.map((shift, index) => {
                  const emp = resolveScheduleShiftPersonForDisplay(shift, users);
                  const empName = getScheduleShiftDisplayName(shift, users);
@@ -1769,7 +1769,7 @@ const handleOfferSwap = async (shift) => {
                      <div className={`${T.row} transition-colors ${isPastShift ? 'bg-[#0B0E11]/70 opacity-50 grayscale' : 'hover:bg-[#12161A]'}`}>
                        <div className="flex items-center justify-between">
                          <div className="flex items-center gap-3"><img src={getAvatar(empName, emp?.photoURL)} className={`w-8 h-8 rounded-full border object-cover ${isPastShift ? 'border-[#1F2933] opacity-60' : T.border}`} alt="avatar"/><div><div className={`text-sm font-bold ${isPastShift ? 'text-slate-500' : 'text-white'}`}>{empName}</div><div className={`text-[9px] font-bold uppercase ${isPastShift ? 'text-slate-600' : T.muted}`}>{shift.role}</div></div></div>
-                         <div className={`text-xs font-mono font-bold px-2 py-1 rounded-md border ${isPastShift ? 'bg-[#0B0E11] text-slate-100 border-[#1F2933]' : `bg-[#12161A] ${T.copper} ${T.border}`}`}>{formatShortTime(shift.startTime)} - {formatShortTime(shift.endTime)}</div>
+                         <div className={`text-xs font-mono font-bold px-2 py-1 rounded-md border ${isPastShift ? 'bg-[#0B0E11] text-slate-500 border-[#1F2933]' : `bg-[#12161A] ${T.copper} ${T.border}`}`}>{formatShortTime(shift.startTime)} - {formatShortTime(shift.endTime)}</div>
                        </div>
                      </div>
                    </React.Fragment>
@@ -4078,7 +4078,7 @@ const handleExportTimesheets = () => {
                                   key={ev.id || `${d}-${ev.title}-${ev.time}`}
                                   type="button"
                                   onClick={(event) => { event.stopPropagation(); openEditEventModal(ev); }}
-                                  className="schedule-builder-event-chip w-full min-w-[42px] min-h-[42px] rounded border border-amber-500/45 bg-amber-500/18 text-amber-100 font-black text-[7px] sm:text-[8px] leading-tight px-1 py-0.5 text-left truncate hover:bg-amber-500/30"
+                                  className="schedule-builder-event-chip w-full rounded border border-amber-500/45 bg-amber-500/18 text-amber-100 font-black text-[7px] sm:text-[8px] leading-tight px-1 py-0.5 text-left truncate hover:bg-amber-500/30"
                                   title={formatScheduleBuilderEventTitle(ev)}
                                 >
                                   {formatScheduleBuilderEventLabel(ev)}
@@ -4130,7 +4130,7 @@ const handleExportTimesheets = () => {
                                     aria-label={`Delete shift ${timeStatus.displayRange} for ${u.name || u.email || 'employee'} on ${d}`}
                                     data-chaos-control-kind="destructive-mutation"
                                     data-chaos-workflow-id="schedule-delete-shift"
-                                    className={`schedule-builder-time-chip w-full min-w-[42px] min-h-[42px] rounded font-bold text-[7px] sm:text-[8px] py-0.5 text-center ${invalidTimeRange ? 'bg-amber-950/70 text-amber-200 border border-amber-400/90 shadow-[0_0_8px_rgba(245,158,11,0.35)]' : getRoleColors(shift.role, isBuilderShiftPublished(shift))} ${shiftConflict ? 'border-2 border-red-500 animate-pulse shadow-[0_0_8px_rgba(239,68,68,0.8)]' : ''}`} 
+                                    className={`schedule-builder-time-chip w-full rounded font-bold text-[7px] sm:text-[8px] py-0.5 text-center ${invalidTimeRange ? 'bg-amber-950/70 text-amber-200 border border-amber-400/90 shadow-[0_0_8px_rgba(245,158,11,0.35)]' : getRoleColors(shift.role, isBuilderShiftPublished(shift))} ${shiftConflict ? 'border-2 border-red-500 animate-pulse shadow-[0_0_8px_rgba(239,68,68,0.8)]' : ''}`} 
                                     title={`${timeStatus.displayRange} ${shiftConflict ? '(CONFLICT DETECTED)' : ''}${invalidTimeRange ? ` (INVALID TIME RANGE - NOT COUNTED: ${timeStatus.reason})` : ''} Tap to delete only this shift.`}
                                   >
                                     {invalidTimeRange ? 'INVALID TIME' : `${formatShortTime(shift.startTime)}-${formatShortTime(shift.endTime)}`}
@@ -4642,7 +4642,7 @@ const TabMonth = ({ currentDate, users, shifts, appUser }) => {
           return (
             <div key={date} className={`p-0.5 border-b border-r ${T.border} min-h-[50px] flex flex-col cell ${dayShifts.length >= 6 ? 'print-day-dense' : ''}`}>
               <span className={`text-right text-[9px] font-black ${T.muted} mb-0.5 cell-date`}>{i+1}</span>
-              <div className="space-y-0.5 overflow-y-auto no-scrollbar flex-1 print-shift-stack" tabIndex={0} role="region" aria-label={`Shifts for ${formatDisplayDate(date)}`}>
+              <div className="space-y-0.5 overflow-y-auto no-scrollbar flex-1 print-shift-stack">
                 {dayShifts.map(s=>{
                   const labels = getScheduleShiftMonthLabels(s, activeUsers);
                   return (

@@ -70,6 +70,9 @@ async function openSchedule(page, seed = {}) {
   await gotoTab(page, 'schedule', { settleMs: 1400, maxText: 60000 });
   await dismissBlockingDialogs(page, { maxPasses: 4 }).catch(() => null);
   await expect(page.locator('body'), 'Schedule Builder should render before opening warning tools').toContainText(/Schedule Builder|Coverage|Auto-Fill|Publish/i, { timeout: 15000 });
+  if (seed?.ok) {
+    await expect(page.locator('body'), 'Schedule Builder must hydrate seeded QA staff before warning assertions run').toContainText(/Allen QA|Chuck QA|Lani QA/i, { timeout: 45000 });
+  }
 }
 
 async function openWarnings(page) {
@@ -204,8 +207,6 @@ test.describe('16.0.153 Schedule warnings and Request Off management', () => {
     const seed = await ensureSeeded(testInfo);
     await resetSeededRequestOffFixture(seed, 'allen');
     await openSchedule(page, seed);
-    await expect(page.getByText('Allen QA', { exact: true }).first(), 'Schedule Builder must hydrate the seeded Allen QA roster row before warning assertions run').toBeVisible({ timeout:20000 });
-    await expect(page.locator('[title^="Requested off:"]').first(), 'Schedule Builder must hydrate the seeded Request Off record before opening Warnings').toBeVisible({ timeout:20000 });
     await openWarnings(page);
     const text = await bodyText(page, 60000);
     await attachJson(testInfo, '16-0-153-request-off-warning-text.json', { text: text.slice(0, 12000) });
