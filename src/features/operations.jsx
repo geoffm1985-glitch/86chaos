@@ -1140,7 +1140,7 @@ const TabMaintenance = ({ appUser, addToast }) => {
   };
 
   const getUrgencyColor = (u) => {
-    if (u === 'Critical') return 'text-red-300 font-black animate-pulse';
+    if (u === 'Critical') return 'text-red-200 font-black';
     if (u === 'High') return 'text-orange-500 font-bold';
     return 'text-slate-400';
   };
@@ -1215,8 +1215,8 @@ const TabMaintenance = ({ appUser, addToast }) => {
             <p className="text-xs text-slate-400 font-bold mt-1">Repairs, costs, vendors, and preventative work in one compact workspace.</p>
           </div>
           <div className="flex flex-wrap gap-2">
-            <button onClick={() => { resetForm(); setIsModalOpen(true); }} className={`${T.btn} flex items-center gap-1.5`}><Plus size={14}/> Report Issue</button>
-            <button onClick={() => { resetPmForm(); setIsPmModalOpen(true); }} className={`${T.btnAlt} flex items-center gap-1.5`}><Calendar size={14}/> Add PM</button>
+            <button onClick={() => { resetForm(); setIsModalOpen(true); }} className={`${T.btn} min-h-[42px] flex items-center gap-1.5`}><Plus size={14}/> Report Issue</button>
+            <button onClick={() => { resetPmForm(); setIsPmModalOpen(true); }} className={`${T.btnAlt} min-h-[42px] flex items-center gap-1.5`}><Calendar size={14}/> Add PM</button>
           </div>
         </div>
       </div>
@@ -1232,8 +1232,8 @@ const TabMaintenance = ({ appUser, addToast }) => {
 
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-2 border-b border-[#2A353D] pb-2">
         <div className="flex gap-1.5 overflow-x-auto custom-scrollbar">
-          <button onClick={() => setSubTab('issues')} className={`flex-shrink-0 px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest ${subTab === 'issues' ? `${T.grad} text-slate-900` : 'bg-[#1A2126] text-slate-400 border border-[#2A353D]'}`}>Repair Board</button>
-          <button onClick={() => setSubTab('pm')} className={`relative flex-shrink-0 px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest ${subTab === 'pm' ? `${T.grad} text-slate-900` : 'bg-[#1A2126] text-slate-400 border border-[#2A353D]'}`}>Preventative Maintenance{overdueCount > 0 && <span className="ml-2 inline-flex min-w-4 h-4 px-1 rounded-full bg-red-500 text-white items-center justify-center text-[9px]">{overdueCount}</span>}</button>
+          <button onClick={() => setSubTab('issues')} className={`flex-shrink-0 min-h-[42px] px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest ${subTab === 'issues' ? `${T.grad} text-slate-900` : 'bg-[#1A2126] text-slate-400 border border-[#2A353D]'}`}>Repair Board</button>
+          <button onClick={() => setSubTab('pm')} className={`relative flex-shrink-0 min-h-[42px] px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest ${subTab === 'pm' ? `${T.grad} text-slate-900` : 'bg-[#1A2126] text-slate-400 border border-[#2A353D]'}`}>Preventative Maintenance{overdueCount > 0 && <span className="ml-2 inline-flex min-w-4 h-4 px-1 rounded-full bg-red-500 text-white items-center justify-center text-[9px]">{overdueCount}</span>}</button>
         </div>
         {subTab === 'issues' && <div className="flex flex-col sm:flex-row gap-2 w-full md:w-auto">
           <input value={issueSearch} onChange={e=>setIssueSearch(e.target.value)} className={`${T.input} md:w-56`} placeholder="Search equipment, issue, vendor" />
@@ -1279,7 +1279,7 @@ const TabMaintenance = ({ appUser, addToast }) => {
             return <article key={pm.id} className="maintenance-record-card bg-[#1A2126] border border-[#2A353D]">
               <div className="flex items-start justify-between gap-2"><div className="min-w-0"><h3 className="font-black text-white truncate">{pm.title}</h3><div className="text-[9px] uppercase tracking-widest font-black text-[#D4A381] mt-1 truncate">{pm.equipment}</div></div><span className={`text-[9px] font-black uppercase tracking-widest px-2 py-1 rounded-lg border flex-shrink-0 ${statusClass}`}>{statusText}</span></div>
               <div className="mt-3"><div className="h-1.5 rounded-full bg-[#0B0E11] overflow-hidden"><div className={`${daysLeft <= 0 ? 'bg-red-500' : daysLeft <= 7 ? 'bg-orange-400' : 'bg-emerald-500'} h-full rounded-full`} style={{ width: `${Math.max(4, progress)}%` }} /></div><div className="flex justify-between text-[9px] uppercase tracking-widest font-black text-slate-500 mt-1"><span>Last {new Date(lastCompleted+'T12:00:00').toLocaleDateString()}</span><span>Every {frequency} days</span></div></div>
-              <div className="mt-3 flex gap-1.5"><button onClick={() => handleMarkPmDone(pm)} className={`${T.btn} flex-1 flex items-center justify-center gap-1`}><Check size={13}/> Complete</button><button onClick={() => { setPmTitle(pm.title); setPmEquipment(pm.equipment); setPmDays(String(pm.frequencyDays || 30)); setEditingPmId(pm.id); setIsPmModalOpen(true); }} className="no-compact w-9 h-9 rounded-lg border border-[#2A353D] bg-[#12161A] text-slate-400 hover:text-[#D4A381] flex items-center justify-center"><Edit size={14}/></button><button onClick={() => { if(window.confirm('Delete this preventative schedule?')) safeMaintenanceWrite({ action: 'delete', collectionName: 'pmSchedules', docId: pm.id, label: 'PM schedule', before: pm }); }} className="no-compact w-9 h-9 rounded-lg border border-[#2A353D] bg-[#12161A] text-slate-400 hover:text-red-400 flex items-center justify-center"><Trash2 size={14}/></button></div>
+              <div className="mt-3 flex gap-1.5"><button onClick={() => handleMarkPmDone(pm)} className={`${T.btn} flex-1 flex items-center justify-center gap-1`}><Check size={13}/> Complete</button><button onClick={() => { setPmTitle(pm.title); setPmEquipment(pm.equipment); setPmDays(String(pm.frequencyDays || 30)); setEditingPmId(pm.id); setIsPmModalOpen(true); }} className="no-compact w-11 h-11 rounded-lg border border-[#2A353D] bg-[#12161A] text-slate-400 hover:text-[#D4A381] flex items-center justify-center"><Edit size={14}/></button><button onClick={() => { if(window.confirm('Delete this preventative schedule?')) safeMaintenanceWrite({ action: 'delete', collectionName: 'pmSchedules', docId: pm.id, label: 'PM schedule', before: pm }); }} className="no-compact w-11 h-11 rounded-lg border border-[#2A353D] bg-[#12161A] text-slate-400 hover:text-red-400 flex items-center justify-center"><Trash2 size={14}/></button></div>
             </article>;
           })}
         </div>}
@@ -2439,10 +2439,10 @@ const TabToday = ({ currentDate, appUser, users, shifts, shiftSwaps, timeOffRequ
     </div>
 
     <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-      <button onClick={open86Center} className="brief-quick-action bg-red-900/20 border border-red-500/40 text-red-300 rounded-xl p-3 font-black text-xs uppercase tracking-widest">Open 86 Alerts</button>
-      <button onClick={openPrepPlan} className="brief-quick-action bg-[#1A2126] border border-[#2A353D] text-[#D4A381] rounded-xl p-3 font-black text-xs uppercase tracking-widest">Open Prep</button>
-      <button onClick={openMessageBoard} className="brief-quick-action bg-[#1A2126] border border-[#2A353D] text-slate-200 rounded-xl p-3 font-black text-xs uppercase tracking-widest">Open Messages</button>
-      {canUseCleaningRoutines && <button onClick={openMaintenanceCenter} className="brief-quick-action bg-amber-900/20 border border-amber-500/40 text-amber-300 rounded-xl p-3 font-black text-xs uppercase tracking-widest">Open Fix It</button>}
+      <button onClick={open86Center} className="brief-quick-action min-h-[42px] bg-red-900/20 border border-red-500/40 text-red-300 rounded-xl p-3 font-black text-xs uppercase tracking-widest">Open 86 Alerts</button>
+      <button onClick={openPrepPlan} className="brief-quick-action min-h-[42px] bg-[#1A2126] border border-[#2A353D] text-[#D4A381] rounded-xl p-3 font-black text-xs uppercase tracking-widest">Open Prep</button>
+      <button onClick={openMessageBoard} className="brief-quick-action min-h-[42px] bg-[#1A2126] border border-[#2A353D] text-slate-200 rounded-xl p-3 font-black text-xs uppercase tracking-widest">Open Messages</button>
+      {canUseCleaningRoutines && <button onClick={openMaintenanceCenter} className="brief-quick-action min-h-[42px] bg-amber-900/20 border border-amber-500/40 text-amber-300 rounded-xl p-3 font-black text-xs uppercase tracking-widest">Open Fix It</button>}
     </div>
 
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">

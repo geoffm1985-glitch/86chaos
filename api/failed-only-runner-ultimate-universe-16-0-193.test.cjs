@@ -72,12 +72,11 @@ test('all 16 fallback identities still resolve against the restored current test
   }
 });
 
-test('failed-only preparation can use static identity validation and bundled baseline when local history is gone', () => {
+test('failed-only preparation keeps static identity validation while the historical 16-identity baseline stays archived', () => {
   const prepare = read('scripts/86chaos-release-gate/prepare-failed-only-manifest.cjs');
   const utils = read('scripts/86chaos-release-gate/failed-only-manifest-utils.cjs');
+  assert.equal(fs.existsSync(path.join(root, 'scripts/86chaos-release-gate/reported-failed-only-20260822-173450.json')), true);
   assert.match(prepare, /currentInventoryRecords\(process\.cwd\(\), \{ allowStaticFallback: selectionMode === 'failed-only' \}\)/);
-  assert.match(prepare, /reported-failed-only-20260822-173450\.json/);
-  assert.match(prepare, /bundled-uploaded-full-release-gate-20260822-173450-fail-timeout-only/);
   assert.match(prepare, /allowStaticFallback: selectionMode === 'failed-only'/);
   assert.match(utils, /baselineMode === 'bundled-full-baseline-fallback'/);
 });

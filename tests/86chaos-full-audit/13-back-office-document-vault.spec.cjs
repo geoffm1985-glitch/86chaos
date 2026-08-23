@@ -46,8 +46,10 @@ test.describe('13 Back Office Document Vault end-to-end file workflow', () => {
     await form.locator('input[type="date"]').fill('2030-12-31');
     await form.locator('input[placeholder*="Optional note"]').fill('Disposable release-gate QA record');
     await form.locator('input[type="file"][aria-label="Upload Document Vault file"]').setInputFiles(firstFile);
+    await expect(form.getByText(new RegExp(`Selected:\s*${firstFile.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`, 'i')), 'Document Vault must finish binding the selected File into React state before Save is dispatched').toBeVisible({ timeout:10000 });
     await form.locator('textarea').fill('Created by exhaustive Play Store release gate; must be deleted by this test.');
     await form.getByRole('button', { name:/Save Document Record/i }).click();
+    await expect(page.getByText(/Document Uploaded/i).first(), 'Document Vault file upload must complete successfully before persistence is credited').toBeVisible({ timeout:30000 });
     const titleNode = page.getByText(title, { exact:true }).first();
     await expect(titleNode, 'Saved Document Vault record should appear').toBeVisible({ timeout:30000 });
     evidence.created = true;

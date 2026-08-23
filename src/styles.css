@@ -5303,10 +5303,10 @@ span.bg-red-500.text-white,
 
 @media (min-width: 640px) {
   .maintenance-record-action-button {
-    width: 32px !important;
-    height: 32px !important;
-    min-width: 32px !important;
-    min-height: 32px !important;
+    width: 42px !important;
+    height: 42px !important;
+    min-width: 42px !important;
+    min-height: 42px !important;
   }
 }
 

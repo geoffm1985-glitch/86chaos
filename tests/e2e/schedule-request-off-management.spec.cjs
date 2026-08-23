@@ -204,6 +204,8 @@ test.describe('16.0.153 Schedule warnings and Request Off management', () => {
     const seed = await ensureSeeded(testInfo);
     await resetSeededRequestOffFixture(seed, 'allen');
     await openSchedule(page, seed);
+    await expect(page.getByText('Allen QA', { exact: true }).first(), 'Schedule Builder must hydrate the seeded Allen QA roster row before warning assertions run').toBeVisible({ timeout:20000 });
+    await expect(page.locator('[title^="Requested off:"]').first(), 'Schedule Builder must hydrate the seeded Request Off record before opening Warnings').toBeVisible({ timeout:20000 });
     await openWarnings(page);
     const text = await bodyText(page, 60000);
     await attachJson(testInfo, '16-0-153-request-off-warning-text.json', { text: text.slice(0, 12000) });
