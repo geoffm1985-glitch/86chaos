@@ -30,7 +30,8 @@ const nodeTests = [
   'api/release-gate-16-0-192-source-regressions.test.cjs',
   'api/system-admin-controlled-errors-16-0-192.test.cjs',
   'api/failed-only-runner-ultimate-universe-16-0-193.test.cjs',
-  'api/failed-only-runner-launch-16-0-194.test.cjs'
+  'api/failed-only-runner-launch-16-0-194.test.cjs',
+  'api/public-icon-assets-16-0-195.test.cjs'
 ];
 const jestTests = [
   'src/core/scheduleQueryPlanner.test.js'

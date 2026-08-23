@@ -1,16 +1,16 @@
 {
-  "version": "16.0.194",
-  "name": "86 Chaos 16.0.194",
-  "build": "16.0.194",
-  "label": "86 Chaos 16.0.194",
-  "releasedAt": "2026-08-23T13:54:00-05:00",
-  "releaseTitle": "Failed-Only Runner Launch Repair",
+  "version": "16.0.195",
+  "name": "86 Chaos 16.0.195",
+  "build": "16.0.195",
+  "label": "86 Chaos 16.0.195",
+  "releasedAt": "2026-08-23T14:18:00-05:00",
+  "releaseTitle": "Header and PWA Icon Asset Repair",
   "notes": [
-    "Use the latest failed-only result fallback so the next focused run selects only the 10 still-failing identities, not the 6 already-passed failed-only identities.",
-    "Wait for Document Vault file attachment before refreshing the vault workflow test.",
-    "Harden exhaustive state/control helpers and stale route matrix expectations exposed by the focused failed-only run."
+    "Restore the 86 Chaos header icon and wordmark files referenced by the app shell so broken image placeholders no longer appear.",
+    "Restore the PWA icon and maskable icon files referenced by public/index.html and public/manifest.json.",
+    "Add source validation to fail if referenced 86 Chaos public image assets are missing again."
   ],
-  "title": "86 Chaos 16.0.194",
-  "summary": "Repairs the failed-only runner fallback so only the latest remaining failed identities run and tightens the failed-test harness fixes exposed by the 16.0.193 failed-only run.",
-  "description": "Surgical failed-only release-gate runner and harness repair on top of 16.0.193; no Firebase or dependency changes."
+  "title": "86 Chaos 16.0.195",
+  "summary": "Restores the 86 Chaos public icon and wordmark assets required by the header, browser favicon, and PWA manifest.",
+  "description": "Surgical public asset restoration on top of 16.0.194; no Firebase, dependency, navigation, or application workflow changes."
 }
