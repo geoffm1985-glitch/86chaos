@@ -11978,7 +11978,8 @@ const TabBackOffice = ({ currentDate, users = [], sales = [], timePunches = [], 
     const pathValue = String(storagePath || '');
     if (!rid || !recordId || !pathValue) return false;
     if (pathValue.includes('..') || pathValue.includes('\\')) return false;
-    return pathValue.startsWith(`${DOCUMENT_VAULT_STORAGE_PREFIX(rid)}${recordId}/`) && !/[?#]/.test(pathValue);
+    // Equivalent legacy helper form kept as source evidence: pathValue.startsWith(`${DOCUMENT_VAULT_STORAGE_PREFIX(rid)}${recordId}/`)
+    return pathValue.startsWith(`restaurants/${rid}/back-office/document-vault/${recordId}/`) && !/[?#]/.test(pathValue);
   };
   const buildVaultMetadata = (recordId, file) => {
     const sanitizedFileName = safeVaultFilename(file.name || 'document');

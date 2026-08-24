@@ -1,16 +1,16 @@
 {
-  "version": "16.0.195",
-  "name": "86 Chaos 16.0.195",
-  "build": "16.0.195",
-  "label": "86 Chaos 16.0.195",
-  "releasedAt": "2026-08-23T14:18:00-05:00",
-  "releaseTitle": "Header and PWA Icon Asset Repair",
+  "version": "16.0.196",
+  "name": "86 Chaos 16.0.196",
+  "build": "16.0.196",
+  "label": "86 Chaos 16.0.196",
+  "releasedAt": "2026-08-23T21:24:00-05:00",
+  "releaseTitle": "Failed-Only Browser Gate Remaining Blocker Repair",
   "notes": [
-    "Restore the 86 Chaos header icon and wordmark files referenced by the app shell so broken image placeholders no longer appear.",
-    "Restore the PWA icon and maskable icon files referenced by public/index.html and public/manifest.json.",
-    "Add source validation to fail if referenced 86 Chaos public image assets are missing again."
+    "Correct the Document Vault path-guard source evidence so the failed-only vault workflow recognizes the existing scoped storage validation.",
+    "Repair exhaustive state-control discovery for current Open-labeled controls and delayed nested surfaces without removing coverage.",
+    "Repair generic mutation actionability probing so modal/global controls do not block unrelated control trial checks."
   ],
-  "title": "86 Chaos 16.0.195",
-  "summary": "Restores the 86 Chaos public icon and wordmark assets required by the header, browser favicon, and PWA manifest.",
-  "description": "Surgical public asset restoration on top of 16.0.194; no Firebase, dependency, navigation, or application workflow changes."
+  "title": "86 Chaos 16.0.196",
+  "summary": "Repairs the remaining failed-only browser-gate blockers after 16.0.195 while preserving failed-only selection.",
+  "description": "Surgical release-gate repair for Document Vault source evidence and exhaustive test-harness state/control probing; no Firebase or dependency changes."
 }

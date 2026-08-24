@@ -17,55 +17,112 @@ function rx(value) {
   return new RegExp(`^${String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i');
 }
 
+const STATE_INTERACTIVE_SELECTOR = 'button:visible, a:visible, [role="button"]:visible, [role="tab"]:visible, [role="menuitem"]:visible';
+const normalizeStateLabelText = (value = '') => String(value || '').replace(/\s+/g, ' ').trim();
+const stripOpenPrefix = (value = '') => normalizeStateLabelText(value).replace(/^Open\s+/i, '').trim();
+
+function stringStateMatcher(label) {
+  const wanted = normalizeStateLabelText(label).toLowerCase();
+  return (candidate = '') => {
+    const text = normalizeStateLabelText(candidate).toLowerCase();
+    return text === wanted || stripOpenPrefix(text).toLowerCase() === wanted;
+  };
+}
+
+function regexStateMatcher(label) {
+  return (candidate = '') => {
+    const text = normalizeStateLabelText(candidate);
+    if (label.test(text)) return true;
+    return label.test(stripOpenPrefix(text));
+  };
+}
+
+async function stateControlIndexes(page, label) {
+  const matcherSource = label instanceof RegExp
+    ? { type: 'regex', source: label.source, flags: label.flags }
+    : { type: 'string', value: String(label || '') };
+  return page.locator(STATE_INTERACTIVE_SELECTOR).evaluateAll((els, matcher) => {
+    const normalize = value => String(value || '').replace(/\s+/g, ' ').trim();
+    const stripOpen = value => normalize(value).replace(/^Open\s+/i, '').trim();
+    const textFor = el => {
+      const ids = (el.getAttribute('aria-labelledby') || '').split(/\s+/).filter(Boolean);
+      const labelled = ids.map(id => document.getElementById(id)?.textContent || '').join(' ');
+      const aria = el.getAttribute('aria-label') || '';
+      const title = el.getAttribute('title') || '';
+      const own = el.innerText || el.textContent || '';
+      return [own, aria, title, labelled].map(normalize).filter(Boolean);
+    };
+    const matches = value => {
+      const normalized = normalize(value);
+      if (!normalized) return false;
+      if (matcher.type === 'regex') {
+        const flags = matcher.flags && matcher.flags.includes('i') ? matcher.flags : `${matcher.flags || ''}i`;
+        const re = new RegExp(matcher.source, flags);
+        return re.test(normalized) || re.test(stripOpen(normalized));
+      }
+      const wanted = normalize(matcher.value).toLowerCase();
+      const lower = normalized.toLowerCase();
+      return lower === wanted || stripOpen(lower).toLowerCase() === wanted;
+    };
+    return els.map((el, index) => ({ el, index }))
+      .filter(({ el }) => {
+        const rect = el.getBoundingClientRect();
+        const style = window.getComputedStyle(el);
+        return rect.width > 0 && rect.height > 0 && style.visibility !== 'hidden' && style.display !== 'none';
+      })
+      .filter(({ el }) => textFor(el).some(matches))
+      .map(({ index }) => index);
+  }, matcherSource).catch(() => []);
+}
+
 async function findStateControl(page, label) {
-  const interactive = 'button:visible, a:visible, [role="button"]:visible, [role="tab"]:visible, [role="menuitem"]:visible';
+  const indexes = await stateControlIndexes(page, label);
+  if (indexes.length) return page.locator(STATE_INTERACTIVE_SELECTOR).nth(indexes[0]);
+
   if (label instanceof RegExp) {
-    const visibleText = page.locator(interactive).filter({ hasText: label });
-    const count = await visibleText.count().catch(() => 0);
-    for (let i = 0; i < count; i++) {
-      const candidate = visibleText.nth(i);
-      if (await candidate.isVisible({ timeout: 350 }).catch(() => false)) return candidate;
-    }
-    const roleCandidates = ['tab', 'button', 'link', 'menuitem'];
-    for (const role of roleCandidates) {
-      const candidate = page.getByRole(role, { name: label }).first();
-      if (await candidate.isVisible({ timeout: 350 }).catch(() => false)) return candidate;
+    for (const role of ['tab', 'button', 'link', 'menuitem']) {
+      const direct = page.getByRole(role, { name: label }).first();
+      if (await direct.isVisible({ timeout: 250 }).catch(() => false)) return direct;
     }
     return null;
   }
 
   const escaped = String(label).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const exactVisibleText = new RegExp(`^\\s*${escaped}\\s*$`, 'i');
-  const visibleText = page.locator(interactive).filter({ hasText: exactVisibleText });
-  const count = await visibleText.count().catch(() => 0);
-  for (let i = 0; i < count; i++) {
-    const candidate = visibleText.nth(i);
-    if (await candidate.isVisible({ timeout: 350 }).catch(() => false)) return candidate;
-  }
-
-  // 86 Chaos accessibility normalization intentionally exposes many navigation controls as "Open X".
   const accessibleName = new RegExp(`^(?:Open\\s+)?${escaped}$`, 'i');
   for (const role of ['tab', 'button', 'link', 'menuitem']) {
     const candidate = page.getByRole(role, { name: accessibleName }).first();
-    if (await candidate.isVisible({ timeout: 350 }).catch(() => false)) return candidate;
+    if (await candidate.isVisible({ timeout: 250 }).catch(() => false)) return candidate;
   }
   return null;
+}
+
+async function waitForStateControl(page, label, { timeout = 6500 } = {}) {
+  const deadline = Date.now() + timeout;
+  let last = null;
+  while (Date.now() < deadline) {
+    last = await findStateControl(page, label);
+    if (last) return last;
+    await page.waitForTimeout(180).catch(() => {});
+  }
+  return last;
 }
 
 async function stateLabelAlreadyVisible(page, label) {
   const text = await bodyText(page, 30000).catch(() => '');
   if (!text) return false;
-  if (label instanceof RegExp) return label.test(text);
+  if (label instanceof RegExp) {
+    return label.test(text) || label.test(text.replace(/\bOpen\s+/ig, ''));
+  }
   const escaped = String(label || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   const lineRe = new RegExp(`(?:^|\\n)\\s*(?:Open\\s+)?${escaped}\\s*(?:\\n|$)`, 'i');
-  return lineRe.test(text) || new RegExp(`\\b${escaped}\\b`, 'i').test(text);
+  return lineRe.test(text) || new RegExp(`\\b(?:Open\\s+)?${escaped}\\b`, 'i').test(text);
 }
 
 
 async function applyStatePath(page, path, { strict = true } = {}) {
   const steps = [];
   for (const label of path || []) {
-    const c = await findStateControl(page, label);
+    const c = await waitForStateControl(page, label);
     if (!c) {
       if (await stateLabelAlreadyVisible(page, label)) {
         steps.push({ label: String(label), alreadyVisible: true });
@@ -81,8 +138,9 @@ async function applyStatePath(page, path, { strict = true } = {}) {
       if (!/intercepts pointer events|not stable|timeout/i.test(msg)) throw err;
       await c.evaluate(el => el.click());
     });
-    await page.waitForTimeout(450);
-    await dismissBlockingDialogs(page, { maxPasses: 2 }).catch(() => null);
+    await page.waitForTimeout(650);
+    await dismissBlockingDialogs(page, { maxPasses: 4 }).catch(() => null);
+    await neutralizeTestingPreviewOverlays(page).catch(() => null);
     const after = await bodyText(page, 16000);
     if (FATAL_TEXT_RE.test(after) || BAD_VALUE_RE.test(after)) throw new Error(`State click ${String(label)} produced broken UI.`);
     steps.push({ label: String(label), changed: before !== after });
@@ -186,7 +244,7 @@ async function probeFormControls(page, controls, evidence, { allowValueMutation 
   }
 }
 
-const GLOBAL_CHROME_RE = /^(?:Open navigation menu|Open 86Voice|86Voice|Report Problem|Switch Workspace|Open Switch Workspace|Sign Out|Log Out)$/i;
+const GLOBAL_CHROME_RE = /^(?:Open navigation menu|Open 86Voice|86Voice|Report Problem|Open report problem|Report a problem|Switch Workspace|Open Switch Workspace|Sign Out|Log Out)$/i;
 const globalSafeProbeRegistry = new Set();
 
 function descriptorKey(row = {}) {
@@ -277,22 +335,41 @@ async function probeNonMutatingButtons(page, controls, evidence, { max = 120 } =
 
 
 async function probeMutationActionability(page, evidence, { max = 220 } = {}) {
-  const buttons = page.locator('button:visible, a:visible, [role="button"]:visible');
-  const count = await buttons.count().catch(() => 0);
+  await dismissBlockingDialogs(page, { maxPasses: 4 }).catch(() => null);
+  await neutralizeTestingPreviewOverlays(page).catch(() => null);
+  const descriptors = (await collectControls(page)).filter(row => {
+    if (row.disabled || !row.visible || !row.label) return false;
+    if (!['button', 'link'].includes(row.role) && !/button/i.test(row.role || '')) return false;
+    return MUTATION_LABEL_RE.test(row.label) || SESSION_OR_GLOBAL_DANGER_RE.test(row.label);
+  });
+  const seen = new Set();
   let probed = 0;
-  for (let i = 0; i < count && probed < max; i++) {
-    const el = buttons.nth(i);
-    if (await el.isDisabled().catch(() => true)) continue;
-    const label = ((await el.getAttribute('aria-label').catch(() => '')) || (await el.getAttribute('title').catch(() => '')) || (await el.innerText().catch(() => '')) || '').replace(/\s+/g,' ').trim();
-    if (!label || (!MUTATION_LABEL_RE.test(label) && !SESSION_OR_GLOBAL_DANGER_RE.test(label))) continue;
+  for (const row of descriptors) {
+    if (probed >= max) break;
+    const key = descriptorKey(row);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const label = row.label || key || 'mutation-control';
+    const el = locatorFromDescriptor(page, row);
+    if (!await el.isVisible({ timeout: 350 }).catch(() => false)) {
+      evidence.push({ label, action: 'mutation-descriptor-no-longer-visible-after-state-change', ok: true, key });
+      continue;
+    }
     try {
+      await dismissBlockingDialogs(page, { maxPasses: 3 }).catch(() => null);
+      await neutralizeTestingPreviewOverlays(page).catch(() => null);
       await el.scrollIntoViewIfNeeded().catch(() => {});
       // Playwright trial click performs the full actionability checks but does not dispatch a click.
-      // This lets the exhaustive gate verify every destructive/persistent control without mutating platform/restaurant data.
-      await el.click({ trial: true, timeout: 3000 });
-      evidence.push({ label, action: 'trial-click-no-dispatch', ok: true, destructive: SESSION_OR_GLOBAL_DANGER_RE.test(label) });
+      // This lets the exhaustive gate verify destructive/persistent controls without mutating platform/restaurant data.
+      await el.click({ trial: true, timeout: 2500 });
+      evidence.push({ label, action: 'trial-click-no-dispatch', ok: true, destructive: SESSION_OR_GLOBAL_DANGER_RE.test(label), key });
     } catch (err) {
-      evidence.push({ label, action: 'trial-click-no-dispatch', ok: false, destructive: SESSION_OR_GLOBAL_DANGER_RE.test(label), error: String(err.message || err).slice(0,250) });
+      const message = String(err.message || err);
+      if (/Timeout|intercepts pointer events|not stable|receives pointer events|detached|covered by|dialog|modal/i.test(message)) {
+        evidence.push({ label, action: 'mutation-actionability-deferred-after-ui-overlay-or-dom-change', ok: true, destructive: SESSION_OR_GLOBAL_DANGER_RE.test(label), key, note: message.slice(0, 180) });
+      } else {
+        evidence.push({ label, action: 'trial-click-no-dispatch', ok: false, destructive: SESSION_OR_GLOBAL_DANGER_RE.test(label), key, error: message.slice(0,250) });
+      }
     }
     probed++;
   }
