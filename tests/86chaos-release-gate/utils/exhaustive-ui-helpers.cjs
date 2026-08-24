@@ -202,27 +202,123 @@ async function assertHealthy(page, context) {
   return text;
 }
 
+function formControlSelectorFor(row = {}) {
+  if (row.testId) return `[data-testid="${String(row.testId).replace(/"/g, '\\"')}"]`;
+  if (row.id) return `#${String(row.id).replace(/(["\\#.:[\],=])/g, '\\$1')}`;
+  const base = 'input:visible, textarea:visible, select:visible, [contenteditable="true"]:visible';
+  const parts = [];
+  if (row.tag) parts.push(String(row.tag).toLowerCase());
+  if (row.type) parts.push(`[type="${String(row.type).replace(/"/g, '\\"')}"]`);
+  if (row.name) parts.push(`[name="${String(row.name).replace(/"/g, '\\"')}"]`);
+  if (row.placeholder) parts.push(`[placeholder="${String(row.placeholder).replace(/"/g, '\\"')}"]`);
+  const specific = parts.length ? parts.join('') : base;
+  return specific;
+}
+
+function locatorFromFormDescriptor(page, row = {}) {
+  const selector = formControlSelectorFor(row);
+  if (row.label) {
+    const escaped = String(row.label).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const exactName = new RegExp(`^${escaped}$`, 'i');
+    const byLabel = page.getByLabel(exactName).first();
+    return byLabel.or(page.locator(selector).first()).first();
+  }
+  return page.locator(selector).nth(Number(row.index || 0));
+}
+
+async function forceRestoreFormValue(locator, value) {
+  return locator.evaluate((node, nextValue) => {
+    if (!node || node.disabled || node.readOnly) return false;
+    const tag = node.tagName;
+    if (tag === 'SELECT') return true;
+    if (tag === 'INPUT' || tag === 'TEXTAREA') {
+      const proto = tag === 'TEXTAREA' ? window.HTMLTextAreaElement?.prototype : window.HTMLInputElement?.prototype;
+      const setter = proto ? Object.getOwnPropertyDescriptor(proto, 'value')?.set : null;
+      if (setter) setter.call(node, nextValue ?? '');
+      else node.value = nextValue ?? '';
+      node.dispatchEvent(new Event('input', { bubbles: true }));
+      node.dispatchEvent(new Event('change', { bubbles: true }));
+      node.dispatchEvent(new Event('blur', { bubbles: true }));
+      return true;
+    }
+    if (node.isContentEditable) {
+      node.textContent = nextValue ?? '';
+      node.dispatchEvent(new Event('input', { bubbles: true }));
+      node.dispatchEvent(new Event('blur', { bubbles: true }));
+      return true;
+    }
+    return false;
+  }, value ?? '').catch(() => false);
+}
+
+async function fillAndObserve(locator, value, timeout = 2500) {
+  try {
+    await locator.fill(value, { timeout });
+  } catch (err) {
+    const observed = await locator.inputValue({ timeout: 250 }).catch(() => null);
+    if (observed !== value) throw err;
+    return { ok: true, warning: String(err.message || err).slice(0, 180), observedAfterTimeout: true };
+  }
+  const observed = await locator.inputValue({ timeout: 500 }).catch(() => null);
+  if (observed !== null && observed !== value) throw new Error(`Field did not accept expected probe value. Expected ${value}, observed ${observed}.`);
+  return { ok: true };
+}
+
+async function restoreAndObserve(page, locator, before, timeout = 2500) {
+  try {
+    await locator.fill(before ?? '', { timeout });
+  } catch (err) {
+    const observed = await locator.inputValue({ timeout: 250 }).catch(() => null);
+    if (observed === before) return { ok: true, warning: String(err.message || err).slice(0, 180), observedRestoredAfterTimeout: true };
+    const forced = await forceRestoreFormValue(locator, before);
+    await page.waitForTimeout(60).catch(() => {});
+    const afterForce = await locator.inputValue({ timeout: 250 }).catch(() => null);
+    if (!forced || (afterForce !== null && afterForce !== before)) throw err;
+    return { ok: true, warning: String(err.message || err).slice(0, 180), restoredByDomEventFallback: true };
+  }
+  const observed = await locator.inputValue({ timeout: 500 }).catch(() => null);
+  if (observed !== null && observed !== before) throw new Error(`Field did not restore expected probe value. Expected ${before}, observed ${observed}.`);
+  return { ok: true };
+}
+
 async function probeFormControls(page, controls, evidence, { allowValueMutation = true } = {}) {
-  const locator = page.locator('input:visible, textarea:visible, select:visible, [contenteditable="true"]:visible');
-  const count = await locator.count().catch(() => 0);
-  for (let i = 0; i < Math.min(count, 220); i++) {
-    const el = locator.nth(i);
-    const label = await el.evaluate((node, index) => {
+  const selector = 'input:visible, textarea:visible, select:visible, [contenteditable="true"]:visible';
+  const descriptors = await page.locator(selector).evaluateAll((els) => {
+    const normalize = value => String(value || '').replace(/\s+/g, ' ').trim();
+    const labelFor = (node, index) => {
       const aria = node.getAttribute('aria-label') || node.getAttribute('title') || node.getAttribute('placeholder') || '';
       let explicit = '';
       if (node.id) { try { explicit = document.querySelector(`label[for=\"${CSS.escape(node.id)}\"]`)?.textContent || ''; } catch (_) {} }
       const parent = node.closest('label')?.textContent || '';
-      return (aria || explicit || parent || node.getAttribute('name') || `field-${index}`).replace(/\s+/g, ' ').trim().slice(0,220);
-    }, i).catch(() => `field-${i}`);
-    const type = (await el.getAttribute('type').catch(() => '')) || '';
+      return normalize(aria || explicit || parent || node.getAttribute('name') || `field-${index}`).slice(0,220);
+    };
+    return els.map((node, index) => ({
+      index,
+      tag: node.tagName.toLowerCase(),
+      type: node.getAttribute('type') || '',
+      name: node.getAttribute('name') || '',
+      id: node.id || '',
+      testId: node.getAttribute('data-testid') || '',
+      placeholder: node.getAttribute('placeholder') || '',
+      label: labelFor(node, index),
+      disabled: Boolean(node.disabled || node.getAttribute('aria-disabled') === 'true'),
+      readOnly: Boolean(node.readOnly || node.getAttribute('readonly') !== null),
+      value: 'value' in node ? String(node.value || '') : ''
+    }));
+  }).catch(() => []);
+
+  for (const row of descriptors.slice(0, 220)) {
+    const label = row.label || `field-${row.index}`;
+    const type = row.type || '';
+    const el = locatorFromFormDescriptor(page, row);
     if (!ALLOW_MUTATION || !allowValueMutation) { evidence.push({ label, action: 'focus-only-mutation-disabled' }); await el.focus().catch(() => {}); continue; }
-    if (/hidden|file|password/i.test(type) || await el.isDisabled().catch(() => true) || await el.getAttribute('readonly')) {
+    if (/hidden|file|password/i.test(type) || row.disabled || row.readOnly || await el.isDisabled().catch(() => true) || await el.getAttribute('readonly')) {
       evidence.push({ label, action: 'inspect-only', reason: type || 'disabled/readonly' });
       continue;
     }
     await el.focus().catch(() => {});
-    const before = await el.inputValue().catch(() => null);
-    if (AUTO_CHANGE_BLOCK_RE.test(label) || ['checkbox','radio'].includes(type) || (await el.evaluate(e => e.tagName).catch(() => '')) === 'SELECT') {
+    const before = await el.inputValue().catch(() => row.value ?? null);
+    if (AUTO_CHANGE_BLOCK_RE.test(label) || ['checkbox','radio'].includes(type) || row.tag === 'select') {
       evidence.push({ label, action: 'focus-only-sensitive', before });
       continue;
     }
@@ -234,10 +330,11 @@ async function probeFormControls(page, controls, evidence, { allowValueMutation 
     else if (type === 'email') sample = 'qa@example.test';
     else if (type === 'tel') sample = '5551234567';
     try {
-      await el.fill(sample, { timeout: 2500 });
+      const fillResult = await fillAndObserve(el, sample, 2500);
       await page.waitForTimeout(80);
-      if (before !== null) await el.fill(before, { timeout: 2500 });
-      evidence.push({ label, action: 'fill-and-restore', type, ok: true });
+      let restoreResult = {};
+      if (before !== null) restoreResult = await restoreAndObserve(page, locatorFromFormDescriptor(page, row), before, 2500);
+      evidence.push({ label, action: 'fill-and-restore', type, ok: true, ...fillResult, ...restoreResult });
     } catch (err) {
       evidence.push({ label, action: 'fill-and-restore', type, ok: false, error: String(err.message || err).slice(0, 250) });
     }

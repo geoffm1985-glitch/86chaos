@@ -8294,7 +8294,7 @@ Type RESTORE to continue.`);
           </div>
           <div className="admin46-mobile-quickgrid">
             {mobileQuickTabs.map(tab => (
-              <button key={tab.id} type="button" onClick={() => selectAdminTab(tab.id)} className={`admin46-mobile-quick ${subTab === tab.id ? 'is-active' : ''}`}>
+              <button key={tab.id} type="button" aria-label={tab.label} title={tab.label} onClick={() => selectAdminTab(tab.id)} className={`admin46-mobile-quick ${subTab === tab.id ? 'is-active' : ''}`}>
                 <span>{tab.short || tab.label}</span>
               </button>
             ))}
@@ -8312,7 +8312,7 @@ Type RESTORE to continue.`);
                   </div>
                   <div className="admin46-mobile-tool-grid">
                     {group.tabs.map(tab => (
-                      <button key={tab.id} type="button" onClick={() => selectAdminTab(tab.id)} className={subTab === tab.id ? 'is-active' : ''}>
+                      <button key={tab.id} type="button" aria-label={tab.label} title={tab.label} onClick={() => selectAdminTab(tab.id)} className={subTab === tab.id ? 'is-active' : ''}>
                         <strong>{tab.short || tab.label}</strong>
                         <span>{tab.intent}</span>
                       </button>
@@ -12354,7 +12354,7 @@ const TabBackOffice = ({ currentDate, users = [], sales = [], timePunches = [], 
       </div>
 
       <div className="flex gap-2 overflow-x-auto pb-2 border-b border-[#2A353D] custom-scrollbar">
-        {[["dashboard","Dashboard"],["deposits","Deposit Log"],["approvals","Approval Queue"],["documents","Document Vault"],["reports","Owner Reports"],["quickbooks","QuickBooks"],["accountant-packet","Accountant Packet"],["owner-rollup","Owner Rollup"]].map(([id,label]) => <button key={id} type="button" onClick={() => setSubTab(id)} className={`px-4 py-3 rounded-xl text-xs uppercase tracking-widest font-black whitespace-nowrap ${subTab === id ? `${T.grad} text-slate-900` : 'bg-[#1A2126] text-slate-300 hover:text-white border border-[#2A353D]'}`}>{label}</button>)}
+        {[["dashboard","Dashboard"],["deposits","Deposit Log"],["approvals","Approval Queue"],["documents","Document Vault"],["reports","Owner Reports"],["quickbooks","QuickBooks"],["accountant-packet","Accountant Packet"],["owner-rollup","Owner Rollup"]].map(([id,label]) => <button key={id} type="button" aria-label={label} title={label} onClick={() => setSubTab(id)} className={`px-4 py-3 rounded-xl text-xs uppercase tracking-widest font-black whitespace-nowrap ${subTab === id ? `${T.grad} text-slate-900` : 'bg-[#1A2126] text-slate-300 hover:text-white border border-[#2A353D]'}`}>{label}</button>)}
       </div>
 
       {subTab === 'dashboard' && <div className="grid lg:grid-cols-2 gap-4">
