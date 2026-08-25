@@ -1546,11 +1546,13 @@ const handleOfferSwap = async (shift) => {
       </Modal>
 
       <div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-2 border-b border-[#2A353D] mb-4 pb-2">
-        {['my-schedule', 'full-schedule', 'month-view', 'time-off', 'availability', ...((appUser?.isAdmin || appUser?.permissions?.schedule) && scheduleBuilderProps ? ['schedule-builder'] : [])].map((tab) => (
-          <button key={tab} onClick={() => setSubTab(tab)} className={`px-2 sm:px-4 py-2 text-[10px] sm:text-xs font-black rounded-xl uppercase tracking-widest transition-all sm:flex-1 ${subTab === tab ? `${T.grad} text-slate-900 shadow-md` : 'bg-[#1A2126] text-slate-400 hover:text-white'}`}>
-            {tab === 'time-off' ? 'Request Off' : tab === 'availability' ? 'Availability' : tab.replace('-', ' ')}
+        {['my-schedule', 'full-schedule', 'month-view', 'trade-board', 'time-off', 'availability', ...((appUser?.isAdmin || appUser?.permissions?.schedule) && scheduleBuilderProps ? ['schedule-builder'] : [])].map((tab) => {
+          const label = tab === 'time-off' ? 'Request Off' : tab === 'availability' ? 'Availability' : tab === 'trade-board' ? 'Trade Board' : tab === 'schedule-builder' ? 'Schedule Builder' : tab.replace('-', ' ');
+          return (
+          <button key={tab} type="button" aria-label={label} title={label} onClick={() => setSubTab(tab)} className={`px-2 sm:px-4 py-2 text-[10px] sm:text-xs font-black rounded-xl uppercase tracking-widest transition-all sm:flex-1 ${subTab === tab ? `${T.grad} text-slate-900 shadow-md` : 'bg-[#1A2126] text-slate-400 hover:text-white'}`}>
+            {label}
           </button>
-        ))}
+        );})}
       </div>
 
       {subTab === 'schedule-builder' && scheduleBuilderProps && (
@@ -3947,7 +3949,7 @@ const handleExportTimesheets = () => {
 {/* TOP NAVIGATION TOGGLE */}
       {!hideSubTabs && (
         <div className="flex flex-wrap gap-1.5 border-b border-[#2A353D] pb-2 mb-2">
-          <button onClick={() => setSubTab('schedule')} className={`px-3 py-1.5 text-[10px] sm:text-xs font-black rounded-lg uppercase tracking-widest transition-all ${subTab === 'schedule' ? `${T.grad} text-slate-900 shadow-md` : 'bg-[#1A2126] text-slate-400 hover:text-white'}`}>Schedule Builder</button>
+          <button type="button" aria-label="Schedule Builder" title="Schedule Builder" onClick={() => setSubTab('schedule')} className={`px-3 py-1.5 text-[10px] sm:text-xs font-black rounded-lg uppercase tracking-widest transition-all ${subTab === 'schedule' ? `${T.grad} text-slate-900 shadow-md` : 'bg-[#1A2126] text-slate-400 hover:text-white'}`}>Schedule Builder</button>
           <span className="text-[10px] font-bold text-slate-500 self-center">Labor and punch editing moved to the Labor tab.</span>
         </div>
       )}
@@ -5550,6 +5552,11 @@ const ScheduleCopilot = ({ currentDate, users = [], shifts = [], timeOffRequests
     } catch (err) { addToast('Error', err.message); }
   };
 
+  const openCopilotTool = (toolId = 'targets') => {
+    setActiveTool(toolId);
+    setOpen(true);
+  };
+
   if (!open) return (
     <div className={`${T.card} schedule-copilot-launcher p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-[#D4A381]/30`}>
       <div className="min-w-0">
@@ -5557,7 +5564,11 @@ const ScheduleCopilot = ({ currentDate, users = [], shifts = [], timeOffRequests
         <div className="text-sm font-black text-white mt-0.5">{draftCount} drafts ready</div>
         <div className="text-xs text-slate-400 font-bold mt-0.5">{formatDisplayDate(weekStart)} through {formatDisplayDate(weekEnd)} • Open Copilot Tools for coverage targets, warnings & templates.</div>
       </div>
-      <button onClick={() => setOpen(true)} className={`${T.btnAlt} flex items-center justify-center gap-2 flex-shrink-0`}><ChefHat size={16}/> Open Copilot Tools</button>
+      <div className="flex flex-wrap sm:justify-end gap-1.5 flex-shrink-0">
+        <button type="button" aria-label="Open Copilot Tools" title="Open Copilot Tools" onClick={() => openCopilotTool('targets')} className={`${T.btnAlt} flex items-center justify-center gap-2`}><ChefHat size={16}/> Open Copilot Tools</button>
+        <button type="button" aria-label={editingTemplateId ? 'Edit Template' : 'Create Template'} title={editingTemplateId ? 'Edit Template' : 'Create Template'} onClick={() => openCopilotTool('template-editor')} className={T.btnAlt}>{editingTemplateId ? 'Edit Template' : 'Create Template'}</button>
+        <button type="button" aria-label="Drag Board" title="Drag Board" onClick={() => openCopilotTool('drag')} className={T.btnAlt}>Drag Board</button>
+      </div>
     </div>
   );
 

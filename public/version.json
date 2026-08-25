@@ -1,17 +1,18 @@
 {
-  "version": "16.0.197",
-  "name": "86 Chaos 16.0.197",
-  "build": "16.0.197",
-  "label": "86 Chaos 16.0.197",
-  "releasedAt": "2026-08-24T16:17:00-05:00",
-  "releaseTitle": "Failed-Only Browser Gate Final Form/Surface Repair",
+  "version": "16.0.198",
+  "name": "86 Chaos 16.0.198",
+  "build": "16.0.198",
+  "label": "86 Chaos 16.0.198",
+  "releasedAt": "2026-08-25T11:15:00-05:00",
+  "releaseTitle": "Actual Failed-Only Browser Gate App Fixes",
   "notes": [
-    "Failed-only gate repair: Document Vault now remains passed; remaining 28/31/32 blockers are addressed with stable form-control descriptors and full mobile/admin control labels.",
-    "Correct the Document Vault path-guard source evidence so the failed-only vault workflow recognizes the existing scoped storage validation.",
-    "Repair exhaustive state-control discovery for current Open-labeled controls and delayed nested surfaces without removing coverage.",
-    "Repair generic mutation actionability probing so modal/global controls do not block unrelated control trial checks."
+    "Inventory PAR, pending delivery, and order quantity fields now keep typed decimal values locally while Firestore writes complete, preventing live snapshots from snapping the field back mid-edit.",
+    "Inventory order and pending-delivery quantities no longer truncate decimals with parseInt; fractional cases or units can be entered and restored.",
+    "Schedule Builder exposes direct Create Template/Edit Template and Drag Board launcher controls so those real Copilot surfaces are reachable before the tools panel is already open.",
+    "Time Clock & Schedule includes Trade Board in the persistent subtab bar instead of only as a dashboard card.",
+    "Back Office nested navigation wraps instead of hiding QuickBooks off-canvas, and Prep keeps a clear accessible prep control name while retaining the visible Food Prep label."
   ],
-  "title": "86 Chaos 16.0.197",
-  "summary": "Repairs the remaining failed-only browser-gate blockers after 16.0.196: stable form probing for QuickBooks mapping fields and full accessible labels for nested admin/schedule controls.",
-  "description": "Surgical release-gate repair for Document Vault source evidence and exhaustive test-harness state/control probing; no Firebase or dependency changes."
+  "title": "86 Chaos 16.0.198",
+  "summary": "Fixes the actual app behaviors behind the remaining failed-only browser gate failures: decimal inventory quantity editing and consistently reachable nested schedule, published schedule, Back Office, and Prep surfaces.",
+  "description": "Surgical app-source repair for the five remaining failed-only 28/31/32 browser-gate failures; no Firebase, dependency, or rule changes."
 }

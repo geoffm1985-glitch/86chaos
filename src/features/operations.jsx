@@ -393,11 +393,14 @@ const TabPrep = ({ currentDate, appUser, addToast, setLabelsToPrint }) => {
       </Modal>
 
       <div className="flex flex-wrap gap-2 border-b border-[#2A353D] mb-4 pb-2">
-        {['prep', 'line-check', 'daily', 'weekly', 'monthly'].map((tab) => (
-          <button key={tab} onClick={() => { setSubTab(tab); if(tab !== 'prep' && tab !== 'line-check') setTaskFreq(tab); }} className={`px-3 sm:px-5 py-2.5 text-[10px] sm:text-xs font-black rounded-xl uppercase tracking-widest transition-all flex-1 sm:flex-none ${subTab === tab ? `${T.grad} text-slate-900 shadow-md` : 'bg-[#1A2126] text-slate-400 hover:text-white'}`}>
-            {tab === 'prep' ? 'Food Prep' : tab === 'line-check' ? 'Line Check' : `${tab} Tasks`}
+        {['prep', 'line-check', 'daily', 'weekly', 'monthly'].map((tab) => {
+          const label = tab === 'prep' ? 'Food Prep' : tab === 'line-check' ? 'Line Check' : `${tab} Tasks`;
+          const stateLabel = tab === 'prep' ? 'prep' : tab === 'line-check' ? 'line check' : tab;
+          return (
+          <button key={tab} type="button" aria-label={stateLabel} title={label} onClick={() => { setSubTab(tab); if(tab !== 'prep' && tab !== 'line-check') setTaskFreq(tab); }} className={`px-3 sm:px-5 py-2.5 text-[10px] sm:text-xs font-black rounded-xl uppercase tracking-widest transition-all flex-1 sm:flex-none ${subTab === tab ? `${T.grad} text-slate-900 shadow-md` : 'bg-[#1A2126] text-slate-400 hover:text-white'}`}>
+            {label}
           </button>
-        ))}
+        );})}
       </div>
 
       {subTab === 'line-check' && (

@@ -12353,7 +12353,7 @@ const TabBackOffice = ({ currentDate, users = [], sales = [], timePunches = [], 
         <MetricBox label="QB Ready" value={`${qbCloseReadiness}%`} helper="Phase 3 close readiness" tone={qbCloseReadiness >= 85 ? 'text-emerald-400' : 'text-orange-300'} />
       </div>
 
-      <div className="flex gap-2 overflow-x-auto pb-2 border-b border-[#2A353D] custom-scrollbar">
+      <div className="flex flex-wrap gap-2 pb-2 border-b border-[#2A353D]">
         {[["dashboard","Dashboard"],["deposits","Deposit Log"],["approvals","Approval Queue"],["documents","Document Vault"],["reports","Owner Reports"],["quickbooks","QuickBooks"],["accountant-packet","Accountant Packet"],["owner-rollup","Owner Rollup"]].map(([id,label]) => <button key={id} type="button" aria-label={label} title={label} onClick={() => setSubTab(id)} className={`px-4 py-3 rounded-xl text-xs uppercase tracking-widest font-black whitespace-nowrap ${subTab === id ? `${T.grad} text-slate-900` : 'bg-[#1A2126] text-slate-300 hover:text-white border border-[#2A353D]'}`}>{label}</button>)}
       </div>
 
