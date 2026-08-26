@@ -1,18 +1,18 @@
 {
-  "version": "16.0.198",
-  "name": "86 Chaos 16.0.198",
-  "build": "16.0.198",
-  "label": "86 Chaos 16.0.198",
-  "releasedAt": "2026-08-25T11:15:00-05:00",
-  "releaseTitle": "Actual Failed-Only Browser Gate App Fixes",
+  "version": "16.0.199",
+  "name": "86 Chaos 16.0.199",
+  "build": "16.0.199",
+  "label": "86 Chaos 16.0.199",
+  "releasedAt": "2026-08-25T20:51:00-05:00",
+  "releaseTitle": "Remaining Failed-Only Browser Gate Blocker Repair",
   "notes": [
-    "Inventory PAR, pending delivery, and order quantity fields now keep typed decimal values locally while Firestore writes complete, preventing live snapshots from snapping the field back mid-edit.",
-    "Inventory order and pending-delivery quantities no longer truncate decimals with parseInt; fractional cases or units can be entered and restored.",
-    "Schedule Builder exposes direct Create Template/Edit Template and Drag Board launcher controls so those real Copilot surfaces are reachable before the tools panel is already open.",
-    "Time Clock & Schedule includes Trade Board in the persistent subtab bar instead of only as a dashboard card.",
-    "Back Office nested navigation wraps instead of hiding QuickBooks off-canvas, and Prep keeps a clear accessible prep control name while retaining the visible Food Prep label."
+    "deterministic exhaustive form probing for color controls",
+    "exhaustive nested-state discovery correction",
+    "Schedule Copilot state-order correction",
+    "mobile Preventative Maintenance tap-target correction",
+    "failed-only baseline updated to the five remaining blockers"
   ],
-  "title": "86 Chaos 16.0.198",
+  "title": "86 Chaos 16.0.199",
   "summary": "Fixes the actual app behaviors behind the remaining failed-only browser gate failures: decimal inventory quantity editing and consistently reachable nested schedule, published schedule, Back Office, and Prep surfaces.",
   "description": "Surgical app-source repair for the five remaining failed-only 28/31/32 browser-gate failures; no Firebase, dependency, or rule changes."
 }

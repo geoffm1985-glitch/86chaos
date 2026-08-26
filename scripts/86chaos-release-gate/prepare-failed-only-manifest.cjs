@@ -218,6 +218,40 @@ function loadBundledLatestFailedOnlyFallback() {
 }
 
 
+function loadBundledFiveFailureFailedOnlyFallback() {
+  const manifestPath = path.join(__dirname, 'reported-failed-only-20260825-125909.json');
+  const manifest = readJsonIfExists(manifestPath);
+  if (!manifest || !Array.isArray(manifest.selected)) {
+    throw new Error(`Bundled 20260825-125909 failed-only fallback is missing or malformed: ${manifestPath}`);
+  }
+  const selected = manifest.selected || [];
+  const counts = countReportedRows(selected);
+  const failures = selected.filter(row => String(row.priorStatus || '').toLowerCase() === 'failed').length;
+  const timeouts = selected.filter(row => ['timedout', 'timeout'].includes(String(row.priorStatus || '').toLowerCase())).length;
+  const passes = selected.filter(row => String(row.priorStatus || '').toLowerCase() === 'passed').length;
+  const skips = selected.filter(row => String(row.priorStatus || '').toLowerCase() === 'skipped').length;
+  const notRun = selected.filter(row => ['notrun', 'not_run', 'not-run'].includes(String(row.priorStatus || '').toLowerCase())).length;
+  const errors = [];
+  if (counts.total !== 5 || counts.chromium !== 3 || counts.mobileChromium !== 2) {
+    errors.push(`Five-failure bundled fallback must contain exactly 5 identities (chromium 3, mobile-chromium 2); got ${counts.total}/${counts.chromium}/${counts.mobileChromium}.`);
+  }
+  if (failures !== 5 || timeouts !== 0 || passes !== 0 || skips !== 0 || notRun !== 0) {
+    errors.push(`Five-failure bundled fallback must contain exactly 5 FAIL, 0 TIMEOUT, 0 PASS, 0 SKIP, and 0 NOT-RUN identities; got ${failures}/${timeouts}/${passes}/${skips}/${notRun}.`);
+  }
+  if (counts.otherProjects.length) errors.push(`Five-failure bundled fallback contains unexpected projects: ${counts.otherProjects.join(', ')}.`);
+  if (counts.duplicates) errors.push(`Five-failure bundled fallback contains ${counts.duplicates} duplicate identities.`);
+  if (errors.length) throw new Error(errors.join('\n'));
+  const qualified = qualifyManifestSelectionsWithCurrentInventory(manifest, {
+    root: process.cwd(),
+    currentRecords: loadCurrentRecords(),
+    allowStaticFallback: true,
+  });
+  qualified.lineageMode = 'focused';
+  qualified.selectionSource = 'bundled-latest-failed-only-20260825-125909-fail-only';
+  return qualified;
+}
+
+
 function loadBundledCurrentFailedOnlyFallback() {
   const manifestPath = path.join(__dirname, 'reported-failed-only-20260824-002634.json');
   const manifest = readJsonIfExists(manifestPath);
@@ -293,12 +327,16 @@ try {
     });
   }
 } catch (error) {
-  if (selectionMode === 'failed-only' && /No completed full release-gate run|No completed full release-gate run or completed focused/i.test(error?.message || '')) {
+  if (selectionMode === 'failed-only' && /No completed full release-gate run|No completed full release-gate run or completed focused|Focused lineage source run directory is missing/i.test(error?.message || '')) {
     let manifest;
     try {
-      manifest = loadBundledCurrentFailedOnlyFallback();
+      manifest = loadBundledFiveFailureFailedOnlyFallback();
     } catch (_) {
-      manifest = loadBundledLatestFailedOnlyFallback();
+      try {
+        manifest = loadBundledCurrentFailedOnlyFallback();
+      } catch (__) {
+        manifest = loadBundledLatestFailedOnlyFallback();
+      }
     }
     selectedSource = {
       manifest,

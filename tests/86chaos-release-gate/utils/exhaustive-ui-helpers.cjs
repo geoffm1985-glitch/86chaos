@@ -17,7 +17,7 @@ function rx(value) {
   return new RegExp(`^${String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i');
 }
 
-const STATE_INTERACTIVE_SELECTOR = 'button:visible, a:visible, [role="button"]:visible, [role="tab"]:visible, [role="menuitem"]:visible';
+const STATE_INTERACTIVE_SELECTOR = 'button, a, [role="button"], [role="tab"], [role="menuitem"]';
 const normalizeStateLabelText = (value = '') => String(value || '').replace(/\s+/g, ' ').trim();
 const stripOpenPrefix = (value = '') => normalizeStateLabelText(value).replace(/^Open\s+/i, '').trim();
 
@@ -44,13 +44,18 @@ async function stateControlIndexes(page, label) {
   return page.locator(STATE_INTERACTIVE_SELECTOR).evaluateAll((els, matcher) => {
     const normalize = value => String(value || '').replace(/\s+/g, ' ').trim();
     const stripOpen = value => normalize(value).replace(/^Open\s+/i, '').trim();
+    const isActuallyHidden = el => {
+      if (!el || el.hidden || el.getAttribute('aria-hidden') === 'true') return true;
+      const style = window.getComputedStyle(el);
+      return style.visibility === 'hidden' || style.display === 'none';
+    };
     const textFor = el => {
       const ids = (el.getAttribute('aria-labelledby') || '').split(/\s+/).filter(Boolean);
       const labelled = ids.map(id => document.getElementById(id)?.textContent || '').join(' ');
       const aria = el.getAttribute('aria-label') || '';
       const title = el.getAttribute('title') || '';
       const own = el.innerText || el.textContent || '';
-      return [own, aria, title, labelled].map(normalize).filter(Boolean);
+      return [aria, title, labelled, own].map(normalize).filter(Boolean);
     };
     const matches = value => {
       const normalized = normalize(value);
@@ -65,11 +70,7 @@ async function stateControlIndexes(page, label) {
       return lower === wanted || stripOpen(lower).toLowerCase() === wanted;
     };
     return els.map((el, index) => ({ el, index }))
-      .filter(({ el }) => {
-        const rect = el.getBoundingClientRect();
-        const style = window.getComputedStyle(el);
-        return rect.width > 0 && rect.height > 0 && style.visibility !== 'hidden' && style.display !== 'none';
-      })
+      .filter(({ el }) => !isActuallyHidden(el))
       .filter(({ el }) => textFor(el).some(matches))
       .map(({ index }) => index);
   }, matcherSource).catch(() => []);
@@ -108,15 +109,51 @@ async function waitForStateControl(page, label, { timeout = 6500 } = {}) {
 }
 
 async function stateLabelAlreadyVisible(page, label) {
-  const text = await bodyText(page, 30000).catch(() => '');
-  if (!text) return false;
-  if (label instanceof RegExp) {
-    return label.test(text) || label.test(text.replace(/\bOpen\s+/ig, ''));
-  }
-  const escaped = String(label || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const lineRe = new RegExp(`(?:^|\\n)\\s*(?:Open\\s+)?${escaped}\\s*(?:\\n|$)`, 'i');
-  return lineRe.test(text) || new RegExp(`\\b(?:Open\\s+)?${escaped}\\b`, 'i').test(text);
+  const matcherSource = label instanceof RegExp
+    ? { type: 'regex', source: label.source, flags: label.flags }
+    : { type: 'string', value: String(label || '') };
+  return page.locator('[role="tab"], [role="button"], button, a, [aria-selected="true"], [aria-current], h1, h2, h3, h4, h5, h6, [data-chaos-current-state], [data-state="active"], .active').evaluateAll((els, matcher) => {
+    const normalize = value => String(value || '').replace(/\s+/g, ' ').trim();
+    const stripOpen = value => normalize(value).replace(/^Open\s+/i, '').trim();
+    const visible = el => {
+      if (!el || el.hidden || el.getAttribute('aria-hidden') === 'true') return false;
+      const style = window.getComputedStyle(el);
+      const rect = el.getBoundingClientRect();
+      return style.visibility !== 'hidden' && style.display !== 'none' && rect.width > 0 && rect.height > 0;
+    };
+    const textFor = el => {
+      const ids = (el.getAttribute('aria-labelledby') || '').split(/\s+/).filter(Boolean);
+      const labelled = ids.map(id => document.getElementById(id)?.textContent || '').join(' ');
+      const aria = el.getAttribute('aria-label') || '';
+      const title = el.getAttribute('title') || '';
+      const own = el.innerText || el.textContent || '';
+      return [aria, title, labelled, own].map(normalize).filter(Boolean);
+    };
+    const matches = value => {
+      const normalized = normalize(value);
+      if (!normalized) return false;
+      if (matcher.type === 'regex') {
+        const flags = matcher.flags && matcher.flags.includes('i') ? matcher.flags : `${matcher.flags || ''}i`;
+        const re = new RegExp(matcher.source, flags);
+        return re.test(normalized) || re.test(stripOpen(normalized));
+      }
+      const wanted = normalize(matcher.value).toLowerCase();
+      const lower = normalized.toLowerCase();
+      return lower === wanted || stripOpen(lower).toLowerCase() === wanted;
+    };
+    return els.some(el => {
+      if (!visible(el) || !textFor(el).some(matches)) return false;
+      const tag = el.tagName.toLowerCase();
+      const selected = el.getAttribute('aria-selected') === 'true';
+      const current = Boolean(el.getAttribute('aria-current'));
+      const active = el.getAttribute('data-chaos-current-state') === 'true'
+        || el.getAttribute('data-state') === 'active'
+        || /(^|\s)(active|is-active|selected)(\s|$)/i.test(el.className || '');
+      return selected || current || active || /^h[1-6]$/.test(tag);
+    });
+  }, matcherSource).catch(() => false);
 }
+
 
 
 async function applyStatePath(page, path, { strict = true } = {}) {
@@ -216,15 +253,18 @@ function formControlSelectorFor(row = {}) {
 }
 
 function locatorFromFormDescriptor(page, row = {}) {
+  if (row.testId) return page.getByTestId(row.testId).first();
+  if (row.id) return page.locator(`#${String(row.id).replace(/(["\\#.:[\],=])/g, '\\$1')}`).first();
   const selector = formControlSelectorFor(row);
+  if (selector) return page.locator(selector).nth(Number(row.selectorOrdinal || 0));
   if (row.label) {
     const escaped = String(row.label).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const exactName = new RegExp(`^${escaped}$`, 'i');
-    const byLabel = page.getByLabel(exactName).first();
-    return byLabel.or(page.locator(selector).first()).first();
+    return page.getByLabel(exactName).first();
   }
-  return page.locator(selector).nth(Number(row.index || 0));
+  return page.locator('input:visible, textarea:visible, select:visible, [contenteditable="true"]:visible').nth(Number(row.index || 0));
 }
+
 
 async function forceRestoreFormValue(locator, value) {
   return locator.evaluate((node, nextValue) => {
@@ -292,19 +332,31 @@ async function probeFormControls(page, controls, evidence, { allowValueMutation 
       const parent = node.closest('label')?.textContent || '';
       return normalize(aria || explicit || parent || node.getAttribute('name') || `field-${index}`).slice(0,220);
     };
-    return els.map((node, index) => ({
-      index,
-      tag: node.tagName.toLowerCase(),
-      type: node.getAttribute('type') || '',
-      name: node.getAttribute('name') || '',
-      id: node.id || '',
-      testId: node.getAttribute('data-testid') || '',
-      placeholder: node.getAttribute('placeholder') || '',
-      label: labelFor(node, index),
-      disabled: Boolean(node.disabled || node.getAttribute('aria-disabled') === 'true'),
-      readOnly: Boolean(node.readOnly || node.getAttribute('readonly') !== null),
-      value: 'value' in node ? String(node.value || '') : ''
-    }));
+    const counts = new Map();
+    return els.map((node, index) => {
+      const tag = node.tagName.toLowerCase();
+      const type = node.getAttribute('type') || '';
+      const name = node.getAttribute('name') || '';
+      const placeholder = node.getAttribute('placeholder') || '';
+      const structuralKey = [tag, type, name, placeholder].join('|');
+      const selectorOrdinal = counts.get(structuralKey) || 0;
+      counts.set(structuralKey, selectorOrdinal + 1);
+      return {
+        index,
+        tag,
+        type,
+        name,
+        id: node.id || '',
+        testId: node.getAttribute('data-testid') || '',
+        placeholder,
+        structuralKey,
+        selectorOrdinal,
+        label: labelFor(node, index),
+        disabled: Boolean(node.disabled || node.getAttribute('aria-disabled') === 'true'),
+        readOnly: Boolean(node.readOnly || node.getAttribute('readonly') !== null),
+        value: 'value' in node ? String(node.value || '') : ''
+      };
+    });
   }).catch(() => []);
 
   for (const row of descriptors.slice(0, 220)) {
@@ -324,6 +376,7 @@ async function probeFormControls(page, controls, evidence, { allowValueMutation 
     }
     let sample = '86chaos-test';
     if (type === 'number') sample = '7.25';
+    else if (type === 'color') sample = '#123456';
     else if (type === 'date') sample = '2030-01-15';
     else if (type === 'month') sample = '2030-01';
     else if (type === 'time') sample = '12:34';

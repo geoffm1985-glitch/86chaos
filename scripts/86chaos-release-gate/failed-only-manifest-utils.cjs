@@ -887,7 +887,9 @@ function validateManifestForCurrentRun(manifest, options = {}) {
   } else if (baselineMode === 'focused') {
     const focusedDir = manifest?.previousFailedOnlyRunDir || '';
     const isBundledFocusedFallback = String(manifest?.selectionSource || '') === 'bundled-latest-failed-only-20260823-183916-fail-only'
-      || String(manifest?.source || '') === 'uploaded-failed-only-20260823-183916';
+      || String(manifest?.selectionSource || '') === 'bundled-latest-failed-only-20260825-125909-fail-only'
+      || String(manifest?.source || '') === 'uploaded-failed-only-20260823-183916'
+      || String(manifest?.source || '') === 'authoritative-failed-only-run-20260825-125909';
     if (!focusedDir && isBundledFocusedFallback) {
       const sourceVersion = manifest?.previousFailedOnlySourceVersion || '';
       const deployedVersion = manifest?.previousFailedOnlyDeployedVersion || '';

@@ -6,6 +6,7 @@ const ROUTE_STATES = {
   ops: [],
   schedule: [
     ['Schedule Builder'],
+    ['Schedule Builder', 'Open Copilot Tools'],
     ['Schedule Builder', 'Coverage'],
     ['Schedule Builder', 'Templates'],
     ['Schedule Builder', /Create Template|Edit Template/i],
@@ -14,7 +15,6 @@ const ROUTE_STATES = {
     ['Schedule Builder', 'Edit Presets'],
     ['Schedule Builder', 'Auto-Fill'],
     ['Schedule Builder', /^Event$/i],
-    ['Schedule Builder', 'Open Copilot Tools'],
   ],
   published: [
     ['My Schedule'],
