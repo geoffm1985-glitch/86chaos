@@ -1,18 +1,17 @@
 {
-  "version": "16.0.199",
-  "name": "86 Chaos 16.0.199",
-  "build": "16.0.199",
-  "label": "86 Chaos 16.0.199",
-  "releasedAt": "2026-08-25T20:51:00-05:00",
-  "releaseTitle": "Remaining Failed-Only Browser Gate Blocker Repair",
+  "version": "16.0.200",
+  "name": "86 Chaos 16.0.200",
+  "build": "16.0.200",
+  "label": "86 Chaos 16.0.200",
+  "releasedAt": "2026-08-26T12:23:00-05:00",
+  "releaseTitle": "Runner Target Auto-Resolve and Remaining Surface Reachability Repair",
   "notes": [
-    "deterministic exhaustive form probing for color controls",
-    "exhaustive nested-state discovery correction",
-    "Schedule Copilot state-order correction",
-    "mobile Preventative Maintenance tap-target correction",
-    "failed-only baseline updated to the five remaining blockers"
+    "Auto-resolve stale release-gate process URL/version variables to the intended testing target.",
+    "Treat an already-open Schedule Copilot panel as structural evidence for Open Copilot Tools.",
+    "Expose deterministic current-state metadata for Schedule Copilot and Back Office nested tabs.",
+    "Keep failed-only browser selection narrowed to the five remaining blockers."
   ],
-  "title": "86 Chaos 16.0.199",
+  "title": "86 Chaos 16.0.200",
   "summary": "Fixes the actual app behaviors behind the remaining failed-only browser gate failures: decimal inventory quantity editing and consistently reachable nested schedule, published schedule, Back Office, and Prep surfaces.",
   "description": "Surgical app-source repair for the five remaining failed-only 28/31/32 browser-gate failures; no Firebase, dependency, or rule changes."
 }

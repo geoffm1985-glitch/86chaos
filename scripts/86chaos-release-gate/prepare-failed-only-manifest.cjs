@@ -219,10 +219,10 @@ function loadBundledLatestFailedOnlyFallback() {
 
 
 function loadBundledFiveFailureFailedOnlyFallback() {
-  const manifestPath = path.join(__dirname, 'reported-failed-only-20260825-125909.json');
+  const manifestPath = path.join(__dirname, 'reported-failed-only-20260825-230842.json');
   const manifest = readJsonIfExists(manifestPath);
   if (!manifest || !Array.isArray(manifest.selected)) {
-    throw new Error(`Bundled 20260825-125909 failed-only fallback is missing or malformed: ${manifestPath}`);
+    throw new Error(`Bundled 20260825-230842 failed-only fallback is missing or malformed: ${manifestPath}`);
   }
   const selected = manifest.selected || [];
   const counts = countReportedRows(selected);
@@ -235,8 +235,8 @@ function loadBundledFiveFailureFailedOnlyFallback() {
   if (counts.total !== 5 || counts.chromium !== 3 || counts.mobileChromium !== 2) {
     errors.push(`Five-failure bundled fallback must contain exactly 5 identities (chromium 3, mobile-chromium 2); got ${counts.total}/${counts.chromium}/${counts.mobileChromium}.`);
   }
-  if (failures !== 5 || timeouts !== 0 || passes !== 0 || skips !== 0 || notRun !== 0) {
-    errors.push(`Five-failure bundled fallback must contain exactly 5 FAIL, 0 TIMEOUT, 0 PASS, 0 SKIP, and 0 NOT-RUN identities; got ${failures}/${timeouts}/${passes}/${skips}/${notRun}.`);
+  if (failures !== 4 || timeouts !== 1 || passes !== 0 || skips !== 0 || notRun !== 0) {
+    errors.push(`Five-identity bundled fallback must contain exactly 4 FAIL, 1 TIMEOUT, 0 PASS, 0 SKIP, and 0 NOT-RUN identities; got ${failures}/${timeouts}/${passes}/${skips}/${notRun}.`);
   }
   if (counts.otherProjects.length) errors.push(`Five-failure bundled fallback contains unexpected projects: ${counts.otherProjects.join(', ')}.`);
   if (counts.duplicates) errors.push(`Five-failure bundled fallback contains ${counts.duplicates} duplicate identities.`);
@@ -247,7 +247,7 @@ function loadBundledFiveFailureFailedOnlyFallback() {
     allowStaticFallback: true,
   });
   qualified.lineageMode = 'focused';
-  qualified.selectionSource = 'bundled-latest-failed-only-20260825-125909-fail-only';
+  qualified.selectionSource = 'bundled-latest-failed-only-20260825-230842-fail-and-timeout';
   return qualified;
 }
 

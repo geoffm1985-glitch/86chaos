@@ -20,6 +20,8 @@ function rx(value) {
 const STATE_INTERACTIVE_SELECTOR = 'button, a, [role="button"], [role="tab"], [role="menuitem"]';
 const normalizeStateLabelText = (value = '') => String(value || '').replace(/\s+/g, ' ').trim();
 const stripOpenPrefix = (value = '') => normalizeStateLabelText(value).replace(/^Open\s+/i, '').trim();
+const cssString = (value = '') => String(value || '').replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+
 
 function stringStateMatcher(label) {
   const wanted = normalizeStateLabelText(label).toLowerCase();
@@ -83,16 +85,37 @@ async function findStateControl(page, label) {
   if (label instanceof RegExp) {
     for (const role of ['tab', 'button', 'link', 'menuitem']) {
       const direct = page.getByRole(role, { name: label }).first();
-      if (await direct.isVisible({ timeout: 250 }).catch(() => false)) return direct;
+      if (await direct.count().catch(() => 0)) {
+        await direct.scrollIntoViewIfNeeded().catch(() => {});
+        if (await direct.isVisible({ timeout: 350 }).catch(() => false)) return direct;
+      }
     }
     return null;
   }
 
-  const escaped = String(label).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const raw = String(label || '');
+  const escaped = raw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   const accessibleName = new RegExp(`^(?:Open\\s+)?${escaped}$`, 'i');
+  const exactSelector = [
+    `button[aria-label="${cssString(raw)}"]`,
+    `button[title="${cssString(raw)}"]`,
+    `[role="button"][aria-label="${cssString(raw)}"]`,
+    `[role="tab"][aria-label="${cssString(raw)}"]`,
+    `[role="menuitem"][aria-label="${cssString(raw)}"]`,
+    `a[aria-label="${cssString(raw)}"]`,
+    `a[title="${cssString(raw)}"]`,
+  ].join(', ');
+  const structural = page.locator(exactSelector).first();
+  if (await structural.count().catch(() => 0)) {
+    await structural.scrollIntoViewIfNeeded().catch(() => {});
+    if (await structural.isVisible({ timeout: 500 }).catch(() => false)) return structural;
+  }
   for (const role of ['tab', 'button', 'link', 'menuitem']) {
     const candidate = page.getByRole(role, { name: accessibleName }).first();
-    if (await candidate.isVisible({ timeout: 250 }).catch(() => false)) return candidate;
+    if (await candidate.count().catch(() => 0)) {
+      await candidate.scrollIntoViewIfNeeded().catch(() => {});
+      if (await candidate.isVisible({ timeout: 350 }).catch(() => false)) return candidate;
+    }
   }
   return null;
 }

@@ -33,7 +33,8 @@ const nodeTests = [
   'api/failed-only-runner-launch-16-0-194.test.cjs',
   'api/public-icon-assets-16-0-195.test.cjs',
   'api/failed-only-browser-gate-16-0-196.test.cjs',
-  'api/failed-only-browser-gate-16-0-199.test.cjs'
+  'api/failed-only-browser-gate-16-0-199.test.cjs',
+  'api/failed-only-browser-gate-16-0-200.test.cjs'
 ];
 const jestTests = [
   'src/core/scheduleQueryPlanner.test.js'
