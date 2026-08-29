@@ -4,7 +4,7 @@ const PRESENCE_SUMMARY_TIMEOUT_MS = Math.max(500, Math.min(parseInt(process.env.
 function withTimeout(promise, ms, label = 'operation') {
   let timer = null;
   const timeout = new Promise((_, reject) => {
-    timer = setTimeout(() => reject(Object.assign(new Error(`${label} timed out`), { code: 'presence-summary-timeout', status: 504 })), ms);
+    timer = setTimeout(() => reject(Object.assign(new Error(`${label} timed out`), { code: 'presence-summary-timeout', retryable: true })), ms);
   });
   return Promise.race([promise, timeout]).finally(() => { if (timer) clearTimeout(timer); });
 }
@@ -60,9 +60,10 @@ function publicRow(userId, restaurantId, row = {}) {
 
 module.exports = async (req, res) => {
   if (req.method !== 'GET') return res.status(405).json({ ok: false, error: 'Method not allowed.' });
+  let restaurantId = '';
   try {
     const app = initAdmin(req);
-    const restaurantId = clean(req.query?.restaurantId || '');
+    restaurantId = clean(req.query?.restaurantId || '');
     const ctx = await authorize(req, app, { allowTenantAdmin: true, targetRestaurantId: restaurantId });
     if (!ctx.ok) return res.status(ctx.status || 403).json({ ok: false, error: ctx.error });
     if (!restaurantId || restaurantId !== ctx.restaurantId) return res.status(403).json({ ok: false, error: 'Workspace mismatch.' });
@@ -78,8 +79,23 @@ module.exports = async (req, res) => {
 
     return res.status(200).json({ ok: true, source: 'rtdb-statusSummary-api', restaurantId, fetchedAt: new Date().toISOString(), count: users.length, users });
   } catch (err) {
+    if (err?.code === 'presence-summary-timeout') {
+      console.warn('Workspace presence summary degraded:', err?.message || err);
+      return res.status(200).json({
+        ok: false,
+        degraded: true,
+        retryable: true,
+        code: 'presence-summary-timeout',
+        source: 'rtdb-statusSummary-api',
+        restaurantId,
+        fetchedAt: new Date().toISOString(),
+        count: 0,
+        users: [],
+        error: 'Workspace presence summary temporarily unavailable.'
+      });
+    }
     console.error('Workspace presence summary failed:', err);
-    const status = err?.status || (err?.code === 'presence-summary-timeout' ? 504 : 500);
+    const status = err?.status || 500;
     return res.status(status).json({ ok: false, code: err?.code || 'presence-summary-failed', retryable: true, error: err.message || 'Workspace presence summary failed.' });
   }
 };

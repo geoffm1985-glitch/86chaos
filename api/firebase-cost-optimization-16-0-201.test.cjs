@@ -56,12 +56,16 @@ test('16.0.201 custom shift mutations do not reread full collection and skip no-
   assert.equal((api.match(/dedupePresets\(await readRows\(db, restaurantId\)\)/g) || []).length, 2, 'readRows is limited to GET/list and merge pre-dedupe, not post-mutation refreshes');
 });
 
-test('16.0.201 presence summary times out internally and client keeps last-known-good rows', () => {
+test('16.0.201 presence summary times out internally, fails soft, and client keeps last-known-good rows', () => {
   const api = read('api/presence-workspace-summary.js');
   const app = read('src/App.js');
   assert.match(api, /PRESENCE_SUMMARY_TIMEOUT_MS/);
   assert.match(api, /withTimeout\(ctx\.app\.database\(\)\.ref\(`statusSummary/);
-  assert.match(api, /status = err\?\.status \|\| \(err\?\.code === 'presence-summary-timeout' \? 504 : 500\)/);
+  assert.match(api, /code: 'presence-summary-timeout'/);
+  assert.match(api, /res\.status\(200\)\.json\(\{/);
+  assert.match(api, /degraded: true/);
+  assert.match(api, /retryable: true/);
+  assert.doesNotMatch(api, /presence-summary-timeout' \? 504 : 500/);
   assert.match(app, /keeping last-known-good summary/);
   assert.doesNotMatch(app, /Workspace presence summary unavailable:[\s\S]{0,160}setWorkspacePresenceRecords\(\[\]\)/);
 });

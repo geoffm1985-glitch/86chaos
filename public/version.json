@@ -1,19 +1,17 @@
 {
-  "version": "16.0.201",
-  "name": "86 Chaos 16.0.200",
-  "build": "16.0.201",
-  "label": "86 Chaos 16.0.200",
-  "releasedAt": "2026-08-27T16:24:00-05:00",
-  "releaseTitle": "Firebase Cost and Maturity Optimization Pass",
+  "version": "16.0.202",
+  "name": "86 Chaos 16.0.202",
+  "build": "16.0.202",
+  "label": "86 Chaos 16.0.202",
+  "releasedAt": "2026-08-29T10:35:00-05:00",
+  "releaseTitle": "Release Gate Maturity Determinism Repair",
   "notes": [
-    "Removed automatic legacy JSON Firestore backup cron while preserving manual backup/restore.",
-    "Gated scheduleDateKey legacy rescue listeners behind canonical/known-rescue need.",
-    "Made Global Search dataset listeners demand-driven after meaningful debounced text.",
-    "Added adaptive listener retention using local snapshot/change diagnostics.",
-    "Avoided Custom Shift preset post-mutation collection rereads and no-op writes.",
-    "Bounded RTDB presence-summary wait time and kept last-known-good client presence on refresh failure."
+    "Converted expected presence-summary RTDB timeouts to an explicit degraded/retryable non-5xx response while preserving the bounded timeout.",
+    "Corrected Back Office tab semantics with a valid tablist while preserving tab controls and behavior.",
+    "Repaired release-gate navigation, Document Vault, form-control, schedule-readiness, and responsive-matrix harness determinism without reducing coverage.",
+    "Preserved 16.0.201 Firebase cost optimizations and kept Firestore/RTDB read/write behavior flat."
   ],
-  "title": "86 Chaos 16.0.200",
-  "summary": "Fixes the actual app behaviors behind the remaining failed-only browser gate failures: decimal inventory quantity editing and consistently reachable nested schedule, published schedule, Back Office, and Prep surfaces.",
-  "description": "Surgical app-source repair for the five remaining failed-only 28/31/32 browser-gate failures; no Firebase, dependency, or rule changes."
+  "title": "86 Chaos 16.0.202",
+  "summary": "Surgical 16.0.202 repair for release-gate determinism, fail-soft presence behavior, and Back Office accessibility without adding features or Firebase reads/writes.",
+  "description": "Preserves the 16.0.201 cost architecture while fixing the true application and harness layers behind the supplied failed Play Store release-gate run."
 }

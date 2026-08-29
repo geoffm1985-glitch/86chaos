@@ -18,7 +18,7 @@ function vaultForm(page) { return page.locator('form').filter({ hasText: 'Docume
 async function openVault(page) {
   const text = await gotoTab(page, 'back-office', { settleMs: 1200, maxText: 50000 });
   if (PERMISSION_GATE_RE.test(text)) throw new Error('Document Vault is permission/plan gated for the release-gate owner account; exhaustive Owner Pro coverage cannot proceed.');
-  const tab = page.getByRole('button', { name: /^(?:Open )?Document Vault$/i }).first();
+  const tab = page.getByRole('tab', { name: /^Document Vault$/i }).first();
   await expect(tab).toBeVisible({ timeout: 10000 });
   await tab.click();
   await expect(page.getByRole('heading', { name: 'Document Vault' }).first()).toBeVisible({ timeout: 8000 });

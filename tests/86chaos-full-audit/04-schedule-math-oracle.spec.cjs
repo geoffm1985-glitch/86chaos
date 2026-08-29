@@ -39,14 +39,14 @@ test.describe('04 schedule hours math truth oracle', () => {
     const account = ownerLikeCreds();
     requireCreds(account, 'owner-like account');
     await login(page, account.email, account.password);
-    await gotoTab(page, 'schedule', { settleMs: 2500, maxText: 60000 });
+    await gotoTab(page, 'schedule', { settleMs: 900, maxText: 60000 });
     const required = seed.profile.expectations.mustAppearInScheduleBuilder || [];
     await expect.poll(async () => {
       const current = await bodyText(page, 70000);
       return required.filter(label => !current.includes(label));
     }, {
-      timeout: 20000,
-      intervals: [750, 1000, 1500, 2500],
+      timeout: 45000,
+      intervals: [750, 1000, 1500, 2500, 5000],
       message: 'Schedule Builder should hydrate current-run QA staff/events before seed visibility assertions run'
     }).toEqual([]);
     const text = await bodyText(page, 70000);

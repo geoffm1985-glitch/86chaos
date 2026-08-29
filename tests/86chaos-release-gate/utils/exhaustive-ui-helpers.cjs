@@ -271,7 +271,7 @@ function formControlSelectorFor(row = {}) {
   if (row.type) parts.push(`[type="${String(row.type).replace(/"/g, '\\"')}"]`);
   if (row.name) parts.push(`[name="${String(row.name).replace(/"/g, '\\"')}"]`);
   if (row.placeholder) parts.push(`[placeholder="${String(row.placeholder).replace(/"/g, '\\"')}"]`);
-  const specific = parts.length ? parts.join('') : base;
+  const specific = parts.length ? `${parts.join('')}:visible` : base;
   return specific;
 }
 
@@ -577,4 +577,4 @@ async function auditState(page, testInfo, identity, options = {}) {
   return result;
 }
 
-module.exports = { rx, findStateControl, applyStatePath, collectControls, classifyControl, assertHealthy, auditState };
+module.exports = { rx, findStateControl, applyStatePath, collectControls, classifyControl, assertHealthy, auditState, formControlSelectorFor, locatorFromFormDescriptor };

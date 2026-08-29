@@ -117,7 +117,7 @@ const ROUTE_SPECS = [
   { tab: 'financials', label: 'Financials', expect: /Financial|Daily Close|Sales|Labor|Tips|Payroll/i },
   { tab: 'sales', label: 'Sales Import / Ledger', expect: /Sales|Import|Ledger|Daily Close|Revenue/i, optional: true },
   { tab: 'labor', label: 'Labor & Payroll', expect: /Labor|Payroll|Timesheet|Punch|Tips|Hours/i, optional: true },
-  { tab: 'back-office', label: 'Back Office', expect: /Back Office|QuickBooks|Owner|Accountant|Records/i, optional: true },
+  { tab: 'back-office', label: 'Back Office', expect: /Back Office Suite|Back Office Guardrails/i, optional: true },
   { tab: 'inventory', label: 'Inventory', expect: /Inventory|Vendor|Invoice|Par|Burn|Order/i },
   { tab: 'menu-intelligence', label: 'Menu Intelligence', expect: /Menu Intelligence|Menu Scan|Menu Items|86 Impact|Ingredient/i, optional: true },
   { tab: 'ai-tools', label: 'AI Tools / 86Voice', expect: /AI Tools|86Voice|Voice|Assistant|Ordering/i, optional: true },
@@ -133,6 +133,36 @@ const ROUTE_SPECS = [
   { tab: 'audit', label: 'Audit', expect: /Audit|Log|Timeline|History/i, optional: true },
   { tab: 'godmode', label: 'System Administrator', expect: /System Administrator|People Directory|Online|Backup|Security|Permission/i, optional: true },
 ];
+
+
+const ROUTE_READY_HEADING_RE = {
+  'back-office': [/^Back Office Suite$/i, /^Back Office Guardrails$/i],
+  financials: [/^Financial Center$/i, /^Daily Close$/i, /^Labor & Payroll$/i],
+};
+
+async function renderedRouteIdentityReady(page, tab, spec, text) {
+  if (/permission|restricted|not available|access denied/i.test(text || '')) return true;
+  const headingPatterns = ROUTE_READY_HEADING_RE[tab];
+  if (headingPatterns?.length) {
+    return page.locator('h1,h2,h3,[data-chaos-route-id],[data-chaos-route]').evaluateAll((els, patterns) => {
+      const visible = el => {
+        if (!el || el.hidden || el.getAttribute('aria-hidden') === 'true') return false;
+        const style = window.getComputedStyle(el);
+        const rect = el.getBoundingClientRect();
+        return style.display !== 'none' && style.visibility !== 'hidden' && rect.width > 0 && rect.height > 0;
+      };
+      const textsFor = el => [
+        el.getAttribute('data-chaos-route-id') || '',
+        el.getAttribute('data-chaos-route') || '',
+        el.getAttribute('aria-label') || '',
+        el.textContent || ''
+      ].map(value => String(value || '').replace(/\s+/g, ' ').trim()).filter(Boolean);
+      return els.some(el => visible(el) && textsFor(el).some(textValue => patterns.some(row => new RegExp(row.source, row.flags || 'i').test(textValue))));
+    }, headingPatterns.map(row => ({ source: row.source, flags: row.flags || 'i' }))).catch(() => false);
+  }
+  const re = spec?.expect ? new RegExp(spec.expect.source, 'i') : null;
+  return !re || re.test(text || '');
+}
 
 const FATAL_TEXT_RE = /Application error|Unhandled Runtime Error|Minified React error|Cannot read properties of undefined|Cannot read property|undefined is not a function|ReferenceError|TypeError:|Something went wrong|White screen/i;
 const BAD_VALUE_RE = /\bInvalid Date\b(?!s)|Infinity|undefined undefined|null null|Inactive -\d+ days|\$NaN|NaN%|(?:^|[^A-Za-z])NaN(?:[^A-Za-z]|$)/i;
@@ -413,8 +443,8 @@ async function waitForRouteSettle(page, tab, options = {}) {
     }
     const activeTab = await page.evaluate(() => new URLSearchParams(window.location.search).get('tab') || '').catch(() => '');
     const routeLooksReady = !/Loading workspace|Preparing|Unlock System|Email Address\s*Password/i.test(text);
-    const re = spec?.expect ? new RegExp(spec.expect.source, 'i') : null;
-    if (routeLooksReady && (activeTab === tab || !tab) && (!re || re.test(text) || /permission|restricted|not available|access denied/i.test(text))) break;
+    const routeIdentityReady = await renderedRouteIdentityReady(page, tab, spec, text);
+    if (routeLooksReady && (activeTab === tab || !tab) && routeIdentityReady) break;
     await page.waitForTimeout(350);
   }
   if (selectedWorkspace) await page.waitForTimeout(options.settleMs ?? 700);
