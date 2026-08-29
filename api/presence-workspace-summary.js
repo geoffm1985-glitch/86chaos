@@ -1,5 +1,15 @@
 const { initAdmin, authorize, clean } = require('./_chaos-admin');
 
+const PRESENCE_SUMMARY_TIMEOUT_MS = Math.max(500, Math.min(parseInt(process.env.PRESENCE_SUMMARY_TIMEOUT_MS || '4500', 10) || 4500, 8000));
+function withTimeout(promise, ms, label = 'operation') {
+  let timer = null;
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(Object.assign(new Error(`${label} timed out`), { code: 'presence-summary-timeout', status: 504 })), ms);
+  });
+  return Promise.race([promise, timeout]).finally(() => { if (timer) clearTimeout(timer); });
+}
+
+
 function parseTimeMs(value) {
   if (!value) return 0;
   if (typeof value === 'number') return value > 1000000000000 ? value : value * 1000;
@@ -58,7 +68,7 @@ module.exports = async (req, res) => {
     if (!restaurantId || restaurantId !== ctx.restaurantId) return res.status(403).json({ ok: false, error: 'Workspace mismatch.' });
 
     const limit = Math.min(Math.max(parseInt(req.query?.limit || '400', 10) || 400, 1), 800);
-    const snap = await ctx.app.database().ref(`statusSummary/${restaurantId}`).once('value');
+    const snap = await withTimeout(ctx.app.database().ref(`statusSummary/${restaurantId}`).once('value'), PRESENCE_SUMMARY_TIMEOUT_MS, 'RTDB presence summary read');
     const raw = snap.val() || {};
     const users = Object.entries(raw)
       .map(([userId, row]) => publicRow(userId, restaurantId, row || {}))
@@ -69,6 +79,7 @@ module.exports = async (req, res) => {
     return res.status(200).json({ ok: true, source: 'rtdb-statusSummary-api', restaurantId, fetchedAt: new Date().toISOString(), count: users.length, users });
   } catch (err) {
     console.error('Workspace presence summary failed:', err);
-    return res.status(500).json({ ok: false, error: err.message || 'Workspace presence summary failed.' });
+    const status = err?.status || (err?.code === 'presence-summary-timeout' ? 504 : 500);
+    return res.status(status).json({ ok: false, code: err?.code || 'presence-summary-failed', retryable: true, error: err.message || 'Workspace presence summary failed.' });
   }
 };

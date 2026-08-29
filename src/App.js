@@ -10,7 +10,7 @@ import { CheersLogo, Modal, DrawerMenu, DayDotPrintScreen, GlobalSearchModal, Ki
 import { LockedFeatureScreen } from './components/PlanGate';
 import { usePlanAccess } from './hooks/usePlanAccess';
 import { resolveFeatureAccess } from './lib/featureAccess';
-import { buildScheduleQueryPlan, buildScheduleDateKeyRangeClauses, mergeLoadedScheduleShifts } from './core/scheduleQueryPlanner';
+import { buildScheduleQueryPlan, buildScheduleDateKeyRangeClauses, mergeLoadedScheduleShifts, shouldEnableScheduleDateKeyRescue } from './core/scheduleQueryPlanner';
 import { WHOAMI_STATES, PLATFORM_ADMIN_ACCESS_STATES, classifyWhoamiResponse, mergeVerifiedAccess, resolvePlatformAdminAccessState, shouldHoldAccessHydration } from './core/sessionAccess';
 import { FEATURE_KEYS } from './config/plans';
 import { LoginScreen } from './features/auth';
@@ -826,6 +826,16 @@ export default function App() {
   const clientFeatures = clientData?.features || {};
   const [isGlobalSearchOpen, setIsGlobalSearchOpen] = useState(false);
   const [globalSearchQuery, setGlobalSearchQuery] = useState('');
+  const [debouncedGlobalSearchQuery, setDebouncedGlobalSearchQuery] = useState('');
+  useEffect(() => {
+    if (!isGlobalSearchOpen) {
+      setDebouncedGlobalSearchQuery('');
+      return undefined;
+    }
+    const timer = setTimeout(() => setDebouncedGlobalSearchQuery(String(globalSearchQuery || '').trim()), 250);
+    return () => clearTimeout(timer);
+  }, [isGlobalSearchOpen, globalSearchQuery]);
+  const globalSearchHasMeaningfulQuery = isGlobalSearchOpen && debouncedGlobalSearchQuery.length >= 2;
   const [voiceScheduleSubTabTarget, setVoiceScheduleSubTabTarget] = useState(null);
   const [voiceHelpSearchTarget, setVoiceHelpSearchTarget] = useState(null);
   const [voiceRecipeTarget, setVoiceRecipeTarget] = useState(null);
@@ -1134,16 +1144,16 @@ const [currentDate, setCurrentDate] = useState(getToday());
   const userGhostRequestOffPath = Boolean(ghostTenant?.impersonate && activeTabState === 'schedule' && activeScheduleSubTab === 'time-off');
   const wantsTimeOffData = wantsScheduleData && schedulePlan.timeOffEnabled !== false && !userGhostRequestOffPath;
   const wantsLaborData = (['financials', 'labor', 'sales', 'ops'].includes(activeTabState) || (wantsToday && canReadOperationsLabor)) && canReadOperationsLabor;
-  const wantsInventoryData = (((wantsToday || isGlobalSearchOpen) && (canReadBasicInventory || canReadSmartInventory)) || (activeTabState === 'menu-intelligence' && canReadMenuCollections));
+  const wantsInventoryData = (((wantsToday || globalSearchHasMeaningfulQuery) && (canReadBasicInventory || canReadSmartInventory)) || (activeTabState === 'menu-intelligence' && canReadMenuCollections));
   const wantsPrepData = wantsToday; // Prep screen owns its live prep/task listeners; App keeps only Today summaries.
   const wantsMenuData = (activeTabState === 'menu-intelligence' || wantsToday) && canReadMenuCollections;
-  const wantsRecipesData = isGlobalSearchOpen; // Recipes screen owns its live query; App keeps only global-search demand.
+  const wantsRecipesData = globalSearchHasMeaningfulQuery; // Recipes screen owns its live query; App keeps only demand-driven global-search data.
   const wantsMaintenanceData = wantsToday && canReadMaintenance; // Maintenance screen owns its full listener; App keeps only Today alert context.
   const wantsSalesData = ['financials', 'sales', 'ops', 'labor'].includes(activeTabState) && canReadSalesCollections;
   const shiftRangeStart = schedulePlan.shiftClauses.find(c => c[0] === 'date' && c[1] === '>=')?.[2] || (wantsScheduleScreen ? scheduleWindowStart : getToday());
   const shiftRangeEnd = schedulePlan.shiftClauses.find(c => c[0] === 'date' && c[1] === '<=')?.[2] || (wantsScheduleScreen ? scheduleWindowEnd : todayOpsWindowEnd);
   const scheduleDateKeyShiftClauses = useMemo(() => buildScheduleDateKeyRangeClauses(schedulePlan.shiftClauses), [schedulePlan.shiftClauses]);
-  const wantsEventData = wantsToday || wantsScheduleScreen || activeTabState === 'messages' || activeTabState === 'ops' || isGlobalSearchOpen;
+  const wantsEventData = wantsToday || wantsScheduleScreen || activeTabState === 'messages' || activeTabState === 'ops' || globalSearchHasMeaningfulQuery;
   // Schedule Builder needs the same scheduled events a manager sees in Event Calendar.
   // Without loading events on schedule screens, the builder receives an empty/stale events prop
   // and the staff-up row cannot show banquets, parties, holidays, or special events that affect coverage.
@@ -1154,7 +1164,7 @@ const [currentDate, setCurrentDate] = useState(getToday());
   const canViewTeamScheduleData = Boolean(appUser?.isSuperAdmin || appUser?.isAdmin || appUser?.isOwner || appUser?.accountOwner || appUser?.workspaceOwner || appUser?.permissions?.schedule || appUser?.permissions?.team);
   const canViewTeamPresenceData = Boolean(appUser?.isSuperAdmin || appUser?.isAdmin || appUser?.isOwner || appUser?.accountOwner || appUser?.workspaceOwner || appUser?.permissions?.team);
   const wantsFullRosterData = Boolean(rId && !ghostTenant && (
-    schedulePlan.needsRoster || wantsToday || ['team', 'labor', 'financials', 'messages', 'hr-training', 'prep'].includes(activeTabState) || isGlobalSearchOpen
+    schedulePlan.needsRoster || wantsToday || ['team', 'labor', 'financials', 'messages', 'hr-training', 'prep'].includes(activeTabState) || globalSearchHasMeaningfulQuery
   ));
   const wantsWorkspaceMembershipList = Boolean(rId && !ghostTenant && ['schedule', 'published', 'events', 'team'].includes(activeTabState));
 
@@ -1179,16 +1189,17 @@ const [currentDate, setCurrentDate] = useState(getToday());
       })
       .catch(err => {
         if (!alive) return;
-        console.warn('Workspace presence summary unavailable:', err?.message || err);
-        setWorkspacePresenceRecords([]);
+        console.warn('Workspace presence summary unavailable; keeping last-known-good summary:', err?.message || err);
       });
     return () => { alive = false; };
   }, [rId, ghostTenant, wantsWorkspacePresenceSnapshot]);
   const livePresenceRecords = workspacePresenceRecords;
   const selfPresenceRecord = useLowCostPresenceSummary(rId, appUser?.id || '', { enabled: !!rId && !ghostTenant && activeTabState === 'settings' && !!appUser?.id });
   const presenceSessions = livePresenceRecords;
-  const rawDateShifts = useLiveCollection('shifts', rId, { enabled: !!rId && wantsShiftData, whereClauses: schedulePlan.shiftClauses, orderByField: 'date', orderDirection: 'asc', limitCount: schedulePlan.shiftLimit, fallbackLimitCount: Math.min(schedulePlan.shiftLimit || 80, 80), debugLabel: `app:${activeTabState}:${activeScheduleSubTab}:shifts-date-plan` });
-  const rawScheduleDateKeyShifts = useLiveCollection('shifts', rId, { enabled: !!rId && wantsShiftData && wantsScheduleScreen, whereClauses: scheduleDateKeyShiftClauses, orderByField: 'scheduleDateKey', orderDirection: 'asc', limitCount: schedulePlan.shiftLimit, fallbackLimitCount: Math.min(schedulePlan.shiftLimit || 80, 80), debugLabel: `app:${activeTabState}:${activeScheduleSubTab}:shifts-scheduleDateKey-rescue` });
+  const rawDateShiftsState = useLiveCollectionState('shifts', rId, { enabled: !!rId && wantsShiftData, whereClauses: schedulePlan.shiftClauses, orderByField: 'date', orderDirection: 'asc', limitCount: schedulePlan.shiftLimit, fallbackLimitCount: Math.min(schedulePlan.shiftLimit || 80, 80), debugLabel: `app:${activeTabState}:${activeScheduleSubTab}:shifts-date-plan` });
+  const rawDateShifts = rawDateShiftsState.data || [];
+  const enableScheduleDateKeyRescue = shouldEnableScheduleDateKeyRescue({ wantsShiftData, wantsScheduleScreen, canonicalState: rawDateShiftsState, clientData, shiftClauses: schedulePlan.shiftClauses });
+  const rawScheduleDateKeyShifts = useLiveCollection('shifts', rId, { enabled: !!rId && enableScheduleDateKeyRescue, whereClauses: scheduleDateKeyShiftClauses, orderByField: 'scheduleDateKey', orderDirection: 'asc', limitCount: schedulePlan.shiftLimit, fallbackLimitCount: Math.min(schedulePlan.shiftLimit || 80, 80), debugLabel: `app:${activeTabState}:${activeScheduleSubTab}:shifts-scheduleDateKey-rescue` });
   const rawShifts = useMemo(() => mergeLoadedScheduleShifts(rawDateShifts, rawScheduleDateKeyShifts), [rawDateShifts, rawScheduleDateKeyShifts]);
   const shifts = useMemo(() => {
     const start = shiftRangeStart;

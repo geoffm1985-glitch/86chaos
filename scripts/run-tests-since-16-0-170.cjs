@@ -34,7 +34,8 @@ const nodeTests = [
   'api/public-icon-assets-16-0-195.test.cjs',
   'api/failed-only-browser-gate-16-0-196.test.cjs',
   'api/failed-only-browser-gate-16-0-199.test.cjs',
-  'api/failed-only-browser-gate-16-0-200.test.cjs'
+  'api/failed-only-browser-gate-16-0-200.test.cjs',
+  'api/firebase-cost-optimization-16-0-201.test.cjs'
 ];
 const jestTests = [
   'src/core/scheduleQueryPlanner.test.js'

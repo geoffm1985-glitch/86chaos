@@ -69,20 +69,25 @@ async function handler(req, res) {
     const existing = dedupePresets(await readRows(db, restaurantId));
     const byKey = new Map(existing.map(p => [presetKey(p), p]));
     let created = 0;
+    const createdPresets = [];
     for (const p of incoming) {
       if (byKey.has(presetKey(p))) continue;
       const ref = db.collection('customShiftPresets').doc();
+      const row = { id: ref.id, label: p.label, start: p.start, end: p.end };
       await ref.set({ restaurantId, label: p.label, start: p.start, end: p.end, createdAt: now, updatedAt: now, createdBy: ctx.uid, updatedBy: ctx.uid, source: 'schedule_builder_custom_shift_migration' });
       created += 1;
+      createdPresets.push(row);
+      byKey.set(presetKey(row), row);
     }
-    return res.status(200).json({ ok: true, action: 'merge', restaurantId, created, presets: dedupePresets(await readRows(db, restaurantId)) });
+    return res.status(200).json({ ok: true, action: 'merge', restaurantId, created, createdPresets, presets: dedupePresets([...existing, ...createdPresets]) });
   }
   if (action === 'create') {
     const p = normalizePreset(body.preset || body);
     if (!p) return res.status(400).json({ ok: false, code: 'invalid-preset', error: 'Use a name, start time, and end time.' });
     const ref = db.collection('customShiftPresets').doc();
+    const preset = { id: ref.id, label: p.label, start: p.start, end: p.end };
     await ref.set({ restaurantId, label: p.label, start: p.start, end: p.end, createdAt: now, createdBy: ctx.uid, updatedAt: now, updatedBy: ctx.uid });
-    return res.status(200).json({ ok: true, action, restaurantId, preset: { id: ref.id, label: p.label, start: p.start, end: p.end }, presets: dedupePresets(await readRows(db, restaurantId)) });
+    return res.status(200).json({ ok: true, action, restaurantId, preset });
   }
   if (action === 'update') {
     const p = normalizePreset(body.preset || body);
@@ -91,8 +96,13 @@ async function handler(req, res) {
     const snap = await ref.get();
     if (!snap.exists) return res.status(404).json({ ok: false, code: 'not-found', error: 'Preset was not found.' });
     if (snap.data()?.restaurantId !== restaurantId) return res.status(403).json({ ok: false, code: 'wrong-workspace', error: 'Preset belongs to another workspace.' });
+    const before = normalizePreset({ id: ref.id, ...snap.data() });
+    const preset = { id: ref.id, label: p.label, start: p.start, end: p.end };
+    if (before && before.label === p.label && before.start === p.start && before.end === p.end) {
+      return res.status(200).json({ ok: true, action, restaurantId, preset, noChange: true, writeSkipped: true });
+    }
     await ref.set({ label: p.label, start: p.start, end: p.end, updatedAt: now, updatedBy: ctx.uid }, { merge: true });
-    return res.status(200).json({ ok: true, action, restaurantId, preset: { id: ref.id, label: p.label, start: p.start, end: p.end }, presets: dedupePresets(await readRows(db, restaurantId)) });
+    return res.status(200).json({ ok: true, action, restaurantId, preset });
   }
   if (action === 'delete') {
     const id = clean(body.id || body.presetId);
@@ -101,7 +111,7 @@ async function handler(req, res) {
     const snap = await ref.get();
     if (!snap.exists || snap.data()?.restaurantId !== restaurantId) return res.status(404).json({ ok: false, code: 'not-found', error: 'Preset was not found.' });
     await ref.delete();
-    return res.status(200).json({ ok: true, action: 'delete', restaurantId, id, presets: dedupePresets(await readRows(db, restaurantId)) });
+    return res.status(200).json({ ok: true, action: 'delete', restaurantId, id });
   }
   return res.status(400).json({ ok: false, code: 'unknown-action', error: 'Unknown custom shift action.' });
 }

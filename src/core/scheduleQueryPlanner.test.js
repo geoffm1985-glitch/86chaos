@@ -1,4 +1,4 @@
-import { buildScheduleQueryPlan, getCanonicalScheduleUserId, buildScheduleDateKeyRangeClauses, mergeLoadedScheduleShifts } from './scheduleQueryPlanner';
+import { buildScheduleQueryPlan, getCanonicalScheduleUserId, buildScheduleDateKeyRangeClauses, mergeLoadedScheduleShifts, shouldEnableScheduleDateKeyRescue, scheduleQueryDateRangeMonths } from './scheduleQueryPlanner';
 
 describe('schedule query planner', () => {
   const staff = { id: 'u1', scheduleUserId: 'sched_u1', role: 'staff', permissions: {} };
@@ -44,6 +44,37 @@ describe('schedule query planner', () => {
     expect(rescueClauses).toContainEqual(['scheduleDateKey', '<=', '2026-08-31']);
     expect(rescueClauses).not.toContainEqual(['date', '>=', '2026-08-01']);
   });
+
+  test('scheduleDateKey rescue stays off when canonical schedule rows are loaded and no rescue metadata exists', () => {
+    const plan = buildScheduleQueryPlan({ activeTabState: 'schedule', activeScheduleSubTab: 'full-schedule', appUser: manager, currentDate: '2026-08-15' });
+    expect(scheduleQueryDateRangeMonths(plan.shiftClauses)).toContain('2026-08');
+    expect(shouldEnableScheduleDateKeyRescue({
+      wantsShiftData: true,
+      wantsScheduleScreen: true,
+      canonicalState: { resolved: true, data: [{ id: 'canonical', date: '2026-08-02' }] },
+      clientData: {},
+      shiftClauses: plan.shiftClauses
+    })).toBe(false);
+  });
+
+  test('scheduleDateKey rescue turns on for empty canonical windows or known legacy rescue months', () => {
+    const plan = buildScheduleQueryPlan({ activeTabState: 'schedule', activeScheduleSubTab: 'full-schedule', appUser: manager, currentDate: '2026-08-15' });
+    expect(shouldEnableScheduleDateKeyRescue({
+      wantsShiftData: true,
+      wantsScheduleScreen: true,
+      canonicalState: { resolved: true, data: [] },
+      clientData: {},
+      shiftClauses: plan.shiftClauses
+    })).toBe(true);
+    expect(shouldEnableScheduleDateKeyRescue({
+      wantsShiftData: true,
+      wantsScheduleScreen: true,
+      canonicalState: { resolved: false, data: [{ id: 'canonical', date: '2026-08-02' }] },
+      clientData: { scheduleRescueProtectedMonths: ['2026-08'], scheduleRescueEnforceProtected: true },
+      shiftClauses: plan.shiftClauses
+    })).toBe(true);
+  });
+
   test('loaded shifts are merged and normalized for employee-facing schedule tabs', () => {
     const merged = mergeLoadedScheduleShifts(
       [{ id: 'a', restaurantId: 'r1', date: '2026-08-02', employeeName: 'Alex', startTime: '09:00', endTime: '17:00' }],

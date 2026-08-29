@@ -1,15 +1,17 @@
 {
-  "version": "16.0.200",
+  "version": "16.0.201",
   "name": "86 Chaos 16.0.200",
-  "build": "16.0.200",
+  "build": "16.0.201",
   "label": "86 Chaos 16.0.200",
-  "releasedAt": "2026-08-26T12:23:00-05:00",
-  "releaseTitle": "Runner Target Auto-Resolve and Remaining Surface Reachability Repair",
+  "releasedAt": "2026-08-27T16:24:00-05:00",
+  "releaseTitle": "Firebase Cost and Maturity Optimization Pass",
   "notes": [
-    "Auto-resolve stale release-gate process URL/version variables to the intended testing target.",
-    "Treat an already-open Schedule Copilot panel as structural evidence for Open Copilot Tools.",
-    "Expose deterministic current-state metadata for Schedule Copilot and Back Office nested tabs.",
-    "Keep failed-only browser selection narrowed to the five remaining blockers."
+    "Removed automatic legacy JSON Firestore backup cron while preserving manual backup/restore.",
+    "Gated scheduleDateKey legacy rescue listeners behind canonical/known-rescue need.",
+    "Made Global Search dataset listeners demand-driven after meaningful debounced text.",
+    "Added adaptive listener retention using local snapshot/change diagnostics.",
+    "Avoided Custom Shift preset post-mutation collection rereads and no-op writes.",
+    "Bounded RTDB presence-summary wait time and kept last-known-good client presence on refresh failure."
   ],
   "title": "86 Chaos 16.0.200",
   "summary": "Fixes the actual app behaviors behind the remaining failed-only browser gate failures: decimal inventory quantity editing and consistently reachable nested schedule, published schedule, Back Office, and Prep surfaces.",
