@@ -1,17 +1,18 @@
 {
-  "version": "16.0.202",
-  "name": "86 Chaos 16.0.202",
-  "build": "16.0.202",
-  "label": "86 Chaos 16.0.202",
+  "version": "16.0.203",
+  "name": "86 Chaos 16.0.203",
+  "build": "16.0.203",
+  "label": "86 Chaos 16.0.203",
   "releasedAt": "2026-08-29T10:35:00-05:00",
-  "releaseTitle": "Release Gate Maturity Determinism Repair",
+  "releaseTitle": "Release Gate Failed+New Manifest Repair",
   "notes": [
     "Converted expected presence-summary RTDB timeouts to an explicit degraded/retryable non-5xx response while preserving the bounded timeout.",
     "Corrected Back Office tab semantics with a valid tablist while preserving tab controls and behavior.",
     "Repaired release-gate navigation, Document Vault, form-control, schedule-readiness, and responsive-matrix harness determinism without reducing coverage.",
-    "Preserved 16.0.201 Firebase cost optimizations and kept Firestore/RTDB read/write behavior flat."
+    "Preserved 16.0.201 Firebase cost optimizations and kept Firestore/RTDB read/write behavior flat.",
+    "Migrated legacy failed+new responsive matrix lineage to the five viewport-partitioned tests so the exact gate runs instead of blocking on the retired monolithic title."
   ],
-  "title": "86 Chaos 16.0.202",
-  "summary": "Surgical 16.0.202 repair for release-gate determinism, fail-soft presence behavior, and Back Office accessibility without adding features or Firebase reads/writes.",
-  "description": "Preserves the 16.0.201 cost architecture while fixing the true application and harness layers behind the supplied failed Play Store release-gate run."
+  "title": "86 Chaos 16.0.203",
+  "summary": "Surgical 16.0.203 repair for failed+new manifest lineage after responsive matrix partitioning, preserving 16.0.202 app behavior and Firebase cost invariants.",
+  "description": "Preserves the 16.0.201 cost architecture and 16.0.202 app repairs while allowing the release gate to migrate the legacy monolithic responsive failure into the five viewport-partitioned tests."
 }

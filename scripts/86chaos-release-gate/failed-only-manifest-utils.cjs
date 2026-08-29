@@ -344,6 +344,47 @@ function identityKeyFromParts(specPath = '', title = '', project = '', fullSuite
   return `${normalizeRel(specPath)}\u0000${String(fullSuitePath || '')}\u0000${String(title || '')}\u0000${String(project || '')}`;
 }
 
+
+const RESPONSIVE_MATRIX_SPEC = '86chaos-release-gate/31-exhaustive-responsive-nested-layout.spec.cjs';
+const LEGACY_RESPONSIVE_LEAF_TITLE = 'every route and nested surface fits phone/tablet/laptop/desktop without unusable overflow or tap targets';
+const RESPONSIVE_VIEWPORT_NAMES = ['narrow-phone', 'phone', 'tablet', 'laptop', 'desktop'];
+
+function isLegacyResponsiveMatrixSelection(row = {}) {
+  const spec = normalizeRel(row.specPath || row.spec || '');
+  if (spec !== RESPONSIVE_MATRIX_SPEC) return false;
+  const title = String(row.exactTestTitle || row.title || row.leafTitle || '').trim();
+  const fullTitle = String(row.fullTitle || '').trim();
+  return title === LEGACY_RESPONSIVE_LEAF_TITLE || fullTitle.includes(LEGACY_RESPONSIVE_LEAF_TITLE);
+}
+
+function resolveLegacyResponsiveMatrixSelection(row = {}, manifest = {}, lookup = {}) {
+  if (!isLegacyResponsiveMatrixSelection(row)) return [];
+  const normalized = normalizeSelection(row, manifest);
+  const project = normalized.project || 'chromium';
+  const candidates = (lookup.records || []).filter(candidate => {
+    const spec = normalizeRel(candidate.specPath || candidate.spec || '');
+    if (spec !== RESPONSIVE_MATRIX_SPEC) return false;
+    if (String(candidate.project || candidate.projectName || '') !== project) return false;
+    const title = String(candidate.exactTestTitle || candidate.title || candidate.leafTitle || '');
+    return title.startsWith(LEGACY_RESPONSIVE_LEAF_TITLE)
+      && RESPONSIVE_VIEWPORT_NAMES.some(viewport => title.endsWith(`[${viewport}]`));
+  });
+  const byViewport = new Map();
+  for (const candidate of candidates) {
+    const title = String(candidate.exactTestTitle || candidate.title || candidate.leafTitle || '');
+    const viewport = RESPONSIVE_VIEWPORT_NAMES.find(name => title.endsWith(`[${name}]`));
+    if (viewport && !byViewport.has(viewport)) byViewport.set(viewport, candidate);
+  }
+  if (byViewport.size !== RESPONSIVE_VIEWPORT_NAMES.length) return [];
+  return RESPONSIVE_VIEWPORT_NAMES.map(viewport => ({
+    ...inventorySelectionFromRow(byViewport.get(viewport), normalized, manifest),
+    migratedFromLegacyIdentity: true,
+    migratedFromLegacyResponsiveMatrix: true,
+    migrationSourceStableKey: normalized.stableKey || selectionKey(normalized),
+    selectionReasons: normalized.selectionReasons || ['previous_timeout', 'responsive_matrix_partition_migration'],
+  }));
+}
+
 function suitePathFromParents(parents = [], spec = {}, t = {}) {
   const ignore = part => !/^failed(?:-only)? .*fixture$/i.test(String(part || '').trim());
   const raw = Array.isArray(t.titlePath) ? t.titlePath : [];
@@ -471,7 +512,7 @@ function inventoryLookup(records = []) {
     rows.push(row);
     byLooseKey.set(loose, rows);
   }
-  return { byKey, byLooseKey };
+  return { byKey, byLooseKey, records: records || [] };
 }
 
 function resolveSelectionRowsAgainstInventory(row = {}, manifest = {}, lookup = inventoryLookup([])) {
@@ -500,6 +541,8 @@ function resolveSelectionRowsAgainstInventory(row = {}, manifest = {}, lookup = 
       legacyAmbiguousMatchCount: looseMatches.length,
     }));
   }
+  const responsiveMigration = resolveLegacyResponsiveMatrixSelection(normalized, manifest, lookup);
+  if (responsiveMigration.length) return responsiveMigration;
   return [normalized];
 }
 
@@ -680,6 +723,7 @@ function normalizeSelection(row = {}, manifest = {}) {
     selectionReasons: row.selectionReasons,
     migratedFromLegacyIdentity: Boolean(row.migratedFromLegacyIdentity),
     migratedFromLegacyAmbiguousIdentity: Boolean(row.migratedFromLegacyAmbiguousIdentity),
+    migratedFromLegacyResponsiveMatrix: Boolean(row.migratedFromLegacyResponsiveMatrix),
     legacyAmbiguousMatchCount: row.legacyAmbiguousMatchCount || 0,
     migrationSourceStableKey: row.migrationSourceStableKey || '',
     sourceFileHash: row.sourceFileHash || '',
