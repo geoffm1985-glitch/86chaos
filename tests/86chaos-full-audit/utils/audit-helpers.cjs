@@ -272,11 +272,12 @@ function summarizeProblems(problems) {
 
 async function chooseQaWorkspace(page) {
   const preferred = envValue('CHAOS_QA_WORKSPACE_NAME', 'CHAOS_QA_WORKSPACE') || QA_WORKSPACE_NAME;
+  const chooserRe = /choose workspace|select workspace|select restaurant|choose restaurant/i;
   const currentText = await bodyText(page, 12000);
-  if (currentText.includes(preferred) && !/choose workspace|select workspace|select restaurant|choose restaurant/i.test(currentText)) return false;
+  if (currentText.includes(preferred) && !chooserRe.test(currentText)) return false;
   const openChooser = async () => {
     const chooserText = await bodyText(page, 12000);
-    if (/choose workspace|select workspace|select restaurant|choose restaurant/i.test(chooserText)) return true;
+    if (chooserRe.test(chooserText)) return true;
     const switchers = [
       page.getByTitle(/switch workspace/i).first(),
       page.getByRole('button', { name: /switch workspace|switch restaurant|switch$/i }).first(),
@@ -287,7 +288,7 @@ async function chooseQaWorkspace(page) {
         await candidate.click({ timeout: 2500 }).catch(() => {});
         await page.waitForTimeout(900);
         const nextText = await bodyText(page, 12000);
-        if (/choose workspace|select workspace|select restaurant|choose restaurant/i.test(nextText) || nextText.includes(preferred)) return true;
+        if (chooserRe.test(nextText) || nextText.includes(preferred)) return true;
       }
     }
     return false;
@@ -297,27 +298,58 @@ async function chooseQaWorkspace(page) {
   if (!chooserOpen) return false;
   const escapeRegex = (value) => String(value || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   const preferredRe = new RegExp(`^Open\\s+${escapeRegex(preferred)}(?:\\s|$)`, 'i');
-  const directButton = page.getByRole('button', { name: preferredRe }).first();
-  const exact = page.getByText(preferred, { exact: true }).first();
-  const partial = page.getByText(preferred, { exact: false }).first();
+  const candidateButtons = [
+    page.getByRole('button', { name: preferredRe }),
+    page.getByRole('button', { name: new RegExp(escapeRegex(preferred), 'i') }),
+    page.locator('button').filter({ hasText: preferred }),
+  ];
   let button = null;
-  if (await directButton.isVisible({ timeout: 5000 }).catch(() => false)) button = directButton;
-  else {
+  for (const candidates of candidateButtons) {
+    const count = Math.min(await candidates.count().catch(() => 0), 12);
+    for (let i = 0; i < count; i += 1) {
+      const candidate = candidates.nth(i);
+      if (await candidate.isVisible({ timeout: 900 }).catch(() => false)) {
+        button = candidate;
+        break;
+      }
+    }
+    if (button) break;
+  }
+  if (!button) {
+    const exact = page.getByText(preferred, { exact: true });
+    const partial = page.getByText(preferred, { exact: false });
     let target = null;
-    if (await exact.isVisible({ timeout: 3500 }).catch(() => false)) target = exact;
-    else if (await partial.isVisible({ timeout: 2500 }).catch(() => false)) target = partial;
+    const exactCount = Math.min(await exact.count().catch(() => 0), 8);
+    for (let i = 0; i < exactCount && !target; i += 1) {
+      const row = exact.nth(i);
+      if (await row.isVisible({ timeout: 700 }).catch(() => false)) target = row;
+    }
+    const partialCount = Math.min(await partial.count().catch(() => 0), 8);
+    for (let i = 0; i < partialCount && !target; i += 1) {
+      const row = partial.nth(i);
+      if (await row.isVisible({ timeout: 500 }).catch(() => false)) target = row;
+    }
     if (!target) throw new Error(`The disposable QA workspace "${preferred}" was not available in the workspace chooser.`);
     button = target.locator('xpath=ancestor-or-self::button[1]').first();
   }
   if (!(await button?.count?.().catch(() => 0))) throw new Error(`The disposable QA workspace "${preferred}" did not resolve to a clickable workspace button.`);
+  await button.scrollIntoViewIfNeeded().catch(() => {});
   await button.click({ timeout: 5000 }).catch(async (err) => {
     const message = String(err?.message || err || '');
     if (!/intercepts pointer events|not stable|receives pointer events|timeout/i.test(message)) throw err;
     await button.evaluate((el) => el.click());
   });
   await page.waitForLoadState('domcontentloaded').catch(() => {});
-  await page.waitForTimeout(1200);
-  await dismissBlockingDialogs(page, { maxPasses: 4 }).catch(() => null);
+  const deadline = Date.now() + 30000;
+  while (Date.now() < deadline) {
+    await dismissBlockingDialogs(page, { maxPasses: 4 }).catch(() => null);
+    const nextText = await bodyText(page, 16000);
+    if (!chooserRe.test(nextText) && nextText.includes(preferred)) return true;
+    if (!chooserRe.test(nextText) && !/Loading workspace|Preparing workspace/i.test(nextText)) return true;
+    await page.waitForTimeout(600).catch(() => {});
+  }
+  const finalText = await bodyText(page, 16000);
+  if (chooserRe.test(finalText)) throw new Error(`Workspace chooser still visible after selecting "${preferred}". Body: ${finalText.slice(0, 1600)}`);
   return true;
 }
 
@@ -422,8 +454,19 @@ async function login(page, email, password, options = {}) {
 
 async function expectVersion(page, expected = EXPECTED_VERSION) {
   if (!expected) return;
-  const re = new RegExp(`(?:VERSION|v|Version)\\s*${expected.replace(/\./g, '\\.')}`, 'i');
-  const text = await bodyText(page, 12000);
+  const re = new RegExp(`(?:VERSION|v|Version)\\s*${expected.replace(/\\./g, '\\.')}`, 'i');
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    await chooseQaWorkspace(page).catch(() => null);
+    await dismissBlockingDialogs(page, { maxPasses: 4 }).catch(() => null);
+    const text = await bodyText(page, 16000);
+    if (re.test(text)) return;
+    if (/choose workspace|select workspace|select restaurant|choose restaurant/i.test(text)) {
+      await page.waitForTimeout(900).catch(() => {});
+      continue;
+    }
+    await page.waitForTimeout(700).catch(() => {});
+  }
+  const text = await bodyText(page, 16000);
   expect(text, `App should display expected version ${expected}`).toMatch(re);
 }
 

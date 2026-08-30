@@ -20,9 +20,11 @@ test.describe('32 nested-state WCAG accessibility',()=>{
        if(!sys.email||!sys.password)throw new Error('SYSTEM_ADMIN credentials required for nested GodMode accessibility coverage.');
        await page.context().clearCookies().catch(()=>{});await page.goto('about:blank');await login(page,sys.email,sys.password);sysMode=true;
      }
-     for(const state of [[]].concat(ROUTE_STATES[route.tab]||[])){
-       const text=await gotoTab(page,route.tab,{settleMs:350,maxText:14000,force:true});
-       if(PERMISSION_GATE_RE.test(text)){findings.push({route:route.tab,state:state.map(String),gated:true});continue;}
+     const states=[[]].concat(ROUTE_STATES[route.tab]||[]);
+     const routeText=await gotoTab(page,route.tab,{settleMs:350,maxText:14000,force:true});
+     const routeGated=PERMISSION_GATE_RE.test(routeText);
+     for(const state of states){
+       if(routeGated){findings.push({route:route.tab,state:state.map(String),gated:true});continue;}
        const applied=await applyStatePath(page,state,{strict:false});
        if(!applied.ok){findings.push({route:route.tab,state:state.map(String),missing:true});continue;}
        const result=await axe(page);

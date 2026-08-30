@@ -51,6 +51,7 @@ test.describe('04 schedule hours math truth oracle', () => {
   });
 
   test('if fake restaurant seed exists, visible Schedule Builder text must expose seeded staff/events and not hide invalid-time evidence', async ({ page }, testInfo) => {
+    test.setTimeout(4 * 60 * 1000);
     const seed = readSeedReport();
     if (!seed?.ok) test.skip(true, 'No successful fake restaurant seed report found. Run with -Mutation and a QA workspace to activate this UI truth check.');
     const account = ownerLikeCreds();

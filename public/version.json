@@ -1,10 +1,10 @@
 {
-  "version": "16.0.206",
-  "name": "86 Chaos 16.0.206",
-  "build": "16.0.206",
-  "label": "86 Chaos 16.0.206",
+  "version": "16.0.207",
+  "name": "86 Chaos 16.0.207",
+  "build": "16.0.207",
+  "label": "86 Chaos 16.0.207",
   "releasedAt": "2026-08-30T00:21:00-05:00",
-  "releaseTitle": "Failed-Only Result Reconciliation Repair",
+  "releaseTitle": "Delta Gate Determinism Repair",
   "notes": [
     "Converted expected presence-summary RTDB timeouts to an explicit degraded/retryable non-5xx response while preserving the bounded timeout.",
     "Corrected Back Office tab semantics with a valid tablist while preserving tab controls and behavior.",
@@ -15,9 +15,13 @@
     "Tagged inventoried form controls during the exhaustive harness probe so fill/restore targets the exact visible element instead of a drifting structural ordinal.",
     "Corrected the reported-failed-only Playwright selection guard to accept the actual six selected legacy failure identities: two chromium and four mobile-chromium.",
     "Kept the failed-only guard strict: zero-test selections, duplicate identities, unexpected projects, timeouts, and new/repair reasons still fail before Playwright can produce a false green.",
-    "Fixed failed-only result collection reconciliation so Playwright-reported titles that include the spec file prefix match the exact manifest identity instead of turning a 6/6 pass into a failed report."
+    "Fixed failed-only result collection reconciliation so Playwright-reported titles that include the spec file prefix match the exact manifest identity instead of turning a 6/6 pass into a failed report.",
+    "Repaired failed+new delta gate workspace chooser/version assertion readiness so tests do not assert app version while still on the workspace picker.",
+    "Repaired nested state control lookup to choose the first visible matching tab/button instead of being trapped by hidden duplicates, restoring QuickBooks Back Office coverage.",
+    "Converted Schedule Builder tool controls to a valid tablist/tab ARIA structure and extended the seed-hydration test budget without adding app reads.",
+    "Optimized exhaustive delta traversal by de-duplicating repeated form/mutation probes and avoiding redundant same-route transitions while still visiting every declared route/state."
   ],
-  "title": "86 Chaos 16.0.206",
-  "summary": "Surgical 16.0.206 repair for failed-only Playwright result reconciliation path normalization after all selected identities pass.",
-  "description": "Keeps the 16.0.205 failed-only selection guard repair while correcting result collection so executed Playwright titles with file prefixes reconcile with the selected manifest identities instead of reporting false selected-not-executed and unexpected-extra rows."
+  "title": "86 Chaos 16.0.207",
+  "summary": "Surgical 16.0.207 repair for failed+new delta gate workspace selection, nested state reachability, Schedule Builder ARIA semantics, schedule hydration timeout, and exhaustive traversal runtime.",
+  "description": "Keeps 16.0.206 behavior while repairing failed+new delta blockers: workspace chooser selection now waits for the selected QA workspace, exact visible nested-state controls are selected when hidden duplicates exist, Schedule Builder tool tabs have valid ARIA semantics, the schedule seed oracle has a bounded timeout budget, and exhaustive delta traversals avoid redundant same-route transitions/probes without reducing declared state coverage."
 }

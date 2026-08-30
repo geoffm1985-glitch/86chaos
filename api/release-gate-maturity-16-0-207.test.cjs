@@ -11,14 +11,14 @@ const writeJson = (file, data) => {
   fs.writeFileSync(file, JSON.stringify(data, null, 2));
 };
 
-test('16.0.206 failed-only report reconciliation strips Playwright file-title prefixes from executed identities', () => {
+test('16.0.207 failed-only report reconciliation strips Playwright file-title prefixes from executed identities', () => {
   const collector = read('scripts/86chaos-release-gate/collect-release-gate-report.cjs');
   assert.match(collector, /function stripPlaywrightFileTitlePrefix/);
   assert.match(collector, /normalizedTitle\.startsWith\(`\$\{normalizedPrefix\} > `\)/);
   assert.match(collector, /stripPlaywrightFileTitlePrefix\(spec, row\.title \|\| row\.fullTitle \|\| ''\)/);
 });
 
-test('16.0.206 failed-only run with matching selected/executed tests is PASS even when Playwright title includes the spec file', () => {
+test('16.0.207 failed-only run with matching selected/executed tests is PASS even when Playwright title includes the spec file', () => {
   const runId = `unit-16-0-206-reconcile-${process.pid}-${Date.now()}`;
   const runDir = path.join(root, 'test-results', '86chaos-play-store-release-gate', runId);
   fs.rmSync(runDir, { recursive: true, force: true });
@@ -49,9 +49,9 @@ test('16.0.206 failed-only run with matching selected/executed tests is PASS eve
     cleanupCompleted: true,
     currentPhase: 'report-collection',
   });
-  writeJson(path.join(runDir, 'environment-preflight.json'), { ...commonOk, expectedVersion: '16.0.206', sourceVersion: '16.0.206', deployedVersion: '16.0.206' });
+  writeJson(path.join(runDir, 'environment-preflight.json'), { ...commonOk, expectedVersion: '16.0.207', sourceVersion: '16.0.207', deployedVersion: '16.0.207' });
   writeJson(path.join(runDir, 'dependency-preflight.json'), commonOk);
-  writeJson(path.join(runDir, 'source-inventory.json'), { ...commonOk, version: '16.0.206', packageVersion: '16.0.206' });
+  writeJson(path.join(runDir, 'source-inventory.json'), { ...commonOk, version: '16.0.207', packageVersion: '16.0.207' });
   writeJson(path.join(runDir, 'server-firebase-boundary-preflight.json'), commonOk);
   writeJson(path.join(runDir, 'test-account-provisioning.json'), commonOk);
   writeJson(path.join(runDir, 'role-identity-verification.json'), commonOk);
@@ -95,12 +95,12 @@ test('16.0.206 failed-only run with matching selected/executed tests is PASS eve
       CHAOS_RELEASE_GATE_RUN_DIR: runDir,
       CHAOS_RELEASE_GATE_SELECTION_MODE: 'reported-failed-only',
       CHAOS_FAILED_ONLY_RELEASE_GATE: 'true',
-      CHAOS_EXPECTED_VERSION: '16.0.206',
+      CHAOS_EXPECTED_VERSION: '16.0.207',
       CHAOS_RELEASE_GATE_STEP_FAILURES: '0',
     },
     stdio: 'pipe',
   });
-  const summaryPath = path.join(runDir, `86chaos-play-store-release-gate-summary-16.0.206-${runId}.json`);
+  const summaryPath = path.join(runDir, `86chaos-play-store-release-gate-summary-16.0.207-${runId}.json`);
   const summary = JSON.parse(fs.readFileSync(summaryPath, 'utf8'));
   assert.equal(summary.ok, true);
   assert.equal(summary.outcome, 'PASS');
@@ -111,9 +111,53 @@ test('16.0.206 failed-only run with matching selected/executed tests is PASS eve
   fs.rmSync(runDir, { recursive: true, force: true });
 });
 
-test('16.0.206 validator remains archived after later version bumps', () => {
-  assert.ok(fs.existsSync(path.join(root, 'scripts/validate-16-0-206.js')));
-  const validator = read('scripts/validate-16-0-206.js');
-  assert.match(validator, /package\.json version is 16\.0\.206/);
-  assert.match(validator, /failed-only result reconciliation repair/);
+
+test('16.0.207 delta gate workspace and nested-state helpers are deterministic', () => {
+  const auditHelpers = read('tests/86chaos-full-audit/utils/audit-helpers.cjs');
+  const exhaustiveHelper = read('tests/86chaos-release-gate/utils/exhaustive-ui-helpers.cjs');
+  assert.match(auditHelpers, /candidateButtons/);
+  assert.match(auditHelpers, /Workspace chooser still visible after selecting/);
+  assert.match(auditHelpers, /for \(let attempt = 0; attempt < 3; attempt \+= 1\)/);
+  assert.match(exhaustiveHelper, /async function firstVisibleFromLocator/);
+  assert.match(exhaustiveHelper, /const globalFormProbeRegistry = new Set\(\)/);
+  assert.match(exhaustiveHelper, /const globalMutationActionabilityRegistry = new Set\(\)/);
+  assert.match(exhaustiveHelper, /form-control-already-proven/);
+  assert.match(exhaustiveHelper, /mutation-actionability-already-proven/);
+});
+
+test('16.0.207 exhaustive delta traversals avoid redundant same-route transitions without dropping declared state coverage', () => {
+  const routeStateGraphSpec = read('tests/86chaos-release-gate/28-exhaustive-route-state-control-graph.spec.cjs');
+  const responsiveSpec = read('tests/86chaos-release-gate/31-exhaustive-responsive-nested-layout.spec.cjs');
+  const nestedAccessibilitySpec = read('tests/86chaos-release-gate/32-exhaustive-nested-accessibility.spec.cjs');
+  assert.match(routeStateGraphSpec, /removing the release-gate timeout caused by hundreds of redundant route transitions/);
+  assert.doesNotMatch(routeStateGraphSpec, /Always start each state from a clean route surface/);
+  assert.match(responsiveSpec, /const routeText=await gotoTab\(page,route\.tab/);
+  assert.match(responsiveSpec, /const routeGated=PERMISSION_GATE_RE\.test\(routeText\)/);
+  assert.match(nestedAccessibilitySpec, /const routeText=await gotoTab\(page,route\.tab/);
+  assert.match(nestedAccessibilitySpec, /const routeGated=PERMISSION_GATE_RE\.test\(routeText\)/);
+});
+
+test('16.0.207 Schedule Builder tools have valid tablist semantics and the seed oracle has an explicit timeout budget', () => {
+  const schedule = read('src/features/schedule.jsx');
+  const oracle = read('tests/86chaos-full-audit/04-schedule-math-oracle.spec.cjs');
+  assert.match(schedule, /role="tablist" aria-label="Schedule Builder tools"/);
+  assert.match(schedule, /role="tab" aria-label=\{label\} title=\{label\}/);
+  assert.match(oracle, /test\.setTimeout\(4 \* 60 \* 1000\)/);
+});
+
+test('16.0.207 version metadata is consistent', () => {
+  const pkg = JSON.parse(read('package.json'));
+  const lock = JSON.parse(read('package-lock.json'));
+  const version = JSON.parse(read('public/version.json'));
+  const apiVersion = read('api/_version.js');
+  const appCore = read('src/core/appCore.js');
+  assert.equal(pkg.version, '16.0.207');
+  assert.equal(lock.version, '16.0.207');
+  assert.equal(lock.packages[''].version, '16.0.207');
+  assert.equal(pkg.scripts['test:source'], 'node scripts/validate-16-0-207.js');
+  assert.equal(version.version, '16.0.207');
+  assert.equal(version.build, '16.0.207');
+  assert.match(apiVersion, /APP_VERSION = '16\.0\.207'/);
+  assert.match(apiVersion, /SECURITY_SCHEMA_VERSION = '16\.0\.207'/);
+  assert.match(appCore, /CURRENT_VERSION = '16\.0\.207'/);
 });

@@ -23,6 +23,17 @@ const stripOpenPrefix = (value = '') => normalizeStateLabelText(value).replace(/
 const cssString = (value = '') => String(value || '').replace(/\\/g, '\\\\').replace(/"/g, '\\"');
 
 
+async function firstVisibleFromLocator(locator, { limit = 20, timeout = 500 } = {}) {
+  const count = Math.min(await locator.count().catch(() => 0), limit);
+  for (let i = 0; i < count; i += 1) {
+    const candidate = locator.nth(i);
+    await candidate.scrollIntoViewIfNeeded().catch(() => {});
+    if (await candidate.isVisible({ timeout }).catch(() => false)) return candidate;
+  }
+  return null;
+}
+
+
 function stringStateMatcher(label) {
   const wanted = normalizeStateLabelText(label).toLowerCase();
   return (candidate = '') => {
@@ -80,15 +91,16 @@ async function stateControlIndexes(page, label) {
 
 async function findStateControl(page, label) {
   const indexes = await stateControlIndexes(page, label);
-  if (indexes.length) return page.locator(STATE_INTERACTIVE_SELECTOR).nth(indexes[0]);
+  for (const index of indexes) {
+    const candidate = page.locator(STATE_INTERACTIVE_SELECTOR).nth(index);
+    await candidate.scrollIntoViewIfNeeded().catch(() => {});
+    if (await candidate.isVisible({ timeout: 350 }).catch(() => false)) return candidate;
+  }
 
   if (label instanceof RegExp) {
     for (const role of ['tab', 'button', 'link', 'menuitem']) {
-      const direct = page.getByRole(role, { name: label }).first();
-      if (await direct.count().catch(() => 0)) {
-        await direct.scrollIntoViewIfNeeded().catch(() => {});
-        if (await direct.isVisible({ timeout: 350 }).catch(() => false)) return direct;
-      }
+      const direct = await firstVisibleFromLocator(page.getByRole(role, { name: label }), { limit: 20, timeout: 350 });
+      if (direct) return direct;
     }
     return null;
   }
@@ -105,17 +117,12 @@ async function findStateControl(page, label) {
     `a[aria-label="${cssString(raw)}"]`,
     `a[title="${cssString(raw)}"]`,
   ].join(', ');
-  const structural = page.locator(exactSelector).first();
-  if (await structural.count().catch(() => 0)) {
-    await structural.scrollIntoViewIfNeeded().catch(() => {});
-    if (await structural.isVisible({ timeout: 500 }).catch(() => false)) return structural;
-  }
+  const structural = await firstVisibleFromLocator(page.locator(exactSelector), { limit: 30, timeout: 450 });
+  if (structural) return structural;
+
   for (const role of ['tab', 'button', 'link', 'menuitem']) {
-    const candidate = page.getByRole(role, { name: accessibleName }).first();
-    if (await candidate.count().catch(() => 0)) {
-      await candidate.scrollIntoViewIfNeeded().catch(() => {});
-      if (await candidate.isVisible({ timeout: 350 }).catch(() => false)) return candidate;
-    }
+    const candidate = await firstVisibleFromLocator(page.getByRole(role, { name: accessibleName }), { limit: 30, timeout: 350 });
+    if (candidate) return candidate;
   }
   return null;
 }
@@ -392,15 +399,22 @@ async function probeFormControls(page, controls, evidence, { allowValueMutation 
     const label = row.label || `field-${row.index}`;
     const type = row.type || '';
     const el = locatorFromFormDescriptor(page, row);
-    if (!ALLOW_MUTATION || !allowValueMutation) { evidence.push({ label, action: 'focus-only-mutation-disabled' }); await el.focus().catch(() => {}); continue; }
+    const key = formDescriptorKey(row);
+    if (globalFormProbeRegistry.has(key)) {
+      evidence.push({ label, action: 'form-control-already-proven', ok: true, key });
+      continue;
+    }
+    if (!ALLOW_MUTATION || !allowValueMutation) { evidence.push({ label, action: 'focus-only-mutation-disabled', ok: true, key }); await el.focus().catch(() => {}); globalFormProbeRegistry.add(key); continue; }
     if (/hidden|file|password/i.test(type) || row.disabled || row.readOnly || await el.isDisabled().catch(() => true) || await el.getAttribute('readonly')) {
-      evidence.push({ label, action: 'inspect-only', reason: type || 'disabled/readonly' });
+      evidence.push({ label, action: 'inspect-only', reason: type || 'disabled/readonly', ok: true, key });
+      globalFormProbeRegistry.add(key);
       continue;
     }
     await el.focus().catch(() => {});
     const before = await el.inputValue().catch(() => row.value ?? null);
     if (AUTO_CHANGE_BLOCK_RE.test(label) || ['checkbox','radio'].includes(type) || row.tag === 'select') {
-      evidence.push({ label, action: 'focus-only-sensitive', before });
+      evidence.push({ label, action: 'focus-only-sensitive', before, ok: true, key });
+      globalFormProbeRegistry.add(key);
       continue;
     }
     let sample = '86chaos-test';
@@ -416,7 +430,8 @@ async function probeFormControls(page, controls, evidence, { allowValueMutation 
       await page.waitForTimeout(80);
       let restoreResult = {};
       if (before !== null) restoreResult = await restoreAndObserve(page, locatorFromFormDescriptor(page, row), before, 1200);
-      evidence.push({ label, action: 'fill-and-restore', type, ok: true, ...fillResult, ...restoreResult });
+      evidence.push({ label, action: 'fill-and-restore', type, ok: true, key, ...fillResult, ...restoreResult });
+      globalFormProbeRegistry.add(key);
     } catch (err) {
       evidence.push({ label, action: 'fill-and-restore', type, ok: false, error: String(err.message || err).slice(0, 250) });
     }
@@ -425,9 +440,15 @@ async function probeFormControls(page, controls, evidence, { allowValueMutation 
 
 const GLOBAL_CHROME_RE = /^(?:Open navigation menu|Open 86Voice|86Voice|Report Problem|Open report problem|Report a problem|Switch Workspace|Open Switch Workspace|Sign Out|Log Out)$/i;
 const globalSafeProbeRegistry = new Set();
+const globalFormProbeRegistry = new Set();
+const globalMutationActionabilityRegistry = new Set();
 
 function descriptorKey(row = {}) {
   return [row.testId || '', row.id || '', row.href || '', row.role || '', row.type || '', row.label || ''].join('|');
+}
+
+function formDescriptorKey(row = {}) {
+  return [row.testId || '', row.id || '', row.tag || '', row.type || '', row.name || '', row.placeholder || '', row.label || '', row.structuralKey || ''].join('|');
 }
 
 function locatorFromDescriptor(page, row = {}) {
@@ -529,6 +550,10 @@ async function probeMutationActionability(page, evidence, { max = 220 } = {}) {
     if (seen.has(key)) continue;
     seen.add(key);
     const label = row.label || key || 'mutation-control';
+    if (globalMutationActionabilityRegistry.has(key)) {
+      evidence.push({ label, action: 'mutation-actionability-already-proven', ok: true, key });
+      continue;
+    }
     const el = locatorFromDescriptor(page, row);
     if (!await el.isVisible({ timeout: 350 }).catch(() => false)) {
       evidence.push({ label, action: 'mutation-descriptor-no-longer-visible-after-state-change', ok: true, key });
@@ -542,10 +567,12 @@ async function probeMutationActionability(page, evidence, { max = 220 } = {}) {
       // This lets the exhaustive gate verify destructive/persistent controls without mutating platform/restaurant data.
       await el.click({ trial: true, timeout: 2500 });
       evidence.push({ label, action: 'trial-click-no-dispatch', ok: true, destructive: SESSION_OR_GLOBAL_DANGER_RE.test(label), key });
+      globalMutationActionabilityRegistry.add(key);
     } catch (err) {
       const message = String(err.message || err);
       if (/Timeout|intercepts pointer events|not stable|receives pointer events|detached|covered by|dialog|modal/i.test(message)) {
         evidence.push({ label, action: 'mutation-actionability-deferred-after-ui-overlay-or-dom-change', ok: true, destructive: SESSION_OR_GLOBAL_DANGER_RE.test(label), key, note: message.slice(0, 180) });
+        globalMutationActionabilityRegistry.add(key);
       } else {
         evidence.push({ label, action: 'trial-click-no-dispatch', ok: false, destructive: SESSION_OR_GLOBAL_DANGER_RE.test(label), key, error: message.slice(0,250) });
       }

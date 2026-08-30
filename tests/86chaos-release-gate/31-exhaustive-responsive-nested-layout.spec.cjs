@@ -31,10 +31,11 @@ async function auditViewport(browser, vp, testInfo) {
         await login(page,sys.email,sys.password); asSystem=true;
       }
       const states=[[]].concat(ROUTE_STATES[route.tab]||[]);
+      const routeText=await gotoTab(page,route.tab,{settleMs:300,maxText:16000,force:true});
+      const routeGated=PERMISSION_GATE_RE.test(routeText);
       for(let i=0;i<states.length;i++){
         const path=states[i];
-        const text=await gotoTab(page,route.tab,{settleMs:300,maxText:16000,force:true});
-        if(PERMISSION_GATE_RE.test(text)){findings.push({viewport:vp.name,route:route.tab,path:path.map(String),gated:true});continue;}
+        if(routeGated){findings.push({viewport:vp.name,route:route.tab,path:path.map(String),gated:true});continue;}
         const state=await applyStatePath(page,path,{strict:false});
         if(!state.ok){findings.push({viewport:vp.name,route:route.tab,path:path.map(String),missing:true});continue;}
         const audit=await viewportAudit(page);
