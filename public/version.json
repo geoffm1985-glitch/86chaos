@@ -1,18 +1,20 @@
 {
-  "version": "16.0.203",
-  "name": "86 Chaos 16.0.203",
-  "build": "16.0.203",
-  "label": "86 Chaos 16.0.203",
-  "releasedAt": "2026-08-29T10:35:00-05:00",
-  "releaseTitle": "Release Gate Failed+New Manifest Repair",
+  "version": "16.0.204",
+  "name": "86 Chaos 16.0.204",
+  "build": "16.0.204",
+  "label": "86 Chaos 16.0.204",
+  "releasedAt": "2026-08-29T23:07:00-05:00",
+  "releaseTitle": "Schedule Hydration and Form Probe Determinism Repair",
   "notes": [
     "Converted expected presence-summary RTDB timeouts to an explicit degraded/retryable non-5xx response while preserving the bounded timeout.",
     "Corrected Back Office tab semantics with a valid tablist while preserving tab controls and behavior.",
     "Repaired release-gate navigation, Document Vault, form-control, schedule-readiness, and responsive-matrix harness determinism without reducing coverage.",
     "Preserved 16.0.201 Firebase cost optimizations and kept Firestore/RTDB read/write behavior flat.",
-    "Migrated legacy failed+new responsive matrix lineage to the five viewport-partitioned tests so the exact gate runs instead of blocking on the retired monolithic title."
+    "Migrated legacy failed+new responsive matrix lineage to the five viewport-partitioned tests so the exact gate runs instead of blocking on the retired monolithic title.",
+    "Added Schedule Builder seed visibility retry-on-fresh-route behavior for the release gate without accepting empty data.",
+    "Tagged inventoried form controls during the exhaustive harness probe so fill/restore targets the exact visible element instead of a drifting structural ordinal."
   ],
-  "title": "86 Chaos 16.0.203",
-  "summary": "Surgical 16.0.203 repair for failed+new manifest lineage after responsive matrix partitioning, preserving 16.0.202 app behavior and Firebase cost invariants.",
-  "description": "Preserves the 16.0.201 cost architecture and 16.0.202 app repairs while allowing the release gate to migrate the legacy monolithic responsive failure into the five viewport-partitioned tests."
+  "title": "86 Chaos 16.0.204",
+  "summary": "Surgical 16.0.204 repair for Schedule Builder QA hydration readiness and exact form-control probe reconstruction, preserving Firebase cost invariants.",
+  "description": "Keeps the 16.0.203 manifest-lineage repair while making the failed-only gate recover from schedule route hydration races and target the exact originally inventoried visible form control."
 }

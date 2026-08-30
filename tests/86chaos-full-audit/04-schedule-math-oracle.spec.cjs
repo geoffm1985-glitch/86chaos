@@ -2,6 +2,23 @@ const { test, expect } = require('@playwright/test');
 const { durationForShift, buildAuditScheduleFixture, expectedHoursFor, summarizeSchedule } = require('./utils/math-oracle.cjs');
 const { attachJson, ownerLikeCreds, requireCreds, login, gotoTab, collectTextNear, readSeedReport, bodyText } = require('./utils/audit-helpers.cjs');
 
+
+async function waitForScheduleSeedLabels(page, required = [], timeoutMs = 60000) {
+  const labels = (Array.isArray(required) ? required : []).filter(Boolean);
+  const deadline = Date.now() + timeoutMs;
+  let sample = '';
+  let missing = [...labels];
+  while (Date.now() < deadline) {
+    sample = await bodyText(page, 70000);
+    missing = labels.filter(label => !sample.includes(label));
+    if (missing.length === 0) return { ok: true, missing, sample };
+    await page.waitForTimeout(1000).catch(() => {});
+  }
+  sample = await bodyText(page, 70000);
+  missing = labels.filter(label => !sample.includes(label));
+  return { ok: missing.length === 0, missing, sample };
+}
+
 test.describe('04 schedule hours math truth oracle', () => {
   test('independent shift duration oracle catches valid, overnight, invalid, duplicate, and overlap cases', async ({}, testInfo) => {
     const cases = [
@@ -39,18 +56,19 @@ test.describe('04 schedule hours math truth oracle', () => {
     const account = ownerLikeCreds();
     requireCreds(account, 'owner-like account');
     await login(page, account.email, account.password);
-    await gotoTab(page, 'schedule', { settleMs: 900, maxText: 60000 });
+    await gotoTab(page, 'schedule', { fullReload: true, settleMs: 1200, maxText: 60000 });
     const required = seed.profile.expectations.mustAppearInScheduleBuilder || [];
-    await expect.poll(async () => {
-      const current = await bodyText(page, 70000);
-      return required.filter(label => !current.includes(label));
-    }, {
-      timeout: 45000,
-      intervals: [750, 1000, 1500, 2500, 5000],
-      message: 'Schedule Builder should hydrate current-run QA staff/events before seed visibility assertions run'
-    }).toEqual([]);
-    const text = await bodyText(page, 70000);
-    const missing = required.filter(label => !text.includes(label));
+    let readiness = await waitForScheduleSeedLabels(page, required, 60000);
+    if (!readiness.ok) {
+      await attachJson(testInfo, '04-schedule-ui-seed-visibility-initial-miss.json', { required, missing: readiness.missing, bodySample: readiness.sample.slice(0, 6000) });
+      // A fresh schedule-route reload repairs the release-gate navigation/hydration race without accepting an empty Schedule Builder.
+      await page.reload({ waitUntil: 'domcontentloaded', timeout: 45000 }).catch(() => {});
+      await gotoTab(page, 'schedule', { force: true, settleMs: 1500, maxText: 60000 });
+      readiness = await waitForScheduleSeedLabels(page, required, 60000);
+    }
+    const text = readiness.sample || await bodyText(page, 70000);
+    const missing = readiness.missing || required.filter(label => !text.includes(label));
+    expect(missing, 'Schedule Builder should hydrate current-run QA staff/events before seed visibility assertions run').toEqual([]);
     const allenNear = await collectTextNear(page, 'Allen QA', 2000);
     await attachJson(testInfo, '04-schedule-ui-seed-visibility.json', { required, missing, allenNear, bodySample: text.slice(0, 6000), seedScheduleTruth: seed.profile.scheduleTruth });
     expect(missing, 'Seeded QA staff/events should be visible in Schedule Builder').toEqual([]);

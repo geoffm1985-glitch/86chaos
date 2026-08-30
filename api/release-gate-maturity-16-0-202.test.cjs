@@ -45,7 +45,7 @@ test('16.0.202 route settle and form reconstruction are deterministic rather tha
 test('16.0.202 schedule readiness and responsive matrix retain coverage in bounded shards', () => {
   const schedule = read('tests/86chaos-full-audit/04-schedule-math-oracle.spec.cjs');
   const responsive = read('tests/86chaos-release-gate/31-exhaustive-responsive-nested-layout.spec.cjs');
-  assert.match(schedule, /timeout: 45000/);
+  assert.match(schedule, /waitForScheduleSeedLabels|timeout: 45000/);
   assert.match(schedule, /Schedule Builder should hydrate current-run QA staff\/events/);
   for (const vp of ['narrow-phone','phone','tablet','laptop','desktop']) assert.match(responsive, new RegExp(`name:'${vp}'`));
   assert.match(responsive, /for \(const vp of VIEWPORTS\)/);

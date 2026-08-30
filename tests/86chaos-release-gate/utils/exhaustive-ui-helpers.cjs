@@ -263,6 +263,7 @@ async function assertHealthy(page, context) {
 }
 
 function formControlSelectorFor(row = {}) {
+  if (row.probeToken) return `[data-chaos-probe-token="${cssString(row.probeToken)}"]:visible`;
   if (row.testId) return `[data-testid="${String(row.testId).replace(/"/g, '\\"')}"]`;
   if (row.id) return `#${String(row.id).replace(/(["\\#.:[\],=])/g, '\\$1')}`;
   const base = 'input:visible, textarea:visible, select:visible, [contenteditable="true"]:visible';
@@ -276,6 +277,7 @@ function formControlSelectorFor(row = {}) {
 }
 
 function locatorFromFormDescriptor(page, row = {}) {
+  if (row.probeToken) return page.locator(`[data-chaos-probe-token="${cssString(row.probeToken)}"]:visible`).first();
   if (row.testId) return page.getByTestId(row.testId).first();
   if (row.id) return page.locator(`#${String(row.id).replace(/(["\\#.:[\],=])/g, '\\$1')}`).first();
   const selector = formControlSelectorFor(row);
@@ -346,7 +348,8 @@ async function restoreAndObserve(page, locator, before, timeout = 2500) {
 
 async function probeFormControls(page, controls, evidence, { allowValueMutation = true } = {}) {
   const selector = 'input:visible, textarea:visible, select:visible, [contenteditable="true"]:visible';
-  const descriptors = await page.locator(selector).evaluateAll((els) => {
+  const probeRunId = `chaos-form-probe-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+  const descriptors = await page.locator(selector).evaluateAll((els, runId) => {
     const normalize = value => String(value || '').replace(/\s+/g, ' ').trim();
     const labelFor = (node, index) => {
       const aria = node.getAttribute('aria-label') || node.getAttribute('title') || node.getAttribute('placeholder') || '';
@@ -357,6 +360,8 @@ async function probeFormControls(page, controls, evidence, { allowValueMutation 
     };
     const counts = new Map();
     return els.map((node, index) => {
+      const probeToken = `${runId}-${index}`;
+      try { node.setAttribute('data-chaos-probe-token', probeToken); } catch (_) {}
       const tag = node.tagName.toLowerCase();
       const type = node.getAttribute('type') || '';
       const name = node.getAttribute('name') || '';
@@ -372,6 +377,7 @@ async function probeFormControls(page, controls, evidence, { allowValueMutation 
         id: node.id || '',
         testId: node.getAttribute('data-testid') || '',
         placeholder,
+        probeToken,
         structuralKey,
         selectorOrdinal,
         label: labelFor(node, index),
@@ -380,7 +386,7 @@ async function probeFormControls(page, controls, evidence, { allowValueMutation 
         value: 'value' in node ? String(node.value || '') : ''
       };
     });
-  }).catch(() => []);
+  }, probeRunId).catch(() => []);
 
   for (const row of descriptors.slice(0, 220)) {
     const label = row.label || `field-${row.index}`;
@@ -406,10 +412,10 @@ async function probeFormControls(page, controls, evidence, { allowValueMutation 
     else if (type === 'email') sample = 'qa@example.test';
     else if (type === 'tel') sample = '5551234567';
     try {
-      const fillResult = await fillAndObserve(el, sample, 2500);
+      const fillResult = await fillAndObserve(el, sample, 1200);
       await page.waitForTimeout(80);
       let restoreResult = {};
-      if (before !== null) restoreResult = await restoreAndObserve(page, locatorFromFormDescriptor(page, row), before, 2500);
+      if (before !== null) restoreResult = await restoreAndObserve(page, locatorFromFormDescriptor(page, row), before, 1200);
       evidence.push({ label, action: 'fill-and-restore', type, ok: true, ...fillResult, ...restoreResult });
     } catch (err) {
       evidence.push({ label, action: 'fill-and-restore', type, ok: false, error: String(err.message || err).slice(0, 250) });
