@@ -26,18 +26,9 @@ test('16.0.204 exhaustive form probe targets the exact visible control before st
   assert.match(helper, /\$\{parts\.join\(''\)\}:visible/);
 });
 
-test('16.0.204 version metadata is consistent', () => {
-  const pkg = JSON.parse(read('package.json'));
-  const lock = JSON.parse(read('package-lock.json'));
-  const version = JSON.parse(read('public/version.json'));
-  const apiVersion = read('api/_version.js');
-  const appCore = read('src/core/appCore.js');
-  assert.equal(pkg.version, '16.0.204');
-  assert.equal(lock.version, '16.0.204');
-  assert.equal(lock.packages[''].version, '16.0.204');
-  assert.equal(version.version, '16.0.204');
-  assert.equal(version.build, '16.0.204');
-  assert.match(apiVersion, /APP_VERSION = '16\.0\.204'/);
-  assert.match(apiVersion, /SECURITY_SCHEMA_VERSION = '16\.0\.204'/);
-  assert.match(appCore, /CURRENT_VERSION = '16\.0\.204'/);
+test('16.0.204 validator remains archived after later version bumps', () => {
+  const validator = read('scripts/validate-16-0-204.js');
+  assert.match(validator, /Schedule Hydration and Form Probe Determinism Repair/);
+  assert.match(validator, /schedule oracle waits for deterministic seeded data/);
+  assert.match(validator, /form descriptor reconstruction first targets the exact originally inventoried visible control/);
 });

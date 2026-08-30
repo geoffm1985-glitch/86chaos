@@ -1,10 +1,10 @@
 {
-  "version": "16.0.204",
-  "name": "86 Chaos 16.0.204",
-  "build": "16.0.204",
-  "label": "86 Chaos 16.0.204",
-  "releasedAt": "2026-08-29T23:07:00-05:00",
-  "releaseTitle": "Schedule Hydration and Form Probe Determinism Repair",
+  "version": "16.0.205",
+  "name": "86 Chaos 16.0.205",
+  "build": "16.0.205",
+  "label": "86 Chaos 16.0.205",
+  "releasedAt": "2026-08-30T00:21:00-05:00",
+  "releaseTitle": "Failed-Only Manifest Selection Guard Repair",
   "notes": [
     "Converted expected presence-summary RTDB timeouts to an explicit degraded/retryable non-5xx response while preserving the bounded timeout.",
     "Corrected Back Office tab semantics with a valid tablist while preserving tab controls and behavior.",
@@ -12,9 +12,11 @@
     "Preserved 16.0.201 Firebase cost optimizations and kept Firestore/RTDB read/write behavior flat.",
     "Migrated legacy failed+new responsive matrix lineage to the five viewport-partitioned tests so the exact gate runs instead of blocking on the retired monolithic title.",
     "Added Schedule Builder seed visibility retry-on-fresh-route behavior for the release gate without accepting empty data.",
-    "Tagged inventoried form controls during the exhaustive harness probe so fill/restore targets the exact visible element instead of a drifting structural ordinal."
+    "Tagged inventoried form controls during the exhaustive harness probe so fill/restore targets the exact visible element instead of a drifting structural ordinal.",
+    "Corrected the reported-failed-only Playwright selection guard to accept the actual six selected legacy failure identities: two chromium and four mobile-chromium.",
+    "Kept the failed-only guard strict: zero-test selections, duplicate identities, unexpected projects, timeouts, and new/repair reasons still fail before Playwright can produce a false green."
   ],
-  "title": "86 Chaos 16.0.204",
-  "summary": "Surgical 16.0.204 repair for Schedule Builder QA hydration readiness and exact form-control probe reconstruction, preserving Firebase cost invariants.",
-  "description": "Keeps the 16.0.203 manifest-lineage repair while making the failed-only gate recover from schedule route hydration races and target the exact originally inventoried visible form control."
+  "title": "86 Chaos 16.0.205",
+  "summary": "Surgical 16.0.205 repair for reported-failed-only manifest selection count validation, preserving 16.0.204 app and harness fixes.",
+  "description": "Keeps the 16.0.204 schedule hydration and form probe repairs while correcting the reported-failed-only Playwright selection guard so the six selected identities can actually execute."
 }

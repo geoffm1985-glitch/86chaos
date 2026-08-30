@@ -45,7 +45,7 @@ function assertReportedFailedOnlySelection(rows = []) {
   const stableKeys = rows.map(row => row.stableKey || `${row.specPath || row.spec || ''}\u0000${row.fullSuitePath || ''}\u0000${row.leafTitle || row.exactTestTitle || row.title || ''}\u0000${reportedProject(row)}`);
   const errors = [];
   if (rows.length !== 6) errors.push(`expected 6 selected FAIL identities, got ${rows.length}`);
-  if (desktop !== 1) errors.push(`expected 1 chromium identity, got ${desktop}`);
+  if (desktop !== 2) errors.push(`expected 2 chromium identities, got ${desktop}`);
   if (mobile !== 4) errors.push(`expected 4 mobile-chromium identities, got ${mobile}`);
   if (rows.some(item => String(item.priorStatus || '').toLowerCase() !== 'failed')) errors.push('reported-failed-only selected a non-failed priorStatus');
   if (rows.some(item => String(item.baselineStatus || '').toLowerCase() !== 'failed')) errors.push('reported-failed-only selected a non-failed baselineStatus');
@@ -95,7 +95,7 @@ const manifest = {
   desktopSelected: FAILED_ONLY_TESTS.filter(item => (item.projects || []).includes('chromium')).length,
   mobileSelected: FAILED_ONLY_TESTS.filter(item => (item.projects || []).includes('mobile-chromium')).length,
   note: releaseSelectionMode === 'reported-failed-only'
-    ? 'reported-failed-only runs only the 6 FAIL identities from 20260810-015004 and excludes TIMEOUT, PASS, and SKIP identities.'
+    ? 'reported-failed-only runs only the 6 FAIL identities from 20260810-015004 (2 chromium + 4 mobile-chromium) and excludes TIMEOUT, PASS, and SKIP identities.'
     : releaseSelectionMode === 'partial-resume'
       ? 'partial-resume runs only the FAIL/TIMEOUT plus NOT-RUN identities from the uploaded interrupted 16.0.175 run and excludes all PASS identities.'
       : releaseSelectionMode === 'reported-current-blockers'
