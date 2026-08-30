@@ -25,19 +25,9 @@ test('16.0.205 failed-only config still refuses false-green zero-test selections
   assert.match(config, /throw new Error/);
 });
 
-test('16.0.205 version metadata is consistent', () => {
-  const pkg = JSON.parse(read('package.json'));
-  const lock = JSON.parse(read('package-lock.json'));
-  const version = JSON.parse(read('public/version.json'));
-  const apiVersion = read('api/_version.js');
-  const appCore = read('src/core/appCore.js');
-  assert.equal(pkg.version, '16.0.205');
-  assert.equal(lock.version, '16.0.205');
-  assert.equal(lock.packages[''].version, '16.0.205');
-  assert.equal(pkg.scripts['test:source'], 'node scripts/validate-16-0-205.js');
-  assert.equal(version.version, '16.0.205');
-  assert.equal(version.build, '16.0.205');
-  assert.match(apiVersion, /APP_VERSION = '16\.0\.205'/);
-  assert.match(apiVersion, /SECURITY_SCHEMA_VERSION = '16\.0\.205'/);
-  assert.match(appCore, /CURRENT_VERSION = '16\.0\.205'/);
+test('16.0.205 validator remains archived after later version bumps', () => {
+  const validator = read('scripts/validate-16-0-205.js');
+  assert.match(validator, /16\.0\.205 source validation passed/);
+  assert.match(validator, /reported-failed-only guard expects the actual 2 chromium \+ 4 mobile selected identities/);
+  assert.match(validator, /failed-only config still refuses zero-test false-green runs/);
 });

@@ -168,12 +168,32 @@ const slowestTests = tests.slice().sort((a, b) => Number(b.duration || 0) - Numb
 const failedByCategory = unexpectedTests.map(t => ({ ...t, category: /ERR_CONNECTION|net::/i.test(t.error) ? 'infrastructure/network' : /Firebase|permission-denied|Missing or insufficient/i.test(t.error) ? 'Firebase emulator' : /login|auth/i.test(t.error) ? 'authentication/setup' : /cleanup/i.test(t.error) ? 'cleanup' : 'application assertion' }));
 function normSpec(value = '') { return String(value || '').replace(/\\/g, '/').replace(/^tests\//, ''); }
 function normTitle(value = '') { return String(value || '').replace(/\s+›\s+/g, ' > ').replace(/\s+/g, ' ').trim(); }
+function stripPlaywrightFileTitlePrefix(spec = '', title = '') {
+  const normalizedTitle = normTitle(title).replace(/\\/g, '/');
+  const normalizedSpec = normSpec(spec);
+  const candidatePrefixes = [
+    normalizedSpec,
+    normalizedSpec ? `tests/${normalizedSpec}` : '',
+    normalizedSpec ? path.basename(normalizedSpec) : '',
+  ].filter(Boolean);
+  for (const prefix of candidatePrefixes) {
+    const normalizedPrefix = normTitle(prefix).replace(/\\/g, '/');
+    if (!normalizedPrefix) continue;
+    if (normalizedTitle === normalizedPrefix) return '';
+    if (normalizedTitle.startsWith(`${normalizedPrefix} > `)) {
+      return normalizedTitle.slice(normalizedPrefix.length + 3).trim();
+    }
+  }
+  return normalizedTitle;
+}
 function manifestIdentity(row = {}) {
-  const title = normTitle(row.fullTitle || [...(row.suitePathParts || []), row.title || row.exactTestTitle || row.leafTitle || ''].filter(Boolean).join(' > '));
-  return `${normSpec(row.specPath || row.spec || row.file)}\u0000${title}\u0000${row.project || row.projectName || (row.projects || [])[0] || ''}`;
+  const spec = normSpec(row.specPath || row.spec || row.file);
+  const title = stripPlaywrightFileTitlePrefix(spec, row.fullTitle || [...(row.suitePathParts || []), row.title || row.exactTestTitle || row.leafTitle || ''].filter(Boolean).join(' > '));
+  return `${spec}\u0000${title}\u0000${row.project || row.projectName || (row.projects || [])[0] || ''}`;
 }
 function executedIdentity(row = {}) {
-  return `${normSpec(row.file || row.specPath || row.spec)}\u0000${normTitle(row.title || row.fullTitle || '')}\u0000${row.projectName || row.project || ''}`;
+  const spec = normSpec(row.file || row.specPath || row.spec);
+  return `${spec}\u0000${stripPlaywrightFileTitlePrefix(spec, row.title || row.fullTitle || '')}\u0000${row.projectName || row.project || ''}`;
 }
 const manifestSelected = Array.isArray(failedOnlyManifest?.selected) ? failedOnlyManifest.selected : [];
 function manifestIdentityRows(rows = []) {
