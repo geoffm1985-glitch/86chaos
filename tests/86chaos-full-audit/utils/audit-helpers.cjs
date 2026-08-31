@@ -432,22 +432,47 @@ async function login(page, email, password, options = {}) {
     return text;
   }
   await dismissBlockingDialogs(page, { maxPasses: 6 }).catch(() => null);
-  const emailBox = page.getByRole('textbox', { name: /^Email Address$/i }).first();
-  const passwordBox = page.locator('input[type="password"][autocomplete="current-password"], input[type="password"][aria-label="Password"]').first();
-  await expect(emailBox, 'Login email box should be visible').toBeVisible({ timeout: 30000 });
-  await emailBox.fill(email);
-  await passwordBox.fill(password);
-  const loginButton = page.getByRole('button', { name: /unlock system|sign in|log in|login|unlock/i }).first();
-  await loginButton.click();
-  await page.waitForLoadState('domcontentloaded').catch(() => {});
-  await page.waitForTimeout(2500);
+
+  const fillAndSubmit = async () => {
+    const emailBox = page.getByRole('textbox', { name: /^Email Address$/i }).first();
+    const passwordBox = page.locator('input[type="password"][autocomplete="current-password"], input[type="password"][aria-label="Password"]').first();
+    await expect(emailBox, 'Login email box should be visible').toBeVisible({ timeout: 30000 });
+    await emailBox.fill(email);
+    await passwordBox.fill(password);
+    const loginButton = page.getByRole('button', { name: /unlock system|sign in|log in|login|unlock/i }).first();
+    await loginButton.click();
+    await page.waitForLoadState('domcontentloaded').catch(() => {});
+  };
+
+  const waitPastLogin = async (timeoutMs = 20000) => {
+    const deadline = Date.now() + timeoutMs;
+    let latest = '';
+    while (Date.now() < deadline) {
+      latest = await bodyText(page, 16000);
+      if (/choose workspace|select workspace|select restaurant|choose restaurant/i.test(latest)) return latest;
+      if (!LOGIN_RE.test(latest) && !/Unlocking|Signing in|Loading/i.test(latest)) return latest;
+      if (/invalid|wrong|error|failed|not attached/i.test(latest)) return latest;
+      await page.waitForTimeout(700).catch(() => {});
+    }
+    return latest || await bodyText(page, 16000);
+  };
+
+  await fillAndSubmit();
+  text = await waitPastLogin(22000);
+  if (LOGIN_RE.test(text) && !/invalid|wrong|error|failed|not attached/i.test(text)) {
+    // Mobile Chromium occasionally leaves the first submit on the login surface without an error
+    // while the button/actionability transition settles. Retry once, then fail loudly.
+    await fillAndSubmit();
+    text = await waitPastLogin(22000);
+  }
+
   await dismissBlockingDialogs(page, { maxPasses: 6 }).catch(() => null);
   await chooseQaWorkspace(page);
   await dismissBlockingDialogs(page, { maxPasses: 6 }).catch(() => null);
   await dismissNoise(page);
   text = await bodyText(page, 16000);
-  if (LOGIN_RE.test(text) && /invalid|wrong|error|failed|not attached/i.test(text)) {
-    throw new Error(`Login appears to have failed. Body: ${text.slice(0, 2000)}`);
+  if (LOGIN_RE.test(text)) {
+    throw new Error(`Login did not leave the login screen. Body: ${text.slice(0, 2000)}`);
   }
   return text;
 }
@@ -595,7 +620,10 @@ async function viewportAudit(page) {
       }
       if (offenders.length >= 25) break;
     }
-    const coarsePointer = Boolean(window.matchMedia?.('(pointer: coarse)')?.matches) || viewportWidth <= 640;
+    // Use the stricter 42px target floor only for phone-sized layouts. The release-gate
+    // tablet viewport is intentionally 768px wide; forcing Chromium hasTouch there made
+    // every compact desktop/tablet control look like a phone-target defect.
+    const coarsePointer = viewportWidth <= 640;
     const minHit = coarsePointer ? 42 : 24;
     const smallButtons = Array.from(document.querySelectorAll('button')).map(el => {
       const rect = el.getBoundingClientRect();

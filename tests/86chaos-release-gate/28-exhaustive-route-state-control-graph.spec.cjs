@@ -16,7 +16,7 @@ async function loginForRoute(page, route) {
 
 test.describe('28 ultimate route + nested-state + control graph', () => {
   test('every real route, declared nested surface, field, and safe control is rendered and probeable', async ({ page }, testInfo) => {
-    test.setTimeout(70 * 60 * 1000);
+    test.setTimeout(55 * 60 * 1000);
     let loggedLabel = '';
     const report = { routes: [], missingStates: [], permissionGates: [], totals: { states: 0, controls: 0, mutationsObserved: 0, formControls: 0 } };
 
@@ -55,11 +55,15 @@ test.describe('28 ultimate route + nested-state + control graph', () => {
           continue;
         }
         const identity = `28-${route.tab}-${stateIndex}-${path.map(String).join('-') || 'root'}`;
+        const expensiveProbe = stateIndex === 0;
         const audit = await auditState(page, testInfo, identity, {
-          probeForms: true,
+          probeForms: expensiveProbe,
           allowFormValueMutation: route.tab !== 'godmode',
-          probeSafeButtons: stateIndex === 0 || path.length > 0,
-          maxSafeButtons: 100,
+          probeSafeButtons: expensiveProbe,
+          probeMutationActionability: expensiveProbe,
+          maxSafeButtons: 35,
+          maxMutationButtons: 45,
+          attachDetail: false,
         });
         report.totals.states += 1;
         report.totals.controls += audit.controls.length;

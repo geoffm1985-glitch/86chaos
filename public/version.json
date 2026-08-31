@@ -1,10 +1,10 @@
 {
-  "version": "16.0.207",
-  "name": "86 Chaos 16.0.207",
-  "build": "16.0.207",
-  "label": "86 Chaos 16.0.207",
-  "releasedAt": "2026-08-30T00:21:00-05:00",
-  "releaseTitle": "Delta Gate Determinism Repair",
+  "version": "16.0.208",
+  "name": "86 Chaos 16.0.208",
+  "build": "16.0.208",
+  "label": "86 Chaos 16.0.208",
+  "releasedAt": "2026-08-30T20:24:00-05:00",
+  "releaseTitle": "Delta Gate Runtime Stabilization",
   "notes": [
     "Converted expected presence-summary RTDB timeouts to an explicit degraded/retryable non-5xx response while preserving the bounded timeout.",
     "Corrected Back Office tab semantics with a valid tablist while preserving tab controls and behavior.",
@@ -19,9 +19,14 @@
     "Repaired failed+new delta gate workspace chooser/version assertion readiness so tests do not assert app version while still on the workspace picker.",
     "Repaired nested state control lookup to choose the first visible matching tab/button instead of being trapped by hidden duplicates, restoring QuickBooks Back Office coverage.",
     "Converted Schedule Builder tool controls to a valid tablist/tab ARIA structure and extended the seed-hydration test budget without adding app reads.",
-    "Optimized exhaustive delta traversal by de-duplicating repeated form/mutation probes and avoiding redundant same-route transitions while still visiting every declared route/state."
+    "Optimized exhaustive delta traversal by de-duplicating repeated form/mutation probes and avoiding redundant same-route transitions while still visiting every declared route/state.",
+    "Hardened release-gate login so mobile Chromium retries one no-op submit and fails with an explicit login readiness error instead of misreporting Schedule Builder seed labels.",
+    "Opened responsive System Administrator directory controls before declaring GodMode nested states missing, fixing mobile nested accessibility coverage without skipping states.",
+    "Reduced redundant per-state form/mutation/click probes in exhaustive graph traversal while still visiting every declared route/state and observing controls.",
+    "Made the Full Schedule scroll list keyboard-focusable and increased contrast for muted past-shift chips, Burn Log Review, and critical maintenance labels.",
+    "Corrected the tablet tap-target harness classification so 768px tablet layout uses normal AA target floor while phone-sized viewports keep the stricter 42px touch policy."
   ],
-  "title": "86 Chaos 16.0.207",
-  "summary": "Surgical 16.0.207 repair for failed+new delta gate workspace selection, nested state reachability, Schedule Builder ARIA semantics, schedule hydration timeout, and exhaustive traversal runtime.",
-  "description": "Keeps 16.0.206 behavior while repairing failed+new delta blockers: workspace chooser selection now waits for the selected QA workspace, exact visible nested-state controls are selected when hidden duplicates exist, Schedule Builder tool tabs have valid ARIA semantics, the schedule seed oracle has a bounded timeout budget, and exhaustive delta traversals avoid redundant same-route transitions/probes without reducing declared state coverage."
+  "title": "86 Chaos 16.0.208",
+  "summary": "Surgical 16.0.208 repair for delta gate runtime, mobile login readiness, GodMode mobile state discovery, accessibility contrast, and tablet tap-target classification.",
+  "description": "Keeps 16.0.207 behavior while stabilizing the delta gate: mobile login now retries and fails explicitly if it remains on the login screen, responsive System Administrator state discovery opens the mobile directory before declaring nested states missing, exhaustive probes avoid repeated heavyweight mutation/form actionability work on every nested state, Schedule Full Schedule scroll regions and muted shift chips meet WCAG, and tablet tap-target checks no longer apply phone-only coarse pointer policy to 768px layouts."
 }

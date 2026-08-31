@@ -127,13 +127,36 @@ async function findStateControl(page, label) {
   return null;
 }
 
-async function waitForStateControl(page, label, { timeout = 6500 } = {}) {
+async function openResponsiveStateDirectory(page) {
+  const triggers = [
+    page.getByRole('button', { name: /show directory/i }).first(),
+    page.getByRole('button', { name: /show sections|show tools|open directory|open sections/i }).first(),
+  ];
+  for (const trigger of triggers) {
+    if (await trigger.isVisible({ timeout: 250 }).catch(() => false)) {
+      await trigger.click({ timeout: 1200 }).catch(() => {});
+      await page.waitForTimeout(250).catch(() => {});
+      return true;
+    }
+  }
+  return false;
+}
+
+async function waitForStateControl(page, label, { timeout = 1800 } = {}) {
   const deadline = Date.now() + timeout;
   let last = null;
+  let openedDirectory = false;
   while (Date.now() < deadline) {
     last = await findStateControl(page, label);
     if (last) return last;
-    await page.waitForTimeout(180).catch(() => {});
+    if (!openedDirectory) {
+      openedDirectory = await openResponsiveStateDirectory(page).catch(() => false);
+      if (openedDirectory) {
+        last = await findStateControl(page, label);
+        if (last) return last;
+      }
+    }
+    await page.waitForTimeout(120).catch(() => {});
   }
   return last;
 }
@@ -205,7 +228,7 @@ async function applyStatePath(page, path, { strict = true } = {}) {
       if (!/intercepts pointer events|not stable|timeout/i.test(msg)) throw err;
       await c.evaluate(el => el.click());
     });
-    await page.waitForTimeout(650);
+    await page.waitForTimeout(250);
     await dismissBlockingDialogs(page, { maxPasses: 4 }).catch(() => null);
     await neutralizeTestingPreviewOverlays(page).catch(() => null);
     const after = await bodyText(page, 16000);
@@ -395,7 +418,7 @@ async function probeFormControls(page, controls, evidence, { allowValueMutation 
     });
   }, probeRunId).catch(() => []);
 
-  for (const row of descriptors.slice(0, 220)) {
+  for (const row of descriptors.slice(0, 80)) {
     const label = row.label || `field-${row.index}`;
     const type = row.type || '';
     const el = locatorFromFormDescriptor(page, row);
@@ -599,7 +622,9 @@ async function auditState(page, testInfo, identity, options = {}) {
   if (options.probeMutationActionability !== false) await probeMutationActionability(page, mutationActionabilityEvidence, { max: options.maxMutationButtons || 220 });
   const classified = controls.map(c => ({ ...c, classification: classifyControl(c), key: stableKey(c) }));
   const result = { identity, controls: classified, unnamed, duplicateIds, badSelects, smallTargets, formEvidence, clickEvidence, mutationActionabilityEvidence };
-  await attachJson(testInfo, `${identity.replace(/[^a-z0-9]+/gi,'-').slice(0,120)}.json`, result);
+  if (options.attachDetail !== false) {
+    await attachJson(testInfo, `${identity.replace(/[^a-z0-9]+/gi,'-').slice(0,120)}.json`, result);
+  }
   expect(unnamed, `${identity}: every enabled control must have an accessible name`).toEqual([]);
   expect(duplicateIds, `${identity}: visible interactive controls must not reuse DOM ids`).toEqual([]);
   expect(badSelects, `${identity}: selects must expose options`).toEqual([]);

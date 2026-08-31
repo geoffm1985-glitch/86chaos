@@ -1626,11 +1626,11 @@ const handleOfferSwap = async (shift) => {
                   return (
                     <div key={s.id} className={`${T.row} flex justify-between items-center transition-colors ${isPastShift ? 'bg-[#0B0E11]/70 opacity-50 grayscale' : ''}`}>
                       <div>
-                        <div className={`font-bold text-sm ${isPastShift ? 'text-slate-500' : 'text-white'}`}>{formatDisplayDate(getShiftDateKey(s))}</div>
+                        <div className={`font-bold text-sm ${isPastShift ? 'text-slate-400' : 'text-white'}`}>{formatDisplayDate(getShiftDateKey(s))}</div>
                         <div className={`text-[9px] font-black uppercase tracking-widest mt-0.5 ${isPastShift ? 'text-slate-600' : T.copper}`}>{s.role}</div>
                       </div>
                       <div className="flex items-center gap-3">
-                        <div className={`text-xs font-mono font-bold px-2 py-1 rounded-md border ${isPastShift ? 'bg-[#0B0E11] text-slate-500 border-[#1F2933]' : `bg-[#12161A] ${T.copper} ${T.border}`}`}>
+                        <div className={`text-xs font-mono font-bold px-2 py-1 rounded-md border ${isPastShift ? 'bg-[#0B0E11] text-slate-400 border-[#1F2933]' : `bg-[#12161A] ${T.copper} ${T.border}`}`}>
                           {formatShortTime(s.startTime)} - {formatShortTime(s.endTime)}
                         </div>
                         {isPastShift ? (
@@ -1751,7 +1751,7 @@ const handleOfferSwap = async (shift) => {
                 </div>
               )}
             </div>
-            <div className="divide-y divide-[#2A353D] max-h-[60vh] overflow-y-auto custom-scrollbar">
+            <div role="region" aria-label="Full schedule shift list" tabIndex={0} className="divide-y divide-[#2A353D] max-h-[60vh] overflow-y-auto custom-scrollbar">
               {filteredRosterShifts.map((shift, index) => {
                  const emp = resolveScheduleShiftPersonForDisplay(shift, users);
                  const empName = getScheduleShiftDisplayName(shift, users);
@@ -1770,8 +1770,8 @@ const handleOfferSwap = async (shift) => {
                      )}
                      <div className={`${T.row} transition-colors ${isPastShift ? 'bg-[#0B0E11]/70 opacity-50 grayscale' : 'hover:bg-[#12161A]'}`}>
                        <div className="flex items-center justify-between">
-                         <div className="flex items-center gap-3"><img src={getAvatar(empName, emp?.photoURL)} className={`w-8 h-8 rounded-full border object-cover ${isPastShift ? 'border-[#1F2933] opacity-60' : T.border}`} alt="avatar"/><div><div className={`text-sm font-bold ${isPastShift ? 'text-slate-500' : 'text-white'}`}>{empName}</div><div className={`text-[9px] font-bold uppercase ${isPastShift ? 'text-slate-600' : T.muted}`}>{shift.role}</div></div></div>
-                         <div className={`text-xs font-mono font-bold px-2 py-1 rounded-md border ${isPastShift ? 'bg-[#0B0E11] text-slate-500 border-[#1F2933]' : `bg-[#12161A] ${T.copper} ${T.border}`}`}>{formatShortTime(shift.startTime)} - {formatShortTime(shift.endTime)}</div>
+                         <div className="flex items-center gap-3"><img src={getAvatar(empName, emp?.photoURL)} className={`w-8 h-8 rounded-full border object-cover ${isPastShift ? 'border-[#1F2933] opacity-60' : T.border}`} alt="avatar"/><div><div className={`text-sm font-bold ${isPastShift ? 'text-slate-400' : 'text-white'}`}>{empName}</div><div className={`text-[9px] font-bold uppercase ${isPastShift ? 'text-slate-600' : T.muted}`}>{shift.role}</div></div></div>
+                         <div className={`text-xs font-mono font-bold px-2 py-1 rounded-md border ${isPastShift ? 'bg-[#0B0E11] text-slate-400 border-[#1F2933]' : `bg-[#12161A] ${T.copper} ${T.border}`}`}>{formatShortTime(shift.startTime)} - {formatShortTime(shift.endTime)}</div>
                        </div>
                      </div>
                    </React.Fragment>
