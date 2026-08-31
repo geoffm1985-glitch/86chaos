@@ -1,10 +1,10 @@
 {
-  "version": "16.0.208",
-  "name": "86 Chaos 16.0.208",
-  "build": "16.0.208",
-  "label": "86 Chaos 16.0.208",
-  "releasedAt": "2026-08-30T20:24:00-05:00",
-  "releaseTitle": "Delta Gate Runtime Stabilization",
+  "version": "16.0.209",
+  "name": "86 Chaos 16.0.209",
+  "build": "16.0.209",
+  "label": "86 Chaos 16.0.209",
+  "releasedAt": "2026-08-31T02:37:00-05:00",
+  "releaseTitle": "Failed-Only Request Off Mobile Repair",
   "notes": [
     "Converted expected presence-summary RTDB timeouts to an explicit degraded/retryable non-5xx response while preserving the bounded timeout.",
     "Corrected Back Office tab semantics with a valid tablist while preserving tab controls and behavior.",
@@ -24,9 +24,11 @@
     "Opened responsive System Administrator directory controls before declaring GodMode nested states missing, fixing mobile nested accessibility coverage without skipping states.",
     "Reduced redundant per-state form/mutation/click probes in exhaustive graph traversal while still visiting every declared route/state and observing controls.",
     "Made the Full Schedule scroll list keyboard-focusable and increased contrast for muted past-shift chips, Burn Log Review, and critical maintenance labels.",
-    "Corrected the tablet tap-target harness classification so 768px tablet layout uses normal AA target floor while phone-sized viewports keep the stricter 42px touch policy."
+    "Corrected the tablet tap-target harness classification so 768px tablet layout uses normal AA target floor while phone-sized viewports keep the stricter 42px touch policy.",
+    "Updated the Schedule Request Off focused test helper to use the current Warnings tab semantics instead of the retired button-only selector.",
+    "Allowed visible current-workspace Request Off rows without legacy workspace metadata to remain eligible for bulk archive/approve while still rejecting explicit wrong-workspace rows."
   ],
-  "title": "86 Chaos 16.0.208",
-  "summary": "Surgical 16.0.208 repair for delta gate runtime, mobile login readiness, GodMode mobile state discovery, accessibility contrast, and tablet tap-target classification.",
-  "description": "Keeps 16.0.207 behavior while stabilizing the delta gate: mobile login now retries and fails explicitly if it remains on the login screen, responsive System Administrator state discovery opens the mobile directory before declaring nested states missing, exhaustive probes avoid repeated heavyweight mutation/form actionability work on every nested state, Schedule Full Schedule scroll regions and muted shift chips meet WCAG, and tablet tap-target checks no longer apply phone-only coarse pointer policy to 768px layouts."
+  "title": "86 Chaos 16.0.209",
+  "summary": "Surgical 16.0.209 repair for failed-only mobile Request Off coverage: current Warnings tab selector support and legacy Request Off bulk eligibility metadata handling.",
+  "description": "Keeps 16.0.208 behavior while repairing the reported-failed-only Request Off failures: focused Schedule Builder warning tests now activate the current Warnings tab, and bulk Request Off eligibility no longer rejects visible current-workspace legacy rows solely because their workspace field is absent. Explicit wrong-workspace rows are still rejected."
 }

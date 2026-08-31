@@ -76,16 +76,20 @@ async function openSchedule(page, seed = {}) {
 }
 
 async function openWarnings(page) {
-  const warningsButton = page.getByRole('button', { name: /^Open Warnings$/i }).or(page.getByRole('button', { name: /^Warnings$/i })).first();
-  if (!await warningsButton.isVisible().catch(() => false)) {
+  const warningsControl = page
+    .getByRole('tab', { name: /^Warnings$/i })
+    .or(page.getByRole('button', { name: /^Open Warnings$/i }))
+    .or(page.getByRole('button', { name: /^Warnings$/i }))
+    .first();
+  if (!await warningsControl.isVisible().catch(() => false)) {
     const openCopilot = page.getByRole('button', { name: /^Open Copilot Tools$/i }).first();
     await expect(openCopilot, 'Schedule Copilot should already be open or expose Open Copilot Tools').toBeVisible({ timeout: 10000 });
     await openCopilot.click();
     await page.waitForTimeout(400);
   }
-  await expect(warningsButton, 'Warnings tool button should use the current accessible control name').toBeVisible({ timeout: 10000 });
-  await warningsButton.click();
-  await page.waitForTimeout(500);
+  await expect(warningsControl, 'Warnings tool control should use the current accessible tab/button name').toBeVisible({ timeout: 10000 });
+  await warningsControl.click();
+  await expect(page.locator('body'), 'Warnings panel should open after activating the current Warnings control').toContainText(/Warnings|scheduled on requested-off date|coverage target|needs \d+ more|has \d+ more/i, { timeout: 15000 });
 }
 
 async function openManagerRequestOff(page, seed = {}) {

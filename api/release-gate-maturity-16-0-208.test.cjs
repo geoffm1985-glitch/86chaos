@@ -40,19 +40,19 @@ test('16.0.208 accessibility fixes preserve real surfaces with focusable scroll 
   assert.match(operations, /text-red-200 font-black animate-pulse/);
 });
 
-test('16.0.208 version metadata is consistent', () => {
+test('16.0.208 historical maturity assertions coexist with current 16.0.209 version metadata', () => {
   const pkg = JSON.parse(read('package.json'));
   const lock = JSON.parse(read('package-lock.json'));
   const version = JSON.parse(read('public/version.json'));
   const apiVersion = read('api/_version.js');
   const appCore = read('src/core/appCore.js');
-  assert.equal(pkg.version, '16.0.208');
-  assert.equal(lock.version, '16.0.208');
-  assert.equal(lock.packages[''].version, '16.0.208');
-  assert.equal(pkg.scripts['test:source'], 'node scripts/validate-16-0-208.js');
-  assert.equal(version.version, '16.0.208');
-  assert.equal(version.build, '16.0.208');
-  assert.match(apiVersion, /APP_VERSION = '16\.0\.208'/);
-  assert.match(apiVersion, /SECURITY_SCHEMA_VERSION = '16\.0\.208'/);
-  assert.match(appCore, /CURRENT_VERSION = '16\.0\.208'/);
+  assert.equal(pkg.version, '16.0.209');
+  assert.equal(lock.version, '16.0.209');
+  assert.equal(lock.packages[''].version, '16.0.209');
+  assert.equal(pkg.scripts['test:source'], 'node scripts/validate-16-0-209.js');
+  assert.equal(version.version, '16.0.209');
+  assert.equal(version.build, '16.0.209');
+  assert.match(apiVersion, /APP_VERSION = '16\.0\.209'/);
+  assert.match(apiVersion, /SECURITY_SCHEMA_VERSION = '16\.0\.209'/);
+  assert.match(appCore, /CURRENT_VERSION = '16\.0\.209'/);
 });

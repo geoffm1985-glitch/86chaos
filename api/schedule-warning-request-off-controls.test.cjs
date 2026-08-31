@@ -190,6 +190,7 @@ test('Request Off bulk eligibility excludes hidden, archived, wrong-workspace, a
   assert.equal(isRequestOffBulkEligible({ id: 'req-other-workspace', restaurantId: 'other', status: 'pending' }, { ...options, requirePending: true }), false);
   assert.equal(isRequestOffBulkEligible({ id: 'req-approved', restaurantId: 'cheers_chilton_01', status: 'approved' }, { ...options, requirePending: true }), false);
   assert.equal(isRequestOffBulkEligible({ id: 'req-approved', restaurantId: 'cheers_chilton_01', status: 'approved' }, { ...options, requirePending: false }), true);
+  assert.equal(isRequestOffBulkEligible({ id: 'req-visible', status: 'pending' }, { ...options, requirePending: true }), true);
 });
 
 
