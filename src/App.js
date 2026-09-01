@@ -63,6 +63,29 @@ const isFirebaseMessagingServiceWorkerRegistration = (registration = {}) => {
   return /\/firebase-messaging-sw\.js(?:$|[?#])/i.test(scriptUrl) || scriptUrl.includes('firebase-messaging-sw.js');
 };
 
+const showForegroundPushNotification = async (payload = {}) => {
+  if (typeof window === 'undefined' || typeof Notification === 'undefined' || Notification.permission !== 'granted' || !navigator.serviceWorker) return false;
+  const data = payload.data || {};
+  const title = String(payload.notification?.title || data.title || data.notificationTitle || '86 Chaos').trim().slice(0, 120);
+  const body = String(payload.notification?.body || data.body || data.notificationBody || 'You have a new notification.').trim().slice(0, 500);
+  const tag = String(data.notificationTag || data.tag || payload.messageId || '').trim().slice(0, 180);
+  let url = '/?tab=today';
+  try {
+    const requested = new URL(String(data.click_action || data.url || data.link || url), window.location.origin);
+    if (requested.origin === window.location.origin) url = `${requested.pathname}${requested.search}${requested.hash}`;
+  } catch (_) {}
+  const registration = await navigator.serviceWorker.ready;
+  await registration.showNotification(title, {
+    body,
+    icon: '/app-icon.png',
+    badge: '/notification-badge.png',
+    tag: tag || undefined,
+    renotify: false,
+    data: { url, notificationTag: tag }
+  });
+  return true;
+};
+
 const clearChunkRecoveryMarkers = () => {
   if (typeof window === 'undefined') return;
   try {
@@ -3065,10 +3088,12 @@ What I clicked / expected:
       try {
         unsubscribe = onMessage(supportedMessaging, (payload) => {
           console.log("Foreground message caught:", payload);
-          addToast(
-            payload.notification?.title || 'System Alert', 
-            payload.notification?.body || 'You have a new notification.'
-          );
+          const title = payload.notification?.title || payload.data?.title || 'System Alert';
+          const body = payload.notification?.body || payload.data?.body || 'You have a new notification.';
+          addToast(title, body);
+          showForegroundPushNotification(payload).catch((err) => {
+            console.warn('86 Chaos foreground system notification failed:', err?.message || err);
+          });
         });
       } catch (err) {
         if (!isFirebaseMessagingUnsupportedError(err)) console.warn('86 Chaos foreground messaging failed:', err?.message || err);
@@ -3228,7 +3253,7 @@ What I clicked / expected:
     if (activeTabState === 'inventory' && routeAllowed) return <TabInventory key={`inv-${rId}-${inventorySubTabTarget || 'default'}`} addToast={addToast} appUser={liveAppUser} clientData={displayClientData} initialSubTab={inventorySubTabTarget} onInitialSubTabConsumed={() => setInventorySubTabTarget(null)} />;
     if (activeTabState === 'ai-tools' && routeAllowed) return <TabAITools key={`ai-${rId}`} appUser={liveAppUser} clientData={displayClientData} setActiveTab={setActiveTab} setInventorySubTabTarget={setInventorySubTabTarget} addToast={addToast} />;
     if (activeTabState === 'menu-intelligence' && routeAllowed) return <TabMenuIntelligence key={`mi-${rId}`} appUser={liveAppUser} clientData={displayClientData} inventoryItems={inventoryItems} addToast={addToast} />;
-    if (activeTabState === 'reminders' && routeAllowed) return <TabPersonalReminders key={`rem-${rId}-${liveAppUser?.id}`} appUser={liveAppUser} addToast={addToast} />;
+    if (activeTabState === 'reminders' && routeAllowed) return <TabPersonalReminders key={`rem-${rId}-${liveAppUser?.id}`} appUser={liveAppUser} addToast={addToast} onEnableNotifications={() => repairPushOnThisDevice('manual')} />;
     if (activeTabState === 'team' && routeAllowed) return <TabTeam key={`tea-${rId}`} appUser={liveAppUser} users={displayUsers} clientData={displayClientData} addToast={addToast} />;
     if (activeTabState === 'hr-training' && routeAllowed) return <TabHrTraining key={`hrt-${rId}-${liveAppUser?.id}`} appUser={liveAppUser} users={displayUsers} addToast={addToast} />;
     if (activeTabState === 'maintenance' && routeAllowed) return <TabMaintenance key={`mtn-${rId}`} appUser={liveAppUser} addToast={addToast} />;

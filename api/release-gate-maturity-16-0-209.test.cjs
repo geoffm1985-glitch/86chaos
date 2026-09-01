@@ -22,19 +22,19 @@ test('16.0.209 bulk Request Off eligibility accepts visible legacy rows without 
   assert.match(coverage, /req-other-workspace/);
 });
 
-test('16.0.209 historical maturity assertions coexist with current 16.0.210 version metadata', () => {
+test('16.0.209 historical maturity assertions coexist with current 16.0.211 version metadata', () => {
   const pkg = json('package.json');
   const lock = json('package-lock.json');
   const version = json('public/version.json');
   const appCore = read('src/core/appCore.js');
   const apiVersion = read('api/_version.js');
-  assert.equal(pkg.version, '16.0.210');
-  assert.equal(lock.version, '16.0.210');
-  assert.equal(lock.packages[''].version, '16.0.210');
-  assert.equal(pkg.scripts['test:source'], 'node scripts/validate-16-0-210.js');
-  assert.equal(version.version, '16.0.210');
-  assert.equal(version.build, '16.0.210');
-  assert.equal(version.releaseTitle, 'Failed-Only Archive Test Determinism Repair');
-  assert.match(appCore, /CURRENT_VERSION = '16\.0\.210'/);
-  assert.match(apiVersion, /APP_VERSION = '16\.0\.210'/);
+  assert.equal(pkg.version, '16.0.211');
+  assert.equal(lock.version, '16.0.211');
+  assert.equal(lock.packages[''].version, '16.0.211');
+  assert.equal(pkg.scripts['test:source'], 'node scripts/validate-16-0-211.js');
+  assert.equal(version.version, '16.0.211');
+  assert.equal(version.build, '16.0.211');
+  assert.equal(version.releaseTitle, 'Reminder Notification Delivery Repair');
+  assert.match(appCore, /CURRENT_VERSION = '16\.0\.211'/);
+  assert.match(apiVersion, /APP_VERSION = '16\.0\.211'/);
 });

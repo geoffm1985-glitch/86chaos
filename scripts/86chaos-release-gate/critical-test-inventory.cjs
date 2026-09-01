@@ -13,6 +13,7 @@ const CRITICAL_WORKFLOWS = [
   { category: 'Chunk recovery', specHint: '17-resilience-chunk-offline', titleHint: 'failed lazy chunk' },
   { category: 'Accessibility', specHint: '16-accessibility-release-gate', titleHint: 'axe violations' },
   { category: 'PWA installability', specHint: '25-pwa-android-installability', titleHint: 'PWA' },
+  { category: 'Reminder notification delivery', specHint: '35-reminder-notification-certification', titleHint: 'reminder notification' },
   { category: 'PWA icon source parity', specHint: '26-pwa-icon-source-deployed-parity', titleHint: 'source and deployed icon bytes' },
   { category: 'Cross-browser icon matrix', specHint: '27-pwa-browser-icon-matrix', titleHint: 'PWA icon metadata matrix' },
   { category: 'QA cleanup', specHint: 'global-teardown', titleHint: 'QA cleanup' },

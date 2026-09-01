@@ -19,6 +19,7 @@ test.describe('34 ultimate test-universe integrity',()=>{
     'tests/86chaos-release-gate/31-exhaustive-responsive-nested-layout.spec.cjs',
     'tests/86chaos-release-gate/32-exhaustive-nested-accessibility.spec.cjs',
     'tests/86chaos-release-gate/33-business-math-exhaustiveness.spec.cjs',
+    'tests/86chaos-release-gate/35-reminder-notification-certification.spec.cjs',
     'tests/86chaos-full-audit/13-back-office-document-vault.spec.cjs',
    ];
    const missingUltimate=requiredUltimate.filter(rel=>!fs.existsSync(path.join(process.cwd(),rel)));

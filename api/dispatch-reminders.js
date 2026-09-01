@@ -21,6 +21,42 @@ function collectTokens(user = {}) {
   return collectEligibleTokens(user);
 }
 
+function personalRecipientCandidateIds(reminder = {}) {
+  const emailDocId = norm(reminder.assignedToEmail || (!reminder.shared ? reminder.userEmail : '') || '');
+  const canonicalProfileId = reminder.recipientProfileId || reminder.assignedToProfileId || reminder.profileDocId || '';
+  const recipientAuthId = reminder.assignedToUserId || reminder.userId || '';
+  const creatorFallbackId = recipientAuthId ? '' : reminder.createdBy;
+  return [...new Set([
+    canonicalProfileId,
+    recipientAuthId,
+    emailDocId,
+    creatorFallbackId
+  ].map(value => String(value || '').trim()).filter(Boolean))].slice(0, 3);
+}
+
+async function resolvePersonalReminderRecipient(db, reminder = {}) {
+  const candidateIds = personalRecipientCandidateIds(reminder);
+  let firstExisting = null;
+  let reads = 0;
+  for (const id of candidateIds) {
+    const snap = await db.collection('users').doc(id).get();
+    reads += 1;
+    if (!snap.exists) continue;
+    const user = { ...(snap.data() || {}), id: snap.id };
+    const tokens = collectTokens(user);
+    if (!firstExisting) firstExisting = { profileId: snap.id, user, tokens };
+    if (tokens.length) return { profileId: snap.id, user, tokens, reads, fallbackReads: Math.max(0, reads - 1), candidateIds };
+  }
+  return {
+    profileId: firstExisting?.profileId || candidateIds[0] || '',
+    user: firstExisting?.user || {},
+    tokens: firstExisting?.tokens || [],
+    reads,
+    fallbackReads: Math.max(0, reads - 1),
+    candidateIds
+  };
+}
+
 
 function norm(value = '') {
   return String(value || '').toLowerCase().trim();
@@ -46,9 +82,11 @@ function notificationTag(prefix, ...parts) {
   return clean || `${prefix}:${hashForNotificationTag(parts.join('|'))}`;
 }
 
-function webPushOptions(tag, link = '/') {
+function webPushOptions(tag, link = '/', title = '86 Chaos', body = 'You have a new notification.') {
   return {
     notification: {
+      title,
+      body,
       tag,
       renotify: false,
       icon: '/app-icon.png',
@@ -246,7 +284,7 @@ module.exports = async function handler(req, res) {
   const db = app.firestore();
   const messaging = app.messaging();
   const nowIso = new Date().toISOString();
-  const stats = { queried: 0, scanned: 0, claimed: 0, sent: 0, skipped: 0, failed: 0, noToken: 0, eventQueried: 0, eventScanned: 0, eventSent: 0, eventSkipped: 0, transactionReads: 0, documentsWritten: 0, claimWrites: 0, successWrites: 0, retryWrites: 0, noTokenWrites: 0, terminalWrites: 0, catchRecoveryWrites: 0, eventReminderWrites: 0, rateLimitWritesSkipped: 1, startedAt: nowIso };
+  const stats = { queried: 0, scanned: 0, claimed: 0, sent: 0, skipped: 0, failed: 0, noToken: 0, eventQueried: 0, eventScanned: 0, eventSent: 0, eventSkipped: 0, transactionReads: 0, recipientReads: 0, recipientFallbackReads: 0, documentsWritten: 0, claimWrites: 0, successWrites: 0, retryWrites: 0, noTokenWrites: 0, terminalWrites: 0, catchRecoveryWrites: 0, eventReminderWrites: 0, rateLimitWritesSkipped: 1, startedAt: nowIso };
   const limit = safeInt(process.env.REMINDER_DISPATCH_QUERY_LIMIT, 200, 1, 500);
   const concurrency = safeInt(process.env.REMINDER_DISPATCH_CONCURRENCY, 12, 1, 25);
 
@@ -298,10 +336,10 @@ module.exports = async function handler(req, res) {
         addWrite(stats, 'claimWrites');
         const reminder = claim.reminder || {};
         const dispatchKey = claim.dispatchKey;
-        const userId = reminder.assignedToUserId || reminder.userId || reminder.createdBy || '';
-        const userSnap = userId ? await db.collection('users').doc(userId).get() : null;
-        const user = userSnap?.exists ? userSnap.data() : {};
-        const tokens = collectTokens(user);
+        const recipient = await resolvePersonalReminderRecipient(db, reminder);
+        stats.recipientReads += recipient.reads;
+        stats.recipientFallbackReads += recipient.fallbackReads;
+        const tokens = recipient.tokens;
 
         if (!tokens.length) {
           stats.noToken += 1;
@@ -319,6 +357,7 @@ module.exports = async function handler(req, res) {
             }),
             recurrenceAnchorAt: reminder.recurrenceAnchorAt || originalOccurrenceAt,
             nextOccurrenceAt: nextScheduledAt || null,
+            recipientProfileId: recipient.profileId || reminder.recipientProfileId || null,
             scheduledAt: reminder.scheduledAt || originalOccurrenceAt,
             previousDispatchKey: dispatchKey,
             lastNoTokenAt: nowIso
@@ -339,7 +378,7 @@ module.exports = async function handler(req, res) {
             click_action: '/?tab=reminders',
             notificationTag: tag
           },
-          webpush: webPushOptions(tag, '/?tab=reminders'),
+          webpush: webPushOptions(tag, '/?tab=reminders', title, body),
           tokens
         };
 
@@ -348,7 +387,8 @@ module.exports = async function handler(req, res) {
           stats.sent += 1;
           const nextScheduledAt = nextRecurringAt(reminder.occurrenceScheduledAt || reminder.scheduledAt, reminder.recurrence, reminder);
           if (nextScheduledAt) {
-            await ref.update(buildRecurringSuccessUpdate({
+            await ref.update({
+              ...buildRecurringSuccessUpdate({
               docId: docSnap.id,
               reminder,
               deliveredOccurrenceKey: dispatchKey,
@@ -356,7 +396,9 @@ module.exports = async function handler(req, res) {
               nowIso,
               successCount: result.successCount,
               failureCount: result.failureCount || 0
-            }));
+              }),
+              recipientProfileId: recipient.profileId || reminder.recipientProfileId || null
+            });
             addWrite(stats, 'successWrites');
           } else {
             await ref.update({
@@ -369,6 +411,7 @@ module.exports = async function handler(req, res) {
               nextDispatchAt: null,
               dispatchLeaseUntil: null,
               dispatchKey,
+              recipientProfileId: recipient.profileId || reminder.recipientProfileId || null,
               pushSuccessCount: result.successCount,
               pushFailureCount: result.failureCount || 0
             });
@@ -491,7 +534,7 @@ module.exports = async function handler(req, res) {
             click_action: '/?tab=events',
             notificationTag: tag
           },
-          webpush: webPushOptions(tag, '/?tab=events'),
+          webpush: webPushOptions(tag, '/?tab=events', title, body),
           tokens
         };
 
@@ -558,10 +601,24 @@ module.exports = async function handler(req, res) {
     };
 
     await runWithConcurrency(eventSnap.docs, concurrency, processEventReminder);
-    return res.status(200).json({ ok: true, now: nowIso, limit, concurrency, ...stats });
+    const response = { ok: true, now: nowIso, limit, concurrency, ...stats };
+    console.info('[dispatch-reminders] completed', {
+      firebaseProjectId: app.options?.projectId || '',
+      queried: stats.queried,
+      claimed: stats.claimed,
+      sent: stats.sent,
+      noToken: stats.noToken,
+      failed: stats.failed,
+      recipientReads: stats.recipientReads,
+      recipientFallbackReads: stats.recipientFallbackReads,
+      documentsWritten: stats.documentsWritten,
+      eventQueried: stats.eventQueried,
+      eventSent: stats.eventSent
+    });
+    return res.status(200).json(response);
   } catch (err) {
     return res.status(500).json({ ok: false, error: sanitizeDispatchError(err, 'Reminder dispatch failed.'), limit, concurrency, ...stats });
   }
 };
 
-module.exports._test = { collectTokens, collectEventReminderTokens, occurrenceKeyForReminder, nextRecurringAt, buildRecurringSuccessUpdate, buildRetryUpdate, sanitizeDispatchError };
+module.exports._test = { collectTokens, personalRecipientCandidateIds, resolvePersonalReminderRecipient, collectEventReminderTokens, occurrenceKeyForReminder, nextRecurringAt, buildRecurringSuccessUpdate, buildRetryUpdate, sanitizeDispatchError, webPushOptions };
