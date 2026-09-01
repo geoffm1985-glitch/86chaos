@@ -1,6 +1,17 @@
 const { test, expect } = require('@playwright/test');
 const { ALLOW_MUTATION, mutationSkipMessage, readSeedReport, ownerLikeCreds, requireCreds, login, gotoTab, bodyText, attachJson, collectTextNear } = require('./utils/audit-helpers.cjs');
 
+async function openScheduleBuilder(page) {
+  await gotoTab(page, 'schedule', { force: true, settleMs: 0, timeout: 15000, maxText: 60000 });
+  const table = page.locator('.schedule-builder-desktop-table').first();
+  if (await table.isVisible().catch(() => false)) return table;
+  const builder = page.getByRole('button', { name: /^Schedule Builder$/i }).first();
+  await expect(builder, 'Schedule Builder control should remain discoverable').toBeVisible({ timeout: 15000 });
+  await builder.click();
+  await expect(table, 'Schedule Builder selection should render its table').toBeVisible({ timeout: 15000 });
+  return table;
+}
+
 test.describe('05 Schedule Builder mutation and data-integrity checks', () => {
   test('fake QA schedule seed has one-target-only data: no wrong-employee duplicate and exact IDs for deletion audits', async ({}, testInfo) => {
     if (!ALLOW_MUTATION) test.skip(true, mutationSkipMessage());
@@ -22,14 +33,10 @@ test.describe('05 Schedule Builder mutation and data-integrity checks', () => {
     const account = ownerLikeCreds();
     requireCreds(account, 'owner-like account');
     await login(page, account.email, account.password);
-    await gotoTab(page, 'schedule', { settleMs: 2200 });
-    const builderButtons = page.getByRole('button', { name: /schedule builder/i });
-    if (await builderButtons.count().catch(() => 0)) await builderButtons.first().click().catch(() => {});
-    await expect(page.locator('.schedule-builder-desktop-table').first(), 'Schedule Builder table should render before refresh').toBeVisible({ timeout: 15000 });
+    const initialTable = await openScheduleBuilder(page);
+    await expect(initialTable, 'Schedule Builder table should render before refresh').toBeVisible({ timeout: 15000 });
     await page.reload({ waitUntil: 'domcontentloaded' }).catch(() => {});
-    await page.waitForTimeout(2200);
-    if (await builderButtons.count().catch(() => 0)) await builderButtons.first().click().catch(() => {});
-    const table = page.locator('.schedule-builder-desktop-table').first();
+    const table = await openScheduleBuilder(page);
     await expect(table, 'Schedule Builder table should remain visible after refresh').toBeVisible({ timeout: 15000 });
     const staff = ['Allen QA', 'Chuck QA', 'Lani QA'];
     const diagnostics = {};

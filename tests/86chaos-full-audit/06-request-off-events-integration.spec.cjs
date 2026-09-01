@@ -163,6 +163,27 @@ test.describe('06 request-off, availability, and scheduled events integration', 
       return ghostListResponse.body;
     }
     async function findRequestOffDateCell(conflictDate) {
+      const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+      const targetYear = Number(conflictDate.slice(0, 4));
+      const targetMonthIndex = Number(conflictDate.slice(5, 7)) - 1;
+      const monthHeading = page.getByRole('heading', { name: /^(?:January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{4}$/ }).first();
+      await expect(monthHeading, 'Request Off calendar month heading should be visible').toBeVisible({ timeout: 15000 });
+      for (let attempt = 0; attempt < 120; attempt += 1) {
+        const headingText = (await monthHeading.innerText()).trim();
+        const match = headingText.match(/^([A-Za-z]+)\s+(\d{4})$/);
+        const currentMonthIndex = match ? monthNames.indexOf(match[1]) : -1;
+        const currentYear = match ? Number(match[2]) : NaN;
+        if (currentYear === targetYear && currentMonthIndex === targetMonthIndex) break;
+        expect(currentMonthIndex, `Request Off calendar heading should expose a recognized month: ${headingText}`).toBeGreaterThanOrEqual(0);
+        const currentOrdinal = currentYear * 12 + currentMonthIndex;
+        const targetOrdinal = targetYear * 12 + targetMonthIndex;
+        const headerButtons = monthHeading.locator('..').getByRole('button');
+        await expect(headerButtons, 'Request Off calendar should expose previous and next month controls').toHaveCount(2);
+        const direction = targetOrdinal > currentOrdinal ? headerButtons.last() : headerButtons.first();
+        await direction.click();
+        await expect.poll(() => monthHeading.innerText(), { timeout: 3000, intervals: [50, 100, 200] }).not.toBe(headingText);
+        if (attempt === 119) throw new Error(`Request Off calendar could not navigate to ${conflictDate.slice(0, 7)}`);
+      }
       const day = String(Number(conflictDate.slice(-2)));
       const cell = page
         .locator(`xpath=//main//span[normalize-space(.)="${day}"]/ancestor::div[contains(concat(" ", normalize-space(@class), " "), " cursor-pointer ")][1]`)

@@ -14,6 +14,8 @@ const {
 const read = rel => fs.readFileSync(path.join(process.cwd(), rel), 'utf8');
 
 test.describe('35 reminder notification Play Store certification', () => {
+  test.use({ permissions: ['notifications'] });
+
   test('dispatcher is protected, indexed, canonical-profile aware, and Firebase-cost bounded', async ({ request }, testInfo) => {
     const base = process.env.APP_URL || process.env.CHAOS_BASE_URL || process.env.BASE_URL;
     const dispatchSource = read('api/dispatch-reminders.js');
@@ -66,8 +68,13 @@ test.describe('35 reminder notification Play Store certification', () => {
   test('Chromium can create and enumerate a real service-worker system notification', async ({ context, page }, testInfo) => {
     const base = process.env.APP_URL || process.env.CHAOS_BASE_URL || process.env.BASE_URL;
     const origin = new URL(base).origin;
-    await context.grantPermissions(['notifications'], { origin });
     await page.goto(origin, { waitUntil: 'domcontentloaded', timeout: 60_000 });
+    await context.grantPermissions(['notifications'], { origin });
+    await expect.poll(() => page.evaluate(() => Notification.permission), {
+      message: 'Chromium notification permission should be granted for the application origin',
+      timeout: 5000,
+      intervals: [50, 100, 250],
+    }).toBe('granted');
     const result = await page.evaluate(async () => {
       const registration = await Promise.race([
         navigator.serviceWorker.ready,
@@ -122,11 +129,12 @@ test.describe('35 reminder notification Play Store certification', () => {
         time: `${pad(date.getHours())}:${pad(date.getMinutes())}`,
       };
     });
-    const form = page.locator('form').filter({ has: page.getByLabel('Reminder') }).first();
-    await form.getByLabel('Reminder').fill(uniqueTitle);
-    await form.getByLabel('Date').fill(localInputs.date);
-    await form.getByLabel('Time').fill(localInputs.time);
-    await form.getByLabel('Sharing').selectOption('self');
+    const reminderField = page.getByLabel('Reminder', { exact: true });
+    const form = page.locator('form').filter({ has: reminderField }).first();
+    await form.getByLabel('Reminder', { exact: true }).fill(uniqueTitle);
+    await form.getByLabel('Date', { exact: true }).fill(localInputs.date);
+    await form.getByLabel('Time', { exact: true }).fill(localInputs.time);
+    await form.getByLabel('Sharing', { exact: true }).selectOption('self');
 
     const saveResponsePromise = page.waitForResponse(response => response.url().includes('/api/personal-reminder-save') && response.request().method() === 'POST', { timeout: 30_000 });
     await form.getByRole('button', { name: /^Add$/i }).click();

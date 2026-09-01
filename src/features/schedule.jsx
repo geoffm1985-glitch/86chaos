@@ -3312,12 +3312,24 @@ const handleAddEvent = async (e) => {
 
   const parseScheduleClockMinutes = (value) => parseScheduleClockInfo(value)?.minutes ?? null;
 
+  const formatScheduleSourceTime = (value) => {
+    const raw = String(value ?? '').trim();
+    if (!raw) return '?';
+    const legacy = raw.match(/^(\d{1,2})(?::?(\d{2}))?\s*(a|am|p|pm)$/i);
+    if (legacy) {
+      const hour = String(Number(legacy[1]));
+      const minute = legacy[2] && legacy[2] !== '00' ? `:${legacy[2]}` : '';
+      return `${hour}${minute}${legacy[3].toLowerCase().startsWith('p') ? 'p' : 'a'}`;
+    }
+    return formatShortTime(raw) || raw;
+  };
+
   const getScheduleShiftTimeStatus = (shift = {}) => {
     const hasStart = shift.startTime !== undefined && shift.startTime !== null && String(shift.startTime).trim() !== '';
     const hasEnd = shift.endTime !== undefined && shift.endTime !== null && String(shift.endTime).trim() !== '';
     const startInfo = parseScheduleClockInfo(shift.startTime);
     const endInfo = parseScheduleClockInfo(shift.endTime);
-    const displayRange = `${formatShortTime(shift.startTime) || shift.startTime || '?'}-${formatShortTime(shift.endTime) || shift.endTime || '?'}`;
+    const displayRange = `${formatScheduleSourceTime(shift.startTime)}-${formatScheduleSourceTime(shift.endTime)}`;
 
     // 16.0.18: Bad schedule time ranges should be flagged for correction, not guessed or auto-repaired.
     // Example: 10p-3p is invalid because the end is before the start without a true overnight AM end.
@@ -4135,7 +4147,7 @@ const handleExportTimesheets = () => {
                                     className={`schedule-builder-time-chip w-full rounded font-bold text-[7px] sm:text-[8px] py-0.5 text-center ${invalidTimeRange ? 'bg-amber-950/70 text-amber-200 border border-amber-400/90 shadow-[0_0_8px_rgba(245,158,11,0.35)]' : getRoleColors(shift.role, isBuilderShiftPublished(shift))} ${shiftConflict ? 'border-2 border-red-500 animate-pulse shadow-[0_0_8px_rgba(239,68,68,0.8)]' : ''}`} 
                                     title={`${timeStatus.displayRange} ${shiftConflict ? '(CONFLICT DETECTED)' : ''}${invalidTimeRange ? ` (INVALID TIME RANGE - NOT COUNTED: ${timeStatus.reason})` : ''} Tap to delete only this shift.`}
                                   >
-                                    {invalidTimeRange ? 'INVALID TIME' : `${formatShortTime(shift.startTime)}-${formatShortTime(shift.endTime)}`}
+                                    {invalidTimeRange ? <><span className="block">INVALID TIME</span><span className="block text-[6px] leading-none">{timeStatus.displayRange}</span></> : `${formatShortTime(shift.startTime)}-${formatShortTime(shift.endTime)}`}
                                   </button>
                                 );
                               })}

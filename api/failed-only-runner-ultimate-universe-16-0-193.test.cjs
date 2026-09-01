@@ -45,7 +45,7 @@ test('bundled 20260822-173450 failed-only fallback is exactly 14 FAIL + 2 TIMEOU
   assert.equal(new Set(keys).size, 16, 'failed-only fallback must contain no duplicate stable identities');
 });
 
-test('all fallback identities still resolve against the restored current test universe', () => {
+test('all 16 fallback identities still resolve against the restored current test universe', () => {
   const manifest = json('scripts/86chaos-release-gate/reported-failed-only-20260822-173450.json');
   const {
     currentInventoryRecords,
@@ -59,57 +59,16 @@ test('all fallback identities still resolve against the restored current test un
     allowStaticFallback: true,
   });
 
-  const responsiveSpec = '86chaos-release-gate/31-exhaustive-responsive-nested-layout.spec.cjs';
-  const responsiveLeaf = 'every route and nested surface fits phone/tablet/laptop/desktop without unusable overflow or tap targets';
-  const responsiveViewports = ['narrow-phone', 'phone', 'tablet', 'laptop', 'desktop'];
-  const responsiveSelections = qualified.selected.filter(row => row.specPath === responsiveSpec);
-  const responsiveShardSelections = responsiveSelections.filter(row =>
-    responsiveViewports.some(viewport => String(row.leafTitle || row.title || '').endsWith(`[${viewport}]`))
-  );
-  const responsiveMatrixWasPartitioned = responsiveShardSelections.length > 0;
-
-  if (responsiveMatrixWasPartitioned) {
-    assert.equal(responsiveShardSelections.length, responsiveViewports.length, 'legacy responsive matrix identity must expand to every viewport shard');
-    for (const viewport of responsiveViewports) {
-      assert.equal(
-        responsiveShardSelections.some(row => String(row.leafTitle || row.title || '').endsWith(`[${viewport}]`)),
-        true,
-        `responsive migration must include ${viewport}`
-      );
-    }
-    const responsiveManifestRows = manifest.selected.filter(row => row.specPath === responsiveSpec);
-    const extraResponsiveShards = responsiveManifestRows.length * (responsiveViewports.length - 1);
-    assert.equal(qualified.totalSelected, manifest.selected.length + extraResponsiveShards);
-    assert.equal(qualified.desktopSelected, manifest.desktopSelected + extraResponsiveShards);
-    assert.equal(qualified.mobileSelected, manifest.mobileSelected);
-    assert.equal(
-      qualified.selected.filter(row => row.priorStatus === 'failed').length,
-      manifest.selected.filter(row => row.priorStatus === 'failed').length
-        + responsiveManifestRows.filter(row => row.priorStatus === 'failed').length * (responsiveViewports.length - 1)
-    );
-    assert.equal(
-      qualified.selected.filter(row => row.priorStatus === 'timedOut').length,
-      manifest.selected.filter(row => row.priorStatus === 'timedOut').length
-        + responsiveManifestRows.filter(row => row.priorStatus === 'timedOut').length * (responsiveViewports.length - 1)
-    );
-  } else {
-    assert.equal(qualified.totalSelected, 16);
-    assert.equal(qualified.desktopSelected, 9);
-    assert.equal(qualified.mobileSelected, 7);
-    assert.equal(qualified.selected.filter(row => row.priorStatus === 'failed').length, 14);
-    assert.equal(qualified.selected.filter(row => row.priorStatus === 'timedOut').length, 2);
-  }
+  assert.equal(qualified.totalSelected, 16);
+  assert.equal(qualified.desktopSelected, 9);
+  assert.equal(qualified.mobileSelected, 7);
+  assert.equal(qualified.selected.filter(row => row.priorStatus === 'failed').length, 14);
+  assert.equal(qualified.selected.filter(row => row.priorStatus === 'timedOut').length, 2);
 
   for (const row of qualified.selected) {
     const spec = path.join(root, 'tests', row.specPath);
     assert.equal(fs.existsSync(spec), true, `${row.project} ${row.specPath} must exist`);
-    const source = fs.readFileSync(spec, 'utf8');
-    const leafTitle = String(row.leafTitle || row.title || '');
-    if (row.specPath === responsiveSpec && leafTitle.endsWith(']')) {
-      assert.match(source, new RegExp(responsiveLeaf.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')), `${row.specPath} must retain responsive coverage title base`);
-      continue;
-    }
-    assert.match(source, new RegExp(leafTitle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')), `${row.specPath} must retain failed leaf title`);
+    assert.match(fs.readFileSync(spec, 'utf8'), new RegExp(row.leafTitle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')), `${row.specPath} must retain failed leaf title`);
   }
 });
 

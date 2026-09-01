@@ -1,8 +1,8 @@
 {
-  "version": "16.0.211",
-  "name": "86 Chaos 16.0.211",
-  "build": "16.0.211",
-  "label": "86 Chaos 16.0.211",
+  "version": "16.0.212",
+  "name": "86 Chaos 16.0.212",
+  "build": "16.0.212",
+  "label": "86 Chaos 16.0.212",
   "releasedAt": "2026-09-01T03:35:00Z",
   "releaseTitle": "Reminder Notification Delivery Repair",
   "notes": [
@@ -14,7 +14,7 @@
     "Added a reminder-only delivery regression and Play Store reminder-notification certification coverage.",
     "Kept Firebase rules, indexes, hosting configuration, database rules, storage rules, and the messaging service worker unchanged."
   ],
-  "title": "86 Chaos 16.0.211",
+  "title": "86 Chaos 16.0.212",
   "summary": "Surgical reminder-notification delivery repair with canonical push-recipient resolution, foreground system notifications, and explicit Firebase read/write budgets.",
   "description": "Repairs reminder delivery without changing Firebase rules, indexes, service-worker code, or deployment configuration, and adds focused plus Play Store certification tests for the repaired path."
 }
