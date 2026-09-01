@@ -28,12 +28,19 @@ function addUtcDays(dateKey, amount) {
 async function showScheduleBuilderMonth(page, dateKey) {
   const targetMonth = String(dateKey || '').slice(0, 7);
   expect(targetMonth, 'Schedule seed date should identify a deterministic month').toMatch(/^\d{4}-\d{2}$/);
-  const monthInput = page.locator('main input[type="month"]').first();
-  await expect(monthInput, `Schedule Builder month control should be visible for ${targetMonth}`).toBeVisible({ timeout: 15000 });
-  if (await monthInput.inputValue() !== targetMonth) {
+  const targetLabel = new Date(`${targetMonth}-01T12:00:00Z`).toLocaleString('en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' });
+  const dateStrip = page.locator('.desktop-date-strip').first();
+  const monthHeading = dateStrip.getByRole('heading').first();
+  await expect(monthHeading, 'Schedule Builder date heading should remain discoverable').toBeVisible({ timeout: 15000 });
+  if ((await monthHeading.innerText()).trim() !== targetLabel) {
+    await monthHeading.click();
+    const dateDialog = page.getByRole('dialog').filter({ has: page.getByRole('heading', { name: /^Select Date$/i }) }).first();
+    const monthInput = dateDialog.locator('input[type="month"]').first();
+    await expect(monthInput, `Schedule Builder month control should be visible after opening Select Date for ${targetMonth}`).toBeVisible({ timeout: 15000 });
     await monthInput.fill(targetMonth);
-    await expect(monthInput).toHaveValue(targetMonth, { timeout: 5000 });
+    await expect(dateDialog).toBeHidden({ timeout: 5000 });
   }
+  await expect(monthHeading).toHaveText(targetLabel, { timeout: 15000 });
   await expect(page.locator('.schedule-builder-desktop-table').first(), `Schedule Builder table should render for ${targetMonth}`).toBeVisible({ timeout: 15000 });
 }
 

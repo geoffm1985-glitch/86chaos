@@ -1,8 +1,10 @@
 const { test, expect } = require('@playwright/test');
-const { ALLOW_MUTATION, mutationSkipMessage, readSeedReport, ownerLikeCreds, requireCreds, login, gotoTab, bodyText, attachJson, collectTextNear } = require('./utils/audit-helpers.cjs');
+const { ALLOW_MUTATION, mutationSkipMessage, readSeedReport, ownerLikeCreds, requireCreds, login, gotoTab, bodyText, attachJson, collectTextNear, dismissBlockingDialogs } = require('./utils/audit-helpers.cjs');
 
 async function openScheduleBuilder(page) {
   await gotoTab(page, 'schedule', { force: true, settleMs: 0, timeout: 15000, maxText: 60000 });
+  const dialogState = await dismissBlockingDialogs(page, { maxPasses: 4 });
+  if (!dialogState.ok) throw new Error(`Schedule Builder remained blocked by a dialog: ${dialogState.failure}`);
   const table = page.locator('.schedule-builder-desktop-table').first();
   if (await table.isVisible().catch(() => false)) return table;
   const builder = page.getByRole('button', { name: /^Schedule Builder$/i }).first();
