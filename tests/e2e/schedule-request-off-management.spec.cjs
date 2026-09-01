@@ -39,7 +39,7 @@ async function getQaRequestOffResetAuth() {
 function scheduleFixtureDateFromSeed(seed = {}) {
   const fixture = seed?.profile?.expectations?.fixture || seed?.profile?.fixture || {};
   const overCoverageDate = (fixture.shifts || []).find(row => row?.employeeName === 'Chuck QA' && row?.role === 'Bartender' && String(row?.startTime || '').toLowerCase() === '10a')?.date;
-  return overCoverageDate || fixture.currentWeekStart || fixture.anchor || seed?.ghostRequestOffConflictDate || '2026-08-04';
+  return fixture.anchor || fixture.currentWeekStart || overCoverageDate || seed?.ghostRequestOffConflictDate || '2026-08-04';
 }
 
 async function installSeededScheduleClock(page, seed = {}) {
@@ -111,7 +111,9 @@ async function openRequestOffView(page, label) {
 }
 
 async function waitForRequestOffEmployee(page, employeeName, message) {
-  await expect(page.locator('body'), message || `${employeeName} Request Off row should be visible before filtering or bulk actions`).toContainText(new RegExp(employeeName.replace(/\s+/g, '\\s+'), 'i'), { timeout: 15000 });
+  const escapedEmployeeName = employeeName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\s+/g, '\\s+');
+  const requestRowLabel = page.locator('.request-off-workflow-panel div.font-black.text-white.text-sm').filter({ hasText: new RegExp(`^\\s*${escapedEmployeeName}\\s*$`, 'i') }).first();
+  await expect(requestRowLabel, message || `${employeeName} Request Off row should be visible before filtering or bulk actions`).toBeVisible({ timeout: 15000 });
   await expect(page.locator('body'), `${employeeName} readiness should not be the empty Request Off state`).not.toContainText(/No requests here/i, { timeout: 1000 });
 }
 
@@ -292,7 +294,7 @@ test.describe('16.0.153 Schedule warnings and Request Off management', () => {
     await openRequestOffView(page, 'Upcoming Approved');
     await waitForRequestOffEmployee(page, 'Allen QA', 'Seeded Allen QA approved request should be visible before bulk archive');
     const { selectedOptionLabel: selectedAllenLabel } = await selectRequestOffEmployee(page, 'Allen QA');
-    await expect(page.locator('body'), 'Allen QA should remain visible after applying the Allen employee filter').toContainText(/Allen QA/i, { timeout: 15000 });
+    await waitForRequestOffEmployee(page, 'Allen QA', 'Allen QA should remain visible after applying the Allen employee filter');
     const escapedAllenLabel = selectedAllenLabel.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     page.once('dialog', async dialog => {
       expect(dialog.message(), 'Bulk archive confirmation should state visible count and active employee filter').toMatch(new RegExp(`Archive \\d+ visible Request Off requests? for ${escapedAllenLabel}\\?`, 'i'));

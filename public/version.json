@@ -1,10 +1,10 @@
 {
-  "version": "16.0.209",
-  "name": "86 Chaos 16.0.209",
-  "build": "16.0.209",
-  "label": "86 Chaos 16.0.209",
-  "releasedAt": "2026-08-31T02:37:00-05:00",
-  "releaseTitle": "Failed-Only Request Off Mobile Repair",
+  "version": "16.0.210",
+  "name": "86 Chaos 16.0.210",
+  "build": "16.0.210",
+  "label": "86 Chaos 16.0.210",
+  "releasedAt": "2026-09-01T00:44:40Z",
+  "releaseTitle": "Failed-Only Archive Test Determinism Repair",
   "notes": [
     "Converted expected presence-summary RTDB timeouts to an explicit degraded/retryable non-5xx response while preserving the bounded timeout.",
     "Corrected Back Office tab semantics with a valid tablist while preserving tab controls and behavior.",
@@ -26,9 +26,10 @@
     "Made the Full Schedule scroll list keyboard-focusable and increased contrast for muted past-shift chips, Burn Log Review, and critical maintenance labels.",
     "Corrected the tablet tap-target harness classification so 768px tablet layout uses normal AA target floor while phone-sized viewports keep the stricter 42px touch policy.",
     "Updated the Schedule Request Off focused test helper to use the current Warnings tab semantics instead of the retired button-only selector.",
-    "Allowed visible current-workspace Request Off rows without legacy workspace metadata to remain eligible for bulk archive/approve while still rejecting explicit wrong-workspace rows."
+    "Allowed visible current-workspace Request Off rows without legacy workspace metadata to remain eligible for bulk archive/approve while still rejecting explicit wrong-workspace rows.",
+    "Aligned the focused Request Off test clock with the seeded restaurant anchor and made readiness wait for the actual employee request card instead of matching the employee dropdown."
   ],
-  "title": "86 Chaos 16.0.209",
-  "summary": "Surgical 16.0.209 repair for failed-only mobile Request Off coverage: current Warnings tab selector support and legacy Request Off bulk eligibility metadata handling.",
-  "description": "Keeps 16.0.208 behavior while repairing the reported-failed-only Request Off failures: focused Schedule Builder warning tests now activate the current Warnings tab, and bulk Request Off eligibility no longer rejects visible current-workspace legacy rows solely because their workspace field is absent. Explicit wrong-workspace rows are still rejected."
+  "title": "86 Chaos 16.0.210",
+  "summary": "Surgical 16.0.210 test-harness repair for the single failed mobile Request Off bulk-archive check; application behavior is unchanged.",
+  "description": "Keeps 16.0.209 application behavior intact while correcting the focused test's date clock and row-readiness assertion so an August 31 seeded approved request is not incorrectly tested as past on September 1."
 }
