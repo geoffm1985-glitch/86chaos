@@ -1,4 +1,4 @@
-const { test, expect } = require('@playwright/test');
+const { test, expect, devices } = require('@playwright/test');
 const fs = require('fs');
 const path = require('path');
 const {
@@ -12,6 +12,11 @@ const {
 } = require('../86chaos-full-audit/utils/audit-helpers.cjs');
 
 const read = rel => fs.readFileSync(path.join(process.cwd(), rel), 'utf8');
+const projectContextOptions = testInfo => {
+  const device = testInfo.project.name === 'mobile-chromium' ? devices['Pixel 5'] : devices['Desktop Chrome'];
+  const { defaultBrowserType: _defaultBrowserType, ...contextOptions } = device;
+  return contextOptions;
+};
 
 test.describe('35 reminder notification Play Store certification', () => {
   test.use({ permissions: ['notifications'] });
@@ -65,52 +70,63 @@ test.describe('35 reminder notification Play Store certification', () => {
     expect(failures, 'Reminder delivery lost a required security, visibility, identity, or Firebase-cost invariant').toEqual([]);
   });
 
-  test('Chromium can create and enumerate a real service-worker system notification', async ({ context, page }, testInfo) => {
+  test('Chromium can create and enumerate a real service-worker system notification', async ({ browser }, testInfo) => {
     const base = process.env.APP_URL || process.env.CHAOS_BASE_URL || process.env.BASE_URL;
-    const origin = new URL(base).origin;
-    await context.grantPermissions(['notifications'], { origin });
-    await page.goto(origin, { waitUntil: 'domcontentloaded', timeout: 60_000 });
-    await expect.poll(() => page.evaluate(() => Notification.permission), {
-      message: 'Chromium notification permission should be granted for the application origin',
-      timeout: 5000,
-      intervals: [50, 100, 250],
-    }).toBe('granted');
-    const result = await page.evaluate(async () => {
-      const registration = await Promise.race([
-        navigator.serviceWorker.ready,
-        new Promise((_, reject) => setTimeout(() => reject(new Error('Service worker did not become ready')), 15_000)),
-      ]);
-      const tag = `86chaos-reminder-release-gate-${Date.now()}`;
-      await registration.showNotification('86 Chaos Reminder Test', {
-        body: 'Play Store notification display certification',
-        icon: '/app-icon.png',
-        badge: '/notification-badge.png',
-        tag,
-        data: { url: '/?tab=reminders', notificationTag: tag },
-      });
-      const notifications = await registration.getNotifications({ tag });
-      const evidence = notifications.map(notification => ({
-        title: notification.title,
-        body: notification.body,
-        tag: notification.tag,
-        url: notification.data?.url || '',
-      }));
-      notifications.forEach(notification => notification.close());
-      return {
-        permission: Notification.permission,
-        activeScript: registration.active?.scriptURL || '',
-        evidence,
-      };
+    const configuredOrigin = new URL(base).origin;
+    const context = await browser.newContext({
+      ...projectContextOptions(testInfo),
+      permissions: ['notifications'],
     });
-    await attachJson(testInfo, '35-system-notification-display.json', result);
-    expect(result.permission).toBe('granted');
-    expect(result.activeScript).toBeTruthy();
-    expect(result.evidence).toHaveLength(1);
-    expect(result.evidence[0]).toEqual(expect.objectContaining({
-      title: '86 Chaos Reminder Test',
-      body: 'Play Store notification display certification',
-      url: '/?tab=reminders',
-    }));
+    try {
+      const page = await context.newPage();
+      await context.grantPermissions(['notifications'], { origin: configuredOrigin });
+      await page.goto(configuredOrigin, { waitUntil: 'domcontentloaded', timeout: 60_000 });
+      const loadedOrigin = new URL(page.url()).origin;
+      await context.grantPermissions(['notifications'], { origin: loadedOrigin });
+      await expect.poll(() => page.evaluate(() => Notification.permission), {
+        message: 'Chromium notification permission should be granted for the application origin',
+        timeout: 5000,
+        intervals: [50, 100, 250],
+      }).toBe('granted');
+      const result = await page.evaluate(async () => {
+        const registration = await Promise.race([
+          navigator.serviceWorker.ready,
+          new Promise((_, reject) => setTimeout(() => reject(new Error('Service worker did not become ready')), 15_000)),
+        ]);
+        const tag = `86chaos-reminder-release-gate-${Date.now()}`;
+        await registration.showNotification('86 Chaos Reminder Test', {
+          body: 'Play Store notification display certification',
+          icon: '/app-icon.png',
+          badge: '/notification-badge.png',
+          tag,
+          data: { url: '/?tab=reminders', notificationTag: tag },
+        });
+        const notifications = await registration.getNotifications({ tag });
+        const evidence = notifications.map(notification => ({
+          title: notification.title,
+          body: notification.body,
+          tag: notification.tag,
+          url: notification.data?.url || '',
+        }));
+        notifications.forEach(notification => notification.close());
+        return {
+          permission: Notification.permission,
+          activeScript: registration.active?.scriptURL || '',
+          evidence,
+        };
+      });
+      await attachJson(testInfo, '35-system-notification-display.json', { configuredOrigin, loadedOrigin, ...result });
+      expect(result.permission).toBe('granted');
+      expect(result.activeScript).toBeTruthy();
+      expect(result.evidence).toHaveLength(1);
+      expect(result.evidence[0]).toEqual(expect.objectContaining({
+        title: '86 Chaos Reminder Test',
+        body: 'Play Store notification display certification',
+        url: '/?tab=reminders',
+      }));
+    } finally {
+      await context.close().catch(() => {});
+    }
   });
 
   test('signed-in reminder save persists through the real API and can be cancelled cleanly', async ({ page }, testInfo) => {
@@ -143,9 +159,13 @@ test.describe('35 reminder notification Play Store certification', () => {
     expect(saveBody.ok).toBe(true);
     await expect(page.getByText(uniqueTitle, { exact: true })).toBeVisible({ timeout: 20_000 });
 
-    const row = page.locator('.chaos-table-row').filter({ has: page.getByText(uniqueTitle, { exact: true }) }).filter({ has: page.locator('button svg.lucide-trash-2') }).first();
+    const reminderTitle = page.getByText(uniqueTitle, { exact: true });
+    const row = reminderTitle.locator('xpath=ancestor::div[.//select[@aria-label="Snooze reminder"]][1]');
+    const cancelButton = row.locator('button:has(svg.lucide-trash-2)');
+    await expect(row, 'Saved reminder row should remain visible for real cancellation').toBeVisible({ timeout: 20_000 });
+    await expect(cancelButton, 'Saved reminder row should expose exactly one real cancel control').toHaveCount(1);
     const cancelResponsePromise = page.waitForResponse(response => response.url().includes('/api/personal-reminder-action') && response.request().method() === 'POST', { timeout: 30_000 });
-    await row.locator('button').filter({ has: page.locator('svg.lucide-trash-2') }).click();
+    await cancelButton.click();
     const cancelResponse = await cancelResponsePromise;
     const cancelBody = await cancelResponse.json().catch(() => ({}));
     await attachJson(testInfo, '35-reminder-real-api-lifecycle.json', {

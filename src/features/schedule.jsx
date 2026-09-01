@@ -4656,7 +4656,7 @@ const TabMonth = ({ currentDate, users, shifts, appUser }) => {
           return (
             <div key={date} className={`p-0.5 border-b border-r ${T.border} min-h-[50px] flex flex-col cell ${dayShifts.length >= 6 ? 'print-day-dense' : ''}`}>
               <span className={`text-right text-[9px] font-black ${T.muted} mb-0.5 cell-date`}>{i+1}</span>
-              <div className="space-y-0.5 overflow-y-auto no-scrollbar flex-1 print-shift-stack">
+              <div className="space-y-0.5 overflow-y-auto no-scrollbar flex-1 print-shift-stack" tabIndex={0} role="region" aria-label={`Shifts for ${date}`}>
                 {dayShifts.map(s=>{
                   const labels = getScheduleShiftMonthLabels(s, activeUsers);
                   return (

@@ -9,7 +9,15 @@ async function openScheduleBuilder(page) {
   if (await table.isVisible().catch(() => false)) return table;
   const builder = page.getByRole('button', { name: /^Schedule Builder$/i }).first();
   await expect(builder, 'Schedule Builder control should remain discoverable').toBeVisible({ timeout: 15000 });
-  await builder.click();
+  try {
+    await builder.click({ timeout: 5000 });
+  } catch (error) {
+    const message = String(error?.message || error || '');
+    if (!/intercepts pointer events|receives pointer events|modal-backdrop/i.test(message)) throw error;
+    const lateDialogState = await dismissBlockingDialogs(page, { maxPasses: 4 });
+    if (!lateDialogState.ok) throw new Error(`Schedule Builder remained blocked by a late dialog: ${lateDialogState.failure}`);
+    await builder.click({ timeout: 5000 });
+  }
   await expect(table, 'Schedule Builder selection should render its table').toBeVisible({ timeout: 15000 });
   return table;
 }

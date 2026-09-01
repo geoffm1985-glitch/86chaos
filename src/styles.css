@@ -1452,7 +1452,7 @@ select {
 .admin46-shell .admin45-number-card span,
 .admin46-shell .admin45-number-card small,
 .admin46-shell .admin45-task-row small {
-  color: #718092 !important;
+  color: #a8b8c5 !important;
 }
 
 .admin46-shell .admin45-task-row {
@@ -1512,7 +1512,7 @@ select {
 .admin46-shell .admin45-primary-action {
   border-color: var(--admin-blue-dark);
   background: var(--admin-blue);
-  color: #fff;
+  color: #0f171f;
 }
 
 .admin46-shell .admin45-secondary-action {
@@ -1737,6 +1737,29 @@ select {
 .admin46-shell #admin-content-start pre,
 .admin46-shell #admin-content-start code {
   color: #dbe8f0;
+}
+
+.admin46-shell .admin46-question-list button {
+  color: #b7c6d1;
+}
+
+.admin46-shell .admin46-question-list button:hover {
+  background: #20313e;
+  color: #eef5fb;
+}
+
+.admin46-shell .admin46-article-list button:hover,
+.admin46-shell .admin46-article-list button.is-active {
+  border-color: #4d718a;
+  background: #20313e;
+}
+
+.admin46-shell .admin46-article-list span {
+  color: #b7c6d1;
+}
+
+.admin46-shell .admin46-article-list strong {
+  color: #eef5fb;
 }
 
 /* 15.0.50 compact controls outside System Administrator. Sizes mirror the admin console; colors remain page-owned. */
@@ -3373,7 +3396,7 @@ select {
 }
 .admin46-mobile-current strong {
   display: block;
-  color: var(--admin-ink);
+  color: #152230;
   font-size: 14px;
   font-weight: 900;
   line-height: 1.1;
@@ -3385,7 +3408,7 @@ select {
   border: 1px solid var(--admin-blue-dark);
   border-radius: 10px;
   background: var(--admin-blue);
-  color: #fff;
+  color: #152230;
   padding: 0 12px;
   font-size: 10px;
   font-weight: 900;
@@ -3412,7 +3435,7 @@ select {
 .admin46-mobile-quick.is-active {
   border-color: #44799f;
   background: var(--admin-blue);
-  color: #fff;
+  color: #152230;
 }
 .admin46-mobile-quick span {
   display: block;
@@ -3441,14 +3464,14 @@ select {
 }
 .admin46-mobile-section-head strong {
   display: block;
-  color: var(--admin-ink);
+  color: #152230;
   font-size: 13px;
   font-weight: 900;
 }
 .admin46-mobile-section-head span {
   display: block;
   margin-top: 3px;
-  color: var(--admin-muted);
+  color: #405265;
   font-size: 10px;
   font-weight: 700;
   line-height: 1.35;
@@ -3472,14 +3495,14 @@ select {
 }
 .admin46-mobile-tool-grid button strong {
   display: block;
-  color: var(--admin-ink);
+  color: #152230;
   font-size: 12px;
   font-weight: 900;
 }
 .admin46-mobile-tool-grid button span {
   display: block;
   margin-top: 3px;
-  color: var(--admin-muted);
+  color: #405265;
   font-size: 10px;
   font-weight: 700;
   line-height: 1.35;
@@ -4996,6 +5019,11 @@ span.bg-red-500.text-white,
   color: #ffffff !important;
 }
 
+.bg-red-600.text-white {
+  background-color: #b91c1c !important;
+  color: #ffffff !important;
+}
+
 .admin45-status-card span,
 .admin45-number-card span,
 .admin45-status-card small,
@@ -5006,17 +5034,24 @@ span.bg-red-500.text-white,
 }
 
 .admin46-mobile-current span,
-.admin46-mobile-current small,
+.admin46-mobile-current small {
+  color: #405265 !important;
+}
+
 .admin46-status-chip span,
 .admin46-status-chip small {
-  color: #405265 !important;
+  color: #a8b8c5 !important;
 }
 
 .admin46-shell #admin-content-start [class*="text-slate-500"],
 .admin46-shell #admin-content-start [class*="text-slate-600"],
 .admin46-shell #admin-content-start .text-slate-500,
 .admin46-shell #admin-content-start .text-slate-600 {
-  color: #526477 !important;
+  color: #a8b8c5 !important;
+}
+
+.admin46-shell #admin-content-start .text-red-500 {
+  color: #f87171 !important;
 }
 
 .admin46-shell #admin-content-start button:not(:disabled),

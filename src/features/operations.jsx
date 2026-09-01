@@ -1143,7 +1143,7 @@ const TabMaintenance = ({ appUser, addToast }) => {
   };
 
   const getUrgencyColor = (u) => {
-    if (u === 'Critical') return 'text-red-200 font-black animate-pulse';
+    if (u === 'Critical') return 'text-red-200 font-black';
     if (u === 'High') return 'text-orange-500 font-bold';
     return 'text-slate-400';
   };
