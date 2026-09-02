@@ -1549,7 +1549,7 @@ const handleOfferSwap = async (shift) => {
         {['my-schedule', 'full-schedule', 'month-view', 'trade-board', 'time-off', 'availability', ...((appUser?.isAdmin || appUser?.permissions?.schedule) && scheduleBuilderProps ? ['schedule-builder'] : [])].map((tab) => {
           const label = tab === 'time-off' ? 'Request Off' : tab === 'availability' ? 'Availability' : tab === 'trade-board' ? 'Trade Board' : tab === 'schedule-builder' ? 'Schedule Builder' : tab.replace('-', ' ');
           return (
-          <button key={tab} type="button" aria-label={label} title={label} onClick={() => setSubTab(tab)} className={`px-2 sm:px-4 py-2 text-[10px] sm:text-xs font-black rounded-xl uppercase tracking-widest transition-all sm:flex-1 ${subTab === tab ? `${T.grad} text-slate-900 shadow-md` : 'bg-[#1A2126] text-slate-400 hover:text-white'}`}>
+          <button key={tab} type="button" aria-label={tab === 'time-off' ? 'Schedule Request Off' : label} title={label} onClick={() => setSubTab(tab)} className={`px-2 sm:px-4 py-2 text-[10px] sm:text-xs font-black rounded-xl uppercase tracking-widest transition-all sm:flex-1 ${subTab === tab ? `${T.grad} text-slate-900 shadow-md` : 'bg-[#1A2126] text-slate-400 hover:text-white'}`}>
             {label}
           </button>
         );})}

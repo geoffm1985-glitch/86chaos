@@ -5658,3 +5658,16 @@ span.bg-red-500.text-white,
     padding-left: .9rem !important;
   }
 }
+
+/* Keep critical maintenance attention visible without the opacity drop that fails text contrast mid-pulse. */
+@keyframes critical-priority-attention {
+  0%, 100% { color: #fecaca; opacity: 1; }
+  50% { color: #fff1f2; opacity: 1; }
+}
+.critical-priority-indicator.animate-pulse {
+  animation: critical-priority-attention 2.4s ease-in-out infinite !important;
+  opacity: 1 !important;
+}
+@media (prefers-reduced-motion: reduce) {
+  .critical-priority-indicator.animate-pulse { animation: none !important; }
+}
