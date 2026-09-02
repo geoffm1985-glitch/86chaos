@@ -59,16 +59,28 @@ test('all 16 fallback identities still resolve against the restored current test
     allowStaticFallback: true,
   });
 
-  assert.equal(qualified.totalSelected, 16);
-  assert.equal(qualified.desktopSelected, 9);
+  const responsiveMigration = qualified.selected.filter(row => row.migratedFromLegacyResponsiveMatrix);
+  const expectedResponsiveExecutions = responsiveMigration.length || 1;
+  assert.ok(expectedResponsiveExecutions === 1 || expectedResponsiveExecutions === 5, 'legacy responsive identity must remain intact or expand to all five viewport shards');
+  assert.equal(qualified.totalSelected, 15 + expectedResponsiveExecutions);
+  assert.equal(qualified.desktopSelected, 8 + expectedResponsiveExecutions);
   assert.equal(qualified.mobileSelected, 7);
-  assert.equal(qualified.selected.filter(row => row.priorStatus === 'failed').length, 14);
+  assert.equal(qualified.selected.filter(row => row.priorStatus === 'failed').length, 13 + expectedResponsiveExecutions);
   assert.equal(qualified.selected.filter(row => row.priorStatus === 'timedOut').length, 2);
+
+  if (responsiveMigration.length) {
+    const viewportNames = responsiveMigration.map(row => row.leafTitle.match(/\[([^\]]+)\]$/)?.[1]).sort();
+    assert.deepEqual(viewportNames, ['desktop', 'laptop', 'narrow-phone', 'phone', 'tablet']);
+  }
 
   for (const row of qualified.selected) {
     const spec = path.join(root, 'tests', row.specPath);
     assert.equal(fs.existsSync(spec), true, `${row.project} ${row.specPath} must exist`);
-    assert.match(fs.readFileSync(spec, 'utf8'), new RegExp(row.leafTitle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')), `${row.specPath} must retain failed leaf title`);
+    const source = fs.readFileSync(spec, 'utf8');
+    const retainedTitle = row.migratedFromLegacyResponsiveMatrix
+      ? row.leafTitle.replace(/\s+\[[^\]]+\]$/, '')
+      : row.leafTitle;
+    assert.match(source, new RegExp(retainedTitle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')), `${row.specPath} must retain failed leaf title`);
   }
 });
 
