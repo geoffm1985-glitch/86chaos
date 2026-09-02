@@ -5054,6 +5054,41 @@ span.bg-red-500.text-white,
   color: #f87171 !important;
 }
 
+.admin46-shell .admin45-area-link {
+  color: #b7c6d1 !important;
+}
+
+.admin46-shell .admin45-area-link:hover,
+.admin46-shell .admin45-area-link:focus-visible,
+.admin46-shell .admin45-quick-tile:hover,
+.admin46-shell .admin45-quick-tile:focus-visible {
+  background: #20313e !important;
+  color: #eef5fb !important;
+}
+
+.admin46-shell .admin46-assistant .admin46-eyebrow,
+.admin46-shell .admin46-playbook .admin46-eyebrow {
+  color: #245f8f !important;
+}
+
+.admin46-shell .admin46-assistant-title h3,
+.admin46-shell .admin46-playbook-header h3 {
+  color: #152230 !important;
+}
+
+.admin46-shell .admin46-primary {
+  color: #0f171f !important;
+}
+
+.admin46-shell .admin46-privacy-note,
+.admin46-shell .admin46-assistant-empty {
+  color: #536577 !important;
+}
+
+.admin46-shell .admin46-article-body p {
+  color: #a8b8c5 !important;
+}
+
 .admin46-shell #admin-content-start button:not(:disabled),
 .admin46-shell #admin-content-start [role="button"]:not(:disabled),
 .admin46-nav-button,

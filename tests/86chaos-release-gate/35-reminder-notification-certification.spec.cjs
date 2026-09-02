@@ -1,5 +1,6 @@
 const { test, expect, devices } = require('@playwright/test');
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
 const {
   ownerLikeCreds,
@@ -73,16 +74,22 @@ test.describe('35 reminder notification Play Store certification', () => {
   test('Chromium can create and enumerate a real service-worker system notification', async ({ browser }, testInfo) => {
     const base = process.env.APP_URL || process.env.CHAOS_BASE_URL || process.env.BASE_URL;
     const configuredOrigin = new URL(base).origin;
-    const context = await browser.newContext({
-      ...projectContextOptions(testInfo),
-      permissions: ['notifications'],
-    });
+    const profileDir = fs.mkdtempSync(path.join(os.tmpdir(), '86chaos-notification-'));
+    let context;
     try {
-      const page = await context.newPage();
+      context = await browser.browserType().launchPersistentContext(profileDir, {
+        ...projectContextOptions(testInfo),
+        headless: false,
+        permissions: ['notifications'],
+      });
+      const page = context.pages()[0] || await context.newPage();
       await context.grantPermissions(['notifications'], { origin: configuredOrigin });
       await page.goto(configuredOrigin, { waitUntil: 'domcontentloaded', timeout: 60_000 });
       const loadedOrigin = new URL(page.url()).origin;
-      await context.grantPermissions(['notifications'], { origin: loadedOrigin });
+      if (loadedOrigin !== configuredOrigin) {
+        await context.grantPermissions(['notifications'], { origin: loadedOrigin });
+        await page.reload({ waitUntil: 'domcontentloaded', timeout: 60_000 });
+      }
       await expect.poll(() => page.evaluate(() => Notification.permission), {
         message: 'Chromium notification permission should be granted for the application origin',
         timeout: 5000,
@@ -125,7 +132,8 @@ test.describe('35 reminder notification Play Store certification', () => {
         url: '/?tab=reminders',
       }));
     } finally {
-      await context.close().catch(() => {});
+      await context?.close().catch(() => {});
+      try { fs.rmSync(profileDir, { recursive: true, force: true }); } catch (_) {}
     }
   });
 
@@ -161,7 +169,7 @@ test.describe('35 reminder notification Play Store certification', () => {
 
     const reminderTitle = page.getByText(uniqueTitle, { exact: true });
     const row = reminderTitle.locator('xpath=ancestor::div[.//select[@aria-label="Snooze reminder"]][1]');
-    const cancelButton = row.locator('button:has(svg.lucide-trash-2)');
+    const cancelButton = row.getByRole('button', { name: 'Cancel reminder', exact: true });
     await expect(row, 'Saved reminder row should remain visible for real cancellation').toBeVisible({ timeout: 20_000 });
     await expect(cancelButton, 'Saved reminder row should expose exactly one real cancel control').toHaveCount(1);
     const cancelResponsePromise = page.waitForResponse(response => response.url().includes('/api/personal-reminder-action') && response.request().method() === 'POST', { timeout: 30_000 });
