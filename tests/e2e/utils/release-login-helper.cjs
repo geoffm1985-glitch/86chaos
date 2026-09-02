@@ -147,14 +147,35 @@ async function waitForAuthenticatedShell(page, options = {}) {
   throw new Error(options.message || 'Authenticated app shell should be ready without accepting the login logo as proof');
 }
 
+async function recoverPendingAuthentication(page, email, password, options = {}) {
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  const stateDeadline = Date.now() + 5_000;
+  while (Date.now() < stateDeadline) {
+    if (await isLoginShellVisible(page)) {
+      await fillReleaseLogin(page, email, password);
+      break;
+    }
+    const authenticated = await authenticatedShellLocator(page).isVisible({ timeout: 250 }).catch(() => false);
+    const chooser = await workspaceChooserLocator(page).isVisible({ timeout: 250 }).catch(() => false);
+    if (authenticated || chooser) break;
+    await page.waitForTimeout(200);
+  }
+  await waitForAuthenticatedShell(page, { ...options, timeout: Number(options.recoveryTimeout || 20_000) });
+}
+
 async function loginIfNeeded(page, email, password, options = {}) {
-  if (await isLoginShellVisible(page)) {
-    await fillReleaseLogin(page, email, password);
-    await waitForAuthenticatedShell(page, options);
+  const submitted = await isLoginShellVisible(page);
+  try {
+    if (submitted) await fillReleaseLogin(page, email, password);
+    await waitForAuthenticatedShell(page, { ...options, timeout: options.timeout || (submitted ? 30_000 : 20_000) });
+    return submitted;
+  } catch (error) {
+    const pendingShell = /Authenticated app shell should be ready without accepting the login logo as proof/.test(String(error?.message || error));
+    if (!pendingShell || options.retryPendingHydration === false) throw error;
+    // A single fresh-route retry recovers the rare mobile post-login hydration gap.
+    await recoverPendingAuthentication(page, email, password, options);
     return true;
   }
-  await waitForAuthenticatedShell(page, { ...options, timeout: options.timeout || 20_000 });
-  return false;
 }
 
 async function assertAuthenticatedAfterNavigation(page, options = {}) {

@@ -2010,8 +2010,8 @@ const Toggle = ({ label, desc, checked, onChange, disabled = false }) => (
 
             <form onSubmit={handleSaveProfile} className="space-y-3">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div><label className={T.label}>Full Name</label><input type="text" value={name} onChange={e => setName(e.target.value)} className={`${T.input} py-2 text-sm`} required /></div>
-                <div><label className={T.label}>Phone Number</label><input type="tel" value={phone} onChange={e => setPhone(e.target.value)} className={`${T.input} py-2 text-sm`} /></div>
+                <div><label htmlFor="settings-profile-full-name" className={T.label}>Full Name</label><input id="settings-profile-full-name" type="text" value={name} onChange={e => setName(e.target.value)} className={`${T.input} py-2 text-sm`} required /></div>
+                <div><label htmlFor="settings-profile-phone" className={T.label}>Phone Number</label><input id="settings-profile-phone" type="tel" value={phone} onChange={e => setPhone(e.target.value)} className={`${T.input} py-2 text-sm`} /></div>
               </div>
               <div>
                 <label className={T.label}>Profile Picture URL</label>
