@@ -14,6 +14,10 @@ test('release login helper requires authenticated app shell and rejects login-lo
   assert.match(helper, /Switch workspace/i);
   assert.match(helper, /isLoginShellVisible/);
   assert.match(helper, /Authenticated session was not restored after direct navigation/);
+  assert.match(helper, /TRANSIENT_FIREBASE_AUTH_ERROR_RE/);
+  assert.match(helper, /the-service-is-currently-unavailable\|network-request-failed\|internal-error/);
+  assert.match(helper, /One fresh-route retry covers a pending mobile hydration gap or an explicit/);
+  assert.match(helper, /\(!pendingShell && !transientAuthFailure\)/);
   assert.doesNotMatch(helper, /toContainText\(\/86 chaos\|today\|manager brief/i);
 });
 
@@ -41,6 +45,10 @@ test('release login helper targets the real chooser heading and unique Open work
 test('authenticated release routes use deterministic app readiness instead of networkidle', () => {
   const spec = read('tests/e2e/authenticated-release.spec.cjs');
   assert.match(spec, /gotoAuthenticatedRoute/);
+  assert.match(spec, /gotoTab\(page, tab, \{ settleMs: 0, timeout: 8_000, maxText: 30_000, force: true \}\)/);
+  assert.match(spec, /openPermittedRoute/);
+  assert.match(spec, /openDirectRoute/);
+  assert.match(spec, /expect\(activeTab,[\s\S]*?\)\.toBe\(tab\)/);
   assert.doesNotMatch(spec, /waitForLoadState\(['"]networkidle/);
   assert.doesNotMatch(spec, /86 chaos\|today\|manager brief\|kitchen command\|schedule/i);
 });

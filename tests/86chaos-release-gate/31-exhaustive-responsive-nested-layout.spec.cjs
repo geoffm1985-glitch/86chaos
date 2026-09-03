@@ -3,6 +3,11 @@ const { ROUTE_SPECS, ownerLikeCreds, creds, requireCreds, login, gotoTab, viewpo
 const { ROUTE_STATES } = require('./exhaustive-surface-matrix.cjs');
 const { applyStatePath, recoverSiblingStatePath } = require('./utils/exhaustive-ui-helpers.cjs');
 
+// Each shard keeps a structured finding ledger and failure screenshots. Recording
+// one continuous video across every nested surface can exhaust the runner disk
+// when its manually-created contexts are finalized.
+test.use({ video: 'off' });
+
 const RESPONSIVE_LEAF_BASE = 'every route and nested surface fits phone/tablet/laptop/desktop without unusable overflow or tap targets';
 
 const VIEWPORTS=[

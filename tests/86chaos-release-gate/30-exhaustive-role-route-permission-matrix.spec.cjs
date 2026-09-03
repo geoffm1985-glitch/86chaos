@@ -5,6 +5,11 @@ const {
 } = require('../86chaos-full-audit/utils/audit-helpers.cjs');
 const { expectedRoutesForRole } = require('../../scripts/86chaos-release-gate/route-access-matrix.cjs');
 
+// This multi-minute test creates and closes four long-lived contexts and already
+// attaches its complete route matrix. Avoid a continuous video per context while
+// retaining configured traces and failure screenshots for diagnosis.
+test.use({ video: 'off' });
+
 function required(prefix){const a=creds(prefix);if(!a.email||!a.password)throw new Error(`Missing required ${prefix}_EMAIL/${prefix}_PASSWORD; exhaustive role coverage cannot skip an identity.`);return a;}
 
 test.describe('30 exhaustive four-role x every-route permission matrix',()=>{

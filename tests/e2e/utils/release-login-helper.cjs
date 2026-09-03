@@ -1,5 +1,7 @@
 const { expect } = require('@playwright/test');
 
+const TRANSIENT_FIREBASE_AUTH_ERROR_RE = /auth\/(?:the-service-is-currently-unavailable|network-request-failed|internal-error)\b/i;
+
 function loginShellLocator(page) {
   return page.locator('.chaos-login-screen').first();
 }
@@ -128,6 +130,11 @@ async function waitForAuthenticatedShell(page, options = {}) {
 
     if (await isLoginShellVisible(page)) {
       lastState = 'login-shell';
+      const loginText = await loginShellLocator(page).innerText({ timeout: 500 }).catch(() => '');
+      const transientAuthError = loginText.match(TRANSIENT_FIREBASE_AUTH_ERROR_RE)?.[0] || '';
+      if (transientAuthError) {
+        throw new Error(`Transient Firebase Auth failure while waiting for authenticated readiness: ${transientAuthError}`);
+      }
       await page.waitForTimeout(250);
       continue;
     }
@@ -170,9 +177,12 @@ async function loginIfNeeded(page, email, password, options = {}) {
     await waitForAuthenticatedShell(page, { ...options, timeout: options.timeout || (submitted ? 30_000 : 20_000) });
     return submitted;
   } catch (error) {
-    const pendingShell = /Authenticated app shell should be ready without accepting the login logo as proof/.test(String(error?.message || error));
-    if (!pendingShell || options.retryPendingHydration === false) throw error;
-    // A single fresh-route retry recovers the rare mobile post-login hydration gap.
+    const message = String(error?.message || error);
+    const pendingShell = /Authenticated app shell should be ready without accepting the login logo as proof/.test(message);
+    const transientAuthFailure = TRANSIENT_FIREBASE_AUTH_ERROR_RE.test(message);
+    if ((!pendingShell && !transientAuthFailure) || options.retryPendingHydration === false) throw error;
+    // One fresh-route retry covers a pending mobile hydration gap or an explicit
+    // transient Firebase Auth service failure; all other login errors remain final.
     await recoverPendingAuthentication(page, email, password, options);
     return true;
   }
