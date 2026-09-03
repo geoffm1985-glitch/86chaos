@@ -225,6 +225,8 @@ test.describe('16.0.153 Schedule warnings and Request Off management', () => {
     const seed = await ensureSeeded(testInfo);
     await openSchedule(page, seed);
     await openWarnings(page);
+    await expect(page.locator('body'), 'Coverage target hydration should expose the seeded under-target warning').toContainText(/needs \d+ more/i, { timeout: 15000 });
+    await expect(page.locator('body'), 'Coverage target hydration should expose the seeded over-target warning').toContainText(/has \d+ more .* than the coverage target/i, { timeout: 15000 });
     const text = await bodyText(page, 60000);
     await attachJson(testInfo, '16-0-153-coverage-warning-text.json', { text: text.slice(0, 12000) });
     expect(text, 'Under-target coverage warnings should remain visible').toMatch(/needs \d+ more/i);

@@ -7802,7 +7802,7 @@ Type RESTORE to continue.`);
         event.stopPropagation();
         setAdminHelpModal({ title, body });
       }}
-      className="inline-flex items-center justify-center w-5 h-5 rounded-full border border-[#2A353D] bg-[#12161A] text-slate-500 hover:text-[#D4A381] hover:border-[#D4A381]/60 transition-colors flex-shrink-0"
+      className="inline-flex items-center justify-center w-5 h-5 min-w-[24px] min-h-[24px] rounded-full border border-[#2A353D] bg-[#12161A] text-slate-500 hover:text-[#D4A381] hover:border-[#D4A381]/60 transition-colors flex-shrink-0"
       title={`Explain ${title}`}
       aria-label={`Explain ${title}`}
     >

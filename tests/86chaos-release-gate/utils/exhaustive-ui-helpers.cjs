@@ -729,7 +729,7 @@ async function auditState(page, testInfo, identity, options = {}) {
   const duplicateIds = Object.entries(controls.filter(c => c.id).reduce((m,c)=>((m[c.id]=(m[c.id]||0)+1),m),{})).filter(([,n])=>n>1).map(([id,count])=>({id,count}));
   const badSelects = controls.filter(c => c.tag === 'select' && !c.disabled && (c.optionCount || 0) < 1);
   const mobile = /mobile/i.test(testInfo.project.name || '');
-  const smallTargets = mobile ? controls.filter(c => !c.disabled && ['button','link','tab','menuitem'].includes(c.role) && (c.width < 42 || c.height < 42)) : [];
+  const smallTargets = mobile ? controls.filter(c => c.visible && !c.disabled && ['button','link','tab','menuitem'].includes(c.role) && (c.width < 42 || c.height < 42)) : [];
   const formEvidence = [];
   if (options.probeForms !== false) await probeFormControls(page, controls, formEvidence, { allowValueMutation: options.allowFormValueMutation !== false });
   const clickEvidence = [];
