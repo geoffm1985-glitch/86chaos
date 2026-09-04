@@ -293,7 +293,7 @@ test.describe('16.0.153 Schedule warnings and Request Off management', () => {
     const seed = await ensureSeeded(testInfo);
     await resetSeededRequestOffFixture(seed, 'allen');
     await openManagerRequestOff(page, seed);
-    await openRequestOffView(page, 'Upcoming Approved');
+    await openRequestOffView(page, 'All');
     await waitForRequestOffEmployee(page, 'Allen QA', 'Seeded Allen QA approved request should be visible before bulk archive');
     const { selectedOptionLabel: selectedAllenLabel } = await selectRequestOffEmployee(page, 'Allen QA');
     await waitForRequestOffEmployee(page, 'Allen QA', 'Allen QA should remain visible after applying the Allen employee filter');
