@@ -1,6 +1,9 @@
 const { test, expect } = require('@playwright/test');
 const { expectedRoutesForRole } = require('../../scripts/86chaos-release-gate/route-access-matrix.cjs');
+const { gotoTab, ROUTE_SPECS } = require('../86chaos-full-audit/utils/audit-helpers.cjs');
 const { loginIfNeeded, gotoAuthenticatedRoute } = require('./utils/release-login-helper.cjs');
+
+const routeById = new Map(ROUTE_SPECS.map(route => [route.tab, route]));
 
 const releaseGate = process.env.CHAOS_RELEASE_GATE === 'true';
 const roles = [
@@ -31,9 +34,17 @@ async function login(page, email, password) {
   await loginIfNeeded(page, email, password, { timeout: 30_000 });
 }
 
-async function openRoute(page, tab) {
+async function openPermittedRoute(page, tab) {
+  const spec = routeById.get(tab);
+  expect(spec, `Canonical permitted route ${tab} must exist in the browser route inventory`).toBeTruthy();
+  const text = await gotoTab(page, tab, { settleMs: 0, timeout: 8_000, maxText: 30_000, force: true });
+  const activeTab = await page.evaluate(() => new URLSearchParams(window.location.search).get('tab') || 'today');
+  expect(activeTab, `Permitted route ${tab} should become the active in-app route`).toBe(tab);
+  expect(text, `Permitted route ${tab} should render its declared surface`).toMatch(spec.expect);
+}
+
+async function openDirectRoute(page, tab) {
   await gotoAuthenticatedRoute(page, tab, { timeout: 30_000 });
-  await page.waitForTimeout(150);
 }
 
 async function assertHealthyScreen(page, role, tab) {
@@ -58,7 +69,7 @@ for (const entry of roles) {
       const { email, password } = credentials(entry);
       await login(page, email, password);
       for (const tab of entry.tabs) {
-        await openRoute(page, tab);
+        await openPermittedRoute(page, tab);
         await assertHealthyScreen(page, entry.role, tab);
       }
     });
@@ -69,7 +80,7 @@ for (const entry of roles) {
       const { email, password } = credentials(entry);
       await login(page, email, password);
       for (const tab of deniedTabs) {
-        await openRoute(page, tab);
+        await openDirectRoute(page, tab);
         await expect(page.locator('body')).toContainText(/Plan & Permission Gate|Restricted Platform Tools|Your role does not include this (?:tool|area)|not-platform-admin|HTTP:\s*403/i);
       }
     });

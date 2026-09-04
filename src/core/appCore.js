@@ -425,7 +425,7 @@ export const MASTER_ADMIN_EMAIL = (process.env.REACT_APP_MASTER_ADMIN_EMAIL || '
 export const EVENT_TAGS = ['Standard Day', 'Packers Game', 'Brewers Game', 'Live Music', 'Severe Weather', 'Private Catering', 'Holiday'];
 
 // --- VERSION TRACKING ---
-export const CURRENT_VERSION = '16.0.191';
+export const CURRENT_VERSION = '16.0.226';
 
 // --- Helpers ---
 const usePageVisible = () => {
@@ -447,6 +447,38 @@ const usePageVisible = () => {
 };
 
 const LIVE_COLLECTION_RELEASE_GRACE_MS = 6 * 60 * 1000;
+const LIVE_COLLECTION_RELEASE_MIN_MS = 45 * 1000;
+const LIVE_COLLECTION_RELEASE_MAX_MS = 10 * 60 * 1000;
+const LIVE_COLLECTION_HIGH_CHANGE_CUTOFF = 18;
+const LIVE_COLLECTION_LARGE_INITIAL_CUTOFF = 120;
+const RELEASE_GRACE_BY_COLLECTION = {
+  auditLogs: 45 * 1000,
+  presenceSessions: 45 * 1000,
+  restaurantAdminAlerts: 90 * 1000,
+  timePunches: 2 * 60 * 1000,
+  shifts: 3 * 60 * 1000,
+  timeOffRequests: 3 * 60 * 1000,
+  workspaceMembers: 6 * 60 * 1000,
+  users: 6 * 60 * 1000,
+  inventoryItems: 6 * 60 * 1000,
+  recipes: 8 * 60 * 1000,
+  restaurants: 8 * 60 * 1000
+};
+const clampReleaseGraceMs = (value) => Math.max(LIVE_COLLECTION_RELEASE_MIN_MS, Math.min(LIVE_COLLECTION_RELEASE_MAX_MS, Number(value || LIVE_COLLECTION_RELEASE_GRACE_MS) || LIVE_COLLECTION_RELEASE_GRACE_MS));
+const adaptiveReleaseGraceMs = (entry = {}, kind = 'collection') => {
+  const base = RELEASE_GRACE_BY_COLLECTION[entry.coll] || LIVE_COLLECTION_RELEASE_GRACE_MS;
+  const initialDocs = Number(entry.documentsReceivedInitial || (Array.isArray(entry.data) ? entry.data.length : entry.data ? 1 : 0)) || 0;
+  const changeDocs = Number(entry.documentsReceivedChanges || 0) || 0;
+  const ageMinutes = Math.max(1, (Date.now() - new Date(entry.attachedAt || Date.now()).getTime()) / 60000);
+  const changesPerMinute = changeDocs / ageMinutes;
+  let next = base;
+  if (kind === 'document') next = Math.min(base, 3 * 60 * 1000);
+  if (changesPerMinute >= LIVE_COLLECTION_HIGH_CHANGE_CUTOFF) next = Math.min(next, 90 * 1000);
+  else if (initialDocs >= LIVE_COLLECTION_LARGE_INITIAL_CUTOFF && changesPerMinute < 2) next = Math.max(next, 8 * 60 * 1000);
+  else if (initialDocs <= 5 && changesPerMinute < 1) next = Math.min(next, 2 * 60 * 1000);
+  if (entry.listenerReuseCount >= 2 && changesPerMinute < 3) next = Math.max(next, 6 * 60 * 1000);
+  return clampReleaseGraceMs(next);
+};
 const liveCollectionRegistry = new Map();
 const liveDocumentRegistry = new Map();
 const LIVE_QUERY_CACHE_MAX_ENTRIES = 60;
@@ -682,6 +714,8 @@ const acquireSharedLiveCollection = ({ coll, restId, constraints, key, setData, 
       listenerCreationCount: 1,
       listenerReuseCount: 0,
       listenerReleaseCount: 0,
+      documentsReceivedInitial: 0,
+      documentsReceivedChanges: 0,
       reconnectCount: cached ? 1 : 0,
       closed: false
     };
@@ -698,6 +732,7 @@ const acquireSharedLiveCollection = ({ coll, restId, constraints, key, setData, 
       reconnectCount: entry.reconnectCount,
       documentsReceivedInitial: 0,
       documentsReceivedChanges: 0,
+      lastReleaseGraceMs: 0,
       addedChanges: 0,
       modifiedChanges: 0,
       removedChanges: 0,
@@ -720,6 +755,8 @@ const acquireSharedLiveCollection = ({ coll, restId, constraints, key, setData, 
         entry.lastError = null;
         entry.data = docs;
         const changes = snap.docChanges ? snap.docChanges() : [];
+        entry.documentsReceivedInitial = (entry.documentsReceivedInitial || 0) + (isInitial ? snap.docs.length : 0);
+        entry.documentsReceivedChanges = (entry.documentsReceivedChanges || 0) + (isInitial ? 0 : changes.length);
         setLiveCacheEntry(liveCollectionSessionCache, key, { data: docs, coll, restId, restaurantId: restId, viewerUid, userSensitive: true });
         if (diagnostics) {
           diagnostics.documentsReceivedByQuery = diagnostics.documentsReceivedByQuery && typeof diagnostics.documentsReceivedByQuery === 'object' && !Array.isArray(diagnostics.documentsReceivedByQuery) ? diagnostics.documentsReceivedByQuery : {};
@@ -790,6 +827,8 @@ const acquireSharedLiveCollection = ({ coll, restId, constraints, key, setData, 
     current.subscribers.delete(subscriber);
     annotateListenerDiagnostics(key, { subscriberCount: current.subscribers.size, consumerLabels: entryConsumerLabels(current) });
     if (current.subscribers.size === 0 && !current.releaseTimer) {
+      const releaseGraceMs = adaptiveReleaseGraceMs(current, 'collection');
+      annotateListenerDiagnostics(key, { releaseGraceMs, releaseReason: 'no-subscribers-adaptive-grace-started' });
       current.releaseTimer = setTimeout(() => {
         const latest = liveCollectionRegistry.get(key);
         if (!latest || latest.subscribers.size > 0) return;
@@ -812,7 +851,7 @@ const acquireSharedLiveCollection = ({ coll, restId, constraints, key, setData, 
           consumerLabels: [],
           cached: true
         });
-      }, LIVE_COLLECTION_RELEASE_GRACE_MS);
+      }, releaseGraceMs);
     }
   };
 };
@@ -934,12 +973,17 @@ const acquireSharedLiveDocument = ({ coll, docId, key, setValue, debugLabel = ''
       attachedAt: new Date().toISOString(),
       listenerReuseCount: 0,
       listenerReleaseCount: 0,
+      documentsReceivedInitial: 0,
+      documentsReceivedChanges: 0,
       closed: false
     };
     entry.unsubscribe = onSnapshot(doc(db, coll, docId), snap => {
       if (entry.closed === true || liveDocumentRegistry.get(key) !== entry) return;
+      const wasInitial = !entry.initialSnapshotSeen;
       entry.data = snap.exists() ? { id: snap.id, ...snap.data() } : null;
       entry.initialSnapshotSeen = true;
+      entry.documentsReceivedInitial = (entry.documentsReceivedInitial || 0) + (wasInitial ? 1 : 0);
+      entry.documentsReceivedChanges = (entry.documentsReceivedChanges || 0) + (wasInitial ? 0 : 1);
       entry.hasCachedSnapshot = true;
       entry.stale = false;
       entry.lastError = null;
@@ -1022,6 +1066,8 @@ const acquireSharedLiveDocument = ({ coll, docId, key, setValue, debugLabel = ''
     current.subscribers.delete(subscriber);
     if (diagnostics) diagnostics.documents[key] = { ...(diagnostics.documents[key] || {}), consumerLabels: entryConsumerLabels(current), subscriberCount: current.subscribers.size };
     if (current.subscribers.size === 0 && !current.releaseTimer) {
+      const releaseGraceMs = adaptiveReleaseGraceMs(current, 'document');
+      if (diagnostics) diagnostics.documents[key] = { ...(diagnostics.documents[key] || {}), releaseGraceMs, releaseReason: 'no-subscribers-adaptive-grace-started' };
       current.releaseTimer = setTimeout(() => {
         const latest = liveDocumentRegistry.get(key);
         if (!latest || latest.subscribers.size > 0) return;
@@ -1036,7 +1082,7 @@ const acquireSharedLiveDocument = ({ coll, docId, key, setValue, debugLabel = ''
           diag.activeDocuments = liveDocumentRegistry.size;
           diag.listenerReleaseCount = (diag.listenerReleaseCount || 0) + 1;
         }
-      }, LIVE_COLLECTION_RELEASE_GRACE_MS);
+      }, releaseGraceMs);
     }
   };
 };

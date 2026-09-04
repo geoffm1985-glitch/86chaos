@@ -33,7 +33,7 @@ const checks = [
       const ops = read('src/features/operations.jsx');
       const wantsLine = app.match(/const\s+wantsInventoryData\s*=\s*([^;]+);/);
       const expr = wantsLine ? wantsLine[1] : '';
-      return expr.includes('wantsToday') && expr.includes('isGlobalSearchOpen') && expr.includes("activeTabState === 'menu-intelligence'") && !expr.includes("activeTabState === 'ops'") && !expr.includes("activeTabState === 'inventory'") && /useLiveCollection\('inventoryItems'[^\n]+debugLabel:\s*['`][^'`]*ops-center:inventory/.test(ops);
+      return expr.includes('wantsToday') && (expr.includes('isGlobalSearchOpen') || expr.includes('globalSearchHasMeaningfulQuery')) && expr.includes("activeTabState === 'menu-intelligence'") && !expr.includes("activeTabState === 'ops'") && !expr.includes("activeTabState === 'inventory'") && /useLiveCollection\('inventoryItems'[^\n]+debugLabel:\s*['`][^'`]*ops-center:inventory/.test(ops);
     }
   },
   {

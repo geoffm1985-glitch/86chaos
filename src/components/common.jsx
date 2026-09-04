@@ -2622,6 +2622,8 @@ const VoiceCommandDockBase = ({ appUser, inventoryItems = [], recipes = [], user
         }
         const assignee = actionToRun.assignee || {};
         if (!assignee.id && !assignee.email) throw new Error('No teammate was selected.');
+        const assigneeUid = assignee.authUid || assignee.uid || assignee.userId || assignee.firebaseUid || assignee.id || '';
+        const recipientProfileId = assignee.profileDocId || assignee.accountProfile?.id || assignee.id || assigneeUid;
         const title = String(actionToRun.title || 'Shared reminder').trim();
         const reminderCreatorUid = auth?.currentUser?.uid || appUser.id || '';
         if (!actionToRun.scheduledAt) {
@@ -2645,7 +2647,7 @@ const VoiceCommandDockBase = ({ appUser, inventoryItems = [], recipes = [], user
           if (closeWhenDone) setOpen(false);
           return;
         }
-        const existingDuplicate = await findRecentReminderDuplicate({ title, scheduledAt: actionToRun.scheduledAt, visibility: 'shared_reminder', assignedToUserId: assignee.id || '', clientCommandId });
+        const existingDuplicate = await findRecentReminderDuplicate({ title, scheduledAt: actionToRun.scheduledAt, visibility: 'shared_reminder', assignedToUserId: assigneeUid, clientCommandId });
         if (existingDuplicate) {
           await logAudit(appUser, 'VOICE_REMINDER_DUPLICATE_BLOCKED', title, `${sourceText} | matched ${existingDuplicate.id}`);
           addToast('Duplicate Blocked', 'That reminder was already saved once.');
@@ -2658,9 +2660,10 @@ const VoiceCommandDockBase = ({ appUser, inventoryItems = [], recipes = [], user
         const reminderTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
         await setDoc(reminderRef, {
           restaurantId: appUser.restaurantId,
-          userId: assignee.id || reminderCreatorUid,
+          userId: assigneeUid || reminderCreatorUid,
           userEmail: appUser.email || '',
-          assignedToUserId: assignee.id || '',
+          assignedToUserId: assigneeUid,
+          recipientProfileId,
           assignedToName: assignee.name || assignee.displayName || assignee.email || 'Teammate',
           assignedToEmail: assignee.email || '',
           createdByName: appUser.name || appUser.email || '',
@@ -2672,7 +2675,7 @@ const VoiceCommandDockBase = ({ appUser, inventoryItems = [], recipes = [], user
           notes: '',
           scheduledAt: actionToRun.scheduledAt,
           dueAt: actionToRun.scheduledAt,
-          participantUserIds: Array.from(new Set([reminderCreatorUid, assignee.id].filter(Boolean))).slice(0, 2),
+          participantUserIds: Array.from(new Set([reminderCreatorUid, assigneeUid].filter(Boolean))).slice(0, 2),
           participantSchemaVersion: 1,
           occurrenceScheduledAt: actionToRun.scheduledAt,
           recurrenceAnchorAt: actionToRun.scheduledAt,
@@ -2744,11 +2747,13 @@ const VoiceCommandDockBase = ({ appUser, inventoryItems = [], recipes = [], user
         const reminderRef = doc(collection(db, 'personalReminders'));
         const reminderOccurrenceKey = `${reminderRef.id}:${actionToRun.scheduledAt}`;
         const reminderTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+        const recipientProfileId = appUser.profileDocId || appUser.accountProfile?.id || appUser.id || reminderCreatorUid;
         await setDoc(reminderRef, {
           restaurantId: appUser.restaurantId,
           userId: reminderCreatorUid,
           userEmail: appUser.email || '',
           assignedToUserId: reminderCreatorUid,
+          recipientProfileId,
           assignedToName: appUser.name || appUser.email || 'Me',
           assignedToEmail: appUser.email || '',
           createdByName: appUser.name || appUser.email || '',

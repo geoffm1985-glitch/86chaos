@@ -344,6 +344,47 @@ function identityKeyFromParts(specPath = '', title = '', project = '', fullSuite
   return `${normalizeRel(specPath)}\u0000${String(fullSuitePath || '')}\u0000${String(title || '')}\u0000${String(project || '')}`;
 }
 
+
+const RESPONSIVE_MATRIX_SPEC = '86chaos-release-gate/31-exhaustive-responsive-nested-layout.spec.cjs';
+const LEGACY_RESPONSIVE_LEAF_TITLE = 'every route and nested surface fits phone/tablet/laptop/desktop without unusable overflow or tap targets';
+const RESPONSIVE_VIEWPORT_NAMES = ['narrow-phone', 'phone', 'tablet', 'laptop', 'desktop'];
+
+function isLegacyResponsiveMatrixSelection(row = {}) {
+  const spec = normalizeRel(row.specPath || row.spec || '');
+  if (spec !== RESPONSIVE_MATRIX_SPEC) return false;
+  const title = String(row.exactTestTitle || row.title || row.leafTitle || '').trim();
+  const fullTitle = String(row.fullTitle || '').trim();
+  return title === LEGACY_RESPONSIVE_LEAF_TITLE || fullTitle.includes(LEGACY_RESPONSIVE_LEAF_TITLE);
+}
+
+function resolveLegacyResponsiveMatrixSelection(row = {}, manifest = {}, lookup = {}) {
+  if (!isLegacyResponsiveMatrixSelection(row)) return [];
+  const normalized = normalizeSelection(row, manifest);
+  const project = normalized.project || 'chromium';
+  const candidates = (lookup.records || []).filter(candidate => {
+    const spec = normalizeRel(candidate.specPath || candidate.spec || '');
+    if (spec !== RESPONSIVE_MATRIX_SPEC) return false;
+    if (String(candidate.project || candidate.projectName || '') !== project) return false;
+    const title = String(candidate.exactTestTitle || candidate.title || candidate.leafTitle || '');
+    return title.startsWith(LEGACY_RESPONSIVE_LEAF_TITLE)
+      && RESPONSIVE_VIEWPORT_NAMES.some(viewport => title.endsWith(`[${viewport}]`));
+  });
+  const byViewport = new Map();
+  for (const candidate of candidates) {
+    const title = String(candidate.exactTestTitle || candidate.title || candidate.leafTitle || '');
+    const viewport = RESPONSIVE_VIEWPORT_NAMES.find(name => title.endsWith(`[${name}]`));
+    if (viewport && !byViewport.has(viewport)) byViewport.set(viewport, candidate);
+  }
+  if (byViewport.size !== RESPONSIVE_VIEWPORT_NAMES.length) return [];
+  return RESPONSIVE_VIEWPORT_NAMES.map(viewport => ({
+    ...inventorySelectionFromRow(byViewport.get(viewport), normalized, manifest),
+    migratedFromLegacyIdentity: true,
+    migratedFromLegacyResponsiveMatrix: true,
+    migrationSourceStableKey: normalized.stableKey || selectionKey(normalized),
+    selectionReasons: normalized.selectionReasons || ['previous_timeout', 'responsive_matrix_partition_migration'],
+  }));
+}
+
 function suitePathFromParents(parents = [], spec = {}, t = {}) {
   const ignore = part => !/^failed(?:-only)? .*fixture$/i.test(String(part || '').trim());
   const raw = Array.isArray(t.titlePath) ? t.titlePath : [];
@@ -471,7 +512,7 @@ function inventoryLookup(records = []) {
     rows.push(row);
     byLooseKey.set(loose, rows);
   }
-  return { byKey, byLooseKey };
+  return { byKey, byLooseKey, records: records || [] };
 }
 
 function resolveSelectionRowsAgainstInventory(row = {}, manifest = {}, lookup = inventoryLookup([])) {
@@ -500,6 +541,8 @@ function resolveSelectionRowsAgainstInventory(row = {}, manifest = {}, lookup = 
       legacyAmbiguousMatchCount: looseMatches.length,
     }));
   }
+  const responsiveMigration = resolveLegacyResponsiveMatrixSelection(normalized, manifest, lookup);
+  if (responsiveMigration.length) return responsiveMigration;
   return [normalized];
 }
 
@@ -680,6 +723,7 @@ function normalizeSelection(row = {}, manifest = {}) {
     selectionReasons: row.selectionReasons,
     migratedFromLegacyIdentity: Boolean(row.migratedFromLegacyIdentity),
     migratedFromLegacyAmbiguousIdentity: Boolean(row.migratedFromLegacyAmbiguousIdentity),
+    migratedFromLegacyResponsiveMatrix: Boolean(row.migratedFromLegacyResponsiveMatrix),
     legacyAmbiguousMatchCount: row.legacyAmbiguousMatchCount || 0,
     migrationSourceStableKey: row.migrationSourceStableKey || '',
     sourceFileHash: row.sourceFileHash || '',
@@ -869,9 +913,38 @@ function validateManifestTestIdentities(manifest, { root = process.cwd(), projec
 function validateManifestForCurrentRun(manifest, options = {}) {
   const errors = [];
   const baselineMode = options.baselineMode || manifest?.lineageMode || 'full-baseline';
-  if (baselineMode === 'focused') {
+  if (baselineMode === 'bundled-full-baseline-fallback') {
+    const baselineSource = manifest?.baselineSourceVersion || manifest?.sourceVersion || '';
+    const baselineDeployed = manifest?.baselineDeployedVersion || manifest?.deployedVersion || '';
+    if (!manifest?.baselineFullRunId) errors.push('Bundled baseline run ID is missing.');
+    if (!baselineSource) errors.push('Bundled baseline source version is missing.');
+    if (!baselineDeployed) errors.push('Bundled baseline deployed version is missing.');
+    if (baselineSource && baselineDeployed && baselineSource !== baselineDeployed) {
+      errors.push(`Bundled baseline source/deployed versions do not match: ${baselineSource} vs ${baselineDeployed}.`);
+    }
+    if (!Array.isArray(manifest?.selected) || manifest.selected.length === 0) {
+      errors.push('Bundled baseline selected zero failed or timed-out tests.');
+    }
+    if (manifest?.selected?.some(row => !row.specPath && !row.spec)) errors.push('One or more bundled baseline tests are missing a spec path.');
+    if (manifest?.selected?.some(row => !(row.title || row.exactTestTitle || row.leafTitle))) errors.push('One or more bundled baseline tests are missing an exact title.');
+    if (manifest?.selected?.some(row => !(row.project || row.projectName || (Array.isArray(row.projects) && row.projects.length)))) errors.push('One or more bundled baseline tests are missing a Playwright project.');
+  } else if (baselineMode === 'focused') {
     const focusedDir = manifest?.previousFailedOnlyRunDir || '';
-    if (!focusedDir) {
+    const isBundledFocusedFallback = String(manifest?.selectionSource || '') === 'bundled-latest-failed-only-20260823-183916-fail-only'
+      || String(manifest?.selectionSource || '') === 'bundled-latest-failed-only-20260825-125909-fail-only'
+      || String(manifest?.source || '') === 'uploaded-failed-only-20260823-183916'
+      || String(manifest?.source || '') === 'authoritative-failed-only-run-20260825-125909';
+    if (!focusedDir && isBundledFocusedFallback) {
+      const sourceVersion = manifest?.previousFailedOnlySourceVersion || '';
+      const deployedVersion = manifest?.previousFailedOnlyDeployedVersion || '';
+      if (!manifest?.previousFailedOnlyRunId) errors.push('Bundled focused fallback source run ID is missing.');
+      if (!sourceVersion) errors.push('Bundled focused fallback source version is missing.');
+      if (!deployedVersion) errors.push('Bundled focused fallback deployed version is missing.');
+      if (sourceVersion && deployedVersion && sourceVersion !== deployedVersion) errors.push(`Bundled focused fallback source/deployed versions do not match: ${sourceVersion} vs ${deployedVersion}.`);
+      if (!Array.isArray(manifest?.selected) || manifest.selected.length === 0) errors.push('Bundled focused fallback selected zero failed tests.');
+      const targetVersion = options.currentSourceVersion || '';
+      if (sourceVersion && targetVersion && compareVersions(targetVersion, sourceVersion) < 0) errors.push(`Target version ${targetVersion} is older than bundled focused lineage version ${sourceVersion}.`);
+    } else if (!focusedDir) {
       errors.push('Focused lineage source run directory is missing.');
     } else if (!fs.existsSync(focusedDir)) {
       errors.push(`Focused lineage source run directory does not exist: ${focusedDir}`);

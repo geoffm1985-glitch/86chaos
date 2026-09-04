@@ -1,5 +1,7 @@
 const { expect } = require('@playwright/test');
 
+const TRANSIENT_FIREBASE_AUTH_ERROR_RE = /auth\/(?:the-service-is-currently-unavailable|network-request-failed|internal-error)\b/i;
+
 function loginShellLocator(page) {
   return page.locator('.chaos-login-screen').first();
 }
@@ -128,6 +130,11 @@ async function waitForAuthenticatedShell(page, options = {}) {
 
     if (await isLoginShellVisible(page)) {
       lastState = 'login-shell';
+      const loginText = await loginShellLocator(page).innerText({ timeout: 500 }).catch(() => '');
+      const transientAuthError = loginText.match(TRANSIENT_FIREBASE_AUTH_ERROR_RE)?.[0] || '';
+      if (transientAuthError) {
+        throw new Error(`Transient Firebase Auth failure while waiting for authenticated readiness: ${transientAuthError}`);
+      }
       await page.waitForTimeout(250);
       continue;
     }
@@ -147,14 +154,38 @@ async function waitForAuthenticatedShell(page, options = {}) {
   throw new Error(options.message || 'Authenticated app shell should be ready without accepting the login logo as proof');
 }
 
+async function recoverPendingAuthentication(page, email, password, options = {}) {
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  const stateDeadline = Date.now() + 5_000;
+  while (Date.now() < stateDeadline) {
+    if (await isLoginShellVisible(page)) {
+      await fillReleaseLogin(page, email, password);
+      break;
+    }
+    const authenticated = await authenticatedShellLocator(page).isVisible({ timeout: 250 }).catch(() => false);
+    const chooser = await workspaceChooserLocator(page).isVisible({ timeout: 250 }).catch(() => false);
+    if (authenticated || chooser) break;
+    await page.waitForTimeout(200);
+  }
+  await waitForAuthenticatedShell(page, { ...options, timeout: Number(options.recoveryTimeout || 20_000) });
+}
+
 async function loginIfNeeded(page, email, password, options = {}) {
-  if (await isLoginShellVisible(page)) {
-    await fillReleaseLogin(page, email, password);
-    await waitForAuthenticatedShell(page, options);
+  const submitted = await isLoginShellVisible(page);
+  try {
+    if (submitted) await fillReleaseLogin(page, email, password);
+    await waitForAuthenticatedShell(page, { ...options, timeout: options.timeout || (submitted ? 30_000 : 20_000) });
+    return submitted;
+  } catch (error) {
+    const message = String(error?.message || error);
+    const pendingShell = /Authenticated app shell should be ready without accepting the login logo as proof/.test(message);
+    const transientAuthFailure = TRANSIENT_FIREBASE_AUTH_ERROR_RE.test(message);
+    if ((!pendingShell && !transientAuthFailure) || options.retryPendingHydration === false) throw error;
+    // One fresh-route retry covers a pending mobile hydration gap or an explicit
+    // transient Firebase Auth service failure; all other login errors remain final.
+    await recoverPendingAuthentication(page, email, password, options);
     return true;
   }
-  await waitForAuthenticatedShell(page, { ...options, timeout: options.timeout || 20_000 });
-  return false;
 }
 
 async function assertAuthenticatedAfterNavigation(page, options = {}) {

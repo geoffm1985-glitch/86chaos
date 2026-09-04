@@ -39,7 +39,7 @@ async function getQaRequestOffResetAuth() {
 function scheduleFixtureDateFromSeed(seed = {}) {
   const fixture = seed?.profile?.expectations?.fixture || seed?.profile?.fixture || {};
   const overCoverageDate = (fixture.shifts || []).find(row => row?.employeeName === 'Chuck QA' && row?.role === 'Bartender' && String(row?.startTime || '').toLowerCase() === '10a')?.date;
-  return overCoverageDate || fixture.currentWeekStart || fixture.anchor || seed?.ghostRequestOffConflictDate || '2026-08-04';
+  return fixture.anchor || fixture.currentWeekStart || overCoverageDate || seed?.ghostRequestOffConflictDate || '2026-08-04';
 }
 
 async function installSeededScheduleClock(page, seed = {}) {
@@ -70,19 +70,26 @@ async function openSchedule(page, seed = {}) {
   await gotoTab(page, 'schedule', { settleMs: 1400, maxText: 60000 });
   await dismissBlockingDialogs(page, { maxPasses: 4 }).catch(() => null);
   await expect(page.locator('body'), 'Schedule Builder should render before opening warning tools').toContainText(/Schedule Builder|Coverage|Auto-Fill|Publish/i, { timeout: 15000 });
+  if (seed?.ok) {
+    await expect(page.locator('body'), 'Schedule Builder must hydrate seeded QA staff before warning assertions run').toContainText(/Allen QA|Chuck QA|Lani QA/i, { timeout: 45000 });
+  }
 }
 
 async function openWarnings(page) {
-  const warningsButton = page.getByRole('button', { name: /^Open Warnings$/i }).or(page.getByRole('button', { name: /^Warnings$/i })).first();
-  if (!await warningsButton.isVisible().catch(() => false)) {
+  const warningsControl = page
+    .getByRole('tab', { name: /^Warnings$/i })
+    .or(page.getByRole('button', { name: /^Open Warnings$/i }))
+    .or(page.getByRole('button', { name: /^Warnings$/i }))
+    .first();
+  if (!await warningsControl.isVisible().catch(() => false)) {
     const openCopilot = page.getByRole('button', { name: /^Open Copilot Tools$/i }).first();
     await expect(openCopilot, 'Schedule Copilot should already be open or expose Open Copilot Tools').toBeVisible({ timeout: 10000 });
     await openCopilot.click();
     await page.waitForTimeout(400);
   }
-  await expect(warningsButton, 'Warnings tool button should use the current accessible control name').toBeVisible({ timeout: 10000 });
-  await warningsButton.click();
-  await page.waitForTimeout(500);
+  await expect(warningsControl, 'Warnings tool control should use the current accessible tab/button name').toBeVisible({ timeout: 10000 });
+  await warningsControl.click();
+  await expect(page.locator('body'), 'Warnings panel should open after activating the current Warnings control').toContainText(/Warnings|scheduled on requested-off date|coverage target|needs \d+ more|has \d+ more/i, { timeout: 15000 });
 }
 
 async function openManagerRequestOff(page, seed = {}) {
@@ -104,7 +111,9 @@ async function openRequestOffView(page, label) {
 }
 
 async function waitForRequestOffEmployee(page, employeeName, message) {
-  await expect(page.locator('body'), message || `${employeeName} Request Off row should be visible before filtering or bulk actions`).toContainText(new RegExp(employeeName.replace(/\s+/g, '\\s+'), 'i'), { timeout: 15000 });
+  const escapedEmployeeName = employeeName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\s+/g, '\\s+');
+  const requestRowLabel = page.locator('.request-off-workflow-panel div.font-black.text-white.text-sm').filter({ hasText: new RegExp(`^\\s*${escapedEmployeeName}\\s*$`, 'i') }).first();
+  await expect(requestRowLabel, message || `${employeeName} Request Off row should be visible before filtering or bulk actions`).toBeVisible({ timeout: 15000 });
   await expect(page.locator('body'), `${employeeName} readiness should not be the empty Request Off state`).not.toContainText(/No requests here/i, { timeout: 1000 });
 }
 
@@ -216,6 +225,8 @@ test.describe('16.0.153 Schedule warnings and Request Off management', () => {
     const seed = await ensureSeeded(testInfo);
     await openSchedule(page, seed);
     await openWarnings(page);
+    await expect(page.locator('body'), 'Coverage target hydration should expose the seeded under-target warning').toContainText(/needs \d+ more/i, { timeout: 15000 });
+    await expect(page.locator('body'), 'Coverage target hydration should expose the seeded over-target warning').toContainText(/has \d+ more .* than the coverage target/i, { timeout: 15000 });
     const text = await bodyText(page, 60000);
     await attachJson(testInfo, '16-0-153-coverage-warning-text.json', { text: text.slice(0, 12000) });
     expect(text, 'Under-target coverage warnings should remain visible').toMatch(/needs \d+ more/i);
@@ -282,10 +293,10 @@ test.describe('16.0.153 Schedule warnings and Request Off management', () => {
     const seed = await ensureSeeded(testInfo);
     await resetSeededRequestOffFixture(seed, 'allen');
     await openManagerRequestOff(page, seed);
-    await openRequestOffView(page, 'Upcoming Approved');
+    await openRequestOffView(page, 'All');
     await waitForRequestOffEmployee(page, 'Allen QA', 'Seeded Allen QA approved request should be visible before bulk archive');
     const { selectedOptionLabel: selectedAllenLabel } = await selectRequestOffEmployee(page, 'Allen QA');
-    await expect(page.locator('body'), 'Allen QA should remain visible after applying the Allen employee filter').toContainText(/Allen QA/i, { timeout: 15000 });
+    await waitForRequestOffEmployee(page, 'Allen QA', 'Allen QA should remain visible after applying the Allen employee filter');
     const escapedAllenLabel = selectedAllenLabel.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     page.once('dialog', async dialog => {
       expect(dialog.message(), 'Bulk archive confirmation should state visible count and active employee filter').toMatch(new RegExp(`Archive \\d+ visible Request Off requests? for ${escapedAllenLabel}\\?`, 'i'));

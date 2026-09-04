@@ -13,6 +13,7 @@ const RELEASE_CRITICAL_SPECS = Object.freeze([
   'tests/e2e/chunk-recovery.spec.cjs',
   'tests/e2e/compact-ui-layout.spec.cjs',
   'tests/e2e/cost-regression.spec.cjs',
+  'tests/86chaos-release-gate/35-reminder-notification-certification.spec.cjs',
 ]);
 
 const PWA_SPEC_PATTERN = /86chaos-release-gate\/(26-pwa-icon-source-deployed-parity|27-pwa-browser-icon-matrix)\.spec\.cjs/;

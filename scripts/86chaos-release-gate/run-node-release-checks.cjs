@@ -3,6 +3,7 @@
 
 const cp = require('child_process');
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
 const { ensureRunDir, writeJson, readJsonIfExists } = require('./run-context.cjs');
 const { writeJavaPreflight } = require('./check-java-prerequisite.cjs');
@@ -69,6 +70,126 @@ function runCommand(row) {
   return result;
 }
 
+function quoteShellArgument(value) {
+  const text = String(value);
+  if (process.platform === 'win32') return `"${text.replace(/"/g, '""')}"`;
+  return `'${text.replace(/'/g, `'"'"'`)}'`;
+}
+
+function reserveAvailableLoopbackPorts(count) {
+  const probe = cp.spawnSync(process.execPath, ['-e', `
+    const net = require('net');
+    const count = Number(process.argv[1]);
+    const servers = [];
+    const ports = [];
+    const closeAll = () => Promise.all(servers.map(server => new Promise(resolve => server.close(resolve))));
+    const fail = async error => {
+      await closeAll();
+      console.error(error && (error.stack || error.message) || error);
+      process.exit(1);
+    };
+    const reserveNext = () => {
+      if (ports.length === count) {
+        closeAll().then(() => process.stdout.write(JSON.stringify(ports))).catch(fail);
+        return;
+      }
+      const server = net.createServer();
+      server.once('error', fail);
+      server.listen({ host: '127.0.0.1', port: 0, exclusive: true }, () => {
+        servers.push(server);
+        ports.push(server.address().port);
+        reserveNext();
+      });
+    };
+    reserveNext();
+  `, String(count)], {
+    cwd: process.cwd(),
+    encoding: 'utf8',
+    windowsHide: true,
+    timeout: 10000,
+  });
+  if (probe.status !== 0) {
+    throw new Error(`Unable to reserve isolated Firebase emulator ports: ${String(probe.stderr || probe.error || 'port probe failed').trim()}`);
+  }
+  const ports = JSON.parse(String(probe.stdout || '[]'));
+  if (ports.length !== count || ports.some(port => !Number.isInteger(port) || port < 1)) {
+    throw new Error(`Unable to reserve ${count} isolated Firebase emulator ports.`);
+  }
+  return ports;
+}
+
+function createIsolatedEmulatorConfig() {
+  const [firestorePort, storagePort] = reserveAvailableLoopbackPorts(2);
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), '86chaos-rules-'));
+  const configPath = path.join(tempDir, 'firebase.json');
+  const root = process.cwd();
+  const config = {
+    firestore: {
+      rules: path.join(root, 'firestore.rules'),
+      indexes: path.join(root, 'firestore.indexes.json'),
+    },
+    storage: {
+      rules: path.join(root, 'storage.rules'),
+    },
+    emulators: {
+      firestore: { host: '127.0.0.1', port: firestorePort },
+      storage: { host: '127.0.0.1', port: storagePort },
+      ui: { enabled: false },
+      singleProjectMode: true,
+    },
+  };
+  fs.writeFileSync(configPath, `${JSON.stringify(config, null, 2)}\n`, 'utf8');
+  return { configPath, tempDir };
+}
+
+function resolveLockedFirebaseCli() {
+  const packagePath = require.resolve('firebase-tools/package.json', { paths: [process.cwd()] });
+  const firebasePackage = JSON.parse(fs.readFileSync(packagePath, 'utf8'));
+  const binPath = typeof firebasePackage.bin === 'string' ? firebasePackage.bin : firebasePackage.bin?.firebase;
+  if (!binPath) throw new Error('The locked firebase-tools package does not expose its Firebase CLI entry point.');
+  return path.resolve(path.dirname(packagePath), binPath);
+}
+
+function removeIsolatedEmulatorConfig(temp) {
+  try { fs.unlinkSync(temp.configPath); } catch (error) {
+    if (error?.code !== 'ENOENT') throw error;
+  }
+  try { fs.rmdirSync(temp.tempDir); } catch (error) {
+    if (error?.code !== 'ENOENT') throw error;
+  }
+}
+
+function isEmulatorPortCollision(result) {
+  return /(?:port(?:\s+\d+)?\s+(?:is not open|taken)|EADDRINUSE|address already in use)/i.test(
+    `${result.stdoutTail || ''}\n${result.stderrTail || ''}`
+  );
+}
+
+function runRulesCommand(row) {
+  let lastResult = null;
+  for (let attempt = 1; attempt <= 2; attempt += 1) {
+    const temp = createIsolatedEmulatorConfig();
+    const firebaseCli = resolveLockedFirebaseCli();
+    const emulatorCommand = [
+      quoteShellArgument(process.execPath),
+      quoteShellArgument(firebaseCli),
+      'emulators:exec',
+      '--only firestore,storage',
+      '--project demo-no-project',
+      `--config ${quoteShellArgument(temp.configPath)}`,
+      quoteShellArgument(`node ${row.testScript}`),
+    ].join(' ');
+    try {
+      lastResult = runCommand({ ...row, command: emulatorCommand });
+    } finally {
+      removeIsolatedEmulatorConfig(temp);
+    }
+    if (lastResult.status === 'passed' || !isEmulatorPortCollision(lastResult) || attempt === 2) return lastResult;
+    console.warn(`[release-check] Firebase emulator startup port collision; retrying ${row.group} once with fresh isolated ports.`);
+  }
+  return lastResult;
+}
+
 const results = [];
 for (const row of commands) results.push(runCommand(row));
 
@@ -92,23 +213,23 @@ console.log(`[release-check] ${javaRow.status.toUpperCase()} java prerequisite`)
 const rulesCommands = [
   {
     group: 'complete canonical firestore/storage emulator rules tests',
-    command: 'npm run test:rules',
+    testScript: 'scripts/run-rules-tests.js',
     required: true,
   },
   {
     group: 'optional focused rules smoke tests',
-    command: 'firebase emulators:exec --only firestore,storage "node scripts/86chaos-release-gate/run-rules-release-gate.cjs"',
+    testScript: 'scripts/86chaos-release-gate/run-rules-release-gate.cjs',
     required: false,
   },
 ];
 
 if (java.ok) {
-  for (const row of rulesCommands) results.push(runCommand(row));
+  for (const row of rulesCommands) results.push(runRulesCommand(row));
 } else {
   for (const row of rulesCommands) {
     const blocked = {
       group: row.group,
-      command: row.command,
+      command: `firebase emulators:exec --only firestore,storage "node ${row.testScript}"`,
       required: row.required === true,
       status: 'blocked',
       startedAt: new Date().toISOString(),

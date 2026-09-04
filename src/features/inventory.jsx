@@ -104,6 +104,8 @@ const TabInventory = ({ addToast, appUser, clientData = {}, initialSubTab, onIni
   const [newItemName, setNewItemName] = useState(''); const [newItemCat, setNewItemCat] = useState(''); const [newItemCode, setNewItemCode] = useState(''); const [newItemSupplier, setNewItemSupplier] = useState(''); const [newItemPackSize, setNewItemPackSize] = useState('1 CS'); const [newItemYield, setNewItemYield] = useState('1'); const [newItemPrice, setNewItemPrice] = useState(''); 
   const [editItem, setEditItem] = useState(null); 
   const [orderOverrides, setOrderOverrides] = useState({}); 
+  const [parDrafts, setParDrafts] = useState({});
+  const [pendingQtyDrafts, setPendingQtyDrafts] = useState({});
   const [selectedAiOrderIds, setSelectedAiOrderIds] = useState({}); 
   const [confirmModal, setConfirmModal] = useState({ isOpen: false, vendorId: null, items: [] });
   const [aiOrderDaysAhead, setAiOrderDaysAhead] = useState(7);
@@ -219,7 +221,48 @@ const TabInventory = ({ addToast, appUser, clientData = {}, initialSubTab, onIni
   const safeInventoryWrite = ({ quiet = false, ...args } = {}) => safeWriteWithQueue({ user: appUser, addToast: quiet ? null : addToast, ...args });
 
   // --- LOGIC ---
-  const handleAddItem = async (e) => { e.preventDefault(); if (!newItemName.trim() || !newItemSupplier) return addToast('Error', 'Name and Vendor required.'); await safeInventoryWrite({ action: 'add', collectionName: "inventoryItems", label: "Inventory item", data: { name: newItemName.trim(), category: newItemCat || 'Other', pfgCode: newItemCode.trim(), supplierId: newItemSupplier, packSize: newItemPackSize.trim(), yieldQty: parseInt(newItemYield) || 1, price: parseFloat(newItemPrice) || 0, parLevel: 0, currentStock: 0, pendingQty: 0, isStarred: false, lastOrderedDate: null, restaurantId: appUser.restaurantId } }); setNewItemName(''); setNewItemCode(''); setNewItemPrice(''); setNewItemYield('1'); addToast('Inventory Updated', 'Item cataloged.'); };
+  const parseInventoryQuantity = (value, fallback = 0) => {
+    const cleaned = String(value ?? '').replace(/[^0-9.\-]/g, '').trim();
+    if (cleaned === '' || cleaned === '-' || cleaned === '.' || cleaned === '-.') return fallback;
+    const parsed = Number.parseFloat(cleaned);
+    return Number.isFinite(parsed) ? Math.max(0, parsed) : fallback;
+  };
+
+  const formatInventoryQuantityInput = (value) => {
+    if (value === null || value === undefined || value === '') return '';
+    const n = Number(value);
+    if (!Number.isFinite(n)) return String(value ?? '');
+    return String(n).replace(/\.0+$/, '').replace(/(\.\d*?)0+$/, '$1').replace(/\.$/, '');
+  };
+
+  useEffect(() => {
+    setParDrafts(drafts => {
+      let changed = false;
+      const next = { ...drafts };
+      for (const item of inventoryItems) {
+        const key = item.id;
+        if (!Object.prototype.hasOwnProperty.call(next, key)) continue;
+        const draftNumber = parseInventoryQuantity(next[key], null);
+        const liveNumber = parseInventoryQuantity(item.parLevel, null);
+        if (draftNumber !== null && liveNumber !== null && Math.abs(draftNumber - liveNumber) < 0.0001) { delete next[key]; changed = true; }
+      }
+      return changed ? next : drafts;
+    });
+    setPendingQtyDrafts(drafts => {
+      let changed = false;
+      const next = { ...drafts };
+      for (const item of inventoryItems) {
+        const key = item.id;
+        if (!Object.prototype.hasOwnProperty.call(next, key)) continue;
+        const draftNumber = parseInventoryQuantity(next[key], null);
+        const liveNumber = parseInventoryQuantity(item.pendingQty, null);
+        if (draftNumber !== null && liveNumber !== null && Math.abs(draftNumber - liveNumber) < 0.0001) { delete next[key]; changed = true; }
+      }
+      return changed ? next : drafts;
+    });
+  }, [inventoryItems]);
+
+  const handleAddItem = async (e) => { e.preventDefault(); if (!newItemName.trim() || !newItemSupplier) return addToast('Error', 'Name and Vendor required.'); await safeInventoryWrite({ action: 'add', collectionName: "inventoryItems", label: "Inventory item", data: { name: newItemName.trim(), category: newItemCat || 'Other', pfgCode: newItemCode.trim(), supplierId: newItemSupplier, packSize: newItemPackSize.trim(), yieldQty: parseFloat(newItemYield) || 1, price: parseFloat(newItemPrice) || 0, parLevel: 0, currentStock: 0, pendingQty: 0, isStarred: false, lastOrderedDate: null, restaurantId: appUser.restaurantId } }); setNewItemName(''); setNewItemCode(''); setNewItemPrice(''); setNewItemYield('1'); addToast('Inventory Updated', 'Item cataloged.'); };
   const handleSaveEdit = async (e) => { 
     e.preventDefault(); 
     await safeInventoryWrite({ action: 'update', collectionName: "inventoryItems", docId: editItem.id, label: "Inventory item", before: editItem, data: { 
@@ -286,8 +329,12 @@ const TabInventory = ({ addToast, appUser, clientData = {}, initialSubTab, onIni
       }
     }
   };
-  const updatePar = async (id, newPar) => await safeInventoryWrite({ action: "update", collectionName: "inventoryItems", docId: id, label: "Inventory par", data: { parLevel: Math.max(0, parseFloat(newPar) || 0) } });
-  const handleOrderChange = (id, change, currentQty) => setOrderOverrides(prev => ({ ...prev, [id]: Math.max(0, currentQty + change) }));
+  const updatePar = async (id, newPar) => {
+    const parsed = parseInventoryQuantity(newPar, 0);
+    setParDrafts(prev => ({ ...prev, [id]: String(newPar ?? '') }));
+    await safeInventoryWrite({ action: "update", collectionName: "inventoryItems", docId: id, label: "Inventory par", data: { parLevel: parsed } });
+  };
+  const handleOrderChange = (id, change, currentQty) => setOrderOverrides(prev => ({ ...prev, [id]: Math.max(0, parseInventoryQuantity(currentQty, 0) + change) }));
   
   const handleAddVendor = async (e) => { e.preventDefault(); if(!vName.trim()) return; await safeInventoryWrite({ action: 'add', collectionName: "vendors", label: "Vendor", data: { name: vName.trim(), rep: vRep.trim(), phone: vPhone.trim(), email: vEmail.trim(), cutOffDays: vDays, cutOffTime: vTime, restaurantId: appUser.restaurantId } }); setVName(''); setVRep(''); setVPhone(''); setVEmail(''); setVDays([]); setVTime(''); addToast('Vendor Added', 'Directory updated.'); };
 const handleSaveVendorEdit = async (e) => { e.preventDefault(); await safeInventoryWrite({ action: 'update', collectionName: "vendors", docId: editVendor.id, label: "Vendor", before: editVendor, data: { name: editVendor.name, rep: editVendor.rep, phone: editVendor.phone, email: editVendor.email, cutOffDays: editVendor.cutOffDays || [], cutOffTime: editVendor.cutOffTime || '', ediEndpoint: editVendor.ediEndpoint || '' } }); setEditVendor(null); addToast('Vendor Updated', 'Profile saved.'); };  const toggleVendorDay = (day, isEdit = false) => { if (isEdit) { const d = editVendor.cutOffDays || []; setEditVendor({...editVendor, cutOffDays: d.includes(day) ? d.filter(x=>x!==day) : [...d, day]}); } else { setVDays(vDays.includes(day) ? vDays.filter(x=>x!==day) : [...vDays, day]); } };
@@ -733,7 +780,9 @@ const executeOrder = async (method) => {
   };
 
   const handleUpdatePendingQty = async (itemId, newQty) => {
-    await safeInventoryWrite({ action: "update", collectionName: "inventoryItems", docId: itemId, label: "Pending quantity", data: { pendingQty: Math.max(0, parseInt(newQty) || 0) } });
+    const parsed = parseInventoryQuantity(newQty, 0);
+    setPendingQtyDrafts(prev => ({ ...prev, [itemId]: String(newQty ?? '') }));
+    await safeInventoryWrite({ action: "update", collectionName: "inventoryItems", docId: itemId, label: "Pending quantity", data: { pendingQty: parsed } });
   };
 
   const handleCancelDelivery = async (vendorId) => {
@@ -1563,8 +1612,8 @@ const groupedItems = orderableInventoryItems
           {hasInvPerms && <button onClick={() => setInvTab('manage')} className={`px-4 py-1.5 rounded-lg text-xs font-bold capitalize whitespace-nowrap transition-all flex-1 sm:flex-none ${invTab === 'manage' ? `${T.grad} text-slate-900 shadow-sm` : 'text-slate-400 hover:text-white'}`}>manage</button>}
           {hasInvPerms && <button onClick={() => setInvTab('vendors')} className={`px-4 py-1.5 rounded-lg text-xs font-bold capitalize whitespace-nowrap transition-all flex-1 sm:flex-none ${invTab === 'vendors' ? `${T.grad} text-slate-900 shadow-sm` : 'text-slate-400 hover:text-white'}`}>vendors</button>}
           {hasInvPerms && canUseSmartInventory && <button onClick={() => setInvTab('invoices')} className={`px-4 py-1.5 rounded-lg text-xs font-bold capitalize whitespace-nowrap transition-all flex-1 sm:flex-none ${invTab === 'invoices' ? `${T.grad} text-slate-900 shadow-sm` : 'text-slate-400 hover:text-white'}`}>🧾 Invoices</button>}
-<button onClick={() => setInvTab('waste')} className={`px-4 py-1.5 rounded-lg text-xs font-bold capitalize whitespace-nowrap transition-all flex items-center justify-center gap-1 flex-1 sm:flex-none ${invTab === 'waste' ? `bg-red-500/20 text-red-500 shadow-sm border border-red-500/50` : 'text-slate-400 hover:text-red-400'}`}>
-            🚨 Burn Log <span className="inventory-preview-badge ml-1 bg-red-900/30 text-red-300 border border-red-500/50 text-[8px] px-1.5 py-0.5 rounded-md uppercase tracking-widest font-black shadow-[0_0_8px_rgba(239,68,68,0.2)]">Review</span>
+<button onClick={() => setInvTab('waste')} className={`px-4 py-1.5 rounded-lg text-xs font-bold capitalize whitespace-nowrap transition-all flex items-center justify-center gap-1 flex-1 sm:flex-none ${invTab === 'waste' ? `bg-red-950/50 text-red-100 shadow-sm border border-red-400/60` : 'text-slate-400 hover:text-red-400'}`}>
+            🚨 Burn Log <span className="inventory-preview-badge ml-1 bg-red-950/60 text-red-100 border border-red-400/60 text-[8px] px-1.5 py-0.5 rounded-md uppercase tracking-widest font-black shadow-[0_0_8px_rgba(239,68,68,0.2)]">Review</span>
           </button>        </div>
       </div>
 
@@ -1607,7 +1656,7 @@ const groupedItems = orderableInventoryItems
                   <div key={item.id} className={`${T.card} p-2 flex items-center justify-between gap-2 ${isBelowPar(item) ? 'border-red-500/70 shadow-[0_0_18px_rgba(239,68,68,0.15)] bg-red-950/10' : ''}`}>
                     <div className="flex-1 min-w-0"><div className="font-bold text-white text-sm truncate">{item.name}</div><div className={`text-[9px] font-bold ${T.muted} uppercase`}>{vendors.find(v=>v.id===item.supplierId)?.name || 'No Vendor'}   {item.packSize || '1 CS'}   YIELD: {item.yieldQty||1}</div></div>
                     <div className={`flex items-center gap-2 bg-[#12161A] p-1 rounded-md border ${T.border} flex-shrink-0`}>
-                      <div className="flex flex-col items-center"><span className={`text-[8px] font-bold ${T.muted} uppercase`}>PAR</span><input type="number" min="0" value={item.parLevel} onChange={(e) => updatePar(item.id, e.target.value)} disabled={!hasInvPerms} className={`w-8 text-center font-bold border rounded py-0.5 outline-none text-xs bg-[#1A2126] text-white border-[#2A353D]`} /></div>
+                      <div className="flex flex-col items-center"><span className={`text-[8px] font-bold ${T.muted} uppercase`}>PAR</span><input type="number" min="0" step="0.01" inputMode="decimal" aria-label={`Inventory par for ${item.name || 'item'}`} value={Object.prototype.hasOwnProperty.call(parDrafts, item.id) ? parDrafts[item.id] : formatInventoryQuantityInput(item.parLevel)} onChange={(e) => updatePar(item.id, e.target.value)} disabled={!hasInvPerms} className={`w-12 text-center font-bold border rounded py-0.5 outline-none text-xs bg-[#1A2126] text-white border-[#2A353D]`} /></div>
                       <div className={`h-6 w-px bg-[#2A353D]`}></div>
                       <div className="flex flex-col items-center"><span className={`text-[8px] font-bold ${T.muted} uppercase`}>STOCK</span><div className="flex items-center gap-1"><button onClick={() => updateStock(item.id, (item.currentStock||0) - 1)} className={`w-5 h-5 flex items-center justify-center bg-[#1A2126] border ${T.border} rounded font-bold text-white hover:text-[#D4A381]`}>-</button><span className={`w-6 text-center font-black text-sm ${(item.currentStock||0) < (item.parLevel||0) ? 'text-red-500' : 'text-white'}`}>{Number(item.currentStock||0).toFixed(2).replace(/\.00$/, '')}</span><button onClick={() => updateStock(item.id, (item.currentStock||0) + 1)} className={`w-5 h-5 flex items-center justify-center bg-[#1A2126] border ${T.border} rounded font-bold text-white hover:text-[#D4A381]`}>+</button></div></div>
                     </div>
@@ -1715,8 +1764,8 @@ const groupedItems = orderableInventoryItems
                 <div className={`${T.card} p-4`}><h3 className="font-black text-white text-lg mb-3">Labor + Schedule</h3><div className="space-y-2 max-h-80 overflow-y-auto custom-scrollbar">{pythonOpsLaborRows.length ? pythonOpsLaborRows.slice(0, 10).map((row, idx) => <div key={idx} className="rounded-xl border border-amber-500/30 bg-amber-950/10 p-3"><div className="font-black text-amber-100">{row.title}</div><div className="text-[11px] text-slate-300 font-bold mt-1">{row.detail}</div></div>) : <p className="text-xs text-slate-500 font-bold">No labor warnings in the scan window.</p>}</div></div>
               </div>
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-                <div className={`${T.card} p-4`}><h3 className="font-black text-white text-lg mb-3">Invoice Watchdog</h3><div className="space-y-2 max-h-72 overflow-y-auto custom-scrollbar">{[...(pythonOpsIntel.priceWatch || []).map(row => row.summary), ...(pythonOpsIntel.invoiceAnomalies || []).map(row => row.detail)].length ? [...(pythonOpsIntel.priceWatch || []).map(row => row.summary), ...(pythonOpsIntel.invoiceAnomalies || []).map(row => row.detail)].slice(0, 12).map((line, idx) => <div key={idx} className="rounded-xl border border-red-500/30 bg-red-950/10 p-3 text-xs font-bold text-red-100">{line}</div>) : <p className="text-xs text-slate-500 font-bold">No invoice anomalies found.</p>}</div></div>
-                <div className={`${T.card} p-4`}><h3 className="font-black text-white text-lg mb-3">Data Health Scanner</h3><div className="space-y-2 max-h-72 overflow-y-auto custom-scrollbar">{pythonOpsHealthRows.length ? pythonOpsHealthRows.slice(0, 12).map((row, idx) => <div key={idx} className="rounded-xl border border-[#2A353D] bg-[#12161A] p-3"><div className="font-black text-white">{row.area}: {row.title}</div><div className="text-[11px] text-slate-400 font-bold mt-1">{(row.issues || []).join(', ')}</div></div>) : <p className="text-xs text-slate-500 font-bold">No major data health issues found.</p>}</div></div>
+                <div className={`${T.card} p-4`}><h3 className="font-black text-white text-lg mb-3">Invoice Watchdog</h3><div role="region" aria-label="Invoice Watchdog findings" tabIndex={0} className="space-y-2 max-h-72 overflow-y-auto custom-scrollbar focus:outline-none focus:ring-2 focus:ring-[#D4A381]">{[...(pythonOpsIntel.priceWatch || []).map(row => row.summary), ...(pythonOpsIntel.invoiceAnomalies || []).map(row => row.detail)].length ? [...(pythonOpsIntel.priceWatch || []).map(row => row.summary), ...(pythonOpsIntel.invoiceAnomalies || []).map(row => row.detail)].slice(0, 12).map((line, idx) => <div key={idx} className="rounded-xl border border-red-500/30 bg-red-950/10 p-3 text-xs font-bold text-red-100">{line}</div>) : <p className="text-xs text-slate-500 font-bold">No invoice anomalies found.</p>}</div></div>
+                <div className={`${T.card} p-4`}><h3 className="font-black text-white text-lg mb-3">Data Health Scanner</h3><div role="region" aria-label="Data Health Scanner findings" tabIndex={0} className="space-y-2 max-h-72 overflow-y-auto custom-scrollbar focus:outline-none focus:ring-2 focus:ring-[#D4A381]">{pythonOpsHealthRows.length ? pythonOpsHealthRows.slice(0, 12).map((row, idx) => <div key={idx} className="rounded-xl border border-[#2A353D] bg-[#12161A] p-3"><div className="font-black text-white">{row.area}: {row.title}</div><div className="text-[11px] text-slate-400 font-bold mt-1">{(row.issues || []).join(', ')}</div></div>) : <p className="text-xs text-slate-500 font-bold">No major data health issues found.</p>}</div></div>
                 <div className={`${T.card} p-4`}><h3 className="font-black text-white text-lg mb-3">Backup Checks</h3><div className="space-y-2 max-h-72 overflow-y-auto custom-scrollbar">{(pythonOpsIntel.backupChecks || []).length ? pythonOpsIntel.backupChecks.map((row, idx) => <div key={idx} className={`rounded-xl border p-3 text-xs font-bold ${row.status === 'attention' ? 'border-amber-500/30 bg-amber-950/10 text-amber-100' : 'border-emerald-500/30 bg-emerald-950/10 text-emerald-100'}`}><div className="font-black">{row.title}</div><div className="mt-1">{row.detail}</div><div className="mt-1 text-slate-400">{row.recommendation}</div></div>) : <p className="text-xs text-slate-500 font-bold">No backup check was returned.</p>}</div></div>
               </div>
             </div>
@@ -1774,8 +1823,8 @@ const groupedItems = orderableInventoryItems
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-            <div className={`${T.card} p-4`}><h3 className="font-black text-white text-lg mb-3">Event Supply Planning</h3><div className="space-y-2 max-h-72 overflow-y-auto custom-scrollbar">{aiOrderAssistant.eventNeeds.length ? aiOrderAssistant.eventNeeds.map((row, idx) => <div key={idx} className="rounded-xl border border-[#2A353D] bg-[#12161A] p-3"><div className="text-[10px] font-black uppercase tracking-widest text-[#D4A381]">{row.date}</div><div className="font-black text-white">{row.event.title || 'Event'}</div><div className="text-[11px] text-slate-400 font-bold mt-1">{[...row.items.map(i => i.itemName), ...row.mentionedItems.map(m => m.item.name)].slice(0, 8).join(', ') || 'Review notes/menu.'}</div></div>) : <p className="text-xs text-slate-500 font-bold">No event supply signals in this window.</p>}</div></div>
-            <div className={`${T.card} p-4`}><h3 className="font-black text-white text-lg mb-3">Prep Prediction</h3><div className="space-y-2 max-h-72 overflow-y-auto custom-scrollbar">{aiOrderAssistant.prepSuggestions.length ? aiOrderAssistant.prepSuggestions.map((row, idx) => <div key={idx} className="rounded-xl border border-[#2A353D] bg-[#12161A] p-3"><div className="font-black text-white">{row.text}</div><div className="text-[11px] text-slate-400 font-bold mt-1">{row.reason}</div></div>) : <p className="text-xs text-slate-500 font-bold">Prep suggestions appear when prep, events, or low-stock items line up.</p>}</div></div>
+            <div className={`${T.card} p-4`}><h3 className="font-black text-white text-lg mb-3">Event Supply Planning</h3><div role="region" aria-label="Event Supply Planning findings" tabIndex={0} className="space-y-2 max-h-72 overflow-y-auto custom-scrollbar focus:outline-none focus:ring-2 focus:ring-[#D4A381]">{aiOrderAssistant.eventNeeds.length ? aiOrderAssistant.eventNeeds.map((row, idx) => <div key={idx} className="rounded-xl border border-[#2A353D] bg-[#12161A] p-3"><div className="text-[10px] font-black uppercase tracking-widest text-[#D4A381]">{row.date}</div><div className="font-black text-white">{row.event.title || 'Event'}</div><div className="text-[11px] text-slate-400 font-bold mt-1">{[...row.items.map(i => i.itemName), ...row.mentionedItems.map(m => m.item.name)].slice(0, 8).join(', ') || 'Review notes/menu.'}</div></div>) : <p className="text-xs text-slate-500 font-bold">No event supply signals in this window.</p>}</div></div>
+            <div className={`${T.card} p-4`}><h3 className="font-black text-white text-lg mb-3">Prep Prediction</h3><div role="region" aria-label="Prep Prediction findings" tabIndex={0} className="space-y-2 max-h-72 overflow-y-auto custom-scrollbar focus:outline-none focus:ring-2 focus:ring-[#D4A381]">{aiOrderAssistant.prepSuggestions.length ? aiOrderAssistant.prepSuggestions.map((row, idx) => <div key={idx} className="rounded-xl border border-[#2A353D] bg-[#12161A] p-3"><div className="font-black text-white">{row.text}</div><div className="text-[11px] text-slate-400 font-bold mt-1">{row.reason}</div></div>) : <p className="text-xs text-slate-500 font-bold">Prep suggestions appear when prep, events, or low-stock items line up.</p>}</div></div>
             <div className={`${T.card} p-4`}><h3 className="font-black text-white text-lg mb-3">Warnings</h3><div className="space-y-2 max-h-72 overflow-y-auto custom-scrollbar">{[...aiOrderAssistant.priceWarnings.map(w => w.summary), ...localPriceJumpWarnings.map(w => w.summary), ...aiOrderAssistant.wasteWarnings.map(w => w.summary)].length ? [...aiOrderAssistant.priceWarnings.map(w => w.summary), ...localPriceJumpWarnings.map(w => w.summary), ...aiOrderAssistant.wasteWarnings.map(w => w.summary)].slice(0, 10).map((line, idx) => <div key={idx} className="rounded-xl border border-red-500/30 bg-red-950/10 p-3 text-xs font-bold text-red-100 leading-snug">{line}</div>) : <p className="text-xs text-slate-500 font-bold">No invoice price or waste warnings detected.</p>}</div></div>
           </div>
         </div>
@@ -1801,7 +1850,7 @@ const groupedItems = orderableInventoryItems
                             <span className="truncate pr-4">{item.name} <span className="text-[10px] text-slate-500 font-normal">({item.packSize})</span></span>
                             <div className="flex items-center gap-2">
                               <span className="text-emerald-400 font-black">+</span>
-                              <input type="number" min="0" value={item.pendingQty} onChange={(e) => handleUpdatePendingQty(item.id, e.target.value)} className="w-16 bg-[#1A2126] border border-[#2A353D] text-emerald-400 font-black text-center py-1 rounded outline-none" />
+                              <input type="number" min="0" step="0.01" inputMode="decimal" aria-label={`Pending quantity for ${item.name || 'item'}`} value={Object.prototype.hasOwnProperty.call(pendingQtyDrafts, item.id) ? pendingQtyDrafts[item.id] : formatInventoryQuantityInput(item.pendingQty)} onChange={(e) => handleUpdatePendingQty(item.id, e.target.value)} className="w-16 bg-[#1A2126] border border-[#2A353D] text-emerald-400 font-black text-center py-1 rounded outline-none" />
                             </div>
                           </div>
                        ))}
@@ -1828,7 +1877,7 @@ const groupedItems = orderableInventoryItems
                       return (
                         <tr key={item.id} className={T.row}>
                           <td className="p-3"><span className="font-bold text-sm block text-white">{item.name}</span><span className={`text-[9px] font-bold ${T.muted} uppercase`}>Par: {item.parLevel||0}   Case: ${Number(item.price||0).toFixed(2)}</span></td>
-                          <td className="p-3"><div className="flex items-center justify-end gap-1"><button onClick={()=>handleOrderChange(item.id, -1, currentOrder)} className={`w-8 h-8 rounded-lg bg-[#12161A] border ${T.border} font-bold text-white`}>-</button><input type="number" min="0" value={currentOrder} onChange={e=>setOrderOverrides(p=>({...p, [item.id]: parseInt(e.target.value)||0}))} className={`w-12 h-8 text-center font-black bg-[#12161A] border ${T.border} ${T.copper} rounded-lg outline-none`}/><button onClick={()=>handleOrderChange(item.id, 1, currentOrder)} className={`w-8 h-8 rounded-lg bg-[#12161A] border ${T.border} font-bold text-white`}>+</button></div></td>
+                          <td className="p-3"><div className="flex items-center justify-end gap-1"><button onClick={()=>handleOrderChange(item.id, -1, currentOrder)} className={`w-8 h-8 rounded-lg bg-[#12161A] border ${T.border} font-bold text-white`}>-</button><input type="number" min="0" step="0.01" inputMode="decimal" aria-label={`Order quantity for ${item.name || 'item'}`} value={Object.prototype.hasOwnProperty.call(orderOverrides, item.id) ? orderOverrides[item.id] : formatInventoryQuantityInput(currentOrder)} onChange={e=>setOrderOverrides(p=>({...p, [item.id]: e.target.value === '' ? '' : parseInventoryQuantity(e.target.value, 0)}))} className={`w-14 h-8 text-center font-black bg-[#12161A] border ${T.border} ${T.copper} rounded-lg outline-none`}/><button onClick={()=>handleOrderChange(item.id, 1, currentOrder)} className={`w-8 h-8 rounded-lg bg-[#12161A] border ${T.border} font-bold text-white`}>+</button></div></td>
                         </tr>
                       )
                     })}</tbody>
@@ -2079,7 +2128,7 @@ const groupedItems = orderableInventoryItems
           <form onSubmit={handleLogWaste} className={`${T.card} p-4 space-y-3 bg-[#1A2126]`}>
 <h3 className="text-sm font-black uppercase text-red-400 tracking-widest flex items-center gap-2">
               🚨 The Burn Log
-              <span className="inventory-preview-badge bg-red-900/30 text-red-300 border border-red-500/50 text-[8px] px-1.5 py-0.5 rounded-md uppercase tracking-widest font-black shadow-[0_0_8px_rgba(239,68,68,0.2)]">Review</span>
+              <span className="inventory-preview-badge bg-red-950/60 text-red-100 border border-red-400/60 text-[8px] px-1.5 py-0.5 rounded-md uppercase tracking-widest font-black shadow-[0_0_8px_rgba(239,68,68,0.2)]">Review</span>
             </h3>            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 items-start">
               
               {/* THE FILTERABLE DROPDOWN */}

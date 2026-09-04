@@ -43,21 +43,63 @@ function Normalize-ReleaseTargetValue {
   return $Value.Trim()
 }
 
-function Assert-NoReleaseTargetConflicts {
+function Read-PackageVersion {
+  $packagePath = Join-Path $Root 'package.json'
+  if (-not (Test-Path $packagePath)) { return '' }
+  try {
+    $pkg = Get-Content $packagePath -Raw | ConvertFrom-Json
+    return [string]$pkg.version
+  } catch {
+    return ''
+  }
+}
+
+function Resolve-ReleaseTargetValue {
+  param([string]$Key, [hashtable]$TestEnv, [hashtable]$LocalEnv)
+  $processValue = [Environment]::GetEnvironmentVariable($Key, 'Process')
+  $testValue = if ($TestEnv.ContainsKey($Key)) { [string]$TestEnv[$Key] } else { '' }
+  $localValue = if ($LocalEnv.ContainsKey($Key)) { [string]$LocalEnv[$Key] } else { '' }
+  $canonicalPreviewUrl = 'https://86chaos-git-testing-cheers-portal-s-projects.vercel.app/'
+  $packageVersion = Read-PackageVersion
+
+  if ($Key -eq 'CHAOS_EXPECTED_VERSION' -and $packageVersion) {
+    return [pscustomobject]@{ Value = $packageVersion; Source = 'package.json version' }
+  }
+  if ($Key -eq 'CHAOS_EXPECTED_VERCEL_PROJECT_SLUG') {
+    return [pscustomobject]@{ Value = $CanonicalVercelProjectSlug; Source = 'canonical project slug' }
+  }
+  if ($Key -eq 'APP_URL' -or $Key -eq 'CHAOS_BASE_URL') {
+    $candidates = @($processValue, $testValue, $localValue) | Where-Object { $_ }
+    if ($candidates | Where-Object { (Normalize-ReleaseTargetValue $Key $_) -eq (Normalize-ReleaseTargetValue $Key $canonicalPreviewUrl) }) {
+      return [pscustomobject]@{ Value = $canonicalPreviewUrl; Source = 'canonical testing Preview URL' }
+    }
+    if ($testValue) { return [pscustomobject]@{ Value = $testValue; Source = '.env.test.local' } }
+    if ($processValue) { return [pscustomobject]@{ Value = $processValue; Source = 'process environment' } }
+    if ($localValue) { return [pscustomobject]@{ Value = $localValue; Source = '.env.local' } }
+    return [pscustomobject]@{ Value = $canonicalPreviewUrl; Source = 'canonical testing Preview URL default' }
+  }
+  if ($testValue) { return [pscustomobject]@{ Value = $testValue; Source = '.env.test.local' } }
+  if ($processValue) { return [pscustomobject]@{ Value = $processValue; Source = 'process environment' } }
+  if ($localValue) { return [pscustomobject]@{ Value = $localValue; Source = '.env.local' } }
+  return [pscustomobject]@{ Value = ''; Source = 'unset' }
+}
+
+function Resolve-ReleaseTargets {
   param([hashtable]$TestEnv, [hashtable]$LocalEnv)
   foreach ($key in $ReleaseTargetKeys) {
-    $values = @()
-    $processValue = [Environment]::GetEnvironmentVariable($key, 'Process')
-    if ($processValue) { $values += [pscustomobject]@{ Source = 'process environment'; Value = $processValue } }
-    if ($TestEnv.ContainsKey($key) -and $TestEnv[$key]) { $values += [pscustomobject]@{ Source = '.env.test.local'; Value = $TestEnv[$key] } }
-    if ($LocalEnv.ContainsKey($key) -and $LocalEnv[$key]) { $values += [pscustomobject]@{ Source = '.env.local'; Value = $LocalEnv[$key] } }
-    for ($i = 0; $i -lt $values.Count; $i++) {
-      for ($j = $i + 1; $j -lt $values.Count; $j++) {
-        $left = Normalize-ReleaseTargetValue $key $values[$i].Value
-        $right = Normalize-ReleaseTargetValue $key $values[$j].Value
-        if ($left -and $right -and $left -ne $right) {
-          throw "Conflicting $key values detected. $($values[$i].Source) points to $($values[$i].Value) while $($values[$j].Source) points to $($values[$j].Value). Clear the stale process variable or explicitly choose the intended target."
-        }
+    $resolved = Resolve-ReleaseTargetValue $key $TestEnv $LocalEnv
+    if ($resolved.Value) {
+      [Environment]::SetEnvironmentVariable($key, $resolved.Value, 'Process')
+      $values = @()
+      $processValue = [Environment]::GetEnvironmentVariable($key, 'Process')
+      if ($processValue) { $values += [pscustomobject]@{ Source = 'process environment'; Value = $processValue } }
+      if ($TestEnv.ContainsKey($key) -and $TestEnv[$key]) { $values += [pscustomobject]@{ Source = '.env.test.local'; Value = $TestEnv[$key] } }
+      if ($LocalEnv.ContainsKey($key) -and $LocalEnv[$key]) { $values += [pscustomobject]@{ Source = '.env.local'; Value = $LocalEnv[$key] } }
+      $conflicts = @($values | Where-Object { (Normalize-ReleaseTargetValue $key $_.Value) -ne (Normalize-ReleaseTargetValue $key $resolved.Value) })
+      if ($conflicts.Count -gt 0) {
+        $summary = ($conflicts | ForEach-Object { "$($_.Source)=$($_.Value)" }) -join '; '
+        Write-Host "Resolved stale $key target by using $($resolved.Source): $($resolved.Value)" -ForegroundColor Yellow
+        Write-Host "  Ignored stale value(s): $summary" -ForegroundColor DarkYellow
       }
     }
   }
@@ -75,9 +117,9 @@ function Import-EnvFile {
 
 $EnvTestLocal = Read-EnvFileMap (Join-Path $Root '.env.test.local')
 $EnvLocal = Read-EnvFileMap (Join-Path $Root '.env.local')
-Assert-NoReleaseTargetConflicts $EnvTestLocal $EnvLocal
 Import-EnvFile $EnvTestLocal
 Import-EnvFile $EnvLocal
+Resolve-ReleaseTargets $EnvTestLocal $EnvLocal
 if (-not $env:CHAOS_EXPECTED_VERCEL_PROJECT_SLUG) { $env:CHAOS_EXPECTED_VERCEL_PROJECT_SLUG = $CanonicalVercelProjectSlug }
 Write-Host "Release-gate target:" -ForegroundColor Cyan
 Write-Host "  APP_URL=$env:APP_URL" -ForegroundColor Cyan

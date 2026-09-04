@@ -44,7 +44,7 @@ let currentRecords = null;
 
 function loadCurrentRecords() {
   if (currentRecords) return currentRecords;
-  currentRecords = currentInventoryRecords(process.cwd());
+  currentRecords = currentInventoryRecords(process.cwd(), { allowStaticFallback: selectionMode === 'failed-only' });
   return currentRecords;
 }
 
@@ -152,6 +152,139 @@ function assertReportedFailedOnlySelection(manifest) {
   if (errors.length) fail('Reported failed-only selection guard failed after inventory qualification.', errors);
 }
 
+
+function loadBundledUltimateFailedOnlyFallback() {
+  const manifestPath = path.join(__dirname, 'reported-failed-only-20260822-173450.json');
+  const manifest = readJsonIfExists(manifestPath);
+  if (!manifest || !Array.isArray(manifest.selected)) {
+    throw new Error(`Bundled 20260822-173450 failed-only fallback is missing or malformed: ${manifestPath}`);
+  }
+  const selected = manifest.selected || [];
+  const counts = countReportedRows(selected);
+  const failures = selected.filter(row => String(row.priorStatus || '').toLowerCase() === 'failed').length;
+  const timeouts = selected.filter(row => ['timedout', 'timeout'].includes(String(row.priorStatus || '').toLowerCase())).length;
+  const errors = [];
+  if (counts.total !== 16 || counts.chromium !== 9 || counts.mobileChromium !== 7) {
+    errors.push(`Bundled fallback must contain exactly 16 identities (chromium 9, mobile-chromium 7); got ${counts.total}/${counts.chromium}/${counts.mobileChromium}.`);
+  }
+  if (failures !== 14 || timeouts !== 2) {
+    errors.push(`Bundled fallback must contain exactly 14 FAIL and 2 TIMEOUT identities; got ${failures}/${timeouts}.`);
+  }
+  if (counts.otherProjects.length) errors.push(`Bundled fallback contains unexpected projects: ${counts.otherProjects.join(', ')}.`);
+  if (counts.duplicates) errors.push(`Bundled fallback contains ${counts.duplicates} duplicate identities.`);
+  if (selected.some(row => ['passed', 'skipped', 'notrun', 'not_run', 'not-run'].includes(String(row.priorStatus || '').toLowerCase()))) {
+    errors.push('Bundled fallback contains a PASS/SKIP/NOT-RUN identity.');
+  }
+  if (errors.length) throw new Error(errors.join('\n'));
+  return qualifyManifestSelectionsWithCurrentInventory(manifest, {
+    root: process.cwd(),
+    currentRecords: loadCurrentRecords(),
+    allowStaticFallback: true,
+  });
+}
+
+
+function loadBundledLatestFailedOnlyFallback() {
+  const manifestPath = path.join(__dirname, 'reported-failed-only-20260823-183916.json');
+  const manifest = readJsonIfExists(manifestPath);
+  if (!manifest || !Array.isArray(manifest.selected)) {
+    throw new Error(`Bundled 20260823-183916 failed-only fallback is missing or malformed: ${manifestPath}`);
+  }
+  const selected = manifest.selected || [];
+  const counts = countReportedRows(selected);
+  const failures = selected.filter(row => String(row.priorStatus || '').toLowerCase() === 'failed').length;
+  const timeouts = selected.filter(row => ['timedout', 'timeout'].includes(String(row.priorStatus || '').toLowerCase())).length;
+  const errors = [];
+  if (counts.total !== 10 || counts.chromium !== 6 || counts.mobileChromium !== 4) {
+    errors.push(`Latest bundled fallback must contain exactly 10 identities (chromium 6, mobile-chromium 4); got ${counts.total}/${counts.chromium}/${counts.mobileChromium}.`);
+  }
+  if (failures !== 10 || timeouts !== 0) {
+    errors.push(`Latest bundled fallback must contain exactly 10 FAIL and 0 TIMEOUT identities; got ${failures}/${timeouts}.`);
+  }
+  if (counts.otherProjects.length) errors.push(`Latest bundled fallback contains unexpected projects: ${counts.otherProjects.join(', ')}.`);
+  if (counts.duplicates) errors.push(`Latest bundled fallback contains ${counts.duplicates} duplicate identities.`);
+  if (selected.some(row => ['passed', 'skipped', 'notrun', 'not_run', 'not-run'].includes(String(row.priorStatus || '').toLowerCase()))) {
+    errors.push('Latest bundled fallback contains a PASS/SKIP/NOT-RUN identity.');
+  }
+  if (errors.length) throw new Error(errors.join('\n'));
+  const qualified = qualifyManifestSelectionsWithCurrentInventory(manifest, {
+    root: process.cwd(),
+    currentRecords: loadCurrentRecords(),
+    allowStaticFallback: true,
+  });
+  qualified.lineageMode = 'focused';
+  qualified.selectionSource = 'bundled-latest-failed-only-20260823-183916-fail-only';
+  return qualified;
+}
+
+
+function loadBundledFiveFailureFailedOnlyFallback() {
+  const manifestPath = path.join(__dirname, 'reported-failed-only-20260825-230842.json');
+  const manifest = readJsonIfExists(manifestPath);
+  if (!manifest || !Array.isArray(manifest.selected)) {
+    throw new Error(`Bundled 20260825-230842 failed-only fallback is missing or malformed: ${manifestPath}`);
+  }
+  const selected = manifest.selected || [];
+  const counts = countReportedRows(selected);
+  const failures = selected.filter(row => String(row.priorStatus || '').toLowerCase() === 'failed').length;
+  const timeouts = selected.filter(row => ['timedout', 'timeout'].includes(String(row.priorStatus || '').toLowerCase())).length;
+  const passes = selected.filter(row => String(row.priorStatus || '').toLowerCase() === 'passed').length;
+  const skips = selected.filter(row => String(row.priorStatus || '').toLowerCase() === 'skipped').length;
+  const notRun = selected.filter(row => ['notrun', 'not_run', 'not-run'].includes(String(row.priorStatus || '').toLowerCase())).length;
+  const errors = [];
+  if (counts.total !== 5 || counts.chromium !== 3 || counts.mobileChromium !== 2) {
+    errors.push(`Five-failure bundled fallback must contain exactly 5 identities (chromium 3, mobile-chromium 2); got ${counts.total}/${counts.chromium}/${counts.mobileChromium}.`);
+  }
+  if (failures !== 4 || timeouts !== 1 || passes !== 0 || skips !== 0 || notRun !== 0) {
+    errors.push(`Five-identity bundled fallback must contain exactly 4 FAIL, 1 TIMEOUT, 0 PASS, 0 SKIP, and 0 NOT-RUN identities; got ${failures}/${timeouts}/${passes}/${skips}/${notRun}.`);
+  }
+  if (counts.otherProjects.length) errors.push(`Five-failure bundled fallback contains unexpected projects: ${counts.otherProjects.join(', ')}.`);
+  if (counts.duplicates) errors.push(`Five-failure bundled fallback contains ${counts.duplicates} duplicate identities.`);
+  if (errors.length) throw new Error(errors.join('\n'));
+  const qualified = qualifyManifestSelectionsWithCurrentInventory(manifest, {
+    root: process.cwd(),
+    currentRecords: loadCurrentRecords(),
+    allowStaticFallback: true,
+  });
+  qualified.lineageMode = 'focused';
+  qualified.selectionSource = 'bundled-latest-failed-only-20260825-230842-fail-and-timeout';
+  return qualified;
+}
+
+
+function loadBundledCurrentFailedOnlyFallback() {
+  const manifestPath = path.join(__dirname, 'reported-failed-only-20260824-002634.json');
+  const manifest = readJsonIfExists(manifestPath);
+  if (!manifest || !Array.isArray(manifest.selected)) {
+    throw new Error(`Bundled 20260824-002634 failed-only fallback is missing or malformed: ${manifestPath}`);
+  }
+  const selected = manifest.selected || [];
+  const counts = countReportedRows(selected);
+  const failures = selected.filter(row => String(row.priorStatus || '').toLowerCase() === 'failed').length;
+  const timeouts = selected.filter(row => ['timedout', 'timeout'].includes(String(row.priorStatus || '').toLowerCase())).length;
+  const errors = [];
+  if (counts.total !== 7 || counts.chromium !== 4 || counts.mobileChromium !== 3) {
+    errors.push(`Current bundled fallback must contain exactly 7 identities (chromium 4, mobile-chromium 3); got ${counts.total}/${counts.chromium}/${counts.mobileChromium}.`);
+  }
+  if (failures !== 7 || timeouts !== 0) {
+    errors.push(`Current bundled fallback must contain exactly 7 FAIL and 0 TIMEOUT identities; got ${failures}/${timeouts}.`);
+  }
+  if (counts.otherProjects.length) errors.push(`Current bundled fallback contains unexpected projects: ${counts.otherProjects.join(', ')}.`);
+  if (counts.duplicates) errors.push(`Current bundled fallback contains ${counts.duplicates} duplicate identities.`);
+  if (selected.some(row => ['passed', 'skipped', 'notrun', 'not_run', 'not-run'].includes(String(row.priorStatus || '').toLowerCase()))) {
+    errors.push('Current bundled fallback contains a PASS/SKIP/NOT-RUN identity.');
+  }
+  if (errors.length) throw new Error(errors.join('\n'));
+  const qualified = qualifyManifestSelectionsWithCurrentInventory(manifest, {
+    root: process.cwd(),
+    currentRecords: loadCurrentRecords(),
+    allowStaticFallback: true,
+  });
+  qualified.lineageMode = 'focused';
+  qualified.selectionSource = 'bundled-latest-failed-only-20260824-002634-fail-only';
+  return qualified;
+}
+
 let selectedSource;
 try {
   if (selectionMode === 'reported-failed-only') {
@@ -194,7 +327,25 @@ try {
     });
   }
 } catch (error) {
-  if (selectionMode === 'repair' && /No completed full release-gate run/i.test(error?.message || '')) {
+  if (selectionMode === 'failed-only' && /No completed full release-gate run|No completed full release-gate run or completed focused|Focused lineage source run directory is missing/i.test(error?.message || '')) {
+    let manifest;
+    try {
+      manifest = loadBundledFiveFailureFailedOnlyFallback();
+    } catch (_) {
+      try {
+        manifest = loadBundledCurrentFailedOnlyFallback();
+      } catch (__) {
+        manifest = loadBundledLatestFailedOnlyFallback();
+      }
+    }
+    selectedSource = {
+      manifest,
+      baselineFullRunDir: '',
+      latestFailedOnlyRunDir: manifest.previousFailedOnlyRunDir || '',
+      selectionSource: manifest.selectionSource || 'bundled-latest-failed-only-fail-only',
+      lineageMode: 'focused',
+    };
+  } else if (selectionMode === 'repair' && /No completed full release-gate run/i.test(error?.message || '')) {
     selectedSource = {
       manifest: { ok: true, selected: [], totalSelected: 0, mode: 'failed-only', lineageMode: 'none', selectionSource: 'no-compatible-previous-failures-feature-scope-only' },
       baselineFullRunDir: '',
@@ -288,6 +439,7 @@ const validation = copied.totalSelected === 0 && selectionMode === 'failed-only'
     currentDeployedVersion,
     firebaseProjectId,
     appUrl,
+    allowStaticFallback: selectionMode === 'failed-only',
   });
 if (!validation.ok) {
   fail(`Refusing unsafe ${selectionMode} manifest.`, validation.errors);

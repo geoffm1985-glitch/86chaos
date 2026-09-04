@@ -5,14 +5,30 @@ const chaosReleaseGateReporter = require.resolve('./test-tools/reporters/chaos-r
 const { PWA_SPEC_PATTERN } = require('./scripts/86chaos-release-gate/release-test-universe.cjs');
 
 const { ensureRunDir, getFailedOnlyManifestPath } = require('./scripts/86chaos-release-gate/run-context.cjs');
-const { generatePlaywrightInventory } = require('./scripts/86chaos-release-gate/playwright-inventory.cjs');
 const { FAILED_ONLY_TESTS, FAILED_ONLY_MANIFEST_ERRORS, FAILED_ONLY_MANIFEST_PATH, specsFromManifest, grepForProject } = require('./tests/86chaos-release-gate/failed-only-manifest.cjs');
 
 const { runDir, runId } = ensureRunDir();
 const baseURL = process.env.APP_URL || process.env.CHAOS_BASE_URL || process.env.PLAYWRIGHT_BASE_URL || process.env.BASE_URL || 'http://127.0.0.1:3000';
 const resultsRoot = path.join(runDir, 'failed-only');
 fs.mkdirSync(resultsRoot, { recursive: true });
-generatePlaywrightInventory({ root: process.cwd(), outputPath: path.join(runDir, 'playwright-test-inventory.json'), runId, config: 'playwright.inventory.config.cjs' });
+fs.writeFileSync(
+  path.join(runDir, 'playwright-test-inventory.json'),
+  JSON.stringify({
+    ok: true,
+    inventorySchemaVersion: 3,
+    generatedAt: new Date().toISOString(),
+    runId,
+    sourceVersion: require('./package.json').version,
+    config: 'playwright.failed-release.config.cjs',
+    discoveryMode: 'failed-only-manifest-selection',
+    count: FAILED_ONLY_TESTS.length,
+    discoveredTestCount: FAILED_ONLY_TESTS.length,
+    duplicateIdentityCount: 0,
+    unresolvedTemplateTitleCount: 0,
+    records: FAILED_ONLY_TESTS,
+    note: 'Focused failed-only execution inventory is derived from the already validated exact failed-only manifest; the full release universe is not rediscovered here.'
+  }, null, 2)
+);
 
 if (!FAILED_ONLY_TESTS.length) {
   throw new Error(`Failed-only manifest selected zero tests. Refusing to run a false-green diagnostic gate. ${FAILED_ONLY_MANIFEST_ERRORS.join('; ')}`);
@@ -29,7 +45,7 @@ function assertReportedFailedOnlySelection(rows = []) {
   const stableKeys = rows.map(row => row.stableKey || `${row.specPath || row.spec || ''}\u0000${row.fullSuitePath || ''}\u0000${row.leafTitle || row.exactTestTitle || row.title || ''}\u0000${reportedProject(row)}`);
   const errors = [];
   if (rows.length !== 6) errors.push(`expected 6 selected FAIL identities, got ${rows.length}`);
-  if (desktop !== 1) errors.push(`expected 1 chromium identity, got ${desktop}`);
+  if (desktop !== 2) errors.push(`expected 2 chromium identities, got ${desktop}`);
   if (mobile !== 4) errors.push(`expected 4 mobile-chromium identities, got ${mobile}`);
   if (rows.some(item => String(item.priorStatus || '').toLowerCase() !== 'failed')) errors.push('reported-failed-only selected a non-failed priorStatus');
   if (rows.some(item => String(item.baselineStatus || '').toLowerCase() !== 'failed')) errors.push('reported-failed-only selected a non-failed baselineStatus');
@@ -79,7 +95,7 @@ const manifest = {
   desktopSelected: FAILED_ONLY_TESTS.filter(item => (item.projects || []).includes('chromium')).length,
   mobileSelected: FAILED_ONLY_TESTS.filter(item => (item.projects || []).includes('mobile-chromium')).length,
   note: releaseSelectionMode === 'reported-failed-only'
-    ? 'reported-failed-only runs only the 6 FAIL identities from 20260810-015004 and excludes TIMEOUT, PASS, and SKIP identities.'
+    ? 'reported-failed-only runs only the 6 FAIL identities from 20260810-015004 (2 chromium + 4 mobile-chromium) and excludes TIMEOUT, PASS, and SKIP identities.'
     : releaseSelectionMode === 'partial-resume'
       ? 'partial-resume runs only the FAIL/TIMEOUT plus NOT-RUN identities from the uploaded interrupted 16.0.175 run and excludes all PASS identities.'
       : releaseSelectionMode === 'reported-current-blockers'

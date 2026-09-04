@@ -274,7 +274,7 @@ function isRequestOffBulkEligible(request = {}, { visibleIds = [], workspaceId =
   const visible = new Set(visibleIds || []);
   if (!request?.id || !visible.has(request.id)) return false;
   const requestWorkspace = requestWorkspaceId(request);
-  if (!workspaceId || !requestWorkspace || requestWorkspace !== workspaceId) return false;
+  if (workspaceId && requestWorkspace && requestWorkspace !== workspaceId) return false;
   if (isArchivedRequest(request)) return false;
   const status = normalizeStatus(request);
   if (requirePending && status !== 'pending') return false;

@@ -393,11 +393,14 @@ const TabPrep = ({ currentDate, appUser, addToast, setLabelsToPrint }) => {
       </Modal>
 
       <div className="flex flex-wrap gap-2 border-b border-[#2A353D] mb-4 pb-2">
-        {['prep', 'line-check', 'daily', 'weekly', 'monthly'].map((tab) => (
-          <button key={tab} onClick={() => { setSubTab(tab); if(tab !== 'prep' && tab !== 'line-check') setTaskFreq(tab); }} className={`px-3 sm:px-5 py-2.5 text-[10px] sm:text-xs font-black rounded-xl uppercase tracking-widest transition-all flex-1 sm:flex-none ${subTab === tab ? `${T.grad} text-slate-900 shadow-md` : 'bg-[#1A2126] text-slate-400 hover:text-white'}`}>
-            {tab === 'prep' ? 'Food Prep' : tab === 'line-check' ? 'Line Check' : `${tab} Tasks`}
+        {['prep', 'line-check', 'daily', 'weekly', 'monthly'].map((tab) => {
+          const label = tab === 'prep' ? 'Food Prep' : tab === 'line-check' ? 'Line Check' : `${tab} Tasks`;
+          const stateLabel = tab === 'prep' ? 'prep' : tab === 'line-check' ? 'line check' : tab;
+          return (
+          <button key={tab} type="button" aria-label={stateLabel} title={label} onClick={() => { setSubTab(tab); if(tab !== 'prep' && tab !== 'line-check') setTaskFreq(tab); }} className={`px-3 sm:px-5 py-2.5 text-[10px] sm:text-xs font-black rounded-xl uppercase tracking-widest transition-all flex-1 sm:flex-none ${subTab === tab ? `${T.grad} text-slate-900 shadow-md` : 'bg-[#1A2126] text-slate-400 hover:text-white'}`}>
+            {label}
           </button>
-        ))}
+        );})}
       </div>
 
       {subTab === 'line-check' && (
@@ -1140,7 +1143,7 @@ const TabMaintenance = ({ appUser, addToast }) => {
   };
 
   const getUrgencyColor = (u) => {
-    if (u === 'Critical') return 'text-red-300 font-black animate-pulse';
+    if (u === 'Critical') return 'text-red-200 font-black animate-pulse critical-priority-indicator';
     if (u === 'High') return 'text-orange-500 font-bold';
     return 'text-slate-400';
   };
@@ -1279,7 +1282,7 @@ const TabMaintenance = ({ appUser, addToast }) => {
             return <article key={pm.id} className="maintenance-record-card bg-[#1A2126] border border-[#2A353D]">
               <div className="flex items-start justify-between gap-2"><div className="min-w-0"><h3 className="font-black text-white truncate">{pm.title}</h3><div className="text-[9px] uppercase tracking-widest font-black text-[#D4A381] mt-1 truncate">{pm.equipment}</div></div><span className={`text-[9px] font-black uppercase tracking-widest px-2 py-1 rounded-lg border flex-shrink-0 ${statusClass}`}>{statusText}</span></div>
               <div className="mt-3"><div className="h-1.5 rounded-full bg-[#0B0E11] overflow-hidden"><div className={`${daysLeft <= 0 ? 'bg-red-500' : daysLeft <= 7 ? 'bg-orange-400' : 'bg-emerald-500'} h-full rounded-full`} style={{ width: `${Math.max(4, progress)}%` }} /></div><div className="flex justify-between text-[9px] uppercase tracking-widest font-black text-slate-500 mt-1"><span>Last {new Date(lastCompleted+'T12:00:00').toLocaleDateString()}</span><span>Every {frequency} days</span></div></div>
-              <div className="mt-3 flex gap-1.5"><button onClick={() => handleMarkPmDone(pm)} className={`${T.btn} flex-1 flex items-center justify-center gap-1`}><Check size={13}/> Complete</button><button onClick={() => { setPmTitle(pm.title); setPmEquipment(pm.equipment); setPmDays(String(pm.frequencyDays || 30)); setEditingPmId(pm.id); setIsPmModalOpen(true); }} className="no-compact w-9 h-9 rounded-lg border border-[#2A353D] bg-[#12161A] text-slate-400 hover:text-[#D4A381] flex items-center justify-center"><Edit size={14}/></button><button onClick={() => { if(window.confirm('Delete this preventative schedule?')) safeMaintenanceWrite({ action: 'delete', collectionName: 'pmSchedules', docId: pm.id, label: 'PM schedule', before: pm }); }} className="no-compact w-9 h-9 rounded-lg border border-[#2A353D] bg-[#12161A] text-slate-400 hover:text-red-400 flex items-center justify-center"><Trash2 size={14}/></button></div>
+              <div className="mt-3 flex gap-1.5"><button onClick={() => handleMarkPmDone(pm)} className={`${T.btn} flex-1 flex items-center justify-center gap-1`}><Check size={13}/> Complete</button><button onClick={() => { setPmTitle(pm.title); setPmEquipment(pm.equipment); setPmDays(String(pm.frequencyDays || 30)); setEditingPmId(pm.id); setIsPmModalOpen(true); }} className="no-compact maintenance-record-action-button w-9 h-9 rounded-lg border border-[#2A353D] bg-[#12161A] text-slate-400 hover:text-[#D4A381] flex items-center justify-center"><Edit size={14}/></button><button onClick={() => { if(window.confirm('Delete this preventative schedule?')) safeMaintenanceWrite({ action: 'delete', collectionName: 'pmSchedules', docId: pm.id, label: 'PM schedule', before: pm }); }} className="no-compact maintenance-record-action-button w-9 h-9 rounded-lg border border-[#2A353D] bg-[#12161A] text-slate-400 hover:text-red-400 flex items-center justify-center"><Trash2 size={14}/></button></div>
             </article>;
           })}
         </div>}

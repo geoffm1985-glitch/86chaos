@@ -1452,7 +1452,7 @@ select {
 .admin46-shell .admin45-number-card span,
 .admin46-shell .admin45-number-card small,
 .admin46-shell .admin45-task-row small {
-  color: #718092 !important;
+  color: #a8b8c5 !important;
 }
 
 .admin46-shell .admin45-task-row {
@@ -1512,7 +1512,7 @@ select {
 .admin46-shell .admin45-primary-action {
   border-color: var(--admin-blue-dark);
   background: var(--admin-blue);
-  color: #fff;
+  color: #0f171f;
 }
 
 .admin46-shell .admin45-secondary-action {
@@ -1737,6 +1737,29 @@ select {
 .admin46-shell #admin-content-start pre,
 .admin46-shell #admin-content-start code {
   color: #dbe8f0;
+}
+
+.admin46-shell .admin46-question-list button {
+  color: #b7c6d1;
+}
+
+.admin46-shell .admin46-question-list button:hover {
+  background: #20313e;
+  color: #eef5fb;
+}
+
+.admin46-shell .admin46-article-list button:hover,
+.admin46-shell .admin46-article-list button.is-active {
+  border-color: #4d718a;
+  background: #20313e;
+}
+
+.admin46-shell .admin46-article-list span {
+  color: #b7c6d1;
+}
+
+.admin46-shell .admin46-article-list strong {
+  color: #eef5fb;
 }
 
 /* 15.0.50 compact controls outside System Administrator. Sizes mirror the admin console; colors remain page-owned. */
@@ -3373,7 +3396,7 @@ select {
 }
 .admin46-mobile-current strong {
   display: block;
-  color: var(--admin-ink);
+  color: #152230;
   font-size: 14px;
   font-weight: 900;
   line-height: 1.1;
@@ -3385,7 +3408,7 @@ select {
   border: 1px solid var(--admin-blue-dark);
   border-radius: 10px;
   background: var(--admin-blue);
-  color: #fff;
+  color: #152230;
   padding: 0 12px;
   font-size: 10px;
   font-weight: 900;
@@ -3412,7 +3435,7 @@ select {
 .admin46-mobile-quick.is-active {
   border-color: #44799f;
   background: var(--admin-blue);
-  color: #fff;
+  color: #152230;
 }
 .admin46-mobile-quick span {
   display: block;
@@ -3441,14 +3464,14 @@ select {
 }
 .admin46-mobile-section-head strong {
   display: block;
-  color: var(--admin-ink);
+  color: #152230;
   font-size: 13px;
   font-weight: 900;
 }
 .admin46-mobile-section-head span {
   display: block;
   margin-top: 3px;
-  color: var(--admin-muted);
+  color: #405265;
   font-size: 10px;
   font-weight: 700;
   line-height: 1.35;
@@ -3472,14 +3495,14 @@ select {
 }
 .admin46-mobile-tool-grid button strong {
   display: block;
-  color: var(--admin-ink);
+  color: #152230;
   font-size: 12px;
   font-weight: 900;
 }
 .admin46-mobile-tool-grid button span {
   display: block;
   margin-top: 3px;
-  color: var(--admin-muted);
+  color: #405265;
   font-size: 10px;
   font-weight: 700;
   line-height: 1.35;
@@ -4996,6 +5019,11 @@ span.bg-red-500.text-white,
   color: #ffffff !important;
 }
 
+.bg-red-600.text-white {
+  background-color: #b91c1c !important;
+  color: #ffffff !important;
+}
+
 .admin45-status-card span,
 .admin45-number-card span,
 .admin45-status-card small,
@@ -5006,17 +5034,59 @@ span.bg-red-500.text-white,
 }
 
 .admin46-mobile-current span,
-.admin46-mobile-current small,
+.admin46-mobile-current small {
+  color: #405265 !important;
+}
+
 .admin46-status-chip span,
 .admin46-status-chip small {
-  color: #405265 !important;
+  color: #a8b8c5 !important;
 }
 
 .admin46-shell #admin-content-start [class*="text-slate-500"],
 .admin46-shell #admin-content-start [class*="text-slate-600"],
 .admin46-shell #admin-content-start .text-slate-500,
 .admin46-shell #admin-content-start .text-slate-600 {
-  color: #526477 !important;
+  color: #a8b8c5 !important;
+}
+
+.admin46-shell #admin-content-start .text-red-500 {
+  color: #f87171 !important;
+}
+
+.admin46-shell .admin45-area-link {
+  color: #b7c6d1 !important;
+}
+
+.admin46-shell .admin45-area-link:hover,
+.admin46-shell .admin45-area-link:focus-visible,
+.admin46-shell .admin45-quick-tile:hover,
+.admin46-shell .admin45-quick-tile:focus-visible {
+  background: #20313e !important;
+  color: #eef5fb !important;
+}
+
+.admin46-shell .admin46-assistant .admin46-eyebrow,
+.admin46-shell .admin46-playbook .admin46-eyebrow {
+  color: #245f8f !important;
+}
+
+.admin46-shell .admin46-assistant-title h3,
+.admin46-shell .admin46-playbook-header h3 {
+  color: #152230 !important;
+}
+
+.admin46-shell .admin46-primary {
+  color: #0f171f !important;
+}
+
+.admin46-shell .admin46-privacy-note,
+.admin46-shell .admin46-assistant-empty {
+  color: #536577 !important;
+}
+
+.admin46-shell .admin46-article-body p {
+  color: #a8b8c5 !important;
 }
 
 .admin46-shell #admin-content-start button:not(:disabled),
@@ -5358,7 +5428,8 @@ span.bg-red-500.text-white,
 }
 
 /* 16.0.152: Desktop/fine-pointer Schedule Builder time chips honor the release-gate 24px target despite earlier compact !important chip rules. */
-@media (min-width: 768px) and (pointer: fine) {
+/* 16.0.212 keeps this final cascade guard active at the 768px tablet boundary used by the responsive gate. */
+@media (min-width: 768px) {
   .schedule-builder-desktop-table button.schedule-builder-time-chip:not(.schedule-builder-event-chip):not(.schedule-builder-event-more):not(:disabled),
   .desktop-pro-shell .app-content-shell .schedule-builder-desktop-table button.schedule-builder-time-chip:not(.schedule-builder-event-chip):not(.schedule-builder-event-more):not(:disabled),
   .ui-v12-compact .schedule-builder-desktop-table button.schedule-builder-time-chip:not(.schedule-builder-event-chip):not(.schedule-builder-event-more):not(:disabled) {
@@ -5586,4 +5657,17 @@ span.bg-red-500.text-white,
     font-size: 1rem !important;
     padding-left: .9rem !important;
   }
+}
+
+/* Keep critical maintenance attention visible without the opacity drop that fails text contrast mid-pulse. */
+@keyframes critical-priority-attention {
+  0%, 100% { color: #fecaca; opacity: 1; }
+  50% { color: #fff1f2; opacity: 1; }
+}
+.critical-priority-indicator.animate-pulse {
+  animation: critical-priority-attention 2.4s ease-in-out infinite !important;
+  opacity: 1 !important;
+}
+@media (prefers-reduced-motion: reduce) {
+  .critical-priority-indicator.animate-pulse { animation: none !important; }
 }

@@ -116,7 +116,8 @@ const ROUTE_SPECS = [
   { tab: 'events', label: 'Event Calendar', expect: /Event|Calendar|Special Event|Add Event/i, optional: true },
   { tab: 'financials', label: 'Financials', expect: /Financial|Daily Close|Sales|Labor|Tips|Payroll/i },
   { tab: 'sales', label: 'Sales Import / Ledger', expect: /Sales|Import|Ledger|Daily Close|Revenue/i, optional: true },
-  { tab: 'back-office', label: 'Back Office', expect: /Back Office|QuickBooks|Owner|Accountant|Records/i, optional: true },
+  { tab: 'labor', label: 'Labor & Payroll', expect: /Labor|Payroll|Timesheet|Punch|Tips|Hours/i, optional: true },
+  { tab: 'back-office', label: 'Back Office', expect: /Back Office Suite|Back Office Guardrails/i, optional: true },
   { tab: 'inventory', label: 'Inventory', expect: /Inventory|Vendor|Invoice|Par|Burn|Order/i },
   { tab: 'menu-intelligence', label: 'Menu Intelligence', expect: /Menu Intelligence|Menu Scan|Menu Items|86 Impact|Ingredient/i, optional: true },
   { tab: 'ai-tools', label: 'AI Tools / 86Voice', expect: /AI Tools|86Voice|Voice|Assistant|Ordering/i, optional: true },
@@ -133,8 +134,38 @@ const ROUTE_SPECS = [
   { tab: 'godmode', label: 'System Administrator', expect: /System Administrator|People Directory|Online|Backup|Security|Permission/i, optional: true },
 ];
 
+
+const ROUTE_READY_HEADING_RE = {
+  'back-office': [/^Back Office Suite$/i, /^Back Office Guardrails$/i],
+  financials: [/^Financial Center$/i, /^Daily Close$/i, /^Labor & Payroll$/i],
+};
+
+async function renderedRouteIdentityReady(page, tab, spec, text) {
+  if (/permission|restricted|not available|access denied/i.test(text || '')) return true;
+  const headingPatterns = ROUTE_READY_HEADING_RE[tab];
+  if (headingPatterns?.length) {
+    return page.locator('h1,h2,h3,[data-chaos-route-id],[data-chaos-route]').evaluateAll((els, patterns) => {
+      const visible = el => {
+        if (!el || el.hidden || el.getAttribute('aria-hidden') === 'true') return false;
+        const style = window.getComputedStyle(el);
+        const rect = el.getBoundingClientRect();
+        return style.display !== 'none' && style.visibility !== 'hidden' && rect.width > 0 && rect.height > 0;
+      };
+      const textsFor = el => [
+        el.getAttribute('data-chaos-route-id') || '',
+        el.getAttribute('data-chaos-route') || '',
+        el.getAttribute('aria-label') || '',
+        el.textContent || ''
+      ].map(value => String(value || '').replace(/\s+/g, ' ').trim()).filter(Boolean);
+      return els.some(el => visible(el) && textsFor(el).some(textValue => patterns.some(row => new RegExp(row.source, row.flags || 'i').test(textValue))));
+    }, headingPatterns.map(row => ({ source: row.source, flags: row.flags || 'i' }))).catch(() => false);
+  }
+  const re = spec?.expect ? new RegExp(spec.expect.source, 'i') : null;
+  return !re || re.test(text || '');
+}
+
 const FATAL_TEXT_RE = /Application error|Unhandled Runtime Error|Minified React error|Cannot read properties of undefined|Cannot read property|undefined is not a function|ReferenceError|TypeError:|Something went wrong|White screen/i;
-const BAD_VALUE_RE = /Invalid Date|Infinity|undefined undefined|null null|Inactive -\d+ days|\$NaN|NaN%|(?:^|[^A-Za-z])NaN(?:[^A-Za-z]|$)/i;
+const BAD_VALUE_RE = /\bInvalid Date\b(?!s)|Infinity|undefined undefined|null null|Inactive -\d+ days|\$NaN|NaN%|(?:^|[^A-Za-z])NaN(?:[^A-Za-z]|$)/i;
 const PERMISSION_GATE_RE = /permission gate|not authorized|not available|Your role does not include|internal-only|access denied/i;
 const LOGIN_RE = /Email Address\s*Password|Unlock System|Sign In|Log In|Forgot Password/i;
 const STAFF_FORBIDDEN_RE = /System Administrator|Backup Center|Security Center|Forensics|QuickBooks Integration Hub|Python Automation|Pay Rate|Hourly Rate|Owner Pro/i;
@@ -241,11 +272,12 @@ function summarizeProblems(problems) {
 
 async function chooseQaWorkspace(page) {
   const preferred = envValue('CHAOS_QA_WORKSPACE_NAME', 'CHAOS_QA_WORKSPACE') || QA_WORKSPACE_NAME;
+  const chooserRe = /choose workspace|select workspace|select restaurant|choose restaurant/i;
   const currentText = await bodyText(page, 12000);
-  if (currentText.includes(preferred) && !/choose workspace|select workspace|select restaurant|choose restaurant/i.test(currentText)) return false;
+  if (currentText.includes(preferred) && !chooserRe.test(currentText)) return false;
   const openChooser = async () => {
     const chooserText = await bodyText(page, 12000);
-    if (/choose workspace|select workspace|select restaurant|choose restaurant/i.test(chooserText)) return true;
+    if (chooserRe.test(chooserText)) return true;
     const switchers = [
       page.getByTitle(/switch workspace/i).first(),
       page.getByRole('button', { name: /switch workspace|switch restaurant|switch$/i }).first(),
@@ -256,7 +288,7 @@ async function chooseQaWorkspace(page) {
         await candidate.click({ timeout: 2500 }).catch(() => {});
         await page.waitForTimeout(900);
         const nextText = await bodyText(page, 12000);
-        if (/choose workspace|select workspace|select restaurant|choose restaurant/i.test(nextText) || nextText.includes(preferred)) return true;
+        if (chooserRe.test(nextText) || nextText.includes(preferred)) return true;
       }
     }
     return false;
@@ -266,27 +298,58 @@ async function chooseQaWorkspace(page) {
   if (!chooserOpen) return false;
   const escapeRegex = (value) => String(value || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   const preferredRe = new RegExp(`^Open\\s+${escapeRegex(preferred)}(?:\\s|$)`, 'i');
-  const directButton = page.getByRole('button', { name: preferredRe }).first();
-  const exact = page.getByText(preferred, { exact: true }).first();
-  const partial = page.getByText(preferred, { exact: false }).first();
+  const candidateButtons = [
+    page.getByRole('button', { name: preferredRe }),
+    page.getByRole('button', { name: new RegExp(escapeRegex(preferred), 'i') }),
+    page.locator('button').filter({ hasText: preferred }),
+  ];
   let button = null;
-  if (await directButton.isVisible({ timeout: 5000 }).catch(() => false)) button = directButton;
-  else {
+  for (const candidates of candidateButtons) {
+    const count = Math.min(await candidates.count().catch(() => 0), 12);
+    for (let i = 0; i < count; i += 1) {
+      const candidate = candidates.nth(i);
+      if (await candidate.isVisible({ timeout: 900 }).catch(() => false)) {
+        button = candidate;
+        break;
+      }
+    }
+    if (button) break;
+  }
+  if (!button) {
+    const exact = page.getByText(preferred, { exact: true });
+    const partial = page.getByText(preferred, { exact: false });
     let target = null;
-    if (await exact.isVisible({ timeout: 3500 }).catch(() => false)) target = exact;
-    else if (await partial.isVisible({ timeout: 2500 }).catch(() => false)) target = partial;
+    const exactCount = Math.min(await exact.count().catch(() => 0), 8);
+    for (let i = 0; i < exactCount && !target; i += 1) {
+      const row = exact.nth(i);
+      if (await row.isVisible({ timeout: 700 }).catch(() => false)) target = row;
+    }
+    const partialCount = Math.min(await partial.count().catch(() => 0), 8);
+    for (let i = 0; i < partialCount && !target; i += 1) {
+      const row = partial.nth(i);
+      if (await row.isVisible({ timeout: 500 }).catch(() => false)) target = row;
+    }
     if (!target) throw new Error(`The disposable QA workspace "${preferred}" was not available in the workspace chooser.`);
     button = target.locator('xpath=ancestor-or-self::button[1]').first();
   }
   if (!(await button?.count?.().catch(() => 0))) throw new Error(`The disposable QA workspace "${preferred}" did not resolve to a clickable workspace button.`);
+  await button.scrollIntoViewIfNeeded().catch(() => {});
   await button.click({ timeout: 5000 }).catch(async (err) => {
     const message = String(err?.message || err || '');
     if (!/intercepts pointer events|not stable|receives pointer events|timeout/i.test(message)) throw err;
     await button.evaluate((el) => el.click());
   });
   await page.waitForLoadState('domcontentloaded').catch(() => {});
-  await page.waitForTimeout(1200);
-  await dismissBlockingDialogs(page, { maxPasses: 4 }).catch(() => null);
+  const deadline = Date.now() + 30000;
+  while (Date.now() < deadline) {
+    await dismissBlockingDialogs(page, { maxPasses: 4 }).catch(() => null);
+    const nextText = await bodyText(page, 16000);
+    if (!chooserRe.test(nextText) && nextText.includes(preferred)) return true;
+    if (!chooserRe.test(nextText) && !/Loading workspace|Preparing workspace/i.test(nextText)) return true;
+    await page.waitForTimeout(600).catch(() => {});
+  }
+  const finalText = await bodyText(page, 16000);
+  if (chooserRe.test(finalText)) throw new Error(`Workspace chooser still visible after selecting "${preferred}". Body: ${finalText.slice(0, 1600)}`);
   return true;
 }
 
@@ -369,30 +432,66 @@ async function login(page, email, password, options = {}) {
     return text;
   }
   await dismissBlockingDialogs(page, { maxPasses: 6 }).catch(() => null);
-  const emailBox = page.getByRole('textbox', { name: /^Email Address$/i }).first();
-  const passwordBox = page.locator('input[type="password"][autocomplete="current-password"], input[type="password"][aria-label="Password"]').first();
-  await expect(emailBox, 'Login email box should be visible').toBeVisible({ timeout: 30000 });
-  await emailBox.fill(email);
-  await passwordBox.fill(password);
-  const loginButton = page.getByRole('button', { name: /unlock system|sign in|log in|login|unlock/i }).first();
-  await loginButton.click();
-  await page.waitForLoadState('domcontentloaded').catch(() => {});
-  await page.waitForTimeout(2500);
+
+  const fillAndSubmit = async () => {
+    const emailBox = page.getByRole('textbox', { name: /^Email Address$/i }).first();
+    const passwordBox = page.locator('input[type="password"][autocomplete="current-password"], input[type="password"][aria-label="Password"]').first();
+    await expect(emailBox, 'Login email box should be visible').toBeVisible({ timeout: 30000 });
+    await emailBox.fill(email);
+    await passwordBox.fill(password);
+    const loginButton = page.getByRole('button', { name: /unlock system|sign in|log in|login|unlock/i }).first();
+    await loginButton.click();
+    await page.waitForLoadState('domcontentloaded').catch(() => {});
+  };
+
+  const waitPastLogin = async (timeoutMs = 20000) => {
+    const deadline = Date.now() + timeoutMs;
+    let latest = '';
+    while (Date.now() < deadline) {
+      latest = await bodyText(page, 16000);
+      if (/choose workspace|select workspace|select restaurant|choose restaurant/i.test(latest)) return latest;
+      if (!LOGIN_RE.test(latest) && !/Unlocking|Signing in|Loading/i.test(latest)) return latest;
+      if (/invalid|wrong|error|failed|not attached/i.test(latest)) return latest;
+      await page.waitForTimeout(700).catch(() => {});
+    }
+    return latest || await bodyText(page, 16000);
+  };
+
+  await fillAndSubmit();
+  text = await waitPastLogin(22000);
+  if (LOGIN_RE.test(text) && !/invalid|wrong|error|failed|not attached/i.test(text)) {
+    // Mobile Chromium occasionally leaves the first submit on the login surface without an error
+    // while the button/actionability transition settles. Retry once, then fail loudly.
+    await fillAndSubmit();
+    text = await waitPastLogin(22000);
+  }
+
   await dismissBlockingDialogs(page, { maxPasses: 6 }).catch(() => null);
   await chooseQaWorkspace(page);
   await dismissBlockingDialogs(page, { maxPasses: 6 }).catch(() => null);
   await dismissNoise(page);
   text = await bodyText(page, 16000);
-  if (LOGIN_RE.test(text) && /invalid|wrong|error|failed|not attached/i.test(text)) {
-    throw new Error(`Login appears to have failed. Body: ${text.slice(0, 2000)}`);
+  if (LOGIN_RE.test(text)) {
+    throw new Error(`Login did not leave the login screen. Body: ${text.slice(0, 2000)}`);
   }
   return text;
 }
 
 async function expectVersion(page, expected = EXPECTED_VERSION) {
   if (!expected) return;
-  const re = new RegExp(`(?:VERSION|v|Version)\\s*${expected.replace(/\./g, '\\.')}`, 'i');
-  const text = await bodyText(page, 12000);
+  const re = new RegExp(`(?:VERSION|v|Version)\\s*${expected.replace(/\\./g, '\\.')}`, 'i');
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    await chooseQaWorkspace(page).catch(() => null);
+    await dismissBlockingDialogs(page, { maxPasses: 4 }).catch(() => null);
+    const text = await bodyText(page, 16000);
+    if (re.test(text)) return;
+    if (/choose workspace|select workspace|select restaurant|choose restaurant/i.test(text)) {
+      await page.waitForTimeout(900).catch(() => {});
+      continue;
+    }
+    await page.waitForTimeout(700).catch(() => {});
+  }
+  const text = await bodyText(page, 16000);
   expect(text, `App should display expected version ${expected}`).toMatch(re);
 }
 
@@ -412,8 +511,8 @@ async function waitForRouteSettle(page, tab, options = {}) {
     }
     const activeTab = await page.evaluate(() => new URLSearchParams(window.location.search).get('tab') || '').catch(() => '');
     const routeLooksReady = !/Loading workspace|Preparing|Unlock System|Email Address\s*Password/i.test(text);
-    const re = spec?.expect ? new RegExp(spec.expect.source, 'i') : null;
-    if (routeLooksReady && (activeTab === tab || !tab) && (!re || re.test(text) || /permission|restricted|not available|access denied/i.test(text))) break;
+    const routeIdentityReady = await renderedRouteIdentityReady(page, tab, spec, text);
+    if (routeLooksReady && (activeTab === tab || !tab) && routeIdentityReady) break;
     await page.waitForTimeout(350);
   }
   if (selectedWorkspace) await page.waitForTimeout(options.settleMs ?? 700);
@@ -521,7 +620,10 @@ async function viewportAudit(page) {
       }
       if (offenders.length >= 25) break;
     }
-    const coarsePointer = Boolean(window.matchMedia?.('(pointer: coarse)')?.matches) || viewportWidth <= 640;
+    // Use the stricter 42px target floor only for phone-sized layouts. The release-gate
+    // tablet viewport is intentionally 768px wide; forcing Chromium hasTouch there made
+    // every compact desktop/tablet control look like a phone-target defect.
+    const coarsePointer = viewportWidth <= 640;
     const minHit = coarsePointer ? 42 : 24;
     const smallButtons = Array.from(document.querySelectorAll('button')).map(el => {
       const rect = el.getBoundingClientRect();

@@ -1546,11 +1546,13 @@ const handleOfferSwap = async (shift) => {
       </Modal>
 
       <div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-2 border-b border-[#2A353D] mb-4 pb-2">
-        {['my-schedule', 'full-schedule', 'month-view', 'time-off', 'availability', ...((appUser?.isAdmin || appUser?.permissions?.schedule) && scheduleBuilderProps ? ['schedule-builder'] : [])].map((tab) => (
-          <button key={tab} onClick={() => setSubTab(tab)} className={`px-2 sm:px-4 py-2 text-[10px] sm:text-xs font-black rounded-xl uppercase tracking-widest transition-all sm:flex-1 ${subTab === tab ? `${T.grad} text-slate-900 shadow-md` : 'bg-[#1A2126] text-slate-400 hover:text-white'}`}>
-            {tab === 'time-off' ? 'Request Off' : tab === 'availability' ? 'Availability' : tab.replace('-', ' ')}
+        {['my-schedule', 'full-schedule', 'month-view', 'trade-board', 'time-off', 'availability', ...((appUser?.isAdmin || appUser?.permissions?.schedule) && scheduleBuilderProps ? ['schedule-builder'] : [])].map((tab) => {
+          const label = tab === 'time-off' ? 'Request Off' : tab === 'availability' ? 'Availability' : tab === 'trade-board' ? 'Trade Board' : tab === 'schedule-builder' ? 'Schedule Builder' : tab.replace('-', ' ');
+          return (
+          <button key={tab} type="button" aria-label={tab === 'time-off' ? 'Schedule Request Off' : label} title={label} onClick={() => setSubTab(tab)} className={`px-2 sm:px-4 py-2 text-[10px] sm:text-xs font-black rounded-xl uppercase tracking-widest transition-all sm:flex-1 ${subTab === tab ? `${T.grad} text-slate-900 shadow-md` : 'bg-[#1A2126] text-slate-400 hover:text-white'}`}>
+            {label}
           </button>
-        ))}
+        );})}
       </div>
 
       {subTab === 'schedule-builder' && scheduleBuilderProps && (
@@ -1624,11 +1626,11 @@ const handleOfferSwap = async (shift) => {
                   return (
                     <div key={s.id} className={`${T.row} flex justify-between items-center transition-colors ${isPastShift ? 'bg-[#0B0E11]/70 opacity-50 grayscale' : ''}`}>
                       <div>
-                        <div className={`font-bold text-sm ${isPastShift ? 'text-slate-500' : 'text-white'}`}>{formatDisplayDate(getShiftDateKey(s))}</div>
+                        <div className={`font-bold text-sm ${isPastShift ? 'text-slate-400' : 'text-white'}`}>{formatDisplayDate(getShiftDateKey(s))}</div>
                         <div className={`text-[9px] font-black uppercase tracking-widest mt-0.5 ${isPastShift ? 'text-slate-600' : T.copper}`}>{s.role}</div>
                       </div>
                       <div className="flex items-center gap-3">
-                        <div className={`text-xs font-mono font-bold px-2 py-1 rounded-md border ${isPastShift ? 'bg-[#0B0E11] text-slate-500 border-[#1F2933]' : `bg-[#12161A] ${T.copper} ${T.border}`}`}>
+                        <div className={`text-xs font-mono font-bold px-2 py-1 rounded-md border ${isPastShift ? 'bg-[#0B0E11] text-slate-400 border-[#1F2933]' : `bg-[#12161A] ${T.copper} ${T.border}`}`}>
                           {formatShortTime(s.startTime)} - {formatShortTime(s.endTime)}
                         </div>
                         {isPastShift ? (
@@ -1749,7 +1751,7 @@ const handleOfferSwap = async (shift) => {
                 </div>
               )}
             </div>
-            <div className="divide-y divide-[#2A353D] max-h-[60vh] overflow-y-auto custom-scrollbar">
+            <div role="region" aria-label="Full schedule shift list" tabIndex={0} className="divide-y divide-[#2A353D] max-h-[60vh] overflow-y-auto custom-scrollbar">
               {filteredRosterShifts.map((shift, index) => {
                  const emp = resolveScheduleShiftPersonForDisplay(shift, users);
                  const empName = getScheduleShiftDisplayName(shift, users);
@@ -1768,8 +1770,8 @@ const handleOfferSwap = async (shift) => {
                      )}
                      <div className={`${T.row} transition-colors ${isPastShift ? 'bg-[#0B0E11]/70 opacity-50 grayscale' : 'hover:bg-[#12161A]'}`}>
                        <div className="flex items-center justify-between">
-                         <div className="flex items-center gap-3"><img src={getAvatar(empName, emp?.photoURL)} className={`w-8 h-8 rounded-full border object-cover ${isPastShift ? 'border-[#1F2933] opacity-60' : T.border}`} alt="avatar"/><div><div className={`text-sm font-bold ${isPastShift ? 'text-slate-500' : 'text-white'}`}>{empName}</div><div className={`text-[9px] font-bold uppercase ${isPastShift ? 'text-slate-600' : T.muted}`}>{shift.role}</div></div></div>
-                         <div className={`text-xs font-mono font-bold px-2 py-1 rounded-md border ${isPastShift ? 'bg-[#0B0E11] text-slate-500 border-[#1F2933]' : `bg-[#12161A] ${T.copper} ${T.border}`}`}>{formatShortTime(shift.startTime)} - {formatShortTime(shift.endTime)}</div>
+                         <div className="flex items-center gap-3"><img src={getAvatar(empName, emp?.photoURL)} className={`w-8 h-8 rounded-full border object-cover ${isPastShift ? 'border-[#1F2933] opacity-60' : T.border}`} alt="avatar"/><div><div className={`text-sm font-bold ${isPastShift ? 'text-slate-400' : 'text-white'}`}>{empName}</div><div className={`text-[9px] font-bold uppercase ${isPastShift ? 'text-slate-600' : T.muted}`}>{shift.role}</div></div></div>
+                         <div className={`text-xs font-mono font-bold px-2 py-1 rounded-md border ${isPastShift ? 'bg-[#0B0E11] text-slate-400 border-[#1F2933]' : `bg-[#12161A] ${T.copper} ${T.border}`}`}>{formatShortTime(shift.startTime)} - {formatShortTime(shift.endTime)}</div>
                        </div>
                      </div>
                    </React.Fragment>
@@ -2208,7 +2210,7 @@ const [eventDate, setEventDate] = useState(getToday());
       const response = await secureFetch('/api/custom-shift-presets', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: editingPresetId ? 'update' : 'create', restaurantId: appUser.restaurantId, preset: payload }) });
       const json = await response.json().catch(() => ({}));
       if (!response.ok || !json?.ok) throw new Error(json?.error || 'Custom Shift save failed.');
-      const rows = dedupePresetClient(json.presets || []);
+      const rows = json.presets ? dedupePresetClient(json.presets || []) : dedupePresetClient([...(customPresets || []).filter(preset => String(preset.id || '') !== String(json.preset?.id || editingPresetId || '')), json.preset].filter(Boolean));
       setCustomPresets(rows);
       localStorage.setItem(customPresetCacheKey, JSON.stringify(rows));
       setCustomPresetSyncStatus('synced');
@@ -2245,7 +2247,7 @@ const [eventDate, setEventDate] = useState(getToday());
         const response = await secureFetch('/api/custom-shift-presets', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'delete', restaurantId: appUser.restaurantId, id }) });
         const json = await response.json().catch(() => ({}));
         if (!response.ok || !json?.ok) throw new Error(json?.error || 'Custom Shift delete failed.');
-        const rows = dedupePresetClient(json.presets || []);
+        const rows = json.presets ? dedupePresetClient(json.presets || []) : dedupePresetClient((customPresets || []).filter(preset => String(preset.id || '') !== String(id || '')));
         setCustomPresets(rows);
         localStorage.setItem(customPresetCacheKey, JSON.stringify(rows));
         setCustomPresetSyncStatus('synced');
@@ -3310,12 +3312,24 @@ const handleAddEvent = async (e) => {
 
   const parseScheduleClockMinutes = (value) => parseScheduleClockInfo(value)?.minutes ?? null;
 
+  const formatScheduleSourceTime = (value) => {
+    const raw = String(value ?? '').trim();
+    if (!raw) return '?';
+    const legacy = raw.match(/^(\d{1,2})(?::?(\d{2}))?\s*(a|am|p|pm)$/i);
+    if (legacy) {
+      const hour = String(Number(legacy[1]));
+      const minute = legacy[2] && legacy[2] !== '00' ? `:${legacy[2]}` : '';
+      return `${hour}${minute}${legacy[3].toLowerCase().startsWith('p') ? 'p' : 'a'}`;
+    }
+    return formatShortTime(raw) || raw;
+  };
+
   const getScheduleShiftTimeStatus = (shift = {}) => {
     const hasStart = shift.startTime !== undefined && shift.startTime !== null && String(shift.startTime).trim() !== '';
     const hasEnd = shift.endTime !== undefined && shift.endTime !== null && String(shift.endTime).trim() !== '';
     const startInfo = parseScheduleClockInfo(shift.startTime);
     const endInfo = parseScheduleClockInfo(shift.endTime);
-    const displayRange = `${formatShortTime(shift.startTime) || shift.startTime || '?'}-${formatShortTime(shift.endTime) || shift.endTime || '?'}`;
+    const displayRange = `${formatScheduleSourceTime(shift.startTime)}-${formatScheduleSourceTime(shift.endTime)}`;
 
     // 16.0.18: Bad schedule time ranges should be flagged for correction, not guessed or auto-repaired.
     // Example: 10p-3p is invalid because the end is before the start without a true overnight AM end.
@@ -3947,7 +3961,7 @@ const handleExportTimesheets = () => {
 {/* TOP NAVIGATION TOGGLE */}
       {!hideSubTabs && (
         <div className="flex flex-wrap gap-1.5 border-b border-[#2A353D] pb-2 mb-2">
-          <button onClick={() => setSubTab('schedule')} className={`px-3 py-1.5 text-[10px] sm:text-xs font-black rounded-lg uppercase tracking-widest transition-all ${subTab === 'schedule' ? `${T.grad} text-slate-900 shadow-md` : 'bg-[#1A2126] text-slate-400 hover:text-white'}`}>Schedule Builder</button>
+          <button type="button" aria-label="Schedule Builder" title="Schedule Builder" onClick={() => setSubTab('schedule')} className={`px-3 py-1.5 text-[10px] sm:text-xs font-black rounded-lg uppercase tracking-widest transition-all ${subTab === 'schedule' ? `${T.grad} text-slate-900 shadow-md` : 'bg-[#1A2126] text-slate-400 hover:text-white'}`}>Schedule Builder</button>
           <span className="text-[10px] font-bold text-slate-500 self-center">Labor and punch editing moved to the Labor tab.</span>
         </div>
       )}
@@ -4133,7 +4147,7 @@ const handleExportTimesheets = () => {
                                     className={`schedule-builder-time-chip w-full rounded font-bold text-[7px] sm:text-[8px] py-0.5 text-center ${invalidTimeRange ? 'bg-amber-950/70 text-amber-200 border border-amber-400/90 shadow-[0_0_8px_rgba(245,158,11,0.35)]' : getRoleColors(shift.role, isBuilderShiftPublished(shift))} ${shiftConflict ? 'border-2 border-red-500 animate-pulse shadow-[0_0_8px_rgba(239,68,68,0.8)]' : ''}`} 
                                     title={`${timeStatus.displayRange} ${shiftConflict ? '(CONFLICT DETECTED)' : ''}${invalidTimeRange ? ` (INVALID TIME RANGE - NOT COUNTED: ${timeStatus.reason})` : ''} Tap to delete only this shift.`}
                                   >
-                                    {invalidTimeRange ? 'INVALID TIME' : `${formatShortTime(shift.startTime)}-${formatShortTime(shift.endTime)}`}
+                                    {invalidTimeRange ? <><span className="block">INVALID TIME</span><span className="block text-[6px] leading-none">{timeStatus.displayRange}</span></> : `${formatShortTime(shift.startTime)}-${formatShortTime(shift.endTime)}`}
                                   </button>
                                 );
                               })}
@@ -4642,7 +4656,7 @@ const TabMonth = ({ currentDate, users, shifts, appUser }) => {
           return (
             <div key={date} className={`p-0.5 border-b border-r ${T.border} min-h-[50px] flex flex-col cell ${dayShifts.length >= 6 ? 'print-day-dense' : ''}`}>
               <span className={`text-right text-[9px] font-black ${T.muted} mb-0.5 cell-date`}>{i+1}</span>
-              <div className="space-y-0.5 overflow-y-auto no-scrollbar flex-1 print-shift-stack">
+              <div className="space-y-0.5 overflow-y-auto no-scrollbar flex-1 print-shift-stack" tabIndex={0} role="region" aria-label={`Shifts for ${date}`}>
                 {dayShifts.map(s=>{
                   const labels = getScheduleShiftMonthLabels(s, activeUsers);
                   return (
@@ -5550,6 +5564,11 @@ const ScheduleCopilot = ({ currentDate, users = [], shifts = [], timeOffRequests
     } catch (err) { addToast('Error', err.message); }
   };
 
+  const openCopilotTool = (toolId = 'targets') => {
+    setActiveTool(toolId);
+    setOpen(true);
+  };
+
   if (!open) return (
     <div className={`${T.card} schedule-copilot-launcher p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-[#D4A381]/30`}>
       <div className="min-w-0">
@@ -5557,12 +5576,16 @@ const ScheduleCopilot = ({ currentDate, users = [], shifts = [], timeOffRequests
         <div className="text-sm font-black text-white mt-0.5">{draftCount} drafts ready</div>
         <div className="text-xs text-slate-400 font-bold mt-0.5">{formatDisplayDate(weekStart)} through {formatDisplayDate(weekEnd)} • Open Copilot Tools for coverage targets, warnings & templates.</div>
       </div>
-      <button onClick={() => setOpen(true)} className={`${T.btnAlt} flex items-center justify-center gap-2 flex-shrink-0`}><ChefHat size={16}/> Open Copilot Tools</button>
+      <div className="flex flex-wrap sm:justify-end gap-1.5 flex-shrink-0">
+        <button type="button" aria-label="Open Copilot Tools" title="Open Copilot Tools" onClick={() => openCopilotTool('targets')} className={`${T.btnAlt} flex items-center justify-center gap-2`}><ChefHat size={16}/> Open Copilot Tools</button>
+        <button type="button" aria-label={editingTemplateId ? 'Edit Template' : 'Create Template'} title={editingTemplateId ? 'Edit Template' : 'Create Template'} onClick={() => openCopilotTool('template-editor')} className={T.btnAlt}>{editingTemplateId ? 'Edit Template' : 'Create Template'}</button>
+        <button type="button" aria-label="Drag Board" title="Drag Board" onClick={() => openCopilotTool('drag')} className={T.btnAlt}>Drag Board</button>
+      </div>
     </div>
   );
 
   return (
-    <div className={`${T.card} schedule-copilot-compact p-3 space-y-2 border-[#D4A381]/30`}>
+    <div className={`${T.card} schedule-copilot-compact p-3 space-y-2 border-[#D4A381]/30`} aria-label="Open Copilot Tools" title="Open Copilot Tools" data-chaos-current-state="true">
       <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-2 border-b border-[#2A353D] pb-2">
         <div className="min-w-0">
           <div className="text-[9px] uppercase tracking-widest font-black text-[#D4A381]">Schedule Copilot</div>
@@ -5574,7 +5597,7 @@ const ScheduleCopilot = ({ currentDate, users = [], shifts = [], timeOffRequests
       <div className="grid grid-cols-4 gap-1.5">
         {[['Drafts',draftCount],['Missing',missingTargets.length],['Warnings',allScheduleWarnings.length],['Templates',safeTemplates.length]].map(([label,value]) => <div key={label} className="schedule-copilot-metric bg-[#12161A] border border-[#2A353D]"><span className="text-[8px] uppercase tracking-widest font-black text-slate-500">{label}</span><strong className="text-white">{value}</strong></div>)}
       </div>
-      <div className="flex gap-1.5 overflow-x-auto custom-scrollbar border-b border-[#2A353D] pb-2">{[['targets','Coverage'],['templates','Templates'],['template-editor', editingTemplateId ? 'Edit Template' : 'Create Template'],['drag','Drag Board'],['warnings','Warnings']].map(([id,label]) => <button key={id} onClick={() => setActiveTool(id)} className={`flex-shrink-0 px-2.5 py-1.5 rounded-lg text-[9px] uppercase tracking-widest font-black ${activeTool===id ? `${T.grad} text-slate-900` : 'bg-[#12161A] text-slate-400 hover:text-white'}`}>{label}</button>)}</div>
+      <div className="flex gap-1.5 overflow-x-auto custom-scrollbar border-b border-[#2A353D] pb-2" role="tablist" aria-label="Schedule Builder tools" aria-orientation="horizontal">{[['targets','Coverage'],['templates','Templates'],['template-editor', editingTemplateId ? 'Edit Template' : 'Create Template'],['drag','Drag Board'],['warnings','Warnings']].map(([id,label]) => <button key={id} type="button" role="tab" aria-label={label} title={label} onClick={() => setActiveTool(id)} aria-selected={activeTool===id} data-chaos-current-state={activeTool===id ? 'true' : undefined} className={`flex-shrink-0 px-2.5 py-1.5 rounded-lg text-[9px] uppercase tracking-widest font-black ${activeTool===id ? `${T.grad} text-slate-900` : 'bg-[#12161A] text-slate-400 hover:text-white'}`}>{label}</button>)}</div>
       <div className="schedule-copilot-body custom-scrollbar space-y-3">
       {activeTool === 'targets' && <div className="grid lg:grid-cols-2 gap-4"><form onSubmit={addCoverageTarget} className="bg-[#12161A] border border-[#2A353D] rounded-xl p-3 space-y-2"><h4 className="font-black text-white">Add Coverage Target</h4><p className="text-[10px] font-bold text-slate-400">Roles come from Staff Roster / Settings and match the Schedule Builder staff list.</p><div className="grid grid-cols-2 gap-2"><select value={targetForm.dayIndex} onChange={e=>setTargetForm({...targetForm, dayIndex:e.target.value})} className={T.input}>{dayNames.map((d,i)=><option key={d} value={i}>{d}</option>)}</select><select value={targetForm.role} onChange={e=>setTargetForm({...targetForm, role:e.target.value})} className={T.input}>{scheduleRoleOptions.map(r => <option key={r} value={r}>{r}</option>)}</select><input type="time" value={targetForm.startTime} onChange={e=>setTargetForm({...targetForm, startTime:e.target.value})} className={T.input}/><input type="time" value={targetForm.endTime} onChange={e=>setTargetForm({...targetForm, endTime:e.target.value})} className={T.input}/><input type="number" min="1" value={targetForm.count} onChange={e=>setTargetForm({...targetForm, count:e.target.value})} className={T.input}/><button className={`${T.btn} py-2`}>Save Target</button></div></form><div className="space-y-2">{coverageTargets.length === 0 ? <FriendlyEmpty title="No coverage targets yet" text="Add targets from the same roles shown in the Schedule Builder staff list. Smart Fill and the builder now use one shared role source."/> : coverageTargets.map(t => <div key={t.id} className="bg-[#12161A] border border-[#2A353D] rounded-xl p-3 flex justify-between items-center"><div><div className="font-black text-white">{dayNames[t.dayIndex]} • {t.role} x{t.count}</div><div className="text-xs text-slate-400 font-bold">{formatShortTime(t.startTime)} - {formatShortTime(t.endTime)}</div></div><button onClick={() => deleteDoc(doc(db,'scheduleCoverageTargets',t.id))} className="p-2 text-slate-400 hover:text-red-400"><Trash2 size={14}/></button></div>)}</div></div>}
       {activeTool === 'templates' && <div className="space-y-3"><div className="flex flex-col md:flex-row gap-2"><select value={templateId} onChange={e => setTemplateId(e.target.value)} className={`${T.input} flex-1`}><option value="">Select template to apply</option>{templateOptions.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}</select><button onClick={applyTemplate} className={`${T.btn} py-2`}>Apply to Current Week</button><button onClick={saveCurrentWeekAsTemplate} className={T.btnAlt}>Save Current Week</button></div>{templateOptions.length === 0 ? <FriendlyEmpty title="No templates yet" text="Create a Normal Week, Packers Sunday, Fish Fry Friday, or Live Music template. Each restaurant gets its own library."/> : templateOptions.map(t => <div key={t.id} className="bg-[#12161A] border border-[#2A353D] rounded-xl p-3 flex justify-between items-center"><div><div className="font-black text-white">{t.name}</div><div className="text-xs text-slate-400 font-bold">{t.description || 'No description'} • {(t.rows || []).length} rules</div></div><div className="flex gap-2"><button onClick={() => editTemplate(t)} className={T.btnAlt}>Edit</button><button onClick={() => deleteTemplate(t)} className="px-3 py-2 rounded-xl bg-red-900/20 text-red-300 border border-red-900/50 text-xs font-black">Delete</button></div></div>)}</div>}

@@ -1,17 +1,53 @@
 'use strict';
-const { getAdminAppForRequest, readBody, requireAppCheckIfEnforced, readWorkspaceMember, userHasWorkspace } = require('./_chaos-admin');
+const { getAdminAppForRequest, readBody, requireAppCheckIfEnforced, readWorkspaceMember, userHasWorkspace, norm } = require('./_chaos-admin');
 const { occurrenceKeyForReminder, getZonedParts } = require('./_reminder-dispatch-logic');
 
 function clean(value = '', max = 800) { return String(value || '').replace(/[\u0000-\u001F\u007F]/g, ' ').trim().slice(0, max); }
 function authToken(req) { return String(req.headers.authorization || '').replace(/^Bearer\s+/i, '').trim(); }
 function safeError(err) { return String(err?.message || err || 'Reminder save failed.').replace(/(token|secret|private[_ -]?key|authorization)[=:]\s*[^\s,;}]+/gi, '$1=[redacted]').slice(0, 220); }
-async function activeMember(db, uid, email, restaurantId) {
-  const userSnap = await db.collection('users').doc(uid).get();
-  const user = userSnap.exists ? userSnap.data() || {} : {};
-  const member = await readWorkspaceMember(db, uid, email || user.email || '', restaurantId);
-  const userEnabled = userSnap.exists && user.isActive !== false && user.disabled !== true && user.accountDisabled !== true;
+function activeUser(user = {}) {
+  return Boolean(user.id && user.isActive !== false && user.disabled !== true && user.accountDisabled !== true && user.deleted !== true && user.archived !== true);
+}
+function authUidForUser(user = {}, fallback = '') {
+  return clean(user.authUid || user.uid || user.userId || user.firebaseUid || fallback, 180);
+}
+function profileDocIdForUser(user = {}, fallback = '') {
+  return clean(user.profileDocId || user.accountProfile?.id || user.accountProfileId || user.id || fallback, 180);
+}
+function profileMatchesDecoded(user = {}, decoded = {}) {
+  const uid = clean(decoded.uid, 180);
+  const email = norm(decoded.email || '');
+  const ids = [user.id, user.authUid, user.uid, user.userId, user.firebaseUid].map(value => clean(value, 180)).filter(Boolean);
+  const emails = [user.email, user.userEmail, user.accountEmail].map(norm).filter(Boolean);
+  return Boolean((uid && ids.includes(uid)) || (email && emails.includes(email)));
+}
+async function readUserProfile(db, id = '') {
+  const cleanId = clean(id, 180);
+  if (!cleanId) return null;
+  const snap = await db.collection('users').doc(cleanId).get();
+  return snap.exists ? { ...(snap.data() || {}), id: snap.id } : null;
+}
+async function resolveCallerProfile(db, decoded = {}) {
+  const direct = await readUserProfile(db, decoded.uid);
+  if (direct && profileMatchesDecoded(direct, decoded)) return direct;
+  const email = norm(decoded.email || '');
+  if (!email) return null;
+  if (email !== String(decoded.uid || '')) {
+    const emailDoc = await readUserProfile(db, email);
+    if (emailDoc && profileMatchesDecoded(emailDoc, decoded)) return emailDoc;
+  }
+  const byEmail = await db.collection('users').where('email', '==', email).limit(2).get();
+  if (byEmail.size !== 1) return null;
+  const match = byEmail.docs[0];
+  const user = { ...(match.data() || {}), id: match.id };
+  return profileMatchesDecoded(user, decoded) ? user : null;
+}
+async function activeMember(db, user, membershipUid, email, restaurantId) {
+  const userEnabled = activeUser(user);
+  if (userEnabled && userHasWorkspace(user, restaurantId)) return { ok: true, user, member: null };
+  const member = await readWorkspaceMember(db, membershipUid, email || user?.email || '', restaurantId);
   const memberEnabled = Boolean(member && member.isActive !== false && member.disabled !== true);
-  return { ok: userEnabled && (userHasWorkspace(user, restaurantId) || memberEnabled), user, member };
+  return { ok: userEnabled && memberEnabled, user, member };
 }
 
 module.exports = async function handler(req, res) {
@@ -30,14 +66,21 @@ module.exports = async function handler(req, res) {
     const title = clean(body.title, 300);
     const notes = clean(body.notes, 2000);
     const scheduledDate = new Date(body.scheduledAt || '');
-    const assignedToUserId = clean(body.assignedToUserId || decoded.uid, 180);
+    const requestedAssigneeId = clean(body.assignedToUserId || decoded.uid, 180);
     if (!restaurantId || !title || Number.isNaN(scheduledDate.getTime())) return res.status(400).json({ ok:false, error:'Restaurant, title, and valid scheduledAt are required.' });
-    const callerMembership = await activeMember(db, decoded.uid, decoded.email || '', restaurantId);
+    const callerProfile = await resolveCallerProfile(db, decoded);
+    if (!callerProfile) return res.status(403).json({ ok:false, error:'Your active account profile could not be resolved.' });
+    const callerMembership = await activeMember(db, callerProfile, decoded.uid, decoded.email || callerProfile.email || '', restaurantId);
     if (!callerMembership.ok) return res.status(403).json({ ok:false, error:'You do not have active access to this workspace.' });
-    const assigneeSnap = await db.collection('users').doc(assignedToUserId).get();
-    if (!assigneeSnap.exists) return res.status(400).json({ ok:false, error:'Assigned teammate was not found.' });
-    const assignee = assigneeSnap.data() || {};
-    const assigneeMembership = await activeMember(db, assignedToUserId, assignee.email || '', restaurantId);
+    const callerIds = new Set([decoded.uid, callerProfile.id, callerProfile.authUid, callerProfile.uid, callerProfile.userId].map(value => clean(value, 180)).filter(Boolean));
+    const assigningToCaller = callerIds.has(requestedAssigneeId);
+    const assignee = assigningToCaller ? callerProfile : await readUserProfile(db, requestedAssigneeId);
+    if (!assignee) return res.status(400).json({ ok:false, error:'Assigned teammate was not found.' });
+    const assignedToUserId = assigningToCaller ? decoded.uid : authUidForUser(assignee, requestedAssigneeId);
+    const recipientProfileId = profileDocIdForUser(assignee, assignee.id || requestedAssigneeId);
+    const assigneeMembership = assigningToCaller
+      ? callerMembership
+      : await activeMember(db, assignee, assignedToUserId, assignee.email || '', restaurantId);
     if (!assigneeMembership.ok) return res.status(403).json({ ok:false, error:'Assigned teammate is not an active member of this workspace.' });
 
     const ref = reminderId ? db.collection('personalReminders').doc(reminderId) : db.collection('personalReminders').doc();
@@ -62,12 +105,13 @@ module.exports = async function handler(req, res) {
       userId: assignedToUserId,
       userEmail: assignee.email || '',
       assignedToUserId,
+      recipientProfileId,
       assignedToName: assignee.name || assignee.displayName || assignee.email || 'Team member',
       assignedToEmail: assignee.email || '',
       participantUserIds: participants,
       participantSchemaVersion: 1,
       createdBy: existing.createdBy || decoded.uid,
-      createdByName: existing.createdByName || callerMembership.user.name || decoded.name || decoded.email || '',
+      createdByName: existing.createdByName || callerProfile.name || decoded.name || decoded.email || '',
       createdByEmail: existing.createdByEmail || decoded.email || '',
       shared: assignedToUserId !== decoded.uid,
       visibility: assignedToUserId !== decoded.uid ? 'shared_reminder' : 'private_reminder',
@@ -107,3 +151,5 @@ module.exports = async function handler(req, res) {
     return res.status(500).json({ ok:false, error:safeError(err) });
   }
 };
+
+module.exports._test = { activeUser, authUidForUser, profileDocIdForUser, profileMatchesDecoded, readUserProfile, resolveCallerProfile, activeMember };

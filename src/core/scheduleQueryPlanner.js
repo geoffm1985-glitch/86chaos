@@ -105,6 +105,41 @@ export const getScheduleShiftDateKeyValue = (shift = {}) => String(
   shift?.date || shift?.scheduleDateKey || shift?.shiftDate || shift?.day || ''
 ).trim();
 
+
+export const scheduleQueryDateRangeMonths = (clauses = []) => {
+  const rangeStart = (Array.isArray(clauses) ? clauses : []).find(c => Array.isArray(c) && c[0] === 'date' && c[1] === '>=')?.[2] || '';
+  const rangeEnd = (Array.isArray(clauses) ? clauses : []).find(c => Array.isArray(c) && c[0] === 'date' && c[1] === '<=')?.[2] || rangeStart;
+  const startMonth = String(rangeStart || '').slice(0, 7);
+  const endMonth = String(rangeEnd || rangeStart || '').slice(0, 7);
+  if (!/^\d{4}-\d{2}$/.test(startMonth)) return [];
+  if (!/^\d{4}-\d{2}$/.test(endMonth) || startMonth === endMonth) return [startMonth];
+  const out = [];
+  const cursor = new Date(`${startMonth}-01T12:00:00`);
+  const stop = new Date(`${endMonth}-01T12:00:00`);
+  for (let guard = 0; guard < 18 && cursor <= stop; guard += 1) {
+    out.push(`${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, '0')}`);
+    cursor.setMonth(cursor.getMonth() + 1);
+  }
+  return out;
+};
+
+export const scheduleLegacyRescueKnownForRange = ({ clientData = {}, shiftClauses = [] } = {}) => {
+  const months = scheduleQueryDateRangeMonths(shiftClauses);
+  if (!months.length) return false;
+  const rescuedMonths = Array.isArray(clientData?.scheduleRescueProtectedMonths) ? clientData.scheduleRescueProtectedMonths.map(String) : [];
+  const legacyMonths = Array.isArray(clientData?.scheduleDateKeyOnlyMonths) ? clientData.scheduleDateKeyOnlyMonths.map(String) : [];
+  const rescueEnforced = clientData?.scheduleRescueEnforceProtected === true || clientData?.scheduleDateKeyRescueRequired === true;
+  return months.some(month => rescuedMonths.includes(month) || legacyMonths.includes(month)) || (rescueEnforced && rescuedMonths.some(month => months.includes(month)));
+};
+
+export const shouldEnableScheduleDateKeyRescue = ({ wantsShiftData = false, wantsScheduleScreen = false, canonicalState = {}, clientData = {}, shiftClauses = [] } = {}) => {
+  if (!wantsShiftData || !wantsScheduleScreen) return false;
+  if (scheduleLegacyRescueKnownForRange({ clientData, shiftClauses })) return true;
+  if (canonicalState?.error) return false;
+  if (canonicalState?.resolved === true && Array.isArray(canonicalState?.data) && canonicalState.data.length === 0) return true;
+  return false;
+};
+
 export const buildScheduleDateKeyRangeClauses = (clauses = []) => (Array.isArray(clauses) ? clauses : []).map(clause => {
   if (!Array.isArray(clause)) return clause;
   const [field, op, value] = clause;

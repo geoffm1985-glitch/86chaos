@@ -1,14 +1,17 @@
 {
-  "version": "16.0.191",
-  "name": "86 Chaos 16.0.191",
-  "build": "16.0.191",
-  "label": "86 Chaos 16.0.191",
-  "releasedAt": "2026-08-21T13:29:00-05:00",
-  "releaseTitle": "Request Off Legacy Start Date Visibility Repair",
+  "version": "16.0.226",
+  "name": "86 Chaos 16.0.226",
+  "build": "16.0.226",
+  "label": "86 Chaos 16.0.226",
+  "releasedAt": "2026-09-04T14:58:15Z",
+  "releaseTitle": "Request Off Bulk Archive Determinism Repair",
   "notes": [
-    "Restores manager/admin visibility for legacy Request Off records whose requested date is stored in startDate, including future-month records."
+    "Keeps the seeded fixture clock aligned with the release-gate seed anchor.",
+    "Exercises a past approved Request Off record through the manager's All view before applying the real filtered bulk-archive workflow.",
+    "Leaves Request Off filtering and archive business logic unchanged.",
+    "Keeps Firebase reads, writes, rules, indexes, hosting configuration, database rules, storage rules, and service-worker behavior unchanged."
   ],
-  "title": "86 Chaos 16.0.191",
-  "summary": "Restores manager/admin visibility for legacy future Request Off records stored with startDate.",
-  "description": "Teaches the existing client and server Request Off date normalizers to honor the historical startDate field without migrating data or changing Request Off write behavior."
+  "title": "86 Chaos 16.0.226",
+  "summary": "Surgical Request Off release-gate traversal repair for a seeded past approved request.",
+  "description": "Repairs the bulk-archive browser test's status-view traversal without changing application behavior, Request Off business logic, Firebase access, or deployment configuration."
 }

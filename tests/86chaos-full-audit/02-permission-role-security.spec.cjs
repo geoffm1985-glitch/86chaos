@@ -61,7 +61,7 @@ test.describe('02 role permissions and direct-route security', () => {
     await login(page, account.email, account.password);
     const findings = [];
     for (const tab of ['today', 'schedule', 'inventory', 'financials', 'messages', 'maintenance']) {
-      const text = await gotoTab(page, tab);
+      const text = await gotoTab(page, tab, { settleMs: 0, timeout: 8000, maxText: 30000 });
       if (/Demo Mode|Read Only|read-only/i.test(text) && /Save|Create|Delete|Publish|Send|Approve|Clock In/i.test(text)) findings.push({ tab, sample: text.slice(0, 2000) });
     }
     await attachJson(testInfo, '02-demo-readonly-write-findings.json', { findings });

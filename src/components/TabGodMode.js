@@ -461,7 +461,7 @@ const TabGodMode = ({ appUser, addToast, setGhostTenant, db, auth, Modal, T, get
                 <button onClick={() => setSubTab(section.id)} className={`w-full px-2 py-2.5 text-[10px] sm:text-[11px] font-black rounded-xl uppercase tracking-widest transition-all flex items-center justify-center gap-1.5 ${subTab === section.id ? 'bg-red-600 text-white shadow-lg scale-[1.02]' : 'bg-[#1A2126] text-slate-400 border border-[#2A353D] hover:text-white hover:border-slate-500'}`}>
                   <Icon size={13}/>{section.label}
                 </button>
-                <button type="button" onClick={(event) => openAdminHelp(section.id, event)} className="absolute -right-1 -top-1 w-5 h-5 rounded-full border border-[#D4A381]/60 bg-[#0B0E11] text-[#D4A381] hidden group-hover:flex items-center justify-center shadow-md" aria-label={`Explain ${section.label}`} title={`Explain ${section.label}`}>
+                <button type="button" onClick={(event) => openAdminHelp(section.id, event)} className="absolute -right-1 -top-1 w-6 min-w-[24px] h-6 rounded-full border border-[#D4A381]/60 bg-[#0B0E11] text-[#D4A381] hidden group-hover:flex items-center justify-center shadow-md" aria-label={`Explain ${section.label}`} title={`Explain ${section.label}`}>
                   <HelpCircle size={12}/>
                 </button>
               </div>

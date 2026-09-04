@@ -4,12 +4,25 @@ function buildFakeRestaurantProfile({ restaurantId = '', runId = '', anchorDate 
   const today = new Date(anchorDate);
   const todayStr = isoDate(today);
   const tomorrowStr = isoDate(addDays(today, 1));
-  const weekStart = startOfWeekMonday(today);
-  const preferredAllenPartialRequestDate = isoDate(addDays(weekStart, 5));
-  const allenPartialRequestDate = preferredAllenPartialRequestDate === tomorrowStr
-    ? isoDate(addDays(today, 2))
-    : preferredAllenPartialRequestDate;
   const fixture = buildAuditScheduleFixture(today);
+  const currentWeekStart = fixture.currentWeekStart;
+  const currentWeekEnd = isoDate(addDays(new Date(`${currentWeekStart}T12:00:00`), 6));
+  const invalidAllenKeys = new Set(
+    (fixture.expected?.invalid || [])
+      .filter(row => row.employeeName === 'Allen QA')
+      .map(row => `${row.date}|${row.startTime}|${row.endTime}`)
+  );
+  const validAllenCurrentWeekShifts = (fixture.shifts || []).filter(row => {
+    if (row.employeeName !== 'Allen QA') return false;
+    if (row.date < currentWeekStart || row.date > currentWeekEnd) return false;
+    return !invalidAllenKeys.has(`${row.date}|${row.startTime}|${row.endTime}`);
+  });
+  const candidateDates = [...new Set(validAllenCurrentWeekShifts.map(row => row.date))]
+    .filter(date => date !== tomorrowStr);
+  const allenPartialRequestDate = candidateDates.find(date => date >= todayStr) || candidateDates[candidateDates.length - 1] || '';
+  if (!allenPartialRequestDate) {
+    throw new Error('QA fixture requires a valid Allen QA shift date distinct from Sara QA conflict date.');
+  }
   const tag = { qaOwned: true, qaRunId: runId, createdBy: '86chaos-full-audit', createdAt: new Date().toISOString() };
   const QA_WORKSPACE_NAME = process.env.CHAOS_QA_WORKSPACE_NAME || `86 Chaos Release Gate QA ${runId}`;
 

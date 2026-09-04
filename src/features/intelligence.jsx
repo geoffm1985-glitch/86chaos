@@ -80,7 +80,7 @@ const WorkProgressBar = ({ label, detail, percent = 0, elapsedSeconds = 0 }) => 
   );
 };
 
-const TabPersonalReminders = ({ appUser, addToast }) => {
+const TabPersonalReminders = ({ appUser, addToast, onEnableNotifications }) => {
   const initial = getInitialReminderDate();
   const currentUserId = auth?.currentUser?.uid || appUser?.id || '';
   const [title, setTitle] = useState('');
@@ -94,7 +94,21 @@ const TabPersonalReminders = ({ appUser, addToast }) => {
   const [showCompleted, setShowCompleted] = useState(false);
   const [teamMembers, setTeamMembers] = useState([]);
   const [teamLoadError, setTeamLoadError] = useState('');
+  const [notificationPermission, setNotificationPermission] = useState(() => typeof Notification === 'undefined' ? 'unsupported' : Notification.permission);
+  const [notificationConnecting, setNotificationConnecting] = useState(false);
   const reminderRecognitionRef = useRef(null);
+  const hasActiveReminderDevice = Boolean(appUser?.fcmToken || Object.values(appUser?.pushDevices || {}).some(device => device && typeof device === 'object' && device.active !== false && device.disabled !== true && String(device.permission || device.notificationPermission || '').toLowerCase() === 'granted' && (device.token || device.fcmToken)));
+  const reminderNotificationsReady = notificationPermission === 'granted' && hasActiveReminderDevice;
+
+  const enableReminderNotifications = async () => {
+    if (typeof onEnableNotifications !== 'function') return;
+    setNotificationConnecting(true);
+    try { await onEnableNotifications(); }
+    finally {
+      setNotificationPermission(typeof Notification === 'undefined' ? 'unsupported' : Notification.permission);
+      setNotificationConnecting(false);
+    }
+  };
 
 
   const stopReminderRecognition = () => {
@@ -146,7 +160,7 @@ const TabPersonalReminders = ({ appUser, addToast }) => {
         const snap = await getDocs(query(collection(db, 'users'), where('restaurantId', '==', appUser.restaurantId), where('isActive', '==', true), orderBy('name', 'asc'), firestoreLimit(80)));
         if (cancelled) return;
         const rows = snap.docs
-          .map(row => ({ id: row.id, ...row.data() }))
+          .map(row => ({ ...row.data(), id: row.id, profileDocId: row.data()?.profileDocId || row.id }))
           .filter(row => row.active !== false && row.disabled !== true)
           .sort((a, b) => String(a.name || a.email || '').localeCompare(String(b.name || b.email || '')));
         const hasSelf = rows.some(row => row.id === currentUserId);
@@ -251,6 +265,7 @@ const TabPersonalReminders = ({ appUser, addToast }) => {
     const result = await response.json().catch(() => ({}));
     if (!response.ok || result.ok === false) throw new Error(result.error || 'Reminder could not be saved.');
     if (editing?.id) addToast('Reminder Updated', title.trim());
+    else if (shareMode === 'self' && !reminderNotificationsReady) addToast('Reminder Saved — Notifications Off', 'Use Enable Notifications on this page so this device can alert you when it is due.');
     else addToast('Reminder Saved', `${title.trim()} at ${formatClockDateTime(scheduledDate.toISOString())}.`);
     await logAudit(appUser, editing ? 'REMINDER_UPDATED' : 'REMINDER_CREATED', title.trim(), scheduledDate.toISOString());
     requestPersonalReminderRefresh({ restaurantId: appUser.restaurantId, uid: auth?.currentUser?.uid || appUser?.authUid || appUser?.id || '' });
@@ -318,6 +333,8 @@ const TabPersonalReminders = ({ appUser, addToast }) => {
         <button type="button" aria-label={listening ? 'Stop reminder voice entry' : 'Speak Reminder'} aria-pressed={listening} onClick={listening ? stopReminderRecognition : startListening} className={`${T.btnAlt} flex items-center justify-center gap-2 ${listening ? 'text-red-300 border-red-500/40' : ''}`}><Mic size={16}/> {listening ? 'Listening' : 'Speak Reminder'}</button>
       </div>
 
+      {!reminderNotificationsReady && <div role="status" className="rounded-xl border border-amber-700/50 bg-amber-950/20 p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3"><div className="flex items-start gap-2"><Bell size={17} className="text-amber-300 mt-0.5 shrink-0"/><div><div className="text-xs font-black text-amber-200">Reminder notifications are not connected on this device</div><div className="text-[10px] text-slate-400 font-bold mt-1">Reminders still save normally. Connect once so due reminders can create a real browser or installed-app notification.</div></div></div>{notificationPermission !== 'unsupported' && <button type="button" onClick={enableReminderNotifications} disabled={notificationConnecting} className={`${T.btnAlt} shrink-0 disabled:opacity-60`}>{notificationConnecting ? 'Connecting…' : 'Enable Notifications'}</button>}</div>}
+
       <form onSubmit={saveReminder} className={`${T.card} p-4 grid lg:grid-cols-[1.35fr_.62fr_.52fr_.72fr_auto] gap-3 items-end`}>
         <div><label className={T.label}>Reminder</label><input value={title} onChange={e => setTitle(e.target.value)} onBlur={e => /^remind me/i.test(e.target.value) && applyParsedText(e.target.value)} className={T.input} placeholder="Remind me tomorrow at 9 AM to order buns" /></div>
         <div><label className={T.label}>Date</label><input type="date" value={dateInput} onChange={e => setDateInput(e.target.value)} className={T.input} /></div>
@@ -342,7 +359,7 @@ const TabPersonalReminders = ({ appUser, addToast }) => {
             const assignedToMe = (reminder.assignedToUserId || reminder.userId) === currentUserId;
             const wakeAt = getReminderWakeAt(reminder);
             const shareLabel = reminder.shared ? (createdByMe ? `For ${reminder.assignedToName || 'team member'}` : `From ${reminder.createdByName || 'team member'}`) : 'Just me';
-            return <div key={reminder.id} className={`${T.row} flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${reminderNeedsAttention(reminder) ? 'bg-red-950/10 border-red-500/25' : ''}`}><div className="min-w-0 flex-1"><div className="font-black text-white text-sm truncate flex items-center gap-2">{reminder.shared && <Share2 size={13} className="text-blue-300"/>}{reminder.title}</div><div className="text-[10px] text-[#D4A381] font-black uppercase tracking-widest mt-1 flex flex-wrap items-center gap-1"><Clock size={12}/> {wakeAt ? formatClockDateTime(wakeAt) : 'No time'} • {shareLabel}</div>{reminder.notes && <div className="text-xs text-slate-500 font-bold mt-1 truncate">{reminder.notes}</div>}</div><div className="flex flex-wrap items-center gap-1 justify-end"><select aria-label="Snooze reminder" value="" onChange={e => { if (e.target.value) snoozeReminder(reminder, Number(e.target.value)); }} disabled={!assignedToMe && !createdByMe} className="h-9 rounded-lg bg-[#12161A] border border-[#2A353D] px-2 text-[10px] font-black uppercase tracking-widest text-slate-300 disabled:opacity-40"><option value="">Snooze</option>{REMINDER_SNOOZE_OPTIONS.map(minutes => <option key={minutes} value={minutes}>{formatSnoozeLabel(minutes)}</option>)}</select><button onClick={() => markDone(reminder)} disabled={!assignedToMe && !createdByMe} className="p-2 rounded-lg bg-emerald-900/20 text-emerald-300 border border-emerald-900/50 disabled:opacity-40"><Check size={16}/></button><button onClick={() => editReminder(reminder)} disabled={!createdByMe} className="p-2 rounded-lg bg-[#12161A] text-slate-300 border border-[#2A353D] disabled:opacity-40"><Edit3 size={16}/></button><button onClick={() => removeReminder(reminder)} disabled={!createdByMe} className="p-2 rounded-lg bg-red-900/20 text-red-300 border border-red-900/50 disabled:opacity-40"><Trash2 size={16}/></button></div></div>;
+            return <div key={reminder.id} className={`${T.row} flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${reminderNeedsAttention(reminder) ? 'bg-red-950/10 border-red-500/25' : ''}`}><div className="min-w-0 flex-1"><div className="font-black text-white text-sm truncate flex items-center gap-2">{reminder.shared && <Share2 size={13} className="text-blue-300"/>}{reminder.title}</div><div className="text-[10px] text-[#D4A381] font-black uppercase tracking-widest mt-1 flex flex-wrap items-center gap-1"><Clock size={12}/> {wakeAt ? formatClockDateTime(wakeAt) : 'No time'} • {shareLabel}</div>{reminder.notes && <div className="text-xs text-slate-500 font-bold mt-1 truncate">{reminder.notes}</div>}</div><div className="flex flex-wrap items-center gap-1 justify-end"><select aria-label="Snooze reminder" value="" onChange={e => { if (e.target.value) snoozeReminder(reminder, Number(e.target.value)); }} disabled={!assignedToMe && !createdByMe} className="h-9 rounded-lg bg-[#12161A] border border-[#2A353D] px-2 text-[10px] font-black uppercase tracking-widest text-slate-300 disabled:opacity-40"><option value="">Snooze</option>{REMINDER_SNOOZE_OPTIONS.map(minutes => <option key={minutes} value={minutes}>{formatSnoozeLabel(minutes)}</option>)}</select><button onClick={() => markDone(reminder)} disabled={!assignedToMe && !createdByMe} className="p-2 rounded-lg bg-emerald-900/20 text-emerald-300 border border-emerald-900/50 disabled:opacity-40"><Check size={16}/></button><button onClick={() => editReminder(reminder)} disabled={!createdByMe} className="p-2 rounded-lg bg-[#12161A] text-slate-300 border border-[#2A353D] disabled:opacity-40"><Edit3 size={16}/></button><button type="button" aria-label="Cancel reminder" onClick={() => removeReminder(reminder)} disabled={!createdByMe} className="p-2 rounded-lg bg-red-900/20 text-red-300 border border-red-900/50 disabled:opacity-40"><Trash2 size={16}/></button></div></div>;
           })}
         </div>
         <div className={`${T.card} overflow-hidden`}>

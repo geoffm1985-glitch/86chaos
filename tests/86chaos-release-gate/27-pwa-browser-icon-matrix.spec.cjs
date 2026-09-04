@@ -2,6 +2,11 @@ const { test, expect } = require('@playwright/test');
 const fs = require('fs');
 const path = require('path');
 
+// WebKit can terminate while Playwright creates a video-backed page late in the
+// full release gate. This metadata-only browser probe keeps trace/screenshot
+// diagnostics and every real-browser assertion without recording unused video.
+test.use({ video: 'off' });
+
 test('PWA icon metadata matrix is coherent for this browser engine', async ({ page, request, baseURL, browserName }, testInfo) => {
   await page.goto('/', { waitUntil: 'domcontentloaded' });
   const metadata = await page.evaluate(() => ({
