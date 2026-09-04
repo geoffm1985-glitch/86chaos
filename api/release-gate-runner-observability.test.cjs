@@ -40,14 +40,23 @@ test('Windows .cmd wrapper handles a path with spaces without EINVAL', { skip: p
   assert.match(result.stdout, /spaced path ok/);
 });
 
-test('PowerShell runner uses observable dependency install, npm smoke, UTF-8, and overlap lock', () => {
+test('release-gate runners use observable setup, overlap protection, and isolated rules ports', () => {
   const ps1 = fs.readFileSync(path.join(root, 'RUN_86CHAOS_PLAY_STORE_RELEASE_GATE.ps1'), 'utf8');
+  const nodeChecks = fs.readFileSync(path.join(root, 'scripts', '86chaos-release-gate', 'run-node-release-checks.cjs'), 'utf8');
   assert.match(ps1, /Verify npm wrapper/);
   assert.match(ps1, /run-observable-command\.cjs/);
   assert.match(ps1, /--timeout 1800/);
   assert.match(ps1, /\.current-run\.lock/);
   assert.match(ps1, /BLOCKED BEFORE TEST EXECUTION/);
   assert.match(ps1, /UTF8Encoding/);
+  assert.match(nodeChecks, /reserveAvailableLoopbackPorts\(2\)/);
+  assert.match(nodeChecks, /port: 0, exclusive: true/);
+  assert.match(nodeChecks, /require\.resolve\('firebase-tools\/package\.json'/);
+  assert.match(nodeChecks, /quoteShellArgument\(firebaseCli\)/);
+  assert.match(nodeChecks, /--config \$\{quoteShellArgument\(temp\.configPath\)\}/);
+  assert.match(nodeChecks, /--project demo-no-project/);
+  assert.match(nodeChecks, /Firebase emulator startup port collision; retrying/);
+  assert.doesNotMatch(nodeChecks, /(?:taskkill|Stop-Process|kill\s+-9)/i);
 });
 
 test('observable dependency wrapper avoids shell true and direct npm.cmd process spawning', () => {
