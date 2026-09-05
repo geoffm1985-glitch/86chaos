@@ -21,6 +21,24 @@ describe('reminderUtils parsing', () => {
     expect(parseReminderCommand('Remind me to check fryer in an hour', now).timeInput).toBe('11:00');
   });
 
+  test('treats "for five minutes" as a five-minute relative reminder', () => {
+    const now = localNow(2026, 8, 4, 19, 50);
+    const parsed = parseReminderCommand('Set a reminder for five minutes to check the fryer', now);
+    expect(parsed.validationError).toBe('');
+    expect(parsed.relativeReminder).toBe(true);
+    expect(parsed.dateInput).toBe('2026-09-04');
+    expect(parsed.timeInput).toBe('19:55');
+    expect(new Date(parsed.scheduledAt).getTime() - now.getTime()).toBe(5 * 60 * 1000);
+    expect(parsed.title).toBe('check the fryer');
+  });
+
+  test('does not treat an ordinary "for" phrase as relative timing', () => {
+    const parsed = parseReminderCommand('Set a reminder for the kitchen tomorrow at 9am', localNow(2026, 8, 4, 19, 50));
+    expect(parsed.relativeReminder).toBe(false);
+    expect(parsed.dateInput).toBe('2026-09-05');
+    expect(parsed.timeInput).toBe('09:00');
+  });
+
   test('removes parsed time phrases from reminder titles', () => {
     expect(parseReminderCommand('Remind me to check the fryer in half an hour', localNow(2026, 6, 25, 10, 0)).title).toBe('check the fryer');
   });

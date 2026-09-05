@@ -65,6 +65,16 @@ describe('release-gate reminder properties', () => {
     });
   });
 
+  test('spoken "for" durations advance by the requested amount without changing persistence cost', () => {
+    SAMPLE_MINUTES.forEach((minutes) => {
+      const now = local(2026, 6, 25, 10, 0);
+      const parsed = parseReminderCommand(`Set a reminder for ${minutes} minutes to check prep`, now);
+      expect(parsed.validationError).toBe('');
+      expect(parsed.relativeReminder).toBe(true);
+      expect(new Date(parsed.scheduledAt).getTime() - now.getTime()).toBe(minutes * 60 * 1000);
+    });
+  });
+
   test('scheduled reminder output is never in the past', () => {
     SAMPLE_CLOCK_TIMES.forEach(([hour, minute]) => {
       const now = local(2026, 6, 25, 20, 30);

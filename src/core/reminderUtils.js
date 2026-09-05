@@ -94,8 +94,8 @@ const parseDatePart = (text = '', now = new Date()) => {
 const parseRelativePart = (text = '', now = new Date()) => {
   const q = normalize(text);
   const phraseMinutes = [
-    { re: /\b(?:in|after)\s+(?:a\s+)?half(?:\s+an?)?\s+hour\b/, minutes: 30 },
-    { re: /\b(?:in|after)\s+(?:a\s+)?quarter(?:\s+of)?(?:\s+an?)?\s+hour\b/, minutes: 15 }
+    { re: /\b(?:in|after|for)\s+(?:a\s+)?half(?:\s+an?)?\s+hour\b/, minutes: 30 },
+    { re: /\b(?:in|after|for)\s+(?:a\s+)?quarter(?:\s+of)?(?:\s+an?)?\s+hour\b/, minutes: 15 }
   ].find(item => item.re.test(q));
   if (phraseMinutes) {
     const d = new Date(now.getTime());
@@ -103,7 +103,7 @@ const parseRelativePart = (text = '', now = new Date()) => {
     d.setSeconds(0, 0);
     return d;
   }
-  const match = q.match(/\b(?:in|after)\s+(an?|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fourty|fifty|sixty|half|quarter|\d+(?:\.\d+)?)\s*(minutes?|mins?|min|hours?|hrs?|hr|days?|weeks?)\b/);
+  const match = q.match(/\b(?:in|after|for)\s+(an?|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fourty|fifty|sixty|half|quarter|\d+(?:\.\d+)?)\s*(minutes?|mins?|min|hours?|hrs?|hr|days?|weeks?)\b/);
   if (!match) return null;
   let amount = /^an?$/.test(match[1]) ? 1 : parseAmount(match[1]);
   const unit = match[2];
@@ -141,9 +141,9 @@ const parseTimePart = (text = '') => {
 };
 
 const removeKnownDateTimePhrases = (text = '') => String(text || '')
-  .replace(/\b(?:in|after)\s+(?:a\s+)?half(?:\s+an?)?\s+hour\b/ig, ' ')
-  .replace(/\b(?:in|after)\s+(?:a\s+)?quarter(?:\s+of)?(?:\s+an?)?\s+hour\b/ig, ' ')
-  .replace(/\b(?:in|after)\s+(?:an?|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fourty|fifty|sixty|half|quarter|\d+(?:\.\d+)?)\s*(?:minutes?|mins?|min|hours?|hrs?|hr|days?|weeks?)\b/ig, ' ')
+  .replace(/\b(?:in|after|for)\s+(?:a\s+)?half(?:\s+an?)?\s+hour\b/ig, ' ')
+  .replace(/\b(?:in|after|for)\s+(?:a\s+)?quarter(?:\s+of)?(?:\s+an?)?\s+hour\b/ig, ' ')
+  .replace(/\b(?:in|after|for)\s+(?:an?|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fourty|fifty|sixty|half|quarter|\d+(?:\.\d+)?)\s*(?:minutes?|mins?|min|hours?|hrs?|hr|days?|weeks?)\b/ig, ' ')
   .replace(/\b(today|tomorrow|tonight|next\s+sunday|next\s+monday|next\s+tuesday|next\s+wednesday|next\s+thursday|next\s+friday|next\s+saturday|sunday|monday|tuesday|wednesday|thursday|friday|saturday)\b/ig, ' ')
   .replace(/\b(?:at|by|around|about)\s+\d{1,2}(?::\d{2})?\s*(?:am|pm|a m|p m)?\b/ig, ' ')
   .replace(/\b\d{1,2}:\d{2}\s*(?:am|pm|a m|p m)?\b/ig, ' ')

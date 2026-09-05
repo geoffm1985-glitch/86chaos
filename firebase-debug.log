@@ -1,0 +1,24 @@
+[debug] [2026-09-05T04:26:30.292Z] ----------------------------------------------------------------------
+[debug] [2026-09-05T04:26:30.303Z] Command:       C:\Program Files\nodejs\node.exe C:\Users\geoff\Documents\GitHub\86chaos\node_modules\firebase-tools\lib\bin\firebase.js setup:emulators:firestore
+[debug] [2026-09-05T04:26:30.304Z] CLI Version:   15.24.0
+[debug] [2026-09-05T04:26:30.305Z] Platform:      win32
+[debug] [2026-09-05T04:26:30.305Z] Node Version:  v24.18.0
+[debug] [2026-09-05T04:26:30.306Z] Detected Agent: unknown
+[debug] [2026-09-05T04:26:30.306Z] Time:          Fri Sep 04 2026 23:26:30 GMT-0500 (Central Daylight Time)
+[debug] [2026-09-05T04:26:30.307Z] ----------------------------------------------------------------------
+[debug] 
+[info] i  firestore: downloading cloud-firestore-emulator-v1.21.0.jar... {"metadata":{"emulator":{"name":"firestore"},"message":"downloading cloud-firestore-emulator-v1.21.0.jar..."}}
+[debug] [2026-09-05T04:26:31.501Z] >>> [apiv2][query] GET https://storage.googleapis.com/firebase-preview-drop/emulator/cloud-firestore-emulator-v1.21.0.jar 
+[debug] [2026-09-05T04:26:31.954Z] <<< [apiv2][status] GET https://storage.googleapis.com/firebase-preview-drop/emulator/cloud-firestore-emulator-v1.21.0.jar 200
+[debug] [2026-09-05T04:26:31.956Z] <<< [apiv2][body] GET https://storage.googleapis.com/firebase-preview-drop/emulator/cloud-firestore-emulator-v1.21.0.jar [stream]
+[debug] [2026-09-05T04:26:47.351Z] Error: EBUSY: resource busy or locked, unlink 'C:\Users\geoff\.cache\firebase\emulators\cloud-firestore-emulator-v1.21.0.jar'
+    at Object.unlinkSync (node:fs:1940:11)
+    at mayCopyFile (C:\Users\geoff\Documents\GitHub\86chaos\node_modules\fs-extra\lib\copy\copy-sync.js:65:8)
+    at onFile (C:\Users\geoff\Documents\GitHub\86chaos\node_modules\fs-extra\lib\copy\copy-sync.js:60:10)
+    at getStats (C:\Users\geoff\Documents\GitHub\86chaos\node_modules\fs-extra\lib\copy\copy-sync.js:51:44)
+    at handleFilterAndCopy (C:\Users\geoff\Documents\GitHub\86chaos\node_modules\fs-extra\lib\copy\copy-sync.js:36:10)
+    at Object.copySync (C:\Users\geoff\Documents\GitHub\86chaos\node_modules\fs-extra\lib\copy\copy-sync.js:29:10)
+    at downloadEmulator (C:\Users\geoff\Documents\GitHub\86chaos\node_modules\firebase-tools\lib\emulator\download.js:44:8)
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+[error] 
+[error] Error: An unexpected error has occurred.
