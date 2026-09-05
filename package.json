@@ -1,6 +1,6 @@
 {
   "name": "86chaos",
-  "version": "16.0.226",
+  "version": "16.0.227",
   "private": true,
   "dependencies": {
     "ajv": "^8.20.0",
@@ -26,12 +26,12 @@
     "deploy:check": "npm run test:ci && NODE_OPTIONS=--max-old-space-size=4096 GENERATE_SOURCEMAP=false npm run build",
     "validate:audit-repair": "node scripts/validate-repair.js",
     "rules:check": "node scripts/validate-rules.js",
-    "test:source": "node scripts/validate-16-0-226.js",
+    "test:source": "node scripts/validate-16-0-227.js",
     "syntax:api": "node scripts/check-api-syntax.js",
     "test:unit": "npm run test:client && npm run test:server",
     "test:rules": "firebase emulators:exec --only firestore,storage \"node scripts/run-rules-tests.js\"",
     "test:e2e": "playwright test",
-    "lint": "eslint \"src/**/*.{js,jsx}\" \"api/**/*.js\"",
+    "lint": "eslint --config test-tools/config/eslint.cjs \"src/**/*.{js,jsx}\" \"api/**/*.js\"",
     "syntax:py": "node scripts/check-python-syntax.js",
     "test:cost": "node scripts/run-cost-regression-tests.js",
     "backup:setup:dry-run": "node scripts/setup-native-firestore-backup.js --dry-run",

@@ -14,7 +14,7 @@ body,
 }
 
 body {
-  overflow-x: hidden;
+  overflow-x: clip;
 }
 
 html,
@@ -4271,6 +4271,10 @@ select {
   --chaos-mobile-tap-h: 42px;
 }
 
+.desktop-pro-shell {
+  overflow-x: clip;
+}
+
 .desktop-pro-shell,
 .desktop-pro-shell * {
   min-width: 0;
@@ -4291,6 +4295,9 @@ select {
 }
 
 .desktop-pro-shell .app-header {
+  position: sticky;
+  top: 0;
+  z-index: 40;
   height: var(--chaos-compact-topbar-h) !important;
   min-height: var(--chaos-compact-topbar-h) !important;
   padding-inline: var(--chaos-compact-page-x) !important;
