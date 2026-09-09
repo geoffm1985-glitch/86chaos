@@ -3,6 +3,7 @@ const fs = require('fs');
 const path = require('path');
 const { writeJson } = require('./run-context.cjs');
 const CRITICAL_WORKFLOWS = [
+  { category: 'Restaurant invoice-to-menu intelligence', specHint: '36-restaurant-brain', titleHint: 'brutal restaurant scanner E2E' },
   { category: 'Authentication', specHint: '01-auth-route-health', titleHint: 'logs in and every major route renders' },
   { category: 'Major route health', specHint: '01-auth-route-health', titleHint: 'every major route' },
   { category: 'Role boundaries', specHint: '02-permission-role-security', titleHint: 'staff account cannot see' },

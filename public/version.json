@@ -1,16 +1,17 @@
 {
-  "version": "16.0.227",
-  "name": "86 Chaos 16.0.227",
-  "build": "16.0.227",
-  "label": "86 Chaos 16.0.227",
-  "releasedAt": "2026-09-05T00:59:41Z",
-  "releaseTitle": "Relative Reminder and Sticky Header Repair",
+  "version": "16.0.228",
+  "name": "86 Chaos 16.0.228",
+  "build": "16.0.228",
+  "label": "86 Chaos 16.0.228",
+  "releasedAt": "2026-09-09T06:32:06.468560+00:00",
+  "releaseTitle": "Restaurant Intelligence and Review Authority",
   "notes": [
-    "Understands spoken reminder durations phrased as for five minutes and converts them to the exact corresponding date and time.",
-    "Keeps the main application header pinned to the viewport while content scrolls.",
-    "Leaves reminder persistence, dispatch cadence, Firebase reads and writes, rules, indexes, hosting configuration, database rules, storage rules, and service-worker behavior unchanged."
+    "Preserves the 16.0.227 reminder and sticky-header repairs.",
+    "Uses allowlisted OpenAI models for primary invoice/menu extraction, bounded fallback, and human approval.",
+    "Adds approved vendor memory, deterministic pack math, batch yield costing, and practical food-safety records.",
+    "Strengthens source-bound release evidence, customer Help, and accounting/POS/label foundations."
   ],
-  "title": "86 Chaos 16.0.227",
-  "summary": "Surgical relative-reminder phrase and sticky application-header repair.",
-  "description": "Parses for-duration reminders locally and removes the non-scrolling overflow container that prevented the existing sticky header from remaining at the top."
+  "title": "86 Chaos 16.0.228",
+  "summary": "Server-enforced AI policy, OpenAI scanning, approved vendor memory, safe pack and recipe costing, and practical kitchen review.",
+  "description": "Server-enforced AI policy, OpenAI scanning, approved vendor memory, safe pack and recipe costing, and practical kitchen review."
 }

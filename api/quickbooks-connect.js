@@ -1,3 +1,4 @@
+const { authorizeQuickBooks } = require('./_quickbooks-authority');
 const crypto = require('crypto');
 const { admin, initAdmin } = require('./_chaos-admin');
 
@@ -9,11 +10,7 @@ const json = (res, status, payload) => {
 module.exports = async function handler(req, res) {
   if (req.method !== 'POST') return json(res, 405, { ok: false, message: 'POST only' });
   try {
-    const token = String(req.headers.authorization || '').replace('Bearer ', '').trim();
-    if (!token) return json(res, 401, { ok: false, message: 'Missing Firebase Auth token' });
-    const app = initAdmin(req);
-    const authClient = app && typeof app.auth === 'function' ? app.auth() : admin.auth(app);
-    await authClient.verifyIdToken(token);
+    await authorizeQuickBooks(req, String(req.body?.restaurantId || ''));
     const clientId = process.env.QUICKBOOKS_CLIENT_ID || process.env.INTUIT_CLIENT_ID || '';
   const redirectUri = process.env.QUICKBOOKS_REDIRECT_URI || process.env.INTUIT_REDIRECT_URI || '';
   const environment = (process.env.QUICKBOOKS_ENVIRONMENT || process.env.INTUIT_ENVIRONMENT || 'sandbox').toLowerCase();
@@ -36,13 +33,15 @@ module.exports = async function handler(req, res) {
       configured: true,
       environment,
       liveSyncEnabled: false,
-      connectUrl,
+      connectUrl: null,
+      callbackVerified: false,
+      tokenStorageVerified: false,
       statePreview: `${state.slice(0, 6)}...`,
-      message: 'QuickBooks OAuth URL generated. Token exchange/callback should store refresh tokens server-side only and require owner/admin approval before any QuickBooks write.'
+      message: 'QuickBooks configuration is present. Connection remains in readiness state until a verified callback, secure token storage, and recovery workflow are available.'
     });
   } catch (error) {
     const message = String(error?.message || 'QuickBooks connect failed safely.');
-    const status = /missing.*token|unauthorized/i.test(message) ? 401 : /invalid.*token|permission|forbidden/i.test(message) ? 403 : 500;
+    const status = error.statusCode || (/missing.*token|unauthorized/i.test(message) ? 401 : /invalid.*token|permission|forbidden/i.test(message) ? 403 : 500);
     return json(res, status, { ok: false, message: status >= 500 ? 'QuickBooks connect failed safely.' : message });
   }
 };

@@ -33,6 +33,8 @@ function ensureRunDir(runId = getRunId()) {
   const runDir = getRunDir(runId);
   fs.mkdirSync(resultsRoot, { recursive: true });
   fs.mkdirSync(runDir, { recursive: true });
+  const identityPath = path.join(runDir, 'source-identity-start.json');
+  if (!fs.existsSync(identityPath)) fs.writeFileSync(identityPath, JSON.stringify(require('./source-identity.cjs').captureSourceIdentity(root), null, 2));
   process.env.CHAOS_RELEASE_GATE_RUN_ID = runId;
   process.env.CHAOS_FULL_AUDIT_RUN_ID = runId;
   process.env.CHAOS_RELEASE_GATE_RUN_DIR = runDir;

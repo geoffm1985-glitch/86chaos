@@ -1,3 +1,4 @@
+const { resolveAiPolicy, enforceClientAiSelection, createProviderCallBudget } = require('./_ai-policy');
 const { initAdmin, authorize, requireAppCheckIfEnforced, readBody, writeAudit } = require('./_chaos-admin');
 const { enforceRateLimit, sendRateLimited } = require('./_rate-limit');
 
@@ -174,7 +175,9 @@ module.exports = async function handler(req, res) {
     const sanitized = fitted.payload;
     const serialized = JSON.stringify(sanitized);
 
-    const model = String(process.env.OPENAI_DIAGNOSTICS_MODEL || 'gpt-5-mini').trim();
+    const contract = resolveAiPolicy({ feature: 'diagnostics', route: '/api/openai-diagnostics-explain', authority: ctx });
+    enforceClientAiSelection({ ...req, body }, contract, { uid: ctx.uid });
+    const model = contract.model;
     if (!ALLOWED_DIAGNOSTICS_MODELS.has(model)) {
       return res.status(500).json({
         ok: false,
@@ -187,6 +190,8 @@ module.exports = async function handler(req, res) {
       HARD_MAX_OUTPUT_TOKENS,
       Math.max(1000, Number.parseInt(process.env.OPENAI_DIAGNOSTICS_MAX_OUTPUT_TOKENS || HARD_MAX_OUTPUT_TOKENS, 10) || HARD_MAX_OUTPUT_TOKENS)
     );
+    const callBudget = createProviderCallBudget('diagnostics');
+    callBudget.consume({ provider: 'openai', model, internal: true, attempt: 'internal-diagnostic' });
     const response = await fetch('https://api.openai.com/v1/responses', {
       method: 'POST',
       headers: {

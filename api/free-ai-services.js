@@ -1,4 +1,9 @@
 const { verifyRequestToken } = require('./_firebase-project-admin');
+const { authorizeAiScanWorkspace } = require('./_ai-usage');
+const { requireAppCheckIfEnforced } = require('./_chaos-admin');
+const { enforceRateLimit, sendRateLimited } = require('./_rate-limit');
+const { getHardRateLimit } = require('./_ai-policy');
+const { vendorMemory } = require('./_vendor-memory');
 
 const clean = (value = '') => String(value || '').trim();
 const safeError = (err) => clean(err?.message || err || 'Lookup failed.').replace(/(token|secret|private[_ -]?key|authorization|bearer)\s*[:=]?\s*[^\s,;}]+/gi, '$1 [redacted]').slice(0, 240);
@@ -53,16 +58,62 @@ async function foodLookup(body = {}) {
       nutriments: product.nutriments || {},
       categories: product.categories || '',
       code: product.code || ''
+      ,package: String(product.quantity || '').slice(0, 100),
+      sourceUrl: /^\d{8,14}$/.test(String(product.code || '')) ? `https://world.openfoodfacts.org/product/${product.code}` : 'https://world.openfoodfacts.org'
     }))
   };
+}
+
+function safeProductQuery(body) {
+  const code = String(body.productCode || '').trim();
+  if (/^\d{8,14}$/.test(code)) return code;
+  const query = clean(body.productName).slice(0, 160);
+  if (!query || /@|https?:|\b(?:customer|invoice|account|ship to|bill to|payment|terms|street|avenue|highway)\b|\b\d{5}(?:-\d{4})?\b/i.test(query)) throw new Error('Use a product description or barcode, without invoice, address, or customer details.');
+  return query.replace(/[^A-Za-z0-9 /().&-]/g, ' ').replace(/\s+/g, ' ').trim();
+}
+async function researchProduct(body, access, decoded) {
+  if (body.needsReview !== true) throw new Error('Product research is available from Needs Review.');
+  const query = safeProductQuery(body);
+  const code = String(body.productCode || '').replace(/[^A-Za-z0-9]/g, '').toUpperCase();
+  const base = { reviewOnly: true, approvalRequired: true, researchedAt: new Date().toISOString(), confidence: 'low' };
+  if (body.vendorId) {
+    const memory = await vendorMemory({ db: access.db, ctx: { restaurantId: access.restaurantId, uid: decoded.uid },
+      body: { action: 'vendor-memory-resolve', vendorId: body.vendorId, rows: [{ productCode: code, itemName: query }] } });
+    const active = memory.mappings.filter(row => row.active && row.state !== 'revoked');
+    if (active.length) return { ...base, provider: 'Workspace vendor memory', products: active.map(row => ({ name: row.inventoryItemName, package: row.approvedPackSize, code: row.productCode, sourceUrl: '/?tab=inventory' })),
+      reason: 'A prior approved workspace mapping exists. Confirm that this invoice still has the same package and unit.', evidenceRefs: active.map(row => `vendors/${body.vendorId}/productMappings/${row.id}`) };
+  }
+  // Bounded existing history, no broad customer-data crawl and no new index.
+  if (code) {
+    const history = await access.db.collection('invoices').where('restaurantId', '==', access.restaurantId).limit(20).get();
+    const matches = history.docs.flatMap(doc => {
+      const invoice = doc.data();
+      if (invoice.status && invoice.status !== 'approved') return [];
+      if (body.vendorId && invoice.vendorId !== body.vendorId) return [];
+      return (invoice.lineItems || []).filter(row => String(row.productCode || row.sku || '').replace(/[^A-Za-z0-9]/g, '').toUpperCase() === code).slice(0, 3)
+        .map(row => ({ name: row.itemName || row.description || '', package: row.packSize || '', code, sourceUrl: '/?tab=inventory', sourceInvoiceId: doc.id }));
+    }).slice(0, 5);
+    if (matches.length) return { ...base, provider: 'Workspace invoice history', products: matches, reason: 'Earlier approved invoice evidence was found. Package changes and substitutions still need review.' };
+  }
+  const publicResult = await foodLookup({ query });
+  return { ...base, provider: publicResult.provider, products: publicResult.products.map(product => ({ name: String(product.name).slice(0, 160), brands: String(product.brands).slice(0, 160), package: product.package, code: product.code, sourceUrl: product.sourceUrl })),
+    reason: 'Public product evidence may describe a retail package rather than your distributor case. Confirm SKU, package, and delivered quantity. Nothing is approved or changed.' };
 }
 
 module.exports = async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ ok: false, error: 'Use POST.' });
   try {
-    await verifyRequestToken(req, { requireProjectCredentials: false });
     const body = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : (req.body || {});
     const kind = clean(body.kind || body.type || '').toLowerCase();
+    const auth = await verifyRequestToken(req, { requireProjectCredentials: kind === 'product-research' });
+    if (kind === 'product-research') {
+      const access = await authorizeAiScanWorkspace({ app: auth.app, decoded: auth.decoded, restaurantId: body.restaurantId, scanType: 'invoice' });
+      const appCheck = await requireAppCheckIfEnforced(auth.app, req);
+      if (!appCheck.ok) return res.status(appCheck.status || 401).json({ ok: false, error: appCheck.error });
+      const rate = await enforceRateLimit({ db: access.db, req, decoded: auth.decoded, routeName: 'product-research', limit: getHardRateLimit('research', 4), windowMs: 60000 });
+      if (!rate.ok) return sendRateLimited(res, rate);
+      return res.status(200).json({ ok: true, kind, payload: await researchProduct(body, access, auth.decoded) });
+    }
     const payload = kind === 'weather' ? await weatherLookup(body) : kind === 'food' ? await foodLookup(body) : null;
     if (!payload) return res.status(400).json({ ok: false, error: 'Unknown free service lookup. Use kind weather or food.' });
     return res.status(200).json({ ok: true, kind, payload });
@@ -71,3 +122,4 @@ module.exports = async function handler(req, res) {
     return res.status(status).json({ ok: false, error: safeError(err) });
   }
 };
+module.exports.__test = { safeProductQuery, researchProduct, foodLookup };

@@ -1,3 +1,4 @@
+import PosImportReview from '../components/PosImportReview';
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Bell, Check, Camera, ChevronLeft, ChevronRight, MessageSquare, Plus, Trash2, Users, Calendar, Clock, X, Loader2, Package, ClipboardList, Menu, Settings, LogOut, Shield, Send, Repeat, Edit, Moon, Sun, TrendingUp, BookOpen, Search, ChefHat, Scale, Coffee, Star, Bug, Wrench, Globe, ThumbsUp, HelpCircle, Sparkles } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
@@ -3390,6 +3391,12 @@ const TabSales = ({ sales, timePunches = [], users = [], addToast, appUser }) =>
 
   return (
     <div className="desktop-management-page max-w-7xl mx-auto space-y-4 pb-24 animate-[slideIn_0.2s_ease-out]">
+      <PosImportReview restaurantId={appUser?.restaurantId} onUseDaily={row => {
+        if (!weekDays.includes(row.date)) return addToast('Choose import week', 'Open the week containing this date, then review the CSV again.');
+        const values = Object.fromEntries(['grossSales','netSales','laborCost','salesTax','tipsPaidOut','depositAmount'].filter(key => row[key] !== null).map(key => [key, row[key]]));
+        setEditData(current => ({ ...current, [row.date]: { ...current[row.date], ...values, notes: `${current[row.date]?.notes || ''} POS review: ${row.provider}; source ${row.importedPosId || row.date}.`.trim() } }));
+        addToast('Daily Close form filled', 'Review all amounts and save the day when ready.');
+      }}/>
       <div className="flex justify-between items-center bg-[#1A2126] border border-[#2A353D] rounded-2xl p-3 shadow-sm">
         <button onClick={() => changeWeek(-1)} className="p-2 bg-[#12161A] text-slate-300 rounded-xl hover:text-[#D4A381] border border-[#2A353D] transition-colors"><ChevronLeft size={20} /></button>
         <div className="text-center">
@@ -12191,7 +12198,7 @@ const TabBackOffice = ({ currentDate, users = [], sales = [], timePunches = [], 
   const checkWebhookStatus = async () => {
     setWebhookStatus({ checking: true, message: 'Checking QuickBooks webhook scaffold...' });
     try {
-      const response = await secureFetch('/api/quickbooks-webhook-status', { method: 'GET' });
+      const response = await secureFetch(`/api/quickbooks-webhook-status?restaurantId=${encodeURIComponent(restaurantId)}`, { method: 'GET' });
       const result = typeof response?.json === 'function' ? await response.json() : response;
       setWebhookStatus({ checking: false, message: result?.message || 'Webhook scaffold checked.' });
     } catch (error) {

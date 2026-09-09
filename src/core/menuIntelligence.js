@@ -1,4 +1,7 @@
+import menuApprovalHelpers from './menuApproval.cjs';
 import { MASTER_ADMIN_EMAIL } from './appCore';
+
+const { isApprovedDependency } = menuApprovalHelpers;
 
 const normalize = (value = '') => String(value || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 const tokenize = (value = '') => normalize(value).split(' ').filter(w => w.length > 1);
@@ -9,6 +12,7 @@ const EIGHTY_SIX_MENU_ALIASES = {
   hamburger: ['burger', 'hamburger', 'patty', 'patties', 'pty', 'beef', 'ground', 'gr', 'grnd', 'chuck', '80 20', 'gr pty', 'beef gr pty', 'beef patty'],
   cheeseburger: ['burger', 'hamburger', 'cheeseburger', 'patty', 'patties', 'pty', 'beef', 'ground', 'gr', 'grnd', 'cheese'],
   chicken: ['chicken', 'chix', 'ckn', 'breast', 'thigh', 'tender', 'tenders', 'strip', 'strips', 'chkn'],
+  ranch: ['ranch', 'house ranch', 'batch ranch'],
   wings: ['wing', 'wings', 'jumbo wing', 'chicken wing'],
   fries: ['fries', 'fry', 'potato', 'potatoes', 'french fry', 'ff'],
   pizza: ['pizza', 'dough', 'crust', 'mozzarella', 'moz', 'pepperoni', 'pep', 'sauce'],
@@ -109,7 +113,7 @@ const getInventoryVoiceAliases = (item = {}) => [
 const findInventoryByDependency = (dep = {}, inventoryItems = []) => {
   if (dep.inventoryItemId) {
     const byId = inventoryItems.find(item => item.id === dep.inventoryItemId);
-    if (byId) return byId;
+    return byId || null;
   }
   const depName = dep.inventoryItemName || dep.ingredientName || dep.itemName || '';
   const depKey = normalize(depName);
@@ -144,7 +148,8 @@ export const getMenuImpactForInventoryItem = (item = {}, menuDependencies = []) 
   const itemBlob = normalize([item.name, item.category, item.supplierName, item.vendorName, item.packSize, item.pfgCode, item.code, item.sku].filter(Boolean).join(' '));
   const aliases = aliasTokensFor(itemBlob || itemKey);
   const hits = (menuDependencies || []).filter(dep => {
-    if (dep.inventoryItemId && dep.inventoryItemId === item.id) return true;
+    if (!isApprovedDependency(dep)) return false;
+    if (dep.inventoryItemId) return dep.inventoryItemId === item.id;
     const depKey = normalize(dep.inventoryItemName || dep.ingredientName || dep.itemName);
     const menuKey = normalize(dep.menuItemName || dep.recipeName || dep.dishName || dep.name);
     if (itemKey && depKey && (depKey === itemKey || depKey.includes(itemKey) || itemKey.includes(depKey))) return true;
@@ -152,8 +157,10 @@ export const getMenuImpactForInventoryItem = (item = {}, menuDependencies = []) 
     if (itemBlob && menuKey && scoreTextMatch(menuKey, itemBlob) >= 65) return true;
     return aliases.some(alias => alias && depKey && (depKey.includes(alias) || alias.includes(depKey)));
   });
+  const batchIds = new Set(hits.filter(dep => dep.source === 'approved_batch_recipe').map(dep => dep.recipeId));
+  const downstream = menuDependencies.filter(dep => dep.batchRecipeId && batchIds.has(dep.batchRecipeId) && isApprovedDependency(dep));
   const byName = new Map();
-  hits.forEach(dep => {
+  [...hits.filter(dep => dep.source !== 'approved_batch_recipe'), ...downstream].forEach(dep => {
     const name = dep.menuItemName || dep.recipeName || dep.dishName || dep.name || 'Menu item';
     const key = normalize(name);
     if (!key) return;
@@ -249,7 +256,7 @@ export const resolveStrictEightySixMatch = (spoken = '', inventoryItems = [], me
   });
   inventoryEvidence.forEach(keepBest);
 
-  (menuDependencies || []).forEach(dep => {
+  (menuDependencies || []).filter(isApprovedDependency).forEach(dep => {
     const menuName = dep.menuItemName || dep.recipeName || dep.dishName || dep.name || '';
     const ingredientName = dep.inventoryItemName || dep.ingredientName || dep.itemName || '';
     const inventoryItem = findInventoryByDependency(dep, inventoryItems);
@@ -337,7 +344,7 @@ export const resolveEightySixInventoryMatch = (spoken = '', inventoryItems = [],
     method: 'inventory'
   })).sort((a, b) => b.score - a.score);
 
-  const menuMatches = (menuDependencies || []).map(dep => {
+  const menuMatches = (menuDependencies || []).filter(isApprovedDependency).map(dep => {
     const menuName = dep.menuItemName || dep.recipeName || dep.dishName || dep.name || '';
     const ingredientName = dep.inventoryItemName || dep.ingredientName || dep.itemName || '';
     const inventoryItem = findInventoryByDependency(dep, inventoryItems);

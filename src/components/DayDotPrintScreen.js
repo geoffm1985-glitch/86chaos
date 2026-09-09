@@ -1,7 +1,20 @@
-import React, { useEffect, useRef } from 'react';
+import labelPresetsHelpers from '../core/labelPresets.cjs';
+import React, { useEffect, useRef, useState } from 'react';
 import { Loader2 } from 'lucide-react';
 
+const { LABEL_PRESETS, normalizeLabelSettings } = labelPresetsHelpers;
+
+
+const readLabelSettings = () => { try { return normalizeLabelSettings(JSON.parse(localStorage.getItem('86chaos-label-settings') || '{}')); } catch (_) { return normalizeLabelSettings(); } };
+export function LabelPrintSetup() {
+  const [settings, setSettings] = useState(readLabelSettings);
+  const update = patch => { const next = normalizeLabelSettings({ ...settings, ...patch }); setSettings(next); try { localStorage.setItem('86chaos-label-settings', JSON.stringify(next)); } catch (_) {} };
+  return <details className="border border-[#2A353D] rounded-xl p-3 text-sm"><summary className="text-[#D4A381] font-bold cursor-pointer">Label printer setup</summary><div className="space-y-2 mt-2 text-slate-300"><p>Install the printer driver, match the loaded media, use 100% scale, and disable print headers and footers. Print one label to check alignment. Brother QL-810W-style printers use the normal driver dialog; direct hardware control is not required.</p><label>Label size <select aria-label="Label size" className="bg-[#12161A] p-2" value={settings.preset} onChange={e => update({ preset: e.target.value })}>{Object.entries(LABEL_PRESETS).map(([key, preset]) => <option key={key} value={key}>{preset.label}</option>)}</select></label>{['offsetX','offsetY'].map(key => <label key={key} className="block">{key === 'offsetX' ? 'Horizontal' : 'Vertical'} offset (mm)<input type="number" min="-5" max="5" step="0.5" className="bg-[#12161A] p-2 ml-2" value={settings[key]} onChange={e => update({ [key]: e.target.value })}/></label>)}</div></details>;
+}
+
 const DayDotPrintScreen = ({ labelsToPrint, prepDate, appUser, onClose, formatDisplayDate, getExpDate }) => {
+  const [labelSettings] = useState(readLabelSettings);
+  const preset = LABEL_PRESETS[labelSettings.preset];
   const onCloseRef = useRef(onClose);
   const closingRef = useRef(false);
   useEffect(() => { onCloseRef.current = onClose; }, [onClose]);
@@ -19,11 +32,11 @@ const DayDotPrintScreen = ({ labelsToPrint, prepDate, appUser, onClose, formatDi
   return (
     <div id="master-print-wrapper" className="fixed inset-0 z-[999999] bg-white overflow-y-auto text-black print:static print:block print:overflow-visible print:h-auto print:w-auto">
       <style>{`@media print { 
-        @page { size: 3.5in 1.1in; margin: 0; } 
+        @page { size: ${preset.width} ${preset.height}; margin: 0; }
         body, html { margin: 0 !important; background: white !important; height: auto !important; } 
         #master-print-wrapper { position: static !important; overflow: visible !important; height: auto !important; display: block !important; }
         .no-print { display: none !important; } 
-        .dk-label { width: 3.5in !important; height: 1.1in !important; display: flex !important; flex-direction: column !important; justify-content: center !important; padding: 0.05in 0.15in !important; box-sizing: border-box !important; page-break-after: always !important; margin: 0 !important; font-family: sans-serif !important; overflow: hidden !important; } 
+        .dk-label { width: ${preset.width} !important; height: ${preset.height} !important; transform: translate(${labelSettings.offsetX}mm, ${labelSettings.offsetY}mm); display: flex !important; flex-direction: column !important; justify-content: center !important; padding: 0.05in 0.15in !important; box-sizing: border-box !important; page-break-after: always !important; margin: 0 !important; font-family: sans-serif !important; overflow: hidden !important; }
         .dk-title { font-size: 16px !important; font-weight: 900 !important; text-transform: uppercase !important; text-align: center !important; margin-bottom: 2px !important; } 
         .dk-row { display: flex !important; justify-content: space-between !important; font-size: 11px !important; font-weight: bold !important; margin-bottom: 2px !important; } 
         .dk-exp { display: flex !important; justify-content: center !important; font-size: 14px !important; font-weight: 900 !important; border-top: 2px solid black !important; padding-top: 2px !important; } 

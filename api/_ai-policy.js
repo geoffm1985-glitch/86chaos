@@ -2,6 +2,17 @@ const crypto = require('crypto');
 
 const MEBIBYTE = 1024 * 1024;
 
+// Explicitly reviewed identifiers, verified against official OpenAI documentation
+// on 2026-09-08. Unknown aliases/snapshots are denied, never compared numerically.
+const OPENAI_CUSTOMER_MODELS = Object.freeze(['gpt-5-mini', 'gpt-5.5', 'gpt-5.5-2026-04-23']);
+const INTERNAL_DIAGNOSTIC_MODELS = Object.freeze(['gpt-5-mini']);
+const AI_ROUTES = Object.freeze({
+  invoice: '/api/scan-invoice', menu: '/api/scan-menu', recipe: '/api/scan',
+  voice: '/api/voice-command', help: '/api/help-assistant', manual: '/api/gemini-admin-manual',
+  diagnostics: '/api/openai-diagnostics-explain', research: '/api/free-ai-services',
+  order: '/api/python-order-intelligence', insights: '/api/python-ops-intelligence'
+});
+
 const GEMINI_MODEL_ALLOWLIST = Object.freeze([
   'gemini-2.5-flash-lite',
   'gemini-3.1-flash-lite',
@@ -48,8 +59,65 @@ const AI_HARD_LIMITS = Object.freeze({
     maxProviderCalls: 3,
     maxOutputTokens: 8192,
     maxRequestsPerMinute: 4
-  })
+  }),
+  help: Object.freeze({ maxInputCharacters: 1200, maxProviderCalls: 1, maxOutputTokens: 650, maxRequestsPerMinute: 12 }),
+  diagnostics: Object.freeze({ maxInputCharacters: 120000, maxProviderCalls: 1, maxOutputTokens: 5000, maxRequestsPerMinute: 8 }),
+  research: Object.freeze({ maxInputCharacters: 160, maxProviderCalls: 1, maxOutputTokens: 1200, maxRequestsPerMinute: 4 }),
+  order: Object.freeze({ maxProviderCalls: 1, maxOutputTokens: 2048, maxRequestsPerMinute: 4 }),
+  insights: Object.freeze({ maxProviderCalls: 1, maxOutputTokens: 2048, maxRequestsPerMinute: 4 })
 });
+
+function normalizeProvider(provider = '') {
+  if (provider === 'google_gemini') return 'gemini';
+  if (provider === 'openai' || provider === 'gemini') return provider;
+  throw policyError('AI provider is not allowlisted.', 'AI_PROVIDER_NOT_ALLOWED');
+}
+
+function assertApprovedModel(provider, model, internal = false) {
+  const selectedProvider = normalizeProvider(provider);
+  const selectedModel = selectedProvider === 'gemini' ? normalizeGeminiModel(model) : clean(model);
+  const allowlist = selectedProvider === 'gemini' ? GEMINI_MODEL_ALLOWLIST
+    : internal ? INTERNAL_DIAGNOSTIC_MODELS : OPENAI_CUSTOMER_MODELS;
+  if (!allowlist.includes(selectedModel)) throw policyError('AI model is not permitted by the server policy.', 'AI_MODEL_NOT_ALLOWED', 403);
+  return selectedModel;
+}
+
+function resolveAiPolicy({ feature, route, authority = null, provider = 'openai', env = process.env } = {}) {
+  const limits = getFeaturePolicy(feature);
+  if (AI_ROUTES[feature] !== route) throw policyError('AI workflow route is not registered.', 'AI_ROUTE_NOT_ALLOWED', 403);
+  const internal = feature === 'diagnostics' && route === AI_ROUTES.diagnostics;
+  // authority must come from the route's existing authorize() result, never a body.
+  if (internal && !(authority?.ok === true && authority?.isSuperAdmin === true && authority?.decoded?.uid)) {
+    throw policyError('Internal diagnostic authorization is required.', 'AI_INTERNAL_ONLY', 403);
+  }
+  const chosenProvider = normalizeProvider(provider);
+  const configured = internal ? env.OPENAI_DIAGNOSTICS_MODEL
+    : chosenProvider === 'openai' ? env[`${feature.toUpperCase()}_OPENAI_MODEL`] || env.CUSTOMER_OPENAI_MODEL
+      : env[`${feature.toUpperCase()}_GEMINI_MODEL`];
+  const model = assertApprovedModel(chosenProvider, configured || (chosenProvider === 'openai' ? 'gpt-5-mini' : 'gemini-2.5-flash-lite'), internal);
+  return Object.freeze({ feature, route, provider: chosenProvider, model, actorType: internal ? 'internal-diagnostic' : 'customer',
+    reasoningEffort: 'low', serviceTier: 'default', ...limits,
+    fallbackAllowed: !internal && ['invoice', 'menu'].includes(feature) && env.AI_SCANNER_GEMINI_FALLBACK === 'true' });
+}
+
+function enforceClientAiSelection(req, contract, actor = {}, logger = console.warn) {
+  let body = req?.body && typeof req.body === 'object' ? req.body : {};
+  if (typeof req?.body === 'string') { try { body = JSON.parse(req.body) || {}; } catch (_) {} }
+  const query = req?.query || {};
+  const selections = [
+    [contract.model, [body.model, body.requestedModel, body.aiModel, body.ai?.model, body.options?.model, query.model, req?.headers?.['x-ai-model'], req?.headers?.['x-openai-model']]],
+    [contract.provider, [body.provider, query.provider, req?.headers?.['x-ai-provider']]],
+    [contract.reasoningEffort, [body.reasoning_effort, body.reasoning?.effort, query.reasoning_effort]],
+    [contract.serviceTier, [body.service_tier, query.service_tier]]
+  ];
+  const rejected = selections.flatMap(([approved, values]) => values.filter(value => value != null && value !== '' && value !== approved)).at(0);
+  if (rejected === undefined) return contract;
+  const safeModel = typeof rejected === 'string' && /^(?:gpt-|gemini-|o[1-9]|astra$|sol$)[a-z0-9.\/-]{0,65}$/i.test(rejected) ? rejected : '[unapproved selection]';
+  logger(JSON.stringify({ code: 'AI_CLIENT_OVERRIDE_BLOCKED', feature: contract.feature, route: contract.route,
+    workspaceId: clean(actor.restaurantId).slice(0, 100), uid: clean(actor.uid).slice(0, 100),
+    requestedModel: safeModel, approvedReplacement: contract.model, timestamp: new Date().toISOString() }));
+  throw policyError('AI models and limits are selected by 86 Chaos. This selection is not permitted.', 'AI_CLIENT_OVERRIDE_BLOCKED', 400);
+}
 
 function clean(value = '') {
   return String(value == null ? '' : value).trim();
@@ -126,7 +194,8 @@ function createProviderCallBudget(feature) {
   let used = 0;
   const attempts = [];
   return {
-    consume({ model = '', attempt = 'generation' } = {}) {
+    consume({ provider = 'gemini', model = '', attempt = 'generation', internal = false } = {}) {
+      const approvedModel = assertApprovedModel(provider, model, internal && feature === 'diagnostics');
       if (used >= policy.maxProviderCalls) {
         throw policyError(
           `${feature} reached its hard ${policy.maxProviderCalls}-call AI budget. No additional model call was made.`,
@@ -135,9 +204,17 @@ function createProviderCallBudget(feature) {
         );
       }
       used += 1;
-      attempts.push({ number: used, model: normalizeGeminiModel(model), attempt: clean(attempt).slice(0, 60) || 'generation' });
+      attempts.push({ number: used, provider: normalizeProvider(provider), model: approvedModel, attempt: clean(attempt).slice(0, 60) || 'generation' });
       return used;
     },
+    recordUsage(inputTokens = 0, outputTokens = 0) {
+      if (!attempts.length) return;
+      const last = attempts[attempts.length - 1];
+      last.inputTokens = Math.max(0, Number(inputTokens) || 0); last.outputTokens = Math.max(0, Number(outputTokens) || 0);
+      console.info(JSON.stringify({ code: 'AI_PROVIDER_USAGE', feature, provider: last.provider, model: last.model, providerCallCount: used, inputTokens: last.inputTokens, outputTokens: last.outputTokens }));
+    },
+    get inputTokens() { return attempts.reduce((sum, row) => sum + (row.inputTokens || 0), 0); },
+    get outputTokens() { return attempts.reduce((sum, row) => sum + (row.outputTokens || 0), 0); },
     get used() { return used; },
     get remaining() { return Math.max(0, policy.maxProviderCalls - used); },
     get attempts() { return attempts.map(row => ({ ...row })); },
@@ -307,12 +384,16 @@ async function completeAiRequestLock(lock, status = 'completed', details = {}) {
     updatedAt: new Date(),
     completedAt: new Date(),
     providerCallCount: Math.max(0, Number(details.providerCallCount || 0)),
+    inputTokens: Math.max(0, Number(details.inputTokens || 0)), outputTokens: Math.max(0, Number(details.outputTokens || 0)),
     model: normalizeGeminiModel(details.model || ''),
+    provider: clean(details.provider || ''),
     errorCode: clean(details.errorCode || '').slice(0, 80)
   }, { merge: true });
 }
 
 module.exports = {
+  OPENAI_CUSTOMER_MODELS, INTERNAL_DIAGNOSTIC_MODELS, AI_ROUTES,
+  normalizeProvider, assertApprovedModel, resolveAiPolicy, enforceClientAiSelection, policyError,
   GEMINI_MODEL_ALLOWLIST,
   AI_HARD_LIMITS,
   getFeaturePolicy,

@@ -1,3 +1,4 @@
+const { captureSourceIdentity, compareSourceIdentity } = require('./source-identity.cjs');
 const fs = require('fs');
 const path = require('path');
 const { ensureRunDir, readJsonIfExists } = require('./run-context.cjs');
@@ -425,6 +426,9 @@ if (hasOwn(nodeTestSummary, 'ok') && nodeTestSummary.ok !== true) {
 for (const text of javaFailures) addGroup('missing-java-prerequisite', text);
 for (const text of nodeFailures) addGroup('node-test-failure', text);
 
+const sourceIdentityEnd = captureSourceIdentity(root);
+const sourceIdentityValidation = compareSourceIdentity(readJsonIfExists(path.join(runDir, 'source-identity-start.json')), sourceIdentityEnd);
+fs.writeFileSync(path.join(runDir, 'source-identity-end.json'), JSON.stringify({ ...sourceIdentityEnd, validation: sourceIdentityValidation }, null, 2));
 const primaryBlockingFailure = preflightFailures[0]
   || dependencyFailures[0]
   || serverBoundaryFailures[0]
@@ -438,9 +442,10 @@ const primaryBlockingFailure = preflightFailures[0]
   || (rulesGateReport?.firstActionableFailure || '')
   || (unexpectedTests[0] ? `${unexpectedTests[0].title}: ${unexpectedTests[0].error}` : '')
   || runnerBlockingReason
+  || sourceIdentityValidation.failures[0]
   || (missingArtifacts[0] ? `Missing artifact: ${missingArtifacts[0]}` : '');
 
-const ok = failedTests.length === 0
+const ok = sourceIdentityValidation.ok && failedTests.length === 0
   && timedOutTests.length === 0
   && skippedTests.length === 0
   && stepFailures === 0
@@ -461,6 +466,9 @@ const ok = failedTests.length === 0
 
 const summary = {
   ok,
+  sourceIdentityValidation,
+  sourceIdentity: { version: sourceIdentityEnd.version, sourceHash: sourceIdentityEnd.sourceHash, commit: sourceIdentityEnd.commit, branch: sourceIdentityEnd.branch },
+  fullReleaseCertified: ok && !failedOnlyMode,
   generatedAt: new Date().toISOString(),
   runId,
   runDir,

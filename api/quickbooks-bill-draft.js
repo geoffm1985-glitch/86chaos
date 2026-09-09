@@ -1,3 +1,5 @@
+const { hash, assertTenant, safeId } = require('./_invoice-approval');
+const { authorizeQuickBooks } = require('./_quickbooks-authority');
 const { admin, initAdmin, clean } = require('./_chaos-admin');
 
 const json = (res, status, payload) => {
@@ -39,7 +41,7 @@ const safeLine = (line = {}, index = 0) => ({
   quantity: Number(line.quantity || 1) || 1,
   unitCost: Number(line.unitCost || line.unitPrice || line.casePrice || 0) || 0,
   amount: Number(line.amount || line.totalPrice || line.extendedPrice || 0) || 0,
-  accountName: clean(line.accountName || 'Food Purchases').slice(0, 160),
+  accountName: clean(line.accountName || '').slice(0, 160),
   className: clean(line.className || '').slice(0, 160),
   locationName: clean(line.locationName || '').slice(0, 160),
   inventoryItemId: clean(line.inventoryItemId || '').slice(0, 160),
@@ -58,7 +60,7 @@ const normalizeDraft = (draft = {}) => {
   if (!clean(draft.accountsPayable)) issues.push('accounts payable mapping missing');
   lines.forEach((line, idx) => { if (!line.accountName) issues.push(`line ${idx + 1} account missing`); });
   return {
-    draftType: 'Bill',
+    draftType: draft.draftType === 'VendorCredit' || draft.draftType === 'Credit' ? 'VendorCredit' : 'Bill',
     source: '86 Chaos invoice scan',
     invoiceId: clean(draft.invoiceId || ''),
     invoiceNumber: clean(draft.invoiceNumber || ''),
@@ -67,7 +69,7 @@ const normalizeDraft = (draft = {}) => {
     vendorName: clean(draft.vendorName || ''),
     vendorId: clean(draft.vendorId || ''),
     vendorMatchSource: clean(draft.vendorMatchSource || ''),
-    accountsPayable: clean(draft.accountsPayable || 'Accounts Payable'),
+    accountsPayable: clean(draft.accountsPayable || ''),
     defaultClass: clean(draft.defaultClass || '').slice(0, 160),
     defaultLocation: clean(draft.defaultLocation || '').slice(0, 160),
     memo: clean(draft.memo || '').slice(0, 500),
@@ -77,7 +79,7 @@ const normalizeDraft = (draft = {}) => {
     sendStatus: 'not_sent',
     validationIssues: issues,
     quickBooksShape: {
-      entity: 'Bill',
+      entity: draft.draftType === 'VendorCredit' || draft.draftType === 'Credit' ? 'VendorCredit' : 'Bill',
       note: 'Review-first payload prepared by 86 Chaos. Not sent unless server credentials, token storage, and owner approval are enabled.',
       vendorRef: draft.vendorId ? { value: draft.vendorId, name: draft.vendorName } : null,
       txnDate: draft.invoiceDate || null,
@@ -91,11 +93,20 @@ const normalizeDraft = (draft = {}) => {
 module.exports = async function handler(req, res) {
   if (req.method !== 'POST') return json(res, 405, { ok: false, message: 'POST only' });
   try {
-    const { decoded } = await verifyUser(req);
     const body = await readBody(req);
+    const { decoded, db } = await authorizeQuickBooks(req, clean(body.restaurantId || ''));
     const mode = clean(body.mode || 'draft');
     const restaurantId = clean(body.restaurantId || '');
     const draft = normalizeDraft(body.draft || {});
+    draft.approvalState = 'needs_owner_review';
+    draft.sourceReference = null;
+    if (draft.invoiceId) {
+      if (!safeId(draft.invoiceId)) return json(res, 400, { ok: false, message: 'Invalid source invoice.' });
+      const source = await db.collection('invoices').doc(draft.invoiceId).get();
+      assertTenant(source.exists ? source.data() : null, body.restaurantId);
+      if (source.data().status && source.data().status !== 'approved') return json(res, 400, { ok: false, message: 'Approve the source invoice first.' });
+      draft.sourceReference = { collection: 'invoices', id: source.id, sha256: hash(JSON.stringify(source.data())), approvedAt: source.data().approvedAt || source.data().processedAt || null };
+    }
     const canWriteLive = String(process.env.QUICKBOOKS_ALLOW_SERVER_WRITES || '').toLowerCase() === 'true';
     const hasClient = !!(process.env.QUICKBOOKS_CLIENT_ID || process.env.INTUIT_CLIENT_ID);
     const hasSecret = !!(process.env.QUICKBOOKS_CLIENT_SECRET || process.env.INTUIT_CLIENT_SECRET);
@@ -122,7 +133,7 @@ module.exports = async function handler(req, res) {
       return json(res, 200, {
         ok: true,
         sent: false,
-        liveSyncEnabled: true,
+        liveSyncEnabled: false,
         status: 'send_ready_not_implemented',
         draft,
         message: 'Live send guard passed, but the final QuickBooks write call is intentionally not implemented until token storage and callback QA are complete.'
@@ -143,3 +154,5 @@ module.exports = async function handler(req, res) {
     return json(res, status, { ok: false, status: 'failed_safe', message: status >= 500 ? 'Request failed safely.' : message });
   }
 };
+
+module.exports.normalizeDraft = normalizeDraft;

@@ -1,3 +1,4 @@
+const { resolveAiPolicy, enforceClientAiSelection } = require('./_ai-policy');
 const { initAdmin, requireAppCheckIfEnforced } = require('./_chaos-admin');
 const { enforceRateLimit, sendRateLimited } = require('./_rate-limit');
 const {
@@ -29,6 +30,7 @@ module.exports = async function handler(req, res) {
     if (!token) return res.status(401).json({ intent: 'unknown', error: 'Sign in before using AI voice parsing.' });
     const decoded = await app.auth().verifyIdToken(token);
     const db = app.firestore();
+    enforceClientAiSelection(req, resolveAiPolicy({ feature: 'voice', route: '/api/voice-command', provider: 'gemini' }), { uid: decoded.uid });
     const voiceRate = await enforceRateLimit({ db, req, decoded, routeName: 'voice-command', limit: getHardRateLimit('voice', process.env.VOICE_COMMAND_RATE_LIMIT), windowMs: 60 * 1000 });
     if (!voiceRate.ok) return sendRateLimited(res, voiceRate);
 
@@ -64,6 +66,7 @@ module.exports = async function handler(req, res) {
       }
       if (response.ok) {
         data = await response.json().catch(() => null);
+        callBudget.recordUsage(data?.usageMetadata?.promptTokenCount, data?.usageMetadata?.candidatesTokenCount);
         break;
       }
       const rawError = await response.text().catch(() => '');
@@ -83,6 +86,7 @@ module.exports = async function handler(req, res) {
         aiMayNotSelectItem: true
       };
     }
+    if (parsed && parsed.intent !== 'navigate' && parsed.intent !== 'help' && parsed.intent !== 'unknown') parsed.needsConfirmation = true;
     return res.status(200).json(parsed || { intent: 'unknown' });
   } catch (err) {
     const status = err?.statusCode || (/authorization|token|login|sign in/i.test(err?.message || '') ? 401 : 200);

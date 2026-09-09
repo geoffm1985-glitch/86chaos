@@ -5,3 +5,6 @@ release-gate-tools/node_modules/
 playwright-report/
 test-results/
 coverage/
+build/
+public/build-identity.json
+__pycache__/

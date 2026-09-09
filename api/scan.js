@@ -10,6 +10,7 @@ const { authorizeAiScanWorkspace, getIdempotencyKey } = aiUsage;
 const { enforceRateLimit, sendRateLimited } = rateLimit;
 const { requireAppCheckIfEnforced } = chaosAdmin;
 const {
+  resolveAiPolicy, enforceClientAiSelection,
   getAllowedGeminiModels,
   getHardOutputTokenLimit,
   getHardRateLimit,
@@ -52,6 +53,7 @@ export default async function handler(req, res) {
     const appCheck = await requireAppCheckIfEnforced(authContext.app, req);
     if (!appCheck.ok) return res.status(appCheck.status || 401).json({ error: appCheck.error });
 
+    enforceClientAiSelection(req, resolveAiPolicy({ feature: 'recipe', route: '/api/scan', provider: 'gemini' }), { restaurantId, uid: authContext.decoded.uid });
     const recipeRate = await enforceRateLimit({
       db: access.db,
       req,
@@ -129,6 +131,7 @@ export default async function handler(req, res) {
     const raw = await response.text();
     let data = {};
     try { data = JSON.parse(raw || '{}'); } catch (_) {}
+    providerBudget.recordUsage(data?.usageMetadata?.promptTokenCount, data?.usageMetadata?.candidatesTokenCount);
     if (!response.ok || data.error) throw new Error(data?.error?.message || `Recipe scanner failed with ${response.status}.`);
     const rawText = data?.candidates?.[0]?.content?.parts?.map(part => part.text || '').join('\n') || '';
     if (!rawText) throw new Error('Gemini returned no recipe text.');
@@ -136,7 +139,7 @@ export default async function handler(req, res) {
     const recipeData = JSON.parse(cleanText);
 
     await completeAiRequestLock(requestLock, 'completed', {
-      providerCallCount: providerBudget.used,
+      providerCallCount: providerBudget.used, inputTokens: providerBudget.inputTokens, outputTokens: providerBudget.outputTokens,
       model: selectedModel
     });
     return res.status(200).json({

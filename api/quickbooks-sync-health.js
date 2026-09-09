@@ -1,3 +1,4 @@
+const { authorizeQuickBooks } = require('./_quickbooks-authority');
 const { admin, initAdmin, clean } = require('./_chaos-admin');
 
 const json = (res, status, payload) => {
@@ -36,8 +37,8 @@ const verifyUser = async (req) => {
 module.exports = async function handler(req, res) {
   if (req.method !== 'POST') return json(res, 405, { ok: false, message: 'POST only' });
   try {
-    const { decoded } = await verifyUser(req);
     const body = await readBody(req);
+    const { decoded, db } = await authorizeQuickBooks(req, clean(body.restaurantId || ''));
     const mapping = body.mapping || {};
     const counts = body.counts || {};
     const required = ['accountsPayable', 'bankAccount', 'salesIncome', 'foodPurchases', 'beveragePurchases', 'supplies', 'cashOverShort'];
