@@ -1,5 +1,5 @@
-import restaurantPackHelpers from '../core/restaurantPack.cjs';
-import menuApprovalHelpers from '../core/menuApproval.cjs';
+import restaurantPackHelpers from '../core/restaurantPack.js';
+import menuApprovalHelpers from '../core/menuApproval.js';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Bell, Calendar, Check, Clock, Edit3, Loader2, Mic, Package, Plus, Save, Share2, Sparkles, Trash2, Upload, X } from 'lucide-react';
 import { collection, addDoc, updateDoc, deleteDoc, doc, getDocs, query, where, writeBatch, orderBy, limit as firestoreLimit } from 'firebase/firestore';

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import posNormalizationHelpers from '../core/posNormalization.cjs';
+import posNormalizationHelpers from '../core/posNormalization.js';
 import { T } from '../core/appCore';
 
 const { POS_FIELDS, parsePosCsv, normalizePosImport } = posNormalizationHelpers;

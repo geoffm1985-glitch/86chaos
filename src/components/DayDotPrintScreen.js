@@ -1,4 +1,4 @@
-import labelPresetsHelpers from '../core/labelPresets.cjs';
+import labelPresetsHelpers from '../core/labelPresets.js';
 import React, { useEffect, useRef, useState } from 'react';
 import { Loader2 } from 'lucide-react';
 

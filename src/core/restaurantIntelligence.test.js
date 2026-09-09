@@ -1,5 +1,5 @@
 import { buildMenuCostBreakdowns, getBatchRecipeCost, getInventoryUnitCost } from './menuCosting';
-import menuApprovalHelpers from './menuApproval.cjs';
+import menuApprovalHelpers from './menuApproval.js';
 import { searchCustomerHelp, validateCustomerHelpCorpus } from './customerHelpKnowledge';
 
 const { isApprovedDependency } = menuApprovalHelpers;

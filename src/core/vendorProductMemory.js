@@ -1,9 +1,7 @@
-'use strict';
-
-require('./restaurantPack.cjs');
-require('./vendorProductMemory.shared.js');
+import './restaurantPack.js';
+import './vendorProductMemory.shared.js';
 
 const vendorProductMemory = globalThis.__86ChaosVendorProductMemoryShared;
 if (!vendorProductMemory) throw new Error('86 Chaos vendorProductMemory failed to initialize.');
 
-module.exports = vendorProductMemory;
+export default vendorProductMemory;

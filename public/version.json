@@ -1,17 +1,16 @@
 {
-  "version": "16.0.228",
-  "name": "86 Chaos 16.0.228",
-  "build": "16.0.228",
-  "label": "86 Chaos 16.0.228",
-  "releasedAt": "2026-09-09T06:32:06.468560+00:00",
-  "releaseTitle": "Restaurant Intelligence and Review Authority",
+  "version": "16.0.229",
+  "name": "86 Chaos 16.0.229",
+  "build": "16.0.229",
+  "label": "86 Chaos 16.0.229",
+  "releasedAt": "2026-09-09T19:50:22.819189+00:00",
+  "releaseTitle": "Restaurant Helper Runtime Repair",
   "notes": [
-    "Preserves the 16.0.227 reminder and sticky-header repairs.",
-    "Uses allowlisted OpenAI models for primary invoice/menu extraction, bounded fallback, and human approval.",
-    "Adds approved vendor memory, deterministic pack math, batch yield costing, and practical food-safety records.",
-    "Strengthens source-bound release evidence, customer Help, and accounting/POS/label foundations."
+    "Repairs production loading of restaurant helpers used by Prep, Menu Intelligence, Inventory, POS imports and labels.",
+    "Preserves the 16.0.228 intelligence behavior and 16.0.227 known-good baseline.",
+    "Adds a production-bundler execution regression to the existing server release gate."
   ],
-  "title": "86 Chaos 16.0.228",
-  "summary": "Server-enforced AI policy, OpenAI scanning, approved vendor memory, safe pack and recipe costing, and practical kitchen review.",
-  "description": "Server-enforced AI policy, OpenAI scanning, approved vendor memory, safe pack and recipe costing, and practical kitchen review."
+  "title": "86 Chaos 16.0.229",
+  "summary": "Repairs restaurant helper imports that caused browser runtime recovery screens.",
+  "description": "Repairs restaurant helper imports that caused browser runtime recovery screens."
 }

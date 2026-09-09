@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { T, secureFetch } from '../core/appCore';
-import restaurantPackHelpers from '../core/restaurantPack.cjs';
+import restaurantPackHelpers from '../core/restaurantPack.js';
 
 const { resolveInvoiceQuantity } = restaurantPackHelpers;
 

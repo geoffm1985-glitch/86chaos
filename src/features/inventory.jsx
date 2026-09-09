@@ -18,8 +18,8 @@ import { CheersLogo, Modal, DrawerMenu, DayDotPrintScreen, MapClickListener, Sma
 import { usePlanAccess } from '../hooks/usePlanAccess';
 import { useScanHistory } from '../hooks/useScanHistory';
 import { FEATURE_KEYS } from '../config/plans';
-import restaurantPackHelpers from '../core/restaurantPack.cjs';
-import vendorProductMemoryHelpers from '../core/vendorProductMemory.cjs';
+import restaurantPackHelpers from '../core/restaurantPack.js';
+import vendorProductMemoryHelpers from '../core/vendorProductMemory.js';
 import { InvoiceRowReview, VendorMemoryPanel, invoiceReviewRequest } from '../components/InvoiceReviewTools';
 
 const { parseCasePack, convertQuantity } = restaurantPackHelpers;

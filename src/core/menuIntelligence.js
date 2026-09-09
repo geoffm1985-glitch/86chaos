@@ -1,4 +1,4 @@
-import menuApprovalHelpers from './menuApproval.cjs';
+import menuApprovalHelpers from './menuApproval.js';
 import { MASTER_ADMIN_EMAIL } from './appCore';
 
 const { isApprovedDependency } = menuApprovalHelpers;

@@ -1,5 +1,5 @@
 import { LabelPrintSetup } from '../components/DayDotPrintScreen';
-import foodSafetyHelpers from '../core/foodSafety.cjs';
+import foodSafetyHelpers from '../core/foodSafety.js';
 import { invoiceReviewRequest } from '../components/InvoiceReviewTools';
 import RecipeBatchCostEditor from '../components/RecipeBatchCostEditor';
 import React, { useState, useEffect, useRef, useMemo } from 'react';

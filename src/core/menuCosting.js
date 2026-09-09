@@ -1,5 +1,5 @@
-import restaurantPackHelpers from './restaurantPack.cjs';
-import menuApprovalHelpers from './menuApproval.cjs';
+import restaurantPackHelpers from './restaurantPack.js';
+import menuApprovalHelpers from './menuApproval.js';
 
 const { parseCasePack, convertQuantity, normalizeUnit, usableYield } = restaurantPackHelpers;
 const { isApprovedDependency } = menuApprovalHelpers;

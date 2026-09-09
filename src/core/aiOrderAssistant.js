@@ -1,4 +1,4 @@
-import menuApprovalHelpers from './menuApproval.cjs';
+import menuApprovalHelpers from './menuApproval.js';
 
 const { isApprovedDependency } = menuApprovalHelpers;
 const DAY_MS = 24 * 60 * 60 * 1000;
