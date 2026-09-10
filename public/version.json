@@ -1,16 +1,16 @@
 {
-  "version": "16.0.229",
-  "name": "86 Chaos 16.0.229",
-  "build": "16.0.229",
-  "label": "86 Chaos 16.0.229",
-  "releasedAt": "2026-09-09T19:50:22.819189+00:00",
-  "releaseTitle": "Restaurant Helper Runtime Repair",
+  "version": "16.0.230",
+  "name": "86 Chaos 16.0.230",
+  "build": "16.0.230",
+  "label": "86 Chaos 16.0.230",
+  "releasedAt": "2026-09-10T02:57:03.059107+00:00",
+  "releaseTitle": "Release Gate Expected Skip Repair",
   "notes": [
-    "Repairs production loading of restaurant helpers used by Prep, Menu Intelligence, Inventory, POS imports and labels.",
-    "Preserves the 16.0.228 intelligence behavior and 16.0.227 known-good baseline.",
-    "Adds a production-bundler execution regression to the existing server release gate."
+    "Corrects full release-gate reporting for existing intentional skips when their required coverage passes.",
+    "Unexplained skips, missing companion coverage, source changes and actual failures remain release blockers.",
+    "Preserves 16.0.229 application behavior and all existing browser tests."
   ],
-  "title": "86 Chaos 16.0.229",
-  "summary": "Repairs restaurant helper imports that caused browser runtime recovery screens.",
-  "description": "Repairs restaurant helper imports that caused browser runtime recovery screens."
+  "title": "86 Chaos 16.0.230",
+  "summary": "Repairs release-gate reporting while preserving application behavior and test coverage.",
+  "description": "Repairs release-gate reporting while preserving application behavior and test coverage."
 }

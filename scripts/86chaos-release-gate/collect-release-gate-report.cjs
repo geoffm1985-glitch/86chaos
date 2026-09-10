@@ -1,4 +1,5 @@
 const { captureSourceIdentity, compareSourceIdentity } = require('./source-identity.cjs');
+const { validateReleaseSkips } = require('./expected-skips.cjs');
 const fs = require('fs');
 const path = require('path');
 const { ensureRunDir, readJsonIfExists } = require('./run-context.cjs');
@@ -142,6 +143,7 @@ function collectSuites(suites = [], parents = []) {
             duration: r.duration || 0,
             projectName: t.projectName || '',
             file: spec.file || '',
+            annotations: (r.annotations || t.annotations || []).filter(annotation => annotation.type === 'skip').map(annotation => ({ type: 'skip', description: annotation.description || '' })),
           });
         }
       }
@@ -151,6 +153,7 @@ function collectSuites(suites = [], parents = []) {
 }
 if (playwright) collectSuites(playwright.suites || []);
 const skippedTests = tests.filter(t => t.status === 'skipped');
+const skipValidation = validateReleaseSkips(tests.map(t => ({ ...t, file: normSpec(t.file), title: stripPlaywrightFileTitlePrefix(t.file, t.title) })));
 const timedOutTests = tests.filter(t => t.status === 'timedOut');
 const failedTests = tests.filter(t => !['passed', 'skipped', 'timedOut'].includes(t.status));
 const unexpectedTests = [...failedTests, ...timedOutTests];
@@ -410,6 +413,7 @@ for (const text of [...setupFailures, ...cleanupFailures, ...missingArtifacts]) 
   addGroup(group, text);
 }
 if (noTestsSelectedFailure) addGroup('failed-only-playwright-selection', noTestsSelectedFailure);
+for (const skip of skipValidation.unexpected) addGroup('unexpected-skip', `[${skip.projectName}] ${skip.title}: ${skip.reason}`);
 
 
 const javaFailures = [];
@@ -443,11 +447,12 @@ const primaryBlockingFailure = preflightFailures[0]
   || (unexpectedTests[0] ? `${unexpectedTests[0].title}: ${unexpectedTests[0].error}` : '')
   || runnerBlockingReason
   || sourceIdentityValidation.failures[0]
+  || (skipValidation.unexpected[0] ? `Unexpected skipped test [${skipValidation.unexpected[0].projectName}] ${skipValidation.unexpected[0].title}: ${skipValidation.unexpected[0].reason}` : '')
   || (missingArtifacts[0] ? `Missing artifact: ${missingArtifacts[0]}` : '');
 
 const ok = sourceIdentityValidation.ok && failedTests.length === 0
   && timedOutTests.length === 0
-  && skippedTests.length === 0
+  && skipValidation.ok
   && stepFailures === 0
   && missingArtifacts.length === 0
   && !versionMismatch
@@ -467,6 +472,7 @@ const ok = sourceIdentityValidation.ok && failedTests.length === 0
 const summary = {
   ok,
   sourceIdentityValidation,
+  skipValidation,
   sourceIdentity: { version: sourceIdentityEnd.version, sourceHash: sourceIdentityEnd.sourceHash, commit: sourceIdentityEnd.commit, branch: sourceIdentityEnd.branch },
   fullReleaseCertified: ok && !failedOnlyMode,
   generatedAt: new Date().toISOString(),
@@ -583,10 +589,12 @@ const humanSummaryLines = createCompletedSummaryLines({
   results: humanResultRows,
   mode: summary.selectionMode || selectionMode || 'release',
   runDir,
-  nextCommand: rerunCommand,
+  nextCommand: rerunMode === 'full' && !summary.ok ? 'npm run test:play-store' : rerunCommand,
   resultOverride: summary.outcome === 'PASS' ? 'PASSED' : (summary.outcome === 'FAIL' ? 'FAILED' : (summary.outcome || '')),
   primaryBlockingFailure: summary.primaryBlockingFailure || '',
   blockedBeforeTestExecution,
+  expectedSkipCount: skipValidation.expected.length,
+  unexpectedSkipCount: skipValidation.unexpected.length,
 });
 const failedTestsLines = createFailedTestsArtifactLines({
   results: humanResultRows,
@@ -618,6 +626,8 @@ const lines = [
   `Playwright failed: ${failedTests.length}`,
   `Playwright timed out: ${timedOutTests.length}`,
   `Playwright skipped: ${skippedTests.length}`,
+  `Expected skips with verified coverage: ${skipValidation.expected.length}`,
+  `Unexpected skips: ${skipValidation.unexpected.length}`,
   `Playwright assertion timeouts classified as failed assertions: ${assertionTimeoutTests.length}`,
   '',
   'PER-PROJECT PLAYWRIGHT TOTALS',
@@ -676,6 +686,9 @@ const lines = [
   '',
   'SKIPPED TESTS',
   ...(skippedTests.length ? skippedTests.map(t => `- ${t.title}`) : ['- None']),
+  '',
+  'SKIP VALIDATION',
+  JSON.stringify(skipValidation, null, 2),
   '',
   'MISSING ARTIFACTS',
   ...(missingArtifacts.length ? missingArtifacts.map(f => `- ${f}`) : ['- None']),

@@ -227,7 +227,7 @@ function failedOrTimedOut(results = []) {
   });
 }
 
-function createCompletedSummaryLines({ results = [], mode = process.env.CHAOS_RELEASE_GATE_SELECTION_MODE || 'release', runDir = process.env.CHAOS_RELEASE_GATE_RUN_DIR || '', nextCommand = 'npm run test:play-store:failed', resultOverride = '', primaryBlockingFailure = '', blockedBeforeTestExecution = false } = {}) {
+function createCompletedSummaryLines({ results = [], mode = process.env.CHAOS_RELEASE_GATE_SELECTION_MODE || 'release', runDir = process.env.CHAOS_RELEASE_GATE_RUN_DIR || '', nextCommand = 'npm run test:play-store:failed', resultOverride = '', primaryBlockingFailure = '', blockedBeforeTestExecution = false, expectedSkipCount, unexpectedSkipCount } = {}) {
   const counts = countByStatus(results);
   const failures = failedOrTimedOut(results);
   const passed = failures.length === 0;
@@ -242,6 +242,7 @@ function createCompletedSummaryLines({ results = [], mode = process.env.CHAOS_RE
     `FAIL:      ${counts.failed}`,
     `TIMEOUT:   ${counts.timedOut}`,
     `SKIP:      ${counts.skipped}`,
+    ...(Number.isInteger(expectedSkipCount) ? [`Expected skips with verified coverage: ${expectedSkipCount}`, `Unexpected skips: ${unexpectedSkipCount || 0}`] : []),
     '',
     `RESULT: ${resultLabel}`,
     ...(primaryBlockingFailure ? ['', `Primary blocker: ${primaryBlockingFailure}`] : []),
@@ -260,7 +261,7 @@ function createCompletedSummaryLines({ results = [], mode = process.env.CHAOS_RE
     lines.push('Remaining failures: 0');
   }
   lines.push('');
-  if (blockedBeforeTestExecution) lines.push(`Next command: Fix the blocker above, then rerun ${nextCommand}`);
+  if (blockedBeforeTestExecution || primaryBlockingFailure || resultLabel === 'FAILED') lines.push(`Next command: Fix the blocker or failures above, then rerun ${nextCommand}`);
   else lines.push(`Next command: ${passed ? 'None - no failed tests remain.' : nextCommand}`);
   lines.push('');
   lines.push('Artifacts:');
@@ -305,6 +306,7 @@ function createFailedTestsArtifactLines({ results = [], runId = process.env.CHAO
   }
   if (!failures.length) {
     lines.push('No failed or timed-out tests.');
+    if (primaryBlockingFailure) lines.push(`Release gate blocker: ${primaryBlockingFailure}`);
     return lines.map(ascii);
   }
   failures.forEach((row, index) => {
