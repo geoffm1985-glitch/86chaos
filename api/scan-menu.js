@@ -1,3 +1,6 @@
+const { suggestMenuIngredient } = require('../src/core/menuLanguage.cjs');
+const { MENU_SCHEMA, scanWithPrimaryProvider } = require('./_ai-provider');
+const { resolveAiPolicy, enforceClientAiSelection } = require('./_ai-policy');
 const { readBody, writeAudit, norm, masterEmails, readWorkspaceMember, userHasWorkspace, profileForWorkspace, requireAppCheckIfEnforced } = require('./_chaos-admin');
 const { APP_VERSION } = require('./_version');
 const { verifyRequestToken, downloadFirebaseStorageUrl } = require('./_firebase-project-admin');
@@ -119,23 +122,7 @@ function normalize(value = '') {
   return String(value || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 }
 
-function findInventoryMatch(ingredientName = '', inventoryItems = []) {
-  const key = normalize(ingredientName);
-  if (!key) return null;
-  const scored = (inventoryItems || []).map(item => {
-    const itemKey = normalize(item.name);
-    let score = 0;
-    if (itemKey === key) score = 100;
-    else if (itemKey.includes(key) || key.includes(itemKey)) score = 84;
-    else {
-      const tokens = key.split(' ').filter(t => t.length > 2);
-      const hits = tokens.filter(t => itemKey.includes(t)).length;
-      score = hits ? Math.round((hits / Math.max(tokens.length, 1)) * 70) : 0;
-    }
-    return { item, score };
-  }).sort((a, b) => b.score - a.score);
-  return scored[0]?.score >= 60 ? scored[0].item : null;
-}
+const findInventoryMatch = suggestMenuIngredient;
 
 function normalizeMenuPayload(parsed = {}, inventoryItems = []) {
   const rows = Array.isArray(parsed.menuItems) ? parsed.menuItems : [];
@@ -156,10 +143,12 @@ function normalizeMenuPayload(parsed = {}, inventoryItems = []) {
           name: ingredientName,
           estimatedQuantity: typeof ingredient === 'string' ? 0 : (Number.parseFloat(ingredient.estimatedQuantity ?? ingredient.quantity ?? ingredient.portionQuantity ?? 0) || 0),
           estimatedUnit: typeof ingredient === 'string' ? '' : (ingredient.estimatedUnit || ingredient.unit || ingredient.portionUnit || ''),
-          portionConfidence: typeof ingredient === 'string' ? 'needs-review' : (ingredient.portionConfidence || ingredient.confidence || 'review'),
+          // A model's confidence never establishes restaurant approval of a portion.
+          portionConfidence: typeof ingredient === 'string' ? 'needs-review' : 'estimated',
           confidence: typeof ingredient === 'string' ? row.confidence || 'review' : (ingredient.confidence || row.confidence || 'review'),
           matchedInventoryItemId: match?.id || '',
-          matchedInventoryItemName: match?.name || ''
+          matchedInventoryItemName: match?.name || '',
+          matchExplanation: match.explanation, matchConfidence: match.matchConfidence, reviewStatus: 'needs-review'
         };
       }).filter(i => i.name)
     };
@@ -197,17 +186,20 @@ async function callGeminiMenuScan({ apiKey, prompt, contentType, buffer, modelCa
     const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(requestBody)
+      body: JSON.stringify(requestBody),
+      signal: AbortSignal.timeout(45000)
     });
     const raw = await response.text();
     let data = {};
     try { data = JSON.parse(raw || '{}'); }
     catch (_) { data = {}; }
-    if (response.ok) return { data, model };
+    if (response.ok) {
+      callBudget.recordUsage(data?.usageMetadata?.promptTokenCount, data?.usageMetadata?.candidatesTokenCount);
+      return { data, model };
+    }
 
-    const message = data?.error?.message || raw || `Gemini menu scan failed with ${response.status}.`;
-    lastError = new Error(message);
-    if (/not found|not supported|unsupported|unavailable/i.test(message)) continue;
+    lastError = Object.assign(new Error(`Optional scanner provider request failed (${response.status}).`), { code: 'AI_FALLBACK_FAILED', statusCode: 502 });
+    if ([404, 503].includes(response.status)) continue;
     throw lastError;
   }
 
@@ -275,6 +267,7 @@ module.exports = async function handler(req, res) {
   let usageDb = null;
   let providerCallStarted = false;
   let usedModel = '';
+  let usedProvider = 'openai';
   let providerCallBudget = null;
   let estimatedInputTokens = 0;
   let estimatedOutputTokens = 0;
@@ -298,7 +291,6 @@ module.exports = async function handler(req, res) {
     const storagePath = requireTenantStoragePath(body.storagePath, restaurantId, 'menuUploads');
 
     const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_GENERATIVE_AI_API_KEY;
-    if (!apiKey) return res.status(500).json({ ok: false, error: 'Missing GEMINI_API_KEY in Vercel environment variables.' });
 
     const maxBytes = getHardInputByteLimit('menu', process.env.MENU_SCAN_MAX_BYTES);
     let contentType = body.contentType || 'application/octet-stream';
@@ -320,7 +312,8 @@ module.exports = async function handler(req, res) {
 
     const pageCount = await resolveScanPageCount({ mimeType: contentType, buffer });
     assertPageCountWithinHardLimit('menu', pageCount);
-    const modelCandidates = getMenuModelCandidates();
+    const contract = resolveAiPolicy({ feature: 'menu', route: '/api/scan-menu' });
+    enforceClientAiSelection(req, contract, { restaurantId, uid: decoded.uid });
     const idempotencyKey = getIdempotencyKey(req, body);
     usageReservation = await checkAndReserveAiScanPages({
       db: usageDb,
@@ -329,15 +322,15 @@ module.exports = async function handler(req, res) {
       pageCount,
       decoded,
       idempotencyKey,
-      provider: 'google_gemini',
-      model: modelCandidates[0] || '',
+      provider: contract.provider,
+      model: contract.model,
       sourceRoute: '/api/scan-menu',
       planScanLimits: access.planScanLimits
     });
     if (usageReservation.blocked) return res.status(429).json(buildLimitResponse(usageReservation));
     if (usageReservation.duplicate) return res.status(409).json(buildDuplicateResponse(usageReservation));
 
-    const inventoryItems = Array.isArray(body.inventoryItems) ? body.inventoryItems : [];
+    const inventoryItems = (Array.isArray(body.inventoryItems) ? body.inventoryItems : []).slice(0, 350).map(item => ({ id: String(item.id || '').slice(0, 100), name: String(item.name || '').slice(0, 160), category: String(item.category || '').slice(0, 80), inventorySourceType: String(item.inventorySourceType || '').slice(0, 50), aliases: Array.isArray(item.aliases) ? item.aliases.slice(0, 20).map(alias => String(alias).slice(0, 100)) : [] }));
     const prompt = [
       'You are helping a restaurant build menu-to-inventory dependency records.',
       'Read the uploaded menu image or PDF and return JSON only.',
@@ -346,15 +339,22 @@ module.exports = async function handler(req, res) {
       `Known inventory names for matching context: ${inventoryItems.map(i => i.name).filter(Boolean).slice(0, 350).join(', ')}`
     ].join('\n');
 
-    providerCallStarted = true;
     providerCallBudget = createProviderCallBudget('menu');
-    const { data, model } = await callGeminiMenuScan({ apiKey, prompt, contentType, buffer, modelCandidates, callBudget: providerCallBudget });
+    const result = await scanWithPrimaryProvider({ contract, budget: providerCallBudget, prompt, buffer, mimeType: contentType, schema: MENU_SCHEMA,
+      fallback: async budget => {
+        if (!apiKey) throw Object.assign(new Error('Optional scanner fallback is not configured.'), { code: 'AI_FALLBACK_NOT_CONFIGURED', statusCode: 503 });
+        const { data, model: fallbackModel } = await callGeminiMenuScan({ apiKey, prompt, contentType, buffer, modelCandidates: getMenuModelCandidates().slice(0, 1), callBudget: budget });
+        const text = data?.candidates?.[0]?.content?.parts?.map(part => part.text || '').join('\n') || '';
+        if (!text || /MAX_TOKENS|LENGTH/i.test(data?.candidates?.[0]?.finishReason || '')) throw Object.assign(new Error('Fallback menu extraction is incomplete.'), { code: 'AI_OUTPUT_INCOMPLETE', statusCode: 502 });
+        return { parsed: parseGeminiJson(text), model: fallbackModel, provider: 'gemini', inputTokens: Number(data?.usageMetadata?.promptTokenCount || 0), outputTokens: Number(data?.usageMetadata?.candidatesTokenCount || 0) };
+      }
+    });
+    const { parsed, model } = result;
     usedModel = model;
-    estimatedInputTokens += Number(data?.usageMetadata?.promptTokenCount || 0);
-    estimatedOutputTokens += Number(data?.usageMetadata?.candidatesTokenCount || 0);
-    const text = data?.candidates?.[0]?.content?.parts?.map(p => p.text || '').join('\n') || '';
-    if (!text) throw new Error('Gemini returned no menu text.');
-    const parsed = parseGeminiJson(text || '{}');
+    usedProvider = result.provider;
+    providerCallStarted = providerCallBudget.used > 0;
+    estimatedInputTokens = providerCallBudget.inputTokens;
+    estimatedOutputTokens = providerCallBudget.outputTokens;
     const menuItems = normalizeMenuPayload(parsed, inventoryItems);
 
     await writeAudit(usageDb, {
@@ -371,7 +371,7 @@ module.exports = async function handler(req, res) {
       db: usageDb,
       reservation: usageReservation,
       status: 'completed',
-      provider: 'google_gemini',
+      provider: usedProvider,
       model,
       estimatedInputTokens,
       estimatedOutputTokens,
@@ -382,6 +382,8 @@ module.exports = async function handler(req, res) {
     return res.status(200).json({
       ok: true,
       menuItems,
+      provider: usedProvider,
+      scanRequestId: usageReservation.eventId,
       confidence: parsed.confidence || 'review',
       notes: parsed.notes || [],
       fileName: body.fileName || '',
@@ -411,16 +413,16 @@ module.exports = async function handler(req, res) {
   } catch (err) {
     if (usageReservation && usageDb) {
       try {
-        if (providerCallStarted) {
+        if (providerCallStarted || providerCallBudget?.used > 0) {
           await completeAiScanUsageEvent({
             db: usageDb,
             reservation: usageReservation,
             status: 'failed',
-            errorMessage: err.message,
-            provider: 'google_gemini',
-            model: usedModel || providerCallBudget?.attempts?.[0]?.model || '',
-            estimatedInputTokens,
-            estimatedOutputTokens,
+            errorMessage: err.code || 'AI_SCAN_FAILED',
+            provider: providerCallBudget?.attempts?.at(-1)?.provider || usedProvider,
+            model: providerCallBudget?.attempts?.at(-1)?.model || usedModel || '',
+            estimatedInputTokens: providerCallBudget?.inputTokens || 0,
+            estimatedOutputTokens: providerCallBudget?.outputTokens || 0,
             providerCallCount: providerCallBudget?.used || 0,
             attempts: providerCallBudget?.attempts || []
           });

@@ -16,7 +16,14 @@ import { cleanInvoiceLineItems, buildPriceJumpWarnings } from '../core/restauran
 import { classifyInvoiceRow, inferInvoiceProductFields, invoiceProductKey, invoiceRowText, isPurchasedInvoiceLine, LEADING_PURCHASE_RE, normalizeInvoiceName as normalizeName, normalizeInvoiceSku as normalizeSku } from '../core/invoiceRowClassification';
 import { CheersLogo, Modal, DrawerMenu, DayDotPrintScreen, MapClickListener, SmartEmptyState, MiniProblemCard, getHomeProfile, calculatePunchHours, getWeekStart, getWeekDates, roleMatches, toLocalTimeInput, makeLocalIso, PunchTable, StatusTile, FriendlyEmpty, GlobalSearchModal, QuickActionDock, KitchenTVMode, ChangeLogModal, UndoBar } from '../components/common';
 import { usePlanAccess } from '../hooks/usePlanAccess';
+import { useScanHistory } from '../hooks/useScanHistory';
 import { FEATURE_KEYS } from '../config/plans';
+import restaurantPackHelpers from '../core/restaurantPack.js';
+import vendorProductMemoryHelpers from '../core/vendorProductMemory.js';
+import { InvoiceRowReview, VendorMemoryPanel, invoiceReviewRequest } from '../components/InvoiceReviewTools';
+
+const { parseCasePack, convertQuantity } = restaurantPackHelpers;
+const { suggestInvoiceMatch } = vendorProductMemoryHelpers;
 
 const readableApiError = (value) => {
   if (!value) return '';
@@ -56,7 +63,6 @@ const TabInventory = ({ addToast, appUser, clientData = {}, initialSubTab, onIni
   const needsInventoryCatalog = canUseBasicInventory || canUseSmartInventory || canUseMenuIntelligence;
   const needsVendorDirectory = invTab === 'count' || isVendorTab || isManageTab || isOrderTab || isInvoiceTab || isAiOrderTab;
   const needsWasteHistory = isWasteTab || isAiOrderTab;
-  const needsSmartHistory = isInvoiceTab || isAiOrderTab;
   const needsMenuGraph = isAiOrderTab || focusBelowPar;
   const inventoryLimit = (isManageTab || isOrderTab || isInvoiceTab || isAiOrderTab || isWasteTab || inventorySearchActive) ? 500 : 220;
   const inventoryItems = useLiveCollection('inventoryItems', appUser?.restaurantId, { enabled: needsInventoryCatalog, limitCount: inventoryLimit, fallbackLimitCount: 120 });
@@ -68,7 +74,9 @@ const TabInventory = ({ addToast, appUser, clientData = {}, initialSubTab, onIni
   const wasteLogs = useLiveCollection('wasteLogs', appUser?.restaurantId, { enabled: canUseBasicInventory && needsWasteHistory, limitCount: isAiOrderTab ? 200 : 80, fallbackLimitCount: 35 });
   const futureEvents = useLiveCollection('events', appUser?.restaurantId, { enabled: canUseAiOrdering && isAiOrderTab, whereClauses: [['date','>=', getToday()]], orderByField: 'date', orderDirection: 'asc', limitCount: 120, fallbackLimitCount: 60 });
   const prepItemsForOrdering = useLiveCollection('prepItems', appUser?.restaurantId, { enabled: canUseAiOrdering && isAiOrderTab, limitCount: 220, fallbackLimitCount: 80 });
-  const invoices = useLiveCollection('invoices', appUser?.restaurantId, { enabled: canUseSmartInventory && needsSmartHistory, limitCount: isAiOrderTab ? 120 : 60, fallbackLimitCount: 25 });
+  const orderInvoices = useLiveCollection('invoices', appUser?.restaurantId, { enabled: canUseSmartInventory && isAiOrderTab, limitCount: 120, fallbackLimitCount: 25 });
+  const invoiceHistory = useScanHistory('invoices', appUser?.restaurantId, appUser?.id, canUseSmartInventory && isInvoiceTab);
+  const invoices = isInvoiceTab ? invoiceHistory.rows : orderInvoices;
   const [viewInvoice, setViewInvoice] = useState(null);
 
   useEffect(() => {
@@ -137,6 +145,8 @@ const TabInventory = ({ addToast, appUser, clientData = {}, initialSubTab, onIni
   const [isScanningInvoice, setIsScanningInvoice] = useState(false);
   const [invoiceScanProgress, setInvoiceScanProgress] = useState({ percent: 0, label: 'Ready', phase: 'idle' });
   const [scannedInvoice, setScannedInvoice] = useState(null);
+  const [approvingInvoice, setApprovingInvoice] = useState(false);
+  const invoiceApprovalBusyRef = useRef(false);
   const [invoiceReviewTab, setInvoiceReviewTab] = useState('matched');
   const [csvImportReview, setCsvImportReview] = useState(null);
   const [isSavingCsvImport, setIsSavingCsvImport] = useState(false);
@@ -345,50 +355,10 @@ const cleanNumber = (value) => {
   };
 
 const parsePackProfile = (packValue = '') => {
-    const pack = String(packValue || '').toLowerCase().replace(/#/g, ' lb ').replace(/\s+/g, ' ').trim();
-    const result = { count: 0, weightLbs: 0, notes: [] };
-    if (!pack) return result;
-
-    // Count patterns: 24 ct, 24 each, 12/1 ct, 2 x 5 lb, 2/5 lb, 4-10 lb, etc.
-    const countMatch = pack.match(/(\d+(?:\.\d+)?)\s*(ct|count|ea|each|pc|pcs|piece|pieces|portion|portions|patty|patties|bottle|bottles|can|cans|bag|bags|pack|pk)\b/i);
-    if (countMatch) {
-      result.count = Math.max(0, parseFloat(countMatch[1]) || 0);
-      result.notes.push(`Count detected: ${result.count}`);
-    }
-
-    // Catch-weight style: 2/5 lb, 2 x 5 lb, 4-10 lb, 6 10 oz.
-    const comboWeight = pack.match(/(\d+(?:\.\d+)?)\s*(?:\/|x|×|-|by)\s*(\d+(?:\.\d+)?)\s*(lb|lbs|pound|pounds|oz|ounce|ounces)\b/i);
-    if (comboWeight) {
-      const a = parseFloat(comboWeight[1]) || 0;
-      const b = parseFloat(comboWeight[2]) || 0;
-      const unit = comboWeight[3] || 'lb';
-      const lbs = unit.startsWith('oz') || unit.startsWith('ounce') ? (a * b) / 16 : a * b;
-      result.weightLbs = Math.max(result.weightLbs, lbs);
-      result.notes.push(`Weight detected: ${lbs.toFixed(2)} lb per stock unit`);
-    }
-
-    const singleWeight = pack.match(/(\d+(?:\.\d+)?)\s*(lb|lbs|pound|pounds|oz|ounce|ounces)\b/i);
-    if (!result.weightLbs && singleWeight) {
-      const n = parseFloat(singleWeight[1]) || 0;
-      const unit = singleWeight[2] || 'lb';
-      const lbs = unit.startsWith('oz') || unit.startsWith('ounce') ? n / 16 : n;
-      result.weightLbs = Math.max(0, lbs);
-      result.notes.push(`Weight detected: ${lbs.toFixed(2)} lb per stock unit`);
-    }
-
-    // Pattern like 12 ct / 8 oz each = 6 lbs total
-    const countWeightEach = pack.match(/(\d+(?:\.\d+)?)\s*(ct|count|ea|each).*?(\d+(?:\.\d+)?)\s*(oz|ounce|ounces|lb|lbs)\b/i);
-    if (countWeightEach) {
-      const c = parseFloat(countWeightEach[1]) || 0;
-      const w = parseFloat(countWeightEach[3]) || 0;
-      const u = countWeightEach[4] || 'oz';
-      const lbs = u.startsWith('oz') || u.startsWith('ounce') ? (c * w) / 16 : c * w;
-      if (lbs > result.weightLbs) result.weightLbs = lbs;
-      if (!result.count) result.count = c;
-      result.notes.push(`Each weight detected: ${c} x ${w} ${u}`);
-    }
-
-    return result;
+    const parsed = parseCasePack(packValue);
+    const weight = parsed.known ? convertQuantity(parsed.amount, parsed.unit, 'lb') : null;
+    return { count: parsed.known && parsed.unit === 'each' ? parsed.amount : 0, weightLbs: weight || 0,
+      notes: parsed.known ? [weight ? `Weight detected: ${weight.toFixed(2)} lb per stock unit` : `Package: ${parsed.amount} ${parsed.unit}`] : [parsed.reason] };
   };
 
 const getBurnUnitsPerStockUnit = (item) => {
@@ -1088,6 +1058,15 @@ const executeOrder = async (method) => {
       const modelRows = Array.isArray(data.lineItems) ? data.lineItems : [];
       const sourceRows = [...modelRows, ...fullRows];
 
+      const selectedVendor = vendors.find(v => normalizeName(v.name) === normalizeName(data.vendorName));
+      let learnedMappings = [];
+      if (selectedVendor && !appUser?.demoMode && !appUser?.isDemo) {
+        try {
+          const memory = await invoiceReviewRequest(appUser, { action: 'vendor-memory-resolve', vendorId: selectedVendor.id,
+            rows: sourceRows.map(row => ({ productCode: row.productCode || row.sku || '', itemName: row.itemName || row.description || '' })) });
+          learnedMappings = memory.mappings || [];
+        } catch (_) { addToast('Product Memory Unavailable', 'Review matches manually for this scan. No learned mapping was assumed.'); }
+      }
       const prepareReviewRow = (sourceItem, rowIndex) => {
         const inferred = inferInvoiceProductFields(sourceItem);
         const classification = classifyInvoiceRow(inferred);
@@ -1096,9 +1075,9 @@ const executeOrder = async (method) => {
         const skuKey = normalizeSku(incomingCode);
         const nameKey = normalizeName(itemName);
         const isInventoryLine = ['stock', 'non_food'].includes(classification.kind);
-        const matchByCode = isInventoryLine && skuKey ? inventoryItems.find(inv => normalizeSku(inv.pfgCode) === skuKey) : null;
-        const matchByName = isInventoryLine ? inventoryItems.find(inv => normalizeName(inv.name) === nameKey || (nameKey && normalizeName(inv.name).includes(nameKey)) || (normalizeName(inv.name) && nameKey.includes(normalizeName(inv.name)))) : null;
-        const match = matchByCode || matchByName;
+        const recommendation = suggestInvoiceMatch({ ...inferred, scannerClassification: classification.kind }, inventoryItems, learnedMappings,
+          { restaurantId: appUser.restaurantId, vendorId: selectedVendor?.id || '', vendorName: data.vendorName });
+        const match = inventoryItems.find(item => item.id === recommendation.matchedItemId);
         return {
           ...inferred,
           ...classification.row,
@@ -1113,6 +1092,9 @@ const executeOrder = async (method) => {
           scannerClassification: classification.kind,
           classificationCategory: classification.category,
           classificationReason: classification.reason,
+          matchExplanation: recommendation.explanation,
+          matchNeedsReview: recommendation.needsReview,
+          learnedMappingId: recommendation.mappingId,
           isInventoryLine,
           matchedItemId: isInventoryLine && match ? match.id : '',
           matchId: isInventoryLine && match ? match.id : '',
@@ -1144,6 +1126,7 @@ const executeOrder = async (method) => {
       setInvoiceReviewTab('matched');
       setScannedInvoice({
         ...data,
+        vendorId: selectedVendor?.id || '',
         lineItems: normalizedLineItems,
         skippedRows,
         ignoredDocumentRowCount,
@@ -1195,6 +1178,9 @@ const executeOrder = async (method) => {
       matchId: match?.id || '',
       matchName: match?.name || '',
       action: match ? 'update' : 'create',
+      humanProductConfirmed: true,
+      matchNeedsReview: true,
+      matchExplanation: 'You identified this as a product. Confirm its delivered quantity and cost before approval.',
       classificationReason: 'Manually promoted from Needs Review'
     };
 
@@ -1232,120 +1218,32 @@ const executeOrder = async (method) => {
     addToast('Row Excluded', 'The row was confirmed as document noise or a non-inventory charge.');
   };
 
+  const updateInvoiceReviewItem = (index, patch) => setScannedInvoice(previous => previous ? ({ ...previous,
+    lineItems: previous.lineItems.map((row, rowIndex) => rowIndex === index ? { ...row, ...patch } : row) }) : previous);
+  const researchInvoiceItem = async (row, index) => {
+    if (appUser?.demoMode || appUser?.isDemo) return;
+    try {
+      const response = await secureFetch('/api/free-ai-services', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ kind: 'product-research', restaurantId: appUser.restaurantId, vendorId: scannedInvoice?.vendorId || '',
+          productName: row.itemName, productCode: row.productCode || '', needsReview: true }) });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error || 'Product research unavailable.');
+      updateInvoiceReviewItem(index, { researchEvidence: payload.payload, matchNeedsReview: true, quantityConfirmed: false });
+    } catch (error) { addToast('Product Research', error.message); }
+  };
   const handleApproveInvoice = async () => {
-     const unresolvedReviewRows = scannedInvoice?.skippedRows || [];
-     if (unresolvedReviewRows.length) {
-       setInvoiceReviewTab('skipped');
-       addToast('Review Needed', `${unresolvedReviewRows.length} uncertain invoice row${unresolvedReviewRows.length === 1 ? '' : 's'} must be moved to Stock Matcher or deliberately excluded as a document/charge before approval. Nothing was saved or changed.`);
-       return;
-     }
-     const unresolvedProducts = (scannedInvoice?.lineItems || []).filter(item => item.isInventoryLine && !item.matchedItemId);
-     if (unresolvedProducts.length) {
-       setInvoiceReviewTab('matched');
-       addToast('Review Needed', `${unresolvedProducts.length} purchased product row${unresolvedProducts.length === 1 ? '' : 's'} still need an inventory match or “Add as New Item” selection. Nothing was saved or changed.`);
-       return;
-     }
-
-     try {
-       // 1. Log the invoice record for history
-       await safeInventoryWrite({ quiet: true, action: "add", collectionName: "invoices", label: "Invoice scan", data: {
-         ...scannedInvoice,
-         restaurantId: appUser.restaurantId,
-         processedAt: new Date().toISOString(),
-         processedBy: appUser.name
-       } });
-
-       // 2. Resolve Vendor (Auto-Create if Missing)
-       let vId = '';
-       let existingVendor = vendors.find(v => v.name.toLowerCase() === (scannedInvoice.vendorName || '').toLowerCase());
-       
-       if (existingVendor) {
-          vId = existingVendor.id;
-       } else if (scannedInvoice.vendorName) {
-          const newVRef = await safeInventoryWrite({ quiet: true, action: "add", collectionName: "vendors", label: "Invoice vendor", data: { 
-            name: scannedInvoice.vendorName, 
-            rep: "", email: "", phone: "", 
-            restaurantId: appUser.restaurantId 
-          } });
-          vId = newVRef.id;
-       }
-
-       // 3. Loop through and apply stock updates OR create new items
-       let updateCount = 0;
-       let newCount = 0;
-       
-for (const item of scannedInvoice.lineItems) {
-          // Catch every possible key name the AI might use for the SKU/Product Code
-          const incomingCode = item.productCode || item.sku || item.itemNumber || item.pfgCode || item.code || item.itemCode || '';
-          if (!item.isInventoryLine || !isPurchasedInvoiceLine(item)) continue;
-
-if (item.matchedItemId === 'CREATE_NEW') {
-             // Smart Auto-Categorizer
-             const n = (item.itemName || '').toLowerCase();
-             let autoCat = item.scannerClassification === 'non_food' ? 'Supplies' : 'Other';
-             if (item.scannerClassification !== 'non_food') {
-               if (n.includes('beef') || n.includes('chicken') || n.includes('pork') || n.includes('steak') || n.includes('bacon') || n.includes('sausage') || n.includes('turkey')) autoCat = 'Meat';
-               else if (n.includes('lettuce') || n.includes('tomato') || n.includes('onion') || n.includes('potato') || n.includes('apple') || n.includes('lemon') || n.includes('lime') || n.includes('pepper') || n.includes('produce')) autoCat = 'Produce';
-               else if (n.includes('milk') || n.includes('cheese') || n.includes('cream') || n.includes('butter') || n.includes('yogurt') || n.includes('dairy')) autoCat = 'Dairy';
-               else if (n.includes('bread') || n.includes('bun') || n.includes('roll') || n.includes('tortilla') || n.includes('dough')) autoCat = 'Bakery';
-               else if (n.includes('fish') || n.includes('shrimp') || n.includes('salmon') || n.includes('crab') || n.includes('seafood')) autoCat = 'Seafood';
-               else if (n.includes('fry') || n.includes('fries') || n.includes('frozen') || n.includes('ice')) autoCat = 'Frozen';
-               else if (n.includes('box') || n.includes('cup') || n.includes('napkin') || n.includes('fork') || n.includes('towel') || n.includes('lid') || n.includes('straw') || n.includes('container') || n.includes('bag') || n.includes('foil') || n.includes('wrap')) autoCat = 'Supplies';
-               else if (n.includes('beer') || n.includes('wine') || n.includes('soda') || n.includes('juice') || n.includes('syrup') || n.includes('water') || n.includes('tea') || n.includes('coffee')) autoCat = 'Beverage';
-             }
-
-             const packProfile = parsePackProfile(item.packSize || item.uom || item.size || '');
-             await safeInventoryWrite({ quiet: true, action: "add", collectionName: "inventoryItems", label: "Invoice inventory item", data: {
-                name: item.itemName,
-                category: autoCat, 
-                pfgCode: incomingCode, 
-                supplierId: vId,
-                packSize: item.packSize || item.uom || item.size || '1 CS',
-                yieldQty: parseFloat(item.unitsPerCase || item.casePackCount || item.caseCount || packProfile.count) || 1, 
-                weightPerStockUnit: parseFloat(item.weightPerCaseLbs || item.weightPerStockUnit || packProfile.weightLbs) || 0,
-                burnDefaultMode: (parseFloat(item.weightPerCaseLbs || item.weightPerStockUnit || packProfile.weightLbs) || 0) > 0 ? 'weight' : 'count',
-                burnUnitLabel: (parseFloat(item.weightPerCaseLbs || item.weightPerStockUnit || packProfile.weightLbs) || 0) > 0 ? 'lb' : 'unit',
-                price: parseFloat(item.unitPrice || item.casePrice) || 0,
-                parLevel: 0,
-                currentStock: parseFloat(item.quantity || item.shippedQty || item.receivedQty) || 0,
-                pendingQty: 0,
-                isStarred: false,
-                lastOrderedDate: null,
-                inventorySourceType: item.scannerClassification === 'non_food' ? 'non_food_supply' : 'food_product',
-                invoiceSupplyCategory: item.scannerClassification === 'non_food' ? (item.classificationCategory || 'Supplies') : '',
-                lastInvoiceRaw: item,
-                restaurantId: appUser.restaurantId
-             } });
-             newCount++;
-          } else if (item.matchedItemId) {
-             const invItem = inventoryItems.find(i => i.id === item.matchedItemId);
-             if (invItem) {
-                const addedStock = parseFloat(item.quantity || item.shippedQty || item.receivedQty) || 0;
-                const updates = { 
-                   currentStock: (parseFloat(invItem.currentStock) || 0) + addedStock 
-                };
-                
-                // If the item doesn't have a product code yet, but the invoice found one, save it
-                if (!invItem.pfgCode && incomingCode) {
-                   updates.pfgCode = incomingCode;
-                }
-                const packProfile = parsePackProfile(item.packSize || item.uom || item.size || '');
-                if (!invItem.weightPerStockUnit && packProfile.weightLbs > 0) updates.weightPerStockUnit = packProfile.weightLbs;
-                if ((!invItem.yieldQty || Number(invItem.yieldQty) <= 1) && packProfile.count > 1) updates.yieldQty = packProfile.count;
-                updates.lastInvoiceRaw = item;
-
-                await safeInventoryWrite({ quiet: true, action: "update", collectionName: "inventoryItems", docId: invItem.id, label: "Invoice stock update", before: invItem, data: updates });
-                updateCount++;
-             }
-          }
-       }
-
-       addToast('Invoice Processed', `Saved ${updateCount + newCount} item${updateCount + newCount === 1 ? '' : 's'}: updated ${updateCount}, added ${newCount}.`);
-       setScannedInvoice(null);
-     } catch(e) {
-       console.error('Invoice approval failed:', e);
-       addToast('Invoice Not Processed', e?.message || 'The invoice could not be saved. No further stock updates will be attempted until the error is corrected.');
-     }
+    if (invoiceApprovalBusyRef.current) return;
+    if ((scannedInvoice?.skippedRows || []).length || (scannedInvoice?.lineItems || []).some(row => !row.matchedItemId || (row.matchNeedsReview && !row.quantityConfirmed))) {
+      setInvoiceReviewTab('skipped'); addToast('Review Needed', 'Resolve every uncertain product, quantity, and cost before approval. Nothing has changed.'); return;
+    }
+    invoiceApprovalBusyRef.current = true; setApprovingInvoice(true);
+    try {
+      const result = await invoiceReviewRequest(appUser, { action: 'invoice-approve', approved: true, invoice: scannedInvoice });
+      addToast('Invoice Processed', result.duplicate ? 'This invoice was already approved. Stock and costs were not changed again.' : `Saved ${result.updated + result.created} reviewed products and their latest costs.`);
+      setScannedInvoice(null);
+      invoiceHistory.refresh();
+    } catch (error) { addToast('Invoice Not Processed', error.message || 'Approval could not be committed. Retry after reviewing the error.'); }
+    finally { invoiceApprovalBusyRef.current = false; setApprovingInvoice(false); }
   };
 
 const isBelowPar = (item) => Number(item.parLevel || 0) > 0 && Number(item.currentStock || 0) < Number(item.parLevel || 0);
@@ -1451,7 +1349,7 @@ const groupedItems = orderableInventoryItems
             )}
             
             <div className="flex flex-wrap gap-2 bg-[#12161A] border border-[#2A353D] rounded-xl p-1">
-              {[['matched','Stock Matcher'], ['skipped',`Needs Review (${(scannedInvoice.skippedRows || []).length})`], ['raw','Raw Audit']].map(([id,label]) => <button key={id} type="button" onClick={() => setInvoiceReviewTab(id)} className={`flex-1 min-w-[120px] px-3 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest ${invoiceReviewTab === id ? `${T.grad} text-slate-900` : 'text-slate-400 hover:text-white'}`}>{label}</button>)}
+              {[['matched','Stock Matcher'], ['skipped',`Needs Review (${(scannedInvoice.skippedRows || []).length + (scannedInvoice.lineItems || []).filter(row => row.matchNeedsReview && !row.quantityConfirmed).length})`], ['raw','Raw Audit']].map(([id,label]) => <button key={id} type="button" onClick={() => setInvoiceReviewTab(id)} className={`flex-1 min-w-[120px] px-3 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest ${invoiceReviewTab === id ? `${T.grad} text-slate-900` : 'text-slate-400 hover:text-white'}`}>{label}</button>)}
             </div>
 
             {invoiceReviewTab === 'matched' && <div className="flex justify-between items-center mt-2 mb-1">
@@ -1486,12 +1384,13 @@ const groupedItems = orderableInventoryItems
                     <div className="font-black text-slate-300 text-right">${Number(item.totalPrice || item.extendedPrice || item.lineTotal || 0).toFixed(2)}</div>
                   </div>
                   
+                  <InvoiceRowReview row={item} inventoryItem={inventoryItems.find(inv => inv.id === item.matchedItemId)} onChange={patch => updateInvoiceReviewItem(idx, patch)} onResearch={() => researchInvoiceItem(item, idx)} />
                   {/* RECONCILIATION DROPDOWN */}
                   <select 
                     value={item.matchedItemId} 
                     onChange={(e) => {
                        const newItems = [...scannedInvoice.lineItems];
-                       newItems[idx].matchedItemId = e.target.value;
+                       newItems[idx] = { ...newItems[idx], matchedItemId: e.target.value, matchNeedsReview: true, quantityConfirmed: false, matchExplanation: 'You changed the inventory selection. Verify the product, received quantity, and price basis.' };
                        setScannedInvoice({...scannedInvoice, lineItems: newItems});
                     }}
                     className={`${T.input} py-2 text-xs font-bold outline-none cursor-pointer ${item.matchedItemId === 'CREATE_NEW' ? 'border-blue-500/50 text-blue-400 bg-blue-900/10' : item.matchedItemId ? 'border-emerald-500/50 text-emerald-400 bg-emerald-900/10' : 'border-orange-500/50 text-orange-400 bg-orange-900/10'}`}
@@ -1509,6 +1408,7 @@ const groupedItems = orderableInventoryItems
             {invoiceReviewTab === 'raw' && <div className="max-h-[50vh] overflow-y-auto custom-scrollbar border border-[#2A353D] rounded-xl divide-y divide-[#2A353D]">{(scannedInvoice.allExtractedRows || []).length ? scannedInvoice.allExtractedRows.map((row, idx) => <div key={idx} className="p-3 bg-[#1A2126]"><div className="text-[9px] text-[#D4A381] font-black uppercase tracking-widest">Raw row {idx + 1}</div><pre className="mt-1 whitespace-pre-wrap text-[10px] text-slate-300">{typeof row === 'string' ? row : JSON.stringify(row, null, 2)}</pre></div>) : <div className="p-6 text-center text-slate-500 font-bold">No raw rows returned by scanner.</div>}</div>}
 
             {invoiceReviewTab === 'skipped' && <div className="max-h-[50vh] overflow-y-auto custom-scrollbar border border-[#2A353D] rounded-xl divide-y divide-[#2A353D]">
+              {(scannedInvoice.lineItems || []).map((row, index) => row.matchNeedsReview && !row.quantityConfirmed ? <div key={`review-${index}`} className="p-3 space-y-2"><p className="font-bold text-white">{row.itemName}</p><InvoiceRowReview row={row} inventoryItem={inventoryItems.find(item => item.id === row.matchedItemId)} onChange={patch => updateInvoiceReviewItem(index, patch)} onResearch={() => researchInvoiceItem(row, index)}/><button type="button" className={T.btnAlt} onClick={() => setInvoiceReviewTab('matched')}>Choose inventory item in Stock Matcher</button></div> : null)}
               {(scannedInvoice.skippedRows || []).length ? scannedInvoice.skippedRows.map((row, idx) => (
                 <div key={idx} className="p-3 bg-[#1A2126] flex flex-col sm:flex-row sm:items-center gap-3">
                   <div className="min-w-0 flex-1">
@@ -1528,7 +1428,7 @@ const groupedItems = orderableInventoryItems
               )) : <div className="p-6 text-center text-emerald-300 font-bold">No uncertain rows need review.</div>}
             </div>}
 
-            <button onClick={handleApproveInvoice} disabled={(scannedInvoice.skippedRows || []).length > 0 || (scannedInvoice.lineItems || []).some(item => item.isInventoryLine && !item.matchedItemId)} className={`w-full ${T.btn} py-3 disabled:opacity-50 disabled:cursor-not-allowed`}>Approve & Update Stock</button>
+            <button onClick={handleApproveInvoice} disabled={approvingInvoice || (scannedInvoice.skippedRows || []).length > 0 || (scannedInvoice.lineItems || []).some(item => item.isInventoryLine && (!item.matchedItemId || (item.matchNeedsReview && !item.quantityConfirmed)))} className={`w-full ${T.btn} py-3 disabled:opacity-50 disabled:cursor-not-allowed`}>{approvingInvoice ? 'Saving approval…' : 'Approve & Update Stock'}</button>
           </div>
         )}
       </Modal>
@@ -2058,6 +1958,7 @@ const groupedItems = orderableInventoryItems
 
       {hasInvPerms && invTab === 'vendors' && (
         <div className="space-y-4 animate-[slideIn_0.2s_ease-out]">
+          <VendorMemoryPanel appUser={appUser} vendors={vendors} inventoryItems={inventoryItems} addToast={addToast}/>
           <form onSubmit={handleAddVendor} className={`${T.card} p-4 space-y-3 bg-[#1A2126]`}>
             <h3 className="text-sm font-black uppercase text-[#D4A381] tracking-widest">Add Vendor</h3>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3"><input type="text" placeholder="Company Name..." value={vName} onChange={e=>setVName(e.target.value)} className={T.input} required/><input type="text" placeholder="Rep Name..." value={vRep} onChange={e=>setVRep(e.target.value)} className={T.input}/><input type="tel" placeholder="Phone (For SMS Orders)" value={vPhone} onChange={e=>setVPhone(e.target.value)} className={T.input}/><input type="email" placeholder="Email (For PDF Orders)" value={vEmail} onChange={e=>setVEmail(e.target.value)} className={T.input}/></div>
@@ -2075,7 +1976,9 @@ const groupedItems = orderableInventoryItems
         <div className="space-y-4 animate-[slideIn_0.2s_ease-out]">
           <div className={`${T.card} overflow-hidden`}>
             <div className={`bg-[#12161A] p-4 border-b ${T.border} flex justify-between items-center`}>
-              <h3 className="font-black text-sm text-white flex items-center gap-2">Invoice History</h3>
+              <h3 className="font-black text-sm text-white flex items-center gap-2">Invoice History ({invoices.length} loaded)</h3>
+              {invoiceHistory.hasMore && <button type="button" disabled={invoiceHistory.loading} onClick={invoiceHistory.loadMore} className={T.btnAlt}>Load more invoices</button>}
+              {invoiceHistory.error && <button type="button" onClick={invoiceHistory.refresh} className={T.btnAlt}>{invoiceHistory.error}</button>}
               <div className="flex items-center gap-2"><button onClick={printInvoiceHistory} className="bg-[#1A2126] text-[#D4A381] px-2 py-1 rounded text-[10px] font-black uppercase tracking-widest border border-[#2A353D]">Print</button><span className="bg-[#1A2126] text-slate-400 px-2 py-1 rounded text-[10px] font-black uppercase tracking-widest border border-[#2A353D]">{invoices.length} Total</span></div>
             </div>
             <div className={`divide-y ${T.border} max-h-[60vh] overflow-y-auto custom-scrollbar`}>

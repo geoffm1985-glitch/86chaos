@@ -1099,8 +1099,8 @@ const fetchVoiceEightySixContext = async (restaurantId = '', loadedInventoryItem
   const allowMenuDependencies = options.allowMenuDependencies !== false;
   try {
     const reads = [];
-    if (allowInventory) reads.push(getDocs(query(collection(db, 'inventoryItems'), where('restaurantId', '==', restaurantId))));
-    if (allowMenuDependencies) reads.push(getDocs(query(collection(db, 'menuDependencies'), where('restaurantId', '==', restaurantId))));
+    if (allowInventory) reads.push(getDocs(query(collection(db, 'inventoryItems'), where('restaurantId', '==', restaurantId), limit(500))));
+    if (allowMenuDependencies) reads.push(getDocs(query(collection(db, 'menuDependencies'), where('restaurantId', '==', restaurantId), limit(500))));
     const snaps = await Promise.all(reads);
     let idx = 0;
     if (allowInventory) {

@@ -1,3 +1,8 @@
+import restaurantPackHelpers from './restaurantPack.js';
+import menuApprovalHelpers from './menuApproval.js';
+
+const { parseCasePack, convertQuantity, normalizeUnit, usableYield } = restaurantPackHelpers;
+const { isApprovedDependency } = menuApprovalHelpers;
 const normalize = (value = '') => String(value || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 const words = (value = '') => normalize(value).split(' ').filter(Boolean);
 
@@ -27,52 +32,45 @@ const qty = (value, fallback = 0) => {
   return Number.isFinite(n) ? n : fallback;
 };
 
-const parsePackSize = (packSize = '') => {
-  const text = String(packSize || '').toLowerCase();
-  let m = text.match(/(\d+(?:\.\d+)?)\s*[x/]\s*(\d+(?:\.\d+)?)\s*(lb|lbs|pound|pounds)\b/);
-  if (m) return { unit: 'lb', amount: Number(m[1]) * Number(m[2]) };
-  m = text.match(/(\d+(?:\.\d+)?)\s*[x/]\s*(\d+(?:\.\d+)?)\s*(oz|ounce|ounces)\b/);
-  if (m) return { unit: 'oz', amount: Number(m[1]) * Number(m[2]) };
-  m = text.match(/(\d+(?:\.\d+)?)\s*(lb|lbs|pound|pounds)\b/);
-  if (m) return { unit: 'lb', amount: Number(m[1]) };
-  m = text.match(/(\d+(?:\.\d+)?)\s*(oz|ounce|ounces)\b/);
-  if (m) return { unit: 'oz', amount: Number(m[1]) };
-  m = text.match(/(\d+(?:\.\d+)?)\s*(gal|gallon|gallons)\b/);
-  if (m) return { unit: 'gal', amount: Number(m[1]) };
-  m = text.match(/(\d+(?:\.\d+)?)\s*(qt|quart|quarts)\b/);
-  if (m) return { unit: 'qt', amount: Number(m[1]) };
-  m = text.match(/(\d+(?:\.\d+)?)\s*(ct|count|each|ea|pc|pcs|pieces)\b/);
-  if (m) return { unit: 'each', amount: Number(m[1]) };
-  return { unit: '', amount: 0 };
-};
-
-const unitConversionsToOunces = {
-  oz: 1,
-  lb: 16,
-  gal: 128,
-  qt: 32,
-  cup: 8,
-  tbsp: 0.5,
-  tsp: 1 / 6
-};
-
 export const getInventoryUnitCost = (item = {}, desiredUnit = '') => {
-  const unit = cleanUnit(desiredUnit);
+  const unit = normalizeUnit(cleanUnit(desiredUnit));
   const price = qty(item.price ?? item.latestPrice ?? item.casePrice ?? item.totalPrice ?? item.unitCost, 0);
-  if (price <= 0) return { unitCost: 0, basis: 'missing-price', packageAmount: 0, packageUnit: '' };
-
-  const parsedPack = parsePackSize(item.packSize || item.size || item.caseSize || item.packageSize || '');
-  const yieldQty = Math.max(0, qty(item.yieldQty ?? item.unitsPerCase ?? item.caseUnits ?? item.count ?? item.quantity, 0));
-
-  if (parsedPack.amount > 0 && parsedPack.unit) {
-    const packOz = parsedPack.amount * (unitConversionsToOunces[parsedPack.unit] || 0);
-    const desiredOz = unitConversionsToOunces[unit] || 0;
-    if (packOz > 0 && desiredOz > 0) return { unitCost: (price / packOz) * desiredOz, basis: `pack-${parsedPack.amount}-${parsedPack.unit}`, packageAmount: parsedPack.amount, packageUnit: parsedPack.unit };
-    if (unit === 'each' && parsedPack.unit === 'each') return { unitCost: price / parsedPack.amount, basis: `pack-${parsedPack.amount}-each`, packageAmount: parsedPack.amount, packageUnit: 'each' };
+  const missing = reason => ({ unitCost: 0, basis: reason, packageAmount: 0, packageUnit: '', needsReview: true });
+  if (item.inventorySourceType === 'non_food_supply' || /^(supplies|cleaning|paper goods)$/i.test(item.category || '')) return missing('non-food-supply');
+  if (price <= 0) return missing('missing-price');
+  const stockUnit = normalizeUnit(item.inventoryUnit || item.stockUnit || 'case');
+  const yieldFactor = usableYield(1, item.yieldPercent ?? 100);
+  if (!yieldFactor) return missing('invalid-yield');
+  if (stockUnit !== 'case') {
+    const amount = convertQuantity(1, stockUnit, unit);
+    if (amount > 0) return { unitCost: price / amount / yieldFactor, basis: `stock-${stockUnit}`, packageAmount: amount, packageUnit: unit };
+    return missing('incompatible-stock-unit');
   }
+  const pack = parseCasePack(item.packSize || item.size || item.caseSize || item.packageSize || '');
+  if (pack.known) {
+    const amount = convertQuantity(pack.amount, pack.unit, unit);
+    if (amount > 0) return { unitCost: price / amount / yieldFactor, basis: `pack-${pack.amount}-${pack.unit}`, packageAmount: pack.amount, packageUnit: pack.unit };
+  }
+  const yieldQty = qty(item.yieldQty ?? item.unitsPerCase ?? item.caseUnits, 0);
+  if (unit === 'each' && yieldQty > 0) return { unitCost: price / yieldQty / yieldFactor, basis: `yield-${yieldQty}`, packageAmount: yieldQty, packageUnit: 'each' };
+  return missing('package-conversion-needs-review');
+};
 
-  if (yieldQty > 0) return { unitCost: price / yieldQty, basis: `yield-${yieldQty}`, packageAmount: yieldQty, packageUnit: unit || 'each' };
-  return { unitCost: price, basis: 'case-price-as-each', packageAmount: 1, packageUnit: unit || 'each' };
+export const getBatchRecipeCost = ({ recipe = {}, inventoryItems = [], menuDependencies = [] } = {}) => {
+  if (!recipe.id || !recipe.costingApprovedAt) return { ready: false, reason: 'Approve the batch ingredients and usable yield first.', totalCost: 0, unitCost: 0 };
+  const links = menuDependencies.filter(dep => dep.recipeId === recipe.id && dep.source === 'approved_batch_recipe' && (recipe.costingDependencyIds || []).includes(dep.id) && isApprovedDependency(dep));
+  const ingredients = links.map(dep => {
+    const item = inventoryItems.find(row => row.id === dep.inventoryItemId);
+    return estimateIngredientCost({ name: dep.ingredientName, quantity: dep.batchQuantity ?? dep.portionQuantity ?? dep.estimatedQuantity,
+      unit: dep.batchUnit || dep.portionUnit || dep.estimatedUnit, portionConfidence: 'approved' }, item || {}, recipe);
+  });
+  const amount = usableYield(recipe.batchYieldQuantity, recipe.batchYieldPercent ?? 100);
+  const unit = normalizeUnit(recipe.batchYieldUnit);
+  const totalCost = ingredients.reduce((sum, row) => sum + row.cost, 0);
+  const expectedLinks = new Set(recipe.costingDependencyIds || []);
+  const ready = links.length > 0 && links.length === expectedLinks.size && amount > 0 && Boolean(unit) && ingredients.every(row => !row.missingCost && row.portionConfidence === 'approved');
+  return { ready, totalCost, unitCost: ready ? totalCost / amount : 0, unit, usableYield: amount, ingredients,
+    reason: ready ? 'Approved batch ingredients divided by usable yield.' : 'Batch ingredient cost, quantity, or usable yield needs review.' };
 };
 
 const DEFAULT_PORTIONS = [
@@ -113,7 +111,7 @@ export const estimateIngredientCost = (ingredient = {}, inventoryItem = {}, menu
     unitCost: Number(costBasis.unitCost || 0),
     cost,
     basis: costBasis.basis,
-    missingCost: !inventoryItem?.id || Number(costBasis.unitCost || 0) <= 0
+    missingCost: !inventoryItem?.id || Number(costBasis.unitCost || 0) <= 0 || costBasis.needsReview === true
   };
 };
 
@@ -121,7 +119,7 @@ const inventoryForIngredient = (ingredient = {}, inventoryItems = []) => {
   const id = ingredient.matchedInventoryItemId || ingredient.inventoryItemId || ingredient.itemId || '';
   if (id) {
     const byId = inventoryItems.find(item => item.id === id);
-    if (byId) return byId;
+    return byId || null;
   }
   const key = normalize(ingredient.matchedInventoryItemName || ingredient.inventoryItemName || ingredient.name || ingredient.ingredientName || '');
   if (!key) return null;
@@ -133,7 +131,7 @@ const inventoryForIngredient = (ingredient = {}, inventoryItems = []) => {
 
 const groupDependencies = (menuDependencies = []) => {
   const groups = new Map();
-  (menuDependencies || []).filter(dep => !/deleted|archived|inactive|rejected/i.test(String(dep.status || dep.reviewStatus || dep.approvalStatus || 'approved'))).forEach(dep => {
+  (menuDependencies || []).filter(dep => dep.source !== 'approved_batch_recipe' && isApprovedDependency(dep)).forEach(dep => {
     const name = dep.menuItemName || dep.recipeName || dep.dishName || dep.name || 'Menu item';
     const key = normalize([name, dep.menuCategory || '', dep.menuDescription || ''].join('|')) || name;
     if (!groups.has(key)) groups.set(key, { name, category: dep.menuCategory || '', description: dep.menuDescription || '', price: parseMenuPrice(dep.menuItemPrice ?? dep.price ?? dep.menuPrice), ingredients: [] });
@@ -141,6 +139,7 @@ const groupDependencies = (menuDependencies = []) => {
     if (!group.price) group.price = parseMenuPrice(dep.menuItemPrice ?? dep.price ?? dep.menuPrice);
     group.ingredients.push({
       name: dep.ingredientName || dep.inventoryItemName || '',
+      batchRecipeId: dep.batchRecipeId || '',
       matchedInventoryItemId: dep.inventoryItemId || '',
       matchedInventoryItemName: dep.inventoryItemName || '',
       estimatedQuantity: dep.estimatedQuantity ?? dep.portionQuantity,
@@ -152,9 +151,18 @@ const groupDependencies = (menuDependencies = []) => {
   return Array.from(groups.values());
 };
 
-export const buildMenuCostBreakdowns = ({ menuItems = [], menuDependencies = [], inventoryItems = [] } = {}) => {
+export const buildMenuCostBreakdowns = ({ menuItems = [], menuDependencies = [], inventoryItems = [], recipes = [] } = {}) => {
   const rows = (menuItems && menuItems.length ? menuItems : groupDependencies(menuDependencies)).map(item => {
     const ingredients = (item.ingredients || []).map(ingredient => {
+      if (ingredient.batchRecipeId) {
+        const batch = getBatchRecipeCost({ recipe: recipes.find(recipe => recipe.id === ingredient.batchRecipeId) || {}, inventoryItems, menuDependencies });
+        const portion = estimateIngredientPortion(ingredient, item);
+        const amount = convertQuantity(portion.quantity, portion.unit, batch.unit);
+        return { ingredientName: ingredient.name, inventoryItemId: ingredient.batchRecipeId, inventoryItemName: ingredient.name,
+          quantity: portion.quantity, unit: portion.unit, portionConfidence: portion.confidence,
+          cost: batch.ready && amount !== null ? amount * batch.unitCost : 0, unitCost: batch.unitCost,
+          basis: 'approved-batch-yield', missingCost: !batch.ready || amount === null };
+      }
       const inventoryItem = inventoryForIngredient(ingredient, inventoryItems);
       return estimateIngredientCost(ingredient, inventoryItem || {}, item);
     });
@@ -176,7 +184,7 @@ export const buildMenuCostBreakdowns = ({ menuItems = [], menuDependencies = [],
       missingIngredients: missing,
       estimatedIngredients: estimated,
       confidenceScore,
-      confidenceLabel: confidenceScore >= 85 ? 'high' : confidenceScore >= 60 ? 'medium' : 'needs review',
+      confidenceLabel: confidenceScore >= 85 ? 'high' : confidenceScore >= 60 ? 'medium' : confidenceScore >= 35 ? 'low' : 'needs review',
       status: missing.length ? 'missing-costs' : menuPrice <= 0 ? 'missing-price' : foodCostPct > 38 ? 'high-food-cost' : 'ready'
     };
   });

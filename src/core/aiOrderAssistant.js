@@ -1,3 +1,6 @@
+import menuApprovalHelpers from './menuApproval.js';
+
+const { isApprovedDependency } = menuApprovalHelpers;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 const toDateKey = (value = '') => {
@@ -87,10 +90,7 @@ export const cleanInventoryItemDisplayName = (item = {}) => {
   return label.trim() || raw;
 };
 
-const approvedDependencies = (deps = []) => (deps || []).filter(dep => {
-  const status = clean(dep.status || dep.reviewStatus || dep.approvalStatus || dep.sourceStatus || 'approved');
-  return !status || ['approved', 'active', 'linked', 'verified'].includes(status);
-});
+const approvedDependencies = (deps = []) => (deps || []).filter(isApprovedDependency);
 
 const getMenuImpactCount = (item = {}, deps = []) => {
   const label = itemLabel(item);
@@ -100,7 +100,7 @@ const getMenuImpactCount = (item = {}, deps = []) => {
   approvedDependencies(deps).forEach(dep => {
     const ing = singular(dep.inventoryItemName || dep.ingredientName || dep.ingredient || dep.sourceName || '');
     const itemId = dep.inventoryItemId || dep.inventoryId || dep.itemId || '';
-    const match = (item.id && itemId === item.id) || textScore(q, ing) >= 40;
+    const match = itemId ? itemId === item.id : textScore(q, ing) >= 40;
     if (match) seen.add(dep.menuItemName || dep.recipeName || dep.menuItemId || dep.id || ing);
   });
   return seen.size;
@@ -118,7 +118,7 @@ const getUpcomingEvents = (events = [], { currentDate = todayKey(), daysAhead = 
 const getItemEventMatches = (item = {}, events = [], deps = []) => {
   const label = itemLabel(item);
   const depMenuNames = approvedDependencies(deps)
-    .filter(dep => (item.id && [dep.inventoryItemId, dep.inventoryId, dep.itemId].includes(item.id)) || textScore(label, dep.inventoryItemName || dep.ingredientName || dep.ingredient || '') >= 40)
+    .filter(dep => (dep.inventoryItemId || dep.inventoryId || dep.itemId) ? [dep.inventoryItemId, dep.inventoryId, dep.itemId].includes(item.id) : textScore(label, dep.inventoryItemName || dep.ingredientName || dep.ingredient || '') >= 40)
     .map(dep => dep.menuItemName || dep.recipeName || '')
     .filter(Boolean);
   return (events || []).map(ev => {
@@ -149,7 +149,7 @@ const getPrepDemandScore = (item = {}, prepItems = [], { currentDate = todayKey(
 const getInvoiceRowsForItem = (item = {}, invoices = []) => {
   const label = itemLabel(item);
   const rows = [];
-  (invoices || []).forEach(inv => {
+  (invoices || []).filter(inv => !inv.status || inv.status === 'approved').forEach(inv => {
     const date = toDateKey(inv.invoiceDate || inv.processedAt || inv.createdAt || inv.date);
     (inv.lineItems || inv.rows || []).forEach(row => {
       const rowLabel = lineItemText(row);

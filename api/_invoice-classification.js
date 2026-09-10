@@ -115,8 +115,8 @@ function inferInvoiceProductFields(row = {}) {
   const inferred = {
     ...original,
     productCode,
-    quantity: hasValue(original.quantity ?? original.qty ?? original.shippedQty ?? original.receivedQty ?? original.orderedQty)
-      ? (original.quantity ?? original.qty ?? original.shippedQty ?? original.receivedQty ?? original.orderedQty)
+    quantity: hasValue(original.receivedQty ?? original.shippedQty ?? original.quantity ?? original.qty)
+      ? (original.receivedQty ?? original.shippedQty ?? original.quantity ?? original.qty)
       : (leading?.[1] || ''),
     uom: original.uom || original.unitOfMeasure || leading?.[2] || '',
     packSize: original.packSize || original.pack || original.size || packMatch?.[0] || leading?.[2] || '',

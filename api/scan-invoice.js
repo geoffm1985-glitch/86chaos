@@ -1,3 +1,5 @@
+const { INVOICE_SCHEMA, scanWithPrimaryProvider } = require('./_ai-provider');
+const { resolveAiPolicy, enforceClientAiSelection } = require('./_ai-policy');
 const { enforceRateLimit, sendRateLimited } = require('./_rate-limit');
 const { APP_VERSION } = require('./_version');
 const {
@@ -677,22 +679,21 @@ async function callGeminiGenerate({ apiKey, model, body, timeoutMs, callBudget, 
 
   const raw = await response.text();
   if (!response.ok) {
-    let message = raw;
-    try { message = JSON.parse(raw)?.error?.message || raw; }
-    catch (_) {}
-    const err = new Error(message || `Gemini invoice scan failed with ${response.status}.`);
-    err.status = response.status;
-    err.raw = raw;
+    const err = new Error(`Optional scanner provider request failed (${response.status}).`);
+    err.statusCode = 502;
+    err.code = 'AI_FALLBACK_FAILED';
     throw err;
   }
 
   let gemini;
   try { gemini = JSON.parse(raw || '{}'); }
   catch (err) {
-    const apiErr = new Error(`Gemini invoice scan returned non-JSON API output. ${raw.slice(0, 700)}`);
-    apiErr.raw = raw;
+    const apiErr = new Error('Optional scanner provider returned an invalid result.');
+    apiErr.code = 'AI_STRUCTURED_RESULT_INVALID';
+    apiErr.statusCode = 502;
     throw apiErr;
   }
+  callBudget.recordUsage(gemini?.usageMetadata?.promptTokenCount, gemini?.usageMetadata?.candidatesTokenCount);
   return gemini;
 }
 
@@ -738,6 +739,7 @@ async function handler(req, res) {
   let usageDb = null;
   let providerCallStarted = false;
   let usedModel = '';
+  let usedProvider = 'openai';
   let providerCallBudget = null;
   let estimatedInputTokens = 0;
   let estimatedOutputTokens = 0;
@@ -747,7 +749,6 @@ async function handler(req, res) {
     if (!restaurantId) return res.status(400).json({ error: 'restaurantId is required.' });
 
     const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_GENERATIVE_AI_API_KEY || process.env.GOOGLE_API_KEY || process.env.API_KEY;
-    if (!apiKey) return res.status(500).json({ error: 'Missing GEMINI_API_KEY, GOOGLE_GENERATIVE_AI_API_KEY, or GOOGLE_API_KEY in Vercel.' });
 
     const authContext = await verifyRequestToken(req, { requireProjectCredentials: true });
     const adminApp = authContext.app || initAdmin(req);
@@ -768,7 +769,8 @@ async function handler(req, res) {
     assertImageDimensionsWithinHardLimit('invoice', pageBuffer, mimeType);
     const pageCount = await resolveScanPageCount({ mimeType, buffer: pageBuffer });
     assertPageCountWithinHardLimit('invoice', pageCount);
-    const modelCandidates = getInvoiceModelCandidates();
+    const contract = resolveAiPolicy({ feature: 'invoice', route: '/api/scan-invoice' });
+    enforceClientAiSelection(req, contract, { restaurantId, uid: authContext.decoded.uid });
     const idempotencyKey = getIdempotencyKey(req, body);
 
     usageReservation = await checkAndReserveAiScanPages({
@@ -778,104 +780,41 @@ async function handler(req, res) {
       pageCount,
       decoded: authContext.decoded,
       idempotencyKey,
-      provider: 'google_gemini',
-      model: modelCandidates[0] || 'gemini-2.5-flash-lite',
+      provider: contract.provider,
+      model: contract.model,
       sourceRoute: '/api/scan-invoice',
       planScanLimits: access.planScanLimits
     });
     if (usageReservation.blocked) return res.status(429).json(buildLimitResponse(usageReservation));
     if (usageReservation.duplicate) return res.status(409).json(buildDuplicateResponse(usageReservation));
 
-    const model = modelCandidates[0];
-    const inputMode = String(process.env.INVOICE_SCAN_INPUT_MODE || 'files').toLowerCase();
-    const useGeminiFiles = inputMode !== 'inline' && scanSource.source === 'firebase-storage' && Buffer.isBuffer(scanSource.fileBuffer);
-
-    let filePart;
-    let scanInputMethod = 'inline-base64';
-
-    if (useGeminiFiles) {
-      providerCallStarted = true;
-      geminiFile = await uploadToGeminiFiles(apiKey, scanSource);
-      filePart = { fileData: { mimeType, fileUri: geminiFile.uri } };
-      scanInputMethod = 'gemini-files-api';
-    } else {
-      const fileBase64 = scanSource.fileBase64 || scanSource.fileBuffer?.toString('base64');
-      if (!fileBase64) throw new Error('No invoice file data available to scan.');
-      filePart = { inlineData: { mimeType, data: fileBase64 } };
-    }
-
-    const timeoutMs = parseInt(process.env.INVOICE_SCAN_TIMEOUT_MS || '285000', 10);
-    let parsed = null;
-    let usedAttempt = '';
-    let finishReason = '';
-    let repairModel = '';
-    let lastFailure = null;
+    const model = contract.model;
+    const scanInputMethod = 'responses-file-input';
     providerCallBudget = createProviderCallBudget('invoice');
-
-    for (const candidateModel of modelCandidates) {
-      const attempts = [
-        { name: 'full-json', compact: false },
-        { name: 'compact-json-retry', compact: true }
-      ];
-
-      for (const attempt of attempts) {
-        try {
-          const prompt = buildInvoicePrompt({ compact: attempt.compact });
-          const generationBody = createGenerationBody(prompt, filePart, { compact: attempt.compact });
-          providerCallStarted = true;
-          const gemini = await callGeminiGenerate({
-            apiKey,
-            model: candidateModel,
-            body: generationBody,
-            timeoutMs,
-            callBudget: providerCallBudget,
-            attempt: attempt.name
-          });
-          const text = getGeminiCandidateText(gemini);
-          finishReason = getGeminiFinishReason(gemini);
-          estimatedInputTokens += Number(gemini?.usageMetadata?.promptTokenCount || 0);
-          estimatedOutputTokens += Number(gemini?.usageMetadata?.candidatesTokenCount || 0);
-          if (!text) throw new Error('Gemini returned no invoice text.');
-
-          try {
-            parsed = parseGeminiJson(text);
-          } catch (parseErr) {
-            lastFailure = parseErr;
-            const wasTruncated = /MAX_TOKENS|LENGTH/i.test(finishReason) || !extractBalancedJson(text);
-            if (!attempt.compact && wasTruncated) continue;
-            try {
-              const repaired = await repairGeminiJsonWithModel({ apiKey, model: candidateModel, badText: text, scanInputMethod, callBudget: providerCallBudget });
-              parsed = repaired.parsed;
-              repairModel = repaired.repairModel;
-              finishReason = repaired.repairFinishReason || finishReason;
-              estimatedInputTokens += Number(repaired.inputTokens || 0);
-              estimatedOutputTokens += Number(repaired.outputTokens || 0);
-            } catch (repairErr) {
-              lastFailure = repairErr;
-              if (!attempt.compact) continue;
-              throw repairErr;
-            }
-          }
-
-          if (parsed) {
-            usedModel = candidateModel;
-            usedAttempt = attempt.name;
-            break;
-          }
-        } catch (err) {
-          lastFailure = err;
-          if (isModelFallbackError(err.message)) break;
-          if (!attempt.compact) continue;
-        }
+    const result = await scanWithPrimaryProvider({
+      contract, budget: providerCallBudget, buffer: pageBuffer, mimeType, schema: INVOICE_SCHEMA,
+      prompt: buildInvoicePrompt() + '\nStructured contract: put every source row, including charges and document noise, in lineItems. The deterministic classifier will separate them. Do not duplicate rows. Do not infer received quantity from ordered quantity. Mark catch weight and substitutions explicitly. Unknown numbers are null.',
+      timeoutMs: Number(process.env.INVOICE_SCAN_TIMEOUT_MS || 240000),
+      fallback: async budget => {
+        if (!apiKey) throw Object.assign(new Error('Optional scanner fallback is not configured.'), { code: 'AI_FALLBACK_NOT_CONFIGURED', statusCode: 503 });
+        const fallbackModel = getInvoiceModelCandidates()[0];
+        const data = await callGeminiGenerate({ apiKey, model: fallbackModel,
+          body: createGenerationBody(buildInvoicePrompt(), { inlineData: { mimeType, data: pageBuffer.toString('base64') } }),
+          timeoutMs: 45000, callBudget: budget, attempt: 'outage-fallback' });
+        if (/MAX_TOKENS|LENGTH/i.test(getGeminiFinishReason(data))) throw Object.assign(new Error('Fallback extraction is incomplete. Split the document or review manually.'), { code: 'AI_OUTPUT_INCOMPLETE', statusCode: 502 });
+        return { parsed: parseGeminiJson(getGeminiCandidateText(data)), model: fallbackModel, provider: 'gemini',
+          inputTokens: Number(data?.usageMetadata?.promptTokenCount || 0), outputTokens: Number(data?.usageMetadata?.candidatesTokenCount || 0) };
       }
-      if (parsed) break;
-    }
-
-    if (!parsed) {
-      const parseError = new Error(lastFailure?.message || 'Gemini returned invalid JSON after repair attempts.');
-      parseError.statusCode = 502;
-      throw parseError;
-    }
+    });
+    const { parsed } = result;
+    usedModel = result.model;
+    usedProvider = result.provider;
+    providerCallStarted = providerCallBudget.used > 0;
+    estimatedInputTokens = providerCallBudget.inputTokens;
+    estimatedOutputTokens = providerCallBudget.outputTokens;
+    const usedAttempt = usedProvider === 'openai' ? 'structured-extraction' : 'outage-fallback';
+    const finishReason = 'completed';
+    const repairModel = '';
 
     const normalized = normalizeInvoicePayload(parsed);
     normalized.scanFileName = fileName;
@@ -890,6 +829,9 @@ async function handler(req, res) {
     normalized.scannerVersion = INVOICE_SCANNER_ENGINE_VERSION;
     normalized.appVersion = APP_VERSION;
     normalized.scanModel = usedModel || model;
+    normalized.scanProvider = usedProvider;
+    normalized.scanRequestId = usageReservation.eventId;
+    normalized.sourceSha256 = require('crypto').createHash('sha256').update(pageBuffer).digest('hex');
     normalized.scanAttempt = usedAttempt || 'full-json';
     normalized.scanFinishReason = finishReason || '';
     normalized.scanRepairModel = repairModel || '';
@@ -914,7 +856,7 @@ async function handler(req, res) {
       db: usageDb,
       reservation: usageReservation,
       status: 'completed',
-      provider: 'google_gemini',
+      provider: usedProvider,
       model: usedModel || model,
       estimatedInputTokens,
       estimatedOutputTokens,
@@ -926,16 +868,16 @@ async function handler(req, res) {
   } catch (err) {
     if (usageReservation && usageDb) {
       try {
-        if (providerCallStarted) {
+        if (providerCallStarted || providerCallBudget?.used > 0) {
           await completeAiScanUsageEvent({
             db: usageDb,
             reservation: usageReservation,
             status: 'failed',
-            errorMessage: err.message,
-            provider: 'google_gemini',
-            model: usedModel || providerCallBudget?.attempts?.[0]?.model || '',
-            estimatedInputTokens,
-            estimatedOutputTokens,
+            errorMessage: err.code || 'AI_SCAN_FAILED',
+            provider: providerCallBudget?.attempts?.at(-1)?.provider || usedProvider,
+            model: providerCallBudget?.attempts?.at(-1)?.model || usedModel || '',
+            estimatedInputTokens: providerCallBudget?.inputTokens || 0,
+            estimatedOutputTokens: providerCallBudget?.outputTokens || 0,
             providerCallCount: providerCallBudget?.used || 0,
             attempts: providerCallBudget?.attempts || []
           });

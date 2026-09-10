@@ -1,3 +1,4 @@
+const { withPresenceTimeout, presenceDiagnostic } = require('./_presence-diagnostics.cjs');
 const { initAdmin, authorize, writeAudit, clean } = require('./_chaos-admin');
 
 function parseTimeMs(value) {
@@ -15,13 +16,7 @@ function parseTimeMs(value) {
   return 0;
 }
 
-function timeoutAfter(ms, label) {
-  return new Promise((_, reject) => setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms));
-}
-
-async function withTimeout(promise, ms, label) {
-  return Promise.race([promise, timeoutAfter(ms, label)]);
-}
+const withTimeout = withPresenceTimeout;
 
 function publicPresenceRowFromFirestore(doc) {
   const data = doc.data() || {};
@@ -183,6 +178,7 @@ module.exports = async (req, res) => {
     let rows = [];
     let source = 'rtdb-statusSummary-rest';
     const warnings = [];
+    let diagnostic = presenceDiagnostic(app, null, source);
 
     if (!forceFirestoreFallback) {
       try {
@@ -193,6 +189,7 @@ module.exports = async (req, res) => {
           : flattenRtdbStatusSummary(raw || {}, '');
       } catch (rtdbError) {
         source = 'firestore-livePresence-fallback';
+        diagnostic = presenceDiagnostic(app, rtdbError, source);
         warnings.push('Live presence source unavailable. Showing last-seen fallback.');
         console.warn('RTDB presence snapshot failed, using bounded fallback:', rtdbError?.message || rtdbError);
       }
@@ -222,6 +219,7 @@ module.exports = async (req, res) => {
       fetchedAt: new Date().toISOString(),
       mode: 'bounded-manual-snapshot',
       source,
+      diagnostic,
       warning: warnings.join(' | '),
       restaurantId: restaurantId || 'all',
       windowMinutes,

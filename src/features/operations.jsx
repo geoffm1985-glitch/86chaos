@@ -1,3 +1,7 @@
+import { LabelPrintSetup } from '../components/DayDotPrintScreen';
+import foodSafetyHelpers from '../core/foodSafety.js';
+import { invoiceReviewRequest } from '../components/InvoiceReviewTools';
+import RecipeBatchCostEditor from '../components/RecipeBatchCostEditor';
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Archive, Bell, Check, Camera, ChevronLeft, ChevronRight, MessageSquare, Plus, Trash2, Users, Calendar, Clock, X, Loader2, Package, ClipboardList, Menu, Settings, LogOut, Shield, Send, Repeat, Edit, Moon, Sun, TrendingUp, BookOpen, Search, ChefHat, Scale, Coffee, Star, Bug, Wrench, Globe, Sparkles } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
@@ -18,6 +22,8 @@ import { CheersLogo, Modal, DrawerMenu, DayDotPrintScreen, MapClickListener, Sma
 import { usePlanAccess } from '../hooks/usePlanAccess';
 import { FEATURE_KEYS } from '../config/plans';
 import { canViewRestaurantOpsIntelligence } from '../lib/featureAccess';
+
+const { FOOD_SAFETY_CATEGORIES, evaluateFoodSafety, missedFoodSafetyChecks } = foodSafetyHelpers;
 
 const readableApiError = (value) => {
   if (!value) return '';
@@ -70,22 +76,10 @@ const TabPrep = ({ currentDate, appUser, addToast, setLabelsToPrint }) => {
     } catch (e) {}
   }, []);
 
-  // --- USDA Food Safety Standards Engine ---
-  const USDA_CATEGORIES = {
-    'Cold Holding (≤ 41°F)': { max: 41 },
-    'Hot Holding (≥ 135°F)': { min: 135 },
-    'Poultry / Reheat (≥ 165°F)': { min: 165 },
-    'Ground Meats (≥ 155°F)': { min: 155 },
-    'Whole Meats / Fish (≥ 145°F)': { min: 145 }
-  };
-
-  const evaluateTemp = (temp, cat) => {
-    const rules = USDA_CATEGORIES[cat];
-    if (!rules) return 'Unknown';
-    const t = parseFloat(temp);
-    if (rules.max && t > rules.max) return 'Danger';
-    if (rules.min && t < rules.min) return 'Danger';
-    return 'Safe';
+  const USDA_CATEGORIES = FOOD_SAFETY_CATEGORIES;
+  const evaluateTemp = (temp, item) => {
+    try { return evaluateFoodSafety(typeof item === 'string' ? { category: item } : item, { temp, notes: 'checkpoint preview', correctiveAction: 'preview' }).status; }
+    catch (_) { return 'Attention'; }
   };
 
   // Sync internal prepDate with global currentDate
@@ -117,7 +111,7 @@ const TabPrep = ({ currentDate, appUser, addToast, setLabelsToPrint }) => {
 
   // Line Check State
   const lineChecks = useLiveCollection('lineCheckItems', appUser?.restaurantId, { limitCount: 150 });
-  const tempLogs = useLiveCollection('tempLogs', appUser?.restaurantId, { limitCount: 150 });
+  const tempLogs = useLiveCollection('tempLogs', appUser?.restaurantId, { limitCount: 150, whereClauses: [['date', '==', getToday()]] });
   
   const [lcSearch, setLcSearch] = useState('');
   const [lcName, setLcName] = useState('');
@@ -125,6 +119,12 @@ const TabPrep = ({ currentDate, appUser, addToast, setLabelsToPrint }) => {
   const [temps, setTemps] = useState({});
   const [correctiveActions, setCorrectiveActions] = useState({});
   const [editLineCheckItem, setEditLineCheckItem] = useState(null);
+  const [safetyNotes, setSafetyNotes] = useState({});
+  const [safetyBusy, setSafetyBusy] = useState({});
+  const safetyPending = useRef(new Map());
+  const canSignOffSafety = appUser?.isAdmin || appUser?.isOwner || appUser?.isSuperAdmin || appUser?.permissions?.team;
+  const missedSafety = missedFoodSafetyChecks(lineChecks, tempLogs);
+
 
   // --- PREP LOGIC ---
   const activePrep = prepItems.filter(p => p.date === prepDate || p.isMaster);
@@ -189,53 +189,34 @@ const TabPrep = ({ currentDate, appUser, addToast, setLabelsToPrint }) => {
   // --- LINE CHECK LOGIC ---
   const handleAddLineCheck = async (e) => {
     e.preventDefault();
-    if(lcName.trim()) {
-      await safePrepWrite({ action: 'add', collectionName: "lineCheckItems", label: "Line check item", data: {
-        name: lcName.trim(),
-        category: lcCat,
-        restaurantId: appUser.restaurantId
-      } });
+    try {
+      await invoiceReviewRequest(appUser, { action: 'food-safety-config', requestId: crypto.randomUUID(), item: { name: lcName, category: lcCat } });
       setLcName('');
-    }
+    } catch (err) { addToast('Check not saved', err.message); }
   };
-
   const handleSaveLineCheckEdit = async (e) => {
     e.preventDefault();
-    await safePrepWrite({ action: 'update', collectionName: "lineCheckItems", docId: editLineCheckItem.id, label: "Line check item", before: editLineCheckItem, data: {
-      name: editLineCheckItem.name.trim(),
-      category: editLineCheckItem.category
-    } });
-    setEditLineCheckItem(null);
+    try {
+      await invoiceReviewRequest(appUser, { action: 'food-safety-config', itemId: editLineCheckItem.id, item: editLineCheckItem });
+      setEditLineCheckItem(null);
+    } catch (err) { addToast('Check not saved', err.message); }
   };
-
   const handleLogTemp = async (item) => {
-    const val = temps[item.id];
-    if (!val) return;
-    
-    const status = evaluateTemp(val, item.category);
-    const correctiveAction = String(correctiveActions[item.id] || '').trim();
-    if (status === 'Danger' && !correctiveAction) {
-      alert('Corrective action is required for an out-of-range temperature. Example: moved to walk-in, discarded, reheated to safe temp, called manager.');
-      return;
-    }
-    
-    await safePrepWrite({ action: 'add', collectionName: "tempLogs", label: "Temperature log", data: {
-      itemId: item.id,
-      itemName: item.name,
-      category: item.category,
-      temp: parseFloat(val),
-      status: status,
-      correctiveAction,
-      managerReviewRequired: status === 'Danger',
-      reviewedByManager: false,
-      loggedBy: appUser.name,
-      date: getToday(),
-      timestamp: new Date().toISOString(),
-      restaurantId: appUser.restaurantId
-    } });
-    
-    setTemps({...temps, [item.id]: ''});
-    setCorrectiveActions({...correctiveActions, [item.id]: ''});
+    if (safetyPending.current.get(item.id)?.busy) return;
+    const pending = safetyPending.current.get(item.id) || { requestId: crypto.randomUUID() };
+    pending.busy = true; safetyPending.current.set(item.id, pending); setSafetyBusy(current => ({ ...current, [item.id]: true }));
+    try {
+      await invoiceReviewRequest(appUser, { action: 'food-safety-log', itemId: item.id, requestId: pending.requestId,
+        localDate: getToday(), temp: temps[item.id], checklistResult: temps[item.id], notes: safetyNotes[item.id], correctiveAction: correctiveActions[item.id] });
+      safetyPending.current.delete(item.id);
+      setTemps(current => ({ ...current, [item.id]: '' })); setCorrectiveActions(current => ({ ...current, [item.id]: '' })); setSafetyNotes(current => ({ ...current, [item.id]: '' }));
+    } catch (err) { addToast('Log needs attention', err.message); pending.busy = false; }
+    finally { setSafetyBusy(current => ({ ...current, [item.id]: false })); }
+  };
+  const signOffSafety = async (log) => {
+    const note = window.prompt('Manager sign-off: what did you verify?'); if (!note) return;
+    try { await invoiceReviewRequest(appUser, { action: 'food-safety-signoff', logId: log.id, note }); }
+    catch (err) { addToast('Sign-off not saved', err.message); }
   };
 
   const filteredLineChecks = lineChecks
@@ -382,11 +363,12 @@ const TabPrep = ({ currentDate, appUser, addToast, setLabelsToPrint }) => {
               <input type="text" value={editLineCheckItem.name} onChange={e=>setEditLineCheckItem({...editLineCheckItem, name: e.target.value})} className={T.input} required />
             </div>
             <div>
-              <label className={T.label}>USDA Safe Temp Rule</label>
+              <label className={T.label}>Food-safety expectation</label>
               <select value={editLineCheckItem.category} onChange={e=>setEditLineCheckItem({...editLineCheckItem, category: e.target.value})} className={T.input}>
                 {Object.keys(USDA_CATEGORIES).map(c=><option key={c} value={c}>{c}</option>)}
               </select>
             </div>
+            {['location', 'requiredMin', 'requiredMax', 'requiredEveryHours'].map(field => <label key={field} className={T.label}>{({ location: 'Location', requiredMin: 'Minimum °F (optional)', requiredMax: 'Maximum °F (optional)', requiredEveryHours: 'Required every N hours (optional)' })[field]}<input className={T.input} value={editLineCheckItem[field] ?? ''} onChange={e => setEditLineCheckItem({ ...editLineCheckItem, [field]: e.target.value })}/></label>)}
             <button type="submit" className={`w-full ${T.btn}`}>Save Changes</button>
           </form>
         )}
@@ -406,6 +388,8 @@ const TabPrep = ({ currentDate, appUser, addToast, setLabelsToPrint }) => {
       {subTab === 'line-check' && (
         <div className="space-y-4 animate-[slideIn_0.2s_ease-out]">
           
+          <p className="text-xs text-slate-400">Fast kitchen records with manager review. Configure expectations for your operation; logs do not certify legal compliance. Record time and process details for cooling and reheating.</p>
+          {missedSafety.length > 0 && <div role="alert" className="rounded-xl border border-amber-800 p-3 text-amber-300 text-sm">Required checks need attention: {missedSafety.map(item => item.name).join(', ')}</div>}
           <div className="flex gap-2">
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={18}/>
@@ -413,7 +397,7 @@ const TabPrep = ({ currentDate, appUser, addToast, setLabelsToPrint }) => {
             </div>
           </div>
 
-          {canManageLineChecks && (
+          {canSignOffSafety && (
             <form onSubmit={handleAddLineCheck} className={`${T.card} p-3 flex flex-col sm:flex-row gap-3 items-center bg-[#1A2126]`}>
               <input type="text" value={lcName} onChange={e=>setLcName(e.target.value)} className="flex-1 w-full p-2 bg-[#12161A] border border-[#2A353D] rounded-xl text-sm outline-none font-medium text-white placeholder-slate-500" placeholder="Add cooler or food item..." required/>
               <div className="flex w-full sm:w-auto gap-2 items-center">
@@ -426,7 +410,7 @@ const TabPrep = ({ currentDate, appUser, addToast, setLabelsToPrint }) => {
           )}
 
           <div className={`${T.card} overflow-hidden`}>
-            <div className={T.th}>USDA Safety & Temp Log (Today)</div>
+            <div className={T.th}>Food Safety & Temperature Log (Today)</div>
             <div className={`divide-y ${T.border}`}>
               {filteredLineChecks.length === 0 && <div className="p-6 text-center font-bold text-slate-500 text-sm">No items configured for line check.</div>}
               {filteredLineChecks.map(item => {
@@ -442,8 +426,8 @@ const TabPrep = ({ currentDate, appUser, addToast, setLabelsToPrint }) => {
                       
                       {latestLog ? (
                         <div className={`text-[10px] font-black mt-2 inline-flex items-center gap-2 px-2 py-1 rounded-md border ${latestLog.status === 'Safe' ? 'bg-emerald-900/20 text-emerald-400 border-emerald-900/50' : 'bg-red-900/20 text-red-400 border-red-900/50'}`}>
-                          <span className="text-sm">{latestLog.temp}°F</span> 
-                          <span>({latestLog.status})</span>
+                          <span className="text-sm">{latestLog.temp == null ? latestLog.result : `${latestLog.temp}°F`}</span>
+                          <span>({latestLog.status})</span>{latestLog.managerReviewRequired && !latestLog.reviewedByManager && canSignOffSafety && <button type="button" onClick={() => signOffSafety(latestLog)} className="underline">Manager sign-off</button>}{latestLog.reviewedByManager && <span>Reviewed</span>}
                           <span className="opacity-70 font-bold border-l border-current pl-2 ml-1">By {latestLog.loggedBy} at {formatClockTime(latestLog.timestamp)}</span>
                         </div>
                       ) : (
@@ -453,14 +437,14 @@ const TabPrep = ({ currentDate, appUser, addToast, setLabelsToPrint }) => {
                     
                     <div className="flex items-center gap-3 md:self-end">
                       <div className="flex items-center gap-1 bg-[#12161A] p-1 rounded-lg border border-[#2A353D]">
-                        <input type="number" step="0.1" value={temps[item.id] || ''} onChange={e=>setTemps({...temps, [item.id]: e.target.value})} placeholder="°F" className="w-16 bg-transparent text-white font-black text-center text-sm outline-none" />
-                        <button onClick={() => handleLogTemp(item)} disabled={!temps[item.id]} className="bg-slate-800 text-white disabled:opacity-50 px-3 py-1.5 rounded text-xs font-black uppercase hover:bg-slate-700 transition-colors">Log</button>
-                        {temps[item.id] && evaluateTemp(temps[item.id], item.category) === 'Danger' && (
+                        {item.category === 'Daily food-safety checklist' ? <select aria-label={`Result for ${item.name}`} value={temps[item.id] || ''} onChange={e => setTemps({ ...temps, [item.id]: e.target.value })} className={T.input}><option value="">Check</option><option value="pass">Pass</option><option value="attention">Attention</option></select> : <input type="number" step="0.1" value={temps[item.id] || ''} onChange={e=>setTemps({...temps, [item.id]: e.target.value})} placeholder="°F" aria-label={`Temperature for ${item.name}`} className="w-16 bg-transparent text-white font-black text-center text-sm outline-none" />}
+                        <input aria-label={`Notes for ${item.name}`} placeholder="Notes / cooling start time" value={safetyNotes[item.id] || ''} onChange={e => setSafetyNotes({ ...safetyNotes, [item.id]: e.target.value })} className="w-36 bg-[#12161A] text-xs text-white p-2 rounded"/><button onClick={() => handleLogTemp(item)} disabled={!temps[item.id] || safetyBusy[item.id]} className="bg-slate-800 text-white disabled:opacity-50 px-3 py-1.5 rounded text-xs font-black uppercase hover:bg-slate-700 transition-colors">Log</button>
+                        {temps[item.id] && evaluateTemp(temps[item.id], item) !== 'Safe' && (
                           <input type="text" value={correctiveActions[item.id] || ''} onChange={e=>setCorrectiveActions({...correctiveActions, [item.id]: e.target.value})} placeholder="Corrective action required" className="w-full sm:w-48 bg-red-950/30 border border-red-900/50 text-red-100 rounded-lg px-2 py-1.5 text-xs font-bold outline-none" />
                         )}
                       </div>
                       
-                      {canManageLineChecks && (
+                      {canSignOffSafety && (
                         <div className="flex gap-1 border-l border-[#2A353D] pl-3">
                           <button onClick={() => setEditLineCheckItem(item)} className="p-2 text-slate-400 hover:text-white"><Edit size={16}/></button>
                           <button onClick={() => { if(window.confirm(`Delete ${item.name}?`)) safePrepWrite({ action: "delete", collectionName: "lineCheckItems", docId: item.id, label: "Line check item", before: item }); }} className="p-2 text-slate-400 hover:text-red-500"><Trash2 size={16}/></button>
@@ -477,6 +461,7 @@ const TabPrep = ({ currentDate, appUser, addToast, setLabelsToPrint }) => {
 
       {subTab === 'prep' && (
         <div className="space-y-4 animate-[slideIn_0.2s_ease-out]">
+          <LabelPrintSetup/>
           <div className={`${T.card} p-3 flex justify-between items-center bg-[#1A2126]`}>
             <h3 className={`font-black flex items-center gap-2 text-sm text-white uppercase tracking-wider`}><ClipboardList size={18} className={T.copper}/> Target Date:</h3>
             <input type="date" value={prepDate} onChange={e=>setPrepDate(e.target.value)} className="p-1.5 bg-[#12161A] border border-[#2A353D] rounded-lg outline-none text-sm font-bold text-[#D4A381] shadow-inner"/>
@@ -974,6 +959,7 @@ const TabRecipes = ({ appUser, addToast, voiceRecipeTarget = null }) => {
       <Modal isOpen={!!activeRecipe} onClose={() => setActiveRecipe(null)} title="Spec Sheet">
         {activeRecipe && (
           <div className="space-y-6">
+            {(appUser?.isAdmin || appUser?.isOwner || appUser?.permissions?.team) && <RecipeBatchCostEditor key={activeRecipe.id} recipe={activeRecipe} appUser={appUser} onSaved={setActiveRecipe}/> }
             <div className={`border-b ${T.border} pb-4`}><h2 className="text-2xl font-black text-white leading-tight mb-2">{String(activeRecipe?.title || 'Untitled recipe')}</h2><div className={`flex flex-wrap gap-2 text-xs font-bold ${T.muted}`}><span className={`bg-[#12161A] border ${T.border} px-2 py-1 rounded-md`}>{String(activeRecipe?.category || 'Sauce/Dressing')}</span><span className={`bg-[#12161A] border ${T.border} px-2 py-1 rounded-md flex items-center gap-1`}><Clock size={12}/> {String(activeRecipe?.prepTime || '--')}</span><span className={`bg-[#12161A] border ${T.border} px-2 py-1 rounded-md flex items-center gap-1 ${yieldMult !== 1 ? T.copper : ''}`}><Scale size={12}/> Yield: {parseAndMultiply(activeRecipe?.yieldAmt || '--', yieldMult)}</span></div></div>
             <div className={`flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-[#12161A] p-3 rounded-xl border ${T.border} mb-6`}><span className={`text-[10px] font-black uppercase ${T.muted} tracking-widest`}>Yield Multiplier</span><div className={`flex bg-[#1A2126] rounded-lg p-1 border ${T.border}`}>{[0.5, 1, 2, 4].map(m => (<button key={m} onClick={() => setYieldMult(m)} className={`px-4 py-1.5 text-xs font-black rounded-md transition-all ${yieldMult === m ? `${T.grad} text-slate-900` : `text-slate-500 hover:text-white`}`}>{m}x</button>))}</div></div>
             <div className="grid grid-cols-1 md:grid-cols-5 gap-6">

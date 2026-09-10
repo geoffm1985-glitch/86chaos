@@ -40,7 +40,12 @@ const checks = [
     name: 'Inventory heavy datasets are gated by active sub-tab',
     pass: () => {
       const inv = read('src/features/inventory.jsx');
-      return inv.includes('const isAiOrderTab = invTab ===') && inv.includes('needsSmartHistory = isInvoiceTab || isAiOrderTab') && inv.includes('enabled: canUseAiOrdering && isAiOrderTab') && inv.includes('enabled: canUseSmartInventory && needsSmartHistory');
+      const history = read('src/hooks/useScanHistory.js');
+      return inv.includes('const isAiOrderTab = invTab ===')
+        && inv.includes('enabled: canUseAiOrdering && isAiOrderTab')
+        && /const orderInvoices = useLiveCollection\('invoices'[^\n]+enabled: canUseSmartInventory && isAiOrderTab[^\n]+limitCount: 120/.test(inv)
+        && inv.includes("useScanHistory('invoices', appUser?.restaurantId, appUser?.id, canUseSmartInventory && isInvoiceTab)")
+        && history.includes('startAfter(cursor)') && history.includes('pageSize = 20') && !history.includes('onSnapshot');
     }
   },
   {

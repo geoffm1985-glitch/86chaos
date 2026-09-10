@@ -85,13 +85,13 @@ export const normalizeInvoiceLineItem = (row = {}, existingItems = []) => {
     itemName: name || rawName || 'Invoice line',
     productCode,
     packSize,
-    quantity: qty || row.quantity || '',
+    quantity: row.receivedQty ?? row.shippedQty ?? row.quantity ?? row.qty ?? '',
     unitPrice: unit || row.unitPrice || '',
     totalPrice: total || row.totalPrice || '',
     cleanedBy: '86chaos-smart-line-cleaner',
     cleanerConfidence: best?.score >= 70 ? 'high' : best?.score >= 40 ? 'medium' : 'review',
-    matchedItemId: row.matchedItemId || row.matchId || (best?.score >= 70 ? best.item.id : ''),
-    matchId: row.matchId || row.matchedItemId || (best?.score >= 70 ? best.item.id : ''),
+    matchedItemId: Object.prototype.hasOwnProperty.call(row, 'matchExplanation') ? (row.matchedItemId || '') : row.matchedItemId || row.matchId || (best?.score >= 70 ? best.item.id : ''),
+    matchId: Object.prototype.hasOwnProperty.call(row, 'matchExplanation') ? (row.matchedItemId || '') : row.matchId || row.matchedItemId || (best?.score >= 70 ? best.item.id : ''),
     matchName: row.matchName || (best?.score >= 70 ? itemName(best.item) : row.matchName || '')
   };
 };

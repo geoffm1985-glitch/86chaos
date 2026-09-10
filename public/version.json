@@ -1,16 +1,16 @@
 {
-  "version": "16.0.227",
-  "name": "86 Chaos 16.0.227",
-  "build": "16.0.227",
-  "label": "86 Chaos 16.0.227",
-  "releasedAt": "2026-09-05T00:59:41Z",
-  "releaseTitle": "Relative Reminder and Sticky Header Repair",
+  "version": "16.0.230",
+  "name": "86 Chaos 16.0.230",
+  "build": "16.0.230",
+  "label": "86 Chaos 16.0.230",
+  "releasedAt": "2026-09-10T02:57:03.059107+00:00",
+  "releaseTitle": "Release Gate Expected Skip Repair",
   "notes": [
-    "Understands spoken reminder durations phrased as for five minutes and converts them to the exact corresponding date and time.",
-    "Keeps the main application header pinned to the viewport while content scrolls.",
-    "Leaves reminder persistence, dispatch cadence, Firebase reads and writes, rules, indexes, hosting configuration, database rules, storage rules, and service-worker behavior unchanged."
+    "Corrects full release-gate reporting for existing intentional skips when their required coverage passes.",
+    "Unexplained skips, missing companion coverage, source changes and actual failures remain release blockers.",
+    "Preserves 16.0.229 application behavior and all existing browser tests."
   ],
-  "title": "86 Chaos 16.0.227",
-  "summary": "Surgical relative-reminder phrase and sticky application-header repair.",
-  "description": "Parses for-duration reminders locally and removes the non-scrolling overflow container that prevented the existing sticky header from remaining at the top."
+  "title": "86 Chaos 16.0.230",
+  "summary": "Repairs release-gate reporting while preserving application behavior and test coverage.",
+  "description": "Repairs release-gate reporting while preserving application behavior and test coverage."
 }

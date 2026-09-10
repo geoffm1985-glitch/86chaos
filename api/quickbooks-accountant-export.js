@@ -1,3 +1,4 @@
+const { authorizeQuickBooks } = require('./_quickbooks-authority');
 const { admin, initAdmin, clean } = require('./_chaos-admin');
 
 const json = (res, status, payload) => {
@@ -40,8 +41,8 @@ const safeRows = (rows = []) => Array.isArray(rows)
 module.exports = async function handler(req, res) {
   if (req.method !== 'POST') return json(res, 405, { ok: false, message: 'POST only' });
   try {
-    const { decoded } = await verifyUser(req);
     const body = await readBody(req);
+    const { decoded, db } = await authorizeQuickBooks(req, clean(body.restaurantId || ''));
     const rows = safeRows(body.rows || []);
     const counts = body.counts || {};
     const blocked = Number(counts.blocked || 0) || 0;

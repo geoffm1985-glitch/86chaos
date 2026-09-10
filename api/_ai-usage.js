@@ -395,8 +395,10 @@ async function completeAiScanUsageEvent({ db, reservation, status, errorMessage 
   if (Array.isArray(attempts) && attempts.length) {
     update.providerAttempts = attempts.slice(0, 8).map(row => ({
       number: Math.max(1, Math.round(Number(row?.number || 1))),
+      provider: clean(row?.provider).slice(0, 24),
       model: clean(row?.model).slice(0, 80),
-      attempt: clean(row?.attempt).slice(0, 80)
+      attempt: clean(row?.attempt).slice(0, 80),
+      inputTokens: Math.max(0, Number(row?.inputTokens) || 0), outputTokens: Math.max(0, Number(row?.outputTokens) || 0)
     }));
   }
   await reservation.eventRef.set(update, { merge: true });

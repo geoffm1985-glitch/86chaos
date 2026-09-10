@@ -1,5 +1,8 @@
 'use strict';
 
+const { resolveAiPolicy, enforceClientAiSelection, createProviderCallBudget, getHardOutputTokenLimit, getHardRateLimit } = require('./_ai-policy');
+const { enforceRateLimit, sendRateLimited } = require('./_rate-limit');
+
 const { CUSTOMER_HELP_ARTICLES, HELP_DEEP_LINKS, searchCustomerHelp, makeDeterministicHelpAnswer } = require('../src/core/customerHelpKnowledge.cjs');
 
 const RATE_WINDOW_MS = 60 * 1000;
@@ -45,6 +48,9 @@ function safeHelpResponse(question = '') {
 async function maybeCallGemini({ question, history, matches }) {
   const key = process.env.GEMINI_API_KEY || process.env.GOOGLE_GEMINI_API_KEY || process.env.AI_GEMINI_API_KEY;
   if (!key || process.env.HELP_ASSISTANT_DISABLE_AI === 'true') return null;
+  const contract = resolveAiPolicy({ feature: 'help', route: '/api/help-assistant', provider: 'gemini' });
+  const callBudget = createProviderCallBudget('help');
+  callBudget.consume({ provider: contract.provider, model: contract.model, attempt: 'customer-help' });
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 5500);
   try {
@@ -58,12 +64,13 @@ async function maybeCallGemini({ question, history, matches }) {
     ].join(' ');
     const body = {
       contents: [{ role: 'user', parts: [{ text: `${instruction}\n\nQuestion: ${question}\nRecent turns: ${JSON.stringify(history).slice(0, 1800)}\nHelp excerpts: ${JSON.stringify(excerpts).slice(0, 7000)}` }] }],
-      generationConfig: { maxOutputTokens: 650, temperature: 0.2, responseMimeType: 'application/json' }
+      generationConfig: { maxOutputTokens: getHardOutputTokenLimit('help', 650), temperature: 0.2, responseMimeType: 'application/json' }
     };
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key=${encodeURIComponent(key)}`;
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(contract.model)}:generateContent?key=${encodeURIComponent(key)}`;
     const res = await fetch(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body), signal: controller.signal });
     if (!res.ok) return null;
     const json = await res.json();
+    callBudget.recordUsage(json?.usageMetadata?.promptTokenCount, json?.usageMetadata?.candidatesTokenCount);
     const text = json?.candidates?.[0]?.content?.parts?.[0]?.text || '';
     return JSON.parse(text);
   } catch (_) {
@@ -94,9 +101,13 @@ async function handler(req, res) {
     const decoded = await app.auth().verifyIdToken(token);
     if (!checkRateLimit(rateKey(decoded, req))) return res.status(429).json({ ok: false, code: 'rate-limited', error: 'Ask 86 is taking a quick breather. Try again in a minute.' });
     const body = await readBody(req);
+    enforceClientAiSelection({ ...req, body }, resolveAiPolicy({ feature: 'help', route: '/api/help-assistant', provider: 'gemini' }), { uid: decoded.uid });
+    const rate = await enforceRateLimit({ db: app.firestore(), req, decoded, routeName: 'help-assistant', limit: getHardRateLimit('help', RATE_LIMIT), windowMs: RATE_WINDOW_MS });
+    if (!rate.ok) return sendRateLimited(res, rate);
     const result = await answerHelpQuestion({ question: body.question, history: body.history });
     return res.status(result.ok === false ? 400 : 200).json(result);
   } catch (err) {
+    if (err?.code === 'AI_CLIENT_OVERRIDE_BLOCKED') return res.status(400).json({ ok: false, code: err.code, error: err.message });
     return res.status(500).json({ ok: false, code: 'help-assistant-failed', error: 'Ask 86 could not answer right now. Local Help still works.', ...safeHelpResponse('help') });
   }
 }

@@ -1170,7 +1170,7 @@ const [currentDate, setCurrentDate] = useState(getToday());
   const wantsInventoryData = (((wantsToday || globalSearchHasMeaningfulQuery) && (canReadBasicInventory || canReadSmartInventory)) || (activeTabState === 'menu-intelligence' && canReadMenuCollections));
   const wantsPrepData = wantsToday; // Prep screen owns its live prep/task listeners; App keeps only Today summaries.
   const wantsMenuData = (activeTabState === 'menu-intelligence' || wantsToday) && canReadMenuCollections;
-  const wantsRecipesData = globalSearchHasMeaningfulQuery; // Recipes screen owns its live query; App keeps only demand-driven global-search data.
+  const wantsRecipesData = activeTabState === 'menu-intelligence' || globalSearchHasMeaningfulQuery; // Recipes screen owns its live query; App keeps only demand-driven global-search data.
   const wantsMaintenanceData = wantsToday && canReadMaintenance; // Maintenance screen owns its full listener; App keeps only Today alert context.
   const wantsSalesData = ['financials', 'sales', 'ops', 'labor'].includes(activeTabState) && canReadSalesCollections;
   const shiftRangeStart = schedulePlan.shiftClauses.find(c => c[0] === 'date' && c[1] === '>=')?.[2] || (wantsScheduleScreen ? scheduleWindowStart : getToday());
@@ -1258,7 +1258,7 @@ const [currentDate, setCurrentDate] = useState(getToday());
     return Array.from(byId.values());
   }, [activeTimeOffRequests, timeOffHistoryRequests]);
   const timePunches = useLiveCollection('timePunches', rId, { enabled: !!rId && wantsLaborData, whereClauses: [['date','>=', activeTabState === 'labor' ? laborPunchWindowStart : lightPunchWindowStart], ['date','<=', activeTabState === 'labor' ? laborPunchWindowEnd : lightPunchWindowEnd]], orderByField: 'date', orderDirection: 'desc', limitCount: activeTabState === 'labor' ? 180 : 35, fallbackLimitCount: 30 });
-  const inventoryItems = useLiveCollection('inventoryItems', rId, { enabled: !!rId && wantsInventoryData, limitCount: activeTabState === 'inventory' ? 180 : 55, fallbackLimitCount: 35, debugLabel: `app:${activeTabState}:inventory` });
+  const inventoryItems = useLiveCollection('inventoryItems', rId, { enabled: !!rId && wantsInventoryData, limitCount: activeTabState === 'menu-intelligence' ? 350 : activeTabState === 'inventory' ? 180 : 55, fallbackLimitCount: 35, debugLabel: `app:${activeTabState}:inventory` });
   const menuDependencies = useLiveCollection('menuDependencies', rId, { enabled: !!rId && wantsMenuData, limitCount: activeTabState === 'menu-intelligence' ? 500 : 120, fallbackLimitCount: 80 });
   const maintenanceLogs = useLiveCollection('maintenanceLogs', rId, { enabled: !!rId && wantsMaintenanceData, whereClauses: [], limitCount: activeTabState === 'maintenance' ? 80 : 20, fallbackLimitCount: 20, debugLabel: `app:${activeTabState}:maintenance` });
   const prepItems = useLiveCollection('prepItems', rId, { enabled: !!rId && wantsPrepData, whereClauses: [['date','in', prepDateWindow]], limitCount: 80, fallbackLimitCount: 35 });
@@ -3252,7 +3252,7 @@ What I clicked / expected:
     if (activeTabState === 'recipes' && routeAllowed) return <TabRecipes key={`rec-${rId}`} appUser={liveAppUser} addToast={addToast} voiceRecipeTarget={voiceRecipeTarget} />;
     if (activeTabState === 'inventory' && routeAllowed) return <TabInventory key={`inv-${rId}-${inventorySubTabTarget || 'default'}`} addToast={addToast} appUser={liveAppUser} clientData={displayClientData} initialSubTab={inventorySubTabTarget} onInitialSubTabConsumed={() => setInventorySubTabTarget(null)} />;
     if (activeTabState === 'ai-tools' && routeAllowed) return <TabAITools key={`ai-${rId}`} appUser={liveAppUser} clientData={displayClientData} setActiveTab={setActiveTab} setInventorySubTabTarget={setInventorySubTabTarget} addToast={addToast} />;
-    if (activeTabState === 'menu-intelligence' && routeAllowed) return <TabMenuIntelligence key={`mi-${rId}`} appUser={liveAppUser} clientData={displayClientData} inventoryItems={inventoryItems} addToast={addToast} />;
+    if (activeTabState === 'menu-intelligence' && routeAllowed) return <TabMenuIntelligence key={`mi-${rId}`} appUser={liveAppUser} clientData={displayClientData} inventoryItems={inventoryItems} menuDependencies={menuDependencies} recipes={recipes} addToast={addToast} />;
     if (activeTabState === 'reminders' && routeAllowed) return <TabPersonalReminders key={`rem-${rId}-${liveAppUser?.id}`} appUser={liveAppUser} addToast={addToast} onEnableNotifications={() => repairPushOnThisDevice('manual')} />;
     if (activeTabState === 'team' && routeAllowed) return <TabTeam key={`tea-${rId}`} appUser={liveAppUser} users={displayUsers} clientData={displayClientData} addToast={addToast} />;
     if (activeTabState === 'hr-training' && routeAllowed) return <TabHrTraining key={`hrt-${rId}-${liveAppUser?.id}`} appUser={liveAppUser} users={displayUsers} addToast={addToast} />;

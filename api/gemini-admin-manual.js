@@ -1,7 +1,7 @@
 const { authorizeCrossProjectMaster, requireAppCheckIfEnforced, readBody, writeAudit } = require('./_chaos-admin');
 const { getAdminAppForRequest } = require('./_firebase-project-admin');
 const { enforceRateLimit, sendRateLimited } = require('./_rate-limit');
-const { getAllowedGeminiModels, getHardOutputTokenLimit, getHardRateLimit, createProviderCallBudget, reserveAiRequest, completeAiRequestLock } = require('./_ai-policy');
+const { resolveAiPolicy, enforceClientAiSelection, getAllowedGeminiModels, getHardOutputTokenLimit, getHardRateLimit, createProviderCallBudget, reserveAiRequest, completeAiRequestLock } = require('./_ai-policy');
 
 const { APP_VERSION } = require('./_version');
 const DEFAULT_MODEL = 'gemini-2.5-flash-lite';
@@ -225,6 +225,7 @@ async function callGemini({ prompt, apiKey, model, maxOutputTokens, temperature 
     body: JSON.stringify(body)
   });
   const generateData = await generateRes.json().catch(() => ({}));
+  callBudget.recordUsage(generateData?.usageMetadata?.promptTokenCount, generateData?.usageMetadata?.candidatesTokenCount);
   if (!generateRes.ok) {
     const generateMessage = generateData?.error?.message ? `generateContent API: ${generateData.error.message}` : `generateContent API HTTP ${generateRes.status}`;
     throw new Error(generateMessage);
@@ -326,6 +327,7 @@ module.exports = async function handler(req, res) {
     if (!apiKey) return res.status(400).json({ ok: false, error: 'Gemini is not configured. Add GEMINI_API_KEY in Vercel and redeploy.' });
 
     const body = await readBody(req);
+    enforceClientAiSelection({ ...req, body }, resolveAiPolicy({ feature: 'manual', route: '/api/gemini-admin-manual', provider: 'gemini' }), ctx);
     const question = redactText(body.question, MAX_QUESTION_CHARS);
     if (question.length < 3) return res.status(400).json({ ok: false, error: 'Ask a System Administrator manual question first.' });
 
