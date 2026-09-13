@@ -1,4 +1,4 @@
-import { buildScheduleQueryPlan, getCanonicalScheduleUserId, buildScheduleDateKeyRangeClauses, mergeLoadedScheduleShifts, shouldEnableScheduleDateKeyRescue, scheduleQueryDateRangeMonths } from './scheduleQueryPlanner';
+import { buildScheduleQueryPlan, getCanonicalScheduleUserId, buildCanonicalScheduleIdentityBlock, buildScheduleDateKeyRangeClauses, mergeLoadedScheduleShifts, shouldEnableScheduleDateKeyRescue, scheduleQueryDateRangeMonths } from './scheduleQueryPlanner';
 
 describe('schedule query planner', () => {
   const staff = { id: 'u1', scheduleUserId: 'sched_u1', role: 'staff', permissions: {} };
@@ -87,5 +87,11 @@ describe('schedule query planner', () => {
   });
   test('identity chooses canonical scheduleUserId first', () => {
     expect(getCanonicalScheduleUserId({ scheduleUserId: 's', employeeId: 'e', id: 'i' })).toBe('s');
+  });
+  test('a shift document id is never promoted to employee identity', () => {
+    const identity = buildCanonicalScheduleIdentityBlock({ id: '', employeeName: 'Historical Cook' }, { id: 'shift-document-id', employeeName: 'Historical Cook' });
+    expect(identity.scheduleUserId).toBe('');
+    expect(identity.employeeId).toBe('');
+    expect(identity.employeeName).toBe('Historical Cook');
   });
 });

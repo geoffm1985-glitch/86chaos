@@ -134,21 +134,30 @@ test('focused reporters do not require or capture source checkpoints; slim uploa
 test('the actual reporter persists progress and the actual prepare command selects the current checkpoint', { timeout: 120000 }, t => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), '86chaos-progress-integration-'));
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  const gitRoot = path.join(directory, 'app');
+  const excluded = new Set(['.git', 'node_modules', 'build', 'coverage', 'test-results', 'playwright-report', 'release-evidence']);
+  fs.cpSync(root, gitRoot, { recursive: true, filter: source => !excluded.has(path.basename(source)) });
+  cp.execFileSync('git', ['init', '--initial-branch=testing'], { cwd: gitRoot, stdio: 'ignore' });
+  cp.execFileSync('git', ['config', 'user.email', 'release-gate-test@86chaos.invalid'], { cwd: gitRoot, stdio: 'ignore' });
+  cp.execFileSync('git', ['config', 'user.name', '86 Chaos Release Gate Test'], { cwd: gitRoot, stdio: 'ignore' });
+  cp.execFileSync('git', ['add', '.'], { cwd: gitRoot, stdio: 'ignore' });
+  cp.execFileSync('git', ['commit', '-m', 'test checkpoint'], { cwd: gitRoot, stdio: 'ignore' });
+  fs.symlinkSync(path.join(root, 'node_modules'), path.join(gitRoot, 'node_modules'), 'dir');
   const prior = path.join(directory, 'prior'); const current = path.join(directory, 'current'); fs.mkdirSync(prior); fs.mkdirSync(current);
-  const source = captureSourceIdentity(root); assert.ok(source.commit);
+  const source = captureSourceIdentity(gitRoot); assert.ok(source.commit);
   const preflight = { ok: true, runId: 'prior', sourceVersion: source.version, deployedVersion: source.version, firebaseProjectId: 'chaos-test-d1601', appUrl: 'https://86chaos-git-testing-cheers-portal-s-projects.vercel.app' };
   write(path.join(prior, 'source-identity-start.json'), source); write(path.join(prior, 'environment-preflight.json'), preflight);
   write(path.join(current, 'environment-preflight.json'), { ...preflight, runId: 'current' });
-  const records = generatePlaywrightInventory({ root }).records;
-  const tests = records.map(row => fakeTest(row, root)); const lines = [];
-  const reporter = new Reporter({ root, runDir: prior, mode: 'full', output: line => lines.push(line) });
+  const records = generatePlaywrightInventory({ root: gitRoot }).records;
+  const tests = records.map(row => fakeTest(row, gitRoot)); const lines = [];
+  const reporter = new Reporter({ root: gitRoot, runDir: prior, mode: 'full', output: line => lines.push(line) });
   reporter.onBegin({}, { allTests: () => tests }); assert.ok(reporter.progressJournal, lines.join('\n'));
   const index = records.findIndex(row => row.specPath.includes('36-restaurant-brain')); assert.ok(index >= 0);
   reporter.onTestBegin(tests[index], {}); reporter.onTestEnd(tests[index], { status: 'passed', duration: 1 });
   assert.equal(progress.readProgressJournal(prior).attempts.size, 1);
   // No onEnd call: simulate a process lost before Playwright writes its report.
   const child = cp.spawnSync(process.execPath, ['scripts/86chaos-release-gate/prepare-failed-only-manifest.cjs', '--mode=partial-resume'], {
-    cwd: root, encoding: 'utf8', timeout: 100000, maxBuffer: 2 * 1024 * 1024,
+    cwd: gitRoot, encoding: 'utf8', timeout: 100000, maxBuffer: 2 * 1024 * 1024,
     env: { ...process.env, CHAOS_RELEASE_GATE_RUN_DIR: current, CHAOS_RELEASE_GATE_RUN_ID: 'current', CHAOS_PARTIAL_RESUME_RUN_DIR: prior },
   });
   assert.equal(child.status, 0, child.stderr + child.stdout);

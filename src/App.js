@@ -4,7 +4,7 @@ import { addDoc, collection, doc, onSnapshot, updateDoc } from 'firebase/firesto
 import { getToken, onMessage } from 'firebase/messaging';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
 import 'leaflet/dist/leaflet.css';
-import { T, db, auth, messagingReady, isFirebaseMessagingUnsupportedError, firebaseConfig, CURRENT_VERSION, MASTER_ADMIN_EMAIL, useLiveCollection, useLiveCollectionState, useLiveDocumentState, secureFetch, waitForAuthCurrentUser, getToday, getMonthStr, formatDate, formatDisplayFullDate, formatDisplayMonth, logAudit, setActiveTimeFormat, getOfflineQueue, replayOfflineQueue, startLowCostPresenceSession, useLowCostPresenceSummary, clearTenantListenerCache } from './core/appCore';
+import { T, db, auth, messagingReady, isFirebaseMessagingUnsupportedError, firebaseConfig, CURRENT_VERSION, MASTER_ADMIN_EMAIL, useLiveCollection, useLiveCollectionState, useLiveDocumentState, secureFetch, waitForAuthCurrentUser, getToday, getMonthStr, formatDate, formatDisplayFullDate, formatDisplayMonth, logAudit, setActiveTimeFormat, getOfflineQueue, replayOfflineQueue, startLowCostPresenceSession, useLowCostPresenceSummary, clearTenantListenerCache, recordScheduleOperationDiagnostic } from './core/appCore';
 import { buildAlertFingerprint, useRememberedAlert } from './core/alertMemory';
 import { CheersLogo, Modal, DrawerMenu, DayDotPrintScreen, GlobalSearchModal, KitchenTVMode, UndoBar, VoiceCommandDock } from './components/common';
 import { LockedFeatureScreen } from './components/PlanGate';
@@ -301,10 +301,10 @@ const renderImmediateChunkRecoverySurface = (state = {}) => {
   root.style.cssText = 'position:fixed;inset:0;z-index:2147483647;background:#0B0E11;color:#fff;display:flex;align-items:center;justify-content:center;padding:24px;font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;';
   root.innerHTML = `
     <div style="max-width:520px;width:100%;border:1px solid #7f1d1d;background:#1A2126;border-radius:24px;padding:24px;box-shadow:0 20px 80px rgba(0,0,0,.5);">
-      <div style="font-size:11px;font-weight:900;letter-spacing:.22em;text-transform:uppercase;color:#D4A381;">Recovering 86 Chaos</div>
-      <h1 style="font-size:24px;line-height:1.15;margin:10px 0 8px;font-weight:900;">A stale app chunk failed to load.</h1>
-      <p style="font-size:14px;line-height:1.5;color:#CBD5E1;font-weight:700;margin:0 0 16px;">86 Chaos is keeping this recovery screen visible while it refreshes the app shell. This prevents a blank page and avoids reload loops.</p>
-      <button type="button" aria-label="Recover app manually" id="chaos-manual-chunk-recover" style="background:#fff;color:#991b1b;border:0;border-radius:12px;padding:12px 16px;font-size:11px;font-weight:900;letter-spacing:.14em;text-transform:uppercase;">Recover app</button>
+      <div style="font-size:11px;font-weight:900;letter-spacing:.22em;text-transform:uppercase;color:#D4A381;">Refreshing 86 Chaos</div>
+      <h1 style="font-size:24px;line-height:1.15;margin:10px 0 8px;font-weight:900;">The app needs the latest update.</h1>
+      <p style="font-size:14px;line-height:1.5;color:#CBD5E1;font-weight:700;margin:0 0 16px;">86 Chaos is refreshing its files now. Your login and restaurant data will stay in place.</p>
+      <button type="button" aria-label="Refresh 86 Chaos" id="chaos-manual-chunk-recover" style="background:#fff;color:#991b1b;border:0;border-radius:12px;padding:12px 16px;font-size:11px;font-weight:900;letter-spacing:.14em;text-transform:uppercase;">Refresh App</button>
       <div style="font-size:11px;color:#94A3B8;margin-top:12px;font-weight:700;word-break:break-all;">${String(state.chunkUrl || '').slice(0, 180)}</div>
     </div>`;
   const button = document.getElementById('chaos-manual-chunk-recover');
@@ -544,14 +544,14 @@ class AppSurfaceErrorBoundary extends React.Component {
     const chunkProblem = isChunkLoadFailure(error);
     return (
       <div className={`${T.card} max-w-2xl mx-auto p-6 sm:p-8 text-center space-y-4`} role="alert">
-        <div className="text-[10px] font-black uppercase tracking-[0.25em] text-[#D4A381]">86 Chaos Runtime Recovery</div>
+        <div className="text-[10px] font-black uppercase tracking-[0.25em] text-[#D4A381]">86 Chaos App Recovery</div>
         <h2 className="text-2xl font-black text-white">{chunkProblem ? 'App update required' : 'This section hit a snag'}</h2>
         <p className="text-sm font-bold text-slate-300 leading-relaxed">
-          {chunkProblem ? 'A stale app file failed to load. Refreshing pulls the newest 86 Chaos files without clearing your login or restaurant data.' : 'The app caught the error instead of going blank. Refresh this section and check the Bug Ledger if it repeats.'}
+          {chunkProblem ? 'This device has an older app file. Refresh to load the latest version without clearing your login or restaurant data.' : 'This section could not open. Try it again; if the problem returns, send a bug report from Help.'}
         </p>
         {this.state.reportId && <p className="text-xs font-mono text-slate-400">Report ID: {this.state.reportId}</p>}
         {chunkProblem ? (
-          <button type="button" onClick={() => hardRecoverRuntimeSection('stale-section-chunk')} className={T.btn}>Clear App Cache & Reload</button>
+          <button type="button" onClick={() => hardRecoverRuntimeSection('stale-section-chunk')} className={T.btn}>Refresh App</button>
         ) : (
           <button type="button" onClick={this.retrySection} className={T.btn}>Retry This Section</button>
         )}
@@ -1222,6 +1222,21 @@ const [currentDate, setCurrentDate] = useState(getToday());
   const rawDateShiftsState = useLiveCollectionState('shifts', rId, { enabled: !!rId && wantsShiftData, whereClauses: schedulePlan.shiftClauses, orderByField: 'date', orderDirection: 'asc', limitCount: schedulePlan.shiftLimit, fallbackLimitCount: Math.min(schedulePlan.shiftLimit || 80, 80), debugLabel: `app:${activeTabState}:${activeScheduleSubTab}:shifts-date-plan` });
   const rawDateShifts = rawDateShiftsState.data || [];
   const enableScheduleDateKeyRescue = shouldEnableScheduleDateKeyRescue({ wantsShiftData, wantsScheduleScreen, canonicalState: rawDateShiftsState, clientData, shiftClauses: schedulePlan.shiftClauses });
+  const rescueDiagnosticsActiveRef = useRef(false);
+  useEffect(() => {
+    if (enableScheduleDateKeyRescue && !rescueDiagnosticsActiveRef.current) {
+      const protectedMonths = Array.isArray(clientData?.scheduleDateKeyOnlyMonths) && clientData.scheduleDateKeyOnlyMonths.length > 0;
+      const reason = rawDateShiftsState.error
+        ? 'canonical-query-error'
+        : protectedMonths || clientData?.scheduleDateKeyRescueRequired === true || clientData?.scheduleRescueEnforceProtected === true
+          ? 'known-legacy-or-protected-month'
+          : rawDateShiftsState.resolved && rawDateShifts.length === 0
+            ? 'canonical-window-empty'
+            : 'compatibility-window';
+      recordScheduleOperationDiagnostic('rescueActivation', 1, reason);
+    }
+    rescueDiagnosticsActiveRef.current = enableScheduleDateKeyRescue;
+  }, [enableScheduleDateKeyRescue, rawDateShiftsState.error, rawDateShiftsState.resolved, rawDateShifts.length, clientData?.scheduleDateKeyRescueRequired, clientData?.scheduleRescueEnforceProtected, JSON.stringify(clientData?.scheduleDateKeyOnlyMonths || [])]);
   const rawScheduleDateKeyShifts = useLiveCollection('shifts', rId, { enabled: !!rId && enableScheduleDateKeyRescue, whereClauses: scheduleDateKeyShiftClauses, orderByField: 'scheduleDateKey', orderDirection: 'asc', limitCount: schedulePlan.shiftLimit, fallbackLimitCount: Math.min(schedulePlan.shiftLimit || 80, 80), debugLabel: `app:${activeTabState}:${activeScheduleSubTab}:shifts-scheduleDateKey-rescue` });
   const rawShifts = useMemo(() => mergeLoadedScheduleShifts(rawDateShifts, rawScheduleDateKeyShifts), [rawDateShifts, rawScheduleDateKeyShifts]);
   const shifts = useMemo(() => {
@@ -2744,7 +2759,7 @@ What I clicked / expected:
   const getPushErrorMessage = (err, fallback = 'Could not reconnect push notifications on this device.') => {
     const raw = String(err?.message || err || fallback);
     if (/permission|insufficient|not-found|missing/i.test(raw)) return '86 Chaos could not save this device yet. The app will try the secure repair path automatically.';
-    if (isFirebaseMessagingUnsupportedError(err)) return 'This browser cannot run Firebase push notifications. You can still use 86 Chaos normally.';
+    if (isFirebaseMessagingUnsupportedError(err)) return 'This browser does not support push notifications. You can still use 86 Chaos normally.';
     return raw;
   };
 
@@ -2847,7 +2862,7 @@ What I clicked / expected:
           lastPushFailureCode: 'messaging/unsupported-browser',
           lastPushTokenSyncAt: new Date().toISOString()
         }).catch(() => {});
-        addToast('Push Unavailable', 'This browser cannot run Firebase push notifications. You can still use 86 Chaos normally.');
+        addToast('Push Notifications Unavailable', 'This browser does not support push notifications. You can still use 86 Chaos normally.');
         clearPushRepairLinkRequest('unsupported-browser');
         return false;
       }
@@ -3160,7 +3175,7 @@ What I clicked / expected:
     const urgentMaintenance = (maintenanceLogs || []).filter(m => !['completed', 'closed', 'resolved'].includes(String(m.status || '').toLowerCase()) && ['high', 'critical', 'urgent'].includes(String(m.urgency || m.priority || '').toLowerCase())).length;
     const pendingPeople = (timeOffRequests || []).filter(r => String(r.status || '').toLowerCase() === 'pending').length + (shiftSwaps || []).filter(sw => ['available', 'pending'].includes(String(sw.status || '').toLowerCase())).length;
     const needsEyes = lowStock + urgentMaintenance + pendingPeople;
-    return `${scheduled} On Schedule ${clockedIn} Clocked In ${needsEyes} Needs Eyes`;
+    return `${scheduled} On Schedule ${clockedIn} Clocked In ${needsEyes} Need Review`;
   }, [displayUsers, shifts, timePunches, inventoryItems, maintenanceLogs, timeOffRequests, shiftSwaps]);
 
   const cachedSessionAccessHydrating = shouldHoldAccessHydration({
@@ -3209,7 +3224,7 @@ What I clicked / expected:
           <Loader2 className="w-8 h-8 mx-auto mb-4 animate-spin text-[#D4A381]" />
           <p className="text-[10px] font-black uppercase tracking-[0.25em] text-[#D4A381]">Restoring session</p>
           <h2 className="text-xl font-black mt-2">Checking your access</h2>
-          <p className="text-xs font-bold text-slate-400 mt-3 leading-relaxed">86 Chaos is restoring your Firebase login, workspace membership, and verified permissions before showing role-based controls.</p>
+          <p className="text-xs font-bold text-slate-400 mt-3 leading-relaxed">86 Chaos is confirming your login, restaurant, and permissions before showing your tools.</p>
         </div>
       </div>
     );

@@ -33,7 +33,7 @@ test('Schedule Copilot realtime reads are gated until Copilot is opened', () => 
   assert.match(schedule, /useLiveCollection\('scheduleTemplates'[\s\S]*enabled: copilotReadEnabled[\s\S]*debugLabel: 'schedule:copilot:templates'/);
   assert.match(schedule, /useLiveCollection\('scheduleCoverageTargets'[\s\S]*enabled: copilotReadEnabled[\s\S]*debugLabel: 'schedule:copilot:coverage-targets'/);
   assert.match(schedule, /useLiveCollection\('roles'[\s\S]*enabled: copilotReadEnabled[\s\S]*debugLabel: 'schedule:copilot:roles'/);
-  assert.match(schedule, /Open Copilot Tools for coverage targets, warnings & templates/);
+  assert.match(schedule, /Open Schedule Tools/);
 });
 
 test('active punch listener only attaches on My Schedule and preserves listener infrastructure', () => {

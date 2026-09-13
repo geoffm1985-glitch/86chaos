@@ -8,7 +8,7 @@ import { getAuth, signInWithEmailAndPassword, sendPasswordResetEmail, createUser
 import { getToken, onMessage } from 'firebase/messaging';
 import { ref, uploadBytes, getBlob, getDownloadURL, deleteObject } from 'firebase/storage';
 import { MapContainer, TileLayer, Marker, Circle, useMap } from 'react-leaflet';
-import { T, db, storage, auth, messaging, firebaseConfig, secureFetch, MASTER_ADMIN_EMAIL, EVENT_TAGS, CURRENT_VERSION, useLiveCollection, formatDate, getToday, getMonthStr, formatDisplayDate, formatDisplayFullDate, formatDisplayMonth, getDaysInMonth, formatShortTime, formatClockTime, formatClockDateTime, getAvatar, generateTempPass, getExpDate, getHoliday, logAudit, customMapIcon, getRestaurantExportPrefix, safeFilenamePart, downloadCsvRows, downloadTextFile, openPrintableReport, buildPermissionPreview, buildImportBridgeTemplates, buildV14ClientGuardrailReport } from '../core/appCore';
+import { T, db, storage, auth, messaging, firebaseConfig, secureFetch, MASTER_ADMIN_EMAIL, EVENT_TAGS, CURRENT_VERSION, useLiveCollection, formatDate, getToday, getMonthStr, formatDisplayDate, formatDisplayFullDate, formatDisplayMonth, getDaysInMonth, formatShortTime, formatClockTime, formatClockDateTime, getAvatar, generateTempPass, getExpDate, getHoliday, logAudit, customMapIcon, getRestaurantExportPrefix, safeFilenamePart, downloadCsvRows, downloadTextFile, openPrintableReport, buildPermissionPreview, buildImportBridgeTemplates, buildV14ClientGuardrailReport, recordScheduleOperationDiagnostic } from '../core/appCore';
 import { CheersLogo, Modal, DrawerMenu, DayDotPrintScreen, MapClickListener, SmartEmptyState, MiniProblemCard, getHomeProfile, calculatePunchHours, getWeekStart, getWeekDates, roleMatches, toLocalTimeInput, makeLocalIso, PunchTable, StatusTile, FriendlyEmpty, GlobalSearchModal, QuickActionDock, KitchenTVMode, ChangeLogModal, UndoBar } from '../components/common';
 import { SYSTEM_TRAINING_MANUAL_CHAPTERS } from './trainingManual';
 import { usePlanAccess } from '../hooks/usePlanAccess';
@@ -418,7 +418,7 @@ const DEFAULT_PERMISSIONS = { schedule: false, events: false, ops: false, invent
             });
             const result = await response.json().catch(() => ({}));
             if (!response.ok || result?.ok === false) throw new Error(result?.error || 'Staff profile save failed.');
-            addToast(result?.authEmailUpdated ? 'Login Email Updated' : 'Updated', result?.authEmailUpdated ? `${name}'s Firebase login email was updated.` : `${name}'s profile has been updated.`);
+            addToast(result?.authEmailUpdated ? 'Login Email Updated' : 'Staff Profile Updated', result?.authEmailUpdated ? `${name}'s sign-in email was updated.` : `${name}'s profile was updated.`);
             resetForm();
         } catch(err) {
           const msg = String(err?.message || 'Permission denied.');
@@ -560,16 +560,16 @@ return (
           {editingUserId && (
             <div className="bg-blue-900/40 border border-blue-500/50 p-3 rounded-xl flex justify-between items-center">
               <span className="text-blue-400 font-bold text-xs uppercase tracking-widest">Editing Staff Member</span>
-              <button type="button" onClick={resetForm} className="text-white text-xs font-bold hover:text-blue-300">Cancel Edit ?</button>
+              <button type="button" onClick={resetForm} className="text-white text-xs font-bold hover:text-blue-300">Cancel Edit</button>
             </div>
           )}
           
           <div><label className={T.label}>Name</label><input type="text" value={name} onChange={e=>setName(e.target.value)} className={T.input} required placeholder="e.g. Gordon Ramsay" /></div>
           
           <div>
-            <label className={T.label}>Email {editingUserId && <span className="text-amber-400 lowercase normal-case ml-1">(updates Firebase login email)</span>}</label>
+            <label className={T.label}>Email {editingUserId && <span className="text-amber-400 lowercase normal-case ml-1">(updates the sign-in email)</span>}</label>
             <input type="email" value={email} onChange={e=>setEmail(e.target.value)} className={T.input} required />
-            {editingUserId && originalEmail && email.toLowerCase().trim() !== originalEmail && <p className="text-[10px] font-bold text-amber-300 mt-1">Saving will change this employee's Firebase Auth sign-in email from {originalEmail} to {email.toLowerCase().trim()}.</p>}
+            {editingUserId && originalEmail && email.toLowerCase().trim() !== originalEmail && <p className="text-[10px] font-bold text-amber-300 mt-1">Saving will change this employee's sign-in email from {originalEmail} to {email.toLowerCase().trim()}.</p>}
           </div>
 
           
@@ -620,7 +620,7 @@ return (
             </div>
           )}
           
-          <button type="submit" className={`w-full ${T.btn}`}>{editingUserId ? 'UPDATE STAFF PROFILE' : 'ADD STAFF'}</button>
+          <button type="submit" className={`w-full ${T.btn}`}>{editingUserId ? 'SAVE STAFF PROFILE' : 'ADD STAFF MEMBER'}</button>
         </form>
       )}
       
@@ -1199,7 +1199,7 @@ const TabSettings = ({ appUser, addToast, users = [], clientData = {}, presenceS
   const hasBackupMfaPhone = Number(mfaStatus?.mfaFactorCount || appUser?.mfaFactorCount || 0) > 1;
   const accountRecoveryReady = Boolean(accountMfaEnabled && (hasBackupMfaPhone || recoveryCodesReady));
   const accountSecuritySummary = (() => {
-    if (firestoreProfileMissing) return { label: 'Repair profile first', tone: 'red', desc: 'This Auth account is missing its Firestore profile. Repair it before enforcing MFA.' };
+    if (firestoreProfileMissing) return { label: 'Repair profile first', tone: 'red', desc: 'This sign-in account is missing its staff profile. Repair the link before requiring two-step login.' };
     if (isElevatedForMfa && !accountEmailVerified) return { label: 'Verify email first', tone: 'amber', desc: 'Email verification must be complete before two-step login can be enrolled.' };
     if (isElevatedForMfa && !accountMfaEnabled) return { label: 'Do not enable enforcement yet', tone: 'red', desc: 'This elevated account still needs two-step login before enforcement is safe.' };
     if (accountMfaEnabled && !accountRecoveryReady) return { label: 'Needs recovery backup', tone: 'amber', desc: 'Add a backup phone or generate recovery codes so a lost phone does not lock this account out.' };
@@ -2768,8 +2768,8 @@ const Toggle = ({ label, desc, checked, onChange, disabled = false }) => (
         <form onSubmit={handleSaveSystem} className={`${T.card} p-3 sm:p-5 space-y-4 border-[#D4A381]/30 shadow-[0_0_15px_rgba(212,163,129,0.05)]`}>
           <div>
              <div className="flex items-center justify-between mb-1 border-b border-[#2A353D] pb-2">
-               <h2 className="text-base font-black text-white"><Shield className={`inline mr-2 ${T.copper}`} size={16}/> Global Config</h2>
-               <span className="bg-[#12161A] text-[#D4A381] border border-[#2A353D] px-2 py-0.5 rounded text-[8px] uppercase font-black tracking-widest">Master Controls</span>
+               <h2 className="text-base font-black text-white"><Shield className={`inline mr-2 ${T.copper}`} size={16}/> Workspace Settings</h2>
+               <span className="bg-[#12161A] text-[#D4A381] border border-[#2A353D] px-2 py-0.5 rounded text-[8px] uppercase font-black tracking-widest">Manager Controls</span>
              </div>
              
              <div className="mt-4 mb-2 text-[9px] font-black uppercase text-[#D4A381] tracking-widest">Time & Attendance Rules</div>
@@ -2780,10 +2780,10 @@ const Toggle = ({ label, desc, checked, onChange, disabled = false }) => (
               {sysGeofence && geofencePlanAccess && (
                  <div className="p-3 bg-[#12161A] border border-[#2A353D] rounded-xl space-y-3 animate-[slideIn_0.2s_ease-out] ml-4">
                    <div>
-                     <label className={T.label}>Street Address (To auto-find coordinates)</label>
+                     <label className={T.label}>Restaurant Address</label>
                      <div className="flex gap-2">
                        <input type="text" value={sysAddress} onChange={e=>setSysAddress(e.target.value)} className={`${T.input} py-1.5 text-xs`} placeholder="e.g. 26 N State St, Chilton, WI"/>
-                       <button type="button" onClick={handleGeocodeAddress} className={`${T.btn} py-1.5 px-4 text-xs whitespace-nowrap`}>Find GPS</button>
+                       <button type="button" onClick={handleGeocodeAddress} className={`${T.btn} py-1.5 px-4 text-xs whitespace-nowrap`}>Find on Map</button>
                      </div>
                    </div>
               <div className="grid grid-cols-3 gap-3 pt-3 border-t border-[#2A353D]">
@@ -2839,7 +2839,7 @@ const Toggle = ({ label, desc, checked, onChange, disabled = false }) => (
                        <button type="button" onClick={refreshGeofenceMap} className="px-2 py-1 rounded-lg bg-[#12161A]/90 border border-[#2A353D] text-[9px] font-black uppercase tracking-widest text-slate-200 hover:text-[#D4A381]">Refresh Map</button>
                      </div>
                    </div>
-                   <p className={`text-[10px] ${T.muted} font-bold uppercase tracking-widest mt-2 text-center`}>Click map to set geofence center. If tiles load gray or half-finished, tap Refresh Map. Provider: {activeMapProvider.label}.</p>
+                   <p className={`text-[10px] ${T.muted} font-bold uppercase tracking-widest mt-2 text-center`}>Tap the map to set the center of the allowed clock-in area. If the map looks incomplete, tap Refresh Map. Map source: {activeMapProvider.label}.</p>
                  </div>
                )}
                <div onClickCapture={(e) => { if (!timeClockPlanAccess) { e.stopPropagation(); e.preventDefault(); addToast('Locked', 'Time Clock starts with Operations access.'); } }}>
@@ -2945,7 +2945,7 @@ const Toggle = ({ label, desc, checked, onChange, disabled = false }) => (
              </div>
 
           </div>
-          <button type="submit" className={`w-full ${T.btn} py-3 mt-4 text-sm`}>Save Global Workspace</button>
+          <button type="submit" className={`w-full ${T.btn} py-3 mt-4 text-sm`}>Save Workspace Settings</button>
         </form>
       )}
 
@@ -4275,6 +4275,7 @@ firebase deploy --only functions --project YOUR_PRODUCTION_PROJECT_ID
   const [v14WorkspaceId, setV14WorkspaceId] = useState('');
   const [v14StorageReport, setV14StorageReport] = useState(null);
   const [v14SchemaReport, setV14SchemaReport] = useState(null);
+  const [scheduleIntegrityReport, setScheduleIntegrityReport] = useState(null);
   const [v14BackupPreview, setV14BackupPreview] = useState(null);
   const [v14BackupPath, setV14BackupPath] = useState('');
   const [v14Backups, setV14Backups] = useState([]);
@@ -6219,7 +6220,7 @@ const activeTrials = restaurants.filter(r => resolveSubscription(r, appUser).sta
   }, {})).filter(([, group]) => group.length > 1);
   const usersMissingPush = allUsers.filter(u => getUserPushDeviceCount(u) === 0);
   const permissionDeniedLogs = crashLogs.filter(log => `${log.message || ''} ${log.stack || ''}`.toLowerCase().includes('permission-denied'));
-  const endpointList = ['admin-access', 'master-admin-repair', 'whoami', 'security-diagnostics', 'firestore-backup', 'list-backups', 'weekly-maintenance', 'dispatch-reminders', 'deploy-tenant', 'delete-user', 'delete-users-bulk', 'brand-logo', 'storage-doctor', 'schema-doctor', 'backup-preview', 'safe-write', 'scan-invoice', 'scan-menu', 'quickbooks-connect', 'quickbooks-bill-draft', 'quickbooks-webhook-status', 'quickbooks-webhook', 'ai-usage', 'python-order-intelligence', 'python-ops-intelligence', 'python-automation-run', 'send-push', 'send-schedule-alert', 'presence-heartbeat', 'presence-snapshot', 'push-token-repair', 'staff-member', 'voice-command', 'alerts', 'health-checks', 'account-deletion-request', 'restore-drill', 'mfa-recovery-code'];
+  const endpointList = ['admin-access', 'master-admin-repair', 'whoami', 'security-diagnostics', 'firestore-backup', 'list-backups', 'weekly-maintenance', 'dispatch-reminders', 'deploy-tenant', 'delete-user', 'delete-users-bulk', 'brand-logo', 'storage-doctor', 'schema-doctor', 'schedule-integrity-audit', 'backup-preview', 'safe-write', 'scan-invoice', 'scan-menu', 'quickbooks-connect', 'quickbooks-bill-draft', 'quickbooks-webhook-status', 'quickbooks-webhook', 'ai-usage', 'python-order-intelligence', 'python-ops-intelligence', 'python-automation-run', 'send-push', 'send-schedule-alert', 'presence-heartbeat', 'presence-snapshot', 'push-token-repair', 'staff-member', 'voice-command', 'alerts', 'health-checks', 'account-deletion-request', 'restore-drill', 'mfa-recovery-code'];
 
   const adminAccessSourceLabel = appUser?.serverAdminCheck?.serverMasterAdminMatched ? 'Server env' :
     appUser?.serverAdminCheck?.customClaimSuperAdmin ? 'Custom claim' :
@@ -8166,6 +8167,33 @@ Type RESTORE to continue.`);
     finally { setV14BusyTool(''); }
   };
 
+  const runScheduleIntegrityAudit = async (mode = 'window', cursor = null) => {
+    if (!v14TargetRestaurantId) return addToast('Choose a Restaurant', 'Choose a restaurant before checking its schedule.');
+    setV14BusyTool('schedule-integrity');
+    try {
+      const today = new Date();
+      const month = getMonthStr(today);
+      const [year, monthNumber] = month.split('-').map(Number);
+      const startDate = `${month}-01`;
+      const endDate = formatDate(new Date(year, monthNumber, 0));
+      const response = await secureFetch('/api/schedule-integrity-audit', {
+        method:'POST',
+        headers:{ 'Content-Type':'application/json' },
+        body: JSON.stringify({ restaurantId: v14TargetRestaurantId, mode, startDate, endDate, pageSize: 100, cursor: cursor || undefined })
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || 'Schedule Integrity Audit failed.');
+      setScheduleIntegrityReport(data);
+      recordScheduleOperationDiagnostic('sdkReads', data.operationEvidence?.scheduleQueryAttempts || 0);
+      recordScheduleOperationDiagnostic('documentsObserved', data.operationEvidence?.scheduleDocumentsReturned || 0);
+      recordScheduleOperationDiagnostic('auditDocumentReads', data.operationEvidence?.scheduleDocumentsReturned || 0);
+      recordScheduleOperationDiagnostic('auditPages', data.operationEvidence?.pages || 1);
+      recordScheduleOperationDiagnostic('auditLookupFailures', data.operationEvidence?.lookupFailures || 0);
+      addToast('Schedule Check Complete', `${data.results?.length || 0} shift record(s) reviewed. ${data.complete ? 'The selected scan is complete.' : 'Review the reported limits before drawing conclusions.'} No schedule data was changed.`);
+    } catch (err) { addToast('Schedule Check Could Not Finish', err.message || 'No schedule data was changed. Try again or review the technical report.'); }
+    finally { setV14BusyTool(''); }
+  };
+
   const loadV14Backups = async () => {
     setV14BusyTool('backups');
     try {
@@ -9590,6 +9618,15 @@ Type RESTORE to continue.`);
               <p className="text-xs text-slate-400 font-bold mt-2">Scans tenant data for missing restaurant IDs, invalid dates, stale punches, negative inventory, old branding fields, and demo privacy hazards.</p>
               <div className="grid grid-cols-2 gap-2 mt-4"><button onClick={() => runV14SchemaDoctor(false)} disabled={!!v14BusyTool} className={T.btnAlt}>Dry Run</button><button onClick={() => runV14SchemaDoctor(true)} disabled={!!v14BusyTool} className={T.btn}>Repair Safe Items</button></div>
             </div>
+
+            <div className={`${T.card} p-4`}>
+              <div className="flex items-center justify-between gap-3"><h3 className="font-black text-white">Schedule Integrity Audit</h3><SignalPip tone={scheduleIntegrityReport ? (scheduleIntegrityReport.writesPerformed === 0 ? 'emerald' : 'red') : 'amber'} label={scheduleIntegrityReport ? (scheduleIntegrityReport.complete ? 'COMPLETE' : 'LIMITED') : 'READ ONLY'} hot={false}/></div>
+              <p className="text-xs text-slate-300 font-bold mt-2">Checks for inconsistent dates, unresolved staff links, missing restaurant IDs, and possible duplicates. No schedule data will be changed: this audit never repairs, deletes, merges, or publishes records.</p>
+              <p className="text-[10px] text-slate-500 font-bold mt-2">Check This Month uses the normal schedule and compatibility lookups. Check Next 100 Records pages through this restaurant’s schedule even when dates are unusable.</p>
+              <div className="grid grid-cols-2 gap-2 mt-4"><button onClick={() => runScheduleIntegrityAudit('window')} disabled={!!v14BusyTool} className={T.btnAlt}>Check This Month</button><button onClick={() => runScheduleIntegrityAudit('complete')} disabled={!!v14BusyTool} className={T.btn}>Check Next 100 Records</button></div>
+              {scheduleIntegrityReport?.nextCursor && <button onClick={() => runScheduleIntegrityAudit('complete', scheduleIntegrityReport.nextCursor)} disabled={!!v14BusyTool} className={`${T.btnAlt} mt-2 w-full`}>Continue with Next 100 Records</button>}
+              {scheduleIntegrityReport && <div className="mt-3 text-[10px] font-bold text-slate-400">{scheduleIntegrityReport.results?.length || 0} records reviewed • {scheduleIntegrityReport.operationEvidence?.scheduleQueryAttempts || 0} read requests • no schedule writes • {scheduleIntegrityReport.lookupFailures?.length || 0} lookup failures • {scheduleIntegrityReport.nextCursor ? 'more records available' : 'end of this scan'}</div>}
+            </div>
           </div>
 
           <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
@@ -9640,6 +9677,7 @@ Type RESTORE to continue.`);
           <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
             <V14JsonPanel title="Storage Doctor Report" data={v14StorageReport} />
             <V14JsonPanel title="Schema Doctor Report" data={v14SchemaReport} />
+            <V14JsonPanel title="Schedule Integrity Audit (Read Only)" data={scheduleIntegrityReport} />
             <V14JsonPanel title="Backup Review / Guardrails" data={v14BackupPreview || v14GuardrailReport} />
           </div>
         </div>
@@ -12355,18 +12393,18 @@ const TabBackOffice = ({ currentDate, users = [], sales = [], timePunches = [], 
       </div>
 
       {subTab === 'dashboard' && <div className="grid lg:grid-cols-2 gap-4">
-        <div className={`${T.card} p-4 space-y-3`}><h3 className="text-xl font-black text-white">Owner Attention</h3>{openAlerts.length === 0 && openApprovals.length === 0 && <FriendlyEmpty title="Nothing screaming" text="No open owner/admin alerts or approvals right now." />}{openAlerts.slice(0, 6).map(alert => <Row key={alert.id}><div className="flex justify-between gap-3"><div><div className="text-sm font-black text-white">{alert.title || alert.issue || 'Admin Alert'}</div><div className="text-xs font-bold text-slate-400 mt-1">{alert.summary || alert.message || alert.recommendation || 'Review this alert.'}</div></div><button type="button" onClick={() => acknowledgeAlert(alert, 'acknowledged')} className={T.btnAlt}>Acknowledge</button></div></Row>)}{openApprovals.slice(0, 6).map(item => <Row key={item.id}><div className="flex justify-between gap-3"><div><div className="text-sm font-black text-white">{item.title}</div><div className="text-xs font-bold text-slate-400 mt-1">{item.notes}</div></div><div className="flex gap-2"><button type="button" onClick={() => updateRecordStatus(item, 'approved')} className={T.btn}>Approve</button><button type="button" onClick={() => updateRecordStatus(item, 'dismissed')} className={T.btnAlt}>Dismiss</button></div></div></Row>)}</div>
-        <div className={`${T.card} p-4 space-y-3`}><h3 className="text-xl font-black text-white">Back Office Guardrails</h3><p className="text-sm text-slate-300 font-bold leading-relaxed">System Admin and Python scanning can send alerts here, but cannot apply restaurant changes. Owner/admin users review, approve, dismiss, export, or assign the work.</p><div className="grid sm:grid-cols-2 gap-3 text-xs font-bold text-slate-300"><Row>Financials remains Operations+ for labor, timesheets, sales, tips, and daily close.</Row><Row>Smart Kitchen keeps COGS, invoices, P&L, budgets, AI ordering, scans, and advanced reports.</Row><Row>Owner Pro adds Back Office, document vault, approval queue, owner reports, multi-location, and QuickBooks hub.</Row><Row>QuickBooks Phase 3 adds accountant packets, sync health, class/location mapping, and review-first bill/credit drafts. No live posting without owner approval and server credentials.</Row></div></div>
+        <div className={`${T.card} p-4 space-y-3`}><h3 className="text-xl font-black text-white">Owner Attention</h3>{openAlerts.length === 0 && openApprovals.length === 0 && <FriendlyEmpty title="Nothing needs review right now" text="There are no open owner alerts or approval requests." />}{openAlerts.slice(0, 6).map(alert => <Row key={alert.id}><div className="flex justify-between gap-3"><div><div className="text-sm font-black text-white">{alert.title || alert.issue || 'Admin Alert'}</div><div className="text-xs font-bold text-slate-400 mt-1">{alert.summary || alert.message || alert.recommendation || 'Review this alert.'}</div></div><button type="button" onClick={() => acknowledgeAlert(alert, 'acknowledged')} className={T.btnAlt}>Mark Reviewed</button></div></Row>)}{openApprovals.slice(0, 6).map(item => <Row key={item.id}><div className="flex justify-between gap-3"><div><div className="text-sm font-black text-white">{item.title}</div><div className="text-xs font-bold text-slate-400 mt-1">{item.notes}</div></div><div className="flex gap-2"><button type="button" onClick={() => updateRecordStatus(item, 'approved')} className={T.btn}>Approve</button><button type="button" onClick={() => updateRecordStatus(item, 'dismissed')} className={T.btnAlt}>Dismiss</button></div></div></Row>)}</div>
+        <div className={`${T.card} p-4 space-y-3`}><h3 className="text-xl font-black text-white">Back Office Review</h3><p className="text-sm text-slate-300 font-bold leading-relaxed">Alerts and suggestions appear here for owner or administrator review. They cannot change restaurant records on their own.</p><div className="grid sm:grid-cols-2 gap-3 text-xs font-bold text-slate-300"><Row>Financials includes labor, timesheets, sales, tips, and Daily Close with Operations access.</Row><Row>Smart Kitchen includes cost of goods, invoices, profit and loss, budgets, order suggestions, scans, and advanced reports.</Row><Row>Owner Pro adds Back Office, the document vault, approval queue, owner reports, multi-location tools, and QuickBooks preparation.</Row><Row>QuickBooks tools prepare accountant packets, mappings, and bill or credit drafts. Nothing posts without owner approval and a working connection.</Row></div></div>
       </div>}
 
       {subTab === 'deposits' && <div className="grid lg:grid-cols-3 gap-4"><form onSubmit={saveDeposit} className={`${T.card} p-4 space-y-3`}><h3 className="text-xl font-black text-white">Add Deposit / Close Record</h3><label className={T.label}>Date</label><input type="date" value={depositForm.date} onChange={e=>setDepositForm({...depositForm,date:e.target.value})} className={T.input}/><label className={T.label}>Cash Sales</label><input type="number" step="0.01" value={depositForm.cashSales} onChange={e=>setDepositForm({...depositForm,cashSales:e.target.value})} className={T.input}/><label className={T.label}>Card Sales</label><input type="number" step="0.01" value={depositForm.cardSales} onChange={e=>setDepositForm({...depositForm,cardSales:e.target.value})} className={T.input}/><label className={T.label}>Tips Paid / Payouts</label><div className="grid grid-cols-2 gap-2"><input type="number" step="0.01" value={depositForm.tipsPaid} onChange={e=>setDepositForm({...depositForm,tipsPaid:e.target.value})} className={T.input} placeholder="Tips"/><input type="number" step="0.01" value={depositForm.payouts} onChange={e=>setDepositForm({...depositForm,payouts:e.target.value})} className={T.input} placeholder="Payouts"/></div><label className={T.label}>Bank Deposit</label><input type="number" step="0.01" value={depositForm.depositAmount} onChange={e=>setDepositForm({...depositForm,depositAmount:e.target.value})} className={T.input}/><label className={T.label}>Drawer Over/Short</label><input type="number" step="0.01" value={depositForm.drawerVariance} onChange={e=>setDepositForm({...depositForm,drawerVariance:e.target.value})} className={T.input}/><label className={T.label}>Notes</label><textarea value={depositForm.notes} onChange={e=>setDepositForm({...depositForm,notes:e.target.value})} className={T.input} rows={3}/><button className={`${T.btn} w-full`}>Save Deposit</button></form><div className="lg:col-span-2 space-y-3">{deposits.length === 0 && <FriendlyEmpty title="No deposits yet" text="Save close/deposit records here for owner review and future QuickBooks sync." />}{deposits.slice(0, 30).map(d => <Row key={d.id}><div className="flex justify-between gap-3"><div><div className="text-sm font-black text-white">{formatDisplayDate(d.date)} • {moneyText(d.depositAmount, 2)}</div><div className="text-xs font-bold text-slate-400">Cash {moneyText(d.cashSales,2)} • Card {moneyText(d.cardSales,2)} • Variance {moneyText(d.drawerVariance,2)}</div>{d.notes && <div className="text-xs text-slate-500 mt-1">{d.notes}</div>}</div><button type="button" onClick={() => updateRecordStatus(d, 'reviewed')} className={T.btnAlt}>Mark Reviewed</button></div></Row>)}</div></div>}
 
-      {subTab === 'approvals' && <div className="grid lg:grid-cols-3 gap-4"><form onSubmit={saveApproval} className={`${T.card} p-4 space-y-3`}><h3 className="text-xl font-black text-white">Create Approval Item</h3><label className={T.label}>Title</label><input value={approvalForm.title} onChange={e=>setApprovalForm({...approvalForm,title:e.target.value})} className={T.input} placeholder="Price jump, repair quote, menu change..."/><label className={T.label}>Category</label><select value={approvalForm.category} onChange={e=>setApprovalForm({...approvalForm,category:e.target.value})} className={T.input}>{['Owner Review','Invoice Issue','Vendor Credit','Repair / Maintenance','Menu / Pricing','Payroll / Labor','Python Alert Follow-up','QuickBooks Sync Repair'].map(x=><option key={x}>{x}</option>)}</select><label className={T.label}>Priority</label><select value={approvalForm.priority} onChange={e=>setApprovalForm({...approvalForm,priority:e.target.value})} className={T.input}><option value="normal">Normal</option><option value="high">High</option><option value="urgent">Urgent</option></select><label className={T.label}>Notes</label><textarea value={approvalForm.notes} onChange={e=>setApprovalForm({...approvalForm,notes:e.target.value})} className={T.input} rows={4}/><button className={`${T.btn} w-full`}>Add to Approval Queue</button></form><div className="lg:col-span-2 space-y-3">{approvals.length === 0 && <FriendlyEmpty title="No approvals yet" text="Manager suggestions, Python findings, and owner decisions can live here." />}{approvals.slice(0, 40).map(item => <Row key={item.id}><div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3"><div><div className="text-sm font-black text-white">{item.title}</div><div className="text-[10px] font-black uppercase tracking-widest text-[#D4A381] mt-1">{item.category} • {item.priority} • {item.status || 'pending'}</div><div className="text-xs font-bold text-slate-400 mt-1">{item.notes}</div></div><div className="flex gap-2"><button type="button" onClick={() => updateRecordStatus(item, 'approved')} className={T.btn}>Approve</button><button type="button" onClick={() => updateRecordStatus(item, 'dismissed')} className={T.btnAlt}>Dismiss</button></div></div></Row>)}</div></div>}
+      {subTab === 'approvals' && <div className="grid lg:grid-cols-3 gap-4"><form onSubmit={saveApproval} className={`${T.card} p-4 space-y-3`}><h3 className="text-xl font-black text-white">Create Approval Item</h3><label className={T.label}>Title</label><input value={approvalForm.title} onChange={e=>setApprovalForm({...approvalForm,title:e.target.value})} className={T.input} placeholder="Price change, repair quote, menu update..."/><label className={T.label}>Category</label><select value={approvalForm.category} onChange={e=>setApprovalForm({...approvalForm,category:e.target.value})} className={T.input}>{['Owner Review','Invoice Issue','Vendor Credit','Repair / Maintenance','Menu / Pricing','Payroll / Labor','Restaurant Check Follow-up','QuickBooks Sync Repair'].map(x=><option key={x}>{x}</option>)}</select><label className={T.label}>Priority</label><select value={approvalForm.priority} onChange={e=>setApprovalForm({...approvalForm,priority:e.target.value})} className={T.input}><option value="normal">Normal</option><option value="high">High</option><option value="urgent">Urgent</option></select><label className={T.label}>Notes</label><textarea value={approvalForm.notes} onChange={e=>setApprovalForm({...approvalForm,notes:e.target.value})} className={T.input} rows={4}/><button className={`${T.btn} w-full`}>Add to Approval Queue</button></form><div className="lg:col-span-2 space-y-3">{approvals.length === 0 && <FriendlyEmpty title="No approvals yet" text="Manager suggestions, restaurant checks, and owner decisions can be reviewed here." />}{approvals.slice(0, 40).map(item => <Row key={item.id}><div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3"><div><div className="text-sm font-black text-white">{item.title}</div><div className="text-[10px] font-black uppercase tracking-widest text-[#D4A381] mt-1">{item.category} • {item.priority} • {item.status || 'pending'}</div><div className="text-xs font-bold text-slate-400 mt-1">{item.notes}</div></div><div className="flex gap-2"><button type="button" onClick={() => updateRecordStatus(item, 'approved')} className={T.btn}>Approve</button><button type="button" onClick={() => updateRecordStatus(item, 'dismissed')} className={T.btnAlt}>Dismiss</button></div></div></Row>)}</div></div>}
 
       {subTab === 'documents' && <div className="grid lg:grid-cols-3 gap-4">
         <form onSubmit={saveDocument} className={`${T.card} p-4 space-y-3`}>
           <h3 className="text-xl font-black text-white">Document Vault</h3>
-          <p className="text-xs font-bold text-slate-400">Save renewal metadata and attach the actual business document in Firebase Storage. Legacy metadata-only records still work.</p>
+          <p className="text-xs font-bold text-slate-400">Save renewal details and attach the business document. Older records without a file will continue to appear.</p>
           <label className={T.label}>Title</label>
           <input value={documentForm.title} onChange={e=>setDocumentForm({...documentForm,title:e.target.value})} className={T.input} placeholder="Liquor license, insurance, hood inspection..."/>
           <label className={T.label}>Category</label>
@@ -12435,7 +12473,7 @@ const TabBackOffice = ({ currentDate, users = [], sales = [], timePunches = [], 
           </div>
 
           <div className="grid lg:grid-cols-3 gap-4">
-            <div className={`${T.card} p-4 space-y-3`}><h3 className="text-xl font-black text-white">QuickBooks Integration Hub</h3><p className="text-sm text-slate-300 font-bold leading-relaxed">Phase 3 adds monthly accountant packets, sync health, class/location mapping, owner rollups, and close readiness on top of invoice bill drafts, vendor matching, vendor credits, repair, and webhook checks. Live posting stays blocked until server credentials, tokens, and owner approval are present.</p><button type="button" onClick={checkQuickBooksConnect} className={`${T.btn} w-full`}>{qbStatus.checking ? 'Checking...' : 'Connect QuickBooks'}</button><div className="text-xs font-bold text-slate-400 bg-[#0B0E11] border border-[#2A353D] rounded-xl p-3">{qbStatus.message}</div><button type="button" onClick={checkWebhookStatus} className={`${T.btnAlt} w-full`}>{webhookStatus.checking ? 'Checking webhook...' : 'Check Webhook Setup'}</button><div className="text-xs font-bold text-slate-400 bg-[#0B0E11] border border-[#2A353D] rounded-xl p-3">{webhookStatus.message}</div><div className="text-[10px] font-black uppercase tracking-widest text-slate-500">Safety: no automatic posting, no vendor ordering, no payroll approval, no token stored in browser-writeable Firestore.</div></div>
+            <div className={`${T.card} p-4 space-y-3`}><h3 className="text-xl font-black text-white">QuickBooks Setup & Review</h3><p className="text-sm text-slate-300 font-bold leading-relaxed">Prepare accountant packets, mappings, bill drafts, vendor credits, and close checks. Nothing posts to QuickBooks until the connection is ready and an owner approves it.</p><button type="button" onClick={checkQuickBooksConnect} className={`${T.btn} w-full`}>{qbStatus.checking ? 'Checking Connection…' : 'Check QuickBooks Connection'}</button><div className="text-xs font-bold text-slate-400 bg-[#0B0E11] border border-[#2A353D] rounded-xl p-3">{qbStatus.message}</div><button type="button" onClick={checkWebhookStatus} className={`${T.btnAlt} w-full`}>{webhookStatus.checking ? 'Checking Setup…' : 'Check QuickBooks Updates'}</button><div className="text-xs font-bold text-slate-400 bg-[#0B0E11] border border-[#2A353D] rounded-xl p-3">{webhookStatus.message}</div><div className="text-[10px] font-black uppercase tracking-widest text-slate-500">Review required: no automatic posting, vendor ordering, or payroll approval.</div></div>
             <div className="lg:col-span-2 space-y-4"><div className={`${T.card} p-4 space-y-3`}><h3 className="text-xl font-black text-white">Account / Class / Location Mapping</h3><div className="grid sm:grid-cols-2 gap-3">{Object.entries({ accountsPayable:'Accounts Payable', bankAccount:'Bank / Deposit Account', salesIncome:'Sales Income', tipsPayable:'Tips Payable', cashOverShort:'Cash Over / Short', foodPurchases:'Food Purchases', beveragePurchases:'Beverage Purchases', supplies:'Supplies', cogs:'COGS', taxAccount:'Tax / Fees', defaultClass:'Default Class', defaultLocation:'Default Location', foodClass:'Food Class', beverageClass:'Beverage Class', suppliesClass:'Supplies Class', salesClass:'Sales Class', taxAgency:'Tax Agency', memoTemplate:'Memo Template' }).map(([key,label]) => <label key={key}><span className={T.label}>{label}</span><input value={qbMapping[key] || ''} onChange={e=>setQbMapping({...qbMapping,[key]:e.target.value})} className={T.input} placeholder={key === 'memoTemplate' ? '86 Chaos {month} {vendor} {number}' : 'QuickBooks name'}/></label>)}<label><span className={T.label}>Class / Location Tracking</span><select value={qbMapping.classTracking} onChange={e=>setQbMapping({...qbMapping,classTracking:e.target.value})} className={T.input}><option value="off">Off</option><option value="class">QuickBooks Class</option><option value="location">QuickBooks Location</option><option value="both">Class + Location</option></select></label><label><span className={T.label}>Export Basis</span><select value={qbMapping.exportBasis} onChange={e=>setQbMapping({...qbMapping,exportBasis:e.target.value})} className={T.input}><option value="accrual">Accrual</option><option value="cash">Cash</option><option value="manager-review">Manager Review</option></select></label></div><div className="flex flex-wrap gap-2"><button type="button" onClick={saveQuickBooksMapping} className={T.btn}>Save Mapping for Review</button><button type="button" onClick={checkQuickBooksSyncHealth} className={T.btnAlt}>{syncHealth.checking ? 'Checking...' : 'Check Sync Health'}</button></div><div className="text-xs font-bold text-slate-400 bg-[#0B0E11] border border-[#2A353D] rounded-xl p-3">{syncHealth.message} {syncHealth.score !== null ? `Score: ${syncHealth.score}%` : ''}</div>{qbMappingMissing.length > 0 && <div className="text-xs font-bold text-orange-300">Missing recommended mappings: {qbMappingMissing.join(', ')}</div>}</div></div>
           </div>
 

@@ -292,7 +292,7 @@ const ManualUploadModal = ({ open, onClose, appUser, manuals, addToast }) => {
     <Modal isOpen={open} onClose={close} title="Publish a Training Manual" sizeClass="max-w-2xl">
       <form onSubmit={submit} className="space-y-4">
         <div className="rounded-xl border border-emerald-400/20 bg-emerald-500/10 p-3 text-sm font-semibold leading-5 text-emerald-100">
-          This upload does not use AI. The original document is stored securely and published exactly as provided.
+          86 Chaos stores and publishes the original document exactly as provided. It does not rewrite the manual.
         </div>
         <div className="grid gap-4 sm:grid-cols-2">
           <label className="sm:col-span-2"><span className={T.label}>Manual title</span><input className={T.input} value={title} onChange={e => setTitle(e.target.value)} placeholder="Example: Kitchen Safety Manual" maxLength={120} /></label>
@@ -305,7 +305,7 @@ const ManualUploadModal = ({ open, onClose, appUser, manuals, addToast }) => {
         <label className="block cursor-pointer rounded-2xl border border-dashed border-[#D4A381]/45 bg-[#D4A381]/5 p-5 text-center transition hover:bg-[#D4A381]/10">
           <Upload className="mx-auto text-[#E6BB9F]" size={28} />
           <div className="mt-2 text-sm font-black text-white">{file ? `${file.name} • ${mbLabel(file.size)}` : 'Choose a PDF, Word document, DOCX, or text file'}</div>
-          <div className="mt-1 text-xs font-semibold text-slate-400">Files up to 50 MB are compressed into the 15 MB secure storage envelope. No AI processing.</div>
+          <div className="mt-1 text-xs font-semibold text-slate-400">Files up to 50 MB may be compressed for secure storage. The document content is not rewritten.</div>
           <input type="file" className="sr-only" accept=".pdf,.doc,.docx,.txt,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain" onChange={e => setFile(e.target.files?.[0] || null)} />
         </label>
         {saving && <div><div className="mb-1 flex justify-between text-xs font-bold text-slate-300"><span>Secure upload</span><span>{progress}%</span></div><div className="h-2 overflow-hidden rounded-full bg-[#12161A]"><div className="h-full bg-[#D4A381] transition-all" style={{ width: `${progress}%` }} /></div></div>}
@@ -574,7 +574,7 @@ export const TabHrTraining = ({ appUser, users = [], addToast }) => {
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-start gap-4">
               <div className="rounded-2xl border border-[#D4A381]/30 bg-[#D4A381]/10 p-3 text-[#E6BB9F]"><GraduationCap size={30} /></div>
-              <div><div className="text-[11px] font-black uppercase tracking-[0.2em] text-[#D4A381]">People Operations</div><h1 className="mt-1 text-2xl font-black text-white sm:text-3xl">HR &amp; Training</h1><p className="mt-2 max-w-3xl text-sm font-medium leading-6 text-slate-300">Secure training records, clear onboarding, certification tracking, and professional employee documentation in one workspace.</p></div>
+              <div><div className="text-[11px] font-black uppercase tracking-[0.2em] text-[#D4A381]">Staff Records</div><h1 className="mt-1 text-2xl font-black text-white sm:text-3xl">HR &amp; Training</h1><p className="mt-2 max-w-3xl text-sm font-medium leading-6 text-slate-300">Keep training manuals, new-hire checklists, certifications, and employee notes in one place.</p></div>
             </div>
             <div className="flex items-center gap-2 rounded-xl border border-emerald-400/20 bg-emerald-500/10 px-3 py-2 text-xs font-black uppercase tracking-[0.1em] text-emerald-200"><ShieldCheck size={17} /> {manager ? 'Manager access' : 'Employee self-service'}</div>
           </div>
@@ -585,10 +585,10 @@ export const TabHrTraining = ({ appUser, users = [], addToast }) => {
       </div>
 
       {activeTab === 'overview' && <>
-        <SectionHeader eyebrow="At a glance" title={manager ? 'People readiness dashboard' : 'My training dashboard'} text={manager ? 'See training publication, acknowledgment, onboarding, and certification readiness without exposing confidential records.' : 'Review your required manuals, onboarding progress, and certification records.'} />
+        <SectionHeader eyebrow="At a glance" title={manager ? 'Staff training overview' : 'My training'} text={manager ? 'See published training, employee acknowledgments, onboarding progress, and certification deadlines. Confidential notes stay restricted.' : 'Review your required manuals, onboarding progress, and certification records.'} />
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <MetricCard icon={<BookOpen size={20} />} label="Published manuals" value={publishedManuals.length} detail="Current documents available to employees" />
-          <MetricCard icon={<CheckCircle2 size={20} />} label={manager ? 'Acknowledgments' : 'My acknowledgments'} value={manager ? acknowledgements.length : acknowledgedIds.size} detail={manager ? 'Immutable employee attestations recorded' : `${Math.max(0, publishedManuals.length - acknowledgedIds.size)} current manual(s) still to acknowledge`} />
+          <MetricCard icon={<CheckCircle2 size={20} />} label={manager ? 'Acknowledgments' : 'My acknowledgments'} value={manager ? acknowledgements.length : acknowledgedIds.size} detail={manager ? 'Employee review confirmations recorded' : `${Math.max(0, publishedManuals.length - acknowledgedIds.size)} current manual(s) still to acknowledge`} />
           <MetricCard icon={<ClipboardCheck size={20} />} label={manager ? 'Onboarding complete' : 'My onboarding'} value={`${completedTasks}/${onboardingTasks.length}`} detail="Checklist items completed" />
           <MetricCard icon={<Award size={20} />} label="Certification attention" value={expiredCerts + expiringCerts} detail={`${expiredCerts} expired • ${expiringCerts} expiring within 60 days`} />
         </div>
@@ -599,7 +599,7 @@ export const TabHrTraining = ({ appUser, users = [], addToast }) => {
       </>}
 
       {activeTab === 'manuals' && <>
-        <SectionHeader eyebrow="Controlled documents" title="Training manuals" text="Employees see only published manuals. Each version is stored as the original file, with no AI conversion or rewriting." action={manager ? <button className={T.btn} type="button" onClick={() => setManualModal(true)}><Plus size={17} className="mr-2 inline" />Publish Manual</button> : null} />
+        <SectionHeader eyebrow="Published documents" title="Training manuals" text="Employees see only published manuals. Each version remains the original file and is not rewritten by 86 Chaos." action={manager ? <button className={T.btn} type="button" onClick={() => setManualModal(true)}><Plus size={17} className="mr-2 inline" />Publish Manual</button> : null} />
         <div className="space-y-3">
           {visibleManuals.map(manual => {
             const acknowledged = acknowledgedIds.has(manual.id);

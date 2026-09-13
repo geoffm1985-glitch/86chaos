@@ -2069,12 +2069,12 @@ const TabOpsCenter = ({ currentDate, appUser, users = [], shifts = [], events = 
           </div>
         </div>
         <div className="mt-4 bg-[#0B0E11] border border-[#2A353D] rounded-xl overflow-hidden">
-          <div className="p-3 border-b border-[#2A353D] flex items-center justify-between gap-2"><div className="font-black text-white text-sm">Menu Dependency Radar</div><span className="text-[9px] font-black uppercase tracking-widest text-[#D4A381]">v15.0.83 precision graph</span></div>
+          <div className="p-3 border-b border-[#2A353D] flex items-center justify-between gap-2"><div className="font-black text-white text-sm">Menu Items Affected</div><span className="text-[9px] font-black uppercase tracking-widest text-[#D4A381]">Inventory and prep check</span></div>
           <div className="divide-y divide-[#2A353D] max-h-[260px] overflow-y-auto custom-scrollbar">
-            {affectedMenuItems.length === 0 && <div className="p-4 text-xs font-bold text-slate-500">No dependency collisions detected. Map recipes to ingredients above, or add ingredient names to recipes to sharpen the radar.</div>}
+            {affectedMenuItems.length === 0 && <div className="p-4 text-xs font-bold text-slate-500">No menu items are affected right now. Link recipes to inventory ingredients above to improve this check.</div>}
             {affectedMenuItems.map(({ recipe, lowStockMatches, prepMatches, explicitDependencies, eightySixAlerts, confidence, matchReasons }) => (
               <div key={recipe.id} className="p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                <div className="min-w-0"><div className="font-black text-white text-sm truncate">{recipe.name || recipe.title || 'Recipe'}</div><div className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">{lowStockMatches.length ? `Affected by ${lowStockMatches.map(i => i.name).join(', ')}` : 'Affected by 86/prep signal'}</div><div className="text-[10px] text-slate-600 font-bold mt-1">{explicitDependencies?.length ? 'Manual graph link • ' : (matchReasons?.length ? `High-confidence match: ${matchReasons.slice(0, 2).join(', ')} • ` : 'Signal match • ')}{confidence ? `${Math.round(confidence)}% confidence • ` : ''}{prepMatches?.length ? `${prepMatches.length} prep signal(s) • ` : ''}{eightySixAlerts?.length ? `${eightySixAlerts.length} active 86 alert(s)` : ''}</div></div>
+                <div className="min-w-0"><div className="font-black text-white text-sm truncate">{recipe.name || recipe.title || 'Recipe'}</div><div className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">{lowStockMatches.length ? `Affected by ${lowStockMatches.map(i => i.name).join(', ')}` : 'Affected by prep or 86 activity'}</div><div className="text-[10px] text-slate-600 font-bold mt-1">{explicitDependencies?.length ? 'Recipe link • ' : (matchReasons?.length ? `Likely match: ${matchReasons.slice(0, 2).join(', ')} • ` : 'Possible match • ')}{confidence ? `${Math.round(confidence)}% confidence • ` : ''}{prepMatches?.length ? `${prepMatches.length} prep item(s) • ` : ''}{eightySixAlerts?.length ? `${eightySixAlerts.length} active 86 alert(s)` : ''}</div></div>
                 <div className="text-[10px] font-black uppercase tracking-widest text-orange-300">{lowStockMatches.some(i => Number(i.pendingQty || 0) > 0) ? 'Recovery pending' : 'Needs action'}</div>
               </div>
             ))}
@@ -2226,8 +2226,8 @@ const TabToday = ({ currentDate, appUser, users, shifts, shiftSwaps, timeOffRequ
     setActiveTab(tab);
   };
   const runBriefPythonOps = async () => {
-    if (!appUser?.restaurantId) return addToast?.('Missing Workspace', 'Choose a workspace before running Python Ops Scan.');
-    if (!canUsePythonIntelligence) return addToast?.('Smart Kitchen Required', 'Python Ops Scan starts with Smart Kitchen.');
+    if (!appUser?.restaurantId) return addToast?.('Choose a Restaurant', 'Choose a restaurant before running the restaurant check.');
+    if (!canUsePythonIntelligence) return addToast?.('Smart Kitchen Required', 'The restaurant check is available with Smart Kitchen.');
     setBriefOpsLoading(true);
     setBriefOpsError('');
     setBriefOpsCopied(false);
@@ -2260,20 +2260,20 @@ const TabToday = ({ currentDate, appUser, users, shifts, shiftSwaps, timeOffRequ
         })
       });
       const payload = await response.json().catch(() => ({}));
-      if (!response.ok || payload?.ok === false) throw new Error(readableApiError(payload?.error || payload?.message || payload) || 'Python Ops Intelligence failed.');
+      if (!response.ok || payload?.ok === false) throw new Error(readableApiError(payload?.error || payload?.message || payload) || 'The restaurant check could not be completed.');
       setBriefOpsIntel(payload);
-      addToast?.('Python Ops Scan Ready', `${payload?.summary?.dataHealthCount || 0} data issues, ${payload?.summary?.laborWarningCount || 0} labor warnings, ${payload?.summary?.menuCostCount || 0} menu cost checks.`);
+      addToast?.('Restaurant Check Ready', `${payload?.summary?.dataHealthCount || 0} setup issues, ${payload?.summary?.laborWarningCount || 0} labor warnings, and ${payload?.summary?.menuCostCount || 0} menu cost checks are ready to review.`);
     } catch (error) {
-      const message = error?.message || 'Python Ops Intelligence is unavailable.';
+      const message = error?.message || 'The restaurant check is unavailable right now.';
       setBriefOpsError(message);
-      addToast?.('Python Ops Scan Unavailable', message);
+      addToast?.('Restaurant Check Unavailable', message);
     } finally {
       setBriefOpsLoading(false);
     }
   };
   const copyBriefOpsReport = async () => {
     const value = briefOpsIntel?.reports?.text || JSON.stringify(briefOpsIntel || {}, null, 2);
-    if (!briefOpsIntel) return addToast?.('No Report Ready', 'Run Python Ops Scan first.');
+    if (!briefOpsIntel) return addToast?.('No Report Ready', 'Run the restaurant check first.');
     try {
       await navigator.clipboard.writeText(value);
       setBriefOpsCopied(true);
@@ -2308,7 +2308,7 @@ const TabToday = ({ currentDate, appUser, users, shifts, shiftSwaps, timeOffRequ
   };
 
   const problems = [
-    canReviewRestaurantAdminAlerts && openRestaurantAdminAlerts.length ? { tone: 'amber', title: 'Owner/Admin alerts', detail: `${openRestaurantAdminAlerts.length} Python scan alert${openRestaurantAdminAlerts.length===1?'':'s'} need review.`, tab: 'today' } : null,
+    canReviewRestaurantAdminAlerts && openRestaurantAdminAlerts.length ? { tone: 'amber', title: 'Owner and admin alerts', detail: `${openRestaurantAdminAlerts.length} restaurant check alert${openRestaurantAdminAlerts.length===1?'':'s'} need review.`, tab: 'today' } : null,
     canUseBasicInventory && lowStock.length ? { tone: 'red', title: 'Inventory below par', detail: `${lowStock.length} item${lowStock.length===1?'':'s'} need attention.`, tab: 'inventory', onClick: openInventoryFocus } : null,
     canUseCleaningRoutines && urgentMaintenance.length ? { tone: 'red', title: 'Maintenance urgent', detail: `${urgentMaintenance.length} high priority issue${urgentMaintenance.length===1?'':'s'} open.`, tab: 'maintenance' } : null,
     canUseScheduleBuilder && pendingRequests.length ? { tone: 'amber', title: 'Time off pending', detail: `${pendingRequests.length} request${pendingRequests.length===1?'':'s'} waiting.`, tab: 'schedule' } : null,
@@ -2398,8 +2398,8 @@ const TabToday = ({ currentDate, appUser, users, shifts, shiftSwaps, timeOffRequ
   };
 
   const heroTitle = canUseManagerBrief ? (profile === 'manager' || profile === 'system' ? 'Manager Brief' : profile === 'kitchen' ? 'Kitchen Brief' : profile === 'bar' ? 'Bar Brief' : profile === 'service' ? 'Service Brief' : 'Today Brief') : 'Today Home';
-  const topPriority = attentionProblems[0]?.detail || (myShift ? `You work ${formatShortTime(myShift.startTime)}-${formatShortTime(myShift.endTime)} as ${myShift.role}.` : 'No urgent problems detected.');
-  const managerBriefMathText = `${todaysShifts.length} On Schedule ${activePunches.length} Clocked In ${attentionProblems.length} Needs Eyes`;
+  const topPriority = attentionProblems[0]?.detail || (myShift ? `You work ${formatShortTime(myShift.startTime)}-${formatShortTime(myShift.endTime)} as ${myShift.role}.` : 'Nothing urgent needs your attention right now.');
+  const managerBriefMathText = `${todaysShifts.length} On Schedule ${activePunches.length} Clocked In ${attentionProblems.length} Need Review`;
 
   return <div className="manager-brief-compact desktop-ops-page max-w-7xl mx-auto space-y-3 pb-24 animate-[slideIn_0.2s_ease-out]">
     <Modal isOpen={!!attentionExplain} onClose={() => setAttentionExplain(null)} title={attentionExplain?.title || 'Why this matters'}>
@@ -2422,7 +2422,7 @@ const TabToday = ({ currentDate, appUser, users, shifts, shiftSwaps, timeOffRequ
         <div className="grid grid-cols-3 gap-2 min-w-[230px]">
           <div className="bg-[#0B0E11] border border-[#2A353D] rounded-xl p-2 text-center"><div className="text-lg font-black text-white">{todaysShifts.length}</div><div className="text-[8px] uppercase tracking-widest font-black text-slate-500">On Schedule</div></div>
           <div className="bg-[#0B0E11] border border-[#2A353D] rounded-xl p-2 text-center"><div className="text-lg font-black text-emerald-400">{activePunches.length}</div><div className="text-[8px] uppercase tracking-widest font-black text-slate-500">Clocked In</div></div>
-          <div className="bg-[#0B0E11] border border-[#2A353D] rounded-xl p-2 text-center"><div className="text-lg font-black text-red-300">{attentionProblems.length}</div><div className="text-[8px] uppercase tracking-widest font-black text-slate-500">Needs Eyes</div></div>
+          <div className="bg-[#0B0E11] border border-[#2A353D] rounded-xl p-2 text-center"><div className="text-lg font-black text-red-300">{attentionProblems.length}</div><div className="text-[8px] uppercase tracking-widest font-black text-slate-500">Need Review</div></div>
         </div>
       </div>
     </div>
@@ -2439,8 +2439,8 @@ const TabToday = ({ currentDate, appUser, users, shifts, shiftSwaps, timeOffRequ
         {canReviewRestaurantAdminAlerts && openRestaurantAdminAlerts.length > 0 && <div className={`${T.card} brief-card p-4 border-purple-500/30 bg-purple-950/10`}>
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-3">
             <div>
-              <h2 className="font-black text-white text-lg flex items-center gap-2"><Bell size={18} className="text-purple-300"/> Owner/Admin Alerts</h2>
-              <p className="text-xs text-slate-400 font-bold mt-1 leading-snug">Python/System Admin scans can only send alerts here. They cannot change your restaurant data.</p>
+              <h2 className="font-black text-white text-lg flex items-center gap-2"><Bell size={18} className="text-purple-300"/> Owner & Admin Alerts</h2>
+              <p className="text-xs text-slate-400 font-bold mt-1 leading-snug">These checks only flag items for review. They do not change restaurant data.</p>
             </div>
             <span className="rounded-full border border-purple-500/30 bg-purple-950/20 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-purple-200">{openRestaurantAdminAlerts.length} open</span>
           </div>
@@ -2448,8 +2448,8 @@ const TabToday = ({ currentDate, appUser, users, shifts, shiftSwaps, timeOffRequ
             {openRestaurantAdminAlerts.map(alert => <div key={alert.id} className="rounded-xl border border-purple-500/20 bg-[#12161A] p-3">
               <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-2">
                 <div className="min-w-0">
-                  <div className="text-[9px] uppercase tracking-widest font-black text-purple-200">{alert.type || 'python_alert'} • {alert.severity || 'review'}</div>
-                  <div className="font-black text-white text-sm mt-1">{alert.title || 'Python scan alert'}</div>
+                  <div className="text-[9px] uppercase tracking-widest font-black text-purple-200">{alert.area || 'Restaurant check'} • {alert.severity || 'review'}</div>
+                  <div className="font-black text-white text-sm mt-1">{alert.title || 'Restaurant check alert'}</div>
                   <div className="text-xs text-slate-300 font-bold leading-5 mt-1">{alert.detail || 'Review this recommendation before changing anything.'}</div>
                 </div>
                 <button type="button" onClick={() => acknowledgeRestaurantAdminAlert(alert)} className="shrink-0 rounded-lg border border-emerald-500/40 bg-emerald-950/10 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-emerald-200 hover:bg-emerald-950/20">Acknowledge</button>
@@ -2466,14 +2466,14 @@ const TabToday = ({ currentDate, appUser, users, shifts, shiftSwaps, timeOffRequ
         </div>
 
         {(localAiBundle.prepPredictions?.length || localAiBundle.scheduleRisks?.length || localAiBundle.maintenancePatterns?.length || localAiBundle.recipeMenuInsights?.length || localAiBundle.priceJumps?.length) ? <div className={`${T.card} brief-card p-4 border-[#D4A381]/20`}>
-          <div className="flex items-center justify-between gap-2"><h2 className="font-black text-white text-lg flex items-center gap-2"><Sparkles size={18} className="text-[#D4A381]"/> AI Service Assistants</h2><span className="text-[9px] uppercase tracking-widest font-black text-slate-500">uses current app data</span></div>
+          <div className="flex items-center justify-between gap-2"><h2 className="font-black text-white text-lg flex items-center gap-2"><Sparkles size={18} className="text-[#D4A381]"/> Suggested Next Steps</h2><span className="text-[9px] uppercase tracking-widest font-black text-slate-500">Based on current restaurant data</span></div>
           <div className="grid md:grid-cols-2 gap-2 mt-3">
             {[...(localAiBundle.prepPredictions || []).slice(0, 2), ...(localAiBundle.scheduleRisks || []).slice(0, 2), ...(localAiBundle.maintenancePatterns || []).slice(0, 1), ...(localAiBundle.recipeMenuInsights || []).slice(0, 1), ...(localAiBundle.priceJumps || []).slice(0, 1).map(row => ({ title: row.itemName || 'Price jump', detail: row.summary, tab: 'inventory', severity: row.severity }))].slice(0, 6).map((row, idx) => <button key={`${row.title}-${idx}`} type="button" onClick={() => setActiveTab(row.tab || 'today')} className="rounded-xl border border-[#2A353D] bg-[#12161A] p-3 text-left hover:border-[#D4A381]/50 transition-colors"><div className="text-[9px] font-black uppercase tracking-widest text-[#D4A381]">{row.severity || 'signal'}</div><div className="font-black text-white text-sm mt-1">{row.title}</div><div className="text-xs text-slate-400 font-bold mt-1 leading-snug">{row.detail}</div></button>)}
           </div>
         </div> : null}
 
         {canUseAiOrdering && (aiBriefTop.length || aiBrief.eventNeeds?.length) && <div className={`${T.card} brief-card p-4 border-[#D4A381]/30`}>
-          <div className="flex justify-between items-center gap-2"><h2 className="font-black text-white text-lg flex items-center gap-2"><Sparkles size={18} className="text-[#D4A381]"/> AI Ordering Attention</h2><button onClick={() => { sessionStorage.setItem('inventoryFocus', 'aiOrder'); setActiveTab('inventory'); }} className="text-[10px] font-black uppercase tracking-widest text-[#D4A381]">Open AI Ordering</button></div>
+          <div className="flex justify-between items-center gap-2"><h2 className="font-black text-white text-lg flex items-center gap-2"><Sparkles size={18} className="text-[#D4A381]"/> Items That May Need Ordering</h2><button onClick={() => { sessionStorage.setItem('inventoryFocus', 'aiOrder'); setActiveTab('inventory'); }} className="text-[10px] font-black uppercase tracking-widest text-[#D4A381]">Review Order Suggestions</button></div>
           <div className="grid sm:grid-cols-3 gap-2 mt-3">
             {aiBriefTop.length ? aiBriefTop.map(row => <MiniProblemCard key={row.itemId || row.itemName} title={row.itemName} detail={`Suggest ${row.suggestedQty}${row.reasons?.[0] ? ` • ${row.reasons[0]}` : ''}`} action="Review" onClick={() => { sessionStorage.setItem('inventoryFocus', 'aiOrder'); setActiveTab('inventory'); }} />) : <MiniProblemCard title="Order Draft" detail="No urgent order items. Review event supply checks." action="Open" onClick={() => { sessionStorage.setItem('inventoryFocus', 'aiOrder'); setActiveTab('inventory'); }} />}
           </div>
@@ -2482,21 +2482,21 @@ const TabToday = ({ currentDate, appUser, users, shifts, shiftSwaps, timeOffRequ
         {canUsePythonIntelligence && <div className={`${T.card} brief-card p-4 border-purple-500/30`}>
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div>
-              <h2 className="font-black text-white text-lg flex items-center gap-2"><Sparkles size={18} className="text-purple-300"/> Python Ops Scan</h2>
-              <p className="text-xs text-slate-400 font-bold mt-1 leading-snug">Runs the deeper ops check from Manager Brief, then lets you tap each finding to jump to the place that fixes it.</p>
+              <h2 className="font-black text-white text-lg flex items-center gap-2"><Sparkles size={18} className="text-purple-300"/> Restaurant Check</h2>
+              <p className="text-xs text-slate-400 font-bold mt-1 leading-snug">Checks inventory, menu costs, labor, schedules, setup, and backups. Review each finding before making any changes.</p>
             </div>
             <div className="flex flex-wrap gap-2">
-              <button onClick={runBriefPythonOps} disabled={briefOpsLoading} className="rounded-xl bg-purple-900/20 border border-purple-500/40 text-purple-200 px-3 py-2 text-[10px] font-black uppercase tracking-widest hover:bg-purple-900/30 disabled:opacity-60">{briefOpsLoading ? 'Scanning…' : 'Run Ops Scan'}</button>
+              <button onClick={runBriefPythonOps} disabled={briefOpsLoading} className="rounded-xl bg-purple-900/20 border border-purple-500/40 text-purple-200 px-3 py-2 text-[10px] font-black uppercase tracking-widest hover:bg-purple-900/30 disabled:opacity-60">{briefOpsLoading ? 'Checking…' : 'Run Restaurant Check'}</button>
               {briefOpsIntel && <button onClick={copyBriefOpsReport} className="rounded-xl bg-[#12161A] border border-[#2A353D] text-slate-200 px-3 py-2 text-[10px] font-black uppercase tracking-widest">{briefOpsCopied ? 'Copied' : 'Copy Report'}</button>}
             </div>
           </div>
-          {briefOpsError && <div className="mt-3 rounded-xl border border-amber-500/30 bg-amber-950/20 p-3 text-xs font-bold text-amber-100">Python Ops scan did not finish: {briefOpsError}</div>}
+          {briefOpsError && <div className="mt-3 rounded-xl border border-amber-500/30 bg-amber-950/20 p-3 text-xs font-bold text-amber-100">The restaurant check did not finish: {briefOpsError}</div>}
           {briefOpsIntel && <div className="mt-3 space-y-3">
             <div className="grid grid-cols-3 sm:grid-cols-7 gap-2">
               {[['Prices', briefOpsSummary.priceWarningCount || 0], ['Pars', briefOpsSummary.parRecommendationCount || 0], ['Waste', briefOpsSummary.wasteInsightCount || 0], ['Menu', briefOpsSummary.menuCostCount || 0], ['Labor', briefOpsSummary.laborWarningCount || 0], ['Health', briefOpsSummary.dataHealthCount || 0], ['Backups', briefOpsSummary.backupCheckCount || 0]].map(([label, value]) => <div key={label} className="rounded-xl border border-purple-500/20 bg-[#12161A] p-2 text-center"><div className="font-black text-white">{value}</div><div className="text-[7px] uppercase tracking-widest text-slate-500 font-black">{label}</div></div>)}
             </div>
             <div className="space-y-2">
-              {briefOpsFindings.length ? briefOpsFindings.map((row, idx) => <button key={`${row.area}-${row.title}-${idx}`} onClick={() => openOpsFinding(row)} className="w-full text-left rounded-xl border border-purple-500/20 bg-[#12161A] hover:border-[#D4A381]/50 p-3 transition-colors"><div className="flex items-center justify-between gap-2"><div className="text-[9px] uppercase tracking-widest font-black text-purple-200">{row.area}</div><div className="text-[9px] uppercase tracking-widest font-black text-[#D4A381]">Open Fix</div></div><div className="font-black text-white text-sm mt-1">{row.title}</div><div className="text-xs text-slate-400 font-bold mt-1 leading-snug">{row.detail}</div></button>) : <SmartEmptyState icon={<Check size={22}/>} title="No major ops findings" desc="The scan did not find a priority problem in this window." />}
+              {briefOpsFindings.length ? briefOpsFindings.map((row, idx) => <button key={`${row.area}-${row.title}-${idx}`} onClick={() => openOpsFinding(row)} className="w-full text-left rounded-xl border border-purple-500/20 bg-[#12161A] hover:border-[#D4A381]/50 p-3 transition-colors"><div className="flex items-center justify-between gap-2"><div className="text-[9px] uppercase tracking-widest font-black text-purple-200">{row.area}</div><div className="text-[9px] uppercase tracking-widest font-black text-[#D4A381]">Review Here</div></div><div className="font-black text-white text-sm mt-1">{row.title}</div><div className="text-xs text-slate-400 font-bold mt-1 leading-snug">{row.detail}</div></button>) : <SmartEmptyState icon={<Check size={22}/>} title="No priority concerns found" desc="This check did not find anything that needs attention in the selected period." />}
             </div>
           </div>}
         </div>}
@@ -2517,7 +2517,7 @@ const TabToday = ({ currentDate, appUser, users, shifts, shiftSwaps, timeOffRequ
       <div className="space-y-3">
         <div className={`${T.card} brief-card p-4`}>
           <button className="w-full flex justify-between items-center" onClick={() => setExpanded(e => ({...e, setup: !e.setup}))}><h2 className="font-black text-white text-lg">Setup Checklist</h2><span className="text-[10px] font-black text-[#D4A381]">{setupDone}/{setupTotal}</span></button>
-          {expanded.setup && <div className="mt-3 space-y-2">{setupItems.map(item => <button key={item.label} onClick={() => setActiveTab(item.tab)} className="w-full flex items-center justify-between gap-2 bg-[#0B0E11] border border-[#2A353D] rounded-xl px-3 py-2 text-left"><span className="text-xs font-bold text-slate-200">{item.label}</span><span className={`text-[9px] font-black uppercase tracking-widest ${item.done ? 'text-emerald-400' : 'text-amber-400'}`}>{item.done ? 'Done' : 'Open'}</span></button>)}<button onClick={seedDemoData} className="w-full mt-2 bg-[#D4A381] text-slate-900 rounded-xl px-3 py-2 text-[10px] font-black uppercase tracking-widest">Seed Demo Mode</button></div>}
+          {expanded.setup && <div className="mt-3 space-y-2">{setupItems.map(item => <button key={item.label} onClick={() => setActiveTab(item.tab)} className="w-full flex items-center justify-between gap-2 bg-[#0B0E11] border border-[#2A353D] rounded-xl px-3 py-2 text-left"><span className="text-xs font-bold text-slate-200">{item.label}</span><span className={`text-[9px] font-black uppercase tracking-widest ${item.done ? 'text-emerald-400' : 'text-amber-400'}`}>{item.done ? 'Done' : 'Open'}</span></button>)}<button onClick={seedDemoData} className="w-full mt-2 bg-[#D4A381] text-slate-900 rounded-xl px-3 py-2 text-[10px] font-black uppercase tracking-widest">Load Demo Data</button></div>}
         </div>
         <div className={`${T.card} brief-card p-4`}>
           <h2 className="font-black text-white text-lg mb-3">Recently Used</h2>
@@ -2525,7 +2525,7 @@ const TabToday = ({ currentDate, appUser, users, shifts, shiftSwaps, timeOffRequ
         </div>
         <div className={`${T.card} brief-card p-4`}>
           <button className="w-full flex justify-between items-center" onClick={() => setExpanded(e => ({...e, prefs: !e.prefs}))}><h2 className="font-black text-white text-lg">My Preferences</h2><Settings size={16}/></button>
-          {expanded.prefs && <div className="mt-3 space-y-2"><button onClick={applyNotificationPreset} className="w-full bg-[#0B0E11] border border-[#2A353D] rounded-xl p-3 text-[10px] font-black uppercase tracking-widest text-[#D4A381]">Apply {profile} Notification Preset</button><button onClick={() => setActiveTab('settings')} className="w-full bg-[#0B0E11] border border-[#2A353D] rounded-xl p-3 text-[10px] font-black uppercase tracking-widest text-slate-300">Open Full Settings</button></div>}
+          {expanded.prefs && <div className="mt-3 space-y-2"><button onClick={applyNotificationPreset} className="w-full bg-[#0B0E11] border border-[#2A353D] rounded-xl p-3 text-[10px] font-black uppercase tracking-widest text-[#D4A381]">Use {profile} Alert Settings</button><button onClick={() => setActiveTab('settings')} className="w-full bg-[#0B0E11] border border-[#2A353D] rounded-xl p-3 text-[10px] font-black uppercase tracking-widest text-slate-300">Open All Settings</button></div>}
         </div>
       </div>
     </div>

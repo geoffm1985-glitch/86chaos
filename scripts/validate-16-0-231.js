@@ -34,14 +34,17 @@ const inventory = read('scripts/86chaos-release-gate/critical-test-inventory.cjs
 const integrity = read('tests/86chaos-release-gate/34-ultimate-test-universe-integrity.spec.cjs');
 const requestOffSpec = read('tests/e2e/schedule-request-off-management.spec.cjs');
 const vercel = json('vercel.json');
+const expectedVersion = process.env.CHAOS_VALIDATION_VERSION || '16.0.231';
+const expectedReleaseTitle = process.env.CHAOS_VALIDATION_RELEASE_TITLE || 'Runtime Evidence and Partial Resume Repair';
+const expectedValidator = process.env.CHAOS_VALIDATION_SCRIPT || 'scripts/validate-16-0-231.js';
 
-assert(pkg.version === '16.0.231', 'package.json version is 16.0.231');
-assert(lock.version === '16.0.231' && lock.packages?.['']?.version === '16.0.231', 'package-lock root versions are 16.0.231');
-assert(pkg.scripts['test:source'] === 'node scripts/validate-16-0-231.js', 'test:source points to the 16.0.231 validator');
-assert(version.version === '16.0.231' && version.build === '16.0.231', 'public version/build are 16.0.231');
-assert(version.releaseTitle === 'Runtime Evidence and Partial Resume Repair', 'release title identifies the runtime evidence and partial resume repair');
-assert(apiVersion.includes("APP_VERSION = '16.0.231'") && apiVersion.includes("SECURITY_SCHEMA_VERSION = '16.0.231'"), 'API reports 16.0.231');
-assert(appCore.includes("CURRENT_VERSION = '16.0.231'"), 'app reports 16.0.231');
+assert(pkg.version === expectedVersion, `package.json version is ${expectedVersion}`);
+assert(lock.version === expectedVersion && lock.packages?.['']?.version === expectedVersion, `package-lock root versions are ${expectedVersion}`);
+assert(pkg.scripts['test:source'] === `node ${expectedValidator}`, `test:source points to the ${expectedVersion} validator`);
+assert(version.version === expectedVersion && version.build === expectedVersion, `public version/build are ${expectedVersion}`);
+assert(version.releaseTitle === expectedReleaseTitle, `release title identifies ${expectedReleaseTitle}`);
+assert(apiVersion.includes(`APP_VERSION = '${expectedVersion}'`) && apiVersion.includes(`SECURITY_SCHEMA_VERSION = '${expectedVersion}'`), `API reports ${expectedVersion}`);
+assert(appCore.includes(`CURRENT_VERSION = '${expectedVersion}'`), `app reports ${expectedVersion}`);
 
 assert(reminderUtils.includes('(?:in|after|for)'), 'relative reminder parser recognizes for-duration speech');
 assert(reminderTests.includes('Set a reminder for five minutes to check the fryer'), 'for-duration reminder behavior has exact clock regression coverage');
@@ -120,7 +123,7 @@ for (const file of ['api/runtime-health-evidence-16-0-231.test.cjs', 'api/partia
 }
 
 if (failures) {
-  console.error(`16.0.231 source validation failed with ${failures} failure(s).`);
+  console.error(`${expectedVersion} inherited source validation failed with ${failures} failure(s).`);
   process.exit(1);
 }
-console.log('16.0.231 source validation passed.');
+console.log(`${expectedVersion} inherited 16.0.231 source validation passed.`);

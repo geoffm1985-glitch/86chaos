@@ -418,7 +418,7 @@ export const SYSTEM_TRAINING_MANUAL_CHAPTERS = [
         "Wait for upload and extraction to finish, then review Stock Matcher. Match each real product to an existing item or deliberately add a new one.",
         "Move genuine product lines from Needs Review when the scanner could not classify them. Ignore taxes, totals, addresses, fees, and document noise.",
         "Verify quantity, unit, pack size, unit cost, extended cost, vendor, invoice number, and date before Approve & Update Stock.",
-        "Use Invoice History for audit and lookup. A scanned suggestion is never an approved inventory transaction until a permitted person completes reconciliation."
+        "Use Invoice History for review and lookup. A scanned suggestion does not change inventory until a permitted manager reviews and approves it."
       ]}
     ],
     notes: ["Use the same counting and purchasing units across items, orders, receiving, burn, and invoices. Unit mismatches are the most common source of bad stock numbers."]
@@ -426,17 +426,17 @@ export const SYSTEM_TRAINING_MANUAL_CHAPTERS = [
   {
     id: "ai-tools",
     group: "Operations",
-    title: "AI Tools: Safe, Capped Use",
-    tab: "AI Tools",
+    title: "Kitchen Tools: Scans and Suggestions",
+    tab: "Kitchen Tools",
     audience: "Permitted managers and inventory or prep users",
     summary: "Open supported scanners from one place while understanding limits, review requirements, and cost controls.",
     keywords: "ai tools ai order assistant ordering copilot smart order drafts event supply invoice price warnings prep prediction recipe scanner limits cheapest model pages output tokens idempotency review privacy",
     sections: [
       { title: "What this tab does", steps: [
-        "AI Tools is a launcher for supported extraction workflows such as invoice or recipe scanning plus the AI Order Assistant. It does not replace the normal Inventory, Orders, Event Calendar, Prep, or Recipe Book approval screens.",
-        "Each scanner accepts only approved file types and sizes. Page caps, an approved low-cost model list, output limits, rate limits, call budgets, and duplicate-request protection are enforced on the server.",
+        "Kitchen Tools opens invoice, menu, and recipe scanning plus Order Suggestions. It does not replace the normal Inventory, Orders, Event Calendar, Prep, or Recipe Book review screens.",
+        "Each scanner accepts only supported file types and sizes. Page and usage limits keep scans bounded; the screen will tell you when a limit is reached.",
         "A failed or blocked scan should show a reason. Do not keep clicking; correct the file, permissions, or limit problem first.",
-        "Always review extracted data. AI can misread text, rows, prices, quantities, units, ingredients, or instructions."
+        "Always review scanned information. A scan can misread text, rows, prices, quantities, units, ingredients, or instructions."
       ]},
       { title: "Version 15.0.52 hard cost controls in plain English", steps: [
         "The server accepts only the approved Gemini Flash-Lite or vetted Flash allowlist and defaults to Flash-Lite. A typo, a broad environment setting, or a changed browser request cannot silently select an expensive model; an unapproved model is blocked instead.",
@@ -448,14 +448,14 @@ export const SYSTEM_TRAINING_MANUAL_CHAPTERS = [
         "Image scans also have server-verified pixel and edge limits, so a visually ordinary but extremely high-resolution image is rejected before any provider call.",
         "HR training-manual uploads use no AI at all. The employer uploads the original file and enters the title, version, summary, requirement, and acknowledgment details directly."
       ]},
-      { title: "AI Order Assistant", steps: [
-        "Open Inventory & Orders > AI Order Assistant to review smart order suggestions built from par levels, current stock, pending deliveries, upcoming events, prep demand, menu impact links, waste logs, and invoice history. AI assisted ordering starts with Smart Kitchen and higher.",
-        "Use Apply to Order Screen to load suggested quantities into the normal order review. Use Copy Full Draft or Save AI Draft when you want a reviewable vendor draft instead of dispatching right away.",
-        "Run Python Forecast to use the heavier behind-the-scenes Python ordering layer. It calculates demand forecasts, confidence scores, par recommendations, invoice price trends, waste insights, prep checks, and event supply signals.",
-        "Python Intelligence never sends orders, changes pars, edits schedules, or changes staff records by itself. Run Python Ops Scan from Manager Brief for invoice anomalies, menu costing, labor/schedule warnings, data health issues, backup checks, and copyable manager reports. Each finding can be opened so managers can fix it in the proper app area. Every run writes a safe audit entry.",
+      { title: "Order Suggestions", steps: [
+        "Open Inventory & Orders > Order Suggestions to review quantities based on par levels, current stock, pending deliveries, upcoming events, prep demand, menu links, waste logs, and invoice history. This feature is available with Smart Kitchen and higher.",
+        "Use Add All to Order Draft or Add Selected to Draft to load suggested quantities into the normal order review. Copy Order Draft or Save Draft to Orders creates a reviewable draft; it does not send anything to a vendor.",
+        "Run Order Forecast for additional demand forecasts, confidence levels, suggested par changes, invoice price trends, waste notes, prep checks, and event supply needs.",
+        "These checks never send orders, change par levels, edit schedules, or change staff records. Run Restaurant Check from Manager Brief for invoice, menu cost, labor, schedule, data, and backup concerns. Open a finding to handle it in the appropriate app area. Each check is recorded in the audit log.",
         "Event Supply Planning shows upcoming events that appear to need inventory attention. The stronger your Event Calendar notes and Menu Intelligence links are, the better the suggestions become.",
         "Invoice Price Warnings compare recent invoice rows against previous prices and flag notable jumps or drops. Confirm with the actual invoice before changing vendors or pars.",
-        "86Voice can answer phrases such as what should I order, build an order draft, what do we need for Saturday's event, explain ranch, or open AI ordering. Voice still opens review screens instead of secretly sending vendor orders."
+        "86Voice can answer phrases such as what should I order, build an order draft, what do we need for Saturday's event, explain ranch, or open order suggestions. Voice opens review screens and never sends vendor orders on its own."
       ]},
       { title: "Privacy and cost", steps: [
         "Upload only the business document needed for the task. Remove unrelated personal, payment, medical, or confidential pages first.",
@@ -908,10 +908,10 @@ export const SYSTEM_TRAINING_MANUAL_CHAPTERS = [
         "Daily Close feeds Financial Center with sales, cash, card, gift card, tax, tips paid out, deposits, close status, variance, manager sign-off, and notes.",
         "Prime Cost, Cost Center, P&L, and owner snapshots are operational visibility tools, not full accounting or tax filing replacements."
       ]},
-      { title: "AI-assisted and smart kitchen areas", steps: [
-        "AI Tools include approved scanning workflows such as invoice scanning and recipe/file extraction where available.",
-        "Invoice scanning is AI-assisted and review-first. Scanned rows do not affect inventory, vendor spend, reports, or Cost Center until a manager reviews and approves the result.",
-        "Menu Intelligence is AI-assisted and review-first. Menu scan results and inferred dependencies should be reviewed before they power menu impact alerts.",
+      { title: "Scans and kitchen suggestions", steps: [
+        "Kitchen Tools includes invoice scanning and recipe or menu file extraction where available.",
+        "Invoice scans are review-first. Scanned rows do not affect inventory, vendor spend, reports, or Cost Center until a manager reviews and approves the result.",
+        "Menu scans are also review-first. Review suggested ingredient links before they are used for menu impact alerts.",
         "86 alerts can show affected menu items when approved dependencies exist. When dependencies are missing, the app should guide managers to complete menu/inventory setup.",
         "86Voice can navigate, search Help, find recipes, create prep/reminders, and stage 86 alerts without bypassing plan gates or permissions."
       ]},
