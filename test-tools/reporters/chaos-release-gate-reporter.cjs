@@ -2,6 +2,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const { createProgressJournal } = require('../../scripts/86chaos-release-gate/partial-run-evidence.cjs');
 
 const LINE = '============================================================';
 const DASH = '------------------------------------------------------------';
@@ -333,6 +334,7 @@ class ChaosReleaseGateReporter {
     this.total = 0;
     this.completed = 0;
     this.manifestPrinted = false;
+    this.progressJournal = null;
   }
 
   emit(line = '') {
@@ -344,6 +346,11 @@ class ChaosReleaseGateReporter {
     this.manifestPrinted = true;
     const tests = suite && typeof suite.allTests === 'function' ? suite.allTests() : [];
     this.total = tests.length || Number(this.selection?.totalSelected || 0);
+    try {
+      this.progressJournal = createProgressJournal({ root: this.root, runDir: this.runDir, tests, mode: this.mode });
+    } catch (error) {
+      this.emit(`Progress checkpoint unavailable; this run cannot be resumed: ${error.message}`);
+    }
     const selection = loadSelectionMetadata({ root: this.root, runDir: this.runDir, selection: this.selection });
     const version = this.options.version || selection.version || readPackageVersion(this.root);
     const header = createHeaderLines({
@@ -358,7 +365,21 @@ class ChaosReleaseGateReporter {
     header.forEach(line => this.emit(line));
   }
 
+  recordProgress(type, test, result) {
+    if (!this.progressJournal) return;
+    try { this.progressJournal.record(type, test, result); }
+    catch (error) {
+      this.emit(`Progress checkpoint stopped; incomplete tests will require rerun: ${error.message}`);
+      this.progressJournal = null;
+    }
+  }
+
+  onTestBegin(test, result) {
+    this.recordProgress('start', test, result);
+  }
+
   onTestEnd(test, result) {
+    this.recordProgress('end', test, result);
     const status = normalizeStatus(result?.status || 'failed');
     this.completed += 1;
     if (status === 'passed') this.counts.passed += 1;
@@ -386,6 +407,10 @@ class ChaosReleaseGateReporter {
 
   onEnd(result = {}) {
     const status = normalizeStatus(result.status || '');
+    if (this.progressJournal) {
+      try { this.progressJournal.finish(status); }
+      catch (error) { this.emit(`Progress end marker unavailable: ${error.message}`); }
+    }
     if (status === 'interrupted') {
       const lines = createInterruptedSummaryLines({ completed: this.completed, total: this.total || this.completed, counts: this.counts, runDir: this.runDir });
       lines.forEach(line => this.emit(line));

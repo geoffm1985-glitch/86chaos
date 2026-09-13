@@ -164,7 +164,7 @@ module.exports = async function handler(req, res) {
       mfaEnforcementConfigured: hasEnv('MFA_ENFORCE_ELEVATED_ROLES') || hasEnv('FIREBASE_MFA_ENFORCE_ELEVATED_ROLES') || hasEnv('REACT_APP_MFA_ENFORCE_ELEVATED_ROLES')
     };
     return res.status(200).json({
-      ok: rows.every(r => r.status === 'ready'),
+      ok: firestoreReadOk && rows.every(r => r.status === 'ready'),
       generatedAt: new Date().toISOString(),
       durationMs: Date.now() - startedAt,
       count: rows.length,

@@ -12,6 +12,26 @@ const DENIED_LEAF = 'direct navigation follows the canonical denied-route matrix
 const PERMITTED_LEAF = 'opens every permitted primary surface without runtime or layout failure';
 const ADMIN_REASON = 'system-admin has no denied primary routes in the canonical matrix';
 
+function skipDefinition(row = {}) {
+  const identity = { file: row.file, title: row.title, projectName: row.projectName };
+  const viewport = VIEWPORTS.find(name => row.title === `${RESPONSIVE_SUITE} > ${RESPONSIVE_LEAF} [${name}]`);
+  if (row.file === RESPONSIVE_FILE && row.projectName === 'mobile-chromium' && viewport) {
+    return { reason: RESPONSIVE_REASON, coverage: [{ ...identity, projectName: 'chromium' }] };
+  }
+  if (row.file === AUTH_FILE && ['chromium', 'mobile-chromium'].includes(row.projectName)
+    && row.title === `system-admin authenticated release surfaces > ${DENIED_LEAF}`) {
+    return { reason: ADMIN_REASON, systemAdmin: true, coverage: [
+      { ...identity, title: `system-admin authenticated release surfaces > ${PERMITTED_LEAF}` },
+      ...['owner', 'manager', 'staff'].map(role => ({ ...identity, title: `${role} authenticated release surfaces > ${DENIED_LEAF}` })),
+    ] };
+  }
+  return { reason: '', coverage: [] };
+}
+
+// Selection can include these companions; only validateReleaseSkips can accept
+// a skip, using real annotations and real passed results from the current run.
+function requiredSkipCoverage(row) { return skipDefinition(row).coverage; }
+
 // The collector supplies its existing normalized spec paths and full suite titles.
 // These are the seven intentional cases already declared by the existing specs.
 // A reason alone never authorizes a skip: its exact identity and current-run
@@ -32,22 +52,12 @@ function validateReleaseSkips(results = [], { systemAdminRoutes = expectedRoutes
     let reason = '';
     let coverage = [];
     let problem = '';
-    const viewport = VIEWPORTS.find(name => row.title === `${RESPONSIVE_SUITE} > ${RESPONSIVE_LEAF} [${name}]`);
-    if (row.file === RESPONSIVE_FILE && row.projectName === 'mobile-chromium' && viewport) {
-      reason = RESPONSIVE_REASON;
-      coverage = [{ ...identity, projectName: 'chromium' }];
-    } else if (row.file === AUTH_FILE && ['chromium', 'mobile-chromium'].includes(row.projectName)
-      && row.title === `system-admin authenticated release surfaces > ${DENIED_LEAF}`) {
-      reason = ADMIN_REASON;
-      if (!Array.isArray(systemAdminRoutes) || !systemAdminRoutes.length || systemAdminRoutes.some(route => route.directNavigationAllowed !== true)) {
-        problem = 'The canonical System Administrator matrix has denied or unknown routes.';
-      }
-      coverage = [
-        { ...identity, title: `system-admin authenticated release surfaces > ${PERMITTED_LEAF}` },
-        ...['owner', 'manager', 'staff'].map(role => ({ ...identity, title: `${role} authenticated release surfaces > ${DENIED_LEAF}` })),
-      ];
-    } else {
-      problem = 'This skipped test is not an approved duplicate or non-applicable case.';
+    const definition = skipDefinition(row);
+    reason = definition.reason;
+    coverage = definition.coverage;
+    if (!reason) problem = 'This skipped test is not an approved duplicate or non-applicable case.';
+    else if (definition.systemAdmin && (!Array.isArray(systemAdminRoutes) || !systemAdminRoutes.length || systemAdminRoutes.some(route => route.directNavigationAllowed !== true))) {
+      problem = 'The canonical System Administrator matrix has denied or unknown routes.';
     }
     if (seen.has(key)) problem = 'This intentional skip identity occurred more than once.';
     seen.add(key);
@@ -62,4 +72,4 @@ function validateReleaseSkips(results = [], { systemAdminRoutes = expectedRoutes
   return { ok: unexpected.length === 0, expected, unexpected };
 }
 
-module.exports = { validateReleaseSkips };
+module.exports = { validateReleaseSkips, requiredSkipCoverage };

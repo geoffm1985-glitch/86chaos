@@ -97,7 +97,7 @@ const manifest = {
   note: releaseSelectionMode === 'reported-failed-only'
     ? 'reported-failed-only runs only the 6 FAIL identities from 20260810-015004 (2 chromium + 4 mobile-chromium) and excludes TIMEOUT, PASS, and SKIP identities.'
     : releaseSelectionMode === 'partial-resume'
-      ? 'partial-resume runs only the FAIL/TIMEOUT plus NOT-RUN identities from the uploaded interrupted 16.0.175 run and excludes all PASS identities.'
+      ? 'partial-resume runs only the FAIL/TIMEOUT plus NOT-RUN identities and required skip companions from the verified current full-run checkpoint. Prior results are not counted as new passes; complete-gate certification is still required.'
       : releaseSelectionMode === 'reported-current-blockers'
         ? 'reported-current-blockers runs only the 2 current FAIL identities from the 16.0.181 current-blockers report and excludes PASS, SKIP, TIMEOUT, NOT-RUN, cost-regression, Schedule Builder, and unrelated identities.'
         : `${releaseSelectionMode} success is diagnostic only. Complete npm run test:play-store is still required for release approval.`
