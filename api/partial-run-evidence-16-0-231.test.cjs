@@ -134,17 +134,25 @@ test('focused reporters do not require or capture source checkpoints; slim uploa
 test('the actual reporter persists progress and the actual prepare command selects the current checkpoint', { timeout: 120000 }, t => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), '86chaos-progress-integration-'));
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
-  const gitRoot = path.join(directory, 'app');
-  const excluded = new Set(['.git', 'node_modules', 'build', 'coverage', 'test-results', 'playwright-report', 'release-evidence']);
-  fs.cpSync(root, gitRoot, { recursive: true, filter: source => !excluded.has(path.basename(source)) });
-  cp.execFileSync('git', ['init', '--initial-branch=testing'], { cwd: gitRoot, stdio: 'ignore' });
-  cp.execFileSync('git', ['config', 'user.email', 'release-gate-test@86chaos.invalid'], { cwd: gitRoot, stdio: 'ignore' });
-  cp.execFileSync('git', ['config', 'user.name', '86 Chaos Release Gate Test'], { cwd: gitRoot, stdio: 'ignore' });
-  cp.execFileSync('git', ['add', '.'], { cwd: gitRoot, stdio: 'ignore' });
-  cp.execFileSync('git', ['commit', '-m', 'test checkpoint'], { cwd: gitRoot, stdio: 'ignore' });
-  fs.symlinkSync(path.join(root, 'node_modules'), path.join(gitRoot, 'node_modules'), 'dir');
+  let gitRoot = root;
+  let source = captureSourceIdentity(gitRoot);
+  // Uploaded source ZIPs do not contain .git. Build an isolated Git fixture only
+  // for that environment; a real checkout must use its existing repository and
+  // must never require Windows developer-mode/admin symlink privileges.
+  if (!source.commit) {
+    gitRoot = path.join(directory, 'app');
+    const excluded = new Set(['.git', 'node_modules', 'build', 'coverage', 'test-results', 'playwright-report', 'release-evidence']);
+    fs.cpSync(root, gitRoot, { recursive: true, filter: candidate => !excluded.has(path.basename(candidate)) });
+    cp.execFileSync('git', ['init', '--initial-branch=testing'], { cwd: gitRoot, stdio: 'ignore' });
+    cp.execFileSync('git', ['config', 'user.email', 'release-gate-test@86chaos.invalid'], { cwd: gitRoot, stdio: 'ignore' });
+    cp.execFileSync('git', ['config', 'user.name', '86 Chaos Release Gate Test'], { cwd: gitRoot, stdio: 'ignore' });
+    cp.execFileSync('git', ['add', '.'], { cwd: gitRoot, stdio: 'ignore' });
+    cp.execFileSync('git', ['commit', '-m', 'test checkpoint'], { cwd: gitRoot, stdio: 'ignore' });
+    fs.symlinkSync(path.join(root, 'node_modules'), path.join(gitRoot, 'node_modules'), process.platform === 'win32' ? 'junction' : 'dir');
+    source = captureSourceIdentity(gitRoot);
+  }
   const prior = path.join(directory, 'prior'); const current = path.join(directory, 'current'); fs.mkdirSync(prior); fs.mkdirSync(current);
-  const source = captureSourceIdentity(gitRoot); assert.ok(source.commit);
+  assert.ok(source.commit);
   const preflight = { ok: true, runId: 'prior', sourceVersion: source.version, deployedVersion: source.version, firebaseProjectId: 'chaos-test-d1601', appUrl: 'https://86chaos-git-testing-cheers-portal-s-projects.vercel.app' };
   write(path.join(prior, 'source-identity-start.json'), source); write(path.join(prior, 'environment-preflight.json'), preflight);
   write(path.join(current, 'environment-preflight.json'), { ...preflight, runId: 'current' });
