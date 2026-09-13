@@ -1,3 +1,4 @@
+import { firestoreHealthEvidence, restoreDrillNeedsAttention, deploymentEvidenceChecks } from '../core/adminHealthEvidence';
 import PosImportReview from '../components/PosImportReview';
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Bell, Check, Camera, ChevronLeft, ChevronRight, MessageSquare, Plus, Trash2, Users, Calendar, Clock, X, Loader2, Package, ClipboardList, Menu, Settings, LogOut, Shield, Send, Repeat, Edit, Moon, Sun, TrendingUp, BookOpen, Search, ChefHat, Scale, Coffee, Star, Bug, Wrench, Globe, ThumbsUp, HelpCircle, Sparkles } from 'lucide-react';
@@ -4395,13 +4396,15 @@ const [editingRest, setEditingRest] = useState(null);
     if (sourceBackupPath === null) return;
     const result = window.prompt('Result for the safe test restore: type passed, needs_followup, failed, or planned.', 'planned');
     if (result === null) return;
-    const notes = window.prompt('Restore drill notes. Example: restored into chaos-test-d1601, checked login, users, inventory, schedules.', '') || '';
+    const restoreProjectId = window.prompt('Project used for the restore drill. Leave blank if not performed or unknown.', '');
+    if (restoreProjectId === null) return;
+    const notes = window.prompt('Restore drill notes: record what you actually checked and anything still unknown.', '') || '';
     setIsRestoreDrillBusy(true);
     try {
       const response = await secureFetch('/api/restore-drill', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sourceBackupPath, result, notes })
+        body: JSON.stringify({ sourceBackupPath, restoreProjectId, result, notes })
       });
       const data = await response.json().catch(() => ({}));
       if (!response.ok || data?.ok === false) throw new Error(data?.error || 'Restore drill record failed.');
@@ -5928,8 +5931,8 @@ const handleRevokeAccess = async (user) => {
     .map(r => parseAnyDate(r.lastWeeklyMaintenanceAt || r.weeklyMaintenance?.lastRunAt || r.weeklyMaintenance?.lastSuccessfulRunAt))
     .filter(Boolean)
     .sort((a,b) => b.getTime() - a.getTime())[0] || null;
-  const lastActualBackupDate = parseAnyDate(backupStatus?.lastBackupAt || backupStatus?.lastSuccessfulBackupAt || backupStatus?.lastExportAt);
-  const lastBackupDate = lastActualBackupDate || parseAnyDate(backupStatus?.lastRunAt) || latestWorkspaceMaintenance;
+  const lastActualBackupDate = parseAnyDate(backupStatus?.lastBackupAt || backupStatus?.lastSuccessfulBackupAt || backupStatus?.nativeBackupLastSuccessfulAt || backupStatus?.lastExportAt);
+  const lastBackupDate = lastActualBackupDate;
   const backupAgeHours = lastBackupDate ? Math.round((Date.now() - lastBackupDate.getTime()) / 36e5) : null;
   const actualBackupAgeHours = lastActualBackupDate ? Math.round((Date.now() - lastActualBackupDate.getTime()) / 36e5) : null;
   const backupRunning = backupStatus?.status === 'running';
@@ -5939,17 +5942,15 @@ const handleRevokeAccess = async (user) => {
   const backupDetail = backupStatus?.status === 'ok' && backupStatus?.documentCount ? `${adminFiniteNumber(backupStatus.documentCount, 0)} docs • ${adminFiniteNumber(backupStatus.collectionCount, 0)} collections` : adminSafeText(backupStatus?.status || backupStatus?.lastStatus || (latestWorkspaceMaintenance ? 'weekly maintenance stamp only' : 'No backup status doc'), 'No backup status doc');
   const restoreDrillDate = parseAnyDate(restoreDrillStatus?.lastDrillAt || restoreDrillStatus?.updatedAt);
   const restoreDrillAgeDays = restoreDrillDate ? Math.floor((Date.now() - restoreDrillDate.getTime()) / 86400000) : null;
-  const restoreDrillStale = !restoreDrillDate || restoreDrillAgeDays > 35 || ['failed', 'needs_followup'].includes(String(restoreDrillStatus?.status || '').toLowerCase());
+  const restoreDrillStale = restoreDrillNeedsAttention(restoreDrillStatus);
   const restoreDrillLabel = restoreDrillDate ? `${restoreDrillAgeDays}d ago` : 'Not recorded';
   const activeAccountDeletionRequests = accountDeletionRequests.filter(req => ['requested', 'reviewing'].includes(String(req.status || '').toLowerCase()));
   const completedAccountDeletionRequests = accountDeletionRequests.filter(req => ['completed', 'denied', 'canceled'].includes(String(req.status || '').toLowerCase())).slice(0, 8);
   const getNextAutoBackupDate = () => {
     const explicit = parseAnyDate(backupStatus?.nextBackupAt || backupStatus?.nextScheduledAt || backupStatus?.nextRunAt);
     if (explicit && explicit.getTime() > backupCountdownTick) return explicit;
-    const next = new Date(backupCountdownTick);
-    next.setUTCHours(9, 0, 0, 0); // Vercel cron: 0 9 * * *
-    if (next.getTime() <= backupCountdownTick) next.setUTCDate(next.getUTCDate() + 1);
-    return next;
+    // The watchdog cron verifies backups; its schedule is not the next backup time.
+    return null;
   };
   const formatCountdown = (ms) => {
     if (!Number.isFinite(ms) || ms <= 0) return 'due now';
@@ -5962,8 +5963,8 @@ const handleRevokeAccess = async (user) => {
     return `${minutes}m`;
   };
   const nextAutoBackupDate = getNextAutoBackupDate();
-  const nextBackupCountdown = backupRunning ? 'running now' : formatCountdown(nextAutoBackupDate.getTime() - backupCountdownTick);
-  const nextBackupLocalTime = nextAutoBackupDate.toLocaleString([], { weekday: 'short', hour: 'numeric', minute: '2-digit', timeZoneName: 'short' });
+  const nextBackupCountdown = backupRunning ? 'running now' : nextAutoBackupDate ? formatCountdown(nextAutoBackupDate.getTime() - backupCountdownTick) : 'Unavailable';
+  const nextBackupLocalTime = nextAutoBackupDate ? nextAutoBackupDate.toLocaleString([], { weekday: 'short', hour: 'numeric', minute: '2-digit', timeZoneName: 'short' }) : 'No next backup time has been reported.';
   const backupWatchdogDetail = backupStatus?.nativeBackupPermissionState === 'permission_required' ? 'Native backup check blocked: IAM permission required' : (backupStatus?.lastWatchdogResult ? `Watchdog: ${backupStatus.lastWatchdogResult}` : 'Watchdog verifies native Firestore backup state');
   const backupCommandDeckDetail = `${backupDetail} • Next: ${nextBackupCountdown} • ${backupWatchdogDetail}`;
   const filteredBackupList = backupList.filter(b => backupListFilter === 'all' || b.mode === backupListFilter);
@@ -6343,19 +6344,8 @@ const activeTrials = restaurants.filter(r => resolveSubscription(r, appUser).sta
       ? `${selectedPushGroup?.label || 'Selected group'} (${selectedPushRestaurantIds.length} workspace${selectedPushRestaurantIds.length === 1 ? '' : 's'})`
       : `${selectedPushWorkspace?.name || 'Selected workspace'}`;
 
-  const deploymentChecks = [
-    { label: 'Firebase project ID', ok: !!firebaseConfig?.projectId, detail: firebaseConfig?.projectId || 'Missing browser Firebase project ID' },
-    { label: 'Firestore rules published', ok: !adminDataErrors.users, detail: adminDataErrors.users || 'No read-rule errors detected in this session' },
-    { label: 'Storage rules reachable', ok: !backupListError, detail: backupListError || `${backupList.length} backup object(s) listed` },
-    { label: 'API routes responding', ok: !healthSnapshot || (healthSnapshot.apiChecks || []).every(c => c.ok), detail: healthSnapshot ? `${(healthSnapshot.apiChecks || []).filter(c => c.ok).length}/${(healthSnapshot.apiChecks || []).length} health routes OK` : 'Run Health Dashboard to test routes' },
-    { label: 'Push env vars working', ok: pushEnabledUsers.length > 0, detail: `${pushEnabledUsers.length} user(s) / ${totalPushDeviceCount} device token(s); ${stalePushUsers.length} stale` },
-    { label: 'Backup restore readable', ok: !backupIsStale && !['failed', 'error'].includes(String(backupStatus?.lastIntegrityStatus || backupStatus?.backupIntegrity?.status || '').toLowerCase()), detail: `${backupStatusLabel} • ${backupStatus?.lastIntegrityStatus || backupStatus?.backupIntegrity?.status || 'integrity not checked'}` },
-    { label: 'Active domain authorized', ok: !String(envReport.host || '').includes('localhost'), detail: envReport.host || 'Unknown host' },
-    { label: 'API key referrer allowed', ok: !Object.values(adminDataErrors).some(Boolean), detail: Object.values(adminDataErrors)[0] || 'No Firebase referrer/auth load errors detected' },
-    { label: 'App version matches README', ok: true, detail: `Running ${CURRENT_VERSION}` },
-    { label: 'No old release notes in ZIP', ok: true, detail: 'Packaging keeps only the current release notes in the root ZIP' }
-  ];
-  const deploymentReady = deploymentChecks.every(c => c.ok);
+  const deploymentChecks = deploymentEvidenceChecks({ projectId: firebaseConfig?.projectId, version: CURRENT_VERSION, host: envReport.host, healthSnapshot, backupStatus, backupIsStale, backupListError, pushDevices: totalPushDeviceCount });
+  const deploymentReady = deploymentChecks.every(c => c.ok === true);
 
   const commandWidgets = [
     { title: 'System Status', value: platformStatus, detail: `${adminRiskQueue.length} action item(s)`, jump: 'overview', tone: platformStatus === 'Clean' ? 'emerald' : platformStatus === 'Monitoring' ? 'amber' : 'red' },
@@ -6387,8 +6377,8 @@ const activeTrials = restaurants.filter(r => resolveSubscription(r, appUser).sta
     ['Staff imported', setupUsers.length > 0, `${setupUsers.length} profile(s)`],
     ['Roles assigned', setupUsers.some(u => !!u.role), `${setupUsers.filter(u => !!u.role).length} with role`],
     ['Time clock configured', !!setupWorkspace.systemSettings, setupWorkspace.systemSettings ? 'Workspace system settings saved' : 'No system settings doc fields yet'],
-    ['Push notifications tested', setupUsers.some(u => !!u.fcmToken), `${setupUsers.filter(u => !!u.fcmToken).length} token(s)`],
-    ['Backup schedule enabled', !!backupStatus, backupStatus?.status || 'No backup status doc'],
+    ['Push device registered', setupUsers.some(u => !!u.fcmToken), `${setupUsers.filter(u => !!u.fcmToken).length} saved token(s); delivery requires a notification test`],
+    ['Native backup schedule verified', backupStatus?.nativeBackupVerified === true && !backupIsStale, backupStatus?.nativeBackupVerificationState || 'Not verified'],
     ['Emergency contacts added', !!(setupWorkspace.emergencyContact || setupWorkspace.supportPhone || setupWorkspace.ownerPhone), setupWorkspace.ownerPhone || setupWorkspace.supportPhone || 'Missing emergency contact'],
     ['Privacy policy reviewed', !!(setupWorkspace.privacyReviewedAt || setupWorkspace.privacyPolicyAcceptedAt), setupWorkspace.privacyReviewedAt || 'Not stamped' ]
   ] : [];
@@ -7513,29 +7503,29 @@ ${body}`;
       if (Array.isArray(backupResult.backups)) setBackupList(backupResult.backups);
       const liveBackupStatus = backupResult.backupStatus || backupStatus || null;
       if (backupResult.backupStatus) setBackupStatus(backupResult.backupStatus);
-      const firestoreLatencyMs = Number(routeManifestCheck?.result?.firestoreLatencyMs ?? routeManifestCheck?.ms ?? 0);
-      const firestoreReadOk = routeManifestCheck?.result?.firestoreReadOk !== false;
+      const firestoreEvidence = firestoreHealthEvidence(routeManifestCheck);
+      const { firestoreLatencyMs, firestoreReadOk } = firestoreEvidence;
 
-      const storageUsage = {
+      const storageUsage = backupListCheck?.ok === true ? {
         bucket: backupResult.bucket || liveBackupStatus?.storageBucket || 'unknown',
         totalFiles: backupResult.storageUsage?.totalFiles ?? backupResult.count ?? backupResult.backups?.length ?? backupList.length,
         backupFiles: backupResult.storageUsage?.backupFiles ?? backupResult.count ?? backupResult.backups?.length ?? backupList.length,
         totalBytes: Number(backupResult.storageUsage?.totalBytes ?? backupResult.totalBytes ?? (backupResult.backups || []).reduce((sum, item) => sum + Number(item.sizeBytes || 0), 0)),
         backupBytes: Number(backupResult.storageUsage?.backupBytes ?? backupResult.totalBytes ?? (backupResult.backups || []).reduce((sum, item) => sum + Number(item.sizeBytes || 0), 0)),
         verifiedCount: Number(backupResult.verifiedCount || (backupResult.backups || []).filter(item => item.integrityStatus === 'verified').length || 0)
-      };
+      } : null;
 
       const snapshot = {
         generatedAt,
         firestoreLatencyMs,
-        firestoreStatus: firestoreReadOk ? (firestoreLatencyMs < 800 ? 'healthy' : firestoreLatencyMs < 1800 ? 'slow' : 'degraded') : 'failed',
+        firestoreStatus: firestoreEvidence.firestoreStatus,
         firestoreReadOk,
-        firestoreError: routeManifestCheck?.result?.firestoreError || '',
-        firestoreErrorCategory: routeManifestCheck?.result?.firestoreErrorCategory || '',
+        firestoreError: firestoreEvidence.firestoreError,
+        firestoreErrorCategory: firestoreEvidence.firestoreErrorCategory,
         storageUsage,
         apiChecks,
         apiRouteManifest,
-        lastSuccessfulSync: liveBackupStatus?.lastSuccessfulBackupAt || liveBackupStatus?.lastBackupAt || liveBackupStatus?.lastRunAt || null,
+        lastSuccessfulSync: liveBackupStatus?.lastSuccessfulBackupAt || liveBackupStatus?.lastBackupAt || liveBackupStatus?.nativeBackupLastSuccessfulAt || null,
         backupIntegrity: liveBackupStatus?.backupIntegrity || {
           status: liveBackupStatus?.lastIntegrityStatus || 'not checked',
           verifiedAt: liveBackupStatus?.lastIntegrityVerifiedAt || null,
@@ -7545,7 +7535,7 @@ ${body}`;
         clientRuntime: envReport
       };
       setHealthSnapshot(snapshot);
-      if (!silent) addToast('Health Refreshed', `Firestore ${snapshot.firestoreReadOk === false ? 'server check failed' : `${snapshot.firestoreLatencyMs}ms`} • ${apiChecks.filter(c => c.ok).length}/${apiChecks.length} API checks healthy.`);
+      if (!silent) addToast('Health Refreshed', `Firestore ${snapshot.firestoreReadOk === null ? 'check unavailable' : snapshot.firestoreReadOk === false ? 'server check failed' : snapshot.firestoreLatencyMs === null ? 'read confirmed; timing unavailable' : `${snapshot.firestoreLatencyMs}ms`} • ${apiChecks.filter(c => c.ok).length}/${apiChecks.length} API checks healthy.`);
       return snapshot;
     } catch (err) {
       const msg = err.message || 'Health check failed.';
@@ -9107,8 +9097,8 @@ Type RESTORE to continue.`);
 
       {subTab === 'deployment' && (
         <div className="space-y-4 animate-[slideIn_0.2s_ease-out]">
-          <div className={`${T.card} p-5 border ${deploymentReady ? 'border-emerald-900/50' : 'border-red-900/50'}`}><div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3"><div><div className="text-[10px] uppercase tracking-widest font-black text-[#D4A381]">Deployment Readiness Checker</div><h2 className={`text-3xl font-black mt-1 ${deploymentReady ? 'text-emerald-300' : 'text-red-300'}`}>{deploymentReady ? 'READY TO DEPLOY' : 'DO NOT DEPLOY YET'}</h2><p className="text-xs text-slate-400 font-bold mt-1">Run health/diagnostics, then use this checklist before production.</p></div><button onClick={handleRunFullSystemDiagnostics} disabled={isDiagnosticsRunning} className={`${T.btn} flex items-center gap-2 justify-center`}>{isDiagnosticsRunning ? <Loader2 className="animate-spin" size={16}/> : <Wrench size={16}/>} Run Full System Diagnostics</button></div></div>
-          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">{deploymentChecks.map(check => <div key={check.label} className={`${T.card} p-4 border ${check.ok ? 'border-emerald-900/40' : 'border-red-900/50'}`}><div className="flex items-center gap-2 mb-2"><span className={`w-6 h-6 rounded-full flex items-center justify-center font-black text-xs ${check.ok ? 'bg-emerald-500 text-slate-900' : 'bg-red-500 text-white'}`}>{check.ok ? '✓' : '!'}</span><div className="font-black text-white text-sm">{check.label}</div></div><div className="text-[10px] text-slate-400 font-bold leading-snug">{check.detail}</div></div>)}</div>
+          <div className={`${T.card} p-5 border ${deploymentReady ? 'border-emerald-900/50' : 'border-red-900/50'}`}><div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3"><div><div className="text-[10px] uppercase tracking-widest font-black text-[#D4A381]">Deployment Readiness Checker</div><h2 className={`text-3xl font-black mt-1 ${deploymentReady ? 'text-emerald-300' : 'text-red-300'}`}>{deploymentReady ? 'CHECKS PASSED' : 'REVIEW REQUIRED'}</h2><p className="text-xs text-slate-400 font-bold mt-1">Unknown checks require separate evidence. The complete release gate remains the authority for production readiness.</p></div><button onClick={handleRunFullSystemDiagnostics} disabled={isDiagnosticsRunning} className={`${T.btn} flex items-center gap-2 justify-center`}>{isDiagnosticsRunning ? <Loader2 className="animate-spin" size={16}/> : <Wrench size={16}/>} Run Full System Diagnostics</button></div></div>
+          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">{deploymentChecks.map(check => <div key={check.label} className={`${T.card} p-4 border ${check.ok === null ? 'border-amber-900/50' : check.ok ? 'border-emerald-900/40' : 'border-red-900/50'}`}><div className="flex items-center gap-2 mb-2"><span className={`w-6 h-6 rounded-full flex items-center justify-center font-black text-xs ${check.ok === null ? 'bg-amber-400 text-slate-900' : check.ok ? 'bg-emerald-500 text-slate-900' : 'bg-red-500 text-white'}`}>{check.ok === null ? '?' : check.ok ? '✓' : '!'}</span><div className="font-black text-white text-sm">{check.label}</div></div><div className="text-[10px] text-slate-400 font-bold leading-snug">{check.detail}</div></div>)}</div>
         </div>
       )}
 
@@ -9183,10 +9173,10 @@ Type RESTORE to continue.`);
           </div>
 
           <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
-            <CockpitMetric label="Firestore Latency" value={healthSnapshot ? `${healthSnapshot.firestoreLatencyMs}ms` : 'Run Check'} detail={healthSnapshot?.firestoreStatus || 'Not tested yet'} tone={!healthSnapshot ? 'blue' : healthSnapshot.firestoreLatencyMs > 1800 ? 'red' : healthSnapshot.firestoreLatencyMs > 800 ? 'amber' : 'emerald'} hot={!!healthSnapshot && healthSnapshot.firestoreLatencyMs > 1800} />
-            <CockpitMetric label="Backup Storage" value={healthSnapshot ? formatBackupBytes(healthSnapshot.storageUsage?.totalBytes) : formatBackupBytes(backupList.reduce((sum, b) => sum + Number(b.sizeBytes || 0), 0))} detail={`${healthSnapshot?.storageUsage?.totalFiles ?? backupList.length} Storage file(s) • ${healthSnapshot?.storageUsage?.backupFiles ?? backupList.length} backup(s)`} tone="blue" />
+            <CockpitMetric label="Firestore Latency" value={healthSnapshot?.firestoreLatencyMs != null ? `${healthSnapshot.firestoreLatencyMs}ms` : healthSnapshot ? 'Unavailable' : 'Run Check'} detail={healthSnapshot?.firestoreStatus || 'Not tested yet'} tone={!healthSnapshot ? 'blue' : healthSnapshot.firestoreReadOk === false ? 'red' : healthSnapshot.firestoreReadOk !== true || healthSnapshot.firestoreLatencyMs == null ? 'amber' : healthSnapshot.firestoreLatencyMs > 1800 ? 'red' : healthSnapshot.firestoreLatencyMs > 800 ? 'amber' : 'emerald'} hot={!!healthSnapshot && healthSnapshot.firestoreLatencyMs > 1800} />
+            <CockpitMetric label="Backup Storage" value={healthSnapshot?.storageUsage ? formatBackupBytes(healthSnapshot.storageUsage.totalBytes) : healthSnapshot ? 'Unavailable' : 'Run Check'} detail={healthSnapshot?.storageUsage ? `${healthSnapshot.storageUsage.totalFiles} Storage file(s) • ${healthSnapshot.storageUsage.backupFiles} backup(s)` : 'Storage totals require a successful server check.'} tone="blue" />
             <CockpitMetric label="API Routes" value={healthSnapshot ? healthSnapshot.apiRouteManifest?.length ? `${healthSnapshot.apiRouteManifest.filter(r => r.status === 'ready').length}/${healthSnapshot.apiRouteManifest.length}` : `${(healthSnapshot.apiChecks || []).filter(c => c.ok).length}/${(healthSnapshot.apiChecks || []).length}` : 'Run Check'} detail={healthSnapshot ? `${Math.round((healthSnapshot.apiChecks || []).reduce((sum, c) => sum + (c.ms || 0), 0) / Math.max(1, (healthSnapshot.apiChecks || []).length))}ms avg` : 'whoami / security / backups / route manifest'} tone={healthSnapshot && (healthSnapshot.apiChecks || []).some(c => !c.ok) ? 'amber' : 'emerald'} />
-            <CockpitMetric label="Last Successful Sync" value={formatBackupTimestamp(healthSnapshot?.lastSuccessfulSync || backupStatus?.lastSuccessfulBackupAt || backupStatus?.lastBackupAt || backupStatus?.lastRunAt)} detail={backupStatus?.storagePath || 'Backup status route'} tone={backupIsStale ? 'amber' : 'emerald'} hot={backupIsStale} />
+            <CockpitMetric label="Last Successful Sync" value={formatBackupTimestamp(healthSnapshot?.lastSuccessfulSync || backupStatus?.lastSuccessfulBackupAt || backupStatus?.lastBackupAt || backupStatus?.nativeBackupLastSuccessfulAt)} detail={backupStatus?.storagePath || 'Backup status route'} tone={backupIsStale ? 'amber' : 'emerald'} hot={backupIsStale} />
             <CockpitMetric label="Backup Integrity" value={healthSnapshot?.backupIntegrity?.status || backupStatus?.lastIntegrityStatus || backupStatus?.backupIntegrity?.status || 'Not Checked'} detail={healthSnapshot?.backupIntegrity?.verifiedAt ? formatBackupTimestamp(healthSnapshot.backupIntegrity.verifiedAt) : (backupStatus?.lastIntegrityVerifiedAt ? formatBackupTimestamp(backupStatus.lastIntegrityVerifiedAt) : 'Round-trip verification')} tone={(healthSnapshot?.backupIntegrity?.status || backupStatus?.lastIntegrityStatus || backupStatus?.backupIntegrity?.status) === 'failed' ? 'red' : (healthSnapshot?.backupIntegrity?.status || backupStatus?.lastIntegrityStatus || backupStatus?.backupIntegrity?.status) === 'verified' ? 'emerald' : 'amber'} hot={(healthSnapshot?.backupIntegrity?.status || backupStatus?.lastIntegrityStatus || backupStatus?.backupIntegrity?.status) === 'failed'} />
           </div>
 
@@ -9439,16 +9429,16 @@ Type RESTORE to continue.`);
             <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
               <div>
                 <div className="text-[10px] font-black uppercase tracking-widest text-[#D4A381]">Restore Drill</div>
-                <h3 className="font-black text-white text-lg">Monthly backup restore proof</h3>
-                <p className="text-xs text-slate-400 font-bold mt-1">Backups only count if a safe test restore works. Record the last drill after restoring into a non-production Firebase project and checking critical screens.</p>
+                <h3 className="font-black text-white text-lg">Monthly restore drill record</h3>
+                <p className="text-xs text-slate-400 font-bold mt-1">Record your result after testing a restore in a non-production project. This is an administrator-reported record; saving it does not perform or independently verify a restore.</p>
               </div>
               <button type="button" onClick={handleRecordRestoreDrill} disabled={isRestoreDrillBusy} className="bg-amber-900/20 border border-amber-500/40 text-amber-200 hover:text-white rounded-xl px-4 py-2 text-[10px] font-black uppercase tracking-widest disabled:opacity-50">{isRestoreDrillBusy ? 'Working…' : 'Record Restore Drill'}</button>
             </div>
             <div className="grid sm:grid-cols-4 gap-2 mt-3 text-[10px] font-bold">
               <div className="bg-[#0B0E11] border border-[#2A353D] rounded-lg p-2"><div className="text-slate-500 uppercase tracking-widest font-black">Last Drill</div><div className="text-white">{restoreDrillStatus?.lastDrillAt ? formatBackupTimestamp(restoreDrillStatus.lastDrillAt) : 'Not recorded'}</div></div>
               <div className="bg-[#0B0E11] border border-[#2A353D] rounded-lg p-2"><div className="text-slate-500 uppercase tracking-widest font-black">Status</div><div className={restoreDrillStale ? 'text-amber-200' : 'text-emerald-200'}>{restoreDrillStatus?.status || 'needed'}</div></div>
-              <div className="bg-[#0B0E11] border border-[#2A353D] rounded-lg p-2"><div className="text-slate-500 uppercase tracking-widest font-black">Safe Project</div><div className="text-white truncate">{restoreDrillStatus?.restoreProjectId || 'not logged'}</div></div>
-              <div className="bg-[#0B0E11] border border-[#2A353D] rounded-lg p-2"><div className="text-slate-500 uppercase tracking-widest font-black">Backup</div><div className="text-white truncate">{restoreDrillStatus?.sourceBackupPath || backupStatus?.storagePath || 'choose backup'}</div></div>
+              <div className="bg-[#0B0E11] border border-[#2A353D] rounded-lg p-2"><div className="text-slate-500 uppercase tracking-widest font-black">Reported Project</div><div className="text-white truncate">{restoreDrillStatus?.restoreProjectId || 'not logged'}</div></div>
+              <div className="bg-[#0B0E11] border border-[#2A353D] rounded-lg p-2"><div className="text-slate-500 uppercase tracking-widest font-black">Backup</div><div className="text-white truncate">{restoreDrillStatus?.sourceBackupPath || 'not logged'}</div></div>
             </div>
           </div>
 

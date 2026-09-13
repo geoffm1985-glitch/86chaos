@@ -17,12 +17,15 @@ module.exports = async (req, res) => {
     const body = await readBody(req);
     const now = new Date().toISOString();
     const sourceBackupPath = String(body.sourceBackupPath || '').trim().slice(0, 500);
-    const restoreProjectId = String(body.restoreProjectId || process.env.RESTORE_DRILL_PROJECT_ID || process.env.FIREBASE_PROJECT_ID || '').trim().slice(0, 120);
+    // A recorded drill is an administrator report, not an automated restore or
+    // independent verification. Never guess the project that was tested.
+    const restoreProjectId = String(body.restoreProjectId || '').trim().slice(0, 120);
     const result = String(body.result || 'planned').toLowerCase().trim();
     const notes = String(body.notes || '').trim().slice(0, 1800);
     const safeResult = ['planned', 'passed', 'needs_followup', 'failed'].includes(result) ? result : 'planned';
     const drill = {
       status: safeResult,
+      evidenceSource: 'administrator_reported',
       lastDrillAt: now,
       sourceBackupPath,
       restoreProjectId,
@@ -32,10 +35,10 @@ module.exports = async (req, res) => {
       updatedAt: now,
       checklist: {
         backupSelected: Boolean(sourceBackupPath),
-        restoredIntoSafeProject: safeResult === 'passed' || safeResult === 'needs_followup',
-        verifiedLogin: safeResult === 'passed',
-        verifiedCriticalCollections: safeResult === 'passed',
-        noProductionOverwrite: true
+        restoredIntoSafeProject: null,
+        verifiedLogin: null,
+        verifiedCriticalCollections: null,
+        noProductionOverwrite: null
       }
     };
     const drillRef = await db.collection('restoreDrills').add(drill);

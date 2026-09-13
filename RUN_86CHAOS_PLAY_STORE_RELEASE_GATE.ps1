@@ -246,7 +246,7 @@ function New-Slim-ReleaseGateReport {
   param([string]$SourceDir, [string]$DestinationDir, [string]$ZipPath)
   Remove-Item $DestinationDir -Recurse -Force -ErrorAction SilentlyContinue
   New-Item -ItemType Directory -Force $DestinationDir | Out-Null
-  $allowed = @('.txt', '.log', '.json', '.md', '.html', '.xml', '.csv')
+  $allowed = @('.txt', '.log', '.json', '.jsonl', '.md', '.html', '.xml', '.csv')
   if (Test-Path $SourceDir) {
     $sourceRoot = (Resolve-Path $SourceDir).Path
     Get-ChildItem $SourceDir -Recurse -File -ErrorAction SilentlyContinue |

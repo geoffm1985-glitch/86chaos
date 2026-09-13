@@ -913,7 +913,13 @@ function validateManifestTestIdentities(manifest, { root = process.cwd(), projec
 function validateManifestForCurrentRun(manifest, options = {}) {
   const errors = [];
   const baselineMode = options.baselineMode || manifest?.lineageMode || 'full-baseline';
-  if (baselineMode === 'bundled-full-baseline-fallback') {
+  if (baselineMode === 'partial-checkpoint') {
+    const partial = require('./partial-run-evidence.cjs').validatePartialResumeManifest(manifest, {
+      ...options, root: options.root || process.cwd(),
+      currentRecords: currentInventoryRecords(options.root || process.cwd(), { allowStaticFallback: false }),
+    });
+    if (!partial.ok) errors.push(...partial.errors);
+  } else if (baselineMode === 'bundled-full-baseline-fallback') {
     const baselineSource = manifest?.baselineSourceVersion || manifest?.sourceVersion || '';
     const baselineDeployed = manifest?.baselineDeployedVersion || manifest?.deployedVersion || '';
     if (!manifest?.baselineFullRunId) errors.push('Bundled baseline run ID is missing.');

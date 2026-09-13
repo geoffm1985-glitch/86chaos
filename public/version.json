@@ -1,16 +1,16 @@
 {
-  "version": "16.0.230",
-  "name": "86 Chaos 16.0.230",
-  "build": "16.0.230",
-  "label": "86 Chaos 16.0.230",
-  "releasedAt": "2026-09-10T02:57:03.059107+00:00",
-  "releaseTitle": "Release Gate Expected Skip Repair",
+  "version": "16.0.231",
+  "name": "86 Chaos 16.0.231",
+  "build": "16.0.231",
+  "label": "86 Chaos 16.0.231",
+  "releasedAt": "2026-09-13T03:49:13.749Z",
+  "releaseTitle": "Runtime Evidence and Partial Resume Repair",
   "notes": [
-    "Corrects full release-gate reporting for existing intentional skips when their required coverage passes.",
-    "Unexplained skips, missing companion coverage, source changes and actual failures remain release blockers.",
-    "Preserves 16.0.229 application behavior and all existing browser tests."
+    "Health and backup diagnostics preserve unavailable states and distinguish administrator reports from verified results.",
+    "Full release runs persist exact test progress for guarded partial recovery after interruption; only the complete gate can certify a release.",
+    "Customer AI policy, restaurant calculations, scheduling, security configuration and Firebase operation counts remain unchanged."
   ],
-  "title": "86 Chaos 16.0.230",
-  "summary": "Repairs release-gate reporting while preserving application behavior and test coverage.",
-  "description": "Repairs release-gate reporting while preserving application behavior and test coverage."
+  "title": "86 Chaos 16.0.231",
+  "summary": "Diagnostic accuracy and source-bound recovery of interrupted release tests.",
+  "description": "Diagnostic accuracy and source-bound recovery of interrupted release tests."
 }

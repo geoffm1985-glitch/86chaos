@@ -1,3 +1,4 @@
+const { selectPartialResumeManifest } = require('./partial-run-evidence.cjs');
 const path = require('path');
 const { ensureRunDir, readJsonIfExists, writeJson } = require('./run-context.cjs');
 const {
@@ -297,14 +298,13 @@ try {
       lineageMode: 'none',
     };
   } else if (selectionMode === 'partial-resume') {
-    const manifest = loadReportedPartialResumeManifest();
-    selectedSource = {
-      manifest: qualifyManifestSelectionsWithCurrentInventory(manifest, { root: process.cwd(), currentRecords: loadCurrentRecords() }),
-      baselineFullRunDir: '',
-      latestFailedOnlyRunDir: '',
-      selectionSource: manifest.selectionSource || 'uploaded-partial-release-gate-20260813-205319',
-      lineageMode: 'none',
-    };
+    const manifest = selectPartialResumeManifest({
+      root: process.cwd(), resultsRoot: path.dirname(runDir), currentRunDir: runDir,
+      baselineRunDir: process.env.CHAOS_PARTIAL_RESUME_RUN_DIR || '', currentRecords: loadCurrentRecords(),
+      target: { currentSourceVersion, currentDeployedVersion, firebaseProjectId, appUrl },
+    });
+    selectedSource = { manifest, baselineFullRunDir: manifest.baselineFullRunDir, latestFailedOnlyRunDir: '',
+      selectionSource: manifest.selectionSource, lineageMode: manifest.lineageMode };
   } else if (selectionMode === 'reported-current-blockers') {
     const manifest = loadReportedCurrentBlockersManifest();
     selectedSource = {
@@ -377,7 +377,7 @@ if (selectionMode === 'reported-failed-only') {
   copied.newTestsCount = 0;
   assertReportedFailedOnlySelection(copied);
 }
-if (selectionMode === 'partial-resume') {
+if (selectionMode === 'partial-resume' && copied.lineageMode !== 'partial-checkpoint') {
   copied.mode = 'partial-resume';
   copied.source = 'uploaded-partial-release-gate-20260813-205319';
   copied.selectionSource = 'uploaded-partial-release-gate-20260813-205319-fail-timeout-not-run';
@@ -531,7 +531,8 @@ if (selectionMode === 'repair') {
   console.log('mobile-chromium 4');
   console.log('timeouts 0');
 } else if (selectionMode === 'partial-resume') {
-  console.log('Partial resume guard: excludes all 65 passed tests from 20260813-205319');
+  if (copied.lineageMode === 'partial-checkpoint') console.log(`Partial resume: preserves ${copied.preservedCompletedPasses} completed PASS identities from ${copied.baselineFullRunId}; this run cannot certify a release.`);
+  else console.log('Partial resume guard: excludes all 65 passed tests from 20260813-205319');
   console.log(`Failed identities selected: ${copied.previousFailuresSelected || 0}`);
   console.log(`Timed-out identities selected: ${copied.previousTimeoutsSelected || 0}`);
   console.log(`Not-run identities selected: ${copied.partialNotRunSelected || 0}`);
