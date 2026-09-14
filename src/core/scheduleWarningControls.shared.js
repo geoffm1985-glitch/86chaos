@@ -84,48 +84,55 @@ function warningShiftContext(shift = {}) {
 
 function buildCoverageVarianceRows(options = {}) {
   const safeOptions = options && typeof options === 'object' ? options : {};
-  const { coverageTargets = [], weekDates = [], weekShifts = [] } = safeOptions;
+  const coverageTargets = safeOptions.coverageTargets || [];
+  const periodDates = safeOptions.periodDates || safeOptions.weekDates || [];
+  const periodShifts = safeOptions.periodShifts || safeOptions.weekShifts || [];
   const roleMatcher = asFunction(safeOptions.roleMatcher, defaultRoleMatcher);
   const canonicalRole = asFunction(safeOptions.canonicalRole, defaultCanonicalRole);
   const rows = [];
   const targets = safeRecordArray(coverageTargets);
-  const dates = Array.isArray(weekDates) ? weekDates : [];
-  const shifts = safeRecordArray(weekShifts);
+  const dates = Array.isArray(periodDates) ? periodDates : [];
+  const shifts = safeRecordArray(periodShifts);
   for (const target of targets) {
     try {
       const parsedDayIndex = Number.parseInt(target?.dayIndex ?? 0, 10);
       const dayIndex = Number.isFinite(parsedDayIndex) ? parsedDayIndex : 0;
-      const date = dates[dayIndex];
-      if (!date) continue;
       const role = cleanText(canonicalRole(target?.role || 'Unassigned')) || 'Unassigned';
       const targetCount = Number.parseInt(target?.count || 0, 10) || 0;
       if (targetCount <= 0) continue;
-      const existing = shifts.filter(shift => {
-        try {
-          return shift?.date === date
-            && roleMatcher(shift?.role, role)
-            && (!target?.startTime || shift?.startTime === target.startTime);
-        } catch (_) {
-          return false;
-        }
-      }).length;
-      const delta = existing - targetCount;
-      if (delta === 0) continue;
-      rows.push({
-        ...target,
-        id: target?.id || `${dayIndex}-${role}-${target?.startTime || ''}-${target?.endTime || ''}`,
-        dayIndex,
-        date,
-        role,
-        originalRole: target?.role,
-        count: targetCount,
-        target: targetCount,
-        existing,
-        delta,
-        type: delta < 0 ? 'under' : 'over',
-        needed: delta < 0 ? Math.abs(delta) : 0,
-        over: delta > 0 ? delta : 0,
+      const matchingDates = dates.filter(dateKey => {
+        try { return new Date(`${dateKey}T12:00:00`).getDay() === dayIndex; }
+        catch (_) { return false; }
       });
+      for (const date of matchingDates) {
+        const existing = shifts.filter(shift => {
+          try {
+            const shiftDate = cleanText(shift?.date || shift?.scheduleDateKey || '');
+            return shiftDate === date
+              && roleMatcher(shift?.role, role)
+              && (!target?.startTime || shift?.startTime === target.startTime);
+          } catch (_) {
+            return false;
+          }
+        }).length;
+        const delta = existing - targetCount;
+        if (delta === 0) continue;
+        rows.push({
+          ...target,
+          id: target?.id || `${dayIndex}-${role}-${target?.startTime || ''}-${target?.endTime || ''}`,
+          dayIndex,
+          date,
+          role,
+          originalRole: target?.role,
+          count: targetCount,
+          target: targetCount,
+          existing,
+          delta,
+          type: delta < 0 ? 'under' : 'over',
+          needed: delta < 0 ? Math.abs(delta) : 0,
+          over: delta > 0 ? delta : 0,
+        });
+      }
     } catch (_) {
       // A malformed legacy target must not take down Schedule Builder.
     }
@@ -135,7 +142,7 @@ function buildCoverageVarianceRows(options = {}) {
 
 function buildScheduleConflictWarningRows(options = {}) {
   const safeOptions = options && typeof options === 'object' ? options : {};
-  const { weekStart = '', schedule = [], allUsers = [], requests = [] } = safeOptions;
+  const { weekStart = '', schedule = [], allUsers = [], requests = [], periodWeeks = [] } = safeOptions;
   const resolvePerson = asFunction(safeOptions.resolvePerson, defaultResolvePerson);
   const matchesTimeOff = asFunction(safeOptions.matchesTimeOff, defaultMatchesTimeOff);
   const isActiveRequest = asFunction(safeOptions.isActiveRequest, defaultIsActiveRequest);
@@ -230,27 +237,38 @@ function buildScheduleConflictWarningRows(options = {}) {
     }
   }
 
+  const workloadPeriods = Array.isArray(periodWeeks) && periodWeeks.length
+    ? periodWeeks.filter(period => Array.isArray(period?.dates) && period.dates.length)
+    : [{ key: weekStart, start: weekStart, end: '', dates: [] }];
   for (const user of safeUsers) {
     try {
       const userId = user.id || user.employeeId || user.scheduleUserId || user.rosterUserId || user.userId || '';
       if (!userId) continue;
-      const count = safeSchedule.filter(shift => (
-        shift?.employeeId === userId
-        || shift?.scheduleUserId === userId
-        || shift?.rosterUserId === userId
-      )).length;
-      if (count < 6) continue;
       const userName = cleanText(user.name || user.employeeName || user.displayName || user.email) || 'Employee';
-      let fingerprint = '';
-      try { fingerprint = fingerprintBuilder('schedule-load', weekStart, userId, userName, count); }
-      catch (_) { fingerprint = `${weekStart}|${userId}|${count}`; }
-      warnings.push({
-        type: 'schedule-load',
-        alertId: `schedule-${weekStart}-load-${userId}`,
-        fingerprint,
-        message: `${userName} has ${count} scheduled days this week.`,
-        detail: '',
-      });
+      for (const period of workloadPeriods) {
+        const periodDateSet = new Set(period.dates || []);
+        const count = safeSchedule.filter(shift => (
+          (!periodDateSet.size || periodDateSet.has(cleanText(shift?.date || shift?.scheduleDateKey || '')))
+          && (shift?.employeeId === userId || shift?.scheduleUserId === userId || shift?.rosterUserId === userId)
+        )).length;
+        if (count < 6) continue;
+        const periodKey = cleanText(period.key || period.start || weekStart);
+        let fingerprint = '';
+        try { fingerprint = fingerprintBuilder('schedule-load', periodKey, userId, userName, count); }
+        catch (_) { fingerprint = `${periodKey}|${userId}|${count}`; }
+        let rangeLabel = 'this week';
+        if (period.start && period.end) {
+          try { rangeLabel = `${formatDate(period.start)} through ${formatDate(period.end)}`; }
+          catch (_) { rangeLabel = `${period.start} through ${period.end}`; }
+        }
+        warnings.push({
+          type: 'schedule-load',
+          alertId: `schedule-${periodKey}-load-${userId}`,
+          fingerprint,
+          message: `${userName} has ${count} shifts scheduled ${rangeLabel}.`,
+          detail: '',
+        });
+      }
     } catch (_) {
       // Skip only the malformed roster row.
     }
@@ -262,7 +280,7 @@ function buildScheduleConflictWarningRows(options = {}) {
     if (seen.has(key)) return false;
     seen.add(key);
     return true;
-  }).slice(0, 12);
+  });
 }
 
 function requestWorkspaceId(request = {}) {

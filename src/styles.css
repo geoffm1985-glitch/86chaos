@@ -2127,6 +2127,11 @@ select {
   min-height: 72px;
 }
 
+.schedule-tools-period-label {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
 .non-admin-controls-compact :where(button, input, select, textarea, a):focus-visible {
   outline: 2px solid var(--chaos-accent, #D4A381) !important;
   outline-offset: 2px !important;
