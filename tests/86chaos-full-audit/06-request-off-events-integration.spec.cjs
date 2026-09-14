@@ -279,8 +279,8 @@ test.describe('06 request-off, availability, and scheduled events integration', 
     await attachState('06-ghost-request-off-warning-continue.json', { continueWarning });
     expect(continueWarning.dialogMessage, 'Conflict warning should appear again before continuing').toMatch(/already been requested off|available|conflict/i);
 
-    const submit = page.getByRole('button', { name: /submit/i }).first();
-    await expect(submit, 'Continuing through the warning should enable the exact Request Off submit action').toBeEnabled({ timeout: 15000 });
+    const submit = page.getByRole('button', { name: /^Send (?:\d+-Day )?Request for Review$/i }).first();
+    await expect(submit, 'Continuing through the warning should enable the exact Request Off review action').toBeEnabled({ timeout: 15000 });
     const createResponsePromise = page
       .waitForResponse(response => isTimeOffResponseAction(response, 'ghost-create'), { timeout: 15000 })
       .then(async response => ({ response, body: await response.json().catch(() => null) }))

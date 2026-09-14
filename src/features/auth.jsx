@@ -417,7 +417,7 @@ const LoginScreen = ({ setAppUser }) => {
 
   const completeFirebaseLogin = async (userCredential) => {
     const firebaseUser = userCredential.user;
-    setLoginStep('Firebase accepted password. Loading account profile...');
+    setLoginStep('Password accepted. Loading your account…');
     setLoginDiagnostics(null);
     // Account-security sync is helpful but not required to enter the app. Run it in the background
     // so release-gate and real users never sit on this login step when the API is slow.
@@ -480,7 +480,7 @@ const LoginScreen = ({ setAppUser }) => {
 
     const bootstrapPromise = (async () => {
       try {
-        setLoginStep('Checking account and workspace access on the server...');
+        setLoginStep('Checking your restaurant access…');
         const bootstrap = await withOperationTimeout(
           loadLoginBootstrapFromServer(firebaseUser),
           10000,
@@ -509,7 +509,7 @@ const LoginScreen = ({ setAppUser }) => {
     }
 
     if (!userData) {
-      throw new Error('Firebase Auth accepted the login, but 86 Chaos could not load the matching account profile. Try typing the email in lowercase once. If this keeps happening, ask a System Administrator to verify the user profile email is saved in lowercase or by Firebase UID.');
+      throw new Error('Your password was accepted, but 86 Chaos could not load your account profile. Try entering your email in lowercase. If that does not work, ask a System Administrator to check your account link.');
     }
 
     delete userData.password;
@@ -518,7 +518,7 @@ const LoginScreen = ({ setAppUser }) => {
       return;
     }
 
-    setLoginStep('Loading workspace access...');
+    setLoginStep('Loading your restaurant…');
     await finishLoginWithPreloadedWorkspaces(userData, firebaseUser, preloadedWorkspaces, { forcePicker: true });
   };
 
@@ -533,10 +533,10 @@ const LoginScreen = ({ setAppUser }) => {
     const code = error?.code || '';
     const message = error?.message || 'Login failed.';
     if (code === 'auth/network-request-failed') {
-      return `Firebase Auth network request failed. ${authDiagnosticSuffix()} Hard refresh once and try again; if this repeats, the deployed Firebase browser key/domain is still mismatched or blocked.`;
+      return '86 Chaos could not reach the sign-in service. Check your connection, refresh the page, and try again. If it continues, ask a System Administrator to check the sign-in setup.';
     }
     if (code && code.includes('requests-from-referrer')) {
-      return `Firebase is blocking this Vercel domain for the active browser API key. ${authDiagnosticSuffix()}`;
+      return 'Sign-in is not configured for this web address. Ask a System Administrator to check the approved sign-in domains.';
     }
     if (code === 'auth/invalid-credential' || code === 'auth/wrong-password' || code === 'auth/user-not-found') {
       return 'Email or password was not accepted.';
@@ -545,7 +545,7 @@ const LoginScreen = ({ setAppUser }) => {
       return 'Too many login attempts. Wait a few minutes before trying again.';
     }
     if (/no matching Firestore profile|could not load the matching account profile|No Firestore user profile/i.test(message)) {
-      return 'Your password was accepted, but 86 Chaos could not load your account profile. Try the email in all lowercase once. If it still happens, ask a System Administrator to check that your profile email is lowercase and linked to your Firebase user.';
+      return 'Your password was accepted, but 86 Chaos could not load your account profile. Try entering your email in lowercase. If it still does not work, ask a System Administrator to check your account link.';
     }
     return message;
   };
@@ -565,7 +565,7 @@ const LoginScreen = ({ setAppUser }) => {
         finish(resolve, { user: auth.currentUser, recoveredFromAuthState: true });
         return;
       }
-      finish(reject, new Error(`Firebase login did not finish within ${Math.round(timeoutMs / 1000)} seconds. ${authDiagnosticSuffix()} This usually means the browser key, App Check key, or network path is blocking Firebase Auth.`));
+      finish(reject, new Error(`Sign-in did not finish within ${Math.round(timeoutMs / 1000)} seconds. Check your connection, refresh the page, and try again.`));
     }, timeoutMs);
     try {
       import('firebase/auth').then(({ onAuthStateChanged }) => {
@@ -588,7 +588,7 @@ const LoginScreen = ({ setAppUser }) => {
     }
     setLoginError('');
     setLoginDiagnostics(null);
-    setLoginStep('Contacting Firebase Auth...');
+    setLoginStep('Signing you in…');
     setWorkspaceChoices([]);
     setWorkspaceUser(null);
     clearMfaChallenge();
@@ -824,8 +824,8 @@ const LoginScreen = ({ setAppUser }) => {
               <input type="password" placeholder="Confirm New Password" value={confirmPass} onChange={e => setConfirmPass(e.target.value)} className="w-full text-center text-lg font-bold bg-[#0B0E11] border border-[#2A353D] rounded-xl py-4 text-white focus:outline-none focus:border-[#D4A381] transition-colors shadow-inner" required />
             </div>
             
-            <button type="submit" aria-label="Unlock System" className="chaos-login-primary-action w-full bg-gradient-to-r from-[#D4A381] to-[#b58563] text-slate-900 font-black tracking-widest uppercase text-lg py-4 min-h-[44px] rounded-xl shadow-[0_0_20px_rgba(212,163,129,0.2)] hover:scale-[1.02] transition-all mt-2">
-              Save & Enter OS
+            <button type="submit" aria-label="Save password and enter 86 Chaos" className="chaos-login-primary-action w-full bg-gradient-to-r from-[#D4A381] to-[#b58563] text-slate-900 font-black tracking-widest uppercase text-lg py-4 min-h-[44px] rounded-xl shadow-[0_0_20px_rgba(212,163,129,0.2)] hover:scale-[1.02] transition-all mt-2">
+              Save Password & Sign In
             </button>
           </form>
         ) : (

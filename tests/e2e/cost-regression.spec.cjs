@@ -2,6 +2,7 @@ const { test, expect } = require('@playwright/test');
 const fs = require('fs');
 const path = require('path');
 const { loginIfNeeded, gotoAuthenticatedRoute, assertAuthenticatedAfterNavigation } = require('./utils/release-login-helper.cjs');
+const { dismissBlockingDialogs } = require('../86chaos-full-audit/utils/audit-helpers.cjs');
 
 const releaseGate = process.env.CHAOS_RELEASE_GATE === 'true';
 const required = (name) => {
@@ -31,6 +32,7 @@ async function loginNeutral(page, emailKey, passwordKey) {
   await page.goto('/?tab=help', { waitUntil: 'domcontentloaded' });
   await loginIfNeeded(page, required(emailKey), required(passwordKey), { timeout: 30_000 });
   await gotoAuthenticatedRoute(page, 'help', { timeout: 30_000 });
+  await dismissBlockingDialogs(page, { maxPasses: 4 }).catch(() => null);
 }
 
 async function resetDiagnostics(page) {

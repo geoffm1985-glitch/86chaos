@@ -154,7 +154,7 @@ const DrawerMenu = ({ isOpen, onClose, activeTab, setActiveTab, appUser, setAppU
   if (isEnabled('prep')) pushTab({ id: 'prep', label: 'Prep & Tasks', icon: <ClipboardList size={18}/> });
   if (isEnabled('recipes')) pushTab({ id: 'recipes', label: 'Recipe Book', icon: <BookOpen size={18}/> });
   if (isEnabled('inventory')) pushTab({ id: 'inventory', label: 'Inventory & Orders', icon: <Package size={18}/> });  
-  if (planAllowsTab('ai-tools')) pushTab({ id: 'ai-tools', label: 'AI Tools', icon: <Sparkles size={18}/> });
+  if (planAllowsTab('ai-tools')) pushTab({ id: 'ai-tools', label: 'Kitchen Tools', icon: <Sparkles size={18}/> });
   if (planAllowsTab('menu-intelligence')) pushTab({ id: 'menu-intelligence', label: 'Menu Intelligence', icon: <Network size={18}/> });
   pushTab({ id: 'reminders', label: 'My Reminders', icon: <Bell size={18}/>, dot: hasReminderAlert });
   if (isEnabled('team')) pushTab({ id: 'team', label: 'Staff Roster', icon: <Users size={18}/> });
@@ -1063,7 +1063,7 @@ const buildVoiceOutOfStockSummary = ({ events = [], inventoryItems = [], appUser
   const lines = [];
   if (alerts.length) lines.push(`Active 86 alerts: ${alerts.map(a => a.title || a.inventoryItemName || '86 alert').join(', ')}.`);
   if (lowStock.length) lines.push(`Low stock: ${lowStock.map(i => `${i.name || 'Item'} (${i.currentStock || 0}/${i.parLevel || 0})`).join(', ')}.`);
-  if (!alerts.length && !lowStock.length) lines.push(canSeeInventory ? 'No active 86 alerts or low-stock items were found in the current workspace snapshot.' : 'No active 86 alerts were found. Low-stock inventory is restricted for your account.');
+  if (!alerts.length && !lowStock.length) lines.push(canSeeInventory ? 'There are no active 86 alerts or low-stock items for this restaurant right now.' : 'There are no active 86 alerts. Your account cannot view low-stock inventory.');
   return lines.join(' ');
 };
 
@@ -1080,7 +1080,7 @@ const buildVoiceWorkStatusSummary = ({ prepItems = [], tasks = [], events = [], 
   const urgentMaint = canSeeMaintenance ? (maintenanceLogs || []).filter(m => !['completed','closed','resolved'].includes(normalizeVoiceText(m.status || ''))).slice(0, 5) : [];
   const parts = [];
   parts.push(openPrep.length ? `Open prep: ${openPrep.map(p => p.text || p.title || p.name || 'Prep item').join(', ')}.` : 'Prep looks clear for today.');
-  parts.push(openTasks.length ? `Open tasks: ${openTasks.map(t => t.title || t.text || t.name || 'Task').join(', ')}.` : 'No open daily/weekly/monthly task rows were found.');
+  parts.push(openTasks.length ? `Open tasks: ${openTasks.map(t => t.title || t.text || t.name || 'Task').join(', ')}.` : 'There are no open daily, weekly, or monthly tasks.');
   if (alerts.length) parts.push(`Active alerts: ${alerts.map(a => a.title || '86 alert').join(', ')}.`);
   if (urgentMaint.length) parts.push(`Maintenance needing attention: ${urgentMaint.map(m => m.equipment || m.issue || 'Maintenance issue').join(', ')}.`);
   if (!/No active 86 alerts/.test(lowSummary)) parts.push(lowSummary);
@@ -1352,7 +1352,7 @@ const buildVoiceAiOrderingAction = ({ raw = '', inventoryItems = [], events = []
   const parsed = parseAiOrderingVoiceIntent(raw);
   if (!parsed) return null;
   if (!canVoiceOpenTab(appUser, clientFeatures, 'inventory', clientData)) {
-    return { intent:'blocked', label:'AI Ordering Blocked', summary:'You do not have access to Inventory & Orders, so 86Voice cannot open AI ordering suggestions.', safe:true };
+    return { intent:'blocked', label:'Order Suggestions Unavailable', summary:'You do not have access to Inventory & Orders, so 86Voice cannot open order suggestions.', safe:true };
   }
   const assistant = buildAiOrderAssistant({ inventoryItems, events, prepItems, menuDependencies, currentDate:getToday(), daysAhead:7, eventDaysAhead:21 });
   const topRows = (assistant.recommendations || []).filter(row => row.suggestedQty > 0).slice(0, 8).map(row => ({
@@ -1364,18 +1364,18 @@ const buildVoiceAiOrderingAction = ({ raw = '', inventoryItems = [], events = []
       menuItemName: `${formatDisplayDate(row.date)} — ${row.event.title || 'Event'}`,
       severity: [...row.items.map(i => i.itemName), ...row.mentionedItems.map(m => m.item?.name || '')].filter(Boolean).slice(0, 8).join(', ') || 'Review event notes and menu links'
     }));
-    return { intent:'ai_order_summary', label:'AI Event Supply Check', tab:'inventory', summary: rows.length ? `Event supply checks: ${rows.map(r => r.menuItemName).join('; ')}.` : 'No event supply signals found yet. Open AI Order Assistant to review event notes, menu links, and inventory setup.', rows, safe:true, needsConfirmation:false };
+    return { intent:'ai_order_summary', label:'Event Supply Check', tab:'inventory', summary: rows.length ? `Event supply checks: ${rows.map(r => r.menuItemName).join('; ')}.` : 'No event supply needs were found. Open Order Suggestions to review event notes, menu links, and inventory setup.', rows, safe:true, needsConfirmation:false };
   }
   if (parsed.intent === 'ai_order_explain_item') {
     const match = resolveVoiceMatch(assistant.recommendations || [], parsed.itemPhrase || raw, { getLabel: row => row.itemName, getAliases: row => row.reasons || [], minScore: 35, highThreshold: 70, margin: 10 });
     const row = match?.top?.item;
-    return { intent:'ai_order_summary', label: row ? `Why ${row.itemName}?` : 'AI Order Explanation', tab:'inventory', summary: row ? `${row.itemName}: ${row.reasons?.join(' • ') || 'Review stock, par, events, menu impact, prep, and waste.'}` : 'I could not match that item to an AI order suggestion. Opening AI Order Assistant.', rows: row ? [{ menuItemName:`Suggest ${row.suggestedQty} ${row.itemName}`, severity: row.reasons?.join(' • ') || row.priority }] : topRows, safe:true, needsConfirmation:false };
+    return { intent:'ai_order_summary', label: row ? `Why ${row.itemName}?` : 'Order Suggestion Details', tab:'inventory', summary: row ? `${row.itemName}: ${row.reasons?.join(' • ') || 'Review stock, par levels, events, menu links, prep, and waste.'}` : 'I could not match that item to an order suggestion. Opening Order Suggestions.', rows: row ? [{ menuItemName:`Suggested: ${row.suggestedQty} ${row.itemName}`, severity: row.reasons?.join(' • ') || row.priority }] : topRows, safe:true, needsConfirmation:false };
   }
   if (parsed.intent === 'ai_order_add_item') {
     const match = resolveVoiceMatch(inventoryItems || [], parsed.itemPhrase || raw, { getLabel: item => item.name || item.itemName || item.productName || item.title || '', getAliases: item => [item.category, item.subcategory, item.vendorName, item.supplierName, item.brand, item.pfgCode, item.sku, item.code, item.upc, item.gtin, item.packSize, ...(Array.isArray(item.aliases) ? item.aliases : []), ...(Array.isArray(item.alternateNames) ? item.alternateNames : []), ...(Array.isArray(item.keywords) ? item.keywords : [])].filter(Boolean), minScore: 35, highThreshold: 70, margin: 10 });
-    return { intent:'ai_order_summary', label: match?.top?.item ? `Review ${match.top.item.name}` : 'Open AI Order Draft', tab:'inventory', summary: match?.top?.item ? `Opening AI Order Assistant. Review ${match.top.item.name} and add it to the draft before dispatching.` : 'Opening AI Order Assistant so you can add the item to the draft before dispatching.', rows: topRows, safe:true, needsConfirmation:false };
+    return { intent:'ai_order_summary', label: match?.top?.item ? `Review ${match.top.item.name}` : 'Open Order Draft', tab:'inventory', summary: match?.top?.item ? `Opening Order Suggestions. Review ${match.top.item.name} and add it to the draft before sending the order.` : 'Opening Order Suggestions so you can add the item to a draft. Nothing will be sent automatically.', rows: topRows, safe:true, needsConfirmation:false };
   }
-  return { intent:'ai_order_summary', label:'AI Order Assistant', tab:'inventory', summary: summarizeAiOrderAssistant(assistant), rows: topRows, safe:true, needsConfirmation:false };
+  return { intent:'ai_order_summary', label:'Order Suggestions', tab:'inventory', summary: summarizeAiOrderAssistant(assistant), rows: topRows, safe:true, needsConfirmation:false };
 };
 
 const parseVoiceEventCreatePayload = (text = '') => {
@@ -1771,7 +1771,7 @@ const VoiceCommandDockBase = ({ appUser, inventoryItems = [], recipes = [], user
         recipeId: recipe?.id || '',
         summary: recipe?.title
           ? `Open Recipe Book directly to ${recipe.title}.`
-          : `Open Recipe Book and search for “${recipeQuery}”. If the recipe exists now or is added later, the app will use the recipe list instead of a hardcoded command.`,
+          : `Open Recipe Book and search for “${recipeQuery}”. If the recipe is added later, 86Voice will open it from the Recipe Book.`,
         safe:true,
         needsConfirmation:false
       };
@@ -2985,7 +2985,7 @@ const VoiceCommandDockBase = ({ appUser, inventoryItems = [], recipes = [], user
           {listening ? <MicOff size={16}/> : <Mic size={16}/>} {listening ? 'Listening...' : 'Start Listening'}
         </button>
         <textarea value={manualText} onChange={e=>setManualText(e.target.value)} className={T.input} rows="2" placeholder='Try: "86 salmon", "prep 2 pans tomatoes", "add event Friday at 6pm", "request off next Monday", "set availability Tuesday 10am to 4pm"' />
-        <button type="button" onClick={() => processText(manualText)} className={`${T.btnAlt} w-full`}>Parse Typed Command</button>
+        <button type="button" onClick={() => processText(manualText)} className={`${T.btnAlt} w-full`}>Check Typed Request</button>
         {heardText && <div className="bg-[#12161A] border border-[#2A353D] rounded-xl p-2 text-xs"><span className="text-slate-500 font-black uppercase tracking-widest">Heard</span><div className="font-bold text-white mt-1">{heardText}</div></div>}
         {pending && <div className="bg-[#0B0E11] border border-[#D4A381]/40 rounded-xl p-3">
           <div className="text-[9px] uppercase tracking-widest font-black text-[#D4A381]">{pending.highRisk ? 'High-Risk Review' : 'Suggested Action'}</div>
@@ -3030,16 +3030,16 @@ const VoiceCommandDockBase = ({ appUser, inventoryItems = [], recipes = [], user
             <div className="text-[11px] text-slate-400 font-bold leading-snug mt-1">{voiceResult.summary}</div>
             {voiceResult.rows?.length > 0 && <div className="mt-2 space-y-1">{voiceResult.rows.slice(0, 6).map((row, idx) => <div key={idx} className="text-[10px] text-slate-300 bg-[#0B0E11] rounded-lg px-2 py-1 border border-[#2A353D]">{row.menuItemName} • {row.severity || 'check stock'}</div>)}</div>}
           </div>}
-          {lastUndo && <button type="button" onClick={() => executeAction({ intent:'undo_last_voice', label:'Undo last voice command', safe:true }, 'Undo button', false, true)} className={`${T.btnAlt} w-full mt-3`}>Undo Last Safe Voice Action</button>}
+          {lastUndo && <button type="button" onClick={() => executeAction({ intent:'undo_last_voice', label:'Undo last voice command', safe:true }, 'Undo button', false, true)} className={`${T.btnAlt} w-full mt-3`}>Undo Last Voice Action</button>}
           <div className="flex gap-2 mt-3">
-            {!['eighty_six_review','complete_list_review','task_upsert_review','shared_reminder_review'].includes(pending.intent) && <button onClick={executePending} className={`${T.btn} flex-1`}>{pending.safe && !pending.needsConfirmation ? 'Go' : 'Confirm'}</button>}
+            {!['eighty_six_review','complete_list_review','task_upsert_review','shared_reminder_review'].includes(pending.intent) && <button onClick={executePending} className={`${T.btn} flex-1`}>{pending.safe && !pending.needsConfirmation ? 'Open' : 'Confirm Action'}</button>}
             <button onClick={() => setPending(null)} className={`${T.btnAlt} ${['eighty_six_review','complete_list_review','task_upsert_review','shared_reminder_review'].includes(pending.intent) ? 'w-full' : ''}`}>Cancel</button>
           </div>
         </div>}
         {!canUseSpeech && <div className="text-[10px] text-amber-300 bg-amber-900/10 border border-amber-900/40 rounded-xl p-2 font-bold">This browser does not support built-in speech recognition. Type the command here, or use Chrome/Android for voice.</div>}
       </div>
     </div>}
-    <button type="button" aria-label={open ? 'Hide 86Voice assistant' : 'Open 86Voice'} aria-expanded={open} onClick={open ? closeDock : openDock} className="no-compact w-14 h-14 rounded-full bg-[#0B0E11] border border-[#D4A381]/70 text-[#D4A381] shadow-2xl flex items-center justify-center hover:scale-105 transition-transform" title={open ? 'Hide 86Voice assistant' : '86 Voice Assistant'}><Mic size={24}/></button>
+    <button type="button" aria-label={open ? 'Hide 86Voice assistant' : 'Open 86Voice'} aria-expanded={open} onClick={open ? closeDock : openDock} className="no-compact w-14 h-14 rounded-full bg-[#0B0E11] border border-[#D4A381]/70 text-[#D4A381] shadow-2xl flex items-center justify-center hover:scale-105 transition-transform" title={open ? 'Hide 86Voice assistant' : 'Open 86Voice'}><Mic size={24}/></button>
   </div>;
 };
 

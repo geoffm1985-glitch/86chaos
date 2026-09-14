@@ -13,7 +13,7 @@ const ROUTE_STATES = {
     ['Schedule Builder', 'Drag Board'],
     ['Schedule Builder', 'Warnings'],
     ['Schedule Builder', 'Edit Presets'],
-    ['Schedule Builder', 'Auto-Fill'],
+    ['Schedule Builder', 'Copy Month'],
     ['Schedule Builder', /^Event$/i],
   ],
   published: [
@@ -47,7 +47,7 @@ const ROUTE_STATES = {
     ['Owner Reports'], ['QuickBooks'], ['Accountant Packet'], ['Owner Rollup'],
   ],
   inventory: [
-    [/^count$/i], [/^order$/i], [/AI Order/i], [/^manage$/i], [/^vendors$/i], [/Invoices/i], [/Burn Log/i],
+    [/^count$/i], [/^order$/i], [/Order Suggestions/i], [/^manage$/i], [/^vendors$/i], [/Invoices/i], [/Burn Log/i],
   ],
   'menu-intelligence': [],
   'ai-tools': [],

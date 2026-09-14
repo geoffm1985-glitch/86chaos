@@ -624,7 +624,7 @@ const TabMenuIntelligence = ({ appUser, clientData, inventoryItems = [], menuDep
     }
     const currentUsage = normalizeAiUsage(menuAiUsage, 'menu');
     if (!menuAiExempt && requestedPages > currentUsage.remaining) {
-      addToast('Menu AI Page Limit', aiPageLimitMessage('menu', menuAiUsage, requestedPages));
+      addToast('Monthly Menu Scan Limit', aiPageLimitMessage('menu', menuAiUsage, requestedPages));
       scanBusyRef.current = false;
       return;
     }
@@ -678,9 +678,9 @@ const TabMenuIntelligence = ({ appUser, clientData, inventoryItems = [], menuDep
           });
         }, reject, resolve);
       });
-      setScanProgress({ label: 'Upload complete', detail: 'Preparing the AI menu reader.', percent: 63, startedAt: scanStartedAt });
+      setScanProgress({ label: 'Upload complete', detail: 'Preparing to read the menu.', percent: 63, startedAt: scanStartedAt });
       const downloadUrl = await getDownloadURL(fileRef);
-      setScanProgress({ label: 'Reading menu with AI', detail: 'Finding menu items, ingredients, and inventory matches. This can take a minute for big menus.', percent: 70, startedAt: scanStartedAt });
+      setScanProgress({ label: 'Reading menu', detail: 'Finding menu items, ingredients, and possible inventory matches. Large menus may take a minute.', percent: 70, startedAt: scanStartedAt });
       const response = await secureFetch('/api/scan-menu', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -701,16 +701,16 @@ const TabMenuIntelligence = ({ appUser, clientData, inventoryItems = [], menuDep
       if (!response.ok || result?.ok === false) {
         if (result.code === 'AI_PAGE_LIMIT_REACHED') {
           setMenuAiUsage(previous => ({ ...previous, menuPagesUsed: result.used, menuPagesLimit: result.limit }));
-          throw new Error(`This restaurant has used all menu AI pages for ${result.monthKey}. Used ${result.used} of ${result.limit}; ${result.remaining} remain.`);
+          throw new Error(`This restaurant has used all menu scan pages for ${result.monthKey}. Used ${result.used} of ${result.limit}; ${result.remaining} remain.`);
         }
-        if (result.code === 'AI_SCAN_ALREADY_SUBMITTED') throw new Error('This menu scan was already submitted. Wait for the first request to finish before trying again.');
+        if (result.code === 'AI_SCAN_ALREADY_SUBMITTED') throw new Error('This menu is already being scanned. Wait for the current scan to finish before trying again.');
         throw new Error(result?.error || 'Menu scan failed.');
       }
       if (result.aiUsage) setMenuAiUsage(previous => ({ ...previous, menuPagesUsed: result.aiUsage.usedAfter, menuPagesLimit: result.aiUsage.limit, menuPagesProcessed: result.aiUsage.processedAfter ?? Math.max(Number(previous.menuPagesProcessed || 0), Number(result.aiUsage.usedAfter || 0)), menuBypassPagesProcessed: result.aiUsage.bypassPagesAfter ?? Number(previous.menuBypassPagesProcessed || 0) }));
       setScanResult(normalizeReviewResult({ ...result, storagePath: path, downloadUrl, fileName: file.name, uploadedFileName: uploadFile.name, compression: prepared.compression }));
       setReviewOpen(true);
-      setScanProgress({ label: 'Menu scan ready', detail: 'Review the AI matches before saving.', percent: 100, done: true, startedAt: scanStartedAt });
-      addToast('Menu Scanned', 'Review the AI matches before saving.');
+      setScanProgress({ label: 'Menu scan ready', detail: 'Review every suggested inventory match before saving.', percent: 100, done: true, startedAt: scanStartedAt });
+      addToast('Menu Scan Ready', 'Review every suggested inventory match before saving.');
       setTimeout(() => setScanProgress(null), 1400);
     } catch (err) {
       const message = err.message || 'Could not scan menu.';
@@ -864,7 +864,7 @@ const TabMenuIntelligence = ({ appUser, clientData, inventoryItems = [], menuDep
       setDeleteProgress({
         scanId: scan.id,
         label: 'Deleting menu scan',
-        detail: `Deleting 0 of ${refsToDelete.length} Firestore records in batches.`,
+        detail: `Removing 0 of ${refsToDelete.length} saved menu links.`,
         percent: 10,
         startedAt: deleteStartedAt
       });
@@ -873,7 +873,7 @@ const TabMenuIntelligence = ({ appUser, clientData, inventoryItems = [], menuDep
         setDeleteProgress({
           scanId: scan.id,
           label: 'Deleting menu scan',
-          detail: `Deleted ${deleted} of ${total} Firestore records.`,
+          detail: `Removed ${deleted} of ${total} saved menu links.`,
           percent: pct,
           startedAt: deleteStartedAt
         });
@@ -962,7 +962,7 @@ const TabMenuIntelligence = ({ appUser, clientData, inventoryItems = [], menuDep
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-[#2A353D] pb-3">
         <div>
           <h2 className="text-2xl font-black flex items-center gap-2 text-white"><Sparkles size={24} className={T.copper}/> Menu Intelligence</h2>
-          <p className="text-xs text-slate-400 font-bold mt-1">Upload a menu, review AI ingredient links, and let 86 alerts show menu impact.</p>
+          <p className="text-xs text-slate-400 font-bold mt-1">Upload a menu, review suggested ingredient links, and show which menu items are affected by an 86 alert.</p>
         </div>
       </div>
 
@@ -970,7 +970,7 @@ const TabMenuIntelligence = ({ appUser, clientData, inventoryItems = [], menuDep
         <div className={`${T.card} p-4 space-y-4`}>
           <div className="rounded-xl border border-[#2A353D] bg-[#12161A] p-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <div className="text-[11px] font-black text-white">Menu AI pages: {menuUsageSummary.used} / {menuUsageSummary.limit} quota · {menuUsageSummary.processed} actually processed this month</div>
+              <div className="text-[11px] font-black text-white">Menu scan pages: {menuUsageSummary.used} / {menuUsageSummary.limit} used · {menuUsageSummary.processed} processed this month</div>
               <button type="button" onClick={loadMenuAiUsage} disabled={menuAiUsageLoading} className="text-[9px] font-black uppercase tracking-widest text-[#D4A381] disabled:opacity-50">{menuAiUsageLoading ? 'Refreshing…' : 'Refresh'}</button>
             </div>
             {menuAiExempt && <div className="mt-1 text-[10px] font-bold text-blue-300">Testing bypass active. Processed pages are logged separately and do not consume the customer quota.</div>}
@@ -986,8 +986,8 @@ const TabMenuIntelligence = ({ appUser, clientData, inventoryItems = [], menuDep
           </div>
           {scanProgress && <WorkProgressBar label={scanProgress.label} detail={scanProgress.detail} percent={displayedPercent(scanProgress, busy ? 96 : 100)} elapsedSeconds={progressElapsed(scanProgress)} />}
           <button onClick={scanMenu} disabled={busy || !file || (!menuAiExempt && menuUsageSummary.reached)} className={`${T.btn} w-full flex items-center justify-center gap-2 disabled:opacity-50`}>{busy ? <Upload size={18}/> : <Sparkles size={18}/>} {busy ? 'Scanning Menu' : 'Scan Menu'}</button>
-          {!menuAiExempt && menuUsageSummary.reached && <div className="rounded-xl border border-red-900/50 bg-red-950/20 p-3 text-[11px] font-bold text-red-200">This restaurant has used all menu AI pages for this month.</div>}
-          <div className="text-[10px] text-slate-500 font-bold leading-snug">AI results are not saved until you approve them. Regular staff cannot browse uploaded menu records unless the owner grants access.</div>
+          {!menuAiExempt && menuUsageSummary.reached && <div className="rounded-xl border border-red-900/50 bg-red-950/20 p-3 text-[11px] font-bold text-red-200">This restaurant has used all menu scan pages for this month.</div>}
+          <div className="text-[10px] text-slate-500 font-bold leading-snug">Suggested matches are not saved until you approve them. Only staff with owner-approved access can view uploaded menu records.</div>
         </div>
 
         <div className={`${T.card} overflow-hidden`}>
@@ -1004,7 +1004,7 @@ const TabMenuIntelligence = ({ appUser, clientData, inventoryItems = [], menuDep
       <div className={`${T.card} overflow-hidden`}>
         <div className={`${T.th} flex items-center justify-between gap-3`}><span>Menu Cost Breakdown</span><span className="text-[9px] font-black uppercase tracking-widest text-[#D4A381]">{approvedMenuCostSummary.pricedCount} priced</span></div>
         {(inventoryItems.length >= 350 || menuDependencies.length >= 500 || recipes.length >= 350) && <p className="p-3 text-xs text-amber-200">Some records may be outside this screen's current view. Review individual scans and any missing costs before using these totals.</p>}
-        {approvedMenuCostRows.length === 0 ? <div className="p-6 text-center text-xs text-slate-500 font-bold">Upload a menu, approve AI inventory matches, and add/confirm portions to see cost by menu item.</div> : (
+        {approvedMenuCostRows.length === 0 ? <div className="p-6 text-center text-xs text-slate-500 font-bold">Upload a menu, approve inventory matches, and confirm portions to see the cost of each menu item.</div> : (
           <div className="p-3 space-y-3">
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
               <div className="rounded-xl border border-[#2A353D] bg-[#12161A] p-3 text-center"><div className="text-[8px] uppercase tracking-widest text-slate-500 font-black">Items</div><div className="font-black text-white">{approvedMenuCostSummary.menuItemCount}</div></div>
@@ -1083,37 +1083,37 @@ const TabAITools = ({ appUser, clientData, setActiveTab, setInventorySubTabTarge
   const planAccess = usePlanAccess(appUser, clientData);
   const canMenu = canUseMenuIntelligence(appUser, clientData);
   const canAiOrder = planAccess.canUse(FEATURE_KEYS.AI_ORDER_ASSISTANT).allowed;
-  const aiLockedText = 'AI assisted ordering and Python intelligence start with Smart Kitchen.';
+  const aiLockedText = 'Order suggestions and advanced forecasting are available with Smart Kitchen.';
   const cards = [
     {
       title: 'Menu Intelligence',
       tag: canMenu ? 'Ready' : 'Owner-controlled',
-      desc: 'Upload a menu, review AI ingredient matches, and power 86 Menu Impact Alerts.',
+      desc: 'Upload a menu, review suggested ingredient matches, and show which menu items are affected by 86 alerts.',
       action: 'Open Menu Intelligence',
       tab: 'menu-intelligence',
       enabled: canMenu,
       note: 'Best for owners/managers after inventory names are cleaned up.'
     },
     {
-      title: 'AI Order Assistant',
+      title: 'Order Suggestions',
       tag: canAiOrder ? 'Smart Kitchen' : 'Smart Kitchen+',
-      desc: 'Build manager-reviewed order drafts, event supply plans, prep predictions, and Python forecasts. Python Ops Scan now lives in Manager Brief.',
-      action: 'Open AI Order Assistant',
+      desc: 'Review suggested order quantities, event supply needs, prep demand, and price changes. Manager Brief includes the wider restaurant check.',
+      action: 'Review Order Suggestions',
       tab: 'inventory',
       subTab: 'ai-order',
       enabled: canAiOrder,
       lockedMessage: aiLockedText,
-      note: 'AI and Python only suggest, report, and draft. Managers still approve, edit, and send vendor orders.'
+      note: 'These are suggestions only. A manager must review the draft and send the vendor order.'
     },
     {
       title: 'Invoice Scanner',
       tag: 'Inventory',
-      desc: 'Scan vendor invoices from Inventory, review raw extraction details, and approve stock changes.',
+      desc: 'Scan vendor invoices, review the extracted items and prices, then approve any stock changes.',
       action: 'Open Invoice Scanner',
       tab: 'inventory',
       subTab: 'invoices',
       enabled: true,
-      note: 'Always review scanned rows before approving. Blurry invoices still need human eyeballs.'
+      note: 'Always compare scanned rows with the invoice before approving them, especially when the image is blurry.'
     },
     {
       title: 'Voice Commands',
@@ -1137,9 +1137,9 @@ const TabAITools = ({ appUser, clientData, setActiveTab, setInventorySubTabTarge
   return (
     <div className="intelligence-desktop max-w-7xl mx-auto space-y-4 pb-24">
       <div className="cockpit-panel cockpit-grid rounded-2xl p-5 border border-[#2A353D]">
-        <div className="text-[10px] font-black uppercase tracking-widest text-[#D4A381]">Dedicated AI Tools</div>
-        <h2 className="text-2xl font-black text-white mt-1 flex items-center gap-2"><Sparkles size={24}/> AI Tools</h2>
-        <p className="text-sm text-slate-400 font-bold mt-2 max-w-3xl">One landing pad for the app’s AI-powered kitchen tools. Results should still be reviewed by a manager before they change real restaurant data.</p>
+        <div className="text-[10px] font-black uppercase tracking-widest text-[#D4A381]">Scans & Suggestions</div>
+        <h2 className="text-2xl font-black text-white mt-1 flex items-center gap-2"><Sparkles size={24}/> Kitchen Tools</h2>
+        <p className="text-sm text-slate-400 font-bold mt-2 max-w-3xl">Open menu and invoice scans, order suggestions, voice commands, and prep matching. Review each result before approving a restaurant change.</p>
       </div>
       <div className="grid md:grid-cols-2 gap-4">
         {cards.map(card => (
@@ -1154,8 +1154,8 @@ const TabAITools = ({ appUser, clientData, setActiveTab, setInventorySubTabTarge
         ))}
       </div>
       <div className={`${T.card} p-4 border-blue-900/40`}>
-        <h3 className="font-black text-blue-200">AI safety rule</h3>
-        <p className="text-xs text-slate-400 font-bold mt-1 leading-relaxed">AI can read, suggest, and match. Humans still approve anything that affects stock, prep, menu availability, reminders, or customer-facing paperwork.</p>
+        <h3 className="font-black text-blue-200">Review before changing anything</h3>
+        <p className="text-xs text-slate-400 font-bold mt-1 leading-relaxed">Scans can read, suggest, and match information. An authorized person must still approve changes to stock, prep, menu availability, reminders, or customer paperwork.</p>
       </div>
     </div>
   );

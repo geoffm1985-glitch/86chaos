@@ -285,7 +285,7 @@ export const groupAiOrderByVendor = (recommendations = []) => {
 };
 
 export const formatAiOrderDraftText = (assistant = {}, { includeReasons = true } = {}) => {
-  const lines = ['86 Chaos AI Order Draft', `Generated: ${new Date(assistant.generatedAt || Date.now()).toLocaleString()}`, ''];
+  const lines = ['86 Chaos Order Draft — Review Required', `Prepared: ${new Date(assistant.generatedAt || Date.now()).toLocaleString()}`, ''];
   (assistant.vendorDrafts || []).forEach(group => {
     lines.push(`${group.vendorName}`);
     group.items.forEach(row => {
@@ -319,7 +319,7 @@ export const parseAiOrderingVoiceIntent = (text = '') => {
   if (!q) return null;
   if (/\b(what should i order|what do we need to order|build an order|order draft|suggest order|ordering assistant|ai order|smart order|low stock priority|what do we need for|supplies for|supply check)\b/.test(q)) {
     const eventish = /\b(event|party|banquet|catering|reservation|saturday|sunday|monday|tuesday|wednesday|thursday|friday|weekend|tomorrow)\b/.test(q);
-    return { intent: eventish ? 'ai_event_supply_summary' : 'ai_order_summary', label: eventish ? 'AI Event Supply Check' : 'AI Order Assistant' };
+    return { intent: eventish ? 'ai_event_supply_summary' : 'ai_order_summary', label: eventish ? 'Event Supply Check' : 'Order Suggestions' };
   }
   const addMatch = q.match(/\b(?:add|put)\s+(.+?)\s+(?:to|on)\s+(?:the\s+)?(?:order draft|order|smart order)\b/);
   if (addMatch) return { intent: 'ai_order_add_item', itemPhrase: addMatch[1], label: `Add ${titleize(addMatch[1])} to order draft` };

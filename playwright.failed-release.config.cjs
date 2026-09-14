@@ -120,7 +120,8 @@ const selectedProjects = (releaseSelectionMode === 'reported-failed-only' || rel
 module.exports = defineConfig({
   testDir: './tests',
   testMatch: specsFromManifest(FAILED_ONLY_TESTS),
-  timeout: 90_000,
+  // Keep repair/delta execution behavior aligned with the full release gate.
+  timeout: 150_000,
   expect: { timeout: 12_000 },
   fullyParallel: false,
   workers: 1,

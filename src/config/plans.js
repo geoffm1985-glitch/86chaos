@@ -274,7 +274,7 @@ export const FEATURE_LABELS = {
   [FEATURE_KEYS.INVOICE_SCANNING]: 'Invoice Scanning',
   [FEATURE_KEYS.MENU_SCANNING]: 'Menu Scanning',
   [FEATURE_KEYS.MENU_INTELLIGENCE]: 'Menu Intelligence',
-  [FEATURE_KEYS.AI_ORDER_ASSISTANT]: 'AI Order Assistant',
-  [FEATURE_KEYS.PYTHON_INTELLIGENCE]: 'Python Intelligence',
+  [FEATURE_KEYS.AI_ORDER_ASSISTANT]: 'Order Suggestions',
+  [FEATURE_KEYS.PYTHON_INTELLIGENCE]: 'Advanced Forecasting',
   [FEATURE_KEYS.INTEGRATIONS]: 'Integrations'
 };

@@ -20,7 +20,9 @@ buildCriticalInventory({ outputPath: path.join(resultsRoot, 'release-critical-te
 module.exports = defineConfig({
   testDir: './tests',
   testMatch: [...RELEASE_TEST_MATCH],
-  timeout: 90_000,
+  // Exhaustive role sweeps and the intentional 61-second background-return
+  // probe need bounded headroom beyond the shared 90-second legacy budget.
+  timeout: 150_000,
   expect: { timeout: 12_000 },
   fullyParallel: false,
   workers: 1,

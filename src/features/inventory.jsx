@@ -600,8 +600,8 @@ const handleLogWaste = async (e) => {
 
   const copyAiOrderDraft = async () => {
     const text = formatAiOrderDraftText(aiOrderAssistant);
-    if (!text) return addToast('Draft Empty', 'No AI order draft is ready yet.');
-    try { await navigator.clipboard.writeText(text); addToast('AI Draft Copied', 'Order draft copied for review.'); }
+    if (!text) return addToast('Draft Empty', 'There are no suggested items to copy yet.');
+    try { await navigator.clipboard.writeText(text); addToast('Order Draft Copied', 'The draft was copied. Review it before sending it to a vendor.'); }
     catch (err) { addToast('Copy Failed', 'Your browser blocked clipboard access.'); }
   };
 
@@ -610,14 +610,14 @@ const handleLogWaste = async (e) => {
       itemId: row.itemId, itemName: row.itemName, vendorId: row.vendorId, vendorName: row.vendorName, qty: row.suggestedQty, packSize: row.packSize || '', estimatedCost: row.estimatedCost || 0, priority: row.priority, reasons: row.reasons || []
     }));
     if (!items.length) return addToast('Draft Empty', 'No suggested order items to save.');
-    await safeInventoryWrite({ action: 'add', collectionName: 'orders', label: 'AI order draft', data: {
-      restaurantId: appUser.restaurantId, workspaceId: appUser.restaurantId, status: 'draft', source: 'ai_order_assistant', title: `AI Order Draft ${getToday()}`, date: getToday(), createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), createdBy: appUser.id || '', createdByName: appUser.name || appUser.email || '', items, vendorDrafts: aiOrderDraftGroups.map(group => ({ vendorId: group.vendorId, vendorName: group.vendorName, total: group.total, itemCount: group.items.length })), summary: aiOrderSummaryText, managerBrief: aiOrderAssistant.managerBrief || [], eventNeeds: (aiOrderAssistant.eventNeeds || []).slice(0, 10).map(row => ({ eventId: row.event.id || '', eventTitle: row.event.title || '', date: row.date, itemNames: row.items.map(i => i.itemName).slice(0, 8) })), priceWarnings: (aiOrderAssistant.priceWarnings || []).slice(0, 20), pythonIntelligence: pythonOrderIntel ? { generatedAt: pythonOrderIntel.generatedAt, summary: pythonOrderIntel.summary || {}, managerBrief: pythonOrderIntel.managerBrief || [], topForecasts: (pythonOrderIntel.orderForecasts || []).slice(0, 20), priceTrends: (pythonOrderIntel.priceTrends || []).slice(0, 20), parRecommendations: (pythonOrderIntel.parRecommendations || []).slice(0, 20), wasteInsights: (pythonOrderIntel.wasteInsights || []).slice(0, 20), eventSupplyPlan: (pythonOrderIntel.eventSupplyPlan || []).slice(0, 30) } : null
+    await safeInventoryWrite({ action: 'add', collectionName: 'orders', label: 'order draft', data: {
+      restaurantId: appUser.restaurantId, workspaceId: appUser.restaurantId, status: 'draft', source: 'ai_order_assistant', title: `Order Draft ${getToday()}`, date: getToday(), createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), createdBy: appUser.id || '', createdByName: appUser.name || appUser.email || '', items, vendorDrafts: aiOrderDraftGroups.map(group => ({ vendorId: group.vendorId, vendorName: group.vendorName, total: group.total, itemCount: group.items.length })), summary: aiOrderSummaryText, managerBrief: aiOrderAssistant.managerBrief || [], eventNeeds: (aiOrderAssistant.eventNeeds || []).slice(0, 10).map(row => ({ eventId: row.event.id || '', eventTitle: row.event.title || '', date: row.date, itemNames: row.items.map(i => i.itemName).slice(0, 8) })), priceWarnings: (aiOrderAssistant.priceWarnings || []).slice(0, 20), pythonIntelligence: pythonOrderIntel ? { generatedAt: pythonOrderIntel.generatedAt, summary: pythonOrderIntel.summary || {}, managerBrief: pythonOrderIntel.managerBrief || [], topForecasts: (pythonOrderIntel.orderForecasts || []).slice(0, 20), priceTrends: (pythonOrderIntel.priceTrends || []).slice(0, 20), parRecommendations: (pythonOrderIntel.parRecommendations || []).slice(0, 20), wasteInsights: (pythonOrderIntel.wasteInsights || []).slice(0, 20), eventSupplyPlan: (pythonOrderIntel.eventSupplyPlan || []).slice(0, 30) } : null
     } });
-    addToast('AI Draft Saved', 'Saved to Orders as a draft. Review before sending to vendors.');
+    addToast('Order Draft Saved', 'Saved in Orders. Review the draft before sending it to a vendor.');
   };
 
   const runPythonOrderIntelligence = async () => {
-    if (!appUser?.restaurantId) return addToast('Missing Workspace', 'Choose a workspace before running Python order intelligence.');
+    if (!appUser?.restaurantId) return addToast('Choose a Restaurant', 'Choose a restaurant before checking what to order.');
     setPythonOrderLoading(true);
     setPythonOrderError('');
     try {
@@ -633,13 +633,13 @@ const handleLogWaste = async (e) => {
         })
       });
       const payload = await response.json().catch(() => ({}));
-      if (!response.ok || payload?.ok === false) throw new Error(payload?.error || 'Python order intelligence failed.');
+      if (!response.ok || payload?.ok === false) throw new Error(payload?.error || 'The order forecast could not be completed.');
       setPythonOrderIntel(payload);
-      addToast('Python Forecast Ready', `${payload?.summary?.forecastCount || 0} forecasts, ${payload?.summary?.priceWarningCount || 0} price warnings, ${payload?.summary?.eventSupplyCount || 0} event supply signals.`);
+      addToast('Order Forecast Ready', `${payload?.summary?.forecastCount || 0} item forecasts, ${payload?.summary?.priceWarningCount || 0} price warnings, and ${payload?.summary?.eventSupplyCount || 0} event checks are ready to review.`);
     } catch (error) {
-      const message = error?.message || 'Python order intelligence is unavailable.';
+      const message = error?.message || 'The order forecast is unavailable right now.';
       setPythonOrderError(message);
-      addToast('Python Forecast Unavailable', `${message} The normal AI Order Assistant is still available.`);
+      addToast('Order Forecast Unavailable', `${message} You can still review the standard order suggestions.`);
     } finally {
       setPythonOrderLoading(false);
     }
@@ -1508,7 +1508,7 @@ const groupedItems = orderableInventoryItems
         <div className={`inventory-subtabs bg-[#12161A] p-1 rounded-xl flex flex-wrap border ${T.border} w-full sm:w-auto`}>
           <button onClick={() => setInvTab('count')} className={`px-4 py-1.5 rounded-lg text-xs font-bold capitalize whitespace-nowrap transition-all flex-1 sm:flex-none ${invTab === 'count' ? `${T.grad} text-slate-900 shadow-sm` : 'text-slate-400 hover:text-white'}`}>count</button>
           {hasInvPerms && <button onClick={() => setInvTab('order')} className={`px-4 py-1.5 rounded-lg text-xs font-bold capitalize whitespace-nowrap transition-all flex-1 sm:flex-none ${invTab === 'order' ? `${T.grad} text-slate-900 shadow-sm` : 'text-slate-400 hover:text-white'}`}>order</button>}
-          {hasInvPerms && canUseAiOrdering && <button onClick={() => setInvTab('ai-order')} className={`px-4 py-1.5 rounded-lg text-xs font-bold capitalize whitespace-nowrap transition-all flex-1 sm:flex-none ${invTab === 'ai-order' ? `${T.grad} text-slate-900 shadow-sm` : 'text-slate-400 hover:text-white'}`}>🤖 AI Order</button>}
+          {hasInvPerms && canUseAiOrdering && <button onClick={() => setInvTab('ai-order')} className={`px-4 py-1.5 rounded-lg text-xs font-bold capitalize whitespace-nowrap transition-all flex-1 sm:flex-none ${invTab === 'ai-order' ? `${T.grad} text-slate-900 shadow-sm` : 'text-slate-400 hover:text-white'}`}>Order Suggestions</button>}
           {hasInvPerms && <button onClick={() => setInvTab('manage')} className={`px-4 py-1.5 rounded-lg text-xs font-bold capitalize whitespace-nowrap transition-all flex-1 sm:flex-none ${invTab === 'manage' ? `${T.grad} text-slate-900 shadow-sm` : 'text-slate-400 hover:text-white'}`}>manage</button>}
           {hasInvPerms && <button onClick={() => setInvTab('vendors')} className={`px-4 py-1.5 rounded-lg text-xs font-bold capitalize whitespace-nowrap transition-all flex-1 sm:flex-none ${invTab === 'vendors' ? `${T.grad} text-slate-900 shadow-sm` : 'text-slate-400 hover:text-white'}`}>vendors</button>}
           {hasInvPerms && canUseSmartInventory && <button onClick={() => setInvTab('invoices')} className={`px-4 py-1.5 rounded-lg text-xs font-bold capitalize whitespace-nowrap transition-all flex-1 sm:flex-none ${invTab === 'invoices' ? `${T.grad} text-slate-900 shadow-sm` : 'text-slate-400 hover:text-white'}`}>🧾 Invoices</button>}
@@ -1572,9 +1572,9 @@ const groupedItems = orderableInventoryItems
           <div id="ai-order-assistant-panel" className={`${T.card} p-4 sm:p-5 border-[#D4A381]/40 bg-gradient-to-br from-[#1A2126] to-[#0B0E11]`}>
             <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-4">
               <div>
-                <div className="text-[10px] font-black uppercase tracking-widest text-[#D4A381] flex items-center gap-2"><Sparkles size={14}/> AI Order Assistant</div>
-                <h3 className="text-2xl font-black text-white mt-1">Smart order drafts, event supply checks, price warnings</h3>
-                <p className="text-sm text-slate-300 font-bold mt-2 max-w-3xl">AI suggests and explains. Managers still review, edit, copy, export, email, text, or save drafts before anything becomes a real vendor order.</p>
+                <div className="text-[10px] font-black uppercase tracking-widest text-[#D4A381] flex items-center gap-2"><Sparkles size={14}/> Order Suggestions</div>
+                <h3 className="text-2xl font-black text-white mt-1">Review suggested quantities, event needs, and price changes</h3>
+                <p className="text-sm text-slate-300 font-bold mt-2 max-w-3xl">86 Chaos checks current stock, par levels, deliveries, events, prep, waste, and invoice history. Nothing is ordered until a manager reviews the draft and sends it to a vendor.</p>
                 <div className="mt-3 text-xs font-bold text-slate-400">{aiOrderSummaryText}</div>
               </div>
               <div className="grid grid-cols-2 gap-2 min-w-[220px]">
@@ -1587,15 +1587,15 @@ const groupedItems = orderableInventoryItems
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 mt-4">
               <div><label className={T.label}>Order lookahead</label><select value={aiOrderDaysAhead} onChange={e=>setAiOrderDaysAhead(Number(e.target.value)||7)} className={T.input}><option value={3}>3 days</option><option value={7}>7 days</option><option value={14}>14 days</option></select></div>
               <div><label className={T.label}>Event lookahead</label><select value={aiEventDaysAhead} onChange={e=>setAiEventDaysAhead(Number(e.target.value)||14)} className={T.input}><option value={7}>7 days</option><option value={14}>14 days</option><option value={30}>30 days</option></select></div>
-              <button type="button" onClick={applyAiOrderOverrides} className={`${T.btn} self-end py-3`}>Apply All Suggestions</button>
-              <button type="button" onClick={copyAiOrderDraft} className={`${T.btnAlt} self-end py-3`}>Copy Full Draft</button>
+              <button type="button" onClick={applyAiOrderOverrides} className={`${T.btn} self-end py-3`}>Add All to Order Draft</button>
+              <button type="button" onClick={copyAiOrderDraft} className={`${T.btnAlt} self-end py-3`}>Copy Order Draft</button>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mt-2">
-              <button type="button" onClick={saveAiOrderDraft} className="w-full rounded-xl bg-emerald-900/20 border border-emerald-500/40 text-emerald-300 py-3 text-xs font-black uppercase tracking-widest hover:bg-emerald-900/30">Save AI Draft to Orders</button>
-              {canUsePythonIntelligence ? <button type="button" onClick={runPythonOrderIntelligence} disabled={pythonOrderLoading} className="w-full rounded-xl bg-blue-900/20 border border-blue-500/40 text-blue-200 py-3 text-xs font-black uppercase tracking-widest hover:bg-blue-900/30 disabled:opacity-60">{pythonOrderLoading ? 'Running Python Forecast…' : 'Run Python Forecast'}</button> : <div className="rounded-xl border border-amber-500/30 bg-amber-950/10 p-3 text-[11px] font-black text-amber-100">Python forecasting starts with Smart Kitchen.</div>}
-              <button type="button" onClick={applySelectedAiOrderOverrides} disabled={!selectedAiSuggestionRows.length} className="w-full rounded-xl bg-[#0B0E11] border border-[#2A353D] text-[#D4A381] py-3 text-xs font-black uppercase tracking-widest hover:border-[#D4A381]/60 disabled:opacity-40">Apply Selected to Draft</button>
+              <button type="button" onClick={saveAiOrderDraft} className="w-full rounded-xl bg-emerald-900/20 border border-emerald-500/40 text-emerald-300 py-3 text-xs font-black uppercase tracking-widest hover:bg-emerald-900/30">Save Draft to Orders</button>
+              {canUsePythonIntelligence ? <button type="button" onClick={runPythonOrderIntelligence} disabled={pythonOrderLoading} className="w-full rounded-xl bg-blue-900/20 border border-blue-500/40 text-blue-200 py-3 text-xs font-black uppercase tracking-widest hover:bg-blue-900/30 disabled:opacity-60">{pythonOrderLoading ? 'Checking What to Order…' : 'Run Order Forecast'}</button> : <div className="rounded-xl border border-amber-500/30 bg-amber-950/10 p-3 text-[11px] font-black text-amber-100">Advanced order forecasting is available with Smart Kitchen.</div>}
+              <button type="button" onClick={applySelectedAiOrderOverrides} disabled={!selectedAiSuggestionRows.length} className="w-full rounded-xl bg-[#0B0E11] border border-[#2A353D] text-[#D4A381] py-3 text-xs font-black uppercase tracking-widest hover:border-[#D4A381]/60 disabled:opacity-40">Add Selected to Order Draft</button>
             </div>
-            {pythonOrderError && <div className="mt-2 rounded-xl border border-amber-500/30 bg-amber-950/20 p-3 text-[11px] font-bold text-amber-100">Python analysis did not finish: {pythonOrderError}. The regular AI Order Assistant is still active.</div>}
+            {pythonOrderError && <div className="mt-2 rounded-xl border border-amber-500/30 bg-amber-950/20 p-3 text-[11px] font-bold text-amber-100">The advanced forecast did not finish: {pythonOrderError} You can still review the standard order suggestions.</div>}
 
           </div>
 
@@ -1604,13 +1604,13 @@ const groupedItems = orderableInventoryItems
               <div className={`${T.card} p-4 xl:col-span-4 border-blue-500/30 bg-blue-950/10`}>
                 <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
                   <div>
-                    <div className="text-[10px] font-black uppercase tracking-widest text-blue-200">Python Intelligence Layer</div>
-                    <h3 className="font-black text-white text-xl mt-1">Forecasts, par tuning, invoice trends, waste strategy</h3>
-                    <p className="text-xs font-bold text-slate-400 mt-1">This is the behind-the-scenes Python analysis layer. It does not send orders. It adds heavier forecasting math to the manager review workflow.</p>
+                    <div className="text-[10px] font-black uppercase tracking-widest text-blue-200">Advanced Order Forecast</div>
+                    <h3 className="font-black text-white text-xl mt-1">Order forecasts, suggested par levels, price trends, and waste</h3>
+                    <p className="text-xs font-bold text-slate-400 mt-1">These are recommendations for manager review. This forecast does not send orders or change par levels.</p>
                   </div>
                   <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
                     <div className="rounded-xl border border-blue-500/30 bg-[#12161A] p-2 text-center"><div className="font-black text-white">{pythonSummary?.forecastCount || 0}</div><div className="text-[7px] uppercase tracking-widest text-slate-500 font-black">Forecasts</div></div>
-                    <div className="rounded-xl border border-blue-500/30 bg-[#12161A] p-2 text-center"><div className="font-black text-white">{pythonSummary?.parChangeCount || 0}</div><div className="text-[7px] uppercase tracking-widest text-slate-500 font-black">Par Ideas</div></div>
+                    <div className="rounded-xl border border-blue-500/30 bg-[#12161A] p-2 text-center"><div className="font-black text-white">{pythonSummary?.parChangeCount || 0}</div><div className="text-[7px] uppercase tracking-widest text-slate-500 font-black">Par Changes</div></div>
                     <div className="rounded-xl border border-blue-500/30 bg-[#12161A] p-2 text-center"><div className="font-black text-white">{pythonSummary?.priceWarningCount || 0}</div><div className="text-[7px] uppercase tracking-widest text-slate-500 font-black">Prices</div></div>
                     <div className="rounded-xl border border-blue-500/30 bg-[#12161A] p-2 text-center"><div className="font-black text-white">{pythonSummary?.wasteInsightCount || 0}</div><div className="text-[7px] uppercase tracking-widest text-slate-500 font-black">Waste</div></div>
                     <div className="rounded-xl border border-blue-500/30 bg-[#12161A] p-2 text-center"><div className="font-black text-white">{pythonSummary?.eventSupplyCount || 0}</div><div className="text-[7px] uppercase tracking-widest text-slate-500 font-black">Events</div></div>
@@ -1619,16 +1619,16 @@ const groupedItems = orderableInventoryItems
                 </div>
               </div>
               <div className={`${T.card} p-4 xl:col-span-2`}>
-                <h3 className="font-black text-white text-lg mb-3">Python Order Forecasts</h3>
-                <div className="space-y-2 max-h-96 overflow-y-auto custom-scrollbar">{pythonForecastRows.length ? pythonForecastRows.slice(0, 16).map(row => <div key={`py-${row.itemId || row.itemName}`} className="rounded-xl border border-[#2A353D] bg-[#12161A] p-3"><div className="flex flex-wrap items-center gap-2"><span className="font-black text-white">{row.itemName}</span><span className="text-[8px] px-2 py-0.5 rounded-full border border-blue-500/40 text-blue-200 uppercase tracking-widest font-black">{row.confidence}% confidence</span><span className="text-[8px] px-2 py-0.5 rounded-full border border-[#2A353D] text-slate-300 uppercase tracking-widest font-black">{row.priority}</span></div><div className="text-[11px] text-slate-400 font-bold mt-1">Suggest {row.suggestedQty} • Weekly velocity {row.weeklyVelocity || 0} • Stock {row.stock} / Par {row.par}</div><div className="text-[11px] text-slate-300 mt-1">{(row.reasons || []).slice(0, 4).join(' • ') || 'Review setup and history.'}</div></div>) : <p className="text-xs text-slate-500 font-bold">Run Python Forecast to see deeper order analysis.</p>}</div>
+                <h3 className="font-black text-white text-lg mb-3">Order Forecasts</h3>
+                <div className="space-y-2 max-h-96 overflow-y-auto custom-scrollbar">{pythonForecastRows.length ? pythonForecastRows.slice(0, 16).map(row => <div key={`py-${row.itemId || row.itemName}`} className="rounded-xl border border-[#2A353D] bg-[#12161A] p-3"><div className="flex flex-wrap items-center gap-2"><span className="font-black text-white">{row.itemName}</span><span className="text-[8px] px-2 py-0.5 rounded-full border border-blue-500/40 text-blue-200 uppercase tracking-widest font-black">{row.confidence}% confidence</span><span className="text-[8px] px-2 py-0.5 rounded-full border border-[#2A353D] text-slate-300 uppercase tracking-widest font-black">{row.priority}</span></div><div className="text-[11px] text-slate-400 font-bold mt-1">Suggested quantity {row.suggestedQty} • Average weekly use {row.weeklyVelocity || 0} • Stock {row.stock} / Par {row.par}</div><div className="text-[11px] text-slate-300 mt-1">{(row.reasons || []).slice(0, 4).join(' • ') || 'Review this item’s setup and order history.'}</div></div>) : <p className="text-xs text-slate-500 font-bold">Run the order forecast to review additional suggestions.</p>}</div>
               </div>
               <div className={`${T.card} p-4`}>
-                <h3 className="font-black text-white text-lg mb-3">Par + Waste</h3>
+                <h3 className="font-black text-white text-lg mb-3">Suggested Par Levels & Waste</h3>
                 <div className="space-y-2 max-h-96 overflow-y-auto custom-scrollbar">{[...(pythonOrderIntel.parRecommendations || []).map(row => `${row.itemName}: ${row.direction} par from ${row.currentPar} to ${row.suggestedPar}. ${row.reason}`), ...(pythonOrderIntel.wasteInsights || []).map(row => `${row.itemName}: ${row.suggestion} Recent waste ${row.recentWaste}.`)].length ? [...(pythonOrderIntel.parRecommendations || []).map(row => `${row.itemName}: ${row.direction} par from ${row.currentPar} to ${row.suggestedPar}. ${row.reason}`), ...(pythonOrderIntel.wasteInsights || []).map(row => `${row.itemName}: ${row.suggestion} Recent waste ${row.recentWaste}.`)].slice(0, 12).map((line, idx) => <div key={idx} className="rounded-xl border border-[#2A353D] bg-[#12161A] p-3 text-xs font-bold text-slate-300">{line}</div>) : <p className="text-xs text-slate-500 font-bold">No par or waste insights yet.</p>}</div>
               </div>
               <div className={`${T.card} p-4`}>
-                <h3 className="font-black text-white text-lg mb-3">Python Brief</h3>
-                <div className="space-y-2">{pythonManagerBrief.length ? pythonManagerBrief.map((line, idx) => <div key={idx} className="rounded-xl border border-blue-500/20 bg-[#12161A] p-3 text-xs font-bold text-blue-100">{line}</div>) : <p className="text-xs text-slate-500 font-bold">No Python brief yet.</p>}</div>
+                <h3 className="font-black text-white text-lg mb-3">Manager Notes</h3>
+                <div className="space-y-2">{pythonManagerBrief.length ? pythonManagerBrief.map((line, idx) => <div key={idx} className="rounded-xl border border-blue-500/20 bg-[#12161A] p-3 text-xs font-bold text-blue-100">{line}</div>) : <p className="text-xs text-slate-500 font-bold">No additional notes from this forecast.</p>}</div>
               </div>
             </div>
           )}
@@ -1706,7 +1706,7 @@ const groupedItems = orderableInventoryItems
                     </div>
                   </div>
                   );
-                }) : <SmartEmptyState icon={<Check size={22}/>} title="No order pressure detected" desc="Set par levels, inventory stock, vendors, menu links, events, and invoice history to sharpen the assistant." />}
+                }) : <SmartEmptyState icon={<Check size={22}/>} title="Nothing needs ordering right now" desc="Current stock and par levels do not show anything to add to an order. Complete vendor, menu, event, and invoice details for better suggestions." />}
               </div>
             </div>
 
@@ -1725,7 +1725,7 @@ const groupedItems = orderableInventoryItems
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
             <div className={`${T.card} p-4`}><h3 className="font-black text-white text-lg mb-3">Event Supply Planning</h3><div role="region" aria-label="Event Supply Planning findings" tabIndex={0} className="space-y-2 max-h-72 overflow-y-auto custom-scrollbar focus:outline-none focus:ring-2 focus:ring-[#D4A381]">{aiOrderAssistant.eventNeeds.length ? aiOrderAssistant.eventNeeds.map((row, idx) => <div key={idx} className="rounded-xl border border-[#2A353D] bg-[#12161A] p-3"><div className="text-[10px] font-black uppercase tracking-widest text-[#D4A381]">{row.date}</div><div className="font-black text-white">{row.event.title || 'Event'}</div><div className="text-[11px] text-slate-400 font-bold mt-1">{[...row.items.map(i => i.itemName), ...row.mentionedItems.map(m => m.item.name)].slice(0, 8).join(', ') || 'Review notes/menu.'}</div></div>) : <p className="text-xs text-slate-500 font-bold">No event supply signals in this window.</p>}</div></div>
             <div className={`${T.card} p-4`}><h3 className="font-black text-white text-lg mb-3">Prep Prediction</h3><div role="region" aria-label="Prep Prediction findings" tabIndex={0} className="space-y-2 max-h-72 overflow-y-auto custom-scrollbar focus:outline-none focus:ring-2 focus:ring-[#D4A381]">{aiOrderAssistant.prepSuggestions.length ? aiOrderAssistant.prepSuggestions.map((row, idx) => <div key={idx} className="rounded-xl border border-[#2A353D] bg-[#12161A] p-3"><div className="font-black text-white">{row.text}</div><div className="text-[11px] text-slate-400 font-bold mt-1">{row.reason}</div></div>) : <p className="text-xs text-slate-500 font-bold">Prep suggestions appear when prep, events, or low-stock items line up.</p>}</div></div>
-            <div className={`${T.card} p-4`}><h3 className="font-black text-white text-lg mb-3">Warnings</h3><div className="space-y-2 max-h-72 overflow-y-auto custom-scrollbar">{[...aiOrderAssistant.priceWarnings.map(w => w.summary), ...localPriceJumpWarnings.map(w => w.summary), ...aiOrderAssistant.wasteWarnings.map(w => w.summary)].length ? [...aiOrderAssistant.priceWarnings.map(w => w.summary), ...localPriceJumpWarnings.map(w => w.summary), ...aiOrderAssistant.wasteWarnings.map(w => w.summary)].slice(0, 10).map((line, idx) => <div key={idx} className="rounded-xl border border-red-500/30 bg-red-950/10 p-3 text-xs font-bold text-red-100 leading-snug">{line}</div>) : <p className="text-xs text-slate-500 font-bold">No invoice price or waste warnings detected.</p>}</div></div>
+            <div className={`${T.card} p-4`}><h3 className="font-black text-white text-lg mb-3">Price & Waste Checks</h3><div className="space-y-2 max-h-72 overflow-y-auto custom-scrollbar">{[...aiOrderAssistant.priceWarnings.map(w => w.summary), ...localPriceJumpWarnings.map(w => w.summary), ...aiOrderAssistant.wasteWarnings.map(w => w.summary)].length ? [...aiOrderAssistant.priceWarnings.map(w => w.summary), ...localPriceJumpWarnings.map(w => w.summary), ...aiOrderAssistant.wasteWarnings.map(w => w.summary)].slice(0, 10).map((line, idx) => <div key={idx} className="rounded-xl border border-red-500/30 bg-red-950/10 p-3 text-xs font-bold text-red-100 leading-snug">{line}</div>) : <p className="text-xs text-slate-500 font-bold">No unusual price changes or waste concerns were found.</p>}</div></div>
           </div>
         </div>
       )}

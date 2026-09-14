@@ -425,7 +425,7 @@ export const MASTER_ADMIN_EMAIL = (process.env.REACT_APP_MASTER_ADMIN_EMAIL || '
 export const EVENT_TAGS = ['Standard Day', 'Packers Game', 'Brewers Game', 'Live Music', 'Severe Weather', 'Private Catering', 'Holiday'];
 
 // --- VERSION TRACKING ---
-export const CURRENT_VERSION = '16.0.231';
+export const CURRENT_VERSION = '16.0.232';
 
 // --- Helpers ---
 const usePageVisible = () => {
@@ -519,6 +519,23 @@ const createFirestoreDiagnosticsDefaults = () => ({
   writesCompleted: 0,
   skippedNoOpWrites: 0,
   auditWritesCreated: 0,
+  schedule: {
+    sdkReads: 0,
+    documentsObserved: 0,
+    directSdkWrites: 0,
+    totalScheduleDocumentsWritten: 0,
+    batchedWriteOperations: 0,
+    batchedWriteDocuments: 0,
+    skippedNoOpWrites: 0,
+    quickEditWrites: 0,
+    canonicalDatePatches: 0,
+    rescueQueryExecutions: 0,
+    rescueActivationsByReason: {},
+    auditDocumentReads: 0,
+    auditPages: 0,
+    auditLookupFailures: 0,
+    auditWrites: 0
+  },
   lastResetAt: new Date().toISOString()
 });
 
@@ -537,6 +554,13 @@ const ensureFirestoreDiagnosticsShape = (diagnostics = {}) => {
     target[key] = Number(target[key] || 0);
   });
   if (!target.lastResetAt) target.lastResetAt = defaults.lastResetAt;
+  target.schedule = target.schedule && typeof target.schedule === 'object' && !Array.isArray(target.schedule) ? target.schedule : {};
+  Object.entries(defaults.schedule).forEach(([key, value]) => {
+    if (target.schedule[key] === undefined || target.schedule[key] === null) target.schedule[key] = value;
+  });
+  target.schedule.rescueActivationsByReason = target.schedule.rescueActivationsByReason && typeof target.schedule.rescueActivationsByReason === 'object'
+    ? target.schedule.rescueActivationsByReason
+    : {};
   return target;
 };
 
@@ -759,6 +783,10 @@ const acquireSharedLiveCollection = ({ coll, restId, constraints, key, setData, 
         entry.documentsReceivedChanges = (entry.documentsReceivedChanges || 0) + (isInitial ? 0 : changes.length);
         setLiveCacheEntry(liveCollectionSessionCache, key, { data: docs, coll, restId, restaurantId: restId, viewerUid, userSensitive: true });
         if (diagnostics) {
+          if (coll === 'shifts') {
+            const scheduleDiagnostics = ensureFirestoreDiagnosticsShape(diagnostics).schedule;
+            scheduleDiagnostics.documentsObserved += isInitial ? snap.docs.length : changes.length;
+          }
           diagnostics.documentsReceivedByQuery = diagnostics.documentsReceivedByQuery && typeof diagnostics.documentsReceivedByQuery === 'object' && !Array.isArray(diagnostics.documentsReceivedByQuery) ? diagnostics.documentsReceivedByQuery : {};
           diagnostics.listeners = diagnostics.listeners && typeof diagnostics.listeners === 'object' && !Array.isArray(diagnostics.listeners) ? diagnostics.listeners : {};
           diagnostics.documentsReceivedByQuery[key] = (diagnostics.documentsReceivedByQuery[key] || 0) + (isInitial ? snap.docs.length : changes.length);
@@ -797,6 +825,11 @@ const acquireSharedLiveCollection = ({ coll, restId, constraints, key, setData, 
         entry.subscribers.forEach(row => row.fn(entry.data || [], { resolved: true, stale: true, error: message, fromServer: false }));
       }
     );
+    if (diagnostics && coll === 'shifts') {
+      const scheduleDiagnostics = ensureFirestoreDiagnosticsShape(diagnostics).schedule;
+      scheduleDiagnostics.sdkReads += 1;
+      if (String(debugLabel || '').includes('scheduleDateKey-rescue')) scheduleDiagnostics.rescueQueryExecutions += 1;
+    }
     liveCollectionRegistry.set(key, entry);
     if (diagnostics) diagnostics.activeListeners = liveCollectionRegistry.size;
   } else {
@@ -1567,6 +1600,21 @@ export const recordFirestoreWriteDiagnostic = ({ collectionName = '', action = '
   if (skipped) { diag.skippedNoOpWrites = (diag.skippedNoOpWrites || 0) + 1; diag.writes[key].skippedNoOp += 1; }
   if (audit) { diag.auditWritesCreated = (diag.auditWritesCreated || 0) + 1; diag.writes[key].auditWrites += 1; }
   diag.writes[key].lastAt = new Date().toISOString();
+};
+
+export const recordScheduleOperationDiagnostic = (operation = '', amount = 1, detail = '') => {
+  const diag = getFirestoreDiagnostics();
+  if (!diag) return null;
+  const schedule = ensureFirestoreDiagnosticsShape(diag).schedule;
+  const count = Number.isFinite(Number(amount)) ? Number(amount) : 1;
+  if (operation === 'rescueActivation') {
+    const reason = String(detail || 'unspecified');
+    schedule.rescueActivationsByReason[reason] = Number(schedule.rescueActivationsByReason[reason] || 0) + count;
+  } else if (Object.prototype.hasOwnProperty.call(schedule, operation) && typeof schedule[operation] === 'number') {
+    schedule[operation] += count;
+  }
+  schedule.lastOperationAt = new Date().toISOString();
+  return schedule;
 };
 
 

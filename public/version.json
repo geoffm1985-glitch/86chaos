@@ -1,16 +1,17 @@
 {
-  "version": "16.0.231",
-  "name": "86 Chaos 16.0.231",
-  "build": "16.0.231",
-  "label": "86 Chaos 16.0.231",
-  "releasedAt": "2026-09-13T03:49:13.749Z",
-  "releaseTitle": "Runtime Evidence and Partial Resume Repair",
+  "version": "16.0.232",
+  "name": "86 Chaos 16.0.232",
+  "build": "16.0.232",
+  "label": "86 Chaos 16.0.232",
+  "releasedAt": "2026-09-13T14:27:19.000Z",
+  "releaseTitle": "Schedule Integrity Evidence and Canonical Date Writes",
   "notes": [
-    "Health and backup diagnostics preserve unavailable states and distinguish administrator reports from verified results.",
-    "Full release runs persist exact test progress for guarded partial recovery after interruption; only the complete gate can certify a release.",
-    "Customer AI policy, restaurant calculations, scheduling, security configuration and Firebase operation counts remain unchanged."
+    "Newly created and explicitly moved schedule dates keep date, scheduleDateKey, and scheduleMonth internally consistent.",
+    "Unchanged quick edits and same-date moves avoid unnecessary shift writes.",
+    "Schedule Integrity Audit is read-only and preserves historical compatibility; no rescue retirement or historical migration occurred.",
+    "Active screens use clearer restaurant language for suggestions, drafts, actions, empty states, and recovery messages without changing their behavior."
   ],
-  "title": "86 Chaos 16.0.231",
-  "summary": "Diagnostic accuracy and source-bound recovery of interrupted release tests.",
-  "description": "Diagnostic accuracy and source-bound recovery of interrupted release tests."
+  "title": "86 Chaos 16.0.232",
+  "summary": "Consistent schedule dates, fewer no-op writes, read-only integrity evidence, and clearer restaurant-facing copy.",
+  "description": "Consistent schedule dates, fewer no-op writes, read-only integrity evidence, and clearer restaurant-facing copy."
 }

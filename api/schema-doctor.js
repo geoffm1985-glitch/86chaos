@@ -7,6 +7,25 @@ function badDate(v) { if (!v || typeof v !== 'string') return false; const maybe
 function hasPrivateDemoField(data) { return PRIVATE_KEYS.filter(k => Object.prototype.hasOwnProperty.call(data || {}, k) && data[k]); }
 function isTenantCollection(c) { return c !== 'restaurants' && c !== 'users'; }
 
+async function readSchemaDoctorDocuments(db, collectionName, targetRestaurantId, query) {
+  if (collectionName === 'restaurants' && targetRestaurantId) {
+    const one = await db.collection(collectionName).doc(targetRestaurantId).get();
+    return one.exists ? [one] : [];
+  }
+  try {
+    const snap = await query.get();
+    return snap.docs;
+  } catch (err) {
+    if (targetRestaurantId) {
+      const scopedError = new Error(`Tenant-scoped ${collectionName} scan failed closed: ${err?.message || String(err)}`);
+      scopedError.code = 'SCHEMA_DOCTOR_TENANT_SCAN_FAILED';
+      throw scopedError;
+    }
+    const fallback = await db.collection(collectionName).limit(200).get();
+    return fallback.docs;
+  }
+}
+
 module.exports = async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ ok: false, error: 'Use POST.' });
   const started = Date.now();
@@ -28,14 +47,7 @@ module.exports = async function handler(req, res) {
         if (collectionName === 'users') query = db.collection(collectionName).where('restaurantId','==',targetRestaurantId).limit(900);
         else if (isTenantCollection(collectionName)) query = db.collection(collectionName).where('restaurantId','==',targetRestaurantId).limit(900);
       }
-      let docsForScan;
-      if (collectionName === 'restaurants' && targetRestaurantId) {
-        const one = await db.collection(collectionName).doc(targetRestaurantId).get();
-        docsForScan = one.exists ? [one] : [];
-      } else {
-        const snap = await query.get().catch(async () => db.collection(collectionName).limit(200).get());
-        docsForScan = snap.docs;
-      }
+      const docsForScan = await readSchemaDoctorDocuments(db, collectionName, targetRestaurantId, query);
       for (const docSnap of docsForScan) {
         const id = docSnap.id;
         const data = docSnap.data() || {};
@@ -100,3 +112,5 @@ module.exports = async function handler(req, res) {
     return res.status(500).json({ ok: false, error: err.message, durationMs: Date.now() - started });
   }
 };
+
+module.exports._test = { readSchemaDoctorDocuments };

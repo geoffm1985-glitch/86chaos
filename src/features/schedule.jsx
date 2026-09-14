@@ -6,7 +6,7 @@ import { getAuth, signInWithEmailAndPassword, sendPasswordResetEmail, createUser
 import { getToken, onMessage } from 'firebase/messaging';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { MapContainer, TileLayer, Marker, Circle, useMapEvents } from 'react-leaflet';
-import { T, db, storage, auth, messaging, firebaseConfig, secureFetch, MASTER_ADMIN_EMAIL, EVENT_TAGS, CURRENT_VERSION, useLiveCollection, formatDate, getToday, getMonthStr, formatDisplayDate, formatDisplayFullDate, formatDisplayMonth, getDaysInMonth, formatShortTime, formatClockTime, formatClockDateTime, getAvatar, generateTempPass, getExpDate, getHoliday, logAudit, customMapIcon, getRestaurantExportPrefix, safeFilenamePart, downloadCsvRows, downloadTextFile, openPrintableReport } from '../core/appCore';
+import { T, db, storage, auth, messaging, firebaseConfig, secureFetch, MASTER_ADMIN_EMAIL, EVENT_TAGS, CURRENT_VERSION, useLiveCollection, formatDate, getToday, getMonthStr, formatDisplayDate, formatDisplayFullDate, formatDisplayMonth, getDaysInMonth, formatShortTime, formatClockTime, formatClockDateTime, getAvatar, generateTempPass, getExpDate, getHoliday, logAudit, customMapIcon, getRestaurantExportPrefix, safeFilenamePart, downloadCsvRows, downloadTextFile, openPrintableReport, recordScheduleOperationDiagnostic } from '../core/appCore';
 import { buildAlertFingerprint, useRememberedAlert } from '../core/alertMemory';
 import {
   requestSubjectLabel,
@@ -18,6 +18,7 @@ import {
   isRequestOffBulkEligible,
 } from '../core/scheduleWarningControls';
 import { getCanonicalScheduleUserId, collectScheduleDurableIdentityAliases, collectScheduleShiftDurableIdentityAliases, collectScheduleEmailAliases, collectScheduleFullNameAliases, collectScheduleFirstNameAliases, collectScheduleIdentityAliases, collectScheduleShiftIdentityAliases, resolveSchedulePersonForAccount, resolveSchedulePersonForShift, buildCanonicalScheduleIdentityBlock, scheduleIdentityBlockMatchesPerson } from '../core/scheduleQueryPlanner';
+import { buildCanonicalScheduleCreateFields, buildScheduleQuickEditMutation } from '../core/scheduleIntegrity';
 import { CheersLogo, Modal, DrawerMenu, DayDotPrintScreen, MapClickListener, SmartEmptyState, MiniProblemCard, getHomeProfile, calculatePunchHours, getWeekStart, getWeekDates, roleMatches, toLocalTimeInput, makeLocalIso, PunchTable, FriendlyEmpty, GlobalSearchModal, QuickActionDock, KitchenTVMode, ChangeLogModal, UndoBar } from '../components/common';
 
 
@@ -761,12 +762,12 @@ const shiftMatchesLocalDeletePruneKeys = (shift = {}, pruneKeySet = new Set()) =
 export const buildAutoPopulateShift = (sourceShift = {}, newDate = '', restaurantId = '', actor = {}, copiedFromMonth = '', resolvedPerson = null) => {
   const nowIso = new Date().toISOString();
   const month = getMonthStr(newDate || getToday());
-  const identitySource = resolvedPerson || sourceShift;
+  // A shift document id is never a person identity. Preserve legacy aliases/name
+  // as evidence when a roster match is unavailable, but explicitly remove id.
+  const identitySource = resolvedPerson || { ...sourceShift, id: '' };
   return {
-    date: newDate,
-    scheduleDateKey: newDate,
-    scheduleMonth: month,
-    ...buildScheduleIdentityFields(identitySource),
+    ...buildCanonicalScheduleCreateFields(newDate, restaurantId),
+    ...buildScheduleIdentityFields(identitySource, sourceShift),
     role: sourceShift.role || resolvedPerson?.role || 'Unassigned',
     startTime: sourceShift.startTime || '',
     endTime: sourceShift.endTime || '',
@@ -774,8 +775,6 @@ export const buildAutoPopulateShift = (sourceShift = {}, newDate = '', restauran
     publishState: 'draft',
     scheduleBuilderDraft: true,
     readyToPublish: true,
-    restaurantId,
-    workspaceId: restaurantId,
     createdAt: nowIso,
     updatedAt: nowIso,
     createdBy: actor?.id || actor?.uid || actor?.email || 'auto-populate',
@@ -1266,7 +1265,7 @@ const handleClockIn = async () => {
         addToast('Clocked In', isUnscheduled ? 'Unscheduled shift started. Manager notified.' : 'Shift started successfully.');
       } catch (e) { 
         setActivePunch(null);
-        addToast('Error', e.message); 
+        addToast('Could Not Clock In', e.message || 'Your clock-in was not saved. Check your connection and try again.'); 
       } finally {
         setClockActionBusy(false);
         setClockActionType(null);
@@ -1276,13 +1275,13 @@ const handleClockIn = async () => {
 
     const workspaceSettings = mergeWorkspaceSettings(appUser, clientData);
     if (workspaceSettings.geofence) {
-      if (!navigator.geolocation) return addToast('Error', 'Your device does not support location tracking.');
+      if (!navigator.geolocation) return addToast('Location Unavailable', 'This device cannot share its location. Use a supported device or ask a manager for help.');
       
       const targetLat = parseFloat(workspaceSettings.lat);
       const targetLon = parseFloat(workspaceSettings.lon);
       const allowedRadius = parseInt(workspaceSettings.geofenceRadius) || 300; // Default to 300 feet
       
-      if (!targetLat || !targetLon) return addToast('Geofence Error', 'Location coordinates are not set in Workspace settings yet.');
+      if (!targetLat || !targetLon) return addToast('Restaurant Location Not Set', 'A manager needs to add the restaurant location in Workspace Settings before location-checked clock-ins can work.');
       
       addToast('Locating...', 'Verifying GPS coordinates. Hold still.');
       navigator.geolocation.getCurrentPosition(
@@ -1403,7 +1402,7 @@ Clock out anyway?`);
     } catch (err) {
       if (punchToClose?.id) delete recentlyClockedOutRef.current[punchToClose.id];
       setActivePunch(punchToClose || null);
-      addToast('Error', err.message); 
+      addToast('Could Not Clock Out', err.message || 'Your clock-out was not saved. Check your connection and try again.'); 
     } finally {
       setClockActionBusy(false);
       setClockActionType(null);
@@ -1423,7 +1422,7 @@ Clock out anyway?`);
   };
 
   const handleClaimShift = async (swap) => {
-    if (!swap?.shiftId) return addToast('Error', 'This trade-board listing is missing its linked shift ID.');
+    if (!swap?.shiftId) return addToast('Shift Cannot Be Claimed', 'This Trade Board listing is no longer linked to a shift. Ask a manager to remove it.');
     if (!window.confirm(`Claim this ${swap.role} shift on ${formatDisplayDate(swap.shiftDate || swap.date)}?`)) return;
 
     try {
@@ -1452,7 +1451,7 @@ Clock out anyway?`);
       addToast('Shift Claimed', 'The shift has been added to your schedule.');
       setSubTab('my-schedule');
     } catch (e) {
-      addToast('Error', e.message || 'Could not claim shift.');
+      addToast('Could Not Claim Shift', e.message || 'The shift was not added to your schedule. Refresh and try again.');
     }
   };
 
@@ -1501,7 +1500,7 @@ const handleOfferSwap = async (shift) => {
       }
 
     } catch (e) {
-      addToast('Error', e.message);
+      addToast('Could Not List Shift', e.message || 'The shift was not added to the Trade Board. Check your connection and try again.');
     }
   };
 
@@ -1971,7 +1970,7 @@ const [eventDate, setEventDate] = useState(getToday());
     : 'No weeks selected';
   const openPublishPicker = () => {
     if (fullPublishCandidateCount === 0) {
-      addToast('Notice', 'No schedule shifts found in this publishing window.');
+      addToast('Nothing to Publish', 'There are no shifts in the current publishing period. Add a shift or choose a different period.');
       return;
     }
     const draftWeekKeys = publishWeekOptions.filter(option => option.draftCount > 0).map(option => option.key);
@@ -2010,25 +2009,33 @@ const [eventDate, setEventDate] = useState(getToday());
     const days = Array.from(daySet).filter(Boolean).sort();
     for (const day of days) {
       try {
+        recordScheduleOperationDiagnostic('sdkReads');
         const dateSnap = await getDocs(query(collection(db, 'shifts'), where('restaurantId', '==', appUser.restaurantId), where('date', '==', day)));
+        recordScheduleOperationDiagnostic('documentsObserved', dateSnap.size);
         dateSnap.forEach(docSnap => addCandidate({ id: docSnap.id, ...docSnap.data() }));
       } catch (err) {
         console.warn('[86chaos] Publish date lookup failed; using loaded schedule candidates for date', day, err?.message || err);
       }
       try {
+        recordScheduleOperationDiagnostic('sdkReads');
         const scheduleDateSnap = await getDocs(query(collection(db, 'shifts'), where('restaurantId', '==', appUser.restaurantId), where('scheduleDateKey', '==', day)));
+        recordScheduleOperationDiagnostic('documentsObserved', scheduleDateSnap.size);
         scheduleDateSnap.forEach(docSnap => addCandidate({ id: docSnap.id, ...docSnap.data() }));
       } catch (err) {
         console.warn('[86chaos] Publish scheduleDateKey lookup failed; using loaded schedule candidates for date', day, err?.message || err);
       }
       try {
+        recordScheduleOperationDiagnostic('sdkReads');
         const workspaceDateSnap = await getDocs(query(collection(db, 'shifts'), where('workspaceId', '==', appUser.restaurantId), where('date', '==', day)));
+        recordScheduleOperationDiagnostic('documentsObserved', workspaceDateSnap.size);
         workspaceDateSnap.forEach(docSnap => addCandidate({ id: docSnap.id, ...docSnap.data() }));
       } catch (err) {
         console.warn('[86chaos] Publish workspace/date lookup failed; using loaded schedule candidates for date', day, err?.message || err);
       }
       try {
+        recordScheduleOperationDiagnostic('sdkReads');
         const workspaceScheduleDateSnap = await getDocs(query(collection(db, 'shifts'), where('workspaceId', '==', appUser.restaurantId), where('scheduleDateKey', '==', day)));
+        recordScheduleOperationDiagnostic('documentsObserved', workspaceScheduleDateSnap.size);
         workspaceScheduleDateSnap.forEach(docSnap => addCandidate({ id: docSnap.id, ...docSnap.data() }));
       } catch (err) {
         console.warn('[86chaos] Publish workspace/scheduleDateKey lookup failed; using loaded schedule candidates for date', day, err?.message || err);
@@ -2282,9 +2289,9 @@ const [eventDate, setEventDate] = useState(getToday());
         'systemSettings.targetLaborPct': parseFloat(targetLaborPct) || 0,
         'systemSettings.enableTargets': true
       });
-      addToast('Saved', 'Financial and labor targets updated.');
+      addToast('Targets Saved', 'Financial and labor targets were updated.');
       setIsTargetSettingsOpen(false);
-    } catch (err) { addToast('Error', err.message); }
+    } catch (err) { addToast('Targets Not Saved', err.message || 'Check your connection and try again.'); }
   };
 
   useEffect(() => {
@@ -2563,9 +2570,7 @@ const [eventDate, setEventDate] = useState(getToday());
         const shiftMonth = getMonthStr(d);
         const rescueEdit = canEditRescueMonth(shiftMonth);
         const shiftData = {
-          date: d,
-          scheduleDateKey: d,
-          scheduleMonth: shiftMonth,
+          ...buildCanonicalScheduleCreateFields(d, appUser.restaurantId),
           ...buildScheduleIdentityFields(emp),
           role: emp.role || 'Unassigned',
           startTime: startTime,
@@ -2574,8 +2579,6 @@ const [eventDate, setEventDate] = useState(getToday());
           publishState: 'draft',
           scheduleBuilderDraft: true,
           readyToPublish: true,
-          restaurantId: appUser.restaurantId,
-          workspaceId: appUser.restaurantId,
           createdAt: nowIso,
           updatedAt: nowIso,
           createdBy: appUser?.id || appUser?.email || 'schedule-builder',
@@ -2597,7 +2600,10 @@ const [eventDate, setEventDate] = useState(getToday());
           shiftData.sourceKey = `manual-schedule-builder-edit-${shiftMonth}`;
           shiftData.source = 'Schedule Builder manual edit after emergency rescue';
         }
+        recordScheduleOperationDiagnostic('canonicalDatePatches');
         const savedRef = await addDoc(collection(db, "shifts"), shiftData);
+        recordScheduleOperationDiagnostic('directSdkWrites');
+        recordScheduleOperationDiagnostic('totalScheduleDocumentsWritten');
         savedShiftEchoes.push({ ...shiftData, id: savedRef.id, localEcho: true });
       }
       if (savedShiftEchoes.length) {
@@ -2631,7 +2637,7 @@ const handlePublish = async (scope = 'selected-weeks') => {
     const publishWeekKeys = selectedWeeksForPublish.map(option => option.key);
 
     if (selectedCandidates.length === 0) {
-      addToast('Notice', publishAll ? 'No shifts found in this publishing window.' : 'No shifts found in the selected weeks.');
+      addToast('Nothing to Publish', publishAll ? 'There are no shifts in the current publishing period.' : 'There are no shifts in the selected weeks.');
       return;
     }
 
@@ -2751,13 +2757,19 @@ const handlePublish = async (scope = 'selected-weeks') => {
     try {
       for (let i = 0; i < updatePlan.length; i += 450) {
         const batch = writeBatch(db);
-        updatePlan.slice(i, i + 450).forEach(item => batch.update(doc(db, 'shifts', item.id), item.update));
+        const batchItems = updatePlan.slice(i, i + 450);
+        batchItems.forEach(item => batch.update(doc(db, 'shifts', item.id), item.update));
         await batch.commit();
+        recordScheduleOperationDiagnostic('batchedWriteOperations');
+        recordScheduleOperationDiagnostic('batchedWriteDocuments', batchItems.length);
+        recordScheduleOperationDiagnostic('totalScheduleDocumentsWritten', batchItems.length);
       }
 
       const verificationFailures = [];
       for (const item of updatePlan) {
+        recordScheduleOperationDiagnostic('sdkReads');
         const snap = await getDoc(doc(db, 'shifts', item.id));
+        if (snap.exists()) recordScheduleOperationDiagnostic('documentsObserved');
         if (!snap.exists()) {
           verificationFailures.push({ id: item.id, reason: 'missing after publish' });
           continue;
@@ -3056,7 +3068,7 @@ const handleAddEvent = async (e) => {
         await uploadBytes(fileRef, eventImageFile);
         photoUrl = await getDownloadURL(fileRef);
       } catch (error) {
-        addToast('Error', 'Image upload failed. Check connection.');
+        addToast('Image Not Uploaded', 'Check your connection and try uploading the image again.');
         setIsEventUploading(false);
         return;
       }
@@ -3131,11 +3143,12 @@ const handleAddEvent = async (e) => {
 
   // --- AUTO-POPULATE SCHEDULE ENGINE ---
   const handleAutoPopulate = async () => {
-    if (!autoPopSourceMonth) return addToast('Error', 'Please select a source month.');
+    if (!autoPopSourceMonth) return addToast('Choose a Month', 'Select the month you want to copy.');
     const sourceBounds = getScheduleMonthBoundsForKey(autoPopSourceMonth);
-    if (!sourceBounds.start || !sourceBounds.end) return addToast('Error', 'Please select a valid source month.');
+    if (!sourceBounds.start || !sourceBounds.end) return addToast('Choose a Valid Month', 'Select a valid month to copy.');
     let sourceShifts = [];
     try {
+      recordScheduleOperationDiagnostic('sdkReads');
       const sourceSnapshot = await getDocs(query(
         collection(db, 'shifts'),
         where('restaurantId', '==', appUser.restaurantId),
@@ -3144,6 +3157,7 @@ const handleAddEvent = async (e) => {
         orderBy('date', 'asc'),
         firestoreLimit(900)
       ));
+      recordScheduleOperationDiagnostic('documentsObserved', sourceSnapshot.size);
       const fetchedSourceShifts = sourceSnapshot.docs.map(sourceDoc => ({ id: sourceDoc.id, ...sourceDoc.data() }));
       const alreadyLoadedSourceShifts = shifts.filter(s => String(s?.date || '').startsWith(autoPopSourceMonth));
       sourceShifts = mergeVisibleScheduleShifts(fetchedSourceShifts, alreadyLoadedSourceShifts);
@@ -3151,10 +3165,10 @@ const handleAddEvent = async (e) => {
       console.warn('Auto-Fill source month load failed, falling back to currently loaded shifts:', err?.code || err?.message || err);
       sourceShifts = shifts.filter(s => String(s?.date || '').startsWith(autoPopSourceMonth));
     }
-    if (sourceShifts.length === 0) return addToast('Empty', 'No shifts found in the selected month.');
+    if (sourceShifts.length === 0) return addToast('No Shifts to Copy', 'The selected month does not contain any shifts.');
 
     const targetMonth = getMonthStr(currentDate);
-    if (autoPopSourceMonth === targetMonth) return addToast('Error', 'Cannot copy to the exact same month.');
+    if (autoPopSourceMonth === targetMonth) return addToast('Choose a Different Month', 'The source and destination months cannot be the same.');
 
     let sMon = new Date(autoPopSourceMonth + '-01T12:00:00');
     while(sMon.getDay() !== 1) sMon.setDate(sMon.getDate() + 1);
@@ -3229,6 +3243,7 @@ const handleAddEvent = async (e) => {
       }
 
       const payload = buildAutoPopulateShift(sourceShift, newDateStr, appUser.restaurantId, appUser, autoPopSourceMonth, rosterIdentity.ok ? rosterIdentity.person : null);
+      recordScheduleOperationDiagnostic('canonicalDatePatches');
       const newFingerprint = buildShiftFingerprint(payload);
       if (!newFingerprint) {
         invalidCount += 1;
@@ -3247,6 +3262,9 @@ const handleAddEvent = async (e) => {
     try {
       for (const pendingBatch of batches) {
         await pendingBatch.batch.commit();
+        recordScheduleOperationDiagnostic('batchedWriteOperations');
+        recordScheduleOperationDiagnostic('batchedWriteDocuments', pendingBatch.count);
+        recordScheduleOperationDiagnostic('totalScheduleDocumentsWritten', pendingBatch.count);
         successfulBatchCount += 1;
         committedCount += pendingBatch.count;
       }
@@ -3512,7 +3530,7 @@ const [isPunchModalOpen, setIsPunchModalOpen] = useState(false);
         await updateDoc(doc(db, "timePunches", editingPunch.id), updateData);
         addToast('Updated', 'Time punch modified successfully.');
       } else {
-        if (!editPunchEmpId || !editPunchIn) return addToast('Error', 'Employee and Clock In Time required.');
+        if (!editPunchEmpId || !editPunchIn) return addToast('Missing Time Punch Details', 'Choose an employee and enter the clock-in time.');
         const emp = users.find(u => u.id === editPunchEmpId);
         const newData = {
           employeeId: emp.id,
@@ -3531,7 +3549,7 @@ const [isPunchModalOpen, setIsPunchModalOpen] = useState(false);
       }
       setIsPunchModalOpen(false);
       setEditingPunch(null);
-    } catch (err) { addToast('Error', err.message); }
+    } catch (err) { addToast('Time Punch Not Saved', err.message || 'Check the times and try again.'); }
   };
 
 const handleExportTimesheets = () => {
@@ -4036,7 +4054,7 @@ const handleExportTimesheets = () => {
                 <span className="text-emerald-400 font-black text-base">${projectedMonthLabor.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
               </div>
 <button onClick={() => setIsAutoPopulateModalOpen(true)} className={`schedule-builder-action-button flex-1 lg:flex-none ${T.btnAlt} py-1.5 h-9 flex items-center justify-center font-black border-blue-900/50 text-blue-400`}>
-                <Repeat size={16} className="mr-1"/> Auto-Fill
+                <Repeat size={16} className="mr-1"/> <span aria-label="Auto-Fill">Copy Month</span>
               </button>              <button onClick={openPublishPicker} className={`schedule-builder-action-button flex-1 lg:flex-none ${T.btnAlt} py-1.5 h-9 flex items-center justify-center font-black`}>Publish</button>
               <button onClick={openNewEventModal} className={`schedule-builder-action-button flex-1 lg:flex-none ${T.btnAlt} border-[#D4A381] text-[#D4A381] py-1.5 h-9 flex items-center justify-center font-black`}><Plus size={16} className="mr-1"/> Event</button>
             </div>
@@ -5187,8 +5205,8 @@ const TabTimeOff = ({ timeOffRequests, appUser, users, addToast, events = [], sh
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (isSubmittingTimeOff) return;
-    if (selectedDates.length === 0) return addToast('Error', 'Select days on the calendar first.');
-    if (isPartial && (!startTime || !endTime)) return addToast('Error', 'Please set partial times.');
+    if (selectedDates.length === 0) return addToast('Choose Request-Off Dates', 'Select one or more days on the calendar first.');
+    if (isPartial && (!startTime || !endTime)) return addToast('Add Start and End Times', 'Enter the part of the day you need off.');
     const blockedAfterPublish = selectedDates.filter(d => !postPublishedTimeOffAllowed && !appUser?.isAdmin && isDateInsidePublishedSchedule(d, shifts));
     if (blockedAfterPublish.length) return addToast('Schedule Published', 'One or more selected dates are already published. Ask a manager to adjust the schedule.');
     setIsSubmittingTimeOff(true);
@@ -5318,7 +5336,7 @@ const TabTimeOff = ({ timeOffRequests, appUser, users, addToast, events = [], sh
           {!postPublishedTimeOffAllowed && !appUser?.isAdmin && <div className="mb-4 bg-amber-900/15 border border-amber-900/40 rounded-xl p-2 text-[10px] font-bold text-amber-200 leading-snug">Time-off requests close once that schedule period has been published.</div>}
           {requestOffGhostMode && ghostListStatus === 'loading' && <div className="mb-4 bg-blue-900/15 border border-blue-900/40 rounded-xl p-2 text-[10px] font-bold text-blue-200 leading-snug">Loading this employee’s Request Off records...</div>}
           {requestOffGhostMode && ghostListStatus === 'error' && <div className="mb-4 bg-red-900/15 border border-red-900/40 rounded-xl p-2 text-[10px] font-bold text-red-200 leading-snug">Request Off records could not load. Try refreshing before submitting.</div>}
-          <form onSubmit={handleSubmit} className="space-y-4"><label className={`flex items-center gap-2 text-xs font-bold text-slate-300 cursor-pointer p-2.5 bg-[#12161A] rounded-xl border ${T.border}`}><input type="checkbox" checked={isPartial} onChange={e=>setIsPartial(e.target.checked)} className="w-4 h-4 rounded bg-[#1A2126] border-[#2A353D] accent-[#8F6040]" />Partial Day Only?</label>{isPartial && <div className="grid grid-cols-2 gap-3"><div><label className={T.label}>Start Time</label><input type="time" value={startTime} onChange={e=>setStartTime(e.target.value)} className={T.input} required /></div><div><label className={T.label}>End Time</label><input type="time" value={endTime} onChange={e=>setEndTime(e.target.value)} className={T.input} required /></div></div>}<button type="submit" disabled={selectedDates.length === 0 || isSubmittingTimeOff || !!checkingDate} className={`w-full ${T.btn} disabled:opacity-50 disabled:cursor-not-allowed`}>{isSubmittingTimeOff ? 'Checking...' : `Submit ${selectedDates.length > 0 ? `(${selectedDates.length})` : ''}`}</button></form>
+          <form onSubmit={handleSubmit} className="space-y-4"><label className={`flex items-center gap-2 text-xs font-bold text-slate-300 cursor-pointer p-2.5 bg-[#12161A] rounded-xl border ${T.border}`}><input type="checkbox" checked={isPartial} onChange={e=>setIsPartial(e.target.checked)} className="w-4 h-4 rounded bg-[#1A2126] border-[#2A353D] accent-[#8F6040]" />Only part of each day</label>{isPartial && <div className="grid grid-cols-2 gap-3"><div><label className={T.label}>Start Time</label><input type="time" value={startTime} onChange={e=>setStartTime(e.target.value)} className={T.input} required /></div><div><label className={T.label}>End Time</label><input type="time" value={endTime} onChange={e=>setEndTime(e.target.value)} className={T.input} required /></div></div>}<button type="submit" disabled={selectedDates.length === 0 || isSubmittingTimeOff || !!checkingDate} className={`w-full ${T.btn} disabled:opacity-50 disabled:cursor-not-allowed`}>{isSubmittingTimeOff ? 'Sending Request…' : `Send ${selectedDates.length > 0 ? `${selectedDates.length}-Day ` : ''}Request for Review`}</button></form>
         </div>
       </div>
       <div className={`${T.card} p-4 request-off-workflow-panel`}>
@@ -5447,11 +5465,11 @@ const ScheduleCopilot = ({ currentDate, users = [], shifts = [], timeOffRequests
       if (editingTemplateId) { await updateDoc(doc(db, 'scheduleTemplates', editingTemplateId), payload); addToast('Template Updated', 'Schedule template saved.'); }
       else { await addDoc(collection(db, 'scheduleTemplates'), { ...payload, createdAt: new Date().toISOString(), createdBy: appUser.id || 'manager' }); addToast('Template Created', 'Reusable schedule template added.'); }
       setEditingTemplateId(null); setTemplateName('Normal Week'); setTemplateDesc('Reusable staffing pattern for this restaurant.'); setTemplateRows([{ dayIndex: 5, role: firstScheduleRole, startTime: '16:00', endTime: '21:00', count: 2 }]); setActiveTool('templates');
-    } catch (err) { addToast('Error', err.message); }
+    } catch (err) { addToast('Template Not Saved', err.message || 'Check your connection and try again.'); }
   };
 
   const editTemplate = (t) => { setEditingTemplateId(t.id); setTemplateName(t.name || 'Template'); setTemplateDesc(t.description || ''); setTemplateRows((t.rows && t.rows.length ? t.rows : [{ dayIndex: 5, role: firstScheduleRole, startTime: '16:00', endTime: '21:00', count: 1 }]).map(r => ({ ...r, role: canonicalScheduleRole(r.role) })));  setActiveTool('template-editor'); };
-  const deleteTemplate = async (t) => { if (!window.confirm(`Delete template "${t.name}"?`)) return; try { await deleteDoc(doc(db, 'scheduleTemplates', t.id)); addToast('Deleted', 'Template removed.'); } catch(err) { addToast('Error', err.message); } };
+  const deleteTemplate = async (t) => { if (!window.confirm(`Delete template "${t.name}"?`)) return; try { await deleteDoc(doc(db, 'scheduleTemplates', t.id)); addToast('Template Deleted', 'The schedule template was removed.'); } catch(err) { addToast('Template Not Deleted', err.message || 'Check your connection and try again.'); } };
 
   const saveCurrentWeekAsTemplate = async () => {
     const grouped = {};
@@ -5459,7 +5477,7 @@ const ScheduleCopilot = ({ currentDate, users = [], shifts = [], timeOffRequests
     const rows = Object.entries(grouped).map(([key,count]) => { const [dayIndex, role, startTime, endTime] = key.split('|'); return { dayIndex: parseInt(dayIndex,10), role, startTime, endTime, count }; });
     if (!rows.length) return addToast('No Shifts', 'Build a week first, then save it as a template.');
     try { await addDoc(collection(db, 'scheduleTemplates'), { restaurantId: appUser.restaurantId, name: `Week of ${formatDisplayDate(weekStart)}`, description: 'Saved from actual schedule.', rows, createdAt: new Date().toISOString(), createdBy: appUser.id || 'manager' }); addToast('Saved', 'Current week saved as a reusable template.'); }
-    catch(err) { addToast('Error', err.message); }
+    catch(err) { addToast('Template Not Saved', err.message || 'The current week was not saved as a template.'); }
   };
 
   const pickUserForShift = (role, date, usedIds = []) => {
@@ -5473,7 +5491,12 @@ const ScheduleCopilot = ({ currentDate, users = [], shifts = [], timeOffRequests
     const scheduleRole = canonicalScheduleRole(row.role);
     const employee = pickUserForShift(scheduleRole, date, usedIds);
     const finalRole = employee?.role ? canonicalScheduleRole(employee.role) : scheduleRole;
-    await addDoc(collection(db, 'shifts'), { restaurantId: appUser.restaurantId, ...buildScheduleIdentityFields(employee || {}), role: finalRole, targetRole: scheduleRole, date, startTime: row.startTime || '09:00', endTime: row.endTime || '17:00', isPublished: false, createdAt: new Date().toISOString(), createdBy: appUser.id || 'schedule-copilot', source: 'schedule_copilot' });
+    const nowIso = new Date().toISOString();
+    const canonicalFields = buildCanonicalScheduleCreateFields(date, appUser.restaurantId);
+    recordScheduleOperationDiagnostic('canonicalDatePatches');
+    await addDoc(collection(db, 'shifts'), { ...canonicalFields, ...buildScheduleIdentityFields(employee || {}), role: finalRole, targetRole: scheduleRole, startTime: row.startTime || '09:00', endTime: row.endTime || '17:00', isPublished: false, publishState: 'draft', scheduleBuilderDraft: true, readyToPublish: true, createdAt: nowIso, updatedAt: nowIso, createdBy: appUser.id || 'schedule-copilot', updatedBy: appUser.id || 'schedule-copilot', source: 'schedule_copilot', assignmentSource: 'schedule_copilot' });
+    recordScheduleOperationDiagnostic('directSdkWrites');
+    recordScheduleOperationDiagnostic('totalScheduleDocumentsWritten');
     return employee?.id;
   };
 
@@ -5488,7 +5511,7 @@ const ScheduleCopilot = ({ currentDate, users = [], shifts = [], timeOffRequests
         for (let i=0; i < (parseInt(row.count || 1,10) || 1); i++) { const id = await createShiftDraft(row, date, used); if (id) used.push(id); made++; }
       }
       addToast('Template Applied', `${made} draft shifts created. Review and publish when ready.`);
-    } catch (err) { addToast('Error', err.message); }
+    } catch (err) { addToast('Template Not Applied', err.message || 'No draft shifts were added. Refresh and try again.'); }
   };
 
   const copyPreviousWeek = async () => {
@@ -5502,11 +5525,18 @@ const ScheduleCopilot = ({ currentDate, users = [], shifts = [], timeOffRequests
         const oldIndex = prevDates.indexOf(s.date);
         const date = weekDates[oldIndex];
         if (weekShifts.some(x => x.date === date && x.employeeId === s.employeeId && x.startTime === s.startTime)) continue;
-        await addDoc(collection(db, 'shifts'), { restaurantId: appUser.restaurantId, ...buildScheduleIdentityFields(users.find(u => shiftMatchesPerson(s, u, users)) || s), role: canonicalScheduleRole(s.role || users.find(u => u.id === s.employeeId)?.role || 'Staff'), date, startTime: s.startTime, endTime: s.endTime, isPublished: false, copiedFrom: s.id, createdAt: new Date().toISOString(), createdBy: appUser.id || 'copy-week' });
+        const nowIso = new Date().toISOString();
+        const canonicalFields = buildCanonicalScheduleCreateFields(date, appUser.restaurantId);
+        recordScheduleOperationDiagnostic('canonicalDatePatches');
+        const matchedPerson = users.find(u => shiftMatchesPerson(s, u, users));
+        const copiedIdentity = buildScheduleIdentityFields(matchedPerson || { ...s, id: '' }, s);
+        await addDoc(collection(db, 'shifts'), { ...canonicalFields, ...copiedIdentity, role: canonicalScheduleRole(s.role || users.find(u => u.id === s.employeeId)?.role || 'Staff'), startTime: s.startTime, endTime: s.endTime, isPublished: false, publishState: 'draft', scheduleBuilderDraft: true, readyToPublish: true, copiedFrom: s.id, createdAt: nowIso, updatedAt: nowIso, createdBy: appUser.id || 'copy-week', updatedBy: appUser.id || 'copy-week', source: 'schedule_copy_week', assignmentSource: 'schedule_copy_week' });
+        recordScheduleOperationDiagnostic('directSdkWrites');
+        recordScheduleOperationDiagnostic('totalScheduleDocumentsWritten');
         made++;
       }
       addToast('Copied', `${made} draft shifts copied from previous week.`);
-    } catch(err) { addToast('Error', err.message); }
+    } catch(err) { addToast('Week Not Copied', err.message || 'The previous week was not copied. Refresh and try again.'); }
   };
 
   const addCoverageTarget = async (e) => {
@@ -5514,20 +5544,20 @@ const ScheduleCopilot = ({ currentDate, users = [], shifts = [], timeOffRequests
     const role = canonicalScheduleRole(targetForm.role);
     if (!role || role === 'Unassigned') return addToast('Role Needed', 'Add or assign staff roles first, then create coverage targets from the same Schedule Builder staff list.');
     try { await addDoc(collection(db, 'scheduleCoverageTargets'), { restaurantId: appUser.restaurantId, ...targetForm, role, dayIndex: parseInt(targetForm.dayIndex,10), count: parseInt(targetForm.count,10) || 1, createdAt: new Date().toISOString(), createdBy: appUser.id || 'manager', source: 'schedule_staff_roles' }); setTargetForm(f => ({ ...f, role })); addToast('Target Added', 'Coverage target saved using the Schedule Builder staff role list.'); }
-    catch(err) { addToast('Error', err.message); }
+    catch(err) { addToast('Coverage Target Not Saved', err.message || 'Check your connection and try again.'); }
   };
 
   const smartFill = async () => {
     if (!missingTargets.length) return addToast('Covered', 'No missing coverage targets for this week.');
-    if (!window.confirm(`Smart Fill will create ${missingTargets.reduce((s,m)=>s+m.needed,0)} draft shifts. Continue?`)) return;
+    if (!window.confirm(`Create ${missingTargets.reduce((s,m)=>s+m.needed,0)} draft shifts to fill the current coverage gaps? You can review them before publishing.`)) return;
     try {
       let made = 0;
       for (const m of missingTargets) {
         const used = weekShifts.filter(s => s.date === m.date).map(s => s.employeeId);
         for (let i=0; i<m.needed; i++) { const id = await createShiftDraft(m, m.date, used); if (id) used.push(id); made++; }
       }
-      addToast('Smart Fill Complete', `${made} draft shifts created from coverage targets.`);
-    } catch(err) { addToast('Error', err.message); }
+      addToast('Coverage Drafts Created', `${made} draft shifts were created from your coverage targets. Review them before publishing.`);
+    } catch(err) { addToast('Coverage Drafts Not Created', err.message || 'No coverage drafts were added. Refresh and try again.'); }
   };
 
   const publishWeek = async () => {
@@ -5535,8 +5565,8 @@ const ScheduleCopilot = ({ currentDate, users = [], shifts = [], timeOffRequests
     if (!drafts.length) return addToast('Nothing To Publish', 'No draft shifts found this week.');
     const warningText = allScheduleWarnings.map(w => w.message).slice(0,8).join('\n');
     if (!window.confirm(`Publish ${drafts.length} draft shifts?${warningText ? '\n\nWarnings:\n' + warningText : ''}`)) return;
-    try { await Promise.all(drafts.map(s => updateDoc(doc(db, 'shifts', s.id), { isPublished: true, publishedAt: new Date().toISOString(), publishedBy: appUser.id || 'manager' }))); addToast('Published', `${drafts.length} shifts published.`); }
-    catch(err) { addToast('Error', err.message); }
+    try { await Promise.all(drafts.map(s => updateDoc(doc(db, 'shifts', s.id), { isPublished: true, publishedAt: new Date().toISOString(), publishedBy: appUser.id || 'manager' }))); recordScheduleOperationDiagnostic('directSdkWrites', drafts.length); recordScheduleOperationDiagnostic('totalScheduleDocumentsWritten', drafts.length); addToast('Published', `${drafts.length} shifts published.`); }
+    catch(err) { addToast('Week Not Published', err.message || 'The draft shifts were not all published. Refresh before trying again.'); }
   };
 
   const moveShiftToDay = async (targetDate) => {
@@ -5544,24 +5574,54 @@ const ScheduleCopilot = ({ currentDate, users = [], shifts = [], timeOffRequests
     const shift = weekShifts.find(s => s.id === draggedShiftId);
     setDraggedShiftId(null);
     if (!shift) return;
+    if (getShiftDateKey(shift) === targetDate) {
+      recordScheduleOperationDiagnostic('skippedNoOpWrites');
+      return;
+    }
     try {
-      await updateDoc(doc(db, 'shifts', shift.id), { date: targetDate, updatedAt: new Date().toISOString(), updatedBy: appUser.id || 'schedule-drag-board' });
+      const mutation = buildScheduleQuickEditMutation(shift, { date: targetDate }, { actorId: appUser.id || 'schedule-drag-board' });
+      recordScheduleOperationDiagnostic('canonicalDatePatches');
+      await updateDoc(doc(db, 'shifts', shift.id), mutation.payload);
+      recordScheduleOperationDiagnostic('directSdkWrites');
+      recordScheduleOperationDiagnostic('totalScheduleDocumentsWritten');
+      recordScheduleOperationDiagnostic('quickEditWrites');
       addToast('Shift Moved', `${shift.employeeName || 'Shift'} moved to ${formatDisplayDate(targetDate)}.`);
-    } catch (err) { addToast('Error', err.message); }
+    } catch (err) { addToast('Shift Not Moved', err.message || 'The shift stayed on its original date. Refresh and try again.'); }
   };
 
   const quickUpdateShift = async (shift, patch) => {
     try {
-      const next = { ...patch, updatedAt: new Date().toISOString(), updatedBy: appUser.id || 'schedule-quick-edit' };
+      if (Object.prototype.hasOwnProperty.call(patch, 'date') && getShiftDateKey(shift) === String(patch.date || '').trim()) {
+        recordScheduleOperationDiagnostic('skippedNoOpWrites');
+        return;
+      }
+      if (Object.prototype.hasOwnProperty.call(patch, 'employeeId')) {
+        const requestedId = String(patch.employeeId || '').trim();
+        const currentId = String(shift.employeeId || shift.scheduleUserId || shift.userId || shift.rosterUserId || '').trim();
+        if (requestedId === currentId || (!requestedId && !currentId && /^(unassigned|open)?$/i.test(String(shift.employeeName || '')))) {
+          recordScheduleOperationDiagnostic('skippedNoOpWrites');
+          return;
+        }
+      }
+      let next = { ...patch };
       if (Object.prototype.hasOwnProperty.call(patch, 'employeeId')) {
         const emp = users.find(u => u.id === patch.employeeId);
         if (emp) Object.assign(next, buildScheduleIdentityFields(emp));
         else Object.assign(next, { scheduleUserId: '', employeeId: '', userId: '', rosterUserId: '', authUid: '', assignedUserId: '', employeeEmail: '', assignedEmail: '', employeeName: 'Unassigned', assignedName: 'Unassigned' });
         next.role = emp?.role || shift.role || 'Staff';
       }
-      await updateDoc(doc(db, 'shifts', shift.id), next);
-      addToast('Shift Updated', 'Schedule quick edit saved.');
-    } catch (err) { addToast('Error', err.message); }
+      const mutation = buildScheduleQuickEditMutation(shift, next, { actorId: appUser.id || 'schedule-quick-edit' });
+      if (mutation.skipped) {
+        recordScheduleOperationDiagnostic('skippedNoOpWrites');
+        return;
+      }
+      if (Object.prototype.hasOwnProperty.call(patch, 'date')) recordScheduleOperationDiagnostic('canonicalDatePatches');
+      await updateDoc(doc(db, 'shifts', shift.id), mutation.payload);
+      recordScheduleOperationDiagnostic('directSdkWrites');
+      recordScheduleOperationDiagnostic('totalScheduleDocumentsWritten');
+      recordScheduleOperationDiagnostic('quickEditWrites');
+      addToast('Shift Updated', 'The schedule change was saved.');
+    } catch (err) { addToast('Shift Not Updated', err.message || 'The change was not saved. Refresh and try again.'); }
   };
 
   const openCopilotTool = (toolId = 'targets') => {
@@ -5572,12 +5632,12 @@ const ScheduleCopilot = ({ currentDate, users = [], shifts = [], timeOffRequests
   if (!open) return (
     <div className={`${T.card} schedule-copilot-launcher p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-[#D4A381]/30`}>
       <div className="min-w-0">
-        <div className="text-[10px] uppercase tracking-widest font-black text-[#D4A381]">Schedule Copilot</div>
+        <div className="text-[10px] uppercase tracking-widest font-black text-[#D4A381]">Schedule Tools</div>
         <div className="text-sm font-black text-white mt-0.5">{draftCount} drafts ready</div>
-        <div className="text-xs text-slate-400 font-bold mt-0.5">{formatDisplayDate(weekStart)} through {formatDisplayDate(weekEnd)} • Open Copilot Tools for coverage targets, warnings & templates.</div>
+        <div className="text-xs text-slate-400 font-bold mt-0.5">{formatDisplayDate(weekStart)} through {formatDisplayDate(weekEnd)} • Review coverage targets, warnings, and templates.</div>
       </div>
       <div className="flex flex-wrap sm:justify-end gap-1.5 flex-shrink-0">
-        <button type="button" aria-label="Open Copilot Tools" title="Open Copilot Tools" onClick={() => openCopilotTool('targets')} className={`${T.btnAlt} flex items-center justify-center gap-2`}><ChefHat size={16}/> Open Copilot Tools</button>
+        <button type="button" aria-label="Open Copilot Tools" title="Open Schedule Tools" onClick={() => openCopilotTool('targets')} className={`${T.btnAlt} flex items-center justify-center gap-2`}><ChefHat size={16}/> Open Schedule Tools</button>
         <button type="button" aria-label={editingTemplateId ? 'Edit Template' : 'Create Template'} title={editingTemplateId ? 'Edit Template' : 'Create Template'} onClick={() => openCopilotTool('template-editor')} className={T.btnAlt}>{editingTemplateId ? 'Edit Template' : 'Create Template'}</button>
         <button type="button" aria-label="Drag Board" title="Drag Board" onClick={() => openCopilotTool('drag')} className={T.btnAlt}>Drag Board</button>
       </div>
@@ -5588,18 +5648,18 @@ const ScheduleCopilot = ({ currentDate, users = [], shifts = [], timeOffRequests
     <div className={`${T.card} schedule-copilot-compact p-3 space-y-2 border-[#D4A381]/30`} aria-label="Open Copilot Tools" title="Open Copilot Tools" data-chaos-current-state="true">
       <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-2 border-b border-[#2A353D] pb-2">
         <div className="min-w-0">
-          <div className="text-[9px] uppercase tracking-widest font-black text-[#D4A381]">Schedule Copilot</div>
-          <h3 className="text-sm sm:text-base font-black text-white leading-tight">Templates, Coverage, Smart Fill & Publish Review</h3>
+          <div className="text-[9px] uppercase tracking-widest font-black text-[#D4A381]">Schedule Tools</div>
+          <h3 className="text-sm sm:text-base font-black text-white leading-tight">Templates, coverage gaps, warnings, and publish review</h3>
           <p className="text-[10px] text-slate-400 font-bold leading-snug mt-0.5">{formatDisplayDate(weekStart)} through {formatDisplayDate(weekEnd)} • shared Schedule Builder staff roles</p>
         </div>
-        <div className="flex flex-wrap gap-1.5 flex-shrink-0"><button onClick={copyPreviousWeek} className={T.btnAlt}>Copy Week</button><button onClick={smartFill} className={T.btnAlt}>Smart Fill</button><button onClick={publishWeek} className={T.btn}>Publish</button><button onClick={() => setOpen(false)} className={T.btnAlt}>Hide</button></div>
+        <div className="flex flex-wrap gap-1.5 flex-shrink-0"><button onClick={copyPreviousWeek} className={T.btnAlt}>Copy Previous Week</button><button aria-label="Smart Fill" onClick={smartFill} className={T.btnAlt}>Fill Coverage Gaps</button><button onClick={publishWeek} className={T.btn}>Review & Publish</button><button onClick={() => setOpen(false)} className={T.btnAlt}>Close Tools</button></div>
       </div>
       <div className="grid grid-cols-4 gap-1.5">
         {[['Drafts',draftCount],['Missing',missingTargets.length],['Warnings',allScheduleWarnings.length],['Templates',safeTemplates.length]].map(([label,value]) => <div key={label} className="schedule-copilot-metric bg-[#12161A] border border-[#2A353D]"><span className="text-[8px] uppercase tracking-widest font-black text-slate-500">{label}</span><strong className="text-white">{value}</strong></div>)}
       </div>
       <div className="flex gap-1.5 overflow-x-auto custom-scrollbar border-b border-[#2A353D] pb-2" role="tablist" aria-label="Schedule Builder tools" aria-orientation="horizontal">{[['targets','Coverage'],['templates','Templates'],['template-editor', editingTemplateId ? 'Edit Template' : 'Create Template'],['drag','Drag Board'],['warnings','Warnings']].map(([id,label]) => <button key={id} type="button" role="tab" aria-label={label} title={label} onClick={() => setActiveTool(id)} aria-selected={activeTool===id} data-chaos-current-state={activeTool===id ? 'true' : undefined} className={`flex-shrink-0 px-2.5 py-1.5 rounded-lg text-[9px] uppercase tracking-widest font-black ${activeTool===id ? `${T.grad} text-slate-900` : 'bg-[#12161A] text-slate-400 hover:text-white'}`}>{label}</button>)}</div>
       <div className="schedule-copilot-body custom-scrollbar space-y-3">
-      {activeTool === 'targets' && <div className="grid lg:grid-cols-2 gap-4"><form onSubmit={addCoverageTarget} className="bg-[#12161A] border border-[#2A353D] rounded-xl p-3 space-y-2"><h4 className="font-black text-white">Add Coverage Target</h4><p className="text-[10px] font-bold text-slate-400">Roles come from Staff Roster / Settings and match the Schedule Builder staff list.</p><div className="grid grid-cols-2 gap-2"><select value={targetForm.dayIndex} onChange={e=>setTargetForm({...targetForm, dayIndex:e.target.value})} className={T.input}>{dayNames.map((d,i)=><option key={d} value={i}>{d}</option>)}</select><select value={targetForm.role} onChange={e=>setTargetForm({...targetForm, role:e.target.value})} className={T.input}>{scheduleRoleOptions.map(r => <option key={r} value={r}>{r}</option>)}</select><input type="time" value={targetForm.startTime} onChange={e=>setTargetForm({...targetForm, startTime:e.target.value})} className={T.input}/><input type="time" value={targetForm.endTime} onChange={e=>setTargetForm({...targetForm, endTime:e.target.value})} className={T.input}/><input type="number" min="1" value={targetForm.count} onChange={e=>setTargetForm({...targetForm, count:e.target.value})} className={T.input}/><button className={`${T.btn} py-2`}>Save Target</button></div></form><div className="space-y-2">{coverageTargets.length === 0 ? <FriendlyEmpty title="No coverage targets yet" text="Add targets from the same roles shown in the Schedule Builder staff list. Smart Fill and the builder now use one shared role source."/> : coverageTargets.map(t => <div key={t.id} className="bg-[#12161A] border border-[#2A353D] rounded-xl p-3 flex justify-between items-center"><div><div className="font-black text-white">{dayNames[t.dayIndex]} • {t.role} x{t.count}</div><div className="text-xs text-slate-400 font-bold">{formatShortTime(t.startTime)} - {formatShortTime(t.endTime)}</div></div><button onClick={() => deleteDoc(doc(db,'scheduleCoverageTargets',t.id))} className="p-2 text-slate-400 hover:text-red-400"><Trash2 size={14}/></button></div>)}</div></div>}
+      {activeTool === 'targets' && <div className="grid lg:grid-cols-2 gap-4"><form onSubmit={addCoverageTarget} className="bg-[#12161A] border border-[#2A353D] rounded-xl p-3 space-y-2"><h4 className="font-black text-white">Add Coverage Target</h4><p className="text-[10px] font-bold text-slate-400">Choose how many people you need for a role and time. Roles match the Staff Roster and Schedule Builder.</p><div className="grid grid-cols-2 gap-2"><select value={targetForm.dayIndex} onChange={e=>setTargetForm({...targetForm, dayIndex:e.target.value})} className={T.input}>{dayNames.map((d,i)=><option key={d} value={i}>{d}</option>)}</select><select value={targetForm.role} onChange={e=>setTargetForm({...targetForm, role:e.target.value})} className={T.input}>{scheduleRoleOptions.map(r => <option key={r} value={r}>{r}</option>)}</select><input type="time" value={targetForm.startTime} onChange={e=>setTargetForm({...targetForm, startTime:e.target.value})} className={T.input}/><input type="time" value={targetForm.endTime} onChange={e=>setTargetForm({...targetForm, endTime:e.target.value})} className={T.input}/><input type="number" min="1" value={targetForm.count} onChange={e=>setTargetForm({...targetForm, count:e.target.value})} className={T.input}/><button className={`${T.btn} py-2`}>Save Coverage Target</button></div></form><div className="space-y-2">{coverageTargets.length === 0 ? <FriendlyEmpty title="No coverage targets yet" text="Add the staffing level you want for each role and time. Fill Coverage Gaps can then create draft shifts for review."/> : coverageTargets.map(t => <div key={t.id} className="bg-[#12161A] border border-[#2A353D] rounded-xl p-3 flex justify-between items-center"><div><div className="font-black text-white">{dayNames[t.dayIndex]} • {t.role} x{t.count}</div><div className="text-xs text-slate-400 font-bold">{formatShortTime(t.startTime)} - {formatShortTime(t.endTime)}</div></div><button onClick={() => deleteDoc(doc(db,'scheduleCoverageTargets',t.id))} className="p-2 text-slate-400 hover:text-red-400"><Trash2 size={14}/></button></div>)}</div></div>}
       {activeTool === 'templates' && <div className="space-y-3"><div className="flex flex-col md:flex-row gap-2"><select value={templateId} onChange={e => setTemplateId(e.target.value)} className={`${T.input} flex-1`}><option value="">Select template to apply</option>{templateOptions.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}</select><button onClick={applyTemplate} className={`${T.btn} py-2`}>Apply to Current Week</button><button onClick={saveCurrentWeekAsTemplate} className={T.btnAlt}>Save Current Week</button></div>{templateOptions.length === 0 ? <FriendlyEmpty title="No templates yet" text="Create a Normal Week, Packers Sunday, Fish Fry Friday, or Live Music template. Each restaurant gets its own library."/> : templateOptions.map(t => <div key={t.id} className="bg-[#12161A] border border-[#2A353D] rounded-xl p-3 flex justify-between items-center"><div><div className="font-black text-white">{t.name}</div><div className="text-xs text-slate-400 font-bold">{t.description || 'No description'} • {(t.rows || []).length} rules</div></div><div className="flex gap-2"><button onClick={() => editTemplate(t)} className={T.btnAlt}>Edit</button><button onClick={() => deleteTemplate(t)} className="px-3 py-2 rounded-xl bg-red-900/20 text-red-300 border border-red-900/50 text-xs font-black">Delete</button></div></div>)}</div>}
       {activeTool === 'template-editor' && <form onSubmit={saveTemplate} className="space-y-3"><div className="grid md:grid-cols-2 gap-2"><input value={templateName} onChange={e=>setTemplateName(e.target.value)} className={T.input} placeholder="Template name" required/><input value={templateDesc} onChange={e=>setTemplateDesc(e.target.value)} className={T.input} placeholder="Description"/></div><div className="space-y-2">{templateRows.map((r,idx)=><div key={idx} className="grid grid-cols-2 md:grid-cols-6 gap-2 bg-[#12161A] border border-[#2A353D] rounded-xl p-2"><select value={r.dayIndex} onChange={e=>updateTemplateRow(idx,{dayIndex:e.target.value})} className={T.input}>{dayNames.map((d,i)=><option key={d} value={i}>{d}</option>)}</select><select value={r.role} onChange={e=>updateTemplateRow(idx,{role:e.target.value})} className={T.input}>{scheduleRoleOptions.map(roleName => <option key={roleName} value={roleName}>{roleName}</option>)}</select><input type="time" value={r.startTime} onChange={e=>updateTemplateRow(idx,{startTime:e.target.value})} className={T.input}/><input type="time" value={r.endTime} onChange={e=>updateTemplateRow(idx,{endTime:e.target.value})} className={T.input}/><input type="number" min="1" value={r.count} onChange={e=>updateTemplateRow(idx,{count:e.target.value})} className={T.input}/><button type="button" onClick={()=>removeTemplateRow(idx)} className="bg-red-900/20 border border-red-900/50 text-red-300 rounded-xl font-black text-xs">Remove</button></div>)}</div><div className="flex gap-2"><button type="button" onClick={addTemplateRow} className={T.btnAlt}>Add Row</button><button type="submit" className={`${T.btn} py-2`}>{editingTemplateId ? 'Update Template' : 'Create Template'}</button></div></form>}
       {activeTool === 'drag' && <div className="space-y-3"><p className="text-xs text-slate-400 font-bold">Drag shifts between days on desktop, or use the Move to day dropdown on mobile. Quick edit controls can change employee/time without opening the big schedule grid.</p><div className="grid md:grid-cols-7 gap-2">{weekDates.map((date, dayIdx) => <div key={date} onDragOver={e => e.preventDefault()} onDrop={() => moveShiftToDay(date)} className="min-h-[160px] bg-[#12161A] border border-[#2A353D] rounded-xl p-2"><div className="text-[10px] font-black uppercase tracking-widest text-[#D4A381] mb-2">{dayNames[dayIdx]}<br/><span className="text-slate-500">{date.substring(5)}</span></div>{weekShifts.filter(s => s.date === date).sort((a,b)=>(a.startTime||'').localeCompare(b.startTime||'')).map(shift => <div key={shift.id} draggable onDragStart={() => setDraggedShiftId(shift.id)} onDragEnd={() => setDraggedShiftId(null)} className={`mb-2 rounded-lg border p-2 cursor-move ${draggedShiftId === shift.id ? 'border-[#D4A381] bg-[#D4A381]/10' : 'border-[#2A353D] bg-[#1A2126]'}`}><div className="font-black text-white text-xs truncate">{shift.employeeName || users.find(u=>u.id===shift.employeeId)?.name || 'Unassigned'}</div><div className="text-[9px] text-slate-400 font-bold uppercase">{shift.role} • {formatShortTime(shift.startTime)}-{formatShortTime(shift.endTime)}</div><div className="grid grid-cols-1 gap-1 mt-2"><select value="" onChange={e=>e.target.value && quickUpdateShift(shift,{date:e.target.value})} className="bg-[#12161A] border border-[#2A353D] rounded-md px-1.5 py-1 text-[10px] text-[#D4A381] outline-none md:hidden"><option value="">Move to day...</option>{weekDates.map((d,i)=><option key={d} value={d}>{dayNames[i]} {d.substring(5)}</option>)}</select><select value={shift.employeeId || ''} onChange={e=>quickUpdateShift(shift,{employeeId:e.target.value})} className="bg-[#12161A] border border-[#2A353D] rounded-md px-1.5 py-1 text-[10px] text-white outline-none"><option value="">Unassigned</option>{activeUsers.map(u=><option key={u.id} value={u.id}>{u.name}</option>)}</select><div className="flex gap-1"><input type="time" defaultValue={shift.startTime || '09:00'} onBlur={e=>e.target.value && quickUpdateShift(shift,{startTime:e.target.value})} className="w-full bg-[#12161A] border border-[#2A353D] rounded-md px-1 py-1 text-[10px] text-white"/><input type="time" defaultValue={shift.endTime || '17:00'} onBlur={e=>e.target.value && quickUpdateShift(shift,{endTime:e.target.value})} className="w-full bg-[#12161A] border border-[#2A353D] rounded-md px-1 py-1 text-[10px] text-white"/></div></div></div>)}{weekShifts.filter(s => s.date === date).length === 0 && <div className="border border-dashed border-[#2A353D] rounded-lg p-3 text-center text-[10px] font-bold text-slate-500">Drop shifts here</div>}</div>)}</div></div>}

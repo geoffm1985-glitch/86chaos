@@ -9,7 +9,7 @@ const read = (file) => fs.readFileSync(path.join(root, file), 'utf8');
 test('Staff Roster lets managers edit an existing employee email in the form', () => {
   const source = read('src/features/management.jsx');
   assert.match(source, /const \[originalEmail, setOriginalEmail\] = useState\(''\)/);
-  assert.match(source, /updates Firebase login email/);
+  assert.match(source, /change this employee's sign-in email/);
   assert.doesNotMatch(source, /disabled=\{!!editingUserId\}/, 'editing mode must not disable the email input');
   assert.doesNotMatch(source, /Cannot be changed after creation/, 'editing copy must not tell managers email is locked forever');
 });
