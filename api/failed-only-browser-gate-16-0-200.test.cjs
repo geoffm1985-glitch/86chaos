@@ -50,7 +50,7 @@ test('16.0.200 keeps Schedule Builder states but moves Open Copilot Tools before
     'Schedule Builder > Drag Board',
     'Schedule Builder > Warnings',
     'Schedule Builder > Edit Presets',
-    'Schedule Builder > Auto-Fill',
+    'Schedule Builder > Copy Month',
     'Schedule Builder > /^Event$/i',
   ]) {
     assert.ok(schedule.includes(expected), `missing ${expected}`);

@@ -39,7 +39,10 @@ async function getQaRequestOffResetAuth() {
 function scheduleFixtureDateFromSeed(seed = {}) {
   const fixture = seed?.profile?.expectations?.fixture || seed?.profile?.fixture || {};
   const overCoverageDate = (fixture.shifts || []).find(row => row?.employeeName === 'Chuck QA' && row?.role === 'Bartender' && String(row?.startTime || '').toLowerCase() === '10a')?.date;
-  return fixture.anchor || fixture.currentWeekStart || overCoverageDate || seed?.ghostRequestOffConflictDate || '2026-08-04';
+  // The warning fixtures are built inside the fixture's Monday-based current
+  // week. Using a Sunday anchor can advance the UI's Sunday-based Schedule
+  // Tools window and hide the very records this test is meant to verify.
+  return fixture.currentWeekStart || overCoverageDate || fixture.anchor || seed?.ghostRequestOffConflictDate || '2026-08-04';
 }
 
 async function installSeededScheduleClock(page, seed = {}) {
