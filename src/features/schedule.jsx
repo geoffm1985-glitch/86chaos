@@ -20,16 +20,12 @@ import {
 import { getCanonicalScheduleUserId, collectScheduleDurableIdentityAliases, collectScheduleShiftDurableIdentityAliases, collectScheduleEmailAliases, collectScheduleFullNameAliases, collectScheduleFirstNameAliases, collectScheduleIdentityAliases, collectScheduleShiftIdentityAliases, resolveSchedulePersonForAccount, resolveSchedulePersonForShift, buildCanonicalScheduleIdentityBlock, scheduleIdentityBlockMatchesPerson } from '../core/scheduleQueryPlanner';
 import { buildCanonicalScheduleCreateFields, buildScheduleQuickEditMutation } from '../core/scheduleIntegrity';
 import { deriveScheduleToolsPeriod, deriveScheduleToolsCopyWeek, filterScheduleToolsRecords, recurringDatesForWeekday, assessScheduleToolsCompleteness } from '../core/scheduleToolsPeriod';
+import { buildMonthSchedulePrintModel } from '../core/schedulePrintModel';
+import { generateMonthSchedulePdf } from '../core/schedulePdf';
+import { deliverSchedulePdf } from '../core/schedulePdfDelivery';
 import { CheersLogo, Modal, DrawerMenu, DayDotPrintScreen, MapClickListener, SmartEmptyState, MiniProblemCard, getHomeProfile, calculatePunchHours, getWeekStart, roleMatches, toLocalTimeInput, makeLocalIso, PunchTable, FriendlyEmpty, GlobalSearchModal, QuickActionDock, KitchenTVMode, ChangeLogModal, UndoBar } from '../components/common';
 
 
-
-const escapeSchedulePrintHtml = (value = '') => String(value ?? '')
-  .replace(/&/g, '&amp;')
-  .replace(/</g, '&lt;')
-  .replace(/>/g, '&gt;')
-  .replace(/"/g, '&quot;')
-  .replace(/'/g, '&#39;');
 
 const cleanScheduleRoleName = (role = '') => String(role || '').replace(/\s+/g, ' ').trim();
 
@@ -4508,6 +4504,7 @@ const handleExportTimesheets = () => {
 
 const TabMonth = ({ currentDate, users, shifts, appUser }) => {
   const [roleFilter, setRoleFilter] = useState('All');
+  const [printState, setPrintState] = useState({ busy: false, error: '' });
   const activeUsers = useMemo(() => (Array.isArray(users) ? users : []).filter(u => u && u.isActive !== false), [users]);
   const uniqueRoles = useMemo(() => ['All', ...new Set(activeUsers.map(u => u.role).filter(Boolean))].sort(), [activeUsers]);
 
@@ -4545,34 +4542,26 @@ const TabMonth = ({ currentDate, users, shifts, appUser }) => {
     });
     return grouped;
   }, [visibleMonthShifts]);
+  const weeks = Math.ceil((firstDay + days) / 7);
   
-  // Calculate how many weeks this month spans to perfectly stretch the grid rows on paper
-  const totalCells = firstDay + days;
-  const weeks = Math.ceil(totalCells / 7);
-
-  const buildPrintableCalendarHtml = () => {
-    const monthTitle = `${roleFilter !== 'All' ? `${roleFilter} - ` : ''}${formatDisplayMonth(monthStr)}`;
-    const weekdayHeader = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map(day => `<div class="weekday">${escapeSchedulePrintHtml(day)}</div>`).join('');
-    const blanks = Array.from({ length: firstDay }).map(() => '<div class="day blank"></div>').join('');
-    const dayCells = Array.from({ length: days }).map((_, index) => {
-      const dayNumber = index + 1;
-      const date = `${monthStr}-${String(dayNumber).padStart(2,'0')}`;
-      const dayShifts = shiftsByDate.get(date) || [];
-      const shiftRows = dayShifts.map(shift => `<div class="shift">${escapeSchedulePrintHtml(getScheduleShiftMonthLabels(shift, activeUsers).full)}</div>`).join('');
-      return `<div class="day"><div class="date">${dayNumber}</div><div class="shiftStack">${shiftRows}</div></div>`;
-    }).join('');
-    return `<!doctype html><html><head><meta charset="utf-8" /><title>86 Chaos Schedule ${escapeSchedulePrintHtml(monthTitle)}</title><style>@page{size:letter landscape;margin:0.12in}*{box-sizing:border-box}html,body{width:10.76in;height:8.26in;margin:0;padding:0;overflow:hidden}body{color:#000;background:#fff;font-family:Arial,Helvetica,sans-serif}.calendar{width:100%;height:100%;display:grid;grid-template-rows:auto auto minmax(0,1fr);page-break-inside:avoid;break-inside:avoid-page}h1{margin:0 0 3px;text-align:center;font-size:17px;line-height:1.02;text-transform:uppercase;letter-spacing:.035em}.meta{margin:0 0 3px;display:flex;justify-content:space-between;gap:8px;font-size:9px;font-weight:800;color:#111}.grid{min-height:0;height:100%;display:grid;grid-template-columns:repeat(7,1fr);grid-template-rows:18px repeat(${weeks},minmax(0,1fr));border-top:1.5px solid #000;border-left:1.5px solid #000}.weekday,.day{border-right:1.5px solid #000;border-bottom:1.5px solid #000}.weekday{display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:900;text-transform:uppercase;background:#f1f5f9}.day{min-height:0;height:100%;padding:2px;overflow:hidden}.blank{background:#f8fafc}.date{text-align:right;font-size:11.5px;font-weight:900;margin-bottom:1px}.shiftStack{display:flex;flex-direction:column;gap:.5px}.shift{border:.8px solid #94a3b8;border-radius:2px;background:#f8fafc;padding:0 1px;font-family:"Arial Narrow",Arial,Helvetica,sans-serif;font-size:8.6px;line-height:1.03;font-weight:900;letter-spacing:-.035em;white-space:nowrap;overflow:hidden;text-overflow:clip;color:#000}</style></head><body><div class="calendar"><h1>86 Chaos Schedule ${escapeSchedulePrintHtml(monthTitle)}</h1><div class="meta"><span>${escapeSchedulePrintHtml(visibleMonthShifts.length)} published shifts</span><span>Printed ${escapeSchedulePrintHtml(new Date().toLocaleString())}</span></div><div class="grid">${weekdayHeader}${blanks}${dayCells}</div></div><script>window.addEventListener('load',function(){setTimeout(function(){window.focus();window.print();},150);});</script></body></html>`;
-  };
-
-  const handlePrintCalendar = () => {
-    const printWindow = window.open('', '_blank');
-    if (!printWindow) {
-      window.print();
-      return;
+  const handlePrintCalendar = async () => {
+    const viewer = window.open('about:blank', '_blank');
+    setPrintState({ busy: true, error: '' });
+    try {
+      const model = buildMonthSchedulePrintModel({
+        monthStr, roleFilter, restaurantName: appUser?.restaurantName || appUser?.restaurant || '', prefiltered: true,
+        shifts: visibleMonthShifts.map(shift => {
+          const labels = getScheduleShiftMonthLabels(shift, activeUsers);
+          return { date: getShiftDateKey(shift), role: shift.role || shift.targetRole || '', startTime: shift.startTime || '', endTime: shift.endTime || '', employeeName: getScheduleShiftDisplayName(shift, activeUsers), label: labels.full, dedupeKey: getScheduleShiftDisplayDedupeKey(shift, activeUsers) || shift.id };
+        })
+      });
+      const bytes = await generateMonthSchedulePdf(model);
+      deliverSchedulePdf(bytes, { viewer, filename: `86chaos-schedule-${monthStr}${roleFilter !== 'All' ? `-${roleFilter}` : ''}.pdf` });
+      setPrintState({ busy: false, error: '' });
+    } catch (_) {
+      try { viewer?.close(); } catch (_) {}
+      setPrintState({ busy: false, error: 'The schedule PDF could not be generated. No schedule data was changed. Please try again.' });
     }
-    printWindow.document.open();
-    printWindow.document.write(buildPrintableCalendarHtml());
-    printWindow.document.close();
   };
 
   return (
@@ -4696,8 +4685,9 @@ const TabMonth = ({ currentDate, users, shifts, appUser }) => {
             {uniqueRoles.filter(r => r !== 'All').map(r => <option key={r} value={r}>{r}</option>)}
           </select>
         </div>
-        <button onClick={handlePrintCalendar} className={T.btnAlt}>🖨️ Print Calendar</button>
+        <button onClick={handlePrintCalendar} disabled={printState.busy} className={T.btnAlt}>🖨️ {printState.busy ? 'Generating PDF…' : 'Print Calendar (PDF)'}</button>
       </div>
+      {printState.error && <div role="alert" className="no-print p-2 text-xs font-bold text-red-300 bg-red-950/20 border-b border-red-900/40">{printState.error}</div>}
       
       <div className="hidden print:block print-header">
         86chaos Schedule {roleFilter !== 'All' ? `- ${roleFilter}` : ''}   {formatDisplayMonth(monthStr)}
