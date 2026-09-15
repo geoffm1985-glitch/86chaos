@@ -3,6 +3,7 @@ import { buildMonthSchedulePrintModel } from './schedulePrintModel';
 import { generateMonthSchedulePdf, PAGE_WIDTH, PAGE_HEIGHT, MIN_FONT_SIZE } from './schedulePdf';
 
 const fs = require('fs');
+const { spawnSync } = require('child_process');
 const fontkit = require('@pdf-lib/fontkit');
 const fontPaths = [
   '@fontsource/noto-sans/files/noto-sans-latin-400-normal.woff','@fontsource/noto-sans/files/noto-sans-latin-700-normal.woff',
@@ -47,14 +48,21 @@ test('rendered PDF text retains the Unicode employee, time, and role', async () 
   const model = makeModel(1);
   model.cells.find(cell => cell.date === '2026-08-03').shifts[0].label = 'Zoë 李 · 10:00-18:00 · Cook';
   const bytes = await generateMonthSchedulePdf(model, pdfOptions);
-  const pdfjs = await import('pdfjs-dist/legacy/build/pdf.js');
-  const loaded = await pdfjs.getDocument({ data: bytes, disableWorker: true }).promise;
-  const text = [];
-  for (let pageNumber = 1; pageNumber <= loaded.numPages; pageNumber += 1) {
-    const content = await (await loaded.getPage(pageNumber)).getTextContent();
-    text.push(...content.items.map(item => item.str));
-  }
-  const extracted = text.join(' ');
+  const extractor = `
+    import fs from 'node:fs';
+    import * as pdfjs from 'pdfjs-dist/legacy/build/pdf.mjs';
+    const data = new Uint8Array(fs.readFileSync(0));
+    const loaded = await pdfjs.getDocument({ data, disableWorker: true, isEvalSupported: false }).promise;
+    const text = [];
+    for (let pageNumber = 1; pageNumber <= loaded.numPages; pageNumber += 1) {
+      const content = await (await loaded.getPage(pageNumber)).getTextContent();
+      text.push(...content.items.map(item => item.str));
+    }
+    process.stdout.write(JSON.stringify(text.join(' ')));
+  `;
+  const extraction = spawnSync(process.execPath, ['--input-type=module', '-e', extractor], { cwd: process.cwd(), input: Buffer.from(bytes), encoding: 'utf8', maxBuffer: 4 * 1024 * 1024 });
+  expect(extraction.status).toBe(0);
+  const extracted = JSON.parse(extraction.stdout);
   expect(extracted).toContain('Zoë');
   expect(extracted).toContain('李');
   expect(extracted).toContain('10:00-18:00');
