@@ -10,6 +10,9 @@ const root = path.resolve(__dirname, '..');
 const read = file => fs.readFileSync(path.join(root, file), 'utf8');
 const json = file => JSON.parse(read(file));
 const sha = file => crypto.createHash('sha256').update(read(file)).digest('hex');
+const validationVersion = process.env.CHAOS_VALIDATION_VERSION || '16.0.233';
+const validationReleaseTitle = process.env.CHAOS_VALIDATION_RELEASE_TITLE || 'Schedule Tools Period Awareness';
+const validationScript = process.env.CHAOS_VALIDATION_SCRIPT || 'scripts/validate-16-0-233.js';
 let failures = 0;
 const assert = (condition, message) => {
   if (condition) console.log(`OK: ${message}`);
@@ -21,9 +24,9 @@ const inherited = childProcess.spawnSync(process.execPath, ['scripts/validate-16
   encoding: 'utf8',
   env: {
     ...process.env,
-    CHAOS_VALIDATION_VERSION: '16.0.233',
-    CHAOS_VALIDATION_RELEASE_TITLE: 'Schedule Tools Period Awareness',
-    CHAOS_VALIDATION_SCRIPT: 'scripts/validate-16-0-233.js'
+    CHAOS_VALIDATION_VERSION: validationVersion,
+    CHAOS_VALIDATION_RELEASE_TITLE: validationReleaseTitle,
+    CHAOS_VALIDATION_SCRIPT: validationScript
   }
 });
 if (inherited.stdout) process.stdout.write(inherited.stdout);
@@ -41,13 +44,13 @@ const periodShared = read('src/core/scheduleToolsPeriod.shared.js');
 const periodBrowser = read('src/core/scheduleToolsPeriod.js');
 const warningShared = read('src/core/scheduleWarningControls.shared.js');
 
-assert(pkg.version === '16.0.233', 'package.json version is 16.0.233');
-assert(lock.version === '16.0.233' && lock.packages?.['']?.version === '16.0.233', 'package-lock root versions are 16.0.233');
-assert(pkg.scripts['test:source'] === 'node scripts/validate-16-0-233.js' && pkg.scripts['validate:16.0.233'] === 'node scripts/validate-16-0-233.js', 'source and explicit 16.0.233 validators are wired');
-assert(version.version === '16.0.233' && version.build === '16.0.233' && version.releaseTitle === 'Schedule Tools Period Awareness', 'public version metadata identifies 16.0.233');
-assert(apiVersion.includes("APP_VERSION = '16.0.233'") && apiVersion.includes("SECURITY_SCHEMA_VERSION = '16.0.233'"), 'API reports 16.0.233');
-assert(appCore.includes("CURRENT_VERSION = '16.0.233'"), 'app reports 16.0.233');
-assert(read('src/core/customerHelpKnowledge.js').includes("CUSTOMER_HELP_VERSION = '16.0.233'") && read('src/core/customerHelpKnowledge.cjs').includes("CUSTOMER_HELP_VERSION = '16.0.233'"), 'customer Help version mirrors remain synchronized');
+assert(pkg.version === validationVersion, `package.json version is ${validationVersion}`);
+assert(lock.version === validationVersion && lock.packages?.['']?.version === validationVersion, `package-lock root versions are ${validationVersion}`);
+assert(pkg.scripts['test:source'] === `node ${validationScript}` && pkg.scripts[`validate:${validationVersion}`] === `node ${validationScript}`, `source and explicit ${validationVersion} validators are wired`);
+assert(version.version === validationVersion && version.build === validationVersion && version.releaseTitle === validationReleaseTitle, `public version metadata identifies ${validationVersion}`);
+assert(apiVersion.includes(`APP_VERSION = '${validationVersion}'`) && apiVersion.includes(`SECURITY_SCHEMA_VERSION = '${validationVersion}'`), `API reports ${validationVersion}`);
+assert(appCore.includes(`CURRENT_VERSION = '${validationVersion}'`), `app reports ${validationVersion}`);
+assert(read('src/core/customerHelpKnowledge.js').includes(`CUSTOMER_HELP_VERSION = '${validationVersion}'`) && read('src/core/customerHelpKnowledge.cjs').includes(`CUSTOMER_HELP_VERSION = '${validationVersion}'`), 'customer Help version mirrors remain synchronized');
 
 assert(periodShared.includes('deriveScheduleToolsPeriod') && periodShared.includes('buildWeekSegments') && periodShared.includes('mode: normalizedMode'), 'one pure helper derives the active period and its week segments');
 assert(periodShared.includes("normalizedMode === 'monthly'") && periodShared.includes('requestedWeeks * 7'), 'period helper preserves month-only and configured-week semantics');
@@ -86,5 +89,4 @@ if (failures) {
   console.error(`16.0.233 source validation failed with ${failures} failure(s).`);
   process.exit(1);
 }
-console.log('16.0.233 source validation passed.');
-
+console.log(`${validationVersion} source validation passed with certified 16.0.233 Schedule Tools invariants.`);

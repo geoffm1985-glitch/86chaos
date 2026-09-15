@@ -1,17 +1,17 @@
 {
-  "version": "16.0.233",
-  "name": "86 Chaos 16.0.233",
-  "build": "16.0.233",
-  "label": "86 Chaos 16.0.233",
-  "releasedAt": "2026-09-14T13:48:10.000Z",
-  "releaseTitle": "Schedule Tools Period Awareness",
+  "version": "16.0.234",
+  "name": "86 Chaos 16.0.234",
+  "build": "16.0.234",
+  "label": "86 Chaos 16.0.234",
+  "releasedAt": "2026-09-14T00:00:00.000Z",
+  "releaseTitle": "Shift4 Dine POS Foundation and Reliable Schedule PDF Printing",
   "notes": [
-    "Schedule Tools now evaluates the same week, two-week period, or calendar month shown in Schedule Builder.",
-    "Draft counts, coverage gaps, warnings, Fill Coverage Gaps, templates, and publish review use one shared active period.",
-    "Copy Previous Week remains a weekly action and now shows the exact source and destination dates.",
-    "Historical schedule compatibility, Request Off handling, canonical date writes, publishing safeguards, and tenant isolation remain preserved."
+    "Adds a secure, manual, read-only Shift4 Dine Marketplace data bridge with server-only OAuth credentials.",
+    "Normalizes allowlisted ticket and item data into idempotent review records with cent-based money fields and safe CSV/JSON exports.",
+    "Replaces the active Month Schedule browser-print action with lazy pdf-lib Letter-landscape PDF output and a download fallback.",
+    "Adds a dedicated new-implementation regression suite covering Shift4 security, failures, idempotency, exports, and schedule PDF behavior."
   ],
-  "title": "86 Chaos 16.0.233",
-  "summary": "Schedule Tools now follows the active Schedule Builder week, two-week period, or month.",
-  "description": "Schedule Tools now follows the active Schedule Builder week, two-week period, or month."
+  "title": "86 Chaos 16.0.234",
+  "summary": "Secure read-only Shift4 Dine imports, stable Month Schedule PDF printing, and a dedicated regression suite.",
+  "description": "Adds a secure read-only Shift4 Dine POS data bridge for controlled import, review, and export; replaces the active Month Schedule browser-print path with stable PDF output; and introduces dedicated regression coverage."
 }

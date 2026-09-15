@@ -1,5 +1,6 @@
 import { firestoreHealthEvidence, restoreDrillNeedsAttention, deploymentEvidenceChecks } from '../core/adminHealthEvidence';
 import PosImportReview from '../components/PosImportReview';
+import Shift4IntegrationPanel from '../components/Shift4IntegrationPanel';
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Bell, Check, Camera, ChevronLeft, ChevronRight, MessageSquare, Plus, Trash2, Users, Calendar, Clock, X, Loader2, Package, ClipboardList, Menu, Settings, LogOut, Shield, Send, Repeat, Edit, Moon, Sun, TrendingUp, BookOpen, Search, ChefHat, Scale, Coffee, Star, Bug, Wrench, Globe, ThumbsUp, HelpCircle, Sparkles } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
@@ -3131,39 +3132,12 @@ const Toggle = ({ label, desc, checked, onChange, disabled = false }) => (
             <p className="text-sm font-bold text-slate-300 mt-2">Customers cannot access unfinished OAuth, API keys, provider setup, or integration tools. This page is visible only to Master Admin/System Admin accounts for testing.</p>
           </div>
           
-          <div className={`${T.card} p-4 sm:p-5 border-blue-900/50 shadow-[0_0_15px_rgba(59,130,246,0.05)]`}>
-             <div className="mb-4 border-b border-[#2A353D] pb-2">
-               <h2 className="text-base font-black text-blue-400">Point of Sale (POS) Sync</h2>
-               <p className="text-[10px] text-slate-400 font-medium leading-snug mt-1">Automatically pull daily sales data directly into your Daily Ledger.</p>
-             </div>
-             <form onSubmit={async (e) => {
-                e.preventDefault();
-                await setDoc(doc(db, "restaurants", appUser.restaurantId), { integrations: { posProvider: e.target.posProvider.value, posCredentialMode: 'server_encrypted_future', posSecretStatus: 'not_saved_client_side', posApiKey: deleteField() } }, { merge: true });
-                addToast('Provider Saved', 'No POS secret was stored. Future live credentials must use the server-side encrypted vault design.');
-             }} className="space-y-3">
-               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                 <div>
-                   <label className={T.label}>POS Provider</label>
-                   <select name="posProvider" defaultValue={clientData?.integrations?.posProvider || ''} className={T.input}>
-                     <option value="">None / Manual Entry</option>
-                     <option value="Square">Square</option>
-                     <option value="Toast">Toast</option>
-                     <option value="Clover">Clover</option>
-                     <option value="TouchBistro">TouchBistro</option>
-                   </select>
-                 </div>
-                 <div>
-                   <label className={T.label}>Secure API Key / Access Token</label>
-                   <input type="password" name="posApiKey" value="" disabled className={`${T.input} opacity-60 cursor-not-allowed`} placeholder="Disabled until encrypted server-side vault is implemented" />
-                 </div>
-               </div>
-               <div className="p-3 bg-[#12161A] border border-[#2A353D] rounded-xl">
-                 <label className={T.label}>Your Webhook URL (Paste this into your POS dashboard)</label>
-                 <code className="text-[10px] text-emerald-400 break-all select-all block mt-1">https://app.86chaos.com/api/webhooks/pos-sync?tenant={appUser.restaurantId}</code>
-               </div>
-               <div className="p-3 rounded-xl border border-amber-900/40 bg-amber-950/20 text-[10px] font-bold text-amber-100">Provider selection can be saved for planning. Live API keys and OAuth secrets are intentionally disabled until the encrypted server-side vault is built.</div><button type="submit" className="bg-blue-900/20 text-blue-400 font-black tracking-widest uppercase border border-blue-900/50 rounded-xl w-full py-3 hover:bg-blue-900/40 transition-colors">Save Provider Note</button>
-             </form>
-          </div>
+          <Shift4IntegrationPanel
+            restaurantId={appUser.restaurantId}
+            initialProvider={clientData?.integrations?.posProvider || ''}
+            addToast={addToast}
+            onSaveProvider={async (provider) => setDoc(doc(db, "restaurants", appUser.restaurantId), { integrations: { posProvider: provider, posProviderProduct: provider === 'shift4' ? 'shift4-dine' : deleteField(), posCredentialMode: provider === 'shift4' ? 'oauth_server_encrypted' : 'server_encrypted_future', posSecretStatus: provider === 'shift4' ? 'server_only' : 'not_saved_client_side', posWebhookStatus: 'deferred', posApiKey: deleteField() } }, { merge: true })}
+          />
 
           <div className={`${T.card} p-4 sm:p-5 border-emerald-900/50 shadow-[0_0_15px_rgba(16,185,129,0.05)]`}>
              <div className="mb-4 border-b border-[#2A353D] pb-2">

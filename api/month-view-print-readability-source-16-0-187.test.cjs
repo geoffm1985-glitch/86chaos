@@ -20,7 +20,14 @@ function assertReadableOnePagePrintCss(source, label) {
   assert.doesNotMatch(source, /font-size:\s*6px/i, `${label} no longer uses the too-small 6px printed shift text`);
 }
 
-test('Month View printed calendar uses larger one-line shift text while staying one page', () => {
-  assertReadableOnePagePrintCss(schedule, 'active Schedule Month View');
+test('active Month View uses a readable vector PDF and legacy TabMonth keeps its historical print CSS', () => {
+  assert.match(schedule, /generateMonthSchedulePdf/);
+  assert.match(schedule, /Print Calendar \(PDF\)/);
+  assert.doesNotMatch(schedule, /printWindow\.document\.write/);
+  const pdf = fs.readFileSync(path.join(root, 'src/core/schedulePdf.js'), 'utf8');
+  assert.match(pdf, /PAGE_WIDTH = 792/);
+  assert.match(pdf, /PAGE_HEIGHT = 612/);
+  assert.match(pdf, /MIN_FONT_SIZE = 8/);
+  assert.match(pdf, /detailPage = document\.addPage/);
   assertReadableOnePagePrintCss(tabMonth, 'legacy TabMonth print view');
 });
