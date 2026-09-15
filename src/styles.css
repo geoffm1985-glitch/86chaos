@@ -1929,10 +1929,17 @@ select {
 
 @media (max-width: 720px) {
   .schedule-copilot-compact {
-    max-height: 430px;
+    /* The body owns scrolling. Clamping the outer card lets its visible overflow
+       overlap the Schedule Builder controls that follow it on short phones. */
+    max-height: none;
+    overflow: visible;
   }
   .schedule-copilot-compact .schedule-copilot-body {
     max-height: 255px;
+    scroll-padding-top: 8px;
+  }
+  .schedule-warning-dismiss {
+    scroll-margin-top: 80px;
   }
   .manager-brief-compact .brief-hero h1,
   .kitchen-command-compact .command-hero h1 {

@@ -5426,7 +5426,7 @@ const ScheduleWarningCard = ({ warning, appUser }) => {
         <div className={`font-black ${titleTone}`}>{warning.message}</div>
         {warning.detail && <div className="text-xs text-slate-400 mt-1">{warning.detail}</div>}
       </div>
-      <button type="button" onClick={memory.dismiss} aria-label="Dismiss warning" className="min-h-[42px] min-w-[42px] rounded-lg border border-white/10 bg-[#12161A] text-slate-300 hover:text-white flex items-center justify-center"><X size={14}/></button>
+      <button type="button" onClick={memory.dismiss} aria-label="Dismiss warning" className="schedule-warning-dismiss min-h-[42px] min-w-[42px] flex-shrink-0 rounded-lg border border-white/10 bg-[#12161A] text-slate-300 hover:text-white flex items-center justify-center"><X size={14}/></button>
     </div>
   </div>;
 };
