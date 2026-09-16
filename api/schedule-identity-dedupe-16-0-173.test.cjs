@@ -23,7 +23,9 @@ test('Month View dedupes duplicate published shift documents and suppresses stal
   assert.match(schedule, /assignedSlots\.has\(slotKey\)/);
   assert.match(schedule, /shiftsByDate\.get\(date\) \|\| \[\]/);
   assert.doesNotMatch(schedule, /onClick=\{\(\)=>window\.print\(\)\}/);
-  assert.match(schedule, /printWindow\.document\.write\(buildPrintableCalendarHtml\(\)\)/);
+  assert.match(schedule, /generateMonthSchedulePdf/);
+  assert.match(schedule, /buildMonthSchedulePrintModel/);
+  assert.doesNotMatch(schedule, /printWindow\.document\.write/);
 });
 
 test('workspace user display name does not prefer restaurant name or machine login over person name', () => {

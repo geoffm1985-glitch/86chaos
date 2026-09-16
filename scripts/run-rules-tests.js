@@ -109,6 +109,9 @@ async function runFirestoreTests(env) {
   for (const collectionName of ['inventoryItems', 'vendors', 'orders', 'wasteLogs', 'invoices', 'reports', 'exports']) {
     await seedDoc(env, collectionName, `${collectionName}_a`, { restaurantId: tenantA, createdBy: 'managerA', name: collectionName });
   }
+  for (const collectionName of ['shift4Credentials', 'shift4OauthStates', 'shift4ConnectionControls', 'posSyncScopes']) {
+    await seedDoc(env, collectionName, 'server-only-fixture', { restaurantIdHash: 'hash-only', envelope: { ciphertext: 'server-secret-fixture' } });
+  }
 
   const staffA = env.authenticatedContext('staffA', { email: 'staffa@example.com' }).firestore();
   const staffANoEmail = env.authenticatedContext('staffA').firestore();
@@ -125,6 +128,14 @@ async function runFirestoreTests(env) {
   const forcedUserB = env.authenticatedContext('forcedUserB', { email: 'forcedb@example.com' }).firestore();
   const superAdmin = env.authenticatedContext('superAdmin', { email: 'super@example.com', superAdmin: true }).firestore();
   const anon = env.unauthenticatedContext().firestore();
+
+  setRuleCase('Shift4 server-only collections');
+  for (const collectionName of ['shift4Credentials', 'shift4OauthStates', 'shift4ConnectionControls', 'posSyncScopes']) {
+    await assertFails(getDoc(doc(ownerA, collectionName, 'server-only-fixture')));
+    await assertFails(getDoc(doc(superAdmin, collectionName, 'server-only-fixture')));
+    await assertFails(getDoc(doc(anon, collectionName, 'server-only-fixture')));
+    await assertFails(setDoc(doc(ownerA, collectionName, 'client-write'), { restaurantId: tenantA, accessToken: 'forbidden' }));
+  }
 
   setRuleCase('Owner-email authority hardening');
   // Missing, empty, whitespace, null, and malformed email values must never establish owner authority.

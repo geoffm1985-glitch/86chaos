@@ -30,9 +30,9 @@ test('App primes Schedule and Published with route-aware initial subtabs before 
 
 test('Schedule Copilot realtime reads are gated until Copilot is opened', () => {
   assert.match(schedule, /const \[open, setOpen\] = useState\(false\);[\s\S]*const copilotReadEnabled = Boolean\(open && appUser\?\.restaurantId\)/);
-  assert.match(schedule, /useLiveCollection\('scheduleTemplates'[\s\S]*enabled: copilotReadEnabled[\s\S]*debugLabel: 'schedule:copilot:templates'/);
-  assert.match(schedule, /useLiveCollection\('scheduleCoverageTargets'[\s\S]*enabled: copilotReadEnabled[\s\S]*debugLabel: 'schedule:copilot:coverage-targets'/);
-  assert.match(schedule, /useLiveCollection\('roles'[\s\S]*enabled: copilotReadEnabled[\s\S]*debugLabel: 'schedule:copilot:roles'/);
+  assert.match(schedule, /useLiveCollectionState\('scheduleTemplates'[\s\S]*enabled: copilotReadEnabled[\s\S]*debugLabel: 'schedule:copilot:templates'/);
+  assert.match(schedule, /useLiveCollectionState\('scheduleCoverageTargets'[\s\S]*enabled: copilotReadEnabled[\s\S]*debugLabel: 'schedule:copilot:coverage-targets'/);
+  assert.match(schedule, /useLiveCollectionState\('roles'[\s\S]*enabled: copilotReadEnabled[\s\S]*debugLabel: 'schedule:copilot:roles'/);
   assert.match(schedule, /Open Schedule Tools/);
 });
 

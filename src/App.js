@@ -1237,7 +1237,8 @@ const [currentDate, setCurrentDate] = useState(getToday());
     }
     rescueDiagnosticsActiveRef.current = enableScheduleDateKeyRescue;
   }, [enableScheduleDateKeyRescue, rawDateShiftsState.error, rawDateShiftsState.resolved, rawDateShifts.length, clientData?.scheduleDateKeyRescueRequired, clientData?.scheduleRescueEnforceProtected, JSON.stringify(clientData?.scheduleDateKeyOnlyMonths || [])]);
-  const rawScheduleDateKeyShifts = useLiveCollection('shifts', rId, { enabled: !!rId && enableScheduleDateKeyRescue, whereClauses: scheduleDateKeyShiftClauses, orderByField: 'scheduleDateKey', orderDirection: 'asc', limitCount: schedulePlan.shiftLimit, fallbackLimitCount: Math.min(schedulePlan.shiftLimit || 80, 80), debugLabel: `app:${activeTabState}:${activeScheduleSubTab}:shifts-scheduleDateKey-rescue` });
+  const rawScheduleDateKeyShiftsState = useLiveCollectionState('shifts', rId, { enabled: !!rId && enableScheduleDateKeyRescue, whereClauses: scheduleDateKeyShiftClauses, orderByField: 'scheduleDateKey', orderDirection: 'asc', limitCount: schedulePlan.shiftLimit, fallbackLimitCount: Math.min(schedulePlan.shiftLimit || 80, 80), debugLabel: `app:${activeTabState}:${activeScheduleSubTab}:shifts-scheduleDateKey-rescue` });
+  const rawScheduleDateKeyShifts = rawScheduleDateKeyShiftsState.data || [];
   const rawShifts = useMemo(() => mergeLoadedScheduleShifts(rawDateShifts, rawScheduleDateKeyShifts), [rawDateShifts, rawScheduleDateKeyShifts]);
   const shifts = useMemo(() => {
     const start = shiftRangeStart;
@@ -1265,7 +1266,8 @@ const [currentDate, setCurrentDate] = useState(getToday());
   const shiftSwaps = useLiveCollection('shiftSwaps', rId, { enabled: !!rId && wantsScheduleData && schedulePlan.swapsEnabled, whereClauses: schedulePlan.swapClauses, orderByField: schedulePlan.swapOrderByField || 'shiftDate', orderDirection: 'asc', limitCount: schedulePlan.swapLimit, fallbackLimitCount: 25, debugLabel: `app:${activeTabState}:${activeScheduleSubTab}:shift-swaps` });
   const events = useLiveCollection('events', rId, { enabled: !!rId && wantsEventData && schedulePlan.eventEnabled, whereClauses: eventRangeClauses, orderByField: 'date', orderDirection: eventOrderDirection, limitCount: eventLimitCount, fallbackLimitCount: wantsScheduleScreen ? 120 : 25 });
   const sales = useLiveCollection('sales', rId, { enabled: !!rId && wantsSalesData, whereClauses: [['date','>=', monthBounds.start], ['date','<=', monthBounds.end]], orderByField: 'date', orderDirection: 'desc', limitCount: 45, fallbackLimitCount: 20 });
-  const activeTimeOffRequests = useLiveCollection('timeOffRequests', rId, { enabled: !!rId && wantsTimeOffData, whereClauses: schedulePlan.timeOffClauses, orderByField: schedulePlan.timeOffClauses.some(c => c[0] === 'date') ? 'date' : null, orderDirection: 'asc', limitCount: schedulePlan.timeOffLimit, fallbackLimitCount: Math.min(schedulePlan.timeOffLimit || 60, 60), debugLabel: `app:${activeTabState}:${activeScheduleSubTab}:timeoff-plan` });
+  const activeTimeOffRequestsState = useLiveCollectionState('timeOffRequests', rId, { enabled: !!rId && wantsTimeOffData, whereClauses: schedulePlan.timeOffClauses, orderByField: schedulePlan.timeOffClauses.some(c => c[0] === 'date') ? 'date' : null, orderDirection: 'asc', limitCount: schedulePlan.timeOffLimit, fallbackLimitCount: Math.min(schedulePlan.timeOffLimit || 60, 60), debugLabel: `app:${activeTabState}:${activeScheduleSubTab}:timeoff-plan` });
+  const activeTimeOffRequests = activeTimeOffRequestsState.data || [];
   const timeOffHistoryRequests = useLiveCollection('timeOffRequests', rId, { enabled: !!rId && wantsTimeOffData && schedulePlan.timeOffHistoryEnabled === true, whereClauses: schedulePlan.timeOffHistoryClauses || [], orderByField: 'date', orderDirection: 'desc', limitCount: schedulePlan.timeOffHistoryLimit || 40, fallbackLimitCount: 40, debugLabel: `app:${activeTabState}:${activeScheduleSubTab}:timeoff-history` });
   const timeOffRequests = useMemo(() => {
     const byId = new Map();
@@ -3232,6 +3234,25 @@ What I clicked / expected:
 
   if (!liveAppUser) return <div className="non-admin-controls-compact"><LoginScreen users={displayUsers} setAppUser={setAppUser} addToast={addToast} /></div>;
 
+  const scheduleToolsDataState = {
+    workspaceId: rId,
+    shifts: {
+      resolved: rawDateShiftsState.resolved === true && (!enableScheduleDateKeyRescue || rawScheduleDateKeyShiftsState.resolved === true),
+      error: rawDateShiftsState.error || (enableScheduleDateKeyRescue ? rawScheduleDateKeyShiftsState.error : null),
+      count: Math.max(rawDateShifts.length, enableScheduleDateKeyRescue ? rawScheduleDateKeyShifts.length : 0),
+      limit: schedulePlan.shiftLimit || 0,
+      workspaceId: rId
+    },
+    timeOff: {
+      resolved: activeTimeOffRequestsState.resolved === true,
+      error: activeTimeOffRequestsState.error,
+      count: activeTimeOffRequests.length,
+      limit: schedulePlan.timeOffLimit || 0,
+      workspaceId: rId
+    }
+  };
+  const activeScheduleBuilderProps = { currentDate, users: scheduleDisplayUsers, shifts, events, timeOffRequests, timePunches, addToast, appUser: liveAppUser, clientData: displayClientData, scheduleDataState: scheduleToolsDataState };
+
 
   const renderMainContent = () => {
     if (mfaFrontendLockActive && !['settings', 'help'].includes(activeTabState)) {
@@ -3256,9 +3277,9 @@ What I clicked / expected:
     const routeIsInternalAdmin = activeTabState === 'godmode';
     if (!routeIsInternalAdmin && routeAccess && routeAccess.allowed === false) return <LockedFeatureScreen access={routeAccess} appUser={liveAppUser} setActiveTab={stableSetActiveTab} />;
     if (activeTabState === 'today') return <TabToday key={`tdy-${rId}`} currentDate={currentDate} appUser={liveAppUser} users={displayUsers} shifts={shifts} shiftSwaps={shiftSwaps} timeOffRequests={timeOffRequests} events={events} sales={sales} timePunches={timePunches} inventoryItems={inventoryItems} maintenanceLogs={maintenanceLogs} prepItems={prepItems} tasks={tasks} recipes={recipes} menuDependencies={menuDependencies} restaurantAdminAlerts={restaurantAdminAlerts} clientData={displayClientData} setActiveTab={setActiveTab} addToast={addToast} registerUndo={registerUndo} />;
-    if (activeTabState === 'schedule' && routeAllowed) return <TabMasterSchedule key={`schpub-${rId}-${liveAppUser?.id}`} currentDate={currentDate} setCurrentDate={setCurrentDate} onSubTabChange={setActiveScheduleSubTab} appUser={liveAppUser} users={scheduleDisplayUsers} shifts={shifts} shiftSwaps={shiftSwaps} timeOffRequests={timeOffRequests} events={events} addToast={addToast} initialSubTab="schedule-builder" voiceScheduleSubTabTarget={voiceScheduleSubTabTarget} clientData={displayClientData} scheduleBuilderProps={{ currentDate, users: scheduleDisplayUsers, shifts, events, timeOffRequests, timePunches, addToast, appUser: liveAppUser, clientData: displayClientData }} />;
+    if (activeTabState === 'schedule' && routeAllowed) return <TabMasterSchedule key={`schpub-${rId}-${liveAppUser?.id}`} currentDate={currentDate} setCurrentDate={setCurrentDate} onSubTabChange={setActiveScheduleSubTab} appUser={liveAppUser} users={scheduleDisplayUsers} shifts={shifts} shiftSwaps={shiftSwaps} timeOffRequests={timeOffRequests} events={events} addToast={addToast} initialSubTab="schedule-builder" voiceScheduleSubTabTarget={voiceScheduleSubTabTarget} clientData={displayClientData} scheduleBuilderProps={activeScheduleBuilderProps} />;
     if (activeTabState === 'events' && routeAllowed) return <TabSchedule key={`evt-${rId}`} currentDate={currentDate} users={scheduleDisplayUsers} shifts={shifts} events={events} timeOffRequests={timeOffRequests} timePunches={timePunches} addToast={addToast} appUser={liveAppUser} clientData={displayClientData} initialSubTab="events" hideSubTabs />;
-    if (activeTabState === 'published') return <TabMasterSchedule key={`pub-${rId}-${liveAppUser?.id}`} currentDate={currentDate} setCurrentDate={setCurrentDate} onSubTabChange={setActiveScheduleSubTab} appUser={liveAppUser} users={scheduleDisplayUsers} shifts={shifts} shiftSwaps={shiftSwaps} timeOffRequests={timeOffRequests} events={events} addToast={addToast} voiceScheduleSubTabTarget={voiceScheduleSubTabTarget} clientData={displayClientData} scheduleBuilderProps={{ currentDate, users: scheduleDisplayUsers, shifts, events, timeOffRequests, timePunches, addToast, appUser: liveAppUser, clientData: displayClientData }} />;
+    if (activeTabState === 'published') return <TabMasterSchedule key={`pub-${rId}-${liveAppUser?.id}`} currentDate={currentDate} setCurrentDate={setCurrentDate} onSubTabChange={setActiveScheduleSubTab} appUser={liveAppUser} users={scheduleDisplayUsers} shifts={shifts} shiftSwaps={shiftSwaps} timeOffRequests={timeOffRequests} events={events} addToast={addToast} voiceScheduleSubTabTarget={voiceScheduleSubTabTarget} clientData={displayClientData} scheduleBuilderProps={activeScheduleBuilderProps} />;
     if (activeTabState === 'ops' && routeAllowed) return <TabOpsCenter key={`ops-${rId}`} currentDate={currentDate} appUser={liveAppUser} users={displayUsers} shifts={shifts} events={events} sales={sales} timePunches={timePunches} addToast={addToast} setActiveTab={setActiveTab} clientData={displayClientData} />;
     if (activeTabState === 'back-office' && routeAllowed) return <TabBackOffice key={`bo-${rId}`} currentDate={currentDate} users={displayUsers} sales={sales} timePunches={timePunches} restaurantAdminAlerts={restaurantAdminAlerts} appUser={liveAppUser} clientData={displayClientData} setActiveTab={setActiveTab} addToast={addToast} />;
     if ((activeTabState === 'financials' || activeTabState === 'sales' || activeTabState === 'labor') && routeAllowed) return <TabFinancials key={`fin-${rId}`} currentDate={currentDate} users={displayUsers} shifts={shifts} sales={sales} timePunches={timePunches} addToast={addToast} appUser={liveAppUser} clientData={displayClientData} setActiveTab={setActiveTab} initialSubTab={activeTabState === 'sales' ? 'ledger' : activeTabState === 'labor' ? 'labor' : 'overview'} />;

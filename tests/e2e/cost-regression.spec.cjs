@@ -79,9 +79,19 @@ async function openScenario(page, scenario) {
     await page.evaluate(() => { window.__chaosQaVisibilityState = 'visible'; document.dispatchEvent(new Event('visibilitychange')); });
     await page.waitForTimeout(1000);
   } else if (scenario.action === 'select-current-workspace') {
+    // The onboarding decision is hydrated asynchronously after authentication.
+    // Keep this cost scenario isolated from that unrelated modal without forcing
+    // the workspace click or bypassing normal actionability checks.
+    await page.waitForTimeout(750);
+    const blockerState = await dismissBlockingDialogs(page, { maxPasses: 4 });
+    expect(
+      blockerState.ok,
+      `workspace cost scenario could not safely clear a blocking dialog: ${blockerState.failure || 'unknown dialog'}`
+    ).toBe(true);
+
     const trigger = page.getByRole('button', { name: /switch workspace/i }).first();
     await expect(trigger, 'workspace switcher trigger').toBeVisible({ timeout: 8000 });
-    await trigger.click();
+    await trigger.click({ timeout: 8000 });
 
     const dialog = page.getByRole('dialog', { name: /switch workspace/i }).first()
       .or(page.getByRole('dialog').filter({ hasText: /switch workspace/i }).first());

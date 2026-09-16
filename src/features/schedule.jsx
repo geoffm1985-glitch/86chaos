@@ -6,7 +6,7 @@ import { getAuth, signInWithEmailAndPassword, sendPasswordResetEmail, createUser
 import { getToken, onMessage } from 'firebase/messaging';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { MapContainer, TileLayer, Marker, Circle, useMapEvents } from 'react-leaflet';
-import { T, db, storage, auth, messaging, firebaseConfig, secureFetch, MASTER_ADMIN_EMAIL, EVENT_TAGS, CURRENT_VERSION, useLiveCollection, formatDate, getToday, getMonthStr, formatDisplayDate, formatDisplayFullDate, formatDisplayMonth, getDaysInMonth, formatShortTime, formatClockTime, formatClockDateTime, getAvatar, generateTempPass, getExpDate, getHoliday, logAudit, customMapIcon, getRestaurantExportPrefix, safeFilenamePart, downloadCsvRows, downloadTextFile, openPrintableReport, recordScheduleOperationDiagnostic } from '../core/appCore';
+import { T, db, storage, auth, messaging, firebaseConfig, secureFetch, MASTER_ADMIN_EMAIL, EVENT_TAGS, CURRENT_VERSION, useLiveCollection, useLiveCollectionState, formatDate, getToday, getMonthStr, formatDisplayDate, formatDisplayFullDate, formatDisplayMonth, getDaysInMonth, formatShortTime, formatClockTime, formatClockDateTime, getAvatar, generateTempPass, getExpDate, getHoliday, logAudit, customMapIcon, getRestaurantExportPrefix, safeFilenamePart, downloadCsvRows, downloadTextFile, openPrintableReport, recordScheduleOperationDiagnostic } from '../core/appCore';
 import { buildAlertFingerprint, useRememberedAlert } from '../core/alertMemory';
 import {
   requestSubjectLabel,
@@ -19,16 +19,13 @@ import {
 } from '../core/scheduleWarningControls';
 import { getCanonicalScheduleUserId, collectScheduleDurableIdentityAliases, collectScheduleShiftDurableIdentityAliases, collectScheduleEmailAliases, collectScheduleFullNameAliases, collectScheduleFirstNameAliases, collectScheduleIdentityAliases, collectScheduleShiftIdentityAliases, resolveSchedulePersonForAccount, resolveSchedulePersonForShift, buildCanonicalScheduleIdentityBlock, scheduleIdentityBlockMatchesPerson } from '../core/scheduleQueryPlanner';
 import { buildCanonicalScheduleCreateFields, buildScheduleQuickEditMutation } from '../core/scheduleIntegrity';
-import { CheersLogo, Modal, DrawerMenu, DayDotPrintScreen, MapClickListener, SmartEmptyState, MiniProblemCard, getHomeProfile, calculatePunchHours, getWeekStart, getWeekDates, roleMatches, toLocalTimeInput, makeLocalIso, PunchTable, FriendlyEmpty, GlobalSearchModal, QuickActionDock, KitchenTVMode, ChangeLogModal, UndoBar } from '../components/common';
+import { deriveScheduleToolsPeriod, deriveScheduleToolsCopyWeek, filterScheduleToolsRecords, recurringDatesForWeekday, assessScheduleToolsCompleteness } from '../core/scheduleToolsPeriod';
+import { buildMonthSchedulePrintModel } from '../core/schedulePrintModel';
+import { generateMonthSchedulePdf } from '../core/schedulePdf';
+import { deliverSchedulePdf } from '../core/schedulePdfDelivery';
+import { CheersLogo, Modal, DrawerMenu, DayDotPrintScreen, MapClickListener, SmartEmptyState, MiniProblemCard, getHomeProfile, calculatePunchHours, getWeekStart, roleMatches, toLocalTimeInput, makeLocalIso, PunchTable, FriendlyEmpty, GlobalSearchModal, QuickActionDock, KitchenTVMode, ChangeLogModal, UndoBar } from '../components/common';
 
 
-
-const escapeSchedulePrintHtml = (value = '') => String(value ?? '')
-  .replace(/&/g, '&amp;')
-  .replace(/</g, '&lt;')
-  .replace(/>/g, '&gt;')
-  .replace(/"/g, '&quot;')
-  .replace(/'/g, '&#39;');
 
 const cleanScheduleRoleName = (role = '') => String(role || '').replace(/\s+/g, ' ').trim();
 
@@ -890,20 +887,6 @@ const getSchedulePublishingSettings = (appUser = {}, clientData = {}) => {
   return { mode, weeks, customWeeks, weekStartsOn, allowPostPublishedTimeOff };
 };
 
-const getSchedulePeriodBounds = (dateKey, scheduleSettings = {}) => {
-  const base = new Date(`${dateKey || getToday()}T12:00:00`);
-  if (scheduleSettings.mode === 'monthly' || !scheduleSettings.weeks) {
-    const month = getMonthStr(dateKey || getToday());
-    return { start: `${month}-01`, end: `${month}-${String(getDaysInMonth(month)).padStart(2, '0')}` };
-  }
-  const weekStart = WEEKDAY_INDEX[normalizeScheduleWeekStart(scheduleSettings.weekStartsOn)] ?? 1;
-  const start = new Date(base);
-  while (start.getDay() !== weekStart) start.setDate(start.getDate() - 1);
-  const end = new Date(start);
-  end.setDate(start.getDate() + (Number(scheduleSettings.weeks || 1) * 7) - 1);
-  return { start: formatDate(start), end: formatDate(end) };
-};
-
 const getScheduleOuterWeekBounds = (bounds = {}, scheduleSettings = {}) => {
   const startKey = bounds?.start || getToday();
   const endKey = bounds?.end || startKey;
@@ -931,6 +914,17 @@ const getSchedulePeriodLabel = (bounds, scheduleSettings = {}) => {
   if (scheduleSettings.mode === 'monthly') return formatDisplayMonth(getMonthStr(bounds.start));
   const modeLabel = scheduleSettings.mode === 'weekly' ? 'Weekly' : scheduleSettings.mode === 'biweekly' ? '2-Week' : `${scheduleSettings.weeks || 1}-Week`;
   return `${modeLabel} Schedule: ${formatDisplayDate(bounds.start)} - ${formatDisplayDate(bounds.end)}`;
+};
+
+const getSchedulePeriodContext = (currentDate, appUser = {}, clientData = {}) => {
+  const settings = getSchedulePublishingSettings(appUser, clientData);
+  const period = deriveScheduleToolsPeriod({
+    anchorDate: currentDate || getToday(),
+    mode: settings.mode,
+    weeks: settings.weeks,
+    weekStartsOn: settings.weekStartsOn
+  });
+  return { settings, period, label: getSchedulePeriodLabel(period, settings) };
 };
 
 export const isDeletedScheduleShift = (shift = {}) => {
@@ -1054,7 +1048,9 @@ const TabMasterSchedule = ({ currentDate, setCurrentDate = null, onSubTabChange 
   const canViewTeamAvailability = Boolean(appUser?.isSuperAdmin || appUser?.isAdmin || appUser?.isOwner || appUser?.accountOwner || appUser?.workspaceOwner || appUser?.permissions?.schedule || appUser?.permissions?.team);
   const scheduleIdentity = buildScheduleIdentityFields(getSchedulePersonForAppUser(appUser, users), appUser);
   const availabilityWhereClauses = canViewTeamAvailability ? [] : [['scheduleUserId', '==', scheduleIdentity.scheduleUserId || '__none__']];
-  const availabilityRecords = useLiveCollection('availabilityRecords', appUser?.restaurantId, { enabled: !!appUser?.restaurantId && (subTab === 'availability' || subTab === 'schedule-builder'), whereClauses: availabilityWhereClauses, orderByField: canViewTeamAvailability ? 'employeeName' : null, orderDirection: 'asc', limitCount: canViewTeamAvailability ? 220 : 25, fallbackLimitCount: canViewTeamAvailability ? 80 : 25, debugLabel: `schedule:${subTab}:availability` });
+  const availabilityLimit = canViewTeamAvailability ? 220 : 25;
+  const availabilityRecordsState = useLiveCollectionState('availabilityRecords', appUser?.restaurantId, { enabled: !!appUser?.restaurantId && (subTab === 'availability' || subTab === 'schedule-builder'), whereClauses: availabilityWhereClauses, orderByField: canViewTeamAvailability ? 'employeeName' : null, orderDirection: 'asc', limitCount: availabilityLimit, fallbackLimitCount: canViewTeamAvailability ? 80 : 25, debugLabel: `schedule:${subTab}:availability` });
+  const availabilityRecords = availabilityRecordsState.data || [];
 
   useEffect(() => { onSubTabChange?.(subTab); }, [subTab, onSubTabChange]);
 
@@ -1556,7 +1552,7 @@ const handleOfferSwap = async (shift) => {
 
       {subTab === 'schedule-builder' && scheduleBuilderProps && (
         <div className="animate-[slideIn_0.2s_ease-out]">
-          <TabScheduleWorkbench {...scheduleBuilderProps} availabilityRecords={availabilityRecords} />
+          <TabScheduleWorkbench {...scheduleBuilderProps} availabilityRecords={availabilityRecords} availabilityDataState={{ ...availabilityRecordsState, count: availabilityRecords.length, limit: availabilityLimit, workspaceId: appUser?.restaurantId || '' }} />
         </div>
       )}
 
@@ -1789,7 +1785,7 @@ const handleOfferSwap = async (shift) => {
   );
 };
 
-const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, timePunches = [], addToast, appUser, clientData = null, initialSubTab = 'schedule', hideSubTabs = false, availabilityRecords = [] }) => {
+const TabSchedule = ({ currentDate, users, shifts, events, timeOffRequests, timePunches = [], addToast, appUser, clientData = null, initialSubTab = 'schedule', hideSubTabs = false, availabilityRecords = [], schedulePeriodContext = null, reviewPublishRequest = 0 }) => {
   const [subTab, setSubTab] = useState(initialSubTab); 
   const [selectedEmp, setSelectedEmp] = useState(''); 
   const [assignDates, setAssignDates] = useState([]); 
@@ -1844,10 +1840,12 @@ const [eventDate, setEventDate] = useState(getToday());
   const localBuilderDeleteRetryRef = useRef({});
   const [isPublishPickerOpen, setIsPublishPickerOpen] = useState(false);
   const [selectedPublishWeekKeys, setSelectedPublishWeekKeys] = useState([]);
+  const [publishPickerSource, setPublishPickerSource] = useState('builder');
   
   const monthStr = getMonthStr(currentDate); 
   const monthDays = Array.from({length: getDaysInMonth(monthStr)}).map((_, i) => `${monthStr}-${String(i+1).padStart(2, '0')}`);
-  const schedulePublishingSettings = getSchedulePublishingSettings(appUser, clientData);
+  const activeSchedulePeriodContext = schedulePeriodContext || getSchedulePeriodContext(currentDate, appUser, clientData);
+  const schedulePublishingSettings = activeSchedulePeriodContext.settings;
   const schedulePerson = getSchedulePersonForAppUser(appUser, users);
   const scheduleRestaurantId = appUser?.restaurantId || '';
 
@@ -1914,11 +1912,14 @@ const [eventDate, setEventDate] = useState(getToday());
     localBuilderShiftEchoes.filter(shift => shift?.restaurantId === appUser?.restaurantId && getShiftDateKey(shift).startsWith(monthStr) && !isDeletedScheduleShift(shift))
   );
   const visibleShifts = collapseScheduleDisplayShifts(visibleSourceShifts.filter(shift => !isDeletedScheduleShift(shift) && !shiftMatchesLocalDeleteMarkers(shift, activeLocalDeleteKeySet, activeLocalDeleteMarkerMap)), users);
-  const schedulePeriodBounds = getSchedulePeriodBounds(currentDate, schedulePublishingSettings);
-  const schedulePeriodDays = buildDateRange(schedulePeriodBounds.start, schedulePeriodBounds.end);
-  const schedulePeriodLabel = getSchedulePeriodLabel(schedulePeriodBounds, schedulePublishingSettings);
+  const scheduleToolsPeriod = activeSchedulePeriodContext.period;
+  const schedulePeriodBounds = { start: scheduleToolsPeriod.start, end: scheduleToolsPeriod.end };
+  const schedulePeriodDays = scheduleToolsPeriod.dates;
+  const schedulePeriodLabel = activeSchedulePeriodContext.label;
   const publicationWeekBounds = getScheduleOuterWeekBounds(schedulePeriodBounds, schedulePublishingSettings);
   const publicationWeekDays = buildDateRange(publicationWeekBounds.start, publicationWeekBounds.end);
+  const activePublishDays = publishPickerSource === 'schedule-tools' ? schedulePeriodDays : publicationWeekDays;
+  const activePublishDaySet = new Set(activePublishDays);
   const schedulePeriodShifts = visibleShifts.filter(s => { const d = getShiftDateKey(s); return d >= schedulePeriodBounds.start && d <= schedulePeriodBounds.end; });
   const scheduleBuilderActiveRosterForPublish = users.filter(u => u?.isActive !== false);
   const getScheduleBuilderRenderedShiftsForDaySet = (daySet = new Set()) => {
@@ -1937,46 +1938,81 @@ const [eventDate, setEventDate] = useState(getToday());
   const renderedPublicationPeriodShifts = mergeSchedulePublishCandidates(publicationPeriodShifts, getScheduleBuilderRenderedShiftsForDaySet(new Set(publicationWeekDays)))
     .filter(shift => !isDeletedScheduleShift(shift) && !shiftMatchesLocalDeleteMarkers(shift, activeLocalDeleteKeySet, activeLocalDeleteMarkerMap));
   const schedulePeriodEvents = events.filter(e => e.type === 'special_event' && e.date >= schedulePeriodBounds.start && e.date <= schedulePeriodBounds.end).sort((a,b) => (a.date || '').localeCompare(b.date || '') || (a.time || '').localeCompare(b.time || '') || (a.title || '').localeCompare(b.title || ''));
-  const publishWeekOptions = [];
-  for (let index = 0; index < publicationWeekDays.length; index += 7) {
-    const days = publicationWeekDays.slice(index, index + 7);
-    if (!days.length) continue;
-    const daySet = new Set(days);
-    const drafts = renderedPublicationPeriodShifts.filter(shift => getShiftWritableDocId(shift) && !isBuilderShiftPublished(shift) && daySet.has(getShiftDateKey(shift)));
-    const live = renderedPublicationPeriodShifts.filter(shift => isBuilderShiftPublished(shift) && daySet.has(getShiftDateKey(shift)));
-    const touchesVisiblePeriod = days.some(day => day >= schedulePeriodBounds.start && day <= schedulePeriodBounds.end);
-    if (!touchesVisiblePeriod) continue;
-    publishWeekOptions.push({
-      key: `${days[0]}_${days[days.length - 1]}`,
-      label: `Week ${publishWeekOptions.length + 1}`,
-      start: days[0],
-      end: days[days.length - 1],
-      days,
-      draftCount: drafts.length,
-      liveCount: live.length
-    });
-  }
+  const buildPublishWeekOptionsForDays = (sourceDays = []) => {
+    const options = [];
+    const sourceDaySet = new Set(sourceDays);
+    for (const segment of scheduleToolsPeriod.weekSegments) {
+      const days = segment.dates.filter(day => sourceDaySet.has(day));
+      if (!days.length) continue;
+      const daySet = new Set(days);
+      const drafts = renderedPublicationPeriodShifts.filter(shift => getShiftWritableDocId(shift) && !isBuilderShiftPublished(shift) && daySet.has(getShiftDateKey(shift)));
+      const live = renderedPublicationPeriodShifts.filter(shift => isBuilderShiftPublished(shift) && daySet.has(getShiftDateKey(shift)));
+      options.push({ key: `${days[0]}_${days[days.length - 1]}`, label: `Week ${options.length + 1}`, start: days[0], end: days[days.length - 1], days, draftCount: drafts.length, liveCount: live.length });
+    }
+    // The established Builder publisher includes complete outer weeks in month
+    // mode. Preserve that behavior for its own Publish button; Schedule Tools
+    // uses the clipped period segments above so adjacent-month dates stay out.
+    if (publishPickerSource !== 'schedule-tools') {
+      options.length = 0;
+      for (let index = 0; index < sourceDays.length; index += 7) {
+        const days = sourceDays.slice(index, index + 7);
+        if (!days.some(day => day >= schedulePeriodBounds.start && day <= schedulePeriodBounds.end)) continue;
+        const daySet = new Set(days);
+        const drafts = renderedPublicationPeriodShifts.filter(shift => getShiftWritableDocId(shift) && !isBuilderShiftPublished(shift) && daySet.has(getShiftDateKey(shift)));
+        const live = renderedPublicationPeriodShifts.filter(shift => isBuilderShiftPublished(shift) && daySet.has(getShiftDateKey(shift)));
+        options.push({ key: `${days[0]}_${days[days.length - 1]}`, label: `Week ${options.length + 1}`, start: days[0], end: days[days.length - 1], days, draftCount: drafts.length, liveCount: live.length });
+      }
+    }
+    return options;
+  };
+  const publishWeekOptions = buildPublishWeekOptionsForDays(activePublishDays);
   const selectedPublishWeekSet = new Set(selectedPublishWeekKeys);
   const selectedPublishWeeks = publishWeekOptions.filter(option => selectedPublishWeekSet.has(option.key));
   const selectedPublishDays = Array.from(new Set(selectedPublishWeeks.flatMap(option => option.days))).sort();
   const selectedPublishDaySet = new Set(selectedPublishDays);
   const selectedPublishDrafts = renderedPublicationPeriodShifts.filter(shift => getShiftWritableDocId(shift) && !isBuilderShiftPublished(shift) && selectedPublishDaySet.has(getShiftDateKey(shift)));
-  const fullPublishDrafts = renderedPublicationPeriodShifts.filter(shift => getShiftWritableDocId(shift) && !isBuilderShiftPublished(shift));
+  const fullPublishDrafts = renderedPublicationPeriodShifts.filter(shift => getShiftWritableDocId(shift) && !isBuilderShiftPublished(shift) && activePublishDaySet.has(getShiftDateKey(shift)));
   const selectedPublishCandidateCount = renderedPublicationPeriodShifts.filter(shift => getShiftWritableDocId(shift) && selectedPublishDaySet.has(getShiftDateKey(shift))).length;
-  const fullPublishCandidateCount = renderedPublicationPeriodShifts.filter(shift => getShiftWritableDocId(shift)).length;
+  const fullPublishCandidateCount = renderedPublicationPeriodShifts.filter(shift => getShiftWritableDocId(shift) && activePublishDaySet.has(getShiftDateKey(shift))).length;
   const publishDateLabel = (start, end) => start === end ? formatDisplayDate(start) : `${formatDisplayDate(start)} to ${formatDisplayDate(end)}`;
   const selectedPublishLabel = selectedPublishWeeks.length
     ? selectedPublishWeeks.map(option => `${option.label}: ${publishDateLabel(option.start, option.end)}`).join(', ')
     : 'No weeks selected';
-  const openPublishPicker = () => {
-    if (fullPublishCandidateCount === 0) {
+  const openPublishPicker = (source = 'builder') => {
+    const nextSource = source === 'schedule-tools' ? 'schedule-tools' : 'builder';
+    const nextDays = nextSource === 'schedule-tools' ? schedulePeriodDays : publicationWeekDays;
+    const nextDaySet = new Set(nextDays);
+    const nextOptions = nextSource === publishPickerSource
+      ? buildPublishWeekOptionsForDays(nextDays)
+      : (() => {
+          if (nextSource === 'schedule-tools') return scheduleToolsPeriod.weekSegments.map(segment => {
+            const days = segment.dates.filter(day => nextDaySet.has(day));
+            const daySet = new Set(days);
+            return { key: `${days[0]}_${days[days.length - 1]}`, label: '', start: days[0], end: days[days.length - 1], days, draftCount: renderedPublicationPeriodShifts.filter(shift => getShiftWritableDocId(shift) && !isBuilderShiftPublished(shift) && daySet.has(getShiftDateKey(shift))).length, liveCount: renderedPublicationPeriodShifts.filter(shift => isBuilderShiftPublished(shift) && daySet.has(getShiftDateKey(shift))).length };
+          }).filter(option => option.days.length).map((option, index) => ({ ...option, label: `Week ${index + 1}` }));
+          const options = [];
+          for (let index = 0; index < nextDays.length; index += 7) {
+            const days = nextDays.slice(index, index + 7);
+            if (!days.some(day => day >= schedulePeriodBounds.start && day <= schedulePeriodBounds.end)) continue;
+            const daySet = new Set(days);
+            options.push({ key: `${days[0]}_${days[days.length - 1]}`, label: `Week ${options.length + 1}`, start: days[0], end: days[days.length - 1], days, draftCount: renderedPublicationPeriodShifts.filter(shift => getShiftWritableDocId(shift) && !isBuilderShiftPublished(shift) && daySet.has(getShiftDateKey(shift))).length, liveCount: renderedPublicationPeriodShifts.filter(shift => isBuilderShiftPublished(shift) && daySet.has(getShiftDateKey(shift))).length });
+          }
+          return options;
+        })();
+    const nextCandidateCount = renderedPublicationPeriodShifts.filter(shift => getShiftWritableDocId(shift) && nextDaySet.has(getShiftDateKey(shift))).length;
+    if (nextCandidateCount === 0) {
       addToast('Nothing to Publish', 'There are no shifts in the current publishing period. Add a shift or choose a different period.');
       return;
     }
-    const draftWeekKeys = publishWeekOptions.filter(option => option.draftCount > 0).map(option => option.key);
-    setSelectedPublishWeekKeys(draftWeekKeys.length ? draftWeekKeys : publishWeekOptions.map(option => option.key));
+    setPublishPickerSource(nextSource);
+    const draftWeekKeys = nextOptions.filter(option => option.draftCount > 0).map(option => option.key);
+    setSelectedPublishWeekKeys(draftWeekKeys.length ? draftWeekKeys : nextOptions.map(option => option.key));
     setIsPublishPickerOpen(true);
   };
+
+  useEffect(() => {
+    if (reviewPublishRequest > 0) openPublishPicker('schedule-tools');
+  }, [reviewPublishRequest]);
   const togglePublishWeek = (key) => {
     setSelectedPublishWeekKeys(prev => prev.includes(key) ? prev.filter(item => item !== key) : [...prev, key]);
   };
@@ -2618,7 +2654,7 @@ const [eventDate, setEventDate] = useState(getToday());
 const handlePublish = async (scope = 'selected-weeks') => { 
     const publishAll = scope === 'full-period';
     const selectedWeeksForPublish = publishAll ? publishWeekOptions : selectedPublishWeeks;
-    const publishDays = publishAll ? publicationWeekDays : selectedPublishDays;
+    const publishDays = publishAll ? activePublishDays : selectedPublishDays;
     const publishDaySet = new Set(publishDays);
     const localPublishCandidateSources = mergeSchedulePublishCandidates(renderedPublicationPeriodShifts, publicationPeriodShifts, visibleSourceShifts, autoFillVisibleShifts, localBuilderShiftEchoes, getScheduleBuilderRenderedShiftsForDaySet(publishDaySet))
       .filter(shift => !isDeletedScheduleShift(shift) && !shiftMatchesLocalDeleteMarkers(shift, activeLocalDeleteKeySet, activeLocalDeleteMarkerMap));
@@ -2626,8 +2662,8 @@ const handlePublish = async (scope = 'selected-weeks') => {
     const selectedCandidates = publishCandidates
       .filter(shift => getShiftWritableDocId(shift) && !isDeletedScheduleShift(shift) && (publishAll || shiftIsInsideDaySet(shift, publishDaySet)))
       .filter(shift => publishDaySet.has(getShiftDateKey(shift)));
-    const publishPeriodStart = publishAll ? publicationWeekBounds.start : (publishDays[0] || schedulePeriodBounds.start);
-    const publishPeriodEnd = publishAll ? publicationWeekBounds.end : (publishDays[publishDays.length - 1] || schedulePeriodBounds.end);
+    const publishPeriodStart = publishAll ? (publishPickerSource === 'schedule-tools' ? schedulePeriodBounds.start : publicationWeekBounds.start) : (publishDays[0] || schedulePeriodBounds.start);
+    const publishPeriodEnd = publishAll ? (publishPickerSource === 'schedule-tools' ? schedulePeriodBounds.end : publicationWeekBounds.end) : (publishDays[publishDays.length - 1] || schedulePeriodBounds.end);
     const publishPeriodLabel = publishAll
       ? schedulePeriodLabel
       : (selectedWeeksForPublish.length ? selectedWeeksForPublish.map(option => option.label).join(', ') : 'selected weeks');
@@ -3937,7 +3973,7 @@ const handleExportTimesheets = () => {
         <div className="space-y-4">
           <div className="rounded-xl border border-[#2A353D] bg-[#12161A] p-3">
             <div className="text-[10px] font-black uppercase tracking-widest text-[#D4A381]">Publish safely</div>
-            <p className="mt-1 text-xs font-bold text-slate-300 leading-snug">Choose the weeks you want to publish. Any week you leave unchecked stays as a draft.</p>
+            <p className="mt-1 text-xs font-bold text-slate-300 leading-snug">Choose the weeks you want to publish. Any dates you leave unchecked stay as drafts.</p>
             <div className="mt-2 text-[11px] font-black text-white">{fullPublishDrafts.length} draft shift{fullPublishDrafts.length === 1 ? '' : 's'} in {schedulePeriodLabel}</div>
           </div>
 
@@ -3970,7 +4006,7 @@ const handleExportTimesheets = () => {
 
           <div className="flex flex-col sm:flex-row gap-2">
             <button type="button" onClick={() => handlePublish('selected-weeks')} disabled={selectedPublishCandidateCount === 0} className={`${T.btn} flex-1 py-3 disabled:opacity-50`}>Publish Selected Weeks</button>
-            <button type="button" onClick={() => handlePublish('full-period')} disabled={fullPublishCandidateCount === 0} className={`${T.btnAlt} flex-1 py-3`}>Publish Full Schedule</button>
+            <button type="button" onClick={() => handlePublish('full-period')} disabled={fullPublishCandidateCount === 0} className={`${T.btnAlt} flex-1 py-3`}>{publishPickerSource === 'schedule-tools' ? 'Publish Full Period' : 'Publish Full Schedule'}</button>
             <button type="button" onClick={() => setIsPublishPickerOpen(false)} className={`${T.btnAlt} flex-1 py-3`}>Cancel</button>
           </div>
         </div>
@@ -4055,7 +4091,7 @@ const handleExportTimesheets = () => {
               </div>
 <button onClick={() => setIsAutoPopulateModalOpen(true)} className={`schedule-builder-action-button flex-1 lg:flex-none ${T.btnAlt} py-1.5 h-9 flex items-center justify-center font-black border-blue-900/50 text-blue-400`}>
                 <Repeat size={16} className="mr-1"/> <span aria-label="Auto-Fill">Copy Month</span>
-              </button>              <button onClick={openPublishPicker} className={`schedule-builder-action-button flex-1 lg:flex-none ${T.btnAlt} py-1.5 h-9 flex items-center justify-center font-black`}>Publish</button>
+              </button>              <button onClick={() => openPublishPicker('builder')} className={`schedule-builder-action-button flex-1 lg:flex-none ${T.btnAlt} py-1.5 h-9 flex items-center justify-center font-black`}>Publish</button>
               <button onClick={openNewEventModal} className={`schedule-builder-action-button flex-1 lg:flex-none ${T.btnAlt} border-[#D4A381] text-[#D4A381] py-1.5 h-9 flex items-center justify-center font-black`}><Plus size={16} className="mr-1"/> Event</button>
             </div>
           </div>
@@ -4468,6 +4504,7 @@ const handleExportTimesheets = () => {
 
 const TabMonth = ({ currentDate, users, shifts, appUser }) => {
   const [roleFilter, setRoleFilter] = useState('All');
+  const [printState, setPrintState] = useState({ busy: false, error: '' });
   const activeUsers = useMemo(() => (Array.isArray(users) ? users : []).filter(u => u && u.isActive !== false), [users]);
   const uniqueRoles = useMemo(() => ['All', ...new Set(activeUsers.map(u => u.role).filter(Boolean))].sort(), [activeUsers]);
 
@@ -4505,34 +4542,26 @@ const TabMonth = ({ currentDate, users, shifts, appUser }) => {
     });
     return grouped;
   }, [visibleMonthShifts]);
+  const weeks = Math.ceil((firstDay + days) / 7);
   
-  // Calculate how many weeks this month spans to perfectly stretch the grid rows on paper
-  const totalCells = firstDay + days;
-  const weeks = Math.ceil(totalCells / 7);
-
-  const buildPrintableCalendarHtml = () => {
-    const monthTitle = `${roleFilter !== 'All' ? `${roleFilter} - ` : ''}${formatDisplayMonth(monthStr)}`;
-    const weekdayHeader = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map(day => `<div class="weekday">${escapeSchedulePrintHtml(day)}</div>`).join('');
-    const blanks = Array.from({ length: firstDay }).map(() => '<div class="day blank"></div>').join('');
-    const dayCells = Array.from({ length: days }).map((_, index) => {
-      const dayNumber = index + 1;
-      const date = `${monthStr}-${String(dayNumber).padStart(2,'0')}`;
-      const dayShifts = shiftsByDate.get(date) || [];
-      const shiftRows = dayShifts.map(shift => `<div class="shift">${escapeSchedulePrintHtml(getScheduleShiftMonthLabels(shift, activeUsers).full)}</div>`).join('');
-      return `<div class="day"><div class="date">${dayNumber}</div><div class="shiftStack">${shiftRows}</div></div>`;
-    }).join('');
-    return `<!doctype html><html><head><meta charset="utf-8" /><title>86 Chaos Schedule ${escapeSchedulePrintHtml(monthTitle)}</title><style>@page{size:letter landscape;margin:0.12in}*{box-sizing:border-box}html,body{width:10.76in;height:8.26in;margin:0;padding:0;overflow:hidden}body{color:#000;background:#fff;font-family:Arial,Helvetica,sans-serif}.calendar{width:100%;height:100%;display:grid;grid-template-rows:auto auto minmax(0,1fr);page-break-inside:avoid;break-inside:avoid-page}h1{margin:0 0 3px;text-align:center;font-size:17px;line-height:1.02;text-transform:uppercase;letter-spacing:.035em}.meta{margin:0 0 3px;display:flex;justify-content:space-between;gap:8px;font-size:9px;font-weight:800;color:#111}.grid{min-height:0;height:100%;display:grid;grid-template-columns:repeat(7,1fr);grid-template-rows:18px repeat(${weeks},minmax(0,1fr));border-top:1.5px solid #000;border-left:1.5px solid #000}.weekday,.day{border-right:1.5px solid #000;border-bottom:1.5px solid #000}.weekday{display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:900;text-transform:uppercase;background:#f1f5f9}.day{min-height:0;height:100%;padding:2px;overflow:hidden}.blank{background:#f8fafc}.date{text-align:right;font-size:11.5px;font-weight:900;margin-bottom:1px}.shiftStack{display:flex;flex-direction:column;gap:.5px}.shift{border:.8px solid #94a3b8;border-radius:2px;background:#f8fafc;padding:0 1px;font-family:"Arial Narrow",Arial,Helvetica,sans-serif;font-size:8.6px;line-height:1.03;font-weight:900;letter-spacing:-.035em;white-space:nowrap;overflow:hidden;text-overflow:clip;color:#000}</style></head><body><div class="calendar"><h1>86 Chaos Schedule ${escapeSchedulePrintHtml(monthTitle)}</h1><div class="meta"><span>${escapeSchedulePrintHtml(visibleMonthShifts.length)} published shifts</span><span>Printed ${escapeSchedulePrintHtml(new Date().toLocaleString())}</span></div><div class="grid">${weekdayHeader}${blanks}${dayCells}</div></div><script>window.addEventListener('load',function(){setTimeout(function(){window.focus();window.print();},150);});</script></body></html>`;
-  };
-
-  const handlePrintCalendar = () => {
-    const printWindow = window.open('', '_blank');
-    if (!printWindow) {
-      window.print();
-      return;
+  const handlePrintCalendar = async () => {
+    const viewer = window.open('about:blank', '_blank');
+    setPrintState({ busy: true, error: '' });
+    try {
+      const model = buildMonthSchedulePrintModel({
+        monthStr, roleFilter, restaurantName: appUser?.restaurantName || appUser?.restaurant || '', prefiltered: true,
+        shifts: visibleMonthShifts.map(shift => {
+          const labels = getScheduleShiftMonthLabels(shift, activeUsers);
+          return { date: getShiftDateKey(shift), role: shift.role || shift.targetRole || '', startTime: shift.startTime || '', endTime: shift.endTime || '', employeeName: getScheduleShiftDisplayName(shift, activeUsers), label: labels.full, dedupeKey: getScheduleShiftDisplayDedupeKey(shift, activeUsers) || shift.id };
+        })
+      });
+      const bytes = await generateMonthSchedulePdf(model);
+      deliverSchedulePdf(bytes, { viewer, filename: `86chaos-schedule-${monthStr}${roleFilter !== 'All' ? `-${roleFilter}` : ''}.pdf` });
+      setPrintState({ busy: false, error: '' });
+    } catch (_) {
+      try { viewer?.close(); } catch (_) {}
+      setPrintState({ busy: false, error: 'The schedule PDF could not be generated. No schedule data was changed. Please try again.' });
     }
-    printWindow.document.open();
-    printWindow.document.write(buildPrintableCalendarHtml());
-    printWindow.document.close();
   };
 
   return (
@@ -4656,8 +4685,9 @@ const TabMonth = ({ currentDate, users, shifts, appUser }) => {
             {uniqueRoles.filter(r => r !== 'All').map(r => <option key={r} value={r}>{r}</option>)}
           </select>
         </div>
-        <button onClick={handlePrintCalendar} className={T.btnAlt}>🖨️ Print Calendar</button>
+        <button onClick={handlePrintCalendar} disabled={printState.busy} className={T.btnAlt}>🖨️ {printState.busy ? 'Generating PDF…' : 'Print Calendar (PDF)'}</button>
       </div>
+      {printState.error && <div role="alert" className="no-print p-2 text-xs font-bold text-red-300 bg-red-950/20 border-b border-red-900/40">{printState.error}</div>}
       
       <div className="hidden print:block print-header">
         86chaos Schedule {roleFilter !== 'All' ? `- ${roleFilter}` : ''}   {formatDisplayMonth(monthStr)}
@@ -5351,12 +5381,29 @@ const TabTimeOff = ({ timeOffRequests, appUser, users, addToast, events = [], sh
   );
 };
 
-const TabScheduleWorkbench = ({ currentDate, users, shifts, events, timeOffRequests, timePunches, addToast, appUser, clientData = null, availabilityRecords = [] }) => (
-  <div className="space-y-5">
-    <ScheduleCopilot currentDate={currentDate} users={users} shifts={shifts} timeOffRequests={timeOffRequests} addToast={addToast} appUser={appUser} />
-    <TabSchedule currentDate={currentDate} users={users} shifts={shifts} events={events} timeOffRequests={timeOffRequests} timePunches={timePunches} addToast={addToast} appUser={appUser} clientData={clientData} availabilityRecords={availabilityRecords} />
-  </div>
-);
+const TabScheduleWorkbench = ({ currentDate, users, shifts, events, timeOffRequests, timePunches, addToast, appUser, clientData = null, availabilityRecords = [], availabilityDataState = null, scheduleDataState = null }) => {
+  const [reviewPublishRequest, setReviewPublishRequest] = useState(0);
+  const schedulePeriodContext = getSchedulePeriodContext(currentDate, appUser, clientData);
+  const scheduleToolsPeriod = schedulePeriodContext.period;
+  return (
+    <div className="space-y-5">
+      <ScheduleCopilot
+        period={scheduleToolsPeriod}
+        periodLabel={schedulePeriodContext.label}
+        users={users}
+        shifts={shifts}
+        timeOffRequests={timeOffRequests}
+        availabilityRecords={availabilityRecords}
+        availabilityDataState={availabilityDataState}
+        scheduleDataState={scheduleDataState}
+        addToast={addToast}
+        appUser={appUser}
+        onReviewPublish={() => setReviewPublishRequest(value => value + 1)}
+      />
+      <TabSchedule currentDate={currentDate} users={users} shifts={shifts} events={events} timeOffRequests={timeOffRequests} timePunches={timePunches} addToast={addToast} appUser={appUser} clientData={clientData} availabilityRecords={availabilityRecords} schedulePeriodContext={schedulePeriodContext} reviewPublishRequest={reviewPublishRequest} />
+    </div>
+  );
+};
 
 const ScheduleWarningCard = ({ warning, appUser }) => {
   const memory = useRememberedAlert({
@@ -5379,25 +5426,36 @@ const ScheduleWarningCard = ({ warning, appUser }) => {
         <div className={`font-black ${titleTone}`}>{warning.message}</div>
         {warning.detail && <div className="text-xs text-slate-400 mt-1">{warning.detail}</div>}
       </div>
-      <button type="button" onClick={memory.dismiss} aria-label="Dismiss warning" className="min-h-[42px] min-w-[42px] rounded-lg border border-white/10 bg-[#12161A] text-slate-300 hover:text-white flex items-center justify-center"><X size={14}/></button>
+      <button type="button" onClick={memory.dismiss} aria-label="Dismiss warning" className="schedule-warning-dismiss min-h-[42px] min-w-[42px] flex-shrink-0 rounded-lg border border-white/10 bg-[#12161A] text-slate-300 hover:text-white flex items-center justify-center"><X size={14}/></button>
     </div>
   </div>;
 };
 
-const ScheduleCopilot = ({ currentDate, users = [], shifts = [], timeOffRequests = [], addToast, appUser }) => {
+const ScheduleCopilot = ({ period, periodLabel = '', users = [], shifts = [], timeOffRequests = [], availabilityRecords = [], availabilityDataState = null, scheduleDataState = null, addToast, appUser, onReviewPublish = null }) => {
   const [open, setOpen] = useState(false);
   const copilotReadEnabled = Boolean(open && appUser?.restaurantId);
-  const templates = useLiveCollection('scheduleTemplates', appUser?.restaurantId, { enabled: copilotReadEnabled, limitCount: 120, debugLabel: 'schedule:copilot:templates' });
-  const coverageTargets = useLiveCollection('scheduleCoverageTargets', appUser?.restaurantId, { enabled: copilotReadEnabled, limitCount: 200, debugLabel: 'schedule:copilot:coverage-targets' });
-  const dbRoles = useLiveCollection('roles', appUser?.restaurantId, { enabled: copilotReadEnabled, limitCount: 120, debugLabel: 'schedule:copilot:roles' });
-  const weekDates = getWeekDates(currentDate);
-  const weekStart = weekDates[0];
-  const weekEnd = weekDates[6];
+  const templateLimit = 120;
+  const coverageTargetLimit = 200;
+  const roleLimit = 120;
+  const templatesState = useLiveCollectionState('scheduleTemplates', appUser?.restaurantId, { enabled: copilotReadEnabled, limitCount: templateLimit, debugLabel: 'schedule:copilot:templates' });
+  const coverageTargetsState = useLiveCollectionState('scheduleCoverageTargets', appUser?.restaurantId, { enabled: copilotReadEnabled, limitCount: coverageTargetLimit, debugLabel: 'schedule:copilot:coverage-targets' });
+  const dbRolesState = useLiveCollectionState('roles', appUser?.restaurantId, { enabled: copilotReadEnabled, limitCount: roleLimit, debugLabel: 'schedule:copilot:roles' });
+  const templates = templatesState.data || [];
+  const coverageTargets = coverageTargetsState.data || [];
+  const dbRoles = dbRolesState.data || [];
+  const activePeriod = period?.dates?.length ? period : deriveScheduleToolsPeriod({ anchorDate: getToday(), mode: 'weekly', weekStartsOn: 'Monday' });
+  const activePeriodDates = activePeriod.dates;
+  const activePeriodStart = activePeriod.start;
+  const activePeriodEnd = activePeriod.end;
+  const activePeriodLabel = periodLabel || (activePeriod.mode === 'monthly' ? formatDisplayMonth(getMonthStr(activePeriodStart)) : `${formatDisplayDate(activePeriodStart)} through ${formatDisplayDate(activePeriodEnd)}`);
+  const copyWeekPeriod = deriveScheduleToolsCopyWeek(activePeriod);
+  const copyWeekDates = copyWeekPeriod.dates;
   const safeShifts = Array.isArray(shifts) ? shifts.filter(Boolean) : [];
   const safeUsers = Array.isArray(users) ? users.filter(Boolean) : [];
   const safeTimeOffRequests = Array.isArray(timeOffRequests) ? timeOffRequests.filter(Boolean) : [];
   const safeTemplates = Array.isArray(templates) ? templates.filter(Boolean) : [];
-  const weekShifts = safeShifts.filter(s => weekDates.includes(s?.date));
+  const activePeriodShifts = filterScheduleToolsRecords(safeShifts, activePeriod, appUser?.restaurantId).filter(shift => !isDeletedScheduleShift(shift));
+  const copyWeekShifts = filterScheduleToolsRecords(safeShifts, copyWeekPeriod, appUser?.restaurantId).filter(shift => !isDeletedScheduleShift(shift));
   const activeUsers = safeUsers.filter(u => u?.isActive !== false);
   const [activeTool, setActiveTool] = useState('targets');
   const [templateId, setTemplateId] = useState('');
@@ -5426,22 +5484,23 @@ const ScheduleCopilot = ({ currentDate, users = [], shifts = [], timeOffRequests
 
   const templateOptions = [...safeTemplates].sort((a,b) => (a.name || '').localeCompare(b.name || ''));
   const activeTemplate = safeTemplates.find(t => t.id === templateId) || null;
-  const draftCount = weekShifts.filter(s => !s.isPublished).length;
-  const coverageVarianceRows = buildCoverageVarianceRows({ coverageTargets, weekDates, weekShifts, roleMatcher: roleMatches, canonicalRole: canonicalScheduleRole });
+  const draftCount = activePeriodShifts.filter(s => !isScheduleShiftPublished(s)).length;
+  const coverageVarianceRows = buildCoverageVarianceRows({ coverageTargets, periodDates: activePeriodDates, periodShifts: activePeriodShifts, roleMatcher: roleMatches, canonicalRole: canonicalScheduleRole });
   const missingTargets = coverageVarianceRows.filter(row => row.type === 'under');
   const coverageWarnings = coverageVarianceRows.map(row => ({
     ...row,
     type: row.type === 'under' ? 'coverage-under' : 'coverage-over',
-    alertId: `schedule-${weekStart}-coverage-${row.type}-${row.id}-${row.date}-${row.role}`,
-    fingerprint: buildAlertFingerprint('schedule-coverage', weekStart, row.type, row.date, row.role, row.existing, row.count, row.startTime || '', row.endTime || ''),
+    alertId: `schedule-${activePeriodStart}-coverage-${row.type}-${row.id}-${row.date}-${row.role}`,
+    fingerprint: buildAlertFingerprint('schedule-coverage', activePeriod.key, row.type, row.date, row.role, row.existing, row.count, row.startTime || '', row.endTime || ''),
     message: row.type === 'under'
       ? `${formatDisplayDate(row.date)} needs ${row.needed} more ${row.role}`
       : `${formatDisplayDate(row.date)} has ${row.over} more ${row.role} than the coverage target.`,
     detail: `Existing: ${row.existing} • Target: ${row.count}`,
   }));
   const conflictList = buildScheduleConflictWarningRows({
-    weekStart,
-    schedule: weekShifts,
+    weekStart: activePeriodStart,
+    periodWeeks: activePeriod.weekSegments,
+    schedule: activePeriodShifts,
     allUsers: safeUsers,
     requests: safeTimeOffRequests,
     resolvePerson: resolveSchedulePersonForShift,
@@ -5453,6 +5512,19 @@ const ScheduleCopilot = ({ currentDate, users = [], shifts = [], timeOffRequests
     formatDate: formatDisplayDate,
   });
   const allScheduleWarnings = [...coverageWarnings, ...conflictList];
+  const fallbackResolvedState = { resolved: true, error: null, count: 0, limit: 0, workspaceId: appUser?.restaurantId || '' };
+  const shiftSourceState = scheduleDataState?.shifts || { ...fallbackResolvedState, count: safeShifts.length };
+  const timeOffSourceState = scheduleDataState?.timeOff || { ...fallbackResolvedState, count: safeTimeOffRequests.length };
+  const availabilitySourceState = availabilityDataState || { ...fallbackResolvedState, count: availabilityRecords.length };
+  const scheduleToolsCompleteness = assessScheduleToolsCompleteness([
+    { label: 'schedule shifts', ...shiftSourceState, expectedWorkspaceId: appUser?.restaurantId || '' },
+    { label: 'Request Off records', ...timeOffSourceState, expectedWorkspaceId: appUser?.restaurantId || '' },
+    { label: 'availability records', ...availabilitySourceState, expectedWorkspaceId: appUser?.restaurantId || '' },
+    { label: 'schedule templates', resolved: templatesState.resolved, error: templatesState.error, count: templates.length, limit: templateLimit },
+    { label: 'coverage targets', resolved: coverageTargetsState.resolved, error: coverageTargetsState.error, count: coverageTargets.length, limit: coverageTargetLimit },
+    { label: 'staff roles', resolved: dbRolesState.resolved, error: dbRolesState.error, count: dbRoles.length, limit: roleLimit },
+  ]);
+  const periodActionBlocked = open && !scheduleToolsCompleteness.complete;
 
   const addTemplateRow = () => setTemplateRows([...templateRows, { dayIndex: 5, role: firstScheduleRole, startTime: '16:00', endTime: '21:00', count: 1 }]);
   const updateTemplateRow = (idx, patch) => setTemplateRows(templateRows.map((r,i) => i === idx ? { ...r, ...patch } : r));
@@ -5473,62 +5545,88 @@ const ScheduleCopilot = ({ currentDate, users = [], shifts = [], timeOffRequests
 
   const saveCurrentWeekAsTemplate = async () => {
     const grouped = {};
-    weekShifts.forEach(s => { const key = `${new Date(s.date+'T12:00:00').getDay()}|${canonicalScheduleRole(s.role || users.find(u => u.id === s.employeeId)?.role || 'Staff')}|${s.startTime || '09:00'}|${s.endTime || '17:00'}`; grouped[key] = (grouped[key] || 0) + 1; });
+    copyWeekShifts.forEach(s => { const shiftDate = getShiftDateKey(s); const key = `${new Date(shiftDate+'T12:00:00').getDay()}|${canonicalScheduleRole(s.role || users.find(u => u.id === s.employeeId)?.role || 'Staff')}|${s.startTime || '09:00'}|${s.endTime || '17:00'}`; grouped[key] = (grouped[key] || 0) + 1; });
     const rows = Object.entries(grouped).map(([key,count]) => { const [dayIndex, role, startTime, endTime] = key.split('|'); return { dayIndex: parseInt(dayIndex,10), role, startTime, endTime, count }; });
     if (!rows.length) return addToast('No Shifts', 'Build a week first, then save it as a template.');
-    try { await addDoc(collection(db, 'scheduleTemplates'), { restaurantId: appUser.restaurantId, name: `Week of ${formatDisplayDate(weekStart)}`, description: 'Saved from actual schedule.', rows, createdAt: new Date().toISOString(), createdBy: appUser.id || 'manager' }); addToast('Saved', 'Current week saved as a reusable template.'); }
+    try { await addDoc(collection(db, 'scheduleTemplates'), { restaurantId: appUser.restaurantId, name: `Week of ${formatDisplayDate(copyWeekPeriod.start)}`, description: 'Saved from actual schedule.', rows, createdAt: new Date().toISOString(), createdBy: appUser.id || 'manager' }); addToast('Saved', 'Current week saved as a reusable template.'); }
     catch(err) { addToast('Template Not Saved', err.message || 'The current week was not saved as a template.'); }
   };
 
-  const pickUserForShift = (role, date, usedIds = []) => {
+  const pickUserForShift = (role, date, startTime = '09:00', endTime = '17:00', usedIds = []) => {
     const scheduleRole = canonicalScheduleRole(role);
     const candidates = activeUsers.filter(u => !usedIds.includes(u.id)).filter(u => roleMatches(u.role, scheduleRole));
-    const pool = candidates.length ? candidates : activeUsers.filter(u => !usedIds.includes(u.id));
-    return pool.find(u => !timeOffRequests.some(r => timeOffMatchesPerson(r, u) && r.date === date && isActiveTimeOffRequest(r))) || pool[0];
+    const pool = candidates;
+    return pool.find(u => {
+      const requestedOff = safeTimeOffRequests.some(request => {
+        if (!timeOffMatchesPerson(request, u) || request.date !== date || !isActiveTimeOffRequest(request)) return false;
+        if (!request.isPartial) return true;
+        return timeWindowOverlaps(startTime, endTime, request.startTime || '00:00', request.endTime || '23:59');
+      });
+      if (requestedOff) return false;
+      const availabilityRecord = getActiveAvailabilityForDate(u.id, date, availabilityRecords);
+      const availabilityCheck = getAvailabilityConflict(availabilityRecord, date, startTime, endTime);
+      return !availabilityCheck || !['unavailable', 'outside'].includes(availabilityCheck.level);
+    }) || null;
   };
 
   const createShiftDraft = async (row, date, usedIds = []) => {
     const scheduleRole = canonicalScheduleRole(row.role);
-    const employee = pickUserForShift(scheduleRole, date, usedIds);
+    const draftStart = row.startTime || '09:00';
+    const draftEnd = row.endTime || '17:00';
+    const employee = pickUserForShift(scheduleRole, date, draftStart, draftEnd, usedIds);
     const finalRole = employee?.role ? canonicalScheduleRole(employee.role) : scheduleRole;
     const nowIso = new Date().toISOString();
     const canonicalFields = buildCanonicalScheduleCreateFields(date, appUser.restaurantId);
     recordScheduleOperationDiagnostic('canonicalDatePatches');
-    await addDoc(collection(db, 'shifts'), { ...canonicalFields, ...buildScheduleIdentityFields(employee || {}), role: finalRole, targetRole: scheduleRole, startTime: row.startTime || '09:00', endTime: row.endTime || '17:00', isPublished: false, publishState: 'draft', scheduleBuilderDraft: true, readyToPublish: true, createdAt: nowIso, updatedAt: nowIso, createdBy: appUser.id || 'schedule-copilot', updatedBy: appUser.id || 'schedule-copilot', source: 'schedule_copilot', assignmentSource: 'schedule_copilot' });
+    await addDoc(collection(db, 'shifts'), { ...canonicalFields, ...buildScheduleIdentityFields(employee || {}), role: finalRole, targetRole: scheduleRole, startTime: draftStart, endTime: draftEnd, isPublished: false, publishState: 'draft', scheduleBuilderDraft: true, readyToPublish: true, createdAt: nowIso, updatedAt: nowIso, createdBy: appUser.id || 'schedule-copilot', updatedBy: appUser.id || 'schedule-copilot', source: 'schedule_copilot', assignmentSource: 'schedule_copilot' });
     recordScheduleOperationDiagnostic('directSdkWrites');
     recordScheduleOperationDiagnostic('totalScheduleDocumentsWritten');
-    return employee?.id;
+    return { employeeId: employee?.id || '', date, role: finalRole, targetRole: scheduleRole, startTime: draftStart, endTime: draftEnd };
   };
 
   const applyTemplate = async () => {
     if (!activeTemplate) return addToast('Choose Template', 'Select a template first.');
-    if (!window.confirm(`Apply "${activeTemplate.name}" to week of ${formatDisplayDate(weekStart)}? New shifts are added as drafts.`)) return;
+    if (periodActionBlocked) return addToast('Schedule Check Incomplete', scheduleToolsCompleteness.reasons[0] || 'Wait for the current schedule period to finish loading.');
+    if (!window.confirm(`Apply "${activeTemplate.name}" to ${activePeriodLabel}? New shifts are added as drafts.`)) return;
     try {
       let made = 0;
+      const plannedShifts = [...activePeriodShifts];
       for (const row of (activeTemplate.rows || [])) {
-        const date = weekDates[parseInt(row.dayIndex || 0, 10)];
-        const used = weekShifts.filter(s => s.date === date).map(s => s.employeeId);
-        for (let i=0; i < (parseInt(row.count || 1,10) || 1); i++) { const id = await createShiftDraft(row, date, used); if (id) used.push(id); made++; }
+        const matchingDates = recurringDatesForWeekday(activePeriod, row.dayIndex);
+        for (const date of matchingDates) {
+          const targetRole = canonicalScheduleRole(row.role);
+          const existing = plannedShifts.filter(shift => getShiftDateKey(shift) === date && roleMatches(shift.role || shift.targetRole, targetRole) && (!row.startTime || shift.startTime === row.startTime)).length;
+          const needed = Math.max(0, (parseInt(row.count || 1, 10) || 1) - existing);
+          const used = plannedShifts.filter(shift => getShiftDateKey(shift) === date).map(shift => shift.employeeId || shift.scheduleUserId).filter(Boolean);
+          for (let index = 0; index < needed; index += 1) {
+            const created = await createShiftDraft(row, date, used);
+            if (created.employeeId) used.push(created.employeeId);
+            plannedShifts.push(created);
+            made += 1;
+          }
+        }
       }
-      addToast('Template Applied', `${made} draft shifts created. Review and publish when ready.`);
+      addToast(made ? 'Template Applied' : 'No New Shifts Needed', made ? `${made} draft shifts created for ${activePeriodLabel}. Review and publish when ready.` : `Existing shifts already cover this template in ${activePeriodLabel}.`);
     } catch (err) { addToast('Template Not Applied', err.message || 'No draft shifts were added. Refresh and try again.'); }
   };
 
   const copyPreviousWeek = async () => {
-    const prevDates = weekDates.map(d => { const x = new Date(d + 'T12:00:00'); x.setDate(x.getDate() - 7); return formatDate(x); });
-    const prevShifts = shifts.filter(s => prevDates.includes(s.date));
+    if (periodActionBlocked) return addToast('Schedule Check Incomplete', scheduleToolsCompleteness.reasons[0] || 'Wait for the schedule to finish loading.');
+    const prevDates = copyWeekDates.map(d => { const x = new Date(d + 'T12:00:00'); x.setDate(x.getDate() - 7); return formatDate(x); });
+    const prevShifts = filterScheduleToolsRecords(safeShifts, { dates: prevDates }, appUser?.restaurantId).filter(shift => !isDeletedScheduleShift(shift));
     if (!prevShifts.length) return addToast('No Previous Week', 'No shifts found in the previous week.');
-    if (!window.confirm(`Copy ${prevShifts.length} shifts from previous week as drafts?`)) return;
+    if (!window.confirm(`Copy ${prevShifts.length} shifts from ${formatDisplayDate(prevDates[0])} through ${formatDisplayDate(prevDates[6])} into ${formatDisplayDate(copyWeekPeriod.start)} through ${formatDisplayDate(copyWeekPeriod.end)} as drafts?`)) return;
     try {
       let made = 0;
       for (const s of prevShifts) {
-        const oldIndex = prevDates.indexOf(s.date);
-        const date = weekDates[oldIndex];
-        if (weekShifts.some(x => x.date === date && x.employeeId === s.employeeId && x.startTime === s.startTime)) continue;
+        const oldIndex = prevDates.indexOf(getShiftDateKey(s));
+        const date = copyWeekDates[oldIndex];
+        if (!date) continue;
+        const matchedPerson = users.find(u => shiftMatchesPerson(s, u, users));
+        if (copyWeekShifts.some(x => getShiftDateKey(x) === date && x.startTime === s.startTime && x.endTime === s.endTime && (matchedPerson ? shiftMatchesPerson(x, matchedPerson, users) : x.employeeId === s.employeeId))) continue;
         const nowIso = new Date().toISOString();
         const canonicalFields = buildCanonicalScheduleCreateFields(date, appUser.restaurantId);
         recordScheduleOperationDiagnostic('canonicalDatePatches');
-        const matchedPerson = users.find(u => shiftMatchesPerson(s, u, users));
         const copiedIdentity = buildScheduleIdentityFields(matchedPerson || { ...s, id: '' }, s);
         await addDoc(collection(db, 'shifts'), { ...canonicalFields, ...copiedIdentity, role: canonicalScheduleRole(s.role || users.find(u => u.id === s.employeeId)?.role || 'Staff'), startTime: s.startTime, endTime: s.endTime, isPublished: false, publishState: 'draft', scheduleBuilderDraft: true, readyToPublish: true, copiedFrom: s.id, createdAt: nowIso, updatedAt: nowIso, createdBy: appUser.id || 'copy-week', updatedBy: appUser.id || 'copy-week', source: 'schedule_copy_week', assignmentSource: 'schedule_copy_week' });
         recordScheduleOperationDiagnostic('directSdkWrites');
@@ -5548,30 +5646,28 @@ const ScheduleCopilot = ({ currentDate, users = [], shifts = [], timeOffRequests
   };
 
   const smartFill = async () => {
-    if (!missingTargets.length) return addToast('Covered', 'No missing coverage targets for this week.');
+    if (periodActionBlocked) return addToast('Schedule Check Incomplete', scheduleToolsCompleteness.reasons[0] || 'Wait for the current schedule period to finish loading.');
+    if (!missingTargets.length) return addToast('Coverage Targets Met', `No coverage gaps were found for ${activePeriodLabel}.`);
     if (!window.confirm(`Create ${missingTargets.reduce((s,m)=>s+m.needed,0)} draft shifts to fill the current coverage gaps? You can review them before publishing.`)) return;
     try {
       let made = 0;
       for (const m of missingTargets) {
-        const used = weekShifts.filter(s => s.date === m.date).map(s => s.employeeId);
-        for (let i=0; i<m.needed; i++) { const id = await createShiftDraft(m, m.date, used); if (id) used.push(id); made++; }
+        const used = activePeriodShifts.filter(s => getShiftDateKey(s) === m.date).map(s => s.employeeId || s.scheduleUserId).filter(Boolean);
+        for (let i=0; i<m.needed; i++) { const created = await createShiftDraft(m, m.date, used); if (created.employeeId) used.push(created.employeeId); made++; }
       }
       addToast('Coverage Drafts Created', `${made} draft shifts were created from your coverage targets. Review them before publishing.`);
     } catch(err) { addToast('Coverage Drafts Not Created', err.message || 'No coverage drafts were added. Refresh and try again.'); }
   };
 
-  const publishWeek = async () => {
-    const drafts = weekShifts.filter(s => !s.isPublished);
-    if (!drafts.length) return addToast('Nothing To Publish', 'No draft shifts found this week.');
-    const warningText = allScheduleWarnings.map(w => w.message).slice(0,8).join('\n');
-    if (!window.confirm(`Publish ${drafts.length} draft shifts?${warningText ? '\n\nWarnings:\n' + warningText : ''}`)) return;
-    try { await Promise.all(drafts.map(s => updateDoc(doc(db, 'shifts', s.id), { isPublished: true, publishedAt: new Date().toISOString(), publishedBy: appUser.id || 'manager' }))); recordScheduleOperationDiagnostic('directSdkWrites', drafts.length); recordScheduleOperationDiagnostic('totalScheduleDocumentsWritten', drafts.length); addToast('Published', `${drafts.length} shifts published.`); }
-    catch(err) { addToast('Week Not Published', err.message || 'The draft shifts were not all published. Refresh before trying again.'); }
+  const reviewAndPublish = () => {
+    if (periodActionBlocked) return addToast('Schedule Check Incomplete', scheduleToolsCompleteness.reasons[0] || 'Wait for the current schedule period to finish loading.');
+    if (!draftCount) return addToast('Nothing To Publish', `No draft shifts were found in ${activePeriodLabel}.`);
+    onReviewPublish?.();
   };
 
   const moveShiftToDay = async (targetDate) => {
     if (!draggedShiftId || !targetDate) return;
-    const shift = weekShifts.find(s => s.id === draggedShiftId);
+    const shift = activePeriodShifts.find(s => s.id === draggedShiftId);
     setDraggedShiftId(null);
     if (!shift) return;
     if (getShiftDateKey(shift) === targetDate) {
@@ -5634,7 +5730,7 @@ const ScheduleCopilot = ({ currentDate, users = [], shifts = [], timeOffRequests
       <div className="min-w-0">
         <div className="text-[10px] uppercase tracking-widest font-black text-[#D4A381]">Schedule Tools</div>
         <div className="text-sm font-black text-white mt-0.5">{draftCount} drafts ready</div>
-        <div className="text-xs text-slate-400 font-bold mt-0.5">{formatDisplayDate(weekStart)} through {formatDisplayDate(weekEnd)} • Review coverage targets, warnings, and templates.</div>
+        <div className="schedule-tools-period-label text-xs text-slate-400 font-bold mt-0.5">{activePeriodLabel} • Counts and tools use this schedule period.</div>
       </div>
       <div className="flex flex-wrap sm:justify-end gap-1.5 flex-shrink-0">
         <button type="button" aria-label="Open Copilot Tools" title="Open Schedule Tools" onClick={() => openCopilotTool('targets')} className={`${T.btnAlt} flex items-center justify-center gap-2`}><ChefHat size={16}/> Open Schedule Tools</button>
@@ -5650,20 +5746,21 @@ const ScheduleCopilot = ({ currentDate, users = [], shifts = [], timeOffRequests
         <div className="min-w-0">
           <div className="text-[9px] uppercase tracking-widest font-black text-[#D4A381]">Schedule Tools</div>
           <h3 className="text-sm sm:text-base font-black text-white leading-tight">Templates, coverage gaps, warnings, and publish review</h3>
-          <p className="text-[10px] text-slate-400 font-bold leading-snug mt-0.5">{formatDisplayDate(weekStart)} through {formatDisplayDate(weekEnd)} • shared Schedule Builder staff roles</p>
+          <p className="schedule-tools-period-label text-[10px] text-slate-400 font-bold leading-snug mt-0.5">{activePeriodLabel} • Counts and actions use this schedule period.</p>
         </div>
-        <div className="flex flex-wrap gap-1.5 flex-shrink-0"><button onClick={copyPreviousWeek} className={T.btnAlt}>Copy Previous Week</button><button aria-label="Smart Fill" onClick={smartFill} className={T.btnAlt}>Fill Coverage Gaps</button><button onClick={publishWeek} className={T.btn}>Review & Publish</button><button onClick={() => setOpen(false)} className={T.btnAlt}>Close Tools</button></div>
+        <div className="flex flex-wrap gap-1.5 flex-shrink-0"><button onClick={copyPreviousWeek} disabled={periodActionBlocked} title={`Copies the prior week into ${formatDisplayDate(copyWeekPeriod.start)} through ${formatDisplayDate(copyWeekPeriod.end)}`} className={`${T.btnAlt} disabled:opacity-50`}>Copy Previous Week</button><button aria-label="Smart Fill" onClick={smartFill} disabled={periodActionBlocked} className={`${T.btnAlt} disabled:opacity-50`}>Fill Coverage Gaps</button><button onClick={reviewAndPublish} disabled={periodActionBlocked} className={`${T.btn} disabled:opacity-50`}>Review & Publish</button><button onClick={() => setOpen(false)} className={T.btnAlt}>Close Tools</button></div>
       </div>
+      {!scheduleToolsCompleteness.complete && <div className="rounded-xl border border-amber-900/50 bg-amber-900/15 px-3 py-2 text-[10px] font-bold text-amber-200" role="status">Schedule check incomplete: {scheduleToolsCompleteness.reasons.join(' • ')}. Counts may change when loading finishes; period actions are paused.</div>}
       <div className="grid grid-cols-4 gap-1.5">
         {[['Drafts',draftCount],['Missing',missingTargets.length],['Warnings',allScheduleWarnings.length],['Templates',safeTemplates.length]].map(([label,value]) => <div key={label} className="schedule-copilot-metric bg-[#12161A] border border-[#2A353D]"><span className="text-[8px] uppercase tracking-widest font-black text-slate-500">{label}</span><strong className="text-white">{value}</strong></div>)}
       </div>
       <div className="flex gap-1.5 overflow-x-auto custom-scrollbar border-b border-[#2A353D] pb-2" role="tablist" aria-label="Schedule Builder tools" aria-orientation="horizontal">{[['targets','Coverage'],['templates','Templates'],['template-editor', editingTemplateId ? 'Edit Template' : 'Create Template'],['drag','Drag Board'],['warnings','Warnings']].map(([id,label]) => <button key={id} type="button" role="tab" aria-label={label} title={label} onClick={() => setActiveTool(id)} aria-selected={activeTool===id} data-chaos-current-state={activeTool===id ? 'true' : undefined} className={`flex-shrink-0 px-2.5 py-1.5 rounded-lg text-[9px] uppercase tracking-widest font-black ${activeTool===id ? `${T.grad} text-slate-900` : 'bg-[#12161A] text-slate-400 hover:text-white'}`}>{label}</button>)}</div>
       <div className="schedule-copilot-body custom-scrollbar space-y-3">
       {activeTool === 'targets' && <div className="grid lg:grid-cols-2 gap-4"><form onSubmit={addCoverageTarget} className="bg-[#12161A] border border-[#2A353D] rounded-xl p-3 space-y-2"><h4 className="font-black text-white">Add Coverage Target</h4><p className="text-[10px] font-bold text-slate-400">Choose how many people you need for a role and time. Roles match the Staff Roster and Schedule Builder.</p><div className="grid grid-cols-2 gap-2"><select value={targetForm.dayIndex} onChange={e=>setTargetForm({...targetForm, dayIndex:e.target.value})} className={T.input}>{dayNames.map((d,i)=><option key={d} value={i}>{d}</option>)}</select><select value={targetForm.role} onChange={e=>setTargetForm({...targetForm, role:e.target.value})} className={T.input}>{scheduleRoleOptions.map(r => <option key={r} value={r}>{r}</option>)}</select><input type="time" value={targetForm.startTime} onChange={e=>setTargetForm({...targetForm, startTime:e.target.value})} className={T.input}/><input type="time" value={targetForm.endTime} onChange={e=>setTargetForm({...targetForm, endTime:e.target.value})} className={T.input}/><input type="number" min="1" value={targetForm.count} onChange={e=>setTargetForm({...targetForm, count:e.target.value})} className={T.input}/><button className={`${T.btn} py-2`}>Save Coverage Target</button></div></form><div className="space-y-2">{coverageTargets.length === 0 ? <FriendlyEmpty title="No coverage targets yet" text="Add the staffing level you want for each role and time. Fill Coverage Gaps can then create draft shifts for review."/> : coverageTargets.map(t => <div key={t.id} className="bg-[#12161A] border border-[#2A353D] rounded-xl p-3 flex justify-between items-center"><div><div className="font-black text-white">{dayNames[t.dayIndex]} • {t.role} x{t.count}</div><div className="text-xs text-slate-400 font-bold">{formatShortTime(t.startTime)} - {formatShortTime(t.endTime)}</div></div><button onClick={() => deleteDoc(doc(db,'scheduleCoverageTargets',t.id))} className="p-2 text-slate-400 hover:text-red-400"><Trash2 size={14}/></button></div>)}</div></div>}
-      {activeTool === 'templates' && <div className="space-y-3"><div className="flex flex-col md:flex-row gap-2"><select value={templateId} onChange={e => setTemplateId(e.target.value)} className={`${T.input} flex-1`}><option value="">Select template to apply</option>{templateOptions.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}</select><button onClick={applyTemplate} className={`${T.btn} py-2`}>Apply to Current Week</button><button onClick={saveCurrentWeekAsTemplate} className={T.btnAlt}>Save Current Week</button></div>{templateOptions.length === 0 ? <FriendlyEmpty title="No templates yet" text="Create a Normal Week, Packers Sunday, Fish Fry Friday, or Live Music template. Each restaurant gets its own library."/> : templateOptions.map(t => <div key={t.id} className="bg-[#12161A] border border-[#2A353D] rounded-xl p-3 flex justify-between items-center"><div><div className="font-black text-white">{t.name}</div><div className="text-xs text-slate-400 font-bold">{t.description || 'No description'} • {(t.rows || []).length} rules</div></div><div className="flex gap-2"><button onClick={() => editTemplate(t)} className={T.btnAlt}>Edit</button><button onClick={() => deleteTemplate(t)} className="px-3 py-2 rounded-xl bg-red-900/20 text-red-300 border border-red-900/50 text-xs font-black">Delete</button></div></div>)}</div>}
+      {activeTool === 'templates' && <div className="space-y-3"><div className="flex flex-col md:flex-row gap-2"><select value={templateId} onChange={e => setTemplateId(e.target.value)} className={`${T.input} flex-1`}><option value="">Select template to apply</option>{templateOptions.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}</select><button onClick={applyTemplate} disabled={periodActionBlocked} className={`${T.btn} py-2 disabled:opacity-50`}>{activePeriod.mode === 'weekly' ? 'Apply to Current Week' : 'Apply to Current Period'}</button><button onClick={saveCurrentWeekAsTemplate} className={T.btnAlt}>Save Current Week</button></div>{templateOptions.length === 0 ? <FriendlyEmpty title="No templates yet" text="Create a Normal Week, Packers Sunday, Fish Fry Friday, or Live Music template. Each restaurant gets its own library."/> : templateOptions.map(t => <div key={t.id} className="bg-[#12161A] border border-[#2A353D] rounded-xl p-3 flex justify-between items-center"><div><div className="font-black text-white">{t.name}</div><div className="text-xs text-slate-400 font-bold">{t.description || 'No description'} • {(t.rows || []).length} rules</div></div><div className="flex gap-2"><button onClick={() => editTemplate(t)} className={T.btnAlt}>Edit</button><button onClick={() => deleteTemplate(t)} className="px-3 py-2 rounded-xl bg-red-900/20 text-red-300 border border-red-900/50 text-xs font-black">Delete</button></div></div>)}</div>}
       {activeTool === 'template-editor' && <form onSubmit={saveTemplate} className="space-y-3"><div className="grid md:grid-cols-2 gap-2"><input value={templateName} onChange={e=>setTemplateName(e.target.value)} className={T.input} placeholder="Template name" required/><input value={templateDesc} onChange={e=>setTemplateDesc(e.target.value)} className={T.input} placeholder="Description"/></div><div className="space-y-2">{templateRows.map((r,idx)=><div key={idx} className="grid grid-cols-2 md:grid-cols-6 gap-2 bg-[#12161A] border border-[#2A353D] rounded-xl p-2"><select value={r.dayIndex} onChange={e=>updateTemplateRow(idx,{dayIndex:e.target.value})} className={T.input}>{dayNames.map((d,i)=><option key={d} value={i}>{d}</option>)}</select><select value={r.role} onChange={e=>updateTemplateRow(idx,{role:e.target.value})} className={T.input}>{scheduleRoleOptions.map(roleName => <option key={roleName} value={roleName}>{roleName}</option>)}</select><input type="time" value={r.startTime} onChange={e=>updateTemplateRow(idx,{startTime:e.target.value})} className={T.input}/><input type="time" value={r.endTime} onChange={e=>updateTemplateRow(idx,{endTime:e.target.value})} className={T.input}/><input type="number" min="1" value={r.count} onChange={e=>updateTemplateRow(idx,{count:e.target.value})} className={T.input}/><button type="button" onClick={()=>removeTemplateRow(idx)} className="bg-red-900/20 border border-red-900/50 text-red-300 rounded-xl font-black text-xs">Remove</button></div>)}</div><div className="flex gap-2"><button type="button" onClick={addTemplateRow} className={T.btnAlt}>Add Row</button><button type="submit" className={`${T.btn} py-2`}>{editingTemplateId ? 'Update Template' : 'Create Template'}</button></div></form>}
-      {activeTool === 'drag' && <div className="space-y-3"><p className="text-xs text-slate-400 font-bold">Drag shifts between days on desktop, or use the Move to day dropdown on mobile. Quick edit controls can change employee/time without opening the big schedule grid.</p><div className="grid md:grid-cols-7 gap-2">{weekDates.map((date, dayIdx) => <div key={date} onDragOver={e => e.preventDefault()} onDrop={() => moveShiftToDay(date)} className="min-h-[160px] bg-[#12161A] border border-[#2A353D] rounded-xl p-2"><div className="text-[10px] font-black uppercase tracking-widest text-[#D4A381] mb-2">{dayNames[dayIdx]}<br/><span className="text-slate-500">{date.substring(5)}</span></div>{weekShifts.filter(s => s.date === date).sort((a,b)=>(a.startTime||'').localeCompare(b.startTime||'')).map(shift => <div key={shift.id} draggable onDragStart={() => setDraggedShiftId(shift.id)} onDragEnd={() => setDraggedShiftId(null)} className={`mb-2 rounded-lg border p-2 cursor-move ${draggedShiftId === shift.id ? 'border-[#D4A381] bg-[#D4A381]/10' : 'border-[#2A353D] bg-[#1A2126]'}`}><div className="font-black text-white text-xs truncate">{shift.employeeName || users.find(u=>u.id===shift.employeeId)?.name || 'Unassigned'}</div><div className="text-[9px] text-slate-400 font-bold uppercase">{shift.role} • {formatShortTime(shift.startTime)}-{formatShortTime(shift.endTime)}</div><div className="grid grid-cols-1 gap-1 mt-2"><select value="" onChange={e=>e.target.value && quickUpdateShift(shift,{date:e.target.value})} className="bg-[#12161A] border border-[#2A353D] rounded-md px-1.5 py-1 text-[10px] text-[#D4A381] outline-none md:hidden"><option value="">Move to day...</option>{weekDates.map((d,i)=><option key={d} value={d}>{dayNames[i]} {d.substring(5)}</option>)}</select><select value={shift.employeeId || ''} onChange={e=>quickUpdateShift(shift,{employeeId:e.target.value})} className="bg-[#12161A] border border-[#2A353D] rounded-md px-1.5 py-1 text-[10px] text-white outline-none"><option value="">Unassigned</option>{activeUsers.map(u=><option key={u.id} value={u.id}>{u.name}</option>)}</select><div className="flex gap-1"><input type="time" defaultValue={shift.startTime || '09:00'} onBlur={e=>e.target.value && quickUpdateShift(shift,{startTime:e.target.value})} className="w-full bg-[#12161A] border border-[#2A353D] rounded-md px-1 py-1 text-[10px] text-white"/><input type="time" defaultValue={shift.endTime || '17:00'} onBlur={e=>e.target.value && quickUpdateShift(shift,{endTime:e.target.value})} className="w-full bg-[#12161A] border border-[#2A353D] rounded-md px-1 py-1 text-[10px] text-white"/></div></div></div>)}{weekShifts.filter(s => s.date === date).length === 0 && <div className="border border-dashed border-[#2A353D] rounded-lg p-3 text-center text-[10px] font-bold text-slate-500">Drop shifts here</div>}</div>)}</div></div>}
-      {activeTool === 'warnings' && <div className="grid md:grid-cols-2 gap-3"><div>{coverageWarnings.length === 0 ? <FriendlyEmpty title="Coverage targets met" text="No target gaps or over-coverage found for the current week."/> : coverageWarnings.map(w => <ScheduleWarningCard key={w.alertId} warning={w} appUser={appUser} />)}</div><div>{conflictList.length === 0 ? <FriendlyEmpty title="No conflicts found" text="No schedule warning dragons spotted this week."/> : conflictList.map(w => <ScheduleWarningCard key={w.alertId} warning={w} appUser={appUser} />)}</div></div>}
+      {activeTool === 'drag' && <div className="space-y-3"><p className="text-xs text-slate-400 font-bold">Drag shifts between dates on desktop, or use Move to day on mobile. Quick edits save only actual changes.</p><div className="grid sm:grid-cols-2 xl:grid-cols-7 gap-2">{activePeriodDates.map(date => { const dateDayName = dayNames[new Date(`${date}T12:00:00`).getDay()]; const dateShifts = activePeriodShifts.filter(s => getShiftDateKey(s) === date).sort((a,b)=>(a.startTime||'').localeCompare(b.startTime||'')); return <div key={date} onDragOver={e => e.preventDefault()} onDrop={() => moveShiftToDay(date)} className="min-h-[160px] min-w-0 bg-[#12161A] border border-[#2A353D] rounded-xl p-2"><div className="text-[10px] font-black uppercase tracking-widest text-[#D4A381] mb-2">{dateDayName}<br/><span className="text-slate-500">{date.substring(5)}</span></div>{dateShifts.map(shift => <div key={shift.id} draggable onDragStart={() => setDraggedShiftId(shift.id)} onDragEnd={() => setDraggedShiftId(null)} className={`mb-2 rounded-lg border p-2 cursor-move ${draggedShiftId === shift.id ? 'border-[#D4A381] bg-[#D4A381]/10' : 'border-[#2A353D] bg-[#1A2126]'}`}><div className="font-black text-white text-xs truncate">{shift.employeeName || users.find(u=>u.id===shift.employeeId)?.name || 'Unassigned'}</div><div className="text-[9px] text-slate-400 font-bold uppercase">{shift.role} • {formatShortTime(shift.startTime)}-{formatShortTime(shift.endTime)}</div><div className="grid grid-cols-1 gap-1 mt-2"><select value="" onChange={e=>e.target.value && quickUpdateShift(shift,{date:e.target.value})} className="bg-[#12161A] border border-[#2A353D] rounded-md px-1.5 py-1 text-[10px] text-[#D4A381] outline-none xl:hidden"><option value="">Move to day...</option>{activePeriodDates.map(d=><option key={d} value={d}>{dayNames[new Date(`${d}T12:00:00`).getDay()]} {d.substring(5)}</option>)}</select><select value={shift.employeeId || ''} onChange={e=>quickUpdateShift(shift,{employeeId:e.target.value})} className="bg-[#12161A] border border-[#2A353D] rounded-md px-1.5 py-1 text-[10px] text-white outline-none"><option value="">Unassigned</option>{activeUsers.map(u=><option key={u.id} value={u.id}>{u.name}</option>)}</select><div className="flex gap-1"><input type="time" defaultValue={shift.startTime || '09:00'} onBlur={e=>e.target.value && quickUpdateShift(shift,{startTime:e.target.value})} className="w-full min-w-0 bg-[#12161A] border border-[#2A353D] rounded-md px-1 py-1 text-[10px] text-white"/><input type="time" defaultValue={shift.endTime || '17:00'} onBlur={e=>e.target.value && quickUpdateShift(shift,{endTime:e.target.value})} className="w-full min-w-0 bg-[#12161A] border border-[#2A353D] rounded-md px-1 py-1 text-[10px] text-white"/></div></div></div>)}{dateShifts.length === 0 && <div className="border border-dashed border-[#2A353D] rounded-lg p-3 text-center text-[10px] font-bold text-slate-500">Drop shifts here</div>}</div>; })}</div></div>}
+      {activeTool === 'warnings' && <div className="grid md:grid-cols-2 gap-3"><div>{coverageWarnings.length === 0 ? (scheduleToolsCompleteness.complete ? <FriendlyEmpty title="Coverage targets met" text={`No target gaps or over-coverage found for ${activePeriodLabel}.`}/> : <FriendlyEmpty title="Coverage check incomplete" text="Wait for the schedule and coverage targets to finish loading."/>) : coverageWarnings.map(w => <ScheduleWarningCard key={w.alertId} warning={w} appUser={appUser} />)}</div><div>{conflictList.length === 0 ? (scheduleToolsCompleteness.complete ? <FriendlyEmpty title="No conflicts found" text={`No schedule conflicts were found for ${activePeriodLabel}.`}/> : <FriendlyEmpty title="Conflict check incomplete" text="Wait for schedule, Request Off, and availability records to finish loading."/>) : conflictList.map(w => <ScheduleWarningCard key={w.alertId} warning={w} appUser={appUser} />)}</div></div>}
       </div>
     </div>
   );
