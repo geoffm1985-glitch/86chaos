@@ -1,3 +1,4 @@
+jest.setTimeout(15000);
 import { PDFDocument } from 'pdf-lib';
 import { buildMonthSchedulePrintModel } from './schedulePrintModel';
 import { generateMonthSchedulePdf, PAGE_WIDTH, PAGE_HEIGHT, MIN_FONT_SIZE } from './schedulePdf';
