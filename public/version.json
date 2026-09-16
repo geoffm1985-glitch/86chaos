@@ -1,17 +1,17 @@
 {
-  "version": "16.0.234",
-  "name": "86 Chaos 16.0.234",
-  "build": "16.0.234",
-  "label": "86 Chaos 16.0.234",
-  "releasedAt": "2026-09-14T00:00:00.000Z",
-  "releaseTitle": "Shift4 Dine POS Foundation and Reliable Schedule PDF Printing",
+  "version": "16.0.235",
+  "name": "86 Chaos 16.0.235",
+  "build": "16.0.235",
+  "label": "86 Chaos 16.0.235",
+  "releasedAt": "2026-09-15T00:00:00.000Z",
+  "releaseTitle": "Mobile Schedule PDF Delivery Repair",
   "notes": [
-    "Adds a secure, manual, read-only Shift4 Dine Marketplace data bridge with server-only OAuth credentials.",
-    "Normalizes allowlisted ticket and item data into idempotent review records with cent-based money fields and safe CSV/JSON exports.",
-    "Replaces the active Month Schedule browser-print action with lazy pdf-lib Letter-landscape PDF output and a download fallback.",
-    "Adds a dedicated new-implementation regression suite covering Shift4 security, failures, idempotency, exports, and schedule PDF behavior."
+    "Repairs Month Schedule PDF delivery on Android/mobile browsers and installed-PWA contexts.",
+    "Mobile printing now prefers native PDF file sharing when supported and otherwise downloads the generated PDF directly.",
+    "Desktop PDF viewing opens the generated Blob URL directly and falls back to download when popups are blocked.",
+    "Adds regression coverage for the real about:blank mobile failure without changing schedule PDF content or Shift4 behavior."
   ],
-  "title": "86 Chaos 16.0.234",
-  "summary": "Secure read-only Shift4 Dine imports, stable Month Schedule PDF printing, and a dedicated regression suite.",
-  "description": "Adds a secure read-only Shift4 Dine POS data bridge for controlled import, review, and export; replaces the active Month Schedule browser-print path with stable PDF output; and introduces dedicated regression coverage."
+  "title": "86 Chaos 16.0.235",
+  "summary": "Repairs mobile Month Schedule PDF delivery without changing schedule data or PDF layout.",
+  "description": "Replaces the fragile mobile about:blank PDF handoff with reliable file share/download delivery while preserving desktop PDF viewing and zero-write schedule printing."
 }
