@@ -4545,8 +4545,8 @@ const TabMonth = ({ currentDate, users, shifts, appUser }) => {
   const weeks = Math.ceil((firstDay + days) / 7);
   
   const handlePrintCalendar = async () => {
-    const viewer = window.open('about:blank', '_blank');
     setPrintState({ busy: true, error: '' });
+    let bytes;
     try {
       const model = buildMonthSchedulePrintModel({
         monthStr, roleFilter, restaurantName: appUser?.restaurantName || appUser?.restaurant || '', prefiltered: true,
@@ -4555,12 +4555,16 @@ const TabMonth = ({ currentDate, users, shifts, appUser }) => {
           return { date: getShiftDateKey(shift), role: shift.role || shift.targetRole || '', startTime: shift.startTime || '', endTime: shift.endTime || '', employeeName: getScheduleShiftDisplayName(shift, activeUsers), label: labels.full, dedupeKey: getScheduleShiftDisplayDedupeKey(shift, activeUsers) || shift.id };
         })
       });
-      const bytes = await generateMonthSchedulePdf(model);
-      deliverSchedulePdf(bytes, { viewer, filename: `86chaos-schedule-${monthStr}${roleFilter !== 'All' ? `-${roleFilter}` : ''}.pdf` });
+      bytes = await generateMonthSchedulePdf(model);
+    } catch (_) {
+      setPrintState({ busy: false, error: 'The schedule PDF could not be generated. No schedule data was changed. Please try again.' });
+      return;
+    }
+    try {
+      await deliverSchedulePdf(bytes, { filename: `86chaos-schedule-${monthStr}${roleFilter !== 'All' ? `-${roleFilter}` : ''}.pdf` });
       setPrintState({ busy: false, error: '' });
     } catch (_) {
-      try { viewer?.close(); } catch (_) {}
-      setPrintState({ busy: false, error: 'The schedule PDF could not be generated. No schedule data was changed. Please try again.' });
+      setPrintState({ busy: false, error: 'The schedule PDF was created but could not be opened or downloaded. No schedule data was changed. Please try again.' });
     }
   };
 
