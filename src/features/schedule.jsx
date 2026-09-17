@@ -23,6 +23,7 @@ import { deriveScheduleToolsPeriod, deriveScheduleToolsCopyWeek, filterScheduleT
 import { buildMonthSchedulePrintModel } from '../core/schedulePrintModel';
 import { generateMonthSchedulePdf } from '../core/schedulePdf';
 import { deliverSchedulePdf } from '../core/schedulePdfDelivery';
+import { createSchedulePublishGuard, makeSchedulePublishProgress } from '../core/schedulePublishProgress';
 import { CheersLogo, Modal, DrawerMenu, DayDotPrintScreen, MapClickListener, SmartEmptyState, MiniProblemCard, getHomeProfile, calculatePunchHours, getWeekStart, roleMatches, toLocalTimeInput, makeLocalIso, PunchTable, FriendlyEmpty, GlobalSearchModal, QuickActionDock, KitchenTVMode, ChangeLogModal, UndoBar } from '../components/common';
 
 
@@ -1841,6 +1842,13 @@ const [eventDate, setEventDate] = useState(getToday());
   const [isPublishPickerOpen, setIsPublishPickerOpen] = useState(false);
   const [selectedPublishWeekKeys, setSelectedPublishWeekKeys] = useState([]);
   const [publishPickerSource, setPublishPickerSource] = useState('builder');
+  const publishOperationGuardRef = useRef(null);
+  if (!publishOperationGuardRef.current) publishOperationGuardRef.current = createSchedulePublishGuard();
+  const [publishProgress, setPublishProgress] = useState(() => makeSchedulePublishProgress());
+  const isPublishingSchedule = Boolean(publishProgress.active);
+  const updatePublishProgress = useCallback((phase, label, detail = '', current = 0, total = 0, extra = {}) => {
+    setPublishProgress(makeSchedulePublishProgress({ phase, label, detail, current, total, ...extra }));
+  }, []);
   
   const monthStr = getMonthStr(currentDate); 
   const monthDays = Array.from({length: getDaysInMonth(monthStr)}).map((_, i) => `${monthStr}-${String(i+1).padStart(2, '0')}`);
@@ -1979,6 +1987,8 @@ const [eventDate, setEventDate] = useState(getToday());
     ? selectedPublishWeeks.map(option => `${option.label}: ${publishDateLabel(option.start, option.end)}`).join(', ')
     : 'No weeks selected';
   const openPublishPicker = (source = 'builder') => {
+    if (publishOperationGuardRef.current?.isActive()) return;
+    setPublishProgress(makeSchedulePublishProgress());
     const nextSource = source === 'schedule-tools' ? 'schedule-tools' : 'builder';
     const nextDays = nextSource === 'schedule-tools' ? schedulePeriodDays : publicationWeekDays;
     const nextDaySet = new Set(nextDays);
@@ -2014,6 +2024,7 @@ const [eventDate, setEventDate] = useState(getToday());
     if (reviewPublishRequest > 0) openPublishPicker('schedule-tools');
   }, [reviewPublishRequest]);
   const togglePublishWeek = (key) => {
+    if (publishOperationGuardRef.current?.isActive()) return;
     setSelectedPublishWeekKeys(prev => prev.includes(key) ? prev.filter(item => item !== key) : [...prev, key]);
   };
 
@@ -2651,179 +2662,210 @@ const [eventDate, setEventDate] = useState(getToday());
     }
   };
 
-const handlePublish = async (scope = 'selected-weeks') => { 
-    const publishAll = scope === 'full-period';
-    const selectedWeeksForPublish = publishAll ? publishWeekOptions : selectedPublishWeeks;
-    const publishDays = publishAll ? activePublishDays : selectedPublishDays;
-    const publishDaySet = new Set(publishDays);
-    const localPublishCandidateSources = mergeSchedulePublishCandidates(renderedPublicationPeriodShifts, publicationPeriodShifts, visibleSourceShifts, autoFillVisibleShifts, localBuilderShiftEchoes, getScheduleBuilderRenderedShiftsForDaySet(publishDaySet))
-      .filter(shift => !isDeletedScheduleShift(shift) && !shiftMatchesLocalDeleteMarkers(shift, activeLocalDeleteKeySet, activeLocalDeleteMarkerMap));
-    const publishCandidates = await fetchSchedulePublishCandidatesForDaySet(publishDaySet, localPublishCandidateSources);
-    const selectedCandidates = publishCandidates
-      .filter(shift => getShiftWritableDocId(shift) && !isDeletedScheduleShift(shift) && (publishAll || shiftIsInsideDaySet(shift, publishDaySet)))
-      .filter(shift => publishDaySet.has(getShiftDateKey(shift)));
-    const publishPeriodStart = publishAll ? (publishPickerSource === 'schedule-tools' ? schedulePeriodBounds.start : publicationWeekBounds.start) : (publishDays[0] || schedulePeriodBounds.start);
-    const publishPeriodEnd = publishAll ? (publishPickerSource === 'schedule-tools' ? schedulePeriodBounds.end : publicationWeekBounds.end) : (publishDays[publishDays.length - 1] || schedulePeriodBounds.end);
-    const publishPeriodLabel = publishAll
-      ? schedulePeriodLabel
-      : (selectedWeeksForPublish.length ? selectedWeeksForPublish.map(option => option.label).join(', ') : 'selected weeks');
-    const publishSelectionLabel = publishAll ? schedulePeriodLabel : selectedPublishLabel;
-    const publishedAtIso = new Date().toISOString();
-    const scheduleId = `schedule_${appUser.restaurantId}_${publishPeriodStart}_${publishPeriodEnd}_${Date.now()}`;
-    const publishWeekKeys = selectedWeeksForPublish.map(option => option.key);
-
-    if (selectedCandidates.length === 0) {
-      addToast('Nothing to Publish', publishAll ? 'There are no shifts in the current publishing period.' : 'There are no shifts in the selected weeks.');
+const handlePublish = async (scope = 'selected-weeks') => {
+    const publishGuard = publishOperationGuardRef.current;
+    if (!publishGuard?.begin()) {
+      addToast('Publishing in Progress', 'A schedule publish is already running. Please wait for it to finish.');
       return;
     }
 
-    const unresolved = [];
-    const updatePlan = [];
-    const alreadyValid = [];
-    let draftCount = 0;
-    let repairCount = 0;
+    let publishCompleted = false;
+    updatePublishProgress('preparing', 'Preparing schedule…', 'Locking this publish so it can only run once.');
 
-    selectedCandidates.forEach(shift => {
-      const shiftDocId = getShiftWritableDocId(shift);
-      const dateKey = getShiftDateKey(shift);
-      const resolved = resolveSchedulePersonForShift(shift, users);
-      if (!shiftDocId || !dateKey || !resolved.ok || !resolved.person) {
-        unresolved.push({ shift, reason: !dateKey ? 'missing date' : (resolved.reason || 'employee not matched') });
+    try {
+      const publishAll = scope === 'full-period';
+      const selectedWeeksForPublish = publishAll ? publishWeekOptions : selectedPublishWeeks;
+      const publishDays = publishAll ? activePublishDays : selectedPublishDays;
+      const publishDaySet = new Set(publishDays);
+      const localPublishCandidateSources = mergeSchedulePublishCandidates(renderedPublicationPeriodShifts, publicationPeriodShifts, visibleSourceShifts, autoFillVisibleShifts, localBuilderShiftEchoes, getScheduleBuilderRenderedShiftsForDaySet(publishDaySet))
+        .filter(shift => !isDeletedScheduleShift(shift) && !shiftMatchesLocalDeleteMarkers(shift, activeLocalDeleteKeySet, activeLocalDeleteMarkerMap));
+
+      updatePublishProgress('loading', 'Loading schedule shifts…', 'Finding the exact saved shifts that belong to this publish.');
+      const publishCandidates = await fetchSchedulePublishCandidatesForDaySet(publishDaySet, localPublishCandidateSources);
+      const selectedCandidates = publishCandidates
+        .filter(shift => getShiftWritableDocId(shift) && !isDeletedScheduleShift(shift) && (publishAll || shiftIsInsideDaySet(shift, publishDaySet)))
+        .filter(shift => publishDaySet.has(getShiftDateKey(shift)));
+      const publishPeriodStart = publishAll ? (publishPickerSource === 'schedule-tools' ? schedulePeriodBounds.start : publicationWeekBounds.start) : (publishDays[0] || schedulePeriodBounds.start);
+      const publishPeriodEnd = publishAll ? (publishPickerSource === 'schedule-tools' ? schedulePeriodBounds.end : publicationWeekBounds.end) : (publishDays[publishDays.length - 1] || schedulePeriodBounds.end);
+      const publishPeriodLabel = publishAll
+        ? schedulePeriodLabel
+        : (selectedWeeksForPublish.length ? selectedWeeksForPublish.map(option => option.label).join(', ') : 'selected weeks');
+      const publishSelectionLabel = publishAll ? schedulePeriodLabel : selectedPublishLabel;
+      const publishedAtIso = new Date().toISOString();
+      const scheduleId = `schedule_${appUser.restaurantId}_${publishPeriodStart}_${publishPeriodEnd}_${Date.now()}`;
+      const publishWeekKeys = selectedWeeksForPublish.map(option => option.key);
+
+      if (selectedCandidates.length === 0) {
+        setPublishProgress(makeSchedulePublishProgress());
+        addToast('Nothing to Publish', publishAll ? 'There are no shifts in the current publishing period.' : 'There are no shifts in the selected weeks.');
         return;
       }
-      const canonical = buildCanonicalScheduleIdentityBlock(resolved.person, shift);
-      const isLive = isBuilderShiftPublished(shift);
-      const publishedFieldsOk = shift.isPublished === true && shift.published === true && String(shift.status || '').toLowerCase() === 'published' && String(shift.publishStatus || '').toLowerCase() === 'published';
-      const identityOk = scheduleIdentityBlockMatchesPerson(shift, resolved.person);
-      const dateOk = String(shift.date || shift.scheduleDateKey || '') === dateKey && String(shift.scheduleDateKey || shift.date || '') === dateKey;
-      const needsWrite = !isLive || !publishedFieldsOk || !identityOk || !dateOk || !shift.scheduleId;
-      if (!needsWrite) {
-        alreadyValid.push(shiftDocId);
+
+      updatePublishProgress('planning', 'Checking publish readiness…', `Reviewing ${selectedCandidates.length} shift${selectedCandidates.length === 1 ? '' : 's'} before any writes.`);
+      const unresolved = [];
+      const updatePlan = [];
+      const alreadyValid = [];
+      let draftCount = 0;
+      let repairCount = 0;
+
+      selectedCandidates.forEach(shift => {
+        const shiftDocId = getShiftWritableDocId(shift);
+        const dateKey = getShiftDateKey(shift);
+        const resolved = resolveSchedulePersonForShift(shift, users);
+        if (!shiftDocId || !dateKey || !resolved.ok || !resolved.person) {
+          unresolved.push({ shift, reason: !dateKey ? 'missing date' : (resolved.reason || 'employee not matched') });
+          return;
+        }
+        const canonical = buildCanonicalScheduleIdentityBlock(resolved.person, shift);
+        const isLive = isBuilderShiftPublished(shift);
+        const publishedFieldsOk = shift.isPublished === true && shift.published === true && String(shift.status || '').toLowerCase() === 'published' && String(shift.publishStatus || '').toLowerCase() === 'published';
+        const identityOk = scheduleIdentityBlockMatchesPerson(shift, resolved.person);
+        const dateOk = String(shift.date || shift.scheduleDateKey || '') === dateKey && String(shift.scheduleDateKey || shift.date || '') === dateKey;
+        const needsWrite = !isLive || !publishedFieldsOk || !identityOk || !dateOk || !shift.scheduleId;
+        if (!needsWrite) {
+          alreadyValid.push(shiftDocId);
+          return;
+        }
+        if (!isLive) draftCount += 1;
+        else repairCount += 1;
+        updatePlan.push({
+          id: shiftDocId,
+          shift,
+          person: resolved.person,
+          dateKey,
+          wasPublished: isLive,
+          update: {
+            restaurantId: shift.restaurantId || appUser.restaurantId,
+            workspaceId: shift.workspaceId || shift.restaurantId || appUser.restaurantId,
+            date: dateKey,
+            scheduleDateKey: dateKey,
+            isPublished: true,
+            published: true,
+            status: 'published',
+            publishStatus: 'published',
+            publishState: 'published',
+            schedulePublishStatus: 'published',
+            visibility: 'published',
+            scheduleBuilderDraft: false,
+            readyToPublish: false,
+            draft: false,
+            isDraft: false,
+            publishedAt: isLive && shift.publishedAt ? shift.publishedAt : publishedAtIso,
+            publishedBy: shift.publishedBy || appUser?.id || appUser?.email || 'unknown',
+            publishedByName: shift.publishedByName || appUser?.name || appUser?.email || 'Unknown',
+            scheduleId: isLive && shift.scheduleId ? shift.scheduleId : scheduleId,
+            schedulePeriodStart: shift.schedulePeriodStart || publishPeriodStart,
+            schedulePeriodEnd: shift.schedulePeriodEnd || publishPeriodEnd,
+            publishScope: publishAll ? 'full-period' : 'selected-weeks',
+            publishWeekKeys,
+            identityVerifiedAt: publishedAtIso,
+            identityVerifiedBy: appUser?.id || appUser?.email || 'unknown',
+            updatedAt: publishedAtIso,
+            ...canonical
+          }
+        });
+      });
+
+      const unresolvedNames = Array.from(new Set(unresolved.map(item => item.shift?.employeeName || item.shift?.assignedName || item.shift?.name || item.shift?.role || 'unknown staff'))).slice(0, 8);
+      if (updatePlan.length === 0) {
+        setPublishProgress(makeSchedulePublishProgress());
+        if (unresolved.length) {
+          addToast('Employee Match Needed', `${unresolved.length} shift${unresolved.length === 1 ? '' : 's'} were not published because their employee accounts could not be matched. Review employee links for ${unresolvedNames.join(', ')}.`);
+          return;
+        }
+        addToast('Already Published', 'Schedule is already published and employee visibility is verified.');
+        setIsPublishPickerOpen(false);
         return;
       }
-      if (!isLive) draftCount += 1;
-      else repairCount += 1;
-      updatePlan.push({
-        id: shiftDocId,
-        shift,
-        person: resolved.person,
-        dateKey,
-        wasPublished: isLive,
-        update: {
-          restaurantId: shift.restaurantId || appUser.restaurantId,
-          workspaceId: shift.workspaceId || shift.restaurantId || appUser.restaurantId,
-          date: dateKey,
-          scheduleDateKey: dateKey,
-          isPublished: true,
-          published: true,
-          status: 'published',
-          publishStatus: 'published',
-          publishState: 'published',
-          schedulePublishStatus: 'published',
-          visibility: 'published',
-          scheduleBuilderDraft: false,
-          readyToPublish: false,
-          draft: false,
-          isDraft: false,
-          publishedAt: isLive && shift.publishedAt ? shift.publishedAt : publishedAtIso,
-          publishedBy: shift.publishedBy || appUser?.id || appUser?.email || 'unknown',
-          publishedByName: shift.publishedByName || appUser?.name || appUser?.email || 'Unknown',
-          scheduleId: isLive && shift.scheduleId ? shift.scheduleId : scheduleId,
-          schedulePeriodStart: shift.schedulePeriodStart || publishPeriodStart,
-          schedulePeriodEnd: shift.schedulePeriodEnd || publishPeriodEnd,
+
+      updatePublishProgress('confirming', 'Ready to publish…', `${updatePlan.length} shift${updatePlan.length === 1 ? '' : 's'} will be written and verified.`);
+      const confirmMessage = unresolved.length
+        ? `Publish/repair ${updatePlan.length} shift${updatePlan.length === 1 ? '' : 's'} for ${publishSelectionLabel}? ${unresolved.length} shift${unresolved.length === 1 ? '' : 's'} will stay draft because employee accounts could not be matched: ${unresolvedNames.join(', ')}.`
+        : `Publish/repair ${updatePlan.length} shift${updatePlan.length === 1 ? '' : 's'} for ${publishSelectionLabel}? Weeks not selected will stay as drafts.`;
+      if (!window.confirm(confirmMessage)) {
+        setPublishProgress(makeSchedulePublishProgress());
+        return;
+      }
+
+      updatePublishProgress('backup', 'Creating safety backup…', 'Preparing the one local backup download for this publish.');
+      try {
+        const restaurantPrefix = getRestaurantExportPrefix(appUser, appUser?.restaurantId || '86chaos');
+        const now = new Date();
+        const backupPayload = {
+          app: '86chaos',
+          type: 'schedule-publish-backup',
+          version: CURRENT_VERSION,
+          generatedAt: now.toISOString(),
+          restaurantId: appUser?.restaurantId || null,
+          restaurantName: appUser?.restaurantName || appUser?.systemSettings?.restaurantName || null,
           publishScope: publishAll ? 'full-period' : 'selected-weeks',
           publishWeekKeys,
-          identityVerifiedAt: publishedAtIso,
-          identityVerifiedBy: appUser?.id || appUser?.email || 'unknown',
-          updatedAt: publishedAtIso,
-          ...canonical
+          publishWeeks: selectedWeeksForPublish.map(option => ({ label: option.label, start: option.start, end: option.end, draftCount: option.draftCount, liveCount: option.liveCount })),
+          publishPeriodStart,
+          publishPeriodEnd,
+          publishPeriodLabel,
+          selectedShiftCount: selectedCandidates.length,
+          updateCount: updatePlan.length,
+          draftCount,
+          repairCount,
+          unresolvedCount: unresolved.length,
+          updateShiftIds: updatePlan.map(item => item.id),
+          selectedShifts: selectedCandidates.map(s => ({ ...s }))
+        };
+        const stamp = now.toISOString().replace(/[:.]/g, '-');
+        downloadTextFile(`${restaurantPrefix}-Schedule-Publish-Backup-${publishPeriodStart}-to-${publishPeriodEnd}-${stamp}.json`, JSON.stringify(backupPayload, null, 2), 'application/json;charset=utf-8;');
+      } catch (backupErr) {
+        console.warn('Schedule publish backup download failed:', backupErr);
+        if (!window.confirm('The local backup download failed. Continue publishing anyway?')) {
+          setPublishProgress(makeSchedulePublishProgress());
+          return;
         }
-      });
-    });
-
-    const unresolvedNames = Array.from(new Set(unresolved.map(item => item.shift?.employeeName || item.shift?.assignedName || item.shift?.name || item.shift?.role || 'unknown staff'))).slice(0, 8);
-    if (updatePlan.length === 0) {
-      if (unresolved.length) {
-        addToast('Employee Match Needed', `${unresolved.length} shift${unresolved.length === 1 ? '' : 's'} were not published because their employee accounts could not be matched. Review employee links for ${unresolvedNames.join(', ')}.`);
-        return;
       }
-      addToast('Already Published', 'Schedule is already published and employee visibility is verified.');
-      setIsPublishPickerOpen(false);
-      return;
-    }
 
-    const confirmMessage = unresolved.length
-      ? `Publish/repair ${updatePlan.length} shift${updatePlan.length === 1 ? '' : 's'} for ${publishSelectionLabel}? ${unresolved.length} shift${unresolved.length === 1 ? '' : 's'} will stay draft because employee accounts could not be matched: ${unresolvedNames.join(', ')}.`
-      : `Publish/repair ${updatePlan.length} shift${updatePlan.length === 1 ? '' : 's'} for ${publishSelectionLabel}? Weeks not selected will stay as drafts.`;
-    if (!window.confirm(confirmMessage)) return;
+      addToast('Publishing...', `Verifying and publishing ${updatePlan.length} ${publishPeriodLabel} shift(s). Please wait.`);
+      updatePublishProgress('publishing', 'Publishing schedule…', `0 of ${updatePlan.length} shifts saved`, 0, updatePlan.length);
 
-    try {
-      const restaurantPrefix = getRestaurantExportPrefix(appUser, appUser?.restaurantId || '86chaos');
-      const now = new Date();
-      const backupPayload = {
-        app: '86chaos',
-        type: 'schedule-publish-backup',
-        version: CURRENT_VERSION,
-        generatedAt: now.toISOString(),
-        restaurantId: appUser?.restaurantId || null,
-        restaurantName: appUser?.restaurantName || appUser?.systemSettings?.restaurantName || null,
-        publishScope: publishAll ? 'full-period' : 'selected-weeks',
-        publishWeekKeys,
-        publishWeeks: selectedWeeksForPublish.map(option => ({ label: option.label, start: option.start, end: option.end, draftCount: option.draftCount, liveCount: option.liveCount })),
-        publishPeriodStart,
-        publishPeriodEnd,
-        publishPeriodLabel,
-        selectedShiftCount: selectedCandidates.length,
-        updateCount: updatePlan.length,
-        draftCount,
-        repairCount,
-        unresolvedCount: unresolved.length,
-        updateShiftIds: updatePlan.map(item => item.id),
-        selectedShifts: selectedCandidates.map(s => ({ ...s }))
-      };
-      const stamp = now.toISOString().replace(/[:.]/g, '-');
-      downloadTextFile(`${restaurantPrefix}-Schedule-Publish-Backup-${publishPeriodStart}-to-${publishPeriodEnd}-${stamp}.json`, JSON.stringify(backupPayload, null, 2), 'application/json;charset=utf-8;');
-    } catch (backupErr) {
-      console.warn('Schedule publish backup download failed:', backupErr);
-      if (!window.confirm('The local backup download failed. Continue publishing anyway?')) return;
-    }
-
-    addToast('Publishing...', `Verifying and publishing ${updatePlan.length} ${publishPeriodLabel} shift(s). Please wait.`);
-
-    try {
+      let publishedWriteCount = 0;
       for (let i = 0; i < updatePlan.length; i += 450) {
         const batch = writeBatch(db);
         const batchItems = updatePlan.slice(i, i + 450);
         batchItems.forEach(item => batch.update(doc(db, 'shifts', item.id), item.update));
         await batch.commit();
+        publishedWriteCount += batchItems.length;
+        updatePublishProgress('publishing', 'Publishing schedule…', `${publishedWriteCount} of ${updatePlan.length} shifts saved`, publishedWriteCount, updatePlan.length);
         recordScheduleOperationDiagnostic('batchedWriteOperations');
         recordScheduleOperationDiagnostic('batchedWriteDocuments', batchItems.length);
         recordScheduleOperationDiagnostic('totalScheduleDocumentsWritten', batchItems.length);
       }
 
       const verificationFailures = [];
-      for (const item of updatePlan) {
+      updatePublishProgress('verifying', 'Verifying published shifts…', `0 of ${updatePlan.length} shifts verified`, 0, updatePlan.length);
+      for (let verifyIndex = 0; verifyIndex < updatePlan.length; verifyIndex += 1) {
+        const item = updatePlan[verifyIndex];
         recordScheduleOperationDiagnostic('sdkReads');
         const snap = await getDoc(doc(db, 'shifts', item.id));
         if (snap.exists()) recordScheduleOperationDiagnostic('documentsObserved');
         if (!snap.exists()) {
           verificationFailures.push({ id: item.id, reason: 'missing after publish' });
-          continue;
+        } else {
+          const data = { id: snap.id, ...snap.data() };
+          const expectedRestaurantId = String(item.update.restaurantId || appUser.restaurantId || '');
+          const actualRestaurantId = String(data.restaurantId || data.workspaceId || '');
+          const statusOk = data.isPublished === true && data.published === true && String(data.status || '').toLowerCase() === 'published' && String(data.publishStatus || '').toLowerCase() === 'published';
+          const dateOk = getShiftDateKey(data) === item.dateKey;
+          const personOk = shiftMatchesPerson(data, item.person, users) && scheduleIdentityBlockMatchesPerson(data, item.person);
+          const scheduleIdOk = item.wasPublished || Boolean(data.scheduleId);
+          if (actualRestaurantId !== expectedRestaurantId || !statusOk || !dateOk || !personOk || !scheduleIdOk) {
+            verificationFailures.push({ id: item.id, reason: 'published read-back did not match expected fields' });
+          }
         }
-        const data = { id: snap.id, ...snap.data() };
-        const expectedRestaurantId = String(item.update.restaurantId || appUser.restaurantId || '');
-        const actualRestaurantId = String(data.restaurantId || data.workspaceId || '');
-        const statusOk = data.isPublished === true && data.published === true && String(data.status || '').toLowerCase() === 'published' && String(data.publishStatus || '').toLowerCase() === 'published';
-        const dateOk = getShiftDateKey(data) === item.dateKey;
-        const personOk = shiftMatchesPerson(data, item.person, users) && scheduleIdentityBlockMatchesPerson(data, item.person);
-        const scheduleIdOk = item.wasPublished || Boolean(data.scheduleId);
-        if (actualRestaurantId !== expectedRestaurantId || !statusOk || !dateOk || !personOk || !scheduleIdOk) {
-          verificationFailures.push({ id: item.id, reason: 'published read-back did not match expected fields' });
-        }
+        const verifiedCount = verifyIndex + 1;
+        updatePublishProgress('verifying', 'Verifying published shifts…', `${verifiedCount} of ${updatePlan.length} shifts checked`, verifiedCount, updatePlan.length);
       }
 
       if (verificationFailures.length) {
         console.warn('[86chaos] Schedule publish verification failed', verificationFailures);
+        setPublishProgress(prev => ({ ...prev, phase: 'error', active: false, label: 'Publish needs attention', detail: `${verificationFailures.length} shift${verificationFailures.length === 1 ? '' : 's'} did not verify. You can safely retry.` }));
         addToast('Publish Needs Attention', `${verificationFailures.length} shift${verificationFailures.length === 1 ? '' : 's'} did not verify after saving. The publish window stayed open so you can retry.`);
         return;
       }
@@ -2833,6 +2875,7 @@ const handlePublish = async (scope = 'selected-weeks') => {
         setLocalBuilderPublishedShiftIds(prev => Array.from(new Set([...(prev || []), ...publishedShiftIds])).slice(-1000));
       }
 
+      updatePublishProgress('time-off', 'Finishing schedule records…', 'Processing request-off records tied to this published period.');
       const inRangeRequests = (timeOffRequests || []).filter(r => publishDaySet.has(String(r?.date || '')) && String(r.restaurantId || r.workspaceId || appUser.restaurantId) === String(appUser.restaurantId));
       const processedRequests = inRangeRequests.filter(r => ['approved', 'denied'].includes(String(r.status || '').toLowerCase()) && r.archived !== true && r.processed !== true);
       const pendingPublishedOverlap = inRangeRequests.filter(r => String(r.status || '').toLowerCase() === 'pending');
@@ -2849,8 +2892,6 @@ const handlePublish = async (scope = 'selected-weeks') => {
       if (processedRequests.length) await logAudit(appUser, 'TIME_OFF_AUTO_ARCHIVED_ON_PUBLISH', `${processedRequests.length} request-offs`, scheduleId);
       if (pendingPublishedOverlap.length) await logAudit(appUser, 'TIME_OFF_PENDING_OVERLAPS_PUBLISHED_SCHEDULE', `${pendingPublishedOverlap.length} pending request-offs`, scheduleId);
 
-      setIsPublishPickerOpen(false);
-      setSelectedPublishWeekKeys([]);
       const title = unresolved.length ? 'Published with Employee Review Needed' : (repairCount ? 'Published and Visibility Repaired' : 'Published');
       const detailParts = [`${publishedShiftIds.length} shift${publishedShiftIds.length === 1 ? '' : 's'} verified for ${publishPeriodLabel}`];
       if (draftCount) detailParts.push(`${draftCount} new`);
@@ -2859,6 +2900,7 @@ const handlePublish = async (scope = 'selected-weeks') => {
       addToast(title, `${detailParts.join('. ')}. Weeks not selected stayed as drafts.`);
       logAudit(appUser, 'PUBLISH_SCHEDULE', 'Master Roster', `Verified ${publishedShiftIds.length}/${selectedCandidates.length} shifts for ${publishSelectionLabel}.`);
 
+      updatePublishProgress('notifications', 'Sending notifications…', 'Schedule is published. Finishing staff notification delivery.');
       try {
         addToast('Pinging Server', 'Sending schedule update notifications...');
         const pushRes = await secureFetch('/api/send-schedule-alert', {
@@ -2874,9 +2916,20 @@ const handlePublish = async (scope = 'selected-weeks') => {
         console.error('Failed to send schedule push notifications:', pushErr);
         addToast('Notifications Not Sent', 'Schedule published, but notifications could not be sent.');
       }
+
+      updatePublishProgress('complete', 'Publish complete', `${publishedShiftIds.length} shift${publishedShiftIds.length === 1 ? '' : 's'} published and verified.`, publishedShiftIds.length, publishedShiftIds.length);
+      publishCompleted = true;
+      setSelectedPublishWeekKeys([]);
+      setIsPublishPickerOpen(false);
     } catch (err) {
       console.error('[86chaos] Schedule publish failed', err);
+      setPublishProgress(prev => ({ ...prev, phase: 'error', active: false, label: 'Publishing stopped', detail: err?.message || 'Schedule publishing stopped before completion.' }));
       addToast('Publishing Failed', err?.message || 'Schedule publishing failed before every selected shift could be verified.');
+    } finally {
+      publishGuard?.end();
+      if (!publishCompleted) {
+        setPublishProgress(prev => prev.active ? { ...prev, active: false } : prev);
+      }
     }
   };
   
@@ -3969,7 +4022,7 @@ const handleExportTimesheets = () => {
         </div>
       </Modal>
 
-      <Modal isOpen={isPublishPickerOpen} onClose={() => setIsPublishPickerOpen(false)} title="Choose What to Publish" sizeClass="max-w-2xl">
+      <Modal isOpen={isPublishPickerOpen} onClose={() => { if (!isPublishingSchedule) setIsPublishPickerOpen(false); }} title="Choose What to Publish" sizeClass="max-w-2xl">
         <div className="space-y-4">
           <div className="rounded-xl border border-[#2A353D] bg-[#12161A] p-3">
             <div className="text-[10px] font-black uppercase tracking-widest text-[#D4A381]">Publish safely</div>
@@ -3986,7 +4039,7 @@ const handleExportTimesheets = () => {
                   <input
                     type="checkbox"
                     checked={checked}
-                    disabled={disabled}
+                    disabled={disabled || isPublishingSchedule}
                     onChange={() => togglePublishWeek(option.key)}
                     className="h-5 w-5 accent-[#D4A381]"
                   />
@@ -4004,10 +4057,29 @@ const handleExportTimesheets = () => {
             {selectedPublishWeeks.length > 0 && <span className="block mt-1 text-[11px] text-slate-400">{selectedPublishLabel}</span>}
           </div>
 
+          {publishProgress.phase !== 'idle' && (
+            <div className={`rounded-xl border p-3 ${publishProgress.phase === 'error' ? 'border-red-500/50 bg-red-950/20' : publishProgress.phase === 'complete' ? 'border-emerald-500/50 bg-emerald-950/20' : 'border-[#D4A381]/50 bg-[#D4A381]/10'}`} data-testid="schedule-publish-progress">
+              <div className="flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2 text-sm font-black text-white">
+                    {isPublishingSchedule && <Loader2 size={16} className="animate-spin text-[#D4A381] shrink-0" />}
+                    <span>{publishProgress.label || 'Publishing schedule…'}</span>
+                  </div>
+                  {publishProgress.detail && <div className="mt-1 text-[11px] font-bold text-slate-300">{publishProgress.detail}</div>}
+                </div>
+                <div className="shrink-0 text-sm font-black text-[#D4A381]" aria-live="polite">{publishProgress.percent}%</div>
+              </div>
+              <div className="mt-3 h-3 overflow-hidden rounded-full border border-[#2A353D] bg-[#090C0F]" role="progressbar" aria-label="Schedule publishing progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow={publishProgress.percent}>
+                <div className="h-full rounded-full bg-gradient-to-r from-[#D4A381] to-[#F1C9AA] transition-[width] duration-300 ease-out" style={{ width: `${publishProgress.percent}%` }} />
+              </div>
+              {isPublishingSchedule && <div className="mt-2 text-[10px] font-bold text-slate-400">Please wait. Publishing is locked so another publish cannot start.</div>}
+            </div>
+          )}
+
           <div className="flex flex-col sm:flex-row gap-2">
-            <button type="button" onClick={() => handlePublish('selected-weeks')} disabled={selectedPublishCandidateCount === 0} className={`${T.btn} flex-1 py-3 disabled:opacity-50`}>Publish Selected Weeks</button>
-            <button type="button" onClick={() => handlePublish('full-period')} disabled={fullPublishCandidateCount === 0} className={`${T.btnAlt} flex-1 py-3`}>{publishPickerSource === 'schedule-tools' ? 'Publish Full Period' : 'Publish Full Schedule'}</button>
-            <button type="button" onClick={() => setIsPublishPickerOpen(false)} className={`${T.btnAlt} flex-1 py-3`}>Cancel</button>
+            <button type="button" onClick={() => handlePublish('selected-weeks')} disabled={selectedPublishCandidateCount === 0 || isPublishingSchedule} className={`${T.btn} flex-1 py-3 disabled:opacity-50 disabled:cursor-not-allowed`}>{isPublishingSchedule ? 'Publishing…' : 'Publish Selected Weeks'}</button>
+            <button type="button" onClick={() => handlePublish('full-period')} disabled={fullPublishCandidateCount === 0 || isPublishingSchedule} className={`${T.btnAlt} flex-1 py-3 disabled:opacity-50 disabled:cursor-not-allowed`}>{isPublishingSchedule ? 'Publishing…' : (publishPickerSource === 'schedule-tools' ? 'Publish Full Period' : 'Publish Full Schedule')}</button>
+            <button type="button" onClick={() => { if (!isPublishingSchedule) setIsPublishPickerOpen(false); }} disabled={isPublishingSchedule} className={`${T.btnAlt} flex-1 py-3 disabled:opacity-50 disabled:cursor-not-allowed`}>Cancel</button>
           </div>
         </div>
       </Modal>

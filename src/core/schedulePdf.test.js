@@ -87,6 +87,29 @@ test('rendered PDF text uses 12-hour time, omits role text, and contains no deta
   expect(extracted.text).not.toMatch(/Full text/i);
 });
 
+
+test('calendar cells wrap full shift text instead of ellipsizing employee or time', async () => {
+  const model = buildMonthSchedulePrintModel({
+    monthStr: '2026-08', restaurantName: 'Cheers', roleFilter: 'All', prefiltered: true,
+    shifts: [
+      { date: '2026-08-03', published: true, dedupeKey: 'full-1', employeeName: 'Geoff Test', role: 'Cook', startTime: '16:00', endTime: '21:00' },
+      { date: '2026-08-03', published: true, dedupeKey: 'full-2', employeeName: 'Open Shift', role: 'Cook', startTime: '16:00', endTime: '21:00' },
+      { date: '2026-08-03', published: true, dedupeKey: 'full-3', employeeName: 'Employee With A Longer Name', role: 'Cook', startTime: '15:15', endTime: '21:00' }
+    ]
+  });
+  const bytes = await generateMonthSchedulePdf(model, pdfOptions);
+  const extracted = extractPdfText(bytes);
+  expect(extracted.pages).toBe(1);
+  expect(extracted.text).toContain('Geoff Test');
+  expect(extracted.text).toContain('Open Shift');
+  expect(extracted.text).toContain('Employee With A Longer Name');
+  expect(extracted.text).toContain('4:00 PM');
+  expect(extracted.text).toContain('9:00 PM');
+  expect(extracted.text).toContain('3:15 PM');
+  expect(extracted.text).not.toContain('…');
+  expect(extracted.text).not.toContain('Cook');
+});
+
 test('same model generates deterministic bytes', async () => {
   const model = makeModel(7); const first = await generateMonthSchedulePdf(model, pdfOptions); const second = await generateMonthSchedulePdf(model, pdfOptions);
   expect(Buffer.from(first).equals(Buffer.from(second))).toBe(true);

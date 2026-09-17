@@ -107,14 +107,44 @@ export async function generateMonthSchedulePdf(model, options = {}) {
 
     if (!cell.shifts.length) return;
     const contentHeight = Math.max(0, rowHeight - 24);
-    const lineHeight = Math.min(9, contentHeight / cell.shifts.length);
-    const fontSize = Math.min(8, lineHeight - 1);
-    if (fontSize < MIN_FONT_SIZE) {
-      throw new Error(`The Month Schedule PDF cannot fit all ${cell.shifts.length} shifts for ${cell.date} on one calendar page. Reduce the visible schedule density or print a filtered month.`);
+    const textWidth = columnWidth - 7;
+    const candidateSizes = [8, 7.5, 7, MIN_FONT_SIZE];
+    let layout = null;
+
+    for (const fontSize of candidateSizes) {
+      const lineHeight = fontSize + 0.75;
+      const shiftGap = 0.5;
+      const entries = cell.shifts.map(shift => {
+        const fullLabel = String(shift.label || '').trim();
+        let lines;
+        if (measureText(fonts, fullLabel, fontSize) <= textWidth) {
+          lines = [fullLabel];
+        } else {
+          const nameLines = wrapText(fonts, shift.employeeName || 'Open Shift', fontSize, textWidth);
+          const timeLines = shift.timeLabel ? wrapText(fonts, shift.timeLabel, fontSize, textWidth) : [];
+          lines = [...nameLines, ...timeLines].filter(Boolean);
+        }
+        return { shift, lines };
+      });
+      const lineCount = entries.reduce((sum, entry) => sum + entry.lines.length, 0);
+      const requiredHeight = lineCount * lineHeight + Math.max(0, entries.length - 1) * shiftGap;
+      if (requiredHeight <= contentHeight + 0.01) {
+        layout = { fontSize, lineHeight, shiftGap, entries };
+        break;
+      }
     }
-    cell.shifts.forEach((shift, index) => {
-      const text = fitText(fonts, shift.label, fontSize, columnWidth - 7);
-      drawRuns(page, fonts, text, { x: x + 3, y: y + rowHeight - 23 - index * lineHeight, size: fontSize, color: black });
+
+    if (!layout) {
+      throw new Error(`The Month Schedule PDF cannot fit all ${cell.shifts.length} shifts for ${cell.date} on one calendar page without hiding shift text. Reduce the visible schedule density or print a filtered month.`);
+    }
+
+    let cursorY = y + rowHeight - 23;
+    layout.entries.forEach((entry, entryIndex) => {
+      entry.lines.forEach(line => {
+        drawRuns(page, fonts, line, { x: x + 3, y: cursorY, size: layout.fontSize, color: black });
+        cursorY -= layout.lineHeight;
+      });
+      if (entryIndex < layout.entries.length - 1) cursorY -= layout.shiftGap;
     });
   });
   return document.save({ useObjectStreams: false, addDefaultPage: false });
