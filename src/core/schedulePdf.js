@@ -1,6 +1,8 @@
 const PAGE_WIDTH = 792;
 const PAGE_HEIGHT = 612;
 const MARGIN = 24;
+const GRID_SIDE_MARGIN = 8;
+const GRID_BOTTOM_MARGIN = 12;
 const MIN_FONT_SIZE = 6.5;
 const FONT_SUBSETS = Object.freeze(['latin', 'latin-ext', 'cyrillic', 'greek', 'vietnamese', 'devanagari', 'cjk-common-115']);
 
@@ -73,14 +75,41 @@ function fitText(fontFamily, value, size, width, bold = false) {
   return `${result}${suffix}`;
 }
 function wrapText(fontFamily, value, size, width, bold = false) {
-  const output = []; let line = '';
-  for (const piece of graphemes(value)) {
-    if (piece === '\n') { output.push(line); line = ''; continue; }
-    const candidate = `${line}${piece}`;
-    if (!line || measureText(fontFamily, candidate, size, bold) <= width) line = candidate;
-    else { output.push(line.trimEnd()); line = piece.trimStart(); }
+  const source = String(value == null ? '' : value);
+  const output = [];
+  for (const paragraph of source.split('\n')) {
+    const words = paragraph.match(/\S+\s*/gu) || [''];
+    let line = '';
+    for (const wordWithSpace of words) {
+      const word = wordWithSpace.trimEnd();
+      const separator = line ? ' ' : '';
+      const candidate = `${line}${separator}${word}`;
+      if (!line || measureText(fontFamily, candidate, size, bold) <= width) {
+        line = candidate;
+        continue;
+      }
+      output.push(line);
+      if (measureText(fontFamily, word, size, bold) <= width) {
+        line = word;
+        continue;
+      }
+      let fragment = '';
+      for (const piece of graphemes(word)) {
+        const fragmentCandidate = `${fragment}${piece}`;
+        if (!fragment || measureText(fontFamily, fragmentCandidate, size, bold) <= width) fragment = fragmentCandidate;
+        else { output.push(fragment); fragment = piece; }
+      }
+      line = fragment;
+    }
+    if (line || !output.length) output.push(line);
   }
-  if (line || !output.length) output.push(line.trimEnd()); return output;
+  return output;
+}
+
+function compactShiftLabel(shift) {
+  const employeeName = String(shift?.employeeName || 'Open Shift').trim();
+  const timeLabel = String(shift?.timeLabel || '').trim().replace(/\s+([–-])\s+/gu, '$1');
+  return [employeeName, timeLabel].filter(Boolean).join(' · ');
 }
 
 export async function generateMonthSchedulePdf(model, options = {}) {
@@ -94,13 +123,13 @@ export async function generateMonthSchedulePdf(model, options = {}) {
   const title = [model.restaurantName, '86 Chaos Schedule', model.monthTitle, model.roleFilter !== 'All' ? model.roleFilter : ''].filter(Boolean).join(' · ');
   drawRuns(page, fonts, fitText(fonts, title, 15, PAGE_WIDTH - MARGIN * 2, true), { x: MARGIN, y: PAGE_HEIGHT - MARGIN - 15, size: 15, bold: true, color: black });
   drawRuns(page, fonts, `${model.shiftCount} published shift${model.shiftCount === 1 ? '' : 's'} · Review-only PDF`, { x: MARGIN, y: PAGE_HEIGHT - MARGIN - 29, size: 8, color: black });
-  const gridTop = PAGE_HEIGHT - MARGIN - 42; const weekdayHeight = 18; const gridWidth = PAGE_WIDTH - MARGIN * 2; const columnWidth = gridWidth / 7; const rowHeight = (gridTop - MARGIN - weekdayHeight) / model.weekCount;
+  const gridTop = PAGE_HEIGHT - MARGIN - 42; const weekdayHeight = 18; const gridWidth = PAGE_WIDTH - GRID_SIDE_MARGIN * 2; const columnWidth = gridWidth / 7; const rowHeight = (gridTop - GRID_BOTTOM_MARGIN - weekdayHeight) / model.weekCount;
   model.weekdayHeadings.forEach((day, index) => {
-    const x = MARGIN + index * columnWidth; page.drawRectangle({ x, y: gridTop - weekdayHeight, width: columnWidth, height: weekdayHeight, color: gray, borderColor: black, borderWidth: 0.7 });
+    const x = GRID_SIDE_MARGIN + index * columnWidth; page.drawRectangle({ x, y: gridTop - weekdayHeight, width: columnWidth, height: weekdayHeight, color: gray, borderColor: black, borderWidth: 0.7 });
     drawRuns(page, fonts, day, { x: x + columnWidth / 2 - measureText(fonts, day, 9, true) / 2, y: gridTop - 12.5, size: 9, bold: true, color: black });
   });
   model.cells.forEach(cell => {
-    const x = MARGIN + cell.weekdayIndex * columnWidth; const y = gridTop - weekdayHeight - (cell.weekIndex + 1) * rowHeight;
+    const x = GRID_SIDE_MARGIN + cell.weekdayIndex * columnWidth; const y = gridTop - weekdayHeight - (cell.weekIndex + 1) * rowHeight;
     page.drawRectangle({ x, y, width: columnWidth, height: rowHeight, color: cell.inMonth ? undefined : light, borderColor: black, borderWidth: 0.7 });
     if (!cell.inMonth) return;
     drawRuns(page, fonts, String(cell.dayNumber), { x: x + columnWidth - 13, y: y + rowHeight - 11, size: 9, bold: true, color: black });
@@ -116,9 +145,12 @@ export async function generateMonthSchedulePdf(model, options = {}) {
       const shiftGap = 0.5;
       const entries = cell.shifts.map(shift => {
         const fullLabel = String(shift.label || '').trim();
+        const compactLabel = compactShiftLabel(shift);
         let lines;
         if (measureText(fonts, fullLabel, fontSize) <= textWidth) {
           lines = [fullLabel];
+        } else if (measureText(fonts, compactLabel, fontSize) <= textWidth) {
+          lines = [compactLabel];
         } else {
           const nameLines = wrapText(fonts, shift.employeeName || 'Open Shift', fontSize, textWidth);
           const timeLines = shift.timeLabel ? wrapText(fonts, shift.timeLabel, fontSize, textWidth) : [];
