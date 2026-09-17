@@ -1,7 +1,7 @@
 const PAGE_WIDTH = 792;
 const PAGE_HEIGHT = 612;
 const MARGIN = 24;
-const MIN_FONT_SIZE = 8;
+const MIN_FONT_SIZE = 6.5;
 const FONT_SUBSETS = Object.freeze(['latin', 'latin-ext', 'cyrillic', 'greek', 'vietnamese', 'devanagari', 'cjk-common-115']);
 
 const graphemes = value => {
@@ -87,44 +87,36 @@ export async function generateMonthSchedulePdf(model, options = {}) {
   if (!model || model.page?.width !== PAGE_WIDTH || model.page?.height !== PAGE_HEIGHT) throw new Error('The Month Schedule PDF model is invalid.');
   const pdfLib = options.pdfLib || await import('pdf-lib'); const { PDFDocument, rgb } = pdfLib;
   const document = await PDFDocument.create(); const fonts = await embedFontFamilies(document, options);
-  document.setTitle(`86 Chaos Schedule ${model.monthTitle}`); document.setAuthor('86 Chaos'); document.setCreator('86 Chaos'); document.setProducer('86 Chaos 16.0.235');
+  document.setTitle(`86 Chaos Schedule ${model.monthTitle}`); document.setAuthor('86 Chaos'); document.setCreator('86 Chaos'); document.setProducer('86 Chaos 16.0.236');
   document.setKeywords(['86 Chaos', 'schedule', ...model.visibleShifts.map(shift => `shift:${shift.dedupeKey}`)]);
   const fixedDate = new Date('2000-01-01T00:00:00.000Z'); document.setCreationDate(fixedDate); document.setModificationDate(fixedDate);
   const black = rgb(0, 0, 0); const gray = rgb(0.94, 0.95, 0.96); const light = rgb(0.98, 0.98, 0.98); const page = document.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
   const title = [model.restaurantName, '86 Chaos Schedule', model.monthTitle, model.roleFilter !== 'All' ? model.roleFilter : ''].filter(Boolean).join(' · ');
   drawRuns(page, fonts, fitText(fonts, title, 15, PAGE_WIDTH - MARGIN * 2, true), { x: MARGIN, y: PAGE_HEIGHT - MARGIN - 15, size: 15, bold: true, color: black });
   drawRuns(page, fonts, `${model.shiftCount} published shift${model.shiftCount === 1 ? '' : 's'} · Review-only PDF`, { x: MARGIN, y: PAGE_HEIGHT - MARGIN - 29, size: 8, color: black });
-  const gridTop = PAGE_HEIGHT - MARGIN - 42; const weekdayHeight = 18; const gridWidth = PAGE_WIDTH - MARGIN * 2; const columnWidth = gridWidth / 7; const rowHeight = (gridTop - MARGIN - weekdayHeight) / model.weekCount; const maxOverviewLines = Math.max(2, Math.floor((rowHeight - 18) / 9));
+  const gridTop = PAGE_HEIGHT - MARGIN - 42; const weekdayHeight = 18; const gridWidth = PAGE_WIDTH - MARGIN * 2; const columnWidth = gridWidth / 7; const rowHeight = (gridTop - MARGIN - weekdayHeight) / model.weekCount;
   model.weekdayHeadings.forEach((day, index) => {
     const x = MARGIN + index * columnWidth; page.drawRectangle({ x, y: gridTop - weekdayHeight, width: columnWidth, height: weekdayHeight, color: gray, borderColor: black, borderWidth: 0.7 });
     drawRuns(page, fonts, day, { x: x + columnWidth / 2 - measureText(fonts, day, 9, true) / 2, y: gridTop - 12.5, size: 9, bold: true, color: black });
   });
-  const details = [];
   model.cells.forEach(cell => {
     const x = MARGIN + cell.weekdayIndex * columnWidth; const y = gridTop - weekdayHeight - (cell.weekIndex + 1) * rowHeight;
     page.drawRectangle({ x, y, width: columnWidth, height: rowHeight, color: cell.inMonth ? undefined : light, borderColor: black, borderWidth: 0.7 });
     if (!cell.inMonth) return;
     drawRuns(page, fonts, String(cell.dayNumber), { x: x + columnWidth - 13, y: y + rowHeight - 11, size: 9, bold: true, color: black });
-    const measuredOverflow = cell.shifts.some(shift => measureText(fonts, shift.label, MIN_FONT_SIZE) > columnWidth - 7);
-    const needsDetail = cell.shifts.length > maxOverviewLines || measuredOverflow; const overviewCount = needsDetail ? Math.max(1, maxOverviewLines - 1) : maxOverviewLines;
-    cell.shifts.slice(0, overviewCount).forEach((shift, index) => drawRuns(page, fonts, fitText(fonts, shift.label, MIN_FONT_SIZE, columnWidth - 7), { x: x + 3, y: y + rowHeight - 23 - index * 9, size: MIN_FONT_SIZE, color: black }));
-    if (needsDetail) { details.push(cell); const omitted = Math.max(0, cell.shifts.length - overviewCount); drawRuns(page, fonts, omitted ? `+${omitted} more – detail page` : 'Full text – detail page', { x: x + 3, y: y + 4, size: 7, bold: true, color: black }); }
-  });
-  for (const cell of details) {
-    const heading = `${model.monthTitle} · ${cell.date} · ${cell.shifts.length} shift${cell.shifts.length === 1 ? '' : 's'}`; let detailPage; let y;
-    const newDetailPage = continued => { detailPage = document.addPage([PAGE_WIDTH, PAGE_HEIGHT]); y = PAGE_HEIGHT - MARGIN - 18; drawRuns(detailPage, fonts, fitText(fonts, `${heading}${continued ? ' (continued)' : ''}`, 14, PAGE_WIDTH - MARGIN * 2, true), { x: MARGIN, y, size: 14, bold: true, color: black }); y -= 22; };
-    newDetailPage(false);
-    for (const shift of cell.shifts) {
-      const lines = wrapText(fonts, shift.label, 10, PAGE_WIDTH - MARGIN * 2 - 14); let lineIndex = 0; let firstLine = true;
-      while (lineIndex < lines.length) {
-        if (y - 14 < MARGIN) newDetailPage(true);
-        if (firstLine) detailPage.drawCircle({ x: MARGIN + 3, y: y + 3, size: 1.5, color: black });
-        drawRuns(detailPage, fonts, lines[lineIndex], { x: MARGIN + 12, y, size: 10, color: black });
-        y -= 12; lineIndex += 1; firstLine = false;
-      }
-      y -= 6;
+
+    if (!cell.shifts.length) return;
+    const contentHeight = Math.max(0, rowHeight - 24);
+    const lineHeight = Math.min(9, contentHeight / cell.shifts.length);
+    const fontSize = Math.min(8, lineHeight - 1);
+    if (fontSize < MIN_FONT_SIZE) {
+      throw new Error(`The Month Schedule PDF cannot fit all ${cell.shifts.length} shifts for ${cell.date} on one calendar page. Reduce the visible schedule density or print a filtered month.`);
     }
-  }
+    cell.shifts.forEach((shift, index) => {
+      const text = fitText(fonts, shift.label, fontSize, columnWidth - 7);
+      drawRuns(page, fonts, text, { x: x + 3, y: y + rowHeight - 23 - index * lineHeight, size: fontSize, color: black });
+    });
+  });
   return document.save({ useObjectStreams: false, addDefaultPage: false });
 }
 

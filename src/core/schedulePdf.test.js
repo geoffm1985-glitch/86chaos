@@ -19,36 +19,10 @@ const pdfOptions = { fontkit, fontAssets: fontPaths.map(path => new Uint8Array(f
 
 const makeModel = count => buildMonthSchedulePrintModel({
   monthStr: '2026-08', restaurantName: 'Cheers', roleFilter: 'All', prefiltered: true,
-  shifts: Array.from({ length: count }, (_, index) => ({ date: '2026-08-03', published: true, dedupeKey: `s-${index}`, employeeName: `Employee ${index}`, role: 'Cook', startTime: '10:00', endTime: '18:00', label: `Employee ${index} · 10:00-18:00 · Cook` }))
+  shifts: Array.from({ length: count }, (_, index) => ({ date: '2026-08-03', published: true, dedupeKey: `s-${index}`, employeeName: `Employee ${index}`, role: 'Cook', startTime: '10:00', endTime: '18:00' }))
 });
 
-test('generates a valid US Letter landscape PDF that can be reopened', async () => {
-  const bytes = await generateMonthSchedulePdf(makeModel(4), pdfOptions);
-  expect(Array.from(bytes.slice(0, 5))).toEqual(Array.from(new TextEncoder().encode('%PDF-')));
-  const loaded = await PDFDocument.load(bytes);
-  expect(loaded.getPageCount()).toBeGreaterThanOrEqual(1);
-  for (const page of loaded.getPages()) { expect(page.getWidth()).toBe(PAGE_WIDTH); expect(page.getHeight()).toBe(PAGE_HEIGHT); }
-  expect(MIN_FONT_SIZE).toBeGreaterThanOrEqual(8);
-});
-
-test('dense days paginate predictably instead of clipping or omitting shifts', async () => {
-  const bytes = await generateMonthSchedulePdf(makeModel(75), pdfOptions);
-  const loaded = await PDFDocument.load(bytes);
-  expect(loaded.getPageCount()).toBeGreaterThan(2);
-  for (const page of loaded.getPages()) { expect(page.getWidth()).toBe(792); expect(page.getHeight()).toBe(612); }
-});
-
-test('long and Unicode names do not throw and receive a readable detail page', async () => {
-  const model = makeModel(1); model.cells.find(cell => cell.date === '2026-08-03').shifts[0].label = 'Zoë 李 With An Exceptionally Long Employee Name · 10:00-18:00 · Cook';
-  const bytes = await generateMonthSchedulePdf(model, pdfOptions); const loaded = await PDFDocument.load(bytes);
-  expect(loaded.getPageCount()).toBe(2);
-  expect(loaded.getKeywords()).toContain('shift:s-0');
-});
-
-test('rendered PDF text retains the Unicode employee, time, and role', async () => {
-  const model = makeModel(1);
-  model.cells.find(cell => cell.date === '2026-08-03').shifts[0].label = 'Zoë 李 · 10:00-18:00 · Cook';
-  const bytes = await generateMonthSchedulePdf(model, pdfOptions);
+const extractPdfText = bytes => {
   const extractor = `
     import fs from 'node:fs';
     import * as pdfjs from 'pdfjs-dist/legacy/build/pdf.mjs';
@@ -59,23 +33,67 @@ test('rendered PDF text retains the Unicode employee, time, and role', async () 
       const content = await (await loaded.getPage(pageNumber)).getTextContent();
       text.push(...content.items.map(item => item.str));
     }
-    process.stdout.write(JSON.stringify(text.join(' ')));
+    process.stdout.write(JSON.stringify({ pages: loaded.numPages, text: text.join(' ') }));
   `;
   const extraction = spawnSync(process.execPath, ['--input-type=module', '-e', extractor], { cwd: process.cwd(), input: Buffer.from(bytes), encoding: 'utf8', maxBuffer: 4 * 1024 * 1024 });
   expect(extraction.status).toBe(0);
-  const extracted = JSON.parse(extraction.stdout);
-  expect(extracted).toContain('Zoë');
-  expect(extracted).toContain('李');
-  expect(extracted).toContain('10:00-18:00');
-  expect(extracted).toContain('Cook');
+  return JSON.parse(extraction.stdout);
+};
+
+test('generates a valid single-page US Letter landscape PDF that can be reopened', async () => {
+  const bytes = await generateMonthSchedulePdf(makeModel(4), pdfOptions);
+  expect(Array.from(bytes.slice(0, 5))).toEqual(Array.from(new TextEncoder().encode('%PDF-')));
+  const loaded = await PDFDocument.load(bytes);
+  expect(loaded.getPageCount()).toBe(1);
+  const page = loaded.getPage(0);
+  expect(page.getWidth()).toBe(PAGE_WIDTH);
+  expect(page.getHeight()).toBe(PAGE_HEIGHT);
+  expect(MIN_FONT_SIZE).toBeGreaterThanOrEqual(6.5);
+});
+
+test('a realistically dense day remains on the single Month calendar page', async () => {
+  const bytes = await generateMonthSchedulePdf(makeModel(7), pdfOptions);
+  const loaded = await PDFDocument.load(bytes);
+  expect(loaded.getPageCount()).toBe(1);
+});
+
+test('impossible one-page density fails explicitly instead of clipping shifts or creating detail pages', async () => {
+  await expect(generateMonthSchedulePdf(makeModel(75), pdfOptions)).rejects.toThrow(/cannot fit all 75 shifts/i);
+});
+
+test('long and Unicode names remain on the single calendar page', async () => {
+  const model = makeModel(1);
+  model.cells.find(cell => cell.date === '2026-08-03').shifts[0].label = 'Zoë 李 With An Exceptionally Long Employee Name · 10:00 AM – 6:00 PM';
+  const bytes = await generateMonthSchedulePdf(model, pdfOptions);
+  const loaded = await PDFDocument.load(bytes);
+  expect(loaded.getPageCount()).toBe(1);
+  expect(loaded.getKeywords()).toContain('shift:s-0');
+});
+
+test('rendered PDF text uses 12-hour time, omits role text, and contains no detail-page markers', async () => {
+  const model = buildMonthSchedulePrintModel({
+    monthStr: '2026-08', restaurantName: 'Cheers', roleFilter: 'All', prefiltered: true,
+    shifts: [{ date: '2026-08-03', published: true, dedupeKey: 's-0', employeeName: 'Zoë 李', role: 'Cook', startTime: '10:00', endTime: '18:00' }]
+  });
+  const bytes = await generateMonthSchedulePdf(model, pdfOptions);
+  const extracted = extractPdfText(bytes);
+  expect(extracted.pages).toBe(1);
+  expect(extracted.text).toContain('Zoë');
+  expect(extracted.text).toContain('李');
+  expect(extracted.text).toContain('10:00 AM');
+  expect(extracted.text).toContain('6:00 PM');
+  expect(extracted.text).not.toContain('Cook');
+  expect(extracted.text).not.toMatch(/detail page/i);
+  expect(extracted.text).not.toMatch(/Full text/i);
 });
 
 test('same model generates deterministic bytes', async () => {
-  const model = makeModel(8); const first = await generateMonthSchedulePdf(model, pdfOptions); const second = await generateMonthSchedulePdf(model, pdfOptions);
+  const model = makeModel(7); const first = await generateMonthSchedulePdf(model, pdfOptions); const second = await generateMonthSchedulePdf(model, pdfOptions);
   expect(Buffer.from(first).equals(Buffer.from(second))).toBe(true);
 });
 
 test('PDF generation is read-only and has no Firebase or schedule mutation dependency', () => {
   const fs = require('fs'); const source = fs.readFileSync(require.resolve('./schedulePdf'), 'utf8');
   expect(source).not.toMatch(/firebase|setDoc|updateDoc|deleteDoc|writeBatch|addDoc/i);
+  expect(source).not.toMatch(/detail page|Full text/i);
 });

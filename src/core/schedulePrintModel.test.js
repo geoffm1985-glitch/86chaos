@@ -1,4 +1,4 @@
-import { buildMonthSchedulePrintModel } from './schedulePrintModel';
+import { buildMonthSchedulePrintModel, formatScheduleTime12Hour } from './schedulePrintModel';
 
 const shift = (overrides = {}) => ({ date: '2026-08-03', published: true, deleted: false, role: 'Cook', isMine: false, employeeName: 'Alex Cook', startTime: '10:00', endTime: '18:00', label: 'Alex Cook · 10:00-18:00 · Cook', dedupeKey: 'a', ...overrides });
 
@@ -20,18 +20,30 @@ test('empty and six-row months produce complete deterministic cells', () => {
   expect(model.weekCount).toBe(6); expect(model.cells).toHaveLength(42); expect(model.cells.filter(cell => cell.inMonth)).toHaveLength(31); expect(model.shiftCount).toBe(0); expect(model.restaurantName).toBe('Cheers');
 });
 
-test('long names, roles, times, and dense days are retained in the pure model', () => {
-  const rows = Array.from({ length: 30 }, (_, index) => shift({ dedupeKey: `dense-${index}`, employeeName: `Employee With A Deliberately Long Name ${index}`, role: 'Lead Line Cook', startTime: `1${index % 10}:00`, label: `Employee With A Deliberately Long Name ${index} · 10:00-18:00 · Lead Line Cook` }));
+test('long names, roles, times, and dense days are retained in the pure model while printed labels omit role', () => {
+  const rows = Array.from({ length: 7 }, (_, index) => shift({ dedupeKey: `dense-${index}`, employeeName: `Employee With A Deliberately Long Name ${index}`, role: 'Lead Line Cook', startTime: `1${index % 10}:00`, endTime: '18:00' }));
   const model = buildMonthSchedulePrintModel({ monthStr: '2026-08', shifts: rows });
   const day = model.cells.find(cell => cell.date === '2026-08-03');
-  expect(day.shifts).toHaveLength(30); expect(day.shifts[0].label).toMatch(/Deliberately Long Name/); expect(day.shifts[0].role).toBe('Lead Line Cook');
+  expect(day.shifts).toHaveLength(7);
+  expect(day.shifts[0].label).toMatch(/Deliberately Long Name/);
+  expect(day.shifts[0].role).toBe('Lead Line Cook');
+  expect(day.shifts[0].label).not.toContain('Lead Line Cook');
 });
 
-test('full identity, time, and role survive misleading labels and duplicates without IDs', () => {
+test('printed labels retain identity and convert times to 12-hour AM/PM without role text', () => {
   const base = { date: '2026-08-04', published: true, employeeName: 'Zoë 李', role: 'Lead Cook', startTime: '09:00', endTime: '17:30', label: 'short' };
   const model = buildMonthSchedulePrintModel({ monthStr: '2026-08', shifts: [base, { ...base }] });
   const day = model.cells.find(cell => cell.date === '2026-08-04');
-  expect(day.shifts).toHaveLength(1); expect(day.shifts[0].label).toBe('Zoë 李 · 09:00 – 17:30 · Lead Cook');
+  expect(day.shifts).toHaveLength(1);
+  expect(day.shifts[0].label).toBe('Zoë 李 · 9:00 AM – 5:30 PM');
+  expect(day.shifts[0].label).not.toContain('Lead Cook');
+});
+
+test('12-hour formatting handles midnight, noon, afternoon, and already-12-hour inputs', () => {
+  expect(formatScheduleTime12Hour('00:00')).toBe('12:00 AM');
+  expect(formatScheduleTime12Hour('12:00')).toBe('12:00 PM');
+  expect(formatScheduleTime12Hour('15:05')).toBe('3:05 PM');
+  expect(formatScheduleTime12Hour('9p')).toBe('9:00 PM');
 });
 
 test('invalid month fails before any output is produced', () => {
