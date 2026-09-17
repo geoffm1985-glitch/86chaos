@@ -1,6 +1,6 @@
 {
   "name": "86chaos",
-  "version": "16.0.235",
+  "version": "16.0.236",
   "private": true,
   "dependencies": {
     "@fontsource/noto-sans": "^5.3.0",
@@ -10,6 +10,7 @@
     "ajv-keywords": "^5.1.0",
     "firebase": "^10.8.1",
     "firebase-admin": "^12.1.1",
+    "jose": "6.2.12",
     "leaflet": "^1.9.4",
     "lucide-react": "^0.344.0",
     "pdf-lib": "^1.17.1",
@@ -29,13 +30,13 @@
     "deploy:check": "npm run test:ci && NODE_OPTIONS=--max-old-space-size=4096 GENERATE_SOURCEMAP=false npm run build",
     "validate:audit-repair": "node scripts/validate-repair.js",
     "rules:check": "node scripts/validate-rules.js",
-    "test:source": "node scripts/validate-16-0-235.js",
+    "test:source": "node scripts/validate-16-0-236.js",
     "validate:16.0.232": "node scripts/validate-16-0-232.js",
     "validate:16.0.233": "node scripts/validate-16-0-233.js",
     "validate:16.0.234": "node scripts/validate-16-0-234.js",
     "test:shift4": "node --test api/shift4-auth-16-0-234.test.cjs api/shift4-client-16-0-234.test.cjs api/shift4-concurrency-16-0-234.test.cjs api/shift4-normalization-16-0-234.test.cjs api/shift4-review-export-16-0-234.test.cjs api/shift4-storage-16-0-234.test.cjs api/shift4-routes-16-0-234.test.cjs api/shift4-sync-16-0-234.test.cjs api/release-universe-16-0-234.test.cjs && playwright test --config=playwright.play-store-release.config.cjs tests/86chaos-new-implementations/01-shift4-connection.spec.cjs tests/86chaos-new-implementations/02-shift4-import-review-export.spec.cjs tests/86chaos-new-implementations/03-shift4-security-boundary.spec.cjs --project=chromium --project=mobile-chromium",
     "test:schedule-pdf": "react-scripts test --watchAll=false --runInBand src/core/schedulePrintModel.test.js src/core/schedulePdf.test.js src/core/schedulePdfDelivery.test.js && playwright test --config=playwright.play-store-release.config.cjs tests/86chaos-new-implementations/04-schedule-pdf-print.spec.cjs tests/86chaos-new-implementations/05-mobile-schedule-pdf-delivery.spec.cjs --project=chromium --project=mobile-chromium",
-    "test:new-implementations": "npm run validate:16.0.235 && npm run test:shift4 && npm run test:schedule-pdf",
+    "test:new-implementations": "npm run validate:16.0.236 && npm run test:shift4 && npm run test:schedule-pdf && npm run test:pos-bridge",
     "syntax:api": "node scripts/check-api-syntax.js",
     "test:unit": "npm run test:client && npm run test:server",
     "test:rules": "firebase emulators:exec --only firestore,storage \"node scripts/run-rules-tests.js\"",
@@ -72,6 +73,10 @@
     "test:play-store:latest-blockers": "powershell -NoProfile -ExecutionPolicy Bypass -File .\\RUN_86CHAOS_CURRENT_BLOCKERS_RELEASE_GATE.ps1",
     "prebuild": "node scripts/stamp-build-identity.cjs",
     "validate:16.0.235": "node scripts/validate-16-0-235.js",
+    "validate:16.0.236": "node scripts/validate-16-0-236.js",
+    "test:pos-bridge": "node --test api/pos-bridge-auth-16-0-236.test.cjs api/pos-bridge-batch-16-0-236.test.cjs api/pos-bridge-boundary-behavior-16-0-236.test.cjs api/pos-bridge-cost-16-0-236.test.cjs api/pos-bridge-human-authority-16-0-236.test.cjs api/pos-bridge-inbox-16-0-236.test.cjs api/pos-bridge-installations-16-0-236.test.cjs api/pos-bridge-mappings-16-0-236.test.cjs api/pos-bridge-reconciliation-16-0-236.test.cjs api/pos-bridge-schema-16-0-236.test.cjs api/pos-bridge-security-16-0-236.test.cjs api/pos-bridge-simulator-16-0-236.test.cjs",
+    "test:pos-bridge:emulator": "node scripts/run-pos-bridge-emulator-tests.cjs",
+    "pos-bridge:simulator": "node test-tools/pos-bridge-simulator.cjs",
     "test:mobile-pdf-delivery": "react-scripts test --watchAll=false --runInBand src/core/schedulePdfDelivery.test.js && playwright test --config=playwright.play-store-release.config.cjs tests/86chaos-new-implementations/05-mobile-schedule-pdf-delivery.spec.cjs --project=mobile-chromium"
   },
   "browserslist": {

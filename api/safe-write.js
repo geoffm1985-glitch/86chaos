@@ -8,6 +8,7 @@ const { approveInvoice } = require('./_invoice-approval');
 const { vendorMemory } = require('./_vendor-memory');
 const { approveMenu } = require('./_menu-approval');
 const { recipeCosting } = require('./_recipe-costing');
+const { assertNotReservedBridgeRoot } = require('./_pos-bridge-boundaries');
 
 const PERMS = {
   shifts: ['schedule','team'], timeOffRequests: ['schedule','team'], scheduleTemplates: ['schedule','team'], scheduleCoverageTargets: ['schedule','team'],
@@ -56,6 +57,7 @@ module.exports = async function handler(req, res) {
       return res.status(200).json({ ok: true, ...result });
     }
     if (!collectionName || !/^[A-Za-z0-9_-]+$/.test(collectionName)) return res.status(400).json({ ok: false, error: 'Invalid collection name.' });
+    assertNotReservedBridgeRoot(collectionName);
     if (!canWrite(auth, collectionName, restaurantId)) return res.status(403).json({ ok: false, error: `Missing write permission for ${collectionName}.` });
     const payload = { ...data, restaurantId: restaurantId || auth.restaurantId || data.restaurantId, updatedAt: new Date().toISOString(), updatedBy: auth.email || auth.uid, writeEngine: 'v14-safe-write' };
     let out = {};

@@ -5,6 +5,7 @@ const zlib = require('zlib');
 const crypto = require('crypto');
 
 const { APP_VERSION } = require('./_version');
+const { ORDINARY_BACKUP_EXCLUSIONS, shouldExcludeFromOrdinaryBackup } = require('./_pos-bridge-boundaries');
 
 function loadServiceAccount() {
   const raw = process.env.FIREBASE_SERVICE_ACCOUNT_KEY;
@@ -108,10 +109,15 @@ async function restoreBackupFromStorage({ adminApp, db, storagePath, actor }) {
     }
   };
 
-  for (const [, payload] of Object.entries(backup.collections)) {
+  for (const [collectionPath, payload] of Object.entries(backup.collections)) {
+    if (shouldExcludeFromOrdinaryBackup(collectionPath)) {
+      skippedDocumentCount += Array.isArray(payload?.docs) ? payload.docs.length : 0;
+      continue;
+    }
     const docs = Array.isArray(payload?.docs) ? payload.docs : [];
     for (const item of docs) {
       if (!item?.path || !item?.data) continue;
+      if (shouldExcludeFromOrdinaryBackup(item.path)) { skippedDocumentCount += 1; continue; }
       // Never roll back backup status history while restoring a backup.
       if (item.path === 'system/backupStatus' || item.path.startsWith('system/backupStatus/')) {
         skippedDocumentCount += 1;
@@ -351,12 +357,15 @@ async function handler(req, res) {
         source: auth.source,
         cronInvocation,
         startedAt: startedAt.toISOString()
+        ,excludedServerManagedRoots: ORDINARY_BACKUP_EXCLUSIONS
+        ,bridgeRecoveryPolicy: 'excluded-requires-dedicated-native-disaster-recovery'
       },
       collections: {}
     };
     const counters = { collectionCount: 0, documentCount: 0 };
 
     for (const col of collections) {
+      if (shouldExcludeFromOrdinaryBackup(col.id)) continue;
       await exportCollection(col, col.id, backup, counters);
     }
 

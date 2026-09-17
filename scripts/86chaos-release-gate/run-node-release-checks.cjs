@@ -16,6 +16,8 @@ const commands = [
   { group: 'source validator', command: 'npm run test:source', required: true },
   { group: 'api syntax', command: 'npm run syntax:api', required: true },
   { group: 'python syntax', command: 'npm run syntax:py', required: true },
+  { group: 'POS Bridge security and contract tests', command: 'npm run test:pos-bridge', required: true },
+  { group: 'POS Bridge Firestore concurrency emulator tests', command: 'npm run test:pos-bridge:emulator', required: true },
   { group: 'server tests', command: 'npm run test:server --if-present', required: true },
   { group: 'client tests', command: 'npm run test:client -- --runInBand', required: true },
   { group: 'production build', command: 'npm run build', required: true }

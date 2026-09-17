@@ -1,17 +1,17 @@
 {
-  "version": "16.0.235",
-  "name": "86 Chaos 16.0.235",
-  "build": "16.0.235",
-  "label": "86 Chaos 16.0.235",
-  "releasedAt": "2026-09-15T00:00:00.000Z",
-  "releaseTitle": "Mobile Schedule PDF Delivery Repair",
+  "version": "16.0.236",
+  "name": "86 Chaos 16.0.236",
+  "build": "16.0.236",
+  "label": "86 Chaos 16.0.236",
+  "releasedAt": "2026-09-17T00:00:00.000Z",
+  "releaseTitle": "POS Bridge Foundation",
   "notes": [
-    "Repairs Month Schedule PDF delivery on Android/mobile browsers and installed-PWA contexts.",
-    "Mobile printing now prefers native PDF file sharing when supported and otherwise downloads the generated PDF directly.",
-    "Desktop PDF viewing opens the generated Blob URL directly and falls back to download when popups are blocked.",
-    "Adds regression coverage for the real about:blank mobile failure without changing schedule PDF content or Shift4 behavior."
+    "Introduces a dormant, server-only POS Bridge v1 foundation for a future separate 86 Chaos POS.",
+    "Adds ES256 machine installation authentication, durable replay protection, short-lived access tokens, strict allowlist event schemas, immutable staged receipts and bounded sequence evidence.",
+    "Reserves all bridge roots from generic writes and ordinary backup restore while preserving default-denied client Firestore access.",
+    "Stages evidence only: no POS event changes inventory, financials, schedules, time clock, payroll, menu, recipes, vendors, pars or customer records."
   ],
-  "title": "86 Chaos 16.0.235",
-  "summary": "Repairs mobile Month Schedule PDF delivery without changing schedule data or PDF layout.",
-  "description": "Replaces the fragile mobile about:blank PDF handoff with reliable file share/download delivery while preserving desktop PDF viewing and zero-write schedule printing."
+  "title": "86 Chaos 16.0.236",
+  "summary": "Adds the dormant, tenant-isolated POS Bridge docking foundation with zero downstream processing.",
+  "description": "Provides machine authentication, versioned contracts, durable idempotent staging, sequence and reconciliation evidence, reviewed mappings, and strict payment-data boundaries for a future separate POS."
 }
