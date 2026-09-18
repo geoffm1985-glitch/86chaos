@@ -1,17 +1,17 @@
 {
-  "version": "17.0.1",
-  "name": "86 Chaos 17.0.1",
-  "build": "17.0.1",
-  "label": "86 Chaos 17.0.1",
+  "version": "17.0.2",
+  "name": "86 Chaos 17.0.2",
+  "build": "17.0.2",
+  "label": "86 Chaos 17.0.2",
   "releasedAt": "2026-09-18T00:00:00.000Z",
-  "releaseTitle": "Publication Integrity and Hostile Certification Repair",
+  "releaseTitle": "Deterministic Emulator Concurrency and Publication Fixture Repair",
   "notes": [
-    "Closes generic-write authority injection and makes canonical workspace membership authoritative.",
-    "Binds confirmation, execution, recovery, time-off effects and notifications to one immutable fenced publication plan.",
-    "Adds transactional role lifecycle, Daily Close, and inventory waste consistency repairs.",
-    "Strengthens wrapper-aware API analysis, hostile mutation evidence, recovery, and fail-closed certification while preserving the staging-only POS Bridge."
+    "Makes POS concurrency tests winner-independent and records sanitized Firestore transaction-attempt evidence.",
+    "Adds a narrow whole-transaction retry for the exact Firestore 7.11.x closed-transaction emulator condition while preserving idempotency and domain conflicts.",
+    "Replaces Daily Close wall-clock overlap guesses with a deterministic first-read barrier and verifies stale edits plus lost acknowledgements.",
+    "Repairs canonical schedule-publication identity fixtures and strengthens exact employee/date and notification-timeout evidence."
   ],
-  "title": "86 Chaos 17.0.1",
-  "summary": "Repairs publication integrity, authority boundaries, concurrency, recovery, and hostile certification evidence.",
-  "description": "Uses an exact immutable publication plan, complete fencing, canonical authority, atomic role and inventory mutations, scoped notifications and time-off effects, and fail-closed certification evidence."
+  "title": "86 Chaos 17.0.2",
+  "summary": "Repairs deterministic emulator concurrency evidence and canonical schedule-publication fixtures.",
+  "description": "Preserves the 17.0.1 security model while making POS, Daily Close, and schedule publication emulator regressions deterministic, observable, and fail-closed."
 }

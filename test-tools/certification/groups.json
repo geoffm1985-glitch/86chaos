@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "release": "17.0.1",
+  "release": "17.0.2",
   "groups": {
     "hostile-contracts": {"mandatory":true,"fidelity":["ACTUAL MODULE","ACTUAL HANDLER"],"command":"npm run test:hostile:contracts"},
     "hostile-mutations": {"mandatory":true,"fidelity":["ACTUAL MODULE"],"command":"npm run test:hostile:mutations"},

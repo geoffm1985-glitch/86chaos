@@ -1,7 +1,7 @@
 'use strict';
 
 const BRIDGE_VERSION = '1.0';
-const APP_RELEASE = '17.0.1';
+const APP_RELEASE = '17.0.2';
 const SUPPORTED_CONTRACT_VERSIONS = Object.freeze(['1.0']);
 const SERVER_CAPABILITIES = Object.freeze(['event.staging', 'receipt.read', 'reconciliation.read']);
 const LIMITS = Object.freeze({

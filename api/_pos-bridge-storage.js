@@ -13,6 +13,12 @@ function refsFor(db,scopeId,event) {
   return {scope,deliveryKey,entityKey,versionKey,windowId,eventRef:scope.collection('events').doc(deliveryKey),versionRef:scope.collection('entityVersions').doc(versionKey),headRef:scope.collection('entityHeads').doc(entityKey),streamRef:scope.collection('streams').doc(event.posInstallationId),windowRef:scope.collection('streams').doc(event.posInstallationId).collection('sequenceWindows').doc(windowId)};
 }
 function receiptId() { return `pbr_${crypto.randomBytes(18).toString('base64url')}`; }
+const CLOSED_TRANSACTION_MAX_ATTEMPTS = 3;
+const CLOSED_TRANSACTION_DEADLINE_MS = 15 * 1000;
+function isClosedTransactionError(error) {
+  return Number(error?.code) === 3 && /^Transaction is invalid or closed\.?$/i.test(String(error?.details || error?.message || '').trim().replace(/^\d+\s+INVALID_ARGUMENT:\s*/i,''));
+}
+const pause = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds));
 async function advanceContiguous(tx,streamDoc,scope,installationId,highestObserved,prefetchedWindows=[]) {
   let cursor=Number(streamDoc.highestContiguousSequence||0)+1; let advanced=0; const cache=new Map(prefetchedWindows.map(window=>[window.ref.id,window.data()||{}]));
   while(advanced<LIMITS.sequenceWindowSize&&cursor<=highestObserved) {
@@ -26,7 +32,7 @@ async function advanceContiguous(tx,streamDoc,scope,installationId,highestObserv
   const checkpointWorkPending=cursor<=highestObserved&&advanced===LIMITS.sequenceWindowSize;
   return {highestContiguousSequence:cursor-1,checkpointComplete:!checkpointWorkPending,checkpointWorkPending,advanced};
 }
-async function stageEvent(db,authority,event) {
+async function stageEventTransaction(db,authority,event) {
   const contentHash=eventContentHash(event); const logicalHash=entityContentHash(event); const refs=refsFor(db,authority.installation.tenantScopeId,event); const now=new Date().toISOString();
   const result=await db.runTransaction(async tx=>{
     const current=await currentAuthority(db,event.posInstallationId,{transaction:tx});
@@ -56,8 +62,25 @@ async function stageEvent(db,authority,event) {
   if(result?.__conflict)throw Object.assign(new Error('Conflicting durable evidence.'),{code:'conflict',statusCode:409});
   return result;
 }
+async function stageEvent(db,authority,event) {
+  const startedAt=Date.now();
+  let lastError=null;
+  for(let attempt=1;attempt<=CLOSED_TRANSACTION_MAX_ATTEMPTS;attempt+=1){
+    try{return await stageEventTransaction(db,authority,event);}
+    catch(error){
+      lastError=error;
+      const withinDeadline=Date.now()-startedAt<CLOSED_TRANSACTION_DEADLINE_MS;
+      if(!isClosedTransactionError(error)||attempt===CLOSED_TRANSACTION_MAX_ATTEMPTS||!withinDeadline)throw error;
+      // Firestore 7.11.x does not classify this emulator INVALID_ARGUMENT as
+      // retryable. Start a fresh whole transaction; never reuse the closed tx.
+      // The immutable delivery key makes an unknown prior commit idempotent.
+      await pause(25*attempt);
+    }
+  }
+  throw lastError;
+}
 async function continueSequenceCheckpoint(db,authority){const installationId=authority.claims?.posInstallationId||authority.installation.posInstallationId;const ref=db.collection('posBridgeScopes').doc(authority.installation.tenantScopeId).collection('streams').doc(installationId);return db.runTransaction(async tx=>{const current=await currentAuthority(db,installationId,{transaction:tx});if(current.installation.tenantScopeId!==authority.installation.tenantScopeId||Number(current.installation.credentialVersion)!==Number(authority.claims?.credentialVersion??authority.installation.credentialVersion)||current.expectedEpoch!==Number(authority.claims?.securityEpoch??authority.installation.securityEpoch))throw Object.assign(new Error('Authority changed.'),{code:'authority_changed',statusCode:401});const snap=await tx.get(ref);if(!snap.exists)return null;const stream=snap.data()||{};if(stream.checkpointWorkPending!==true&&stream.checkpointComplete!==false)return stream;const highestObserved=Number(stream.highestSequenceObserved||0);const advancement=await advanceContiguous(tx,stream,current.refs.scopeRef,installationId,highestObserved);const missingSequenceCount=Number(stream.missingSequenceCount||0);const reconciliationStatus=missingSequenceCount>0?'transport-gaps':advancement.checkpointWorkPending?'checkpoint-pending':highestObserved?'transport-contiguous':'no-events';const patch={highestContiguousSequence:advancement.highestContiguousSequence,checkpointComplete:advancement.checkpointComplete,checkpointWorkPending:advancement.checkpointWorkPending,reconciliationStatus,updatedAt:new Date().toISOString()};if(advancement.highestContiguousSequence!==Number(stream.highestContiguousSequence||0)||stream.checkpointWorkPending!==patch.checkpointWorkPending||stream.checkpointComplete!==patch.checkpointComplete)tx.set(ref,patch,{merge:true});return {...stream,...patch};});}
 async function recordValidationFailureAttempt(db,authority){const ref=db.collection('posBridgeScopes').doc(authority.installation.tenantScopeId).collection('streams').doc(authority.claims.posInstallationId);await db.runTransaction(async tx=>{const currentAuthorityState=await currentAuthority(db,authority.claims.posInstallationId,{transaction:tx});if(currentAuthorityState.installation.tenantScopeId!==authority.installation.tenantScopeId||Number(currentAuthorityState.installation.credentialVersion)!==Number(authority.claims.credentialVersion)||currentAuthorityState.expectedEpoch!==Number(authority.claims.securityEpoch))throw Object.assign(new Error('Authority changed.'),{code:'authority_changed',statusCode:401});const snap=await tx.get(ref);const current=snap.exists?snap.data()||{}:{};tx.set(ref,{validationFailureAttempts:Number(current.validationFailureAttempts||0)+1,updatedAt:new Date().toISOString(),processingEnabled:false},{merge:true});});}
 async function receiptByEventId(db,authority,eventId){const key=hashTuple('delivery',[authority.installation.posInstallationId||authority.claims?.posInstallationId,eventId]);const ref=db.collection('posBridgeScopes').doc(authority.installation.tenantScopeId).collection('events').doc(key);const snap=await ref.get();if(!snap.exists)throw Object.assign(new Error('Not found.'),{code:'not_found',statusCode:404});return snap.data();}
 
-module.exports={refsFor,stageEvent,receiptByEventId,recordValidationFailureAttempt,advanceContiguous,continueSequenceCheckpoint};
+module.exports={refsFor,stageEvent,stageEventTransaction,isClosedTransactionError,receiptByEventId,recordValidationFailureAttempt,advanceContiguous,continueSequenceCheckpoint};

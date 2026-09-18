@@ -137,7 +137,7 @@ async function executeGenericMutation(db, { collectionName, action, docId, data,
       revision,
       updatedAt: nowIso,
       updatedBy: actor,
-      writeEngine: 'v17.0.1-safe-write',
+      writeEngine: 'v17.0.2-safe-write',
       ...(snap.exists ? {} : { createdAt: nowIso, createdBy: actor })
     };
     if (action === 'replace') tx.set(ref, payload, { merge: false });

@@ -1,0 +1,32 @@
+{
+  "version": "16.0.227",
+  "title": "Relative Reminder and Sticky Header Repair",
+  "archiveSha256": "c32d27fff3cb325173c42850e25efb0394a4f7d77dc4179cb37b303de11ffee1",
+  "baselineLocalCommit": "537c9d806bf5369c6c348590e9da71ed182764e6",
+  "baselineTag": "baseline-16.0.227",
+  "sourceFiles": 630,
+  "sourceValidation": "PASS",
+  "fullGate": "User reported PASS; original gate artifact not included in supplied ZIP.",
+  "capturedAt": "2026-09-08T19:57:10.818Z",
+  "remote": [
+    {
+      "branch": "main",
+      "commitSha": "989be93d00ec5a8ce0d8b6f7bcb0785f8c5aff2e",
+      "createdAt": "2026-09-05T16:58:54.358Z",
+      "id": "dpl_BvffYbcxSrJWZ9NVXpqBPijKB1Wj",
+      "message": "Merge pull request #163 from geoffm1985-glitch/testing\n\nRelease 16.0.227: relative reminders and sticky header",
+      "target": "production",
+      "url": "https://86chaos-bwua3bj0j-cheers-portal-s-projects.vercel.app"
+    },
+    {
+      "branch": "testing",
+      "commitSha": "6ce29ab257d2ed05cae88c424b79c0c5e43af646",
+      "createdAt": "2026-09-05T05:36:10.364Z",
+      "id": "dpl_Hyb81CRn4p6qCumMsTXkcvZ2dNBf",
+      "message": "Release 16.0.227: relative reminders and sticky header",
+      "target": null,
+      "url": "https://86chaos-65t5trwa3-cheers-portal-s-projects.vercel.app"
+    }
+  ],
+  "remoteIdentityNote": "Preview /version.json verified 16.0.227. Remote source byte parity not established; supplied ZIP is authoritative."
+}
