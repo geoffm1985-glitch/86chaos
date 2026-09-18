@@ -1,0 +1,14 @@
+'use strict';
+const test=require('node:test');const assert=require('node:assert/strict');const path=require('node:path');const {analyzeEndpoint,analyzeApiTree}=require('../test-tools/contracts/api-contract-analyzer.cjs');
+const root=path.resolve(__dirname,'..');
+test('module-aware analyzer follows the POS shared method and exception wrappers',()=>{for(const name of ['capabilities','events','installations','mappings','reconciliation','token']){const result=analyzeEndpoint(path.join(root,'api/pos-bridge/v1',`${name}.js`));assert.equal(result.method,true,`${name} method`);assert.equal(result.error,true,`${name} error wrapper`);assert.equal(result.wrapperVerified,true,`${name} wrapper`);assert.equal(result.rawErrorLeak,false,`${name} leakage`);}});
+test('unused imports do not count as invoked enforcement',()=>{const file=path.join(root,'api/pos-bridge/v1/capabilities.js');const fs=require('node:fs');const original=fs.readFileSync(file,'utf8');const mutated=original.replace(/method\(req,\[[^;]+;/,'void 0;');const result=analyzeEndpoint(file,{sourceOverrides:{[file]:mutated}});assert.equal(result.method,false);});
+test('export reachability and lexical bindings kill the six hostile analyzer bypasses',()=>{const fs=require('node:fs'),cap=path.join(root,'api/pos-bridge/v1/capabilities.js'),events=path.join(root,'api/pos-bridge/v1/events.js'),capSource=fs.readFileSync(cap,'utf8'),eventsSource=fs.readFileSync(events,'utf8');const cases=[
+  ['false branch',cap,capSource.replace("method(req,['GET']);","if(false){method(req,['GET']);}")],
+  ['local method shadow',cap,capSource.replace('{handler,json,method,','{handler,json,method:sharedMethod,').replace("function requireContract",'const method=()=>true;\nfunction requireContract')],
+  ['fake local authority',cap,capSource.replace('{verifyAccessToken,admitRate,constantIntersection}','{verifyAccessToken:realVerifyAccessToken,admitRate,constantIntersection}').replace("const {BRIDGE_VERSION",'const authorizeFake=async()=>({claims:{posInstallationId:"fake"},installation:{}});\nconst {BRIDGE_VERSION').replace('await verifyAccessToken(db,req)','await authorizeFake(db,req)')],
+  ['uncalled guard',cap,capSource.replace("method(req,['GET']);","function unusedGuard(){method(req,['GET']);}")],
+  ['body guard removed',events,eventsSource.replace('const body=readBoundedJson(req);','const body=req.body||{};')],
+  ['unconditional return',cap,capSource.replace("method(req,['GET']);","return;method(req,['GET']);")]
+];for(const [name,file,source] of cases){const result=analyzeEndpoint(file,{sourceOverrides:{[file]:source}});assert.equal(result.ok,false,name);}});
+test('every public API module has module-aware method, authority, and controlled-error evidence',()=>{const result=analyzeApiTree(root);assert.equal(result.total>=80,true);assert.deepEqual(result.findings.map(row=>({file:row.file,failures:row.failures})),[]);});

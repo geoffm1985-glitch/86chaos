@@ -18,6 +18,7 @@ import { PLAN_DEFINITIONS, CUSTOMER_PLAN_ORDER, FEATURE_KEYS } from '../config/p
 import { resolveSubscription, resolveFeatureAccess, getPlanDefinition, formatMoney, normalizePlanId, addDaysIso, addMonthsIso } from '../lib/featureAccess';
 import { HELP_SUBJECTS, HELP_SUBTOPICS, HELP_DEEP_LINKS, CUSTOMER_HELP_ARTICLES, CUSTOMER_HELP_ARTICLES_LEGACY, searchCustomerHelp, makeDeterministicHelpAnswer, buildCustomerHelpCoverage } from '../core/customerHelpKnowledge';
 import * as adminSafetyModule from '../core/systemAdminDataSafety.cjs';
+import { roleNameKey } from '../core/rosterRoleIdentity';
 
 
 const resolveAdminSafetyModule = (moduleValue) => {
@@ -1363,9 +1364,7 @@ const handleEnableNotifications = async () => {
   const dbRoles = useLiveCollection('roles', appUser?.restaurantId, { limitCount: 100 });
   const DEFAULT_ROLES = ['General Manager', 'Manager', 'Chef', 'Sous Chef', 'Line Cook', 'Prep Cook', 'Bartender', 'Server', 'Host', 'Dishwasher'];
   
-  const displayRoles = dbRoles.length > 0 
-    ? [...dbRoles].sort((a,b) => a.name.localeCompare(b.name)) 
-    : DEFAULT_ROLES.map(r => ({ id: r, name: r, isDefault: true }));
+  const displayRoles = [...dbRoles].filter(role => !role.archived && !role.archivedAt).sort((a,b) => a.name.localeCompare(b.name));
   const hasCustomRosterRoles = dbRoles.length > 0;
   const roleTextForSettings = String(appUser?.role || '').toLowerCase();
   const isLegacyKitchenFallback = !hasCustomRosterRoles && ['kitchen', 'cook', 'chef', 'prep'].some(token => roleTextForSettings.includes(token));
@@ -1913,10 +1912,10 @@ const handleEnableNotifications = async () => {
   const handleAddRole = async (e) => {
     e.preventDefault();
     if(!newRoleName.trim()) return;
-    if (dbRoles.length === 0) {
-      for (const r of DEFAULT_ROLES) await addDoc(collection(db, "roles"), { name: r, restaurantId: appUser.restaurantId });
-    }
-    await addDoc(collection(db, "roles"), { name: newRoleName.trim(), restaurantId: appUser.restaurantId });
+    const key = roleNameKey(newRoleName);
+    if (dbRoles.some(role => roleNameKey(role.name) === key || (role.previousNames || []).some(name => roleNameKey(name) === key))) return addToast('Role Name Unavailable', 'That current or historical role name is already reserved.');
+    const response = await secureFetch('/api/safe-write', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ action:'roster-role-create', restaurantId:appUser.restaurantId, data:{ name:newRoleName } }) });
+    if(!response.ok){const result=await response.json().catch(()=>({}));throw new Error(result.error||'Role could not be created.');}
     setNewRoleName('');
     addToast('Role Added', 'New role is now available.');
   };
@@ -1927,30 +1926,18 @@ const handleEnableNotifications = async () => {
       return;
     }
     setEditingRoleId(null);
-    if (role.isDefault) {
-       for (const r of DEFAULT_ROLES) {
-         if (r === role.name) {
-           await addDoc(collection(db, "roles"), { name: newName.trim(), restaurantId: appUser.restaurantId });
-         } else {
-           await addDoc(collection(db, "roles"), { name: r, restaurantId: appUser.restaurantId });
-         }
-       }
-    } else {
-       await updateDoc(doc(db, "roles", role.id), { name: newName.trim() });
-    }
+    const key = roleNameKey(newName);
+    if (dbRoles.some(other => other.id !== role.id && (roleNameKey(other.name) === key || (other.previousNames || []).some(name => roleNameKey(name) === key)))) return addToast('Role Name Unavailable', 'That current or historical role name is already reserved.');
+    const response = await secureFetch('/api/safe-write', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ action:'roster-role-rename', restaurantId:appUser.restaurantId, docId:role.id, data:{ name:newName } }) });
+    if(!response.ok){const result=await response.json().catch(()=>({}));throw new Error(result.error||'Role could not be renamed.');}
     addToast('Role Updated', 'Role name changed.');
   };
 
   const handleDeleteRole = async (role) => {
-    if (!window.confirm(`Delete role: ${role.name}?`)) return;
-    if (role.isDefault) {
-      for (const r of DEFAULT_ROLES) {
-        if (r !== role.name) await addDoc(collection(db, "roles"), { name: r, restaurantId: appUser.restaurantId });
-      }
-    } else {
-      await deleteDoc(doc(db, "roles", role.id));
-    }
-    addToast('Role Deleted', 'Role removed from roster options.');
+    if (!window.confirm(`Archive role: ${role.name}? Existing shifts will keep this role identity, but it will no longer appear for new assignments.`)) return;
+    const response = await secureFetch('/api/safe-write', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ action:'roster-role-archive', restaurantId:appUser.restaurantId, docId:role.id }) });
+    if(!response.ok){const result=await response.json().catch(()=>({}));throw new Error(result.error||'Role could not be archived.');}
+    addToast('Role Archived', 'Role removed from new assignments while historical shifts remain linked.');
   };
 
 const Toggle = ({ label, desc, checked, onChange, disabled = false }) => (
@@ -3332,13 +3319,11 @@ const TabSales = ({ sales, timePunches = [], users = [], addToast, appUser }) =>
     }
 
     try {
-      if (existing) {
-        await updateDoc(doc(db, 'sales', existing.id), payload);
-        await logAudit(appUser, 'FINANCIAL_CLOSE_UPDATED', `sales/${existing.id}`, `Updated daily close for ${date}`);
-      } else {
-        const refObj = await addDoc(collection(db, 'sales'), { ...payload, createdAt: new Date().toISOString() });
-        await logAudit(appUser, 'FINANCIAL_CLOSE_CREATED', `sales/${refObj.id}`, `Created daily close for ${date}`);
-      }
+      const operationId = globalThis.crypto?.randomUUID?.() || `daily_close_${Date.now()}_${Math.random().toString(36).slice(2,14)}`;
+      const response = await secureFetch('/api/daily-close', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ restaurantId:appUser.restaurantId, date, operationId, expectedRevision:Number(existing?.revision||0), expectedUpdatedAt:String(existing?.updatedAt||''), data:payload }) });
+      const result = await response.json().catch(()=>({}));
+      if(!response.ok)throw new Error(result.error||'Daily Close could not be saved.');
+      await logAudit(appUser, existing ? 'FINANCIAL_CLOSE_UPDATED' : 'FINANCIAL_CLOSE_CREATED', `sales/${result.id}`, `${existing?'Updated':'Created'} daily close for ${date} at revision ${result.revision}`);
       addToast('Daily Close Saved', `${formatDisplayDate(date)} financial close saved.`);
     } catch (err) {
       addToast('Error', err.message);

@@ -248,7 +248,7 @@ async function sendSuperAdminPush(app, db, report, reporter) {
     if (result.success) return;
     const record = tokenRecords[idx];
     const code = result.error?.code || 'unknown';
-    failures.push({ userId: record?.userId || '', email: record?.email || '', code, message: result.error?.message || '' });
+    failures.push({ userId: record?.userId || '', email: record?.email || '', code, message: 'Delivery failed.' });
     if (record?.userId && staleCodes.has(code)) {
       cleanup.push((async () => {
         const userRef = db.collection('users').doc(record.userId);
@@ -298,9 +298,9 @@ module.exports = async function handler(req, res) {
     app = initAdmin(req);
     const appCheck = await requireAppCheckIfEnforced(app, req);
     if (!appCheck.ok) return res.status(appCheck.status || 401).json({ ok: false, error: appCheck.error });
-    decoded = await app.auth().verifyIdToken(token);
+    decoded = await app.auth().verifyIdToken(token, true);
   } catch (error) {
-    return res.status(403).json({ ok: false, error: `Bug report authorization failed: ${error.message}` });
+    return res.status(403).json({ ok: false, error: 'Bug report authorization failed.' });
   }
 
   const db = app.firestore();
@@ -428,7 +428,7 @@ module.exports = async function handler(req, res) {
         error_message: report.errorMessage || report.rawMessage || '',
         chunk_url_present: Boolean(report.chunkUrl)
       }
-    }).catch(error => ({ attempted: true, ok: false, error: error?.message || String(error) }));
+    }).catch(() => ({ attempted: true, ok: false, error: 'Provider request failed.' }));
 
     const pushResult = await sendSuperAdminPush(app, db, { ...report, reportId: reportRef.id }, caller).catch(error => ({
       attempted: true,
@@ -436,8 +436,8 @@ module.exports = async function handler(req, res) {
       fcmRejectedCount: 1,
       sentCount: 0,
       failedCount: 1,
-      error: error.message || String(error),
-      failures: [{ code: 'send_failed', message: error.message || String(error) }]
+      error: 'Provider request failed.',
+      failures: [{ code: 'send_failed', message: 'Provider request failed.' }]
     }));
 
     const emailResult = report.supportEmailRequested ? await sendBugReportEmail({ report: { ...report, reportId: reportRef.id }, reporter: caller, reportId: reportRef.id }).catch(error => ({
@@ -445,7 +445,7 @@ module.exports = async function handler(req, res) {
       providerAccepted: false,
       provider: 'resend',
       failureCategory: 'send_failed',
-      failureMessage: error?.message || String(error),
+      failureMessage: 'Provider request failed.',
       attemptedAt: new Date().toISOString()
     })) : { attempted: false, providerAccepted: false };
 
@@ -534,6 +534,6 @@ module.exports = async function handler(req, res) {
     });
   } catch (error) {
     console.error('[report-bug] failed:', error);
-    return res.status(500).json({ ok: false, error: error.message || 'Failed to submit bug report.' });
+    return res.status(500).json({ ok: false, error: 'Failed to submit bug report.' });
   }
 };

@@ -17,7 +17,7 @@ async function requireAppCheckIfEnforced(req, res, app) {
     await getAppCheck(app).verifyToken(token);
     return true;
   } catch (err) {
-    res.status(401).json({ error: `App Check verification failed: ${err.message}` });
+    res.status(401).json({ error: 'App Check verification failed.' });
     return false;
   }
 }
@@ -218,7 +218,7 @@ async function handler(req, res) {
   try {
     authContext = await verifyRequestToken(req, { requireProjectCredentials: true });
   } catch (error) {
-    return res.status(403).json({ error: `Push repair authorization failed: ${error.message}` });
+    return res.status(403).json({ error: 'Push repair authorization failed.' });
   }
 
   const { app, decoded, projectId } = authContext;
@@ -347,7 +347,7 @@ async function handler(req, res) {
     return res.status(400).json({ error: `Unknown action: ${action}` });
   } catch (error) {
     console.error('push-token-repair error:', error);
-    return res.status(500).json({ error: error.message || 'Push token repair failed.', firebaseProject: projectId });
+    return res.status(500).json({ error: 'Push token repair failed.', firebaseProject: projectId });
   }
 }
 

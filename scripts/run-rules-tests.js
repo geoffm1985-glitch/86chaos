@@ -132,6 +132,13 @@ async function runFirestoreTests(env) {
   const superAdmin = env.authenticatedContext('superAdmin', { email: 'super@example.com', superAdmin: true }).firestore();
   const anon = env.unauthenticatedContext().firestore();
 
+  setRuleCase('Publication fencing and role lifecycle roots are server-owned');
+  for (const client of [staffA, managerA, ownerA, restaurantAdminA, superAdmin, anon]) {
+    await assertFails(setDoc(doc(client, 'schedulePublishOperations', 'forged'), { restaurantId:tenantA,status:'complete',generation:99 }));
+    await assertFails(setDoc(doc(client, 'schedulePublishLeases', 'forged'), { restaurantId:tenantA,leaseToken:'forged' }));
+    await assertFails(setDoc(doc(client, 'roles', 'client-role'), { restaurantId:tenantA,name:'Forged Role',revision:1 }));
+  }
+
   setRuleCase('Shift4 server-only collections');
   for (const collectionName of ['shift4Credentials', 'shift4OauthStates', 'shift4ConnectionControls', 'posSyncScopes']) {
     await assertFails(getDoc(doc(ownerA, collectionName, 'server-only-fixture')));

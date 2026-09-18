@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import { collection, addDoc, updateDoc, deleteDoc, doc, setDoc } from 'firebase/firestore';
 import { sendPasswordResetEmail } from 'firebase/auth';
 import { Edit, Bell, Shield, Plus, Trash2, Package } from 'lucide-react';
+import { roleNameKey } from '../core/rosterRoleIdentity';
+import { secureFetch } from '../core/appCore';
 
 const MASTER_ADMIN_EMAIL = (process.env.REACT_APP_MASTER_ADMIN_EMAIL || '').toLowerCase().trim();
 
@@ -49,9 +51,7 @@ const TabSettings = ({ appUser, addToast, users = [], clientData = {}, db, auth,
   const DEFAULT_ROLES = ['General Manager', 'Manager', 'Chef', 'Sous Chef', 'Line Cook', 'Prep Cook', 'Bartender', 'Server', 'Host', 'Dishwasher'];
   
   // Unpacked the arrays to prevent the frozen data crash
-  const displayRoles = dbRoles.length > 0 
-    ? [...dbRoles].sort((a,b) => a.name.localeCompare(b.name)) 
-    : DEFAULT_ROLES.map(r => ({ id: r, name: r, isDefault: true }));
+  const displayRoles = [...dbRoles].filter(role => !role.archived && !role.archivedAt).sort((a,b) => a.name.localeCompare(b.name));
   const hasCustomRosterRoles = dbRoles.length > 0;
   const roleTextForSettings = String(appUser?.role || '').toLowerCase();
   const isLegacyKitchenFallback = !hasCustomRosterRoles && ['kitchen', 'cook', 'chef', 'prep'].some(token => roleTextForSettings.includes(token));
@@ -120,10 +120,10 @@ const TabSettings = ({ appUser, addToast, users = [], clientData = {}, db, auth,
   const handleAddRole = async (e) => {
     e.preventDefault();
     if(!newRoleName.trim()) return;
-    if (dbRoles.length === 0) {
-      for (const r of DEFAULT_ROLES) await addDoc(collection(db, "roles"), { name: r, restaurantId: appUser.restaurantId });
-    }
-    await addDoc(collection(db, "roles"), { name: newRoleName.trim(), restaurantId: appUser.restaurantId });
+    const key = roleNameKey(newRoleName);
+    if (dbRoles.some(role => roleNameKey(role.name) === key || (role.previousNames || []).some(name => roleNameKey(name) === key))) return addToast('Role Name Unavailable', 'That current or historical role name is already reserved.');
+    const response = await secureFetch('/api/safe-write', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ action:'roster-role-create', restaurantId:appUser.restaurantId, data:{ name:newRoleName } }) });
+    if(!response.ok){const result=await response.json().catch(()=>({}));throw new Error(result.error||'Role could not be created.');}
     setNewRoleName('');
     addToast('Role Added', 'New role is now available.');
   };
@@ -134,30 +134,18 @@ const TabSettings = ({ appUser, addToast, users = [], clientData = {}, db, auth,
       return;
     }
     setEditingRoleId(null);
-    if (role.isDefault) {
-       for (const r of DEFAULT_ROLES) {
-         if (r === role.name) {
-           await addDoc(collection(db, "roles"), { name: newName.trim(), restaurantId: appUser.restaurantId });
-         } else {
-           await addDoc(collection(db, "roles"), { name: r, restaurantId: appUser.restaurantId });
-         }
-       }
-    } else {
-       await updateDoc(doc(db, "roles", role.id), { name: newName.trim() });
-    }
+    const key = roleNameKey(newName);
+    if (dbRoles.some(other => other.id !== role.id && (roleNameKey(other.name) === key || (other.previousNames || []).some(name => roleNameKey(name) === key)))) return addToast('Role Name Unavailable', 'That current or historical role name is already reserved.');
+    const response = await secureFetch('/api/safe-write', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ action:'roster-role-rename', restaurantId:appUser.restaurantId, docId:role.id, data:{ name:newName } }) });
+    if(!response.ok){const result=await response.json().catch(()=>({}));throw new Error(result.error||'Role could not be renamed.');}
     addToast('Role Updated', 'Role name changed.');
   };
 
   const handleDeleteRole = async (role) => {
-    if (!window.confirm(`Delete role: ${role.name}?`)) return;
-    if (role.isDefault) {
-      for (const r of DEFAULT_ROLES) {
-        if (r !== role.name) await addDoc(collection(db, "roles"), { name: r, restaurantId: appUser.restaurantId });
-      }
-    } else {
-      await deleteDoc(doc(db, "roles", role.id));
-    }
-    addToast('Role Deleted', 'Role removed from roster options.');
+    if (!window.confirm(`Archive role: ${role.name}? Existing shifts will keep this role identity, but it will no longer appear for new assignments.`)) return;
+    const response = await secureFetch('/api/safe-write', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ action:'roster-role-archive', restaurantId:appUser.restaurantId, docId:role.id }) });
+    if(!response.ok){const result=await response.json().catch(()=>({}));throw new Error(result.error||'Role could not be archived.');}
+    addToast('Role Archived', 'Role removed from new assignments while historical shifts remain linked.');
   };
 
   const Toggle = ({ label, desc, checked, onChange, disabled = false }) => (

@@ -124,7 +124,7 @@ async function restoreBackupFromStorage({ adminApp, db, storagePath, actor }) {
         continue;
       }
       const ref = db.doc(item.path);
-      batch.set(ref, deserializeValue(item.data, db), { merge: true });
+      batch.set(ref, deserializeValue(item.data, db), { merge: false });
       restoredDocumentCount += 1;
       batchCount += 1;
       if (batchCount >= 400) await commitBatch();
@@ -161,12 +161,10 @@ async function authorize(req, adminApp) {
   if (!token) return { ok: false, status: 401, error: 'Missing authorization token.' };
 
   try {
-    const decoded = await adminApp.auth().verifyIdToken(token);
+    const decoded = await adminApp.auth().verifyIdToken(token, true);
     const email = (decoded.email || '').toLowerCase().trim();
-    const userSnap = await adminApp.firestore().collection('users').doc(decoded.uid).get();
-    const user = userSnap.exists ? (userSnap.data() || {}) : {};
-    if (masterEmails().includes(email) || decoded.superAdmin === true || user.isSuperAdmin === true || user.systemAccess?.superAdmin === true) {
-      const mfa = requireMfaIfEnforced(decoded, user, true);
+    if (masterEmails().includes(email) || decoded.superAdmin === true || decoded.systemAccess?.superAdmin === true) {
+      const mfa = requireMfaIfEnforced(decoded, {}, true);
       if (!mfa.ok) return mfa;
       return { ok: true, source: 'manual', actor: decoded.email || decoded.uid, uid: decoded.uid, email: decoded.email || '', mfa };
     }
@@ -303,6 +301,40 @@ async function verifyUploadedBackup({ file, backup, gzipped, storagePath }) {
   return buildIntegrityResult({ backup, downloadedBackup: parsed.backup, expectedHash, downloadedHash, gzippedBytes: gzipped.length, downloadedBytes: downloaded.length, storagePath, storageFormat: parsed.format, rawDownload });
 }
 
+async function createBackupArtifact({ adminApp, db, mode, runId, actor, source, cronInvocation = {}, startedAt = new Date() }) {
+  const collections = await db.listCollections();
+  const backup = {
+    metadata: {
+      app: '86 Chaos', type: 'firestore-json-backup', version: APP_VERSION,
+      projectId: adminApp.options?.projectId || process.env.FIREBASE_PROJECT_ID || null,
+      mode, runId, actor, source, cronInvocation, startedAt: startedAt.toISOString(),
+      excludedServerManagedRoots: ORDINARY_BACKUP_EXCLUSIONS,
+      bridgeRecoveryPolicy: 'excluded-requires-dedicated-native-disaster-recovery'
+    },
+    collections: {}
+  };
+  const counters = { collectionCount: 0, documentCount: 0 };
+  for (const col of collections) {
+    if (shouldExcludeFromOrdinaryBackup(col.id)) continue;
+    await exportCollection(col, col.id, backup, counters);
+  }
+  const finishedAt = new Date();
+  backup.metadata.finishedAt = finishedAt.toISOString();
+  backup.metadata.collectionCount = counters.collectionCount;
+  backup.metadata.documentCount = counters.documentCount;
+  const json = JSON.stringify(backup);
+  const gzipped = zlib.gzipSync(Buffer.from(json, 'utf8'));
+  const bucket = adminApp.storage().bucket();
+  const filePath = `backups/firestore/${mode}/${runId}.json.gz`;
+  const backupFile = bucket.file(filePath);
+  const initialSha256 = sha256(gzipped);
+  await backupFile.save(gzipped, { resumable:false, contentType:'application/json', metadata:{ contentEncoding:'gzip', metadata:{ runId,mode,actor,documentCount:String(counters.documentCount),collectionCount:String(counters.collectionCount),sha256:initialSha256,integrityStatus:'pending' } } });
+  const integrity = await verifyUploadedBackup({ file:backupFile, backup, gzipped, storagePath:filePath });
+  await backupFile.setMetadata({ metadata:{ runId,mode,actor,documentCount:String(counters.documentCount),collectionCount:String(counters.collectionCount),sha256:integrity.sha256,integrityStatus:integrity.status,integrityVerifiedAt:integrity.verifiedAt,integrityErrors:integrity.errors.join(' | ') } }).catch(()=>null);
+  const deletedOldBackups = await pruneOldBackups(bucket, 30);
+  return { backup, finishedAt, bucket, filePath, counters, json, gzipped, integrity, deletedOldBackups };
+}
+
 
 async function handler(req, res) {
   const startedAt = new Date();
@@ -344,75 +376,7 @@ async function handler(req, res) {
       version: APP_VERSION
     }, { merge: true });
 
-    const collections = await db.listCollections();
-    const backup = {
-      metadata: {
-        app: '86 Chaos',
-        type: 'firestore-json-backup',
-        version: APP_VERSION,
-        projectId: adminApp.options?.projectId || process.env.FIREBASE_PROJECT_ID || null,
-        mode,
-        runId,
-        actor: auth.actor,
-        source: auth.source,
-        cronInvocation,
-        startedAt: startedAt.toISOString()
-        ,excludedServerManagedRoots: ORDINARY_BACKUP_EXCLUSIONS
-        ,bridgeRecoveryPolicy: 'excluded-requires-dedicated-native-disaster-recovery'
-      },
-      collections: {}
-    };
-    const counters = { collectionCount: 0, documentCount: 0 };
-
-    for (const col of collections) {
-      if (shouldExcludeFromOrdinaryBackup(col.id)) continue;
-      await exportCollection(col, col.id, backup, counters);
-    }
-
-    const finishedAt = new Date();
-    backup.metadata.finishedAt = finishedAt.toISOString();
-    backup.metadata.collectionCount = counters.collectionCount;
-    backup.metadata.documentCount = counters.documentCount;
-
-    const json = JSON.stringify(backup);
-    const gzipped = zlib.gzipSync(Buffer.from(json, 'utf8'));
-    const bucket = adminApp.storage().bucket();
-    const filePath = `backups/firestore/${mode}/${runId}.json.gz`;
-    const backupFile = bucket.file(filePath);
-    const initialSha256 = sha256(gzipped);
-    await backupFile.save(gzipped, {
-      resumable: false,
-      contentType: 'application/json',
-      metadata: {
-        contentEncoding: 'gzip',
-        metadata: {
-          runId,
-          mode,
-          actor: auth.actor,
-          documentCount: String(counters.documentCount),
-          collectionCount: String(counters.collectionCount),
-          sha256: initialSha256,
-          integrityStatus: 'pending'
-        }
-      }
-    });
-
-    const integrity = await verifyUploadedBackup({ file: backupFile, backup, gzipped, storagePath: filePath });
-    await backupFile.setMetadata({
-      metadata: {
-        runId,
-        mode,
-        actor: auth.actor,
-        documentCount: String(counters.documentCount),
-        collectionCount: String(counters.collectionCount),
-        sha256: integrity.sha256,
-        integrityStatus: integrity.status,
-        integrityVerifiedAt: integrity.verifiedAt,
-        integrityErrors: integrity.errors.join(' | ')
-      }
-    }).catch(() => null);
-
-    const deletedOldBackups = await pruneOldBackups(bucket, 30);
+    const { finishedAt, bucket, filePath, counters, json, gzipped, integrity, deletedOldBackups } = await createBackupArtifact({ adminApp, db, mode, runId, actor:auth.actor, source:auth.source, cronInvocation, startedAt });
 
     const statusPayload = {
       status: 'ok',
@@ -491,3 +455,4 @@ async function handler(req, res) {
 
 module.exports = handler;
 module.exports.config = { maxDuration: 300 };
+module.exports._test = { serializeValue, deserializeValue, exportCollection, createBackupArtifact, restoreBackupFromStorage, parseBackupBytes, downloadBackupBytes };

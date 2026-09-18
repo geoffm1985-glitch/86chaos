@@ -56,7 +56,7 @@ module.exports = async function handler(req, res) {
     if (!token) return res.status(401).json({ ok: false, error: 'Missing Firebase login token.' });
 
     const app = initAdmin(req);
-    const decoded = await app.auth().verifyIdToken(token);
+    const decoded = await app.auth().verifyIdToken(token, true);
     const db = app.firestore();
     const uid = decoded.uid;
 

@@ -4,9 +4,8 @@ function getCronSecret(req) {
   return String(req.headers.authorization || '').replace(/^Bearer\s+/i, '').trim() || String(req.headers['x-cron-secret'] || '').trim();
 }
 function safeError(err) {
-  const message = String(err?.message || err || 'Weekly maintenance failed.');
-  if (/credential|private[_ -]?key|token|secret|authorization|private key/i.test(message)) return 'Weekly maintenance failed due to server configuration.';
-  return message.slice(0, 240);
+  void err;
+  return 'Weekly maintenance failed.';
 }
 module.exports = async function handler(req, res) {
   if (!['GET','POST'].includes(req.method)) return res.status(405).json({ ok: false, error: 'Method Not Allowed' });

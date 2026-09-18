@@ -205,6 +205,6 @@ module.exports = async function handler(req, res) {
     return res.status(200).json({ ok: true, message: 'Recovery code accepted. Two-step login was reset. Sign in again and re-enroll a phone from Account Security.', remainingRecoveryCodes: result.remaining });
   } catch (err) {
     const statusCode = Number(err?.statusCode || 500);
-    return res.status(statusCode).json({ ok: false, error: statusCode === 400 ? INVALID_RECOVERY_MESSAGE : (err.message || 'Recovery code failed.') });
+    return res.status(statusCode).json({ ok: false, error: statusCode === 400 ? INVALID_RECOVERY_MESSAGE : 'Recovery code failed.' });
   }
 };

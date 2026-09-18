@@ -189,8 +189,9 @@ test('Schedule Tools review delegates to the mature publisher and clips its full
   assert.match(schedule, /onReviewPublish\?\.\(\)/);
   assert.match(schedule, /publishPickerSource === 'schedule-tools' \? schedulePeriodDays : publicationWeekDays/);
   assert.match(schedule, /const publishDays = publishAll \? activePublishDays : selectedPublishDays/);
-  assert.match(schedule, /writeBatch\(db\)/);
-  assert.match(schedule, /verificationFailures/);
+  assert.match(schedule, /secureFetch\('\/api\/schedule-publish'/);
+  assert.match(schedule, /verifiedCount/);
+  assert.match(schedule, /conflictedCount/);
   assert.match(schedule, /buildCanonicalScheduleIdentityBlock/);
   assert.doesNotMatch(schedule, /Promise\.all\(drafts\.map\(s => updateDoc\(doc\(db, 'shifts'/);
 });

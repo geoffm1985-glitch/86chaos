@@ -24,6 +24,8 @@ import { buildMonthSchedulePrintModel } from '../core/schedulePrintModel';
 import { generateMonthSchedulePdf } from '../core/schedulePdf';
 import { deliverSchedulePdf } from '../core/schedulePdfDelivery';
 import { createSchedulePublishGuard, makeSchedulePublishProgress } from '../core/schedulePublishProgress';
+import { activeRosterRoles, resolveShiftRosterRole } from '../core/rosterRoleIdentity';
+import { buildSchedulePublicationPlan, buildConfirmedShiftEvidence, digestSchedulePublicationPlan } from '../core/schedulePublicationPlan';
 import { CheersLogo, Modal, DrawerMenu, DayDotPrintScreen, MapClickListener, SmartEmptyState, MiniProblemCard, getHomeProfile, calculatePunchHours, getWeekStart, roleMatches, toLocalTimeInput, makeLocalIso, PunchTable, FriendlyEmpty, GlobalSearchModal, QuickActionDock, KitchenTVMode, ChangeLogModal, UndoBar } from '../components/common';
 
 
@@ -1229,6 +1231,7 @@ const handleClockIn = async () => {
     const executePunch = async () => {
       setClockActionType('in');
       setClockActionBusy(true);
+      let durablePunch = null;
       try {
         const clockInStamp = new Date().toISOString();
         const clockAuthUid = auth?.currentUser?.uid || appUser.authUid || appUser.uid || appUser.id || '';
@@ -1249,20 +1252,32 @@ const handleClockIn = async () => {
           isApproved: !isUnscheduled
         };
         const punchRef = await addDoc(collection(db, "timePunches"), punchData);
-        setActivePunch({ id: punchRef.id, ...punchData, _optimisticUntil: Date.now() + 30000 });
+        durablePunch = { id: punchRef.id, ...punchData, _optimisticUntil: Date.now() + 30000 };
+        setActivePunch(durablePunch);
         
         // Blast the manager alert to the Message Board
         if (isUnscheduled) {
-           await addDoc(collection(db, "events"), { 
-             date: new Date().toISOString(), title: `UNSCHEDULED PUNCH: ${appUser.name.split(' ')[0]} clocked in without a scheduled shift. Please review in Timesheets.`, 
-             type: 'note', author: 'System Alert', isImportant: true, restaurantId: appUser.restaurantId, replies: [] 
-           });
+           try {
+             await addDoc(collection(db, "events"), {
+               date: new Date().toISOString(), title: `UNSCHEDULED PUNCH: ${appUser.name.split(' ')[0]} clocked in without a scheduled shift. Please review in Timesheets.`,
+               type: 'note', author: 'System Alert', isImportant: true, restaurantId: appUser.restaurantId, replies: [], punchId: punchRef.id
+             });
+           } catch (alertError) {
+             console.warn('[86chaos] Punch saved but unscheduled alert failed', alertError?.message || alertError);
+             addToast('Clocked In — Alert Pending', 'Your time punch was saved. The manager alert could not be posted, so please tell a manager.');
+             return;
+           }
         }
         
         addToast('Clocked In', isUnscheduled ? 'Unscheduled shift started. Manager notified.' : 'Shift started successfully.');
       } catch (e) { 
-        setActivePunch(null);
-        addToast('Could Not Clock In', e.message || 'Your clock-in was not saved. Check your connection and try again.'); 
+        if (durablePunch) {
+          setActivePunch(durablePunch);
+          addToast('Clocked In — Follow-up Failed', 'Your time punch was saved, but a secondary step failed. Do not clock in again; tell a manager.');
+        } else {
+          setActivePunch(null);
+          addToast('Could Not Clock In', e.message || 'Your clock-in was not saved. Check your connection and try again.');
+        }
       } finally {
         setClockActionBusy(false);
         setClockActionType(null);
@@ -1841,6 +1856,8 @@ const [eventDate, setEventDate] = useState(getToday());
   const localBuilderDeleteRetryRef = useRef({});
   const [isPublishPickerOpen, setIsPublishPickerOpen] = useState(false);
   const [selectedPublishWeekKeys, setSelectedPublishWeekKeys] = useState([]);
+  const [publishAllRoles, setPublishAllRoles] = useState(true);
+  const [selectedPublishRoleIds, setSelectedPublishRoleIds] = useState([]);
   const [publishPickerSource, setPublishPickerSource] = useState('builder');
   const publishOperationGuardRef = useRef(null);
   if (!publishOperationGuardRef.current) publishOperationGuardRef.current = createSchedulePublishGuard();
@@ -1856,6 +1873,13 @@ const [eventDate, setEventDate] = useState(getToday());
   const schedulePublishingSettings = activeSchedulePeriodContext.settings;
   const schedulePerson = getSchedulePersonForAppUser(appUser, users);
   const scheduleRestaurantId = appUser?.restaurantId || '';
+  const publishRosterRoleState = useLiveCollectionState('roles', scheduleRestaurantId, { enabled: Boolean(scheduleRestaurantId), debugLabel: 'schedule:publish:roles-complete' });
+  const publishRosterRoles = publishRosterRoleState.data || [];
+  const publishSelectableRoles = activeRosterRoles(publishRosterRoles);
+  const publishRoleSelected = useCallback((shift = {}) => {
+    const resolved = resolveShiftRosterRole(shift, publishRosterRoles);
+    return resolved.ok && (publishAllRoles || selectedPublishRoleIds.includes(resolved.rosterRoleId));
+  }, [publishRosterRoles, publishAllRoles, selectedPublishRoleIds]);
 
   useEffect(() => {
     if (!scheduleRestaurantId) return;
@@ -1978,10 +2002,10 @@ const [eventDate, setEventDate] = useState(getToday());
   const selectedPublishWeeks = publishWeekOptions.filter(option => selectedPublishWeekSet.has(option.key));
   const selectedPublishDays = Array.from(new Set(selectedPublishWeeks.flatMap(option => option.days))).sort();
   const selectedPublishDaySet = new Set(selectedPublishDays);
-  const selectedPublishDrafts = renderedPublicationPeriodShifts.filter(shift => getShiftWritableDocId(shift) && !isBuilderShiftPublished(shift) && selectedPublishDaySet.has(getShiftDateKey(shift)));
-  const fullPublishDrafts = renderedPublicationPeriodShifts.filter(shift => getShiftWritableDocId(shift) && !isBuilderShiftPublished(shift) && activePublishDaySet.has(getShiftDateKey(shift)));
-  const selectedPublishCandidateCount = renderedPublicationPeriodShifts.filter(shift => getShiftWritableDocId(shift) && selectedPublishDaySet.has(getShiftDateKey(shift))).length;
-  const fullPublishCandidateCount = renderedPublicationPeriodShifts.filter(shift => getShiftWritableDocId(shift) && activePublishDaySet.has(getShiftDateKey(shift))).length;
+  const selectedPublishDrafts = renderedPublicationPeriodShifts.filter(shift => getShiftWritableDocId(shift) && !isBuilderShiftPublished(shift) && selectedPublishDaySet.has(getShiftDateKey(shift)) && publishRoleSelected(shift));
+  const fullPublishDrafts = renderedPublicationPeriodShifts.filter(shift => getShiftWritableDocId(shift) && !isBuilderShiftPublished(shift) && activePublishDaySet.has(getShiftDateKey(shift)) && publishRoleSelected(shift));
+  const selectedPublishCandidateCount = renderedPublicationPeriodShifts.filter(shift => getShiftWritableDocId(shift) && selectedPublishDaySet.has(getShiftDateKey(shift)) && publishRoleSelected(shift)).length;
+  const fullPublishCandidateCount = renderedPublicationPeriodShifts.filter(shift => getShiftWritableDocId(shift) && activePublishDaySet.has(getShiftDateKey(shift)) && publishRoleSelected(shift)).length;
   const publishDateLabel = (start, end) => start === end ? formatDisplayDate(start) : `${formatDisplayDate(start)} to ${formatDisplayDate(end)}`;
   const selectedPublishLabel = selectedPublishWeeks.length
     ? selectedPublishWeeks.map(option => `${option.label}: ${publishDateLabel(option.start, option.end)}`).join(', ')
@@ -2015,6 +2039,8 @@ const [eventDate, setEventDate] = useState(getToday());
       return;
     }
     setPublishPickerSource(nextSource);
+    setPublishAllRoles(true);
+    setSelectedPublishRoleIds([]);
     const draftWeekKeys = nextOptions.filter(option => option.draftCount > 0).map(option => option.key);
     setSelectedPublishWeekKeys(draftWeekKeys.length ? draftWeekKeys : nextOptions.map(option => option.key));
     setIsPublishPickerOpen(true);
@@ -2026,6 +2052,10 @@ const [eventDate, setEventDate] = useState(getToday());
   const togglePublishWeek = (key) => {
     if (publishOperationGuardRef.current?.isActive()) return;
     setSelectedPublishWeekKeys(prev => prev.includes(key) ? prev.filter(item => item !== key) : [...prev, key]);
+  };
+  const togglePublishRole = (roleId) => {
+    if (publishOperationGuardRef.current?.isActive()) return;
+    setSelectedPublishRoleIds(prev => prev.includes(roleId) ? prev.filter(id => id !== roleId) : [...prev, roleId]);
   };
 
   const fetchSchedulePublishCandidatesForDaySet = async (daySet = new Set(), localCandidates = []) => {
@@ -2061,7 +2091,7 @@ const [eventDate, setEventDate] = useState(getToday());
         recordScheduleOperationDiagnostic('documentsObserved', dateSnap.size);
         dateSnap.forEach(docSnap => addCandidate({ id: docSnap.id, ...docSnap.data() }));
       } catch (err) {
-        console.warn('[86chaos] Publish date lookup failed; using loaded schedule candidates for date', day, err?.message || err);
+        throw new Error(`Publish candidate query failed for ${day}. No shifts were changed. ${err?.message || ''}`.trim());
       }
       try {
         recordScheduleOperationDiagnostic('sdkReads');
@@ -2069,7 +2099,7 @@ const [eventDate, setEventDate] = useState(getToday());
         recordScheduleOperationDiagnostic('documentsObserved', scheduleDateSnap.size);
         scheduleDateSnap.forEach(docSnap => addCandidate({ id: docSnap.id, ...docSnap.data() }));
       } catch (err) {
-        console.warn('[86chaos] Publish scheduleDateKey lookup failed; using loaded schedule candidates for date', day, err?.message || err);
+        throw new Error(`Publish candidate query failed for ${day}. No shifts were changed. ${err?.message || ''}`.trim());
       }
       try {
         recordScheduleOperationDiagnostic('sdkReads');
@@ -2077,7 +2107,7 @@ const [eventDate, setEventDate] = useState(getToday());
         recordScheduleOperationDiagnostic('documentsObserved', workspaceDateSnap.size);
         workspaceDateSnap.forEach(docSnap => addCandidate({ id: docSnap.id, ...docSnap.data() }));
       } catch (err) {
-        console.warn('[86chaos] Publish workspace/date lookup failed; using loaded schedule candidates for date', day, err?.message || err);
+        throw new Error(`Publish candidate query failed for ${day}. No shifts were changed. ${err?.message || ''}`.trim());
       }
       try {
         recordScheduleOperationDiagnostic('sdkReads');
@@ -2085,7 +2115,7 @@ const [eventDate, setEventDate] = useState(getToday());
         recordScheduleOperationDiagnostic('documentsObserved', workspaceScheduleDateSnap.size);
         workspaceScheduleDateSnap.forEach(docSnap => addCandidate({ id: docSnap.id, ...docSnap.data() }));
       } catch (err) {
-        console.warn('[86chaos] Publish workspace/scheduleDateKey lookup failed; using loaded schedule candidates for date', day, err?.message || err);
+        throw new Error(`Publish candidate query failed for ${day}. No shifts were changed. ${err?.message || ''}`.trim());
       }
     }
 
@@ -2616,10 +2646,13 @@ const [eventDate, setEventDate] = useState(getToday());
         const nowIso = new Date().toISOString();
         const shiftMonth = getMonthStr(d);
         const rescueEdit = canEditRescueMonth(shiftMonth);
+        const assignedRole = resolveShiftRosterRole({ role: emp.role || 'Unassigned' }, publishRosterRoles);
         const shiftData = {
           ...buildCanonicalScheduleCreateFields(d, appUser.restaurantId),
           ...buildScheduleIdentityFields(emp),
           role: emp.role || 'Unassigned',
+          ...(assignedRole.ok ? { rosterRoleId: assignedRole.rosterRoleId, rosterRoleNameSnapshot: assignedRole.rosterRoleNameSnapshot } : {}),
+          revision: 1,
           startTime: startTime,
           endTime: endTime,
           isPublished: false,
@@ -2682,7 +2715,7 @@ const handlePublish = async (scope = 'selected-weeks') => {
 
       updatePublishProgress('loading', 'Loading schedule shifts…', 'Finding the exact saved shifts that belong to this publish.');
       const publishCandidates = await fetchSchedulePublishCandidatesForDaySet(publishDaySet, localPublishCandidateSources);
-      const selectedCandidates = publishCandidates
+      const dateScopedCandidates = publishCandidates
         .filter(shift => getShiftWritableDocId(shift) && !isDeletedScheduleShift(shift) && (publishAll || shiftIsInsideDaySet(shift, publishDaySet)))
         .filter(shift => publishDaySet.has(getShiftDateKey(shift)));
       const publishPeriodStart = publishAll ? (publishPickerSource === 'schedule-tools' ? schedulePeriodBounds.start : publicationWeekBounds.start) : (publishDays[0] || schedulePeriodBounds.start);
@@ -2694,6 +2727,32 @@ const handlePublish = async (scope = 'selected-weeks') => {
       const publishedAtIso = new Date().toISOString();
       const scheduleId = `schedule_${appUser.restaurantId}_${publishPeriodStart}_${publishPeriodEnd}_${Date.now()}`;
       const publishWeekKeys = selectedWeeksForPublish.map(option => option.key);
+
+      if (!publishAllRoles && selectedPublishRoleIds.length === 0) {
+        setPublishProgress(makeSchedulePublishProgress());
+        addToast('Choose a Role', 'Select at least one configured Roster Role, or choose All Roles.');
+        return;
+      }
+      if (!publishRosterRoleState.resolved || publishRosterRoleState.error) {
+        throw new Error('Configured Roster Roles could not be loaded completely. Publishing stopped before any write.');
+      }
+      const rolePlan = buildSchedulePublicationPlan({
+        restaurantId: appUser.restaurantId,
+        period: { start: publishPeriodStart, end: publishPeriodEnd },
+        selectedWeekKeys: publishWeekKeys,
+        selectedRoleIds: selectedPublishRoleIds,
+        allRoles: publishAllRoles,
+        candidateShifts: dateScopedCandidates,
+        rosterRoles: publishRosterRoles,
+        actor: { uid: appUser?.id || appUser?.uid, email: appUser?.email }
+      });
+      if (rolePlan.unresolvedRoles.length) {
+        setPublishProgress(makeSchedulePublishProgress());
+        addToast('Role Review Needed', `${rolePlan.unresolvedRoles.length} shift${rolePlan.unresolvedRoles.length === 1 ? '' : 's'} have missing or ambiguous Roster Role identity. Review those shifts before publishing.`);
+        return;
+      }
+      const selectedCandidateIds = new Set(rolePlan.candidateShiftIds);
+      const selectedCandidates = dateScopedCandidates.filter(shift => selectedCandidateIds.has(getShiftWritableDocId(shift)));
 
       if (selectedCandidates.length === 0) {
         setPublishProgress(makeSchedulePublishProgress());
@@ -2779,9 +2838,10 @@ const handlePublish = async (scope = 'selected-weeks') => {
       }
 
       updatePublishProgress('confirming', 'Ready to publish…', `${updatePlan.length} shift${updatePlan.length === 1 ? '' : 's'} will be written and verified.`);
+      const roleSelectionLabel = publishAllRoles ? 'all configured roles' : publishSelectableRoles.filter(role => selectedPublishRoleIds.includes(role.id)).map(role => role.name).join(', ');
       const confirmMessage = unresolved.length
-        ? `Publish/repair ${updatePlan.length} shift${updatePlan.length === 1 ? '' : 's'} for ${publishSelectionLabel}? ${unresolved.length} shift${unresolved.length === 1 ? '' : 's'} will stay draft because employee accounts could not be matched: ${unresolvedNames.join(', ')}.`
-        : `Publish/repair ${updatePlan.length} shift${updatePlan.length === 1 ? '' : 's'} for ${publishSelectionLabel}? Weeks not selected will stay as drafts.`;
+        ? `Publish/repair ${updatePlan.length} shift${updatePlan.length === 1 ? '' : 's'} for ${publishSelectionLabel} and ${roleSelectionLabel}? ${unresolved.length} shift${unresolved.length === 1 ? '' : 's'} will stay draft because employee accounts could not be matched: ${unresolvedNames.join(', ')}.`
+        : `Publish/repair ${updatePlan.length} shift${updatePlan.length === 1 ? '' : 's'} for ${publishSelectionLabel} and ${roleSelectionLabel}? Weeks and roles not selected will stay as drafts.`;
       if (!window.confirm(confirmMessage)) {
         setPublishProgress(makeSchedulePublishProgress());
         return;
@@ -2804,13 +2864,13 @@ const handlePublish = async (scope = 'selected-weeks') => {
           publishPeriodStart,
           publishPeriodEnd,
           publishPeriodLabel,
-          selectedShiftCount: selectedCandidates.length,
+          selectedShiftCount: updatePlan.length,
           updateCount: updatePlan.length,
           draftCount,
           repairCount,
           unresolvedCount: unresolved.length,
           updateShiftIds: updatePlan.map(item => item.id),
-          selectedShifts: selectedCandidates.map(s => ({ ...s }))
+          selectedShifts: updatePlan.map(({ shift }) => ({ ...shift }))
         };
         const stamp = now.toISOString().replace(/[:.]/g, '-');
         downloadTextFile(`${restaurantPrefix}-Schedule-Publish-Backup-${publishPeriodStart}-to-${publishPeriodEnd}-${stamp}.json`, JSON.stringify(backupPayload, null, 2), 'application/json;charset=utf-8;');
@@ -2822,100 +2882,69 @@ const handlePublish = async (scope = 'selected-weeks') => {
         }
       }
 
-      addToast('Publishing...', `Verifying and publishing ${updatePlan.length} ${publishPeriodLabel} shift(s). Please wait.`);
-      updatePublishProgress('publishing', 'Publishing schedule…', `0 of ${updatePlan.length} shifts saved`, 0, updatePlan.length);
-
-      let publishedWriteCount = 0;
-      for (let i = 0; i < updatePlan.length; i += 450) {
-        const batch = writeBatch(db);
-        const batchItems = updatePlan.slice(i, i + 450);
-        batchItems.forEach(item => batch.update(doc(db, 'shifts', item.id), item.update));
-        await batch.commit();
-        publishedWriteCount += batchItems.length;
-        updatePublishProgress('publishing', 'Publishing schedule…', `${publishedWriteCount} of ${updatePlan.length} shifts saved`, publishedWriteCount, updatePlan.length);
-        recordScheduleOperationDiagnostic('batchedWriteOperations');
-        recordScheduleOperationDiagnostic('batchedWriteDocuments', batchItems.length);
-        recordScheduleOperationDiagnostic('totalScheduleDocumentsWritten', batchItems.length);
+      const rolePlanById = new Map(rolePlan.shifts.map(row => [row.id, row]));
+      const confirmedShiftEvidence = await Promise.all(updatePlan.map(item => {
+        const roleRow = rolePlanById.get(item.id) || {};
+        return buildConfirmedShiftEvidence({
+          shift: item.shift,
+          resolvedRole: roleRow,
+          desiredEmployeeIdentity: buildCanonicalScheduleIdentityBlock(item.person, item.shift)
+        });
+      }));
+      const confirmedClientPlan = {
+        restaurantId: rolePlan.restaurantId,
+        period: rolePlan.period,
+        selectedWeekKeys: rolePlan.selectedWeekKeys,
+        selectedRoleIds: rolePlan.selectedRoleIds,
+        allRoles: rolePlan.allRoles,
+        roleConfigurationRevision: rolePlan.roleConfigurationRevision,
+        confirmedShifts: confirmedShiftEvidence
+      };
+      const clientPlanDigest = await digestSchedulePublicationPlan(confirmedClientPlan);
+      const operationStorageKey = `86chaos:schedule-publish:${appUser.restaurantId}:${clientPlanDigest}`;
+      let operationId = '';
+      try { operationId = sessionStorage.getItem(operationStorageKey) || ''; } catch (_) {}
+      if (!operationId) {
+        operationId = globalThis.crypto?.randomUUID?.() || `publish_${Date.now()}_${Math.random().toString(36).slice(2, 14)}`;
+        try { sessionStorage.setItem(operationStorageKey, operationId); } catch (_) {}
       }
-
-      const verificationFailures = [];
-      updatePublishProgress('verifying', 'Verifying published shifts…', `0 of ${updatePlan.length} shifts verified`, 0, updatePlan.length);
-      for (let verifyIndex = 0; verifyIndex < updatePlan.length; verifyIndex += 1) {
-        const item = updatePlan[verifyIndex];
-        recordScheduleOperationDiagnostic('sdkReads');
-        const snap = await getDoc(doc(db, 'shifts', item.id));
-        if (snap.exists()) recordScheduleOperationDiagnostic('documentsObserved');
-        if (!snap.exists()) {
-          verificationFailures.push({ id: item.id, reason: 'missing after publish' });
-        } else {
-          const data = { id: snap.id, ...snap.data() };
-          const expectedRestaurantId = String(item.update.restaurantId || appUser.restaurantId || '');
-          const actualRestaurantId = String(data.restaurantId || data.workspaceId || '');
-          const statusOk = data.isPublished === true && data.published === true && String(data.status || '').toLowerCase() === 'published' && String(data.publishStatus || '').toLowerCase() === 'published';
-          const dateOk = getShiftDateKey(data) === item.dateKey;
-          const personOk = shiftMatchesPerson(data, item.person, users) && scheduleIdentityBlockMatchesPerson(data, item.person);
-          const scheduleIdOk = item.wasPublished || Boolean(data.scheduleId);
-          if (actualRestaurantId !== expectedRestaurantId || !statusOk || !dateOk || !personOk || !scheduleIdOk) {
-            verificationFailures.push({ id: item.id, reason: 'published read-back did not match expected fields' });
-          }
-        }
-        const verifiedCount = verifyIndex + 1;
-        updatePublishProgress('verifying', 'Verifying published shifts…', `${verifiedCount} of ${updatePlan.length} shifts checked`, verifiedCount, updatePlan.length);
-      }
-
-      if (verificationFailures.length) {
-        console.warn('[86chaos] Schedule publish verification failed', verificationFailures);
-        setPublishProgress(prev => ({ ...prev, phase: 'error', active: false, label: 'Publish needs attention', detail: `${verificationFailures.length} shift${verificationFailures.length === 1 ? '' : 's'} did not verify. You can safely retry.` }));
-        addToast('Publish Needs Attention', `${verificationFailures.length} shift${verificationFailures.length === 1 ? '' : 's'} did not verify after saving. The publish window stayed open so you can retry.`);
+      addToast('Publishing...', `The server is publishing and verifying ${updatePlan.length} ${publishPeriodLabel} shift(s).`);
+      updatePublishProgress('publishing', 'Publishing schedule…', `Server operation ${operationId.slice(0, 8)} is protected by a durable lease.`, 0, updatePlan.length);
+      const publishResponse = await secureFetch('/api/schedule-publish', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          restaurantId: appUser.restaurantId,
+          restaurantName: appUser.restaurantName || appUser?.systemSettings?.restaurantName || 'Your restaurant',
+          operationId,
+          clientPlanDigest,
+          dayKeys: publishDays,
+          selectedWeekKeys: publishWeekKeys,
+          selectedRoleIds: publishAllRoles ? [] : selectedPublishRoleIds,
+          allRoles: publishAllRoles,
+          roleConfigurationRevision: rolePlan.roleConfigurationRevision,
+          expectedShifts: confirmedShiftEvidence
+        })
+      });
+      const publishResult = await publishResponse.json().catch(() => ({}));
+      if (!publishResponse.ok && publishResult.status !== 'partial') throw new Error(publishResult.error || 'Server publication failed before completion.');
+      const publishedShiftIds = Array.isArray(publishResult.verifiedShiftIds) ? publishResult.verifiedShiftIds : [];
+      if (publishedShiftIds.length) setLocalBuilderPublishedShiftIds(prev => Array.from(new Set([...(prev || []), ...publishedShiftIds])).slice(-1000));
+      if (publishResult.status === 'partial') {
+        setPublishProgress(prev => ({ ...prev, phase: 'error', active: false, label: 'Publish partially completed', detail: `${publishResult.committedCount || 0} committed, ${publishResult.verifiedCount || 0} verified, ${publishResult.conflictedCount || 0} conflicted, ${publishResult.remainingCount || 0} remaining. Retry this operation after reviewing conflicts.` }));
+        addToast('Publish Needs Review', `${publishResult.verifiedCount || 0} verified; ${publishResult.conflictedCount || 0} conflicted. The same operation can be resumed safely.`);
         return;
       }
-
-      const publishedShiftIds = updatePlan.map(item => item.id).filter(Boolean);
-      if (publishedShiftIds.length) {
-        setLocalBuilderPublishedShiftIds(prev => Array.from(new Set([...(prev || []), ...publishedShiftIds])).slice(-1000));
-      }
-
-      updatePublishProgress('time-off', 'Finishing schedule records…', 'Processing request-off records tied to this published period.');
-      const inRangeRequests = (timeOffRequests || []).filter(r => publishDaySet.has(String(r?.date || '')) && String(r.restaurantId || r.workspaceId || appUser.restaurantId) === String(appUser.restaurantId));
-      const processedRequests = inRangeRequests.filter(r => ['approved', 'denied'].includes(String(r.status || '').toLowerCase()) && r.archived !== true && r.processed !== true);
-      const pendingPublishedOverlap = inRangeRequests.filter(r => String(r.status || '').toLowerCase() === 'pending');
-      await Promise.all(processedRequests.map(r => updateDoc(doc(db, 'timeOffRequests', r.id), {
-        previousStatus: r.status || '', status: 'processed', processed: true, archived: true,
-        processedAt: publishedAtIso, processedBy: appUser?.id || appUser?.email || '', processedByName: appUser?.name || appUser?.email || '',
-        scheduleId, schedulePeriodStart: publishPeriodStart, schedulePeriodEnd: publishPeriodEnd,
-        publishedAt: publishedAtIso, publishedBy: appUser?.id || appUser?.email || '', publishedByName: appUser?.name || appUser?.email || ''
-      })));
-      await Promise.all(pendingPublishedOverlap.map(r => updateDoc(doc(db, 'timeOffRequests', r.id), {
-        overlapsPublishedSchedule: true, unresolvedPublishedOverlap: true, scheduleId,
-        schedulePeriodStart: publishPeriodStart, schedulePeriodEnd: publishPeriodEnd, updatedAt: publishedAtIso
-      })));
-      if (processedRequests.length) await logAudit(appUser, 'TIME_OFF_AUTO_ARCHIVED_ON_PUBLISH', `${processedRequests.length} request-offs`, scheduleId);
-      if (pendingPublishedOverlap.length) await logAudit(appUser, 'TIME_OFF_PENDING_OVERLAPS_PUBLISHED_SCHEDULE', `${pendingPublishedOverlap.length} pending request-offs`, scheduleId);
-
+      try { sessionStorage.removeItem(operationStorageKey); } catch (_) {}
+      const notification = publishResult.notificationState || {};
       const title = unresolved.length ? 'Published with Employee Review Needed' : (repairCount ? 'Published and Visibility Repaired' : 'Published');
       const detailParts = [`${publishedShiftIds.length} shift${publishedShiftIds.length === 1 ? '' : 's'} verified for ${publishPeriodLabel}`];
       if (draftCount) detailParts.push(`${draftCount} new`);
       if (repairCount) detailParts.push(`${repairCount} employee visibility repaired`);
-      if (unresolved.length) detailParts.push(`${unresolved.length} still need employee links`);
-      addToast(title, `${detailParts.join('. ')}. Weeks not selected stayed as drafts.`);
-      logAudit(appUser, 'PUBLISH_SCHEDULE', 'Master Roster', `Verified ${publishedShiftIds.length}/${selectedCandidates.length} shifts for ${publishSelectionLabel}.`);
-
-      updatePublishProgress('notifications', 'Sending notifications…', 'Schedule is published. Finishing staff notification delivery.');
-      try {
-        addToast('Pinging Server', 'Sending schedule update notifications...');
-        const pushRes = await secureFetch('/api/send-schedule-alert', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ restaurantId: appUser.restaurantId, restaurantName: appUser.restaurantName || 'Your restaurant', scheduleId, publishScope: publishAll ? 'full-period' : 'selected-weeks', publishPeriodStart, publishPeriodEnd, publishWeekKeys })
-        });
-        const pushData = await pushRes.json();
-        if (pushData.message) addToast('Server Reply', pushData.message);
-        else if (pushData.success) addToast('Alerts Sent!', `Schedule saved. Notifications sent to ${pushData.sentCount} device${pushData.sentCount === 1 ? '' : 's'}.`);
-        else addToast('Notifications Not Sent', pushData.error || 'Schedule published, but notification delivery needs attention.');
-      } catch (pushErr) {
-        console.error('Failed to send schedule push notifications:', pushErr);
-        addToast('Notifications Not Sent', 'Schedule published, but notifications could not be sent.');
-      }
+      if (notification.failedCount) detailParts.push(`${notification.failedCount} notification${notification.failedCount === 1 ? '' : 's'} failed and remain eligible for a controlled retry`);
+      if (notification.ambiguousCount) detailParts.push(`${notification.ambiguousCount} notification acknowledgement${notification.ambiguousCount === 1 ? '' : 's'} remain unknown and will not be resent automatically`);
+      addToast(title, `${detailParts.join('. ')}. Unselected weeks and roles stayed as drafts.`);
+      logAudit(appUser, 'PUBLISH_SCHEDULE', 'Master Roster', `Operation ${operationId} verified ${publishedShiftIds.length}/${updatePlan.length} shifts for ${publishSelectionLabel} and ${roleSelectionLabel}.`);
 
       updatePublishProgress('complete', 'Publish complete', `${publishedShiftIds.length} shift${publishedShiftIds.length === 1 ? '' : 's'} published and verified.`, publishedShiftIds.length, publishedShiftIds.length);
       publishCompleted = true;
@@ -4052,13 +4081,36 @@ const handleExportTimesheets = () => {
             })}
           </div>
 
+          <fieldset className="rounded-xl border border-[#2A353D] bg-[#12161A] p-3" disabled={isPublishingSchedule}>
+            <legend className="px-1 text-[10px] font-black uppercase tracking-widest text-[#D4A381]">Roster roles</legend>
+            <label className="flex min-h-[44px] cursor-pointer items-center gap-3 rounded-lg px-2 py-2 hover:bg-[#1A2126]">
+              <input type="radio" name="schedule-publish-role-mode" checked={publishAllRoles} onChange={() => { setPublishAllRoles(true); setSelectedPublishRoleIds([]); }} className="h-5 w-5 accent-[#D4A381]" />
+              <span><span className="block text-sm font-black text-white">All Roles</span><span className="block text-[11px] font-bold text-slate-400">Publish every shift role in the selected date scope.</span></span>
+            </label>
+            <label className="flex min-h-[44px] cursor-pointer items-center gap-3 rounded-lg px-2 py-2 hover:bg-[#1A2126]">
+              <input type="radio" name="schedule-publish-role-mode" checked={!publishAllRoles} onChange={() => setPublishAllRoles(false)} className="h-5 w-5 accent-[#D4A381]" />
+              <span><span className="block text-sm font-black text-white">Selected Roles</span><span className="block text-[11px] font-bold text-slate-400">Use the configured roles from Settings → Preferences → Roster Roles.</span></span>
+            </label>
+            {!publishAllRoles && (
+              <div className="mt-2 grid gap-2 sm:grid-cols-2" aria-label="Configured roster roles">
+                {publishSelectableRoles.map(role => (
+                  <label key={role.id} className={`flex min-h-[44px] cursor-pointer items-center gap-3 rounded-lg border px-3 py-2 ${selectedPublishRoleIds.includes(role.id) ? 'border-[#D4A381] bg-[#D4A381]/10' : 'border-[#2A353D] bg-[#0B0E11]'}`}>
+                    <input type="checkbox" checked={selectedPublishRoleIds.includes(role.id)} onChange={() => togglePublishRole(role.id)} className="h-5 w-5 accent-[#D4A381]" />
+                    <span className="text-sm font-black text-white">{role.name}</span>
+                  </label>
+                ))}
+                {publishSelectableRoles.length === 0 && <p className="text-xs font-bold text-amber-300">No active configured Roster Roles are available. Add roles in Settings before using Selected Roles.</p>}
+              </div>
+            )}
+          </fieldset>
+
           <div className="rounded-xl border border-[#2A353D] bg-[#0B0E11] p-3 text-xs font-bold text-slate-300">
             Selected: <span className="text-white">{selectedPublishCandidateCount}</span> shift{selectedPublishCandidateCount === 1 ? '' : 's'} to verify/publish
             {selectedPublishWeeks.length > 0 && <span className="block mt-1 text-[11px] text-slate-400">{selectedPublishLabel}</span>}
           </div>
 
           {publishProgress.phase !== 'idle' && (
-            <div className={`rounded-xl border p-3 ${publishProgress.phase === 'error' ? 'border-red-500/50 bg-red-950/20' : publishProgress.phase === 'complete' ? 'border-emerald-500/50 bg-emerald-950/20' : 'border-[#D4A381]/50 bg-[#D4A381]/10'}`} data-testid="schedule-publish-progress">
+            <div className={`rounded-xl border p-3 ${publishProgress.phase === 'error' ? 'border-red-500/50 bg-red-950/20' : publishProgress.phase === 'complete' ? 'border-emerald-500/50 bg-emerald-950/20' : 'border-[#D4A381]/50 bg-[#D4A381]/10'}`} data-testid="schedule-publish-progress" role="status" aria-live="polite" aria-atomic="true">
               <div className="flex items-center justify-between gap-3">
                 <div className="min-w-0">
                   <div className="flex items-center gap-2 text-sm font-black text-white">
@@ -4077,8 +4129,8 @@ const handleExportTimesheets = () => {
           )}
 
           <div className="flex flex-col sm:flex-row gap-2">
-            <button type="button" onClick={() => handlePublish('selected-weeks')} disabled={selectedPublishCandidateCount === 0 || isPublishingSchedule} className={`${T.btn} flex-1 py-3 disabled:opacity-50 disabled:cursor-not-allowed`}>{isPublishingSchedule ? 'Publishing…' : 'Publish Selected Weeks'}</button>
-            <button type="button" onClick={() => handlePublish('full-period')} disabled={fullPublishCandidateCount === 0 || isPublishingSchedule} className={`${T.btnAlt} flex-1 py-3 disabled:opacity-50 disabled:cursor-not-allowed`}>{isPublishingSchedule ? 'Publishing…' : (publishPickerSource === 'schedule-tools' ? 'Publish Full Period' : 'Publish Full Schedule')}</button>
+            <button type="button" onClick={() => handlePublish('selected-weeks')} disabled={selectedPublishCandidateCount === 0 || isPublishingSchedule || (!publishAllRoles && selectedPublishRoleIds.length === 0)} className={`${T.btn} flex-1 py-3 disabled:opacity-50 disabled:cursor-not-allowed`}>{isPublishingSchedule ? 'Publishing…' : 'Publish Selected Weeks'}</button>
+            <button type="button" onClick={() => handlePublish('full-period')} disabled={fullPublishCandidateCount === 0 || isPublishingSchedule || (!publishAllRoles && selectedPublishRoleIds.length === 0)} className={`${T.btnAlt} flex-1 py-3 disabled:opacity-50 disabled:cursor-not-allowed`}>{isPublishingSchedule ? 'Publishing…' : (publishPickerSource === 'schedule-tools' ? 'Publish Full Period' : 'Publish Full Schedule')}</button>
             <button type="button" onClick={() => { if (!isPublishingSchedule) setIsPublishPickerOpen(false); }} disabled={isPublishingSchedule} className={`${T.btnAlt} flex-1 py-3 disabled:opacity-50 disabled:cursor-not-allowed`}>Cancel</button>
           </div>
         </div>

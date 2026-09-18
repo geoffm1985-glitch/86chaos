@@ -425,7 +425,7 @@ export const MASTER_ADMIN_EMAIL = (process.env.REACT_APP_MASTER_ADMIN_EMAIL || '
 export const EVENT_TAGS = ['Standard Day', 'Packers Game', 'Brewers Game', 'Live Music', 'Severe Weather', 'Private Catering', 'Holiday'];
 
 // --- VERSION TRACKING ---
-export const CURRENT_VERSION = '16.0.236';
+export const CURRENT_VERSION = '17.0.1';
 
 // --- Helpers ---
 const usePageVisible = () => {
@@ -1227,8 +1227,13 @@ export const getRestaurantExportPrefix = (appUser, fallback = '86chaos') => {
   return safeFilenamePart(name, fallback);
 };
 
+export const spreadsheetSafeCsvText = (value) => {
+  const text = String(value ?? '');
+  return /^[\t\r\n ]*[=+@]/.test(text) || /^[\t\r\n ]*-(?!\d+(?:\.\d+)?$)/.test(text) ? `'${text}` : text;
+};
+
 export const csvFromRows = (rows) => (rows || [])
-  .map(row => (row || []).map(v => `"${String(v ?? '').replace(/"/g, '""')}"`).join(','))
+  .map(row => (row || []).map(v => `"${spreadsheetSafeCsvText(v).replace(/"/g, '""')}"`).join(','))
   .join('\n');
 
 export const downloadTextFile = (filename, content, mime = 'text/plain;charset=utf-8;') => {

@@ -219,7 +219,9 @@ module.exports = async function handler(req, res) {
     const token = String(req.headers.authorization || '').replace(/^Bearer\s+/i, '').trim();
     if (!token) return res.status(401).json({ ok: false, error: 'Missing Firebase authorization token.' });
 
-    const decoded = await auth.verifyIdToken(token);
+    const decoded = await auth.verifyIdToken(token, true);
+    const authUser = await auth.getUser(decoded.uid);
+    if (authUser.disabled) return res.status(403).json({ ok: false, error: 'This account is disabled.' });
     const { user, diagnostics } = await getUserProfile(db, decoded);
     if (!user) {
       return res.status(404).json({
@@ -247,7 +249,8 @@ module.exports = async function handler(req, res) {
     return res.status(200).json({ ok: true, user, workspaces, diagnostics });
   } catch (err) {
     console.error('login-bootstrap API error:', err);
-    return res.status(500).json({ ok: false, error: err?.message || 'Login bootstrap check failed.' });
+    const code = String(err?.code || '');
+    return res.status(code.startsWith('auth/') ? 401 : 500).json({ ok: false, error: code.startsWith('auth/') ? 'Login authorization failed.' : 'Login bootstrap check failed.' });
   }
 };
 

@@ -229,6 +229,19 @@ const TabInventory = ({ addToast, appUser, clientData = {}, initialSubTab, onIni
   }, [opsIntelEnabled]);
 
   const safeInventoryWrite = ({ quiet = false, ...args } = {}) => safeWriteWithQueue({ user: appUser, addToast: quiet ? null : addToast, ...args });
+  const atomicWasteMutation = async ({ action, docId = '', data = {} }) => {
+    const operationId = globalThis.crypto?.randomUUID?.() || `waste_${Date.now()}_${Math.random().toString(36).slice(2,14)}`;
+    let lastError;
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      try {
+        const response = await secureFetch('/api/safe-write', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ action, operationId, restaurantId:appUser.restaurantId, docId, data:{...data,restaurantId:appUser.restaurantId} }) });
+        const result = await response.json().catch(()=>({}));
+        if(!response.ok){const error=new Error(result.error||'Waste and inventory could not be saved atomically.');error.nonRetryable=true;throw error;}
+        return result;
+      } catch (error) { lastError=error;if(!error?.nonRetryable&&attempt===0&&typeof navigator!=='undefined'&&navigator.onLine!==false)continue;throw error; }
+    }
+    throw lastError;
+  };
 
   // --- LOGIC ---
   const parseInventoryQuantity = (value, fallback = 0) => {
@@ -436,7 +449,7 @@ const handleLogWaste = async (e) => {
     const totalCostLost = pricePerStockUnit * stockDeduction;
     const unitLabel = mode === 'weight' ? 'lb' : mode === 'stock' ? 'stock unit' : (wUnitLabel || item.burnUnitLabel || 'unit');
 
-    await safeInventoryWrite({ action: 'add', collectionName: "wasteLogs", label: "Waste log", data: { 
+    await atomicWasteMutation({ action: 'waste-create', data: { 
       itemId: item.id, 
       itemName: item.name, 
       qty: burnAmount, 
@@ -455,14 +468,6 @@ const handleLogWaste = async (e) => {
       restaurantId: appUser.restaurantId 
     } });
 
-    if (stockDeduction > 0) {
-      await safeInventoryWrite({ action: "update", collectionName: "inventoryItems", docId: item.id, label: "Waste stock deduction", before: item, data: { 
-        currentStock: Math.max(0, (parseFloat(item.currentStock) || 0) - stockDeduction),
-        ...(mode === 'weight' && weightPerStockUnit > 0 ? { weightPerStockUnit } : {}),
-        ...(mode ? { burnDefaultMode: mode } : {})
-      } });
-    }
-
     setWItemId(''); setWQty(''); setWSearchTerm(''); setWMode('count'); setWWeightPerStockUnit(''); setWUnitLabel('unit');
     const deductedText = stockDeduction > 0 ? `${stockDeduction.toFixed(3).replace(/0+$/,'').replace(/\.$/,'')} stock unit${stockDeduction === 1 ? '' : 's'}` : 'no stock';
     addToast('Burn Logged', `$${totalCostLost.toFixed(2)} logged. ${burnAmount} ${unitLabel}${burnAmount === 1 ? '' : 's'} deducted as ${deductedText}.`);
@@ -471,11 +476,8 @@ const handleLogWaste = async (e) => {
   const handleDeleteWaste = async (log) => {
     if (!window.confirm(`Delete burn log for ${log.itemName} and restore stock?`)) return;
     const item = inventoryItems.find(i => i.id === log.itemId);
-    if (item) {
-       const stockRestoration = parseFloat(log.stockDeducted) || getBurnStockDeduction(log.qty, item, { mode: log.burnMode, weightPerStockUnit: log.weightPerStockUnit, unitsPerStockUnit: log.unitsPerStockUnit });
-       if (stockRestoration > 0) await safeInventoryWrite({ action: "update", collectionName: "inventoryItems", docId: item.id, label: "Waste stock restore", before: item, data: { currentStock: Math.max(0, (parseFloat(item.currentStock)||0) + stockRestoration) } });
-    }
-    await safeInventoryWrite({ action: "delete", collectionName: "wasteLogs", docId: log.id, label: "Waste log", before: log });
+    if (!item) return addToast('Delete Blocked', 'The linked inventory item is unavailable; no stock was changed.');
+    await atomicWasteMutation({ action:'waste-delete', docId:log.id, data:{ itemId:item.id } });
     addToast('Log Deleted', 'Stock restored successfully.');
   };
 
@@ -486,21 +488,16 @@ const handleLogWaste = async (e) => {
     
     if (item) {
        const originalLog = wasteLogs.find(w => w.id === log.id);
-       const oldQty = parseFloat(originalLog.qty) || 0;
        const newQty = parseFloat(log.qty) || 0;
        const mode = originalLog?.burnMode || log.burnMode || 'count';
        const unitsPerStockUnit = parseFloat(originalLog?.unitsPerStockUnit) || getBurnUnitsPerStockUnit(item);
        const weightPerStockUnit = parseFloat(originalLog?.weightPerStockUnit) || getBurnWeightPerStockUnit(item);
 
-       const oldDeduction = parseFloat(originalLog?.stockDeducted) || getBurnStockDeduction(oldQty, item, { mode, unitsPerStockUnit, weightPerStockUnit });
        const newDeduction = getBurnStockDeduction(newQty, item, { mode, unitsPerStockUnit, weightPerStockUnit });
-       const stockDifference = newDeduction - oldDeduction; 
        const newCostLost = (parseFloat(item.price) || 0) * newDeduction;
 
-       if (stockDifference !== 0) await safeInventoryWrite({ action: "update", collectionName: "inventoryItems", docId: item.id, label: "Waste edit stock adjustment", before: item, data: { 
-         currentStock: Math.max(0, (parseFloat(item.currentStock) || 0) - stockDifference) 
-       } });
-       await safeInventoryWrite({ action: "update", collectionName: "wasteLogs", docId: log.id, label: "Waste log edit", before: log, data: { 
+       await atomicWasteMutation({ action:'waste-update', docId:log.id, data: { 
+         itemId: item.id,
          qty: newQty, 
          burnAmount: newQty,
          reason: log.reason, 
@@ -512,7 +509,8 @@ const handleLogWaste = async (e) => {
          burnQtyMode: mode === 'count' ? 'individual_units' : mode 
        } });
     } else {
-       await safeInventoryWrite({ action: "update", collectionName: "wasteLogs", docId: log.id, label: "Waste log edit", before: log, data: { qty: log.qty, reason: log.reason } });
+       addToast('Update Blocked', 'The linked inventory item is unavailable; no waste or stock data was changed.');
+       return;
     }
     
     setEditWaste(null);
