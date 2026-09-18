@@ -1,17 +1,18 @@
 {
-  "version": "17.0.2",
-  "name": "86 Chaos 17.0.2",
-  "build": "17.0.2",
-  "label": "86 Chaos 17.0.2",
+  "version": "17.0.3",
+  "name": "86 Chaos 17.0.3",
+  "build": "17.0.3",
+  "label": "86 Chaos 17.0.3",
   "releasedAt": "2026-09-18T00:00:00.000Z",
-  "releaseTitle": "Deterministic Emulator Concurrency and Publication Fixture Repair",
+  "releaseTitle": "Publication Resume, Inventory Integrity, and Certification Identity Repair",
   "notes": [
-    "Makes POS concurrency tests winner-independent and records sanitized Firestore transaction-attempt evidence.",
-    "Adds a narrow whole-transaction retry for the exact Firestore 7.11.x closed-transaction emulator condition while preserving idempotency and domain conflicts.",
-    "Replaces Daily Close wall-clock overlap guesses with a deterministic first-read barrier and verifies stale edits plus lost acknowledgements.",
-    "Repairs canonical schedule-publication identity fixtures and strengthens exact employee/date and notification-timeout evidence."
+    "Repairs emulator trace startup and distinguishes barrier participation from actual overlapping SDK reads.",
+    "Makes API contract analysis fail closed when recognized shared helpers contain unreachable or ineffective enforcement.",
+    "Repairs publication resume verification, exact time-off recovery, and per-shift committed-content evidence.",
+    "Prevents waste-log item reassignment, stale inventory mutation, and idempotency-key request confusion.",
+    "Binds full certification to exact source, immutable deployment, mandatory group, and manual evidence identity."
   ],
-  "title": "86 Chaos 17.0.2",
-  "summary": "Repairs deterministic emulator concurrency evidence and canonical schedule-publication fixtures.",
-  "description": "Preserves the 17.0.1 security model while making POS, Daily Close, and schedule publication emulator regressions deterministic, observable, and fail-closed."
+  "title": "86 Chaos 17.0.3",
+  "summary": "Repairs publication resume truth, inventory mutation integrity, and fail-closed certification identity.",
+  "description": "Preserves the 17.0.2 security model while closing verified publication, inventory, analyzer, permission, and certification evidence defects."
 }

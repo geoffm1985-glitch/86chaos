@@ -7,6 +7,7 @@ test('release evidence rejects both modified source and a changed commit',()=>{
     assert.equal(compareSourceIdentity(before,{...before,commit:'new-commit'}).ok,false);
   } finally { fs.rmSync(dir,{recursive:true,force:true}); }
 });
+test('full certification rejects null, wrong-branch, and same-version wrong-source identity',()=>{const base={version:'17.0.3',sourceHash:'a'.repeat(64),commit:'commit-1',branch:'testing',dirty:false};const options={requireCertification:true,expectedVersion:'17.0.3',expectedCommit:'commit-1',expectedBranch:'testing',expectedManifest:'a'.repeat(64),archiveSha256:'b'.repeat(64)};assert.equal(compareSourceIdentity(base,base,options).ok,true);assert.equal(compareSourceIdentity({...base,commit:null},{...base,commit:null},options).ok,false);assert.equal(compareSourceIdentity({...base,branch:'main'},{...base,branch:'main'},options).ok,false);assert.equal(compareSourceIdentity({...base,sourceHash:'c'.repeat(64)},{...base,sourceHash:'c'.repeat(64)},options).ok,false);assert.equal(compareSourceIdentity(base,base,{...options,archiveSha256:''}).ok,false);});
 test('Help JS/CJS mirrors have the same reviewed customer articles',()=>{
   const js=fs.readFileSync(path.join(__dirname,'../src/core/customerHelpKnowledge.js'),'utf8'); const cjs=fs.readFileSync(path.join(__dirname,'../src/core/customerHelpKnowledge.cjs'),'utf8');
   assert.equal(js.slice(0,js.indexOf('const CUSTOMER_HELP_ARTICLES_LEGACY =')).trim(),cjs.slice(0,cjs.indexOf('module.exports =')).trim());

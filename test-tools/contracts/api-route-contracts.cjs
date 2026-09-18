@@ -8,6 +8,7 @@ module.exports=Object.freeze({
   ]),
   adapters:Object.freeze({
     'version.js':{kind:'public',reviewed:true,methods:['GET'],reason:'Immutable deployment identity.'},
+    'build-identity.js':{kind:'public',reviewed:true,methods:['GET'],reason:'Immutable source and deployment identity.'},
     'privacy.js':{kind:'public',reviewed:true,methods:['GET'],reason:'Public legal document.'},
     'quickbooks-webhook.js':{kind:'webhook',reviewed:true,reason:'Provider signature-verified webhook.'},
     'mfa-recovery-code.js':{kind:'recovery-code',reviewed:true,reason:'Rate-limited, hashed, transactional one-time recovery credential.'},

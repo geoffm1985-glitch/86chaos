@@ -9,6 +9,7 @@ const { vendorMemory } = require('./_vendor-memory');
 const { approveMenu } = require('./_menu-approval');
 const { recipeCosting } = require('./_recipe-costing');
 const { assertNotReservedBridgeRoot } = require('./_pos-bridge-boundaries');
+const crypto = require('node:crypto');
 const MAX_BODY_BYTES = 1024 * 1024;
 function parseBoundedBody(req) {
   if (String(req.headers?.['content-encoding'] || 'identity').toLowerCase() !== 'identity') throw Object.assign(new Error('Compressed requests are not accepted.'), { statusCode:415, code:'invalid_request' });
@@ -28,8 +29,8 @@ const PERMS = {
   tasks: ['prep','team'], tempLogs: ['prep','team'], wasteLogs: ['inventory','prep','team'],
   maintenanceLogs: ['team'], pmSchedules: ['team'], events: ['events','schedule','team'], messages: ['messages','team']
 };
-const GENERIC_COLLECTION_CONTRACTS = Object.freeze(Object.fromEntries(Object.entries(PERMS).map(([collectionName, permissions]) => [collectionName, Object.freeze({
-  actions: Object.freeze(['add', 'set', 'update', 'replace', 'delete']),
+const GENERIC_COLLECTION_CONTRACTS = Object.freeze(Object.fromEntries(Object.entries(PERMS).filter(([collectionName])=>!['sales','wasteLogs'].includes(collectionName)).map(([collectionName, permissions]) => [collectionName, Object.freeze({
+  actions: Object.freeze(collectionName==='inventoryItems'?['add','update','delete']:['add', 'set', 'update', 'replace', 'delete']),
   permissions: Object.freeze([...permissions]),
   ownerAllowed: true
 })])));
@@ -78,12 +79,13 @@ function forbiddenPayloadPath(value, collectionName, prefix = '') {
   }
   return '';
 }
-function assertPayloadAllowed(collectionName, data) {
+function assertPayloadAllowed(collectionName, data, action='') {
   const forbidden = forbiddenPayloadPath(data, collectionName);
   if (forbidden) {
     const error = new Error('The requested fields are server-owned and cannot be changed here.');
     error.statusCode = 403; error.code = 'server_owned_field_denied'; error.field = forbidden; throw error;
   }
+  if(collectionName==='inventoryItems'&&action!=='add'&&Object.prototype.hasOwnProperty.call(data,'currentStock'))throw Object.assign(new Error('Inventory stock must be changed through an idempotent inventory operation.'),{statusCode:403,code:'inventory_operation_required',field:'currentStock'});
 }
 function protectServerOwnedFields(incoming = {}, existing = {}) {
   const payload = { ...incoming };
@@ -137,7 +139,7 @@ async function executeGenericMutation(db, { collectionName, action, docId, data,
       revision,
       updatedAt: nowIso,
       updatedBy: actor,
-      writeEngine: 'v17.0.2-safe-write',
+      writeEngine: 'v17.0.3-safe-write',
       ...(snap.exists ? {} : { createdAt: nowIso, createdBy: actor })
     };
     if (action === 'replace') tx.set(ref, payload, { merge: false });
@@ -171,25 +173,44 @@ async function mutateRosterRole(db, { action, restaurantId, roleId, name, actor,
 }
 function uniqueRoleNames(values){const seen=new Set();return values.map(roleName).filter(value=>{const key=roleNameKey(value);if(!key||seen.has(key))return false;seen.add(key);return true;});}
 function wasteOperationId(value){const id=clean(value);if(!/^[A-Za-z0-9_-]{16,160}$/.test(id)){const error=new Error('A valid inventory operation ID is required.');error.statusCode=400;error.code='invalid_request';throw error;}return id;}
+function stableIntent(value){if(Array.isArray(value))return value.map(stableIntent);if(!value||typeof value!=='object')return value;return Object.fromEntries(Object.keys(value).sort().map(key=>[key,stableIntent(value[key])]));}
+function operationIntentDigest(value){return crypto.createHash('sha256').update(JSON.stringify(stableIntent(value))).digest('hex');}
+function finiteNonNegative(value,label){const number=Number(value);if(!Number.isFinite(number)||number<0)throw Object.assign(new Error(`${label} must be a finite non-negative number.`),{statusCode:400,code:'invalid_inventory_quantity'});return number;}
 async function mutateWaste(db,{action,restaurantId,body,actor,nowIso}){
-  const operationId=wasteOperationId(body.operationId),opRef=db.collection('inventoryMutationOperations').doc(operationId),itemId=clean(body.data?.itemId||body.itemId),logId=clean(body.docId),itemRef=db.collection('inventoryItems').doc(itemId),logRef=action==='waste-create'?db.collection('wasteLogs').doc(`waste_${operationId}`):db.collection('wasteLogs').doc(logId);
+  const operationId=wasteOperationId(body.operationId),opRef=db.collection('inventoryMutationOperations').doc(operationId),itemId=clean(body.data?.itemId||body.itemId),logId=clean(body.docId),itemRef=db.collection('inventoryItems').doc(itemId),logRef=action==='waste-create'?db.collection('wasteLogs').doc(`waste_${operationId}`):db.collection('wasteLogs').doc(logId),expectedRevision=Number(body.expectedRevision??body.data?.expectedRevision??0);
   if(!itemId||(!logId&&action!=='waste-create')){const error=new Error('Inventory item and waste record identity are required.');error.statusCode=400;error.code='invalid_request';throw error;}
+  const meaningfulData={...(body.data||{})};delete meaningfulData.restaurantId;delete meaningfulData.workspaceId;delete meaningfulData.expectedRevision;const intentDigest=operationIntentDigest({restaurantId,action,itemId,logId:logRef.id,expectedRevision:action==='waste-create'?0:expectedRevision,data:meaningfulData});
   return db.runTransaction(async tx=>{
     const [opSnap,itemSnap,logSnap]=await Promise.all([tx.get(opRef),tx.get(itemRef),tx.get(logRef)]);
-    if(opSnap.exists){const prior=opSnap.data()||{};if(prior.restaurantId!==restaurantId||prior.action!==action)throw Object.assign(new Error('Inventory operation ID is already bound to another request.'),{statusCode:409,code:'operation_mismatch'});return{status:'idempotent',id:prior.logId,currentStock:prior.resultingStock};}
+    if(opSnap.exists){const prior=opSnap.data()||{};if(prior.restaurantId!==restaurantId||prior.action!==action||prior.intentDigest!==intentDigest)throw Object.assign(new Error('Inventory operation ID is already bound to another request.'),{statusCode:409,code:'operation_mismatch'});return{status:'idempotent',id:prior.logId,currentStock:prior.resultingStock};}
     if(!itemSnap.exists||existingTenantId(itemSnap.data()||{})!==restaurantId)throw Object.assign(new Error('The requested record is unavailable.'),{statusCode:404,code:'target_unavailable'});
-    const item=itemSnap.data()||{},currentStock=Number(item.currentStock||0);let resultingStock=currentStock,logPayload=null;
+    const item=itemSnap.data()||{},currentStock=finiteNonNegative(item.currentStock??0,'Current stock');let resultingStock=currentStock,logPayload=null;
     if(action==='waste-create'){
       if(logSnap.exists)throw Object.assign(new Error('Waste operation already exists without valid idempotency evidence.'),{statusCode:409,code:'operation_conflict'});
-      const deduction=Math.max(0,Number(body.data?.stockDeducted||0));resultingStock=Math.max(0,currentStock-deduction);logPayload={...body.data,itemId,restaurantId,workspaceId:restaurantId,stockDeducted:deduction,inventoryOperationId:operationId,revision:1,createdAt:nowIso,createdBy:actor,updatedAt:nowIso,updatedBy:actor};tx.create(logRef,logPayload);
+      const deduction=finiteNonNegative(body.data?.stockDeducted??0,'Waste deduction');resultingStock=Math.max(0,currentStock-deduction);logPayload={...meaningfulData,itemId,restaurantId,workspaceId:restaurantId,stockDeducted:deduction,inventoryOperationId:operationId,revision:1,createdAt:nowIso,createdBy:actor,updatedAt:nowIso,updatedBy:actor};tx.create(logRef,logPayload);
     }else{
-      if(!logSnap.exists||existingTenantId(logSnap.data()||{})!==restaurantId)throw Object.assign(new Error('The requested record is unavailable.'),{statusCode:404,code:'target_unavailable'});const currentLog=logSnap.data()||{},oldDeduction=Math.max(0,Number(currentLog.stockDeducted||0));
+      if(!logSnap.exists||existingTenantId(logSnap.data()||{})!==restaurantId)throw Object.assign(new Error('The requested record is unavailable.'),{statusCode:404,code:'target_unavailable'});const currentLog=logSnap.data()||{},canonicalItemId=clean(currentLog.itemId),oldDeduction=finiteNonNegative(currentLog.stockDeducted??0,'Existing waste deduction');
+      if(!canonicalItemId||canonicalItemId!==itemId)throw Object.assign(new Error('A waste record cannot be reassigned to another inventory item.'),{statusCode:409,code:'waste_item_mismatch'});
+      if(!Number.isInteger(expectedRevision)||expectedRevision<1||expectedRevision!==Number(currentLog.revision||0))throw Object.assign(new Error('The waste record changed after it was opened.'),{statusCode:409,code:'stale_waste_record'});
       if(action==='waste-delete'){resultingStock=currentStock+oldDeduction;tx.delete(logRef);}
-      else if(action==='waste-update'){const nextDeduction=Math.max(0,Number(body.data?.stockDeducted||0)),difference=nextDeduction-oldDeduction;resultingStock=Math.max(0,currentStock-difference);logPayload={...body.data,itemId,restaurantId,workspaceId:clean(currentLog.workspaceId||restaurantId),stockDeducted:nextDeduction,revision:Number(currentLog.revision||0)+1,updatedAt:nowIso,updatedBy:actor,lastInventoryOperationId:operationId};tx.set(logRef,logPayload,{merge:true});}
+      else if(action==='waste-update'){const nextDeduction=finiteNonNegative(body.data?.stockDeducted??0,'Waste deduction'),difference=nextDeduction-oldDeduction;resultingStock=Math.max(0,currentStock-difference);logPayload={...meaningfulData,itemId:canonicalItemId,restaurantId,workspaceId:clean(currentLog.workspaceId||restaurantId),stockDeducted:nextDeduction,revision:Number(currentLog.revision||0)+1,updatedAt:nowIso,updatedBy:actor,lastInventoryOperationId:operationId};tx.set(logRef,logPayload,{merge:true});}
       else throw Object.assign(new Error('Unsupported waste operation.'),{statusCode:400,code:'invalid_request'});
     }
     tx.set(itemRef,{currentStock:resultingStock,revision:Number(item.revision||0)+1,updatedAt:nowIso,updatedBy:actor,...(body.data?.weightPerStockUnit>0?{weightPerStockUnit:Number(body.data.weightPerStockUnit)}:{}),...(body.data?.burnMode?{burnDefaultMode:body.data.burnMode}:{})},{merge:true});
-    tx.create(opRef,{restaurantId,action,operationId,itemId,logId:logRef.id,resultingStock,createdAt:nowIso,createdBy:actor});return{status:'committed',id:logRef.id,currentStock:resultingStock};
+    tx.create(opRef,{restaurantId,action,operationId,itemId,logId:logRef.id,intentDigest,resultingStock,createdAt:nowIso,createdBy:actor});return{status:'committed',id:logRef.id,currentStock:resultingStock};
+  });
+}
+async function mutateInventoryStock(db,{restaurantId,body,actor,nowIso}){
+  const operationId=wasteOperationId(body.operationId),itemId=clean(body.data?.itemId||body.itemId||body.docId),expectedRevision=Number(body.expectedRevision??body.data?.expectedRevision),nextStock=finiteNonNegative(body.data?.currentStock,'Current stock');
+  if(!itemId||!Number.isInteger(expectedRevision)||expectedRevision<0)throw Object.assign(new Error('Inventory item identity and expected revision are required.'),{statusCode:400,code:'invalid_request'});
+  const patch={currentStock:nextStock};if(Object.prototype.hasOwnProperty.call(body.data||{},'pendingQty'))patch.pendingQty=finiteNonNegative(body.data.pendingQty,'Pending quantity');
+  const intentDigest=operationIntentDigest({restaurantId,action:'inventory-stock-set',itemId,expectedRevision,patch}),opRef=db.collection('inventoryMutationOperations').doc(operationId),itemRef=db.collection('inventoryItems').doc(itemId);
+  return db.runTransaction(async tx=>{
+    const [opSnap,itemSnap]=await Promise.all([tx.get(opRef),tx.get(itemRef)]);
+    if(opSnap.exists){const prior=opSnap.data()||{};if(prior.restaurantId!==restaurantId||prior.action!=='inventory-stock-set'||prior.intentDigest!==intentDigest)throw Object.assign(new Error('Inventory operation ID is already bound to another request.'),{statusCode:409,code:'operation_mismatch'});return{status:'idempotent',id:itemId,currentStock:prior.resultingStock,revision:prior.resultingRevision};}
+    if(!itemSnap.exists||existingTenantId(itemSnap.data()||{})!==restaurantId)throw Object.assign(new Error('The requested record is unavailable.'),{statusCode:404,code:'target_unavailable'});
+    const item=itemSnap.data()||{},revision=Number(item.revision||0);finiteNonNegative(item.currentStock??0,'Current stock');if(revision!==expectedRevision)throw Object.assign(new Error('The inventory item changed after it was opened.'),{statusCode:409,code:'stale_inventory_item'});
+    const resultingRevision=revision+1;tx.set(itemRef,{...patch,revision:resultingRevision,updatedAt:nowIso,updatedBy:actor},{merge:true});tx.create(opRef,{restaurantId,action:'inventory-stock-set',operationId,itemId,intentDigest,resultingStock:nextStock,resultingRevision,createdAt:nowIso,createdBy:actor});return{status:'committed',id:itemId,currentStock:nextStock,revision:resultingRevision};
   });
 }
 module.exports = async function handler(req, res) {
@@ -214,10 +235,11 @@ module.exports = async function handler(req, res) {
       return res.status(200).json({ ok: true, ...await foodSafety({ db: workspace.db, ctx, body }) });
     }
     const requestedPermissions = collectionName && GENERIC_COLLECTION_CONTRACTS[collectionName]?.permissions || [];
-    const roleMutation=action.startsWith('roster-role-'),wasteMutation=action.startsWith('waste-');
-    const auth = await authorize(req, app, { allowTenantAdmin: true, targetRestaurantId: restaurantId, requiredPermissions: roleMutation?['schedule','team','settings']:wasteMutation?['inventory']:requestedPermissions });
+    const roleMutation=action.startsWith('roster-role-'),wasteMutation=action.startsWith('waste-'),inventoryStockMutation=action==='inventory-stock-set';
+    const auth = await authorize(req, app, { allowTenantAdmin: true, targetRestaurantId: restaurantId, requiredPermissions: roleMutation?['schedule','team','settings']:wasteMutation||inventoryStockMutation?['inventory']:requestedPermissions });
     if (!auth.ok) return res.status(auth.status).json({ ok: false, error: auth.error });
     if(wasteMutation){const appCheck=await requireAppCheckIfEnforced(auth.app||app,req);if(!appCheck.ok)return res.status(appCheck.status||401).json({ok:false,error:appCheck.error});const out=await mutateWaste(auth.db||db,{action,restaurantId:clean(restaurantId||auth.restaurantId),body,actor:auth.email||auth.uid,nowIso:new Date().toISOString()});await writeAudit(auth.db||db,auth,`WASTE_${action.replace('waste-','').toUpperCase()}`,`wasteLogs/${out.id}`,'Atomic waste and stock mutation',restaurantId||auth.restaurantId);return res.status(200).json({ok:true,...out});}
+    if(inventoryStockMutation){const appCheck=await requireAppCheckIfEnforced(auth.app||app,req);if(!appCheck.ok)return res.status(appCheck.status||401).json({ok:false,error:appCheck.error});const out=await mutateInventoryStock(auth.db||db,{restaurantId:clean(restaurantId||auth.restaurantId),body,actor:auth.email||auth.uid,nowIso:new Date().toISOString()});await writeAudit(auth.db||db,auth,'INVENTORY_STOCK_SET',`inventoryItems/${out.id}`,'Revision-guarded idempotent stock mutation',restaurantId||auth.restaurantId);return res.status(200).json({ok:true,...out});}
     if(roleMutation){
       const appCheck=await requireAppCheckIfEnforced(auth.app||app,req);if(!appCheck.ok)return res.status(appCheck.status||401).json({ok:false,error:appCheck.error});
       const out=await mutateRosterRole(auth.db||db,{action,restaurantId:clean(restaurantId||auth.restaurantId),roleId:docId,name:data.name||body.name,actor:auth.email||auth.uid,nowIso:new Date().toISOString()});
@@ -236,8 +258,9 @@ module.exports = async function handler(req, res) {
     if (!collectionName || !/^[A-Za-z0-9_-]+$/.test(collectionName)) return res.status(400).json({ ok: false, error: 'Invalid collection name.' });
     assertNotReservedBridgeRoot(collectionName);
     assertGenericContract(collectionName, action);
-    assertPayloadAllowed(collectionName, data);
+    assertPayloadAllowed(collectionName, data, action);
     if (!canWrite(auth, collectionName, restaurantId)) return res.status(403).json({ ok: false, error: `Missing write permission for ${collectionName}.` });
+    const genericAppCheck=await requireAppCheckIfEnforced(auth.app||app,req);if(!genericAppCheck.ok)return res.status(genericAppCheck.status||401).json({ok:false,error:genericAppCheck.error});
     const activeDb = auth.db || db;
     const requestedTenant = clean(restaurantId || auth.restaurantId);
     if (!requestedTenant || requestedTenant !== clean(auth.restaurantId) && !auth.isSuperAdmin) return res.status(403).json({ ok: false, error: 'The requested record is unavailable.' });
@@ -250,4 +273,4 @@ module.exports = async function handler(req, res) {
     return res.status(err.statusCode || 500).json({ ok: false, code: err.code, error: publicMessage });
   }
 };
-module.exports._test = { MAX_BODY_BYTES, parseBoundedBody, PERMS, canWrite, GENERIC_COLLECTION_CONTRACTS, DENIED_COLLECTIONS, FORBIDDEN_AUTHORITY_FIELDS, SERVER_OWNED_FIELDS, existingTenantId, assertGenericContract, forbiddenPayloadPath, assertPayloadAllowed, protectServerOwnedFields, verifyExistingTargetOwnership, executeGenericMutation, mutateRosterRole, uniqueRoleNames, mutateWaste, wasteOperationId };
+module.exports._test = { MAX_BODY_BYTES, parseBoundedBody, PERMS, canWrite, GENERIC_COLLECTION_CONTRACTS, DENIED_COLLECTIONS, FORBIDDEN_AUTHORITY_FIELDS, SERVER_OWNED_FIELDS, existingTenantId, assertGenericContract, forbiddenPayloadPath, assertPayloadAllowed, protectServerOwnedFields, verifyExistingTargetOwnership, executeGenericMutation, mutateRosterRole, uniqueRoleNames, mutateWaste, mutateInventoryStock, operationIntentDigest, finiteNonNegative, wasteOperationId };

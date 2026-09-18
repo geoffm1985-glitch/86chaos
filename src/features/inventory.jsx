@@ -229,12 +229,12 @@ const TabInventory = ({ addToast, appUser, clientData = {}, initialSubTab, onIni
   }, [opsIntelEnabled]);
 
   const safeInventoryWrite = ({ quiet = false, ...args } = {}) => safeWriteWithQueue({ user: appUser, addToast: quiet ? null : addToast, ...args });
-  const atomicWasteMutation = async ({ action, docId = '', data = {} }) => {
+  const atomicWasteMutation = async ({ action, docId = '', data = {}, expectedRevision = 0 }) => {
     const operationId = globalThis.crypto?.randomUUID?.() || `waste_${Date.now()}_${Math.random().toString(36).slice(2,14)}`;
     let lastError;
     for (let attempt = 0; attempt < 2; attempt += 1) {
       try {
-        const response = await secureFetch('/api/safe-write', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ action, operationId, restaurantId:appUser.restaurantId, docId, data:{...data,restaurantId:appUser.restaurantId} }) });
+        const response = await secureFetch('/api/safe-write', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ action, operationId, expectedRevision, restaurantId:appUser.restaurantId, docId, data:{...data,restaurantId:appUser.restaurantId} }) });
         const result = await response.json().catch(()=>({}));
         if(!response.ok){const error=new Error(result.error||'Waste and inventory could not be saved atomically.');error.nonRetryable=true;throw error;}
         return result;
@@ -306,7 +306,7 @@ const TabInventory = ({ addToast, appUser, clientData = {}, initialSubTab, onIni
   const updateStock = async (id, newStock) => {
     const item = inventoryItems.find(i => i.id === id);
     const nextStock = Math.max(0, parseFloat(newStock) || 0);
-    await safeInventoryWrite({ action: "update", collectionName: "inventoryItems", docId: id, label: "Inventory stock", before: item, data: { currentStock: nextStock } });
+    await atomicWasteMutation({ action:'inventory-stock-set', docId:id, expectedRevision:Number(item?.revision||0), data:{ itemId:id,currentStock:nextStock } });
     const lastImpactMs = item?.menuImpactAlertedAt ? new Date(item.menuImpactAlertedAt).getTime() : 0;
     const crossedToZero = item && Number(item.currentStock || 0) > 0 && nextStock <= 0 && (!lastImpactMs || Date.now() - lastImpactMs > 12 * 60 * 60 * 1000);
     if (crossedToZero) {
@@ -477,7 +477,7 @@ const handleLogWaste = async (e) => {
     if (!window.confirm(`Delete burn log for ${log.itemName} and restore stock?`)) return;
     const item = inventoryItems.find(i => i.id === log.itemId);
     if (!item) return addToast('Delete Blocked', 'The linked inventory item is unavailable; no stock was changed.');
-    await atomicWasteMutation({ action:'waste-delete', docId:log.id, data:{ itemId:item.id } });
+    await atomicWasteMutation({ action:'waste-delete', docId:log.id, expectedRevision:Number(log.revision||0), data:{ itemId:item.id } });
     addToast('Log Deleted', 'Stock restored successfully.');
   };
 
@@ -496,7 +496,7 @@ const handleLogWaste = async (e) => {
        const newDeduction = getBurnStockDeduction(newQty, item, { mode, unitsPerStockUnit, weightPerStockUnit });
        const newCostLost = (parseFloat(item.price) || 0) * newDeduction;
 
-       await atomicWasteMutation({ action:'waste-update', docId:log.id, data: { 
+       await atomicWasteMutation({ action:'waste-update', docId:log.id, expectedRevision:Number(originalLog?.revision||log.revision||0), data: { 
          itemId: item.id,
          qty: newQty, 
          burnAmount: newQty,
@@ -742,7 +742,7 @@ const executeOrder = async (method) => {
   const handleReceiveDelivery = async (vendorId) => {
     const itemsToReceive = inventoryItems.filter(i => i.supplierId === vendorId && (i.pendingQty || 0) > 0);
     for (const item of itemsToReceive) {
-      await safeInventoryWrite({ action: "update", collectionName: "inventoryItems", docId: item.id, label: "Delivery received", before: item, data: { currentStock: (parseFloat(item.currentStock) || 0) + (parseFloat(item.pendingQty) || 0), pendingQty: 0 } });
+      await atomicWasteMutation({ action:'inventory-stock-set', docId:item.id, expectedRevision:Number(item.revision||0), data:{ itemId:item.id,currentStock:(parseFloat(item.currentStock)||0)+(parseFloat(item.pendingQty)||0),pendingQty:0 } });
     }
     addToast('Delivery Accepted', `Stock automatically updated for ${itemsToReceive.length} items.`);
   };

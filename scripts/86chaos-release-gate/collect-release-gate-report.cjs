@@ -2,6 +2,7 @@ const { captureSourceIdentity, compareSourceIdentity } = require('./source-ident
 const { validateReleaseSkips } = require('./expected-skips.cjs');
 const fs = require('fs');
 const path = require('path');
+const cp = require('child_process');
 const { ensureRunDir, readJsonIfExists } = require('./run-context.cjs');
 const { generateFailedOnlyManifestFromRun } = require('./failed-only-manifest-utils.cjs');
 const {
@@ -24,6 +25,7 @@ function walk(dir, acc = []) {
 function readJson(p) { return readJsonIfExists(p, releaseGateJsonDiagnostics); }
 function rel(p) { return path.relative(root, p).replace(/\\/g, '/'); }
 function hasOwn(data, key) { return Object.prototype.hasOwnProperty.call(data || {}, key); }
+function fetchJsonSync(url){if(!url)return null;const script="const u=process.argv[1];fetch(u,{headers:{'Cache-Control':'no-cache'}}).then(async r=>{if(!r.ok)throw new Error('HTTP '+r.status);process.stdout.write(await r.text())}).catch(e=>{console.error(e.message);process.exit(1)});";const result=cp.spawnSync(process.execPath,['-e',script,url],{encoding:'utf8',timeout:20000,maxBuffer:1024*1024});if(result.status!==0)return null;try{return JSON.parse(result.stdout||'{}');}catch(_){return null;}}
 
 const requiredArtifacts = [
   'runner-state.json',
@@ -431,8 +433,14 @@ for (const text of javaFailures) addGroup('missing-java-prerequisite', text);
 for (const text of nodeFailures) addGroup('node-test-failure', text);
 
 const sourceIdentityEnd = captureSourceIdentity(root);
-const sourceIdentityValidation = compareSourceIdentity(readJsonIfExists(path.join(runDir, 'source-identity-start.json')), sourceIdentityEnd);
+const certificationMode=preflight.certificationMode===true||process.env.CHAOS_CERTIFICATION_MODE==='true';
+const sourceIdentityValidation = compareSourceIdentity(readJsonIfExists(path.join(runDir, 'source-identity-start.json')), sourceIdentityEnd,{requireCertification:certificationMode,expectedVersion:preflight.expectedVersion||process.env.CHAOS_EXPECTED_VERSION,expectedCommit:preflight.expectedIdentity?.commit||process.env.CHAOS_EXPECTED_GIT_COMMIT,expectedBranch:preflight.expectedIdentity?.branch||process.env.CHAOS_EXPECTED_BRANCH||'testing',expectedManifest:preflight.expectedIdentity?.sourceManifestHash||process.env.CHAOS_SOURCE_MANIFEST_HASH,archiveSha256:preflight.expectedIdentity?.sourceArchiveSha256||process.env.CHAOS_SOURCE_ARCHIVE_SHA256});
 fs.writeFileSync(path.join(runDir, 'source-identity-end.json'), JSON.stringify({ ...sourceIdentityEnd, validation: sourceIdentityValidation }, null, 2));
+const deploymentIdentityFailures=[];let deploymentIdentityEnd=null;
+if(certificationMode){const base=String(appUrl||'').replace(/\/+$/,'');const client=fetchJsonSync(`${base}/build-identity.json?releaseGatePostflight=${encodeURIComponent(runId)}`),server=fetchJsonSync(`${base}/api/build-identity?releaseGatePostflight=${encodeURIComponent(runId)}`);deploymentIdentityEnd={client,server};const start=preflight.deploymentIdentityStart||{};if(!client||!server)deploymentIdentityFailures.push('Deployment identity could not be verified after deployed testing.');else{for(const key of ['version','sourceManifestHash'])if((client[key]||client[key==='sourceManifestHash'?'sourceHash':key])!==(start.client?.[key]||start.client?.[key==='sourceManifestHash'?'sourceHash':key]))deploymentIdentityFailures.push(`Deployed client ${key} changed during testing.`);for(const key of ['version','sourceManifestHash','sourceArchiveSha256','gitCommit','gitBranch','vercelDeploymentId','vercelDeploymentUrl','vercelProjectId','firebaseTestingProject','rulesHash','firebaseConfigHash','vercelConfigHash'])if(server[key]!==start.server?.[key])deploymentIdentityFailures.push(`Deployed server ${key} changed during testing.`);}}
+const certificationGroups=readJsonIfExists(path.join(root,'test-tools/certification/groups.json'),releaseGateJsonDiagnostics)||{};const mandatoryGroupFailures=[];const nodeRows=nodeTestSummary.results||[];
+if(certificationMode)for(const [groupId,definition] of Object.entries(certificationGroups.groups||{})){if(definition.mandatory!==true)continue;if(definition.artifact){const evidence=readJsonIfExists(path.join(runDir,definition.artifact),releaseGateJsonDiagnostics);if(!evidence||evidence.ok!==true||evidence.sourceManifestHash!==sourceIdentityEnd.sourceHash||evidence.commit!==sourceIdentityEnd.commit)mandatoryGroupFailures.push(`Mandatory group ${groupId} is missing valid source-bound evidence.`);continue;}if(definition.evidence==='playwright'){if(!playwrightStarted||noTestsExecuted||failedTests.length||timedOutTests.length)mandatoryGroupFailures.push(`Mandatory group ${groupId} lacks passing Playwright evidence.`);continue;}const requiredRows=definition.runnerGroups||[];for(const name of requiredRows){const row=nodeRows.find(item=>item.group===name);if(!row||row.status!=='passed')mandatoryGroupFailures.push(`Mandatory group ${groupId} lacks passing runner evidence: ${name}.`);}}
+for(const text of deploymentIdentityFailures)addGroup('deployment-identity',text);for(const text of mandatoryGroupFailures)addGroup('mandatory-evidence',text);
 const primaryBlockingFailure = preflightFailures[0]
   || dependencyFailures[0]
   || serverBoundaryFailures[0]
@@ -447,6 +455,8 @@ const primaryBlockingFailure = preflightFailures[0]
   || (unexpectedTests[0] ? `${unexpectedTests[0].title}: ${unexpectedTests[0].error}` : '')
   || runnerBlockingReason
   || sourceIdentityValidation.failures[0]
+  || deploymentIdentityFailures[0]
+  || mandatoryGroupFailures[0]
   || (skipValidation.unexpected[0] ? `Unexpected skipped test [${skipValidation.unexpected[0].projectName}] ${skipValidation.unexpected[0].title}: ${skipValidation.unexpected[0].reason}` : '')
   || (missingArtifacts[0] ? `Missing artifact: ${missingArtifacts[0]}` : '');
 
@@ -465,6 +475,8 @@ const ok = sourceIdentityValidation.ok && failedTests.length === 0
   && roleFailures.length === 0
   && javaFailures.length === 0
   && nodeFailures.length === 0
+  && deploymentIdentityFailures.length === 0
+  && mandatoryGroupFailures.length === 0
   && !blockedBeforePlaywright
   && !(playwrightStarted && noTestsExecuted)
   && !(failedOnlyMode && (deltaReconciliation.selectedNotExecutedCount > 0 || deltaReconciliation.unexpectedExtraExecutionCount > 0));
@@ -472,9 +484,11 @@ const ok = sourceIdentityValidation.ok && failedTests.length === 0
 const summary = {
   ok,
   sourceIdentityValidation,
+  deploymentIdentityValidation:{ok:deploymentIdentityFailures.length===0,start:preflight.deploymentIdentityStart||null,end:deploymentIdentityEnd,failures:deploymentIdentityFailures},
+  mandatoryGroupValidation:{ok:mandatoryGroupFailures.length===0,failures:mandatoryGroupFailures},
   skipValidation,
   sourceIdentity: { version: sourceIdentityEnd.version, sourceHash: sourceIdentityEnd.sourceHash, commit: sourceIdentityEnd.commit, branch: sourceIdentityEnd.branch },
-  fullReleaseCertified: ok && !failedOnlyMode,
+  fullReleaseCertified: ok && !failedOnlyMode && certificationMode,
   generatedAt: new Date().toISOString(),
   runId,
   runDir,

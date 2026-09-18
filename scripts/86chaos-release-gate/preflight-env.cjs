@@ -4,6 +4,7 @@ const { loadEnv, env, boolEnv } = require('../86chaos-full-audit/env-loader.cjs'
 const { ensureRunDir, writeJson } = require('./run-context.cjs');
 const { applyQaWorkspaceEnv, validateQaWorkspaceName } = require('./qa-workspace.cjs');
 const { assertMutationSafety } = require('./mutation-safety.cjs');
+const { captureSourceIdentity } = require('./source-identity.cjs');
 const {
   CANONICAL_VERCEL_PROJECT_SLUG,
   inspectReleaseTargetEnvConflicts,
@@ -53,12 +54,33 @@ function requirePair(prefix) {
 async function main() {
   const appUrl = value('APP_URL', 'CHAOS_BASE_URL', 'BASE_URL');
   const expectedVersion = sanitizeVersionText(value('CHAOS_EXPECTED_VERSION'));
+  const certificationMode=boolEnv('CHAOS_CERTIFICATION_MODE');
+  const expectedCommit=value('CHAOS_EXPECTED_GIT_COMMIT');
+  const expectedBranch=value('CHAOS_EXPECTED_BRANCH')||'testing';
+  const expectedManifest=value('CHAOS_SOURCE_MANIFEST_HASH');
+  const expectedArchiveSha256=value('CHAOS_SOURCE_ARCHIVE_SHA256');
+  const expectedDeploymentId=value('CHAOS_IMMUTABLE_VERCEL_DEPLOYMENT_ID','CHAOS_VERCEL_DEPLOYMENT_ID');
+  const expectedDeploymentUrl=value('CHAOS_IMMUTABLE_VERCEL_URL');
+  const expectedVercelProjectId=value('CHAOS_EXPECTED_VERCEL_PROJECT_ID');
+  const expectedTestProject=value('CHAOS_EXPECTED_TEST_FIREBASE_PROJECT_ID')||'chaos-test-d1601';
   const qaWorkspaceName = applyQaWorkspaceEnv(process.env, runId);
   const qaNameCheck = validateQaWorkspaceName(qaWorkspaceName, runId);
   if (!qaNameCheck.ok) errors.push(...qaNameCheck.errors);
   if (!appUrl) errors.push('Missing APP_URL or CHAOS_BASE_URL.');
   if (/YOUR-LATEST|REPLACE_ME|example\.com/i.test(String(appUrl || ''))) errors.push('APP_URL still contains a template placeholder. Replace it with the real safe testing-preview URL.');
   if (!expectedVersion) errors.push('Missing CHAOS_EXPECTED_VERSION.');
+  const sourceIdentity=captureSourceIdentity(root);
+  if(certificationMode){
+    if(!expectedCommit)errors.push('CHAOS_EXPECTED_GIT_COMMIT is required for full certification.');
+    if(!sourceIdentity.commit||sourceIdentity.commit!==expectedCommit)errors.push('Local HEAD does not match CHAOS_EXPECTED_GIT_COMMIT.');
+    if(sourceIdentity.branch!==expectedBranch)errors.push(`Full certification must run from the ${expectedBranch} branch.`);
+    if(sourceIdentity.dirty)errors.push('Full certification requires a clean Git working tree.');
+    if(!/^[a-f0-9]{64}$/i.test(expectedManifest)||sourceIdentity.sourceHash!==expectedManifest)errors.push('Local source does not match CHAOS_SOURCE_MANIFEST_HASH.');
+    if(!/^[a-f0-9]{64}$/i.test(expectedArchiveSha256))errors.push('CHAOS_SOURCE_ARCHIVE_SHA256 must identify the delivered source archive.');
+    if(!expectedDeploymentId)errors.push('CHAOS_IMMUTABLE_VERCEL_DEPLOYMENT_ID is required for full certification.');
+    if(!expectedDeploymentUrl)errors.push('CHAOS_IMMUTABLE_VERCEL_URL is required for full certification; a mutable alias is insufficient.');
+    if(!expectedVercelProjectId)errors.push('CHAOS_EXPECTED_VERCEL_PROJECT_ID is required for full certification.');
+  }
 
   let parsedUrl = null;
   try { parsedUrl = appUrl ? new URL(appUrl) : null; }
@@ -111,6 +133,7 @@ async function main() {
   let htmlVersion = '';
   let versionFetch = null;
   let htmlFetch = null;
+  let clientBuildIdentity=null,serverBuildIdentity=null;
   if (appUrl && parsedUrl && /^https?:$/.test(parsedUrl.protocol)) {
     try {
       const versionUrl = new URL('/version.json', appUrl).toString();
@@ -134,6 +157,9 @@ async function main() {
     } catch (error) {
       errors.push(`Could not fetch application HTML from deployed preview: ${error.message}`);
     }
+    try{const response=await fetchText(`${new URL('/build-identity.json',appUrl)}?releaseGateRun=${encodeURIComponent(runId)}`);if(!response.ok)throw new Error(`HTTP ${response.status}`);clientBuildIdentity=JSON.parse(response.text||'{}');}catch(error){errors.push(`Could not fetch deployed client build identity: ${error.message}`);}
+    try{const response=await fetchText(`${new URL('/api/build-identity',appUrl)}?releaseGateRun=${encodeURIComponent(runId)}`);if(!response.ok)throw new Error(`HTTP ${response.status}`);serverBuildIdentity=JSON.parse(response.text||'{}');}catch(error){errors.push(`Could not fetch deployed server build identity: ${error.message}`);}
+    if(certificationMode&&clientBuildIdentity&&serverBuildIdentity){for(const [label,identity] of [['client',clientBuildIdentity],['server',serverBuildIdentity]]){const manifest=identity.sourceManifestHash||identity.sourceHash;if(manifest!==expectedManifest)errors.push(`Deployed ${label} source manifest does not match CHAOS_SOURCE_MANIFEST_HASH.`);if(String(identity.version||'')!==expectedVersion)errors.push(`Deployed ${label} version does not match CHAOS_EXPECTED_VERSION.`);}if(serverBuildIdentity.gitCommit!==expectedCommit)errors.push('Deployed server Git commit does not match CHAOS_EXPECTED_GIT_COMMIT.');if(serverBuildIdentity.gitBranch!==expectedBranch)errors.push('Deployed server Git branch does not match CHAOS_EXPECTED_BRANCH.');if(serverBuildIdentity.vercelDeploymentId!==expectedDeploymentId)errors.push('Deployed server identity does not match the immutable Vercel deployment ID.');if(serverBuildIdentity.vercelProjectId!==expectedVercelProjectId)errors.push('Deployed server identity does not match the expected Vercel project ID.');if(expectedDeploymentUrl&&serverBuildIdentity.vercelDeploymentUrl!==expectedDeploymentUrl)errors.push('Deployed server URL does not match CHAOS_IMMUTABLE_VERCEL_URL.');if(serverBuildIdentity.sourceArchiveSha256!==expectedArchiveSha256)errors.push('Deployed server archive identity does not match CHAOS_SOURCE_ARCHIVE_SHA256.');if(serverBuildIdentity.firebaseTestingProject!==expectedTestProject)errors.push('Deployed server Firebase target does not match the required testing project.');for(const key of ['rulesHash','firebaseConfigHash','vercelConfigHash']){if(!clientBuildIdentity[key]||serverBuildIdentity[key]!==clientBuildIdentity[key])errors.push(`Deployed protected configuration identity ${key} is missing or inconsistent.`);}}
   }
   visibleVersion = htmlVersion || '';
   targetValidation = validateReleaseTarget({
@@ -141,6 +167,10 @@ async function main() {
     chaosBaseUrl: process.env.CHAOS_BASE_URL || '',
     expectedProjectSlug: value('CHAOS_EXPECTED_VERCEL_PROJECT_SLUG') || CANONICAL_VERCEL_PROJECT_SLUG,
     expectedVersion,
+    certificationMode,
+    sourceIdentity:{version:sourceIdentity.version,sourceHash:sourceIdentity.sourceHash,commit:sourceIdentity.commit,branch:sourceIdentity.branch,dirty:sourceIdentity.dirty},
+    expectedIdentity:{commit:expectedCommit||null,branch:expectedBranch,sourceManifestHash:expectedManifest||null,sourceArchiveSha256:expectedArchiveSha256||null,vercelDeploymentId:expectedDeploymentId||null,vercelDeploymentUrl:expectedDeploymentUrl||null,vercelProjectId:expectedVercelProjectId||null},
+    deploymentIdentityStart:{client:clientBuildIdentity,server:serverBuildIdentity},
     sourceVersion,
     deployedVersion,
     allowLocal: boolEnv('CHAOS_ALLOW_LOCAL_UI_ONLY'),
@@ -156,7 +186,6 @@ async function main() {
     present.FIREBASE_CLIENT_CONFIG = true;
     firebaseProjectId = config.projectId || '';
     if (!config.projectId) errors.push('Testing Firebase projectId could not be resolved.');
-    const expectedTestProject = value('CHAOS_EXPECTED_TEST_FIREBASE_PROJECT_ID') || 'chaos-test-d1601';
     if (config.projectId && expectedTestProject && String(config.projectId) !== String(expectedTestProject)) {
       errors.push(`Resolved Firebase project ${config.projectId} does not match CHAOS_EXPECTED_TEST_FIREBASE_PROJECT_ID=${expectedTestProject}.`);
     }

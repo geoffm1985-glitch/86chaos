@@ -2891,8 +2891,9 @@ const VoiceCommandDockBase = ({ appUser, inventoryItems = [], recipes = [], user
         const item = actionToRun.item;
         const stockDeducted = Math.max(0, Number(actionToRun.stockDeducted || 0));
         const costLost = (parseFloat(item.price || 0) || 0) * stockDeducted;
-        await addDoc(collection(db, 'wasteLogs'), { restaurantId: appUser.restaurantId, itemId:item.id, itemName:item.name, qty:actionToRun.amount, burnAmount:actionToRun.amount, burnUnitLabel:actionToRun.labelUnit, burnMode:actionToRun.mode, stockDeducted, costLost, reason:'Voice command', loggedBy: appUser.name || appUser.email || 'Voice Command', date:getToday(), timestamp:new Date().toISOString(), voiceCommand: sourceText });
-        if (stockDeducted > 0) await updateDoc(doc(db, 'inventoryItems', item.id), { currentStock: Math.max(0, (parseFloat(item.currentStock) || 0) - stockDeducted), updatedAt:new Date().toISOString() });
+        const operationId=globalThis.crypto?.randomUUID?.()||`voice_waste_${Date.now()}_${Math.random().toString(36).slice(2,14)}`,wasteData={restaurantId:appUser.restaurantId,itemId:item.id,itemName:item.name,qty:actionToRun.amount,burnAmount:actionToRun.amount,burnUnitLabel:actionToRun.labelUnit,burnMode:actionToRun.mode,stockDeducted,costLost,reason:'Voice command',loggedBy:appUser.name||appUser.email||'Voice Command',date:getToday(),timestamp:new Date().toISOString(),voiceCommand:sourceText};
+        let saved=false,lastError=null;for(let attempt=0;attempt<2&&!saved;attempt+=1){try{const response=await secureFetch('/api/safe-write',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'waste-create',operationId,restaurantId:appUser.restaurantId,data:wasteData})});const payload=await response.json().catch(()=>({}));if(!response.ok){const error=new Error(payload.error||'Burn log could not be saved.');error.nonRetryable=true;throw error;}saved=true;}catch(error){lastError=error;if(error?.nonRetryable||attempt===1)throw error;}}
+        if(!saved)throw lastError||new Error('Burn log could not be saved.');
         await logAudit(appUser, 'VOICE_BURN_LOG', item.name, sourceText);
         addToast('Burn Logged', `${actionToRun.amount} ${actionToRun.labelUnit} ${item.name}.`);
         setActiveTab('inventory'); if (closeWhenDone) setOpen(false); return;

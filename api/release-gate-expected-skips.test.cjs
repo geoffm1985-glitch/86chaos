@@ -132,7 +132,8 @@ function collectFixture({ results = rows(), staleSource = false, preflightFailed
 test('actual collector reconciles the 248 PASS / 7 intentional SKIP fixture without changing any test result', () => {
   const { summary, text } = collectFixture();
   assert.equal(summary.ok, true);
-  assert.equal(summary.fullReleaseCertified, true);
+  assert.equal(summary.fullReleaseCertified, false);
+  assert.equal(summary.sourceIdentityValidation.ok, true);
   assert.equal(summary.playwright.totalResults, 255);
   assert.equal(summary.playwright.passed, 248);
   assert.equal(summary.playwright.failed, 0);

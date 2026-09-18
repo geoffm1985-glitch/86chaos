@@ -125,36 +125,40 @@ async function acquireOperation(db, ctx, plan, clock=new Date(), intentDigest=''
     if(tenantLeaseActive)throw Object.assign(new Error('Another manager is publishing this restaurant.'),{statusCode:409,code:'publish_in_progress'});
     const leaseToken=crypto.randomUUID(),tenantLeaseGeneration=Number(tenantLease?.generation||0)+1,leaseExpiresAt=new Date(nowMs+LEASE_MS).toISOString();
     const ids=plan.candidates.map(row=>row.id);
-    const state={schemaVersion:2,operationId:plan.operationId,planDigest:plan.planDigest,requestDigest:intentDigest,restaurantId:plan.restaurantId,actorUid:ctx.uid,actorEmail:ctx.email||'',selectedRoleIds:plan.selectedRoleIds,allRoles:plan.allRoles,roleConfigurationRevision:plan.roleConfigurationRevision,dayKeys:plan.dayKeys,selectedWeekKeys:plan.selectedWeekKeys,canonicalPlan:stable(plan),affectedEmployeeIds:plan.affectedEmployeeIds,affectedDates:plan.affectedDates,affectedRoleIds:plan.affectedRoleIds,plannedShiftIds:ids,unchangedShiftIds:plan.unchangedShiftIds||[],unresolvedEmployees:plan.unresolvedEmployees||[],writeCount:plan.writeCount,verificationCount:plan.verificationCount,committedShiftIds:[],verifiedShiftIds:[],conflictedShiftIds:[],remainingShiftIds:ids,committedChunks:[],verifiedChunks:[],timeOffState:{status:'pending',processedIds:[],pendingMarkedIds:[]},notificationState:{status:'pending',recipients:[]},backupScope:{shiftIds:ids,dates:plan.affectedDates},status:'running',generation:1,tenantLeaseGeneration,leaseToken,leaseOwnerUid:ctx.uid,leaseExpiresAt,createdAt:nowIso,updatedAt:nowIso};
+    const state={schemaVersion:3,operationId:plan.operationId,planDigest:plan.planDigest,requestDigest:intentDigest,restaurantId:plan.restaurantId,actorUid:ctx.uid,actorEmail:ctx.email||'',selectedRoleIds:plan.selectedRoleIds,allRoles:plan.allRoles,roleConfigurationRevision:plan.roleConfigurationRevision,dayKeys:plan.dayKeys,selectedWeekKeys:plan.selectedWeekKeys,canonicalPlan:stable(plan),affectedEmployeeIds:plan.affectedEmployeeIds,affectedDates:plan.affectedDates,affectedRoleIds:plan.affectedRoleIds,plannedShiftIds:ids,unchangedShiftIds:plan.unchangedShiftIds||[],unresolvedEmployees:plan.unresolvedEmployees||[],writeCount:plan.writeCount,verificationCount:plan.verificationCount,committedShiftIds:[],committedShiftEvidence:{},verifiedShiftIds:[],conflictedShiftIds:[],remainingShiftIds:ids,committedChunks:[],verifiedChunks:[],timeOffState:{status:'pending',processedIds:[],pendingMarkedIds:[],completedPairs:[],queryFailures:[]},notificationState:{status:'pending',recipients:[]},backupScope:{shiftIds:ids,dates:plan.affectedDates},status:'running',generation:1,tenantLeaseGeneration,leaseToken,leaseOwnerUid:ctx.uid,leaseExpiresAt,createdAt:nowIso,updatedAt:nowIso};
     tx.create(ref,state);tx.set(tenantLeaseRef,{restaurantId:plan.restaurantId,operationId:plan.operationId,planDigest:plan.planDigest,requestDigest:intentDigest,leaseToken,generation:tenantLeaseGeneration,leaseOwnerUid:ctx.uid,leaseExpiresAt,status:'active',updatedAt:nowIso},{merge:false});
     return{ref,tenantLeaseRef,state};
   });
 }
-function publishedStateMatches(data,row,plan,operation){
-  if(clean(data.restaurantId||data.workspaceId)!==plan.restaurantId||clean(data.publishOperationId)!==plan.operationId||Number(data.publishGeneration)!==Number(operation.state.generation))return false;
-  if(clean(data.date)!==row.date||clean(data.scheduleDateKey)!==row.date||clean(data.rosterRoleId)!==row.rosterRoleId||data.isPublished!==true||data.published!==true||clean(data.status).toLowerCase()!=='published'||clean(data.publishStatus).toLowerCase()!=='published')return false;
-  for(const [field,value] of Object.entries(row.desiredEmployeeIdentity||{}))if(clean(value)&&clean(data[field])!==clean(value))return false;
-  return true;
+function publishedVerificationState(data={},row={},plan={}){
+  const employeeIdentity={};for(const field of ['scheduleUserId','employeeId','rosterUserId','userId','authUid','accountUserId','assignedUserId','employeeName','assignedName','employeeEmail','assignedEmail'])employeeIdentity[field]=clean(data[field]);
+  return stable({restaurantId:clean(data.restaurantId||data.workspaceId),date:clean(data.date),scheduleDateKey:clean(data.scheduleDateKey),rosterRoleId:clean(data.rosterRoleId),rosterRoleNameSnapshot:clean(data.rosterRoleNameSnapshot),startTime:clean(data.startTime||data.start),endTime:clean(data.endTime||data.end),employeeIdentity,intentionalOpen:Boolean(row.intentionalOpen),isPublished:data.isPublished===true,published:data.published===true,status:clean(data.status).toLowerCase(),publishStatus:clean(data.publishStatus).toLowerCase(),scheduleId:clean(data.scheduleId),publishOperationId:clean(data.publishOperationId),publishGeneration:Number(data.publishGeneration||0),revision:Number(data.revision||0),updatedAt:clean(data.updatedAt),planDigest:clean(plan.planDigest)});
+}
+function publishedCommitEvidence(data,row,plan,generation){const state=publishedVerificationState(data,row,plan);return{generation:Number(generation||0),revision:state.revision,updatedAt:state.updatedAt,contentDigest:digest(state)};}
+function publishedStateMatches(data,row,plan,evidence){
+  if(!evidence||clean(data.publishOperationId)!==plan.operationId||Number(data.publishGeneration)!==Number(evidence.generation||0))return false;
+  const actual=publishedCommitEvidence(data,row,plan,evidence.generation);
+  return Boolean(evidence.contentDigest)&&actual.contentDigest===evidence.contentDigest&&actual.revision===Number(evidence.revision||0)&&actual.updatedAt===clean(evidence.updatedAt);
 }
 async function commitChunk(db,operation,plan,rows,chunkIndex,ctx,clock=new Date()){
   const now=asDate(clock),nowIso=now.toISOString();
   return fencedTransaction(db,operation,plan,clock,async(tx,op)=>{
     const snapshots=[];for(const row of rows)snapshots.push(await tx.get(db.collection('shifts').doc(row.id)));
-    const committed=[],conflicted=[];
+    const committed=[],conflicted=[],committedEvidence={};
     snapshots.forEach((snap,index)=>{
       const row=rows[index];
       if(!snap.exists){conflicted.push(row.id);return;}
       const current=snap.data()||{},tenant=clean(current.restaurantId||current.workspaceId);
       const role={rosterRoleId:row.rosterRoleId,rosterRoleNameSnapshot:row.rosterRoleNameSnapshot};
       if(tenant!==plan.restaurantId||!fingerprintsMatch(current,row.expected,role,row.intentionalOpen?null:row.desiredEmployeeIdentity)){conflicted.push(row.id);return;}
-      const publishedAt=current.publishedAt||nowIso;
-      tx.update(snap.ref,{restaurantId:plan.restaurantId,workspaceId:clean(current.workspaceId||plan.restaurantId),date:row.date,scheduleDateKey:row.date,rosterRoleId:row.rosterRoleId,rosterRoleNameSnapshot:row.rosterRoleNameSnapshot,role:clean(current.role||row.rosterRoleNameSnapshot),...(row.desiredEmployeeIdentity||{}),revision:Number(current.revision||0)+1,isPublished:true,published:true,status:'published',publishStatus:'published',publishState:'published',schedulePublishStatus:'published',visibility:'published',scheduleBuilderDraft:false,readyToPublish:false,draft:false,isDraft:false,publishedAt,publishedBy:current.publishedBy||ctx.uid,publishedByName:current.publishedByName||ctx.user?.name||ctx.email||'Manager',scheduleId:current.scheduleId||`schedule_${plan.operationId}`,schedulePeriodStart:plan.dayKeys[0],schedulePeriodEnd:plan.dayKeys[plan.dayKeys.length-1],publishScope:plan.selectedWeekKeys.length?'selected-weeks':'full-period',publishWeekKeys:plan.selectedWeekKeys,publishOperationId:plan.operationId,publishGeneration:operation.state.generation,updatedAt:nowIso});
+      const publishedAt=current.publishedAt||nowIso,patch={restaurantId:plan.restaurantId,workspaceId:clean(current.workspaceId||plan.restaurantId),date:row.date,scheduleDateKey:row.date,rosterRoleId:row.rosterRoleId,rosterRoleNameSnapshot:row.rosterRoleNameSnapshot,role:clean(current.role||row.rosterRoleNameSnapshot),...(row.desiredEmployeeIdentity||{}),revision:Number(current.revision||0)+1,isPublished:true,published:true,status:'published',publishStatus:'published',publishState:'published',schedulePublishStatus:'published',visibility:'published',scheduleBuilderDraft:false,readyToPublish:false,draft:false,isDraft:false,publishedAt,publishedBy:current.publishedBy||ctx.uid,publishedByName:current.publishedByName||ctx.user?.name||ctx.email||'Manager',scheduleId:current.scheduleId||`schedule_${plan.operationId}`,schedulePeriodStart:plan.dayKeys[0],schedulePeriodEnd:plan.dayKeys[plan.dayKeys.length-1],publishScope:plan.selectedWeekKeys.length?'selected-weeks':'full-period',publishWeekKeys:plan.selectedWeekKeys,publishOperationId:plan.operationId,publishGeneration:operation.state.generation,updatedAt:nowIso};
+      tx.update(snap.ref,patch);committedEvidence[row.id]=publishedCommitEvidence({...current,...patch},row,plan,operation.state.generation);
       committed.push(row.id);
     });
-    const priorCommitted=new Set(op.committedShiftIds||[]),priorConflicted=new Set(op.conflictedShiftIds||[]);committed.forEach(id=>priorCommitted.add(id));conflicted.forEach(id=>priorConflicted.add(id));
+    const priorCommitted=new Set(op.committedShiftIds||[]),priorConflicted=new Set(op.conflictedShiftIds||[]),evidence={...(op.committedShiftEvidence||{})};committed.forEach(id=>{priorCommitted.add(id);priorConflicted.delete(id);evidence[id]=committedEvidence[id];});conflicted.forEach(id=>{priorConflicted.add(id);priorCommitted.delete(id);delete evidence[id];});
     const remaining=(op.plannedShiftIds||plan.candidates.map(row=>row.id)).filter(id=>!priorCommitted.has(id)&&!priorConflicted.has(id));
     const leaseExpiresAt=new Date(now.getTime()+LEASE_MS).toISOString();
-    tx.set(operation.ref,{committedShiftIds:[...priorCommitted],conflictedShiftIds:[...priorConflicted],remainingShiftIds:remaining,committedChunks:[...(op.committedChunks||[]),{chunkIndex,shiftIds:committed,conflictedShiftIds:conflicted,at:nowIso,generation:operation.state.generation}],status:remaining.length?'running':'reconciling',updatedAt:nowIso,leaseExpiresAt},{merge:true});
+    tx.set(operation.ref,{committedShiftIds:[...priorCommitted],committedShiftEvidence:evidence,conflictedShiftIds:[...priorConflicted],remainingShiftIds:remaining,committedChunks:[...(op.committedChunks||[]),{chunkIndex,shiftIds:committed,conflictedShiftIds:conflicted,at:nowIso,generation:operation.state.generation}],status:remaining.length?'running':'reconciling',updatedAt:nowIso,leaseExpiresAt},{merge:true});
     tx.set(operation.tenantLeaseRef,{leaseExpiresAt,updatedAt:nowIso},{merge:true});
     return{committed,conflicted};
   });
@@ -166,8 +170,8 @@ async function verifyCommitted(db,operation,plan,ids,clock=new Date()){
     const chunk=ids.slice(index,index+CHUNK_SIZE);
     const result=await fencedTransaction(db,operation,plan,clock,async(tx,op)=>{
       const snaps=[];for(const id of chunk)snaps.push(await tx.get(db.collection('shifts').doc(id)));
-      const localVerified=[],localConflicted=[];snaps.forEach((snap,i)=>{const row=rowsById.get(chunk[i]);const data=snap.exists?snap.data()||{}:{};(snap.exists&&row&&publishedStateMatches(data,row,plan,operation)?localVerified:localConflicted).push(chunk[i]);});
-      const allVerified=new Set(op.verifiedShiftIds||[]),allConflicted=new Set(op.conflictedShiftIds||[]);localVerified.forEach(id=>allVerified.add(id));localConflicted.forEach(id=>allConflicted.add(id));
+      const localVerified=[],localConflicted=[];snaps.forEach((snap,i)=>{const id=chunk[i],row=rowsById.get(id),data=snap.exists?snap.data()||{}:{},evidence=op.committedShiftEvidence?.[id];(snap.exists&&row&&publishedStateMatches(data,row,plan,evidence)?localVerified:localConflicted).push(id);});
+      const allVerified=new Set(op.verifiedShiftIds||[]),allConflicted=new Set(op.conflictedShiftIds||[]);localVerified.forEach(id=>{allVerified.add(id);allConflicted.delete(id);});localConflicted.forEach(id=>{allConflicted.add(id);allVerified.delete(id);});
       const remaining=(op.plannedShiftIds||[]).filter(id=>!allVerified.has(id)&&!allConflicted.has(id));
       tx.set(operation.ref,{verifiedShiftIds:[...allVerified],conflictedShiftIds:[...allConflicted],remainingShiftIds:remaining,verifiedChunks:[...(op.verifiedChunks||[]),{chunkIndex:Math.floor(index/CHUNK_SIZE),shiftIds:localVerified,conflictedShiftIds:localConflicted,at:nowIso,generation:operation.state.generation}],status:'reconciling',updatedAt:nowIso},{merge:true});
       return{verified:localVerified,conflicted:localConflicted};
@@ -176,19 +180,35 @@ async function verifyCommitted(db,operation,plan,ids,clock=new Date()){
   }
   return{verified:unique(verified),conflicted:unique(conflicted)};
 }
-async function processTimeOff(db,ctx,operation,plan,verifiedRows,clock=new Date()){
+// testSeams is module-test injection only; no route or request value is passed here.
+async function processTimeOff(db,ctx,operation,plan,verifiedRows,clock=new Date(),testSeams={}){
   const nowIso=asDate(clock).toISOString(),pairSet=new Set(verifiedRows.filter(row=>row.employeeId).map(row=>`${row.employeeId}|${row.date}`));
-  if(!pairSet.size){await fencedTransaction(db,operation,plan,clock,(tx)=>tx.set(operation.ref,{timeOffState:{status:'complete',processedIds:[],pendingMarkedIds:[],pairCount:0,updatedAt:nowIso}},{merge:true}));return{processed:0,pendingMarked:0};}
-  const candidates=new Map();for(const pair of pairSet){const [employeeId,date]=pair.split('|');for(const field of ['employeeId','scheduleUserId','rosterUserId','userId','authUid']){const snap=await db.collection('timeOffRequests').where('restaurantId','==',plan.restaurantId).where(field,'==',employeeId).where('date','==',date).get().catch(()=>null);snap?.forEach(doc=>candidates.set(doc.id,{id:doc.id}));}}
-  const processed=[],pendingMarked=[];
-  for(const candidate of candidates.values()){
-    const result=await fencedTransaction(db,operation,plan,clock,async(tx)=>{
-      const ref=db.collection('timeOffRequests').doc(candidate.id),fresh=await tx.get(ref);if(!fresh.exists)return'';const data=fresh.data()||{},tenant=clean(data.restaurantId||data.workspaceId),subject=clean(data.scheduleUserId||data.employeeId||data.rosterUserId||data.accountUserId||data.userId||data.authUid||data.uid),date=clean(data.date);if(tenant!==plan.restaurantId||!pairSet.has(`${subject}|${date}`))return'';const status=clean(data.status||'pending').toLowerCase();if(['approved','denied'].includes(status)&&data.archived!==true&&data.processed!==true){tx.set(ref,{previousStatus:data.status||'',status:'processed',processed:true,archived:true,processedAt:nowIso,processedBy:ctx.uid,publishOperationId:plan.operationId,updatedAt:nowIso},{merge:true});return'processed';}if(status==='pending'){tx.set(ref,{overlapsPublishedSchedule:true,unresolvedPublishedOverlap:true,publishOperationId:plan.operationId,updatedAt:nowIso},{merge:true});return'pending';}return'';
-    });
-    if(result==='processed')processed.push(candidate.id);if(result==='pending')pendingMarked.push(candidate.id);
+  const prior=await fencedTransaction(db,operation,plan,clock,(tx,op)=>{const state=op.timeOffState||{};const next={status:pairSet.size?'querying':'complete',processedIds:unique(state.processedIds||[]),pendingMarkedIds:unique(state.pendingMarkedIds||[]),completedPairs:unique(state.completedPairs||[]),queryFailures:[],pairCount:pairSet.size,updatedAt:nowIso};tx.set(operation.ref,{timeOffState:next},{merge:true});return next;});
+  if(!pairSet.size)return{processed:0,pendingMarked:0,status:'complete'};
+  const processed=new Set(prior.processedIds||[]),pendingMarked=new Set(prior.pendingMarkedIds||[]),completedPairs=new Set(prior.completedPairs||[]),queryFailures=[];
+  for(const pair of [...pairSet].sort()){
+    if(completedPairs.has(pair))continue;
+    const [employeeId,date]=pair.split('|'),candidates=new Map(),pairFailures=[];
+    for(const field of ['employeeId','scheduleUserId','rosterUserId','userId','authUid']){
+      try{const snap=await(testSeams.queryTimeOff?testSeams.queryTimeOff({db,restaurantId:plan.restaurantId,field,employeeId,date,pair}):db.collection('timeOffRequests').where('restaurantId','==',plan.restaurantId).where(field,'==',employeeId).where('date','==',date).get());snap.forEach(doc=>candidates.set(doc.id,{id:doc.id}));}
+      catch(error){pairFailures.push({pair,field,code:clean(error?.code||'query_failed').slice(0,80)});}
+    }
+    if(pairFailures.length){queryFailures.push(...pairFailures);continue;}
+    for(const candidate of candidates.values()){
+      const result=await fencedTransaction(db,operation,plan,clock,async(tx)=>{
+        const ref=db.collection('timeOffRequests').doc(candidate.id),fresh=await tx.get(ref);if(!fresh.exists)return'';const data=fresh.data()||{},tenant=clean(data.restaurantId||data.workspaceId),subject=clean(data.scheduleUserId||data.employeeId||data.rosterUserId||data.accountUserId||data.userId||data.authUid||data.uid),requestDate=clean(data.date);if(tenant!==plan.restaurantId||`${subject}|${requestDate}`!==pair)return'';const status=clean(data.status||'pending').toLowerCase();if(['approved','denied'].includes(status)&&data.archived!==true&&data.processed!==true){tx.set(ref,{previousStatus:data.status||'',status:'processed',processed:true,archived:true,processedAt:nowIso,processedBy:ctx.uid,publishOperationId:plan.operationId,updatedAt:nowIso},{merge:true});return'processed';}if(status==='pending'&&data.publishOperationId!==plan.operationId){tx.set(ref,{overlapsPublishedSchedule:true,unresolvedPublishedOverlap:true,publishOperationId:plan.operationId,updatedAt:nowIso},{merge:true});return'pending';}return'';
+      });
+      if(result==='processed')processed.add(candidate.id);if(result==='pending')pendingMarked.add(candidate.id);
+    }
+    completedPairs.add(pair);
+    await fencedTransaction(db,operation,plan,clock,(tx)=>tx.set(operation.ref,{timeOffState:{status:'processing',processedIds:[...processed],pendingMarkedIds:[...pendingMarked],completedPairs:[...completedPairs],queryFailures:[],pairCount:pairSet.size,completedPairCount:completedPairs.size,updatedAt:nowIso}},{merge:true}));
   }
-  await fencedTransaction(db,operation,plan,clock,(tx)=>tx.set(operation.ref,{timeOffState:{status:'complete',processedIds:processed,pendingMarkedIds:pendingMarked,pairCount:pairSet.size,updatedAt:nowIso}},{merge:true}));
-  return{processed:processed.length,pendingMarked:pendingMarked.length};
+  if(queryFailures.length){
+    await fencedTransaction(db,operation,plan,clock,(tx)=>tx.set(operation.ref,{timeOffState:{status:'recoverable',processedIds:[...processed],pendingMarkedIds:[...pendingMarked],completedPairs:[...completedPairs],queryFailures,pairCount:pairSet.size,completedPairCount:completedPairs.size,failedPairCount:new Set(queryFailures.map(row=>row.pair)).size,updatedAt:nowIso}},{merge:true}));
+    throw Object.assign(new Error('Time-off reconciliation is incomplete and can be resumed safely.'),{statusCode:503,code:'time_off_query_failed',details:{failedPairCount:new Set(queryFailures.map(row=>row.pair)).size}});
+  }
+  await fencedTransaction(db,operation,plan,clock,(tx)=>tx.set(operation.ref,{timeOffState:{status:'complete',processedIds:[...processed],pendingMarkedIds:[...pendingMarked],completedPairs:[...completedPairs],queryFailures:[],pairCount:pairSet.size,completedPairCount:completedPairs.size,updatedAt:nowIso}},{merge:true}));
+  return{processed:processed.size,pendingMarked:pendingMarked.size,status:'complete'};
 }
 async function collectEligibleRecipients(db,auth,plan,verifiedRows){
   const employeeSet=new Set(verifiedRows.map(row=>row.employeeId).filter(Boolean));if(!employeeSet.size)return[];
@@ -218,7 +238,7 @@ async function notifyAffected(db,messaging,auth,operation,plan,verifiedRows,rest
 async function finalizeOperation(db,operation,plan,timeOff,notificationState,clock=new Date()){
   const nowIso=asDate(clock).toISOString();
   return fencedTransaction(db,operation,plan,clock,(tx,op)=>{
-    const planned=new Set(op.plannedShiftIds||[]),verified=new Set(op.verifiedShiftIds||[]),conflicted=new Set(op.conflictedShiftIds||[]);const remaining=[...planned].filter(id=>!verified.has(id)&&!conflicted.has(id));const status=remaining.length?'recoverable':conflicted.size?'partial':'complete';
+    const planned=new Set(op.plannedShiftIds||[]),verified=new Set(op.verifiedShiftIds||[]),conflicted=new Set(op.conflictedShiftIds||[]);for(const id of conflicted)verified.delete(id);const remaining=[...planned].filter(id=>!verified.has(id)&&!conflicted.has(id));const timeOffComplete=(op.timeOffState?.status||timeOff?.status)==='complete';const status=remaining.length||!timeOffComplete?'recoverable':conflicted.size?'partial':'complete';
     const result={operationId:plan.operationId,planDigest:plan.planDigest,status,generation:operation.state.generation,plannedCount:planned.size,committedCount:unique(op.committedShiftIds||[]).length,verifiedCount:verified.size,conflictedCount:conflicted.size,remainingCount:remaining.length,committedShiftIds:unique(op.committedShiftIds||[]),verifiedShiftIds:[...verified],conflictedShiftIds:[...conflicted],remainingShiftIds:remaining,affectedEmployeeIds:unique(plan.candidates.filter(row=>verified.has(row.id)).map(row=>row.employeeId)),affectedDates:unique(plan.candidates.filter(row=>verified.has(row.id)).map(row=>row.date)),affectedRoleIds:unique(plan.candidates.filter(row=>verified.has(row.id)).map(row=>row.rosterRoleId)),timeOff,notificationState,finalizedAt:nowIso,updatedAt:nowIso,leaseExpiresAt:nowIso};
     tx.set(operation.ref,result,{merge:true});
     tx.set(operation.tenantLeaseRef,{status:'released',leaseExpiresAt:nowIso,releasedByOperationId:plan.operationId,releasedGeneration:operation.state.tenantLeaseGeneration,updatedAt:nowIso},{merge:true});
@@ -238,11 +258,11 @@ async function executeSchedulePublish({db,ctx,body,messaging,auth=null,clock=()=
     if(reauthorize)await reauthorize();
     const alreadyCommitted=new Set(operation.state.committedShiftIds||[]),alreadyConflicted=new Set(operation.state.conflictedShiftIds||[]);const remaining=plan.candidates.filter(row=>!alreadyCommitted.has(row.id)&&!alreadyConflicted.has(row.id));
     for(let index=0;index<remaining.length;index+=CHUNK_SIZE){if(reauthorize)await reauthorize();await commitChunk(db,operation,plan,remaining.slice(index,index+CHUNK_SIZE),Math.floor(index/CHUNK_SIZE),ctx,clock);}
-    const stateAfterCommit=(await operation.ref.get()).data()||{},verification=await verifyCommitted(db,operation,plan,unique(stateAfterCommit.committedShiftIds||[]),clock);const verifiedSet=new Set([...(stateAfterCommit.verifiedShiftIds||[]),...verification.verified]);const verifiedRows=plan.candidates.filter(row=>verifiedSet.has(row.id));
+    const stateAfterCommit=(await operation.ref.get()).data()||{};await verifyCommitted(db,operation,plan,unique(stateAfterCommit.committedShiftIds||[]),clock);const reconciledState=(await operation.ref.get()).data()||{},conflictedSet=new Set(reconciledState.conflictedShiftIds||[]),verifiedSet=new Set((reconciledState.verifiedShiftIds||[]).filter(id=>!conflictedSet.has(id))),verifiedRows=plan.candidates.filter(row=>verifiedSet.has(row.id));
     if(reauthorize)await reauthorize();const timeOff=await processTimeOff(db,ctx,operation,plan,verifiedRows,clock);
     let notificationState={status:'complete',recipientCount:0,acceptedCount:0,failedCount:0,ambiguousCount:0,recipients:[]};if(verifiedRows.length){if(reauthorize)await reauthorize();notificationState=await notifyAffected(db,messaging,auth,operation,plan,verifiedRows,body.restaurantName,clock);}
     return finalizeOperation(db,operation,plan,timeOff,notificationState,clock);
   }catch(error){try{await fencedTransaction(db,operation,plan,clock,(tx,op)=>tx.set(operation.ref,{status:'recoverable',lastErrorCode:clean(error.code||'publish_failed'),lastErrorAt:asDate(clock).toISOString(),remainingCount:(op.remainingShiftIds||[]).length,updatedAt:asDate(clock).toISOString()},{merge:true}),{allowExpired:true});}catch(_){}throw error;}
 }
 
-module.exports={LEASE_MS,CHUNK_SIZE,NOTIFICATION_BATCH_SIZE,safeError,requestIntent,requestDigest,validateRequest,loadRoles,loadRoleConfiguration,loadCandidateShifts,loadRosterPeople,resolveEmployeeForShift,assertFenceState,fencedTransaction,acquireOperation,publishedStateMatches,commitChunk,verifyCommitted,processTimeOff,collectEligibleRecipients,notifyAffected,finalizeOperation,getOperationStatus,executeSchedulePublish};
+module.exports={LEASE_MS,CHUNK_SIZE,NOTIFICATION_BATCH_SIZE,safeError,requestIntent,requestDigest,validateRequest,loadRoles,loadRoleConfiguration,loadCandidateShifts,loadRosterPeople,resolveEmployeeForShift,assertFenceState,fencedTransaction,acquireOperation,publishedVerificationState,publishedCommitEvidence,publishedStateMatches,commitChunk,verifyCommitted,processTimeOff,collectEligibleRecipients,notifyAffected,finalizeOperation,getOperationStatus,executeSchedulePublish};

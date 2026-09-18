@@ -18,10 +18,11 @@ const commands = [
   { group: 'python syntax', command: 'npm run syntax:py', required: true },
   { group: 'POS Bridge Firestore concurrency emulator tests', command: 'npm run test:pos-bridge:emulator', required: true },
   { group: 'hostile certification', command: 'npm run test:release:hostile', required: true },
+  { group: 'schedule publication module and UI tests', command: 'npm run test:schedule-publish', required: true },
   { group: 'schedule publication Firestore concurrency', command: 'npm run test:schedule-publish:emulator', required: true },
   { group: 'recovery drill', command: 'npm run test:release:recovery', required: true },
   { group: 'scale and completeness boundaries', command: 'npm run test:release:scale', required: true },
-  { group: 'server tests', command: 'npm run test:server --if-present', required: true },
+  { group: 'server tests', command: 'npm run test:server', required: true },
   { group: 'client tests', command: 'npm run test:client -- --runInBand', required: true },
   { group: 'production build', command: 'npm run build', required: true }
 ];
