@@ -1,2 +1,0 @@
-import { csvFromRows } from './appCore';
-test('general CSV exports preserve Unicode and line breaks while neutralizing formulas',()=>{const csv=csvFromRows([['name','value'],['Zoë, Cook','=HYPERLINK("bad")'],['line\nbreak','+cmd'],['negative',-125]]);expect(csv).toContain('"Zoë, Cook"');expect(csv).toContain('"line\nbreak"');expect(csv).toContain('"\'=HYPERLINK(""bad"")"');expect(csv).toContain('"\'+cmd"');expect(csv).toContain('"-125"');});

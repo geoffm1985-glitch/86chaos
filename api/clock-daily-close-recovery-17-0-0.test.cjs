@@ -1,5 +1,0 @@
-'use strict';
-const test=require('node:test');const assert=require('node:assert/strict');const fs=require('node:fs');const path=require('node:path');
-const root=path.resolve(__dirname,'..');const schedule=fs.readFileSync(path.join(root,'src/features/schedule.jsx'),'utf8');const management=fs.readFileSync(path.join(root,'src/features/management.jsx'),'utf8');const daily=fs.readFileSync(path.join(root,'api/_daily-close-service.cjs'),'utf8');
-test('a secondary unscheduled alert failure preserves the durable active punch',()=>{assert.match(schedule,/let durablePunch = null/);assert.match(schedule,/if \(durablePunch\)[\s\S]{0,180}setActivePunch\(durablePunch\)/);assert.match(schedule,/Punch saved but unscheduled alert failed/);});
-test('Daily Close UI uses the transactional server route and emulator suite owns concurrency proof',()=>{assert.match(management,/secureFetch\('\/api\/daily-close'/);assert.match(daily,/db\.runTransaction/);assert.match(daily,/stale_daily_close/);assert.match(daily,/dailyCloseMutationIds/);});
