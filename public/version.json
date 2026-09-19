@@ -1,17 +1,17 @@
 {
-  "version": "17.0.13",
-  "name": "86 Chaos 17.0.13",
-  "build": "17.0.13",
-  "label": "86 Chaos 17.0.13",
-  "releasedAt": "2026-09-19T16:30:00.000Z",
-  "releaseTitle": "Idempotent Automated Release Resume Repair",
+  "version": "17.0.17",
+  "name": "86 Chaos 17.0.17",
+  "build": "17.0.17",
+  "label": "86 Chaos 17.0.17",
+  "releasedAt": "2026-09-19T21:30:00.000Z",
+  "releaseTitle": "Bounded Git Status Recovery Repair",
   "notes": [
-    "Makes the one-paste release workflow safely resumable when a previous attempt already overlaid the same or immediately preceding release into the repository before stopping.",
-    "Verifies a dirty pre-existing candidate against its own release-source manifest before any overlay, refusing unknown user edits while allowing a coherent interrupted release to continue.",
-    "Removes stale source files only when they are proven members of the verified prior release manifest and are absent from the incoming release.",
-    "Preserves the 17.0.12 hostile source-identity regression repair, 17.0.11 Schedule Builder/Firebase referrer repairs, immutable deployment certification, no-pager behavior, and full-gate-only user testing flow."
+    "Prevents damaged-checkout recovery from recursively enumerating every untracked dependency file when .gitignore is missing.",
+    "Uses directory-level untracked Git status reporting so generated trees such as node_modules are classified without overflowing child-process output buffers.",
+    "Still detects real untracked source files inside tracked source directories and refuses meaningful source edits before overlay.",
+    "Preserves automatic ZIP extraction, self-heal recovery, streamed release checks, bounded timeouts, process-tree cleanup, immutable deployment verification, and the full Play Store gate."
   ],
-  "title": "86 Chaos 17.0.13",
-  "summary": "Repairs the one-paste updater so interrupted release installs can resume safely instead of misclassifying an already-overlaid candidate as the next version.",
-  "description": "Adds manifest-verified idempotent resume behavior to the automatic install, commit, deploy, and full Play Store workflow without weakening dirty-repository protection or deployment identity."
+  "title": "86 Chaos 17.0.17",
+  "summary": "Repairs the automatic installer failure caused by git status recursively dumping a large untracked node_modules tree when .gitignore is missing.",
+  "description": "Makes repository safety inspection bounded and generated-artifact aware so the validated app-only ZIP can actually overlay and restore a damaged checkout without weakening source-edit protection."
 }

@@ -89,18 +89,99 @@ function validateExtractedApplication(sourceRoot, expectedVersion) {
 }
 
 function git(repositoryRoot, args) {
-  const result = cp.spawnSync('git', ['--no-pager', ...args], { cwd: repositoryRoot, encoding: 'utf8', windowsHide: true });
-  if (result.status !== 0) throw new Error(String(result.stderr || result.stdout || `git ${args.join(' ')} failed`).trim());
+  const result = cp.spawnSync('git', ['--no-pager', ...args], { cwd: repositoryRoot, encoding: 'utf8', windowsHide: true, maxBuffer: 8 * 1024 * 1024 });
+  if (result.status !== 0) {
+    if (result.error) throw new Error(`git ${args.join(' ')} failed: ${result.error.message}`);
+    throw new Error(String(result.stderr || result.stdout || `git ${args.join(' ')} failed`).trim());
+  }
   return String(result.stdout || '');
 }
 
-function meaningfulRepositoryChanges(repositoryRoot) {
-  return git(repositoryRoot, ['status', '--porcelain=v1', '--untracked-files=all'])
+function expandUntrackedDirectory(repositoryRoot, relativeDirectory) {
+  const directory = normalize(relativeDirectory).replace(/\/+$/, '');
+  const absoluteRoot = path.join(repositoryRoot, directory);
+  if (!directory || !fs.existsSync(absoluteRoot) || !fs.statSync(absoluteRoot).isDirectory()) return [{ status: '??', file: directory || normalize(relativeDirectory) }];
+  const rows = [];
+  const walk = current => {
+    for (const entry of fs.readdirSync(current, { withFileTypes: true })) {
+      const absolute = path.join(current, entry.name);
+      const relative = normalize(path.relative(repositoryRoot, absolute));
+      if (entry.isSymbolicLink()) rows.push({ status: '??', file: relative });
+      else if (entry.isDirectory()) walk(absolute);
+      else if (entry.isFile()) rows.push({ status: '??', file: relative });
+    }
+  };
+  walk(absoluteRoot);
+  return rows.length ? rows : [{ status: '??', file: directory }];
+}
+
+function repositoryChangeEntries(repositoryRoot) {
+  const rows = git(repositoryRoot, ['status', '--porcelain=v1', '--untracked-files=normal'])
     .split(/\r?\n/).filter(Boolean).map(line => {
+      const status = line.slice(0, 2);
       let file = line.length > 3 ? line.slice(3).trim() : line.trim();
       if (file.includes(' -> ')) file = file.split(' -> ').pop().trim();
-      return normalize(file.replace(/^"|"$/g, ''));
+      return { status, file: normalize(file.replace(/^"|"$/g, '')) };
     });
+  const expanded = [];
+  for (const row of rows) {
+    if (row.status === '??' && row.file.endsWith('/') && !preservedLocalArtifactPath(row.file)) expanded.push(...expandUntrackedDirectory(repositoryRoot, row.file));
+    else expanded.push(row);
+  }
+  return expanded;
+}
+
+function preservedLocalArtifactPath(relative = '') {
+  const file = normalize(relative);
+  const base = path.posix.basename(file);
+  const parts = file.split('/');
+  return forbiddenSourcePath(file)
+    || file === 'public/build-identity.json'
+    || parts.includes('__pycache__')
+    || /\.pyc$/i.test(base);
+}
+
+function ignorableUntrackedRepositoryEntry(row = {}) {
+  return String(row.status || '') === '??' && preservedLocalArtifactPath(row.file);
+}
+
+function meaningfulRepositoryChangeEntries(repositoryRoot) {
+  return repositoryChangeEntries(repositoryRoot).filter(row => !ignorableUntrackedRepositoryEntry(row));
+}
+
+function meaningfulRepositoryChanges(repositoryRoot) {
+  return meaningfulRepositoryChangeEntries(repositoryRoot).map(row => row.file);
+}
+
+function gitShow(repositoryRoot, spec) {
+  const result = cp.spawnSync('git', ['--no-pager', 'show', spec], { cwd: repositoryRoot, encoding: 'utf8', windowsHide: true });
+  if (result.status !== 0) throw new Error(String(result.stderr || result.stdout || `git show ${spec} failed`).trim());
+  return String(result.stdout || '');
+}
+
+function committedCandidate(repositoryRoot) {
+  let pkg;
+  let manifest;
+  try { pkg = JSON.parse(gitShow(repositoryRoot, 'HEAD:package.json')); }
+  catch (error) { throw new Error(`Git HEAD does not contain a readable package.json: ${error.message}`); }
+  try { manifest = JSON.parse(gitShow(repositoryRoot, 'HEAD:release-source-manifest.json')); }
+  catch (error) { throw new Error(`Git HEAD does not contain a readable release-source-manifest.json: ${error.message}`); }
+  const files = Array.isArray(manifest.files)
+    ? manifest.files.map(row => ({ file: normalize(row?.file), sha256: String(row?.sha256 || '').toLowerCase() })).sort((a, b) => a.file < b.file ? -1 : a.file > b.file ? 1 : 0)
+    : [];
+  if (!files.length || files.some(row => !row.file || !/^[a-f0-9]{64}$/.test(row.sha256))) throw new Error('Git HEAD release-source-manifest.json is incomplete.');
+  const calculated = sha256(Buffer.from(JSON.stringify(files)));
+  if (calculated !== String(manifest.sourceHash || '').toLowerCase()) throw new Error('Git HEAD release-source-manifest.json sourceHash is invalid.');
+  return { version: String(pkg.version || ''), manifest: { sourceHash: calculated, files } };
+}
+
+function recoverableIncompleteCheckout(repositoryRoot) {
+  const entries = meaningfulRepositoryChangeEntries(repositoryRoot);
+  if (!entries.length) return null;
+  const committed = committedCandidate(repositoryRoot);
+  const allowed = new Set([...committed.manifest.files.map(row => row.file), 'release-source-manifest.json']);
+  const unsafe = entries.filter(row => !row.status.includes('D') || !allowed.has(row.file));
+  return { ok: unsafe.length === 0, committed, entries, unsafe };
 }
 
 function coherentInstalledCandidate(repositoryRoot) {
@@ -129,19 +210,59 @@ function copyApplicationOverlay(sourceRoot, repositoryRoot, expectedVersion) {
   const gitDirectory = path.join(repositoryRoot, '.git');
   if (!fs.existsSync(gitDirectory)) throw new Error(`Target is not the expected Git repository; .git is missing: ${repositoryRoot}`);
 
-  const changes = meaningfulRepositoryChanges(repositoryRoot);
+  const rawChanges = repositoryChangeEntries(repositoryRoot);
+  const ignoredLocalArtifacts = rawChanges.filter(ignorableUntrackedRepositoryEntry).map(row => row.file);
+  const changes = rawChanges.filter(row => !ignorableUntrackedRepositoryEntry(row)).map(row => row.file);
   let prior = null;
+  let recoveredIncompleteCheckout = false;
   if (changes.length) {
-    try { prior = coherentInstalledCandidate(repositoryRoot); }
-    catch (error) { throw new Error(`Refusing to overwrite meaningful pre-existing repository changes because the current candidate cannot be verified: ${error.message}`); }
-    if (!prior.ok) {
-      const details = [
-        ...prior.snapshot.mismatches.slice(0, 10).map(row => `${row.file} (${row.reason})`),
-        ...prior.unexpectedChanges.slice(0, 10).map(file => `${file} (unmanifested dirty path)`),
-      ];
-      throw new Error(`Refusing to overwrite meaningful pre-existing repository changes:\n${details.map(file => ` - ${file}`).join('\n')}`);
+    try {
+      prior = coherentInstalledCandidate(repositoryRoot);
+    } catch (coherentError) {
+      let recovery = null;
+      try { recovery = recoverableIncompleteCheckout(repositoryRoot); } catch (_) {}
+      if (!recovery?.ok) {
+        const unsafe = recovery?.unsafe || [];
+        const details = unsafe.length
+          ? unsafe.slice(0, 10).map(row => `${row.file} (${row.status.trim() || 'changed'})`)
+          : [coherentError.message];
+        throw new Error(`Refusing to overwrite meaningful pre-existing repository changes:
+${details.map(file => ` - ${file}`).join('\n')}`);
+      }
+      prior = {
+        ok: true,
+        version: recovery.committed.version,
+        manifest: recovery.committed.manifest,
+        snapshot: { ok: false, mismatches: recovery.entries.map(row => ({ file: row.file, reason: 'missing-from-working-tree' })) },
+        changes: recovery.entries.map(row => row.file),
+        unexpectedChanges: [],
+      };
+      recoveredIncompleteCheckout = true;
     }
-  } else if (fs.existsSync(path.join(repositoryRoot, 'release-source-manifest.json'))) {
+    if (!prior.ok) {
+      let recovery = null;
+      try { recovery = recoverableIncompleteCheckout(repositoryRoot); } catch (_) {}
+      if (recovery?.ok) {
+        prior = {
+          ok: true,
+          version: recovery.committed.version,
+          manifest: recovery.committed.manifest,
+          snapshot: { ok: false, mismatches: recovery.entries.map(row => ({ file: row.file, reason: 'missing-from-working-tree' })) },
+          changes: recovery.entries.map(row => row.file),
+          unexpectedChanges: [],
+        };
+        recoveredIncompleteCheckout = true;
+      } else {
+        const details = [
+          ...prior.snapshot.mismatches.slice(0, 10).map(row => `${row.file} (${row.reason})`),
+          ...prior.unexpectedChanges.slice(0, 10).map(file => `${file} (unmanifested dirty path)`),
+          ...(recovery?.unsafe || []).slice(0, 10).map(row => `${row.file} (${row.status.trim() || 'changed'})`),
+        ];
+        throw new Error(`Refusing to overwrite meaningful pre-existing repository changes:
+${[...new Set(details)].map(file => ` - ${file}`).join('\n')}`);
+      }
+    }
+  } else if (fs.existsSync(path.join(repositoryRoot, 'release-source-manifest.json')) && fs.existsSync(path.join(repositoryRoot, 'package.json'))) {
     try {
       const candidate = coherentInstalledCandidate(repositoryRoot);
       if (candidate.snapshot.ok) prior = candidate;
@@ -173,6 +294,8 @@ function copyApplicationOverlay(sourceRoot, repositoryRoot, expectedVersion) {
     removedFiles,
     gitPreserved: true,
     resumedVerifiedCandidate: Boolean(changes.length && prior?.ok),
+    recoveredIncompleteCheckout,
+    ignoredLocalArtifacts,
     sourceHash: sourceValidation.sourceHash,
   };
 }
@@ -198,12 +321,18 @@ if (require.main === module) {
 module.exports = {
   REQUIRED_PATHS,
   forbiddenSourcePath,
+  preservedLocalArtifactPath,
+  ignorableUntrackedRepositoryEntry,
+  repositoryChangeEntries,
+  meaningfulRepositoryChangeEntries,
   listTree,
   readPackageVersion,
   readReleaseManifest,
   verifyManifestSnapshot,
   validateExtractedApplication,
   meaningfulRepositoryChanges,
+  committedCandidate,
+  recoverableIncompleteCheckout,
   coherentInstalledCandidate,
   copyApplicationOverlay,
 };

@@ -67,6 +67,7 @@ test('17.0.11 automatic workflow forbids destructive Git and pager behavior and 
   assert.match(script, /GIT_PAGER\s*=\s*'cat'/);
   assert.match(script, /PAGER\s*=\s*'cat'/);
   assert.match(script, /git --no-pager/);
+  assert.match(script, /@\('switch', 'testing'\)/);
   assert.doesNotMatch(script, /git\s+rm\s+-r\s+--cached\s+\./i);
   assert.doesNotMatch(script, /git\s+reset\s+--hard/i);
   assert.doesNotMatch(script, /npm\s+audit\s+fix\s+--force/i);
@@ -80,7 +81,7 @@ test('17.0.11 automatic workflow uses parser-safe PowerShell variable interpolat
   const ambiguousReferences = [...script.matchAll(/\$(?!(?:env|script|global|local|private|using):)([A-Za-z_][A-Za-z0-9_]*):/g)]
     .map((match) => match[0]);
   assert.deepEqual(ambiguousReferences, []);
-  assert.match(script, /Release \$\{ExpectedVersion\}: Idempotent automated release resume repair/);
+  assert.match(script, /Release \$\{ExpectedVersion\}:/);
 });
 
 test('17.0.11 release gate persists total timing into slim evidence and prints elapsed time last', () => {

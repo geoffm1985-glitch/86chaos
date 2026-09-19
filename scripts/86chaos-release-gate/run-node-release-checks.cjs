@@ -8,23 +8,25 @@ const path = require('path');
 const { ensureRunDir, writeJson, readJsonIfExists } = require('./run-context.cjs');
 const { writeJavaPreflight } = require('./check-java-prerequisite.cjs');
 const { firstUsefulFailureFromOutput } = require('./failure-extractor.cjs');
+const { runStreamedCommand, formatDuration, positiveInteger } = require('./streamed-command-runner.cjs');
 
 const { runDir, runId } = ensureRunDir();
 fs.mkdirSync(runDir, { recursive: true });
 
+const MINUTE = 60 * 1000;
 const commands = [
-  { group: 'source validator', command: 'npm run test:source', required: true },
-  { group: 'api syntax', command: 'npm run syntax:api', required: true },
-  { group: 'python syntax', command: 'npm run syntax:py', required: true },
-  { group: 'POS Bridge Firestore concurrency emulator tests', command: 'npm run test:pos-bridge:emulator', required: true },
-  { group: 'hostile certification', command: 'npm run test:release:hostile', required: true },
-  { group: 'schedule publication module and UI tests', command: 'npm run test:schedule-publish', required: true },
-  { group: 'schedule publication Firestore concurrency', command: 'npm run test:schedule-publish:emulator', required: true },
-  { group: 'recovery drill', command: 'npm run test:release:recovery', required: true },
-  { group: 'scale and completeness boundaries', command: 'npm run test:release:scale', required: true },
-  { group: 'server tests', command: 'npm run test:server', required: true },
-  { group: 'client tests', command: 'npm run test:client -- --runInBand', required: true },
-  { group: 'production build', command: 'npm run build', required: true }
+  { group: 'source validator', command: 'npm run test:source', required: true, timeoutMs: 5 * MINUTE },
+  { group: 'api syntax', command: 'npm run syntax:api', required: true, timeoutMs: 5 * MINUTE },
+  { group: 'python syntax', command: 'npm run syntax:py', required: true, timeoutMs: 5 * MINUTE },
+  { group: 'POS Bridge Firestore concurrency emulator tests', command: 'npm run test:pos-bridge:emulator', required: true, timeoutMs: 20 * MINUTE },
+  { group: 'hostile certification', command: 'npm run test:release:hostile', required: true, timeoutMs: 20 * MINUTE },
+  { group: 'schedule publication module and UI tests', command: 'npm run test:schedule-publish', required: true, timeoutMs: 20 * MINUTE },
+  { group: 'schedule publication Firestore concurrency', command: 'npm run test:schedule-publish:emulator', required: true, timeoutMs: 20 * MINUTE },
+  { group: 'recovery drill', command: 'npm run test:release:recovery', required: true, timeoutMs: 20 * MINUTE },
+  { group: 'scale and completeness boundaries', command: 'npm run test:release:scale', required: true, timeoutMs: 10 * MINUTE },
+  { group: 'server tests', command: 'npm run test:server', required: true, timeoutMs: 20 * MINUTE },
+  { group: 'client tests', command: 'npm run test:client -- --runInBand', required: true, timeoutMs: 30 * MINUTE },
+  { group: 'production build', command: 'npm run build', required: true, timeoutMs: 15 * MINUTE }
 ];
 
 function structuredFailureFor(row) {
@@ -36,8 +38,10 @@ function structuredFailureFor(row) {
   return '';
 }
 
-function runCommand(row) {
+async function runCommand(row) {
   const startedAt = new Date();
+  const timeoutMs = positiveInteger(process.env.CHAOS_RELEASE_CHECK_TIMEOUT_MS, row.timeoutMs || 20 * MINUTE);
+  const heartbeatMs = positiveInteger(process.env.CHAOS_RELEASE_CHECK_HEARTBEAT_MS, 15000);
   const result = {
     group: row.group,
     command: row.command,
@@ -46,32 +50,40 @@ function runCommand(row) {
     startedAt: startedAt.toISOString(),
     finishedAt: '',
     durationMs: 0,
+    timeoutMs,
     exitCode: null,
     firstUsefulFailure: '',
     stdoutTail: '',
     stderrTail: ''
   };
   console.log(`\n[release-check] ${row.group}: ${row.command}`);
-  const child = cp.spawnSync(row.command, {
-    shell: true,
+  console.log(`[release-check] timeout ${formatDuration(timeoutMs)} | heartbeat every ${formatDuration(heartbeatMs)}`);
+  const child = await runStreamedCommand({
+    command: row.command,
     cwd: process.cwd(),
     env: process.env,
-    encoding: 'utf8',
-    windowsHide: true,
-    maxBuffer: 1024 * 1024 * 30
+    timeoutMs,
+    heartbeatMs,
+    onStdout: chunk => process.stdout.write(chunk),
+    onStderr: chunk => process.stderr.write(chunk),
+    onHeartbeat: ({ elapsedMs, silentMs }) => {
+      console.log(`[release-check] STILL RUNNING ${row.group} | elapsed ${formatDuration(elapsedMs)} | no output ${formatDuration(silentMs)} | timeout ${formatDuration(timeoutMs)}`);
+    },
   });
   const finishedAt = new Date();
   result.finishedAt = finishedAt.toISOString();
-  result.durationMs = finishedAt.getTime() - startedAt.getTime();
-  result.exitCode = typeof child.status === 'number' ? child.status : (child.error ? 1 : 0);
+  result.durationMs = child.durationMs;
+  result.exitCode = child.status;
   result.stdoutTail = String(child.stdout || '').slice(-5000);
   result.stderrTail = String(child.stderr || '').slice(-5000);
-  result.status = result.exitCode === 0 ? 'passed' : 'failed';
+  result.status = child.timedOut ? 'timedOut' : (child.interrupted ? 'interrupted' : (result.exitCode === 0 ? 'passed' : 'failed'));
   result.firstUsefulFailure = result.status === 'passed'
     ? ''
-    : (structuredFailureFor(row) || firstUsefulFailureFromOutput(child));
-  if (child.stdout) process.stdout.write(child.stdout);
-  if (child.stderr) process.stderr.write(child.stderr);
+    : (child.timedOut
+      ? `${row.group} timed out after ${formatDuration(timeoutMs)}; the child process tree was terminated.`
+      : child.interrupted
+        ? `${row.group} was interrupted by ${child.interruptedSignal || 'a termination signal'}; the child process tree was terminated.`
+        : (structuredFailureFor(row) || firstUsefulFailureFromOutput({ status: child.status, error: child.error, stdout: child.stdout, stderr: child.stderr })));
   console.log(`[release-check] ${result.status.toUpperCase()} ${row.group} (${result.durationMs}ms)`);
   return result;
 }
@@ -171,7 +183,7 @@ function isEmulatorPortCollision(result) {
   );
 }
 
-function runRulesCommand(row) {
+async function runRulesCommand(row) {
   let lastResult = null;
   for (let attempt = 1; attempt <= 2; attempt += 1) {
     const temp = createIsolatedEmulatorConfig();
@@ -186,7 +198,7 @@ function runRulesCommand(row) {
       quoteShellArgument(`node ${row.testScript}`),
     ].join(' ');
     try {
-      lastResult = runCommand({ ...row, command: emulatorCommand });
+      lastResult = await runCommand({ ...row, command: emulatorCommand, timeoutMs: 20 * MINUTE });
     } finally {
       removeIsolatedEmulatorConfig(temp);
     }
@@ -196,79 +208,140 @@ function runRulesCommand(row) {
   return lastResult;
 }
 
-const results = [];
-for (const row of commands) results.push(runCommand(row));
+async function main() {
+  const results = [];
+  let stoppedEarly = null;
+  for (let index = 0; index < commands.length; index += 1) {
+    const row = commands[index];
+    const result = await runCommand(row);
+    results.push(result);
+    if ((result.status === 'timedOut' || result.status === 'interrupted') && result.required === true) {
+      stoppedEarly = result;
+      console.error(`[release-check] STOPPING remaining local release checks because required group ${row.group} ${result.status === 'timedOut' ? 'timed out' : 'was interrupted'} and its child tree was terminated.`);
+      for (const skippedRow of commands.slice(index + 1)) {
+        results.push({
+          group: skippedRow.group,
+          command: skippedRow.command,
+          required: skippedRow.required === true,
+          status: 'not run',
+          startedAt: new Date().toISOString(),
+          finishedAt: new Date().toISOString(),
+          durationMs: 0,
+          timeoutMs: skippedRow.timeoutMs || null,
+          exitCode: null,
+          firstUsefulFailure: `Not run because ${row.group} ${result.status === 'timedOut' ? 'timed out' : 'was interrupted'}.`,
+          stdoutTail: '',
+          stderrTail: '',
+        });
+      }
+      break;
+    }
+  }
 
-const { report: java } = writeJavaPreflight();
-const javaRow = {
-  group: 'java prerequisite',
-  command: 'java -version',
-  required: true,
-  status: java.ok ? 'passed' : 'blocked',
-  startedAt: java.generatedAt,
-  finishedAt: new Date().toISOString(),
-  durationMs: 0,
-  exitCode: java.ok ? 0 : 2,
-  firstUsefulFailure: java.ok ? '' : java.message,
-  stdoutTail: java.stdout || '',
-  stderrTail: java.stderr || java.error || ''
-};
-results.push(javaRow);
-console.log(`[release-check] ${javaRow.status.toUpperCase()} java prerequisite`);
+  const rulesCommands = [
+    {
+      group: 'complete canonical firestore/storage emulator rules tests',
+      testScript: 'scripts/run-rules-tests.js',
+      required: true,
+    },
+    {
+      group: 'optional focused rules smoke tests',
+      testScript: 'scripts/86chaos-release-gate/run-rules-release-gate.cjs',
+      required: false,
+    },
+  ];
 
-const rulesCommands = [
-  {
-    group: 'complete canonical firestore/storage emulator rules tests',
-    testScript: 'scripts/run-rules-tests.js',
-    required: true,
-  },
-  {
-    group: 'optional focused rules smoke tests',
-    testScript: 'scripts/86chaos-release-gate/run-rules-release-gate.cjs',
-    required: false,
-  },
-];
-
-if (java.ok) {
-  for (const row of rulesCommands) results.push(runRulesCommand(row));
-} else {
-  for (const row of rulesCommands) {
-    const blocked = {
-      group: row.group,
-      command: `firebase emulators:exec --only firestore,storage "node ${row.testScript}"`,
-      required: row.required === true,
-      status: 'blocked',
-      startedAt: new Date().toISOString(),
+  if (!stoppedEarly) {
+    const { report: java } = writeJavaPreflight();
+    const javaRow = {
+      group: 'java prerequisite',
+      command: 'java -version',
+      required: true,
+      status: java.ok ? 'passed' : 'blocked',
+      startedAt: java.generatedAt,
       finishedAt: new Date().toISOString(),
       durationMs: 0,
-      exitCode: 2,
-      firstUsefulFailure: java.message,
-      stdoutTail: '',
-      stderrTail: ''
+      timeoutMs: null,
+      exitCode: java.ok ? 0 : 2,
+      firstUsefulFailure: java.ok ? '' : java.message,
+      stdoutTail: java.stdout || '',
+      stderrTail: java.stderr || java.error || ''
     };
-    console.log(`[release-check] BLOCKED ${row.group}: ${java.message}`);
-    results.push(blocked);
+    results.push(javaRow);
+    console.log(`[release-check] ${javaRow.status.toUpperCase()} java prerequisite`);
+
+    if (java.ok) {
+      for (const row of rulesCommands) results.push(await runRulesCommand(row));
+    } else {
+      for (const row of rulesCommands) {
+        const blocked = {
+          group: row.group,
+          command: `firebase emulators:exec --only firestore,storage "node ${row.testScript}"`,
+          required: row.required === true,
+          status: 'blocked',
+          startedAt: new Date().toISOString(),
+          finishedAt: new Date().toISOString(),
+          durationMs: 0,
+          timeoutMs: null,
+          exitCode: 2,
+          firstUsefulFailure: java.message,
+          stdoutTail: '',
+          stderrTail: ''
+        };
+        console.log(`[release-check] BLOCKED ${row.group}: ${java.message}`);
+        results.push(blocked);
+      }
+    }
+  } else {
+    results.push({
+      group: 'java prerequisite', command: 'java -version', required: true, status: 'not run',
+      startedAt: new Date().toISOString(), finishedAt: new Date().toISOString(), durationMs: 0,
+      timeoutMs: null, exitCode: null, firstUsefulFailure: 'Not run because an earlier required release-check group did not terminate cleanly.', stdoutTail: '', stderrTail: ''
+    });
+    for (const row of rulesCommands) {
+      results.push({
+        group: row.group,
+        command: `firebase emulators:exec --only firestore,storage "node ${row.testScript}"`,
+        required: row.required === true,
+        status: 'not run',
+        startedAt: new Date().toISOString(),
+        finishedAt: new Date().toISOString(),
+        durationMs: 0,
+        timeoutMs: null,
+        exitCode: null,
+        firstUsefulFailure: 'Not run because an earlier required release-check group did not terminate cleanly.',
+        stdoutTail: '',
+        stderrTail: ''
+      });
+    }
   }
+
+  const totals = results.reduce((acc, row) => {
+    const key = row.status === 'not run' ? 'notRun' : row.status;
+    acc[key] = (acc[key] || 0) + 1;
+    return acc;
+  }, { passed: 0, failed: 0, timedOut: 0, interrupted: 0, skipped: 0, blocked: 0, notRun: 0 });
+  const ok = results.every(row => row.status === 'passed' || (row.status === 'skipped' && row.required !== true));
+  const report = {
+    runId,
+    generatedAt: new Date().toISOString(),
+    ok,
+    totals,
+    results,
+    firstUsefulFailure: results.find(row => ['failed', 'blocked', 'timedOut', 'interrupted'].includes(row.status))?.firstUsefulFailure || '',
+    truth: [
+      'Passed commands always have an empty firstUsefulFailure.',
+      'Required release-check groups stream output live and have bounded execution time.',
+      'Timeout or interruption kills the complete child process tree before remaining local checks are marked not-run.',
+      'The complete canonical npm run test:rules suite is required before Playwright may start.',
+      'The focused rules smoke suite is additional evidence and does not replace the canonical suite.',
+    ],
+  };
+  writeJson(path.join(runDir, 'node-test-live-summary.json'), report);
+  if (!ok) process.exitCode = process.exitCode || 1;
 }
 
-const totals = results.reduce((acc, row) => {
-  const key = row.status === 'not run' ? 'notRun' : row.status;
-  acc[key] = (acc[key] || 0) + 1;
-  return acc;
-}, { passed: 0, failed: 0, skipped: 0, blocked: 0, notRun: 0 });
-const ok = results.every(row => row.status === 'passed' || (row.status === 'skipped' && row.required !== true));
-const report = {
-  runId,
-  generatedAt: new Date().toISOString(),
-  ok,
-  totals,
-  results,
-  firstUsefulFailure: results.find(row => ['failed', 'blocked'].includes(row.status))?.firstUsefulFailure || '',
-  truth: [
-    'Passed commands always have an empty firstUsefulFailure.',
-    'The complete canonical npm run test:rules suite is required before Playwright may start.',
-    'The focused rules smoke suite is additional evidence and does not replace the canonical suite.',
-  ],
-};
-writeJson(path.join(runDir, 'node-test-live-summary.json'), report);
-if (!ok) process.exitCode = 1;
+main().catch(error => {
+  console.error(error && (error.stack || error.message) || error);
+  process.exitCode = 1;
+});

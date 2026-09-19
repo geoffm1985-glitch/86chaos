@@ -1,7 +1,7 @@
 [CmdletBinding()]
 param(
   [string]$ReleaseZip,
-  [string]$ExpectedVersion = '17.0.13',
+  [string]$ExpectedVersion = '17.0.17',
   [string]$Repository = 'C:\Users\geoff\Documents\GitHub\86chaos'
 )
 
@@ -16,6 +16,7 @@ $script:DeploymentStarted = $false
 $script:PlayStoreStarted = $false
 $script:TempDirectory = $null
 $script:ReleaseZipPath = $null
+$script:SourceRoot = $null
 $script:HeadSha = $null
 $script:SourceManifestHash = $null
 $script:ImmutableDeploymentUrl = $null
@@ -67,35 +68,64 @@ try {
     Write-Host "Release ZIP: $script:ReleaseZipPath"
   }
 
+  Invoke-Stage 'extract and validate release ZIP' {
+    $script:TempDirectory = Join-Path ([IO.Path]::GetTempPath()) ("86chaos-update-" + [guid]::NewGuid().ToString('N'))
+    New-Item -ItemType Directory -Path $script:TempDirectory | Out-Null
+    Expand-Archive -LiteralPath $script:ReleaseZipPath -DestinationPath $script:TempDirectory
+    $script:SourceRoot = Get-ApplicationRoot $script:TempDirectory
+    $sourcePackage = Get-Content -Raw -LiteralPath (Join-Path $script:SourceRoot 'package.json') | ConvertFrom-Json
+    if ([string]$sourcePackage.version -ne $ExpectedVersion) { throw "Extracted package version is $($sourcePackage.version); expected $ExpectedVersion." }
+    $sourceManifest = Get-SourceManifestHash $script:SourceRoot
+    Write-Host "Validated incoming ZIP: version=$ExpectedVersion source=$sourceManifest" -ForegroundColor Green
+  }
+
+  Invoke-Stage 'verify repository and testing branch' {
+    if (-not (Test-Path -LiteralPath (Join-Path $Repository '.git'))) { throw "Repository is not a Git checkout: $Repository" }
+    Set-Location -LiteralPath $Repository
+    Invoke-Git @('switch', 'testing')
+    $branch = (& git --no-pager branch --show-current).Trim()
+    if ($LASTEXITCODE -ne 0 -or $branch -ne 'testing') { throw "Expected local branch testing, found $branch." }
+  }
+
   Invoke-Stage 'identify release transition or safe resume' {
     $currentPackagePath = Join-Path $Repository 'package.json'
-    if (-not (Test-Path -LiteralPath $currentPackagePath)) { throw "Repository package.json is missing: $currentPackagePath" }
-    $currentVersion = [string](Get-Content -Raw -LiteralPath $currentPackagePath | ConvertFrom-Json).version
+    $versionSource = 'working tree'
+    if (Test-Path -LiteralPath $currentPackagePath) {
+      $currentVersion = [string](Get-Content -Raw -LiteralPath $currentPackagePath | ConvertFrom-Json).version
+    }
+    else {
+      $headPackageText = ((& git --no-pager show 'HEAD:package.json') -join "`n")
+      if ($LASTEXITCODE -ne 0 -or -not $headPackageText) { throw "Repository package.json is missing and Git HEAD cannot provide a recovery baseline." }
+      $currentVersion = [string]($headPackageText | ConvertFrom-Json).version
+      $versionSource = 'Git HEAD recovery baseline'
+      Write-Host "Working-tree package.json is missing. Recovery baseline from Git HEAD: $currentVersion" -ForegroundColor Yellow
+    }
     if ($currentVersion -notmatch '^(\d+)\.(\d+)\.(\d+)$') { throw "Repository version is not a three-part semantic version: $currentVersion" }
     $currentParts = @([int]$Matches[1], [int]$Matches[2], [int]$Matches[3])
     if ($ExpectedVersion -notmatch '^(\d+)\.(\d+)\.(\d+)$') { throw "Requested release version is not a three-part semantic version: $ExpectedVersion" }
     $expectedParts = @([int]$Matches[1], [int]$Matches[2], [int]$Matches[3])
-    if ($expectedParts[2] -lt 1) { throw "Requested patch version cannot determine an immediate predecessor: $ExpectedVersion" }
-    $previousVersion = '{0}.{1}.{2}' -f $expectedParts[0], $expectedParts[1], ($expectedParts[2] - 1)
-    if ($currentVersion -eq $ExpectedVersion) {
-      Write-Host "Resume mode: repository already reports $ExpectedVersion. The installer will verify its current manifest before overlaying." -ForegroundColor Yellow
+    if ($currentParts[0] -ne $expectedParts[0] -or $currentParts[1] -ne $expectedParts[1]) {
+      throw "Repository version $currentVersion is outside the $($expectedParts[0]).$($expectedParts[1]).x release line; refusing automatic overlay."
     }
-    elseif ($currentVersion -eq $previousVersion) {
-      Write-Host "Upgrade mode: $currentVersion -> $ExpectedVersion" -ForegroundColor Green
+    if ($currentParts[2] -gt $expectedParts[2]) { throw "Repository version $currentVersion is newer than requested release $ExpectedVersion; refusing downgrade." }
+    if ($currentVersion -eq $ExpectedVersion) {
+      Write-Host "Resume mode: repository baseline already reports $ExpectedVersion ($versionSource). The installer will verify/rebuild the working tree from the release ZIP." -ForegroundColor Yellow
+    }
+    elseif (($expectedParts[2] - $currentParts[2]) -eq 1) {
+      Write-Host "Upgrade mode: $currentVersion -> $ExpectedVersion ($versionSource)" -ForegroundColor Green
     }
     else {
-      throw "Repository version $currentVersion is neither the immediate predecessor $previousVersion nor the requested resumable release $ExpectedVersion."
+      Write-Host "Recovery upgrade mode: $currentVersion -> $ExpectedVersion ($versionSource). Intermediate interrupted releases are superseded by this complete manifest-verified app snapshot." -ForegroundColor Yellow
     }
   }
 
-  Invoke-Stage 'extract and validate application' {
-    $script:TempDirectory = Join-Path ([IO.Path]::GetTempPath()) ("86chaos-update-" + [guid]::NewGuid().ToString('N'))
-    New-Item -ItemType Directory -Path $script:TempDirectory | Out-Null
-    Expand-Archive -LiteralPath $script:ReleaseZipPath -DestinationPath $script:TempDirectory
-    $SourceRoot = Get-ApplicationRoot $script:TempDirectory
-    $sourcePackage = Get-Content -Raw -LiteralPath (Join-Path $SourceRoot 'package.json') | ConvertFrom-Json
-    if ([string]$sourcePackage.version -ne $ExpectedVersion) { throw "Extracted package version is $($sourcePackage.version); expected $ExpectedVersion." }
-    Invoke-Checked 'node' @((Join-Path $SourceRoot 'scripts\86chaos-release-workflow\install-app-only.cjs'), '--source', $SourceRoot, '--repository', $Repository, '--expected-version', $ExpectedVersion)
+  Invoke-Stage 'install release ZIP into repository' {
+    Invoke-Checked 'node' @((Join-Path $script:SourceRoot 'scripts\86chaos-release-workflow\install-app-only.cjs'), '--source', $script:SourceRoot, '--repository', $Repository, '--expected-version', $ExpectedVersion)
+    $installedPackage = Join-Path $Repository 'package.json'
+    if (-not (Test-Path -LiteralPath $installedPackage)) { throw "Release overlay completed without restoring repository package.json: $installedPackage" }
+    $installedVersion = [string](Get-Content -Raw -LiteralPath $installedPackage | ConvertFrom-Json).version
+    if ($installedVersion -ne $ExpectedVersion) { throw "Repository reports $installedVersion after overlay; expected $ExpectedVersion." }
+    Write-Host "Release ZIP extracted and installed into repository: $Repository" -ForegroundColor Green
   }
 
   Set-Location -LiteralPath $Repository
@@ -103,6 +133,8 @@ try {
   Invoke-Stage 'install locked dependencies' { Invoke-Checked 'npm' @('ci') }
   Invoke-Stage 'version and source validation' { Invoke-Checked 'npm' @('run', "validate:$ExpectedVersion") }
   Invoke-Stage 'current release regression tests' { Invoke-Checked 'npm' @('run', "test:repair:$ExpectedVersion"); Invoke-Checked 'npm' @('run', 'test:schedule-runtime:17.0.11') }
+  $env:NODE_OPTIONS = '--max-old-space-size=4096'
+  $env:GENERATE_SOURCEMAP = 'false'
   Invoke-Stage 'production build' { Invoke-Checked 'npm' @('run', 'build') }
   Invoke-Stage 'repository safety after build' { Invoke-Checked 'npm' @('run', 'git:safety') }
 
@@ -116,7 +148,7 @@ try {
   }
 
   Invoke-Stage 'commit and push testing' {
-    Invoke-Git @('commit', '-m', "Release ${ExpectedVersion}: Idempotent automated release resume repair")
+    Invoke-Git @('commit', '-m', "Release ${ExpectedVersion}: generated artifact-aware checkout recovery repair")
     $script:HeadSha = (& git --no-pager rev-parse HEAD).Trim()
     if ($LASTEXITCODE -ne 0) { throw 'Could not read the release commit SHA.' }
     $script:DeploymentStarted = $true
@@ -166,6 +198,7 @@ try {
     $env:CHAOS_EXPECTED_TEST_FIREBASE_PROJECT_ID = $CanonicalFirebaseTestProject
     $env:CHAOS_SOURCE_MANIFEST_HASH = $script:SourceManifestHash
     $env:CHAOS_AUTOMATED_RELEASE_WORKFLOW = 'true'
+    $env:CHAOS_RELEASE_CHECK_HEARTBEAT_MS = '15000'
   }
 
   Invoke-Stage 'full Play Store release gate' {

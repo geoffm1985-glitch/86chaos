@@ -102,13 +102,15 @@ test('17.0.13 updater removes only verified stale prior-release source files',()
   }finally{fs.rmSync(temp,{recursive:true,force:true});}
 });
 
-test('17.0.13 PowerShell workflow accepts immediate predecessor or same-version resume and stays non-interactive',()=>{
+test('17.0.13 PowerShell workflow remains resumable/non-interactive as complete-snapshot recovery evolves',()=>{
   const script=fs.readFileSync(path.join(root,'RUN_86CHAOS_UPDATE_TEST_DEPLOY.ps1'),'utf8');
-  assert.match(script,/ExpectedVersion = '17\.0\.13'/);
+  const currentVersion=JSON.parse(fs.readFileSync(path.join(root,'package.json'),'utf8')).version.replace(/\./g,'\\.');
+  assert.match(script,new RegExp(`ExpectedVersion = '${currentVersion}'`));
   assert.match(script,/currentVersion -eq \$ExpectedVersion/);
-  assert.match(script,/currentVersion -eq \$previousVersion/);
   assert.match(script,/Resume mode:/);
   assert.match(script,/Upgrade mode:/);
+  assert.match(script,/Recovery upgrade mode:/);
+  assert.match(script,/refusing downgrade/);
   assert.match(script,/GIT_PAGER = 'cat'/);
   assert.match(script,/git --no-pager/);
   assert.doesNotMatch(script,/test:play-store:(?:failed|delta|repair)/);

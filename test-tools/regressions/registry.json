@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "release": "17.0.13",
+  "release": "17.0.17",
   "defects": [
     {
       "defectId": "RG-API-WRAPPER-FIDELITY",
@@ -439,6 +439,61 @@
       ],
       "fidelity": "ACTUAL MODULE / TEMPORARY GIT FIXTURE",
       "fixedVersion": "17.0.13",
+      "mandatoryGroup": "hostile-contracts"
+    },
+    {
+      "defectId": "RG-RELEASE-CHECK-STREAMING-TIMEOUT-1714",
+      "origin": "17.0.13 full release-gate local readiness hang with orphaned Playwright descendants",
+      "affectedInvariant": "Required release-check groups must stream live output, heartbeat while alive, terminate within a bounded timeout, kill the complete descendant process tree, and avoid uncontrolled hostile-test concurrency on Windows",
+      "reproducer": "api/release-check-streaming-17-0-14.test.cjs",
+      "permanentTestIds": [
+        "17.0.14 release checks stream child output and emit heartbeats instead of buffering silently",
+        "17.0.14 timed-out release checks kill nested child processes instead of leaving Playwright-style orphans",
+        "17.0.14 hostile release checks are bounded, visible, controlled-concurrency, and preserve the one-paste full-gate workflow"
+      ],
+      "fidelity": "ACTUAL CHILD PROCESS / PROCESS TREE / WORKFLOW CONTRACT",
+      "fixedVersion": "17.0.14",
+      "mandatoryGroup": "hostile-contracts"
+    },
+    {
+      "defectId": "RG-AUTOMATED-ZIP-SELF-HEAL-1715",
+      "origin": "17.0.14 one-paste updater stopped before extraction because working-tree package.json was missing",
+      "affectedInvariant": "The automatic updater must validate the incoming app-only ZIP before inspecting the checkout, restore manifest-tracked missing files from a complete release snapshot, preserve .git, and refuse real user edits",
+      "reproducer": "api/release-workflow-self-heal-17-0-15.test.cjs",
+      "permanentTestIds": [
+        "17.0.15 installer self-heals a checkout with package.json and other tracked app files missing",
+        "17.0.15 self-heal refuses a damaged checkout when real user edits are also present",
+        "17.0.15 PowerShell workflow validates the ZIP before repository version inspection and installs before npm validation"
+      ],
+      "fidelity": "ACTUAL MODULE / TEMPORARY GIT FIXTURE / WORKFLOW CONTRACT",
+      "fixedVersion": "17.0.15",
+      "mandatoryGroup": "hostile-contracts"
+    },
+    {
+      "defectId": "RG-GENERATED-ARTIFACT-RECOVERY-1716",
+      "origin": "17.0.15 one-paste installer stopped because missing .gitignore exposed node_modules as untracked repository content",
+      "affectedInvariant": "Damaged-checkout recovery must preserve release-forbidden generated/local artifacts such as node_modules and environment files without mistaking them for overwriteable user source, while still refusing real source edits",
+      "reproducer": "api/release-workflow-generated-artifacts-17-0-16.test.cjs",
+      "permanentTestIds": [
+        "17.0.16 installer ignores untracked generated artifacts when .gitignore is missing and restores the release safely",
+        "17.0.16 installer preserves local environment/dependency artifacts that a valid app-only ZIP cannot overwrite",
+        "17.0.16 installer still refuses untracked source files and modified tracked source during recovery"
+      ],
+      "fidelity": "ACTUAL MODULE / TEMPORARY GIT FIXTURE / DAMAGED CHECKOUT",
+      "fixedVersion": "17.0.16",
+      "mandatoryGroup": "hostile-contracts"
+    },
+    {
+      "defectId": "RG-GIT-STATUS-BUFFER-RECOVERY-1717",
+      "origin": "17.0.16 one-paste installer failed before overlay when missing .gitignore caused git status --untracked-files=all to enumerate the full node_modules tree beyond spawnSync output limits",
+      "affectedInvariant": "Damaged-checkout safety inspection must remain bounded even when generated dependency trees are unignored, while still surfacing real untracked source edits before overlay",
+      "reproducer": "api/release-workflow-git-status-buffer-17-0-17.test.cjs",
+      "permanentTestIds": [
+        "17.0.17 repository inspection stays bounded when missing .gitignore exposes a node_modules tree larger than spawnSync default maxBuffer",
+        "17.0.17 bounded untracked reporting still exposes real untracked files inside tracked source directories"
+      ],
+      "fidelity": "ACTUAL MODULE / TEMPORARY GIT FIXTURE / >1 MIB UNTRACKED DEPENDENCY STATUS",
+      "fixedVersion": "17.0.17",
       "mandatoryGroup": "hostile-contracts"
     }
   ]
