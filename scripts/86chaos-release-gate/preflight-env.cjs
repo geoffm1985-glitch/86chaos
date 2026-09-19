@@ -178,6 +178,7 @@ async function main() {
       expectedVercelProjectId=expectedVercelProjectId||String(serverBuildIdentity.vercelProjectId||'').trim();
       for(const [label,identity] of [['client',clientBuildIdentity],['server',serverBuildIdentity]]){
         const manifest=identity.sourceManifestHash||identity.sourceHash;
+        if(identity.identityStampStatus!=='verified')errors.push(`Deployed ${label} build identity is degraded and cannot be certified.`);
         if(manifest!==expectedManifest)errors.push(`Deployed ${label} source manifest does not match the local certification source manifest.`);
         if(String(identity.version||'')!==expectedVersion)errors.push(`Deployed ${label} version does not match CHAOS_EXPECTED_VERSION.`);
       }
@@ -202,7 +203,7 @@ async function main() {
         if(!pinnedClient.ok||!pinnedServer.ok) errors.push('Immutable deployment identity could not be fetched.');
         else {
           const client=JSON.parse(pinnedClient.text),server=JSON.parse(pinnedServer.text);
-          for(const key of ['sourceManifestHash','gitCommit','gitBranch','vercelDeploymentId','vercelDeploymentUrl','vercelProjectId','firebaseTestingProject','rulesHash','firebaseConfigHash','vercelConfigHash','version']) if(server[key]!==serverBuildIdentity[key]) errors.push(`Immutable deployment differs from alias identity: ${key}.`);
+          for(const key of ['sourceManifestHash','gitCommit','gitBranch','vercelDeploymentId','vercelDeploymentUrl','vercelProjectId','firebaseTestingProject','rulesHash','firebaseConfigHash','vercelConfigHash','version','identityStampStatus','sourceEvidence','workspaceVerification']) if(server[key]!==serverBuildIdentity[key]) errors.push(`Immutable deployment differs from alias identity: ${key}.`);
           if((client.sourceManifestHash||client.sourceHash)!==expectedManifest || client.version!==expectedVersion) errors.push('Immutable client source/version differs from the confirmed candidate.');
         }
       }

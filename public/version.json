@@ -1,16 +1,17 @@
 {
-  "version": "17.0.7",
-  "name": "86 Chaos 17.0.7",
-  "build": "17.0.7",
-  "label": "86 Chaos 17.0.7",
-  "releasedAt": "2026-09-19T00:00:00.000Z",
-  "releaseTitle": "Vercel Build Workspace Identity Repair",
+  "version": "17.0.8",
+  "name": "86 Chaos 17.0.8",
+  "build": "17.0.8",
+  "label": "86 Chaos 17.0.8",
+  "releasedAt": "2026-09-19T05:00:00.000Z",
+  "releaseTitle": "Vercel Deployment-Safe Identity Repair",
   "notes": [
-    "Uses the bundled deterministic release-source manifest unconditionally inside Vercel builds instead of probing the Vercel checkout Git object database.",
-    "Uses VERCEL_GIT_COMMIT_SHA and VERCEL_GIT_COMMIT_REF directly for deployed commit and branch identity, with no git subprocess requirement in Vercel.",
-    "Preserves the 17.0.5 schedule role reconciliation, release-gate repairs, and mobile microphone placement unchanged."
+    "Removes temporary Vercel build-workspace hashing from the deployment-critical path and binds deployment identity to Vercel Git commit/branch metadata plus the committed deterministic source manifest.",
+    "Keeps strict workspace verification as an opt-in diagnostic instead of a default that can block legitimate Vercel builds.",
+    "Makes build-identity stamping fail open for deployment but fail closed for certification: degraded identity evidence no longer kills the app build, while the release gate still refuses certification without a valid manifest hash.",
+    "Preserves the 17.0.5 schedule role reconciliation, release-gate execution repairs, and mobile microphone placement unchanged."
   ],
-  "title": "86 Chaos 17.0.7",
-  "summary": "Surgical Vercel deployment repair that removes all Git-object requirements from the Vercel build path.",
-  "description": "Preserves 17.0.6 application behavior and changes only Vercel build identity handling plus required 17.0.7 version metadata."
+  "title": "86 Chaos 17.0.8",
+  "summary": "Deployment-safe identity architecture that separates Vercel build availability from release certification evidence.",
+  "description": "Preserves application behavior while removing fragile Vercel workspace assumptions from prebuild identity stamping and retaining strict commit/manifest checks in the certification gate."
 }

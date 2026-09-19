@@ -30,11 +30,13 @@ test('17.0.6 Vercel build identity works without .git and preserves exact build-
     VERCEL: process.env.VERCEL,
     VERCEL_GIT_COMMIT_SHA: process.env.VERCEL_GIT_COMMIT_SHA,
     VERCEL_GIT_COMMIT_REF: process.env.VERCEL_GIT_COMMIT_REF,
+    CHAOS_STRICT_VERCEL_BUILD_WORKSPACE: process.env.CHAOS_STRICT_VERCEL_BUILD_WORKSPACE,
   };
   try {
     process.env.VERCEL = '1';
     process.env.VERCEL_GIT_COMMIT_SHA = '0123456789abcdef0123456789abcdef01234567';
     process.env.VERCEL_GIT_COMMIT_REF = 'testing';
+    process.env.CHAOS_STRICT_VERCEL_BUILD_WORKSPACE = '1';
     const first = identity.captureBuildSourceIdentity(dir);
     assert.equal(first.version, '17.0.6');
     assert.equal(first.sourceEvidence, 'bundled-manifest');
