@@ -1,7 +1,7 @@
 [CmdletBinding()]
 param(
   [string]$ReleaseZip,
-  [string]$ExpectedVersion = '17.0.11',
+  [string]$ExpectedVersion = '17.0.13',
   [string]$Repository = 'C:\Users\geoff\Documents\GitHub\86chaos'
 )
 
@@ -67,14 +67,25 @@ try {
     Write-Host "Release ZIP: $script:ReleaseZipPath"
   }
 
-  Invoke-Stage 'identify expected next release' {
+  Invoke-Stage 'identify release transition or safe resume' {
     $currentPackagePath = Join-Path $Repository 'package.json'
     if (-not (Test-Path -LiteralPath $currentPackagePath)) { throw "Repository package.json is missing: $currentPackagePath" }
     $currentVersion = [string](Get-Content -Raw -LiteralPath $currentPackagePath | ConvertFrom-Json).version
     if ($currentVersion -notmatch '^(\d+)\.(\d+)\.(\d+)$') { throw "Repository version is not a three-part semantic version: $currentVersion" }
-    $nextVersion = '{0}.{1}.{2}' -f [int]$Matches[1], [int]$Matches[2], ([int]$Matches[3] + 1)
-    if ($ExpectedVersion -ne $nextVersion) { throw "Expected next release from repository version $currentVersion is $nextVersion, but the requested ZIP version is $ExpectedVersion." }
-    Write-Host "Current: $currentVersion  Next: $nextVersion"
+    $currentParts = @([int]$Matches[1], [int]$Matches[2], [int]$Matches[3])
+    if ($ExpectedVersion -notmatch '^(\d+)\.(\d+)\.(\d+)$') { throw "Requested release version is not a three-part semantic version: $ExpectedVersion" }
+    $expectedParts = @([int]$Matches[1], [int]$Matches[2], [int]$Matches[3])
+    if ($expectedParts[2] -lt 1) { throw "Requested patch version cannot determine an immediate predecessor: $ExpectedVersion" }
+    $previousVersion = '{0}.{1}.{2}' -f $expectedParts[0], $expectedParts[1], ($expectedParts[2] - 1)
+    if ($currentVersion -eq $ExpectedVersion) {
+      Write-Host "Resume mode: repository already reports $ExpectedVersion. The installer will verify its current manifest before overlaying." -ForegroundColor Yellow
+    }
+    elseif ($currentVersion -eq $previousVersion) {
+      Write-Host "Upgrade mode: $currentVersion -> $ExpectedVersion" -ForegroundColor Green
+    }
+    else {
+      throw "Repository version $currentVersion is neither the immediate predecessor $previousVersion nor the requested resumable release $ExpectedVersion."
+    }
   }
 
   Invoke-Stage 'extract and validate application' {
@@ -90,8 +101,8 @@ try {
   Set-Location -LiteralPath $Repository
   Invoke-Stage 'repository safety before dependencies' { Invoke-Checked 'npm' @('run', 'git:safety') }
   Invoke-Stage 'install locked dependencies' { Invoke-Checked 'npm' @('ci') }
-  Invoke-Stage 'version and source validation' { Invoke-Checked 'npm' @('run', 'validate:17.0.11') }
-  Invoke-Stage '17.0.11 regression tests' { Invoke-Checked 'npm' @('run', 'test:repair:17.0.11'); Invoke-Checked 'npm' @('run', 'test:schedule-runtime:17.0.11') }
+  Invoke-Stage 'version and source validation' { Invoke-Checked 'npm' @('run', "validate:$ExpectedVersion") }
+  Invoke-Stage 'current release regression tests' { Invoke-Checked 'npm' @('run', "test:repair:$ExpectedVersion"); Invoke-Checked 'npm' @('run', 'test:schedule-runtime:17.0.11') }
   Invoke-Stage 'production build' { Invoke-Checked 'npm' @('run', 'build') }
   Invoke-Stage 'repository safety after build' { Invoke-Checked 'npm' @('run', 'git:safety') }
 
@@ -105,7 +116,7 @@ try {
   }
 
   Invoke-Stage 'commit and push testing' {
-    Invoke-Git @('commit', '-m', "Release ${ExpectedVersion}: Schedule Builder runtime, Firebase gate referrer, and automated workflow repair")
+    Invoke-Git @('commit', '-m', "Release ${ExpectedVersion}: Idempotent automated release resume repair")
     $script:HeadSha = (& git --no-pager rev-parse HEAD).Trim()
     if ($LASTEXITCODE -ne 0) { throw 'Could not read the release commit SHA.' }
     $script:DeploymentStarted = $true
@@ -121,9 +132,19 @@ try {
     $script:SourceManifestHash = Get-SourceManifestHash $Repository
     $deadline = (Get-Date).AddMinutes(20)
     $identity = $null
+    $attempt = 0
     do {
-      try { $identity = Invoke-RestMethod -Method Get -Uri "$StableTestingAlias/api/build-identity?workflow=$([uri]::EscapeDataString($script:HeadSha))" -TimeoutSec 30 }
-      catch { $identity = $null }
+      $attempt++
+      try {
+        $identity = Invoke-RestMethod -Method Get -Uri "$StableTestingAlias/api/build-identity?workflow=$([uri]::EscapeDataString($script:HeadSha))&attempt=$attempt" -TimeoutSec 30
+        $observedVersion = if ($identity.version) { [string]$identity.version } else { 'unknown' }
+        $observedCommit = if ($identity.gitCommit) { [string]$identity.gitCommit } else { 'unknown' }
+        Write-Host "Vercel wait attempt $($attempt): version=$observedVersion commit=$observedCommit" -ForegroundColor DarkYellow
+      }
+      catch {
+        $identity = $null
+        Write-Host "Vercel wait attempt $($attempt): deployment identity is not reachable yet." -ForegroundColor DarkYellow
+      }
       $ready = $identity -and $identity.ok -and $identity.version -eq $Version -and $identity.gitCommit -eq $script:HeadSha -and $identity.gitBranch -eq 'testing' -and $identity.sourceManifestHash -eq $script:SourceManifestHash -and $identity.vercelProjectId -eq $CanonicalVercelProjectId -and $identity.firebaseTestingProject -eq $CanonicalFirebaseTestProject -and $identity.vercelDeploymentUrl
       if (-not $ready) { Start-Sleep -Seconds 15 }
     } while (-not $ready -and (Get-Date) -lt $deadline)

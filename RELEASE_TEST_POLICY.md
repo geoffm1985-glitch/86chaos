@@ -7,7 +7,7 @@
 
 Only a complete successful Play Store gate against the exact immutable deployment may certify a release. Targeted, delta, repair, failed-only, blocked, partial, or zero-test runs do not certify.
 
-For 17.0.11, after deploying and verifying the exact testing candidate, the user workflow runs only:
+For 17.0.13, after deploying and verifying the exact testing candidate, the user workflow runs only:
 
 ```text
 npm run test:play-store

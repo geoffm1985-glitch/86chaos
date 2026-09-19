@@ -51,7 +51,7 @@ jest.mock('../core/appCore', () => {
   const pad = value => String(value).padStart(2, '0');
   const month = value => String(value || '').slice(0, 7);
   return {
-    T: new Proxy({}, { get: () => '' }), db: {}, storage: {}, auth: {}, messaging: {}, firebaseConfig: {}, MASTER_ADMIN_EMAIL: '', EVENT_TAGS: [], CURRENT_VERSION: '17.0.11',
+    T: new Proxy({}, { get: () => '' }), db: {}, storage: {}, auth: {}, messaging: {}, firebaseConfig: {}, MASTER_ADMIN_EMAIL: '', EVENT_TAGS: [], CURRENT_VERSION: '17.0.12',
     secureFetch: jest.fn(async () => ({ ok: true, json: async () => ({ ok: true, presets: [] }) })),
     useLiveCollection: () => [], useLiveCollectionState: () => ({ data: [], resolved: true, error: null }),
     formatDate: value => value, getToday: () => '2026-09-19', getMonthStr: month,

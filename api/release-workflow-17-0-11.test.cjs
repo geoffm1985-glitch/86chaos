@@ -5,10 +5,18 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const cp = require('node:child_process');
+const crypto = require('node:crypto');
 const workflow = require('../scripts/86chaos-release-workflow/install-app-only.cjs');
 const root = path.resolve(__dirname, '..');
 
 function git(cwd, args) { const result = cp.spawnSync('git', args, { cwd, encoding: 'utf8' }); assert.equal(result.status, 0, result.stderr); return result.stdout; }
+function writeFixtureManifest(root) {
+  const rows = [
+    { file: 'package.json', sha256: crypto.createHash('sha256').update(fs.readFileSync(path.join(root, 'package.json'))).digest('hex') },
+    { file: 'src/marker.js', sha256: crypto.createHash('sha256').update(fs.readFileSync(path.join(root, 'src', 'marker.js'))).digest('hex') },
+  ].sort((a,b)=>a.file.localeCompare(b.file));
+  fs.writeFileSync(path.join(root, 'release-source-manifest.json'), JSON.stringify({ schemaVersion:1, sourceHash:crypto.createHash('sha256').update(JSON.stringify(rows)).digest('hex'), files:rows }, null, 2)+'\n');
+}
 function createFixture() {
   const fixture = fs.mkdtempSync(path.join(os.tmpdir(), 'chaos-workflow-1711-'));
   const source = path.join(fixture, 'source');
@@ -20,9 +28,16 @@ function createFixture() {
     else fs.mkdirSync(target, { recursive: true });
   }
   fs.writeFileSync(path.join(source, 'src', 'marker.js'), 'new source\n');
+  writeFixtureManifest(source);
   git(repository, ['init', '-b', 'testing']);
   git(repository, ['config', 'user.email', 'test@example.invalid']); git(repository, ['config', 'user.name', 'Test']);
   fs.writeFileSync(path.join(repository, 'tracked.txt'), 'preserve\n');
+  fs.writeFileSync(path.join(repository, 'package.json'), '{"version":"17.0.10"}\n');
+  const repoRows = [
+    { file: 'package.json', sha256: crypto.createHash('sha256').update(fs.readFileSync(path.join(repository, 'package.json'))).digest('hex') },
+    { file: 'tracked.txt', sha256: crypto.createHash('sha256').update(fs.readFileSync(path.join(repository, 'tracked.txt'))).digest('hex') },
+  ].sort((a,b)=>a.file < b.file ? -1 : a.file > b.file ? 1 : 0);
+  fs.writeFileSync(path.join(repository, 'release-source-manifest.json'), JSON.stringify({ schemaVersion:1, sourceHash:crypto.createHash('sha256').update(JSON.stringify(repoRows)).digest('hex'), files:repoRows }, null, 2)+'\n');
   git(repository, ['add', '.']); git(repository, ['commit', '-m', 'fixture']);
   return { fixture, source, repository };
 }
@@ -65,7 +80,7 @@ test('17.0.11 automatic workflow uses parser-safe PowerShell variable interpolat
   const ambiguousReferences = [...script.matchAll(/\$(?!(?:env|script|global|local|private|using):)([A-Za-z_][A-Za-z0-9_]*):/g)]
     .map((match) => match[0]);
   assert.deepEqual(ambiguousReferences, []);
-  assert.match(script, /Release \$\{ExpectedVersion\}: Schedule Builder runtime/);
+  assert.match(script, /Release \$\{ExpectedVersion\}: Idempotent automated release resume repair/);
 });
 
 test('17.0.11 release gate persists total timing into slim evidence and prints elapsed time last', () => {

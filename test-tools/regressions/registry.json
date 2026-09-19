@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "release": "17.0.11",
+  "release": "17.0.13",
   "defects": [
     {
       "defectId": "RG-API-WRAPPER-FIDELITY",
@@ -411,6 +411,34 @@
       ],
       "fidelity": "ACTUAL MODULE / WORKFLOW CONTRACT",
       "fixedVersion": "17.0.11",
+      "mandatoryGroup": "hostile-contracts"
+    },
+    {
+      "defectId": "RG-HISTORICAL-VERCEL-WORKSPACE-IDENTITY-1712",
+      "origin": "17.0.11 full release-gate hostile certification",
+      "affectedInvariant": "Historical source-identity regressions must follow deployment-safe manifest/Git identity in normal Vercel mode and reserve workspace byte-drift assertions for the opt-in strict diagnostic path",
+      "reproducer": "repair-17-0-5.test.cjs and source-identity-history-17-0-12.test.cjs",
+      "permanentTestIds": [
+        "17.0.5 historical build fingerprint follows deployment-safe manifest identity while strict diagnostics catch workspace drift",
+        "17.0.12 normal Vercel identity stays manifest/Git-bound while strict diagnostics catch modified and deleted build inputs"
+      ],
+      "fidelity": "ACTUAL MODULE / TEMPORARY GIT FIXTURE",
+      "fixedVersion": "17.0.12",
+      "mandatoryGroup": "hostile-contracts"
+    },
+    {
+      "defectId": "RG-AUTOMATED-WORKFLOW-IDEMPOTENT-RESUME-1713",
+      "origin": "17.0.12 one-paste updater stopped before install because repository already reported the requested release",
+      "affectedInvariant": "Automatic release install accepts an immediate-predecessor upgrade or manifest-verified same/interrupted candidate resume without overwriting unknown user edits",
+      "reproducer": "api/release-workflow-resume-17-0-13.test.cjs",
+      "permanentTestIds": [
+        "17.0.13 updater resumes a coherent interrupted 17.0.12 candidate and overlays 17.0.13 safely",
+        "17.0.13 updater permits same-version resume only when current candidate is manifest-coherent",
+        "17.0.13 updater still refuses user edits and unmanifested dirty paths",
+        "17.0.13 updater removes only verified stale prior-release source files"
+      ],
+      "fidelity": "ACTUAL MODULE / TEMPORARY GIT FIXTURE",
+      "fixedVersion": "17.0.13",
       "mandatoryGroup": "hostile-contracts"
     }
   ]
